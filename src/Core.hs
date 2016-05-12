@@ -1,11 +1,32 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable, TemplateHaskell #-}
 
--- | 
+-- | Stand-alone Core datatype definitions.
 
 module Core where
 
 import Data.Typeable (Typeable)
 import Data.Data (Data)
+
+import Data.Aeson.TH
+import Data.Aeson (encode)
+import qualified Data.ByteString.Lazy.Char8 as B
+
+-- TEMP/TESTING -- external representations:
+--------------------------------------------------------------------------------
+
+data E 
+  = V  String
+  | L  Int
+  | Ap E E
+ deriving (Show,Read)
+
+-- $(deriveJSON defaultOptions{constructorTagModifier = map toLower} ''E)
+$(deriveJSON defaultOptions ''E)
+
+x = Ap (V "x") (L 3)
+
+y = B.putStrLn $ encode x
+-- Object (fromList [("tag",String "Ap"),("contents",Array [Object (fromList [("tag",String "V"),("contents",String "x")]),Object (fromList [("tag",String "L"),("contents",Number 3.0)])])])
 
 -- TODO: Not sucked in yet:
 --------------------------------------------------------------------------------
@@ -16,8 +37,6 @@ data Var
 data Bind b
 data Coercion
 data Tickish a
--- Data
--- Typeable
 data AltCon
 
 data ByteString
