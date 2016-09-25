@@ -17,10 +17,11 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Core, TinyCore
+                       Packed.Source, Packed.Target, Packed.Translate, Packed.Interp1, Packed.Interp2, Packed.Common
   -- other-modules:       
   other-extensions:    DeriveDataTypeable
   build-depends:       base >=4.8,
-                       aeson, bytestring
+                       aeson, bytestring, containers
   hs-source-dirs:      src
   default-language:    Haskell2010
   
