@@ -7,7 +7,10 @@ import Foreign.Storable
 import Packed.Common
 import Data.Word
     
--- | The target language, a monadic one.   
+-- | A monadic intermediate language.  This hides the details of
+-- packed-adt representation, but it exposes a "cursor" argument to
+-- every tree constructor, and it makes constructing tree values an IO
+-- action.
 data L2 = Varref Var
         | App L2 L2
         | Lam (Var,T2) L2
