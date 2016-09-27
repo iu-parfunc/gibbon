@@ -29,6 +29,7 @@ data L2 = Varref Var
         | WriteInt Int    -- ^ Write (leaf) data
         -- For casing on numeric tags: 
         | IfEq (L2,L2) L2 L2
+  deriving (Read,Show,Ord,Eq)
           
 data T2 = TInt | TArr T2 T2 | TyVar Var
         | Prod T2 T2 | Sum T2 T2
@@ -36,10 +37,15 @@ data T2 = TInt | TArr T2 T2 | TyVar Var
 
         -- NEW:
         | TIO T2
+  deriving (Read,Show,Ord,Eq)
 
-data V2
-          
+-- | Complete programs include datatype definitions:
+data P2 = P2 { defs :: [DDef T2]
+             , mainProg :: L2
+             , mainTy   :: T2 }
+  deriving (Read,Show,Eq,Ord)
+
 --------------------------------------------------------------------------------
 
-interp :: L2 -> String
+interp :: P2 -> Value L2
 interp = undefined

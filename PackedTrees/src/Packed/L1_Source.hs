@@ -33,12 +33,9 @@ data T1 = TInt | TArr T1 T1 | TyVar Var
   deriving (Read,Show,Eq,Ord)
   
 -- | Complete programs include datatype definitions:
-data P1 = P1 { defs :: [DDef]
+data P1 = P1 { defs :: [DDef T1]
              , mainProg :: L1
              , mainTy   :: T1 }
-  deriving (Read,Show,Eq,Ord)
-  
-data DDef = DDef Var [(Constr,[T1])]
   deriving (Read,Show,Eq,Ord)
   
 --------------------------------------------------------------------------------
@@ -56,7 +53,7 @@ l1FromValue x =
     (VPacked y1 y2) -> undefined
 
 -- | To keep things simple we evaluate directly to a string.
-interp :: [DDef] -> L1 -> Value L1
+interp :: [DDef T1] -> L1 -> Value L1
 interp _ddefs = go M.empty
     where
       go env x = 
