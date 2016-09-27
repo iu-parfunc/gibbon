@@ -1,6 +1,11 @@
+// A manual implementation of a single-buffer, packed bintree
+// representation and a treewalk of it.
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+
+#define TRIALS 33
 
 enum Tree {
     Leaf,
@@ -11,8 +16,6 @@ enum Tree {
 // one byte for each tag, 64 bit integers
 typedef char* TreeRef;
 typedef long long Num;
-
-#define TRIALS 33
 
 // Helper function
 char* fillTree(char* cursor, int n, Num root) {
@@ -87,8 +90,12 @@ int compare_doubles (const void *a, const void *b)
   return (*da > *db) - (*da < *db);
 }
 
-void main() {
-  int depth = 20;
+int main(int argc, char** argv) {
+  int depth;
+  if (argc > 1)
+    depth = atoi(argv[1]);
+  else 
+    depth = 20;
   printf("Building tree, depth %d\n", depth);
   // CLOCK_REALTIME
   clock_t begin = clock();
@@ -114,4 +121,5 @@ void main() {
   printf("\nSELFTIMED: %lf\n", trials[TRIALS / 2]);
   // printTree(t2); printf("\n");
   free(tr);
+  return 0;
 }

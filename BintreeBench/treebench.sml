@@ -79,8 +79,8 @@ fun benchmarks (power: int): (microreal * microreal) =
       val meanTime = LargeReal./ ( LargeReal.fromLargeInt timeSum
                                  , LargeReal.fromInt      trials
                                  )
-      val sorted = FINISHME
-      val medianTime = FINISHME
+(*      val sorted = FINISHME *)
+      val medianTime = 0.0
    in
       (meanTime, medianTime)
    end
@@ -90,6 +90,8 @@ val power = case map Int.fromString (CommandLine.arguments ()) of
                   | _           => raise Fail "Can't parse number of iterations"
 val _ = print "Benchmark: add 1 to all leaves of binary tree, size 2^"
 val _ = putStrLn (Int.toString power)
+val _ = print "  trials = "
+val _ = putStrLn (Int.toString trials)
 val (meanTime,median) = benchmarks power
 val _ = print "Mean time (microseconds): "
 val _ = printLargeReal meanTime
