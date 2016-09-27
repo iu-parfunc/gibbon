@@ -1,8 +1,7 @@
 
-name:                tree-velocity
+name:                packed-trees
 version:             0.1.0.0
-synopsis:            An unfinished benchmark for AST manipulation.
-        
+synopsis:            A compiler transform for operating on serialized trees.
 -- description:         
 -- license:             
 -- license-file:        LICENSE
@@ -15,7 +14,8 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Core, TinyCore
+  exposed-modules:  Packed.L1_Source, Packed.L2_Intermediate, Packed.L3_Target,
+                    Packed.Translate, Packed.Interp1, Packed.Interp2, Packed.Common
   -- other-modules:       
   other-extensions:    DeriveDataTypeable
   build-depends:       base >=4.8,
