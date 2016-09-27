@@ -1,0 +1,6 @@
+*.exe
+/treebench
+/treebench_mlton
+/treebench_lazy
+/treebench_lazy_ghc
+/treebench_strict_ghc
