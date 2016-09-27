@@ -1,4 +1,5 @@
--- | 
+-- | A final target language that directly exposes the representation
+-- of buffers used to store trees.
 
 module Packed.L3_Target where
 
@@ -20,11 +21,14 @@ data L3 = Varref Var
         -- NEW:
         | Bind L3 L3
         | Return L3
-        | NewPacked       -- ^ Allocate a new buffer
+        -- Cursors are always represented by variables, not arbitrary expressions:
+        | NewPacked       -- ^ Allocate a new buffer, return a cursor.
         | Copy Var Var    -- ^ Copy into the buffer from another packed.
-        | WriteTag Word8  -- ^ Write a tag
-        | WriteInt Int    -- ^ Write (leaf) data
-        -- For casing on numeric tags: 
+        | WriteTag Var Word8  -- ^ Write a tag at a cursor.
+        | WriteInt Var Int    -- ^ Write (leaf) data
+        | ReadTag Var         -- ^ Read one byte from the cursor and advance it.
+        | ReadInt Var         -- ^ Read an 8 byte Int from the cursor and advance.
+        -- For casing on numeric tags:
         | IfEq (L3,L3) L3 L3
           
 data T3 = TInt | TArr T3 T3 | TyVar Var
@@ -33,6 +37,7 @@ data T3 = TInt | TArr T3 T3 | TyVar Var
 
         -- NEW:
         | TIO T3
+        | TCursor
 
 data V3
           

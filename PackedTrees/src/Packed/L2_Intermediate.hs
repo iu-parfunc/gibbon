@@ -1,4 +1,5 @@
--- | 
+-- | An intermediate language with cursors but not explicit memory
+-- representations.
 
 module Packed.L2_Intermediate where
 

@@ -1,7 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# OPTIONS_GHC -Wall #-}
 
--- | 
+-- | The source language for recursive tree traversals.
 
 module Packed.L1_Source where
 
