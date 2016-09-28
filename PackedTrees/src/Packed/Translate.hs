@@ -44,44 +44,44 @@ hasPacked = go
 -- | Compiler pass that lowers L1 to L2 by inserting cursor arguments.
 insertCursors :: P1 -> P2
 insertCursors P1{..} = T.P2 (fmap (fmap (runIdentity . doTy)) defs)
-                            (fst $ runSyM 0 $ go CNone mainTy M.empty mainProg)
+                            (fst $ runSyM 0 $ go CNone mainTy mainProg)
                             (runIdentity $ doTy mainTy)
  where
    -- This tracks the current return type and the cursors
    -- corresponding to that return type.
-   go :: Cursors -> T1 -> CEnv -> L1 -> SyM T.L2
-   go ctxt ty env (App a b) =
+   go :: Cursors -> T1 -> L1 -> SyM T.L2
+   go ctxt ty (App a b) =
      let argty = S.tyc (error "finishme52") b in
        if (error "finishme53")
-          then T.App <$> go ctxt ty env a <*> go ctxt ty env b
+          then T.App <$> go ctxt ty a <*> go ctxt ty b
           -- Inject the cursor argument
           else if (error "finishme56") -- No return context, make a fresh buffer.
                   then T.bind (error "finishme57") T.NewBuf $ 
                        \ (cur,_ty) ->
-                        (T.App <$> (go ctxt (error "finishme59") env a) 
+                        (T.App <$> (go ctxt (error "finishme59") a) 
                                <*> (T.App (T.Varref cur) <$>
-                                         (go ctxt (error "finishme61") env b)))
-                  else T.App <$> (go ctxt (error "finishme62") env a)
+                                         (go ctxt (error "finishme61") b)))
+                  else T.App <$> (go ctxt (error "finishme62") a)
                              <*> (T.App (error "finishme63")
-                                       <$> (go ctxt (error "finishme64") env b))
+                                       <$> (go ctxt (error "finishme64") b))
 
-   go _ctxt ty _env (Varref x) 
+   go _ctxt ty (Varref x) 
      | hasPacked ty = (error "finishme67")
      | otherwise    = (error "finishme68")
-   go _ctxt _ty _env (Lit x) = (error "finishme69")
-   go _ctxt _ty _env (Lam x1 x2) = (error "finishme70")
-   go _ctxt _ty _env (CaseEither x1 x2 x3) = (error "finishme71")
-   go _ctxt _ty _env (CasePacked x1 x2) = (error "finishme72")
-   go _ctxt _ty _env (Add x1 x2) = (error "finishme73")
-   go _ctxt _ty _env (Letrec x1 x2) = (error "finishme74")
-   go _ctxt _ty _env (InL x) = (error "finishme75")
-   go _ctxt _ty _env (InR x) = (error "finishme76")
-   go _ctxt _ty _env (MkProd x1 x2) = (error "finishme77")
+   go _ctxt _ty (Lit x) = (error "finishme69")
+   go _ctxt _ty (Lam x1 x2) = (error "finishme70")
+   go _ctxt _ty (CaseEither x1 x2 x3) = (error "finishme71")
+   go _ctxt _ty (CasePacked x1 x2) = (error "finishme72")
+   go _ctxt _ty (Add x1 x2) = (error "finishme73")
+   go _ctxt _ty (Letrec x1 x2) = (error "finishme74")
+   go _ctxt _ty (InL x) = (error "finishme75")
+   go _ctxt _ty (InR x) = (error "finishme76")
+   go _ctxt _ty (MkProd x1 x2) = (error "finishme77")
    
    -- Here we must fetch the cursor from the context, and we also most
    -- transform the arguments to feed into the *same* cursor.
-   go ctxt ty env (MkPacked k ls) = 
-     let bod c = T.MkPacked c k <$> (mapM (go2 c ty env) ls)
+   go ctxt ty (MkPacked k ls) = 
+     let bod c = T.MkPacked c k <$> (mapM (go2 c ty) ls)
      in case ctxt of
           Cursor c -> bod c
           CNone    -> do c <- gensym "c"
@@ -90,11 +90,11 @@ insertCursors P1{..} = T.P2 (fmap (fmap (runIdentity . doTy)) defs)
    -- | This function takes a term of type T and returns one of type T
    -- that feeds a specific cursor.  This is called in the context of
    -- ARGUMENTS to a packed constructor.
-   go2 :: Var -> T1 -> CEnv -> L1 -> SyM T.L2
-   go2 c ty env l1 =      
+   go2 :: Var -> T1 -> L1 -> SyM T.L2
+   go2 c ty l1 =      
      case l1 of 
        (Varref v) -> return $ T.Copy v c
-       (MkPacked k ls) -> T.MkPacked c k <$> mapM (go2 c undefined env) ls
+       (MkPacked k ls) -> T.MkPacked c k <$> mapM (go2 c undefined) ls
        (Lit x) -> (error "finishme95")
        (App x1 x2) -> (error "finishme96")
        (Lam x1 x2) -> (error "finishme97")
