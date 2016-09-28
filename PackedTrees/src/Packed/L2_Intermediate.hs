@@ -20,24 +20,24 @@ data L2 = Varref Var
         | Add L2 L2 -- One primitive.
         | Letrec [(Var,T2,L2)] L2
         | InL L2 | InR L2 | MkProd L2 L2
-        -- REMOVED: packed constructors.
-        -- NEW:
+
+        -- NEW: Monadic operations:
         | Bind L2 L2
         | Return L2
-        | NewPacked       -- ^ Allocate a new buffer
-        | Copy Var Var    -- ^ Copy into the buffer from another packed.
-        | WriteTag Word8  -- ^ Write a tag
-        | WriteInt Int    -- ^ Write (leaf) data
-        -- For casing on numeric tags: 
-        | IfEq (L2,L2) L2 L2
+        | IfEq (L2,L2) L2 L2 -- ^ For casing on numeric tags:           
+        | NewBuf             -- ^ Allocate a new buffer (could take size)
+        | MkPacked Constr Var [L2]
+        -- ^ CHANGED: We have a required cursor parameter to every constructor:
+        | Copy { src :: Var, dst:: Var }
+           -- ^ A recursive, polymorphic copy operation on any Packed type.
+
   deriving (Read,Show,Ord,Eq)
           
 data T2 = TInt | TArr T2 T2 | TyVar Var
         | Prod T2 T2 | Sum T2 T2
-        | Packed Constr [T2]
-
+        | Packed Var [T2]
         -- NEW:
-        | TIO T2
+        | TIO T2 -- ^ an IO action.
   deriving (Read,Show,Ord,Eq)
 
 -- | Complete programs include datatype definitions:

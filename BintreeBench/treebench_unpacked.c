@@ -18,7 +18,7 @@ typedef char* TreeRef;
 typedef long long Num;
 
 // Helper function
-char* fillTree(char* cursor, int n, Num root) {
+TreeRef fillTree(TreeRef cursor, int n, Num root) {
   // printf("  filltree: %p, n=%d, fill=%lld", cursor, n, root); fflush(stdout);
   if (n == 0) {
     *cursor = Leaf;

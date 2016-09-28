@@ -4,6 +4,9 @@ all: treebench_mlton.exe treebench_strict_ghc.exe treebench_lazy_ghc.exe treeben
 # treebench_rust_unpacked.exe
 
 GHC = stack --install-ghc --resolver=lts-7.0 exec ghc --
+# CC = gcc
+CC = clang
+
 
 ghc: treebench_strict_ghc.exe treebench_lazy_ghc.exe
 
@@ -29,10 +32,10 @@ treebench_rust_sys_alloc.exe: treebench_sys_alloc.rs
 # 	time rustc $^ -o $@ -O
 
 treebench_c.exe: treebench.c
-	time gcc -O3 $^ -o $@ 
+	time $(CC) -O3 $^ -o $@ 
 
 treebench_c_unpacked.exe: treebench_unpacked.c
-	time gcc -O3 $^ -o $@ 
+	time $(CC) -O3 $^ -o $@ 
 
 clean:
 	rm -f *.exe *.o *.hi treebench treebench_lazy *.cmi *.cmo *.cmx
