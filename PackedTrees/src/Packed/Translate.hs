@@ -1,8 +1,8 @@
 {-# LANGUAGE RecordWildCards #-}
 
--- | A compiler pass that translates between the source and target
--- language, implementing the cursor-passing implementation of Packed
--- tree ADTs.
+-- | A compiler pass that translates between the L1 and L2 languages.
+-- This implements the cursor-passing implementation of Packed tree
+-- ADTs.
 
 module Packed.Translate where
 
@@ -49,30 +49,32 @@ insertCursors P1{..} = T.P2 (fmap (fmap (runIdentity . doTy)) defs)
  where
    go :: Cursors -> T1 -> CEnv -> L1 -> SyM T.L2
    go ctxt ty env (App a b) =
-     let argty = S.tyc undefined b in
-       if undefined
+     let argty = S.tyc (error "finishme52") b in
+       if (error "finishme53")
           then T.App <$> go ctxt ty env a <*> go ctxt ty env b
           -- Inject the cursor argument
-          else if undefined -- No return context, make a fresh buffer.
-                  then T.bind undefined T.NewBuf $ 
+          else if (error "finishme56") -- No return context, make a fresh buffer.
+                  then T.bind (error "finishme57") T.NewBuf $ 
                        \ (cur,_ty) ->
-                        (T.App <$> (go ctxt undefined env a) 
-                               <*> (T.App (T.Varref cur) <$> (go ctxt undefined env b)))
-                  else T.App <$> (go ctxt undefined env a)
-                             <*> (T.App undefined <$> (go ctxt undefined env b))
+                        (T.App <$> (go ctxt (error "finishme59") env a) 
+                               <*> (T.App (T.Varref cur) <$>
+                                         (go ctxt (error "finishme61") env b)))
+                  else T.App <$> (go ctxt (error "finishme62") env a)
+                             <*> (T.App (error "finishme63")
+                                       <$> (go ctxt (error "finishme64") env b))
 
    go _ctxt ty _env (Varref x) 
-     | hasPacked ty = undefined
-     | otherwise    = undefined
-   go _ctxt _ty _env (Lit x) = undefined
-   go _ctxt _ty _env (Lam x1 x2) = undefined
-   go _ctxt _ty _env (CaseEither x1 x2 x3) = undefined
-   go _ctxt _ty _env (CasePacked x1 x2) = undefined
-   go _ctxt _ty _env (Add x1 x2) = undefined
-   go _ctxt _ty _env (Letrec x1 x2) = undefined
-   go _ctxt _ty _env (InL x) = undefined
-   go _ctxt _ty _env (InR x) = undefined
-   go _ctxt _ty _env (MkProd x1 x2) = undefined
+     | hasPacked ty = (error "finishme67")
+     | otherwise    = (error "finishme68")
+   go _ctxt _ty _env (Lit x) = (error "finishme69")
+   go _ctxt _ty _env (Lam x1 x2) = (error "finishme70")
+   go _ctxt _ty _env (CaseEither x1 x2 x3) = (error "finishme71")
+   go _ctxt _ty _env (CasePacked x1 x2) = (error "finishme72")
+   go _ctxt _ty _env (Add x1 x2) = (error "finishme73")
+   go _ctxt _ty _env (Letrec x1 x2) = (error "finishme74")
+   go _ctxt _ty _env (InL x) = (error "finishme75")
+   go _ctxt _ty _env (InR x) = (error "finishme76")
+   go _ctxt _ty _env (MkProd x1 x2) = (error "finishme77")
    
    -- Here we must fetch the cursor from the context, and we also most
    -- transform the arguments to feed into the *same* cursor.
@@ -81,12 +83,28 @@ insertCursors P1{..} = T.P2 (fmap (fmap (runIdentity . doTy)) defs)
      in case ctxt of
           Cursor c -> bod c
           CNone    -> do c <- gensym "c"
-                         T.bind undefined T.NewBuf $ \(c,_) -> bod c
+                         T.bind (error "finishme86") T.NewBuf $ \(c,_) -> bod c
 
-   -- | This function takes a term of type T and returns one of type
-   -- T that feeds a specific cursor.
+   -- | This function takes a term of type T and returns one of type T
+   -- that feeds a specific cursor.  This is called in the context of
+   -- ARGUMENTS to a packed constructor.
    go2 :: Var -> T1 -> CEnv -> L1 -> SyM T.L2
-   go2 c ty env (Varref v) = return $ T.Copy v c
+   go2 c ty env l1 =      
+     case l1 of 
+       (Varref v) -> return $ T.Copy v c
+       (MkPacked x1 x2) -> (error "finishme105")
+       (Lit x) -> (error "finishme95")
+       (App x1 x2) -> (error "finishme96")
+       (Lam x1 x2) -> (error "finishme97")
+       (CaseEither x1 x2 x3) -> (error "finishme98")
+       (CasePacked x1 x2) -> (error "finishme99")
+       (Add x1 x2) -> (error "finishme100")
+       (Letrec x1 x2) -> (error "finishme101")
+       (InL x) -> (error "finishme102")
+       (InR x) -> (error "finishme103")
+       (MkProd x1 x2) -> (error "finishme104")
+       
+
 
 
 -- | Translate a type to route through cursor parameters.
@@ -96,19 +114,19 @@ doTy  = pos
   -- In a positive position, cursors are passed as arguments.
   -- When returned, they must be added as output params.
   pos t = case t of
-            TInt -> undefined
+            TInt -> (error "finishme116")
             (TArr x y) -> T.TArr <$> pos x <*> neg y
-            (TyVar x)    -> undefined
-            (Prod x1 x2) -> undefined
-            (Sum x1 x2)    -> undefined
+            (TyVar x)    -> (error "finishme118")
+            (Prod x1 x2) -> (error "finishme119")
+            (Sum x1 x2)    -> (error "finishme120")
             (Packed k ls) -> T.Packed k <$> mapM pos ls
   neg t = case t of 
-            TInt -> undefined
-            (TArr x1 x2) -> undefined
-            (TyVar x)    -> undefined
-            (Prod x1 x2) -> undefined
-            (Sum x1 x2)    -> undefined
-            (Packed x1 x2) -> undefined
+            TInt -> (error "finishme123")
+            (TArr x1 x2) -> (error "finishme124")
+            (TyVar x)    -> (error "finishme125")
+            (Prod x1 x2) -> (error "finishme126")
+            (Sum x1 x2)    -> (error "finishme127")
+            (Packed x1 x2) -> (error "finishme128")
 
 -- Examples:
 --------------------------------------------------------------------------------

@@ -4,8 +4,8 @@ all: treebench_mlton.exe treebench_strict_ghc.exe treebench_lazy_ghc.exe treeben
 # treebench_rust_unpacked.exe
 
 GHC = stack --install-ghc --resolver=lts-7.0 exec ghc --
-# CC = gcc
-CC = clang
+CC = gcc
+# CC = clang
 
 
 ghc: treebench_strict_ghc.exe treebench_lazy_ghc.exe
@@ -37,7 +37,12 @@ treebench_c.exe: treebench.c
 treebench_c_unpacked.exe: treebench_unpacked.c
 	time $(CC) -O3 $^ -o $@ 
 
+
+run_chez:
+
+
+
 clean:
 	rm -f *.exe *.o *.hi treebench treebench_lazy *.cmi *.cmo *.cmx
 
-.PHONY: all clean ghc
+.PHONY: all clean ghc run_chez

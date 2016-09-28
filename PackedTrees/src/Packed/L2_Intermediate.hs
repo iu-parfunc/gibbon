@@ -1,5 +1,5 @@
 -- | An intermediate language with cursors but not explicit memory
--- representations.
+-- representations.  
 
 module Packed.L2_Intermediate where
 
@@ -24,7 +24,6 @@ data L2 = Varref Var | Lit Int
 -- TEMP: doing an impure/call-by-value target language first:
 --        | Bind L2 L2
 --        | Return L2
-        | IfEq (L2,L2) L2 L2 -- ^ For casing on numeric tags:           
         | NewBuf             -- ^ Allocate a new buffer (could take size)
         | MkPacked Constr Var [L2]
         -- ^ CHANGED: We have a required cursor parameter to every constructor:
@@ -79,7 +78,6 @@ tyc = go
     (CasePacked x1 x2) -> undefined
     (Letrec x1 x2) -> undefined
     (MkProd x1 x2) -> undefined
-    (IfEq x1 x2 x3) -> undefined
 
     (MkPacked x1 x2 x3) -> undefined
 
