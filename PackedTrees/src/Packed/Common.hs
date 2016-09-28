@@ -39,7 +39,7 @@ type DDefs a = Map Var (DDef a)
 data DDef a = DDef { tyName:: Var
                    , tyArgs:: [Var] 
                    , dataCons :: [(Constr,[a])] }
-  deriving (Read,Show,Eq,Ord)
+  deriving (Read,Show,Eq,Ord, Functor)
 
 -- | Lookup a ddef in its entirety
 lookupDDef :: DDefs a -> Var -> DDef a 
@@ -72,7 +72,8 @@ newtype SyM a = SyM (State Int a)
  deriving (Functor, Applicative, Monad)
 
 gensym :: Var -> SyM Var
-gensym v = SyM $ do n <- modify (+1)
+gensym v = SyM $ do modify (+1)
+                    n <- get
                     return (v `varAppend` show n)
 
 runSyM :: Int -> SyM a -> (a,Int)

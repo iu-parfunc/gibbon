@@ -113,7 +113,7 @@ unify = go
         
                                            
 -- | Complete programs include datatype definitions:
-data P2 = P2 { defs :: [DDef T2]
+data P2 = P2 { defs :: DDefs T2
              , mainProg :: L2
              , mainTy   :: T2 }
   deriving (Read,Show,Eq,Ord)

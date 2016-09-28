@@ -6,6 +6,7 @@
 
 module Packed.Translate where
 
+import           Control.Monad.Identity
 import           Control.Monad.State
 import           Data.Map as M hiding (map)
 import           Packed.Common
@@ -40,8 +41,11 @@ hasPacked = go
            (Prod a1 a2) -> go a1 || go a2
            (Sum a1 a2)  -> go a1 || go a2
 
+-- | Compiler pass that lowers L1 to L2 by inserting cursor arguments.
 insertCursors :: P1 -> P2
-insertCursors P1{..} = undefined (go CNone mainTy M.empty mainProg)
+insertCursors P1{..} = T.P2 (fmap (fmap (runIdentity . doTy)) defs)
+                            (fst $ runSyM 0 $ go CNone mainTy M.empty mainProg)
+                            (runIdentity $ doTy mainTy)
  where
    go :: Cursors -> T1 -> CEnv -> L1 -> SyM T.L2
    go ctxt ty env (App a b) =
@@ -73,8 +77,11 @@ insertCursors P1{..} = undefined (go CNone mainTy M.empty mainProg)
    -- Here we must fetch the cursor from the context, and we also most
    -- transform the arguments into functions of a cursor argument.
    go ctxt ty env (MkPacked k ls) = 
-     let Cursor c = ctxt in 
-     T.MkPacked c k <$> (mapM (go2 (Cursor c) ty env) ls)
+     let bod c = T.MkPacked c k <$> (mapM (go2 (Cursor c) ty env) ls)
+     in case ctxt of
+          Cursor c -> bod c
+          CNone    -> do c <- gensym "c"
+                         T.bind undefined T.NewBuf $ \(c,_) -> bod c
 
    -- | This function takes a term of type T and returns one of type
    -- (Cursor -> T).  It should hold that (hasPacked T == True).
@@ -83,7 +90,7 @@ insertCursors P1{..} = undefined (go CNone mainTy M.empty mainProg)
 
 
 -- | Translate a type to route through cursor parameters.
-doTy :: T1 -> IO T2 -- (T2,[()])
+doTy :: T1 -> Identity T2
 doTy  = pos
  where
   -- In a positive position, cursors are passed as arguments.
@@ -117,6 +124,9 @@ ex0b :: P1
 ex0b = P1 { defs = fromListDD [DDef "T" [] [("K1",[])] ]
           , mainTy = Packed "T" []
           , mainProg = (MkPacked "K1" []) }
+
+t0b :: P2
+t0b = insertCursors ex0b
 
 
 -- | A basic identity function
