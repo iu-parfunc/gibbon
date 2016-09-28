@@ -75,18 +75,18 @@ insertCursors P1{..} = T.P2 (fmap (fmap (runIdentity . doTy)) defs)
    go _ctxt _ty _env (MkProd x1 x2) = undefined
    
    -- Here we must fetch the cursor from the context, and we also most
-   -- transform the arguments into functions of a cursor argument.
+   -- transform the arguments to feed into the *same* cursor.
    go ctxt ty env (MkPacked k ls) = 
-     let bod c = T.MkPacked c k <$> (mapM (go2 (Cursor c) ty env) ls)
+     let bod c = T.MkPacked c k <$> (mapM (go2 c ty env) ls)
      in case ctxt of
           Cursor c -> bod c
           CNone    -> do c <- gensym "c"
                          T.bind undefined T.NewBuf $ \(c,_) -> bod c
 
    -- | This function takes a term of type T and returns one of type
-   -- (Cursor -> T).  It should hold that (hasPacked T == True).
-   go2 :: Cursors -> T1 -> CEnv -> L1 -> SyM T.L2
-   go2 c ty env (Varref v) = return $ T.Copy v undefined
+   -- T that feeds a specific cursor.
+   go2 :: Var -> T1 -> CEnv -> L1 -> SyM T.L2
+   go2 c ty env (Varref v) = return $ T.Copy v c
 
 
 -- | Translate a type to route through cursor parameters.
@@ -128,7 +128,18 @@ ex0b = P1 { defs = fromListDD [DDef "T" [] [("K1",[])] ]
 t0b :: P2
 t0b = insertCursors ex0b
 
+-- | And with a nested constructor.
+ex0c :: P1
+ex0c = P1 { defs = fromListDD [DDef "Nat" [] [ ("Suc",[Packed "Nat" []])
+                                             , ("Zer",[])] ]
+          , mainTy = Packed "Nat" []
+          , mainProg = (MkPacked "Suc" [MkPacked "Zer" []]) }
 
+t0c :: P2
+t0c = insertCursors ex0c
+
+----------------------------------------
+        
 -- | A basic identity function
 ex1 :: P1
 ex1 = P1 { defs = emptyDD
