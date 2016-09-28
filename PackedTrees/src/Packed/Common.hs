@@ -1,8 +1,15 @@
--- | 
+-- {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Packed.Common where
+-- | Utilities and common types.
+
+module Packed.Common 
+       ( Constr, Value(..), ValEnv, DDef(..)
+       , Var, varAppend, SyM, gensym, runSyM) where 
 
 import Data.Map
+import Control.Monad.State
     
 type Var    = String
 type Constr = String
@@ -18,3 +25,19 @@ type ValEnv a = Map Var (Value a)
 
 data DDef a = DDef Var [(Constr,[a])]
   deriving (Read,Show,Eq,Ord)
+           
+varAppend :: Var -> Var -> Var
+varAppend = (++)
+           
+-- Gensym monad:
+----------------------------------------
+
+newtype SyM a = SyM (State Int a)
+ deriving (Functor, Applicative, Monad)
+
+gensym :: Var -> SyM Var
+gensym v = SyM $ do n <- modify (+1)
+                    return (v `varAppend` show n)
+
+runSyM :: Int -> SyM a -> (a,Int)
+runSyM n (SyM a) = runState a n

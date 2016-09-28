@@ -19,7 +19,7 @@ library
   -- other-modules:       
   other-extensions:    DeriveDataTypeable
   build-depends:       base >=4.8,
-                       aeson, bytestring, containers
+                       aeson, bytestring, containers, mtl
   hs-source-dirs:      src
   default-language:    Haskell2010
-  
+  ghc-options: -Wall

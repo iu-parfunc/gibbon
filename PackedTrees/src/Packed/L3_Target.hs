@@ -9,7 +9,7 @@ import Packed.Common
 import Data.Word
     
 -- | The target language, a monadic one.   
-data L3 = Varref Var
+data L3 = Varref Var | Lit Int
         | App L3 L3
         | Lam (Var,T3) L3
         | CaseEither L3 L3 L3
@@ -18,8 +18,8 @@ data L3 = Varref Var
         | Letrec [(Var,T3,L3)] L3
         | InL L3 | InR L3 | MkProd L3 L3
         -- REMOVED: packed constructors.
-        | Bind L3 L3
-        | Return L3
+--        | Bind L3 L3
+--        | Return L3
         | IfEq (L3,L3) L3 L3  -- ^ For casing on numeric tags:
 
         | NewBuf -- ^ Allocate a new buffer, return a cursor.

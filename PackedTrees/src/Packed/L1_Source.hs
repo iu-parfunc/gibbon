@@ -24,14 +24,16 @@ data L1 = Varref Var | Lit Int
         | InL L1 | InR L1 | MkProd L1 L1
         | MkPacked Constr [L1]
   deriving (Read,Show,Eq,Ord)
-  
+
+type TEnv = Map Var T1
+           
 -- | Types include both (boxed, indirect) sums and products as well as
 -- unboxed/unpacked ones.
 data T1 = TInt | TArr T1 T1 | TyVar Var
         | Prod T1 T1 | Sum T1 T1
         | Packed Constr [T1]
   deriving (Read,Show,Eq,Ord)
-  
+           
 -- | Complete programs include datatype definitions:
 data P1 = P1 { defs :: [DDef T1]
              , mainProg :: L1
@@ -93,6 +95,9 @@ interp _ddefs = go M.empty
 interpProg :: P1 -> Value L1
 interpProg P1 {defs,mainProg,mainTy} = interp defs mainProg
 
+tyc :: TEnv -> L1 -> T1
+tyc = undefined
+       
 --------------------------------------------------------------------------------
 
 p1 :: P1
