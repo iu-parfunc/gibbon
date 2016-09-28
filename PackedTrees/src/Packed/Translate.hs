@@ -108,20 +108,20 @@ doTy  = pos
 
 -- | Simplest program: a literal.
 ex0 :: P1
-ex0 = P1 { defs = []
+ex0 = P1 { defs = emptyDD
          , mainTy = TInt
          , mainProg = Lit 33 }
 
 -- | Next: a packed literal.
 ex0b :: P1
-ex0b = P1 { defs = [DDef "T" [] [("K1",[])] ]
+ex0b = P1 { defs = fromListDD [DDef "T" [] [("K1",[])] ]
           , mainTy = Packed "T" []
           , mainProg = (MkPacked "K1" []) }
 
 
 -- | A basic identity function
 ex1 :: P1
-ex1 = P1 { defs = []
+ex1 = P1 { defs = emptyDD
          , mainTy = TInt
          , mainProg = Letrec ("f", TArr TInt TInt, Lam ("x",TInt) (Varref "x"))
                                        (App (Varref "f") (Lit 33)) }
@@ -129,8 +129,7 @@ ex1 = P1 { defs = []
 -- | Next, an identity function on a packed type.  Because packed
 --   types are by value (modulo optimizations), this is a copy.
 ex2 :: P1
-ex2 = P1 { defs = [DDef "T" [] [("K1",[])] ]
+ex2 = P1 { defs = fromListDD [DDef "T" [] [("K1",[])] ]
          , mainTy = TInt
          , mainProg = Letrec ("f", TArr TInt TInt, Lam ("x",TInt) (Varref "x"))
                              (App (Varref "f") (MkPacked "K1" [])) }
-

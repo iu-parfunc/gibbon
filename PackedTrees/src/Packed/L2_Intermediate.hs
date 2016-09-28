@@ -3,12 +3,8 @@
 
 module Packed.L2_Intermediate where
 
-import Control.Monad.Zip (mzipWith)
 import Control.Monad.Writer hiding (Sum)
-import Foreign.Ptr
-import Foreign.Storable
 import Packed.Common
-import Data.Word
 import Data.Map as M
     
 -- | A monadic intermediate language.  This hides the details of
@@ -68,10 +64,11 @@ tyc = go
     (Varref x)  -> tenv ! x
     (Lit _)     -> TInt
     (Copy _ _)  -> TCursor
-    (Add x1 x2) -> TInt
+    (Add _ _)   -> TInt
     (App x1 x2) -> let TArr arg b = go tenv x1
-                       tyRand   = go tenv x2
-                   in fst $ runWriter $ unify tyRand arg
+                       tyRand     = go tenv x2
+                   in runUnify $ do _ <- unify tyRand arg
+                                    return b
 
     (Lam (v,t) bod) -> TArr t (go (M.insert v t tenv) bod)
     NewBuf -> TCursor -- Not monadic yet!  Should probably be a unit function then.
@@ -87,7 +84,12 @@ tyc = go
     (MkPacked x1 x2 x3) -> undefined
 
 type Constraint = (Var,T2)
-                                           
+
+-- | Complete a unification session by solving all constraints.
+--   Apply those equations to the returned type.
+runUnify :: Writer [Constraint] T2 -> T2
+runUnify = undefined
+            
 unify :: T2 -> T2 -> Writer [Constraint] T2
 unify = go
   where

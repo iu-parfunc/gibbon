@@ -6,7 +6,8 @@
 
 module Packed.Common 
        ( Constr, Value(..), ValEnv
-       , DDef(..), DDefs, lookupDDef, lookupTyCon, lookupDataCon
+       , DDef(..), DDefs, fromListDD, emptyDD, insertDD
+       , lookupDDef, lookupTyCon, lookupDataCon
        , Var, varAppend, SyM, gensym, runSyM) where 
 
 import Data.Map as M
@@ -16,6 +17,11 @@ import Control.Monad.State
 type Var    = String
 type Constr = String
 
+varAppend :: Var -> Var -> Var
+varAppend = (++)
+
+--------------------------------------------------------------------------------
+
 data Value a = VInt Int | VLam (ValEnv a) Var a
              | VProd (Value a) (Value a)
              | VLeft (Value a)
@@ -24,6 +30,8 @@ data Value a = VInt Int | VLam (ValEnv a) Var a
   deriving (Read,Show,Eq,Ord)
                
 type ValEnv a = Map Var (Value a)
+
+------------------------------------------------------------
 
 -- Primitive for now:
 type DDefs a = Map Var (DDef a)
@@ -47,9 +55,16 @@ lookupDataCon dds v =
    let DDef _ _ dc = lookupDDef dds v
    in snd $ L.head $ L.filter ((== v) . fst) dc
 
-varAppend :: Var -> Var -> Var
-varAppend = (++)
-           
+
+insertDD :: DDef a -> DDefs a -> DDefs a
+insertDD d = M.insert (tyName d) d 
+
+emptyDD :: DDefs a
+emptyDD  = M.empty
+
+fromListDD :: [DDef a] -> DDefs a
+fromListDD = L.foldr (insertDD) emptyDD 
+
 -- Gensym monad:
 ----------------------------------------
 
