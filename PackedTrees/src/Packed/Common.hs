@@ -5,10 +5,12 @@
 -- | Utilities and common types.
 
 module Packed.Common 
-       ( Constr, Value(..), ValEnv, DDef(..)
+       ( Constr, Value(..), ValEnv
+       , DDef(..), DDefs, lookupDDef, lookupTyCon, lookupDataCon
        , Var, varAppend, SyM, gensym, runSyM) where 
 
-import Data.Map
+import Data.Map as M
+import Data.List as L
 import Control.Monad.State
     
 type Var    = String
@@ -23,9 +25,28 @@ data Value a = VInt Int | VLam (ValEnv a) Var a
                
 type ValEnv a = Map Var (Value a)
 
-data DDef a = DDef Var [(Constr,[a])]
+-- Primitive for now:
+type DDefs a = Map Var (DDef a)
+
+data DDef a = DDef { tyName:: Var
+                   , tyArgs:: [Var] 
+                   , dataCons :: [(Constr,[a])] }
   deriving (Read,Show,Eq,Ord)
-           
+
+-- | Lookup a ddef in its entirety
+lookupDDef :: DDefs a -> Var -> DDef a 
+lookupDDef = (M.!)
+
+-- | Lookup the arguments to a data contstructor.
+lookupTyCon :: DDefs a -> Var -> [Var]
+lookupTyCon dds  = tyArgs . lookupDDef dds
+
+-- | Lookup the arguments to a data contstructor.
+lookupDataCon :: DDefs a -> Var -> [a]
+lookupDataCon dds v = 
+   let DDef _ _ dc = lookupDDef dds v
+   in snd $ L.head $ L.filter ((== v) . fst) dc
+
 varAppend :: Var -> Var -> Var
 varAppend = (++)
            
