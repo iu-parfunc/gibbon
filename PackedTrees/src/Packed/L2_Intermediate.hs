@@ -25,7 +25,7 @@ data L2 = Varref Var | Lit Int
 --        | Bind L2 L2
 --        | Return L2
         | NewBuf             -- ^ Allocate a new buffer (could take size)
-        | MkPacked Constr Var [L2]
+        | MkPacked CursorVar Constr  [L2]
         -- ^ CHANGED: We have a required cursor parameter to every constructor:
         | Copy { src :: Var, dst:: Var }
            -- ^ A recursive, polymorphic copy operation on any Packed type.

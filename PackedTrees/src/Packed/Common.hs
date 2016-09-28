@@ -8,12 +8,13 @@ module Packed.Common
        ( Constr, Value(..), ValEnv
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupTyCon, lookupDataCon
-       , Var, varAppend, SyM, gensym, runSyM) where 
+       , CursorVar, Var, varAppend, SyM, gensym, runSyM) where 
 
 import Data.Map as M
 import Data.List as L
 import Control.Monad.State
-    
+
+type CursorVar = Var       
 type Var    = String
 type Constr = String
 

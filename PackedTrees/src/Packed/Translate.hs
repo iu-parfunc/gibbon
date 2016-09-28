@@ -47,6 +47,8 @@ insertCursors P1{..} = T.P2 (fmap (fmap (runIdentity . doTy)) defs)
                             (fst $ runSyM 0 $ go CNone mainTy M.empty mainProg)
                             (runIdentity $ doTy mainTy)
  where
+   -- This tracks the current return type and the cursors
+   -- corresponding to that return type.
    go :: Cursors -> T1 -> CEnv -> L1 -> SyM T.L2
    go ctxt ty env (App a b) =
      let argty = S.tyc (error "finishme52") b in
@@ -92,7 +94,7 @@ insertCursors P1{..} = T.P2 (fmap (fmap (runIdentity . doTy)) defs)
    go2 c ty env l1 =      
      case l1 of 
        (Varref v) -> return $ T.Copy v c
-       (MkPacked x1 x2) -> (error "finishme105")
+       (MkPacked k ls) -> T.MkPacked c k <$> mapM (go2 c undefined env) ls
        (Lit x) -> (error "finishme95")
        (App x1 x2) -> (error "finishme96")
        (Lam x1 x2) -> (error "finishme97")
