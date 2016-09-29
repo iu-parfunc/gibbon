@@ -15,7 +15,7 @@ import Text.PrettyPrint.GenericPretty
 -- packed-adt representation, but it exposes a "cursor" argument to
 -- every tree constructor, and it makes constructing tree values an IO
 -- action.
-data L2 = Varref Var | Lit Int
+data L2 = Varref Var | Lit Int | Void
         | App L2 L2
         | Lam (Var,T2) L2
         | CaseEither L2 L2 L2
@@ -38,6 +38,7 @@ data L2 = Varref Var | Lit Int
 
 instance Out T2
 instance Out L2
+instance Out P2
            
 -- A smart constructor:
 bind :: TEnv -> L2 -> ((Var, T2) -> SyM L2) -> SyM L2
@@ -53,7 +54,7 @@ bind tenv a1 fn = do tmp <- gensym "t"
 
 type TEnv = Map Var T2
 
-data T2 = TInt | TArr T2 T2 | TyVar Var
+data T2 = TInt | TArr T2 T2 | TyVar Var | TVoid
         | Prod T2 T2 | Sum T2 T2
         | Packed Var [T2] 
         -- NEW:

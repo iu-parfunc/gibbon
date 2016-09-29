@@ -76,8 +76,12 @@ insertCursors P1{..} = T.P2 (fmap (fmap (runIdentity . doTy)) defs)
    go _ctxt _ty (Letrec x1 x2) = (error "finishme74")
    go _ctxt _ty (InL x) = (error "finishme75")
    go _ctxt _ty (InR x) = (error "finishme76")
-   go _ctxt _ty (MkProd x1 x2) = (error "finishme77")
-   
+   go ctxt (Prod t1 t2) (MkProd x1 x2) =
+     case ctxt of
+       CProd c1 c2 -> T.MkProd <$> go c1 t1 x1    <*> go c2 t2 x2
+       CNone       -> T.MkProd <$> go CNone t1 x1 <*> go CNone t2 x2 
+       _           -> error "impossible"
+
    -- Here we must fetch the cursor from the context, and we also most
    -- transform the arguments to feed into the *same* cursor.
    go ctxt ty (MkPacked k ls) = 
@@ -109,26 +113,26 @@ insertCursors P1{..} = T.P2 (fmap (fmap (runIdentity . doTy)) defs)
 
 
 
--- | Translate a type to route through cursor parameters.
+-- | Translate a type to route cursor parameters through.
 doTy :: T1 -> Identity T2
 doTy  = pos
  where
   -- In a positive position, cursors are passed as arguments.
   -- When returned, they must be added as output params.
   pos t = case t of
-            TInt -> (error "finishme116")
-            (TArr x y) -> T.TArr <$> pos x <*> neg y
-            (TyVar x)    -> (error "finishme118")
-            (Prod x1 x2) -> (error "finishme119")
-            (Sum x1 x2)    -> (error "finishme120")
+            TInt          -> return T.TInt 
+            (TArr x y)    -> T.TArr <$> pos x <*> neg y
+            (TyVar x)     -> return $ T.TyVar x
+            (Prod x1 x2)  -> T.Prod <$> pos x1 <*> pos x2
+            (Sum x1 x2)   -> T.Sum  <$> pos x1 <*> pos x2
             (Packed k ls) -> T.Packed k <$> mapM pos ls
   neg t = case t of 
-            TInt -> (error "finishme123")
-            (TArr x1 x2) -> (error "finishme124")
-            (TyVar x)    -> (error "finishme125")
-            (Prod x1 x2) -> (error "finishme126")
-            (Sum x1 x2)    -> (error "finishme127")
-            (Packed x1 x2) -> (error "finishme128")
+            TInt           -> return T.TInt
+            (TArr x1 x2)   -> T.TArr <$> pos x1 <*> neg x2
+            (TyVar x)      -> return $ T.TyVar x
+            (Prod x1 x2)   -> T.Prod <$> neg x1 <*> neg x2
+            (Sum x1 x2)    -> T.Sum  <$> pos x1 <*> pos x2
+            (Packed x1 x2) -> return T.TVoid
 
 -- Examples:
 --------------------------------------------------------------------------------
@@ -162,7 +166,7 @@ t0c = insertCursors ex0c
 ex0d :: P1
 ex0d = P1 { defs = fromListDD [DDef "Nat" [] [ ("Suc",[Packed "Nat" []])
                                              , ("Zer",[])] ]
-          , mainTy = Packed "Nat" []
+          , mainTy = (Prod (Packed "Nat" []) (Packed "Nat" []))
           , mainProg = MkProd (MkPacked "Suc" [MkPacked "Zer" []])
                               (MkPacked "Zer" []) }
 
@@ -170,7 +174,7 @@ ex0d = P1 { defs = fromListDD [DDef "Nat" [] [ ("Suc",[Packed "Nat" []])
 ex0e :: P1
 ex0e = P1 { defs = fromListDD [DDef "Nat" [] [ ("Suc",[Packed "Nat" []])
                                              , ("Zer",[])] ]
-          , mainTy = Packed "Nat" []
+          , mainTy = (Prod (Packed "Nat" []) (Packed "Nat" []))
           , mainProg = Letrec ("shrd",Packed "Nat" [],
                                (MkPacked "Suc" [MkPacked "Zer" []])) $
                        MkProd (Varref "shrd") (Varref "shrd") }
@@ -192,3 +196,5 @@ ex2 = P1 { defs = fromListDD [DDef "T" [] [("K1",[])] ]
          , mainTy = TInt
          , mainProg = Letrec ("f", TArr TInt TInt, Lam ("x",TInt) (Varref "x"))
                              (App (Varref "f") (MkPacked "K1" [])) }
+
+ 

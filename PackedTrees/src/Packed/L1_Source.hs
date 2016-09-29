@@ -15,7 +15,7 @@ import Text.PrettyPrint.GenericPretty
         
 -- | The source language.  It has pointer based sums and products, as
 -- well as packed algebraic datatypes.
-data L1 = Varref Var | Lit Int
+data L1 = Varref Var | Lit Int 
         | App L1 L1
         | Lam (Var,T1) L1
         | CaseEither L1 L1 L1
@@ -29,6 +29,9 @@ data L1 = Varref Var | Lit Int
   deriving (Read,Show,Eq,Ord, Generic)
 
 instance Out T1
+-- Do this manually to get prettier formatting:
+-- instance Out T1 where  doc x = undefined
+
 instance Out L1
 instance Out P1
            
@@ -36,7 +39,7 @@ type TEnv = Map Var T1
            
 -- | Types include both (boxed, indirect) sums and products as well as
 -- unboxed/unpacked ones.
-data T1 = TInt | TArr T1 T1 | TyVar Var
+data T1 = TInt | TArr T1 T1 | TyVar Var 
         | Prod T1 T1 | Sum T1 T1
         | Packed Constr [T1]
   deriving (Read,Show,Eq,Ord, Generic)
