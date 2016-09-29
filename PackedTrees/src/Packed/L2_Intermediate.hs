@@ -1,11 +1,15 @@
+{-# LANGUAGE DeriveGeneric #-}
 -- | An intermediate language with cursors but not explicit memory
 -- representations.  
 
 module Packed.L2_Intermediate where
 
 import Control.Monad.Writer hiding (Sum)
-import Packed.Common
 import Data.Map as M
+import GHC.Generics
+import Packed.Common
+import Text.PrettyPrint.GenericPretty
+
     
 -- | A monadic intermediate language.  This hides the details of
 -- packed-adt representation, but it exposes a "cursor" argument to
@@ -30,8 +34,11 @@ data L2 = Varref Var | Lit Int
         | Copy { src :: Var, dst:: Var }
            -- ^ A recursive, polymorphic copy operation on any Packed type.
 
-  deriving (Read,Show,Ord,Eq)
+  deriving (Read,Show,Ord,Eq, Generic)
 
+instance Out T2
+instance Out L2
+           
 -- A smart constructor:
 bind :: TEnv -> L2 -> ((Var, T2) -> SyM L2) -> SyM L2
 bind tenv a1 fn = do tmp <- gensym "t"
@@ -52,7 +59,7 @@ data T2 = TInt | TArr T2 T2 | TyVar Var
         -- NEW:
         | TCursor 
         | TIO T2 -- ^ an IO action.
-  deriving (Read,Show,Ord,Eq)
+  deriving (Read,Show,Ord,Eq,Generic)
 
 -- | Typecheck and return the type of the input expression:
 tyc :: TEnv -> L2 -> T2
@@ -114,7 +121,7 @@ unify = go
 data P2 = P2 { defs :: DDefs T2
              , mainProg :: L2
              , mainTy   :: T2 }
-  deriving (Read,Show,Eq,Ord)
+  deriving (Read,Show,Eq,Ord,Generic)
 
 --------------------------------------------------------------------------------
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# OPTIONS_GHC -Wall #-}
 
@@ -8,6 +9,8 @@ module Packed.L1_Source where
 import Packed.Common
 import Data.Map as M
 import Data.List as L
+import GHC.Generics
+import Text.PrettyPrint.GenericPretty
 ----------------------------------------
         
 -- | The source language.  It has pointer based sums and products, as
@@ -23,8 +26,12 @@ data L1 = Varref Var | Lit Int
           -- mutual recursion.
         | InL L1 | InR L1 | MkProd L1 L1
         | MkPacked Constr [L1]
-  deriving (Read,Show,Eq,Ord)
+  deriving (Read,Show,Eq,Ord, Generic)
 
+instance Out T1
+instance Out L1
+instance Out P1
+           
 type TEnv = Map Var T1
            
 -- | Types include both (boxed, indirect) sums and products as well as
@@ -32,13 +39,13 @@ type TEnv = Map Var T1
 data T1 = TInt | TArr T1 T1 | TyVar Var
         | Prod T1 T1 | Sum T1 T1
         | Packed Constr [T1]
-  deriving (Read,Show,Eq,Ord)
+  deriving (Read,Show,Eq,Ord, Generic)
            
 -- | Complete programs include datatype definitions:
 data P1 = P1 { defs :: DDefs T1
              , mainProg :: L1
              , mainTy   :: T1 }
-  deriving (Read,Show,Eq,Ord)
+  deriving (Read,Show,Eq,Ord, Generic)
   
 --------------------------------------------------------------------------------
 

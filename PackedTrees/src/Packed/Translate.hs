@@ -158,6 +158,24 @@ ex0c = P1 { defs = fromListDD [DDef "Nat" [] [ ("Suc",[Packed "Nat" []])
 t0c :: P2
 t0c = insertCursors ex0c
 
+-- | And inside a product.      
+ex0d :: P1
+ex0d = P1 { defs = fromListDD [DDef "Nat" [] [ ("Suc",[Packed "Nat" []])
+                                             , ("Zer",[])] ]
+          , mainTy = Packed "Nat" []
+          , mainProg = MkProd (MkPacked "Suc" [MkPacked "Zer" []])
+                              (MkPacked "Zer" []) }
+
+-- | An example with sharing.
+ex0e :: P1
+ex0e = P1 { defs = fromListDD [DDef "Nat" [] [ ("Suc",[Packed "Nat" []])
+                                             , ("Zer",[])] ]
+          , mainTy = Packed "Nat" []
+          , mainProg = Letrec ("shrd",Packed "Nat" [],
+                               (MkPacked "Suc" [MkPacked "Zer" []])) $
+                       MkProd (Varref "shrd") (Varref "shrd") }
+       
+       
 ----------------------------------------
         
 -- | A basic identity function

@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 -- {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -10,10 +11,14 @@ module Packed.Common
        , lookupDDef, lookupTyCon, lookupDataCon
        , CursorVar, Var, varAppend, SyM, gensym, runSyM) where 
 
-import Data.Map as M
-import Data.List as L
 import Control.Monad.State
+import Data.List as L
+import Data.Map as M
+import GHC.Generics
+import Text.PrettyPrint.GenericPretty
 
+
+       
 type CursorVar = Var       
 type Var    = String
 type Constr = String
@@ -28,8 +33,8 @@ data Value a = VInt Int | VLam (ValEnv a) Var a
              | VLeft (Value a)
              | VRight (Value a)
              | VPacked Constr [Value a]
-  deriving (Read,Show,Eq,Ord)
-               
+  deriving (Read,Show,Eq,Ord,Generic)
+
 type ValEnv a = Map Var (Value a)
 
 ------------------------------------------------------------
@@ -40,7 +45,12 @@ type DDefs a = Map Var (DDef a)
 data DDef a = DDef { tyName:: Var
                    , tyArgs:: [Var] 
                    , dataCons :: [(Constr,[a])] }
-  deriving (Read,Show,Eq,Ord, Functor)
+  deriving (Read,Show,Eq,Ord, Functor, Generic)
+
+instance Out a => Out (DDef a)
+instance (Out k,Out v) => Out (Map k v) where
+  doc         = doc . M.toList
+  docPrec n v = docPrec n (M.toList v)
 
 -- | Lookup a ddef in its entirety
 lookupDDef :: DDefs a -> Var -> DDef a 
