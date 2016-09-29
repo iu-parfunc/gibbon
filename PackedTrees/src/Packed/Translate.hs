@@ -131,7 +131,7 @@ doTy  = pos
             (TArr x1 x2)   -> T.TArr <$> pos x1 <*> neg x2
             (TyVar x)      -> return $ T.TyVar x
             (Prod x1 x2)   -> T.Prod <$> neg x1 <*> neg x2
-            (Sum x1 x2)    -> T.Sum  <$> pos x1 <*> pos x2
+            (Sum x1 x2)    -> T.Sum  <$> neg x1 <*> neg x2
             (Packed x1 x2) -> return T.TVoid
 
 -- Examples:
