@@ -37,12 +37,15 @@ treebench_c.exe: treebench.c
 treebench_c_unpacked.exe: treebench_unpacked.c
 	time $(CC) -O3 $^ -o $@ 
 
+treebench.class: treebench.java
+	time javac $^ 
 
 run_chez:
 
-
+run_java: treebench.class
+	java treebench
 
 clean:
 	rm -f *.exe *.o *.hi treebench treebench_lazy *.cmi *.cmo *.cmx
 
-.PHONY: all clean ghc run_chez
+.PHONY: all clean ghc run_chez run_java
