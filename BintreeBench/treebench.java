@@ -1,4 +1,4 @@
-
+import java.util.Arrays;
 
 class Tree {
 }
@@ -49,7 +49,16 @@ public class treebench {
         int depth = 20;
         Tree t1 = buildTree(depth);
         System.out.println("First tree built.");
-        Tree t2 = add1Tree(t1);
-        System.out.println("Done.");
+        final int numTrials = 33;
+        long[] trials = new long[numTrials];
+        for(int i=0; i<numTrials; i++) {
+            final long startTime = System.currentTimeMillis();
+            Tree t2 = add1Tree(t1);
+            final long endTime = System.currentTimeMillis();
+            trials[i] = (endTime - startTime);
+            System.out.println("time(ms): " + (endTime - startTime));
+        }
+        Arrays.sort(trials);
+        System.out.println("SELFTIMED: " + Long.toString(trials[numTrials/2]));
     }
 }

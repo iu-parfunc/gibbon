@@ -1,6 +1,7 @@
 all: treebench_mlton.exe treebench_strict_ghc.exe treebench_lazy_ghc.exe treebench_ocaml.exe \
      treebench_rust.exe treebench_rust_sys_alloc.exe \
-     treebench_c.exe treebench_c_unpacked.exe
+     treebench_c.exe treebench_c_unpacked.exe \
+     treebench.class
 # treebench_rust_unpacked.exe
 
 GHC = stack --install-ghc --resolver=lts-7.0 exec ghc --
@@ -40,10 +41,25 @@ treebench_c_unpacked.exe: treebench_unpacked.c
 treebench.class: treebench.java
 	time javac $^ 
 
+DEPTH=20
+
+# TODO: replace with an hsbencher harness:
+run_all: all
+	./treebench_mlton.exe $(DEPTH)
+	./treebench_strict_ghc.exe $(DEPTH)
+	./treebench_lazy_ghc.exe $(DEPTH)
+	./treebench_ocaml.exe $(DEPTH)
+	./treebench_rust.exe $(DEPTH)
+	./treebench_rust_sys_alloc.exe $(DEPTH) 
+	./treebench_c.exe $(DEPTH)
+	./treebench_c_unpacked.exe $(DEPTH) 
+	$(MAKE) run_chez
+	$(MAKE) run_java
+
 run_chez:
 
 run_java: treebench.class
-	java treebench
+	java treebench $(DEPTH)
 
 clean:
 	rm -f *.exe *.o *.hi treebench treebench_lazy *.cmi *.cmo *.cmx

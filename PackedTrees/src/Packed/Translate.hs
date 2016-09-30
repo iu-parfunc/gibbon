@@ -73,7 +73,11 @@ insertCursors P1{..} = T.P2 (fmap (fmap (runIdentity . doTy)) defs)
    go _ctxt _ty (CaseEither x1 x2 x3) = (error "finishme71")
    go _ctxt _ty (CasePacked x1 x2) = (error "finishme72")
    go _ctxt _ty (Add x1 x2) = (error "finishme73")
-   go _ctxt _ty (Letrec x1 x2) = (error "finishme74")
+   go ctxt ty (Letrec (v,ty2,rhs) bod) = 
+     do rhs' <- go CNone ty2 rhs
+        bod' <- go ctxt ty bod
+        return $ T.Letrec (v, runIdentity (doTy ty2), rhs') bod'
+
    go _ctxt _ty (InL x) = (error "finishme75")
    go _ctxt _ty (InR x) = (error "finishme76")
    go ctxt (Prod t1 t2) (MkProd x1 x2) =
@@ -109,7 +113,7 @@ insertCursors P1{..} = T.P2 (fmap (fmap (runIdentity . doTy)) defs)
        (InL x) -> (error "finishme102")
        (InR x) -> (error "finishme103")
        (MkProd x1 x2) -> (error "finishme104")
-       
+
 
 
 
