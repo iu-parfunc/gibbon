@@ -1,6 +1,6 @@
 all: treebench_mlton.exe treebench_strict_ghc.exe treebench_lazy_ghc.exe treebench_ocaml.exe \
      treebench_rust.exe \
-     treebench_c.exe treebench_c_unpacked.exe \
+     treebench_c.exe treebench_c_bumpalloc.exe treebench_c_unpacked.exe \
      treebench.class
 
 # Disabling for now, requires beta channel of rust:
@@ -41,6 +41,9 @@ treebench_rust_sys_alloc.exe: treebench_sys_alloc.rs
 
 treebench_c.exe: treebench.c
 	time $(CC) -O3 $^ -o $@ 
+
+treebench_c_bumpalloc.exe: treebench.c
+	time $(CC) -DBUMPALLOC -O3 $^ -o $@ 
 
 treebench_c_unpacked.exe: treebench_unpacked.c
 	time $(CC) -O3 $^ -o $@ 

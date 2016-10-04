@@ -26,11 +26,37 @@ typedef struct Tree {
     };
 } Tree;
 
+// Memory management
+//--------------------------------------------------------------------------------
+
+void deleteTree(Tree* t) {
+  if (t->tag == Node) {
+    deleteTree(t->l);
+    deleteTree(t->r);
+  }
+  free(t);
+}
+
+#ifdef BUMPALLOC
+#warning "Using bump allocator."
+char* heap_ptr = 0;
+// For simplicity just use a single large slab:
+#define INITALLOC heap_ptr = malloc(500 * 1000 * 1000);
+#define ALLOC(n) (heap_ptr += n)
+// HACK, delete by rewinding:
+#define DELTREE(p) { heap_ptr = (char*)p; }
+#else
+#define INITALLOC {}
+#define ALLOC malloc
+#define DELTREE deleteTree
+#endif
+
+//--------------------------------------------------------------------------------
 
 
 // Helper function
 Tree* fillTree(int n, Num root) {
-  Tree* tr = malloc(sizeof(Tree));  
+  Tree* tr = (Tree*)ALLOC(sizeof(Tree));  
   if (n == 0) {
     tr->tag = Leaf;
     tr->elem = root;
@@ -68,7 +94,7 @@ TreeRef printTree(TreeRef t) {
 
 // Out-of-place add1 to leaves.
 Tree* add1Tree(Tree* t) {
-  Tree* tout = malloc(sizeof(Tree));
+  Tree* tout = (Tree*)ALLOC(sizeof(Tree));
   tout->tag = t->tag;
   if (t->tag == Leaf) {
     tout->elem = t->elem;
@@ -77,14 +103,6 @@ Tree* add1Tree(Tree* t) {
     tout->r = add1Tree(t->r);
   }
   return tout;
-}
-
-void deleteTree(Tree* t) {
-  if (t->tag == Node) {
-    deleteTree(t->l);
-    deleteTree(t->r);
-  }
-  free(t);
 }
 
 int compare_doubles (const void *a, const void *b)
@@ -102,7 +120,9 @@ int main(int argc, char** argv) {
   else 
     depth = 20;
   printf("Building tree, depth %d\n", depth);
-  clock_t begin = clock();
+
+  INITALLOC;
+  clock_t begin = clock();  
   Tree* tr = buildTree(depth);
   clock_t end = clock();
   double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
@@ -116,7 +136,7 @@ int main(int argc, char** argv) {
     time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
     printf("  run(%d): %lf\n", i, time_spent);
     trials[i] = time_spent;
-    deleteTree(t2);
+    DELTREE(t2);
   }
   qsort(trials, TRIALS, sizeof(double), compare_doubles);
   printf("Sorted: ");
@@ -124,7 +144,7 @@ int main(int argc, char** argv) {
     printf(" %lf", trials[i]);
   printf("\nSELFTIMED: %lf\n", trials[TRIALS / 2]);
   // printTree(t2); printf("\n");
-  deleteTree(tr);
+  DELTREE(tr);
   return 0;
 }
 
