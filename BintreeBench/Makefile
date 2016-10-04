@@ -15,6 +15,9 @@ GHC = stack --install-ghc --resolver=lts-6.19 exec ghc --
 CC = gcc
 # CC = clang
 
+# COPTS = -O3 -std=c11
+COPTS = -g -O0 -std=c11
+
 
 ghc: treebench_strict_ghc.exe treebench_lazy_ghc.exe
 
@@ -40,13 +43,13 @@ treebench_rust_sys_alloc.exe: treebench_sys_alloc.rs
 # 	time rustc $^ -o $@ -O
 
 treebench_c.exe: treebench.c
-	time $(CC) -O3 $^ -o $@ 
+	time $(CC) $(COPTS) $^ -o $@ 
 
 treebench_c_bumpalloc.exe: treebench.c
-	time $(CC) -DBUMPALLOC -O3 $^ -o $@ 
+	time $(CC) $(COPTS) -DBUMPALLOC $^ -o $@ 
 
 treebench_c_unpacked.exe: treebench_unpacked.c
-	time $(CC) -O3 $^ -o $@ 
+	time $(CC) $(COPTS) $^ -o $@ 
 
 treebench.class: treebench.java
 	time javac $^ 
