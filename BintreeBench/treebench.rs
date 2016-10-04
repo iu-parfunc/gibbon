@@ -1,5 +1,7 @@
 // Tested with rustc 1.8.0-nightly (d63b8e539 2016-01-23)
 
+// #![feature(time2)]
+
 use std::env;
 use std::process;
 use std::time::Instant;

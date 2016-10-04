@@ -1,10 +1,17 @@
 all: treebench_mlton.exe treebench_strict_ghc.exe treebench_lazy_ghc.exe treebench_ocaml.exe \
-     treebench_rust.exe treebench_rust_sys_alloc.exe \
+     treebench_rust.exe \
      treebench_c.exe treebench_c_unpacked.exe \
      treebench.class
+
+# Disabling for now, requires beta channel of rust:
+# treebench_rust_sys_alloc.exe 
+
+# Unfinished:
 # treebench_rust_unpacked.exe
 
-GHC = stack --install-ghc --resolver=lts-7.0 exec ghc --
+# Match whichever version the docker image is using:
+# GHC = stack --install-ghc --resolver=lts-7.1 exec ghc --
+GHC = stack --install-ghc --resolver=lts-6.19 exec ghc --
 CC = gcc
 # CC = clang
 
