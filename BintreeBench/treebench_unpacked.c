@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define TRIALS 33
+#define TRIALS 17
 
 enum Tree {
     Leaf,
@@ -22,12 +22,16 @@ TreeRef fillTree(TreeRef cursor, int n, Num root) {
   // printf("  filltree: %p, n=%d, fill=%lld", cursor, n, root); fflush(stdout);
   if (n == 0) {
     *cursor = Leaf;
-    cursor++;
+    cursor++;    
     *((Num*)cursor) = root; // Unaligned!
     // printf("; wrote tag %d, payload %lld\n", Leaf, root); fflush(stdout);
     return (cursor + sizeof(Num));
   } else {
     *cursor = Node;
+
+    // Padding for a 4-byte offset changes perf from ~3.5ms to 4ms on 2^20 nodes:
+    // cursor += 4; 
+    
     // printf("; wrote tag %d\n", Node); fflush(stdout);
     char* cur2 = fillTree(cursor+1, n-1, root);
     return fillTree(cur2, n-1, root + (1<<(n-1)));
@@ -38,7 +42,7 @@ int treeSize(int n) {
   int leaves = 1 << n;
   int nodes  = leaves - 1;
   // Both nodes and leaves are tagged:
-  int bytes  = sizeof(Num)*leaves + sizeof(char)*(nodes+leaves);
+  int bytes  = (sizeof(Num)*leaves + sizeof(char)*(nodes+leaves));
   /* printf("treeSize(%d): %d bytes (%d/%d nodes/leaves)\n", */
   /*        n, bytes, nodes, leaves); */
   return bytes;
@@ -77,6 +81,11 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
   } else {
     *tout = Node;
     t++; tout++;
+
+    // Padding experiment
+    // t += 4;
+    // tout += 4;
+    
     TreeRef t2 = add1Tree(t,tout);
     tout += (t2 - t);
     return add1Tree(t2,tout);
