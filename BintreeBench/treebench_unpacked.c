@@ -119,7 +119,7 @@ TreeRef printTree(TreeRef t) {
 
 typedef struct { TreeRef tin; TreeRef tout; } RefPair;
 
-TreeRef add1Tree(TreeRef t, TreeRef tout) {
+RefPair add1Tree(TreeRef t, TreeRef tout) {
   // printf("Add1tree %p -> %p, ", t, tout);
   switch(*t) {
   case Leaf:
@@ -127,7 +127,9 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
     *tout = Leaf;    
     t++; tout++;
     *(Num*)tout = *(Num*)t + 1;
-    return (t+sizeof(Num));
+    RefPair ret1 = {t+sizeof(Num), tout+sizeof(Num)};
+    return ret1;
+    // return {t+sizeof(Num), tout+sizeof(Num)} ;
 
   case Node:
     // printf(" node\n");
@@ -138,9 +140,9 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
     // t += 4;
     // tout += 4;
     
-    TreeRef t2 = add1Tree(t,tout);
-    tout += (t2 - t); // HACK: FIXME - Won't work with indirections.
-    return add1Tree(t2,tout);
+    RefPair refs1 = add1Tree(t,tout);
+    // tout += (t2 - t); // HACK: FIXME - Won't work with indirections.
+    return add1Tree(refs1.tin,refs1.tout);
 
   // Here we have a choice, we could keep the indirection or inline
   // it.  For starters let's just inline.  We'll need to compute a
@@ -149,13 +151,15 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
     // fprintf(stderr, "Indirect, tout = %p\n", tout);
     t++;
     TreeRef tnew = *((TreeRef*)t);
-    add1Tree(tnew, tout);
-    return t + sizeof(void*);
+    RefPair refs2 = add1Tree(tnew, tout);
+    RefPair ret2 = {t + sizeof(void*), refs2.tout};
+    return ret2;
     
   default:
     fprintf(stderr, "Corrupt tree in add1Tree, at %p expected tag got: %d\n", t, (*t));
     exit(-1);
-    return 0;
+    RefPair fault = {0, 0};
+    return fault;
   }
 }
 
@@ -175,6 +179,7 @@ int main(int argc, char** argv) {
   printTree(ta);
   printf("\ntb:\n");
   printTree(tb);  
+  printf("\n");
   return 0;
   
   int depth;
