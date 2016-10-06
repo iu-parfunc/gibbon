@@ -1,4 +1,5 @@
-all: treebench_mlton.exe treebench_strict_ghc.exe treebench_lazy_ghc.exe treebench_ocaml.exe \
+all: treebench_mlton.exe treebench_ocaml.exe \
+     treebench_strict_ghc.exe treebench_lazy_ghc.exe treebench_ghc_packed.exe \
      treebench_rust.exe \
      treebench_c.exe treebench_c_bumpalloc.exe treebench_c_unpacked.exe \
      treebench.class
@@ -28,6 +29,9 @@ treebench_strict_ghc.exe: treebench.hs
 	time $(GHC) -O2 -rtsopts $^ -o $@
 
 treebench_lazy_ghc.exe: treebench_lazy.hs
+	time $(GHC) -O2 -rtsopts $^ -o $@
+
+treebench_ghc_packed.exe: treebench_packed.hs
 	time $(GHC) -O2 -rtsopts $^ -o $@
 
 treebench_ocaml.exe: treebench.ml
