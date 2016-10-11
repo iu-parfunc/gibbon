@@ -9,7 +9,7 @@
 #define TAG_SIZE 1
 
 // Should be at least log_2(numProcs)
-#define PARLVLS 0
+#define PARLVLS 2
 #define MINSEQLVLS 1
 
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
@@ -57,19 +57,20 @@ int treeSize(int n) {
       
 TreeRef buildSeqTree(int n, Num root) {
   int bytes = treeSize(n);
-  char* buf = malloc(bytes);
+  char* buf = (char*) malloc(bytes);
   char* res = fillTree(buf, n, root);
   return buf;
 }
 
 TreeRef buildParTree(int p, int n, Num root) {
   if (p == 0) return buildSeqTree(n,root);
-  char* start = malloc(3 * TAG_SIZE + 2 * sizeof(void*));
+  char* start = (char*) malloc(3 * TAG_SIZE + 2 * sizeof(void*));
   char* buf = start;
   buf[0] = Node;
   buf[1] = Indirect;
   buf += 2;
   ((void**)buf)[0] = buildParTree(p-1, n, root);
+  printf("Here I am..\n");
   buf += sizeof(void*);
   buf[0] = Indirect;
   buf += 1;
@@ -172,15 +173,15 @@ int compare_doubles (const void *a, const void *b)
 
 int main(int argc, char** argv) {
 
-  TreeRef ta = buildTree(3);
-  TreeRef tb = malloc(treeSize(3));
-  printf("Allocated tb space: %d, %p \n", treeSize(3), tb);
+  TreeRef ta = buildTree(4);
+  TreeRef tb = (char*) malloc(treeSize(4));
+  printf("Allocated tb space: %d, %p \n", treeSize(4), tb);
   add1Tree(ta, tb);
   printTree(ta);
   printf("\ntb:\n");
   printTree(tb);  
   printf("\n");
-  return 0;
+  // return 0;
   
   int depth;
   if (argc > 1)
@@ -195,7 +196,7 @@ int main(int argc, char** argv) {
   double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
   printf("done building, took %lf seconds\n\n", time_spent);
   // printTree(tr); printf("\n");a
-  TreeRef t2 = malloc(treeSize(depth));
+  TreeRef t2 = (char*) malloc(treeSize(depth));
   double trials[TRIALS];
   for(int i=0; i<TRIALS; i++) {
     begin = clock();

@@ -13,11 +13,11 @@ all: treebench_mlton.exe treebench_ocaml.exe \
 # Match whichever version the docker image is using:
 # GHC = stack --install-ghc --resolver=lts-7.1 exec ghc --
 GHC = stack --install-ghc --resolver=lts-6.19 exec ghc --
-CC = gcc
+CC = icpc 
 # CC = clang
 
 # COPTS = -O3 -std=c11
-COPTS = -g -O0 -std=c11
+COPTS = -g -O0 -std=c++11
 
 
 ghc: treebench_strict_ghc.exe treebench_lazy_ghc.exe
@@ -53,6 +53,9 @@ treebench_c_bumpalloc.exe: treebench.c
 	time $(CC) $(COPTS) -DBUMPALLOC $^ -o $@ 
 
 treebench_c_unpacked.exe: treebench_unpacked.c
+	time $(CC) $(COPTS) $^ -o $@ 
+
+treebench_c_parallel.exe: treebench_parallel.c
 	time $(CC) $(COPTS) $^ -o $@ 
 
 treebench.class: treebench.java
