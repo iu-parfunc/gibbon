@@ -59,7 +59,7 @@ fun benchmark (power: int): micro =
       Time.toMicroseconds realTime
    end
 
-val trials = 9
+val trials = 17
        
 fun benchmarks (power: int): (microreal * microreal) =
    let
@@ -93,5 +93,5 @@ val _ = putStrLn (Int.toString power)
 val _ = print "  trials = "
 val _ = putStrLn (Int.toString trials)
 val (meanTime,median) = benchmarks power
-val _ = print "Mean time (microseconds): "
-val _ = printLargeReal meanTime
+val _ = print "Mean time (seconds): "
+val _ = printLargeReal (meanTime / 1000000.0)
