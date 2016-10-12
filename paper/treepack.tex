@@ -1,0 +1,113 @@
+
+% This varies by conference, sometimes 9pt:
+\documentclass[preprint,10pt]{./bibs/sigplanconf}
+% The following \documentclass options may be useful:
+%
+% 10pt          To set in 10-point type instead of 9-point.
+% 11pt          To set in 11-point type instead of 9-point.
+% authoryear    To obtain author/year citation style instead of numeric.
+
+
+%% Common packages we use:
+
+%% This is our standard package for code formatting:
+\usepackage{listings}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{hyperref}
+\usepackage{graphicx}
+% \usepackage{mathabx}
+% \usepackage{mathpartir}
+
+\usepackage[noabbrev]{cleveref}
+\usepackage{enumitem}
+
+% Copy this if needed to customize:
+\input{./bibs/latex_templates/editingmarks}
+
+% If we are using Haskell code in this paper:
+\input{./bibs/latex_templates/haskell_style}
+
+% Sometimes we have extra short-cuts:
+% \input{macro-defs}
+
+% Sometimes we factor large figures into commands in a separate file:
+% \input{figures}
+
+\begin{document}
+
+\special{papersize=8.5in,11in}
+\setlength{\pdfpageheight}{\paperheight}
+\setlength{\pdfpagewidth}{\paperwidth}
+
+\conferenceinfo{CONF 'yy}{Month d--d, 20yy, City, ST, Country}
+\copyrightyear{20yy}
+\copyrightdata{978-1-nnnn-nnnn-n/yy/mm}
+\copyrightdoi{nnnnnnn.nnnnnnn}
+
+% Uncomment the publication rights you want to use.
+%\publicationrights{transferred}
+%\publicationrights{licensed}     % this is the default
+%\publicationrights{author-pays}
+
+\titlebanner{banner above paper title}        % These are ignored unless
+\preprintfooter{short description of paper}   % 'preprint' option specified.
+
+\title{Compiling tree transformations on packed representations}
+\subtitle{Faster compiler passes, parallelization ready}
+
+\authorinfo{Name1}
+           {Affiliation1}
+           {Email1}
+\authorinfo{Name2\and Name3}
+           {Affiliation2/3}
+           {Email2/3}
+
+\maketitle
+
+\begin{abstract}
+This is the text of the abstract.
+\end{abstract}
+
+\category{CR-number}{subcategory}{third-level}
+
+% general terms are not compulsory anymore,
+% you may leave them out
+\terms
+term1, term2
+
+\keywords
+keyword1, keyword2
+
+\section{Introduction}
+
+The text of the paper begins here.
+
+\rn{This is an example peanut-gallery comment.}
+
+\appendix
+\section{Appendix Title}
+
+This is the text of the appendix, if you need one.
+
+\acks
+
+Acknowledgments, if needed.
+
+\bibliographystyle{abbrvnat}
+
+% If you can't commit to the submodule right this second, just copy
+% this file to ./refs.bib :
+\bibliography{bibs/refs}
+
+% The bibliography should be embedded for final submission.
+%% \begin{thebibliography}{}
+%% \softraggedright
+%% \bibitem[Smith et~al.(2009)Smith, Jones]{smith02}
+%% P. Q. Smith, and X. Y. Jones. ...reference text...
+%% \end{thebibliography}
+
+
+\end{document}
+
+
