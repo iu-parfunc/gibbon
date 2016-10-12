@@ -56,12 +56,12 @@
 \title{Compiling tree transformations on packed representations}
 \subtitle{Faster compiler passes, parallelization ready}
 
-\authorinfo{Name1}
-           {Affiliation1}
-           {Email1}
-\authorinfo{Name2\and Name3}
-           {Affiliation2/3}
-           {Email2/3}
+%% \authorinfo{Name1}
+%%            {Affiliation1}
+%%            {Email1}
+%% \authorinfo{Name2\and Name3}
+%%            {Affiliation2/3}
+%%            {Email2/3}
 
 \maketitle
 
@@ -79,14 +79,63 @@ term1, term2
 \keywords
 keyword1, keyword2
 
+% ================================================================================
 \section{Introduction}
+% ================================================================================
 
 The text of the paper begins here.
 
 \rn{This is an example peanut-gallery comment.}
 
+\note{We use these bullets for outlining / psuedo-text.  They're removed when
+  converted to actual prose.}
+
+
+% ================================================================================
+\section{Background}
+% ================================================================================
+
+
+% ================================================================================
+\section{Formal language}
+% ================================================================================
+
+\note{The calculus, plus the core lowering transforms in figures.}
+
+
+% ================================================================================
+\section{Implementation}
+% ================================================================================
+
+
+
+% ================================================================================
+\section{Evaluation}
+% ================================================================================
+
+
+
+\subsection{Additional tree benchmarks}
+% ----------------------------------------
+
+\note{Non-compiler benchmark(s)}
+
+
+% ================================================================================
+\section{Future work}
+% ================================================================================
+
+\note{Data type factoring, storing leaves in a separate, dense, aligned vector.
+This enables (1) vectorization of numeric operations, and (2) separating
+out pointers that the GC must traverse.  This can prove essential for an
+open-world implementation in a managed language.}
+
+
+
+% ================================================================================
 \appendix
 \section{Appendix Title}
+% ================================================================================
 
 This is the text of the appendix, if you need one.
 
