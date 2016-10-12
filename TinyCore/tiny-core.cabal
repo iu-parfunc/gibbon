@@ -1,7 +1,7 @@
 
-name:                tree-velocity
+name:                tiny-core
 version:             0.1.0.0
-synopsis:            An unfinished benchmark for AST manipulation.
+synopsis:            Reduced GHC core / unfinished benchmark for AST manipulation.
         
 -- description:         
 -- license:             
