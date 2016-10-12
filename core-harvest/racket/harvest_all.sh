@@ -6,9 +6,15 @@
 # package boundaries...  It just runs rampant over any rkt files it
 # can find.
 
+set -xe
+
 RACO=`which raco`
 IN=$1
 OUT=$1.out.sexp
+
+raco help
+
+set +xe
 
 for f in `find -name "*.rkt"`; do
     echo "Processing $f"

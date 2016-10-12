@@ -17,11 +17,11 @@ RUN apt-get update && apt-get install -y curl
 RUN curl -L -o installer.sh http://download.racket-lang.org/releases/6.6/installers/racket-6.6-x86_64-linux.sh && \
     sh installer.sh --in-place --dest /racket/
 
+ENV PATH "$PATH:/racket/bin"
+
 # ADD harvest.sh /usr/bin/
 ADD harvest_all.sh /usr/bin/
 
 RUN cd /racket && harvest_all.sh
 
-# TODO: grab output files and move them to one place / or an output
-# volume.
-
+# TODO: grab output files and move them to an output volume.
