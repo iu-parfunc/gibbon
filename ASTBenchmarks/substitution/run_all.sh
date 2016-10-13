@@ -1,8 +1,8 @@
 #!/bin/bash
 
-set -e
+# Allow failures so we can keep going:
+set +e
 
 for f in `find ../expanded_racket -name "*.sexp" `; do
-    echo "Benchmarking $f"
-    ./subst.rkt call-with-values $f 1
+    ./subst.rkt call-with-values $f 1 | tee run_all.log
 done

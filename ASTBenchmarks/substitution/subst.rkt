@@ -1,8 +1,7 @@
 #! /usr/bin/env racket
 #lang racket
 
-(require racket/match
-         racket/trace)
+(require racket/match racket/trace)
 
 (define args (current-command-line-arguments))
 (define-values (oldsym file iters)
@@ -11,7 +10,8 @@
     [else (error "unexpected number of command line arguments, expected <symbol> <file> <iterations>, got:\n"
                  args)]))
 
-(printf "Benchmark: Substituting symbol ~a in file ~a for ~a iterations...\n" oldsym file iters)
+(printf "\n\nBenchmark: Substituting symbol ~a in file ~a for ~a iterations...\n" oldsym file iters)
+(printf "============================================================\n")
 
 ;; Abstract over some weird variation in the expanded output.
 ;; ----------------------------------------------------------
@@ -26,13 +26,14 @@
 (define (bound-in? sym formals)
   (match formals
     [(? symbol?) (eq? sym formals)]
-    [`(,(? symbol? f*) . ,(? symbol? rest))
-     (or (eq? sym rest) (memq sym f*))]
     [`(,(? symbol? f*) ...)
-     (or (eq? sym rest) (memq sym f*))]))
+     (or (eq? sym rest) (memq sym f*))]
+    [`(,(? symbol? f*) ... . ,(? symbol? rest))
+     (or (eq? sym rest) (memq sym f*))]
+    ))
 
 (define (subst old new e0)  
-  (trace-define (top e) ; top-level-form 
+  (#|trace-|#define (top e) ; top-level-form 
     (match e
       [`(#%expression ,e) `(#%expression ,(expr e))]
       [`(module ,id ,path (,(? module-begin? mb) ,m* ...))
@@ -42,7 +43,7 @@
       [else (gtlf e)] ;; general-top-level-form
       ))
 
-  (trace-define (mlf e) ; module-level-form
+  (#|trace-|#define (mlf e) ; module-level-form
     (match e 
       [`(#%provide ,r* ...) `(#%provide ,*(map rps r*))]
       [`(begin-for-syntax ,m* ...) `(begin-for-syntax ,@(map mlf m*))]
@@ -57,7 +58,7 @@
   ;; ; raw-provide-spec: No processing here:
   (define (rps e) e)
   
-  (trace-define (expr e)
+  (#|trace-|#define (expr e)
     (match e
       ;; Variable references:
       [(? symbol?) (if (eq? oldsym e) newsym e)]
@@ -75,12 +76,12 @@
        `(,lam ,formals
           ,(if (bound-in? oldsym formals)
                bods (map expr bods)))]
-      [`(case-lambda ,cases)
+      [`(case-lambda . ,cases)
        `(case-lambda
           ,(for/list ((c cases))
              (match-let ([`(,formals ,e* ...) c])
                 (if (bound-in? oldsym formals) c
-                    `(,formals ,(map expr e*))))))]
+                    `(,formals ,@(map expr e*))))))]
       [`(,(? let-sym? lett) ,binds ,bod* ...)
        `(,lett ,(for/list ((b binds))
                        (match-let ([`[(,id* ...) ,rhs] b])
@@ -94,10 +95,15 @@
       [`(begin0 ,e1 ,e* ...) `(begin0 ,(expr e1) ,@(map expr e*))]
       [`(,(? app? app) ,e* ...) `(,app ,@(map expr e*))]
       [`(set! ,id ,e) `(set! ,id ,(expr e))]
-      [`(with-continuation-mark ,a ,b ,c) `(with-continuation-mark ,(expr a) ,(expr b) ,(expr c))]      
+      [`(with-continuation-mark ,a ,b ,c) `(with-continuation-mark ,(expr a) ,(expr b) ,(expr c))]
+
+      ;; HACK: this should be disallowed by the grammar.  But we ran
+      ;; across it.  For instance in:
+      ;;    ../expanded_racket/racket/collects/setup/parallel-do.rkt.out.sexp
+      [`(#%expression ,e) `(#%expression ,(expr e))]
       ))
   
-  (trace-define (gtlf e)
+  (#|trace-|#define (gtlf e)
     (match e
       [`(define-values (,id* ...) ,e)
        `(define-values ,id* ,(expr e))]
