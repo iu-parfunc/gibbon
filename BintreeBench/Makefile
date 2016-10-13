@@ -13,7 +13,9 @@ all: treebench_mlton.exe treebench_ocaml.exe \
 # Match whichever version the docker image is using:
 # GHC = stack --install-ghc --resolver=lts-7.1 exec ghc --
 GHC = stack --install-ghc --resolver=lts-6.19 exec ghc --
-CC = icpc 
+
+CC = gcc
+# CC = icpc 
 # CC = clang
 
 # COPTS = -O3 -std=c11
@@ -77,6 +79,11 @@ run_all: all
 	$(MAKE) run_java
 
 run_chez:
+	scheme treebench.ss
+
+run_racket:
+	racket treebench.rkt
+
 
 run_java: treebench.class
 	java treebench $(DEPTH)

@@ -50,7 +50,8 @@ fun showTreePrec (p: int, t: tree): string =
 fun showTree (t: tree): string = showTreePrec (0, t)
 
 fun benchmark (power: int): micro =
-   let
+  let
+      (* FIXME: run the garbage collector before each round, like we do in some other versions. *)
       val t = buildTree power
       val realTimer = startRealTimer ()
       val _ = add1Tree t
