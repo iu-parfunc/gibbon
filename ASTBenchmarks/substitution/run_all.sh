@@ -4,5 +4,5 @@
 set +e
 
 for f in `find ../expanded_racket -name "*.sexp" `; do
-    ./subst.rkt call-with-values $f 1 | tee run_all.log
+    ./subst.rkt call-with-values $f 1 
 done
