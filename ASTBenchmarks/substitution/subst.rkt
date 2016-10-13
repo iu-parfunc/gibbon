@@ -17,11 +17,19 @@
 ;; ----------------------------------------------------------
 (define (module-begin? s) (or (eq? s '#%plain-module-begin)
                               (eq? s '#%module-begin)))
-(define (module-sym? s) (or (eq? s 'module) (eq? s 'module*)))
 (define (lambda? s)     (or (eq? s 'lambda) (eq? s '#%plain-lambda)))
 (define (app? s)        (or (eq? s '#%app) (eq? s '#%plain-app)))
 ;; ----------------------------------------------------------
+(define (module-sym? s) (or (eq? s 'module) (eq? s 'module*)))
+(define (let-sym? s)    (or (eq? s 'let-values) (eq? s 'letrec-values)))
 
+(define (bound-in? sym formals)
+  (match formals
+    [(? symbol?) (eq? sym formals)]
+    [`(,(? symbol? f*) . ,(? symbol? rest))
+     (or (eq? sym rest) (memq sym f*))]
+    [`(,(? symbol? f*) ...)
+     (or (eq? sym rest) (memq sym f*))]))
 
 (define (subst old new e0)  
   (trace-define (top e) ; top-level-form 
@@ -51,39 +59,44 @@
   
   (trace-define (expr e)
     (match e
+      ;; Variable references:
       [(? symbol?) (if (eq? oldsym e) newsym e)]
+      [`(#%top . ,id)              (if (eq? oldsym id) `(#%top . ,newsym) e)]
+      [`(#%variable-reference ,id) (if (eq? oldsym id) `(#%variable-reference ,newsym) e)]
+      [`(#%variable-reference (#%top . ,id)) (if (eq? oldsym id) `(#%variable-reference (#%top . ,newsym)) e)]
+
+      ;; Leaf forms:
+      ['(#%variable-reference) e]
+      [`(quote ,_) e]
+      [`(quote-syntax . ,_) e]
+
+      ;; Binding forms:
       [`(,(? lambda? lam) ,formals ,bods ...)
        `(,lam ,formals
-          ,(if (memq oldsym formals)
+          ,(if (bound-in? oldsym formals)
                bods (map expr bods)))]
+      [`(case-lambda ,cases)
+       `(case-lambda
+          ,(for/list ((c cases))
+             (match-let ([`(,formals ,e* ...) c])
+                (if (bound-in? oldsym formals) c
+                    `(,formals ,(map expr e*))))))]
+      [`(,(? let-sym? lett) ,binds ,bod* ...)
+       `(,lett ,(for/list ((b binds))
+                       (match-let ([`[(,id* ...) ,rhs] b])
+                         (if (bound-in? oldsym id*) b
+                             `[,id* ,(expr rhs)])))
+               ,@(map expr bod*))]
+
+      ;; Other:
       [`(if ,a ,b ,c) `(if ,(expr a) ,(expr b) ,(expr c))]
       [`(begin ,e* ...) `(begin ,@(map expr e*))]
       [`(begin0 ,e1 ,e* ...) `(begin0 ,(expr e1) ,@(map expr e*))]
       [`(,(? app? app) ,e* ...) `(,app ,@(map expr e*))]
-      [`(quote ,datum) e]
-
-;;  	 	|	 	(case-lambda (formals expr ...+) ...)
-;; (let-values ([(id ...) expr] ...)
-;;   expr ...+)
-;; (letrec-values ([(id ...) expr] ...)
-;;   expr ...+)
-;;  	 	|	 	(set! id expr)
-;;  	 	|	 	
-;;  	 	|	 	(quote-syntax datum)
-;;  	 	|	 	(quote-syntax datum #:local)
-;;  	 	|	 	(with-continuation-mark expr expr expr)
-;;  	 	|	 	(#%top . id)
-;;  	 	|	 	(#%variable-reference id)
-;;  	 	|	 	(#%variable-reference (#%top . id))
-;;  	 	|	 	(#%variable-reference)
- 	 	 	 	 
-;;   formals	 	=	 	(id ...)
-;;  	 	|	 	(id ...+ . id)
-;;  	 	|	 	id
-
-
+      [`(set! ,id ,e) `(set! ,id ,(expr e))]
+      [`(with-continuation-mark ,a ,b ,c) `(with-continuation-mark ,(expr a) ,(expr b) ,(expr c))]      
       ))
-
+  
   (trace-define (gtlf e)
     (match e
       [`(define-values (,id* ...) ,e)
@@ -94,12 +107,12 @@
        `(#%require ,@raw-require-spec*)] ;; abstract for now.
       [else (expr e)]
       ))
-  
+  ;; Kick things off:
   (top e0))
+
 
 (define ast (time (read (open-input-file file))))
 (printf "Done ingesting AST.\n")
-
 
 (define newsym (string->symbol (string-append (symbol->string oldsym) "99")))
 (time (for ((i (range iters)))
