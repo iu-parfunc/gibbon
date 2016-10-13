@@ -19,4 +19,4 @@ binding.
 
 Example invocation:
 
-    prog call-with-values ../expanded_racket/pkgs/racket-test/tests/pkg/test-pkgs/pkg-cycle1/main.rkt.out.sexp 20
+    ./subst.rkt call-with-values ../expanded_racket/pkgs/racket-test/tests/pkg/test-pkgs/pkg-cycle1/main.rkt.out.sexp 20
