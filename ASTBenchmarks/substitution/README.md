@@ -1,0 +1,22 @@
+
+The calling convention for each implementation of this benchmark
+program is:
+
+  prog <symbol> <input-file> <iterations>
+
+The program should
+
+ (1) parse the input (Racket expanded core language) file,
+ (2) put the AST into the designated in-memory representation
+ (3) run a substitution tree-walk replacing unbound occurrences of
+     <symbol> with any new symbol, e.g. "<symbol>1".
+     Repeat the tree-walk for <iterations> total repetitions.
+
+The substitution pass can stop when it reaches a binding site for
+<symbol>, although it is permitted to traverse the tree (pointlessly),
+it ais not permitted to perform substitution under such a shadowing
+binding.
+
+Example invocation:
+
+    prog call-with-values ../expanded_racket/pkgs/racket-test/tests/pkg/test-pkgs/pkg-cycle1/main.rkt.out.sexp 20
