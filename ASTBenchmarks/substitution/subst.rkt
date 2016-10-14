@@ -10,9 +10,6 @@
     [else (error "unexpected number of command line arguments, expected <symbol> <file> <iterations>, got:\n"
                  args)]))
 
-(printf "\n\nBenchmark: Substituting symbol ~a in file ~a for ~a iterations...\n" oldsym file iters)
-(printf "============================================================\n")
-
 ;; Abstract over some weird variation in the expanded output.
 ;; ----------------------------------------------------------
 (define (module-begin? s) (or (eq? s '#%plain-module-begin)
@@ -117,9 +114,14 @@
   (top e0))
 
 
+(printf "\n\nBenchmark: Substituting symbol ~a in file ~a for ~a iterations...\n" oldsym file iters)
+(printf "============================================================\n")
+
 (define ast (time (read (open-input-file file))))
 (printf "Done ingesting AST.\n")
 
 (define newsym (string->symbol (string-append (symbol->string oldsym) "99")))
 (time (for ((i (range iters)))
         (subst oldsym newsym ast)))
+(printf "Done with substitution pass.\n")
+
