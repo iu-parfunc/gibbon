@@ -22,5 +22,12 @@ expanded_racket: ${DATASET}
 	du -sh $@
 	for file in `cat offenders.txt`; do rm $$file; done
 	du -sh $@
-	echo "\nDone. Here are some of the larger files:"
-	find $@/ -type f -printf "%s\t%p\n" | sort -n | tail
+	echo "\nDone."
+	$(MAKE) largest
+
+largest:
+	echo "Here are some of the larger files:"
+	find expanded_racket/ -type f -printf "%s\t%p\n" | sort -n | tail
+
+
+.PHONY: default fetch largest

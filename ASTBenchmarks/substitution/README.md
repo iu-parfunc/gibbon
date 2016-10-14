@@ -21,4 +21,7 @@ Example invocation:
 
     ./subst.rkt call-with-values ../expanded_racket/share/pkgs/srfi-lib/srfi/45/lazy.rkt.out.sexp 10
 
+And here's a big (16MB) one from dataset 1.2:
+
+    ./subst.rkt extend-parameterization ../expanded_racket/share/pkgs/macro-debugger-text-lib/macro-debugger/model/reductions.rkt.out.sexp 10
 
