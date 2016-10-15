@@ -1,14 +1,14 @@
 all: treebench_mlton.exe treebench_ocaml.exe \
      treebench_strict_ghc.exe treebench_lazy_ghc.exe treebench_ghc_packed.exe \
      treebench_rust.exe \
-     treebench_c.exe treebench_c_bumpalloc.exe treebench_c_unpacked.exe \
+     treebench_c.exe treebench_c_bumpalloc.exe treebench_c_packed.exe \
      treebench.class
 
 # Disabling for now, requires beta channel of rust:
 # treebench_rust_sys_alloc.exe 
 
 # Unfinished:
-# treebench_rust_unpacked.exe
+# treebench_rust_packed.exe
 
 # Match whichever version the docker image is using:
 # GHC = stack --install-ghc --resolver=lts-7.1 exec ghc --
@@ -45,7 +45,7 @@ treebench_rust.exe: treebench.rs
 treebench_rust_sys_alloc.exe: treebench_sys_alloc.rs
 	time rustc $^ -o $@ -O
 
-# treebench_rust_unpacked.exe: treebench_unpacked.rs
+# treebench_rust_packed.exe: treebench_packed.rs
 # 	time rustc $^ -o $@ -O
 
 treebench_c.exe: treebench.c
@@ -54,7 +54,7 @@ treebench_c.exe: treebench.c
 treebench_c_bumpalloc.exe: treebench.c
 	time $(CC) $(COPTS) -DBUMPALLOC $^ -o $@ 
 
-treebench_c_unpacked.exe: treebench_unpacked.c
+treebench_c_packed.exe: treebench_packed.c
 	time $(CC) $(COPTS) $^ -o $@ 
 
 treebench_c_parallel.exe: treebench_parallel.c
@@ -74,7 +74,7 @@ run_all: all
 	./treebench_rust.exe $(DEPTH)
 	./treebench_rust_sys_alloc.exe $(DEPTH) 
 	./treebench_c.exe $(DEPTH)
-	./treebench_c_unpacked.exe $(DEPTH) 
+	./treebench_c_packed.exe $(DEPTH) 
 	$(MAKE) run_chez
 	$(MAKE) run_java
 
