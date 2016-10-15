@@ -6,18 +6,10 @@
 #include <time.h>
 
 #define TRIALS 17
-#define TAG_SIZE 1
-
-// Should be at least log_2(numProcs)
-#define PARLVLS 2
-#define MINSEQLVLS 1
-
-#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 
 enum Tree {
     Leaf,
     Node,
-    Indirect,
 };
 
 // Manual layout:
@@ -50,90 +42,43 @@ int treeSize(int n) {
   int leaves = 1 << n;
   int nodes  = leaves - 1;
   // Both nodes and leaves are tagged:
-  int bytes  = sizeof(Num)*leaves + TAG_SIZE * sizeof(char) * (nodes+leaves);
+  int bytes  = (sizeof(Num)*leaves + sizeof(char)*(nodes+leaves));
+  /* printf("treeSize(%d): %d bytes (%d/%d nodes/leaves)\n", */
+  /*        n, bytes, nodes, leaves); */
   return bytes;
 }
 
-      
-TreeRef buildSeqTree(int n, Num root) {
+TreeRef buildTree(int n) {
   int bytes = treeSize(n);
-  char* buf = (char*) malloc(bytes);
-  char* res = fillTree(buf, n, root);
+  char* buf = malloc(bytes);
+  char* res = fillTree(buf, n, 1);
+  printf("wrote %d\n", (int)(res - buf));  
   return buf;
 }
 
-TreeRef buildParTree(int p, int n, Num root) {
-  if (p == 0) return buildSeqTree(n,root);
-  char* start = (char*) malloc(3 * TAG_SIZE + 2 * sizeof(void*));
-  char* buf = start;
-  buf[0] = Node;
-  buf[1] = Indirect;
-  buf += 2;
-  ((void**)buf)[0] = buildParTree(p-1, n, root);
-  printf("Here I am..\n");
-  buf += sizeof(void*);
-  buf[0] = Indirect;
-  buf += 1;
-  ((void**)buf)[0] = buildParTree(p-1, n, root + (1<<((p+n)-1)));
-  return start;
-}
-
-TreeRef buildTree(int n) {
-  if (n >= MINSEQLVLS) {
-    int p  = MIN(PARLVLS, n - MINSEQLVLS);
-    int n2 = n - p;
-    return buildParTree(p, n2, 1);
-  } else {
-    return buildSeqTree(n, 1);
-  }
-}
-
-// Returns the cursor position AFTER scrolling past the input argument.
 TreeRef printTree(TreeRef t) {
-  switch(*t) {
-  case Leaf:
+  if (*t == Leaf) {
     t++;
     printf("%lld", *(Num*)t);
     return (t+sizeof(Num));
-
-  case Node:
+  } else {
     t++;
     printf("(");
     TreeRef t2 = printTree(t);
     printf(",");
     TreeRef t3 = printTree(t2);
     printf(")");
-    return t3;
-    
-  case Indirect:
-    t++;
-    printTree(*((TreeRef*)t));
-    // Then scroll past the pointer and return.
-    return (t + sizeof(void*));
-
-  default:
-    fprintf(stderr, "Error! corrupt tree in printTree, at %p, expected tag got: %d\n", t, (*t));
-    exit(-1);
-    return 0;
+    return t3;    
   }
 }
 
-typedef struct { TreeRef tin; TreeRef tout; } RefPair;
-
-RefPair add1Tree(TreeRef t, TreeRef tout) {
-  // printf("Add1tree %p -> %p, ", t, tout);
-  switch(*t) {
-  case Leaf:
-    // printf(" leaf %lld\n", *(Num*)(t+1));
+TreeRef add1Tree(TreeRef t, TreeRef tout) {
+  if (*t == Leaf) {
     *tout = Leaf;    
     t++; tout++;
     *(Num*)tout = *(Num*)t + 1;
-    RefPair ret1 = {t+sizeof(Num), tout+sizeof(Num)};
-    return ret1;
-    // return {t+sizeof(Num), tout+sizeof(Num)} ;
-
-  case Node:
-    // printf(" node\n");
+    return (t+sizeof(Num));
+  } else {
     *tout = Node;
     t++; tout++;
 
@@ -141,26 +86,9 @@ RefPair add1Tree(TreeRef t, TreeRef tout) {
     // t += 4;
     // tout += 4;
     
-    RefPair refs1 = add1Tree(t,tout);
-    // tout += (t2 - t); // HACK: FIXME - Won't work with indirections.
-    return add1Tree(refs1.tin,refs1.tout);
-
-  // Here we have a choice, we could keep the indirection or inline
-  // it.  For starters let's just inline.  We'll need to compute a
-  // length of the output buffer to create if we don't.
-  case Indirect:
-    // fprintf(stderr, "Indirect, tout = %p\n", tout);
-    t++;
-    TreeRef tnew = *((TreeRef*)t);
-    RefPair refs2 = add1Tree(tnew, tout);
-    RefPair ret2 = {t + sizeof(void*), refs2.tout};
-    return ret2;
-    
-  default:
-    fprintf(stderr, "Corrupt tree in add1Tree, at %p expected tag got: %d\n", t, (*t));
-    exit(-1);
-    RefPair fault = {0, 0};
-    return fault;
+    TreeRef t2 = add1Tree(t,tout);
+    tout += (t2 - t);
+    return add1Tree(t2,tout);
   }
 }
 
@@ -172,17 +100,6 @@ int compare_doubles (const void *a, const void *b)
 }
 
 int main(int argc, char** argv) {
-
-  TreeRef ta = buildTree(4);
-  TreeRef tb = (char*) malloc(treeSize(4));
-  printf("Allocated tb space: %d, %p \n", treeSize(4), tb);
-  add1Tree(ta, tb);
-  printTree(ta);
-  printf("\ntb:\n");
-  printTree(tb);  
-  printf("\n");
-  // return 0;
-  
   int depth;
   if (argc > 1)
     depth = atoi(argv[1]);
@@ -196,7 +113,7 @@ int main(int argc, char** argv) {
   double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
   printf("done building, took %lf seconds\n\n", time_spent);
   // printTree(tr); printf("\n");a
-  TreeRef t2 = (char*) malloc(treeSize(depth));
+  TreeRef t2 = malloc(treeSize(depth));
   double trials[TRIALS];
   for(int i=0; i<TRIALS; i++) {
     begin = clock();
