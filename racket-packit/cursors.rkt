@@ -16,41 +16,52 @@
 ;; Option 1: vector based implementation of buffers
 ;--------------------------------------------------------------------------------
 
-;; FINISHME - indirections:
-; (define indirection-tag (gensym 'indirection))
+(begin 
+  ;; FINISHME - indirections:
+  ; (define indirection-tag (gensym 'indirection))
 
-(define (new-buffer n)
-  (cursor (make-vector n) 0))
+  (define (new-buffer n)
+    (cursor (make-vector n) 0))
 
-(define (buffer-size c) (vector-length (cursor-buf c)))
+  (define (buffer-size c) (vector-length (cursor-buf c)))
 
-(define-inline (advance-cursor! c slots)
-  (set-cursor-offset! c (+ (cursor-offset c) slots)))
+  (define-syntax define-tags
+    (syntax-rules ()
+      [(define-tags (name ...))
+       (begin (define name (quote name)) ...)]))
 
-(define-inline (read-slot! c)
-  (let* ([off (cursor-offset c)])
-    (set-cursor-offset! c (add1 off))
-    (vector-ref (cursor-buf c) off)))
+  (define-inline (tag=? a b) (eq? a b))
+  
+  (define-inline (advance-cursor! c slots)
+    (set-cursor-offset! c (+ (cursor-offset c) slots)))
 
-(define-inline (read-int64! c) (read-slot! c))
+  (define-inline (read-slot! c)
+    (let* ([off (cursor-offset c)])
+      (set-cursor-offset! c (add1 off))
+      (vector-ref (cursor-buf c) off)))
 
-;; We could implement redirections by allowing cursor struct values in
-;; tag positions.  
-(define-inline (read-tag! c)   (read-slot! c))
+  (define-inline (read-int64! c) (read-slot! c))
 
-(define-inline (write-slot! c x)
-  (let* ([off (cursor-offset c)])
-    (set-cursor-offset! c (add1 off))
-    (vector-set! (cursor-buf c) off x)))
+  ;; We could implement redirections by allowing cursor struct values in
+  ;; tag positions.  
+  (define-inline (read-tag! c)   (read-slot! c))
 
-;; (cursor, symbol) -> void
-(define-inline (write-tag! c x)   (write-slot! c x))
-(define-inline (write-int64! c x) (write-slot! c x))
+  (define-inline (write-slot! c x)
+    (let* ([off (cursor-offset c)])
+      (set-cursor-offset! c (add1 off))
+      (vector-set! (cursor-buf c) off x)))
 
-(define tag-slots   1)
-(define int64-slots 1)
+  ;; (cursor, symbol) -> void
+  (define-inline (write-tag! c x)   (write-slot! c x))
+  (define-inline (write-int64! c x) (write-slot! c x))
+
+  (define tag-slots   1)
+  (define int64-slots 1)
+)
 
 ;; Option 2: bytestring based:
 ;--------------------------------------------------------------------------------
 
+
+  
 ;--------------------------------------------------------------------------------

@@ -31,12 +31,14 @@
     1]))
 
 
+(define-tags (Leaf Node))
+
 (define (filltree! c n0)
   (define (go root n)
     (if (zero? n)
-        (begin (write-tag! c 'Leaf)
+        (begin (write-tag! c Leaf)
                (write-int64! c root))
-        (begin (write-tag! c 'Node)
+        (begin (write-tag! c Node)
                (go root (sub1 n))               
                (go (+ root (expt 2 (sub1 n)))
                    (sub1 n)))))
@@ -52,12 +54,13 @@
      (* tag-slots (+ nodes leaves))))
 
 (define (add1tree! c1 c2)
-  (match (read-tag! c1)
-    ['Leaf (write-tag! c2 'Leaf)
-           (write-int64! c2 (read-int64! c1))]
-    ['Node (write-tag! c2 'Node)
-           (add1tree! c1 c2)
-           (add1tree! c1 c2)]))
+  (define t (read-tag! c1))
+  (cond
+    [(tag=? t Leaf) (write-tag! c2 Leaf)
+                    (write-int64! c2 (read-int64! c1))]
+    [else (write-tag! c2 Node)
+          (add1tree! c1 c2)
+          (add1tree! c1 c2)]))
 
 ;; ----------------------------------------
 
