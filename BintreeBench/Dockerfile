@@ -25,11 +25,11 @@ RUN apt-get install -y racket
 
 # ------------------------------------------------------------
 
-ADD . /tree-velocity
+ADD . /BintreeBench
 
 # Build all the benchmarks:
 RUN scheme --version && rustc --version && \
-    cd /tree-velocity && make 
+    cd /BintreeBench && make 
 
 # For testing purposes, make sure they all run:
-RUN cd /tree-velocity/ && make run_small
+RUN cd /BintreeBench && make run_small

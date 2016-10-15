@@ -3,7 +3,7 @@
 (require racket/unsafe/ops
          ffi/unsafe
          )
-(require "../racket-packit/cursors.rkt")
+(require "./racket-packit/cursors.rkt")
 
 (define depth
   (match (current-command-line-arguments)
