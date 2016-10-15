@@ -3,6 +3,7 @@ FROM fpco/stack-build:lts-6.19
 
 RUN apt-get update && apt-get -y install mlton ocaml-native-compilers gcc time
 
+# TODO: Check SHA like Nix does:
 RUN cd / && wget https://github.com/cisco/ChezScheme/archive/v9.4.tar.gz && \
     tar xf v9.4.tar.gz && rm -f v9.4.tar.gz
 
@@ -20,10 +21,15 @@ RUN /tree-velocity/deps/rustup.sh --revision=1.12.0
 
 # RUN which -a rustc && rustc --version
 
+RUN apt-get install -y racket
+
+# ------------------------------------------------------------
+
 ADD . /tree-velocity
 
+# Build all the benchmarks:
 RUN scheme --version && rustc --version && \
     cd /tree-velocity && make 
 
-RUN /tree-velocity/treebench_rust.exe 20 
-
+# For testing purposes, make sure they all run:
+RUN cd /tree-velocity/ && make run_small

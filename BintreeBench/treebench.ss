@@ -21,7 +21,14 @@
   (collect-maximum-generation)
   (time (add1-tree tr)))
 
-(define size 20)
+(define size
+  (cond 
+   [(= (length (command-line-arguments)) 1)
+    (string->number (car (command-line-arguments)))]
+   [else (error 'treebench (format "expected one command line arg, <depth>, got ~a:  ~a"
+                                   (length (command-line-arguments))
+                                   (command-line-arguments)))]))
+
 (printf "Benchmarking on tree of size 2^~a\n" size)
 (let loop ((i 1))
   (bench size)

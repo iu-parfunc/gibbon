@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define TRIALS 33
+#define TRIALS 17
 
 // Manual layout:
 // one byte for each tag, 64 bit integers
