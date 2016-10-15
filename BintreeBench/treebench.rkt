@@ -22,7 +22,12 @@
   (collect-garbage 'major)
   (time (add1-tree tr)))
 
-(define size 20)
+(define size
+  (match (current-command-line-arguments)
+    [(vector s) (string->number s)]
+    [args (error "expected one command line arg, <depth>, got ~a:\n  ~a"
+                 (vector-length args))]))
+
 (printf "Benchmarking on tree of size 2^~a\n" size)
 (let loop ((i 1))
   (bench size)

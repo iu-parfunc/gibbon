@@ -3,11 +3,10 @@
 
 (require racket/match racket/trace)
 
-(define args (current-command-line-arguments))
 (define-values (oldsym file iters)
-  (match args
+  (match (current-command-line-arguments)
     [(vector o f i) (values (string->symbol o) f (string->number i))]
-    [else (error "unexpected number of command line arguments, expected <symbol> <file> <iterations>, got:\n"
+    [args (error "unexpected number of command line arguments, expected <symbol> <file> <iterations>, got:\n"
                  args)]))
 
 ;; Abstract over some weird variation in the expanded output.
