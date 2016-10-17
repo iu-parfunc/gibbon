@@ -74,18 +74,18 @@
          
          #'(begin (define name (quote tags)) ...))]))
 
-  (define-inline (tag=? a b) (fx= a b))
+  (define-inline (tag=? a b) (unsafe-fx= a b))
   
   (define-inline (advance-cursor! buff off slots)
-     (fx+ off slots))
+     (unsafe-fx+ off slots))
 
   (define-inline (read-slot! buff off)
-    (values (fx+ 1 off)
+    (values (unsafe-fx+ 1 off)
             (bytes-ref buff off)))
 
   (define-inline (read-int64! buff off)
     (values
-     (fx+ int64-slots off)
+     (unsafe-fx+ int64-slots off)
      (integer-bytes->integer buff #t ; signed
                              #f off (+ off 8))))
 
@@ -97,7 +97,7 @@
   (define-inline (write-slot! buff off x)
     (begin
       (bytes-set! buff off x)
-      (fx+ 1 off)))
+      (unsafe-fx+ 1 off)))
 
   ;; (cursor, symbol) -> void
   (define-inline (write-tag! buff off x)   (write-slot! buff off x))
@@ -151,7 +151,7 @@
 
   (define-inline (write-slot! buff off x)
     (begin
-      (fxvector-set! buff off x)
+      (unsafe-fxvector-set! buff off x)
       (unsafe-fx+ 1 off)))
 
   ;; (cursor, symbol) -> void
