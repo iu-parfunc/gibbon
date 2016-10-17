@@ -1,4 +1,6 @@
-#lang racket
+#lang racket/base
+
+(require racket/match)
 
 (require racket/unsafe/ops)
 
@@ -19,7 +21,7 @@
 
 (define (bench n)
   (define tr (build-tree n))
-  (collect-garbage 'major)
+  (collect-garbage #;'major)
   (time (add1-tree tr)))
 
 (define size

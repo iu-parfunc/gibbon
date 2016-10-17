@@ -1,7 +1,8 @@
-#lang racket
+#lang racket/base
 
 (require racket/unsafe/ops
          ffi/unsafe
+         racket/match
          )
 (require "./racket-packit/cursors.rkt")
 
@@ -33,18 +34,21 @@
 
 (define-tags (Leaf Node))
 
-(define (filltree! c n0)
-  (define (go root n)
-    (if (zero? n)
-        (begin (write-tag! c Leaf)
-               (write-int64! c root))
-        (begin (write-tag! c Node)
-               (go root (sub1 n))               
-               (go (+ root (expt 2 (sub1 n)))
-                   (sub1 n)))))
-    (define off0 (cursor-offset c))
-    (go 1 n0)
-    off0)
+
+(define (filltree! buf offset n0)
+  (define (go root n offset)
+    (cond [(zero? n)
+           (define-values (offset1) (write-tag! buf offset Leaf))
+           (write-int64! buf offset1 root)]
+          [else
+           (define-values (off1) (write-tag! buf offset Node))
+           (define-values (off2) (go root (sub1 n) off1))
+           (go (+ root (expt 2 (sub1 n)))
+               (sub1 n)
+               off2)]))
+  (define off0 offset)
+  (define-values (off*) (go 1 n0 off0))
+  off*)
 
 ;; Optimization; Compute the exact number of slots needed.
 (define (treesize depth)
@@ -53,32 +57,39 @@
   (+ (* int64-slots leaves)
      (* tag-slots (+ nodes leaves))))
 
-(define (add1tree! c1 c2)
-  (define t (read-tag! c1))
-  (cond
-    [(tag=? t Leaf) (write-tag! c2 Leaf)
-                    (write-int64! c2 (read-int64! c1))]
-    [else (write-tag! c2 Node)
-          (add1tree! c1 c2)
-          (add1tree! c1 c2)]))
+(define (add1tree! buf1 off1 buf2 off2)
+  (define (go off1 off2)
+    (define-values (off1* t) (read-tag! buf1 off1))
+    (cond
+      [(tag=? t Leaf)
+       (define-values (off2*) (write-tag! buf2 off2 Leaf))
+       (define-values (off1** i) (read-int64! buf1 off1*))
+       (define-values (off2**) (write-int64! buf2 off2* i))
+       (values off1** off2**)]
+      [else (let*-values ([(off2*) (write-tag! buf2 off2 Node)]
+                          [(off1** off2**)
+                           (go off1* off2*)])
+              (go off1** off2**))]))
+  (go off1 off2))
 
 ;; ----------------------------------------
 
-(define tr (new-buffer (treesize depth)))
-(set-cursor-offset! tr (filltree! tr depth))
+(define-values (tr-buf tr-off) (new-buffer (treesize depth)))
+(define-values (tr-off*) (filltree! tr-buf tr-off depth))
 
-(printf "Filled buffer of size ~a\n" (buffer-size tr))
+(printf "Filled buffer of size ~a\n" (buffer-size tr-buf tr-off*))
 
-(define tr2 (new-buffer (treesize depth)))
+(define-values (tr2-buf tr2-off) (new-buffer (treesize depth)))
 
 ; (printf "Input tree: ~a\n" tr)
-
-(for ([i (range 10)])
-  (set-cursor-offset! tr  0)
-  (set-cursor-offset! tr2 0)
-  (time (add1tree! tr tr2))
-  ; (printf "Output tree: ~a\n" tr2)
-  )
+;(require disassemble)
+;  (disassemble add1tree!)
+(for ([i (in-range 10)])
+  (let ([tr-off 0]
+        [tr2-off 0])
+    (time (add1tree! tr-buf tr-off tr2-buf tr2-off))
+    ; (printf "Output tree: ~a\n" tr2)
+    ))
 
 #|
 
