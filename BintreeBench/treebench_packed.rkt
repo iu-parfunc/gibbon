@@ -3,14 +3,12 @@
 (require racket/unsafe/ops
          ffi/unsafe
          racket/match
-         )
+         racket/cmdline)
 
 (define depth
-  (match (current-command-line-arguments)
-    [(vector s) (or (string->number s)
-                    (error "Bad numeric argument: ~a" s))]
-    [args (error "expected one command line arg, <depth>, got ~a:\n  ~a"
-                 (vector-length args))]))
+  (command-line #:args (depth)
+                (or (string->number depth)
+                    (error "Bad numeric argument: ~a" depth))))
 (printf "Benchmarking on tree of size 2^~a\n" depth)
 
 ;; choose which version to use:
