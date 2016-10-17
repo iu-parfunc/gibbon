@@ -4,7 +4,6 @@
          ffi/unsafe
          racket/match
          )
-(require "./racket-packit/cursors.rkt")
 
 (define depth
   (match (current-command-line-arguments)
@@ -14,6 +13,9 @@
                  (vector-length args))]))
 (printf "Benchmarking on tree of size 2^~a\n" depth)
 
+;; choose which version to use:
+(require "./racket-packit/cursors.rkt")
+(define-ops fxvector)
 
 ;; We should add macro support, like this:
 #; 

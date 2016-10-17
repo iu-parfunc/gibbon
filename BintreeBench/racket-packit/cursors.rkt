@@ -6,12 +6,25 @@
 ;; Safe mode for debugging:
 ;(require (rename-in racket/fixnum [fx= unsafe-fx=]))
 ;; Unsafe mode for performance:
- (require racket/unsafe/ops)
+(require racket/unsafe/ops)
+
+(define-syntax (define-tags stx)
+  (syntax-case stx ()
+    [(define-tags (name ...))
+     (with-syntax ([(tags ...)
+                    (build-list (length (syntax->list #'(name ...))) values)])
+       #'(begin (define name (quote tags)) ...))]))
+
+(define-inline (tag=? a b) (unsafe-fx= a b))
 
 
 ;; Option 1: vector based implementation of buffers
 ;--------------------------------------------------------------------------------
-#;
+(define-syntax-rule
+  (define-vector-ops
+    new-buffer buffer-size advance-cursor! read-slot!
+    read-int64! read-tag! write-slot! write-tag! write-int64!
+    int64-slots tag-slots)
 (begin 
     ;; FINISHME - indirections:
   ; (define indirection-tag (gensym 'indirection))
@@ -21,12 +34,6 @@
 
   (define-inline (buffer-size buf off) (unsafe-vector-length buf))
 
-  (define-syntax define-tags
-    (syntax-rules ()
-      [(define-tags (name ...))
-       (begin (define name (quote name)) ...)]))
-
-  (define-inline (tag=? a b) (unsafe-fx= a b))
   
   (define-inline (advance-cursor! buff off slots)
      (unsafe-fx+ off slots))
@@ -52,36 +59,34 @@
 
   (define tag-slots   1)
   (define int64-slots 1)
-)
+))
 
 
 ;; Option 2: bytestring based:
 ;--------------------------------------------------------------------------------
-#;
-(begin 
+(define-syntax-rule
+  (define-bytes-ops
+    new-buffer buffer-size advance-cursor! read-slot!
+    read-int64! read-tag! write-slot! write-tag! write-int64!
+    int64-slots tag-slots)
+  (begin 
     ;; FINISHME - indirections:
-  ; (define indirection-tag (gensym 'indirection))
+    ; (define indirection-tag (gensym 'indirection))
+    
+    (define tag-slots   1)
+    (define int64-slots 8)
+    (define (new-buffer n)
+      (values (make-bytes n) 0))
 
-  (define (new-buffer n)
-    (values (make-bytes n) 0))
-
-  (define-inline (buffer-size buf off) (bytes-length buf))
-
-  (define-syntax (define-tags stx)
-    (syntax-case stx ()
-      [(define-tags (name ...))
-       (with-syntax ([(tags ...) (build-list (length (syntax->list #'(name ...)))  values)])
-         
-         #'(begin (define name (quote tags)) ...))]))
-
-  (define-inline (tag=? a b) (unsafe-fx= a b))
-  
-  (define-inline (advance-cursor! buff off slots)
-     (unsafe-fx+ off slots))
-
-  (define-inline (read-slot! buff off)
+    (define-inline (buffer-size buf off)
+      (unsafe-bytes-length buf))
+    
+    (define-inline (advance-cursor! buff off slots)
+      (unsafe-fx+ off slots))
+    
+    (define-inline (read-slot! buff off)
     (values (unsafe-fx+ 1 off)
-            (bytes-ref buff off)))
+            (unsafe-bytes-ref buff off)))
 
   (define-inline (read-int64! buff off)
     (values
@@ -96,7 +101,7 @@
 
   (define-inline (write-slot! buff off x)
     (begin
-      (bytes-set! buff off x)
+      (unsafe-bytes-set! buff off x)
       (unsafe-fx+ 1 off)))
 
   ;; (cursor, symbol) -> void
@@ -108,16 +113,18 @@
      buff off)
     (+ int64-slots off))
   
-  (define tag-slots   1)
-  (define int64-slots 8)
-  )
+  ))
 
   
 ;-------------------------------------------------------------------------------
 
 ;; Option 3 fxvector
 
-
+(define-syntax-rule
+  (define-fxvector-ops
+    new-buffer buffer-size advance-cursor! read-slot!
+    read-int64! read-tag! write-slot! write-tag! write-int64!
+    int64-slots tag-slots)
 (begin 
     ;; FINISHME - indirections:
   ; (define indirection-tag (gensym 'indirection))
@@ -126,15 +133,6 @@
     (values (make-fxvector n) 0))
 
   (define-inline (buffer-size buf off) (unsafe-fxvector-length buf))
-
-  (define-syntax (define-tags stx)
-    (syntax-case stx ()
-      [(define-tags (name ...))
-       (with-syntax ([(tags ...) (build-list (length (syntax->list #'(name ...)))  values)])
-         
-         #'(begin (define name (quote tags)) ...))]))
-
-  (define-inline (tag=? a b) (unsafe-fx= a b))
   
   (define-inline (advance-cursor! buff off slots)
      (unsafe-fx+ off slots))
@@ -160,19 +158,21 @@
 
   (define tag-slots   1)
   (define int64-slots 1)
-)
+))
 
 
 
 
 ;--------------------------------------------------------------------------------
-
-;; Example:
-#;
-(begin 
-  (define-tags (Leaf Node))
-  (let ([b (new-buffer 30)])
-    (write-tag! b Node)
-    (write-tag! b Leaf) (write-int64! b 34)
-    (write-tag! b Leaf) (write-int64! b 12)
-    (bytes->list (cursor-buf b))))
+(require (for-syntax racket/syntax))
+(define-syntax (define-ops stx)
+  (syntax-case stx ()
+    [(_ tag)
+     (with-syntax ([(names ...)
+                    (map (lambda (i) (datum->syntax #'tag i))
+                         '(new-buffer buffer-size advance-cursor! read-slot!
+                           read-int64! read-tag! write-slot! write-tag!
+                           write-int64!
+                           int64-slots tag-slots))]
+                   [mac (format-id #'tag "define-~a-ops" #'tag)])
+       #'(mac names ...))]))
