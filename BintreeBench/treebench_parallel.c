@@ -262,19 +262,42 @@ RefPair add1Tree(TreeRef t, TreeRef tout) {
     
     RefPair refs1 = add1Tree(t,tout);
     // tout += (t2 - t); // HACK: FIXME - Won't work with indirections.
+    // return add1Tree(t + sizeof(void*) + 1, tout + sizeof(void*) + 1);
     return add1Tree(refs1.tin,refs1.tout);
 
   // Here we have a choice, we could keep the indirection or inline
   // it.  For starters let's just inline.  We'll need to compute a
   // length of the output buffer to create if we don't.
   case Indirect:
+  {
     // fprintf(stderr, "Indirect, tout = %p\n", tout);
-    t++;
+    *tout = Indirect;
+    t++; tout++;
     TreeRef tnew = *((TreeRef*)t);
-    RefPair refs2 = add1Tree(tnew, tout);
-    RefPair ret2 = {t + sizeof(void*), refs2.tout};
+    RefPair ret = add1Tree(tnew, tout);
+    *(TreeRef*)tout = ret.tout;
+    RefPair ret2 = {t + sizeof(void*), tout + sizeof(void*)};
     return ret2;
+  }
+
+  case BufferSize:
+    t++; // Skip the tag
+    long size = *(long*)t;
+    tout = (TreeRef) malloc(size);
+    RefPair ret = {t-1, tout};
+    tout[0] = BufferSize;
+    *(long*)(tout + 1) = size;
+    tout++;
+    tout += sizeof(long);
+    t += sizeof(long); // Skip the buffer size
+    // TreeRef start = (TreeRef) malloc(*(long*)t);
+    add1Tree(t, tout);
+    return ret; 
     
+  case Next:
+    t++;
+    return add1Tree(*((TreeRef*)t), tout);
+
   default:
     fprintf(stderr, "Corrupt tree in add1Tree, at %p expected tag got: %d\n", t, (*t));
     exit(-1);
@@ -305,12 +328,12 @@ int main(int argc, char** argv) {
     printf("\n");
   }
 
-  // add1Tree(ta, tb);
+  RefPair ref = add1Tree(ta, NULL);
   printTree(ta);
-  // printf("\ntb:\n");
-  // printTree(tb);  
+  printf("\ntb:\n");
+  printTree(ref.tout);  
   printf("\n");
-  return 0;
+  // return 0;
   
   int depth;
   if (argc > 1)
