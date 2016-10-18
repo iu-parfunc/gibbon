@@ -1,5 +1,8 @@
+#lang racket/base
 
-;; Chez Scheme version
+(require racket/match)
+
+(require racket/unsafe/ops)
 
 (define (build-tree n)
   (define (go root n)
@@ -14,20 +17,18 @@
   (if (pair? tr)
       (cons (add1-tree (car tr))
             (add1-tree (cdr tr)))
-      (#3%fx+ 1 tr)))
+      (unsafe-fx+ 1 tr)))
 
 (define (bench n)
   (define tr (build-tree n))
-  (collect-maximum-generation)
+  (collect-garbage #;'major)
   (time (add1-tree tr)))
 
 (define size
-  (cond 
-   [(= (length (command-line-arguments)) 1)
-    (string->number (car (command-line-arguments)))]
-   [else (error 'treebench (format "expected one command line arg, <depth>, got ~a:  ~a"
-                                   (length (command-line-arguments))
-                                   (command-line-arguments)))]))
+  (match (current-command-line-arguments)
+    [(vector s) (string->number s)]
+    [args (error "expected one command line arg, <depth>, got ~a:\n  ~a"
+                 (vector-length args))]))
 
 (printf "Benchmarking on tree of size 2^~a\n" size)
 (let loop ((i 1))

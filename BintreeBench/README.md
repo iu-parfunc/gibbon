@@ -22,5 +22,7 @@ Running on my "drone" machine:
 On first inspection the treebench_unpacked benchmark takes 2ms on my
 laptop for 2^20.  This version uses the unpacked (preorder)
 representation, and also uses the same input/output memory again and
-again, even though it does
+again.  -RN
+
+
 

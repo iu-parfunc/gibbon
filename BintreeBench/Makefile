@@ -1,23 +1,32 @@
+
+# Building
+# ==============================================================================
+
 all: treebench_mlton.exe treebench_ocaml.exe \
-     treebench_strict_ghc.exe treebench_lazy_ghc.exe treebench_ghc_packed.exe \
-     treebench_rust.exe \
-     treebench_c.exe treebench_c_bumpalloc.exe treebench_c_unpacked.exe \
-     treebench.class
+     treebench_rust.exe treebench.class c ghc
+
+c: treebench_c.exe treebench_c_bumpalloc.exe treebench_c_packed.exe treebench_c_packed2.exe
+
+ghc: treebench_strict_ghc.exe treebench_lazy_ghc.exe treebench_ghc_packed.exe
+
 
 # Disabling for now, requires beta channel of rust:
 # treebench_rust_sys_alloc.exe 
 
 # Unfinished:
-# treebench_rust_unpacked.exe
+# treebench_rust_packed.exe
 
 # Match whichever version the docker image is using:
 # GHC = stack --install-ghc --resolver=lts-7.1 exec ghc --
 GHC = stack --install-ghc --resolver=lts-6.19 exec ghc --
-CC = icpc 
+
+CC = gcc
+# CC = icpc 
 # CC = clang
 
-# COPTS = -O3 -std=c11
-COPTS = -g -O0 -std=c++11
+COPTS = -O3 -std=c11
+# if debug:
+# COPTS = -g -O0 -std=c++11
 
 
 ghc: treebench_strict_ghc.exe treebench_lazy_ghc.exe
@@ -43,7 +52,7 @@ treebench_rust.exe: treebench.rs
 treebench_rust_sys_alloc.exe: treebench_sys_alloc.rs
 	time rustc $^ -o $@ -O
 
-# treebench_rust_unpacked.exe: treebench_unpacked.rs
+# treebench_rust_packed.exe: treebench_packed.rs
 # 	time rustc $^ -o $@ -O
 
 treebench_c.exe: treebench.c
@@ -52,7 +61,10 @@ treebench_c.exe: treebench.c
 treebench_c_bumpalloc.exe: treebench.c
 	time $(CC) $(COPTS) -DBUMPALLOC $^ -o $@ 
 
-treebench_c_unpacked.exe: treebench_unpacked.c
+treebench_c_packed.exe: treebench_packed.c
+	time $(CC) $(COPTS) $^ -o $@ 
+
+treebench_c_packed2.exe: treebench_packed2.c
 	time $(CC) $(COPTS) $^ -o $@ 
 
 treebench_c_parallel.exe: treebench_parallel.c
@@ -61,22 +73,36 @@ treebench_c_parallel.exe: treebench_parallel.c
 treebench.class: treebench.java
 	time javac $^ 
 
+# Running
+# ==============================================================================
+
 DEPTH=20
 
-# TODO: replace with an hsbencher harness:
+run_small:
+	$(MAKE) DEPTH=5 run_all
+
+# TODO: replace with an hsbencher harness / Criterion:
 run_all: all
-	./treebench_mlton.exe $(DEPTH)
-	./treebench_strict_ghc.exe $(DEPTH)
-	./treebench_lazy_ghc.exe $(DEPTH)
-	./treebench_ocaml.exe $(DEPTH)
-	./treebench_rust.exe $(DEPTH)
-	./treebench_rust_sys_alloc.exe $(DEPTH) 
-	./treebench_c.exe $(DEPTH)
-	./treebench_c_unpacked.exe $(DEPTH) 
+	./treebench_mlton.exe       $(DEPTH)
+	./treebench_strict_ghc.exe  $(DEPTH)
+	./treebench_lazy_ghc.exe    $(DEPTH)
+	./treebench_ocaml.exe       $(DEPTH)
+	./treebench_rust.exe        $(DEPTH)
+	./treebench_c.exe           $(DEPTH)
+	./treebench_c_packed.exe    $(DEPTH)
+	racket treebench.rkt        $(DEPTH)
+	racket treebench_packed.rkt $(DEPTH)
 	$(MAKE) run_chez
 	$(MAKE) run_java
 
+#	./treebench_rust_sys_alloc.exe $(DEPTH) 
+
 run_chez:
+	scheme --script treebench.ss $(DEPTH)
+
+run_racket:
+	racket treebench.rkt
+
 
 run_java: treebench.class
 	java treebench $(DEPTH)
@@ -84,4 +110,4 @@ run_java: treebench.class
 clean:
 	rm -f *.exe *.o *.hi treebench treebench_lazy *.cmi *.cmo *.cmx
 
-.PHONY: all clean ghc run_chez run_java
+.PHONY: all clean ghc run_chez run_java run_all run_small c ghc
