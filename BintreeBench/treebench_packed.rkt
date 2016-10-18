@@ -37,18 +37,16 @@
 
 (define (filltree! buf offset n0)
   (define (go root n offset)
-    (cond [(zero? n)
-           (define-values (offset1) (write-tag! buf offset Leaf))
+    (cond [(unsafe-fx= 0 n)
+           (define offset1 (write-tag! buf offset Leaf))
            (write-int64! buf offset1 root)]
           [else
-           (define-values (off1) (write-tag! buf offset Node))
-           (define-values (off2) (go root (sub1 n) off1))
-           (go (+ root (expt 2 (sub1 n)))
-               (sub1 n)
+           (define off1 (write-tag! buf offset Node))
+           (define off2 (go root (unsafe-fx- n 1) off1))
+           (go (+ root (unsafe-fxlshift 2 (unsafe-fx- n 1)))
+               (unsafe-fx- n 1)
                off2)]))
-  (define off0 offset)
-  (define-values (off*) (go 1 n0 off0))
-  off*)
+  (go 1 n0 offset))
 
 ;; Optimization; Compute the exact number of slots needed.
 (define (treesize depth)
@@ -58,32 +56,31 @@
      (* tag-slots (+ nodes leaves))))
 
 (define (add1tree! buf1 off1 buf2 off2)
-  (define (go off1 off2)
-    (define-values (off1* t) (read-tag! buf1 off1))
+  (define (go off)
+    (define t (read-tag*! buf1 off))
     (cond
       [(tag=? t Leaf)
-       (define-values (off2*) (write-tag! buf2 off2 Leaf))
-       (define-values (off1** i) (read-int64! buf1 off1*))
-       (define-values (off2**) (write-int64! buf2 off2* i))
-       (values off1** off2**)]
-      [else (let*-values ([(off2*) (write-tag! buf2 off2 Node)]
-                          [(off1** off2**)
-                           (go off1* off2*)])
-              (go off1** off2**))]))
-  (go off1 off2))
+       (let* ([off2* (write-tag! buf2 off Leaf)]
+              [i (read-int64*! buf1 off2*)]
+              [off2** (write-int64! buf2 off2* i)])
+         off2**)]
+      [else (let* ([off2* (write-tag! buf2 off Node)]
+                   [off2** (go off2*)])
+              (go off2**))]))
+    (go off1))
 
 ;; ----------------------------------------
 
 (define-values (tr-buf tr-off) (new-buffer (treesize depth)))
-(define-values (tr-off*) (filltree! tr-buf tr-off depth))
+(define tr-off* (filltree! tr-buf tr-off depth))
 
 (printf "Filled buffer of size ~a\n" (buffer-size tr-buf tr-off*))
 
 (define-values (tr2-buf tr2-off) (new-buffer (treesize depth)))
 
 ; (printf "Input tree: ~a\n" tr)
-;(require disassemble)
-;  (disassemble add1tree!)
+(require disassemble)
+  (disassemble add1tree!)
 (for ([i (in-range 10)])
   (let ([tr-off 0]
         [tr2-off 0])

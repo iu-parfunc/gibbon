@@ -19,11 +19,11 @@
 
 
 ;; Option 1: vector based implementation of buffers
-;--------------------------------------------------------------------------------
+;-------------------------------------------------------------------------------
 (define-syntax-rule
   (define-vector-ops
     new-buffer buffer-size advance-cursor! read-slot!
-    read-int64! read-tag! write-slot! write-tag! write-int64!
+    read-int64! read-int64*! read-tag!  read-tag*! write-slot! write-tag! write-int64!
     int64-slots tag-slots)
 (begin 
     ;; FINISHME - indirections:
@@ -42,11 +42,16 @@
     (values (unsafe-fx+ 1 off)
             (unsafe-vector-ref buff off)))
 
+  (define-inline (read-slot*! buff off)
+    (unsafe-vector-ref buff off))
+
   (define-inline (read-int64! buff off) (read-slot! buff off))
+  (define-inline (read-int64*! buff off) (read-slot*! buff off))
 
   ;; We could implement redirections by allowing cursor struct values in
   ;; tag positions.  
   (define-inline (read-tag! buf off)   (read-slot! buf off))
+  (define-inline (read-tag*! buf off)   (read-slot*! buf off))
 
   (define-inline (write-slot! buff off x)
     (begin
@@ -67,7 +72,7 @@
 (define-syntax-rule
   (define-bytes-ops
     new-buffer buffer-size advance-cursor! read-slot!
-    read-int64! read-tag! write-slot! write-tag! write-int64!
+    read-int64! read-int64*! read-tag! read-tag*! write-slot! write-tag! write-int64!
     int64-slots tag-slots)
   (begin 
     ;; FINISHME - indirections:
@@ -85,8 +90,11 @@
       (unsafe-fx+ off slots))
     
     (define-inline (read-slot! buff off)
-    (values (unsafe-fx+ 1 off)
-            (unsafe-bytes-ref buff off)))
+      (values (unsafe-fx+ 1 off)
+              (unsafe-bytes-ref buff off)))
+    
+    (define-inline (read-slot*! buff off)
+      (unsafe-bytes-ref buff off))
 
   (define-inline (read-int64! buff off)
     (values
@@ -94,10 +102,15 @@
      (integer-bytes->integer buff #t ; signed
                              #f off (+ off 8))))
 
+  (define-inline (read-int64*! buff off)
+    (integer-bytes->integer buff #t ; signed
+                            #f off (+ off 8)))
+  
 
   ;; We could implement redirections by allowing cursor struct values in
   ;; tag positions.  
   (define-inline (read-tag! buf off)   (read-slot! buf off))
+  (define-inline (read-tag*! buf off)   (read-slot*! buf off))
 
   (define-inline (write-slot! buff off x)
     (begin
@@ -123,7 +136,7 @@
 (define-syntax-rule
   (define-fxvector-ops
     new-buffer buffer-size advance-cursor! read-slot!
-    read-int64! read-tag! write-slot! write-tag! write-int64!
+    read-int64! read-int64*! read-tag! read-tag*! write-slot! write-tag! write-int64!
     int64-slots tag-slots)
 (begin 
     ;; FINISHME - indirections:
@@ -140,12 +153,16 @@
   (define-inline (read-slot! buff off)
     (values (unsafe-fx+ 1 off)
             (unsafe-fxvector-ref buff off)))
+  (define-inline (read-slot*! buff off)
+    (unsafe-fxvector-ref buff off))
 
   (define-inline (read-int64! buff off) (read-slot! buff off))
+  (define-inline (read-int64*! buff off) (read-slot*! buff off))
 
   ;; We could implement redirections by allowing cursor struct values in
   ;; tag positions.  
   (define-inline (read-tag! buf off)   (read-slot! buf off))
+  (define-inline (read-tag*! buf off)   (read-slot*! buf off))
 
   (define-inline (write-slot! buff off x)
     (begin
@@ -171,7 +188,9 @@
      (with-syntax ([(names ...)
                     (map (lambda (i) (datum->syntax #'tag i))
                          '(new-buffer buffer-size advance-cursor! read-slot!
-                           read-int64! read-tag! write-slot! write-tag!
+                                      read-int64! read-int64*!
+                                      read-tag!
+                                      read-tag*! write-slot! write-tag!
                            write-int64!
                            int64-slots tag-slots))]
                    [mac (format-id #'tag "define-~a-ops" #'tag)])
