@@ -99,6 +99,21 @@ desugarAlt (H.Alt _ _ _ Just{}) =
 desugarAlt (H.Alt _ pat _ _) =
     err ("Unsupported pattern in case: " ++ show pat)
 
+-------------------------------------------------------------------------------
+
+desugarType :: H.Type -> Ds.T1
+desugarType (TyCon (UnQual (Ident "Int"))) = return Int
+desugarType (TyCon (UnQual (Ident con))) = return (Packed cont [])
+desugarType (TyTuple Boxed [ty1, ty2]) = Prod <$> desugarType ty1 <*> desugarType ty2
+desugarType (TyApp (TyCon (UnQual (Ident "Dict"))) ty) = TDict <$> desugarType ty
+desugarType ty@(TyApp ty1 ty2) =
+    desugarType ty1 >>= \case
+      Packed con args -> do
+        ty2' <- desugarType ty2
+        return (Packed con (args ++ [ty2'])
+      _ -> err ("Unsupported type: " ++ show ty)
+desugarType ty = err ("Unsupported type: " ++ show ty)
+
 --------------------------------------------------------------------------------
 
 qname_to_str :: QName -> Ds String
