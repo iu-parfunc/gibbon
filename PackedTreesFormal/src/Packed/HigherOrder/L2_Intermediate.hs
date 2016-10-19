@@ -2,12 +2,12 @@
 -- | An intermediate language with cursors but not explicit memory
 -- representations.  
 
-module Packed.L2_Intermediate where
+module Packed.HigherOrder.L2_Intermediate where
 
 import Control.Monad.Writer hiding (Sum)
 import Data.Map as M
 import GHC.Generics
-import Packed.Common
+import Packed.HigherOrder.Common
 import Text.PrettyPrint.GenericPretty
 
     

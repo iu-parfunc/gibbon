@@ -4,9 +4,9 @@
 
 -- | The source language for recursive tree traversals.
 
-module Packed.L1_Source where
+module Packed.HigherOrder.L1_Source where
 
-import Packed.Common
+import Packed.HigherOrder.Common
 import Data.Map as M
 import Data.List as L
 import GHC.Generics

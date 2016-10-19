@@ -1,11 +1,11 @@
 -- | A final target language that directly exposes the representation
 -- of buffers used to store trees.
 
-module Packed.L3_Target where
+module Packed.HigherOrder.L3_Target where
 
 import Foreign.Ptr
 import Foreign.Storable
-import Packed.Common
+import Packed.HigherOrder.Common
 import Data.Word
     
 -- | The target language, a monadic one.   
