@@ -1,12 +1,15 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase    #-}
+{-# LANGUAGE TupleSections #-}
 
 module Packed.FirstOrder.HaskellFrontend where
 
 --------------------------------------------------------------------------------
 
 import Control.Monad (forM)
+import Data.Either (partitionEithers)
 import Data.Foldable (foldrM)
 import qualified Data.Map as M
+import Data.Maybe (catMaybes)
 
 import Language.Haskell.Exts.Syntax as H
 import Packed.FirstOrder.L1_Source as L1
@@ -17,6 +20,61 @@ type Ds a = Either String a
 
 err :: String -> Ds a
 err = Left
+
+--------------------------------------------------------------------------------
+
+desugarModule :: H.Module -> Ds P1
+desugarModule (H.Module _ _ _ _ _ _ decls) = do
+    -- since top-level function types and their types can't be declared in
+    -- single top-level declaration we first collect types and then collect
+    -- definition
+    fun_tys <- (M.fromList . catMaybes) <$> mapM collectTopFunTy decls
+
+    (data_decls, fun_decls) <- (partitionEithers . catMaybes) <$> mapM (collectTopLevel fun_tys) decls
+
+    let
+      data_map = M.fromList (map (\def -> (tyName def, def))  data_decls)
+      fun_map  = M.fromList (map (\def -> (funname def, def)) fun_decls)
+
+      (main_fn, fun_map_no_main) =
+        -- ugh, no alterF in this 'containers' version
+        ( funbody <$> M.lookup "main" fun_map
+        , M.delete "main" fun_map
+        )
+
+    return (P1 data_map fun_map_no_main main_fn)
+
+collectTopFunTy :: H.Decl -> Ds (Maybe (Var, T1))
+collectTopFunTy (TypeSig _ [n] ty) = Just <$> (name_to_str n,) <$> desugarType ty
+collectTopFunTy ty@TypeSig{} = err ("Unsupported top-level type declaration: " ++ show ty)
+collectTopFunTy FunBind{} = return Nothing
+collectTopFunTy unsupported = err ("Unsupported top-level thing: " ++ show unsupported)
+
+collectTopLevel :: M.Map Var T1 -> H.Decl -> Ds (Maybe (Either (DDef T1) (FunDef T1 L1)))
+
+collectTopLevel _ TypeSig{} = return Nothing
+
+collectTopLevel fun_tys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) Nothing]) = do
+    let fname' = name_to_str fname
+        fun_ty = M.findWithDefault (error ("Can't find function in type env: " ++ fname'))
+                                   fname' fun_tys
+    args'   <- mapM collectArg args
+    arg_tys <- mapM (getArgTy fun_ty) [ 1 .. length args' ]
+    rhs'    <- desugarExp rhs
+    return (Just (Right (FunDef fname' fun_ty (zip args' arg_tys) rhs')))
+  where
+    collectArg :: Pat -> Ds Var
+    collectArg (PVar n) = return (name_to_str n)
+    collectArg arg      = err ("Unsupported function arg: " ++ show arg)
+
+    getArgTy :: T1 -> Int -> Ds T1
+    getArgTy ty          0 = return ty
+    getArgTy (Arrow _ t) n = getArgTy t (n - 1)
+    getArgTy ty          _ = err ("getArgTy: " ++ show ty)
+
+collectTopLevel _ unsupported = err ("Unsupported top-level thing: " ++ show unsupported)
+
+--------------------------------------------------------------------------------
 
 -- TODO: Primops
 
@@ -101,16 +159,16 @@ desugarAlt (H.Alt _ pat _ _) =
 
 -------------------------------------------------------------------------------
 
-desugarType :: H.Type -> Ds.T1
-desugarType (TyCon (UnQual (Ident "Int"))) = return Int
-desugarType (TyCon (UnQual (Ident con))) = return (Packed cont [])
+desugarType :: H.Type -> Ds T1
+desugarType (TyCon (UnQual (Ident "Int"))) = return TInt
+desugarType (TyCon (UnQual (Ident con))) = return (Packed con [])
 desugarType (TyTuple Boxed [ty1, ty2]) = Prod <$> desugarType ty1 <*> desugarType ty2
 desugarType (TyApp (TyCon (UnQual (Ident "Dict"))) ty) = TDict <$> desugarType ty
 desugarType ty@(TyApp ty1 ty2) =
     desugarType ty1 >>= \case
       Packed con args -> do
         ty2' <- desugarType ty2
-        return (Packed con (args ++ [ty2'])
+        return (Packed con (args ++ [ty2']))
       _ -> err ("Unsupported type: " ++ show ty)
 desugarType ty = err ("Unsupported type: " ++ show ty)
 
@@ -129,5 +187,23 @@ name_to_str (Ident s)  = s
 name_to_str (Symbol s) = s
 
 lit_to_int :: Literal -> Ds Int
-lit_to_int (Int i) = return (fromIntegral i) -- lossy conversion here
-lit_to_int l       = err ("Literal not supported: " ++ show l)
+lit_to_int (H.Int i) = return (fromIntegral i) -- lossy conversion here
+lit_to_int l         = err ("Literal not supported: " ++ show l)
+
+
+{-
+  TopLevel
+  (TyEnv [("Tree", SumTy [("Leaf",[IntTy]),("Node",[VarTy "Tree", VarTy "Tree"])])])
+  [(FunDecl "add1" ["t"]
+     (CaseE "t" [
+         ("Leaf", "x",
+          (LetE [("v1",(IntE 1)),("v2",(ProjE "Leaf" "x" 0))]
+            (PrimOpE PlusP ["v1","v2"]))),
+         ("Node", "x",
+          (LetE [("x1",(ProjE "Node" "x" 0)),("x2",(ProjE "Node" "x" 1))]
+            (LetE [("y1",(AppE "add1" "x1")),("y2",(AppE "add1" "x2"))]
+              (ConstrE "Node" ["y1","y2"]))))
+         ]))
+  ]
+  (IntE 0)
+  -}
