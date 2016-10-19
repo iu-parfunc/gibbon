@@ -10,17 +10,19 @@ import GHC.Generics
 type Name = L1.Name
 type TyName = L1.TyName
 
--- * Types for the region language are similar to the source language
---   Functions are parameterized over some regions.
 --   I'm not sure whether to explicitly put regions in these types or
 --   to have an `At` relation to associate `Name`s to `Region`s, but I'm
 --   leaning toward the latter because it's more flexible.
-data RTy = RArrTy [Region] [RTy] RTy
+    
+-- * Types for the region language are similar to the source language
+--   Cursors have a region in their type.
+data RTy = RArrTy [Region] [RTy] RTy [Region]
          | RProdTy [RTy]
          | RSumTy [(TyName,[RTy])]
          | RIntTy 
          | RBoolTy 
          | RVarTy TyName
+         | RCursor Region
   deriving (Read,Show,Eq,Ord,Generic)
            
 -- * Region types are either a region parameter or region zero
@@ -47,7 +49,6 @@ data RTopLevel = RTopLevel RTyEnv [RFunDecl] RExpr
 data RFunDecl = RFunDecl Name [Name] RExpr
   deriving (Read,Show,Eq,Ord,Generic)
 
--- * Expressions in the region language
 --   How do we express the concept of threading regions through the computation?
 --   We could do it explicitly in the AST with something like the commented out code
 --   below, or we could take advantage of the fact that everything has a unique name
@@ -64,16 +65,21 @@ data RFunDecl = RFunDecl Name [Name] RExpr
 --   If we had a notion of linearity for regions, we could say that having consumed
 --   some name x where we know (At x p1) and (After p2 p1) we can then consume
 --   some name y where (At y p2). 
+
+type RName = Name -- region/cursor?
+    
+-- * Expressions in the region language
+--   Here the application form is replaced with a letcall form, which
+--   is like a limited form of let-values, and a yield form, which is
+--   like a limited form of values.
 data RExpr = RVarE Name
            | RCaseE [(Name,Name,RExpr)]
-           | RLetE [(Name,RExpr)] RExpr 
-           -- | RLetStepE [((Name,Region),RExpr)] (RExpr,Region)
-           -- | RConstrE Name [(RExpr,Region)]
-           | RConstrE Name [Name] -- params already have regions... is that enough?
+           | RLetValE [(Name,RExpr)] RExpr
+           | RLetCallE [(Name,[Name],Name,[RName])] RExpr
+           | RConstrE Name [Name]
            | RPrimOpE L1.Prim [Name]
            | RIfE Name RExpr RExpr
-           | RAppE Name Name
-           -- | RLetRegE Name RExpr              
            | RIntE Int
            | RBoolE Bool
+           | RYield Name [RName]
   deriving (Read,Show,Eq,Ord,Generic)
