@@ -15,7 +15,8 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:  Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate, Packed.HigherOrder.L3_Target,
-                    Packed.HigherOrder.Translate, Packed.HigherOrder.Common
+                    Packed.HigherOrder.Translate, Packed.HigherOrder.Common,
+                    Packed.FirstOrder.L1_Source
   -- other-modules:       
   other-extensions:    DeriveDataTypeable
   build-depends:       base >=4.8,
