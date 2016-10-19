@@ -49,10 +49,15 @@ instance (Out a, Out b) => Out (FunDef a b)
 --------------------------------------------------------------------------------
 
 -- | Complete programs include datatype definitions:
+-- 
+-- For evaluating a complete program, main's type will be an Int or a
+-- datatype.  For running a pass benchmark, main will be Nothing and
+-- we will expect a "benchmark" function definition which consumes an
+-- appropriate packed AST datatype.
 data P1 = P1 { ddefs    :: DDefs T1
-             , fundefs  :: FunDefs T1 L1
-             , mainProg :: L1
-             , mainTy   :: T1 }
+             , fundefs  :: FunDefs T1 L1                                         
+             , mainExp  :: Maybe (L1,T1)
+             }
   deriving (Read,Show,Eq,Ord, Generic)
 
            
@@ -60,7 +65,7 @@ data P1 = P1 { ddefs    :: DDefs T1
 -- well as packed algebraic datatypes.
 data L1 = Varref Var | Lit Int 
         | App Var L1 -- Only apply top-level / first-order functions
-        | Add L1 L1  -- One primitive.
+        | PrimApp Prim [L1]
         | Letrec (Var,T1,L1) L1
           -- ^ One binding at a time, but could bind a tuple for
           -- mutual recursion.
@@ -69,6 +74,13 @@ data L1 = Varref Var | Lit Int
         | MkPacked Constr [L1]
   deriving (Read,Show,Eq,Ord, Generic)
 
+data Prim = Add | Sub | Mul -- ^ Need more numeric primitives...
+          | DictInsert -- ^ takes k,v,dict
+          | DictLookup -- ^ takes k dict, errors if absent
+  deriving (Read,Show,Eq,Ord, Generic)
+
+
+instance Out Prim
 instance Out T1
 -- Do this manually to get prettier formatting:
 -- instance Out T1 where  doc x = undefined
@@ -80,8 +92,9 @@ type TEnv = Map Var T1
            
 -- | Types include boxed/pointer-based products as well as unpacked
 -- algebraic datatypes.
-data T1 = TInt 
-        | Prod T1 T1 
+data T1 = TInt | TSym -- Symbols used in writing compiler passes
+        | Prod T1 T1
+        | TDict T1 -- We allow built-in dictionaries from symbols to a value type.
         | Packed Constr [T1]
   deriving (Read,Show,Eq,Ord, Generic)
            
