@@ -52,6 +52,7 @@ data RExpr = RVarE Name
            | RLetE [(Name,RExpr)] RExpr
            | RLetRegE Name RExpr
            | RLetStepE [((Name,Region),RExpr)] (RExpr,Region)
+           | RConstrE Name [(RExpr,Region)]
            | RPrimOpE L1.Prim [Name]
            | RIfE Name RExpr RExpr
            | RAppE Name Name
