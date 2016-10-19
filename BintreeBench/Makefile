@@ -20,10 +20,11 @@ ghc: treebench_strict_ghc.exe treebench_lazy_ghc.exe treebench_ghc_packed.exe
 # GHC = stack --install-ghc --resolver=lts-7.1 exec ghc --
 GHC = stack --install-ghc --resolver=lts-6.19 exec ghc --
 
-CC = gcc
-# CC = icpc 
+# CC = gcc
+CPP = icpc 
 # CC = clang
 
+CPPOPTS = -O3 -std=c++11
 COPTS = -O3 -std=c11
 # if debug:
 # COPTS = -g -O0 -std=c++11
@@ -68,7 +69,7 @@ treebench_c_packed2.exe: treebench_packed2.c
 	time $(CC) $(COPTS) $^ -o $@ 
 
 treebench_c_parallel.exe: treebench_parallel.c
-	time $(CC) $(COPTS) $^ -o $@ 
+	time $(CPP) $(CPPOPTS) $^ -o $@ 
 
 treebench.class: treebench.java
 	time javac $^ 
