@@ -48,21 +48,13 @@ data RFunDecl = RFunDecl Name [Name] RExpr
   deriving (Read,Show,Eq,Ord,Generic)
 
 data RExpr = RVarE Name
-           | RCaseE [(Name,Name,Expr)]
+           | RCaseE [(Name,Name,RExpr)]
            | RLetE [(Name,RExpr)] RExpr
            | RLetRegE Name RExpr
+           | RLetStepE [((Name,Region),RExpr)] (RExpr,Region)
            | RPrimOpE L1.Prim [Name]
            | RIfE Name RExpr RExpr
            | RAppE Name Name
            | RIntE Int
            | RBoolE Bool
   deriving (Read,Show,Eq,Ord,Generic)
-
-regionsOfTy :: RTy -> [Region]
-regionsOfTy (RArrTy rs _ _) = rs
-regionsOfTy (RProdTy _ r) = [r]
-regionsOfTy (RTag _ r) = [r]
-regionsOfTy (RIntTy) = [RegionZero]
-regionsOfTy (RBoolTy) = [RegionZero]
-regionsOfTy (RVarTy _ r) = [r]
-regionsOfTy (RBlock ls _) = map snd ls
