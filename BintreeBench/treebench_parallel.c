@@ -274,7 +274,7 @@ RefPair add1Tree(TreeRef t, TreeRef tout) {
     *tout = Indirect;
     t++; tout++;
     TreeRef tnew = *((TreeRef*)t);
-    RefPair ret = add1Tree(tnew, tout);
+    RefPair ret = cilk_spawn add1Tree(tnew, tout);
     *(TreeRef*)tout = ret.tout;
     RefPair ret2 = {t + sizeof(void*), tout + sizeof(void*)};
     return ret2;
@@ -319,14 +319,16 @@ int main(int argc, char** argv) {
   TreeRef tb = (TreeRef) malloc(treeSize(3));
   printf("Allocated tb space: %d, %p \n", treeSize(3), tb);
 
+  /*
   for (auto& it : buffer_map) {
     list<char> clist = it.second;
-    printf("Buffer : %p\n", it.first);
+    // printf("Buffer : %p\n", it.first);
     for (auto it1 = clist.begin(); it1 != clist.end(); ++it1) {
       printf("%d", *it1);
     }
     printf("\n");
   }
+  */
 
   RefPair ref = add1Tree(ta, NULL);
   printTree(ta);
