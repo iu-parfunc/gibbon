@@ -10,56 +10,47 @@ import GHC.Generics
 type Name = L1.Name
 type TyName = L1.TyName
 
--- * Types for the region language are similar to the source language,
---   but with region annotations and a type for enforcing constructors are
---   created correctly
+-- * Types for the region language are similar to the source language
+--   Functions are parameterized over some regions.
+--   I'm not sure whether to explicitly put regions in these types or
+--   to have an `At` relation to associate `Name`s to `Region`s, but I'm
+--   leaning toward the latter because it's more flexible.
 data RTy = RArrTy [Region] [RTy] RTy
-         | RProdTy [RTy] Region
-         | RTag TyName Region
+         | RProdTy [RTy]
+         | RSumTy [(TyName,[RTy])]
          | RIntTy 
          | RBoolTy 
-         | RVarTy TyName Region
-         | RBlock [(Protocol,Region)] RTy
+         | RVarTy TyName
   deriving (Read,Show,Eq,Ord,Generic)
            
--- * Type-level specification of a series of types to be consumed
-data Protocol = Needed RTy Protocol
-              | Done
-  deriving (Read,Show,Eq,Ord,Generic)
-
 -- * Region types are either a region parameter or region zero
-data Region = RegionParam TyName
+data Region = RegionParam Name
             | RegionZero
   deriving (Read,Show,Eq,Ord,Generic)
 
--- * Relations on regions
+-- * Relations on regions. Constraints? Don't know what to call these.
+--   Associations between names and regions go here, rather than in the AST,
+--   since we're assuming all names are unique and using ANF. 
 data RRel = After Region Region
           | End Region
           | Inside Region Region
+          | At Name Region
  deriving (Read,Show,Eq,Ord,Generic)
            
--- * Region type environments also have a list of relations
+-- * Region type environments also have a list of things we know about the regions
 data RTyEnv = RTyEnv [(TyName,RTy)] [RRel]
   deriving (Read,Show,Eq,Ord,Generic)
 
 data RTopLevel = RTopLevel RTyEnv [RFunDecl] RExpr
   deriving (Read,Show,Eq,Ord,Generic)
 
-data RFunDecl = RFunDecl Name [Name] RBlock
-  deriving (Read,Show,Eq,Ord,Generic)
-
-data RBlock = RBind Name RAction RBlock
-            | RReturn RExpr
-  deriving (Read,Show,Eq,Ord,Generic)
-
-data RAction = RRead Region
-             | RWrite Name Region
-             | RPure RExpr
+data RFunDecl = RFunDecl Name [Name] RExpr
   deriving (Read,Show,Eq,Ord,Generic)
 
 data RExpr = RVarE Name
-           | RSwitch [(Name,RBlock)]
+           | RCaseE [(Name,Name,Expr)]
            | RLetE [(Name,RExpr)] RExpr
+           | RLetRegE Name RExpr
            | RPrimOpE L1.Prim [Name]
            | RIfE Name RExpr RExpr
            | RAppE Name Name
