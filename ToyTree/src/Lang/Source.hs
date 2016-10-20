@@ -46,8 +46,8 @@ data FunDecl = FunDecl Name [Name] Expr
 data Expr = VarE Name -- * variable reference
           | CaseE Name [(Name,Name,Expr)] -- * each case pattern has name, binding, expr
           | LetE [(Name,Expr)] Expr -- * let expression with multiple bindings
-          | ConstrE Name [Name] -- * constructor application
-          | ProjE TyName Name Int -- * project the nth field out of a structure 
+          | ConstrE TyName [Name] -- * constructor application (eg to create products/sums)
+          | ProjE TyName Name Int -- * project the nth field out of a product 
           | PrimOpE Prim [Name] -- * apply primitive operation (punting on this)
           | IfE Name Expr Expr -- * conditional expression
           | AppE Name Name -- * function application (must be names)

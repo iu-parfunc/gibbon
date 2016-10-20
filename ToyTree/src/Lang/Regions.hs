@@ -76,7 +76,8 @@ data RExpr = RVarE Name
            | RCaseE [(Name,Name,RExpr)]
            | RLetValE [(Name,RExpr)] RExpr
            | RLetCallE [(Name,[Name],Name,[RName])] RExpr
-           | RConstrE Name [Name]
+           | RConstrE TyName [Name]
+           | RProjE TyName Name Int
            | RPrimOpE L1.Prim [Name]
            | RIfE Name RExpr RExpr
            | RIntE Int
