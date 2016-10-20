@@ -9,15 +9,12 @@ import GHC.Generics
 
 type Name = L1.Name
 type TyName = L1.TyName
-
---   I'm not sure whether to explicitly put regions in these types or
---   to have an `At` relation to associate `Name`s to `Region`s, but I'm
---   leaning toward the latter because it's more flexible.
     
 -- * Types for the region language are similar to the source language
 --   Cursors have a region in their type.
 data RTy = RArrTy [Region] [RTy] RTy [Region]
-         | RProdTy [RTy]
+         | RPackProdTy [RTy]
+         | RTupleTy [RTy]
          | RSumTy [(TyName,[RTy])]
          | RIntTy 
          | RBoolTy 
@@ -34,7 +31,6 @@ data Region = RegionParam Name
 --   Associations between names and regions go here, rather than in the AST,
 --   since we're assuming all names are unique and using ANF. 
 data RRel = After Region Region
-          | End Region
           | Inside Region Region
           | At Name Region
  deriving (Read,Show,Eq,Ord,Generic)
@@ -49,24 +45,7 @@ data RTopLevel = RTopLevel RTyEnv [RFunDecl] RExpr
 data RFunDecl = RFunDecl Name [Name] RExpr
   deriving (Read,Show,Eq,Ord,Generic)
 
---   How do we express the concept of threading regions through the computation?
---   We could do it explicitly in the AST with something like the commented out code
---   below, or we could take advantage of the fact that everything has a unique name
---   and use our region relations/constraints above.
---   For example, if we have:
---     case e of
---       A b c -> let x = f b
---                    y = f c
---                    z = A x y
---                in z
---   Here we can have relations like (At e p1) (At b p2) (At c p3) (Inside p1 p2)
---   and even (After p3 p2)...
---   But how do we say that doing `f b` should get us the region to read c?
---   If we had a notion of linearity for regions, we could say that having consumed
---   some name x where we know (At x p1) and (After p2 p1) we can then consume
---   some name y where (At y p2). 
-
-type RName = Name -- region/cursor?
+type RName = Name
     
 -- * Expressions in the region language
 --   Here the application form is replaced with a letcall form, which
@@ -75,12 +54,14 @@ type RName = Name -- region/cursor?
 data RExpr = RVarE Name
            | RCaseE [(Name,Name,RExpr)]
            | RLetValE [(Name,RExpr)] RExpr
-           | RLetCallE [(Name,[Name],Name,[RName])] RExpr
+           | RLetCallE (Name,[Name],[RName]) Name [RName] RExpr
            | RConstrE TyName [Name]
            | RProjE TyName Name Int
            | RPrimOpE L1.Prim [Name]
            | RIfE Name RExpr RExpr
            | RIntE Int
            | RBoolE Bool
-           | RYield Name [RName]
+           | RReturn Name [RName]
+           | LetRegion RName RExpr
   deriving (Read,Show,Eq,Ord,Generic)
+
