@@ -4,15 +4,15 @@
 -- This implements the cursor-passing implementation of Packed tree
 -- ADTs.
 
-module Packed.Translate where
+module Packed.HigherOrder.Translate where
 
 import           Control.Monad.Identity
 import           Control.Monad.State
 import           Data.Map as M hiding (map)
-import           Packed.Common
-import           Packed.L1_Source       as S
-import           Packed.L2_Intermediate (L2,T2,P2)
-import qualified Packed.L2_Intermediate as T
+import           Packed.HigherOrder.Common
+import           Packed.HigherOrder.L1_Source       as S
+import           Packed.HigherOrder.L2_Intermediate (L2,T2,P2)
+import qualified Packed.HigherOrder.L2_Intermediate as T
 
 
 -- | Used during compilation to describe the outstanding return context.

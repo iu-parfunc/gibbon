@@ -2,24 +2,38 @@
 name:                packed-trees
 version:             0.1.0.0
 synopsis:            A compiler transform for operating on serialized trees.
--- description:         
--- license:             
+-- description:
+-- license:
 -- license-file:        LICENSE
 author:              Ryan Newton
 maintainer:          rrnewton@gmail.com
--- copyright:           
--- category:            
+-- copyright:
+-- category:
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
-  exposed-modules:  Packed.L1_Source, Packed.L2_Intermediate, Packed.L3_Target,
-                    Packed.Translate, Packed.Common
-  -- other-modules:       
+  exposed-modules:  Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate, Packed.HigherOrder.L3_Target,
+                    Packed.HigherOrder.Translate, Packed.HigherOrder.Common,
+                    Packed.FirstOrder.L1_Source,
+                    Packed.FirstOrder.HaskellFrontend
+  -- other-modules:
   other-extensions:    DeriveDataTypeable
   build-depends:       base >=4.8,
-                       aeson, bytestring, containers, mtl, GenericPretty
+                       aeson, bytestring, containers, mtl, GenericPretty,
+                       haskell-src-exts
   hs-source-dirs:      src
   default-language:    Haskell2010
-  ghc-options: -Wall
+  ghc-options:         -Wall
+
+executable packed-trees
+  hs-source-dirs:      execs
+  main-is:             Frontend.hs
+
+  build-depends:       base,
+                       haskell-src-exts,
+                       packed-trees
+
+  default-language:    Haskell2010
+  ghc-options:         -Wall

@@ -6,8 +6,13 @@ subdirectories are for:
 
  * `BintreeBench` - the tiniest binary tree microbenchmark, implemented several different ways.
 
- * `PackedTreesFormal` - a small core language on which we can formalize the translation between programs on unpacked and packed trees.
- * `TinyCore` - stripped down GHC core as a candidate for AST traversal benchmarks
+ * `ASTBenchmarks` - benchmark of treewalks (compiler passes) on ASTs
+
+ * `PackedTreesFormal` - a small core language on which we can
+   formalize the translation between programs on unpacked and packed
+   trees.
+   
+ * `core-harvest` - harvest realistic, large program ASTs from the wild.
  
  * `./paper` - draft paper
 

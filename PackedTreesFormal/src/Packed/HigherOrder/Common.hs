@@ -5,7 +5,7 @@
 
 -- | Utilities and common types.
 
-module Packed.Common 
+module Packed.HigherOrder.Common 
        ( Constr, Value(..), ValEnv
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupTyCon, lookupDataCon
