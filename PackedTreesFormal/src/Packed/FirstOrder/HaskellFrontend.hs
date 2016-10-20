@@ -54,7 +54,8 @@ collectTopFunTy :: H.Decl -> Ds (Maybe (Var, TopTy))
 collectTopFunTy (TypeSig _ [n] ty) = Just <$> (name_to_str n,) <$> desugarTopType ty
 collectTopFunTy ty@TypeSig{} = err ("Unsupported top-level type declaration: " ++ show ty)
 collectTopFunTy FunBind{} = return Nothing
-collectTopFunTy unsupported = err ("Unsupported top-level thing: " ++ show unsupported)
+collectTopFunTy DataDecl{} = return Nothing
+collectTopFunTy unsupported = err ("collectTopFunTy: Unsupported top-level thing: " ++ show unsupported)
 
 collectTopLevel :: M.Map Var TopTy -> H.Decl -> Ds (Maybe (Either (DDef T1) (FunDef T1 L1)))
 
@@ -81,7 +82,17 @@ collectTopLevel fun_tys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) 
     getRetTy (Arrow ts) = last ts
     getRetTy (T1 t)     = t
 
-collectTopLevel _ unsupported = err ("Unsupported top-level thing: " ++ show unsupported)
+collectTopLevel _ (DataDecl _ DataType [] ty_name [] cons []) = do
+    let ty_name' = name_to_str ty_name
+    constrs <- mapM collectConstr cons
+    return (Just (Left (DDef ty_name' constrs)))
+  where
+    collectConstr (QualConDecl _ [] [] (ConDecl con_name arg_tys)) =
+      ( name_to_str con_name, ) <$> mapM desugarType arg_tys
+    collectConstr unsupported =
+      err ("Unsupported data constructor: " ++ show unsupported)
+
+collectTopLevel _ unsupported = err ("collectTopLevel: Unsupported top-level thing: " ++ show unsupported)
 
 --------------------------------------------------------------------------------
 
@@ -108,6 +119,9 @@ desugarExp e =
           MkPacked c as -> do
             e2' <- desugarExp e2
             return (L1.MkPacked c (as ++ [e2']))
+          L1.App f l -> do
+            e2' <- desugarExp e2
+            return (L1.App f (MkProd l e2'))
           f ->
             err ("Only variables allowed in operator position in function applications. (found: " ++ show f ++ ")")
 
@@ -125,6 +139,10 @@ desugarExp e =
       H.Case scrt alts -> do
         scrt' <- desugarExp scrt
         CasePacked scrt' . M.fromList <$> mapM desugarAlt alts
+
+      H.Paren e' -> desugarExp e'
+
+      _ -> err ("desugarExp: Unsupported expression: " ++ show e)
 
 --------------------------------------------------------------------------------
 
@@ -175,26 +193,34 @@ data TopTy
   deriving (Show)
 
 desugarTopType :: H.Type -> Ds TopTy
-desugarTopType (TyInfix ty1 (UnQual (Symbol "->")) ty2) = do
-    ty1' <- desugarType ty1
-    ty2' <- desugarTopType ty2
-    return . Arrow $ case ty2' of
-                       Arrow ts -> ty1' : ts
-                       T1 t1    -> [ty1', t1]
+
+desugarTopType (TyFun t1 t2) = do
+    t1' <- desugarType t1
+    t2' <- desugarTopType t2
+    return . Arrow $ case t2' of
+                       Arrow ts -> t1' : ts
+                       T1 t     -> [t1', t]
+
 desugarTopType ty =
-    err ("Toplevel types should be arrows. Found: " ++ show ty)
+    T1 <$> desugarType ty
 
 desugarType :: H.Type -> Ds T1
+
 desugarType (TyCon (UnQual (Ident "Int"))) = return TInt
+
 desugarType (TyCon (UnQual (Ident con))) = return (Packed con [])
+
 desugarType (TyTuple Boxed [ty1, ty2]) = Prod <$> desugarType ty1 <*> desugarType ty2
+
 desugarType (TyApp (TyCon (UnQual (Ident "Dict"))) ty) = TDict <$> desugarType ty
+
 desugarType ty@(TyApp ty1 ty2) =
     desugarType ty1 >>= \case
       Packed con args -> do
         ty2' <- desugarType ty2
         return (Packed con (args ++ [ty2']))
       _ -> err ("Unsupported type: " ++ show ty)
+
 desugarType ty = err ("Unsupported type: " ++ show ty)
 
 --------------------------------------------------------------------------------
