@@ -30,27 +30,28 @@ desugarModule (H.Module _ _ _ _ _ _ decls) = do
     -- definition
     fun_tys <- (M.fromList . catMaybes) <$> mapM collectTopFunTy decls
 
-    (data_decls, fun_decls) <- (partitionEithers . catMaybes) <$> mapM (collectTopLevel fun_tys) decls
+    (data_decls, fun_decls) <-
+      (partitionEithers . catMaybes) <$> mapM (collectTopLevel fun_tys) decls
 
     let
       data_map = M.fromList (map (\def -> (tyName def, def))  data_decls)
-      fun_map  = M.fromList (map (\def -> (funname def, def)) fun_decls)
+      fun_map  = M.fromList (map (\def -> (funName def, def)) fun_decls)
 
       (main_fn, fun_map_no_main) =
         -- ugh, no alterF in this 'containers' version
-        ( funbody <$> M.lookup "main" fun_map
+        ( funBody <$> M.lookup "main" fun_map
         , M.delete "main" fun_map
         )
 
     return (P1 data_map fun_map_no_main main_fn)
 
-collectTopFunTy :: H.Decl -> Ds (Maybe (Var, T1))
-collectTopFunTy (TypeSig _ [n] ty) = Just <$> (name_to_str n,) <$> desugarType ty
+collectTopFunTy :: H.Decl -> Ds (Maybe (Var, TopTy))
+collectTopFunTy (TypeSig _ [n] ty) = Just <$> (name_to_str n,) <$> desugarTopType ty
 collectTopFunTy ty@TypeSig{} = err ("Unsupported top-level type declaration: " ++ show ty)
 collectTopFunTy FunBind{} = return Nothing
 collectTopFunTy unsupported = err ("Unsupported top-level thing: " ++ show unsupported)
 
-collectTopLevel :: M.Map Var T1 -> H.Decl -> Ds (Maybe (Either (DDef T1) (FunDef T1 L1)))
+collectTopLevel :: M.Map Var TopTy -> H.Decl -> Ds (Maybe (Either (DDef T1) (FunDef T1 L1)))
 
 collectTopLevel _ TypeSig{} = return Nothing
 
@@ -61,16 +62,19 @@ collectTopLevel fun_tys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) 
     args'   <- mapM collectArg args
     arg_tys <- mapM (getArgTy fun_ty) [ 1 .. length args' ]
     rhs'    <- desugarExp rhs
-    return (Just (Right (FunDef fname' fun_ty (zip args' arg_tys) rhs')))
+    return (Just (Right (FunDef fname' (getRetTy fun_ty) (zip args' arg_tys) rhs')))
   where
     collectArg :: Pat -> Ds Var
     collectArg (PVar n) = return (name_to_str n)
     collectArg arg      = err ("Unsupported function arg: " ++ show arg)
 
-    getArgTy :: T1 -> Int -> Ds T1
-    getArgTy ty          0 = return ty
-    getArgTy (Arrow _ t) n = getArgTy t (n - 1)
-    getArgTy ty          _ = err ("getArgTy: " ++ show ty)
+    getArgTy :: TopTy -> Int -> Ds T1
+    getArgTy (Arrow ts) n = return (ts !! n)
+    getArgTy ty         _ = err ("getArgTy: " ++ show ty)
+
+    getRetTy :: TopTy -> T1
+    getRetTy (Arrow ts) = last ts
+    getRetTy (T1 t)     = t
 
 collectTopLevel _ unsupported = err ("Unsupported top-level thing: " ++ show unsupported)
 
@@ -158,6 +162,22 @@ desugarAlt (H.Alt _ pat _ _) =
     err ("Unsupported pattern in case: " ++ show pat)
 
 -------------------------------------------------------------------------------
+
+-- | Top-level function definitions can have arrow in the types. Others can't.
+data TopTy
+  = Arrow [T1]
+  | T1 T1
+  deriving (Show)
+
+desugarTopType :: H.Type -> Ds TopTy
+desugarTopType (TyInfix ty1 (UnQual (Symbol "->")) ty2) = do
+    ty1' <- desugarType ty1
+    ty2' <- desugarTopType ty2
+    return . Arrow $ case ty2' of
+                       Arrow ts -> ty1' : ts
+                       T1 t1    -> [ty1', t1]
+desugarTopType ty =
+    err ("Toplevel types should be arrows. Found: " ++ show ty)
 
 desugarType :: H.Type -> Ds T1
 desugarType (TyCon (UnQual (Ident "Int"))) = return TInt

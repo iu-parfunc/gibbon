@@ -39,10 +39,11 @@ instance (Out k,Out v) => Out (Map k v) where
 -- | A set of top-level recursive function definitions
 type FunDefs ty ex = Map Var (FunDef ty ex)
 
-data FunDef ty ex = FunDef { funname :: Var
-                           , funty   :: ty
-                           , funargs :: [(Var,ty)]
-                           , funbody :: ex }
+data FunDef ty ex = FunDef { funName  :: Var
+                           , funRetTy :: ty
+                               -- ^ Return type
+                           , funArgs  :: [(Var,ty)]
+                           , funBody  :: ex }
   deriving (Read,Show,Eq,Ord, Generic)
 
 instance (Out a, Out b) => Out (FunDef a b)
@@ -95,7 +96,6 @@ type TEnv = Map Var T1
 -- algebraic datatypes.
 data T1 = TInt | TSym -- Symbols used in writing compiler passes
         | Prod T1 T1
-        | Arrow T1 T1
         | TDict T1 -- We allow built-in dictionaries from symbols to a value type.
         | Packed Constr [T1]
   deriving (Read,Show,Eq,Ord, Generic)
