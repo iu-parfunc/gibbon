@@ -1,7 +1,12 @@
 {-# LANGUAGE LambdaCase    #-}
 {-# LANGUAGE TupleSections #-}
 
-module Packed.FirstOrder.HaskellFrontend where
+module Packed.FirstOrder.HaskellFrontend
+  ( desugarModule
+  , desugarExp
+  , desugarTopType
+  , desugarType
+  ) where
 
 --------------------------------------------------------------------------------
 
@@ -209,21 +214,3 @@ name_to_str (Symbol s) = s
 lit_to_int :: Literal -> Ds Int
 lit_to_int (H.Int i) = return (fromIntegral i) -- lossy conversion here
 lit_to_int l         = err ("Literal not supported: " ++ show l)
-
-
-{-
-  TopLevel
-  (TyEnv [("Tree", SumTy [("Leaf",[IntTy]),("Node",[VarTy "Tree", VarTy "Tree"])])])
-  [(FunDecl "add1" ["t"]
-     (CaseE "t" [
-         ("Leaf", "x",
-          (LetE [("v1",(IntE 1)),("v2",(ProjE "Leaf" "x" 0))]
-            (PrimOpE PlusP ["v1","v2"]))),
-         ("Node", "x",
-          (LetE [("x1",(ProjE "Node" "x" 0)),("x2",(ProjE "Node" "x" 1))]
-            (LetE [("y1",(AppE "add1" "x1")),("y2",(AppE "add1" "x2"))]
-              (ConstrE "Node" ["y1","y2"]))))
-         ]))
-  ]
-  (IntE 0)
-  -}
