@@ -1,0 +1,90 @@
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+SFSEXP: Small Fast S-Expression Library
+http://sexpr.sourceforge.net/
+
+Matt Sottile (mjsottile@gmail.com)
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+1. BUILDING
+
+(Attention Windows Users: If you are using cygwin, this section applies as
+cygwin looks pretty much like unix for compilation.  Visual Studio users see
+the note at the end and look inside the win32 directory.)
+
+Configure the sources via autoconf.
+
+    % ./configure
+
+Currently, the only feature that can be enabled via autoconf is to enable any
+debugging code in the library by specifying "--enable-debug".  Other features
+such as disabling memory management by the library are toggled by setting
+appropriate options in the CFLAGS:
+
+    % CFLAGS=-D_NO_MEMORY_MANAGEMENT_ ./configure
+
+Note that you should use the vanilla configuration unless you know that you
+want to use debug mode or other options, and understand precisely what they
+mean.
+
+After building, just invoke make:
+
+    % make
+
+What comes out is a library called "libsexp.a".  If you wish to copy the
+headers and libraries to an installation location, you should then say:
+
+    % make install
+
+At the current time, this is not recommended if the installation prefix is
+/usr or /usr/local, since the headers do not go into an isolated subdirectory.
+In the future, we will hopefully have a single consolidated header that
+encapsulates all of the headers currently included in the library.  If you do
+not want to aim your project that uses the library into the library source and
+build directories directly, creating a separate installation prefix and
+installing there is recommended.  For example, from the root of the sexpr
+tree:
+
+    % mkdir installTree
+    % ./configure --prefix=`pwd`/installTree
+    % make
+    % make install
+
+If you want the docs, make sure you have doxygen installed and that the
+DOXYGEN variable in the Makefile.in in this directory points at the right
+place.  Re-run autoconf to regenerate the makefiles, and then type:
+
+    % make doc
+
+2. USING
+
+In any code that wants to use this, just include "sexp.h".  That contains the
+one data structure, enumeration, and five functions for manipulating and
+parsing strings and s-expressions.  Compilation typically will look like:
+
+    % cc -I/path/to/sexp/include -L/path/to/sexp/library \
+         -o foo  foo.o -lsexp
+
+The critical parts are to ensure that the include path aims at the path
+containing the library headers, the library path aims at the path containing
+the compiled binary libraries, and the library is linked in with the
+executable.
+
+3. MORE INFO
+
+For additions, bug fixes, complaints, etc., email : mjsottile@gmail.com
+
+4. CREDITS
+
+The library is by Matt Sottile.  Steve James of Linux Labs has contributed bug
+fixes and features while developing for the related Supermon project. Sung-Eun
+Choi and Paul Ruth have contributed many bug reports as the library has grown.
+Erik Hendriks contributed the malloc debugging tools now used when building
+with the -D_DEBUG_MALLOCS_ option.  Brad Green contributed code (in win32/)
+and testing for the Windows Visual Studio build target.
+
+5. WINDOWS USERS
+
+Please look in the win32/ subdirectory. Note that as of 9/2013, this has not
+been looked at nor tested in a number of years.  If you try to use it and find
+it broken, fixes and updates to bring it up to speed with modern Windows
+development environments would be appreciated!

@@ -96,8 +96,6 @@ collectTopLevel _ unsupported = err ("collectTopLevel: Unsupported top-level thi
 
 --------------------------------------------------------------------------------
 
--- TODO: Primops
-
 desugarExp :: Exp -> Ds L1
 desugarExp e =
     case e of
@@ -142,7 +140,21 @@ desugarExp e =
 
       H.Paren e' -> desugarExp e'
 
+      H.InfixApp e1 op e2 -> do
+        e1' <- desugarExp e1
+        e2' <- desugarExp e2
+        op' <- desugarOp  op
+        return (PrimApp op' [e1', e2'])
+
       _ -> err ("desugarExp: Unsupported expression: " ++ show e)
+
+-------------------------------------------------------------------------------
+
+desugarOp :: QOp -> Ds Prim
+desugarOp (QVarOp (UnQual (Symbol "+"))) = return Add
+desugarOp (QVarOp (UnQual (Symbol "-"))) = return Sub
+desugarOp (QVarOp (UnQual (Symbol "*"))) = return Mul
+desugarOp op                             = err ("Unsupported binary op: " ++ show op)
 
 --------------------------------------------------------------------------------
 
