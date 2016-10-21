@@ -130,6 +130,8 @@ doTy  = pos
             (Prod x1 x2)  -> T.Prod <$> pos x1 <*> pos x2
             (Sum x1 x2)   -> T.Sum  <$> pos x1 <*> pos x2
             (Packed k ls) -> T.Packed k <$> mapM pos ls
+  -- This assumes mutable cursors and thus a "returned" packed value
+  -- is just void.
   neg t = case t of 
             TInt           -> return T.TInt
             (TArr x1 x2)   -> T.TArr <$> pos x1 <*> neg x2

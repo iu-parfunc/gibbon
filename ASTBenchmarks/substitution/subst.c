@@ -273,7 +273,7 @@ int main(int argc, char **argv) {
   fseek(fp, 0, SEEK_SET);  //same as rewind(f);
 
   char *sexp = malloc(fsize + 1);
-  fread(sexp, fsize, 1, fp);
+  int ec = fread(sexp, fsize, 1, fp);
   fclose(fp);
 
   sexp[fsize] = 0;
@@ -285,10 +285,12 @@ int main(int argc, char **argv) {
     printf("Error printing the parse tree with error : %d\n", sexp_errno);
     exit(EXIT_FAILURE);
   }
-
-  // Print the parse tree
-  int ret = print_sexp(sexp, BUFSIZ, sx);
-
+  
+  printf("Print the parse tree, BUFSIZ=%d:\n", BUFSIZ);
+  char *printed = malloc(BUFSIZ);
+  int ret = print_sexp(printed, BUFSIZ, sx);
+  printf("%s\n",printed);
+  
   if (ret == -1) {
     printf("Error printing the parse tree with error : %d\n", sexp_errno);
     exit(EXIT_FAILURE);
