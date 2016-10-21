@@ -104,8 +104,8 @@ run_all: all
 	./treebench_c.exe           $(DEPTH)
 	./treebench_c_packed.exe    $(DEPTH)
 	./treebench_c_packed_loop.exe $(DEPTH)
-	racket treebench.rkt        $(DEPTH)
-	racket treebench_packed.rkt $(DEPTH)
+	$(MAKE) run_racket
+	$(MAKE) run_racket_packed
 	$(MAKE) run_chez
 	$(MAKE) run_java
 
@@ -115,8 +115,10 @@ run_chez:
 	scheme --script treebench.ss $(DEPTH)
 
 run_racket:
-	racket treebench.rkt
+	racket treebench.rkt $(DEPTH)
 
+run_racket_packed:
+	racket treebench_packed.rkt $(DEPTH)
 
 run_java: treebench.class
 	java treebench $(DEPTH)

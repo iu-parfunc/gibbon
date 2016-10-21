@@ -6,7 +6,7 @@ fun printLargeInt (i: LargeInt.int)    = putStrLn (LargeInt.toString i)
 fun printLargeReal (r: LargeReal.real) = putStrLn (LargeReal.toString r)
 
 datatype tree =
-    Leaf of int
+    Leaf of Int64.int
   | Node of tree * tree
 
 type micro     = LargeInt.int
@@ -17,18 +17,18 @@ fun add1Tree (t: tree): tree =
       Leaf n        => Leaf (n + 1)
     | Node (t1, t2) => Node (add1Tree t1, add1Tree t2)
 
-fun countLeaves (t: tree) : int =
+fun countLeaves (t: tree) : Int64.int =
    case t of
       Leaf n        => 1
     | Node (t1, t2) => countLeaves t1 + countLeaves t2
 
 fun buildTree (power: int): tree =
    let
-      fun graftTree (root: int, power: int): tree =
+      fun graftTree (root: Int64.int, power: int): tree =
          if power = 0
             then Leaf root
             else Node ( graftTree (root, power-1)
-                      , graftTree (root + Int.fromLarge (IntInf.pow (2, power-1)), power-1)
+                      , graftTree (root + Int64.fromLarge (IntInf.pow (2, power-1)), power-1)
                       )
    in
       graftTree (1, power)
@@ -43,7 +43,7 @@ fun showTreePrec (p: int, t: tree): string =
          Leaf n =>
            openParen
              ^ "Leaf "
-             ^ Int.toString n
+             ^ Int64.toString n
              ^ closeParen
        | Node (t1, t2) =>
            openParen
@@ -62,7 +62,7 @@ fun benchmark (power: int): micro =
       val realTimer = startRealTimer ()
       val t2 = add1Tree t
       val realTime = checkRealTimer realTimer
-      val _ = putStrLn ("NumLeaves: " ^ Int.toString (countLeaves t2))
+      val _ = putStrLn ("NumLeaves: " ^ Int64.toString (countLeaves t2))
    in
       Time.toMicroseconds realTime
    end
