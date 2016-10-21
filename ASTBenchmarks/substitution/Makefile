@@ -1,7 +1,7 @@
 
 
 CC=gcc
-CFLAGS=-O3 -g
+CFLAGS=-O0 -g
 
 LDPATH=../../deps/sexpr-1.3/src
 INCLUDES=../../deps/sexpr-1.3/src
