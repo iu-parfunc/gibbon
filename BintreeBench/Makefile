@@ -7,7 +7,7 @@ all: treebench_mlton.exe treebench_ocaml.exe \
 
 c: treebench_c.exe treebench_c_bumpalloc.exe treebench_c_packed.exe treebench_c_packed2.exe treebench_c_packed_loop.exe treebench_c_packed_structs.exe treebench_c_parallel.exe
 
-ghc: treebench_strict_ghc.exe treebench_lazy_ghc.exe treebench_ghc_packed.exe
+ghc: treebench_ghc_strict.exe treebench_ghc_lazy.exe treebench_ghc_packed.exe
 
 
 # Disabling for now, requires beta channel of rust:
@@ -17,8 +17,8 @@ ghc: treebench_strict_ghc.exe treebench_lazy_ghc.exe treebench_ghc_packed.exe
 # treebench_rust_packed.exe
 
 # Match whichever version the docker image is using:
-# GHC = stack --install-ghc --resolver=lts-7.1 exec ghc --
-GHC = stack --install-ghc --resolver=lts-6.19 exec ghc --
+GHC = stack --install-ghc --resolver=lts-7.1 exec ghc --
+# GHC = stack --install-ghc --resolver=lts-6.19 exec ghc --
 
 # CC = gcc
 # CC = clang
@@ -35,15 +35,15 @@ COPTS = -O3 -std=c11
 # COPTS = -g -O0 -std=c++11
 
 
-ghc: treebench_strict_ghc.exe treebench_lazy_ghc.exe
+ghc: treebench_ghc_strict.exe treebench_ghc_lazy.exe
 
 treebench_mlton.exe: treebench.sml
 	time mlton -output $@ $^
 
-treebench_strict_ghc.exe: treebench.hs
+treebench_ghc_strict.exe: treebench.hs
 	time $(GHC) -O2 -rtsopts $^ -o $@
 
-treebench_lazy_ghc.exe: treebench_lazy.hs
+treebench_ghc_lazy.exe: treebench_lazy.hs
 	time $(GHC) -O2 -rtsopts $^ -o $@
 
 treebench_ghc_packed.exe: treebench_packed.hs
@@ -97,12 +97,13 @@ run_small:
 # TODO: replace with an hsbencher harness / Criterion:
 run_all: all
 	./treebench_mlton.exe       $(DEPTH)
-	./treebench_strict_ghc.exe  $(DEPTH)
-	./treebench_lazy_ghc.exe    $(DEPTH)
+	./treebench_ghc_strict.exe  $(DEPTH)
+	./treebench_ghc_lazy.exe    $(DEPTH)
 	./treebench_ocaml.exe       $(DEPTH)
 	./treebench_rust.exe        $(DEPTH)
 	./treebench_c.exe           $(DEPTH)
 	./treebench_c_packed.exe    $(DEPTH)
+	./treebench_c_packed_loop.exe $(DEPTH)
 	racket treebench.rkt        $(DEPTH)
 	racket treebench_packed.rkt $(DEPTH)
 	$(MAKE) run_chez

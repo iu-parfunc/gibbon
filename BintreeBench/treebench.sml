@@ -1,5 +1,6 @@
 open Timer
 
+         
 fun putStrLn (str: string) = print (str ^ "\n")
 fun printLargeInt (i: LargeInt.int)    = putStrLn (LargeInt.toString i)
 fun printLargeReal (r: LargeReal.real) = putStrLn (LargeReal.toString r)
@@ -15,6 +16,11 @@ fun add1Tree (t: tree): tree =
    case t of
       Leaf n        => Leaf (n + 1)
     | Node (t1, t2) => Node (add1Tree t1, add1Tree t2)
+
+fun countLeaves (t: tree) : int =
+   case t of
+      Leaf n        => 1
+    | Node (t1, t2) => countLeaves t1 + countLeaves t2
 
 fun buildTree (power: int): tree =
    let
@@ -54,8 +60,9 @@ fun benchmark (power: int): micro =
       (* FIXME: run the garbage collector before each round, like we do in some other versions. *)
       val t = buildTree power
       val realTimer = startRealTimer ()
-      val _ = add1Tree t
+      val t2 = add1Tree t
       val realTime = checkRealTimer realTimer
+      val _ = putStrLn ("NumLeaves: " ^ Int.toString (countLeaves t2))
    in
       Time.toMicroseconds realTime
    end
