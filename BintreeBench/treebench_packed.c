@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define TRIALS 101
+#define TRIALS 501
 
 enum Tree {
     Leaf,
@@ -76,7 +76,7 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
   if (*t == Leaf) {
     *tout = Leaf;    
     t++; tout++;
-    *(Num*)tout = *(Num*)t + 1;
+    *(Num*)tout = *(Num*)t;
     return (t+sizeof(Num));
   } else {
     *tout = Node;
