@@ -5,7 +5,7 @@
 all: treebench_mlton.exe treebench_ocaml.exe \
      treebench_rust.exe treebench.class c ghc
 
-c: treebench_c.exe treebench_c_bumpalloc.exe treebench_c_packed.exe treebench_c_packed2.exe
+c: treebench_c.exe treebench_c_bumpalloc.exe treebench_c_packed.exe treebench_c_packed2.exe treebench_c_packed_loop.exe
 
 ghc: treebench_strict_ghc.exe treebench_lazy_ghc.exe treebench_ghc_packed.exe
 
@@ -63,6 +63,9 @@ treebench_c_bumpalloc.exe: treebench.c
 	time $(CC) $(COPTS) -DBUMPALLOC $^ -o $@ 
 
 treebench_c_packed.exe: treebench_packed.c
+	time $(CC) $(COPTS) $^ -o $@ 
+
+treebench_c_packed_loop.exe: treebench_packed_loop.c
 	time $(CC) $(COPTS) $^ -o $@ 
 
 treebench_c_packed2.exe: treebench_packed2.c

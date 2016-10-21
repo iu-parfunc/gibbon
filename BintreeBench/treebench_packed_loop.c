@@ -8,8 +8,9 @@
 #define TRIALS 101
 
 enum Tree {
-    Leaf,
-    Node,
+  Nullterm = 0,
+  Leaf = 1,
+  Node = 2,
 };
 
 // Manual layout:
@@ -52,7 +53,8 @@ TreeRef buildTree(int n) {
   int bytes = treeSize(n);
   char* buf = malloc(bytes);
   char* res = fillTree(buf, n, 1);
-  printf("wrote %d\n", (int)(res - buf));  
+  *res = 0; // Null terminate.
+  printf("wrote %d\n", (int)(res - buf));
   return buf;
 }
 
@@ -73,22 +75,19 @@ TreeRef printTree(TreeRef t) {
 }
 
 TreeRef add1Tree(TreeRef t, TreeRef tout) {
-  if (*t == Leaf) {
-    *tout = Leaf;    
-    t++; tout++;
-    *(Num*)tout = *(Num*)t + 1;
-    return (t+sizeof(Num));
-  } else {
-    *tout = Node;
-    t++; tout++;
-
-    // Padding experiment
-    // t += 4;
-    // tout += 4;
-    
-    TreeRef t2 = add1Tree(t,tout);
-    tout += (t2 - t);
-    return add1Tree(t2,tout);
+  while(1) {
+    char tag = *t;
+    // Zero terminate the string:
+    if (tag == 0) break;
+    if (tag == Leaf) {
+      *tout = Leaf;
+      *(Num*)tout = *(Num*)(t + 1);
+      t    += 1 + sizeof(Num);
+      tout += 1 + sizeof(Num);;
+    } else {
+      *tout = Node;      
+      t++; tout++;
+    }
   }
 }
 
