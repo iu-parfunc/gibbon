@@ -75,20 +75,19 @@ TreeRef printTree(TreeRef t) {
 TreeRef add1Tree(TreeRef t, TreeRef tout) {
   if (*t == Leaf) {
     *tout = Leaf;    
-    t++; tout++;
-    *(Num*)tout = *(Num*)t;
-    return (t+sizeof(Num));
+    TreeRef t2    = t    + 1;
+    TreeRef tout2 = tout + 1;
+    *(Num*)tout2 = *(Num*)t2;
+    return (t2 + sizeof(Num));
   } else {
     *tout = Node;
-    t++; tout++;
 
-    // Padding experiment
-    // t += 4;
-    // tout += 4;
-    
-    TreeRef t2 = add1Tree(t,tout);
-    tout += (t2 - t);
-    return add1Tree(t2,tout);
+    TreeRef t2    = t    + 1;
+    TreeRef tout2 = tout + 1;
+        
+    TreeRef t3    = add1Tree(t2, tout2);
+    TreeRef tout3 = tout2 + (t3 - t2);
+    return add1Tree(t3, tout3);
   }
 }
 
