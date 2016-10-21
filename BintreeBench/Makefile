@@ -5,7 +5,7 @@
 all: treebench_mlton.exe treebench_ocaml.exe \
      treebench_rust.exe treebench.class c ghc
 
-c: treebench_c.exe treebench_c_bumpalloc.exe treebench_c_packed.exe treebench_c_packed2.exe treebench_c_packed_loop.exe
+c: treebench_c.exe treebench_c_bumpalloc.exe treebench_c_packed.exe treebench_c_packed2.exe treebench_c_packed_loop.exe treebench_c_packed_structs.exe
 
 ghc: treebench_strict_ghc.exe treebench_lazy_ghc.exe treebench_ghc_packed.exe
 
@@ -68,6 +68,9 @@ treebench_c_packed.exe: treebench_packed.c
 treebench_c_packed_loop.exe: treebench_packed_loop.c
 	time $(CC) $(COPTS) $^ -o $@ 
 
+treebench_c_packed_structs.exe: treebench_packed_structs.c
+	time $(CC) $(COPTS) $^ -o $@ 
+
 treebench_c_packed2.exe: treebench_packed2.c
 	time $(CC) $(COPTS) $^ -o $@ 
 
@@ -115,3 +118,4 @@ clean:
 	rm -f *.exe *.o *.hi treebench treebench_lazy *.cmi *.cmo *.cmx
 
 .PHONY: all clean ghc run_chez run_java run_all run_small c ghc
+
