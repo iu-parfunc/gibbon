@@ -5,7 +5,9 @@
 #include <stdlib.h>
 #include <time.h>
 
+#ifndef TRIALS
 #define TRIALS 501
+#endif
 
 enum Tree {
     Leaf,

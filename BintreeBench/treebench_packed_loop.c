@@ -5,7 +5,9 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define TRIALS 101
+#ifndef TRIALS
+#define TRIALS 501
+#endif
 
 enum Tree {
   Nullterm = 0,
