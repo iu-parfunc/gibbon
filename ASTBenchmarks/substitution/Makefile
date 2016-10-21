@@ -6,7 +6,7 @@ CFLAGS=-O3 -g
 LDPATH=../../deps/sexpr-1.3/src
 INCLUDES=../../deps/sexpr-1.3/src
 
-all:
+all: subst_c.exe
 
 LOG=subst_all_expanded_1.2.log
 
