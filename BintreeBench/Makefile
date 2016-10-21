@@ -6,6 +6,7 @@ all: treebench_mlton.exe treebench_ocaml.exe \
      treebench_rust.exe treebench.class c ghc
 
 c: treebench_c.exe treebench_c_bumpalloc.exe treebench_c_packed.exe treebench_c_packed2.exe treebench_c_packed_loop.exe treebench_c_packed_structs.exe treebench_c_parallel.exe
+# treebench_c_parallel2.exe
 
 ghc: treebench_ghc_strict.exe treebench_ghc_lazy.exe treebench_ghc_packed.exe
 
@@ -29,10 +30,16 @@ CPP = g++
 
 PACKEDTRIALS=501
 
-CPPOPTS = -O3 -std=c++11
-COPTS = -O3 -std=c11
-# if debug:
-# COPTS = -g -O0 -std=c++11
+CPPOPTS = -std=c++11
+COPTS = -std=c11
+
+ifeq ($(DEBUG),)
+  CPPOPTS += -O3 
+  COPTS += -O3 
+else
+  CPPOPTS += -O0 -g 
+  COPTS += -O0 -g
+endif
 
 
 ghc: treebench_ghc_strict.exe treebench_ghc_lazy.exe
@@ -82,6 +89,9 @@ treebench_c_packed2.exe: treebench_packed2.c
 
 treebench_c_parallel.exe: treebench_parallel.c
 	time $(CPP) -fpermissive -fcilkplus $(CPPOPTS) $^ -o $@ 
+
+treebench_c_parallel2.exe: treebench_parallel2.c
+	time $(CC) -fcilkplus $(COPTS) $^ -o $@ 
 
 treebench.class: treebench.java
 	time javac $^ 

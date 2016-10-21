@@ -13,7 +13,8 @@ import System.Environment
 
 data Tree = Leaf {-# UNPACK #-} !Int
           | Node !Tree !Tree
-
+  deriving Show
+            
 -- | Build a fully-evaluated tree
 buildTree :: Int -> IO Tree
 buildTree n = evaluate $ go 1 n
