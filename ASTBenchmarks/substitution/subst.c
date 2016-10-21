@@ -21,15 +21,23 @@ void walk_tree(sexp_t* sx) {
   }
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv) {  
   FILE *fp;
-  char *status;
+  char *status, *fn;
   sexp_t *sx;
   // dict_t *env = NULL;
 
-  // Read file as a string 
-  fp = fopen("sexps.in","r+");
+  // Read file as a string  
+  if (argc > 1) fn = argv[1]; 
+  else          fn = "sexps.in";
 
+  printf("Opening file: %s\n", fn);
+  fp = fopen(fn,"r+");
+
+  if (fp <= 0) {
+    fprintf(stderr,"Error: Failed to open file.\n");
+    exit(EXIT_FAILURE);
+  }
   fseek(fp, 0, SEEK_END);
   long fsize = ftell(fp);
   fseek(fp, 0, SEEK_SET);  //same as rewind(f);
@@ -44,7 +52,7 @@ int main(int argc, char **argv) {
   if (sexp) {
     sx = parse_sexp(sexp, fsize);
   } else {
-    printf("Error printing the parse tree with error : %d\n", sexp_errno);
+    fprintf(stderr,"Error printing the parse tree with error : %d\n", sexp_errno);
     exit(EXIT_FAILURE);
   }
   
@@ -54,7 +62,7 @@ int main(int argc, char **argv) {
   printf("%s\n",printed);
   
   if (ret == -1) {
-    printf("Error printing the parse tree with error : %d\n", sexp_errno);
+    fprintf(stderr,"Error printing the parse tree with error : %d\n", sexp_errno);
     exit(EXIT_FAILURE);
   }
 
