@@ -62,6 +62,13 @@ data Expr = VarE Name -- * variable reference
 data Prim = PlusP | SubP | MulP
   deriving (Read,Show,Eq,Ord,Generic)
 
+lookupType :: TyName -> [(TyName,Ty)] -> Maybe Ty
+lookupType n tenv =
+  case lookup n tenv of
+    Nothing -> Nothing
+    Just (TyCon n) -> lookupType n tenv
+    Just t -> Just t
+
 tc :: TopLevel -> Bool
 tc (TopLevel tenv funs e) = (all (tcFun tenv) funs) && tcExpr tenv e
 
@@ -74,7 +81,7 @@ tcExpr :: TyEnv -> Expr -> Bool
 tcExpr te@(TyEnv tenv) e =
     case e of
       VarE n ->
-          case lookup n tenv of
+          case lookupType n tenv of
             Nothing -> False
             Just _ -> True
       CaseE n ls -> 
@@ -86,34 +93,36 @@ tcExpr te@(TyEnv tenv) e =
                               Just $ all id $ zipWith (==) ts1 ts2)
       ConstrPE tn ns -> -- True
            let ns' = catMaybes $ map (\n -> lookup n tenv) ns
-           in case lookup tn tenv of
+           in case lookupType tn tenv of
                 Just (ProdTy ts) -> ts == ns'
                 _ -> False
       ConstrSE tn n ->
           case lookup n tenv of
             Nothing -> False
-            Just tt@(TyCon t) -> case lookup t tenv of
-                                   Nothing -> False
-                                   Just s -> case lookup tn tenv of
-                                               Just (SumTy st) -> any (\(_,x) -> x == tt) st
-                                               _ -> False
+            Just tt@(TyCon t) ->
+              case lookupType t tenv of
+                Nothing -> False
+                Just s -> case lookupType tn tenv of
+                            Just (SumTy st) -> any (\(_,x) -> x == tt) st
+                            _ -> False
       ProjE tn n i ->
           True
       PrimOpE p ns -> 
           let ns' = catMaybes $ map (\n -> lookup n tenv) ns
           in (length ns' == length ns) && all (== IntTy) ns' -- TODO: non-int args
       IfE n e1 e2 ->
-          let res = do t <- lookup n tenv
-                       t1 <- typeof te e1
-                       t2 <- typeof te e2
-                       return (t,t1,t2)
+          let res = do
+                t <- lookup n tenv
+                t1 <- typeof te e1
+                t2 <- typeof te e2
+                return (t,t1,t2)
           in case res of
                Nothing -> False
                Just (t,t1,t2) -> t == BoolTy && t1 == t2 &&
                                  tcExpr te e1 && tcExpr te e2
       AppE n1 ns ->
-          let mTy = do n1' <- lookup n1 tenv
-                       ns' <- mapM (\n -> lookup n tenv) ns
+          let mTy = do n1' <- lookupType n1 tenv
+                       ns' <- mapM (\n -> lookupType n tenv) ns
                        return (n1', ns')
           in case mTy of
                Nothing -> False
@@ -125,22 +134,22 @@ tcExpr te@(TyEnv tenv) e =
 typeof :: TyEnv -> Expr -> Maybe Ty
 typeof te@(TyEnv tenv) e =
     case e of
-      VarE n -> lookup n tenv
+      VarE n -> lookupType n tenv
       CaseE n ls ->
           do ts <- mapM (\(_,_,e) -> typeof te e) ls
              return $ head ts
       LetE ls e1 -> typeof te e1
-      ConstrPE tn ns -> lookup tn tenv
-      ConstrSE tn n -> lookup tn tenv
+      ConstrPE tn ns -> lookupType tn tenv
+      ConstrSE tn n -> lookupType tn tenv
       ProjE tn n i ->
-          do t <- lookup tn tenv
+          do t <- lookupType tn tenv
              case t of
                ProdTy ls -> return $ ls !! i
                _ -> Nothing
       PrimOpE p ns -> Just IntTy -- TODO
       IfE n e1 e2 -> typeof te e1
       AppE n1 ns ->
-          do t1 <- lookup n1 tenv
+          do t1 <- lookupType n1 tenv
              case t1 of
                ArrTy _ t -> return t
                _ -> Nothing
@@ -154,6 +163,8 @@ exadd1 =
   (TyEnv [("Tree", SumTy [("LeafP", TyCon "LeafP"),("NodeP", TyCon "NodeP")]),
           ("NodeP", ProdTy [TyCon "Tree", TyCon "Tree"]),
           ("LeafP", ProdTy [IntTy]),
+          ("add1", ArrTy [TyCon "Tree"] (TyCon "Tree")),
+          -- should write code to infer these: 
           ("t", TyCon "Tree"),
           ("xl", TyCon "LeafP"),
           ("xn", TyCon "NodeP"),
@@ -165,8 +176,7 @@ exadd1 =
           ("y1", TyCon "Tree"),
           ("y2", TyCon "Tree"),
           ("y3", TyCon "NodeP"),
-          ("v4", TyCon "LeafP"),
-          ("add1", ArrTy [TyCon "Tree"] (TyCon "Tree"))])
+          ("v4", TyCon "LeafP")])
   [(FunDecl "add1" ["t"]
      (CaseE "t" [
          ("Leaf", "xl",
