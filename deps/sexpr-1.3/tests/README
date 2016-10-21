@@ -1,0 +1,81 @@
+README
+matt sottile / 7.25.02
+updated / 6.17.03
+updated again / 5.23.05
+
+Tests: These test programs are intended to take an s-expression, preferably
+one that is VERY large, and parse it then turn it back into a string, and
+finally free the memory used for the parsed expression tree.  This process
+is repeated some large number of times.  Note that output from the program
+is not useful until the end, though the iteration number is printed within
+the loop of parse/print/free.  This is useful only to make sure that the
+program is actually proceeding on VERY large expressions where parsing may
+take a while.
+  
+Included is a program to test the parser performance (ctorture),
+generate large random s-expressions, and test the correctness of the parser
+against a set of interesting expressions (readtests).  read_and_dump is a
+similar test to readtests, but instead of doing a
+parse->unparse->parse->unparse loop and comparing output, it simply does
+a parse->unparse and print of each expression so one can compare the originals
+on disk and the version that is printed to see if they match.  Try it on
+your ~/.emacs file -- suprisingly enough, my .emacs revealed a couple of 
+bugs that were otherwise not showing up!  Finally, ctest is a tester that
+takes a fixed s-expression string and parses it with different size chunks
+passed into the continuation-based parser.  This allows us to test that the
+continuation save/restore process that the parser uses works as the boundary
+between calls moves through the string and has to deal with various states.
+The example expression forces the continuations to properly store single
+and double quote state and partially parsed atoms.  
+
+To generate a random s-expression:
+----------------------------------
+
+The perl script in this directory, randsexp.pl, will do this.  The
+arguments are:
+
+% perl ./randsexp.pl [minimum atom count] [maximum string length]
+
+The minimum atom count is the minimum number of atoms in the s-expression
+we wish to generate.  So the number of atoms will be >= min_count.  The
+maximum string length is the maximum length in characters of the s-expression
+that is generated.  This is useful to bound the length so we don't blow up
+any buffers in the ctorture program that will eventually process these
+random expressions.
+
+To use ctorture.c :
+-------------------
+
+Create a file called TESTEXP containing an s-expression.  Run ctorture like
+this:
+
+% ./ctorture < TESTEXP
+
+Or, if you have some program that generates a valid s-expression, try this:
+
+% myprogram | ./ctorture
+
+Or, you can specify the file as an argument.
+
+% ctorture -f TESTEXP
+
+See the usage for ctorture to get more info on various options.
+
+% ctorture -h
+
+To use readtest.c :
+-------------------
+
+This is a new addition to the test suite (as of August 2002).  It provides
+a simple test harness to read in a file called 'test_expressions', parse
+each expression in the file, and attempt to reach a fixed point for ensuring
+that:
+
+  original->parse->unparse == original->parse->unparse->parse->unparse
+
+This program tests two things.  First, it tests if the parser works or breaks
+on a given string.  Second, it tests that things like escaped characters,
+quoting, and other possible things are interpreted by the parser correctly.
+Users are strongly encouraged to submit expressions that break the parser so
+that the bugs can be fixed and the rogue strings can be added to the
+test_expressions file to ensure that they don't break the parser in the future.
