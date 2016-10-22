@@ -14,15 +14,26 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
-  exposed-modules:  Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate, Packed.HigherOrder.L3_Target,
+  exposed-modules:  Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate,
+                    Packed.HigherOrder.L3_Target,
                     Packed.HigherOrder.Translate, Packed.HigherOrder.Common,
                     Packed.FirstOrder.L1_Source,
-                    Packed.FirstOrder.HaskellFrontend
+                    Packed.FirstOrder.HaskellFrontend,
+                    Packed.FirstOrder.Target
   -- other-modules:
   other-extensions:    DeriveDataTypeable
-  build-depends:       base >=4.8,
-                       aeson, bytestring, containers, mtl, GenericPretty,
-                       haskell-src-exts
+
+  build-depends:
+    aeson,
+    base >=4.8,
+    bytestring,
+    containers,
+    GenericPretty,
+    haskell-src-exts,
+    language-c-quote,
+    mtl,
+    srcloc
+
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall
