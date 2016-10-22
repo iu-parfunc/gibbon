@@ -49,9 +49,9 @@ int treeSize(int n) {
   int nodes  = leaves - 1;
   // Both nodes and leaves are tagged:
   int bytes  = (sizeof(Num)*leaves + sizeof(char)*(nodes+leaves));
-  /* printf("treeSize(%d): %d bytes (%d/%d nodes/leaves)\n", */
-  /*        n, bytes, nodes, leaves); */
-  return bytes;
+  printf("treeSize(%d): 2 * %d bytes (%d/%d nodes/leaves)\n",
+         n, bytes, nodes, leaves);
+  return 2 * bytes;
 }
 
 TreeRef buildTree(int n) {

@@ -16,7 +16,7 @@
 #endif
 
 // The bottom K layers of the tree have NO indirections.
-#define SEQLAYERS 30
+#define SEQLAYERS 10 
 
 enum Tree {
     Leaf,
@@ -105,6 +105,26 @@ TreeRef printTree(TreeRef t) {
   }
 }
 
+
+TreeRef add1Tree(TreeRef t, TreeRef tout) {
+  if (*t == Leaf) {
+    *tout = Leaf;    
+    TreeRef t2    = t    + 1;
+    TreeRef tout2 = tout + 1;
+    *(Num*)tout2 = *(Num*)t2 + 1;
+    return (t2 + sizeof(Num));
+  } else {
+    *tout = Node;
+
+    TreeRef t2    = t    + 1;
+    TreeRef tout2 = tout + 1;
+        
+    TreeRef t3    = add1Tree(t2, tout2);
+    TreeRef tout3 = tout2 + (t3 - t2);
+    return add1Tree(t3, tout3);
+  }
+}
+
 /* add1tree, in parallel
 
    The first version of this yielded a slowdown based on some
@@ -123,30 +143,9 @@ TreeRef printTree(TreeRef t) {
      else return 0;
 
  */
-TreeRef add1Tree(TreeRef t, TreeRef tout) {
-  char tag = *t;
-  switch (tag) {
-  case Leaf: {
-    // fputs("LEAF\n", stdout);
-    *tout = Leaf;    
-    TreeRef t2    = t    + 1;
-    TreeRef tout2 = tout + 1;
-    *(Num*)tout2 = *(Num*)t2 + 1;
-    return (t2 + sizeof(Num));
-  }
-  case Node:
-  {
-    // fputs("NODE\n", stdout);
-    *tout = Node;
-    TreeRef t2    = t    + 1;
-    TreeRef tout2 = tout + 1;
-    TreeRef t3    = add1Tree(t2, tout2);
-    TreeRef tout3 = tout2 + (t3 - t2);
-    return add1Tree(t3, tout3);
-  }
-  default: // case NodePrime:
-  {
-    // fputs("SPAWNING\n", stdout);
+TreeRef add1Par(TreeRef t, TreeRef tout) {
+  if ( *t == NodePrime ) {
+    // printf("add1Par: got NodePrime..\n");
     *tout = NodePrime;
     TreeSize left_sz = *(TreeSize*)(t+1);
     
@@ -155,16 +154,17 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
 
     // We can spawn the left recursion and we don't need the end
     // cursor.  We already know what it will be:
-    cilk_spawn add1Tree(t2, tout2);
-    // fputs("  spawned\n", stdout);
+    cilk_spawn add1Par(t2, tout2);
     
     TreeRef t3    = t2    + left_sz;
     TreeRef tout3 = tout2 + left_sz;
-    TreeRef t4    = add1Tree(t3, tout3);
+    TreeRef t4    = add1Par(t3, tout3);
     cilk_sync;
-    // fputs("  synced\n", stdout);    
     return t4;
   }
+  else {
+    // printf("add1Par: bottoming out to add1Tree\n");
+    return add1Tree(t,tout);
   }
 }
 
@@ -203,10 +203,10 @@ int main(int argc, char** argv) {
   double trials[TRIALS];
   for(int i=0; i<TRIALS; i++) {
     begin = clock();
-    add1Tree(tr,t2);
+    add1Par(tr,t2);
     end = clock();
     time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-    // printf("  run(%d): %lf\n", i, time_spent);
+    printf("  run(%d): %lf\n", i, time_spent);
     trials[i] = time_spent;
   }
 
