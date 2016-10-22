@@ -93,43 +93,4 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
   }
 }
 
-int compare_doubles (const void *a, const void *b)
-{
-  const double *da = (const double *) a;
-  const double *db = (const double *) b;
-  return (*da > *db) - (*da < *db);
-}
-
-int main(int argc, char** argv) {
-  int depth;
-  if (argc > 1)
-    depth = atoi(argv[1]);
-  else 
-    depth = 20;
-  printf("Building tree, depth %d\n", depth);
-  // CLOCK_REALTIME
-  clock_t begin = clock();
-  TreeRef tr = buildTree(depth);
-  clock_t end = clock();
-  double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-  printf("done building, took %lf seconds\n\n", time_spent);
-  // printTree(tr); printf("\n");a
-  TreeRef t2 = malloc(treeSize(depth));
-  double trials[TRIALS];
-  for(int i=0; i<TRIALS; i++) {
-    begin = clock();
-    add1Tree(tr,t2);
-    end = clock();
-    time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-    printf("  run(%d): %lf\n", i, time_spent);
-    trials[i] = time_spent;
-  }
-  qsort(trials, TRIALS, sizeof(double), compare_doubles);
-  printf("Sorted: ");
-  for(int i=0; i<TRIALS; i++)
-    printf(" %lf", trials[i]);  
-  printf("\nSELFTIMED: %lf\n", trials[TRIALS / 2]);
-  // printTree(t2); printf("\n");
-  free(tr);
-  return 0;
-}
+#include "treebench_packed/main_fragment.h"

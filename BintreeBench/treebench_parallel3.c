@@ -106,7 +106,7 @@ TreeRef printTree(TreeRef t) {
 }
 
 
-TreeRef add1Tree(TreeRef t, TreeRef tout) {
+TreeRef add1Seq(TreeRef t, TreeRef tout) {
   if (*t == Leaf) {
     *tout = Leaf;    
     TreeRef t2    = t    + 1;
@@ -119,9 +119,9 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
     TreeRef t2    = t    + 1;
     TreeRef tout2 = tout + 1;
         
-    TreeRef t3    = add1Tree(t2, tout2);
+    TreeRef t3    = add1Seq(t2, tout2);
     TreeRef tout3 = tout2 + (t3 - t2);
-    return add1Tree(t3, tout3);
+    return add1Seq(t3, tout3);
   }
 }
 
@@ -143,9 +143,9 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
      else return 0;
 
  */
-TreeRef add1Par(TreeRef t, TreeRef tout) {
+TreeRef add1Tree(TreeRef t, TreeRef tout) {
   if ( *t == NodePrime ) {
-    // printf("add1Par: got NodePrime..\n");
+    // printf("add1Tree: got NodePrime..\n");
     *tout = NodePrime;
     TreeSize left_sz = *(TreeSize*)(t+1);
     
@@ -154,74 +154,18 @@ TreeRef add1Par(TreeRef t, TreeRef tout) {
 
     // We can spawn the left recursion and we don't need the end
     // cursor.  We already know what it will be:
-    cilk_spawn add1Par(t2, tout2);
+    cilk_spawn add1Tree(t2, tout2);
     
     TreeRef t3    = t2    + left_sz;
     TreeRef tout3 = tout2 + left_sz;
-    TreeRef t4    = add1Par(t3, tout3);
+    TreeRef t4    = add1Tree(t3, tout3);
     cilk_sync;
     return t4;
   }
   else {
-    // printf("add1Par: bottoming out to add1Tree\n");
-    return add1Tree(t,tout);
+    // printf("add1Tree: bottoming out to add1Seq\n");
+    return add1Seq(t,tout);
   }
 }
 
-
-int compare_doubles (const void *a, const void *b)
-{
-  const double *da = (const double *) a;
-  const double *db = (const double *) b;
-  return (*da > *db) - (*da < *db);
-}
-
-int main(int argc, char** argv) {
-
-  // __cilkrts_set_param("nworkers", 1);
-  
-  int depth;
-  if (argc > 1)
-    depth = atoi(argv[1]);
-  else 
-    depth = 20;
-  printf("Building tree, depth %d\n", depth);
-  // CLOCK_REALTIME
-  clock_t begin = clock();
-  TreeRef tr = buildTree(depth);
-  clock_t end = clock();
-  double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-  printf("done building, took %lf seconds\n\n", time_spent);
-
-  if ( depth <= 5 ) {
-    printf("Initial tree:");
-    printTree(tr); printf("\n");
-  }
-
-  
-  TreeRef t2 = malloc(treeSize(depth));
-  double trials[TRIALS];
-  for(int i=0; i<TRIALS; i++) {
-    begin = clock();
-    add1Par(tr,t2);
-    end = clock();
-    time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-    printf("  run(%d): %lf\n", i, time_spent);
-    trials[i] = time_spent;
-  }
-
-  if ( depth <= 5 ) {
-    printf("Printed tree, after add1:");
-    printTree(t2);
-    printf("\n");
-  }
-  
-  qsort(trials, TRIALS, sizeof(double), compare_doubles);
-  printf("Sorted: ");
-  for(int i=0; i<TRIALS; i++)
-    printf(" %lf", trials[i]);  
-  printf("\nSELFTIMED: %lf\n", trials[TRIALS / 2]);
-  // printTree(t2); printf("\n");
-  free(tr);
-  return 0;
-}
+#include "treebench_packed/main_fragment.h"

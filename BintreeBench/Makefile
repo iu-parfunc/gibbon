@@ -28,8 +28,6 @@ GHC = stack --install-ghc --resolver=lts-7.1 exec ghc --
 CPP = g++
 # CPP = clang++
 
-PACKEDTRIALS=301
-
 CPPOPTS = -std=c++11
 COPTS = -std=c11
 
@@ -75,14 +73,16 @@ treebench_c_bumpalloc.exe: treebench.c
 	time $(CC) $(COPTS) -DBUMPALLOC $^ -o $@ 
 
 
-treebench_c_packed.exe: treebench_packed.c
-	time $(CC) $(COPTS) -DTRIALS=$(PACKEDTRIALS) $^ -o $@ 
+HEADERS=treebench_packed/main_fragment.h
 
-treebench_c_packed_loop.exe: treebench_packed_loop.c
-	time $(CC) $(COPTS) -DTRIALS=$(PACKEDTRIALS) $^ -o $@ 
+treebench_c_packed.exe: treebench_packed.c $(HEADERS)
+	time $(CC) $(COPTS) treebench_packed.c -o $@ 
 
-treebench_c_packed_structs.exe: treebench_packed_structs.c
-	time $(CC) $(COPTS) $^ -o $@ 
+treebench_c_packed_loop.exe: treebench_packed_loop.c $(HEADERS)
+	time $(CC) $(COPTS) treebench_packed_loop.c -o $@ 
+
+treebench_c_packed_structs.exe: treebench_packed_structs.c $(HEADERS)
+	time $(CC) $(COPTS) treebench_packed_structs.c -o $@ 
 
 treebench_c_parallel.exe: treebench_parallel.c
 	time $(CPP) -fpermissive -fcilkplus $(CPPOPTS) $^ -o $@ 
@@ -90,8 +90,8 @@ treebench_c_parallel.exe: treebench_parallel.c
 treebench_c_parallel2.exe: treebench_parallel2.c
 	time $(CC) -fcilkplus $(COPTS) $^ -o $@
 
-treebench_c_parallel3.exe: treebench_parallel3.c
-	time $(CC) -fcilkplus $(COPTS) -DTRIALS=$(PACKEDTRIALS) $^ -o $@ 
+treebench_c_parallel3.exe: treebench_parallel3.c $(HEADERS)
+	time $(CC) -fcilkplus $(COPTS) treebench_parallel3.c -o $@ 
 
 treebench.class: treebench.java
 	time javac $^ 
