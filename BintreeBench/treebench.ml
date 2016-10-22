@@ -27,7 +27,7 @@ let () = begin
     raise (Failure "Bad command line args. Expected one number (exponent).")
   else begin
     let power = int_of_string (Sys.argv.(1)) in
-    for _ = 0 to repeat do
+    for _i = 0 to repeat do
       let tree = build_tree power in
 
       (* Sys.time is in seconds *)
@@ -35,7 +35,7 @@ let () = begin
       let ret = add1_tree tree in
       let end_ = Sys.time() in
 
-      Printf.printf "Test, leftmost leaf in output: %d\n" (leftmost tree);
+      Printf.printf "(Test, leftmost leaf in output: %d)\n" (leftmost ret);
       Printf.printf "Took %f seconds.\n" (end_ -. start);
       total := !total +. (end_ -. start);
     done
