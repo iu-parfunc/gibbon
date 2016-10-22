@@ -5,13 +5,14 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
+#include <cilk/cilk.h>
 
 #ifndef TRIALS
 #define TRIALS 301
 #endif
 
 // The bottom K layers of the tree have NO indirections.
-#define SEQLAYERS 10
+#define SEQLAYERS 1
 
 enum Tree {
     Leaf,
@@ -100,48 +101,29 @@ TreeRef printTree(TreeRef t) {
   }
 }
 
-// This version was substantially slower:
-/*
-TreeRef add1Tree(TreeRef t, TreeRef tout) {
-  // printf(" Add1tree %p %p\n", t, tout);
-  char tag = *t;
-  if (tag == Leaf) {
-    // printf("Leaf case...\n");
-    *tout = Leaf;    
-    t++; tout++;
-    *(Num*)tout = *(Num*)t + 1;
-    return (t + sizeof(Num));
-  } else if (tag == Node) {
-    // printf("Node case...\n");
-    *tout = Node;
-    t++; tout++;
-    TreeRef t2 = add1Tree(t, tout);
-    tout += (t2 - t);
-    return add1Tree(t2,tout);
-    
-  } else {
+/* add1tree, in parallel
 
-    // printf("NodePrime case...\n");
-    *tout = NodePrime;
-    t++; tout++;
-    TreeSize* szptr = (TreeSize*)tout;
-    *szptr = *(TreeSize*)t;
-    
-    t    += sizeof(TreeSize);
-    tout += sizeof(TreeSize);
+   The first version of this yielded a slowdown based on some
+   non-obvious aspect of the control flow.  A significant (but)
+   smaller amount of slowdown could be demonstrated just by adding a
+   single extra IF test to the original treebench_packed.c:
 
-    // Left tree, then right:
-    TreeRef t2 = add1Tree(t, tout);
-    tout += (t2 - t);
-    return add1Tree(t2,tout);
-  }
-}
-*/    
+     if (tag == Leaf) {
+     } else
+       // Creating a second IF test here yields a LARGE slowdown.
+       if (tag == Node)
+     {
+     }
+     // But the slowdown from the if is worst if we LACK the final case.
+     // Otherwise it's a small slowdown, like 2.6 to 2.8ms.
+     else return 0;
 
+ */
 TreeRef add1Tree(TreeRef t, TreeRef tout) {
   char tag = *t;
   switch (tag) {
   case Leaf: {
+    fputs("LEAF\n", stdout);
     *tout = Leaf;    
     TreeRef t2    = t    + 1;
     TreeRef tout2 = tout + 1;
@@ -150,6 +132,7 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
   }
   case Node:
   {
+    fputs("NODE\n", stdout);
     *tout = Node;
     TreeRef t2    = t    + 1;
     TreeRef tout2 = tout + 1;
@@ -159,39 +142,26 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
   }
   default: // case NodePrime:
   {
+    fputs("SPAWNING\n", stdout);
     *tout = NodePrime;
+    TreeSize left_sz = *(TreeSize*)(t+1);
+    
     TreeRef t2    = t    + 1 + sizeof(TreeSize);
     TreeRef tout2 = tout + 1 + sizeof(TreeSize);
-    TreeRef t3    = add1Tree(t2, tout2);
-    TreeRef tout3 = tout2 + (t3 - t2);
-    return add1Tree(t3, tout3);
-  }
-  }
 
-  /*  
-  if (tag == Leaf) {
-    *tout = Leaf;    
-    TreeRef t2    = t    + 1;
-    TreeRef tout2 = tout + 1;
-    *(Num*)tout2 = *(Num*)t2 + 1;
-    return (t2 + sizeof(Num));
-  } else
-    // Creating a second IF test here yields a LARGE slowdown.
-    if (tag == Node)
-  {
-    *tout = Node;
-
-    TreeRef t2    = t    + 1;
-    TreeRef tout2 = tout + 1;
-        
-    TreeRef t3    = add1Tree(t2, tout2);
-    TreeRef tout3 = tout2 + (t3 - t2);
-    return add1Tree(t3, tout3);
+    // We can spawn the left recursion and we don't need the end
+    // cursor.  We already know what it will be:
+    cilk_spawn add1Tree(t2, tout2);
+    fputs("  spawned\n", stdout);
+    
+    TreeRef t3    = t2    + left_sz;
+    TreeRef tout3 = tout2 + left_sz;
+    TreeRef t4    = add1Tree(t3, tout3);
+    cilk_sync;
+    fputs("  synced\n", stdout);    
+    return t4;
   }
-  // But the slowdown from the if is worst if we LACK the final case.
-  // Otherwise it's a small slowdown, like 2.6 to 2.8ms.
-  else return 0;
-  */
+  }
 }
 
 
@@ -203,6 +173,9 @@ int compare_doubles (const void *a, const void *b)
 }
 
 int main(int argc, char** argv) {
+
+  // __cilkrts_set_param("nworkers", 1);
+  
   int depth;
   if (argc > 1)
     depth = atoi(argv[1]);
