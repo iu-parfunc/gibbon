@@ -5,7 +5,7 @@
 all: treebench_mlton.exe treebench_ocaml.exe \
      treebench_rust.exe treebench.class c ghc
 
-c: treebench_c.exe treebench_c_bumpalloc.exe treebench_c_packed.exe treebench_c_packed2.exe treebench_c_packed_loop.exe treebench_c_packed_structs.exe treebench_c_parallel.exe
+c: treebench_c.exe treebench_c_bumpalloc.exe treebench_c_packed.exe treebench_c_packed_loop.exe treebench_c_packed_structs.exe treebench_c_parallel.exe treebench_c_parallel3.exe
 # treebench_c_parallel2.exe
 
 ghc: treebench_ghc_strict.exe treebench_ghc_lazy.exe treebench_ghc_packed.exe
@@ -28,7 +28,7 @@ GHC = stack --install-ghc --resolver=lts-7.1 exec ghc --
 CPP = g++
 # CPP = clang++
 
-PACKEDTRIALS=501
+PACKEDTRIALS=301
 
 CPPOPTS = -std=c++11
 COPTS = -std=c11
@@ -84,14 +84,14 @@ treebench_c_packed_loop.exe: treebench_packed_loop.c
 treebench_c_packed_structs.exe: treebench_packed_structs.c
 	time $(CC) $(COPTS) $^ -o $@ 
 
-treebench_c_packed2.exe: treebench_packed2.c
-	time $(CC) $(COPTS) $^ -o $@ 
-
 treebench_c_parallel.exe: treebench_parallel.c
 	time $(CPP) -fpermissive -fcilkplus $(CPPOPTS) $^ -o $@ 
 
 treebench_c_parallel2.exe: treebench_parallel2.c
-	time $(CC) -fcilkplus $(COPTS) $^ -o $@ 
+	time $(CC) -fcilkplus $(COPTS) $^ -o $@
+
+treebench_c_parallel3.exe: treebench_parallel3.c
+	time $(CC) -fcilkplus $(COPTS) -DTRIALS=$(PACKEDTRIALS) $^ -o $@ 
 
 treebench.class: treebench.java
 	time javac $^ 

@@ -6,7 +6,7 @@
 #include <time.h>
 
 #ifndef TRIALS
-#define TRIALS 501
+#define TRIALS 301
 #endif
 
 enum Tree {
@@ -79,7 +79,7 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
     *tout = Leaf;    
     TreeRef t2    = t    + 1;
     TreeRef tout2 = tout + 1;
-    *(Num*)tout2 = *(Num*)t2;
+    *(Num*)tout2 = *(Num*)t2 + 1;
     return (t2 + sizeof(Num));
   } else {
     *tout = Node;
@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
     add1Tree(tr,t2);
     end = clock();
     time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-    printf("  run(%d): %lf\n", i, time_spent);
+    // printf("  run(%d): %lf\n", i, time_spent);
     trials[i] = time_spent;
   }
   qsort(trials, TRIALS, sizeof(double), compare_doubles);

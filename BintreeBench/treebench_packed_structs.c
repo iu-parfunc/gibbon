@@ -1,3 +1,7 @@
+// Experimental version that returns structs from inline functions
+// when reading cursors.
+
+// ----------------------------------------
 // A manual implementation of a single-buffer, packed bintree
 // representation and a treewalk of it.
 
@@ -101,7 +105,7 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
   if (rd.tag == Leaf) {
     TreeRef tout2   = writeTag(tout, Leaf);
     struct RdInt ri = readInt(rd.newptr);
-    TreeRef tout3   = writeInt(tout2, ri.read);   
+    TreeRef tout3   = writeInt(tout2, ri.read + 1);   
     return ri.newptr;
   } else {
     TreeRef tout2 = writeTag(tout, Node);    

@@ -83,7 +83,7 @@ TreeRef add1Tree(TreeRef t, TreeRef tout) {
     if (tag == 0) break;
     if (tag == Leaf) {
       *tout = Leaf;
-      *(Num*)tout = *(Num*)(t + 1);
+      *(Num*)tout = (*(Num*)t) + 1;
       t    += 1 + sizeof(Num);
       tout += 1 + sizeof(Num);;
     } else {

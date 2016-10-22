@@ -97,7 +97,7 @@ Tree* add1Tree(Tree* t) {
   Tree* tout = (Tree*)ALLOC(sizeof(Tree));
   tout->tag = t->tag;
   if (t->tag == Leaf) {
-    tout->elem = t->elem;
+    tout->elem = t->elem + 1;
   } else {
     tout->l = add1Tree(t->l);
     tout->r = add1Tree(t->r);
