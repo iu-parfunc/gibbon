@@ -16,7 +16,7 @@
 #endif
 
 // The bottom K layers of the tree have NO indirections.
-#define SEQLAYERS 10 
+#define SEQLAYERS 15
 
 enum Tree {
     Leaf,
@@ -60,20 +60,20 @@ TreeRef fillTree(TreeRef cursor, int n, Num root) {
   }
 }
 
-int treeSize(int n) {
+size_t treeSize(int n) {
   int leaves = 1 << n;
   int nodes  = leaves - 1;
   // Both nodes and leaves are tagged:
   int bytes  = (sizeof(Num)*leaves + sizeof(char)*(nodes+leaves));
-  /* printf("treeSize(%d): %d bytes (%d/%d nodes/leaves)\n", */
-  /*        n, bytes, nodes, leaves); */
+  printf("treeSize(%d): %d bytes (%d/%d nodes/leaves)\n",
+         n, bytes, nodes, leaves);
 
   // Double it for Prime nodes:
   return 2 * bytes;
 }
 
 TreeRef buildTree(int n) {
-  int bytes = treeSize(n);
+  size_t bytes = treeSize(n);
   char* buf = malloc(bytes);
   char* res = fillTree(buf, n, 1);
   printf("wrote %d bytes while building tree\n", (int)(res - buf));  
