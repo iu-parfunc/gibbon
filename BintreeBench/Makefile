@@ -5,8 +5,11 @@
 all: treebench_mlton.exe treebench_ocaml.exe \
      treebench_rust.exe treebench.class c ghc
 
-c: treebench_c.exe treebench_c_bumpalloc.exe treebench_c_packed.exe treebench_c_packed_loop.exe treebench_c_packed_structs.exe treebench_c_parallel.exe treebench_c_parallel3.exe
-# treebench_c_parallel2.exe
+c: treebench_c.exe treebench_c_bumpalloc.exe treebench_c_packed.exe treebench_c_packed_loop.exe treebench_c_packed_structs.exe treebench_c_packed_parallel3.exe
+
+# These are unfinished, or behaving badly:
+# treebench_c_packed_parallel.exe 
+# treebench_c_packed_parallel2.exe
 
 ghc: treebench_ghc_strict.exe treebench_ghc_lazy.exe treebench_ghc_packed.exe
 
@@ -85,14 +88,14 @@ treebench_c_packed_loop.exe: treebench_packed_loop.c $(HEADERS)
 treebench_c_packed_structs.exe: treebench_packed_structs.c $(HEADERS)
 	time $(CC) $(COPTS) treebench_packed_structs.c -o $@ 
 
-treebench_c_parallel.exe: treebench_parallel.c
+treebench_c_packed_parallel.exe: treebench_packed_parallel.c
 	time $(CPP) -fpermissive -fcilkplus $(CPPOPTS) $^ -o $@ 
 
-treebench_c_parallel2.exe: treebench_parallel2.c
+treebench_c_packed_parallel2.exe: treebench_packed_parallel2.c
 	time $(CC) -fcilkplus $(COPTS) $^ -o $@
 
-treebench_c_parallel3.exe: treebench_parallel3.c $(HEADERS)
-	time $(CC) -fcilkplus $(COPTS) treebench_parallel3.c -o $@ 
+treebench_c_packed_parallel3.exe: treebench_packed_parallel3.c $(HEADERS)
+	time $(CC) -fcilkplus $(COPTS) treebench_packed_parallel3.c -o $@ 
 
 treebench.class: treebench.java
 	time javac $^ 
