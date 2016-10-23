@@ -3,11 +3,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <time.h>
-
-#ifndef TRIALS
-#define TRIALS 301
-#endif
 
 enum Tree {
     Leaf,

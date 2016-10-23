@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <time.h>
 
 // This was enough for a 10X slowdown.  It wrecks the add1tree recursion.
 // #define cilk_spawn
@@ -65,7 +64,7 @@ size_t treeSize(int n) {
   int nodes  = leaves - 1;
   // Both nodes and leaves are tagged:
   int bytes  = (sizeof(Num)*leaves + sizeof(char)*(nodes+leaves));
-  printf("treeSize(%d): %d bytes (%d/%d nodes/leaves)\n",
+  printf("  treeSize(%d): %d bytes (%d/%d nodes/leaves)\n",
          n, bytes, nodes, leaves);
 
   // Double it for Prime nodes:
@@ -76,7 +75,7 @@ TreeRef buildTree(int n) {
   size_t bytes = treeSize(n);
   char* buf = malloc(bytes);
   char* res = fillTree(buf, n, 1);
-  printf("wrote %d bytes while building tree\n", (int)(res - buf));  
+  printf("  wrote %d bytes while building tree\n", (int)(res - buf));  
   return buf;
 }
 

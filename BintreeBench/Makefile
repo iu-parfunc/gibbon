@@ -28,8 +28,9 @@ GHC = stack --install-ghc --resolver=lts-7.1 exec ghc --
 CPP = g++
 # CPP = clang++
 
-CPPOPTS = -std=c++11
-COPTS = -std=c11
+# time.h is missing features in c11/c++11:
+CPPOPTS = -std=gnu++11 -lrt
+COPTS   = -std=gnu11   -lrt
 
 ifeq ($(DEBUG),)
   CPPOPTS += -O3 

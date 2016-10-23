@@ -5,7 +5,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 
 // Manual layout:
 // one byte for each tag, 64 bit integers
@@ -109,6 +108,8 @@ double avg(const double* arr, int n) {
   for(int i=0; i<n; i++) sum += arr[i];
   return sum / (double)n;
 }
+
+#include <time.h>
 
 int main(int argc, char** argv) {
   int depth, iters;
