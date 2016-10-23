@@ -76,8 +76,7 @@ treebench_c.exe: treebench.c
 treebench_c_bumpalloc.exe: treebench.c
 	time $(CC) $(COPTS) -DBUMPALLOC $^ -o $@ 
 
-
-HEADERS=treebench_packed/main_fragment.h
+HEADERS=include/main_fragment_packed.h
 
 treebench_c_packed.exe: treebench_packed.c $(HEADERS)
 	time $(CC) $(COPTS) treebench_packed.c -o $@ 
