@@ -5,7 +5,8 @@
 all: treebench_mlton.exe treebench_ocaml.exe \
      treebench_rust.exe treebench.class c ghc
 
-c: treebench_c.exe treebench_c_bumpalloc.exe treebench_c_packed.exe treebench_c_packed_loop.exe treebench_c_packed_structs.exe treebench_c_packed_parallel3.exe
+c: treebench_c.exe treebench_c_bumpalloc.exe treebench_c_parallel.exe \
+   treebench_c_packed.exe treebench_c_packed_loop.exe treebench_c_packed_structs.exe treebench_c_packed_parallel3.exe
 
 # These are unfinished, or behaving badly:
 # treebench_c_packed_parallel.exe 
@@ -71,7 +72,10 @@ treebench_rust_sys_alloc.exe: treebench_sys_alloc.rs
 # 	time rustc $^ -o $@ -O
 
 treebench_c.exe: treebench.c
-	time $(CC) $(COPTS) $^ -o $@ 
+	time $(CC) $(COPTS) $^ -o $@
+
+treebench_c_parallel.exe: treebench.c
+	time $(CC) -DPARALLEL -fcilkplus $(COPTS) $^ -o $@ 
 
 treebench_c_bumpalloc.exe: treebench.c
 	time $(CC) $(COPTS) -DBUMPALLOC $^ -o $@ 
