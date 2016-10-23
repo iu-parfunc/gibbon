@@ -5,6 +5,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <cilk/cilk.h>
+#include <time.h>
 
 // Manual layout:
 // one byte for each tag, 64 bit integers
@@ -96,6 +98,23 @@ Tree* add1Tree(Tree* t) {
   return tout;
 }
 
+#ifdef PARALLEL
+Tree* add1TreePar(Tree* t, int n) {
+  if (n == 0) return add1Tree(t);
+  
+  Tree* tout = (Tree*)ALLOC(sizeof(Tree));
+  tout->tag = t->tag;
+  if (t->tag == Leaf) {
+    tout->elem = t->elem + 1;
+  } else {
+    tout->l = cilk_spawn add1TreePar(t->l, n-1);
+    tout->r = add1TreePar(t->r, n-1);
+  }
+  cilk_sync;
+  return tout;
+}
+#endif
+
 int compare_doubles (const void *a, const void *b)
 {
   const double *da = (const double *) a;
@@ -109,7 +128,12 @@ double avg(const double* arr, int n) {
   return sum / (double)n;
 }
 
-#include <time.h>
+double difftimespecs(struct timespec* t0, struct timespec* t1) {
+  return (double)(t1->tv_sec - t0->tv_sec)
+    + ((double)(t1->tv_nsec - t0->tv_nsec) / 1000000000.0);
+}
+
+static clockid_t which_clock = CLOCK_MONOTONIC_RAW;
 
 int main(int argc, char** argv) {
   int depth, iters;
@@ -125,10 +149,11 @@ int main(int argc, char** argv) {
   printf("Building tree, depth %d.  Benchmarking %d iters.\n", depth, iters);
 
   INITALLOC;
-  clock_t begin = clock();  
+  struct timespec begin, end;
+  clock_gettime(which_clock, &begin);
   Tree* tr = buildTree(depth);
-  clock_t end = clock();
-  double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+  clock_gettime(which_clock, &end);
+  double time_spent = difftimespecs(&begin, &end);
   printf("done building, took %lf seconds\n\n", time_spent);
   if (depth <= 5) {
     printf("Input tree:\n");
@@ -139,10 +164,14 @@ int main(int argc, char** argv) {
     iters = -iters;
     double trials[iters];
     for(int i=0; i<iters; i++) {
-      begin = clock();
+      clock_gettime(which_clock, &begin);
+#ifdef PARALLEL
+      Tree* t2 = add1TreePar(tr, 5);
+#else      
       Tree* t2 = add1Tree(tr);
-      end = clock();
-      time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+#endif      
+      clock_gettime(which_clock, &end);
+      time_spent = difftimespecs(&begin, &end);
       if(iters < 100)
         printf("  run(%d): %lf\n", i, time_spent);
       trials[i] = time_spent;
@@ -165,13 +194,17 @@ int main(int argc, char** argv) {
   else
   {
     printf("Timing %d iters as a batch\n", iters);
-    begin = clock();
+    clock_gettime(which_clock, &begin);
     for(int i=0; i<iters; i++) {
+#ifdef PARALLEL
+      Tree* t2 = add1TreePar(tr, 5);
+#else      
       Tree* t2 = add1Tree(tr);
+#endif
       DELTREE(t2);
     }
-    end = clock();
-    time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+    clock_gettime(which_clock, &end);
+    time_spent = difftimespecs(&begin, &end);
     printf("BATCHTIME: %lf\n", time_spent);
   }
   DELTREE(tr);
