@@ -1,6 +1,6 @@
 
 % This varies by conference, sometimes 9pt:
-\documentclass[preprint,10pt]{./bibs/sigplanconf}
+\documentclass[preprint,10pt,nocopyrightspace]{./bibs/sigplanconf}
 % The following \documentclass options may be useful:
 %
 % 10pt          To set in 10-point type instead of 9-point.
@@ -21,6 +21,8 @@
 
 \usepackage[noabbrev]{cleveref}
 \usepackage{enumitem}
+
+\usepackage{wrapfig}
 
 \newcommand{\gramdef}{\; ::= \;}
 \newcommand{\gramor}{\; | \;}
@@ -104,16 +106,120 @@ keyword1, keyword2
 
 \rn{This is an example peanut-gallery comment.}
 
+Programs that traverse and construct trees are a niche, but an important one,
+including compiler passes, HTML DOM, and particle simulations with
+space-partitioning trees.
+%
+Yet there is almost no diversity in how modern programming languages and
+compilers represent trees and their traversals, so the matter would seem to be
+settled.
+% In the traditional representation,
+Each node of the tree is a heap object, followed by fields for child nodes or
+leaf values.  This representation hasn't changed since the dawn of computing and
+is shared across source languages with quite different type
+sytsems---e.g. algebraic datatypes v.s. class hierarchies, statically ora
+dynamically typed.  The only deviations from this consensus are found within
+limited high-performance scenarios where complete trees can be laid out using
+address arithmetic with no intermediate nodes \cite{hpc-trees}.
+
+%% \begin{figure}
+%% %\begin{wrapfigure}{r}{0.5\textwidth} 
+%% \Red{PICTURE HERE:  possibly with wrapfig.}
+\begin{verbatim}
+  [N|.|.]
+     /  \ 
+ [L 1]  [N|.|.]
+          /   \
+       [L 2] [L 3]
+\end{verbatim}
+%%   \caption{Traditional, pointer-based tree layout.}
+%% \end{figure}
+%\end{wrapfigure}
+
+But perhaps the consensus was premature?  In numerical computing it's an axiom
+that you cannot treat the numbers in a matrix as individual heap objects.
+Rather, the emphasis is on bulk efficiency.  Likewise, many tree traversals
+process trees in bulk, reading or writing them in one pass.  On such workloads,
+traditional tree representations are not favored by current trends in computer
+architecture.  Pointer chasing implies randomized memory access patterns.  Also,
+much memory is wasted both in pointers themselves and in tags on nodes
+(e.g. distinguishing ``interior'' vs ``leaf'' objects).  For example, a C
+compiler uses 96 bytes
+%
+\rn{Double check that for alignment the C compiler is sacrificing a word for the
+one byte tag field.}
+%
+of memory to represent the tree above.  On the other
+hand, if we were sending the tree over the network, we would naturally use a
+more compact format in serializing it:
+
+% \begin{figure}
+\begin{verbatim}
+  [N L 1  N L 2  L 3 ]
+\end{verbatim}
+% \end{figure}
+
+Here we use the same 24 bytes for the leaf numbers, but only 5 bytes for the
+spine, rather than 72.  Further, a tree traversal processing this memory
+representation follows a precisely linear memory access pattern, because the
+data is already laid out in a preorder traversal.
+Indeed, if we can compile programs to operate directly on this serialization, we
+follow a precedent of using serialization formats jointly as in memory formats.
+Cap'N Proto \cite{capnproto} makes it ergonomic for C++ code to operate directly
+on the Protobuf serialization format in memory.  Likewise ``data baking''
+\cite{data-baking} is an established practice in video games---caching assets on
+disk in a format that allows them to be \il{mmap}'d into memory and used
+without further conversion.  As a general example of this capability, the
+Glasgow Haskell Compiler (GHC) recently added the capability to store any closed
+subgraph of the heap as a {\em Compact Normal Form} (CNF) \cite{cnf-icfp15}---a
+contiguous memory region that is treated as a kind of ``super object'', never
+traced by the GC and collected only when there are no pointers into any of the
+sub-parts of the CNF.
+
+The packed tree format above is precisely a dense encoding of a CNF---a
+transitive closure of heap objects with no escaping pointers, in this case, no
+pointers {\em at all}.  But unlike GHC's CNF support, which uses regular heap
+objects, colocated together, the dense tree format requires a complete
+rearrangement of the compiled code that operates on the data.
+
+% Shall we acronymize it?
+% DTF - dense tree form, or dense tree format
+% PTF - packed tree form
+% DTP - dense tree packing
+
+In this paper, we take a first step towards compiler support for transparently
+packing a tree datatypes without changing the source program.  We make the
+following contributions:
+
+\newcommand{\calculus}{$\lambda^D_T$} % uh, Dense Tree?
+
+\begin{itemize}
+\item We use a small core language, \calculus{}, to formalize a transformation
+  on programs with threes that creates an output program that operates only on
+  pointers in the serialized representation.  This involves a small program
+  synthesis step, and we show how the program synthesis and the selection of
+  data structure shape go benefit from co-optimization.
+  
+\item We demonstrate that a prototype language implementation based on this
+  transformation can compile a range of tree transforms to be several times
+  faster than existing techniques~\cref{sec:eval-compiler}.
+  
+\item We show that the principle of packed-tree traversals works across a
+  variety of language implementations, by benchmarking handwritten packed-tree
+  programs~\cref{sec:eval-shootout}.
+  
+\item We show that not only do tree traversals become faster, but that their
+  {\em potential parallel speedup}, increases as well \cref{sec:eval-parallel}.
+\end{itemize}
+
+
+% ================================================================================
+\section{Motivating Example}
+% Background?
+% ================================================================================
+
 \note{We use these bullets for outlining / psuedo-text.  They're removed when
   converted to actual prose.}
-
-
-
-
-% ================================================================================
-\section{Background}
-% ================================================================================
-
 
 % ================================================================================
 \section{Formal language}
