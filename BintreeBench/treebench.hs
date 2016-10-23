@@ -8,6 +8,8 @@ import Control.Monad
 import Data.Time.Clock
 import System.Environment
 
+import GHC.Conc (par, pseq)
+    
 -- Strict version
 --------------------------------------------------------------------------------
 
@@ -27,26 +29,43 @@ add1Tree :: Tree -> Tree
 add1Tree (Leaf n)   = Leaf (n+1)
 add1Tree (Node x y) = Node (add1Tree x) (add1Tree y)
 
+add1Par :: Tree -> Int -> Tree
+add1Par x          0 = add1Tree x
+add1Par (Leaf n)   i = Leaf (n+1)
+add1Par (Node x y) i =
+    let x' = add1Par x (i-1)
+        y' = add1Par y (i-1)
+    in x' `par` y' `pseq`
+       Node x' y'
+                     
 leftmost (Leaf n) = n
 leftmost (Node x _) = leftmost x
 
 --------------------------------------------------------------------------------
 
-bench :: Tree -> IO Tree
-bench tr = evaluate (add1Tree tr)
+timeit act =
+    do tm1 <- getCurrentTime
+       x <- act
+       tm2 <- getCurrentTime
+       return (tm1,tm2,x)
 
+main :: IO ()
 main =
  do args <- getArgs
-    let power = case args of
-                  [p] -> read p
-                  _   -> error $ "Bad command line args.  Expected one number (exponent): " ++show args
-    times <- forM [1..10] $ \_ -> do
+    let (mode,power,iters) =
+                case args of
+                  [md,p,i] -> (md,read p,read i)
+                  _   -> error $ "Bad command line args." ++
+                                 "  Expected <mode>=par|seq <depth> <iters> got: " ++
+                                 show args
+    times <- forM [1 .. iters :: Int] $ \_ -> do
       tr  <- buildTree power
-      t1  <- getCurrentTime
-      tr2 <- bench tr
-      t2  <- getCurrentTime
+      (st,en,tr') <- case mode of
+                     "par" -> timeit $ evaluate (add1Par tr 6)
+                     "seq" -> timeit $ evaluate (add1Tree tr)
       putStr "."
-      return (diffUTCTime t2 t1)
+      evaluate (leftmost tr')
+      return (diffUTCTime en st)
     let sorted = sort times
     putStrLn $ "\nAll times: " ++ show sorted
-    putStrLn $ "SELFTIMED: "++ show (sorted !! 4)
+    putStrLn $ "MEDIANTIME: "++ show (sorted !! (iters `quot` 2))

@@ -22,7 +22,7 @@ ghc: treebench_ghc_strict.exe treebench_ghc_lazy.exe treebench_ghc_packed.exe
 # treebench_rust_packed.exe
 
 # Match whichever version the docker image is using:
-GHC = stack --install-ghc --resolver=lts-7.1 exec ghc --
+GHC = stack --install-ghc --resolver=lts-7.1 exec ghc -- -rtsopts -threaded
 # GHC = stack --install-ghc --resolver=lts-6.19 exec ghc --
 
 # CC = gcc
