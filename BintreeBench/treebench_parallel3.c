@@ -72,6 +72,8 @@ size_t treeSize(int n) {
 }
 
 TreeRef buildTree(int n) {
+  printf("  Running parallel version with SEQLAYERS=%d\n", SEQLAYERS);
+  
   size_t bytes = treeSize(n);
   char* buf = malloc(bytes);
   char* res = fillTree(buf, n, 1);
