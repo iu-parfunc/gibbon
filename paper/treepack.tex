@@ -22,6 +22,10 @@
 \usepackage[noabbrev]{cleveref}
 \usepackage{enumitem}
 
+\newcommand{\gramdef}{\; ::= \;}
+\newcommand{\gramor}{\; | \;}
+\newcommand{\keywd}[1]{\; \texttt{#1} \;}
+
 %----------------------------------------
 %% \usepackage[colorinlistoftodos,prependcaption,textsize=tiny]{todonotes}
 %% \usepackage{xargs}
@@ -114,6 +118,31 @@ The text of the paper begins here.
 % ================================================================================
 
 \note{The calculus, plus the core lowering transforms in figures.}
+
+We present two languages: L1, a simple purely functional, first-order programming
+language with algebraic data types; and L2, an imperative programming language
+with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
+
+\subsection{L1: Source language}
+
+\subsection{L2: Target language}
+
+\begin{displaymath}
+  v \in Var \\
+  n \in Int \\
+  \begin{aligned}
+    \keywd{x} \gramdef & \keywd{n} \gramor \gramor{v} \\
+    \keywd{e} \gramdef & \keywd{i} \gramor \keywd{prim} \keywd{x}* \\
+    \gramor \keywd{(x,x,...)} \gramor \keywd{x} @ \keywd{n} \\
+    \gramor \keywd{let} \keywd{(v,t,e)}* \keywd{e} \\
+    \gramor \keywd{ifeq} \keywd{(x,x)} \keywd{e} \keywd{e} \\
+    \gramor \keywd{newbuff} n \\
+    \gramor \keywd{writetag} \keywd{v} \keywd{n} \\
+    \gramor \keywd{writeint} \keywd{v} \keywd{x} \\
+    \gramor \keywd{readtag} \keywd{v} \\
+    \gramor \keywd{readint} \keywd{v}
+  \end{aligned}
+\end{displaymath}
 
 
 % ================================================================================
