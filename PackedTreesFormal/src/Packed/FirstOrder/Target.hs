@@ -88,14 +88,11 @@ newtype Cg = Cg { unwrapCg :: () }
 codegenFun :: FunDecl -> ([C.Definition])
 codegenFun (FunDecl nam args typ tal) =
     let retTy   = codegenTy typ
-        retNam  = "ret" ++ nam ++ "var" -- hack, need real gensym
         params  = map (\(v,t) -> [cparam| $ty:(codegenTy t) $id:v |]) args
-        body    = C.Block (codegenTail tal retTy (cid retNam)) noLoc
+        body    = codegenTail tal retTy
         structs = makeStructs $ nub $ typ : (map snd args)
         fun = [cfun| $ty:retTy $id:nam ($params:params) {
-                  $ty:retTy $id:retNam;
-                  $stm:body
-                  return $id:retNam;
+                  $items:body
               } |]
     in structs ++ [(C.FuncDef fun noLoc)]
 
@@ -104,33 +101,31 @@ codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
 codegenTriv (IntTriv i) = [cexp| $i |]
 codegenTriv (TagTriv i) = [cexp| $i |]
 
-codegenTail :: Tail -> C.Type -> C.Exp -> [C.BlockItem]
-codegenTail (RetValsT [tr]) _ty ret =
-    let assn t = [ C.BlockStm [cstm| $ret = $t; |] ]
-    in assn $ codegenTriv tr
-codegenTail (RetValsT ts) ty ret =
-    [ C.BlockStm [cstm| $ret = $(C.CompoundLit ty args noLoc); |] ]
+codegenTail :: Tail -> C.Type -> [C.BlockItem]
+codegenTail (RetValsT [tr]) _ty = [ C.BlockStm [cstm| return $(codegenTriv tr); |] ]
+codegenTail (RetValsT ts) ty =
+    [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
     where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
-codegenTail (Switch _tr [] Nothing) _ty _ret = []
-codegenTail (Switch _tr [] (Just t)) ty ret =
-    codegenTail t ty ret
-codegenTail (Switch tr ((ctag,ctail):cs) def) ty ret =
+codegenTail (Switch _tr [] Nothing) _ty = []
+codegenTail (Switch _tr [] (Just t)) ty =
+    codegenTail t ty
+codegenTail (Switch tr ((ctag,ctail):cs) def) ty =
     [ C.BlockStm $ C.If comp thenTail elseTail noLoc ]
     where comp = [cexp| $(codegenTriv tr) == $ctag |]
-          thenTail = mkBlock $ codegenTail ctail ty ret
-          elseTail = if (null cs) then Nothing else Just $ mkBlock $ codegenTail (Switch tr cs def) ty ret
-codegenTail (TailCall v ts) _ty ret =
-    [ C.BlockStm [cstm| $ret = $( C.FnCall (cid v) args noLoc); |] ]
+          thenTail = mkBlock $ codegenTail ctail ty
+          elseTail = if (null cs) then Nothing else Just $ mkBlock $ codegenTail (Switch tr cs def) ty
+codegenTail (TailCall v ts) _ty =
+    [ C.BlockStm [cstm| return $( C.FnCall (cid v) args noLoc); |] ]
     where args = map codegenTriv ts
-codegenTail (LetCallT bnds rator rnds typ (Just nam) bod) ty ret =
+codegenTail (LetCallT bnds rator rnds typ (Just nam) bod) ty =
     let init = [ C.BlockDecl [cdecl| $ty:(codegenTy typ) $id:nam; |]
                , C.BlockStm [cstm| $id:nam  = $(C.FnCall (cid rator) (map codegenTriv rnds) noLoc); |] ]
         assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
         bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
         fields = map (\(_,i) -> "field" ++ (show i)) $ zip bnds [0..]
-    in init ++ (zipWith bind bnds fields) ++ (codegenTail bod ty ret)
-codegenTail (LetPrimCallT bnds prim rnds bod) ty ret =
-    let bod' = codegenTail bod ty ret
+    in init ++ (zipWith bind bnds fields) ++ (codegenTail bod ty)
+codegenTail (LetPrimCallT bnds prim rnds bod) ty =
+    let bod' = codegenTail bod ty
         pre  = case prim of
                  AddP -> let [(outV,outT)] = bnds
                              [pleft,pright] = rnds
