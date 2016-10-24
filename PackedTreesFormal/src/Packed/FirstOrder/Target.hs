@@ -109,6 +109,8 @@ codegenTail (RetValsT ts) ty =
 codegenTail (Switch _tr [] Nothing) _ty = []
 codegenTail (Switch _tr [] (Just t)) ty =
     codegenTail t ty
+codegenTail (Switch _tr [(_ctag,ctail)] Nothing) ty =
+    codegenTail ctail ty
 codegenTail (Switch tr ((ctag,ctail):cs) def) ty =
     [ C.BlockStm $ C.If comp thenTail elseTail noLoc ]
     where comp = [cexp| $(codegenTriv tr) == $ctag |]
@@ -118,8 +120,7 @@ codegenTail (TailCall v ts) _ty =
     [ C.BlockStm [cstm| return $( C.FnCall (cid v) args noLoc); |] ]
     where args = map codegenTriv ts
 codegenTail (LetCallT bnds rator rnds typ (Just nam) bod) ty =
-    let init = [ C.BlockDecl [cdecl| $ty:(codegenTy typ) $id:nam; |]
-               , C.BlockStm [cstm| $id:nam  = $(C.FnCall (cid rator) (map codegenTriv rnds) noLoc); |] ]
+    let init = [ C.BlockDecl [cdecl| $ty:(codegenTy typ) $id:nam = $(C.FnCall (cid rator) (map codegenTriv rnds) noLoc); |] ]
         assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
         bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
         fields = map (\(_,i) -> "field" ++ (show i)) $ zip bnds [0..]
@@ -129,16 +130,13 @@ codegenTail (LetPrimCallT bnds prim rnds bod) ty =
         pre  = case prim of
                  AddP -> let [(outV,outT)] = bnds
                              [pleft,pright] = rnds
-                         in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV; |]
-                            , C.BlockStm [cstm| $id:outV = $(codegenTriv pleft) + $(codegenTriv pright); |]]
+                         in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) + $(codegenTriv pright); |] ]
                  SubP -> let (outV,outT) = head bnds
                              [pleft,pright] = rnds
-                         in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV; |]
-                            , C.BlockStm [cstm| $id:outV = $(codegenTriv pleft) - $(codegenTriv pright); |]]
+                         in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) - $(codegenTriv pright); |] ]
                  MulP -> let [(outV,outT)] = bnds
                              [pleft,pright] = rnds
-                         in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV; |]
-                            , C.BlockStm [cstm| $id:outV = $(codegenTriv pleft) * $(codegenTriv pright); |]]
+                         in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) * $(codegenTriv pright); |]]
                  DictInsertP -> undefined
                  DictLookupP -> undefined
                  NewBuf -> undefined
