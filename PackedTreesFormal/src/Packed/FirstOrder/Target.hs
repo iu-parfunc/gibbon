@@ -87,108 +87,27 @@ codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
 codegenTriv (IntTriv i) = [cexp| $i |]
 codegenTriv (TagTriv i) = [cexp| $i |]
 
-codegenTail :: Tail -> C.Exp -> [C.BlockItem]
-codegenTail (RetValsT [tr]) ret =
+codegenTail :: Tail -> C.Type -> C.Exp -> [C.BlockItem]
+codegenTail (RetValsT [tr]) _ty ret =
     let assn t = [ C.BlockStm [cstm| $ret = $t; |] ]
     in assn $ codegenTriv tr
-codegenTail (RetValsT ts) ret =
-    -- making stuff up: all fields of structs are named field_1, field_2, etc.
-    let assn (t,f) = [ C.BlockStm [cstm| $(C.Member ret (C.Id f noLoc) noLoc) = $t; |] ]
-    in concatMap assn $ zip (map codegenTriv ts) $ map (\n -> "field_" ++ (show n)) [1..]
-codegenTail (LetCallT bnds rator rnds bod) ret = undefined
-codegenTail (LetPrimCallT bnds prim rnds bod) ret = undefined
-codegenTail (Switch tr cs def) ret = undefined
-codegenTail (TailCall v ts) ret =
+codegenTail (RetValsT ts) ty ret =
+    -- trying out using a struct initializer so we don't need to know the field names
+    [ C.BlockStm [cstm| $ret = $(C.CompoundLit ty args noLoc); |] ]
+    where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
+codegenTail (Switch _tr [] Nothing) _ty _ret = []
+codegenTail (Switch _tr [] (Just t)) ty ret =
+    codegenTail t ty ret
+codegenTail (Switch tr ((ctag,ctail):cs) def) ty ret =
+    [ C.BlockStm $ C.If comp thenTail elseTail noLoc ]
+    where comp = [cexp| $(codegenTriv tr) == $ctag |]
+          thenTail = mkBlock $ codegenTail ctail ty ret
+          elseTail = Just $ mkBlock $ codegenTail (Switch tr cs def) ty ret
+codegenTail (TailCall v ts) _ty ret =
     [ C.BlockStm [cstm| $ret = $( C.FnCall (cid v) args noLoc); |] ]
     where args = map codegenTriv ts
-
--- codegen_exp
---   :: Exp     -- ^ source expression
---   -> C.Exp   -- ^ where to bind the result (must be a valid LHS)
---   -> [C.BlockItem]
-
--- codegen_exp (TrivE triv) ret =
---     [ C.BlockStm [cstm| $ret = $(codegen_triv triv); |] ]
-
--- codegen_exp (PrimAppE AddP as) ret = codegen_binop C.Add as ret
--- codegen_exp (PrimAppE SubP as) ret = codegen_binop C.Sub as ret
--- codegen_exp (PrimAppE MulP as) ret = codegen_binop C.Mul as ret
-
--- codegen_exp (PrimAppE DictInsertP [k, v, dict]) ret =
---     [ C.BlockStm [cstm| $ret = dict_insert($dict', $k', $v'); |] ]
---   where
---     k' = codegen_triv k
---     v' = codegen_triv v
---     dict' = codegen_triv dict
-
--- codegen_exp (PrimAppE DictLookupP [k, dict]) ret =
---     [ C.BlockStm [cstm| $ret = dict_lookup($dict', $k'); |] ]
---   where
---     k' = codegen_triv k
---     dict' = codegen_triv dict
-
--- codegen_exp invalid@PrimAppE{} _ =
---     error ("codgen_exp: Invalid PrimApp: " ++ show invalid)
-
--- codegen_exp (AppE v as) ret =
---     [ C.BlockStm [cstm| $ret = $( C.FnCall fn args noLoc ); |] ]
---   where
---     fn = C.Var (C.toIdent v noLoc) noLoc
---     args = map codegen_triv as
-
--- -- TODO: MkTupleE
--- -- TODO: ProjE
-
--- codegen_exp (LetE binds e) ret =
---     concatMap codegen_binds binds ++ codegen_exp e ret
-
--- codegen_exp (IfEqE (t1, t2) then_ else_) ret =
---     [ C.BlockStm $
---       C.If [cexp| $t1' == $t2' |]
---            (mkBlock (codegen_exp then_ ret))
---            (Just (mkBlock (codegen_exp else_ ret)))
---            noLoc ]
---   where
---     t1' = codegen_triv t1
---     t2' = codegen_triv t2
-
--- codegen_exp (NewBufE size) ret =
---     [ C.BlockStm [cstm| $ret = (char*)malloc($size); |] ]
-
--- codegen_exp (WriteTagE ptr w) _ =
---     [ C.BlockStm [cstm| *$(cid ptr) = $w; |]
---     , C.BlockStm [cstm| $(cid ptr)++;     |] ]
-
--- codegen_exp (WriteIntE ptr t) _ =
---     [ C.BlockStm [cstm| *((int*)$(cid ptr)) = $(codegen_triv t); |]
---     , C.BlockStm [cstm| $(cid ptr) += sizeof(int);               |] ]
---   where
---     ptr' = C.Var (C.toIdent ptr noLoc) noLoc
-
--- codegen_exp (ReadTagE ptr) ret =
---     [ C.BlockStm [cstm| $ret = *$(cid ptr); |]
---     , C.BlockStm [cstm| $(cid ptr)++;       |] ]
-
--- codegen_exp (ReadIntE ptr) ret =
---     [ C.BlockStm [cstm| $ret = *((int*)$(cid ptr)); |]
---     , C.BlockStm [cstm| $(cid ptr) += sizeof(int);  |] ]
-
--- codegen_binds :: (Var, Ty, Exp) -> [C.BlockItem]
--- codegen_binds (v, ty, e) =
---     ( C.BlockDecl (C.AntiDecl (codegen_ty ty ++ " " ++ v ++ ";") noLoc)
---     : codegen_exp e (cid v) )
-
--- codegen_binop :: C.BinOp -> [Triv] -> C.Exp -> [C.BlockItem]
--- codegen_binop op as ret =
---     [ C.BlockStm
---       [cstm| $ret = $(foldl1' (\e1 e2 -> C.BinOp op e1 e2 noLoc) (map codegen_triv as)); |] ]
-
--- codegen_ty :: Ty -> String
--- codegen_ty IntTy    = "int"
--- codegen_ty SymTy    = "sym"
--- codegen_ty CursorTy = "cursor"
--- codegen_ty ProdTy{} = undefined -- TODO: This is more general than we need I think
--- codegen_ty SymDictTy{} = undefined -- TODO: Not sure what this is
+codegenTail (LetCallT bnds rator rnds bod) _ty ret = undefined
+codegenTail (LetPrimCallT bnds prim rnds bod) _ty ret = undefined
 
 mkBlock :: [C.BlockItem] -> C.Stm
 mkBlock ss = C.Block ss noLoc
