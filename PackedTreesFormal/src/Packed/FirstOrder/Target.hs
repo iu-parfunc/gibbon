@@ -214,7 +214,8 @@ exadd1Tail =
     where leafCase =
               LetPrimCallT [("tout2",CursorTy)] WriteTag [TagTriv leafTag, VarTriv "tout"]
             $ LetPrimCallT [("n",IntTy),("t3",CursorTy)] ReadInt [VarTriv "t2"]
-            $ LetPrimCallT [("tout3",CursorTy)] WriteInt [VarTriv "n", VarTriv "tout2"]
+            $ LetPrimCallT [("n1",IntTy)] AddP [VarTriv "n", IntTriv 1]
+            $ LetPrimCallT [("tout3",CursorTy)] WriteInt [VarTriv "n1", VarTriv "tout2"]
             $ RetValsT [VarTriv "t3", VarTriv "tout3"]
           nodeCase =
               LetPrimCallT [("tout2",CursorTy)] WriteTag [TagTriv nodeTag, VarTriv "tout"]
