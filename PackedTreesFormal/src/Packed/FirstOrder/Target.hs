@@ -82,10 +82,27 @@ data FunDecl = FunDecl Var [(Var,Ty)] Ty Tail
 
 newtype Cg = Cg { unwrapCg :: () }
 
-codegen_triv :: Triv -> C.Exp
-codegen_triv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
-codegen_triv (IntTriv i) = [cexp| $i |]
-codegen_triv (TagTriv i) = [cexp| $i |]
+codegenTriv :: Triv -> C.Exp
+codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
+codegenTriv (IntTriv i) = [cexp| $i |]
+codegenTriv (TagTriv i) = [cexp| $i |]
+
+codegenTail :: Tail -> C.Exp -> C.Exp -> [C.BlockItem]
+codegenTail (RetValsT [tr]) ret tal =
+    let assn t = [ C.BlockStm [cstm| $ret = $t; |]
+                 , C.BlockStm [cstm| $tal = $ret; |] ]
+    in assn $ codegenTriv tr
+codegenTail (RetValsT ts) ret tal =
+    let assn (t,f) = [ C.BlockStm [cstm| $(C.Member t (C.Id f noLoc) noLoc) = $t; |] ]
+    in (concatMap assn $ zip (map codegenTriv ts) $ map (\n -> "field_" ++ (show n)) [1..])
+       ++ [ C.BlockStm [cstm| $tal = $ret; |] ]
+codegenTail (LetCallT bnds rator rnds bod) ret tal = undefined
+codegenTail (LetPrimCallT bnds prim rnds bod) ret tal = undefined
+codegenTail (Switch tr cs def) ret tal = undefined
+codegenTail (TailCall v ts) ret tal =
+    [ C.BlockStm [cstm| $ret = $( C.FnCall (cid v) args); |]
+    , C.BlockStm [cstm| $tal = $ret; |] ]
+    where args = map codegenTriv ts
 
 -- codegen_exp
 --   :: Exp     -- ^ source expression
