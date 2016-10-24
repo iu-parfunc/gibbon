@@ -127,7 +127,7 @@ codegenTail (LetCallT bnds rator rnds typ (Just nam) bod) ty ret =
                , C.BlockStm [cstm| $id:nam  = $(C.FnCall (cid rator) (map codegenTriv rnds) noLoc); |] ]
         assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
         bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
-        fields = map (\(_,i) -> "field_" ++ (show i)) $ zip bnds [0..]
+        fields = map (\(_,i) -> "field" ++ (show i)) $ zip bnds [0..]
     in init ++ (zipWith bind bnds fields) ++ (codegenTail bod ty ret)
 codegenTail (LetPrimCallT bnds prim rnds bod) ty ret =
     let bod' = codegenTail bod ty ret
@@ -154,7 +154,7 @@ codegenTail (LetPrimCallT bnds prim rnds bod) ty ret =
                  WriteInt -> let [(outV,CursorTy)] = bnds
                                  [val,(VarTriv cur)] = rnds
                              in [ C.BlockStm [cstm| *(int*)($id:cur) = $(codegenTriv val); |]
-                                , C.BlockDecl [cdecl| char* $id:outV = (char*)((int*)($id:cur) + 1); |] ]
+                                , C.BlockDecl [cdecl| char* $id:outV = ($id:cur) + sizeof(int); |] ]
                  ReadTag -> let [(tagV,TagTy),(curV,CursorTy)] = bnds
                                 [(VarTriv cur)] = rnds
                             in [ C.BlockDecl [cdecl| $ty:(codegenTy TagTy) $id:tagV = *($id:cur); |]
@@ -162,7 +162,7 @@ codegenTail (LetPrimCallT bnds prim rnds bod) ty ret =
                  ReadInt -> let [(valV,IntTy),(curV,CursorTy)] = bnds
                                 [(VarTriv cur)] = rnds
                             in [ C.BlockDecl [cdecl| int $id:valV = *(int*)($id:cur); |]
-                               , C.BlockDecl [cdecl| char* $id:curV = (char*)((int*)($id:cur) + 1); |] ]
+                               , C.BlockDecl [cdecl| char* $id:curV = ($id:cur) + sizeof(int); |] ]
     in pre ++ bod'
 
 codegenTy :: Ty -> C.Type
