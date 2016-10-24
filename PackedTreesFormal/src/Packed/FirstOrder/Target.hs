@@ -9,10 +9,10 @@ module Packed.FirstOrder.Target where
 --------------------------------------------------------------------------------
 
 import Data.Word (Word8)
-import Data.List (foldl1')
+import Data.List (foldl1',nub)
 
 import Data.Loc (noLoc)
-import Language.C.Quote.C (cexp, cstm, cinit, cdecl, cty, cfun, csdecl, cparam)
+import Language.C.Quote.C (cexp, cstm, cinit, cdecl, cty, cfun, csdecl, cparam, cedecl)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import Language.C.Pretty
@@ -37,8 +37,7 @@ data Tail
                  rator  :: Var,
                  rands  :: [Triv],
                  typ    :: Ty,
-                 tmpNam :: Maybe Var,  -- hack, needed a name for the returned struct
-                 fields :: Maybe [Var], -- names of all the fields in the struct
+                 tmpNam :: Maybe Var,  -- hack, needed a name for the returned struct, should gensym
                  bod    :: Tail }
     | LetPrimCallT { binds :: [(Var,Ty)],
                      prim  :: Prim,
@@ -86,17 +85,19 @@ data FunDecl = FunDecl Var [(Var,Ty)] Ty Tail
 
 newtype Cg = Cg { unwrapCg :: () }
 
-codegenFun :: FunDecl -> C.Func
+codegenFun :: FunDecl -> ([C.Definition])
 codegenFun (FunDecl nam args typ tal) =
-    let retTy  = codegenTy typ
-        retNam = "ret" ++ nam ++ "var" -- hack, need real gensym
-        params = map (\(v,t) -> [cparam| $ty:(codegenTy t) $id:v |]) args
-        body   = C.Block (codegenTail tal retTy (cid retNam)) noLoc
-    in
-      [cfun| $ty:retTy $id:nam ($params:params) {
-                $ty:retTy $id:retNam;
-                $stm:body;
-            } |]
+    let retTy   = codegenTy typ
+        retNam  = "ret" ++ nam ++ "var" -- hack, need real gensym
+        params  = map (\(v,t) -> [cparam| $ty:(codegenTy t) $id:v |]) args
+        body    = C.Block (codegenTail tal retTy (cid retNam)) noLoc
+        structs = makeStructs $ nub $ typ : (map snd args)
+        fun = [cfun| $ty:retTy $id:nam ($params:params) {
+                  $ty:retTy $id:retNam;
+                  $stm:body
+                  return $id:retNam;
+              } |]
+    in structs ++ [(C.FuncDef fun noLoc)]
 
 codegenTriv :: Triv -> C.Exp
 codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
@@ -117,15 +118,16 @@ codegenTail (Switch tr ((ctag,ctail):cs) def) ty ret =
     [ C.BlockStm $ C.If comp thenTail elseTail noLoc ]
     where comp = [cexp| $(codegenTriv tr) == $ctag |]
           thenTail = mkBlock $ codegenTail ctail ty ret
-          elseTail = Just $ mkBlock $ codegenTail (Switch tr cs def) ty ret
+          elseTail = if (null cs) then Nothing else Just $ mkBlock $ codegenTail (Switch tr cs def) ty ret
 codegenTail (TailCall v ts) _ty ret =
     [ C.BlockStm [cstm| $ret = $( C.FnCall (cid v) args noLoc); |] ]
     where args = map codegenTriv ts
-codegenTail (LetCallT bnds rator rnds typ (Just nam) (Just fields) bod) ty ret =
+codegenTail (LetCallT bnds rator rnds typ (Just nam) bod) ty ret =
     let init = [ C.BlockDecl [cdecl| $ty:(codegenTy typ) $id:nam; |]
-               , C.BlockStm [cstm| $nam  = $(C.FnCall (cid rator) (map codegenTriv rnds) noLoc); |] ]
+               , C.BlockStm [cstm| $id:nam  = $(C.FnCall (cid rator) (map codegenTriv rnds) noLoc); |] ]
         assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
         bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
+        fields = map (\(_,i) -> "field_" ++ (show i)) $ zip bnds [0..]
     in init ++ (zipWith bind bnds fields) ++ (codegenTail bod ty ret)
 codegenTail (LetPrimCallT bnds prim rnds bod) ty ret =
     let bod' = codegenTail bod ty ret
@@ -151,7 +153,7 @@ codegenTail (LetPrimCallT bnds prim rnds bod) ty ret =
                                 , C.BlockDecl [cdecl| char* $id:outV = $id:cur + 1; |] ]
                  WriteInt -> let [(outV,CursorTy)] = bnds
                                  [val,(VarTriv cur)] = rnds
-                             in [ C.BlockStm [cstm| *($id:cur) = $(codegenTriv val); |]
+                             in [ C.BlockStm [cstm| *(int*)($id:cur) = $(codegenTriv val); |]
                                 , C.BlockDecl [cdecl| char* $id:outV = (char*)((int*)($id:cur) + 1); |] ]
                  ReadTag -> let [(tagV,TagTy),(curV,CursorTy)] = bnds
                                 [(VarTriv cur)] = rnds
@@ -159,7 +161,7 @@ codegenTail (LetPrimCallT bnds prim rnds bod) ty ret =
                                , C.BlockDecl [cdecl| char* $id:curV = $id:cur + 1; |] ]
                  ReadInt -> let [(valV,IntTy),(curV,CursorTy)] = bnds
                                 [(VarTriv cur)] = rnds
-                            in [ C.BlockDecl [cdecl| int $id:valV = *($id:cur); |]
+                            in [ C.BlockDecl [cdecl| int $id:valV = *(int*)($id:cur); |]
                                , C.BlockDecl [cdecl| char* $id:curV = (char*)((int*)($id:cur) + 1); |] ]
     in pre ++ bod'
 
@@ -167,14 +169,19 @@ codegenTy :: Ty -> C.Type
 codegenTy IntTy = [cty|int|]
 codegenTy TagTy = [cty|int|]
 codegenTy SymTy = [cty|int|]
-codegenTy CursorTy = [cty|int|]
+codegenTy CursorTy = [cty|char*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc 
     where nam = makeName ts
--- codegenTy (ProdTy ts) = [cty|struct $id:nam { $sdecls:decls } |]
---     where nam :: String
---           nam = makeName ts
---           decls = map (\(t,n) -> [csdecl| $ty:(codegenTy t) $id:("field"++(show n)); |]) $ zip ts [0..]
 codegenTy (SymDictTy _t) = undefined
+
+makeStructs :: [Ty] -> [C.Definition]
+makeStructs [] = []
+makeStructs ((ProdTy ts):ts') = 
+    let d     = [cedecl| typedef struct $id:(nam ++ "_struct") { $sdecls:decls } $id:nam; |]
+        nam   = makeName ts
+        decls = map (\(t,n) -> [csdecl| $ty:(codegenTy t) $id:("field"++(show n)); |]) $ zip ts [0..]
+    in d : (makeStructs ts')
+makeStructs (_:ts) = makeStructs ts
 
 makeName :: [Ty] -> String
 makeName [] = "Prod"
@@ -211,7 +218,7 @@ exadd1Tail =
             $ RetValsT [VarTriv "t3", VarTriv "tout3"]
           nodeCase =
               LetPrimCallT [("tout2",CursorTy)] WriteTag [TagTriv nodeTag, VarTriv "tout"]
-            $ LetCallT [("t3",CursorTy),("tout3",CursorTy)] "add1" [VarTriv "t2", VarTriv "tout2"] (ProdTy [CursorTy,CursorTy]) (Just "tmp1") (Just ["tmpleaf","tmpnode"])
+            $ LetCallT [("t3",CursorTy),("tout3",CursorTy)] "add1" [VarTriv "t2", VarTriv "tout2"] (ProdTy [CursorTy,CursorTy]) (Just "tmp1")
             $ TailCall "add1" [VarTriv "t3", VarTriv "tout3"]
 
-add1C = putDocLn $ ppr $ codegenFun exadd1
+add1C = mapM_ (\c -> putDocLn $ ppr c) (codegenFun exadd1)
