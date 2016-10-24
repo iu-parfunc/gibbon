@@ -38,18 +38,21 @@ leftmost (Node x _) = leftmost x
 
 --------------------------------------------------------------------------------
 
-bench :: Tree -> IO Tree
-bench tr = evaluate $ force (add1Tree tr)
+{-# NOINLINE bench #-}
+bench :: Int -> Tree -> IO Tree
+bench _ tr = evaluate $ force (add1Tree tr)
 
 main =
  do args <- getArgs
-    let power = case args of
-                  [p] -> read p
-                  _   -> error $ "Bad command line args.  Expected one number (exponent): " ++show args
-    times <- forM [1..9] $ \_ -> do
-      tr  <- buildTree power
+    let (power,iters) =
+            case args of
+              [p,i] -> (read p, read i)
+              _   -> error $ "Bad command line args.  Expected <depth> <iters>: " ++show args
+    putStrLn $ "Benchmarking depth "++show power++", iters "++show iters
+    tr  <- buildTree power
+    times <- forM [1 .. iters] $ \ix -> do
       t1  <- getCurrentTime
-      tr2 <- bench tr
+      tr2 <- bench ix tr
       t2  <- getCurrentTime
       -- putStrLn $ "Test, leftmost leaf in output: " ++ show (leftmost tr2)
       -- putStrLn $ "Took "++ show (diffUTCTime t2 t1)

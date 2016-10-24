@@ -19,19 +19,18 @@
             (add1-tree (cdr tr)))
       (unsafe-fx+ 1 tr)))
 
-(define (bench n)
-  (define tr (build-tree n))
+(define (bench tr n)
   (collect-garbage #;'major)
   (time (add1-tree tr)))
 
-(define size
+(define-values (size iters)
   (match (current-command-line-arguments)
-    [(vector s) (string->number s)]
-    [args (error "expected one command line arg, <depth>, got ~a:\n  ~a"
+    [(vector s i) (values (string->number s) (string->number i))]
+    [args (error "expected two command line args, <depth> <iters>, got ~a:\n  ~a"
                  (vector-length args))]))
 
-(printf "Benchmarking on tree of size 2^~a\n" size)
-(let loop ((i 1))
-  (bench size)
-  (when (< i 10)
-        (loop (add1 i))))
+(printf "Benchmarking on tree of size 2^~a, ~a iterations\n" size iters)
+(time
+ (let ([tr (build-tree size)])
+   (for ((i (in-range iters)))
+     (bench tr size))))
