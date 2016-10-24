@@ -12,7 +12,7 @@ import Data.Word (Word8)
 import Data.List (foldl1')
 
 import Data.Loc (noLoc)
-import Language.C.Quote.C (cexp, cstm)
+import Language.C.Quote.C (cexp, cstm, cinit, cdecl)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 
@@ -32,10 +32,13 @@ data Triv
 
 data Tail
     = RetValsT [Triv] -- ^ Only in tail position, for returning from a function.
-    | LetCallT { binds :: [(Var,Ty)],
-                 rator :: Var,
-                 rands :: [Triv],
-                 bod   :: Tail }
+    | LetCallT { binds  :: [(Var,Ty)],
+                 rator  :: Var,
+                 rands  :: [Triv],
+                 typ    :: Ty,
+                 tmpNam :: Maybe Var,  -- hack, needed a name for the returned struct
+                 fields :: Maybe [Var], -- names of all the fields in the struct
+                 bod    :: Tail }
     | LetPrimCallT { binds :: [(Var,Ty)],
                      prim  :: Prim,
                      rands :: [Triv],
@@ -92,7 +95,6 @@ codegenTail (RetValsT [tr]) _ty ret =
     let assn t = [ C.BlockStm [cstm| $ret = $t; |] ]
     in assn $ codegenTriv tr
 codegenTail (RetValsT ts) ty ret =
-    -- trying out using a struct initializer so we don't need to know the field names
     [ C.BlockStm [cstm| $ret = $(C.CompoundLit ty args noLoc); |] ]
     where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
 codegenTail (Switch _tr [] Nothing) _ty _ret = []
@@ -106,9 +108,28 @@ codegenTail (Switch tr ((ctag,ctail):cs) def) ty ret =
 codegenTail (TailCall v ts) _ty ret =
     [ C.BlockStm [cstm| $ret = $( C.FnCall (cid v) args noLoc); |] ]
     where args = map codegenTriv ts
-codegenTail (LetCallT bnds rator rnds bod) _ty ret = undefined
-codegenTail (LetPrimCallT bnds prim rnds bod) _ty ret = undefined
+codegenTail (LetCallT bnds rator rnds typ (Just nam) (Just fields) bod) ty ret =
+    let init = [ C.BlockDecl [cdecl| $ty:(codegenTy typ) $id:nam; |]
+               , C.BlockStm [cstm| $nam  = $(C.FnCall (cid rator) (map codegenTriv rnds) noLoc); |] ]
+        assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
+        bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
+    in init ++ (zipWith bind bnds fields) ++ (codegenTail bod ty ret)
+codegenTail (LetPrimCallT bnds prim rnds bod) ty ret =
+    case prim of
+      AddP -> undefined
+      SubP -> undefined
+      MulP -> undefined
+      DictInsertP -> undefined
+      DictLookupP -> undefined
+      NewBuf -> undefined
+      WriteTag -> undefined
+      WriteInt -> undefined
+      ReadTag -> undefined
+      ReadInt -> undefined
 
+codegenTy :: Ty -> C.Type
+codegenTy = undefined
+                                                        
 mkBlock :: [C.BlockItem] -> C.Stm
 mkBlock ss = C.Block ss noLoc
 
@@ -138,5 +159,5 @@ exadd1Tail =
             $ RetValsT [VarTriv "t3", VarTriv "tout3"]
           nodeCase =
               LetPrimCallT [("tout2",CursorTy)] WriteTag [TagTriv nodeTag, VarTriv "tout"]
-            $ LetCallT [("t3",CursorTy),("tout3",CursorTy)] "add1" [VarTriv "t2", VarTriv "tout2"]
+            $ LetCallT [("t3",CursorTy),("tout3",CursorTy)] "add1" [VarTriv "t2", VarTriv "tout2"] (ProdTy [CursorTy,CursorTy]) (Just "tmp1") (Just ["tmpleaf","tmpnode"])
             $ TailCall "add1" [VarTriv "t3", VarTriv "tout3"]
