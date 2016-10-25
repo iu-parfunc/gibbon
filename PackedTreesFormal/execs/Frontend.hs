@@ -19,6 +19,7 @@ main = do
       [path] -> run path
       _      -> putStrLn "USAGE: packed-trees <FILE PATH>" >> exitFailure
 
+-- run = error "Reenable me!!"                
 run :: FilePath -> IO ()
 run path =
     fmap parse (readFile path) >>= \case

@@ -8,45 +8,17 @@
 --   not integrating with a functional host language, but rather
 --   genarating C code like a DSL.
 
-module Packed.FirstOrder.L1_Source where
+module Packed.FirstOrder.L1_Source
+    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), Ty(..), Prim(..),
+     add1Prog
+    )
+    where
 
+import Packed.FirstOrder.Common
 import Data.Map as M
 -- import Data.List as L
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
-
---------------------------------------------------------------------------------
--- Should be common bits:
-
-type Var    = String
-type Constr = String
-type DDefs a = Map Var (DDef a)
-
--- | In the extreme case we can strip packed datatypes of all type
--- parameters, or we can allow them to retain type params but require
--- that they always be fully instantiated to monomorphic types in the
--- context of our monomorphic programs.
-data DDef a = DDef { tyName:: Var
---                   , tyArgs:: [Var]
-                   , dataCons :: [(Constr,[a])] }
-  deriving (Read,Show,Eq,Ord, Functor, Generic)
-
-instance Out a => Out (DDef a)
-instance (Out k,Out v) => Out (Map k v) where
-  doc         = doc . M.toList
-  docPrec n v = docPrec n (M.toList v)
-
--- | A set of top-level recursive function definitions
-type FunDefs ty ex = Map Var (FunDef ty ex)
-
-data FunDef ty ex = FunDef { funName  :: Var
-                           , funRetTy :: ty
-                               -- ^ Return type
-                           , funArgs  :: [(Var,ty)]
-                           , funBody  :: ex }
-  deriving (Read,Show,Eq,Ord, Generic)
-
-instance (Out a, Out b) => Out (FunDef a b)
 
 --------------------------------------------------------------------------------
 
@@ -56,56 +28,62 @@ instance (Out a, Out b) => Out (FunDef a b)
 -- datatype.  For running a pass benchmark, main will be Nothing and
 -- we will expect a "benchmark" function definition which consumes an
 -- appropriate packed AST datatype.
-data P1 = P1 { ddefs    :: DDefs T1
-             , fundefs  :: FunDefs T1 L1
-             , mainExp  :: Maybe L1
-             }
+data Prog = Prog { ddefs    :: DDefs Ty
+                 , fundefs  :: FunDefs Ty Exp
+                 , mainExp  :: Maybe Exp
+                 }
   deriving (Read,Show,Eq,Ord, Generic)
 
 
 -- | The source language.  It has pointer based sums and products, as
 -- well as packed algebraic datatypes.
-data L1 = Varref Var | Lit Int
-        | App Var L1 -- Only apply top-level / first-order functions
-        | PrimApp Prim [L1]
-        | Letrec (Var,T1,L1) L1
-          -- ^ One binding at a time, but could bind a tuple for
-          -- mutual recursion.
-        | Fst L1 | Snd L1 | MkProd L1 L1
-        | CasePacked L1 (M.Map Constr ([Var], L1))
-        | MkPacked Constr [L1]
+data Exp = VarE Var
+         | LitE Int
+         | AppE Var Exp -- Only apply top-level / first-order functions
+         | PrimAppE Prim [Exp]
+         | LetE (Var,Ty,Exp) Exp
+           -- ^ One binding at a time, but could bind a tuple for
+           -- mutual recursion.
+         | ProjE Int Exp
+         | MkProdE [Exp]
+         | CaseE Exp (M.Map Constr ([Var], Exp))
+           -- ^ Case on a PACKED datatype.
+         | MkPackedE Constr [Exp]
   deriving (Read,Show,Eq,Ord, Generic)
 
-data Prim = Add | Sub | Mul -- ^ Need more numeric primitives...
-          | DictInsert -- ^ takes k,v,dict
-          | DictLookup -- ^ takes k dict, errors if absent
+data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
+          | DictInsertP -- ^ takes k,v,dict
+          | DictLookupP -- ^ takes k dict, errors if absent
   deriving (Read,Show,Eq,Ord, Generic)
-
 
 instance Out Prim
-instance Out T1
+instance Out Ty
 -- Do this manually to get prettier formatting:
--- instance Out T1 where  doc x = undefined
+-- instance Out Ty where  doc x = undefined
 
-instance Out L1
-instance Out P1
+instance Out Exp
+instance Out Prog
 
-type TEnv = Map Var T1
+-- type TEnv = Map Var Ty
 
 -- | Types include boxed/pointer-based products as well as unpacked
 -- algebraic datatypes.
-data T1 = TInt | TSym -- Symbols used in writing compiler passes
-        | Prod T1 T1
-        | TDict T1 -- We allow built-in dictionaries from symbols to a value type.
-        | Packed Constr [T1]
-  deriving (Read,Show,Eq,Ord, Generic)
+data Ty = IntTy
+        | SymTy -- ^ Symbols used in writing compiler passes.
+                --   It's an alias for Int, an index into a symbol table.
+        | ProdTy [Ty]   -- ^ An N-ary tuple 
+        | SymDictTy Ty  -- ^ A map from SymTy to Ty
+        | Packed Constr -- ^ No type arguments to TyCons for now.
+          -- ^ We allow built-in dictionaries from symbols to a value type.
+  deriving (Show, Read, Ord, Eq, Generic)
 
+           
 
 --------------------------------------------------------------------------------
 
 {-
 -- | Promote a value to a term that evaluates to it.
-l1FromValue :: Value L1 -> L1
+l1FromValue :: Value Exp -> Exp
 l1FromValue x =
   case x of
     VLeft x -> InL $ l1FromValue x
@@ -117,13 +95,13 @@ l1FromValue x =
     (VPacked y1 y2) -> undefined
 
 -- | To keep things simple we evaluate directly to a string.
-interp :: DDefs T1 -> L1 -> Value L1
+interp :: DDefs Ty -> Exp -> Value Exp
 interp _ddefs = go M.empty
     where
       go env x =
           case x of
             Lit c    -> VInt c
-            Varref v -> env ! v
+            VarE v -> env ! v
             App a b ->
               let rand = go env b
                   (VLam env' v bod) = go env a
@@ -150,21 +128,43 @@ interp _ddefs = go M.empty
 
             (InL x) -> VLeft  $ go env x
             (InR x) -> VRight $ go env x
-            (MkProd a b) -> VProd (go env a) (go env b)
+            (MkProdE a b) -> VProd (go env a) (go env b)
             -- TODO: Should check this against the ddefs.
             (MkPacked k ls) -> VPacked k $ L.map (go env) ls
 
-interpProg :: P1 -> Value L1
-interpProg P1 {defs,mainProg} = interp defs mainProg
+interpProg :: Prog -> Value Exp
+interpProg Prog {defs,mainProg} = interp defs mainProg
 
-tyc :: TEnv -> L1 -> T1
+tyc :: TEnv -> Exp -> Ty
 tyc = undefined
 
 --------------------------------------------------------------------------------
 
-p1 :: P1
-p1 = P1 emptyDD (Letrec ("x",TInt,Lit 3) (Varref "x")) TInt
+p1 :: Prog
+p1 = Prog emptyDD (Letrec ("x",TInt,Lit 3) (Varref "x")) TInt
 
 main :: IO ()
 main = print (interpProg p1)
 -}
+
+
+treeTy :: Ty
+treeTy = Packed "Tree"
+
+add1Prog :: Prog
+add1Prog = Prog (fromListDD [DDef "Tree" [ ("Leaf",[IntTy])
+                                         , ("Node",[Packed "Tree", Packed "Tree"])]])
+                (M.fromList [("add1",exadd1)])
+                Nothing
+         
+exadd1 :: FunDef Ty Exp
+exadd1 = FunDef "add1" treeTy [("tr",treeTy)] exadd1Bod
+
+exadd1Bod :: Exp
+exadd1Bod =
+    CaseE (VarE "tr") $ M.fromList $ 
+      [ ("Leaf", (["n"], PrimAppE AddP [VarE "n", LitE 1]))
+      , ("Node", (["x","y"], MkPackedE "Node"
+                              [ AppE "add1" (VarE "x")
+                              , AppE "add1" (VarE "y")]))
+      ]
