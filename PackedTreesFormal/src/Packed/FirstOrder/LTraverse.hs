@@ -58,6 +58,8 @@ data Ty = IntTy | SymTy | ProdTy [Ty] | SymDictTy Ty
         | Packed { con :: Constr, loc :: LocVar }
   deriving (Show, Read, Ord, Eq, Generic)
 
+data Prog = Prog
+
 --------------------------------------------------------------------------------
     
 
@@ -71,7 +73,6 @@ initialEnv mp = M.map (\x -> fst $ runSyM 0 (go x))  mp
         do argTys <- mapM annotateTy (L.map snd args)
            retTy  <- annotateTy ret
            return $ ArrowTy argTys S.empty retTy
-    vars = [ [c] | c <- ['a' ..] ]
                                     
 -- (L1.FunDef name retty args bod)
 
@@ -84,7 +85,9 @@ annotateTy t =
     L1.SymTy    -> return SymTy
     L1.ProdTy l -> ProdTy <$> mapM annotateTy l
     L1.SymDictTy v -> SymDictTy <$> annotateTy v
-                   
+
+inferProg :: L1.Prog -> Prog
+inferProg = undefined
     
 inferEffects :: FunEnv -> FunDef L1.Ty L1.Exp -> Set Effect
 inferEffects fenv (FunDef name retty args bod) = exp outloc env0 bod
@@ -128,9 +131,12 @@ inferEffects fenv (FunDef name retty args bod) = exp outloc env0 bod
          S.union (exp out env' bod)
                  (exp out' env rhs)
 
---         | Fst L1 | Snd L1 | MkProd L1 L1
---         | MkPacked Constr [L1]
+     -- If any sub-expression reaches a destination, we can reach the destination:
+     L1.MkTupE ls -> S.unions (L.map (exp out env) ls)
+     L1.ProjE _ e -> exp out env e
 
+--     L1.MkPacked k ls ->
+                     
   rhs :: Context -> Env -> ([Var], L1.Exp) -> Set Effect
   rhs out env ([], erhs) = addOuts out (exp out env erhs)
   rhs out env (patVs, erhs) =
@@ -180,3 +186,5 @@ extendEnv = undefined
 -- Examples and Tests:
 --------------------------------------------------------------------------------
 
+exadd1 :: Prog
+exadd1 = inferProg L1.add1Prog

@@ -103,7 +103,7 @@ desugarExp e =
 
       Var qname -> VarE <$> qname_to_str qname
 
-      Con qname -> MkPacked <$> qname_to_str qname <*> pure []
+      Con qname -> MkPackedE <$> qname_to_str qname <*> pure []
 
       H.Lit l   -> L1.LitE <$> lit_to_int l
 
@@ -115,19 +115,19 @@ desugarExp e =
             L1.ProjE 1 <$> desugarExp e2
           VarE f ->
             L1.AppE f <$> desugarExp e2
-          MkPacked c as -> do
+          MkPackedE c as -> do
             e2' <- desugarExp e2
-            return (L1.MkPacked c (as ++ [e2']))
+            return (L1.MkPackedE c (as ++ [e2']))
           L1.AppE f l -> do
             e2' <- desugarExp e2
-            return (L1.AppE f (MkProd [l,e2']))
+            return (L1.AppE f (MkTupE [l,e2']))
           f ->
             err ("Only variables allowed in operator position in function applications. (found: " ++ show f ++ ")")
 
       H.Tuple Unboxed _ ->
         err "Only boxed tuples are allowed."
       H.Tuple Boxed [e1, e2] ->
-        (\a b -> MkProd [a,b]) <$> desugarExp e1 <*> desugarExp e2
+        (\a b -> MkTupE [a,b]) <$> desugarExp e1 <*> desugarExp e2
       H.Tuple _ es ->
         err ("Tuples can only be pairs. (" ++ show es ++ ")")
 

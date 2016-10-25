@@ -21,7 +21,7 @@ library
                     Packed.FirstOrder.Common
                     Packed.FirstOrder.L1_Source,
                     Packed.FirstOrder.LTraverse
---                    Packed.FirstOrder.HaskellFrontend,
+                    Packed.FirstOrder.HaskellFrontend,
                     Packed.FirstOrder.Target
   -- other-modules:
   other-extensions:    DeriveDataTypeable
