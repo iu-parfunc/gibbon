@@ -120,14 +120,14 @@ desugarExp e =
             return (L1.MkPackedE c (as ++ [e2']))
           L1.AppE f l -> do
             e2' <- desugarExp e2
-            return (L1.AppE f (MkTupE [l,e2']))
+            return (L1.AppE f (MkProdE [l,e2']))
           f ->
             err ("Only variables allowed in operator position in function applications. (found: " ++ show f ++ ")")
 
       H.Tuple Unboxed _ ->
         err "Only boxed tuples are allowed."
       H.Tuple Boxed [e1, e2] ->
-        (\a b -> MkTupE [a,b]) <$> desugarExp e1 <*> desugarExp e2
+        (\a b -> MkProdE [a,b]) <$> desugarExp e1 <*> desugarExp e2
       H.Tuple _ es ->
         err ("Tuples can only be pairs. (" ++ show es ++ ")")
 
