@@ -71,7 +71,7 @@ instance Out Tail
            
 data Ty
     = IntTy
-    | TagTy -- ^ A single byte.
+    | TagTy -- ^ A single byte / Word8
     | SymTy -- ^ Symbols used in writing compiler passes.
             --   It's an alias for Int, an index into a symbol table.
     | CursorTy -- ^ A byte-indexing pointer.
