@@ -13,43 +13,11 @@ module Packed.FirstOrder.L1_Source
     )
     where
 
+import Packed.FirstOrder.Common
 import Data.Map as M
 -- import Data.List as L
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
-
---------------------------------------------------------------------------------
--- Should be common bits:
-
-type Var    = String
-type Constr = String
-type DDefs a = Map Var (DDef a)
-
--- | In the extreme case we can strip packed datatypes of all type
--- parameters, or we can allow them to retain type params but require
--- that they always be fully instantiated to monomorphic types in the
--- context of our monomorphic programs.
-data DDef a = DDef { tyName:: Var
---                   , tyArgs:: [Var]
-                   , dataCons :: [(Constr,[a])] }
-  deriving (Read,Show,Eq,Ord, Functor, Generic)
-
-instance Out a => Out (DDef a)
-instance (Out k,Out v) => Out (Map k v) where
-  doc         = doc . M.toList
-  docPrec n v = docPrec n (M.toList v)
-
--- | A set of top-level recursive function definitions
-type FunDefs ty ex = Map Var (FunDef ty ex)
-
-data FunDef ty ex = FunDef { funName  :: Var
-                           , funRetTy :: ty
-                               -- ^ Return type
-                           , funArgs  :: [(Var,ty)]
-                           , funBody  :: ex }
-  deriving (Read,Show,Eq,Ord, Generic)
-
-instance (Out a, Out b) => Out (FunDef a b)
 
 --------------------------------------------------------------------------------
 
