@@ -10,7 +10,7 @@ module Packed.FirstOrder.Common
        ( -- * Type and Data Constructors
          Constr
          -- * Variables and gensyms
-       , Var, varAppend, SyM, gensym, runSyM
+       , Var, varAppend, SyM, gensym, genLetter, runSyM
          -- * Values (for interpreters)
        , Value(..), ValEnv
          -- * Top-level function defs
@@ -20,6 +20,7 @@ module Packed.FirstOrder.Common
        , lookupDDef, lookupDataCon
        ) where 
 
+import Data.Char
 import Control.Monad.State
 import Data.List as L
 import Data.Map as M
@@ -112,10 +113,19 @@ instance (Out a, Out b) => Out (FunDef a b)
 newtype SyM a = SyM (State Int a)
  deriving (Functor, Applicative, Monad)
 
+-- | Generate a unique symbol by attaching a numeric suffix.
 gensym :: Var -> SyM Var
 gensym v = SyM $ do modify (+1)
                     n <- get
                     return (v `varAppend` show n)
+
+-- | Generate alphabetic variables 'a','b',...
+genLetter :: SyM Var
+genLetter = SyM $ 
+    do n <- get
+       modify (+1)       
+       return [chr (n + ord 'a')]
+
 
 runSyM :: Int -> SyM a -> (a,Int)
 runSyM n (SyM a) = runState a n
