@@ -14,7 +14,7 @@ t := Int | Sym | Bool
    | (SymDict t)
    | T
 
-e := var | int
+e := var | lit
    | (f e ...)
    | (vector e ...)
    | (vector-ref e int)
@@ -29,6 +29,8 @@ primapp := (binop e e)
         | (lookup e e)
 
 binop := + | - | * 
+
+lit := int | #t | #f
 
 
 |#
