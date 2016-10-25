@@ -20,7 +20,7 @@ let rec leftmost = function
   | Node (x, _) -> leftmost x
 
 let () = begin
-  let repeat = 10 in
+  let repeat = 17 in
   let total = ref 0.0 in
 
   if Array.length Sys.argv <> 2 then

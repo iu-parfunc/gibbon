@@ -16,21 +16,23 @@
             (add1-tree (cdr tr)))
       (#3%fx+ 1 tr)))
 
-(define (bench n)
-  (define tr (build-tree n))
+(define (bench tr n)
   (collect-maximum-generation)
   (time (add1-tree tr)))
 
-(define size
+(define-values (size iters)
   (cond 
-   [(= (length (command-line-arguments)) 1)
-    (string->number (car (command-line-arguments)))]
-   [else (error 'treebench (format "expected one command line arg, <depth>, got ~a:  ~a"
+   [(= (length (command-line-arguments)) 2)
+    (values (string->number (car  (command-line-arguments)))
+            (string->number (cadr (command-line-arguments))))]
+   [else (error 'treebench (format "expected two command line args, <depth> <iters>, got ~a:  ~a"
                                    (length (command-line-arguments))
                                    (command-line-arguments)))]))
 
-(printf "Benchmarking on tree of size 2^~a\n" size)
-(let loop ((i 1))
-  (bench size)
-  (when (< i 10)
-        (loop (add1 i))))
+(printf "Benchmarking on tree of size 2^~a, ~a iterations\n" size iters)
+(time
+ (let ((tr (build-tree size)))
+  (let loop ((i 1))
+    (bench tr size)
+    (when (< i 10)
+          (loop (add1 i))))))

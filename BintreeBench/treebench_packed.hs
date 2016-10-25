@@ -97,12 +97,14 @@ main = do
   putStrLn ""
 
   args <- getArgs
-  let power = case args of
-                [p] -> read p
-                _   -> error $ "Bad command line args.  Expected one number (exponent): " ++show args
-  times <- forM [1..10] $ \_ -> do
-             ta  <- buildTree power 1
-             tb  <- mallocBytes (treeSize power) :: IO TreeRef
+  let (power,iters) =
+        case args of
+          [p,i] -> (read p, read i)
+          _   -> error $ "Bad command line args.  Expected <depth> <iters>: " ++show args
+  putStrLn $ "Benchmarking depth "++show power++", iters "++show iters
+  ta  <- buildTree power 1
+  tb  <- mallocBytes (treeSize power) :: IO TreeRef
+  times <- forM [1 .. iters] $ \_ -> do
              t1  <- getCurrentTime
              tr2 <- add1Tree ta tb
              t2  <- getCurrentTime

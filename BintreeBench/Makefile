@@ -128,17 +128,19 @@ run_all: all
 
 #	./treebench_rust_sys_alloc.exe $(DEPTH) 
 
+DEFAULT_ITERS=17
+
 run_chez:
-	scheme --script treebench.ss $(DEPTH)
+	scheme --script treebench.ss $(DEPTH) $(DEFAULT_ITERS)
 
 run_racket:
-	racket treebench.rkt $(DEPTH)
+	racket treebench.rkt $(DEPTH) $(DEFAULT_ITERS)
 
 run_racket_packed:
 	racket treebench_packed.rkt $(DEPTH)
 
 run_java: treebench.class
-	java treebench $(DEPTH)
+	java treebench $(DEPTH) 33
 
 clean:
 	rm -f *.exe *.o *.hi treebench treebench_lazy *.cmi *.cmo *.cmx

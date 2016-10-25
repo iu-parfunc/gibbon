@@ -49,6 +49,15 @@ timeit act =
        tm2 <- getCurrentTime
        return (tm1,tm2,x)
 
+{-# NOINLINE bench #-}
+bench :: Int -> Tree -> IO Tree
+bench _ tr = evaluate (add1Tree tr)
+
+{-# NOINLINE benchPar #-}
+benchPar :: Int -> Tree -> IO Tree
+benchPar _ tr = evaluate (add1Par tr 6)
+
+             
 main :: IO ()
 main =
  do args <- getArgs
@@ -58,11 +67,11 @@ main =
                   _   -> error $ "Bad command line args." ++
                                  "  Expected <mode>=par|seq <depth> <iters> got: " ++
                                  show args
-    times <- forM [1 .. iters :: Int] $ \_ -> do
-      tr  <- buildTree power
+    tr0  <- buildTree power
+    times <- forM [1 .. iters :: Int] $ \ix -> do      
       (st,en,tr') <- case mode of
-                     "par" -> timeit $ evaluate (add1Par tr 6)
-                     "seq" -> timeit $ evaluate (add1Tree tr)
+                     "par" -> timeit (benchPar ix tr0)
+                     "seq" -> timeit (bench    ix tr0)
       putStr "."
       evaluate (leftmost tr')
       return (diffUTCTime en st)
