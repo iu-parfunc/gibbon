@@ -46,7 +46,7 @@ data Exp = VarE Var
            -- ^ One binding at a time, but could bind a tuple for
            -- mutual recursion.
          | ProjE Int Exp
-         | MkTupE [Exp]
+         | MkProdE [Exp]
          | CaseE Exp (M.Map Constr ([Var], Exp))
            -- ^ Case on a PACKED datatype.
          | MkPackedE Constr [Exp]
@@ -129,7 +129,7 @@ interp _ddefs = go M.empty
 
             (InL x) -> VLeft  $ go env x
             (InR x) -> VRight $ go env x
-            (MkTupE a b) -> VProd (go env a) (go env b)
+            (MkProdE a b) -> VProd (go env a) (go env b)
             -- TODO: Should check this against the ddefs.
             (MkPacked k ls) -> VPacked k $ L.map (go env) ls
 
