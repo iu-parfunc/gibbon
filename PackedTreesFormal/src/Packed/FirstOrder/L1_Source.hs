@@ -9,8 +9,7 @@
 --   genarating C code like a DSL.
 
 module Packed.FirstOrder.L1_Source
-    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), Ty(..),
-     -- * Example
+    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), Ty(..), Prim(..),
      add1Prog
     )
     where
