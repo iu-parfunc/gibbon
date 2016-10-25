@@ -19,5 +19,8 @@ subst_c.exe: subst.c
 subst_v1_c.exe: subst_v1.c
 	$(CC) $(CFLAGS) -I$(INCLUDES) $^ -o $@ -L$(LDPATH) -lsexp
 
+subst_packed.exe: subst_packed.c
+	$(CC) $(CFLAGS) -I$(INCLUDES) $^ -o $@ -L$(LDPATH) -lsexp
+
 clean:
 	rm -f *.o *.exe
