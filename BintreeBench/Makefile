@@ -140,7 +140,7 @@ run_racket_packed:
 	racket treebench_packed.rkt $(DEPTH)
 
 run_java: treebench.class
-	java treebench $(DEPTH)
+	java treebench $(DEPTH) 33
 
 clean:
 	rm -f *.exe *.o *.hi treebench treebench_lazy *.cmi *.cmo *.cmx

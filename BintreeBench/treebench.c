@@ -154,12 +154,12 @@ int main(int argc, char** argv) {
   Tree* tr = buildTree(depth);
   clock_gettime(which_clock, &end);
   double time_spent = difftimespecs(&begin, &end);
-  printf("done building, took %lf seconds\n\n", time_spent);
+  printf("Done building input tree, took %lf seconds\n\n", time_spent);
   if (depth <= 5) {
     printf("Input tree:\n");
     printTree(tr); printf("\n");
   }
-
+  printf("Running traversals (ms): ");
   if ( iters < 0 ) {
     iters = -iters;
     double trials[iters];
@@ -172,19 +172,21 @@ int main(int argc, char** argv) {
 #endif      
       clock_gettime(which_clock, &end);
       time_spent = difftimespecs(&begin, &end);
-      if(iters < 100)
-        printf("  run(%d): %lf\n", i, time_spent);
+      if(iters < 100) {
+        printf(" %d", (int)(time_spent * 1000));
+        fflush(stdout);
+      }
       trials[i] = time_spent;
       if (depth <= 5 && i == iters-1) {
-        printf("Output tree:\n");
+        printf("\nOutput tree:\n");
         printTree(t2); printf("\n");
       }
       DELTREE(t2);
     }
     qsort(trials, iters, sizeof(double), compare_doubles);
-    printf("Sorted: ");
+    printf("\nSorted: ");
     for(int i=0; i<iters; i++)
-      printf(" %lf", trials[i]);
+      printf(" %d",  (int)(trials[i] * 1000));
     printf("\nMINTIME: %lf\n",    trials[0]);
     printf("MEDIANTIME: %lf\n", trials[iters / 2]);
     printf("MAXTIME: %lf\n", trials[iters - 1]);

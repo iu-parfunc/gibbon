@@ -46,19 +46,36 @@ public class treebench {
     
     public static void main(String[] args) {        
         System.out.println("Starting.");
-        int depth = 20;
+        int depth = Integer.parseInt(args[0]);
+        final int numTrials = Integer.parseInt(args[1]);
         Tree t1 = buildTree(depth);
-        System.out.println("First tree built.");
-        final int numTrials = 33;
+        System.out.printf("Input tree built, depth %d.  Running %d iters.\n", depth, numTrials);
         long[] trials = new long[numTrials];
+        System.out.printf("But first, %d warm-up iters.\n", depth, numTrials);
         for(int i=0; i<numTrials; i++) {
             final long startTime = System.currentTimeMillis();
             Tree t2 = add1Tree(t1);
             final long endTime = System.currentTimeMillis();
-            trials[i] = (endTime - startTime);
-            System.out.println("time(ms): " + (endTime - startTime));
+            if(numTrials <= 500)
+                System.out.print(" " + (endTime - startTime));
         }
+        System.out.printf("\nNow for the runs we'll count:\n");
+        final long prebatch = System.currentTimeMillis();
+        for(int i=0; i<numTrials; i++) {
+            final long startTime = System.currentTimeMillis();
+            Tree t2 = add1Tree(t1);
+            final long endTime = System.currentTimeMillis();
+            // Todo: use something in t2 just to be sure.
+            trials[i] = (endTime - startTime);
+            if(numTrials <= 500)
+                System.out.print(" " + (endTime - startTime));
+        }
+        final long postbatch = System.currentTimeMillis();
+        System.out.printf("\nBATCHTIME: " + ((double)(postbatch - prebatch) / 1000) + "\n");
         Arrays.sort(trials);
-        System.out.println("SELFTIMED: " + Long.toString(trials[numTrials/2]));
+        System.out.println("\n\nMEDIANTIMED: " + Double.toString((double)trials[numTrials/2] / 1000.0));
+        double sum = 0.0;
+        for (double d : trials) sum += d;        
+        System.out.println("MEANTIMED: " + Double.toString(sum / (double)numTrials / 1000.0));
     }
 }
