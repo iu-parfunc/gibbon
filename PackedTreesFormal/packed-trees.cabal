@@ -17,8 +17,11 @@ library
   exposed-modules:  Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate,
                     Packed.HigherOrder.L3_Target,
                     Packed.HigherOrder.Translate, Packed.HigherOrder.Common,
+
+                    Packed.FirstOrder.Common
                     Packed.FirstOrder.L1_Source,
-                    Packed.FirstOrder.HaskellFrontend,
+                    Packed.FirstOrder.LTraverse
+--                    Packed.FirstOrder.HaskellFrontend,
                     Packed.FirstOrder.Target
   -- other-modules:
   other-extensions:    DeriveDataTypeable

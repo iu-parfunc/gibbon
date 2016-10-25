@@ -8,7 +8,7 @@ import System.Environment (getArgs)
 import System.Exit (exitFailure)
 
 import Language.Haskell.Exts.Parser
-import Packed.FirstOrder.HaskellFrontend
+-- import Packed.FirstOrder.HaskellFrontend
 
 --------------------------------------------------------------------------------
 
@@ -19,6 +19,8 @@ main = do
       [path] -> run path
       _      -> putStrLn "USAGE: packed-trees <FILE PATH>" >> exitFailure
 
+run = error "Reenable me!!"                
+{-                
 run :: FilePath -> IO ()
 run path =
     fmap parse (readFile path) >>= \case
@@ -34,3 +36,4 @@ run path =
       ParseFailed _ err -> do
         putStrLn ("haskell-src-exts failed: " ++ err)
         exitFailure
+-}
