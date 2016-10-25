@@ -9,7 +9,9 @@
 --   genarating C code like a DSL.
 
 module Packed.FirstOrder.L1_Source
-    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), Ty(..)
+    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), Ty(..),
+     -- * Example
+     add1Prog
     )
     where
 
@@ -44,10 +46,10 @@ data Exp = VarE Var
            -- ^ One binding at a time, but could bind a tuple for
            -- mutual recursion.
          | ProjE Int Exp
-         | MkProd [Exp]
+         | MkTupE [Exp]
          | CaseE Exp (M.Map Constr ([Var], Exp))
            -- ^ Case on a PACKED datatype.
-         | MkPacked Constr [Exp]
+         | MkPackedE Constr [Exp]
   deriving (Read,Show,Eq,Ord, Generic)
 
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
@@ -63,7 +65,7 @@ instance Out Ty
 instance Out Exp
 instance Out Prog
 
-type TEnv = Map Var Ty
+-- type TEnv = Map Var Ty
 
 -- | Types include boxed/pointer-based products as well as unpacked
 -- algebraic datatypes.
@@ -127,7 +129,7 @@ interp _ddefs = go M.empty
 
             (InL x) -> VLeft  $ go env x
             (InR x) -> VRight $ go env x
-            (MkProd a b) -> VProd (go env a) (go env b)
+            (MkTupE a b) -> VProd (go env a) (go env b)
             -- TODO: Should check this against the ddefs.
             (MkPacked k ls) -> VPacked k $ L.map (go env) ls
 
@@ -145,3 +147,25 @@ p1 = Prog emptyDD (Letrec ("x",TInt,Lit 3) (Varref "x")) TInt
 main :: IO ()
 main = print (interpProg p1)
 -}
+
+
+treeTy :: Ty
+treeTy = Packed "Tree"
+
+add1Prog :: Prog
+add1Prog = Prog (fromListDD [DDef "Tree" [ ("Leaf",[IntTy])
+                                         , ("Node",[Packed "Tree", Packed "Tree"])]])
+                (M.fromList [("add1",exadd1)])
+                Nothing
+         
+exadd1 :: FunDef Ty Exp
+exadd1 = FunDef "add1" treeTy [("tr",treeTy)] exadd1Bod
+
+exadd1Bod :: Exp
+exadd1Bod =
+    CaseE (VarE "tr") $ M.fromList $ 
+      [ ("Leaf", (["n"], PrimAppE AddP [VarE "n", LitE 1]))
+      , ("Node", (["x","y"], MkPackedE "Node"
+                              [ AppE "add1" (VarE "x")
+                              , AppE "add1" (VarE "y")]))
+      ]
