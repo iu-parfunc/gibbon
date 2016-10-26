@@ -452,25 +452,3 @@ m # k = case M.lookup k m of
 exadd1 :: Prog
 exadd1 = inferProg L1.add1Prog
 
-t0 :: (Set Effect, Int)
-t0 = runSyM 0 $
-     inferEffects (M.singleton "foo" (ArrowTy (PackedTy "K" "p")
-                                              (S.singleton (Traverse "p"))
-                                              (PackedTy "K" "p")))
-                  (C.FunDef "foo" ("x", L1.Packed "K") (L1.Packed "K")
-                        (L1.AppE "foo" (L1.VarE "x")))
-
--- The function foo below should traverse "a" but does not have any
--- output locations.
-t1 :: (Set Effect, Int)
-t1 = runSyM 0 $
-     inferEffects (M.fromList 
-                   [("copy",(ArrowTy (PackedTy "K" "p")
-                                                   (S.fromList [Traverse "p", Traverse "o"])
-                                              (PackedTy "K" "o")))
-                   ,("foo", ArrowTy (PackedTy "K" "a") S.empty IntTy)])
-                  (C.FunDef "foo" ("x", L1.Packed "K") L1.IntTy $
-                     L1.LetE ("ignr",L1.Packed "K", (L1.AppE "copy" (L1.VarE "x"))) $
-                       L1.LitE 33
-                  )
-
