@@ -159,7 +159,7 @@ inferProg (L1.Prog dd fds mainE) =
    fixpoint :: OldFuns -> FunEnv -> SyM FunEnv
    fixpoint funs env =
     do effs' <- M.fromList <$>
-                mapM (\(k,v) -> (k,) <$> inferEffects env v)
+                mapM (\(k,v) -> (k,) <$> inferEffects (dd,env) v)
                      (M.toList funs)
        let env' = M.intersectionWith
                   (\ neweffs (ArrowTy as _ b) -> ArrowTy as neweffs b)
@@ -325,8 +325,8 @@ getLocVar Top = Nothing
 getLocVar l = error $"getLocVar: expected a single packed value location, got: "
                     ++show(doc l)
              
-inferEffects :: FunEnv -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
-inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
+inferEffects :: (DDefs L1.Ty,FunEnv) -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
+inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) retty bod) =
     -- For this pass we don't need to know the output location:
     do (effs1,_loc) <- exp env0 bod
        -- Finally, restate the effects in terms of the type schema for the fun:
@@ -352,7 +352,7 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
      L1.CaseE e1 mp ->
       do (eff1,loc1) <- exp env e1
          (bools,effs,locs) <- unzip3 <$>
-                              mapM (caserhs loc1 env) (M.elems mp)
+                              mapM (caserhs loc1 env) (M.toList mp)
          -- Critical policy point!  We only get to the end if ALL
          -- branches get to the end.
          let end = if all id bools
@@ -404,25 +404,29 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
 --     L1.MkPacked k ls ->
 
   -- Returns true if this particular case reaches the end of the scrutinee.
-  caserhs :: Loc -> Env -> ([Var], L1.Exp) -> SyM (Bool, Set Effect, Loc)
-  caserhs _scrut env ([], erhs) = do
+  caserhs :: Loc -> Env -> (Var,([Var],L1.Exp)) -> SyM (Bool, Set Effect, Loc)
+  caserhs _scrut env (_dcon,([],erhs)) = do
      (effs,loc) <- exp env erhs
      return $ ( True, effs, loc)
-{-                         
-  caserhs out env (patVs, erhs) =
-      -- Subtlety: if the rhs expression consumes the RIGHTMOST
-      -- pattern variable, then the later code transformations will
-      -- have to ensure that it consumes everything.
-   do let env' = extendEnv patVs env
-      eff <- exp out env' erhs
-      let isLocal (Traverse v) = L.elem v patVs -- FIXME... need LocVar
-          stripped  = S.filter isLocal eff
-      return $ if S.member (Traverse (L.last patVs)) eff
-               then addOuts out stripped
-               else stripped
--}
 
-  caserhs _ _ _ = error "put rhs function back..."
+  caserhs _scrut env (dcon,(patVs,erhs)) =
+   -- Subtlety: if the rhs expression consumes the RIGHTMOST
+   -- pattern variable, then the later code transformations MUST
+   -- ensure that it consumes everything.
+   do let tys  = lookupDataCon ddefs dcon 
+          env' = extendEnv (zip patVs tys) env
+          -- FIXME!  Need type of patVs and thus need data defs.
+                 
+          -- WARNING: we may need to generate "nested inside of" relation
+          -- between the patVs and the scrutinee.
+      (eff,rloc) <- exp env' erhs
+      let winner = S.member (Traverse (L.last patVs)) eff
+          -- Also, in any binding form we are obligated to not return
+          -- our local bindings in traversal side effects:                   
+          isLocal (Traverse v) = L.elem v patVs -- FIXME... need LocVar
+          stripped  = S.filter isLocal eff
+      return ( winner, stripped, rloc)
+
 
 -- Simple invariant assertions:
            
@@ -435,10 +439,12 @@ triv e = case e of
 trivs :: [L1.Exp] -> a -> a
 trivs [] = id
 trivs (a:b) = triv a . trivs b
-           
--- TODO: need abstract locations for these:
-extendEnv :: [Var] -> Env -> Env
-extendEnv = error "finishme extendEnv"
+
+-- We extend the environment when going under lexical binders, which
+-- always have fixed abstract locations associated with them.
+extendEnv :: [(Var,L1.Ty)] -> Env -> Env
+extendEnv []    e = e
+extendEnv ((v,t):r) e = extendEnv r (M.insert v (argtyToLoc (mangle v) t) e)
 
             
 (#) :: (Ord a1, Show a1) => Map a1 a -> a1 -> a
@@ -452,3 +458,13 @@ m # k = case M.lookup k m of
 exadd1 :: Prog
 exadd1 = inferProg L1.add1Prog
 
+{-         
+t2 :: (Set Effect)
+t2 = fst $ runSyM 0 $
+     inferEffects (( fromListDD [DDef {}]
+                   , M.empty))
+                  (C.FunDef "foo" ("x", L1.Packed "K") L1.IntTy $
+                     L1.LetE ("ignr",L1.Packed "K", (L1.AppE "copy" (L1.VarE "x"))) $
+                       L1.LitE 33
+                  )
+-}
