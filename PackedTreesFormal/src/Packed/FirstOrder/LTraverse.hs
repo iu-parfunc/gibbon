@@ -16,6 +16,11 @@ import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
 import Debug.Trace
+import GHC.Stack (errorWithStackTrace)
+
+traceIt :: Show a => String -> a -> a
+traceIt msg x = trace (msg++": "++show x) x
+    
 --------------------------------------------------------------------------------
     
 -- Unchanged from L1, or we could go A-normal:
@@ -50,7 +55,8 @@ join (TupLoc l1) (TupLoc l2) =
     let (locs,cs) = unzip $ zipWith join l1 l2 in
     (TupLoc locs, concat cs)
 join l1 l2 = error$ "join: locations have inconsistent shapes: "++show(doc (l1,l2))
-                           
+
+
 joins :: [Loc]-> (Loc,[Constraint])
 joins [] = (Bottom,[])
 joins (a:b) = let (l,c) = joins b 
@@ -172,23 +178,55 @@ substTy mp t = go t
       SymTy -> SymTy
       SymDictTy te -> SymDictTy (go te)
       ProdTy    ts -> ProdTy    (L.map go ts)
-      PackedTy k l -> PackedTy k (mp # l)
+      PackedTy k l -> case M.lookup l mp of
+                        Just v  -> PackedTy k v
+                        Nothing -> PackedTy k l
+                            -- errorWithStackTrace $ "substTy: failed to find "++show l++
+                            --   "\n  in map: "++show mp++", when processing type "++show t
 
+-- | Apply a substitution to an effect set.                                   
 substEffs :: Map LocVar LocVar -> Set Effect -> Set Effect
-substEffs mp = S.map (\(Traverse v) -> Traverse (mp # v)) 
-                      
+substEffs mp ef =
+    trace ("\n  Substituting in effects "++show(mp,ef)) $ 
+    S.map (\(Traverse v) ->
+               case M.lookup v mp of
+                 Just v2 -> Traverse v2
+                 Nothing -> Traverse v) ef
+
+allLocVars :: Ty -> [LocVar]
+allLocVars t =
+    case t of
+      SymTy     -> []
+      IntTy     -> []
+      PackedTy _ v -> [v]
+      ProdTy ls  -> L.concatMap allLocVars ls
+      SymDictTy elt -> allLocVars elt    
+               
+freshenVar :: LocVar -> SyM LocVar
+freshenVar = gensym
+               
+freshenArrowSchema :: ArrowTy -> SyM ArrowTy
+freshenArrowSchema (ArrowTy inT effs outT) = do
+    let lvs = allLocVars inT ++ allLocVars outT
+    lvs' <- mapM freshenVar lvs
+    let subst = M.fromList (zip lvs lvs')
+    return $ ArrowTy (substTy subst inT)
+                     (substEffs subst effs)
+                     (substTy subst outT)
+               
 -- | Take a polymorphic ArrowTy, instantiate its location variables
--- and traversal effects with the given locations.
-instantiateEffs :: ArrowTy -> Loc -> SyM (Set Effect, Loc)
-instantiateEffs (ArrowTy inT effs outT) loc =
-     -- applySubst subst outT
-
-    -- trace ("Came up with subst: "++show subst) $
-    return (substEffs subst effs,
-            rettyToLoc (substTy subst outT))
+--   and traversal effects with the given (input) locations.
+--   Return the location that the result of the application will occupy.
+instantiateApp :: ArrowTy -> Loc -> SyM (Set Effect, Loc)
+instantiateApp arrty0 loc = do
+    (ArrowTy inT effs outT) <- freshenArrowSchema arrty0
+    let subst = zipTL inT loc 
+    trace ("\n  instantiateApp: Came up with subst: "++show subst) $
+     return (substEffs subst effs,
+            traceIt "   instantiate result loc" $ rettyToLoc (substTy subst outT))
   where
-   subst = zipTL inT loc 
-
+   -- Question: when computing the return location, which variables are Fresh?
+   -- Conversely, when would we need to use Fixed?
    rettyToLoc :: Ty -> Loc
    rettyToLoc t =
      case t of
@@ -196,7 +234,7 @@ instantiateEffs (ArrowTy inT effs outT) loc =
        SymTy -> Bottom
        SymDictTy _  -> Top
        ProdTy ls    -> TupLoc $ L.map rettyToLoc ls
-       PackedTy _ l -> Fixed l
+       PackedTy _ l -> Fresh l
     
 -- | Unify type and locaion , creating a mapping between variables in
 -- the former to the latter.
@@ -211,7 +249,7 @@ zipTL (PackedTy l v) Top =
     error $ "zipTL: don't yet know what to do with Packed/Top case: "++
           show (PackedTy l v)
     -- M.empty -- M.singleton v l
-zipTL ty loc = error$ "instantiateEffs: argument type "++show(doc ty)
+zipTL ty loc = error$ "zipTL: argument type "++show(doc ty)
                    ++"does not have matching structure to location: "++show(doc loc)
 
 -- | Unify location and type, creating a mapping between variables in
@@ -226,7 +264,7 @@ zipLT Top       (PackedTy l v) =
     error $ "zipLT: don't yet know what to do with Top/Packed case: "++
           show (PackedTy l v)
     -- M.empty -- M.singleton v l
-zipLT loc ty = error$ "instantiateEffs: argument type "++show(doc ty)
+zipLT loc ty = error$ "zipLT: argument type "++show(doc ty)
                    ++"does not have matching structure to location: "++show(doc loc)
 
 
@@ -249,7 +287,7 @@ argtyToLoc v (L1.SymDictTy _t) = -- ^ This may contain packed objects, but it is
     Fixed v
     -- if hasPacked t then Top else Bottom
 
-
+-- | Do values of this type contain packed data?
 hasPacked :: L1.Ty -> Bool
 hasPacked t = case t of
                 L1.Packed _  -> True
@@ -258,8 +296,8 @@ hasPacked t = case t of
                 L1.IntTy     -> False
                 L1.SymDictTy t -> hasPacked t
                              
--- A bit name mangling:
-
+-- A bit of name mangling:
+------------------------------------------------------------
 -- | First, lift program variables so they don't interfere with ones
 -- we introduce.  Also, remove internal underscores.
 mangle :: Var -> Var
@@ -270,12 +308,16 @@ mangle v = v
 subloc :: Var -> Int -> Var
 subloc v n = v ++"_"++show n
 
--- | Strip off any subloc modifiers
+-- Strip off any subloc modifiers
 -- root :: Var -> Var
+------------------------------------------------------------
+
 
 freshLoc :: String -> SyM Loc
 freshLoc m = Fresh <$> gensym m
 
+-- | Take a location which is expected to be a single variable, and
+-- retrieve that variable.
 getLocVar :: Loc -> Maybe Var
 getLocVar (Fresh v) = Just v
 getLocVar (Fixed v) = Just v
@@ -287,10 +329,10 @@ inferEffects :: FunEnv -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
 inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
     do (effs1,loc) <- exp outloc0 env0 bod
        -- Finally, restate the effects in terms of the type schema for the fun:
-       let (ArrowTy inTy effs0 _) = fenv # name
        return $ substEffs (zipLT argLoc inTy) effs1
 
   where
+  (ArrowTy inTy _ _) = fenv # name
   env0    = M.singleton arg argLoc
   argLoc  = argtyToLoc (mangle arg) argty
   outloc0 = argtyToLoc "out" retty
@@ -298,7 +340,7 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
   -- We have one location for the destination, and another for each lexical binding.
   exp :: Loc -> Env -> L1.Exp -> SyM (Set Effect, Loc)
   exp out env e =
-    trace ("\nProcessing exp: "++show (e,env)) $
+    trace ("\nProcessing exp: "++show e++"\n  with env: "++show env) $
     case e of
      -- QUESTION: does a variable reference count as traversing to the end?
      -- If so, the identity function has the traverse effect.
@@ -335,10 +377,9 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
      -- We need to reach a fixed point where we jointly infer effects
      -- for all functions.
      L1.AppE rat (L1.VarE rand) ->
-         -- | Just loc <- M.lookup rand env ->
        do let loc   = env # rand
           let arrTy = fenv # rat
-          instantiateEffs arrTy loc
+          instantiateApp arrTy loc
 
      -- Here we UNION the end-points that are reached in the RHS and the BOD:
      L1.LetE (v,t,rhs) bod -> -- FIXME: change to let.
@@ -401,7 +442,7 @@ extendEnv = undefined
 (#) :: (Ord a1, Show a1) => Map a1 a -> a1 -> a
 m # k = case M.lookup k m of
           Just x  -> x
-          Nothing -> error $ "Map lookup failed on key: "++show k
+          Nothing -> errorWithStackTrace $ "Map lookup failed on key: "++show k
 
 -- Examples and Tests:
 --------------------------------------------------------------------------------
@@ -417,6 +458,8 @@ t0 = runSyM 0 $
                   (C.FunDef "foo" ("x", L1.Packed "K") (L1.Packed "K")
                         (L1.AppE "foo" (L1.VarE "x")))
 
+-- The function foo below should traverse "a" but does not have any
+-- output locations.
 t1 :: (Set Effect, Int)
 t1 = runSyM 0 $
      inferEffects (M.fromList 
@@ -429,5 +472,3 @@ t1 = runSyM 0 $
                        L1.LitE 33
                   )
 
-
-                  
