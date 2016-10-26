@@ -18,7 +18,8 @@ import Data.Map as M
 
 t0 :: Set Effect -> Set Effect
 t0 eff = fst $ runSyM 0 $
-     inferEffects (M.singleton "foo" (ArrowTy (PackedTy "K" "p")
+     inferEffects (M.empty,
+                   M.singleton "foo" (ArrowTy (PackedTy "K" "p")
                                               eff
                                               (PackedTy "K" "p")))
                   (C.FunDef "foo" ("x", L1.Packed "K") (L1.Packed "K")
@@ -37,7 +38,8 @@ case_t0b = assertEqual "infinite loop cannot bootstrap with bad initial effect s
 -- output locations.
 t1 :: (Set Effect)
 t1 = fst $ runSyM 0 $
-     inferEffects (M.fromList 
+     inferEffects (M.empty,
+                   M.fromList 
                    [("copy",(ArrowTy (PackedTy "K" "p")
                                                    (S.fromList [Traverse "p", Traverse "o"])
                                               (PackedTy "K" "o")))
