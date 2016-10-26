@@ -17,7 +17,7 @@ float min(float a, float b){
 }
 
 int treeSize(int n){
-    return (sizeof(Node_Leaf))* n +  (sizeof(Node_Inner))*n;
+    return (sizeof(Node_Leaf))* n +  (sizeof(Node_Inner))*n + (2*n)*sizeof(char * )+100;
 }
 
 int comparePointX(const void *a, const void *b){

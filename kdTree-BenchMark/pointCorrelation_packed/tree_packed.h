@@ -16,12 +16,7 @@ using namespace std;
 // non-leaf [Tag Node_Inner [LeftChild....][RightChild...]
 // index of right child = index of last left decenedent + 1
 
-
-//data stored leaf nodes
-
-char * mem;
 //used to represent the input  data read from file and used to build the tree i
-
 struct Point{
     float x_val;
     float y_val;
@@ -37,7 +32,6 @@ struct Node_Leaf{
 
 //Tree Data Structure
 struct Node_Inner{
-    //no need to be stored if the 
     bool     splitAxis; // 0:'x' , 1:'y'
     float    splitLoc;
     //define rectangle that includes all points in this subtree
