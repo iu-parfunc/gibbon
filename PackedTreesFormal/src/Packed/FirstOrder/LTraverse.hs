@@ -329,10 +329,12 @@ inferEffects :: FunEnv -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
 inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
     do (effs1,loc) <- exp outloc0 env0 bod
        -- Finally, restate the effects in terms of the type schema for the fun:
-       return $ substEffs (zipLT argLoc inTy) effs1
+       let allEffs = substEffs (zipLT argLoc inTy) effs1
+           externalLocs = S.fromList $ allLocVars inTy ++ allLocVars outTy
+       return $ S.filter (\(Traverse v) -> S.member v externalLocs) allEffs
 
   where
-  (ArrowTy inTy _ _) = fenv # name
+  (ArrowTy inTy _ outTy) = fenv # name
   env0    = M.singleton arg argLoc
   argLoc  = argtyToLoc (mangle arg) argty
   outloc0 = argtyToLoc "out" retty
