@@ -263,16 +263,16 @@ with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
   \begin{aligned}
     \keywd{x} \gramdef & \keywd{n} \gramor \keywd{v} \\
     \keywd{t} \gramdef & \keywd{int} \gramor \keywd{cursor} \gramor \keywd{t * t} \\
-    & \gramor \keywd{t + t} \gramor \keywd{t} \rightarrow \keywd{t} \\
+    \gramor & \keywd{t + t} \gramor \keywd{t} \rightarrow \keywd{t} \\
     \keywd{e} \gramdef & \keywd{x} \gramor \keywd{prim} \keywd{p} \keywdr{x} \\
-    & \gramor \keywdr{(x,x)} \gramor \keywd{n} @ \keywd{x}  \\
-    & \gramor \keywd{let} \keywdr{(v,t,e)} \keywd{e} \\
-    & \gramor \keywd{ifeq} \keywd{(x,x)} \keywd{e} \keywd{e} \\
-    & \gramor \keywd{newbuff} \keywd{n} \\
-    & \gramor \keywd{writetag} \keywd{v} \keywd{n} \\
-    & \gramor \keywd{writeint} \keywd{v} \keywd{x} \\
-    & \gramor \keywd{readtag} \keywd{v} \\
-    & \gramor \keywd{readint} \keywd{v}
+    \gramor & \keywdr{(x,x)} \gramor \keywd{n} @ \keywd{x}  \\
+    \gramor & \keywd{let} \keywdr{(v,t,e)} \keywd{e} \\
+    \gramor & \keywd{ifeq} \keywd{(x,x)} \keywd{e} \keywd{e} \\
+    \gramor & \keywd{newbuff} \keywd{n} \\
+    \gramor & \keywd{writetag} \keywd{v} \keywd{n} \\
+    \gramor & \keywd{writeint} \keywd{v} \keywd{x} \\
+    \gramor & \keywd{readtag} \keywd{v} \\
+    \gramor & \keywd{readint} \keywd{v}
   \end{aligned}
 \end{displaymath}
 \caption{Grammar for target language}
