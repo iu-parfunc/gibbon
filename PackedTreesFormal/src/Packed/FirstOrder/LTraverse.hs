@@ -101,9 +101,9 @@ data Prog = Prog { ddefs    :: DDefs L1.Ty
 data FunDef = FunDef Var ArrowTy Var L1.Exp
   deriving (Show, Read, Ord, Eq, Generic)
 --------------------------------------------------------------------------------
-    
 
--- | We initially populate all functions with empty effect signatures.
+-- | We initially populate all functions with MAXIMUM effect signatures.
+--   Subsequently, these monotonically SHRINK until a fixpoint.
 --   We also associate fresh location variables with packed types.
 initialEnv :: OldFuns -> FunEnv
 initialEnv mp = M.map (\x -> fst $ runSyM 0 (go x))  mp
@@ -112,10 +112,22 @@ initialEnv mp = M.map (\x -> fst $ runSyM 0 (go x))  mp
     go (C.FunDef _ (_,argty) ret _)  =
         do argTy <- annotateTy argty
            retTy <- annotateTy ret
-           return $ ArrowTy argTy S.empty retTy
+           let maxEffects = S.map Traverse
+                            (S.union (getTyLocs argTy) (getTyLocs retTy))
+           return $ ArrowTy argTy maxEffects retTy
                                     
--- (L1.FunDef name retty args bod)
-
+-- | Retrieve all LocVars mentioned in a type
+getTyLocs :: Ty -> Set LocVar
+getTyLocs t =
+    case t of
+      IntTy  -> S.empty
+      SymTy  -> S.empty
+      ProdTy ls -> S.unions (L.map getTyLocs ls)
+      PackedTy _ lv -> S.singleton lv
+      -- This is a tricky case:
+      SymDictTy elt -> getTyLocs elt
+      
+                  
 -- | Annotate a naked type with fresh location variables.
 annotateTy :: L1.Ty -> SyM Ty
 annotateTy t =
@@ -160,10 +172,10 @@ substTy mp t = go t
       SymTy -> SymTy
       SymDictTy te -> SymDictTy (go te)
       ProdTy    ts -> ProdTy    (L.map go ts)
-      PackedTy k l -> PackedTy k (mp M.! l)    
+      PackedTy k l -> PackedTy k (mp # l)
 
 substEffs :: Map LocVar LocVar -> Set Effect -> Set Effect
-substEffs mp = S.map (\(Traverse v) -> Traverse (mp M.! v)) 
+substEffs mp = S.map (\(Traverse v) -> Traverse (mp # v)) 
                       
 -- | Take a polymorphic ArrowTy, instantiate its location variables
 -- and traversal effects with the given locations.
@@ -275,7 +287,7 @@ inferEffects :: FunEnv -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
 inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
     do (effs1,loc) <- exp outloc0 env0 bod
        -- Finally, restate the effects in terms of the type schema for the fun:
-       let (ArrowTy inTy effs0 _) = fenv M.! name
+       let (ArrowTy inTy effs0 _) = fenv # name
        return $ substEffs (zipLT argLoc inTy) effs1
 
   where
@@ -285,12 +297,13 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
 
   -- We have one location for the destination, and another for each lexical binding.
   exp :: Loc -> Env -> L1.Exp -> SyM (Set Effect, Loc)
-  exp out env e = 
+  exp out env e =
+    trace ("\nProcessing exp: "++show (e,env)) $
     case e of
      -- QUESTION: does a variable reference count as traversing to the end?
      -- If so, the identity function has the traverse effect.
      -- I'd prefer that the identity function get type (Tree_p -> Tree_p).
-     L1.VarE v  -> return (S.empty, env M.! v)
+     L1.VarE v  -> return (S.empty, env # v)
      L1.LitE  _ -> return (S.empty, Bottom)
      L1.CaseE e1 mp ->
       do (eff1,loc1) <- exp out env e1
@@ -323,9 +336,16 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
      -- for all functions.
      L1.AppE rat (L1.VarE rand) ->
          -- | Just loc <- M.lookup rand env ->
-       do let loc   = env M.! rand
-          let arrTy = fenv M.! rat
+       do let loc   = env # rand
+          let arrTy = fenv # rat
           instantiateEffs arrTy loc
+
+     -- Here we UNION the end-points that are reached in the RHS and the BOD:
+     L1.LetE (v,t,rhs) bod -> -- FIXME: change to let.
+      do (reff,rloc) <- exp undefined env rhs
+         let env' = M.insert v rloc env 
+         (beff,bloc) <- exp out env' bod         
+         return (S.union beff reff, bloc)
 
 {-
      L1.AppE rat rand -> triv rand $ undefined
@@ -334,14 +354,6 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
      L1.PrimAppE _ rands -> trivs rands $          
          return S.empty
                           
-     -- Here we UNION the end-points that are reached in the RHS and the BOD:
-     L1.LetE (v,t,rhs) bod -> -- FIXME: change to let.
-         let env' = extendEnv [v] env
-             out' = undefined -- ?? create based on type.
-         in
-         S.union <$> exp out env' bod
-                 <*> exp out' env rhs
-
      -- If any sub-expression reaches a destination, we can reach the destination:
      L1.MkProdE ls -> S.unions <$> mapM (exp out env) ls
      L1.ProjE _ e -> exp out env e
@@ -384,8 +396,12 @@ addOuts Top          _ = error "What to do here?"
 -- TODO: need abstract locations for these:
 extendEnv :: [Var] -> Env -> Env
 extendEnv = undefined
-            
 
+            
+(#) :: (Ord a1, Show a1) => Map a1 a -> a1 -> a
+m # k = case M.lookup k m of
+          Just x  -> x
+          Nothing -> error $ "Map lookup failed on key: "++show k
 
 -- Examples and Tests:
 --------------------------------------------------------------------------------
@@ -400,5 +416,18 @@ t0 = runSyM 0 $
                                               (PackedTy "K" "p")))
                   (C.FunDef "foo" ("x", L1.Packed "K") (L1.Packed "K")
                         (L1.AppE "foo" (L1.VarE "x")))
+
+t1 :: (Set Effect, Int)
+t1 = runSyM 0 $
+     inferEffects (M.fromList 
+                   [("copy",(ArrowTy (PackedTy "K" "p")
+                                                   (S.fromList [Traverse "p", Traverse "o"])
+                                              (PackedTy "K" "o")))
+                   ,("foo", ArrowTy (PackedTy "K" "a") S.empty IntTy)])
+                  (C.FunDef "foo" ("x", L1.Packed "K") L1.IntTy $
+                     L1.LetE ("ignr",L1.Packed "K", (L1.AppE "copy" (L1.VarE "x"))) $
+                       L1.LitE 33
+                  )
+
 
                   
