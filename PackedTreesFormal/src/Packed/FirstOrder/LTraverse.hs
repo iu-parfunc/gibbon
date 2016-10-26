@@ -328,7 +328,7 @@ getLocVar l = error $"getLocVar: expected a single packed value location, got: "
 inferEffects :: FunEnv -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
 inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
     -- For this pass we don't need to know the output location:
-    do (effs1,_loc) <- exp outloc0 env0 bod
+    do (effs1,_loc) <- exp env0 bod
        -- Finally, restate the effects in terms of the type schema for the fun:
        let allEffs = substEffs (zipLT argLoc inTy) effs1
            externalLocs = S.fromList $ allLocVars inTy ++ allLocVars outTy
@@ -338,13 +338,10 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
   (ArrowTy inTy _ outTy) = fenv # name
   env0    = M.singleton arg argLoc
   argLoc  = argtyToLoc (mangle arg) argty
-  outloc0 = argtyToLoc "out" retty
 
-  unused_outloc = error "This param needs to be removed"
-            
   -- We have one location for the destination, and another for each lexical binding.
-  exp :: Loc -> Env -> L1.Exp -> SyM (Set Effect, Loc)
-  exp out env e =
+  exp :: Env -> L1.Exp -> SyM (Set Effect, Loc)
+  exp env e =
     trace ("\nProcessing exp: "++show e++"\n  with env: "++show env) $
     case e of
      -- QUESTION: does a variable reference count as traversing to the end?
@@ -353,9 +350,9 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
      L1.VarE v  -> return (S.empty, env # v)
      L1.LitE  _ -> return (S.empty, Bottom)
      L1.CaseE e1 mp ->
-      do (eff1,loc1) <- exp out env e1
+      do (eff1,loc1) <- exp env e1
          (bools,effs,locs) <- unzip3 <$>
-                              mapM (caserhs out loc1 env) (M.elems mp)
+                              mapM (caserhs loc1 env) (M.elems mp)
          -- Critical policy point!  We only get to the end if ALL
          -- branches get to the end.
          let end = if all id bools
@@ -388,9 +385,9 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
 
      -- Here we UNION the end-points that are reached in the RHS and the BOD:
      L1.LetE (v,t,rhs) bod -> -- FIXME: change to let.
-      do (reff,rloc) <- exp unused_outloc env rhs
+      do (reff,rloc) <- exp env rhs
          let env' = M.insert v rloc env 
-         (beff,bloc) <- exp out env' bod         
+         (beff,bloc) <- exp env' bod         
          return (S.union beff reff, bloc)
 
      L1.AppE rat rand -> triv rand $ undefined
@@ -400,19 +397,17 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
          return (S.empty, undefined)
                           
      -- If any sub-expression reaches a destination, we can reach the destination:
-     L1.MkProdE ls -> do (effs,locs) <- unzip <$> mapM (exp out env) ls
+     L1.MkProdE ls -> do (effs,locs) <- unzip <$> mapM (exp env) ls
                          error "FINISH mkprode"
-     L1.ProjE _ e -> exp out env e
+     L1.ProjE _ e -> exp env e
 
 --     L1.MkPacked k ls ->
 
   -- Returns true if this particular case reaches the end of the scrutinee.
-  caserhs :: Loc -> Loc -> Env -> ([Var], L1.Exp) -> SyM (Bool, Set Effect, Loc)
-  caserhs out _scrut env ([], erhs) = do
-     (effs,loc) <- exp out env erhs
-     return $ ( True
-              , addOuts out effs
-              , loc)
+  caserhs :: Loc -> Env -> ([Var], L1.Exp) -> SyM (Bool, Set Effect, Loc)
+  caserhs _scrut env ([], erhs) = do
+     (effs,loc) <- exp env erhs
+     return $ ( True, effs, loc)
 {-                         
   caserhs out env (patVs, erhs) =
       -- Subtlety: if the rhs expression consumes the RIGHTMOST
@@ -427,7 +422,7 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
                else stripped
 -}
 
-  caserhs _ _ _ _ = error "put rhs function back..."
+  caserhs _ _ _ = error "put rhs function back..."
 
 -- Simple invariant assertions:
            
@@ -440,14 +435,6 @@ triv e = case e of
 trivs :: [L1.Exp] -> a -> a
 trivs [] = id
 trivs (a:b) = triv a . trivs b
-
--- | Build up a set of effects corresponding to an output context.
-addOuts :: Loc -> Set Effect -> Set Effect
-addOuts Bottom       s = s
-addOuts Top          _ = error "What to do here?"
--- addOuts (Fixed v)    = S.insert (Traverse v) 
--- addOuts (TupCtxt [y]) = addOuts y
--- addOuts (TupCtxt (x:rs)) = addOuts x . addOuts (TupCtxt rs)
            
 -- TODO: need abstract locations for these:
 extendEnv :: [Var] -> Env -> Env
