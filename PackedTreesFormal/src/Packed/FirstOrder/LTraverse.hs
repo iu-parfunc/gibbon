@@ -32,14 +32,43 @@ data Loc = Fixed Var -- ^ A rigid location, such as for an input or output field
          | Top    -- ^ Contradiction.  Locations couldn't unify.
          | Bottom -- ^ "don't know" or "don't care".  This is the
                   -- location for non-packed data.
-    
--- | When processing an expression, our output goes to a certain set
--- of abstract locations.  The shape of the context is based on the
--- shape of the Type.
-data Context = EmptyCtxt
---             | InFst Context | InSnd  Context
-             | TupCtxt [Context]
-             | OutCtxt LocVar
+  deriving (Read,Show,Eq,Ord, Generic)
+
+instance Out Loc
+
+-- | This should be a semi-join lattice.
+join :: Loc -> Loc -> (Loc,[Constraint])
+join Bottom Bottom = (Bottom,[])
+join Top _         = (Top,[])
+join _   Top       = (Top,[])
+join (Fresh v) (Fresh w) = (Fresh v, [Eql v w])
+join (Fresh v) (Fixed w) = (Fixed w, [Eql v w])
+join (Fixed v) (Fresh w) = (Fixed v, [Eql v w])
+join (Fixed v) (Fixed w) | v == w    = (Fixed v, [])
+                         | otherwise = (Top, [])
+join (TupLoc l1) (TupLoc l2) =
+    let (locs,cs) = unzip $ zipWith join l1 l2 in
+    (TupLoc locs, concat cs)
+join l1 l2 = error$ "join: locations have inconsistent shapes: "++show(doc (l1,l2))
+                           
+joins :: [Loc]-> (Loc,[Constraint])
+joins [] = (Bottom,[])
+joins (a:b) = let (l,c) = joins b 
+                  (l2,c2) = join a l
+              in (l2,c++c2)
+
+-- | We need equality for join and disequality for distinct fields'
+--   and arguments' locations.
+data Constraint = Eql Var Var
+                | Neq Var Var
+                     
+-- -- | When processing an expression, our output goes to a certain set
+-- -- of abstract locations.  The shape of the context is based on the
+-- -- shape of the Type.
+-- data Context = EmptyCtxt
+-- --             | InFst Context | InSnd  Context
+--              | TupCtxt [Context]
+--              | OutCtxt LocVar
     
 -- Our type for functions grows to include effects.
 data ArrowTy = ArrowTy Ty (Set Effect) Ty
@@ -127,29 +156,52 @@ inferProg (L1.Prog dd fds mainE) =
         then return env
         else fixpoint funs env'
 
--- | Take a polymorphic ArrowTy and instantiate its location variables
--- and traversal effects with concrete values for the 
-instantiateEffs :: ArrowTy -> LocVar -> ()
-instantiateEffs arr l = undefined $ go undefined undefined
+-- | Apply a variable substitution to a type.
+substTy :: Map LocVar LocVar -> Ty -> Ty
+substTy mp t = go t
   where
-   go (OutCtxt l) (PackedTy _ v) = M.singleton v l
-   go EmptyCtxt _                = M.empty
-   go (TupCtxt l1)  (ProdTy l2)  = M.unions (zipWith go l1 l2)
-
-
+    go t = 
+     case t of
+      IntTy -> IntTy
+      SymTy -> SymTy
+      SymDictTy te -> SymDictTy (go te)
+      ProdTy    ts -> ProdTy    (L.map go ts)
+      PackedTy k l -> PackedTy k (mp M.! l)
+      
+             
+-- | Take a polymorphic ArrowTy, instantiate its location variables
+-- and traversal effects with the given locations.
+instantiateEffs :: ArrowTy -> Loc -> SyM (Set Effect, Ty)
+instantiateEffs (ArrowTy inT effs outT) loc =
+     -- applySubst subst outT
+    return (S.map (\(Traverse v) -> Traverse (subst M.! v)) effs,
+            substTy subst outT)
+  where
+   subst = unify loc inT
+    
+   -- Unify the location of the argument, with the loc variables in the type:
+   unify :: Loc -> Ty -> M.Map LocVar LocVar
+   unify Bottom _                 = M.empty
+   unify (Fixed l) (PackedTy _ v) = M.singleton v l
+   unify (Fresh l) (PackedTy _ v) = M.singleton v l
+   unify (TupLoc l1) (ProdTy l2)  = M.unions (zipWith unify l1 l2)
+   unify Top       (PackedTy _ v) = M.empty -- M.singleton v l
+   unify loc ty = error$ "instantiateEffs: argument type "++show(doc ty)
+                      ++"does not have matching structure to location: "++show(doc loc)
+                                    
 -- | Map every lexical variable in scope to an abstract location.
 type Env = M.Map Var Loc
 
 -- | Convert the type of a function argument to an abstract location
--- for than function argument.
+-- for that function argument.
 tyToLoc :: Var -> L1.Ty -> Loc
 tyToLoc v (L1.Packed _) = Fixed v
  -- ^ Here we set the type based on the variable binding name, not the
  -- quantified loc variable in the type signature.
 tyToLoc v (L1.ProdTy ls) = TupLoc [tyToLoc (subloc v i) t | (t,i) <- zip ls [1..]]
  -- ^ Here we generate fixed locations that are *subparts* of the function argument.
-tyToLoc v L1.SymTy        = Bottom
-tyToLoc v L1.IntTy        = Bottom
+tyToLoc _ L1.SymTy        = Bottom
+tyToLoc _ L1.IntTy        = Bottom
 tyToLoc v (L1.SymDictTy _t) = -- ^ This may contain packed objects, but it is not contiguous.
     Fixed v
     -- if hasPacked t then Top else Bottom
@@ -169,6 +221,7 @@ hasPacked t = case t of
 -- we introduce.  Also, remove internal underscores.
 mangle :: Var -> Var
 mangle v = "_" ++ L.filter (/='_') v
+
 -- | Refer to a portion of the data associated with a var.
 subloc :: Var -> Int -> Var
 subloc v n = v ++"_"++show n
@@ -176,39 +229,68 @@ subloc v n = v ++"_"++show n
 -- | Strip off any subloc modifiers
 -- root :: Var -> Var
 
-                                  
+freshLoc :: String -> SyM Loc
+freshLoc m = Fresh <$> gensym m
+
+getLocVar :: Loc -> Maybe Var
+getLocVar (Fresh v) = Just v
+getLocVar (Fixed v) = Just v
+getLocVar Top = Nothing
+getLocVar l = error $"getLocVar: expected a single packed value location, got: "
+                    ++show(doc l)
+             
 inferEffects :: FunEnv -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
 inferEffects fenv (C.FunDef _name (arg,argty) retty bod) =
-    exp outloc0 env0 bod
+    fst <$> exp outloc0 env0 bod
   where
   env0    = M.singleton arg (tyToLoc (mangle arg) argty)
   outloc0 = tyToLoc "out" retty
 
   -- We have one location for the destination, and another for each lexical binding.
-  exp :: Loc -> Env -> L1.Exp -> SyM (Set Effect)
+  exp :: Loc -> Env -> L1.Exp -> SyM (Set Effect, Loc)
   exp out env e = 
-    case e of 
-     L1.VarE  _ -> pure S.empty
-     L1.LitE  _ -> pure S.empty
+    case e of
+     -- QUESTION: does a variable reference count as traversing to the end?
+     -- If so, the identity function has the traverse effect.
+     -- I'd prefer that the identity function get type (Tree_p -> Tree_p).
+     L1.VarE v  -> return (S.empty, env M.! v)
+     L1.LitE  _ -> return (S.empty, Bottom)
      L1.CaseE e1 mp ->
-      do eff1 <- exp out env e1
-         effs <- mapM (rhs out env) (M.elems mp)
-         -- Critical policy point!  We only get to the end if all
+      do (eff1,loc1) <- exp out env e1
+         (bools,effs,locs) <- unzip3 <$>
+                              mapM (rhs out loc1 env) (M.elems mp)
+         -- Critical policy point!  We only get to the end if ALL
          -- branches get to the end.
-         return $ S.union eff1 undefined
+         let end = if all id bools
+                   then case getLocVar loc1 of
+                          Just v  -> S.singleton (Traverse v)
+                          Nothing -> S.empty
+                   else S.empty
+         let (locFin,constraints) = joins locs
+         return (S.union (S.union eff1 end)
+                         (L.foldl1 S.intersection effs),
+                 locFin)
 
-     L1.MkPackedE k ls -> undefined
-          
-     -- We need to reach a fixed point where we infer effects for all
-     -- functions at once:
-     L1.AppE rat (L1.VarE rand) | Just loc <- M.lookup rand env -> 
-         let arrTy = fenv M.! rat
-             _ = instantiateEffs arrTy rand
-         in
-         -- Assume rands are trivial.
-         -- The traversal effects are inherited based on the type of rator.
-         undefined
+     -- Construct output packed data.  We will always "scroll to the end" of 
+     -- output values, so they are not interesting for this effect analysis.
+     L1.MkPackedE k ls -> trivs ls $
+        -- And because it's freshly allocated, it has unconstrained location:
+        do l <- freshLoc $ "mk"++k
+           return (S.empty,l)
 
+     -- We need to reach a fixed point where we jointly infer effects
+     -- for all functions.
+     L1.AppE rat (L1.VarE rand) ->
+         -- | Just loc <- M.lookup rand env ->
+       do let loc   = env M.! rand
+          let arrTy = fenv M.! rat
+          (effs,loc') <- instantiateEffs arrTy loc
+ 
+          -- Assume rands are trivial.
+          -- The traversal effects are inherited based on the type of rator.
+          error "finishAPPE"
+
+{-
      L1.AppE rat rand -> triv rand $ undefined
 
      -- If rands are already trivial 
@@ -242,6 +324,9 @@ inferEffects fenv (C.FunDef _name (arg,argty) retty bod) =
       return $ if S.member (Traverse (L.last patVs)) eff
                then addOuts out stripped
                else stripped
+-}
+
+  rhs = undefined
 
 -- Simple invariant assertions:
            
