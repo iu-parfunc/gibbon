@@ -1,8 +1,8 @@
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE QuasiQuotes        #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes     #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell    #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -18,19 +18,21 @@ module Packed.FirstOrder.Target
 --------------------------------------------------------------------------------
 
 -- import GHC.Word
-import Data.Word (Word8)
 import Data.List (nub)
+import Data.Word (Word8)
 
+import Data.Bifunctor (first)
 import Data.Loc (noLoc)
-import Language.C.Quote.C (cexp, cstm, cdecl, cty, cfun, csdecl, cparam, cedecl) -- cinit,
+import Data.Maybe (fromJust)
+import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 -- import Language.C.Pretty
-import Text.PrettyPrint.Mainland
 import Packed.HigherOrder.L1_Source (T1 (..))
+import Text.PrettyPrint.Mainland
 
-import Text.PrettyPrint.GenericPretty
 import Prelude hiding (init)
+import Text.PrettyPrint.GenericPretty
 
 --------------------------------------------------------------------------------
 -- * AST definition
@@ -43,6 +45,15 @@ data Triv
     | IntTriv Int
     | TagTriv Tag
   deriving (Show, Read, Ord, Eq, Generic)
+
+-- | Switch alternatives.
+data Alts
+  = TagAlts [(Tag, Tail)]
+      -- ^ Casing on tags.
+  | IntAlts [(Int, Tail)]
+      -- ^ Casing on integers.
+  deriving (Show, Read, Ord, Eq, Generic)
+instance Out Alts
 
 -- deriving instance Generic Word8 -- Won't work even after importing GHC.Word
 instance Out Word8 where
@@ -62,8 +73,8 @@ data Tail
                      prim  :: Prim,
                      rands :: [Triv],
                      bod   :: Tail }
-    | Switch Triv [(Tag,Tail)] (Maybe Tail)
-    -- ^ For casing on numeric tags.
+    | Switch Triv Alts (Maybe Tail)
+    -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
   deriving (Show, Read, Ord, Eq, Generic)
 
@@ -133,16 +144,25 @@ codegenTail (RetValsT [tr]) _ty = [ C.BlockStm [cstm| return $(codegenTriv tr); 
 codegenTail (RetValsT ts) ty =
     [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
     where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
-codegenTail (Switch _tr [] Nothing) _ty = []
-codegenTail (Switch _tr [] (Just t)) ty =
-    codegenTail t ty
-codegenTail (Switch _tr [(_ctag,ctail)] Nothing) ty =
-    codegenTail ctail ty
-codegenTail (Switch tr ((ctag,ctail):cs) def) ty =
-    [ C.BlockStm $ C.If comp thenTail elseTail noLoc ]
-    where comp = [cexp| $(codegenTriv tr) == $ctag |]
-          thenTail = mkBlock $ codegenTail ctail ty
-          elseTail = if (null cs) then Nothing else Just $ mkBlock $ codegenTail (Switch tr cs def) ty
+
+codegenTail (Switch tr alts def) ty =
+    [ C.BlockStm (fromJust (mk_if alt_pairs)) ]
+  where
+    tr_e = codegenTriv tr
+    mk_tag_lhs lhs = C.Const (C.IntConst (show lhs) C.Unsigned (fromIntegral lhs) noLoc) noLoc
+    mk_int_lhs lhs = C.Const (C.IntConst (show lhs) C.Signed   (fromIntegral lhs) noLoc) noLoc
+
+    alts' = case alts of
+              TagAlts as -> map (first mk_tag_lhs) as
+              IntAlts as -> map (first mk_int_lhs) as
+
+    alt_pairs :: [(C.Exp, C.Stm)]
+    alt_pairs = map (\(lhs, rhs) -> ( C.BinOp C.Eq tr_e lhs noLoc, mkBlock (codegenTail rhs ty) )) alts'
+
+    mk_if :: [(C.Exp, C.Stm)] -> Maybe C.Stm
+    mk_if [] = (\def' -> mkBlock (codegenTail def' ty)) <$> def
+    mk_if ((cond, rhs) : rest) = Just (C.If cond rhs (mk_if rest) noLoc)
+
 codegenTail (TailCall v ts) _ty =
     [ C.BlockStm [cstm| return $( C.FnCall (cid v) args noLoc); |] ]
     where args = map codegenTriv ts
@@ -204,10 +224,10 @@ makeStructs ((ProdTy ts):ts') =
 makeStructs (_:ts) = makeStructs ts
 
 makeName :: [Ty] -> String
-makeName [] = "Prod"
-makeName (IntTy:ts) = "Int" ++ makeName ts
+makeName []            = "Prod"
+makeName (IntTy:ts)    = "Int" ++ makeName ts
 makeName (CursorTy:ts) = "Cursor" ++ makeName ts
-makeName _ = undefined
+makeName _             = undefined
 
 mkBlock :: [C.BlockItem] -> C.Stm
 mkBlock ss = C.Block ss noLoc
@@ -231,8 +251,8 @@ exadd1Tail :: Tail
 exadd1Tail =
     LetPrimCallT [("ttag",TagTy),("t2",CursorTy)] ReadTag [VarTriv "t"]
   $ Switch (VarTriv "ttag")
-           [(leafTag,leafCase),
-            (nodeTag,nodeCase)]
+           (TagAlts [(leafTag,leafCase),
+                     (nodeTag,nodeCase)])
            Nothing
     where leafCase =
               LetPrimCallT [("tout2",CursorTy)] WriteTag [TagTriv leafTag, VarTriv "tout"]
