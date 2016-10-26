@@ -8,6 +8,73 @@
 
 #include "tree_packed.h"
 
+
+
+void readPoint(FILE *in, Point & p)
+{
+    int dummy;
+    if(fscanf(in, "%d", &dummy) != 1) {
+        fprintf(stderr, "Input file not large enough.\n");
+        exit(1);
+    }
+    
+    if(fscanf(in, "%f", &p.x_val) != 1) {
+        fprintf(stderr, "Input file not large enough.\n");
+        exit(1);
+    }
+    if(fscanf(in, "%f", &p.y_val) != 1) {
+        fprintf(stderr, "Input file not large enough.\n");
+        exit(1);
+    }
+    
+}
+void readInput(int argc, char **argv,Point * & data , int & rad, int & npoints)
+{
+    FILE *in;
+    
+    if(argc != 4 && argc != 3) {
+        fprintf(stderr, "usage: pointcorr <DIM> <rad> <npoints> [input_file]\n");
+        exit(1);
+    }
+    
+    
+    rad = atof(argv[1]);
+    
+    npoints = atol(argv[2]);
+    
+    if(npoints <= 0) {
+        fprintf(stderr, "Not enough points.\n");
+        exit(1);
+    }
+    
+    data = new Point[npoints];
+    
+    if(argc == 4) {
+        in = fopen(argv[3], "r");
+        /*
+         if(in == NULL) {
+         fprintf(stderr, "Could not open %s\n", argv[4]);
+         exit(1);
+         }
+         */
+        for(int i = 0; i < npoints; i++) {
+            readPoint(in, data[i]);
+        }
+        fclose(in);
+    } else {
+        //generate random points ( no file name provided)
+        srand(0);
+        for(int i = 0; i < npoints; i++) {
+            data[i].x_val= (float)rand() / RAND_MAX;
+            data[i].y_val= (float)rand() / RAND_MAX;
+            
+        }
+    }
+}
+
+
+
+
 float max(float a, float b){
     return a > b ? a : b;
 }
@@ -19,6 +86,7 @@ float min(float a, float b){
 int treeSize(int n){
     return (sizeof(Node_Leaf))* n +  (sizeof(Node_Inner))*n + (2*n)*sizeof(char * )+100;
 }
+
 
 int comparePointX(const void *a, const void *b){
     if(((Point *)a)->x_val < ((Point *)b)->x_val)
@@ -59,7 +127,7 @@ void buildTreeRec(int startIndx ,int endIndx ,Point * data ,char * &cur ,int dep
         cur += sizeof(float);
         
         //skip the output (// do we need to create a new tree ? just for this feild !!)
-        *cur +=sizeof(int);
+        cur +=sizeof(int);
         return ;
     }
     
@@ -143,9 +211,12 @@ char *  buildTree(int n , Point * data ){
     //reserve the memory layout
     int bytes = treeSize(n);
     char * buf = (char*) malloc(bytes);
+    char * root=buf;
     buildTreeRec(0, n-1, data, buf, 0);
     
-    return buf;
+    return root;
     
 }
+
+
 
