@@ -1,3 +1,6 @@
+{-# LANGUAGE TupleSections #-}
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE DeriveGeneric #-}
 
 -- | An intermediate language with an effect system that captures traversals.
@@ -10,8 +13,8 @@ import qualified Packed.FirstOrder.L1_Source as L1
 import Data.List as L
 import Data.Set as S
 import Data.Map as M
-import GHC.Generics (Generic)
-    
+import Text.PrettyPrint.GenericPretty
+
 --------------------------------------------------------------------------------
     
 -- Unchanged from L1, or we could go A-normal:
@@ -20,8 +23,15 @@ import GHC.Generics (Generic)
 -- | Abstract location variables.
 type LocVar = Var
 
--- data LocVar = Fixed Var | Fresh Var
--- data Loc = Fixed Var | Fresh Var | TupLoc [Loc] | Top | Bottom
+-- | Abstract locations:
+data Loc = Fixed Var -- ^ A rigid location, such as for an input or output field.
+         | Fresh Var -- ^ Fresh location-variables as created by
+                     -- calling functions that are polymorphic in
+                     -- their output location.
+         | TupLoc [Loc] -- ^ The locations for each part of a tuple.
+         | Top    -- ^ Contradiction.  Locations couldn't unify.
+         | Bottom -- ^ "don't know" or "don't care".  This is the
+                  -- location for non-packed data.
     
 -- | When processing an expression, our output goes to a certain set
 -- of abstract locations.  The shape of the context is based on the
@@ -38,7 +48,15 @@ data ArrowTy = ArrowTy [Ty] (Set Effect) Ty
 data Effect = Traverse LocVar
   deriving (Read,Show,Eq,Ord, Generic)
 
-           
+instance Out Ty
+instance Out ArrowTy
+instance Out Effect
+instance Out a => Out (Set a) where
+  docPrec n x = docPrec n (S.toList x)
+  doc x = doc (S.toList x)
+instance Out FunDef
+instance Out Prog
+    
 type OldFuns = FunDefs L1.Ty L1.Exp
 type NewFuns = M.Map Var FunDef
     
@@ -46,7 +64,7 @@ type FunEnv = M.Map Var ArrowTy
 
 -- | L1 Types extended with abstract Locations
 data Ty = IntTy | SymTy | ProdTy [Ty] | SymDictTy Ty  
-        | Packed { con :: Constr, loc :: LocVar }
+        | PackedTy { con :: Constr, loc :: LocVar }
   deriving (Show, Read, Ord, Eq, Generic)
            
 -- | Here we only change the types of FUNCTIONS:
@@ -54,9 +72,11 @@ data Prog = Prog { ddefs    :: DDefs L1.Ty
                  , fundefs  :: NewFuns
                  , mainExp  :: Maybe L1.Exp
                  }
+  deriving (Show, Read, Ord, Eq, Generic)
 
 -- | Arrow type caries the function's effectS:
 data FunDef = FunDef Var ArrowTy [Var] L1.Exp
+  deriving (Show, Read, Ord, Eq, Generic)
 --------------------------------------------------------------------------------
     
 
@@ -77,7 +97,7 @@ initialEnv mp = M.map (\x -> fst $ runSyM 0 (go x))  mp
 annotateTy :: L1.Ty -> SyM Ty
 annotateTy t =
   case t of
-    L1.Packed k -> Packed k <$> genLetter                   
+    L1.Packed k -> PackedTy k <$> genLetter                   
     L1.IntTy    -> return IntTy
     L1.SymTy    -> return SymTy
     L1.ProdTy l -> ProdTy <$> mapM annotateTy l
@@ -91,57 +111,97 @@ inferProg (L1.Prog dd fds mainE) =
           fds finalFunTys)
        mainE
  where
-   finalFunTys = fixpoint fds (initialEnv fds)
+   finalFunTys :: FunEnv
+   finalFunTys = fst $ runSyM 0 $
+                 fixpoint fds (initialEnv fds)
    
-   fixpoint :: OldFuns -> FunEnv -> FunEnv
+   fixpoint :: OldFuns -> FunEnv -> SyM FunEnv
    fixpoint funs env =
-     let effs' = M.map (inferEffects env) funs
-         env'  = M.intersectionWith
+    do effs' <- M.fromList <$>
+                mapM (\(k,v) -> (k,) <$> inferEffects env v)
+                     (M.toList funs)
+       let env' = M.intersectionWith
                   (\ neweffs (ArrowTy as _ b) -> ArrowTy as neweffs b)
                   effs' env
-     in if env == env'
-        then env
+       if env == env'
+        then return env
         else fixpoint funs env'
 
 -- | Take a polymorphic ArrowTy and instantiate its location variables
--- and traversal effects with concrete values.
+-- and traversal effects with concrete values for the 
 instantiateEffs :: ArrowTy -> LocVar -> ()
 instantiateEffs arr l = undefined $ go undefined undefined
   where
-   go (OutCtxt l)   (Packed _ v) = M.singleton v l
+   go (OutCtxt l) (PackedTy _ v) = M.singleton v l
    go EmptyCtxt _                = M.empty
    go (TupCtxt l1)  (ProdTy l2)  = M.unions (zipWith go l1 l2)
 
-type Env = M.Map Var LocVar
-                                   
-inferEffects :: FunEnv -> C.FunDef L1.Ty L1.Exp -> Set Effect
-inferEffects fenv (C.FunDef name retty args bod) = exp outloc env0 bod
-  where
-  -- The environment here tracks ONLY lexical bindings to Packed types:
-  env0 = undefined
-  outloc = undefined
 
--- triv = 
-           
-  -- The environment gives us abstract locations for variables.
-  exp :: Context -> Env -> L1.Exp -> Set Effect
+-- | Map every lexical variable in scope to an abstract location.
+type Env = M.Map Var Loc
+
+-- | Convert the type of a function argument to an abstract location
+-- for than function argument.
+tyToLoc :: Var -> L1.Ty -> Loc
+tyToLoc v (L1.Packed _) = Fixed v
+ -- ^ Here we set the type based on the variable binding name, not the
+ -- quantified loc variable in the type signature.
+tyToLoc v (L1.ProdTy ls) = TupLoc [tyToLoc (subloc v i) t | (t,i) <- zip ls [1..]]
+ -- ^ Here we generate fixed locations that are *subparts* of the function argument.
+tyToLoc v L1.SymTy        = Bottom
+tyToLoc v L1.IntTy        = Bottom
+tyToLoc v (L1.SymDictTy _t) = -- ^ This may contain packed objects, but it is not contiguous.
+    Fixed v
+    -- if hasPacked t then Top else Bottom
+
+
+hasPacked :: L1.Ty -> Bool
+hasPacked t = case t of
+                L1.Packed _  -> True
+                L1.ProdTy ls -> any hasPacked ls
+                L1.SymTy     -> False
+                L1.IntTy     -> False
+                L1.SymDictTy t -> hasPacked t
+                             
+-- A bit name mangling:
+
+-- | First, lift program variables so they don't interfere with ones
+-- we introduce.  Also, remove internal underscores.
+mangle :: Var -> Var
+mangle v = "_" ++ L.filter (/='_') v
+-- | Refer to a portion of the data associated with a var.
+subloc :: Var -> Int -> Var
+subloc v n = v ++"_"++show n
+
+-- | Strip off any subloc modifiers
+-- root :: Var -> Var
+
+                                  
+inferEffects :: FunEnv -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
+inferEffects fenv (C.FunDef _name retty args bod) =
+    exp outloc0 env0 bod
+  where
+  env0    = M.fromList [ (vr, tyToLoc (mangle vr) t) | (vr,t) <- args ] 
+  outloc0 = tyToLoc "out" retty
+
+  -- We have one location for the destination, and another for each lexical binding.
+  exp :: Loc -> Env -> L1.Exp -> SyM (Set Effect)
   exp out env e = 
     case e of 
-     L1.VarE  _ -> S.empty
-     L1.LitE  _ -> S.empty
+     L1.VarE  _ -> pure S.empty
+     L1.LitE  _ -> pure S.empty
      L1.CaseE e1 mp ->
-         let eff1 = exp out env e1
-             effs = L.map (rhs out env) (M.elems mp)
-         in
+      do eff1 <- exp out env e1
+         effs <- mapM (rhs out env) (M.elems mp)
          -- Critical policy point!  We only get to the end if all
          -- branches get to the end.
-         S.union eff1 
-          undefined
+         return $ S.union eff1 undefined
 
+     L1.MkPackedE k ls -> undefined
           
      -- We need to reach a fixed point where we infer effects for all
      -- functions at once:
-     L1.AppE rat (L1.VarE rand) | Just loc <- M.lookup rand env -> 
+     L1.AppE rat [L1.VarE rand] | Just loc <- M.lookup rand env -> 
          let arrTy = fenv M.! rat
              _ = instantiateEffs arrTy rand
          in
@@ -149,40 +209,39 @@ inferEffects fenv (C.FunDef name retty args bod) = exp outloc env0 bod
          -- The traversal effects are inherited based on the type of rator.
          undefined
 
-     L1.AppE rat rand -> triv rand $ undefined
+     L1.AppE rat [rand] -> triv rand $ undefined
 
      -- If rands are already trivial 
      L1.PrimAppE _ rands -> trivs rands $          
-         S.empty
+         return S.empty
                           
      -- Here we UNION the end-points that are reached in the RHS and the BOD:
      L1.LetE (v,t,rhs) bod -> -- FIXME: change to let.
          let env' = extendEnv [v] env
              out' = undefined -- ?? create based on type.
          in
-         S.union (exp out env' bod)
-                 (exp out' env rhs)
+         S.union <$> exp out env' bod
+                 <*> exp out' env rhs
 
      -- If any sub-expression reaches a destination, we can reach the destination:
-     L1.MkProdE ls -> S.unions (L.map (exp out env) ls)
+     L1.MkProdE ls -> S.unions <$> mapM (exp out env) ls
      L1.ProjE _ e -> exp out env e
 
 --     L1.MkPacked k ls ->
                      
-  rhs :: Context -> Env -> ([Var], L1.Exp) -> Set Effect
-  rhs out env ([], erhs) = addOuts out (exp out env erhs)
+  rhs :: Loc -> Env -> ([Var], L1.Exp) -> SyM (Set Effect)
+  rhs out env ([], erhs) = addOuts out <$> exp out env erhs
   rhs out env (patVs, erhs) =
       -- Subtlety: if the rhs expression consumes the RIGHTMOST
       -- pattern variable, then the later code transformations will
       -- have to ensure that it consumes everything.
-      let env' = extendEnv patVs env
-          eff  = exp out env' erhs
-          isLocal (Traverse v) = L.elem v patVs -- FIXME... need LocVar
+   do let env' = extendEnv patVs env
+      eff <- exp out env' erhs
+      let isLocal (Traverse v) = L.elem v patVs -- FIXME... need LocVar
           stripped  = S.filter isLocal eff
-      in
-      if S.member (Traverse (L.last patVs)) eff
-      then addOuts out stripped
-      else stripped
+      return $ if S.member (Traverse (L.last patVs)) eff
+               then addOuts out stripped
+               else stripped
 
 -- Simple invariant assertions:
            
@@ -193,11 +252,12 @@ trivs :: [L1.Exp] -> a -> a
 trivs = undefined
 
 -- | Build up a set of effects corresponding to an output context.
-addOuts :: Context -> Set Effect -> Set Effect
-addOuts EmptyCtxt     = id
-addOuts (OutCtxt v)   = S.insert (Traverse v) 
-addOuts (TupCtxt [y]) = addOuts y
-addOuts (TupCtxt (x:rs)) = addOuts x . addOuts (TupCtxt rs)
+addOuts :: Loc -> Set Effect -> Set Effect
+addOuts Bottom       s = s
+addOuts Top          _ = error "What to do here?"
+-- addOuts (Fixed v)    = S.insert (Traverse v) 
+-- addOuts (TupCtxt [y]) = addOuts y
+-- addOuts (TupCtxt (x:rs)) = addOuts x . addOuts (TupCtxt rs)
            
 -- TODO: need abstract locations for these:
 extendEnv :: [Var] -> Env -> Env

@@ -114,13 +114,14 @@ desugarExp e =
           VarE "snd" ->
             L1.ProjE 1 <$> desugarExp e2
           VarE f ->
-            L1.AppE f <$> desugarExp e2
+            do e2' <- desugarExp e2
+               return $ L1.AppE f [e2']
           MkPackedE c as -> do
             e2' <- desugarExp e2
             return (L1.MkPackedE c (as ++ [e2']))
-          L1.AppE f l -> do
+          L1.AppE f [l] -> do
             e2' <- desugarExp e2
-            return (L1.AppE f (MkProdE [l,e2']))
+            return (L1.AppE f [MkProdE [l,e2']])
           f ->
             err ("Only variables allowed in operator position in function applications. (found: " ++ show f ++ ")")
 
