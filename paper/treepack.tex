@@ -27,6 +27,7 @@
 \newcommand{\gramdef}{\; ::= \;}
 \newcommand{\gramor}{\; | \;}
 \newcommand{\keywd}[1]{\; \texttt{#1} \;}
+\newcommand{\keywdr}[1]{\; \texttt{#1}^{*} \;}
 
 %----------------------------------------
 %% \usepackage[colorinlistoftodos,prependcaption,textsize=tiny]{todonotes}
@@ -235,27 +236,29 @@ with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 
 \subsection{L2: Target language}
 
+\begin{figure}
+%% \begin{displaymath}
+%%     \keywd{v} \in \; Var, \:
+%%     \keywd{n} \in \; Int
+%% \end{displaymath}
 \begin{displaymath}
   \begin{aligned}
-    v \in & Var \\
-    n \in & Int
-  \end{aligned}
-\end{displaymath}
-\begin{displaymath}
-  \begin{aligned}
-    \keywd{x} \gramdef & \keywd{n} \gramor \gramor{v} \\
-    \keywd{e} \gramdef & \keywd{i} \gramor \keywd{prim} \keywd{x}* \\
-    & \gramor \keywd{(x,x,...)} \gramor \keywd{x} @ \keywd{n} \\
-    & \gramor \keywd{let} \keywd{(v,t,e)}* \keywd{e} \\
+    \keywd{x} \gramdef & \keywd{n} \gramor \keywd{v} \\
+    \keywd{t} \gramdef & \keywd{int} \gramor \keywd{cursor} \gramor \keywd{prod} \keywdr{t} \\
+    & \keywd{sum} \keywdr{(v,t)} \\
+    \keywd{e} \gramdef & \keywd{x} \gramor \keywd{prim} \keywdr{x} \\
+    & \gramor \keywd{tup} \keywdr{x} \gramor \keywd{proj} \keywd{n} \keywd{x}  \\
+    & \gramor \keywd{let} \keywdr{(v,t,e)} \keywd{e} \\
     & \gramor \keywd{ifeq} \keywd{(x,x)} \keywd{e} \keywd{e} \\
-    & \gramor \keywd{newbuff} n \\
+    & \gramor \keywd{newbuff} \keywd{n} \\
     & \gramor \keywd{writetag} \keywd{v} \keywd{n} \\
     & \gramor \keywd{writeint} \keywd{v} \keywd{x} \\
     & \gramor \keywd{readtag} \keywd{v} \\
     & \gramor \keywd{readint} \keywd{v}
   \end{aligned}
 \end{displaymath}
-
+\caption{Grammar for target language}
+\end{figure}
 
 % ================================================================================
 \section{Implementation}
