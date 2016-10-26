@@ -22,7 +22,7 @@ import Data.Word (Word8)
 import Data.List (nub)
 
 import Data.Loc (noLoc)
-import Language.C.Quote.C (cexp, cstm, cdecl, cty, cfun, csdecl, cparam, cedecl) -- cinit, 
+import Language.C.Quote.C (cexp, cstm, cdecl, cty, cfun, csdecl, cparam, cedecl) -- cinit,
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 -- import Language.C.Pretty
@@ -31,7 +31,7 @@ import Packed.HigherOrder.L1_Source (T1 (..))
 
 import Text.PrettyPrint.GenericPretty
 import Prelude hiding (init)
-    
+
 --------------------------------------------------------------------------------
 -- * AST definition
 
@@ -49,7 +49,7 @@ instance Out Word8 where
     doc       w = doc       (fromIntegral w :: Int)
     docPrec n w = docPrec n (fromIntegral w :: Int)
 instance Out Triv
-           
+
 data Tail
     = RetValsT [Triv] -- ^ Only in tail position, for returning from a function.
     | LetCallT { binds  :: [(Var,Ty)],
@@ -68,7 +68,7 @@ data Tail
   deriving (Show, Read, Ord, Eq, Generic)
 
 instance Out Tail
-           
+
 data Ty
     = IntTy
     | TagTy -- ^ A single byte / Word8
@@ -81,14 +81,14 @@ data Ty
   deriving (Show, Read, Ord, Eq, Generic)
 
 instance Out Ty
-           
+
 data Prim
     = AddP
     | SubP
     | MulP
     | DictInsertP -- ^ takes k,v,dict
     | DictLookupP -- ^ takes k,dict, errors if absent
-    | NewBuf 
+    | NewBuf
     -- ^ Allocate a new buffer, return a cursor.
     | WriteTag
     -- ^ Write a static tag value, takes a cursor to target.
@@ -101,7 +101,7 @@ data Prim
   deriving (Show, Read, Ord, Eq, Generic)
 
 instance Out Prim
-           
+
 data FunDecl = FunDecl Var [(Var,Ty)] Ty Tail
   deriving (Show, Read, Ord, Eq, Generic)
 
@@ -150,7 +150,7 @@ codegenTail (LetCallT bnds ratr rnds ty0 (Just nam) body) ty =
     let init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
         assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
         bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
-        fields = map (\(_,i) -> "field" ++ (show i)) $ zip bnds [0..]
+        fields = map (\(_,i) -> "field" ++ (show i)) $ zip bnds [0 :: Int ..]
     in init ++ (zipWith bind bnds fields) ++ (codegenTail body ty)
 codegenTail (LetPrimCallT bnds prm rnds body) ty =
     let bod' = codegenTail body ty
@@ -190,16 +190,16 @@ codegenTy IntTy = [cty|int|]
 codegenTy TagTy = [cty|int|]
 codegenTy SymTy = [cty|int|]
 codegenTy CursorTy = [cty|char*|]
-codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc 
+codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts
 codegenTy (SymDictTy _t) = undefined
 
 makeStructs :: [Ty] -> [C.Definition]
 makeStructs [] = []
-makeStructs ((ProdTy ts):ts') = 
+makeStructs ((ProdTy ts):ts') =
     let d     = [cedecl| typedef struct $id:(nam ++ "_struct") { $sdecls:decls } $id:nam; |]
         nam   = makeName ts
-        decls = map (\(t,n) -> [csdecl| $ty:(codegenTy t) $id:("field"++(show n)); |]) $ zip ts [0..]
+        decls = map (\(t,n) -> [csdecl| $ty:(codegenTy t) $id:("field"++(show n)); |]) $ zip ts [0 :: Int ..]
     in d : (makeStructs ts')
 makeStructs (_:ts) = makeStructs ts
 
@@ -208,24 +208,24 @@ makeName [] = "Prod"
 makeName (IntTy:ts) = "Int" ++ makeName ts
 makeName (CursorTy:ts) = "Cursor" ++ makeName ts
 makeName _ = undefined
-                                                        
+
 mkBlock :: [C.BlockItem] -> C.Stm
 mkBlock ss = C.Block ss noLoc
 
 cid :: Var -> C.Exp
 cid v = C.Var (C.toIdent v noLoc) noLoc
 
--- Examples:          
+-- Examples:
 --------------------------------------------------------------------------------
 
 leafTag :: Word8
-leafTag = fromIntegral 0
+leafTag = 0
 
 nodeTag :: Word8
-nodeTag = fromIntegral 1         
+nodeTag = 1
 
 exadd1 :: FunDecl
-exadd1 = FunDecl "add1" [("t",CursorTy),("tout",CursorTy)] (ProdTy [CursorTy,CursorTy]) exadd1Tail 
+exadd1 = FunDecl "add1" [("t",CursorTy),("tout",CursorTy)] (ProdTy [CursorTy,CursorTy]) exadd1Tail
 
 exadd1Tail :: Tail
 exadd1Tail =
@@ -245,6 +245,6 @@ exadd1Tail =
             $ LetCallT [("t3",CursorTy),("tout3",CursorTy)] "add1" [VarTriv "t2", VarTriv "tout2"] (ProdTy [CursorTy,CursorTy]) (Just "tmp1")
             $ TailCall "add1" [VarTriv "t3", VarTriv "tout3"]
 
--- | Compile the example and print it              
+-- | Compile the example and print it
 add1C :: IO ()
 add1C = mapM_ (\c -> putDocLn $ ppr c) (codegenFun exadd1)
