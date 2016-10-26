@@ -12,7 +12,7 @@ module Packed.FirstOrder.Target
     (Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..),
      codegenFun,
      -- Examples, temporary:
-     exadd1, exadd1Tail, add1C
+     exadd1, exadd1Tail, add1C, buildTreeC
     ) where
 
 --------------------------------------------------------------------------------
@@ -27,7 +27,6 @@ import Data.Maybe (fromJust)
 import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
--- import Language.C.Pretty
 import Packed.HigherOrder.L1_Source (T1 (..))
 import Text.PrettyPrint.Mainland
 
@@ -121,9 +120,7 @@ instance Out FunDecl
 --------------------------------------------------------------------------------
 -- * C codegen
 
--- newtype Cg = Cg { unwrapCg :: () }
-
-codegenFun :: FunDecl -> ([C.Definition])
+codegenFun :: FunDecl -> [C.Definition]
 codegenFun (FunDecl nam args ty tal) =
     let retTy   = codegenTy ty
         params  = map (\(v,t) -> [cparam| $ty:(codegenTy t) $id:v |]) args
@@ -247,6 +244,25 @@ nodeTag = 1
 exadd1 :: FunDecl
 exadd1 = FunDecl "add1" [("t",CursorTy),("tout",CursorTy)] (ProdTy [CursorTy,CursorTy]) exadd1Tail
 
+buildTree :: FunDecl
+buildTree = FunDecl "build_tree" [("n",IntTy),("tout",CursorTy)] (ProdTy [CursorTy,CursorTy]) buildTree_tail
+
+buildTree_tail :: Tail
+buildTree_tail =
+    Switch (VarTriv "n") (IntAlts [(0, base_case)]) (Just recursive_case)
+  where
+    base_case, recursive_case :: Tail
+
+    base_case =
+      LetPrimCallT [("tout1", CursorTy)] WriteInt [IntTriv 0, VarTriv "tout"] $
+      RetValsT [VarTriv "tout1"]
+
+    recursive_case =
+      LetPrimCallT [("n1",IntTy)] SubP [VarTriv "n", IntTriv 1] $
+      LetCallT [("tout1",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout"] CursorTy (Just "tmp1") $
+      LetCallT [("tout2",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout1"] CursorTy (Just "tmp2") $
+      RetValsT [VarTriv "tout2"]
+
 exadd1Tail :: Tail
 exadd1Tail =
     LetPrimCallT [("ttag",TagTy),("t2",CursorTy)] ReadTag [VarTriv "t"]
@@ -268,3 +284,6 @@ exadd1Tail =
 -- | Compile the example and print it
 add1C :: IO ()
 add1C = mapM_ (\c -> putDocLn $ ppr c) (codegenFun exadd1)
+
+buildTreeC :: IO ()
+buildTreeC = mapM_ (\c -> putDocLn (ppr c)) (codegenFun buildTree)
