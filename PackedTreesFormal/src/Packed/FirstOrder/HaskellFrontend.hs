@@ -66,10 +66,11 @@ collectTopLevel fun_tys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) 
     let fname' = name_to_str fname
         fun_ty = M.findWithDefault (error ("Can't find function in type env: " ++ fname'))
                                    fname' fun_tys
-    args'   <- mapM collectArg args
-    arg_tys <- mapM (getArgTy fun_ty) [ 1 .. length args' ]
+    [arg']   <- mapM collectArg args
+    -- Limiting to one argument for now:
+    [arg_ty] <- mapM (getArgTy fun_ty) [ 1 .. length [arg'] ]
     rhs'    <- desugarExp rhs
-    return (Just (Right (FunDef fname' (getRetTy fun_ty) (zip args' arg_tys) rhs')))
+    return (Just (Right (FunDef fname' (arg',arg_ty) (getRetTy fun_ty) rhs')))
   where
     collectArg :: Pat -> Ds Var
     collectArg (PVar n) = return (name_to_str n)
@@ -114,14 +115,13 @@ desugarExp e =
           VarE "snd" ->
             L1.ProjE 1 <$> desugarExp e2
           VarE f ->
-            do e2' <- desugarExp e2
-               return $ L1.AppE f [e2']
+            L1.AppE f <$> desugarExp e2
           MkPackedE c as -> do
             e2' <- desugarExp e2
             return (L1.MkPackedE c (as ++ [e2']))
-          L1.AppE f [l] -> do
+          L1.AppE f l -> do
             e2' <- desugarExp e2
-            return (L1.AppE f [MkProdE [l,e2']])
+            return (L1.AppE f (MkProdE [l,e2']))
           f ->
             err ("Only variables allowed in operator position in function applications. (found: " ++ show f ++ ")")
 

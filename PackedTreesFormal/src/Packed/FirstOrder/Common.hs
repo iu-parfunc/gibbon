@@ -98,9 +98,9 @@ fromListDD = L.foldr (insertDD) emptyDD
 type FunDefs ty ex = Map Var (FunDef ty ex)
 
 data FunDef ty ex = FunDef { funName  :: Var
-                           , funRetTy :: ty
                                -- ^ Return type
-                           , funArgs  :: [(Var,ty)]
+                           , funArg   :: (Var,ty)
+                           , funRetTy :: ty
                            , funBody  :: ex }
   deriving (Read,Show,Eq,Ord, Generic)
 

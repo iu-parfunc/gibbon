@@ -39,7 +39,7 @@ data Prog = Prog { ddefs    :: DDefs Ty
 -- well as packed algebraic datatypes.
 data Exp = VarE Var
          | LitE Int
-         | AppE Var [Exp] -- Only apply top-level / first-order functions
+         | AppE Var Exp -- Only apply top-level / first-order functions
          | PrimAppE Prim [Exp]
          | LetE (Var,Ty,Exp) Exp
            -- ^ One binding at a time, but could bind a tuple for
@@ -158,13 +158,13 @@ add1Prog = Prog (fromListDD [DDef "Tree" [ ("Leaf",[IntTy])
                 Nothing
          
 exadd1 :: FunDef Ty Exp
-exadd1 = FunDef "add1" treeTy [("tr",treeTy)] exadd1Bod
+exadd1 = FunDef "add1" ("tr",treeTy) treeTy exadd1Bod
 
 exadd1Bod :: Exp
 exadd1Bod =
     CaseE (VarE "tr") $ M.fromList $ 
       [ ("Leaf", (["n"], PrimAppE AddP [VarE "n", LitE 1]))
       , ("Node", (["x","y"], MkPackedE "Node"
-                              [ AppE "add1" [VarE "x"]
-                              , AppE "add1" [VarE "y"]]))
+                              [ AppE "add1" (VarE "x")
+                              , AppE "add1" (VarE "y")]))
       ]

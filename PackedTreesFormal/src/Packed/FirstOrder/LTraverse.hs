@@ -42,7 +42,7 @@ data Context = EmptyCtxt
              | OutCtxt LocVar
     
 -- Our type for functions grows to include effects.
-data ArrowTy = ArrowTy [Ty] (Set Effect) Ty
+data ArrowTy = ArrowTy Ty (Set Effect) Ty
   deriving (Read,Show,Eq,Ord, Generic)
 
 data Effect = Traverse LocVar
@@ -75,7 +75,7 @@ data Prog = Prog { ddefs    :: DDefs L1.Ty
   deriving (Show, Read, Ord, Eq, Generic)
 
 -- | Arrow type caries the function's effectS:
-data FunDef = FunDef Var ArrowTy [Var] L1.Exp
+data FunDef = FunDef Var ArrowTy Var L1.Exp
   deriving (Show, Read, Ord, Eq, Generic)
 --------------------------------------------------------------------------------
     
@@ -86,10 +86,10 @@ initialEnv :: OldFuns -> FunEnv
 initialEnv mp = M.map (\x -> fst $ runSyM 0 (go x))  mp
   where
     go :: C.FunDef L1.Ty L1.Exp -> SyM ArrowTy
-    go (C.FunDef _ ret args _)  =
-        do argTys <- mapM annotateTy (L.map snd args)
-           retTy  <- annotateTy ret
-           return $ ArrowTy argTys S.empty retTy
+    go (C.FunDef _ (_,argty) ret _)  =
+        do argTy <- annotateTy argty
+           retTy <- annotateTy ret
+           return $ ArrowTy argTy S.empty retTy
                                     
 -- (L1.FunDef name retty args bod)
 
@@ -106,8 +106,8 @@ annotateTy t =
 inferProg :: L1.Prog -> Prog
 inferProg (L1.Prog dd fds mainE) =
   Prog dd
-       (M.intersectionWith (\ (C.FunDef nm _ args bod) arrTy ->
-                             FunDef nm arrTy (L.map fst args) bod)
+       (M.intersectionWith (\ (C.FunDef nm (arg,_) _ bod) arrTy ->
+                             FunDef nm arrTy arg bod)
           fds finalFunTys)
        mainE
  where
@@ -178,10 +178,10 @@ subloc v n = v ++"_"++show n
 
                                   
 inferEffects :: FunEnv -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
-inferEffects fenv (C.FunDef _name retty args bod) =
+inferEffects fenv (C.FunDef _name (arg,argty) retty bod) =
     exp outloc0 env0 bod
   where
-  env0    = M.fromList [ (vr, tyToLoc (mangle vr) t) | (vr,t) <- args ] 
+  env0    = M.singleton arg (tyToLoc (mangle arg) argty)
   outloc0 = tyToLoc "out" retty
 
   -- We have one location for the destination, and another for each lexical binding.
@@ -201,7 +201,7 @@ inferEffects fenv (C.FunDef _name retty args bod) =
           
      -- We need to reach a fixed point where we infer effects for all
      -- functions at once:
-     L1.AppE rat [L1.VarE rand] | Just loc <- M.lookup rand env -> 
+     L1.AppE rat (L1.VarE rand) | Just loc <- M.lookup rand env -> 
          let arrTy = fenv M.! rat
              _ = instantiateEffs arrTy rand
          in
@@ -209,7 +209,7 @@ inferEffects fenv (C.FunDef _name retty args bod) =
          -- The traversal effects are inherited based on the type of rator.
          undefined
 
-     L1.AppE rat [rand] -> triv rand $ undefined
+     L1.AppE rat rand -> triv rand $ undefined
 
      -- If rands are already trivial 
      L1.PrimAppE _ rands -> trivs rands $          
