@@ -66,7 +66,7 @@ data Tail
                  rator  :: Var,
                  rands  :: [Triv],
                  typ    :: Ty,
-                 tmpNam :: Maybe Var,  -- hack, needed a name for the returned struct, should gensym
+                 tmpNam :: Var,  -- hack, needed a name for the returned struct, should gensym
                  bod    :: Tail }
     | LetPrimCallT { binds :: [(Var,Ty)],
                      prim  :: Prim,
@@ -122,14 +122,25 @@ instance Out FunDecl
 
 codegenFun :: FunDecl -> [C.Definition]
 codegenFun (FunDecl nam args ty tal) =
-    let retTy   = codegenTy ty
-        params  = map (\(v,t) -> [cparam| $ty:(codegenTy t) $id:v |]) args
-        body    = codegenTail tal retTy
-        structs = makeStructs $ nub $ ty : (map snd args)
-        fun = [cfun| $ty:retTy $id:nam ($params:params) {
-                  $items:body
-              } |]
-    in structs ++ [(C.FuncDef fun noLoc)]
+    structs ++ [(C.FuncDef fun noLoc)]
+  where
+    retTy   = codegenTy ty
+    params  = map (\(v,t) -> [cparam| $ty:(codegenTy t) $id:v |]) args
+    body    = codegenTail tal retTy
+    structs = makeStructs $ nub [ tys | ProdTy tys <- ty : (map snd args) ]
+    fun     = [cfun| $ty:retTy $id:nam ($params:params) {
+                         $items:body
+                     } |]
+
+    makeStructs :: [[Ty]] -> [C.Definition]
+    makeStructs [] = []
+    makeStructs (ts : ts') =
+        d : makeStructs ts'
+      where
+        str_name = makeName ts
+        d = [cedecl| typedef struct $id:(str_name ++ "_struct") { $sdecls:decls } $id:str_name; |]
+        decls = zipWith (\t n -> [csdecl| $ty:(codegenTy t) $id:("field"++(show n)); |])
+                        ts [0 :: Int ..]
 
 codegenTriv :: Triv -> C.Exp
 codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
@@ -137,7 +148,9 @@ codegenTriv (IntTriv i) = [cexp| $i |]
 codegenTriv (TagTriv i) = [cexp| $i |]
 
 codegenTail :: Tail -> C.Type -> [C.BlockItem]
+
 codegenTail (RetValsT [tr]) _ty = [ C.BlockStm [cstm| return $(codegenTriv tr); |] ]
+
 codegenTail (RetValsT ts) ty =
     [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
     where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
@@ -161,14 +174,20 @@ codegenTail (Switch tr alts def) ty =
     mk_if ((cond, rhs) : rest) = Just (C.If cond rhs (mk_if rest) noLoc)
 
 codegenTail (TailCall v ts) _ty =
-    [ C.BlockStm [cstm| return $( C.FnCall (cid v) args noLoc); |] ]
-    where args = map codegenTriv ts
-codegenTail (LetCallT bnds ratr rnds ty0 (Just nam) body) ty =
-    let init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
-        assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
-        bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
-        fields = map (\(_,i) -> "field" ++ (show i)) $ zip bnds [0 :: Int ..]
-    in init ++ (zipWith bind bnds fields) ++ (codegenTail body ty)
+    [ C.BlockStm [cstm| return $( C.FnCall (cid v) (map codegenTriv ts) noLoc ); |] ]
+
+codegenTail (LetCallT bnds ratr rnds ty0@ProdTy{} nam body) ty =
+    init ++ zipWith bind bnds fields ++ codegenTail body ty
+  where
+    init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
+    bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
+    fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
+
+-- RHS is not a struct
+codegenTail (LetCallT [(v,t)] ratr rnds _ _ body) ty =
+    assn (codegenTy t) v (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc) :
+    codegenTail body ty
+
 codegenTail (LetPrimCallT bnds prm rnds body) ty =
     let bod' = codegenTail body ty
         pre  = case prm of
@@ -211,15 +230,6 @@ codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] n
     where nam = makeName ts
 codegenTy (SymDictTy _t) = undefined
 
-makeStructs :: [Ty] -> [C.Definition]
-makeStructs [] = []
-makeStructs ((ProdTy ts):ts') =
-    let d     = [cedecl| typedef struct $id:(nam ++ "_struct") { $sdecls:decls } $id:nam; |]
-        nam   = makeName ts
-        decls = map (\(t,n) -> [csdecl| $ty:(codegenTy t) $id:("field"++(show n)); |]) $ zip ts [0 :: Int ..]
-    in d : (makeStructs ts')
-makeStructs (_:ts) = makeStructs ts
-
 makeName :: [Ty] -> String
 makeName []            = "Prod"
 makeName (IntTy:ts)    = "Int" ++ makeName ts
@@ -231,6 +241,9 @@ mkBlock ss = C.Block ss noLoc
 
 cid :: Var -> C.Exp
 cid v = C.Var (C.toIdent v noLoc) noLoc
+
+assn :: (C.ToIdent v, C.ToExp e) => C.Type -> v -> e -> C.BlockItem
+assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
 
 -- Examples:
 --------------------------------------------------------------------------------
@@ -245,7 +258,7 @@ exadd1 :: FunDecl
 exadd1 = FunDecl "add1" [("t",CursorTy),("tout",CursorTy)] (ProdTy [CursorTy,CursorTy]) exadd1Tail
 
 buildTree :: FunDecl
-buildTree = FunDecl "build_tree" [("n",IntTy),("tout",CursorTy)] (ProdTy [CursorTy,CursorTy]) buildTree_tail
+buildTree = FunDecl "build_tree" [("n",IntTy),("tout",CursorTy)] CursorTy buildTree_tail
 
 buildTree_tail :: Tail
 buildTree_tail =
@@ -259,8 +272,8 @@ buildTree_tail =
 
     recursive_case =
       LetPrimCallT [("n1",IntTy)] SubP [VarTriv "n", IntTriv 1] $
-      LetCallT [("tout1",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout"] CursorTy (Just "tmp1") $
-      LetCallT [("tout2",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout1"] CursorTy (Just "tmp2") $
+      LetCallT [("tout1",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout"] CursorTy "tmp1" $
+      LetCallT [("tout2",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout1"] CursorTy "tmp2" $
       RetValsT [VarTriv "tout2"]
 
 exadd1Tail :: Tail
@@ -278,7 +291,7 @@ exadd1Tail =
             $ RetValsT [VarTriv "t3", VarTriv "tout3"]
           nodeCase =
               LetPrimCallT [("tout2",CursorTy)] WriteTag [TagTriv nodeTag, VarTriv "tout"]
-            $ LetCallT [("t3",CursorTy),("tout3",CursorTy)] "add1" [VarTriv "t2", VarTriv "tout2"] (ProdTy [CursorTy,CursorTy]) (Just "tmp1")
+            $ LetCallT [("t3",CursorTy),("tout3",CursorTy)] "add1" [VarTriv "t2", VarTriv "tout2"] (ProdTy [CursorTy,CursorTy]) "tmp1"
             $ TailCall "add1" [VarTriv "t3", VarTriv "tout3"]
 
 -- | Compile the example and print it
