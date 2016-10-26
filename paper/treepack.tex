@@ -243,8 +243,9 @@ with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
     \begin{aligned}
       \keywd{program} \gramdef & \keywdr{tdecl} \keywdr{fdecl} \keywd{e} \\
       \keywd{tdecl} \gramdef & \keywd{(nam,t)} \\
-      \keywd{fdecl} \gramdef & \keywd{nam} \keywdr{arg} \keywd{t} \\
-      \keywd{t} \gramdef & todo \\
+      \keywd{fdecl} \gramdef & \keywd{nam} \keywdr{arg} \keywd{t} \keywd{e} \\
+      \keywd{t} \gramdef &  \keywd{int} \gramor \keywd{t * t}  \gramor \keywd{t + t} \\
+      \gramor & \keywd{t} \rightarrow \keywd{t} \\
       \keywd{e} \gramdef & todo
     \end{aligned}
   \end{displaymath}
