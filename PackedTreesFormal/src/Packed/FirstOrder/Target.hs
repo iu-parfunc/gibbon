@@ -258,6 +258,26 @@ void show_usage()
     return;
 }
 
+double avg(const double* arr, int n)
+{
+    double sum = 0.0;
+    for(int i=0; i<n; i++) sum += arr[i];
+    return sum / (double)n;
+}
+
+double difftimespecs(struct timespec* t0, struct timespec* t1)
+{
+    return (double)(t1->tv_sec - t0->tv_sec)
+      + ((double)(t1->tv_nsec - t0->tv_nsec) / 1000000000.0);
+}
+
+int compare_doubles (const void *a, const void *b)
+{
+    const double *da = (const double *) a;
+    const double *db = (const double *) b;
+    return (*da > *db) - (*da < *db);
+}
+
 void run(int num_iterations, int tree_size, int buffer_size)
 {
     printf("Generating initial tree...\n");
@@ -269,20 +289,22 @@ void run(int num_iterations, int tree_size, int buffer_size)
     char* bench_buffer = (char*)malloc(buffer_size);
     assert(bench_buffer);
 
-    struct timeval  tv1, tv2;
-    gettimeofday(&tv1, NULL);
+    double trials[num_iterations];
+    struct timespec begin, end;
 
     for (int i = 0; i < num_iterations; ++i)
     {
+        clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
         $(cid f)(initial_buffer, bench_buffer);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        trials[i] = difftimespecs(&begin, &end);
     }
 
-    gettimeofday(&tv2, NULL);
-
-
-    printf("%f seconds\n",
-           (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
-           (double) (tv2.tv_sec - tv1.tv_sec));
+    qsort(trials, num_iterations, sizeof(double), compare_doubles);
+    printf("\nMINTIME: %lf\n",  trials[0]);
+    printf("MEDIANTIME: %lf\n", trials[num_iterations / 2]);
+    printf("MAXTIME: %lf\n",    trials[num_iterations - 1]);
+    printf("AVGTIME: %lf\n",    avg(trials, num_iterations));
 }
 
 int main(int argc, char** argv)
@@ -341,6 +363,16 @@ mkProgram fs fname = concat
     , pretty 80 (stack (map (ppr . codegenFun) fs))
     , pretty 80 (ppr (mkRuntimeFuns fname))
     ]
+
+writeProgram
+  :: [FunDecl]
+       -- ^ function declarations to put in the compilation unit
+  -> String
+       -- ^ name of the function to benchmark
+  -> FilePath
+       -- ^ path of the file to generate
+  -> IO ()
+writeProgram fs fname path = writeFile path (mkProgram fs fname)
 
 -- Examples:
 --------------------------------------------------------------------------------
