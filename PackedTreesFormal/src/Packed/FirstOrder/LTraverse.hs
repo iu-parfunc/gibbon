@@ -11,6 +11,7 @@ import Control.Monad (when)
 import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
+import Packed.FirstOrder.L1_Source (Exp(..))
 import Data.List as L
 import Data.Set as S
 import Data.Map as M
@@ -413,19 +414,30 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) retty bod) =
    -- Subtlety: if the rhs expression consumes the RIGHTMOST
    -- pattern variable, then the later code transformations MUST
    -- ensure that it consumes everything.
-   do let tys  = lookupDataCon ddefs dcon 
+   do let tys  = lookupDataCon ddefs dcon
+          zipped = zip patVs tys
+          (lastV,lastTy) = last zipped
           env' = extendEnv (zip patVs tys) env
           -- FIXME!  Need type of patVs and thus need data defs.
                  
           -- WARNING: we may need to generate "nested inside of" relation
           -- between the patVs and the scrutinee.
       (eff,rloc) <- exp env' erhs
-      let winner = S.member (Traverse (L.last patVs)) eff
+      let isUsed = S.member lastV (L1.freeVars erhs)
+          winner =
+              case lastTy of
+                L1.Packed{} -> S.member (Traverse lastV) eff
+                L1.SymDictTy{} -> error "no SymDictTy allowed inside Packed"
+                L1.ProdTy{}    -> error "no ProdTy allowed inside Packed"
+                -- ANY usage of a fixed-sized last field requires traversal:
+                L1.IntTy -> isUsed
+                L1.SymTy -> isUsed
+                   
           -- Also, in any binding form we are obligated to not return
           -- our local bindings in traversal side effects:                   
           isLocal (Traverse v) = L.elem v patVs -- FIXME... need LocVar
           stripped  = S.filter isLocal eff
-      return ( winner, stripped, rloc)
+      return ( winner, stripped, rloc )
 
 
 -- Simple invariant assertions:
@@ -458,13 +470,3 @@ m # k = case M.lookup k m of
 exadd1 :: Prog
 exadd1 = inferProg L1.add1Prog
 
-{-         
-t2 :: (Set Effect)
-t2 = fst $ runSyM 0 $
-     inferEffects (( fromListDD [DDef {}]
-                   , M.empty))
-                  (C.FunDef "foo" ("x", L1.Packed "K") L1.IntTy $
-                     L1.LetE ("ignr",L1.Packed "K", (L1.AppE "copy" (L1.VarE "x"))) $
-                       L1.LitE 33
-                  )
--}

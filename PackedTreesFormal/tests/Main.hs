@@ -9,10 +9,14 @@ import Test.Tasty.TH
 import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
+import Packed.FirstOrder.L1_Source (Exp(..))
 import Packed.FirstOrder.LTraverse
 import Data.Set as S
 import Data.Map as M
 
+main :: IO ()
+main = $(defaultMainGenerator)
+    
 -- Unit test the LTraverse.hs functions:
 --------------------------------------------------------------------------------
 
@@ -50,8 +54,38 @@ t1 = fst $ runSyM 0 $
                   )
 
 case_t1 :: Assertion
-case_t1 = assertEqual "" (S.fromList [Traverse "a"]) t1 
-     
+case_t1 = assertEqual "traverse input via another call"
+          (S.fromList [Traverse "a"]) t1 
 
-main :: IO ()
-main = $(defaultMainGenerator)
+t2 :: (Set Effect)
+t2 = fst $ runSyM 0 $
+     inferEffects ( fromListDD [DDef "Bool" [("True",[]), ("False",[])]]
+                  , M.fromList [("foo", ArrowTy (PackedTy "Bool" "p") S.empty IntTy)])
+                  (C.FunDef "foo" ("x", L1.Packed "Bool") L1.IntTy $
+                    L1.CaseE (VarE "x") $ M.fromList 
+                      [ ("True", ([],LitE 3))
+                      , ("False", ([],LitE 3)) ])
+     
+case_t2 :: Assertion
+case_t2 = assertEqual "Traverse a Bool with case"
+            (S.fromList [Traverse "p"]) t2
+           
+t2b :: (Set Effect)
+t2b = fst $ runSyM 0 $
+     inferEffects ( fromListDD [DDef "Bool" [("True",[]), ("False",[])]]
+                  , M.fromList [("foo", ArrowTy (PackedTy "Bool" "p") S.empty IntTy)])
+                  (C.FunDef "foo" ("x", L1.Packed "Bool") L1.IntTy $
+                    LitE 33)
+
+case_t2b :: Assertion
+case_t2b = assertEqual "No traverse from a lit" S.empty t2b
+                  
+t2c :: (Set Effect)
+t2c = fst $ runSyM 0 $
+     inferEffects ( fromListDD [DDef "Bool" [("True",[]), ("False",[])]]
+                  , M.fromList [("foo", ArrowTy (PackedTy "Bool" "p") S.empty IntTy)])
+                  (C.FunDef "foo" ("x", L1.Packed "Bool") L1.IntTy $
+                    VarE "x")
+
+case_t2c :: Assertion
+case_t2c = assertEqual "No traverse from identity function" S.empty t2b

@@ -9,14 +9,16 @@
 --   genarating C code like a DSL.
 
 module Packed.FirstOrder.L1_Source
-    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), Ty(..), Prim(..),
-     add1Prog
+    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), Ty(..), Prim(..)
+    , freeVars
+    , add1Prog
     )
     where
 
 import Packed.FirstOrder.Common
 import Data.Map as M
--- import Data.List as L
+import Data.Set as S
+import Data.List as L
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
 
@@ -80,6 +82,29 @@ data Ty = IntTy
            
 
 --------------------------------------------------------------------------------
+
+freeVars :: Exp -> S.Set Var
+freeVars e =
+  case e of
+    VarE v -> S.singleton v
+    LitE _ -> S.empty 
+    AppE v e -> S.insert v (freeVars e)
+    PrimAppE _ ls -> S.unions (L.map freeVars ls)
+    LetE (v,_,rhs) bod ->
+      S.delete v $ 
+      S.union (freeVars rhs) (freeVars bod)
+    ProjE _ e -> freeVars e 
+    CaseE e ls -> S.union (freeVars e)
+                  (S.unions $ L.map (freeVars . snd) (M.elems ls))
+{-       
+           -- ^ One binding at a time, but could bind a tuple for
+           -- mutual recursion.
+         | ProjE Int Exp
+         | MkProdE [Exp]
+         | CaseE Exp (M.Map Constr ([Var], Exp))
+           -- ^ Case on a PACKED datatype.
+         | MkPackedE Constr [Exp]
+-}
 
 {-
 -- | Promote a value to a term that evaluates to it.
