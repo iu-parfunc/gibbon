@@ -27,7 +27,7 @@ void readPoint(FILE *in, Point & p){
     }
     
 }
-void readInput(int argc, char **argv,Point * & data , int & rad, int & npoints){
+void readInput(int argc, char **argv,Point * & data , float & rad, int & npoints){
     FILE *in;
     
     if(argc != 4 && argc != 3) {
@@ -171,27 +171,27 @@ void buildTreeRec(int startIndx ,int endIndx ,Point * data ,char * &cur ,int dep
         
         
         //any way to write these in a better way !
-        
+        int dist=+1+sizeof(float);
         if(*leftChild==LEAF_TAG){
             if(* innerData->RightChild==LEAF_TAG){
                 innerData->max_x=max(*(float *)(leftChild+1),*(float *)(innerData->RightChild+1));
                 innerData->min_x=min(*(float *)(leftChild+1),*(float *)(innerData->RightChild+1));
-                innerData->max_y=max(*(float *)(leftChild+2),*(float *)(innerData->RightChild+2));
-                innerData->min_y=min(*(float *)(leftChild+2),*(float *)(innerData->RightChild+2));
+                innerData->max_y=max(*(float *)(leftChild+1+sizeof(float)),*(float *)(innerData->RightChild+dist));
+                innerData->min_y=min(*(float *)(leftChild+dist),*(float *)(innerData->RightChild+dist));
                 
             }else{
                 innerData->max_x=max(*(float *)(leftChild+1),((Node_Inner*) (innerData->RightChild+1))->max_x);
                 innerData->min_x=min(*(float *)(leftChild+1),((Node_Inner*) (innerData->RightChild+1))->min_x);
-                innerData->max_y=max(*(float *)(leftChild+2),((Node_Inner*) (innerData->RightChild+1))->max_y);
-                innerData->min_y=min(*(float *)(leftChild+2),((Node_Inner*) (innerData->RightChild+1))->min_y);
+                innerData->max_y=max(*(float *)(leftChild+dist),((Node_Inner*) (innerData->RightChild+1))->max_y);
+                innerData->min_y=min(*(float *)(leftChild+dist),((Node_Inner*) (innerData->RightChild+1))->min_y);
                 
             }
         }else{
             if(* innerData->RightChild==LEAF_TAG){
                 innerData->max_x=max(((Node_Inner*) (leftChild+1))->max_x,*(float *)(innerData->RightChild+1));
                 innerData->min_x=min(((Node_Inner*) (leftChild+1))->min_x,*(float *)(innerData->RightChild+1));
-                innerData->max_y=max(((Node_Inner*) (leftChild+1))->max_y,*(float *)(innerData->RightChild+2));
-                innerData->min_y=min(((Node_Inner*) (leftChild+1))->min_y,*(float *)(innerData->RightChild+2));
+                innerData->max_y=max(((Node_Inner*) (leftChild+1))->max_y,*(float *)(innerData->RightChild+dist));
+                innerData->min_y=min(((Node_Inner*) (leftChild+1))->min_y,*(float *)(innerData->RightChild+dist));
                 
             }else{
                 innerData->max_x=max(((Node_Inner*) (leftChild+1))->max_x,((Node_Inner*) (innerData->RightChild+1))->max_x);

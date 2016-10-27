@@ -33,9 +33,8 @@ struct Node_Leaf{
 
 //Tree Data Structure
 struct Node_Inner{
-    bool     splitAxis; // 0:'x' , 1:'y'
+    char     splitAxis; // 0:'x' , 1:'y'
     float    splitLoc;
-    //define rectangle that includes all points in this subtree
     float min_x;
     float max_x;
     float min_y;
@@ -45,7 +44,7 @@ struct Node_Inner{
 
 
 void readPoint(FILE *in, Point &p);
-void readInput(int argc, char **argv,Point * & data , int & rad, int & npoints);
+void readInput(int argc, char **argv,Point * & data , float & rad, int & npoints);
 char *  buildTree(int n , Point * data );
 char *  printPackedTree(char *  cur);
 void performPointCorr_OnTree(Point & p,char *  cur,int rad);

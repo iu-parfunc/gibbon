@@ -9,7 +9,7 @@
 #include <iostream>
 #include "tree_packed.h"
 #include <cassert>
-
+#define TEST
 using  namespace std;
 
 
@@ -49,32 +49,36 @@ void performPointCorr_OnTree(Point & p,char *  cur,int rad){
     if(*cur == LEAF_TAG){
         cur++;
         float d = 0;
-        float  leaf_x= *((float *)cur) ;
-        cur +=sizeof(float);
-        float  leaf_y= *((float *)cur );
-        cur +=sizeof(float);
+        float leaf_x = *((float *)cur) ;
+        cur += sizeof(float);
+        float  leaf_y = *((float *)cur );
+        cur += sizeof(float);
         
         d +=(p.x_val - leaf_x) *(p.x_val - leaf_x);
         d +=(p.y_val - leaf_y) *(p.y_val - leaf_y);
         
         if(sqrt(d) < rad){
             (*(int * )cur)++;
+            #ifdef TEST
+            cout<<"1"<<endl;
+            #endif
+            
         }
-        cur+=sizeof(int);
+        cur += sizeof(int);
         return;
         
     }else {
         cur++;
+
         //well the performance be effected if at this point
-        //pointer to innerData is defined and members where accessed using ->?? should try it!
+        //cur is casted to pointer of Node_Inner and members where accessed using ->?? should try it!
         
         float sum    = 0.0;
         float boxsum = 0.0;
-        cur += sizeof(bool)+sizeof(float);
-        
+        cur += sizeof(int);
+        cur += sizeof(float);
         float center_x  =
         ( (*(float*) cur) + *(float*)( cur+sizeof(float)) )/ 2;
-        
         float boxdist_x  =
         ( -(*(float*) cur) + *(float*)( cur+sizeof(float)) )/ 2;
         
@@ -108,6 +112,79 @@ void performPointCorr_OnTree(Point & p,char *  cur,int rad){
             //call right child
             performPointCorr_OnTree(p, (*(char * *)cur), rad);
 
+            
+        }
+        
+        
+    }
+    
+}
+
+//to be compared with the above one
+void performPointCorr_OnTree_var(Point & p,char *  cur,int rad){
+    
+    if(*cur == LEAF_TAG){
+        cur++;
+        Node_Leaf * leaf=(Node_Leaf *)cur;
+        float d = 0;
+        
+        float leaf_x = leaf->x_val ;
+        
+        float  leaf_y =leaf->y_val;
+        
+        d +=(p.x_val - leaf_x) *(p.x_val - leaf_x);
+        d +=(p.y_val - leaf_y) *(p.y_val - leaf_y);
+        
+        if(sqrt(d) < rad){
+            (*(int * )cur)++;
+            #ifdef TEST
+            cout<<"1"<<endl;
+            #endif
+            
+        }
+        return;
+        
+    }else {
+        cur++;
+        
+        float sum    = 0.0;
+        float boxsum = 0.0;
+
+        float center_x  =
+        ( (*(float*) cur) + *(float*)( cur+sizeof(float)) )/ 2;
+        float boxdist_x  =
+        ( -(*(float*) cur) + *(float*)( cur+sizeof(float)) )/ 2;
+        
+        float dist_x    = p.x_val - center_x;
+        sum    += dist_x * dist_x;
+        boxsum += boxdist_x * boxdist_x;
+        //do same thing for y
+        cur += sizeof(float)+sizeof(float);
+        
+        float center_y  =
+        ( (*(float*) cur) + *(float*)( cur+sizeof(float)) )/ 2;
+        
+        float boxdist_y  =
+        ( -(*(float*) cur) + *(float*)( cur+sizeof(float)) )/ 2;
+        
+        float dist_y    = p.y_val - center_y;
+        sum    += dist_y * dist_y;
+        boxsum += boxdist_y * boxdist_y;
+        cur += sizeof(float)+sizeof(float);
+        
+        bool canCorrelate = sqrt(sum) - sqrt(boxsum) < rad;
+        
+        if(!(canCorrelate)){
+            return ;
+            
+            
+        }else{
+            //call left
+            performPointCorr_OnTree(p, cur+sizeof(char *), rad);
+            
+            //call right child
+            performPointCorr_OnTree(p, (*(char * *)cur), rad);
+            
             
         }
         
