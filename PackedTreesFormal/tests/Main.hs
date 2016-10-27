@@ -167,7 +167,7 @@ case_t4e = assertEqual "bintree2: recurring on the right IS enough"
 trav_right_bod :: Exp
 trav_right_bod = L1.CaseE (VarE "x") $ M.fromList 
                  [ ("Leaf", (["n"],     LitE 3))
-                 , ("Node", (["l","r"], AppE "foo" (VarE "r")))]               
+                 , ("Node", (["l","r"], AppE "foo" (VarE "r")))]
          -- ^ NOTE - this should return a location inside the input.  A
          -- sub-region of the region at p.
 
@@ -186,4 +186,20 @@ case_t4p =
       (S.singleton (Traverse "a"))
       (let FunDef _ (ArrowTy _ efs _) _ _ = fundefs t4p M.! "foo"
        in efs)
+
+case_t4p2 :: Assertion
+case_t4p2 =
+    assertEqual "A program which needs more than one fix-point iteration."
+      (S.empty)
+      (let prg = inferProg
+                 (L1.Prog (fst t4env)
+                        (fromListFD [C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy $
+                          L1.CaseE (VarE "x") $ M.fromList 
+                            [ ("Leaf", (["n"],     LitE 3))
+                            , ("Node", (["l","r"], AppE "foo" (VarE "l")))] ])
+                  Nothing)
+           FunDef _ (ArrowTy _ efs _) _ _ = fundefs prg M.! "foo"
+       in efs)
       
+----------------------------------------
+
