@@ -10,8 +10,7 @@
 
 
 
-void readPoint(FILE *in, Point & p)
-{
+void readPoint(FILE *in, Point & p){
     int dummy;
     if(fscanf(in, "%d", &dummy) != 1) {
         fprintf(stderr, "Input file not large enough.\n");
@@ -28,8 +27,7 @@ void readPoint(FILE *in, Point & p)
     }
     
 }
-void readInput(int argc, char **argv,Point * & data , int & rad, int & npoints)
-{
+void readInput(int argc, char **argv,Point * & data , int & rad, int & npoints){
     FILE *in;
     
     if(argc != 4 && argc != 3) {
@@ -97,8 +95,7 @@ int comparePointX(const void *a, const void *b){
         return 0;
 }
 
-int comparePointY(const void *a, const void *b)
-{
+int comparePointY(const void *a, const void *b){
     if(((Point *)a)->y_val < ((Point *)b)->y_val)
         return -1;
     else if(((Point *)a)->y_val > ((Point *)b)->y_val)
@@ -106,6 +103,7 @@ int comparePointY(const void *a, const void *b)
     else
         return 0;
 }
+
 //return the index of the last created leaf node
 void buildTreeRec(int startIndx ,int endIndx ,Point * data ,char * &cur ,int depth  ){
     

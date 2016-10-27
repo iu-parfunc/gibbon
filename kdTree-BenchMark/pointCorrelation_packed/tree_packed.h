@@ -48,6 +48,6 @@ void readPoint(FILE *in, Point &p);
 void readInput(int argc, char **argv,Point * & data , int & rad, int & npoints);
 char *  buildTree(int n , Point * data );
 char *  printPackedTree(char *  cur);
-
+void performPointCorr_OnTree(Point & p,char *  cur,int rad);
 
 /*TREE_H_*/
