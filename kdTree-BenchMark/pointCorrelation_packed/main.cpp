@@ -2,6 +2,7 @@
 
 
 
+int counter=0;
 int main(int argc, char **argv)
 {
  //   nNodes = 0;
@@ -14,19 +15,22 @@ int main(int argc, char **argv)
     readInput(argc,  argv, data, rad, npoints);
    
 #ifdef DEBUG
-    cout << "rad " << rad << endl;
+    cout << "rad :" << rad << endl;
 #endif
     
     
     //build the input tree
     char * root=buildTree(npoints ,  data );
-   
-    printPackedTree(root);
+
+   // printPackedTree(root);
     
     for(int i=0; i<npoints; i++)
         performPointCorr_OnTree(data[i], root, rad);
 
-
+#ifdef TEST
+    cout << "counter :" << counter << endl;
+#endif
+    
     delete [] data;
     free(root);
     return 0;

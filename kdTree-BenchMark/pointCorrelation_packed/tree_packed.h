@@ -1,4 +1,6 @@
-
+#ifndef HEAD
+#define HEAD
+#define TEST
 #include <cstdlib>
 #include <cstdint>
 #include <cfloat>
@@ -9,6 +11,8 @@
 #define INNER_TAG 'i'
 #define SIZE_OF_LEAF sizeof(char ) +sizeof(Node_Leaf)
 #define SIZE_OF_INNER sizeof(char ) +sizeof(Node_Inner)
+
+
 
 using namespace std;
 
@@ -33,7 +37,7 @@ struct Node_Leaf{
 
 //Tree Data Structure
 struct Node_Inner{
-    char     splitAxis; // 0:'x' , 1:'y'
+    int     splitAxis; // 0:'x' , 1:'y'
     float    splitLoc;
     float min_x;
     float max_x;
@@ -42,11 +46,12 @@ struct Node_Inner{
     char *   RightChild;
 };
 
-
+extern int counter;
 void readPoint(FILE *in, Point &p);
 void readInput(int argc, char **argv,Point * & data , float & rad, int & npoints);
 char *  buildTree(int n , Point * data );
 char *  printPackedTree(char *  cur);
-void performPointCorr_OnTree(Point & p,char *  cur,int rad);
+void performPointCorr_OnTree(Point & p,char *  cur,float  rad);
 
 /*TREE_H_*/
+#endif
