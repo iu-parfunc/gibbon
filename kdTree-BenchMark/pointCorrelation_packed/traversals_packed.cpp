@@ -12,6 +12,8 @@
 
 using  namespace std;
 
+
+
 char *  printPackedTree(char *  cur){
     //print Tag
     
@@ -38,6 +40,78 @@ char *  printPackedTree(char *  cur){
         char * rightChild=printPackedTree(cur);
         assert(rightChild==inner->RightChild && "error in right child address in the built tree\n");
         return printPackedTree(rightChild);
+    }
+    
+}
+
+void performPointCorr_OnTree(Point & p,char *  cur,int rad){
+    
+    if(*cur == LEAF_TAG){
+        cur++;
+        float d = 0;
+        float  leaf_x= *((float *)cur) ;
+        cur +=sizeof(float);
+        float  leaf_y= *((float *)cur );
+        cur +=sizeof(float);
+        
+        d +=(p.x_val - leaf_x) *(p.x_val - leaf_x);
+        d +=(p.y_val - leaf_y) *(p.y_val - leaf_y);
+        
+        if(sqrt(d) < rad){
+            (*(int * )cur)++;
+        }
+        cur+=sizeof(int);
+        return;
+        
+    }else {
+        cur++;
+        //well the performance be effected if at this point
+        //pointer to innerData is defined and members where accessed using ->?? should try it!
+        
+        float sum    = 0.0;
+        float boxsum = 0.0;
+        cur += sizeof(bool)+sizeof(float);
+        
+        float center_x  =
+        ( (*(float*) cur) + *(float*)( cur+sizeof(float)) )/ 2;
+        
+        float boxdist_x  =
+        ( -(*(float*) cur) + *(float*)( cur+sizeof(float)) )/ 2;
+        
+        float dist_x    = p.x_val - center_x;
+        sum    += dist_x * dist_x;
+        boxsum += boxdist_x * boxdist_x;
+        //do same thing for y
+        cur += sizeof(float)+sizeof(float);
+
+        float center_y  =
+        ( (*(float*) cur) + *(float*)( cur+sizeof(float)) )/ 2;
+        
+        float boxdist_y  =
+        ( -(*(float*) cur) + *(float*)( cur+sizeof(float)) )/ 2;
+        
+        float dist_y    = p.y_val - center_y;
+        sum    += dist_y * dist_y;
+        boxsum += boxdist_y * boxdist_y;
+        cur += sizeof(float)+sizeof(float);
+
+        bool canCorrelate = sqrt(sum) - sqrt(boxsum) < rad;
+       
+        if(!(canCorrelate)){
+            return ;
+
+        
+        }else{
+            //call left
+            performPointCorr_OnTree(p, cur+sizeof(char *), rad);
+            
+            //call right child
+            performPointCorr_OnTree(p, (*(char * *)cur), rad);
+
+            
+        }
+        
+        
     }
     
 }

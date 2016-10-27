@@ -22,10 +22,10 @@ int main(int argc, char **argv)
     
     //build the input tree
     char * root=buildTree(npoints ,  data );
-  
-
     printPackedTree(root);
-  //  for(int i=0; i<npoints; i++) recurse(&inPoints[i], root1);
+    
+    for(int i=0; i<npoints; i++)
+        performPointCorr_OnTree(data[i], root, rad);
 
 
     /*
