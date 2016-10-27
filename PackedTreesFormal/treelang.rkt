@@ -1,5 +1,8 @@
 #lang typed/racket
 
+(provide Int Sym Bool SymDict data empty-dict lookup insert case
+         (all-from-out typed/racket)) ;; so i have lists for now
+
 #| Grammar
 
 prog := d ... f ... e
