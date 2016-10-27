@@ -14,6 +14,8 @@ import Packed.FirstOrder.LTraverse
 import Data.Set as S
 import Data.Map as M
 
+import Text.PrettyPrint.GenericPretty
+    
 main :: IO ()
 main = $(defaultMainGenerator)
     
@@ -203,3 +205,27 @@ case_t4p2 =
       
 ----------------------------------------
 
+
+-- Now the full copy-tree example:
+copy :: Prog
+copy = inferProg
+     (L1.Prog (fst t4env)
+      (fromListFD [C.FunDef "copy" ("x", L1.Packed "Tree") (L1.Packed "Tree") $
+                   L1.CaseE (VarE "x") $ M.fromList 
+                      [ ("Leaf", (["n"],     VarE "n"))
+                      , ("Node", (["l","r"],
+                        LetE ("a", L1.Packed "Tree", AppE "copy" (VarE "l")) $
+                        LetE ("b", L1.Packed "Tree", AppE "copy" (VarE "r")) $ 
+                        MkPackedE "Node" [VarE "a", VarE "b"]
+                        ))] ])
+      Nothing)
+
+case_copy :: Assertion
+case_copy =      
+     assertEqual "A program which needs more than one fix-point iteration."
+      (S.singleton (Traverse "a"))
+      (let prg = copy
+           FunDef _ (ArrowTy _ efs _) _ _ = fundefs prg M.! "copy"
+       in efs)
+
+_ = doc copy

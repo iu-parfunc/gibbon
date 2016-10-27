@@ -44,7 +44,8 @@ instance Out Loc
 
 -- | This should be a semi-join lattice.
 join :: Loc -> Loc -> (Loc,[Constraint])
-join Bottom Bottom = (Bottom,[])
+join Bottom y      = (y,[])
+join x Bottom      = (x,[])
 join Top _         = (Top,[])
 join _   Top       = (Top,[])
 join (Fresh v) (Fresh w) = (Fresh v, [Eql v w])

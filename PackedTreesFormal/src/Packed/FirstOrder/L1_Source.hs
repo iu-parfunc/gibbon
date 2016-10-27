@@ -84,8 +84,8 @@ data Ty = IntTy
 --------------------------------------------------------------------------------
 
 freeVars :: Exp -> S.Set Var
-freeVars e =
-  case e of
+freeVars ex =
+  case ex of
     VarE v -> S.singleton v
     LitE _ -> S.empty 
     AppE v e -> S.insert v (freeVars e)
@@ -96,15 +96,9 @@ freeVars e =
     ProjE _ e -> freeVars e 
     CaseE e ls -> S.union (freeVars e)
                   (S.unions $ L.map (freeVars . snd) (M.elems ls))
-{-       
-           -- ^ One binding at a time, but could bind a tuple for
-           -- mutual recursion.
-         | ProjE Int Exp
-         | MkProdE [Exp]
-         | CaseE Exp (M.Map Constr ([Var], Exp))
-           -- ^ Case on a PACKED datatype.
-         | MkPackedE Constr [Exp]
--}
+    MkProdE ls     -> S.unions $ L.map freeVars ls
+    MkPackedE _ ls -> S.unions $ L.map freeVars ls
+
 
 {-
 -- | Promote a value to a term that evaluates to it.
