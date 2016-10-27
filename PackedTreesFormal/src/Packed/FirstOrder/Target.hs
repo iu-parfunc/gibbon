@@ -6,7 +6,8 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
--- |
+-- | Defines the target language for first-order L1 language with C code
+-- generator for it.
 
 module Packed.FirstOrder.Target
     (Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..),
@@ -24,14 +25,15 @@ import Data.Word (Word8)
 import Data.Bifunctor (first)
 import Data.Loc (noLoc)
 import Data.Maybe (fromJust)
-import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty)
+import GHC.Generics (Generic)
+import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
+                           cunit)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import Packed.HigherOrder.L1_Source (T1 (..))
 import Text.PrettyPrint.Mainland
 
 import Prelude hiding (init)
-import Text.PrettyPrint.GenericPretty
 
 --------------------------------------------------------------------------------
 -- * AST definition
@@ -52,13 +54,6 @@ data Alts
   | IntAlts [(Int, Tail)]
       -- ^ Casing on integers.
   deriving (Show, Read, Ord, Eq, Generic)
-instance Out Alts
-
--- deriving instance Generic Word8 -- Won't work even after importing GHC.Word
-instance Out Word8 where
-    doc       w = doc       (fromIntegral w :: Int)
-    docPrec n w = docPrec n (fromIntegral w :: Int)
-instance Out Triv
 
 data Tail
     = RetValsT [Triv] -- ^ Only in tail position, for returning from a function.
@@ -77,8 +72,6 @@ data Tail
     | TailCall Var [Triv]
   deriving (Show, Read, Ord, Eq, Generic)
 
-instance Out Tail
-
 data Ty
     = IntTy
     | TagTy -- ^ A single byte / Word8
@@ -89,8 +82,6 @@ data Ty
     | SymDictTy T1
       -- ^ We allow built-in dictionaries from symbols to a value type.
   deriving (Show, Read, Ord, Eq, Generic)
-
-instance Out Ty
 
 data Prim
     = AddP
@@ -110,12 +101,12 @@ data Prim
       -- ^ Read an 8 byte Int from the cursor and advance.
   deriving (Show, Read, Ord, Eq, Generic)
 
-instance Out Prim
-
-data FunDecl = FunDecl Var [(Var,Ty)] Ty Tail
-  deriving (Show, Read, Ord, Eq, Generic)
-
-instance Out FunDecl
+data FunDecl = FunDecl
+  { funName  :: Var
+  , funArgs  :: [(Var,Ty)]
+  , funRetTy :: Ty
+  , funBody  :: Tail
+  } deriving (Show, Read, Ord, Eq, Generic)
 
 --------------------------------------------------------------------------------
 -- * C codegen
@@ -244,6 +235,112 @@ cid v = C.Var (C.toIdent v noLoc) noLoc
 
 assn :: (C.ToIdent v, C.ToExp e) => C.Type -> v -> e -> C.BlockItem
 assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
+
+--------------------------------------------------------------------------------
+-- * Runtime functions / entry point for C programs
+
+includes :: String
+includes = unlines
+  [ "#include <assert.h>"
+  , "#include <stdio.h>"
+  , "#include <stdlib.h>"
+  , "#include <string.h>"
+  , "#include <time.h>"
+  , ""
+  ]
+
+-- | Given function name to benchmark, generates `main()` that benchmarks.
+mkRuntimeFuns :: String -> [C.Definition]
+mkRuntimeFuns f = [cunit|
+void show_usage()
+{
+    // TODO
+    return;
+}
+
+void run(int num_iterations, int tree_size, int buffer_size)
+{
+    printf("Generating initial tree...\n");
+    char* initial_buffer = (char*)malloc(buffer_size);
+    assert(initial_buffer);
+    build_tree(tree_size, initial_buffer);
+
+    printf("Benchmarking. Iteration count: %d\n", num_iterations);
+    char* bench_buffer = (char*)malloc(buffer_size);
+    assert(bench_buffer);
+
+    struct timeval  tv1, tv2;
+    gettimeofday(&tv1, NULL);
+
+    for (int i = 0; i < num_iterations; ++i)
+    {
+        $(cid f)(initial_buffer, bench_buffer);
+    }
+
+    gettimeofday(&tv2, NULL);
+
+
+    printf("%f seconds\n",
+           (double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +
+           (double) (tv2.tv_sec - tv1.tv_sec));
+}
+
+int main(int argc, char** argv)
+{
+    // parameters to parse:
+    //
+    //   num iterations: How many times to repeat a benchmark. Default: 10.
+    //   tree size: An integer passes to `build_tree()`. Default: 10.
+    //   buffer size: Default 10M.
+
+    int num_iterations = 10;
+    int tree_size = 10;
+    int buffer_size = 10 * 1000 * 1000; // 10M
+
+    // TODO: atoi() error checking
+
+    for (int i = 1; i < argc; ++i)
+    {
+        if (strcmp(argv[i], "-num-iterations") == 0 && i < argc - 1)
+        {
+            num_iterations = atoi(argv[i + 1]);
+            ++i;
+        }
+        else if (strcmp(argv[i], "-tree-size") == 0 && i < argc - 1)
+        {
+            tree_size = atoi(argv[i + 1]);
+            ++i;
+        }
+        else if (strcmp(argv[i], "-buffer-size") == 0 && i < argc - 1)
+        {
+            buffer_size = atoi(argv[i + 1]);
+            ++i;
+        }
+        else
+        {
+            fprintf(stderr, "Can't parse argument: \"%s\"\n", argv[i]);
+            show_usage();
+            exit(1);
+        }
+    }
+
+    run(num_iterations, tree_size, buffer_size);
+
+    return 0;
+}
+|]
+
+mkProgram
+  :: [FunDecl]
+       -- ^ function declarations to put in the compilation unit
+  -> String
+       -- ^ name of the function to benchmark
+  -> String
+mkProgram fs fname = concat
+    [ includes
+    , pretty 80 (stack (map (ppr . codegenFun) fs))
+    , pretty 80 (ppr (mkRuntimeFuns fname))
+    ]
 
 -- Examples:
 --------------------------------------------------------------------------------
