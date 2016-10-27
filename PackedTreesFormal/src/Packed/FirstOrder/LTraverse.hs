@@ -6,20 +6,22 @@
 -- | An intermediate language with an effect system that captures traversals.
 
 module Packed.FirstOrder.LTraverse
-    (inferProg, inferEffects)
+    ( Prog(..), Ty(..), FunEnv, FunDef(..), Effect(..), ArrowTy(..)
+    , inferProg, inferEffects
+    )
     where
 
 import Control.Monad (when)
 import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
-import Packed.FirstOrder.L1_Source (Exp(..))
+-- import Packed.FirstOrder.L1_Source (Exp(..))
 import Data.List as L
 import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
 import Debug.Trace
-import GHC.Stack (errorWithStackTrace)
+-- import GHC.Stack (errorWithStackTrace)
 
 traceIt :: Show a => String -> a -> a
 traceIt msg x = trace (msg++": "++show x) x
