@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -7,7 +8,7 @@
 
 module Packed.FirstOrder.LTraverse
     ( Prog(..), Ty(..), FunEnv, FunDef(..), Effect(..), ArrowTy(..)
-    , inferProg, inferEffects
+    , inferProg, inferEffects, cursorize
     )
     where
 
@@ -78,14 +79,14 @@ data Constraint = Eql Var Var
 instance Out Constraint
 
 -- Our type for functions grows to include effects.
-data ArrowTy = ArrowTy Ty (Set Effect) Ty
+data ArrowTy t = ArrowTy t (Set Effect) t
   deriving (Read,Show,Eq,Ord, Generic)
 
 data Effect = Traverse LocVar
   deriving (Read,Show,Eq,Ord, Generic)
 
 instance Out Ty
-instance Out ArrowTy
+instance Out t => Out (ArrowTy t)
 instance Out Effect
 instance Out a => Out (Set a) where
   docPrec n x = docPrec n (S.toList x)
@@ -96,7 +97,7 @@ instance Out Prog
 type OldFuns = FunDefs L1.Ty L1.Exp
 type NewFuns = M.Map Var FunDef
     
-type FunEnv = M.Map Var ArrowTy
+type FunEnv = M.Map Var (ArrowTy Ty)
 
 -- | L1 Types extended with abstract Locations
 data Ty = IntTy | SymTy | ProdTy [Ty] | SymDictTy Ty  
@@ -110,8 +111,8 @@ data Prog = Prog { ddefs    :: DDefs L1.Ty
                  }
   deriving (Show, Read, Ord, Eq, Generic)
 
--- | Arrow type caries the function's effectS:
-data FunDef = FunDef Var ArrowTy Var L1.Exp
+-- | A function definition with the function's effects.
+data FunDef = FunDef Var (ArrowTy Ty) Var L1.Exp
   deriving (Show, Read, Ord, Eq, Generic)
 --------------------------------------------------------------------------------
 
@@ -121,7 +122,7 @@ data FunDef = FunDef Var ArrowTy Var L1.Exp
 initialEnv :: OldFuns -> FunEnv
 initialEnv mp = M.map (\x -> fst $ runSyM 0 (go x))  mp
   where
-    go :: C.FunDef L1.Ty L1.Exp -> SyM ArrowTy
+    go :: C.FunDef L1.Ty L1.Exp -> SyM (ArrowTy Ty)
     go (C.FunDef _ (_,argty) ret _)  =
         do argTy <- annotateTy argty
            retTy <- annotateTy ret
@@ -213,7 +214,7 @@ allLocVars t =
 freshenVar :: LocVar -> SyM LocVar
 freshenVar = gensym
                
-freshenArrowSchema :: ArrowTy -> SyM ArrowTy
+freshenArrowSchema :: ArrowTy Ty -> SyM (ArrowTy Ty)
 freshenArrowSchema (ArrowTy inT effs outT) = do
     let lvs = allLocVars inT ++ allLocVars outT
     lvs' <- mapM freshenVar lvs
@@ -225,7 +226,7 @@ freshenArrowSchema (ArrowTy inT effs outT) = do
 -- | Take a polymorphic ArrowTy, instantiate its location variables
 --   and traversal effects with the given (input) locations.
 --   Return the location that the result of the application will occupy.
-instantiateApp :: ArrowTy -> Loc -> SyM (Set Effect, Loc)
+instantiateApp :: ArrowTy Ty -> Loc -> SyM (Set Effect, Loc)
 instantiateApp arrty0 loc = do
     (ArrowTy inT effs outT) <- freshenArrowSchema arrty0
     let subst = zipTL inT loc 
@@ -486,13 +487,22 @@ exadd1 = inferProg L1.add1Prog
 
 --------------------------------------------------------------------------------
 
+
+cursorizeTy :: ArrowTy Ty -> ArrowTy T.Ty
+cursorizeTy t = undefined
+  
+               
 -- | A compiler pass that inserts cursor-passing for reading and
 -- writing packed values.
-addCursors :: Prog -> [T.FunDecl]
-addCursors Prog{} =
+cursorize :: Prog -> [T.FunDecl]
+cursorize Prog{ddefs, fundefs} =
     undefined
-  where
-    exp :: Env -> L1.Exp -> SyM (Set Effect, Loc)
-    exp = undefined
+ where
+  exp :: Env -> L1.Exp -> SyM (Set Effect, Loc)
+  exp env e = 
+    trace ("\n[addCursors] Processing exp: "++show e++"\n  with env: "++show env) $
+    case e of
+     L1.VarE v  -> return (S.empty, env # v)
+     L1.LitE  _ -> return (S.empty, Bottom)
 
     
