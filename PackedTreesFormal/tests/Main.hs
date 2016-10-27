@@ -126,8 +126,42 @@ t4 bod = fst $ runSyM 0 $
      inferEffects ( fromListDD [DDef "Tree"
                                   [ ("Leaf",[L1.IntTy])
                                   , ("Node",[L1.Packed "Tree", L1.Packed "Tree"])]]
-                  , M.fromList [("foo", ArrowTy (PackedTy "Tree" "p") S.empty IntTy)])
+                  , M.fromList [("foo", ArrowTy (PackedTy "Tree" "p")
+                                                (S.singleton (Traverse "p"))
+                                                IntTy)])
                   (C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy 
                     bod)
 
-           
+case_t4a :: Assertion
+case_t4a = assertEqual "bintree1" S.empty (t4 (LitE 33))
+
+case_t4b :: Assertion
+case_t4b = assertEqual "bintree2: matching is not enough for traversal"
+           S.empty $ t4 $
+           L1.CaseE (VarE "x") $ M.fromList 
+            [ ("Leaf", (["n"],     LitE 3))
+            , ("Node", (["l","r"], LitE 4))]
+
+case_t4c :: Assertion
+case_t4c = assertEqual "bintree2: referencing is not enough for traversal"
+           S.empty $ t4 $
+           L1.CaseE (VarE "x") $ M.fromList 
+            [ ("Leaf", (["n"],     LitE 3))
+            , ("Node", (["l","r"], VarE "r"))]
+
+case_t4d :: Assertion
+case_t4d = assertEqual "bintree2: recurring left is not enough"
+           S.empty $ t4 $
+           L1.CaseE (VarE "x") $ M.fromList 
+            [ ("Leaf", (["n"],     LitE 3))
+            , ("Node", (["l","r"], AppE "foo" (VarE "r")))]
+
+case_t4e :: Assertion
+case_t4e = assertEqual "bintree2: recurring on the right IS enough"
+           (S.singleton (Traverse "p")) $ t4 $
+           L1.CaseE (VarE "x") $ M.fromList 
+            [ ("Leaf", (["n"],     LitE 3))
+            , ("Node", (["l","r"], AppE "foo" (VarE "r")))]
+
+-- ^ NOTE - this should return a location inside the input.  A
+-- sub-region of the region at p.

@@ -366,7 +366,8 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
          when (not (L.null cnstrts)) $
            error $"FINISHME: process these constraints: "++show cnstrts
                                 
-         return (S.union (S.union eff1 end)
+         return $ trace ("\n==>Results on subcases: "++show (doc(bools,effs,locs))) $
+                (S.union (S.union eff1 end)
                          (L.foldl1 S.intersection effs),
                  locFin)
 
@@ -416,25 +417,33 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
    -- ensure that it consumes everything.
    do let tys    = lookupDataCon ddefs dcon
           zipped = fragileZip patVs tys
+          freeRHS = L1.freeVars erhs
           env'   = extendEnv zipped env
           -- WARNING: we may need to generate "nested inside of" relation
           -- between the patVs and the scrutinee.      
       (eff,rloc) <- exp env' erhs
       let winner =           
-           trace ("\nInside caserhs, for "++show (dcon,patVs,tys))$
+           trace ("\nInside caserhs, for "++show (dcon,patVs,tys)
+                   ++ "\n  freevars "++show freeRHS
+                   ++",\n  env "++show env'++",\n  eff "++show eff)$
            -- We've gotten "to the end" of a nullary constructor just by matching it:
-           if L.null patVs then True else
+           (L.null patVs) ||
+           -- If there is NO packed child data, then our object has static size:
+           (L.all (not . hasPacked) tys) ||
               let (lastV,lastTy) = last zipped
-                  isUsed = S.member lastV (L1.freeVars erhs) 
+                  isUsed = S.member lastV freeRHS
               in
               case lastTy of
-                L1.Packed{} -> S.member (Traverse lastV) eff
-                L1.SymDictTy{} -> error "no SymDictTy allowed inside Packed"
-                L1.ProdTy{}    -> error "no ProdTy allowed inside Packed"
-                -- ANY usage of a fixed-sized last field requires traversal:
+                -- If the last field is packed, then we better have
+                -- traversed it in the RHS:
+                L1.Packed{}    -> S.member (Traverse lastV) eff
+                -- ANY usage of a fixed-sized last field requires
+                -- traversal of packed data in the middle fields:
                 L1.IntTy -> isUsed
                 L1.SymTy -> isUsed
-                   
+                L1.SymDictTy{} -> error "no SymDictTy allowed inside Packed"
+                L1.ProdTy{}    -> error "no ProdTy allowed inside Packed"
+
           -- Also, in any binding form we are obligated to not return
           -- our local bindings in traversal side effects:                   
           isLocal (Traverse v) = L.elem v patVs -- FIXME... need LocVar
