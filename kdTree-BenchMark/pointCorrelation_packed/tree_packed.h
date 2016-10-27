@@ -5,11 +5,12 @@
 #include <cmath>
 #include <iostream>
 #include <fstream>
-#define LEAF_TAG 0
-#define INNER_TAG 1
+#define LEAF_TAG 'l'
+#define INNER_TAG 'i'
+#define SIZE_OF_LEAF sizeof(char ) +sizeof(Node_Leaf)
+#define SIZE_OF_INNER sizeof(char ) +sizeof(Node_Inner)
 
 using namespace std;
-
 
 // Tag can be a bool , 0=leaf , 1=inner
 // leaf     [Tag Node_Leaf]
@@ -32,16 +33,20 @@ struct Node_Leaf{
 
 //Tree Data Structure
 struct Node_Inner{
-    bool     splitAxis; // 0:'x' , 1:'y'
+    char     splitAxis; // 0:'x' , 1:'y'
     float    splitLoc;
-    //define rectangle that includes all points in this subtree
-    int min_x;
-    int max_x;
-    int min_y;
-    int max_y;
+    float min_x;
+    float max_x;
+    float min_y;
+    float max_y;
     char *   RightChild;
 };
 
 
+void readPoint(FILE *in, Point &p);
+void readInput(int argc, char **argv,Point * & data , float & rad, int & npoints);
+char *  buildTree(int n , Point * data );
+char *  printPackedTree(char *  cur);
+void performPointCorr_OnTree(Point & p,char *  cur,int rad);
 
 /*TREE_H_*/

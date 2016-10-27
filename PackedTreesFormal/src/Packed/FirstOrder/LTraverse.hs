@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -5,18 +6,24 @@
 
 -- | An intermediate language with an effect system that captures traversals.
 
-module Packed.FirstOrder.LTraverse where
+module Packed.FirstOrder.LTraverse
+    ( Prog(..), Ty(..), FunEnv, FunDef(..), Effect(..), ArrowTy(..)
+    , inferProg, inferEffects, cursorize
+    )
+    where
 
 import Control.Monad (when)
 import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
+import qualified Packed.FirstOrder.Target as T
+-- import Packed.FirstOrder.L1_Source (Exp(..))
 import Data.List as L
 import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
 import Debug.Trace
-import GHC.Stack (errorWithStackTrace)
+-- import GHC.Stack (errorWithStackTrace)
 
 traceIt :: Show a => String -> a -> a
 traceIt msg x = trace (msg++": "++show x) x
@@ -43,7 +50,8 @@ instance Out Loc
 
 -- | This should be a semi-join lattice.
 join :: Loc -> Loc -> (Loc,[Constraint])
-join Bottom Bottom = (Bottom,[])
+join Bottom y      = (y,[])
+join x Bottom      = (x,[])
 join Top _         = (Top,[])
 join _   Top       = (Top,[])
 join (Fresh v) (Fresh w) = (Fresh v, [Eql v w])
@@ -71,14 +79,14 @@ data Constraint = Eql Var Var
 instance Out Constraint
 
 -- Our type for functions grows to include effects.
-data ArrowTy = ArrowTy Ty (Set Effect) Ty
+data ArrowTy t = ArrowTy t (Set Effect) t
   deriving (Read,Show,Eq,Ord, Generic)
 
 data Effect = Traverse LocVar
   deriving (Read,Show,Eq,Ord, Generic)
 
 instance Out Ty
-instance Out ArrowTy
+instance Out t => Out (ArrowTy t)
 instance Out Effect
 instance Out a => Out (Set a) where
   docPrec n x = docPrec n (S.toList x)
@@ -89,7 +97,7 @@ instance Out Prog
 type OldFuns = FunDefs L1.Ty L1.Exp
 type NewFuns = M.Map Var FunDef
     
-type FunEnv = M.Map Var ArrowTy
+type FunEnv = M.Map Var (ArrowTy Ty)
 
 -- | L1 Types extended with abstract Locations
 data Ty = IntTy | SymTy | ProdTy [Ty] | SymDictTy Ty  
@@ -103,8 +111,8 @@ data Prog = Prog { ddefs    :: DDefs L1.Ty
                  }
   deriving (Show, Read, Ord, Eq, Generic)
 
--- | Arrow type caries the function's effectS:
-data FunDef = FunDef Var ArrowTy Var L1.Exp
+-- | A function definition with the function's effects.
+data FunDef = FunDef Var (ArrowTy Ty) Var L1.Exp
   deriving (Show, Read, Ord, Eq, Generic)
 --------------------------------------------------------------------------------
 
@@ -114,7 +122,7 @@ data FunDef = FunDef Var ArrowTy Var L1.Exp
 initialEnv :: OldFuns -> FunEnv
 initialEnv mp = M.map (\x -> fst $ runSyM 0 (go x))  mp
   where
-    go :: C.FunDef L1.Ty L1.Exp -> SyM ArrowTy
+    go :: C.FunDef L1.Ty L1.Exp -> SyM (ArrowTy Ty)
     go (C.FunDef _ (_,argty) ret _)  =
         do argTy <- annotateTy argty
            retTy <- annotateTy ret
@@ -154,19 +162,20 @@ inferProg (L1.Prog dd fds mainE) =
  where
    finalFunTys :: FunEnv
    finalFunTys = fst $ runSyM 0 $
-                 fixpoint fds (initialEnv fds)
+                 fixpoint 1 fds (initialEnv fds)
    
-   fixpoint :: OldFuns -> FunEnv -> SyM FunEnv
-   fixpoint funs env =
+   fixpoint :: Int -> OldFuns -> FunEnv -> SyM FunEnv
+   fixpoint iter funs env =
     do effs' <- M.fromList <$>
-                mapM (\(k,v) -> (k,) <$> inferEffects env v)
+                mapM (\(k,v) -> (k,) <$> inferEffects (dd,env) v)
                      (M.toList funs)
        let env' = M.intersectionWith
                   (\ neweffs (ArrowTy as _ b) -> ArrowTy as neweffs b)
                   effs' env
        if env == env'
-        then return env
-        else fixpoint funs env'
+        then trace ("\n<== Fixpoint completed after iteration "++show iter++" ==>") $
+             return env
+        else fixpoint (iter+1) funs env'
 
 -- | Apply a variable substitution to a type.
 substTy :: Map LocVar LocVar -> Ty -> Ty
@@ -205,7 +214,7 @@ allLocVars t =
 freshenVar :: LocVar -> SyM LocVar
 freshenVar = gensym
                
-freshenArrowSchema :: ArrowTy -> SyM ArrowTy
+freshenArrowSchema :: ArrowTy Ty -> SyM (ArrowTy Ty)
 freshenArrowSchema (ArrowTy inT effs outT) = do
     let lvs = allLocVars inT ++ allLocVars outT
     lvs' <- mapM freshenVar lvs
@@ -217,7 +226,7 @@ freshenArrowSchema (ArrowTy inT effs outT) = do
 -- | Take a polymorphic ArrowTy, instantiate its location variables
 --   and traversal effects with the given (input) locations.
 --   Return the location that the result of the application will occupy.
-instantiateApp :: ArrowTy -> Loc -> SyM (Set Effect, Loc)
+instantiateApp :: ArrowTy Ty -> Loc -> SyM (Set Effect, Loc)
 instantiateApp arrty0 loc = do
     (ArrowTy inT effs outT) <- freshenArrowSchema arrty0
     let subst = zipTL inT loc 
@@ -325,8 +334,8 @@ getLocVar Top = Nothing
 getLocVar l = error $"getLocVar: expected a single packed value location, got: "
                     ++show(doc l)
              
-inferEffects :: FunEnv -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
-inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
+inferEffects :: (DDefs L1.Ty,FunEnv) -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
+inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
     -- For this pass we don't need to know the output location:
     do (effs1,_loc) <- exp env0 bod
        -- Finally, restate the effects in terms of the type schema for the fun:
@@ -335,7 +344,7 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
        return $ S.filter (\(Traverse v) -> S.member v externalLocs) allEffs
 
   where
-  (ArrowTy inTy _ outTy) = fenv # name
+  ArrowTy inTy _ outTy = fenv # name
   env0    = M.singleton arg argLoc
   argLoc  = argtyToLoc (mangle arg) argty
 
@@ -352,7 +361,7 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
      L1.CaseE e1 mp ->
       do (eff1,loc1) <- exp env e1
          (bools,effs,locs) <- unzip3 <$>
-                              mapM (caserhs loc1 env) (M.elems mp)
+                              mapM (caserhs loc1 env) (M.toList mp)
          -- Critical policy point!  We only get to the end if ALL
          -- branches get to the end.
          let end = if all id bools
@@ -365,7 +374,8 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
          when (not (L.null cnstrts)) $
            error $"FINISHME: process these constraints: "++show cnstrts
                                 
-         return (S.union (S.union eff1 end)
+         return $ trace ("\n==>Results on subcases: "++show (doc(bools,effs,locs))) $
+                (S.union (S.union eff1 end)
                          (L.foldl1 S.intersection effs),
                  locFin)
 
@@ -384,7 +394,7 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
           instantiateApp arrTy loc
 
      -- Here we UNION the end-points that are reached in the RHS and the BOD:
-     L1.LetE (v,t,rhs) bod -> -- FIXME: change to let.
+     L1.LetE (v,_t,rhs) bod -> -- FIXME: change to let.
       do (reff,rloc) <- exp env rhs
          let env' = M.insert v rloc env 
          (beff,bloc) <- exp env' bod         
@@ -404,25 +414,50 @@ inferEffects fenv (C.FunDef name (arg,argty) retty bod) =
 --     L1.MkPacked k ls ->
 
   -- Returns true if this particular case reaches the end of the scrutinee.
-  caserhs :: Loc -> Env -> ([Var], L1.Exp) -> SyM (Bool, Set Effect, Loc)
-  caserhs _scrut env ([], erhs) = do
+  caserhs :: Loc -> Env -> (Var,([Var],L1.Exp)) -> SyM (Bool, Set Effect, Loc)
+  caserhs _scrut env (_dcon,([],erhs)) = do
      (effs,loc) <- exp env erhs
      return $ ( True, effs, loc)
-{-                         
-  caserhs out env (patVs, erhs) =
-      -- Subtlety: if the rhs expression consumes the RIGHTMOST
-      -- pattern variable, then the later code transformations will
-      -- have to ensure that it consumes everything.
-   do let env' = extendEnv patVs env
-      eff <- exp out env' erhs
-      let isLocal (Traverse v) = L.elem v patVs -- FIXME... need LocVar
-          stripped  = S.filter isLocal eff
-      return $ if S.member (Traverse (L.last patVs)) eff
-               then addOuts out stripped
-               else stripped
--}
 
-  caserhs _ _ _ = error "put rhs function back..."
+  caserhs _scrut env (dcon,(patVs,erhs)) =
+   -- Subtlety: if the rhs expression consumes the RIGHTMOST
+   -- pattern variable, then the later code transformations MUST
+   -- ensure that it consumes everything.
+   do let tys    = lookupDataCon ddefs dcon
+          zipped = fragileZip patVs tys
+          freeRHS = L1.freeVars erhs
+          env'   = extendEnv zipped env
+          -- WARNING: we may need to generate "nested inside of" relation
+          -- between the patVs and the scrutinee.      
+      (eff,rloc) <- exp env' erhs
+      let winner =           
+           trace ("\nInside caserhs, for "++show (dcon,patVs,tys)
+                   ++ "\n  freevars "++show freeRHS
+                   ++",\n  env "++show env'++",\n  eff "++show eff)$
+           -- We've gotten "to the end" of a nullary constructor just by matching it:
+           (L.null patVs) ||
+           -- If there is NO packed child data, then our object has static size:
+           (L.all (not . hasPacked) tys) ||
+              let (lastV,lastTy) = last zipped
+                  isUsed = S.member lastV freeRHS
+              in
+              case lastTy of
+                -- If the last field is packed, then we better have
+                -- traversed it in the RHS:
+                L1.Packed{}    -> S.member (Traverse lastV) eff
+                -- ANY usage of a fixed-sized last field requires
+                -- traversal of packed data in the middle fields:
+                L1.IntTy -> isUsed
+                L1.SymTy -> isUsed
+                L1.SymDictTy{} -> error "no SymDictTy allowed inside Packed"
+                L1.ProdTy{}    -> error "no ProdTy allowed inside Packed"
+
+          -- Also, in any binding form we are obligated to not return
+          -- our local bindings in traversal side effects:                   
+          isLocal (Traverse v) = L.elem v patVs -- FIXME... need LocVar
+          stripped  = S.filter isLocal eff
+      return ( winner, stripped, rloc )
+
 
 -- Simple invariant assertions:
            
@@ -435,16 +470,13 @@ triv e = case e of
 trivs :: [L1.Exp] -> a -> a
 trivs [] = id
 trivs (a:b) = triv a . trivs b
-           
--- TODO: need abstract locations for these:
-extendEnv :: [Var] -> Env -> Env
-extendEnv = error "finishme extendEnv"
 
-            
-(#) :: (Ord a1, Show a1) => Map a1 a -> a1 -> a
-m # k = case M.lookup k m of
-          Just x  -> x
-          Nothing -> errorWithStackTrace $ "Map lookup failed on key: "++show k
+-- We extend the environment when going under lexical binders, which
+-- always have fixed abstract locations associated with them.
+extendEnv :: [(Var,L1.Ty)] -> Env -> Env
+extendEnv []    e = e
+extendEnv ((v,t):r) e = extendEnv r (M.insert v (argtyToLoc (mangle v) t) e)
+
 
 -- Examples and Tests:
 --------------------------------------------------------------------------------
@@ -452,3 +484,25 @@ m # k = case M.lookup k m of
 exadd1 :: Prog
 exadd1 = inferProg L1.add1Prog
 
+
+--------------------------------------------------------------------------------
+
+
+cursorizeTy :: ArrowTy Ty -> ArrowTy T.Ty
+cursorizeTy t = undefined
+  
+               
+-- | A compiler pass that inserts cursor-passing for reading and
+-- writing packed values.
+cursorize :: Prog -> [T.FunDecl]
+cursorize Prog{ddefs, fundefs} =
+    undefined
+ where
+  exp :: Env -> L1.Exp -> SyM (Set Effect, Loc)
+  exp env e = 
+    trace ("\n[addCursors] Processing exp: "++show e++"\n  with env: "++show env) $
+    case e of
+     L1.VarE v  -> return (S.empty, env # v)
+     L1.LitE  _ -> return (S.empty, Bottom)
+
+    
