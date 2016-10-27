@@ -336,7 +336,7 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
        return $ S.filter (\(Traverse v) -> S.member v externalLocs) allEffs
 
   where
-  (ArrowTy inTy _ outTy) = fenv # name
+  ArrowTy inTy _ outTy = fenv # name
   env0    = M.singleton arg argLoc
   argLoc  = argtyToLoc (mangle arg) argty
 
@@ -414,17 +414,19 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
    -- Subtlety: if the rhs expression consumes the RIGHTMOST
    -- pattern variable, then the later code transformations MUST
    -- ensure that it consumes everything.
-   do let tys  = lookupDataCon ddefs dcon
-          zipped = zip patVs tys
-          (lastV,lastTy) = last zipped
-          env' = extendEnv (zip patVs tys) env
-          -- FIXME!  Need type of patVs and thus need data defs.
-                 
+   do let tys    = lookupDataCon ddefs dcon
+          zipped = fragileZip patVs tys
+          env'   = extendEnv zipped env
           -- WARNING: we may need to generate "nested inside of" relation
-          -- between the patVs and the scrutinee.
+          -- between the patVs and the scrutinee.      
       (eff,rloc) <- exp env' erhs
-      let isUsed = S.member lastV (L1.freeVars erhs)
-          winner =
+      let winner =           
+           trace ("\nInside caserhs, for "++show (dcon,patVs,tys))$
+           -- We've gotten "to the end" of a nullary constructor just by matching it:
+           if L.null patVs then True else
+              let (lastV,lastTy) = last zipped
+                  isUsed = S.member lastV (L1.freeVars erhs) 
+              in
               case lastTy of
                 L1.Packed{} -> S.member (Traverse lastV) eff
                 L1.SymDictTy{} -> error "no SymDictTy allowed inside Packed"
@@ -458,11 +460,6 @@ extendEnv :: [(Var,L1.Ty)] -> Env -> Env
 extendEnv []    e = e
 extendEnv ((v,t):r) e = extendEnv r (M.insert v (argtyToLoc (mangle v) t) e)
 
-            
-(#) :: (Ord a1, Show a1) => Map a1 a -> a1 -> a
-m # k = case M.lookup k m of
-          Just x  -> x
-          Nothing -> errorWithStackTrace $ "Map lookup failed on key: "++show k
 
 -- Examples and Tests:
 --------------------------------------------------------------------------------

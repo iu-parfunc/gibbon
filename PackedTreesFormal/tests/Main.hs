@@ -105,11 +105,29 @@ case_t3a = assertEqual "sillytree1" S.empty (t3 (LitE 33))
 case_t3b :: Assertion
 case_t3b = assertEqual "sillytree2" S.empty $ t3 $ VarE "x"
 
-{-
-ase_t3c :: Assertion
-ase_t3c = assertEqual "sillytree3: reference rightmost"
+
+case_t3c :: Assertion
+case_t3c = assertEqual "sillytree3: reference rightmost"
+           (S.singleton (Traverse "p")) $ t3 $
+           L1.CaseE (VarE "x") $ M.fromList 
+            [ ("Leaf", ([],     LitE 3))
+            , ("Node", (["l","r"], VarE "r"))
+            ]
+
+case_t3d :: Assertion
+case_t3d = assertEqual "sillytree3: reference leftmost"
            S.empty $ t3 $
            L1.CaseE (VarE "x") $ M.fromList 
-            [ ("Leaf", (["n"],LitE 3))
-            , ("Node", (["l","r"],VarE "r")) ]
--}
+            [ ("Leaf", ([],     LitE 3))
+            , ("Node", (["l","r"], VarE "l"))]
+
+t4 :: Exp -> Set Effect
+t4 bod = fst $ runSyM 0 $
+     inferEffects ( fromListDD [DDef "Tree"
+                                  [ ("Leaf",[L1.IntTy])
+                                  , ("Node",[L1.Packed "Tree", L1.Packed "Tree"])]]
+                  , M.fromList [("foo", ArrowTy (PackedTy "Tree" "p") S.empty IntTy)])
+                  (C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy 
+                    bod)
+
+           
