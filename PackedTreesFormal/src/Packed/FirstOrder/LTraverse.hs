@@ -327,7 +327,7 @@ getLocVar l = error $"getLocVar: expected a single packed value location, got: "
                     ++show(doc l)
              
 inferEffects :: (DDefs L1.Ty,FunEnv) -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
-inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) retty bod) =
+inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
     -- For this pass we don't need to know the output location:
     do (effs1,_loc) <- exp env0 bod
        -- Finally, restate the effects in terms of the type schema for the fun:
@@ -385,7 +385,7 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) retty bod) =
           instantiateApp arrTy loc
 
      -- Here we UNION the end-points that are reached in the RHS and the BOD:
-     L1.LetE (v,t,rhs) bod -> -- FIXME: change to let.
+     L1.LetE (v,_t,rhs) bod -> -- FIXME: change to let.
       do (reff,rloc) <- exp env rhs
          let env' = M.insert v rloc env 
          (beff,bloc) <- exp env' bod         
