@@ -155,10 +155,10 @@ inferProg (L1.Prog dd fds mainE) =
  where
    finalFunTys :: FunEnv
    finalFunTys = fst $ runSyM 0 $
-                 fixpoint fds (initialEnv fds)
+                 fixpoint 1 fds (initialEnv fds)
    
-   fixpoint :: OldFuns -> FunEnv -> SyM FunEnv
-   fixpoint funs env =
+   fixpoint :: Int -> OldFuns -> FunEnv -> SyM FunEnv
+   fixpoint iter funs env =
     do effs' <- M.fromList <$>
                 mapM (\(k,v) -> (k,) <$> inferEffects (dd,env) v)
                      (M.toList funs)
@@ -166,8 +166,9 @@ inferProg (L1.Prog dd fds mainE) =
                   (\ neweffs (ArrowTy as _ b) -> ArrowTy as neweffs b)
                   effs' env
        if env == env'
-        then return env
-        else fixpoint funs env'
+        then trace ("\n<== Fixpoint completed after iteration "++show iter++" ==>") $
+             return env
+        else fixpoint (iter+1) funs env'
 
 -- | Apply a variable substitution to a type.
 substTy :: Map LocVar LocVar -> Ty -> Ty

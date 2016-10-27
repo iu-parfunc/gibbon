@@ -16,6 +16,7 @@ module Packed.FirstOrder.Common
        , Value(..), ValEnv
          -- * Top-level function defs
        , FunDef(..), FunDefs
+       , insertFD, fromListFD
          -- * Data definitions
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupDataCon
@@ -105,6 +106,7 @@ emptyDD  = M.empty
 fromListDD :: [DDef a] -> DDefs a
 fromListDD = L.foldr (insertDD) emptyDD 
 
+             
 -- Fundefs
 ----------------------------------------
 
@@ -119,6 +121,12 @@ data FunDef ty ex = FunDef { funName  :: Var
   deriving (Read,Show,Eq,Ord, Generic)
 
 instance (Out a, Out b) => Out (FunDef a b)
+
+insertFD :: FunDef t e -> FunDefs t e -> FunDefs t e
+insertFD d = M.insert (funName d) d 
+    
+fromListFD :: [FunDef t e] -> FunDefs t e
+fromListFD = L.foldr (insertFD) M.empty
 
     
 -- Gensym monad:

@@ -123,15 +123,18 @@ case_t3d = assertEqual "sillytree3: reference leftmost"
 
 t4 :: Exp -> Set Effect
 t4 bod = fst $ runSyM 0 $
-     inferEffects ( fromListDD [DDef "Tree"
-                                  [ ("Leaf",[L1.IntTy])
-                                  , ("Node",[L1.Packed "Tree", L1.Packed "Tree"])]]
-                  , M.fromList [("foo", ArrowTy (PackedTy "Tree" "p")
-                                                (S.singleton (Traverse "p"))
-                                                IntTy)])
+     inferEffects t4env
                   (C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy 
                     bod)
 
+t4env :: (DDefs L1.Ty, FunEnv)
+t4env = ( fromListDD [DDef "Tree"
+                      [ ("Leaf",[L1.IntTy])
+                      , ("Node",[L1.Packed "Tree", L1.Packed "Tree"])]]
+        , M.fromList [("foo", ArrowTy (PackedTy "Tree" "p")
+                       (S.singleton (Traverse "p"))
+                       IntTy)])
+                  
 case_t4a :: Assertion
 case_t4a = assertEqual "bintree1" S.empty (t4 (LitE 33))
 
@@ -154,14 +157,33 @@ case_t4d = assertEqual "bintree2: recurring left is not enough"
            S.empty $ t4 $
            L1.CaseE (VarE "x") $ M.fromList 
             [ ("Leaf", (["n"],     LitE 3))
-            , ("Node", (["l","r"], AppE "foo" (VarE "r")))]
+            , ("Node", (["l","r"], AppE "foo" (VarE "l")))]
 
 case_t4e :: Assertion
 case_t4e = assertEqual "bintree2: recurring on the right IS enough"
            (S.singleton (Traverse "p")) $ t4 $
-           L1.CaseE (VarE "x") $ M.fromList 
-            [ ("Leaf", (["n"],     LitE 3))
-            , ("Node", (["l","r"], AppE "foo" (VarE "r")))]
+           trav_right_bod
 
--- ^ NOTE - this should return a location inside the input.  A
--- sub-region of the region at p.
+trav_right_bod :: Exp
+trav_right_bod = L1.CaseE (VarE "x") $ M.fromList 
+                 [ ("Leaf", (["n"],     LitE 3))
+                 , ("Node", (["l","r"], AppE "foo" (VarE "r")))]               
+         -- ^ NOTE - this should return a location inside the input.  A
+         -- sub-region of the region at p.
+
+t4_prog :: L1.Prog
+t4_prog = L1.Prog (fst t4env)
+          (fromListFD [C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy 
+                       trav_right_bod])
+          Nothing
+
+t4p :: Prog
+t4p = inferProg t4_prog
+
+case_t4p :: Assertion
+case_t4p =
+    assertEqual "Infer the effects for an entire tree-traversal prog:"
+      (S.singleton (Traverse "a"))
+      (let FunDef _ (ArrowTy _ efs _) _ _ = fundefs t4p M.! "foo"
+       in efs)
+      
