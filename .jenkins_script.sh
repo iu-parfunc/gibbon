@@ -10,4 +10,5 @@ which -a stack
 stack --version
 
 cd PackedTreesFormal
+stack setup
 stack test

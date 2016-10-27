@@ -15,6 +15,7 @@ import Control.Monad (when)
 import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
+import qualified Packed.FirstOrder.Target as T
 -- import Packed.FirstOrder.L1_Source (Exp(..))
 import Data.List as L
 import Data.Set as S
@@ -482,3 +483,16 @@ extendEnv ((v,t):r) e = extendEnv r (M.insert v (argtyToLoc (mangle v) t) e)
 exadd1 :: Prog
 exadd1 = inferProg L1.add1Prog
 
+
+--------------------------------------------------------------------------------
+
+-- | A compiler pass that inserts cursor-passing for reading and
+-- writing packed values.
+addCursors :: Prog -> [T.FunDecl]
+addCursors Prog{} =
+    undefined
+  where
+    exp :: Env -> L1.Exp -> SyM (Set Effect, Loc)
+    exp = undefined
+
+    

@@ -14,15 +14,19 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
-  exposed-modules:  Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate,
-                    Packed.HigherOrder.L3_Target,
-                    Packed.HigherOrder.Translate, Packed.HigherOrder.Common,
-
+  exposed-modules:
                     Packed.FirstOrder.Common
                     Packed.FirstOrder.L1_Source,
                     Packed.FirstOrder.LTraverse
                     Packed.FirstOrder.HaskellFrontend,
                     Packed.FirstOrder.Target
+
+-- First attempt, slated for removal:
+                    -- Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate,
+                    -- Packed.HigherOrder.L3_Target,
+                    -- Packed.HigherOrder.Translate, Packed.HigherOrder.Common,
+
+
   -- other-modules:
   other-extensions:    DeriveDataTypeable
 
