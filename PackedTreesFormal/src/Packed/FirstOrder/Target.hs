@@ -30,7 +30,7 @@ import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
                            cunit)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
-import Packed.HigherOrder.L1_Source (T1 (..))
+-- import qualified Packed.FirstOrder.L1_Source as L1
 import Text.PrettyPrint.Mainland
 
 import Prelude hiding (init)
@@ -79,7 +79,7 @@ data Ty
             --   It's an alias for Int, an index into a symbol table.
     | CursorTy -- ^ A byte-indexing pointer.
     | ProdTy [Ty]
-    | SymDictTy T1
+    | SymDictTy Ty
       -- ^ We allow built-in dictionaries from symbols to a value type.
   deriving (Show, Read, Ord, Eq, Generic)
 

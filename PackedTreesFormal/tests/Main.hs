@@ -13,7 +13,7 @@ import Packed.FirstOrder.L1_Source (Exp(..))
 import Packed.FirstOrder.LTraverse
 import Data.Set as S
 import Data.Map as M
-
+    
 main :: IO ()
 main = $(defaultMainGenerator)
     
@@ -105,11 +105,127 @@ case_t3a = assertEqual "sillytree1" S.empty (t3 (LitE 33))
 case_t3b :: Assertion
 case_t3b = assertEqual "sillytree2" S.empty $ t3 $ VarE "x"
 
-{-
-ase_t3c :: Assertion
-ase_t3c = assertEqual "sillytree3: reference rightmost"
+
+case_t3c :: Assertion
+case_t3c = assertEqual "sillytree3: reference rightmost"
+           (S.singleton (Traverse "p")) $ t3 $
+           L1.CaseE (VarE "x") $ M.fromList 
+            [ ("Leaf", ([],     LitE 3))
+            , ("Node", (["l","r"], VarE "r"))
+            ]
+
+case_t3d :: Assertion
+case_t3d = assertEqual "sillytree3: reference leftmost"
            S.empty $ t3 $
            L1.CaseE (VarE "x") $ M.fromList 
-            [ ("Leaf", (["n"],LitE 3))
-            , ("Node", (["l","r"],VarE "r")) ]
--}
+            [ ("Leaf", ([],     LitE 3))
+            , ("Node", (["l","r"], VarE "l"))]
+
+t4 :: Exp -> Set Effect
+t4 bod = fst $ runSyM 0 $
+     inferEffects t4env
+                  (C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy 
+                    bod)
+
+t4env :: (DDefs L1.Ty, FunEnv)
+t4env = ( fromListDD [DDef "Tree"
+                      [ ("Leaf",[L1.IntTy])
+                      , ("Node",[L1.Packed "Tree", L1.Packed "Tree"])]]
+        , M.fromList [("foo", ArrowTy (PackedTy "Tree" "p")
+                       (S.singleton (Traverse "p"))
+                       IntTy)])
+                  
+case_t4a :: Assertion
+case_t4a = assertEqual "bintree1" S.empty (t4 (LitE 33))
+
+case_t4b :: Assertion
+case_t4b = assertEqual "bintree2: matching is not enough for traversal"
+           S.empty $ t4 $
+           L1.CaseE (VarE "x") $ M.fromList 
+            [ ("Leaf", (["n"],     LitE 3))
+            , ("Node", (["l","r"], LitE 4))]
+
+case_t4c :: Assertion
+case_t4c = assertEqual "bintree2: referencing is not enough for traversal"
+           S.empty $ t4 $
+           L1.CaseE (VarE "x") $ M.fromList 
+            [ ("Leaf", (["n"],     LitE 3))
+            , ("Node", (["l","r"], VarE "r"))]
+
+case_t4d :: Assertion
+case_t4d = assertEqual "bintree2: recurring left is not enough"
+           S.empty $ t4 $
+           L1.CaseE (VarE "x") $ M.fromList 
+            [ ("Leaf", (["n"],     LitE 3))
+            , ("Node", (["l","r"], AppE "foo" (VarE "l")))]
+
+case_t4e :: Assertion
+case_t4e = assertEqual "bintree2: recurring on the right IS enough"
+           (S.singleton (Traverse "p")) $ t4 $
+           trav_right_bod
+
+trav_right_bod :: Exp
+trav_right_bod = L1.CaseE (VarE "x") $ M.fromList 
+                 [ ("Leaf", (["n"],     LitE 3))
+                 , ("Node", (["l","r"], AppE "foo" (VarE "r")))]
+         -- ^ NOTE - this should return a location inside the input.  A
+         -- sub-region of the region at p.
+
+t4_prog :: L1.Prog
+t4_prog = L1.Prog (fst t4env)
+          (fromListFD [C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy 
+                       trav_right_bod])
+          Nothing
+
+t4p :: Prog
+t4p = fst $ runSyM 0 $ inferProg t4_prog
+
+case_t4p :: Assertion
+case_t4p =
+    assertEqual "Infer the effects for an entire tree-traversal prog:"
+      (S.singleton (Traverse "a"))
+      (let FunDef _ (ArrowTy _ efs _) _ _ = fundefs t4p M.! "foo"
+       in efs)
+
+case_t4p2 :: Assertion
+case_t4p2 =
+    assertEqual "A program which needs more than one fix-point iteration."
+      (S.empty)
+      (let prg = fst $ runSyM 0 $ inferProg
+                 (L1.Prog (fst t4env)
+                        (fromListFD [C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy $
+                          L1.CaseE (VarE "x") $ M.fromList 
+                            [ ("Leaf", (["n"],     LitE 3))
+                            , ("Node", (["l","r"], AppE "foo" (VarE "l")))] ])
+                  Nothing)
+           FunDef _ (ArrowTy _ efs _) _ _ = fundefs prg M.! "foo"
+       in efs)
+      
+----------------------------------------
+
+
+-- Now the full copy-tree example:
+copy :: Prog
+copy = fst $ runSyM 0 $ inferProg
+     (L1.Prog (fst t4env)
+      (fromListFD [C.FunDef "copy" ("x", L1.Packed "Tree") (L1.Packed "Tree") $
+                   L1.CaseE (VarE "x") $ M.fromList 
+                      [ ("Leaf", (["n"],     VarE "n"))
+                      , ("Node", (["l","r"],
+                        LetE ("a", L1.Packed "Tree", AppE "copy" (VarE "l")) $
+                        LetE ("b", L1.Packed "Tree", AppE "copy" (VarE "r")) $ 
+                        MkPackedE "Node" [VarE "a", VarE "b"]
+                        ))] ])
+      Nothing)
+
+case_copy :: Assertion
+case_copy =      
+     assertEqual "A program which needs more than one fix-point iteration."
+      (S.singleton (Traverse "a"))
+      (let prg = copy
+           FunDef _ (ArrowTy _ efs _) _ _ = fundefs prg M.! "copy"
+       in efs)
+
+t5 :: Prog 
+t5 = fst $ runSyM 1000 $
+     cursorize copy

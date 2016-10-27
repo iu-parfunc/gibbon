@@ -1,5 +1,8 @@
 # tree-velocity
 
+[![Build Status](http://tester-lin.soic.indiana.edu:8080/buildStatus/icon?job=tree-velocity)](http://tester-lin.soic.indiana.edu:8080/job/tree-velocity/)
+
+
 A collection of sub-projects related to benchmarking tree traversals and 
 performing tree traversals on packed representations.  Here's what the main 
 subdirectories are for:
