@@ -13,8 +13,6 @@ import Packed.FirstOrder.L1_Source (Exp(..))
 import Packed.FirstOrder.LTraverse
 import Data.Set as S
 import Data.Map as M
-
-import Text.PrettyPrint.GenericPretty
     
 main :: IO ()
 main = $(defaultMainGenerator)
@@ -227,5 +225,3 @@ case_copy =
       (let prg = copy
            FunDef _ (ArrowTy _ efs _) _ _ = fundefs prg M.! "copy"
        in efs)
-
-_ = doc copy

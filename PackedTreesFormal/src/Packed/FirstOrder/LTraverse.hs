@@ -5,7 +5,9 @@
 
 -- | An intermediate language with an effect system that captures traversals.
 
-module Packed.FirstOrder.LTraverse where
+module Packed.FirstOrder.LTraverse
+    (inferProg, inferEffects)
+    where
 
 import Control.Monad (when)
 import qualified Packed.FirstOrder.Common as C
