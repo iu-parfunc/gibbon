@@ -178,7 +178,7 @@ t4_prog = L1.Prog (fst t4env)
           Nothing
 
 t4p :: Prog
-t4p = inferProg t4_prog
+t4p = fst $ runSyM 0 $ inferProg t4_prog
 
 case_t4p :: Assertion
 case_t4p =
@@ -191,7 +191,7 @@ case_t4p2 :: Assertion
 case_t4p2 =
     assertEqual "A program which needs more than one fix-point iteration."
       (S.empty)
-      (let prg = inferProg
+      (let prg = fst $ runSyM 0 $ inferProg
                  (L1.Prog (fst t4env)
                         (fromListFD [C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy $
                           L1.CaseE (VarE "x") $ M.fromList 
@@ -206,7 +206,7 @@ case_t4p2 =
 
 -- Now the full copy-tree example:
 copy :: Prog
-copy = inferProg
+copy = fst $ runSyM 0 $ inferProg
      (L1.Prog (fst t4env)
       (fromListFD [C.FunDef "copy" ("x", L1.Packed "Tree") (L1.Packed "Tree") $
                    L1.CaseE (VarE "x") $ M.fromList 
@@ -225,3 +225,7 @@ case_copy =
       (let prg = copy
            FunDef _ (ArrowTy _ efs _) _ _ = fundefs prg M.! "copy"
        in efs)
+
+t5 :: Prog 
+t5 = fst $ runSyM 1000 $
+     cursorize copy

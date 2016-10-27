@@ -27,6 +27,7 @@ e := var | lit
 primapp := (binop e e)
         | (insert e e e)
         | (lookup e e)
+        | (empty-dict)
 
 binop := + | - | * 
 
