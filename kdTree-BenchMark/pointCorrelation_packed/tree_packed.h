@@ -1,12 +1,15 @@
 #ifndef HEAD
 #define HEAD
-#define TEST
 #include <cstdlib>
 #include <cstdint>
 #include <cfloat>
 #include <cmath>
 #include <iostream>
 #include <fstream>
+#include <stdio.h>
+#include <time.h>
+
+
 #define LEAF_TAG 'l'
 #define INNER_TAG 'i'
 #define SIZE_OF_LEAF sizeof(char ) +sizeof(Node_Leaf)
