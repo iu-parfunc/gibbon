@@ -13,6 +13,13 @@ LOG=subst_all_expanded_1.2.log
 scan_for_errors:
 	grep -v "Benchmark:" $(LOG)  | grep -v  "==========" | grep -v "Done ingesting" | grep -v "cpu time" | grep -v "^$$" | tee wc 
 
+check: check.exe
+	./check.py
+
+check.exe: check.c 
+	$(CC) $(CFLAGS) -c -I$(INCLUDES) ast.c -o ast.o 
+	$(CC) $(CFLAGS) -I$(INCLUDES) $^ ast.o -o $@ -L$(LDPATH) -lsexp
+
 subst_c.exe: subst.c
 	$(CC) $(CFLAGS) -I$(INCLUDES) $^ -o $@ -L$(LDPATH) -lsexp
 
