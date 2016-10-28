@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DeriveGeneric #-}
 -- {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE DeriveFunctor #-}
@@ -15,18 +16,24 @@ module Packed.FirstOrder.Common
        , Value(..), ValEnv
          -- * Top-level function defs
        , FunDef(..), FunDefs
+       , insertFD, fromListFD
          -- * Data definitions
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupDataCon
+         -- * Misc
+       , (#), fragileZip
        ) where 
 
+import Data.Maybe (catMaybes)
 import Data.Char
 import Control.Monad.State
 import Data.List as L
 import Data.Map as M
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
-
+import GHC.Stack (errorWithStackTrace)
+import Debug.Trace
+    
 -- type CursorVar = Var       
 type Var    = String
 type Constr = String
@@ -68,19 +75,27 @@ instance (Out k,Out v) => Out (Map k v) where
 -- DDef utilities:
                 
 -- | Lookup a ddef in its entirety
-lookupDDef :: DDefs a -> Var -> DDef a 
-lookupDDef = (M.!)
+lookupDDef :: Out a => DDefs a -> Var -> DDef a 
+lookupDDef = (#)
 
 -- -- | Lookup the arguments to a data contstructor.
 -- lookupTyCon :: DDefs a -> Var -> [Var]
 -- lookupTyCon dds  = tyArgs . lookupDDef dds
 
 -- | Lookup the arguments to a data contstructor.
-lookupDataCon :: DDefs a -> Var -> [a]
-lookupDataCon dds v = 
-   let DDef _ dc = lookupDDef dds v
-   in snd $ L.head $ L.filter ((== v) . fst) dc
-
+lookupDataCon :: Out a => DDefs a -> Var -> [a]
+lookupDataCon dds con =
+   -- Here we try to lookup in ALL datatypes, assume unique:
+  let res = catMaybes 
+            [ L.lookup con dataCons
+            | DDef {dataCons} <- M.elems dds ] in
+  -- trace ("Looked up "++show con++" got "++show (doc res)) $ 
+  case res of   
+    [] -> error$ "lookupDataCon: could not find constructor "++show con
+          ++", in datatypes:\n  "++show(doc dds)
+    [hit] -> hit
+    _ -> error$ "lookupDataCon: found multiple occurences of constructor "++show con
+          ++", in datatypes:\n  "++show(doc dds)
 
 insertDD :: DDef a -> DDefs a -> DDefs a
 insertDD d = M.insert (tyName d) d 
@@ -91,6 +106,7 @@ emptyDD  = M.empty
 fromListDD :: [DDef a] -> DDefs a
 fromListDD = L.foldr (insertDD) emptyDD 
 
+             
 -- Fundefs
 ----------------------------------------
 
@@ -105,6 +121,12 @@ data FunDef ty ex = FunDef { funName  :: Var
   deriving (Read,Show,Eq,Ord, Generic)
 
 instance (Out a, Out b) => Out (FunDef a b)
+
+insertFD :: FunDef t e -> FunDefs t e -> FunDefs t e
+insertFD d = M.insert (funName d) d 
+    
+fromListFD :: [FunDef t e] -> FunDefs t e
+fromListFD = L.foldr (insertFD) M.empty
 
     
 -- Gensym monad:
@@ -129,3 +151,20 @@ genLetter = SyM $
 
 runSyM :: Int -> SyM a -> (a,Int)
 runSyM n (SyM a) = runState a n
+
+----------------------------------------
+
+                   
+(#) :: (Ord a, Out a, Out b, Show a)
+    => Map a b -> a -> b
+m # k = case M.lookup k m of
+          Just x  -> x
+          Nothing -> errorWithStackTrace $ "Map lookup failed on key: "++show k
+                     ++ " in map:\n "++ show (doc m)
+
+fragileZip :: (Show a, Show b) => [a] -> [b] -> [(a, b)]
+fragileZip [] [] = []
+fragileZip (a:as) (b:bs) = (a,b) : fragileZip as bs
+fragileZip as [] = error$ "fragileZip: right ran out, while left still has: "++show as
+fragileZip [] bs = error$ "fragileZip: left ran out, while right still has: "++show bs
+

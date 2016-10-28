@@ -27,6 +27,7 @@
 \newcommand{\gramdef}{\; ::= \;}
 \newcommand{\gramor}{\; | \;}
 \newcommand{\keywd}[1]{\; \texttt{#1} \;}
+\newcommand{\keywdr}[1]{\; \texttt{#1}^{*} \;}
 
 %----------------------------------------
 %% \usepackage[colorinlistoftodos,prependcaption,textsize=tiny]{todonotes}
@@ -228,34 +229,57 @@ following contributions:
 \note{The calculus, plus the core lowering transforms in figures.}
 
 We present two languages: L1, a simple purely functional, first-order programming
-language with algebraic data types; and L2, an imperative programming language
+language with sum and product types; and L2, an imperative programming language
 with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 
 \subsection{L1: Source language}
 
+\note{Do we have a problem if we just stick to the way sums and products are usually presented?
+  Or do we need recursive types? Also, binary sums and products might make the switch form
+  in L2 less interesting.}
+
+\begin{figure}
+  \begin{displaymath}
+    \keywd{v} \in \; Var, \:
+    \keywd{n} \in \; Int, \: \keywd{p} \in \; Prim, \: \keywd{c} \in \; Tag
+  \end{displaymath}
+  \begin{displaymath}
+    \begin{aligned}
+      \keywd{prog} \gramdef & \keywdr{decl} \keywd{e} \\
+      \keywd{decl} \gramdef & \keywd{v} \mapsto \lambda \keywd{v:t}. \keywd{e} \\
+      \keywd{t} \gramdef & \keywd{int} \gramor \keywd{t} \rightarrow \keywd{t} \gramor \keywd{t} * \keywd{t}  \\
+      \gramor & \keywd{t} + \keywd{t} \\
+      \keywd{e} \gramdef & \keywd{v} \gramor \keywd{n} \gramor \keywd{e} \keywd{p} \keywd{e} \gramor \keywd{e} \keywd{e} \\
+      \gramor & \keywd{(e,e)} \gramor \# 1 \keywd{e} \gramor \# 2 \keywd{e} \\
+      \gramor & \keywd{let} \keywd{(v,t,e)} \keywd{e} \\
+      \gramor & \keywd{case} \keywd{e} \keywd{of} \keywd{(e,e)} \\
+      \gramor & \keywd{inl} \keywd{t} \keywd{e} \gramor \keywd{inr} \keywd{t} \keywd{e} \\
+    \end{aligned}
+  \end{displaymath}
+  \caption{Grammar for source language}
+\end{figure}
+
 \subsection{L2: Target language}
 
+\begin{figure}
 \begin{displaymath}
   \begin{aligned}
-    v \in & Var \\
-    n \in & Int
+    \keywd{x} \gramdef & \keywd{n} \gramor \keywd{v} \\
+    \keywd{t} \gramdef & \keywd{int} \gramor \keywd{cursor} \gramor \keywd{t} \rightarrow \keywd{t} \gramor \keywd{t} * \keywd{t} \\
+    \keywd{e} \gramdef & \keywd{x} \gramor \keywd{x} \keywd{p} \keywd{x} \gramor \keywd{v} \keywd{x} \\
+    \gramor & \keywd{(x,x)} \gramor \# 1 \keywd{x} \gramor \# 2 \keywd{x} \\
+    \gramor & \keywd{let} \keywd{(v,t,e)} \keywd{e} \\
+    \gramor & \keywd{ifeq} \keywd{(x,x)} \keywd{e} \keywd{e} \\
+    \gramor & \keywd{switch} \keywd{x} \keywdr{(n,v,e)} \\
+    \gramor & \keywd{newbuff} \keywd{n} \\
+    \gramor & \keywd{writetag} \keywd{v} \keywd{n} \\
+    \gramor & \keywd{writeint} \keywd{v} \keywd{x} \\
+    \gramor & \keywd{readtag} \keywd{v} \\
+    \gramor & \keywd{readint} \keywd{v} 
   \end{aligned}
 \end{displaymath}
-\begin{displaymath}
-  \begin{aligned}
-    \keywd{x} \gramdef & \keywd{n} \gramor \gramor{v} \\
-    \keywd{e} \gramdef & \keywd{i} \gramor \keywd{prim} \keywd{x}* \\
-    & \gramor \keywd{(x,x,...)} \gramor \keywd{x} @ \keywd{n} \\
-    & \gramor \keywd{let} \keywd{(v,t,e)}* \keywd{e} \\
-    & \gramor \keywd{ifeq} \keywd{(x,x)} \keywd{e} \keywd{e} \\
-    & \gramor \keywd{newbuff} n \\
-    & \gramor \keywd{writetag} \keywd{v} \keywd{n} \\
-    & \gramor \keywd{writeint} \keywd{v} \keywd{x} \\
-    & \gramor \keywd{readtag} \keywd{v} \\
-    & \gramor \keywd{readint} \keywd{v}
-  \end{aligned}
-\end{displaymath}
-
+\caption{Grammar for target language}
+\end{figure}
 
 % ================================================================================
 \section{Implementation}

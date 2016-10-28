@@ -43,10 +43,13 @@ class Node{
 				Node *l;
 				Node *r;
 				//bounding boxes
+    //?
 				float *min;
 				float *max;
-				//truncation flag
-				bool trunc;
+		
+    //truncation flag
+	
+                bool trunc;
 				bool subtrunc;
 #ifdef DEBUG
 				int nid;

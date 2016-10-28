@@ -14,15 +14,19 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
-  exposed-modules:  Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate,
-                    Packed.HigherOrder.L3_Target,
-                    Packed.HigherOrder.Translate, Packed.HigherOrder.Common,
-
+  exposed-modules:
                     Packed.FirstOrder.Common
                     Packed.FirstOrder.L1_Source,
                     Packed.FirstOrder.LTraverse
                     Packed.FirstOrder.HaskellFrontend,
                     Packed.FirstOrder.Target
+
+-- First attempt, slated for removal:
+                    -- Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate,
+                    -- Packed.HigherOrder.L3_Target,
+                    -- Packed.HigherOrder.Translate, Packed.HigherOrder.Common,
+
+
   -- other-modules:
   other-extensions:    DeriveDataTypeable
 
@@ -49,6 +53,18 @@ executable packed-trees
   build-depends:       base,
                        haskell-src-exts,
                        packed-trees
+
+  default-language:    Haskell2010
+  ghc-options:         -Wall
+
+test-suite test-packed-trees
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      tests
+  main-is:             Main.hs
+
+  build-depends:       base,
+                       packed-trees, containers,
+                       tasty, tasty-hunit, tasty-th
 
   default-language:    Haskell2010
   ghc-options:         -Wall

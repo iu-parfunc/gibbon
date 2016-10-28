@@ -9,14 +9,16 @@
 --   genarating C code like a DSL.
 
 module Packed.FirstOrder.L1_Source
-    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), Ty(..), Prim(..),
-     add1Prog
+    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), Ty(..), Prim(..)
+    , freeVars, subst
+    , add1Prog
     )
     where
 
 import Packed.FirstOrder.Common
 import Data.Map as M
--- import Data.List as L
+import Data.Set as S
+import Data.List as L
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
 
@@ -80,6 +82,40 @@ data Ty = IntTy
            
 
 --------------------------------------------------------------------------------
+
+freeVars :: Exp -> S.Set Var
+freeVars ex =
+  case ex of
+    VarE v -> S.singleton v
+    LitE _ -> S.empty 
+    AppE v e -> S.insert v (freeVars e)
+    PrimAppE _ ls -> S.unions (L.map freeVars ls)
+    LetE (v,_,rhs) bod ->
+      S.delete v $ 
+      S.union (freeVars rhs) (freeVars bod)
+    ProjE _ e -> freeVars e 
+    CaseE e ls -> S.union (freeVars e)
+                  (S.unions $ L.map (freeVars . snd) (M.elems ls))
+    MkProdE ls     -> S.unions $ L.map freeVars ls
+    MkPackedE _ ls -> S.unions $ L.map freeVars ls
+
+subst :: Var -> Exp -> Exp -> Exp
+subst old new ex =
+  let go = subst old new in
+  case ex of
+    VarE v | v == old  -> new
+           | otherwise -> VarE v
+    LitE _          -> ex
+    AppE v e        -> AppE v (go e)
+    PrimAppE p ls   -> PrimAppE p $ L.map go ls
+    LetE (v,t,rhs) bod | v == old  -> LetE (v,t,go rhs) bod
+                       | otherwise -> LetE (v,t,go rhs) (go bod)
+
+    ProjE i e  -> ProjE i (go e)
+    CaseE e ls -> CaseE (go e) (M.map (\(vs,er) -> (vs,go er)) ls)
+    MkProdE ls     -> MkProdE $ L.map go ls
+    MkPackedE k ls -> MkPackedE k $ L.map go ls
+                      
 
 {-
 -- | Promote a value to a term that evaluates to it.
