@@ -1,7 +1,15 @@
 #lang typed/racket
 
 (provide Int Sym Bool SymDict data empty-dict lookup insert case
-         (all-from-out typed/racket)) ;; so i have lists for now
+         define let provide require if : for/list
+
+         list and empty? error 
+         eq? car cdr cons Listof
+         
+         #%app #%module-begin #%datum quote
+         #;(all-from-out typed/racket))
+
+;; add for/list  w/types
 
 #| Grammar
 
@@ -28,6 +36,8 @@ e := var | lit
    | (let ([v : t e] ...) e)        :: CHANGED THIS, note the :
    | (if e e e)                     
    | primapp
+   | (for/list ([v : t e])  e)      ;; not enforced that only loops over single list
+   | (error string)
 
 primapp := (binop e e)
         | (insert e e e)
