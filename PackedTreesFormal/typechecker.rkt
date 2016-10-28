@@ -1,15 +1,19 @@
 #lang s-exp "treelang.rkt"
 
 ;; use structs/data instead of sexp
+(provide typecheck-expr
+         Int_ Bool_ Lamt P S N B Begin Lam App)
+
 (data Type
       [Int_]
       [Bool_]
       [Lamt (Listof Type) Type])
 
 (data Param
-      [P Sym Type])
+      [P Expr Type])
 
 (data Expr
+      [S Sym]
       [N Int]
       [B Bool] ;; leaving out null for now
       [Begin (Listof Expr)]
@@ -55,7 +59,9 @@
       env
       (case (car params)
         [(P s t)
-         (extend-env env s t)])))
+         (case s
+           [(S sym)
+            (extend-env env sym t)])])))
 
 ;; errors or returns #t
 (define (helper [l1 : (Listof Type)] [l2 : (Listof Type)]) : Bool
@@ -90,6 +96,8 @@
 
 (define (typecheck [expr : Expr] [env : Env] ): Type
   (case expr
+    [(S sym)
+     (lookup-env env sym)]
     [(N n)
      (Int_)]
     [(B b)
