@@ -1,5 +1,5 @@
 # FROM fpco/stack-build:lts-7.1
-FROM fpco/stack-build:lts-6.19
+FROM fpco/stack-build:lts-6.23
 
 RUN apt-get update && apt-get -y install mlton ocaml-native-compilers gcc time
 
