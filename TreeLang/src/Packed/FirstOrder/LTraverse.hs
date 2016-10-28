@@ -516,6 +516,23 @@ cursorizeTy (ArrowTy inT ef ouT) =
       PackedTy{}    -> t2
 -}
 
+-- =============================================================================
+
+-- | Compiler pass to find the CaseE pattern variables for which a
+-- traversal is required but one is not present in the environment at
+-- the point of need.
+missingTraversals :: Prog -> SyM (Set Var)
+missingTraversals Prog{} = 
+  undefined
+
+-- | Insert 
+insertTraversals :: Set Var -> Prog -> SyM Prog
+insertTraversals set Prog{} = 
+  undefined
+
+  
+-- =============================================================================
+
 -- | This inserts cursors and REMOVES effect signatures.  It returns
 --   the new type as well as how many extra params were added to input
 --   and return types.
@@ -542,7 +559,7 @@ cursorizeTy (ArrowTy inT ef ouT) =
       (SymDictTy x) -> SymDictTy $ (replacePacked t2) x
       PackedTy{}    -> t2
 
-
+                       
 -- Use a hack rather than extending the IR at this point:
 cursorTy :: Ty
 cursorTy = PackedTy "CURSOR_TY" ""

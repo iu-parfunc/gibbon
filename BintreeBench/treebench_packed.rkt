@@ -43,7 +43,7 @@
           [else
            (define off1 (write-tag! buf offset Node))
            (define off2 (go root (unsafe-fx- n 1) off1))
-           (go (+ root (unsafe-fxlshift 2 (unsafe-fx- n 1)))
+           (go (+ root (expt 2 (unsafe-fx- n 1)))
                (unsafe-fx- n 1)
                off2)]))
   (go 1 n0 offset))
@@ -62,17 +62,56 @@
       [(tag=? t Leaf)
        (let* ([off2* (write-tag! buf2 off Leaf)]
               [i (read-int64*! buf1 off2*)]
-              [off2** (write-int64! buf2 off2* i)])
+              [off2** (write-int64! buf2 off2* (unsafe-fx+ 1 i))])
          off2**)]
       [else (let* ([off2* (write-tag! buf2 off Node)]
                    [off2** (go off2*)])
               (go off2**))]))
     (go off1))
 
+
+(define (add1tree-loop! buf1 off1 buf2 off2)
+  (define end (buffer-size buf1 off1))
+  (define (go off)
+    (cond
+      [(unsafe-fx= end off) (void)]
+      [else
+       (define t (read-tag*! buf1 off))
+       (cond
+         [(tag=? t Leaf)
+          (let* ([off2* (write-tag! buf2 off Leaf)]
+                 [i (read-int64*! buf1 off2*)]
+                 [off2** (write-int64! buf2 off2* (unsafe-fx+ 1 i))])
+            (go off2**))]
+         [else (let* ([off2* (write-tag! buf2 off Node)])
+                 (go off2*))])]))
+  ;(disassemble go)
+  (go off1))
+
+
+(define (sumtree buf off)
+  (let loop ([off off])
+    ;(displayln off)
+    (define t (read-tag*! buf off))
+    (define off* (add1 off))
+    ;(displayln off*)
+    (cond
+     [(tag=? t Leaf)
+      (let*-values ([(i) (read-int64*! buf off*)])
+        (values i (add1 off*)))]
+     [else (let*-values ([(sum1 off**) (loop off*)]
+                         ;[(_) (displayln off**)]
+                         [(sum2 off***) (loop off**)])
+             (values (+ sum1 sum2) off***))])))
+
+
+
 ;; ----------------------------------------
 
 (define-values (tr-buf tr-off) (new-buffer (treesize depth)))
 (define tr-off* (filltree! tr-buf tr-off depth))
+
+(sumtree tr-buf tr-off)
 
 (printf "Filled buffer of size ~a\n" (buffer-size tr-buf tr-off*))
 

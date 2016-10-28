@@ -22,8 +22,10 @@ ghc: treebench_ghc_strict.exe treebench_ghc_lazy.exe treebench_ghc_packed.exe
 # treebench_rust_packed.exe
 
 # Match whichever version the docker image is using:
-GHC = stack --install-ghc --resolver=lts-7.1 exec ghc -- -rtsopts -threaded
-# GHC = stack --install-ghc --resolver=lts-6.19 exec ghc --
+RESOLVER=lts-6.23
+# RESOLVER=lts-7.1
+
+GHC = stack --install-ghc --resolver=$(RESOLVER) exec ghc -- -rtsopts -threaded
 
 # CC = gcc
 # CC = clang
@@ -107,6 +109,7 @@ treebench.class: treebench.java
 # ==============================================================================
 
 DEPTH=20
+DEFAULT_ITERS=17
 
 run_small:
 	$(MAKE) DEPTH=5 run_all
@@ -114,7 +117,7 @@ run_small:
 # TODO: replace with an hsbencher harness / Criterion:
 run_all: all
 	./treebench_mlton.exe       $(DEPTH)
-	./treebench_ghc_strict.exe  $(DEPTH)
+	./treebench_ghc_strict.exe  seq $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_ghc_lazy.exe    $(DEPTH)
 	./treebench_ocaml.exe       $(DEPTH)
 	./treebench_rust.exe        $(DEPTH)
@@ -127,8 +130,6 @@ run_all: all
 	$(MAKE) run_java
 
 #	./treebench_rust_sys_alloc.exe $(DEPTH) 
-
-DEFAULT_ITERS=17
 
 run_chez:
 	scheme --script treebench.ss $(DEPTH) $(DEFAULT_ITERS)
@@ -146,4 +147,3 @@ clean:
 	rm -f *.exe *.o *.hi treebench treebench_lazy *.cmi *.cmo *.cmx
 
 .PHONY: all clean ghc run_chez run_java run_all run_small c ghc
-
