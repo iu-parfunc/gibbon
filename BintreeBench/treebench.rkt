@@ -19,9 +19,19 @@
             (add1-tree (cdr tr)))
       (unsafe-fx+ 1 tr)))
 
-(define (bench tr n)
+(define (sum-tree tr)
+  (if (pair? tr)
+      (+ (sum-tree (car tr))
+         (sum-tree (cdr tr)))
+      tr))
+
+
+(define (bench n)
+  (define tr (build-tree n))
+  (displayln (sum-tree tr))
   (collect-garbage #;'major)
-  (time (add1-tree tr)))
+  (define tr* (time (add1-tree tr)))
+  (displayln (sum-tree tr*)))
 
 (define-values (size iters)
   (match (current-command-line-arguments)
