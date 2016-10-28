@@ -19,7 +19,7 @@ else
 fi
 
 # ----------------------------------------
-cd $top/PackedTreesFormal
+cd $top/TreeLang
 if [ "$DOCKER" == "1"]; then
     STACKARG="--docker"
     stack docker pull
