@@ -1,2 +1,9 @@
 .stack-work
 .git
+expanded_racket*
+racket_expanded*.tgz
+.#*
+*.exe
+*.o
+*~
+
