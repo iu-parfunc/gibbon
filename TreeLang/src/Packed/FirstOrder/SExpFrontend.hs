@@ -13,6 +13,7 @@ module Packed.FirstOrder.SExpFrontend where
 
 import Data.Text as T
 import Data.List as L
+import Data.Map as M
 import Data.Text.IO (readFile)
 import System.Environment
 import Text.Parsec 
@@ -88,7 +89,7 @@ parseTreeLang ses = go ses [] [] Nothing
     case xs of
      [] -> return $ Prog (fromListDD dds) (fromListFD fds) mn
      (RSList (RSAtom (HSIdent "data"): RSAtom (HSIdent tycon) : cs) : rst) ->
-         go rst (DDef (toVar tycon) (L.map docase cs) : dds) fds mn
+         go rst (DDef (toVar tycon) (L.map docasety cs) : dds) fds mn
      (RSList [RSAtom (HSIdent "define"), funspec, ":", retty, bod] : rst)
         | RSList (RSAtom (HSIdent name) : args) <- funspec
         -> do
@@ -139,21 +140,76 @@ getSym :: RichSExpr HaskLikeAtom -> Var
 getSym (RSAtom (HSIdent id)) = toVar id
 getSym s = error $ "expected identifier sexpr, got: "++prnt s
 
-docase :: Sexp -> (Constr,[Ty])
-docase s = 
+docasety :: Sexp -> (Constr,[Ty])
+docasety s = 
   case s of
     (RSList ((RSAtom (HSIdent id)) : tys)) -> (toVar id, L.map typ tys)
     _ -> error$ "Badly formed variant of datatype:\n "++prnt s
 
 exp :: Sexp -> L1.Exp
 exp se =
+ -- trace ("\n ==> Processing Exp:\n  "++prnt se)  $ 
  case se of
-   RSList ["+",e1,e2] -> PrimAppE AddP [exp e1, exp e2]
+   RSAtom (HSIdent v) -> VarE (toVar v)
+   RSAtom (HSInt n)  -> LitE (fromIntegral n)
+
+   RSList [RSAtom (HSIdent "error"),arg] -> 
+      case arg of
+        RSAtom (HSString str) -> PrimAppE (ErrorP (T.unpack str)) []
+        _ -> error$ "bad argument to 'error' primitive: "++prnt arg
+
+   RSList [RSAtom (HSIdent "time"),arg] -> (TimeIt (exp arg))
+   
+   RSList [RSAtom (HSIdent "let"), RSList bnds, bod] -> 
+     mkLets (L.map letbind bnds) (exp bod) 
+
+   RSList (RSAtom (HSIdent "case"): scrut: cases) -> 
+     CaseE (exp scrut) (M.fromList $ L.map docase cases)
+
+   RSList (RSAtom (HSIdent p) : ls) | isPrim p -> PrimAppE (prim p) $ L.map exp ls
+
+   RSList (RSAtom (HSIdent rator):rands) -> 
+     let app = AppE (toVar rator)
+     in case rands of   
+         [] -> app (MkProdE [])
+         [rand] -> app (exp rand)
+         _ -> app (MkProdE (L.map exp rands))
+
    _ -> error $ "Expression form not handled (yet):\n  "++ 
-               sdoc se ++ "\n"++ prnt se
+               sdoc se ++ "\nMore concisely:\n  "++ prnt se
 --   RSList
 
+-- | One case of a case expression
+docase :: Sexp -> (Constr, ([Var], Exp))
+docase s = 
+  case s of
+    RSList [ RSList (RSAtom (HSIdent con):args)
+           , rhs ]
+      -> (toVar con, (L.map getSym args, exp rhs))
+    _ -> error$ "bad clause in case expression\n  "++prnt s
 
+mkLets :: [(Var, Ty, Exp)] -> Exp -> Exp
+mkLets [] bod = bod
+mkLets (a:b) bod = LetE a (mkLets b bod)
+
+letbind :: Sexp -> (Var,Ty,Exp)
+letbind s = 
+  case s of
+   RSList [RSAtom (HSIdent vr), RSAtom (HSIdent ":"),
+           ty, rhs]
+     -> (toVar vr, typ ty, exp rhs)
+   _ -> error $ "Badly formed let binding:\n  "++prnt s
+
+isPrim :: Text -> Bool
+isPrim p = L.elem p ["+","-","*"]
+
+-- FIXME: this mapping should only be stored in one place.
+prim :: Text -> Prim
+prim t = case t of
+           "+" -> AddP
+           "-" -> SubP
+           "*" -> MulP
+           _   -> error$ "Internal error, this is not a primitive: "++show t
 
 
 main :: IO ()
@@ -169,7 +225,7 @@ main = do
   putStrLn "Result:"
   case res of
      Left err -> error err
-     Right ls -> do mapM_ (\x -> putStrLn$"DECODED: "++show x) ls
+     Right ls -> do mapM_ (\x -> putStrLn$"DECODED: "++prnt x) ls
                     putStrLn "Converted:"
                     putStrLn $ sdoc $ fst $ runSyM 0 $ parseTreeLang ls
   return ()

@@ -52,11 +52,13 @@ data Exp = VarE Var
          | CaseE Exp (M.Map Constr ([Var], Exp))
            -- ^ Case on a PACKED datatype.
          | MkPackedE Constr [Exp]
+         | TimeIt Exp
   deriving (Read,Show,Eq,Ord, Generic)
 
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | DictInsertP -- ^ takes k,v,dict
           | DictLookupP -- ^ takes k dict, errors if absent
+          | ErrorP String -- ^ crash and issue a static error message
   deriving (Read,Show,Eq,Ord, Generic)
 
 instance Out Prim
@@ -207,3 +209,4 @@ exadd1Bod =
                               [ AppE "add1" (VarE "x")
                               , AppE "add1" (VarE "y")]))
       ]
+
