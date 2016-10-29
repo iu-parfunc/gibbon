@@ -10,6 +10,7 @@
 
 module Packed.FirstOrder.L1_Source
     ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), Ty(..), Prim(..)
+    , voidTy
     , freeVars, subst
     , add1Prog
     )
@@ -79,7 +80,9 @@ data Ty = IntTy
           -- ^ We allow built-in dictionaries from symbols to a value type.
   deriving (Show, Read, Ord, Eq, Generic)
 
-           
+voidTy :: Ty
+voidTy = ProdTy []
+                      
 
 --------------------------------------------------------------------------------
 

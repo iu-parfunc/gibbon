@@ -21,7 +21,7 @@ module Packed.FirstOrder.Common
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupDataCon
          -- * Misc
-       , (#), fragileZip
+       , (#), fragileZip, sdoc
        ) where 
 
 import Data.Maybe (catMaybes)
@@ -168,3 +168,5 @@ fragileZip (a:as) (b:bs) = (a,b) : fragileZip as bs
 fragileZip as [] = error$ "fragileZip: right ran out, while left still has: "++show as
 fragileZip [] bs = error$ "fragileZip: left ran out, while right still has: "++show bs
 
+sdoc :: Out a => a -> String
+sdoc = show . doc                   

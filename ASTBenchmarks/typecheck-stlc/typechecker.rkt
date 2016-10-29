@@ -1,4 +1,4 @@
-#lang s-exp "../TreeLang/treelang.rkt"
+#lang s-exp "../../TreeLang/treelang.rkt"
 
 ;; use structs/data instead of sexp
 (provide typecheck-expr
