@@ -10,8 +10,8 @@ import Packed.FirstOrder.SExpFrontend (parseFile)
 -- import Packed.FirstOrder.HaskellFrontend (parseFile)
 import Packed.FirstOrder.L1_Source hiding (Prog)
 import qualified Packed.FirstOrder.L1_Source as L1 
-import Packed.FirstOrder.LTraverse as L2 (inferProg, cursorize, Prog)
-import Packed.FirstOrder.Target  as L3 (mkProgram,Prog)
+import Packed.FirstOrder.LTraverse as L2 (inferEffects, cursorize, Prog)
+import Packed.FirstOrder.Target  as L3 (codegenProg,Prog)
 import System.FilePath (replaceExtension)
 
 ------------------------------------------------------------
@@ -63,14 +63,14 @@ compileSExpFile fp =
      let (str,_) = runSyM cnt $ do 
                      l1b <- freshNames l1
                      l1c <- flatten  l1b
-                     l2  <- inferProg l1c
+                     l2  <- inferEffects l1c
                      mt  <- findMissingTraversals l2
                      l2b <- addTraversals mt l2
                      l2c <- addCopies l2b
                      l2d <- lowerCopiesAndTraversals l2c
                      l2e <- cursorize l2d
-                     _l3 <- lower l2e
-                     return (mkProgram [] "FIXME")
+                     l3  <- lower l2e
+                     return (codegenProg l3)
      writeFile (replaceExtension fp ".c") str
 
 lower :: L2.Prog -> SyM L3.Prog

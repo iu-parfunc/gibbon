@@ -11,7 +11,7 @@
 
 module Packed.FirstOrder.Target
     (Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..), Prog(..),
-     codegenFun, mkProgram,
+     codegenProg, codegenFun, mkProgram, writeProgram,
      -- Examples, temporary:
      exadd1, exadd1Tail, add1C, buildTreeC
     ) where
@@ -365,6 +365,12 @@ mkProgram fs fname = concat
     , pretty 80 (stack (map (ppr . codegenFun) fs))
     , pretty 80 (ppr (mkRuntimeFuns fname))
     ]
+
+-- | Slightly different entrypoint than mkProgram that enables a
+-- "main" expression.
+codegenProg :: Prog -> String
+codegenProg = error "codegenProg - FINISHME"
+
 
 writeProgram
   :: [FunDecl]

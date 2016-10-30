@@ -9,7 +9,7 @@
 
 module Packed.FirstOrder.LTraverse
     ( Prog(..), Ty(..), FunEnv, FunDef(..), Effect(..), ArrowTy(..)
-    , inferProg, inferEffects, cursorize
+    , inferEffects, inferFunDef, cursorize
     )
     where
 
@@ -156,8 +156,8 @@ annotateTy t =
     L1.ProdTy l -> ProdTy <$> mapM annotateTy l
     L1.SymDictTy v -> SymDictTy <$> annotateTy v
 
-inferProg :: L1.Prog -> SyM Prog
-inferProg (L1.Prog dd fds mainE) = do
+inferEffects :: L1.Prog -> SyM Prog
+inferEffects (L1.Prog dd fds mainE) = do
   finalFunTys <- fixpoint 1 fds (initialEnv fds)
   return $ Prog dd
            (M.intersectionWith (\ (C.FunDef nm (arg,_) _ bod) arrTy ->
@@ -169,7 +169,7 @@ inferProg (L1.Prog dd fds mainE) = do
    fixpoint :: Int -> OldFuns -> FunEnv -> SyM FunEnv
    fixpoint iter funs env =
     do effs' <- M.fromList <$>
-                mapM (\(k,v) -> (k,) <$> inferEffects (dd,env) v)
+                mapM (\(k,v) -> (k,) <$> inferFunDef (dd,env) v)
                      (M.toList funs)
        let env' = M.intersectionWith
                   (\ neweffs (ArrowTy as _ b) -> ArrowTy as neweffs b)
@@ -336,8 +336,8 @@ getLocVar Top = Nothing
 getLocVar l = error $"getLocVar: expected a single packed value location, got: "
                     ++show(doc l)
              
-inferEffects :: (DDefs L1.Ty,FunEnv) -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
-inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
+inferFunDef :: (DDefs L1.Ty,FunEnv) -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
+inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
     -- For this pass we don't need to know the output location:
     do argty' <- annotateTy argty -- Temp.
        let ArrowTy inTy _ outTy = fenv # name
@@ -488,7 +488,7 @@ extendEnv ((v,t):r) e =
 --------------------------------------------------------------------------------
 
 _exadd1 :: Prog
-_exadd1 = fst $ runSyM 0 $ inferProg L1.add1Prog
+_exadd1 = fst $ runSyM 0 $ inferEffects L1.add1Prog
 
 
 --------------------------------------------------------------------------------
