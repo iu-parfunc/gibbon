@@ -2,6 +2,8 @@
 {-# LANGUAGE DeriveGeneric #-}
 -- {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE StandaloneDeriving #-}
+-- {-# LANGUAGE DeriveAnyClass #-} -- Actually breaks Applicative SymM deriving!
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -29,6 +31,7 @@ module Packed.FirstOrder.Common
 import Data.Maybe (catMaybes)
 import Data.Char
 import Control.Monad.State
+import Control.DeepSeq (NFData)
 import Data.List as L
 import Data.Map as M
 import GHC.Generics
@@ -58,7 +61,7 @@ data Value a = VInt Int
   deriving (Read,Show,Eq,Ord,Generic)
 
 type ValEnv a = Map Var (Value a)
-
+    
 ------------------------------------------------------------
 
 -- Primitive for now:
@@ -72,6 +75,9 @@ data DDef a = DDef { tyName:: Var
                    -- , tyArgs:: [Var] -- ^ No polymorphism for now!
                    , dataCons :: [(Constr,[a])] }
   deriving (Read,Show,Eq,Ord, Functor, Generic)
+
+instance NFData a => NFData (DDef a) where
+  -- rnf DDef
 
 instance Out a => Out (DDef a)
 instance (Out k,Out v) => Out (Map k v) where
@@ -127,6 +133,9 @@ data FunDef ty ex = FunDef { funName  :: Var
                            , funRetTy :: ty
                            , funBody  :: ex }
   deriving (Read,Show,Eq,Ord, Generic, Functor)
+
+-- deriving
+instance (NFData t, NFData e) => NFData (FunDef t e) where  
 
 instance (Out a, Out b) => Out (FunDef a b)
     

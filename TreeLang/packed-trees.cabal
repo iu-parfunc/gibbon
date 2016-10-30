@@ -37,6 +37,7 @@ library
                 base >=4.8,
                 bytestring,
                 containers,
+                deepseq,
                 filepath,
                 GenericPretty,                
                 haskell-src-exts,

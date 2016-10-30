@@ -14,7 +14,8 @@ import Packed.FirstOrder.Target  as L3 (codegenProg,Prog)
 import System.FilePath (replaceExtension)
 import Text.PrettyPrint.GenericPretty
 import Control.Monad.State
-    
+import Control.DeepSeq
+import Control.Exception (evaluate)
 ------------------------------------------------------------
         
 import Data.Set as S
@@ -85,13 +86,14 @@ compileFile parser fp =
      dbgPrintLn lvl "Compiler pipeline starting, parsed program:"
      dbgPrintLn lvl sepline
      dbgPrintLn lvl $ sdoc l1
-     let pass :: Out b => String -> (a -> SyM b) -> a -> StateT Int IO b
+     let pass :: (Out b, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
          pass who fn x = do
-           cnt <- get
+           cnt <- get           
            let (y,cnt') = runSyM cnt (fn x)
            put cnt'
            lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":"
            lift$ dbgPrintLn lvl sepline
+           lift $ evaluate $ force y
            lift$ dbgPrintLn lvl $ sdoc y
            return y
            

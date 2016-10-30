@@ -1,6 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -15,6 +17,7 @@ module Packed.FirstOrder.LTraverse
     where
 
 import Control.Monad (when)
+import Control.DeepSeq
 import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
@@ -48,7 +51,7 @@ data Loc = Fixed Var -- ^ A rigid location, such as for an input or output field
          | Top    -- ^ Contradiction.  Locations couldn't unify.
          | Bottom -- ^ "don't know" or "don't care".  This is the
                   -- location for non-packed data.
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 instance Out Loc
 
 -- | This should be a semi-join lattice.
@@ -78,15 +81,15 @@ joins (a:b) = let (l,c) = joins b
 --   and arguments' locations.
 data Constraint = Eql Var Var
                 | Neq Var Var
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 instance Out Constraint
 
 -- Our type for functions grows to include effects.
 data ArrowTy t = ArrowTy t (Set Effect) t
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 data Effect = Traverse LocVar
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 instance Out Ty
 instance Out t => Out (ArrowTy t)
@@ -105,21 +108,21 @@ type FunEnv = M.Map Var (ArrowTy Ty)
 -- | L1 Types extended with abstract Locations
 data Ty = IntTy | SymTy | ProdTy [Ty] | SymDictTy Ty  
         | PackedTy { con :: Constr, loc :: LocVar }
-  deriving (Show, Read, Ord, Eq, Generic)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
            
 -- | Here we only change the types of FUNCTIONS:
 data Prog = Prog { ddefs    :: DDefs L1.Ty
                  , fundefs  :: NewFuns
                  , mainExp  :: Maybe L1.Exp
                  }
-  deriving (Show, Read, Ord, Eq, Generic)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 -- | A function definition with the function's effects.
 data FunDef = FunDef { funname :: Var
                      , funty   :: (ArrowTy Ty)
                      , funarg   :: Var
                      , funbod  :: L1.Exp }
-  deriving (Show, Read, Ord, Eq, Generic)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
 --------------------------------------------------------------------------------
 
 -- | We initially populate all functions with MAXIMUM effect signatures.
@@ -418,9 +421,9 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
              instantiateApp arrTy loc
         _ -> error$ "FINISHME: handle this rand: "++show rand
 
-     -- If rands are already trivial 
+     -- If rands are already trivial, no traversal effects can occur here.
      L1.PrimAppE _ rands -> trivs rands $          
-         return (S.empty, __)
+         return (S.empty, Bottom) -- All primitives operate on non-packed data.
                           
      -- If any sub-expression reaches a destination, we can reach the destination:
      L1.MkProdE ls -> do (_effs,_locs) <- unzip <$> mapM (exp env) ls
@@ -592,9 +595,8 @@ cursorize prg@Prog{fundefs} = -- ddefs, fundefs
     dbgTrace lvl ("Starting cursorize on "++show(doc fundefs)) $ do 
     -- Prog emptyDD <$> mapM fd fundefs <*> pure Nothing
 
-    -- fd' <- fd (fundefs # "copy")
-    -- return $ Prog emptyDD (M.singleton "copy" fd') Nothing
-    return prg
+    fds' <- mapM fd $ M.elems fundefs
+    return prg{ fundefs = M.fromList $ L.map (\f -> (funname f,f)) fds' }
  where
   fd :: FunDef -> SyM FunDef
   fd (f@FunDef{funname,funty,funarg,funbod}) = dbgTrace lvl ("Processing fundef: "++show(doc f)) $ do      
@@ -614,4 +616,5 @@ cursorize prg@Prog{fundefs} = -- ddefs, fundefs
     case e of
      L1.VarE v  -> return (__, env # v)
      L1.LitE  _ -> return (__, Bottom)
-
+     _ -> return (e,Top)
+     _ -> error $ "ERROR: cursorize: unfinished, needs to handle:\n "++sdoc e
