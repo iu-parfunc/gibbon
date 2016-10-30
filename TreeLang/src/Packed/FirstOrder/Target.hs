@@ -11,10 +11,11 @@
 -- generator for it.
 
 module Packed.FirstOrder.Target
-    (Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..), Prog(..),
-     codegenProg, codegenFun, mkProgram, writeProgram,
-     -- Examples, temporary:
-     exadd1, exadd1Tail, add1C, buildTreeC
+    ( Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..),
+      Alts(..), Prog(..),
+      codegenProg, codegenFun, mkProgram, writeProgram,
+      -- Examples, temporary:
+      exadd1, exadd1Tail, add1C, buildTreeC
     ) where
 
 --------------------------------------------------------------------------------
