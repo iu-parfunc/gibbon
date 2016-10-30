@@ -24,31 +24,38 @@
 // pack_ast   :: ast -> packed ast 
 // substitute :: packed ast -> packed ast
 
+#include <stdio.h>
 #include <stdbool.h>
 
 #define AST struct exp 
 #define LIST_DELIM '|'
 
 typedef enum {
-  PROG,
+  MKPROG,
   DEFINE_VALUES,
   DEFINE_SYNTAXES,
   EXPRESSION,
   VARREF,
-  PLAIN_LAMBDA,
+  LAMBDA,
   CASE_LAMBDA,
+  MKLAMBDACASE,
   IF,
   BEGIN,
   BEGIN0,
   LET_VALUES,
+  MKLVBIND,
   LETREC_VALUES,
-  SET,
+  SETBANG,
   QUOTE,
   QUOTE_SYNTAX,
+  QUOTE_SYNTAX_LOCAL,
+  INTLIT,
   WITH_CONTINUATION_MARK,
-  PLAIN_APP,
+  APP,
   TOP,
   VARIABLE_REFERENCE,
+  VARIABLE_REFERENCE_TOP,
+  VARIABLE_REFERENCE_NULL,
   F1,
   F2,
   F3
@@ -63,22 +70,12 @@ typedef struct exp {
     } prog;       
 
     struct {
-      char* flat;
-      int nests;
+      int n_syms;
       char** syms;
       AST* exp;
-    } def_vals;
+    } defs;
 
     struct {
-      char* flat;
-      int nests;
-      char** syms;
-      AST* exp;
-    } def_sytxs;
-
-    struct {
-      char* flat;
-      int nests;
       AST* exp;
     } expr;
 
@@ -87,15 +84,26 @@ typedef struct exp {
     } data;  // QUOTE, QUOTE_SYNTAX, QUOTE_SYNTAX, TOP, VARREF, VARIABLE_REFERENCE, F3
 
     struct {
+      int data;
+    } quote;
+
+    struct {
       AST* fmls;
       int n_exps;
       AST** exps;
-    } p_lambda;
+    } lambda;
 
     struct {
       int n_lams;
       AST** lams;
     } c_lambda;
+
+    struct {
+      int n_syms;
+      char** syms;
+      int n_exps;
+      AST** exps;
+    } mk_lambda;
 
     struct {
       AST* cond;
@@ -104,10 +112,15 @@ typedef struct exp {
     } iff; 
 
     struct {
-      bool begin0;
       int n_exps;
       AST** exps;
     } begin;
+
+    struct {
+      AST* exp;
+      int n_exps;
+      AST** exps;
+    } begin0;
 
     struct {
       bool letrec;
@@ -118,12 +131,13 @@ typedef struct exp {
     } let;
 
     struct {
-      AST* fml;
+      int n_syms;
+      char** syms;
       AST* exp;       
     } binder;
 
     struct {
-      AST* fml; 
+      char* sym; 
       AST* exp;
     } set;
 
@@ -148,5 +162,6 @@ typedef struct exp {
 
 // AST operations
 ast_t* build_ast(void* parse_tree);
+void print_ast(ast_t* ast, FILE* fp);
 
 #endif /* _AST_H_ */

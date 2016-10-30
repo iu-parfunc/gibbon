@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -22,9 +23,10 @@ import Data.Set as S
 import Data.List as L
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
+import Control.DeepSeq (NFData)
 
 --------------------------------------------------------------------------------
-
+ 
 -- | Complete programs include datatype definitions:
 --
 -- For evaluating a complete program, main's type will be an Int or a
@@ -35,7 +37,7 @@ data Prog = Prog { ddefs    :: DDefs Ty
                  , fundefs  :: FunDefs Ty Exp
                  , mainExp  :: Maybe Exp
                  }
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 
 -- | The source language.  It has pointer based sums and products, as
@@ -54,14 +56,14 @@ data Exp = VarE Var
            -- ^ Case on a PACKED datatype.
          | MkPackedE Constr [Exp]
          | TimeIt Exp
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | EqP         -- ^ Equality on scalar types (int, sym, bool)
           | DictInsertP -- ^ takes k,v,dict
           | DictLookupP -- ^ takes k dict, errors if absent
           | ErrorP String -- ^ crash and issue a static error message
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 instance Out Prim
 instance Out Ty
@@ -83,7 +85,7 @@ data Ty = IntTy
         | SymDictTy Ty  -- ^ A map from SymTy to Ty
         | Packed Constr -- ^ No type arguments to TyCons for now.
           -- ^ We allow built-in dictionaries from symbols to a value type.
-  deriving (Show, Read, Ord, Eq, Generic)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 voidTy :: Ty
 voidTy = ProdTy []

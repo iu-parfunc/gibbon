@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 -- | The compiler pipeline, assembled from several passes.
 
 module Packed.FirstOrder.Compiler
@@ -9,12 +10,16 @@ import Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import qualified Packed.FirstOrder.HaskellFrontend as HS
 import qualified Packed.FirstOrder.L1_Source as L1 
-import Packed.FirstOrder.LTraverse as L2 (inferEffects, cursorize, Prog)
-import Packed.FirstOrder.Target  as L3 (codegenProg,Prog)
+import Packed.FirstOrder.LTraverse (inferEffects, Prog(..))
+import Packed.FirstOrder.Passes.Cursorize (cursorize, lower)
+import qualified Packed.FirstOrder.LTraverse as L2
+import Packed.FirstOrder.Target (codegenProg,Prog)
+import qualified Packed.FirstOrder.Target as L3 
 import System.FilePath (replaceExtension)
 import Text.PrettyPrint.GenericPretty
 import Control.Monad.State
-    
+import Control.DeepSeq
+import Control.Exception (evaluate)
 ------------------------------------------------------------
         
 import Data.Set as S
@@ -56,11 +61,6 @@ addCopies p = pure p
 lowerCopiesAndTraversals :: L2.Prog -> SyM L2.Prog
 lowerCopiesAndTraversals p = pure p
 
--- | Convert into the target language.  This does not make much of a
--- change, but it checks the changes that have already occurred.
-lower :: L2.Prog -> SyM L3.Prog
-lower = error "FINISHME"
-
 
 --------------------------------------------------------------------------------
                              
@@ -85,13 +85,14 @@ compileFile parser fp =
      dbgPrintLn lvl "Compiler pipeline starting, parsed program:"
      dbgPrintLn lvl sepline
      dbgPrintLn lvl $ sdoc l1
-     let pass :: Out b => String -> (a -> SyM b) -> a -> StateT Int IO b
+     let pass :: (Out b, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
          pass who fn x = do
-           cnt <- get
+           cnt <- get           
            let (y,cnt') = runSyM cnt (fn x)
            put cnt'
            lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":"
            lift$ dbgPrintLn lvl sepline
+           lift $ evaluate $ force y
            lift$ dbgPrintLn lvl $ sdoc y
            return y
            

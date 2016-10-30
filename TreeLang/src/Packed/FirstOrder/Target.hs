@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE QuasiQuotes        #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TemplateHaskell    #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -18,7 +19,7 @@ module Packed.FirstOrder.Target
 
 --------------------------------------------------------------------------------
 
--- import GHC.Word
+import Control.DeepSeq
 import Data.List (nub)
 import Data.Word (Word8)
 
@@ -38,7 +39,7 @@ import Prelude hiding (init)
 -- * AST definition
 
 data Prog = FINISHME_FINISHME
-  deriving (Show, Read, Ord, Eq, Generic) 
+  deriving (Show, Read, Ord, Eq, Generic, NFData) 
 
 instance Out Prog
           
@@ -49,7 +50,7 @@ data Triv
     = VarTriv Var
     | IntTriv Int
     | TagTriv Tag
-  deriving (Show, Read, Ord, Eq, Generic)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 -- | Switch alternatives.
 data Alts
@@ -57,7 +58,7 @@ data Alts
       -- ^ Casing on tags.
   | IntAlts [(Int, Tail)]
       -- ^ Casing on integers.
-  deriving (Show, Read, Ord, Eq, Generic)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 data Tail
     = RetValsT [Triv] -- ^ Only in tail position, for returning from a function.
@@ -74,7 +75,7 @@ data Tail
     | Switch Triv Alts (Maybe Tail)
     -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
-  deriving (Show, Read, Ord, Eq, Generic)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 data Ty
     = IntTy
@@ -85,7 +86,7 @@ data Ty
     | ProdTy [Ty]
     | SymDictTy Ty
       -- ^ We allow built-in dictionaries from symbols to a value type.
-  deriving (Show, Read, Ord, Eq, Generic)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 data Prim
     = AddP
@@ -103,14 +104,14 @@ data Prim
     -- ^ Read one byte from the cursor and advance it.
     | ReadInt
       -- ^ Read an 8 byte Int from the cursor and advance.
-  deriving (Show, Read, Ord, Eq, Generic)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 data FunDecl = FunDecl
   { funName  :: Var
   , funArgs  :: [(Var,Ty)]
   , funRetTy :: Ty
   , funBody  :: Tail
-  } deriving (Show, Read, Ord, Eq, Generic)
+  } deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 --------------------------------------------------------------------------------
 -- * C codegen

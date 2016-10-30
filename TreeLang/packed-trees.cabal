@@ -18,6 +18,7 @@ library
                     Packed.FirstOrder.Common
                     Packed.FirstOrder.L1_Source,
                     Packed.FirstOrder.LTraverse
+                    Packed.FirstOrder.Passes.Cursorize
                     Packed.FirstOrder.HaskellFrontend,
                     Packed.FirstOrder.SExpFrontend,
                     Packed.FirstOrder.Target
@@ -37,6 +38,7 @@ library
                 base >=4.8,
                 bytestring,
                 containers,
+                deepseq,
                 filepath,
                 GenericPretty,                
                 haskell-src-exts,
@@ -51,8 +53,7 @@ library
                 
   hs-source-dirs:      src
   default-language:    Haskell2010
-  ghc-options:         -Wall
-
+  ghc-options:         -Wall -fdefer-typed-holes
   
 executable packed-trees
   hs-source-dirs:      execs
