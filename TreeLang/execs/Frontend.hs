@@ -30,7 +30,7 @@ main = do
            putStrLn "  Takes either a .hs or a .sexp input file."
            exitFailure
 
--- run = error "Reenable me!!"                
+
 run :: FilePath -> IO ()
 run path =
     fmap parse (readFile path) >>= \case

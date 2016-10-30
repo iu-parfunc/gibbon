@@ -98,13 +98,15 @@ lookupDataCon dds con =
           ++", in datatypes:\n  "++show(doc dds)
 
 insertDD :: DDef a -> DDefs a -> DDefs a
-insertDD d = M.insert (tyName d) d 
+insertDD d = M.insertWith err (tyName d) d 
+  where 
+   err = error $ "insertDD: data definition with duplicate name: "++show (tyName d)
 
 emptyDD :: DDefs a
 emptyDD  = M.empty
 
 fromListDD :: [DDef a] -> DDefs a
-fromListDD = L.foldr (insertDD) emptyDD 
+fromListDD = L.foldr insertDD M.empty 
 
              
 -- Fundefs
@@ -123,10 +125,12 @@ data FunDef ty ex = FunDef { funName  :: Var
 instance (Out a, Out b) => Out (FunDef a b)
     
 insertFD :: FunDef t e -> FunDefs t e -> FunDefs t e
-insertFD d = M.insert (funName d) d 
+insertFD d = M.insertWith err (funName d) d 
+  where
+   err = error $ "insertFD: function definition with duplicate name: "++show (funName d)
     
 fromListFD :: [FunDef t e] -> FunDefs t e
-fromListFD = L.foldr (insertFD) M.empty
+fromListFD = L.foldr insertFD M.empty
 
     
 -- Gensym monad:

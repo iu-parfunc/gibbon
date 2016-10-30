@@ -257,7 +257,9 @@ main = do
   _ <- parseFile file
   return ()
 
-parseFile :: FilePath -> IO L1.Prog
+
+
+parseFile :: FilePath -> IO (L1.Prog, Int)
 parseFile file = do
   txt    <- fmap bracketHacks $
             -- fmap stripHashLang $
@@ -271,9 +273,6 @@ parseFile file = do
      Left err -> error err
      Right ls -> do mapM_ (\x -> putStrLn$"DECODED: "++prnt x) ls
                     putStrLn "Converted:"
-                    let final = fst $ runSyM 0 $ parseSExp ls
+                    let (final,cnt) = runSyM 0 $ parseSExp ls
                     putStrLn $ sdoc final
-                    return final
-
-
-
+                    return (final,cnt)

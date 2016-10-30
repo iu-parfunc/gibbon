@@ -10,8 +10,8 @@
 -- generator for it.
 
 module Packed.FirstOrder.Target
-    (Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..),
-     codegenFun,
+    (Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..), Prog(..),
+     codegenFun, mkProgram,
      -- Examples, temporary:
      exadd1, exadd1Tail, add1C, buildTreeC
     ) where
@@ -37,6 +37,8 @@ import Prelude hiding (init)
 
 --------------------------------------------------------------------------------
 -- * AST definition
+
+data Prog = FINISHME_FINISHME
 
 type Var = String
 type Tag = Word8

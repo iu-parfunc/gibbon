@@ -21,6 +21,7 @@ library
                     Packed.FirstOrder.HaskellFrontend,
                     Packed.FirstOrder.SExpFrontend,
                     Packed.FirstOrder.Target
+                    Packed.FirstOrder.Compiler
 
 -- First attempt, slated for removal:
                     -- Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate,
@@ -36,7 +37,8 @@ library
                 base >=4.8,
                 bytestring,
                 containers,
-                GenericPretty,
+                filepath,
+                GenericPretty,                
                 haskell-src-exts,
                 language-c-quote,
                 mainland-pretty,
