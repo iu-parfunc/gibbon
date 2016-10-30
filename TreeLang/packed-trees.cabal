@@ -19,7 +19,9 @@ library
                     Packed.FirstOrder.L1_Source,
                     Packed.FirstOrder.LTraverse
                     Packed.FirstOrder.HaskellFrontend,
+                    Packed.FirstOrder.SExpFrontend,
                     Packed.FirstOrder.Target
+                    Packed.FirstOrder.Compiler
 
 -- First attempt, slated for removal:
                     -- Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate,
@@ -31,32 +33,40 @@ library
   other-extensions:    DeriveDataTypeable
 
   build-depends:
-    aeson,
-    base >=4.8,
-    bytestring,
-    containers,
-    GenericPretty,
-    haskell-src-exts,
-    language-c-quote,
-    mtl,
-    srcloc,
-    mainland-pretty
-
+                aeson, 
+                base >=4.8,
+                bytestring,
+                containers,
+                filepath,
+                GenericPretty,                
+                haskell-src-exts,
+                language-c-quote,
+                mainland-pretty,
+                mtl,
+                parsec,
+                srcloc,
+                s-cargot,
+                text
+--                tslogger,
+                
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall
 
+  
 executable packed-trees
   hs-source-dirs:      execs
   main-is:             Frontend.hs
 
   build-depends:       base,
                        haskell-src-exts,
+                       filepath,
                        packed-trees
 
   default-language:    Haskell2010
-  ghc-options:         -Wall
+  ghc-options:         -Wall -fdefer-typed-holes
 
+  
 test-suite test-packed-trees
   type:                exitcode-stdio-1.0
   hs-source-dirs:      tests

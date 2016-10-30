@@ -22,7 +22,7 @@ main = $(defaultMainGenerator)
 
 t0 :: Set Effect -> Set Effect
 t0 eff = fst $ runSyM 0 $
-     inferEffects (M.empty,
+     inferFunDef (M.empty,
                    M.singleton "foo" (ArrowTy (PackedTy "K" "p")
                                               eff
                                               (PackedTy "K" "p")))
@@ -42,7 +42,7 @@ case_t0b = assertEqual "infinite loop cannot bootstrap with bad initial effect s
 -- output locations.
 t1 :: (Set Effect)
 t1 = fst $ runSyM 0 $
-     inferEffects (M.empty,
+     inferFunDef (M.empty,
                    M.fromList 
                    [("copy",(ArrowTy (PackedTy "K" "p")
                                                    (S.fromList [Traverse "p", Traverse "o"])
@@ -65,7 +65,7 @@ fooBoolInt = C.FunDef "foo" ("x", L1.Packed "Bool") L1.IntTy
         
 t2 :: (Set Effect)
 t2 = fst $ runSyM 0 $
-     inferEffects t2env
+     inferFunDef t2env
                   (fooBoolInt $
                     L1.CaseE (VarE "x") $ M.fromList 
                       [ ("True", ([],LitE 3))
@@ -77,14 +77,14 @@ case_t2 = assertEqual "Traverse a Bool with case"
            
 t2b :: (Set Effect)
 t2b = fst $ runSyM 0 $
-     inferEffects t2env (fooBoolInt $ LitE 33)
+     inferFunDef t2env (fooBoolInt $ LitE 33)
 
 case_t2b :: Assertion
 case_t2b = assertEqual "No traverse from a lit" S.empty t2b
                   
 t2c :: (Set Effect)
 t2c = fst $ runSyM 0 $
-     inferEffects t2env (fooBoolInt $ VarE "x")
+     inferFunDef t2env (fooBoolInt $ VarE "x")
 
 case_t2c :: Assertion
 case_t2c = assertEqual "No traverse from identity function" S.empty t2b
@@ -92,7 +92,7 @@ case_t2c = assertEqual "No traverse from identity function" S.empty t2b
 
 t3 :: Exp -> Set Effect
 t3 bod = fst $ runSyM 0 $
-     inferEffects ( fromListDD [DDef "SillyTree"
+     inferFunDef ( fromListDD [DDef "SillyTree"
                                   [ ("Leaf",[])
                                   , ("Node",[L1.Packed "SillyTree", L1.IntTy])]]
                   , M.fromList [("foo", ArrowTy (PackedTy "SillyTree" "p") S.empty IntTy)])
@@ -123,7 +123,7 @@ case_t3d = assertEqual "sillytree3: reference leftmost"
 
 t4 :: Exp -> Set Effect
 t4 bod = fst $ runSyM 0 $
-     inferEffects t4env
+     inferFunDef t4env
                   (C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy 
                     bod)
 
@@ -178,7 +178,7 @@ t4_prog = L1.Prog (fst t4env)
           Nothing
 
 t4p :: Prog
-t4p = fst $ runSyM 0 $ inferProg t4_prog
+t4p = fst $ runSyM 0 $ inferEffects t4_prog
 
 case_t4p :: Assertion
 case_t4p =
@@ -191,7 +191,7 @@ case_t4p2 :: Assertion
 case_t4p2 =
     assertEqual "A program which needs more than one fix-point iteration."
       (S.empty)
-      (let prg = fst $ runSyM 0 $ inferProg
+      (let prg = fst $ runSyM 0 $ inferEffects
                  (L1.Prog (fst t4env)
                         (fromListFD [C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy $
                           L1.CaseE (VarE "x") $ M.fromList 
@@ -206,7 +206,7 @@ case_t4p2 =
 
 -- Now the full copy-tree example:
 copy :: Prog
-copy = fst $ runSyM 0 $ inferProg
+copy = fst $ runSyM 0 $ inferEffects
      (L1.Prog (fst t4env)
       (fromListFD [C.FunDef "copy" ("x", L1.Packed "Tree") (L1.Packed "Tree") $
                    L1.CaseE (VarE "x") $ M.fromList 

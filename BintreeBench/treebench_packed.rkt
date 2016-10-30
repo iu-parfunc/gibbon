@@ -118,8 +118,7 @@
 (define-values (tr2-buf tr2-off) (new-buffer (treesize depth)))
 
 ; (printf "Input tree: ~a\n" tr)
-(require disassemble)
-  (disassemble add1tree!)
+; (require disassemble)  (disassemble add1tree!)
 (for ([i (in-range 10)])
   (let ([tr-off 0]
         [tr2-off 0])

@@ -4,7 +4,9 @@
          define let provide require if : for/list
 
          list and empty? error 
-         eq? car cdr cons Listof
+         eq? car cdr cons Listof         
+
+         time + * - 
          
          #%app #%module-begin #%datum quote
          #;(all-from-out typed/racket))

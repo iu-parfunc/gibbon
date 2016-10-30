@@ -21,7 +21,9 @@ module Packed.FirstOrder.Common
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupDataCon
          -- * Misc
-       , (#), fragileZip
+       , (#), fragileZip, sdoc
+         -- * Debugging/logging:
+       , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt
        ) where 
 
 import Data.Maybe (catMaybes)
@@ -32,8 +34,12 @@ import Data.Map as M
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
 import GHC.Stack (errorWithStackTrace)
+import Text.Printf
+import System.IO
+import System.Environment
+import System.IO.Unsafe (unsafePerformIO)
 import Debug.Trace
-    
+
 -- type CursorVar = Var       
 type Var    = String
 type Constr = String
@@ -98,13 +104,15 @@ lookupDataCon dds con =
           ++", in datatypes:\n  "++show(doc dds)
 
 insertDD :: DDef a -> DDefs a -> DDefs a
-insertDD d = M.insert (tyName d) d 
+insertDD d = M.insertWith err (tyName d) d 
+  where 
+   err = error $ "insertDD: data definition with duplicate name: "++show (tyName d)
 
 emptyDD :: DDefs a
 emptyDD  = M.empty
 
 fromListDD :: [DDef a] -> DDefs a
-fromListDD = L.foldr (insertDD) emptyDD 
+fromListDD = L.foldr insertDD M.empty 
 
              
 -- Fundefs
@@ -118,15 +126,17 @@ data FunDef ty ex = FunDef { funName  :: Var
                            , funArg   :: (Var,ty)
                            , funRetTy :: ty
                            , funBody  :: ex }
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, Functor)
 
 instance (Out a, Out b) => Out (FunDef a b)
-
+    
 insertFD :: FunDef t e -> FunDefs t e -> FunDefs t e
-insertFD d = M.insert (funName d) d 
+insertFD d = M.insertWith err (funName d) d 
+  where
+   err = error $ "insertFD: function definition with duplicate name: "++show (funName d)
     
 fromListFD :: [FunDef t e] -> FunDefs t e
-fromListFD = L.foldr (insertFD) M.empty
+fromListFD = L.foldr insertFD M.empty
 
     
 -- Gensym monad:
@@ -168,3 +178,50 @@ fragileZip (a:as) (b:bs) = (a,b) : fragileZip as bs
 fragileZip as [] = error$ "fragileZip: right ran out, while left still has: "++show as
 fragileZip [] bs = error$ "fragileZip: left ran out, while right still has: "++show bs
 
+sdoc :: Out a => a -> String
+sdoc = show . doc                   
+
+----------------------------------------------------------------------------------------------------
+-- DEBUGGING
+----------------------------------------------------------------------------------------------------
+
+theEnv :: [(String, String)]
+theEnv = unsafePerformIO getEnvironment
+       
+-- | Debugging flag shared by all modules.
+--   This is activated by setting the environment variable DEBUG=1..5
+dbgLvl :: Int
+dbgLvl = case L.lookup "DEBUG" theEnv of
+       Nothing  -> defaultDbg
+       Just ""  -> defaultDbg
+       Just "0" -> defaultDbg
+       Just s   ->
+         trace (" ! Responding to env Var: DEBUG="++s)$
+         case reads s of
+           ((n,_):_) -> n
+           [] -> error$"Attempt to parse DEBUG env var as Int failed: "++show s
+
+defaultDbg :: Int
+defaultDbg = 0
+
+-- | Print if the debug level is at or above a threshold.
+dbgPrint :: Int -> String -> IO ()
+dbgPrint lvl str = if dbgLvl < lvl then return () else do
+--    hPutStrLn stderr str
+    -- hPrintf stderr str 
+    -- hFlush stderr
+    printf str
+    hFlush stdout
+
+-- | Conditional version of Debug.Trace.trace
+dbgTrace :: Int -> String -> a -> a
+dbgTrace lvl msg val =
+    if   dbgLvl < lvl
+    then val
+    else trace msg val
+
+dbgTraceIt :: Show a => Int -> String -> a -> a
+dbgTraceIt lvl msg x = dbgTrace lvl (msg++": "++show x) x
+           
+dbgPrintLn :: Int -> String -> IO ()
+dbgPrintLn lvl str = dbgPrint lvl (str++"\n")

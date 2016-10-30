@@ -11,7 +11,8 @@ stack --version
 
 # ----------------------------------------
 cd $top/BintreeBench
-if [ "$DOCKER" == "1"]; then
+if [ "$DOCKER" == "1" ]; then
+    echo "Building under Docker."
     docker build . -t bintree-bench
 else
     make
@@ -20,7 +21,7 @@ fi
 
 # ----------------------------------------
 cd $top/TreeLang
-if [ "$DOCKER" == "1"]; then
+if [ "$DOCKER" == "1" ]; then
     STACKARG="--docker"
     stack docker pull
 else

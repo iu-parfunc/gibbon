@@ -10,8 +10,8 @@
 -- generator for it.
 
 module Packed.FirstOrder.Target
-    (Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..),
-     codegenFun,
+    (Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..), Prog(..),
+     codegenProg, codegenFun, mkProgram, writeProgram,
      -- Examples, temporary:
      exadd1, exadd1Tail, add1C, buildTreeC
     ) where
@@ -30,14 +30,18 @@ import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
                            cunit)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
--- import qualified Packed.FirstOrder.L1_Source as L1
 import Text.PrettyPrint.Mainland
-
+import Text.PrettyPrint.GenericPretty (Out)
 import Prelude hiding (init)
 
 --------------------------------------------------------------------------------
 -- * AST definition
 
+data Prog = FINISHME_FINISHME
+  deriving (Show, Read, Ord, Eq, Generic) 
+
+instance Out Prog
+          
 type Var = String
 type Tag = Word8
 
@@ -363,6 +367,12 @@ mkProgram fs fname = concat
     , pretty 80 (stack (map (ppr . codegenFun) fs))
     , pretty 80 (ppr (mkRuntimeFuns fname))
     ]
+
+-- | Slightly different entrypoint than mkProgram that enables a
+-- "main" expression.
+codegenProg :: Prog -> String
+codegenProg = error "codegenProg - FINISHME"
+
 
 writeProgram
   :: [FunDecl]
