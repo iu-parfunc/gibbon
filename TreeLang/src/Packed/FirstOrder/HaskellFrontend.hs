@@ -2,10 +2,12 @@
 {-# LANGUAGE TupleSections #-}
 
 module Packed.FirstOrder.HaskellFrontend
-  ( desugarModule
+  ( parseFile
+  -- * Everething else could remain internal:
+  , desugarModule
   , desugarExp
   , desugarTopType
-  , desugarType
+  , desugarType  
   ) where
 
 --------------------------------------------------------------------------------
@@ -15,7 +17,9 @@ import Data.Either (partitionEithers)
 import Data.Foldable (foldrM)
 import qualified Data.Map as M
 import Data.Maybe (catMaybes)
+import System.Exit (exitFailure)
 
+import Language.Haskell.Exts.Parser -- (parse)
 import Language.Haskell.Exts.Syntax as H
 import Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.Common
@@ -254,3 +258,20 @@ name_to_str (Symbol s) = s
 lit_to_int :: Literal -> Ds Int
 lit_to_int (H.Int i) = return (fromIntegral i) -- lossy conversion here
 lit_to_int l         = err ("Literal not supported: " ++ show l)
+
+----------------------------------------
+
+parseFile :: FilePath -> IO (L1.Prog, Int)
+parseFile path = do 
+    fmap parse (readFile path) >>= \case
+      ParseOk hs -> do
+        putStrLn "haskell-src-exts parsed OK. Desugaring..."
+        case desugarModule hs of
+          Right ast -> do
+            putStrLn "Desugared AST:"
+            print ast
+            return (ast,0)
+          Left er -> do
+            error ("Desugaring failed: " ++ er)
+      ParseFailed _ er -> do
+        error ("haskell-src-exts failed: " ++ er)

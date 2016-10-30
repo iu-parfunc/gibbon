@@ -6,9 +6,8 @@ module Packed.FirstOrder.Compiler
     where
 
 import Packed.FirstOrder.Common
-import Packed.FirstOrder.SExpFrontend (parseFile)
--- import Packed.FirstOrder.HaskellFrontend (parseFile)
-import Packed.FirstOrder.L1_Source hiding (Prog)
+import qualified Packed.FirstOrder.SExpFrontend as SExp
+import qualified Packed.FirstOrder.HaskellFrontend as HS
 import qualified Packed.FirstOrder.L1_Source as L1 
 import Packed.FirstOrder.LTraverse as L2 (inferEffects, cursorize, Prog)
 import Packed.FirstOrder.Target  as L3 (codegenProg,Prog)
@@ -58,8 +57,15 @@ lowerCopiesAndTraversals p = pure p
 -- | Compile foo.sexp and write the output C code to the corresponding
 -- foo.c file.
 compileSExpFile :: FilePath -> IO ()
-compileSExpFile fp =
-  do (l1,cnt) <- parseFile fp
+compileSExpFile = compileFile SExp.parseFile
+
+-- | Same as compileSExpFile except starting with a ".hs".
+compileHSFile :: FilePath -> IO ()
+compileHSFile = compileFile HS.parseFile
+                   
+compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
+compileFile parser fp =
+  do (l1,cnt) <- parser fp
      let (str,_) = runSyM cnt $ do 
                      l1b <- freshNames l1
                      l1c <- flatten  l1b
@@ -76,7 +82,4 @@ compileSExpFile fp =
 lower :: L2.Prog -> SyM L3.Prog
 lower = error "FINISHME"
 
--- | Same as compileSExpFile except starting with a ".hs".
-compileHSFile :: FilePath -> IO ()
-compileHSFile = error "FINISHME"
 

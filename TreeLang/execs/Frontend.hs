@@ -2,17 +2,10 @@
 
 module Main where
 
---------------------------------------------------------------------------------
-
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
 import System.FilePath
-import Language.Haskell.Exts.Parser
-import Packed.FirstOrder.HaskellFrontend
-
-import qualified Packed.FirstOrder.SExpFrontend as S
-
---------------------------------------------------------------------------------
+import Packed.FirstOrder.Compiler
 
 main :: IO ()
 main = do
@@ -20,29 +13,12 @@ main = do
     case args of
       [path] ->
           if takeExtension path == ".hs"
-          then run path
+          then compileHSFile path
           else if elem (takeExtension path) [".sexp",".rkt"]
-          then S.main
+          then compileSExpFile path
           else err
       _ -> err
  where
   err = do putStrLn "USAGE: packed-trees <FILE PATH>"
            putStrLn "  Takes either a .hs or a .sexp input file."
            exitFailure
-
-
-run :: FilePath -> IO ()
-run path =
-    fmap parse (readFile path) >>= \case
-      ParseOk hs -> do
-        putStrLn "haskell-src-exts parsed OK. Desugaring..."
-        case desugarModule hs of
-          Right ast -> do
-            putStrLn "Desugared AST:"
-            print ast
-          Left err -> do
-            putStrLn ("Desugaring failed: " ++ err)
-            exitFailure
-      ParseFailed _ err -> do
-        putStrLn ("haskell-src-exts failed: " ++ err)
-        exitFailure
