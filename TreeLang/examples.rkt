@@ -1,4 +1,4 @@
-#lang typed/racket
+#lang s-exp "treelang.rkt"
 
 (require "typechecker.rkt")
 
