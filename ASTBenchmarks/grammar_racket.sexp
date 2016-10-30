@@ -1,6 +1,13 @@
-#lang s-exp "../PackedTreesFormal/treelang.rkt"
+#lang s-exp "../TreeLang/treelang.rkt"
+
+(provide MKPROG DefineValues DefineSyntaxes Expression VARREF Lambda
+         CaseLambda If Begin Begin0 LetValues LetrecValues SetBang
+         Quote QuoteSyntax QuoteSyntaxLocal WithContinuationMark App
+         Top VariableReference VariableReferenceTop VariableReferenceNull
+         MKLVBIND MKLAMBDACASE INTLIT F1 F2 F3 Expr Toplvl Formals LVBIND LAMBDACASE)
 
 (data Prog [MKPROG (Listof Toplvl)])
+
 (data Toplvl
       [DefineValues   (Listof Sym) Expr]
       [DefineSyntaxes (Listof Sym) Expr]
@@ -8,7 +15,7 @@
 
 (data Expr
       (VARREF Sym)
-      (Lambda Formals (Listof Expr))
+      (Lambda Formals (Listof Expr))	
       (CaseLambda (Listof LAMBDACASE))
       (If Expr Expr Expr)
       (Begin (Listof Expr))
@@ -32,10 +39,10 @@
 (data LAMBDACASE (MKLAMBDACASE (Listof Sym) (Listof Expr)))  ;; (formals expr ...+) 
 
 ;; RRN: How far do we need to go here?
-(data DATUM 
+(data Datum
       (INTLIT Int)
       ; (SYMLIT Sym)
-      ; (CONS DATUM DATUM)
+      ; (CONS Datum Datum)
       ; (NULL)
       )
 
