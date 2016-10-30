@@ -11,6 +11,7 @@
 (data Toplvl
       [DefineValues   (Listof Sym) Expr]
       [DefineSyntaxes (Listof Sym) Expr]
+      [BeginTop (Listof Toplvl)]
       [Expression Expr])
 
 (data Expr
@@ -36,7 +37,7 @@
 
 (data LVBIND (MKLVBIND (Listof Sym) Expr))
 
-(data LAMBDACASE (MKLAMBDACASE (Listof Sym) (Listof Expr)))  ;; (formals expr ...+) 
+(data LAMBDACASE (MKLAMBDACASE Formals (Listof Expr)))  ;; (formals expr ...+) 
 
 ;; RRN: How far do we need to go here?
 (data Datum
