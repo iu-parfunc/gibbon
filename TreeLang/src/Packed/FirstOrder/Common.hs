@@ -32,7 +32,7 @@ import Data.Map as M
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
 import GHC.Stack (errorWithStackTrace)
-import Debug.Trace
+-- import Debug.Trace
     
 -- type CursorVar = Var       
 type Var    = String
@@ -118,10 +118,10 @@ data FunDef ty ex = FunDef { funName  :: Var
                            , funArg   :: (Var,ty)
                            , funRetTy :: ty
                            , funBody  :: ex }
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, Functor)
 
 instance (Out a, Out b) => Out (FunDef a b)
-
+    
 insertFD :: FunDef t e -> FunDefs t e -> FunDefs t e
 insertFD d = M.insert (funName d) d 
     

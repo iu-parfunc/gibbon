@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
@@ -9,10 +10,12 @@
 
 -- |  Parse an SExp representaton of our tree-walk language.
 
-module Packed.FirstOrder.SExpFrontend where
+module Packed.FirstOrder.SExpFrontend 
+       (parseFile, parseSExp, primMap, main) where
 
 import Data.Text as T
 import Data.List as L
+import Data.Set as S
 import Data.Map as M
 import Data.Text.IO (readFile)
 import System.Environment
@@ -22,7 +25,6 @@ import Text.PrettyPrint.GenericPretty
 import Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.Common 
 import Prelude hiding (readFile, exp)
-import Debug.Trace
 
 -- There are several options for s-expression parsing, including these
 -- packages on Hackage:
@@ -70,8 +72,8 @@ treelangParser =
     haskLikeParser
 
 -- Hack:
-stripHashLang :: Text -> Text
-stripHashLang txt =
+_stripHashLang :: Text -> Text
+_stripHashLang txt =
   if T.isPrefixOf "#lang" txt
   then snd $ T.break (== '\n') txt 
        -- (\c -> generalCategory c == LineSeparator)
@@ -81,10 +83,40 @@ bracketHacks :: Text -> Text
 bracketHacks = T.map $ \case '[' -> '('
                              ']' -> ')'
                              x   -> x
-                                    
-parseTreeLang :: [Sexp] -> SyM L1.Prog
-parseTreeLang ses = go ses [] [] Nothing
- where
+
+-- | Change regular applications into data constructor syntax.             
+tagDataCons :: DDefs Ty -> Exp -> Exp
+tagDataCons ddefs = go allCons
+  where 
+   allCons = S.fromList [ con
+                        | DDef{dataCons} <- M.elems ddefs
+                        , (con,_tys) <- dataCons ]
+   go cons ex = 
+     case ex of
+       AppE v (MkProdE ls) | S.member v cons -> MkPackedE v (L.map (go cons) ls)
+       AppE v e | S.member v cons -> MkPackedE v [go cons e]
+                | otherwise       -> AppE      v (go cons e)
+       LetE (v,t,rhs) bod -> 
+         let go' = if S.member v cons
+                      then go (S.delete v cons)
+                      else go cons
+         in LetE (v,t,go' rhs) (go' bod)
+       ------------boilerplate------------
+       VarE v          -> VarE v
+       LitE _          -> ex
+       PrimAppE p ls   -> PrimAppE p $ L.map (go cons) ls
+       ProjE i e  -> ProjE i (go cons e)
+       CaseE e ls -> CaseE (go cons e) (M.map (\(vs,er) -> (vs,go cons er)) ls)
+       MkProdE ls     -> MkProdE $ L.map (go cons) ls
+       MkPackedE k ls -> MkPackedE k $ L.map (go cons) ls
+       TimeIt e  -> TimeIt $ go cons e
+       IfE a b c -> IfE (go cons a) (go cons b) (go cons c)   
+
+parseSExp :: [Sexp] -> SyM L1.Prog
+parseSExp ses = 
+  do prog@Prog {ddefs} <- go ses [] [] Nothing
+     return $ mapExprs (tagDataCons ddefs) prog
+ where   
    go xs dds fds mn = 
     case xs of
      [] -> return $ Prog (fromListDD dds) (fromListFD fds) mn
@@ -100,9 +132,9 @@ parseTreeLang ses = go ses [] [] Nothing
                case args' of
                  []   -> (,voidTy,bod') <$> gensym "vd" 
                  [(a,t)] -> pure (a,t,bod')
-                 _    -> do vr <- gensym "tmp"
-                            let (vs,ts) = unzip args'
-                                ty = ProdTy ts
+                 _    -> do let (vs,ts) = unzip args'
+                            vr <- gensym (L.concat$ L.intersperse "_" vs)
+                            let ty = ProdTy ts
                                 newbod = tuplizeRefs vr vs bod'
                             return (vr,ty,newbod)
          -- Here we directly desugar multiple arguments into a tuple
@@ -162,6 +194,9 @@ exp se =
    
    RSList [RSAtom (HSIdent "let"), RSList bnds, bod] -> 
      mkLets (L.map letbind bnds) (exp bod) 
+     
+   RSList [RSAtom (HSIdent "if"), test, conseq, altern] -> 
+     IfE (exp test) (exp conseq) (exp altern)
 
    RSList (RSAtom (HSIdent "case"): scrut: cases) -> 
      CaseE (exp scrut) (M.fromList $ L.map docase cases)
@@ -201,20 +236,29 @@ letbind s =
    _ -> error $ "Badly formed let binding:\n  "++prnt s
 
 isPrim :: Text -> Bool
-isPrim p = L.elem p ["+","-","*"]
+isPrim p = S.member p (M.keysSet primMap)
 
--- FIXME: this mapping should only be stored in one place.
+primMap :: Map Text Prim
+primMap = M.fromList
+  [ ("+", AddP)
+  , ("-", SubP)
+  , ("*", MulP)
+  , ("eq?", EqP) 
+  ]
+
 prim :: Text -> Prim
-prim t = case t of
-           "+" -> AddP
-           "-" -> SubP
-           "*" -> MulP
-           _   -> error$ "Internal error, this is not a primitive: "++show t
-
+prim t = case M.lookup t primMap of
+           Just x -> x
+           Nothing -> error$ "Internal error, this is not a primitive: "++show t
 
 main :: IO ()
 main = do
   [file] <- getArgs
+  _ <- parseFile file
+  return ()
+
+parseFile :: FilePath -> IO L1.Prog
+parseFile file = do
   txt    <- fmap bracketHacks $
             -- fmap stripHashLang $
             readFile file
@@ -227,7 +271,9 @@ main = do
      Left err -> error err
      Right ls -> do mapM_ (\x -> putStrLn$"DECODED: "++prnt x) ls
                     putStrLn "Converted:"
-                    putStrLn $ sdoc $ fst $ runSyM 0 $ parseTreeLang ls
-  return ()
+                    let final = fst $ runSyM 0 $ parseSExp ls
+                    putStrLn $ sdoc final
+                    return final
+
 
 
