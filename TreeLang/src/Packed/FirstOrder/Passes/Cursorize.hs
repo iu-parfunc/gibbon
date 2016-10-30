@@ -98,5 +98,18 @@ lower L2.Prog{fundefs,ddefs,mainExp} =
    _ -> error "FINISHME"
  where
   exp :: L1.Exp -> L3.Tail
-  exp = undefined
-
+  exp ex = undefined
+{-      
+   case ex of
+    L1.VarE v          -> L1.VarE v
+    L1.LitE _          -> ex
+    L1.AppE v e        -> L1.AppE v (exp e)
+    L1.PrimAppE p ls   -> L1.PrimAppE p $ L.map exp ls
+    L1.LetE (v,t,rhs) bod -> L1.LetE (v,t,exp rhs) (exp bod)
+    L1.ProjE i e       -> L1.ProjE i (exp e)
+    L1.CaseE e ls      -> L1.CaseE (exp e) (M.map (\(vs,er) -> (vs,exp er)) ls)
+    L1.MkProdE ls      -> L1.MkProdE $ L.map exp ls
+    L1.MkPackedE k ls  -> L1.MkPackedE k $ L.map exp ls
+    L1.TimeIt e        -> L1.TimeIt $ exp e
+    L1.IfE a b c       -> L1.IfE (exp a) (exp b) (exp c)
+-}

@@ -19,6 +19,8 @@ module Packed.FirstOrder.Target
 
 --------------------------------------------------------------------------------
 
+-- import Packed.FirstOrder.L1_Source ()
+
 import Control.DeepSeq
 import Data.List (nub)
 import Data.Word (Word8)
@@ -32,13 +34,14 @@ import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import Text.PrettyPrint.Mainland
-import Text.PrettyPrint.GenericPretty (Out)
+import Text.PrettyPrint.GenericPretty (Out(..))
 import Prelude hiding (init)
 
 --------------------------------------------------------------------------------
 -- * AST definition
 
-data Prog = FINISHME_FINISHME
+data Prog = Prog { fundefs :: [FunDecl]
+                 , mainExp :: (Maybe Tail) }
   deriving (Show, Read, Ord, Eq, Generic, NFData) 
 
 instance Out Prog
@@ -51,6 +54,7 @@ data Triv
     | IntTriv Int
     | TagTriv Tag
   deriving (Show, Read, Ord, Eq, Generic, NFData)
+instance Out Triv
 
 -- | Switch alternatives.
 data Alts
@@ -59,7 +63,12 @@ data Alts
   | IntAlts [(Int, Tail)]
       -- ^ Casing on integers.
   deriving (Show, Read, Ord, Eq, Generic, NFData)
+instance Out Alts
 
+instance Out Word8 where
+  doc w = doc (fromIntegral w :: Int)
+  docPrec n w = docPrec n (fromIntegral w :: Int)
+    
 data Tail
     = RetValsT [Triv] -- ^ Only in tail position, for returning from a function.
     | LetCallT { binds  :: [(Var,Ty)],
@@ -76,6 +85,7 @@ data Tail
     -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
   deriving (Show, Read, Ord, Eq, Generic, NFData)
+instance Out Tail
 
 data Ty
     = IntTy
@@ -87,6 +97,8 @@ data Ty
     | SymDictTy Ty
       -- ^ We allow built-in dictionaries from symbols to a value type.
   deriving (Show, Read, Ord, Eq, Generic, NFData)
+
+instance Out Ty
 
 data Prim
     = AddP
@@ -105,13 +117,16 @@ data Prim
     | ReadInt
       -- ^ Read an 8 byte Int from the cursor and advance.
   deriving (Show, Read, Ord, Eq, Generic, NFData)
-
+instance Out Prim
+           
 data FunDecl = FunDecl
   { funName  :: Var
   , funArgs  :: [(Var,Ty)]
   , funRetTy :: Ty
   , funBody  :: Tail
   } deriving (Show, Read, Ord, Eq, Generic, NFData)
+
+instance Out FunDecl
 
 --------------------------------------------------------------------------------
 -- * C codegen
