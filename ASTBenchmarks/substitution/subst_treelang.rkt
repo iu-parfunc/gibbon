@@ -2,6 +2,12 @@
 
 (require "../grammar_racket.sexp")
 
+(define (subst-prog [old : Sym] [new : Sym] [prog : Prog]) : Prog
+  (case prog
+    [(MKPROG tops)
+     (MKPROG (for/list ([t : Toplvl tops])
+               (subst old new t)))]))
+
 (define (subst [old : Sym] [new : Sym] [e0 : Toplvl]) : Toplvl
   (top old new e0))
 
