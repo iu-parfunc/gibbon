@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -10,7 +11,8 @@
 
 module Packed.FirstOrder.L1_Source
     ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), Ty(..), Prim(..)
-    , freeVars, subst
+    , voidTy
+    , freeVars, subst, mapExprs
     , add1Prog
     )
     where
@@ -21,9 +23,10 @@ import Data.Set as S
 import Data.List as L
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
+import Control.DeepSeq (NFData)
 
 --------------------------------------------------------------------------------
-
+ 
 -- | Complete programs include datatype definitions:
 --
 -- For evaluating a complete program, main's type will be an Int or a
@@ -34,7 +37,7 @@ data Prog = Prog { ddefs    :: DDefs Ty
                  , fundefs  :: FunDefs Ty Exp
                  , mainExp  :: Maybe Exp
                  }
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 
 -- | The source language.  It has pointer based sums and products, as
@@ -43,20 +46,24 @@ data Exp = VarE Var
          | LitE Int
          | AppE Var Exp -- Only apply top-level / first-order functions
          | PrimAppE Prim [Exp]
-         | LetE (Var,Ty,Exp) Exp
-           -- ^ One binding at a time, but could bind a tuple for
-           -- mutual recursion.
+         | LetE (Var,Ty,Exp) Exp         
+          -- ^ One binding at a time, but could bind a tuple for
+          -- mutual recursion.
+         | IfE Exp Exp Exp
          | ProjE Int Exp
          | MkProdE [Exp]
          | CaseE Exp (M.Map Constr ([Var], Exp))
            -- ^ Case on a PACKED datatype.
          | MkPackedE Constr [Exp]
-  deriving (Read,Show,Eq,Ord, Generic)
+         | TimeIt Exp
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
+          | EqP         -- ^ Equality on scalar types (int, sym, bool)
           | DictInsertP -- ^ takes k,v,dict
           | DictLookupP -- ^ takes k dict, errors if absent
-  deriving (Read,Show,Eq,Ord, Generic)
+          | ErrorP String -- ^ crash and issue a static error message
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 instance Out Prim
 instance Out Ty
@@ -73,13 +80,22 @@ instance Out Prog
 data Ty = IntTy
         | SymTy -- ^ Symbols used in writing compiler passes.
                 --   It's an alias for Int, an index into a symbol table.
+        | BoolTy
         | ProdTy [Ty]   -- ^ An N-ary tuple 
         | SymDictTy Ty  -- ^ A map from SymTy to Ty
         | Packed Constr -- ^ No type arguments to TyCons for now.
           -- ^ We allow built-in dictionaries from symbols to a value type.
-  deriving (Show, Read, Ord, Eq, Generic)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
-           
+voidTy :: Ty
+voidTy = ProdTy []
+                      
+-- | Transform the expressions within a program.
+mapExprs :: (Exp -> Exp) -> Prog -> Prog
+mapExprs fn prg@Prog{fundefs,mainExp} = 
+  prg{ fundefs = fmap (fmap fn) fundefs
+     , mainExp = fmap fn mainExp }
+
 
 --------------------------------------------------------------------------------
 
@@ -98,6 +114,9 @@ freeVars ex =
                   (S.unions $ L.map (freeVars . snd) (M.elems ls))
     MkProdE ls     -> S.unions $ L.map freeVars ls
     MkPackedE _ ls -> S.unions $ L.map freeVars ls
+    TimeIt e -> freeVars e 
+    IfE a b c -> freeVars a `S.union` freeVars b `S.union` freeVars c
+
 
 subst :: Var -> Exp -> Exp -> Exp
 subst old new ex =
@@ -115,7 +134,9 @@ subst old new ex =
     CaseE e ls -> CaseE (go e) (M.map (\(vs,er) -> (vs,go er)) ls)
     MkProdE ls     -> MkProdE $ L.map go ls
     MkPackedE k ls -> MkPackedE k $ L.map go ls
-                      
+    TimeIt e  -> TimeIt $ go e
+    IfE a b c -> IfE (go a) (go b) (go c)
+
 
 {-
 -- | Promote a value to a term that evaluates to it.
@@ -204,3 +225,4 @@ exadd1Bod =
                               [ AppE "add1" (VarE "x")
                               , AppE "add1" (VarE "y")]))
       ]
+

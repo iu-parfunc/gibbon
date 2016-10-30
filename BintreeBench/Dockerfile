@@ -4,7 +4,7 @@ FROM fpco/stack-build:lts-6.23
 RUN apt-get update && apt-get -y install mlton ocaml-native-compilers gcc time
 
 # TODO: Check SHA like Nix does:
-RUN cd / && wget https://github.com/cisco/ChezScheme/archive/v9.4.tar.gz && \
+RUN cd / && wget -nv https://github.com/cisco/ChezScheme/archive/v9.4.tar.gz && \
     tar xf v9.4.tar.gz && rm -f v9.4.tar.gz
 
 RUN cd /ChezScheme-9.4/ && ./configure && time make install

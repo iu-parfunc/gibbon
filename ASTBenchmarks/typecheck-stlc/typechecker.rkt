@@ -1,4 +1,4 @@
-#lang s-exp "treelang.rkt"
+#lang s-exp "../../TreeLang/treelang.rkt"
 
 ;; use structs/data instead of sexp
 (provide typecheck-expr
@@ -7,12 +7,14 @@
 (data Type
       [Int_]
       [Bool_]
+      [NullT]
       [Lamt (Listof Type) Type])
 
 (data Param
       [P Expr Type])
 
 (data Expr
+      [Null]
       [S Sym]
       [N Int]
       [B Bool] ;; leaving out null for now
@@ -64,15 +66,23 @@
 
 (define (type-equal? [t1 : Type] [t2 : Type]) : Bool
   (case t1
+    [(NullT)
+     (case t2
+       [(NullT) #t]
+       [(Int_) #f]
+       [(Bool_) #f]
+       [(Lamt pt bt) #f])]
     [(Int_)
      (case t2
        [(Int_) #t]
        [(Bool_) #f]
+       [(NullT) #f]
        [(Lamt pt bt) #f])]
     [(Bool_)
      (case t2
        [(Bool_) #t]
        [(Int_) #f]
+       [(NullT) #f]
        [(Lamt pt bt) #f])]
     [(Lamt pt bt)
      (case t2
@@ -81,7 +91,8 @@
          (type-equal-list? pt pt2)
          (type-equal? bt bt2))]
        [(Int_) #f]
-       [(Bool_) #f])]))
+       [(Bool_) #f]
+       [(NullT) #f])]))
         
 
 ;; car/cdr will fail if they are not of same length. don't do error checking
@@ -95,6 +106,8 @@
 
 (define (typecheck [expr : Expr] [env : Env] ): Type
   (case expr
+    [(Null)
+     (NullT)]
     [(S sym)
      (lookup-env env sym)]
     [(N n)

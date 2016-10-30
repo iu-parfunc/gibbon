@@ -1,19 +1,26 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# OPTIONS_GHC -fdefer-typed-holes #-}
 
 -- | An intermediate language with an effect system that captures traversals.
 
 module Packed.FirstOrder.LTraverse
     ( Prog(..), Ty(..), FunEnv, FunDef(..), Effect(..), ArrowTy(..)
-    , inferProg, inferEffects, cursorize
+    , inferEffects, inferFunDef
+    -- * Utilities for dealing with the extended types:
+    , Loc(..)
+    , allLocVars, argtyToLoc, mangle, subloc
     )
     where
 
 import Control.Monad (when)
+import Control.DeepSeq
 import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
@@ -25,12 +32,13 @@ import Data.Map as M
 import Text.PrettyPrint.GenericPretty
 import Debug.Trace
 -- import GHC.Stack (errorWithStackTrace)
-
-traceIt :: Show a => String -> a -> a
-traceIt msg x = trace (msg++": "++show x) x
     
 --------------------------------------------------------------------------------
-    
+
+-- | Chatter level for this module:
+lvl :: Int
+lvl = 5
+
 -- Unchanged from L1, or we could go A-normal:
 -- data Exp =
 
@@ -46,7 +54,7 @@ data Loc = Fixed Var -- ^ A rigid location, such as for an input or output field
          | Top    -- ^ Contradiction.  Locations couldn't unify.
          | Bottom -- ^ "don't know" or "don't care".  This is the
                   -- location for non-packed data.
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 instance Out Loc
 
 -- | This should be a semi-join lattice.
@@ -76,15 +84,15 @@ joins (a:b) = let (l,c) = joins b
 --   and arguments' locations.
 data Constraint = Eql Var Var
                 | Neq Var Var
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 instance Out Constraint
 
 -- Our type for functions grows to include effects.
 data ArrowTy t = ArrowTy t (Set Effect) t
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 data Effect = Traverse LocVar
-  deriving (Read,Show,Eq,Ord, Generic)
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 instance Out Ty
 instance Out t => Out (ArrowTy t)
@@ -103,21 +111,21 @@ type FunEnv = M.Map Var (ArrowTy Ty)
 -- | L1 Types extended with abstract Locations
 data Ty = IntTy | SymTy | ProdTy [Ty] | SymDictTy Ty  
         | PackedTy { con :: Constr, loc :: LocVar }
-  deriving (Show, Read, Ord, Eq, Generic)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
            
 -- | Here we only change the types of FUNCTIONS:
 data Prog = Prog { ddefs    :: DDefs L1.Ty
                  , fundefs  :: NewFuns
                  , mainExp  :: Maybe L1.Exp
                  }
-  deriving (Show, Read, Ord, Eq, Generic)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 -- | A function definition with the function's effects.
 data FunDef = FunDef { funname :: Var
                      , funty   :: (ArrowTy Ty)
                      , funarg   :: Var
                      , funbod  :: L1.Exp }
-  deriving (Show, Read, Ord, Eq, Generic)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
 --------------------------------------------------------------------------------
 
 -- | We initially populate all functions with MAXIMUM effect signatures.
@@ -156,8 +164,8 @@ annotateTy t =
     L1.ProdTy l -> ProdTy <$> mapM annotateTy l
     L1.SymDictTy v -> SymDictTy <$> annotateTy v
 
-inferProg :: L1.Prog -> SyM Prog
-inferProg (L1.Prog dd fds mainE) = do
+inferEffects :: L1.Prog -> SyM Prog
+inferEffects (L1.Prog dd fds mainE) = do
   finalFunTys <- fixpoint 1 fds (initialEnv fds)
   return $ Prog dd
            (M.intersectionWith (\ (C.FunDef nm (arg,_) _ bod) arrTy ->
@@ -169,13 +177,13 @@ inferProg (L1.Prog dd fds mainE) = do
    fixpoint :: Int -> OldFuns -> FunEnv -> SyM FunEnv
    fixpoint iter funs env =
     do effs' <- M.fromList <$>
-                mapM (\(k,v) -> (k,) <$> inferEffects (dd,env) v)
+                mapM (\(k,v) -> (k,) <$> inferFunDef (dd,env) v)
                      (M.toList funs)
        let env' = M.intersectionWith
                   (\ neweffs (ArrowTy as _ b) -> ArrowTy as neweffs b)
                   effs' env
        if env == env'
-        then trace ("\n<== Fixpoint completed after iteration "++show iter++" ==>") $
+        then dbgTrace 4 ("\n<== Fixpoint completed after iteration "++show iter++" ==>") $
              return env
         else fixpoint (iter+1) funs env'
 
@@ -198,7 +206,7 @@ substTy mp t = go t
 -- | Apply a substitution to an effect set.                                   
 substEffs :: Map LocVar LocVar -> Set Effect -> Set Effect
 substEffs mp ef =
-    trace ("\n  Substituting in effects "++show(mp,ef)) $ 
+    dbgTrace 5 ("\n  Substituting in effects "++show(mp,ef)) $ 
     S.map (\(Traverse v) ->
                case M.lookup v mp of
                  Just v2 -> Traverse v2
@@ -232,9 +240,9 @@ instantiateApp :: ArrowTy Ty -> Loc -> SyM (Set Effect, Loc)
 instantiateApp arrty0 loc = do
     (ArrowTy inT effs outT) <- freshenArrowSchema arrty0
     let subst = zipTL inT loc 
-    trace ("\n  instantiateApp: Came up with subst: "++show subst) $
+    dbgTrace lvl ("\n  instantiateApp: Came up with subst: "++show subst) $
      return (substEffs subst effs,
-            traceIt "   instantiate result loc" $ rettyToLoc (substTy subst outT))
+            dbgTraceIt lvl "   instantiate result loc" $ rettyToLoc (substTy subst outT))
   where
    -- Question: when computing the return location, which variables are Fresh?
    -- Conversely, when would we need to use Fixed?
@@ -336,8 +344,8 @@ getLocVar Top = Nothing
 getLocVar l = error $"getLocVar: expected a single packed value location, got: "
                     ++show(doc l)
              
-inferEffects :: (DDefs L1.Ty,FunEnv) -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
-inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
+inferFunDef :: (DDefs L1.Ty,FunEnv) -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
+inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
     -- For this pass we don't need to know the output location:
     do argty' <- annotateTy argty -- Temp.
        let ArrowTy inTy _ outTy = fenv # name
@@ -355,7 +363,7 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
   -- We have one location for the destination, and another for each lexical binding.
   exp :: Env -> L1.Exp -> SyM (Set Effect, Loc)
   exp env e =
-    trace ("\nProcessing exp: "++show e++"\n  with env: "++show env) $
+    dbgTrace lvl ("\nProcessing exp: "++show e++"\n  with env: "++show env) $
     case e of
      -- QUESTION: does a variable reference count as traversing to the end?
      -- If so, the identity function has the traverse effect.
@@ -365,7 +373,7 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
      L1.CaseE e1 mp ->
       do (eff1,loc1) <- exp env e1
          (bools,effs,locs) <- unzip3 <$>
-                              mapM (caserhs loc1 env) (M.toList mp)
+                              mapM (caserhs env) (M.toList mp)
          -- Critical policy point!  We only get to the end if ALL
          -- branches get to the end.
          let end = if all id bools
@@ -376,12 +384,21 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
          let (locFin,cnstrts) = joins locs
 
          when (not (L.null cnstrts)) $
-           error $"FINISHME: process these constraints: "++show cnstrts
+           dbgTrace 1 ("Warning: FINISHME: process these constraints: "++show cnstrts) (return ())
                                 
-         return $ trace ("\n==>Results on subcases: "++show (doc(bools,effs,locs))) $
+         return $ dbgTrace lvl ("\n==>Results on subcases: "++show (doc(bools,effs,locs))) $
                 (S.union (S.union eff1 end)
                          (L.foldl1 S.intersection effs),
                  locFin)
+
+     L1.IfE a b c -> 
+         do (eff1,_loc1) <- exp env a
+            (eff2,loc2) <- exp env b
+            (eff3,loc3) <- exp env c             
+            return (S.union eff1 (S.intersection eff2 eff3),
+                    fst (join loc2 loc3))
+
+     L1.TimeIt e -> exp env e
 
      -- Construct output packed data.  We will always "scroll to the end" of 
      -- output values, so they are not interesting for this effect analysis.
@@ -390,13 +407,6 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
         do l <- freshLoc $ "mk"++k
            return (S.empty,l)
 
-     -- We need to reach a fixed point where we jointly infer effects
-     -- for all functions.
-     L1.AppE rat (L1.VarE rand) ->
-       do let loc   = env # rand
-          let arrTy = fenv # rat
-          instantiateApp arrTy loc
-
      -- Here we UNION the end-points that are reached in the RHS and the BOD:
      L1.LetE (v,_t,rhs) bod -> -- FIXME: change to let.
       do (reff,rloc) <- exp env rhs
@@ -404,11 +414,19 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
          (beff,bloc) <- exp env' bod         
          return (S.union beff reff, bloc)
 
-     L1.AppE _rat rand -> triv rand $ undefined
+     -- We need to reach a fixed point where we jointly infer effects
+     -- for all functions.
+     L1.AppE rat rand ->
+      case rand of
+        L1.VarE vr -> 
+          do let loc   = env # vr
+             let arrTy = fenv # rat
+             instantiateApp arrTy loc
+        _ -> error$ "FINISHME: handle this rand: "++show rand
 
-     -- If rands are already trivial 
+     -- If rands are already trivial, no traversal effects can occur here.
      L1.PrimAppE _ rands -> trivs rands $          
-         return (S.empty, undefined)
+         return (S.empty, Bottom) -- All primitives operate on non-packed data.
                           
      -- If any sub-expression reaches a destination, we can reach the destination:
      L1.MkProdE ls -> do (_effs,_locs) <- unzip <$> mapM (exp env) ls
@@ -418,12 +436,12 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
 --     L1.MkPacked k ls ->
 
   -- Returns true if this particular case reaches the end of the scrutinee.
-  caserhs :: Loc -> Env -> (Var,([Var],L1.Exp)) -> SyM (Bool, Set Effect, Loc)
-  caserhs _scrut env (_dcon,([],erhs)) = do
+  caserhs :: Env -> (Var,([Var],L1.Exp)) -> SyM (Bool, Set Effect, Loc)
+  caserhs env (_dcon,([],erhs)) = do
      (effs,loc) <- exp env erhs
      return $ ( True, effs, loc)
 
-  caserhs _scrut env (dcon,(patVs,erhs)) =
+  caserhs env (dcon,(patVs,erhs)) =
    -- Subtlety: if the rhs expression consumes the RIGHTMOST
    -- pattern variable, then the later code transformations MUST
    -- ensure that it consumes everything.
@@ -435,9 +453,9 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
           -- between the patVs and the scrutinee.      
       (eff,rloc) <- exp env' erhs
       let winner =           
-           trace ("\nInside caserhs, for "++show (dcon,patVs,tys)
-                   ++ "\n  freevars "++show freeRHS
-                   ++",\n  env "++show env'++",\n  eff "++show eff)$
+           dbgTrace lvl ("\nInside caserhs, for "++show (dcon,patVs,tys)
+                        ++ "\n  freevars "++show freeRHS
+                        ++",\n  env "++show env'++",\n  eff "++show eff) $
            -- We've gotten "to the end" of a nullary constructor just by matching it:
            (L.null patVs) ||
            -- If there is NO packed child data, then our object has static size:
@@ -466,10 +484,19 @@ inferEffects (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
 -- Simple invariant assertions:
            
 triv :: L1.Exp -> a -> a
-triv e = case e of
-           L1.VarE _ -> id
-           L1.LitE _ -> id
-           _         -> error$ "triv: expected trivial argument, got: "++show e
+triv e =
+  if isTriv e
+  then id
+  else error$ "triv: expected trivial argument, got: "++show e
+
+isTriv :: L1.Exp -> Bool
+isTriv e = 
+   case e of
+     L1.VarE _ -> True
+     L1.LitE _ -> True
+     L1.ProjE _ (L1.VarE _) -> True     
+     L1.MkProdE ls -> all isTriv ls  -- TEMP/FIXME: probably remove this 
+     _  -> False
 
 trivs :: [L1.Exp] -> a -> a
 trivs [] = id
@@ -488,7 +515,7 @@ extendEnv ((v,t):r) e =
 --------------------------------------------------------------------------------
 
 _exadd1 :: Prog
-_exadd1 = fst $ runSyM 0 $ inferProg L1.add1Prog
+_exadd1 = fst $ runSyM 0 $ inferEffects L1.add1Prog
 
 
 --------------------------------------------------------------------------------
@@ -516,84 +543,4 @@ cursorizeTy (ArrowTy inT ef ouT) =
       PackedTy{}    -> t2
 -}
 
--- =============================================================================
-
--- | Compiler pass to find the CaseE pattern variables for which a
--- traversal is required but one is not present in the environment at
--- the point of need.
-missingTraversals :: Prog -> SyM (Set Var)
-missingTraversals Prog{} = 
-  undefined
-
--- | Insert 
-insertTraversals :: Set Var -> Prog -> SyM Prog
-insertTraversals set Prog{} = 
-  undefined
-
-  
--- =============================================================================
-
--- | This inserts cursors and REMOVES effect signatures.  It returns
---   the new type as well as how many extra params were added to input
---   and return types.
-cursorizeTy :: ArrowTy Ty -> (ArrowTy Ty, Int, Int)
-cursorizeTy (ArrowTy inT ef ouT) =
-  (ArrowTy (appendArgs newIns  (replacePacked cursorTy inT))
-          S.empty
-          (appendArgs newOuts (replacePacked voidT ouT))
-  , numIn, numOut )
- where
-  appendArgs [] t = t
-  appendArgs ls t = ProdTy $ ls ++ [t]
-  numIn   = S.size ef
-  numOut  = length outVs
-  newOuts = replicate numIn  cursorTy
-  newIns  = replicate numOut cursorTy
-  outVs   = allLocVars ouT
-  voidT   = ProdTy []          
-  replacePacked (t2::Ty) (t::Ty) =
-    case t of
-      IntTy -> IntTy
-      SymTy -> SymTy
-      (ProdTy x)    -> ProdTy $ L.map (replacePacked t2) x
-      (SymDictTy x) -> SymDictTy $ (replacePacked t2) x
-      PackedTy{}    -> t2
-
-                       
--- Use a hack rather than extending the IR at this point:
-cursorTy :: Ty
-cursorTy = PackedTy "CURSOR_TY" ""
-
--- | A compiler pass that inserts cursor-passing for reading and
--- writing packed values.
-cursorize :: Prog -> SyM Prog  -- [T.FunDecl]
-cursorize Prog{fundefs} = -- ddefs, fundefs
-    trace("Starting cursorize on "++show(doc fundefs)) $ do 
-    -- Prog emptyDD <$> mapM fd fundefs <*> pure Nothing
-    fd' <- fd (fundefs M.! "copy")
-    return $ Prog emptyDD (M.singleton "copy" fd') Nothing
- where
-  fd :: FunDef -> SyM FunDef
-  fd (f@FunDef{funname,funty,funarg,funbod}) = trace ("Processing fundef: "++show(doc f)) $ do      
-      let (newTy@(ArrowTy inT _ _outT),newIn,_newOut) = cursorizeTy funty
-      fresh <- gensym "tupin"
-      let newArg = if newIn == 0 then funarg else fresh
-          bod    = if newIn == 0 then funbod
-                   else L1.subst funarg (L1.ProjE newIn (L1.VarE fresh)) funbod
-          env = M.singleton newArg argLoc
-          argLoc  = argtyToLoc (mangle newArg) inT
-      (exp',_) <- exp env bod
-      return $ FunDef funname newTy newArg exp'
-      -- T.FunDecl{ T.funName = undefined
-      --          , T.funArgs = undefined
-      --          , T.funRetTy = undefined 
-      --          , T.funBody = undefined funbod
-      --          }
-   
-  exp :: Env -> L1.Exp -> SyM (L1.Exp, Loc)
-  exp env e = 
-    trace ("\n[addCursors] Processing exp: "++show (doc e)++"\n  with env: "++show env) $
-    case e of
-     L1.VarE v  -> return (undefined, env # v)
-     L1.LitE  _ -> return (undefined, Bottom)
 

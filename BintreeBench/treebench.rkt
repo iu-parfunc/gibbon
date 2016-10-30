@@ -26,8 +26,7 @@
       tr))
 
 
-(define (bench n)
-  (define tr (build-tree n))
+(define (bench tr n)
   (displayln (sum-tree tr))
   (collect-garbage #;'major)
   (define tr* (time (add1-tree tr)))

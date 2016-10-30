@@ -112,18 +112,18 @@ DEPTH=20
 DEFAULT_ITERS=17
 
 run_small:
-	$(MAKE) DEPTH=5 run_all
+	$(MAKE) DEPTH=6 DEFAULT_ITERS=10 run_all
 
 # TODO: replace with an hsbencher harness / Criterion:
 run_all: all
 	./treebench_mlton.exe       $(DEPTH)
 	./treebench_ghc_strict.exe  seq $(DEPTH) $(DEFAULT_ITERS)
-	./treebench_ghc_lazy.exe    $(DEPTH)
+	./treebench_ghc_lazy.exe    $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_ocaml.exe       $(DEPTH)
 	./treebench_rust.exe        $(DEPTH)
-	./treebench_c.exe           $(DEPTH)
-	./treebench_c_packed.exe    $(DEPTH)
-	./treebench_c_packed_loop.exe $(DEPTH)
+	./treebench_c.exe           $(DEPTH) $(DEFAULT_ITERS)
+	./treebench_c_packed.exe    $(DEPTH) $(DEFAULT_ITERS)
+	./treebench_c_packed_loop.exe $(DEPTH) $(DEFAULT_ITERS)
 	$(MAKE) run_racket
 	$(MAKE) run_racket_packed
 	$(MAKE) run_chez

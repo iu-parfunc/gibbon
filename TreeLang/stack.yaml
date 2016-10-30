@@ -5,9 +5,15 @@ resolver: lts-6.23
 # resolver: lts-7.5
 packages:
 - '.'
-extra-deps: []
+extra-deps:
+- s-cargot-0.1.1.1
+# - tslogger-0.1.0.0
+# - async-2.0.2
 flags: {}
 extra-package-dbs: []
+
+# Temp, for tslogger above:
+# allow-newer: true
 
 docker:
   enable: false
