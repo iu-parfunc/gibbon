@@ -1,9 +1,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# OPTIONS_GHC -fdefer-typed-holes #-}
 
 -- | An intermediate language with an effect system that captures traversals.
 
@@ -25,12 +26,13 @@ import Data.Map as M
 import Text.PrettyPrint.GenericPretty
 import Debug.Trace
 -- import GHC.Stack (errorWithStackTrace)
-
-traceIt :: Show a => String -> a -> a
-traceIt msg x = trace (msg++": "++show x) x
     
 --------------------------------------------------------------------------------
-    
+
+-- | Chatter level for this module:
+lvl :: Int
+lvl = 5
+
 -- Unchanged from L1, or we could go A-normal:
 -- data Exp =
 
@@ -175,7 +177,7 @@ inferEffects (L1.Prog dd fds mainE) = do
                   (\ neweffs (ArrowTy as _ b) -> ArrowTy as neweffs b)
                   effs' env
        if env == env'
-        then trace ("\n<== Fixpoint completed after iteration "++show iter++" ==>") $
+        then dbgTrace 4 ("\n<== Fixpoint completed after iteration "++show iter++" ==>") $
              return env
         else fixpoint (iter+1) funs env'
 
@@ -198,7 +200,7 @@ substTy mp t = go t
 -- | Apply a substitution to an effect set.                                   
 substEffs :: Map LocVar LocVar -> Set Effect -> Set Effect
 substEffs mp ef =
-    trace ("\n  Substituting in effects "++show(mp,ef)) $ 
+    dbgTrace 5 ("\n  Substituting in effects "++show(mp,ef)) $ 
     S.map (\(Traverse v) ->
                case M.lookup v mp of
                  Just v2 -> Traverse v2
@@ -232,9 +234,9 @@ instantiateApp :: ArrowTy Ty -> Loc -> SyM (Set Effect, Loc)
 instantiateApp arrty0 loc = do
     (ArrowTy inT effs outT) <- freshenArrowSchema arrty0
     let subst = zipTL inT loc 
-    trace ("\n  instantiateApp: Came up with subst: "++show subst) $
+    dbgTrace lvl ("\n  instantiateApp: Came up with subst: "++show subst) $
      return (substEffs subst effs,
-            traceIt "   instantiate result loc" $ rettyToLoc (substTy subst outT))
+            dbgTraceIt lvl "   instantiate result loc" $ rettyToLoc (substTy subst outT))
   where
    -- Question: when computing the return location, which variables are Fresh?
    -- Conversely, when would we need to use Fixed?
@@ -355,7 +357,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
   -- We have one location for the destination, and another for each lexical binding.
   exp :: Env -> L1.Exp -> SyM (Set Effect, Loc)
   exp env e =
-    trace ("\nProcessing exp: "++show e++"\n  with env: "++show env) $
+    dbgTrace lvl ("\nProcessing exp: "++show e++"\n  with env: "++show env) $
     case e of
      -- QUESTION: does a variable reference count as traversing to the end?
      -- If so, the identity function has the traverse effect.
@@ -365,7 +367,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
      L1.CaseE e1 mp ->
       do (eff1,loc1) <- exp env e1
          (bools,effs,locs) <- unzip3 <$>
-                              mapM (caserhs loc1 env) (M.toList mp)
+                              mapM (caserhs env) (M.toList mp)
          -- Critical policy point!  We only get to the end if ALL
          -- branches get to the end.
          let end = if all id bools
@@ -376,12 +378,21 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
          let (locFin,cnstrts) = joins locs
 
          when (not (L.null cnstrts)) $
-           error $"FINISHME: process these constraints: "++show cnstrts
+           dbgTrace 1 ("Warning: FINISHME: process these constraints: "++show cnstrts) (return ())
                                 
-         return $ trace ("\n==>Results on subcases: "++show (doc(bools,effs,locs))) $
+         return $ dbgTrace lvl ("\n==>Results on subcases: "++show (doc(bools,effs,locs))) $
                 (S.union (S.union eff1 end)
                          (L.foldl1 S.intersection effs),
                  locFin)
+
+     L1.IfE a b c -> 
+         do (eff1,_loc1) <- exp env a
+            (eff2,loc2) <- exp env b
+            (eff3,loc3) <- exp env c             
+            return (S.union eff1 (S.intersection eff2 eff3),
+                    fst (join loc2 loc3))
+
+     L1.TimeIt e -> exp env e
 
      -- Construct output packed data.  We will always "scroll to the end" of 
      -- output values, so they are not interesting for this effect analysis.
@@ -390,13 +401,6 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
         do l <- freshLoc $ "mk"++k
            return (S.empty,l)
 
-     -- We need to reach a fixed point where we jointly infer effects
-     -- for all functions.
-     L1.AppE rat (L1.VarE rand) ->
-       do let loc   = env # rand
-          let arrTy = fenv # rat
-          instantiateApp arrTy loc
-
      -- Here we UNION the end-points that are reached in the RHS and the BOD:
      L1.LetE (v,_t,rhs) bod -> -- FIXME: change to let.
       do (reff,rloc) <- exp env rhs
@@ -404,11 +408,19 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
          (beff,bloc) <- exp env' bod         
          return (S.union beff reff, bloc)
 
-     L1.AppE _rat rand -> triv rand $ undefined
+     -- We need to reach a fixed point where we jointly infer effects
+     -- for all functions.
+     L1.AppE rat rand ->
+      case rand of
+        L1.VarE vr -> 
+          do let loc   = env # vr
+             let arrTy = fenv # rat
+             instantiateApp arrTy loc
+        _ -> error$ "FINISHME: handle this rand: "++show rand
 
      -- If rands are already trivial 
      L1.PrimAppE _ rands -> trivs rands $          
-         return (S.empty, undefined)
+         return (S.empty, __)
                           
      -- If any sub-expression reaches a destination, we can reach the destination:
      L1.MkProdE ls -> do (_effs,_locs) <- unzip <$> mapM (exp env) ls
@@ -418,12 +430,12 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
 --     L1.MkPacked k ls ->
 
   -- Returns true if this particular case reaches the end of the scrutinee.
-  caserhs :: Loc -> Env -> (Var,([Var],L1.Exp)) -> SyM (Bool, Set Effect, Loc)
-  caserhs _scrut env (_dcon,([],erhs)) = do
+  caserhs :: Env -> (Var,([Var],L1.Exp)) -> SyM (Bool, Set Effect, Loc)
+  caserhs env (_dcon,([],erhs)) = do
      (effs,loc) <- exp env erhs
      return $ ( True, effs, loc)
 
-  caserhs _scrut env (dcon,(patVs,erhs)) =
+  caserhs env (dcon,(patVs,erhs)) =
    -- Subtlety: if the rhs expression consumes the RIGHTMOST
    -- pattern variable, then the later code transformations MUST
    -- ensure that it consumes everything.
@@ -435,9 +447,9 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
           -- between the patVs and the scrutinee.      
       (eff,rloc) <- exp env' erhs
       let winner =           
-           trace ("\nInside caserhs, for "++show (dcon,patVs,tys)
-                   ++ "\n  freevars "++show freeRHS
-                   ++",\n  env "++show env'++",\n  eff "++show eff)$
+           dbgTrace lvl ("\nInside caserhs, for "++show (dcon,patVs,tys)
+                        ++ "\n  freevars "++show freeRHS
+                        ++",\n  env "++show env'++",\n  eff "++show eff) $
            -- We've gotten "to the end" of a nullary constructor just by matching it:
            (L.null patVs) ||
            -- If there is NO packed child data, then our object has static size:
@@ -466,10 +478,19 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
 -- Simple invariant assertions:
            
 triv :: L1.Exp -> a -> a
-triv e = case e of
-           L1.VarE _ -> id
-           L1.LitE _ -> id
-           _         -> error$ "triv: expected trivial argument, got: "++show e
+triv e =
+  if isTriv e
+  then id
+  else error$ "triv: expected trivial argument, got: "++show e
+
+isTriv :: L1.Exp -> Bool
+isTriv e = 
+   case e of
+     L1.VarE _ -> True
+     L1.LitE _ -> True
+     L1.ProjE _ (L1.VarE _) -> True     
+     L1.MkProdE ls -> all isTriv ls  -- TEMP/FIXME: probably remove this 
+     _  -> False
 
 trivs :: [L1.Exp] -> a -> a
 trivs [] = id
@@ -523,12 +544,12 @@ cursorizeTy (ArrowTy inT ef ouT) =
 -- the point of need.
 missingTraversals :: Prog -> SyM (Set Var)
 missingTraversals Prog{} = 
-  undefined
+  error "Finish missingTraversals"
 
 -- | Insert 
 insertTraversals :: Set Var -> Prog -> SyM Prog
 insertTraversals set Prog{} = 
-  undefined
+  error "Finish insertTraversals"
 
   
 -- =============================================================================
@@ -567,14 +588,16 @@ cursorTy = PackedTy "CURSOR_TY" ""
 -- | A compiler pass that inserts cursor-passing for reading and
 -- writing packed values.
 cursorize :: Prog -> SyM Prog  -- [T.FunDecl]
-cursorize Prog{fundefs} = -- ddefs, fundefs
-    trace("Starting cursorize on "++show(doc fundefs)) $ do 
+cursorize prg@Prog{fundefs} = -- ddefs, fundefs
+    dbgTrace lvl ("Starting cursorize on "++show(doc fundefs)) $ do 
     -- Prog emptyDD <$> mapM fd fundefs <*> pure Nothing
-    fd' <- fd (fundefs M.! "copy")
-    return $ Prog emptyDD (M.singleton "copy" fd') Nothing
+
+    -- fd' <- fd (fundefs # "copy")
+    -- return $ Prog emptyDD (M.singleton "copy" fd') Nothing
+    return prg
  where
   fd :: FunDef -> SyM FunDef
-  fd (f@FunDef{funname,funty,funarg,funbod}) = trace ("Processing fundef: "++show(doc f)) $ do      
+  fd (f@FunDef{funname,funty,funarg,funbod}) = dbgTrace lvl ("Processing fundef: "++show(doc f)) $ do      
       let (newTy@(ArrowTy inT _ _outT),newIn,_newOut) = cursorizeTy funty
       fresh <- gensym "tupin"
       let newArg = if newIn == 0 then funarg else fresh
@@ -584,16 +607,11 @@ cursorize Prog{fundefs} = -- ddefs, fundefs
           argLoc  = argtyToLoc (mangle newArg) inT
       (exp',_) <- exp env bod
       return $ FunDef funname newTy newArg exp'
-      -- T.FunDecl{ T.funName = undefined
-      --          , T.funArgs = undefined
-      --          , T.funRetTy = undefined 
-      --          , T.funBody = undefined funbod
-      --          }
    
   exp :: Env -> L1.Exp -> SyM (L1.Exp, Loc)
   exp env e = 
-    trace ("\n[addCursors] Processing exp: "++show (doc e)++"\n  with env: "++show env) $
+    dbgTrace lvl ("\n[addCursors] Processing exp: "++show (doc e)++"\n  with env: "++show env) $
     case e of
-     L1.VarE v  -> return (undefined, env # v)
-     L1.LitE  _ -> return (undefined, Bottom)
+     L1.VarE v  -> return (__, env # v)
+     L1.LitE  _ -> return (__, Bottom)
 

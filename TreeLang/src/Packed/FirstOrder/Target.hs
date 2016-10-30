@@ -30,16 +30,18 @@ import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
                            cunit)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
--- import qualified Packed.FirstOrder.L1_Source as L1
 import Text.PrettyPrint.Mainland
-
+import Text.PrettyPrint.GenericPretty (Out)
 import Prelude hiding (init)
 
 --------------------------------------------------------------------------------
 -- * AST definition
 
 data Prog = FINISHME_FINISHME
+  deriving (Show, Read, Ord, Eq, Generic) 
 
+instance Out Prog
+          
 type Var = String
 type Tag = Word8
 

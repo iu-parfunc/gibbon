@@ -264,15 +264,11 @@ parseFile file = do
   txt    <- fmap bracketHacks $
             -- fmap stripHashLang $
             readFile file
-  putStrLn $ "Parsing text: "++show txt
+  dbgPrintLn 5 $ "Parsing text: "++show txt
   let res :: Either String [RichSExpr HaskLikeAtom]
       res = fmap (fmap toRich) $
             decode treelangParser txt
-  putStrLn "Result:"
+  dbgPrintLn 5 "Result of parsing:"
   case res of
      Left err -> error err
-     Right ls -> do mapM_ (\x -> putStrLn$"DECODED: "++prnt x) ls
-                    putStrLn "Converted:"
-                    let (final,cnt) = runSyM 0 $ parseSExp ls
-                    putStrLn $ sdoc final
-                    return (final,cnt)
+     Right ls -> return $ runSyM 0 $ parseSExp ls

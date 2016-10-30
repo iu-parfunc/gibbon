@@ -12,7 +12,9 @@ import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.LTraverse as L2 (inferEffects, cursorize, Prog)
 import Packed.FirstOrder.Target  as L3 (codegenProg,Prog)
 import System.FilePath (replaceExtension)
-
+import Text.PrettyPrint.GenericPretty
+import Control.Monad.State
+    
 ------------------------------------------------------------
         
 import Data.Set as S
@@ -54,6 +56,14 @@ addCopies p = pure p
 lowerCopiesAndTraversals :: L2.Prog -> SyM L2.Prog
 lowerCopiesAndTraversals p = pure p
 
+-- | Convert into the target language.  This does not make much of a
+-- change, but it checks the changes that have already occurred.
+lower :: L2.Prog -> SyM L3.Prog
+lower = error "FINISHME"
+
+
+--------------------------------------------------------------------------------
+                             
 -- | Compile foo.sexp and write the output C code to the corresponding
 -- foo.c file.
 compileSExpFile :: FilePath -> IO ()
@@ -62,24 +72,39 @@ compileSExpFile = compileFile SExp.parseFile
 -- | Same as compileSExpFile except starting with a ".hs".
 compileHSFile :: FilePath -> IO ()
 compileHSFile = compileFile HS.parseFile
+
+sepline :: String
+sepline = replicate 80 '='
                    
+
 compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
 compileFile parser fp =
-  do (l1,cnt) <- parser fp
-     let (str,_) = runSyM cnt $ do 
-                     l1b <- freshNames l1
-                     l1c <- flatten  l1b
-                     l2  <- inferEffects l1c
-                     mt  <- findMissingTraversals l2
-                     l2b <- addTraversals mt l2
-                     l2c <- addCopies l2b
-                     l2d <- lowerCopiesAndTraversals l2c
-                     l2e <- cursorize l2d
-                     l3  <- lower l2e
-                     return (codegenProg l3)
+  do (l1,cnt0) <- parser fp
+
+     let lvl = 2
+     dbgPrintLn lvl "Compiler pipeline starting, parsed program:"
+     dbgPrintLn lvl sepline
+     dbgPrintLn lvl $ sdoc l1
+     let pass :: Out b => String -> (a -> SyM b) -> a -> StateT Int IO b
+         pass who fn x = do
+           cnt <- get
+           let (y,cnt') = runSyM cnt (fn x)
+           put cnt'
+           lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":"
+           lift$ dbgPrintLn lvl sepline
+           lift$ dbgPrintLn lvl $ sdoc y
+           return y
+           
+     str <- evalStateT
+              (do l1b <- pass "freshNames"               freshNames               l1
+                  l1c <- pass "flatten"                  flatten                  l1b
+                  l2  <- pass "inferEffects"             inferEffects             l1c
+                  mt  <- pass "findMissingTraversals"    findMissingTraversals    l2
+                  l2b <- pass "addTraversals"            (addTraversals mt)       l2
+                  l2c <- pass "addCopies"                addCopies                l2b
+                  l2d <- pass "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
+                  l2e <- pass "cursorize"                cursorize                l2d
+                  l3  <- pass "lower"                    lower                    l2e
+                  return (codegenProg l3))
+               cnt0
      writeFile (replaceExtension fp ".c") str
-
-lower :: L2.Prog -> SyM L3.Prog
-lower = error "FINISHME"
-
-

@@ -17,7 +17,6 @@ import Data.Either (partitionEithers)
 import Data.Foldable (foldrM)
 import qualified Data.Map as M
 import Data.Maybe (catMaybes)
-import System.Exit (exitFailure)
 
 import Language.Haskell.Exts.Parser -- (parse)
 import Language.Haskell.Exts.Syntax as H
