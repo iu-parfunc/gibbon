@@ -34,7 +34,7 @@ def check():
         if ret != 0:
             fails.append(idx);
 
-    print ("\n[PASSED] : %d" % (len(tests) - len(fails)))
+    print ("\n\n[PASSED] : %d" % (len(tests) - len(fails)))
     print ("[FAILED] : %d"   % (len(fails)))
     print (" %s" % fails)
 
