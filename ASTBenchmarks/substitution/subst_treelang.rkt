@@ -1,7 +1,7 @@
 #! /usr/bin/env racket
 #lang s-exp "../../TreeLang/treelang.rkt"
 
-(require "../grammar_racket.sexp")
+(require "../grammar_racket.sexp" (only-in typed/racket define-namespace-anchor namespace-anchor->namespace eval call-with-values lambda match ... quasiquote unquote symbol? map exact-integer? -> Any andmap))
 
 ;; copied exactly
 (define-values (oldsym file iters)
@@ -127,7 +127,23 @@
 (printf "\n\nBenchmark: Substituting symbol ~a in file ~a for ~a iterations...\n" oldsym file iters)
 (printf "============================================================\n")
 
-(define ast : Toplvl (cast (time (read (open-input-file file))) Toplvl))
+(: parse : (Any -> Toplvl))
+(define (parse v)
+  (match v
+    #;[`(DefineValues (,x ...) ,(app parse-expr e))
+     (DefineValues x e)]
+    [(list 'DefineSyntaxes (list x ...) (app parse-expr e))
+     #:when (andmap symbol? x)
+     (DefineSyntaxes x e)]
+    [(list 'BeginTop e ...) (BeginTop (map parse e))]))
+
+(: parse-expr : (Any -> Expr))
+(define (parse-expr v)
+  (match v
+    [`(VARREF ,(? symbol? x)) (VARREF x)]))
+
+(define ast : Toplvl
+   (time (parse (read (open-input-file file)))))
 (printf "Done ingesting AST.\n")
 
 (define newsym (string->symbol (string-append (symbol->string oldsym) "99")))

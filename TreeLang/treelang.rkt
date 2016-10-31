@@ -14,6 +14,7 @@
          string-append symbol->string for range cast Real
          
          #%app #%module-begin #%datum quote
+         only-in
          #;(all-from-out typed/racket))
 
 ;; add for/list  w/types
