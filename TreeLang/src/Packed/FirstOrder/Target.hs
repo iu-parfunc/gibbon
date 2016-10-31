@@ -29,6 +29,7 @@ import Data.Word (Word8)
 import Data.Bifunctor (first)
 import Data.Loc (noLoc)
 import Data.Maybe (fromJust)
+import Data.Traversable
 import GHC.Generics (Generic)
 import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
                            cunit)
@@ -37,7 +38,8 @@ import qualified Language.C.Syntax as C
 import Text.PrettyPrint.Mainland
 import Text.PrettyPrint.GenericPretty (Out(..))
 import Prelude hiding (init)
-
+    
+import Packed.FirstOrder.Common
 --------------------------------------------------------------------------------
 -- * AST definition
 
@@ -47,7 +49,6 @@ data Prog = Prog { fundefs :: [FunDecl]
 
 instance Out Prog
           
-type Var = String
 type Tag = Word8
 
 data Triv
@@ -75,8 +76,6 @@ data Tail
     | LetCallT { binds  :: [(Var,Ty)],
                  rator  :: Var,
                  rands  :: [Triv],
-                 typ    :: Ty,
-                 tmpNam :: Var,  -- hack, needed a name for the returned struct, should gensym
                  bod    :: Tail }
     | LetPrimCallT { binds :: [(Var,Ty)],
                      prim  :: Prim,
@@ -132,106 +131,116 @@ instance Out FunDecl
 --------------------------------------------------------------------------------
 -- * C codegen
 
-codegenFun :: FunDecl -> [C.Definition]
+-- | Slightly different entrypoint than mkProgram that enables a
+-- "main" expression.
+codegenProg :: Prog -> String
+codegenProg (Prog funs mtal) = pretty 80 (stack (map ppr defs))
+    where defs = fst $ runSyM 0 $ do funs' <- mapM codegenFun funs
+                                     let structs f = makeStructs $ nub [ tys | ProdTy tys <- funTys f ]
+                                     case mtal of
+                                       Just _x -> error "Not handled yet" -- TODO: main function
+                                       Nothing -> return $ (concatMap structs funs) ++ funs'
+
+funTys :: FunDecl -> [Ty]
+funTys (FunDecl _ args ty _) = ty : (map snd args)
+
+codegenFun :: FunDecl -> SyM C.Definition
 codegenFun (FunDecl nam args ty tal) =
-    structs ++ [(C.FuncDef fun noLoc)]
-  where
-    retTy   = codegenTy ty
-    params  = map (\(v,t) -> [cparam| $ty:(codegenTy t) $id:v |]) args
-    body    = codegenTail tal retTy
-    structs = makeStructs $ nub [ tys | ProdTy tys <- ty : (map snd args) ]
-    fun     = [cfun| $ty:retTy $id:nam ($params:params) {
+    do let retTy   = codegenTy ty
+           params  = map (\(v,t) -> [cparam| $ty:(codegenTy t) $id:v |]) args
+       body <- codegenTail tal retTy
+       let fun     = [cfun| $ty:retTy $id:nam ($params:params) {
                          $items:body
                      } |]
+       return $ C.FuncDef fun noLoc
 
-    makeStructs :: [[Ty]] -> [C.Definition]
-    makeStructs [] = []
-    makeStructs (ts : ts') =
-        d : makeStructs ts'
-      where
-        str_name = makeName ts
-        d = [cedecl| typedef struct $id:(str_name ++ "_struct") { $sdecls:decls } $id:str_name; |]
-        decls = zipWith (\t n -> [csdecl| $ty:(codegenTy t) $id:("field"++(show n)); |])
-                        ts [0 :: Int ..]
+makeStructs :: [[Ty]] -> [C.Definition]
+makeStructs [] = []
+makeStructs (ts : ts') = d : makeStructs ts'
+    where strName = makeName ts
+          d = [cedecl| typedef struct $id:(strName ++ "_struct") { $sdecls:decls } $id:strName; |]
+          decls = zipWith (\t n -> [csdecl| $ty:(codegenTy t) $id:("field"++(show n)); |])
+                  ts [0 :: Int ..]
 
 codegenTriv :: Triv -> C.Exp
 codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
 codegenTriv (IntTriv i) = [cexp| $i |]
 codegenTriv (TagTriv i) = [cexp| $i |]
 
-codegenTail :: Tail -> C.Type -> [C.BlockItem]
-
-codegenTail (RetValsT [tr]) _ty = [ C.BlockStm [cstm| return $(codegenTriv tr); |] ]
-
+codegenTail :: Tail -> C.Type -> SyM [C.BlockItem]
+               
+codegenTail (RetValsT [tr]) _ty = return $ [ C.BlockStm [cstm| return $(codegenTriv tr); |] ]
+                                  
 codegenTail (RetValsT ts) ty =
-    [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
+    return $ [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
     where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
-
+                 
 codegenTail (Switch tr alts def) ty =
-    [ C.BlockStm (fromJust (mk_if alt_pairs)) ]
-  where
-    tr_e = codegenTriv tr
-    mk_tag_lhs lhs = C.Const (C.IntConst (show lhs) C.Unsigned (fromIntegral lhs) noLoc) noLoc
-    mk_int_lhs lhs = C.Const (C.IntConst (show lhs) C.Signed   (fromIntegral lhs) noLoc) noLoc
-
-    alts' = case alts of
-              TagAlts as -> map (first mk_tag_lhs) as
-              IntAlts as -> map (first mk_int_lhs) as
-
-    alt_pairs :: [(C.Exp, C.Stm)]
-    alt_pairs = map (\(lhs, rhs) -> ( C.BinOp C.Eq tr_e lhs noLoc, mkBlock (codegenTail rhs ty) )) alts'
-
-    mk_if :: [(C.Exp, C.Stm)] -> Maybe C.Stm
-    mk_if [] = (\def' -> mkBlock (codegenTail def' ty)) <$> def
-    mk_if ((cond, rhs) : rest) = Just (C.If cond rhs (mk_if rest) noLoc)
+    do let trE = codegenTriv tr
+           mk_tag_lhs lhs = C.Const (C.IntConst (show lhs) C.Unsigned (fromIntegral lhs) noLoc) noLoc
+           mk_int_lhs lhs = C.Const (C.IntConst (show lhs) C.Signed   (fromIntegral lhs) noLoc) noLoc
+           alts' = case alts of
+                     TagAlts as -> map (first mk_tag_lhs) as
+                     IntAlts as -> map (first mk_int_lhs) as
+       altPairs <- forM alts' $ \(lhs, rhs) ->
+                   do tal <- codegenTail rhs ty
+                      return (C.BinOp C.Eq trE lhs noLoc, mkBlock tal)
+       let mkIf [] = case def of
+                       Nothing -> return $ Nothing
+                       Just def' -> do tal <- codegenTail def' ty
+                                       return $ Just $ mkBlock tal
+           mkIf ((cond,rhs) : rest) = do rest' <- mkIf rest
+                                         return $ Just $ C.If cond rhs rest' noLoc
+       ifExpr <- mkIf altPairs
+       return $ [ C.BlockStm (fromJust ifExpr) ]
 
 codegenTail (TailCall v ts) _ty =
-    [ C.BlockStm [cstm| return $( C.FnCall (cid v) (map codegenTriv ts) noLoc ); |] ]
+    return $ [ C.BlockStm [cstm| return $( C.FnCall (cid v) (map codegenTriv ts) noLoc ); |] ]
 
-codegenTail (LetCallT bnds ratr rnds ty0@ProdTy{} nam body) ty =
-    init ++ zipWith bind bnds fields ++ codegenTail body ty
-  where
-    init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
-    bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
-    fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
-
--- RHS is not a struct
-codegenTail (LetCallT [(v,t)] ratr rnds _ _ body) ty =
-    assn (codegenTy t) v (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc) :
-    codegenTail body ty
+codegenTail (LetCallT bnds ratr rnds body) ty
+    | (length bnds) > 1 = do nam <- gensym "tmp_struct"
+                             let init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
+                                 bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
+                                 fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
+                                 ty0 = ProdTy $ map snd bnds
+                             tal <- codegenTail body ty
+                             return $ init ++ zipWith bind bnds fields ++ tal
+    | otherwise = do tal <- codegenTail body ty
+                     return $ assn (codegenTy (snd $ bnds !! 0)) (fst $ bnds !! 0) (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc) : tal
+                           
 
 codegenTail (LetPrimCallT bnds prm rnds body) ty =
-    let bod' = codegenTail body ty
-        pre  = case prm of
-                 AddP -> let [(outV,outT)] = bnds
-                             [pleft,pright] = rnds
-                         in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) + $(codegenTriv pright); |] ]
-                 SubP -> let (outV,outT) = head bnds
-                             [pleft,pright] = rnds
-                         in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) - $(codegenTriv pright); |] ]
-                 MulP -> let [(outV,outT)] = bnds
-                             [pleft,pright] = rnds
-                         in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) * $(codegenTriv pright); |]]
-                 DictInsertP -> undefined
-                 DictLookupP -> undefined
-                 NewBuf -> undefined
-                 WriteTag -> let [(outV,CursorTy)] = bnds
-                                 [(TagTriv tag),(VarTriv cur)] = rnds
-                             in [ C.BlockStm [cstm| *($id:cur) = $tag; |]
-                                , C.BlockDecl [cdecl| char* $id:outV = $id:cur + 1; |] ]
-                 WriteInt -> let [(outV,CursorTy)] = bnds
-                                 [val,(VarTriv cur)] = rnds
-                             in [ C.BlockStm [cstm| *(int*)($id:cur) = $(codegenTriv val); |]
-                                , C.BlockDecl [cdecl| char* $id:outV = ($id:cur) + sizeof(int); |] ]
-                 ReadTag -> let [(tagV,TagTy),(curV,CursorTy)] = bnds
-                                [(VarTriv cur)] = rnds
-                            in [ C.BlockDecl [cdecl| $ty:(codegenTy TagTy) $id:tagV = *($id:cur); |]
-                               , C.BlockDecl [cdecl| char* $id:curV = $id:cur + 1; |] ]
-                 ReadInt -> let [(valV,IntTy),(curV,CursorTy)] = bnds
-                                [(VarTriv cur)] = rnds
-                            in [ C.BlockDecl [cdecl| int $id:valV = *(int*)($id:cur); |]
-                               , C.BlockDecl [cdecl| char* $id:curV = ($id:cur) + sizeof(int); |] ]
-    in pre ++ bod'
+    do bod' <- codegenTail body ty
+       let pre  = case prm of
+                    AddP -> let [(outV,outT)] = bnds
+                                [pleft,pright] = rnds
+                            in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) + $(codegenTriv pright); |] ]
+                    SubP -> let (outV,outT) = head bnds
+                                [pleft,pright] = rnds
+                            in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) - $(codegenTriv pright); |] ]
+                    MulP -> let [(outV,outT)] = bnds
+                                [pleft,pright] = rnds
+                            in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) * $(codegenTriv pright); |]]
+                    DictInsertP -> undefined
+                    DictLookupP -> undefined
+                    NewBuf -> undefined
+                    WriteTag -> let [(outV,CursorTy)] = bnds
+                                    [(TagTriv tag),(VarTriv cur)] = rnds
+                                in [ C.BlockStm [cstm| *($id:cur) = $tag; |]
+                                   , C.BlockDecl [cdecl| char* $id:outV = $id:cur + 1; |] ]
+                    WriteInt -> let [(outV,CursorTy)] = bnds
+                                    [val,(VarTriv cur)] = rnds
+                                in [ C.BlockStm [cstm| *(int*)($id:cur) = $(codegenTriv val); |]
+                                   , C.BlockDecl [cdecl| char* $id:outV = ($id:cur) + sizeof(int); |] ]
+                    ReadTag -> let [(tagV,TagTy),(curV,CursorTy)] = bnds
+                                   [(VarTriv cur)] = rnds
+                               in [ C.BlockDecl [cdecl| $ty:(codegenTy TagTy) $id:tagV = *($id:cur); |]
+                                  , C.BlockDecl [cdecl| char* $id:curV = $id:cur + 1; |] ]
+                    ReadInt -> let [(valV,IntTy),(curV,CursorTy)] = bnds
+                                   [(VarTriv cur)] = rnds
+                               in [ C.BlockDecl [cdecl| int $id:valV = *(int*)($id:cur); |]
+                                  , C.BlockDecl [cdecl| char* $id:curV = ($id:cur) + sizeof(int); |] ]
+       return $ pre ++ bod'
 
 codegenTy :: Ty -> C.Type
 codegenTy IntTy = [cty|int|]
@@ -379,16 +388,15 @@ mkProgram
   -> String
        -- ^ name of the function to benchmark
   -> String
-mkProgram fs fname = concat
-    [ includes
-    , pretty 80 (stack (map (ppr . codegenFun) fs))
-    , pretty 80 (ppr (mkRuntimeFuns fname))
-    ]
+mkProgram fs fname =
+    fst $ runSyM 0 $
+        do fs' <- mapM codegenFun fs
+           return $ concat
+                      [ includes
+                      , pretty 80 (stack (map ppr fs'))
+                      , pretty 80 (ppr (mkRuntimeFuns fname))
+                      ]
 
--- | Slightly different entrypoint than mkProgram that enables a
--- "main" expression.
-codegenProg :: Prog -> String
-codegenProg = error "codegenProg - FINISHME"
 
 
 writeProgram
@@ -410,6 +418,9 @@ leafTag = 0
 nodeTag :: Word8
 nodeTag = 1
 
+exadd1Prog :: Prog
+exadd1Prog = Prog [exadd1] Nothing
+
 exadd1 :: FunDecl
 exadd1 = FunDecl "add1" [("t",CursorTy),("tout",CursorTy)] (ProdTy [CursorTy,CursorTy]) exadd1Tail
 
@@ -428,8 +439,8 @@ buildTree_tail =
 
     recursive_case =
       LetPrimCallT [("n1",IntTy)] SubP [VarTriv "n", IntTriv 1] $
-      LetCallT [("tout1",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout"] CursorTy "tmp1" $
-      LetCallT [("tout2",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout1"] CursorTy "tmp2" $
+      LetCallT [("tout1",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout"] $
+      LetCallT [("tout2",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout1"] $
       RetValsT [VarTriv "tout2"]
 
 exadd1Tail :: Tail
@@ -447,12 +458,12 @@ exadd1Tail =
             $ RetValsT [VarTriv "t3", VarTriv "tout3"]
           nodeCase =
               LetPrimCallT [("tout2",CursorTy)] WriteTag [TagTriv nodeTag, VarTriv "tout"]
-            $ LetCallT [("t3",CursorTy),("tout3",CursorTy)] "add1" [VarTriv "t2", VarTriv "tout2"] (ProdTy [CursorTy,CursorTy]) "tmp1"
+            $ LetCallT [("t3",CursorTy),("tout3",CursorTy)] "add1" [VarTriv "t2", VarTriv "tout2"]
             $ TailCall "add1" [VarTriv "t3", VarTriv "tout3"]
 
 -- | Compile the example and print it
-add1C :: IO ()
-add1C = mapM_ (\c -> putDocLn $ ppr c) (codegenFun exadd1)
+-- add1C :: IO ()
+add1C = codegenProg exadd1Prog -- mapM_ (\c -> putDocLn $ ppr c) (codegenFun exadd1)
 
 buildTreeC :: IO ()
-buildTreeC = mapM_ (\c -> putDocLn (ppr c)) (codegenFun buildTree)
+buildTreeC = undefined --  mapM_ (\c -> putDocLn (ppr c)) (codegenFun buildTree)
