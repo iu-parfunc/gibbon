@@ -2,6 +2,13 @@
 
 (require "../grammar_racket.sexp")
 
+;; copied exactly
+(define-values (oldsym file iters)
+  (match (current-command-line-arguments)
+    [(vector o f i) (values (string->symbol o) f (string->number i))]
+    [args (error "unexpected number of command line arguments, expected <symbol> <file> <iterations>, got:\n"
+                 args)]))
+
 (define (subst [old : Sym] [new : Sym] [e0 : Toplvl]) : Toplvl
   (top old new e0))
 
@@ -57,7 +64,7 @@
      (CaseLambda (for/list ([c : LAMBDACASE cases])
                    (case c
                      [(MKLAMBDACASE formals exprs)
-                      (if (helper old formals)
+                      (if (bound-in? old formals)
                           c
                           (MKLAMBDACASE formals (for/list ([e : Expr exprs])
                                                   (expr old new e))))])))]
@@ -114,6 +121,18 @@
       (if (eq? (car ls) sym)
           #t
           (helper sym (cdr ls)))))
+
+;; copied exactly + type annotations
+(printf "\n\nBenchmark: Substituting symbol ~a in file ~a for ~a iterations...\n" oldsym file iters)
+(printf "============================================================\n")
+
+(define ast : Toplvl (cast (time (read (open-input-file file))) Toplvl))
+(printf "Done ingesting AST.\n")
+
+(define newsym (string->symbol (string-append (symbol->string oldsym) "99")))
+(time (for ([_ (range (cast iters Real))])
+        (subst oldsym newsym ast)))
+(printf "Done with substitution pass.\n")
 
 
 

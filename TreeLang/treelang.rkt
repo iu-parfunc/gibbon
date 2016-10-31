@@ -6,7 +6,12 @@
          list and empty? error 
          eq? car cdr cons Listof         
 
-         time + * - 
+         time + * -
+
+         ;; provide for subst_treelang.rkt
+         define-values match current-command-line-arguments
+         values string->symbol string->number printf read open-input-file
+         string-append symbol->string for range cast Real
          
          #%app #%module-begin #%datum quote
          #;(all-from-out typed/racket))
