@@ -89,7 +89,7 @@ data Constraint = Eql Var Var
 instance Out Constraint
 
 -- Our type for functions grows to include effects.
-data ArrowTy t = ArrowTy t (Set Effect) t
+data ArrowTy t = ArrowTy { arrIn :: t, arrEffs:: (Set Effect), arrOut:: t }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 data Effect = Traverse LocVar

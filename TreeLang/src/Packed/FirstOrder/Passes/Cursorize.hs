@@ -19,7 +19,7 @@ import Data.List as L hiding (tail)
 import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
--- import Debug.Trace
+import Debug.Trace
 
 -- | Chatter level for this module:
 lvl :: Int
@@ -30,31 +30,36 @@ lvl = 5
 -- | Map every lexical variable in scope to an abstract location.
 --   Some variables are cursors, and they are runtime witnesses to
 --   particular location variables.
-type Env = M.Map Var LocValue
+type Env = M.Map Var Loc
 
-data LocValue = InCursor  LocVar
-              | OutCursor LocVar
-              | NotCursor Loc
-  deriving (Read,Show,Eq,Ord, Generic, NFData)
-instance Out LocValue
+-- type Env = M.Map Var LocValue
+
+-- data LocValue = InCursor  LocVar
+--               | OutCursor LocVar
+--               | NotCursor Loc
+--   deriving (Read,Show,Eq,Ord, Generic, NFData)
+-- instance Out LocValue
                 
 -- | This inserts cursors and REMOVES effect signatures.  It returns
 --   the new type as well as how many extra params were added to input
 --   and return types.
 cursorizeTy :: ArrowTy Ty -> (ArrowTy Ty, [LocVar], [LocVar])
-cursorizeTy (ArrowTy inT ef ouT) =
-  (ArrowTy (prependArgs newIns  (rewritePacked inT))
-          S.empty
-          (prependArgs newOuts
-                      -- Let's turn output values into updated-output-cursors:
-                      (rewritePacked ouT)
-               -- (replacePacked voidT ouT) -- Or they could be void.
-          )
-  , newIn
-  , outVs )
+cursorizeTy arr@(ArrowTy inT ef ouT) = (newArr, newIn, outVs) 
  where
+  ----------------------------------------                       
+  -- newArr = error "Need to work around GHC bug right here.  The lines below this one trigger it."
+  -- newArr = arr
+  -- newArr = arr{ arrEffs = S.empty }
+  -- newArr = mkArrowTy IntTy IntTy
+  newArr = ArrowTy newInTy S.empty newOutTy
+  ----------------------------------------
+
+  newInTy = prependArgs newIns (rewritePacked inT)           
+  -- Let's turn output values into updated-output-cursors:
+  newOutTy = prependArgs newOuts (rewritePacked ouT)
+            -- (replacePacked voidT ouT) -- Or they could be void.
   -- rewritePacked = replacePacked cursorTy 
-  rewritePacked = mapPacked (\_ l -> mkCursorTy l)
+  rewritePacked = mapPacked (\_ l -> mkCursorTy l) 
 
   -- Injected cursor args go first in input and output:
   prependArgs [] t = t
@@ -68,6 +73,9 @@ cursorizeTy (ArrowTy inT ef ouT) =
   newOuts = replicate numIn  cursorTy
   newIns  = replicate numOut cursorTy
   outVs   = allLocVars ouT -- These stay in their original order (preorder) 
+
+mkArrowTy :: Ty -> Ty -> ArrowTy Ty
+mkArrowTy x y = ArrowTy x S.empty y
 
 -- | Replace all packed types with something else.
 replacePacked :: Ty -> Ty -> Ty
@@ -105,19 +113,20 @@ cursorize prg@Prog{fundefs} = -- ddefs, fundefs
   fd :: FunDef -> SyM FunDef
   fd (f@FunDef{funname,funty,funarg,funbod}) = 
       let (newTy@(ArrowTy inT _ _outT),newIn,newOut) = cursorizeTy funty in
-      dbgTrace lvl ("Processing fundef: "++show(doc f)++" new params: "++show (newIn, newOut)) $
+      dbgTrace lvl ("Processing fundef: "++show(doc f)++"\n  new params: "++show (newIn, newOut)) $
    do      
       fresh <- gensym "tupin"
-      let (newArg,bod,loc) =
-              if newIn == 0 -- No injected cursor params..
-              then (funarg,funbod, NotCursor argLoc)
+      let argLoc  = argtyToLoc (mangle newArg) inT
+          (newArg,bod,env) =
+              if newIn == [] -- No injected cursor params..
+              then (funarg, funbod, M.singleton newArg argLoc)
               else ( fresh
+                     -- We could introduce a let binding, but here we
+                     -- just substitute instead:
                    , L1.subst funarg (L1.ProjE (length newIn) (L1.VarE fresh))
                               funbod
-                   ,  __)
-          env = M.singleton newArg loc
-          argLoc  = argtyToLoc (mangle newArg) inT
-          -- (_,exp',_,_) <- exp env bod
+                   , M.singleton fresh
+                     (TupLoc $ L.map Fixed newIn ++ [argLoc]))
       exp' <- tail newOut env bod
       return $ FunDef funname newTy newArg exp'
 
@@ -125,10 +134,14 @@ cursorize prg@Prog{fundefs} = -- ddefs, fundefs
   -- a certain list of location witnesses.  We produce a tuple containing
   -- those witnesses prepended to the original return value.
   tail :: [LocVar] -> Env -> L1.Exp -> SyM L1.Exp
-  tail demanded env e =
+  tail demanded env e = 
    dbgTrace lvl ("\n[cursorize] Processing tail: "++show (doc e)++"\n  with env: "++show env) $
+   let cursorRets = L.map (meetDemand env) demanded in
    case e of
-
+     -- Trivial return cases need to just pluck from the environment:
+     L1.LitE _ -> return $ mkProd cursorRets e
+     L1.VarE _ -> return $ mkProd cursorRets e
+     
      -- Here we route through extra arguments.
      L1.LetE (v,tv,rhs) bod ->
        do (new,rhs',rty,rloc) <- exp env rhs
@@ -171,6 +184,20 @@ cursorize prg@Prog{fundefs} = -- ddefs, fundefs
 -}
      _ -> return ([], finishEXP, finishTYP, finishLOC)
      _ -> error $ "ERROR: cursorize: unfinished, needs to handle:\n "++sdoc e
+
+-- | Dig through an environment to find
+meetDemand :: Env -> LocVar -> L1.Exp
+meetDemand env vr =
+  trace ("Attempting to meet demand for loc "++show vr++" in env "++sdoc env) $
+  go (M.toList env)
+  where
+   go [] = error$ "meetDemand: internal error, got to end of"++
+                    " environment without finding loc: "++show vr
+                    
+
+mkProd [] e = e
+mkProd ls e = L1.MkProdE $ ls++[e]
+                                                        
 
 finishEXP :: L1.Exp
 finishEXP = (L1.VarE "FINISHME")
