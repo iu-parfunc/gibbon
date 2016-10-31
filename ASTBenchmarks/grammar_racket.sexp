@@ -4,9 +4,7 @@
          CaseLambda If Begin Begin0 LetValues LetrecValues SetBang
          Quote QuoteSyntax QuoteSyntaxLocal WithContinuationMark App
          Top VariableReference VariableReferenceTop VariableReferenceNull
-         MKLVBIND MKLAMBDACASE INTLIT F1 F2 F3 Expr Toplvl Formals LVBIND LAMBDACASE Prog)
-
-(data Prog Toplvl)
+         MKLVBIND MKLAMBDACASE INTLIT F1 F2 F3 Expr Toplvl Formals LVBIND LAMBDACASE)
 
 (data Toplvl
       [DefineValues   (Listof Sym) Expr]
