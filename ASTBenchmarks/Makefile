@@ -22,18 +22,18 @@ expanded_racket: ${DATASET}
 	du -sh $@
 	for file in `cat offenders.txt`; do rm $$file; done
 	du -sh $@
-	echo "\nDone."
+	find $@ -size 0 > offenders_empty.txt
+	for file in `cat offenders_empty.txt`; do rm $$file; done
+	echo "\nOffenders and zero-sized removed.  Done."
 	$(MAKE) largest
 
 cleaned_racket: expanded_racket rewrite.rkt
 	mkdir -p $@
-	raco make rewrite.rkt
 	cd expanded_racket; \
          for f in `find -name "*.sexp"`; do \
-          echo "Build directory "`dirname "../cleaned_racket/$$f"`; \
           mkdir -p `dirname "../cleaned_racket/$$f"`; \
-	  cat "$$f" | racket ../rewrite.rkt > "../cleaned_racket/$$f"; \
-         done;
+	  echo "$$f" "../cleaned_racket/$$f"; \
+         done | racket ../rewrite.rkt;
 
 largest:
 	echo "Here are some of the larger files:"

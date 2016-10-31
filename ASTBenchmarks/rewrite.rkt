@@ -1,5 +1,7 @@
 #lang racket
 
+(require racket/exn)
+
 (define (datum e) `(INTLIT 5))
 
 (define (xform-expression e)
@@ -78,11 +80,46 @@
      `(DefineSyntaxes ,x ,(xform-expression e))]
     [e `(Expression ,(xform-expression e))]))
 
-;; expects input on stdin
+;; ----------------------------------------
+
+(define (to-sexps s)
+  (with-input-from-string s
+    (lambda ()
+      (let loop ()
+        (define x (read))
+        (if (eof-object? x)
+            '()
+            (cons x (loop)))))))
+
+;; ----------------------------------------
+
+;; expects "<infile> <outfile>" lines on stdin
 (module+ main
-  (define v (read))
-  (define new (xform-top v))
-  (when new
-    (write new)
-    (newline)))
+  (let ([errors 0])
+    (let loop ()
+      (define l (read-line))
+      (if (eof-object? l)
+          (printf "rewrite.rkt: Reached EOF; done.\n")
+          (match (map (lambda (s) (if (symbol? s) (symbol->string s) s))
+                      (to-sexps l))
+            [(list infile outfile)
+             (printf "Converting: ~a ~a\n" infile outfile)
+             (with-handlers ([(lambda (_) #t)
+                              (lambda (e)
+                                (printf "ERROR while converting:\n  ~a"
+                                        (exn->string e))
+                                (set! errors (add1 errors)))])
+               (let* ((v (with-input-from-file infile read))
+                      (new                   
+                       (xform-top v)))
+                 (when new
+                   (with-output-to-file outfile
+                     (lambda () (write new) (newline))))))
+             (loop)]
+            )))
+    (if (zero? errors)
+        (printf "Completed all conversions without error.\n")
+        (begin (printf "Encountered ~a errors while converting.  Failing job.\n" errors)
+               (exit 1)))
+    ))
 
