@@ -14,8 +14,9 @@ module Packed.FirstOrder.LTraverse
     ( Prog(..), Ty(..), FunEnv, FunDef(..), Effect(..), ArrowTy(..)
     , inferEffects, inferFunDef
     -- * Utilities for dealing with the extended types:
-    , Loc(..)
+    , Loc(..), LocVar
     , allLocVars, argtyToLoc, mangle, subloc
+    , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc
     )
     where
 
@@ -24,13 +25,13 @@ import Control.DeepSeq
 import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
-import qualified Packed.FirstOrder.Target as T
+-- import qualified Packed.FirstOrder.Target as T
 -- import Packed.FirstOrder.L1_Source (Exp(..))
 import Data.List as L
 import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
-import Debug.Trace
+-- import Debug.Trace
 -- import GHC.Stack (errorWithStackTrace)
     
 --------------------------------------------------------------------------------
@@ -109,7 +110,7 @@ type NewFuns = M.Map Var FunDef
 type FunEnv = M.Map Var (ArrowTy Ty)
 
 -- | L1 Types extended with abstract Locations
-data Ty = IntTy | SymTy | ProdTy [Ty] | SymDictTy Ty  
+data Ty = IntTy | SymTy | BoolTy | ProdTy [Ty] | SymDictTy Ty  
         | PackedTy { con :: Constr, loc :: LocVar }
   deriving (Show, Read, Ord, Eq, Generic, NFData)
            
@@ -148,6 +149,7 @@ getTyLocs t =
     case t of
       IntTy  -> S.empty
       SymTy  -> S.empty
+      BoolTy -> S.empty
       ProdTy ls -> S.unions (L.map getTyLocs ls)
       PackedTy _ lv -> S.singleton lv
       -- This is a tricky case:
@@ -161,6 +163,7 @@ annotateTy t =
     L1.Packed k -> PackedTy k <$> genLetter                   
     L1.IntTy    -> return IntTy
     L1.SymTy    -> return SymTy
+    L1.BoolTy   -> return BoolTy
     L1.ProdTy l -> ProdTy <$> mapM annotateTy l
     L1.SymDictTy v -> SymDictTy <$> annotateTy v
 
@@ -193,8 +196,9 @@ substTy mp t = go t
   where
     go t = 
      case t of
-      IntTy -> IntTy
-      SymTy -> SymTy
+      IntTy  -> IntTy
+      SymTy  -> SymTy
+      BoolTy -> BoolTy
       SymDictTy te -> SymDictTy (go te)
       ProdTy    ts -> ProdTy    (L.map go ts)
       PackedTy k l -> case M.lookup l mp of
@@ -216,6 +220,7 @@ allLocVars :: Ty -> [LocVar]
 allLocVars t =
     case t of
       SymTy     -> []
+      BoolTy    -> []
       IntTy     -> []
       PackedTy _ v -> [v]
       ProdTy ls  -> L.concatMap allLocVars ls
@@ -249,8 +254,9 @@ instantiateApp arrty0 loc = do
    rettyToLoc :: Ty -> Loc
    rettyToLoc t =
      case t of
-       IntTy -> Bottom
-       SymTy -> Bottom
+       IntTy  -> Bottom
+       SymTy  -> Bottom
+       BoolTy -> Bottom
        SymDictTy _  -> Top
        ProdTy ls    -> TupLoc $ L.map rettyToLoc ls
        PackedTy _ l -> Fresh l
@@ -287,7 +293,25 @@ zipLT loc ty = error$ "zipLT: argument type "++show(doc ty)
                    ++"does not have matching structure to location: "++show(doc loc)
 
 
+-- Cursor types encoded into the current language
+--------------------------------------------------------------------------------
 
+-- Use a hack rather than extending the IR at this point:
+cursorTy :: Ty
+cursorTy = PackedTy "CURSOR_TY" ""
+
+mkCursorTy :: LocVar -> Ty
+mkCursorTy = PackedTy "CURSOR_TY" 
+
+isCursorTy :: Ty -> Bool
+isCursorTy (PackedTy "CURSOR_TY" _) = True
+isCursorTy _ = False
+
+cursorTyLoc :: Ty -> LocVar
+cursorTyLoc (PackedTy "CURSOR_TY" l) = l
+cursorTyLoc t = error $ "cursorTyLoc: should only be called on a cursor type, not "++show t
+               
+--------------------------------------------------------------------------------
                      
 -- | Map every lexical variable in scope to an abstract location.
 type Env = M.Map Var Loc
@@ -295,14 +319,19 @@ type Env = M.Map Var Loc
 -- | Convert the type of a function argument to an abstract location
 -- for that function argument.
 argtyToLoc :: Var -> Ty -> Loc
-argtyToLoc v (PackedTy{}) = Fixed v
- -- ^ Here we set the type based on the variable binding name, not the
- -- quantified loc variable in the type signature.
-argtyToLoc v (ProdTy ls) = TupLoc [argtyToLoc (subloc v i) t | (t,i) <- zip ls [1..]]
- -- ^ Here we generate fixed locations that are *subparts* of the function argument.
-argtyToLoc _ SymTy        = Bottom
-argtyToLoc _ IntTy        = Bottom
-argtyToLoc v (SymDictTy _t) = -- ^ This may contain packed objects, but it is not contiguous.
+argtyToLoc v ty =
+ case ty of   
+  PackedTy{}
+    | isCursorTy ty -> Fixed $ cursorTyLoc ty
+    | otherwise -> Fixed v
+    -- ^ Here we set the type based on the variable binding name, not the
+    -- quantified loc variable in the type signature.
+  (ProdTy ls)   -> TupLoc [argtyToLoc (subloc v i) t | (t,i) <- zip ls [1..]]
+   -- ^ Here we generate fixed locations that are *subparts* of the function argument.
+  SymTy         -> Bottom
+  IntTy         -> Bottom
+  BoolTy        -> Bottom
+  SymDictTy _t  -> -- ^ This may contain packed objects, but it is not contiguous.
     Fixed v
     -- if hasPacked t then Top else Bottom
 
@@ -312,6 +341,7 @@ hasPacked t = case t of
                 L1.Packed _  -> True
                 L1.ProdTy ls -> any hasPacked ls
                 L1.SymTy     -> False
+                L1.BoolTy    -> False
                 L1.IntTy     -> False
                 L1.SymDictTy t -> hasPacked t
                              
@@ -469,8 +499,9 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
                 L1.Packed{}    -> S.member (Traverse lastV) eff
                 -- ANY usage of a fixed-sized last field requires
                 -- traversal of packed data in the middle fields:
-                L1.IntTy -> isUsed
-                L1.SymTy -> isUsed
+                L1.IntTy  -> isUsed
+                L1.SymTy  -> isUsed
+                L1.BoolTy -> isUsed
                 L1.SymDictTy{} -> error "no SymDictTy allowed inside Packed"
                 L1.ProdTy{}    -> error "no ProdTy allowed inside Packed"
 

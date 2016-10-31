@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -8,6 +10,7 @@
 module Packed.FirstOrder.Passes.Cursorize
     (cursorize, lower) where
 
+import Control.DeepSeq
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import           Packed.FirstOrder.LTraverse as L2
@@ -25,8 +28,16 @@ lvl = 5
 -- =============================================================================
 
 -- | Map every lexical variable in scope to an abstract location.
-type Env = M.Map Var Loc
+--   Some variables are cursors, and they are runtime witnesses to
+--   particular location variables.
+type Env = M.Map Var LocValue
 
+data LocValue = InCursor  LocVar
+              | OutCursor LocVar
+              | NotCursor Loc
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
+instance Out LocValue
+                
 -- | This inserts cursors and REMOVES effect signatures.  It returns
 --   the new type as well as how many extra params were added to input
 --   and return types.
@@ -41,6 +52,9 @@ cursorizeTy (ArrowTy inT ef ouT) =
   appendArgs ls t = ProdTy $ ls ++ [t]
   numIn   = S.size ef
   numOut  = length outVs
+  -- Every cursor in means another output (new function return value
+  -- for the update), and conversely, every output cursor must have
+  -- had an original position (new input param):
   newOuts = replicate numIn  cursorTy
   newIns  = replicate numOut cursorTy
   outVs   = allLocVars ouT
@@ -53,10 +67,6 @@ cursorizeTy (ArrowTy inT ef ouT) =
       (SymDictTy x) -> SymDictTy $ (replacePacked t2) x
       PackedTy{}    -> t2
 
-                       
--- Use a hack rather than extending the IR at this point:
-cursorTy :: Ty
-cursorTy = PackedTy "CURSOR_TY" ""
 
 -- | A compiler pass that inserts cursor-passing for reading and
 -- writing packed values.
@@ -69,23 +79,43 @@ cursorize prg@Prog{fundefs} = -- ddefs, fundefs
     return prg{ fundefs = M.fromList $ L.map (\f -> (funname f,f)) fds' }
  where
   fd :: FunDef -> SyM FunDef
-  fd (f@FunDef{funname,funty,funarg,funbod}) = dbgTrace lvl ("Processing fundef: "++show(doc f)) $ do      
+  fd (f@FunDef{funname,funty,funarg,funbod}) = 
+      dbgTrace lvl ("Processing fundef: "++show(doc f)) $ do
       let (newTy@(ArrowTy inT _ _outT),newIn,_newOut) = cursorizeTy funty
       fresh <- gensym "tupin"
-      let newArg = if newIn == 0 then funarg else fresh
-          bod    = if newIn == 0 then funbod
-                   else L1.subst funarg (L1.ProjE newIn (L1.VarE fresh)) funbod
-          env = M.singleton newArg argLoc
+      let (newArg,bod,loc) =
+              if newIn == 0 -- No injected cursor params..
+              then (funarg,funbod, NotCursor argLoc)
+              else (fresh,
+                    L1.subst funarg (L1.ProjE newIn (L1.VarE fresh)) funbod,
+                    __)
+          env = M.singleton newArg loc
           argLoc  = argtyToLoc (mangle newArg) inT
       (exp',_) <- exp env bod
       return $ FunDef funname newTy newArg exp'
-   
+
+  -- This looks like a flattening pass.  Because of the need to route
+  -- new, additional outputs from subroutine calls, we use tuples and
+  -- let bindings heavily, including changing the types of
+  -- conditionals to return tuples.
   exp :: Env -> L1.Exp -> SyM (L1.Exp, Loc)
   exp env e = 
     dbgTrace lvl ("\n[addCursors] Processing exp: "++show (doc e)++"\n  with env: "++show env) $
     case e of
-     L1.VarE v  -> return (__, env # v)
+     L1.VarE v  -> let NotCursor x = env # v in
+                   return (__, x)
      L1.LitE  _ -> return (__, Bottom)
+     
+     L1.AppE f e ->
+       maybeLet e $ \ (extra,rands) ->
+        undefined 
+                   
+     L1.IfE a b c -> do
+       (a',aloc) <- exp env a
+       -- If we need to route traversal results out of the branches,
+       -- we need to change the type of these branches.
+       undefined
+                   
      _ -> return (e,Top)
      _ -> error $ "ERROR: cursorize: unfinished, needs to handle:\n "++sdoc e
 
