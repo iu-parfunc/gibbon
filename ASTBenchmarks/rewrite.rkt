@@ -2,7 +2,10 @@
 
 (require racket/exn)
 
-(define (datum e) `(INTLIT 5))
+(define (datum e)
+  (if (fixnum? e)
+      `(INTLIT ,e)
+      '(INTLIT 5)))
 
 (define (xform-expression e)
   (define xf xform-expression)
@@ -13,25 +16,25 @@
     (newline))
 
   (match e
-    [`(if ,e1 ,e2 ,e3) `(If ,(xf e1) ,(xf e2) ,(xf e3))]
-    [`(set! ,x ,e) `(SetBang ,x ,(xf e))]
-    [`(quote ,e) `(Quote ,(datum e))]
-    [`(quote-syntax ,e) `(QuoteSyntax ,(datum e))]
+    [`(if ,e1 ,e2 ,e3)          `(If ,(xf e1) ,(xf e2) ,(xf e3))]
+    [`(set! ,x ,e)              `(SetBang ,x ,(xf e))]
+    [`(quote ,e)                `(Quote ,(datum e))]
+    [`(quote-syntax ,e)         `(QuoteSyntax ,(datum e))]
     [`(quote-syntax ,e #:local) `(QuoteSyntaxLocal ,(datum e))]
-    [`(module ,m ,lang ,e ...) `(Begin ,(map xf e))]
+    [`(module ,m ,lang ,e ...)  `(Begin ,(map xf e))]
     [`(module* ,m ,lang ,e ...) `(Begin ,(map xf e))]
-    [`(#%top ,s) `(Top ,s)]
-    [`(begin ,e ...) `(Begin ,(map xf e))]
-    [`(begin0 ,e ...) `(Begin0 ,(map xf e))]
-    [`(#%variable-reference) `(VariableReferenceNull)]
+    [`(#%top . ,s) #:when (symbol? s) `(Top ,s)] ;; RRN: fixed
+    [`(begin ,e ...)            `(Begin ,(map xf e))]
+    [`(begin0 ,e ...)           `(Begin0 ,(map xf e))]
+    [`(#%variable-reference)    `(VariableReferenceNull)]
     [`(#%variable-reference (#%top . ,i)) `(VariableReferenceTop ,i)]
     [`(#%variable-reference ,i) `(VariableReference ,i)]
-    [`(#%app ,e ...) `(App ,(map xf e))]
-    [`(#%plain-app ,e ...) `(App ,(map xf e))]
+    [`(#%app ,e ...)            `(App ,(map xf e))]
+    [`(#%plain-app ,e ...)      `(App ,(map xf e))]
     [`(let-values (,binds ...) ,body ...)
      `(LetValues ,(lvbind binds) ,(map xf body))]
-    [`(letrec-values (,binds ...) ,body)
-     `(LetrecValues ,(lvbind binds) ,(xf body))]
+    [`(letrec-values (,binds ...) ,body ...)
+     `(LetrecValues ,(lvbind binds) ,(map xf body))] ;; RRN: fixed.
     [(? symbol?) `(VARREF ,e)]
     [`(lambda ,fmls ,body ...)
      `(Lambda ,(xform-fmls fmls) ,(map xf body))]
@@ -66,9 +69,12 @@
     [(? eof-object?) #f]  ;; empty file
     [`(#%require ,_ ...) `(BeginTop)]
     [`(#%provide ,_ ...) `(BeginTop)]
+    [`(#%declare ,_ ...) `(BeginTop)] ;; RRN added.
     [`(module ,m ,lang ,e ...) `(BeginTop ,(map xform-top e))]
     [`(module* ,m ,lang ,e ...) `(BeginTop ,(map xform-top e))]
     [`(begin ,e ...)
+     `(BeginTop ,(map xform-top e))]
+    [`(begin-for-syntax ,e ...)  ;; RRN added.
      `(BeginTop ,(map xform-top e))]
     [`(#%module-begin ,e ...)
      `(BeginTop ,(map xform-top e))]
