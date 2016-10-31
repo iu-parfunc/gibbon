@@ -1,3 +1,4 @@
+#! /usr/bin/env racket
 #lang s-exp "../../TreeLang/treelang.rkt"
 
 (require "../grammar_racket.sexp")
