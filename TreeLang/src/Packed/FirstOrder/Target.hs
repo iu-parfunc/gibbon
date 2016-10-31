@@ -81,6 +81,10 @@ data Tail
                      prim  :: Prim,
                      rands :: [Triv],
                      bod   :: Tail }
+    | IfEqT { val1 :: Var,
+              val2 :: Var,
+              con  :: Tail,
+              els  :: Tail }
     | Switch Triv Alts (Maybe Tail)
     -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
@@ -196,6 +200,11 @@ codegenTail (Switch tr alts def) ty =
 
 codegenTail (TailCall v ts) _ty =
     return $ [ C.BlockStm [cstm| return $( C.FnCall (cid v) (map codegenTriv ts) noLoc ); |] ]
+
+codegenTail (IfEqT v1 v2 e1 e2) ty = do
+    e1' <- codegenTail e1 ty
+    e2' <- codegenTail e2 ty
+    return $ [ C.BlockStm [cstm| if ($(cid v1) == $(cid v2)) { $items:e1' } else { $items:e2' } |] ]
 
 codegenTail (LetCallT bnds ratr rnds body) ty
     | (length bnds) > 1 = do nam <- gensym "tmp_struct"
