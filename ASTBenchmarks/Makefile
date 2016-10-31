@@ -34,10 +34,15 @@ cleaned_racket: expanded_racket rewrite.rkt
           mkdir -p `dirname "../cleaned_racket/$$f"`; \
 	  echo "$$f" "../cleaned_racket/$$f"; \
          done | racket ../rewrite.rkt;
+	$(MAKE) largest_clean
 
 largest:
 	echo "Here are some of the larger files:"
 	find expanded_racket/ -type f -printf "%s\t%p\n" | sort -n | tail
+
+largest_clean:
+	echo "Here are some of the larger, cleaned files:"
+	find cleaned_racket -type f -printf "%s\t%p\n" | sort -n | tail
 
 
 .PHONY: default fetch largest
