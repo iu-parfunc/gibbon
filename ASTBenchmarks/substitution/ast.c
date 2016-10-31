@@ -38,7 +38,7 @@ ctx_t CTX(ast_node_type type) {
 #define AST_NAME(typ)   g_node_types[typ]
 
 const char* g_ast_types[] = {
-  "MKPROG", "DEFINE_VALUES", "DEFINE_SYNTAXES", "EXPRESSION", "VARREF",
+  "MKPROG", "DEFINE_VALUES", "DEFINE_SYNTAXES", "BEGINTOP", "EXPRESSION", "VARREF",
   "LAMBDA", "CASE_LAMBDA", "MKLAMBDACASE", "IF", "BEGIN", "BEGIN0", "LET_VALUES", 
   "MKLVBIND", "LETREC_VALUES", "SETBANG", "QUOTE", "QUOTE_SYNTAX", "QUOTE_SYNTAX_LOCAL", 
   "INTLIT", "WITH_CONTINUATION_MARK", "APP", "TOP", "VARIABLE_REFERENCE", 
@@ -46,7 +46,7 @@ const char* g_ast_types[] = {
 };
 
 const char* g_node_types[] = {
-  "MKPROG", "DefineValues", "DefineSyntaxes", "Expression", "VARREF",
+  "MKPROG", "DefineValues", "DefineSyntaxes", "BeginTop", "Expression", "VARREF",
   "Lambda", "CaseLambda", "MKLAMBDACASE", "If", "Begin", "Begin0", "LetValues", 
   "MKLVBIND", "LetRecValues", "SetBang", "Quote", "QuoteSyntax", "QuoteSyntaxLocal", 
   "INTLIT", "WithContinuationMark", "App", "Top", "VariableReference", 
@@ -90,20 +90,20 @@ ast_t* build_formals(sexp_t* sx, ctx_t ctx) {
     assert(IS_SX_VALUE(sx));
     if (STREQ("F3", sx->val)) {
 
-      ast->ty = F3;
-      sx      = NEXT(sx);
+      ast->ty           = F3;
+      sx                = NEXT(sx);
       ast->node.fml.sym = sx->val;
       return ast;
 
     } else if (STREQ("F1", sx->val)) {
 
-      sx = NEXT(sx);
-      sx = LIST(sx);
+      sx         = NEXT(sx);
+      sx         = LIST(sx);
       int length = 0;
       assert(IS_SX_VALUE(sx));
       ast->node.fml.syms   = get_strings(sx, &length);
       ast->node.fml.n_syms = length;
-      ast->ty = F1;
+      ast->ty              = F1;
       return ast;
 
     } else if(STREQ("F2", sx->val)) {
@@ -174,19 +174,16 @@ ast_t* build_expr(sexp_t* sx, ctx_t ctx) {
 
       } else if (TAG("MKLAMBDACASE")) {
 
-        ast->ty = MKLAMBDACASE;
-        sx = NEXT(sx);
-        sexp_t* nxt = NEXT(sx);
-        sx = LIST(sx);
-        int length = 0;
-        ast->node.mk_lambda.syms = get_strings(sx, &length);
-        ast->node.mk_lambda.n_syms = length;
-        nxt = LIST(nxt);
-        ast->node.mk_lambda.n_exps = get_list_length(nxt);
-        ast->node.mk_lambda.exps = NEW_ASTS(ast->node.mk_lambda.n_exps);
+        ast->ty     = MKLAMBDACASE;
+        sx          = NEXT(sx);
+        ast->node.mk_lambda.fmls      = build_formals(sx, CTX(MKLAMBDACASE));
+        sx                            = NEXT(sx);
+        sx                            = LIST(sx);
+        ast->node.mk_lambda.n_exps    = get_list_length(sx);
+        ast->node.mk_lambda.exps      = NEW_ASTS(ast->node.mk_lambda.n_exps);
         for (int i=0; i < ast->node.mk_lambda.n_exps; i++) {
-          ast->node.mk_lambda.exps[i] = build_expr(nxt, CTX(MKLAMBDACASE));
-          nxt = nxt->next;
+          ast->node.mk_lambda.exps[i] = build_expr(sx, CTX(MKLAMBDACASE));
+          sx = sx->next;
         }
         return ast;
         
@@ -211,8 +208,8 @@ ast_t* build_expr(sexp_t* sx, ctx_t ctx) {
       } else if (TAG("Begin")) {
 
         ast->ty = BEGIN;
-        sx = NEXT(sx);
-        sx = LIST(sx);
+        sx      = NEXT(sx);
+        sx      = LIST(sx);
         ast->node.begin.n_exps    = get_list_length(sx);
         ast->node.begin.exps      = NEW_ASTS(ast->node.begin.n_exps);
         for (int i=0; i < ast->node.begin.n_exps; i++) {
@@ -347,6 +344,62 @@ ast_t* build_expr(sexp_t* sx, ctx_t ctx) {
   }
 }
 
+ast_t* build_top_lvl(sexp_t* sx, ctx_t ctx) {
+  if (IS_SX_LIST(sx)) {
+
+    sx = LIST(sx);
+    if (IS_SX_VALUE(sx)) {
+
+      if (TAG("Expression")) { // (#%expression expr)
+
+        ast_t* expr              = NEW_AST();
+        expr->ty                 = EXPRESSION;
+        sx                       = NEXT(sx);
+        expr->node.expr.exp      = build_expr(sx, CTX(MKPROG));
+        return expr;
+          
+      } else if (TAG("DefineValues") || TAG("DefineSyntaxes")) {
+
+        ast_t* expr = NEW_AST();
+        expr->ty    = TAG("DefineValues") ? DEFINE_VALUES : DEFINE_SYNTAXES;
+        sx          = NEXT(sx);
+        sexp_t* nxt = sx->next;
+        sx          = LIST(sx);
+        int length  = 0;
+        expr->node.defs.syms     = get_strings(sx, &length);
+        expr->node.defs.n_syms   = length;
+        expr->node.defs.exp      = build_expr(nxt, CTX(expr->ty));
+        return expr;
+
+      } else if (TAG("BeginTop")) {
+        ast_t* expr = NEW_AST();
+        expr->ty    = BEGINTOP;
+        sx          = NEXT(sx);
+        sx          = LIST(sx);
+        expr->node.prog.n_tops      = get_list_length(sx);
+        expr->node.prog.toplvl      = NEW_ASTS(expr->node.prog.n_tops);
+        for (int i=0; i < expr->node.prog.n_tops; i++) {
+          expr->node.prog.toplvl[i] = build_top_lvl(sx, CTX(BEGINTOP));
+          sx = sx->next;
+        }
+        return expr;
+      } else {
+        ERROR("[AST] Error building top inside %s..", AST_TYPE(ctx.parent));
+      }
+    } else {
+      ERROR("[AST] Error building top inside %s..", AST_TYPE(ctx.parent));
+    }
+  } else if (IS_SX_VALUE(sx)) {
+
+    ast_t* chld              = NEW_AST();
+    chld->ty                 = VARREF;
+    chld->node.data.val      = sx->val;
+    return chld;
+
+  }
+  ERROR("[AST] Error building top inside %s..", AST_TYPE(ctx.parent));
+}
+
 ast_t* build_prog(sexp_t* node) {
   ast_t* ast = NEW_AST();
   assert(IS_SX_LIST(node));
@@ -360,47 +413,7 @@ ast_t* build_prog(sexp_t* node) {
   ast->node.prog.n_tops = get_list_length(node);
   ast->node.prog.toplvl = NEW_ASTS(ast->node.prog.n_tops); 
   for (int i=0; i < ast->node.prog.n_tops; i++) {
-    sexp_t* sx = node;
-    if (IS_SX_LIST(sx)) {
-
-      sx = LIST(sx);
-      if (IS_SX_VALUE(sx)) {
-
-        if (TAG("Expression")) { // (#%expression expr)
-
-          ast_t* expr              = NEW_AST();
-          expr->ty                 = EXPRESSION;
-          sx                       = NEXT(sx);
-          expr->node.expr.exp      = build_expr(sx, CTX(MKPROG));
-          ast->node.prog.toplvl[i] = expr;
-          
-        } else if (TAG("DefineValues") || TAG("DefineSyntaxes")) {
-
-          ast_t* expr = NEW_AST();
-          expr->ty    = TAG("DefineValues") ? DEFINE_VALUES : DEFINE_SYNTAXES;
-          sx          = NEXT(sx);
-          sexp_t* nxt = sx->next;
-          sx          = LIST(sx);
-          int length  = 0;
-          expr->node.defs.syms     = get_strings(sx, &length);
-          expr->node.defs.n_syms   = length;
-          expr->node.defs.exp      = build_expr(nxt, CTX(expr->ty));
-          ast->node.prog.toplvl[i] = expr;
-
-        } else {
-          ERROR("[AST] Error building top inside prog..");
-        }
-      } else {
-        ERROR("[AST] Error building top inside prog..");
-      }
-    } else if (IS_SX_VALUE(sx)) {
-
-     ast_t* chld              = NEW_AST();
-     chld->ty                 = VARREF;
-     chld->node.data.val      = sx->val;
-     ast->node.prog.toplvl[i] = chld; 
-
-    }
+    ast->node.prog.toplvl[i] = build_top_lvl(node, CTX(MKPROG));
     node = node->next;
   }
 
@@ -458,15 +471,7 @@ void print_expression(FILE* fp, ast_t* ast) {
       fprintf(fp, ")");
       break;
     case MKLAMBDACASE:
-      fprintf(fp, "(");
-      for (int i=0; i < ast->node.mk_lambda.n_syms; i++) {
-        fprintf(fp, "%s", ast->node.mk_lambda.syms[i]);
-        if (i < ast->node.mk_lambda.n_syms - 1) {
-          fprintf(fp, " ");
-        }
-      }
-      fprintf(fp, ") ");
-
+      print_formals(fp, ast->node.mk_lambda.fmls);
       fprintf(fp, "(");
       for (int i=0; i < ast->node.mk_lambda.n_exps; i++) {
         print_expression(fp, ast->node.mk_lambda.exps[i]);
@@ -594,6 +599,16 @@ void print_top_lvl(FILE* fp, ast_t* ast) {
       fprintf(fp, ")");
       fprintf(fp, " ");
       print_expression(fp, ast->node.defs.exp);
+      break;
+    case BEGINTOP:
+      fprintf(fp, "(");
+      for (int i=0; i < ast->node.prog.n_tops; i++) {
+        print_top_lvl(fp, ast->node.prog.toplvl[i]);
+        if (i < ast->node.prog.n_tops - 1) {
+          fprintf(fp, " ");
+        }
+      }
+      fprintf(fp, ")");
       break;
     case EXPRESSION:
       print_expression(fp, ast->node.expr.exp);

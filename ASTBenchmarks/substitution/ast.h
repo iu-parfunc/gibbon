@@ -34,6 +34,7 @@ typedef enum {
   MKPROG,
   DEFINE_VALUES,
   DEFINE_SYNTAXES,
+  BEGINTOP,
   EXPRESSION,
   VARREF,
   LAMBDA,
@@ -99,8 +100,7 @@ typedef struct exp {
     } c_lambda;
 
     struct {
-      int n_syms;
-      char** syms;
+      AST* fmls;
       int n_exps;
       AST** exps;
     } mk_lambda;
