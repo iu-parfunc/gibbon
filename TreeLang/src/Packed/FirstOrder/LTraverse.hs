@@ -14,7 +14,7 @@ module Packed.FirstOrder.LTraverse
     ( Prog(..), Ty(..), FunEnv, FunDef(..), Effect(..), ArrowTy(..)
     , inferEffects, inferFunDef
     -- * Utilities for dealing with the extended types:
-    , Loc(..), LocVar
+    , Loc(..), LocVar, toEndVar, isEndVar, fromEndVar
     , allLocVars, argtyToLoc, mangle, subloc
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc
     )
@@ -58,6 +58,20 @@ data Loc = Fixed Var -- ^ A rigid location, such as for an input or output field
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 instance Out Loc
 
+toEndVar :: LocVar -> LocVar
+toEndVar = (end_prefix ++)
+
+fromEndVar :: LocVar -> Maybe LocVar
+fromEndVar v | isEndVar v = Just (drop (length end_prefix) v)
+          | otherwise = Nothing
+
+isEndVar :: LocVar -> Bool
+isEndVar = isPrefixOf end_prefix
+
+end_prefix :: String
+end_prefix = "end_" -- Hacky way to encode end-of-region variables.
+        
+    
 -- | This should be a semi-join lattice.
 join :: Loc -> Loc -> (Loc,[Constraint])
 join Bottom y      = (y,[])

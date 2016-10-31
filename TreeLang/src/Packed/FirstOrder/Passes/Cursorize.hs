@@ -44,36 +44,28 @@ type Env = M.Map Var Loc
 --   the new type as well as how many extra params were added to input
 --   and return types.
 cursorizeTy :: ArrowTy Ty -> (ArrowTy Ty, [LocVar], [LocVar])
-cursorizeTy arr@(ArrowTy inT ef ouT) = (newArr, newIn, outVs) 
+cursorizeTy (ArrowTy inT ef ouT) = (newArr, newIn, newOut)
  where
-  ----------------------------------------                       
-  -- newArr = error "Need to work around GHC bug right here.  The lines below this one trigger it."
-  -- newArr = arr
-  -- newArr = arr{ arrEffs = S.empty }
-  -- newArr = mkArrowTy IntTy IntTy
   newArr = ArrowTy newInTy S.empty newOutTy
-  ----------------------------------------
+  newInTy  = prependArgs (L.map mkCursorTy newIn)
+                         (mapPacked (\_ l -> mkCursorTy l) inT)
+  -- Let's turn output values into updated-output-cursors:a
+  newOutTy = prependArgs (L.map mkCursorTy newOut)
+                         (mapPacked (\_ l -> mkCursorTy (toEndVar l)) ouT)
+                         -- Or they could be void...
 
-  newInTy = prependArgs newIns (rewritePacked inT)           
-  -- Let's turn output values into updated-output-cursors:
-  newOutTy = prependArgs newOuts (rewritePacked ouT)
-            -- (replacePacked voidT ouT) -- Or they could be void.
-  -- rewritePacked = replacePacked cursorTy 
-  rewritePacked = mapPacked (\_ l -> mkCursorTy l) 
-
-  -- Injected cursor args go first in input and output:
-  prependArgs [] t = t
-  prependArgs ls t = ProdTy $ ls ++ [t]
-  newIn   = [ v | Traverse v <- S.toList ef ] -- This determinis the ORDER of added inputs.
-  numIn   = S.size ef
-  numOut  = length outVs
   -- Every packed input means another output (new return value for the
   -- moved cursor), and conversely, every output cursor must have had
   -- an original position (new input param):
-  newOuts = replicate numIn  cursorTy
-  newIns  = replicate numOut cursorTy
-  outVs   = allLocVars ouT -- These stay in their original order (preorder) 
+  newOut   = [ toEndVar v  -- This determines the ORDER of added inputs.
+             | Traverse v <- S.toList ef ]
+  newIn    = allLocVars ouT -- These stay in their original order (preorder) 
 
+-- Injected cursor args go first in input and output:
+prependArgs [] t = t
+prependArgs ls t = ProdTy $ ls ++ [t]
+
+             
 mkArrowTy :: Ty -> Ty -> ArrowTy Ty
 mkArrowTy x y = ArrowTy x S.empty y
 
@@ -113,7 +105,7 @@ cursorize prg@Prog{fundefs} = -- ddefs, fundefs
   fd :: FunDef -> SyM FunDef
   fd (f@FunDef{funname,funty,funarg,funbod}) = 
       let (newTy@(ArrowTy inT _ _outT),newIn,newOut) = cursorizeTy funty in
-      dbgTrace lvl ("Processing fundef: "++show(doc f)++"\n  new params: "++show (newIn, newOut)) $
+      dbgTrace lvl ("Processing fundef: "++show(doc f)++"\n  new type: "++sdoc newTy) $
    do      
       fresh <- gensym "tupin"
       let argLoc  = argtyToLoc (mangle newArg) inT
