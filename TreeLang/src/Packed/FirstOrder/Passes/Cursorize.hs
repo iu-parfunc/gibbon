@@ -41,33 +41,56 @@ instance Out LocValue
 -- | This inserts cursors and REMOVES effect signatures.  It returns
 --   the new type as well as how many extra params were added to input
 --   and return types.
-cursorizeTy :: ArrowTy Ty -> (ArrowTy Ty, Int, Int)
+cursorizeTy :: ArrowTy Ty -> (ArrowTy Ty, [LocVar], [LocVar])
 cursorizeTy (ArrowTy inT ef ouT) =
-  (ArrowTy (appendArgs newIns  (replacePacked cursorTy inT))
+  (ArrowTy (prependArgs newIns  (rewritePacked inT))
           S.empty
-          (appendArgs newOuts (replacePacked voidT ouT))
-  , numIn, numOut )
+          (prependArgs newOuts
+                      -- Let's turn output values into updated-output-cursors:
+                      (rewritePacked ouT)
+               -- (replacePacked voidT ouT) -- Or they could be void.
+          )
+  , newIn
+  , outVs )
  where
-  appendArgs [] t = t
-  appendArgs ls t = ProdTy $ ls ++ [t]
+  -- rewritePacked = replacePacked cursorTy 
+  rewritePacked = mapPacked (\_ l -> mkCursorTy l)
+
+  -- Injected cursor args go first in input and output:
+  prependArgs [] t = t
+  prependArgs ls t = ProdTy $ ls ++ [t]
+  newIn   = [ v | Traverse v <- S.toList ef ] -- This determinis the ORDER of added inputs.
   numIn   = S.size ef
   numOut  = length outVs
-  -- Every cursor in means another output (new function return value
-  -- for the update), and conversely, every output cursor must have
-  -- had an original position (new input param):
+  -- Every packed input means another output (new return value for the
+  -- moved cursor), and conversely, every output cursor must have had
+  -- an original position (new input param):
   newOuts = replicate numIn  cursorTy
   newIns  = replicate numOut cursorTy
-  outVs   = allLocVars ouT
-  voidT   = ProdTy []          
-  replacePacked (t2::Ty) (t::Ty) =
-    case t of
-      IntTy  -> IntTy
-      BoolTy -> BoolTy
-      SymTy  -> SymTy
-      (ProdTy x)    -> ProdTy $ L.map (replacePacked t2) x
-      (SymDictTy x) -> SymDictTy $ (replacePacked t2) x
-      PackedTy{}    -> t2
+  outVs   = allLocVars ouT -- These stay in their original order (preorder) 
 
+-- | Replace all packed types with something else.
+replacePacked :: Ty -> Ty -> Ty
+replacePacked (t2::Ty) (t::Ty) =
+  case t of
+    IntTy  -> IntTy
+    BoolTy -> BoolTy
+    SymTy  -> SymTy
+    (ProdTy x)    -> ProdTy $ L.map (replacePacked t2) x
+    (SymDictTy x) -> SymDictTy $ (replacePacked t2) x
+    PackedTy{}    -> t2
+
+mapPacked :: (Var -> LocVar -> Ty) -> Ty -> Ty
+mapPacked fn t =
+  case t of
+    IntTy  -> IntTy
+    BoolTy -> BoolTy
+    SymTy  -> SymTy
+    (ProdTy x)    -> ProdTy $ L.map (mapPacked fn) x
+    (SymDictTy x) -> SymDictTy $ mapPacked fn x
+    PackedTy k l  -> fn k l
+
+-- voidT   = ProdTy []          
 
 -- | A compiler pass that inserts cursor-passing for reading and
 -- writing packed values.
@@ -81,45 +104,84 @@ cursorize prg@Prog{fundefs} = -- ddefs, fundefs
  where
   fd :: FunDef -> SyM FunDef
   fd (f@FunDef{funname,funty,funarg,funbod}) = 
-      dbgTrace lvl ("Processing fundef: "++show(doc f)) $ do
-      let (newTy@(ArrowTy inT _ _outT),newIn,_newOut) = cursorizeTy funty
+      let (newTy@(ArrowTy inT _ _outT),newIn,newOut) = cursorizeTy funty in
+      dbgTrace lvl ("Processing fundef: "++show(doc f)++" new params: "++show (newIn, newOut)) $
+   do      
       fresh <- gensym "tupin"
       let (newArg,bod,loc) =
               if newIn == 0 -- No injected cursor params..
               then (funarg,funbod, NotCursor argLoc)
-              else (fresh,
-                    L1.subst funarg (L1.ProjE newIn (L1.VarE fresh)) funbod,
-                    __)
+              else ( fresh
+                   , L1.subst funarg (L1.ProjE (length newIn) (L1.VarE fresh))
+                              funbod
+                   ,  __)
           env = M.singleton newArg loc
           argLoc  = argtyToLoc (mangle newArg) inT
-      (exp',_) <- exp env bod
+          -- (_,exp',_,_) <- exp env bod
+      exp' <- tail newOut env bod
       return $ FunDef funname newTy newArg exp'
 
+  -- When processing something in tail position, we take a DEMAND for
+  -- a certain list of location witnesses.  We produce a tuple containing
+  -- those witnesses prepended to the original return value.
+  tail :: [LocVar] -> Env -> L1.Exp -> SyM L1.Exp
+  tail demanded env e =
+   dbgTrace lvl ("\n[cursorize] Processing tail: "++show (doc e)++"\n  with env: "++show env) $
+   case e of
+
+     -- Here we route through extra arguments.
+     L1.LetE (v,tv,rhs) bod ->
+       do (new,rhs',rty,rloc) <- exp env rhs
+          -- ty will always be a known number of cursors (0 or more)
+          -- prepended to the value that was already 
+          tmp <- gensym "tmp"
+          let ix = length new
+          return $ L1.LetE ("tmp",rty,rhs') $
+                   L1.LetE (v,tv, L1.ProjE ix (L1.VarE "tmp")) $
+                   finishEXP
+                 
+     _ -> undefined
+             
   -- This looks like a flattening pass.  Because of the need to route
   -- new, additional outputs from subroutine calls, we use tuples and
   -- let bindings heavily, including changing the types of
   -- conditionals to return tuples.
-  exp :: Env -> L1.Exp -> SyM (L1.Exp, Loc)
+  --      
+  -- We return a list corresponding to the cursor values ADDED to the
+  -- return type, containing their locations.
+  exp :: Env -> L1.Exp -> SyM ([Loc], L1.Exp, L1.Ty, Loc)
   exp env e = 
-    dbgTrace lvl ("\n[addCursors] Processing exp: "++show (doc e)++"\n  with env: "++show env) $
+    dbgTrace lvl ("\n[cursorize] Processing exp: "++show (doc e)++"\n  with env: "++show env) $
     case e of
+{-
      L1.VarE v  -> let NotCursor x = env # v in
                    return (__, x)
      L1.LitE  _ -> return (__, Bottom)
-     
+
+     -- Here's where the magic happens, we must populate new cursor arguments:
      L1.AppE f e ->
        maybeLet e $ \ (extra,rands) ->
-        undefined 
+        finishEXP
                    
      L1.IfE a b c -> do
        (a',aloc) <- exp env a
        -- If we need to route traversal results out of the branches,
        -- we need to change the type of these branches.
-       undefined
-                   
-     _ -> return (e,Top)
+       return (finishEXP, finishLOC)
+-}
+     _ -> return ([], finishEXP, finishTYP, finishLOC)
      _ -> error $ "ERROR: cursorize: unfinished, needs to handle:\n "++sdoc e
 
+finishEXP :: L1.Exp
+finishEXP = (L1.VarE "FINISHME")
+
+finishLOC :: Loc
+finishLOC = Fresh "FINISHME"
+
+finishTYP :: L1.Ty
+finishTYP = L1.Packed "FINISHME" 
+            
+maybeLet :: forall t. t
 maybeLet = undefined
 
 -- =============================================================================
@@ -207,3 +269,6 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
       L1.DictInsertP -> T.DictInsertP
       L1.DictLookupP -> T.DictLookupP
       (L1.ErrorP s)  -> __ -- T.ErrorP s
+
+-- ================================================================================
+

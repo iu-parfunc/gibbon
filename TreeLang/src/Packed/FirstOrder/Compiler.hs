@@ -92,20 +92,29 @@ compileFile parser fp =
            put cnt'
            lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":"
            lift$ dbgPrintLn lvl sepline
-           lift $ evaluate $ force y
+           _ <- lift $ evaluate $ force y
            lift$ dbgPrintLn lvl $ sdoc y
+           return y
+
+         -- No reason to chatter from passes that are stubbed out anyway:
+         pass' :: (Out b, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
+         pass' _ fn x = do
+           cnt <- get; 
+           let (y,cnt') = runSyM cnt (fn x);                                      
+           put cnt';
+           _ <- lift $ evaluate $ force y;
            return y
            
      str <- evalStateT
-              (do l1b <- pass "freshNames"               freshNames               l1
-                  l1c <- pass "flatten"                  flatten                  l1b
-                  l2  <- pass "inferEffects"             inferEffects             l1c
-                  mt  <- pass "findMissingTraversals"    findMissingTraversals    l2
-                  l2b <- pass "addTraversals"            (addTraversals mt)       l2
-                  l2c <- pass "addCopies"                addCopies                l2b
-                  l2d <- pass "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
-                  l2e <- pass "cursorize"                cursorize                l2d
-                  l3  <- pass "lower"                    lower                    l2e
+              (do l1b <- pass' "freshNames"               freshNames               l1
+                  l1c <- pass' "flatten"                  flatten                  l1b
+                  l2  <- pass  "inferEffects"             inferEffects             l1c
+                  mt  <- pass' "findMissingTraversals"    findMissingTraversals    l2
+                  l2b <- pass' "addTraversals"            (addTraversals mt)       l2
+                  l2c <- pass' "addCopies"                addCopies                l2b
+                  l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
+                  l2e <- pass  "cursorize"                cursorize                l2d
+                  l3  <- pass  "lower"                    lower                    l2e
                   return (codegenProg l3))
                cnt0
      writeFile (replaceExtension fp ".c") str
