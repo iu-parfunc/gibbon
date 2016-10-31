@@ -20,15 +20,19 @@
 
 #| Grammar
 
-prog := d ... f ... e
+prog := #lang s-exp "/path/to/treelang.rkt"
+        d ... f ... e
 
-;; done
-d := (data T [K t ...] ...)
+;; Data definitions:
+d := (data T [K fTy ...] ...)
 
-;; done
+;; Function definitions
 f := (define (f [v : t] ...) : t e)
 
-;; done
+;; Field types
+fTy := t | (Listof t)
+
+;; Types
 t := Int | Sym | Bool
    | (Vector t ...) 
    | (SymDict t) ;; maps symbols to t?
@@ -45,6 +49,7 @@ e := var | lit
    | primapp
    | (for/list ([v : t e])  e)      ;; not enforced that only loops over single list
    | (error string)
+   | (time e)                       ;; time a benchmark
 
 primapp := (binop e e)
         | (insert e e e)
