@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -10,8 +11,8 @@ module Packed.FirstOrder.Passes.Cursorize
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import           Packed.FirstOrder.LTraverse as L2
-import qualified Packed.FirstOrder.Target as L3
-import Data.List as L
+import qualified Packed.FirstOrder.Target as T
+import Data.List as L hiding (tail)
 import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
@@ -59,7 +60,7 @@ cursorTy = PackedTy "CURSOR_TY" ""
 
 -- | A compiler pass that inserts cursor-passing for reading and
 -- writing packed values.
-cursorize :: Prog -> SyM Prog  -- [L3.FunDecl]
+cursorize :: Prog -> SyM Prog  -- [T.FunDecl]
 cursorize prg@Prog{fundefs} = -- ddefs, fundefs
     dbgTrace lvl ("Starting cursorize on "++show(doc fundefs)) $ do 
     -- Prog emptyDD <$> mapM fd fundefs <*> pure Nothing
@@ -92,11 +93,86 @@ cursorize prg@Prog{fundefs} = -- ddefs, fundefs
 
 -- | Convert into the target language.  This does not make much of a
 -- change, but it checks the changes that have already occurred.
-lower :: L2.Prog -> SyM L3.Prog
-lower L2.Prog{fundefs,ddefs,mainExp} = 
-  case __ of 
-   _ -> error "FINISHME"
+--
+-- The only substantitive conversion here is of tupled arguments to
+-- multiple argument functions.
+lower :: L2.Prog -> SyM T.Prog
+lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
+  mn <- case mainExp of
+          Nothing -> return Nothing
+          Just x  -> Just <$> tail x
+  T.Prog <$> (mapM fund (M.elems fundefs)) <*> pure mn
  where
-  exp :: L1.Exp -> L3.Tail
-  exp = undefined
+  fund :: L2.FunDef -> SyM T.FunDecl
+  fund FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do
+      tl <- tail funbod
+      return $ T.FunDecl { T.funName = funname
+                         , T.funArgs = [(funarg, typ' inty)]
+                         , T.funRetTy = typ' outty
+                         , T.funBody = tl } 
 
+  tail :: L1.Exp -> SyM T.Tail
+  tail ex = 
+   case ex of
+--    L1.LetE (v,t,rhs) bod -> T.LetE (v,t,tail rhs) (tail bod)
+    L1.VarE v          -> pure$ T.RetValsT [T.VarTriv v]
+    
+    L1.IfE a b c       -> do b' <- tail b
+                             c' <- tail c
+                             return $ T.Switch (triv "if test" a)
+                                      (T.IntAlts [(0, b')])
+                                      (Just c')
+
+    L1.AppE v e        -> return $ T.TailCall v [triv "operand" e]
+
+    L1.LetE (v,t,L1.PrimAppE p ls) bod ->
+        T.LetPrimCallT [(v,typ t)]
+             (prim p)
+             (L.map (triv "prim rand") ls) <$>
+             (tail bod)
+
+    L1.LetE (v,t,L1.AppE f arg) bod -> do
+        sym <- gensym "tmpstrct"
+        T.LetCallT [(v,typ t)] f
+             [(triv "app rand") arg]
+             (typ t) -- Redundant?
+             sym <$>
+             (tail bod)
+
+    L1.CaseE e ls ->
+        return $ T.Switch{} -- (tail e) (M.map (\(vs,er) -> (vs,tail er)) ls)
+
+    _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex
+             
+{-    
+    L1.LitE _          -> ex
+    
+    L1.PrimAppE p ls   -> L1.PrimAppE p $ L.map tail ls
+    
+    L1.ProjE i e       -> L1.ProjE i (tail e)
+    L1.CaseE e ls      -> L1.CaseE (tail e) (M.map (\(vs,er) -> (vs,tail er)) ls)
+    L1.MkProdE ls      -> L1.MkProdE $ L.map tail ls
+    L1.MkPackedE k ls  -> L1.MkPackedE k $ L.map tail ls
+    L1.TimeIt e        -> L1.TimeIt $ tail e
+    
+-}
+
+  triv :: String -> L1.Exp -> T.Triv
+  triv = error "FINISHME lower/triv"
+  
+  typ :: L1.Ty -> T.Ty
+  typ = error "FINISHME lower/typ"
+
+  typ' :: L2.Ty -> T.Ty
+  typ' = error "FINISHME lower/typ'"
+
+  prim :: L1.Prim -> T.Prim
+  prim p =
+    case p of
+      L1.AddP -> T.AddP
+      L1.SubP -> T.SubP
+      L1.MulP -> T.MulP
+      L1.EqP  -> __ -- T.EqP
+      L1.DictInsertP -> T.DictInsertP
+      L1.DictLookupP -> T.DictLookupP
+      (L1.ErrorP s)  -> __ -- T.ErrorP s
