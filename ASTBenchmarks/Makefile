@@ -6,7 +6,7 @@
 # 1.2: larger dataset, from Racket 6.6 main distro.
 DATASET=racket_expanded_files_v1.2.tgz
 
-default: expanded_racket
+default: cleaned_racket
 
 fetch: ${DATASET}
 
@@ -24,6 +24,16 @@ expanded_racket: ${DATASET}
 	du -sh $@
 	echo "\nDone."
 	$(MAKE) largest
+
+cleaned_racket: expanded_racket rewrite.rkt
+	mkdir -p $@
+	raco make rewrite.rkt
+	cd expanded_racket; \
+         for f in `find -name "*.sexp"`; do \
+          echo "Build directory "`dirname "../cleaned_racket/$$f"`; \
+          mkdir -p `dirname "../cleaned_racket/$$f"`; \
+	  cat "$$f" | racket ../rewrite.rkt > "../cleaned_racket/$$f"; \
+         done;
 
 largest:
 	echo "Here are some of the larger files:"
