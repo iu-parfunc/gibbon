@@ -1,12 +1,12 @@
 #lang s-exp "../TreeLang/treelang.rkt"
 
-(provide MKPROG DefineValues DefineSyntaxes Expression VARREF Lambda
+(provide DefineValues DefineSyntaxes Expression VARREF Lambda
          CaseLambda If Begin Begin0 LetValues LetrecValues SetBang
          Quote QuoteSyntax QuoteSyntaxLocal WithContinuationMark App
          Top VariableReference VariableReferenceTop VariableReferenceNull
          MKLVBIND MKLAMBDACASE INTLIT F1 F2 F3 Expr Toplvl Formals LVBIND LAMBDACASE Prog)
 
-(data Prog [MKPROG (Listof Toplvl)])
+(data Prog Toplvl)
 
 (data Toplvl
       [DefineValues   (Listof Sym) Expr]
