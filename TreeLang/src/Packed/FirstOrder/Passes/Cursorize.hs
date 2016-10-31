@@ -61,8 +61,9 @@ cursorizeTy (ArrowTy inT ef ouT) =
   voidT   = ProdTy []          
   replacePacked (t2::Ty) (t::Ty) =
     case t of
-      IntTy -> IntTy
-      SymTy -> SymTy
+      IntTy  -> IntTy
+      BoolTy -> BoolTy
+      SymTy  -> SymTy
       (ProdTy x)    -> ProdTy $ L.map (replacePacked t2) x
       (SymDictTy x) -> SymDictTy $ (replacePacked t2) x
       PackedTy{}    -> t2
@@ -119,6 +120,8 @@ cursorize prg@Prog{fundefs} = -- ddefs, fundefs
      _ -> return (e,Top)
      _ -> error $ "ERROR: cursorize: unfinished, needs to handle:\n "++sdoc e
 
+maybeLet = undefined
+
 -- =============================================================================
 
 -- | Convert into the target language.  This does not make much of a
@@ -162,11 +165,9 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
              (tail bod)
 
     L1.LetE (v,t,L1.AppE f arg) bod -> do
-        sym <- gensym "tmpstrct"
         T.LetCallT [(v,typ t)] f
              [(triv "app rand") arg]
-             (typ t) -- Redundant?
-             sym <$>
+             <$>
              (tail bod)
 
     L1.CaseE e ls ->
