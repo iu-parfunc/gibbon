@@ -177,7 +177,7 @@
 (: parse-datum : (Any -> Datum))
 (define (parse-datum v)
   (match v
-    [`(INTLIT ,(? integer? i))
+    [`(INTLIT ,(? exact-integer? i))
      (INTLIT i)]))
 
 (: parse-expr : (Any -> Expr))
