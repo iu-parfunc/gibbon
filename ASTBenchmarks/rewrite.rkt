@@ -25,7 +25,7 @@
     [`(module* ,m ,lang ,e ...) `(Begin ,(map xf e))]
     [`(#%top . ,s) #:when (symbol? s) `(Top ,s)] ;; RRN: fixed
     [`(begin ,e ...)            `(Begin ,(map xf e))]
-    [`(begin0 ,e ...)           `(Begin0 ,(map xf e))]
+    [`(begin0 ,e0 ,e ...)           `(Begin0 ,(xf e0) ,(map xf e))]
     [`(#%variable-reference)    `(VariableReferenceNull)]
     [`(#%variable-reference (#%top . ,i)) `(VariableReferenceTop ,i)]
     [`(#%variable-reference ,i) `(VariableReference ,i)]
@@ -38,13 +38,13 @@
     [(? symbol?) `(VARREF ,e)]
     [`(lambda ,fmls ,body ...)
      `(Lambda ,(xform-fmls fmls) ,(map xf body))]
-    [`(#%plain-lambda ,fmls ,body)
-     `(Lambda ,(xform-fmls fmls) ,(xf body))]
+    [`(#%plain-lambda ,fmls ,body ...)
+     `(Lambda ,(xform-fmls fmls) ,(map xf body))]
     [`(#%expression ,e) (xf e)]
     [`(case-lambda ,cl ...)
      `(CaseLambda ,(for/list ([c (in-list cl)])
                      `(MKLAMBDACASE ,(xform-fmls (first c))
-                                    ,(xf (second c)))))]
+                                    ,(map xf (rest c)))))]
     [`(with-continuation-mark ,e1 ,e2 ,e3)
      `(WithContinuationMark ,(xf e1) ,(xf e2) ,(xf e3))]
     [(? symbol? s) `(VARREF ,s)]
@@ -67,9 +67,9 @@
 (define (xform-top e)
   (match e
     [(? eof-object?) #f]  ;; empty file
-    [`(#%require ,_ ...) `(BeginTop)]
-    [`(#%provide ,_ ...) `(BeginTop)]
-    [`(#%declare ,_ ...) `(BeginTop)] ;; RRN added.
+    [`(#%require ,_ ...) `(BeginTop ())]
+    [`(#%provide ,_ ...) `(BeginTop ())]
+    [`(#%declare ,_ ...) `(BeginTop ())] ;; RRN added.
     [`(module ,m ,lang ,e ...) `(BeginTop ,(map xform-top e))]
     [`(module* ,m ,lang ,e ...) `(BeginTop ,(map xform-top e))]
     [`(begin ,e ...)
