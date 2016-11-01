@@ -1,6 +1,6 @@
 #lang typed/racket
 
-(require "../grammar_racket.sexp")
+(require "../../grammar_racket.sexp")
 (provide parse)
 
 (: parse : (Any -> Toplvl))

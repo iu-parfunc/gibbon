@@ -1,6 +1,6 @@
-#lang s-exp "../../TreeLang/treelang.rkt"
+#lang s-exp "../../../TreeLang/treelang.rkt"
 
-(require "../grammar_racket.sexp")
+(require "../../grammar_racket.sexp")
 (provide subst)
 
 ;; copied exactly
