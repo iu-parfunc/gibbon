@@ -10,7 +10,7 @@
 module Packed.FirstOrder.Passes.Cursorize
     (cursorize, lower) where
 
-import Control.DeepSeq
+import Control.Monad
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import           Packed.FirstOrder.LTraverse as L2
@@ -62,6 +62,7 @@ cursorizeTy (ArrowTy inT ef ouT) = (newArr, newIn, newOut)
   newIn    = allLocVars ouT -- These stay in their original order (preorder) 
 
 -- Injected cursor args go first in input and output:
+prependArgs :: [Ty] -> Ty -> Ty
 prependArgs [] t = t
 prependArgs ls t = ProdTy $ ls ++ [t]
 
@@ -95,12 +96,18 @@ mapPacked fn t =
 -- | A compiler pass that inserts cursor-passing for reading and
 -- writing packed values.
 cursorize :: Prog -> SyM Prog  -- [T.FunDecl]
-cursorize prg@Prog{fundefs} = -- ddefs, fundefs
+cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
     dbgTrace lvl ("Starting cursorize on "++show(doc fundefs)) $ do 
     -- Prog emptyDD <$> mapM fd fundefs <*> pure Nothing
 
     fds' <- mapM fd $ M.elems fundefs
-    return prg{ fundefs = M.fromList $ L.map (\f -> (funname f,f)) fds' }
+    mn <- case mainExp of
+            Nothing -> return Nothing
+            Just x  -> Just <$> tail [] M.empty x
+    return Prog{ fundefs = M.fromList $ L.map (\f -> (funname f,f)) fds'
+               , ddefs = ddefs
+               , mainExp = mn
+               }
  where
   fd :: FunDef -> SyM FunDef
   fd (f@FunDef{funname,funty,funarg,funbod}) = 
@@ -141,19 +148,58 @@ cursorize prg@Prog{fundefs} = -- ddefs, fundefs
           -- prepended to the value that was already 
           tmp <- gensym "tmp"
           let ix = length new
-          return $ L1.LetE ("tmp",rty,rhs') $
-                   L1.LetE (v,tv, L1.ProjE ix (L1.VarE "tmp")) $
+          return $ L1.LetE ("tmp", rty, rhs') $
+                   L1.LetE (v, tv, L1.ProjE ix (L1.VarE "tmp")) $
                    finishEXP
-                 
-     _ -> undefined
+
+     L1.IfE a b c -> do
+         (new,a',aty,aloc) <- exp env a
+         maybeLetTup new (aty,a') env $ \ ex env' -> do 
+            b' <- tail demanded env' b
+            c' <- tail demanded env' c
+            return $ L1.IfE ex b' c'
+         return __
+                   
+     L1.CaseE e1 mp ->
+         do (new,e1',e1ty,_loc) <- exp env e1
+            maybeLetTup new (e1ty,e1') env $ \ ex env' -> do
+              ls' <- forM (M.toList mp)
+                        (\ (dcon, (vrs,rhs)) -> do
+                           let tys    = lookupDataCon ddefs dcon
+                               zipped = fragileZip vrs tys
+                           env'' <- extendEnv zipped env'
+                           rhs' <- tail demanded env'' rhs
+                           return (dcon, (vrs,rhs')))
+              return$ L1.CaseE ex (M.fromList ls')
+
+            -- if L.null new
+            --  then return $ L1.CaseE e1' (M.fromList ls')
+            --  else do 
+            --    -- The name doesn't matter, just that it's in the environment:
+            --    tmp <- gensym "curstmp"
+            --    -- Let-bind all the new things that come back from the exp
+            --    -- to bring them into the environment:               
+            --    return $ L1.LetE (tmp, e1ty, e1') $
+            --              L1.CaseE (L1.ProjE (length new) (L1.VarE tmp))
+            --                       (M.fromList ls')
+
+     _ -> error$ "tail/FINISHME:\n  "++sdoc e
+     _ -> error$ "cursorize, tail expression expected, found:\n  "++sdoc e
              
   -- This looks like a flattening pass.  Because of the need to route
   -- new, additional outputs from subroutine calls, we use tuples and
   -- let bindings heavily, including changing the types of
   -- conditionals to return tuples.
-  --      
-  -- We return a list corresponding to the cursor values ADDED to the
-  -- return type, containing their locations.
+  --
+  -- Return values:
+  -- 
+  --  (1) A list corresponding to the cursor values ADDED to the
+  --      return type, containing their locations.
+  --  (2) The updated expression, possible with a tupled return type
+  --      thereby including the new cursor returns.
+  --  (3) The type of the new result, including the added returns.
+  --  (4) The location of the processed expression, not including the
+  --      added returns.
   exp :: Env -> L1.Exp -> SyM ([Loc], L1.Exp, L1.Ty, Loc)
   exp env e = 
     dbgTrace lvl ("\n[cursorize] Processing exp: "++show (doc e)++"\n  with env: "++show env) $
@@ -177,6 +223,23 @@ cursorize prg@Prog{fundefs} = -- ddefs, fundefs
      _ -> return ([], finishEXP, finishTYP, finishLOC)
      _ -> error $ "ERROR: cursorize: unfinished, needs to handle:\n "++sdoc e
 
+-- | Given a certain number of added tuple results, possibly let bind.
+maybeLetTup :: [Loc] -> (L1.Ty, L1.Exp) -> Env -> (L1.Exp -> Env -> SyM L1.Exp) -> SyM L1.Exp
+maybeLetTup new (ty,ex) env fn = 
+  if L.null new
+   then fn ex env
+   else do 
+     -- The name doesn't matter, just that it's in the environment:
+     tmp <- gensym "mlt"
+     -- Let-bind all the new things that come back with the exp
+     -- to bring them into the environment:
+     
+     let env' = M.insert tmp __ __ -- env
+                -- M.union env (M.fromList [ (v, Fixed v) | v <- new ])
+     bod <- fn (L1.ProjE (length new) (L1.VarE tmp)) env'
+     return $ L1.LetE (tmp, ty, ex) bod                      
+
+          
 -- | Dig through an environment to find
 meetDemand :: Env -> LocVar -> L1.Exp
 meetDemand env vr =
@@ -187,6 +250,7 @@ meetDemand env vr =
                     " environment without finding loc: "++show vr
                     
 
+mkProd :: [L1.Exp] -> L1.Exp -> L1.Exp
 mkProd [] e = e
 mkProd ls e = L1.MkProdE $ ls++[e]
                                                         
@@ -201,7 +265,7 @@ finishTYP :: L1.Ty
 finishTYP = L1.Packed "FINISHME" 
             
 maybeLet :: forall t. t
-maybeLet = undefined
+maybeLet = __
 
 -- =============================================================================
 

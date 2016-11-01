@@ -68,7 +68,7 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
 instance Out Prim
 instance Out Ty
 -- Do this manually to get prettier formatting:
--- instance Out Ty where  doc x = undefined
+-- instance Out Ty where  doc x = __
 
 instance Out Exp
 instance Out Prog
@@ -144,12 +144,12 @@ l1FromValue :: Value Exp -> Exp
 l1FromValue x =
   case x of
     VLeft x -> InL $ l1FromValue x
-    (VInt y) -> undefined
-    (VLam y1 y2 y3) -> undefined
-    (VProd y1 y2) -> undefined
-    (VLeft y) -> undefined
-    (VRight y) -> undefined
-    (VPacked y1 y2) -> undefined
+    (VInt y) -> __
+    (VLam y1 y2 y3) -> __
+    (VProd y1 y2) -> __
+    (VLeft y) -> __
+    (VRight y) -> __
+    (VPacked y1 y2) -> __
 
 -- | To keep things simple we evaluate directly to a string.
 interp :: DDefs Ty -> Exp -> Value Exp
@@ -193,7 +193,7 @@ interpProg :: Prog -> Value Exp
 interpProg Prog {defs,mainProg} = interp defs mainProg
 
 tyc :: TEnv -> Exp -> Ty
-tyc = undefined
+tyc = __
 
 --------------------------------------------------------------------------------
 
