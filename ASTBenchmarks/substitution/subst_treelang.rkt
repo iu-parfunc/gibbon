@@ -1,7 +1,13 @@
 #! /usr/bin/env racket
 #lang s-exp "../../TreeLang/treelang.rkt"
 
-(require "../grammar_racket.sexp" (only-in typed/racket define-namespace-anchor namespace-anchor->namespace eval call-with-values lambda match ... quasiquote unquote symbol? map exact-integer? -> Any andmap list?))
+(require "../grammar_racket.sexp"
+         (only-in typed/racket define-namespace-anchor namespace-anchor->namespace
+                  eval call-with-values lambda match ... quasiquote unquote symbol?
+                  map exact-integer? -> Any andmap list? integer?
+                  define-values current-command-line-arguments
+         values string->symbol string->number printf read open-input-file
+         string-append symbol->string for in-range cast Real))
 
 ;; copied exactly
 (define-values (oldsym file iters)
@@ -25,6 +31,9 @@
      (DefineValues ls (expr old new e))]
     [(DefineSyntaxes ls e)
      (DefineSyntaxes ls (expr old new e))]
+    [(BeginTop ls)
+     (BeginTop (for/list ([t : Toplvl ls])
+                 (top old new t)))]
     [(Expression e)
      (Expression (expr old new e))]))
 
@@ -136,19 +145,85 @@
     [`(DefineSyntaxes (,x ...) ,(app parse-expr e))
      #:when (andmap symbol? x)
      (DefineSyntaxes x e)]
-    [`(BeginTop ,e ...) (BeginTop (map parse e))]))
+    [`(BeginTop ,e ...) (BeginTop (map parse e))]
+    [`(Expression ,(app parse-expr e))
+     (Expression e)]))
+
+(: parse-formals : (Any -> Formals))
+(define (parse-formals v)
+  (match v
+    [`(F1 (,x ...))
+     #:when (andmap symbol? x)
+     (F1 x)]
+    [`(F2 (,x ...) ,(? symbol? y))
+     #:when (andmap symbol? x)
+     (F2 x y)]
+    [`(F3 ,(? symbol? x))
+     (F3 x)]))
+
+(: parse-lambdacase : (Any -> LAMBDACASE))
+(define (parse-lambdacase v)
+  (match v
+    [`(MKLAMBDACASE ,(app parse-formals f) ,e ...)
+     (MKLAMBDACASE f (map parse-expr e))]))
+
+(: parse-lvbind : (Any -> LVBIND))
+(define (parse-lvbind v)
+  (match v
+    [`(MKLVBIND (,x ...) ,(app parse-expr e))
+     #:when (andmap symbol? x)
+     (MKLVBIND x e)]))
+
+(: parse-datum : (Any -> Datum))
+(define (parse-datum v)
+  (match v
+    [`(INTLIT ,(? integer? i))
+     (INTLIT i)]))
 
 (: parse-expr : (Any -> Expr))
 (define (parse-expr v)
   (match v
-    [`(VARREF ,(? symbol? x)) (VARREF x)]))
+    [`(VARREF ,(? symbol? x)) (VARREF x)]
+    [`(Lambda ,(app parse-formals fs) ,e ...)
+     (Lambda fs (map parse-expr e))]
+    [`(CaseLambda ,lc ...)
+     (CaseLambda (map parse-lambdacase lc))]
+    [`(If ,(app parse-expr cond) ,(app parse-expr then) ,(app parse-expr else))
+     (If cond then else)]
+    [`(Begin ,e ...)
+     (Begin (map parse-expr e))]
+    [`(Begin0 ,(app parse-expr e1) ,e ...)
+     (Begin0 e1 (map parse-expr e))]
+    [`(LetValues (,lvs ...) ,e ...)
+     (LetValues (map parse-lvbind lvs) (map parse-expr e))]
+    [`(LetrecValues (,lvs ...) ,e ...)
+     (LetrecValues (map parse-lvbind lvs) (map parse-expr e))]
+    [`(SetBang ,(? symbol? x) ,(app parse-expr e))
+     (SetBang x e)]
+    [`(Quote ,(app parse-datum d))
+     (Quote d)]
+    [`(QuoteSyntax ,(app parse-datum d))
+     (QuoteSyntax d)]
+    [`(WithContinuationMark ,(app parse-expr e1) ,(app parse-expr e2) ,(app parse-expr e3))
+     (WithContinuationMark e1 e2 e3)]
+    [`(App ,e ...)
+     (App (map parse-expr e))]
+    [`(Top ,(? symbol? x))
+     (Top x)]
+    [`(VariableReference ,(? symbol? x))
+     (VariableReference x)]
+    [`(VariableReferenceTop ,(? symbol? x))
+     (VariableReferenceTop x)]
+    [`(VariableReferenceNull)
+     (VariableReferenceNull)]))
+
 
 (define ast : Toplvl
    (time (parse (read (open-input-file file)))))
 (printf "Done ingesting AST.\n")
 
 (define newsym (string->symbol (string-append (symbol->string oldsym) "99")))
-(time (for ([_ (range (cast iters Real))])
+(time (for ([_ (in-range (cast iters Real))])
         (subst oldsym newsym ast)))
 (printf "Done with substitution pass.\n")
 
