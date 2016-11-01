@@ -1,5 +1,6 @@
 
 #include "ast.h"
+#include "debug.h"
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -29,16 +30,11 @@ ctx_t CTX(ast_node_type type) {
   return ctx;
 }
 
-// Start Diagnostics
-#define ERROR(fmt, ...)\
-    printf(fmt " %s %d\n", ##__VA_ARGS__, __FILE__, __LINE__);\
-  exit(EXIT_FAILURE)
-
 #define AST_TYPE(typ)   g_ast_types[typ]
 #define AST_NAME(typ)   g_node_types[typ]
 
 const char* g_ast_types[] = {
-  "MKPROG", "DEFINE_VALUES", "DEFINE_SYNTAXES", "BEGINTOP", "EXPRESSION", "VARREF",
+  "PROG", "DEFINE_VALUES", "DEFINE_SYNTAXES", "BEGINTOP", "EXPRESSION", "VARREF",
   "LAMBDA", "CASE_LAMBDA", "MKLAMBDACASE", "IF", "BEGIN", "BEGIN0", "LET_VALUES", 
   "MKLVBIND", "LETREC_VALUES", "SETBANG", "QUOTE", "QUOTE_SYNTAX", "QUOTE_SYNTAX_LOCAL", 
   "INTLIT", "WITH_CONTINUATION_MARK", "APP", "TOP", "VARIABLE_REFERENCE", 
@@ -46,13 +42,12 @@ const char* g_ast_types[] = {
 };
 
 const char* g_node_types[] = {
-  "MKPROG", "DefineValues", "DefineSyntaxes", "BeginTop", "Expression", "VARREF",
+  "PROG", "DefineValues", "DefineSyntaxes", "BeginTop", "Expression", "VARREF",
   "Lambda", "CaseLambda", "MKLAMBDACASE", "If", "Begin", "Begin0", "LetValues", 
   "MKLVBIND", "LetRecValues", "SetBang", "Quote", "QuoteSyntax", "QuoteSyntaxLocal", 
   "INTLIT", "WithContinuationMark", "App", "Top", "VariableReference", 
   "VariableReferenceTop", "VariableReferenceNull", "F1", "F2", "F3"
 };
-// End Diagnostics
 
 char** get_strings(sexp_t* sx, int* length) {
   sexp_t* nxt = sx; 
@@ -344,7 +339,7 @@ ast_t* build_expr(sexp_t* sx, ctx_t ctx) {
   }
 }
 
-ast_t* build_top_lvl(sexp_t* sx, ctx_t ctx) {
+ast_t* build_top_lvl(sexp_t* sx) {
   if (IS_SX_LIST(sx)) {
 
     sx = LIST(sx);
@@ -355,7 +350,7 @@ ast_t* build_top_lvl(sexp_t* sx, ctx_t ctx) {
         ast_t* expr              = NEW_AST();
         expr->ty                 = EXPRESSION;
         sx                       = NEXT(sx);
-        expr->node.expr.exp      = build_expr(sx, CTX(MKPROG));
+        expr->node.expr.exp      = build_expr(sx, CTX(PROG));
         return expr;
           
       } else if (TAG("DefineValues") || TAG("DefineSyntaxes")) {
@@ -374,55 +369,40 @@ ast_t* build_top_lvl(sexp_t* sx, ctx_t ctx) {
       } else if (TAG("BeginTop")) {
         ast_t* expr = NEW_AST();
         expr->ty    = BEGINTOP;
-        sx          = NEXT(sx);
-        sx          = LIST(sx);
-        expr->node.prog.n_tops      = get_list_length(sx);
-        expr->node.prog.toplvl      = NEW_ASTS(expr->node.prog.n_tops);
-        for (int i=0; i < expr->node.prog.n_tops; i++) {
-          expr->node.prog.toplvl[i] = build_top_lvl(sx, CTX(BEGINTOP));
-          sx = sx->next;
+        sx          = sx->next;
+        if (sx) {
+          sx          = LIST(sx);
+          expr->node.prog.n_tops      = get_list_length(sx);
+          expr->node.prog.toplvl      = NEW_ASTS(expr->node.prog.n_tops);
+          for (int i=0; i < expr->node.prog.n_tops; i++) {
+            expr->node.prog.toplvl[i] = build_top_lvl(sx);
+            sx = sx->next;
+          }
         }
         return expr;
       } else {
-        ERROR("[AST] Error building top inside %s..", AST_TYPE(ctx.parent));
+        ERROR("[AST] Error building top inside root..");
       }
     } else {
-      ERROR("[AST] Error building top inside %s..", AST_TYPE(ctx.parent));
+      ERROR("[AST] Error building top inside root..");
     }
   } else if (IS_SX_VALUE(sx)) {
-
-    ast_t* chld              = NEW_AST();
-    chld->ty                 = VARREF;
-    chld->node.data.val      = sx->val;
-    return chld;
-
+    ERROR("[AST] Error building top inside root..");
   }
-  ERROR("[AST] Error building top inside %s..", AST_TYPE(ctx.parent));
+  ERROR("[AST] Error building top inside root..");
 }
 
 ast_t* build_prog(sexp_t* node) {
-  ast_t* ast = NEW_AST();
-  assert(IS_SX_LIST(node));
-  node       = node->list;
-  assert(IS_SX_VALUE(node) && STREQ(node->val, "MKPROG"));
-  node       = node->next;
-  assert(IS_SX_LIST(node));
-  LAST(node);
-  node       = LIST(node);
-
-  ast->node.prog.n_tops = get_list_length(node);
-  ast->node.prog.toplvl = NEW_ASTS(ast->node.prog.n_tops); 
-  for (int i=0; i < ast->node.prog.n_tops; i++) {
-    ast->node.prog.toplvl[i] = build_top_lvl(node, CTX(MKPROG));
-    node = node->next;
-  }
-
+  ast_t* ast               = NEW_AST();
+  ast->ty                  = PROG;
+  ast->node.prog.toplvl    = (ast_t**) NEW_ASTS(1);
+  ast->node.prog.toplvl[0] = build_top_lvl(node);
   return ast;
 }
 
 ast_t* build_ast(void* parse_tree) {
   sexp_t* sx = (sexp_t*) parse_tree;
-  return build_prog(sx);
+  return build_top_lvl(sx);
 }
 
 void print_formals(FILE* fp, ast_t* ast) {
@@ -619,26 +599,8 @@ void print_top_lvl(FILE* fp, ast_t* ast) {
   fprintf(fp, ")");
 }
 
-void print_prog(FILE* fp, ast_t* ast) {
-  fprintf(fp, "(%s (", AST_NAME(ast->ty));
-
-  for (int i=0; i < ast->node.prog.n_tops; i++) {
-    print_top_lvl(fp, ast->node.prog.toplvl[i]);
-    if (i < ast->node.prog.n_tops - 1) {
-      fprintf(fp, " ");
-    }
-  }
-  fprintf(fp, "))");
-}
-
 void print_ast(ast_t* ast, FILE* fp) {
   if (ast) {
-    switch (ast->ty) {
-      case MKPROG:
-        print_prog(fp, ast);
-        break;
-      default:
-        ERROR("[AST-PRINT] Invalid program..");
-    }
+    print_top_lvl(fp, ast);
   }
 }

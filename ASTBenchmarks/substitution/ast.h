@@ -31,7 +31,7 @@
 #define LIST_DELIM '|'
 
 typedef enum {
-  MKPROG,
+  PROG,
   DEFINE_VALUES,
   DEFINE_SYNTAXES,
   BEGINTOP,
