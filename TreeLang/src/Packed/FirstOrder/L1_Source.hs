@@ -65,6 +65,10 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | DictInsertP -- ^ takes k,v,dict
           | DictLookupP -- ^ takes k dict, errors if absent
           | ErrorP String -- ^ crash and issue a static error message
+
+--          | GetLoc Var
+--          | AddLoc Int Var
+
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 instance Out Prim

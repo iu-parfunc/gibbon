@@ -14,10 +14,14 @@ module Packed.FirstOrder.LTraverse
     ( Prog(..), Ty(..), FunEnv, FunDef(..), Effect(..), ArrowTy(..)
     , inferEffects, inferFunDef
     -- * Utilities for dealing with the extended types:
-    , Loc(..), LocVar, toEndVar, isEndVar, fromEndVar
-    , allLocVars, argtyToLoc, mangle, subloc
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc
-    , extendEnv
+    -- * Lattices of abstract locations:
+    , Loc(..), LocVar, toEndVar, isEndVar, fromEndVar
+    , join, joins
+    , allLocVars, argtyToLoc, mangle, subloc
+    , extendEnv, getLocVar
+    -- * Constraints
+    , Constraint(..)
     )
     where
 import Control.Monad (when)
@@ -99,6 +103,7 @@ joins (a:b) = let (l,c) = joins b
 --   and arguments' locations.
 data Constraint = Eql Var Var
                 | Neq Var Var
+--                | EqlOffset Var (Int,Var)
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 instance Out Constraint
 
@@ -527,7 +532,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
 
 
 
--- We extend the environment when going under lexical binders, which
+-- | We extend the environment when going under lexical binders, which
 -- always have fixed abstract locations associated with them.
 extendEnv :: [(Var,L1.Ty)] -> Env -> SyM Env
 extendEnv []    e     = return e

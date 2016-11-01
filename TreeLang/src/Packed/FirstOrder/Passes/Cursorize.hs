@@ -137,13 +137,18 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
   -- those witnesses prepended to the original return value.
   tail :: [LocVar] -> Env -> L1.Exp -> SyM L1.Exp
   tail demanded env e = 
-   dbgTrace lvl ("\n[cursorize] Processing tail: "++show (doc e)++"\n  with env: "++show env) $
+   dbgTrace lvl ("\n[cursorize] Processing tail, demanding "++show demanded++
+                 ": "++show (doc e)++"\n  with env: "++show env) $
    let cursorRets = L.map (meetDemand env) demanded in
    case e of
+     ------------------- Return cases -----------------
      -- Trivial return cases need to just pluck from the environment:
      L1.LitE _ -> return $ mkProd cursorRets e
      L1.VarE _ -> return $ mkProd cursorRets e
-     
+     L1.MkPackedE k ls -> L1.assertTrivs ls $ 
+         return $ mkProd cursorRets (L1.MkPackedE k ls)
+
+     ------------------ Flattened Spine ---------------
      -- Here we route through extra arguments.
      L1.LetE (v,tv,rhs) bod ->
        do (new,rhs',rty,rloc) <- exp env rhs
