@@ -1,4 +1,4 @@
-#lang s-exp "./treelang.rkt"
+#lang s-exp "../../TreeLang/treelang.rkt"
 
 
 (data TreeIn
