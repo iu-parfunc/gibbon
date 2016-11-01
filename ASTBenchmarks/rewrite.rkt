@@ -25,7 +25,7 @@
     [`(module* ,m ,lang ,e ...) `(Begin ,(map xf e))]
     [`(#%top . ,s) #:when (symbol? s) `(Top ,s)] ;; RRN: fixed
     [`(begin ,e ...)            `(Begin ,(map xf e))]
-    [`(begin0 ,e ...)           `(Begin0 ,(map xf e))]
+    [`(begin0 ,e0 ,e ...)           `(Begin0 ,(xf e0) ,(map xf e))]
     [`(#%variable-reference)    `(VariableReferenceNull)]
     [`(#%variable-reference (#%top . ,i)) `(VariableReferenceTop ,i)]
     [`(#%variable-reference ,i) `(VariableReference ,i)]
