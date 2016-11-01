@@ -239,7 +239,7 @@ sexp_t* substitute(sexp_t* sx, char* from, char* to) {
         {
 
           sx_new->next = substitute(sx->next, from, to);
-          if (strcmp(sx->val, from) == 0) {
+          if (sx->val != NULL && strcmp(sx->val, from) == 0) {
             sx_new->val = to;
           }
 
@@ -310,6 +310,7 @@ int main(int argc, char **argv) {
 
   sx = (sexp_t*) (root + 1);
 
+  /*
   size_t sz = packedTreeSize(sx);
   printf("Print the parse tree, BUFSIZ=%d:\n", sz);
   char *printed = malloc(fsize);
@@ -320,8 +321,8 @@ int main(int argc, char **argv) {
     fprintf(stderr,"Error printing the parse tree with error : %d\n", sexp_errno);
     exit(EXIT_FAILURE);
   }
-
   free(printed);
+  */
 
   struct timespec begin, end;
 
@@ -337,10 +338,12 @@ int main(int argc, char **argv) {
 
   printf("Ran substitution for %d iterations\n", iterations);
 
+  /*
   printf("Parse tree after substitution, BUFSIZ=%d:\n", fsize);
   printed = malloc(fsize);
   ret = print_sexp(printed, BUFSIZ, sx_new);
   printf("%s\n",printed);
+  */
 
   qsort(times, iterations,  sizeof(double), compare_doubles);
   printf("  Sorted: ");

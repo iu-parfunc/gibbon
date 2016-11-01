@@ -58,6 +58,7 @@ tree_sz_t size_tree(ast_t* ast) {
     switch (ast->ty) {
       case BEGINTOP:
       {
+        size.tree_sz      += sizeof(int);                       // # tops
         for (int i=0; i < ast->node.prog.n_tops; i++) {
           tree_sz_t sz     = size_tree(ast->node.prog.toplvl[i]);
           size.tree_sz    += sizeof(size_t);                    // Next child pointer
@@ -92,6 +93,7 @@ tree_sz_t size_tree(ast_t* ast) {
         tree_sz_t sz    = size_tree(ast->node.lambda.fmls);
         ADD_TREE_SZ(size, sz);
 
+        size.tree_sz   += sizeof(int);                           // # exps
         for (int i=0; i < ast->node.lambda.n_exps; i++) {
           tree_sz_t sz  = size_tree(ast->node.lambda.exps[i]);
           size.tree_sz += sizeof(size_t);                        // Next child pointer
@@ -100,6 +102,7 @@ tree_sz_t size_tree(ast_t* ast) {
         return size;
       }
       case CASE_LAMBDA:
+        size.tree_sz   += sizeof(int);                           // # lams
         for (int i=0; i < ast->node.c_lambda.n_lams; i++) {
           tree_sz_t sz  = size_tree(ast->node.c_lambda.lams[i]);
           size.tree_sz += sizeof(size_t);                        // Next child pointer
@@ -110,6 +113,7 @@ tree_sz_t size_tree(ast_t* ast) {
       {
         tree_sz_t sz       = size_tree(ast->node.mk_lambda.fmls); 
         ADD_TREE_SZ(size, sz);
+        size.tree_sz       += sizeof(int);                      // # exps
         for (int i=0; i < ast->node.mk_lambda.n_exps; i++)  {
           tree_sz_t sz     = size_tree(ast->node.mk_lambda.exps[i]);
           size.tree_sz    += sizeof(size_t);                    // Next child pointer
@@ -147,40 +151,44 @@ tree_sz_t size_tree(ast_t* ast) {
         ADD_TREE_SZ(size, cond);
         ADD_TREE_SZ(size, if_e);
         ADD_TREE_SZ(size, else_e);
-        size.tree_sz    += sizeof(size_t) * 2;                  // Next child pointers
+        size.tree_sz    += sizeof(size_t) * 3;                  // Next child pointers
         return size;
       }
       case BEGIN:
+        size.tree_sz      += sizeof(int);                       // # exps
         for (int i=0; i < ast->node.begin.n_exps; i++) {
-          tree_sz_t sz = size_tree(ast->node.begin.exps[i]);
+          tree_sz_t sz     = size_tree(ast->node.begin.exps[i]);
           ADD_TREE_SZ(size, sz);
           size.tree_sz    += sizeof(size_t);                   // Next child pointer
         }
         return size;
       case BEGIN0:
       {
-        tree_sz_t sz = size_tree(ast->node.begin0.exp);
+        size.tree_sz      += sizeof(size_t);                    // Next child pointer
+        tree_sz_t sz       = size_tree(ast->node.begin0.exp);
         ADD_TREE_SZ(size, sz);
-        size.tree_sz    += sizeof(size_t);                   // Next child pointer
+        size.tree_sz      += sizeof(int);                       // # exps
         for (int i=0; i < ast->node.begin0.n_exps; i++) {
-          tree_sz_t sz = size_tree(ast->node.begin0.exps[i]);
+          tree_sz_t sz     = size_tree(ast->node.begin0.exps[i]);
           ADD_TREE_SZ(size, sz);
-          size.tree_sz    += sizeof(size_t);                 // Next child pointer
+          size.tree_sz    += sizeof(size_t);                    // Next child pointer
         }
         return size;
       }
       case LET_VALUES:
       case LETREC_VALUES:
       {
+        size.tree_sz      += sizeof(int);                       // # binds
         for (int i=0; i < ast->node.let.n_binds; i++) {
-          tree_sz_t sz = size_tree(ast->node.let.binds[i]);
+          tree_sz_t sz     = size_tree(ast->node.let.binds[i]);
           ADD_TREE_SZ(size, sz);
-          size.tree_sz    += sizeof(size_t);                 // Next child pointer
+          size.tree_sz    += sizeof(size_t);                     // Next child pointer
         }
+        size.tree_sz      += sizeof(int);                       // # exps
         for (int i=0; i < ast->node.let.n_exps; i++) {
-          tree_sz_t sz = size_tree(ast->node.let.exps[i]);
+          tree_sz_t sz     = size_tree(ast->node.let.exps[i]);
           ADD_TREE_SZ(size, sz);
-          size.tree_sz    += sizeof(size_t);                 // Next child pointer
+          size.tree_sz    += sizeof(size_t);                     // Next child pointer
         }
         return size;
       }
@@ -189,7 +197,7 @@ tree_sz_t size_tree(ast_t* ast) {
         for (int i=0; i < ast->node.binder.n_syms; i++) {
           add_symbol(ast->node.binder.syms[i], &size);
         }
-        size.tree_sz        += sizeof(int);                     // Inlined n_syms 
+        size.tree_sz        += sizeof(int);                      // Inlined n_syms 
         tree_sz_t sz         = size_tree(ast->node.binder.exp);
         ADD_TREE_SZ(size, sz);
         return size;
@@ -216,13 +224,14 @@ tree_sz_t size_tree(ast_t* ast) {
         ADD_TREE_SZ(size, key);
         ADD_TREE_SZ(size, val);
         ADD_TREE_SZ(size, res);
-        size.tree_sz    += sizeof(size_t) * 2;               // Next child pointer
+        size.tree_sz    += sizeof(size_t) * 3;               // Next child pointer
         return size;
       }
       case APP:
       {
+        size.tree_sz      += sizeof(int);                     // # exps
         for (int i=0; i < ast->node.app.n_exps; i++) {
-          tree_sz_t sz = size_tree(ast->node.app.exps[i]);
+          tree_sz_t sz     = size_tree(ast->node.app.exps[i]);
           ADD_TREE_SZ(size, sz);
           size.tree_sz    += sizeof(size_t);                 // Next child pointer
         }
@@ -244,8 +253,7 @@ tree_sz_t size_tree(ast_t* ast) {
 size_t pack_node(ast_t* ast, char** const out_pt, char** const syms_pt);
 size_t pack_nodes(ast_t** asts, int n_asts, char** const out_pt, 
     char** const syms_pt);
-char* intern_string(const char* const str, char** const syms);
-
+char* intern_string(const char* const str, char** const syms); 
 char* intern_string(const char* const str, char** const syms_pt) {
   char* syms = *syms_pt;
   struct sym_addr_hash* s;
@@ -256,10 +264,10 @@ char* intern_string(const char* const str, char** const syms_pt) {
     *syms_pt += sizeof(size_t);
     memcpy(*syms_pt, str, len);
 
-    s       = (struct sym_addr_hash*)malloc(sizeof(struct sym_addr_hash)); 
-    s->sym  = (char*) str; 
-    s->addr = (char*) *syms_pt;
-    *syms_pt   += len;          
+    s         = (struct sym_addr_hash*)malloc(sizeof(struct sym_addr_hash)); 
+    s->sym    = (char*) str; 
+    s->addr   = (char*) *syms_pt;
+    *syms_pt += len;          
     HASH_ADD_KEYPTR(hh, g_pack_sym_addrs, s->sym, strlen(s->sym), s);
     return s->addr;
   } else {
@@ -273,8 +281,9 @@ size_t pack_strings(char** strs, int n_strs, char** const out_pt,
   char* start = *out_pt;          // Start of the node
 
   *(int*) start = n_strs; 
+  *out_pt      += sizeof(int);
   for (int i=0; i < n_strs; i++) {
-    char* sym = intern_string(strs[i], syms_pt);
+    char* sym   = intern_string(strs[i], syms_pt);
     WRITE_STRING(*out_pt, sym);
   }
   return (size_t) (*out_pt - start);
@@ -282,8 +291,10 @@ size_t pack_strings(char** strs, int n_strs, char** const out_pt,
 
 size_t pack_nodes(ast_t** asts, int n_asts, char** const out_pt, 
     char** const syms_pt) {
-  char* start = *out_pt;          // Start of the node
+  char* start       = *out_pt;          // Start of the node
 
+  *(int*) start     = n_asts;
+  *out_pt          += sizeof(int);
   for (int i=0; i < n_asts; i++) {
     size_t* chld_sz = (size_t*) *out_pt;
     *out_pt        += sizeof(size_t);
@@ -351,10 +362,21 @@ size_t pack_node(ast_t* ast, char** const out_pt, char** const syms_pt) {
       break;
     }
     case IF:
-      pack_node(ast->node.iff.cond, out_pt, syms_pt);
-      pack_node(ast->node.iff.if_e, out_pt, syms_pt);
-      pack_node(ast->node.iff.else_e, out_pt, syms_pt);
+    {
+      size_t* sz        = (size_t*) *out_pt;
+      *out_pt          += sizeof(size_t);
+      size_t cond_sz    = pack_node(ast->node.iff.cond, out_pt, syms_pt);
+      *sz               = cond_sz;
+      sz                = (size_t*) *out_pt;
+      *out_pt          += sizeof(size_t);
+      size_t if_e_sz    = pack_node(ast->node.iff.if_e, out_pt, syms_pt);
+      *sz               = if_e_sz;
+      sz                = (size_t*) *out_pt;
+      *out_pt          += sizeof(size_t);
+      size_t else_e_sz  = pack_node(ast->node.iff.else_e, out_pt, syms_pt);
+      *sz               = else_e_sz;
       break;
+    }
     case BEGIN:
       pack_nodes(ast->node.begin.exps, ast->node.begin.n_exps, out_pt, 
           syms_pt);
@@ -384,20 +406,32 @@ size_t pack_node(ast_t* ast, char** const out_pt, char** const syms_pt) {
       char* sym = intern_string(ast->node.set.sym, syms_pt);
       WRITE_STRING(*out_pt, sym);
       pack_node(ast->node.set.exp, out_pt, syms_pt);
+      break;
     }
     case QUOTE:
     case QUOTE_SYNTAX:
     case QUOTE_SYNTAX_LOCAL:
     {
       *(int*) *out_pt = ast->node.quote.data;
-      (*out_pt) += sizeof(int*);
+      (*out_pt)      += sizeof(int);
       break;
     }
     case WITH_CONTINUATION_MARK:
-      pack_node(ast->node.wcm.key, out_pt, syms_pt);
-      pack_node(ast->node.wcm.val, out_pt, syms_pt);
-      pack_node(ast->node.wcm.res, out_pt, syms_pt);
+    {
+      size_t* sz     = (size_t*) *out_pt;
+      *out_pt       += sizeof(size_t);
+      size_t key_sz  = pack_node(ast->node.wcm.key, out_pt, syms_pt);
+      *sz            = key_sz;
+      sz             = (size_t*) *out_pt;
+      *out_pt       += sizeof(size_t);
+      size_t val_sz  = pack_node(ast->node.wcm.val, out_pt, syms_pt);
+      *sz            = val_sz;
+      sz             = (size_t*) *out_pt;
+      *out_pt       += sizeof(size_t);
+      size_t res_sz  = pack_node(ast->node.wcm.res, out_pt, syms_pt);
+      *sz            = res_sz;
       break;
+    }
     case APP:
       pack_nodes(ast->node.app.exps, ast->node.app.n_exps, out_pt, syms_pt);
       break;
@@ -450,8 +484,8 @@ char* pack_ast(ast_t* ast) {
     out += sizeof(size_t);
     pack_node(ast, &out, &syms);
 
-    printf("[PACK] Allocation size : %lu\n", alloc_sz);
-    printf("[PACK] Tree size       : %lu\n", (size_t)(out - start));
+    printf("Allocated size    : %lu\n", alloc_sz);
+    printf("Packed            : %lu\n", (size_t)(out - start));
     assert(alloc_sz == (out - start));
     return syms;
   }
