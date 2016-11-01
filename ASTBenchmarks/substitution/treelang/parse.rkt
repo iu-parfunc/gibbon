@@ -80,6 +80,8 @@
      (Quote d)]
     [`(,(=? 'QuoteSyntax) ,(app parse-datum d))
      (QuoteSyntax d)]
+    [`(,(=? 'QuoteSyntaxLocal) ,(app parse-datum d))
+     (QuoteSyntaxLocal d)]
     [`(,(=? 'WithContinuationMark) ,(app parse-expr e1) ,(app parse-expr e2) ,(app parse-expr e3))
      (WithContinuationMark e1 e2 e3)]
     [`(,(=? 'App) (,e ...))
