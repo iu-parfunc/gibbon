@@ -146,7 +146,7 @@
     [`(DefineSyntaxes (,x ...) ,(app parse-expr e))
      #:when (andmap symbol? x)
      (DefineSyntaxes x e)]
-    [`(BeginTop ,e ...) (BeginTop (map parse e))]
+    [`(BeginTop (,e ...)) (BeginTop (map parse e))]
     [`(Expression ,(app parse-expr e))
      (Expression e)]))
 
@@ -165,7 +165,7 @@
 (: parse-lambdacase : (Any -> LAMBDACASE))
 (define (parse-lambdacase v)
   (match v
-    [`(MKLAMBDACASE ,(app parse-formals f) ,e ...)
+    [`(MKLAMBDACASE ,(app parse-formals f) (,e ...))
      (MKLAMBDACASE f (map parse-expr e))]))
 
 (: parse-lvbind : (Any -> LVBIND))
@@ -194,19 +194,19 @@
 (define (parse-expr v)
   (match v
     [`(,(=? 'VARREF) ,(? symbol? x)) (VARREF x)]
-    [`(,(=? 'Lambda) ,(app parse-formals fs) ,e ...)
+    [`(,(=? 'Lambda) ,(app parse-formals fs) (,e ...))
      (Lambda fs (map parse-expr e))]
-    [`(,(=? 'CaseLambda) ,lc ...)
+    [`(,(=? 'CaseLambda) (,lc ...))
      (CaseLambda (map parse-lambdacase lc))]
     [`(,(=? 'If) ,(app parse-expr cond) ,(app parse-expr then) ,(app parse-expr else))
      (If cond then else)]
-    [`(,(=? 'Begin) ,e ...)
+    [`(,(=? 'Begin) (,e ...))
      (Begin (map parse-expr e))]
-    [`(,(=? 'Begin0) ,(app parse-expr e1) ,e ...)
+    [`(,(=? 'Begin0) ,(app parse-expr e1) (,e ...))
      (Begin0 e1 (map parse-expr e))]
-    [`(,(=? 'LetValues) (,lvs ...) ,e ...)
+    [`(,(=? 'LetValues) (,lvs ...) (,e ...))
      (LetValues (map parse-lvbind lvs) (map parse-expr e))]
-    [`(,(=? 'LetrecValues) (,lvs ...) ,e ...)
+    [`(,(=? 'LetrecValues) (,lvs ...) (,e ...))
      (LetrecValues (map parse-lvbind lvs) (map parse-expr e))]
     [`(,(=? 'SetBang) ,(? symbol? x) ,(app parse-expr e))
      (SetBang x e)]
@@ -216,7 +216,7 @@
      (QuoteSyntax d)]
     [`(,(=? 'WithContinuationMark) ,(app parse-expr e1) ,(app parse-expr e2) ,(app parse-expr e3))
      (WithContinuationMark e1 e2 e3)]
-    [`(,(=? 'App) ,e ...)
+    [`(,(=? 'App) (,e ...))
      (App (map parse-expr e))]
     [`(,(=? 'Top) ,(? symbol? x))
      (Top x)]
