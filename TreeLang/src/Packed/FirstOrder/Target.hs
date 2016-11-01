@@ -86,6 +86,7 @@ data Tail
               con  :: Tail,
               els  :: Tail }
     | ErrT
+    | TimeT Tail
     | Switch Triv Alts (Maybe Tail)
     -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
@@ -210,6 +211,16 @@ codegenTail (IfEqT v1 v2 e1 e2) ty = do
 codegenTail ErrT _ty = return $ [ C.BlockStm [cstm| printf("error\n"); |]
                                 , C.BlockStm [cstm| exit(1); |] ]
 
+codegenTail (TimeT tal) ty =
+    do begin <- gensym "tmp_begin"
+       end <- gensym "tmp_end"
+       tal' <- codegenTail tal ty
+       return $ [ C.BlockDecl [cdecl| struct timespec $id:begin; |]
+                , C.BlockDecl [cdecl| struct timespec $id:end; |]
+                , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid begin)); |]
+                ] ++ tal' ++ [ C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid end)); |]
+                             , C.BlockStm [cstm| printf("TIMEIT: %lf\n", difftimespecs(&$(cid begin), &$(cid end))); |] ]
+
 codegenTail (LetCallT bnds ratr rnds body) ty
     | (length bnds) > 1 = do nam <- gensym "tmp_struct"
                              let init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
@@ -234,9 +245,9 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     MulP -> let [(outV,outT)] = bnds
                                 [pleft,pright] = rnds
                             in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) * $(codegenTriv pright); |]]
-                    DictInsertP -> __
-                    DictLookupP -> __
-                    NewBuf -> __
+                    DictInsertP -> unfinished 1
+                    DictLookupP -> unfinished 2
+                    NewBuf -> unfinished 3
                     WriteTag -> let [(outV,CursorTy)] = bnds
                                     [(TagTriv tag),(VarTriv cur)] = rnds
                                 in [ C.BlockStm [cstm| *($id:cur) = $tag; |]
@@ -262,13 +273,13 @@ codegenTy SymTy = [cty|int|]
 codegenTy CursorTy = [cty|char*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts
-codegenTy (SymDictTy _t) = __
+codegenTy (SymDictTy _t) = unfinished 4
 
 makeName :: [Ty] -> String
 makeName []            = "Prod"
 makeName (IntTy:ts)    = "Int" ++ makeName ts
 makeName (CursorTy:ts) = "Cursor" ++ makeName ts
-makeName _             = __
+makeName _             = unfinished 5
 
 mkBlock :: [C.BlockItem] -> C.Stm
 mkBlock ss = C.Block ss noLoc
@@ -479,4 +490,7 @@ exadd1Tail =
 add1C = codegenProg exadd1Prog -- mapM_ (\c -> putDocLn $ ppr c) (codegenFun exadd1)
 
 buildTreeC :: IO ()
-buildTreeC = __ --  mapM_ (\c -> putDocLn (ppr c)) (codegenFun buildTree)
+buildTreeC = unfinished 6 --  mapM_ (\c -> putDocLn (ppr c)) (codegenFun buildTree)
+
+unfinished :: Int -> a
+unfinished n = error $ "Target.hs: unfinished hole #"++show n
