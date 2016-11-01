@@ -234,9 +234,9 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     MulP -> let [(outV,outT)] = bnds
                                 [pleft,pright] = rnds
                             in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) * $(codegenTriv pright); |]]
-                    DictInsertP -> undefined
-                    DictLookupP -> undefined
-                    NewBuf -> undefined
+                    DictInsertP -> __
+                    DictLookupP -> __
+                    NewBuf -> __
                     WriteTag -> let [(outV,CursorTy)] = bnds
                                     [(TagTriv tag),(VarTriv cur)] = rnds
                                 in [ C.BlockStm [cstm| *($id:cur) = $tag; |]
@@ -262,13 +262,13 @@ codegenTy SymTy = [cty|int|]
 codegenTy CursorTy = [cty|char*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts
-codegenTy (SymDictTy _t) = undefined
+codegenTy (SymDictTy _t) = __
 
 makeName :: [Ty] -> String
 makeName []            = "Prod"
 makeName (IntTy:ts)    = "Int" ++ makeName ts
 makeName (CursorTy:ts) = "Cursor" ++ makeName ts
-makeName _             = undefined
+makeName _             = __
 
 mkBlock :: [C.BlockItem] -> C.Stm
 mkBlock ss = C.Block ss noLoc
@@ -479,4 +479,4 @@ exadd1Tail =
 add1C = codegenProg exadd1Prog -- mapM_ (\c -> putDocLn $ ppr c) (codegenFun exadd1)
 
 buildTreeC :: IO ()
-buildTreeC = undefined --  mapM_ (\c -> putDocLn (ppr c)) (codegenFun buildTree)
+buildTreeC = __ --  mapM_ (\c -> putDocLn (ppr c)) (codegenFun buildTree)

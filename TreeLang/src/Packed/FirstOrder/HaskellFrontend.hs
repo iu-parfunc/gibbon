@@ -173,7 +173,7 @@ generateBind (PatBind _ _ GuardedRhss{} _) _ =
 
 generateBind (PatBind _ (PVar v) (UnGuardedRhs rhs) Nothing) e = do
     rhs' <- desugarExp rhs
-    return (LetE (name_to_str v, undefined, rhs') e)
+    return (LetE (name_to_str v, __, rhs') e)
 
 generateBind (PatBind _ not_var _ _) _ =
     err ("Only variable bindings are allowed in let. (found: " ++ show not_var ++ ")")

@@ -4,6 +4,7 @@
          CaseLambda If Begin Begin0 LetValues LetrecValues SetBang
          Quote QuoteSyntax QuoteSyntaxLocal WithContinuationMark App
          Top VariableReference VariableReferenceTop VariableReferenceNull
+         BeginTop
          MKLVBIND MKLAMBDACASE INTLIT F1 F2 F3 Expr Toplvl Formals LVBIND LAMBDACASE)
 
 (data Toplvl

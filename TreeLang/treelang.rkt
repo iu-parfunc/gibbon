@@ -8,12 +8,8 @@
 
          time + * -
 
-         ;; provide for subst_treelang.rkt
-         define-values match current-command-line-arguments
-         values string->symbol string->number printf read open-input-file
-         string-append symbol->string for range cast Real
-         
          #%app #%module-begin #%datum quote
+         only-in
          #;(all-from-out typed/racket))
 
 ;; add for/list  w/types

@@ -17,6 +17,7 @@ module Packed.FirstOrder.LTraverse
     , Loc(..), LocVar, toEndVar, isEndVar, fromEndVar
     , allLocVars, argtyToLoc, mangle, subloc
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc
+    , extendEnv
     )
     where
 
@@ -587,5 +588,3 @@ cursorizeTy (ArrowTy inT ef ouT) =
       (SymDictTy x) -> T.SymDictTy $ (replacePacked t2) x
       PackedTy{}    -> t2
 -}
-
-
