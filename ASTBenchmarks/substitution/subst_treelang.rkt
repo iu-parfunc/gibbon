@@ -7,7 +7,8 @@
                   map exact-integer? -> Any andmap list? integer?
                   define-values current-command-line-arguments
          values string->symbol string->number printf read open-input-file
-         string-append symbol->string for in-range cast Real))
+         string-append symbol->string for in-range cast Real equal? define-match-expander
+         syntax-case syntax/loc))
 
 ;; copied exactly
 (define-values (oldsym file iters)
@@ -180,41 +181,50 @@
     [`(INTLIT ,(? exact-integer? i))
      (INTLIT i)]))
 
+(: is=? (-> Any (-> Any Bool)))
+(define ((is=? s1) s2)
+  (equal? s1 s2))
+
+(define-match-expander =?
+  (lambda (stx) (syntax-case stx ()
+                  [(_ expected) (syntax/loc stx
+                                  (? (is=? expected)))])))
+
 (: parse-expr : (Any -> Expr))
 (define (parse-expr v)
   (match v
-    [`(VARREF ,(? symbol? x)) (VARREF x)]
-    [`(Lambda ,(app parse-formals fs) ,e ...)
+    [`(,(=? 'VARREF) ,(? symbol? x)) (VARREF x)]
+    [`(,(=? 'Lambda) ,(app parse-formals fs) ,e ...)
      (Lambda fs (map parse-expr e))]
-    [`(CaseLambda ,lc ...)
+    [`(,(=? 'CaseLambda) ,lc ...)
      (CaseLambda (map parse-lambdacase lc))]
-    [`(If ,(app parse-expr cond) ,(app parse-expr then) ,(app parse-expr else))
+    [`(,(=? 'If) ,(app parse-expr cond) ,(app parse-expr then) ,(app parse-expr else))
      (If cond then else)]
-    [`(Begin ,e ...)
+    [`(,(=? 'Begin) ,e ...)
      (Begin (map parse-expr e))]
-    [`(Begin0 ,(app parse-expr e1) ,e ...)
+    [`(,(=? 'Begin0) ,(app parse-expr e1) ,e ...)
      (Begin0 e1 (map parse-expr e))]
-    [`(LetValues (,lvs ...) ,e ...)
+    [`(,(=? 'LetValues) (,lvs ...) ,e ...)
      (LetValues (map parse-lvbind lvs) (map parse-expr e))]
-    [`(LetrecValues (,lvs ...) ,e ...)
+    [`(,(=? 'LetrecValues) (,lvs ...) ,e ...)
      (LetrecValues (map parse-lvbind lvs) (map parse-expr e))]
-    [`(SetBang ,(? symbol? x) ,(app parse-expr e))
+    [`(,(=? 'SetBang) ,(? symbol? x) ,(app parse-expr e))
      (SetBang x e)]
-    [`(Quote ,(app parse-datum d))
+    [`(,(=? 'Quote) ,(app parse-datum d))
      (Quote d)]
-    [`(QuoteSyntax ,(app parse-datum d))
+    [`(,(=? 'QuoteSyntax) ,(app parse-datum d))
      (QuoteSyntax d)]
-    [`(WithContinuationMark ,(app parse-expr e1) ,(app parse-expr e2) ,(app parse-expr e3))
+    [`(,(=? 'WithContinuationMark) ,(app parse-expr e1) ,(app parse-expr e2) ,(app parse-expr e3))
      (WithContinuationMark e1 e2 e3)]
-    [`(App ,e ...)
+    [`(,(=? 'App) ,e ...)
      (App (map parse-expr e))]
-    [`(Top ,(? symbol? x))
+    [`(,(=? 'Top) ,(? symbol? x))
      (Top x)]
-    [`(VariableReference ,(? symbol? x))
+    [`(,(=? 'VariableReference) ,(? symbol? x))
      (VariableReference x)]
-    [`(VariableReferenceTop ,(? symbol? x))
+    [`(,(=? 'VariableReferenceTop) ,(? symbol? x))
      (VariableReferenceTop x)]
-    [`(VariableReferenceNull)
+    [`(,(=? 'VariableReferenceNull))
      (VariableReferenceNull)]))
 
 
