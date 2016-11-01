@@ -23,6 +23,7 @@ library
                     Packed.FirstOrder.SExpFrontend,
                     Packed.FirstOrder.Target
                     Packed.FirstOrder.Compiler
+                    Packed.FirstOrder.Interpreter
 
 -- First attempt, slated for removal:
                     -- Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate,
