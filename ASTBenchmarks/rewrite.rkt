@@ -1,6 +1,6 @@
 #lang racket
 
-(require racket/exn)
+; (require racket/exn) ;; Not in Racket 6.2
 
 (define (datum e)
   (if (fixnum? e)
@@ -113,7 +113,8 @@
              (with-handlers ([(lambda (_) #t)
                               (lambda (e)
                                 (printf "ERROR while converting:\n  ~a"
-                                        (exn->string e))
+                                        ; (exn->string e) ;; Not in Racket 6.2
+                                        e)
                                 (set! errors (add1 errors)))])
                (let* ((v (with-input-from-file infile read))
                       (new                   
