@@ -1,5 +1,6 @@
 
 #include "ast.h"
+#include "pack.h"
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
@@ -127,6 +128,10 @@ int main(int argc, char **argv) {
   printf("Validating AST serialization..\n");
   compare_sexp(sx, sxnew);
   printf("SUCCESS!!\n");
+
+  printf("\n[Packing]\n\n");
+  printf("Packing the AST.\n");
+  pack_ast(ast);
 
   destroy_sexp(sx);
   destroy_sexp(sxnew);

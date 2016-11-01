@@ -4,7 +4,7 @@ CC=gcc
 CFLAGS=-O0 -g
 
 LDPATH=../../deps/sexpr-1.3/src
-INCLUDES=../../deps/sexpr-1.3/src
+INCLUDES=-I../../deps/sexpr-1.3/src -I../../deps/uthash/
 
 all: subst_c.exe
 
@@ -17,8 +17,9 @@ check: check.exe
 	./check.py
 
 check.exe: check.c 
-	$(CC) $(CFLAGS) -c -I$(INCLUDES) ast.c -o ast.o 
-	$(CC) $(CFLAGS) -I$(INCLUDES) $^ ast.o -o $@ -L$(LDPATH) -lsexp
+	$(CC) $(CFLAGS) -c $(INCLUDES) ast.c -o ast.o 
+	$(CC) $(CFLAGS) -c $(INCLUDES) pack.c -o pack.o 
+	$(CC) $(CFLAGS) $(INCLUDES) $^ ast.o pack.o -o $@ -L$(LDPATH) -lsexp
 
 subst_c.exe: subst.c
 	$(CC) $(CFLAGS) -I$(INCLUDES) $^ -o $@ -L$(LDPATH) -lsexp
