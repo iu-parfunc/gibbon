@@ -32,7 +32,46 @@ import Data.Set as S
 
 -- | Rename all local variables 
 freshNames :: L1.Prog -> SyM L1.Prog
-freshNames = return
+freshNames (L1.Prog defs funs main) =
+    do main' <- case main of
+                  Nothing -> return Nothing
+                  Just m -> do m' <- freshExp [] m
+                               return $ Just m'
+       funs' <- freshFuns funs
+       return $ L1.Prog defs funs' main'
+    where freshFuns = undefined
+          freshExp vs (L1.VarE v) = case lookup v vs of
+                                      Nothing -> return $ L1.VarE v
+                                      Just v' -> return $ L1.VarE v'
+          freshExp _ (L1.LitE i) = return $ L1.LitE i
+          freshExp vs (L1.AppE v e) = do e' <- freshExp vs e
+                                         return $ L1.AppE v e'
+          freshExp vs (L1.PrimAppE p es) = do es' <- mapM (freshExp vs) es
+                                              return $ L1.PrimAppE p es'
+          freshExp vs (L1.LetE (v,t,e1) e2) = do e1' <- freshExp vs e1
+                                                 v' <- gensym v
+                                                 e2' <- freshExp ((v,v'):vs) e2
+                                                 return $ L1.LetE (v',t,e1') e2'
+          freshExp vs (L1.IfE e1 e2 e3) = do e1' <- freshExp vs e1
+                                             e2' <- freshExp vs e2
+                                             e3' <- freshExp vs e3
+                                             return $ L1.IfE e1' e2' e3'
+          freshExp vs (L1.ProjE i e) = do e' <- freshExp vs e
+                                          return $ L1.ProjE i e'
+          freshExp vs (L1.MkProdE es) = do es' <- mapM (freshExp vs) es
+                                           return $ L1.MkProdE es'
+          freshExp vs (L1.CaseE e mp) = do e' <- freshExp vs e
+                                           mp' <- mapM (\(args,e) -> do
+                                                          args' <- mapM gensym args
+                                                          let vs' = (zip args args') ++ vs
+                                                          e' <- freshExp vs' e
+                                                          return (args',e')) mp
+                                           return $ L1.CaseE e' mp'
+          freshExp vs (L1.MkPackedE c es) = do es' <- mapM (freshExp vs) es
+                                               return $ L1.MkPackedE c es'
+          freshExp vs (L1.TimeIt e) = do e' <- freshExp vs e
+                                         return $ L1.TimeIt e'
+                         
 
 -- | Put the program in A-normal form where only varrefs and literals
 -- are allowed in operand position.
