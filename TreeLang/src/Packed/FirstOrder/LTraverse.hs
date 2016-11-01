@@ -20,7 +20,6 @@ module Packed.FirstOrder.LTraverse
     , extendEnv
     )
     where
-
 import Control.Monad (when)
 import Control.DeepSeq
 import qualified Packed.FirstOrder.Common as C
@@ -447,7 +446,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
 
      -- Construct output packed data.  We will always "scroll to the end" of 
      -- output values, so they are not interesting for this effect analysis.
-     L1.MkPackedE k ls -> trivs ls $
+     L1.MkPackedE k ls -> L1.assertTrivs ls $
         -- And because it's freshly allocated, it has unconstrained location:
         do l <- freshLoc $ "mk"++k
            return (S.empty,l)
@@ -470,7 +469,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
         _ -> error$ "FINISHME: handle this rand: "++show rand
 
      -- If rands are already trivial, no traversal effects can occur here.
-     L1.PrimAppE _ rands -> trivs rands $          
+     L1.PrimAppE _ rands -> L1.assertTrivs rands $ 
          return (S.empty, Bottom) -- All primitives operate on non-packed data.
                           
      -- If any sub-expression reaches a destination, we can reach the destination:
@@ -527,26 +526,6 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
       return ( winner, stripped, rloc )
 
 
--- Simple invariant assertions:
-           
-triv :: L1.Exp -> a -> a
-triv e =
-  if isTriv e
-  then id
-  else error$ "triv: expected trivial argument, got: "++show e
-
-isTriv :: L1.Exp -> Bool
-isTriv e = 
-   case e of
-     L1.VarE _ -> True
-     L1.LitE _ -> True
-     L1.ProjE _ (L1.VarE _) -> True     
-     L1.MkProdE ls -> all isTriv ls  -- TEMP/FIXME: probably remove this 
-     _  -> False
-
-trivs :: [L1.Exp] -> a -> a
-trivs [] = id
-trivs (a:b) = triv a . trivs b
 
 -- We extend the environment when going under lexical binders, which
 -- always have fixed abstract locations associated with them.

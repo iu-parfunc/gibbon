@@ -1,8 +1,10 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
+{-# OPTIONS_GHC -fdefer-typed-holes #-}
 
 -- | Inserting cursors and lowering to the target language.
 --   This shares a lot with the effect-inference pass.
@@ -24,6 +26,7 @@ import Debug.Trace
 -- | Chatter level for this module:
 lvl :: Int
 lvl = 5
+
 
 -- =============================================================================
 
@@ -154,12 +157,11 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
 
      L1.IfE a b c -> do
          (new,a',aty,aloc) <- exp env a
-         maybeLetTup new (aty,a') env $ \ ex env' -> do 
+         maybeLetTup (new++[aloc]) (aty,a') env $ \ ex env' -> do 
             b' <- tail demanded env' b
             c' <- tail demanded env' c
             return $ L1.IfE ex b' c'
-         return __
-                   
+
      L1.CaseE e1 mp ->
          do (new,e1',e1ty,_loc) <- exp env e1
             maybeLetTup new (e1ty,e1') env $ \ ex env' -> do
@@ -223,21 +225,21 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
      _ -> return ([], finishEXP, finishTYP, finishLOC)
      _ -> error $ "ERROR: cursorize: unfinished, needs to handle:\n "++sdoc e
 
--- | Given a certain number of added tuple results, possibly let bind.
+-- | Let bind IFF there are extra cursor results.
 maybeLetTup :: [Loc] -> (L1.Ty, L1.Exp) -> Env -> (L1.Exp -> Env -> SyM L1.Exp) -> SyM L1.Exp
-maybeLetTup new (ty,ex) env fn = 
-  if L.null new
-   then fn ex env
-   else do 
+maybeLetTup locs (ty,ex) env fn = 
+  case locs of
+   -- Zero extra cursor return values
+   [_] -> fn ex env
+   -- Otherwise the layout of the tuple is (cursor0,..cursorn, origValue):
+   _   -> do 
      -- The name doesn't matter, just that it's in the environment:
      tmp <- gensym "mlt"
      -- Let-bind all the new things that come back with the exp
-     -- to bring them into the environment:
-     
-     let env' = M.insert tmp __ __ -- env
-                -- M.union env (M.fromList [ (v, Fixed v) | v <- new ])
-     bod <- fn (L1.ProjE (length new) (L1.VarE tmp)) env'
-     return $ L1.LetE (tmp, ty, ex) bod                      
+     -- to bring them into the environment.       
+     let env' = M.insert tmp (TupLoc locs) env
+     bod <- fn (L1.ProjE (length locs - 1) (L1.VarE tmp)) env'
+     return $ L1.LetE (tmp, ty, ex) bod
 
           
 -- | Dig through an environment to find

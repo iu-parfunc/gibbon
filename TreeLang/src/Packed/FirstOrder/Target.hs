@@ -234,9 +234,9 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     MulP -> let [(outV,outT)] = bnds
                                 [pleft,pright] = rnds
                             in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) * $(codegenTriv pright); |]]
-                    DictInsertP -> __
-                    DictLookupP -> __
-                    NewBuf -> __
+                    DictInsertP -> unfinished 1
+                    DictLookupP -> unfinished 2
+                    NewBuf -> unfinished 3
                     WriteTag -> let [(outV,CursorTy)] = bnds
                                     [(TagTriv tag),(VarTriv cur)] = rnds
                                 in [ C.BlockStm [cstm| *($id:cur) = $tag; |]
@@ -262,13 +262,13 @@ codegenTy SymTy = [cty|int|]
 codegenTy CursorTy = [cty|char*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts
-codegenTy (SymDictTy _t) = __
+codegenTy (SymDictTy _t) = unfinished 4
 
 makeName :: [Ty] -> String
 makeName []            = "Prod"
 makeName (IntTy:ts)    = "Int" ++ makeName ts
 makeName (CursorTy:ts) = "Cursor" ++ makeName ts
-makeName _             = __
+makeName _             = unfinished 5
 
 mkBlock :: [C.BlockItem] -> C.Stm
 mkBlock ss = C.Block ss noLoc
@@ -479,4 +479,7 @@ exadd1Tail =
 add1C = codegenProg exadd1Prog -- mapM_ (\c -> putDocLn $ ppr c) (codegenFun exadd1)
 
 buildTreeC :: IO ()
-buildTreeC = __ --  mapM_ (\c -> putDocLn (ppr c)) (codegenFun buildTree)
+buildTreeC = unfinished 6 --  mapM_ (\c -> putDocLn (ppr c)) (codegenFun buildTree)
+
+unfinished :: Int -> a
+unfinished n = error $ "Target.hs: unfinished hole #"++show n

@@ -14,6 +14,8 @@ module Packed.FirstOrder.L1_Source
     , voidTy
     , freeVars, subst, mapExprs
     , add1Prog
+      -- * Trivial expressions
+    , assertTriv, assertTrivs, isTriv
     )
     where
 
@@ -138,6 +140,32 @@ subst old new ex =
     IfE a b c -> IfE (go a) (go b) (go c)
 
 
+--------------------------------------------------------------------------------
+
+-- Simple invariant assertions:
+           
+assertTriv :: Exp -> a -> a
+assertTriv e =
+  if isTriv e
+  then id
+  else error$ "Expected trivial argument, got: "++sdoc e
+
+assertTrivs :: [Exp] -> a -> a
+assertTrivs [] = id
+assertTrivs (a:b) = assertTriv a . assertTrivs b
+       
+isTriv :: Exp -> Bool
+isTriv e = 
+   case e of
+     VarE _ -> True
+     LitE _ -> True
+     ProjE _ (VarE _) -> True     
+     MkProdE ls -> all isTriv ls  -- TEMP/FIXME: probably remove this a
+     _  -> False
+
+
+
+                 
 {-
 -- | Promote a value to a term that evaluates to it.
 l1FromValue :: Value Exp -> Exp
@@ -205,6 +233,11 @@ main = print (interpProg p1)
 -}
 
 
+
+
+
+--------------------------------------------------------------------------------
+
 treeTy :: Ty
 treeTy = Packed "Tree"
 
@@ -226,3 +259,6 @@ exadd1Bod =
                               , AppE "add1" (VarE "y")]))
       ]
 
+
+
+    
