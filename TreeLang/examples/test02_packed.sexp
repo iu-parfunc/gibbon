@@ -1,9 +1,9 @@
 #lang s-exp "../TreeLang/treelang.rkt"
 
-(data Packed (MkPacked Int))
+(data Foo (MkFoo Int))
 
-(define (eat [x : Packed]) : Int
+(define (eat [x : Foo]) : Int
   (case x
-    [(MkPacked n) n]))
+    [(MkFoo n) n]))
 
-(eat (MkPacked 3))
+(eat (MkFoo 3))

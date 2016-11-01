@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
   sexp_t *sx;
 
   // Read file as a string
-  fp = fopen("sexps.in","r+");
+  fp = fopen("/u/budkahaw/Builds/treewalk/ASTBenchmarks/expanded_racket/share/pkgs/base/info.rkt.out.sexp","r+");
 
   fseek(fp, 0, SEEK_END);
   long fsize = ftell(fp);
