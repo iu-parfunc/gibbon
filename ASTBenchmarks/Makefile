@@ -27,6 +27,9 @@ expanded_racket: ${DATASET}
 	echo "\nOffenders and zero-sized removed.  Done."
 	$(MAKE) largest
 
+wget_cleaned:
+	wget http://cs.indiana.edu/~rrnewton/files/racket_cleaned_asts_v1.2.tgz
+
 cleaned_racket: expanded_racket rewrite.rkt
 	mkdir -p $@
 	cd expanded_racket; \
