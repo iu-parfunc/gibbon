@@ -6,9 +6,12 @@ CFLAGS=-O0 -g
 LDPATH=../../deps/sexpr-1.3/src
 INCLUDES=-I../../deps/sexpr-1.3/src -I../../deps/uthash/
 
-all: subst_c.exe
+all: subst_c.exe racket_build
 
 LOG=subst_all_expanded_1.2.log
+
+racket_build:
+	raco make -v subst_treelang.rkt subst.rkt
 
 scan_for_errors:
 	grep -v "Benchmark:" $(LOG)  | grep -v  "==========" | grep -v "Done ingesting" | grep -v "cpu time" | grep -v "^$$" | tee wc 
