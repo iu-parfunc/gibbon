@@ -9,7 +9,7 @@
          time + * -
 
          #%app #%module-begin #%datum quote
-         only-in
+         only-in all-defined-out
          #;(all-from-out typed/racket))
 
 ;; add for/list  w/types
