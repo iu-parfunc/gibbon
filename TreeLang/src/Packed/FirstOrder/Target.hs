@@ -12,8 +12,8 @@
 
 module Packed.FirstOrder.Target
     ( Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..),
-      Alts(..), Prog(..),
-      codegenProg, codegenFun, mkProgram, writeProgram,
+      Alts(..), Prog(..), MainExp(..),
+      codegenProg,
       -- Examples, temporary:
       exadd1, exadd1Tail, add1C, buildTreeC
     ) where
@@ -32,31 +32,40 @@ import Data.Maybe (fromJust)
 import Data.Traversable
 import GHC.Generics (Generic)
 import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
-                           cunit)
+                           cunit, citem)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import Text.PrettyPrint.Mainland
 import Text.PrettyPrint.GenericPretty (Out(..))
 import Prelude hiding (init)
-    
+
 import Packed.FirstOrder.Common
+
 --------------------------------------------------------------------------------
 -- * AST definition
 
-data Prog = Prog { fundefs :: [FunDecl]
-                 , mainExp :: (Maybe Tail) }
-  deriving (Show, Read, Ord, Eq, Generic, NFData) 
+data Prog = Prog
+  { fundefs :: [FunDecl]
+  , mainExp :: Maybe MainExp
+      -- ^ When this is `Nothing` we don't attempt to link the source files.
+  } deriving (Show, Ord, Eq, Generic, NFData, Out)
 
-instance Out Prog
-          
+data MainExp
+  = PrintExp Tail
+      -- ^ Evaluate the expression and print the result. Type of the expression
+      -- must be `int`.
+  | RunRacketCorePass Var
+      -- ^ Run the pass. `Var` is a function from an input buffer and output
+      -- buffer to something (ignored).
+  deriving (Show, Ord, Eq, Generic, NFData, Out)
+
 type Tag = Word8
 
 data Triv
     = VarTriv Var
     | IntTriv Int
     | TagTriv Tag
-  deriving (Show, Read, Ord, Eq, Generic, NFData)
-instance Out Triv
+  deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 -- | Switch alternatives.
 data Alts
@@ -64,13 +73,12 @@ data Alts
       -- ^ Casing on tags.
   | IntAlts [(Int, Tail)]
       -- ^ Casing on integers.
-  deriving (Show, Read, Ord, Eq, Generic, NFData)
-instance Out Alts
+  deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 instance Out Word8 where
   doc w = doc (fromIntegral w :: Int)
   docPrec n w = docPrec n (fromIntegral w :: Int)
-    
+
 data Tail
     = RetValsT [Triv] -- ^ Only in tail position, for returning from a function.
     | LetCallT { binds  :: [(Var,Ty)],
@@ -90,8 +98,7 @@ data Tail
     | Switch Triv Alts (Maybe Tail)
     -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
-  deriving (Show, Read, Ord, Eq, Generic, NFData)
-instance Out Tail
+  deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data Ty
     = IntTy
@@ -102,9 +109,7 @@ data Ty
     | ProdTy [Ty]
     | SymDictTy Ty
       -- ^ We allow built-in dictionaries from symbols to a value type.
-  deriving (Show, Read, Ord, Eq, Generic, NFData)
-
-instance Out Ty
+  deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data Prim
     = AddP
@@ -122,30 +127,52 @@ data Prim
     -- ^ Read one byte from the cursor and advance it.
     | ReadInt
       -- ^ Read an 8 byte Int from the cursor and advance.
-  deriving (Show, Read, Ord, Eq, Generic, NFData)
-instance Out Prim
-           
+  deriving (Show, Ord, Eq, Generic, NFData, Out)
+
 data FunDecl = FunDecl
   { funName  :: Var
   , funArgs  :: [(Var,Ty)]
   , funRetTy :: Ty
   , funBody  :: Tail
-  } deriving (Show, Read, Ord, Eq, Generic, NFData)
-
-instance Out FunDecl
+  } deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 --------------------------------------------------------------------------------
 -- * C codegen
 
 -- | Slightly different entrypoint than mkProgram that enables a
 -- "main" expression.
-codegenProg :: Prog -> String
-codegenProg (Prog funs mtal) = pretty 80 (stack (map ppr defs))
-    where defs = fst $ runSyM 0 $ do funs' <- mapM codegenFun funs
-                                     let structs f = makeStructs $ nub [ tys | ProdTy tys <- funTys f ]
-                                     case mtal of
-                                       Just _x -> error "main expr: Not handled yet" -- TODO: main function
-                                       Nothing -> return $ (concatMap structs funs) ++ funs'
+codegenProg :: Prog -> IO String
+codegenProg (Prog funs mtal) = do
+      rts <- readFile "rts.c" -- TODO (maybe): We can read this in in compile time using TH
+      return (rts ++ '\n' : pretty 80 (stack (map ppr defs)))
+    where
+      defs = fst $ runSyM 0 $ do
+        funs' <- mapM codegenFun funs
+        let structs f = makeStructs $ nub [ tys | ProdTy tys <- funTys f ]
+        main_expr' <- main_expr
+        return (concatMap structs funs ++ funs' ++ [bench_fn, main_expr'])
+
+      bench_fn :: C.Definition
+      bench_fn =
+        case mtal of
+          Just (RunRacketCorePass var) ->
+            C.FuncDef [cfun| void __fn_to_bench(char* in, char* out) {
+                $(cid var)(in, out);
+            }|] noLoc
+          _ ->
+            C.FuncDef [cfun| void __fn_to_bench(char* in, char* out) {
+                fprintf(stderr, "Benchmark is not implemented for this program.\n");
+                exit(1);
+            } |] noLoc
+
+      main_expr :: SyM C.Definition
+      main_expr =
+        case mtal of
+          Just (PrintExp t) -> do
+            t' <- codegenTail t (codegenTy IntTy)
+            return $ C.FuncDef [cfun| int __main_expr() { $items:t' } |] noLoc
+          _ ->
+            return $ C.FuncDef [cfun| int __main_expr() { return 0; } |] noLoc
 
 funTys :: FunDecl -> [Ty]
 funTys (FunDecl _ args ty _) = ty : (map snd args)
@@ -156,7 +183,7 @@ codegenFun (FunDecl nam args ty tal) =
            params  = map (\(v,t) -> [cparam| $ty:(codegenTy t) $id:v |]) args
        body <- codegenTail tal retTy
        let fun     = [cfun| $ty:retTy $id:nam ($params:params) {
-                         $items:body
+                            $items:body
                      } |]
        return $ C.FuncDef fun noLoc
 
@@ -174,13 +201,13 @@ codegenTriv (IntTriv i) = [cexp| $i |]
 codegenTriv (TagTriv i) = [cexp| $i |]
 
 codegenTail :: Tail -> C.Type -> SyM [C.BlockItem]
-               
+
 codegenTail (RetValsT [tr]) _ty = return $ [ C.BlockStm [cstm| return $(codegenTriv tr); |] ]
-                                  
+
 codegenTail (RetValsT ts) ty =
     return $ [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
     where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
-                 
+
 codegenTail (Switch tr alts def) ty =
     do let trE = codegenTriv tr
            mk_tag_lhs lhs = C.Const (C.IntConst (show lhs) C.Unsigned (fromIntegral lhs) noLoc) noLoc
@@ -231,7 +258,7 @@ codegenTail (LetCallT bnds ratr rnds body) ty
                              return $ init ++ zipWith bind bnds fields ++ tal
     | otherwise = do tal <- codegenTail body ty
                      return $ assn (codegenTy (snd $ bnds !! 0)) (fst $ bnds !! 0) (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc) : tal
-                           
+
 
 codegenTail (LetPrimCallT bnds prm rnds body) ty =
     do bod' <- codegenTail body ty
@@ -290,149 +317,6 @@ cid v = C.Var (C.toIdent v noLoc) noLoc
 assn :: (C.ToIdent v, C.ToExp e) => C.Type -> v -> e -> C.BlockItem
 assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
 
---------------------------------------------------------------------------------
--- * Runtime functions / entry point for C programs
-
-includes :: String
-includes = unlines
-  [ "#include <assert.h>"
-  , "#include <stdio.h>"
-  , "#include <stdlib.h>"
-  , "#include <string.h>"
-  , "#include <time.h>"
-  , ""
-  ]
-
--- | Given function name to benchmark, generates `main()` that benchmarks.
-mkRuntimeFuns :: String -> [C.Definition]
-mkRuntimeFuns f = [cunit|
-void show_usage()
-{
-    // TODO
-    return;
-}
-
-double avg(const double* arr, int n)
-{
-    double sum = 0.0;
-    for(int i=0; i<n; i++) sum += arr[i];
-    return sum / (double)n;
-}
-
-double difftimespecs(struct timespec* t0, struct timespec* t1)
-{
-    return (double)(t1->tv_sec - t0->tv_sec)
-      + ((double)(t1->tv_nsec - t0->tv_nsec) / 1000000000.0);
-}
-
-int compare_doubles (const void *a, const void *b)
-{
-    const double *da = (const double *) a;
-    const double *db = (const double *) b;
-    return (*da > *db) - (*da < *db);
-}
-
-void run(int num_iterations, int tree_size, int buffer_size)
-{
-    printf("Generating initial tree...\n");
-    char* initial_buffer = (char*)malloc(buffer_size);
-    assert(initial_buffer);
-    build_tree(tree_size, initial_buffer);
-
-    printf("Benchmarking. Iteration count: %d\n", num_iterations);
-    char* bench_buffer = (char*)malloc(buffer_size);
-    assert(bench_buffer);
-
-    double trials[num_iterations];
-    struct timespec begin, end;
-
-    for (int i = 0; i < num_iterations; ++i)
-    {
-        clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
-        $(cid f)(initial_buffer, bench_buffer);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-        trials[i] = difftimespecs(&begin, &end);
-    }
-
-    qsort(trials, num_iterations, sizeof(double), compare_doubles);
-    printf("\nMINTIME: %lf\n",  trials[0]);
-    printf("MEDIANTIME: %lf\n", trials[num_iterations / 2]);
-    printf("MAXTIME: %lf\n",    trials[num_iterations - 1]);
-    printf("AVGTIME: %lf\n",    avg(trials, num_iterations));
-}
-
-int main(int argc, char** argv)
-{
-    // parameters to parse:
-    //
-    //   num iterations: How many times to repeat a benchmark. Default: 10.
-    //   tree size: An integer passes to `build_tree()`. Default: 10.
-    //   buffer size: Default 10M.
-
-    int num_iterations = 10;
-    int tree_size = 10;
-    int buffer_size = 10 * 1000 * 1000; // 10M
-
-    // TODO: atoi() error checking
-
-    for (int i = 1; i < argc; ++i)
-    {
-        if (strcmp(argv[i], "-num-iterations") == 0 && i < argc - 1)
-        {
-            num_iterations = atoi(argv[i + 1]);
-            ++i;
-        }
-        else if (strcmp(argv[i], "-tree-size") == 0 && i < argc - 1)
-        {
-            tree_size = atoi(argv[i + 1]);
-            ++i;
-        }
-        else if (strcmp(argv[i], "-buffer-size") == 0 && i < argc - 1)
-        {
-            buffer_size = atoi(argv[i + 1]);
-            ++i;
-        }
-        else
-        {
-            fprintf(stderr, "Can't parse argument: \"%s\"\n", argv[i]);
-            show_usage();
-            exit(1);
-        }
-    }
-
-    run(num_iterations, tree_size, buffer_size);
-
-    return 0;
-}
-|]
-
-mkProgram
-  :: [FunDecl]
-       -- ^ function declarations to put in the compilation unit
-  -> String
-       -- ^ name of the function to benchmark
-  -> String
-mkProgram fs fname =
-    fst $ runSyM 0 $
-        do fs' <- mapM codegenFun fs
-           return $ concat
-                      [ includes
-                      , pretty 80 (stack (map ppr fs'))
-                      , pretty 80 (ppr (mkRuntimeFuns fname))
-                      ]
-
-
-
-writeProgram
-  :: [FunDecl]
-       -- ^ function declarations to put in the compilation unit
-  -> String
-       -- ^ name of the function to benchmark
-  -> FilePath
-       -- ^ path of the file to generate
-  -> IO ()
-writeProgram fs fname path = writeFile path (mkProgram fs fname)
-
 -- Examples:
 --------------------------------------------------------------------------------
 
@@ -443,7 +327,7 @@ nodeTag :: Word8
 nodeTag = 1
 
 exadd1Prog :: Prog
-exadd1Prog = Prog [exadd1] Nothing
+exadd1Prog = Prog [exadd1] (Just (RunRacketCorePass "add1"))
 
 exadd1 :: FunDecl
 exadd1 = FunDecl "add1" [("t",CursorTy),("tout",CursorTy)] (ProdTy [CursorTy,CursorTy]) exadd1Tail

@@ -10,7 +10,7 @@ maintainer:          rrnewton@gmail.com
 -- copyright:
 -- category:
 build-type:          Simple
-extra-source-files:  README.md
+extra-source-files:  README.md, rts.c
 cabal-version:       >=1.10
 
 library
