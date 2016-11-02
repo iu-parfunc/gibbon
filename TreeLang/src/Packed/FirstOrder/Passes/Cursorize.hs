@@ -209,8 +209,11 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
      L1.LitE _ -> return $ mkProd cursorRets e
      L1.VarE _ -> return $ mkProd cursorRets e
      L1.MkPackedE k ls -> L1.assertTrivs ls $ 
-         return $ mkProd cursorRets (L1.MkPackedE k ls)
-
+        return $ mkProd cursorRets (L1.MkPackedE k ls)
+     -- INVARIANT: None of the primapps yield new witnesses:
+     L1.PrimAppE p ls -> L1.assertTrivs ls $
+        return $ mkProd cursorRets (L1.PrimAppE p ls)
+                
      ------------------ Flattened Spine ---------------
      -- Here we route through extra arguments.
      L1.LetE (v,tv,rhs) bod ->
@@ -230,8 +233,6 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
             c' <- tail demanded (env,wenv') c
             return $ L1.IfE ex b' c'
 
-
-                   
                    
      L1.CaseE e1 mp ->
          do (new,e1',e1ty,loc) <- exp (env,wenv) e1
@@ -386,7 +387,11 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
    case ex of
 --    L1.LetE (v,t,rhs) bod -> T.LetE (v,t,tail rhs) (tail bod)
     L1.VarE v          -> pure$ T.RetValsT [T.VarTriv v]
-    
+
+    -- TWO OPTIONS HERE: we could push equality prims into the target lang.
+    -- Or we could map directly onto the IfEqT form:
+    -- L1.IfE (L1.PrimAppE L1.EqP __ ) b c -> __
+                          
     L1.IfE a b c       -> do b' <- tail b
                              c' <- tail c
                              return $ T.Switch (triv "if test" a)
@@ -395,6 +400,12 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
 
     L1.AppE v e        -> return $ T.TailCall v [triv "operand" e]
 
+    -- Whatever, a little just in time flattening.  Should obsolete this:
+    L1.PrimAppE p ls -> do
+      let primResult = trace "FIXME: " L1.IntTy
+      tmp <- gensym "flt"
+      tail (L1.LetE (tmp, primResult, L1.PrimAppE p ls) (L1.VarE tmp))
+                          
     L1.LetE (v,t,L1.PrimAppE p ls) bod ->
         T.LetPrimCallT [(v,typ t)]
              (prim p)
@@ -426,10 +437,27 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
 -}
 
   triv :: String -> L1.Exp -> T.Triv
-  triv = error "FINISHME lower/triv"
+  triv msg e0 =
+    case e0 of
+      (L1.VarE x) -> T.VarTriv x
+      (L1.LitE x) -> T.IntTriv x
+      -- TODO: I think we should allow tuples and projection in trivials:
+--      (ProjE x1 x2) -> __
+--      (MkProdE x) -> __
+      _ -> error $ "lower/triv, expected trivial in "++msg++", got "++sdoc e0
   
   typ :: L1.Ty -> T.Ty
-  typ = error "FINISHME lower/typ"
+  typ t =
+    case t of
+      L1.IntTy -> T.IntTy
+      L1.SymTy -> T.SymTy
+      L1.BoolTy -> T.IntTy
+      (L1.ProdTy xs) -> T.ProdTy $ L.map typ xs
+      (L1.SymDictTy x) -> T.SymDictTy $ typ x
+      -- t | isCursorTy t -> T.CursorTy
+      (L1.Packed k)
+          | k == L2.con L2.cursorTy -> T.CursorTy
+          | otherwise -> error "lower/typ: should not encounter "
 
   typ' :: L2.Ty -> T.Ty
   typ' = error "FINISHME lower/typ'"
@@ -440,7 +468,7 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
       L1.AddP -> T.AddP
       L1.SubP -> T.SubP
       L1.MulP -> T.MulP
-      L1.EqP  -> __ -- T.EqP
+      L1.EqP  -> error "lower/prim should only have eq? directly in comparison of an If"
       L1.DictInsertP -> T.DictInsertP
       L1.DictLookupP -> T.DictLookupP
       (L1.ErrorP s)  -> __ -- T.ErrorP s
