@@ -6,16 +6,48 @@
  * Defines the pointer based compressed AST for the Racket syntax at [1].
  * Compressed definition :
  *
- * (data prog [prog (list toplvl)])
- * (data toplvl
- *       [define-values (list Sym) expr]
- *       [define-syntaxes (list Sym) expr]
- *       [expression expr])
- * (data expr [VARREF Sym] [plain-lambda ...]...)
- * (data formals
- *       [F1 (list Sym)]
- *       [F2 (list Sym) Sym]
- *       [F3 Sym])
+ * (data Toplvl
+ *       [DefineValues   (Listof Sym) Expr]
+ *       [DefineSyntaxes (Listof Sym) Expr]
+ *       [BeginTop (Listof Toplvl)]
+ *       [Expression Expr])
+ *
+ * (data Expr
+ *       (VARREF Sym)
+ *       (Lambda Formals (Listof Expr))    
+ *       (CaseLambda (Listof LAMBDACASE))
+ *       (If Expr Expr Expr)
+ *       (Begin (Listof Expr))
+ *       (Begin0 Expr (Listof Expr))
+ *       (LetValues   (Listof LVBIND) (Listof Expr))
+ *       (LetrecValues (Listof LVBIND) (Listof Expr))
+ *       (SetBang Sym Expr)
+ *       (Quote Datum)
+ *       (QuoteSyntax Datum)
+ *       (QuoteSyntaxLocal Datum)  ;; (quote-syntax datum #:local)
+ *       (WithContinuationMark Expr Expr Expr)
+ *       (App (Listof Expr)) ;; (#%plain-app expr ...+)
+ *       (Top Sym)
+ *       (VariableReference    Sym) ; #%variable-reference
+ *       (VariableReferenceTop Sym) ; #%variable-reference (#%top . id)
+ *       (VariableReferenceNull)    ; (#%variable-reference)
+ *       )
+ * 
+ * (data LVBIND (MKLVBIND (Listof Sym) Expr))
+ *
+ * (data LAMBDACASE (MKLAMBDACASE Formals (Listof Expr)))  ;; (formals expr ...+) 
+ *
+ * (data Datum
+ *     (INTLIT Int)
+ *     ; (SYMLIT Sym)
+ *     ; (CONS Datum Datum)
+ *     ; (NULL)
+ * )
+ *
+ * (data Formals
+ *     [F1 (Listof Sym)]
+ *     [F2 (Listof Sym) Sym]
+ *     [F3 Sym]) 
  *
  * [1] https://docs.racket-lang.org/reference/syntax-model.html#%28part._fully-expanded%29
  **/
@@ -28,10 +60,8 @@
 #include <stdbool.h>
 
 #define AST struct exp 
-#define LIST_DELIM '|'
 
 typedef enum {
-  PROG,
   DEFINE_VALUES,
   DEFINE_SYNTAXES,
   BEGINTOP,
@@ -162,6 +192,6 @@ typedef struct exp {
 
 // AST operations
 ast_t* build_ast(void* parse_tree);
-void print_ast(ast_t* ast, FILE* fp);
+void print_ast(ast_t* ast, char* fname);
 
 #endif /* _AST_H_ */

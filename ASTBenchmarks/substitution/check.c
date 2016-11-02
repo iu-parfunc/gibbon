@@ -1,6 +1,7 @@
 
 #include "ast.h"
 #include "pack.h"
+#include "parse.h"
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
@@ -32,7 +33,6 @@ void compare_sexp(sexp_t* sx, sexp_t* sxnew) {
 }
 
 int main(int argc, char **argv) {  
-  FILE *fp;
   int iterations = 1;
   char *fname;
   sexp_t *sx;
@@ -46,86 +46,28 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  fp = fopen(fname,"r+");
-
-  if (fp <= 0) {
-    fprintf(stderr,"Error: Failed to open file.\n");
-    exit(EXIT_FAILURE);
-  }
-
-  fseek(fp, 0, SEEK_END);
-  long fsize = ftell(fp);
-  fseek(fp, 0, SEEK_SET);  //same as rewind(f);
-
-  char *sexp = malloc(fsize + 1);
-  int ec = fread(sexp, fsize, 1, fp);
-  fclose(fp);
-
-  sexp[fsize] = 0;
-
-  // Generate the parse tree
-  if (sexp) {
-    sx = parse_sexp(sexp, fsize);
-  } else {
-    fprintf(stderr,"Error printing the parse tree with error : %d\n", sexp_errno);
-    exit(EXIT_FAILURE);
-  }
-
   printf("[Parse Tree Operations]\n\n");
   printf("Generating the parse tree..\n");
 
-  printf("Serialized parse tree, BUFSIZ=%d:\n", fsize);
-  char *printed = malloc(fsize);
-  int ret = print_sexp(printed, BUFSIZ, sx);
-  printf("%s\n", printed);
-
-  if (ret == -1) {
-    fprintf(stderr,"Error printing the parse tree with error : %d\n", sexp_errno);
-    exit(EXIT_FAILURE);
-  }
-
-  free(printed);
+  // Parse
+  sx = parse(fname);
 
   printf("\n[AST Operations]\n\n");
   printf("Generating the AST.\n");
 
+  // Build AST
   ast_t* ast = build_ast(sx);
 
   printf("Serializing the AST..\n");
 
-  fp = fopen("sexp.out", "w+");
-
-  if (fp <= 0) {
-    fprintf(stderr,"Error: Failed to open file.\n");
-    exit(EXIT_FAILURE);
-  }
-
-  print_ast(ast, fp);
-
-  fseek(fp, 0, SEEK_END);
-  fsize = ftell(fp);
-  fseek(fp, 0, SEEK_SET);  //same as rewind(f);
-
-  sexp = malloc(fsize + 1);
-  ec = fread(sexp, fsize, 1, fp);
-  fclose(fp);
-
-  sexp[fsize] = 0;
-
-  printf("Serialized AST, BUFSIZ=%d:\n", fsize);
-  printf("%s\n", sexp);
-
-  sexp_t* sxnew;
-  // Generate the new parse tree
-  if (sexp) {
-    sxnew = parse_sexp(sexp, fsize);
-  } else {
-    fprintf(stderr,"Error printing the parse tree with error : %d\n", sexp_errno);
-    exit(EXIT_FAILURE);
-  }
+  // Serialize AST back to a s-expression for validating
+  print_ast(ast, "sexp.out");
+  sexp_t* sxnew = parse("sexp.out");
 
   printf("\n[Validation]\n\n");
   printf("Validating AST serialization..\n");
+
+  // Validate AST serialization with the original s-expression
   compare_sexp(sx, sxnew);
   printf("SUCCESS!!\n");
 

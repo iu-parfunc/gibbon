@@ -34,7 +34,7 @@ ctx_t CTX(ast_node_type type) {
 #define AST_NAME(typ)   g_node_types[typ]
 
 const char* g_ast_types[] = {
-  "PROG", "DEFINE_VALUES", "DEFINE_SYNTAXES", "BEGINTOP", "EXPRESSION", "VARREF",
+  "DEFINE_VALUES", "DEFINE_SYNTAXES", "BEGINTOP", "EXPRESSION", "VARREF",
   "LAMBDA", "CASE_LAMBDA", "MKLAMBDACASE", "IF", "BEGIN", "BEGIN0", "LET_VALUES", 
   "MKLVBIND", "LETREC_VALUES", "SETBANG", "QUOTE", "QUOTE_SYNTAX", "QUOTE_SYNTAX_LOCAL", 
   "INTLIT", "WITH_CONTINUATION_MARK", "APP", "TOP", "VARIABLE_REFERENCE", 
@@ -42,7 +42,7 @@ const char* g_ast_types[] = {
 };
 
 const char* g_node_types[] = {
-  "PROG", "DefineValues", "DefineSyntaxes", "BeginTop", "Expression", "VARREF",
+  "DefineValues", "DefineSyntaxes", "BeginTop", "Expression", "VARREF",
   "Lambda", "CaseLambda", "MKLAMBDACASE", "If", "Begin", "Begin0", "LetValues", 
   "MKLVBIND", "LetrecValues", "SetBang", "Quote", "QuoteSyntax", "QuoteSyntaxLocal", 
   "INTLIT", "WithContinuationMark", "App", "Top", "VariableReference", 
@@ -366,7 +366,7 @@ ast_t* build_top_lvl(sexp_t* sx) {
         ast_t* expr              = NEW_AST();
         expr->ty                 = EXPRESSION;
         sx                       = NEXT(sx);
-        expr->node.expr.exp      = build_expr(sx, CTX(PROG));
+        expr->node.expr.exp      = build_expr(sx, CTX(EXPRESSION));
         return expr;
           
       } else if (TAG("DefineValues") || TAG("DefineSyntaxes")) {
@@ -408,14 +408,6 @@ ast_t* build_top_lvl(sexp_t* sx) {
     ERROR("[AST] Error building top inside root..");
   }
   ERROR("[AST] Error building top inside root..");
-}
-
-ast_t* build_prog(sexp_t* node) {
-  ast_t* ast               = NEW_AST();
-  ast->ty                  = PROG;
-  ast->node.prog.toplvl    = (ast_t**) NEW_ASTS(1);
-  ast->node.prog.toplvl[0] = build_top_lvl(node);
-  return ast;
 }
 
 ast_t* build_ast(void* parse_tree) {
@@ -619,8 +611,14 @@ void print_top_lvl(FILE* fp, ast_t* ast) {
   fprintf(fp, ")");
 }
 
-void print_ast(ast_t* ast, FILE* fp) {
+void print_ast(ast_t* ast, char* fname) {
   if (ast) {
+    FILE* fp = fopen(fname,"w+");
+    if (fp <= 0) {
+      ERROR("[AST] Error opening the file");
+    }
     print_top_lvl(fp, ast);
+    fprintf(fp, "\n");
+    fclose(fp);
   }
 }
