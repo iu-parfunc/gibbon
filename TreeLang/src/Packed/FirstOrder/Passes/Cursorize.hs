@@ -123,6 +123,13 @@ witnessTypedBinds ((vr,ty):rst) =
     witnessBinding vr (argtyToLoc (mangle vr) ty)  `unionWEnv`
     witnessTypedBinds rst
 
+-- This is only used for primitives for now                      
+retTyToLoc :: L1.Ty -> Loc
+retTyToLoc L1.IntTy  = Bottom
+retTyToLoc L1.SymTy  = Bottom
+retTyToLoc L1.BoolTy = Bottom
+retTyToLoc t = error$ "retTyToLoc: expected only primitive return types, got: "++show t
+                       
 -- | Combine two witness environments, where each may fill some of the
 -- other's remaining open locvars.  Tie the knot.
 unionWEnv :: WitnessEnv -> WitnessEnv -> WitnessEnv
@@ -216,8 +223,8 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                 
      ------------------ Flattened Spine ---------------
      -- Here we route through extra arguments.
-     L1.LetE (v,tv,rhs) bod ->
-       do (new,rhs',rty,rloc) <- exp (env,wenv) rhs
+     L1.LetE (v,tv,erhs) bod ->
+       do (new,rhs',rty,rloc) <- rhs (env,wenv) erhs
           -- ty will always be a known number of cursors (0 or more)
           -- prepended to the value that was already 
           tmp <- gensym "tmp"
@@ -227,7 +234,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                    finishEXP
 
      L1.IfE a b c -> do
-         (new,a',aty,aloc) <- exp (env,wenv) a
+         (new,a',aty,aloc) <- rhs (env,wenv) a
          maybeLetTup (new++[aloc]) (aty,a') wenv $ \ ex wenv' -> do 
             b' <- tail demanded (env,wenv') b
             c' <- tail demanded (env,wenv') c
@@ -235,7 +242,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
 
                    
      L1.CaseE e1 mp ->
-         do (new,e1',e1ty,loc) <- exp (env,wenv) e1
+         do (new,e1',e1ty,loc) <- rhs (env,wenv) e1
             maybeLetTup new (e1ty,e1') wenv $ \ ex wenv1 -> do
               ls' <- forM (M.toList mp)
                         (\ (dcon, (vrs,rhs)) -> do
@@ -280,11 +287,16 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
   --  (3) The type of the new result, including the added returns.
   --  (4) The location of the processed expression, not including the
   --      added returns.
-  exp :: (Env,WitnessEnv) -> L1.Exp -> SyM ([Loc], L1.Exp, L1.Ty, Loc)
-  exp (env,wenv) e = 
+  rhs :: (Env,WitnessEnv) -> L1.Exp -> SyM ([Loc], L1.Exp, L1.Ty, Loc)
+  rhs (env,wenv) e = 
     dbgTrace lvl ("\n[cursorize] Processing exp: "++show (doc e)++"\n  with wenv: "++show wenv) $
     case e of
      L1.VarE v  -> let (ty,loc) = env # v in return ([], e, ty, loc)
+     L1.LitE _  -> return ([], e, L1.IntTy, Bottom)
+
+     L1.PrimAppE p ls -> L1.assertTrivs ls $
+        let ty = L1.primRetTy p in
+        return ([], e, ty, retTyToLoc ty)
 {-
      L1.LitE  _ -> return (__, Bottom)
 
@@ -294,13 +306,13 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
         finishEXP
                    
      L1.IfE a b c -> do
-       (a',aloc) <- exp wenv a
+       (a',aloc) <- rhs wenv a
        -- If we need to route traversal results out of the branches,
        -- we need to change the type of these branches.
        return (finishEXP, finishLOC)
 -}
-     _ -> return ([], finishEXP, finishTYP, finishLOC)
-     _ -> error $ "ERROR: cursorize: unfinished, needs to handle:\n "++sdoc e
+--     _ -> return ([], finishEXP, finishTYP, finishLOC)
+     _ -> error $ "ERROR: cursorize/exp: unfinished, needs to handle:\n "++sdoc e
 
 endOf :: Loc -> LocVar
 endOf (Fixed a) = toEndVar a
@@ -400,12 +412,18 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
 
     L1.AppE v e        -> return $ T.TailCall v [triv "operand" e]
 
+                          
+    -- FIXME: No reason errors can't stay primitive at Target:
+    L1.PrimAppE (L1.ErrorP _str _ty) [] ->
+      pure T.ErrT 
+    L1.LetE (_,_,L1.PrimAppE (L1.ErrorP _str _) []) _ ->
+      pure T.ErrT 
+
     -- Whatever, a little just in time flattening.  Should obsolete this:
     L1.PrimAppE p ls -> do
-      let primResult = trace "FIXME: " L1.IntTy
       tmp <- gensym "flt"
-      tail (L1.LetE (tmp, primResult, L1.PrimAppE p ls) (L1.VarE tmp))
-                          
+      tail (L1.LetE (tmp, L1.primRetTy p, L1.PrimAppE p ls) (L1.VarE tmp))
+       
     L1.LetE (v,t,L1.PrimAppE p ls) bod ->
         T.LetPrimCallT [(v,typ t)]
              (prim p)
@@ -416,7 +434,7 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
         T.LetCallT [(v,typ t)] f
              [(triv "app rand") arg]
              <$>
-             (tail bod)
+             (tail bod)    
 
     L1.CaseE e ls ->
         return $ T.Switch{} -- (tail e) (M.map (\(vs,er) -> (vs,tail er)) ls)
@@ -471,7 +489,7 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
       L1.EqP  -> error "lower/prim should only have eq? directly in comparison of an If"
       L1.DictInsertP -> T.DictInsertP
       L1.DictLookupP -> T.DictLookupP
-      (L1.ErrorP s)  -> __ -- T.ErrorP s
+      L1.ErrorP{} -> error$ "lower/prim: internal error, should not have got to here: "++show p
 
 -- ================================================================================
 

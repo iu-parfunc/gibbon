@@ -10,12 +10,17 @@
 --   genarating C code like a DSL.
 
 module Packed.FirstOrder.L1_Source
-    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), Ty(..), Prim(..)
-    , voidTy
+    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..)
+      -- * Primitive operations
+    , Prim(..), primRetTy, primArgsTy
+      -- * Types and helpers  
+    , Ty(..), voidTy
+    -- * Expression and Prog helpers
     , freeVars, subst, mapExprs
-    , add1Prog
       -- * Trivial expressions
     , assertTriv, assertTrivs, isTriv
+      -- * Examples
+    , add1Prog
     )
     where
 
@@ -60,11 +65,15 @@ data Exp = VarE Var
          | TimeIt Exp
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
+-- | Some of these primitives are (temporarily) tagged directly with
+-- their return types.
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | EqP         -- ^ Equality on scalar types (int, sym, bool)
-          | DictInsertP -- ^ takes k,v,dict
-          | DictLookupP -- ^ takes k dict, errors if absent
-          | ErrorP String -- ^ crash and issue a static error message
+          | DictInsertP  -- ^ takes k,v,dict
+          | DictLookupP  -- ^ takes k dict, errors if absent
+          | ErrorP String Ty
+              -- ^ crash and issue a static error message.
+              --   To avoid needing inference, this is labeled with a return type.
 
 --          | GetLoc Var
 --          | AddLoc Int Var
@@ -144,6 +153,29 @@ subst old new ex =
     IfE a b c -> IfE (go a) (go b) (go c)
 
 
+primArgsTy :: Prim -> [Ty]
+primArgsTy p =
+  case p of
+    AddP -> [IntTy, IntTy]
+    SubP -> [IntTy, IntTy]
+    MulP -> [IntTy, IntTy]
+    EqP  -> [IntTy, IntTy] -- NOT POLYMORPHIC FOR NOW!
+    DictInsertP -> error "primArgsTy: dicts not handled yet"
+    DictLookupP -> error "primArgsTy: dicts not handled yet"
+    (ErrorP _ _) -> []
+              
+primRetTy :: Prim -> Ty
+primRetTy p =
+  case p of
+    AddP -> IntTy
+    SubP -> IntTy
+    MulP -> IntTy
+    EqP  -> BoolTy
+    DictInsertP -> error "primRetTy: dicts not handled yet"
+    DictLookupP -> error "primRetTy: dicts not handled yet"
+    (ErrorP _ ty) -> ty
+
+                 
 --------------------------------------------------------------------------------
 
 -- Simple invariant assertions:
