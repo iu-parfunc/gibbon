@@ -66,7 +66,10 @@ typedef enum {
   DEFINE_VALUES,
   DEFINE_SYNTAXES,
   BEGINTOP,
-  EXPRESSION,
+  EXPRESSION
+} Toplvl;
+
+typedef enum {
   VARREF,
   LAMBDA,
   CASE_LAMBDA,
@@ -91,10 +94,31 @@ typedef enum {
   F1,
   F2,
   F3
-} ast_node_type;
+} Expr;
+
+typedef enum {
+  MKLVBIND
+} LVBIND; 
+
+typedef enum {
+  MKLAMBDACASE
+} LAMBDACASE;
+
+typedef enum {
+  INTLIT
+} Datum;
+
+typedef enum {
+  F1,
+  F2,
+  F3
+} Formals;
 
 typedef struct exp {
-  ast_node_type ty;
+  toplvl tl;
+  expr exp;
+  lvbind bnd;
+  datum dat;
   union {
     struct {
       int n_tops;
