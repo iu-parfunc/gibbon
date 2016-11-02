@@ -51,69 +51,93 @@
     [`(quote ,e)                `(Quote            ,(datum e))]
     [`(quote-syntax ,e)         `(QuoteSyntax      ,(datum e))]
     [`(quote-syntax ,e #:local) `(QuoteSyntaxLocal ,(datum e))]
-    [`(module ,m ,lang ,e ...)  `(Begin ,(map xf e))]
-    [`(module* ,m ,lang ,e ...) `(Begin ,(map xf e))]
+    [`(module ,m ,lang ,e ...)  `(Begin ,(mkexprlist (map xf e)))]
+    [`(module* ,m ,lang ,e ...) `(Begin ,(mkexprlist (map xf e)))]
     [`(#%top . ,s) #:when (symbol? s) `(Top ,(sym s))] ;; RRN: fixed
-    [`(begin ,e ...)            `(Begin ,(map xf e))]
-    [`(begin0 ,e0 ,e ...)           `(Begin0 ,(xf e0) ,(map xf e))]
+    [`(begin ,e ...)            `(Begin ,(mkexprlist (map xf e)))]
+    [`(begin0 ,e0 ,e ...)       `(Begin0 ,(xf e0) ,(mkexprlist (map xf e)))]
     [`(#%variable-reference)    `(VariableReferenceNull)]
     [`(#%variable-reference (#%top . ,i)) #:when (symbol? i) `(VariableReferenceTop ,(sym i))]
     [`(#%variable-reference ,i)           #:when (symbol? i) `(VariableReference ,(sym i))]
-    [`(#%app ,e ...)            `(App ,(map xf e))]
-    [`(#%plain-app ,e ...)      `(App ,(map xf e))]
+    [`(#%app ,rat ,e ...)            `(App ,(xf rat) ,(mkexprlist (map xf e)))]
+    [`(#%plain-app ,rat ,e ...)      `(App ,(xf rat) ,(mkexprlist (map xf e)))]
     [`(let-values (,binds ...) ,body ...)
-     `(LetValues ,(lvbind binds) ,(map xf body))]
+     `(LetValues ,(lvbind binds) ,(mkexprlist (map xf body)))]
     [`(letrec-values (,binds ...) ,body ...)
-     `(LetrecValues ,(lvbind binds) ,(map xf body))] ;; RRN: fixed.
+     `(LetrecValues ,(lvbind binds) ,(mkexprlist (map xf body)))] ;; RRN: fixed.
     [(? symbol? s) `(VARREF ,(sym s))]
     [`(lambda ,fmls ,body ...)
-     `(Lambda ,(xform-fmls fmls) ,(map xf body))]
+     `(Lambda ,(xform-fmls fmls) ,(mkexprlist (map xf body)))]
     [`(#%plain-lambda ,fmls ,body ...)
-     `(Lambda ,(xform-fmls fmls) ,(map xf body))]
+     `(Lambda ,(xform-fmls fmls) ,(mkexprlist (map xf body)))]
     [`(#%expression ,e) (xf e)]
     [`(case-lambda ,cl ...)
-     `(CaseLambda ,(for/list ([c (in-list cl)])
+     `(CaseLambda ,(mklambdacaselist
+                    (for/list ([c (in-list cl)])
                      `(MKLAMBDACASE ,(xform-fmls (first c))
-                                    ,(map xf (rest c)))))]
+                                    ,(map xf (rest c))))))]
     [`(with-continuation-mark ,e1 ,e2 ,e3)
      `(WithContinuationMark ,(xf e1) ,(xf e2) ,(xf e3))]
     ; [(? symbol? s) `(VARREF ,s)]
     ))
 
 (define (lvbind l)
-  (for/list ([c (in-list l)])
-    (match c
-      [`((,x ...) ,e) #:when (andmap symbol? x)
-       `(MKLVBIND ,(map sym x) ,(xform-expression e))])))
+  (match l
+    ['() '(NULLLVBIND)]
+    [`(((,x ...) ,e) . ,rest) #:when (andmap symbol? x)
+     `(CONSLVBIND ,(mksymlist (map sym x)) ,(xform-expression e)
+                  ,(lvbind rest))]))
 
 (define (xform-fmls a)
   (match a
-    [`(,fmls ...) `(F1 ,(map sym fmls))]
+    [`(,fmls ...) `(F1 ,(mksymlist (map sym fmls)))]
     [`(,fmls ... . ,(? symbol? x))
-     `(F2 ,(map sym fmls) ,(sym x))]
+     `(F2 ,(mksymlist (map sym fmls)) ,(sym x))]
     [(? symbol? x)
      `(F3 ,(sym x))]))
+
+(define (mktoplist ls)
+  (if (null? ls)
+      '(NULLTOPLVL)
+      `(CONSTOPLVL ,(car ls) ,(mktoplist (cdr ls)))))
+
+(define (mkexprlist ls)
+  (if (null? ls)
+      '(NULLEXPR)
+      `(CONSEXPR ,(car ls) ,(mkexprlist (cdr ls)))))
+
+(define (mksymlist ls)
+  (if (null? ls)
+      '(NULLSYM)
+      `(CONSSYM ,(car ls) ,(mksymlist (cdr ls)))))
+
+(define (mklambdacaselist l)
+  (match l
+    ['() `(NULLLAMBDACASE)]
+    [`((MKLAMBDACASE ,a ,b) . ,rest)
+     `(CONSLAMBDACASE ,a ,b ,(mklambdacaselist rest))]))
+
 
 (define (xform-top e)
   (match e
     [(? eof-object?) #f]  ;; empty file
-    [`(#%require ,_ ...) `(BeginTop ())]
-    [`(#%provide ,_ ...) `(BeginTop ())]
-    [`(#%declare ,_ ...) `(BeginTop ())] ;; RRN added.
-    [`(module ,m ,lang ,e ...) `(BeginTop ,(map xform-top e))]
-    [`(module* ,m ,lang ,e ...) `(BeginTop ,(map xform-top e))]
+    [`(#%require ,_ ...) `(BeginTop (NULLTOPLVL))]
+    [`(#%provide ,_ ...) `(BeginTop (NULLTOPLVL))]
+    [`(#%declare ,_ ...) `(BeginTop (NULLTOPLVL))] ;; RRN added.
+    [`(module ,m ,lang ,e ...)  `(BeginTop ,(mktoplist (map xform-top e)))]
+    [`(module* ,m ,lang ,e ...) `(BeginTop ,(mktoplist (map xform-top e)))]
     [`(begin ,e ...)
-     `(BeginTop ,(map xform-top e))]
+     `(BeginTop ,(mktoplist (map xform-top e)))]
     [`(begin-for-syntax ,e ...)  ;; RRN added.
-     `(BeginTop ,(map xform-top e))]
+     `(BeginTop ,(mktoplist (map xform-top e)))]
     [`(#%module-begin ,e ...)
-     `(BeginTop ,(map xform-top e))]
+     `(BeginTop ,(mktoplist (map xform-top e)))]
     [`(#%plain-module-begin ,e ...)
-     `(BeginTop ,(map xform-top e))]
+     `(BeginTop ,(mktoplist (map xform-top e)))]
     [`(define-values (,x ...) ,e)
-     `(DefineValues ,(map sym x) ,(xform-expression e))]
+     `(DefineValues ,(mksymlist (map sym x)) ,(xform-expression e))]
     [`(define-syntaxes (,x ...) ,e)
-     `(DefineSyntaxes ,(map sym x) ,(xform-expression e))]
+     `(DefineSyntaxes ,(mksymlist (map sym x)) ,(xform-expression e))]
     [e `(Expression ,(xform-expression e))]))
 
 ;; ----------------------------------------

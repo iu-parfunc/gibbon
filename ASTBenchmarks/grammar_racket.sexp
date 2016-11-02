@@ -5,38 +5,49 @@
          Quote QuoteSyntax QuoteSyntaxLocal WithContinuationMark App
          Top VariableReference VariableReferenceTop VariableReferenceNull
          BeginTop Datum
-         MKLVBIND MKLAMBDACASE INTLIT F1 F2 F3 Expr Toplvl Formals LVBIND LAMBDACASE)
+         LVBIND CONSLVBIND NULLLVBIND
+         LAMBDACASE CONSLAMBDACASE NULLLAMBDACASE
+         INTLIT  Expr Toplvl
+         Formals F1 F2 F3 
+         ListExpr CONSEXPR NULLEXPR
+         ListSym  CONSSYM  NULLSYM
+         ListToplvl CONSTOPLVL NULLTOPLVL
+         )
 
 (data Toplvl
-      [DefineValues   (Listof Sym) Expr]
-      [DefineSyntaxes (Listof Sym) Expr]
-      [BeginTop (Listof Toplvl)]
+      [DefineValues   ListSym Expr]
+      [DefineSyntaxes ListSym Expr]
+      [BeginTop ListToplvl]
       [Expression Expr])
 
 (data Expr
-      (VARREF Sym)                      ;; Tag 0
-      (Lambda Formals (Listof Expr))	;; Tag 1
-      (CaseLambda (Listof LAMBDACASE))
+      (VARREF Sym)              ;; Tag 0
+      (Lambda Formals ListExpr)	;; Tag 1
+      (CaseLambda LAMBDACASE)
       (If Expr Expr Expr)
-      (Begin (Listof Expr))
-      (Begin0 Expr (Listof Expr))
-      (LetValues   (Listof LVBIND) (Listof Expr))
-      (LetrecValues (Listof LVBIND) (Listof Expr))
+      (Begin ListExpr)
+      (Begin0 Expr ListExpr)
+      (LetValues    LVBIND ListExpr)
+      (LetrecValues LVBIND ListExpr)
       (SetBang Sym Expr)
       (Quote Datum)
       (QuoteSyntax Datum)
       (QuoteSyntaxLocal Datum)  ;; (quote-syntax datum #:local)
       (WithContinuationMark Expr Expr Expr)
-      (App (Listof Expr)) ;; (#%plain-app expr ...+)
+      (App Expr ListExpr) ;; (#%plain-app expr ...+)
       (Top Sym)
       (VariableReference    Sym) ; #%variable-reference
       (VariableReferenceTop Sym) ; #%variable-reference (#%top . id)
       (VariableReferenceNull)    ; (#%variable-reference)
       )
 
-(data LVBIND (MKLVBIND (Listof Sym) Expr))
+(data LVBIND
+      (CONSLVBIND ListSym Expr LVBIND)
+      (NULLLVBIND ))
 
-(data LAMBDACASE (MKLAMBDACASE Formals (Listof Expr)))  ;; (formals expr ...+) 
+(data LAMBDACASE
+      (CONSLAMBDACASE Formals ListExpr)  ;; (formals expr ...+) 
+      (NULLLAMBDACASE ))
 
 ;; RRN: How far do we need to go here?
 (data Datum
@@ -47,9 +58,21 @@
       )
 
 (data Formals
-      [F1 (Listof Sym)]        ;; Tag 0
-      [F2 (Listof Sym) Sym]    ;; Tag 1
+      [F1 ListSym]        ;; Tag 0
+      [F2 ListSym Sym]    ;; Tag 1
       [F3 Sym])                ;; Tag 2
+
+(data ListToplvl
+      (CONSTOPLVL Toplvl ListToplvl)
+      (NULLTOPLVL))
+
+(data ListExpr
+      (CONSEXPR Expr ListExpr)
+      (NULLEXPR))
+
+(data ListSym
+      (CONSSYM Sym ListSym)
+      (NULLSYM))
 
 ;; ================================================================================
 ;; Cached copy of the grammar from:
