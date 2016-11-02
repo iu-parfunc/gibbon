@@ -56,6 +56,7 @@
 // pack_ast   :: ast -> packed ast 
 // substitute :: packed ast -> packed ast
 
+#include "parse.h"
 #include <stdio.h>
 #include <stdbool.h>
 

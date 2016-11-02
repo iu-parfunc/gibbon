@@ -36,8 +36,10 @@ in memory representation of the AST. Related files are:
 * pack.h  & pack.h  - Implementation for packing the pointer based AST representation 
 * check.c           - Driver file demonstrating API usage
 * tests.sexp        - Test suite inputs
+* debug.h           - Diagnostics
+* subst.h & subst.c - In progress substitution pass on the packed representation
 
-## API Usage
+### API Usage
 
 Here is a one liner for generating packed in memory representation from a file containing a s-expression.
 
@@ -53,6 +55,6 @@ char* packed = pack_ast(build_ast(parse(fname)));
 `make check` builds and runs the test suite. 
 `./check.sh` runs Racket data set.
 
-## Packed Representation
+### Packed Representation
 
 
