@@ -83,13 +83,13 @@ BeginTop :
 `| BEGINTOP | Node Size | Num Childern | Child Node1 | ... | Child NodeN |`
 
 Expression :  
-`| EXPRESSION | Node Size | Expression |`
+`| EXPRESSION | Node Size | Expr |`
 
 VARREF :  
 `| VARREF | Node Size | Sym Reference |`
 
 Lambda :  
-`| LAMBDA | Node Size | Formals | Num Expressions | Expression1 | ... | ExpressionN |`
+`| LAMBDA | Node Size | Formals | Num Exprs | Expr1 | ... | ExprN |`
 
 Formals :  
 `| F1 | Node Size | Num Syms | Sym1 Reference | ... | SymN Reference |`
@@ -100,16 +100,16 @@ Case Lambda :
 `| CASE_LAMBDA | Node Size | Num MKLAMBDACASE | MKLAMBDACASE1 | ... | MKLAMBDACASEN |`
 
 MKLAMBDACASE :   
-`| MKLAMBDACASE | Node Size | Formals | Num Expression | Expression1 | ... | ExpressionN |`
+`| MKLAMBDACASE | Node Size | Formals | Num Exprs | Expr1 | ... | ExpN |`
 
 If :   
-`| IF | Node Size | Expression | Expression | Expression |`
+`| IF | Node Size | Expr | Expr | Expr |`
 
 Begin :  
-`| BEGIN | Node Size | Num Expressions | Expression1 | ... | ExpresssionN |`
+`| BEGIN | Node Size | Num Exprs | Expr1 | ... | ExprN |`
 
 Begin0 :  
-`| BEGIN0 | Node Size | Next Child | Expression | Num Expressions | Expression1 | ... | ExpressionN |`
+`| BEGIN0 | Node Size | Next Child | Expr | Num Exprs | Expr1 | ... | ExprN |`
 
 ```
 Next Child field contains the size of Expression which follows it. (Useful for a parallel implementation which can skip
@@ -117,12 +117,12 @@ the first expression and get to Expression list for spawning processing tasks in
 ```
 
 LetValues & LetrecValues :   
-`| LET_VALUES | Node Size | Num LVBIND | LVBIND1 | ... | LVBINDN | Num Expressions | Expresssion1 | ... | ExpresssionN |`    
+`| LET_VALUES | Node Size | Num LVBIND | LVBIND1 | ... | LVBINDN | Num Exprs | Expr1 | ... | ExprN |`    
 
-`| LETREC_VALUES | Node Size | Num LVBIND | LVBIND1 | ... | LVBINDN | Num Expressions | Expresssion1 | ... | ExpresssionN |`
+`| LETREC_VALUES | Node Size | Num LVBIND | LVBIND1 | ... | LVBINDN | Num Exprs | Expr1 | ... | ExprN |`
 
 SetBang :      
-`| SETBANG | Node Size | Sym Reference | Expression |`
+`| SETBANG | Node Size | Sym Reference | Expr |`
 
 Quote :   
 `| QUOTE | Node Size | INTLIT | long |`
@@ -134,10 +134,10 @@ QuoteSyntaxLocal :
 `| QUOTE_SYNTAX_LOCAL | Node Size | INTLIT | long |`
 
 WithContinuationMark :     
-`| WITH_CONTINUATION_MARK | Node Size | Expression | Expression | Expression |`
+`| WITH_CONTINUATION_MARK | Node Size | Expr | Expr | Expr |`
 
 App :   
-`| APP | Node Size | Num Expressions | Expression1 | ... | ExpressionN |`
+`| APP | Node Size | Num Exprs | Expr1 | ... | ExprN |`
 
 Top :  
 `| TOP | Node Size | Sym Reference |`
