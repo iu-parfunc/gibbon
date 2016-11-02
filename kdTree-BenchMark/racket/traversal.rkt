@@ -16,31 +16,24 @@
     (let ( [dist_x : Float (fl- px center_x)] [dist_y : Float (fl- py center_y) ])
      (let ([sum : Float (fl+ (fl* dist_y dist_y) (fl* dist_x dist_x))] [boxsum : Float (fl+ (fl* boxdist_y boxdist_y) (fl* boxdist_x boxdist_x))])
        (fl< (fl- (flsqrt sum) (flsqrt boxsum) ) rad  ))))
-
   )
 
-  
-
-
+ 
 #| not yet done |#
 (define (pointCorrelation [tr : Tree] [px : Float][py : Float] [rad : Float]) : Tree
   (case tr
-    [(Leaf x y c ) ( Leaf x y (if ( <
-                                           (flsqrt ( fl+ (fl* ( fl- px x ) (fl- px  x)  ) (fl* ( fl- py y ) (fl- py  y)  ))  )
-                                           rad  )
+    [(Leaf x y c ) ( Leaf x y (if ( fl<  (flsqrt ( fl+ (fl* ( fl- px x ) (fl- px  x)  ) (fl* ( fl- py y ) (fl- py  y)  ))  )   rad  )
                                            (+ c 1)
                                            (+ c 0)
                                        ))]
     [ (Node splitAccess splitLoc minX maxX minY maxY leftChild rightChild)
        ( if  (canCorrelate minX maxX minY maxY px py rad)
-             (pointCorrelation tr px py rad )
+             (Node splitAccess splitLoc minX maxX minY maxY (pointCorrelation leftChild px py rad) (pointCorrelation rightChild px py rad))
              (Node splitAccess splitLoc minX maxX minY maxY leftChild rightChild )
        )
-    ]
-    
+    ] 
   )
-
- )
+)
 
 
 #|
