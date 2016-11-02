@@ -37,7 +37,6 @@ int main(int argc, char **argv) {
   char *fname;
   sexp_t *sx;
 
-  // Read file as a string  
   if (argc > 2) {
     fname = argv[1]; 
     iterations = atoi(argv[2]);

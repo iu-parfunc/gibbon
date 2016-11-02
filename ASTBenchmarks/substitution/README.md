@@ -25,3 +25,34 @@ And here's a big (16MB) one from dataset 1.2:
 
     ./subst.rkt extend-parameterization ../expanded_racket/share/pkgs/macro-debugger-text-lib/macro-debugger/model/reductions.rkt.out.sexp 10
 
+##C Implementation
+
+### Files
+C implementation parses a file containing a s-expression and generates a packed 
+in memory representation of the AST. Related files are:
+
+* parse.h & parse.c - Implementation of parsing
+* ast.h   & ast.c   - Implementation for generating pointer based in memory AST representation
+* pack.h  & pack.h  - Implementation for packing the pointer based AST representation 
+* check.c           - Driver file demonstrating API usage
+* tests.sexp        - Test suite inputs
+
+## API Usage
+
+Here is a one liner for generating packed in memory representation from a file containing a s-expression.
+
+```c
+#include "pack.h"
+
+char* fname  = "sexp.in";
+char* packed = pack_ast(build_ast(parse(fname)));
+```
+
+### How to Run
+
+`make check` builds and runs the test suite. 
+`./check.sh` runs Racket data set.
+
+## Packed Representation
+
+
