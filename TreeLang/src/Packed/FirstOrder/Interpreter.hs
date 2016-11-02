@@ -21,7 +21,7 @@ data Val
 
 execProg :: Prog -> [Val]
 execProg (Prog _ Nothing) = error "Can't evaluate program: No expression given"
-execProg (Prog funs (Just expr)) = exec env expr
+execProg (Prog funs (Just (PrintExp expr))) = exec env expr
   where
     env = M.fromList (map (\f -> (funName f, FunVal f)) funs)
 

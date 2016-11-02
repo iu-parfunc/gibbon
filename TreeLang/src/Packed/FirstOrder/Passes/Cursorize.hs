@@ -381,10 +381,11 @@ finishTYP = L1.Packed "FINISHME"
 -- multiple argument functions.
 lower :: L2.Prog -> SyM T.Prog
 lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
+  let mn = tail <$> mainExp
   mn <- case mainExp of
           Nothing -> return Nothing
-          Just x  -> Just <$> tail x
-  T.Prog <$> (mapM fund (M.elems fundefs)) <*> pure mn
+          Just x  -> (Just . T.PrintExp) <$> tail x
+  T.Prog <$> mapM fund (M.elems fundefs) <*> pure mn
  where
   fund :: L2.FunDef -> SyM T.FunDecl
   fund FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do

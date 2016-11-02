@@ -9,29 +9,29 @@ module Packed.FirstOrder.Compiler
 import Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import qualified Packed.FirstOrder.HaskellFrontend as HS
-import qualified Packed.FirstOrder.L1_Source as L1 
+import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.LTraverse (inferEffects, Prog(..))
 import Packed.FirstOrder.Passes.Cursorize (cursorize, lower)
 import qualified Packed.FirstOrder.LTraverse as L2
 import Packed.FirstOrder.Target (codegenProg,Prog)
-import qualified Packed.FirstOrder.Target as L3 
+import qualified Packed.FirstOrder.Target as L3
 import System.FilePath (replaceExtension)
 import Text.PrettyPrint.GenericPretty
 import Control.Monad.State
 import Control.DeepSeq
 import Control.Exception (evaluate)
 ------------------------------------------------------------
-        
+
 import Data.Set as S hiding (map)
 import qualified Data.Set as S (map)
 
-----------------------------------------   
+----------------------------------------
 -- PASS STUBS
-----------------------------------------   
+----------------------------------------
 -- All of these need to be implemented, but are just the identity
 -- function for now.
 
--- | Rename all local variables 
+-- | Rename all local variables
 freshNames :: L1.Prog -> SyM L1.Prog
 freshNames (L1.Prog defs funs main) =
     do main' <- case main of
@@ -87,7 +87,7 @@ freshNames (L1.Prog defs funs main) =
           freshExp vs (L1.TimeIt e) =
               do e' <- freshExp vs e
                  return $ L1.TimeIt e'
-                         
+
 
 -- | Put the program in A-normal form where only varrefs and literals
 -- are allowed in operand position.
@@ -161,7 +161,7 @@ flatten (L1.Prog defs funs main) =
 
 -- | Find all local variables bound by case expressions which must be
 -- traversed, but which are not by the current program.
-findMissingTraversals :: L2.Prog -> SyM (Set Var) 
+findMissingTraversals :: L2.Prog -> SyM (Set Var)
 findMissingTraversals _ = pure S.empty
 
 -- | Add calls to an implicitly-defined, polymorphic "traverse"
@@ -182,7 +182,7 @@ lowerCopiesAndTraversals p = pure p
 
 
 --------------------------------------------------------------------------------
-                             
+
 -- | Compile foo.sexp and write the output C code to the corresponding
 -- foo.c file.
 compileSExpFile :: FilePath -> IO ()
@@ -194,7 +194,7 @@ compileHSFile = compileFile HS.parseFile
 
 sepline :: String
 sepline = replicate 80 '='
-                   
+
 
 compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
 compileFile parser fp =
@@ -209,7 +209,7 @@ compileFile parser fp =
            cnt <- get
            _ <- lift $ evaluate $ force x
            let (y,cnt') = runSyM cnt (fn x)
-           put cnt'           
+           put cnt'
            lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":"
            lift$ dbgPrintLn lvl sepline
            _ <- lift $ evaluate $ force y
@@ -219,12 +219,12 @@ compileFile parser fp =
          -- No reason to chatter from passes that are stubbed out anyway:
          pass' :: (Out b, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
          pass' _ fn x = do
-           cnt <- get;            
-           let (y,cnt') = runSyM cnt (fn x);                                      
+           cnt <- get;
+           let (y,cnt') = runSyM cnt (fn x);
            put cnt';
            _ <- lift $ evaluate $ force y;
            return y
-           
+
      str <- evalStateT
               (do l1b <- pass' "freshNames"               freshNames               l1
                   l1c <- pass' "flatten"                  flatten                  l1b
@@ -240,4 +240,5 @@ compileFile parser fp =
                   lift$ dbgPrintLn lvl sepline
                   return (codegenProg l3))
                cnt0
-     writeFile (replaceExtension fp ".c") str
+
+     str >>= writeFile (replaceExtension fp ".c")
