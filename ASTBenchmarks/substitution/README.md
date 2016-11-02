@@ -77,19 +77,19 @@ Symbol table is at the head of the buffer as shown below.
 
 DefineValues & DefineSyntaxes :  
 `| DEFINE_VALUES / DEFINE_SYNTAXES | Node Size | Num Syms | Sym1 Reference | ... | SymN Reference |
-  Child Node |`   
+  Expression |`   
 
 BeginTop :  
-`| BEGINTOP | Node Size | Num Children | Child Node1 | ... | Child NodeN |`
+`| BEGINTOP | Node Size | Num Childern | Child Node1 | ... | Child NodeN |`
 
 Expression :  
-`| EXPRESSION | Node Size | Child Node |`
+`| EXPRESSION | Node Size | Expression |`
 
 VARREF :  
 `| VARREF | Node Size | Sym Reference |`
 
 Lambda :  
-`| LAMBDA | Node Size | Formals | Num Children | Child Node1 | ... | Child NodeN |`
+`| LAMBDA | Node Size | Formals | Num Expressions | Expression1 | ... | ExpressionN |`
 
 Formals :  
 `| F1 | Node Size | Num Syms | Sym1 Reference | ... | SymN Reference |`
@@ -97,10 +97,10 @@ Formals :
 `| F3 | Node Size | Num Syms | Sym Reference |`
 
 Case Lambda :   
-`| CASE_LAMBDA | Node Size | Num MKLAMBDACASE | Child MKLAMBDACASE1 | ... | Child MKLAMBDACASEN |`
+`| CASE_LAMBDA | Node Size | Num MKLAMBDACASE | MKLAMBDACASE1 | ... | MKLAMBDACASEN |`
 
 MKLAMBDACASE :   
-`| MKLAMBDACASE | Node Size | Formals | Num Children | Child Node1 | ... | Child NodeN |`
+`| MKLAMBDACASE | Node Size | Formals | Num Expression | Expression1 | ... | ExpressionN |`
 
 If :   
 `| IF | Node Size | Expression | Expression | Expression |`
@@ -111,8 +111,10 @@ Begin :
 Begin0 :  
 `| BEGIN0 | Node Size | Next Child | Expression | Num Expressions | Expression1 | ... | ExpressionN |`
 
+```
 Next Child field contains the size of Expression which follows it. (Useful for a parallel implementation which can skip
 the first expression and get to Expression list for spawning processing tasks in parallel).
+```
 
 LetValues & LetrecValues :   
 `| LET_VALUES | Node Size | Num LVBIND | LVBIND1 | ... | LVBINDN | Num Expressions | Expresssion1 | ... | ExpresssionN |`    
