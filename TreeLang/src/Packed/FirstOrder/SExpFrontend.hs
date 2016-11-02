@@ -112,6 +112,10 @@ tagDataCons ddefs = go allCons
        TimeIt e  -> TimeIt $ go cons e
        IfE a b c -> IfE (go cons a) (go cons b) (go cons c)   
 
+-- TODO: pattern synonyms would help with these:                    
+-- colon :: RichSExpr HaskLikeAtom
+-- colon = RSAtom (HSIdent ":")
+                    
 parseSExp :: [Sexp] -> SyM L1.Prog
 parseSExp ses = 
   do prog@Prog {ddefs} <- go ses [] [] Nothing
@@ -123,7 +127,7 @@ parseSExp ses =
      (RSList (RSAtom (HSIdent "data"): RSAtom (HSIdent tycon) : cs) : rst) ->
          go rst (DDef (toVar tycon) (L.map docasety cs) : dds) fds mn
      (RSList [RSAtom (HSIdent "define"), funspec, ":", retty, bod] : rst)
-        | RSList (RSAtom (HSIdent name) : args) <- funspec
+        |  RSList (RSAtom (HSIdent name) : args) <- funspec
         -> do
          let bod' = exp bod
              args' = L.map (\(RSList [id,":",t]) -> (getSym id, typ t))
@@ -185,9 +189,10 @@ exp se =
    RSAtom (HSIdent v) -> VarE (toVar v)
    RSAtom (HSInt n)  -> LitE (fromIntegral n)
 
-   RSList [RSAtom (HSIdent "error"),arg] -> 
+   -- RSList [RSAtom (HSIdent "error"),arg] ->
+   RSList [RSAtom (HSIdent "ann"),RSList [RSAtom (HSIdent "error"),arg],ty] -> 
       case arg of
-        RSAtom (HSString str) -> PrimAppE (ErrorP (T.unpack str)) []
+        RSAtom (HSString str) -> PrimAppE (ErrorP (T.unpack str) (typ ty)) []
         _ -> error$ "bad argument to 'error' primitive: "++prnt arg
 
    RSList [RSAtom (HSIdent "time"),arg] -> (TimeIt (exp arg))

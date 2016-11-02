@@ -124,7 +124,7 @@ flatten (L1.Prog defs funs main) =
                    L1.EqP -> undefined -- TODO: need to look up types
                    L1.DictInsertP -> undefined -- TODO
                    L1.DictLookupP -> undefined
-                   L1.ErrorP s -> return $ L1.PrimAppE (L1.ErrorP s) []
+                   L1.ErrorP s t -> return $ L1.PrimAppE (L1.ErrorP s t) []
           flattenExp (L1.LetE (v,t,e') e) =
               do e' <- flattenExp e'
                  e <- flattenExp e
@@ -235,6 +235,9 @@ compileFile parser fp =
                   l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
                   l2e <- pass  "cursorize"                cursorize                l2d
                   l3  <- pass  "lower"                    lower                    l2e
+
+                  lift$ dbgPrintLn lvl $ "\nFinal C codegen:"
+                  lift$ dbgPrintLn lvl sepline
                   return (codegenProg l3))
                cnt0
      writeFile (replaceExtension fp ".c") str
