@@ -34,7 +34,8 @@
 
 (define gitdepth (read (car (process "git log --pretty=oneline | wc -l" ))))
 
-(define destdir (format "~a/results_backup/tree-velocity/~a/~a/" (find-system-path 'home-dir) host gitdepth))
+(define destdir (format "~a/results_backup/tree-velocity/~a/~a/" 
+                        (find-system-path 'home-dir) host gitdepth))
 (system (format "mkdir -p ~a" destdir))
 (printf "Created final output location: ~a\n" destdir)
 
@@ -52,7 +53,11 @@
   (printf "============================================================\n")
 
   (define ast : Toplvl
-     (time (parse (read (open-input-file file)))))
+     (time 
+      (let ([port (open-input-file file)]
+            [res  (parse (read port))])
+        (close-input-port port)
+        res)))
   (printf "Done ingesting AST.\n")
     
   (let loop ([iters 1])
