@@ -7,6 +7,9 @@
 
 (require/typed racket/os
                [gethostname ( -> String)])
+;; For Racket 6.6, not necessary in 6.7:
+(require/typed racket/path
+               [path-get-extension (Path-For-Some-System -> String)])
 
 (define target-time 1.0)
 (define oldsym 'call-with-values)
@@ -90,4 +93,3 @@
 ) ;; End loop.
 
 (close-output-port csv)
-

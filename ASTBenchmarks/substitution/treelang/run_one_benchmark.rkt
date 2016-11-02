@@ -1,6 +1,8 @@
 #! /usr/bin/env racket
 #lang typed/racket
 
+;; Run substitution on a SINGLE input file for a given symbol and num iterations.
+
 (require "parse.rkt"
          "subst_treelang.rkt"
          (only-in "../../grammar_racket.sexp" Toplvl))
