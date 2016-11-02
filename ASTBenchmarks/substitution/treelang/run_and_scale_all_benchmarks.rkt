@@ -1,15 +1,14 @@
 #! /usr/bin/env racket
-#lang typed/racket/no-check
+#lang racket
+; #lang typed/racket/no-check
 
-(require "parse.rkt"
-         "subst_treelang.rkt"
-         (only-in "../../grammar_racket.sexp" Toplvl))
+;; A shell script that drives benchmarking
 
-(require/typed racket/os
-               [gethostname ( -> String)])
+(require "bench_harness.rkt")
+(require racket/os racket/path)
+;(require/typed racket/os [gethostname ( -> String)] )
 ;; For Racket 6.6, not necessary in 6.7:
-(require/typed racket/path
-               [path-get-extension (Path-For-Some-System -> String)])
+; (require/typed racket/path [path-get-extension (Path-For-Some-System -> String)] )
 
 (define oldsym 'call-with-values) ;; Hardcode this, doesn't matter.
 
@@ -34,7 +33,8 @@
   (parameterize ([current-directory dir])
     (find-files (lambda (p) 
                   ; (printf "Testing ~a ,ext ~a\n" p (path-get-extension (cast p Path-For-Some-System)))
-                  (equal? (format "~a" (path-get-extension (cast p Path-For-Some-System))) ".sexp"))
+                  (equal? (format "~a" (path-get-extension
+                                        p #;(cast p Path-For-Some-System))) ".sexp"))
                 "."
                 ; #:skip-filtered-directory? #f
                 )))
@@ -42,7 +42,7 @@
 (printf "Found ~a files\n" (length all-files))
 
 (define host (list->string 
-              (filter (lambda (c) (not (char-numeric? (cast c Char))))
+              (filter (lambda (c) (not (char-numeric? c #;(cast c Char))))
                       (string->list (gethostname)))))
 
 (define gitdepth (read (car (process "git log --pretty=oneline | wc -l" ))))
@@ -54,52 +54,10 @@
 
 (define outfile (format "results_~a.csv" (current-seconds)))
 (define csv (open-output-file outfile #:exists 'replace))
-(fprintf csv "NAME, VARIANT, ARGS, ITERS, MEANTIME\n")
 
-(define fileNum 1)
-(for ([relative (in-list all-files)])
+(run-benchmarks csv (target-time) dir all-files (skip-to))
 
-  (define file (build-path dir relative))
-
-  ;; copied exactly + type annotations
-  (printf "\n\nBenchmark(~a): Substituting symbol ~a in file ~a ...\n" fileNum oldsym relative)
-  (set! fileNum (add1 fileNum))
-  (printf "============================================================\n")
-
-  (define ast : Toplvl
-     (time 
-      (let* ([port (open-input-file file)]
-             [res  (parse (read port))])
-        (close-input-port port)
-        res)))
-  (printf "Done ingesting AST.\n")
-    
-  (let loop ([iters 1])
-    (define newsym (string->symbol (string-append (symbol->string oldsym) "99")))
-    (define-values (_ cpu real gc)
-      (begin (collect-garbage) ;(collect-garbage)(collect-garbage)
-             (time-apply (lambda () (for ([_ (in-range iters)])
-                                      (subst oldsym newsym ast)))
-                         '())))
-    (define batchseconds (/ real 1000.0))
-
-    (if (>= batchseconds (target-time))
-        (let ((meantime (exact->inexact (/ batchseconds iters))))
-          (printf "\nITERATIONS: ~a\n" iters)
-          (printf "BATCHTIME: ~a\n" (exact->inexact batchseconds))
-          (printf "MEANTIME: ~a\n" meantime)
-          (printf "Done with substitution pass.\n")
-
-          (fprintf csv "substitution, treelang-racket, ~a, ~a, ~a\n"
-                   relative iters meantime)
-          (flush-output csv)
-          (printf "Output written to: ~a\n" outfile)
-          ; (copy-file outfile (string-append destdir outfile))
-          (system (format "cp ~a ~a" outfile (string-append destdir outfile)))
-          (printf "Output copied to ~a\n" destdir)
-          )
-        (begin (printf "~a " batchseconds) (flush-output)
-               (loop (* 2 iters)))))
-) ;; End loop.
-
+; (copy-file outfile (string-append destdir outfile))
+(system (format "cp ~a ~a" outfile (string-append destdir outfile)))
+(printf "Output copied to ~a\n" destdir)
 (close-output-port csv)
