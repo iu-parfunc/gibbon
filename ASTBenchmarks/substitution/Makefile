@@ -3,10 +3,15 @@
 CC=gcc
 CFLAGS=-O0 -g
 
-LDPATH=../../deps/sexpr-1.3/src
-INCLUDES=-I../../deps/sexpr-1.3/src -I../../deps/uthash/
+SEXP=../../deps/sexpr-1.3
+
+LDPATH=$(SEXP)/src
+INCLUDES=-I$(SEXP)/src -I../../deps/uthash/
 
 all: subst_c.exe racket_build
+
+deps:
+	cd $(SEXP) && ./configure && make 
 
 LOG=subst_all_expanded_1.2.log
 
