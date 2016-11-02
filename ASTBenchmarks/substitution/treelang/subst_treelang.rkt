@@ -70,7 +70,7 @@
      (LetValues (for/list ([b : LVBIND binds])
                   (case b
                     [(MKLVBIND syms e)
-                     (if (helper old syms)
+                     (if (for/fold ([r : Bool False]) ([s : Sym syms]) (or r (eq? old s)))
                          b
                          (MKLVBIND syms (expr old new e)))]))
 
@@ -80,7 +80,7 @@
      (LetrecValues (for/list ([b : LVBIND binds])
                      (case b
                        [(MKLVBIND syms e)
-                        (if (helper old syms)
+                        (if (for/fold ([r : Bool False]) ([s : Sym syms]) (or r (eq? old s)))
                             b
                             (MKLVBIND syms (expr old new e)))]))
                    
@@ -105,17 +105,11 @@
 (define (bound-in? [sym : Sym] [formals : Formals]) : Bool
   (case formals
     [(F1 syms)
-     (helper sym syms)]
+     (for/fold ([r : Bool False]) ([s : Sym syms]) (or r (eq? s sym)))]
     [(F2 syms s)
      (if (eq? sym s)
          True
-         (helper sym syms))]
+         (for/fold ([r : Bool False]) ([s : Sym syms]) (or r (eq? s sym))))]
     [(F3 s)
      (eq? sym s)]))
 
-(define (helper [sym : Sym] [ls : (Listof Sym)]) : Bool
-  (if (empty? ls)
-      False
-      (if (eq? (car ls) sym)
-          True
-          (helper sym (cdr ls)))))
