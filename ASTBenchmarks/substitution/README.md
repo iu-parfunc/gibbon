@@ -92,8 +92,10 @@ Lambda :
 `| LAMBDA | Node Size | Formals | Num Exprs | Expr1 | ... | ExprN |`
 
 Formals :  
-`| F1 | Node Size | Num Syms | Sym1 Reference | ... | SymN Reference |`
-`| F2 | Node Size | Num Syms | Sym1 Reference | ... | SymN Reference | Sym Reference|`
+`| F1 | Node Size | Num Syms | Sym1 Reference | ... | SymN Reference |` 
+
+`| F2 | Node Size | Num Syms | Sym1 Reference | ... | SymN Reference | Sym Reference|`  
+
 `| F3 | Node Size | Num Syms | Sym Reference |`
 
 Case Lambda :   
