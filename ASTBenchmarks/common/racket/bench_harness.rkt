@@ -1,11 +1,11 @@
-#lang typed/racket
+#lang typed/racket/base
 
 ;; Infrastructure to set up and run the benchmark.
 
-(require "parse.rkt"         
+(require "parse.rkt" racket/list
          (only-in "../../grammar_racket.sexp" Toplvl))
 
-(provide run-benchmarks)
+(provide run-benchmarks Toplvl) ;; Toplvl needed for type annotations
 
 (define oldsym 'call-with-values) ;; Hardcode this, doesn't matter.
 
