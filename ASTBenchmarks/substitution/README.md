@@ -75,8 +75,8 @@ Symbol table is at the head of the buffer as shown below.
 
 * AST nodes have different serializations according to their content as given below.
 
-DefineValues & DefineSyntaxes :
-  | DEFINE_VALUES / DEFINE_SYNTAXES | <Node Size> | <Num Syms> | <Sym1 Reference> | ... | <SymN Reference> |
+DefineValues & DefineSyntaxes :  
+| DEFINE_VALUES / DEFINE_SYNTAXES | Node Size | Num Syms | Sym1 Reference | ... | SymN Reference |
   Child Node | 
 
   
