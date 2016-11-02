@@ -60,7 +60,7 @@ char* packed = pack_ast(build_ast(parse(fname)));
 Packed representation contains an interned symbol table and the pack tree itself in a single memory buffer.
 Symbol table is at the head of the buffer as shown below.
 
-<--------- Buffer ---------->
+<--------- Buffer ---------->   
 | Symbol Table | Packed Tree|
 
 Symbol table format is as follows.
