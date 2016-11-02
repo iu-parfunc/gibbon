@@ -1,5 +1,5 @@
 #! /usr/bin/env racket
-#lang typed/racket
+#lang typed/racket/no-check
 
 (require "parse.rkt"
          "subst_treelang.rkt"
@@ -11,14 +11,24 @@
 (require/typed racket/path
                [path-get-extension (Path-For-Some-System -> String)])
 
-(define target-time 1.0)
-(define oldsym 'call-with-values)
+(define oldsym 'call-with-values) ;; Hardcode this, doesn't matter.
 
-(define-values (dir)
-  (match (current-command-line-arguments)
-    [(vector d) (values d)]
-    [args (error "unexpected number of command line arguments, expected <input-directory>, got:\n"
-                 args)]))
+(define target-time (make-parameter 1.0))
+(define skip-to     (make-parameter 0))
+
+(define dir ; : Path-String
+  (command-line
+   #:program "run_and_scale_all_benchmarks"
+   #:once-each
+   [("-s" "--skip-to") N "Start benchmarking with file number N"
+    (skip-to (string->number N))]
+   [("-t" "--target-time") T
+    "Increase iteration count until a batch takes T time, in seconds"
+    (target-time (string->number T))]
+   #:usage-help
+   "Expects one argument, the directory to scan for .sexp files.\n"
+   #:args (input-directory) ; expect one command-line argument: <filename>
+   input-directory))
 
 (define all-files 
   (parameterize ([current-directory dir])
@@ -73,7 +83,7 @@
                          '())))
     (define batchseconds (/ real 1000.0))
 
-    (if (>= batchseconds target-time)
+    (if (>= batchseconds (target-time))
         (let ((meantime (exact->inexact (/ batchseconds iters))))
           (printf "\nITERATIONS: ~a\n" iters)
           (printf "BATCHTIME: ~a\n" (exact->inexact batchseconds))
