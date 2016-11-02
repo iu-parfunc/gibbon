@@ -62,21 +62,102 @@ Symbol table is at the head of the buffer as shown below.
 
 * Overall format
 
-<--------- Buffer ---------->   
-| Symbol Table | Packed Tree|
+`<--------- Buffer ---------->   
+| Symbol Table | Packed Tree|`
 
 * Symbol table format is as follows.
 
-| Symbol Table Size | String1 Size | String1 | ... | StringN Size | StringN |
+`| Symbol Table Size | String1 Size | String1 | ... | StringN Size | StringN |`
 
 * Packed tree format is as follows.
 
-| Tree size | Node Tag | Node Size | Node Contents ...|
+`| Tree size | Node Tag | Node Size | Node Contents ...|`
 
 * AST nodes have different serializations according to their content as given below.
 
-DefineValues & DefineSyntaxes :  
+- DefineValues & DefineSyntaxes 
 `| DEFINE_VALUES / DEFINE_SYNTAXES | Node Size | Num Syms | Sym1 Reference | ... | SymN Reference |
-  Child Node |`
+  Child Node |`   
 
-  
+- BeginTop  
+`| BEGINTOP | Node Size | Num Children | Child Node1 | ... | Child NodeN |`
+
+- Expression  
+`| EXPRESSION | Node Size | Child Node |`
+
+- VARREF  
+`| VARREF | Node Size | Sym Reference |`
+
+- Lambda  
+`| LAMBDA | Node Size | Formals | Num Children | Child Node1 | ... | Child NodeN |`
+
+- Formals  
+`| F1 | Node Size | Num Syms | Sym1 Reference | ... | SymN Reference |`
+`| F2 | Node Size | Num Syms | Sym1 Reference | ... | SymN Reference | Sym Reference|`
+`| F3 | Node Size | Num Syms | Sym Reference |`
+
+- Case Lambda  
+`| CASE_LAMBDA | Node Size | Num MKLAMBDACASE | Child MKLAMBDACASE1 | ... | Child MKLAMBDACASEN |`
+
+- MKLAMBDACASE  
+`| MKLAMBDACASE | Node Size | Formals | Num Children | Child Node1 | ... | Child NodeN |`
+
+- If  
+`| IF | Node Size | Expression | Expression | Expression |`
+
+- Begin   
+`| BEGIN | Node Size | Num Expressions | Expression1 | ... | ExpresssionN |`
+
+- Begin0  
+`| BEGIN0 | Node Size | Next Child | Expression | Num Expressions | Expression1 | ... | ExpressionN |`
+
+Next Child field contains the size of Expression which follows it. (Useful for a parallel implementation which can skip
+the first expression and get to Expression list for spawning processing tasks in parallel).
+
+- LetValues & LetrecValues  
+`| LET_VALUES | Node Size | Num LVBIND | LVBIND1 | ... | LVBINDN | Num Expressions | Expresssion1 | ... | ExpresssionN |
+`| LETREF_VALUES | Node Size | Num LVBIND | LVBIND1 | ... | LVBINDN | Num Expressions | Expresssion1 | ... | ExpresssionN |
+
+- SetBang   
+`| SETBANG | Node Size | Sym Reference | Expression |`
+
+- Quote  
+`| QUOTE | Node Size | INTLIT | long |`
+
+- QuoteSyntax  
+`| QUOTE_SYNTAX | Node Size | INTLIT | long |`
+
+- QuoteSyntaxLocal  
+`| QUOTE_SYNTAX_LOCAL | Node Size | INTLIT | long |`
+
+- WithContinuationMark   
+`| WITH_CONTINUATION_MARK | Node Size | Expression | Expression | Expression |`
+
+- App  
+`| APP | Node Size | Num Expressions | Expression1 | ... | ExpressionN |`
+
+- Top
+`| TOP | Node Size | Sym Reference |`
+
+- VariableReference
+`| VARIABLE_REFERENCE | Node Size | Sym Reference |`
+
+- VariableReferenceTOP
+`| VARIABLE_REFERENCE_TOP | Node Size | Sym Reference |`
+
+- VariableReferenceNull
+`| VARIABLE_REFERENCE_NULL | Node Size |`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
