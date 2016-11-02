@@ -55,13 +55,14 @@ tree_sz_t size_tree(ast_t* ast) {
   tree_sz_t size = {0};
   if (ast) {
     size.tree_sz++;
+    size.tree_sz    += sizeof(size_t);                         // Next child pointer
     switch (ast->ty) {
       case BEGINTOP:
       {
         size.tree_sz      += sizeof(int);                       // # tops
         for (int i=0; i < ast->node.prog.n_tops; i++) {
           tree_sz_t sz     = size_tree(ast->node.prog.toplvl[i]);
-          size.tree_sz    += sizeof(size_t);                    // Next child pointer
+          // size.tree_sz    += sizeof(size_t);                 // Next child pointer
           ADD_TREE_SZ(size, sz);
         }
         return size;
@@ -96,7 +97,7 @@ tree_sz_t size_tree(ast_t* ast) {
         size.tree_sz   += sizeof(int);                           // # exps
         for (int i=0; i < ast->node.lambda.n_exps; i++) {
           tree_sz_t sz  = size_tree(ast->node.lambda.exps[i]);
-          size.tree_sz += sizeof(size_t);                        // Next child pointer
+          // size.tree_sz += sizeof(size_t);                        // Next child pointer
           ADD_TREE_SZ(size, sz);
         }
         return size;
@@ -105,7 +106,7 @@ tree_sz_t size_tree(ast_t* ast) {
         size.tree_sz   += sizeof(int);                           // # lams
         for (int i=0; i < ast->node.c_lambda.n_lams; i++) {
           tree_sz_t sz  = size_tree(ast->node.c_lambda.lams[i]);
-          size.tree_sz += sizeof(size_t);                        // Next child pointer
+          // size.tree_sz += sizeof(size_t);                        // Next child pointer
           ADD_TREE_SZ(size, sz);
         }
         return size;
@@ -116,7 +117,7 @@ tree_sz_t size_tree(ast_t* ast) {
         size.tree_sz       += sizeof(int);                      // # exps
         for (int i=0; i < ast->node.mk_lambda.n_exps; i++)  {
           tree_sz_t sz     = size_tree(ast->node.mk_lambda.exps[i]);
-          size.tree_sz    += sizeof(size_t);                    // Next child pointer
+          // size.tree_sz    += sizeof(size_t);                    // Next child pointer
           ADD_TREE_SZ(size, sz);
         }
         return size;
@@ -151,7 +152,7 @@ tree_sz_t size_tree(ast_t* ast) {
         ADD_TREE_SZ(size, cond);
         ADD_TREE_SZ(size, if_e);
         ADD_TREE_SZ(size, else_e);
-        size.tree_sz    += sizeof(size_t) * 3;                  // Next child pointers
+        // size.tree_sz    += sizeof(size_t) * 3;                  // Next child pointers
         return size;
       }
       case BEGIN:
@@ -159,7 +160,7 @@ tree_sz_t size_tree(ast_t* ast) {
         for (int i=0; i < ast->node.begin.n_exps; i++) {
           tree_sz_t sz     = size_tree(ast->node.begin.exps[i]);
           ADD_TREE_SZ(size, sz);
-          size.tree_sz    += sizeof(size_t);                   // Next child pointer
+          // size.tree_sz    += sizeof(size_t);                   // Next child pointer
         }
         return size;
       case BEGIN0:
@@ -171,7 +172,7 @@ tree_sz_t size_tree(ast_t* ast) {
         for (int i=0; i < ast->node.begin0.n_exps; i++) {
           tree_sz_t sz     = size_tree(ast->node.begin0.exps[i]);
           ADD_TREE_SZ(size, sz);
-          size.tree_sz    += sizeof(size_t);                    // Next child pointer
+          // size.tree_sz    += sizeof(size_t);                    // Next child pointer
         }
         return size;
       }
@@ -182,13 +183,13 @@ tree_sz_t size_tree(ast_t* ast) {
         for (int i=0; i < ast->node.let.n_binds; i++) {
           tree_sz_t sz     = size_tree(ast->node.let.binds[i]);
           ADD_TREE_SZ(size, sz);
-          size.tree_sz    += sizeof(size_t);                     // Next child pointer
+          // size.tree_sz    += sizeof(size_t);                     // Next child pointer
         }
         size.tree_sz      += sizeof(int);                       // # exps
         for (int i=0; i < ast->node.let.n_exps; i++) {
           tree_sz_t sz     = size_tree(ast->node.let.exps[i]);
           ADD_TREE_SZ(size, sz);
-          size.tree_sz    += sizeof(size_t);                     // Next child pointer
+          // size.tree_sz    += sizeof(size_t);                     // Next child pointer
         }
         return size;
       }
@@ -213,7 +214,7 @@ tree_sz_t size_tree(ast_t* ast) {
       case QUOTE_SYNTAX:
       case QUOTE_SYNTAX_LOCAL:
       {
-        size.tree_sz += sizeof(int);
+        size.tree_sz += sizeof(long);
         return size;
       }
       case WITH_CONTINUATION_MARK:
@@ -224,7 +225,7 @@ tree_sz_t size_tree(ast_t* ast) {
         ADD_TREE_SZ(size, key);
         ADD_TREE_SZ(size, val);
         ADD_TREE_SZ(size, res);
-        size.tree_sz    += sizeof(size_t) * 3;               // Next child pointer
+        // size.tree_sz    += sizeof(size_t) * 3;               // Next child pointer
         return size;
       }
       case APP:
@@ -233,7 +234,7 @@ tree_sz_t size_tree(ast_t* ast) {
         for (int i=0; i < ast->node.app.n_exps; i++) {
           tree_sz_t sz     = size_tree(ast->node.app.exps[i]);
           ADD_TREE_SZ(size, sz);
-          size.tree_sz    += sizeof(size_t);                 // Next child pointer
+          // size.tree_sz    += sizeof(size_t);                 // Next child pointer
         }
         return size;
       }
@@ -296,10 +297,10 @@ size_t pack_nodes(ast_t** asts, int n_asts, char** const out_pt,
   *(int*) start     = n_asts;
   *out_pt          += sizeof(int);
   for (int i=0; i < n_asts; i++) {
-    size_t* chld_sz = (size_t*) *out_pt;
-    *out_pt        += sizeof(size_t);
+    // size_t* chld_sz = (size_t*) *out_pt;
+    // *out_pt        += sizeof(size_t);
     size_t sz       = pack_node(asts[i], out_pt, syms_pt);
-    *chld_sz        = sz;
+    // *chld_sz        = sz;
   }
   return (size_t) (*out_pt - start);
 }
@@ -309,6 +310,8 @@ size_t pack_node(ast_t* ast, char** const out_pt, char** const syms_pt) {
   char* start = *out_pt;        // Start of the node
   **out_pt    = (char) ast->ty; // We know the enum is not more than range of char
   *out_pt    += 1;
+  size_t* sz  = (size_t*) *out_pt;
+  *out_pt    += sizeof(size_t);
 
   switch(ast->ty) {
     case DEFINE_VALUES:
@@ -362,21 +365,10 @@ size_t pack_node(ast_t* ast, char** const out_pt, char** const syms_pt) {
       break;
     }
     case IF:
-    {
-      size_t* sz        = (size_t*) *out_pt;
-      *out_pt          += sizeof(size_t);
-      size_t cond_sz    = pack_node(ast->node.iff.cond, out_pt, syms_pt);
-      *sz               = cond_sz;
-      sz                = (size_t*) *out_pt;
-      *out_pt          += sizeof(size_t);
-      size_t if_e_sz    = pack_node(ast->node.iff.if_e, out_pt, syms_pt);
-      *sz               = if_e_sz;
-      sz                = (size_t*) *out_pt;
-      *out_pt          += sizeof(size_t);
-      size_t else_e_sz  = pack_node(ast->node.iff.else_e, out_pt, syms_pt);
-      *sz               = else_e_sz;
+      pack_node(ast->node.iff.cond, out_pt, syms_pt);
+      pack_node(ast->node.iff.if_e, out_pt, syms_pt);
+      pack_node(ast->node.iff.else_e, out_pt, syms_pt);
       break;
-    }
     case BEGIN:
       pack_nodes(ast->node.begin.exps, ast->node.begin.n_exps, out_pt, 
           syms_pt);
@@ -412,26 +404,15 @@ size_t pack_node(ast_t* ast, char** const out_pt, char** const syms_pt) {
     case QUOTE_SYNTAX:
     case QUOTE_SYNTAX_LOCAL:
     {
-      *(int*) *out_pt = ast->node.quote.data;
-      (*out_pt)      += sizeof(int);
+      *(long*) *out_pt = ast->node.quote.data;
+      (*out_pt)      += sizeof(long);
       break;
     }
     case WITH_CONTINUATION_MARK:
-    {
-      size_t* sz     = (size_t*) *out_pt;
-      *out_pt       += sizeof(size_t);
-      size_t key_sz  = pack_node(ast->node.wcm.key, out_pt, syms_pt);
-      *sz            = key_sz;
-      sz             = (size_t*) *out_pt;
-      *out_pt       += sizeof(size_t);
-      size_t val_sz  = pack_node(ast->node.wcm.val, out_pt, syms_pt);
-      *sz            = val_sz;
-      sz             = (size_t*) *out_pt;
-      *out_pt       += sizeof(size_t);
-      size_t res_sz  = pack_node(ast->node.wcm.res, out_pt, syms_pt);
-      *sz            = res_sz;
+      pack_node(ast->node.wcm.key, out_pt, syms_pt);
+      pack_node(ast->node.wcm.val, out_pt, syms_pt);
+      pack_node(ast->node.wcm.res, out_pt, syms_pt);
       break;
-    }
     case APP:
       pack_nodes(ast->node.app.exps, ast->node.app.n_exps, out_pt, syms_pt);
       break;
@@ -448,7 +429,8 @@ size_t pack_node(ast_t* ast, char** const out_pt, char** const syms_pt) {
     default:
       ERROR("[PACK] Invalid AST node..");
   }
-  return (size_t) (*out_pt - start);
+  *sz =  (size_t) (*out_pt - start);
+  return *sz;
 }
 
 char* pack_ast(ast_t* ast) {

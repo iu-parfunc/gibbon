@@ -44,7 +44,7 @@ const char* g_ast_types[] = {
 const char* g_node_types[] = {
   "PROG", "DefineValues", "DefineSyntaxes", "BeginTop", "Expression", "VARREF",
   "Lambda", "CaseLambda", "MKLAMBDACASE", "If", "Begin", "Begin0", "LetValues", 
-  "MKLVBIND", "LetRecValues", "SetBang", "Quote", "QuoteSyntax", "QuoteSyntaxLocal", 
+  "MKLVBIND", "LetrecValues", "SetBang", "Quote", "QuoteSyntax", "QuoteSyntaxLocal", 
   "INTLIT", "WithContinuationMark", "App", "Top", "VariableReference", 
   "VariableReferenceTop", "VariableReferenceNull", "F1", "F2", "F3"
 };
@@ -52,7 +52,6 @@ const char* g_node_types[] = {
 char** get_strings(sexp_t* sx, int* length) {
   sexp_t* nxt = sx; 
   do {
-    SX_VALUE(nxt);
     nxt = nxt->next;
     (*length)++;
   } while (nxt);
@@ -60,6 +59,7 @@ char** get_strings(sexp_t* sx, int* length) {
   char** syms = (char**) malloc(sizeof(char*) * (*length));
   int idx = 0;
   while (idx < *length) {
+    SX_VALUE(sx);
     syms[idx] = sx->val; 
     sx = sx->next;
     idx++;
@@ -92,30 +92,37 @@ ast_t* build_formals(sexp_t* sx, ctx_t ctx) {
 
     } else if (STREQ("F1", sx->val)) {
 
-      sx         = NEXT(sx);
-      sx         = LIST(sx);
       int length = 0;
+      ast->ty              = F1;
+      ast->node.fml.n_syms = length;
+      sx                   = NEXT(sx);
+      sx                   = sx->list;
+      if (!sx) { // Formals with no symbols
+        return ast;
+      }
       assert(IS_SX_VALUE(sx));
       ast->node.fml.syms   = get_strings(sx, &length);
       ast->node.fml.n_syms = length;
-      ast->ty              = F1;
       return ast;
 
     } else if(STREQ("F2", sx->val)) {
 
+        int length = 0;
+        ast->ty              = F2;
+        ast->node.fml.n_syms = length;
         sx           = NEXT(sx);
         sexp_t* next = sx->next;
-        sx           = LIST(sx);
-        int length = 0;
-        if (IS_SX_VALUE(sx)) {
+        sx           = sx->list;
+        if (sx && IS_SX_VALUE(sx)) {
           ast->node.fml.syms   = get_strings(sx, &length);
           ast->node.fml.n_syms = length;
-          ast->ty              = F2;
         }
 
-        sx                = next;
-        LAST(sx);
-        ast->node.fml.sym = sx->val;
+        if (next) {
+          sx                = next;
+          LAST(sx);
+          ast->node.fml.sym = sx->val;
+        }
         return ast;
     }
     ERROR("[AST] Error building formals inside %s", AST_TYPE(ctx.parent));
@@ -128,7 +135,7 @@ ast_t* build_quote(sexp_t* sx, ast_t* ast) {
   sx = LIST(sx);
   assert(sx && IS_SX_VALUE(sx) && STREQ(sx->val, "INTLIT"));
   sx = NEXT(sx);
-  ast->node.quote.data = atoi(sx->val);
+  ast->node.quote.data = atol(sx->val);
   return ast;
 }
 
@@ -146,6 +153,7 @@ ast_t* build_expr(sexp_t* sx, ctx_t ctx) {
         sx      = NEXT(sx);
         ast->node.lambda.fmls      = build_formals(sx, CTX(LAMBDA)); 
         sx      = NEXT(sx);
+        sx      = LIST(sx);
         ast->node.lambda.n_exps    = get_list_length(sx);
         ast->node.lambda.exps = NEW_ASTS(ast->node.lambda.n_exps);
         for (int i=0; i < ast->node.lambda.n_exps; i++) {
@@ -222,27 +230,33 @@ ast_t* build_expr(sexp_t* sx, ctx_t ctx) {
 
         if (sx) {
           assert(IS_SX_LIST(sx));
-          sx = LIST(sx);
-          ast->node.begin0.n_exps    = get_list_length(sx);
-          ast->node.begin0.exps      = NEW_ASTS(ast->node.begin0.n_exps);
-          for (int i=0; i < ast->node.begin0.n_exps; i++) {
-            ast->node.begin0.exps[i] = build_expr(sx, CTX(BEGIN0));
-            sx = sx->next;
+          sx = sx->list;
+          if (sx) {
+            ast->node.begin0.n_exps    = get_list_length(sx);
+            ast->node.begin0.exps      = NEW_ASTS(ast->node.begin0.n_exps);
+            for (int i=0; i < ast->node.begin0.n_exps; i++) {
+              ast->node.begin0.exps[i] = build_expr(sx, CTX(BEGIN0));
+              sx = sx->next;
+            }
           }
         }
         return ast;
 
-      } else if (TAG("LetValues") || TAG("LetRecValues")) {
+      } else if (TAG("LetValues") || TAG("LetrecValues")) {
 
         ast->ty     = TAG("LetValues") ? LET_VALUES : LETREC_VALUES;
         sx          = NEXT(sx);
         sexp_t* nxt = sx->next;
-        sx          = LIST(sx);
-        ast->node.let.n_binds    = get_list_length(sx);
-        ast->node.let.binds      = NEW_ASTS(ast->node.let.n_binds);
-        for (int i=0; i < ast->node.let.n_binds; i++) {
-          ast->node.let.binds[i] = build_expr(sx, CTX(LET_VALUES));
-          sx = sx->next;
+        sx          = sx->list;
+        if (!sx) { // LetValues with zero bindings
+          ast->node.let.n_binds = 0;
+        } else {
+          ast->node.let.n_binds    = get_list_length(sx);
+          ast->node.let.binds      = NEW_ASTS(ast->node.let.n_binds);
+          for (int i=0; i < ast->node.let.n_binds; i++) {
+            ast->node.let.binds[i] = build_expr(sx, CTX(LET_VALUES));
+            sx = sx->next;
+          }
         }
         nxt = LIST(nxt);
         ast->node.let.n_exps    = get_list_length(nxt);
@@ -258,11 +272,13 @@ ast_t* build_expr(sexp_t* sx, ctx_t ctx) {
         ast->ty     = MKLVBIND;
         sx          = NEXT(sx);
         sexp_t* nxt = sx->next;
-        sx          = LIST(sx);
+        sx          = sx->list;
         int length  = 0;
-        ast->node.binder.syms   = get_strings(sx, &length);
-        ast->node.binder.n_syms = length;
+        if (sx) {
+          ast->node.binder.syms   = get_strings(sx, &length);
+        } 
         ast->node.binder.exp    = build_expr(nxt, CTX(MKLVBIND));
+        ast->node.binder.n_syms = length;
         return ast;
         
       } else if (TAG("SetBang")) {
@@ -359,18 +375,20 @@ ast_t* build_top_lvl(sexp_t* sx) {
         expr->ty    = TAG("DefineValues") ? DEFINE_VALUES : DEFINE_SYNTAXES;
         sx          = NEXT(sx);
         sexp_t* nxt = sx->next;
-        sx          = LIST(sx);
+        sx          = sx->list;
         int length  = 0;
-        expr->node.defs.syms     = get_strings(sx, &length);
-        expr->node.defs.n_syms   = length;
+        if (sx) {
+          expr->node.defs.syms     = get_strings(sx, &length);
+        }
         expr->node.defs.exp      = build_expr(nxt, CTX(expr->ty));
+        expr->node.defs.n_syms   = length;
         return expr;
 
       } else if (TAG("BeginTop")) {
         ast_t* expr = NEW_AST();
         expr->ty    = BEGINTOP;
         sx          = sx->next;
-        if (sx) {
+        if (sx && sx->list) {
           sx          = LIST(sx);
           expr->node.prog.n_tops      = get_list_length(sx);
           expr->node.prog.toplvl      = NEW_ASTS(expr->node.prog.n_tops);
@@ -407,14 +425,14 @@ ast_t* build_ast(void* parse_tree) {
 
 void print_formals(FILE* fp, ast_t* ast) {
   fprintf(fp, "(%s ", AST_NAME(ast->ty));
-  if (ast->node.fml.n_syms > 0) {
+  if (ast->ty == F1 || ast->ty == F2) {
     fprintf(fp, "(");
     for (int i=0; i < ast->node.fml.n_syms; i++) {
       fprintf(fp, "%s", ast->node.fml.syms[i]);
       if (i < ast->node.fml.n_syms - 1) {
         fprintf(fp, " ");
       }
-    }
+    } 
     fprintf(fp, ")");
   }
 
@@ -436,9 +454,11 @@ void print_expression(FILE* fp, ast_t* ast) {
     case LAMBDA:
       print_formals(fp, ast->node.lambda.fmls);
       fprintf(fp, " ");
+      fprintf(fp, "(");
       for (int i=0; i < ast->node.lambda.n_exps; i++) {
         print_expression(fp,  ast->node.lambda.exps[i]);
       }
+      fprintf(fp, ")");
       break;
     case CASE_LAMBDA:
       fprintf(fp, "(");
@@ -531,7 +551,7 @@ void print_expression(FILE* fp, ast_t* ast) {
     case QUOTE_SYNTAX:
     case QUOTE_SYNTAX_LOCAL: 
       fprintf(fp, "(INTLIT ");
-      fprintf(fp, "%lu", ast->node.quote.data);
+      fprintf(fp, "%ld", ast->node.quote.data);
       fprintf(fp, ")");
       break;
     case WITH_CONTINUATION_MARK:

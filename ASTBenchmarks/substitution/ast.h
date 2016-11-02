@@ -85,7 +85,7 @@ typedef struct exp {
     } data;  // QUOTE, QUOTE_SYNTAX, QUOTE_SYNTAX, TOP, VARREF, VARIABLE_REFERENCE, F3
 
     struct {
-      int data;
+      long data;
     } quote;
 
     struct {
