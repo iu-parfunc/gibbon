@@ -112,10 +112,12 @@ typedef enum {
 } Formals;
 
 typedef struct exp {
-  toplvl tl;
-  expr exp;
-  lvbind bnd;
-  datum dat;
+  Toplvl tl;
+  Expr exp;
+  LVBIND bnd;
+  LAMBDACASE lc;
+  Datum dat;
+  Formals fmls;
   union {
     struct {
       int n_tops;
@@ -137,8 +139,12 @@ typedef struct exp {
     } data;  // QUOTE, QUOTE_SYNTAX, QUOTE_SYNTAX, TOP, VARREF, VARIABLE_REFERENCE, F3
 
     struct {
-      long data;
+      AST* exp;
     } quote;
+
+    struct {
+      long data;
+    } lit;
 
     struct {
       AST* fmls;
