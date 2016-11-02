@@ -1,3 +1,6 @@
 [submodule "paper/bibs"]
 	path = paper/bibs
 	url = git@github.com:iu-parfunc/misc_bibliography.git
+[submodule "benchdata"]
+	path = benchdata
+	url = git@github.com:iu-parfunc/tree-velocity-benchdata.git
