@@ -1,30 +1,45 @@
-#lang s-exp "../../TreeLang/treelang.rkt"
+#lang s-exp "./treelang.rkt"
 
+  
+(data Tree
+      [Leaf Float Float Int ]
+      [Node Int Float Float Float Float Float Tree Tree ])
 
-(data TreeIn
-      [Leaf_In Float Float Int ]
-      [Node_In Int Float Float Float Float Float TreeIn TreeIn ])
-
-(data TreeOut
-      [Leaf_Out Float Float Int ]
-      [Node_Out Int Float TreeOut TreeOut ])
 
 (data PointList
       [EndList]
       [Member Float Float Member ])
 
 
+(define (canCorrelate [minX : Float] [maxX : Float] [minY : Float] [maxY : Float] [px : Float] [py : Float] [rad : Float]) : Bool
+  (let ([center_x : Float ( fl/ (fl+ maxX minX) +2.0 )] [boxdist_x : Float ( fl/ (fl- maxX minX) 2.0 )] [center_y : Float ( fl/ (fl+ maxY minY) 2.0 )] [boxdist_y : Float( fl/ (fl- maxY minY) 2.0 )])
+    (let ( [dist_x : Float (fl- px center_x)] [dist_y : Float (fl- py center_y) ])
+     (let ([sum : Float (fl+ (fl* dist_y dist_y) (fl* dist_x dist_x))] [boxsum : Float (fl+ (fl* boxdist_y boxdist_y) (fl* boxdist_x boxdist_x))])
+       (fl< (fl- (flsqrt sum) (flsqrt boxsum) ) rad  ))))
+
+  )
+
   
 
 
 #| not yet done |#
-(define (pointCorrelation [tr : TreeIn] [px : Float][py : Float] [rad : Float]) : TreeOut
+(define (pointCorrelation [tr : Tree] [px : Float][py : Float] [rad : Float]) : Tree
   (case tr
-    [(Leaf_In x y c ) ( Leaf_Out x y (if (positive?  (- rad (sqrt ( + (* ( - px x ) (- px  x)  ) (* ( - py y ) (- py  y)  ))   )))
-                                       (+ c 1)
-                                       ( c)
+    [(Leaf x y c ) ( Leaf x y (if ( <
+                                           (flsqrt ( fl+ (fl* ( fl- px x ) (fl- px  x)  ) (fl* ( fl- py y ) (fl- py  y)  ))  )
+                                           rad  )
+                                           (+ c 1)
+                                           (+ c 0)
                                        ))]
+    [ (Node splitAccess splitLoc minX maxX minY maxY leftChild rightChild)
+       ( if  (canCorrelate minX maxX minY maxY px py rad)
+             (pointCorrelation tr px py rad )
+             (Node splitAccess splitLoc minX maxX minY maxY leftChild rightChild )
+       )
+    ]
+    
   )
+
  )
 
 
