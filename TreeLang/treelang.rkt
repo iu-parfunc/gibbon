@@ -1,10 +1,10 @@
 #lang typed/racket
 
 (provide Int Sym Bool SymDict data empty-dict lookup insert case
-         define let provide require if : for/list
+         define let provide require if : for/list for/fold or and
 
          list and empty? error 
-         eq? car cdr cons Listof True False
+         eq? Listof True False
 
          time + * -
 
