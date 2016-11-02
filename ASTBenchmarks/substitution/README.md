@@ -62,8 +62,8 @@ Symbol table is at the head of the buffer as shown below.
 
 * Overall format
 
-`<--------- Buffer ---------->   
-| Symbol Table | Packed Tree|`
+<--------- Buffer ---------->   
+`| Symbol Table | Packed Tree|`
 
 * Symbol table format is as follows.
 
@@ -100,7 +100,7 @@ Case Lambda :
 `| CASE_LAMBDA | Node Size | Num MKLAMBDACASE | MKLAMBDACASE1 | ... | MKLAMBDACASEN |`
 
 MKLAMBDACASE :   
-`| MKLAMBDACASE | Node Size | Formals | Num Exprs | Expr1 | ... | ExpN |`
+`| MKLAMBDACASE | Node Size | Formals | Num Exprs | Expr1 | ... | ExprN |`
 
 If :   
 `| IF | Node Size | Expr | Expr | Expr |`
