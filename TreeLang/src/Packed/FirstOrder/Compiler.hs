@@ -22,7 +22,8 @@ import Control.DeepSeq
 import Control.Exception (evaluate)
 ------------------------------------------------------------
         
-import Data.Set as S
+import Data.Set as S hiding (map)
+import qualified Data.Set as S (map)
 
 ----------------------------------------   
 -- PASS STUBS
@@ -91,8 +92,72 @@ freshNames (L1.Prog defs funs main) =
 -- | Put the program in A-normal form where only varrefs and literals
 -- are allowed in operand position.
 flatten :: L1.Prog -> SyM L1.Prog
-flatten = return
-
+flatten p = return p -- TEMP/FIXME
+flatten (L1.Prog defs funs main) =
+    do main' <- case main of
+                  Nothing -> return Nothing
+                  Just m -> do m' <- flattenExp m
+                               return $ Just m'
+       funs' <- flattenFuns funs
+       return $ L1.Prog defs funs' main'
+    where flattenFuns = undefined
+          flattenExp (L1.VarE v) = return $ L1.VarE v
+          flattenExp (L1.LitE i) = return $ L1.LitE i
+          flattenExp (L1.AppE v (L1.VarE v')) = return $ L1.AppE v (L1.VarE v')
+          flattenExp (L1.AppE v e) =
+              do e' <- flattenExp e
+                 v' <- gensym "tmp_flat"
+                 let ty = undefined  -- TODO: get type of argument
+                 return $ L1.LetE (v',ty,e') (L1.AppE v (L1.VarE v'))
+          flattenExp (L1.PrimAppE p es) =
+              do es' <- mapM flattenExp es
+                 nams <- mapM gensym $ replicate (length es) "tmp_flat"
+                 let bind [] t e = e
+                     bind ((v,e'):xs) t e = L1.LetE (v,t,e') $ bind xs t e
+                 case p of
+                   L1.AddP -> return $ bind (zip nams es') L1.IntTy $
+                              L1.PrimAppE L1.AddP $ map L1.VarE nams
+                   L1.SubP -> return $ bind (zip nams es') L1.IntTy $
+                              L1.PrimAppE L1.SubP $ map L1.VarE nams
+                   L1.MulP -> return $ bind (zip nams es') L1.IntTy $
+                              L1.PrimAppE L1.MulP $ map L1.VarE nams
+                   L1.EqP -> undefined -- TODO: need to look up types
+                   L1.DictInsertP -> undefined -- TODO
+                   L1.DictLookupP -> undefined
+                   L1.ErrorP s -> return $ L1.PrimAppE (L1.ErrorP s) []
+          flattenExp (L1.LetE (v,t,e') e) =
+              do e' <- flattenExp e'
+                 e <- flattenExp e
+                 return $ L1.LetE (v,t,e') e
+          flattenExp (L1.IfE e1 e2 e3) =
+              do e1 <- flattenExp e1
+                 e2 <- flattenExp e2
+                 e3 <- flattenExp e3
+                 v1 <- gensym "tmp_flat"
+                 return $ L1.LetE (v1,L1.BoolTy,e1) $ L1.IfE (L1.VarE v1) e2 e3
+          flattenExp (L1.ProjE i e) =
+              do e <- flattenExp e
+                 return $ L1.ProjE i e
+          flattenExp (L1.MkProdE es) =
+              do es <- mapM flattenExp es
+                 nams <- mapM gensym $ replicate (length es) "tmp_flat"
+                 let tys = undefined -- TODO: get types
+                     bind [] e = e
+                     bind ((v,t,e'):xs) e = L1.LetE (v,t,e') $ bind xs e
+                 return $ bind (zip3 nams tys es) $ L1.MkProdE $ map L1.VarE nams
+          flattenExp (L1.CaseE e mp) =
+              do e <- flattenExp e
+                 let ty = undefined -- TODO: get type
+                 mp <- mapM (\(args,ae) -> (flattenExp ae) >>= (\ae -> return (args,ae))) mp
+                 return $ L1.CaseE e mp
+          flattenExp (L1.MkPackedE c es) =
+              do es <- mapM flattenExp es
+                 nams <- mapM gensym $ replicate (length es) "tmp_flat"
+                 let tys = undefined
+                     bind [] e = e
+                     bind ((v,t,e'):xs) e = L1.LetE (v,t,e') $ bind xs e
+                 return $ bind (zip3 nams tys es) $ L1.MkPackedE c $ map L1.VarE nams
+          flattenExp (L1.TimeIt e) = (flattenExp e) >>= (\e -> return $ L1.TimeIt e)
 
 -- | Find all local variables bound by case expressions which must be
 -- traversed, but which are not by the current program.
