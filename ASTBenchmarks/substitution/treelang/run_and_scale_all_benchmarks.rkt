@@ -43,19 +43,20 @@
 (define csv (open-output-file outfile #:exists 'replace))
 (fprintf csv "NAME, VARIANT, ARGS, ITERS, MEANTIME\n")
 
-
+(define fileNum 1)
 (for ([relative (in-list all-files)])
 
   (define file (build-path dir relative))
 
   ;; copied exactly + type annotations
-  (printf "\n\nBenchmark: Substituting symbol ~a in file ~a ...\n" oldsym relative)
+  (printf "\n\nBenchmark(~a): Substituting symbol ~a in file ~a ...\n" fileNum oldsym relative)
+  (set! fileNum (add1 fileNum))
   (printf "============================================================\n")
 
   (define ast : Toplvl
      (time 
-      (let ([port (open-input-file file)]
-            [res  (parse (read port))])
+      (let* ([port (open-input-file file)]
+             [res  (parse (read port))])
         (close-input-port port)
         res)))
   (printf "Done ingesting AST.\n")
