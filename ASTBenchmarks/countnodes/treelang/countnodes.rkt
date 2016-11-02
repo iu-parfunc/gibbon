@@ -9,11 +9,6 @@
 (define (countnodes [e0 : Toplvl]) : Int
   (top e0))
 
-(define (sum [ls : (Listof Int)]) : Int
-  (if (empty? ls)
-      0
-      (+ (car ls) (sum (cdr ls)))))
-
 #|
 (data Toplvl
       [DefineValues   (Listof Sym) Expr]
@@ -27,8 +22,9 @@
     [(DefineSyntaxes ls e)
      (+ 1 (expr e))]
     [(BeginTop ls)
-     (+ 1 (sum (for/list ([t : Toplvl ls])
-                 (top t))))]
+     (+ 1 (for/fold : Int ([sum 0])
+                          ([t : Toplvl ls])
+            (+ (top t) sum)))]
     [(Expression e)
      (+ 1 (expr e))]))
 
@@ -56,32 +52,41 @@
 
     ;; Binding forms:
     [(Lambda f lse)
-     (+ 1 (formals f) (sum (for/list ([e : Expr lse])
-                             (expr e))))]
+     (+ 1 (formals f) (for/fold : Int ([sum 0])
+                                      ([e : Expr lse])
+                        (+ (expr e) sum)))]
     [(CaseLambda cases)
-     (+ 1 (sum (for/list ([lc : LAMBDACASE cases])
-                 (lambdacase lc))))]
+     (+ 1 (for/fold : Int ([sum 0])
+                          ([lc : LAMBDACASE cases])
+            (+ (lambdacase lc) sum)))]
     [(LetValues binds body)
-     (+ 1 (sum (for/list ([lvb : LVBIND binds])
-                 (lvbind lvb)))
-        (sum (for/list ([e : Expr body])
-               (expr e))))]
+     (+ 1 (for/fold : Int ([sum 0])
+                          ([lvb : LVBIND binds])
+            (+ (lvbind lvb) sum))
+        (for/fold : Int ([sum 0])
+                        ([e : Expr body])
+          (+ (expr e) sum)))]
     [(LetrecValues binds body)
-     (+ 1 (sum (for/list ([lvb : LVBIND binds])
-                 (lvbind lvb)))
-        (sum (for/list ([e : Expr body])
-               (expr e))))]
+     (+ 1 (for/fold : Int ([sum 0])
+                          ([lvb : LVBIND binds])
+            (+ (lvbind lvb) sum))
+        (for/fold : Int ([sum 0])
+                        ([e : Expr body])
+          (+ (expr e) sum)))]
     [(If cond then else)
      (+ 1 (expr cond) (expr then) (expr else))]
     [(Begin exprs)
-     (+ 1 (sum (for/list ([e : Expr exprs])
-                 (expr e))))]
+     (+ 1 (for/fold : Int ([sum 0])
+                          ([e : Expr exprs])
+            (+ (expr e) sum)))]
     [(Begin0 e1 exprs)
-     (+ 1 (expr e1) (sum (for/list ([e : Expr exprs])
-                           (expr e))))]
+     (+ 1 (expr e1) (for/fold : Int ([sum 0])
+                                    ([e : Expr exprs])
+                      (+ (expr e) sum)))]
     [(App exprs)  ;; (#%plain-app expr ...+)
-     (+ 1 (sum (for/list ([e : Expr exprs])
-                 (expr e))))]
+     (+ 1 (for/fold : Int ([sum 0])
+                          ([e : Expr exprs])
+            (+ (expr e) sum)))]
     [(SetBang s e)
      (+ 1 (expr e))]
     [(WithContinuationMark e1 e2 e3)
@@ -95,8 +100,9 @@
 (define (lambdacase [lc : LAMBDACASE]) : Int
   (case lc
     [(MKLAMBDACASE f exprs)
-     (+ 1 (formals f) (sum (for/list ([e : Expr exprs])
-                             (expr e))))]))
+     (+ 1 (formals f) (for/fold : Int ([sum 0])
+                                      ([e : Expr exprs])
+                        (+ (expr e) sum)))]))
 
 (define (datum [d : Datum]) : Int
   (case d
