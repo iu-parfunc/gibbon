@@ -28,7 +28,7 @@ expanded_racket: ${DATASET}
 	$(MAKE) largest
 
 wget_cleaned:
-	wget http://cs.indiana.edu/~rrnewton/files/racket_cleaned_asts_v1.2.tgz
+	wget http://cs.indiana.edu/~rrnewton/files/racket_cleaned_asts_v1.3.tgz
 
 cleaned_racket: expanded_racket rewrite.rkt
 	mkdir -p $@
