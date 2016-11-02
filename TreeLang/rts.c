@@ -41,7 +41,7 @@ void bench(int num_iterations, int tree_size, int buffer_size)
     printf("Generating initial tree...\n");
     char* initial_buffer = (char*)malloc(buffer_size);
     assert(initial_buffer);
-    build_tree(tree_size, initial_buffer);
+    __build_tree(tree_size, initial_buffer);
 
     printf("Benchmarking. Iteration count: %d\n", num_iterations);
     char* bench_buffer = (char*)malloc(buffer_size);
