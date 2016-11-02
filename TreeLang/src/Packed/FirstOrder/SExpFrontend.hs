@@ -124,6 +124,11 @@ parseSExp ses =
    go xs dds fds mn = 
     case xs of
      [] -> return $ Prog (fromListDD dds) (fromListFD fds) mn
+
+     -- IGNORED!:
+     (RSList (RSAtom (HSIdent "provide"):_) : rst) -> go rst dds fds mn
+     (RSList (RSAtom (HSIdent "require"):_) : rst) -> go rst dds fds mn
+
      (RSList (RSAtom (HSIdent "data"): RSAtom (HSIdent tycon) : cs) : rst) ->
          go rst (DDef (toVar tycon) (L.map docasety cs) : dds) fds mn
      (RSList [RSAtom (HSIdent "define"), funspec, ":", retty, bod] : rst)
@@ -208,6 +213,12 @@ exp se =
 
    RSList (RSAtom (HSIdent p) : ls) | isPrim p -> PrimAppE (prim p) $ L.map exp ls
 
+
+   RSList (RSAtom (HSIdent "for/list"): bind: bod) ->
+     error$ "SExpFrontend: Finish for/list support:\n "++sdoc se
+ --  MapE (exp scrut) (M.fromList $ L.map docase cases)
+
+                                                  
    RSList (RSAtom (HSIdent rator):rands) -> 
      let app = AppE (toVar rator)
      in case rands of   
