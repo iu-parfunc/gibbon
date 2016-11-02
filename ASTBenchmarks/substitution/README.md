@@ -60,18 +60,23 @@ char* packed = pack_ast(build_ast(parse(fname)));
 Packed representation contains an interned symbol table and the pack tree itself in a single memory buffer.
 Symbol table is at the head of the buffer as shown below.
 
+* Overall format
+
 <--------- Buffer ---------->   
 | Symbol Table | Packed Tree|
 
-Symbol table format is as follows.
+* Symbol table format is as follows.
 
 | Symbol Table Size | String1 Size | String1 | ... | StringN Size | StringN |
 
-Packed tree format is as follows.
+* Packed tree format is as follows.
 
-| Tree size | Node Tag | Node Contents ...|
+| Tree size | Node Tag | Node Size | Node Contents ...|
 
-AST nodes have different serialization according to their content as given below.
+* AST nodes have different serializations according to their content as given below.
 
 DefineValues & DefineSyntaxes :
+  | DEFINE_VALUES / DEFINE_SYNTAXES | <Node Size> | <Num Syms> | <Sym1 Reference> | ... | <SymN Reference> |
+  Child Node | 
+
   
