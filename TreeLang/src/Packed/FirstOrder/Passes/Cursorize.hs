@@ -101,7 +101,6 @@ mapPacked fn t =
     (SymDictTy x) -> SymDictTy $ mapPacked fn x
     PackedTy k l  -> fn k l
 
--- voidT   = ProdTy []          
 
 -- | Binding a variable to a value at a given (abstract) location can
 -- bring multiple witnesses into scope.  
@@ -231,6 +230,9 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
             c' <- tail demanded (env,wenv') c
             return $ L1.IfE ex b' c'
 
+
+                   
+                   
      L1.CaseE e1 mp ->
          do (new,e1',e1ty,loc) <- exp (env,wenv) e1
             maybeLetTup new (e1ty,e1') wenv $ \ ex wenv1 -> do
@@ -318,8 +320,9 @@ maybeLetTup :: [Loc] -> (L1.Ty, L1.Exp) -> WitnessEnv
             -> (L1.Exp -> WitnessEnv -> SyM L1.Exp) -> SyM L1.Exp
 maybeLetTup locs (ty,ex) env fn = 
   case locs of
+   -- []  -> error$ "maybeLetTup: didn't expect zero locs:\n  " ++sdoc (ty,ex)
    -- Zero extra cursor return values
-   [_] -> fn ex env
+   [] -> fn ex env
    -- Otherwise the layout of the tuple is (cursor0,..cursorn, origValue):
    _   -> do 
      -- The name doesn't matter, just that it's in the environment:
