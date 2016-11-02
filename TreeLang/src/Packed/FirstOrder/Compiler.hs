@@ -204,11 +204,12 @@ compileFile parser fp =
      dbgPrintLn lvl "Compiler pipeline starting, parsed program:"
      dbgPrintLn lvl sepline
      dbgPrintLn lvl $ sdoc l1
-     let pass :: (Out b, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
+     let pass :: (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
          pass who fn x = do
-           cnt <- get           
+           cnt <- get
+           _ <- lift $ evaluate $ force x
            let (y,cnt') = runSyM cnt (fn x)
-           put cnt'
+           put cnt'           
            lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":"
            lift$ dbgPrintLn lvl sepline
            _ <- lift $ evaluate $ force y
@@ -218,7 +219,7 @@ compileFile parser fp =
          -- No reason to chatter from passes that are stubbed out anyway:
          pass' :: (Out b, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
          pass' _ fn x = do
-           cnt <- get; 
+           cnt <- get;            
            let (y,cnt') = runSyM cnt (fn x);                                      
            put cnt';
            _ <- lift $ evaluate $ force y;

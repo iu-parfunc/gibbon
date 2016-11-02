@@ -144,7 +144,7 @@ codegenProg (Prog funs mtal) = pretty 80 (stack (map ppr defs))
     where defs = fst $ runSyM 0 $ do funs' <- mapM codegenFun funs
                                      let structs f = makeStructs $ nub [ tys | ProdTy tys <- funTys f ]
                                      case mtal of
-                                       Just _x -> error "Not handled yet" -- TODO: main function
+                                       Just _x -> error "main expr: Not handled yet" -- TODO: main function
                                        Nothing -> return $ (concatMap structs funs) ++ funs'
 
 funTys :: FunDecl -> [Ty]
