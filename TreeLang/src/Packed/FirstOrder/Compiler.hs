@@ -236,9 +236,11 @@ compileFile parser fp =
                   l2e <- pass  "cursorize"                cursorize                l2d
                   l3  <- pass  "lower"                    lower                    l2e
 
+                  str <- lift (codegenProg l3)
                   lift$ dbgPrintLn lvl $ "\nFinal C codegen:"
                   lift$ dbgPrintLn lvl sepline
-                  return (codegenProg l3))
+                  lift$ dbgPrintLn lvl str
+                  return str)
                cnt0
 
-     str >>= writeFile (replaceExtension fp ".c")
+     writeFile (replaceExtension fp ".c") str

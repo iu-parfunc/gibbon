@@ -1,8 +1,8 @@
+{-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE QuasiQuotes        #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TemplateHaskell    #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -31,13 +31,12 @@ import Data.Loc (noLoc)
 import Data.Maybe (fromJust)
 import Data.Traversable
 import GHC.Generics (Generic)
-import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
-                           cunit, citem)
+import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
-import Text.PrettyPrint.Mainland
-import Text.PrettyPrint.GenericPretty (Out(..))
 import Prelude hiding (init)
+import Text.PrettyPrint.GenericPretty (Out (..))
+import Text.PrettyPrint.Mainland
 
 import Packed.FirstOrder.Common
 
@@ -54,9 +53,10 @@ data MainExp
   = PrintExp Tail
       -- ^ Evaluate the expression and print the result. Type of the expression
       -- must be `int`.
-  | RunRacketCorePass Var
-      -- ^ Run the pass. `Var` is a function from an input buffer and output
-      -- buffer to something (ignored).
+  | RunRacketCorePass Var Var
+      -- ^ Run the pass. First `Var` is a function for building initial trees,
+      -- second `Var` is the function to benchmark. Return value of benchmark
+      -- function is ignored.
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 type Tag = Word8
@@ -81,10 +81,10 @@ instance Out Word8 where
 
 data Tail
     = RetValsT [Triv] -- ^ Only in tail position, for returning from a function.
-    | LetCallT { binds  :: [(Var,Ty)],
-                 rator  :: Var,
-                 rands  :: [Triv],
-                 bod    :: Tail }
+    | LetCallT { binds :: [(Var,Ty)],
+                 rator :: Var,
+                 rands :: [Triv],
+                 bod   :: Tail }
     | LetPrimCallT { binds :: [(Var,Ty)],
                      prim  :: Prim,
                      rands :: [Triv],
@@ -150,20 +150,30 @@ codegenProg (Prog funs mtal) = do
         funs' <- mapM codegenFun funs
         let structs f = makeStructs $ nub [ tys | ProdTy tys <- funTys f ]
         main_expr' <- main_expr
-        return (concatMap structs funs ++ funs' ++ [bench_fn, main_expr'])
+        return (concatMap structs funs ++ funs' ++ main_expr' : bench_fn)
 
-      bench_fn :: C.Definition
+      bench_fn :: [C.Definition]
       bench_fn =
         case mtal of
-          Just (RunRacketCorePass var) ->
-            C.FuncDef [cfun| void __fn_to_bench(char* in, char* out) {
-                $(cid var)(in, out);
-            }|] noLoc
+          Just (RunRacketCorePass build_tree bench) ->
+            [ C.FuncDef [cfun| void __fn_to_bench(char* in, char* out) {
+                  $(cid bench)(in, out);
+              } |] noLoc
+            , C.FuncDef [cfun| void __build_tree(int tree_size, char* buffer) {
+                  $(cid build_tree)(tree_size, buffer);
+              } |] noLoc
+            ]
+
           _ ->
-            C.FuncDef [cfun| void __fn_to_bench(char* in, char* out) {
-                fprintf(stderr, "Benchmark is not implemented for this program.\n");
-                exit(1);
-            } |] noLoc
+            [ C.FuncDef [cfun| void __fn_to_bench(char* in, char* out) {
+                  fprintf(stderr, "Benchmark is not implemented for this program.\n");
+                  exit(1);
+              } |] noLoc
+            , C.FuncDef [cfun| void __build_tree(int tree_size, char* buffer) {
+                  fprintf(stderr, "Benchmark is not implemented for this program.\n");
+                  exit(1);
+              } |] noLoc
+            ]
 
       main_expr :: SyM C.Definition
       main_expr =
@@ -327,7 +337,7 @@ nodeTag :: Word8
 nodeTag = 1
 
 exadd1Prog :: Prog
-exadd1Prog = Prog [exadd1] (Just (RunRacketCorePass "add1"))
+exadd1Prog = Prog [exadd1] (Just (RunRacketCorePass "build_tree" "add1"))
 
 exadd1 :: FunDecl
 exadd1 = FunDecl "add1" [("t",CursorTy),("tout",CursorTy)] (ProdTy [CursorTy,CursorTy]) exadd1Tail

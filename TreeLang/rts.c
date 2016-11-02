@@ -8,7 +8,7 @@
 // These functions must be provided by the code generator.
 void __fn_to_bench(char* in, char* out);
 int __main_expr();
-void build_tree(int tree_size, char* buffer);
+void __build_tree(int tree_size, char* buffer);
 
 void show_usage()
 {
