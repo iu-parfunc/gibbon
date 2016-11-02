@@ -91,9 +91,6 @@ typedef enum {
   VARIABLE_REFERENCE,
   VARIABLE_REFERENCE_TOP,
   VARIABLE_REFERENCE_NULL,
-  F1,
-  F2,
-  F3
 } Expr;
 
 typedef enum {
