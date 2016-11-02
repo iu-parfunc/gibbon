@@ -15,6 +15,7 @@ module Packed.FirstOrder.LTraverse
     , inferEffects, inferFunDef
     -- * Utilities for dealing with the extended types:
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc
+    , tyWithFreshLocs
     -- * Lattices of abstract locations:
     , Loc(..), LocVar, toEndVar, isEndVar, fromEndVar
     , join, joins
@@ -63,7 +64,10 @@ data Loc = Fixed Var -- ^ A rigid location, such as for an input or output field
 instance Out Loc
 
 toEndVar :: LocVar -> LocVar
-toEndVar = (end_prefix ++)
+toEndVar v =
+  if isEndVar v
+  then error$ "toEndVar: cannot add an end marker to something already at end: "++show v
+  else end_prefix ++ v
 
 fromEndVar :: LocVar -> Maybe LocVar
 fromEndVar v | isEndVar v = Just (drop (length end_prefix) v)
@@ -156,8 +160,8 @@ initialEnv mp = M.map (\x -> fst $ runSyM 0 (go x))  mp
   where
     go :: C.FunDef L1.Ty L1.Exp -> SyM (ArrowTy Ty)
     go (C.FunDef _ (_,argty) ret _)  =
-        do argTy <- annotateTy argty
-           retTy <- annotateTy ret
+        do argTy <- tyWithFreshLocs argty
+           retTy <- tyWithFreshLocs ret
            let maxEffects = S.map Traverse
                             (S.union (getTyLocs argTy) (getTyLocs retTy))
            return $ ArrowTy argTy maxEffects retTy
@@ -176,15 +180,15 @@ getTyLocs t =
       
                   
 -- | Annotate a naked type with fresh location variables.
-annotateTy :: L1.Ty -> SyM Ty
-annotateTy t =
+tyWithFreshLocs :: L1.Ty -> SyM Ty
+tyWithFreshLocs t =
   case t of
     L1.Packed k -> PackedTy k <$> genLetter                   
     L1.IntTy    -> return IntTy
     L1.SymTy    -> return SymTy
     L1.BoolTy   -> return BoolTy
-    L1.ProdTy l -> ProdTy <$> mapM annotateTy l
-    L1.SymDictTy v -> SymDictTy <$> annotateTy v
+    L1.ProdTy l -> ProdTy <$> mapM tyWithFreshLocs l
+    L1.SymDictTy v -> SymDictTy <$> tyWithFreshLocs v
 
 inferEffects :: L1.Prog -> SyM Prog
 inferEffects (L1.Prog dd fds mainE) = do
@@ -396,7 +400,7 @@ getLocVar l = error $"getLocVar: expected a single packed value location, got: "
 inferFunDef :: (DDefs L1.Ty,FunEnv) -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
 inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
     -- For this pass we don't need to know the output location:
-    do argty' <- annotateTy argty -- Temp.
+    do argty' <- tyWithFreshLocs argty -- Temp.
        let ArrowTy inTy _ outTy = fenv # name
            env0    = M.singleton arg argLoc
            argLoc  = argtyToLoc (mangle arg) argty'
@@ -537,7 +541,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
 extendEnv :: [(Var,L1.Ty)] -> Env -> SyM Env
 extendEnv []    e     = return e
 extendEnv ((v,t):r) e =
-    do t' <- annotateTy t -- Temp, just to call argtyToLoc.
+    do t' <- tyWithFreshLocs t -- Temp, just to call argtyToLoc.
        extendEnv r (M.insert v (argtyToLoc (mangle v) t') e)
 
 

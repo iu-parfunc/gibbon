@@ -53,7 +53,7 @@
 (define (lvbind l)
   (for/list ([c (in-list l)])
     (match c
-      [`((,x ...) ,e)
+      [`((,x ...) ,e) #:when (andmap symbol? x)
        `(MKLVBIND ,x ,(xform-expression e))])))
 
 (define (xform-fmls a)

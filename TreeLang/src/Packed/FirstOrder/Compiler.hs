@@ -92,6 +92,7 @@ freshNames (L1.Prog defs funs main) =
 -- | Put the program in A-normal form where only varrefs and literals
 -- are allowed in operand position.
 flatten :: L1.Prog -> SyM L1.Prog
+flatten p = return p -- TEMP/FIXME
 flatten (L1.Prog defs funs main) =
     do main' <- case main of
                   Nothing -> return Nothing
