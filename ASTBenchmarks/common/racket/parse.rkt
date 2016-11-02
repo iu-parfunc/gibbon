@@ -1,5 +1,8 @@
 #lang typed/racket
 
+;; An SExp -> treelang datatype (structs) parser hardcoded to the
+;; grammar_racket.sexp language.
+
 (require "../../grammar_racket.sexp")
 (provide parse)
 
