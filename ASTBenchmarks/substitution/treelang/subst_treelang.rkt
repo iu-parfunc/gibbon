@@ -9,12 +9,10 @@
 (define (subst [old : Sym] [new : Sym] [e0 : Toplvl]) : Toplvl
   (top old new e0))
 
-#|
-(data Toplvl
-      [DefineValues   (Listof Sym) Expr]
-      [DefineSyntaxes (Listof Sym) Expr]
-      [Expression Expr])
-|#
+;; (data Toplvl
+;;       [DefineValues   (Listof Sym) Expr]
+;;       [DefineSyntaxes (Listof Sym) Expr]
+;;       [Expression Expr])
 (define (top [old : Sym] [new : Sym] [e : Toplvl]) : Toplvl
   (case e
     [(DefineValues ls e)
@@ -110,18 +108,14 @@
      (helper sym syms)]
     [(F2 syms s)
      (if (eq? sym s)
-         #t
+         True
          (helper sym syms))]
     [(F3 s)
      (eq? sym s)]))
 
 (define (helper [sym : Sym] [ls : (Listof Sym)]) : Bool
   (if (empty? ls)
-      #f
+      False
       (if (eq? (car ls) sym)
-          #t
+          True
           (helper sym (cdr ls)))))
-
-
-
-

@@ -216,10 +216,10 @@ defaultDbg = 0
 -- | Print if the debug level is at or above a threshold.
 dbgPrint :: Int -> String -> IO ()
 dbgPrint lvl str = if dbgLvl < lvl then return () else do
---    hPutStrLn stderr str
+    hPutStrLn stderr str
     -- hPrintf stderr str 
     -- hFlush stderr
-    printf str
+    -- printf str
     hFlush stdout
 
 -- | Conditional version of Debug.Trace.trace

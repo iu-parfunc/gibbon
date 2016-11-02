@@ -14,8 +14,8 @@
       [Expression Expr])
 
 (data Expr
-      (VARREF Sym)
-      (Lambda Formals (Listof Expr))	
+      (VARREF Sym)                      ;; Tag 0
+      (Lambda Formals (Listof Expr))	;; Tag 1
       (CaseLambda (Listof LAMBDACASE))
       (If Expr Expr Expr)
       (Begin (Listof Expr))
@@ -47,75 +47,72 @@
       )
 
 (data Formals
-      [F1 (Listof Sym)]
-      [F2 (Listof Sym) Sym]
-      [F3 Sym])
+      [F1 (Listof Sym)]        ;; Tag 0
+      [F2 (Listof Sym) Sym]    ;; Tag 1
+      [F3 Sym])                ;; Tag 2
 
-
-
-#|
-Cached copy of the grammar from:
-
-    https://docs.racket-lang.org/reference/syntax-model.html
-
-
-top-level-form
-                =	 	general-top-level-form
- 	 	|	 	(#%expression expr)
-                |               (module id module-path
-                                  (#%plain-module-begin
-                                   module-level-form ...))
- 	 	|	 	(begin top-level-form ...)
- 	 	|	 	(begin-for-syntax top-level-form ...)
+;; ================================================================================
+;; Cached copy of the grammar from:
+;; 
+;;     https://docs.racket-lang.org/reference/syntax-model.html
+;; 
+;; top-level-form
+;;                 =	 	general-top-level-form
+;;  	 	|	 	(#%expression expr)
+;;                 |               (module id module-path
+;;                                   (#%plain-module-begin
+;;                                    module-level-form ...))
+;;  	 	|	 	(begin top-level-form ...)
+;;  	 	|	 	(begin-for-syntax top-level-form ...)
  	 	 	 	 
-  module-level-form	 	=	 	general-top-level-form
- 	 	|	 	(#%provide raw-provide-spec ...)
- 	 	|	 	(begin-for-syntax module-level-form ...)
- 	 	|	 	submodule-form
- 	 	|	 	(#%declare declaration-keyword ...)
+;;   module-level-form	 	=	 	general-top-level-form
+;;  	 	|	 	(#%provide raw-provide-spec ...)
+;;  	 	|	 	(begin-for-syntax module-level-form ...)
+;;  	 	|	 	submodule-form
+;;  	 	|	 	(#%declare declaration-keyword ...)
  	 	 	 	 
-  submodule-form	 	=	 	
-                                   (module id module-path
-                                     (#%plain-module-begin
-                                      module-level-form ...))
-               |	 	
-                                   (module* id module-path
-                                     (#%plain-module-begin
-                                      module-level-form ...))
-               |	 	
-                                   (module* id #f
-                                     (#%plain-module-begin
-                                      module-level-form ...))
+;;   submodule-form	 	=	 	
+;;                                    (module id module-path
+;;                                      (#%plain-module-begin
+;;                                       module-level-form ...))
+;;                |	 	
+;;                                    (module* id module-path
+;;                                      (#%plain-module-begin
+;;                                       module-level-form ...))
+;;                |	 	
+;;                                    (module* id #f
+;;                                      (#%plain-module-begin
+;;                                       module-level-form ...))
  	 	 	 	 
-  general-top-level-form  =  expr
- 	 	|	 	(define-values (id ...) expr)
- 	 	|	 	(define-syntaxes (id ...) expr)
- 	 	|	 	(#%require raw-require-spec ...)
+;;   general-top-level-form  =  expr
+;;  	 	|	 	(define-values (id ...) expr)
+;;  	 	|	 	(define-syntaxes (id ...) expr)
+;;  	 	|	 	(#%require raw-require-spec ...)
  	 	 	 	 
-  expr	 	=	 	id
- 	 	|	 	(#%plain-lambda formals expr ...+)
- 	 	|	 	(case-lambda (formals expr ...+) ...)
- 	 	|	 	(if expr expr expr)
- 	 	|	 	(begin expr ...+)
- 	 	|	 	(begin0 expr expr ...)
- 	 	|	 	
-(let-values ([(id ...) expr] ...)
-  expr ...+)
- 	 	|	 	
-(letrec-values ([(id ...) expr] ...)
-  expr ...+)
- 	 	|	 	(set! id expr)
- 	 	|	 	(quote datum)
- 	 	|	 	(quote-syntax datum)
- 	 	|	 	(quote-syntax datum #:local)
- 	 	|	 	(with-continuation-mark expr expr expr)
- 	 	|	 	(#%plain-app expr ...+)
- 	 	|	 	(#%top . id)
- 	 	|	 	(#%variable-reference id)
- 	 	|	 	(#%variable-reference (#%top . id))
- 	 	|	 	(#%variable-reference)
+;;   expr	 	=	 	id
+;;  	 	|	 	(#%plain-lambda formals expr ...+)
+;;  	 	|	 	(case-lambda (formals expr ...+) ...)
+;;  	 	|	 	(if expr expr expr)
+;;  	 	|	 	(begin expr ...+)
+;;  	 	|	 	(begin0 expr expr ...)
+;;  	 	|	 	
+;; (let-values ([(id ...) expr] ...)
+;;   expr ...+)
+;;  	 	|	 	
+;; (letrec-values ([(id ...) expr] ...)
+;;   expr ...+)
+;;  	 	|	 	(set! id expr)
+;;  	 	|	 	(quote datum)
+;;  	 	|	 	(quote-syntax datum)
+;;  	 	|	 	(quote-syntax datum #:local)
+;;  	 	|	 	(with-continuation-mark expr expr expr)
+;;  	 	|	 	(#%plain-app expr ...+)
+;;  	 	|	 	(#%top . id)
+;;  	 	|	 	(#%variable-reference id)
+;;  	 	|	 	(#%variable-reference (#%top . id))
+;;  	 	|	 	(#%variable-reference)
  	 	 	 	 
-  formals	 	=	 	(id ...)
- 	 	|	 	(id ...+ . id)
- 	 	|	 	id
-|#
+;;   formals	 	=	 	(id ...)
+;;  	 	|	 	(id ...+ . id)
+;;  	 	|	 	id
+

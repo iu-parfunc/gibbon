@@ -4,7 +4,7 @@
          define let provide require if : for/list
 
          list and empty? error 
-         eq? car cdr cons Listof         
+         eq? car cdr cons Listof True False
 
          time + * -
 
@@ -99,6 +99,9 @@ lit := int | #t | #f
        #'(begin
            (define-type type1 (U ts ...))
            (struct ts ([f-ids : f] ...) #:transparent) ...))]))
+
+(define True #t)
+(define False #f)
 
 #|
 (data Tree
