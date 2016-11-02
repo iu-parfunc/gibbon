@@ -20,9 +20,10 @@ check: check.exe
 	./check.py
 
 check.exe: check.c 
+	$(CC) $(CFLAGS) -c $(INCLUDES) parse.c -o parse.o 
 	$(CC) $(CFLAGS) -c $(INCLUDES) ast.c -o ast.o 
 	$(CC) $(CFLAGS) -c $(INCLUDES) pack.c -o pack.o 
-	$(CC) $(CFLAGS) $(INCLUDES) $^ ast.o pack.o -o $@ -L$(LDPATH) -lsexp
+	$(CC) $(CFLAGS) $(INCLUDES) $^ parse.o ast.o pack.o -o $@ -L$(LDPATH) -lsexp
 
 subst_c.exe: subst.c
 	$(CC) $(CFLAGS) -I$(INCLUDES) $^ -o $@ -L$(LDPATH) -lsexp

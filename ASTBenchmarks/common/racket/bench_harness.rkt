@@ -1,16 +1,18 @@
-#lang typed/racket
+#lang typed/racket/base
 
 ;; Infrastructure to set up and run the benchmark.
 
-(require "parse.rkt"
-         "subst_treelang.rkt"
+(require "parse.rkt" racket/list
          (only-in "../../grammar_racket.sexp" Toplvl))
 
-(provide run-benchmarks)
+(provide run-benchmarks Toplvl) ;; Toplvl needed for type annotations
 
 (define oldsym 'call-with-values) ;; Hardcode this, doesn't matter.
 
 (define (run-benchmarks [csv-port    : Output-Port]
+                        [iterate-pass : (Toplvl Integer -> Toplvl)]
+                        [pass-name   : String]
+                        [variant     : String]
                         [target-time : Real]
                         [dir         : Path-String]
                         [all-files   : (Listof Path-String)]
@@ -37,11 +39,9 @@
     (printf "Done ingesting AST.\n")
     
     (let loop ([iters 1])
-      (define newsym (string->symbol (string-append (symbol->string oldsym) "99")))
       (define-values (_ cpu real gc)
         (begin (collect-garbage) ;(collect-garbage)(collect-garbage)
-               (time-apply (lambda () (for ([_ (in-range iters)])
-                                        (subst oldsym newsym ast)))
+               (time-apply (lambda () (iterate-pass ast iters))
                            '())))
       (define batchseconds (/ real 1000.0))
 
@@ -50,10 +50,10 @@
             (printf "\nITERATIONS: ~a\n" iters)
             (printf "BATCHTIME: ~a\n" (exact->inexact batchseconds))
             (printf "MEANTIME: ~a\n" meantime)
-            (printf "Done with substitution pass.\n")
+            (printf "Done with pass, ~a.\n" pass-name)
 
-            (fprintf csv-port "substitution, treelang-racket, ~a, ~a, ~a\n"
-                     relative iters meantime)
+            (fprintf csv-port "~a, ~a, ~a, ~a, ~a\n"
+                     pass-name variant relative iters meantime)
             (flush-output csv-port)
             (printf "Output written to: ~a\n" csv-port)
             )

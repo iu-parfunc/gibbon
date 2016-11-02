@@ -205,7 +205,8 @@ stripTyLocs t =
 inferEffects :: L1.Prog -> SyM Prog
 inferEffects (L1.Prog dd fds mainE) = do
   finalFunTys <- fixpoint 1 fds (initialEnv fds)
-  return $ Prog dd
+  return $ force finalFunTys `seq`
+           Prog dd
            (M.intersectionWith (\ (C.FunDef nm (arg,_) _ bod) arrTy ->
                                   FunDef nm arrTy arg bod)
             fds finalFunTys)
