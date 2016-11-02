@@ -13,10 +13,12 @@ module Packed.FirstOrder.Passes.Cursorize
     (cursorize, lower) where
 
 import Control.Monad
+import Control.DeepSeq
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import           Packed.FirstOrder.LTraverse as L2
 import qualified Packed.FirstOrder.Target as T
+import Data.Maybe
 import Data.List as L hiding (tail)
 import Data.Set as S
 import Data.Map as M
@@ -38,15 +40,15 @@ type Env = M.Map Var (L1.Ty,Loc)
 -- | This maps an abstract location variable onto an expression that
 -- witnesses it.  These can be open terms with free location variables
 -- that are not (yet) bound in the `WitnessEnv` 
-type WitnessEnv = M.Map LocVar L1.Exp
+data WitnessEnv = WE { known :: M.Map LocVar L1.Exp
+                     -- ^ Known open terms that witness locations.
+                     , open  :: M.Map LocVar Var
+                     -- ^ "Holes" for unknown witnesses, and the
+                     -- unbound variables that are expected to receive them.
+                     }
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 
--- type Env = M.Map Var LocValue
-
--- data LocValue = InCursor  LocVar
---               | OutCursor LocVar
---               | NotCursor Loc
---   deriving (Read,Show,Eq,Ord, Generic, NFData)
--- instance Out LocValue
+instance Out WitnessEnv
                 
 -- | This inserts cursors and REMOVES effect signatures.  It returns
 --   the new type as well as how many extra params were added to input
@@ -104,7 +106,7 @@ mapPacked fn t =
 -- | Binding a variable to a value at a given (abstract) location can
 -- bring multiple witnesses into scope.  
 witnessBinding :: Var -> Loc -> WitnessEnv
-witnessBinding vr loc =  M.fromList $ go loc (L1.VarE vr)
+witnessBinding vr loc = WE (M.fromList $ go loc (L1.VarE vr)) M.empty
   where
    go (TupLoc ls) ex =
        concat [ go x (L1.ProjE ix ex)
@@ -117,11 +119,44 @@ witnessBinding vr loc =  M.fromList $ go loc (L1.VarE vr)
 -- FIXME: We should be able to combine `Loc` and the annotated `Ty`
 -- data types....
 witnessTypedBinds :: [(Var,Ty)] -> WitnessEnv 
-witnessTypedBinds [] = M.empty
+witnessTypedBinds [] = emptyWEnv
 witnessTypedBinds ((vr,ty):rst) =
-    witnessBinding vr (argtyToLoc (mangle vr) ty)  `M.union`
+    witnessBinding vr (argtyToLoc (mangle vr) ty)  `unionWEnv`
     witnessTypedBinds rst
-                    
+
+-- | Combine two witness environments, where each may fill some of the
+-- other's remaining open locvars.  Tie the knot.
+unionWEnv :: WitnessEnv -> WitnessEnv -> WitnessEnv
+unionWEnv (WE k1 o1) (WE k2 o2) = go (M.union k1 k2) -- FIXME: treat intersection
+                                     (M.toList o1 ++ M.toList o2)
+  where
+    go :: M.Map LocVar L1.Exp -> [(LocVar,Var)] -> WitnessEnv
+    go acc [] = WE acc M.empty
+    go acc ((lv,v):r) =
+       case M.lookup lv acc of
+         Nothing -> let WE k o = go acc r
+                    in  WE k (M.insert lv v o)
+         -- Here we get to remove from the open list, and we subst the
+         -- solution into the rest of the WEnv entries:
+         Just ex -> go (M.map (L1.subst v ex) acc) r
+
+emptyWEnv :: WitnessEnv
+emptyWEnv = WE M.empty M.empty
+
+addWitness :: LocVar -> [LocVar] -> ([L1.Exp] -> L1.Exp) -> WitnessEnv -> SyM WitnessEnv
+addWitness locvar ls fn orig@WE{known} =
+    do (es, free) <- unzip <$> mapM lkp ls
+       return $ WE (M.singleton locvar (fn es)) (M.fromList (catMaybes free))
+                  `unionWEnv` orig
+  where
+   lkp lvr = case M.lookup lvr known of
+              Just wex -> return (wex,Nothing)
+              Nothing -> do tmp <- gensym "hl"
+                            return (L1.VarE tmp, Just (lvr,tmp))
+
+extendEnv :: [(Var,(L1.Ty,Loc))] -> Env -> Env
+extendEnv ls e = (M.fromList ls) `M.union` e
+                                   
 -- | A compiler pass that inserts cursor-passing for reading and
 -- writing packed values.
 cursorize :: Prog -> SyM Prog  -- [T.FunDecl]
@@ -132,7 +167,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
     fds' <- mapM fd $ M.elems fundefs
     mn <- case mainExp of
             Nothing -> return Nothing
-            Just x  -> Just <$> tail [] M.empty M.empty x
+            Just x  -> Just <$> tail [] (M.empty,emptyWEnv) x
     return Prog{ fundefs = M.fromList $ L.map (\f -> (funname f,f)) fds'
                , ddefs = ddefs
                , mainExp = mn
@@ -155,8 +190,8 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                               funbod
                    , witnessBinding fresh
                      (TupLoc $ L.map Fixed newIn ++ [argLoc]))
-      let env = __
-      exp' <- tail newOut env wenv bod
+      let env = M.singleton newArg (stripTyLocs inT, argLoc)
+      exp' <- tail newOut (env,wenv) bod
       return $ FunDef funname newTy newArg exp'
 
   -- Process the "spine" of a flattened program.
@@ -164,8 +199,8 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
   -- When processing something in tail position, we take a DEMAND for
   -- a certain list of location witnesses.  We produce a tuple containing
   -- those witnesses prepended to the original return value.
-  tail :: [LocVar] -> Env -> WitnessEnv -> L1.Exp -> SyM L1.Exp
-  tail demanded env wenv e = 
+  tail :: [LocVar] -> (Env,WitnessEnv) -> L1.Exp -> SyM L1.Exp
+  tail demanded (env,wenv) e = 
    dbgTrace lvl ("\n[cursorize] Processing tail, demanding "++show demanded++
                  ": "++show (doc e)++"\n  with wenv: "++show wenv) $
    let cursorRets = L.map (meetDemand wenv) demanded in
@@ -180,7 +215,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
      ------------------ Flattened Spine ---------------
      -- Here we route through extra arguments.
      L1.LetE (v,tv,rhs) bod ->
-       do (new,rhs',rty,rloc) <- exp wenv rhs
+       do (new,rhs',rty,rloc) <- exp (env,wenv) rhs
           -- ty will always be a known number of cursors (0 or more)
           -- prepended to the value that was already 
           tmp <- gensym "tmp"
@@ -190,38 +225,37 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                    finishEXP
 
      L1.IfE a b c -> do
-         (new,a',aty,aloc) <- exp wenv a
+         (new,a',aty,aloc) <- exp (env,wenv) a
          maybeLetTup (new++[aloc]) (aty,a') wenv $ \ ex wenv' -> do 
-            b' <- tail demanded __ wenv' b
-            c' <- tail demanded __ wenv' c
+            b' <- tail demanded (env,wenv') b
+            c' <- tail demanded (env,wenv') c
             return $ L1.IfE ex b' c'
 
      L1.CaseE e1 mp ->
-         do (new,e1',e1ty,loc) <- exp wenv e1
-            maybeLetTup new (e1ty,e1') wenv $ \ ex wenv' -> do
+         do (new,e1',e1ty,loc) <- exp (env,wenv) e1
+            maybeLetTup new (e1ty,e1') wenv $ \ ex wenv1 -> do
               ls' <- forM (M.toList mp)
                         (\ (dcon, (vrs,rhs)) -> do
                            let tys    = lookupDataCon ddefs dcon
                            tys' <- mapM tyWithFreshLocs tys
-                           let -- tys'' = mapPacked (\ k l -> __) tys 
-                               zipped = fragileZip vrs tys'
-
-                           -- TODO: find recursive/non-static fields:
-
-                           -- if all(static)
-                                        
+                           -- No actual information here:
+                           -- let wenv2 = (witnessTypedBinds zipped) `unionWEnv` wenv1
                            let Just locvar = getLocVar loc
-                               newfacts :: WitnessEnv
-                               newfacts = M.singleton (endOf loc)
-                                           (L1.PrimAppE L1.AddP
-                                            [ meetDemand wenv' locvar
-                                            , L1.LitE $ 1 + sum (L.map (tySize ddefs) tys)])
-                               -- E.Let (tmp, _ ,witness) rhs      
 
-                           let wenv'' = newfacts `M.union`
-                                       (witnessTypedBinds zipped) `M.union`
-                                       wenv'
-                           rhs' <- tail demanded __ wenv'' rhs
+                           --       if all(static):
+                           wenv3 <- addWitness (endOf loc) [locvar]
+                                         (\ [lv_wit] ->
+                                            L1.PrimAppE L1.AddP
+                                            [ lv_wit
+                                            , L1.LitE $ 1 + sum (L.map (tySize ddefs) tys)])
+                                         wenv1
+
+                           let -- tys'' = mapPacked (\ k l -> __) tys 
+                               env' = (M.fromList $
+                                       fragileZip vrs (zip tys (L.zipWith argtyToLoc vrs tys')))
+                                        `M.union` env
+
+                           rhs' <- tail demanded (env',wenv3) rhs
                            return (dcon, (vrs,rhs')))
               return$ L1.CaseE ex (M.fromList ls')
 
@@ -243,11 +277,11 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
   --  (3) The type of the new result, including the added returns.
   --  (4) The location of the processed expression, not including the
   --      added returns.
-  exp :: WitnessEnv -> L1.Exp -> SyM ([Loc], L1.Exp, L1.Ty, Loc)
-  exp wenv e = 
+  exp :: (Env,WitnessEnv) -> L1.Exp -> SyM ([Loc], L1.Exp, L1.Ty, Loc)
+  exp (env,wenv) e = 
     dbgTrace lvl ("\n[cursorize] Processing exp: "++show (doc e)++"\n  with wenv: "++show wenv) $
     case e of
---     L1.VarE v  -> return ([], e, __, __)
+     L1.VarE v  -> let (ty,loc) = env # v in return ([], e, ty, loc)
 {-
      L1.LitE  _ -> return (__, Bottom)
 
@@ -274,7 +308,9 @@ tySize ddefs t =
   case t of
     L1.IntTy -> 8
     L1.SymTy -> 8
-    L1.Packed k -> __
+    L1.Packed k -> let tys = lookupDataCon ddefs k in
+                   1 + sum (L.map (tySize ddefs) tys)
+    _ -> error $ "tySize: should not have packed field of type: "++sdoc t
         
           
 -- | Let bind IFF there are extra cursor results.
@@ -290,16 +326,16 @@ maybeLetTup locs (ty,ex) env fn =
      tmp <- gensym "mlt"
      -- Let-bind all the new things that come back with the exp
      -- to bring them into the environment.       
-     let env' = M.union (witnessBinding tmp (TupLoc locs)) env
+     let env' = witnessBinding tmp (TupLoc locs) `unionWEnv` env
      bod <- fn (L1.ProjE (length locs - 1) (L1.VarE tmp)) env'
      return $ L1.LetE (tmp, ty, ex) bod
 
           
 -- | Dig through an environment to find
 meetDemand :: WitnessEnv -> LocVar -> L1.Exp
-meetDemand env vr =
-  trace ("Attempting to meet demand for loc "++show vr++" in env "++sdoc env) $
-  env # vr
+meetDemand we@WE{known} vr =
+  trace ("Attempting to meet demand for loc "++show vr++" in env "++sdoc we) $
+  known # vr
   -- go (M.toList env)
   -- where
   --  go [] = error$ "meetDemand: internal error, got to end of"++
@@ -320,9 +356,6 @@ finishLOC = Fresh "FINISHME"
 finishTYP :: L1.Ty
 finishTYP = L1.Packed "FINISHME" 
             
-maybeLet :: forall t. t
-maybeLet = __
-
 -- =============================================================================
 
 -- | Convert into the target language.  This does not make much of a

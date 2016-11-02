@@ -15,7 +15,7 @@ module Packed.FirstOrder.LTraverse
     , inferEffects, inferFunDef
     -- * Utilities for dealing with the extended types:
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc
-    , tyWithFreshLocs
+    , tyWithFreshLocs, stripTyLocs
     -- * Lattices of abstract locations:
     , Loc(..), LocVar, toEndVar, isEndVar, fromEndVar
     , join, joins
@@ -189,6 +189,18 @@ tyWithFreshLocs t =
     L1.BoolTy   -> return BoolTy
     L1.ProdTy l -> ProdTy <$> mapM tyWithFreshLocs l
     L1.SymDictTy v -> SymDictTy <$> tyWithFreshLocs v
+
+-- | Remove the extra location annotations.
+stripTyLocs :: Ty -> L1.Ty
+stripTyLocs t =
+  case t of
+    PackedTy k _  -> L1.Packed k 
+    IntTy        -> L1.IntTy
+    SymTy        -> L1.SymTy
+    BoolTy       -> L1.BoolTy
+    ProdTy l     -> L1.ProdTy    $ L.map stripTyLocs l
+    SymDictTy v  -> L1.SymDictTy $ stripTyLocs v
+
 
 inferEffects :: L1.Prog -> SyM Prog
 inferEffects (L1.Prog dd fds mainE) = do
