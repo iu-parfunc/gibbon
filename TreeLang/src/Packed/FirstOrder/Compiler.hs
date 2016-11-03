@@ -242,7 +242,7 @@ inlineTrivExp env (L1.LetE (v,t,e') e) =
     case e' of
       L1.VarE _v -> inlineTrivExp ((v,e'):env) e
       L1.LitE _i -> inlineTrivExp ((v,e'):env) e
-      _ -> L1.LetE (v,t,e') (inlineTrivExp env e)
+      _ -> L1.LetE (v,t,inlineTrivExp env e') (inlineTrivExp env e)
 inlineTrivExp env (L1.IfE e1 e2 e3) =
     L1.IfE (inlineTrivExp env e1) (inlineTrivExp env e2) (inlineTrivExp env e3)
 inlineTrivExp env (L1.ProjE i e) = L1.ProjE i $ inlineTrivExp env e
