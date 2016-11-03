@@ -99,7 +99,15 @@ freshNames (L1.Prog defs funs main) =
           freshExp vs (L1.TimeIt e) =
               do e' <- freshExp vs e
                  return $ L1.TimeIt e'
-
+          freshExp vs (L1.MapE (v,t,b) e) =
+              do b' <- freshExp vs b
+                 e' <- freshExp vs e
+                 return $ L1.MapE (v,t,b') e'
+          freshExp vs (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
+              do e1' <- freshExp vs e1
+                 e2' <- freshExp vs e2
+                 e3' <- freshExp vs e3
+                 return $ L1.FoldE (v1,t1,e1') (v2,t2,e2') e3'
 
 -- | Put the program in A-normal form where only varrefs and literals
 -- are allowed in operand position.
@@ -124,7 +132,7 @@ flatten (L1.Prog defs funs main) =
           flattenExp env (L1.AppE v e) =
               do e' <- flattenExp env e
                  v' <- gensym "tmp_flat"
-                 let ty = funRetTy $ fromJust $ M.lookup v funs 
+                 let ty = typeExp env e
                  return $ L1.LetE (v',ty,e') (L1.AppE v (L1.VarE v'))
           flattenExp env (L1.PrimAppE p es) =
               do es' <- mapM (flattenExp env) es
@@ -140,8 +148,8 @@ flatten (L1.Prog defs funs main) =
                               L1.PrimAppE L1.MulP $ map L1.VarE nams
                    L1.EqP -> return $ bind (zip nams es') L1.IntTy $ -- NOTE: only for ints!
                               L1.PrimAppE L1.EqP $ map L1.VarE nams
-                   L1.DictInsertP -> undefined -- TODO/FIXME
-                   L1.DictLookupP -> undefined -- TODO/FIXME
+                   L1.DictInsertP -> error "DictInsertP case not implemented (flatten)" -- TODO/FIXME
+                   L1.DictLookupP -> error "DictLookupP case not implemented (flatten)" -- TODO/FIXME
                    L1.ErrorP s t -> return $ L1.PrimAppE (L1.ErrorP s t) []
           flattenExp env (L1.LetE (v,t,e') e) =
               do fe' <- flattenExp env e'
@@ -182,11 +190,23 @@ flatten (L1.Prog defs funs main) =
                      bind ((v,t,e'):xs) e = L1.LetE (v,t,e') $ bind xs e
                  return $ bind (zip3 nams tys fes) $ L1.MkPackedE c $ map L1.VarE nams
           flattenExp env (L1.TimeIt e) = (flattenExp env e) >>= (\fe -> return $ L1.TimeIt fe)
-
+          flattenExp env (L1.MapE (v,t,e') e) =
+              do fe' <- flattenExp env e'
+                 fe <- flattenExp env e
+                 return $ L1.MapE (v,t,fe') fe
+          flattenExp env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
+              do fe1 <- flattenExp env e1
+                 fe2 <- flattenExp env e2
+                 fe3 <- flattenExp env e3
+                 return $ L1.FoldE (v1,t1,fe1) (v2,t2,fe2) fe3
+                        
           typeExp :: [(Var,L1.Ty)] -> L1.Exp -> L1.Ty
           typeExp env (L1.VarE v) = fromJust $ lookup v env
           typeExp _env (L1.LitE _i) = L1.IntTy
-          typeExp _env (L1.AppE v _e) = funRetTy $ fromJust $ M.lookup v funs
+          typeExp _env (L1.AppE v _e) =
+              case M.lookup v funs of
+                Nothing -> error $ "Could not look up type of function: " ++ v ++ " (typeExp)"
+                Just x -> funRetTy x
           typeExp _env (L1.PrimAppE p _es) =
               case p of
                 L1.AddP -> L1.IntTy
@@ -206,6 +226,8 @@ flatten (L1.Prog defs funs main) =
               in typeExp ((zip args (lookupDataCon defs c)) ++ env) e
           typeExp _env (L1.MkPackedE c _es) = L1.Packed c
           typeExp env (L1.TimeIt e) = typeExp env e
+          typeExp env (L1.MapE _ e) = typeExp env e
+          typeExp env (L1.FoldE _ _ e) = typeExp env e
 
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
@@ -232,6 +254,9 @@ inlineTrivExp env (L1.CaseE e mp) =
     in L1.CaseE e' mp'
 inlineTrivExp env (L1.MkPackedE c es) = L1.MkPackedE c $ map (inlineTrivExp env) es
 inlineTrivExp env (L1.TimeIt e) = L1.TimeIt $ inlineTrivExp env e
+inlineTrivExp env (L1.MapE (v,t,e') e) = L1.MapE (v,t,inlineTrivExp env e') (inlineTrivExp env e)
+inlineTrivExp env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
+    L1.FoldE (v1,t1,inlineTrivExp env e1) (v2,t2,inlineTrivExp env e2) (inlineTrivExp env e3)
 
 -- | Find all local variables bound by case expressions which must be
 -- traversed, but which are not by the current program.
