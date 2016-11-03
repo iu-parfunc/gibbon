@@ -46,7 +46,7 @@
       (NULLLVBIND ))
 
 (data LAMBDACASE
-      (CONSLAMBDACASE Formals ListExpr)  ;; (formals expr ...+) 
+      (CONSLAMBDACASE Formals ListExpr LAMBDACASE)  ;; (formals expr ...+) 
       (NULLLAMBDACASE ))
 
 ;; RRN: How far do we need to go here?
