@@ -312,7 +312,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
        return (finishEXP, finishLOC)
 -}
 --     _ -> return ([], finishEXP, finishTYP, finishLOC)
-     _ -> error $ "ERROR: cursorize/exp: unfinished, needs to handle:\n "++sdoc e
+     _ -> error $ "ERROR: cursorize/rhs: unfinished, needs to handle:\n "++sdoc e
 
 endOf :: Loc -> LocVar
 endOf (Fixed a) = toEndVar a

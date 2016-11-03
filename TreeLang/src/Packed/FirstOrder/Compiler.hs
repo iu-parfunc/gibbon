@@ -132,12 +132,12 @@ flatten (L1.Prog defs funs main) =
               do e' <- flattenExp env e
                  v' <- gensym "tmp_flat"
                  let ty = typeExp env e
-                 return $ L1.LetE (v',ty,e') (L1.AppE v (L1.VarE v'))
+                 return $ mkLetE (v',ty,e') (L1.AppE v (L1.VarE v'))
           flattenExp env (L1.PrimAppE p es) =
               do es' <- mapM (flattenExp env) es
                  nams <- mapM gensym $ replicate (length es) "tmp_flat"
                  let bind [] _t e = e
-                     bind ((v,e'):xs) t e = L1.LetE (v,t,e') $ bind xs t e
+                     bind ((v,e'):xs) t e = mkLetE (v,t,e') $ bind xs t e
                  case p of
                    L1.AddP -> return $ bind (zip nams es') L1.IntTy $
                               L1.PrimAppE L1.AddP $ map L1.VarE nams
@@ -151,20 +151,20 @@ flatten (L1.Prog defs funs main) =
                    L1.DictLookupP ->
                        do let dictty = typeExp env $ es !! 1
                           return $
-                                 L1.LetE (nams !! 0, L1.SymTy, es !! 0) $ -- NOTE: expected to be symbol!
-                                 L1.LetE (nams !! 1, dictty, es !! 1) $
+                                 mkLetE (nams !! 0, L1.SymTy, es !! 0) $ -- NOTE: expected to be symbol!
+                                 mkLetE (nams !! 1, dictty, es !! 1) $
                                  L1.PrimAppE L1.DictLookupP $ map L1.VarE nams
                    L1.ErrorP s t -> return $ L1.PrimAppE (L1.ErrorP s t) []
           flattenExp env (L1.LetE (v,t,e') e) =
               do fe' <- flattenExp env e'
-                 fe <- flattenExp env e
-                 return $ L1.LetE (v,t,fe') fe
+                 fe  <- flattenExp env e
+                 return $ mkLetE (v,t,fe') fe
           flattenExp env (L1.IfE e1 e2 e3) =
               do fe1 <- flattenExp env e1
                  fe2 <- flattenExp env e2
                  fe3 <- flattenExp env e3
                  v1 <- gensym "tmp_flat"
-                 return $ L1.LetE (v1,L1.BoolTy,fe1) $ L1.IfE (L1.VarE v1) fe2 fe3
+                 return $ mkLetE (v1,L1.BoolTy,fe1) $ L1.IfE (L1.VarE v1) fe2 fe3
           flattenExp env (L1.ProjE i e) =
               do fe <- flattenExp env e
                  return $ L1.ProjE i fe
@@ -173,7 +173,7 @@ flatten (L1.Prog defs funs main) =
                  nams <- mapM gensym $ replicate (length fes) "tmp_flat"
                  let tys = map (typeExp env) fes
                      bind [] e = e
-                     bind ((v,t,e'):xs) e = L1.LetE (v,t,e') $ bind xs e
+                     bind ((v,t,e'):xs) e = mkLetE (v,t,e') $ bind xs e
                  return $ bind (zip3 nams tys fes) $ L1.MkProdE $ map L1.VarE nams
           flattenExp env (L1.CaseE e mp) =
               do fe <- flattenExp env e
@@ -185,13 +185,13 @@ flatten (L1.Prog defs funs main) =
                            fae <- flattenExp ((zip args tys) ++ env) ae
                            return (c,(args,fae))
                  let fmp = M.fromList fals
-                 return $ L1.LetE (v,ty,fe) $ L1.CaseE (L1.VarE v) fmp
+                 return $ mkLetE (v,ty,fe) $ L1.CaseE (L1.VarE v) fmp
           flattenExp env (L1.MkPackedE c es) =
               do fes <- mapM (flattenExp env) es
                  nams <- mapM gensym $ replicate (length fes) "tmp_flat"
                  let tys = map (typeExp env) fes
                      bind [] e = e
-                     bind ((v,t,e'):xs) e = L1.LetE (v,t,e') $ bind xs e
+                     bind ((v,t,e'):xs) e = mkLetE (v,t,e') $ bind xs e
                  return $ bind (zip3 nams tys fes) $ L1.MkPackedE c $ map L1.VarE nams
           flattenExp env (L1.TimeIt e) = (flattenExp env e) >>= (\fe -> return $ L1.TimeIt fe)
           flattenExp env (L1.MapE (v,t,e') e) =
@@ -203,7 +203,12 @@ flatten (L1.Prog defs funs main) =
                  fe2 <- flattenExp env e2
                  fe3 <- flattenExp env e3
                  return $ L1.FoldE (v1,t1,fe1) (v2,t2,fe2) fe3
-                        
+
+          -- | Helper function that lifts out Lets on the RHS of other Lets.
+          --   Absolutely requires unique names.
+          mkLetE (vr,ty, L1.LetE bnd e) bod = mkLetE bnd $ mkLetE (vr,ty,e) bod
+          mkLetE bnd bod = L1.LetE bnd bod
+                                              
           typeExp :: [(Var,L1.Ty)] -> L1.Exp -> L1.Ty
           typeExp env (L1.VarE v) = fromJust $ lookup v env
           typeExp _env (L1.LitE _i) = L1.IntTy
@@ -233,6 +238,8 @@ flatten (L1.Prog defs funs main) =
           typeExp env (L1.MapE _ e) = typeExp env e
           typeExp env (L1.FoldE _ _ e) = typeExp env e
 
+
+                                         
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
 inlineTrivExp :: [(Var,L1.Exp)] -> L1.Exp -> L1.Exp
