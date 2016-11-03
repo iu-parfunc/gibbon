@@ -487,7 +487,7 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
       L1.AddP -> T.AddP
       L1.SubP -> T.SubP
       L1.MulP -> T.MulP
-      L1.EqP  -> error "lower/prim should only have eq? directly in comparison of an If"
+      L1.EqSymP  -> error "lower/prim should only have eq? directly in comparison of an If"
       L1.DictInsertP -> T.DictInsertP
       L1.DictLookupP -> T.DictLookupP
       L1.ErrorP{} -> error$ "lower/prim: internal error, should not have got to here: "++show p

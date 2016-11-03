@@ -145,8 +145,8 @@ flatten (L1.Prog defs funs main) =
                               L1.PrimAppE L1.SubP $ map L1.VarE nams
                    L1.MulP -> return $ bind (zip nams es') L1.IntTy $
                               L1.PrimAppE L1.MulP $ map L1.VarE nams
-                   L1.EqP -> return $ bind (zip nams es') L1.IntTy $ -- NOTE: only for ints!
-                              L1.PrimAppE L1.EqP $ map L1.VarE nams
+                   L1.EqSymP -> return $ bind (zip nams es') L1.SymTy $
+                                L1.PrimAppE L1.EqSymP $ map L1.VarE nams
                    L1.DictInsertP -> error "DictInsertP not handled in flatten yet"
                    L1.DictLookupP ->
                        do let dictty = typeExp env $ es !! 1
@@ -221,7 +221,7 @@ flatten (L1.Prog defs funs main) =
                 L1.AddP -> L1.IntTy
                 L1.SubP -> L1.IntTy
                 L1.MulP -> L1.IntTy
-                L1.EqP -> L1.BoolTy
+                L1.EqSymP -> L1.BoolTy
                 _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
           typeExp env (L1.LetE (v,t,_) e) = typeExp ((v,t):env) e
           typeExp env (L1.IfE _ e _) = typeExp env e
