@@ -118,13 +118,13 @@ flatten (L1.Prog defs funs main) =
     do main' <- case main of
                   Nothing -> return Nothing
                   Just m -> do m' <- flattenExp [] m
-                               return $ Just (inlineTrivExp [] m')
+                               return $ Just m' -- (inlineTrivExp [] m')
        funs' <- flattenFuns funs
        return $ L1.Prog defs funs' main'
     where flattenFuns = mapM flattenFun
           flattenFun (FunDef nam (narg,targ) ty bod) =
               do bod' <- flattenExp [(narg,targ)] bod
-                 return $ FunDef nam (narg,targ) ty (inlineTrivExp [] bod')
+                 return $ FunDef nam (narg,targ) ty bod'-- (inlineTrivExp [] bod')
 
           flattenExp :: [(Var,L1.Ty)] -> L1.Exp -> SyM L1.Exp
           flattenExp _env (L1.VarE v) = return $ L1.VarE v
