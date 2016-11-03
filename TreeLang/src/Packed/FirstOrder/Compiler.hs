@@ -419,7 +419,7 @@ compile Config{input,mode} fp = do
     
     writeFile outfile str
     when (mode == ToExe || mode == RunExe) $ do
-      cd <- system $ "gcc -O3 "++outfile++" -o "++ exe
+      cd <- system $ "gcc -std=c11 -O3 "++outfile++" -o "++ exe
       case cd of
        ExitFailure n -> error$ "C compiler failed!  Code: "++show n
        ExitSuccess -> do 
