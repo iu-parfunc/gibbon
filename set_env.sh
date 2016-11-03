@@ -4,13 +4,19 @@ export TREELANGDIR=`pwd`
 
 # alias tc="stack build && stack exec -- treec"
 
-function tc() {    
+function tc() {
     cur=`pwd`
     cd $TREELANGDIR/TreeLang/
-    stack build
-    CMD=`stack exec -- which treec`
-    cd $cur
-    $CMD $@
+    stack build 
+    if [ "$?" == "0" ]; then
+        CMD=`stack exec -- which treec`;
+        cd $cur;
+        $CMD $@;
+    else
+        cd $cur;
+        echo "'stack build' failed";
+        return 1;
+    fi
 }
 
 # A quick verison that doesn't check for recompile.

@@ -233,7 +233,11 @@ exp se =
      S.FoldE (T.unpack v1, typ t1, exp e1)
              (T.unpack v2, typ t2, exp e2)
              (exp bod)
-      
+
+   L3 "vector-ref" evec (RSAtom (HSInt ind)) -> S.ProjE (fromIntegral ind) (exp evec)
+   L (A "vector" : es) -> S.MkProdE $ L.map exp es
+                                                
+   -- If NOTHING else matches, we are an application.  Be careful we didn't miss anything:             
    L (A rator : rands) -> 
      let app = AppE (toVar rator)
      in case rands of   
