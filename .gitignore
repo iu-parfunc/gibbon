@@ -6,4 +6,9 @@ racket_expanded*.tgz
 *.exe
 *.o
 *~
+ASTBenchmarks/cleaned_*
+ASTBenchmarks/expanded_*
+ASTBenchmarks/*.tgz
+BintreeBench/*.exe
+TreeLang/.stack-work
 

@@ -149,6 +149,9 @@ run_racket_packed:
 run_java: treebench.class
 	java treebench $(DEPTH) 33
 
+docker:
+	docker build -t bintree-bench .
+
 clean:
 	rm -f *.exe *.o *.hi treebench treebench_lazy *.cmi *.cmo *.cmx
 

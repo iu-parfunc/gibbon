@@ -21,14 +21,22 @@ RUN /tree-velocity/deps/rustup.sh --revision=1.12.0
 
 # RUN which -a rustc && rustc --version
 
-RUN apt-get install -y racket
+# This gets 6.3, too old:
+# RUN apt-get install -y racket
+
+RUN cd /tmp/ && \
+  wget -nv http://download.racket-lang.org/releases/6.6/installers/racket-6.6-x86_64-linux.sh && \
+  chmod +x racket-6.6-x86_64-linux.sh && \
+  ./racket-6.6-x86_64-linux.sh --in-place --dest /racket/ && \
+  ln -s /racket/bin/* /usr/local/bin/ && \
+  rm -rf racket-6.6-x86_64-linux.sh
 
 # ------------------------------------------------------------
 
 ADD . /BintreeBench
 
 # Build all the benchmarks:
-RUN scheme --version && rustc --version && \
+RUN scheme --version && rustc --version && racket --version && \
     cd /BintreeBench && make 
 
 # For testing purposes, make sure they all run:
