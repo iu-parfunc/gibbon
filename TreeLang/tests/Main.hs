@@ -11,6 +11,7 @@ import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.L1_Source (Exp(..))
 import Packed.FirstOrder.LTraverse
+import Packed.FirstOrder.Passes.Cursorize
 import Data.Set as S
 import Data.Map as M
     

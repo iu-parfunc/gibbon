@@ -7,7 +7,7 @@
 (require racket/path racket/cmdline racket/file racket/system)
 (require/typed racket/os [gethostname (-> String)])
 ;; For Racket 6.6, not necessary in 6.7:
-; (require/typed racket/path [path-get-extension (Path-For-Some-System -> String)] )
+(require/typed racket/path [path-get-extension (Path-For-Some-System -> String)])
 
 (provide launch-benchmarks)
 

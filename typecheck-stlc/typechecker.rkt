@@ -1,4 +1,7 @@
-#lang s-exp "../../TreeLang/treelang.rkt"
+#lang s-exp "../TreeLang/treelang.rkt"
+
+;; FIXME: need to wean this off of car/cdr onto for/list fold/list
+(require (only-in racket/base car cdr))
 
 ;; use structs/data instead of sexp
 (provide typecheck-expr
