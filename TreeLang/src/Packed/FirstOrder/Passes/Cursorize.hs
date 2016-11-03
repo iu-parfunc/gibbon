@@ -389,6 +389,16 @@ finishLOC = Fresh "FINISHME"
 
 finishTYP :: L1.Ty
 finishTYP = L1.Packed "FINISHME" 
+
+
+
+
+-- =============================================================================
+
+-- | Remove all occurrences of tuples except in function returns.
+detuple :: L2.Prog -> SyM L2.Prog
+detuple = undefined
+
             
 -- =============================================================================
 
@@ -453,7 +463,12 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
         T.LetCallT [(v,typ t)] f
              [(triv "app rand") arg]
              <$>
-             (tail bod)    
+             (tail bod)
+
+    L1.LetE (v,t,trv) bod -> 
+        let trv' = triv "let non-call RHS" trv in
+        -- 
+        error$  "lower: tail: Finish handling: "++sdoc trv'
 
     L1.CaseE e ls ->
         return $ T.Switch{} -- (tail e) (M.map (\(vs,er) -> (vs,tail er)) ls)

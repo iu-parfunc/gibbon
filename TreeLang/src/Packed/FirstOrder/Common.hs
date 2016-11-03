@@ -220,7 +220,7 @@ dbgPrint lvl str = if dbgLvl < lvl then return () else do
     -- hPrintf stderr str 
     -- hFlush stderr
     -- printf str
-    hFlush stdout
+    -- hFlush stdout
 
 -- | Conditional version of Debug.Trace.trace
 dbgTrace :: Int -> String -> a -> a

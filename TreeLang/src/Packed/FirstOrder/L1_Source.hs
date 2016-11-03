@@ -207,10 +207,14 @@ isTriv e =
    case e of
      VarE _ -> True
      LitE _ -> True
+     -- These should really turn to literalS:
+     PrimAppE MkTrue  [] -> True
+     PrimAppE MkFalse [] -> True
+     ----------------- POLICY DECISION ---------------
+     -- Leave these as trivial for now:
      ProjE _ (VarE _) -> True     
      MkProdE ls -> all isTriv ls  -- TEMP/FIXME: probably remove this a
      _  -> False
-
 
 
                  
