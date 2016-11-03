@@ -31,7 +31,8 @@ import Data.Loc (noLoc)
 import Data.Maybe (fromJust)
 import Data.Traversable
 import GHC.Generics (Generic)
-import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty)
+import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
+                           cunit)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import Prelude hiding (init)
@@ -156,24 +157,23 @@ codegenProg (Prog funs mtal) = do
       bench_fn =
         case mtal of
           Just (RunRacketCorePass build_tree bench) ->
-            [ C.FuncDef [cfun| void __fn_to_bench(char* in, char* out) {
+            [cunit|
+              void __fn_to_bench(char* in, char* out) {
                   $(cid bench)(in, out);
-              } |] noLoc
-            , C.FuncDef [cfun| void __build_tree(int tree_size, char* buffer) {
+              }
+              void __build_tree(int tree_size, char* buffer) {
                   $(cid build_tree)(tree_size, buffer);
-              } |] noLoc
-            ]
-
+              } |]
           _ ->
-            [ C.FuncDef [cfun| void __fn_to_bench(char* in, char* out) {
-                  fprintf(stderr, "Benchmark is not implemented for this program.\n");
-                  exit(1);
-              } |] noLoc
-            , C.FuncDef [cfun| void __build_tree(int tree_size, char* buffer) {
-                  fprintf(stderr, "Benchmark is not implemented for this program.\n");
-                  exit(1);
-              } |] noLoc
-            ]
+            [cunit|
+              void __fn_to_bench(char* in, char* out) {
+                fprintf(stderr, "Benchmark is not implemented for this program.\n");
+                exit(1);
+              }
+              void __build_tree(int tree_size, char* buffer) {
+                fprintf(stderr, "Benchmark is not implemented for this program.\n");
+                exit(1);
+              } |]
 
       main_expr :: SyM C.Definition
       main_expr =
