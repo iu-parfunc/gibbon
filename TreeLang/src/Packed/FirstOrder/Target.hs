@@ -47,7 +47,6 @@ import Packed.FirstOrder.Common
 data Prog = Prog
   { fundefs :: [FunDecl]
   , mainExp :: Maybe MainExp
-      -- ^ When this is `Nothing` we don't attempt to link the source files.
   } deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data MainExp
