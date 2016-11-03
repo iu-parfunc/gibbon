@@ -9,21 +9,12 @@ RUN cd / && wget -nv https://github.com/cisco/ChezScheme/archive/v9.4.tar.gz && 
 
 RUN cd /ChezScheme-9.4/ && ./configure && time make install
 
-ADD ./deps /tree-velocity/deps
+ADD ./deps /tree-velocity/BintreeBench/deps
 
-# RUN curl -sSf https://static.rust-lang.org/rustup.sh | sh -s -- --revision=1.14.0-beta
-# RUN /tree-velocity/deps/rustup.sh --revision=1.13
-# RUN /tree-velocity/deps/rustup.sh --revision=1.13.0
-# RUN /tree-velocity/deps/rustup.sh --revision=1.13.0-beta
-RUN /tree-velocity/deps/rustup.sh --revision=1.12.0
-# RUN /tree-velocity/deps/rustup.sh --revision=1.0.0-beta
-# RUN /tree-velocity/deps/rustup.sh --revision=1.4.0
-
-# RUN which -a rustc && rustc --version
+RUN /tree-velocity/BintreeBench/deps/rustup.sh --revision=1.12.0
 
 # This gets 6.3, too old:
 # RUN apt-get install -y racket
-
 RUN cd /tmp/ && \
   wget -nv http://download.racket-lang.org/releases/6.6/installers/racket-6.6-x86_64-linux.sh && \
   chmod +x racket-6.6-x86_64-linux.sh && \
