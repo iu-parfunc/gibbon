@@ -9,6 +9,7 @@ uname -a
 which -a stack
 which -a racket
 stack --version
+racket --version
 
 # Racket code
 # ----------------------------------------
@@ -29,8 +30,10 @@ if [ "$DOCKER" == "1" ]; then
     echo "Building under Docker."
     docker build . -t bintree-bench
 else
-    make
-    make run_small
+# Don't do a full build, it requires too many toolchains:    
+#    make
+#    make run_small
+    make c ghc
 fi
 
 # Compiler
