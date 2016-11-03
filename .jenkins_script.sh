@@ -7,6 +7,7 @@ top=`pwd`
 hostname
 uname -a
 which -a stack
+which -a racket
 stack --version
 
 # Racket code
