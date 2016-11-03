@@ -115,7 +115,7 @@
   (match l
     ['() `(NULLLAMBDACASE)]
     [`((MKLAMBDACASE ,a ,b) . ,rest)
-     `(CONSLAMBDACASE ,a ,b ,(mklambdacaselist rest))]))
+     `(CONSLAMBDACASE ,a ,(mkexprlist b) ,(mklambdacaselist rest))]))
 
 
 (define (xform-top e)

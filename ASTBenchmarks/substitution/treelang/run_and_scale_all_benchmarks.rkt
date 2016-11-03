@@ -14,4 +14,6 @@
     (set! out (subst oldsym newsym ast)))
   out)
 
+(launch-benchmarks iterate-subst "substitution" "treelang-racket")
+
 

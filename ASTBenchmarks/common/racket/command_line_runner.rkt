@@ -34,7 +34,7 @@
   (parameterize ([current-directory dir])
     (find-files (lambda ([p : Path]) 
                   ; (printf "Testing ~a ,ext ~a\n" p (path-get-extension (cast p Path-For-Some-System)))
-                  (equal? (format "~a" (path-get-extension p)) ".sexp"))
+                  (equal? (path-get-extension p) #".sexp"))
                 "."
                 ; #:skip-filtered-directory? #f
                 )))
