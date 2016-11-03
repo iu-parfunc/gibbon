@@ -3,10 +3,10 @@
 CC=gcc
 CFLAGS=-O0 -g
 
-SEXP=../../deps/sexpr-1.3
+SEXP=../../../deps/sexpr-1.3
 
 LDPATH=$(SEXP)/src
-INCLUDES=-I$(SEXP)/src -I../../deps/uthash/
+INCLUDES=-I$(SEXP)/src -I../../../deps/uthash/
 
 all: subst_c.exe racket_build
 
@@ -27,9 +27,8 @@ check: check.exe
 check.exe: check.c 
 	$(CC) $(CFLAGS) -c $(INCLUDES) parse.c -o parse.o 
 	$(CC) $(CFLAGS) -c $(INCLUDES) ast.c -o ast.o 
-#	$(CC) $(CFLAGS) -c $(INCLUDES) pack.c -o pack.o 
-#	$(CC) $(CFLAGS) $(INCLUDES) $^ parse.o ast.o pack.o -o $@ -L$(LDPATH) -lsexp
-	$(CC) $(CFLAGS) $(INCLUDES) $^ parse.o ast.o -o $@ -L$(LDPATH) -lsexp
+	$(CC) $(CFLAGS) -c $(INCLUDES) pack.c -o pack.o 
+	$(CC) $(CFLAGS) $(INCLUDES) $^ parse.o ast.o pack.o -o $@ -L$(LDPATH) -lsexp
 
 subst_c.exe: subst.c
 	$(CC) $(CFLAGS) -I$(INCLUDES) $^ -o $@ -L$(LDPATH) -lsexp

@@ -70,11 +70,9 @@ int main(int argc, char **argv) {
   compare_sexp(sx, sxnew);
   printf("SUCCESS!!\n");
 
-  /*
   printf("\n[Packing]\n\n");
   printf("Packing the AST.\n");
   pack_ast(ast);
-  */
 
   destroy_sexp(sx);
   destroy_sexp(sxnew);
