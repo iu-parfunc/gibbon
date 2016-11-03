@@ -2,10 +2,10 @@
 
 (provide Int Sym Bool SymDict data empty-dict lookup insert case
          define let provide require if :
-         for/list for/fold or and
+         or and
          vector vector-ref
-         list and empty? error 
-         eq? = Listof True False
+         and empty? error 
+         eq? = True False
 
          time + * -
 
@@ -14,6 +14,7 @@
          #;(all-from-out typed/racket))
 
 (require (prefix-in r typed/racket/base)
+         (for-syntax syntax/parse)
          racket/performance-hint
          racket/unsafe/ops)
 
@@ -80,10 +81,10 @@ lit := int | #t | #f
 
 ;;(case e [(K v ...) e] ...)
 (define-syntax (case stx)
-  (syntax-case stx ()
-    [(case v [(S fs ...) rhs] ...)
+  (syntax-parse stx
+    [(case v [(~and pat (S:id p:id ...)) rhs] ...)
      #'(match v
-         [(S fs ...) rhs] ...)]))
+         [pat rhs] ...)]))
 
 ;;(insert e e e)
 (define-syntax-rule (insert ht key v)
