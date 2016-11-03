@@ -11,10 +11,11 @@ RUN cd /ChezScheme-9.4/ && ./configure && time make install
 
 ADD ./deps /tree-velocity/BintreeBench/deps
 
-RUN /tree-velocity/BintreeBench/deps/rustup.sh --revision=1.12.0
+RUN /tree-velocity/BintreeBench/deps/rustup.sh --yes --revision=1.12.0
 
 # This gets 6.3, too old:
 # RUN apt-get install -y racket
+
 RUN cd /tmp/ && \
   wget -nv http://download.racket-lang.org/releases/6.6/installers/racket-6.6-x86_64-linux.sh && \
   chmod +x racket-6.6-x86_64-linux.sh && \
