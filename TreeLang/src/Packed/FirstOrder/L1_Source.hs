@@ -74,7 +74,8 @@ data Exp = VarE Var
 -- | Some of these primitives are (temporarily) tagged directly with
 -- their return types.
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
-          | EqP         -- ^ Equality on scalar types (int, sym, bool)
+          | EqP          -- ^ Equality on Sym
+          | EqIntP       -- ^ Equality on Int
           | DictInsertP  -- ^ takes k,v,dict
           | DictLookupP  -- ^ takes k dict, errors if absent
           | ErrorP String Ty

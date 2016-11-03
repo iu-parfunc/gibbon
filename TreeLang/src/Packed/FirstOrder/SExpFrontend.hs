@@ -278,7 +278,8 @@ primMap = M.fromList
   [ ("+", AddP)
   , ("-", SubP)
   , ("*", MulP)
-  , ("eq?", EqP) 
+  , ("eq?", EqP)
+  , ("=",   EqIntP)
   ]
 
 prim :: Text -> Prim
