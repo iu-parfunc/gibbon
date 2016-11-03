@@ -149,6 +149,7 @@ unionWEnv (WE k1 o1) (WE k2 o2) = go (M.union k1 k2) -- FIXME: treat intersectio
 emptyWEnv :: WitnessEnv
 emptyWEnv = WE M.empty M.empty
 
+-- | Add a witness GIVEN witnesses of a list of other locations.
 addWitness :: LocVar -> [LocVar] -> ([L1.Exp] -> L1.Exp) -> WitnessEnv -> SyM WitnessEnv
 addWitness locvar ls fn orig@WE{known} =
     do (es, free) <- unzip <$> mapM lkp ls
@@ -192,7 +193,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
               else ( fresh
                      -- We could introduce a let binding, but here we
                      -- just substitute instead:
-                   , L1.subst funarg (L1.ProjE (length newIn) (L1.VarE fresh))
+                   , L1.subst funarg (projNonFirst (length newIn) (L1.VarE fresh))
                               funbod
                    , witnessBinding fresh
                      (TupLoc $ L.map Fixed newIn ++ [argLoc]))
@@ -225,13 +226,25 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
      -- Here we route through extra arguments.
      L1.LetE (v,tv,erhs) bod ->
        do (new,rhs',rty,rloc) <- rhs (env,wenv) erhs
-          -- ty will always be a known number of cursors (0 or more)
-          -- prepended to the value that was already 
-          tmp <- gensym "tmp"
-          let ix = length new
-          return $ L1.LetE ("tmp", rty, rhs') $
-                   L1.LetE (v, tv, L1.ProjE ix (L1.VarE "tmp")) $
-                   finishEXP
+          -- rty will always be a known number of cursors (0 or more)
+          -- prepended to the value that was returned in the orignal prog
+          let env'  = __ env
+          if L.null new
+             -- assert rty == tv
+           then do bod' <- tail demanded (env',wenv) bod -- No new witnesses.
+                   return $ L1.LetE (v, tv, rhs') bod'
+           else do tmp <- gensym "tmp"
+                   let go [] ix we       = return we
+                       go (lc:rst) ix we =
+                        go rst (ix+1) =<<
+                          let Just v = getLocVar lc in
+                          addWitness v [] (\[] -> L1.ProjE ix (L1.VarE "tmp")) we
+                   wenv' <- go new 0 wenv
+                   bod' <- tail demanded (env',wenv') bod -- No new witnesses.
+                   let ix = length new
+                   return $ L1.LetE ("tmp", rty, rhs') $
+                            L1.LetE (v, tv, projNonFirst ix (L1.VarE "tmp")) $
+                            finishEXP
 
      L1.IfE a b c -> do
          (new,a',aty,aloc) <- rhs (env,wenv) a
@@ -312,8 +325,13 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
        return (finishEXP, finishLOC)
 -}
 --     _ -> return ([], finishEXP, finishTYP, finishLOC)
-     _ -> error $ "ERROR: cursorize/exp: unfinished, needs to handle:\n "++sdoc e
+     _ -> error $ "ERROR: cursorize/rhs: unfinished, needs to handle:\n "++sdoc e
 
+
+-- | Project something which had better not be the first thing in a tuple.
+projNonFirst 0 e = error $ "projNonFirst: expected nonzero index into expr: "++sdoc e
+projNonFirst i e = L1.ProjE i e
+          
 endOf :: Loc -> LocVar
 endOf (Fixed a) = toEndVar a
 endOf l = error $ "endOf: should not take endOf this location: "++show l
@@ -327,7 +345,7 @@ tySize ddefs t =
                    1 + sum (L.map (tySize ddefs) tys)
     _ -> error $ "tySize: should not have packed field of type: "++sdoc t
         
-          
+    
 -- | Let bind IFF there are extra cursor results.
 maybeLetTup :: [Loc] -> (L1.Ty, L1.Exp) -> WitnessEnv
             -> (L1.Exp -> WitnessEnv -> SyM L1.Exp) -> SyM L1.Exp
@@ -487,7 +505,7 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
       L1.AddP -> T.AddP
       L1.SubP -> T.SubP
       L1.MulP -> T.MulP
-      L1.EqP  -> error "lower/prim should only have eq? directly in comparison of an If"
+      L1.EqSymP  -> error "lower/prim should only have eq? directly in comparison of an If"
       L1.DictInsertP -> T.DictInsertP
       L1.DictLookupP -> T.DictLookupP
       L1.ErrorP{} -> error$ "lower/prim: internal error, should not have got to here: "++show p

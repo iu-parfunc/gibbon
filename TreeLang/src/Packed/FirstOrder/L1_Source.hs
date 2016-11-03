@@ -74,7 +74,7 @@ data Exp = VarE Var
 -- | Some of these primitives are (temporarily) tagged directly with
 -- their return types.
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
-          | EqP          -- ^ Equality on Sym
+          | EqSymP          -- ^ Equality on Sym
           | EqIntP       -- ^ Equality on Int
           | DictInsertP  -- ^ takes k,v,dict
           | DictLookupP  -- ^ takes k dict, errors if absent
@@ -84,6 +84,9 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
 
 --          | GetLoc Var
 --          | AddLoc Int Var
+
+          | MkTrue -- ^ Zero argument constructor.
+          | MkFalse -- ^ Zero argument constructor.
 
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
@@ -168,7 +171,7 @@ primArgsTy p =
     AddP -> [IntTy, IntTy]
     SubP -> [IntTy, IntTy]
     MulP -> [IntTy, IntTy]
-    EqP  -> [IntTy, IntTy] -- NOT POLYMORPHIC FOR NOW!
+    EqSymP  -> [SymTy, SymTy]
     DictInsertP -> error "primArgsTy: dicts not handled yet"
     DictLookupP -> error "primArgsTy: dicts not handled yet"
     (ErrorP _ _) -> []
@@ -179,7 +182,7 @@ primRetTy p =
     AddP -> IntTy
     SubP -> IntTy
     MulP -> IntTy
-    EqP  -> BoolTy
+    EqSymP  -> BoolTy
     DictInsertP -> error "primRetTy: dicts not handled yet"
     DictLookupP -> error "primRetTy: dicts not handled yet"
     (ErrorP _ ty) -> ty

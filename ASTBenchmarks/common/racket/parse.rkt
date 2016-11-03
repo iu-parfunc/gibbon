@@ -47,7 +47,7 @@
 (: parse-datum : (Any -> Datum))
 (define (parse-datum v)
   (match v
-    [`(INTLIT ,(? exact-integer? i))
+    [`(INTLIT ,(? fixnum? i))
      (INTLIT i)]))
 
 (: is=? (-> Any (-> Any Boolean)))

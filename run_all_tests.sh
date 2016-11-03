@@ -57,16 +57,18 @@ cd $top/ASTBenchmarks/common/c/
 make check
 
 
-set +x; echo
-echo "  Bintree Microbench:"xs
-echo "----------------------------------------"
-set -x
-cd $top/BintreeBench
-if [ "$DOCKER" == "1" ]; then
-    echo "Building under Docker, FULL benchmark set."
-    make
-    make run_small
-else
-    echo "Not under Docker. Don't do a full Bintree build, it requires too many toolchains."
-    make c ghc run_small_core
+if [ "$NOBINTREE" != "1" ]; then 
+  set +x; echo
+  echo "  Bintree Microbench:"
+  echo "----------------------------------------"
+  set -x
+  cd $top/BintreeBench
+  if [ "$DOCKER" == "1" ]; then
+      echo "Building under Docker, FULL benchmark set."
+      make
+      make run_small
+  else
+      echo "Not under Docker. Don't do a full Bintree build, it requires too many toolchains."
+      make c ghc run_small_core
+  fi
 fi

@@ -195,28 +195,47 @@ pattern L1 a       = RSList [a]
 pattern L2 a b     = RSList [A a, b]
 pattern L3 a b c   = RSList [A a, b, c]
 pattern L4 a b c d = RSList [A a, b, c, d]
-                   
+
+trueE :: Exp
+trueE = PrimAppE MkTrue []
+
+falseE :: Exp
+falseE = PrimAppE MkFalse []
+         
 exp :: Sexp -> Exp
 exp se =
  -- trace ("\n ==> Processing Exp:\n  "++prnt se)  $ 
  case se of
+   A "True"          -> trueE
+   A "False"         -> falseE
+   L ("and" : args)  -> go args
+     where go [] = trueE
+           go (x:xs) = IfE (exp x) (go xs) falseE       
+   L ("or" : args)  -> go args
+     where go [] = falseE
+           go (x:xs) = IfE (exp x) trueE (go xs)
+
+   L4 "if" test conseq altern -> 
+     IfE (exp test) (exp conseq) (exp altern)
+
+   -- Any other naked symbol is a variable:
    A v -> VarE (toVar v)
    RSAtom (HSInt n)  -> LitE (fromIntegral n)
-
+     
    -- L [A "error",arg] ->
    L3 "ann" (L2 "error" arg) ty -> 
       case arg of
         RSAtom (HSString str) -> PrimAppE (ErrorP (T.unpack str) (typ ty)) []
         _ -> error$ "bad argument to 'error' primitive: "++prnt arg
 
+   -- Other annotations are dropped:
+   L3 "ann" e _ty -> exp e
+             
    L2 "time" arg -> (TimeIt (exp arg))
    
    L3 "let" (L bnds) bod -> 
      mkLets (L.map letbind bnds) (exp bod) 
      
-   L4 "if" test conseq altern -> 
-     IfE (exp test) (exp conseq) (exp altern)
-
    L (A "case": scrut: cases) -> 
      CaseE (exp scrut) (M.fromList $ L.map docase cases)
 
@@ -278,7 +297,7 @@ primMap = M.fromList
   [ ("+", AddP)
   , ("-", SubP)
   , ("*", MulP)
-  , ("eq?", EqP)
+  , ("eq?", EqSymP)
   , ("=",   EqIntP)
   ]
 
