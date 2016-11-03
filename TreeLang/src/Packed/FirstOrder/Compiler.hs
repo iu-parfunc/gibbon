@@ -112,7 +112,6 @@ freshNames (L1.Prog defs funs main) =
 -- | Put the program in A-normal form where only varrefs and literals
 -- are allowed in operand position.
 flatten :: L1.Prog -> SyM L1.Prog
--- flatten p = return p -- TEMP/FIXME
 flatten (L1.Prog defs funs main) =
     do main' <- case main of
                   Nothing -> return Nothing
@@ -148,8 +147,13 @@ flatten (L1.Prog defs funs main) =
                               L1.PrimAppE L1.MulP $ map L1.VarE nams
                    L1.EqP -> return $ bind (zip nams es') L1.IntTy $ -- NOTE: only for ints!
                               L1.PrimAppE L1.EqP $ map L1.VarE nams
-                   L1.DictInsertP -> error "DictInsertP case not implemented (flatten)" -- TODO/FIXME
-                   L1.DictLookupP -> error "DictLookupP case not implemented (flatten)" -- TODO/FIXME
+                   L1.DictInsertP -> error "DictInsertP not handled in flatten yet"
+                   L1.DictLookupP ->
+                       do let dictty = typeExp env $ es !! 1
+                          return $
+                                 L1.LetE (nams !! 0, L1.SymTy, es !! 0) $ -- NOTE: expected to be symbol!
+                                 L1.LetE (nams !! 1, dictty, es !! 1) $
+                                 L1.PrimAppE L1.DictLookupP $ map L1.VarE nams
                    L1.ErrorP s t -> return $ L1.PrimAppE (L1.ErrorP s t) []
           flattenExp env (L1.LetE (v,t,e') e) =
               do fe' <- flattenExp env e'
