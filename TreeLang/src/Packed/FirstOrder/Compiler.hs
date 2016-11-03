@@ -382,14 +382,14 @@ compile Config{input,mode} fp = do
                      oth -> error$ "compile: unrecognized file extension: "++
                                    show oth++"  Please specify compile input format."
   (l1,cnt0) <- parser fp
-  let printParse l = do 
-                        dbgPrintLn l sepline
-                        dbgPrintLn l $ sdoc l1
+  let printParse l = dbgPrintLn l $ sdoc l1
   if mode == ToParse
-   then do dbgPrintLn lvl "Parsed program:" 
+   then do -- dbgPrintLn lvl "Parsed program:"
+           -- dbgPrintLn l sepline
            printParse 0
    else do 
     dbgPrintLn lvl "Compiler pipeline starting, parsed program:"
+    dbgPrintLn lvl sepline
     printParse lvl
     let pass :: (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
         pass who fn x = do

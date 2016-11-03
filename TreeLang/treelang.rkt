@@ -5,7 +5,7 @@
          for/list for/fold or and
          vector vector-ref
          list and empty? error 
-         eq? Listof True False
+         eq? = Listof True False
 
          time + * -
 
@@ -94,7 +94,10 @@ lit := int | #t | #f
   (hash))
 
 (define-syntax-rule (time e)
-  (rtime e))
+  (let-values ([(ls cpu real gc) (time-apply (lambda () e) '())])
+    (printf "SELFTIMED: ~a\n" (/ (exact->inexact real) 1000.0))
+    (match ls
+      [(list x) x])))
 
 (define-type Int Integer)
 (define-type Sym Symbol)
@@ -113,6 +116,7 @@ lit := int | #t | #f
 (define True #t)
 (define False #f)
 
+;; FIXME: need to make sure these inline:
 (define (+ [a : Int] [b : Int]) : Int
   (r+ a b))
 
@@ -121,6 +125,12 @@ lit := int | #t | #f
 
 (define (* [a : Int] [b : Int]) : Int
   (r* a b))
+
+(define (eq? [a : Sym] [b : Sym]) : Bool
+  (req? a b))
+
+(define (= [a : Int] [b : Int]) : Bool
+  (req? a b))
 
 
 #|

@@ -1,6 +1,9 @@
 
+default: test
 
-default: valid
+test:
+	$(MAKE) parse_all
+	$(MAKE) run_tests
 
 # Run the tests straight through Racket
 valid: treelang_lib
@@ -10,10 +13,6 @@ valid: treelang_lib
 
 invalid: treelang_lib
 	for f in `find ./error/ -name '*.sexp'`; do racket $$f | tee $$f.ans; done
-
-test:
-	$(MAKE) parse_all
-	$(MAKE) run_tests
 
 TREEC= stack exec -- treec
 
@@ -34,6 +33,7 @@ PASSING_TESTS= test00_add.sexp
 #  test06  -- cursorize/let
 #  test07  -- cursorize/TimeIt
 #  test08  -- no dictionaries yet
+#  test09  -- fail on flatten
 
 # let this be a proxy for the lot of them:
 test00_add.sexp.ans:
