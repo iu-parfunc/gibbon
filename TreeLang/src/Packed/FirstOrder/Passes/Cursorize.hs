@@ -446,8 +446,10 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
     L1.IfE a b c       -> do b' <- tail b
                              c' <- tail c
                              return $ T.Switch (triv "if test" a)
-                                      (T.IntAlts [(0, b')])
-                                      (Just c')
+                                      -- If we are treating the boolean as a tag, then tag "0" is false
+                                      (T.IntAlts [(0, c')])
+                                      -- And tag "1" is true:
+                                      (Just b')
 
     L1.AppE v e        -> return $ T.TailCall v [triv "operand" e]
    

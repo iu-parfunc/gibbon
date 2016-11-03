@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# OPTIONS_GHC -Wall #-}
 
 -- | The source language for recursive tree traversals.
@@ -14,7 +15,7 @@ module Packed.FirstOrder.L1_Source
       -- * Primitive operations
     , Prim(..), primRetTy, primArgsTy
       -- * Types and helpers  
-    , Ty(..), voidTy
+    , Ty(..), pattern SymTy, voidTy
     -- * Expression and Prog helpers
     , freeVars, subst, mapExprs
       -- * Trivial expressions
@@ -100,13 +101,14 @@ instance Out Prog
 
 -- type TEnv = Map Var Ty
 
-
+-- TEMP/FIXME: leaving out these for now.
+pattern SymTy = IntTy
 
 -- | Types include boxed/pointer-based products as well as unpacked
 -- algebraic datatypes.
 data Ty = IntTy
-        | SymTy -- ^ Symbols used in writing compiler passes.
-                --   It's an alias for Int, an index into a symbol table.
+--        | SymTy -- ^ Symbols used in writing compiler passes.
+--                --   It's an alias for Int, an index into a symbol table.
         | BoolTy
         | ProdTy [Ty]   -- ^ An N-ary tuple 
         | SymDictTy Ty  -- ^ A map from SymTy to Ty

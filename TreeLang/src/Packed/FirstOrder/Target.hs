@@ -304,7 +304,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                             in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) * $(codegenTriv pright); |]]
                     EqP -> let [(outV,outT)] = bnds
                                [pleft,pright] = rnds
-                           in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) == $(codegenTriv pright); |]]
+                           in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv pleft) == $(codegenTriv pright)); |]]
                     DictInsertP -> unfinished 1
                     DictLookupP -> unfinished 2
                     NewBuf -> unfinished 3
