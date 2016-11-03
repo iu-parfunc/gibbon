@@ -4,7 +4,7 @@ default: test
 test:
 	$(MAKE) parse_all
 	$(MAKE) run_tests
-#	$(MAKE) run_tests_packed
+	$(MAKE) run_tests_packed
 
 # Run the tests straight through Racket
 valid: treelang_lib
@@ -23,7 +23,7 @@ parse_all:
           echo "Parsing $$f"; \
           $(TREEC) --parse $$f || exit 1; done
 
-PASSING_TESTS= test00_add.sexp test01_if.sexp  test02_arith.sexp
+PASSING_TESTS ?= test00_add.sexp test01_if.sexp  test02_arith.sexp
 # FIX THESE: All are blocked on something.  Then move them to the above list:
 #  test03  -- flatten fromJust
 #  test03b -- MkTrue typeExp
@@ -67,7 +67,7 @@ PACKED_TESTS=
 
 # Run the tests that work under the packed regime:
 run_tests_packed: test00_add.sexp.ans
-	$(MAKE) TREECARGS="--packed"
+	$(MAKE) run_tests TREECARGS="--packed" PASSING_TESTS=$(PACKED_TESTS)
 
 PACKED_TESTS= test00_add.sexp
 #  test04b -- cursorize/mkprod
