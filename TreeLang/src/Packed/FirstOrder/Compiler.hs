@@ -118,13 +118,13 @@ flatten (L1.Prog defs funs main) =
     do main' <- case main of
                   Nothing -> return Nothing
                   Just m -> do m' <- flattenExp [] m
-                               return $ Just m' -- (inlineTrivExp [] m')
+                               return $ Just (inlineTrivExp [] m')
        funs' <- flattenFuns funs
        return $ L1.Prog defs funs' main'
     where flattenFuns = mapM flattenFun
           flattenFun (FunDef nam (narg,targ) ty bod) =
               do bod' <- flattenExp [(narg,targ)] bod
-                 return $ FunDef nam (narg,targ) ty bod'-- (inlineTrivExp [] bod')
+                 return $ FunDef nam (narg,targ) ty (inlineTrivExp [] bod')
 
           flattenExp :: [(Var,L1.Ty)] -> L1.Exp -> SyM L1.Exp
           flattenExp _env (L1.VarE v) = return $ L1.VarE v
@@ -242,7 +242,7 @@ inlineTrivExp env (L1.LetE (v,t,e') e) =
     case e' of
       L1.VarE _v -> inlineTrivExp ((v,e'):env) e
       L1.LitE _i -> inlineTrivExp ((v,e'):env) e
-      _ -> L1.LetE (v,t,e') (inlineTrivExp env e)
+      _ -> L1.LetE (v,t,inlineTrivExp env e') (inlineTrivExp env e)
 inlineTrivExp env (L1.IfE e1 e2 e3) =
     L1.IfE (inlineTrivExp env e1) (inlineTrivExp env e2) (inlineTrivExp env e3)
 inlineTrivExp env (L1.ProjE i e) = L1.ProjE i $ inlineTrivExp env e
