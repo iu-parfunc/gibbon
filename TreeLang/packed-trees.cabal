@@ -49,7 +49,10 @@ library
                 parsec,
                 srcloc,
                 s-cargot,
-                text
+                text,
+                optparse-applicative,
+                process,
+                directory
 --                tslogger,
                 
   hs-source-dirs:      src

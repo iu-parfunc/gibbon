@@ -1,31 +1,39 @@
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# LANGUAGE NamedFieldPuns #-}
 -- | The compiler pipeline, assembled from several passes.
 
 module Packed.FirstOrder.Compiler
-    ( compileSExpFile
-    , compileHSFile )
-    where
+    ( -- * Compiler entrypoints
+      compile, compileCmd
+     -- * Configuration options and parsing 
+     , Config (..), Mode(..), Input(..), configParser, configWithArgs
+    )
+  where
 
+import Control.DeepSeq
+import Control.Exception 
+import Control.Monad.State
+import Options.Applicative
 import Packed.FirstOrder.Common
-import qualified Packed.FirstOrder.SExpFrontend as SExp
 import qualified Packed.FirstOrder.HaskellFrontend as HS
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.LTraverse (inferEffects, Prog(..))
-import Packed.FirstOrder.Passes.Cursorize (cursorize, lower)
 import qualified Packed.FirstOrder.LTraverse as L2
-import Packed.FirstOrder.Target (codegenProg,Prog)
-import qualified Packed.FirstOrder.Target as L3
-import System.FilePath (replaceExtension)
+import Packed.FirstOrder.Passes.Cursorize (cursorize, lower)
+import qualified Packed.FirstOrder.SExpFrontend as SExp
+import Packed.FirstOrder.Target (codegenProg)
+import System.FilePath
+import System.Environment
+import System.Process
+import System.Directory
+import System.Exit
+import System.IO.Error (isDoesNotExistError)
 import Text.PrettyPrint.GenericPretty
-import Control.Monad.State
-import Control.DeepSeq
-import Control.Exception (evaluate)
 ------------------------------------------------------------
 
 import Data.Set as S hiding (map)
-import qualified Data.Set as S (map)
 import qualified Data.Map as M
-import Data.Maybe (fromJust, catMaybes)
+import Data.Maybe (fromJust)
 
 ----------------------------------------
 -- PASS STUBS
@@ -247,66 +255,183 @@ lowerCopiesAndTraversals :: L2.Prog -> SyM L2.Prog
 lowerCopiesAndTraversals p = pure p
 
 
+-- Configuring and launching the compiler.
 --------------------------------------------------------------------------------
 
--- | Compile foo.sexp and write the output C code to the corresponding
--- foo.c file.
-compileSExpFile :: FilePath -> IO ()
-compileSExpFile = compileFile SExp.parseFile
+data Config = Config
+  { input     :: Input
+  , mode      :: Mode
+  }
 
--- | Same as compileSExpFile except starting with a ".hs".
-compileHSFile :: FilePath -> IO ()
-compileHSFile = compileFile HS.parseFile
+-- | What input format to expect on disk.
+data Input = Haskell 
+           | SExpr
+           | Unspecified
+  deriving (Show,Read,Eq,Ord,Enum,Bounded)
+
+-- | How far to run the compiler/interpreter.
+data Mode = ToParse  -- ^ Parse and then stop
+          | ToC      -- ^ Compile to C
+          | ToExe    -- ^ Compile to C then build a binary.
+          | RunExe   -- ^ Compile to executable then run.
+          | Interp2  -- ^ Interp late in the compiler pipeline.
+          | Interp1  -- ^ Interp early.  Not implemented.
+  deriving (Show,Read,Eq,Ord,Enum,Bounded)
+
+defaultConfig :: Config
+defaultConfig = 
+  Config { input = Unspecified
+         , mode  = ToExe }
+
+configParser :: Parser Config
+configParser = Config <$> inputParser <*> modeParser
+ where  
+  -- Most direct way, but I don't like it:
+  _inputParser :: Parser Input
+  _inputParser = option auto
+   ( long "input"
+        <> metavar "I"
+        <> help ("Input file format, if unspecified based on file extension. " ++
+               "Options are: "++show [minBound .. maxBound::Input]))                   
+  _modeParser :: Parser Mode
+  _modeParser = option auto
+   ( long "mode"
+        <> metavar "I"
+        <> help ("Compilation mode. " ++
+                "Options are: "++show [minBound .. maxBound::Mode]))
+  
+  inputParser :: Parser Input
+                -- I'd like to display a separator and some more info.  How?
+  inputParser = -- infoOption "foo" (help "bar") <*>
+                flag' Haskell (long "hs")  <|>
+                flag Unspecified SExpr (long "sexp")
+
+  modeParser = -- infoOption "foo" (help "bar") <*> 
+               flag' ToParse (long "parse" <> help "only parse, then print & stop") <|> 
+               flag' ToC     (long "toC" <> help "compile to a C file, named after the input") <|> 
+               flag' Interp1 (long "interp1" <> help "run through the interpreter early, right after parsing") <|> 
+               flag' Interp2 (long "interp2" <> help "run through the interpreter after cursor insertion") <|>
+               flag' RunExe  (long "run"     <> help "compile and then run executable") <|>  
+               flag ToExe ToExe (long "exe"  <> help "compile through C to executable (default)")
+
+-- | Parse configuration as well as file arguments.
+configWithArgs :: Parser (Config,[FilePath])
+configWithArgs = (,) <$> configParser 
+                     <*> some (argument str (metavar "FILES..."
+                                             <> help "Files to compile."))
+
+----------------------------------------
+
+-- | Command line version of the compiler entrypoint.  Parses command
+-- line arguments given as string inputs.
+compileCmd :: [String] -> IO ()
+compileCmd args = withArgs args $ 
+    do (cfg,files) <- execParser opts 
+       mapM_ (compile cfg) files
+       return ()
+  where
+    opts = info (helper <*> configWithArgs)
+      ( fullDesc
+     <> progDesc "Compile FILES according to the below options."
+     <> header "A compiler for a minature tree traversal language" )
+
 
 sepline :: String
 sepline = replicate 80 '='
 
+lvl :: Int
+lvl = 2
 
-compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compileFile parser fp =
-  do (l1,cnt0) <- parser fp
+-- | Compiler entrypoint, given a full configuration and a list of
+-- files to process.
+compile :: Config -> FilePath -> IO ()
+-- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
+compile Config{input,mode} fp = do 
+  let parser = case input of
+                 Haskell -> HS.parseFile
+                 SExpr   -> SExp.parseFile
+                 Unspecified -> 
+                   case takeExtension fp of
+                     ".hs"   -> HS.parseFile
+                     ".sexp" -> SExp.parseFile
+                     ".rkt"  -> SExp.parseFile
+                     oth -> error$ "compile: unrecognized file extension: "++
+                                   show oth++"  Please specify compile input format."
+  (l1,cnt0) <- parser fp
+  let printParse l = do 
+                        dbgPrintLn l sepline
+                        dbgPrintLn l $ sdoc l1
+  if mode == ToParse
+   then do dbgPrintLn lvl "Parsed program:" 
+           printParse 0
+   else do 
+    dbgPrintLn lvl "Compiler pipeline starting, parsed program:"
+    printParse lvl
+    let pass :: (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
+        pass who fn x = do
+          cnt <- get
+          _ <- lift $ evaluate $ force x
+          let (y,cnt') = runSyM cnt (fn x)
+          put cnt'
+          lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":"
+          lift$ dbgPrintLn lvl sepline
+          _ <- lift $ evaluate $ force y
+          lift$ dbgPrintLn lvl $ sdoc y
+          return y
 
-     let lvl = 2
-     dbgPrintLn lvl "Compiler pipeline starting, parsed program:"
-     dbgPrintLn lvl sepline
-     dbgPrintLn lvl $ sdoc l1
-     let pass :: (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
-         pass who fn x = do
-           cnt <- get
-           _ <- lift $ evaluate $ force x
-           let (y,cnt') = runSyM cnt (fn x)
-           put cnt'
-           lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":"
-           lift$ dbgPrintLn lvl sepline
-           _ <- lift $ evaluate $ force y
-           lift$ dbgPrintLn lvl $ sdoc y
-           return y
+        -- No reason to chatter from passes that are stubbed out anyway:
+        pass' :: (Out b, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
+        pass' _ fn x = do
+          cnt <- get;
+          let (y,cnt') = runSyM cnt (fn x);
+          put cnt';
+          _ <- lift $ evaluate $ force y;
+          return y
 
-         -- No reason to chatter from passes that are stubbed out anyway:
-         pass' :: (Out b, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
-         pass' _ fn x = do
-           cnt <- get;
-           let (y,cnt') = runSyM cnt (fn x);
-           put cnt';
-           _ <- lift $ evaluate $ force y;
-           return y
+    when (mode == Interp1) $ 
+      error "Early-phase interpreter not implemented yet!"
 
-     str <- evalStateT
-              (do l1b <- pass "freshNames"               freshNames               l1
-                  l1c <- pass "flatten"                  flatten                  l1b
-                  l2  <- pass  "inferEffects"             inferEffects             l1c
-                  mt  <- pass' "findMissingTraversals"    findMissingTraversals    l2
-                  l2b <- pass' "addTraversals"            (addTraversals mt)       l2
-                  l2c <- pass' "addCopies"                addCopies                l2b
-                  l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
-                  l2e <- pass  "cursorize"                cursorize                l2d
-                  l3  <- pass  "lower"                    lower                    l2e
+    let outfile = (replaceExtension fp ".c")
+        exe     = replaceExtension fp ".exe"
+    
+    clearFile outfile
+    clearFile exe
+    str <- evalStateT
+             (do l1b <- pass "freshNames"               freshNames               l1
+                 l1c <- pass "flatten"                  flatten                  l1b
+                 l2  <- pass  "inferEffects"             inferEffects             l1c
+                 mt  <- pass' "findMissingTraversals"    findMissingTraversals    l2
+                 l2b <- pass' "addTraversals"            (addTraversals mt)       l2
+                 l2c <- pass' "addCopies"                addCopies                l2b
+                 l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
+                 l2e <- pass  "cursorize"                cursorize                l2d
+                 l3  <- pass  "lower"                    lower                    l2e
 
-                  str <- lift (codegenProg l3)
-                  lift$ dbgPrintLn lvl $ "\nFinal C codegen:"
-                  lift$ dbgPrintLn lvl sepline
-                  lift$ dbgPrintLn lvl str
-                  return str)
-               cnt0
+                 if mode == Interp2
+                  then error "FINISHME - call Target interpreter"
+                  else do
+                   str <- lift (codegenProg l3)
+                   lift$ dbgPrintLn lvl $ "\nFinal C codegen:"
+                   lift$ dbgPrintLn lvl sepline
+                   lift$ dbgPrintLn lvl str
+                   return str)
+              cnt0
+    
+    writeFile outfile str
+    when (mode == ToExe || mode == RunExe) $ do
+      cd <- system $ "gcc -O3 "++outfile++" -o "++ exe
+      case cd of
+       ExitFailure n -> error$ "C compiler failed!  Code: "++show n
+       ExitSuccess -> do 
+         when (mode == RunExe)$ do
+          c2 <- system exe
+          case c2 of
+            ExitSuccess -> return ()
+            ExitFailure n -> error$ "Treelang program exitted with erro code "++ show n
 
-     writeFile (replaceExtension fp ".c") str
+
+clearFile :: FilePath -> IO ()
+clearFile fileName = removeFile fileName `catch` handleErr
+  where 
+   handleErr e | isDoesNotExistError e = return ()
+               | otherwise = throwIO e
