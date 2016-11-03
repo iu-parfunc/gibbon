@@ -126,7 +126,7 @@ run_all: all run_core
 	$(MAKE) run_java
 
 # the main ones we are interested in benchmarking:
-run_core: all 
+run_core: c ghc
 	./treebench_ghc_strict.exe  seq $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_ghc_lazy.exe    $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c.exe           $(DEPTH) $(DEFAULT_ITERS)
