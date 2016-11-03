@@ -4,6 +4,7 @@ default: test
 test:
 	$(MAKE) parse_all
 	$(MAKE) run_tests
+	$(MAKE) run_tests_packed
 
 # Run the tests straight through Racket
 valid: treelang_lib
@@ -20,9 +21,12 @@ parse_all:
 	stack build
 	for f in `ls *.sexp`; do \
           echo "Parsing $$f"; \
-          $(TREEC) --parse $$f; done
+          $(TREEC) --parse $$f || exit 1; done
 
-PASSING_TESTS= test00_add test01_if test02_arith
+PASSING_TESTS= test00_add.sexp test02_arith.sexp
+# WRONG ANSWER
+# test01_if.sexp 
+
 # FIX THESE: All are blocked on something.  Then move them to the above list:
 #  test03  -- flatten fromJust
 #  test03b -- MkTrue typeExp
@@ -46,7 +50,7 @@ PASSING_TESTS= test00_add test01_if test02_arith
 test00_add.sexp.ans:
 	$(MAKE) valid
 
-TREECARGS ?= ""
+TREECARGS ?= 
 
 # Run the tests that work:
 run_tests: test00_add.sexp.ans
@@ -54,18 +58,20 @@ run_tests: test00_add.sexp.ans
 	@echo "--------------------------------------------------"
 	stack build
 	for f in $(PASSING_TESTS); do \
-          $(TREEC) --run $(TREECARGS) $$f.sexp > $$f.sexp.out; \
+          $(TREEC) --run $(TREECARGS) $$f > $$f.out; \
           echo "Now check expected $$f.ans, versus received, $$f.out"; \
-          diff $$f.sexp.ans $$f.sexp.out || (echo "ERROR: Answers differed!"; exit 1); \
+          diff $$f.ans $$f.out; \
+          if [ $$? != "0" ]; then echo "ERROR: Answers differed!"; exit 1; fi; \
           echo "  -> Success."; \
         done
 
 PACKED_TESTS= test00_add 
 
 # Run the tests that work under the packed regime:
-run_tests_packed: 
+run_tests_packed: test00_add.sexp.ans
+	$(MAKE) TREECARGS="--packed"
 
-PACKED_TESTS= test00_add 
+PACKED_TESTS= test00_add.sexp
 #  test04b -- cursorize/mkprod
 #  test05  -- cursorize tail Apps
 #  test05b -- cursorize/let

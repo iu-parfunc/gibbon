@@ -14,6 +14,7 @@
 module Packed.FirstOrder.SExpFrontend 
        (parseFile, parseSExp, primMap, main) where
 
+import Data.Char
 import Data.Text as T
 import Data.List as L
 import Data.Set as S
@@ -201,6 +202,10 @@ trueE = PrimAppE MkTrue []
 
 falseE :: Exp
 falseE = PrimAppE MkFalse []
+
+-- FIXME: we cannot intern strings until runtime.
+hackySymbol :: String -> Int
+hackySymbol s = product (L.map ord s)  
          
 exp :: Sexp -> Exp
 exp se =
@@ -218,10 +223,13 @@ exp se =
    L4 "if" test conseq altern -> 
      IfE (exp test) (exp conseq) (exp altern)
 
+   -- FIXME: Need LitSym:
+   L2 "quote" (A v) -> LitE $ hackySymbol (T.unpack v)
+     
    -- Any other naked symbol is a variable:
    A v -> VarE (toVar v)
    RSAtom (HSInt n)  -> LitE (fromIntegral n)
-     
+                        
    -- L [A "error",arg] ->
    L3 "ann" (L2 "error" arg) ty -> 
       case arg of

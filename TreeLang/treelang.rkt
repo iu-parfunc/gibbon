@@ -115,8 +115,8 @@ lit := int | #t | #f
            (define-type type1 (U ts ...))
            (struct ts ([f-ids : f] ...) #:transparent) ...))]))
 
-(define True #t)
-(define False #f)
+(define True  : Bool #t)
+(define False : Bool #f)
 
 (begin-encourage-inline 
   ;; FIXME: need to make sure these inline:
