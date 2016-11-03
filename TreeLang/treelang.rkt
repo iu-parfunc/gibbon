@@ -10,7 +10,7 @@
          time + * -
 
          #%app #%module-begin #%datum quote
-         only-in all-defined-out ann
+         only-in all-defined-out ann #%top-interaction
          #;(all-from-out typed/racket))
 
 (require (prefix-in r typed/racket/base)

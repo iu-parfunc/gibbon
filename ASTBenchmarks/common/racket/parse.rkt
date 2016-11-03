@@ -6,27 +6,30 @@
 (require "../../grammar_racket.sexp")
 (provide parse)
 
+(: parse-toplvl-list : Any -> ListToplvl)
+(define (parse-toplvl-list v)
+  (match v
+    [`(NULLTOPLVL) (NULLTOPLVL)]
+    [`(CONSTOPLVL ,(app parse t) ,(app parse-toplvl-list ts)) (CONSTOPLVL t ts)]))
+
 (: parse : (Any -> Toplvl))
 (define (parse v)
   (match v
-    [`(DefineValues (,x ...) ,(app parse-expr e))
-     #:when  (andmap symbol? x)
-     (DefineValues x e)]
-    [`(DefineSyntaxes (,x ...) ,(app parse-expr e))
-     #:when (andmap symbol? x)
-     (DefineSyntaxes x e)]
-    [`(BeginTop (,e ...)) (BeginTop (map parse e))]
+    [`(DefineValues ,x ,(app parse-expr e))
+     (DefineValues (parse-listsym x) e)]
+    [`(DefineSyntaxes ,x ,(app parse-expr e))
+     (DefineSyntaxes (parse-listsym x) e)]
+    [`(BeginTop ,e)
+     (BeginTop (parse-toplvl-list e))]
     [`(Expression ,(app parse-expr e))
      (Expression e)]))
 
 (: parse-formals : (Any -> Formals))
 (define (parse-formals v)
   (match v
-    [`(F1 (,x ...))
-     #:when (andmap symbol? x)
+    [`(F1 ,(app parse-listsym x))
      (F1 x)]
-    [`(F2 (,x ...) ,(? symbol? y))
-     #:when (andmap symbol? x)
+    [`(F2 ,(app parse-listsym x) ,(? symbol? y))
      (F2 x y)]
     [`(F3 ,(? symbol? x))
      (F3 x)]))
@@ -34,15 +37,22 @@
 (: parse-lambdacase : (Any -> LAMBDACASE))
 (define (parse-lambdacase v)
   (match v
-    [`(MKLAMBDACASE ,(app parse-formals f) (,e ...))
-     (MKLAMBDACASE f (map parse-expr e))]))
+    [`(CONSLAMBDACASE ,(app parse-formals f) ,e ,rest)
+     (CONSLAMBDACASE f (parse-expr-list e) (parse-lambdacase rest))]
+    ['(NULLLAMBDACASE) (NULLLAMBDACASE)]))
+
+(: parse-listsym : Any -> ListSym)
+(define (parse-listsym v)
+  (match v
+    [`(CONSSYM ,(? symbol? s) ,rest) (CONSSYM s (parse-listsym rest))]
+    ['(NULLSYM) (NULLSYM)]))
 
 (: parse-lvbind : (Any -> LVBIND))
 (define (parse-lvbind v)
   (match v
-    [`(MKLVBIND (,x ...) ,(app parse-expr e))
-     #:when (andmap symbol? x)
-     (MKLVBIND x e)]))
+    [`(CONSLVBIND ,(app parse-listsym x) ,(app parse-expr e) ,rest)
+     (CONSLVBIND x e (parse-lvbind rest))]
+    ['(NULLLVBIND) (NULLLVBIND)]))
 
 (: parse-datum : (Any -> Datum))
 (define (parse-datum v)
@@ -59,24 +69,31 @@
                   [(_ expected) (syntax/loc stx
                                   (? (is=? expected)))])))
 
+(: parse-expr-list : Any -> ListExpr)
+(define (parse-expr-list e)
+  (match e
+    [`(NULLEXPR) (NULLEXPR)]
+    [`(CONSEXPR ,(app parse-expr e) ,(app parse-expr-list rest))
+     (CONSEXPR e rest)]))
+
 (: parse-expr : (Any -> Expr))
 (define (parse-expr v)
   (match v
     [`(,(=? 'VARREF) ,(? symbol? x)) (VARREF x)]
-    [`(,(=? 'Lambda) ,(app parse-formals fs) (,e ...))
-     (Lambda fs (map parse-expr e))]
-    [`(,(=? 'CaseLambda) (,lc ...))
-     (CaseLambda (map parse-lambdacase lc))]
+    [`(,(=? 'Lambda) ,(app parse-formals fs) ,e)
+     (Lambda fs (parse-expr-list e))]
+    [`(,(=? 'CaseLambda) ,lc)
+     (CaseLambda (parse-lambdacase lc))]
     [`(,(=? 'If) ,(app parse-expr cond) ,(app parse-expr then) ,(app parse-expr else))
      (If cond then else)]
-    [`(,(=? 'Begin) (,e ...))
-     (Begin (map parse-expr e))]
-    [`(,(=? 'Begin0) ,(app parse-expr e1) (,e ...))
-     (Begin0 e1 (map parse-expr e))]
-    [`(,(=? 'LetValues) (,lvs ...) (,e ...))
-     (LetValues (map parse-lvbind lvs) (map parse-expr e))]
-    [`(,(=? 'LetrecValues) (,lvs ...) (,e ...))
-     (LetrecValues (map parse-lvbind lvs) (map parse-expr e))]
+    [`(,(=? 'Begin) ,e)
+     (Begin (parse-expr-list e))]
+    [`(,(=? 'Begin0) ,(app parse-expr e1) ,e)
+     (Begin0 e1 (parse-expr-list e))]
+    [`(,(=? 'LetValues) ,lvs ,e)
+     (LetValues (parse-lvbind lvs) (parse-expr-list e))]
+    [`(,(=? 'LetrecValues) ,lvs ,e)
+     (LetrecValues (parse-lvbind lvs) (parse-expr-list e))]
     [`(,(=? 'SetBang) ,(? symbol? x) ,(app parse-expr e))
      (SetBang x e)]
     [`(,(=? 'Quote) ,(app parse-datum d))
@@ -87,8 +104,8 @@
      (QuoteSyntaxLocal d)]
     [`(,(=? 'WithContinuationMark) ,(app parse-expr e1) ,(app parse-expr e2) ,(app parse-expr e3))
      (WithContinuationMark e1 e2 e3)]
-    [`(,(=? 'App) (,e ...))
-     (App (map parse-expr e))]
+    [`(,(=? 'App) ,e0 ,es)
+     (App (parse-expr e0) (parse-expr-list es))]
     [`(,(=? 'Top) ,(? symbol? x))
      (Top x)]
     [`(,(=? 'VariableReference) ,(? symbol? x))

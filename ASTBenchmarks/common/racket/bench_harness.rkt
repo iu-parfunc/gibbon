@@ -39,10 +39,9 @@
     (printf "Done ingesting AST.\n")
     
     (let loop ([iters 1])
+      (collect-garbage)
       (define-values (_ cpu real gc)
-        (begin (collect-garbage) ;(collect-garbage)(collect-garbage)
-               (time-apply (lambda () (iterate-pass ast iters))
-                           '())))
+        (time-apply (lambda () (iterate-pass ast iters)) '()))
       (define batchseconds (/ real 1000.0))
 
       (if (>= batchseconds target-time)
