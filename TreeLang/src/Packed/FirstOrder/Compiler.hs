@@ -419,15 +419,16 @@ compile Config{input,mode} fp = do
     
     writeFile outfile str
     when (mode == ToExe || mode == RunExe) $ do
-      cd <- system $ "gcc -std=c11 -O3 "++outfile++" -o "++ exe
+      cd <- system $ "gcc -std=gnu11 -O3 "++outfile++" -o "++ exe
       case cd of
        ExitFailure n -> error$ "C compiler failed!  Code: "++show n
        ExitSuccess -> do 
          when (mode == RunExe)$ do
-          c2 <- system exe
+          exepath <- makeAbsolute exe
+          c2 <- system exepath
           case c2 of
             ExitSuccess -> return ()
-            ExitFailure n -> error$ "Treelang program exitted with erro code "++ show n
+            ExitFailure n -> error$ "Treelang program exited with error code "++ show n
 
 
 clearFile :: FilePath -> IO ()

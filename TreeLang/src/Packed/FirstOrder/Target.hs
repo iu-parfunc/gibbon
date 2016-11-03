@@ -23,6 +23,7 @@ module Packed.FirstOrder.Target
 -- import Packed.FirstOrder.L1_Source ()
 
 import Control.DeepSeq
+import Control.Monad
 import Data.List (nub)
 import Data.Word (Word8)
 
@@ -36,9 +37,11 @@ import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import Prelude hiding (init)
+import System.Environment
+import System.Directory
 import Text.PrettyPrint.GenericPretty (Out (..))
 import Text.PrettyPrint.Mainland
-
+    
 import Packed.FirstOrder.Common
 
 --------------------------------------------------------------------------------
@@ -144,7 +147,14 @@ data FunDecl = FunDecl
 -- "main" expression.
 codegenProg :: Prog -> IO String
 codegenProg (Prog funs mtal) = do
-      rts <- readFile "rts.c" -- TODO (maybe): We can read this in in compile time using TH
+      env <- getEnvironment
+      let rtsPath = case lookup "TREELANGDIR" env of
+                      Just p -> p ++"/TreeLang/rts.c"
+                      Nothing -> "rts.c" -- Assume we're running from the compiler dir!
+      e <- doesFileExist rtsPath
+      unless e $ error$ "codegen: rts.c file not found at path: "++rtsPath
+                       ++"\n Consider setting TREELANGDIR to repo root.\n"
+      rts <- readFile rtsPath -- TODO (maybe): We can read this in in compile time using TH
       return (rts ++ '\n' : pretty 80 (stack (map ppr defs)))
     where
       defs = fst $ runSyM 0 $ do

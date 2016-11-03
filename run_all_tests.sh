@@ -43,6 +43,8 @@ stack --install-ghc test "$STACKARGS"
 
 DEBUG=2 stack exec -- treec --toC examples/test00_add.sexp
 
+cd $top/TreeLang/examples
+make test
 
 
 
@@ -67,6 +69,6 @@ if [ "$DOCKER" == "1" ]; then
     make
     make run_small
 else
-    # Don't do a full build, it requires too many toolchains:    
+    echo "Not under Docker. Don't do a full Bintree build, it requires too many toolchains."
     make c ghc run_small_core
 fi
