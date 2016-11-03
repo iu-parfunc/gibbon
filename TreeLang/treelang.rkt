@@ -13,7 +13,9 @@
          only-in all-defined-out ann
          #;(all-from-out typed/racket))
 
-(require (prefix-in r typed/racket/base))
+(require (prefix-in r typed/racket/base)
+         racket/performance-hint
+         racket/unsafe/ops)
 
 ;; add for/list  w/types
 
@@ -99,7 +101,7 @@ lit := int | #t | #f
     (match ls
       [(list x) x])))
 
-(define-type Int Integer)
+(define-type Int Fixnum)
 (define-type Sym Symbol)
 (define-type Bool Boolean)
 (define-type (SymDict t) (HashTable Symbol t))
@@ -116,22 +118,23 @@ lit := int | #t | #f
 (define True #t)
 (define False #f)
 
-;; FIXME: need to make sure these inline:
-(define (+ [a : Int] [b : Int]) : Int
-  (r+ a b))
+(begin-encourage-inline 
+  ;; FIXME: need to make sure these inline:
+  (define (+ [a : Int] [b : Int]) : Int
+    (unsafe-fx+ a b))
+  
+  (define (- [a : Int] [b : Int]) : Int
+    (unsafe-fx- a b))
+  
+  (define (* [a : Int] [b : Int]) : Int
+    (unsafe-fx* a b))
 
-(define (- [a : Int] [b : Int]) : Int
-  (r- a b))
-
-(define (* [a : Int] [b : Int]) : Int
-  (r* a b))
-
-(define (eq? [a : Sym] [b : Sym]) : Bool
-  (req? a b))
-
-(define (= [a : Int] [b : Int]) : Bool
-  (req? a b))
-
+  (define (eq? [a : Sym] [b : Sym]) : Bool
+    (req? a b))
+  
+  (define (= [a : Int] [b : Int]) : Bool
+    (req? a b))
+  )
 
 #|
 (data Tree
