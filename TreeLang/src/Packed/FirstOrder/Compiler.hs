@@ -328,7 +328,6 @@ compileCmd :: [String] -> IO ()
 compileCmd args = withArgs args $ 
     do (cfg,files) <- execParser opts 
        mapM_ (compile cfg) files
-       return ()
   where
     opts = info (helper <*> configWithArgs)
       ( fullDesc
@@ -419,7 +418,7 @@ compile Config{input,mode} fp = do
     
     writeFile outfile str
     when (mode == ToExe || mode == RunExe) $ do
-      cd <- system $ "gcc -std=c11 -O3 "++outfile++" -o "++ exe
+      cd <- system $ "gcc -std=gnu11 -O3 "++outfile++" -o "++ exe
       case cd of
        ExitFailure n -> error$ "C compiler failed!  Code: "++show n
        ExitSuccess -> do 
