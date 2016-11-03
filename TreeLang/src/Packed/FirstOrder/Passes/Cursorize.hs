@@ -395,7 +395,9 @@ finishTYP = L1.Packed "FINISHME"
 
 -- =============================================================================
 
--- | Remove all occurrences of tuples except in function returns.
+-- | Remove all occurrences of tuples except:
+--   (1) returned to a let binding by a funcall on RHS
+--   (2) returned to a let binding by an if-expr on RHS
 detuple :: L2.Prog -> SyM L2.Prog
 detuple = undefined
 

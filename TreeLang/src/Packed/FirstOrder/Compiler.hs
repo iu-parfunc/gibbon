@@ -155,7 +155,9 @@ flatten (L1.Prog defs funs main) =
                  return $ mkLetE (v1,L1.BoolTy,fe1) $ L1.IfE (L1.VarE v1) fe2 fe3
           flattenExp env (L1.ProjE i e) =
               do fe <- flattenExp env e
-                 return $ L1.ProjE i fe
+                 let ty = typeExp env e
+                 v1 <- gensym "tmp_flat"
+                 return $ mkLetE (v1,ty,fe) $ L1.ProjE i (L1.VarE v1)
           flattenExp env (L1.MkProdE es) =
               do fes <- mapM (flattenExp env) es
                  nams <- mapM gensym $ replicate (length fes) "tmp_flat"

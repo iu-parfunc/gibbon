@@ -92,6 +92,13 @@ data Tail
                      prim  :: Prim,
                      rands :: [Triv],
                      bod   :: Tail }
+    -- A control-flow join point; an If on the RHS of LeT:
+    | LetIfT { binds :: [(Var,Ty)]
+             , tst :: Triv
+             , con :: Tail
+             , els :: Tail 
+             }
+      
     | IfEqT { val1 :: Var,
               val2 :: Var,
               con  :: Tail,
