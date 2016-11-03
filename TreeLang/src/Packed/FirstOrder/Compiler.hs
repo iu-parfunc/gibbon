@@ -34,7 +34,8 @@ import Text.PrettyPrint.GenericPretty
 import Data.Set as S hiding (map)
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
-
+import Debug.Trace
+    
 ----------------------------------------
 -- PASS STUBS
 ----------------------------------------
@@ -116,13 +117,13 @@ flatten (L1.Prog defs funs main) =
     do main' <- case main of
                   Nothing -> return Nothing
                   Just m -> do m' <- flattenExp [] m
-                               return $ Just (inlineTrivExp [] m')
+                               return $ Just m' -- (inlineTrivExp [] m')
        funs' <- flattenFuns funs
        return $ L1.Prog defs funs' main'
     where flattenFuns = mapM flattenFun
           flattenFun (FunDef nam (narg,targ) ty bod) =
               do bod' <- flattenExp [(narg,targ)] bod
-                 return $ FunDef nam (narg,targ) ty (inlineTrivExp [] bod')
+                 return $ FunDef nam (narg,targ) ty bod' -- (inlineTrivExp [] bod')
 
           flattenExp :: [(Var,L1.Ty)] -> L1.Exp -> SyM L1.Exp
           flattenExp _env (L1.VarE v) = return $ L1.VarE v
@@ -136,29 +137,15 @@ flatten (L1.Prog defs funs main) =
           flattenExp env (L1.PrimAppE p es) =
               do es' <- mapM (flattenExp env) es
                  nams <- mapM gensym $ replicate (length es) "tmp_flat"
-                 let bind [] _t e = e
-                     bind ((v,e'):xs) t e = mkLetE (v,t,e') $ bind xs t e
-                 case p of
-                   L1.AddP -> return $ bind (zip nams es') L1.IntTy $
-                              L1.PrimAppE L1.AddP $ map L1.VarE nams
-                   L1.SubP -> return $ bind (zip nams es') L1.IntTy $
-                              L1.PrimAppE L1.SubP $ map L1.VarE nams
-                   L1.MulP -> return $ bind (zip nams es') L1.IntTy $
-                              L1.PrimAppE L1.MulP $ map L1.VarE nams
-                   L1.EqSymP -> return $ bind (zip nams es') L1.SymTy $
-                                L1.PrimAppE L1.EqSymP $ map L1.VarE nams
-                   L1.DictInsertP -> error "DictInsertP not handled in flatten yet"
-                   L1.DictLookupP ->
-                       do let dictty = typeExp env $ es !! 1
-                          return $
-                                 mkLetE (nams !! 0, L1.SymTy, es !! 0) $ -- NOTE: expected to be symbol!
-                                 mkLetE (nams !! 1, dictty, es !! 1) $
-                                 L1.PrimAppE L1.DictLookupP $ map L1.VarE nams
-                   L1.ErrorP s t -> return $ L1.PrimAppE (L1.ErrorP s t) []
+                 let bind [] e = e
+                     bind ((v,e'):xs) e = mkLetE (v,(typeExp env e'),e') $ bind xs e
+                 let exp = bind (zip nams es') $ L1.PrimAppE p $ map L1.VarE nams
+                 return exp
           flattenExp env (L1.LetE (v,t,e') e) =
               do fe' <- flattenExp env e'
                  fe  <- flattenExp env e
-                 return $ mkLetE (v,t,fe') fe
+                 let exp = mkLetE (v,t,fe') fe
+                 return exp
           flattenExp env (L1.IfE e1 e2 e3) =
               do fe1 <- flattenExp env e1
                  fe2 <- flattenExp env e2
@@ -254,7 +241,7 @@ inlineTrivExp env (L1.LetE (v,t,e') e) =
     case e' of
       L1.VarE _v -> inlineTrivExp ((v,e'):env) e
       L1.LitE _i -> inlineTrivExp ((v,e'):env) e
-      _ -> L1.LetE (v,t,e') e
+      _ -> L1.LetE (v,t,e') (inlineTrivExp env e)
 inlineTrivExp env (L1.IfE e1 e2 e3) =
     L1.IfE (inlineTrivExp env e1) (inlineTrivExp env e2) (inlineTrivExp env e3)
 inlineTrivExp env (L1.ProjE i e) = L1.ProjE i $ inlineTrivExp env e
