@@ -37,7 +37,7 @@
 (define (memq [v : Sym] [ls : ListSym]) : Bool
   (case ls
     [(CONSSYM s ls) (or (eq? v s) (memq v ls))]
-    [(NULLEXPR) False]))
+    [(NULLSYM) False]))
 
 (define (bound? [old : Sym] [ls : LVBIND]) : Bool
   (case ls

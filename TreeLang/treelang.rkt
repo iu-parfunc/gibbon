@@ -83,8 +83,9 @@ lit := int | #t | #f
 (define-syntax (case stx)
   (syntax-parse stx
     [(case v [(~and pat (S:id p:id ...)) rhs] ...)
-     #'(match v
-         [pat rhs] ...)]))
+     (syntax/loc stx
+       (match v
+         [pat rhs] ...))]))
 
 ;;(insert e e e)
 (define-syntax-rule (insert ht key v)
