@@ -1,4 +1,5 @@
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
@@ -20,9 +21,9 @@ import Data.Map as M
 import Data.Text.IO (readFile)
 import System.Environment
 import Text.Parsec 
-import GHC.Generics
+-- import GHC.Generics (Generic)
 import Text.PrettyPrint.GenericPretty
-import Packed.FirstOrder.L1_Source as L1
+import Packed.FirstOrder.L1_Source as S
 import Packed.FirstOrder.Common 
 import Prelude hiding (readFile, exp)
 
@@ -112,11 +113,10 @@ tagDataCons ddefs = go allCons
        TimeIt e  -> TimeIt $ go cons e
        IfE a b c -> IfE (go cons a) (go cons b) (go cons c)   
 
--- TODO: pattern synonyms would help with these:                    
--- colon :: RichSExpr HaskLikeAtom
--- colon = RSAtom (HSIdent ":")
+       MapE  (v,t,e) bod -> MapE (v,t, go cons e) (go cons bod)
+       FoldE (v1,t1,e1) (v2,t2,e2) b -> FoldE (v1,t1,go cons e1) (v2,t2,go cons e2) (go cons b)
                     
-parseSExp :: [Sexp] -> SyM L1.Prog
+parseSExp :: [Sexp] -> SyM Prog
 parseSExp ses = 
   do prog@Prog {ddefs} <- go ses [] [] Nothing
      return $ mapExprs (tagDataCons ddefs) prog
@@ -126,13 +126,13 @@ parseSExp ses =
      [] -> return $ Prog (fromListDD dds) (fromListFD fds) mn
 
      -- IGNORED!:
-     (RSList (RSAtom (HSIdent "provide"):_) : rst) -> go rst dds fds mn
-     (RSList (RSAtom (HSIdent "require"):_) : rst) -> go rst dds fds mn
+     (RSList (A "provide":_) : rst) -> go rst dds fds mn
+     (RSList (A "require":_) : rst) -> go rst dds fds mn
 
-     (RSList (RSAtom (HSIdent "data"): RSAtom (HSIdent tycon) : cs) : rst) ->
+     (RSList (A "data": A tycon : cs) : rst) ->
          go rst (DDef (toVar tycon) (L.map docasety cs) : dds) fds mn
-     (RSList [RSAtom (HSIdent "define"), funspec, ":", retty, bod] : rst)
-        |  RSList (RSAtom (HSIdent name) : args) <- funspec
+     (RSList [A "define", funspec, ":", retty, bod] : rst)
+        |  RSList (A name : args) <- funspec
         -> do
          let bod' = exp bod
              args' = L.map (\(RSList [id,":",t]) -> (getSym id, typ t))
@@ -169,12 +169,13 @@ tuplizeRefs tmp ls  = go (L.zip [0..] ls)
 
 typ :: RichSExpr HaskLikeAtom -> Ty
 typ s = case s of          
-         (RSAtom (HSIdent "Int"))  -> IntTy
-         (RSAtom (HSIdent "Sym"))  -> SymTy
-         -- (RSAtom (HSIdent "Bool")) -> BoolTy
-         (RSAtom (HSIdent other))  -> Packed (toVar other)
-         (RSList (RSAtom (HSIdent "Vector")  : rst)) -> ProdTy $ L.map typ rst
-         (RSList [RSAtom (HSIdent "SymDict"), t]) -> SymDictTy $ typ t
+         (A "Int")  -> IntTy
+         (A "Sym")  -> SymTy
+         -- (A "Bool") -> BoolTy
+         (A other)  -> Packed (toVar other)
+         (RSList (A "Vector"  : rst)) -> ProdTy $ L.map typ rst
+         (RSList [A "SymDict", t]) -> SymDictTy $ typ t
+         (RSList [A "Listof", t])  -> ListTy $ typ t
          _ -> error$ "SExpression encodes invalid type:\n "++prnt s
 
 getSym :: RichSExpr HaskLikeAtom -> Var
@@ -184,42 +185,60 @@ getSym s = error $ "expected identifier sexpr, got: "++prnt s
 docasety :: Sexp -> (Constr,[Ty])
 docasety s = 
   case s of
-    (RSList ((RSAtom (HSIdent id)) : tys)) -> (toVar id, L.map typ tys)
+    (RSList ((A id) : tys)) -> (toVar id, L.map typ tys)
     _ -> error$ "Badly formed variant of datatype:\n "++prnt s
 
-exp :: Sexp -> L1.Exp
+pattern A s = RSAtom (HSIdent s)
+
+pattern L  a       = RSList a 
+pattern L1 a       = RSList [a]   
+pattern L2 a b     = RSList [A a, b]
+pattern L3 a b c   = RSList [A a, b, c]
+pattern L4 a b c d = RSList [A a, b, c, d]
+                   
+exp :: Sexp -> Exp
 exp se =
  -- trace ("\n ==> Processing Exp:\n  "++prnt se)  $ 
  case se of
-   RSAtom (HSIdent v) -> VarE (toVar v)
+   A v -> VarE (toVar v)
    RSAtom (HSInt n)  -> LitE (fromIntegral n)
 
-   -- RSList [RSAtom (HSIdent "error"),arg] ->
-   RSList [RSAtom (HSIdent "ann"),RSList [RSAtom (HSIdent "error"),arg],ty] -> 
+   -- L [A "error",arg] ->
+   L3 "ann" (L2 "error" arg) ty -> 
       case arg of
         RSAtom (HSString str) -> PrimAppE (ErrorP (T.unpack str) (typ ty)) []
         _ -> error$ "bad argument to 'error' primitive: "++prnt arg
 
-   RSList [RSAtom (HSIdent "time"),arg] -> (TimeIt (exp arg))
+   L2 "time" arg -> (TimeIt (exp arg))
    
-   RSList [RSAtom (HSIdent "let"), RSList bnds, bod] -> 
+   L3 "let" (L bnds) bod -> 
      mkLets (L.map letbind bnds) (exp bod) 
      
-   RSList [RSAtom (HSIdent "if"), test, conseq, altern] -> 
+   L4 "if" test conseq altern -> 
      IfE (exp test) (exp conseq) (exp altern)
 
-   RSList (RSAtom (HSIdent "case"): scrut: cases) -> 
+   L (A "case": scrut: cases) -> 
      CaseE (exp scrut) (M.fromList $ L.map docase cases)
 
-   RSList (RSAtom (HSIdent p) : ls) | isPrim p -> PrimAppE (prim p) $ L.map exp ls
+   L (A p : ls) | isPrim p -> PrimAppE (prim p) $ L.map exp ls
 
+   L3 "for/list" (L1 (L4 v ":" t e)) bod ->     
+     S.MapE (T.unpack v, typ t, exp e) (exp bod)
 
-   RSList (RSAtom (HSIdent "for/list"): bind: bod) ->
-     error$ "SExpFrontend: Finish for/list support:\n "++sdoc se
- --  MapE (exp scrut) (M.fromList $ L.map docase cases)
+   -- I don't see why we need the extra type annotation:
+   L4 "for/fold"
+          (L1 (L4 v1 ":" t1 e1))
+          (L1 (L4 v2 ":" t2 e2))
+          bod -> 
+     S.FoldE (T.unpack v1, typ t1, exp e1)
+             (T.unpack v2, typ t2, exp e2)
+             (exp bod)
 
-                                                  
-   RSList (RSAtom (HSIdent rator):rands) -> 
+   L3 "vector-ref" evec (RSAtom (HSInt ind)) -> S.ProjE (fromIntegral ind) (exp evec)
+   L (A "vector" : es) -> S.MkProdE $ L.map exp es
+                                                
+   -- If NOTHING else matches, we are an application.  Be careful we didn't miss anything:             
+   L (A rator : rands) -> 
      let app = AppE (toVar rator)
      in case rands of   
          [] -> app (MkProdE [])
@@ -228,13 +247,13 @@ exp se =
 
    _ -> error $ "Expression form not handled (yet):\n  "++ 
                sdoc se ++ "\nMore concisely:\n  "++ prnt se
---   RSList
+
 
 -- | One case of a case expression
 docase :: Sexp -> (Constr, ([Var], Exp))
 docase s = 
   case s of
-    RSList [ RSList (RSAtom (HSIdent con):args)
+    RSList [ RSList (A con : args)
            , rhs ]
       -> (toVar con, (L.map getSym args, exp rhs))
     _ -> error$ "bad clause in case expression\n  "++prnt s
@@ -246,7 +265,7 @@ mkLets (a:b) bod = LetE a (mkLets b bod)
 letbind :: Sexp -> (Var,Ty,Exp)
 letbind s = 
   case s of
-   RSList [RSAtom (HSIdent vr), RSAtom (HSIdent ":"),
+   RSList [A vr, A ":",
            ty, rhs]
      -> (toVar vr, typ ty, exp rhs)
    _ -> error $ "Badly formed let binding:\n  "++prnt s
@@ -259,7 +278,8 @@ primMap = M.fromList
   [ ("+", AddP)
   , ("-", SubP)
   , ("*", MulP)
-  , ("eq?", EqP) 
+  , ("eq?", EqP)
+  , ("=",   EqIntP)
   ]
 
 prim :: Text -> Prim
@@ -275,7 +295,7 @@ main = do
 
 
 
-parseFile :: FilePath -> IO (L1.Prog, Int)
+parseFile :: FilePath -> IO (Prog, Int)
 parseFile file = do
   txt    <- fmap bracketHacks $
             -- fmap stripHashLang $

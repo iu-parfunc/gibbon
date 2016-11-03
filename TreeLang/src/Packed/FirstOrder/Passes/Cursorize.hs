@@ -270,7 +270,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
               return$ L1.CaseE ex (M.fromList ls')
 
 
-     _ -> error$ "tail/FINISHME:\n  "++sdoc e
+     _ -> error$ "cursorize/tail - FINISHME:\n  "++sdoc e
      _ -> error$ "cursorize, tail expression expected, found:\n  "++sdoc e
              
   -- Process an expression that occurs on the RHS of a let.  This may 

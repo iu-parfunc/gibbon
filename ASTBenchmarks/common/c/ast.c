@@ -449,6 +449,8 @@ ast_t* build_ast(void* parse_tree) {
   return build_top_lvl(sx);
 }
 
+void print_expression(FILE* fp, ast_t* ast);
+  
 void print_formals(FILE* fp, ast_t* ast) {
   fprintf(fp, "(%s ", FMLS_AST_NAME(ast->fmls));
   if (ast->fmls == F1 || ast->fmls == F2) {

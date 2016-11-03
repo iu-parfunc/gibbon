@@ -67,7 +67,7 @@ void bench(int num_iterations, int tree_size, int buffer_size)
 
 void run()
 {
-    printf("return value: %d\n", __main_expr());
+    printf("%d\n", __main_expr());
 }
 
 int main(int argc, char** argv)

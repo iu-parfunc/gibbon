@@ -9,26 +9,36 @@ RUN cd / && wget -nv https://github.com/cisco/ChezScheme/archive/v9.4.tar.gz && 
 
 RUN cd /ChezScheme-9.4/ && ./configure && time make install
 
-ADD ./deps /tree-velocity/deps
+# ADD ./deps /tree-velocity/BintreeBench/deps
 
-# RUN curl -sSf https://static.rust-lang.org/rustup.sh | sh -s -- --revision=1.14.0-beta
-# RUN /tree-velocity/deps/rustup.sh --revision=1.13
-# RUN /tree-velocity/deps/rustup.sh --revision=1.13.0
-# RUN /tree-velocity/deps/rustup.sh --revision=1.13.0-beta
-RUN /tree-velocity/deps/rustup.sh --revision=1.12.0
-# RUN /tree-velocity/deps/rustup.sh --revision=1.0.0-beta
-# RUN /tree-velocity/deps/rustup.sh --revision=1.4.0
+# Having problems on hive: [2016.11.02]
+# RUN /tree-velocity/BintreeBench/deps/rustup.sh --yes --revision=1.12.0
 
-# RUN which -a rustc && rustc --version
 
-RUN apt-get install -y racket
+# wget --progress=dot:giga https://static.rust-lang.org/dist/rust-1.12.1-x86_64-unknown-linux-gnu.tar.gz && \
+RUN mkdir /tmp/rust && cd /tmp/rust && \
+  curl -O https://static.rust-lang.org/dist/rust-1.12.1-x86_64-unknown-linux-gnu.tar.gz && \
+  tar xf rust-1.12.1-x86_64-unknown-linux-gnu.tar.gz && \
+  cd rust-1.12.1-x86_64-unknown-linux-gnu && \
+  ./install.sh && \
+  cd / && rm -rf /tmp/rust
+
+# This gets 6.3, too old:
+# RUN apt-get install -y racket
+
+RUN cd /tmp/ && \
+  wget --progress=dot:giga http://download.racket-lang.org/releases/6.6/installers/racket-6.6-x86_64-linux.sh && \
+  chmod +x racket-6.6-x86_64-linux.sh && \
+  ./racket-6.6-x86_64-linux.sh --in-place --dest /racket/ && \
+  ln -s /racket/bin/* /usr/local/bin/ && \
+  rm -rf racket-6.6-x86_64-linux.sh
 
 # ------------------------------------------------------------
 
 ADD . /BintreeBench
 
 # Build all the benchmarks:
-RUN scheme --version && rustc --version && \
+RUN scheme --version && rustc --version && racket --version && \
     cd /BintreeBench && make 
 
 # For testing purposes, make sure they all run:

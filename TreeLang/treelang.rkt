@@ -1,16 +1,19 @@
 #lang typed/racket
 
 (provide Int Sym Bool SymDict data empty-dict lookup insert case
-         define let provide require if : for/list for/fold or and
-
+         define let provide require if :
+         for/list for/fold or and
+         vector vector-ref
          list and empty? error 
-         eq? Listof True False
+         eq? = Listof True False
 
          time + * -
 
          #%app #%module-begin #%datum quote
          only-in all-defined-out ann
          #;(all-from-out typed/racket))
+
+(require (prefix-in r typed/racket/base))
 
 ;; add for/list  w/types
 
@@ -69,6 +72,10 @@ lit := int | #t | #f
 
 |#
 
+;; CONSIDERING, but not aded yet:
+;;        | (dict-size e)
+
+
 ;;(case e [(K v ...) e] ...)
 (define-syntax (case stx)
   (syntax-case stx ()
@@ -86,6 +93,12 @@ lit := int | #t | #f
 (define-syntax-rule (empty-dict)
   (hash))
 
+(define-syntax-rule (time e)
+  (let-values ([(ls cpu real gc) (time-apply (lambda () e) '())])
+    (printf "SELFTIMED: ~a\n" (/ (exact->inexact real) 1000.0))
+    (match ls
+      [(list x) x])))
+
 (define-type Int Integer)
 (define-type Sym Symbol)
 (define-type Bool Boolean)
@@ -102,6 +115,23 @@ lit := int | #t | #f
 
 (define True #t)
 (define False #f)
+
+;; FIXME: need to make sure these inline:
+(define (+ [a : Int] [b : Int]) : Int
+  (r+ a b))
+
+(define (- [a : Int] [b : Int]) : Int
+  (r- a b))
+
+(define (* [a : Int] [b : Int]) : Int
+  (r* a b))
+
+(define (eq? [a : Sym] [b : Sym]) : Bool
+  (req? a b))
+
+(define (= [a : Int] [b : Int]) : Bool
+  (req? a b))
+
 
 #|
 (data Tree

@@ -23,6 +23,7 @@ module Packed.FirstOrder.Target
 -- import Packed.FirstOrder.L1_Source ()
 
 import Control.DeepSeq
+import Control.Monad
 import Data.List (nub)
 import Data.Word (Word8)
 
@@ -31,13 +32,16 @@ import Data.Loc (noLoc)
 import Data.Maybe (fromJust)
 import Data.Traversable
 import GHC.Generics (Generic)
-import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty)
+import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
+                           cunit)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import Prelude hiding (init)
+import System.Environment
+import System.Directory
 import Text.PrettyPrint.GenericPretty (Out (..))
 import Text.PrettyPrint.Mainland
-
+    
 import Packed.FirstOrder.Common
 
 --------------------------------------------------------------------------------
@@ -46,7 +50,6 @@ import Packed.FirstOrder.Common
 data Prog = Prog
   { fundefs :: [FunDecl]
   , mainExp :: Maybe MainExp
-      -- ^ When this is `Nothing` we don't attempt to link the source files.
   } deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data MainExp
@@ -143,7 +146,14 @@ data FunDecl = FunDecl
 -- "main" expression.
 codegenProg :: Prog -> IO String
 codegenProg (Prog funs mtal) = do
-      rts <- readFile "rts.c" -- TODO (maybe): We can read this in in compile time using TH
+      env <- getEnvironment
+      let rtsPath = case lookup "TREELANGDIR" env of
+                      Just p -> p ++"/TreeLang/rts.c"
+                      Nothing -> "rts.c" -- Assume we're running from the compiler dir!
+      e <- doesFileExist rtsPath
+      unless e $ error$ "codegen: rts.c file not found at path: "++rtsPath
+                       ++"\n Consider setting TREELANGDIR to repo root.\n"
+      rts <- readFile rtsPath -- TODO (maybe): We can read this in in compile time using TH
       return (rts ++ '\n' : pretty 80 (stack (map ppr defs)))
     where
       defs = fst $ runSyM 0 $ do
@@ -156,24 +166,23 @@ codegenProg (Prog funs mtal) = do
       bench_fn =
         case mtal of
           Just (RunRacketCorePass build_tree bench) ->
-            [ C.FuncDef [cfun| void __fn_to_bench(char* in, char* out) {
+            [cunit|
+              void __fn_to_bench(char* in, char* out) {
                   $(cid bench)(in, out);
-              } |] noLoc
-            , C.FuncDef [cfun| void __build_tree(int tree_size, char* buffer) {
+              }
+              void __build_tree(int tree_size, char* buffer) {
                   $(cid build_tree)(tree_size, buffer);
-              } |] noLoc
-            ]
-
+              } |]
           _ ->
-            [ C.FuncDef [cfun| void __fn_to_bench(char* in, char* out) {
-                  fprintf(stderr, "Benchmark is not implemented for this program.\n");
-                  exit(1);
-              } |] noLoc
-            , C.FuncDef [cfun| void __build_tree(int tree_size, char* buffer) {
-                  fprintf(stderr, "Benchmark is not implemented for this program.\n");
-                  exit(1);
-              } |] noLoc
-            ]
+            [cunit|
+              void __fn_to_bench(char* in, char* out) {
+                fprintf(stderr, "Benchmark is not implemented for this program.\n");
+                exit(1);
+              }
+              void __build_tree(int tree_size, char* buffer) {
+                fprintf(stderr, "Benchmark is not implemented for this program.\n");
+                exit(1);
+              } |]
 
       main_expr :: SyM C.Definition
       main_expr =

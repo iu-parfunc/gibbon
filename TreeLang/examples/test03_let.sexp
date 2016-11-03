@@ -1,5 +1,4 @@
 #lang s-exp "../treelang.rkt"
 
-(if (= 1 2)
-    99
-    101)
+(let ([x : Int 3])
+  (+ x x))

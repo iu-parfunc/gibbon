@@ -2,30 +2,21 @@
 
 set -xe
 
+echo "Running on machine: "`hostname -a`
+uname -a
+
 top=`pwd`
 
-hostname
-uname -a
-which -a stack
-stack --version
-
-# ----------------------------------------
-cd $top/BintreeBench
 if [ "$DOCKER" == "1" ]; then
-    echo "Building under Docker."
-    docker build . -t bintree-bench
-else
-    make
-    make run_small
-fi
+    # Make bintree-bench image:
+    cd $top/BintreeBench
+    make docker
 
-# ----------------------------------------
-cd $top/TreeLang
-if [ "$DOCKER" == "1" ]; then
-    STACKARG="--docker"
-    stack docker pull
+    # Make dependent image:
+    cd $top/
+    docker build -t tree-velocity .
 else
-    STACKARG=""
-fi
 
-stack --install-ghc test "$STACKARG"
+    ./run_all_tests.sh
+
+fi

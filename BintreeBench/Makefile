@@ -114,20 +114,26 @@ DEFAULT_ITERS=17
 run_small:
 	$(MAKE) DEPTH=6 DEFAULT_ITERS=10 run_all
 
+run_small_core:
+	$(MAKE) DEPTH=6 DEFAULT_ITERS=10 run_core
+
 # TODO: replace with an hsbencher harness / Criterion:
-run_all: all
+run_all: all run_core
 	./treebench_mlton.exe       $(DEPTH)
-	./treebench_ghc_strict.exe  seq $(DEPTH) $(DEFAULT_ITERS)
-	./treebench_ghc_lazy.exe    $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_ocaml.exe       $(DEPTH)
 	./treebench_rust.exe        $(DEPTH)
+	$(MAKE) run_chez
+	$(MAKE) run_java
+
+# the main ones we are interested in benchmarking:
+run_core: c ghc
+	./treebench_ghc_strict.exe  seq $(DEPTH) $(DEFAULT_ITERS)
+	./treebench_ghc_lazy.exe    $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c.exe           $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c_packed.exe    $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c_packed_loop.exe $(DEPTH) $(DEFAULT_ITERS)
 	$(MAKE) run_racket
 	$(MAKE) run_racket_packed
-	$(MAKE) run_chez
-	$(MAKE) run_java
 
 #	./treebench_rust_sys_alloc.exe $(DEPTH) 
 
@@ -142,6 +148,9 @@ run_racket_packed:
 
 run_java: treebench.class
 	java treebench $(DEPTH) 33
+
+docker:
+	docker build -t bintree-bench .
 
 clean:
 	rm -f *.exe *.o *.hi treebench treebench_lazy *.cmi *.cmo *.cmx
