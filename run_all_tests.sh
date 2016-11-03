@@ -41,8 +41,6 @@ cd $top/TreeLang
 # Run compiler unit tests 
 stack --install-ghc test "$STACKARGS"
 
-DEBUG=2 stack exec -- treec --toC examples/test00_add.sexp
-
 cd $top/TreeLang/examples
 make test
 
