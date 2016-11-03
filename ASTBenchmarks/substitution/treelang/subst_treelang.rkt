@@ -20,10 +20,43 @@
     [(DefineSyntaxes ls e)
      (DefineSyntaxes ls (expr old new e))]
     [(BeginTop ls)
-     (BeginTop (for/list ([t : Toplvl ls])
-                 (top old new t)))]
+     (BeginTop (top-ls old new ls))]
     [(Expression e)
      (Expression (expr old new e))]))
+
+(define (top-ls [old : Sym] [new : Sym] [es : ListToplvl]) : ListToplvl
+  (case es
+    [(CONSTOPLVL e es) (CONSTOPLVL (top old new e) (top-ls old new es))]
+    [(NULLTOPLVL) (NULLTOPLVL)]))
+
+(define (expr-ls [old : Sym] [new : Sym] [es : ListExpr]) : ListExpr
+  (case es
+    [(CONSEXPR e es) (CONSEXPR (expr old new e) (expr-ls old new es))]
+    [(NULLEXPR) (NULLEXPR)]))
+
+(define (memq [v : Sym] [ls : ListSym]) : Bool
+  (case ls
+    [(CONSSYM s ls) (or (eq? v s) (memq v ls))]
+    [(NULLEXPR) False]))
+
+(define (bound? [old : Sym] [ls : LVBIND]) : Bool
+  (case ls
+    [(CONSLVBIND syms e rest) (if (memq old syms)
+                                  True
+                                  (bound? old rest))]
+    [(NULLLVBIND) False]))
+(define (subst-lvbind [old : Sym] [new : Sym] [lv : LVBIND]) : LVBIND
+  (case lv
+    [(NULLLVBIND) (NULLLVBIND)]
+    [(CONSLVBIND syms e rest)
+     (CONSLVBIND syms (expr old new e) (subst-lvbind old new rest))]))
+(define (subst-lambdacase [old : Sym] [new : Sym] [lc : LAMBDACASE]) : LAMBDACASE
+       (case lc
+         [(NULLLAMBDACASE) lc]
+         [(CONSLAMBDACASE formals exprs rest)
+          (if (bound-in? old formals)
+              (CONSLAMBDACASE formals exprs (subst-lambdacase old new rest))
+              (CONSLAMBDACASE formals (expr-ls old new exprs) (subst-lambdacase old new rest)))]))
 
 (define (expr [old : Sym] [new : Sym] [e : Expr]) : Expr
   (case e
@@ -56,47 +89,25 @@
     [(Lambda formals lse)
      (Lambda formals (if (bound-in? old formals)
                          lse
-                         (for/list ([e : Expr lse])
-                           (expr old new e))))]
+                         (expr-ls old new lse)))]
     [(CaseLambda cases)
-     (CaseLambda (for/list ([c : LAMBDACASE cases])
-                   (case c
-                     [(MKLAMBDACASE formals exprs)
-                      (if (bound-in? old formals)
-                          c
-                          (MKLAMBDACASE formals (for/list ([e : Expr exprs])
-                                                  (expr old new e))))])))]
+     (CaseLambda (subst-lambdacase old new cases))]
     [(LetValues binds body)
-     (LetValues (for/list ([b : LVBIND binds])
-                  (case b
-                    [(MKLVBIND syms e)
-                     (if (for/fold ([r : Bool False]) ([s : Sym syms]) (or r (eq? old s)))
-                         b
-                         (MKLVBIND syms (expr old new e)))]))
-
-                (for/list ([e : Expr body])
-                  (expr old new e)))]
+     (if (bound? old binds)
+         (LetValues (subst-lvbind old new binds) body)
+         (LetValues (subst-lvbind old new binds) (expr-ls old new body)))]
     [(LetrecValues binds body)
-     (LetrecValues (for/list ([b : LVBIND binds])
-                     (case b
-                       [(MKLVBIND syms e)
-                        (if (for/fold ([r : Bool False]) ([s : Sym syms]) (or r (eq? old s)))
-                            b
-                            (MKLVBIND syms (expr old new e)))]))
-                   
-                   (for/list ([e : Expr body])
-                     (expr old new e)))]
+     (if (bound? old binds)
+         (LetrecValues binds body)
+         (LetrecValues (subst-lvbind old new binds) (expr-ls old new body)))]
     [(If cond then else)
      (If (expr old new cond) (expr old new then) (expr old new else))]
     [(Begin exprs)
-     (Begin (for/list ([e : Expr exprs])
-              (expr old new e)))]
+     (Begin (expr-ls old new exprs))]
     [(Begin0 e1 exprs)
-     (Begin0 (expr old new e1) (for/list ([e : Expr exprs])
-                                 (expr old new e)))]
-    [(App exprs)  ;; (#%plain-app expr ...+)
-     (App (for/list ([e : Expr exprs])
-            (expr old new e)))]
+     (Begin0 (expr old new e1) (expr-ls old new exprs))]
+    [(App rator rands)  ;; (#%plain-app expr ...+)
+     (App (expr old new rator) (expr-ls old new rands))]
     [(SetBang s e)
      (SetBang s (expr old new e))]
     [(WithContinuationMark e1 e2 e3)
@@ -105,11 +116,11 @@
 (define (bound-in? [sym : Sym] [formals : Formals]) : Bool
   (case formals
     [(F1 syms)
-     (for/fold ([r : Bool False]) ([s : Sym syms]) (or r (eq? s sym)))]
+     (memq sym syms)]
     [(F2 syms s)
      (if (eq? sym s)
          True
-         (for/fold ([r : Bool False]) ([s : Sym syms]) (or r (eq? s sym))))]
+         (memq sym syms))]
     [(F3 s)
      (eq? sym s)]))
 
