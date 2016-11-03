@@ -6,7 +6,8 @@ module Packed.FirstOrder.Compiler
     ( -- * Compiler entrypoints
       compile, compileCmd
      -- * Configuration options and parsing 
-     , Config (..), Mode(..), Input(..), configParser, configWithArgs
+     , Config (..), Mode(..), Input(..)
+     , configParser, configWithArgs, defaultConfig
     )
   where
 
@@ -137,16 +138,17 @@ flatten (L1.Prog defs funs main) =
               do es' <- mapM (flattenExp env) es
                  nams <- mapM gensym $ replicate (length es) "tmp_flat"
                  let bind [] _t e = e
-                     bind ((v,e'):xs) t e = mkLetE (v,t,e') $ bind xs t e
+                     bind ((v,e'):xs) t e = mkLetE (v,t,e') $ bind xs t e                 
+                     doprim ty = return $ bind (zip nams es') ty $
+                                  L1.PrimAppE p $ map L1.VarE nams
                  case p of
-                   L1.AddP -> return $ bind (zip nams es') L1.IntTy $
-                              L1.PrimAppE L1.AddP $ map L1.VarE nams
-                   L1.SubP -> return $ bind (zip nams es') L1.IntTy $
-                              L1.PrimAppE L1.SubP $ map L1.VarE nams
-                   L1.MulP -> return $ bind (zip nams es') L1.IntTy $
-                              L1.PrimAppE L1.MulP $ map L1.VarE nams
-                   L1.EqSymP -> return $ bind (zip nams es') L1.SymTy $
-                                L1.PrimAppE L1.EqSymP $ map L1.VarE nams
+                   L1.AddP -> doprim L1.IntTy
+                   L1.SubP -> doprim L1.IntTy
+                   L1.MulP -> doprim L1.IntTy
+                   L1.EqSymP -> doprim L1.SymTy
+                   L1.EqIntP -> doprim L1.IntTy
+                   L1.MkTrue  -> return (L1.PrimAppE L1.MkTrue [])
+                   L1.MkFalse -> return (L1.PrimAppE L1.MkFalse [])
                    L1.DictInsertP -> error "DictInsertP not handled in flatten yet"
                    L1.DictLookupP ->
                        do let dictty = typeExp env $ es !! 1
@@ -155,6 +157,8 @@ flatten (L1.Prog defs funs main) =
                                  mkLetE (nams !! 1, dictty, es !! 1) $
                                  L1.PrimAppE L1.DictLookupP $ map L1.VarE nams
                    L1.ErrorP s t -> return $ L1.PrimAppE (L1.ErrorP s t) []
+                   
+
           flattenExp env (L1.LetE (v,t,e') e) =
               do fe' <- flattenExp env e'
                  fe  <- flattenExp env e
