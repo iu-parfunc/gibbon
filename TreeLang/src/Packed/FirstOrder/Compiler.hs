@@ -328,7 +328,6 @@ compileCmd :: [String] -> IO ()
 compileCmd args = withArgs args $ 
     do (cfg,files) <- execParser opts 
        mapM_ (compile cfg) files
-       return ()
   where
     opts = info (helper <*> configWithArgs)
       ( fullDesc
