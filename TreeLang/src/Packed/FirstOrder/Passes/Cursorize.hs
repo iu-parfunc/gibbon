@@ -428,13 +428,21 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
   tail :: L1.Exp -> SyM T.Tail
   tail ex = 
    case ex of
---    L1.LetE (v,t,rhs) bod -> T.LetE (v,t,tail rhs) (tail bod)
-    L1.VarE v          -> pure$ T.RetValsT [T.VarTriv v]
+    e | L1.isTriv e -> pure$ T.RetValsT [triv "<internal error1>" e]
 
+    -- L1.LetE (v,t, L1.MkProdE ls) bod -> do
+    --   let rhss = L.map triv ls
+    --   vsts <- unzipTup v t 
+    --   let go _ [] = tail bod
+    --       go ix ((v1,t1):rst) = T.LetTrivT (v1,t1, )
+
+    -- We could eliminate these ahead of time:
+    L1.LetE (v,t,rhs) bod | L1.isTriv rhs -> T.LetTriv (v,typ t, triv "<internal error2>" rhs) <$> tail bod
+                                 
     -- TWO OPTIONS HERE: we could push equality prims into the target lang.
     -- Or we could map directly onto the IfEqT form:
     -- L1.IfE (L1.PrimAppE L1.EqP __ ) b c -> __
-                          
+                                             
     L1.IfE a b c       -> do b' <- tail b
                              c' <- tail c
                              return $ T.Switch (triv "if test" a)
@@ -442,7 +450,7 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
                                       (Just c')
 
     L1.AppE v e        -> return $ T.TailCall v [triv "operand" e]
-
+   
                           
     -- FIXME: No reason errors can't stay primitive at Target:
     L1.PrimAppE (L1.ErrorP _str _ty) [] ->
@@ -454,24 +462,29 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
     L1.PrimAppE p ls -> do
       tmp <- gensym "flt"
       tail (L1.LetE (tmp, L1.primRetTy p, L1.PrimAppE p ls) (L1.VarE tmp))
-       
+           
     L1.LetE (v,t,L1.PrimAppE p ls) bod ->
+        -- No tuple-valued prims here:
         T.LetPrimCallT [(v,typ t)]
              (prim p)
              (L.map (triv "prim rand") ls) <$>
              (tail bod)
 
     L1.LetE (v,t,L1.AppE f arg) bod -> do
+        -- FIXME, tuples should be unzipped here:
         T.LetCallT [(v,typ t)] f
              [(triv "app rand") arg]
              <$>
              (tail bod)
 
-    L1.LetE (v,t,trv) bod -> 
-        let trv' = triv "let non-call RHS" trv in
-        -- 
-        error$  "lower: tail: Finish handling: "++sdoc trv'
-
+    L1.LetE (v, t, L1.IfE a b c) bod -> do
+      vsts <- unzipTup v t
+      T.LetIfT vsts (triv "if test" a)
+               <$> tail b <*> tail c
+             
+    -- L1.LetE (v,t,trv) bod -> 
+    --     error$  "lower: tail: Finish handling non trivial RHS "++sdoc trv'
+             
     L1.CaseE e ls ->
         return $ T.Switch{} -- (tail e) (M.map (\(vs,er) -> (vs,tail er)) ls)
 
@@ -490,42 +503,57 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
     
 -}
 
-  triv :: String -> L1.Exp -> T.Triv
-  triv msg e0 =
-    case e0 of
-      (L1.VarE x) -> T.VarTriv x
-      (L1.LitE x) -> T.IntTriv x
-      -- TODO: I think we should allow tuples and projection in trivials:
+unzipTup :: Var -> L1.Ty -> SyM [(Var,T.Ty)]
+unzipTup v t =
+  case t of
+    L1.ProdTy ts -> do
+      vs <- mapM (\_ -> gensym "uziptmp") ts
+      return (zip vs (L.map typ ts))
+    _ -> return [(v,typ t)]
+
+triv :: String -> L1.Exp -> T.Triv
+triv msg e0 =
+  case e0 of
+    (L1.VarE x) -> T.VarTriv x
+    (L1.LitE x) -> T.IntTriv x
+    -- Bools become ints:                          
+    (L1.PrimAppE L1.MkTrue [])  -> T.IntTriv 1
+    (L1.PrimAppE L1.MkFalse []) -> T.IntTriv 0
+    -- TODO: I think we should allow tuples and projection in trivials:
 --      (ProjE x1 x2) -> __
 --      (MkProdE x) -> __
-      _ -> error $ "lower/triv, expected trivial in "++msg++", got "++sdoc e0
+    _ -> error $ "lower/triv, expected trivial in "++msg++", got "++sdoc e0
   
-  typ :: L1.Ty -> T.Ty
-  typ t =
-    case t of
-      L1.IntTy -> T.IntTy
-      L1.SymTy -> T.SymTy
-      L1.BoolTy -> T.IntTy
-      (L1.ProdTy xs) -> T.ProdTy $ L.map typ xs
-      (L1.SymDictTy x) -> T.SymDictTy $ typ x
-      -- t | isCursorTy t -> T.CursorTy
-      (L1.Packed k)
-          | k == L2.con L2.cursorTy -> T.CursorTy
-          | otherwise -> error "lower/typ: should not encounter "
+typ :: L1.Ty -> T.Ty
+typ t =
+  case t of
+    L1.IntTy  -> T.IntTy
+    L1.SymTy  -> T.SymTy
+    L1.BoolTy -> T.IntTy
+    (L1.ProdTy xs) -> T.ProdTy $ L.map typ xs
+    (L1.SymDictTy x) -> T.SymDictTy $ typ x
+    -- t | isCursorTy t -> T.CursorTy
+    (L1.Packed k)
+        | k == L2.con L2.cursorTy -> T.CursorTy
+        | otherwise -> error "lower/typ: should not encounter "
 
-  typ' :: L2.Ty -> T.Ty
-  typ' = error "FINISHME lower/typ'"
+typ' :: L2.Ty -> T.Ty
+typ' = error "FINISHME lower/typ'"
 
-  prim :: L1.Prim -> T.Prim
-  prim p =
-    case p of
-      L1.AddP -> T.AddP
-      L1.SubP -> T.SubP
-      L1.MulP -> T.MulP
-      L1.EqSymP  -> error "lower/prim should only have eq? directly in comparison of an If"
-      L1.DictInsertP -> T.DictInsertP
-      L1.DictLookupP -> T.DictLookupP
-      L1.ErrorP{} -> error$ "lower/prim: internal error, should not have got to here: "++show p
+prim :: L1.Prim -> T.Prim
+prim p =
+  case p of
+    L1.AddP -> T.AddP
+    L1.SubP -> T.SubP
+    L1.MulP -> T.MulP
+    L1.EqSymP -> T.EqP
+    L1.EqIntP -> T.EqP
+    L1.DictInsertP -> T.DictInsertP
+    L1.DictLookupP -> T.DictLookupP
+    L1.ErrorP{} -> error$ "lower/prim: internal error, should not have got to here: "++show p
 
+    L1.MkTrue  -> error "lower/prim: internal error. MkTrue should not get here."
+    L1.MkFalse -> error "lower/prim: internal error. MkFalse should not get here."
+                     
 -- ================================================================================
 

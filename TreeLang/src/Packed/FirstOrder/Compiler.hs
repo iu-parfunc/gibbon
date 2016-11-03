@@ -300,7 +300,8 @@ lowerCopiesAndTraversals p = pure p
 
 data Config = Config
   { input     :: Input
-  , mode      :: Mode
+  , mode      :: Mode -- ^ How to run, which backend.
+  , packed    :: Bool -- ^ Use packed representation.
   }
 
 -- | What input format to expect on disk.
@@ -321,10 +322,13 @@ data Mode = ToParse  -- ^ Parse and then stop
 defaultConfig :: Config
 defaultConfig = 
   Config { input = Unspecified
-         , mode  = ToExe }
+         , mode  = ToExe
+         , packed = False
+         }
 
 configParser :: Parser Config
 configParser = Config <$> inputParser <*> modeParser
+                      <*> switch (long "packed" <> help "enable packed tree representation in C backend")
  where  
   -- Most direct way, but I don't like it:
   _inputParser :: Parser Input
@@ -385,7 +389,7 @@ lvl = 2
 -- files to process.
 compile :: Config -> FilePath -> IO ()
 -- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compile Config{input,mode} fp = do 
+compile Config{input,mode,packed} fp = do 
   let parser = case input of
                  Haskell -> HS.parseFile
                  SExpr   -> SExp.parseFile
@@ -436,16 +440,21 @@ compile Config{input,mode} fp = do
     clearFile outfile
     clearFile exe
     str <- evalStateT
-             (do l1b <- pass "freshNames"               freshNames               l1
-                 l1c <- pass "flatten"                  flatten                  l1b
-                 l1d <- pass "inlineTriv"               inlineTriv               l1c
+             (do l1b <-       pass "freshNames"               freshNames               l1
+                 l1c <-       pass "flatten"                  flatten                  l1b
+                 l1d <-       pass "inlineTriv"               inlineTriv               l1c
                  l2  <- pass  "inferEffects"             inferEffects             l1d
-                 mt  <- pass' "findMissingTraversals"    findMissingTraversals    l2
-                 l2b <- pass' "addTraversals"            (addTraversals mt)       l2
-                 l2c <- pass' "addCopies"                addCopies                l2b
-                 l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
-                 l2e <- pass  "cursorize"                cursorize                l2d
-                 l3  <- pass  "lower"                    lower                    l2e
+                 l2' <-
+                     if packed
+                     then do                        
+                       mt  <- pass' "findMissingTraversals"    findMissingTraversals    l2
+                       l2b <- pass' "addTraversals"            (addTraversals mt)       l2
+                       l2c <- pass' "addCopies"                addCopies                l2b
+                       l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
+                       l2e <- pass  "cursorize"                cursorize                l2d
+                       return l2e
+                     else return l2
+                 l3  <-       pass  "lower"                    lower                    l2'
 
                  if mode == Interp2
                   then error "FINISHME - call Target interpreter"

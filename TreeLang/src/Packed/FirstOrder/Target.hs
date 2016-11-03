@@ -30,7 +30,7 @@ import Data.Word (Word8)
 import Data.Bifunctor (first)
 import Data.Loc (noLoc)
 import Data.Maybe (fromJust)
-import Data.Traversable
+-- import Data.Traversable
 import GHC.Generics (Generic)
 import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
                            cunit)
@@ -92,6 +92,10 @@ data Tail
                      prim  :: Prim,
                      rands :: [Triv],
                      bod   :: Tail }
+
+    -- Ugh, we should not strictly need this if we simplify everything in the right way:
+    | LetTriv (Var,Ty,Triv) Tail              
+      
     -- A control-flow join point; an If on the RHS of LeT:
     | LetIfT { binds :: [(Var,Ty)]
              , tst :: Triv
@@ -99,10 +103,9 @@ data Tail
              , els :: Tail 
              }
       
-    | IfEqT { val1 :: Var,
-              val2 :: Var,
-              con  :: Tail,
-              els  :: Tail }
+    | IfT { tst :: Triv,
+            con  :: Tail,
+            els  :: Tail }
     | ErrT
     | TimeT Tail
     | Switch Triv Alts (Maybe Tail)
@@ -125,6 +128,7 @@ data Prim
     = AddP
     | SubP
     | MulP
+    | EqP
     | DictInsertP -- ^ takes k,v,dict
     | DictLookupP -- ^ takes k,dict, errors if absent
     | NewBuf
@@ -256,10 +260,10 @@ codegenTail (Switch tr alts def) ty =
 codegenTail (TailCall v ts) _ty =
     return $ [ C.BlockStm [cstm| return $( C.FnCall (cid v) (map codegenTriv ts) noLoc ); |] ]
 
-codegenTail (IfEqT v1 v2 e1 e2) ty = do
+codegenTail (IfT e0 e1 e2) ty = do
     e1' <- codegenTail e1 ty
     e2' <- codegenTail e2 ty
-    return $ [ C.BlockStm [cstm| if ($(cid v1) == $(cid v2)) { $items:e1' } else { $items:e2' } |] ]
+    return $ [ C.BlockStm [cstm| if ($(codegenTriv e0)) { $items:e1' } else { $items:e2' } |] ]
 
 codegenTail ErrT _ty = return $ [ C.BlockStm [cstm| printf("error\n"); |]
                                 , C.BlockStm [cstm| exit(1); |] ]
@@ -298,6 +302,9 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     MulP -> let [(outV,outT)] = bnds
                                 [pleft,pright] = rnds
                             in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) * $(codegenTriv pright); |]]
+                    EqP -> let [(outV,outT)] = bnds
+                               [pleft,pright] = rnds
+                           in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) == $(codegenTriv pright); |]]
                     DictInsertP -> unfinished 1
                     DictLookupP -> unfinished 2
                     NewBuf -> unfinished 3

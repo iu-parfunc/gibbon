@@ -48,11 +48,10 @@ exec env (LetPrimCallT binds op args body) =
     rets = applyOp op (map (eval env) args)
     env' = extendEnv env (zip (map fst binds) rets)
 
-exec env (IfEqT v1 v2 then_ else_) =
-    if v1' == v2' then exec env then_ else exec env else_
+exec env (IfT v1 then_ else_) =
+    if v1' == IntVal 1 then exec env then_ else exec env else_
   where
-    v1' = eval env (VarTriv v1)
-    v2' = eval env (VarTriv v2)
+    v1' = eval env v1
 
 exec _ ErrT =
     error "ErrT"
@@ -114,6 +113,8 @@ applyOp :: Prim -> [Val] -> [Val]
 applyOp AddP [IntVal i1, IntVal i2] = [IntVal (i1 + i2)]
 applyOp SubP [IntVal i1, IntVal i2] = [IntVal (i1 - i2)]
 applyOp MulP [IntVal i1, IntVal i2] = [IntVal (i1 * i2)]
+
+applyOp EqP  [IntVal i1, IntVal i2] = [IntVal (if i1 == i2 then 1 else 0)]
 
 applyOp NewBuf [] = [BufVal Seq.empty]
 
