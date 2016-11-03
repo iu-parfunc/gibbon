@@ -24,6 +24,16 @@ parse_all:
           $(TREEC) --parse $$f; done
 
 PASSING_TESTS= test00_add.sexp
+# FIX THESE: All are blocked on something.  Then move them to the above list:
+#  test02 -- cursorize/let
+#  test03 -- bad C code
+#  test04 -- fromJust/Nothing in flatten
+#  test04b -- same
+#  test05 -- cursorize tail Apps
+#  test05b -- cursorize/let
+#  test06  -- cursorize/let
+#  test07  -- cursorize/TimeIt
+#  test08  -- no dictionaries yet
 
 # let this be a proxy for the lot of them:
 test00_add.sexp.ans:

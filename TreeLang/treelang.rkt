@@ -1,8 +1,9 @@
 #lang typed/racket
 
 (provide Int Sym Bool SymDict data empty-dict lookup insert case
-         define let provide require if : for/list for/fold or and
-
+         define let provide require if :
+         for/list for/fold or and
+         vector vector-ref
          list and empty? error 
          eq? Listof True False
 
@@ -71,6 +72,9 @@ lit := int | #t | #f
 
 |#
 
+;; CONSIDERING, but not aded yet:
+;;        | (dict-size e)
+
 
 ;;(case e [(K v ...) e] ...)
 (define-syntax (case stx)
@@ -88,6 +92,9 @@ lit := int | #t | #f
 
 (define-syntax-rule (empty-dict)
   (hash))
+
+(define-syntax-rule (time e)
+  (rtime e))
 
 (define-type Int Integer)
 (define-type Sym Symbol)
