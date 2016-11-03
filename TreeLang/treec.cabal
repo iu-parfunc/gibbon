@@ -1,5 +1,5 @@
 
-name:                packed-trees
+name:                treec
 version:             0.1.0.0
 synopsis:            A compiler transform for operating on serialized trees.
 -- description:
@@ -59,26 +59,26 @@ library
   default-language:    Haskell2010
   ghc-options:         -Wall -fdefer-typed-holes
   
-executable packed-trees
+executable treec
   hs-source-dirs:      execs
   main-is:             Frontend.hs
 
   build-depends:       base,
                        haskell-src-exts,
                        filepath,
-                       packed-trees
+                       treec
 
   default-language:    Haskell2010
   ghc-options:         -Wall -fdefer-typed-holes
 
   
-test-suite test-packed-trees
+test-suite test-treec
   type:                exitcode-stdio-1.0
   hs-source-dirs:      tests
   main-is:             Main.hs
 
   build-depends:       base,
-                       packed-trees, containers,
+                       treec, containers,
                        tasty, tasty-hunit, tasty-th
 
   default-language:    Haskell2010

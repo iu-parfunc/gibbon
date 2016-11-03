@@ -16,7 +16,7 @@ parse_all:
 	stack build
 	for f in `ls *.sexp`; do \
           echo "Parsing $$f"; \
-          stack exec -- packed-trees --parse $$f; done
+          stack exec -- treec --parse $$f; done
 
 treelang_lib:
 	raco make -v ../treelang.rkt 
