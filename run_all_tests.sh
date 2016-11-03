@@ -49,9 +49,9 @@ echo "  Handwritten Parser:"
 echo "----------------------------------------"
 set -x
 cd $top/deps/sexpr-1.3
-make
+make || ./configure && make
 # TODO: Move to common:
-cd $top/ASTBenchmarks/substitution/
+cd $top/ASTBenchmarks/common/c/
 make check
 
 
