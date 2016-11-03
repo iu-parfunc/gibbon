@@ -36,6 +36,8 @@ struct sym_addr_hash {
 struct sym_hash* g_pack_syms = NULL;
 struct sym_addr_hash* g_pack_sym_addrs = NULL;
 
+tree_sz_t size_expr(ast_t* ast);
+
 void add_symbol(char* sym, tree_sz_t* size) {
   struct sym_hash* s;
   HASH_FIND_STR(g_pack_syms, sym, s);
@@ -62,7 +64,7 @@ tree_sz_t size_let_bind(ast_t* ast) {
       add_symbol(ast->node.binder.syms[i], &size);
     }
     size.tree_sz        += sizeof(int);                      // Inlined n_syms 
-    tree_sz_t sz         = size_tree(ast->node.binder.exp);
+    tree_sz_t sz         = size_expr(ast->node.binder.exp);
     ADD_TREE_SZ(size, sz);
     return size;
   }
@@ -116,7 +118,7 @@ tree_sz_t size_lambda(ast_t* ast) {
     ADD_TREE_SZ(size, sz);
     size.tree_sz       += sizeof(int);                      // # exps
     for (int i=0; i < ast->node.mk_lambda.n_exps; i++)  {
-      tree_sz_t sz     = size_tree(ast->node.mk_lambda.exps[i]);
+      tree_sz_t sz     = size_expr(ast->node.mk_lambda.exps[i]);
       ADD_TREE_SZ(size, sz);
     }
   }
@@ -141,7 +143,7 @@ tree_sz_t size_expr(ast_t* ast) {
 
         size.tree_sz   += sizeof(int);                           // # exps
         for (int i=0; i < ast->node.lambda.n_exps; i++) {
-          tree_sz_t sz  = size_tree(ast->node.lambda.exps[i]);
+          tree_sz_t sz  = size_expr(ast->node.lambda.exps[i]);
           ADD_TREE_SZ(size, sz);
         }
         return size;
@@ -155,9 +157,9 @@ tree_sz_t size_expr(ast_t* ast) {
         return size;
       case IF:
       {
-        tree_sz_t cond   = size_tree(ast->node.iff.cond);
-        tree_sz_t if_e   = size_tree(ast->node.iff.if_e);
-        tree_sz_t else_e = size_tree(ast->node.iff.else_e);
+        tree_sz_t cond   = size_expr(ast->node.iff.cond);
+        tree_sz_t if_e   = size_expr(ast->node.iff.if_e);
+        tree_sz_t else_e = size_expr(ast->node.iff.else_e);
         ADD_TREE_SZ(size, cond);
         ADD_TREE_SZ(size, if_e);
         ADD_TREE_SZ(size, else_e);
@@ -166,18 +168,18 @@ tree_sz_t size_expr(ast_t* ast) {
       case BEGIN:
         size.tree_sz      += sizeof(int);                       // # exps
         for (int i=0; i < ast->node.begin.n_exps; i++) {
-          tree_sz_t sz     = size_tree(ast->node.begin.exps[i]);
+          tree_sz_t sz     = size_expr(ast->node.begin.exps[i]);
           ADD_TREE_SZ(size, sz);
         }
         return size;
       case BEGIN0:
       {
         size.tree_sz      += sizeof(size_t);                    // Next child pointer
-        tree_sz_t sz       = size_tree(ast->node.begin0.exp);
+        tree_sz_t sz       = size_expr(ast->node.begin0.exp);
         ADD_TREE_SZ(size, sz);
         size.tree_sz      += sizeof(int);                       // # exps
         for (int i=0; i < ast->node.begin0.n_exps; i++) {
-          tree_sz_t sz     = size_tree(ast->node.begin0.exps[i]);
+          tree_sz_t sz     = size_expr(ast->node.begin0.exps[i]);
           ADD_TREE_SZ(size, sz);
         }
         return size;
@@ -192,7 +194,7 @@ tree_sz_t size_expr(ast_t* ast) {
         }
         size.tree_sz      += sizeof(int);                       // # exps
         for (int i=0; i < ast->node.let.n_exps; i++) {
-          tree_sz_t sz     = size_tree(ast->node.let.exps[i]);
+          tree_sz_t sz     = size_expr(ast->node.let.exps[i]);
           ADD_TREE_SZ(size, sz);
         }
         return size;
@@ -200,7 +202,7 @@ tree_sz_t size_expr(ast_t* ast) {
       case SETBANG:
       {
         add_symbol(ast->node.set.sym, &size);
-        tree_sz_t sz = size_tree(ast->node.set.exp);
+        tree_sz_t sz = size_expr(ast->node.set.exp);
         ADD_TREE_SZ(size, sz);
         return size;
       }
@@ -214,9 +216,9 @@ tree_sz_t size_expr(ast_t* ast) {
       }
       case WITH_CONTINUATION_MARK:
       {
-        tree_sz_t key = size_tree(ast->node.wcm.key);
-        tree_sz_t val = size_tree(ast->node.wcm.val);
-        tree_sz_t res = size_tree(ast->node.wcm.res);
+        tree_sz_t key = size_expr(ast->node.wcm.key);
+        tree_sz_t val = size_expr(ast->node.wcm.val);
+        tree_sz_t res = size_expr(ast->node.wcm.res);
         ADD_TREE_SZ(size, key);
         ADD_TREE_SZ(size, val);
         ADD_TREE_SZ(size, res);
@@ -226,7 +228,7 @@ tree_sz_t size_expr(ast_t* ast) {
       {
         size.tree_sz      += sizeof(int);                     // # exps
         for (int i=0; i < ast->node.app.n_exps; i++) {
-          tree_sz_t sz     = size_tree(ast->node.app.exps[i]);
+          tree_sz_t sz     = size_expr(ast->node.app.exps[i]);
           ADD_TREE_SZ(size, sz);
         }
         return size;
@@ -247,15 +249,15 @@ tree_sz_t size_expr(ast_t* ast) {
 tree_sz_t size_tree(ast_t* ast) {
   tree_sz_t size = {0};
   if (ast) {
-    switch(ast->tl) {
-      size.tree_sz++;
-      size.tree_sz    += sizeof(size_t);                         // Next child pointer
+    size.tree_sz++;
+    size.tree_sz    += sizeof(size_t);                         // Next child pointer
 
+    switch(ast->tl) {
       case BEGINTOP:
       {
         size.tree_sz      += sizeof(int);                       // # tops
         for (int i=0; i < ast->node.prog.n_tops; i++) {
-          tree_sz_t sz     = size_expr(ast->node.prog.toplvl[i]);
+          tree_sz_t sz     = size_tree(ast->node.prog.toplvl[i]);
           // size.tree_sz    += sizeof(size_t);                 // Next child pointer
           ADD_TREE_SZ(size, sz);
         }
@@ -282,12 +284,14 @@ tree_sz_t size_tree(ast_t* ast) {
         ERROR("[PACK] Invalid AST..");
     }
   }
+  return size;
 }
 
-size_t pack_node(ast_t* ast, char** const out_pt, char** const syms_pt);
 size_t pack_nodes(ast_t** asts, int n_asts, char** const out_pt, 
-    char** const syms_pt);
+    char** const syms_pt, void* fp);
+size_t pack_expr(ast_t* ast, char** const out_pt, char** const syms_pt);
 char* intern_string(const char* const str, char** const syms); 
+
 char* intern_string(const char* const str, char** const syms_pt) {
   char* syms = *syms_pt;
   struct sym_addr_hash* s;
@@ -324,16 +328,14 @@ size_t pack_strings(char** strs, int n_strs, char** const out_pt,
 }
 
 size_t pack_nodes(ast_t** asts, int n_asts, char** const out_pt, 
-    char** const syms_pt) {
+    char** const syms_pt, void *fp) {
   char* start       = *out_pt;          // Start of the node
 
   *(int*) start     = n_asts;
   *out_pt          += sizeof(int);
   for (int i=0; i < n_asts; i++) {
-    // size_t* chld_sz = (size_t*) *out_pt;
-    // *out_pt        += sizeof(size_t);
-    size_t sz       = pack_node(asts[i], out_pt, syms_pt);
-    // *chld_sz        = sz;
+    size_t sz       = ((size_t (*)(ast_t*, char** const, char** const))fp)
+      (asts[i], out_pt, syms_pt);
   }
   return (size_t) (*out_pt - start);
 }
@@ -350,15 +352,15 @@ size_t pack_top_lvl(ast_t* ast, char** const out_pt, char** const syms_pt) {
     case DEFINE_SYNTAXES:
     {
       pack_strings(ast->node.defs.syms, ast->node.defs.n_syms, out_pt, syms_pt);
-      pack_node(ast->node.defs.exp, out_pt, syms_pt);
+      pack_expr(ast->node.defs.exp, out_pt, syms_pt);
       break;
     }
     case BEGINTOP:
       pack_nodes(ast->node.prog.toplvl, ast->node.prog.n_tops, out_pt,
-          syms_pt);
+          syms_pt, pack_top_lvl);
       break;
     case EXPRESSION:
-      pack_node(ast->node.expr.exp, out_pt, syms_pt);
+      pack_expr(ast->node.expr.exp, out_pt, syms_pt);
       break;
     default:
       ERROR("[PACK] Invalid AST..");
@@ -368,8 +370,8 @@ size_t pack_top_lvl(ast_t* ast, char** const out_pt, char** const syms_pt) {
 }
 
 size_t pack_formals(ast_t* ast, char** const out_pt, char** const syms_pt) {
-  char* start = *out_pt;        // Start of the node
-  **out_pt    = (char) ast->tl; // We know the enum is not more than range of char
+  char* start = *out_pt;          // Start of the node
+  **out_pt    = (char) ast->fmls; // We know the enum is not more than range of char
   *out_pt    += 1;
   size_t* sz  = (size_t*) *out_pt;
   *out_pt    += sizeof(size_t);
@@ -400,8 +402,8 @@ size_t pack_formals(ast_t* ast, char** const out_pt, char** const syms_pt) {
 
 size_t pack_let_bind(ast_t* ast, char** const out_pt, char** const syms_pt) {
   assert(ast->bnd == MKLVBIND);
-  char* start = *out_pt;        // Start of the node
-  **out_pt    = (char) ast->tl; // We know the enum is not more than range of char
+  char* start = *out_pt;         // Start of the node
+  **out_pt    = (char) ast->bnd; // We know the enum is not more than range of char
   *out_pt    += 1;
   size_t* sz  = (size_t*) *out_pt;
   *out_pt    += sizeof(size_t);
@@ -413,10 +415,26 @@ size_t pack_let_bind(ast_t* ast, char** const out_pt, char** const syms_pt) {
   return *sz;
 }
 
+size_t pack_lambda(ast_t* ast, char** const out_pt, char** const syms_pt) {
+  assert(ast->lc == MKLAMBDACASE);
+  char* start = *out_pt;         // Start of the node
+  **out_pt    = (char) ast->lc; // We know the enum is not more than range of char
+  *out_pt    += 1;
+  size_t* sz  = (size_t*) *out_pt;
+  *out_pt    += sizeof(size_t);
+
+  pack_formals(ast->node.mk_lambda.fmls, out_pt, syms_pt);
+  pack_nodes(ast->node.mk_lambda.exps, ast->node.mk_lambda.n_exps, out_pt,
+    syms_pt, pack_expr);
+
+  *sz =  (size_t) (*out_pt - start);
+  return *sz;
+}
+
 size_t pack_expr(ast_t* ast, char** const out_pt, char** const syms_pt) {
 
   char* start = *out_pt;        // Start of the node
-  **out_pt    = (char) ast->ty; // We know the enum is not more than range of char
+  **out_pt    = (char) ast->exp; // We know the enum is not more than range of char
   *out_pt    += 1;
   size_t* sz  = (size_t*) *out_pt;
   *out_pt    += sizeof(size_t);
@@ -429,48 +447,45 @@ size_t pack_expr(ast_t* ast, char** const out_pt, char** const syms_pt) {
       break;
     }
     case LAMBDA:
-      pack_node(ast->node.lambda.fmls, out_pt, syms_pt);
+      pack_formals(ast->node.lambda.fmls, out_pt, syms_pt);
       pack_nodes(ast->node.lambda.exps, ast->node.lambda.n_exps, out_pt, 
-          syms_pt);
+          syms_pt, pack_expr);
       break;
     case CASE_LAMBDA:
       pack_nodes(ast->node.c_lambda.lams, ast->node.c_lambda.n_lams, out_pt, 
-          syms_pt);
-      break;
-    case MKLAMBDACASE:
-      pack_node(ast->node.mk_lambda.fmls, out_pt, syms_pt);
-      pack_nodes(ast->node.mk_lambda.exps, ast->node.mk_lambda.n_exps, out_pt,
-          syms_pt);
+          syms_pt, pack_lambda);
       break;
     case IF:
-      pack_node(ast->node.iff.cond, out_pt, syms_pt);
-      pack_node(ast->node.iff.if_e, out_pt, syms_pt);
-      pack_node(ast->node.iff.else_e, out_pt, syms_pt);
+      pack_expr(ast->node.iff.cond, out_pt, syms_pt);
+      pack_expr(ast->node.iff.if_e, out_pt, syms_pt);
+      pack_expr(ast->node.iff.else_e, out_pt, syms_pt);
       break;
     case BEGIN:
       pack_nodes(ast->node.begin.exps, ast->node.begin.n_exps, out_pt, 
-          syms_pt);
+          syms_pt, pack_expr);
       break;
     case BEGIN0:
     {
       size_t* nxt = (size_t*) *out_pt;
       *out_pt += sizeof(size_t);
-      size_t sz = pack_node(ast->node.begin0.exp, out_pt, syms_pt);
+      size_t sz = pack_expr(ast->node.begin0.exp, out_pt, syms_pt);
       *nxt = sz;
       pack_nodes(ast->node.begin0.exps, ast->node.begin0.n_exps, out_pt, 
-          syms_pt);
+          syms_pt, pack_expr);
       break;
     }
     case LET_VALUES:
     case LETREC_VALUES:
-      pack_nodes(ast->node.let.binds, ast->node.let.n_binds, out_pt, syms_pt);
-      pack_nodes(ast->node.let.exps, ast->node.let.n_exps, out_pt, syms_pt);
+      pack_nodes(ast->node.let.binds, ast->node.let.n_binds, out_pt, syms_pt, 
+          pack_let_bind);
+      pack_nodes(ast->node.let.exps, ast->node.let.n_exps, out_pt, syms_pt,
+          pack_expr);
       break;
     case SETBANG:
     {
       char* sym = intern_string(ast->node.set.sym, syms_pt);
       WRITE_STRING(*out_pt, sym);
-      pack_node(ast->node.set.exp, out_pt, syms_pt);
+      pack_expr(ast->node.set.exp, out_pt, syms_pt);
       break;
     }
     case QUOTE:
@@ -479,17 +494,18 @@ size_t pack_expr(ast_t* ast, char** const out_pt, char** const syms_pt) {
     {
       *(char*) *out_pt = (char) INTLIT;
       *out_pt         += 1;
-      *(long*) *out_pt = ast->node.quote.data;
+      *(long*) *out_pt = ast->node.quote.exp->node.lit.data;
       *out_pt         += sizeof(long);
       break;
     }
     case WITH_CONTINUATION_MARK:
-      pack_node(ast->node.wcm.key, out_pt, syms_pt);
-      pack_node(ast->node.wcm.val, out_pt, syms_pt);
-      pack_node(ast->node.wcm.res, out_pt, syms_pt);
+      pack_expr(ast->node.wcm.key, out_pt, syms_pt);
+      pack_expr(ast->node.wcm.val, out_pt, syms_pt);
+      pack_expr(ast->node.wcm.res, out_pt, syms_pt);
       break;
     case APP:
-      pack_nodes(ast->node.app.exps, ast->node.app.n_exps, out_pt, syms_pt);
+      pack_nodes(ast->node.app.exps, ast->node.app.n_exps, out_pt, syms_pt,
+          pack_expr);
       break;
     case TOP:
     case VARIABLE_REFERENCE:
@@ -514,8 +530,8 @@ char* pack_ast(ast_t* ast) {
     // Get the symbol table and the tree size doing a pass over the AST
     tree_sz_t sz   = size_tree(ast);
     printf("Number of Symbols : %d\n", sz.n_syms);
-    printf("Symbol table size : %lu\n", sz.sym_tbl_sz);
-    printf("Tree size         : %lu\n", sz.tree_sz);
+    printf("Symbol table size : %lu\n", sz.sym_tbl_sz + sizeof(size_t));
+    printf("Tree size         : %lu\n", sz.tree_sz + sizeof(size_t));
 
     /* free the hash table contents */
     struct sym_hash *s, *tmp;
@@ -539,7 +555,7 @@ char* pack_ast(ast_t* ast) {
     // Start writing the tree
     *(size_t*) out  = (size_t) sz.tree_sz;    // Tree size
     out += sizeof(size_t);
-    pack_node(ast, &out, &syms);
+    pack_top_lvl(ast, &out, &syms);
 
     printf("Allocated size    : %lu\n", alloc_sz);
     printf("Packed            : %lu\n", (size_t)(out - start));
