@@ -2,6 +2,9 @@
 
 set -xe
 
+echo "Running on machine: "`hostname -a`
+uname -a
+
 top=`pwd`
 
 if [ "$DOCKER" == "1" ]; then
