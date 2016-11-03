@@ -94,7 +94,10 @@ lit := int | #t | #f
   (hash))
 
 (define-syntax-rule (time e)
-  (rtime e))
+  (let-values ([(ls cpu real gc) (time-apply (lambda () e) '())])
+    (printf "SELFTIMED: ~a\n" (/ (exact->inexact real) 1000.0))
+    (match ls
+      [(list x) x])))
 
 (define-type Int Integer)
 (define-type Sym Symbol)
