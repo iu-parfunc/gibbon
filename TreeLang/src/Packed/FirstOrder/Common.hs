@@ -14,6 +14,9 @@ module Packed.FirstOrder.Common
          Constr
          -- * Variables and gensyms
        , Var, varAppend, SyM, gensym, genLetter, runSyM
+
+       , LocVar
+         
          -- * Values (for interpreters)
        , Value(..), ValEnv
          -- * Top-level function defs
@@ -37,7 +40,7 @@ import Data.Map as M
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
 import GHC.Stack (errorWithStackTrace)
-import Text.Printf
+-- import Text.Printf
 import System.IO
 import System.Environment
 import System.IO.Unsafe (unsafePerformIO)
@@ -47,6 +50,9 @@ import Debug.Trace
 type Var    = String
 type Constr = String
 
+-- | Abstract location variables.
+type LocVar = Var
+    
 varAppend :: Var -> Var -> Var
 varAppend = (++)
 

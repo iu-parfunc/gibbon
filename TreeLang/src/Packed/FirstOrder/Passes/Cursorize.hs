@@ -532,6 +532,7 @@ typ t =
     L1.IntTy  -> T.IntTy
     L1.SymTy  -> T.SymTy
     L1.BoolTy -> T.IntTy
+    L1.ListTy{} -> error "lower/typ: FinishMe: List types"
     (L1.ProdTy xs) -> T.ProdTy $ L.map typ xs
     (L1.SymDictTy x) -> T.SymDictTy $ typ x
     -- t | isCursorTy t -> T.CursorTy

@@ -15,7 +15,7 @@ module Packed.FirstOrder.L1_Source
       -- * Primitive operations
     , Prim(..), primRetTy, primArgsTy
       -- * Types and helpers  
-    , Ty(..), pattern SymTy, voidTy
+    , Ty, Ty1(..), pattern Packed, pattern SymTy, voidTy
     -- * Expression and Prog helpers
     , freeVars, subst, mapExprs
       -- * Trivial expressions
@@ -92,7 +92,7 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 instance Out Prim
-instance Out Ty
+instance Out a => Out (Ty1 a)
 -- Do this manually to get prettier formatting:
 -- instance Out Ty where  doc x = __
 
@@ -104,19 +104,25 @@ instance Out Prog
 -- TEMP/FIXME: leaving out these for now.
 pattern SymTy = IntTy
 
+type Ty = Ty1 ()
+                
+pattern Packed c = PackedTy c ()
+    
 -- | Types include boxed/pointer-based products as well as unpacked
--- algebraic datatypes.
-data Ty = IntTy
+-- algebraic datatypes.  This data is parameterized to allow
+-- annotation later on.
+data Ty1 a =
+          IntTy
 --        | SymTy -- ^ Symbols used in writing compiler passes.
 --                --   It's an alias for Int, an index into a symbol table.
         | BoolTy
-        | ProdTy [Ty]   -- ^ An N-ary tuple 
-        | SymDictTy Ty  -- ^ A map from SymTy to Ty
-        | Packed Constr -- ^ No type arguments to TyCons for now.
+        | ProdTy [Ty1 a]     -- ^ An N-ary tuple 
+        | SymDictTy (Ty1 a)  -- ^ A map from SymTy to Ty
+        | PackedTy { con :: Constr, loc :: a } -- ^ No type arguments to TyCons for now.
           -- ^ We allow built-in dictionaries from symbols to a value type.
-        | ListTy Ty -- ^ These are not fully first class.  They are onlyae
-                    -- allowed as the fields of data constructors.
-  deriving (Show, Read, Ord, Eq, Generic, NFData)
+        | ListTy (Ty1 a) -- ^ These are not fully first class.  They are onlyae
+                         -- allowed as the fields of data constructors.
+  deriving (Show, Read, Ord, Eq, Generic, NFData, Functor)
 
 voidTy :: Ty
 voidTy = ProdTy []

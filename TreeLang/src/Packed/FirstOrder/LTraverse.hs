@@ -48,9 +48,6 @@ lvl = 5
 -- Unchanged from L1, or we could go A-normal:
 -- data Exp =
 
--- | Abstract location variables.
-type LocVar = Var
-
 -- | Abstract locations:
 data Loc = Fixed Var -- ^ A rigid location, such as for an input or output field.
          | Fresh Var -- ^ Fresh location-variables as created by
