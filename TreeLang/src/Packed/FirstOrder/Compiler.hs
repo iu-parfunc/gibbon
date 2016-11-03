@@ -118,13 +118,13 @@ flatten (L1.Prog defs funs main) =
     do main' <- case main of
                   Nothing -> return Nothing
                   Just m -> do m' <- flattenExp [] m
-                               return $ Just (inlineTrivExp [] m')
+                               return $ Just m'
        funs' <- flattenFuns funs
        return $ L1.Prog defs funs' main'
     where flattenFuns = mapM flattenFun
           flattenFun (FunDef nam (narg,targ) ty bod) =
               do bod' <- flattenExp [(narg,targ)] bod
-                 return $ FunDef nam (narg,targ) ty (inlineTrivExp [] bod')
+                 return $ FunDef nam (narg,targ) ty bod'
 
           flattenExp :: [(Var,L1.Ty)] -> L1.Exp -> SyM L1.Exp
           flattenExp _env (L1.VarE v) = return $ L1.VarE v
@@ -232,33 +232,47 @@ flatten (L1.Prog defs funs main) =
                                          
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
-inlineTrivExp :: [(Var,L1.Exp)] -> L1.Exp -> L1.Exp
-inlineTrivExp env (L1.VarE v) =
-    case lookup v env of
-      Nothing -> L1.VarE v
-      Just e -> e
-inlineTrivExp _env (L1.LitE i) = L1.LitE i
-inlineTrivExp env (L1.AppE v e) = L1.AppE v $ inlineTrivExp env e
-inlineTrivExp env (L1.PrimAppE p es) = L1.PrimAppE p $ map (inlineTrivExp env) es
-inlineTrivExp env (L1.LetE (v,t,e') e) =
-    case e' of
-      L1.VarE _v -> inlineTrivExp ((v,e'):env) e
-      L1.LitE _i -> inlineTrivExp ((v,e'):env) e
-      _ -> L1.LetE (v,t,inlineTrivExp env e') (inlineTrivExp env e)
-inlineTrivExp env (L1.IfE e1 e2 e3) =
-    L1.IfE (inlineTrivExp env e1) (inlineTrivExp env e2) (inlineTrivExp env e3)
-inlineTrivExp env (L1.ProjE i e) = L1.ProjE i $ inlineTrivExp env e
-inlineTrivExp env (L1.MkProdE es) = L1.MkProdE $ map (inlineTrivExp env) es
-inlineTrivExp env (L1.CaseE e mp) =
-    let e' = inlineTrivExp env e
-        mp' = M.fromList $ map (\(c,(args,ae)) -> (c,(args,inlineTrivExp env ae))) $ M.assocs mp
-    in L1.CaseE e' mp'
-inlineTrivExp env (L1.MkPackedE c es) = L1.MkPackedE c $ map (inlineTrivExp env) es
-inlineTrivExp env (L1.TimeIt e) = L1.TimeIt $ inlineTrivExp env e
-inlineTrivExp env (L1.MapE (v,t,e') e) = L1.MapE (v,t,inlineTrivExp env e') (inlineTrivExp env e)
-inlineTrivExp env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
-    L1.FoldE (v1,t1,inlineTrivExp env e1) (v2,t2,inlineTrivExp env e2) (inlineTrivExp env e3)
+inlineTriv :: L1.Prog -> SyM L1.Prog
+inlineTriv (L1.Prog defs funs main) =
+    do main' <- case main of
+                  Nothing -> return Nothing
+                  Just m -> return $ Just $ inlineTrivExp [] m
+       funs' <- inlineTrivFuns funs
+       return $ L1.Prog defs funs' main'
+    where inlineTrivFuns = mapM inlineTrivFun
+          inlineTrivFun (FunDef nam (narg,targ) ty bod) =
+              do bod' <- return $ inlineTrivExp [] bod
+                 return $ FunDef nam (narg,targ) ty (inlineTrivExp [] bod')
 
+          inlineTrivExp :: [(Var,L1.Exp)] -> L1.Exp -> L1.Exp
+          inlineTrivExp env (L1.VarE v) =
+              case lookup v env of
+                Nothing -> L1.VarE v
+                Just e -> e
+          inlineTrivExp _env (L1.LitE i) = L1.LitE i
+          inlineTrivExp env (L1.AppE v e) = L1.AppE v $ inlineTrivExp env e
+          inlineTrivExp env (L1.PrimAppE p es) = L1.PrimAppE p $ map (inlineTrivExp env) es
+          inlineTrivExp env (L1.LetE (v,t,e') e) =
+              case e' of
+                L1.VarE _v -> inlineTrivExp ((v,e'):env) e
+                L1.LitE _i -> inlineTrivExp ((v,e'):env) e
+                _ -> L1.LetE (v,t,inlineTrivExp env e') (inlineTrivExp env e)
+          inlineTrivExp env (L1.IfE e1 e2 e3) =
+              L1.IfE (inlineTrivExp env e1) (inlineTrivExp env e2) (inlineTrivExp env e3)
+          inlineTrivExp env (L1.ProjE i e) = L1.ProjE i $ inlineTrivExp env e
+          inlineTrivExp env (L1.MkProdE es) = L1.MkProdE $ map (inlineTrivExp env) es
+          inlineTrivExp env (L1.CaseE e mp) =
+              let e' = inlineTrivExp env e
+                  mp' = M.fromList $ map (\(c,(args,ae)) -> (c,(args,inlineTrivExp env ae))) $ M.assocs mp
+              in L1.CaseE e' mp'
+          inlineTrivExp env (L1.MkPackedE c es) = L1.MkPackedE c $ map (inlineTrivExp env) es
+          inlineTrivExp env (L1.TimeIt e) = L1.TimeIt $ inlineTrivExp env e
+          inlineTrivExp env (L1.MapE (v,t,e') e) = L1.MapE (v,t,inlineTrivExp env e') (inlineTrivExp env e)
+          inlineTrivExp env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
+              L1.FoldE (v1,t1,inlineTrivExp env e1) (v2,t2,inlineTrivExp env e2) (inlineTrivExp env e3)
+
+                
+              
 -- | Find all local variables bound by case expressions which must be
 -- traversed, but which are not by the current program.
 findMissingTraversals :: L2.Prog -> SyM (Set Var)
@@ -424,7 +438,8 @@ compile Config{input,mode} fp = do
     str <- evalStateT
              (do l1b <- pass "freshNames"               freshNames               l1
                  l1c <- pass "flatten"                  flatten                  l1b
-                 l2  <- pass  "inferEffects"             inferEffects             l1c
+                 l1d <- pass "inlineTriv"               inlineTriv               l1c
+                 l2  <- pass  "inferEffects"             inferEffects             l1d
                  mt  <- pass' "findMissingTraversals"    findMissingTraversals    l2
                  l2b <- pass' "addTraversals"            (addTraversals mt)       l2
                  l2c <- pass' "addCopies"                addCopies                l2b
