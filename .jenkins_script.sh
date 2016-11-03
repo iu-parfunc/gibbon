@@ -8,8 +8,10 @@ hostname
 uname -a
 which -a stack
 which -a racket
+which -a gcc
 stack --version
 racket --version
+gcc --version
 
 # Racket code
 # ----------------------------------------
