@@ -13,8 +13,11 @@ RUN cd /ChezScheme-9.4/ && ./configure && time make install
 
 # Having problems on hive: [2016.11.02]
 # RUN /tree-velocity/BintreeBench/deps/rustup.sh --yes --revision=1.12.0
+
+
+# wget --progress=dot:giga https://static.rust-lang.org/dist/rust-1.12.1-x86_64-unknown-linux-gnu.tar.gz && \
 RUN mkdir /tmp/rust && cd /tmp/rust && \
-  wget --progress=dot:giga https://static.rust-lang.org/dist/rust-1.12.1-x86_64-unknown-linux-gnu.tar.gz && \
+  curl -O https://static.rust-lang.org/dist/rust-1.12.1-x86_64-unknown-linux-gnu.tar.gz && \
   tar xf rust-1.12.1-x86_64-unknown-linux-gnu.tar.gz && \
   cd rust-1.12.1-x86_64-unknown-linux-gnu && \
   ./install.sh && \

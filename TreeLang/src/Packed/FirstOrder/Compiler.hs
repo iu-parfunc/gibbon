@@ -292,8 +292,8 @@ compileFile parser fp =
            return y
 
      str <- evalStateT
-              (do l1b <- pass' "freshNames"               freshNames               l1
-                  l1c <- pass' "flatten"                  flatten                  l1b
+              (do l1b <- pass "freshNames"               freshNames               l1
+                  l1c <- pass "flatten"                  flatten                  l1b
                   l2  <- pass  "inferEffects"             inferEffects             l1c
                   mt  <- pass' "findMissingTraversals"    findMissingTraversals    l2
                   l2b <- pass' "addTraversals"            (addTraversals mt)       l2

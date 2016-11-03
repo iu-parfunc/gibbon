@@ -12,6 +12,8 @@
          only-in all-defined-out ann
          #;(all-from-out typed/racket))
 
+(require (prefix-in r typed/racket/base))
+
 ;; add for/list  w/types
 
 #| Grammar
@@ -69,6 +71,7 @@ lit := int | #t | #f
 
 |#
 
+
 ;;(case e [(K v ...) e] ...)
 (define-syntax (case stx)
   (syntax-case stx ()
@@ -102,6 +105,16 @@ lit := int | #t | #f
 
 (define True #t)
 (define False #f)
+
+(define (+ [a : Int] [b : Int]) : Int
+  (r+ a b))
+
+(define (- [a : Int] [b : Int]) : Int
+  (r- a b))
+
+(define (* [a : Int] [b : Int]) : Int
+  (r* a b))
+
 
 #|
 (data Tree

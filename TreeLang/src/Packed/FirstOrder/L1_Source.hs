@@ -63,6 +63,12 @@ data Exp = VarE Var
            -- ^ Case on a PACKED datatype.
          | MkPackedE Constr [Exp]
          | TimeIt Exp
+
+           -- Limited list handling:
+         | MapE  (Var,Ty,Exp) Exp
+         | FoldE { initial  :: (Var,Ty,Exp)
+                 , iterator :: (Var,Ty,Exp)
+                 , body     :: Exp }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 -- | Some of these primitives are (temporarily) tagged directly with
@@ -100,6 +106,8 @@ data Ty = IntTy
         | SymDictTy Ty  -- ^ A map from SymTy to Ty
         | Packed Constr -- ^ No type arguments to TyCons for now.
           -- ^ We allow built-in dictionaries from symbols to a value type.
+        | ListTy Ty -- ^ These are not fully first class.  They are onlyae
+                    -- allowed as the fields of data constructors.
   deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 voidTy :: Ty
