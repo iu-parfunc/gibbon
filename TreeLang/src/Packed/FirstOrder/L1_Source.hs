@@ -85,6 +85,9 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
 --          | GetLoc Var
 --          | AddLoc Int Var
 
+          | MkTrue -- ^ Zero argument constructor.
+          | MkFalse -- ^ Zero argument constructor.
+
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 instance Out Prim
