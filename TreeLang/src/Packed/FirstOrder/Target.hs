@@ -537,7 +537,8 @@ makeName :: [Ty] -> String
 makeName []            = "Prod"
 makeName (IntTy:ts)    = "Int" ++ makeName ts
 makeName (CursorTy:ts) = "Cursor" ++ makeName ts
-makeName _             = unfinished 5
+makeName (TagTy:ts)    = "Tag" ++ makeName ts
+makeName (x:_)         = error $ "makeName, not handled: "++show x
 
 mkBlock :: [C.BlockItem] -> C.Stm
 mkBlock ss = C.Block ss noLoc
