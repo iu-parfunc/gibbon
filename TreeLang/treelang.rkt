@@ -9,6 +9,8 @@
 
          time + * -
 
+         pack-Int pack-Bool pack-Sym
+
          #%app #%module-begin #%datum quote
          only-in all-defined-out ann
          #;(all-from-out typed/racket))
@@ -112,6 +114,7 @@ lit := int | #t | #f
 
 (define (pack-Int [i : Int]) (integer->integer-bytes i 8 #true))
 (define (pack-Bool [b : Bool]) (if b (bytes 1) (bytes 0)))
+(define (pack-Sym [s : Sym]) (integer->integer-bytes (eq-hash-code s) 8 #true))
 
 (define-syntax (data stx)
   (syntax-case stx ()
@@ -129,7 +132,6 @@ lit := int | #t | #f
            (define (pack-id [v : type1]) : Bytes
              (match v
                [(ts f ...) (bytes-append (bytes tag-num) (pack-f-ids f) ...)] ...))
-           
            (struct ts ([f-ids : f] ...) #:transparent)
            ...))]))
 
