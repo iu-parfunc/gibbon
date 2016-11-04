@@ -588,6 +588,7 @@ prim p =
     L1.EqIntP -> T.EqP
     L1.DictInsertP -> T.DictInsertP
     L1.DictLookupP -> T.DictLookupP
+    L1.DictEmptyP -> T.DictEmptyP
     L1.ErrorP{} -> error$ "lower/prim: internal error, should not have got to here: "++show p
 
     L1.MkTrue  -> error "lower/prim: internal error. MkTrue should not get here."
