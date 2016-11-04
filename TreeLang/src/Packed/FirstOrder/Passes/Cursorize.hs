@@ -389,6 +389,18 @@ finishLOC = Fresh "FINISHME"
 
 finishTYP :: L1.Ty
 finishTYP = L1.Packed "FINISHME" 
+
+
+
+
+-- =============================================================================
+
+-- | Remove all occurrences of tuples except:
+--   (1) returned to a let binding by a funcall on RHS
+--   (2) returned to a let binding by an if-expr on RHS
+detuple :: L2.Prog -> SyM L2.Prog
+detuple = undefined
+
             
 -- =============================================================================
 
@@ -409,106 +421,178 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
   fund FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do
       tl <- tail funbod
       return $ T.FunDecl { T.funName = funname
-                         , T.funArgs = [(funarg, typ' inty)]
-                         , T.funRetTy = typ' outty
+                         , T.funArgs = [(funarg, typ inty)]
+                         , T.funRetTy = typ outty
                          , T.funBody = tl } 
 
   tail :: L1.Exp -> SyM T.Tail
   tail ex = 
    case ex of
---    L1.LetE (v,t,rhs) bod -> T.LetE (v,t,tail rhs) (tail bod)
-    L1.VarE v          -> pure$ T.RetValsT [T.VarTriv v]
+    e | L1.isTriv e -> pure$ T.RetValsT [triv "<internal error1>" e]
 
+    -- L1.LetE (v,t, L1.MkProdE ls) bod -> do
+    --   let rhss = L.map triv ls
+    --   vsts <- unzipTup v t 
+    --   let go _ [] = tail bod
+    --       go ix ((v1,t1):rst) = T.LetTrivT (v1,t1, )
+
+    -- We could eliminate these ahead of time:
+    L1.LetE (v,t,rhs) bod | L1.isTriv rhs -> T.LetTrivT (v,typ t, triv "<internal error2>" rhs) <$> tail bod
+                                 
     -- TWO OPTIONS HERE: we could push equality prims into the target lang.
     -- Or we could map directly onto the IfEqT form:
     -- L1.IfE (L1.PrimAppE L1.EqP __ ) b c -> __
-                          
+                                             
     L1.IfE a b c       -> do b' <- tail b
                              c' <- tail c
                              return $ T.Switch (triv "if test" a)
-                                      (T.IntAlts [(0, b')])
-                                      (Just c')
+                                      -- If we are treating the boolean as a tag, then tag "0" is false
+                                      (T.IntAlts [(0, c')])
+                                      -- And tag "1" is true:
+                                      (Just b')
 
     L1.AppE v e        -> return $ T.TailCall v [triv "operand" e]
-
+   
                           
     -- FIXME: No reason errors can't stay primitive at Target:
-    L1.PrimAppE (L1.ErrorP _str _ty) [] ->
-      pure T.ErrT 
-    L1.LetE (_,_,L1.PrimAppE (L1.ErrorP _str _) []) _ ->
-      pure T.ErrT 
+    L1.PrimAppE (L1.ErrorP str _ty) [] ->
+      pure $ T.ErrT str
+    L1.LetE (_,_,L1.PrimAppE (L1.ErrorP str _) []) _ ->
+      pure $ T.ErrT str
 
     -- Whatever, a little just in time flattening.  Should obsolete this:
     L1.PrimAppE p ls -> do
       tmp <- gensym "flt"
       tail (L1.LetE (tmp, L1.primRetTy p, L1.PrimAppE p ls) (L1.VarE tmp))
-       
+           
     L1.LetE (v,t,L1.PrimAppE p ls) bod ->
+        -- No tuple-valued prims here:
         T.LetPrimCallT [(v,typ t)]
              (prim p)
              (L.map (triv "prim rand") ls) <$>
              (tail bod)
 
     L1.LetE (v,t,L1.AppE f arg) bod -> do
+        -- FIXME, tuples should be unzipped here:
         T.LetCallT [(v,typ t)] f
              [(triv "app rand") arg]
              <$>
-             (tail bod)    
+             (tail bod)
 
-    L1.CaseE e ls ->
-        return $ T.Switch{} -- (tail e) (M.map (\(vs,er) -> (vs,tail er)) ls)
+    L1.LetE (v, t, L1.IfE a b c) bod -> do
+      vsts <- unzipTup v t
+      b' <- tail b
+      c' <- tail c
+      T.LetIfT vsts (triv "if test" a, b', c')
+           <$> tail bod
+
+
+    --------------------------------------------------------------------------------
+    -- If we get here that means we're NOT packing trees on this run:
+    -- Thus this operates on BOXED data:               
+    L1.CaseE e mp -> do
+      let tycon = getTyOfDataCon ddefs (head $ M.keys mp)
+          orderedCases = [ mp # dcon 
+                         | dcon <- getConOrdering ddefs tycon ]
+          (lst:rstrev) = reverse $ orderedCases
+          rest = reverse rstrev
+
+      tmp <- gensym "scrt"
+      -- | Read the first word off the target, which must be a pointer:
+      let bindScrut = T.LetPrimCallT [(tmp,T.PtrTy)] T.GetFirstWord [(triv "case scrutinee" e)]
+
+      -- FIXME: Need to perform dereferences to populate pattern bindigs:
+
+      -- T.LetUnpack ...
+
+                      
+      rest' <- mapM (tail . snd) rest
+      lst' <- tail (snd lst)
+      -- We decide right here what the tag values are.  We could also produce
+      -- macros/symbols for readability.
+      let bod = T.Switch (T.VarTriv tmp)
+                         (T.IntAlts (zip [0..] rest'))
+                         (Just lst')
+      return $ bindScrut bod
+
+    -- Accordingly, constructor allocation becomes an allocation.
+    L1.LetE (v, _, L1.MkPackedE k ls) bod -> L1.assertTrivs ls $ do
+      bod' <- tail bod
+      let tys = L.map typ $ lookupDataCon ddefs k 
+      -- FIXME: NEED TO ASSIGN FIELDS:
+      return $ T.LetAllocT v (zip tys (L.map (triv "MkPacked args") ls)) bod'
+
+    --------------------------------------------------------------------------------
+             
+    L1.TimeIt e ty ->
+        do tmp <- gensym "timed"
+           -- Hack: no good way to express EndTimer in the source lang:
+           e' <- tail (L1.LetE (tmp, ty, e) (L1.VarE tmp))
+           tm <- gensym "tmr"
+           -- We splice in the end-timer post-facto:
+           let endT = T.EndTimerT tm 
+           return $ T.StartTimerT tm $
+            case e' of
+             T.LetCallT   bnd rat rnds bod -> T.LetCallT   bnd rat rnds (endT bod)
+             T.LetPrimCallT bnd p rnds bod -> T.LetPrimCallT bnd p rnds (endT bod)
+             T.LetTrivT  bnd           bod -> T.LetTrivT           bnd  (endT bod)
+             T.LetIfT bnd (tst,con,els) bod ->
+                 T.LetIfT bnd (tst, endT con, endT els) (endT bod)
+             _ -> error $ "lower: expected let binding back from recursive call:\n  "++sdoc e'
 
     _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex
              
-{-    
-    L1.LitE _          -> ex
-    
-    L1.PrimAppE p ls   -> L1.PrimAppE p $ L.map tail ls
-    
-    L1.ProjE i e       -> L1.ProjE i (tail e)
-    L1.CaseE e ls      -> L1.CaseE (tail e) (M.map (\(vs,er) -> (vs,tail er)) ls)
-    L1.MkProdE ls      -> L1.MkProdE $ L.map tail ls
-    L1.MkPackedE k ls  -> L1.MkPackedE k $ L.map tail ls
-    L1.TimeIt e        -> L1.TimeIt $ tail e
-    
--}
 
-  triv :: String -> L1.Exp -> T.Triv
-  triv msg e0 =
-    case e0 of
-      (L1.VarE x) -> T.VarTriv x
-      (L1.LitE x) -> T.IntTriv x
-      -- TODO: I think we should allow tuples and projection in trivials:
+unzipTup :: Var -> L1.Ty -> SyM [(Var,T.Ty)]
+unzipTup v t =
+  case t of
+    L1.ProdTy ts -> do
+      vs <- mapM (\_ -> gensym "uziptmp") ts
+      return (zip vs (L.map typ ts))
+    _ -> return [(v,typ t)]
+
+triv :: String -> L1.Exp -> T.Triv
+triv msg e0 =
+  case e0 of
+    (L1.VarE x) -> T.VarTriv x
+    (L1.LitE x) -> T.IntTriv x
+    -- Bools become ints:                          
+    (L1.PrimAppE L1.MkTrue [])  -> T.IntTriv 1
+    (L1.PrimAppE L1.MkFalse []) -> T.IntTriv 0
+    -- TODO: I think we should allow tuples and projection in trivials:
 --      (ProjE x1 x2) -> __
 --      (MkProdE x) -> __
-      _ -> error $ "lower/triv, expected trivial in "++msg++", got "++sdoc e0
+    _ -> error $ "lower/triv, expected trivial in "++msg++", got "++sdoc e0
   
-  typ :: L1.Ty -> T.Ty
-  typ t =
-    case t of
-      L1.IntTy -> T.IntTy
-      L1.SymTy -> T.SymTy
-      L1.BoolTy -> T.IntTy
-      (L1.ProdTy xs) -> T.ProdTy $ L.map typ xs
-      (L1.SymDictTy x) -> T.SymDictTy $ typ x
-      -- t | isCursorTy t -> T.CursorTy
-      (L1.Packed k)
-          | k == L2.con L2.cursorTy -> T.CursorTy
-          | otherwise -> error "lower/typ: should not encounter "
+typ :: Ty1 a -> T.Ty
+typ t =
+  case t of
+    L1.IntTy  -> T.IntTy
+    L1.SymTy  -> T.SymTy
+    L1.BoolTy -> T.IntTy
+    L1.ListTy{} -> error "lower/typ: FinishMe: List types"
+    (L1.ProdTy xs) -> T.ProdTy $ L.map typ xs
+    (L1.SymDictTy x) -> T.SymDictTy $ typ x
+    -- t | isCursorTy t -> T.CursorTy
+    (L1.PackedTy k _)
+        | k == L2.con L2.cursorTy -> T.CursorTy
+        | otherwise -> error "lower/typ: should not encounter non-cursor packed type."
 
-  typ' :: L2.Ty -> T.Ty
-  typ' = error "FINISHME lower/typ'"
+prim :: L1.Prim -> T.Prim
+prim p =
+  case p of
+    L1.AddP -> T.AddP
+    L1.SubP -> T.SubP
+    L1.MulP -> T.MulP
+    L1.EqSymP -> T.EqP
+    L1.EqIntP -> T.EqP
+    L1.DictInsertP -> T.DictInsertP
+    L1.DictLookupP -> T.DictLookupP
+    L1.DictEmptyP -> T.DictEmptyP
+    L1.ErrorP{} -> error$ "lower/prim: internal error, should not have got to here: "++show p
 
-  prim :: L1.Prim -> T.Prim
-  prim p =
-    case p of
-      L1.AddP -> T.AddP
-      L1.SubP -> T.SubP
-      L1.MulP -> T.MulP
-      L1.EqSymP  -> error "lower/prim should only have eq? directly in comparison of an If"
-      L1.DictInsertP -> T.DictInsertP
-      L1.DictLookupP -> T.DictLookupP
-      L1.ErrorP{} -> error$ "lower/prim: internal error, should not have got to here: "++show p
-
+    L1.MkTrue  -> error "lower/prim: internal error. MkTrue should not get here."
+    L1.MkFalse -> error "lower/prim: internal error. MkFalse should not get here."
+                     
 -- ================================================================================
 

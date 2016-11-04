@@ -18,6 +18,7 @@ stack --version
 racket --version
 gcc --version
 
+source set_env.sh
 
 set +x; echo
 echo "  Racket code"

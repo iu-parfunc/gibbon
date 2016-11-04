@@ -9,6 +9,8 @@
 
          time + * -
 
+         pack-Int pack-Bool pack-Sym
+
          #%app #%module-begin #%datum quote
          only-in all-defined-out ann #%top-interaction
          #;(all-from-out typed/racket))
@@ -16,7 +18,9 @@
 (require (prefix-in r typed/racket/base)
          (for-syntax syntax/parse)
          racket/performance-hint
-         racket/unsafe/ops)
+         racket/unsafe/ops
+         typed/racket/unsafe
+         (for-syntax racket/syntax))
 
 ;; add for/list  w/types
 
@@ -108,17 +112,38 @@ lit := int | #t | #f
 (define-type Bool Boolean)
 (define-type (SymDict t) (HashTable Symbol t))
 
+(define-values (prop:pack pack? pack-ref) (make-struct-type-property 'pack))
+
+(define (pack-Int [i : Int]) (integer->integer-bytes i 8 #true))
+(define (pack-Bool [b : Bool]) (if b (bytes 1) (bytes 0)))
+(define (pack-Sym [s : Sym]) (integer->integer-bytes (eq-hash-code s) 8 #true))
+
 (define-syntax (data stx)
   (syntax-case stx ()
     [(_ type1 [ts f ...] ...)
      (with-syntax ([((f-ids ...) ...)
-                    (map generate-temporaries (syntax->list #'((f ...) ...)))])
+                    (map generate-temporaries (syntax->list #'((f ...) ...)))]
+                   [(tag-num ...)
+                    (build-list (length (syntax->list #'((f ...) ...))) values)]
+                   [pack-id (format-id #'type1 "pack-~a" #'type1)]
+                   [((pack-f-ids ...) ...)
+                    (map (λ (fs) (map (λ (f)
+                                        (if (identifier? f)
+                                            (format-id f "pack-~a" f)
+                                            #'(λ (v) (bytes)))) ;; doesn't work, but we should switch to no-list
+                                      (syntax->list fs)))
+                         (syntax->list #'((f ...) ...)))])
        #'(begin
            (define-type type1 (U ts ...))
-           (struct ts ([f-ids : f] ...) #:transparent) ...))]))
+           
+           (struct ts ([f-ids : f] ...) #:transparent) ...
+           (define (pack-id [v : type1]) : Bytes
+             (match v
+               [(ts f-ids ...) (bytes-append (bytes tag-num) (pack-f-ids f-ids) ...)]
+               ...))))]))
 
-(define True #t)
-(define False #f)
+(define True  : Bool #t)
+(define False : Bool #f)
 
 (begin-encourage-inline 
   ;; FIXME: need to make sure these inline:

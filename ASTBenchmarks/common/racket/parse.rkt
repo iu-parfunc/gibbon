@@ -115,3 +115,14 @@
     [`(,(=? 'VariableReferenceNull))
      (VariableReferenceNull)]))
 
+
+(: parse-pack-write : Any Output-Port -> Any)
+(define (parse-pack-write v port)
+  (define bs (pack-Toplvl (parse v)))
+  (displayln (bytes-length bs))
+  (write-bytes bs port))
+
+(module+ main
+  (require racket/cmdline)
+  (command-line #:args (#{in : String} #{out : String})
+                (parse-pack-write (file->value in) (open-output-file out))))

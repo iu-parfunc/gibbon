@@ -14,6 +14,7 @@
 module Packed.FirstOrder.SExpFrontend 
        (parseFile, parseSExp, primMap, main) where
 
+import Data.Char
 import Data.Text as T
 import Data.List as L
 import Data.Set as S
@@ -110,7 +111,7 @@ tagDataCons ddefs = go allCons
        CaseE e ls -> CaseE (go cons e) (M.map (\(vs,er) -> (vs,go cons er)) ls)
        MkProdE ls     -> MkProdE $ L.map (go cons) ls
        MkPackedE k ls -> MkPackedE k $ L.map (go cons) ls
-       TimeIt e  -> TimeIt $ go cons e
+       TimeIt e t -> TimeIt (go cons e) t
        IfE a b c -> IfE (go cons a) (go cons b) (go cons c)   
 
        MapE  (v,t,e) bod -> MapE (v,t, go cons e) (go cons bod)
@@ -171,7 +172,7 @@ typ :: RichSExpr HaskLikeAtom -> Ty
 typ s = case s of          
          (A "Int")  -> IntTy
          (A "Sym")  -> SymTy
-         -- (A "Bool") -> BoolTy
+         (A "Bool") -> BoolTy
          (A other)  -> Packed (toVar other)
          (RSList (A "Vector"  : rst)) -> ProdTy $ L.map typ rst
          (RSList [A "SymDict", t]) -> SymDictTy $ typ t
@@ -201,6 +202,10 @@ trueE = PrimAppE MkTrue []
 
 falseE :: Exp
 falseE = PrimAppE MkFalse []
+
+-- FIXME: we cannot intern strings until runtime.
+hackySymbol :: String -> Int
+hackySymbol s = product (L.map ord s)  
          
 exp :: Sexp -> Exp
 exp se =
@@ -218,10 +223,13 @@ exp se =
    L4 "if" test conseq altern -> 
      IfE (exp test) (exp conseq) (exp altern)
 
+   -- FIXME: Need LitSym:
+   L2 "quote" (A v) -> LitE $ hackySymbol (T.unpack v)
+     
    -- Any other naked symbol is a variable:
    A v -> VarE (toVar v)
    RSAtom (HSInt n)  -> LitE (fromIntegral n)
-     
+                        
    -- L [A "error",arg] ->
    L3 "ann" (L2 "error" arg) ty -> 
       case arg of
@@ -230,8 +238,9 @@ exp se =
 
    -- Other annotations are dropped:
    L3 "ann" e _ty -> exp e
-             
-   L2 "time" arg -> (TimeIt (exp arg))
+
+   -- | This type gets replaced later in flatten:
+   L2 "time" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()))
    
    L3 "let" (L bnds) bod -> 
      mkLets (L.map letbind bnds) (exp bod) 

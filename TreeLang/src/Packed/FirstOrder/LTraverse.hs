@@ -1,5 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
@@ -13,6 +13,10 @@
 module Packed.FirstOrder.LTraverse
     ( Prog(..), Ty(..), FunEnv, FunDef(..), Effect(..), ArrowTy(..)
     , inferEffects, inferFunDef
+
+    -- * Temporary backwards compatibility:
+    , Ty1(..), pattern SymTy
+      
     -- * Utilities for dealing with the extended types:
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc
     , tyWithFreshLocs, stripTyLocs
@@ -30,8 +34,8 @@ import Control.DeepSeq
 import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
--- import qualified Packed.FirstOrder.Target as T
--- import Packed.FirstOrder.L1_Source (Exp(..))
+-- import Packed.FirstOrder.L1_Source (Ty1(..), SymTy)
+import Packed.FirstOrder.L1_Source hiding (Ty, FunDef, Prog)
 import Data.List as L
 import Data.Set as S
 import Data.Map as M
@@ -47,9 +51,6 @@ lvl = 5
 
 -- Unchanged from L1, or we could go A-normal:
 -- data Exp =
-
--- | Abstract location variables.
-type LocVar = Var
 
 -- | Abstract locations:
 data Loc = Fixed Var -- ^ A rigid location, such as for an input or output field.
@@ -118,7 +119,7 @@ data ArrowTy t = ArrowTy { arrIn :: t, arrEffs:: (Set Effect), arrOut:: t }
 data Effect = Traverse LocVar
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
-instance Out Ty
+-- instance Out Ty
 instance Out t => Out (ArrowTy t)
 instance Out Effect
 instance Out a => Out (Set a) where
@@ -132,10 +133,8 @@ type NewFuns = M.Map Var FunDef
     
 type FunEnv = M.Map Var (ArrowTy Ty)
 
--- | L1 Types extended with abstract Locations
-data Ty = IntTy | SymTy | BoolTy | ProdTy [Ty] | SymDictTy Ty  
-        | PackedTy { con :: Constr, loc :: LocVar }
-  deriving (Show, Read, Ord, Eq, Generic, NFData)
+-- | L1 Types extended with abstract Locations.
+type Ty = L1.Ty1 LocVar
            
 -- | Here we only change the types of FUNCTIONS:
 data Prog = Prog { ddefs    :: DDefs L1.Ty
@@ -464,7 +463,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
             return (S.union eff1 (S.intersection eff2 eff3),
                     fst (join loc2 loc3))
 
-     L1.TimeIt e -> exp env e
+     L1.TimeIt e _ -> exp env e
 
      -- Construct output packed data.  We will always "scroll to the end" of 
      -- output values, so they are not interesting for this effect analysis.
@@ -532,7 +531,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
               case lastTy of
                 -- If the last field is packed, then we better have
                 -- traversed it in the RHS:
-                L1.Packed{}    -> S.member (Traverse lastV) eff
+                L1.PackedTy{}    -> S.member (Traverse lastV) eff
                 -- ANY usage of a fixed-sized last field requires
                 -- traversal of packed data in the middle fields:
                 L1.IntTy  -> isUsed

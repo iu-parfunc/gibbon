@@ -5,7 +5,7 @@
       [Node Tree Tree])
 
 (define (go [root : Int] [n : Int]) : Tree
-  (if (eq? n 0)
+  (if (= n 0)
       (Leaf root)
       (Node (go root (- n 1))
             (go (+ root 1) ; (expt 2 (sub1 n))

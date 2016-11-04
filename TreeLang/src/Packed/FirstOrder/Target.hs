@@ -1,3 +1,5 @@
+
+{-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE OverloadedStrings  #-}
@@ -14,8 +16,6 @@ module Packed.FirstOrder.Target
     ( Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..),
       Alts(..), Prog(..), MainExp(..),
       codegenProg,
-      -- Examples, temporary:
-      exadd1, exadd1Tail, add1C, buildTreeC
     ) where
 
 --------------------------------------------------------------------------------
@@ -30,7 +30,7 @@ import Data.Word (Word8)
 import Data.Bifunctor (first)
 import Data.Loc (noLoc)
 import Data.Maybe (fromJust)
-import Data.Traversable
+-- import Data.Traversable
 import GHC.Generics (Generic)
 import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
                            cunit)
@@ -41,7 +41,7 @@ import System.Environment
 import System.Directory
 import Text.PrettyPrint.GenericPretty (Out (..))
 import Text.PrettyPrint.Mainland
-    
+
 import Packed.FirstOrder.Common
 
 --------------------------------------------------------------------------------
@@ -84,6 +84,8 @@ instance Out Word8 where
 
 data Tail
     = RetValsT [Triv] -- ^ Only in tail position, for returning from a function.
+    | AssnValsT [(Var,Ty,Triv)] -- ^ INTERNAL ONLY: used for assigning instead of returning.
+
     | LetCallT { binds :: [(Var,Ty)],
                  rator :: Var,
                  rands :: [Triv],
@@ -92,12 +94,35 @@ data Tail
                      prim  :: Prim,
                      rands :: [Triv],
                      bod   :: Tail }
-    | IfEqT { val1 :: Var,
-              val2 :: Var,
-              con  :: Tail,
-              els  :: Tail }
-    | ErrT
-    | TimeT Tail
+
+    -- Ugh, we should not strictly need this if we simplify everything in the right way:
+    | LetTrivT { bnd :: (Var,Ty,Triv)
+               , bod :: Tail }
+
+    -- A control-flow join point; an If on the RHS of LeT:
+    | LetIfT { binds :: [(Var,Ty)]
+             , ife :: (Triv,Tail,Tail)
+             , bod :: Tail
+             }
+
+    | LetUnpackT { binds :: [(Var,Ty)]
+                 , ptr :: (Var,[Ty])
+                 , bod :: Tail }
+    -- ^ Unpack a struct pointer (variable of PtrTy) into local fields.
+
+    | LetAllocT { lhs  :: Var -- ^ Var to bind to PtrTy
+                , vals :: [(Ty,Triv)] -- ^ Fields of allocated struct
+                , bod  :: Tail }
+    -- ^ Allocate storage for a struct of the given type,
+    --   Initialize all fields Return PtrTy.
+
+
+    | IfT { tst :: Triv,
+            con  :: Tail,
+            els  :: Tail }
+    | ErrT String
+    | StartTimerT Var Tail
+    | EndTimerT   Var Tail
     | Switch Triv Alts (Maybe Tail)
     -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
@@ -105,10 +130,14 @@ data Tail
 
 data Ty
     = IntTy
-    | TagTy -- ^ A single byte / Word8
+    | TagTy -- ^ A single byte / Word8.  Used in PACKED mode.
     | SymTy -- ^ Symbols used in writing compiler passes.
             --   It's an alias for Int, an index into a symbol table.
     | CursorTy -- ^ A byte-indexing pointer.
+
+    | PtrTy   -- ^ A machine word.  Same as IntTy.  Untyped.
+    | StructPtrTy { fields :: [Ty] } -- ^ A pointer to a struct containing the given fields.
+
     | ProdTy [Ty]
     | SymDictTy Ty
       -- ^ We allow built-in dictionaries from symbols to a value type.
@@ -118,8 +147,10 @@ data Prim
     = AddP
     | SubP
     | MulP
+    | EqP
     | DictInsertP -- ^ takes k,v,dict
     | DictLookupP -- ^ takes k,dict, errors if absent
+    | DictEmptyP
     | NewBuf
     -- ^ Allocate a new buffer, return a cursor.
     | WriteTag
@@ -130,6 +161,9 @@ data Prim
     -- ^ Read one byte from the cursor and advance it.
     | ReadInt
       -- ^ Read an 8 byte Int from the cursor and advance.
+
+    | GetFirstWord -- ^ takes a PtrTy, returns IntTy containing the (first) word pointed to.
+
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data FunDecl = FunDecl
@@ -214,6 +248,36 @@ makeStructs (ts : ts') = d : makeStructs ts'
           decls = zipWith (\t n -> [csdecl| $ty:(codegenTy t) $id:("field"++(show n)); |])
                   ts [0 :: Int ..]
 
+mapAlts :: (Tail->Tail) -> Alts -> Alts
+mapAlts f (TagAlts ls) = TagAlts $ zip (map fst ls) (map (f . snd) ls)
+mapAlts f (IntAlts ls) = IntAlts $ zip (map fst ls) (map (f . snd) ls)
+
+rewriteReturns :: Tail -> [(Var,Ty)] -> Tail
+rewriteReturns tl bnds =
+ let go x = rewriteReturns x bnds in
+ case tl of
+   (RetValsT ls) -> AssnValsT [ (v,t,e) | (v,t) <- bnds | e <- ls ]
+   -- Here we've already rewritten the tail to assign values
+   -- somewhere.. and now we want to REREWRITE it?
+   (AssnValsT _) -> error$ "rewriteReturns: Internal invariant broken:\n "++sdoc tl
+   (e@LetCallT{bod})     -> e{bod = go bod }
+   (e@LetPrimCallT{bod}) -> e{bod = go bod }
+   (e@LetTrivT{bod})     -> e{bod = go bod }
+   -- We don't recur on the "tails" under the if, because they're not
+   -- tail with respect to our redex:
+   (LetIfT bnd (a,b,c) bod) -> LetIfT bnd (a,b,c) (go bod)
+   (IfT a b c) -> IfT a (go b) (go c)
+   (ErrT s) -> (ErrT s)
+   (StartTimerT v x2) -> StartTimerT v $ go x2
+   (EndTimerT v x2)   -> EndTimerT v $ go x2
+   (Switch tr alts def) -> Switch tr (mapAlts go alts) (fmap go def)
+   -- Oops, this is not REALLY a tail call.  Hoist it and go under:
+   (TailCall f rnds) -> let (vs,ts) = unzip bnds
+                            vs' = map (++"hack") vs -- FIXME: Gensym
+                        in LetCallT (zip vs' ts) f rnds
+                            (rewriteReturns (RetValsT (map VarTriv vs')) bnds)
+
+
 codegenTriv :: Triv -> C.Exp
 codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
 codegenTriv (IntTriv i) = [cexp| $i |]
@@ -227,6 +291,15 @@ codegenTail (RetValsT ts) ty =
     return $ [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
     where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
 
+codegenTail (AssnValsT ls) _ty =
+    return $ [ mut (codegenTy ty) vr (codegenTriv triv) | (vr,ty,triv) <- ls ]
+
+codegenTail (RetValsT ts) ty =
+    return $ [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
+    where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
+
+
+-- FIXME : This needs to actually generate a SWITCH!
 codegenTail (Switch tr alts def) ty =
     do let trE = codegenTriv tr
            mk_tag_lhs lhs = C.Const (C.IntConst (show lhs) C.Unsigned (fromIntegral lhs) noLoc) noLoc
@@ -249,34 +322,60 @@ codegenTail (Switch tr alts def) ty =
 codegenTail (TailCall v ts) _ty =
     return $ [ C.BlockStm [cstm| return $( C.FnCall (cid v) (map codegenTriv ts) noLoc ); |] ]
 
-codegenTail (IfEqT v1 v2 e1 e2) ty = do
+codegenTail (IfT e0 e1 e2) ty = do
     e1' <- codegenTail e1 ty
     e2' <- codegenTail e2 ty
-    return $ [ C.BlockStm [cstm| if ($(cid v1) == $(cid v2)) { $items:e1' } else { $items:e2' } |] ]
+    return $ [ C.BlockStm [cstm| if ($(codegenTriv e0)) { $items:e1' } else { $items:e2' } |] ]
 
-codegenTail ErrT _ty = return $ [ C.BlockStm [cstm| printf("error\n"); |]
-                                , C.BlockStm [cstm| exit(1); |] ]
+codegenTail (ErrT s) _ty = return $ [ C.BlockStm [cstm| printf("$s\n"); |]
+                                    , C.BlockStm [cstm| exit(1); |] ]
 
-codegenTail (TimeT tal) ty =
-    do begin <- gensym "tmp_begin"
-       end <- gensym "tmp_end"
-       tal' <- codegenTail tal ty
+codegenTail (StartTimerT begin tal) ty =
+    do tal' <- codegenTail tal ty
        return $ [ C.BlockDecl [cdecl| struct timespec $id:begin; |]
-                , C.BlockDecl [cdecl| struct timespec $id:end; |]
                 , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid begin)); |]
-                ] ++ tal' ++ [ C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid end)); |]
-                             , C.BlockStm [cstm| printf("TIMEIT: %lf\n", difftimespecs(&$(cid begin), &$(cid end))); |] ]
+                ] ++ tal'
+
+codegenTail (EndTimerT begin tal) ty =
+    do end <- gensym "endtmr"
+       tal' <- codegenTail tal ty
+       return $ [ C.BlockDecl [cdecl| struct timespec $id:end; |]
+                , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid end)); |]
+                , C.BlockStm [cstm| printf("SELFTIMED: %lf\n", difftimespecs(&$(cid begin), &$(cid end))); |]
+                ] ++ tal'
+
+-- We could eliminate these earlier
+codegenTail (LetTrivT (vr,rty,rhs) body) ty =
+    do tal <- codegenTail body ty
+       return $ [ C.BlockDecl [cdecl| $ty:(codegenTy rty) $id:vr = $(codegenTriv rhs); |] ]
+                ++ tal
+
+-- Here we unzip the tuple into assignments to local variables.
+codegenTail (LetIfT bnds (e0,e1,e2) body) ty =
+    do let decls = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:vr0; |]
+                   | (vr0,ty0) <- bnds ]
+       let e1' = rewriteReturns e1 bnds
+           e2' = rewriteReturns e2 bnds
+       e1'' <- codegenTail e1' ty
+       e2'' <- codegenTail e2' ty
+       -- Int 1 is Boolean true:
+       let ifbod = [ C.BlockStm [cstm| if ($(codegenTriv e0)) { $items:e1'' } else { $items:e2'' } |] ]
+       tal <- codegenTail body ty
+       return $ decls ++ ifbod ++ tal
+
 
 codegenTail (LetCallT bnds ratr rnds body) ty
     | (length bnds) > 1 = do nam <- gensym "tmp_struct"
-                             let init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
-                                 bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
+                             let bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
                                  fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
                                  ty0 = ProdTy $ map snd bnds
+                             init <- saveDictPtr [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
                              tal <- codegenTail body ty
                              return $ init ++ zipWith bind bnds fields ++ tal
     | otherwise = do tal <- codegenTail body ty
-                     return $ assn (codegenTy (snd $ bnds !! 0)) (fst $ bnds !! 0) (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc) : tal
+                     let call = assn (codegenTy (snd $ bnds !! 0)) (fst $ bnds !! 0) (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc)
+                     withSave <- saveDictPtr [call]
+                     return $ withSave ++ tal
 
 
 codegenTail (LetPrimCallT bnds prm rnds body) ty =
@@ -291,8 +390,16 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     MulP -> let [(outV,outT)] = bnds
                                 [pleft,pright] = rnds
                             in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) * $(codegenTriv pright); |]]
-                    DictInsertP -> unfinished 1
-                    DictLookupP -> unfinished 2
+                    EqP -> let [(outV,outT)] = bnds
+                               [pleft,pright] = rnds
+                           in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv pleft) == $(codegenTriv pright)); |]]
+                    DictInsertP -> let [(outV,SymDictTy IntTy)] = bnds
+                                       [(VarTriv dict),keyTriv,valTriv] = rnds
+                                   in [ C.BlockStm [cstm| dict_insert($(codegenTriv keyTriv),$(codegenTriv valTriv)); |] ]
+                    DictLookupP -> let [(outV,IntTy)] = bnds
+                                       [(VarTriv dict),keyTriv] = rnds
+                                   in [ C.BlockDecl [cdecl| int $id:outV = dict_lookup($(codegenTriv keyTriv)); |] ]
+                    DictEmptyP -> []
                     NewBuf -> unfinished 3
                     WriteTag -> let [(outV,CursorTy)] = bnds
                                     [(TagTriv tag),(VarTriv cur)] = rnds
@@ -321,6 +428,19 @@ codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] n
     where nam = makeName ts
 codegenTy (SymDictTy _t) = unfinished 4
 
+dictPtrName :: String
+dictPtrName = "DICT_PTR"
+
+dictTy = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id "dict_item_t" noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
+
+saveDictPtr :: [C.BlockItem] -> SyM [C.BlockItem]
+saveDictPtr is =
+    do tmp <- gensym "dict_ptr_tmp"
+       let init = C.BlockDecl [cdecl| $ty:dictTy * $id:tmp = $id:dictPtrName; |]
+           end = C.BlockStm [cstm| $id:dictPtrName = $id:tmp; |]
+       -- for now, don't emit these instructions
+       return is -- $ [init] ++ is ++ [end]
+
 makeName :: [Ty] -> String
 makeName []            = "Prod"
 makeName (IntTy:ts)    = "Int" ++ makeName ts
@@ -333,67 +453,13 @@ mkBlock ss = C.Block ss noLoc
 cid :: Var -> C.Exp
 cid v = C.Var (C.toIdent v noLoc) noLoc
 
+-- | Create a NEW lexical binding.
 assn :: (C.ToIdent v, C.ToExp e) => C.Type -> v -> e -> C.BlockItem
 assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
 
--- Examples:
---------------------------------------------------------------------------------
-
-leafTag :: Word8
-leafTag = 0
-
-nodeTag :: Word8
-nodeTag = 1
-
-exadd1Prog :: Prog
-exadd1Prog = Prog [exadd1] (Just (RunRacketCorePass "build_tree" "add1"))
-
-exadd1 :: FunDecl
-exadd1 = FunDecl "add1" [("t",CursorTy),("tout",CursorTy)] (ProdTy [CursorTy,CursorTy]) exadd1Tail
-
-buildTree :: FunDecl
-buildTree = FunDecl "build_tree" [("n",IntTy),("tout",CursorTy)] CursorTy buildTree_tail
-
-buildTree_tail :: Tail
-buildTree_tail =
-    Switch (VarTriv "n") (IntAlts [(0, base_case)]) (Just recursive_case)
-  where
-    base_case, recursive_case :: Tail
-
-    base_case =
-      LetPrimCallT [("tout1", CursorTy)] WriteInt [IntTriv 0, VarTriv "tout"] $
-      RetValsT [VarTriv "tout1"]
-
-    recursive_case =
-      LetPrimCallT [("n1",IntTy)] SubP [VarTriv "n", IntTriv 1] $
-      LetCallT [("tout1",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout"] $
-      LetCallT [("tout2",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout1"] $
-      RetValsT [VarTriv "tout2"]
-
-exadd1Tail :: Tail
-exadd1Tail =
-    LetPrimCallT [("ttag",TagTy),("t2",CursorTy)] ReadTag [VarTriv "t"]
-  $ Switch (VarTriv "ttag")
-           (TagAlts [(leafTag,leafCase),
-                     (nodeTag,nodeCase)])
-           Nothing
-    where leafCase =
-              LetPrimCallT [("tout2",CursorTy)] WriteTag [TagTriv leafTag, VarTriv "tout"]
-            $ LetPrimCallT [("n",IntTy),("t3",CursorTy)] ReadInt [VarTriv "t2"]
-            $ LetPrimCallT [("n1",IntTy)] AddP [VarTriv "n", IntTriv 1]
-            $ LetPrimCallT [("tout3",CursorTy)] WriteInt [VarTriv "n1", VarTriv "tout2"]
-            $ RetValsT [VarTriv "t3", VarTriv "tout3"]
-          nodeCase =
-              LetPrimCallT [("tout2",CursorTy)] WriteTag [TagTriv nodeTag, VarTriv "tout"]
-            $ LetCallT [("t3",CursorTy),("tout3",CursorTy)] "add1" [VarTriv "t2", VarTriv "tout2"]
-            $ TailCall "add1" [VarTriv "t3", VarTriv "tout3"]
-
--- | Compile the example and print it
--- add1C :: IO ()
-add1C = codegenProg exadd1Prog -- mapM_ (\c -> putDocLn $ ppr c) (codegenFun exadd1)
-
-buildTreeC :: IO ()
-buildTreeC = unfinished 6 --  mapM_ (\c -> putDocLn (ppr c)) (codegenFun buildTree)
+-- | Mutate an existing binding:
+mut :: (C.ToIdent v, C.ToExp e) => C.Type -> v -> e -> C.BlockItem
+mut _t x y = C.BlockStm [cstm| $id:x = $exp:y; |]
 
 unfinished :: Int -> a
 unfinished n = error $ "Target.hs: unfinished hole #"++show n
