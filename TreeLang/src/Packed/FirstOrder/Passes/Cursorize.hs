@@ -553,7 +553,7 @@ typ t =
     -- t | isCursorTy t -> T.CursorTy
     (L1.PackedTy k _)
         | k == L2.con L2.cursorTy -> T.CursorTy
-        | otherwise -> error "lower/typ: should not encounter "
+        | otherwise -> error "lower/typ: should not encounter non-cursor packed type."
 
 prim :: L1.Prim -> T.Prim
 prim p =
