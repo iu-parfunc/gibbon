@@ -113,12 +113,6 @@ lit := int | #t | #f
                     (map generate-temporaries (syntax->list #'((f ...) ...)))])
        #'(begin
            (define-type type1 (U ts ...))
-           (define (pack-foo v)
-             (match-define (vector t x (... ...)) (struct->vector v))
-             (append (list (hash-ref tags t))
-                     (vector-map (lambda (v) (pack-
-             )
-           (define tags (for/hash ([t '(f ...)] [i (in-naturals)]) (values t i)))
            (struct ts ([f-ids : f] ...) #:transparent) ...))]))
 
 (define True  : Bool #t)
