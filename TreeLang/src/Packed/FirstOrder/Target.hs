@@ -44,6 +44,8 @@ import Text.PrettyPrint.Mainland
 
 import Packed.FirstOrder.Common
 
+import Debug.Trace
+    
 --------------------------------------------------------------------------------
 -- * AST definition
 
