@@ -2,8 +2,8 @@
 
 set -e
 
-A=`tempfile`
-B=`tempfile`
+A=`mktemp`
+B=`mktemp`
 
 grep -v SELFTIMED $1 > $A
 grep -v SELFTIMED $2 > $B
