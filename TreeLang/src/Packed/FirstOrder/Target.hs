@@ -132,7 +132,7 @@ data Tail
 
 -- | For boxed data, we use a distinct storage format for the tag as compared to the packed data.
 pattern BoxedTagTy = IntTy
-           
+
 data Ty
     = IntTy
     | TagTy -- ^ A single byte / Word8.  Used in PACKED mode.
@@ -200,10 +200,10 @@ harvestStructTys (Prog funs mtal) =
                 Just (PrintExp t) -> [t]
                 _ -> []) ++
              map funBody funs
-                                 
+
   -- We may have nested products; this finds everything:
   findAllProds :: [Ty] -> S.Set [Ty]
-  findAllProds = go 
+  findAllProds = go
     where
       go []     = S.empty
       go (t:ts) =
@@ -213,7 +213,7 @@ harvestStructTys (Prog funs mtal) =
 
   -- This finds all types that maybe grouped together as a ProdTy:
   allTypes :: Tail -> [Ty]
-  allTypes = go 
+  allTypes = go
    where
     go tl =
      case tl of
@@ -240,7 +240,7 @@ harvestStructTys (Prog funs mtal) =
        (Switch _ (IntAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
        (Switch _ (TagAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
        (TailCall _ _)    -> []
-                                 
+
 --------------------------------------------------------------------------------
 -- * C codegen
 
@@ -413,20 +413,22 @@ codegenTail (LetAllocT lhs vals body) ty =
     do let structTy = codegenTy $ ProdTy (map fst vals)
            size = trace "FIXME: size hack" 1000 :: Int
        tal <- codegenTail body ty
-       
+
        return$ assn (codegenTy PtrTy) lhs [cexp| ( $ty:structTy *)ALLOC( sizeof($ty:structTy) ) |] :
                [ C.BlockStm [cstm| $id:lhs->$id:fld = $(codegenTriv trv); |]
                | (ix,(_ty,trv)) <- zip [0..] vals
                , let fld = "field"++show ix] ++ tal
 
-codegenTail (LetUnpackT binds ptr body) ty = 
-    do let structFlds = map snd binds
-       
-       tal <- codegenTail body ty
-       
-       return $ [
-                ] ++ tal
-                   
+codegenTail (LetUnpackT bs scrt body) ty =
+    do let mkFld :: Int -> C.Id
+           mkFld i = C.toIdent ("field" ++ show i) noLoc
+
+           binds = zipWith (\i (v, t) -> [cdecl| $ty:(codegenTy t) $id:v = $exp:(cid scrt).$id:(mkFld i); |])
+                           [0..] bs
+
+       body' <- codegenTail body ty
+       return (map C.BlockDecl binds ++ body')
+
 -- Here we unzip the tuple into assignments to local variables.
 codegenTail (LetIfT bnds (e0,e1,e2) body) ty =
 
@@ -502,9 +504,9 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                        [(outV,PtrTy)] ->
                         [ C.BlockDecl [cdecl| $ty:(codegenTy BoxedTagTy) $id:outV = * (( $ty:(codegenTy BoxedTagTy) *) $(codegenTriv ptr)); |] ]
                        _ -> error $"codegen/GetFirstWord: result type should be one PtrTy, was: "++show bnds
-                     
-                       
-                        
+
+
+
                     -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'
 
