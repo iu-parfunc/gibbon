@@ -412,11 +412,11 @@ codegenTail (LetTrivT (vr,rty,rhs) body) ty =
                 ++ tal
 
 codegenTail (LetAllocT lhs vals body) ty =
-    do let structTy = codegenTy $ ProdTy (map fst vals)
-           size = trace "FIXME: size hack" 1000 :: Int
+    do let structTy = codegenTy (ProdTy (map fst vals))
+           size = [cexp| sizeof($ty:structTy) |]
        tal <- codegenTail body ty
 
-       return$ assn (codegenTy PtrTy) lhs [cexp| ( $ty:structTy *)ALLOC( sizeof($ty:structTy) ) |] :
+       return$ assn (codegenTy PtrTy) lhs [cexp| ( $ty:structTy *)ALLOC( $size ) |] :
                [ C.BlockStm [cstm| $id:lhs->$id:fld = $(codegenTriv trv); |]
                | (ix,(_ty,trv)) <- zip [0..] vals
                , let fld = "field"++show ix] ++ tal
