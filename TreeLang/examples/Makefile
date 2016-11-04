@@ -34,10 +34,9 @@ parse_all:
           $(TREEC) --parse $$f || exit 1; done
 
 PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
-    test03b_eqs.sexp test03c_eqsym.sexp \
+    test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp \
     test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp
 # FIX THESE: All are blocked on something.  Then move them to the above list:
-#  test03  -- flatten fromJust
 
 #  test04  -- MkTrue typeExp
 #  test04b -- ''

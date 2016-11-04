@@ -146,7 +146,7 @@ int main(int argc, char** argv)
         }
     }
 
-    printf("\nTREEDEPTH: %d\nITERS: %d\n", tree_size, num_iterations);
+    // printf("\nTREEDEPTH: %d\nITERS: %d\n", tree_size, num_iterations);
 
     if (benchmark)
         bench(num_iterations, tree_size, buffer_size);
