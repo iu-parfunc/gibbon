@@ -27,8 +27,9 @@ expanded_racket: ${DATASET}
 	echo "\nOffenders and zero-sized removed.  Done."
 	$(MAKE) largest
 
+# Updated to no-list version [2016.11.04]:
 wget_cleaned:
-	wget http://cs.indiana.edu/~rrnewton/files/racket_cleaned_asts_v1.3.tgz
+	wget http://cs.indiana.edu/~rrnewton/files/racket_cleaned_asts_v1.6.tgz
 
 
 cleaned_racket: rewrite.rkt
@@ -47,6 +48,10 @@ largest:
 largest_clean:
 	echo "Here are some of the larger, cleaned files:"
 	find cleaned_racket -type f -printf "%s\t%p\n" | sort -n | tail
+
+
+binary_racket: 
+	mkdir -p $@
 
 
 .PHONY: default fetch largest

@@ -1,5 +1,7 @@
 #lang s-exp "../TreeLang/treelang.rkt"
 
+(provide (all-defined-out))
+
 (data Tree
       [Leaf Int]
       [Node Tree Tree])
@@ -20,13 +22,12 @@
     [(Node x y) (Node (add1-tree x)
                       (add1-tree y))]))
 
-(let ([tr0 : Tree (build-tree 20)])
-    (time (add1-tree tr0))
-    
-    ;; (for/list ([x '(1 2 3 4 5 6 7 8 9 10)])
-    ;;     (let ([_ (time (add1-tree tr0))])
-    ;;       0
-    ;;       ))
-    )
+(module+ main
+  (let ([tr0 : Tree (build-tree 20)])
+    (let ([_ (time (add1-tree tr0))])
+      0    
+      ))
+  )
+
 
 ; (error "Hello world")
