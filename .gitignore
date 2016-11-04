@@ -12,3 +12,4 @@ ASTBenchmarks/*.tgz
 BintreeBench/*.exe
 TreeLang/.stack-work
 
+compiled/
