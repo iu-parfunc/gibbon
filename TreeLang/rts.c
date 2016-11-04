@@ -92,22 +92,22 @@ int main(int argc, char** argv)
         if (strcmp(argv[i], "-num-iterations") == 0 && i < argc - 1)
         {
             num_iterations = atoi(argv[i + 1]);
-            ++i;
+            i += 2;
         }
         else if (strcmp(argv[i], "-tree-size") == 0 && i < argc - 1)
         {
             tree_size = atoi(argv[i + 1]);
-            ++i;
+            i += 2;
         }
         else if (strcmp(argv[i], "-buffer-size") == 0 && i < argc - 1)
         {
             buffer_size = atoi(argv[i + 1]);
-            ++i;
+            i += 2;
         }
         else if ((strcmp(argv[i], "-benchmark") == 0) || (strcmp(argv[i], "-bench") == 0))
         {
-          benchmark = 1;
-          ++i;
+            benchmark = 1;
+            ++i;
         }
         else
         {
