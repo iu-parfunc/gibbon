@@ -451,7 +451,7 @@ nodeTag :: Word8
 nodeTag = 1
 
 exadd1Prog :: Prog
-exadd1Prog = Prog [exadd1] (Just (RunRacketCorePass "build_tree" "add1"))
+exadd1Prog = Prog [buildTree, exadd1] (Just (RunRacketCorePass "build_tree" "add1"))
 
 exadd1 :: FunDecl
 exadd1 = FunDecl "add1" [("t",CursorTy),("tout",CursorTy)] (ProdTy [CursorTy,CursorTy]) exadd1Tail
@@ -471,9 +471,10 @@ buildTree_tail =
 
     recursive_case =
       LetPrimCallT [("n1",IntTy)] SubP [VarTriv "n", IntTriv 1] $
-      LetCallT [("tout1",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout"] $
+      LetCallT [("tout1",CursorTy)] "build_tree" [TagTriv 1, VarTriv "tout"] $
       LetCallT [("tout2",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout1"] $
-      RetValsT [VarTriv "tout2"]
+      LetCallT [("tout3",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout2"] $
+      RetValsT [VarTriv "tout3"]
 
 exadd1Tail :: Tail
 exadd1Tail =
