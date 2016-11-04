@@ -471,7 +471,7 @@ buildTree_tail =
 
     recursive_case =
       LetPrimCallT [("n1",IntTy)] SubP [VarTriv "n", IntTriv 1] $
-      LetCallT [("tout1",CursorTy)] "build_tree" [TagTriv 1, VarTriv "tout"] $
+      LetPrimCallT [("tout1",CursorTy)] WriteTag [TagTriv 1, VarTriv "tout"] $
       LetCallT [("tout2",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout1"] $
       LetCallT [("tout3",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout2"] $
       RetValsT [VarTriv "tout3"]
