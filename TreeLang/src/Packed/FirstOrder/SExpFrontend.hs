@@ -111,7 +111,7 @@ tagDataCons ddefs = go allCons
        CaseE e ls -> CaseE (go cons e) (M.map (\(vs,er) -> (vs,go cons er)) ls)
        MkProdE ls     -> MkProdE $ L.map (go cons) ls
        MkPackedE k ls -> MkPackedE k $ L.map (go cons) ls
-       TimeIt e  -> TimeIt $ go cons e
+       TimeIt e t -> TimeIt (go cons e) t
        IfE a b c -> IfE (go cons a) (go cons b) (go cons c)   
 
        MapE  (v,t,e) bod -> MapE (v,t, go cons e) (go cons bod)
@@ -238,8 +238,9 @@ exp se =
 
    -- Other annotations are dropped:
    L3 "ann" e _ty -> exp e
-             
-   L2 "time" arg -> (TimeIt (exp arg))
+
+   -- | This type gets replaced later in flatten:
+   L2 "time" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()))
    
    L3 "let" (L bnds) bod -> 
      mkLets (L.map letbind bnds) (exp bod) 

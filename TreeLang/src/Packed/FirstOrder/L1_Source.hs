@@ -63,7 +63,7 @@ data Exp = VarE Var
          | CaseE Exp (M.Map Constr ([Var], Exp))
            -- ^ Case on a PACKED datatype.
          | MkPackedE Constr [Exp]
-         | TimeIt Exp
+         | TimeIt Exp Ty
 
            -- Limited list handling:
          | MapE  (Var,Ty,Exp) Exp
@@ -151,7 +151,7 @@ freeVars ex =
                   (S.unions $ L.map (freeVars . snd) (M.elems ls))
     MkProdE ls     -> S.unions $ L.map freeVars ls
     MkPackedE _ ls -> S.unions $ L.map freeVars ls
-    TimeIt e -> freeVars e 
+    TimeIt e _ -> freeVars e 
     IfE a b c -> freeVars a `S.union` freeVars b `S.union` freeVars c
 
 
@@ -171,7 +171,7 @@ subst old new ex =
     CaseE e ls -> CaseE (go e) (M.map (\(vs,er) -> (vs,go er)) ls)
     MkProdE ls     -> MkProdE $ L.map go ls
     MkPackedE k ls -> MkPackedE k $ L.map go ls
-    TimeIt e  -> TimeIt $ go e
+    TimeIt e t -> TimeIt (go e) t
     IfE a b c -> IfE (go a) (go b) (go c)
 
 

@@ -490,9 +490,8 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
     L1.CaseE e ls ->
         return $ T.Switch{} -- (tail e) (M.map (\(vs,er) -> (vs,tail er)) ls)
 
-    L1.TimeIt e ->
+    L1.TimeIt e ty ->
         do tmp <- gensym "timed"
-           let ty = trace "FIXME: NEED TYPE ON TimeIt!" IntTy
            -- Hack: no good way to express EndTimer in the source lang:
            e' <- tail (L1.LetE (tmp, ty, e) (L1.VarE tmp))
            tm <- gensym "tmr"
@@ -507,18 +506,6 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
 
     _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex
              
-{-    
-    L1.LitE _          -> ex
-    
-    L1.PrimAppE p ls   -> L1.PrimAppE p $ L.map tail ls
-    
-    L1.ProjE i e       -> L1.ProjE i (tail e)
-    L1.CaseE e ls      -> L1.CaseE (tail e) (M.map (\(vs,er) -> (vs,tail er)) ls)
-    L1.MkProdE ls      -> L1.MkProdE $ L.map tail ls
-    L1.MkPackedE k ls  -> L1.MkPackedE k $ L.map tail ls
-    L1.TimeIt e        -> L1.TimeIt $ tail e
-    
--}
 
 unzipTup :: Var -> L1.Ty -> SyM [(Var,T.Ty)]
 unzipTup v t =

@@ -100,9 +100,9 @@ freshNames (L1.Prog defs funs main) =
           freshExp vs (L1.MkPackedE c es) =
               do es' <- mapM (freshExp vs) es
                  return $ L1.MkPackedE c es'
-          freshExp vs (L1.TimeIt e) =
+          freshExp vs (L1.TimeIt e t) =
               do e' <- freshExp vs e
-                 return $ L1.TimeIt e'
+                 return $ L1.TimeIt e' t
           freshExp vs (L1.MapE (v,t,b) e) =
               do b' <- freshExp vs b
                  e' <- freshExp vs e
@@ -185,7 +185,11 @@ flatten (L1.Prog defs funs main) =
                      bind [] e = e
                      bind ((v,t,e'):xs) e = mkLetE (v,t,e') $ bind xs e
                  return $ bind (zip3 nams tys fes) $ L1.MkPackedE c $ map L1.VarE nams
-          flattenExp env (L1.TimeIt e) = (flattenExp env e) >>= (\fe -> return $ L1.TimeIt fe)
+          -- very important to NOT "flatten" the time form:
+          flattenExp env (L1.TimeIt e _) =
+              do fe <- flattenExp env e
+                 let ty = typeExp env e
+                 return $ L1.TimeIt fe ty
           flattenExp env (L1.MapE (v,t,e') e) =
               do fe' <- flattenExp env e'
                  fe <- flattenExp env e
@@ -226,7 +230,7 @@ flatten (L1.Prog defs funs main) =
               let (c,(args,e)) = (M.assocs mp) !! 0
               in typeExp ((zip args (lookupDataCon defs c)) ++ env) e
           typeExp _env (L1.MkPackedE c _es) = L1.Packed c
-          typeExp env (L1.TimeIt e) = typeExp env e
+          typeExp env (L1.TimeIt e _) = typeExp env e
           typeExp env (L1.MapE _ e) = typeExp env e
           typeExp env (L1.FoldE _ _ e) = typeExp env e
 
@@ -268,7 +272,7 @@ inlineTriv (L1.Prog defs funs main) =
                   mp' = M.fromList $ map (\(c,(args,ae)) -> (c,(args,inlineTrivExp env ae))) $ M.assocs mp
               in L1.CaseE e' mp'
           inlineTrivExp env (L1.MkPackedE c es) = L1.MkPackedE c $ map (inlineTrivExp env) es
-          inlineTrivExp env (L1.TimeIt e) = L1.TimeIt $ inlineTrivExp env e
+          inlineTrivExp env (L1.TimeIt e t) = L1.TimeIt (inlineTrivExp env e) t
           inlineTrivExp env (L1.MapE (v,t,e') e) = L1.MapE (v,t,inlineTrivExp env e') (inlineTrivExp env e)
           inlineTrivExp env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
               L1.FoldE (v1,t1,inlineTrivExp env e1) (v2,t2,inlineTrivExp env e2) (inlineTrivExp env e3)
