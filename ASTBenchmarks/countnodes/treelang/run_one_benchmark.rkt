@@ -3,7 +3,7 @@
 
 ;; Run countnode on a SINGLE input file for a given symbol and num iterations.
 
-(require "parse.rkt"
+(require "../../common/racket/parse.rkt"
          "countnodes.rkt"
          (only-in "../../grammar_racket.sexp" Toplvl))
 
