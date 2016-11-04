@@ -20,8 +20,6 @@ import GHC.Generics
 import Control.DeepSeq
 import Text.PrettyPrint.GenericPretty
 import Text.PrettyPrint.HughesPJ
-import Data.Sequence (Seq)
-import Control.DeepSeq
 
 -- import Data.Time.Clock
 import System.Clock
@@ -61,6 +59,13 @@ execProg (Prog funs (Just (PrintExp expr))) = exec env expr
 
 type Env = M.Map String Val
 
+
+clk :: Clock
+clk = Monotonic
+-- Linux specific:
+-- clk = MonotonicRaw
+
+    
 eval :: Env -> Triv -> Val
 eval env (VarTriv v) = M.findWithDefault (error ("Unbound var: " ++ v)) v env
 eval _   (IntTriv i) = IntVal i
@@ -93,7 +98,7 @@ exec _ ErrT =
 exec env (StartTimerT begin e) = do
     !_ <- return $! force env
     -- st <- return $! unsafePerformIO getCurrentTime
-    st <- return $! unsafePerformIO $ getTime MonotonicRaw
+    st <- return $! unsafePerformIO $ getTime clk
     let env' = M.insert begin (TimeVal st) env
     -- let micros = IntVal $ round (st * 10e6)
     -- We don't time in the interpreter
@@ -102,7 +107,7 @@ exec env (StartTimerT begin e) = do
 exec env (EndTimerT begin e) = do
     !_ <- return $! force env
     -- en <- return $! unsafePerformIO getCurrentTime
-    en <- return $! unsafePerformIO $ getTime MonotonicRaw
+    en <- return $! unsafePerformIO $ getTime clk
     let TimeVal st = env # begin
         -- tm   = diffUTCTime en st
         tm = fromIntegral (toNanoSecs $ diffTimeSpec en st)
@@ -181,3 +186,4 @@ applyOp ReadInt [BufVal is] = case Seq.viewl is of
                                 i :< is'   -> [IntVal i, BufVal is']
 
 applyOp op args = error ("applyOp: Unsupported form: " ++ show op ++ " " ++ show args)
+
