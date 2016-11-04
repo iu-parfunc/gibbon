@@ -92,22 +92,21 @@ int main(int argc, char** argv)
         if (strcmp(argv[i], "-num-iterations") == 0 && i < argc - 1)
         {
             num_iterations = atoi(argv[i + 1]);
-            i += 2;
+	    i ++; // Extra bump
         }
         else if (strcmp(argv[i], "-tree-size") == 0 && i < argc - 1)
         {
-            tree_size = atoi(argv[i + 1]);
-            i += 2;
+            tree_size = atoi(argv[i + 1]);            
+	    i ++; // Extra bump
         }
         else if (strcmp(argv[i], "-buffer-size") == 0 && i < argc - 1)
         {
             buffer_size = atoi(argv[i + 1]);
-            i += 2;
+            i ++; // Extra bump
         }
         else if ((strcmp(argv[i], "-benchmark") == 0) || (strcmp(argv[i], "-bench") == 0))
         {
             benchmark = 1;
-            ++i;
         }
         else
         {
@@ -116,6 +115,8 @@ int main(int argc, char** argv)
             exit(1);
         }
     }
+
+    printf("\nTREEDEPTH: %d\nITERS: %d\n", tree_size, num_iterations);
 
     if (benchmark)
         bench(num_iterations, tree_size, buffer_size);

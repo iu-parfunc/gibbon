@@ -451,7 +451,7 @@ nodeTag :: Word8
 nodeTag = 1
 
 exadd1Prog :: Prog
-exadd1Prog = Prog [exadd1] (Just (RunRacketCorePass "build_tree" "add1"))
+exadd1Prog = Prog [exadd1, buildTree] (Just (RunRacketCorePass "build_tree" "add1"))
 
 exadd1 :: FunDecl
 exadd1 = FunDecl "add1" [("t",CursorTy),("tout",CursorTy)] (ProdTy [CursorTy,CursorTy]) exadd1Tail
