@@ -194,8 +194,8 @@ primRetTy p =
     SubP -> IntTy
     MulP -> IntTy
     EqSymP  -> BoolTy
-    DictInsertP -> error "primRetTy: dicts not handled yet"
-    DictLookupP -> error "primRetTy: dicts not handled yet"
+    DictInsertP -> SymDictTy IntTy -- error "primRetTy: dicts not handled yet"
+    DictLookupP -> IntTy -- error "primRetTy: dicts not handled yet"
     (ErrorP _ ty) -> ty
 
                  

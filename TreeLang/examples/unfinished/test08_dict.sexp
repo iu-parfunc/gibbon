@@ -1,4 +1,4 @@
 #lang s-exp "../treelang.rkt"
 
-(let ([x (empty-dict)])
+(let ([x : (SymDict Int) (empty-dict)])
   44)
