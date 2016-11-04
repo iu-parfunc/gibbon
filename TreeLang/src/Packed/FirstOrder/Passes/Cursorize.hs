@@ -486,12 +486,43 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
       T.LetIfT vsts (triv "if test" a, b', c')
            <$> tail bod
 
-    -- L1.LetE (v,t,trv) bod -> 
-    --     error$  "lower: tail: Finish handling non trivial RHS "++sdoc trv'
-             
-    L1.CaseE e ls ->
-        return $ T.Switch{} -- (tail e) (M.map (\(vs,er) -> (vs,tail er)) ls)
 
+    --------------------------------------------------------------------------------
+    -- If we get here that means we're NOT packing trees on this run:
+    -- Thus this operates on BOXED data:               
+    L1.CaseE e mp -> do
+      let tycon = getTyOfDataCon ddefs (head $ M.keys mp)
+          orderedCases = [ mp # dcon 
+                         | dcon <- getConOrdering ddefs tycon ]
+          (lst:rstrev) = reverse $ orderedCases
+          rest = reverse rstrev
+
+      tmp <- gensym "scrt"
+      -- | Read the first word off the target, which must be a pointer:
+      let bindScrut = T.LetPrimCallT [(tmp,T.PtrTy)] T.GetFirstWord [(triv "case scrutinee" e)]
+
+      -- FIXME: Need to perform dereferences to populate pattern bindigs:
+      rest' <- mapM (tail . snd) rest
+      lst' <- tail (snd lst)
+      -- We decide right here what the tag values are.  We could also produce
+      -- macros/symbols for readability.
+      let bod = T.Switch (T.VarTriv tmp)
+                         (T.IntAlts (zip [0..] rest'))
+                         (Just lst')
+      return $ bindScrut bod
+
+    -- Accordingly, constructor allocation becomes an allocation.
+    L1.LetE (v,t, L1.MkPackedE k ls) bod -> L1.assertTrivs ls $ do
+      -- tmp <- gensym "alctmp"
+      let size = trace ("FIXME: size hack for allocations") 1024
+      bod' <- tail bod
+
+      -- FIXME: NEED TO ASSIGN FIELDS:
+      return $ T.LetPrimCallT [(v,T.PtrTy)] (T.Alloc size) []
+               bod'
+
+    --------------------------------------------------------------------------------
+             
     L1.TimeIt e ty ->
         do tmp <- gensym "timed"
            -- Hack: no good way to express EndTimer in the source lang:

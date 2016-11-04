@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DeriveGeneric #-}
 -- {-# LANGUAGE PartialTypeSignatures #-}
@@ -24,7 +25,7 @@ module Packed.FirstOrder.Common
        , insertFD, fromListFD
          -- * Data definitions
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
-       , lookupDDef, lookupDataCon
+       , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon
          -- * Misc
        , (#), fragileZip, sdoc
          -- * Debugging/logging:
@@ -96,25 +97,36 @@ instance (Out k,Out v) => Out (Map k v) where
 lookupDDef :: Out a => DDefs a -> Var -> DDef a 
 lookupDDef = (#)
 
--- -- | Lookup the arguments to a data contstructor.
--- lookupTyCon :: DDefs a -> Var -> [Var]
--- lookupTyCon dds  = tyArgs . lookupDDef dds
+-- | Get the canonical ordering for data constructors, currently based
+-- on ordering in the original source code.
+getConOrdering :: Out a => DDefs a -> Var -> [Constr]
+getConOrdering dd tycon = L.map fst dataCons
+  where DDef{dataCons} = lookupDDef dd tycon 
+
+-- | Lookup the name of the TyCon that goes with a given DataCon.
+--   Must be unique!
+getTyOfDataCon :: Out a => DDefs a -> Var -> Var
+getTyOfDataCon dds con = fst $ lkp dds con                  
 
 -- | Lookup the arguments to a data contstructor.
-lookupDataCon :: Out a => DDefs a -> Var -> [a]
-lookupDataCon dds con =
-   -- Here we try to lookup in ALL datatypes, assume unique:
-  let res = catMaybes 
-            [ L.lookup con dataCons
-            | DDef {dataCons} <- M.elems dds ] in
-  -- trace ("Looked up "++show con++" got "++show (doc res)) $ 
-  case res of   
+lookupDataCon :: Out a => DDefs a -> Constr -> [a]
+lookupDataCon dds con = snd $ snd $ lkp dds con
+
+-- | Lookup a Datacon.
+lkp :: Out a => DDefs a -> Constr -> (Var, (Constr, [a]))
+lkp dds con =
+   -- Here we try to lookup in ALL datatypes, assuming unique datacons:
+  case [ (tycon,variant)
+       | (tycon, DDef{dataCons}) <- M.toList dds
+       , variant <- L.filter ((==con). fst) dataCons ] of   
     [] -> error$ "lookupDataCon: could not find constructor "++show con
           ++", in datatypes:\n  "++show(doc dds)
     [hit] -> hit
     _ -> error$ "lookupDataCon: found multiple occurences of constructor "++show con
           ++", in datatypes:\n  "++show(doc dds)
 
+
+            
 insertDD :: DDef a -> DDefs a -> DDefs a
 insertDD d = M.insertWith err (tyName d) d 
   where 
