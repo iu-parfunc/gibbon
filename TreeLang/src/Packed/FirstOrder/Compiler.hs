@@ -147,7 +147,7 @@ flatten (L1.Prog defs funs main) =
                  return exp
           flattenExp env (L1.LetE (v,t,e') e) =
               do fe' <- flattenExp env e'
-                 fe  <- flattenExp env e
+                 fe  <- flattenExp ((v,t):env) e
                  let exp = mkLetE (v,t,fe') fe
                  return exp
           flattenExp env (L1.IfE e1 e2 e3) =
@@ -207,7 +207,9 @@ flatten (L1.Prog defs funs main) =
           mkLetE bnd bod = L1.LetE bnd bod
                                               
           typeExp :: [(Var,L1.Ty)] -> L1.Exp -> L1.Ty
-          typeExp env (L1.VarE v) = fromJust $ lookup v env
+          typeExp env (L1.VarE v) = case lookup v env of
+                                      Just x -> x
+                                      Nothing -> error $ "Cannot find type of variable " ++ (show v)
           typeExp _env (L1.LitE _i) = L1.IntTy
           typeExp _env (L1.AppE v _e) =
               case M.lookup v funs of
@@ -218,7 +220,10 @@ flatten (L1.Prog defs funs main) =
                 L1.AddP -> L1.IntTy
                 L1.SubP -> L1.IntTy
                 L1.MulP -> L1.IntTy
+                L1.EqIntP -> L1.BoolTy
                 L1.EqSymP -> L1.BoolTy
+                L1.MkTrue -> L1.BoolTy
+                L1.MkFalse -> L1.BoolTy
                 _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
           typeExp env (L1.LetE (v,t,_) e) = typeExp ((v,t):env) e
           typeExp env (L1.IfE _ e _) = typeExp env e
@@ -261,7 +266,9 @@ inlineTriv (L1.Prog defs funs main) =
           inlineTrivExp env (L1.PrimAppE p es) = L1.PrimAppE p $ map (inlineTrivExp env) es
           inlineTrivExp env (L1.LetE (v,t,e') e) =
               case e' of
-                L1.VarE _v -> inlineTrivExp ((v,e'):env) e
+                L1.VarE v' -> case lookup v' env of
+                                Nothing -> inlineTrivExp ((v,e'):env) e
+                                Just e'' -> inlineTrivExp ((v,e''):env) e
                 L1.LitE _i -> inlineTrivExp ((v,e'):env) e
                 _ -> L1.LetE (v,t,inlineTrivExp env e') (inlineTrivExp env e)
           inlineTrivExp env (L1.IfE e1 e2 e3) =
