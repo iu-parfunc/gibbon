@@ -24,13 +24,11 @@ module Packed.FirstOrder.Target
 
 import Control.DeepSeq
 import Control.Monad
-import Data.List (nub)
 import Data.Word (Word8)
 import Data.Maybe
 import Debug.Trace
 import Data.Bifunctor (first)
 import Data.Loc (noLoc)
-import Data.Maybe (fromJust)
 import qualified Data.Set as S
 -- import Data.Traversable
 import GHC.Generics (Generic)
@@ -388,7 +386,7 @@ codegenTail (IfT e0 e1 e2) ty = do
     e2' <- codegenTail e2 ty
     return $ [ C.BlockStm [cstm| if ($(codegenTriv e0)) { $items:e1' } else { $items:e2' } |] ]
 
-codegenTail (ErrT s) _ty = return $ [ C.BlockStm [cstm| printf("$s\n"); |]
+codegenTail (ErrT s) _ty = return $ [ C.BlockStm [cstm| printf("%s\n", $s); |]
                                     , C.BlockStm [cstm| exit(1); |] ]
 
 codegenTail (StartTimerT begin tal) ty =
