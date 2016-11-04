@@ -45,7 +45,7 @@ import Text.PrettyPrint.Mainland
 import Packed.FirstOrder.Common hiding (funBody)
 
 import Debug.Trace
-    
+
 --------------------------------------------------------------------------------
 -- * AST definition
 
@@ -349,7 +349,7 @@ codegenTriv (TagTriv i) = [cexp| $i |]
 
 codegenTail :: Tail -> C.Type -> SyM [C.BlockItem]
 
-codegenTail (RetValsT [tr]) _ty = return $ [ C.BlockStm [cstm| return $(codegenTriv tr); |] ]
+codegenTail (RetValsT [tr]) _ty = return [ C.BlockStm [cstm| return $(codegenTriv tr); |] ]
 
 codegenTail (RetValsT ts) ty =
     return $ [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
@@ -413,9 +413,8 @@ codegenTail (LetAllocT lhs vals body) ty =
     do let structTy = codegenTy (ProdTy (map fst vals))
            size = [cexp| sizeof($ty:structTy) |]
        tal <- codegenTail body ty
-
        return$ assn (codegenTy PtrTy) lhs [cexp| ( $ty:structTy *)ALLOC( $size ) |] :
-               [ C.BlockStm [cstm| $id:lhs->$id:fld = $(codegenTriv trv); |]
+               [ C.BlockStm [cstm| (($ty:structTy *)  $id:lhs)->$id:fld = $(codegenTriv trv); |]
                | (ix,(_ty,trv)) <- zip [0..] vals
                , let fld = "field"++show ix] ++ tal
 
@@ -534,11 +533,14 @@ saveDictPtr is =
        return is -- $ [init] ++ is ++ [end]
 
 makeName :: [Ty] -> String
-makeName []            = "Prod"
-makeName (IntTy:ts)    = "Int" ++ makeName ts
-makeName (CursorTy:ts) = "Cursor" ++ makeName ts
-makeName (TagTy:ts)    = "Tag" ++ makeName ts
-makeName (x:_)         = error $ "makeName, not handled: "++show x
+makeName tys = concatMap makeName' tys ++ "Prod"
+
+makeName' :: Ty -> String
+makeName' IntTy = "Int"
+makeName' CursorTy = "Cursor"
+makeName' TagTy = "Tag"
+makeName' PtrTy = "Ptr"
+makeName' x = error $ "makeName', not handled: " ++ show x
 
 mkBlock :: [C.BlockItem] -> C.Stm
 mkBlock ss = C.Block ss noLoc

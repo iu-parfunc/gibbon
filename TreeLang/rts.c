@@ -4,6 +4,8 @@
 #include <string.h>
 #include <time.h>
 
+#define ALLOC malloc
+
 #define SIZE 1000
 
 typedef struct dict_item {
