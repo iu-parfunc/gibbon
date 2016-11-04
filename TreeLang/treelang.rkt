@@ -15,7 +15,9 @@
 
 (require (prefix-in r typed/racket/base)
          racket/performance-hint
-         racket/unsafe/ops)
+         racket/unsafe/ops
+         typed/racket/unsafe
+         (for-syntax racket/syntax))
 
 ;; add for/list  w/types
 
@@ -106,14 +108,30 @@ lit := int | #t | #f
 (define-type Bool Boolean)
 (define-type (SymDict t) (HashTable Symbol t))
 
+(define-values (prop:pack pack? pack-ref) (make-struct-type-property 'pack))
+
+(define (pack-Int [i : Int]) (integer->integer-bytes i 8 #true))
+(define (pack-Bool [b : Bool]) (if b (bytes 1) (bytes 0)))
+
 (define-syntax (data stx)
   (syntax-case stx ()
     [(_ type1 [ts f ...] ...)
      (with-syntax ([((f-ids ...) ...)
-                    (map generate-temporaries (syntax->list #'((f ...) ...)))])
+                    (map generate-temporaries (syntax->list #'((f ...) ...)))]
+                   [(tag-num ...)
+                    (build-list (length (syntax->list #'((f ...) ...))) values)]
+                   [pack-id (format-id #'type1 "pack-~a" #'type1)]
+                   [((pack-f-ids ...) ...)
+                    (map (λ (fs) (map (λ (f) (format-id f "pack-~a" f)) (syntax->list fs)))
+                         (syntax->list #'((f ...) ...)))])
        #'(begin
            (define-type type1 (U ts ...))
-           (struct ts ([f-ids : f] ...) #:transparent) ...))]))
+           (define (pack-id [v : type1]) : Bytes
+             (match v
+               [(ts f ...) (bytes-append (bytes tag-num) (pack-f-ids f) ...)] ...))
+           
+           (struct ts ([f-ids : f] ...) #:transparent)
+           ...))]))
 
 (define True  : Bool #t)
 (define False : Bool #f)
