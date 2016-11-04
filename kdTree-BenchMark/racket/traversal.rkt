@@ -1,14 +1,16 @@
 #lang s-exp "./treelang.rkt"
 
-  
+ (provide Leaf Leaf? Node Node? Int)
+
+
+
 (data Tree
       [Leaf Float Float Int ]
       [Node Int Float Float Float Float Float Tree Tree ])
 
 
-(data PointList
-      [EndList]
-      [Member Float Float Member ])
+(data Point
+      [mkpoint Float Float])
 
 
 (define (canCorrelate [minX : Float] [maxX : Float] [minY : Float] [maxY : Float] [px : Float] [py : Float] [rad : Float]) : Bool
