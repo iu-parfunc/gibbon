@@ -1,3 +1,4 @@
+{-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
 {-# LANGUAGE OverloadedStrings  #-}
@@ -84,6 +85,8 @@ instance Out Word8 where
 
 data Tail
     = RetValsT [Triv] -- ^ Only in tail position, for returning from a function.
+    | AssnValsT [(Var,Ty,Triv)] -- ^ INTERNAL ONLY: used for assigning instead of returning.
+      
     | LetCallT { binds :: [(Var,Ty)],
                  rator :: Var,
                  rands :: [Triv],
@@ -94,7 +97,8 @@ data Tail
                      bod   :: Tail }
 
     -- Ugh, we should not strictly need this if we simplify everything in the right way:
-    | LetTrivT (Var,Ty,Triv) Tail              
+    | LetTrivT { bnd :: (Var,Ty,Triv)
+               , bod :: Tail }
       
     -- A control-flow join point; an If on the RHS of LeT:
     | LetIfT { binds :: [(Var,Ty)]
@@ -225,6 +229,39 @@ makeStructs (ts : ts') = d : makeStructs ts'
           decls = zipWith (\t n -> [csdecl| $ty:(codegenTy t) $id:("field"++(show n)); |])
                   ts [0 :: Int ..]
 
+mapAlts :: (Tail->Tail) -> Alts -> Alts
+mapAlts f (TagAlts ls) = TagAlts $ zip (map fst ls) (map (f . snd) ls)
+mapAlts f (IntAlts ls) = IntAlts $ zip (map fst ls) (map (f . snd) ls) 
+                     
+rewriteReturns :: Tail -> [(Var,Ty)] -> Tail
+rewriteReturns tl bnds =
+ let go x = rewriteReturns x bnds in
+ case tl of
+   (RetValsT ls) -> AssnValsT [ (v,t,e) | (v,t) <- bnds | e <- ls ]
+   -- Here we've already rewritten the tail to assign values
+   -- somewhere.. and now we want to REREWRITE it?
+   (AssnValsT x) -> error$ "rewriteReturns: Internal invariant broken:\n "++sdoc tl
+   (e@LetCallT{bod})     -> e{bod = go bod }
+   (e@LetPrimCallT{bod}) -> e{bod = go bod }
+   (e@LetTrivT{bod})     -> e{bod = go bod }
+   -- We don't recur on the "tails" under the if, because they're not
+   -- tail with respect to our redex:
+   (LetIfT bnd (a,b,c) bod) -> LetIfT bnd (a,b,c) (go bod)
+   (IfT a b c) -> IfT a (go b) (go c)
+   ErrT -> ErrT
+   (StartTimerT v x2) -> StartTimerT v $ go x2
+   (EndTimerT v x2)   -> EndTimerT v $ go x2
+   (Switch tr alts def) -> Switch tr (mapAlts go alts) (fmap go def)
+   -- Oops, this is not REALLY a tail call.
+   (TailCall f rnds) -> let (vs,ts) = unzip bnds
+                            vs' = map (++"hack") vs -- FIXME: Gensym
+                            ty = case bnds of
+                                  [(v,t)] -> t
+                                  ls -> undefined
+                        in LetCallT (zip vs' ts) f rnds
+                            (rewriteReturns (RetValsT (map VarTriv vs')) bnds)
+      
+                     
 codegenTriv :: Triv -> C.Exp
 codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
 codegenTriv (IntTriv i) = [cexp| $i |]
@@ -238,6 +275,14 @@ codegenTail (RetValsT ts) ty =
     return $ [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
     where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
 
+codegenTail (AssnValsT ls) _ty =
+    return $ [ assn (codegenTy ty) vr (codegenTriv triv) | (vr,ty,triv) <- ls ]
+
+codegenTail (RetValsT ts) ty =
+    return $ [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
+    where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
+
+                                  
 codegenTail (Switch tr alts def) ty =
     do let trE = codegenTriv tr
            mk_tag_lhs lhs = C.Const (C.IntConst (show lhs) C.Unsigned (fromIntegral lhs) noLoc) noLoc
@@ -288,6 +333,19 @@ codegenTail (LetTrivT (vr,rty,rhs) body) ty =
        return $ [ C.BlockDecl [cdecl| $ty:(codegenTy rty) $id:vr = $(codegenTriv rhs); |] ]
                 ++ tal
 
+-- Here we unzip the tuple into assignments to local variables.  
+codegenTail (LetIfT bnds (e0,e1,e2) body) ty = 
+    do let decls = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:vr0; |]
+                   | (vr0,ty0) <- bnds ]
+       let e1' = rewriteReturns e1 bnds
+           e2' = rewriteReturns e2 bnds
+       e1'' <- codegenTail e1' ty
+       e2'' <- codegenTail e2' ty
+       let ifbod = [ C.BlockStm [cstm| if ($(codegenTriv e0)) { $items:e1'' } else { $items:e2'' } |] ]
+       tal <- codegenTail body ty
+       return $ decls ++ ifbod ++ tal 
+
+                   
 codegenTail (LetCallT bnds ratr rnds body) ty
     | (length bnds) > 1 = do nam <- gensym "tmp_struct"
                              let init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]

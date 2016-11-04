@@ -506,6 +506,7 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
              T.LetTrivT  bnd           bod -> T.LetTrivT           bnd  (endT bod)
              T.LetIfT bnd (tst,con,els) bod ->
                  T.LetIfT bnd (tst, endT con, endT els) (endT bod)
+             _ -> error $ "lower: expected let binding back from recursive call:\n  "++sdoc e'
 
     _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex
              
