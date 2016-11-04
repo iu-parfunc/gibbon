@@ -3,9 +3,11 @@
 
 ;; We import the code from the more restricted language:
 (require "example_traverse.rkt")
+(require "traversal.rkt")
 
 (display "Here's a data value, from treelang, but allocated in Racket code:\n" )
 (write (Foo 3))
+
 (newline)
 
 ;; build-tree can use the full Racket language.

@@ -1,14 +1,16 @@
 #lang s-exp "./treelang.rkt"
 
-  
+ (provide Leaf Leaf? Node Node?  Int pointCorrelation pointCorrelation_v2)
+
+
+
 (data Tree
       [Leaf Float Float Int ]
       [Node Int Float Float Float Float Float Tree Tree ])
 
 
-(data PointList
-      [EndList]
-      [Member Float Float Member ])
+(data Point
+      [mkpoint Float Float])
 
 
 (define (canCorrelate [minX : Float] [maxX : Float] [minY : Float] [maxY : Float] [px : Float] [py : Float] [rad : Float]) : Bool
@@ -30,6 +32,20 @@
        ( if  (canCorrelate minX maxX minY maxY px py rad)
              (Node splitAccess splitLoc minX maxX minY maxY (pointCorrelation leftChild px py rad) (pointCorrelation rightChild px py rad))
              (Node splitAccess splitLoc minX maxX minY maxY leftChild rightChild )
+       )
+    ] 
+  )
+)
+(define (pointCorrelation_v2 [tr : Tree] [px : Float][py : Float] [rad : Float]) : Int
+  (case tr
+    [(Leaf x y c )  (if ( fl<  (flsqrt ( fl+ (fl* ( fl- px x ) (fl- px  x)  ) (fl* ( fl- py y ) (fl- py  y)  ))  )   rad  )
+                                           1
+                                           0
+                                       )]
+    [ (Node splitAccess splitLoc minX maxX minY maxY leftChild rightChild)
+       ( if  (canCorrelate minX maxX minY maxY px py rad)
+             (+ (pointCorrelation_v2 leftChild px py rad) (pointCorrelation_v2 rightChild px py rad))
+             0
        )
     ] 
   )

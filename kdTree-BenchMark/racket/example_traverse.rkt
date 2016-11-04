@@ -1,7 +1,6 @@
-#lang s-exp "../../TreeLang/treelang.rkt"
+#lang s-exp "./treelang.rkt"
 
-(provide (all-defined-out))
-;; Or: (provide Foo Foo? Bar Bar?)
+(provide Foo Foo? Bar Bar?)
 
 (data Tree
       [Foo Int]
