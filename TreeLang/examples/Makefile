@@ -1,20 +1,37 @@
 
 default: test
 
-test:
-	$(MAKE) parse_all
+test: answers
 	$(MAKE) run_tests
 	$(MAKE) run_tests_packed
 	$(MAKE) run_tests_interp2
 
-# Run the tests straight through Racket
-valid: treelang_lib
+	$(MAKE) parse_all
+	$(MAKE) racket_valid
+# Need methodology for this.
+#	$(MAKE) racket_invalid
+
+ANSWERS= $(addsuffix .ans,$(INTERP_TESTS))
+
+%.sexp.ans : %.sexp
+	racket $^ | tee $@
+
+answers: $(ANSWERS)
+	echo "All answer files: "$(ANSWERS)
+
+
+#----------------------------------------
+# Test direct Racket execution:
+#----------------------------------------
+racket_valid: treelang_lib
 	@echo "\nGenerating canonical answers from Racket:"
 	@echo "-----------------------------------------"
 	for f in `ls test*.sexp`; do racket $$f | tee $$f.ans; done
 
-invalid: treelang_lib
+racket_invalid: treelang_lib
 	for f in `find ./error/ -name '*.sexp'`; do racket $$f | tee $$f.ans; done
+
+# ----------------------------------------
 
 TREEC= stack exec -- treec
 
@@ -24,7 +41,7 @@ parse_all:
           echo "Parsing $$f"; \
           $(TREEC) --parse $$f || exit 1; done
 
-PASSING_TESTS ?= test00_add.sexp test01_if.sexp  test02_arith.sexp \
+PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
     test03b_eqs.sexp test03c_eqsym.sexp \
     test07_time.sexp test09_recur.sexp
 # FIX THESE: All are blocked on something.  Then move them to the above list:
@@ -80,7 +97,7 @@ run_tests_packed: test00_add.sexp.ans
 	$(MAKE) run_tests TREECARGS="--run --packed" PASSING_TESTS=$(PACKED_TESTS)
 
 
-INTERP_TESTS= test00_add.sexp test01_if.sexp test02_arith.sexp \
+INTERP_TESTS= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
      test03b_eqs.sexp test03c_eqsym.sexp \
      test05_app.sexp  \
      test05b_app.sexp  test07_time.sexp test09_recur.sexp test10_desugar.sexp
@@ -107,4 +124,4 @@ clean:
 	rm -f *.exe *.o *.c *.ans *.out
 	cd error/; rm -f *.exe *.o *.c *.ans *.out
 
-.PHONY: run_racket treelang_lib
+.PHONY: run_racket treelang_lib answers
