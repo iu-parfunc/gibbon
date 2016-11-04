@@ -23,7 +23,8 @@ parse_all:
           echo "Parsing $$f"; \
           $(TREEC) --parse $$f || exit 1; done
 
-PASSING_TESTS ?= test00_add.sexp test01_if.sexp  test02_arith.sexp
+PASSING_TESTS ?= test00_add.sexp test01_if.sexp  test02_arith.sexp \
+    test07_time.sexp test09_recur.sexp
 # FIX THESE: All are blocked on something.  Then move them to the above list:
 #  test03  -- flatten fromJust
 #  test03b -- MkTrue typeExp
@@ -34,11 +35,11 @@ PASSING_TESTS ?= test00_add.sexp test01_if.sexp  test02_arith.sexp
 #  test05  -- lower/typ'
 #  test05b -- ''
 #  test06  -- lower datacon
-#  test07  -- lower Time
+
 #  test08  -- parsing empty-dict
 #  test08b -- ''
 #  test08c -- ''
-#  test09  -- lower/typ'
+
 #  test10  -- codegenTail line 235
 #  test15  -- lower/typ'
 
@@ -57,7 +58,7 @@ run_tests: test00_add.sexp.ans
 	for f in $(PASSING_TESTS); do \
           $(TREEC) --run $(TREECARGS) $$f > $$f.out; \
           echo "Now check expected $$f.ans, versus received, $$f.out"; \
-          diff $$f.ans $$f.out; \
+          ./diff.sh $$f.ans $$f.out; \
           if [ $$? != "0" ]; then echo "ERROR: Answers differed!"; exit 1; fi; \
           echo "  -> Success."; \
         done
