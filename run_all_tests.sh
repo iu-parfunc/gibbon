@@ -32,6 +32,10 @@ raco make -v $top/ASTBenchmarks/substitution/racket/subst.rkt \
 
 racket $top/typecheck-stlc/examples.rkt
 
+# If we wanted to be really aggressive we could run all racket files
+# in the Repo:
+racket $top/ASTBenchmarks/tests/*.rkt
+
 
 set +x; echo
 echo "  Compiler"

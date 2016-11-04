@@ -27,11 +27,11 @@ RUN mkdir /tmp/rust && cd /tmp/rust && \
 # RUN apt-get install -y racket
 
 RUN cd /tmp/ && \
-  wget --progress=dot:giga http://download.racket-lang.org/releases/6.6/installers/racket-6.6-x86_64-linux.sh && \
-  chmod +x racket-6.6-x86_64-linux.sh && \
-  ./racket-6.6-x86_64-linux.sh --in-place --dest /racket/ && \
+  wget --progress=dot:giga http://download.racket-lang.org/releases/6.7/installers/racket-6.7-x86_64-linux.sh && \
+  chmod +x racket-6.7-x86_64-linux.sh && \
+  ./racket-6.7-x86_64-linux.sh --in-place --dest /racket/ && \
   ln -s /racket/bin/* /usr/local/bin/ && \
-  rm -rf racket-6.6-x86_64-linux.sh
+  rm -rf racket-6.7-x86_64-linux.sh
 
 # ------------------------------------------------------------
 
