@@ -52,6 +52,11 @@ largest_clean:
 
 binary_racket: 
 	mkdir -p $@
+	cd cleaned_racket; \
+         for f in `find -name "*.sexp"`; do \
+          mkdir -p `dirname "../binary_racket/$$f"`; \
+	  echo "$$f" "../binary_racket/$$f"; \
+         done | racket ../binary_pack.rkt;
 
 
 .PHONY: default fetch largest
