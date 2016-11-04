@@ -27,6 +27,7 @@ import System.FilePath
 import System.Environment
 import System.Process
 import System.Directory
+import System.IO
 import System.Exit
 import System.IO.Error (isDoesNotExistError)
 import Text.PrettyPrint.GenericPretty
@@ -308,6 +309,7 @@ data Config = Config
   { input     :: Input
   , mode      :: Mode -- ^ How to run, which backend.
   , packed    :: Bool -- ^ Use packed representation.
+  , verbosity :: Int  -- ^ Debugging output, equivalent to DEBUG env var.
   }
 
 -- | What input format to expect on disk.
@@ -330,11 +332,14 @@ defaultConfig =
   Config { input = Unspecified
          , mode  = ToExe
          , packed = False
+         , verbosity = 1
          }
 
 configParser :: Parser Config
 configParser = Config <$> inputParser <*> modeParser
                       <*> switch (long "packed" <> help "enable packed tree representation in C backend")
+                      <*> option auto (short 'v' <> long "verbose" <>
+                                       help "Set the debug output level, 1-5")
  where  
   -- Most direct way, but I don't like it:
   _inputParser :: Parser Input
@@ -396,7 +401,13 @@ lvl = 2
 -- files to process.
 compile :: Config -> FilePath -> IO ()
 -- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compile Config{input,mode,packed} fp = do 
+compile Config{input,mode,packed,verbosity} fp = do 
+  -- TERRIBLE HACK!!  This value is global, "pure" and can be read anywhere
+  when (verbosity > 1) $ do
+    setEnv "DEBUG" (show verbosity)
+    l <- evaluate dbgLvl
+    hPutStrLn stderr$ " ! We set DEBUG based on command-line verbose arg: "++show l
+
   let parser = case input of
                  Haskell -> HS.parseFile
                  SExpr   -> SExp.parseFile
