@@ -105,6 +105,10 @@ data Tail
              , ife :: (Triv,Tail,Tail)
              , bod :: Tail
              }
+
+    -- -- Like let Triv, but only binds pointer arguments,
+    -- -- casting them to a (boxed) struct type.
+    -- | LetCast Ty (Var,Ty,Triv) Tail
       
     | IfT { tst :: Triv,
             con  :: Tail,
@@ -118,11 +122,15 @@ data Tail
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data Ty
-    = IntTy
-    | TagTy -- ^ A single byte / Word8
+    = IntTy      
+    | TagTy -- ^ A single byte / Word8.  Used in PACKED mode.
     | SymTy -- ^ Symbols used in writing compiler passes.
             --   It's an alias for Int, an index into a symbol table.
     | CursorTy -- ^ A byte-indexing pointer.
+
+    | PtrTy   -- ^ A machine word.  Same as IntTy.  Untyped.
+    | StructPtrTy { fields :: [Ty] } -- ^ A pointer to a struct containing the given fields.
+      
     | ProdTy [Ty]
     | SymDictTy Ty
       -- ^ We allow built-in dictionaries from symbols to a value type.
@@ -145,6 +153,11 @@ data Prim
     -- ^ Read one byte from the cursor and advance it.
     | ReadInt
       -- ^ Read an 8 byte Int from the cursor and advance.
+      
+    | GetFirstWord -- ^ takes a PtrTy, returns IntTy containing the (first) word pointed to.
+    | Cast Ty      -- ^ take a PtrTy, cast it, and return a StructPtrTy.
+    | Alloc Int    -- ^ Allocate exactly this many bytes.  Return PtrTy.
+      
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data FunDecl = FunDecl
@@ -240,7 +253,7 @@ rewriteReturns tl bnds =
    (RetValsT ls) -> AssnValsT [ (v,t,e) | (v,t) <- bnds | e <- ls ]
    -- Here we've already rewritten the tail to assign values
    -- somewhere.. and now we want to REREWRITE it?
-   (AssnValsT x) -> error$ "rewriteReturns: Internal invariant broken:\n "++sdoc tl
+   (AssnValsT _) -> error$ "rewriteReturns: Internal invariant broken:\n "++sdoc tl
    (e@LetCallT{bod})     -> e{bod = go bod }
    (e@LetPrimCallT{bod}) -> e{bod = go bod }
    (e@LetTrivT{bod})     -> e{bod = go bod }
@@ -252,12 +265,9 @@ rewriteReturns tl bnds =
    (StartTimerT v x2) -> StartTimerT v $ go x2
    (EndTimerT v x2)   -> EndTimerT v $ go x2
    (Switch tr alts def) -> Switch tr (mapAlts go alts) (fmap go def)
-   -- Oops, this is not REALLY a tail call.
+   -- Oops, this is not REALLY a tail call.  Hoist it and go under:
    (TailCall f rnds) -> let (vs,ts) = unzip bnds
                             vs' = map (++"hack") vs -- FIXME: Gensym
-                            ty = case bnds of
-                                  [(v,t)] -> t
-                                  ls -> undefined
                         in LetCallT (zip vs' ts) f rnds
                             (rewriteReturns (RetValsT (map VarTriv vs')) bnds)
       
