@@ -83,7 +83,7 @@ run_tests_packed: test00_add.sexp.ans
 INTERP_TESTS= test00_add.sexp test01_if.sexp test02_arith.sexp \
      test03b_eqs.sexp test03c_eqsym.sexp \
      test05_app.sexp  \
-     test05b_app.sexp  test07_time.sexp test09_recur.sexp 
+     test05b_app.sexp  test07_time.sexp test09_recur.sexp test10_desugar.sexp
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: test00_add.sexp.ans
@@ -93,7 +93,7 @@ run_tests_interp2: test00_add.sexp.ans
 # test04b_vector.sexp   -- ''
 # test04c_ifvector.sexp -- lower needs detuple
 # test06_case.sexp      -- let/datacon not allowed thru lower yet
-# test10_desugar.sexp   -- non-exhaustive in Interp ln 71
+
 # test15_packed.sexp    -- no lowering of packed types yet
 # test16_forlist.sexp   -- no list support yet
 # test17_forfold.sexp   -- ''

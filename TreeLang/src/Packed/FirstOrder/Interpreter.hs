@@ -27,7 +27,7 @@ import System.Clock
 
 data Val
   = FunVal FunDecl
-  | IntVal Int
+  | IntVal Int  -- ^ These also serve as Bools
   | TagVal Tag
   | TimeVal TimeSpec
   -- | TimeVal UTCTime
@@ -71,10 +71,17 @@ eval env (VarTriv v) = M.findWithDefault (error ("Unbound var: " ++ v)) v env
 eval _   (IntTriv i) = IntVal i
 eval _   (TagTriv t) = TagVal t
 
+
 exec :: Env -> Tail -> [Val]
 
 exec env (RetValsT ts) = map (eval env) ts
 
+exec env (LetTriv (v,t,rhs) body) = 
+    exec env' body
+  where
+    env' = extendEnv env [(v,rhs')]
+    rhs' = eval env rhs
+                         
 exec env (LetCallT binds op args body) =
     exec env' body
   where
@@ -87,8 +94,16 @@ exec env (LetPrimCallT binds op args body) =
     rets = applyOp op (map (eval env) args)
     env' = extendEnv env (zip (map fst binds) rets)
 
+exec env (LetIfT bnds (tst,thn,els) bod) =
+  do let scrut = eval env tst
+         vals = if scrut == IntVal 1
+                then exec env thn
+                else exec env els
+         env' = extendEnv env (zip (map fst bnds) vals)
+     exec env' bod
+
 exec env (IfT v1 then_ else_) =
-    if v1' == IntVal 1 then exec env then_ else exec env else_
+    if v1' == IntVal 1 then exec env then_ else exec env else_    
   where
     v1' = eval env v1
 
@@ -151,6 +166,9 @@ exec env (TailCall fn args) =
     fn' = eval env (VarTriv fn)
     args' = map (eval env) args
 
+exec env e = error$ "Interpreter/exec, unhandled expression:\n  "++show (doc e)
+
+            
 extendEnv :: Env -> [(String, Val)] -> Env
 extendEnv = foldr (uncurry M.insert)
 

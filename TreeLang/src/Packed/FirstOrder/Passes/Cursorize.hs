@@ -481,9 +481,11 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
 
     L1.LetE (v, t, L1.IfE a b c) bod -> do
       vsts <- unzipTup v t
-      T.LetIfT vsts (triv "if test" a)
-               <$> tail b <*> tail c
-             
+      b' <- tail b
+      c' <- tail c
+      T.LetIfT vsts (triv "if test" a, b', c')
+           <$> tail bod
+
     -- L1.LetE (v,t,trv) bod -> 
     --     error$  "lower: tail: Finish handling non trivial RHS "++sdoc trv'
              
@@ -502,7 +504,8 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
              T.LetCallT   bnd rat rnds bod -> T.LetCallT   bnd rat rnds (endT bod)
              T.LetPrimCallT bnd p rnds bod -> T.LetPrimCallT bnd p rnds (endT bod)
              T.LetTriv  bnd            bod -> T.LetTriv            bnd  (endT bod)
-             T.LetIfT bnd tst con els    -> T.LetIfT bnd tst (endT con) (endT els)
+             T.LetIfT bnd (tst,con,els) bod ->
+                 T.LetIfT bnd (tst, endT con, endT els) (endT bod)
 
     _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex
              

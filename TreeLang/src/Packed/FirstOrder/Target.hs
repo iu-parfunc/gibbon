@@ -98,9 +98,8 @@ data Tail
       
     -- A control-flow join point; an If on the RHS of LeT:
     | LetIfT { binds :: [(Var,Ty)]
-             , tst :: Triv
-             , con :: Tail
-             , els :: Tail 
+             , ife :: (Triv,Tail,Tail)
+             , bod :: Tail
              }
       
     | IfT { tst :: Triv,

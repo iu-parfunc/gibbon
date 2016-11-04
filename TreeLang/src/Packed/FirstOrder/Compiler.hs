@@ -360,8 +360,9 @@ configParser = Config <$> inputParser <*> modeParser
                flag' ToParse (long "parse" <> help "only parse, then print & stop") <|> 
                flag' ToC     (long "toC" <> help "compile to a C file, named after the input") <|> 
                flag' Interp1 (long "interp1" <> help "run through the interpreter early, right after parsing") <|> 
-               flag' Interp2 (long "interp2" <> help "run through the interpreter after cursor insertion") <|>
-               flag' RunExe  (long "run"     <> help "compile and then run executable") <|>  
+               flag' Interp2 (short 'i' <> long "interp2" <>
+                              help "run through the interpreter after cursor insertion") <|>
+               flag' RunExe  (short 'r' <> long "run"     <> help "compile and then run executable") <|>  
                flag ToExe ToExe (long "exe"  <> help "compile through C to executable (default)")
 
 -- | Parse configuration as well as file arguments.
