@@ -76,7 +76,7 @@ exec :: Env -> Tail -> [Val]
 
 exec env (RetValsT ts) = map (eval env) ts
 
-exec env (LetTriv (v,t,rhs) body) = 
+exec env (LetTrivT (v,t,rhs) body) = 
     exec env' body
   where
     env' = extendEnv env [(v,rhs')]

@@ -339,7 +339,7 @@ configParser :: Parser Config
 configParser = Config <$> inputParser <*> modeParser
                       <*> switch (long "packed" <> help "enable packed tree representation in C backend")
                       <*> option auto (short 'v' <> long "verbose" <>
-                                       help "Set the debug output level, 1-5")
+                                       help "Set the debug output level, 1-5, mirrors DEBUG env var.")
  where  
   -- Most direct way, but I don't like it:
   _inputParser :: Parser Input

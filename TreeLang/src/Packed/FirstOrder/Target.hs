@@ -94,7 +94,7 @@ data Tail
                      bod   :: Tail }
 
     -- Ugh, we should not strictly need this if we simplify everything in the right way:
-    | LetTriv (Var,Ty,Triv) Tail              
+    | LetTrivT (Var,Ty,Triv) Tail              
       
     -- A control-flow join point; an If on the RHS of LeT:
     | LetIfT { binds :: [(Var,Ty)]
@@ -281,6 +281,12 @@ codegenTail (EndTimerT begin tal) ty =
                 , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid end)); |]
                 , C.BlockStm [cstm| printf("SELFTIMED: %lf\n", difftimespecs(&$(cid begin), &$(cid end))); |]
                 ] ++ tal'
+
+-- We could eliminate these earlier
+codegenTail (LetTrivT (vr,rty,rhs) body) ty =
+    do tal <- codegenTail body ty
+       return $ [ C.BlockDecl [cdecl| $ty:(codegenTy rty) $id:vr = $(codegenTriv rhs); |] ]
+                ++ tal
 
 codegenTail (LetCallT bnds ratr rnds body) ty
     | (length bnds) > 1 = do nam <- gensym "tmp_struct"

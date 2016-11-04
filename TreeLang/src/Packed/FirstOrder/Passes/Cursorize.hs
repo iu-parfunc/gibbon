@@ -437,7 +437,7 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
     --       go ix ((v1,t1):rst) = T.LetTrivT (v1,t1, )
 
     -- We could eliminate these ahead of time:
-    L1.LetE (v,t,rhs) bod | L1.isTriv rhs -> T.LetTriv (v,typ t, triv "<internal error2>" rhs) <$> tail bod
+    L1.LetE (v,t,rhs) bod | L1.isTriv rhs -> T.LetTrivT (v,typ t, triv "<internal error2>" rhs) <$> tail bod
                                  
     -- TWO OPTIONS HERE: we could push equality prims into the target lang.
     -- Or we could map directly onto the IfEqT form:
@@ -503,7 +503,7 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
             case e' of
              T.LetCallT   bnd rat rnds bod -> T.LetCallT   bnd rat rnds (endT bod)
              T.LetPrimCallT bnd p rnds bod -> T.LetPrimCallT bnd p rnds (endT bod)
-             T.LetTriv  bnd            bod -> T.LetTriv            bnd  (endT bod)
+             T.LetTrivT  bnd           bod -> T.LetTrivT           bnd  (endT bod)
              T.LetIfT bnd (tst,con,els) bod ->
                  T.LetIfT bnd (tst, endT con, endT els) (endT bod)
 
