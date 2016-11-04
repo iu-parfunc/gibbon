@@ -150,6 +150,7 @@ data Prim
     | EqP
     | DictInsertP -- ^ takes k,v,dict
     | DictLookupP -- ^ takes k,dict, errors if absent
+    | DictEmptyP
     | NewBuf
     -- ^ Allocate a new buffer, return a cursor.
     | WriteTag
@@ -392,8 +393,13 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     EqP -> let [(outV,outT)] = bnds
                                [pleft,pright] = rnds
                            in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv pleft) == $(codegenTriv pright)); |]]
-                    DictInsertP -> unfinished 1
-                    DictLookupP -> unfinished 2
+                    DictInsertP -> let [(outV,SymDictTy IntTy)] = bnds
+                                       [(VarTriv dict),keyTriv,valTriv] = rnds
+                                   in [ C.BlockStm [cstm| dict_insert($(codegenTriv keyTriv),$(codegenTriv valTriv)); |] ]
+                    DictLookupP -> let [(outV,IntTy)] = bnds
+                                       [(VarTriv dict),keyTriv] = rnds
+                                   in [ C.BlockDecl [cdecl| int $id:outV = dict_lookup($(codegenTriv keyTriv)); |] ]
+                    DictEmptyP -> []
                     NewBuf -> unfinished 3
                     WriteTag -> let [(outV,CursorTy)] = bnds
                                     [(TagTriv tag),(VarTriv cur)] = rnds
