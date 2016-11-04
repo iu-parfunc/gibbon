@@ -79,6 +79,7 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | EqIntP       -- ^ Equality on Int
           | DictInsertP  -- ^ takes k,v,dict
           | DictLookupP  -- ^ takes k dict, errors if absent
+          | DictEmptyP
           | ErrorP String Ty
               -- ^ crash and issue a static error message.
               --   To avoid needing inference, this is labeled with a return type.

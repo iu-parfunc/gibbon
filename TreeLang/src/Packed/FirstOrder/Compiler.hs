@@ -224,6 +224,9 @@ flatten (L1.Prog defs funs main) =
                 L1.EqSymP -> L1.BoolTy
                 L1.MkTrue -> L1.BoolTy
                 L1.MkFalse -> L1.BoolTy
+                L1.DictInsertP -> L1.SymDictTy L1.IntTy -- FIXME
+                L1.DictLookupP -> L1.IntTy -- FIXME
+                L1.DictEmptyP -> L1.SymDictTy L1.IntTy
                 _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
           typeExp env (L1.LetE (v,t,_) e) = typeExp ((v,t):env) e
           typeExp env (L1.IfE _ e _) = typeExp env e
