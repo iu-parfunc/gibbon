@@ -107,8 +107,8 @@ exec env (IfT v1 then_ else_) =
   where
     v1' = eval env v1
 
-exec _ ErrT =
-    error "ErrT"
+exec _ (ErrT s) =
+    error $ "ErrT: " ++ s
 
 exec env (StartTimerT begin e) = do
     !_ <- return $! force env

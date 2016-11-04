@@ -455,10 +455,10 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
    
                           
     -- FIXME: No reason errors can't stay primitive at Target:
-    L1.PrimAppE (L1.ErrorP _str _ty) [] ->
-      pure T.ErrT 
-    L1.LetE (_,_,L1.PrimAppE (L1.ErrorP _str _) []) _ ->
-      pure T.ErrT 
+    L1.PrimAppE (L1.ErrorP str _ty) [] ->
+      pure $ T.ErrT str
+    L1.LetE (_,_,L1.PrimAppE (L1.ErrorP str _) []) _ ->
+      pure $ T.ErrT str
 
     -- Whatever, a little just in time flattening.  Should obsolete this:
     L1.PrimAppE p ls -> do

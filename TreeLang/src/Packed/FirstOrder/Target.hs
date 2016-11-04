@@ -119,7 +119,7 @@ data Tail
     | IfT { tst :: Triv,
             con  :: Tail,
             els  :: Tail }
-    | ErrT
+    | ErrT String
     | StartTimerT Var Tail
     | EndTimerT   Var Tail
     | Switch Triv Alts (Maybe Tail)
@@ -265,7 +265,7 @@ rewriteReturns tl bnds =
    -- tail with respect to our redex:
    (LetIfT bnd (a,b,c) bod) -> LetIfT bnd (a,b,c) (go bod)
    (IfT a b c) -> IfT a (go b) (go c)
-   ErrT -> ErrT
+   (ErrT s) -> (ErrT s)
    (StartTimerT v x2) -> StartTimerT v $ go x2
    (EndTimerT v x2)   -> EndTimerT v $ go x2
    (Switch tr alts def) -> Switch tr (mapAlts go alts) (fmap go def)
@@ -325,8 +325,8 @@ codegenTail (IfT e0 e1 e2) ty = do
     e2' <- codegenTail e2 ty
     return $ [ C.BlockStm [cstm| if ($(codegenTriv e0)) { $items:e1' } else { $items:e2' } |] ]
 
-codegenTail ErrT _ty = return $ [ C.BlockStm [cstm| printf("error\n"); |]
-                                , C.BlockStm [cstm| exit(1); |] ]
+codegenTail (ErrT s) _ty = return $ [ C.BlockStm [cstm| printf("$s\n"); |]
+                                    , C.BlockStm [cstm| exit(1); |] ]
 
 codegenTail (StartTimerT begin tal) ty =
     do tal' <- codegenTail tal ty
