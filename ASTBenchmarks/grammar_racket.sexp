@@ -5,7 +5,8 @@
          Quote QuoteSyntax QuoteSyntaxLocal WithContinuationMark App
          Top VariableReference VariableReferenceTop VariableReferenceNull
          BeginTop Datum
-         MKLVBIND MKLAMBDACASE INTLIT F1 F2 F3 Expr Toplvl Formals LVBIND LAMBDACASE)
+         MKLVBIND MKLAMBDACASE INTLIT F1 F2 F3 Expr Toplvl Formals LVBIND LAMBDACASE
+         pack-Toplvl)
 
 (data Toplvl
       [DefineValues   (Listof Sym) Expr]
