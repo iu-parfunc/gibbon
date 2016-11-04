@@ -25,10 +25,12 @@ import Control.DeepSeq
 import Control.Monad
 import Data.List (nub)
 import Data.Word (Word8)
-
+import Data.Maybe
+import Debug.Trace
 import Data.Bifunctor (first)
 import Data.Loc (noLoc)
 import Data.Maybe (fromJust)
+import qualified Data.Set as S
 -- import Data.Traversable
 import GHC.Generics (Generic)
 import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
@@ -41,7 +43,7 @@ import System.Directory
 import Text.PrettyPrint.GenericPretty (Out (..))
 import Text.PrettyPrint.Mainland
 
-import Packed.FirstOrder.Common
+import Packed.FirstOrder.Common hiding (funBody)
 
 --------------------------------------------------------------------------------
 -- * AST definition
@@ -105,7 +107,7 @@ data Tail
              }
 
     | LetUnpackT { binds :: [(Var,Ty)]
-                 , ptr :: (Var,[Ty])
+                 , ptr :: Var -- ^ Var pointing to a PtrTy
                  , bod :: Tail }
     -- ^ Unpack a struct pointer (variable of PtrTy) into local fields.
 
@@ -127,6 +129,9 @@ data Tail
     | TailCall Var [Triv]
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
+-- | For boxed data, we use a distinct storage format for the tag as compared to the packed data.
+pattern BoxedTagTy = IntTy
+           
 data Ty
     = IntTy
     | TagTy -- ^ A single byte / Word8.  Used in PACKED mode.
@@ -171,13 +176,76 @@ data FunDecl = FunDecl
   , funBody  :: Tail
   } deriving (Show, Ord, Eq, Generic, NFData, Out)
 
+
+-- | Harvest all struct tys.  All product types used anywhere in the program.
+harvestStructTys :: Prog -> S.Set [Ty]
+harvestStructTys (Prog funs mtal) =
+    -- if S.null (S.difference tys0 tys1)
+    S.union tys0 tys1
+  where
+  tys0 :: S.Set [Ty]
+  tys0 = findAllProds $ concatMap allTypes allTails
+
+  tys1 :: S.Set [Ty]
+  -- All types mentioned in function arguments and returns:
+  tys1 = S.fromList [ tys | fn <- funs, ProdTy tys <- funTys fn ]
+  -- structs f = makeStructs $ S.toList $ harvestStructTys prg
+
+  funTys :: FunDecl -> [Ty]
+  funTys (FunDecl _ args ty _) = ty : (map snd args)
+
+  allTails = (case mtal of
+                Just (PrintExp t) -> [t]
+                _ -> []) ++
+             map funBody funs
+                                 
+  -- We may have nested products; this finds everything:
+  findAllProds :: [Ty] -> S.Set [Ty]
+  findAllProds = go 
+    where
+      go []     = S.empty
+      go (t:ts) =
+       case t of
+         ProdTy ls -> S.insert ls $ S.union (go ls) (go ts)
+         _ -> S.empty
+
+  -- This finds all types that maybe grouped together as a ProdTy:
+  allTypes :: Tail -> [Ty]
+  allTypes = go 
+   where
+    go tl =
+     case tl of
+       (RetValsT _)  -> []
+       (AssnValsT ls)-> [ProdTy (map (\(_,x,_) -> x) ls)]
+       -- This creates a demand for a struct return, but it is covered
+       -- by the fun signatures already:
+       (LetCallT binds _ _  bod)   -> ProdTy (map snd binds) : go bod
+       -- INVARIANT: This does not create a struct:
+       -- But just in case it does in the future, we add it:
+       (LetPrimCallT binds _ _ bod) -> ProdTy (map snd binds) : go bod
+       (LetTrivT (_,ty,_) bod)     -> ty : go bod
+       -- This should not create a struct.  Again, we add it just for the heck of it:
+       (LetIfT binds (_,a,b) bod)  -> ProdTy (map snd binds) : go a ++ go b ++ go bod
+
+       -- These are precisely for operating on structs:
+       (LetUnpackT binds _ bod)    -> ProdTy (map snd binds) : go bod
+       (LetAllocT _ vals bod)    -> ProdTy (map fst vals) : go bod
+
+       (IfT _ a b) -> go a ++ go b
+       ErrT{} -> []
+       (StartTimerT _ b) -> go b
+       (EndTimerT _ b)   -> go b
+       (Switch _ (IntAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
+       (Switch _ (TagAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
+       (TailCall _ _)    -> []
+                                 
 --------------------------------------------------------------------------------
 -- * C codegen
 
 -- | Slightly different entrypoint than mkProgram that enables a
 -- "main" expression.
 codegenProg :: Prog -> IO String
-codegenProg (Prog funs mtal) = do
+codegenProg prg@(Prog funs mtal) = do
       env <- getEnvironment
       let rtsPath = case lookup "TREELANGDIR" env of
                       Just p -> p ++"/TreeLang/rts.c"
@@ -190,9 +258,8 @@ codegenProg (Prog funs mtal) = do
     where
       defs = fst $ runSyM 0 $ do
         funs' <- mapM codegenFun funs
-        let structs f = makeStructs $ nub [ tys | ProdTy tys <- funTys f ]
         main_expr' <- main_expr
-        return (concatMap structs funs ++ funs' ++ main_expr' : bench_fn)
+        return (makeStructs (S.toList $ harvestStructTys prg) ++ funs' ++ main_expr' : bench_fn)
 
       bench_fn :: [C.Definition]
       bench_fn =
@@ -224,9 +291,6 @@ codegenProg (Prog funs mtal) = do
             return $ C.FuncDef [cfun| int __main_expr() { $items:t' } |] noLoc
           _ ->
             return $ C.FuncDef [cfun| int __main_expr() { return 0; } |] noLoc
-
-funTys :: FunDecl -> [Ty]
-funTys (FunDecl _ args ty _) = ty : (map snd args)
 
 codegenFun :: FunDecl -> SyM C.Definition
 codegenFun (FunDecl nam args ty tal) =
@@ -292,11 +356,6 @@ codegenTail (RetValsT ts) ty =
 codegenTail (AssnValsT ls) _ty =
     return $ [ mut (codegenTy ty) vr (codegenTriv triv) | (vr,ty,triv) <- ls ]
 
-codegenTail (RetValsT ts) ty =
-    return $ [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
-    where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
-
-
 -- FIXME : This needs to actually generate a SWITCH!
 codegenTail (Switch tr alts def) ty =
     do let trE = codegenTriv tr
@@ -348,8 +407,27 @@ codegenTail (LetTrivT (vr,rty,rhs) body) ty =
        return $ [ C.BlockDecl [cdecl| $ty:(codegenTy rty) $id:vr = $(codegenTriv rhs); |] ]
                 ++ tal
 
+codegenTail (LetAllocT lhs vals body) ty =
+    do let structTy = codegenTy $ ProdTy (map fst vals)
+           size = trace "FIXME: size hack" 1000 :: Int
+       tal <- codegenTail body ty
+       
+       return$ assn (codegenTy PtrTy) lhs [cexp| ( $ty:structTy *)ALLOC( sizeof($ty:structTy) ) |] :
+               [ C.BlockStm [cstm| $id:lhs->$id:fld = $(codegenTriv trv); |]
+               | (ix,(_ty,trv)) <- zip [0..] vals
+               , let fld = "field"++show ix] ++ tal
+
+codegenTail (LetUnpackT binds ptr body) ty = 
+    do let structFlds = map snd binds
+       
+       tal <- codegenTail body ty
+       
+       return $ [
+                ] ++ tal
+                   
 -- Here we unzip the tuple into assignments to local variables.
 codegenTail (LetIfT bnds (e0,e1,e2) body) ty =
+
     do let decls = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:vr0; |]
                    | (vr0,ty0) <- bnds ]
        let e1' = rewriteReturns e1 bnds
@@ -408,12 +486,24 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                    [(VarTriv cur)] = rnds
                                in [ C.BlockDecl [cdecl| int $id:valV = *(int*)($id:cur); |]
                                   , C.BlockDecl [cdecl| char* $id:curV = ($id:cur) + sizeof(int); |] ]
+
+                    GetFirstWord ->
+                     let [ptr] = rnds in
+                     case bnds of
+                       [(outV,PtrTy)] ->
+                        [ C.BlockDecl [cdecl| $ty:(codegenTy BoxedTagTy) $id:outV = * (( $ty:(codegenTy BoxedTagTy) *) $(codegenTriv ptr)); |] ]
+                       _ -> error $"codegen/GetFirstWord: result type should be one PtrTy, was: "++show bnds
+                     
+                       
+                        
+                    -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'
 
 codegenTy :: Ty -> C.Type
 codegenTy IntTy = [cty|int|]
 codegenTy TagTy = [cty|int|]
 codegenTy SymTy = [cty|int|]
+codegenTy PtrTy = [cty|void*|]
 codegenTy CursorTy = [cty|char*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts

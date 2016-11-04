@@ -428,6 +428,46 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
   tail :: L1.Exp -> SyM T.Tail
   tail ex = 
    case ex of
+
+    --------------------------------------------------------------------------------
+    -- If we get here that means we're NOT packing trees on this run:
+    -- Thus this operates on BOXED data:               
+    L1.CaseE e mp -> do
+      let tycon = getTyOfDataCon ddefs (head $ M.keys mp)
+          orderedCases = [ (dcon, mp # dcon)
+                         | dcon <- getConOrdering ddefs tycon ]
+          (lastone:rstrev) = reverse $ orderedCases
+          rest = reverse rstrev
+
+      tmp <- gensym "scrt"
+      -- | Read the first word off the target, which must be a pointer:
+      let bindScrut = T.LetPrimCallT [(tmp,T.PtrTy)] T.GetFirstWord [(triv "case scrutinee" e)]
+
+      -- FIXME: Need to perform dereferences to populate pattern bindigs:
+
+      let dorhs (k,(vrs,rhs)) =
+           let tys = L.map typ $ lookupDataCon ddefs k in
+           T.LetUnpackT (zip vrs tys) tmp <$> tail rhs
+
+      rest' <- mapM dorhs rest
+      lst'  <- dorhs lastone
+      -- We decide right here what the tag values are.  We could also produce
+      -- macros/symbols for readability.
+      let bod = T.Switch (T.VarTriv tmp)
+                         (T.IntAlts (zip [0..] rest'))
+                         (Just lst')
+      return $ bindScrut bod
+
+    -- Accordingly, constructor allocation becomes an allocation.
+    L1.LetE (v, _, L1.MkPackedE k ls) bod -> L1.assertTrivs ls $ do
+      bod' <- tail bod
+      let tys = L.map typ $ lookupDataCon ddefs k 
+      -- FIXME: NEED TO ASSIGN FIELDS:
+      return $ T.LetAllocT v (zip tys (L.map (triv "MkPacked args") ls)) bod'
+
+    --------------------------------------------------------------------------------
+
+     
     e | L1.isTriv e -> pure$ T.RetValsT [triv "<internal error1>" e]
 
     -- L1.LetE (v,t, L1.MkProdE ls) bod -> do
@@ -486,43 +526,6 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
       T.LetIfT vsts (triv "if test" a, b', c')
            <$> tail bod
 
-
-    --------------------------------------------------------------------------------
-    -- If we get here that means we're NOT packing trees on this run:
-    -- Thus this operates on BOXED data:               
-    L1.CaseE e mp -> do
-      let tycon = getTyOfDataCon ddefs (head $ M.keys mp)
-          orderedCases = [ mp # dcon 
-                         | dcon <- getConOrdering ddefs tycon ]
-          (lst:rstrev) = reverse $ orderedCases
-          rest = reverse rstrev
-
-      tmp <- gensym "scrt"
-      -- | Read the first word off the target, which must be a pointer:
-      let bindScrut = T.LetPrimCallT [(tmp,T.PtrTy)] T.GetFirstWord [(triv "case scrutinee" e)]
-
-      -- FIXME: Need to perform dereferences to populate pattern bindigs:
-
-      -- T.LetUnpack ...
-
-                      
-      rest' <- mapM (tail . snd) rest
-      lst' <- tail (snd lst)
-      -- We decide right here what the tag values are.  We could also produce
-      -- macros/symbols for readability.
-      let bod = T.Switch (T.VarTriv tmp)
-                         (T.IntAlts (zip [0..] rest'))
-                         (Just lst')
-      return $ bindScrut bod
-
-    -- Accordingly, constructor allocation becomes an allocation.
-    L1.LetE (v, _, L1.MkPackedE k ls) bod -> L1.assertTrivs ls $ do
-      bod' <- tail bod
-      let tys = L.map typ $ lookupDataCon ddefs k 
-      -- FIXME: NEED TO ASSIGN FIELDS:
-      return $ T.LetAllocT v (zip tys (L.map (triv "MkPacked args") ls)) bod'
-
-    --------------------------------------------------------------------------------
              
     L1.TimeIt e ty ->
         do tmp <- gensym "timed"
