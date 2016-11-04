@@ -1,3 +1,4 @@
+
 {-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
@@ -121,7 +122,7 @@ data Tail
     | IfT { tst :: Triv,
             con  :: Tail,
             els  :: Tail }
-    | ErrT
+    | ErrT String
     | StartTimerT Var Tail
     | EndTimerT   Var Tail
     | Switch Triv Alts (Maybe Tail)
@@ -154,6 +155,7 @@ data Prim
     | EqP
     | DictInsertP -- ^ takes k,v,dict
     | DictLookupP -- ^ takes k,dict, errors if absent
+    | DictEmptyP
     | NewBuf
     -- ^ Allocate a new buffer, return a cursor.
     | WriteTag
@@ -329,7 +331,7 @@ rewriteReturns tl bnds =
    -- tail with respect to our redex:
    (LetIfT bnd (a,b,c) bod) -> LetIfT bnd (a,b,c) (go bod)
    (IfT a b c) -> IfT a (go b) (go c)
-   ErrT -> ErrT
+   (ErrT s) -> (ErrT s)
    (StartTimerT v x2) -> StartTimerT v $ go x2
    (EndTimerT v x2)   -> EndTimerT v $ go x2
    (Switch tr alts def) -> Switch tr (mapAlts go alts) (fmap go def)
@@ -384,8 +386,8 @@ codegenTail (IfT e0 e1 e2) ty = do
     e2' <- codegenTail e2 ty
     return $ [ C.BlockStm [cstm| if ($(codegenTriv e0)) { $items:e1' } else { $items:e2' } |] ]
 
-codegenTail ErrT _ty = return $ [ C.BlockStm [cstm| printf("error\n"); |]
-                                , C.BlockStm [cstm| exit(1); |] ]
+codegenTail (ErrT s) _ty = return $ [ C.BlockStm [cstm| printf("$s\n"); |]
+                                    , C.BlockStm [cstm| exit(1); |] ]
 
 codegenTail (StartTimerT begin tal) ty =
     do tal' <- codegenTail tal ty
@@ -442,14 +444,16 @@ codegenTail (LetIfT bnds (e0,e1,e2) body) ty =
 
 codegenTail (LetCallT bnds ratr rnds body) ty
     | (length bnds) > 1 = do nam <- gensym "tmp_struct"
-                             let init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
-                                 bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
+                             let bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
                                  fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
                                  ty0 = ProdTy $ map snd bnds
+                             init <- saveDictPtr [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
                              tal <- codegenTail body ty
                              return $ init ++ zipWith bind bnds fields ++ tal
     | otherwise = do tal <- codegenTail body ty
-                     return $ assn (codegenTy (snd $ bnds !! 0)) (fst $ bnds !! 0) (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc) : tal
+                     let call = assn (codegenTy (snd $ bnds !! 0)) (fst $ bnds !! 0) (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc)
+                     withSave <- saveDictPtr [call]
+                     return $ withSave ++ tal
 
 
 codegenTail (LetPrimCallT bnds prm rnds body) ty =
@@ -467,8 +471,13 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     EqP -> let [(outV,outT)] = bnds
                                [pleft,pright] = rnds
                            in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv pleft) == $(codegenTriv pright)); |]]
-                    DictInsertP -> unfinished 1
-                    DictLookupP -> unfinished 2
+                    DictInsertP -> let [(outV,SymDictTy IntTy)] = bnds
+                                       [(VarTriv dict),keyTriv,valTriv] = rnds
+                                   in [ C.BlockStm [cstm| dict_insert($(codegenTriv keyTriv),$(codegenTriv valTriv)); |] ]
+                    DictLookupP -> let [(outV,IntTy)] = bnds
+                                       [(VarTriv dict),keyTriv] = rnds
+                                   in [ C.BlockDecl [cdecl| int $id:outV = dict_lookup($(codegenTriv keyTriv)); |] ]
+                    DictEmptyP -> []
                     NewBuf -> unfinished 3
                     WriteTag -> let [(outV,CursorTy)] = bnds
                                     [(TagTriv tag),(VarTriv cur)] = rnds
@@ -508,6 +517,19 @@ codegenTy CursorTy = [cty|char*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts
 codegenTy (SymDictTy _t) = unfinished 4
+
+dictPtrName :: String
+dictPtrName = "DICT_PTR"
+
+dictTy = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id "dict_item_t" noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
+
+saveDictPtr :: [C.BlockItem] -> SyM [C.BlockItem]
+saveDictPtr is =
+    do tmp <- gensym "dict_ptr_tmp"
+       let init = C.BlockDecl [cdecl| $ty:dictTy * $id:tmp = $id:dictPtrName; |]
+           end = C.BlockStm [cstm| $id:dictPtrName = $id:tmp; |]
+       -- for now, don't emit these instructions
+       return is -- $ [init] ++ is ++ [end]
 
 makeName :: [Ty] -> String
 makeName []            = "Prod"
