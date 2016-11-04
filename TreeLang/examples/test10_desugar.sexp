@@ -1,7 +1,5 @@
 #lang s-exp "../treelang.rkt"
 
-(if (and True
-         (or False False (or) True)
-         (and))
+(if (and True)
     1
     0)

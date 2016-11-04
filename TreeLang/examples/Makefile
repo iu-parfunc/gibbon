@@ -1,7 +1,7 @@
 
 default: test
 
-test: answers
+test: 
 	$(MAKE) run_tests
 	$(MAKE) run_tests_packed
 	$(MAKE) run_tests_interp2
@@ -10,14 +10,6 @@ test: answers
 	$(MAKE) racket_valid
 # Need methodology for this.
 #	$(MAKE) racket_invalid
-
-ANSWERS= $(addsuffix .ans,$(INTERP_TESTS))
-
-%.sexp.ans : %.sexp
-	racket $^ | tee $@
-
-answers: $(ANSWERS)
-	echo "All answer files: "$(ANSWERS)
 
 
 #----------------------------------------
@@ -43,7 +35,7 @@ parse_all:
 
 PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
     test03b_eqs.sexp test03c_eqsym.sexp \
-    test07_time.sexp test09_recur.sexp
+    test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp
 # FIX THESE: All are blocked on something.  Then move them to the above list:
 #  test03  -- flatten fromJust
 
@@ -62,14 +54,11 @@ PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.s
 #  test15  -- lower/typ'
 
 
-# let this be a proxy for the lot of them:
-test00_add.sexp.ans:
-	$(MAKE) valid
 
 TREECARGS ?= --run
 
 # Run the tests that work:
-run_tests: test00_add.sexp.ans
+run_tests: answers
 	@echo "\n Compiling and running tests through our compiler:"
 	@echo "--------------------------------------------------"
 	stack build
@@ -100,7 +89,7 @@ run_tests_packed: test00_add.sexp.ans
 INTERP_TESTS= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
      test03b_eqs.sexp test03c_eqsym.sexp \
      test05_app.sexp  \
-     test05b_app.sexp  test07_time.sexp test09_recur.sexp test10_desugar.sexp
+     test05b_app.sexp  test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: test00_add.sexp.ans
@@ -116,6 +105,17 @@ run_tests_interp2: test00_add.sexp.ans
 # test17_forfold.sexp   -- ''
 # bintree.sexp          -- flatten fromJust
 
+# --------------------------------------------------------------------------------
+
+ANSWERS= $(addsuffix .ans,$(INTERP_TESTS))
+
+%.sexp.ans : %.sexp
+	racket $^ | tee $@
+
+answers: $(ANSWERS)
+
+# --------------------------------------------------------------------------------
+
 
 treelang_lib:
 	raco make -v ../treelang.rkt 
@@ -124,4 +124,4 @@ clean:
 	rm -f *.exe *.o *.c *.ans *.out
 	cd error/; rm -f *.exe *.o *.c *.ans *.out
 
-.PHONY: run_racket treelang_lib answers
+.PHONY: run_racket treelang_lib answers run_tests run_tests_interp2 run_tests_packed

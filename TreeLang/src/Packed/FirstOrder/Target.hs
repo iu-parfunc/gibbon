@@ -276,13 +276,14 @@ codegenTail (RetValsT ts) ty =
     where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
 
 codegenTail (AssnValsT ls) _ty =
-    return $ [ assn (codegenTy ty) vr (codegenTriv triv) | (vr,ty,triv) <- ls ]
+    return $ [ mut (codegenTy ty) vr (codegenTriv triv) | (vr,ty,triv) <- ls ]
 
 codegenTail (RetValsT ts) ty =
     return $ [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
     where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
 
-                                  
+
+-- FIXME : This needs to actually generate a SWITCH!
 codegenTail (Switch tr alts def) ty =
     do let trE = codegenTriv tr
            mk_tag_lhs lhs = C.Const (C.IntConst (show lhs) C.Unsigned (fromIntegral lhs) noLoc) noLoc
@@ -341,6 +342,7 @@ codegenTail (LetIfT bnds (e0,e1,e2) body) ty =
            e2' = rewriteReturns e2 bnds
        e1'' <- codegenTail e1' ty
        e2'' <- codegenTail e2' ty
+       -- Int 1 is Boolean true:
        let ifbod = [ C.BlockStm [cstm| if ($(codegenTriv e0)) { $items:e1'' } else { $items:e2'' } |] ]
        tal <- codegenTail body ty
        return $ decls ++ ifbod ++ tal 
@@ -415,9 +417,14 @@ mkBlock ss = C.Block ss noLoc
 cid :: Var -> C.Exp
 cid v = C.Var (C.toIdent v noLoc) noLoc
 
+-- | Create a NEW lexical binding.
 assn :: (C.ToIdent v, C.ToExp e) => C.Type -> v -> e -> C.BlockItem
 assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
 
+-- | Mutate an existing binding:             
+mut :: (C.ToIdent v, C.ToExp e) => C.Type -> v -> e -> C.BlockItem
+mut _t x y = C.BlockStm [cstm| $id:x = $exp:y; |]
+             
 -- Examples:
 --------------------------------------------------------------------------------
 
