@@ -1,3 +1,4 @@
+
 {-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
@@ -364,14 +365,16 @@ codegenTail (LetIfT bnds (e0,e1,e2) body) ty =
 
 codegenTail (LetCallT bnds ratr rnds body) ty
     | (length bnds) > 1 = do nam <- gensym "tmp_struct"
-                             let init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
-                                 bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
+                             let bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
                                  fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
                                  ty0 = ProdTy $ map snd bnds
+                             init <- saveDictPtr [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
                              tal <- codegenTail body ty
                              return $ init ++ zipWith bind bnds fields ++ tal
     | otherwise = do tal <- codegenTail body ty
-                     return $ assn (codegenTy (snd $ bnds !! 0)) (fst $ bnds !! 0) (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc) : tal
+                     let call = assn (codegenTy (snd $ bnds !! 0)) (fst $ bnds !! 0) (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc)
+                     withSave <- saveDictPtr [call]
+                     return $ withSave ++ tal
 
 
 codegenTail (LetPrimCallT bnds prm rnds body) ty =
@@ -418,6 +421,19 @@ codegenTy CursorTy = [cty|char*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts
 codegenTy (SymDictTy _t) = unfinished 4
+
+dictPtrName :: String
+dictPtrName = "DICT_PTR"
+
+dictTy = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id "dict_item_t" noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
+
+saveDictPtr :: [C.BlockItem] -> SyM [C.BlockItem]
+saveDictPtr is =
+    do tmp <- gensym "dict_ptr_tmp"
+       let init = C.BlockDecl [cdecl| $ty:dictTy * $id:tmp = $id:dictPtrName; |]
+           end = C.BlockStm [cstm| $id:dictPtrName = $id:tmp; |]
+       -- for now, don't emit these instructions
+       return is -- $ [init] ++ is ++ [end]
 
 makeName :: [Ty] -> String
 makeName []            = "Prod"

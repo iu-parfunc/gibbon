@@ -4,6 +4,36 @@
 #include <string.h>
 #include <time.h>
 
+#define SIZE 1000
+
+typedef struct dict_item {
+  int key;
+  int val;
+} dict_item_t;
+
+dict_item_t DICT[SIZE];
+
+dict_item_t* DICT_PTR = DICT;
+
+int dict_lookup(int key) {
+  dict_item_t* ptr = DICT_PTR;
+  while (ptr != DICT) {
+    if (key == ptr->key) {
+      return ptr->val;
+    } else {
+      ptr--;
+    }
+  }
+  printf("Error, key %d not found!\n",key);
+  exit(1);
+}
+
+void dict_insert(int key, int val) {
+  DICT_PTR++;
+  DICT_PTR->key = key;
+  DICT_PTR->val = val;
+}
+
 // fun fact: __ prefix is actually reserved and this is an undefined behavior.
 // These functions must be provided by the code generator.
 void __fn_to_bench(char* in, char* out);
