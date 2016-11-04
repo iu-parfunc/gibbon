@@ -30,6 +30,8 @@ import System.Directory
 import System.Exit
 import System.IO.Error (isDoesNotExistError)
 import Text.PrettyPrint.GenericPretty
+import Packed.FirstOrder.Interpreter (Val(..), execProg)
+    
 ------------------------------------------------------------
 
 import Data.Set as S hiding (map)
@@ -407,8 +409,7 @@ compile Config{input,mode,packed} fp = do
            -- dbgPrintLn l sepline
            printParse 0
    else do 
-    dbgPrintLn lvl "Compiler pipeline starting, parsed program:"
-    dbgPrintLn lvl sepline
+    dbgPrintLn lvl $ "Compiler pipeline starting, parsed program:\n"++sepline
     printParse lvl
     let pass :: (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
         pass who fn x = do
@@ -416,8 +417,7 @@ compile Config{input,mode,packed} fp = do
           _ <- lift $ evaluate $ force x
           let (y,cnt') = runSyM cnt (fn x)
           put cnt'
-          lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":"
-          lift$ dbgPrintLn lvl sepline
+          lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":\n"++sepline
           _ <- lift $ evaluate $ force y
           lift$ dbgPrintLn lvl $ sdoc y
           return y
@@ -457,7 +457,8 @@ compile Config{input,mode,packed} fp = do
                  l3  <-       pass  "lower"                    lower                    l2'
 
                  if mode == Interp2
-                  then error "FINISHME - call Target interpreter"
+                  then do mapM_ (\(IntVal v) -> liftIO $ print v) (execProg l3)
+                          liftIO $ exitSuccess
                   else do
                    str <- lift (codegenProg l3)
                    lift$ dbgPrintLn lvl $ "\nFinal C codegen:"

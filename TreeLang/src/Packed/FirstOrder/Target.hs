@@ -107,7 +107,8 @@ data Tail
             con  :: Tail,
             els  :: Tail }
     | ErrT
-    | TimeT Tail
+    | StartTimerT Var Tail
+    | EndTimerT   Var Tail
     | Switch Triv Alts (Maybe Tail)
     -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
@@ -268,15 +269,19 @@ codegenTail (IfT e0 e1 e2) ty = do
 codegenTail ErrT _ty = return $ [ C.BlockStm [cstm| printf("error\n"); |]
                                 , C.BlockStm [cstm| exit(1); |] ]
 
-codegenTail (TimeT tal) ty =
-    do begin <- gensym "tmp_begin"
-       end <- gensym "tmp_end"
-       tal' <- codegenTail tal ty
+codegenTail (StartTimerT begin tal) ty =
+    do tal' <- codegenTail tal ty
        return $ [ C.BlockDecl [cdecl| struct timespec $id:begin; |]
-                , C.BlockDecl [cdecl| struct timespec $id:end; |]
                 , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid begin)); |]
-                ] ++ tal' ++ [ C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid end)); |]
-                             , C.BlockStm [cstm| printf("TIMEIT: %lf\n", difftimespecs(&$(cid begin), &$(cid end))); |] ]
+                ] ++ tal'
+
+codegenTail (EndTimerT begin tal) ty = 
+    do end <- gensym "endtmr"
+       tal' <- codegenTail tal ty
+       return $ [ C.BlockDecl [cdecl| struct timespec $id:end; |]
+                , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid end)); |]
+                , C.BlockStm [cstm| printf("SELFTIMED: %lf\n", difftimespecs(&$(cid begin), &$(cid end))); |]
+                ] ++ tal'
 
 codegenTail (LetCallT bnds ratr rnds body) ty
     | (length bnds) > 1 = do nam <- gensym "tmp_struct"

@@ -41,7 +41,7 @@ library
                 containers,
                 deepseq,
                 filepath,
-                GenericPretty,                
+                GenericPretty, pretty,
                 haskell-src-exts,
                 language-c-quote,
                 mainland-pretty,
@@ -52,13 +52,17 @@ library
                 text,
                 optparse-applicative,
                 process,
-                directory
+                directory,
+                -- time,
+                clock
 --                tslogger,
                 
   hs-source-dirs:      src
   default-language:    Haskell2010
-  ghc-options:         -Wall -fdefer-typed-holes -XScopedTypeVariables -XPatternSynonyms
-  
+  ghc-options:         -Wall -fdefer-typed-holes -XScopedTypeVariables -XPatternSynonyms -XDeriveGeneric -XDeriveFunctor -XNamedFieldPuns
+-- This can break things:
+-- -XDeriveAnyClass 
+    
 executable treec
   hs-source-dirs:      execs
   main-is:             Frontend.hs

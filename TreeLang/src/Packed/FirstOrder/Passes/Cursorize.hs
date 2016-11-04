@@ -421,8 +421,8 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
   fund FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do
       tl <- tail funbod
       return $ T.FunDecl { T.funName = funname
-                         , T.funArgs = [(funarg, typ' inty)]
-                         , T.funRetTy = typ' outty
+                         , T.funArgs = [(funarg, typ inty)]
+                         , T.funRetTy = typ outty
                          , T.funBody = tl } 
 
   tail :: L1.Exp -> SyM T.Tail
@@ -490,6 +490,21 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
     L1.CaseE e ls ->
         return $ T.Switch{} -- (tail e) (M.map (\(vs,er) -> (vs,tail er)) ls)
 
+    L1.TimeIt e ->
+        do tmp <- gensym "timed"
+           let ty = trace "FIXME: NEED TYPE ON TimeIt!" IntTy
+           -- Hack: no good way to express EndTimer in the source lang:
+           e' <- tail (L1.LetE (tmp, ty, e) (L1.VarE tmp))
+           tm <- gensym "tmr"
+           -- We splice in the end-timer post-facto:
+           let endT = T.EndTimerT tm 
+           return $ T.StartTimerT tm $
+            case e' of
+             T.LetCallT   bnd rat rnds bod -> T.LetCallT   bnd rat rnds (endT bod)
+             T.LetPrimCallT bnd p rnds bod -> T.LetPrimCallT bnd p rnds (endT bod)
+             T.LetTriv  bnd            bod -> T.LetTriv            bnd  (endT bod)
+             T.LetIfT bnd tst con els    -> T.LetIfT bnd tst (endT con) (endT els)
+
     _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex
              
 {-    
@@ -526,7 +541,7 @@ triv msg e0 =
 --      (MkProdE x) -> __
     _ -> error $ "lower/triv, expected trivial in "++msg++", got "++sdoc e0
   
-typ :: L1.Ty -> T.Ty
+typ :: Ty1 a -> T.Ty
 typ t =
   case t of
     L1.IntTy  -> T.IntTy
@@ -536,12 +551,9 @@ typ t =
     (L1.ProdTy xs) -> T.ProdTy $ L.map typ xs
     (L1.SymDictTy x) -> T.SymDictTy $ typ x
     -- t | isCursorTy t -> T.CursorTy
-    (L1.Packed k)
+    (L1.PackedTy k _)
         | k == L2.con L2.cursorTy -> T.CursorTy
         | otherwise -> error "lower/typ: should not encounter "
-
-typ' :: L2.Ty -> T.Ty
-typ' = error "FINISHME lower/typ'"
 
 prim :: L1.Prim -> T.Prim
 prim p =

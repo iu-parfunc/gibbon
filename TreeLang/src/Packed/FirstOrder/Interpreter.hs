@@ -1,4 +1,11 @@
-module Packed.FirstOrder.Interpreter where
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE BangPatterns #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
+module Packed.FirstOrder.Interpreter
+    ( Val(..)
+    , execProg
+    ) where
 
 --------------------------------------------------------------------------------
 
@@ -6,19 +13,46 @@ import qualified Data.Map.Strict as M
 import Data.Maybe (listToMaybe)
 import Data.Sequence (Seq, ViewL ((:<)), (|>))
 import qualified Data.Sequence as Seq
-
 import Packed.FirstOrder.Target
+import Packed.FirstOrder.Common ((#))
+import System.IO.Unsafe
+import GHC.Generics
+import Control.DeepSeq
+import Text.PrettyPrint.GenericPretty
+import Text.PrettyPrint.HughesPJ
+import Data.Sequence (Seq)
+import Control.DeepSeq
 
+-- import Data.Time.Clock
+import System.Clock
 --------------------------------------------------------------------------------
 
 data Val
   = FunVal FunDecl
   | IntVal Int
   | TagVal Tag
+  | TimeVal TimeSpec
+  -- | TimeVal UTCTime
   | BufVal (Seq Int)
       -- ^ Tags are also written as integers.
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic, NFData)
 
+instance NFData TimeSpec where
+  rnf (TimeSpec !a !b) = ()
+
+{-           
+instance Out UTCTime where
+    doc s = text (show s)
+    docPrec n s = text (show s)
+-}
+instance Out TimeSpec where
+    doc s = text (show s)
+    docPrec n s = text (show s)
+instance (Out a, Show a) => Out (Seq a) where
+    doc s = text (show s)
+    docPrec n s = text (show s)
+instance Out Val
+           
 execProg :: Prog -> [Val]
 execProg (Prog _ Nothing) = error "Can't evaluate program: No expression given"
 execProg (Prog funs (Just (PrintExp expr))) = exec env expr
@@ -56,10 +90,27 @@ exec env (IfT v1 then_ else_) =
 exec _ ErrT =
     error "ErrT"
 
-exec env (TimeT e) =
+exec env (StartTimerT begin e) = do
+    !_ <- return $! force env
+    -- st <- return $! unsafePerformIO getCurrentTime
+    st <- return $! unsafePerformIO $ getTime MonotonicRaw
+    let env' = M.insert begin (TimeVal st) env
+    -- let micros = IntVal $ round (st * 10e6)
     -- We don't time in the interpreter
-    exec env e
+    exec env' e
 
+exec env (EndTimerT begin e) = do
+    !_ <- return $! force env
+    -- en <- return $! unsafePerformIO getCurrentTime
+    en <- return $! unsafePerformIO $ getTime MonotonicRaw
+    let TimeVal st = env # begin
+        -- tm   = diffUTCTime en st
+        tm = fromIntegral (toNanoSecs $ diffTimeSpec en st)
+              / 10e9 :: Double
+    unsafePerformIO (putStrLn $ "SELFTIMED: "++show tm) `seq`
+     -- We don't time in the interpreter
+     exec env e
+         
 exec env (Switch tr alts def) =
     case final_alt of
       Nothing -> error "Switch: No branch to choose."
