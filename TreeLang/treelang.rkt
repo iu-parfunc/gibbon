@@ -125,15 +125,20 @@ lit := int | #t | #f
                     (build-list (length (syntax->list #'((f ...) ...))) values)]
                    [pack-id (format-id #'type1 "pack-~a" #'type1)]
                    [((pack-f-ids ...) ...)
-                    (map (λ (fs) (map (λ (f) (format-id f "pack-~a" f)) (syntax->list fs)))
+                    (map (λ (fs) (map (λ (f)
+                                        (if (identifier? f)
+                                            (format-id f "pack-~a" f)
+                                            #'(λ (v) (bytes)))) ;; doesn't work, but we should switch to no-list
+                                      (syntax->list fs)))
                          (syntax->list #'((f ...) ...)))])
        #'(begin
            (define-type type1 (U ts ...))
+           
+           (struct ts ([f-ids : f] ...) #:transparent) ...
            (define (pack-id [v : type1]) : Bytes
              (match v
-               [(ts f ...) (bytes-append (bytes tag-num) (pack-f-ids f) ...)] ...))
-           (struct ts ([f-ids : f] ...) #:transparent)
-           ...))]))
+               [(ts f-ids ...) (bytes-append (bytes tag-num) (pack-f-ids f-ids) ...)]
+               ...))))]))
 
 (define True  : Bool #t)
 (define False : Bool #f)
