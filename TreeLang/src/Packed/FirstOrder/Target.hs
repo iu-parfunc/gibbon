@@ -15,8 +15,6 @@ module Packed.FirstOrder.Target
     ( Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..),
       Alts(..), Prog(..), MainExp(..),
       codegenProg,
-      -- Examples, temporary:
-      exadd1, exadd1Tail, add1C, buildTreeC
     ) where
 
 --------------------------------------------------------------------------------
@@ -42,7 +40,7 @@ import System.Environment
 import System.Directory
 import Text.PrettyPrint.GenericPretty (Out (..))
 import Text.PrettyPrint.Mainland
-    
+
 import Packed.FirstOrder.Common
 
 --------------------------------------------------------------------------------
@@ -86,7 +84,7 @@ instance Out Word8 where
 data Tail
     = RetValsT [Triv] -- ^ Only in tail position, for returning from a function.
     | AssnValsT [(Var,Ty,Triv)] -- ^ INTERNAL ONLY: used for assigning instead of returning.
-      
+
     | LetCallT { binds :: [(Var,Ty)],
                  rator :: Var,
                  rands :: [Triv],
@@ -99,7 +97,7 @@ data Tail
     -- Ugh, we should not strictly need this if we simplify everything in the right way:
     | LetTrivT { bnd :: (Var,Ty,Triv)
                , bod :: Tail }
-      
+
     -- A control-flow join point; an If on the RHS of LeT:
     | LetIfT { binds :: [(Var,Ty)]
              , ife :: (Triv,Tail,Tail)
@@ -117,7 +115,7 @@ data Tail
     -- ^ Allocate storage for a struct of the given type,
     --   Initialize all fields Return PtrTy.
 
-      
+
     | IfT { tst :: Triv,
             con  :: Tail,
             els  :: Tail }
@@ -130,7 +128,7 @@ data Tail
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data Ty
-    = IntTy      
+    = IntTy
     | TagTy -- ^ A single byte / Word8.  Used in PACKED mode.
     | SymTy -- ^ Symbols used in writing compiler passes.
             --   It's an alias for Int, an index into a symbol table.
@@ -138,7 +136,7 @@ data Ty
 
     | PtrTy   -- ^ A machine word.  Same as IntTy.  Untyped.
     | StructPtrTy { fields :: [Ty] } -- ^ A pointer to a struct containing the given fields.
-      
+
     | ProdTy [Ty]
     | SymDictTy Ty
       -- ^ We allow built-in dictionaries from symbols to a value type.
@@ -161,9 +159,9 @@ data Prim
     -- ^ Read one byte from the cursor and advance it.
     | ReadInt
       -- ^ Read an 8 byte Int from the cursor and advance.
-      
+
     | GetFirstWord -- ^ takes a PtrTy, returns IntTy containing the (first) word pointed to.
-      
+
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data FunDecl = FunDecl
@@ -250,8 +248,8 @@ makeStructs (ts : ts') = d : makeStructs ts'
 
 mapAlts :: (Tail->Tail) -> Alts -> Alts
 mapAlts f (TagAlts ls) = TagAlts $ zip (map fst ls) (map (f . snd) ls)
-mapAlts f (IntAlts ls) = IntAlts $ zip (map fst ls) (map (f . snd) ls) 
-                     
+mapAlts f (IntAlts ls) = IntAlts $ zip (map fst ls) (map (f . snd) ls)
+
 rewriteReturns :: Tail -> [(Var,Ty)] -> Tail
 rewriteReturns tl bnds =
  let go x = rewriteReturns x bnds in
@@ -276,8 +274,8 @@ rewriteReturns tl bnds =
                             vs' = map (++"hack") vs -- FIXME: Gensym
                         in LetCallT (zip vs' ts) f rnds
                             (rewriteReturns (RetValsT (map VarTriv vs')) bnds)
-      
-                     
+
+
 codegenTriv :: Triv -> C.Exp
 codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
 codegenTriv (IntTriv i) = [cexp| $i |]
@@ -336,7 +334,7 @@ codegenTail (StartTimerT begin tal) ty =
                 , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid begin)); |]
                 ] ++ tal'
 
-codegenTail (EndTimerT begin tal) ty = 
+codegenTail (EndTimerT begin tal) ty =
     do end <- gensym "endtmr"
        tal' <- codegenTail tal ty
        return $ [ C.BlockDecl [cdecl| struct timespec $id:end; |]
@@ -350,8 +348,8 @@ codegenTail (LetTrivT (vr,rty,rhs) body) ty =
        return $ [ C.BlockDecl [cdecl| $ty:(codegenTy rty) $id:vr = $(codegenTriv rhs); |] ]
                 ++ tal
 
--- Here we unzip the tuple into assignments to local variables.  
-codegenTail (LetIfT bnds (e0,e1,e2) body) ty = 
+-- Here we unzip the tuple into assignments to local variables.
+codegenTail (LetIfT bnds (e0,e1,e2) body) ty =
     do let decls = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:vr0; |]
                    | (vr0,ty0) <- bnds ]
        let e1' = rewriteReturns e1 bnds
@@ -361,9 +359,9 @@ codegenTail (LetIfT bnds (e0,e1,e2) body) ty =
        -- Int 1 is Boolean true:
        let ifbod = [ C.BlockStm [cstm| if ($(codegenTriv e0)) { $items:e1'' } else { $items:e2'' } |] ]
        tal <- codegenTail body ty
-       return $ decls ++ ifbod ++ tal 
+       return $ decls ++ ifbod ++ tal
 
-                   
+
 codegenTail (LetCallT bnds ratr rnds body) ty
     | (length bnds) > 1 = do nam <- gensym "tmp_struct"
                              let init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
@@ -437,69 +435,9 @@ cid v = C.Var (C.toIdent v noLoc) noLoc
 assn :: (C.ToIdent v, C.ToExp e) => C.Type -> v -> e -> C.BlockItem
 assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
 
--- | Mutate an existing binding:             
+-- | Mutate an existing binding:
 mut :: (C.ToIdent v, C.ToExp e) => C.Type -> v -> e -> C.BlockItem
 mut _t x y = C.BlockStm [cstm| $id:x = $exp:y; |]
-             
--- Examples:
---------------------------------------------------------------------------------
-
-leafTag :: Word8
-leafTag = 0
-
-nodeTag :: Word8
-nodeTag = 1
-
-exadd1Prog :: Prog
-exadd1Prog = Prog [buildTree, exadd1] (Just (RunRacketCorePass "build_tree" "add1"))
-
-exadd1 :: FunDecl
-exadd1 = FunDecl "add1" [("t",CursorTy),("tout",CursorTy)] (ProdTy [CursorTy,CursorTy]) exadd1Tail
-
-buildTree :: FunDecl
-buildTree = FunDecl "build_tree" [("n",IntTy),("tout",CursorTy)] CursorTy buildTree_tail
-
-buildTree_tail :: Tail
-buildTree_tail =
-    Switch (VarTriv "n") (IntAlts [(0, base_case)]) (Just recursive_case)
-  where
-    base_case, recursive_case :: Tail
-
-    base_case =
-      LetPrimCallT [("tout1", CursorTy)] WriteInt [IntTriv 0, VarTriv "tout"] $
-      RetValsT [VarTriv "tout1"]
-
-    recursive_case =
-      LetPrimCallT [("n1",IntTy)] SubP [VarTriv "n", IntTriv 1] $
-      LetPrimCallT [("tout1",CursorTy)] WriteTag [TagTriv 1, VarTriv "tout"] $
-      LetCallT [("tout2",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout1"] $
-      LetCallT [("tout3",CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout2"] $
-      RetValsT [VarTriv "tout3"]
-
-exadd1Tail :: Tail
-exadd1Tail =
-    LetPrimCallT [("ttag",TagTy),("t2",CursorTy)] ReadTag [VarTriv "t"]
-  $ Switch (VarTriv "ttag")
-           (TagAlts [(leafTag,leafCase),
-                     (nodeTag,nodeCase)])
-           Nothing
-    where leafCase =
-              LetPrimCallT [("tout2",CursorTy)] WriteTag [TagTriv leafTag, VarTriv "tout"]
-            $ LetPrimCallT [("n",IntTy),("t3",CursorTy)] ReadInt [VarTriv "t2"]
-            $ LetPrimCallT [("n1",IntTy)] AddP [VarTriv "n", IntTriv 1]
-            $ LetPrimCallT [("tout3",CursorTy)] WriteInt [VarTriv "n1", VarTriv "tout2"]
-            $ RetValsT [VarTriv "t3", VarTriv "tout3"]
-          nodeCase =
-              LetPrimCallT [("tout2",CursorTy)] WriteTag [TagTriv nodeTag, VarTriv "tout"]
-            $ LetCallT [("t3",CursorTy),("tout3",CursorTy)] "add1" [VarTriv "t2", VarTriv "tout2"]
-            $ TailCall "add1" [VarTriv "t3", VarTriv "tout3"]
-
--- | Compile the example and print it
--- add1C :: IO ()
-add1C = codegenProg exadd1Prog -- mapM_ (\c -> putDocLn $ ppr c) (codegenFun exadd1)
-
-buildTreeC :: IO ()
-buildTreeC = unfinished 6 --  mapM_ (\c -> putDocLn (ppr c)) (codegenFun buildTree)
 
 unfinished :: Int -> a
 unfinished n = error $ "Target.hs: unfinished hole #"++show n

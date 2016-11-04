@@ -83,6 +83,7 @@ test-suite test-treec
 
   build-depends:       base,
                        treec, containers,
+                       directory, process,
                        tasty, tasty-hunit, tasty-th
 
   default-language:    Haskell2010
