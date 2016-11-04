@@ -502,6 +502,10 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
       let bindScrut = T.LetPrimCallT [(tmp,T.PtrTy)] T.GetFirstWord [(triv "case scrutinee" e)]
 
       -- FIXME: Need to perform dereferences to populate pattern bindigs:
+
+      -- T.LetUnpack ...
+
+                      
       rest' <- mapM (tail . snd) rest
       lst' <- tail (snd lst)
       -- We decide right here what the tag values are.  We could also produce
@@ -512,14 +516,11 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
       return $ bindScrut bod
 
     -- Accordingly, constructor allocation becomes an allocation.
-    L1.LetE (v,t, L1.MkPackedE k ls) bod -> L1.assertTrivs ls $ do
-      -- tmp <- gensym "alctmp"
-      let size = trace ("FIXME: size hack for allocations") 1024
+    L1.LetE (v, _, L1.MkPackedE k ls) bod -> L1.assertTrivs ls $ do
       bod' <- tail bod
-
+      let tys = L.map typ $ lookupDataCon ddefs k 
       -- FIXME: NEED TO ASSIGN FIELDS:
-      return $ T.LetPrimCallT [(v,T.PtrTy)] (T.Alloc size) []
-               bod'
+      return $ T.LetAllocT v (zip tys (L.map (triv "MkPacked args") ls)) bod'
 
     --------------------------------------------------------------------------------
              

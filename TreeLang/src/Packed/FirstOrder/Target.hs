@@ -106,9 +106,17 @@ data Tail
              , bod :: Tail
              }
 
-    -- -- Like let Triv, but only binds pointer arguments,
-    -- -- casting them to a (boxed) struct type.
-    -- | LetCast Ty (Var,Ty,Triv) Tail
+    | LetUnpackT { binds :: [(Var,Ty)]
+                 , ptr :: (Var,[Ty])
+                 , bod :: Tail }
+    -- ^ Unpack a struct pointer (variable of PtrTy) into local fields.
+
+    | LetAllocT { lhs  :: Var -- ^ Var to bind to PtrTy
+                , vals :: [(Ty,Triv)] -- ^ Fields of allocated struct
+                , bod  :: Tail }
+    -- ^ Allocate storage for a struct of the given type,
+    --   Initialize all fields Return PtrTy.
+
       
     | IfT { tst :: Triv,
             con  :: Tail,
@@ -155,8 +163,6 @@ data Prim
       -- ^ Read an 8 byte Int from the cursor and advance.
       
     | GetFirstWord -- ^ takes a PtrTy, returns IntTy containing the (first) word pointed to.
-    | Cast Ty      -- ^ take a PtrTy, cast it, and return a StructPtrTy.
-    | Alloc Int    -- ^ Allocate exactly this many bytes.  Return PtrTy.
       
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
