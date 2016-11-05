@@ -3,7 +3,7 @@
 module Packed.FirstOrder.Passes.InlineTriv (inlineTriv, inlineTrivExp) where
     
 import Packed.FirstOrder.Common
-import qualified Packed.FirstOrder.L1_Source as L1
+import Packed.FirstOrder.L1_Source as L1
 
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
@@ -30,7 +30,7 @@ inlineTrivExp = go []
          L1.VarE v' -> case lookup v' env of
                          Nothing  -> go ((v,e'):env) e
                          Just e'' -> go ((v,e''):env) e
-         L1.LitE _i -> go ((v,e'):env) e
+         et | isTriv et -> go ((v,e'):env) e
          _ -> L1.LetE (v,t,go env e') (go env e)
    go env (L1.IfE e1 e2 e3) =
        L1.IfE (go env e1) (go env e2) (go env e3)

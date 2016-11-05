@@ -287,8 +287,8 @@ isTriv e =
      PrimAppE MkFalse [] -> True
      ----------------- POLICY DECISION ---------------
      -- Leave these as trivial for now:
-     ProjE _ (VarE _) -> True
-     MkProdE ls -> all isTriv ls  -- TEMP/FIXME: probably remove this a
+     ProjE _ et | isTriv et -> True
+     MkProdE ls -> all isTriv ls  
      _  -> False
 
 
