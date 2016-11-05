@@ -132,7 +132,7 @@ parseSExp ses =
 
      (RSList (A "data": A tycon : cs) : rst) ->
          go rst (DDef (toVar tycon) (L.map docasety cs) : dds) fds mn
-     (RSList [A "define", funspec, ":", retty, bod] : rst)
+     (L [A "define", funspec, ":", retty, bod] : rst)
         |  RSList (A name : args) <- funspec
         -> do
          let bod' = exp bod
@@ -155,6 +155,9 @@ parseSExp ses =
                             , funBody  = bod''
                             } : fds)
             mn
+
+     (L3 "module+" _ bod : rst) -> go (bod:rst) dds fds mn
+
      (ex : rst) -> 
        let ex' = exp ex
        in go rst dds fds (case mn of
