@@ -16,7 +16,11 @@ import Control.Monad
 import Control.DeepSeq
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
-import           Packed.FirstOrder.LTraverse as L2
+import qualified Packed.FirstOrder.LTraverse as L2
+import           Packed.FirstOrder.L1_Source (Ty1(..),pattern SymTy)    
+import           Packed.FirstOrder.LTraverse
+    (argtyToLoc, Loc(..), ArrowTy(..), Effect(..), toEndVar, mkCursorTy,
+     FunDef(..), Prog(..))
 import qualified Packed.FirstOrder.Target as T
 import Data.Maybe
 import Data.List as L hiding (tail)
@@ -35,7 +39,7 @@ lvl = 5
 -- | Map every lexical variable in scope to an abstract location.
 --   Some variables are cursors, and they are runtime witnesses to
 --   particular location variables.
-type Env = M.Map Var (L1.Ty,Loc)
+type Env = M.Map Var (L1.Ty,L2.Loc)
 
 -- | This maps an abstract location variable onto an expression that
 -- witnesses it.  These can be open terms with free location variables
@@ -53,15 +57,15 @@ instance Out WitnessEnv
 -- | This inserts cursors and REMOVES effect signatures.  It returns
 --   the new type as well as how many extra params were added to input
 --   and return types.
-cursorizeTy :: ArrowTy Ty -> (ArrowTy Ty, [LocVar], [LocVar])
+cursorizeTy :: L2.ArrowTy L2.Ty -> (ArrowTy L2.Ty, [LocVar], [LocVar])
 cursorizeTy (ArrowTy inT ef ouT) = (newArr, newIn, newOut)
  where
   newArr = ArrowTy newInTy S.empty newOutTy
-  newInTy  = prependArgs (L.map mkCursorTy newIn)
-                         (mapPacked (\_ l -> mkCursorTy l) inT)
-  -- Let's turn output values into updated-output-cursors:a
-  newOutTy = prependArgs (L.map mkCursorTy newOut)
-                         (mapPacked (\_ l -> mkCursorTy (toEndVar l)) ouT)
+  newInTy  = prependArgs (L.map L2.mkCursorTy newIn)
+                         (mapPacked (\_ l -> L2.mkCursorTy l) inT)
+  -- Let's turn output values into updated-output-cursors:
+  newOutTy = prependArgs (L.map L2.mkCursorTy newOut)
+                         (mapPacked (\_ l -> L2.mkCursorTy (toEndVar l)) ouT)
                          -- Or they could be void...
 
   -- Every packed input means another output (new return value for the
@@ -69,20 +73,20 @@ cursorizeTy (ArrowTy inT ef ouT) = (newArr, newIn, newOut)
   -- an original position (new input param):
   newOut   = [ toEndVar v  -- This determines the ORDER of added inputs.
              | Traverse v <- S.toList ef ]
-  newIn    = allLocVars ouT -- These stay in their original order (preorder)
+  newIn    = L2.allLocVars ouT -- These stay in their original order (preorder)
 
 -- Injected cursor args go first in input and output:
-prependArgs :: [Ty] -> Ty -> Ty
+prependArgs :: [L2.Ty] -> L2.Ty -> L2.Ty
 prependArgs [] t = t
 prependArgs ls t = ProdTy $ ls ++ [t]
 
 
-mkArrowTy :: Ty -> Ty -> ArrowTy Ty
+mkArrowTy :: L2.Ty -> L2.Ty -> ArrowTy L2.Ty
 mkArrowTy x y = ArrowTy x S.empty y
 
 -- | Replace all packed types with something else.
-replacePacked :: Ty -> Ty -> Ty
-replacePacked (t2::Ty) (t::Ty) =
+replacePacked :: L2.Ty -> L2.Ty -> L2.Ty
+replacePacked (t2::L2.Ty) (t::L2.Ty) =
   case t of
     IntTy  -> IntTy
     BoolTy -> BoolTy
@@ -91,7 +95,7 @@ replacePacked (t2::Ty) (t::Ty) =
     (SymDictTy x) -> SymDictTy $ (replacePacked t2) x
     PackedTy{}    -> t2
 
-mapPacked :: (Var -> LocVar -> Ty) -> Ty -> Ty
+mapPacked :: (Var -> LocVar -> L2.Ty) -> L2.Ty -> L2.Ty
 mapPacked fn t =
   case t of
     IntTy  -> IntTy
@@ -122,10 +126,10 @@ witnessBinding vr loc = WE (M.fromList $ go loc (L1.VarE vr)) M.empty
 
 -- FIXME: We should be able to combine `Loc` and the annotated `Ty`
 -- data types....
-witnessTypedBinds :: [(Var,Ty)] -> WitnessEnv
+witnessTypedBinds :: [(Var,L2.Ty)] -> WitnessEnv
 witnessTypedBinds [] = emptyWEnv
 witnessTypedBinds ((vr,ty):rst) =
-    witnessBinding vr (argtyToLoc (mangle vr) ty)  `unionWEnv`
+    witnessBinding vr (argtyToLoc (L2.mangle vr) ty)  `unionWEnv`
     witnessTypedBinds rst
 
 -- This is only used for primitives for now
@@ -194,7 +198,7 @@ extendEnv ls e = (M.fromList ls) `M.union` e
 -- The value environment remembers in-scope let-bindings.
 type ValEnv = M.Map Var L1.Exp
 
-cursorDirect :: Prog -> SyM Prog
+cursorDirect :: L2.Prog -> SyM L2.Prog
 cursorDirect = undefined
   where
     -- | Here we are not in a context that flows to Packed data, thus no
@@ -227,8 +231,9 @@ cursorDirect = undefined
     exp2 :: Var -> L1.Exp -> SyM L1.Exp
     exp2 destC ex =
       case ex of
-        L1.VarE _ -> return ex
-        L1.LitE _ -> return ex
+        -- We should not recur on these:
+        L1.VarE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
+        L1.LitE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
 
         -- Every return context expecting a packed value must now accept 
         -- TWO values, a (st,en) pair, where "en" becomes the output cursor.
@@ -242,7 +247,7 @@ cursorDirect = undefined
             
             let go d [] = L1.MkProdE [L1.VarE destC, L1.VarE d]
                    -- ^ The final return value lives at the position of the out cursor
-                go d ((rnd,IntTy):rst) = 
+                go d ((rnd,L1.IntTy):rst) | L1.isTriv rnd = 
                     L1.LetE (d',_, WriteInt d rnd )
                     (go d' rst)
                 -- Here we recursively transfer control 
@@ -300,7 +305,7 @@ pattern NewBuffer = L1.AppE "NewBuffer" (L1.MkProdE [])
 -- Tag writing is still modeled by MkPackedE.
 pattern WriteInt v e = L1.AppE "WriteInt" (L1.MkProdE [L1.VarE v, e])
 
-pattern CursorTy = PackedTy "CURSOR_TY" () -- Tempx
+pattern CursorTy = L1.PackedTy "CURSOR_TY" () -- Tempx
 
 -- pattern MarkCursor e = L1.AppE "MarkCursor" (L1.MkProdE [e])
 pattern MarkCursor c e = L1.AppE "MarkCursor" (L1.AppE c e)
@@ -311,8 +316,8 @@ pattern GlobalC = "GlobalC"
                   
 -- | A compiler pass that inserts cursor-passing for reading and
 -- writing packed values.
-cursorize :: Prog -> SyM Prog  -- [T.FunDecl]
-cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
+cursorize :: L2.Prog -> SyM L2.Prog  -- [T.FunDecl]
+cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
     dbgTrace lvl ("Starting cursorize on "++show(doc fundefs)) $ do
     -- Prog emptyDD <$> mapM fd fundefs <*> pure Nothing
       
@@ -325,18 +330,18 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                 -- do let initWenv = WE (M.singleton gloc (L1.VarE "gcurs")) M.empty
                 --    tl' <- tail [] (M.empty,initWenv) x
                 --    return $ Just $ L1.LetE ("gcurs", CursorTy, NewBuffer) tl'
-    return Prog{ fundefs = M.fromList $ L.map (\f -> (funname f,f)) fds'
-               , ddefs = ddefs
-               , mainExp = mn
-               }
+    return L2.Prog{ fundefs = M.fromList $ L.map (\f -> (L2.funname f,f)) fds'
+                  , ddefs = ddefs
+                  , mainExp = mn
+                  }
  where
-  fd :: FunDef -> SyM FunDef
-  fd (f@FunDef{funname,funty,funarg,funbod}) =
+  fd :: L2.FunDef -> SyM L2.FunDef
+  fd (f@L2.FunDef{funname,funty,funarg,funbod}) =
       let (newTy@(ArrowTy inT _ _outT),newIn,newOut) = cursorizeTy funty in
       dbgTrace lvl ("Processing fundef: "++show(doc f)++"\n  new type: "++sdoc newTy) $
    do
       fresh <- gensym "tupin"
-      let argLoc  = argtyToLoc (mangle newArg) inT
+      let argLoc  = argtyToLoc (L2.mangle newArg) inT
           (newArg, bod, wenv) =
               if newIn == [] -- No injected cursor params..
               then (funarg, funbod, witnessBinding newArg argLoc)
@@ -347,9 +352,9 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                               funbod
                    , witnessBinding fresh
                      (TupLoc $ L.map Fixed newIn ++ [argLoc]))
-      let env = M.singleton newArg (stripTyLocs inT, argLoc)
+      let env = M.singleton newArg (L2.stripTyLocs inT, argLoc)
       exp' <- tail newOut (env,wenv) bod
-      return $ FunDef funname newTy newArg exp'
+      return $ L2.FunDef funname newTy newArg exp'
 
   -- Process the "spine" of a flattened program.
   --
@@ -404,7 +409,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                    let go []       _  we = return we
                        go (lc:rst) ix we =
                         go rst (ix+1) =<<
-                          let Just v = getLocVar lc in
+                          let Just v = L2.getLocVar lc in
                           addWitness v [] (\[] -> L1.ProjE ix (L1.VarE "tmp")) we
                    wenv' <- go new 0 wenv
                    bod' <- tail demanded (env',wenv') bod -- No new witnesses.
@@ -427,10 +432,10 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
               ls' <- forM mp
                         (\ (dcon,vrs,rhs) -> do
                            let tys    = lookupDataCon ddefs dcon
-                           tys' <- mapM tyWithFreshLocs tys
+                           tys' <- mapM L2.tyWithFreshLocs tys
                            -- No actual information here:
                            -- let wenv2 = (witnessTypedBinds zipped) `unionWEnv` wenv1
-                           let locvar = case getLocVar loc of
+                           let locvar = case L2.getLocVar loc of
                                           Just l -> l
                                           Nothing -> error$ "cursorize/CaseE expected locvar: "++show loc
 
@@ -590,7 +595,7 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
   T.Prog <$> mapM fund (M.elems fundefs) <*> pure mn
  where
   fund :: L2.FunDef -> SyM T.FunDecl
-  fund FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do
+  fund L2.FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do
       tl <- tail funbod
       return $ T.FunDecl { T.funName = funname
                          , T.funArgs = [(funarg, typ inty)]
@@ -735,7 +740,7 @@ triv msg e0 =
 --      (MkProdE x) -> __
     _ -> error $ "lower/triv, expected trivial in "++msg++", got "++sdoc e0
 
-typ :: Ty1 a -> T.Ty
+typ :: L1.Ty1 a -> T.Ty
 typ t =
   case t of
     L1.IntTy  -> T.IntTy
