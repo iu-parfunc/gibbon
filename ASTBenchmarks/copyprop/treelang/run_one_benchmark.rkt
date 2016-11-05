@@ -1,21 +1,21 @@
 #! /usr/bin/env racket
-#lang typed/racket
+#lang typed/racket/base
 
 ;; Run copy propogation on a SINGLE input file for a given symbol and num iterations.
 
 (require "../../common/racket/parse.rkt"
          "copyprop.rkt"
+         racket/cmdline
+         racket/file
          (only-in "../../grammar_racket.sexp" Toplvl))
 
-(define-values (oldsym file iters)
-  (match (current-command-line-arguments)
-    [(vector f i) (values f 
-                          (cast (string->number i) Real))]
-    [args (error "unexpected number of command line arguments, expected <file> <iterations>, got:\n"
-                 args)]))
+(define-values (file iters)
+  (command-line #:args (#{f : String} #{i : String})
+                (values f (cast (string->number i) Real))))
 
 ;; copied exactly + type annotations
-(printf "\n\nBenchmark: Copy propogation in file ~a for ~a iterations...\n" file iters)
+(printf "\n\nBenchmark: Copy propogation in file ~a for ~a iterations...\n"
+        file iters)
 (printf "============================================================\n")
 
 (define ast : Toplvl

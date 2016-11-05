@@ -24,7 +24,7 @@
          racket/performance-hint
          racket/unsafe/ops
          typed/racket/unsafe
-         (for-syntax racket/syntax))
+         (for-syntax racket/syntax syntax/parse))
 
 ;; add for/list  w/types
 
@@ -89,10 +89,12 @@ lit := int | #t | #f
 
 ;;(case e [(K v ...) e] ...)
 (define-syntax (case stx)
-  (syntax-case stx ()
-    [(case v [(S fs ...) rhs] ...)
-     #'(match v
-         [(S fs ...) rhs] ...)]))
+  (syntax-parse stx
+    [(case v [(~and pat (S:id p:id ...)) rhs] ...)
+     (syntax/loc stx
+       (match v
+         [pat rhs] ...))]))
+
 
 ;;(insert e e e)
 (define-syntax-rule (insert ht key v)
