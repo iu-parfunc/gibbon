@@ -154,7 +154,7 @@ freeVars ex =
     TimeIt e _ -> freeVars e
     IfE a b c -> freeVars a `S.union` freeVars b `S.union` freeVars c
     MapE (v,t,rhs) bod -> freeVars rhs `S.union`
-                          S.delete (freeVars bod)
+                          S.delete v (freeVars bod)
     FoldE (v1,t1,r1) (v2,t2,r2) bod ->
         freeVars r1 `S.union` freeVars r2 `S.union`
         (S.delete v1 $ S.delete v2 $ freeVars bod)
