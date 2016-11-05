@@ -432,7 +432,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
     case e of
      -- QUESTION: does a variable reference count as traversing to the end?
      -- If so, the identity function has the traverse effect.
-     -- I'd prefer that the identity function get type (Tree_p -> Tree_p).
+     -- I'd prefer that the identity function get type (Tree_p -{}-> Tree_p).
      L1.VarE v  -> return (S.empty, env # v)
      L1.LitE  _ -> return (S.empty, Bottom)
      L1.CaseE e1 mp ->
@@ -493,8 +493,8 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
          return (S.empty, Bottom) -- All primitives operate on non-packed data.
                           
      -- If any sub-expression reaches a destination, we can reach the destination:
-     L1.MkProdE ls -> do (_effs,_locs) <- unzip <$> mapM (exp env) ls
-                         error "FINISH mkprode"
+     L1.MkProdE ls -> do (effs,locs) <- unzip <$> mapM (exp env) ls
+                         return (S.unions effs, TupLoc locs)
      L1.ProjE _ e -> exp env e
 
 --     L1.MkPacked k ls ->
