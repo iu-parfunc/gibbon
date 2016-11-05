@@ -20,7 +20,7 @@ import qualified Packed.FirstOrder.LTraverse as L2
 import           Packed.FirstOrder.L1_Source (Ty1(..),pattern SymTy)    
 import           Packed.FirstOrder.LTraverse
     (argtyToLoc, Loc(..), ArrowTy(..), Effect(..), toEndVar, mkCursorTy,
-     FunDef(..), Prog(..))
+     FunDef(..), Prog(..), Exp(..))
 import qualified Packed.FirstOrder.Target as T
 import Data.Maybe
 import Data.List as L hiding (tail)
@@ -203,86 +203,86 @@ cursorDirect = undefined
   where
     -- | Here we are not in a context that flows to Packed data, thus no
     --   destination cursor.
-    exp :: L1.Exp -> SyM L1.Exp
+    exp :: Exp -> SyM Exp
     exp ex =
       case ex of
-        L1.VarE _ -> return ex
-        L1.LitE _ -> return ex
-        L1.MkPackedE k ls -> error "cursorDirect: Should not have encountered MkPacked if type is not packed."
-        L1.AppE v e      -> L1.AppE v <$> exp e
-        L1.PrimAppE p ls -> L1.PrimAppE p <$> mapM exp ls
-        L1.LetE (v,ty,rhs) bod
+        VarE _ -> return ex
+        LitE _ -> return ex
+        MkPackedE k ls -> error "cursorDirect: Should not have encountered MkPacked if type is not packed."
+        AppE v e      -> AppE v <$> exp e
+        PrimAppE p ls -> PrimAppE p <$> mapM exp ls
+        LetE (v,ty,rhs) bod
             | L1.hasPacked ty -> do tmp <- gensym  "tmpbuf"
-                                    rhs' <- L1.LetE (tmp,CursorTy,NewBuffer) <$>
-                                              exp2 tmp rhs
-                                    L1.LetE (v,ty,rhs') <$> exp bod
+                                    rhs' <- LetE (tmp,CursorTy,NewBuffer) <$>
+                                             exp2 tmp rhs
+                                    LetE (v,ty,rhs') <$> exp bod
             | otherwise -> do rhs' <- exp rhs
-                              L1.LetE (v,ty,rhs') <$> exp bod
-        L1.ProjE _ e -> __ 
-        L1.CaseE e ls -> __ 
-        L1.MkProdE ls     -> __ 
-        L1.TimeIt e _ -> __
-        L1.IfE a b c -> __ 
---        L1.MapE (v,t,rhs) bod -> __ 
---        L1.FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+                              LetE (v,ty,rhs') <$> exp bod
+        ProjE _ e -> __ 
+        CaseE e ls -> __ 
+        MkProdE ls     -> __ 
+        TimeIt e _ -> __
+        IfE a b c -> __ 
+--        MapE (v,t,rhs) bod -> __ 
+--        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
 
 -- | Take a destination cursor.  Assume only a single packed output.
     --   Here we are in a context that flows to Packed data.
-    exp2 :: Var -> L1.Exp -> SyM L1.Exp
+    exp2 :: Var -> Exp -> SyM Exp
     exp2 destC ex =
       case ex of
         -- We should not recur on these:
-        L1.VarE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
-        L1.LitE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
+        VarE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
+        LitE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
 
         -- Every return context expecting a packed value must now accept 
         -- TWO values, a (st,en) pair, where "en" becomes the output cursor.
-        L1.MkPackedE k ls -> do
+        MkPackedE k ls -> do
          tmp1  <- gensym "tmp"
          dest' <- gensym "cursplus1_"
          d'    <- gensym "curstmp" 
          return $
           -- This stands for the  "WriteTag" operation:
-          L1.LetE (dest',_, L1.MkPackedE k [L1.VarE destC]) $
+          LetE (dest',_, MkPackedE k [VarE destC]) $
             
-            let go d [] = L1.MkProdE [L1.VarE destC, L1.VarE d]
+            let go d [] = MkProdE [VarE destC, VarE d]
                    -- ^ The final return value lives at the position of the out cursor
-                go d ((rnd,L1.IntTy):rst) | L1.isTriv rnd = 
-                    L1.LetE (d',_, WriteInt d rnd )
+                go d ((rnd,IntTy):rst) | L1.isTriv rnd = 
+                    LetE (d',_, WriteInt d rnd )
                     (go d' rst)
                 -- Here we recursively transfer control 
-                go d ((rnd,L1.PackedTy k2 ()):rst) = 
---                    L1.LetE (d',_, WriteInt d rnd )
+                go d ((rnd,PackedTy k2 ()):rst) = 
+--                    LetE (d',_, WriteInt d rnd )
                     (go __ rst)
             in __ 
           where 
                              
-        L1.AppE v e -> __ 
-        L1.PrimAppE _ ls -> __ 
-        L1.LetE (v,_,rhs) bod -> __ 
-        L1.ProjE _ e -> __ 
-        L1.CaseE e ls -> __ 
-        L1.MkProdE ls     -> __ 
-        L1.TimeIt e _ -> __
-        L1.IfE a b c -> __ 
---        L1.MapE (v,t,rhs) bod -> __ 
---        L1.FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+        AppE v e -> __ 
+        PrimAppE _ ls -> __ 
+        LetE (v,_,rhs) bod -> __ 
+        ProjE _ e -> __ 
+        CaseE e ls -> __ 
+        MkProdE ls     -> __ 
+        TimeIt e _ -> __
+        IfE a b c -> __ 
+--        MapE (v,t,rhs) bod -> __ 
+--        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
 
 
 
-        -- L1.VarE v -> __ 
-        -- L1.LitE n -> __ 
-        -- L1.AppE v e -> __ 
-        -- L1.PrimAppE _ ls -> __ 
-        -- L1.LetE (v,_,rhs) bod -> __ 
-        -- L1.ProjE _ e -> __ 
-        -- L1.CaseE e ls -> __ 
-        -- L1.MkProdE ls     -> __ 
-        -- L1.MkPackedE _ ls -> __ 
-        -- L1.TimeIt e _ -> __
-        -- L1.IfE a b c -> __ 
-        -- L1.MapE (v,t,rhs) bod -> __ 
-        -- L1.FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+        -- VarE v -> __ 
+        -- LitE n -> __ 
+        -- AppE v e -> __ 
+        -- PrimAppE _ ls -> __ 
+        -- LetE (v,_,rhs) bod -> __ 
+        -- ProjE _ e -> __ 
+        -- CaseE e ls -> __ 
+        -- MkProdE ls     -> __ 
+        -- MkPackedE _ ls -> __ 
+        -- TimeIt e _ -> __
+        -- IfE a b c -> __ 
+        -- MapE (v,t,rhs) bod -> __ 
+        -- FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
                                               
              
 --------------------------------------------------------------------------------
@@ -300,15 +300,15 @@ cursorDirect = undefined
                  
 --------------------------------------------------------------------------------
                                   
-pattern NewBuffer = L1.AppE "NewBuffer" (L1.MkProdE [])
+pattern NewBuffer = AppE "NewBuffer" (MkProdE [])
 
 -- Tag writing is still modeled by MkPackedE.
-pattern WriteInt v e = L1.AppE "WriteInt" (L1.MkProdE [L1.VarE v, e])
+pattern WriteInt v e = AppE "WriteInt" (MkProdE [VarE v, e])
 
-pattern CursorTy = L1.PackedTy "CURSOR_TY" () -- Tempx
+pattern CursorTy = PackedTy "CURSOR_TY" () -- Tempx
 
--- pattern MarkCursor e = L1.AppE "MarkCursor" (L1.MkProdE [e])
-pattern MarkCursor c e = L1.AppE "MarkCursor" (L1.AppE c e)
+-- pattern MarkCursor e = AppE "MarkCursor" (MkProdE [e])
+pattern MarkCursor c e = AppE "MarkCursor" (AppE c e)
 
 pattern GlobalC = "GlobalC"
 

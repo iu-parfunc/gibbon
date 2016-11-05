@@ -11,11 +11,12 @@
 -- | An intermediate language with an effect system that captures traversals.
 
 module Packed.FirstOrder.LTraverse
-    ( Prog(..), Ty(..), FunEnv, FunDef(..), Effect(..), ArrowTy(..)
+    ( Prog(..), Ty, FunEnv, FunDef(..), Effect(..), ArrowTy(..)
     , inferEffects, inferFunDef
 
-    -- * Temporary backwards compatibility:
+    -- * Temporary backwards compatibility, plus rexports
     , Ty1(..), pattern SymTy
+    , Exp(..)
       
     -- * Utilities for dealing with the extended types:
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc
