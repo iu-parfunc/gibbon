@@ -169,17 +169,132 @@ addWitness locvar ls fn orig@WE{known} =
 extendEnv :: [(Var,(L1.Ty,Loc))] -> Env -> Env
 extendEnv ls e = (M.fromList ls) `M.union` e
 
+--------------------------------------------------------------------------------
+-- STRATEGY ONE - inline until we have direct cursor handoff
+--------------------------------------------------------------------------------
+
+-- Some expressions are ready to take and return cursors.  Namely,
+-- data constructors and function calls that return one packed type.  Examples:
+
+--   MkFoo 3 (MkBar 4)
+--   MkFoo 3 (fn 4)
+
+-- In either case, the MkFoo constructor can thread its output cursor
+-- directly to MkBar or "fn".  But this direct-handoff approach
+-- doesn't work for everything.  Functions that return multiple packed
+-- values foil it and require sophisticated routing.
+
+-- Direct handoff binds cursor-flow to control-flow.  Conditionals are
+-- fine:
+
+--   MkFoo (if a b c)
+
+-- The value environment remembers in-scope let-bindings.
+type ValEnv = M.Map Var L1.Exp
+
+cursorDirect :: Prog -> SyM Prog
+cursorDirect = undefined
+  where
+    -- | Take a destination cursor.  Assume only a single packed output.
+    exp :: Var -> L1.Exp -> SyM L1.Exp
+    exp destC ex =
+      case ex of
+        L1.VarE _ -> return ex
+        L1.LitE _ -> return ex
+
+        -- Every return context expecting a packed value must now accept 
+        -- TWO values, a (st,en) pair, where "en" becomes the output cursor.
+        L1.MkPackedE k ls -> do
+         tmp1  <- gensym "tmp"
+         dest' <- gensym "cursplus1_"
+         d'    <- gensym "curstmp" 
+         return $
+          -- This stands for the  "WriteTag" operation:
+          L1.LetE (dest',_, L1.MkPackedE k [L1.VarE destC]) $ 
+            let go d [] = L1.MkProdE [L1.VarE destC, L1.VarE d]
+                   -- ^ The final return value lives at the position of the out cursor
+                go d ((rnd,IntTy):rst) = 
+                    L1.LetE (d',_, WriteInt d rnd )
+                    (go __ rst)
+                -- Here we recursively transfer control 
+                go d ((rnd,L1.PackedTy k2 ()):rst) = 
+--                    L1.LetE (d',_, WriteInt d rnd )
+                    (go __ rst)
+            in __ 
+          where 
+                             
+        L1.AppE v e -> __ 
+        L1.PrimAppE _ ls -> __ 
+        L1.LetE (v,_,rhs) bod -> __ 
+        L1.ProjE _ e -> __ 
+        L1.CaseE e ls -> __ 
+        L1.MkProdE ls     -> __ 
+        L1.TimeIt e _ -> __
+        L1.IfE a b c -> __ 
+--        L1.MapE (v,t,rhs) bod -> __ 
+--        L1.FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+
+
+        -- L1.VarE v -> __ 
+        -- L1.LitE n -> __ 
+        -- L1.AppE v e -> __ 
+        -- L1.PrimAppE _ ls -> __ 
+        -- L1.LetE (v,_,rhs) bod -> __ 
+        -- L1.ProjE _ e -> __ 
+        -- L1.CaseE e ls -> __ 
+        -- L1.MkProdE ls     -> __ 
+        -- L1.MkPackedE _ ls -> __ 
+        -- L1.TimeIt e _ -> __
+        -- L1.IfE a b c -> __ 
+        -- L1.MapE (v,t,rhs) bod -> __ 
+        -- L1.FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+                                              
+             
+--------------------------------------------------------------------------------
+-- STRATEGY TWO - see the future (dataflow analysis)
+--------------------------------------------------------------------------------
+
+-- Annotate each type in a let binding with which location it flows to.a
+-- pattern Ann 
+
+-- Insert location annotations on each let-bound variable.  These
+-- record facts about the subsequent dataflow of the value, and ultimately
+-- determine which output cursors to use.
+-- insertLocs
+
+                 
+--------------------------------------------------------------------------------
+                                  
+pattern NewBuffer = L1.AppE "NewBuffer" (L1.MkProdE [])
+
+-- Tag writing is still modeled by MkPackedE.
+pattern WriteInt v e = L1.AppE "WriteInt" (L1.MkProdE [L1.VarE v, e])
+
+pattern CursorTy = PackedTy "CURSOR_TY" () -- Tempx
+
+-- pattern MarkCursor e = L1.AppE "MarkCursor" (L1.MkProdE [e])
+pattern MarkCursor c e = L1.AppE "MarkCursor" (L1.AppE c e)
+
+pattern GlobalC = "GlobalC"
+
+--------------------------------------------------------------------------------
+                  
 -- | A compiler pass that inserts cursor-passing for reading and
 -- writing packed values.
 cursorize :: Prog -> SyM Prog  -- [T.FunDecl]
 cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
     dbgTrace lvl ("Starting cursorize on "++show(doc fundefs)) $ do
     -- Prog emptyDD <$> mapM fd fundefs <*> pure Nothing
-
+      
     fds' <- mapM fd $ M.elems fundefs
+
+    -- let gloc = "global"
     mn <- case mainExp of
-            Nothing -> return Nothing
+            Nothing -> return Nothing 
             Just x  -> Just <$> tail [] (M.empty,emptyWEnv) x
+                -- do let initWenv = WE (M.singleton gloc (L1.VarE "gcurs")) M.empty
+                --    tl' <- tail [] (M.empty,initWenv) x
+                --    return $ Just $ L1.LetE ("gcurs", CursorTy, NewBuffer) tl'
     return Prog{ fundefs = M.fromList $ L.map (\f -> (funname f,f)) fds'
                , ddefs = ddefs
                , mainExp = mn
@@ -221,13 +336,30 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
      -- Trivial return cases need to just pluck from the environment:
      L1.LitE _ -> return $ mkProd cursorRets e
      L1.VarE _ -> return $ mkProd cursorRets e
-     L1.MkPackedE k ls -> L1.assertTrivs ls $
-        return $ mkProd cursorRets (L1.MkPackedE k ls)
      -- INVARIANT: None of the primapps yield new witnesses:
      L1.PrimAppE p ls -> L1.assertTrivs ls $
         return $ mkProd cursorRets (L1.PrimAppE p ls)
 
+     -- L1.MkPackedE k ls -> L1.assertTrivs ls $
+     --    return $ mkProd cursorRets (L1.MkPackedE k ls)
+               
      ------------------ Flattened Spine ---------------
+
+     -- Here we shatter the constructor into a separate write tag
+     -- action and field population actions.  These will subsequently
+     -- need reordering, because the field writes may have ALREADY
+     -- occured at this point.
+     L1.LetE (v,tv, L1.MkPackedE k ls) bod ->
+       L1.LetE (v,tv, MarkCursor GlobalC (L1.MkPackedE k ls)) <$>
+         let env' = M.insert v (tv, Fixed v) env in
+         tail demanded (env',wenv) bod
+
+
+       -- do tmp <- gensym "buftmp"
+       --    __ $ L1.LetE (tmp, CursorTy, NewBuffer) $
+       --           L1.LetE (v,tv,_) _
+       --    error $ "Process constructor in env: "++show (env,wenv)
+               
      -- Here we route through extra arguments.
      L1.LetE (v,tv,erhs) bod ->
        do (new,rhs',rty,rloc) <- rhs (env,wenv) erhs
@@ -250,7 +382,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                    return $ L1.LetE ("tmp", rty, rhs') $
                             L1.LetE (v, tv, projNonFirst ix (L1.VarE "tmp")) $
                             finishEXP
-
+                            
      L1.IfE a b c -> do
          (new,a',aty,aloc) <- rhs (env,wenv) a
          maybeLetTup (new++[aloc]) (aty,a') wenv $ \ ex wenv' -> do
@@ -268,7 +400,9 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                            tys' <- mapM tyWithFreshLocs tys
                            -- No actual information here:
                            -- let wenv2 = (witnessTypedBinds zipped) `unionWEnv` wenv1
-                           let Just locvar = getLocVar loc
+                           let locvar = case getLocVar loc of
+                                          Just l -> l
+                                          Nothing -> error$ "cursorize/CaseE expected locvar: "++show loc
 
                            --       if all(static):
                            wenv3 <- addWitness (endOf loc) [locvar]
@@ -300,10 +434,10 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
   --
   --  (1) A list corresponding to the cursor values ADDED to the
   --      return type, containing their locations.
-  --  (2) The updated expression, possible with a tupled return type
+  --  (2) The updated expression, possibly with a tupled return type
   --      thereby including the new cursor returns.
   --  (3) The type of the new result, including the added returns.
-  --  (4) The location of the processed expression, not including the
+  --  (4) The location of the processed expression, NOT including the
   --      added returns.
   rhs :: (Env,WitnessEnv) -> L1.Exp -> SyM ([Loc], L1.Exp, L1.Ty, Loc)
   rhs (env,wenv) e =
@@ -315,8 +449,10 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
      L1.PrimAppE p ls -> L1.assertTrivs ls $
         let ty = L1.primRetTy p in
         return ([], e, ty, retTyToLoc ty)
+
+     -- This returns an updated cursor witnessing 
+     -- L1.MkPackedE 
 {-
-     L1.LitE  _ -> return (__, Bottom)
 
      -- Here's where the magic happens, we must populate new cursor arguments:
      L1.AppE f e ->
