@@ -1,6 +1,6 @@
 #lang typed/racket
 
-(provide Int Sym Bool SymDict data empty-dict lookup insert case
+(provide Int Sym Bool SymDict data empty-dict lookup insert delete case
          define let  if :
          for/list for/fold or and
          vector vector-ref
@@ -105,6 +105,9 @@ lit := int | #t | #f
 
 (define-syntax-rule (empty-dict)
   (hash))
+
+(define-syntax-rule (delete ht key)
+  (hash-remove ht key))
 
 (define-syntax-rule (time e)
   (let-values ([(ls cpu real gc) (time-apply (lambda () e) '())])

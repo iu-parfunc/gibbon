@@ -1,52 +1,44 @@
 #lang s-exp "../../../TreeLang/treelang.rkt"
 
-(require "../../grammar_racket.sexp"
-         (only-in racket
-                  gensym
-                  list-ref))
+(require "../../grammar_racket.sexp")
 
 (provide copyprop)
 
-;; define env
-(data Env
-      [Empty]
-      [Extended Sym Sym Env]) ;; sym1 is s sym2 is value. so replace sym1 with sym2
-
 (define (copyprop [e : Toplvl]) : Toplvl
-  (top e (Empty)))
+  (top e (empty-dict)))
 
-(define (loop1 [ls : ListToplvl] [env : Env]) : ListToplvl
+(define (loop1 [ls : ListToplvl] [env : (SymDict Sym)]) : ListToplvl
   (case ls
     [(CONSTOPLVL tl ls)
      (CONSTOPLVL (top tl env) (loop1 ls env))]
     [(NULLTOPLVL)
      ls]))
 
-(define (loop2 [ls : ListExpr] [env : Env]): ListExpr
+(define (loop2 [ls : ListExpr] [env : (SymDict Sym)]): ListExpr
   (case ls
     [(CONSEXPR e ls)
      (CONSEXPR (expr e env) (loop2 ls env))]
     [(NULLEXPR)
      ls]))   
 
-(define (loop3 [ls : LAMBDACASE] [env : Env]) : LAMBDACASE
+(define (loop3 [ls : LAMBDACASE] [env : (SymDict Sym)]) : LAMBDACASE
   (case ls
     [(CONSLAMBDACASE fs le ls)
-     (let ([nenv : Env (formals-ee fs env)])
+     (let ([nenv : (SymDict Sym) (formals-ee fs env)])
        (CONSLAMBDACASE (formals-update fs nenv)
        		       (loop2 le nenv)
      		       (loop3 ls env)))]
     [(NULLLAMBDACASE)
      ls]))
 
-(define (extend-env1 [syms : ListSym] [sym : Sym] [env : Env]) : Env
+(define (extend-env1 [syms : ListSym] [sym : Sym] [env : (SymDict Sym)]) : (SymDict Sym)
   (case syms
     [(CONSSYM s rest)
-     (Extended s sym env)]
+     (insert env s sym)]
     [(NULLSYM)
      env]))
 
-(define (loop4 [ls : LVBIND] [env : Env]) : Env
+(define (loop4 [ls : LVBIND] [env : (SymDict Sym)]) : (SymDict Sym)
   (case ls
     [(CONSLVBIND syms e ls)
      (loop4 ls (case e
@@ -61,21 +53,21 @@
     [(NULLLVBIND)
      env]))
 
-(define (loop5 [ls : ListSym] [env : Env]) : ListSym
+(define (loop5 [ls : ListSym] [env : (SymDict Sym)]) : ListSym
   (case ls
     [(CONSSYM s ls)
      (CONSSYM (lookup-env s env) (loop5 ls env))]
     [(NULLSYM)
      ls]))
 
-(define (loop6 [ls : ListSym] [env : Env]) : Env
+(define (loop6 [ls : ListSym] [env : (SymDict Sym)]) : (SymDict Sym)
   (case ls
     [(CONSSYM s ls)
-     (loop6 ls (Extended s (gensym) env))]
+     (loop6 ls (delete env s))]
     [(NULLSYM)
      env]))
   
-(define (top [e : Toplvl] [env : Env]) : Toplvl
+(define (top [e : Toplvl] [env : (SymDict Sym)]) : Toplvl
   (case e
     [(DefineValues ls e)
      (DefineValues ls (expr e env))]
@@ -86,15 +78,10 @@
     [(Expression e)
      (Expression (expr e env))]))
 
-(define (lookup-env [s : Sym] [env : Env]) : Sym
-  (case env
-    [(Empty) s]
-    [(Extended s1 s2 env)
-     (if (eq? s1 s)
-         (lookup-env s2 env)
-         (lookup-env s env))]))
+(define (lookup-env [s : Sym] [env : (SymDict Sym)]) : Sym
+  (lookup env s))
 
-(define (expr [e : Expr] [env : Env]) : Expr
+(define (expr [e : Expr] [env : (SymDict Sym)]) : Expr
   (case e
     ;; Variable references:
     [(VARREF s)
@@ -115,16 +102,16 @@
 
     ;; Binding forms:
     [(Lambda formals body)
-     (let ([nenv : Env (formals-ee formals env)])
+     (let ([nenv : (SymDict Sym) (formals-ee formals env)])
        (Lambda (formals-update formals nenv)
        	       (loop2 body env)))]
     [(CaseLambda cases)
      (CaseLambda (loop3 cases env))]
     [(LetValues binds body) 
-     (let ([nenv : Env (loop4 binds env)])
+     (let ([nenv : (SymDict Sym) (loop4 binds env)])
        (LetValues binds (loop2 body nenv)))]
     [(LetrecValues binds body) ;; anything different here?
-     (let ([nenv : Env (loop4 binds env)])
+     (let ([nenv : (SymDict Sym) (loop4 binds env)])
        (LetrecValues binds (loop2 body nenv)))]
     [(If cond then else)
      (If (expr cond env) (expr then env) (expr else env))]
@@ -139,17 +126,17 @@
     [(WithContinuationMark e1 e2 e3)
      (WithContinuationMark (expr e1 env) (expr e2 env) (expr e3 env))]))
 
-(define (formals-ee [f : Formals] [env : Env]) : Env
+(define (formals-ee [f : Formals] [env : (SymDict Sym)]) : (SymDict Sym)
   (case f
     [(F1 ls)
      (loop6 ls env)]
     [(F2 ls s)
-     (let ([nenv : Env (loop6 ls env)])
-       (Extended s (gensym) nenv))]
+     (let ([nenv : (SymDict Sym) (loop6 ls env)])
+       (delete nenv s))]
     [(F3 s)
-     (Extended s (gensym) env)]))
+     (delete env s)]))
 
-(define (formals-update [f : Formals] [env : Env]) : Formals
+(define (formals-update [f : Formals] [env : (SymDict Sym)]) : Formals
   (case f
     [(F1 ls)
      (F1 (loop5 ls env))]
