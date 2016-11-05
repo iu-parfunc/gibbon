@@ -4,7 +4,8 @@ module Packed.FirstOrder.Passes.InlineTriv (inlineTriv, inlineTrivExp) where
     
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L1_Source as L1
-import Debug.Trace
+import Prelude hiding (exp)
+-- import Debug.Trace
 
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
