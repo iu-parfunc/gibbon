@@ -25,7 +25,7 @@
   (case ls
     [(CONSLAMBDACASE fs le ls)
      (let ([nenv : (SymDict Sym) (formals-ee fs env)])
-       (CONSLAMBDACASE (formals-update fs nenv)
+       (CONSLAMBDACASE fs
        		       (loop2 le nenv)
      		       (loop3 ls env)))]
     [(NULLLAMBDACASE)
@@ -47,13 +47,6 @@
                  [_ env]))]
     [(NULLLVBIND)
      env]))
-
-(define (loop5 [ls : ListSym] [env : (SymDict Sym)]) : ListSym
-  (case ls
-    [(CONSSYM s ls)
-     (CONSSYM (lookup-env s env) (loop5 ls env))]
-    [(NULLSYM)
-     ls]))
 
 (define (loop6 [ls : ListSym] [env : (SymDict Sym)]) : (SymDict Sym)
   (case ls
@@ -83,14 +76,13 @@
      (VARREF
       (if (has-key? env s)
           (lookup-env s env)
-          s))]
+	  s))]
     [(Top s)
      e]
     [(VariableReference s)   ; #%variable-reference
-     (VariableReference (lookup-env s env))] ;; here
+     e]
     [(VariableReferenceTop s)   ; #%variable-reference (#%top . id)
-     (VariableReferenceTop (lookup-env s env))] ;; here?
-
+     e]     
     ;; Leaf forms:
     [(VariableReferenceNull)     ; (#%variable-reference)
      e]
@@ -101,8 +93,8 @@
     ;; Binding forms:
     [(Lambda formals body)
      (let ([nenv : (SymDict Sym) (formals-ee formals env)])
-       (Lambda (formals-update formals nenv)
-       	       (loop2 body env)))]
+       (Lambda formals
+       	       (loop2 body nenv)))]
     [(CaseLambda cases)
      (CaseLambda (loop3 cases env))]
     [(LetValues binds body) 
@@ -120,7 +112,7 @@
     [(App e1 exprs)  ;; (#%plain-app expr ...+)
      (App (expr e1 env) (loop2 exprs env))]
     [(SetBang s e)
-     (SetBang (lookup-env s env) (expr e env))]
+     (SetBang s (expr e env))]
     [(WithContinuationMark e1 e2 e3)
      (WithContinuationMark (expr e1 env) (expr e2 env) (expr e3 env))]))
 
@@ -133,12 +125,3 @@
        (delete nenv s))]
     [(F3 s)
      (delete env s)]))
-
-(define (formals-update [f : Formals] [env : (SymDict Sym)]) : Formals
-  (case f
-    [(F1 ls)
-     (F1 (loop5 ls env))]
-    [(F2 ls s)
-     (F2 (loop5 ls env) (lookup-env s env))]
-    [(F3 s)
-     (F3 (lookup-env s env))]))
