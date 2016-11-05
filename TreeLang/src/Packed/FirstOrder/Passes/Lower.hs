@@ -191,11 +191,12 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
              
     L1.LetE (v,t,L1.AppE f arg) bod -> do
-        -- FIXME, tuples should be unzipped here:
-        T.LetCallT [(v,typ t)] f
-             [(triv "app rand") arg]
-             <$>
-             (tail bod)
+        case arg of
+          MkProdE es -> error "MkProdE parameter to AppE"
+          _ -> T.LetCallT [(v,typ t)] f
+                 [(triv "app rand") arg]
+                 <$>
+                 (tail bod)
 
     L1.LetE (v, t, L1.IfE a b c) bod -> do
       vsts <- unzipTup v t
@@ -231,6 +232,9 @@ unzipTup v t =
       return (zip vs (L.map typ ts))
     _ -> return [(v,typ t)]
 
+inferTrivTys :: [T.Triv] -> [T.Ty]
+inferTrivTys = undefined
+
 triv :: String -> L1.Exp -> T.Triv
 triv msg e0 =
   case e0 of
@@ -246,7 +250,8 @@ triv msg e0 =
 --      (ProjE x1 x2) -> __
 --      (MkProdE x) -> __
     _ | L1.isTriv e0 -> error $ "lower/triv: this function is written wrong.  "++
-                         "It won't handle the following, which satisfies 'isTriv':\n "++sdoc e0
+                         "It won't handle the following, which satisfies 'isTriv':\n "++sdoc e0++
+                         "\nMessage: "++msg
     _ -> error $ "lower/triv, expected trivial in "++msg++", got "++sdoc e0
 
 typ :: L1.Ty1 a -> T.Ty
@@ -269,9 +274,9 @@ prim p =
     L1.MulP -> T.MulP
     L1.EqSymP -> T.EqP
     L1.EqIntP -> T.EqP
-    L1.DictInsertP -> T.DictInsertP
-    L1.DictLookupP -> T.DictLookupP
-    L1.DictEmptyP -> T.DictEmptyP
+    L1.DictInsertP ty -> T.DictInsertP $ typ ty
+    L1.DictLookupP ty -> T.DictLookupP $ typ ty
+    L1.DictEmptyP ty -> T.DictEmptyP $ typ ty
     L1.ErrorP{} -> error$ "lower/prim: internal error, should not have got to here: "++show p
 
     L1.MkTrue  -> error "lower/prim: internal error. MkTrue should not get here."

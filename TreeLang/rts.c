@@ -5,40 +5,45 @@
 #include <time.h>
 
 #define ALLOC malloc
-
-#define ALLOC_PACKED malloc
+#define ALLOC_PACKED ALLOC
 
 #define SIZE 1000
 
 #define DEFAULT_BUF_SIZE 1000000
 
 typedef struct dict_item {
+  struct dict_item * next;
   int key;
-  int val;
+  union {
+    int intval;
+    void * ptrval;
+  };
 } dict_item_t;
 
-dict_item_t DICT[SIZE];
+dict_item_t * dict_alloc() {
+  return ALLOC(sizeof(dict_item_t));
+}
 
-dict_item_t* DICT_PTR = DICT;
+dict_item_t *dict_insert_int(dict_item_t *ptr, int key, int val) {
+  dict_item_t *ret = dict_alloc();
+  ret->key = key;
+  ret->intval = val;
+  ret->next = ptr;
+  return ret;
+}
 
-int dict_lookup(int key) {
-  dict_item_t* ptr = DICT_PTR;
-  while (ptr != DICT) {
-    if (key == ptr->key) {
-      return ptr->val;
+int dict_lookup_int(dict_item_t *ptr, int key) {
+  while (ptr != 0) {
+    if (ptr->key == key) {
+      return ptr->intval;
     } else {
-      ptr--;
+      ptr = ptr->next;
     }
   }
   printf("Error, key %d not found!\n",key);
   exit(1);
 }
 
-void dict_insert(int key, int val) {
-  DICT_PTR++;
-  DICT_PTR->key = key;
-  DICT_PTR->val = val;
-}
 
 
 // fun fact: __ prefix is actually reserved and this is an undefined behavior.

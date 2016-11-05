@@ -153,9 +153,9 @@ data Prim
     | SubP
     | MulP
     | EqP
-    | DictInsertP -- ^ takes k,v,dict
-    | DictLookupP -- ^ takes k,dict, errors if absent
-    | DictEmptyP
+    | DictInsertP Ty-- ^ takes k,v,dict
+    | DictLookupP Ty -- ^ takes k,dict, errors if absent
+    | DictEmptyP Ty
     | NewBuf
     -- ^ Allocate a new buffer, return a cursor.
     | WriteTag
@@ -454,13 +454,12 @@ codegenTail (LetCallT bnds ratr rnds body) ty
                              let bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
                                  fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
                                  ty0 = ProdTy $ map snd bnds
-                             init <- saveDictPtr [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
+                                 init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
                              tal <- codegenTail body ty
                              return $ init ++ zipWith bind bnds fields ++ tal
     | otherwise = do tal <- codegenTail body ty
                      let call = assn (codegenTy (snd $ bnds !! 0)) (fst $ bnds !! 0) (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc)
-                     withSave <- saveDictPtr [call]
-                     return $ withSave ++ tal
+                     return $ [call] ++ tal
 
 
 codegenTail (LetPrimCallT bnds prm rnds body) ty =
@@ -478,13 +477,22 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     EqP -> let [(outV,outT)] = bnds
                                [pleft,pright] = rnds
                            in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv pleft) == $(codegenTriv pright)); |]]
-                    DictInsertP -> let [(outV,SymDictTy IntTy)] = bnds
-                                       [(VarTriv dict),keyTriv,valTriv] = rnds
-                                   in [ C.BlockStm [cstm| dict_insert($(codegenTriv keyTriv),$(codegenTriv valTriv)); |] ]
-                    DictLookupP -> let [(outV,IntTy)] = bnds
-                                       [(VarTriv dict),keyTriv] = rnds
-                                   in [ C.BlockDecl [cdecl| int $id:outV = dict_lookup($(codegenTriv keyTriv)); |] ]
-                    DictEmptyP -> []
+                    DictInsertP IntTy -> let [(outV,ty)] = bnds
+                                             [(VarTriv dict),keyTriv,valTriv] = rnds
+                                         in [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = dict_insert_int($id:dict, $(codegenTriv keyTriv), $(codegenTriv valTriv)); |] ]
+                    DictInsertP SymTy -> let [(outV,ty)] = bnds
+                                             [(VarTriv dict),keyTriv,valTriv] = rnds
+                                         in [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = dict_insert_int($id:dict, $(codegenTriv keyTriv), $(codegenTriv valTriv)); |] ]
+                    DictInsertP ty -> error $ "DictInsertP not implemented for type " ++ (show ty)
+                    DictLookupP IntTy -> let [(outV,IntTy)] = bnds
+                                             [(VarTriv dict),keyTriv] = rnds
+                                         in [ C.BlockDecl [cdecl| int $id:outV = dict_lookup_int($id:dict, $(codegenTriv keyTriv)); |] ]
+                    DictLookupP SymTy -> let [(outV,IntTy)] = bnds
+                                             [(VarTriv dict),keyTriv] = rnds
+                                         in [ C.BlockDecl [cdecl| int $id:outV = dict_lookup_int($id:dict, $(codegenTriv keyTriv)); |] ]
+                    DictLookupP ty -> error $ "DictLookupP not implemented for type " ++ (show ty)
+                    DictEmptyP _ty -> let [(outV,ty)] = bnds
+                                      in [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = 0; |] ]
                     NewBuf   -> let [(outV,CursorTy)] = bnds in
                                 [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED(DEFAULT_BUF_SIZE); |] ]                                
                     WriteTag -> let [(outV,CursorTy)] = bnds
@@ -524,20 +532,7 @@ codegenTy PtrTy = [cty|void*|]
 codegenTy CursorTy = [cty|char*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts
-codegenTy (SymDictTy _t) = unfinished 4
-
-dictPtrName :: String
-dictPtrName = "DICT_PTR"
-
-dictTy = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id "dict_item_t" noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
-
-saveDictPtr :: [C.BlockItem] -> SyM [C.BlockItem]
-saveDictPtr is =
-    do tmp <- gensym "dict_ptr_tmp"
-       let init = C.BlockDecl [cdecl| $ty:dictTy * $id:tmp = $id:dictPtrName; |]
-           end = C.BlockStm [cstm| $id:dictPtrName = $id:tmp; |]
-       -- for now, don't emit these instructions
-       return is -- $ [init] ++ is ++ [end]
+codegenTy (SymDictTy _t) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id "dict_item_t*" noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
 
 makeName :: [Ty] -> String
 makeName tys = concatMap makeName' tys ++ "Prod"
@@ -547,6 +542,7 @@ makeName' IntTy = "Int"
 makeName' CursorTy = "Cursor"
 makeName' TagTy = "Tag"
 makeName' PtrTy = "Ptr"
+makeName' (SymDictTy _ty) = "Dict"
 makeName' x = error $ "makeName', not handled: " ++ show x
 
 mkBlock :: [C.BlockItem] -> C.Stm

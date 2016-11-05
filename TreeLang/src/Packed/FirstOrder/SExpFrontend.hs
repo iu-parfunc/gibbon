@@ -194,11 +194,12 @@ docasety s =
 
 pattern A s = RSAtom (HSIdent s)
 
-pattern L  a       = RSList a 
-pattern L1 a       = RSList [a]   
-pattern L2 a b     = RSList [A a, b]
-pattern L3 a b c   = RSList [A a, b, c]
-pattern L4 a b c d = RSList [A a, b, c, d]
+pattern L  a         = RSList a 
+pattern L1 a         = RSList [a]   
+pattern L2 a b       = RSList [A a, b]
+pattern L3 a b c     = RSList [A a, b, c]
+pattern L4 a b c d   = RSList [A a, b, c, d]
+pattern L5 a b c d e = RSList [A a, b, c, d, e]
 
 trueE :: Exp
 trueE = PrimAppE MkTrue []
@@ -268,14 +269,14 @@ exp se =
    L3 "vector-ref" evec (RSAtom (HSInt ind)) -> S.ProjE (fromIntegral ind) (exp evec)
    L (A "vector" : es) -> S.MkProdE $ L.map exp es
 
-   L4 "insert" d k v ->
-       PrimAppE DictInsertP [(exp d),(exp k),(exp v)]
+   L5 "insert" ty d k v ->
+       PrimAppE (DictInsertP $ typ ty) [(exp d),(exp k),(exp v)]
 
-   L3 "lookup" d k ->
-       PrimAppE DictLookupP [(exp d),(exp k)]
+   L4 "lookup" ty d k ->
+       PrimAppE (DictLookupP $ typ ty) [(exp d),(exp k)]
 
-   L (A "empty-dict" : []) ->
-       PrimAppE DictEmptyP []
+   L2 "empty-dict" ty ->
+       PrimAppE (DictEmptyP $ typ ty) []
                                                 
    -- If NOTHING else matches, we are an application.  Be careful we didn't miss anything:             
    L (A rator : rands) -> 
