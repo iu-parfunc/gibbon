@@ -17,7 +17,7 @@ import Test.Tasty.TH
 
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.Common as C
-import Packed.FirstOrder.L1_Source (Exp (..))
+-- import Packed.FirstOrder.L1_Source (Exp (..))
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.LTraverse
 import Packed.FirstOrder.Passes.Cursorize
@@ -255,7 +255,7 @@ add1_prog = T.Prog [build_tree, add1] (Just (RunRacketCorePass "build_tree" "add
         base_case, recursive_case :: Tail
 
         base_case =
-          LetPrimCallT [("tout1", T.CursorTy)] WriteInt [IntTriv 0, VarTriv "tout"] $
+          LetPrimCallT [("tout1", T.CursorTy)] T.WriteInt [IntTriv 0, VarTriv "tout"] $
           RetValsT [VarTriv "tout1"]
 
         recursive_case =
@@ -274,9 +274,9 @@ add1_prog = T.Prog [build_tree, add1] (Just (RunRacketCorePass "build_tree" "add
       where
         leafCase =
           LetPrimCallT [("tout2",T.CursorTy)] WriteTag [TagTriv leafTag, VarTriv "tout"] $
-          LetPrimCallT [("n",T.IntTy),("t3",T.CursorTy)] ReadInt [VarTriv "t2"] $
+          LetPrimCallT [("n",T.IntTy),("t3",T.CursorTy)] T.ReadInt [VarTriv "t2"] $
           LetPrimCallT [("n1",T.IntTy)] AddP [VarTriv "n", IntTriv 1] $
-          LetPrimCallT [("tout3",T.CursorTy)] WriteInt [VarTriv "n1", VarTriv "tout2"] $
+          LetPrimCallT [("tout3",T.CursorTy)] T.WriteInt [VarTriv "n1", VarTriv "tout2"] $
           RetValsT [VarTriv "t3", VarTriv "tout3"]
 
         nodeCase =
