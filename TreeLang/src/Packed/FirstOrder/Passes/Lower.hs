@@ -23,6 +23,7 @@ import qualified Packed.FirstOrder.L1_Source as L1
 import qualified Packed.FirstOrder.LTraverse as L2
 import           Packed.FirstOrder.LTraverse ( FunDef(..), Prog(..) )
 import qualified Packed.FirstOrder.Target as T
+import qualified Packed.FirstOrder.Passes.Cursorize as C
 import Data.Maybe
 import Data.List as L hiding (tail)
 import Data.Map as M
@@ -131,6 +132,8 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
     L1.AppE v e        -> return $ T.TailCall v [triv "operand" e]
 
+    --------------------------------Start PrimApps----------------------------------
+    -- (1) Primapps that become Tails:
 
     -- FIXME: No reason errors can't stay primitive at Target:
     L1.PrimAppE (L1.ErrorP str _ty) [] ->
@@ -138,18 +141,28 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     L1.LetE (_,_,L1.PrimAppE (L1.ErrorP str _) []) _ ->
       pure $ T.ErrT str
 
-    -- Whatever, a little just in time flattening.  Should obsolete this:
+    -- Whatever... a little just-in-time flattening.  Should obsolete this:
     L1.PrimAppE p ls -> do
       tmp <- gensym "flt"
       tail (L1.LetE (tmp, L1.primRetTy p, L1.PrimAppE p ls) (L1.VarE tmp))
 
+    ---------------------           
+    -- (2) Next FAKE Primapps.  These could be added to L1 if we wanted to pollute it.
+    L1.LetE (v,_,C.WriteInt c e) bod ->
+      T.LetPrimCallT [(v,T.CursorTy)] T.WriteInt [T.VarTriv c, triv "WriteTag arg" e] <$>
+         tail bod
+
+    ---------------------
+    -- (3) Proper primapps.
     L1.LetE (v,t,L1.PrimAppE p ls) bod ->
         -- No tuple-valued prims here:
         T.LetPrimCallT [(v,typ t)]
              (prim p)
              (L.map (triv "prim rand") ls) <$>
              (tail bod)
+    --------------------------------End PrimApps----------------------------------
 
+             
     L1.LetE (v,t,L1.AppE f arg) bod -> do
         -- FIXME, tuples should be unzipped here:
         T.LetCallT [(v,typ t)] f

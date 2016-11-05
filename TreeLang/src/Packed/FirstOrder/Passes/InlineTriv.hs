@@ -46,7 +46,7 @@ inlineTrivExp = go []
          _ -> L1.LetE (v,t,go env e') (go env e)
   exp env (L1.IfE e1 e2 e3) =
        L1.IfE (go env e1) (go env e2) (go env e3)
-  exp env (L1.ProjE i e) = L1.ProjE i $ go env e
+  exp env (L1.ProjE i e) = mkProj i $ go env e
   exp env (L1.MkProdE es) = L1.MkProdE $ map (go env) es
   exp env (L1.CaseE e mp) =
        let e' = go env e
@@ -58,3 +58,9 @@ inlineTrivExp = go []
   exp env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
        L1.FoldE (v1,t1,go env e1) (v2,t2,go env e2) (go env e3)
 
+
+-- Helpers which do opportunistic reduction:
+
+mkProj :: Int -> Exp -> Exp
+mkProj ix (MkProdE ls) = ls !! ix
+mkProj ix (VarE v) = ProjE ix (VarE v)

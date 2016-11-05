@@ -13,6 +13,7 @@
 module Packed.FirstOrder.Passes.Cursorize
     ( cursorize
     , cursorDirect
+    , pattern WriteInt, pattern ReadInt, pattern NewBuffer, pattern CursorTy
     ) where
 
 import Control.Monad
