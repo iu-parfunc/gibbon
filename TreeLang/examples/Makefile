@@ -127,6 +127,13 @@ answers: $(ANSWERS)
 
 # --------------------------------------------------------------------------------
 
+valgrind: $(addsuffix .valgrind,$(PASSING_TESTS))
+
+%.sexp.valgrind : %.sexp %.sexp.out
+	valgrind ./$(basename $(basename $@)).exe
+
+# --------------------------------------------------------------------------------
+
 
 treelang_lib:
 	raco make -v ../treelang.rkt 
