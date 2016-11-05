@@ -431,39 +431,34 @@ lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
     --------------------------------------------------------------------------------
     -- If we get here that means we're NOT packing trees on this run:
     -- Thus this operates on BOXED data:
-    L1.CaseE e (first_case@(c, _, _) : rest_cases) -> do
-      let tycon = getTyOfDataCon ddefs c
-      let e_triv@(T.VarTriv e_var) = triv "case scrutinee" e
+    L1.CaseE e [(c, bndrs, rhs)] -> do
+      -- a product, directly assign the fields
+      let tys = L.map typ (lookupDataCon ddefs c)
 
-      tmp <- gensym "scrt_tag"
-      -- | Read the first word off the target, which must be a tag:
-      let bindScrut = T.LetPrimCallT [(tmp,T.TagTy)] T.GetFirstWord [e_triv]
+      -- TODO(osa): enable this
+      -- ASSERT(length tys == length bndrs)
 
-      let
-        dorhs :: (Constr,[Var],L1.Exp) -> SyM T.Tail
-        dorhs (k,vrs,rhs) =
-          let
-            tys    = L.map typ $ lookupDataCon ddefs k
-            con_ty = T.ProdTy (T.TagTy : tys)
-          in
-            T.LetUnpackT (zip vrs tys) e_var <$> tail rhs
+      let T.VarTriv e_var = triv "case scrutinee" e
+      rhs' <- tail rhs
+      return (T.LetUnpackT (zip bndrs tys) e_var rhs')
 
-      rest'  <- mapM dorhs rest_cases
-      first' <- dorhs first_case
-      -- We decide right here what the tag values are.  We could also produce
-      -- macros/symbols for readability.
-      let bod = T.Switch (T.VarTriv tmp)
-                         (T.IntAlts (zip [1..] rest'))
-                         (Just first')
-
-      return $ bindScrut bod
+    L1.CaseE _ _ -> error "Case on sum types not implemented yet."
 
     -- Accordingly, constructor allocation becomes an allocation.
     L1.LetE (v, _, L1.MkPackedE k ls) bod -> L1.assertTrivs ls $ do
+      -- is this a product?
+      let all_cons = dataCons (lookupDDef ddefs k)
+          is_prod  = length all_cons == 1
+          tag      = fromJust (L.findIndex ((==) k . fst) all_cons)
+          fields0  = L.map (triv "MkPackedE args") ls
+          fields
+            | is_prod   = T.TagTriv (fromIntegral tag) : fields0
+            | otherwise = fields0
+
       bod' <- tail bod
-      let tys = L.map typ $ lookupDataCon ddefs k
-      -- FIXME: NEED TO ASSIGN FIELDS:
-      return $ T.LetAllocT v (zip tys (L.map (triv "MkPacked args") ls)) bod'
+
+      let tys = L.map typ (lookupDataCon ddefs k)
+      return (T.LetAllocT v (zip tys (L.map (triv "MkPacked args") ls)) bod')
 
     --------------------------------------------------------------------------------
 
