@@ -15,7 +15,7 @@ module Packed.FirstOrder.L1_Source
       -- * Primitive operations
     , Prim(..), primRetTy, primArgsTy
       -- * Types and helpers
-    , Ty, Ty1(..), pattern Packed, pattern SymTy, voidTy
+    , Ty, Ty1(..), pattern Packed, pattern SymTy, voidTy, hasPacked
     -- * Expression and Prog helpers
     , freeVars, subst, mapExprs
       -- * Trivial expressions
@@ -128,6 +128,16 @@ data Ty1 a =
 voidTy :: Ty
 voidTy = ProdTy []
 
+-- | Do values of this type contain packed data?
+hasPacked :: Ty -> Bool
+hasPacked t = case t of
+                Packed _  -> True
+                ProdTy ls -> any hasPacked ls
+                SymTy     -> False
+                BoolTy    -> False
+                IntTy     -> False
+                SymDictTy t -> hasPacked t
+         
 -- | Transform the expressions within a program.
 mapExprs :: (Exp -> Exp) -> Prog -> Prog
 mapExprs fn prg@Prog{fundefs,mainExp} =

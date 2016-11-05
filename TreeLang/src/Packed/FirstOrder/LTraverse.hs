@@ -370,15 +370,6 @@ argtyToLoc v ty =
     Fixed v
     -- if hasPacked t then Top else Bottom
 
--- | Do values of this type contain packed data?
-hasPacked :: L1.Ty -> Bool
-hasPacked t = case t of
-                L1.Packed _  -> True
-                L1.ProdTy ls -> any hasPacked ls
-                L1.SymTy     -> False
-                L1.BoolTy    -> False
-                L1.IntTy     -> False
-                L1.SymDictTy t -> hasPacked t
                              
 -- A bit of name mangling:
 ------------------------------------------------------------
@@ -523,7 +514,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
            -- We've gotten "to the end" of a nullary constructor just by matching it:
            (L.null patVs) ||
            -- If there is NO packed child data, then our object has static size:
-           (L.all (not . hasPacked) tys) ||
+           (L.all (not . L1.hasPacked) tys) ||
               let (lastV,lastTy) = last zipped
                   isUsed = S.member lastV freeRHS
               in

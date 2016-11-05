@@ -208,10 +208,12 @@ cursorDirect = undefined
         L1.AppE v e      -> L1.AppE v <$> exp e
         L1.PrimAppE p ls -> L1.PrimAppE p <$> mapM exp ls
         L1.LetE (v,ty,rhs) bod
-            | hasPacked ty -> do tmp <- gensym  "tmpbuf"
-                                 L1.LetE (tmp,CursorTy,NewBuffer) exp2 <$>
-                                   __
-            | otherwise -> __ 
+            | L1.hasPacked ty -> do tmp <- gensym  "tmpbuf"
+                                    rhs' <- L1.LetE (tmp,CursorTy,NewBuffer) <$>
+                                              exp2 tmp rhs
+                                    L1.LetE (v,ty,rhs') <$> exp bod
+            | otherwise -> do rhs' <- exp rhs
+                              L1.LetE (v,ty,rhs') <$> exp bod
         L1.ProjE _ e -> __ 
         L1.CaseE e ls -> __ 
         L1.MkProdE ls     -> __ 
@@ -220,10 +222,10 @@ cursorDirect = undefined
 --        L1.MapE (v,t,rhs) bod -> __ 
 --        L1.FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
 
-    -- | Take a destination cursor.  Assume only a single packed output.
+-- | Take a destination cursor.  Assume only a single packed output.
     --   Here we are in a context that flows to Packed data.
-    exp2 :: L1.Exp -> SyM L1.Exp
-    exp2 ex =
+    exp2 :: Var -> L1.Exp -> SyM L1.Exp
+    exp2 destC ex =
       case ex of
         L1.VarE _ -> return ex
         L1.LitE _ -> return ex
