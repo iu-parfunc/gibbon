@@ -21,7 +21,59 @@
      (CONSTOPLVL (top tl env) (loop1 ls env))]
     [(NULLTOPLVL)
      ls]))
-    
+
+(define (loop2 [ls : ListExpr] [env : Env]): ListExpr
+  (case ls
+    [(CONSEXPR e ls)
+     (CONSEXPR (expr e env) (loop2 ls env))]
+    [(NULLEXPR)
+     ls]))   
+
+(define (loop3 [ls : LAMBDACASE] [env : Env]) : LAMBDACASE
+  (case ls
+    [(CONSLAMBDACASE fs le ls)
+     (let ([nenv : Env (formals-ee fs env)])
+       (CONSLAMBDACASE (formals-update fs nenv)
+       		       (loop2 le nenv)
+     		       (loop3 ls env)))]
+    [(NULLLAMBDACASE)
+     ls]))
+
+(define (extend-env1 [syms : ListSym] [sym : Sym] [env : Env]) : Env
+  (case syms
+    [(CONSSYM s rest)
+     (Extended s sym env)]
+    [(NULLSYM)
+     env]))
+
+(define (loop4 [ls : LVBIND] [env : Env]) : Env
+  (case ls
+    [(CONSLVBIND syms e ls)
+     (loop4 ls (case e
+                 [(VARREF sym)
+               	  (extend-env1 syms sym env)]
+       	      	 [(Top sym)
+               	  (extend-env1 syms sym env)]
+       	      	 [(VariableReference sym)
+               	  (extend-env1 syms sym env)]
+       	      	 [(VariableReferenceTop sym)
+               	  (extend-env1 syms sym env)]))]
+    [(NULLLVBIND)
+     env]))
+
+(define (loop5 [ls : ListSym] [env : Env]) : ListSym
+  (case ls
+    [(CONSSYM s ls)
+     (CONSSYM (lookup-env s env) (loop5 ls env))]
+    [(NULLSYM)
+     ls]))
+
+(define (loop6 [ls : ListSym] [env : Env]) : Env
+  (case ls
+    [(CONSSYM s ls)
+     (loop6 ls (Extended s (gensym) env))]
+    [(NULLSYM)
+     env]))
   
 (define (top [e : Toplvl] [env : Env]) : Toplvl
   (case e
@@ -41,7 +93,6 @@
      (if (eq? s1 s)
          (lookup-env s2 env)
          (lookup-env s env))]))
-     
 
 (define (expr [e : Expr] [env : Env]) : Expr
   (case e
@@ -66,68 +117,34 @@
     [(Lambda formals body)
      (let ([nenv : Env (formals-ee formals env)])
        (Lambda (formals-update formals nenv)
-               (for/list ([e : Expr body])
-                 (expr e nenv))))]
+       	       (loop2 body env)))]
     [(CaseLambda cases)
-     (CaseLambda (for/list ([lc : LAMBDACASE cases])
-                   (case lc
-                     [(MKLAMBDACASE fs exprs)
-                      (let ([nenv : Env (formals-ee fs env)])
-                        (MKLAMBDACASE (formals-update fs nenv)
-                                      (for/list : (Listof Expr) ([e : Expr exprs])
-                                        (expr e nenv))))])))]
+     (CaseLambda (loop3 cases env))]
     [(LetValues binds body) 
-     (let ([nenv : Env (for/fold : Env ([e env])
-                                       ([b : LVBIND binds])
-                         (lvbind-ee b e))])
-       (LetValues binds (for/list ([e : Expr body])
-                          (expr e nenv))))]
+     (let ([nenv : Env (loop4 binds env)])
+       (LetValues binds (loop2 body nenv)))]
     [(LetrecValues binds body) ;; anything different here?
-     (let ([nenv : Env (for/fold : Env ([e env])
-                         ([b : LVBIND binds])
-                         (lvbind-ee b e))])
-       (LetValues binds (for/list ([e : Expr body])
-                          (expr e nenv))))]
+     (let ([nenv : Env (loop4 binds env)])
+       (LetrecValues binds (loop2 body nenv)))]
     [(If cond then else)
      (If (expr cond env) (expr then env) (expr else env))]
     [(Begin exprs)
-     (Begin (for/list ([e : Expr exprs])
-              (expr e env)))]
+     (Begin (loop2 exprs env))]
     [(Begin0 e1 exprs)
-     (Begin0 (expr e1 env) (for/list ([e : Expr exprs])
-                             (expr e env)))]
-    [(App exprs)  ;; (#%plain-app expr ...+)
-     (App (for/list ([e : Expr exprs])
-            (expr e env)))]
+     (Begin0 (expr e1 env) (loop2 exprs env))]
+    [(App e1 exprs)  ;; (#%plain-app expr ...+)
+     (App (expr e1 env) (loop2 exprs env))]
     [(SetBang s e)
      (SetBang (lookup-env s env) (expr e env))]
     [(WithContinuationMark e1 e2 e3)
      (WithContinuationMark (expr e1 env) (expr e2 env) (expr e3 env))]))
 
-
-(define (lvbind-ee [lvb : LVBIND] [env : Env]) : Env
-  (case lvb
-    [(MKLVBIND syms e) ;; syms is always length 1?
-     (case e
-       [(VARREF sym)
-        (Extended (list-ref syms 1) sym env)]
-       [(Top sym)
-        (Extended (list-ref syms 1) sym env)]
-       [(VariableReference sym)
-        (Extended (list-ref syms 1) sym env)]
-       [(VariableReferenceTop sym)
-        (Extended (list-ref syms 1) sym env)])]))
-
 (define (formals-ee [f : Formals] [env : Env]) : Env
   (case f
     [(F1 ls)
-     (for/fold : Env ([e env])
-                     ([s : Sym ls])
-       (Extended s (gensym) e))]
+     (loop6 ls env)]
     [(F2 ls s)
-     (let ([nenv : Env (for/fold : Env ([e env])
-                         ([s : Sym ls])
-                         (Extended s (gensym) e))])
+     (let ([nenv : Env (loop6 ls env)])
        (Extended s (gensym) nenv))]
     [(F3 s)
      (Extended s (gensym) env)]))
@@ -135,11 +152,8 @@
 (define (formals-update [f : Formals] [env : Env]) : Formals
   (case f
     [(F1 ls)
-     (F1 (for/list ([s : Sym ls])
-           (lookup-env s env)))]
+     (F1 (loop5 ls env))]
     [(F2 ls s)
-     (F2 (for/list ([s : Sym ls])
-           (lookup-env s env))
-         (lookup-env s env))]
+     (F2 (loop5 ls env) (lookup-env s env))]
     [(F3 s)
      (F3 (lookup-env s env))]))
