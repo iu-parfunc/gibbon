@@ -1,0 +1,1 @@
+(Expression (Lambda (F1 (x y z)) ((Begin (VARREF x) (VARREF y) (VARREF z)))))
