@@ -265,19 +265,22 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
          let unpack :: (Constr, [Var]) -> Exp -> SyM Exp
              unpack (k,vrs) ex =
               let go c [] = exp ex -- Everything is now in scope for the body.
-                  go c ((vr,IntTy):rs) = do
+                  go c ((vr,ty):rs) = do
                     tmp <- gensym "tptmp"
                     let c' = case rs of
                                [] -> "end"
                                (v2,_):_ -> witnessOf v2
-                    LetE (tmp, addCurTy IntTy, ReadInt c) <$>
-                     LetE (c', CursorTy, projCur tmp) <$>
-                      LetE (vr, IntTy, projVal tmp) <$>
-                       go _ rs
-                  -- A Packed field:
-                  go c ((vr,ty):rs) | L1.hasPacked ty = do
-                    __
-                                         
+                    case ty of
+                      IntTy -> 
+                        LetE (tmp, addCurTy IntTy, ReadInt c) <$>
+                         LetE (c', CursorTy, projCur tmp) <$>
+                          LetE (vr, IntTy, projVal tmp) <$>
+                           go c' rs
+                      ty | L1.hasPacked ty -> do
+                       -- Strategy: assume currently-unbound witness variables:
+                       -- A later traversal will reorder.
+                       go c' rs
+
               in go cur0 (zip vrs (lookupDataCon ddefs k))
 
          CaseE <$> exp e <*> (forM ls $ \ (k,vrs,e) -> do

@@ -47,14 +47,13 @@ all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
 
 PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
     test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp test05_app.sexp \
-	test05b_app.sexp \
+	test05b_app.sexp test06_case.sexp test06b_case.sexp \
     test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp
 # FIX THESE: All are blocked on something.  Then move them to the above list:
 
 #  test04  -- MkTrue typeExp
 #  test04b -- ''
 #  test04c -- lower needs detuple
-#  test06  -- lower datacon
 
 #  test08  -- parsing empty-dict
 
@@ -109,7 +108,8 @@ run_tests_interp2: test00_add.sexp.ans
 # test04_vector.sexp    -- MkTrue in flatten
 # test04b_vector.sexp   -- ''
 # test04c_ifvector.sexp -- lower needs detuple
-# test06_case.sexp      -- let/datacon not allowed thru lower yet
+# test06_case.sexp      -- unhandled interp case
+# test06b_case.sexp      -- 
 
 # test15_packed.sexp    -- no lowering of packed types yet
 # test16_forlist.sexp   -- no list support yet
