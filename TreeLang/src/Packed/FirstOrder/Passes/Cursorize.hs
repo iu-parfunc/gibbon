@@ -189,15 +189,41 @@ extendEnv ls e = (M.fromList ls) `M.union` e
 
 --   MkFoo (if a b c)
 
+----------------------------------------
+
 -- The value environment remembers in-scope let-bindings.
 type ValEnv = M.Map Var L1.Exp
 
 cursorDirect :: Prog -> SyM Prog
 cursorDirect = undefined
   where
+    -- | Here we are not in a context that flows to Packed data, thus no
+    --   destination cursor.
+    exp :: L1.Exp -> SyM L1.Exp
+    exp ex =
+      case ex of
+        L1.VarE _ -> return ex
+        L1.LitE _ -> return ex
+        L1.MkPackedE k ls -> error "cursorDirect: Should not have encountered MkPacked if type is not packed."
+        L1.AppE v e      -> L1.AppE v <$> exp e
+        L1.PrimAppE p ls -> L1.PrimAppE p <$> mapM exp ls
+        L1.LetE (v,ty,rhs) bod
+            | hasPacked ty -> do tmp <- gensym  "tmpbuf"
+                                 L1.LetE (tmp,CursorTy,NewBuffer) exp2 <$>
+                                   __
+            | otherwise -> __ 
+        L1.ProjE _ e -> __ 
+        L1.CaseE e ls -> __ 
+        L1.MkProdE ls     -> __ 
+        L1.TimeIt e _ -> __
+        L1.IfE a b c -> __ 
+--        L1.MapE (v,t,rhs) bod -> __ 
+--        L1.FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+
     -- | Take a destination cursor.  Assume only a single packed output.
-    exp :: Var -> L1.Exp -> SyM L1.Exp
-    exp destC ex =
+    --   Here we are in a context that flows to Packed data.
+    exp2 :: L1.Exp -> SyM L1.Exp
+    exp2 ex =
       case ex of
         L1.VarE _ -> return ex
         L1.LitE _ -> return ex
@@ -210,12 +236,13 @@ cursorDirect = undefined
          d'    <- gensym "curstmp" 
          return $
           -- This stands for the  "WriteTag" operation:
-          L1.LetE (dest',_, L1.MkPackedE k [L1.VarE destC]) $ 
+          L1.LetE (dest',_, L1.MkPackedE k [L1.VarE destC]) $
+            
             let go d [] = L1.MkProdE [L1.VarE destC, L1.VarE d]
                    -- ^ The final return value lives at the position of the out cursor
                 go d ((rnd,IntTy):rst) = 
                     L1.LetE (d',_, WriteInt d rnd )
-                    (go __ rst)
+                    (go d' rst)
                 -- Here we recursively transfer control 
                 go d ((rnd,L1.PackedTy k2 ()):rst) = 
 --                    L1.LetE (d',_, WriteInt d rnd )
@@ -233,6 +260,7 @@ cursorDirect = undefined
         L1.IfE a b c -> __ 
 --        L1.MapE (v,t,rhs) bod -> __ 
 --        L1.FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+
 
 
         -- L1.VarE v -> __ 
