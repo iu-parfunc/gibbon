@@ -47,7 +47,7 @@ cd $top/TreeLang
 stack --install-ghc test "$STACKARGS"
 
 cd $top/TreeLang/examples
-make test
+make test -j
 
 
 

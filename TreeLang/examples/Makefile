@@ -1,13 +1,13 @@
 
 default: test
 
-test: 
-	$(MAKE) run_tests
+test: answers parse_all
+# Sequentialize these, they stomp on *.out:
+	$(MAKE) run_tests 
 	$(MAKE) run_tests_packed
 	$(MAKE) run_tests_interp2
 
-	$(MAKE) parse_all
-	$(MAKE) racket_valid
+#	$(MAKE) racket_valid
 # Need methodology for this.
 #	$(MAKE) racket_invalid
 
@@ -27,11 +27,23 @@ racket_invalid: treelang_lib
 
 TREEC= stack exec -- treec
 
-parse_all: 
+# Make sure the compiler is built
+build:
 	stack build
-	for f in `ls *.sexp`; do \
-          echo "Parsing $$f"; \
-          $(TREEC) --parse $$f || exit 1; done
+
+parse_all: build
+	@echo "\n Parsing all tests, even those that don't run yet."
+	@echo "--------------------------------------------------"
+	rm -f *.parsed
+	$(MAKE) all_parsed
+
+ALL_TESTS= $(shell ls test*.sexp)
+
+all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
+
+%.sexp.parsed : %.sexp
+	@echo "Parsing $^"
+	$(TREEC) --parse $^ 2> $@
 
 PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
     test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp test05_app.sexp \
@@ -54,21 +66,10 @@ PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.s
 TREECARGS ?= --run
 
 # Run the tests that work:
-old_run: answers
+run_tests: build
 	@echo "\n Compiling and running tests through our compiler:"
 	@echo "--------------------------------------------------"
-	stack build
-	for f in $(PASSING_TESTS); do \
-          echo "Testing $$f"; \
-          $(TREEC) $(TREECARGS) $$f > $$f.out; \
-          echo "Now check expected $$f.ans, versus received, $$f.out"; \
-          ./diff.sh $$f.ans $$f.out; \
-          if [ $$? != "0" ]; then echo "ERROR: Answers differed!"; exit 1; fi; \
-          echo "  -> Success."; \
-        done
-
-run_tests:
-	rm *.out
+	rm -f *.out
 	$(MAKE) all_tests
 
 all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
@@ -78,7 +79,7 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 	@echo "Testing $^"
 	$(TREEC) $(TREECARGS) $^ > $@
 	@echo "Now check expected $$f.ans, versus received, $$f.out";
-	./diff.sh $^.ans $@
+	./diff.sh $^.ans $@ 
 	@if [ $$? != "0" ]; then echo "ERROR: Answers differed!"; exit 1; fi; \
           echo "  -> Success."; \
         done
