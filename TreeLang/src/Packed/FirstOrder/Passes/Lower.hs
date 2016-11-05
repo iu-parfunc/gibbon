@@ -66,9 +66,6 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       let [cursIn] = ls
       T.LetPrimCallT [(cursOut,T.CursorTy)] T.WriteTag
                      [triv "WriteTag cursor" cursIn, T.IntTriv (getTagOfDataCon ddefs k)] <$>
-        -- Here we lamely chase down all the tuple references and make them variables:
---        let bod' = __ $ substE (Proj ix (VarE tupname))
---            ix = 0 in
         tail bod
      
     -- Not-packed, pointer-based codegen
@@ -151,6 +148,15 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     L1.LetE (v,_,C.WriteInt c e) bod ->
       T.LetPrimCallT [(v,T.CursorTy)] T.WriteInt [T.VarTriv c, triv "WriteTag arg" e] <$>
          tail bod
+
+    L1.LetE (pr,_,C.ReadInt c) bod -> do
+      vtmp <- gensym "tmpval"
+      ctmp <- gensym "tmpcur"
+      T.LetPrimCallT [(vtmp,T.IntTy),(ctmp,T.CursorTy)] T.ReadInt [T.VarTriv c] <$>
+        -- Here we lamely chase down all the tuple references and make them variablesa:
+        let bod' = L1.substE (L1.ProjE 0 (L1.VarE pr)) (L1.VarE vtmp) $
+                   L1.substE (L1.ProjE 1 (L1.VarE pr)) (L1.VarE ctmp) bod
+        in tail bod'
 
     ---------------------
     -- (3) Proper primapps.
