@@ -249,7 +249,7 @@ flattenExp defs env2 = fExp (M.toList$ vEnv env2)
 --   the output of `flatten`.
 inlineTriv :: L1.Prog -> L1.Prog
 inlineTriv (L1.Prog defs funs main) =
-    L1.Prog defs (fmap inlineTrivFun funs) (inlineTrivExp <$> main)
+    L1.Prog defs (fmap inlineTrivFun funs) (fmap inlineTrivExp main)
   where
     inlineTrivFun (FunDef nam (narg,targ) ty bod) =
       FunDef nam (narg,targ) ty (inlineTrivExp bod)
