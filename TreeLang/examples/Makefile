@@ -56,8 +56,6 @@ PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.s
 #  test04b -- ''
 #  test04c -- lower needs detuple
 
-#  test08  -- parsing empty-dict
-
 
 
 TREECARGS ?= --run
