@@ -437,8 +437,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
      L1.LitE  _ -> return (S.empty, Bottom)
      L1.CaseE e1 mp ->
       do (eff1,loc1) <- exp env e1
-         (bools,effs,locs) <- unzip3 <$>
-                              mapM (caserhs env) (M.toList mp)
+         (bools,effs,locs) <- unzip3 <$> mapM (caserhs env) mp
          -- Critical policy point!  We only get to the end if ALL
          -- branches get to the end.
          let end = if all id bools
@@ -501,12 +500,12 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
 --     L1.MkPacked k ls ->
 
   -- Returns true if this particular case reaches the end of the scrutinee.
-  caserhs :: Env -> (Var,([Var],L1.Exp)) -> SyM (Bool, Set Effect, Loc)
-  caserhs env (_dcon,([],erhs)) = do
+  caserhs :: Env -> (Var,[Var],L1.Exp) -> SyM (Bool, Set Effect, Loc)
+  caserhs env (_dcon,[],erhs) = do
      (effs,loc) <- exp env erhs
      return $ ( True, effs, loc)
 
-  caserhs env (dcon,(patVs,erhs)) =
+  caserhs env (dcon,patVs,erhs) =
    -- Subtlety: if the rhs expression consumes the RIGHTMOST
    -- pattern variable, then the later code transformations MUST
    -- ensure that it consumes everything.

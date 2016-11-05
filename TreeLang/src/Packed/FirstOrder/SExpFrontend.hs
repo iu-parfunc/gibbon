@@ -108,7 +108,7 @@ tagDataCons ddefs = go allCons
        LitE _          -> ex
        PrimAppE p ls   -> PrimAppE p $ L.map (go cons) ls
        ProjE i e  -> ProjE i (go cons e)
-       CaseE e ls -> CaseE (go cons e) (M.map (\(vs,er) -> (vs,go cons er)) ls)
+       CaseE e ls -> CaseE (go cons e) (L.map (\(c,vs,er) -> (c,vs,go cons er)) ls)
        MkProdE ls     -> MkProdE $ L.map (go cons) ls
        MkPackedE k ls -> MkPackedE k $ L.map (go cons) ls
        TimeIt e t -> TimeIt (go cons e) t
@@ -249,7 +249,7 @@ exp se =
      mkLets (L.map letbind bnds) (exp bod) 
      
    L (A "case": scrut: cases) -> 
-     CaseE (exp scrut) (M.fromList $ L.map docase cases)
+     CaseE (exp scrut) (L.map docase cases)
 
    L (A p : ls) | isPrim p -> PrimAppE (prim p) $ L.map exp ls
 
@@ -290,12 +290,12 @@ exp se =
 
 
 -- | One case of a case expression
-docase :: Sexp -> (Constr, ([Var], Exp))
+docase :: Sexp -> (Constr,[Var],Exp)
 docase s = 
   case s of
     RSList [ RSList (A con : args)
            , rhs ]
-      -> (toVar con, (L.map getSym args, exp rhs))
+      -> (toVar con, L.map getSym args, exp rhs)
     _ -> error$ "bad clause in case expression\n  "++prnt s
 
 mkLets :: [(Var, Ty, Exp)] -> Exp -> Exp
