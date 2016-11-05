@@ -20,6 +20,7 @@ module Packed.FirstOrder.Passes.Lower
 import Control.Monad
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
+import           Packed.FirstOrder.L1_Source (Exp(..))
 import qualified Packed.FirstOrder.LTraverse as L2
 import           Packed.FirstOrder.LTraverse ( FunDef(..), Prog(..) )
 import qualified Packed.FirstOrder.Target as T
@@ -57,22 +58,33 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
    case ex of
     -- Packed codegen
     --------------------------------------------------------------------------------
-    L1.CaseE e ls | pkd -> do
-      __finish_packed_caseE
-
     -- These are in a funny normal form atfer cursor insertion.  They take one cursor arg.
     -- They basically are a WriteTag.
-    L1.LetE (cursOut, _, L1.MkPackedE k ls) bod | pkd -> do
+    LetE (cursOut, _, MkPackedE k ls) bod | pkd -> do
       let [cursIn] = ls
       T.LetPrimCallT [(cursOut,T.CursorTy)] T.WriteTag
-                     [triv "WriteTag cursor" cursIn, T.IntTriv (getTagOfDataCon ddefs k)] <$>
+                     [ T.TagTriv (getTagOfDataCon ddefs k)
+                     , triv "WriteTag cursor" cursIn ] <$>
         tail bod
+
+    -- Likewise, Case really means ReadTag.  Argument is a cursor.
+    CaseE (VarE scrut) ls | pkd -> do
+        let (last:restrev) = reverse ls; rest = reverse restrev
+        tagtmp <- gensym "tmpval"
+        ctmp   <- gensym "tmpcur"
+        return $                   
+         T.LetPrimCallT [(tagtmp,T.TagTy),(ctmp,T.CursorTy)] T.ReadTag [T.VarTriv scrut] $         
+          -- Here lamely chase down all the tuple references and make them variables:
+          T.Switch (T.VarTriv tagtmp)
+                   -- If we are treating the boolean as a tag, then tag "0" is false
+                   (T.TagAlts []) 
+                   (Just (T.RetValsT [T.VarTriv "FINISHME"]))
      
     -- Not-packed, pointer-based codegen
     --------------------------------------------------------------------------------
     -- If we get here that means we're NOT packing trees on this run:
     -- Thus this operates on BOXED data:
-    L1.CaseE e [(c, bndrs, rhs)] | not pkd -> do
+    CaseE e [(c, bndrs, rhs)] | not pkd -> do
       -- a product, directly assign the fields
       let tys = L.map typ (lookupDataCon ddefs c)
 
@@ -83,10 +95,10 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       rhs' <- tail rhs
       return (T.LetUnpackT (zip bndrs tys) e_var rhs')
 
-    L1.CaseE _ _ -> error "Case on sum types not implemented yet."
+    CaseE _ _ -> error "Case on sum types not implemented yet."
 
     -- Accordingly, constructor allocation becomes an allocation.
-    L1.LetE (v, _, L1.MkPackedE k ls) bod | not pkd -> L1.assertTrivs ls $ do
+    LetE (v, _, MkPackedE k ls) bod | not pkd -> L1.assertTrivs ls $ do
       -- is this a product?
       let all_cons = dataCons (lookupDDef ddefs k)
           is_prod  = length all_cons == 1
@@ -146,7 +158,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     ---------------------           
     -- (2) Next FAKE Primapps.  These could be added to L1 if we wanted to pollute it.
     L1.LetE (v,_,C.WriteInt c e) bod ->
-      T.LetPrimCallT [(v,T.CursorTy)] T.WriteInt [T.VarTriv c, triv "WriteTag arg" e] <$>
+      T.LetPrimCallT [(v,T.CursorTy)] T.WriteInt [triv "WriteTag arg" e, T.VarTriv c] <$>
          tail bod
 
     L1.LetE (pr,_,C.ReadInt c) bod -> do

@@ -33,6 +33,7 @@ module Packed.FirstOrder.Common
        ) where
 
 import Data.Char
+import Data.Word
 import Control.Monad.State
 import Control.DeepSeq (NFData)
 import Data.List as L
@@ -113,8 +114,8 @@ getTyOfDataCon :: Out a => DDefs a -> Var -> Var
 getTyOfDataCon dds con = fst $ lkp dds con
 
 -- | Look up the numeric tag for a dataCon 
-getTagOfDataCon :: Out a => DDefs a -> Var -> Int
-getTagOfDataCon dds dcon = ix
+getTagOfDataCon :: Out a => DDefs a -> Var -> Word8
+getTagOfDataCon dds dcon = fromIntegral ix
   where Just ix = L.elemIndex dcon $ getConOrdering dds tycon
         (tycon,_) = lkp dds dcon
 
