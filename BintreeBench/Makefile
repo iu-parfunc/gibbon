@@ -27,7 +27,7 @@ RESOLVER=lts-6.23
 
 GHC = stack --install-ghc --resolver=$(RESOLVER) exec ghc -- -rtsopts -threaded
 
-# CC = gcc
+CC = gcc
 # CC = clang
 
 # CPP = icpc
