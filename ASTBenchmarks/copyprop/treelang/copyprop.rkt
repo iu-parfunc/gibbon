@@ -44,12 +44,7 @@
      (loop4 ls (case e
                  [(VARREF sym)
                	  (extend-env1 syms sym env)]
-       	      	 [(Top sym)
-               	  (extend-env1 syms sym env)]
-       	      	 [(VariableReference sym)
-               	  (extend-env1 syms sym env)]
-       	      	 [(VariableReferenceTop sym)
-               	  (extend-env1 syms sym env)]))]
+                 [_ env]))]
     [(NULLLVBIND)
      env]))
 
@@ -85,7 +80,10 @@
   (case e
     ;; Variable references:
     [(VARREF s)
-     (VARREF (lookup-env s env))] ;; here
+     (VARREF
+      (if (has-key? env s)
+          (lookup-env s env)
+          s))]
     [(Top s)
      e]
     [(VariableReference s)   ; #%variable-reference

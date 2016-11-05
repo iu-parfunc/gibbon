@@ -1,6 +1,7 @@
 #lang typed/racket
 
-(provide Int Sym Bool SymDict data empty-dict lookup insert delete case
+(provide Int Sym Bool SymDict data empty-dict lookup insert delete
+         has-key? case
          define let  if :
          for/list for/fold or and
          vector vector-ref
@@ -93,7 +94,12 @@ lit := int | #t | #f
     [(case v [(~and pat (S:id p:id ...)) rhs] ...)
      (syntax/loc stx
        (match v
-         [pat rhs] ...))]))
+         [pat rhs] ...))]
+    [(case v [(~and pat (S:id p:id ...)) rhs] ... [_ rhs*])
+     (syntax/loc stx
+       (match v
+         [pat rhs] ...
+         [_ rhs*]))]))
 
 
 ;;(insert e e e)
@@ -108,6 +114,9 @@ lit := int | #t | #f
 
 (define-syntax-rule (delete ht key)
   (hash-remove ht key))
+
+(define-syntax-rule (has-key? ht key)
+  (hash-has-key? ht key))
 
 (define-syntax-rule (time e)
   (let-values ([(ls cpu real gc) (time-apply (lambda () e) '())])
