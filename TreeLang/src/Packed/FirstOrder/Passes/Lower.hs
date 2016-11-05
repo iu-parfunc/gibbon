@@ -37,7 +37,7 @@ import Prelude hiding (tail)
 -- The only substantitive conversion here is of tupled arguments to
 -- multiple argument functions.
 lower :: Bool -> L2.Prog -> SyM T.Prog
-lower _pkd L2.Prog{fundefs,ddefs,mainExp} = do
+lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
   mn <- case mainExp of
           Nothing -> return Nothing
           Just x  -> (Just . T.PrintExp) <$> tail x
@@ -54,11 +54,19 @@ lower _pkd L2.Prog{fundefs,ddefs,mainExp} = do
   tail :: L1.Exp -> SyM T.Tail
   tail ex =
    case ex of
+    -- Packed codegen
+    --------------------------------------------------------------------------------
+    L1.CaseE e ls | pkd -> do
+      __finish_packed_caseE
 
+    L1.LetE (v, _, L1.MkPackedE k ls) bod | pkd -> L1.assertTrivs ls $ do
+      __finish_packed_LetMkPacked
+     
+    -- Not-packed, pointer-based codegen
     --------------------------------------------------------------------------------
     -- If we get here that means we're NOT packing trees on this run:
     -- Thus this operates on BOXED data:
-    L1.CaseE e [(c, bndrs, rhs)] -> do
+    L1.CaseE e [(c, bndrs, rhs)] | not pkd -> do
       -- a product, directly assign the fields
       let tys = L.map typ (lookupDataCon ddefs c)
 
@@ -72,7 +80,7 @@ lower _pkd L2.Prog{fundefs,ddefs,mainExp} = do
     L1.CaseE _ _ -> error "Case on sum types not implemented yet."
 
     -- Accordingly, constructor allocation becomes an allocation.
-    L1.LetE (v, _, L1.MkPackedE k ls) bod -> L1.assertTrivs ls $ do
+    L1.LetE (v, _, L1.MkPackedE k ls) bod | not pkd -> L1.assertTrivs ls $ do
       -- is this a product?
       let all_cons = dataCons (lookupDDef ddefs k)
           is_prod  = length all_cons == 1
@@ -184,8 +192,13 @@ triv msg e0 =
     (L1.PrimAppE L1.MkTrue [])  -> T.IntTriv 1
     (L1.PrimAppE L1.MkFalse []) -> T.IntTriv 0
     -- TODO: I think we should allow tuples and projection in trivials:
+
+    -- Heck, let's map Unit onto Int too:
+    (L1.MkProdE []) -> T.IntTriv 0
 --      (ProjE x1 x2) -> __
 --      (MkProdE x) -> __
+    _ | L1.isTriv e0 -> error $ "lower/triv: this function is written wrong.  "++
+                         "It won't handle the following, which satisfies 'isTriv':\n "++sdoc e0
     _ -> error $ "lower/triv, expected trivial in "++msg++", got "++sdoc e0
 
 typ :: L1.Ty1 a -> T.Ty
