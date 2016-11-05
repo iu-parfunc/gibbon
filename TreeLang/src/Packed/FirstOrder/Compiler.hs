@@ -6,20 +6,20 @@
 module Packed.FirstOrder.Compiler
     ( -- * Compiler entrypoints
       compile, compileCmd
-     -- * Configuration options and parsing 
+     -- * Configuration options and parsing
      , Config (..), Mode(..), Input(..)
      , configParser, configWithArgs, defaultConfig
     )
   where
 
 import Control.DeepSeq
-import Control.Exception 
+import Control.Exception
 import Control.Monad.State
 import Options.Applicative
 import Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.HaskellFrontend as HS
 import qualified Packed.FirstOrder.L1_Source as L1
-import Packed.FirstOrder.LTraverse (inferEffects, Prog(..))
+import Packed.FirstOrder.LTraverse (inferEffects)
 import qualified Packed.FirstOrder.LTraverse as L2
 import Packed.FirstOrder.Passes.Cursorize
 import Packed.FirstOrder.Passes.Lower
@@ -34,7 +34,7 @@ import System.Exit
 import System.IO.Error (isDoesNotExistError)
 import Text.PrettyPrint.GenericPretty
 import Packed.FirstOrder.Interpreter (Val(..), execProg)
-    
+
 ------------------------------------------------------------
 
 import Data.Set as S hiding (map)
@@ -117,7 +117,7 @@ freshNames (L1.Prog defs funs main) =
 -- are allowed in operand position.
 flatten :: L1.Prog -> SyM L1.Prog
 flatten prg@(L1.Prog defs funs main) =
-    do 
+    do
        main' <- case main of
                   Nothing -> return Nothing
                   Just m -> do m' <- flattenExp defs env20 m
@@ -131,7 +131,7 @@ flatten prg@(L1.Prog defs funs main) =
                  return $ FunDef nam (narg,targ) ty bod'
 
           env20 = L1.progToEnv prg
-                        
+
 flattenExp :: DDefs L1.Ty -> Env2 L1.Ty -> L1.Exp -> SyM L1.Exp
 flattenExp defs env2 = fExp (M.toList$ vEnv env2)
    where
@@ -209,13 +209,13 @@ flattenExp defs env2 = fExp (M.toList$ vEnv env2)
           --   Absolutely requires unique names.
           mkLetE (vr,ty, L1.LetE bnd e) bod = mkLetE bnd $ mkLetE (vr,ty,e) bod
           mkLetE bnd bod = L1.LetE bnd bod
-                                              
+
           typeExp :: [(Var,L1.Ty)] -> L1.Exp -> L1.Ty
           typeExp env (L1.VarE v) = case lookup v env of
                                       Just x -> x
                                       Nothing -> error $ "Cannot find type of variable " ++ (show v)
           typeExp _env (L1.LitE _i) = L1.IntTy
-          typeExp _env (L1.AppE v _e) = snd $ fEnv env2 # v 
+          typeExp _env (L1.AppE v _e) = snd $ fEnv env2 # v
 
           typeExp _env (L1.PrimAppE p _es) =
               case p of
@@ -244,25 +244,19 @@ flattenExp defs env2 = fExp (M.toList$ vEnv env2)
           typeExp env (L1.TimeIt e _) = typeExp env e
           typeExp env (L1.MapE _ e) = typeExp env e
           typeExp env (L1.FoldE _ _ e) = typeExp env e
-                
+
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
-inlineTriv :: L1.Prog -> SyM L1.Prog
+inlineTriv :: L1.Prog -> L1.Prog
 inlineTriv (L1.Prog defs funs main) =
-    do main' <- case main of
-                  Nothing -> return Nothing
-                  Just m -> return $ Just $ inlineTrivExp m
-       funs' <- inlineTrivFuns funs
-       return $ L1.Prog defs funs' main'
-    where inlineTrivFuns = mapM inlineTrivFun
-          inlineTrivFun (FunDef nam (narg,targ) ty bod) =
-              do bod' <- return $ inlineTrivExp bod
-                 return $ FunDef nam (narg,targ) ty (inlineTrivExp bod')
-
+    L1.Prog defs (fmap inlineTrivFun funs) (inlineTrivExp <$> main)
+  where
+    inlineTrivFun (FunDef nam (narg,targ) ty bod) =
+      FunDef nam (narg,targ) ty (inlineTrivExp bod)
 
 inlineTrivExp :: L1.Exp -> L1.Exp
 inlineTrivExp = go []
-  where 
+  where
    go :: [(Var,L1.Exp)] -> L1.Exp -> L1.Exp
    go env (L1.VarE v) =
        case lookup v env of
@@ -292,8 +286,8 @@ inlineTrivExp = go []
    go env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
        L1.FoldE (v1,t1,go env e1) (v2,t2,go env e2) (go env e3)
 
-                
-              
+
+
 -- | Find all local variables bound by case expressions which must be
 -- traversed, but which are not by the current program.
 findMissingTraversals :: L2.Prog -> SyM (Set Var)
@@ -327,7 +321,7 @@ data Config = Config
   }
 
 -- | What input format to expect on disk.
-data Input = Haskell 
+data Input = Haskell
            | SExpr
            | Unspecified
   deriving (Show,Read,Eq,Ord,Enum,Bounded)
@@ -342,7 +336,7 @@ data Mode = ToParse  -- ^ Parse and then stop
   deriving (Show,Read,Eq,Ord,Enum,Bounded)
 
 defaultConfig :: Config
-defaultConfig = 
+defaultConfig =
   Config { input = Unspecified
          , mode  = ToExe
          , packed = False
@@ -356,39 +350,39 @@ configParser = Config <$> inputParser <*> modeParser
                       <*> (option auto (short 'v' <> long "verbose" <>
                                        help "Set the debug output level, 1-5, mirrors DEBUG env var.")
                            <|> pure 1)
- where  
+ where
   -- Most direct way, but I don't like it:
   _inputParser :: Parser Input
   _inputParser = option auto
    ( long "input"
         <> metavar "I"
         <> help ("Input file format, if unspecified based on file extension. " ++
-               "Options are: "++show [minBound .. maxBound::Input]))                   
+               "Options are: "++show [minBound .. maxBound::Input]))
   _modeParser :: Parser Mode
   _modeParser = option auto
    ( long "mode"
         <> metavar "I"
         <> help ("Compilation mode. " ++
                 "Options are: "++show [minBound .. maxBound::Mode]))
-  
+
   inputParser :: Parser Input
                 -- I'd like to display a separator and some more info.  How?
   inputParser = -- infoOption "foo" (help "bar") <*>
                 flag' Haskell (long "hs")  <|>
                 flag Unspecified SExpr (long "sexp")
 
-  modeParser = -- infoOption "foo" (help "bar") <*> 
-               flag' ToParse (long "parse" <> help "only parse, then print & stop") <|> 
-               flag' ToC     (long "toC" <> help "compile to a C file, named after the input") <|> 
-               flag' Interp1 (long "interp1" <> help "run through the interpreter early, right after parsing") <|> 
+  modeParser = -- infoOption "foo" (help "bar") <*>
+               flag' ToParse (long "parse" <> help "only parse, then print & stop") <|>
+               flag' ToC     (long "toC" <> help "compile to a C file, named after the input") <|>
+               flag' Interp1 (long "interp1" <> help "run through the interpreter early, right after parsing") <|>
                flag' Interp2 (short 'i' <> long "interp2" <>
                               help "run through the interpreter after cursor insertion") <|>
-               flag' RunExe  (short 'r' <> long "run"     <> help "compile and then run executable") <|>  
+               flag' RunExe  (short 'r' <> long "run"     <> help "compile and then run executable") <|>
                flag ToExe ToExe (long "exe"  <> help "compile through C to executable (default)")
 
 -- | Parse configuration as well as file arguments.
 configWithArgs :: Parser (Config,[FilePath])
-configWithArgs = (,) <$> configParser 
+configWithArgs = (,) <$> configParser
                      <*> some (argument str (metavar "FILES..."
                                              <> help "Files to compile."))
 
@@ -397,8 +391,8 @@ configWithArgs = (,) <$> configParser
 -- | Command line version of the compiler entrypoint.  Parses command
 -- line arguments given as string inputs.
 compileCmd :: [String] -> IO ()
-compileCmd args = withArgs args $ 
-    do (cfg,files) <- execParser opts 
+compileCmd args = withArgs args $
+    do (cfg,files) <- execParser opts
        mapM_ (compile cfg) files
   where
     opts = info (helper <*> configWithArgs)
@@ -417,7 +411,7 @@ lvl = 2
 -- files to process.
 compile :: Config -> FilePath -> IO ()
 -- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compile Config{input,mode,packed,verbosity} fp = do 
+compile Config{input,mode,packed,verbosity} fp = do
   -- TERRIBLE HACK!!  This value is global, "pure" and can be read anywhere
   when (verbosity > 1) $ do
     setEnv "DEBUG" (show verbosity)
@@ -427,7 +421,7 @@ compile Config{input,mode,packed,verbosity} fp = do
   let parser = case input of
                  Haskell -> HS.parseFile
                  SExpr   -> SExp.parseFile
-                 Unspecified -> 
+                 Unspecified ->
                    case takeExtension fp of
                      ".hs"   -> HS.parseFile
                      ".sexp" -> SExp.parseFile
@@ -440,7 +434,7 @@ compile Config{input,mode,packed,verbosity} fp = do
    then do -- dbgPrintLn lvl "Parsed program:"
            -- dbgPrintLn l sepline
            printParse 0
-   else do 
+   else do
     dbgPrintLn lvl $ "Compiler pipeline starting, parsed program:\n"++sepline
     printParse lvl
     let pass :: (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
@@ -463,12 +457,12 @@ compile Config{input,mode,packed,verbosity} fp = do
           _ <- lift $ evaluate $ force y;
           return y
 
-    when (mode == Interp1) $ 
+    when (mode == Interp1) $
       error "Early-phase interpreter not implemented yet!"
 
     let outfile = (replaceExtension fp ".c")
         exe     = replaceExtension fp ".exe"
-    
+
     clearFile outfile
     clearFile exe
 
@@ -480,11 +474,11 @@ compile Config{input,mode,packed,verbosity} fp = do
     str <- evalStateT
              (do l1b <-       pass "freshNames"               freshNames               l1
                  l1c <-       pass "flatten"                  flatten                  l1b
-                 l1d <-       pass "inlineTriv"               inlineTriv               l1c
-                 l2  <- pass  "inferEffects"             inferEffects             l1d
+                 l1d <-       pass "inlineTriv"               (return . inlineTriv)    l1c
+                 l2  <-       pass  "inferEffects"            inferEffects             l1d
                  l2' <-
                      if packed
-                     then do                        
+                     then do
                        mt  <- pass' "findMissingTraversals"    findMissingTraversals    l2
                        l2b <- pass' "addTraversals"            (addTraversals mt)       l2
                        l2c <- pass' "addCopies"                addCopies                l2b
@@ -508,13 +502,13 @@ compile Config{input,mode,packed,verbosity} fp = do
                    lift$ dbgPrintLn 4 str
                    return str)
               cnt0
-    
+
     writeFile outfile str
     when (mode == ToExe || mode == RunExe) $ do
       cd <- system $ "gcc -std=gnu11 -O3 "++outfile++" -o "++ exe
       case cd of
        ExitFailure n -> error$ "C compiler failed!  Code: "++show n
-       ExitSuccess -> do 
+       ExitSuccess -> do
          when (mode == RunExe)$ do
           exepath <- makeAbsolute exe
           c2 <- system exepath
@@ -525,6 +519,6 @@ compile Config{input,mode,packed,verbosity} fp = do
 
 clearFile :: FilePath -> IO ()
 clearFile fileName = removeFile fileName `catch` handleErr
-  where 
+  where
    handleErr e | isDoesNotExistError e = return ()
                | otherwise = throwIO e
