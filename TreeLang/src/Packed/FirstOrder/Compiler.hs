@@ -14,7 +14,7 @@ module Packed.FirstOrder.Compiler
 
 import Control.DeepSeq
 import Control.Exception
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Options.Applicative
 import Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.HaskellFrontend as HS
@@ -320,10 +320,10 @@ compile Config{input,mode,packed,verbosity} fp = do
         -- No reason to chatter from passes that are stubbed out anyway:
         pass' :: (Out b, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
         pass' _ fn x = do
-          cnt <- get;
-          let (y,cnt') = runSyM cnt (fn x);
-          put cnt';
-          _ <- lift $ evaluate $ force y;
+          cnt <- get
+          let (y,cnt') = runSyM cnt (fn x)
+          put cnt'
+          _ <- lift $ evaluate $ force y
           return y
 
     when (mode == Interp1) $
