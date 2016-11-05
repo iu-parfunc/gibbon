@@ -11,19 +11,19 @@
 --   This shares a lot with the effect-inference pass.
 
 module Packed.FirstOrder.Passes.Cursorize
-    (cursorize, cursorDirect
-    , lower) where
+    ( cursorize
+    , cursorDirect
+    ) where
 
 import Control.Monad
 import Control.DeepSeq
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import qualified Packed.FirstOrder.LTraverse as L2
-import           Packed.FirstOrder.L1_Source (Ty1(..),pattern SymTy)    
+import           Packed.FirstOrder.L1_Source (Ty1(..),pattern SymTy)
 import           Packed.FirstOrder.LTraverse
-    (argtyToLoc, Loc(..), ArrowTy(..), Effect(..), toEndVar, mkCursorTy,
+    (argtyToLoc, Loc(..), ArrowTy(..), Effect(..), toEndVar,
      FunDef(..), Prog(..), Exp(..))
-import qualified Packed.FirstOrder.Target as T
 import Data.Maybe
 import Data.List as L hiding (tail)
 import Data.Set as S
@@ -36,7 +36,7 @@ lvl :: Int
 lvl = 5
 
 
--- First, some general types and utilities:      
+-- First, some general types and utilities:
 -- =============================================================================
 
 -- | Map every lexical variable in scope to an abstract location.
@@ -112,7 +112,7 @@ mapPacked fn t =
 mkProj :: (Eq a, Num a) => Int -> a -> L1.Exp -> L1.Exp
 mkProj 0 1 e = e
 mkProj ix _ e = L1.ProjE ix e
-                     
+
 
 -- | Binding a variable to a value at a given (abstract) location can
 -- bring multiple witnesses into scope.
@@ -208,7 +208,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
   fds' <- mapM fd $ M.elems fundefs
   -- let gloc = "global"
   mn <- case mainExp of
-          Nothing -> return Nothing 
+          Nothing -> return Nothing
           Just x  -> Just <$> exp x
   return L2.Prog{ fundefs = M.fromList $ L.map (\f -> (L2.funname f,f)) fds'
                 , ddefs = ddefs
@@ -231,11 +231,11 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       exp' <- if L1.hasPacked outT
               then exp bod
               else do curs <- gensym "curs"
-                      LetE (curs, CursorTy, projVal newArg) <$> 
+                      LetE (curs, CursorTy, projVal newArg) <$>
                         exp2 curs bod
       return $ L2.FunDef funname newTy newArg exp'
   ------------------------------------------------------------
-             
+
   -- | Here we are not in a context that flows to Packed data, thus no
   --   destination cursor.
   exp :: Exp -> SyM Exp
@@ -258,7 +258,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
 
       AppE v e      -> AppE v     <$> exp e
       PrimAppE p ls -> PrimAppE p <$> mapM exp ls
-      ProjE i e  -> ProjE i <$> exp e 
+      ProjE i e  -> ProjE i <$> exp e
       CaseE e ls -> do
          cur0 <- gensym "cursIn"
 --          | L1.hasPacked (tyOfCase ddefs ex) -> __
@@ -271,7 +271,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                                [] -> "end"
                                (v2,_):_ -> witnessOf v2
                     case ty of
-                      IntTy -> 
+                      IntTy ->
                         LetE (tmp, addCurTy IntTy, ReadInt c) <$>
                          LetE (c', CursorTy, projCur tmp) <$>
                           LetE (vr, IntTy, projVal tmp) <$>
@@ -289,7 +289,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       MkProdE ls -> MkProdE <$> mapM exp ls
       TimeIt e t -> TimeIt <$> exp e <*> pure t
       IfE a b c  -> IfE <$> exp a <*> exp b <*> exp c
---        MapE (v,t,rhs) bod -> __ 
+--        MapE (v,t,rhs) bod -> __
 --        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
 
   -- Establish convention of putting cursor after value:
@@ -308,21 +308,21 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       VarE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
       LitE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
 
-      -- Every return context expecting a packed value must now accept 
+      -- Every return context expecting a packed value must now accept
       -- TWO values, a (st,en) pair, where "en" becomes the output cursor.
       MkPackedE k ls -> do
        tmp1  <- gensym "tmp"
        dest' <- gensym "cursplus1_"
-       d'    <- gensym "curstmp" 
+       d'    <- gensym "curstmp"
        -- This stands for the  "WriteTag" operation:
        LetE (dest', PackedTy (getTyOfDataCon ddefs k) (),
                   MkPackedE k [VarE destC]) <$>
           let go d [] = return $ MkProdE [VarE destC, VarE d]
                  -- ^ The final return value lives at the position of the out cursor
-              go d ((rnd,IntTy):rst) | L1.isTriv rnd = 
+              go d ((rnd,IntTy):rst) | L1.isTriv rnd =
                   LetE (d', CursorTy, WriteInt d rnd ) <$>
                     (go d' rst)
-              -- Here we recursively transfer control 
+              -- Here we recursively transfer control
               go d ((rnd,ty@PackedTy{}):rst) = do
                   tup  <- gensym "tup"
                   d'   <- gensym "dest"
@@ -332,17 +332,17 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                     (go d' rst)
           in go dest' (zip ls (lookupDataCon ddefs k))
 
-      LetE (v,_,rhs) bod -> __                              
+      LetE (v,_,rhs) bod -> __
 
       AppE v e      -> AppE v     <$> go e
       PrimAppE p ls -> PrimAppE p <$> mapM go ls
-      ProjE i e  -> ProjE i <$> go e 
+      ProjE i e  -> ProjE i <$> go e
       CaseE e ls -> CaseE <$> go e <*>
                      mapM (\(k,vrs,e) -> (k,vrs,) <$> go e) ls
       MkProdE ls -> MkProdE <$> mapM go ls
       TimeIt e t -> TimeIt <$> go e <*> pure t
       IfE a b c  -> IfE <$> go a <*> go b <*> go c
---        MapE (v,t,rhs) bod -> __ 
+--        MapE (v,t,rhs) bod -> __
 --        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
 
 cursPairTy :: L1.Ty
@@ -351,7 +351,7 @@ cursPairTy = ProdTy [CursorTy, CursorTy]
 -- | Witness the location of a local variable.
 witnessOf :: Var -> Var
 witnessOf = ("witness_"++)
-             
+
 -- Packed types are gone, replaced by cursPair:
 strip :: L1.Ty -> L1.Ty
 strip ty =
@@ -367,37 +367,37 @@ tyOfCase :: Out a => DDefs a -> Exp -> L1.Ty
 tyOfCase dd (CaseE _ ((k,_,_):_)) = PackedTy (getTyOfDataCon dd k) ()
 
 
--- template:                  
-        -- VarE v -> __ 
-        -- LitE n -> __ 
-        -- AppE v e -> __ 
-        -- PrimAppE _ ls -> __ 
-        -- LetE (v,_,rhs) bod -> __ 
-        -- ProjE _ e -> __ 
-        -- CaseE e ls -> __ 
-        -- MkProdE ls     -> __ 
-        -- MkPackedE _ ls -> __ 
+-- template:
+        -- VarE v -> __
+        -- LitE n -> __
+        -- AppE v e -> __
+        -- PrimAppE _ ls -> __
+        -- LetE (v,_,rhs) bod -> __
+        -- ProjE _ e -> __
+        -- CaseE e ls -> __
+        -- MkProdE ls     -> __
+        -- MkPackedE _ ls -> __
         -- TimeIt e _ -> __
-        -- IfE a b c -> __ 
-        -- MapE (v,t,rhs) bod -> __ 
+        -- IfE a b c -> __
+        -- MapE (v,t,rhs) bod -> __
         -- FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
-                                              
-             
+
+
 --------------------------------------------------------------------------------
 -- STRATEGY TWO - see the future (dataflow analysis)
 --------------------------------------------------------------------------------
 
 -- Annotate each type in a let binding with which location it flows to.a
--- pattern Ann 
+-- pattern Ann
 
 -- Insert location annotations on each let-bound variable.  These
 -- record facts about the subsequent dataflow of the value, and ultimately
 -- determine which output cursors to use.
 -- insertLocs
 
-                 
+
 --------------------------------------------------------------------------------
-                                  
+
 pattern NewBuffer = AppE "NewBuffer" (MkProdE [])
 
 -- Tag writing is still modeled by MkPackedE.
@@ -413,19 +413,19 @@ pattern MarkCursor c e = AppE "MarkCursor" (AppE c e)
 pattern GlobalC = "GlobalC"
 
 --------------------------------------------------------------------------------
-                  
+
 -- | A compiler pass that inserts cursor-passing for reading and
 -- writing packed values.
 cursorize :: L2.Prog -> SyM L2.Prog  -- [T.FunDecl]
 cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
     dbgTrace lvl ("Starting cursorize on "++show(doc fundefs)) $ do
     -- Prog emptyDD <$> mapM fd fundefs <*> pure Nothing
-      
+
     fds' <- mapM fd $ M.elems fundefs
 
     -- let gloc = "global"
     mn <- case mainExp of
-            Nothing -> return Nothing 
+            Nothing -> return Nothing
             Just x  -> Just <$> tail [] (M.empty,emptyWEnv) x
                 -- do let initWenv = WE (M.singleton gloc (L1.VarE "gcurs")) M.empty
                 --    tl' <- tail [] (M.empty,initWenv) x
@@ -477,7 +477,7 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
 
      -- L1.MkPackedE k ls -> L1.assertTrivs ls $
      --    return $ mkProd cursorRets (L1.MkPackedE k ls)
-               
+
      ------------------ Flattened Spine ---------------
 
      -- Here we shatter the constructor into a separate write tag
@@ -494,7 +494,7 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
        --    __ $ L1.LetE (tmp, CursorTy, NewBuffer) $
        --           L1.LetE (v,tv,_) _
        --    error $ "Process constructor in env: "++show (env,wenv)
-               
+
      -- Here we route through extra arguments.
      L1.LetE (v,tv,erhs) bod ->
        do (new,rhs',rty,rloc) <- rhs (env,wenv) erhs
@@ -517,7 +517,7 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                    return $ L1.LetE ("tmp", rty, rhs') $
                             L1.LetE (v, tv, projNonFirst ix (L1.VarE "tmp")) $
                             finishEXP
-                            
+
      L1.IfE a b c -> do
          (new,a',aty,aloc) <- rhs (env,wenv) a
          maybeLetTup (new++[aloc]) (aty,a') wenv $ \ ex wenv' -> do
@@ -558,7 +558,6 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
 
 
      _ -> error$ "cursorize/tail - FINISHME:\n  "++sdoc e
-     _ -> error$ "cursorize, tail expression expected, found:\n  "++sdoc e
 
   -- Process an expression that occurs on the RHS of a let.  This may
   -- "push" new witnesses back to the caller (as opposed to the "pull"
@@ -585,8 +584,8 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
         let ty = L1.primRetTy p in
         return ([], e, ty, retTyToLoc ty)
 
-     -- This returns an updated cursor witnessing 
-     -- L1.MkPackedE 
+     -- This returns an updated cursor witnessing
+     -- L1.MkPackedE
 {-
 
      -- Here's where the magic happens, we must populate new cursor arguments:
@@ -678,195 +677,3 @@ finishTYP = L1.Packed "FINISHME"
 --   (2) returned to a let binding by an if-expr on RHS
 detuple :: L2.Prog -> SyM L2.Prog
 detuple = undefined
-
-
--- =============================================================================
-
--- | Convert into the target language.  This does not make much of a
--- change, but it checks the changes that have already occurred.
---
--- The only substantitive conversion here is of tupled arguments to
--- multiple argument functions.
-lower :: L2.Prog -> SyM T.Prog
-lower prg@L2.Prog{fundefs,ddefs,mainExp} = do
-  mn <- case mainExp of
-          Nothing -> return Nothing
-          Just x  -> (Just . T.PrintExp) <$> tail x
-  T.Prog <$> mapM fund (M.elems fundefs) <*> pure mn
- where
-  fund :: L2.FunDef -> SyM T.FunDecl
-  fund L2.FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do
-      tl <- tail funbod
-      return $ T.FunDecl { T.funName = funname
-                         , T.funArgs = [(funarg, typ inty)]
-                         , T.funRetTy = typ outty
-                         , T.funBody = tl }
-
-  tail :: L1.Exp -> SyM T.Tail
-  tail ex =
-   case ex of
-
-    --------------------------------------------------------------------------------
-    -- If we get here that means we're NOT packing trees on this run:
-    -- Thus this operates on BOXED data:
-    L1.CaseE e [(c, bndrs, rhs)] -> do
-      -- a product, directly assign the fields
-      let tys = L.map typ (lookupDataCon ddefs c)
-
-      -- TODO(osa): enable this
-      -- ASSERT(length tys == length bndrs)
-
-      let T.VarTriv e_var = triv "case scrutinee" e
-      rhs' <- tail rhs
-      return (T.LetUnpackT (zip bndrs tys) e_var rhs')
-
-    L1.CaseE _ _ -> error "Case on sum types not implemented yet."
-
-    -- Accordingly, constructor allocation becomes an allocation.
-    L1.LetE (v, _, L1.MkPackedE k ls) bod -> L1.assertTrivs ls $ do
-      -- is this a product?
-      let all_cons = dataCons (lookupDDef ddefs k)
-          is_prod  = length all_cons == 1
-          tag      = fromJust (L.findIndex ((==) k . fst) all_cons)
-          fields0  = L.map (triv "MkPackedE args") ls
-          fields
-            | is_prod   = T.TagTriv (fromIntegral tag) : fields0
-            | otherwise = fields0
-
-      bod' <- tail bod
-
-      let tys = L.map typ (lookupDataCon ddefs k)
-      return (T.LetAllocT v (zip tys (L.map (triv "MkPacked args") ls)) bod')
-
-    --------------------------------------------------------------------------------
-
-
-    e | L1.isTriv e -> pure$ T.RetValsT [triv "<internal error1>" e]
-
-    -- L1.LetE (v,t, L1.MkProdE ls) bod -> do
-    --   let rhss = L.map triv ls
-    --   vsts <- unzipTup v t
-    --   let go _ [] = tail bod
-    --       go ix ((v1,t1):rst) = T.LetTrivT (v1,t1, )
-
-    -- We could eliminate these ahead of time:
-    L1.LetE (v,t,rhs) bod | L1.isTriv rhs -> T.LetTrivT (v,typ t, triv "<internal error2>" rhs) <$> tail bod
-
-    -- TWO OPTIONS HERE: we could push equality prims into the target lang.
-    -- Or we could map directly onto the IfEqT form:
-    -- L1.IfE (L1.PrimAppE L1.EqP __ ) b c -> __
-
-    L1.IfE a b c       -> do b' <- tail b
-                             c' <- tail c
-                             return $ T.Switch (triv "if test" a)
-                                      -- If we are treating the boolean as a tag, then tag "0" is false
-                                      (T.IntAlts [(0, c')])
-                                      -- And tag "1" is true:
-                                      (Just b')
-
-    L1.AppE v e        -> return $ T.TailCall v [triv "operand" e]
-
-
-    -- FIXME: No reason errors can't stay primitive at Target:
-    L1.PrimAppE (L1.ErrorP str _ty) [] ->
-      pure $ T.ErrT str
-    L1.LetE (_,_,L1.PrimAppE (L1.ErrorP str _) []) _ ->
-      pure $ T.ErrT str
-
-    -- Whatever, a little just in time flattening.  Should obsolete this:
-    L1.PrimAppE p ls -> do
-      tmp <- gensym "flt"
-      tail (L1.LetE (tmp, L1.primRetTy p, L1.PrimAppE p ls) (L1.VarE tmp))
-
-    L1.LetE (v,t,L1.PrimAppE p ls) bod ->
-        -- No tuple-valued prims here:
-        T.LetPrimCallT [(v,typ t)]
-             (prim p)
-             (L.map (triv "prim rand") ls) <$>
-             (tail bod)
-
-    L1.LetE (v,t,L1.AppE f arg) bod -> do
-        -- FIXME, tuples should be unzipped here:
-        T.LetCallT [(v,typ t)] f
-             [(triv "app rand") arg]
-             <$>
-             (tail bod)
-
-    L1.LetE (v, t, L1.IfE a b c) bod -> do
-      vsts <- unzipTup v t
-      b' <- tail b
-      c' <- tail c
-      T.LetIfT vsts (triv "if test" a, b', c')
-           <$> tail bod
-
-
-    L1.TimeIt e ty ->
-        do tmp <- gensym "timed"
-           -- Hack: no good way to express EndTimer in the source lang:
-           e' <- tail (L1.LetE (tmp, ty, e) (L1.VarE tmp))
-           tm <- gensym "tmr"
-           -- We splice in the end-timer post-facto:
-           let endT = T.EndTimerT tm
-           return $ T.StartTimerT tm $
-            case e' of
-             T.LetCallT   bnd rat rnds bod -> T.LetCallT   bnd rat rnds (endT bod)
-             T.LetPrimCallT bnd p rnds bod -> T.LetPrimCallT bnd p rnds (endT bod)
-             T.LetTrivT  bnd           bod -> T.LetTrivT           bnd  (endT bod)
-             T.LetIfT bnd (tst,con,els) bod ->
-                 T.LetIfT bnd (tst, endT con, endT els) (endT bod)
-             _ -> error $ "lower: expected let binding back from recursive call:\n  "++sdoc e'
-
-    _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex
-
-
-unzipTup :: Var -> L1.Ty -> SyM [(Var,T.Ty)]
-unzipTup v t =
-  case t of
-    L1.ProdTy ts -> do
-      vs <- mapM (\_ -> gensym "uziptmp") ts
-      return (zip vs (L.map typ ts))
-    _ -> return [(v,typ t)]
-
-triv :: String -> L1.Exp -> T.Triv
-triv msg e0 =
-  case e0 of
-    (L1.VarE x) -> T.VarTriv x
-    (L1.LitE x) -> T.IntTriv x
-    -- Bools become ints:
-    (L1.PrimAppE L1.MkTrue [])  -> T.IntTriv 1
-    (L1.PrimAppE L1.MkFalse []) -> T.IntTriv 0
-    -- TODO: I think we should allow tuples and projection in trivials:
---      (ProjE x1 x2) -> __
---      (MkProdE x) -> __
-    _ -> error $ "lower/triv, expected trivial in "++msg++", got "++sdoc e0
-
-typ :: L1.Ty1 a -> T.Ty
-typ t =
-  case t of
-    L1.IntTy  -> T.IntTy
-    L1.SymTy  -> T.SymTy
-    L1.BoolTy -> T.IntTy
-    L1.ListTy{} -> error "lower/typ: FinishMe: List types"
-    L1.ProdTy xs -> T.ProdTy $ L.map typ xs
-    L1.SymDictTy x -> T.SymDictTy $ typ x
-    -- t | isCursorTy t -> T.CursorTy
-    L1.PackedTy{} -> T.PtrTy
-
-prim :: L1.Prim -> T.Prim
-prim p =
-  case p of
-    L1.AddP -> T.AddP
-    L1.SubP -> T.SubP
-    L1.MulP -> T.MulP
-    L1.EqSymP -> T.EqP
-    L1.EqIntP -> T.EqP
-    L1.DictInsertP -> T.DictInsertP
-    L1.DictLookupP -> T.DictLookupP
-    L1.DictEmptyP -> T.DictEmptyP
-    L1.ErrorP{} -> error$ "lower/prim: internal error, should not have got to here: "++show p
-
-    L1.MkTrue  -> error "lower/prim: internal error. MkTrue should not get here."
-    L1.MkFalse -> error "lower/prim: internal error. MkFalse should not get here."
-
--- ================================================================================
-
