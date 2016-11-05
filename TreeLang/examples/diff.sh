@@ -23,4 +23,10 @@ code=$?
 
 rm $A $B
 
+if [ "$code" == "0" ]; then
+    echo "  -> Success.";
+else
+    echo "ERROR: Answers differed!";
+fi
+
 exit $code

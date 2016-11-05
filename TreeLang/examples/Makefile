@@ -79,10 +79,7 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 	@echo "Testing $^"
 	$(TREEC) $(TREECARGS) $^ > $@
 	@echo "Now check expected $$f.ans, versus received, $$f.out";
-	./diff.sh $^.ans $@ 
-	@if [ $$? != "0" ]; then echo "ERROR: Answers differed!"; exit 1; fi; \
-          echo "  -> Success."; \
-        done
+	./diff.sh $^.ans $@
 
 PACKED_TESTS= test00_add.sexp test02_arith.sexp test03b_eqs.sexp test03c_eqsym.sexp
 #  test04b -- cursorize/mkprod
