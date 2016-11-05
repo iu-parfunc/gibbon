@@ -72,13 +72,17 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
         let (last:restrev) = reverse ls; rest = reverse restrev
         tagtmp <- gensym "tmpval"
         ctmp   <- gensym "tmpcur"
+        -- We only need to thread one value through, the cursor resulting from read.
+        let doalt (k,ls,rhs) = let [c] = ls in
+                               (getTagOfDataCon ddefs k,) <$>
+                                 tail (L1.subst c (VarE ctmp) rhs)
+        alts <- mapM doalt rest
+        (_,last') <- doalt last
         return $                   
-         T.LetPrimCallT [(tagtmp,T.TagTy),(ctmp,T.CursorTy)] T.ReadTag [T.VarTriv scrut] $         
-          -- Here lamely chase down all the tuple references and make them variables:
+         T.LetPrimCallT [(tagtmp,T.TagTy),(ctmp,T.CursorTy)] T.ReadTag [T.VarTriv scrut] $
           T.Switch (T.VarTriv tagtmp)
-                   -- If we are treating the boolean as a tag, then tag "0" is false
-                   (T.TagAlts []) 
-                   (Just (T.RetValsT [T.VarTriv "FINISHME"]))
+                   (T.TagAlts alts)
+                   (Just last')
      
     -- Not-packed, pointer-based codegen
     --------------------------------------------------------------------------------

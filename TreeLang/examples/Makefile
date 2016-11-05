@@ -77,7 +77,7 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 	./diff.sh $^.ans $@
 
 PACKED_TESTS= test00_add.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
-    test03b_eqs.sexp test03c_eqsym.sexp
+    test03b_eqs.sexp test03c_eqsym.sexp test06_case.sexp
 
 #  test04b -- cursorize/mkprod
 #  test05  -- cursorize tail Apps
@@ -88,8 +88,8 @@ PACKED_TESTS= test00_add.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp
 #  test09  -- fail on Compile.hs nonexhaustive
 
 # Run the tests that work under the packed regime:
-run_tests_packed: test00_add.sexp.ans
-	$(MAKE) run_tests TREECARGS="--run --packed" PASSING_TESTS=$(PACKED_TESTS)
+run_tests_packed: answers
+	$(MAKE) run_tests TREECARGS="--run --packed" PASSING_TESTS="$(PACKED_TESTS)"
 
 
 INTERP_TESTS= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
