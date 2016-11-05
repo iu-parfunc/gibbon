@@ -102,13 +102,18 @@ mapPacked fn t =
     PackedTy k l  -> fn k l
 
 
+mkProj :: (Eq a, Num a) => Int -> a -> L1.Exp -> L1.Exp
+mkProj 0 1 e = e
+mkProj ix _ e = L1.ProjE ix e
+                     
+
 -- | Binding a variable to a value at a given (abstract) location can
 -- bring multiple witnesses into scope.
 witnessBinding :: Var -> Loc -> WitnessEnv
 witnessBinding vr loc = WE (M.fromList $ go loc (L1.VarE vr)) M.empty
   where
    go (TupLoc ls) ex =
-       concat [ go x (L1.ProjE ix ex)
+       concat [ go x (mkProj ix (length ls) ex)
               | (ix,x) <- zip [0..] ls ]
    go (Fresh v) e = [ (v,e) ]
    go (Fixed v) e = [ (v,e) ]
@@ -228,13 +233,13 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
        do (new,rhs',rty,rloc) <- rhs (env,wenv) erhs
           -- rty will always be a known number of cursors (0 or more)
           -- prepended to the value that was returned in the orignal prog
-          let env'  = __ env
+          let env'  = M.insert v (tv,rloc) env
           if L.null new
              -- assert rty == tv
            then do bod' <- tail demanded (env',wenv) bod -- No new witnesses.
                    return $ L1.LetE (v, tv, rhs') bod'
            else do tmp <- gensym "tmp"
-                   let go [] ix we       = return we
+                   let go []       _  we = return we
                        go (lc:rst) ix we =
                         go rst (ix+1) =<<
                           let Just v = getLocVar lc in
@@ -329,6 +334,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
 
 
 -- | Project something which had better not be the first thing in a tuple.
+projNonFirst :: Int -> L1.Exp -> L1.Exp
 projNonFirst 0 e = error $ "projNonFirst: expected nonzero index into expr: "++sdoc e
 projNonFirst i e = L1.ProjE i e
 
@@ -361,7 +367,8 @@ maybeLetTup locs (ty,ex) env fn =
      -- Let-bind all the new things that come back with the exp
      -- to bring them into the environment.
      let env' = witnessBinding tmp (TupLoc locs) `unionWEnv` env
-     bod <- fn (L1.ProjE (length locs - 1) (L1.VarE tmp)) env'
+         n = length locs
+     bod <- fn (mkProj (n - 1) n (L1.VarE tmp)) env'
      return $ L1.LetE (tmp, ty, ex) bod
 
 

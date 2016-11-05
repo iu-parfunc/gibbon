@@ -81,7 +81,9 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 	@echo "Now check expected $$f.ans, versus received, $$f.out";
 	./diff.sh $^.ans $@
 
-PACKED_TESTS= test00_add.sexp test02_arith.sexp test03b_eqs.sexp test03c_eqsym.sexp
+PACKED_TESTS= test00_add.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
+    test03b_eqs.sexp test03c_eqsym.sexp
+
 #  test04b -- cursorize/mkprod
 #  test05  -- cursorize tail Apps
 #  test05b -- cursorize/let

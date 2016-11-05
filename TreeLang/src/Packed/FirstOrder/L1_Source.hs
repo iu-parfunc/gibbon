@@ -149,7 +149,7 @@ freeVars ex =
       S.union (freeVars rhs) (freeVars bod)
     ProjE _ e -> freeVars e
     CaseE e ls -> S.union (freeVars e)
-                  (S.unions $ L.map (\(_, _, e) -> freeVars e) ls)
+                  (S.unions $ L.map (\(_, _, ee) -> freeVars ee) ls)
     MkProdE ls     -> S.unions $ L.map freeVars ls
     MkPackedE _ ls -> S.unions $ L.map freeVars ls
     TimeIt e _ -> freeVars e
@@ -174,8 +174,14 @@ subst old new ex =
     MkPackedE k ls -> MkPackedE k $ L.map go ls
     TimeIt e t -> TimeIt (go e) t
     IfE a b c -> IfE (go a) (go b) (go c)
+    MapE (v,t,rhs) bod | v == old  -> MapE (v,t, rhs)    (go bod)
+                       | otherwise -> MapE (v,t, go rhs) (go bod)
+    FoldE (v1,t1,r1) (v2,t2,r2) bod ->
+        let r1' = if v1 == old then r1 else go r1
+            r2' = if v2 == old then r2 else go r2
+        in FoldE (v1,t1,r1') (v2,t2,r2') (go bod)
 
-
+                                      
 primArgsTy :: Prim -> [Ty]
 primArgsTy p =
   case p of
@@ -183,6 +189,10 @@ primArgsTy p =
     SubP -> [IntTy, IntTy]
     MulP -> [IntTy, IntTy]
     EqSymP  -> [SymTy, SymTy]
+    EqIntP  -> [IntTy, IntTy]
+    MkTrue  -> []
+    MkFalse -> []
+    DictEmptyP -> []
     DictInsertP -> error "primArgsTy: dicts not handled yet"
     DictLookupP -> error "primArgsTy: dicts not handled yet"
     (ErrorP _ _) -> []
@@ -194,6 +204,10 @@ primRetTy p =
     SubP -> IntTy
     MulP -> IntTy
     EqSymP  -> BoolTy
+    EqIntP  -> BoolTy
+    MkTrue  -> BoolTy
+    MkFalse -> BoolTy
+    DictEmptyP -> SymDictTy IntTy -- error "primArgsTy: dicts not handled yet" -- Polymorphic constant!!
     DictInsertP -> SymDictTy IntTy -- error "primRetTy: dicts not handled yet"
     DictLookupP -> IntTy -- error "primRetTy: dicts not handled yet"
     (ErrorP _ ty) -> ty

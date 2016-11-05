@@ -345,7 +345,8 @@ defaultConfig =
 
 configParser :: Parser Config
 configParser = Config <$> inputParser <*> modeParser
-                      <*> switch (long "packed" <> help "enable packed tree representation in C backend")
+                      <*> switch (short 'p' <> long "packed" <>
+                                  help "enable packed tree representation in C backend")
                       <*> (option auto (short 'v' <> long "verbose" <>
                                        help "Set the debug output level, 1-5, mirrors DEBUG env var.")
                            <|> pure 1)
@@ -486,9 +487,10 @@ compile Config{input,mode,packed,verbosity} fp = do
                           liftIO $ exitSuccess
                   else do
                    str <- lift (codegenProg l3)
-                   lift$ dbgPrintLn lvl $ "\nFinal C codegen:"
-                   lift$ dbgPrintLn lvl sepline
-                   lift$ dbgPrintLn lvl str
+                   -- The C code is long, so put this at a higher level.
+                   lift$ dbgPrintLn lvl $ "\nFinal C codegen: "++show (length str)++" characters."
+                   lift$ dbgPrintLn 4 sepline
+                   lift$ dbgPrintLn 4 str
                    return str)
               cnt0
     
