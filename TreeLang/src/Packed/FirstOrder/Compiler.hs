@@ -92,11 +92,11 @@ freshNames (L1.Prog defs funs main) =
                  return $ L1.MkProdE es'
           freshExp vs (L1.CaseE e mp) =
               do e' <- freshExp vs e
-                 mp' <- mapM (\(args,ae) -> do
+                 mp' <- mapM (\(c,args,ae) -> do
                                 args' <- mapM gensym args
                                 let vs' = (zip args args') ++ vs
                                 ae' <- freshExp vs' ae
-                                return (args',ae')) mp
+                                return (c,args',ae')) mp
                  return $ L1.CaseE e' mp'
           freshExp vs (L1.MkPackedE c es) =
               do es' <- mapM (freshExp vs) es
@@ -171,14 +171,12 @@ flatten (L1.Prog defs funs main) =
           flattenExp env (L1.CaseE e mp) =
               do fe <- flattenExp env e
                  v <- gensym "tmp_flat"
-                 let als = M.assocs mp
-                     ty  = typeExp env fe
-                 fals <- forM als $ \(c,(args,ae)) -> do
+                 let ty  = typeExp env fe
+                 fals <- forM mp $ \(c,args,ae) -> do
                            let tys = lookupDataCon defs c
                            fae <- flattenExp ((zip args tys) ++ env) ae
-                           return (c,(args,fae))
-                 let fmp = M.fromList fals
-                 return $ mkLetE (v,ty,fe) $ L1.CaseE (L1.VarE v) fmp
+                           return (c,args,fae)
+                 return $ mkLetE (v,ty,fe) $ L1.CaseE (L1.VarE v) fals
           flattenExp env (L1.MkPackedE c es) =
               do fes <- mapM (flattenExp env) es
                  nams <- mapM gensym $ replicate (length fes) "tmp_flat"
@@ -236,7 +234,7 @@ flatten (L1.Prog defs funs main) =
           typeExp env (L1.MkProdE es) =
               L1.ProdTy $ map (typeExp env) es
           typeExp env (L1.CaseE _e mp) =
-              let (c,(args,e)) = (M.assocs mp) !! 0
+              let (c,args,e) = head mp
               in typeExp ((zip args (lookupDataCon defs c)) ++ env) e
           typeExp _env (L1.MkPackedE c _es) = L1.Packed c
           typeExp env (L1.TimeIt e _) = typeExp env e
@@ -280,7 +278,7 @@ inlineTriv (L1.Prog defs funs main) =
           inlineTrivExp env (L1.MkProdE es) = L1.MkProdE $ map (inlineTrivExp env) es
           inlineTrivExp env (L1.CaseE e mp) =
               let e' = inlineTrivExp env e
-                  mp' = M.fromList $ map (\(c,(args,ae)) -> (c,(args,inlineTrivExp env ae))) $ M.assocs mp
+                  mp' = map (\(c,args,ae) -> (c,args,inlineTrivExp env ae)) mp
               in L1.CaseE e' mp'
           inlineTrivExp env (L1.MkPackedE c es) = L1.MkPackedE c $ map (inlineTrivExp env) es
           inlineTrivExp env (L1.TimeIt e t) = L1.TimeIt (inlineTrivExp env e) t
