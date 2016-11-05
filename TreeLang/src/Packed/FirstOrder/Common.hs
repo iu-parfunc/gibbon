@@ -25,7 +25,7 @@ module Packed.FirstOrder.Common
        , insertFD, fromListFD
          -- * Data definitions
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
-       , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon
+       , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
          -- * Misc
        , (#), fragileZip, sdoc
          -- * Debugging/logging:
@@ -102,7 +102,7 @@ lookupDDef :: Out a => DDefs a -> Var -> DDef a
 lookupDDef = (#)
 
 -- | Get the canonical ordering for data constructors, currently based
--- on ordering in the original source code.
+-- on ordering in the original source code.  Takes a TyCon as argument.
 getConOrdering :: Out a => DDefs a -> Var -> [Constr]
 getConOrdering dd tycon = L.map fst dataCons
   where DDef{dataCons} = lookupDDef dd tycon
@@ -112,11 +112,17 @@ getConOrdering dd tycon = L.map fst dataCons
 getTyOfDataCon :: Out a => DDefs a -> Var -> Var
 getTyOfDataCon dds con = fst $ lkp dds con
 
+-- | Look up the numeric tag for a dataCon 
+getTagOfDataCon :: Out a => DDefs a -> Var -> Int
+getTagOfDataCon dds dcon = ix
+  where Just ix = L.elemIndex dcon $ getConOrdering dds tycon
+        (tycon,_) = lkp dds dcon
+
 -- | Lookup the arguments to a data contstructor.
 lookupDataCon :: Out a => DDefs a -> Constr -> [a]
 lookupDataCon dds con = snd $ snd $ lkp dds con
 
--- | Lookup a Datacon.
+-- | Lookup a Datacon.  Return (TyCon, (DataCon, [flds]))
 lkp :: Out a => DDefs a -> Constr -> (Var, (Constr, [a]))
 lkp dds con =
    -- Here we try to lookup in ALL datatypes, assuming unique datacons:

@@ -61,9 +61,10 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
     -- These are in a funny normal form atfer cursor insertion.  They take one cursor arg.
     -- They basically are a WriteTag.
-    L1.LetE (cursOut, ty, L1.MkPackedE k ls) bod | pkd -> do
+    L1.LetE (cursOut, _, L1.MkPackedE k ls) bod | pkd -> do
       let [cursIn] = ls
-      T.LetPrimCallT [(cursOut,T.CursorTy)] T.WriteTag [triv "WriteTag cursor" cursIn] <$>
+      T.LetPrimCallT [(cursOut,T.CursorTy)] T.WriteTag
+                     [triv "WriteTag cursor" cursIn, T.IntTriv (getTagOfDataCon ddefs k)] <$>
         -- Here we lamely chase down all the tuple references and make them variables:
 --        let bod' = __ $ substE (Proj ix (VarE tupname))
 --            ix = 0 in
