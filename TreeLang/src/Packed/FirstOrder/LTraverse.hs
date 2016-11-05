@@ -12,7 +12,7 @@
 
 module Packed.FirstOrder.LTraverse
     ( Prog(..), Ty, FunEnv, FunDef(..), Effect(..), ArrowTy(..)
-    , inferEffects, inferFunDef
+    , inferEffects, inferFunDef, mapExprs, mapMExprs, progToEnv
 
     -- * Temporary backwards compatibility, plus rexports
     , Ty1(..), pattern SymTy
@@ -21,11 +21,13 @@ module Packed.FirstOrder.LTraverse
     -- * Utilities for dealing with the extended types:
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc
     , tyWithFreshLocs, stripTyLocs
+
     -- * Lattices of abstract locations:
     , Loc(..), LocVar, toEndVar, isEndVar, fromEndVar
     , join, joins
     , allLocVars, argtyToLoc, mangle, subloc
     , extendEnv, getLocVar
+
     -- * Constraints
     , Constraint(..)
     )
@@ -36,7 +38,7 @@ import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 -- import Packed.FirstOrder.L1_Source (Ty1(..), SymTy)
-import Packed.FirstOrder.L1_Source hiding (Ty, FunDef, Prog)
+import Packed.FirstOrder.L1_Source hiding (Ty, FunDef, Prog, mapExprs, progToEnv, fundefs)
 import Data.List as L
 import Data.Set as S
 import Data.Map as M
@@ -144,6 +146,16 @@ data Prog = Prog { ddefs    :: DDefs L1.Ty
                  }
   deriving (Show, Read, Ord, Eq, Generic, NFData)
 
+-- | Abstract some of the differences of top level program types, by
+--   having a common way to extract an initial environment.  The
+--   initial environment has types only for functions.
+progToEnv :: Prog -> Env2 (Ty1 ())
+progToEnv Prog{fundefs} = 
+    Env2 M.empty
+         (M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
+                     | FunDef n (ArrowTy a _ b) _ _ <- M.elems fundefs ])
+
+           
 -- | A function definition with the function's effects.
 data FunDef = FunDef { funname :: Var
                      , funty   :: (ArrowTy Ty)
@@ -548,6 +560,45 @@ extendEnv ((v,t):r) e =
        extendEnv r (M.insert v (argtyToLoc (mangle v) t') e)
 
 
+-- FIXME: Remove:
+mapExprs :: (Env2 (Ty1 ()) -> Exp -> Exp) -> Prog -> Prog
+mapExprs fn (Prog dd fundefs mainExp) =
+    Prog dd
+         (fmap (\ (FunDef nm arrTy@(ArrowTy inT _ _) arg bod) ->
+                 let env = Env2 (M.singleton arg (fmap (\_->()) inT))
+                                funEnv
+                 in FunDef nm arrTy arg (fn env bod))
+            fundefs)
+         (fmap (fn (Env2 M.empty funEnv) ) mainExp)
+  where
+    -- FIXME: use progToEnv
+    funEnv = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
+                        | FunDef n (ArrowTy a _ b) _ _ <- M.elems fundefs ]
+
+-- | Map exprs with an initial type environment:
+mapMExprs :: Monad m => (Env2 (Ty1 ()) -> Exp -> m Exp) -> Prog -> m Prog
+mapMExprs fn (Prog dd fundefs mainExp) =
+    Prog dd <$>
+         (mapM (\ (FunDef nm arrTy@(ArrowTy inT _ _) arg bod) ->
+                 let env = Env2 (M.singleton arg (fmap (\_->()) inT))
+                                funEnv
+                 in FunDef nm arrTy arg <$> (fn env bod))
+            fundefs)
+         <*>
+         (mapM (fn (Env2 M.empty funEnv) ) mainExp)
+  where
+    -- FIXME: use progToEnv
+    funEnv = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
+                        | FunDef n (ArrowTy a _ b) _ _ <- M.elems fundefs ]
+             
+    
+  -- Prog dd (fmap (fmap (fn env)) fundefs)
+  --         (fmap (fn M.empty) mainExp)
+  -- where env = __a
+
+
+              
+                 
 -- Examples and Tests:
 --------------------------------------------------------------------------------
 
@@ -558,24 +609,4 @@ _exadd1 = fst $ runSyM 0 $ inferEffects L1.add1Prog
 --------------------------------------------------------------------------------
 
 
-{-
-cursorizeTy :: ArrowTy Ty -> ArrowTy T.Ty
-cursorizeTy (ArrowTy inT ef ouT) =
-  ArrowTy (appendArgs newIns  (replacePacked T.CursorTy inT))
-          ef
-          (appendArgs newOuts (replacePacked voidT ouT))
- where
-  appendArgs [] t = t
-  appendArgs ls t = T.ProdTy $ ls ++ [t]
-  newOuts = replicate (S.size ef) T.CursorTy 
-  newIns  = replicate (length outVs) T.CursorTy 
-  outVs   = allLocVars ouT
-  voidT   = T.ProdTy []          
-  replacePacked (t2::T.Ty) (t::Ty) =
-    case t of
-      IntTy -> T.IntTy
-      SymTy -> T.SymTy
-      (ProdTy x)    -> T.ProdTy $ L.map (replacePacked t2) x
-      (SymDictTy x) -> T.SymDictTy $ (replacePacked t2) x
-      PackedTy{}    -> t2
--}
+
