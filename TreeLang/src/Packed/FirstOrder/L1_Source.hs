@@ -17,7 +17,7 @@ module Packed.FirstOrder.L1_Source
       -- * Types and helpers
     , Ty, Ty1(..), pattern Packed, pattern SymTy, voidTy, hasPacked
     -- * Expression and Prog helpers
-    , freeVars, subst, mapExprs
+    , freeVars, subst, substE, mapExprs
       -- * Trivial expressions
     , assertTriv, assertTrivs, isTriv
       -- * Examples
@@ -203,7 +203,35 @@ subst old new ex =
             r2' = if v2 == old then r2 else go r2
         in FoldE (v1,t1,r1') (v2,t2,r2') (go bod)
 
-                                      
+-- | Expensive subst that looks for a whole matching sub-EXPRESSION.
+--   If the old expression is a variable, this still avoids going under binder.s
+substE :: Exp -> Exp -> Exp -> Exp
+substE old new ex =
+  let go = substE old new in
+  case ex of
+    _ | ex == old -> new
+    VarE v          -> VarE v
+    LitE _          -> ex
+    AppE v e        -> AppE v (go e)
+    PrimAppE p ls   -> PrimAppE p $ L.map go ls
+    LetE (v,t,rhs) bod | (VarE v) == old  -> LetE (v,t,go rhs) bod
+                       | otherwise -> LetE (v,t,go rhs) (go bod)
+
+    ProjE i e  -> ProjE i (go e)
+    CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
+    MkProdE ls     -> MkProdE $ L.map go ls
+    MkPackedE k ls -> MkPackedE k $ L.map go ls
+    TimeIt e t -> TimeIt (go e) t
+    IfE a b c -> IfE (go a) (go b) (go c)
+    MapE (v,t,rhs) bod | VarE v == old  -> MapE (v,t, rhs)    (go bod)
+                       | otherwise -> MapE (v,t, go rhs) (go bod)
+    FoldE (v1,t1,r1) (v2,t2,r2) bod ->
+        let r1' = if VarE v1 == old then r1 else go r1
+            r2' = if VarE v2 == old then r2 else go r2
+        in FoldE (v1,t1,r1') (v2,t2,r2') (go bod)
+
+
+           
 primArgsTy :: Prim -> [Ty]
 primArgsTy p =
   case p of

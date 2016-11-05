@@ -59,8 +59,15 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     L1.CaseE e ls | pkd -> do
       __finish_packed_caseE
 
-    L1.LetE (v, _, L1.MkPackedE k ls) bod | pkd -> L1.assertTrivs ls $ do
-      __finish_packed_LetMkPacked
+    -- These are in a funny normal form atfer cursor insertion.  They take one cursor arg.
+    -- They basically are a WriteTag.
+    L1.LetE (cursOut, ty, L1.MkPackedE k ls) bod | pkd -> do
+      let [cursIn] = ls
+      T.LetPrimCallT [(cursOut,T.CursorTy)] T.WriteTag [triv "WriteTag cursor" cursIn] <$>
+        -- Here we lamely chase down all the tuple references and make them variables:
+--        let bod' = __ $ substE (Proj ix (VarE tupname))
+--            ix = 0 in
+        tail bod
      
     -- Not-packed, pointer-based codegen
     --------------------------------------------------------------------------------
