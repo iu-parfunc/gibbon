@@ -119,7 +119,7 @@ data Ty1 a =
         | BoolTy
         | ProdTy [Ty1 a]     -- ^ An N-ary tuple
         | SymDictTy (Ty1 a)  -- ^ A map from SymTy to Ty
-        | PackedTy { con :: Constr, loc :: a } -- ^ No type arguments to TyCons for now.
+        | PackedTy Constr a  -- ^ No type arguments to TyCons for now.
           -- ^ We allow built-in dictionaries from symbols to a value type.
         | ListTy (Ty1 a) -- ^ These are not fully first class.  They are onlyae
                          -- allowed as the fields of data constructors.
@@ -129,9 +129,9 @@ voidTy :: Ty
 voidTy = ProdTy []
 
 -- | Do values of this type contain packed data?
-hasPacked :: Ty -> Bool
+hasPacked :: Ty1 a -> Bool
 hasPacked t = case t of
-                Packed _  -> True
+                PackedTy{} -> True
                 ProdTy ls -> any hasPacked ls
                 SymTy     -> False
                 BoolTy    -> False

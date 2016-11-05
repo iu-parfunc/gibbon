@@ -336,14 +336,14 @@ zipLT loc ty = error$ "zipLT: argument type "++show(doc ty)
 cursorTy :: Ty
 cursorTy = PackedTy "CURSOR_TY" ""
 
-mkCursorTy :: LocVar -> Ty
+mkCursorTy :: a -> Ty1 a
 mkCursorTy = PackedTy "CURSOR_TY" 
 
-isCursorTy :: Ty -> Bool
+isCursorTy :: Ty1 a -> Bool
 isCursorTy (PackedTy "CURSOR_TY" _) = True
 isCursorTy _ = False
 
-cursorTyLoc :: Ty -> LocVar
+cursorTyLoc :: Show a => Ty1 a -> a
 cursorTyLoc (PackedTy "CURSOR_TY" l) = l
 cursorTyLoc t = error $ "cursorTyLoc: should only be called on a cursor type, not "++show t
                

@@ -20,7 +20,7 @@ import qualified Packed.FirstOrder.HaskellFrontend as HS
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.LTraverse (inferEffects, Prog(..))
 import qualified Packed.FirstOrder.LTraverse as L2
-import Packed.FirstOrder.Passes.Cursorize (cursorize, lower)
+import Packed.FirstOrder.Passes.Cursorize 
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import Packed.FirstOrder.Target (codegenProg)
 import System.FilePath
@@ -477,7 +477,8 @@ compile Config{input,mode,packed,verbosity} fp = do
                        l2b <- pass' "addTraversals"            (addTraversals mt)       l2
                        l2c <- pass' "addCopies"                addCopies                l2b
                        l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
-                       l2e <- pass  "cursorize"                cursorize                l2d
+--                     l2e <- pass  "cursorize"                cursorize                l2d
+                       l2e <- pass  "cursorDirect"             cursorDirect             l2d
                        return l2e
                      else return l2
                  l3  <-       pass  "lower"                    lower                    l2'
