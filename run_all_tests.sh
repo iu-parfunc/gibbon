@@ -74,6 +74,7 @@ if [ "$NOBINTREE" != "1" ]; then
       make run_small
   else
       echo "Not under Docker. Don't do a full Bintree build, it requires too many toolchains."
-      make c ghc run_small_core
+      make c ghc -j
+      make run_small_core
   fi
 fi
