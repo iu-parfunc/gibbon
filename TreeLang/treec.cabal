@@ -24,6 +24,8 @@ library
                     Packed.FirstOrder.Passes.Cursorize
                     Packed.FirstOrder.Passes.Flatten,
                     Packed.FirstOrder.Passes.Lower,
+                    Packed.FirstOrder.Passes.Freshen,
+                    Packed.FirstOrder.Passes.InlineTriv,
                     Packed.FirstOrder.SExpFrontend,
                     Packed.FirstOrder.Target
 
@@ -61,7 +63,8 @@ library
                 
   hs-source-dirs:      src
   default-language:    Haskell2010
-  ghc-options:         -Wall -fdefer-typed-holes -XScopedTypeVariables -XPatternSynonyms -XDeriveGeneric -XDeriveFunctor -XNamedFieldPuns
+  ghc-options:         -Wall -fdefer-typed-holes
+  extensions: ScopedTypeVariables PatternSynonyms DeriveGeneric DeriveFunctor NamedFieldPuns
 -- This can break things:
 -- -XDeriveAnyClass 
     

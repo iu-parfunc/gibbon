@@ -22,9 +22,13 @@ import Packed.FirstOrder.Interpreter (Val (..), execProg)
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.LTraverse (inferEffects)
 import qualified Packed.FirstOrder.LTraverse as L2
+
+import Packed.FirstOrder.Passes.Freshen
 import Packed.FirstOrder.Passes.Cursorize
 import Packed.FirstOrder.Passes.Flatten
+import Packed.FirstOrder.Passes.InlineTriv
 import Packed.FirstOrder.Passes.Lower
+
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import Packed.FirstOrder.Target (codegenProg)
 import System.Directory
@@ -44,117 +48,7 @@ import Data.Set as S hiding (map)
 -- PASS STUBS
 ----------------------------------------
 -- All of these need to be implemented, but are just the identity
--- function for now.
-
--- | Rename all local variables
-freshNames :: L1.Prog -> SyM L1.Prog
-freshNames (L1.Prog defs funs main) =
-    do main' <- case main of
-                  Nothing -> return Nothing
-                  Just m -> do m' <- freshExp [] m
-                               return $ Just m'
-       funs' <- freshFuns funs
-       return $ L1.Prog defs funs' main'
-    where freshFuns = mapM freshFun
-          freshFun (FunDef nam (narg,targ) ty bod) =
-              do narg' <- gensym narg
-                 bod' <- freshExp [(narg,narg')] bod
-                 return $ FunDef nam (narg',targ) ty bod'
-
-          freshExp :: [(Var,Var)] -> L1.Exp -> SyM L1.Exp
-          freshExp vs (L1.VarE v) =
-              case lookup v vs of
-                Nothing -> return $ L1.VarE v
-                Just v' -> return $ L1.VarE v'
-          freshExp _ (L1.LitE i) =
-              return $ L1.LitE i
-          freshExp vs (L1.AppE v e) =
-              do e' <- freshExp vs e
-                 return $ L1.AppE v e'
-          freshExp vs (L1.PrimAppE p es) =
-              do es' <- mapM (freshExp vs) es
-                 return $ L1.PrimAppE p es'
-          freshExp vs (L1.LetE (v,t,e1) e2) =
-              do e1' <- freshExp vs e1
-                 v' <- gensym v
-                 e2' <- freshExp ((v,v'):vs) e2
-                 return $ L1.LetE (v',t,e1') e2'
-          freshExp vs (L1.IfE e1 e2 e3) =
-              do e1' <- freshExp vs e1
-                 e2' <- freshExp vs e2
-                 e3' <- freshExp vs e3
-                 return $ L1.IfE e1' e2' e3'
-          freshExp vs (L1.ProjE i e) =
-              do e' <- freshExp vs e
-                 return $ L1.ProjE i e'
-          freshExp vs (L1.MkProdE es) =
-              do es' <- mapM (freshExp vs) es
-                 return $ L1.MkProdE es'
-          freshExp vs (L1.CaseE e mp) =
-              do e' <- freshExp vs e
-                 mp' <- mapM (\(c,args,ae) -> do
-                                args' <- mapM gensym args
-                                let vs' = (zip args args') ++ vs
-                                ae' <- freshExp vs' ae
-                                return (c,args',ae')) mp
-                 return $ L1.CaseE e' mp'
-          freshExp vs (L1.MkPackedE c es) =
-              do es' <- mapM (freshExp vs) es
-                 return $ L1.MkPackedE c es'
-          freshExp vs (L1.TimeIt e t) =
-              do e' <- freshExp vs e
-                 return $ L1.TimeIt e' t
-          freshExp vs (L1.MapE (v,t,b) e) =
-              do b' <- freshExp vs b
-                 e' <- freshExp vs e
-                 return $ L1.MapE (v,t,b') e'
-          freshExp vs (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
-              do e1' <- freshExp vs e1
-                 e2' <- freshExp vs e2
-                 e3' <- freshExp vs e3
-                 return $ L1.FoldE (v1,t1,e1') (v2,t2,e2') e3'
-
--- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
---   the output of `flatten`.
-inlineTriv :: L1.Prog -> L1.Prog
-inlineTriv (L1.Prog defs funs main) =
-    L1.Prog defs (fmap inlineTrivFun funs) (fmap inlineTrivExp main)
-  where
-    inlineTrivFun (FunDef nam (narg,targ) ty bod) =
-      FunDef nam (narg,targ) ty (inlineTrivExp bod)
-
-inlineTrivExp :: L1.Exp -> L1.Exp
-inlineTrivExp = go []
-  where
-   go :: [(Var,L1.Exp)] -> L1.Exp -> L1.Exp
-   go env (L1.VarE v) =
-       case lookup v env of
-         Nothing -> L1.VarE v
-         Just e  -> e
-   go _env (L1.LitE i) = L1.LitE i
-   go env (L1.AppE v e) = L1.AppE v $ go env e
-   go env (L1.PrimAppE p es) = L1.PrimAppE p $ map (go env) es
-   go env (L1.LetE (v,t,e') e) =
-       case e' of
-         L1.VarE v' -> case lookup v' env of
-                         Nothing  -> go ((v,e'):env) e
-                         Just e'' -> go ((v,e''):env) e
-         L1.LitE _i -> go ((v,e'):env) e
-         _ -> L1.LetE (v,t,go env e') (go env e)
-   go env (L1.IfE e1 e2 e3) =
-       L1.IfE (go env e1) (go env e2) (go env e3)
-   go env (L1.ProjE i e) = L1.ProjE i $ go env e
-   go env (L1.MkProdE es) = L1.MkProdE $ map (go env) es
-   go env (L1.CaseE e mp) =
-       let e' = go env e
-           mp' = map (\(c,args,ae) -> (c,args,go env ae)) mp
-       in L1.CaseE e' mp'
-   go env (L1.MkPackedE c es) = L1.MkPackedE c $ map (go env) es
-   go env (L1.TimeIt e t) = L1.TimeIt (go env e) t
-   go env (L1.MapE (v,t,e') e) = L1.MapE (v,t,go env e') (go env e)
-   go env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
-       L1.FoldE (v1,t1,go env e1) (v2,t2,go env e2) (go env e3)
-
+-- function for now.  Move to Passes/*.hs when implemented.
 
 
 -- | Find all local variables bound by case expressions which must be
