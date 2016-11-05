@@ -1,6 +1,6 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
-{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NamedFieldPuns        #-}
 -- | The compiler pipeline, assembled from several passes.
 
 module Packed.FirstOrder.Compiler
@@ -18,27 +18,28 @@ import Control.Monad.State
 import Options.Applicative
 import Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.HaskellFrontend as HS
+import Packed.FirstOrder.Interpreter (Val (..), execProg)
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.LTraverse (inferEffects)
 import qualified Packed.FirstOrder.LTraverse as L2
 import Packed.FirstOrder.Passes.Cursorize
+import Packed.FirstOrder.Passes.Flatten
 import Packed.FirstOrder.Passes.Lower
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import Packed.FirstOrder.Target (codegenProg)
-import System.FilePath
-import System.Environment
-import System.Process
 import System.Directory
-import System.IO
+import System.Environment
 import System.Exit
+import System.FilePath
+import System.IO
 import System.IO.Error (isDoesNotExistError)
+import System.Process
 import Text.PrettyPrint.GenericPretty
-import Packed.FirstOrder.Interpreter (Val(..), execProg)
 
 ------------------------------------------------------------
 
 import Data.Set as S hiding (map)
-import qualified Data.Map as M
+
 ----------------------------------------
 -- PASS STUBS
 ----------------------------------------
@@ -113,138 +114,6 @@ freshNames (L1.Prog defs funs main) =
                  e3' <- freshExp vs e3
                  return $ L1.FoldE (v1,t1,e1') (v2,t2,e2') e3'
 
--- | Put the program in A-normal form where only varrefs and literals
--- are allowed in operand position.
-flatten :: L1.Prog -> SyM L1.Prog
-flatten prg@(L1.Prog defs funs main) =
-    do
-       main' <- case main of
-                  Nothing -> return Nothing
-                  Just m -> do m' <- flattenExp defs env20 m
-                               return $ Just m'
-       funs' <- flattenFuns funs
-       return $ L1.Prog defs funs' main'
-    where flattenFuns = mapM flattenFun
-          flattenFun (FunDef nam (narg,targ) ty bod) =
-              do let env2 = Env2 (M.singleton narg targ) (fEnv env20)
-                 bod' <- flattenExp defs env2 bod
-                 return $ FunDef nam (narg,targ) ty bod'
-
-          env20 = L1.progToEnv prg
-
-flattenExp :: DDefs L1.Ty -> Env2 L1.Ty -> L1.Exp -> SyM L1.Exp
-flattenExp defs env2 = fExp (M.toList$ vEnv env2)
-   where
-          fExp :: [(Var,L1.Ty)] -> L1.Exp -> SyM L1.Exp
-          fExp _env (L1.VarE v) = return $ L1.VarE v
-          fExp _env (L1.LitE i) = return $ L1.LitE i
-          fExp _env (L1.AppE v (L1.VarE v')) = return $ L1.AppE v (L1.VarE v')
-          fExp env (L1.AppE v e) =
-              do e' <- fExp env e
-                 v' <- gensym "tmp_flat"
-                 let ty = typeExp env e
-                 return $ mkLetE (v',ty,e') (L1.AppE v (L1.VarE v'))
-          fExp env (L1.PrimAppE p es) =
-              do es' <- mapM (fExp env) es
-                 nams <- mapM gensym $ replicate (length es) "tmp_flat"
-                 let bind [] e = e
-                     bind ((v,e'):xs) e = mkLetE (v,(typeExp env e'),e') $ bind xs e
-                 let exp = bind (zip nams es') $ L1.PrimAppE p $ map L1.VarE nams
-                 return exp
-          fExp env (L1.LetE (v,t,e') e) =
-              do fe' <- fExp env e'
-                 fe  <- fExp ((v,t):env) e
-                 let exp = mkLetE (v,t,fe') fe
-                 return exp
-          fExp env (L1.IfE e1 e2 e3) =
-              do fe1 <- fExp env e1
-                 fe2 <- fExp env e2
-                 fe3 <- fExp env e3
-                 v1 <- gensym "tmp_flat"
-                 return $ mkLetE (v1,L1.BoolTy,fe1) $ L1.IfE (L1.VarE v1) fe2 fe3
-          fExp env (L1.ProjE i e) =
-              do fe <- fExp env e
-                 let ty = typeExp env e
-                 v1 <- gensym "tmp_flat"
-                 return $ mkLetE (v1,ty,fe) $ L1.ProjE i (L1.VarE v1)
-          fExp env (L1.MkProdE es) =
-              do fes <- mapM (fExp env) es
-                 nams <- mapM gensym $ replicate (length fes) "tmp_flat"
-                 let tys = map (typeExp env) fes
-                     bind [] e = e
-                     bind ((v,t,e'):xs) e = mkLetE (v,t,e') $ bind xs e
-                 return $ bind (zip3 nams tys fes) $ L1.MkProdE $ map L1.VarE nams
-          fExp env (L1.CaseE e mp) =
-              do fe <- fExp env e
-                 v <- gensym "tmp_flat"
-                 let ty  = typeExp env fe
-                 fals <- forM mp $ \(c,args,ae) -> do
-                           let tys = lookupDataCon defs c
-                           fae <- fExp ((zip args tys) ++ env) ae
-                           return (c,args,fae)
-                 return $ mkLetE (v,ty,fe) $ L1.CaseE (L1.VarE v) fals
-          fExp env (L1.MkPackedE c es) =
-              do fes <- mapM (fExp env) es
-                 nams <- mapM gensym $ replicate (length fes) "tmp_flat"
-                 let tys = map (typeExp env) fes
-                     bind [] e = e
-                     bind ((v,t,e'):xs) e = mkLetE (v,t,e') $ bind xs e
-                 return $ bind (zip3 nams tys fes) $ L1.MkPackedE c $ map L1.VarE nams
-          -- very important to NOT "flatten" the time form:
-          fExp env (L1.TimeIt e _) =
-              do fe <- fExp env e
-                 let ty = typeExp env e
-                 return $ L1.TimeIt fe ty
-          fExp env (L1.MapE (v,t,e') e) =
-              do fe' <- fExp env e'
-                 fe <- fExp env e
-                 return $ L1.MapE (v,t,fe') fe
-          fExp env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
-              do fe1 <- fExp env e1
-                 fe2 <- fExp env e2
-                 fe3 <- fExp env e3
-                 return $ L1.FoldE (v1,t1,fe1) (v2,t2,fe2) fe3
-
-          -- | Helper function that lifts out Lets on the RHS of other Lets.
-          --   Absolutely requires unique names.
-          mkLetE (vr,ty, L1.LetE bnd e) bod = mkLetE bnd $ mkLetE (vr,ty,e) bod
-          mkLetE bnd bod = L1.LetE bnd bod
-
-          typeExp :: [(Var,L1.Ty)] -> L1.Exp -> L1.Ty
-          typeExp env (L1.VarE v) = case lookup v env of
-                                      Just x -> x
-                                      Nothing -> error $ "Cannot find type of variable " ++ (show v)
-          typeExp _env (L1.LitE _i) = L1.IntTy
-          typeExp _env (L1.AppE v _e) = snd $ fEnv env2 # v
-
-          typeExp _env (L1.PrimAppE p _es) =
-              case p of
-                L1.AddP -> L1.IntTy
-                L1.SubP -> L1.IntTy
-                L1.MulP -> L1.IntTy
-                L1.EqIntP -> L1.BoolTy
-                L1.EqSymP -> L1.BoolTy
-                L1.MkTrue -> L1.BoolTy
-                L1.MkFalse -> L1.BoolTy
-                L1.DictInsertP -> L1.SymDictTy L1.IntTy -- FIXME
-                L1.DictLookupP -> L1.IntTy -- FIXME
-                L1.DictEmptyP -> L1.SymDictTy L1.IntTy
-                _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
-          typeExp env (L1.LetE (v,t,_) e) = typeExp ((v,t):env) e
-          typeExp env (L1.IfE _ e _) = typeExp env e
-          typeExp env (L1.ProjE i e) =
-              let (L1.ProdTy tys) = typeExp env e
-              in tys !! i
-          typeExp env (L1.MkProdE es) =
-              L1.ProdTy $ map (typeExp env) es
-          typeExp env (L1.CaseE _e mp) =
-              let (c,args,e) = head mp
-              in typeExp ((zip args (lookupDataCon defs c)) ++ env) e
-          typeExp _env (L1.MkPackedE c _es) = L1.Packed c
-          typeExp env (L1.TimeIt e _) = typeExp env e
-          typeExp env (L1.MapE _ e) = typeExp env e
-          typeExp env (L1.FoldE _ _ e) = typeExp env e
-
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
 inlineTriv :: L1.Prog -> L1.Prog
@@ -261,14 +130,14 @@ inlineTrivExp = go []
    go env (L1.VarE v) =
        case lookup v env of
          Nothing -> L1.VarE v
-         Just e -> e
+         Just e  -> e
    go _env (L1.LitE i) = L1.LitE i
    go env (L1.AppE v e) = L1.AppE v $ go env e
    go env (L1.PrimAppE p es) = L1.PrimAppE p $ map (go env) es
    go env (L1.LetE (v,t,e') e) =
        case e' of
          L1.VarE v' -> case lookup v' env of
-                         Nothing -> go ((v,e'):env) e
+                         Nothing  -> go ((v,e'):env) e
                          Just e'' -> go ((v,e''):env) e
          L1.LitE _i -> go ((v,e'):env) e
          _ -> L1.LetE (v,t,go env e') (go env e)
