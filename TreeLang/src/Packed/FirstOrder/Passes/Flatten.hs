@@ -33,9 +33,9 @@ flatten prg@(L1.Prog defs funs main) = do
     env20 = L1.progToEnv prg
 
 flattenExp :: DDefs L1.Ty -> Env2 L1.Ty -> L1.Exp -> SyM L1.Exp
-flattenExp defs env2 = fExp (M.toList$ vEnv env2)
+flattenExp defs env2 = fExp (vEnv env2)
   where
-    fExp :: [(Var,L1.Ty)] -> L1.Exp -> SyM L1.Exp
+    fExp :: M.Map Var L1.Ty -> L1.Exp -> SyM L1.Exp
     fExp _env (L1.VarE v) = return $ L1.VarE v
     fExp _env (L1.LitE i) = return $ L1.LitE i
     fExp _env (L1.AppE v (L1.VarE v')) = return $ L1.AppE v (L1.VarE v')
@@ -53,7 +53,7 @@ flattenExp defs env2 = fExp (M.toList$ vEnv env2)
            return exp
     fExp env (L1.LetE (v,t,e') e) =
         do fe' <- fExp env e'
-           fe  <- fExp ((v,t):env) e
+           fe  <- fExp (M.insert v t env) e
            let exp = mkLetE (v,t,fe') fe
            return exp
     fExp env (L1.IfE e1 e2 e3) =
@@ -80,7 +80,7 @@ flattenExp defs env2 = fExp (M.toList$ vEnv env2)
            let ty  = typeExp env fe
            fals <- forM mp $ \(c,args,ae) -> do
                      let tys = lookupDataCon defs c
-                     fae <- fExp ((zip args tys) ++ env) ae
+                     fae <- fExp (M.fromList (zip args tys) `M.union` env) ae
                      return (c,args,fae)
            return $ mkLetE (v,ty,fe) $ L1.CaseE (L1.VarE v) fals
     fExp env (L1.MkPackedE c es) =
@@ -110,10 +110,10 @@ flattenExp defs env2 = fExp (M.toList$ vEnv env2)
     mkLetE (vr,ty, L1.LetE bnd e) bod = mkLetE bnd $ mkLetE (vr,ty,e) bod
     mkLetE bnd bod = L1.LetE bnd bod
 
-    typeExp :: [(Var,L1.Ty)] -> L1.Exp -> L1.Ty
-    typeExp env (L1.VarE v) = case lookup v env of
-                                Just x -> x
-                                Nothing -> error $ "Cannot find type of variable " ++ (show v)
+    typeExp :: M.Map Var L1.Ty -> L1.Exp -> L1.Ty
+    typeExp env (L1.VarE v) =
+      M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v env
+
     typeExp _env (L1.LitE _i) = L1.IntTy
     typeExp _env (L1.AppE v _e) = snd $ fEnv env2 # v
 
@@ -130,7 +130,7 @@ flattenExp defs env2 = fExp (M.toList$ vEnv env2)
           L1.DictLookupP -> L1.IntTy -- FIXME
           L1.DictEmptyP -> L1.SymDictTy L1.IntTy
           _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
-    typeExp env (L1.LetE (v,t,_) e) = typeExp ((v,t):env) e
+    typeExp env (L1.LetE (v,t,_) e) = typeExp (M.insert v t env) e
     typeExp env (L1.IfE _ e _) = typeExp env e
     typeExp env (L1.ProjE i e) =
         let (L1.ProdTy tys) = typeExp env e
@@ -139,7 +139,7 @@ flattenExp defs env2 = fExp (M.toList$ vEnv env2)
         L1.ProdTy $ map (typeExp env) es
     typeExp env (L1.CaseE _e mp) =
         let (c,args,e) = head mp
-        in typeExp ((zip args (lookupDataCon defs c)) ++ env) e
+        in typeExp (M.fromList (zip args (lookupDataCon defs c)) `M.union` env) e
     typeExp _env (L1.MkPackedE c _es) = L1.Packed c
     typeExp env (L1.TimeIt e _) = typeExp env e
     typeExp env (L1.MapE _ e) = typeExp env e
