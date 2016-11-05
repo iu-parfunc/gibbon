@@ -421,9 +421,15 @@ codegenTail (LetAllocT lhs vals body) ty =
 codegenTail (LetUnpackT bs scrt body) ty =
     do let mkFld :: Int -> C.Id
            mkFld i = C.toIdent ("field" ++ show i) noLoc
+        
+           fldTys = map snd bs
+           struct_ty = codegenTy (ProdTy fldTys)
 
-           binds = zipWith (\i (v, t) -> [cdecl| $ty:(codegenTy t) $id:v = $exp:(cid scrt).$id:(mkFld i); |])
-                           [0..] bs
+           mk_bind i (v, t) = [cdecl|
+             $ty:(codegenTy t) $id:v = ( ( $ty:struct_ty * ) $exp:(cid scrt) )->$id:(mkFld i);
+           |]
+
+           binds = zipWith mk_bind [0..] bs
 
        body' <- codegenTail body ty
        return (map C.BlockDecl binds ++ body')
