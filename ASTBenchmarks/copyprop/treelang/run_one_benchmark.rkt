@@ -6,12 +6,12 @@
 (require "../../common/racket/parse.rkt"
          "copyprop.rkt"
          racket/cmdline
-         racket/file
+         racket/file racket/match
          (only-in "../../grammar_racket.sexp" Toplvl))
 
-(define-values (file iters)
+(match-define (cons file iters)
   (command-line #:args (#{f : String} #{i : String})
-                (values f (cast (string->number i) Real))))
+                (cons f (cast (string->number i) Real))))
 
 ;; copied exactly + type annotations
 (printf "\n\nBenchmark: Copy propogation in file ~a for ~a iterations...\n"
