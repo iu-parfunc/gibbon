@@ -500,11 +500,11 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     GetFirstWord ->
                      let [ptr] = rnds in
                      case bnds of
-                       [(outV,PtrTy)] ->
-                        [ C.BlockDecl [cdecl| $ty:(codegenTy BoxedTagTy) $id:outV = * (( $ty:(codegenTy BoxedTagTy) *) $(codegenTriv ptr)); |] ]
-                       _ -> error $"codegen/GetFirstWord: result type should be one PtrTy, was: "++show bnds
-
-
+                       [(outV,outTy)] ->
+                        [ C.BlockDecl [cdecl|
+                            $ty:(codegenTy outTy) $id:outV =
+                              * (( $ty:(codegenTy outTy) *) $(codegenTriv ptr));
+                          |] ]
 
                     -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'
