@@ -144,9 +144,8 @@ freeVars ex =
     LitE _ -> S.empty
     AppE v e -> S.insert v (freeVars e)
     PrimAppE _ ls -> S.unions (L.map freeVars ls)
-    LetE (v,_,rhs) bod ->
-      S.delete v $
-      S.union (freeVars rhs) (freeVars bod)
+    LetE (v,_,rhs) bod -> freeVars rhs `S.union`
+                          S.delete v (freeVars bod)
     ProjE _ e -> freeVars e
     CaseE e ls -> S.union (freeVars e)
                   (S.unions $ L.map (\(_, _, ee) -> freeVars ee) ls)
@@ -154,6 +153,11 @@ freeVars ex =
     MkPackedE _ ls -> S.unions $ L.map freeVars ls
     TimeIt e _ -> freeVars e
     IfE a b c -> freeVars a `S.union` freeVars b `S.union` freeVars c
+    MapE (v,t,rhs) bod -> freeVars rhs `S.union`
+                          S.delete (freeVars bod)
+    FoldE (v1,t1,r1) (v2,t2,r2) bod ->
+        freeVars r1 `S.union` freeVars r2 `S.union`
+        (S.delete v1 $ S.delete v2 $ freeVars bod)
 
 
 subst :: Var -> Exp -> Exp -> Exp
