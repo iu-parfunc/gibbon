@@ -1,3 +1,4 @@
+{-# LANGUAGE PartialTypeSignatures #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# LANGUAGE NamedFieldPuns #-}
 -- | The compiler pipeline, assembled from several passes.
@@ -38,9 +39,6 @@ import Packed.FirstOrder.Interpreter (Val(..), execProg)
 
 import Data.Set as S hiding (map)
 import qualified Data.Map as M
-import Data.Maybe (fromJust)
-import Debug.Trace
-    
 ----------------------------------------
 -- PASS STUBS
 ----------------------------------------
@@ -118,86 +116,93 @@ freshNames (L1.Prog defs funs main) =
 -- | Put the program in A-normal form where only varrefs and literals
 -- are allowed in operand position.
 flatten :: L1.Prog -> SyM L1.Prog
-flatten (L1.Prog defs funs main) =
-    do main' <- case main of
+flatten prg@(L1.Prog defs funs main) =
+    do 
+       main' <- case main of
                   Nothing -> return Nothing
-                  Just m -> do m' <- flattenExp [] m
+                  Just m -> do m' <- flattenExp defs env20 m
                                return $ Just m'
        funs' <- flattenFuns funs
        return $ L1.Prog defs funs' main'
     where flattenFuns = mapM flattenFun
           flattenFun (FunDef nam (narg,targ) ty bod) =
-              do bod' <- flattenExp [(narg,targ)] bod
+              do let env2 = Env2 (M.singleton narg targ) (fEnv env20)
+                 bod' <- flattenExp defs env2 bod
                  return $ FunDef nam (narg,targ) ty bod'
 
-          flattenExp :: [(Var,L1.Ty)] -> L1.Exp -> SyM L1.Exp
-          flattenExp _env (L1.VarE v) = return $ L1.VarE v
-          flattenExp _env (L1.LitE i) = return $ L1.LitE i
-          flattenExp _env (L1.AppE v (L1.VarE v')) = return $ L1.AppE v (L1.VarE v')
-          flattenExp env (L1.AppE v e) =
-              do e' <- flattenExp env e
+          env20 = L1.progToEnv prg
+                        
+flattenExp :: DDefs L1.Ty -> Env2 L1.Ty -> L1.Exp -> SyM L1.Exp
+flattenExp defs env2 = fExp (M.toList$ vEnv env2)
+   where
+          fExp :: [(Var,L1.Ty)] -> L1.Exp -> SyM L1.Exp
+          fExp _env (L1.VarE v) = return $ L1.VarE v
+          fExp _env (L1.LitE i) = return $ L1.LitE i
+          fExp _env (L1.AppE v (L1.VarE v')) = return $ L1.AppE v (L1.VarE v')
+          fExp env (L1.AppE v e) =
+              do e' <- fExp env e
                  v' <- gensym "tmp_flat"
                  let ty = typeExp env e
                  return $ mkLetE (v',ty,e') (L1.AppE v (L1.VarE v'))
-          flattenExp env (L1.PrimAppE p es) =
-              do es' <- mapM (flattenExp env) es
+          fExp env (L1.PrimAppE p es) =
+              do es' <- mapM (fExp env) es
                  nams <- mapM gensym $ replicate (length es) "tmp_flat"
                  let bind [] e = e
                      bind ((v,e'):xs) e = mkLetE (v,(typeExp env e'),e') $ bind xs e
                  let exp = bind (zip nams es') $ L1.PrimAppE p $ map L1.VarE nams
                  return exp
-          flattenExp env (L1.LetE (v,t,e') e) =
-              do fe' <- flattenExp env e'
-                 fe  <- flattenExp ((v,t):env) e
+          fExp env (L1.LetE (v,t,e') e) =
+              do fe' <- fExp env e'
+                 fe  <- fExp ((v,t):env) e
                  let exp = mkLetE (v,t,fe') fe
                  return exp
-          flattenExp env (L1.IfE e1 e2 e3) =
-              do fe1 <- flattenExp env e1
-                 fe2 <- flattenExp env e2
-                 fe3 <- flattenExp env e3
+          fExp env (L1.IfE e1 e2 e3) =
+              do fe1 <- fExp env e1
+                 fe2 <- fExp env e2
+                 fe3 <- fExp env e3
                  v1 <- gensym "tmp_flat"
                  return $ mkLetE (v1,L1.BoolTy,fe1) $ L1.IfE (L1.VarE v1) fe2 fe3
-          flattenExp env (L1.ProjE i e) =
-              do fe <- flattenExp env e
+          fExp env (L1.ProjE i e) =
+              do fe <- fExp env e
                  let ty = typeExp env e
                  v1 <- gensym "tmp_flat"
                  return $ mkLetE (v1,ty,fe) $ L1.ProjE i (L1.VarE v1)
-          flattenExp env (L1.MkProdE es) =
-              do fes <- mapM (flattenExp env) es
+          fExp env (L1.MkProdE es) =
+              do fes <- mapM (fExp env) es
                  nams <- mapM gensym $ replicate (length fes) "tmp_flat"
                  let tys = map (typeExp env) fes
                      bind [] e = e
                      bind ((v,t,e'):xs) e = mkLetE (v,t,e') $ bind xs e
                  return $ bind (zip3 nams tys fes) $ L1.MkProdE $ map L1.VarE nams
-          flattenExp env (L1.CaseE e mp) =
-              do fe <- flattenExp env e
+          fExp env (L1.CaseE e mp) =
+              do fe <- fExp env e
                  v <- gensym "tmp_flat"
                  let ty  = typeExp env fe
                  fals <- forM mp $ \(c,args,ae) -> do
                            let tys = lookupDataCon defs c
-                           fae <- flattenExp ((zip args tys) ++ env) ae
+                           fae <- fExp ((zip args tys) ++ env) ae
                            return (c,args,fae)
                  return $ mkLetE (v,ty,fe) $ L1.CaseE (L1.VarE v) fals
-          flattenExp env (L1.MkPackedE c es) =
-              do fes <- mapM (flattenExp env) es
+          fExp env (L1.MkPackedE c es) =
+              do fes <- mapM (fExp env) es
                  nams <- mapM gensym $ replicate (length fes) "tmp_flat"
                  let tys = map (typeExp env) fes
                      bind [] e = e
                      bind ((v,t,e'):xs) e = mkLetE (v,t,e') $ bind xs e
                  return $ bind (zip3 nams tys fes) $ L1.MkPackedE c $ map L1.VarE nams
           -- very important to NOT "flatten" the time form:
-          flattenExp env (L1.TimeIt e _) =
-              do fe <- flattenExp env e
+          fExp env (L1.TimeIt e _) =
+              do fe <- fExp env e
                  let ty = typeExp env e
                  return $ L1.TimeIt fe ty
-          flattenExp env (L1.MapE (v,t,e') e) =
-              do fe' <- flattenExp env e'
-                 fe <- flattenExp env e
+          fExp env (L1.MapE (v,t,e') e) =
+              do fe' <- fExp env e'
+                 fe <- fExp env e
                  return $ L1.MapE (v,t,fe') fe
-          flattenExp env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
-              do fe1 <- flattenExp env e1
-                 fe2 <- flattenExp env e2
-                 fe3 <- flattenExp env e3
+          fExp env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
+              do fe1 <- fExp env e1
+                 fe2 <- fExp env e2
+                 fe3 <- fExp env e3
                  return $ L1.FoldE (v1,t1,fe1) (v2,t2,fe2) fe3
 
           -- | Helper function that lifts out Lets on the RHS of other Lets.
@@ -210,10 +215,8 @@ flatten (L1.Prog defs funs main) =
                                       Just x -> x
                                       Nothing -> error $ "Cannot find type of variable " ++ (show v)
           typeExp _env (L1.LitE _i) = L1.IntTy
-          typeExp _env (L1.AppE v _e) =
-              case M.lookup v funs of
-                Nothing -> error $ "Could not look up type of function: " ++ v ++ " (typeExp)"
-                Just x -> funRetTy x
+          typeExp _env (L1.AppE v _e) = snd $ fEnv env2 # v 
+
           typeExp _env (L1.PrimAppE p _es) =
               case p of
                 L1.AddP -> L1.IntTy
@@ -241,51 +244,53 @@ flatten (L1.Prog defs funs main) =
           typeExp env (L1.TimeIt e _) = typeExp env e
           typeExp env (L1.MapE _ e) = typeExp env e
           typeExp env (L1.FoldE _ _ e) = typeExp env e
-
-
-                                         
+                
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
 inlineTriv :: L1.Prog -> SyM L1.Prog
 inlineTriv (L1.Prog defs funs main) =
     do main' <- case main of
                   Nothing -> return Nothing
-                  Just m -> return $ Just $ inlineTrivExp [] m
+                  Just m -> return $ Just $ inlineTrivExp m
        funs' <- inlineTrivFuns funs
        return $ L1.Prog defs funs' main'
     where inlineTrivFuns = mapM inlineTrivFun
           inlineTrivFun (FunDef nam (narg,targ) ty bod) =
-              do bod' <- return $ inlineTrivExp [] bod
-                 return $ FunDef nam (narg,targ) ty (inlineTrivExp [] bod')
+              do bod' <- return $ inlineTrivExp bod
+                 return $ FunDef nam (narg,targ) ty (inlineTrivExp bod')
 
-          inlineTrivExp :: [(Var,L1.Exp)] -> L1.Exp -> L1.Exp
-          inlineTrivExp env (L1.VarE v) =
-              case lookup v env of
-                Nothing -> L1.VarE v
-                Just e -> e
-          inlineTrivExp _env (L1.LitE i) = L1.LitE i
-          inlineTrivExp env (L1.AppE v e) = L1.AppE v $ inlineTrivExp env e
-          inlineTrivExp env (L1.PrimAppE p es) = L1.PrimAppE p $ map (inlineTrivExp env) es
-          inlineTrivExp env (L1.LetE (v,t,e') e) =
-              case e' of
-                L1.VarE v' -> case lookup v' env of
-                                Nothing -> inlineTrivExp ((v,e'):env) e
-                                Just e'' -> inlineTrivExp ((v,e''):env) e
-                L1.LitE _i -> inlineTrivExp ((v,e'):env) e
-                _ -> L1.LetE (v,t,inlineTrivExp env e') (inlineTrivExp env e)
-          inlineTrivExp env (L1.IfE e1 e2 e3) =
-              L1.IfE (inlineTrivExp env e1) (inlineTrivExp env e2) (inlineTrivExp env e3)
-          inlineTrivExp env (L1.ProjE i e) = L1.ProjE i $ inlineTrivExp env e
-          inlineTrivExp env (L1.MkProdE es) = L1.MkProdE $ map (inlineTrivExp env) es
-          inlineTrivExp env (L1.CaseE e mp) =
-              let e' = inlineTrivExp env e
-                  mp' = map (\(c,args,ae) -> (c,args,inlineTrivExp env ae)) mp
-              in L1.CaseE e' mp'
-          inlineTrivExp env (L1.MkPackedE c es) = L1.MkPackedE c $ map (inlineTrivExp env) es
-          inlineTrivExp env (L1.TimeIt e t) = L1.TimeIt (inlineTrivExp env e) t
-          inlineTrivExp env (L1.MapE (v,t,e') e) = L1.MapE (v,t,inlineTrivExp env e') (inlineTrivExp env e)
-          inlineTrivExp env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
-              L1.FoldE (v1,t1,inlineTrivExp env e1) (v2,t2,inlineTrivExp env e2) (inlineTrivExp env e3)
+
+inlineTrivExp :: L1.Exp -> L1.Exp
+inlineTrivExp = go []
+  where 
+   go :: [(Var,L1.Exp)] -> L1.Exp -> L1.Exp
+   go env (L1.VarE v) =
+       case lookup v env of
+         Nothing -> L1.VarE v
+         Just e -> e
+   go _env (L1.LitE i) = L1.LitE i
+   go env (L1.AppE v e) = L1.AppE v $ go env e
+   go env (L1.PrimAppE p es) = L1.PrimAppE p $ map (go env) es
+   go env (L1.LetE (v,t,e') e) =
+       case e' of
+         L1.VarE v' -> case lookup v' env of
+                         Nothing -> go ((v,e'):env) e
+                         Just e'' -> go ((v,e''):env) e
+         L1.LitE _i -> go ((v,e'):env) e
+         _ -> L1.LetE (v,t,go env e') (go env e)
+   go env (L1.IfE e1 e2 e3) =
+       L1.IfE (go env e1) (go env e2) (go env e3)
+   go env (L1.ProjE i e) = L1.ProjE i $ go env e
+   go env (L1.MkProdE es) = L1.MkProdE $ map (go env) es
+   go env (L1.CaseE e mp) =
+       let e' = go env e
+           mp' = map (\(c,args,ae) -> (c,args,go env ae)) mp
+       in L1.CaseE e' mp'
+   go env (L1.MkPackedE c es) = L1.MkPackedE c $ map (go env) es
+   go env (L1.TimeIt e t) = L1.TimeIt (go env e) t
+   go env (L1.MapE (v,t,e') e) = L1.MapE (v,t,go env e') (go env e)
+   go env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
+       L1.FoldE (v1,t1,go env e1) (v2,t2,go env e2) (go env e3)
 
                 
               
@@ -466,6 +471,12 @@ compile Config{input,mode,packed,verbosity} fp = do
     
     clearFile outfile
     clearFile exe
+
+    -- Repurposing L1 passes for L2:
+    let flatten2 :: L2.Prog -> SyM L2.Prog
+        flatten2 = L2.mapMExprs (flattenExp (L1.ddefs l1))
+        inline2 :: L2.Prog -> SyM L2.Prog
+        inline2 p = return (L2.mapExprs (\_ -> inlineTrivExp) p)
     str <- evalStateT
              (do l1b <-       pass "freshNames"               freshNames               l1
                  l1c <-       pass "flatten"                  flatten                  l1b
@@ -480,9 +491,11 @@ compile Config{input,mode,packed,verbosity} fp = do
                        l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
 --                     l2e <- pass  "cursorize"                cursorize                l2d
                        l2e <- pass  "cursorDirect"             cursorDirect             l2d
-                       return l2e
+                       l2f <- pass "flatten"                   flatten2                 l2e
+                       l2g <- pass "inlineTriv"                inline2                  l2f
+                       return l2g
                      else return l2
-                 l3  <-       pass  "lower"                    lower                    l2'
+                 l3  <-       pass  "lower"                    (lower packed)           l2'
 
                  if mode == Interp2
                   then do mapM_ (\(IntVal v) -> liftIO $ print v) (execProg l3)

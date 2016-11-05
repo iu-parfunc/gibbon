@@ -16,7 +16,7 @@ module Packed.FirstOrder.Common
          -- * Variables and gensyms
        , Var, varAppend, SyM, gensym, genLetter, runSyM
 
-       , LocVar
+       , LocVar, Env2(..)
          
          -- * Values (for interpreters)
        , Value(..), ValEnv
@@ -70,6 +70,11 @@ data Value a = VInt Int
 type ValEnv a = Map Var (Value a)
     
 ------------------------------------------------------------
+
+-- | A common currency for a two part environment consisting of
+-- function bindings and regular value bindings.
+data Env2 a = Env2 { vEnv :: M.Map Var a
+                   , fEnv :: M.Map Var (a, a) }
 
 -- Primitive for now:
 type DDefs a = Map Var (DDef a)

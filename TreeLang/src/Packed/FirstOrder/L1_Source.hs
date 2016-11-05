@@ -11,7 +11,7 @@
 --   genarating C code like a DSL.
 
 module Packed.FirstOrder.L1_Source
-    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..)
+    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), progToEnv
       -- * Primitive operations
     , Prim(..), primRetTy, primArgsTy
       -- * Types and helpers
@@ -47,6 +47,14 @@ data Prog = Prog { ddefs    :: DDefs Ty
                  }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
+-- | Abstract some of the differences of top level program types, by
+--   having a common way to extract an initial environment.
+progToEnv :: Prog -> Env2 (Ty1 ())
+progToEnv Prog{fundefs} = 
+    Env2 M.empty
+         (M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
+                     | FunDef n (_,a) b _ <- M.elems fundefs ])
+           
 
 -- | The source language.  It has pointer based sums and products, as
 -- well as packed algebraic datatypes.
