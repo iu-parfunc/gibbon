@@ -54,7 +54,7 @@ PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.s
 TREECARGS ?= --run
 
 # Run the tests that work:
-run_tests: answers
+old_run: answers
 	@echo "\n Compiling and running tests through our compiler:"
 	@echo "--------------------------------------------------"
 	stack build
@@ -67,6 +67,21 @@ run_tests: answers
           echo "  -> Success."; \
         done
 
+run_tests:
+	rm *.out
+	$(MAKE) all_tests
+
+all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
+
+# Assumes stack build:
+%.sexp.out : %.sexp
+	@echo "Testing $^"
+	$(TREEC) $(TREECARGS) $^ > $@
+	@echo "Now check expected $$f.ans, versus received, $$f.out";
+	./diff.sh $^.ans $@
+	@if [ $$? != "0" ]; then echo "ERROR: Answers differed!"; exit 1; fi; \
+          echo "  -> Success."; \
+        done
 
 PACKED_TESTS= test00_add.sexp test02_arith.sexp test03b_eqs.sexp test03c_eqsym.sexp
 #  test04b -- cursorize/mkprod
@@ -103,7 +118,7 @@ run_tests_interp2: test00_add.sexp.ans
 
 # --------------------------------------------------------------------------------
 
-ANSWERS= $(addsuffix .ans,$(INTERP_TESTS))
+ANSWERS= $(addsuffix .ans,$(INTERP_TESTS)) $(addsuffix .ans,$(PASSING_TESTS))
 
 %.sexp.ans : %.sexp
 	racket $^ | tee $@

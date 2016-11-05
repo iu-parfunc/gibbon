@@ -24,7 +24,7 @@
 
 (module+ main
   (let ([tr0 : Tree (build-tree 20)])
-    (let ([_ (time (add1-tree tr0))])
+    (let ([tr1 : Tree (time (add1-tree tr0))])
       0    
       ))
   )
