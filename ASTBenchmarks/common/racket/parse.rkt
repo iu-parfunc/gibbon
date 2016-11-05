@@ -4,7 +4,7 @@
 ;; grammar_racket.sexp language.
 
 (require "../../grammar_racket.sexp")
-(provide parse)
+(provide parse parse-pack-write)
 
 (: parse-toplvl-list : Any -> ListToplvl)
 (define (parse-toplvl-list v)

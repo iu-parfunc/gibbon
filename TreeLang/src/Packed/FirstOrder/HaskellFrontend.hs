@@ -141,7 +141,7 @@ desugarExp e =
 
       H.Case scrt alts -> do
         scrt' <- desugarExp scrt
-        CaseE scrt' . M.fromList <$> mapM desugarAlt alts
+        CaseE scrt' <$> mapM desugarAlt alts
 
       H.Paren e' -> desugarExp e'
 
@@ -183,14 +183,14 @@ generateBind not_pat_bind _ =
 
 --------------------------------------------------------------------------------
 
-desugarAlt :: H.Alt -> Ds (Constr, ([Var], L1.Exp))
+desugarAlt :: H.Alt -> Ds (Constr, [Var], L1.Exp)
 
 desugarAlt (H.Alt _ (PApp qname ps) (UnGuardedRhs rhs) Nothing) = do
     con_name <- qname_to_str qname
     ps' <- forM ps $ \case PVar v -> return (name_to_str v)
                            _      -> err "Non-variable pattern in case."
     rhs' <- desugarExp rhs
-    return (con_name, (ps', rhs'))
+    return (con_name, ps', rhs')
 
 desugarAlt (H.Alt _ _ GuardedRhss{} _) =
     err "Guarded RHS not supported in case."

@@ -1,4 +1,4 @@
+*.parsed
 *.out
 *.ans
-*.c
-\#*
+test*.c

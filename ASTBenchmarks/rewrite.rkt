@@ -142,18 +142,6 @@
 
 ;; ----------------------------------------
 
-;; Very hacky for reading paths:
-(define (to-sexps s)
-  (with-input-from-string s
-    (lambda ()
-      (let loop ()
-        (define x (read))
-        (if (eof-object? x)
-            '()
-            (cons x (loop)))))))
-
-;; ----------------------------------------
-
 ;; expects "<infile> <outfile>" lines on stdin
 ;; runs until it gets no more such lines (EOF)
 (module+ main
@@ -162,8 +150,7 @@
       (define l (read-line))
       (if (eof-object? l)
           (printf "rewrite.rkt: Reached EOF; done.\n")
-          (match (map (lambda (s) (if (symbol? s) (symbol->string s) s))
-                      (to-sexps l))
+          (match (string-split l)
             [(list infile outfile)
              (printf "Converting: ~a ~a\n" infile outfile)
              (with-handlers ([(lambda (_) #t)

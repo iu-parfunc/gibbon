@@ -1,7 +1,7 @@
 #lang typed/racket
 
 (provide Int Sym Bool SymDict data empty-dict lookup insert case
-         define let provide require if :
+         define let  if :
          for/list for/fold or and
          vector vector-ref
          list and empty? error 
@@ -9,10 +9,15 @@
 
          time + * -
 
+         provide require only-in all-defined-out
+         ;; So that we can import the treelang progs without runninga
+         module+
+         
          pack-Int pack-Bool pack-Sym
 
          #%app #%module-begin #%datum quote
-         only-in all-defined-out ann
+         ann
+         ;; "Open" mode:
          #;(all-from-out typed/racket))
 
 (require (prefix-in r typed/racket/base)

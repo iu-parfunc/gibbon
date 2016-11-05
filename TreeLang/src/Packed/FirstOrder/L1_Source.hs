@@ -14,8 +14,8 @@ module Packed.FirstOrder.L1_Source
     ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..)
       -- * Primitive operations
     , Prim(..), primRetTy, primArgsTy
-      -- * Types and helpers  
-    , Ty, Ty1(..), pattern Packed, pattern SymTy, voidTy
+      -- * Types and helpers
+    , Ty, Ty1(..), pattern Packed, pattern SymTy, voidTy, hasPacked
     -- * Expression and Prog helpers
     , freeVars, subst, mapExprs
       -- * Trivial expressions
@@ -34,7 +34,7 @@ import Text.PrettyPrint.GenericPretty
 import Control.DeepSeq (NFData)
 
 --------------------------------------------------------------------------------
- 
+
 -- | Complete programs include datatype definitions:
 --
 -- For evaluating a complete program, main's type will be an Int or a
@@ -54,13 +54,13 @@ data Exp = VarE Var
          | LitE Int
          | AppE Var Exp -- Only apply top-level / first-order functions
          | PrimAppE Prim [Exp]
-         | LetE (Var,Ty,Exp) Exp         
+         | LetE (Var,Ty,Exp) Exp
           -- ^ One binding at a time, but could bind a tuple for
           -- mutual recursion.
          | IfE Exp Exp Exp
          | ProjE Int Exp
          | MkProdE [Exp]
-         | CaseE Exp (M.Map Constr ([Var], Exp))
+         | CaseE Exp [(Constr, [Var], Exp)]
            -- ^ Case on a PACKED datatype.
          | MkPackedE Constr [Exp]
          | TimeIt Exp Ty
@@ -106,9 +106,9 @@ instance Out Prog
 pattern SymTy = IntTy
 
 type Ty = Ty1 ()
-                
+
 pattern Packed c = PackedTy c ()
-    
+
 -- | Types include boxed/pointer-based products as well as unpacked
 -- algebraic datatypes.  This data is parameterized to allow
 -- annotation later on.
@@ -117,9 +117,9 @@ data Ty1 a =
 --        | SymTy -- ^ Symbols used in writing compiler passes.
 --                --   It's an alias for Int, an index into a symbol table.
         | BoolTy
-        | ProdTy [Ty1 a]     -- ^ An N-ary tuple 
+        | ProdTy [Ty1 a]     -- ^ An N-ary tuple
         | SymDictTy (Ty1 a)  -- ^ A map from SymTy to Ty
-        | PackedTy { con :: Constr, loc :: a } -- ^ No type arguments to TyCons for now.
+        | PackedTy Constr a  -- ^ No type arguments to TyCons for now.
           -- ^ We allow built-in dictionaries from symbols to a value type.
         | ListTy (Ty1 a) -- ^ These are not fully first class.  They are onlyae
                          -- allowed as the fields of data constructors.
@@ -127,10 +127,20 @@ data Ty1 a =
 
 voidTy :: Ty
 voidTy = ProdTy []
-                      
+
+-- | Do values of this type contain packed data?
+hasPacked :: Ty1 a -> Bool
+hasPacked t = case t of
+                PackedTy{} -> True
+                ProdTy ls -> any hasPacked ls
+                SymTy     -> False
+                BoolTy    -> False
+                IntTy     -> False
+                SymDictTy t -> hasPacked t
+         
 -- | Transform the expressions within a program.
 mapExprs :: (Exp -> Exp) -> Prog -> Prog
-mapExprs fn prg@Prog{fundefs,mainExp} = 
+mapExprs fn prg@Prog{fundefs,mainExp} =
   prg{ fundefs = fmap (fmap fn) fundefs
      , mainExp = fmap fn mainExp }
 
@@ -141,19 +151,23 @@ freeVars :: Exp -> S.Set Var
 freeVars ex =
   case ex of
     VarE v -> S.singleton v
-    LitE _ -> S.empty 
+    LitE _ -> S.empty
     AppE v e -> S.insert v (freeVars e)
     PrimAppE _ ls -> S.unions (L.map freeVars ls)
-    LetE (v,_,rhs) bod ->
-      S.delete v $ 
-      S.union (freeVars rhs) (freeVars bod)
-    ProjE _ e -> freeVars e 
+    LetE (v,_,rhs) bod -> freeVars rhs `S.union`
+                          S.delete v (freeVars bod)
+    ProjE _ e -> freeVars e
     CaseE e ls -> S.union (freeVars e)
-                  (S.unions $ L.map (freeVars . snd) (M.elems ls))
+                  (S.unions $ L.map (\(_, _, ee) -> freeVars ee) ls)
     MkProdE ls     -> S.unions $ L.map freeVars ls
     MkPackedE _ ls -> S.unions $ L.map freeVars ls
-    TimeIt e _ -> freeVars e 
+    TimeIt e _ -> freeVars e
     IfE a b c -> freeVars a `S.union` freeVars b `S.union` freeVars c
+    MapE (v,t,rhs) bod -> freeVars rhs `S.union`
+                          S.delete v (freeVars bod)
+    FoldE (v1,t1,r1) (v2,t2,r2) bod ->
+        freeVars r1 `S.union` freeVars r2 `S.union`
+        (S.delete v1 $ S.delete v2 $ freeVars bod)
 
 
 subst :: Var -> Exp -> Exp -> Exp
@@ -169,13 +183,19 @@ subst old new ex =
                        | otherwise -> LetE (v,t,go rhs) (go bod)
 
     ProjE i e  -> ProjE i (go e)
-    CaseE e ls -> CaseE (go e) (M.map (\(vs,er) -> (vs,go er)) ls)
+    CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
     MkProdE ls     -> MkProdE $ L.map go ls
     MkPackedE k ls -> MkPackedE k $ L.map go ls
     TimeIt e t -> TimeIt (go e) t
     IfE a b c -> IfE (go a) (go b) (go c)
+    MapE (v,t,rhs) bod | v == old  -> MapE (v,t, rhs)    (go bod)
+                       | otherwise -> MapE (v,t, go rhs) (go bod)
+    FoldE (v1,t1,r1) (v2,t2,r2) bod ->
+        let r1' = if v1 == old then r1 else go r1
+            r2' = if v2 == old then r2 else go r2
+        in FoldE (v1,t1,r1') (v2,t2,r2') (go bod)
 
-
+                                      
 primArgsTy :: Prim -> [Ty]
 primArgsTy p =
   case p of
@@ -183,10 +203,14 @@ primArgsTy p =
     SubP -> [IntTy, IntTy]
     MulP -> [IntTy, IntTy]
     EqSymP  -> [SymTy, SymTy]
+    EqIntP  -> [IntTy, IntTy]
+    MkTrue  -> []
+    MkFalse -> []
+    DictEmptyP -> []
     DictInsertP -> error "primArgsTy: dicts not handled yet"
     DictLookupP -> error "primArgsTy: dicts not handled yet"
     (ErrorP _ _) -> []
-              
+
 primRetTy :: Prim -> Ty
 primRetTy p =
   case p of
@@ -194,15 +218,19 @@ primRetTy p =
     SubP -> IntTy
     MulP -> IntTy
     EqSymP  -> BoolTy
+    EqIntP  -> BoolTy
+    MkTrue  -> BoolTy
+    MkFalse -> BoolTy
+    DictEmptyP -> SymDictTy IntTy -- error "primArgsTy: dicts not handled yet" -- Polymorphic constant!!
     DictInsertP -> SymDictTy IntTy -- error "primRetTy: dicts not handled yet"
     DictLookupP -> IntTy -- error "primRetTy: dicts not handled yet"
     (ErrorP _ ty) -> ty
 
-                 
+
 --------------------------------------------------------------------------------
 
 -- Simple invariant assertions:
-           
+
 assertTriv :: Exp -> a -> a
 assertTriv e =
   if isTriv e
@@ -212,9 +240,9 @@ assertTriv e =
 assertTrivs :: [Exp] -> a -> a
 assertTrivs [] = id
 assertTrivs (a:b) = assertTriv a . assertTrivs b
-       
+
 isTriv :: Exp -> Bool
-isTriv e = 
+isTriv e =
    case e of
      VarE _ -> True
      LitE _ -> True
@@ -223,12 +251,12 @@ isTriv e =
      PrimAppE MkFalse [] -> True
      ----------------- POLICY DECISION ---------------
      -- Leave these as trivial for now:
-     ProjE _ (VarE _) -> True     
+     ProjE _ (VarE _) -> True
      MkProdE ls -> all isTriv ls  -- TEMP/FIXME: probably remove this a
      _  -> False
 
 
-                 
+
 {-
 -- | Promote a value to a term that evaluates to it.
 l1FromValue :: Value Exp -> Exp
@@ -309,19 +337,19 @@ add1Prog = Prog (fromListDD [DDef "Tree" [ ("Leaf",[IntTy])
                                          , ("Node",[Packed "Tree", Packed "Tree"])]])
                 (M.fromList [("add1",exadd1)])
                 Nothing
-         
+
 exadd1 :: FunDef Ty Exp
 exadd1 = FunDef "add1" ("tr",treeTy) treeTy exadd1Bod
 
 exadd1Bod :: Exp
 exadd1Bod =
-    CaseE (VarE "tr") $ M.fromList $ 
-      [ ("Leaf", (["n"], PrimAppE AddP [VarE "n", LitE 1]))
-      , ("Node", (["x","y"], MkPackedE "Node"
-                              [ AppE "add1" (VarE "x")
-                              , AppE "add1" (VarE "y")]))
+    CaseE (VarE "tr") $
+      [ ("Leaf", ["n"], PrimAppE AddP [VarE "n", LitE 1])
+      , ("Node", ["x","y"], MkPackedE "Node"
+                             [ AppE "add1" (VarE "x")
+                             , AppE "add1" (VarE "y")])
       ]
 
 
 
-    
+

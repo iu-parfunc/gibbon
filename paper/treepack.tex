@@ -88,7 +88,21 @@
 \maketitle
 
 \begin{abstract}
-This is the text of the abstract.
+When written idiomatically in most programming languages, programs that traverse
+and construct trees operate over pointer-based data structures, with one heap
+object per-leaf and node.  While this may seem tautological, we show that common
+tree traversal---found in compiler passes, space-partitioning trees, and
+elsewhere---can instead be automatically compiled to operate on pointer-free
+pre-order serializations of trees.  On current x86 architectures such programs
+can run up to several times faster than their pointer-based counterparts.
+
+We present a prototype compiler for a small first-order, purely functional
+language of tree traversals.  The output language includes mutable cursors into
+input and output buffers for packed data.  We propose a compilation technique
+with an effect system for capturing traversal behavior, combined with a
+lightweight analysis inferring data flow, and a program synthesis step for
+creating missing traversals.
+  
 \end{abstract}
 
 \category{CR-number}{subcategory}{third-level}

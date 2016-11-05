@@ -20,18 +20,6 @@ gcc --version
 
 source set_env.sh
 
-set +x; echo
-echo "  Racket code"
-echo "----------------------------------------"
-set -x
-cd $top/ASTBenchmarks/common/racket; make
-cd $top/ASTBenchmarks/substitution/treelang; make
-
-raco make -v $top/ASTBenchmarks/substitution/racket/subst.rkt \
-             $top/ASTBenchmarks/rewrite.rkt
-
-racket $top/typecheck-stlc/examples.rkt
-
 
 set +x; echo
 echo "  Compiler"
@@ -43,7 +31,7 @@ cd $top/TreeLang
 stack --install-ghc test "$STACKARGS"
 
 cd $top/TreeLang/examples
-make test
+make test -j
 
 
 
@@ -58,6 +46,25 @@ cd $top/ASTBenchmarks/common/c/
 make check
 
 
+
+set +x; echo
+echo "  Racket code"
+echo "----------------------------------------"
+set -x
+cd $top/ASTBenchmarks/common/racket; make
+cd $top/ASTBenchmarks/substitution/treelang; make
+
+raco make -v $top/ASTBenchmarks/substitution/racket/subst.rkt \
+             $top/ASTBenchmarks/rewrite.rkt
+
+racket $top/typecheck-stlc/examples.rkt
+
+# If we wanted to be really aggressive we could run all racket files
+# in the Repo:
+racket $top/ASTBenchmarks/tests/*.rkt
+
+
+
 if [ "$NOBINTREE" != "1" ]; then 
   set +x; echo
   echo "  Bintree Microbench:"
@@ -70,6 +77,7 @@ if [ "$NOBINTREE" != "1" ]; then
       make run_small
   else
       echo "Not under Docker. Don't do a full Bintree build, it requires too many toolchains."
-      make c ghc run_small_core
+      make c ghc -j
+      make run_small_core
   fi
 fi

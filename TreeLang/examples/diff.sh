@@ -2,6 +2,16 @@
 
 set -e
 
+function checkfile() {
+    if ! [ -e "$1" ]; then
+        echo "File does not exist, cannot diff!: " $1
+        exit 1
+    fi
+}
+
+checkfile $1
+checkfile $2
+
 A=`mktemp`
 B=`mktemp`
 
@@ -12,5 +22,11 @@ diff $A $B
 code=$?
 
 rm $A $B
+
+if [ "$code" == "0" ]; then
+    echo "  -> Success.";
+else
+    echo "ERROR: Answers differed!";
+fi
 
 exit $code

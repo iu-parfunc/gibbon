@@ -45,7 +45,7 @@ import Text.PrettyPrint.Mainland
 import Packed.FirstOrder.Common hiding (funBody)
 
 import Debug.Trace
-    
+
 --------------------------------------------------------------------------------
 -- * AST definition
 
@@ -349,7 +349,7 @@ codegenTriv (TagTriv i) = [cexp| $i |]
 
 codegenTail :: Tail -> C.Type -> SyM [C.BlockItem]
 
-codegenTail (RetValsT [tr]) _ty = return $ [ C.BlockStm [cstm| return $(codegenTriv tr); |] ]
+codegenTail (RetValsT [tr]) _ty = return [ C.BlockStm [cstm| return $(codegenTriv tr); |] ]
 
 codegenTail (RetValsT ts) ty =
     return $ [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
@@ -413,18 +413,23 @@ codegenTail (LetAllocT lhs vals body) ty =
     do let structTy = codegenTy (ProdTy (map fst vals))
            size = [cexp| sizeof($ty:structTy) |]
        tal <- codegenTail body ty
-
        return$ assn (codegenTy PtrTy) lhs [cexp| ( $ty:structTy *)ALLOC( $size ) |] :
-               [ C.BlockStm [cstm| $id:lhs->$id:fld = $(codegenTriv trv); |]
+               [ C.BlockStm [cstm| (($ty:structTy *)  $id:lhs)->$id:fld = $(codegenTriv trv); |]
                | (ix,(_ty,trv)) <- zip [0..] vals
                , let fld = "field"++show ix] ++ tal
 
 codegenTail (LetUnpackT bs scrt body) ty =
     do let mkFld :: Int -> C.Id
            mkFld i = C.toIdent ("field" ++ show i) noLoc
+        
+           fldTys = map snd bs
+           struct_ty = codegenTy (ProdTy fldTys)
 
-           binds = zipWith (\i (v, t) -> [cdecl| $ty:(codegenTy t) $id:v = $exp:(cid scrt).$id:(mkFld i); |])
-                           [0..] bs
+           mk_bind i (v, t) = [cdecl|
+             $ty:(codegenTy t) $id:v = ( ( $ty:struct_ty * ) $exp:(cid scrt) )->$id:(mkFld i);
+           |]
+
+           binds = zipWith mk_bind [0..] bs
 
        body' <- codegenTail body ty
        return (map C.BlockDecl binds ++ body')
@@ -501,11 +506,11 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     GetFirstWord ->
                      let [ptr] = rnds in
                      case bnds of
-                       [(outV,PtrTy)] ->
-                        [ C.BlockDecl [cdecl| $ty:(codegenTy BoxedTagTy) $id:outV = * (( $ty:(codegenTy BoxedTagTy) *) $(codegenTriv ptr)); |] ]
-                       _ -> error $"codegen/GetFirstWord: result type should be one PtrTy, was: "++show bnds
-
-
+                       [(outV,outTy)] ->
+                        [ C.BlockDecl [cdecl|
+                            $ty:(codegenTy outTy) $id:outV =
+                              * (( $ty:(codegenTy outTy) *) $(codegenTriv ptr));
+                          |] ]
 
                     -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'
@@ -534,11 +539,14 @@ saveDictPtr is =
        return is -- $ [init] ++ is ++ [end]
 
 makeName :: [Ty] -> String
-makeName []            = "Prod"
-makeName (IntTy:ts)    = "Int" ++ makeName ts
-makeName (CursorTy:ts) = "Cursor" ++ makeName ts
-makeName (TagTy:ts)    = "Tag" ++ makeName ts
-makeName (x:_)         = error $ "makeName, not handled: "++show x
+makeName tys = concatMap makeName' tys ++ "Prod"
+
+makeName' :: Ty -> String
+makeName' IntTy = "Int"
+makeName' CursorTy = "Cursor"
+makeName' TagTy = "Tag"
+makeName' PtrTy = "Ptr"
+makeName' x = error $ "makeName', not handled: " ++ show x
 
 mkBlock :: [C.BlockItem] -> C.Stm
 mkBlock ss = C.Block ss noLoc

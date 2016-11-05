@@ -20,7 +20,8 @@ import qualified Packed.FirstOrder.HaskellFrontend as HS
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.LTraverse (inferEffects, Prog(..))
 import qualified Packed.FirstOrder.LTraverse as L2
-import Packed.FirstOrder.Passes.Cursorize (cursorize, lower)
+import Packed.FirstOrder.Passes.Cursorize
+import Packed.FirstOrder.Passes.Lower
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import Packed.FirstOrder.Target (codegenProg)
 import System.FilePath
@@ -92,11 +93,11 @@ freshNames (L1.Prog defs funs main) =
                  return $ L1.MkProdE es'
           freshExp vs (L1.CaseE e mp) =
               do e' <- freshExp vs e
-                 mp' <- mapM (\(args,ae) -> do
+                 mp' <- mapM (\(c,args,ae) -> do
                                 args' <- mapM gensym args
                                 let vs' = (zip args args') ++ vs
                                 ae' <- freshExp vs' ae
-                                return (args',ae')) mp
+                                return (c,args',ae')) mp
                  return $ L1.CaseE e' mp'
           freshExp vs (L1.MkPackedE c es) =
               do es' <- mapM (freshExp vs) es
@@ -171,14 +172,12 @@ flatten (L1.Prog defs funs main) =
           flattenExp env (L1.CaseE e mp) =
               do fe <- flattenExp env e
                  v <- gensym "tmp_flat"
-                 let als = M.assocs mp
-                     ty  = typeExp env fe
-                 fals <- forM als $ \(c,(args,ae)) -> do
+                 let ty  = typeExp env fe
+                 fals <- forM mp $ \(c,args,ae) -> do
                            let tys = lookupDataCon defs c
                            fae <- flattenExp ((zip args tys) ++ env) ae
-                           return (c,(args,fae))
-                 let fmp = M.fromList fals
-                 return $ mkLetE (v,ty,fe) $ L1.CaseE (L1.VarE v) fmp
+                           return (c,args,fae)
+                 return $ mkLetE (v,ty,fe) $ L1.CaseE (L1.VarE v) fals
           flattenExp env (L1.MkPackedE c es) =
               do fes <- mapM (flattenExp env) es
                  nams <- mapM gensym $ replicate (length fes) "tmp_flat"
@@ -236,7 +235,7 @@ flatten (L1.Prog defs funs main) =
           typeExp env (L1.MkProdE es) =
               L1.ProdTy $ map (typeExp env) es
           typeExp env (L1.CaseE _e mp) =
-              let (c,(args,e)) = (M.assocs mp) !! 0
+              let (c,args,e) = head mp
               in typeExp ((zip args (lookupDataCon defs c)) ++ env) e
           typeExp _env (L1.MkPackedE c _es) = L1.Packed c
           typeExp env (L1.TimeIt e _) = typeExp env e
@@ -280,7 +279,7 @@ inlineTriv (L1.Prog defs funs main) =
           inlineTrivExp env (L1.MkProdE es) = L1.MkProdE $ map (inlineTrivExp env) es
           inlineTrivExp env (L1.CaseE e mp) =
               let e' = inlineTrivExp env e
-                  mp' = M.fromList $ map (\(c,(args,ae)) -> (c,(args,inlineTrivExp env ae))) $ M.assocs mp
+                  mp' = map (\(c,args,ae) -> (c,args,inlineTrivExp env ae)) mp
               in L1.CaseE e' mp'
           inlineTrivExp env (L1.MkPackedE c es) = L1.MkPackedE c $ map (inlineTrivExp env) es
           inlineTrivExp env (L1.TimeIt e t) = L1.TimeIt (inlineTrivExp env e) t
@@ -347,7 +346,8 @@ defaultConfig =
 
 configParser :: Parser Config
 configParser = Config <$> inputParser <*> modeParser
-                      <*> switch (long "packed" <> help "enable packed tree representation in C backend")
+                      <*> switch (short 'p' <> long "packed" <>
+                                  help "enable packed tree representation in C backend")
                       <*> (option auto (short 'v' <> long "verbose" <>
                                        help "Set the debug output level, 1-5, mirrors DEBUG env var.")
                            <|> pure 1)
@@ -478,7 +478,8 @@ compile Config{input,mode,packed,verbosity} fp = do
                        l2b <- pass' "addTraversals"            (addTraversals mt)       l2
                        l2c <- pass' "addCopies"                addCopies                l2b
                        l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
-                       l2e <- pass  "cursorize"                cursorize                l2d
+--                     l2e <- pass  "cursorize"                cursorize                l2d
+                       l2e <- pass  "cursorDirect"             cursorDirect             l2d
                        return l2e
                      else return l2
                  l3  <-       pass  "lower"                    lower                    l2'
@@ -488,9 +489,10 @@ compile Config{input,mode,packed,verbosity} fp = do
                           liftIO $ exitSuccess
                   else do
                    str <- lift (codegenProg l3)
-                   lift$ dbgPrintLn lvl $ "\nFinal C codegen:"
-                   lift$ dbgPrintLn lvl sepline
-                   lift$ dbgPrintLn lvl str
+                   -- The C code is long, so put this at a higher level.
+                   lift$ dbgPrintLn lvl $ "\nFinal C codegen: "++show (length str)++" characters."
+                   lift$ dbgPrintLn 4 sepline
+                   lift$ dbgPrintLn 4 str
                    return str)
               cnt0
     

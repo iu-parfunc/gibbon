@@ -1,13 +1,13 @@
 
 default: test
 
-test: 
-	$(MAKE) run_tests
+test: answers parse_all
+# Sequentialize these, they stomp on *.out:
+	$(MAKE) run_tests 
 	$(MAKE) run_tests_packed
 	$(MAKE) run_tests_interp2
 
-	$(MAKE) parse_all
-	$(MAKE) racket_valid
+#	$(MAKE) racket_valid
 # Need methodology for this.
 #	$(MAKE) racket_invalid
 
@@ -27,48 +27,58 @@ racket_invalid: treelang_lib
 
 TREEC= stack exec -- treec
 
-parse_all: 
+# Make sure the compiler is built
+build:
 	stack build
-	for f in `ls *.sexp`; do \
-          echo "Parsing $$f"; \
-          $(TREEC) --parse $$f || exit 1; done
+
+parse_all: build
+	@echo "\n Parsing all tests, even those that don't run yet."
+	@echo "--------------------------------------------------"
+	rm -f *.parsed
+	$(MAKE) all_parsed
+
+ALL_TESTS= $(shell ls test*.sexp)
+
+all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
+
+%.sexp.parsed : %.sexp
+	@echo "Parsing $^"
+	$(TREEC) --parse $^ 2> $@
 
 PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
     test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp test05_app.sexp \
-	test05b_app.sexp \
-    test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp
+	test05b_app.sexp test06_case.sexp test06b_case.sexp \
+    test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp \
+	test15_packed.sexp
 # FIX THESE: All are blocked on something.  Then move them to the above list:
 
 #  test04  -- MkTrue typeExp
 #  test04b -- ''
 #  test04c -- lower needs detuple
-#  test06  -- lower datacon
-
-#  test08  -- parsing empty-dict
-
-#  test10  -- codegenTail line 235
-#  test15  -- lower/typ'
 
 
 
 TREECARGS ?= --run
 
 # Run the tests that work:
-run_tests: answers
+run_tests: build
 	@echo "\n Compiling and running tests through our compiler:"
 	@echo "--------------------------------------------------"
-	stack build
-	for f in $(PASSING_TESTS); do \
-          echo "Testing $$f"; \
-          $(TREEC) $(TREECARGS) $$f > $$f.out; \
-          echo "Now check expected $$f.ans, versus received, $$f.out"; \
-          ./diff.sh $$f.ans $$f.out; \
-          if [ $$? != "0" ]; then echo "ERROR: Answers differed!"; exit 1; fi; \
-          echo "  -> Success."; \
-        done
+	rm -f *.out
+	$(MAKE) all_tests
 
+all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 
-PACKED_TESTS= test00_add.sexp test02_arith.sexp test03b_eqs.sexp test03c_eqsym.sexp
+# Assumes stack build:
+%.sexp.out : %.sexp
+	@echo "Testing $^"
+	$(TREEC) $(TREECARGS) $^ > $@
+	@echo "Now check expected $$f.ans, versus received, $$f.out";
+	./diff.sh $^.ans $@
+
+PACKED_TESTS= test00_add.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
+    test03b_eqs.sexp test03c_eqsym.sexp
+
 #  test04b -- cursorize/mkprod
 #  test05  -- cursorize tail Apps
 #  test05b -- cursorize/let
@@ -94,7 +104,8 @@ run_tests_interp2: test00_add.sexp.ans
 # test04_vector.sexp    -- MkTrue in flatten
 # test04b_vector.sexp   -- ''
 # test04c_ifvector.sexp -- lower needs detuple
-# test06_case.sexp      -- let/datacon not allowed thru lower yet
+# test06_case.sexp      -- unhandled interp case
+# test06b_case.sexp      -- 
 
 # test15_packed.sexp    -- no lowering of packed types yet
 # test16_forlist.sexp   -- no list support yet
@@ -103,12 +114,19 @@ run_tests_interp2: test00_add.sexp.ans
 
 # --------------------------------------------------------------------------------
 
-ANSWERS= $(addsuffix .ans,$(INTERP_TESTS))
+ANSWERS= $(addsuffix .ans,$(INTERP_TESTS)) $(addsuffix .ans,$(PASSING_TESTS))
 
 %.sexp.ans : %.sexp
 	racket $^ | tee $@
 
 answers: $(ANSWERS)
+
+# --------------------------------------------------------------------------------
+
+valgrind: $(addsuffix .valgrind,$(PASSING_TESTS))
+
+%.sexp.valgrind : %.sexp %.sexp.out
+	valgrind ./$(basename $(basename $@)).exe
 
 # --------------------------------------------------------------------------------
 
