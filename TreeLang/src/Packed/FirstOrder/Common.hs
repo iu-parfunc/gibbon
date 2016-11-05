@@ -10,14 +10,14 @@
 
 -- | Utilities and common types.
 
-module Packed.FirstOrder.Common 
+module Packed.FirstOrder.Common
        ( -- * Type and Data Constructors
          Constr
          -- * Variables and gensyms
        , Var, varAppend, SyM, gensym, genLetter, runSyM
 
        , LocVar, Env2(..)
-         
+
          -- * Values (for interpreters)
        , Value(..), ValEnv
          -- * Top-level function defs
@@ -30,9 +30,8 @@ module Packed.FirstOrder.Common
        , (#), fragileZip, sdoc
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt
-       ) where 
+       ) where
 
-import Data.Maybe (catMaybes)
 import Data.Char
 import Control.Monad.State
 import Control.DeepSeq (NFData)
@@ -47,13 +46,13 @@ import System.Environment
 import System.IO.Unsafe (unsafePerformIO)
 import Debug.Trace
 
--- type CursorVar = Var       
+-- type CursorVar = Var
 type Var    = String
 type Constr = String
 
 -- | Abstract location variables.
 type LocVar = Var
-    
+
 varAppend :: Var -> Var -> Var
 varAppend = (++)
 
@@ -68,7 +67,7 @@ data Value a = VInt Int
   deriving (Read,Show,Eq,Ord,Generic)
 
 type ValEnv a = Map Var (Value a)
-    
+
 ------------------------------------------------------------
 
 -- | A common currency for a two part environment consisting of
@@ -82,7 +81,7 @@ type DDefs a = Map Var (DDef a)
 -- | In the extreme case we can strip packed datatypes of all type
 -- parameters, or we can allow them to retain type params but require
 -- that they always be fully instantiated to monomorphic types in the
--- context of our monomorphic programs.    
+-- context of our monomorphic programs.
 data DDef a = DDef { tyName:: Var
                    -- , tyArgs:: [Var] -- ^ No polymorphism for now!
                    , dataCons :: [(Constr,[a])] }
@@ -97,21 +96,21 @@ instance (Out k,Out v) => Out (Map k v) where
   docPrec n v = docPrec n (M.toList v)
 
 -- DDef utilities:
-                
+
 -- | Lookup a ddef in its entirety
-lookupDDef :: Out a => DDefs a -> Var -> DDef a 
+lookupDDef :: Out a => DDefs a -> Var -> DDef a
 lookupDDef = (#)
 
 -- | Get the canonical ordering for data constructors, currently based
 -- on ordering in the original source code.
 getConOrdering :: Out a => DDefs a -> Var -> [Constr]
 getConOrdering dd tycon = L.map fst dataCons
-  where DDef{dataCons} = lookupDDef dd tycon 
+  where DDef{dataCons} = lookupDDef dd tycon
 
 -- | Lookup the name of the TyCon that goes with a given DataCon.
 --   Must be unique!
 getTyOfDataCon :: Out a => DDefs a -> Var -> Var
-getTyOfDataCon dds con = fst $ lkp dds con                  
+getTyOfDataCon dds con = fst $ lkp dds con
 
 -- | Lookup the arguments to a data contstructor.
 lookupDataCon :: Out a => DDefs a -> Constr -> [a]
@@ -123,7 +122,7 @@ lkp dds con =
    -- Here we try to lookup in ALL datatypes, assuming unique datacons:
   case [ (tycon,variant)
        | (tycon, DDef{dataCons}) <- M.toList dds
-       , variant <- L.filter ((==con). fst) dataCons ] of   
+       , variant <- L.filter ((==con). fst) dataCons ] of
     [] -> error$ "lookupDataCon: could not find constructor "++show con
           ++", in datatypes:\n  "++show(doc dds)
     [hit] -> hit
@@ -131,19 +130,19 @@ lkp dds con =
           ++", in datatypes:\n  "++show(doc dds)
 
 
-            
+
 insertDD :: DDef a -> DDefs a -> DDefs a
-insertDD d = M.insertWith err (tyName d) d 
-  where 
+insertDD d = M.insertWith err (tyName d) d
+  where
    err = error $ "insertDD: data definition with duplicate name: "++show (tyName d)
 
 emptyDD :: DDefs a
 emptyDD  = M.empty
 
 fromListDD :: [DDef a] -> DDefs a
-fromListDD = L.foldr insertDD M.empty 
+fromListDD = L.foldr insertDD M.empty
 
-             
+
 -- Fundefs
 ----------------------------------------
 
@@ -158,45 +157,42 @@ data FunDef ty ex = FunDef { funName  :: Var
   deriving (Read,Show,Eq,Ord, Generic, Functor)
 
 -- deriving
-instance (NFData t, NFData e) => NFData (FunDef t e) where  
+instance (NFData t, NFData e) => NFData (FunDef t e) where
 
 instance (Out a, Out b) => Out (FunDef a b)
-    
+
 insertFD :: FunDef t e -> FunDefs t e -> FunDefs t e
-insertFD d = M.insertWith err (funName d) d 
+insertFD d = M.insertWith err (funName d) d
   where
    err = error $ "insertFD: function definition with duplicate name: "++show (funName d)
-    
+
 fromListFD :: [FunDef t e] -> FunDefs t e
 fromListFD = L.foldr insertFD M.empty
 
-    
+
 -- Gensym monad:
 ----------------------------------------
 
 newtype SyM a = SyM (State Int a)
- deriving (Functor, Applicative, Monad)
+ deriving (Functor, Applicative, Monad, MonadState Int)
 
 -- | Generate a unique symbol by attaching a numeric suffix.
 gensym :: Var -> SyM Var
-gensym v = SyM $ do modify (+1)
-                    n <- get
-                    return (v `varAppend` show n)
+gensym v = state (\n -> (v `varAppend` show n, n + 1))
 
 -- | Generate alphabetic variables 'a','b',...
 genLetter :: SyM Var
-genLetter = SyM $ 
-    do n <- get
-       modify (+1)       
-       return [chr (n + ord 'a')]
-
+genLetter = do
+    n <- get
+    modify (+1)
+    return [chr (n + ord 'a')]
 
 runSyM :: Int -> SyM a -> (a,Int)
 runSyM n (SyM a) = runState a n
 
 ----------------------------------------
 
-                   
+
 (#) :: (Ord a, Out a, Out b, Show a)
     => Map a b -> a -> b
 m # k = case M.lookup k m of
@@ -211,7 +207,7 @@ fragileZip as [] = error$ "fragileZip: right ran out, while left still has: "++s
 fragileZip [] bs = error$ "fragileZip: left ran out, while right still has: "++show bs
 
 sdoc :: Out a => a -> String
-sdoc = show . doc                   
+sdoc = show . doc
 
 ----------------------------------------------------------------------------------------------------
 -- DEBUGGING
@@ -219,7 +215,7 @@ sdoc = show . doc
 
 theEnv :: [(String, String)]
 theEnv = unsafePerformIO getEnvironment
-       
+
 -- | Debugging flag shared by all modules.
 --   This is activated by setting the environment variable DEBUG=1..5
 dbgLvl :: Int
@@ -240,7 +236,7 @@ defaultDbg = 0
 dbgPrint :: Int -> String -> IO ()
 dbgPrint lvl str = if dbgLvl < lvl then return () else do
     hPutStrLn stderr str
-    -- hPrintf stderr str 
+    -- hPrintf stderr str
     -- hFlush stderr
     -- printf str
     -- hFlush stdout
@@ -254,6 +250,6 @@ dbgTrace lvl msg val =
 
 dbgTraceIt :: Show a => Int -> String -> a -> a
 dbgTraceIt lvl msg x = dbgTrace lvl (msg++": "++show x) x
-           
+
 dbgPrintLn :: Int -> String -> IO ()
 dbgPrintLn lvl str = dbgPrint lvl (str++"\n")
