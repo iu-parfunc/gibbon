@@ -1,4 +1,6 @@
 
+default: cleaned_racket
+
 # We don't check in input data sets to git. We fetch them.
 
 # 1.0: initial cut from Racket main distro
@@ -6,12 +8,18 @@
 # 1.2: larger dataset, from Racket 6.6 main distro.
 DATASET=racket_expanded_files_v1.2.tgz
 
-default: cleaned_racket
-
 fetch: ${DATASET}
 
 $(DATASET):
 	wget http://cs.indiana.edu/~rrnewton/files/${DATASET}
+
+# Updated to no-list version [2016.11.04]:
+wget_cleaned:
+	wget http://cs.indiana.edu/~rrnewton/files/racket_cleaned_asts_v1.6.tgz
+
+wget_binary:
+	wget http://cs.indiana.edu/~rrnewton/files/racket_binary_packed_asts_v1.6.tgz
+
 
 expanded_racket: ${DATASET}
 	mkdir -p $@
@@ -26,11 +34,6 @@ expanded_racket: ${DATASET}
 	for file in `cat offenders_empty.txt`; do rm $$file; done
 	echo "\nOffenders and zero-sized removed.  Done."
 	$(MAKE) largest
-
-# Updated to no-list version [2016.11.04]:
-wget_cleaned:
-	wget http://cs.indiana.edu/~rrnewton/files/racket_cleaned_asts_v1.6.tgz
-
 
 cleaned_racket: rewrite.rkt
 	mkdir -p $@
