@@ -847,12 +847,10 @@ typ t =
     L1.SymTy  -> T.SymTy
     L1.BoolTy -> T.IntTy
     L1.ListTy{} -> error "lower/typ: FinishMe: List types"
-    (L1.ProdTy xs) -> T.ProdTy $ L.map typ xs
-    (L1.SymDictTy x) -> T.SymDictTy $ typ x
+    L1.ProdTy xs -> T.ProdTy $ L.map typ xs
+    L1.SymDictTy x -> T.SymDictTy $ typ x
     -- t | isCursorTy t -> T.CursorTy
-    (L1.PackedTy k _)
-        | L2.isCursorTy t -> T.CursorTy
-        | otherwise -> error "lower/typ: should not encounter non-cursor packed type."
+    L1.PackedTy{} -> T.PtrTy
 
 prim :: L1.Prim -> T.Prim
 prim p =
