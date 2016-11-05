@@ -36,8 +36,8 @@ import Prelude hiding (tail)
 --
 -- The only substantitive conversion here is of tupled arguments to
 -- multiple argument functions.
-lower :: L2.Prog -> SyM T.Prog
-lower L2.Prog{fundefs,ddefs,mainExp} = do
+lower :: Bool -> L2.Prog -> SyM T.Prog
+lower _pkd L2.Prog{fundefs,ddefs,mainExp} = do
   mn <- case mainExp of
           Nothing -> return Nothing
           Just x  -> (Just . T.PrintExp) <$> tail x
