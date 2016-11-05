@@ -85,9 +85,9 @@ data Exp = VarE Var
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | EqSymP          -- ^ Equality on Sym
           | EqIntP       -- ^ Equality on Int
-          | DictInsertP  -- ^ takes k,v,dict
-          | DictLookupP  -- ^ takes k dict, errors if absent
-          | DictEmptyP
+          | DictInsertP Ty  -- ^ takes k,v,dict, type param 
+          | DictLookupP Ty  -- ^ takes k dict, errors if absent, type param
+          | DictEmptyP Ty   -- ^ type param to avoid ambiguity 
           | ErrorP String Ty
               -- ^ crash and issue a static error message.
               --   To avoid needing inference, this is labeled with a return type.
@@ -242,9 +242,9 @@ primArgsTy p =
     EqIntP  -> [IntTy, IntTy]
     MkTrue  -> []
     MkFalse -> []
-    DictEmptyP -> []
-    DictInsertP -> error "primArgsTy: dicts not handled yet"
-    DictLookupP -> error "primArgsTy: dicts not handled yet"
+    DictEmptyP _ty -> []
+    DictInsertP _ty -> error "primArgsTy: dicts not handled yet"
+    DictLookupP _ty -> error "primArgsTy: dicts not handled yet"
     (ErrorP _ _) -> []
 
 primRetTy :: Prim -> Ty
@@ -257,9 +257,9 @@ primRetTy p =
     EqIntP  -> BoolTy
     MkTrue  -> BoolTy
     MkFalse -> BoolTy
-    DictEmptyP -> SymDictTy IntTy -- error "primArgsTy: dicts not handled yet" -- Polymorphic constant!!
-    DictInsertP -> SymDictTy IntTy -- error "primRetTy: dicts not handled yet"
-    DictLookupP -> IntTy -- error "primRetTy: dicts not handled yet"
+    DictEmptyP ty -> SymDictTy ty
+    DictInsertP ty -> SymDictTy ty 
+    DictLookupP ty -> ty
     (ErrorP _ ty) -> ty
 
 
