@@ -485,7 +485,8 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                        [(VarTriv dict),keyTriv] = rnds
                                    in [ C.BlockDecl [cdecl| int $id:outV = dict_lookup($(codegenTriv keyTriv)); |] ]
                     DictEmptyP -> []
-                    NewBuf -> unfinished 3
+                    NewBuf   -> let [(outV,CursorTy)] = bnds in
+                                [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED(DEFAULT_BUF_SIZE); |] ]                                
                     WriteTag -> let [(outV,CursorTy)] = bnds
                                     [(TagTriv tag),(VarTriv cur)] = rnds
                                 in [ C.BlockStm [cstm| *($id:cur) = $tag; |]

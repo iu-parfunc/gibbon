@@ -6,7 +6,11 @@
 
 #define ALLOC malloc
 
+#define ALLOC_PACKED malloc
+
 #define SIZE 1000
+
+#define DEFAULT_BUF_SIZE 1000000
 
 typedef struct dict_item {
   int key;
@@ -35,6 +39,7 @@ void dict_insert(int key, int val) {
   DICT_PTR->key = key;
   DICT_PTR->val = val;
 }
+
 
 // fun fact: __ prefix is actually reserved and this is an undefined behavior.
 // These functions must be provided by the code generator.

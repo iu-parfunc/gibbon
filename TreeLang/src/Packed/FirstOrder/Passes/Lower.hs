@@ -170,6 +170,11 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                    L1.substE (L1.ProjE 1 (L1.VarE pr)) (L1.VarE ctmp) bod
         in tail bod'
 
+    L1.LetE (v,_,C.NewBuffer) bod ->
+      T.LetPrimCallT [(v,T.CursorTy)] T.NewBuf [] <$>
+         tail bod
+
+
     ---------------------
     -- (3) Proper primapps.
     L1.LetE (v,t,L1.PrimAppE p ls) bod ->
