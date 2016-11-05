@@ -231,7 +231,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       exp' <- if L1.hasPacked outT
               then exp bod
               else do curs <- gensym "curs"
-                      LetE (curs, CursorTy, ProjE 0 (VarE newArg)) <$> 
+                      LetE (curs, CursorTy, projVal newArg) <$> 
                         exp2 curs bod
       return $ L2.FunDef funname newTy newArg exp'
   ------------------------------------------------------------
@@ -259,13 +259,40 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       AppE v e      -> AppE v     <$> exp e
       PrimAppE p ls -> PrimAppE p <$> mapM exp ls
       ProjE i e  -> ProjE i <$> exp e 
-      CaseE e ls -> CaseE <$> exp e <*>
-                     mapM (\(k,vrs,e) -> (k,vrs,) <$> exp e) ls
+      CaseE e ls -> do
+         cur0 <- gensym "cursIn"
+--          | L1.hasPacked (tyOfCase ddefs ex) -> __
+         let unpack :: (Constr, [Var]) -> Exp -> SyM Exp
+             unpack (k,vrs) ex =
+              let go c [] = exp ex -- Everything is now in scope for the body.
+                  go c ((vr,IntTy):rs) = do
+                    tmp <- gensym "tptmp"
+                    let c' = case rs of
+                               [] -> "end"
+                               (v2,_):_ -> witnessOf v2
+                    LetE (tmp, addCurTy IntTy, ReadInt c) <$>
+                     LetE (c', CursorTy, projCur tmp) <$>
+                      LetE (vr, IntTy, projVal tmp) <$>
+                       go _ rs
+                  -- A Packed field:
+                  go c ((vr,ty):rs) | L1.hasPacked ty = do
+                    __
+                                         
+              in go cur0 (zip vrs (lookupDataCon ddefs k))
+
+         CaseE <$> exp e <*> (forM ls $ \ (k,vrs,e) -> do
+                                e' <- unpack (k,vrs) e
+                                return (k,[cur0],e'))
       MkProdE ls -> MkProdE <$> mapM exp ls
       TimeIt e t -> TimeIt <$> exp e <*> pure t
       IfE a b c  -> IfE <$> exp a <*> exp b <*> exp c
 --        MapE (v,t,rhs) bod -> __ 
 --        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+
+  -- Establish convention of putting cursor after value:
+  addCurTy ty = ProdTy[ty,CursorTy]
+  projCur v = ProjE 1 (VarE v)
+  projVal v = ProjE 0 (VarE v)
 
   -- | Take a destination cursor.  Assume only a single packed output.
   --   Here we are in a context that flows to Packed data, we follow
@@ -318,6 +345,10 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
 cursPairTy :: L1.Ty
 cursPairTy = ProdTy [CursorTy, CursorTy]
 
+-- | Witness the location of a local variable.
+witnessOf :: Var -> Var
+witnessOf = ("witness_"++)
+             
 -- Packed types are gone, replaced by cursPair:
 strip :: L1.Ty -> L1.Ty
 strip ty =
@@ -329,6 +360,11 @@ strip ty =
     (PackedTy x1 x2) -> cursPairTy
     (ListTy x) -> ListTy $ strip x
 
+tyOfCase :: Out a => DDefs a -> Exp -> L1.Ty
+tyOfCase dd (CaseE _ ((k,_,_):_)) = PackedTy (getTyOfDataCon dd k) ()
+
+
+-- template:                  
         -- VarE v -> __ 
         -- LitE n -> __ 
         -- AppE v e -> __ 
@@ -363,6 +399,8 @@ pattern NewBuffer = AppE "NewBuffer" (MkProdE [])
 
 -- Tag writing is still modeled by MkPackedE.
 pattern WriteInt v e = AppE "WriteInt" (MkProdE [VarE v, e])
+-- One cursor in, (int,cursor') output.
+pattern ReadInt v = AppE "ReadInt" (MkProdE [VarE v])
 
 pattern CursorTy = PackedTy "CURSOR_TY" () -- Tempx
 
