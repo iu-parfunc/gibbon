@@ -13,6 +13,7 @@
 module Packed.FirstOrder.Passes.Cursorize
     ( cursorize
     , cursorDirect
+    , pattern WriteInt, pattern ReadInt, pattern NewBuffer, pattern CursorTy
     ) where
 
 import Control.Monad
@@ -35,8 +36,248 @@ import Debug.Trace
 lvl :: Int
 lvl = 5
 
+--------------------------------------------------------------------------------
+-- STRATEGY ONE - inline until we have direct cursor handoff
+--------------------------------------------------------------------------------
 
--- First, some general types and utilities:
+-- Some expressions are ready to take and return cursors.  Namely,
+-- data constructors and function calls that return one packed type.  Examples:
+
+--   MkFoo 3 (MkBar 4)
+--   MkFoo 3 (fn 4)
+
+-- In either case, the MkFoo constructor can thread its output cursor
+-- directly to MkBar or "fn".  But this direct-handoff approach
+-- doesn't work for everything.  Functions that return multiple packed
+-- values foil it and require sophisticated routing.
+
+-- Direct handoff binds cursor-flow to control-flow.  Conditionals are
+-- fine:
+
+--   MkFoo (if a b c)
+
+----------------------------------------
+
+-- The value environment remembers in-scope let-bindings.
+type ValEnv = M.Map Var L1.Exp
+
+cursorDirect :: L2.Prog -> SyM L2.Prog
+cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
+  ---- Mostly duplicated boilerplate with cursorize below ----
+  ------------------------------------------------------------
+  fds' <- mapM fd $ M.elems fundefs
+  -- let gloc = "global"
+  mn <- case mainExp of
+          Nothing -> return Nothing
+          Just x  -> Just <$> exp x
+  return L2.Prog{ fundefs = M.fromList $ L.map (\f -> (L2.funname f,f)) fds'
+                , ddefs = ddefs
+                , mainExp = mn
+                }
+ where
+  fd :: L2.FunDef -> SyM L2.FunDef
+  fd (f@L2.FunDef{funname,funty,funarg,funbod}) =
+      let (newTy@(ArrowTy inT _ outT),newIn,newOut) = cursorizeTy funty in
+      dbgTrace lvl ("Processing fundef: "++show(doc f)++"\n  new type: "++sdoc newTy) $
+   do
+      fresh <- gensym "tupin"
+      let (newArg, bod) =
+              if newIn == [] -- No injected cursor params..
+              then (funarg, funbod)
+              else ( fresh
+                   , LetE (funarg, fmap (\_->()) inT,
+                           (projNonFirst (length newIn) (L1.VarE fresh)))
+                          funbod)
+      exp' <- if L1.hasPacked outT
+              then exp bod
+              else do curs <- gensym "curs"
+                      LetE (curs, CursorTy, projVal newArg) <$>
+                        exp2 curs bod
+      return $ L2.FunDef funname newTy newArg exp'
+  ------------------------------------------------------------
+
+  -- | Here we are not in a context that flows to Packed data, thus no
+  --   destination cursor.
+  exp :: Exp -> SyM Exp
+  exp ex =
+    case ex of
+      VarE _ -> return ex
+      LitE _ -> return ex
+      MkPackedE k ls -> error "cursorDirect: Should not have encountered MkPacked if type is not packed."
+
+      -- If we're not returning a packed type in the current
+      -- context, the we can only possibly see one that does NOT
+      -- escape.  I.e. a temporary one:
+      LetE (v,ty,rhs) bod
+          | L1.hasPacked ty -> do tmp <- gensym  "tmpbuf"
+                                  rhs' <- LetE (tmp,CursorTy,NewBuffer) <$>
+                                           exp2 tmp rhs
+                                  LetE (v,strip ty,rhs') <$> exp bod
+          | otherwise -> do rhs' <- exp rhs
+                            LetE (v,ty,rhs') <$> exp bod
+
+      AppE v e      -> AppE v     <$> exp e
+      PrimAppE p ls -> PrimAppE p <$> mapM exp ls
+      ProjE i e  -> ProjE i <$> exp e
+      CaseE e ls -> do
+         cur0 <- gensym "cursIn"
+--          | L1.hasPacked (tyOfCase ddefs ex) -> __
+         let unpack :: (Constr, [Var]) -> Exp -> SyM Exp
+             unpack (k,vrs) ex =
+              let go c [] = exp ex -- Everything is now in scope for the body.
+                  go c ((vr,ty):rs) = do
+                    tmp <- gensym "tptmp"
+                    let c' = case rs of
+                               [] -> "end"
+                               (v2,_):_ -> witnessOf v2
+                    case ty of
+                      IntTy ->
+                        LetE (tmp, addCurTy IntTy, ReadInt c) <$>
+                         LetE (c', CursorTy, projCur tmp) <$>
+                          LetE (vr, IntTy, projVal tmp) <$>
+                           go c' rs
+                      ty | L1.hasPacked ty -> do
+                       -- Strategy: assume currently-unbound witness variables:
+                       -- A later traversal will reorder.
+                       go c' rs
+
+              in go cur0 (zip vrs (lookupDataCon ddefs k))
+
+         -- Because the scrutinee is, naturally, of packed type, it
+         -- will be represented as a pair of (start,end) pointers.
+         VarE scrut <- exp e -- ASSUME FLATTENING here.
+         CaseE (projVal scrut) <$>
+               (forM ls $ \ (k,vrs,e) -> do
+                  e' <- unpack (k,vrs) e
+                  return (k,[cur0],e'))
+      MkProdE ls -> MkProdE <$> mapM exp ls
+      TimeIt e t -> TimeIt <$> exp e <*> pure t
+      IfE a b c  -> IfE <$> exp a <*> exp b <*> exp c
+--        MapE (v,t,rhs) bod -> __
+--        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+
+  -- Establish convention of putting end-cursor after value (or start-cursor):
+  addCurTy ty = ProdTy[ty,CursorTy]
+  projCur v = ProjE 1 (VarE v)
+  projVal v = ProjE 0 (VarE v)
+
+  -- | Take a destination cursor.  Assume only a single packed output.
+  --   Here we are in a context that flows to Packed data, we follow
+  --   a convention of returning a pair of value/end.
+  exp2 :: Var -> Exp -> SyM Exp
+  exp2 destC ex =
+    let go = exp2 destC in
+    case ex of
+      -- We should not recur on these:
+      VarE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
+      LitE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
+
+      -- Every return context expecting a packed value must now accept
+      -- TWO values, a (st,en) pair, where "en" becomes the output cursor.
+      MkPackedE k ls -> do
+       tmp1  <- gensym "tmp"
+       dest' <- gensym "cursplus1_"
+       d'    <- gensym "curstmp"
+       -- This stands for the  "WriteTag" operation:
+       LetE (dest', PackedTy (getTyOfDataCon ddefs k) (),
+                  MkPackedE k [VarE destC]) <$>
+          let go d [] = return $ MkProdE [VarE destC, VarE d]
+                 -- ^ The final return value lives at the position of the out cursor
+              go d ((rnd,IntTy):rst) | L1.isTriv rnd =
+                  LetE (d', CursorTy, WriteInt d rnd ) <$>
+                    (go d' rst)
+              -- Here we recursively transfer control
+              go d ((rnd,ty@PackedTy{}):rst) = do
+                  tup  <- gensym "tup"
+                  d'   <- gensym "dest"
+                  rnd' <- exp2 d rnd
+                  LetE (tup, cursPairTy, rnd') <$>
+                   LetE (d', CursorTy, ProjE 1 (VarE tup) ) <$>
+                    (go d' rst)
+          in go dest' (zip ls (lookupDataCon ddefs k))
+
+      LetE (v,_,rhs) bod -> __
+
+      AppE v e      -> AppE v     <$> go e
+      PrimAppE p ls -> PrimAppE p <$> mapM go ls
+      ProjE i e  -> ProjE i <$> go e
+      CaseE e ls -> CaseE <$> go e <*>
+                     mapM (\(k,vrs,e) -> (k,vrs,) <$> go e) ls
+      MkProdE ls -> MkProdE <$> mapM go ls
+      TimeIt e t -> TimeIt <$> go e <*> pure t
+      IfE a b c  -> IfE <$> go a <*> go b <*> go c
+--        MapE (v,t,rhs) bod -> __
+--        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+
+cursPairTy :: L1.Ty
+cursPairTy = ProdTy [CursorTy, CursorTy]
+
+-- | Witness the location of a local variable.
+witnessOf :: Var -> Var
+witnessOf = ("witness_"++)
+
+-- Packed types are gone, replaced by cursPair:
+strip :: L1.Ty -> L1.Ty
+strip ty =
+  case ty of
+    IntTy  -> ty
+    BoolTy -> ty
+    (ProdTy x) -> ProdTy $ L.map strip x
+    (SymDictTy x) -> SymDictTy $ strip x
+    (PackedTy x1 x2) -> cursPairTy
+    (ListTy x) -> ListTy $ strip x
+
+tyOfCase :: Out a => DDefs a -> Exp -> L1.Ty
+tyOfCase dd (CaseE _ ((k,_,_):_)) = PackedTy (getTyOfDataCon dd k) ()
+
+
+-- template:
+        -- VarE v -> __
+        -- LitE n -> __
+        -- AppE v e -> __
+        -- PrimAppE _ ls -> __
+        -- LetE (v,_,rhs) bod -> __
+        -- ProjE _ e -> __
+        -- CaseE e ls -> __
+        -- MkProdE ls     -> __
+        -- MkPackedE _ ls -> __
+        -- TimeIt e _ -> __
+        -- IfE a b c -> __
+        -- MapE (v,t,rhs) bod -> __
+        -- FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+
+
+--------------------------------------------------------------------------------
+-- STRATEGY TWO - see the future (dataflow analysis)
+--------------------------------------------------------------------------------
+
+-- Annotate each type in a let binding with which location it flows to.a
+-- pattern Ann
+
+-- Insert location annotations on each let-bound variable.  These
+-- record facts about the subsequent dataflow of the value, and ultimately
+-- determine which output cursors to use.
+-- insertLocs
+
+
+--------------------------------------------------------------------------------
+
+pattern NewBuffer = AppE "NewBuffer" (MkProdE [])
+
+-- Tag writing is still modeled by MkPackedE.
+pattern WriteInt v e = AppE "WriteInt" (MkProdE [VarE v, e])
+-- One cursor in, (int,cursor') output.
+pattern ReadInt v = AppE "ReadInt" (MkProdE [VarE v])
+
+pattern CursorTy = PackedTy "CURSOR_TY" () -- Tempx
+
+-- pattern MarkCursor e = AppE "MarkCursor" (MkProdE [e])
+pattern MarkCursor c e = AppE "MarkCursor" (AppE c e)
+
+pattern GlobalC = "GlobalC"
+
+      
+-- Some general types and utilities:
 -- =============================================================================
 
 -- | Map every lexical variable in scope to an abstract location.
@@ -176,241 +417,6 @@ addWitness locvar ls fn orig@WE{known} =
 extendEnv :: [(Var,(L1.Ty,Loc))] -> Env -> Env
 extendEnv ls e = (M.fromList ls) `M.union` e
 
---------------------------------------------------------------------------------
--- STRATEGY ONE - inline until we have direct cursor handoff
---------------------------------------------------------------------------------
-
--- Some expressions are ready to take and return cursors.  Namely,
--- data constructors and function calls that return one packed type.  Examples:
-
---   MkFoo 3 (MkBar 4)
---   MkFoo 3 (fn 4)
-
--- In either case, the MkFoo constructor can thread its output cursor
--- directly to MkBar or "fn".  But this direct-handoff approach
--- doesn't work for everything.  Functions that return multiple packed
--- values foil it and require sophisticated routing.
-
--- Direct handoff binds cursor-flow to control-flow.  Conditionals are
--- fine:
-
---   MkFoo (if a b c)
-
-----------------------------------------
-
--- The value environment remembers in-scope let-bindings.
-type ValEnv = M.Map Var L1.Exp
-
-cursorDirect :: L2.Prog -> SyM L2.Prog
-cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
-  ---- Mostly duplicated boilerplate with cursorize below ----
-  ------------------------------------------------------------
-  fds' <- mapM fd $ M.elems fundefs
-  -- let gloc = "global"
-  mn <- case mainExp of
-          Nothing -> return Nothing
-          Just x  -> Just <$> exp x
-  return L2.Prog{ fundefs = M.fromList $ L.map (\f -> (L2.funname f,f)) fds'
-                , ddefs = ddefs
-                , mainExp = mn
-                }
- where
-  fd :: L2.FunDef -> SyM L2.FunDef
-  fd (f@L2.FunDef{funname,funty,funarg,funbod}) =
-      let (newTy@(ArrowTy inT _ outT),newIn,newOut) = cursorizeTy funty in
-      dbgTrace lvl ("Processing fundef: "++show(doc f)++"\n  new type: "++sdoc newTy) $
-   do
-      fresh <- gensym "tupin"
-      let (newArg, bod) =
-              if newIn == [] -- No injected cursor params..
-              then (funarg, funbod)
-              else ( fresh
-                   , LetE (funarg, fmap (\_->()) inT,
-                           (projNonFirst (length newIn) (L1.VarE fresh)))
-                          funbod)
-      exp' <- if L1.hasPacked outT
-              then exp bod
-              else do curs <- gensym "curs"
-                      LetE (curs, CursorTy, projVal newArg) <$>
-                        exp2 curs bod
-      return $ L2.FunDef funname newTy newArg exp'
-  ------------------------------------------------------------
-
-  -- | Here we are not in a context that flows to Packed data, thus no
-  --   destination cursor.
-  exp :: Exp -> SyM Exp
-  exp ex =
-    case ex of
-      VarE _ -> return ex
-      LitE _ -> return ex
-      MkPackedE k ls -> error "cursorDirect: Should not have encountered MkPacked if type is not packed."
-
-      -- If we're not returning a packed type in the current
-      -- context, the we can only possibly see one that does NOT
-      -- escape.  I.e. a temporary one:
-      LetE (v,ty,rhs) bod
-          | L1.hasPacked ty -> do tmp <- gensym  "tmpbuf"
-                                  rhs' <- LetE (tmp,CursorTy,NewBuffer) <$>
-                                           exp2 tmp rhs
-                                  LetE (v,strip ty,rhs') <$> exp bod
-          | otherwise -> do rhs' <- exp rhs
-                            LetE (v,ty,rhs') <$> exp bod
-
-      AppE v e      -> AppE v     <$> exp e
-      PrimAppE p ls -> PrimAppE p <$> mapM exp ls
-      ProjE i e  -> ProjE i <$> exp e
-      CaseE e ls -> do
-         cur0 <- gensym "cursIn"
---          | L1.hasPacked (tyOfCase ddefs ex) -> __
-         let unpack :: (Constr, [Var]) -> Exp -> SyM Exp
-             unpack (k,vrs) ex =
-              let go c [] = exp ex -- Everything is now in scope for the body.
-                  go c ((vr,ty):rs) = do
-                    tmp <- gensym "tptmp"
-                    let c' = case rs of
-                               [] -> "end"
-                               (v2,_):_ -> witnessOf v2
-                    case ty of
-                      IntTy ->
-                        LetE (tmp, addCurTy IntTy, ReadInt c) <$>
-                         LetE (c', CursorTy, projCur tmp) <$>
-                          LetE (vr, IntTy, projVal tmp) <$>
-                           go c' rs
-                      ty | L1.hasPacked ty -> do
-                       -- Strategy: assume currently-unbound witness variables:
-                       -- A later traversal will reorder.
-                       go c' rs
-
-              in go cur0 (zip vrs (lookupDataCon ddefs k))
-
-         CaseE <$> exp e <*> (forM ls $ \ (k,vrs,e) -> do
-                                e' <- unpack (k,vrs) e
-                                return (k,[cur0],e'))
-      MkProdE ls -> MkProdE <$> mapM exp ls
-      TimeIt e t -> TimeIt <$> exp e <*> pure t
-      IfE a b c  -> IfE <$> exp a <*> exp b <*> exp c
---        MapE (v,t,rhs) bod -> __
---        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
-
-  -- Establish convention of putting cursor after value:
-  addCurTy ty = ProdTy[ty,CursorTy]
-  projCur v = ProjE 1 (VarE v)
-  projVal v = ProjE 0 (VarE v)
-
-  -- | Take a destination cursor.  Assume only a single packed output.
-  --   Here we are in a context that flows to Packed data, we follow
-  --   a convention of returning a pair of value/end.
-  exp2 :: Var -> Exp -> SyM Exp
-  exp2 destC ex =
-    let go = exp2 destC in
-    case ex of
-      -- We should not recur on these:
-      VarE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
-      LitE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
-
-      -- Every return context expecting a packed value must now accept
-      -- TWO values, a (st,en) pair, where "en" becomes the output cursor.
-      MkPackedE k ls -> do
-       tmp1  <- gensym "tmp"
-       dest' <- gensym "cursplus1_"
-       d'    <- gensym "curstmp"
-       -- This stands for the  "WriteTag" operation:
-       LetE (dest', PackedTy (getTyOfDataCon ddefs k) (),
-                  MkPackedE k [VarE destC]) <$>
-          let go d [] = return $ MkProdE [VarE destC, VarE d]
-                 -- ^ The final return value lives at the position of the out cursor
-              go d ((rnd,IntTy):rst) | L1.isTriv rnd =
-                  LetE (d', CursorTy, WriteInt d rnd ) <$>
-                    (go d' rst)
-              -- Here we recursively transfer control
-              go d ((rnd,ty@PackedTy{}):rst) = do
-                  tup  <- gensym "tup"
-                  d'   <- gensym "dest"
-                  rnd' <- exp2 d rnd
-                  LetE (tup, cursPairTy, rnd') <$>
-                   LetE (d', CursorTy, ProjE 1 (VarE tup) ) <$>
-                    (go d' rst)
-          in go dest' (zip ls (lookupDataCon ddefs k))
-
-      LetE (v,_,rhs) bod -> __
-
-      AppE v e      -> AppE v     <$> go e
-      PrimAppE p ls -> PrimAppE p <$> mapM go ls
-      ProjE i e  -> ProjE i <$> go e
-      CaseE e ls -> CaseE <$> go e <*>
-                     mapM (\(k,vrs,e) -> (k,vrs,) <$> go e) ls
-      MkProdE ls -> MkProdE <$> mapM go ls
-      TimeIt e t -> TimeIt <$> go e <*> pure t
-      IfE a b c  -> IfE <$> go a <*> go b <*> go c
---        MapE (v,t,rhs) bod -> __
---        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
-
-cursPairTy :: L1.Ty
-cursPairTy = ProdTy [CursorTy, CursorTy]
-
--- | Witness the location of a local variable.
-witnessOf :: Var -> Var
-witnessOf = ("witness_"++)
-
--- Packed types are gone, replaced by cursPair:
-strip :: L1.Ty -> L1.Ty
-strip ty =
-  case ty of
-    IntTy  -> ty
-    BoolTy -> ty
-    (ProdTy x) -> ProdTy $ L.map strip x
-    (SymDictTy x) -> SymDictTy $ strip x
-    (PackedTy x1 x2) -> cursPairTy
-    (ListTy x) -> ListTy $ strip x
-
-tyOfCase :: Out a => DDefs a -> Exp -> L1.Ty
-tyOfCase dd (CaseE _ ((k,_,_):_)) = PackedTy (getTyOfDataCon dd k) ()
-
-
--- template:
-        -- VarE v -> __
-        -- LitE n -> __
-        -- AppE v e -> __
-        -- PrimAppE _ ls -> __
-        -- LetE (v,_,rhs) bod -> __
-        -- ProjE _ e -> __
-        -- CaseE e ls -> __
-        -- MkProdE ls     -> __
-        -- MkPackedE _ ls -> __
-        -- TimeIt e _ -> __
-        -- IfE a b c -> __
-        -- MapE (v,t,rhs) bod -> __
-        -- FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
-
-
---------------------------------------------------------------------------------
--- STRATEGY TWO - see the future (dataflow analysis)
---------------------------------------------------------------------------------
-
--- Annotate each type in a let binding with which location it flows to.a
--- pattern Ann
-
--- Insert location annotations on each let-bound variable.  These
--- record facts about the subsequent dataflow of the value, and ultimately
--- determine which output cursors to use.
--- insertLocs
-
-
---------------------------------------------------------------------------------
-
-pattern NewBuffer = AppE "NewBuffer" (MkProdE [])
-
--- Tag writing is still modeled by MkPackedE.
-pattern WriteInt v e = AppE "WriteInt" (MkProdE [VarE v, e])
--- One cursor in, (int,cursor') output.
-pattern ReadInt v = AppE "ReadInt" (MkProdE [VarE v])
-
-pattern CursorTy = PackedTy "CURSOR_TY" () -- Tempx
-
--- pattern MarkCursor e = AppE "MarkCursor" (MkProdE [e])
-pattern MarkCursor c e = AppE "MarkCursor" (AppE c e)
-
-pattern GlobalC = "GlobalC"
 
 --------------------------------------------------------------------------------
 
