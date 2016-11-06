@@ -28,6 +28,7 @@ import Packed.FirstOrder.Passes.Cursorize
 import Packed.FirstOrder.Passes.Flatten
 import Packed.FirstOrder.Passes.InlineTriv
 import Packed.FirstOrder.Passes.Lower
+import Packed.FirstOrder.Passes.InlinePacked
 
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import Packed.FirstOrder.Target (codegenProg)
@@ -247,6 +248,8 @@ compile Config{input,mode,packed,verbosity} fp = do
                        l2c <- pass' "addCopies"                addCopies                l2b
                        l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
 --                     l2e <- pass  "cursorize"                cursorize                l2d
+
+--                       l2d' <- pass "inlinePacked"             inlinePacked             l2d
                        l2e <- pass  "cursorDirect"             cursorDirect             l2d
                        l2f <- pass "flatten"                   flatten2                 l2e
                        l2g <- pass "inlineTriv"                inline2                  l2f

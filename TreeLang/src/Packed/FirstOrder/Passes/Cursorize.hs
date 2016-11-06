@@ -58,11 +58,6 @@ lvl = 5
 
 ----------------------------------------
 
--- | This pass gets ready for cursorDirect by pushing tree-creating
--- expressions within the syntactic 
-aggressiveInline :: L2.Prog -> SyM L2.Prog
-aggressiveInline = undefined
-
 -- | 
 deadCode :: L2.Prog -> SyM L2.Prog
 deadCode = undefined
