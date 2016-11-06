@@ -60,6 +60,7 @@ lvl = 5
 
 ----------------------------------------
 
+
 -- | Cursor insertion, strategy one.
 cursorDirect :: L2.Prog -> SyM L2.Prog
 cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
@@ -82,7 +83,24 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                 }
  where
   fd :: L2.FunDef -> SyM L2.FunDef
-  fd (f@L2.FunDef{funname,funty,funarg,funbod}) =
+  fd L2.FunDef{funname,funty,funarg,funbod} = do
+     -- We don't add new function arguments yet, rather we leave
+     -- unbound references to the function's output cursors, named
+     -- "f_1, f_2..." for a function "f".    
+     let ArrowTy _inT _ outT = funty
+         outCurs = [ funname ++"_"++ show ix | ix <- [1 .. countPacked outT] ]
+     exp' <- case outCurs of
+               [] -> exp funbod -- not hasPacked
+               [cur] -> 
+                  do -- LetE (cur, CursorTy, projVal (VarE funarg)) <$>
+                     projVal <$> exp2 cur funbod
+               _ -> error $ "cursorDirect: add support for functionwith multiple output cursors: "++ funname
+
+     return $ L2.FunDef funname funty funarg exp'
+
+  -- Move elsewhere: where we actually change the calling convention.
+  _fd' :: L2.FunDef -> SyM L2.FunDef
+  _fd' (f@L2.FunDef{funname,funty,funarg,funbod}) =
       let (newTy@(ArrowTy inT _ outT),newIn,newOut) = cursorizeTy funty in
       dbgTrace lvl ("Processing fundef: "++show(doc f)++"\n  new type: "++sdoc newTy) $
    do
@@ -98,7 +116,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
               then exp bod
               else do curs <- gensym "curs"
                       LetE (curs, CursorTy, projVal (VarE newArg)) <$>
-                        exp2 curs bod
+                        projVal <$> exp2 curs bod
       return $ L2.FunDef funname newTy newArg exp'
   ------------------------------------------------------------
 
@@ -116,14 +134,34 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       -- context, the we can only possibly see one that does NOT
       -- escape.  I.e. a temporary one:
       LetE (v,ty,rhs) bod
-          | L1.hasPacked ty -> do tmp <- gensym  "tmpbuf"
-                                  rhs' <- LetE (tmp,CursorTy,NewBuffer) <$>
-                                           exp2 tmp rhs
-                                  LetE (v,strip ty,rhs') <$> exp bod
+          | isPacked ty -> do pr  <- gensym "prpkdretA"
+                              tmp <- gensym  "tmpbuf"
+                              rhs' <- LetE (tmp,CursorTy,NewBuffer) <$>
+                                       exp2 tmp rhs
+                              LetE (pr,ProdTy [strip ty, CursorTy],rhs') <$>
+                                LetE (v,strip ty, projVal (VarE pr)) <$>
+                                  exp bod
+          | L1.hasPacked ty -> error "cursorDirect: finishme, let bound tuple containing packed."
           | otherwise -> do rhs' <- exp rhs
                             LetE (v,ty,rhs') <$> exp bod
 
-      AppE v e      -> AppE v     <$> exp e
+      AppE f e ->
+          -- If the function argument is of a packed type, we need to switch modes:
+          -- data ArrowTy t = ArrowTy { arrIn :: t, arrEffs:: (Set Effect), arrOut:: t }
+          let ArrowTy arg _ _ret = L2.getFunTy fundefs f in
+          case arg of
+            PackedTy{} -> do cr <- gensym "argbuf"
+                             -- pr <- gensym "prpkdretB"
+                             -- e' <- exp2 cr e
+                             LetE (cr,CursorTy,ScopedBuffer) <$>
+                              -- Because it's scoped, we don't need to witness the end:
+                              AppE f <$> projVal <$> exp2 cr e
+                               -- LetE (pr,ProdTy [strip arg, CursorTy],e') $
+                               --  AppE f (projVal (VarE pr))
+            ty | L1.hasPacked ty -> error $
+                    "cursorDirect: need to handle function argument of tupled packed types: "++show ty
+               | otherwise -> AppE f <$> exp e
+
       PrimAppE p ls -> PrimAppE p <$> mapM exp ls
       ProjE i e  -> ProjE i <$> exp e
       CaseE scrtE ls -> do
@@ -180,8 +218,9 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
   projVal e = ProjE 0 e
 
   -- | Take a destination cursor.  Assume only a single packed output.
-  --   Here we are in a context that flows to Packed data, we follow
-  --   a convention of returning a pair of value/end.
+  --   Here we are in a context that flows to Packed data, we follow a
+  --   convention of returning a pair of value/end.
+  --  CONTRACT: The caller must deal with this pair.
   exp2 :: Var -> Exp -> SyM Exp
   exp2 destC ex =
     dbgTrace lvl (" 2. Processing expr in packed context, cursor "++show destC++", exp:\n  "++sdoc ex) $ 
@@ -232,6 +271,23 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
 cursPairTy :: L1.Ty
 cursPairTy = ProdTy [CursorTy, CursorTy]
 
+-- | If a tuple is returned, how many packed values occur?  This
+-- determines the number of output cursors.
+countPacked :: Ty1 a -> Int
+countPacked ty =
+  case ty of
+    IntTy  -> 0
+    BoolTy -> 0
+    (ProdTy x) -> sum $ L.map countPacked x
+    (SymDictTy x) | L1.hasPacked x -> error "countPacked: current invariant broken, packed type in dict."
+                  | otherwise   -> 0
+    (PackedTy x1 x2) -> 1
+    (ListTy x)       -> 1
+   
+isPacked :: Ty1 t -> Bool
+isPacked PackedTy{} = True
+isPacked _ = False
+                        
 -- | Is the expression statically guaranteed to not need an output cursor?
 allocFree :: Exp -> Bool 
 allocFree ex =
@@ -257,11 +313,11 @@ witnessOf :: Var -> Var
 witnessOf = ("witness_"++)
 
 -- Packed types are gone, replaced by cursPair:
-strip :: L1.Ty -> L1.Ty
+strip :: Ty1 a -> L1.Ty
 strip ty =
   case ty of
-    IntTy  -> ty
-    BoolTy -> ty
+    IntTy  -> IntTy 
+    BoolTy -> BoolTy
     (ProdTy x) -> ProdTy $ L.map strip x
     (SymDictTy x) -> SymDictTy $ strip x
     (PackedTy x1 x2) -> cursPairTy
