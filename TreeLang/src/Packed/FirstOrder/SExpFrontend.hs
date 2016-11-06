@@ -15,7 +15,7 @@ module Packed.FirstOrder.SExpFrontend
        (parseFile, parseSExp, primMap, main) where
 
 import Data.Char
-import Data.Text as T
+import Data.Text as T hiding (head)
 import Data.List as L
 import Data.Set as S
 import Data.Map as M
@@ -38,7 +38,7 @@ import Prelude hiding (readFile, exp)
 -- Using 's-cargo' for the first attempt:    
 import Data.SCargot.Language.HaskLike
 import Data.SCargot.Parse
-import Data.SCargot.Print
+import Data.SCargot.Print 
 import Data.SCargot.Repr -- (SExpr, RichSExpr, toRich)
 
 --------------------------------------------------------------------------------
@@ -127,10 +127,10 @@ parseSExp ses =
      [] -> return $ Prog (fromListDD dds) (fromListFD fds) mn
 
      -- IGNORED!:
-     (RSList (A "provide":_) : rst) -> go rst dds fds mn
-     (RSList (A "require":_) : rst) -> go rst dds fds mn
+     (L (A "provide":_) : rst) -> go rst dds fds mn
+     (L (A "require":_) : rst) -> go rst dds fds mn
 
-     (RSList (A "data": A tycon : cs) : rst) ->
+     (L (A "data": A tycon : cs) : rst) ->
          go rst (DDef (toVar tycon) (L.map docasety cs) : dds) fds mn
      (L [A "define", funspec, ":", retty, bod] : rst)
         |  RSList (A name : args) <- funspec
@@ -156,6 +156,11 @@ parseSExp ses =
                             } : fds)
             mn
 
+     (L [A "define", _args, _bod] : _) -> error$ "Function is missing return type:\n  "++prnt (head xs)
+     (L (A "define" : _) : _) -> error$ "Badly formed function:\n  "++prnt (head xs)
+
+     (L (A "data" : _) : _) -> error$ "Badly formed data definition:\n  "++prnt (head xs)
+                                 
      (L3 "module+" _ bod : rst) -> go (bod:rst) dds fds mn
 
      (ex : rst) -> 
@@ -163,7 +168,7 @@ parseSExp ses =
        in go rst dds fds (case mn of
                             Nothing -> Just ex'
                             Just x  -> error$ "Two main expressions: "++
-                                             show x++"\nAnd:\n"++show ex)
+                                             sdoc x++"\nAnd:\n"++prnt ex)
 
 tuplizeRefs :: Var -> [Var] -> Exp -> Exp
 tuplizeRefs tmp ls  = go (L.zip [0..] ls) 
