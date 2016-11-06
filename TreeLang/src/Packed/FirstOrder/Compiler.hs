@@ -153,7 +153,11 @@ configWithArgs = (,) <$> configParser
 ----------------------------------------
 
 -- | Command line version of the compiler entrypoint.  Parses command
--- line arguments given as string inputs.
+-- line arguments given as string inputs.  This also allows us to run
+-- conveniently from within GHCI.  For example:
+--
+-- >  compileCmd $ words $ " -r -p -v5 examples/test11c_funrec.sexp "
+-- 
 compileCmd :: [String] -> IO ()
 compileCmd args = withArgs args $
     do (cfg,files) <- execParser opts
@@ -251,7 +255,9 @@ compile Config{input,mode,packed,verbosity} fp = do
 
                        l2d' <- pass "inlinePacked"             inlinePacked             l2d
                        l2e <- pass  "cursorDirect"             cursorDirect             l2d'
-                       l2f <- pass "flatten"                   flatten2                 l2e
+                       l2e' <- pass "findWitnesses"            findWitnesses            l2e
+
+                       l2f <- pass "flatten"                   flatten2                 l2e'
                        l2g <- pass "inlineTriv"                inline2                  l2f
                        return l2g
                      else return l2

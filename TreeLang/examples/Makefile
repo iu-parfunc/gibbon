@@ -86,7 +86,7 @@ PACKED_TESTS2= test00_add.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sex
     test05_app.sexp test05b_app.sexp \
     test06_case.sexp test06b_case.sexp test06c_nested.sexp test06i_casecase.sexp \
     test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp test06h_rec.sexp \
-    test07_time.sexp test10_desugar.sexp test10b_desugar.sexp
+    test07_time.sexp test10_desugar.sexp test10b_desugar.sexp test11c_funrec.sexp
 
 # test04c_ifvector.sexp -- MkProd sneaking through in Triv context to Lower [2016.11.06]
 
