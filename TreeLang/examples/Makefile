@@ -42,7 +42,7 @@ ALL_TESTS= $(shell ls test*.sexp)
 all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
 
 %.sexp.parsed : %.sexp
-	@echo "Parsing $^"
+#	@echo "Parsing $^"
 	$(TREEC) --parse $^ 2> $@
 
 PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
@@ -75,10 +75,10 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 
 # Assumes stack build:
 %.sexp.out : %.sexp
-	@echo "Testing $^"
+#	@echo "Testing $^"
 	$(TREEC) $(TREECARGS) $^ > $@
-	@echo "Now check expected $$f.ans, versus received, $$f.out";
-	./diff.sh $^.ans $@
+#	@echo "Now check expected $$f.ans, versus received, $$f.out";
+	@./diff.sh $^.ans $@
 
 PACKED_TESTS= test00_add.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
     test03b_eqs.sexp test03c_eqsym.sexp \
