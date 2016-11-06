@@ -14,11 +14,11 @@
 // one byte for each tag, 64 bit integers
 typedef long long Num;
 
-enum Type { Leaf, Node };
+enum __attribute__((__packed__)) Type { Leaf, Node };
 
 // struct Tree;
 
-typedef struct Tree {
+typedef struct __attribute__((__packed__)) Tree {
     enum Type tag;
     union {
       struct { long long elem; };
@@ -148,6 +148,8 @@ int main(int argc, char** argv) {
     abort();
   }
   
+  printf("sizeof(Tree) = %d\n", sizeof(Tree));
+  printf("sizeof(enum Type) = %d\n", sizeof(enum Type));
   printf("Building tree, depth %d.  Benchmarking %d iters.\n", depth, iters);
 
   INITALLOC;
