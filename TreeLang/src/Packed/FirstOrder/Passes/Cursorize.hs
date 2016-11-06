@@ -158,6 +158,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
           -- data ArrowTy t = ArrowTy { arrIn :: t, arrEffs:: (Set Effect), arrOut:: t }
           let ArrowTy arg _ _ret = L2.getFunTy fundefs f in
           case arg of
+            -- TODO: apply the allocFree trick that we use below.  Abstract it out.
             PackedTy{} -> do cr <- gensym "argbuf"
                              LetE (cr,CursorTy,ScopedBuffer) <$> do
                                e' <- exp2 cr e                             
@@ -171,35 +172,44 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       PrimAppE p ls -> PrimAppE p <$> mapM exp ls
       ProjE i e  -> ProjE i <$> exp e
       CaseE scrtE ls -> do
-         let tyScrut = tyOfCaseScrut ddefs scrtE
+         let tyScrut = tyOfCaseScrut ddefs ex
          cur0 <- gensym "cursIn"
          -- Issue reads to get out all the fields:
-         let unpack :: (Constr, [Var]) -> Exp -> SyM Exp
-             unpack (k,vrs) ex =
-              let go c _off [] = exp ex -- Everything is now in scope for the body.
+         let 
+             unpack :: (Constr, [Var]) -> Exp -> SyM Exp
+             unpack (k,vrs) ex = go cur0 (Just 0) vsts
+                where 
+                  vsts = zip vrs (lookupDataCon ddefs k)
+                  (lastV,_) = L.last vsts
+
+                  add 0 e = e
+                  add n e = PrimAppE L1.AddP [e, LitE n]
+
+                  go c _off [] = exp ex -- Everything is now in scope for the body.
                                -- TODO: we could witness the end if we still have the offset.
                   go c offset ((vr,ty):rs) = do
                     tmp <- gensym "tptmp"
-                    let c' = case rs of
-                               [] -> "end"
-                               (v2,_):_ -> witnessOf v2
+                    -- Each cursor position is either the witness of
+                    -- the next thing, or the witness of the end of the last thing.
+                    let witNext e =
+                            case rs of
+                               []       -> e
+                               (v2,_):_ -> LetE (witnessOf v2, CursorTy, projCur (VarE tmp)) e
                     case ty of
                       -- TODO: Generalize to other scalar types:
                       IntTy ->
                         LetE (tmp, addCurTy IntTy, ReadInt c) <$>
-                         LetE (c', CursorTy, projCur (VarE tmp)) <$>
-                          LetE (vr, IntTy, projVal (VarE tmp)) <$>
-                           go c' (liftA2 (+) (L1.sizeOf IntTy) offset) rs
-                      ty | L1.hasPacked ty -> do
+                         witNext <$>                  
+                          LetE (toEndVar vr, CursorTy, projCur (VarE tmp)) <$>
+                           LetE (vr, IntTy, projVal (VarE tmp)) <$>
+                            go (toEndVar vr) (liftA2 (+) (L1.sizeOf IntTy) offset) rs
+                      ty | isPacked ty -> do
                        -- Strategy: ALLOW unbound witness variables. A later traversal will reorder.
                        case offset of
-                         Nothing -> go c' Nothing rs
-                         -- POLICY: Name the witness the same as the variable for now:
-                         Just n -> LetE (vr, CursorTy, add n (VarE cur0)) <$>
-                                   go c' Nothing rs
-                  add 0 e = e
-                  add n e = PrimAppE L1.AddP [e, LitE n]
-              in go cur0 (Just 0) (zip vrs (lookupDataCon ddefs k))
+                         Nothing -> go (toEndVar vr) Nothing rs
+                         Just n -> LetE (witnessOf vr, CursorTy, add n (VarE cur0)) <$>
+                                   go (toEndVar vr) Nothing rs
+
 
          -- Because the scrutinee is, naturally, of packed type, it
          -- will be represented as a pair of (start,end) pointers.
@@ -240,7 +250,8 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       -- Here the allocation has already been performed:
       -- Our variable in the lexical environment is bound to the start only, not (st,en).
       -- To follow the calling convention, we are reponsible for tagging on the end here:
-      VarE v -> return $ MkProdE [VarE v, FindEndOf v]
+      VarE v -> -- ASSERT: isPacked
+          return $ MkProdE [VarE (witnessOf v), VarE (toEndVar v)] -- FindEndOf v
       LitE _ -> error$ "cursorDirect/exp2: Should not encounter Lit in packed context: "++show ex
 
       -- Here's where we write the dest cursor:
@@ -343,7 +354,10 @@ withDilated ty edi fn =
 -- primitive.  Or we could just allow introduction of unbound
 -- variables.
 pattern FindEndOf v = AppE "FindEndWitness" (VarE v)
--- pattern EndOf v = VarE (toEndVar v)
+-- pattern FindEndOf v <- AppE "FindEndWitness" (VarE v) where
+--   FindEndOf v = VarE (toEndVar v)
+
+
 
 -- | If a tuple is returned, how many packed values occur?  This
 -- determines the number of output cursors.
@@ -384,11 +398,13 @@ allocFree ex =
 
 -- | Witness the location of a local variable.
 witnessOf :: Var -> Var
+-- witnessOf v = v
 witnessOf = ("witness_"++)
 
 
 tyOfCaseScrut :: Out a => DDefs a -> Exp -> L1.Ty
 tyOfCaseScrut dd (CaseE _ ((k,_,_):_)) = PackedTy (getTyOfDataCon dd k) ()
+tyOfCaseScrut _ e = error $ "tyOfCaseScrut, takes only Case:\n  "++sdoc e 
 
 
 -- template:
@@ -428,7 +444,10 @@ routeEnds = __routeEnds
 
 dummy_witness :: Int
 dummy_witness = 12345678
-            
+
+-- | This pass must find witnesses if the exist in the lexical
+-- environment, and it must *reorder* let bindings to bring start/end
+-- witnesses into scope.
 findWitnesses :: L2.Prog -> SyM L2.Prog
 findWitnesses = L2.mapMExprs fn
  where
@@ -475,7 +494,7 @@ pattern ScopedBuffer = AppE "ScopedBuffer" (MkProdE [])
 -- Tag writing is still modeled by MkPackedE.
 pattern WriteInt v e = AppE "WriteInt" (MkProdE [VarE v, e])
 -- One cursor in, (int,cursor') output.
-pattern ReadInt v = AppE "ReadInt" (MkProdE [VarE v])
+pattern ReadInt v = AppE "ReadInt" (VarE v)
 
 pattern CursorTy = PackedTy "CURSOR_TY" () -- Tempx
 

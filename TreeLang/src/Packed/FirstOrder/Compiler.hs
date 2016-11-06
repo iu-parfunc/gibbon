@@ -253,13 +253,13 @@ compile Config{input,mode,packed,verbosity} fp = do
                        l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
 --                     l2e <- pass  "cursorize"                cursorize                l2d
 
-                       l2d' <- pass "inlinePacked"             inlinePacked             l2d
-                       l2e <- pass  "cursorDirect"             cursorDirect             l2d'
-                       l2e' <- pass "findWitnesses"            findWitnesses            l2e
+                       l2e <- pass "inlinePacked"             inlinePacked              l2d
+                       l2f <- pass "cursorDirect"             cursorDirect              l2e
+                       l2g <- pass "findWitnesses"            findWitnesses             l2f
 
-                       l2f <- pass "flatten"                   flatten2                 l2e'
-                       l2g <- pass "inlineTriv"                inline2                  l2f
-                       return l2g
+                       l2h <- pass "flatten"                   flatten2                 l2g
+                       l2i <- pass "inlineTriv"                inline2                  l2h
+                       return l2i
                      else return l2
                  l3  <-       pass  "lower"                    (lower packed)           l2'
 
