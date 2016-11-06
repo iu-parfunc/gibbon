@@ -422,12 +422,12 @@ tyOfCaseScrut _ e = error $ "tyOfCaseScrut, takes only Case:\n  "++sdoc e
         -- IfE a b c -> __
         -- MapE (v,t,rhs) bod -> __
         -- FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
-
+-- Pure traversal
     -- let go = __ in
     -- case ex of 
     --   VarE v   -> VarE v
     --   LitE n   -> LitE n
-    --   AppE v e -> AppE v e
+    --   AppE v e -> AppE v (go e)
     --   PrimAppE p ls      -> PrimAppE p (L.map go ls)
     --   LetE (v,t,rhs) bod -> LetE (v,t,go rhs) (go bod)
     --   ProjE i e      -> ProjE i (go e)
@@ -439,29 +439,26 @@ tyOfCaseScrut _ e = error $ "tyOfCaseScrut, takes only Case:\n  "++sdoc e
     --   MapE (v,t,rhs) bod -> MapE (v,t,go rhs) (go bod)
     --   FoldE (v1,t1,r1) (v2,t2,r2) bod -> FoldE (v1,t1,go r1) (v2,t2,go r2) (go bod)
 
--- | The goal of this pass is to take effect signatures and translate
--- them into extra arguments and returns.  This pass does not worry
--- about where the witnesses come from to synthesize these extra
--- returns, it just inserts references to them that create demand.
-routeEnds :: L2.Prog -> SyM L2.Prog
-routeEnds = L2.mapMExprs fn
- where
-  fn _ ex = return (go ex)
-  go ex =
-    case ex of 
-      VarE v   -> VarE v
-      LitE n   -> LitE n
-      AppE v e -> AppE v e
-      PrimAppE p ls      -> PrimAppE p (L.map go ls)
-      LetE (v,t,rhs) bod -> LetE (v,t,go rhs) (go bod)
-      ProjE i e      -> ProjE i (go e)
-      CaseE e ls     -> CaseE (go e) [ (k,vs,go e) | (k,vs,e) <- ls ]
-      MkProdE ls     -> MkProdE (L.map go ls)
-      MkPackedE k ls -> MkPackedE k (L.map go ls)
-      TimeIt e t     -> TimeIt (go e) t
-      IfE a b c      -> IfE (go a) (go b) (go c)
-      MapE (v,t,rhs) bod -> MapE (v,t,go rhs) (go bod)
-      FoldE (v1,t1,r1) (v2,t2,r2) bod -> FoldE (v1,t1,go r1) (v2,t2,go r2) (go bod)
+-- Monadic traversal:
+    -- case ex of 
+    --   VarE v   -> pure$ VarE v
+    --   LitE n   -> pure$ LitE n
+    --   AppE v e -> AppE v <$> go e
+    --   PrimAppE p ls      -> PrimAppE p <$> mapM go ls
+    --   LetE (v,t,rhs) bod -> LetE <$> ((v,t,) <$> go rhs) <*> go bod
+    --   ProjE i e      -> ProjE i <$> go e
+    --   CaseE e ls     -> CaseE <$> go e <*> sequence
+    --                        [ (k,vs,) <$> go e | (k,vs,e) <- ls ]
+    --   MkProdE ls     -> MkProdE <$> mapM go ls
+    --   MkPackedE k ls -> MkPackedE k <$> mapM go ls
+    --   TimeIt e t     -> TimeIt <$> go e <*> pure t
+    --   IfE a b c      -> IfE <$> go a <*> go b <*> go c
+    --   MapE (v,t,rhs) bod -> MapE <$> ((v,t,) <$> go rhs) <*> go bod
+    --   FoldE (v1,t1,r1) (v2,t2,r2) bod ->
+    --       FoldE <$> ((v1,t1,) <$> go r1)
+    --             <*> ((v2,t2,) <$> go r2)
+    --             <*> go bod
+
 
 
 -- | This pass must find witnesses if the exist in the lexical
@@ -475,7 +472,7 @@ findWitnesses = L2.mapMExprs fn
     case ex of 
       VarE v   -> VarE v
       LitE n   -> LitE n
-      AppE v e -> AppE v e
+      AppE v e -> AppE v (go e)
       PrimAppE p ls      -> PrimAppE p (L.map go ls)
       LetE (v,t,rhs) bod -> LetE (v,t,go rhs) (go bod)
       ProjE i e      -> ProjE i (go e)
@@ -541,6 +538,7 @@ data WitnessEnv = WE { known :: M.Map LocVar L1.Exp
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 instance Out WitnessEnv
+
 
 -- | This inserts cursors and REMOVES effect signatures.  It returns
 --   the new type as well as how many extra params were added to input
@@ -664,11 +662,15 @@ extendEnv ls e = (M.fromList ls) `M.union` e
 
 --------------------------------------------------------------------------------
 
--- | A compiler pass that inserts cursor-passing for reading and
--- writing packed values.
-cursorize :: L2.Prog -> SyM L2.Prog  -- [T.FunDecl]
-cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
-    dbgTrace lvl ("Starting cursorize on "++show(doc fundefs)) $ do
+cursorize = __
+            
+-- | The goal of this pass is to take effect signatures and translate
+-- them into extra arguments and returns.  This pass does not worry
+-- about where the witnesses come from to synthesize these extra
+-- returns, it just inserts references to them that create demand.
+routeEnds :: L2.Prog -> SyM L2.Prog
+routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
+    dbgTrace lvl ("Starting routeEnds on "++show(doc fundefs)) $ do
     -- Prog emptyDD <$> mapM fd fundefs <*> pure Nothing
 
     fds' <- mapM fd $ M.elems fundefs
@@ -685,6 +687,7 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                   , mainExp = mn
                   }
  where
+   
   fd :: L2.FunDef -> SyM L2.FunDef
   fd (f@L2.FunDef{funname,funty,funarg,funbod}) =
       let (newTy@(ArrowTy inT _ _outT),newIn,newOut) = cursorizeTy funty in
@@ -698,14 +701,42 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
               else ( fresh
                      -- We could introduce a let binding, but here we
                      -- just substitute instead:
-                   , L1.subst funarg (projNonFirst (length newIn) (L1.VarE fresh))
-                              funbod
+                   -- , L1.subst funarg (projNonFirst (length newIn) (L1.VarE fresh))
+                   --            funbod
+                   , LetE (funarg, fmap (const ()) inT,
+                           (projNonFirst (length newIn) (L1.VarE fresh)))
+                          funbod
                    , witnessBinding fresh
                      (TupLoc $ L.map Fixed newIn ++ [argLoc]))
       let env = M.singleton newArg (L2.stripTyLocs inT, argLoc)
       exp' <- tail newOut (env,wenv) bod
       return $ L2.FunDef funname newTy newArg exp'
 
+--  _ = L2.mapMExprs fnreve
+--  fn _ ex = return (go ex)
+  tl :: (Env,WitnessEnv) -> L1.Exp -> SyM L1.Exp
+  tl (env,wenv) ex =
+    let go = tl (env,wenv) in
+    case ex of 
+      VarE v   -> pure$ VarE v
+      LitE n   -> pure$ LitE n
+      AppE v e -> AppE v <$> go e
+      PrimAppE p ls      -> PrimAppE p <$> mapM go ls
+      LetE (v,t,rhs) bod -> LetE <$> ((v,t,) <$> go rhs) <*> go bod
+      ProjE i e      -> ProjE i <$> go e
+      CaseE e ls     -> CaseE <$> go e <*> sequence
+                           [ (k,vs,) <$> go e | (k,vs,e) <- ls ]
+      MkProdE ls     -> MkProdE <$> mapM go ls
+      MkPackedE k ls -> MkPackedE k <$> mapM go ls
+      TimeIt e t     -> TimeIt <$> go e <*> pure t
+      IfE a b c      -> IfE <$> go a <*> go b <*> go c
+      MapE (v,t,rhs) bod -> MapE <$> ((v,t,) <$> go rhs) <*> go bod
+      FoldE (v1,t1,r1) (v2,t2,r2) bod ->
+          FoldE <$> ((v1,t1,) <$> go r1)
+                <*> ((v2,t2,) <$> go r2)
+                <*> go bod
+
+             
   -- Process the "spine" of a flattened program.
   --
   -- When processing something in tail position, we take a DEMAND for
@@ -738,12 +769,6 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
        L1.LetE (v,tv, MarkCursor GlobalC (L1.MkPackedE k ls)) <$>
          let env' = M.insert v (tv, Fixed v) env in
          tail demanded (env',wenv) bod
-
-
-       -- do tmp <- gensym "buftmp"
-       --    __ $ L1.LetE (tmp, CursorTy, NewBuffer) $
-       --           L1.LetE (v,tv,_) _
-       --    error $ "Process constructor in env: "++show (env,wenv)
 
      -- Here we route through extra arguments.
      L1.LetE (v,tv,erhs) bod ->
