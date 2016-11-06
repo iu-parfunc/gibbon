@@ -13,6 +13,7 @@
 module Packed.FirstOrder.Passes.Cursorize
     ( cursorize
     , cursorDirect
+    , routeEnds
     , findWitnesses
     , pattern WriteInt, pattern ReadInt, pattern NewBuffer
     , pattern CursorTy, pattern ScopedBuffer
@@ -438,12 +439,30 @@ tyOfCaseScrut _ e = error $ "tyOfCaseScrut, takes only Case:\n  "++sdoc e
     --   MapE (v,t,rhs) bod -> MapE (v,t,go rhs) (go bod)
     --   FoldE (v1,t1,r1) (v2,t2,r2) bod -> FoldE (v1,t1,go r1) (v2,t2,go r2) (go bod)
 
-
+-- | The goal of this pass is to take effect signatures and translate
+-- them into extra arguments and returns.  This pass does not worry
+-- about where the witnesses come from to synthesize these extra
+-- returns, it just inserts references to them that create demand.
 routeEnds :: L2.Prog -> SyM L2.Prog
-routeEnds = __routeEnds
+routeEnds = L2.mapMExprs fn
+ where
+  fn _ ex = return (go ex)
+  go ex =
+    case ex of 
+      VarE v   -> VarE v
+      LitE n   -> LitE n
+      AppE v e -> AppE v e
+      PrimAppE p ls      -> PrimAppE p (L.map go ls)
+      LetE (v,t,rhs) bod -> LetE (v,t,go rhs) (go bod)
+      ProjE i e      -> ProjE i (go e)
+      CaseE e ls     -> CaseE (go e) [ (k,vs,go e) | (k,vs,e) <- ls ]
+      MkProdE ls     -> MkProdE (L.map go ls)
+      MkPackedE k ls -> MkPackedE k (L.map go ls)
+      TimeIt e t     -> TimeIt (go e) t
+      IfE a b c      -> IfE (go a) (go b) (go c)
+      MapE (v,t,rhs) bod -> MapE (v,t,go rhs) (go bod)
+      FoldE (v1,t1,r1) (v2,t2,r2) bod -> FoldE (v1,t1,go r1) (v2,t2,go r2) (go bod)
 
-dummy_witness :: Int
-dummy_witness = 12345678
 
 -- | This pass must find witnesses if the exist in the lexical
 -- environment, and it must *reorder* let bindings to bring start/end
@@ -454,8 +473,6 @@ findWitnesses = L2.mapMExprs fn
   fn _ ex = return (go ex)
   go ex =
     case ex of 
-      FindEndOf v -> LitE dummy_witness
-
       VarE v   -> VarE v
       LitE n   -> LitE n
       AppE v e -> AppE v e
@@ -875,7 +892,7 @@ maybeLetTup locs (ty,ex) env fn =
      return $ L1.LetE (tmp, ty, ex) bod
 
 
--- | Dig through an environment to find
+-- | Dig through an environment to find a witness.
 meetDemand :: WitnessEnv -> LocVar -> L1.Exp
 meetDemand we@WE{known} vr =
   trace ("Attempting to meet demand for loc "++show vr++" in env "++sdoc we) $
