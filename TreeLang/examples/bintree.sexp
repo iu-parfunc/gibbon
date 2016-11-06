@@ -26,5 +26,5 @@
        (Node x2 y2))]))
 
 (let ([tr0 : Tree (build-tree 20)])
-  (let ([ignored (time (add1-tree tr0))])
+  (let ([ignored : Tree (time (add1-tree tr0))])
     0))

@@ -77,12 +77,12 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 	./diff.sh $^.ans $@
 
 PACKED_TESTS= test00_add.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
-    test03b_eqs.sexp test03c_eqsym.sexp test06_case.sexp
+    test03b_eqs.sexp test03c_eqsym.sexp test06_case.sexp test06b_case.sexp
 
 #  test04b -- cursorize/mkprod
 #  test05  -- cursorize tail Apps
 #  test05b -- cursorize/let
-#  test06  -- cursorize/let
+
 #  test07  -- cursorize/TimeIt
 #  test08  -- no dictionaries yet
 #  test09  -- fail on Compile.hs nonexhaustive
