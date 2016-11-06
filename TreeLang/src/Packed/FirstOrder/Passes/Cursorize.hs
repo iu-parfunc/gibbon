@@ -161,7 +161,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                    else do tmp <- gensym "scopd"
                            LetE (tmp,CursorTy,ScopedBuffer) <$>
                             projVal <$> exp2 tmp scrtE
-
+         dbgTrace 1 (" 3. Case scrutinee "++sdoc scrtE++" alloc free?"++show (allocFree scrtE')) $ return ()
          -- Because the scrutinee is, naturally, of packed type, it
          -- will be represented as a pair of (start,end) pointers.                 
          CaseE scrtE' <$>
@@ -221,7 +221,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       AppE v e      -> AppE v     <$> go e
       PrimAppE p ls -> PrimAppE p <$> mapM go ls
       ProjE i e  -> ProjE i <$> go e
-      CaseE e ls -> CaseE <$> go e <*>
+      CaseE e ls -> CaseE <$> (projVal <$> go e) <*>
                      mapM (\(k,vrs,e) -> (k,vrs,) <$> go e) ls
       MkProdE ls -> MkProdE <$> mapM go ls
       TimeIt e t -> TimeIt <$> go e <*> pure t

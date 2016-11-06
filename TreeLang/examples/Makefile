@@ -50,7 +50,8 @@ PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.s
 	test05b_app.sexp test06_case.sexp test06b_case.sexp test06c_nested.sexp \
     test06d_rec.sexp test06e_rec.sexp \
     test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp \
-    test11_fundata.sexp test11b_fundata.sexp test15_packed.sexp
+    test11_fundata.sexp test11b_fundata.sexp \
+    test15_packed.sexp
 # FIX THESE: All are blocked on something.  Then move them to the above list:
 
 # test06h_rec.sexp -- lower hits let with case in RHS [2016.11.06]
@@ -82,16 +83,12 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 
 PACKED_TESTS= test00_add.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
     test03b_eqs.sexp test03c_eqsym.sexp \
-    test06_case.sexp test06b_case.sexp test06c_nested.sexp \
+    test06_case.sexp test06b_case.sexp test06c_nested.sexp test06i_casecase.sexp \
     test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp test06h_rec.sexp
-
-# test06i_casecase.sexp -- lower on let with case in RHS [2016.11.06]
 
 #  test04b -- cursorize/mkprod
 #  test05  -- cursorize tail Apps
 #  test05b -- cursorize/let
-
-# test06c_nested.sexp
 
 #  test07  -- cursorize/TimeIt
 #  test08  -- no dictionaries yet
@@ -126,7 +123,7 @@ run_tests_interp2: test00_add.sexp.ans
 
 # --------------------------------------------------------------------------------
 
-ANSWERS= $(addsuffix .ans,$(INTERP_TESTS)) $(addsuffix .ans,$(PASSING_TESTS))
+ANSWERS= $(addsuffix .ans,$(INTERP_TESTS)) $(addsuffix .ans,$(PASSING_TESTS)) $(addsuffix .ans,$(PACKED_TESTS))
 
 %.sexp.ans : %.sexp
 	racket $^ | tee $@

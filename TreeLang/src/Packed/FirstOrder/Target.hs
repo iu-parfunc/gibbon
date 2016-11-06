@@ -535,7 +535,7 @@ codegenTy :: Ty -> C.Type
 codegenTy IntTy = [cty|int|]
 codegenTy TagTy = [cty|int|]
 codegenTy SymTy = [cty|int|]
-codegenTy PtrTy = [cty|void*|]
+codegenTy PtrTy = [cty|char*|] -- Hack, this could be void* if we have enough casts. [2016.11.06]
 codegenTy CursorTy = [cty|char*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts

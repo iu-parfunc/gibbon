@@ -56,6 +56,16 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
   tail :: L1.Exp -> SyM T.Tail
   tail ex =
    case ex of
+
+    -- We don't have LetSwitchT yet:     
+    -- LetE (_,_, CaseE _ _) _ ->
+    --    error "lower: unfinished, we cannot let-bind the result of a switch yet."
+    LetE (vr,ty, CaseE scrt ls) bod -> tail $
+      dbgTrace 1 ("Let-bound CasE:\n  "++sdoc ex)$ 
+         -- For now just duplicate code:
+         CaseE scrt [ (k,vs, mkLet (vr,ty,e) bod)
+                    | (k,vs,e) <- ls]
+
     -- Packed codegen
     --------------------------------------------------------------------------------
     -- These are in a funny normal form atfer cursor insertion.  They take one cursor arg.
@@ -73,9 +83,11 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
         tagtmp <- gensym "tmpval"
         ctmp   <- gensym "tmpcur"
         -- We only need to thread one value through, the cursor resulting from read.
-        let doalt (k,ls,rhs) = let [c] = ls in
-                               (getTagOfDataCon ddefs k,) <$>
-                                 tail (L1.subst c (VarE ctmp) rhs)
+        let doalt (k,ls,rhs) =
+             (getTagOfDataCon ddefs k,) <$>
+             case ls of
+               []  -> tail rhs -- AUDITME -- is this legit, or should it have one cursor param anyway?
+               [c] -> tail (L1.subst c (VarE ctmp) rhs)
         alts <- mapM doalt rest
         (_,last') <- doalt last
         return $                   
@@ -83,7 +95,8 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
           T.Switch (T.VarTriv tagtmp)
                    (T.TagAlts alts)
                    (Just last')
-     
+
+                   
     -- Not-packed, pointer-based codegen
     --------------------------------------------------------------------------------
     -- If we get here that means we're NOT packing trees on this run:
@@ -99,7 +112,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       rhs' <- tail rhs
       return (T.LetUnpackT (zip bndrs tys) e_var rhs')
 
-    CaseE _ _ -> error "Case on sum types not implemented yet."
+    CaseE _ _ | not pkd -> error "Case on sum types not implemented yet."
 
     -- Accordingly, constructor allocation becomes an allocation.
     LetE (v, _, MkPackedE k ls) bod | not pkd -> L1.assertTrivs ls $ do
@@ -128,8 +141,20 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     --   let go _ [] = tail bod
     --       go ix ((v1,t1):rst) = T.LetTrivT (v1,t1, )
 
+    -- We could eliminate these ahead of time (unariser):
+    -- FIXME: Remove this when that is done a priori:
+    L1.LetE (v, L2.ProdTy tys, MkProdE ls) bod -> do
+      tmps <- mapM (\_ -> gensym "pvrtmp") ls
+      let go _ [] acc = tail acc
+          go ix ((pvr,pty,rhs):rs) acc =
+             go (ix+1) rs $
+               LetE (pvr,pty,rhs) $
+                 L1.substE (ProjE ix (VarE v)) (VarE pvr) acc
+      go 0 (zip3 tmps tys ls) bod
+
     -- We could eliminate these ahead of time:
-    L1.LetE (v,t,rhs) bod | L1.isTriv rhs -> T.LetTrivT (v,typ t, triv "<internal error2>" rhs) <$> tail bod
+    L1.LetE (v,t,rhs) bod | L1.isTriv rhs ->
+      T.LetTrivT (v,typ t, triv "<internal error2>" rhs) <$> tail bod
 
     -- TWO OPTIONS HERE: we could push equality prims into the target lang.
     -- Or we could map directly onto the IfEqT form:
@@ -230,6 +255,13 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
     _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex
 
+
+mkLet :: (Var, L1.Ty, Exp) -> Exp -> Exp
+mkLet (v,t,LetE (v2,t2,rhs2) bod1) bod2 = LetE (v2,t2,rhs2) $ LetE (v,t,bod1) bod2
+mkLet (v,t,rhs) bod = LetE (v,t,rhs) bod
+
+
+         
 unzipTup :: Var -> L1.Ty -> SyM [(Var,T.Ty)]
 unzipTup v t =
   case t of
