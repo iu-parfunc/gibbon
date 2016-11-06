@@ -23,8 +23,8 @@
                       (add1-tree y))]))
 
 (module+ main
-  (let ([tr0 : Tree (build-tree 20)])
-    (let ([tr1 : Tree (time (add1-tree tr0))])
+  (let ([tr0 : Tree (build-tree (size-param))])
+    (let ([tr1 : Tree (time (iterate (add1-tree tr0)))])
       0    
       ))
   )

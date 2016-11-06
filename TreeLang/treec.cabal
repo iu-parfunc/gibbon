@@ -15,19 +15,20 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:
-                    Packed.FirstOrder.Common
-                    Packed.FirstOrder.Compiler
-                    Packed.FirstOrder.HaskellFrontend,
-                    Packed.FirstOrder.Interpreter
-                    Packed.FirstOrder.L1_Source,
-                    Packed.FirstOrder.LTraverse
-                    Packed.FirstOrder.Passes.Cursorize
-                    Packed.FirstOrder.Passes.Flatten,
-                    Packed.FirstOrder.Passes.Lower,
-                    Packed.FirstOrder.Passes.Freshen,
-                    Packed.FirstOrder.Passes.InlineTriv,
-                    Packed.FirstOrder.SExpFrontend,
-                    Packed.FirstOrder.Target
+                  Packed.FirstOrder.Common
+                  Packed.FirstOrder.Compiler
+                  Packed.FirstOrder.HaskellFrontend,
+                  Packed.FirstOrder.Interpreter
+                  Packed.FirstOrder.L1_Source,
+                  Packed.FirstOrder.LTraverse
+                  Packed.FirstOrder.Passes.Cursorize
+                  Packed.FirstOrder.Passes.Flatten,
+                  Packed.FirstOrder.Passes.Lower,
+                  Packed.FirstOrder.Passes.Freshen,
+                  Packed.FirstOrder.Passes.InlineTriv,
+                  Packed.FirstOrder.Passes.InlinePacked,
+                  Packed.FirstOrder.SExpFrontend,
+                  Packed.FirstOrder.Target
 
 -- First attempt, slated for removal:
                     -- Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate,

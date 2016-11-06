@@ -42,7 +42,7 @@ lower :: Bool -> L2.Prog -> SyM T.Prog
 lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
   mn <- case mainExp of
           Nothing -> return Nothing
-          Just x  -> (Just . T.PrintExp) <$> tail x
+          Just (x,_) -> (Just . T.PrintExp) <$> tail x
   T.Prog <$> mapM fund (M.elems fundefs) <*> pure mn
  where
   fund :: L2.FunDef -> SyM T.FunDecl

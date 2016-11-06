@@ -9,7 +9,8 @@
          eq? = Listof True False
 
          time + * -
-
+         size-param iterate
+         
          provide require only-in all-defined-out
          ;; So that we can import the treelang progs without runninga
          module+
@@ -124,6 +125,26 @@ lit := int | #t | #f
     (match ls
       [(list x) x])))
 
+#;
+(define-syntax-rule (iterate e)
+  (let ((run (lambda () e)))
+    (printf "ITERS: ~a\n" (iters-param))
+    (let loop ([res (run)]
+               [count (sub1 (iters-param))])
+           (if (zero? count)
+               res
+               (loop (run) (sub1 count))))))
+
+(: run-n (All (a) (-> Integer (-> a) a)))
+(define (run-n n f)
+  (if (r= 1 n) (f)
+      (begin (f)
+             (run-n (sub1 n) f))))
+(define-syntax-rule (iterate e)
+  (begin (printf "ITERS: ~a\n" (iters-param))
+         (run-n (iters-param) (lambda () e))))
+
+
 (define-type Int Fixnum)
 (define-type Sym Symbol)
 (define-type Bool Boolean)
@@ -180,6 +201,9 @@ lit := int | #t | #f
     (req? a b))
   )
 
+(define size-param  : (Parameter Int) (make-parameter 1))
+(define iters-param : (Parameter Integer) (make-parameter 1))
+
 #|
 (data Tree
        [Leaf Int]
@@ -191,5 +215,13 @@ lit := int | #t | #f
     [(Node x y) (Node (add1 x) (add1 y))]))
 |#
                                   
-
-
+(match (current-command-line-arguments)
+  [(vector s i) (size-param  (cast (string->number s) Int))
+                (iters-param (cast (string->number i) Integer))
+                ;(printf "SIZE: ~a\n" (size-param))
+                #;(printf "ITERS: ~a\n" (iters-param))]
+  [(vector s)   (size-param  (cast (string->number s) Int))
+                #;(printf "SIZE: ~a\n" (size-param))]
+  [(vector)     (void)]
+  [args (error (format "expected 0-2 optional command line arguments <depth> <iters>, got ~a:\n  ~a"
+                       (vector-length args) args))])

@@ -58,9 +58,11 @@ lvl = 5
 
 ----------------------------------------
 
--- The value environment remembers in-scope let-bindings.
-type ValEnv = M.Map Var L1.Exp
+-- | 
+deadCode :: L2.Prog -> SyM L2.Prog
+deadCode = undefined
 
+-- | Cursor insertion, strategy one.
 cursorDirect :: L2.Prog -> SyM L2.Prog
 cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
   ---- Mostly duplicated boilerplate with cursorize below ----
@@ -69,7 +71,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
   -- let gloc = "global"
   mn <- case mainExp of
           Nothing -> return Nothing
-          Just x  -> Just <$> exp x
+          Just (x,t)  -> Just . (,t) <$> exp x
   return L2.Prog{ fundefs = M.fromList $ L.map (\f -> (L2.funname f,f)) fds'
                 , ddefs = ddefs
                 , mainExp = mn
@@ -175,15 +177,16 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       -- Every return context expecting a packed value must now accept
       -- TWO values, a (st,en) pair, where "en" becomes the output cursor.
       MkPackedE k ls -> do
-       tmp1  <- gensym "tmp"
+       -- tmp1  <- gensym "tmp"
        dest' <- gensym "cursplus1_"
-       d'    <- gensym "curstmp"
+       
        -- This stands for the  "WriteTag" operation:
        LetE (dest', PackedTy (getTyOfDataCon ddefs k) (),
                   MkPackedE k [VarE destC]) <$>
           let go d [] = return $ MkProdE [VarE destC, VarE d]
                  -- ^ The final return value lives at the position of the out cursor
-              go d ((rnd,IntTy):rst) | L1.isTriv rnd =
+              go d ((rnd,IntTy):rst) | L1.isTriv rnd = do
+                  d'    <- gensym "curstmp"
                   LetE (d', CursorTy, WriteInt d rnd ) <$>
                     (go d' rst)
               -- Here we recursively transfer control
@@ -432,7 +435,7 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
     -- let gloc = "global"
     mn <- case mainExp of
             Nothing -> return Nothing
-            Just x  -> Just <$> tail [] (M.empty,emptyWEnv) x
+            Just (x,t)  -> Just . (,t) <$> tail [] (M.empty,emptyWEnv) x
                 -- do let initWenv = WE (M.singleton gloc (L1.VarE "gcurs")) M.empty
                 --    tl' <- tail [] (M.empty,initWenv) x
                 --    return $ Just $ L1.LetE ("gcurs", CursorTy, NewBuffer) tl'
