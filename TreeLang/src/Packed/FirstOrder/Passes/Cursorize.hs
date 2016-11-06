@@ -71,7 +71,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
   -- let gloc = "global"
   mn <- case mainExp of
           Nothing -> return Nothing
-          Just x  -> Just <$> exp x
+          Just (x,t)  -> Just . (,t) <$> exp x
   return L2.Prog{ fundefs = M.fromList $ L.map (\f -> (L2.funname f,f)) fds'
                 , ddefs = ddefs
                 , mainExp = mn
@@ -435,7 +435,7 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
     -- let gloc = "global"
     mn <- case mainExp of
             Nothing -> return Nothing
-            Just x  -> Just <$> tail [] (M.empty,emptyWEnv) x
+            Just (x,t)  -> Just . (,t) <$> tail [] (M.empty,emptyWEnv) x
                 -- do let initWenv = WE (M.singleton gloc (L1.VarE "gcurs")) M.empty
                 --    tl' <- tail [] (M.empty,initWenv) x
                 --    return $ Just $ L1.LetE ("gcurs", CursorTy, NewBuffer) tl'

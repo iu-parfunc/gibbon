@@ -35,6 +35,7 @@ module Packed.FirstOrder.LTraverse
 import Control.Monad (when)
 import Control.DeepSeq
 import qualified Packed.FirstOrder.Common as C
+import Packed.FirstOrder.Passes.Flatten (typeExp)
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 -- import Packed.FirstOrder.L1_Source (Ty1(..), SymTy)
@@ -142,7 +143,7 @@ type Ty = L1.Ty1 LocVar
 -- | Here we only change the types of FUNCTIONS:
 data Prog = Prog { ddefs    :: DDefs L1.Ty
                  , fundefs  :: NewFuns
-                 , mainExp  :: Maybe L1.Exp
+                 , mainExp  :: Maybe (L1.Exp, L1.Ty)
                  }
   deriving (Show, Read, Ord, Eq, Generic, NFData)
 
@@ -215,16 +216,18 @@ stripTyLocs t =
 
 
 inferEffects :: L1.Prog -> SyM Prog
-inferEffects (L1.Prog dd fds mainE) = do
+inferEffects prg@(L1.Prog dd fds mainE) = do
   finalFunTys <- fixpoint 1 fds (initialEnv fds)
-  return $ force finalFunTys `seq`
-           Prog dd
-           (M.intersectionWith (\ (C.FunDef nm (arg,_) _ bod) arrTy ->
+  let funs = (M.intersectionWith (\ (C.FunDef nm (arg,_) _ bod) arrTy ->
                                   FunDef nm arrTy arg bod)
-            fds finalFunTys)
-           mainE
- where
-   
+              fds finalFunTys)
+
+      mainE' = fmap addTy mainE
+      addTy e = (e, typeExp (dd,progToEnv (Prog dd funs Nothing)) M.empty e)
+             
+  return $ force finalFunTys `seq`
+           Prog dd funs mainE'
+ where   
    fixpoint :: Int -> OldFuns -> FunEnv -> SyM FunEnv
    fixpoint iter funs env =
     do effs' <- M.fromList <$>
@@ -569,7 +572,9 @@ mapExprs fn (Prog dd fundefs mainExp) =
                                 funEnv
                  in FunDef nm arrTy arg (fn env bod))
             fundefs)
-         (fmap (fn (Env2 M.empty funEnv) ) mainExp)
+         -- The function is implicitly assumed not to change the type!
+         -- TODO: perhaps should re-infer the type here?
+         (fmap (\(e,t) -> (fn (Env2 M.empty funEnv) e, t) ) mainExp)
   where
     -- FIXME: use progToEnv
     funEnv = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
@@ -585,7 +590,8 @@ mapMExprs fn (Prog dd fundefs mainExp) =
                  in FunDef nm arrTy arg <$> (fn env bod))
             fundefs)
          <*>
-         (mapM (fn (Env2 M.empty funEnv) ) mainExp)
+         (mapM (\ (e,t) ->
+                 (,t) <$> fn (Env2 M.empty funEnv) e) mainExp)
   where
     -- FIXME: use progToEnv
     funEnv = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
