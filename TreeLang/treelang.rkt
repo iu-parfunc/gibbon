@@ -9,7 +9,7 @@
          eq? = Listof True False
 
          time + * -
-         size-param iterate
+         size-param ; iterate
          
          provide require only-in all-defined-out
          ;; So that we can import the treelang progs without runninga

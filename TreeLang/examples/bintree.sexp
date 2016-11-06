@@ -1,13 +1,15 @@
-#lang s-exp "../TreeLang/treelang.rkt"
+#lang s-exp "../treelang.rkt"
 
-;; Manually flattened and uniquified:
+;; This is redundant with /BintreeBench/treebench_treelang.rkt
+
+;; It existed here because it was manually flattened and uniquified.
 
 (data Tree
       [Leaf Int]
       [Node Tree Tree])
 
 (define (build-tree [n : Int]) : Tree
-  (if (eq? n 0)
+  (if (= n 0)
       (Leaf 100)
       (let ([min1  : Int (- n 1)])
       (let ([l : Tree (build-tree min1)]
@@ -24,4 +26,5 @@
        (Node x2 y2))]))
 
 (let ([tr0 : Tree (build-tree 20)])
-    (time (add1-tree tr0)))
+  (let ([ignored (time (add1-tree tr0))])
+    0))
