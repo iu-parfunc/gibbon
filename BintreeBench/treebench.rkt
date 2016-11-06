@@ -45,6 +45,7 @@
 
 (let ([tr (build-tree size)])
   (collect-garbage)
+  (add1-tree tr) ;; Throw one away.
   (define final #f)
   (define-values (_ cpu real gc)
     (time-apply (lambda ()

@@ -9,8 +9,7 @@
          eq? = Listof True False
 
          time + * -
-         size-param
-
+         size-param iterate
          
          provide require only-in all-defined-out
          ;; So that we can import the treelang progs without runninga
@@ -126,6 +125,23 @@ lit := int | #t | #f
     (match ls
       [(list x) x])))
 
+#;
+(define-syntax-rule (iterate e)
+  (let ((run (lambda () e)))
+    (printf "ITERS: ~a\n" (iters-param))
+    (let loop ([res (run)]
+               [count (sub1 (iters-param))])
+           (if (zero? count)
+               res
+               (loop (run) (sub1 count))))))
+#;
+(define (run-n [f : (-> Any)] [n : Integer]) : Any
+  (if (equal? 1 n) (f)
+      (run-n f (sub1 n))))
+#;(define-syntax-rule (iterate e)
+  (run-n (lambda () e) (iters-param)))
+
+
 (define-type Int Fixnum)
 (define-type Sym Symbol)
 (define-type Bool Boolean)
@@ -182,7 +198,7 @@ lit := int | #t | #f
     (req? a b))
   )
 
-(define size-param  : (Parameter Integer) (make-parameter 1))
+(define size-param  : (Parameter Int) (make-parameter 1))
 (define iters-param : (Parameter Integer) (make-parameter 1))
 
 #|
@@ -197,12 +213,12 @@ lit := int | #t | #f
 |#
                                   
 (match (current-command-line-arguments)
-  [(vector s i) (size-param  (cast (string->number s) Integer))
+  [(vector s i) (size-param  (cast (string->number s) Int))
                 (iters-param (cast (string->number i) Integer))
-                (printf "SIZE: ~a\n" (size-param))
-                (printf "ITERS: ~a\n" (iters-param))]
-  [(vector s)   (size-param  (cast (string->number s) Integer))
-                (printf "SIZE: ~a\n" (size-param))]
+                ;(printf "SIZE: ~a\n" (size-param))
+                #;(printf "ITERS: ~a\n" (iters-param))]
+  [(vector s)   (size-param  (cast (string->number s) Int))
+                #;(printf "SIZE: ~a\n" (size-param))]
   [(vector)     (void)]
   [args (error (format "expected 0-2 optional command line arguments <depth> <iters>, got ~a:\n  ~a"
                        (vector-length args) args))])
