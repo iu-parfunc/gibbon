@@ -3,13 +3,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <alloca.h>
 
 #define ALLOC malloc
 #define ALLOC_PACKED ALLOC
 
 #define SIZE 1000
 
-#define DEFAULT_BUF_SIZE 1000000
+// 10MB default:
+#define DEFAULT_BUF_SIZE 10000000
 
 typedef struct dict_item {
   struct dict_item * next;
@@ -43,6 +45,16 @@ int dict_lookup_int(dict_item_t *ptr, int key) {
   printf("Error, key %d not found!\n",key);
   exit(1);
 }
+
+// Could try alloca() here.  Better yet, we could keep our own,
+// separate stack and insert our own code to restore the pointer
+// before any function that (may have) called ALLOC_SCOPED returns.
+#define ALLOC_SCOPED() alloca(1024)
+// #define ALLOC_SCOPED() alloc_scoped()
+
+// Our global pointer.  No parallelism.
+// static char* stack_scoped_region;
+// char* alloc_scoped() { return stack_scoped_region; }
 
 
 
@@ -122,7 +134,7 @@ int main(int argc, char** argv)
 
     int num_iterations = 10;
     int tree_size = 10;
-    int buffer_size = 10 * 1000 * 1000; // 10M
+    int buffer_size = DEFAULT_BUF_SIZE; // 10M
 
     // test by default
     int benchmark = 0;
@@ -160,6 +172,9 @@ int main(int argc, char** argv)
 
     // printf("\nTREEDEPTH: %d\nITERS: %d\n", tree_size, num_iterations);
 
+    // Initialization:
+    // stack_scoped_region = (char*)malloc(DEFAULT_BUF_SIZE);
+    
     if (benchmark)
         bench(num_iterations, tree_size, buffer_size);
     else

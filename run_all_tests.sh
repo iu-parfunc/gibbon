@@ -31,7 +31,8 @@ cd $top/TreeLang
 stack --install-ghc test "$STACKARGS"
 
 cd $top/TreeLang/examples
-make test -j
+make test
+# Turning of -j for now [2016.11.06]
 
 
 

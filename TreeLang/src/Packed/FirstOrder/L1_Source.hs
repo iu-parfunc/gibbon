@@ -15,7 +15,8 @@ module Packed.FirstOrder.L1_Source
       -- * Primitive operations
     , Prim(..), primRetTy, primArgsTy
       -- * Types and helpers
-    , Ty, Ty1(..), pattern Packed, pattern SymTy, voidTy, hasPacked
+    , Ty, Ty1(..), pattern Packed, pattern SymTy
+    , voidTy, hasPacked, sizeOf 
     -- * Expression and Prog helpers
     , freeVars, subst, substE, mapExprs
       -- * Trivial expressions
@@ -145,7 +146,17 @@ hasPacked t = case t of
                 BoolTy    -> False
                 IntTy     -> False
                 SymDictTy t -> hasPacked t
-         
+
+-- | Provide a size in bytes, if it is statically known.                               
+sizeOf :: Ty1 a -> Maybe Int
+sizeOf t = case t of
+             PackedTy{}  -> Nothing
+             ProdTy ls   -> sum <$> mapM sizeOf ls
+             SymDictTy _ -> Just 8 -- Always a pointer.
+             IntTy       -> Just 8
+             BoolTy      -> sizeOf IntTy
+             ListTy _    -> __
+                               
 -- | Transform the expressions within a program.
 mapExprs :: (Exp -> Exp) -> Prog -> Prog
 mapExprs fn prg@Prog{fundefs,mainExp} =

@@ -143,9 +143,11 @@ typeExp (dd,env2) _env (L1.PrimAppE p _es) =
       _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
 typeExp (dd,env2) env (L1.LetE (v,t,_) e) = typeExp (dd,env2) (M.insert v t env) e
 typeExp (dd,env2) env (L1.IfE _ e _) = typeExp (dd,env2) env e
-typeExp (dd,env2) env (L1.ProjE i e) =
-    let (L1.ProdTy tys) = typeExp (dd,env2) env e
-    in tys !! i
+typeExp (dd,env2) env e0@(L1.ProjE i e) =
+    case typeExp (dd,env2) env e of 
+     (L1.ProdTy tys) -> tys !! i 
+     oth -> error $ "typeExp: Cannot project fields from this type: "++show oth
+                  ++"\nExpression:\n  "++sdoc e0
 typeExp (dd,env2) env (L1.MkProdE es) =
     L1.ProdTy $ map (typeExp (dd,env2) env) es
 typeExp (dd,env2) env (L1.CaseE _e mp) =

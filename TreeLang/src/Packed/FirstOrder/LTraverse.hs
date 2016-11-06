@@ -21,6 +21,7 @@ module Packed.FirstOrder.LTraverse
     -- * Utilities for dealing with the extended types:
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc
     , tyWithFreshLocs, stripTyLocs
+    , getFunTy 
 
     -- * Lattices of abstract locations:
     , Loc(..), LocVar, toEndVar, isEndVar, fromEndVar
@@ -164,6 +165,12 @@ data FunDef = FunDef { funname :: Var
                      , funbod  :: L1.Exp }
   deriving (Show, Read, Ord, Eq, Generic, NFData)
 --------------------------------------------------------------------------------
+
+-- | Retrieve the type of a function:
+getFunTy :: NewFuns -> Var -> ArrowTy Ty
+getFunTy mp f = case M.lookup f mp of
+                  Nothing -> error $ "getFunTy: function was not bound: "++show f
+                  Just (FunDef{funty}) -> funty
 
 -- | We initially populate all functions with MAXIMUM effect signatures.
 --   Subsequently, these monotonically SHRINK until a fixpoint.

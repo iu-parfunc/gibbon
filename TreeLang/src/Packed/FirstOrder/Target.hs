@@ -158,6 +158,11 @@ data Prim
     | DictEmptyP Ty
     | NewBuf
     -- ^ Allocate a new buffer, return a cursor.
+    | ScopedBuf
+    -- ^ Returns a pointer to a buffer, with the invariant that data written
+    -- to this region is no longer used after the enclosing function returns.
+    -- I.e. this can be stack allocated data.
+      
     | WriteTag
     -- ^ Write a static tag value, takes a cursor to target.
     | WriteInt
@@ -494,7 +499,9 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     DictEmptyP _ty -> let [(outV,ty)] = bnds
                                       in [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = 0; |] ]
                     NewBuf   -> let [(outV,CursorTy)] = bnds in
-                                [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED(DEFAULT_BUF_SIZE); |] ]                                
+                                [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED(DEFAULT_BUF_SIZE); |] ]
+                    ScopedBuf -> let [(outV,CursorTy)] = bnds in
+                                [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_SCOPED(); |] ]
                     WriteTag -> let [(outV,CursorTy)] = bnds
                                     [(TagTriv tag),(VarTriv cur)] = rnds
                                 in [ C.BlockStm [cstm| *($id:cur) = $tag; |]
@@ -528,7 +535,7 @@ codegenTy :: Ty -> C.Type
 codegenTy IntTy = [cty|int|]
 codegenTy TagTy = [cty|int|]
 codegenTy SymTy = [cty|int|]
-codegenTy PtrTy = [cty|void*|]
+codegenTy PtrTy = [cty|char*|] -- Hack, this could be void* if we have enough casts. [2016.11.06]
 codegenTy CursorTy = [cty|char*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts
