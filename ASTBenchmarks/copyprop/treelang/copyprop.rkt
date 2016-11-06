@@ -1,6 +1,6 @@
 #lang s-exp "../../../TreeLang/treelang.rkt"
 
-(require "../../grammar_racket.sexp")
+(require "../../grammar_racket.sexp" (only-in racket gensym))
 
 (provide copyprop)
 
@@ -25,7 +25,7 @@
   (case ls
     [(CONSLAMBDACASE fs le ls)
      (let ([nenv : (SymDict Sym) (formals-ee fs env)])
-       (CONSLAMBDACASE fs
+       (CONSLAMBDACASE (formals-update fs nenv)
        		       (loop2 le nenv)
      		       (loop3 ls env)))]
     [(NULLLAMBDACASE)
@@ -38,22 +38,27 @@
     [(NULLSYM)
      env]))
 
-(define (loop4 [ls : LVBIND] [env : (SymDict Sym)]) : (SymDict Sym)
-  (case ls
-    [(CONSLVBIND syms e ls)
-     (loop4 ls (case e
-                 [(VARREF sym)
-               	  (extend-env1 syms sym env)]
-                 [_ env]))]
-    [(NULLLVBIND)
-     env]))
+(define (lookup-env1 [syms : ListSym] [env : (SymDict Sym)]) : ListSym
+  (case syms
+    [(CONSSYM s rest)
+     (CONSSYM (lookup env s)
+      (lookup-env1 rest env))]
+    [(NULLSYM)
+     syms]))
 
 (define (loop6 [ls : ListSym] [env : (SymDict Sym)]) : (SymDict Sym)
   (case ls
     [(CONSSYM s ls)
-     (loop6 ls (delete env s))]
+     (loop6 ls (insert env s (gensym)))]
     [(NULLSYM)
      env]))
+
+(define (loop7 [ls : ListSym] [env : (SymDict Sym)]) : ListSym
+  (case ls
+    [(CONSSYM s ls)
+     (CONSSYM (lookup env s) (loop7 ls env))]
+    [(NULLSYM)
+     ls]))
   
 (define (top [e : Toplvl] [env : (SymDict Sym)]) : Toplvl
   (case e
@@ -93,16 +98,21 @@
     ;; Binding forms:
     [(Lambda formals body)
      (let ([nenv : (SymDict Sym) (formals-ee formals env)])
-       (Lambda formals
+       (Lambda (formals-update formals nenv)
        	       (loop2 body nenv)))]
     [(CaseLambda cases)
      (CaseLambda (loop3 cases env))]
-    [(LetValues binds body) 
-     (let ([nenv : (SymDict Sym) (loop4 binds env)])
-       (LetValues binds (loop2 body nenv)))]
+    [(LetValues binds body)
+     (let ([nbinds : LVBIND (lvbind-update-rhs binds env)])	
+       (let ([nenv : (SymDict Sym) (lvbind-ee nbinds env)])
+         (LetValues (lvbind-update nbinds nenv)
+       		    (loop2 body nenv))))]
     [(LetrecValues binds body) ;; anything different here?
-     (let ([nenv : (SymDict Sym) (loop4 binds env)])
-       (LetrecValues binds (loop2 body nenv)))]
+     (let ([nenv : (SymDict Sym) (letrec-lvbind-ee1 binds env)])
+       (let ([nbinds : LVBIND (letrec-lvbind-update binds nenv)])
+         (let ([nenv : (SymDict Sym) (letrec-lvbind-ee2 nbinds nenv)])
+	   (let ([nbinds : LVBIND (letrec-rhs-update nbinds nenv)])
+	     (LetrecValues nbinds (loop2 body nenv))))))]
     [(If cond then else)
      (If (expr cond env) (expr then env) (expr else env))]
     [(Begin exprs)
@@ -116,12 +126,85 @@
     [(WithContinuationMark e1 e2 e3)
      (WithContinuationMark (expr e1 env) (expr e2 env) (expr e3 env))]))
 
+;; gensym formals and extend the env with the mapping
 (define (formals-ee [f : Formals] [env : (SymDict Sym)]) : (SymDict Sym)
   (case f
-    [(F1 ls)
-     (loop6 ls env)]
-    [(F2 ls s)
-     (let ([nenv : (SymDict Sym) (loop6 ls env)])
-       (delete nenv s))]
-    [(F3 s)
-     (delete env s)]))
+   [(F1 ls)
+    (loop6 ls env)]
+   [(F2 ls s)
+    (let ([nenv : (SymDict Sym) (loop6 ls env)])
+      (insert nenv s (gensym)))]
+   [(F3 s)
+   (insert env s (gensym))]))
+
+;; update formals to match new name in env
+(define (formals-update [f : Formals] [env : (SymDict Sym)]) : Formals
+  (case f
+   [(F1 ls)
+    (F1 (loop7 ls env))]
+   [(F2 ls s)
+    (F2 (loop7 ls env) (lookup env s))]
+   [(F3 s)
+    (F3 (lookup env s))]))
+
+;; gensym let bindings and extend env with new mappings. 2 new mappings for each lvbind
+(define (lvbind-ee [ls : LVBIND] [env : (SymDict Sym)]) : (SymDict Sym)
+  (case ls
+    [(CONSLVBIND syms e ls)
+     (lvbind-ee ls (case e
+               	     [(VARREF sym)
+		      (let ([tmp : Sym (gensym)])
+		        (insert (extend-env1 syms tmp env) tmp sym))]
+                     [_ env]))]
+    [(NULLLVBIND)
+     env]))
+
+(define (lvbind-update [ls : LVBIND] [env : (SymDict Sym)]) : LVBIND
+  (case ls
+    [(CONSLVBIND syms e ls)
+     (CONSLVBIND (lookup-env1 syms env)
+                 e ;; what about here?
+		 (lvbind-update ls env))]
+    [(NULLLVBIND)
+     ls]))
+
+(define (lvbind-update-rhs [ls : LVBIND] [env : (SymDict Sym)]) : LVBIND
+  (case ls
+    [(CONSLVBIND syms e ls)
+     (CONSLVBIND syms (expr e env) (lvbind-update-rhs ls env))]
+    [(NULLLVBIND)
+     ls]))
+
+(define (letrec-lvbind-ee1 [ls : LVBIND] [env : (SymDict Sym)]) : (SymDict Sym)
+  (case ls
+    [(CONSLVBIND syms e ls)
+     (letrec-lvbind-ee1 ls (extend-env1 syms (gensym) env))]
+    [(NULLLVBIND)
+     env]))
+
+(define (letrec-lvbind-update [ls : LVBIND] [env : (SymDict Sym)]) : LVBIND
+  (case ls
+   [(CONSLVBIND syms e ls)
+    (CONSLVBIND (lookup-env1 syms env)
+    		(expr e env)
+		(letrec-lvbind-update ls env))]
+   [(NULLLVBIND)
+    ls]))
+
+(define (letrec-lvbind-ee2 [ls : LVBIND] [env : (SymDict Sym)]) : (SymDict Sym)
+  (case ls
+    [(CONSLVBIND syms e ls)
+     (letrec-lvbind-ee2 ls (case e
+     			     [(VARREF sym)
+			      (extend-env1 syms sym env)]
+			     [_ env]))]
+    [(NULLLVBIND)
+     env]))
+
+(define (letrec-rhs-update [ls : LVBIND] [env : (SymDict Sym)]) : LVBIND
+  (case ls
+    [(CONSLVBIND syms e ls)
+     (CONSLVBIND syms (expr e env) (letrec-rhs-update ls env))]
+    [(NULLLVBIND)
+     ls]))
+
