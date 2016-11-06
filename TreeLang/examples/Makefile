@@ -46,20 +46,19 @@ all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
 	$(TREEC) --parse $^ 2> $@
 
 PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
-    test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp test05_app.sexp \
-	test05b_app.sexp test06_case.sexp test06b_case.sexp test06c_nested.sexp \
+    test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp \
+    test04_vector.sexp test04b_vector.sexp test05_app.sexp \
+    test05b_app.sexp test06_case.sexp test06b_case.sexp test06c_nested.sexp \
     test06d_rec.sexp test06e_rec.sexp \
     test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp \
     test11_fundata.sexp test11b_fundata.sexp \
     test15_packed.sexp
 # FIX THESE: All are blocked on something.  Then move them to the above list:
-
+# ----------------------
 # test06h_rec.sexp -- lower hits let with case in RHS [2016.11.06]
 # test06i_casecase.sexp -- ''
 
-#  test04  -- MkTrue typeExp
-#  test04b -- ''
-#  test04c -- lower needs detuple
+# test04c_ifvector.sexp -- MkProd sneaking through in Triv context to Lower [2016.11.06]
 
 
 
@@ -81,18 +80,18 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 #	@echo "Now check expected $$f.ans, versus received, $$f.out";
 	@./diff.sh $^.ans $@
 
-PACKED_TESTS= test00_add.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
-    test03b_eqs.sexp test03c_eqsym.sexp \
+# PACKED_TESTS=$(ALL_TESTS)
+PACKED_TESTS2= test00_add.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
+    test03b_eqs.sexp test03c_eqsym.sexp test04_vector.sexp test04b_vector.sexp \
+    test05_app.sexp test05b_app.sexp \
     test06_case.sexp test06b_case.sexp test06c_nested.sexp test06i_casecase.sexp \
-    test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp test06h_rec.sexp
+    test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp test06h_rec.sexp \
+    test07_time.sexp test10_desugar.sexp test10b_desugar.sexp
 
-#  test04b -- cursorize/mkprod
-#  test05  -- cursorize tail Apps
-#  test05b -- cursorize/let
+# test04c_ifvector.sexp -- MkProd sneaking through in Triv context to Lower [2016.11.06]
 
-#  test07  -- cursorize/TimeIt
-#  test08  -- no dictionaries yet
-#  test09  -- fail on Compile.hs nonexhaustive
+# test09_recur.sexp -- hits hole in Cursorize [2016.11.06]
+
 
 # Run the tests that work under the packed regime:
 run_tests_packed: answers
@@ -101,8 +100,8 @@ run_tests_packed: answers
 
 INTERP_TESTS= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
      test03b_eqs.sexp test03c_eqsym.sexp \
-     test05_app.sexp  \
-     test05b_app.sexp  test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp
+     test05_app.sexp  test05b_app.sexp \
+     test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: test00_add.sexp.ans
