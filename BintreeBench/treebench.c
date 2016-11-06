@@ -5,7 +5,9 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef PARALLEL
 #include <cilk/cilk.h>
+#endif
 #include <time.h>
 
 // Manual layout:
