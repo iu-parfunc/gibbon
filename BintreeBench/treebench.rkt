@@ -26,11 +26,12 @@
       tr))
 
 
-(define (bench tr n)
+(define (bench-one tr n)
   (displayln (sum-tree tr))
   (collect-garbage #;'major)
   (define tr* (time (add1-tree tr)))
-  (displayln (sum-tree tr*)))
+  (displayln (sum-tree tr*))
+  )
 
 (define-values (size iters)
   (match (current-command-line-arguments)
@@ -39,7 +40,17 @@
                  (vector-length args))]))
 
 (printf "Benchmarking on tree of size 2^~a, ~a iterations\n" size iters)
-(time
- (let ([tr (build-tree size)])
-   (for ((i (in-range iters)))
-     (bench tr size))))
+(printf "SIZE: ~a\n" size)
+(printf "ITERS: ~a\n" iters)
+
+(let ([tr (build-tree size)])
+  (collect-garbage)
+  (define final #f)
+  (define-values (_ cpu real gc)
+    (time-apply (lambda ()
+                  (for ((i (in-range iters)))                    
+                    (set! final (add1-tree tr)))) '()))
+  (define batchseconds (exact->inexact (/ real 1000.0)))
+  (printf "BATCHTIME: ~a\n" batchseconds)
+  (printf "MEANTIME: ~a\n" (exact->inexact (/ batchseconds iters)))
+  (displayln (sum-tree final)))

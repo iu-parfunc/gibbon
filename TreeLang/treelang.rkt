@@ -9,7 +9,9 @@
          eq? = Listof True False
 
          time + * -
+         size-param
 
+         
          provide require only-in all-defined-out
          ;; So that we can import the treelang progs without runninga
          module+
@@ -180,6 +182,9 @@ lit := int | #t | #f
     (req? a b))
   )
 
+(define size-param  : (Parameter Integer) (make-parameter 1))
+(define iters-param : (Parameter Integer) (make-parameter 1))
+
 #|
 (data Tree
        [Leaf Int]
@@ -191,5 +196,13 @@ lit := int | #t | #f
     [(Node x y) (Node (add1 x) (add1 y))]))
 |#
                                   
-
-
+(match (current-command-line-arguments)
+  [(vector s i) (size-param  (cast (string->number s) Integer))
+                (iters-param (cast (string->number i) Integer))
+                (printf "SIZE: ~a\n" (size-param))
+                (printf "ITERS: ~a\n" (iters-param))]
+  [(vector s)   (size-param  (cast (string->number s) Integer))
+                (printf "SIZE: ~a\n" (size-param))]
+  [(vector)     (void)]
+  [args (error (format "expected 0-2 optional command line arguments <depth> <iters>, got ~a:\n  ~a"
+                       (vector-length args) args))])
