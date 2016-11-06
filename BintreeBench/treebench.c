@@ -160,6 +160,8 @@ int main(int argc, char** argv) {
     printTree(tr); printf("\n");
   }
   printf("Running traversals (ms): ");
+
+  long allocated_bytes =0;
   if ( iters < 0 ) {
     iters = -iters;
     double trials[iters];
@@ -173,7 +175,7 @@ int main(int argc, char** argv) {
       clock_gettime(which_clock, &end);
       time_spent = difftimespecs(&begin, &end);
       if(iters < 100) {
-        printf(" %d", (int)(time_spent * 1000));
+        printf(" %lld", (long long)(time_spent * 1000));
         fflush(stdout);
       }
       trials[i] = time_spent;
@@ -196,6 +198,9 @@ int main(int argc, char** argv) {
   else
   {
     printf("Timing %d iters as a batch\n", iters);
+#ifdef BUMPALLOC
+      char* starting_heap_pointer = heap_ptr;
+#endif
     clock_gettime(which_clock, &begin);
     for(int i=0; i<iters; i++) {
 #ifdef PARALLEL
@@ -203,9 +208,16 @@ int main(int argc, char** argv) {
 #else      
       Tree* t2 = add1Tree(tr);
 #endif
+#ifdef BUMPALLOC
+      allocated_bytes = (long)(heap_ptr - starting_heap_pointer);
+#endif
       DELTREE(t2);
     }
     clock_gettime(which_clock, &end);
+#ifdef BUMPALLOC
+    printf("Bytes allocated during whole batch:\n");
+    printf("BYTESALLOC: %ld\n", allocated_bytes);
+#endif
     time_spent = difftimespecs(&begin, &end);
     printf("BATCHTIME: %lf\n", time_spent);
   }
