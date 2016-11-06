@@ -77,7 +77,8 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 	./diff.sh $^.ans $@
 
 PACKED_TESTS= test00_add.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
-    test03b_eqs.sexp test03c_eqsym.sexp test06_case.sexp test06b_case.sexp
+    test03b_eqs.sexp test03c_eqsym.sexp \
+    test06_case.sexp test06b_case.sexp test06c_nested.sexp
 
 #  test04b -- cursorize/mkprod
 #  test05  -- cursorize tail Apps

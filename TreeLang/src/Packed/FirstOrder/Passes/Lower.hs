@@ -178,6 +178,9 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       T.LetPrimCallT [(v,T.CursorTy)] T.NewBuf [] <$>
          tail bod
 
+    L1.LetE (v,_,C.ScopedBuffer) bod ->
+      T.LetPrimCallT [(v,T.CursorTy)] T.ScopedBuf [] <$>
+         tail bod              
 
     ---------------------
     -- (3) Proper primapps.
@@ -189,10 +192,13 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
              (tail bod)
     --------------------------------End PrimApps----------------------------------
 
+
+    L1.LetE (_,_,L1.AppE f _) _ | M.notMember f fundefs ->
+      error $ "Application of unbound function: "++show f
              
     L1.LetE (v,t,L1.AppE f arg) bod -> do
         case arg of
-          MkProdE es -> error "MkProdE parameter to AppE"
+          MkProdE es -> error "Unexpected MkProdE parameter to AppE"
           _ -> T.LetCallT [(v,typ t)] f
                  [(triv "app rand") arg]
                  <$>

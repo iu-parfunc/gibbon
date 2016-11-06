@@ -13,10 +13,12 @@
 module Packed.FirstOrder.Passes.Cursorize
     ( cursorize
     , cursorDirect
-    , pattern WriteInt, pattern ReadInt, pattern NewBuffer, pattern CursorTy
+    , pattern WriteInt, pattern ReadInt, pattern NewBuffer
+    , pattern CursorTy, pattern ScopedBuffer
     ) where
 
 import Control.Monad
+import Control.Applicative
 import Control.DeepSeq
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
@@ -58,10 +60,6 @@ lvl = 5
 
 ----------------------------------------
 
--- | 
-deadCode :: L2.Prog -> SyM L2.Prog
-deadCode = undefined
-
 -- | Cursor insertion, strategy one.
 cursorDirect :: L2.Prog -> SyM L2.Prog
 cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
@@ -71,7 +69,13 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
   -- let gloc = "global"
   mn <- case mainExp of
           Nothing -> return Nothing
-          Just (x,t)  -> Just . (,t) <$> exp x
+          Just (x,mainTy) -> Just . (,mainTy) <$>
+             if L1.hasPacked mainTy
+             then -- Allocate into a global cursor:
+                  do cur <- gensym "globcur"
+                     LetE (cur,CursorTy,NewBuffer) <$>
+                      exp2 cur x
+             else exp x
   return L2.Prog{ fundefs = M.fromList $ L.map (\f -> (L2.funname f,f)) fds'
                 , ddefs = ddefs
                 , mainExp = mn
@@ -93,7 +97,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       exp' <- if L1.hasPacked outT
               then exp bod
               else do curs <- gensym "curs"
-                      LetE (curs, CursorTy, projVal newArg) <$>
+                      LetE (curs, CursorTy, projVal (VarE newArg)) <$>
                         exp2 curs bod
       return $ L2.FunDef funname newTy newArg exp'
   ------------------------------------------------------------
@@ -102,6 +106,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
   --   destination cursor.
   exp :: Exp -> SyM Exp
   exp ex =
+    dbgTrace lvl (" 1. Processing expr in non-packed context, exp:\n  "++sdoc ex) $ 
     case ex of
       VarE _ -> return ex
       LitE _ -> return ex
@@ -121,34 +126,45 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       AppE v e      -> AppE v     <$> exp e
       PrimAppE p ls -> PrimAppE p <$> mapM exp ls
       ProjE i e  -> ProjE i <$> exp e
-      CaseE e ls -> do
+      CaseE scrtE ls -> do
          cur0 <- gensym "cursIn"
---          | L1.hasPacked (tyOfCase ddefs ex) -> __
+         -- Issue reads to get out all the fields:
          let unpack :: (Constr, [Var]) -> Exp -> SyM Exp
              unpack (k,vrs) ex =
-              let go c [] = exp ex -- Everything is now in scope for the body.
-                  go c ((vr,ty):rs) = do
+              let go c _off [] = exp ex -- Everything is now in scope for the body.
+                               -- TODO: we could witness the end if we still have the offset.
+                  go c offset ((vr,ty):rs) = do
                     tmp <- gensym "tptmp"
                     let c' = case rs of
                                [] -> "end"
                                (v2,_):_ -> witnessOf v2
                     case ty of
+                      -- TODO: Generalize to other scalar types:
                       IntTy ->
                         LetE (tmp, addCurTy IntTy, ReadInt c) <$>
                          LetE (c', CursorTy, projCur tmp) <$>
-                          LetE (vr, IntTy, projVal tmp) <$>
-                           go c' rs
+                          LetE (vr, IntTy, projVal (VarE tmp)) <$>
+                           go c' (liftA2 (+) (L1.sizeOf IntTy) offset) rs
                       ty | L1.hasPacked ty -> do
-                       -- Strategy: assume currently-unbound witness variables:
-                       -- A later traversal will reorder.
-                       go c' rs
+                       -- Strategy: ALLOW unbound witness variables. A later traversal will reorder.
+                       case offset of
+                         Nothing -> go c' Nothing rs
+                         -- POLICY: Name the witness the same as the variable for now:
+                         Just n -> LetE (vr, CursorTy, add n (VarE cur0)) <$>
+                                   go c' Nothing rs
+                  add 0 e = e
+                  add n e = PrimAppE L1.AddP [e, LitE n]
+              in go cur0 (Just 0) (zip vrs (lookupDataCon ddefs k))
 
-              in go cur0 (zip vrs (lookupDataCon ddefs k))
+         scrtE' <- if allocFree scrtE
+                   then exp scrtE
+                   else do tmp <- gensym "scopd"
+                           LetE (tmp,CursorTy,ScopedBuffer) <$>
+                            projVal <$> exp2 tmp scrtE
 
          -- Because the scrutinee is, naturally, of packed type, it
-         -- will be represented as a pair of (start,end) pointers.
-         VarE scrut <- exp e -- ASSUME FLATTENING here.
-         CaseE (projVal scrut) <$>
+         -- will be represented as a pair of (start,end) pointers.                 
+         CaseE scrtE' <$>
                (forM ls $ \ (k,vrs,e) -> do
                   e' <- unpack (k,vrs) e
                   return (k,[cur0],e'))
@@ -161,18 +177,19 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
   -- Establish convention of putting end-cursor after value (or start-cursor):
   addCurTy ty = ProdTy[ty,CursorTy]
   projCur v = ProjE 1 (VarE v)
-  projVal v = ProjE 0 (VarE v)
+  projVal e = ProjE 0 e
 
   -- | Take a destination cursor.  Assume only a single packed output.
   --   Here we are in a context that flows to Packed data, we follow
   --   a convention of returning a pair of value/end.
   exp2 :: Var -> Exp -> SyM Exp
   exp2 destC ex =
+    dbgTrace lvl (" 2. Processing expr in packed context, cursor "++show destC++", exp:\n  "++sdoc ex) $ 
     let go = exp2 destC in
     case ex of
-      -- We should not recur on these:
-      VarE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
-      LitE _ -> error$ "cursorDirect/exp2: Should not encounter: "++show ex
+      -- Here the allocation has already been performed:
+      VarE _ -> return ex
+      LitE _ -> error$ "cursorDirect/exp2: Should not encounter Lit in packed context: "++show ex
 
       -- Every return context expecting a packed value must now accept
       -- TWO values, a (st,en) pair, where "en" becomes the output cursor.
@@ -214,6 +231,26 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
 
 cursPairTy :: L1.Ty
 cursPairTy = ProdTy [CursorTy, CursorTy]
+
+-- | Is the expression statically guaranteed to not need an output cursor?
+allocFree :: Exp -> Bool 
+allocFree ex =
+ case ex of   
+   (VarE x)         -> True
+   (LitE x)         -> True
+   (PrimAppE x1 x2) -> True
+
+   (AppE x1 x2)     -> False                       
+   (MkPackedE x1 x2) -> False
+                       
+   (LetE (_,_,e1) e2) -> allocFree e1 && allocFree e2
+   (IfE x1 x2 x3) -> allocFree x1 && allocFree x2 && allocFree x3
+   (ProjE _ x2)   -> allocFree x2
+   (MkProdE x)    -> all allocFree x
+   (CaseE x1 x2)  -> allocFree x1 && all (\(_,_,e) -> allocFree e) x2
+   (TimeIt e _)   -> allocFree e
+   (MapE (_,_,x1) x2) -> allocFree x1 && allocFree x2 
+   (FoldE (_,_,x1) (_,_,x2) x3) -> allocFree x1 && allocFree x2 && allocFree x3
 
 -- | Witness the location of a local variable.
 witnessOf :: Var -> Var
@@ -267,6 +304,9 @@ tyOfCase dd (CaseE _ ((k,_,_):_)) = PackedTy (getTyOfDataCon dd k) ()
 
 pattern NewBuffer = AppE "NewBuffer" (MkProdE [])
 
+-- | output buffer space that is known not to escape the current function.
+pattern ScopedBuffer = AppE "ScopedBuffer" (MkProdE [])
+                    
 -- Tag writing is still modeled by MkPackedE.
 pattern WriteInt v e = AppE "WriteInt" (MkProdE [VarE v, e])
 -- One cursor in, (int,cursor') output.

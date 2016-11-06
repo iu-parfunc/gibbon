@@ -249,8 +249,8 @@ compile Config{input,mode,packed,verbosity} fp = do
                        l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
 --                     l2e <- pass  "cursorize"                cursorize                l2d
 
---                       l2d' <- pass "inlinePacked"             inlinePacked             l2d
-                       l2e <- pass  "cursorDirect"             cursorDirect             l2d
+                       l2d' <- pass "inlinePacked"             inlinePacked             l2d
+                       l2e <- pass  "cursorDirect"             cursorDirect             l2d'
                        l2f <- pass "flatten"                   flatten2                 l2e
                        l2g <- pass "inlineTriv"                inline2                  l2f
                        return l2g
