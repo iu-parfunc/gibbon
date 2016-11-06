@@ -9,7 +9,7 @@
          eq? = Listof True False
 
          time + * -
-         size-param ; iterate
+         size-param iterate
          
          provide require only-in all-defined-out
          ;; So that we can import the treelang progs without runninga
@@ -134,12 +134,15 @@ lit := int | #t | #f
            (if (zero? count)
                res
                (loop (run) (sub1 count))))))
-#;
-(define (run-n [f : (-> Any)] [n : Integer]) : Any
-  (if (equal? 1 n) (f)
-      (run-n f (sub1 n))))
-#;(define-syntax-rule (iterate e)
-  (run-n (lambda () e) (iters-param)))
+
+(: run-n (All (a) (-> Integer (-> a) a)))
+(define (run-n n f)
+  (if (r= 1 n) (f)
+      (begin (f)
+             (run-n (sub1 n) f))))
+(define-syntax-rule (iterate e)
+  (begin (printf "ITERS: ~a\n" (iters-param))
+         (run-n (iters-param) (lambda () e))))
 
 
 (define-type Int Fixnum)
