@@ -236,9 +236,9 @@ case_copy =
            FunDef _ (ArrowTy _ efs _) _ _ = fundefs prg M.! "copy"
        in efs)
 
-t5 :: Prog
-t5 = fst $ runSyM 1000 $
-     cursorize copy
+-- t5 :: Prog
+-- t5 = fst $ runSyM 1000 $
+--      cursorize copy
 
 --------------------------------------------------------------------------------
 -- add1 example encoded as AST by hand

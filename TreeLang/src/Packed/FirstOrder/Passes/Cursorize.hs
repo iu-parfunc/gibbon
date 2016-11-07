@@ -11,8 +11,7 @@
 --   This shares a lot with the effect-inference pass.
 
 module Packed.FirstOrder.Passes.Cursorize
-    ( cursorize
-    , cursorDirect
+    ( cursorDirect
     , routeEnds
     , findWitnesses
     , pattern WriteInt, pattern ReadInt, pattern NewBuffer
@@ -294,6 +293,13 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
 -- --        MapE (v,t,rhs) bod -> __
 -- --        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
 
+
+-- | A given return context for a type satisfying `hasPacked` either
+-- flows to a single cursor or to multiple cursors.
+data Dests = Cursor Var
+           | TupOut [Maybe Dests] -- ^ The layout of this matches the
+                                  -- ProdTy, but not every field contains a Packed.
+
 --------------------------- Dilation Conventions -------------------------------
 
 -- newtype DiExp = Di Exp
@@ -554,11 +560,12 @@ cursorizeTy (ArrowTy inT ef ouT) = (newArr, newIn, newOut)
                          (mapPacked (\_ l -> L2.mkCursorTy (toEndVar l)) ouT)
                          -- Or they could be void...
 
-  -- Every packed input means another output (new return value for the
-  -- moved cursor), and conversely, every output cursor must have had
+  -- Every _traversed_ packed input means another output (new return value for the
+  -- moved cursor), and conversely, EVERY output cursor must have had
   -- an original position (new input param):
   newOut   = [ toEndVar v  -- This determines the ORDER of added inputs.
-             | Traverse v <- S.toList ef ]
+             | Traverse v <- S.toList ef ] -- ^ Because we traverse all outputs,
+                                           -- this effect set  is just what we need.
   newIn    = L2.allLocVars ouT -- These stay in their original order (preorder)
 
 -- Injected cursor args go first in input and output:
@@ -662,8 +669,7 @@ extendEnv ls e = (M.fromList ls) `M.union` e
 
 --------------------------------------------------------------------------------
 
-cursorize = __
-            
+
 -- | The goal of this pass is to take effect signatures and translate
 -- them into extra arguments and returns.  This pass does not worry
 -- about where the witnesses come from to synthesize these extra
@@ -712,8 +718,6 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
       exp' <- tail newOut (env,wenv) bod
       return $ L2.FunDef funname newTy newArg exp'
 
---  _ = L2.mapMExprs fnreve
---  fn _ ex = return (go ex)
   tl :: (Env,WitnessEnv) -> L1.Exp -> SyM L1.Exp
   tl (env,wenv) ex =
     let go = tl (env,wenv) in
@@ -730,11 +734,11 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
       MkPackedE k ls -> MkPackedE k <$> mapM go ls
       TimeIt e t     -> TimeIt <$> go e <*> pure t
       IfE a b c      -> IfE <$> go a <*> go b <*> go c
-      MapE (v,t,rhs) bod -> MapE <$> ((v,t,) <$> go rhs) <*> go bod
-      FoldE (v1,t1,r1) (v2,t2,r2) bod ->
-          FoldE <$> ((v1,t1,) <$> go r1)
-                <*> ((v2,t2,) <$> go r2)
-                <*> go bod
+      -- MapE (v,t,rhs) bod -> MapE <$> ((v,t,) <$> go rhs) <*> go bod
+      -- FoldE (v1,t1,r1) (v2,t2,r2) bod ->
+      --     FoldE <$> ((v1,t1,) <$> go r1)
+      --           <*> ((v2,t2,) <$> go r2)
+      --           <*> go bod
 
              
   -- Process the "spine" of a flattened program.
