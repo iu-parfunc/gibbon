@@ -9,16 +9,25 @@
 #include <cilk/cilk.h>
 #endif
 #include <time.h>
+#include <malloc.h>
 
 // Manual layout:
 // one byte for each tag, 64 bit integers
 typedef long long Num;
 
-enum __attribute__((__packed__)) Type { Leaf, Node };
+// This controls whether we use a word for tags:
+#ifdef UNALIGNED
+#warning "Using unaligned mode / packed-struct attribute"
+#define ATTR  __attribute__((__packed__))
+#else
+#define ATTR  
+#endif
+
+enum ATTR Type { Leaf, Node };
 
 // struct Tree;
 
-typedef struct __attribute__((__packed__)) Tree {
+typedef struct ATTR Tree {
     enum Type tag;
     union {
       struct { long long elem; };
@@ -148,8 +157,8 @@ int main(int argc, char** argv) {
     abort();
   }
   
-  printf("sizeof(Tree) = %d\n", sizeof(Tree));
-  printf("sizeof(enum Type) = %d\n", sizeof(enum Type));
+  printf("sizeof(Tree) = %lu\n", sizeof(Tree));
+  printf("sizeof(enum Type) = %lu\n", sizeof(enum Type));
   printf("Building tree, depth %d.  Benchmarking %d iters.\n", depth, iters);
 
   INITALLOC;
@@ -221,6 +230,8 @@ int main(int argc, char** argv) {
 #ifdef BUMPALLOC
     printf("Bytes allocated during whole batch:\n");
     printf("BYTESALLOC: %ld\n", allocated_bytes);
+#else
+    malloc_stats();
 #endif
     time_spent = difftimespecs(&begin, &end);
     printf("BATCHTIME: %lf\n", time_spent);
@@ -228,4 +239,3 @@ int main(int argc, char** argv) {
   DELTREE(tr);
   return 0;
 }
-
