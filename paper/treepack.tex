@@ -75,8 +75,8 @@
 \titlebanner{banner above paper title}        % These are ignored unless
 \preprintfooter{short description of paper}   % 'preprint' option specified.
 
-\title{Compiling tree transformations on packed representations}
-\subtitle{Faster compiler passes, parallelization ready}
+\title{Compiling tree transforms to operate on packed representations}
+% \subtitle{Faster compiler passes, parallelization ready}
 
 \authorinfo{Name1}
            {Affiliation1}
@@ -91,7 +91,7 @@
 When written idiomatically in most programming languages, programs that traverse
 and construct trees operate over pointer-based data structures, with one heap
 object per-leaf and node.  While this may seem tautological, we show that common
-tree traversal---found in compiler passes, space-partitioning trees, and
+tree traversals---found in compiler passes, space-partitioning trees, and
 elsewhere---can instead be automatically compiled to operate on pointer-free
 pre-order serializations of trees.  On current x86 architectures such programs
 can run up to several times faster than their pointer-based counterparts.
@@ -132,43 +132,48 @@ settled.
 Each node of the tree is a heap object, followed by fields for child nodes or
 leaf values.  This representation hasn't changed since the dawn of computing and
 is shared across source languages with quite different type
-sytsems---e.g. algebraic datatypes v.s. class hierarchies, statically ora
+systems---whether algebraic datatypes or class hierarchies, either statically or
 dynamically typed.  The only deviations from this consensus are found within
 limited high-performance scenarios where complete trees can be laid out using
 address arithmetic with no intermediate nodes \cite{hpc-trees}.
 
-%% \begin{figure}
-%% %\begin{wrapfigure}{r}{0.5\textwidth} 
-%% \Red{PICTURE HERE:  possibly with wrapfig.}
-\begin{verbatim}
-  [N|.|.]
-     /  \ 
- [L 1]  [N|.|.]
-          /   \
-       [L 2] [L 3]
-\end{verbatim}
-%%   \caption{Traditional, pointer-based tree layout.}
-%% \end{figure}
-%\end{wrapfigure}
-
-But perhaps the consensus was premature?  In numerical computing it's an axiom
+But perhaps the consensus was premature?  In numerical computing it is an axiom
 that you cannot treat the numbers in a matrix as individual heap objects.
 Rather, the emphasis is on bulk efficiency.  Likewise, many tree traversals
 process trees in bulk, reading or writing them in one pass.  On such workloads,
 traditional tree representations are not favored by current trends in computer
-architecture.  Pointer chasing implies randomized memory access patterns.  Also,
-much memory is wasted both in pointers themselves and in tags on nodes
+architecture.  Pointer chasing implies randomized memory access patterns.
+%
+While previous work addresses spatial locality for tree data\cite{tree-locality-pldi},
+%
+much memory is still wasted both in pointers themselves and in tags on nodes
 (e.g. distinguishing ``interior'' vs ``leaf'' objects).  For example, a C
 compiler uses 96 bytes
 %
-\rn{Double check that for alignment the C compiler is sacrificing a word for the
-one byte tag field.}
+%% \rn{Double check that for alignment the C compiler is sacrificing a word for the
+%% one byte tag field.} 
 %
-of memory to represent the tree above.  On the other
-hand, if we were sending the tree over the network, we would naturally use a
-more compact format in serializing it:
+of memory to represent the following tree:  
 
 % \begin{figure}
+%% \begin{figure}
+%% %\begin{wrapfigure}{r}{0.5\textwidth} 
+%% \Red{PICTURE HERE:  possibly with wrapfig.}
+\begin{verbatim}
+ [N|.|.]          struct Tree {
+    /  \           enum { Leaf, Node } tag;
+[L 1]  [N|.|.]     union { 
+         /   \      struct { long long elem; };
+      [L 2] [L 3]   struct { struct Tree* l;
+                             struct Tree* r; }}}
+\end{verbatim}
+
+On the other hand, if we were sending the tree over the network, we would
+naturally use a more compact format in serializing it:
+
+%%   \caption{Traditional, pointer-based tree layout.}
+%% \end{figure}
+%\end{wrapfigure}
 \begin{verbatim}
   [N L 1  N L 2  L 3 ]
 \end{verbatim}
@@ -178,9 +183,13 @@ Here we use the same 24 bytes for the leaf numbers, but only 5 bytes for the
 spine, rather than 72.  Further, a tree traversal processing this memory
 representation follows a precisely linear memory access pattern, because the
 data is already laid out in a preorder traversal.
+%
+On architectures with inexpensive unaligned access, such as modern x86, this is
+a desirable in-memory representation as well as a serialization format.
+
 Indeed, if we can compile programs to operate directly on this serialization, we
 follow a precedent of using serialization formats jointly as in memory formats.
-Cap'N Proto \cite{capnproto} makes it ergonomic for C++ code to operate directly
+For example, Cap'N Proto \cite{capnproto} makes it ergonomic for C++ code to operate directly
 on the Protobuf serialization format in memory.  Likewise ``data baking''
 \cite{data-baking} is an established practice in video games---caching assets on
 disk in a format that allows them to be \il{mmap}'d into memory and used
@@ -194,8 +203,8 @@ sub-parts of the CNF.
 The packed tree format above is precisely a dense encoding of a CNF---a
 transitive closure of heap objects with no escaping pointers, in this case, no
 pointers {\em at all}.  But unlike GHC's CNF support, which uses regular heap
-objects, colocated together, the dense tree format requires a complete
-rearrangement of the compiled code that operates on the data.
+objects, colocated together, the dense tree format {\em requires a complete
+rearrangement of the compiled code that operates on the data}.
 
 % Shall we acronymize it?
 % DTF - dense tree form, or dense tree format
@@ -229,12 +238,57 @@ following contributions:
 
 
 % ================================================================================
-\section{Motivating Example}
-% Background?
+% \section{Motivating Example}
+\section{Background and Example}
 % ================================================================================
 
-\note{We use these bullets for outlining / psuedo-text.  They're removed when
-  converted to actual prose.}
+While our main emphasis in this paper is on accelerating compiler passes, here
+we continue with our simple example from the introduction: binary trees with
+integer leaves.  In a strongly typed functional language, a recursive walk on
+the tree would typically use pattern matching:
+
+\begin{code}
+ data Tree = Leaf Int | Node Tree Tree
+  
+ add1 t =
+  case t of
+    Leaf n   -> Leaf (n+1)
+    Node x y -> Node (add1 x) (add1 y)
+\end{code}
+
+In fact, the small, first-order, purely functional language of tree traversals
+we consider this paper is already a subset of virtually all existing languages.
+The above program is not substantially different in C, ML, Scala, etc.  Only the
+details of switching on tagged unions (sum types) types differ.
+
+\note{The first problem for tree-walks such as this is memory management. 
+  \il{add1} can easy become a malloc or garbage collector benchmark.  For
+  instance, the following C code is over twice as slow as the same
+  implementation in Java or a good functional compiler:}
+
+\begin{code}[language=c]
+  Tree* add1(Tree* t) {
+    Tree* tout = (Tree*)malloc(sizeof(Tree));
+    tout->tag = t->tag;
+    if (t->tag == Leaf) {
+      tout->elem = t->elem + 1;
+    } else {
+      tout->l = add1(t->l);
+      tout->r = add1(t->r);
+    }
+    return tout;
+  }
+\end{code}
+
+\note{But even if we assume optimal layout, bump-pointer allocation, and {\em no
+    header objects}---even if we go further and enable \il{__packed__} attribute
+  for our structs to save tag space---the performance of the above code is still
+  several times below what is achievable.}
+
+\note{Yet, code performing raw manipulation of a pointer into a byte buffer
+  containing a serialized tree is extremely error prone and tedious to write.
+  It certainly is inappropriate for writing compilers, which contain reams and
+  reams of tree-walking code.}
 
 % ================================================================================
 \section{Formal language}
@@ -296,8 +350,25 @@ with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 \end{figure}
 
 % ================================================================================
+% \section{A tree-packing compiler}
+\section{Compilation Algorithms}
+% ================================================================================
+
+
+% ================================================================================
+\subsection{Discussion}
+% ================================================================================
+
+\note{Purity is important to reordering for witness search.}
+
+\note{}
+
+
+% ================================================================================
 \section{Implementation}
 % ================================================================================
+
+\note{Current prototype implementation, status}
 
 
 
@@ -322,6 +393,10 @@ This enables (1) vectorization of numeric operations, and (2) separating
 out pointers that the GC must traverse.  This can prove essential for an
 open-world implementation in a managed language.}
 
+
+\note{A large space of parallelism design choices.}
+
+\note{}
 
 
 % ================================================================================
