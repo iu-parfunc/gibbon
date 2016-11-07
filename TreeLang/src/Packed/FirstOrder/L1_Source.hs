@@ -20,7 +20,7 @@ module Packed.FirstOrder.L1_Source
     -- * Expression and Prog helpers
     , freeVars, subst, substE, mapExprs
       -- * Trivial expressions
-    , assertTriv, assertTrivs, isTriv
+    , assertTriv, assertTrivs, isTriv, projNonFirst
       -- * Examples
     , add1Prog
     )
@@ -303,6 +303,11 @@ isTriv e =
      _  -> False
 
 
+-- | Project something which had better not be the first thing in a tuple.
+projNonFirst :: Int -> Exp -> Exp
+projNonFirst 0 e = error $ "projNonFirst: expected nonzero index into expr: "++sdoc e
+projNonFirst i e = ProjE i e
+           
 
 {-
 -- | Promote a value to a term that evaluates to it.

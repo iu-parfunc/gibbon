@@ -29,6 +29,8 @@ library
                   Packed.FirstOrder.Passes.InlineTriv,
                   Packed.FirstOrder.Passes.InlinePacked,
                   Packed.FirstOrder.Passes.InferEffects,
+                  Packed.FirstOrder.Passes.FindWitnesses,
+                  Packed.FirstOrder.Passes.RouteEnds,
                   Packed.FirstOrder.SExpFrontend,
                   Packed.FirstOrder.Target
 
@@ -67,7 +69,7 @@ library
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall -fdefer-typed-holes
-  extensions: ScopedTypeVariables PatternSynonyms DeriveGeneric DeriveFunctor NamedFieldPuns
+  extensions: ScopedTypeVariables PatternSynonyms DeriveGeneric DeriveFunctor NamedFieldPuns TupleSections
 -- This can break things:
 -- -XDeriveAnyClass 
     

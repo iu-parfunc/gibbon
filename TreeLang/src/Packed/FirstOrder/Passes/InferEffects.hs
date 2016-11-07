@@ -219,7 +219,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
            return (S.empty,l)
 
      -- Here we UNION the end-points that are reached in the RHS and the BOD:
-     L1.LetE (v,_t,rhs) bod -> -- FIXME: change to let.
+     L1.LetE (v,_t,rhs) bod -> 
       do (reff,rloc) <- exp env rhs
          let env' = M.insert v rloc env 
          (beff,bloc) <- exp env' bod         

@@ -21,8 +21,10 @@ import qualified Packed.FirstOrder.HaskellFrontend as HS
 import Packed.FirstOrder.Interpreter (Val (..), execProg)
 import qualified Packed.FirstOrder.L1_Source as L1
 import qualified Packed.FirstOrder.LTraverse as L2
+
 import Packed.FirstOrder.Passes.InferEffects (inferEffects)
-    
+import Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
+import Packed.FirstOrder.Passes.RouteEnds (routeEnds)
 import Packed.FirstOrder.Passes.Freshen
 import Packed.FirstOrder.Passes.Cursorize
 import Packed.FirstOrder.Passes.Flatten

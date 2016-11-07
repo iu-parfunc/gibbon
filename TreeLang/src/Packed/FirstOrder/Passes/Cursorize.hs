@@ -12,8 +12,6 @@
 
 module Packed.FirstOrder.Passes.Cursorize
     ( cursorDirect
-    , routeEnds
-    , findWitnesses
     , pattern WriteInt, pattern ReadInt, pattern NewBuffer
     , pattern CursorTy, pattern ScopedBuffer
     ) where
@@ -67,7 +65,12 @@ lvl = 5
 -- | Cursor insertion, strategy one.
 --
 -- Here we go to a "dilated" representation of packed values, where
--- every `Packed T` is represented by a pair, `(Cursor,Cursor)`.
+-- every `Packed T` is represented by a pair, `(Cursor,Cursor)`.  At
+-- least this is the LOCAL representation of packed values.  The
+-- inter-procedural representation does not change.  When passing a
+-- packed value to another function, it is the "start" component of
+-- the (start,end) pair which is sent.  Likewise end cursors come back
+-- traveling on their own.
 --
 -- We proceed with two loops, corresponding to packed and unpacked
 -- context.  When the type of the current expression satisfies
@@ -122,7 +125,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
               then (funarg, funbod)
               else ( fresh
                    , LetE (funarg, fmap (\_->()) inT,
-                           (projNonFirst (length newIn) (L1.VarE fresh)))
+                           (L1.projNonFirst (length newIn) (L1.VarE fresh)))
                           funbod)
       exp' <- if L1.hasPacked outT
               then exp bod
@@ -417,160 +420,6 @@ tyOfCaseScrut dd (CaseE _ ((k,_,_):_)) = PackedTy (getTyOfDataCon dd k) ()
 tyOfCaseScrut _ e = error $ "tyOfCaseScrut, takes only Case:\n  "++sdoc e 
 
 
--- template:
-        -- VarE v -> __
-        -- LitE n -> __
-        -- AppE v e -> __
-        -- PrimAppE _ ls -> __
-        -- LetE (v,_,rhs) bod -> __
-        -- ProjE _ e -> __
-        -- CaseE e ls -> __
-        -- MkProdE ls     -> __
-        -- MkPackedE _ ls -> __
-        -- TimeIt e _ -> __
-        -- IfE a b c -> __
-        -- MapE (v,t,rhs) bod -> __
-        -- FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
--- Pure traversal
-    -- let go = __ in
-    -- case ex of 
-    --   VarE v   -> VarE v
-    --   LitE n   -> LitE n
-    --   AppE v e -> AppE v (go e)
-    --   PrimAppE p ls      -> PrimAppE p (L.map go ls)
-    --   LetE (v,t,rhs) bod -> LetE (v,t,go rhs) (go bod)
-    --   ProjE i e      -> ProjE i (go e)
-    --   CaseE e ls     -> CaseE (go e) [ (k,vs,go e) | (k,vs,e) <- ls ]
-    --   MkProdE ls     -> MkProdE (L.map go ls)
-    --   MkPackedE k ls -> MkPackedE k (L.map go ls)
-    --   TimeIt e t     -> TimeIt (go e) t
-    --   IfE a b c      -> IfE (go a) (go b) (go c)
-    --   MapE (v,t,rhs) bod -> MapE (v,t,go rhs) (go bod)
-    --   FoldE (v1,t1,r1) (v2,t2,r2) bod -> FoldE (v1,t1,go r1) (v2,t2,go r2) (go bod)
-
--- Monadic traversal:
-    -- case ex of 
-    --   VarE v   -> pure$ VarE v
-    --   LitE n   -> pure$ LitE n
-    --   AppE v e -> AppE v <$> go e
-    --   PrimAppE p ls      -> PrimAppE p <$> mapM go ls
-    --   LetE (v,t,rhs) bod -> LetE <$> ((v,t,) <$> go rhs) <*> go bod
-    --   ProjE i e      -> ProjE i <$> go e
-    --   CaseE e ls     -> CaseE <$> go e <*> sequence
-    --                        [ (k,vs,) <$> go e | (k,vs,e) <- ls ]
-    --   MkProdE ls     -> MkProdE <$> mapM go ls
-    --   MkPackedE k ls -> MkPackedE k <$> mapM go ls
-    --   TimeIt e t     -> TimeIt <$> go e <*> pure t
-    --   IfE a b c      -> IfE <$> go a <*> go b <*> go c
-    --   MapE (v,t,rhs) bod -> MapE <$> ((v,t,) <$> go rhs) <*> go bod
-    --   FoldE (v1,t1,r1) (v2,t2,r2) bod ->
-    --       FoldE <$> ((v1,t1,) <$> go r1)
-    --             <*> ((v2,t2,) <$> go r2)
-    --             <*> go bod
-
-
-
--- | This pass must find witnesses if the exist in the lexical
--- environment, and it must *reorder* let bindings to bring start/end
--- witnesses into scope.
-findWitnesses :: L2.Prog -> SyM L2.Prog
-findWitnesses = L2.mapMExprs fn
- where
-  fn _ ex = return (go ex)
-  go ex =
-    case ex of 
-      VarE v   -> VarE v
-      LitE n   -> LitE n
-      AppE v e -> AppE v (go e)
-      PrimAppE p ls      -> PrimAppE p (L.map go ls)
-      LetE (v,t,rhs) bod -> LetE (v,t,go rhs) (go bod)
-      ProjE i e      -> ProjE i (go e)
-      CaseE e ls     -> CaseE (go e) [ (k,vs,go e) | (k,vs,e) <- ls ]
-      MkProdE ls     -> MkProdE (L.map go ls)
-      MkPackedE k ls -> MkPackedE k (L.map go ls)
-      TimeIt e t     -> TimeIt (go e) t
-      IfE a b c      -> IfE (go a) (go b) (go c)
-      MapE (v,t,rhs) bod -> MapE (v,t,go rhs) (go bod)
-      FoldE (v1,t1,r1) (v2,t2,r2) bod -> FoldE (v1,t1,go r1) (v2,t2,go r2) (go bod)
-
--- =============================================================================
-
-witnessBinding = undefined
-
--- | Map every lexical variable in scope to an abstract location.
-type Env = M.Map Var Loc
-
-    
--- | The goal of this pass is to take effect signatures and translate
--- them into extra arguments and returns.  This pass does not worry
--- about where the witnesses come from to synthesize these extra
--- returns, it just inserts references to them that create demand.
-routeEnds :: L2.Prog -> SyM L2.Prog
-routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
-    dbgTrace lvl ("Starting routeEnds on "++show(doc fundefs)) $ do
-    -- Prog emptyDD <$> mapM fd fundefs <*> pure Nothing
-
-    fds' <- mapM fd $ M.elems fundefs
-
-    -- let gloc = "global"
-    mn <- case mainExp of
-            Nothing -> return Nothing
-            Just (x,t)  -> Just . (,t) <$> tail [] (M.empty) x
-                -- do let initWenv = WE (M.singleton gloc (L1.VarE "gcurs")) M.empty
-                --    tl' <- tail [] (M.empty,initWenv) x
-                --    return $ Just $ L1.LetE ("gcurs", CursorTy, NewBuffer) tl'
-    return L2.Prog{ fundefs = M.fromList $ L.map (\f -> (L2.funname f,f)) fds'
-                  , ddefs = ddefs
-                  , mainExp = mn
-                  }
- where
-   
-  fd :: L2.FunDef -> SyM L2.FunDef
-  fd (f@L2.FunDef{funname,funty,funarg,funbod}) =
-      let (newTy@(ArrowTy inT _ _outT),newIn,newOut) = cursorizeTy funty in
-      dbgTrace lvl ("Processing fundef: "++show(doc f)++"\n  new type: "++sdoc newTy) $
-   do
-      fresh <- gensym "tupin"
-      let argLoc  = argtyToLoc (L2.mangle newArg) inT
-          (newArg, bod, wenv) =
-              if newIn == [] -- No injected cursor params..
-              then (funarg, funbod, witnessBinding newArg argLoc)
-              else ( fresh
-                     -- We could introduce a let binding, but here we
-                     -- just substitute instead:
-                   -- , L1.subst funarg (projNonFirst (length newIn) (L1.VarE fresh))
-                   --            funbod
-                   , LetE (funarg, fmap (const ()) inT,
-                           (projNonFirst (length newIn) (L1.VarE fresh)))
-                          funbod
-                   , witnessBinding fresh
-                     (TupLoc $ L.map Fixed newIn ++ [argLoc]))
-      let env = __env0 -- M.singleton newArg (L2.stripTyLocs inT, argLoc)
-      exp' <- tail newOut env bod
-      return $ L2.FunDef funname newTy newArg exp'
-
-  tail :: [LocVar] -> Env -> L1.Exp -> SyM L1.Exp
-  tail demanded env ex =
-    let go = tail demanded env in
-    case ex of 
-      VarE v   -> pure$ VarE v
-      LitE n   -> pure$ LitE n
-      AppE v e -> AppE v <$> go e
-      PrimAppE p ls      -> PrimAppE p <$> mapM go ls
-      LetE (v,t,rhs) bod -> LetE <$> ((v,t,) <$> go rhs) <*> go bod
-      ProjE i e      -> ProjE i <$> go e
-      CaseE e ls     -> CaseE <$> go e <*> sequence
-                           [ (k,vs,) <$> go e | (k,vs,e) <- ls ]
-      MkProdE ls     -> MkProdE <$> mapM go ls
-      MkPackedE k ls -> MkPackedE k <$> mapM go ls
-      TimeIt e t     -> TimeIt <$> go e <*> pure t
-      IfE a b c      -> IfE <$> go a <*> go b <*> go c
-      -- MapE (v,t,rhs) bod -> MapE <$> ((v,t,) <$> go rhs) <*> go bod
-      -- FoldE (v1,t1,r1) (v2,t2,r2) bod ->
-      --     FoldE <$> ((v1,t1,) <$> go r1)
-      --           <*> ((v2,t2,) <$> go r2)
-      --           <*> go bod
-
                                          
 -- Conventions encoded inside the existing Core IR 
 -- =============================================================================
@@ -588,10 +437,4 @@ pattern ReadInt v = AppE "ReadInt" (VarE v)
 pattern CursorTy = PackedTy "CURSOR_TY" () -- Tempx
 
 
--- More misc helpers
--- =============================================================================
                    
--- | Project something which had better not be the first thing in a tuple.
-projNonFirst :: Int -> L1.Exp -> L1.Exp
-projNonFirst 0 e = error $ "projNonFirst: expected nonzero index into expr: "++sdoc e
-projNonFirst i e = L1.ProjE i e
