@@ -39,6 +39,7 @@ import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.L1_Source hiding (Ty, FunDef, Prog, mapExprs, progToEnv, fundefs)
 import Data.List as L
+import Data.Maybe
 import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
@@ -187,14 +188,14 @@ tyWithFreshLocs t =
 
 -- | Remove the extra location annotations.
 stripTyLocs :: Ty -> L1.Ty
-stripTyLocs t =
-  case t of
-    PackedTy k _  -> L1.Packed k 
-    IntTy        -> L1.IntTy
-    SymTy        -> L1.SymTy
-    BoolTy       -> L1.BoolTy
-    ProdTy l     -> L1.ProdTy    $ L.map stripTyLocs l
-    SymDictTy v  -> L1.SymDictTy $ stripTyLocs v
+stripTyLocs = fmap (const ())
+  -- case t of
+  --   PackedTy k _  -> L1.PackedTy k ()
+  --   IntTy        -> L1.IntTy
+  --   SymTy        -> L1.SymTy
+  --   BoolTy       -> L1.BoolTy
+  --   ProdTy l     -> L1.ProdTy    $ L.map stripTyLocs l
+  --   SymDictTy v  -> L1.SymDictTy $ stripTyLocs v
 
 
 -- | Apply a variable substitution to a type.
@@ -208,11 +209,17 @@ substTy mp t = go t
       BoolTy -> BoolTy
       SymDictTy te -> SymDictTy (go te)
       ProdTy    ts -> ProdTy    (L.map go ts)
-      PackedTy k l -> case M.lookup l mp of
-                        Just v  -> PackedTy k v
-                        Nothing -> PackedTy k l
-                            -- errorWithStackTrace $ "substTy: failed to find "++show l++
-                            --   "\n  in map: "++show mp++", when processing type "++show t
+      PackedTy k l
+          | isEndVar l ->
+              case M.lookup (fromJust $ fromEndVar l) mp of
+                Just v  -> PackedTy k (toEndVar v)
+                Nothing -> PackedTy k l
+          | otherwise ->
+              case M.lookup l mp of
+                Just v  -> PackedTy k v
+                Nothing -> PackedTy k l
+                -- errorWithStackTrace $ "substTy: failed to find "++show l++
+                --   "\n  in map: "++show mp++", when processing type "++show t
 
 -- | Apply a substitution to an effect set.                                   
 substEffs :: Map LocVar LocVar -> Set Effect -> Set Effect
@@ -223,7 +230,9 @@ substEffs mp ef =
                  Just v2 -> Traverse v2
                  Nothing -> Traverse v) ef
 
+-- | Collect all the locations mentioned in a type.
 allLocVars :: Ty -> [LocVar]
+-- TODO: could just be a fold
 allLocVars t =
     case t of
       SymTy     -> []

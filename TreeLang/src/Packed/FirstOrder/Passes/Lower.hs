@@ -55,6 +55,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
   tail :: L1.Exp -> SyM T.Tail
   tail ex =
+   dbgTrace 5 (" [lower] processing tail:\n  "++sdoc ex) $
    case ex of
 
     -- We don't have LetSwitchT yet:     
@@ -132,7 +133,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
     --------------------------------------------------------------------------------
 
-
+    L1.MkProdE ls -> pure$ T.RetValsT (L.map (triv "returned element of tuple") ls)
     e | L1.isTriv e -> pure$ T.RetValsT [triv "<internal error1>" e]
 
     -- L1.LetE (v,t, L1.MkProdE ls) bod -> do
@@ -143,14 +144,13 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
     -- We could eliminate these ahead of time (unariser):
     -- FIXME: Remove this when that is done a priori:
-    L1.LetE (v, L2.ProdTy tys, MkProdE ls) bod -> do
-      tmps <- mapM (\_ -> gensym "pvrtmp") ls
-      let go _ [] acc = tail acc
-          go ix ((pvr,pty,rhs):rs) acc =
-             go (ix+1) rs $
-               LetE (pvr,pty,rhs) $
-                 L1.substE (ProjE ix (VarE v)) (VarE pvr) acc
-      go 0 (zip3 tmps tys ls) bod
+    L1.LetE (v, L2.ProdTy tys, MkProdE ls) bod -> do      
+      (tmps,bod') <- eliminateProjs v tys bod
+      -- Bind tmps individually:a
+      let go [] acc                 = acc
+          go ((pvr,pty,rhs):rs) acc = go rs (LetE (pvr,pty,rhs) acc)
+      -- Finally reprocess teh whole thing:
+      tail (go (zip3 tmps tys ls) bod')
 
     -- We could eliminate these ahead of time:
     L1.LetE (v,t,rhs) bod | L1.isTriv rhs ->
@@ -197,7 +197,9 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
         -- Here we lamely chase down all the tuple references and make them variablesa:
         let bod' = L1.substE (L1.ProjE 0 (L1.VarE pr)) (L1.VarE vtmp) $
                    L1.substE (L1.ProjE 1 (L1.VarE pr)) (L1.VarE ctmp) bod
-        in tail bod'
+        in
+          dbgTrace 5 (" [lower] ReadInt, after substing references to "++pr++":\n  "++sdoc bod')$
+          tail bod'
 
     L1.LetE (v,_,C.NewBuffer) bod ->
       T.LetPrimCallT [(v,T.CursorTy)] T.NewBuf [] <$>
@@ -220,14 +222,19 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
     L1.LetE (_,_,L1.AppE f _) _ | M.notMember f fundefs ->
       error $ "Application of unbound function: "++show f
-             
+
+    -- Non-tail call:            
     L1.LetE (v,t,L1.AppE f arg) bod -> do
+        (vsts,bod') <- case t of
+                        L1.ProdTy ls -> do (tmps,e) <- eliminateProjs v ls bod
+                                           return (zip tmps (L.map typ ls), e)
+                        _ -> return ([(v,typ t)], bod)
         case arg of
           MkProdE es -> error "Unexpected MkProdE parameter to AppE"
-          _ -> T.LetCallT [(v,typ t)] f
+          _ -> T.LetCallT vsts f
                  [(triv "app rand") arg]
                  <$>
-                 (tail bod)
+                 (tail bod')
 
     L1.LetE (v, t, L1.IfE a b c) bod -> do
       vsts <- unzipTup v t
@@ -256,6 +263,23 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex
 
 
+-- | Eliminate projections from a given tuple variable.  INEFFICIENT!
+eliminateProjs :: Var -> [L1.Ty] -> Exp -> SyM ([Var],Exp)
+eliminateProjs vr tys bod =
+ let len = length tys in
+ -- dbgTrace 5 (" [lower] eliminating "++show len++
+ --             " projections on variable "++show vr++" in expr with types "++show tys++":\n   "++sdoc bod) $
+ do
+    tmps <- mapM (\_ -> gensym "pvrtmp") [1.. (length tys)]
+    let go _ [] acc = acc
+        go ix ((pvr,pty):rs) acc =
+           go (ix+1) rs $
+             L1.substE (ProjE ix (VarE vr)) (VarE pvr) acc
+    let bod' = go 0 (zip tmps tys) bod
+    return (tmps,bod')
+
+
+         
 mkLet :: (Var, L1.Ty, Exp) -> Exp -> Exp
 mkLet (v,t,LetE (v2,t2,rhs2) bod1) bod2 = LetE (v2,t2,rhs2) $ LetE (v,t,bod1) bod2
 mkLet (v,t,rhs) bod = LetE (v,t,rhs) bod

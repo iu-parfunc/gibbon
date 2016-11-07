@@ -76,17 +76,21 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 # Assumes stack build:
 %.sexp.out : %.sexp
 #	@echo "Testing $^"
-	$(TREEC) $(TREECARGS) $^ > $@
+	$(TREEC) $(TREECARGS) $^ > $@ || touch $^.err
 #	@echo "Now check expected $$f.ans, versus received, $$f.out";
 	@./diff.sh $^.ans $@
 
 # PACKED_TESTS=$(ALL_TESTS)
-PACKED_TESTS2= test00_add.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
+
+# Temporary, mostly broken state:
+# PACKED_TESTS= test11b_fundata.sexp
+
+PACKED_TESTS= test00_add.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
     test03b_eqs.sexp test03c_eqsym.sexp test04_vector.sexp test04b_vector.sexp \
     test05_app.sexp test05b_app.sexp \
     test06_case.sexp test06b_case.sexp test06c_nested.sexp test06i_casecase.sexp \
     test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp test06h_rec.sexp \
-    test07_time.sexp test10_desugar.sexp test10b_desugar.sexp test11c_funrec.sexp
+    test07_time.sexp test10_desugar.sexp test10b_desugar.sexp test11b_fundata.sexp test11c_funrec.sexp
 
 # test04c_ifvector.sexp -- MkProd sneaking through in Triv context to Lower [2016.11.06]
 

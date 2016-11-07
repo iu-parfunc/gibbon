@@ -3,7 +3,7 @@
 module Packed.FirstOrder.Passes.InlineTriv (inlineTriv, inlineTrivExp) where
     
 import Packed.FirstOrder.Common
-import Packed.FirstOrder.L1_Source as L1
+import Packed.FirstOrder.L1_Source as L1 hiding (mkProj)
 import Prelude hiding (exp)
 -- import Debug.Trace
 

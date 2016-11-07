@@ -13,7 +13,7 @@
 module Packed.FirstOrder.Passes.InferEffects
     ( inferEffects, inferFunDef
      -- * For other passes that perform similar location-trackinga
-    , instantiateApp, freshenArrowSchema
+    , instantiateApp, freshenArrowSchema, zipLT, zipTL
     )
     where
 import Control.Monad (when)
@@ -166,13 +166,15 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
            env0    = M.singleton arg argLoc
            argLoc  = argtyToLoc (mangle arg) argty'
 
-       (effs1,_loc) <- exp env0 bod
+       (effs1,_loc) <- inferExp (ddefs,fenv) env0 bod
 
        -- Finally, restate the effects in terms of the type schema for the fun:
        let allEffs = substEffs (zipLT argLoc inTy) effs1
            externalLocs = S.fromList $ allLocVars inTy ++ allLocVars outTy
        return $ S.filter (\(Traverse v) -> S.member v externalLocs) allEffs
 
+inferExp :: (DDefs L1.Ty, FunEnv) -> LocEnv -> L1.Exp -> SyM (Set Effect, Loc)
+inferExp (ddefs,fenv) env e = exp env e
   where
   -- We have one location for the destination, and another for each lexical binding.
   exp :: LocEnv -> L1.Exp -> SyM (Set Effect, Loc)

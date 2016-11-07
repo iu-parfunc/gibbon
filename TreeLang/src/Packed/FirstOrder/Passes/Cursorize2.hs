@@ -120,18 +120,13 @@ mapPacked fn t =
     PackedTy k l  -> fn k l
 
 
-mkProj :: (Eq a, Num a) => Int -> a -> L1.Exp -> L1.Exp
-mkProj 0 1 e = e
-mkProj ix _ e = L1.ProjE ix e
-
-
 -- | Binding a variable to a value at a given (abstract) location can
 -- bring multiple witnesses into scope.
 witnessBinding :: Var -> Loc -> WitnessEnv
 witnessBinding vr loc = WE (M.fromList $ go loc (L1.VarE vr)) M.empty
   where
    go (TupLoc ls) ex =
-       concat [ go x (mkProj ix (length ls) ex)
+       concat [ go x (L1.mkProj ix (length ls) ex)
               | (ix,x) <- zip [0..] ls ]
    go (Fresh v) e = [ (v,e) ]
    go (Fixed v) e = [ (v,e) ]
@@ -247,7 +242,7 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                    -- , L1.subst funarg (projNonFirst (length newIn) (L1.VarE fresh))
                    --            funbod
                    , LetE (funarg, fmap (const ()) inT,
-                           (projNonFirst (length newIn) (L1.VarE fresh)))
+                           (L1.projNonFirst (length newIn) (L1.VarE fresh)))
                           funbod
                    , witnessBinding fresh
                      (TupLoc $ L.map Fixed newIn ++ [argLoc]))
@@ -308,7 +303,7 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                    bod' <- tail demanded (env',wenv') bod -- No new witnesses.
                    let ix = length new
                    return $ L1.LetE ("tmp", rty, rhs') $
-                            L1.LetE (v, tv, projNonFirst ix (L1.VarE "tmp")) $
+                            L1.LetE (v, tv, L1.projNonFirst ix (L1.VarE "tmp")) $
                             finishEXP
 
      L1.IfE a b c -> do
@@ -396,11 +391,6 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
      _ -> error $ "ERROR: cursorize/rhs: unfinished, needs to handle:\n "++sdoc e
 
 
--- | Project something which had better not be the first thing in a tuple.
-projNonFirst :: Int -> L1.Exp -> L1.Exp
-projNonFirst 0 e = error $ "projNonFirst: expected nonzero index into expr: "++sdoc e
-projNonFirst i e = L1.ProjE i e
-
 endOf :: Loc -> LocVar
 endOf (Fixed a) = toEndVar a
 endOf l = error $ "endOf: should not take endOf this location: "++show l
@@ -431,7 +421,7 @@ maybeLetTup locs (ty,ex) env fn =
      -- to bring them into the environment.
      let env' = witnessBinding tmp (TupLoc locs) `unionWEnv` env
          n = length locs
-     bod <- fn (mkProj (n - 1) n (L1.VarE tmp)) env'
+     bod <- fn (L1.mkProj (n - 1) n (L1.VarE tmp)) env'
      return $ L1.LetE (tmp, ty, ex) bod
 
 

@@ -104,9 +104,12 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
      -- "f_1, f_2..." for a function "f".    
      let ArrowTy _inT _ outT = funty
          outCurs = [ funname ++"_"++ show ix | ix <- [1 .. countPacked outT] ]
-     exp' <- case outCurs of
+     exp' <-
+           dbgTrace lvl (" [cursorDirect] for function "++funname++" outcursors: "
+                         ++show outCurs++" for ty "++show outT) $ 
+           case outCurs of
                [] -> exp funbod -- not hasPacked
-               [cur] -> 
+               [cur] ->                  
                   do -- LetE (cur, CursorTy, projVal (VarE funarg)) <$>
                      projVal <$> exp2 cur funbod
                _ -> error $ "cursorDirect: add support for functionwith multiple output cursors: "++ funname
@@ -382,8 +385,10 @@ countPacked ty =
     (ProdTy x) -> sum $ L.map countPacked x
     (SymDictTy x) | L1.hasPacked x -> error "countPacked: current invariant broken, packed type in dict."
                   | otherwise   -> 0
-    (PackedTy x1 x2) -> 1
-    (ListTy x)       -> 1
+    -- These can be here from the routeEnds pass:
+    ty | L2.isCursorTy ty -> 0
+    (PackedTy _ _) -> 1
+    (ListTy _)       -> 1
    
 isPacked :: Ty1 t -> Bool
 isPacked PackedTy{} = True

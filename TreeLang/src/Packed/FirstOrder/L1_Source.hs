@@ -20,7 +20,7 @@ module Packed.FirstOrder.L1_Source
     -- * Expression and Prog helpers
     , freeVars, subst, substE, mapExprs
       -- * Trivial expressions
-    , assertTriv, assertTrivs, isTriv, projNonFirst
+    , assertTriv, assertTrivs, isTriv, projNonFirst, mkProj
       -- * Examples
     , add1Prog
     )
@@ -307,7 +307,13 @@ isTriv e =
 projNonFirst :: Int -> Exp -> Exp
 projNonFirst 0 e = error $ "projNonFirst: expected nonzero index into expr: "++sdoc e
 projNonFirst i e = ProjE i e
-           
+
+-- | Project position K of N, unless (K,N) = (0,1) in which case no
+-- projection is necessary.
+mkProj :: (Eq a, Num a) => Int -> a -> Exp -> Exp
+mkProj 0 1 e = e
+mkProj ix _ e = ProjE ix e
+                   
 
 {-
 -- | Promote a value to a term that evaluates to it.
