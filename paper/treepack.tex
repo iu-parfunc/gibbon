@@ -75,6 +75,8 @@
 \titlebanner{banner above paper title}        % These are ignored unless
 \preprintfooter{short description of paper}   % 'preprint' option specified.
 
+\newcommand{\treelang}{TreeLang} % NEED NAME
+
 \title{Compiling tree transforms to operate on packed representations}
 % \subtitle{Faster compiler passes, parallelization ready}
 
@@ -376,12 +378,38 @@ with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 \section{Evaluation}
 % ================================================================================
 
+\note{This is organized as a series of different case studies.}
 
-
-\subsection{Additional tree benchmarks}
+\subsection{Microbenchmarks}
 % ----------------------------------------
 
-\note{Non-compiler benchmark(s)}
+\note{A ``language shootout'' of add1-tree benchmarks.}
+
+
+\subsection{Compiler passes on realistic inputs}
+% --------------------------------------------
+
+\note{Racket core AST benchmarks}
+
+
+\subsection{Typechecking benchmark}
+% --------------------------------------------
+
+\note{type check the simply-typed $\lambda$ calculus in \treelang{}}
+
+\subsection{KD-tree}
+% --------------------------------------------
+
+\note{Laith's benchmark}
+
+
+\subsection{Parallelism opportunity study}
+% --------------------------------------------
+
+\note{Report preliminary parallel microbenchmark results, showing the potential
+  for future work here.}
+
+
 
 
 % ================================================================================
