@@ -28,6 +28,7 @@ library
                   Packed.FirstOrder.Passes.Freshen,
                   Packed.FirstOrder.Passes.InlineTriv,
                   Packed.FirstOrder.Passes.InlinePacked,
+                  Packed.FirstOrder.Passes.InferEffects,
                   Packed.FirstOrder.SExpFrontend,
                   Packed.FirstOrder.Target
 

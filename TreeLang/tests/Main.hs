@@ -19,7 +19,8 @@ import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.Common as C
 -- import Packed.FirstOrder.L1_Source (Exp (..))
 import qualified Packed.FirstOrder.L1_Source as L1
-import Packed.FirstOrder.LTraverse
+import           Packed.FirstOrder.LTraverse as L2
+import           Packed.FirstOrder.Passes.InferEffects
 import Packed.FirstOrder.Passes.Cursorize
 import Packed.FirstOrder.Target hiding (Prog (..), Ty (..))
 import qualified Packed.FirstOrder.Target as T
@@ -67,6 +68,8 @@ case_t1 :: Assertion
 case_t1 = assertEqual "traverse input via another call"
           (S.fromList [Traverse "a"]) t1
 
+type FunEnv = M.Map Var (L2.ArrowTy Ty)
+                                      
 t2env :: (DDefs a, FunEnv)
 t2env = ( fromListDD [DDef "Bool" [("True",[]), ("False",[])]]
                   , M.fromList [("foo", ArrowTy (PackedTy "Bool" "p") S.empty IntTy)])
