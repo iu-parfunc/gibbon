@@ -12,6 +12,8 @@
 
 module Packed.FirstOrder.Passes.InferEffects
     ( inferEffects, inferFunDef
+     -- * For other passes that perform similar location-trackinga
+    , instantiateApp, freshenArrowSchema
     )
     where
 import Control.Monad (when)
@@ -173,7 +175,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
 
   where
   -- We have one location for the destination, and another for each lexical binding.
-  exp :: Env -> L1.Exp -> SyM (Set Effect, Loc)
+  exp :: LocEnv -> L1.Exp -> SyM (Set Effect, Loc)
   exp env e =
     dbgTrace lvl ("\nProcessing exp: "++show e++"\n  with env: "++show env) $
     case e of
@@ -250,7 +252,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
 --     L1.MkPacked k ls ->
 
   -- Returns true if this particular case reaches the end of the scrutinee.
-  caserhs :: Env -> (Var,[Var],L1.Exp) -> SyM (Bool, Set Effect, Loc)
+  caserhs :: LocEnv -> (Var,[Var],L1.Exp) -> SyM (Bool, Set Effect, Loc)
   caserhs env (_dcon,[],erhs) = do
      (effs,loc) <- exp env erhs
      return $ ( True, effs, loc)
@@ -262,7 +264,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
    do let tys    = lookupDataCon ddefs dcon
           zipped = fragileZip patVs tys
           freeRHS = L1.freeVars erhs
-      env' <- extendEnv zipped env
+      env' <- extendLocEnv zipped env
           -- WARNING: we may need to generate "nested inside of" relation
           -- between the patVs and the scrutinee.      
       (eff,rloc) <- exp env' erhs

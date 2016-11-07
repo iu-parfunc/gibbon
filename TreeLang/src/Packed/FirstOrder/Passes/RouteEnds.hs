@@ -12,6 +12,7 @@ import qualified Packed.FirstOrder.LTraverse as L2
 -- We use some pieces from this other attempt:
 import           Packed.FirstOrder.LTraverse as L2
 import           Packed.FirstOrder.Passes.Cursorize2 (cursorizeTy)
+-- import           Packed.FirstOrder.Passes.InferEffects ()
 import Data.List as L hiding (tail)
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty

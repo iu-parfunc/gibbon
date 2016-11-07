@@ -27,7 +27,7 @@ module Packed.FirstOrder.LTraverse
     , Loc(..), LocVar, toEndVar, isEndVar, fromEndVar
     , join, joins
     , allLocVars, argtyToLoc, mangle, subloc
-    , Env, extendEnv, getLocVar
+    , LocEnv, extendLocEnv, getLocVar
 
     -- * Constraints
     , Constraint(..)
@@ -255,7 +255,9 @@ cursorTyLoc t = error $ "cursorTyLoc: should only be called on a cursor type, no
 --------------------------------------------------------------------------------
                      
 -- | Map every lexical variable in scope to an abstract location.
-type Env = M.Map Var Loc
+--   This is useful for compiler passes that need to track abstract
+--   locations of program terms.
+type LocEnv = M.Map Var Loc
 
 -- | Convert the type of a function argument to an abstract location
 -- for that function argument.
@@ -306,11 +308,11 @@ getLocVar l = error $"getLocVar: expected a single packed value location, got: "
 
 -- | We extend the environment when going under lexical binders, which
 -- always have fixed abstract locations associated with them.
-extendEnv :: [(Var,L1.Ty)] -> Env -> SyM Env
-extendEnv []    e     = return e
-extendEnv ((v,t):r) e =
+extendLocEnv :: [(Var,L1.Ty)] -> LocEnv -> SyM LocEnv
+extendLocEnv []    e     = return e
+extendLocEnv ((v,t):r) e =
     do t' <- tyWithFreshLocs t -- Temp, just to call argtyToLoc.
-       extendEnv r (M.insert v (argtyToLoc (mangle v) t') e)
+       extendLocEnv r (M.insert v (argtyToLoc (mangle v) t') e)
 
 
 -- FIXME: Remove:
