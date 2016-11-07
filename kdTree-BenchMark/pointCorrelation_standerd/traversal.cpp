@@ -1,6 +1,8 @@
 #include "traversal.h"
 #include "common.h"
 
+
+
 void recurse(Point *t1, Node *t2)
 {
 		if (t2 == NULL || !canCorrelate(t1, t2)) return;
