@@ -6,8 +6,10 @@
 //  Copyright © 2016 lsakka. All rights reserved.
 //
 
-#include "tree_unpacked.h"
+#include "tree_bumpalloc.h"
 #include <assert.h>
+
+char* BumpAllocator::heap_ptr= (char *)malloc(20000000 * sizeof(Node_Inner));
 
 void readPoint(FILE *in, Point & p){
     int dummy;
@@ -101,6 +103,8 @@ int comparePointY(const void *a, const void *b){
         return 0;
 }
 
+
+
 //return the index of the last created leaf node
 Tree_Node * buildTreeRec(int startIndx ,int endIndx ,Point * data ,int depth  ){
     
@@ -110,7 +114,7 @@ Tree_Node * buildTreeRec(int startIndx ,int endIndx ,Point * data ,int depth  ){
     //leaf node
     if (size ==1) {
         
-        Tree_Node * node= (Tree_Node *)malloc(sizeof(Tree_Node));
+        Tree_Node * node= (Tree_Node *)(BumpAllocator::alloc(sizeof(Tree_Node)));
         node->tag=LEAF_TAG;
         
         node->leafData.x_val=data[startIndx].x_val;
@@ -118,7 +122,7 @@ Tree_Node * buildTreeRec(int startIndx ,int endIndx ,Point * data ,int depth  ){
         return node;
     }
     else if(size>1){
-        Tree_Node * node= (Tree_Node *)malloc(sizeof(Tree_Node));
+        Tree_Node * node= (Tree_Node *)BumpAllocator::alloc(sizeof(Tree_Node));
         node->tag=INNER_TAG;
         node->innerData.splitAxis= (depth%2 == 0);
         

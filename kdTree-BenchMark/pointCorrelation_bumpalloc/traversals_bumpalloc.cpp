@@ -7,13 +7,13 @@
 //
 
 #include <stdio.h>
-#include "tree_unpacked.h"
+#include "tree_bumpalloc.h"
 #define TEST
 
 void   printUnpackedTree(Tree_Node * node){
     //print Tag
     
-  
+    
     cout<<" ,tag:"<<node->tag<<endl;
     
     if(node->tag==LEAF_TAG){
@@ -25,12 +25,13 @@ void   printUnpackedTree(Tree_Node * node){
         cout<<" ,max_x:"<<node->innerData.max_x<<endl;
         cout<<" ,min_y:"<<node->innerData.min_y;
         cout<<" ,max_y:"<<node->innerData.max_y<<endl;
-
-       printUnpackedTree(node->innerData.leftChild);
-       printUnpackedTree(node->innerData.rightChild);
+        
+        printUnpackedTree(node->innerData.leftChild);
+        printUnpackedTree(node->innerData.rightChild);
     }
     
 }
+
 void performPointCorr_OnTree(Point & p,Tree_Node * node ,float rad){
     
     if(node->tag == LEAF_TAG){
@@ -100,7 +101,7 @@ int performPointCorr_IntOut(Point & p,Tree_Node * node ,float rad){
         d +=(p.y_val - node->leafData.y_val) *(p.y_val - node->leafData.y_val);
         
         if(sqrt(d) < rad){
-           // node->leafData.corr++;
+            //node->leafData.corr++;
             return 1;
         }
         return 0;
@@ -134,10 +135,9 @@ int performPointCorr_IntOut(Point & p,Tree_Node * node ,float rad){
         if(!(canCorrelate)){
             return 0;
             
-            
         }else{
             //call left
-           return  performPointCorr_IntOut(p, node->innerData.leftChild, rad)+  performPointCorr_IntOut(p,  node->innerData.rightChild, rad);
+            return  performPointCorr_IntOut(p, node->innerData.leftChild, rad)+  performPointCorr_IntOut(p,  node->innerData.rightChild, rad);
             
             
         }

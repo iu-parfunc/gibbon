@@ -205,6 +205,10 @@ void buildTreeRec(int startIndx ,int endIndx ,Point * data ,char * &cur ,int dep
     
 }
 
+
+
+
+
 char *  buildTree(int n , Point * data ){
     //reserve the memory layout
     int bytes = treeSize(n);
