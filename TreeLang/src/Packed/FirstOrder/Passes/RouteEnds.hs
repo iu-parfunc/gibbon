@@ -167,8 +167,9 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                 let ouT' = L1.ProdTy $ (L.map mkCursorTy outs) ++ [ouT]
                 tmp <- gensym "hoistapp"
                 let newExp = LetE (tmp, fmap (const ()) ouT', AppE rat rand) $
-                               -- FIXME/TODO: unpack the witnesses we know about, returns 1-(N-1):
-                               (ProjE (length effs) (VarE tmp))
+                               letBindProjections (L.map (\v -> (v,mkCursorTy ())) outs) (VarE tmp) $
+                                 -- FIXME/TODO: unpack the witnesses we know about, returns 1-(N-1):
+                                 (ProjE (length effs) (VarE tmp))
                 dbgTrace lvl (" [routeEnds] processing app with these extra returns: "++
                                  show effs++", new expr:\n "++sdoc newExp) $! 
                   return (_,newExp,loc)
@@ -178,42 +179,34 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
           
      -- Here we must fulfill the demand on ALL branches uniformly.
      CaseE e1 ls -> L1.assertTriv e1 $
-      -- Since this pass is the one concerned with End propogation,
-      -- it's the one that reifies the fact "last field's end is constructors end":
-      let docase (dcon,patVs,rhs) = do
+      let scrutloc = let VarE sv = e1 in env # sv
+
+          docase (dcon,patVs,rhs) = do
             let tys    = lookupDataCon ddefs dcon
                 zipped = fragileZip patVs tys
 --                freeRHS = L1.freeVars rhs
             env' <- extendLocEnv zipped env
             (extra,rhs',loc) <- exp demanded env' rhs
-            return (extra,(dcon,patVs,rhs'),loc)
---      do -- (new1,eff1,loc1) <- exp env e1  
---         (bools,effs,locs) <- unzip3 <$> mapM (\(k,vs,e) -> (k,vs,) <$> exp demanded env e) ls
+            
+            -- Since this pass is the one concerned with End propogation,
+            -- it's the one that reifies the fact "last field's end is constructors end":
+            let rhs'' = let Fixed v = scrutloc
+                        in LetE (toEndVar v, mkCursorTy (), VarE (toEndVar (L.last patVs)))$
+                            rhs'                                
+            return (extra,(dcon,patVs,rhs''),loc)
          
-{-
-         let end = if all id bools
-                   then case getLocVar loc1 of
-                          Just v  -> S.singleton (Traverse v)
-                          Nothing -> S.empty
-                   else S.empty
-
-
-         when (not (L.null cnstrts)) $
-           dbgTrace 1 ("Warning: FINISHME: process these constraints: "++show cnstrts) (return ())
-                                
-         return $ dbgTrace lvl ("\n==>Results on subcases: "++show (doc(bools,effs,locs))) $
-                (S.union (S.union eff1 end)
-                         (L.foldl1 S.intersection effs),
-                 locFin)
--}
-      in do (extras,ls',locs) <- unzip3 <$> mapM docase ls   
+      in do 
+            (extras,ls',locs) <- unzip3 <$> mapM docase ls   
             unless (1 == (length $ nub $ L.map L.length extras)) $
               error $ "Got inconsintent-length augmented-return types from branches of case:\n  "
                       ++show extras++"\nExpr:\n  "++sdoc ex
-            let (locFin,_cnstrts) = joins locs
+            let (locFin,cnstrts) = joins locs
                 (augments,_) = unzip$ L.map joins $ L.transpose extras
-            return (augments, CaseE e1 ls', locFin)
 
+            when (not (L.null cnstrts)) $
+             dbgTrace 1 ("Warning: routeEnds/FINISHME: process these constraints: "++show cnstrts) (return ())
+
+            return (augments, CaseE e1 ls', locFin)
 
      _ -> error$ "[routeEnds] Unfinished.  Needs to handle:\n  "++sdoc ex
 {-
@@ -246,6 +239,13 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
     __
       
 
+letBindProjections :: [(Var, L1.Ty)] -> Exp -> Exp -> Exp
+letBindProjections ls tupname bod = go 0 ls
+  where
+    go _ [] = bod
+    go ix ((vr,ty):rst) = LetE (vr, ty, ProjE ix tupname) $ go (ix+1) rst
+                   
+     
 -- | Let bind IFF there are extra cursor results.
 maybeLetTup :: [Loc] -> (L1.Ty, L1.Exp) -> WitnessEnv
             -> (L1.Exp -> WitnessEnv -> SyM L1.Exp) -> SyM L1.Exp
