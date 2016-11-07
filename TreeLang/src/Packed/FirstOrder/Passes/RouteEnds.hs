@@ -128,6 +128,14 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
          let ex' = MkProdE $ (L.map VarE demanded) ++ [VarE v] in
          return (L.map Fixed demanded, ex', env # v)
 
+     -- Literals cannot produce end-witnesses:
+     LitE n -> case demanded of [] -> pure$ ([], LitE n, Bottom)
+
+
+     -- PrimApps do not currently produce end-witnesses:
+     PrimAppE _ ls -> case demanded of
+                        [] -> L1.assertTrivs ls $ pure ([],ex,Bottom)
+                
      -- Allocating new data doesn't witness the end of any data being read.
      LetE (v,ty, MkPackedE k ls) bod -> L1.assertTrivs ls $ 
        do env' <- extendLocEnv [(v,ty)] env
@@ -210,9 +218,8 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
 
      _ -> error$ "[routeEnds] Unfinished.  Needs to handle:\n  "++sdoc ex
 {-
-      LitE n   -> pure$ LitE n
       AppE v e -> AppE v <$> go e
-      PrimAppE p ls      -> PrimAppE p <$> mapM go ls
+
       ProjE i e      -> ProjE i <$> go e
       MkProdE ls     -> MkProdE <$> mapM go ls
       MkPackedE k ls -> MkPackedE k <$> mapM go ls
