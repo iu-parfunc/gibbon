@@ -46,5 +46,7 @@ findWitnesses = L2.mapMExprs fn
                              Just (_v,_t,e) -> Set.toList $ L1.freeVars e
             vars [] found = found
             vars (w:ws) found =
-                let nw = freeInBind w
-                in vars ((nw \\ ws) ++ ws) (w:(found \\ nw))
+                if elem w found
+                then vars ws (w : (found \\ [w]))
+                else let nw = freeInBind w
+                     in vars (union nw ws) (w:found)

@@ -268,16 +268,16 @@ compile Config{input,mode,packed,verbosity,cc,optc} fp = do
                        ------------------- End Stubs ---------------------
                               
                        l2e <- pass "routeEnds"                routeEnds                 l2d
-                       l2e <- pass "flatten"                  flatten2                  l2e
-                       l2f <- pass "findWitnesses"            findWitnesses             l2e
-                       l2g <- pass "inlinePacked"             inlinePacked              l2f
-                       l2h <- pass "cursorDirect"             cursorDirect              l2g
+                       l2f <- pass "flatten"                  flatten2                  l2e
+                       l2g <- pass "findWitnesses"            findWitnesses             l2f
+                       l2h <- pass "inlinePacked"             inlinePacked              l2g
+                       l2i <- pass "cursorDirect"             cursorDirect              l2h
+                       l2j <- pass "flatten"                  flatten2                  l2i
+                       l2k <- pass "findWitnesses"            findWitnesses             l2j
                               
-                       
-                              
-                       l2i <- pass "flatten"                   flatten2                 l2h
-                       l2j <- pass "inlineTriv"                inline2                  l2i
-                       return l2j
+                       l2l <- pass "flatten"                  flatten2                  l2k
+                       l2m <- pass "inlineTriv"               inline2                   l2l
+                       return l2i
                      else return l2
                  l3  <-       pass  "lower"                    (lower packed)           l2'
 
