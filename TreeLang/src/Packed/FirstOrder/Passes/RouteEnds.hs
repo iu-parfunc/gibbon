@@ -112,10 +112,6 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
    --  dbgTrace lvl ("\n [routeEnds] exp, demanding "++show demanded++": "++show ex++"\n  with env: "++show env) $
     let trivLoc (VarE v) = env # v
         trivLoc (LitE _) = Bottom
-        -- returnExtras e = ( L.map Fixed demanded
-        --                  , L1.mkProd $ (L.map VarE demanded) ++ [e] )
-        -- I tihnk this return value may just be removable:
-        defaultDemLocs = L.map Fixed demanded
     in
     case ex of
      -----------------Trivials---------------------
