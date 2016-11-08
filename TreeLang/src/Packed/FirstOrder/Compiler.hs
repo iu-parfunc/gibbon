@@ -257,11 +257,13 @@ compile Config{input,mode,packed,verbosity,cc,optc} fp = do
                  l2' <-
                      if packed
                      then do
+                       ---------------- Stubs currently ------------------
                        mt  <- pass' "findMissingTraversals"    findMissingTraversals    l2
                        l2b <- pass' "addTraversals"            (addTraversals mt)       l2
                        l2c <- pass' "addCopies"                addCopies                l2b
                        l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
-
+                       ------------------- End Stubs ---------------------
+                              
                        l2e <- pass "routeEnds"                routeEnds                 l2d
                        l2f <- pass "findWitnesses"            findWitnesses             l2e
                        l2g <- pass "inlinePacked"             inlinePacked              l2f
