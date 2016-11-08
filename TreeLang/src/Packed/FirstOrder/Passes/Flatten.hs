@@ -50,12 +50,12 @@ flattenExp defs env2 = fExp (vEnv env2)
     fExp _env (L1.AppE v (L1.VarE v')) = return $ L1.AppE v (L1.VarE v')
     fExp env (L1.AppE v e) =
         do e' <- fExp env e
-           v' <- gensym "tmp_flat"
+           v' <- gensym "flatAp"
            let ty = typeExp (defs,env2) env e
            return $ mkLetE (v',ty,e') (L1.AppE v (L1.VarE v'))
     fExp env (L1.PrimAppE p es) =
         do es' <- mapM (fExp env) es
-           nams <- mapM gensym $ replicate (length es) "tmp_flat"
+           nams <- mapM gensym $ replicate (length es) "flatPA"
            let bind [] e = e
                bind ((v,e'):xs) e = mkLetE (v,(typeExp (defs,env2) env e'),e') $ bind xs e
            let exp = bind (zip nams es') $ L1.PrimAppE p $ map L1.VarE nams
@@ -69,23 +69,23 @@ flattenExp defs env2 = fExp (vEnv env2)
         do fe1 <- fExp env e1
            fe2 <- fExp env e2
            fe3 <- fExp env e3
-           v1 <- gensym "tmp_flat"
+           v1 <- gensym "flatIf"
            return $ mkLetE (v1,L1.BoolTy,fe1) $ L1.IfE (L1.VarE v1) fe2 fe3
     fExp env (L1.ProjE i e) =
         do fe <- fExp env e
            let ty = typeExp (defs,env2) env e
-           v1 <- gensym "tmp_flat"
+           v1 <- gensym "flatPj"
            return $ mkLetE (v1,ty,fe) $ L1.ProjE i (L1.VarE v1)
     fExp env (L1.MkProdE es) =
         do fes <- mapM (fExp env) es
-           nams <- mapM gensym $ replicate (length fes) "tmp_flat"
+           nams <- mapM gensym $ replicate (length fes) "flatPr"
            let tys = map (typeExp (defs,env2) env) fes
                bind [] e            = e
                bind ((v,t,e'):xs) e = mkLetE (v,t,e') $ bind xs e
            return $ bind (zip3 nams tys fes) $ L1.MkProdE $ map L1.VarE nams
     fExp env (L1.CaseE e mp) =
         do fe <- fExp env e
-           v <- gensym "tmp_flat"
+           v <- gensym "flatCs"
            let ty  = typeExp (defs,env2) env fe
            fals <- forM mp $ \(c,args,ae) -> do
                      let tys = lookupDataCon defs c
@@ -94,7 +94,7 @@ flattenExp defs env2 = fExp (vEnv env2)
            return $ mkLetE (v,ty,fe) $ L1.CaseE (L1.VarE v) fals
     fExp env (L1.MkPackedE c es) =
         do fes <- mapM (fExp env) es
-           nams <- mapM gensym $ replicate (length fes) "tmp_flat"
+           nams <- mapM gensym $ replicate (length fes) "flatPk"
            let tys = map (typeExp (defs,env2) env) fes
                bind [] e            = e
                bind ((v,t,e'):xs) e = mkLetE (v,t,e') $ bind xs e
@@ -153,7 +153,9 @@ typeExp (dd,env2) env (L1.MkProdE es) =
 typeExp (dd,env2) env (L1.CaseE _e mp) =
     let (c,args,e) = head mp
     in typeExp (dd,env2) (M.fromList (zip args (lookupDataCon dd c)) `M.union` env) e
-typeExp (dd,env2) _env (L1.MkPackedE c _es) = L1.Packed c
+
+typeExp (dd,env2) _env (L1.MkPackedE c _es) = L1.Packed (getTyOfDataCon dd c)
+
 typeExp (dd,env2) env (L1.TimeIt e _) = typeExp (dd,env2) env e
 typeExp (dd,env2) env (L1.MapE _ e) = typeExp (dd,env2) env e
 typeExp (dd,env2) env (L1.FoldE _ _ e) = typeExp (dd,env2) env e

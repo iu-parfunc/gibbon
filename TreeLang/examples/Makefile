@@ -84,11 +84,11 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 PACKED_TESTS= test00_add.sexp test11b_fundata.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
     test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp test04_vector.sexp  test04b_vector.sexp test04c_ifvector.sexp \
     test05_app.sexp  test05b_app.sexp \
-    test06_case.sexp test06b_case.sexp
+    test06_case.sexp test06b_case.sexp test06c_nested.sexp \
 
-# test06c_nested.sexp test06i_casecase.sexp \
+# test06i_casecase.sexp
 #    test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp test06h_rec.sexp \
-    test07_time.sexp test10_desugar.sexp test10b_desugar.sexp test11b_fundata.sexp test11c_funrec.sexp
+#    test07_time.sexp test10_desugar.sexp test10b_desugar.sexp test11b_fundata.sexp test11c_funrec.sexp
 
 # test09_recur.sexp -- hits hole in Cursorize [2016.11.06]
 

@@ -416,8 +416,9 @@ allocFree ex =
 
 -- | Witness the location of a local variable.
 witnessOf :: Var -> Var
--- witnessOf v = v
-witnessOf = ("witness_"++)
+-- Policy decision here:
+witnessOf v = v
+-- witnessOf = ("witness_"++)
 
 
 tyOfCaseScrut :: Out a => DDefs a -> Exp -> L1.Ty
