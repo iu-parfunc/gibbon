@@ -114,12 +114,15 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
     dbgTrace lvl ("\n [routeEnds] exp, demanding "++show demanded++": "++show ex++"\n  with env: "++show env) $
     let trivLoc (VarE v) = env # v
         trivLoc (LitE _) = Bottom
-        returnExtras e = ( L.map Fixed demanded
-                         , L1.mkProd $ (L.map VarE demanded) ++ [e] )
-    in    
+        -- returnExtras e = ( L.map Fixed demanded
+        --                  , L1.mkProd $ (L.map VarE demanded) ++ [e] )
+        -- I tihnk this return value may just be removable:
+        defaultDemLocs = L.map Fixed demanded
+    in
     case ex of
      -----------------Trivials---------------------
      -- ASSUMPTION we are ONLY given demands that we can FULFILL:
+{-      
      VarE _ -> 
          let (d,e) = returnExtras ex in
          return (d, e, trivLoc ex)
@@ -135,6 +138,10 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
         case env # v of
           TupLoc ls -> let (d,e) = returnExtras ex in
                        return (d, e, ls !! ix)
+-}
+     tr | L1.isTriv tr -> return ( defaultDemLocs
+                                 , L1.mkProd $ (L.map VarE demanded) ++ [ex]
+                                 , trivLoc tr)
      ----------------End Trivials-------------------
                               
      -- PrimApps do not currently produce end-witnesses:
@@ -199,7 +206,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                                  (ProjE (length effs) (VarE tmp))
                 dbgTrace lvl (" [routeEnds] processing app with these extra returns: "++
                                  show effs++", new expr:\n "++sdoc newExp) $! 
-                  return (_,newExp,loc)
+                  return (defaultDemLocs,newExp,loc)
                          
      -- Here we must fulfill the demand on ALL branches uniformly.
      CaseE e1 ls -> L1.assertTriv e1 $
@@ -208,16 +215,21 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
           docase (dcon,patVs,rhs) = do
             let tys    = lookupDataCon ddefs dcon
                 zipped = fragileZip patVs tys
---                freeRHS = L1.freeVars rhs
             env' <- extendLocEnv zipped env
             (extra,rhs',loc) <- exp demanded env' rhs
             
             -- Since this pass is the one concerned with End propogation,
-            -- it's the one that reifies the fact "last field's end is constructors end":
-            let rhs'' | L.null patVs = rhs'
-                      | otherwise =
-                        let Fixed v = scrutloc
-                        in LetE (toEndVar v, mkCursorTy (), VarE (toEndVar (L.last patVs))) rhs'
+            -- it's the one that reifies the fact "last field's end is constructors end".
+            let rhs'' = 
+                  let Fixed v = scrutloc                                
+                  in LetE (toEndVar v, mkCursorTy (),
+                           -- If there is no last field, the constructors
+                           -- end is just after the tag:
+                           if L.null patVs
+                           then PrimAppE L1.AddP [VarE v, LitE 1]
+                           else VarE (toEndVar (L.last patVs)))
+                       rhs'
+                        
             return (extra,(dcon,patVs,rhs''),loc)
          
       in do 
