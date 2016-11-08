@@ -13,7 +13,7 @@
 module Packed.FirstOrder.Passes.InferEffects
     ( inferEffects, inferFunDef
      -- * For other passes that perform similar location-trackinga
-    , instantiateApp, freshenArrowSchema, zipLT, zipTL
+    , instantiateApp, freshLoc, freshenArrowSchema, zipLT, zipTL
     )
     where
 import Control.Monad (when)

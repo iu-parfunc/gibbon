@@ -12,7 +12,7 @@ import qualified Packed.FirstOrder.LTraverse as L2
 -- We use some pieces from this other attempt:
 import           Packed.FirstOrder.LTraverse as L2
 import           Packed.FirstOrder.Passes.Cursorize2 (cursorizeTy)
-import           Packed.FirstOrder.Passes.InferEffects (zipLT, zipTL, instantiateApp)
+import           Packed.FirstOrder.Passes.InferEffects (zipLT, zipTL, instantiateApp, freshLoc)
 import Data.List as L hiding (tail)
 import Data.Map as M
 import Data.Set as S
@@ -136,11 +136,18 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
           TupLoc ls -> let (d,e) = returnExtras ex in
                        return (d, e, ls !! ix)
      ----------------End Trivials-------------------
-
+                              
      -- PrimApps do not currently produce end-witnesses:
      PrimAppE _ ls -> case demanded of
                         [] -> L1.assertTrivs ls $ pure ([],ex,Bottom)
-                
+
+     -- A datacon is the beginning of something new, it certainly
+     -- cannot witness the end of anything else!
+     MkPackedE k ls -> L1.assertTrivs ls $ let [] = demanded in do
+       fresh <- freshLoc "dunno"
+       return ([], MkPackedE k ls, fresh)
+      
+         
      -- Allocating new data doesn't witness the end of any data being read.
      LetE (v,ty, MkPackedE k ls) bod -> L1.assertTrivs ls $ 
        do env' <- extendLocEnv [(v,ty)] env
@@ -167,7 +174,6 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
          assert (num1 + num2 == length demanded) $
             return (fulfilled++rest, newExp, bloc)
            
-
      --  We're allowing these as tail calls:
      AppE rat rand -> -- L1.assertTriv rnd $
        let loc = trivLoc rand in
@@ -194,7 +200,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                 dbgTrace lvl (" [routeEnds] processing app with these extra returns: "++
                                  show effs++", new expr:\n "++sdoc newExp) $! 
                   return (_,newExp,loc)
-          
+                         
      -- Here we must fulfill the demand on ALL branches uniformly.
      CaseE e1 ls -> L1.assertTriv e1 $
       let scrutloc = let VarE sv = e1 in env # sv
@@ -208,9 +214,10 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
             
             -- Since this pass is the one concerned with End propogation,
             -- it's the one that reifies the fact "last field's end is constructors end":
-            let rhs'' = let Fixed v = scrutloc
-                        in LetE (toEndVar v, mkCursorTy (), VarE (toEndVar (L.last patVs)))$
-                            rhs'                                
+            let rhs'' | L.null patVs = rhs'
+                      | otherwise =
+                        let Fixed v = scrutloc
+                        in LetE (toEndVar v, mkCursorTy (), VarE (toEndVar (L.last patVs))) rhs'
             return (extra,(dcon,patVs,rhs''),loc)
          
       in do 
