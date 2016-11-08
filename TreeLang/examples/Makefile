@@ -47,8 +47,8 @@ all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
 
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= \
-  test17_forfold.sexp test06g_rec.sexp  test06i_casecase.sexp  test12b_traverse.sexp  \
-  test16_forlist.sexp test20_bintree.sexp
+  test17_forfold.sexp test06g_rec.sexp  test06i_casecase.sexp \
+  test16_forlist.sexp
 # NOTE:
 # test11d_funrec.sexp -- is giving the WRONG ANSWER
 # test11f_funrec.sexp -- ''
