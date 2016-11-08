@@ -45,7 +45,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
     -- let gloc = "global"
     mn <- case mainExp of
             Nothing -> return Nothing
-            Just (x,t)  -> do (_,x',_) <- exp [] M.empty x
+            Just (x,t)  -> do (x',_) <- exp [] M.empty x
                               return $ Just (x',t) 
                 -- do let initWenv = WE (M.singleton gloc (L1.VarE "gcurs")) M.empty
                 --    tl' <- tail [] (M.empty,initWenv) x
@@ -89,7 +89,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
           newArg = funarg
           bod = funbod
           demand = L.map ((\(Just x) -> x) . getLocVar) augments -- newOut
-      (_,exp',_) <- exp demand env0 bod
+      (exp',_) <- exp demand env0 bod
       return $ L2.FunDef funname newTy newArg exp'
 
 
@@ -97,21 +97,19 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
              
   -- Arguments:
   --
-  --  (1) the demanded traversal witnesses (end-of-input cursors)
+  --  (1) the N demanded traversal witnesses (end-of-input cursors)
   --  (2) an environment mapping lexical variables to abstract locations
   --  (3) expression to process
   -- 
   -- Return values:
   --
-  --  (1) A list corresponding to the cursor values ADDED to the
-  --      return type, containing their locations.
-  --  (2) The updated expression, possibly with a tupled return type
-  --      thereby including the new cursor returns.
-  --  (3) The location of the processed expression, NOT including the
+  --  (1) The updated expression, possibly with a tupled return type
+  --      thereby including the N new cursor returns.
+  --  (2) The location of the processed expression, NOT including the
   --      added returns.
-  exp :: [LocVar] -> LocEnv -> L1.Exp -> SyM ([Loc],L1.Exp, Loc)
+  exp :: [LocVar] -> LocEnv -> L1.Exp -> SyM (L1.Exp, Loc)
   exp demanded env ex =
-    dbgTrace lvl ("\n [routeEnds] exp, demanding "++show demanded++": "++show ex++"\n  with env: "++show env) $
+   --  dbgTrace lvl ("\n [routeEnds] exp, demanding "++show demanded++": "++show ex++"\n  with env: "++show env) $
     let trivLoc (VarE v) = env # v
         trivLoc (LitE _) = Bottom
         -- returnExtras e = ( L.map Fixed demanded
@@ -139,34 +137,33 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
           TupLoc ls -> let (d,e) = returnExtras ex in
                        return (d, e, ls !! ix)
 -}
-     tr | L1.isTriv tr -> return ( defaultDemLocs
-                                 , L1.mkProd $ (L.map VarE demanded) ++ [ex]
+     tr | L1.isTriv tr -> return ( L1.mkProd $ (L.map VarE demanded) ++ [ex]
                                  , trivLoc tr)
      ----------------End Trivials-------------------
                               
      -- PrimApps do not currently produce end-witnesses:
      PrimAppE _ ls -> case demanded of
-                        [] -> L1.assertTrivs ls $ pure ([],ex,Bottom)
+                        [] -> L1.assertTrivs ls $ pure (ex,Bottom)
 
      -- A datacon is the beginning of something new, it certainly
      -- cannot witness the end of anything else!
      MkPackedE k ls -> L1.assertTrivs ls $ let [] = demanded in do
        fresh <- freshLoc "dunno"
-       return ([], MkPackedE k ls, fresh)
+       return (MkPackedE k ls, fresh)
       
          
      -- Allocating new data doesn't witness the end of any data being read.
      LetE (v,ty, MkPackedE k ls) bod -> L1.assertTrivs ls $ 
        do env' <- extendLocEnv [(v,ty)] env
-          (aug,bod',loc) <- exp demanded env' bod
-          return (aug, LetE (v,ty,MkPackedE k ls) bod', loc)
+          (bod',loc) <- exp demanded env' bod
+          return (LetE (v,ty,MkPackedE k ls) bod', loc)
 
      -- FIXME: Need unariser pass:
      LetE (vr,ty, MkProdE ls) bod -> L1.assertTrivs ls $ do 
       -- As long as we keep these trivial, this is book-keeping only.  Nothing to route out of here.
       env' <- extendLocEnv [(vr,ty)] env
-      (dem,bod',loc) <- exp demanded env' bod
-      return (dem, LetE (vr,ty,MkProdE ls) bod', loc)
+      (bod',loc) <- exp demanded env' bod
+      return (LetE (vr,ty,MkProdE ls) bod', loc)
                  
     -- A let is a fork in the road, a compound expression where we
     -- need to decide which branch can fulfill a given demand.
@@ -174,12 +171,12 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
       do
          ((fulfilled,demanded'), rhs', rloc) <- maybeFulfill demanded env rhs         
          env' <- extendLocEnv [(v,t)] env
-         (rest, bod', bloc) <- exp demanded' env' bod
+         (bod', bloc) <- exp demanded' env' bod
          let num1 = length fulfilled
-             num2 = length rest
+             num2 = length demanded'
              newExp = LetE (v,t, L1.mkProj num1 (num1+1) rhs') bod'
          assert (num1 + num2 == length demanded) $
-            return (fulfilled++rest, newExp, bloc)
+            return (newExp, bloc)
            
      --  We're allowing these as tail calls:
      AppE rat rand -> -- L1.assertTriv rnd $
@@ -191,7 +188,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
              if L.null effs
               then dbgTrace lvl (" [routeEnds] processing app with ZERO extra end-witness returns:\n  "++sdoc ex) $
                    assert (demanded == []) $ 
-                   return ([], AppE rat rand, loc) -- Nothing to see here.
+                   return (AppE rat rand, loc) -- Nothing to see here.
               else do
                 -- FIXME: THESE COULD BE IN THE WRONG ORDER:  (But it doesn't matter below.)
                 let outs = L.map (\(Traverse v) -> toEndVar v) (S.toList effs)
@@ -206,7 +203,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                                  (ProjE (length effs) (VarE tmp))
                 dbgTrace lvl (" [routeEnds] processing app with these extra returns: "++
                                  show effs++", new expr:\n "++sdoc newExp) $! 
-                  return (defaultDemLocs,newExp,loc)
+                  return (newExp,loc)
                          
      -- Here we must fulfill the demand on ALL branches uniformly.
      CaseE e1 ls -> L1.assertTriv e1 $
@@ -216,7 +213,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
             let tys    = lookupDataCon ddefs dcon
                 zipped = fragileZip patVs tys
             env' <- extendLocEnv zipped env
-            (extra,rhs',loc) <- exp demanded env' rhs
+            (rhs',loc) <- exp demanded env' rhs
             
             -- Since this pass is the one concerned with End propogation,
             -- it's the one that reifies the fact "last field's end is constructors end".
@@ -230,30 +227,28 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                            else VarE (toEndVar (L.last patVs)))
                        rhs'
                         
-            return (extra,(dcon,patVs,rhs''),loc)
+            return ((dcon,patVs,rhs''),loc)
          
       in do 
-            (extras,ls',locs) <- unzip3 <$> mapM docase ls   
-            unless (1 == (length $ nub $ L.map L.length extras)) $
-              error $ "Got inconsintent-length augmented-return types from branches of case:\n  "
-                      ++show extras++"\nExpr:\n  "++sdoc ex
+            (ls',locs) <- unzip <$> mapM docase ls   
+            -- unless (1 == (length $ nub $ L.map L.length extras)) $
+            --   error $ "Got inconsintent-length augmented-return types from branches of case:\n  "
+            --           ++show extras++"\nExpr:\n  "++sdoc ex
             let (locFin,cnstrts) = joins locs
-                (augments,_) = unzip$ L.map joins $ L.transpose extras
 
             when (not (L.null cnstrts)) $
              dbgTrace 1 ("Warning: routeEnds/FINISHME: process these constraints: "++show cnstrts) (return ())
 
-            return (augments, CaseE e1 ls', locFin)
+            return (CaseE e1 ls', locFin)
 
      IfE a b c -> L1.assertTriv a $ do
-       (d1,b',bloc) <- exp demanded env b
-       (d2,c',cloc) <- exp demanded env c
-       let (dlocs,_)  = unzip $ zipWith L2.join d1 d2
-           (retloc,_) = L2.join bloc cloc
-       return (dlocs, IfE a b' c', retloc)
+       (b',bloc) <- exp demanded env b
+       (c',cloc) <- exp demanded env c
+       let (retloc,_) = L2.join bloc cloc
+       return (IfE a b' c', retloc)
 
-     TimeIt e t -> do (d,e',l) <- exp demanded env e
-                      return (d, TimeIt e' t, l)
+     TimeIt e t -> do (e',l) <- exp demanded env e
+                      return (TimeIt e' t, l)
               
      _ -> error$ "[routeEnds] Unfinished.  Needs to handle:\n  "++sdoc ex
 {-
@@ -267,9 +262,9 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
   -- | Process an expression multiple times, first to see what it can
   -- offer, and then again if it can offer something we want.
   -- Returns hits followed by misses.
-  maybeFulfill :: [LocVar] -> LocEnv -> L1.Exp -> SyM (([Loc],[LocVar]),L1.Exp, Loc)
+  maybeFulfill :: [LocVar] -> LocEnv -> L1.Exp -> SyM (([LocVar],[LocVar]),L1.Exp, Loc)
   maybeFulfill demand env ex = do
-    ([], ex', loc) <- exp [] env ex
+    (ex', loc) <- exp [] env ex
     let offered = locToEndVars loc
         matches = S.intersection (S.fromList demand) (S.fromList offered)
 
@@ -279,8 +274,8 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
      then return (([],demand),ex',loc)
      else do 
       let (hits,misses) = L.partition (`S.member` matches) demand
-      (hits',ex',loc) <- exp [] env ex
-      return ((hits',misses), ex', loc)
+      (ex',loc) <- exp [] env ex
+      return ((hits,misses), ex', loc)
            
            
 
