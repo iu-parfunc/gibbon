@@ -58,7 +58,6 @@ TREECARGS ?= --run
 run_tests: build
 	@echo "\n Compiling and running tests through our compiler:"
 	@echo "--------------------------------------------------"
-	echo "Running this list: "$(PASSING_TESTS)
 	rm -f *.out
 	$(MAKE) all_tests
 
@@ -71,7 +70,7 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 #	@echo "Now check expected $$f.ans, versus received, $$f.out";
 	@./diff.sh $^.ans $@
 
-PACKED_FAILING ?= test11c_funrec.sexp test12b_traverse.sexp test12c_traverse.sexp \
+PACKED_FAILING ?= test11c_funrec.sexp test11d_funrec.sexp test12b_traverse.sexp test12c_traverse.sexp \
     test12_skip.sexp test16_forlist.sexp test17_forfold.sexp
 
 # Run the tests that work under the packed regime:

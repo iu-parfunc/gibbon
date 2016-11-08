@@ -112,6 +112,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
    --  dbgTrace lvl ("\n [routeEnds] exp, demanding "++show demanded++": "++show ex++"\n  with env: "++show env) $
     let trivLoc (VarE v) = env # v
         trivLoc (LitE _) = Bottom
+        defaultReturn = L1.mkProd $ (L.map VarE demanded) ++ [ex]
     in
     case ex of
      -----------------Trivials---------------------
@@ -133,13 +134,12 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
           TupLoc ls -> let (d,e) = returnExtras ex in
                        return (d, e, ls !! ix)
 -}
-     tr | L1.isTriv tr -> return ( L1.mkProd $ (L.map VarE demanded) ++ [ex]
+     tr | L1.isTriv tr -> return ( defaultReturn
                                  , trivLoc tr)
      ----------------End Trivials-------------------
                               
      -- PrimApps do not currently produce end-witnesses:
-     PrimAppE _ ls -> case demanded of
-                        [] -> L1.assertTrivs ls $ pure (ex,Bottom)
+     PrimAppE _ ls -> L1.assertTrivs ls $ pure (defaultReturn,Bottom)
 
      -- A datacon is the beginning of something new, it certainly
      -- cannot witness the end of anything else!
