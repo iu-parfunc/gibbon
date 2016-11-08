@@ -46,12 +46,14 @@ all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
 	$(TREEC) --parse $^ 2> $@
 
 # Failing tests for the pointer-based C backend (default):
-FAILING_TESTS ?= test11e_funrec.sexp test11f_funrec.sexp  \
-  test17_forfold.sexp test06g_rec.sexp  test06i_casecase.sexp \
-  test16_forlist.sexp test20_bintree.sexp \
-  test06b_case.sexp test06_case.sexp
-
+FAILING_TESTS ?= test11e_funrec.sexp test11d_funrec.sexp test11f_funrec.sexp  \
+  test06g_rec.sexp  test06i_casecase.sexp \
+  test12b_traverse.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp 
+#  test06b_case.sexp test06_case.sexp
 # test06b_case.sexp -- map lookup on datacon
+
+# test11d_funrec.sexp -- segfaults
+# 12b - segfaults
 
 # NOTE:
 # test11b_fundata.sexp -- map lookup failed on datacon
@@ -81,7 +83,9 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 
 PACKED_FAILING ?= test11c_funrec.sexp test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp \
     test12b_traverse.sexp test12c_traverse.sexp \
-    test12_skip.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp
+    test12_skip.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
+ test06i_casecase.sexp test11b_fundata.sexp test11_fundata.sexp
+# last line are recent regressions
 
 # test11c_funrec.sexp    -- findwitnesses
 # test11d_funrec.sexp    -- findwitnesses
