@@ -48,6 +48,7 @@ flattenExp defs env2 = fExp (vEnv env2)
     fExp _env (L1.VarE v) = return $ L1.VarE v
     fExp _env (L1.LitE i) = return $ L1.LitE i
     fExp _env (L1.AppE v (L1.VarE v')) = return $ L1.AppE v (L1.VarE v')
+    fExp _env (L1.AppE v (L1.MkProdE [])) = return $ L1.AppE v (L1.MkProdE [])
     fExp env (L1.AppE v e) =
         do e' <- fExp env e
            v' <- gensym "flatAp"
