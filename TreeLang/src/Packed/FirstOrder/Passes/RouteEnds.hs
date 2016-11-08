@@ -61,6 +61,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
       let ArrowTy oldInT effs _ = funty
           -- FIXME: split cursorizeTy into two stages.
           (tmpTy@(ArrowTy inT _ newOutT),newIn,newOut) = cursorizeTy funty 
+          -- This pass doesn't deal with injected arguments, only returns...
           newTy = ArrowTy oldInT effs newOutT
       in
       dbgTrace lvl ("Processing fundef: "++show(doc f)++
@@ -69,28 +70,18 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
       fresh <- gensym "tupin"
       -- First off, we need to use the lexical variable name to name
       -- the input's fixed abstract location (from the lambda body's prspective).      
-      let 
-
--- This pass doesn't deal with injected arguments, only returns:
-          -- (newArg, bod) =
-          --     if newIn == [] -- No injected cursor params..
-          --     then (funarg, funbod)
-          --     else ( fresh
-          --          , LetE (funarg, fmap (const ()) inT,
-          --                  (L1.projNonFirst (length newIn) (L1.VarE fresh)))
-          --                 funbod
-          --          )
-
-          -- argLoc  = argtyToLoc (L2.mangle newArg) inT
-          -- Arg location NOT COUNTING, new/inserted arguments:
-          argLoc  = argtyToLoc (L2.mangle funarg) oldInT
-
+      let argLoc  = argtyToLoc (L2.mangle funarg) oldInT
+      
 --          localizedEffects  = substEffs (zipLT argLoc inT) effs
 --          localizedEffects2 = substEffs (zipTL inT argLoc) effs
-
-      (_efs, TupLoc retlocs) <- instantiateApp newTy argLoc 
-      let augments = L.init retlocs
-                       
+      
+      -- We use the new type to determine the NEW return values:
+      (_efs, retlocs) <- instantiateApp newTy argLoc 
+      let augments = if L.null newOut
+                     then []
+                     else case retlocs of
+                            TupLoc l -> L.init l
+                            _ -> error$ "routeEnds: expected a tuple return location: "++show retlocs
       let env0 = 
            dbgTrace lvl (" !!! argLoc "++show argLoc++", inTy "++show inT++", instantiate: "++show retlocs) $ 
 --           dbgTrace lvl (" !!! localEffs1 "++show localizedEffects++" locEffs2 "++show localizedEffects2) $ 
@@ -179,9 +170,8 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
 
      --  We're allowing these as tail calls:
      AppE rat rand -> -- L1.assertTriv rnd $
-       case rand of
-        L1.VarE vr -> 
-          do let loc   = env # vr
+       let loc = trivLoc rand in
+          do 
              -- This looks up the type before this pass, not with end cursors:
              let arrTy@(ArrowTy _ _ ouT) = funType rat
              (effs,loc) <- instantiateApp arrTy loc
@@ -204,9 +194,6 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                 dbgTrace lvl (" [routeEnds] processing app with these extra returns: "++
                                  show effs++", new expr:\n "++sdoc newExp) $! 
                   return (_,newExp,loc)
-
-        _ -> error$ "routeEnds: FINISHME: handle this AppE operand: "++show rand
-      
           
      -- Here we must fulfill the demand on ALL branches uniformly.
      CaseE e1 ls -> L1.assertTriv e1 $
