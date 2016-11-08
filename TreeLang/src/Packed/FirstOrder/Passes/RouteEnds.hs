@@ -152,7 +152,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
          -- let env' = M.insert v rloc env 
          -- (beff,bloc) <- exp env' bod         
          -- return (S.union beff reff, bloc)
-         __ 
+         __finishLetE
 
      --  We're allowing these as tail calls:
      AppE rat rand -> -- L1.assertTriv rnd $
@@ -234,17 +234,34 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
 
   -- | Process an expression multiple times, first to see what it can
   -- offer, and then again if it can offer something we want.
-  maybeFulfill :: [LocVar] -> LocEnv -> L1.Exp -> SyM (([Loc],[Loc]),L1.Exp, Loc)
+  -- Returns hits followed by misses.
+  maybeFulfill :: [LocVar] -> LocEnv -> L1.Exp -> SyM (([Loc],[LocVar]),L1.Exp, Loc)
   maybeFulfill demand env ex = do
-    (_added, ex', loc) <- exp [] env ex
-    let offered = __ loc
-        match = S.toList $ S.intersection (S.fromList demand) (S.fromList offered)
-    if dbgTrace 1 ("[routeEnds] maybeFulfill, offered"++show offered++", demanded "++show demand) $ 
-       L.null match
-     then return (offered )
-     else __
-    __
-      
+    ([], ex', loc) <- exp [] env ex
+    let offered = locToEndVars loc
+        matches = S.intersection (S.fromList demand) (S.fromList offered)
+
+    if dbgTrace 1 ("[routeEnds] maybeFulfill, offered"++show offered
+                   ++", demanded "++show demand++", from: "++show ex) $
+       S.null matches
+     then return (([],demand),ex',loc)
+     else do 
+      let (hits,misses) = L.partition (`S.member` matches) demand
+      (hits',ex',loc) <- exp [] env ex
+      return ((hits',misses), ex', loc)
+           
+           
+
+locToEndVars :: Loc -> [Var]
+locToEndVars l =
+ case l of
+   (Fixed x) | isEndVar x -> [x]
+             | otherwise -> []
+   (Fresh _) -> []
+   (TupLoc ls) -> concatMap locToEndVars ls 
+   Top    -> []
+   Bottom -> []
+     
 
 letBindProjections :: [(Var, L1.Ty)] -> Exp -> Exp -> Exp
 letBindProjections ls tupname bod = go 0 ls
