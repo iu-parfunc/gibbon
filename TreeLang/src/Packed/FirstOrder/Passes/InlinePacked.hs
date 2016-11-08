@@ -7,11 +7,10 @@ module Packed.FirstOrder.Passes.InlinePacked
     (inlinePacked) where
 
 import qualified Data.Map as M    
-import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc)
+import Packed.FirstOrder.Common (SyM, Var, dbgTrace)
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.LTraverse as L2
 import Prelude hiding (exp)
--- import Debug.Trace
 
 -- | This pass gets ready for cursorDirect by pushing tree-creating
 -- expressions within the syntactic scope of data constructor
