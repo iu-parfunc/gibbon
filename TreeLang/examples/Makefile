@@ -81,11 +81,14 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 #	@echo "Now check expected $$f.ans, versus received, $$f.out";
 	@./diff.sh $^.ans $@ || (touch $^.err; rm -f $@; exit 1)
 
-PACKED_FAILING ?= test11c_funrec.sexp test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp \
+PACKED_FAILING = test11c_funrec.sexp test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp \
     test12b_traverse.sexp test12c_traverse.sexp \
     test12_skip.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
- test06i_casecase.sexp test11b_fundata.sexp test11_fundata.sexp
-# last line are recent regressions
+ test06i_casecase.sexp test11b_fundata.sexp test11_fundata.sexp 
+# last line(S) are recent regressions
+
+# New regressions, recent changes [2016.11.08]
+PACKED_FAILING += test04c_ifvector.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp test06f_rec.sexp test06g_rec.sexp test07_time.sexp test09_recur.sexp
 
 # test11c_funrec.sexp    -- findwitnesses
 # test11d_funrec.sexp    -- findwitnesses

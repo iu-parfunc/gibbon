@@ -86,6 +86,7 @@ data Config = Config
   , verbosity :: Int  -- ^ Debugging output, equivalent to DEBUG env var.
   , cc        :: String -- ^ C compiler to use
   , optc      :: String -- ^ Options to the C compiler
+  , warnc     :: Bool
   }
 
 -- | What input format to expect on disk.
@@ -110,9 +111,13 @@ defaultConfig =
          , packed = False
          , verbosity = 1
          , cc = "gcc"
-         , optc = " -std=gnu11 -O3 -Wno-incompatible-pointer-types "
+         , optc = " -std=gnu11 -O3  "
+         , warnc = False
          }
 
+suppress_warnings :: String
+suppress_warnings = " -Wno-incompatible-pointer-types -Wno-int-conversion "
+  
 configParser :: Parser Config
 configParser = Config <$> inputParser <*> modeParser
                       <*> (switch (short 'p' <> long "packed" <>
@@ -127,6 +132,8 @@ configParser = Config <$> inputParser <*> modeParser
                             <|> pure (cc defaultConfig))
                       <*> ((strOption $ long "optc" <> help "set C compiler options, default '-std=gnu11 -O3'")
                            <|> pure (optc defaultConfig))
+                      <*> switch (short 'w' <> long "warnc" <>
+                                  help "Show warnings from C compiler, normally suppressed")
  where
   -- Most direct way, but I don't like it:
   _inputParser :: Parser Input
@@ -192,7 +199,7 @@ lvl = 3
 -- files to process.
 compile :: Config -> FilePath -> IO ()
 -- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compile Config{input,mode,packed,verbosity,cc,optc} fp = do
+compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp = do
   -- TERRIBLE HACK!!  This value is global, "pure" and can be read anywhere
   when (verbosity > 1) $ do
     setEnv "DEBUG" (show verbosity)
@@ -295,7 +302,9 @@ compile Config{input,mode,packed,verbosity,cc,optc} fp = do
 
     writeFile outfile str
     when (mode == ToExe || mode == RunExe) $ do
-      let cmd = cc++" "++optc++" "++outfile++" -o "++ exe
+      let cmd = cc ++" "++optc++" "++" "
+                   ++(if warnc then "" else suppress_warnings)
+                   ++" "++outfile++" -o "++ exe
       dbgPrintLn 1 cmd
       cd <- system cmd
       case cd of
