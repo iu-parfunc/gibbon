@@ -28,7 +28,7 @@ handwritten-c-packed
 |#
 
 (define (launch-benchmarks [exec : String] [pass-name : String] [variant : String])  
-  (define outfile (format "results_~a.csv" (current-seconds)))
+  (define outfile (format "results_~a_~a.csv" variant (current-seconds)))
   (define csv (open-output-file outfile #:exists 'replace))
 
   (driver csv exec pass-name variant)

@@ -125,6 +125,7 @@ lit := int | #t | #f
 
 (define-syntax-rule (time e)
   (let-values ([(ls cpu real gc) (time-apply (lambda () e) '())])
+    (printf "BATCHTIME: ~a\n" (/ (exact->inexact real) 1000.0))
     (printf "SELFTIMED: ~a\n" (/ (exact->inexact real) 1000.0))
     (match ls
       [(list x) x])))
