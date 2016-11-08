@@ -1,7 +1,7 @@
 #lang racket
   
 (require "traversal.rkt")
-(require "treelang.rkt")
+(require "../../TreeLang/treelang.rkt")
 
 ;;(write (Leaf 1.1 1.1 2))
 

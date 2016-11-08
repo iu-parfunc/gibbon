@@ -1,8 +1,8 @@
 #lang racket
 ;; We get to use the full Racket language here.
 
-;; We import the code from the more restricted language:
-(require "example_traverse.rkt")
+;; We import the code from the more restricted language: 
+(require "example_traverse.rkt") ;; just test garbage
 (require "traversal.rkt")
 
 (display "Here's a data value, from treelang, but allocated in Racket code:\n" )
@@ -24,4 +24,3 @@
 
 (bench 20 10)
 (display "Done benchmarking\n")
-
