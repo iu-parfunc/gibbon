@@ -265,10 +265,13 @@ compile Config{input,mode,packed,verbosity,cc,optc} fp = do
                        ------------------- End Stubs ---------------------
                               
                        l2e <- pass "routeEnds"                routeEnds                 l2d
+                       l2e <- pass "flatten"                  flatten2                  l2e
                        l2f <- pass "findWitnesses"            findWitnesses             l2e
                        l2g <- pass "inlinePacked"             inlinePacked              l2f
                        l2h <- pass "cursorDirect"             cursorDirect              l2g
-
+                              
+                       
+                              
                        l2i <- pass "flatten"                   flatten2                 l2h
                        l2j <- pass "inlineTriv"                inline2                  l2i
                        return l2j
