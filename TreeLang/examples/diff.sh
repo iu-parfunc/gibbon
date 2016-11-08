@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e
+set +e
 
 function checkfile() {
     if ! [ -e "$1" ]; then

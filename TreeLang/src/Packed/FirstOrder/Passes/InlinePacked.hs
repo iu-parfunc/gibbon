@@ -7,11 +7,10 @@ module Packed.FirstOrder.Passes.InlinePacked
     (inlinePacked) where
 
 import qualified Data.Map as M    
-import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc)
+import Packed.FirstOrder.Common (SyM, Var, dbgTrace)
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.LTraverse as L2
 import Prelude hiding (exp)
--- import Debug.Trace
 
 -- | This pass gets ready for cursorDirect by pushing tree-creating
 -- expressions within the syntactic scope of data constructor
@@ -45,8 +44,10 @@ inlinePackedExp = go
     (AppE v e)  -> AppE v $ go env e
     (PrimAppE p es) -> PrimAppE p $ map (go env) es
     (LetE (v,t,rhs) e)
-       | L1.hasPacked t -> let rhs' = go env rhs in 
-                           go ((v,Just rhs'):env) e
+       -- We do NOT inline cursors, because cursorDirect will want these.
+       | L1.hasPacked t && not (isCursorTy t)->
+                 let rhs' = go env rhs in 
+                 go ((v,Just rhs'):env) e
        | otherwise -> LetE (v,t, go env rhs)
                            (go ((v,Nothing):env) e)
 
@@ -68,3 +69,4 @@ inlinePackedExp = go
          let env' = (v1,Nothing) : (v2,Nothing) : env in
          FoldE (v1,t1,go env e1) (v2,t2,go env e2)
                (go env' e3)
+

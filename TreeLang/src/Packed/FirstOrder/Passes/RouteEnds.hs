@@ -110,8 +110,18 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
   exp :: [LocVar] -> LocEnv -> L1.Exp -> SyM (L1.Exp, Loc)
   exp demanded env ex =
    --  dbgTrace lvl ("\n [routeEnds] exp, demanding "++show demanded++": "++show ex++"\n  with env: "++show env) $
-    let trivLoc (VarE v) = env # v
-        trivLoc (LitE _) = Bottom
+    let trivLoc (VarE v)  = env # v
+        trivLoc (LitE _i) = Bottom
+        trivLoc (MkProdE ls) =
+            if go ls
+            then Bottom
+            else error $ "Not handled in trivLoc, product of non-literals: " ++ (show ls)
+            where go [] = True
+                  go ((LitE _):xs) = go xs
+                  go _ = False
+        trivLoc (PrimAppE L1.MkTrue [])  = Bottom
+        trivLoc (PrimAppE L1.MkFalse []) = Bottom
+        trivLoc t = error $ "Case in trivLoc not handled for: " ++ (show t)
         defaultReturn = L1.mkProd $ (L.map VarE demanded) ++ [ex]
     in
     case ex of

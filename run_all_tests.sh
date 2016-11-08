@@ -65,6 +65,10 @@ racket $top/typecheck-stlc/examples.rkt
 racket $top/ASTBenchmarks/tests/*.rkt
 
 
+# [2016.11.08] {Having problems with this -RRN}
+# raco make -v $top/kdTree-BenchMark/racket/*.rkt
+racket $top/kdTree-BenchMark/racket/traversal.rkt
+
 
 if [ "$NOBINTREE" != "1" ]; then 
   set +x; echo

@@ -123,7 +123,8 @@ type TyEnv = M.Map Var L1.Ty
                      
 typeExp :: (DDefs L1.Ty,Env2 L1.Ty) -> TyEnv -> L1.Exp -> L1.Ty
 typeExp (dd,env2) env (L1.VarE v) =
-  M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v env
+    M.findWithDefault (L1.Packed "CURSOR_TY") v env
+--  M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v env
 
 typeExp (dd,env2) _env (L1.LitE _i) = L1.IntTy
 typeExp (dd,env2) _env (L1.AppE v _e) = snd $ fEnv env2 # v

@@ -171,7 +171,7 @@ freeVars ex =
   case ex of
     VarE v -> S.singleton v
     LitE _ -> S.empty
-    AppE v e -> S.insert v (freeVars e)
+    AppE v e -> freeVars e  -- S.insert v (freeVars e)
     PrimAppE _ ls -> S.unions (L.map freeVars ls)
     LetE (v,_,rhs) bod -> freeVars rhs `S.union`
                           S.delete v (freeVars bod)
