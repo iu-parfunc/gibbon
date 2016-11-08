@@ -15,20 +15,22 @@
 
 ;; `read-line`, `split-string`, `(match _ [(list "BATCHTIME:" t) …` right?
 ;; reads until it finds BATCHTIME
-(define (read-batchtime [port : Input-Port] [err-port : Input-Port]
+(define (read-batchtime [port : Input-Port]
+                        [err-port : Input-Port]
+                        [cmd : String]
                         [get-exit-code : (-> (U Byte False))]) : Real	 
   (define line (read-line port 'any))
   (if (eof-object? line)
-      (begin (displayln "Got eof.")
+      (begin (printf "Got EOF. Process returned ~s.~n" (get-exit-code))
              (printf "stderr: ~s~n" (port->string err-port))
-             (printf "return code: ~s~n" (get-exit-code))
+             (printf "Command was:~n    $ ~a~n" cmd)
              (error "Error: Got eof."))
       (begin
         (let ([strs (string-split (cast line String))])
           (match strs
             [`("BATCHTIME:" ,t)
              (cast (string->number t) Real)]
-            [_ (read-batchtime port err-port get-exit-code)])))))
+            [_ (read-batchtime port err-port cmd get-exit-code)])))))
 
 ;; port that proccess wrote to
 (define (get-input-port ls)
@@ -59,14 +61,15 @@
   (for ([args (in-range 1 (+ 1 ARGMAX))])
     (printf "ARGS: ~a\n" args)
     (let loop ([iters 1])
-      (define ls (process (format "~a ~a ~a" exec args iters)))
+      (define cmd (format "~a ~a ~a" exec args iters))
+      (define ls (process cmd))
       (define block_func (get-proc ls))
       (block_func 'wait)
       (define op (get-input-port ls))
       (define err (get-error-port ls))
 
       (define batchseconds
-        (read-batchtime op err (lambda () (block_func 'exit-code))))
+        (read-batchtime op err cmd (lambda () (block_func 'exit-code))))
       (close-input-port op)
       (close-output-port (get-output-port ls))
       (close-input-port (get-error-port ls))
