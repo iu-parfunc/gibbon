@@ -1,12 +1,11 @@
-#lang s-exp "./treelang.rkt"
+#lang s-exp "../../TreeLang/treelang.rkt"
 
-(provide Foo Foo? Bar Bar?)
+(provide (all-defined-out))
 
-(data Tree
+(data Test
       [Foo Int]
       [Bar Tree Tree])
 
-
-(define (traverse [tr : Tree]) : Tree
+(define (traverse [tr : Test]) : Test
   tr ;; identity function for now...
   )

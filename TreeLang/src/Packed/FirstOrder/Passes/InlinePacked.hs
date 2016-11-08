@@ -44,8 +44,10 @@ inlinePackedExp = go
     (AppE v e)  -> AppE v $ go env e
     (PrimAppE p es) -> PrimAppE p $ map (go env) es
     (LetE (v,t,rhs) e)
-       | shouldInline t -> let rhs' = go env rhs in 
-                           go ((v,Just rhs'):env) e
+       -- We do NOT inline cursors, because cursorDirect will want these.
+       | L1.hasPacked t && not (isCursorTy t)->
+                 let rhs' = go env rhs in 
+                 go ((v,Just rhs'):env) e
        | otherwise -> LetE (v,t, go env rhs)
                            (go ((v,Nothing):env) e)
 
@@ -68,6 +70,3 @@ inlinePackedExp = go
          FoldE (v1,t1,go env e1) (v2,t2,go env e2)
                (go env' e3)
 
-shouldInline :: Ty1 a -> Bool
-shouldInline t@(L1.PackedTy s _) = L1.hasPacked t && s /= "CURSOR_TY"
-shouldInline t = L1.hasPacked t
