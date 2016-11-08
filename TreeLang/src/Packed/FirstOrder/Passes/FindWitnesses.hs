@@ -9,6 +9,8 @@ import qualified Packed.FirstOrder.L1_Source as L1
 import Data.List as L hiding (tail)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import Data.Graph
+import Debug.Trace
 
 -- | This pass must find witnesses if they exist in the lexical
 -- environment, and it must *reorder* let bindings to bring start/end
@@ -19,7 +21,7 @@ findWitnesses = L2.mapMExprs fn
   fn _ ex = return (go Map.empty ex)
   go mp ex =
     case ex of 
-      VarE v   -> buildLets mp [v] $ VarE v
+      VarE v   -> handle mp $ VarE v
       LitE n   -> LitE n
       AppE v e -> handle mp $ AppE v (go Map.empty e)
       PrimAppE p ls      -> handle mp $ PrimAppE p (map (go Map.empty) ls)
@@ -39,14 +41,11 @@ findWitnesses = L2.mapMExprs fn
         Nothing -> buildLets mp vs bod
         Just bnd -> LetE bnd $ buildLets mp vs bod
 
-  handle mp exp = buildLets mp (vars fvs []) exp
-      where fvs = Set.toList $ L1.freeVars exp
-            freeInBind v = case Map.lookup v mp of
+  handle mp exp = buildLets mp vars exp
+      where freeInBind v = case Map.lookup v mp of
                              Nothing -> []
                              Just (_v,_t,e) -> Set.toList $ L1.freeVars e
-            vars [] found = found
-            vars (w:ws) found =
-                if elem w found
-                then vars ws (w : (found \\ [w]))
-                else let nw = freeInBind w
-                     in vars (union nw ws) (w:found)
+            mkGraph vs = let (g,_,_) = graphFromEdges $ zip3 vs vs $ map freeInBind vs
+                         in g
+            vars = map (vs !!) $ reverse $ topSort $ mkGraph vs
+            vs = Map.keys mp -- traceShowId $ Set.toList $ L1.freeVars exp
