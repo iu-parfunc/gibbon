@@ -48,24 +48,3 @@ findWitnesses = L2.mapMExprs fn
             vars (w:ws) found =
                 let nw = freeInBind w
                 in vars ((nw \\ ws) ++ ws) (w:(found \\ nw))
-
-  -- findBinds bs exp =
-  --     case exp of
-  --       VarE v   -> bs
-  --       LitE n   -> bs
-  --       AppE v e -> go bs e
-  --       PrimAppE p ls      -> foldr bs (\i a -> go a i) ls
-  --       LetE (v,t,rhs) bod -> let bs' = go bs rhs
-  --                             in go ((v,t,rhs):bs') bod
-  --       ProjE i e      -> go bs e
-  --       CaseE e ls     -> [] -- FIXME
-  --       MkProdE ls     -> foldr bs (\i a -> go a i) ls
-  --       MkPackedE k ls -> MkProdE (L.map go ls)
-  --       TimeIt e t     -> go bs e
-  --       IfE a b c      -> let bs'   = go bs a
-  --                             bs''  = go bs'' b
-  --                             bs''' = go bs''' c
-  --                         in bs'''
-  --       MapE (v,t,rhs) bod -> MapE (v,t,go rhs) (go bod)
-  --       FoldE (v1,t1,r1) (v2,t2,r2) bod -> FoldE (v1,t1,go r1) (v2,t2,go r2) (go bod)      
-                                           
