@@ -277,7 +277,7 @@ compile Config{input,mode,packed,verbosity,cc,optc} fp = do
                               
                        l2l <- pass "flatten"                  flatten2                  l2k
                        l2m <- pass "inlineTriv"               inline2                   l2l
-                       return l2i
+                       return l2m
                      else return l2
                  l3  <-       pass  "lower"                    (lower packed)           l2'
 
