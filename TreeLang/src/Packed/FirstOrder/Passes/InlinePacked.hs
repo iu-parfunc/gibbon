@@ -28,7 +28,8 @@ inlinePackedExp _env2 = return . go []
    -- trace ("Inline, processing with env:\n "++sdoc env++"\n exp: "++sdoc e) $
    case e0 of      
     (VarE v) -> case lookup v env of
-                  Nothing -> VarE v
+                  Nothing -> dbgTrace 1 ("WARNING [inlinePacked] unbound variable: "++v)$
+                             VarE v
                   Just e  -> e         
     (LitE i)    -> LitE i
     (AppE v e)  -> AppE v $ go env e
