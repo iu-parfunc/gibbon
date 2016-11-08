@@ -38,7 +38,7 @@ import Debug.Trace
 
 -- | Chatter level for this module:
 lvl :: Int
-lvl = 5
+lvl = 4
 
 --------------------------------------------------------------------------------
 -- STRATEGY ONE - inline until we have direct cursor handoff

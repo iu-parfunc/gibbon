@@ -218,6 +218,13 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
 
             return (augments, CaseE e1 ls', locFin)
 
+     IfE a b c -> L1.assertTriv a $ do
+       (d1,b',bloc) <- exp demanded env b
+       (d2,c',cloc) <- exp demanded env c
+       let (dlocs,_)  = unzip $ zipWith L2.join d1 d2
+           (retloc,_) = L2.join bloc cloc
+       return (dlocs, IfE a b' c', retloc)
+
      _ -> error$ "[routeEnds] Unfinished.  Needs to handle:\n  "++sdoc ex
 {-
       AppE v e -> AppE v <$> go e
@@ -226,7 +233,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
       MkProdE ls     -> MkProdE <$> mapM go ls
       MkPackedE k ls -> MkPackedE k <$> mapM go ls
       TimeIt e t     -> TimeIt <$> go e <*> pure t
-      IfE a b c      -> IfE <$> go a <*> go b <*> go c
+
       -- MapE (v,t,rhs) bod -> MapE <$> ((v,t,) <$> go rhs) <*> go bod
       -- FoldE (v1,t1,r1) (v2,t2,r2) bod ->
       --     FoldE <$> ((v1,t1,) <$> go r1)
