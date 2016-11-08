@@ -85,16 +85,12 @@ PACKED_FAILING = test11c_funrec.sexp test11d_funrec.sexp test11e_funrec.sexp tes
     test12b_traverse.sexp test12c_traverse.sexp \
     test12_skip.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
  test06i_casecase.sexp test11b_fundata.sexp test11_fundata.sexp 
-# last line(S) are recent regressions
+# New regressions, ones that used to work:
+PACKED_FAILING += test06_case.sexp test06b_case.sexp test06c_nested.sexp    test06g_rec.sexp
+# test06c_nested.sexp -- unbound function ScopedBuffer
+# Same for other test06 ones above...
 
-# New regressions, recent changes [2016.11.08]
-PACKED_FAILING += test04c_ifvector.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp test06f_rec.sexp test06g_rec.sexp test07_time.sexp test09_recur.sexp
-
-# test11c_funrec.sexp    -- findwitnesses
-# test11d_funrec.sexp    -- findwitnesses
 # test12_skip.sexp       -- Requires copy insertion!! unbound var thru to C code
-# test12b_traverse.sexp  -- findWitnesses
-# test12c_traverse.sexp  -- findWitnesses
 # test16_forlist.sexp    -- No lists yet
 # test17_forfold.sexp    -- No lists yet
 # test20_bintree.sexp    -- 
