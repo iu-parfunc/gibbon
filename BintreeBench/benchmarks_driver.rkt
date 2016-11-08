@@ -16,11 +16,15 @@
 ;; reads until it finds BATCHTIME
 (define (read-batchtime [port : Input-Port]) : Real	 
   (define line (read-line port 'any))
-  (define strs (string-split (cast line String)))
-  (match strs
-    [`("BATCHTIME:" ,t)
-    (cast (string->number t) Real)]
-    [_ (read-batchtime port)]))
+  (if (eof-object? line)
+      (begin (displayln "Got eof.")
+             (error "Error: Got eof."))
+      (begin
+        (let ([strs (string-split (cast line String))])
+          (match strs
+            [`("BATCHTIME:" ,t)
+             (cast (string->number t) Real)]
+            [_ (read-batchtime port)])))))
 
 ;; port that proccess wrote to
 (define (get-input-port ls)
@@ -28,17 +32,39 @@
    [`(,ip ,op ,pid ,stde ,proc)
     ip]))
 
+(define (get-proc ls)
+  (match ls
+    [`(,ip ,op ,pid ,stde ,proc)
+     proc]))
+
+(define (get-output-port ls)
+  (match ls
+    [`(,ip ,op ,pid ,stde ,proc)
+     op]))
+
+(define (get-error-port ls)
+  (match ls
+    [`(,ip ,op ,pid ,stde ,proc)
+     stde]))
+
 (define (driver [csv-port : Output-Port] [exec : String] [pass-name : String]
 		[variant : String])
   (fprintf csv-port "NAME, VARIANT, ARGS, ITERS, MEANTIME\n") ;; start csv file
   
   ;; loop through args 1 to 25
   (for ([args (in-range 1 (+ 1 ARGMAX))])
+    (printf "ARGS: ~a\n" args)
     (let loop ([iters 1])
       (define ls (process (format "~a ~a ~a" exec args iters)))
+      (define block_func (get-proc ls))
+      (block_func 'wait)
       (define op (get-input-port ls))
 
       (define batchseconds (read-batchtime op))
+      (close-input-port op)
+      (close-output-port (get-output-port ls))
+      (close-input-port (get-error-port ls))
+
       (if (>= batchseconds target-time)
           (let ([meantime (exact->inexact (/ batchseconds iters))])
 	    (printf "\nITERS: ~a\n" iters)
