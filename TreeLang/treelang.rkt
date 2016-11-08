@@ -10,6 +10,9 @@
 
          time + * -
          size-param iterate
+
+         fl- fl+ fl* fl/ flsqrt fl> fl< flsqrt
+
          
          provide require only-in all-defined-out
          ;; So that we can import the treelang progs without runninga
@@ -26,6 +29,7 @@
          racket/performance-hint
          racket/unsafe/ops
          typed/racket/unsafe
+         racket/flonum
          (for-syntax racket/syntax syntax/parse))
 
 ;; add for/list  w/types
