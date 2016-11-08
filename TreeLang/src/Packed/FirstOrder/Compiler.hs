@@ -84,6 +84,8 @@ data Config = Config
   , mode      :: Mode -- ^ How to run, which backend.
   , packed    :: Bool -- ^ Use packed representation.
   , verbosity :: Int  -- ^ Debugging output, equivalent to DEBUG env var.
+  , cc        :: String -- ^ C compiler to use
+  , optc      :: String -- ^ Options to the C compiler
   }
 
 -- | What input format to expect on disk.
@@ -107,6 +109,8 @@ defaultConfig =
          , mode  = ToExe
          , packed = False
          , verbosity = 1
+         , cc = "gcc"
+         , optc = " -std=gnu11 -O3 -Wno-incompatible-pointer-types "
          }
 
 configParser :: Parser Config
@@ -116,6 +120,10 @@ configParser = Config <$> inputParser <*> modeParser
                       <*> (option auto (short 'v' <> long "verbose" <>
                                        help "Set the debug output level, 1-5, mirrors DEBUG env var.")
                            <|> pure 1)
+                      <*> ((strOption $ long "cc" <> help "set C compiler, default 'gcc'")
+                            <|> pure (cc defaultConfig))
+                      <*> ((strOption $ long "optc" <> help "set C compiler options, default '-std=gnu11 -O3'")
+                           <|> pure (optc defaultConfig))
  where
   -- Most direct way, but I don't like it:
   _inputParser :: Parser Input
@@ -175,13 +183,13 @@ sepline :: String
 sepline = replicate 80 '='
 
 lvl :: Int
-lvl = 2
+lvl = 3
 
 -- | Compiler entrypoint, given a full configuration and a list of
 -- files to process.
 compile :: Config -> FilePath -> IO ()
 -- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compile Config{input,mode,packed,verbosity} fp = do
+compile Config{input,mode,packed,verbosity,cc,optc} fp = do
   -- TERRIBLE HACK!!  This value is global, "pure" and can be read anywhere
   when (verbosity > 1) $ do
     setEnv "DEBUG" (show verbosity)
@@ -273,7 +281,7 @@ compile Config{input,mode,packed,verbosity} fp = do
                   else do
                    str <- lift (codegenProg l3)
                    -- The C code is long, so put this at a higher level.
-                   lift$ dbgPrintLn lvl $ "\nFinal C codegen: "++show (length str)++" characters."
+                   lift$ dbgPrintLn 1 $ "Final C codegen: "++show (length str)++" characters."
                    lift$ dbgPrintLn 5 sepline
                    lift$ dbgPrintLn 5 str
                    return str)
@@ -281,7 +289,9 @@ compile Config{input,mode,packed,verbosity} fp = do
 
     writeFile outfile str
     when (mode == ToExe || mode == RunExe) $ do
-      cd <- system $ "gcc -std=gnu11 -O3 -Wno-incompatible-pointer-types "++outfile++" -o "++ exe
+      let cmd = cc++" "++optc++" "++outfile++" -o "++ exe
+      dbgPrintLn 1 cmd
+      cd <- system cmd
       case cd of
        ExitFailure n -> error$ "C compiler failed!  Code: "++show n
        ExitSuccess -> do
