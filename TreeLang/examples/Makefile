@@ -46,9 +46,12 @@ all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
 	$(TREEC) --parse $^ 2> $@
 
 # Failing tests for the pointer-based C backend (default):
-FAILING_TESTS ?= test11c_funrec.sexp  test12c_traverse.sexp  \
+FAILING_TESTS ?= test11d_funrec.sexp test11f_funrec.sexp test12c_traverse.sexp  \
   test17_forfold.sexp test06g_rec.sexp  test06i_casecase.sexp  test12b_traverse.sexp  \
-  test16_forlist.sexp
+  test16_forlist.sexp test20_bintree.sexp
+# NOTE:
+# test11d_funrec.sexp -- is giving the WRONG ANSWER
+# test11f_funrec.sexp -- ''
 
 PASSING_TESTS = $(filter-out $(FAILING_TESTS),$(ALL_TESTS))
 
@@ -68,10 +71,21 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 #	@echo "Testing $^"
 	$(TREEC) $(TREECARGS) $^ > $@ || (touch $^.err; rm -f $@)
 #	@echo "Now check expected $$f.ans, versus received, $$f.out";
-	@./diff.sh $^.ans $@
+	@./diff.sh $^.ans $@ || (touch $^.err; rm -f $@)
 
-PACKED_FAILING ?= test11c_funrec.sexp test11d_funrec.sexp test12b_traverse.sexp test12c_traverse.sexp \
-    test12_skip.sexp test16_forlist.sexp test17_forfold.sexp
+PACKED_FAILING ?= test11c_funrec.sexp test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp \
+    test12b_traverse.sexp test12c_traverse.sexp \
+    test12_skip.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp
+
+# test11c_funrec.sexp    -- findwitnesses
+# test11d_funrec.sexp    -- findwitnesses
+# test12_skip.sexp       -- Requires copy insertion!! unbound var thru to C code
+# test12b_traverse.sexp  -- findWitnesses
+# test12c_traverse.sexp  -- findWitnesses
+# test16_forlist.sexp    -- No lists yet
+# test17_forfold.sexp    -- No lists yet
+# test20_bintree.sexp    -- 
+
 
 # Run the tests that work under the packed regime:
 run_tests_packed: answers
@@ -81,7 +95,9 @@ run_tests_packed: answers
 INTERP_FAILING = test06b_case.sexp test06_case.sexp test06c_nested.sexp \
      test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
   test06h_rec.sexp test06i_casecase.sexp test11b_fundata.sexp test11c_funrec.sexp \
-  test12b_traverse.sexp test12c_traverse.sexp test12_skip.sexp test16_forlist.sexp test17_forfold.sexp
+  test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp  \
+  test12b_traverse.sexp test12c_traverse.sexp test12_skip.sexp \
+  test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp
 
 
 # Running through interpreter, no --packed/cursorize:

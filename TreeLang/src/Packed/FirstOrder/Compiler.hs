@@ -115,8 +115,11 @@ defaultConfig =
 
 configParser :: Parser Config
 configParser = Config <$> inputParser <*> modeParser
-                      <*> switch (short 'p' <> long "packed" <>
+                      <*> (switch (short 'p' <> long "packed" <>
                                   help "enable packed tree representation in C backend")
+                           <|> fmap not (switch (long "pointer" <>
+                                         help "enable pointer-based trees in C backend (default)"))
+                          )
                       <*> (option auto (short 'v' <> long "verbose" <>
                                        help "Set the debug output level, 1-5, mirrors DEBUG env var.")
                            <|> pure 1)
