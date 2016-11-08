@@ -86,9 +86,8 @@ PACKED_TESTS= test00_add.sexp test11b_fundata.sexp test02_arith.sexp test01_if.s
     test04c_ifvector.sexp test05_app.sexp  test05b_app.sexp \
     test06_case.sexp test06b_case.sexp test06c_nested.sexp test06i_casecase.sexp \
     test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp test06h_rec.sexp \
-    test10_desugar.sexp test10b_desugar.sexp test11b_fundata.sexp 
+    test07_time.sexp test10_desugar.sexp test10b_desugar.sexp test11b_fundata.sexp 
 
-# test07_time.sexp - routeEnds
 # test11c_funrec.sexp -- routeEnds
 
 # test09_recur.sexp -- hits hole in Cursorize [2016.11.06]

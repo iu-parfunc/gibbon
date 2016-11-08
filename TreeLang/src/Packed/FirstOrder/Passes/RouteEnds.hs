@@ -240,14 +240,11 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
            (retloc,_) = L2.join bloc cloc
        return (dlocs, IfE a b' c', retloc)
 
+     TimeIt e t -> do (d,e',l) <- exp demanded env e
+                      return (d, TimeIt e' t, l)
+              
      _ -> error$ "[routeEnds] Unfinished.  Needs to handle:\n  "++sdoc ex
 {-
-      AppE v e -> AppE v <$> go e
-
-      ProjE i e      -> ProjE i <$> go e
-      MkPackedE k ls -> MkPackedE k <$> mapM go ls
-      TimeIt e t     -> TimeIt <$> go e <*> pure t
-
       -- MapE (v,t,rhs) bod -> MapE <$> ((v,t,) <$> go rhs) <*> go bod
       -- FoldE (v1,t1,r1) (v2,t2,r2) bod ->
       --     FoldE <$> ((v1,t1,) <$> go r1)
