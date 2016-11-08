@@ -86,7 +86,7 @@ PACKED_FAILING = test11c_funrec.sexp test11d_funrec.sexp test11e_funrec.sexp tes
     test12_skip.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
  test06i_casecase.sexp test11b_fundata.sexp test11_fundata.sexp 
 # New regressions, ones that used to work:
-PACKED_FAILING += test06_case.sexp test06b_case.sexp test06c_nested.sexp  test06f_rec.sexp    test06g_rec.sexp
+PACKED_FAILING += test06_case.sexp test06b_case.sexp test06c_nested.sexp    test06g_rec.sexp
 # test06c_nested.sexp -- unbound function ScopedBuffer
 # Same for other test06 ones above...
 
