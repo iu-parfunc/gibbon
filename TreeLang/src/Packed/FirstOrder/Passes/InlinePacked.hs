@@ -44,7 +44,7 @@ inlinePackedExp = go
     (AppE v e)  -> AppE v $ go env e
     (PrimAppE p es) -> PrimAppE p $ map (go env) es
     (LetE (v,t,rhs) e)
-       | L1.hasPacked t -> let rhs' = go env rhs in 
+       | shouldInline t -> let rhs' = go env rhs in 
                            go ((v,Just rhs'):env) e
        | otherwise -> LetE (v,t, go env rhs)
                            (go ((v,Nothing):env) e)
@@ -67,3 +67,7 @@ inlinePackedExp = go
          let env' = (v1,Nothing) : (v2,Nothing) : env in
          FoldE (v1,t1,go env e1) (v2,t2,go env e2)
                (go env' e3)
+
+shouldInline :: Ty1 a -> Bool
+shouldInline t@(L1.PackedTy s _) = L1.hasPacked t && s /= "CURSOR_TY"
+shouldInline t = L1.hasPacked t
