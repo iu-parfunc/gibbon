@@ -46,7 +46,7 @@ all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
 	$(TREEC) --parse $^ 2> $@
 
 # Failing tests for the pointer-based C backend (default):
-FAILING_TESTS ?= \
+FAILING_TESTS ?= test11e_funrec.sexp test11f_funrec.sexp \
   test17_forfold.sexp test06g_rec.sexp  test06i_casecase.sexp  test12b_traverse.sexp  \
   test16_forlist.sexp test20_bintree.sexp
 # NOTE:
@@ -69,9 +69,9 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 # Assumes stack build:
 %.sexp.out : %.sexp
 #	@echo "Testing $^"
-	$(TREEC) $(TREECARGS) $^ > $@ || (touch $^.err; rm -f $@)
+	$(TREEC) $(TREECARGS) $^ > $@ || (touch $^.err; rm -f $@; exit 1)
 #	@echo "Now check expected $$f.ans, versus received, $$f.out";
-	@./diff.sh $^.ans $@ || (touch $^.err; rm -f $@)
+	@./diff.sh $^.ans $@ || (touch $^.err; rm -f $@; exit 1)
 
 PACKED_FAILING ?= test11c_funrec.sexp test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp \
     test12b_traverse.sexp test12c_traverse.sexp \
