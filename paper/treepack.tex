@@ -214,7 +214,7 @@ rearrangement of the compiled code that operates on the data}.
 % DTP - dense tree packing
 
 In this paper, we take a first step towards compiler support for transparently
-packing a tree datatypes without changing the source program.  We make the
+packing tree datatypes {\em without} changing the source program.  We make the
 following contributions:
 
 \newcommand{\calculus}{$\lambda^D_T$} % uh, Dense Tree?
@@ -356,6 +356,14 @@ with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 \section{Compilation Algorithms}
 % ================================================================================
 
+\subsection{Inferring effects}
+
+\subsection{Routing end-of-value witnesses}
+
+
+\subsection{Output cursor insertion}
+
+
 
 % ================================================================================
 \subsection{Discussion}
@@ -363,7 +371,7 @@ with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 
 \note{Purity is important to reordering for witness search.}
 
-\note{}
+\note{Our interpreter depends on this fact by modeling cursors {\em as lists}.}
 
 
 % ================================================================================
