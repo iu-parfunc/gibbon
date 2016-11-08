@@ -2,7 +2,8 @@
 
 (require racket/system
 	 racket/match
-	 racket/string)
+	 racket/string
+     racket/port)
 
 (provide driver)
 
@@ -14,17 +15,20 @@
 
 ;; `read-line`, `split-string`, `(match _ [(list "BATCHTIME:" t) …` right?
 ;; reads until it finds BATCHTIME
-(define (read-batchtime [port : Input-Port]) : Real	 
+(define (read-batchtime [port : Input-Port] [err-port : Input-Port]
+                        [get-exit-code : (-> (U Byte False))]) : Real	 
   (define line (read-line port 'any))
   (if (eof-object? line)
       (begin (displayln "Got eof.")
+             (printf "stderr: ~s~n" (port->string err-port))
+             (printf "return code: ~s~n" (get-exit-code))
              (error "Error: Got eof."))
       (begin
         (let ([strs (string-split (cast line String))])
           (match strs
             [`("BATCHTIME:" ,t)
              (cast (string->number t) Real)]
-            [_ (read-batchtime port)])))))
+            [_ (read-batchtime port err-port get-exit-code)])))))
 
 ;; port that proccess wrote to
 (define (get-input-port ls)
@@ -59,8 +63,10 @@
       (define block_func (get-proc ls))
       (block_func 'wait)
       (define op (get-input-port ls))
+      (define err (get-error-port ls))
 
-      (define batchseconds (read-batchtime op))
+      (define batchseconds
+        (read-batchtime op err (lambda () (block_func 'exit-code))))
       (close-input-port op)
       (close-output-port (get-output-port ls))
       (close-input-port (get-error-port ls))
