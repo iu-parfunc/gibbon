@@ -281,7 +281,7 @@ compile Config{input,mode,packed,verbosity} fp = do
 
     writeFile outfile str
     when (mode == ToExe || mode == RunExe) $ do
-      cd <- system $ "gcc -std=gnu11 -O3 "++outfile++" -o "++ exe
+      cd <- system $ "gcc -std=gnu11 -O3 -Wno-incompatible-pointer-types "++outfile++" -o "++ exe
       case cd of
        ExitFailure n -> error$ "C compiler failed!  Code: "++show n
        ExitSuccess -> do
