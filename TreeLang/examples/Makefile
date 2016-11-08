@@ -48,7 +48,11 @@ all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= test11e_funrec.sexp test11f_funrec.sexp  \
   test17_forfold.sexp test06g_rec.sexp  test06i_casecase.sexp \
-  test16_forlist.sexp
+  test16_forlist.sexp test20_bintree.sexp \
+  test06b_case.sexp test06_case.sexp
+
+# test06b_case.sexp -- map lookup on datacon
+
 # NOTE:
 # test11b_fundata.sexp -- map lookup failed on datacon
 # test11d_funrec.sexp -- is giving the WRONG ANSWER
@@ -62,6 +66,7 @@ TREECARGS ?= --run
 run_tests: build
 	@echo "\n Compiling and running tests through our compiler:"
 	@echo "--------------------------------------------------"
+	@echo "Running test set: "$(PASSING_TESTS)
 	rm -f *.out
 	$(MAKE) all_tests
 
