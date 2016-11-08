@@ -19,7 +19,7 @@ import Data.Set as S
 import Text.PrettyPrint.GenericPretty
 import Control.Monad
 import Control.Exception
-    
+import Prelude hiding (exp)
 
 -- | Chatter level for this module:
 lvl :: Int

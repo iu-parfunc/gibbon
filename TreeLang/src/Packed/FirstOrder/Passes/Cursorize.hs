@@ -35,6 +35,7 @@ import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
 import Debug.Trace
+import Prelude hiding (exp)
 
 -- | Chatter level for this module:
 lvl :: Int
@@ -141,12 +142,12 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
   -- | Here we are not in a context that flows to Packed data, thus no
   --   destination cursor.
   exp :: Exp -> SyM Exp
-  exp ex =
-    dbgTrace lvl (" 1. Processing expr in non-packed context, exp:\n  "++sdoc ex) $ 
-    case ex of
-      VarE _ -> return ex
-      LitE _ -> return ex
-      MkPackedE k ls -> error "cursorDirect: Should not have encountered MkPacked if type is not packed."
+  exp ex0 =
+    dbgTrace lvl (" 1. Processing expr in non-packed context, exp:\n  "++sdoc ex0) $ 
+    case ex0 of
+      VarE _ -> return ex0
+      LitE _ -> return ex0
+      MkPackedE _ _ -> error$ "cursorDirect: Should not have encountered MkPacked if type is not packed: "++sdoc ex0
 
       -- If we're not returning a packed type in the current
       -- context, the we can only possibly see one that does NOT
@@ -180,45 +181,20 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
 
       PrimAppE p ls -> PrimAppE p <$> mapM exp ls
       ProjE i e  -> ProjE i <$> exp e
-      CaseE scrtE ls -> do
-         let tyScrut = tyOfCaseScrut ddefs ex
-         cur0 <- gensym "cursIn"
-         -- Issue reads to get out all the fields:
-         let 
-             unpack :: (Constr, [Var]) -> Exp -> SyM Exp
-             unpack (k,vrs) ex = go cur0 (Just 0) vsts
-                where 
-                  vsts = zip vrs (lookupDataCon ddefs k)
-                  (lastV,_) = L.last vsts
+      CaseE scrtE ls -> docase Nothing (scrtE,tyOfCaseScrut ddefs ex0) ls
 
-                  add 0 e = e
-                  add n e = PrimAppE L1.AddP [e, LitE n]
+      MkProdE ls -> MkProdE <$> mapM exp ls
+      TimeIt e t -> TimeIt <$> exp e <*> pure t
+      IfE a b c  -> IfE <$> exp a <*> exp b <*> exp c
+--        MapE (v,t,rhs) bod -> __
+--        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
 
-                  go c _off [] = exp ex -- Everything is now in scope for the body.
-                               -- TODO: we could witness the end if we still have the offset.
-                  go c offset ((vr,ty):rs) = do
-                    tmp <- gensym "tptmp"
-                    -- Each cursor position is either the witness of
-                    -- the next thing, or the witness of the end of the last thing.
-                    let witNext e =
-                            case rs of
-                               []       -> e
-                               (v2,_):_ -> LetE (witnessOf v2, CursorTy, projCur (VarE tmp)) e
-                    case ty of
-                      -- TODO: Generalize to other scalar types:
-                      IntTy ->
-                        LetE (tmp, addCurTy IntTy, ReadInt c) <$>
-                         witNext <$>                  
-                          LetE (toEndVar vr, CursorTy, projCur (VarE tmp)) <$>
-                           LetE (vr, IntTy, projVal (VarE tmp)) <$>
-                            go (toEndVar vr) (liftA2 (+) (L1.sizeOf IntTy) offset) rs
-                      ty | isPacked ty -> do
-                       -- Strategy: ALLOW unbound witness variables. A later traversal will reorder.
-                       case offset of
-                         Nothing -> go (toEndVar vr) Nothing rs
-                         Just n -> LetE (witnessOf vr, CursorTy, add n (VarE cur0)) <$>
-                                   go (toEndVar vr) Nothing rs
 
+  -- | Handle a case expression in packed or unpacked context.  Take a
+  -- cursor in the former case and not in the latter.
+  docase :: Maybe Var -> (Exp,L1.Ty) -> [(Constr,[Var],Exp)] -> SyM Exp
+  docase mcurs (scrtE,tyScrut) ls = do         
+         cur0 <- gensym "cursIn" -- our read cursor
 
          -- Because the scrutinee is, naturally, of packed type, it
          -- will be represented as a pair of (start,end) pointers.
@@ -235,33 +211,68 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
          let mkit e = 
               CaseE e <$>
                 (forM ls $ \ (k,vrs,e) -> do
-                   e' <- unpack (k,vrs) e
-                   return (k,[cur0],e'))
+                   e'  <- case mcurs of
+                            Nothing -> exp e
+                            Just c  -> exp2 c e
+                   e'' <- unpackDataCon cur0 (k,vrs) e'
+                   return (k,[cur0],e''))
          case scrtE' of
            Left  e  -> mkit e
            Right di -> withDilated tyScrut di mkit
 
-      MkProdE ls -> MkProdE <$> mapM exp ls
-      TimeIt e t -> TimeIt <$> exp e <*> pure t
-      IfE a b c  -> IfE <$> exp a <*> exp b <*> exp c
---        MapE (v,t,rhs) bod -> __
---        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+  -- | Given a cursor to the position right after the tag, unpack the
+  -- fields of a datacon, and return the given expression in that context.
+  unpackDataCon :: Var -> (Constr, [Var]) -> Exp -> SyM Exp
+  unpackDataCon cur0 (k,vrs) rhs = go cur0 (Just 0) vsts
+     where 
+       vsts = zip vrs (lookupDataCon ddefs k)
+       -- (lastV,_) = L.last vsts
+
+       add 0 e = e
+       add n e = PrimAppE L1.AddP [e, LitE n]
+
+       -- Issue reads to get out all the fields:
+       go _c _off [] = return rhs -- Everything is now in scope for the body.
+                     -- TODO: we could witness the end if we still have the offset.
+       go c offset ((vr,ty):rs) = do
+         tmp <- gensym "tptmp"
+         -- Each cursor position is either the witness of
+         -- the next thing, or the witness of the end of the last thing.
+         let witNext e =
+                 case rs of
+                    []       -> e
+                    (v2,_):_ -> LetE (witnessOf v2, CursorTy, projCur (VarE tmp)) e
+         case ty of
+           -- TODO: Generalize to other scalar types:
+           IntTy ->
+             LetE (tmp, addCurTy IntTy, ReadInt c) <$>
+              witNext <$>                  
+               LetE (toEndVar vr, CursorTy, projCur (VarE tmp)) <$>
+                LetE (vr, IntTy, projVal (VarE tmp)) <$>
+                 go (toEndVar vr) (liftA2 (+) (L1.sizeOf IntTy) offset) rs
+           ty | isPacked ty -> do
+            -- Strategy: ALLOW unbound witness variables. A later traversal will reorder.
+            case offset of
+              Nothing -> go (toEndVar vr) Nothing rs
+              Just n -> LetE (witnessOf vr, CursorTy, add n (VarE cur0)) <$>
+                        go (toEndVar vr) Nothing rs
+
 
   -- | Take a destination cursor.  Assume only a single packed output.
   --   Here we are in a context that flows to Packed data, we follow a
   --   convention of returning a pair of value/end.
   --  CONTRACT: The caller must deal with this pair.
   exp2 :: Var -> Exp -> SyM Exp
-  exp2 destC ex =
-    dbgTrace lvl (" 2. Processing expr in packed context, cursor "++show destC++", exp:\n  "++sdoc ex) $ 
+  exp2 destC ex0 =
+    dbgTrace lvl (" 2. Processing expr in packed context, cursor "++show destC++", exp:\n  "++sdoc ex0) $ 
     let go = exp2 destC in
-    case ex of
+    case ex0 of
       -- Here the allocation has already been performed:
       -- Our variable in the lexical environment is bound to the start only, not (st,en).
       -- To follow the calling convention, we are reponsible for tagging on the end here:
       VarE v -> -- ASSERT: isPacked
           return $ MkProdE [VarE (witnessOf v), VarE (toEndVar v)] -- FindEndOf v
-      LitE _ -> error$ "cursorDirect/exp2: Should not encounter Lit in packed context: "++show ex
+      LitE _ -> error$ "cursorDirect/exp2: Should not encounter Lit in packed context: "++show ex0
 
       -- Here's where we write the dest cursor:
       MkPackedE k ls -> do
@@ -287,20 +298,33 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                     (go2 d' rst)
           in go2 dest' (zip ls (lookupDataCon ddefs k))
 
-      -- LetE (v,_,rhs) bod -> error "cursorDirect: finish let binding."
+      LetE (v,_,rhs) bod -> error$ "cursorDirect: finish let binding cases:\n "++sdoc ex0
 
-      -- AppE v e      -> AppE v  <$> go e
-      -- PrimAppE p ls -> PrimAppE p <$> mapM go ls
-      PrimAppE _ _ -> error$ "cursorDirect: unexpected PrimAppE in packed context: "++sdoc ex
-      -- ProjE i e  -> ProjE i <$> go e
-      -- CaseE e ls -> CaseE <$> (projVal <$> go e) <*>
+      -- An application that returns packed values is treated just like a 
+      -- MkPackedE constructor: cursors are routed to it, and returned from it.
+
+      AppE v e -> error$ "cursorDirect: ouch, finish App case:\n "++sdoc ex0
+
+      -- This should not be possible.  Types don't work out:
+      PrimAppE _ _ -> error$ "cursorDirect: unexpected PrimAppE in packed context: "++sdoc ex0
+
+      -- IfE a b c  -> IfE <$> go a <*> go b <*> go c
+
+      -- An allocating case is just like an allocating If: 
+      CaseE scrtE ls -> docase (Just destC) (scrtE, tyOfCaseScrut ddefs ex0) ls
+      -- CaseE <$> (projVal <$> go e) <*>
       --                mapM (\(k,vrs,e) -> (k,vrs,) <$> go e) ls
+
+      -- ProjE i e  -> ProjE i <$> go e
+          
       -- MkProdE ls -> MkProdE <$> mapM go ls
       -- TimeIt e t -> TimeIt <$> go e <*> pure t
-      -- IfE a b c  -> IfE <$> go a <*> go b <*> go c
-      _ -> error$ "cursorDirect: needs finishing:\n  "++sdoc ex
+
+
+      _ -> error$ "cursorDirect: needs finishing:\n  "++sdoc ex0
 -- --        MapE (v,t,rhs) bod -> __
 -- --        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+
 
 
 -- | A given return context for a type satisfying `hasPacked` either
