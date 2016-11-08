@@ -1,6 +1,6 @@
 #lang typed/racket
 
-(provide Int Sym Bool SymDict data empty-dict lookup insert delete
+(provide Int Sym Bool Float SymDict data empty-dict lookup insert delete
          has-key? case
          define let  if :
          for/list for/fold or and
@@ -15,7 +15,7 @@
          ;; So that we can import the treelang progs without runninga
          module+
          
-         pack-Int pack-Bool pack-Sym
+         pack-Int pack-Bool pack-Sym pack-Float
 
          #%app #%module-begin #%datum quote
          ann
@@ -148,11 +148,13 @@ lit := int | #t | #f
 (define-type Int Fixnum)
 (define-type Sym Symbol)
 (define-type Bool Boolean)
+(define-type Float Flonum)
 (define-type (SymDict t) (HashTable Symbol t))
 
 (define-values (prop:pack pack? pack-ref) (make-struct-type-property 'pack))
 
 (define (pack-Int [i : Int]) (integer->integer-bytes i 8 #true))
+(define (pack-Float [f : Float]) (real->floating-point-bytes i 8))
 (define (pack-Bool [b : Bool]) (if b (bytes 1) (bytes 0)))
 (define (pack-Sym [s : Sym]) (integer->integer-bytes (eq-hash-code s) 8 #true))
 
