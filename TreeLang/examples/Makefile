@@ -45,20 +45,12 @@ all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
 #	@echo "Parsing $^"
 	$(TREEC) --parse $^ 2> $@
 
-# PASSING_TESTS=$(ALL_TESTS)
-PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
-    test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp \
-    test04_vector.sexp test04b_vector.sexp test04c_ifvector.sexp test05_app.sexp \
-    test05b_app.sexp test06_case.sexp test06b_case.sexp test06c_nested.sexp \
-    test06d_rec.sexp test06e_rec.sexp  \
-    test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp \
-    test11_fundata.sexp test11b_fundata.sexp test12_skip.sexp 
+# Failing tests for the pointer-based C backend (default):
+FAILING_TESTS ?= test06f_rec.sexp  test06h_rec.sexp  test11c_funrec.sexp  test12c_traverse.sexp  \
+  test17_forfold.sexp test06g_rec.sexp  test06i_casecase.sexp  test12b_traverse.sexp  \
+  test16_forlist.sexp
 
-# test06h_rec.sexp test06i_casecase.sexp 
-
-# FAILING_TESTS= test06f_rec.sexp.err  test06h_rec.sexp.err  test11c_funrec.sexp.err  test12c_traverse.sexp.err  \
-  test17_forfold.sexp.err test06g_rec.sexp.err  test06i_casecase.sexp.err  test12b_traverse.sexp.err  \
-  test16_forlist.sexp.err
+PASSING_TESTS = $(filter-out $(FAILING_TESTS),$(ALL_TESTS))
 
 TREECARGS ?= --run
 
@@ -66,6 +58,7 @@ TREECARGS ?= --run
 run_tests: build
 	@echo "\n Compiling and running tests through our compiler:"
 	@echo "--------------------------------------------------"
+	echo "Running this list: "$(PASSING_TESTS)
 	rm -f *.out
 	$(MAKE) all_tests
 
@@ -78,47 +71,24 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 #	@echo "Now check expected $$f.ans, versus received, $$f.out";
 	@./diff.sh $^.ans $@
 
-#PACKED_TESTS=$(ALL_TESTS)
-PACKED_TESTS= test00_add.sexp test11b_fundata.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
-    test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp test04_vector.sexp  test04b_vector.sexp  \
-    test04c_ifvector.sexp test05_app.sexp  test05b_app.sexp \
-    test06_case.sexp test06b_case.sexp test06c_nested.sexp test06i_casecase.sexp test06h_rec.sexp \
-    test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp test06h_rec.sexp \
-    test07_time.sexp test10_desugar.sexp test10b_desugar.sexp test11b_fundata.sexp 
-# Not working:
-# test11c_funrec.sexp.err   -- routeEnds
-# test12b_traverse.sexp.err
-# test12c_traverse.sexp.err
-# test12_skip.sexp.err
-# test16_forlist.sexp.err
-# test17_forfold.sexp.err
-
+PACKED_FAILING ?= test11c_funrec.sexp test12b_traverse.sexp test12c_traverse.sexp \
+    test12_skip.sexp test16_forlist.sexp test17_forfold.sexp
 
 # Run the tests that work under the packed regime:
 run_tests_packed: answers
-	$(MAKE) run_tests TREECARGS="--run --packed" PASSING_TESTS="$(PACKED_TESTS)"
+	$(MAKE) run_tests TREECARGS="--run --packed" FAILING_TESTS="$(PACKED_FAILING)"
 
 
-INTERP_TESTS= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
-     test03b_eqs.sexp test03c_eqsym.sexp \
-     test05_app.sexp  test05b_app.sexp \
-     test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp
+INTERP_FAILING = test06b_case.sexp test06_case.sexp test06c_nested.sexp \
+     test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
+  test06h_rec.sexp test06i_casecase.sexp test11b_fundata.sexp test11c_funrec.sexp \
+  test12b_traverse.sexp test12c_traverse.sexp test12_skip.sexp test16_forlist.sexp test17_forfold.sexp
+
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: test00_add.sexp.ans
-	$(MAKE) run_tests TREECARGS="--interp2" PASSING_TESTS="$(INTERP_TESTS)"
-# test03_let.sexp       -- flatten fromJust
-# test04_vector.sexp    -- MkTrue in flatten
-# test04b_vector.sexp   -- ''
-# test04c_ifvector.sexp -- lower needs detuple
-# test06_case.sexp      -- unhandled interp case
-# test06b_case.sexp      -- 
+	$(MAKE) run_tests TREECARGS="--interp2" FAILING_TESTS="$(INTERP_FAILING)"
 
-# test06c_nested.sexp    -- no datacon alloc yet.
-
-# test16_forlist.sexp   -- no list support yet
-# test17_forfold.sexp   -- ''
-# bintree.sexp          -- flatten fromJust
 
 # --------------------------------------------------------------------------------
 
