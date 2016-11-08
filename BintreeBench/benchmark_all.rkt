@@ -6,10 +6,22 @@
 
 ;; variant: treelang-racket
 
-(launch-benchmarks "racket treebench_treelang.rkt" PASSNAME "treelang-racket")
-#|
-(launch-benchmarks "./treebench_packed_structs.exe" PASSNAME "treelang-c-packed")
+;;(launch-benchmarks "racket treebench_treelang.rkt" PASSNAME "treelang-racket")
 
-(launch-benchmarks "./treebench.exe" PASSNAME "treelang-c-pointer")
-|#
+(launch-benchmarks "./treebench_c_bumpalloc.exe" PASSNAME "handwritten-c-pointer-bumpalloc")
+
+;;(launch-benchmarks "./treebench_c_bumpalloc_unaligned.exe" PASSNAME ...)
+
+(launch-benchmarks "./treebench_c.exe" PASSNAME "handwritten-c-pointer")
+
+(launch-benchmarks "./treebench_c_packed.exe" PASSNAME "handwritten-c-packed")
+
+;;(launch-benchmarks "./treebench_c_packed_loop.exe" PASSNAME ...)
+
+;;(launch-benchmarks "./treebench_c_packed_parallel3.exe" PASSNAME ...)
+
+;;(launch-benchmarks "./treebench_c_packed_structs.exe" PASSNAME ...)
+
+;;(launch-benchmarks "./treebench_c_parallel.exe" PASSNAME ...)
+
 ;; add more here
