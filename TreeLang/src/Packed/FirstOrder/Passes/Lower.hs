@@ -155,13 +155,13 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
           tag      = fromJust (L.findIndex ((==) k . fst) all_cons)
           fields0  = L.map (triv "MkPackedE args") ls
           fields
-            | is_prod   = T.TagTriv (fromIntegral tag) : fields0
-            | otherwise = fields0
+            | is_prod   = fields0
+            | otherwise = T.TagTriv (fromIntegral tag) : fields0
 
       bod' <- tail bod
 
       let tys = L.map typ (lookupDataCon ddefs k)
-      return (T.LetAllocT v (zip tys (L.map (triv "MkPacked args") ls)) bod')
+      return (T.LetAllocT v (zip tys fields) bod')
 
     --------------------------------------------------------------------------------
 
