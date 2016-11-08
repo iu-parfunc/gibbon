@@ -8,19 +8,21 @@
 #ifdef PARALLEL
 #include <cilk/cilk.h>
 #endif
-#include <time.h>
+#include <inttypes.h>
 #include <malloc.h>
+#include <stdint.h>
+#include <time.h>
 
 // Manual layout:
 // one byte for each tag, 64 bit integers
-typedef long long Num;
+typedef int64_t Num;
 
 // This controls whether we use a word for tags:
 #ifdef UNALIGNED
 #warning "Using unaligned mode / packed-struct attribute"
 #define ATTR  __attribute__((__packed__))
 #else
-#define ATTR  
+#define ATTR
 #endif
 
 enum ATTR Type { Leaf, Node };
@@ -30,7 +32,7 @@ enum ATTR Type { Leaf, Node };
 typedef struct ATTR Tree {
     enum Type tag;
     union {
-      struct { long long elem; };
+      struct { Num elem; };
       struct { struct Tree* l;
                struct Tree* r; };
     };
@@ -66,16 +68,16 @@ char* heap_ptr = 0;
 
 // Helper function
 Tree* fillTree(int n, Num root) {
-  Tree* tr = (Tree*)ALLOC(sizeof(Tree));  
+  Tree* tr = (Tree*)ALLOC(sizeof(Tree));
   if (n == 0) {
     tr->tag = Leaf;
     tr->elem = root;
-  } else {    
+  } else {
     tr->tag = Node;
-    tr->l = fillTree(n-1, root);; 
+    tr->l = fillTree(n-1, root);;
     tr->r = fillTree(n-1, root + (1<<(n-1)));
   }
-  return tr;  
+  return tr;
 }
 
 Tree* buildTree(int n) {
@@ -84,7 +86,7 @@ Tree* buildTree(int n) {
 
 void printTree(Tree* t) {
   if (t->tag == Leaf) {
-    printf("%lld", t->elem);
+    printf("%" PRId64, t->elem);
     return;
   } else {
     printf("(");
@@ -112,7 +114,7 @@ Tree* add1Tree(Tree* t) {
 #ifdef PARALLEL
 Tree* add1TreePar(Tree* t, int n) {
   if (n == 0) return add1Tree(t);
-  
+
   Tree* tout = (Tree*)ALLOC(sizeof(Tree));
   tout->tag = t->tag;
   if (t->tag == Leaf) {
@@ -146,85 +148,59 @@ double difftimespecs(struct timespec* t0, struct timespec* t1) {
 
 static clockid_t which_clock = CLOCK_MONOTONIC_RAW;
 
-int main(int argc, char** argv) {
-  int depth, iters;
-  if (argc > 2) {
-    depth = atoi(argv[1]);
-    iters = atoi(argv[2]);
-  } else {
-    fprintf(stderr,"Expected two arguments, <depth> <iters>\n");
-    fprintf(stderr,"Iters can be negative to time each iteration rather than all together\n");
-    abort();
-  }
-  
-  printf("sizeof(Tree) = %lu\n", sizeof(Tree));
-  printf("sizeof(enum Type) = %lu\n", sizeof(enum Type));
-  printf("Building tree, depth %d.  Benchmarking %d iters.\n", depth, iters);
+void bench_single_pass(Tree* tr, int iters)
+{
+    struct timespec begin, end;
 
-  INITALLOC;
-  struct timespec begin, end;
-  clock_gettime(which_clock, &begin);
-  Tree* tr = buildTree(depth);
-  clock_gettime(which_clock, &end);
-  double time_spent = difftimespecs(&begin, &end);
-  printf("Done building input tree, took %lf seconds\n\n", time_spent);
-  if (depth <= 5) {
-    printf("Input tree:\n");
-    printTree(tr); printf("\n");
-  }
-  printf("Running traversals (ms): ");
-
-  long allocated_bytes =0;
-  if ( iters < 0 ) {
     iters = -iters;
     double trials[iters];
-    for(int i=0; i<iters; i++) {
-      clock_gettime(which_clock, &begin);
+    for (int i=0; i<iters; i++)
+    {
+        clock_gettime(which_clock, &begin);
 #ifdef PARALLEL
-      Tree* t2 = add1TreePar(tr, 5);
-#else      
-      Tree* t2 = add1Tree(tr);
-#endif      
-      clock_gettime(which_clock, &end);
-      time_spent = difftimespecs(&begin, &end);
-      if(iters < 100) {
-        printf(" %lld", (long long)(time_spent * 1000));
-        fflush(stdout);
-      }
-      trials[i] = time_spent;
-      if (depth <= 5 && i == iters-1) {
-        printf("\nOutput tree:\n");
-        printTree(t2); printf("\n");
-      }
-      DELTREE(t2);
+        Tree* t2 = add1TreePar(tr, 5);
+#else
+        Tree* t2 = add1Tree(tr);
+#endif
+        DELTREE(t2);
+        clock_gettime(which_clock, &end);
+        double time_spent = difftimespecs(&begin, &end);
+        if(iters < 100) {
+            printf(" %lld", (long long)(time_spent * 1000));
+            fflush(stdout);
+        }
+        trials[i] = time_spent;
     }
     qsort(trials, iters, sizeof(double), compare_doubles);
     printf("\nSorted: ");
     for(int i=0; i<iters; i++)
-      printf(" %d",  (int)(trials[i] * 1000));
+        printf(" %d",  (int)(trials[i] * 1000));
     printf("\nMINTIME: %lf\n",    trials[0]);
     printf("MEDIANTIME: %lf\n", trials[iters / 2]);
     printf("MAXTIME: %lf\n", trials[iters - 1]);
     printf("AVGTIME: %lf\n", avg(trials,iters));
-    // printTree(t2); printf("\n");
-  }
-  else
-  {
+}
+
+void bench_batch(Tree* tr, int iters)
+{
+    struct timespec begin, end;
+
     printf("Timing %d iters as a batch\n", iters);
 #ifdef BUMPALLOC
-      char* starting_heap_pointer = heap_ptr;
+    char* starting_heap_pointer = heap_ptr;
 #endif
     clock_gettime(which_clock, &begin);
-    for(int i=0; i<iters; i++) {
+    for (int i=0; i<iters; i++)
+    {
 #ifdef PARALLEL
-      Tree* t2 = add1TreePar(tr, 5);
-#else      
-      Tree* t2 = add1Tree(tr);
+        Tree* t2 = add1TreePar(tr, 5);
+#else
+        Tree* t2 = add1Tree(tr);
 #endif
 #ifdef BUMPALLOC
-      allocated_bytes = (long)(heap_ptr - starting_heap_pointer);
+        allocated_bytes = (long)(heap_ptr - starting_heap_pointer);
 #endif
-      DELTREE(t2);
+        DELTREE(t2);
     }
     clock_gettime(which_clock, &end);
 #ifdef BUMPALLOC
@@ -233,9 +209,53 @@ int main(int argc, char** argv) {
 #else
     malloc_stats();
 #endif
-    time_spent = difftimespecs(&begin, &end);
+    double time_spent = difftimespecs(&begin, &end);
     printf("BATCHTIME: %lf\n", time_spent);
-  }
-  DELTREE(tr);
-  return 0;
+}
+
+int main(int argc, char** argv)
+{
+    int depth; // first arg
+    int iters; // second arg
+
+    if (argc <= 2)
+    {
+        fprintf(stderr,"Expected two arguments, <depth> <iters>\n");
+        fprintf(stderr,"Iters can be negative to time each iteration rather than all together\n");
+        exit(1);
+    }
+
+    depth = atoi(argv[1]);
+    iters = atoi(argv[2]);
+
+    printf("sizeof(Tree) = %lu\n", sizeof(Tree));
+    printf("sizeof(enum Type) = %lu\n", sizeof(enum Type));
+    printf("Building tree, depth %d.  Benchmarking %d iters.\n", depth, iters);
+
+    INITALLOC;
+    struct timespec begin, end;
+    clock_gettime(which_clock, &begin);
+    Tree* tr = buildTree(depth);
+    clock_gettime(which_clock, &end);
+    double time_spent = difftimespecs(&begin, &end);
+    printf("Done building input tree, took %lf seconds\n\n", time_spent);
+    if (depth <= 5)
+    {
+        printf("Input tree:\n");
+        printTree(tr); printf("\n");
+    }
+
+    printf("Running traversals (ms): ");
+
+    if (iters < 0)
+    {
+        bench_single_pass(tr, iters);
+    }
+    else
+    {
+        bench_batch(tr, iters);
+    }
+
+    DELTREE(tr);
+    return 0;
 }
