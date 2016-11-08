@@ -45,20 +45,12 @@ all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
 #	@echo "Parsing $^"
 	$(TREEC) --parse $^ 2> $@
 
-PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
-    test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp \
-    test04_vector.sexp test04b_vector.sexp test04c_ifvector.sexp test05_app.sexp \
-    test05b_app.sexp test06_case.sexp test06b_case.sexp test06c_nested.sexp \
-    test06d_rec.sexp test06e_rec.sexp \
-    test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp \
-    test11_fundata.sexp test11b_fundata.sexp test12_skip.sexp \
-    test15_packed.sexp
-# FIX THESE: All are blocked on something.  Then move them to the above list:.
-# ----------------------
-# test06h_rec.sexp -- lower hits let with case in RHS [2016.11.06]
-# test06i_casecase.sexp -- ''
+# Failing tests for the pointer-based C backend (default):
+FAILING_TESTS ?= test11c_funrec.sexp  test12c_traverse.sexp  \
+  test17_forfold.sexp test06g_rec.sexp  test06i_casecase.sexp  test12b_traverse.sexp  \
+  test16_forlist.sexp
 
-
+PASSING_TESTS = $(filter-out $(FAILING_TESTS),$(ALL_TESTS))
 
 TREECARGS ?= --run
 
@@ -74,52 +66,28 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 # Assumes stack build:
 %.sexp.out : %.sexp
 #	@echo "Testing $^"
-	$(TREEC) $(TREECARGS) $^ > $@ || touch $^.err
+	$(TREEC) $(TREECARGS) $^ > $@ || (touch $^.err; rm -f $@)
 #	@echo "Now check expected $$f.ans, versus received, $$f.out";
 	@./diff.sh $^.ans $@
 
-# PACKED_TESTS=$(ALL_TESTS)
-
-# Temporary, mostly broken state:
-PACKED_TESTS= test00_add.sexp test11b_fundata.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
-    test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp test04_vector.sexp  test04b_vector.sexp  \
-    test04c_ifvector.sexp test05_app.sexp  test05b_app.sexp \
-    test06_case.sexp test06b_case.sexp test06c_nested.sexp test06i_casecase.sexp \
-    test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp test06h_rec.sexp \
-    test07_time.sexp test10_desugar.sexp test10b_desugar.sexp test11b_fundata.sexp 
-
-# test11c_funrec.sexp -- routeEnds
-
-# test09_recur.sexp -- hits hole in Cursorize [2016.11.06]
-
-# test12_skip.sexp 
+PACKED_FAILING ?= test11c_funrec.sexp test11d_funrec.sexp test12b_traverse.sexp test12c_traverse.sexp \
+    test12_skip.sexp test16_forlist.sexp test17_forfold.sexp
 
 # Run the tests that work under the packed regime:
 run_tests_packed: answers
-	$(MAKE) run_tests TREECARGS="--run --packed" PASSING_TESTS="$(PACKED_TESTS)"
+	$(MAKE) run_tests TREECARGS="--run --packed" FAILING_TESTS="$(PACKED_FAILING)"
 
 
-INTERP_TESTS= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
-     test03b_eqs.sexp test03c_eqsym.sexp \
-     test05_app.sexp  test05b_app.sexp \
-     test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp
+INTERP_FAILING = test06b_case.sexp test06_case.sexp test06c_nested.sexp \
+     test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
+  test06h_rec.sexp test06i_casecase.sexp test11b_fundata.sexp test11c_funrec.sexp \
+  test12b_traverse.sexp test12c_traverse.sexp test12_skip.sexp test16_forlist.sexp test17_forfold.sexp
+
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: test00_add.sexp.ans
-	$(MAKE) run_tests TREECARGS="--interp2" PASSING_TESTS="$(INTERP_TESTS)"
-# test03_let.sexp       -- flatten fromJust
-# test04_vector.sexp    -- MkTrue in flatten
-# test04b_vector.sexp   -- ''
-# test04c_ifvector.sexp -- lower needs detuple
-# test06_case.sexp      -- unhandled interp case
-# test06b_case.sexp      -- 
+	$(MAKE) run_tests TREECARGS="--interp2" FAILING_TESTS="$(INTERP_FAILING)"
 
-# test06c_nested.sexp    -- no datacon alloc yet.
-
-# test15_packed.sexp    -- no lowering of packed types yet
-# test16_forlist.sexp   -- no list support yet
-# test17_forfold.sexp   -- ''
-# bintree.sexp          -- flatten fromJust
 
 # --------------------------------------------------------------------------------
 
@@ -144,7 +112,7 @@ treelang_lib:
 	raco make -v ../treelang.rkt 
 
 clean:
-	rm -f *.exe *.o *.c *.ans *.out
-	cd error/; rm -f *.exe *.o *.c *.ans *.out
+	rm -f *.exe *.o *.c *.ans *.out *.err
+	cd error/; rm -f *.exe *.o *.c *.ans *.out *.err
 
 .PHONY: run_racket treelang_lib answers run_tests run_tests_interp2 run_tests_packed

@@ -125,7 +125,7 @@ data Tail
     | ErrT String
     | StartTimerT Var Tail
     | EndTimerT   Var Tail
-    | Switch Triv Alts (Maybe Tail)
+    | Switch Triv Alts (Maybe Tail) -- TODO: remove maybe on default case
     -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
   deriving (Show, Ord, Eq, Generic, NFData, Out)
@@ -420,7 +420,7 @@ codegenTail (LetAllocT lhs vals body) ty =
        tal <- codegenTail body ty
        return$ assn (codegenTy PtrTy) lhs [cexp| ( $ty:structTy *)ALLOC( $size ) |] :
                [ C.BlockStm [cstm| (($ty:structTy *)  $id:lhs)->$id:fld = $(codegenTriv trv); |]
-               | (ix,(_ty,trv)) <- zip [0..] vals
+               | (ix,(_ty,trv)) <- zip [0 :: Int ..] vals
                , let fld = "field"++show ix] ++ tal
 
 codegenTail (LetUnpackT bs scrt body) ty =

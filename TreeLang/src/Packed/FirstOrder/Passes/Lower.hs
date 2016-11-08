@@ -30,6 +30,7 @@ import Data.Maybe
 import Data.List as L hiding (tail)
 import Data.Map as M
 
+import qualified Prelude as P
 import Prelude hiding (tail)
 
 -------------------------------------------------------------------------------
@@ -42,17 +43,17 @@ import Prelude hiding (tail)
 lower :: Bool -> L2.Prog -> SyM T.Prog
 lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
   mn <- case mainExp of
-          Nothing -> return Nothing
+          Nothing    -> return Nothing
           Just (x,_) -> (Just . T.PrintExp) <$> tail x
   T.Prog <$> mapM fund (M.elems fundefs) <*> pure mn
  where
   fund :: L2.FunDef -> SyM T.FunDecl
   fund L2.FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do
       tl <- tail funbod
-      return $ T.FunDecl { T.funName = funname
-                         , T.funArgs = [(funarg, typ inty)]
-                         , T.funRetTy = typ outty
-                         , T.funBody = tl }
+      return T.FunDecl{ T.funName = funname
+                      , T.funArgs = [(funarg, typ inty)]
+                      , T.funRetTy = typ outty
+                      , T.funBody = tl }
 
   tail :: L1.Exp -> SyM T.Tail
   tail ex =
@@ -63,7 +64,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     -- LetE (_,_, CaseE _ _) _ ->
     --    error "lower: unfinished, we cannot let-bind the result of a switch yet."
     LetE (vr,ty, CaseE scrt ls) bod -> tail $
-                                       dbgTrace 1 ("WARNING: Let-bound CasE, code duplication:\n  "++sdoc ex)$ 
+                                       dbgTrace 1 ("WARNING: Let-bound CasE, code duplication:\n  "++sdoc ex)$
          -- For now just duplicate code:
          CaseE scrt [ (k,vs, mkLet (vr,ty,e) bod)
                     | (k,vs,e) <- ls]
@@ -93,13 +94,13 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                [c] -> tail (L1.subst c (VarE ctmp) rhs)
         alts <- mapM doalt rest
         (_,last') <- doalt last
-        return $                   
+        return $
          T.LetPrimCallT [(tagtmp,T.TagTy),(ctmp,T.CursorTy)] T.ReadTag [T.VarTriv scrut] $
           T.Switch (T.VarTriv tagtmp)
                    (T.TagAlts alts)
                    (Just last')
 
-    --------------------------------------------------------------------------------                   
+    --------------------------------------------------------------------------------
     -- Not-packed, pointer-based codegen
     --------------------------------------------------------------------------------
     -- If we get here that means we're NOT packing trees on this run:
@@ -115,7 +116,36 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       rhs' <- tail rhs
       return (T.LetUnpackT (zip bndrs tys) e_var rhs')
 
-    CaseE _ _ | not pkd -> error "Case on sum types not implemented yet."
+    CaseE e (def_alt : alts) | not pkd -> do
+      tag <- gensym "tag"
+      buf0 <- gensym "buf"
+      let e_triv = triv "case scrutinee" e
+
+      let
+        bind_tag = T.LetPrimCallT [(tag, T.TagTy), (buf0, T.CursorTy)] T.ReadTag [e_triv]
+
+        mk_alt (con, bndrs, rhs) = do
+          rhs_triv <- tail rhs
+          ptr_vars <- (buf0 :) <$> replicateM (length bndrs) (gensym "buf")
+          let ptr_vars' = zip ptr_vars (P.tail ptr_vars)
+
+          let
+            bndr_tys = L.map typ (lookupDataCon ddefs con)
+            con_tag  = getTagOfDataCon ddefs con
+
+            rhs = Prelude.foldr
+                    (\(bndr, _bndr_ty, (cur_ptr, next_ptr)) body ->
+                      -- TODO: bndr type is not used here because Target is
+                      -- is assuming it's an int
+                      T.LetPrimCallT [(bndr, T.IntTy), (next_ptr, T.CursorTy)] T.ReadInt [T.VarTriv cur_ptr] body)
+                    rhs_triv (zip3 bndrs bndr_tys ptr_vars')
+
+          return (con_tag, rhs)
+
+      alts' <- mapM mk_alt alts
+      (_, def_alt') <- mk_alt def_alt
+
+      return $ bind_tag $ T.Switch (T.VarTriv tag) (T.TagAlts alts') (Just def_alt')
 
     -- Accordingly, constructor allocation becomes an allocation.
     LetE (v, _, MkPackedE k ls) bod | not pkd -> L1.assertTrivs ls $ do
@@ -146,7 +176,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
     -- We could eliminate these ahead of time (unariser):
     -- FIXME: Remove this when that is done a priori:
-    L1.LetE (v, L2.ProdTy tys, MkProdE ls) bod -> do      
+    L1.LetE (v, L2.ProdTy tys, MkProdE ls) bod -> do
       (tmps,bod') <- eliminateProjs v tys bod
       -- Bind tmps individually:a
       let go [] acc                 = acc
@@ -186,7 +216,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       tmp <- gensym "flt"
       tail (L1.LetE (tmp, L1.primRetTy p, L1.PrimAppE p ls) (L1.VarE tmp))
 
-    ---------------------           
+    ---------------------
     -- (2) Next FAKE Primapps.  These could be added to L1 if we wanted to pollute it.
     L1.LetE (v,_,C.WriteInt c e) bod ->
       T.LetPrimCallT [(v,T.CursorTy)] T.WriteInt [triv "WriteTag arg" e, T.VarTriv c] <$>
@@ -209,7 +239,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
     L1.LetE (v,_,C.ScopedBuffer) bod ->
       T.LetPrimCallT [(v,T.CursorTy)] T.ScopedBuf [] <$>
-         tail bod              
+         tail bod
 
     ---------------------
     -- (3) Proper primapps.
@@ -225,7 +255,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     L1.LetE (_,_,L1.AppE f _) _ | M.notMember f fundefs ->
       error $ "Application of unbound function: "++show f
 
-    -- Non-tail call:            
+    -- Non-tail call:
     L1.LetE (v,t,L1.AppE f arg) bod -> do
         (vsts,bod') <- case t of
                         L1.ProdTy ls -> do (tmps,e) <- eliminateProjs v ls bod
@@ -243,8 +273,8 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       b' <- tail b
       c' <- tail c
       case t of
-        -- Finilize unarisation:        
-        L2.ProdTy ls -> do 
+        -- Finilize unarisation:
+        L2.ProdTy ls -> do
              (tmps,bod') <- eliminateProjs v ls bod
              T.LetIfT (zip tmps (L.map typ ls)) (a', b', c') <$> tail bod'
         _ -> T.LetIfT [(v, typ t)] (a', b', c') <$> tail bod
@@ -275,16 +305,16 @@ eliminateProjs vr tys bod =
              " projections on variable "++show vr++" in expr with types "++show tys++":\n   "++sdoc bod) $
  do
     tmps <- mapM (\_ -> gensym "pvrtmp") [1.. (length tys)]
-            
+
     let go _ [] acc = acc
         go ix ((pvr,_pty):rs) acc =
-           go (ix+1) rs 
+           go (ix+1) rs
              (L1.substE (ProjE ix (VarE vr)) (VarE pvr) acc)
     let bod' = go 0 (zip tmps tys) bod
     return (tmps,bod')
 
 
-         
+
 mkLet :: (Var, L1.Ty, Exp) -> Exp -> Exp
 mkLet (v,t,LetE (v2,t2,rhs2) bod1) bod2 = LetE (v2,t2,rhs2) $ LetE (v,t,bod1) bod2
 mkLet (v,t,rhs) bod = LetE (v,t,rhs) bod
