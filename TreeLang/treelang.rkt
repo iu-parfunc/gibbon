@@ -154,7 +154,7 @@ lit := int | #t | #f
 (define-values (prop:pack pack? pack-ref) (make-struct-type-property 'pack))
 
 (define (pack-Int [i : Int]) (integer->integer-bytes i 8 #true))
-(define (pack-Float [f : Float]) (real->floating-point-bytes i 8))
+(define (pack-Float [f : Float]) (real->floating-point-bytes f 8))
 (define (pack-Bool [b : Bool]) (if b (bytes 1) (bytes 0)))
 (define (pack-Sym [s : Sym]) (integer->integer-bytes (eq-hash-code s) 8 #true))
 
