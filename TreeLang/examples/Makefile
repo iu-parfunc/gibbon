@@ -47,7 +47,7 @@ all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
 
 PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.sexp \
     test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp \
-    test04_vector.sexp test04b_vector.sexp test05_app.sexp \
+    test04_vector.sexp test04b_vector.sexp test04c_ifvector.sexp test05_app.sexp \
     test05b_app.sexp test06_case.sexp test06b_case.sexp test06c_nested.sexp \
     test06d_rec.sexp test06e_rec.sexp \
     test07_time.sexp test09_recur.sexp test10_desugar.sexp test10b_desugar.sexp \
@@ -57,8 +57,6 @@ PASSING_TESTS ?= test00_add.sexp test01_if.sexp test01b_ifif.sexp test02_arith.s
 # ----------------------
 # test06h_rec.sexp -- lower hits let with case in RHS [2016.11.06]
 # test06i_casecase.sexp -- ''
-
-# test04c_ifvector.sexp -- MkProd sneaking through in Triv context to Lower [2016.11.06]
 
 
 
@@ -84,15 +82,13 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 
 # Temporary, mostly broken state:
 PACKED_TESTS= test00_add.sexp test11b_fundata.sexp test02_arith.sexp test01_if.sexp test01b_ifif.sexp \
-    test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp test04_vector.sexp  test04b_vector.sexp
+    test03_let.sexp test03b_eqs.sexp test03c_eqsym.sexp test04_vector.sexp  test04b_vector.sexp test04c_ifvector.sexp \
 
 #     \
     test05_app.sexp test05b_app.sexp \
     test06_case.sexp test06b_case.sexp test06c_nested.sexp test06i_casecase.sexp \
     test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp test06h_rec.sexp \
     test07_time.sexp test10_desugar.sexp test10b_desugar.sexp test11b_fundata.sexp test11c_funrec.sexp
-
-# test04c_ifvector.sexp -- MkProd sneaking through in Triv context to Lower [2016.11.06]
 
 # test09_recur.sexp -- hits hole in Cursorize [2016.11.06]
 

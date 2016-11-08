@@ -121,16 +121,30 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
   exp :: [LocVar] -> LocEnv -> L1.Exp -> SyM ([Loc],L1.Exp, Loc)
   exp demanded env ex =
     dbgTrace lvl ("\n [routeEnds] exp, demanding "++show demanded++": "++show ex++"\n  with env: "++show env) $
+    let trivLoc (VarE v) = env # v
+        trivLoc (LitE _) = Bottom
+        returnExtras e = ( L.map Fixed demanded
+                         , L1.mkProd $ (L.map VarE demanded) ++ [e] )
+    in    
     case ex of
-
+     -----------------Trivials---------------------
      -- ASSUMPTION we are ONLY given demands that we can FULFILL:
-     VarE v  ->
-         let ex' = MkProdE $ (L.map VarE demanded) ++ [VarE v] in
-         return (L.map Fixed demanded, ex', env # v)
+     VarE _ -> 
+         let (d,e) = returnExtras ex in
+         return (d, e, trivLoc ex)
 
      -- Literals cannot produce end-witnesses:
-     LitE n -> case demanded of [] -> pure$ ([], LitE n, Bottom)
+     LitE _ -> case demanded of [] -> pure ([], ex, trivLoc ex)
 
+     MkProdE ls | L.null demanded -> return ([], ex, TupLoc (L.map trivLoc ls))
+                | otherwise ->
+                    error (" routeEnds/FINISHME: Demand "++show demanded++" from tuple in tail: "++show ls)
+
+     ProjE ix (VarE v) -> 
+        case env # v of
+          TupLoc ls -> let (d,e) = returnExtras ex in
+                       return (d, e, ls !! ix)
+     ----------------End Trivials-------------------
 
      -- PrimApps do not currently produce end-witnesses:
      PrimAppE _ ls -> case demanded of
@@ -141,7 +155,14 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
        do env' <- extendLocEnv [(v,ty)] env
           (aug,bod',loc) <- exp demanded env' bod
           return (aug, LetE (v,ty,MkPackedE k ls) bod', loc)
-                
+
+     -- FIXME: Need unariser pass:
+     LetE (vr,ty, MkProdE ls) bod -> L1.assertTrivs ls $ do 
+      -- As long as we keep these trivial, this is book-keeping only.  Nothing to route out of here.
+      env' <- extendLocEnv [(vr,ty)] env
+      (dem,bod',loc) <- exp demanded env' bod
+      return (dem, LetE (vr,ty,MkProdE ls) bod', loc)
+                 
     -- A let is a fork in the road, a compound expression where we
     -- need to decide which branch can fulfill a given demand.
      LetE (v,t,rhs) bod -> 
@@ -230,7 +251,6 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
       AppE v e -> AppE v <$> go e
 
       ProjE i e      -> ProjE i <$> go e
-      MkProdE ls     -> MkProdE <$> mapM go ls
       MkPackedE k ls -> MkPackedE k <$> mapM go ls
       TimeIt e t     -> TimeIt <$> go e <*> pure t
 

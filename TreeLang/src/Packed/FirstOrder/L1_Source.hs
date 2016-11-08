@@ -20,7 +20,7 @@ module Packed.FirstOrder.L1_Source
     -- * Expression and Prog helpers
     , freeVars, subst, substE, mapExprs
       -- * Trivial expressions
-    , assertTriv, assertTrivs, isTriv, projNonFirst, mkProj
+    , assertTriv, assertTrivs, isTriv, projNonFirst, mkProj, mkProd
       -- * Examples
     , add1Prog
     )
@@ -314,7 +314,12 @@ mkProj :: (Eq a, Num a) => Int -> a -> Exp -> Exp
 mkProj 0 1 e = e
 mkProj ix _ e = ProjE ix e
                    
+-- | Make a product type while avoiding unary products.
+mkProd :: [Exp]-> Exp
+mkProd [e] = e
+mkProd ls = MkProdE ls
 
+                
 {-
 -- | Promote a value to a term that evaluates to it.
 l1FromValue :: Value Exp -> Exp

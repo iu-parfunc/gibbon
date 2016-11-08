@@ -391,6 +391,11 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
      _ -> error $ "ERROR: cursorize/rhs: unfinished, needs to handle:\n "++sdoc e
 
 
+-- | Make a product type while avoiding unary products.
+mkProd :: [Exp] -> Exp -> Exp
+mkProd [] e = e
+mkProd ls e = MkProdE $ ls++[e]
+          
 endOf :: Loc -> LocVar
 endOf (Fixed a) = toEndVar a
 endOf l = error $ "endOf: should not take endOf this location: "++show l
@@ -434,11 +439,6 @@ meetDemand we@WE{known} vr =
   -- where
   --  go [] = error$ "meetDemand: internal error, got to end of"++
   --                   " environment without finding loc: "++show vr
-
-
-mkProd :: [L1.Exp] -> L1.Exp -> L1.Exp
-mkProd [] e = e
-mkProd ls e = L1.MkProdE $ ls++[e]
 
 
 finishEXP :: L1.Exp

@@ -1,3 +1,4 @@
+
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -55,18 +56,19 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
   tail :: L1.Exp -> SyM T.Tail
   tail ex =
-   dbgTrace 5 (" [lower] processing tail:\n  "++sdoc ex) $
+   dbgTrace 5 ("\n [lower] processing tail:\n  "++sdoc ex) $
    case ex of
 
-    -- We don't have LetSwitchT yet:     
+    -- HACK! We don't have LetSwitchT yet.  This means potential exponential code duplication:
     -- LetE (_,_, CaseE _ _) _ ->
     --    error "lower: unfinished, we cannot let-bind the result of a switch yet."
     LetE (vr,ty, CaseE scrt ls) bod -> tail $
-      dbgTrace 1 ("Let-bound CasE:\n  "++sdoc ex)$ 
+                                       dbgTrace 1 ("WARNING: Let-bound CasE, code duplication:\n  "++sdoc ex)$ 
          -- For now just duplicate code:
          CaseE scrt [ (k,vs, mkLet (vr,ty,e) bod)
                     | (k,vs,e) <- ls]
 
+    --------------------------------------------------------------------------------
     -- Packed codegen
     --------------------------------------------------------------------------------
     -- These are in a funny normal form atfer cursor insertion.  They take one cursor arg.
@@ -97,7 +99,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                    (T.TagAlts alts)
                    (Just last')
 
-                   
+    --------------------------------------------------------------------------------                   
     -- Not-packed, pointer-based codegen
     --------------------------------------------------------------------------------
     -- If we get here that means we're NOT packing trees on this run:
@@ -237,12 +239,15 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                  (tail bod')
 
     L1.LetE (v, t, L1.IfE a b c) bod -> do
-      vsts <- unzipTup v t
+      let a' = triv "if test" a
       b' <- tail b
       c' <- tail c
-      T.LetIfT vsts (triv "if test" a, b', c')
-           <$> tail bod
-
+      case t of
+        -- Finilize unarisation:        
+        L2.ProdTy ls -> do 
+             (tmps,bod') <- eliminateProjs v ls bod
+             T.LetIfT (zip tmps (L.map typ ls)) (a', b', c') <$> tail bod'
+        _ -> T.LetIfT [(v, typ t)] (a', b', c') <$> tail bod
 
     L1.TimeIt e ty ->
         do tmp <- gensym "timed"
@@ -266,15 +271,15 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 -- | Eliminate projections from a given tuple variable.  INEFFICIENT!
 eliminateProjs :: Var -> [L1.Ty] -> Exp -> SyM ([Var],Exp)
 eliminateProjs vr tys bod =
- let len = length tys in
- -- dbgTrace 5 (" [lower] eliminating "++show len++
- --             " projections on variable "++show vr++" in expr with types "++show tys++":\n   "++sdoc bod) $
+ dbgTrace 5 (" [lower] eliminating "++show (length tys)++
+             " projections on variable "++show vr++" in expr with types "++show tys++":\n   "++sdoc bod) $
  do
     tmps <- mapM (\_ -> gensym "pvrtmp") [1.. (length tys)]
+            
     let go _ [] acc = acc
-        go ix ((pvr,pty):rs) acc =
-           go (ix+1) rs $
-             L1.substE (ProjE ix (VarE vr)) (VarE pvr) acc
+        go ix ((pvr,_pty):rs) acc =
+           go (ix+1) rs 
+             (L1.substE (ProjE ix (VarE vr)) (VarE pvr) acc)
     let bod' = go 0 (zip tmps tys) bod
     return (tmps,bod')
 
@@ -285,17 +290,6 @@ mkLet (v,t,LetE (v2,t2,rhs2) bod1) bod2 = LetE (v2,t2,rhs2) $ LetE (v,t,bod1) bo
 mkLet (v,t,rhs) bod = LetE (v,t,rhs) bod
 
 
-         
-unzipTup :: Var -> L1.Ty -> SyM [(Var,T.Ty)]
-unzipTup v t =
-  case t of
-    L1.ProdTy ts -> do
-      vs <- mapM (\_ -> gensym "uziptmp") ts
-      return (zip vs (L.map typ ts))
-    _ -> return [(v,typ t)]
-
-inferTrivTys :: [T.Triv] -> [T.Ty]
-inferTrivTys = undefined
 
 triv :: String -> L1.Exp -> T.Triv
 triv msg e0 =
