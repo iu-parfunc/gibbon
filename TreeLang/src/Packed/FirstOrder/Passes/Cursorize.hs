@@ -153,13 +153,13 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       -- context, the we can only possibly see one that does NOT
       -- escape.  I.e. a temporary one:
       LetE (v,ty,rhs) bod
-          | isPacked ty -> do tmp <- gensym  "tmpbuf"
-                              rhs' <- LetE (tmp,CursorTy,NewBuffer) <$>
-                                       exp2 tmp rhs
-                              withDilated ty rhs' $ \rhs'' ->
-                                -- Here we've reassembled the non-dialated view, original type:
-                                LetE (v,ty, rhs'') <$> exp bod
-          | L1.hasPacked ty -> error "cursorDirect: finishme, let bound tuple containing packed."
+          | isRealPacked ty -> do tmp <- gensym  "tmpbuf"
+                                  rhs' <- LetE (tmp,CursorTy,NewBuffer) <$>
+                                          exp2 tmp rhs
+                                  withDilated ty rhs' $ \rhs'' ->
+                                      -- Here we've reassembled the non-dialated view, original type:
+                                      LetE (v,ty, rhs'') <$> exp bod
+          | hasRealPacked ty -> error "cursorDirect: finishme, let bound tuple containing packed."
           | otherwise -> do rhs' <- exp rhs
                             LetE (v,ty,rhs') <$> exp bod
 
@@ -450,7 +450,19 @@ tyOfCaseScrut dd (CaseE _ ((k,_,_):_)) = PackedTy (getTyOfDataCon dd k) ()
 tyOfCaseScrut _ e = error $ "tyOfCaseScrut, takes only Case:\n  "++sdoc e 
 
 
-                                         
+isRealPacked :: Ty1 a -> Bool                                         
+isRealPacked t = isPacked t && (not (L2.isCursorTy t))
+
+hasRealPacked :: Ty1 a -> Bool
+hasRealPacked t =
+    case t of
+      PackedTy{} -> not $ L2.isCursorTy t
+      ProdTy ls -> any L1.hasPacked ls
+      SymTy     -> False
+      BoolTy    -> False
+      IntTy     -> False
+      SymDictTy t -> L1.hasPacked t
+
 -- Conventions encoded inside the existing Core IR 
 -- =============================================================================
 
