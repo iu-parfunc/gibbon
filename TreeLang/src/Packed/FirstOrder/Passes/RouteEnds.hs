@@ -23,7 +23,7 @@ import Control.Exception
 
 -- | Chatter level for this module:
 lvl :: Int
-lvl = 5
+lvl = 4
 
 
 -- =============================================================================
@@ -144,15 +144,17 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                 
     -- A let is a fork in the road, a compound expression where we
     -- need to decide which branch can fulfill a given demand.
-     LetE (v,_t,rhs) bod -> 
+     LetE (v,t,rhs) bod -> 
       do
-         ((fulfilled,demanded'), rhs', rloc) <- maybeFulfill demanded env rhs          
-         -- (reff,rhs', rloc) <- exp [] env rhs
-         error $ "got effects back from rhs: "++show (fulfilled,demanded)
-         -- let env' = M.insert v rloc env 
-         -- (beff,bloc) <- exp env' bod         
-         -- return (S.union beff reff, bloc)
-         __finishLetE
+         ((fulfilled,demanded'), rhs', rloc) <- maybeFulfill demanded env rhs         
+         env' <- extendLocEnv [(v,t)] env
+         (rest, bod', bloc) <- exp demanded' env' bod
+         let num1 = length fulfilled
+             num2 = length rest
+             newExp = LetE (v,t, L1.mkProj num1 (num1+1) rhs') bod'
+         assert (num1 + num2 == length demanded) $
+            return (fulfilled++rest, newExp, bloc)
+           
 
      --  We're allowing these as tail calls:
      AppE rat rand -> -- L1.assertTriv rnd $
@@ -241,7 +243,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
     let offered = locToEndVars loc
         matches = S.intersection (S.fromList demand) (S.fromList offered)
 
-    if dbgTrace 1 ("[routeEnds] maybeFulfill, offered"++show offered
+    if dbgTrace 1 ("[routeEnds] maybeFulfill, offered "++show offered
                    ++", demanded "++show demand++", from: "++show ex) $
        S.null matches
      then return (([],demand),ex',loc)

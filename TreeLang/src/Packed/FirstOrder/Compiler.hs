@@ -274,8 +274,8 @@ compile Config{input,mode,packed,verbosity} fp = do
                    str <- lift (codegenProg l3)
                    -- The C code is long, so put this at a higher level.
                    lift$ dbgPrintLn lvl $ "\nFinal C codegen: "++show (length str)++" characters."
-                   lift$ dbgPrintLn 4 sepline
-                   lift$ dbgPrintLn 4 str
+                   lift$ dbgPrintLn 5 sepline
+                   lift$ dbgPrintLn 5 str
                    return str)
               cnt0
 
