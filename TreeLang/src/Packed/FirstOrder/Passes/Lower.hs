@@ -150,7 +150,8 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     -- Accordingly, constructor allocation becomes an allocation.
     LetE (v, _, MkPackedE k ls) bod | not pkd -> L1.assertTrivs ls $ do
       -- is this a product?
-      let all_cons = dataCons (lookupDDef ddefs k)
+      let tycon    = getTyOfDataCon ddefs k
+          all_cons = dataCons (lookupDDef ddefs tycon)
           is_prod  = length all_cons == 1
           tag      = fromJust (L.findIndex ((==) k . fst) all_cons)
           fields0  = L.map (triv "MkPackedE args") ls
