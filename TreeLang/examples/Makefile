@@ -89,7 +89,9 @@ all_tests: answers $(OUT_FILES)
 	$(TREEC) $(TREECARGS) $^ > $@ || (touch $^$(EXTRA_SUFFIX).err; rm -f $@; exit 1)
 	@./diff.sh $^.ans $@ || (touch $^$(EXTRA_SUFFIX).err; rm -f $@; exit 1)
 
-PACKED_FAILING ?= test11c_funrec.sexp test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp test12_skip.sexp test12b_traverse.sexp test12c_traverse.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp 
+PACKED_FAILING ?=  test12_skip.sexp  test12c_traverse.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp 
+
+#  test12c_traverse.sexp -- end_x undefined [2016.11.09]
 
 # test12_skip.sexp       -- Requires copy insertion!! unbound var thru to C code
 # test16_forlist.sexp    -- No lists yet
