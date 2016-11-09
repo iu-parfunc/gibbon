@@ -64,10 +64,15 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     -- LetE (_,_, CaseE _ _) _ ->
     --    error "lower: unfinished, we cannot let-bind the result of a switch yet."
     LetE (vr,ty, CaseE scrt ls) bod -> tail $
-                                       dbgTrace 1 ("WARNING: Let-bound CasE, code duplication:\n  "++sdoc ex)$
+                                       dbgTrace 1 ("WARNING: Let-bound CasE, code duplication of this body:\n  "
+                                                   ++sdoc bod)$
          -- For now just duplicate code:
          CaseE scrt [ (k,vs, mkLet (vr,ty,e) bod)
                     | (k,vs,e) <- ls]
+
+    -- Aaand... if we're going to push Let's under Case's, we have to repeat this bit of flattening:
+    LetE (v1, t1, LetE (v2,t2,rhs2) rhs1) bod ->
+       tail $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
 
     --------------------------------------------------------------------------------
     -- Packed codegen
@@ -75,11 +80,13 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     -- These are in a funny normal form atfer cursor insertion.  They take one cursor arg.
     -- They basically are a WriteTag.
     LetE (cursOut, _, MkPackedE k ls) bod | pkd -> do
-      let [cursIn] = ls
-      T.LetPrimCallT [(cursOut,T.CursorTy)] T.WriteTag
+      case ls of
+       [cursIn] -> T.LetPrimCallT [(cursOut,T.CursorTy)] T.WriteTag
                      [ T.TagTriv (getTagOfDataCon ddefs k)
                      , triv "WriteTag cursor" cursIn ] <$>
-        tail bod
+                    tail bod
+       _ -> error$ "Lower: Expected one argument to data-constructor (which becomes WriteTag): "
+                   ++sdoc (MkPackedE k ls)
 
     -- Likewise, Case really means ReadTag.  Argument is a cursor.
     CaseE (VarE scrut) ls | pkd -> do

@@ -20,11 +20,14 @@ module Packed.FirstOrder.LTraverse
       
     -- * Utilities for dealing with the extended types:
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc
+    , hasRealPacked, isRealPacked, hasCursorTy
     , tyWithFreshLocs, stripTyLocs, getTyLocs
     , getFunTy, substTy, substEffs
 
     -- * Lattices of abstract locations:
-    , Loc(..), LocVar, toEndVar, isEndVar, fromEndVar
+    , Loc(..), LocVar
+    , toWitnessVar, isWitnessVar, fromWitnessVar
+    , toEndVar, isEndVar, fromEndVar
     , join, joins
     , allLocVars, argtyToLoc, mangle, subloc
     , LocEnv, extendLocEnv, getLocVar
@@ -61,6 +64,30 @@ data Loc = Fixed Var -- ^ A rigid location, such as for an input or output field
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 instance Out Loc
 
+-- Renaming conventions.  TODO: Use newtypes
+--------------------------------------------
+
+-- | Witness the location of a local variable.  Later these become
+-- synonymous with the variables themselves.  But for some passes they
+-- need to be differentiated.
+toWitnessVar :: Var -> Var
+-- Policy decision here:
+-- witnessOf v = v
+toWitnessVar = (witness_prefix ++)
+
+witness_prefix :: String
+witness_prefix = ""                  
+-- witness_prefix = "witness_"
+
+fromWitnessVar :: LocVar -> Maybe String
+fromWitnessVar v | isWitnessVar v = Just (drop (length witness_prefix) v)
+                 | otherwise = Nothing
+
+isWitnessVar :: LocVar -> Bool
+isWitnessVar = isPrefixOf witness_prefix
+                            
+---------
+
 toEndVar :: LocVar -> LocVar
 toEndVar v =
   if isEndVar v
@@ -69,14 +96,16 @@ toEndVar v =
 
 fromEndVar :: LocVar -> Maybe LocVar
 fromEndVar v | isEndVar v = Just (drop (length end_prefix) v)
-          | otherwise = Nothing
+             | otherwise = Nothing
 
 isEndVar :: LocVar -> Bool
 isEndVar = isPrefixOf end_prefix
 
 end_prefix :: String
 end_prefix = "end_" -- Hacky way to encode end-of-region variables.
-        
+
+--------------------------------------------
+             
     
 -- | This should be a semi-join lattice.
 join :: Loc -> Loc -> (Loc,[Constraint])
@@ -260,7 +289,35 @@ isCursorTy _ = False
 cursorTyLoc :: Show a => Ty1 a -> a
 cursorTyLoc (PackedTy "CURSOR_TY" l) = l
 cursorTyLoc t = error $ "cursorTyLoc: should only be called on a cursor type, not "++show t
-               
+
+-- | We need to ammend this function to NOT consider cursors as "packed".
+-- TODO: switch to some other form of extension on the original Ty data structure!
+hasRealPacked :: Ty1 a -> Bool
+hasRealPacked t =
+    case t of
+      PackedTy{} -> not $ isCursorTy t
+      ProdTy ls -> any hasRealPacked ls
+      SymTy     -> False
+      BoolTy    -> False
+      IntTy     -> False
+      SymDictTy t -> hasRealPacked t
+
+hasCursorTy :: Ty1 a -> Bool
+hasCursorTy t =
+    case t of
+      PackedTy{} -> isCursorTy t
+      ProdTy ls -> any hasCursorTy ls
+      SymTy     -> False
+      BoolTy    -> False
+      IntTy     -> False
+      SymDictTy t -> hasCursorTy t
+
+                     
+isRealPacked :: Ty1 a -> Bool                                         
+isRealPacked t@PackedTy{} = not (isCursorTy t)
+isRealPacked _ = False
+                     
+                
 --------------------------------------------------------------------------------
                      
 -- | Map every lexical variable in scope to an abstract location.

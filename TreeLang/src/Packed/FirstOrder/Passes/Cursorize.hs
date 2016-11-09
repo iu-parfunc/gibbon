@@ -24,7 +24,7 @@ import qualified Packed.FirstOrder.L1_Source as L1
 import qualified Packed.FirstOrder.LTraverse as L2
 import           Packed.FirstOrder.L1_Source (Ty1(..),pattern SymTy)
 import           Packed.FirstOrder.LTraverse
-    (argtyToLoc, Loc(..), ArrowTy(..), Effect(..), toEndVar,
+    (argtyToLoc, Loc(..), ArrowTy(..), Effect(..), toEndVar, toWitnessVar,
      FunDef(..), Prog(..), Exp(..))
 
 -- We use some pieces from this other attempt:
@@ -153,13 +153,13 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       -- context, the we can only possibly see one that does NOT
       -- escape.  I.e. a temporary one:
       LetE (v,ty,rhs) bod
-          | isRealPacked ty -> do tmp <- gensym  "tmpbuf"
-                                  rhs' <- LetE (tmp,CursorTy,NewBuffer) <$>
-                                          exp2 tmp rhs
-                                  withDilated ty rhs' $ \rhs'' ->
-                                      -- Here we've reassembled the non-dialated view, original type:
-                                      LetE (v,ty, rhs'') <$> exp bod
-          | hasRealPacked ty -> error "cursorDirect: finishme, let bound tuple containing packed."
+          | L2.isRealPacked ty -> do tmp <- gensym  "tmpbuf"
+                                     rhs' <- LetE (tmp,CursorTy,NewBuffer) <$>
+                                             exp2 tmp rhs
+                                     withDilated ty rhs' $ \rhs'' ->
+                                        -- Here we've reassembled the non-dialated view, original type:
+                                        LetE (v,ty, rhs'') <$> exp bod
+          | L2.hasRealPacked ty -> error "cursorDirect: finishme, let bound tuple containing packed."
           | otherwise -> do rhs' <- exp rhs
                             LetE (v,ty,rhs') <$> exp bod
 
@@ -241,7 +241,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
          let witNext e =
                  case rs of
                     []       -> e
-                    (v2,_):_ -> LetE (witnessOf v2, CursorTy, projCur (VarE tmp)) e
+                    (v2,_):_ -> LetE (toWitnessVar v2, CursorTy, projCur (VarE tmp)) e
          case ty of
            -- TODO: Generalize to other scalar types:
            IntTy ->
@@ -254,7 +254,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
             -- Strategy: ALLOW unbound witness variables. A later traversal will reorder.
             case offset of
               Nothing -> go (toEndVar vr) Nothing rs
-              Just n -> LetE (witnessOf vr, CursorTy, add n (VarE cur0)) <$>
+              Just n -> LetE (toWitnessVar vr, CursorTy, add n (VarE cur0)) <$>
                         go (toEndVar vr) Nothing rs
 
 
@@ -271,14 +271,14 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       -- Our variable in the lexical environment is bound to the start only, not (st,en).
       -- To follow the calling convention, we are reponsible for tagging on the end here:
       VarE v -> -- ASSERT: isPacked
-          return $ MkProdE [VarE (witnessOf v), VarE (toEndVar v)] -- FindEndOf v
+          return $ MkProdE [VarE (toWitnessVar v), VarE (toEndVar v)] -- FindEndOf v
       LitE _ -> error$ "cursorDirect/exp2: Should not encounter Lit in packed context: "++show ex0
 
       -- Here's where we write the dest cursor:
       MkPackedE k ls -> do
        -- tmp1  <- gensym "tmp"
        dest' <- gensym "cursplus1_"
-       
+
        -- This stands for the  "WriteTag" operation:
        LetE (dest', PackedTy (getTyOfDataCon ddefs k) (),
                   MkPackedE k [VarE destC]) <$>
@@ -298,7 +298,22 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                     (go2 d' rst)
           in go2 dest' (zip ls (lookupDataCon ddefs k))
 
-      LetE (v,_,rhs) bod -> error$ "cursorDirect: finish let binding cases:\n "++sdoc ex0
+      -- This is already a witness binding, we leave it alone.
+      LetE (v,ty,rhs) bod | L2.isCursorTy ty -> do
+         let rhs' = case rhs of
+                     PrimAppE {} -> rhs
+                     VarE _      -> rhs
+                     _           -> error$ "Cursorize: broken assumptions about what a witness binding should look like:\n  "
+                                    ++sdoc ex0           
+         LetE (v,ty,rhs') <$> exp2 destC bod
+
+      LetE (v,ty, tr) bod | L1.isTriv tr ->
+         LetE (v,ty,tr) <$> exp2 destC bod
+              
+      -- LetE (v1,t1, LetE (v2,t2, rhs2) rhs1) bod ->
+      --    exp2 destC $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
+              
+      LetE (v,_,rhs) bod -> error$ "cursorDirect: finish let binding cases in packed context:\n "++sdoc ex0
 
       -- An application that returns packed values is treated just like a 
       -- MkPackedE constructor: cursors are routed to it, and returned from it.
@@ -438,30 +453,11 @@ allocFree ex =
    (MapE (_,_,x1) x2) -> allocFree x1 && allocFree x2 
    (FoldE (_,_,x1) (_,_,x2) x3) -> allocFree x1 && allocFree x2 && allocFree x3
 
--- | Witness the location of a local variable.
-witnessOf :: Var -> Var
--- Policy decision here:
-witnessOf v = v
--- witnessOf = ("witness_"++)
-
 
 tyOfCaseScrut :: Out a => DDefs a -> Exp -> L1.Ty
 tyOfCaseScrut dd (CaseE _ ((k,_,_):_)) = PackedTy (getTyOfDataCon dd k) ()
 tyOfCaseScrut _ e = error $ "tyOfCaseScrut, takes only Case:\n  "++sdoc e 
 
-
-isRealPacked :: Ty1 a -> Bool                                         
-isRealPacked t = isPacked t && (not (L2.isCursorTy t))
-
-hasRealPacked :: Ty1 a -> Bool
-hasRealPacked t =
-    case t of
-      PackedTy{} -> not $ L2.isCursorTy t
-      ProdTy ls -> any L1.hasPacked ls
-      SymTy     -> False
-      BoolTy    -> False
-      IntTy     -> False
-      SymDictTy t -> L1.hasPacked t
 
 -- Conventions encoded inside the existing Core IR 
 -- =============================================================================
