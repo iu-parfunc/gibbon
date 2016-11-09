@@ -199,23 +199,31 @@ lvl = 3
 -- files to process.
 compile :: Config -> FilePath -> IO ()
 -- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp = do
+compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp0 = do
   -- TERRIBLE HACK!!  This value is global, "pure" and can be read anywhere
   when (verbosity > 1) $ do
     setEnv "DEBUG" (show verbosity)
     l <- evaluate dbgLvl
     hPutStrLn stderr$ " ! We set DEBUG based on command-line verbose arg: "++show l
 
-  let parser = case input of
-                 Haskell -> HS.parseFile
-                 SExpr   -> SExp.parseFile
-                 Unspecified ->
-                   case takeExtension fp of
-                     ".hs"   -> HS.parseFile
-                     ".sexp" -> SExp.parseFile
-                     ".rkt"  -> SExp.parseFile
-                     oth -> error$ "compile: unrecognized file extension: "++
-                                   show oth++"  Please specify compile input format."
+  (parser,fp) <- case input of
+                  Haskell -> return (HS.parseFile, fp0)
+                  SExpr   -> return (SExp.parseFile, fp0)
+                  Unspecified ->
+                   case takeExtension fp0 of
+                     ".hs"   -> return (HS.parseFile, fp0)
+                     ".sexp" -> return (SExp.parseFile, fp0)
+                     ".rkt"  -> return (SExp.parseFile, fp0)
+                     oth -> do
+                       -- Here's a silly hack just out of sheer laziness vis-a-vis tab completion:
+                         f1 <- doesFileExist $ fp0++".sexp"
+                         f2 <- doesFileExist $ fp0++"sexp"
+                         if f1 && oth == ""
+                          then return (SExp.parseFile, fp0++".sexp")
+                          else if f2 && oth == "."
+                          then return (SExp.parseFile, fp0++"sexp")
+                          else error$ "compile: unrecognized file extension: "++
+                                  show oth++"  Please specify compile input format."
   (l1,cnt0) <- parser fp
   let printParse l = dbgPrintLn l $ sdoc l1
   if mode == ToParse
@@ -238,9 +246,10 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp = do
 
         -- No reason to chatter from passes that are stubbed out anyway:
         pass' :: (Out b, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
-        pass' _ fn x = do
+        pass' who fn x = do
           cnt <- get
           let (y,cnt') = runSyM cnt (fn x)
+          lift$ dbgPrintLn lvl $ "Running pass: " ++who++":\n"++sepline
           put cnt'
           _ <- lift $ evaluate $ force y
           return y
@@ -274,16 +283,16 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp = do
                        l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
                        ------------------- End Stubs ---------------------
                               
-                       l2e <- pass "routeEnds"                routeEnds                 l2d
-                       l2f <- pass "flatten"                  flatten2                  l2e
-                       l2g <- pass "findWitnesses"            findWitnesses             l2f
-                       l2h <- pass "inlinePacked"             inlinePacked              l2g
-                       l2i <- pass "cursorDirect"             cursorDirect              l2h
-                       l2j <- pass "flatten"                  flatten2                  l2i
-                       l2k <- pass "findWitnesses"            findWitnesses             l2j
+                       l2e <- pass  "routeEnds"                routeEnds                 l2d
+                       l2f <- pass' "flatten"                  flatten2                 l2e
+                       l2g <- pass  "findWitnesses"            findWitnesses             l2f
+                       l2h <- pass  "inlinePacked"             inlinePacked              l2g
+                       l2i <- pass  "cursorDirect"             cursorDirect              l2h
+                       l2j <- pass' "flatten"                  flatten2                  l2i
+                       l2k <- pass  "findWitnesses"            findWitnesses             l2j
                               
-                       l2l <- pass "flatten"                  flatten2                  l2k
-                       l2m <- pass "inlineTriv"               inline2                   l2l
+                       l2l <- pass' "flatten"                  flatten2                  l2k
+                       l2m <- pass  "inlineTriv"               inline2                   l2l
                        return l2m
                      else return l2
                  l3  <-       pass  "lower"                    (lower packed)           l2'
