@@ -3,7 +3,18 @@
 # Responds to environment variables:
 #   * DOCKER
 #   * STACKARGS 
+#   * PAR
 
+if [ "$1" == "-j" ]; then
+    PAR=1
+fi
+if [ "$PAR" == "1" ]; then
+    MKPARARGS="-j"
+else
+    MKPARARGS=""
+fi
+
+echo "Running full test suite, Parallelism flags = '$MKPARARGS' \n"
 set -xe
 
 cd `dirname $0`
@@ -31,7 +42,7 @@ cd $top/TreeLang
 stack --install-ghc test "$STACKARGS"
 
 cd $top/TreeLang/examples
-make test
+make test $MKPARARGS
 # Turning of -j for now [2016.11.06]
 
 
@@ -41,7 +52,7 @@ echo "  Handwritten Parser:"
 echo "----------------------------------------"
 set -x
 cd $top/deps/sexpr-1.3
-make || ./configure && make
+make || ./configure && make $MKPARARGS
 # TODO: Move to common:
 cd $top/ASTBenchmarks/common/c/
 make check
@@ -78,7 +89,7 @@ if [ "$NOBINTREE" != "1" ]; then
   cd $top/BintreeBench
   if [ "$DOCKER" == "1" ]; then
       echo "Building under Docker, FULL benchmark set."
-      make
+      make $MKPARARGS
       make run_small
   else
       echo "Not under Docker. Don't do a full Bintree build, it requires too many toolchains."

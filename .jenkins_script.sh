@@ -22,6 +22,6 @@ if [ "$DOCKER" == "1" ]; then
     docker build -t tree-velocity .
 else
 
-    ./run_all_tests.sh
+    ./run_all_tests.sh $@
 
 fi
