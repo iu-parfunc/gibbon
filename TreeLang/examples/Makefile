@@ -53,7 +53,8 @@ all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
 FAILING_TESTS ?= test11e_funrec.sexp test11d_funrec.sexp test11f_funrec.sexp  \
   test06g_rec.sexp  test06i_casecase.sexp \
   test12b_traverse.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
-  test06f_rec.sexp
+  test06f_rec.sexp \
+  text08_dict.sexp test08b_dict.sexp test08c_dict.sexp test08d_sharedict.sexp
 
 # test 6i -- WRONG ANSWER, returning 101 !! [2016.11.09]
 # test 6f -- seeing weird discrepanancies where sometimes a tag is not initialized [2016.11.09] 
