@@ -62,6 +62,12 @@ flattenExp defs env2 = fExp (vEnv env2)
                bind ((v,e'):xs) e = mkLetE (v,(typeExp (defs,env2) env e'),e') $ bind xs e
            let exp = bind (zip nams es') $ L1.PrimAppE p $ map L1.VarE nams
            return exp
+    fExp env (L1.LetE (v,t,L1.VarE i) e) =
+        do e' <- fExp (M.insert v t env) e
+           return $ L1.LetE (v,t,L1.VarE i) e'
+    fExp env (L1.LetE (v,t,L1.LitE i) e) =
+        do e' <- fExp (M.insert v t env) e
+           return $ L1.LetE (v,t,L1.LitE i) e'                  
     fExp env (L1.LetE (v,t,e') e) =
         do fe' <- fExp env e'
            fe  <- fExp (M.insert v t env) e
