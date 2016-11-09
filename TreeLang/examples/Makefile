@@ -1,5 +1,7 @@
 
-default: test
+default:
+	rm -f *.err
+	$(MAKE) test
 
 test: answers parse_all
 # Sequentialize these, they stomp on *.out:

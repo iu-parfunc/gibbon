@@ -94,7 +94,19 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
 
 
   funType f = funty $ fundefs # f
-             
+
+  triv :: L1.Exp -> L1.Exp
+  triv tr =
+   case tr of 
+     VarE _                 -> tr -- Think about witness/end marking here.
+     LitE _                 -> tr
+     PrimAppE L1.MkTrue  [] -> tr
+     PrimAppE L1.MkFalse [] -> tr               
+     MkProdE ls             -> MkProdE $ L.map triv ls
+     ProjE ix e             -> ProjE ix $ triv e
+
+     _ -> error$ " [routeEnds] trivial expected: "++sdoc tr
+                  
   -- Arguments:
   --
   --  (1) the N demanded traversal witnesses (end-of-input cursors)
@@ -109,54 +121,41 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
   --      added returns.
   exp :: [LocVar] -> LocEnv -> L1.Exp -> SyM (L1.Exp, Loc)
   exp demanded env ex =
-   --  dbgTrace lvl ("\n [routeEnds] exp, demanding "++show demanded++": "++show ex++"\n  with env: "++show env) $
+    dbgTrace lvl ("\n [routeEnds] exp, demanding "++show demanded++": "++show ex++"\n  with env: "++show env) $
     let trivLoc (VarE v)  = env # v
         trivLoc (LitE _i) = Bottom
         trivLoc (MkProdE ls) =
-            if go ls
-            then Bottom
-            else error $ "Not handled in trivLoc, product of non-literals: " ++ (show ls)
-            where go [] = True
-                  go ((LitE _):xs) = go xs
-                  go _ = False
+            let go [] = True
+                go ((LitE _):xs) = go xs
+                go _ = False            
+            in if go ls
+               then Bottom
+               else error $ "Not handled in trivLoc, product of non-literals: " ++ (show ls)
+
         trivLoc (PrimAppE L1.MkTrue [])  = Bottom
         trivLoc (PrimAppE L1.MkFalse []) = Bottom
         trivLoc t = error $ "Case in trivLoc not handled for: " ++ (show t)
-        defaultReturn = L1.mkProd $ (L.map VarE demanded) ++ [ex]
+        defaultReturn e = L1.mkProd $ (L.map VarE demanded) ++ [e]
     in
     case ex of
      -----------------Trivials---------------------
      -- ASSUMPTION we are ONLY given demands that we can FULFILL:
-{-      
-     VarE _ -> 
-         let (d,e) = returnExtras ex in
-         return (d, e, trivLoc ex)
 
-     -- Literals cannot produce end-witnesses:
-     LitE _ -> case demanded of [] -> pure ([], ex, trivLoc ex)
-
-     MkProdE ls | L.null demanded -> return ([], ex, TupLoc (L.map trivLoc ls))
-                | otherwise ->
-                    error (" routeEnds/FINISHME: Demand "++show demanded++" from tuple in tail: "++show ls)
-
-     ProjE ix (VarE v) -> 
-        case env # v of
-          TupLoc ls -> let (d,e) = returnExtras ex in
-                       return (d, e, ls !! ix)
--}
-     tr | L1.isTriv tr -> return ( defaultReturn
+     tr | L1.isTriv tr -> return ( defaultReturn (triv tr)
                                  , trivLoc tr)
      ----------------End Trivials-------------------
                               
      -- PrimApps do not currently produce end-witnesses:
-     PrimAppE _ ls -> L1.assertTrivs ls $ pure (defaultReturn,Bottom)
+     PrimAppE p ls -> L1.assertTrivs ls $
+                       pure (defaultReturn (PrimAppE p (L.map triv ls)),Bottom)
 
      -- A datacon is the beginning of something new, it certainly
      -- cannot witness the end of anything else!
-     MkPackedE k ls -> L1.assertTrivs ls $ let [] = demanded in do
-       fresh <- freshLoc "dunno"
-       return (MkPackedE k ls, fresh)
-      
+     MkPackedE k ls -> L1.assertTrivs ls $
+      case demanded of
+       [] -> do fresh <- freshLoc "dunno"
+                return (MkPackedE k ls, fresh)
+       _ -> error $"[routeEnds] internal error: Not expected to demand witnesses from this: "++sdoc ex
          
      -- Allocating new data doesn't witness the end of any data being read.
      LetE (v,ty, MkPackedE k ls) bod -> L1.assertTrivs ls $ 
@@ -229,7 +228,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                            -- If there is no last field, the constructors
                            -- end is just after the tag:
                            if L.null patVs
-                           then PrimAppE L1.AddP [VarE v, LitE 1]
+                           then PrimAppE L1.AddP [VarE (L2.toWitnessVar v), LitE 1]
                            else VarE (toEndVar (L.last patVs)))
                        rhs'
                         

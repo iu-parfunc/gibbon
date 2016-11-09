@@ -63,8 +63,7 @@ inlinePackedExp = go
              then error$ "Internal error: do not expect binding containing both cursors and real packed types:\n "
                          ++ sdoc (v,t,rhs)
              else let rhs' = go env rhs in 
-                  go ((v,Just rhs'):env) e
-                     
+                  go ((v,Just rhs'):env) e                     
        | otherwise -> LetE (var v,t, go env rhs)
                            (go ((v,Nothing):env) e)
 
