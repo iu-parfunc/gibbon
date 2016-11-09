@@ -249,7 +249,10 @@ following contributions:
 
 While our main emphasis in this paper is on accelerating compiler passes, here
 we continue with our simple example from the introduction: binary trees with
-integer leaves.  In a strongly typed functional language, a recursive walk on
+integer leaves.
+In a language with algebraic datatypes,
+% In a strongly typed functional language,
+a recursive walk on
 the tree would typically use pattern matching:
 
 \ifcurly
@@ -274,9 +277,9 @@ fun add1(t) {
 \fi
 
 In fact, the small, first-order, purely functional language of tree traversals
-we consider this paper is already a subset of virtually all existing languages.
-The above program is not substantially different in C, ML, Scala, etc.  Only the
-details of switching on tagged unions (sum types) types differ.
+we consider this paper is already a subset of most existing languages.
+The above program is not substantially different in C, Haskell, ML, Scala,
+Swift, Rust, etc.  Only the details of switching on sum types (tagged unions) differ.
 
 \note{The first problem for tree-walks such as this is memory management. 
   \il{add1} can easy become a malloc or garbage collector benchmark.  For
@@ -308,8 +311,16 @@ details of switching on tagged unions (sum types) types differ.
   reams of tree-walking code.}
 
 % ================================================================================
-\section{Formal language}
+\section{The \treelang{} Language}
 % ================================================================================
+
+\note{Informal overview of language}
+
+
+% ================================================================================
+\section{Formal Language}
+% ================================================================================
+
 
 \note{The calculus, plus the core lowering transforms in figures.}
 
@@ -371,7 +382,15 @@ with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 \section{Compilation Algorithms}
 % ================================================================================
 
+\note{While we've seen examples above of cursor-passing programs that operate on
+serialized data, these programs are extremely tedious and error prone.}
+
+\note{}
+
+
 \subsection{Inferring effects}
+
+
 
 \subsection{Routing end-of-value witnesses}
 
