@@ -166,12 +166,14 @@ mapExprs fn prg@Prog{fundefs,mainExp} =
 
 --------------------------------------------------------------------------------
 
+-- | Free data variables.  Does not include function variables, which
+-- currently occupy a different namespace.
 freeVars :: Exp -> S.Set Var
 freeVars ex =
   case ex of
     VarE v -> S.singleton v
     LitE _ -> S.empty
-    AppE v e -> freeVars e  -- S.insert v (freeVars e)
+    AppE _v e -> freeVars e  -- S.insert v (freeVars e)
     PrimAppE _ ls -> S.unions (L.map freeVars ls)
     LetE (v,_,rhs) bod -> freeVars rhs `S.union`
                           S.delete v (freeVars bod)
