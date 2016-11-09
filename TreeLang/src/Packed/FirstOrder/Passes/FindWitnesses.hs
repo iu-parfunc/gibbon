@@ -10,9 +10,9 @@ import Data.List as L hiding (tail)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Graph
-import Debug.Trace
 
-bigNumber = 10
+bigNumber :: Int
+bigNumber = 10 -- limit number of loops
 
 -- | This pass must find witnesses if they exist in the lexical
 -- environment, and it must *reorder* let bindings to bring start/end
@@ -60,7 +60,12 @@ findWitnesses = L2.mapMExprs fn
   handle mp exp = buildLets mp vars exp
       where freeInBind v = case Map.lookup (view v) mp of
                              Nothing -> []
-                             Just ((_v,_t,e),exp) -> Set.toList $ Set.union (L1.freeVars e) (L1.freeVars exp)
-            (g,vf,_) = graphFromEdges $ traceShowId $ zip3 vs vs $ map freeInBind vs
+                             Just ((_v,_t,e),exp) -> withWitnesses $ Set.toList $ Set.union (L1.freeVars e) (L1.freeVars exp)
+            (g,vf,_) = graphFromEdges $ zip3 vs vs $ map freeInBind vs
             vars = reverse $ map (\(x,_,_) -> x) $ map vf $ topSort g
             vs = Map.keys mp
+
+  withWitnesses ls = concatMap f ls
+      where f v = if isWitnessVar v
+                  then [v]
+                  else [v,toWitnessVar v] -- maybe?
