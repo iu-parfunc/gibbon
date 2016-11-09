@@ -188,6 +188,7 @@ void bench_batch(Tree* tr, int iters)
     printf("Timing %d iters as a batch\n", iters);
 #ifdef BUMPALLOC
     char* starting_heap_pointer = heap_ptr;
+    long allocated_bytes;
 #endif
     clock_gettime(which_clock, &begin);
     for (int i=0; i<iters; i++)
