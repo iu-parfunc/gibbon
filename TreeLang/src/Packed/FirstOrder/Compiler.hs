@@ -29,6 +29,7 @@ import Packed.FirstOrder.Passes.Freshen
 import Packed.FirstOrder.Passes.Cursorize
 import Packed.FirstOrder.Passes.Flatten
 import Packed.FirstOrder.Passes.InlineTriv
+import Packed.FirstOrder.Passes.ShakeTree 
 import Packed.FirstOrder.Passes.Lower
 import Packed.FirstOrder.Passes.InlinePacked
 
@@ -293,7 +294,8 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp0 = do
                               
                        l2l <- pass' "flatten"                  flatten2                  l2k
                        l2m <- pass  "inlineTriv"               inline2                   l2l
-                       return l2m
+                       l2n <- pass  "shakeTree"                shakeTree                 l2m
+                       return l2n
                      else return l2
                  l3  <-       pass  "lower"                    (lower packed)           l2'
 
