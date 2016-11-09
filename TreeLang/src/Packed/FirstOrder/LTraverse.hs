@@ -76,8 +76,8 @@ toWitnessVar :: Var -> Var
 toWitnessVar = (witness_prefix ++)
 
 witness_prefix :: String
-witness_prefix = ""                  
--- witness_prefix = "witness_"
+-- witness_prefix = ""                  
+witness_prefix = "witness_"
 
 fromWitnessVar :: LocVar -> Maybe String
 fromWitnessVar v | isWitnessVar v = Just (drop (length witness_prefix) v)

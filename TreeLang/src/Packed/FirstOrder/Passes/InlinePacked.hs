@@ -17,10 +17,16 @@ import Prelude hiding (exp)
 -- applications.
 --
 -- STARTING INVARIANTS:
+-- 
+--   (1) Variables used only as witnesses are marked, and we NEVER
+--      inline Datacons into those locations.  We should already be
+--      thinking of those just as pointers.
 --  
 -- ENDING INVARIANTS:
---   (1) unbound variables may occur in the RHS of (LetE (_,CursorTy,_)) bindings,
---       but nowwhere else.
+-- 
+--   (1) unbound variables may occur in the RHS of (LetE (_,CursorTy,_))
+--       bindings, but nowwhere else.
+--
 inlinePacked :: L2.Prog -> SyM L2.Prog
 inlinePacked prg@L2.Prog{fundefs,mainExp} = return $
   prg { fundefs = M.map fd fundefs 
@@ -39,6 +45,7 @@ inlinePackedExp :: [(Var,Maybe L1.Exp)] -> L1.Exp -> L1.Exp
 inlinePackedExp = go
   where
 
+  -- After this pass, these markers have served their purpose and can go away:
   var :: Var -> Var
   var v | isWitnessVar v = let Just v' = fromWitnessVar v in v'
         | otherwise = v

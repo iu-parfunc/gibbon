@@ -139,6 +139,16 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       return $ L2.FunDef funname newTy newArg exp'
   ------------------------------------------------------------
 
+  -- We DONT want to have both witness and "regular" references to the
+  -- same variable after this pass.  We need these binders to
+  -- have teeth, thus either ALL occurrences must be marked as witnesses, or NONE:             
+  -- binderWitness = toWitnessVar
+             
+  -- TODO: To mark ALL as witnesses we'll need to keep a type
+  -- environment so that we can distinguish cursor and non-cursor
+  -- values.  For now it's easier to strip all markers:
+  binderWitness v = v
+                    
   -- | Here we are not in a context that flows to Packed data, thus no
   --   destination cursor.
   exp :: Exp -> SyM Exp
@@ -241,7 +251,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
          let witNext e =
                  case rs of
                     []       -> e
-                    (v2,_):_ -> LetE (toWitnessVar v2, CursorTy, projCur (VarE tmp)) e
+                    (v2,_):_ -> LetE (binderWitness v2, CursorTy, projCur (VarE tmp)) e
          case ty of
            -- TODO: Generalize to other scalar types:
            IntTy ->
@@ -254,7 +264,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
             -- Strategy: ALLOW unbound witness variables. A later traversal will reorder.
             case offset of
               Nothing -> go (toEndVar vr) Nothing rs
-              Just n -> LetE (toWitnessVar vr, CursorTy, add n (VarE cur0)) <$>
+              Just n -> LetE (binderWitness vr, CursorTy, add n (VarE cur0)) <$>
                         go (toEndVar vr) Nothing rs
 
 
@@ -271,7 +281,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       -- Our variable in the lexical environment is bound to the start only, not (st,en).
       -- To follow the calling convention, we are reponsible for tagging on the end here:
       VarE v -> -- ASSERT: isPacked
-          return $ MkProdE [VarE (toWitnessVar v), VarE (toEndVar v)] -- FindEndOf v
+          return $ MkProdE [VarE (binderWitness v), VarE (toEndVar v)] -- FindEndOf v
       LitE _ -> error$ "cursorDirect/exp2: Should not encounter Lit in packed context: "++show ex0
 
       -- Here's where we write the dest cursor:

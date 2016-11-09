@@ -13,6 +13,7 @@ import Control.Monad.State
 import Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.L1_Source (Exp(..), Prim(..))
+import Packed.FirstOrder.LTraverse (isCursorTy)
 
 import qualified Data.Map as M
 

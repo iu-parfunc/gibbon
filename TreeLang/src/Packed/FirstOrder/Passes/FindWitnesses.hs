@@ -18,14 +18,24 @@ import Debug.Trace
 findWitnesses :: L2.Prog -> SyM L2.Prog
 findWitnesses = L2.mapMExprs fn
  where
+  -- From the point of view of this pass, we "see through" witness markerS:
+  view :: Var -> Var
+  view v = v  -- RRN: actually, coming up with a good policy her is problematic.
+           
+  -- view v | isWitnessVar v = let Just v' = fromWitnessVar v in v'
+  --        | otherwise      = v
+   
   fn _ ex = return (go Map.empty ex)
   go mp ex =
     case ex of 
-      VarE v   -> handle mp $ VarE v
-      LitE n   -> LitE n
-      AppE v e -> handle mp $ AppE v (go Map.empty e)
-      PrimAppE p ls      -> handle mp $ PrimAppE p (map (go Map.empty) ls)
-      LetE (v,t,rhs) bod -> go (Map.insert v (v,t,rhs) mp) bod
+      LetE (v,t,rhs) bod
+          -- | isWitnessVar v -> error$ " findWitnesses: internal error, did not expect to see BINDING of witness var: "++show v
+          | otherwise -> go (Map.insert v (v,t,rhs) mp) bod
+
+      VarE v         -> handle mp $ VarE v
+      LitE n         -> LitE n
+      AppE v e       -> handle mp $ AppE v (go Map.empty e)
+      PrimAppE p ls  -> handle mp $ PrimAppE p (map (go Map.empty) ls)
       ProjE i e      -> handle mp $ ProjE i (go Map.empty e)
       CaseE e ls     -> handle mp $ CaseE e [ (k,vs,go Map.empty e) | (k,vs,e) <- ls ] 
       MkProdE ls     -> handle mp $ MkProdE (map (go Map.empty) ls)
@@ -37,12 +47,12 @@ findWitnesses = L2.mapMExprs fn
 
   buildLets _mp [] bod = bod
   buildLets mp (v:vs) bod =
-      case Map.lookup v mp of
+      case Map.lookup (view v) mp of
         Nothing -> buildLets mp vs bod
         Just bnd -> LetE bnd $ buildLets mp vs bod
 
   handle mp exp = buildLets mp vars exp
-      where freeInBind v = case Map.lookup v mp of
+      where freeInBind v = case Map.lookup (view v) mp of
                              Nothing -> []
                              Just (_v,_t,e) -> Set.toList $ L1.freeVars e
             mkGraph vs = let (g,_,_) = graphFromEdges $ zip3 vs vs $ map freeInBind vs
