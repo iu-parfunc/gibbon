@@ -215,7 +215,17 @@ falseE = PrimAppE MkFalse []
 -- FIXME: we cannot intern strings until runtime.
 hackySymbol :: String -> Int
 hackySymbol s = product (L.map ord s)  
-         
+
+keywords :: S.Set Text
+keywords = S.fromList $ L.map pack $ 
+           [ "quote", "if", "or", "and", "time", "let"
+           , "case", "vector-ref", "for/fold", "for/list"
+           , "insert", "empty-dict", "lookup", "error", "ann"
+           ]
+
+isKeyword :: Text -> Bool       
+isKeyword s = s `S.member` keywords
+                
 exp :: Sexp -> Exp
 exp se =
  -- trace ("\n ==> Processing Exp:\n  "++prnt se)  $ 
@@ -239,15 +249,6 @@ exp se =
    A v -> VarE (toVar v)
    RSAtom (HSInt n)  -> LitE (fromIntegral n)
                         
-   -- L [A "error",arg] ->
-   L3 "ann" (L2 "error" arg) ty -> 
-      case arg of
-        RSAtom (HSString str) -> PrimAppE (ErrorP (T.unpack str) (typ ty)) []
-        _ -> error$ "bad argument to 'error' primitive: "++prnt arg
-
-   -- Other annotations are dropped:
-   L3 "ann" e _ty -> exp e
-
    -- | This type gets replaced later in flatten:
    L2 "time" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()))
    
@@ -274,15 +275,29 @@ exp se =
    L3 "vector-ref" evec (RSAtom (HSInt ind)) -> S.ProjE (fromIntegral ind) (exp evec)
    L (A "vector" : es) -> S.MkProdE $ L.map exp es
 
-   L5 "insert" ty d k v ->
+   -- Dictionaries require type annotations for now.  No inference!
+   L3 "ann" (L1 "empty-dict") (L2 "SymDict" ty) ->
+       PrimAppE (DictEmptyP $ typ ty) []
+
+   L4 "insert" d k (L3 "ann" v ty) ->
        PrimAppE (DictInsertP $ typ ty) [(exp d),(exp k),(exp v)]
 
-   L4 "lookup" ty d k ->
+   L3 "ann" (L3 "lookup" d k) ty ->
        PrimAppE (DictLookupP $ typ ty) [(exp d),(exp k)]
 
-   L2 "empty-dict" ty ->
-       PrimAppE (DictEmptyP $ typ ty) []
-                                                
+   -- L [A "error",arg] ->
+   L3 "ann" (L2 "error" arg) ty -> 
+      case arg of
+        RSAtom (HSString str) -> PrimAppE (ErrorP (T.unpack str) (typ ty)) []
+        _ -> error$ "bad argument to 'error' primitive: "++prnt arg
+
+   -- Other annotations are dropped:
+   L3 "ann" e _ty -> exp e
+
+   L (A kwd : args) | isKeyword kwd ->
+      error $ "Error reading treelang.  Badly formed expression:\n "++prnt se
+                     
+   ----------------------------------------                                                
    -- If NOTHING else matches, we are an application.  Be careful we didn't miss anything:             
    L (A rator : rands) -> 
      let app = AppE (toVar rator)
