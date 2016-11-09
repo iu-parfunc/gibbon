@@ -20,6 +20,7 @@ module Packed.FirstOrder.LTraverse
       
     -- * Utilities for dealing with the extended types:
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc
+    , hasRealPacked, isRealPacked, hasCursorTy
     , tyWithFreshLocs, stripTyLocs, getTyLocs
     , getFunTy, substTy, substEffs
 
@@ -288,7 +289,35 @@ isCursorTy _ = False
 cursorTyLoc :: Show a => Ty1 a -> a
 cursorTyLoc (PackedTy "CURSOR_TY" l) = l
 cursorTyLoc t = error $ "cursorTyLoc: should only be called on a cursor type, not "++show t
-               
+
+-- | We need to ammend this function to NOT consider cursors as "packed".
+-- TODO: switch to some other form of extension on the original Ty data structure!
+hasRealPacked :: Ty1 a -> Bool
+hasRealPacked t =
+    case t of
+      PackedTy{} -> not $ isCursorTy t
+      ProdTy ls -> any hasRealPacked ls
+      SymTy     -> False
+      BoolTy    -> False
+      IntTy     -> False
+      SymDictTy t -> hasRealPacked t
+
+hasCursorTy :: Ty1 a -> Bool
+hasCursorTy t =
+    case t of
+      PackedTy{} -> isCursorTy t
+      ProdTy ls -> any hasCursorTy ls
+      SymTy     -> False
+      BoolTy    -> False
+      IntTy     -> False
+      SymDictTy t -> hasCursorTy t
+
+                     
+isRealPacked :: Ty1 a -> Bool                                         
+isRealPacked t@PackedTy{} = not (isCursorTy t)
+isRealPacked _ = False
+                     
+                
 --------------------------------------------------------------------------------
                      
 -- | Map every lexical variable in scope to an abstract location.
