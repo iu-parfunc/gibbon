@@ -5,6 +5,11 @@ set -xe
 echo "Running on machine: "`hostname -a`
 uname -a
 
+echo "Git commit:"
+(git log | head) || echo ok
+echo "Git commit depth: "
+(git log --pretty=oneline | wc -l) || echo ok
+
 top=`pwd`
 
 if [ "$DOCKER" == "1" ]; then
