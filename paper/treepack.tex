@@ -29,6 +29,9 @@
 \newcommand{\keywd}[1]{\; \texttt{#1} \;}
 \newcommand{\keywdr}[1]{\; \texttt{#1}^{*} \;}
 
+\newif\ifcurly
+\curlytrue
+
 %----------------------------------------
 %% \usepackage[colorinlistoftodos,prependcaption,textsize=tiny]{todonotes}
 %% \usepackage{xargs}
@@ -249,6 +252,17 @@ we continue with our simple example from the introduction: binary trees with
 integer leaves.  In a strongly typed functional language, a recursive walk on
 the tree would typically use pattern matching:
 
+\ifcurly
+\begin{code}[language=c]
+type Tree = Leaf(Int) | Node(Tree,Tree);
+
+fun add1(t) {
+  match(t) {
+    Leaf(n):   return Leaf(n+1);
+    Node(x,y): return Node(add1(x),add1(y));
+  }}
+\end{code}
+\else
 \begin{code}
  data Tree = Leaf Int | Node Tree Tree
   
@@ -257,6 +271,7 @@ the tree would typically use pattern matching:
     Leaf n   -> Leaf (n+1)
     Node x y -> Node (add1 x) (add1 y)
 \end{code}
+\fi
 
 In fact, the small, first-order, purely functional language of tree traversals
 we consider this paper is already a subset of virtually all existing languages.
