@@ -125,7 +125,9 @@ lit := int | #t | #f
 
 (define-syntax-rule (time e)
   (let-values ([(ls cpu real gc) (time-apply (lambda () e) '())])
-    (printf "BATCHTIME: ~a\n" (/ (exact->inexact real) 1000.0))
+    ;; RRN: This causes problems, and it only really makes sense if
+    ;; time is the "iterate" function as well.
+    ; (printf "BATCHTIME: ~a\n" (/ (exact->inexact real) 1000.0))
     (printf "SELFTIMED: ~a\n" (/ (exact->inexact real) 1000.0))
     (match ls
       [(list x) x])))
@@ -147,8 +149,12 @@ lit := int | #t | #f
              (run-n (sub1 n) f))))
 (define-syntax-rule (iterate e)
   (begin (printf "ITERS: ~a\n" (iters-param))
-         (run-n (iters-param) (lambda () e))))
-
+         (let-values ([(ls cpu real gc)
+                       (time-apply (lambda () (run-n (iters-param)
+                                                     (lambda () e))) '())])
+           (printf "BATCHTIME: ~a\n" (/ (exact->inexact real) 1000.0))
+           (match ls
+             [(list x) x]))))
 
 (define-type Int Fixnum)
 (define-type Sym Symbol)

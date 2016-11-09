@@ -27,7 +27,7 @@
               '()))
 
 (define batchseconds (/ real 1000.0))
-(printf "ITERATIONS: ~a\n" iters)
+(printf "ITERS: ~a\n" iters)
 (printf "BATCHTIME: ~a\n" (exact->inexact batchseconds))
 (printf "MEANTIME: ~a\n" (/ batchseconds iters))
 (printf "Node count: ~a\n" (caar cn))

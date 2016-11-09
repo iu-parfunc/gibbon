@@ -75,7 +75,7 @@ run_tests: build
 all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 
 # Assumes stack build:
-%.sexp.out : %.sexp
+%.sexp.out : %.sexp %.sexp.ans
 #	@echo "Testing $^"
 	$(TREEC) $(TREECARGS) $^ > $@ || (touch $^.err; rm -f $@; exit 1)
 #	@echo "Now check expected $$f.ans, versus received, $$f.out";
