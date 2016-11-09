@@ -12,6 +12,8 @@ import qualified Data.Set as Set
 import Data.Graph
 import Debug.Trace
 
+bigNumber = 10
+
 -- | This pass must find witnesses if they exist in the lexical
 -- environment, and it must *reorder* let bindings to bring start/end
 -- witnesses into scope.
@@ -25,12 +27,16 @@ findWitnesses = L2.mapMExprs fn
   -- view v | isWitnessVar v = let Just v' = fromWitnessVar v in v'
   --        | otherwise      = v
    
-  fn _ ex = return (go Map.empty ex)
+  fn _ ex = return (goFix ex bigNumber)
+  goFix ex 0 = error $ "timeout in findWitness on " ++ (show ex)
+  goFix ex n = let ex1 = go Map.empty ex
+                   ex2 = go Map.empty ex1
+               in if ex1 == ex2 then ex2 else goFix ex2 (n - 1)
   go mp ex =
     case ex of 
       LetE (v,t,rhs) bod
           -- | isWitnessVar v -> error$ " findWitnesses: internal error, did not expect to see BINDING of witness var: "++show v
-          | otherwise -> go (Map.insert v (v,t,rhs) mp) bod
+          | otherwise -> go (Map.insert v ((v,t,rhs),bod) mp) bod
 
       VarE v         -> handle mp $ VarE v
       LitE n         -> LitE n
@@ -49,13 +55,12 @@ findWitnesses = L2.mapMExprs fn
   buildLets mp (v:vs) bod =
       case Map.lookup (view v) mp of
         Nothing -> buildLets mp vs bod
-        Just bnd -> LetE bnd $ buildLets mp vs bod
+        Just (bnd,_) -> LetE bnd $ buildLets mp vs bod
 
   handle mp exp = buildLets mp vars exp
       where freeInBind v = case Map.lookup (view v) mp of
                              Nothing -> []
-                             Just (_v,_t,e) -> Set.toList $ L1.freeVars e
-            mkGraph vs = let (g,_,_) = graphFromEdges $ zip3 vs vs $ map freeInBind vs
-                         in g
-            vars = map (vs !!) $ reverse $ topSort $ mkGraph vs
-            vs = Map.keys mp -- traceShowId $ Set.toList $ L1.freeVars exp
+                             Just ((_v,_t,e),exp) -> Set.toList $ Set.union (L1.freeVars e) (L1.freeVars exp)
+            (g,vf,_) = graphFromEdges $ traceShowId $ zip3 vs vs $ map freeInBind vs
+            vars = reverse $ map (\(x,_,_) -> x) $ map vf $ topSort g
+            vs = Map.keys mp
