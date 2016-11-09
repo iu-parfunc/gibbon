@@ -125,10 +125,12 @@ answers: $(ANSWERS)
 
 # --------------------------------------------------------------------------------
 
-valgrind: $(addsuffix .valgrind,$(PASSING_TESTS))
+valgrind: all_tests $(addsuffix .valgrind,$(PASSING_TESTS))
 
 %.sexp.valgrind : %.sexp %.sexp.out
-	valgrind ./$(basename $(basename $@)).exe
+	@echo "\n Valgrind, testing $^"
+	@echo "--------------------------------------------------"
+	valgrind -q --error-exitcode=1 ./$(basename $(basename $@)).exe
 
 # --------------------------------------------------------------------------------
 
