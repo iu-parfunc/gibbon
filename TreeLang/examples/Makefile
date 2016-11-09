@@ -81,14 +81,7 @@ all_tests: answers $(addsuffix .out,$(PASSING_TESTS))
 #	@echo "Now check expected $$f.ans, versus received, $$f.out";
 	@./diff.sh $^.ans $@ || (touch $^.err; rm -f $@; exit 1)
 
-PACKED_FAILING = test11c_funrec.sexp test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp \
-    test12b_traverse.sexp test12c_traverse.sexp \
-    test12_skip.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
- test06i_casecase.sexp test11b_fundata.sexp test11_fundata.sexp 
-# New regressions, ones that used to work:
-PACKED_FAILING += test06_case.sexp test06b_case.sexp test06c_nested.sexp    test06g_rec.sexp
-# test06c_nested.sexp -- unbound function ScopedBuffer
-# Same for other test06 ones above...
+PACKED_FAILING = test06i_casecase.sexp test11c_funrec.sexp test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp test12_skip.sexp test12b_traverse.sexp test12c_traverse.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp
 
 # test12_skip.sexp       -- Requires copy insertion!! unbound var thru to C code
 # test16_forlist.sexp    -- No lists yet
