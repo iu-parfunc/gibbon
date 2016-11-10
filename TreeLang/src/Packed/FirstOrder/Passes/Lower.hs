@@ -227,12 +227,12 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
      dbgTrace 1 ("Dealing with TimeIt:"++ndoc ex0) $    
      do
       tm <- gensym "tmr"
-      tail $ StartTimer tm $
+      tail $ StartTimer tm (show flg) $
               LetE (vr, ty, rhs) $
-               EndTimer tm bod
+               EndTimer tm (show flg) bod 
     -- For internal use only:
-    StartTimer nm bod -> T.StartTimerT nm <$> tail bod
-    EndTimer   nm bod -> T.EndTimerT   nm <$> tail bod
+    StartTimer nm flg bod -> T.StartTimerT nm <$> tail bod <*> pure (read flg)
+    EndTimer   nm flg bod -> T.EndTimerT   nm <$> tail bod <*> pure (read flg)
                         
     --------------------------------Start PrimApps----------------------------------
     -- (1) Primapps that become Tails:
@@ -374,8 +374,8 @@ projOf (ProjE ix e) = let (stk,e') = projOf e in
 projOf e = ([],e)
 
            
-pattern StartTimer t bod = AppE "StartTimer" (MkProdE [VarE t, bod])
-pattern EndTimer t   bod = AppE "EndTimer"   (MkProdE [VarE t, bod])
+pattern StartTimer t flg bod = AppE "StartTimer" (MkProdE [VarE t, VarE flg, bod])
+pattern EndTimer t   flg bod = AppE "EndTimer"   (MkProdE [VarE t, VarE flg, bod])
 
 -- | Make sure an AppE doesn't encode one of our "virtual primops":
 notSpecial :: Exp -> Bool

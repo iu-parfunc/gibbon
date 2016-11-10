@@ -36,6 +36,7 @@ import Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty,
                            cunit)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
+import Data.Loc -- For SrcLoc
 import Prelude hiding (init)
 import System.Environment
 import System.Directory
@@ -123,8 +124,8 @@ data Tail
             con  :: Tail,
             els  :: Tail }
     | ErrT String
-    | StartTimerT Var Tail
-    | EndTimerT   Var Tail
+    | StartTimerT Var Tail Bool -- ^ As with TimeIt, boolean indicates whether it's iterate mode
+    | EndTimerT   Var Tail Bool -- ^ ditto
     | Switch Triv Alts (Maybe Tail) -- TODO: remove maybe on default case
     -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
@@ -241,8 +242,8 @@ harvestStructTys (Prog funs mtal) =
 
        (IfT _ a b) -> go a ++ go b
        ErrT{} -> []
-       (StartTimerT _ b) -> go b
-       (EndTimerT _ b)   -> go b
+       (StartTimerT _ b _) -> go b
+       (EndTimerT _ b _)   -> go b
        (Switch _ (IntAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
        (Switch _ (TagAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
        (TailCall _ _)    -> []
@@ -338,16 +339,17 @@ rewriteReturns tl bnds =
    (LetIfT bnd (a,b,c) bod) -> LetIfT bnd (a,b,c) (go bod)
    (IfT a b c) -> IfT a (go b) (go c)
    (ErrT s) -> (ErrT s)
-   (StartTimerT v x2) -> StartTimerT v $ go x2
-   (EndTimerT v x2)   -> EndTimerT v $ go x2
+   (StartTimerT v x2 b) -> StartTimerT v (go x2) b
+   (EndTimerT v x2 b)   -> EndTimerT v (go x2) b
    (Switch tr alts def) -> Switch tr (mapAlts go alts) (fmap go def)
    -- Oops, this is not REALLY a tail call.  Hoist it and go under:
    (TailCall f rnds) -> let (vs,ts) = unzip bnds
                             vs' = map (++"hack") vs -- FIXME: Gensym
                         in LetCallT (zip vs' ts) f rnds
                             (rewriteReturns (RetValsT (map VarTriv vs')) bnds)
-
-
+dummyLoc :: SrcLoc
+dummyLoc = (SrcLoc (Loc (Pos "" 0 0 0) (Pos "" 0 0 0)))
+                            
 codegenTriv :: Triv -> C.Exp
 codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
 codegenTriv (IntTriv i) = [cexp| $i |]
@@ -395,19 +397,34 @@ codegenTail (IfT e0 e1 e2) ty = do
 codegenTail (ErrT s) _ty = return $ [ C.BlockStm [cstm| printf("%s\n", $s); |]
                                     , C.BlockStm [cstm| exit(1); |] ]
 
-codegenTail (StartTimerT begin tal) ty =
+codegenTail (StartTimerT begin tal _flg) ty =
     do tal' <- codegenTail tal ty
+       let iters = "iters_"++begin
        return $ [ C.BlockDecl [cdecl| struct timespec $id:begin; |]
-                , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid begin)); |]
+                , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid begin));  |]
+                , C.BlockDecl [cdecl| long long $id:iters = global_iters_param; |] 
+                -- Can also use C.EscStm for raw strings it seems:
+                , C.BlockStm (C.Label (C.Id ("start_timer_"++begin) dummyLoc)
+                                   [] (C.Block [] dummyLoc) dummyLoc)
                 ] ++ tal'
 
-codegenTail (EndTimerT begin tal) ty =
+codegenTail (EndTimerT begin tal flg) ty =
     do end <- gensym "endtmr"
        tal' <- codegenTail tal ty
-       return $ [ C.BlockDecl [cdecl| struct timespec $id:end; |]
+       let label = "start_timer_"++begin
+           iters = "iters_"++begin
+       return $ (if flg
+                 then [C.BlockStm [cstm| if($id:iters > 0) { $id:iters --; goto $id:label; } else { } |]]
+                 else []) ++
+                [ C.BlockDecl [cdecl| struct timespec $id:end; |]
                 , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid end)); |]
-                , C.BlockStm [cstm| printf("SELFTIMED: %lf\n", difftimespecs(&$(cid begin), &$(cid end))); |]
-                ] ++ tal'
+                ] ++
+                (if flg
+                 then [ C.BlockStm [cstm| printf("ITERS: %lld\n", global_iters_param); |]
+                      , C.BlockStm [cstm| printf("SIZE: %lld\n", global_size_param); |]
+                      , C.BlockStm [cstm| printf("BATCHTIME: %lf\n", difftimespecs(&$(cid begin), &$(cid end))); |]]
+                 else [ C.BlockStm [cstm| printf("SELFTIMED: %lf\n", difftimespecs(&$(cid begin), &$(cid end))); |] ])
+                ++tal'
 
 -- We could eliminate these earlier
 codegenTail (LetTrivT (vr,rty,rhs) body) ty =

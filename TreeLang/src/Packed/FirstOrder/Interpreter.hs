@@ -110,7 +110,7 @@ exec env (IfT v1 then_ else_) =
 exec _ (ErrT s) =
     error $ "ErrT: " ++ s
 
-exec env (StartTimerT begin e) = do
+exec env (StartTimerT begin e flg) = do
     !_ <- return $! force env
     -- st <- return $! unsafePerformIO getCurrentTime
     st <- return $! unsafePerformIO $ getTime clk
@@ -119,7 +119,7 @@ exec env (StartTimerT begin e) = do
     -- We don't time in the interpreter
     exec env' e
 
-exec env (EndTimerT begin e) = do
+exec env (EndTimerT begin e flg) = do
     !_ <- return $! force env
     -- en <- return $! unsafePerformIO getCurrentTime
     en <- return $! unsafePerformIO $ getTime clk

@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+// #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -13,8 +14,8 @@
 // 10MB default:
 #define DEFAULT_BUF_SIZE 10000000
 
-static int global_size_param = 1;
-static int global_iters_param = 1;
+static long long global_size_param = 1;
+static long long  global_iters_param = 1;
 
 typedef struct dict_item {
   struct dict_item * next;
