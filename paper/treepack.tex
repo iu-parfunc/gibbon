@@ -316,6 +316,43 @@ Swift, Rust, etc.  Only the details of switching on sum types (tagged unions) di
 
 \note{Informal overview of language}
 
+To demonstrate the compilation technique we are presenting, we present
+$\treelang{}$, a typed programming language that is simple enough to
+present briefly in a paper, and featureful enough to express some
+interesting programs, such as common compiler passes.
+
+Programs consist of a series of data type declarations and function
+declarations. Similar to most functional programming languages,
+programmers may define \emph{algebraic data types}, and dispatch on
+them with a \texttt{match} language form (called \texttt{case} or
+\texttt{switch} in some languages). For example, a data type for peano
+numbers would have two cases: zero and successor.
+
+\note{We already gave an example of a program in TreeLang earlier...
+  probably only need one, unless we're doing something different here}
+
+\begin{code}[language=haskell]
+type Nat = Zero | Suc(Nat);
+\end{code}
+
+For simplicity, $\treelang{}$ is a first-order language, so all
+functions are defined at the top level.
+
+\begin{code}[language=haskell]
+fun trav(x) {
+  match(x) {
+    Zero: return 0;
+    Suc(n): return 1 + trav(n);
+}}
+\end{code}
+
+In addition to algebraic data types and various numerical types, $\treelang{}$ supports
+general purpose persistent dictionaries, which are useful for implementing compiler
+passes in a functional style.
+
+\note{Show an example of using a dictionary? Or just give the types?}
+
+\note{Describe the Racket front-end and how it works.}
 
 % ================================================================================
 \section{Formal Language}
@@ -330,9 +367,11 @@ with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 
 \subsection{L1: Source language}
 
-\note{Do we have a problem if we just stick to the way sums and products are usually presented?
-  Or do we need recursive types? Also, binary sums and products might make the switch form
-  in L2 less interesting.}
+%% \note{Do we have a problem if we just stick to the way sums and products are usually presented?
+%%   Or do we need recursive types? Also, binary sums and products might make the switch form
+%%   in L2 less interesting.}
+
+\note{This is horribly outdated and needs to be rewritten.}
 
 \begin{figure}
   \begin{displaymath}
