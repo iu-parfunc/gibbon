@@ -63,13 +63,11 @@ unariserExp _ = go [] []
   discharge (ix:rst) e = discharge rst (ProjE ix e)
 
   -- FIXME: need to track full expr binds like InlineTrivs
+  -- Or do we?  Not clear yet.                         
   go :: ProjStack -> [(Var,[Var])] -> L1.Exp -> SyM L1.Exp
   go stk env e0 =
    -- dbgTrace 5 ("Inline, processing with env:\n "++sdoc env++"\n exp: "++sdoc e0) $
    case e0 of
-    -- TEMP: HACK/workaround.  See FIXME above.
-    LetE (v1,ProdTy tys,rhs) (ProjE ix (VarE v2)) | v1 == v2 ->
-       go (ix:stk) env rhs
      
     (ProjE i e)  -> go (i:stk) env e  -- Push a projection inside lets or conditionals.
     (MkProdE es) -> case stk of
@@ -85,6 +83,16 @@ unariserExp _ = go [] []
                   Nothing -> pure$ VarE (var v)
                   Just vs -> pure$ MkProdE [ VarE v | v <- vs ]
 
+    -- TEMP: HACK/workaround.  See FIXME above.
+    LetE (v1,ProdTy _,rhs@LetE{})  (ProjE ix (VarE v2)) | v1 == v2 -> go (ix:stk) env rhs
+    LetE (v1,ProdTy _,rhs@CaseE{}) (ProjE ix (VarE v2)) | v1 == v2 -> go (ix:stk) env rhs
+
+    ----- These three cases are permitted to remain tupled by Lower: -----
+    (LetE (v,ty@ProdTy{}, rhs@IfE{})   bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
+    (LetE (v,ty@ProdTy{}, rhs@CaseE{}) bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
+    (LetE (v,ty@ProdTy{}, rhs@AppE{})  bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
+    ------------------
+                                              
     -- Flatten so that we can see what's stopping us from unzipping:
     (LetE (v1,t1, LetE (v2,t2,rhs2) rhs1) bod) -> do
          go stk env $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
@@ -94,12 +102,7 @@ unariserExp _ = go [] []
         let env' = (v,vs):env
         -- Here we *reprocess* the results in case there is more unzipping to do:
         go stk env' $ mklets (zip3 vs tys ls) e
-
-    ----- These three cases are permitted to remain tupled by Lower: -----
-    (LetE (v,ty@ProdTy{}, rhs@IfE{})   bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
-    (LetE (v,ty@ProdTy{}, rhs@CaseE{}) bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
-    (LetE (v,ty@ProdTy{}, rhs@AppE{})  bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
-
+                                              
     -- And this is a HACK.  Need a more general solution:
     (LetE (v,ty@ProdTy{}, rhs@(TimeIt _ _)) bod)->
         LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod

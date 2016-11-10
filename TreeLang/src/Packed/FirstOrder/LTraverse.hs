@@ -358,14 +358,20 @@ cursorizeTy1 (ArrowTy inT ef ouT) = (newArr, newOut)
 cursorizeTy2 :: ArrowTy Ty -> (ArrowTy Ty, [LocVar])
 cursorizeTy2 (ArrowTy inT ef ouT) =  (newArr, newIn)
  where
-  newArr  = ArrowTy newInTy ef newOutTy
+  newArr   = ArrowTy newInTy ef newOutTy
   newInTy  = prependArgs (L.map mkCursorTy newIn)
                          (mapPacked (\_ l -> mkCursorTy l) inT)
   -- Let's turn output values into updated-output-cursors:
   -- NOTE: we could distinguish between the (size ef) output cursors
   -- that are already prepended here:
   newOutTy = mapPacked (\_ l -> mkCursorTy (ensureEndVar l)) ouT
-  newIn    = allLocVars ouT -- These stay in their original order (preorder)
+  newIn    =
+   if S.null ef
+   then allLocVars ouT -- These stay in their original order (preorder)
+   else -- Strip the added output cursors off before computing this
+        let ProdTy ls = ouT in
+        allLocVars (ProdTy (L.drop (S.size ef) ls))
+
 
 ensureEndVar :: Var -> Var
 ensureEndVar v | isEndVar v = v
