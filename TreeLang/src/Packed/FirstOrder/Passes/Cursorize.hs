@@ -155,7 +155,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
   -- same variable after this pass.  We need these binders to
   -- have teeth, thus either ALL occurrences must be marked as witnesses, or NONE:             
   -- binderWitness = toWitnessVar
-             
+  -- 
   -- TODO: To mark ALL as witnesses we'll need to keep a type
   -- environment so that we can distinguish cursor and non-cursor
   -- values.  For now it's easier to strip all markers:
@@ -280,8 +280,11 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                        
   -- | Given a cursor to the position right after the tag, unpack the
   -- fields of a datacon, and return the given expression in that context.
+  -- This also has the job of inserting `end_x2==start_x1` witnesses.
   unpackDataCon :: Var -> (Constr, [Var]) -> Exp -> SyM Exp
-  unpackDataCon cur0 (k,vrs) rhs = go cur0 (Just 0) vsts
+  unpackDataCon cur0 (k,vrs) rhs =
+      dbgTrace 5 ("unpackDataCon: "++show(cur0, (k,vsts))) $
+      go cur0 (Just 0) vsts
      where 
        vsts = zip vrs (lookupDataCon ddefs k)
        -- (lastV,_) = L.last vsts
@@ -289,32 +292,42 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
        add 0 e = e
        add n e = PrimAppE L1.AddP [e, LitE n]
 
-       -- Issue reads to get out all the fields:
+       -- Loop over fields.  Issue reads to get out all the fields:
        go _c _off [] = return rhs -- Everything is now in scope for the body.
                      -- TODO: we could witness the end if we still have the offset.
        go c offset ((vr,ty):rs) = do
          tmp <- gensym "tptmp"
-         -- Each cursor position is either the witness of
-         -- the next thing, or the witness of the end of the last thing.
-         let witNext e =
+         let -- Each end-cursor position is either the witness of
+             -- the next thing, or the witness of the end of the last thing:
+             witNext e =
+               dbgTrace 5 ("WITNESS NEXT: "++show(vr,rs)) $
                  case rs of
                     []       -> e
                     (v2,_):_ -> LetE (binderWitness v2, CursorTy, cdrCursor (VarE tmp)) e
-         case ty of
-           -- TODO: Generalize to other scalar types:
-           IntTy ->
-             -- Warning: this is not a dilated type per se, it's a specific record for this prim:
-             LetE (tmp, snocCursor IntTy, ReadInt c) <$>
-              witNext <$>                  
-               LetE (toEndVar vr, CursorTy, cdrCursor (VarE tmp)) <$>
-                LetE (vr, IntTy, carVal (VarE tmp)) <$>
-                 go (toEndVar vr) (liftA2 (+) (L1.sizeOf IntTy) offset) rs
-           ty | isPacked ty -> do
-            -- Strategy: ALLOW unbound witness variables. A later traversal will reorder.
-            case offset of
-              Nothing -> go (toEndVar vr) Nothing rs
-              Just n -> LetE (binderWitness vr, CursorTy, add n (VarE cur0)) <$>
-                        go (toEndVar vr) Nothing rs
+             go2 = -- Do the type-specific reading of the fields:
+              case ty of
+                -- TODO: Generalize to other scalar types:
+                IntTy ->
+                  -- Warning: this is not a dilated type per se, it's a specific record for this prim:
+                  LetE (tmp, snocCursor IntTy, ReadInt c) <$>
+                    LetE (toEndVar vr, CursorTy, cdrCursor (VarE tmp)) <$>
+                     LetE (vr, IntTy, carVal (VarE tmp)) <$>
+                       let gorst = go (toEndVar vr) (liftA2 (+) (L1.sizeOf IntTy) offset) rs
+                       in if offset == Nothing
+                          then witNext <$> gorst
+                          else gorst -- If offset is still static, don't need to to help our dowstream find themselves.
+                ty | isPacked ty -> 
+                 -- Strategy: ALLOW unbound witness variables. A later traversal will reorder.
+                 witNext <$>                                    
+                   go (toEndVar vr) Nothing rs
+                                                 
+         -- No matter what type of field is next, we always prefer a static witness:
+         case offset of
+            -- Statically sized, we know right where it is:
+            Just n  -> LetE (binderWitness vr, CursorTy, add n (VarE cur0)) <$> go2              
+            -- Dynamically sized, we can still chain things
+            -- together, but we don't know the answer straight out.
+            Nothing -> go2
 
 
   -- | Take a destination cursor set.  Here we are in a context that
