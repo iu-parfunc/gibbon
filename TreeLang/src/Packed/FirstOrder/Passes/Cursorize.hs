@@ -89,15 +89,32 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
           Just (x,mainTy) -> Just . (,mainTy) <$>
              if L1.hasPacked mainTy
              then -- Allocate into a global cursor:
-                  do cur <- gensym "globcur"
-                     LetE (cur,CursorTy,NewBuffer) <$>
-                      exp2 cur x
+                  do dests <- tyToCursors "globcur" mainTy
+                     mkLets [ (cur,CursorTy,NewBuffer)
+                            | cur <- allCursors dests ] <$>
+                      exp2 dests x
              else exp x
   return L2.Prog{ fundefs = M.fromList $ L.map (\f -> (L2.funname f,f)) fds'
                 , ddefs = ddefs
                 , mainExp = mn
                 }
  where
+  tyToCursors :: Var -> L1.Ty -> SyM Dests
+  tyToCursors nm ty =
+    case ty of
+      ProdTy ls -> TupOut <$> mapM (tyToCursors nm) ls
+      t | L2.isCursorTy t -> Cursor <$> gensym nm
+        | otherwise       -> pure NoCursor
+
+  mkLets [] bod = bod
+  mkLets (b:bs) bod = LetE b (mkLets bs bod)
+                             
+  allCursors d = case d of
+                   NoCursor -> []
+                   Cursor a -> [a]
+                   TupOut ls -> concatMap allCursors ls
+                              
+                             
   fd :: L2.FunDef -> SyM L2.FunDef
   fd L2.FunDef{funname,funty,funarg,funbod} =
       dbgTrace lvl (" [cursorDirect] processing fundef "++show(funname,funty)) $ do
@@ -105,7 +122,9 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
      -- unbound references to the function's output cursors, named
      -- "f_1, f_2..." for a function "f".    
      let (funty'@(ArrowTy inT _ outT),_) = L2.cursorizeTy2 funty
-         outCurs = [ funname ++"_"++ show ix | ix <- [1 .. countPacked outT] ]
+     outDests <- tyToCursors funname (fmap (const ()) outT)
+         -- outCurs = [ funname ++"_"++ show ix | ix <- [1 .. countPacked outT] ]
+     let outCurs  = allCursors outDests
      (arg,exp') <-
            dbgTrace lvl (" [cursorDirect] for function "++funname++" outcursors: "
                          ++show outCurs++" for ty "++show outT) $ 
@@ -115,11 +134,12 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                [cur] ->                  
                   do tmp <- gensym "fnarg"
                      -- let go = -- TODO: do a loop for multiple added cursors.
-                     b <- LetE (cur, CursorTy, ProjE 0 (VarE tmp)) <$>
+                     b <- mkLets [ (cur, CursorTy, ProjE ix (VarE tmp))
+                                 | (cur,ix) <- zip outCurs [0..] ] <$>
                            LetE ( funarg
                                 , fmap (const ()) (arrIn funty')
                                 , projVal (VarE tmp)) <$>
-                            projVal <$> exp2 cur funbod
+                            projVal <$> exp2 outDests funbod
                      return (tmp,b)
                _ -> error $ "cursorDirect: add support for functionwith multiple output cursors: "++ funname
      return $ L2.FunDef funname funty' arg exp'
@@ -152,7 +172,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       LetE (v,ty,rhs) bod
           | L2.isRealPacked ty -> do tmp <- gensym  "tmpbuf"
                                      rhs' <- LetE (tmp,CursorTy,NewBuffer) <$>
-                                             exp2 tmp rhs
+                                             exp2 (Cursor tmp) rhs
                                      withDilated ty rhs' $ \rhs'' ->
                                         -- Here we've reassembled the non-dialated view, original type:
                                         LetE (v,ty, rhs'') <$> exp bod
@@ -175,7 +195,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
 
   -- | Handle a case expression in packed or unpacked context.  Take a
   -- cursor in the former case and not in the latter.
-  docase :: Maybe Var -> (Exp,L1.Ty) -> [(Constr,[Var],Exp)] -> SyM Exp
+  docase :: Maybe Dests -> (Exp,L1.Ty) -> [(Constr,[Var],Exp)] -> SyM Exp
   docase mcurs (scrtE,tyScrut) ls = do         
          cur0 <- gensym "cursIn" -- our read cursor
 
@@ -188,7 +208,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                    else do tmp <- gensym "scopd"
                            Right <$>
                             LetE (tmp,CursorTy,ScopedBuffer) <$>
-                             exp2 tmp scrtE
+                             exp2 (Cursor tmp) scrtE
 
          dbgTrace 1 (" 3. Case scrutinee "++sdoc scrtE++" alloc free?"++show (allocFree scrtE)) $ return ()
          let mkit e = 
@@ -196,14 +216,14 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                 (forM ls $ \ (k,vrs,e) -> do
                    e'  <- case mcurs of
                             Nothing -> exp e
-                            Just c  -> exp2 c e
+                            Just dc -> exp2 dc e
                    e'' <- unpackDataCon cur0 (k,vrs) e'
                    return (k,[cur0],e''))
          case scrtE' of
            Left  e  -> mkit e
            Right di -> withDilated tyScrut di mkit
 
-  doapp :: Maybe Var -> Var -> Exp -> SyM Exp
+  doapp :: Maybe Dests -> Var -> Exp -> SyM Exp
   doapp mcurs f e = 
           -- If the function argument is of a packed type, we need to switch modes:
           -- data ArrowTy t = ArrowTy { arrIn :: t, arrEffs:: (Set Effect), arrOut:: t }
@@ -212,7 +232,8 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
               mkapp arg'' =
                  case mcurs of
                    Nothing -> return $ AppE f arg''
-                   Just destCurs ->
+                   -- FINISHME: GENERALIZE:
+                   Just (Cursor destCurs) ->
                      -- TODO: need to generalize this to handle arbitrary-in/arbitrary-out combinations.
                      case (newArg,ret) of                       
                        (ProdTy [curt,_],PackedTy{}) | L2.isCursorTy curt -> do                                
@@ -233,7 +254,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
             -- TODO: apply the allocFree trick that we use below.  Abstract it out.
             PackedTy{} -> do cr <- gensym "argbuf"
                              LetE (cr,CursorTy,ScopedBuffer) <$> do
-                               e' <- exp2 cr e                             
+                               e' <- exp2 (Cursor cr) e
                                withDilated arg e' $ \e'' ->                                                               
                                  mkapp e''
                                       
@@ -284,7 +305,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
   --   Here we are in a context that flows to Packed data, we follow a
   --   convention of returning a pair of value/end.
   --  CONTRACT: The caller must deal with this pair.
-  exp2 :: Var -> Exp -> SyM Exp
+  exp2 :: Dests -> Exp -> SyM Exp
   exp2 destC ex0 =
     dbgTrace lvl (" 2. Processing expr in packed context, cursor "++show destC++", exp:\n  "++sdoc ex0) $ 
     let go = exp2 destC in
@@ -297,28 +318,29 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       LitE _ -> error$ "cursorDirect/exp2: Should not encounter Lit in packed context: "++show ex0
 
       -- Here's where we write the dest cursor:
-      MkPackedE k ls -> do
-       -- tmp1  <- gensym "tmp"
-       dest' <- gensym "cursplus1_"
+      MkPackedE k ls ->
+       case destC of
+        (Cursor curs) -> do            
+          dest' <- gensym "cursplus1_"
 
-       -- This stands for the  "WriteTag" operation:
-       LetE (dest', PackedTy (getTyOfDataCon ddefs k) (),
-                  MkPackedE k [VarE destC]) <$>
-          let go2 d [] = return $ MkProdE [VarE destC, VarE d]
-                 -- ^ The final return value lives at the position of the out cursor
-              go2 d ((rnd,IntTy):rst) | L1.isTriv rnd = do
-                  d'    <- gensym "curstmp"
-                  LetE (d', CursorTy, WriteInt d rnd ) <$>
-                    (go2 d' rst)
-              -- Here we recursively transfer control
-              go2 d ((rnd,ty@PackedTy{}):rst) = do
-                  tup  <- gensym "tup"
-                  d'   <- gensym "dest"
-                  rnd' <- exp2 d rnd
-                  LetE (tup, cursPairTy, rnd') <$>
-                   LetE (d', CursorTy, ProjE 1 (VarE tup) ) <$>
-                    (go2 d' rst)
-          in go2 dest' (zip ls (lookupDataCon ddefs k))
+          -- This stands for the  "WriteTag" operation:
+          LetE (dest', PackedTy (getTyOfDataCon ddefs k) (),
+                     MkPackedE k [VarE curs]) <$>
+             let go2 d [] = return $ MkProdE [VarE curs, VarE d]
+                    -- ^ The final return value lives at the position of the out cursor
+                 go2 d ((rnd,IntTy):rst) | L1.isTriv rnd = do
+                     d'    <- gensym "curstmp"
+                     LetE (d', CursorTy, WriteInt d rnd ) <$>
+                       (go2 d' rst)
+                 -- Here we recursively transfer control
+                 go2 d ((rnd,ty@PackedTy{}):rst) = do
+                     tup  <- gensym "tup"
+                     d'   <- gensym "dest"
+                     rnd' <- exp2 (Cursor d) rnd
+                     LetE (tup, cursPairTy, rnd') <$>
+                      LetE (d', CursorTy, ProjE 1 (VarE tup) ) <$>
+                       (go2 d' rst)
+             in go2 dest' (zip ls (lookupDataCon ddefs k))
 
       -- This is already a witness binding, we leave it alone.
       LetE (v,ty,rhs) bod | L2.isCursorTy ty -> do
@@ -357,8 +379,14 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
 
       -- Here we need to figure out WHICH branch has the packed data.
       -- We need a bundle of multiple cursors.
-      MkProdE ls ->          -- MkProdE <$> mapM go ls
-          error$ "cursorDirect: MkProdE: probable need to track the type in order to traverse further: "++sdoc ex0
+      MkProdE ls ->  -- MkProdE <$> mapM go ls
+        case destC of
+          TupOut ds -> do
+            es <- mapM (\(dst,e) -> exp2 dst e)
+                       (fragileZip ds ls)
+            return$ MkProdE es
+          _ -> error$ "cursorDirect: MkProdE, cursor argument "++show destC
+                      ++ " does not match tuple: "++show ls
 
      -- ProjE i e  -> ProjE i <$> go e
                         
@@ -373,10 +401,12 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
 -- | A given return context for a type satisfying `hasPacked` either
 -- flows to a single cursor or to multiple cursors.
 data Dests = Cursor Var
-           | TupOut [Maybe Dests] -- ^ The layout of this matches the
-                                  -- ProdTy, but not every field contains a Packed.
-
---------------------------- Dilation Conventions -------------------------------
+           | NoCursor
+           | TupOut [Dests]  -- ^ The layout of this matches the
+                             -- ProdTy, but not every field contains a Packed.
+ deriving (Eq,Show,Ord,Read) 
+             
+-------------------------- Dilation Conventions -------------------------------
 
 -- newtype DiExp = Di Exp
 type DiExp = Exp
@@ -402,7 +432,7 @@ dilate ty =
     BoolTy -> BoolTy
     (ProdTy x) -> ProdTy $ L.map dilate x
     (SymDictTy x) -> SymDictTy $ dilate x
-    (PackedTy x1 x2) -> cursPairTy
+    (PackedTy _ _) -> cursPairTy
     (ListTy x) -> ListTy $ dilate x
 
 -- Todo: could use DiExp newtype here:
