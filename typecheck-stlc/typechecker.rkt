@@ -34,26 +34,13 @@
       [Lam ListParam Expr]
       [App Expr ListExpr])
 
-;; environment
-(data Env
-      [Empty]
-      [Extend-Env Sym Type Env])
+(define (extend-env [e : (SymDict Type)] [sym : Sym] [type : Type]) : (SymDict Type)
+  (insert e sym type))
 
-;; TODO: convert environment to dict?
+(define (lookup-env [e : (SymDict Type)] [sym : Sym]) : Type
+  (lookup e sym))
 
-(define (extend-env [e : Env] [sym : Sym] [type : Type]) : Env
-  (Extend-Env sym type e))
-
-;; need an equality function
-(define (lookup-env [e : Env] [sym : Sym]) : Type
-  (case e
-    [(Empty) (error "not found in env")]
-    [(Extend-Env s expr e_)
-     (if (eq? s sym)
-         expr
-         (lookup-env e_ sym))]))
-
-(define (typecheck-begin [exprs : ListExpr] [env : Env]) : Type
+(define (typecheck-begin [exprs : ListExpr] [env : (SymDict Type)]) : Type
   (case exprs
     [(CONSEXPR e rest)
      (case rest
@@ -65,14 +52,14 @@
     [(NULLEXPR)
      (error "Should never get here.")]))
 
-(define (lam-extend-env [params : ListParam] [env : Env]) : Env
+(define (lam-extend-env [params : ListParam] [env : (SymDict Type)]) : (SymDict Type)
   (case params
     [(CONSPARAM param rest)
-     (let ([nenv : Env (case param
-       	  	         [(P e t)
-        		  (case e
-	 		 [(S sym)
-      		          (extend-env sym t)])])])
+     (let ([nenv : (SymDict Type) (case param
+       	  	            	    [(P e t)
+        		  	     (case e
+	 		 	    [(S sym)
+      		          	     (extend-env sym t)])])])
        (lam-extend-env rest nenv))]
     [(NULLPARAM)
      env]))
@@ -121,7 +108,7 @@
        [(Bool_) #f]
        [(NullT) #f])]))
         
-(define (params-args-equal? [ptypes : ListType] [args : ListExpr] [env : Env]) : Bool
+(define (params-args-equal? [ptypes : ListType] [args : ListExpr] [env : (SymDict Type)]) : Bool
   (case ptypes
     [(NULLTYPE)
      (case args
@@ -143,7 +130,7 @@
     [(NULLPARAM)
      (NULLTYPE)]))
 
-(define (typecheck [expr : Expr] [env : Env] ): Type
+(define (typecheck [expr : Expr] [env : (SymDict Type)] ): Type
   (case expr
     [(Null)
      (NullT)]
