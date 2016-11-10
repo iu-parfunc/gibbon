@@ -116,6 +116,7 @@ TREELANGDIR=$(shell cd ..; pwd)
 TREEC=$(shell cd ../TreeLang; stack exec -- which treec)
 
 buildtree: buildtree_treelang_c_packed.exe
+	raco make buildtree_treelang.sexp
 # buildtree_treelang_c_pointer.exe
 
 # Don't build in parallel!!!
