@@ -1,17 +1,26 @@
 #lang s-exp "../TreeLang/treelang.rkt"
 
-;; FIXME: need to wean this off of car/cdr onto for/list fold/list
-(require (only-in racket/base car cdr))
-
 ;; use structs/data instead of sexp
 (provide typecheck-expr
          Int_ Bool_ Lamt P S N B Begin Lam App)
+
+(data ListExpr
+      [CONSEXPR Expr ListExpr]
+      [NULLEXPR])
+
+(data ListParam
+      [CONSPARAM Param ListParam]
+      [NULLPARAM])
+
+(data ListType
+      [CONSTYPE Type ListType]
+      [NULLTYPE])      
 
 (data Type
       [Int_]
       [Bool_]
       [NullT]
-      [Lamt (Listof Type) Type])
+      [Lamt ListType Type])
 
 (data Param
       [P Expr Type])
@@ -21,52 +30,54 @@
       [S Sym]
       [N Int]
       [B Bool] ;; leaving out null for now
-      [Begin (Listof Expr)]
-      [Lam (Listof Param) Expr]
-      [App Expr (Listof Expr)])
+      [Begin ListExpr]
+      [Lam ListParam Expr]
+      [App Expr ListExpr])
 
-;; environment
-(data Env
-      [Empty]
-      [Extend-Env Sym Type Env])
+(define (extend-env [e : (SymDict Type)] [sym : Sym] [type : Type]) : (SymDict Type)
+  (insert e sym type))
 
-(define (extend-env [e : Env] [sym : Sym] [type : Type]) : Env
-  (Extend-Env sym type e))
+(define (lookup-env [e : (SymDict Type)] [sym : Sym]) : Type
+  (lookup e sym))
 
-;; need an equality function
-(define (lookup-env [e : Env] [sym : Sym]) : Type
-  (case e
-    [(Empty) (error "not found in env")]
-    [(Extend-Env s expr e_)
-     (if (eq? s sym)
-         expr
-         (lookup-env e_ sym))]))
+(define (typecheck-begin [exprs : ListExpr] [env : (SymDict Type)]) : Type
+  (case exprs
+    [(CONSEXPR e rest)
+     (case rest
+      [(CONSEXPR e2 rest)
+       (let ([t : Type (typecheck e env)])
+         (typecheck-begin rest env))]
+      [(NULLEXPR)
+       (typecheck e env)])]
+    [(NULLEXPR)
+     (error "Should never get here.")]))
 
-(define (typecheck-begin [exprs : (Listof Expr)] [env : Env]) : Type
-  (if (empty? (cdr exprs)) 
-      (typecheck (car exprs) env)
-      (let ()
-        (typecheck (car exprs) env)
-        (typecheck-begin (cdr exprs) env))))
-
-(define (lam-extend-env [params : (Listof Param)] [env : Env]) : Env
-  (if (empty? params)
-      env
-      (case (car params)
-        [(P s t)
-         (case s
-           [(S sym)
-            (extend-env env sym t)])])))
-
-;; car/cdr could error
-(define (type-equal-list? [l1 : (Listof Type)] [l2 : (Listof Type)]) : Bool
-  (if (and (empty? l1)
-           (empty? l2))
-      #t
-      (and
-       (type-equal? (car l1) (car l2))
-       (type-equal-list? (cdr l1) (cdr l2)))))
-
+(define (lam-extend-env [params : ListParam] [env : (SymDict Type)]) : (SymDict Type)
+  (case params
+    [(CONSPARAM param rest)
+     (let ([nenv : (SymDict Type) (case param
+       	  	            	    [(P e t)
+        		  	     (case e
+	 		 	    [(S sym)
+      		          	     (extend-env sym t)])])])
+       (lam-extend-env rest nenv))]
+    [(NULLPARAM)
+     env]))
+     
+(define (type-equal-list? [l1 : ListType] [l2 : ListType]) : Bool
+  (case l1
+    [(CONSTYPE t1 rest1)
+     (case l2
+       [(CONSTYPE t2 rest2)
+        (if (type-equal? t1 t2)
+	    (type-equal-list? rest1 rest2)
+	    #f)]
+       [(NULLTYPE) #f])]
+    [(NULLTYPE)
+     (case l2
+       [(CONSTYPE t2 rest2) #f]
+       [(NULLTYPE)          #t])]))
+    
 (define (type-equal? [t1 : Type] [t2 : Type]) : Bool
   (case t1
     [(NullT)
@@ -97,17 +108,29 @@
        [(Bool_) #f]
        [(NullT) #f])]))
         
+(define (params-args-equal? [ptypes : ListType] [args : ListExpr] [env : (SymDict Type)]) : Bool
+  (case ptypes
+    [(NULLTYPE)
+     (case args
+      [(CONSEXPR e rest) (error "Args and Params not same length.")]
+      [(NULLTYPE) #t])]
+    [(CONSTYPE t rest)
+     (case args
+       [(CONSEXPR e rest2)
+        (if (type-equal? t (typecheck e env))
+	    (params-args-equal? rest rest2 env)
+	    #f)]
+       [(NULLEXPR) (error "Args and Params not same length.")])]))
 
-;; car/cdr will fail if they are not of same length. don't do error checking
-(define (params-args-equal? [ptypes : (Listof Type)] [args : (Listof Expr)] [env : Env]) : Bool
-  (if (and (empty? ptypes)
-           (empty? args))
-      #t
-      (and
-       (type-equal? (car ptypes) (typecheck (car args) env))
-       (params-args-equal? (cdr ptypes) (cdr args) env))))
+(define (getParamTypes [params : ListParam]) : ListType
+  (case params
+    [(CONSPARAM param rest)
+     (case param
+       [(P e t) (CONSTYPE t (getParamTypes rest))])]
+    [(NULLPARAM)
+     (NULLTYPE)]))
 
-(define (typecheck [expr : Expr] [env : Env] ): Type
+(define (typecheck [expr : Expr] [env : (SymDict Type)] ): Type
   (case expr
     [(Null)
      (NullT)]
@@ -120,19 +143,14 @@
     [(Begin ls)
      (typecheck-begin ls env)]
     [(Lam params body)
-     (Lamt (for/list ([p : Param params])
-             (case p
-               [(P s t)
-                t]))
-           (typecheck body (lam-extend-env params env)))]
+     (Lamt (getParamTypes params)
+     	   (typecheck body (lam-extend-env params env)))]
     [(App lam args)
      (case (typecheck lam env)
        [(Lamt ptypes btype)
         (if (params-args-equal? ptypes args env)
             btype
             (error "no type"))])]))
-
-;; (let ([v : t e] ...) e)    
 
 (define (typecheck-expr [expr : Expr]) : Type
   (typecheck expr (Empty)))
