@@ -221,11 +221,10 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
             let rhs'' = 
                   let Fixed v = scrutloc                                
                   in LetE (toEndVar v, mkCursorTy (),
-                           -- If there is no last field, the constructors
-                           -- end is just after the tag:
-                           if L.null patVs
-                           then PrimAppE L1.AddP [VarE (L2.toWitnessVar v), LitE 1]
-                           else VarE (toEndVar (L.last patVs)))
+                           case sequence (L.map L1.sizeOf tys) of
+                             -- Here we statically know the layout, plus one for the tag:
+                             Just ns -> PrimAppE L1.AddP [VarE (L2.toWitnessVar v), LitE (sum ns+1)]
+                             Nothing -> VarE (toEndVar (L.last patVs)))
                        rhs'
                         
             return ((dcon,patVs,rhs''),loc)
