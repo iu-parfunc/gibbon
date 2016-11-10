@@ -37,22 +37,20 @@ findWitnesses = L2.mapMExprs fn
       LetE (v,t,TimeIt e ty) bod -> 
           handle mp $ LetE (v,t,TimeIt (go Map.empty e) ty) (go Map.empty bod)
 
-      -- TODO: it looks like the RHS's never get processed.  What if there's a big CaseE in the RHS?
       LetE (v,t,rhs) bod
           -- | isWitnessVar v -> error$ " findWitnesses: internal error, did not expect to see BINDING of witness var: "++show v
-          | otherwise -> go (Map.insert v (v,t,rhs) mp) bod -- don't put the bod in the map
+          | otherwise -> go (Map.insert v (v,t,rhs') mp) bod -- don't put the bod in the map
+            where rhs' = go Map.empty rhs -- recur on rhs
 
       VarE v         -> handle mp $ VarE v
-      LitE n         -> LitE n
+      LitE n         -> handle mp $ LitE n
       AppE v e       -> handle mp $ AppE v (go Map.empty e)
       PrimAppE p ls  -> handle mp $ PrimAppE p (map (go Map.empty) ls)
       ProjE i e      -> handle mp $ ProjE i (go Map.empty e)
       CaseE e ls     -> handle mp $ CaseE e [ (k,vs,go Map.empty e) | (k,vs,e) <- ls ] 
       MkProdE ls     -> handle mp $ MkProdE (map (go Map.empty) ls)
       MkPackedE k ls -> handle mp $ MkPackedE k (map (go Map.empty) ls)
-
-      -- Careful, it looks like this can push work inside a timing boundary:
-      TimeIt e t     -> TimeIt (go mp e) t
+      TimeIt e t     -> handle mp $ TimeIt (go Map.empty e) t -- prevent pushing work into timeit
       IfE a b c      -> handle mp $ IfE a (go Map.empty b) (go Map.empty c)
       MapE (v,t,rhs) bod -> handle mp $ MapE (v,t,rhs) (go Map.empty bod)
       FoldE (v1,t1,r1) (v2,t2,r2) bod -> handle mp $ FoldE (v1,t1,r1) (v2,t2,r2) (go Map.empty bod)
