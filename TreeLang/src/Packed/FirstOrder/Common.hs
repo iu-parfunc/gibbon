@@ -28,7 +28,7 @@ module Packed.FirstOrder.Common
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
          -- * Misc
-       , (#), fragileZip, sdoc
+       , (#), fragileZip, sdoc, ndoc
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt
        ) where
@@ -232,9 +232,17 @@ fragileZip (a:as) (b:bs) = (a,b) : fragileZip as bs
 fragileZip as [] = error$ "fragileZip: right ran out, while left still has: "++show as
 fragileZip [] bs = error$ "fragileZip: left ran out, while right still has: "++show bs
 
+-- | Handy combination of show and doc                   
 sdoc :: Out a => a -> String
 sdoc = show . doc
 
+-- | Like sdoc but inserts newline if it is longish.
+ndoc :: Out a => a -> String
+ndoc x = let s = sdoc x in
+         if L.length s > 40
+         then "\n  " ++ s
+         else s
+       
 ----------------------------------------------------------------------------------------------------
 -- DEBUGGING
 ----------------------------------------------------------------------------------------------------
