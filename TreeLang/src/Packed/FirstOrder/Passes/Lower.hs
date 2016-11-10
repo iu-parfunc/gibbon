@@ -18,6 +18,7 @@ module Packed.FirstOrder.Passes.Lower
 
 -------------------------------------------------------------------------------
 
+import Data.Char
 import Control.Monad
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
@@ -208,7 +209,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                                       -- And tag "1" is true:
                                       (Just b')
 
-    L1.AppE v e        -> return $ T.TailCall v [triv "operand" e]
+    L1.AppE v e        -> return $ T.TailCall ( v) [triv "operand" e]
 
     --------------------------------Start PrimApps----------------------------------
     -- (1) Primapps that become Tails:
@@ -255,7 +256,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
         -- No tuple-valued prims here:
         T.LetPrimCallT [(v,typ t)]
              (prim p)
-             (L.map (triv "prim rand") ls) <$>
+             (L.map (triv $ "prim rand "++show p) ls) <$>
              (tail bod)
     --------------------------------End PrimApps----------------------------------
 
@@ -265,16 +266,16 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
     -- Non-tail call:
     L1.LetE (v,t,L1.AppE f arg) bod -> do
+        let f' = cleanFunName f
         (vsts,bod') <- case t of
                         L1.ProdTy ls -> do (tmps,e) <- eliminateProjs v ls bod
                                            return (zip tmps (L.map typ ls), e)
                         _ -> return ([(v,typ t)], bod)
         case arg of
-          MkProdE es -> error $ "Unexpected MkProdE parameter to AppE:\n "++sdoc es
-          _ -> T.LetCallT vsts f
-                 [(triv "app rand") arg]
-                 <$>
-                 (tail bod')
+          MkProdE es ->
+               T.LetCallT vsts f' (L.map (triv "app rands") es) <$> (tail bod')
+          _ -> T.LetCallT vsts f' [(triv "app rand") arg]       <$> (tail bod')
+                  
 
     L1.LetE (v, t, L1.IfE a b c) bod -> do
       let a' = triv "if test" a
@@ -375,3 +376,4 @@ prim p =
 
     L1.MkTrue  -> error "lower/prim: internal error. MkTrue should not get here."
     L1.MkFalse -> error "lower/prim: internal error. MkFalse should not get here."
+

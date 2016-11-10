@@ -4,6 +4,8 @@ module Packed.FirstOrder.Passes.Freshen (freshNames) where
 
 import Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.L1_Source as L1
+import qualified Data.Map as M
+
     
 -- | Rename all local variables
 freshNames :: L1.Prog -> SyM L1.Prog
@@ -14,11 +16,12 @@ freshNames (L1.Prog defs funs main) =
                                return $ Just m'
        funs' <- freshFuns funs
        return $ L1.Prog defs funs' main'
-    where freshFuns = mapM freshFun
-          freshFun (FunDef nam (narg,targ) ty bod) =
+    where freshFuns m = M.fromList <$> mapM freshFun (M.toList m)
+          freshFun (nam, FunDef _ (narg,targ) ty bod) =
               do narg' <- gensym narg
                  bod' <- freshExp [(narg,narg')] bod
-                 return $ FunDef nam (narg',targ) ty bod'
+                 let nam' = cleanFunName nam
+                 return (nam', FunDef nam' (narg',targ) ty bod')
 
           freshExp :: [(Var,Var)] -> L1.Exp -> SyM L1.Exp
           freshExp vs (L1.VarE v) =
@@ -29,7 +32,7 @@ freshNames (L1.Prog defs funs main) =
               return $ L1.LitE i
           freshExp vs (L1.AppE v e) =
               do e' <- freshExp vs e
-                 return $ L1.AppE v e'
+                 return $ L1.AppE (cleanFunName v) e'
           freshExp vs (L1.PrimAppE p es) =
               do es' <- mapM (freshExp vs) es
                  return $ L1.PrimAppE p es'

@@ -103,40 +103,26 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
      -- We don't add new function arguments yet, rather we leave
      -- unbound references to the function's output cursors, named
      -- "f_1, f_2..." for a function "f".    
-     let ArrowTy _inT _ outT = funty
+     let (funty'@(ArrowTy inT _ outT),_) = L2.cursorizeTy2 funty
          outCurs = [ funname ++"_"++ show ix | ix <- [1 .. countPacked outT] ]
-     exp' <-
+     (arg,exp') <-
            dbgTrace lvl (" [cursorDirect] for function "++funname++" outcursors: "
                          ++show outCurs++" for ty "++show outT) $ 
            case outCurs of
-               [] -> exp funbod -- not hasPacked
+               -- Keep the orginal argument name.
+               [] -> (funarg,) <$> exp funbod -- not hasPacked
                [cur] ->                  
-                  do -- LetE (cur, CursorTy, projVal (VarE funarg)) <$>
-                     projVal <$> exp2 cur funbod
+                  do tmp <- gensym "fnarg"
+                     -- let go = -- TODO: do a loop for multiple added cursors.
+                     b <- LetE (cur, CursorTy, ProjE 0 (VarE tmp)) <$>
+                           LetE ( funarg
+                                , fmap (const ()) (arrIn funty)
+                                , projVal (VarE tmp)) <$>
+                            projVal <$> exp2 cur funbod
+                     return (tmp,b)
                _ -> error $ "cursorDirect: add support for functionwith multiple output cursors: "++ funname
+     return $ L2.FunDef funname funty' funarg exp'
 
-     return $ L2.FunDef funname funty funarg exp'
-
-  -- Move elsewhere: where we actually change the calling convention.
-  _fd' :: L2.FunDef -> SyM L2.FunDef
-  _fd' (f@L2.FunDef{funname,funty,funarg,funbod}) =
-      let (newTy@(ArrowTy inT _ outT),newIn,newOut) = cursorizeTy funty in
-      dbgTrace lvl ("Processing fundef: "++show(doc f)++"\n  new type: "++sdoc newTy) $
-   do
-      fresh <- gensym "tupin"
-      let (newArg, bod) =
-              if newIn == [] -- No injected cursor params..
-              then (funarg, funbod)
-              else ( fresh
-                   , LetE (funarg, fmap (\_->()) inT,
-                           (L1.projNonFirst (length newIn) (L1.VarE fresh)))
-                          funbod)
-      exp' <- if L1.hasPacked outT
-              then exp bod
-              else do curs <- gensym "curs"
-                      LetE (curs, CursorTy, projVal (VarE newArg)) <$>
-                        projVal <$> exp2 curs bod
-      return $ L2.FunDef funname newTy newArg exp'
   ------------------------------------------------------------
 
   -- We DONT want to have both witness and "regular" references to the
@@ -466,7 +452,7 @@ countPacked ty =
     (SymDictTy x) | L1.hasPacked x -> error "countPacked: current invariant broken, packed type in dict."
                   | otherwise   -> 0
     -- These can be here from the routeEnds pass:
-    ty | L2.isCursorTy ty -> 0
+    -- ty | L2.isCursorTy ty -> 0
     (PackedTy _ _) -> 1
     (ListTy _)       -> 1
    

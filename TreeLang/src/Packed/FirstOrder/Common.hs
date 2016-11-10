@@ -15,6 +15,7 @@ module Packed.FirstOrder.Common
          Constr
          -- * Variables and gensyms
        , Var, varAppend, SyM, gensym, genLetter, runSyM
+       , cleanFunName
 
        , LocVar, Env2(..)
 
@@ -190,10 +191,10 @@ fromListFD = L.foldr insertFD M.empty
 
 newtype SyM a = SyM (State Int a)
  deriving (Functor, Applicative, Monad, MonadState Int)
-
+          
 -- | Generate a unique symbol by attaching a numeric suffix.
 gensym :: Var -> SyM Var
-gensym v = state (\n -> (v `varAppend` show n, n + 1))
+gensym v = state (\n -> (cleanFunName v `varAppend` show n, n + 1))
 
 -- | Generate alphabetic variables 'a','b',...
 genLetter :: SyM Var
@@ -205,6 +206,16 @@ genLetter = do
 runSyM :: Int -> SyM a -> (a,Int)
 runSyM n (SyM a) = runState a n
 
+-- | Filter out non-C compatible characters.  This naively assumes it
+-- will get no conflicts.  Which may be correct if function names were
+-- gensym'd also....
+cleanFunName :: Var -> Var
+cleanFunName f =
+    [ if isNumber c || isAlpha c
+      then c
+      else '_'
+    | c <- f ]
+                   
 ----------------------------------------
 
 

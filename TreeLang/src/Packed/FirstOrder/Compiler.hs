@@ -253,6 +253,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp0 = do
           lift$ dbgPrintLn lvl $ "Running pass: " ++who++":\n"++sepline
           put cnt'
           _ <- lift $ evaluate $ force y
+          lift$ dbgPrintLn 6 $ sdoc y -- Still print if you crank it up.
           return y
 
     when (mode == Interp1) $
