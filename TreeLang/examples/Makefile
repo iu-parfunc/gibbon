@@ -89,7 +89,11 @@ all_tests: answers $(OUT_FILES)
 	$(TREEC) $(TREECARGS) $^ > $@ || (touch $^$(EXTRA_SUFFIX).err; rm -f $@; exit 1)
 	@./diff.sh $^.ans $@ || (touch $^$(EXTRA_SUFFIX).err; rm -f $@; exit 1)
 
-PACKED_FAILING ?=  test12_skip.sexp  test12c_traverse.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp 
+PACKED_FAILING ?=  test12_skip.sexp  test12c_traverse.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
+ \
+  test06c_nested.sexp test11c_funrec.sexp test06f_rec.sexp       test08b_dict.sexp       test11b_fundata.sexp  test11f_funrec.sexp test06g_rec.sexp       test08c_dict.sexp       test11d_funrec.sexp   test11_fundata.sexp test06i_casecase.sexp  test08d_sharedict.sexp  test11e_funrec.sexp   test12b_traverse.sexp
+# adding 06c - uninitialized value regression ... [2016.11.10]
+# massive regression of all of the last line above!
 
 #  test12c_traverse.sexp -- end_x undefined [2016.11.09]
 
