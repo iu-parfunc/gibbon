@@ -40,7 +40,7 @@ findWitnesses = L2.mapMExprs fn
       -- TODO: it looks like the RHS's never get processed.  What if there's a big CaseE in the RHS?
       LetE (v,t,rhs) bod
           -- | isWitnessVar v -> error$ " findWitnesses: internal error, did not expect to see BINDING of witness var: "++show v
-          | otherwise -> go (Map.insert v ((v,t,rhs),bod) mp) bod
+          | otherwise -> go (Map.insert v (v,t,rhs) mp) bod -- don't put the bod in the map
 
       VarE v         -> handle mp $ VarE v
       LitE n         -> LitE n
@@ -61,14 +61,14 @@ findWitnesses = L2.mapMExprs fn
   buildLets mp (v:vs) bod =
       case Map.lookup (view v) mp of
         Nothing -> buildLets mp vs bod
-        Just (bnd,_) -> LetE bnd $ buildLets mp vs bod
+        Just bnd -> LetE bnd $ buildLets mp vs bod
 
   -- TODO: this needs to preserve any bindings that have TimeIt forms (hasTimeIt).
   -- OR we can only match a certain pattern like (Let (_,_,TimeIt _ _) _)
   handle mp exp = buildLets mp vars exp
       where freeInBind v = case Map.lookup (view v) mp of
                              Nothing -> []
-                             Just ((_v,_t,e),exp) -> withWitnesses $ Set.toList $ Set.union (L1.freeVars e) (L1.freeVars exp)
+                             Just (_v,_t,e) -> withWitnesses $ Set.toList $ L1.freeVars e 
             (g,vf,_) = graphFromEdges $ zip3 vs vs $ map freeInBind vs
             vars = reverse $ map (\(x,_,_) -> x) $ map vf $ topSort g
             vs = Map.keys mp
