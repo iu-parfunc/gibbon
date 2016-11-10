@@ -8,4 +8,4 @@
 
 (launch-benchmarks "./buildtree_treelang_c_packed.exe -benchmark " PASSNAME "treelang-c-packed")
 
-(launch-benchmarks "racket buildtree_treelang.rkt" PASSNAME "treelang-racket")
+(launch-benchmarks "racket buildtree_treelang.sexp " PASSNAME "treelang-racket")
