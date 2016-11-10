@@ -83,16 +83,16 @@ unariserExp _ = go [] []
                   Nothing -> pure$ VarE (var v)
                   Just vs -> pure$ MkProdE [ VarE v | v <- vs ]
 
+    -- TEMP: HACK/workaround.  See FIXME above.
+    LetE (v1,ProdTy _,rhs@LetE{})  (ProjE ix (VarE v2)) | v1 == v2 -> go (ix:stk) env rhs
+    LetE (v1,ProdTy _,rhs@CaseE{}) (ProjE ix (VarE v2)) | v1 == v2 -> go (ix:stk) env rhs
+
     ----- These three cases are permitted to remain tupled by Lower: -----
     (LetE (v,ty@ProdTy{}, rhs@IfE{})   bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
     (LetE (v,ty@ProdTy{}, rhs@CaseE{}) bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
     (LetE (v,ty@ProdTy{}, rhs@AppE{})  bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
     ------------------
                                               
-    -- TEMP: HACK/workaround.  See FIXME above.
-    LetE (v1,ProdTy tys,rhs) (ProjE ix (VarE v2)) | v1 == v2 ->
-       go (ix:stk) env rhs
-                             
     -- Flatten so that we can see what's stopping us from unzipping:
     (LetE (v1,t1, LetE (v2,t2,rhs2) rhs1) bod) -> do
          go stk env $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod

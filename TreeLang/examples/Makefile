@@ -90,10 +90,6 @@ all_tests: answers $(OUT_FILES)
 	@./diff.sh $^.ans $@ || (touch $^$(EXTRA_SUFFIX).err; rm -f $@; exit 1)
 
 PACKED_FAILING ?=  test12_skip.sexp  test12c_traverse.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
-    test11b_fundata.sexp test11c_funrec.sexp test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp test11_fundata.sexp test12b_traverse.sexp \
-
-#  test06b_case.sexp test06_case.sexp test06c_nested.sexp
-# Last 2 lines are new regressions...
 
 #  test12c_traverse.sexp -- end_x undefined [2016.11.09]
 

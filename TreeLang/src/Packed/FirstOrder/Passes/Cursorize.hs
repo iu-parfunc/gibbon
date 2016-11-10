@@ -28,6 +28,7 @@ import           Packed.FirstOrder.LTraverse
 
 -- We use some pieces from this other attempt:
 import Data.Maybe
+import qualified Data.Set as S
 import Data.List as L hiding (tail)
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
@@ -108,14 +109,21 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                    Cursor a -> [a]
                    TupOut ls -> concatMap allCursors ls
                               
-                             
+  mkProdTy [t] = t
+  mkProdTy ls  = ProdTy ls
+                                
   fd :: L2.FunDef -> SyM L2.FunDef
   fd L2.FunDef{funname,funty,funarg,funbod} =
-      dbgTrace lvl (" [cursorDirect] processing fundef "++show(funname,funty)) $ do
+     dbgTrace lvl (" [cursorDirect] processing fundef "++show(funname,funty)) $ do
      -- We don't add new function arguments yet, rather we leave
      -- unbound references to the function's output cursors, named
      -- "f_1, f_2..." for a function "f".    
-     let (funty'@(ArrowTy _ _ outT),_) = L2.cursorizeTy2 funty
+     let (funty'@(ArrowTy _ ef outTFull),_) = L2.cursorizeTy2 funty
+         -- And without those prepended RouteEnds:
+         outT = if S.null ef
+                then outTFull
+                else let ProdTy ls = outTFull
+                     in mkProdTy (L.drop (S.size ef) ls)
      outDests <- tyToCursors funname (fmap (const ()) outT)
          -- outCurs = [ funname ++"_"++ show ix | ix <- [1 .. countPacked outT] ]
      let outCurs  = allCursors outDests

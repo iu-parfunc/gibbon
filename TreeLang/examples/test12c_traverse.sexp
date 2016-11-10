@@ -14,6 +14,6 @@
 ;; Access something after a dynamically-sized field:
 (case (MkFoo (Suc (Zero)) 71)
   ;; This needs no copy insertion.  Just witnessing.
-  [(MkFoo x y)
-   (let ([_ : Int (trav x)])
-     y)])
+  [(MkFoo q s)
+   (let ([_ : Int (trav q)])
+     s)])
