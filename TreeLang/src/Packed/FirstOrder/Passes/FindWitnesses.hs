@@ -34,6 +34,10 @@ findWitnesses = L2.mapMExprs fn
                in if ex1 == ex2 then ex2 else goFix ex2 (n - 1)
   go mp ex =
     case ex of 
+      LetE (v,t,TimeIt e ty) bod -> 
+          handle mp $ LetE (v,t,TimeIt (go Map.empty e) ty) (go Map.empty bod)
+
+      -- TODO: it looks like the RHS's never get processed.  What if there's a big CaseE in the RHS?
       LetE (v,t,rhs) bod
           -- | isWitnessVar v -> error$ " findWitnesses: internal error, did not expect to see BINDING of witness var: "++show v
           | otherwise -> go (Map.insert v ((v,t,rhs),bod) mp) bod
@@ -46,6 +50,8 @@ findWitnesses = L2.mapMExprs fn
       CaseE e ls     -> handle mp $ CaseE e [ (k,vs,go Map.empty e) | (k,vs,e) <- ls ] 
       MkProdE ls     -> handle mp $ MkProdE (map (go Map.empty) ls)
       MkPackedE k ls -> handle mp $ MkPackedE k (map (go Map.empty) ls)
+
+      -- Careful, it looks like this can push work inside a timing boundary:
       TimeIt e t     -> TimeIt (go mp e) t
       IfE a b c      -> handle mp $ IfE a (go Map.empty b) (go Map.empty c)
       MapE (v,t,rhs) bod -> handle mp $ MapE (v,t,rhs) (go Map.empty bod)
@@ -57,6 +63,8 @@ findWitnesses = L2.mapMExprs fn
         Nothing -> buildLets mp vs bod
         Just (bnd,_) -> LetE bnd $ buildLets mp vs bod
 
+  -- TODO: this needs to preserve any bindings that have TimeIt forms (hasTimeIt).
+  -- OR we can only match a certain pattern like (Let (_,_,TimeIt _ _) _)
   handle mp exp = buildLets mp vars exp
       where freeInBind v = case Map.lookup (view v) mp of
                              Nothing -> []
@@ -65,6 +73,7 @@ findWitnesses = L2.mapMExprs fn
             vars = reverse $ map (\(x,_,_) -> x) $ map vf $ topSort g
             vs = Map.keys mp
 
+                 
   withWitnesses ls = concatMap f ls
       where f v = if isWitnessVar v
                   then [v]

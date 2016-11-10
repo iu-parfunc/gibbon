@@ -27,37 +27,7 @@ shakeTree prg@L2.Prog{fundefs,mainExp} = return $
 
 shakeTreeExp :: L1.Exp -> L1.Exp
 shakeTreeExp = go
-  where    
-
-  -- On cursors we have affine types rather than linear.  Thus, unfortunately, we don't
-  -- have the invariant that the cursors returned by WriteTag are actually USED.  Thus we
-  -- cannot use dataflow alone to determine what must be kept.
-  hasEffect rhs =
-    -- Trivials have been inlined, but we're still flat-ish:
-    case rhs of
-      MkPackedE _ _ -> True
-      WriteInt _ _  -> True
-      -- Reads are covered by dataflow...
-      -- AppE _ _      
-      VarE _ -> False
-      LitE _ -> False 
-
-      -- These might have effects on output cursors, but the output cursors aren't used
-      -- again!  We need to tie the not in dataflow dependencies, making the start (value)
-      -- depend on the end (final cursor).
-      AppE _ _ -> True  -- For now, don't drop.
-      PrimAppE _ _ -> False -- No prims have effects.      
-      ProjE _ e    -> hasEffect e      -- Flattening should make this equivalent to "False"
-      MkProdE ls   -> any hasEffect ls -- Flattening should make this equivalent to "False"
-                        
-      IfE a b c -> hasEffect a || hasEffect b || hasEffect c
-      CaseE _ _ -> True -- Umm, just don't drop for now. FIXME/ REVISIT THIS!
-
-      TimeIt _ _ -> True -- Yes, has effect of printing!
-
-      LetE (_,_,e1) e2 -> hasEffect e1 || hasEffect e2
-                    
-      -- oth -> error $" [shakeTrees] unexpected RHS on Let:\n "++sdoc rhs
+  where 
 
   go :: L1.Exp -> L1.Exp
   go e0 =
@@ -92,3 +62,38 @@ shakeTreeExp = go
          FoldE (v1,t1,go e1) (v2,t2,go e2)
                (go e3)
 
+
+-- | On cursors we have affine types rather than linear.  Thus, unfortunately, we don't
+-- have the invariant that the cursors returned by WriteTag are actually USED.  Thus we
+-- cannot use dataflow alone to determine what must be kept.
+--
+-- This contains details that are specific to this pass, which is
+-- post-cursorize.  It's not really a good general definition of "hasEffect".
+hasEffect :: Exp -> Bool
+hasEffect rhs =
+    -- Trivials have been inlined, but we're still flat-ish:
+    case rhs of
+      MkPackedE _ _ -> True
+      WriteInt _ _  -> True
+      -- Reads are covered by dataflow...
+      -- AppE _ _      
+      VarE _ -> False
+      LitE _ -> False 
+
+      -- These might have effects on output cursors, but the output cursors aren't used
+      -- again!  We need to tie the not in dataflow dependencies, making the start (value)
+      -- depend on the end (final cursor).
+      AppE _ _ -> True  -- For now, don't drop.
+      PrimAppE _ _ -> False -- No prims have effects.      
+      ProjE _ e    -> hasEffect e      -- Flattening should make this equivalent to "False"
+      MkProdE ls   -> any hasEffect ls -- Flattening should make this equivalent to "False"
+                        
+      IfE a b c -> hasEffect a || hasEffect b || hasEffect c
+      CaseE _ _ -> True -- Umm, just don't drop for now. FIXME/ REVISIT THIS!
+
+      TimeIt _ _ -> True -- Yes, has effect of printing!
+
+      LetE (_,_,e1) e2 -> hasEffect e1 || hasEffect e2
+                    
+      -- oth -> error $" [shakeTrees] unexpected RHS on Let:\n "++sdoc rhs
+               

@@ -20,7 +20,8 @@ module Packed.FirstOrder.L1_Source
     -- * Expression and Prog helpers
     , freeVars, subst, substE, mapExprs
       -- * Trivial expressions
-    , assertTriv, assertTrivs, isTriv, projNonFirst, mkProj, mkProd
+    , assertTriv, assertTrivs, isTriv, hasTimeIt
+    , projNonFirst, mkProj, mkProd
       -- * Examples
     , add1Prog
     )
@@ -304,7 +305,24 @@ isTriv e =
      MkProdE ls -> all isTriv ls  
      _  -> False
 
-
+-- | Does the expression contain a TimeIt form?
+hasTimeIt :: Exp -> Bool
+hasTimeIt rhs =
+    case rhs of
+      TimeIt _ _ -> True
+      MkPackedE _ _ -> True
+      VarE _   -> False
+      LitE _   -> False 
+      AppE _ _ -> False
+      PrimAppE _ _ -> False
+      ProjE _ e    -> hasTimeIt e      
+      MkProdE ls   -> any hasTimeIt ls 
+      IfE a b c -> hasTimeIt a || hasTimeIt b || hasTimeIt c
+      CaseE _ ls -> any hasTimeIt [ e | (_,_,e) <- ls ]
+      LetE (_,_,e1) e2 -> hasTimeIt e1 || hasTimeIt e2
+      MapE (_,_,e1) e2 -> hasTimeIt e1 || hasTimeIt e2
+      FoldE (_,_,e1) (_,_,e2) e3 -> hasTimeIt e1 || hasTimeIt e2 || hasTimeIt e3
+           
 -- | Project something which had better not be the first thing in a tuple.
 projNonFirst :: Int -> Exp -> Exp
 projNonFirst 0 e = error $ "projNonFirst: expected nonzero index into expr: "++sdoc e
