@@ -153,6 +153,7 @@ data Prim
     | SubP
     | MulP
     | EqP
+    | SizeParam
     | DictInsertP Ty-- ^ takes k,v,dict
     | DictLookupP Ty -- ^ takes k,dict, errors if absent
     | DictEmptyP Ty
@@ -527,6 +528,9 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                             $ty:(codegenTy outTy) $id:outV =
                               * (( $ty:(codegenTy outTy) *) $(codegenTriv ptr));
                           |] ]
+
+                    SizeParam -> let [(outV,IntTy)] = bnds in
+                                [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = global_size_param; |] ]
 
                     -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'

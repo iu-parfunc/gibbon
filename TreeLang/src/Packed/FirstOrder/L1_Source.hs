@@ -96,6 +96,7 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
 
 --          | GetLoc Var
 --          | AddLoc Int Var
+          | SizeParam
 
           | MkTrue -- ^ Zero argument constructor.
           | MkFalse -- ^ Zero argument constructor.

@@ -13,6 +13,9 @@
 // 10MB default:
 #define DEFAULT_BUF_SIZE 10000000
 
+static int global_size_param = 1;
+static int global_iters_param = 1;
+
 typedef struct dict_item {
   struct dict_item * next;
   int key;
@@ -143,6 +146,7 @@ int main(int argc, char** argv)
 
     for (int i = 1; i < argc; ++i)
     {
+      /* 
         if (strcmp(argv[i], "-num-iterations") == 0 && i < argc - 1)
         {
             num_iterations = atoi(argv[i + 1]);
@@ -153,14 +157,24 @@ int main(int argc, char** argv)
             tree_size = atoi(argv[i + 1]);
             ++i;
         }
-        else if (strcmp(argv[i], "-buffer-size") == 0 && i < argc - 1)
+        else*/
+        if (strcmp(argv[i], "-buffer-size") == 0 && i < argc - 1)
         {
             buffer_size = atoi(argv[i + 1]);
             ++i;
         }
         else if ((strcmp(argv[i], "-benchmark") == 0) || (strcmp(argv[i], "-bench") == 0))
         {
-            benchmark = 1;
+          // benchmark = 1;
+          if (i+2 >= argc) {
+            fprintf(stderr, "Not enough arguments after -benchmark, expected <size> <iters>.\n");
+            show_usage();
+            exit(1);
+          }
+          // In this mode, we expect the last two arguments to be 
+          global_size_param  = atoi(argv[i + 1]);
+          global_iters_param = atoi(argv[i + 2]);
+          break;
         }
         else
         {
@@ -176,6 +190,7 @@ int main(int argc, char** argv)
     // stack_scoped_region = (char*)malloc(DEFAULT_BUF_SIZE);
     
     if (benchmark)
+      // RRN: This will become the harness for runnin on mmap'd data:
         bench(num_iterations, tree_size, buffer_size);
     else
         run();

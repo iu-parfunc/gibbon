@@ -149,6 +149,7 @@ typeExp (dd,env2) _env (L1.PrimAppE p _es) =
       L1.DictInsertP ty -> L1.SymDictTy ty
       L1.DictLookupP ty -> ty
       L1.DictEmptyP ty -> L1.SymDictTy ty
+      L1.SizeParam -> L1.IntTy
       _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
 typeExp (dd,env2) env (L1.LetE (v,t,_) e) = typeExp (dd,env2) (M.insert v t env) e
 typeExp (dd,env2) env (L1.IfE _ e _) = typeExp (dd,env2) env e

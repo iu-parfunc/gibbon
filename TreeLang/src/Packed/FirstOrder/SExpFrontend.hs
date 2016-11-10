@@ -251,7 +251,10 @@ exp se =
                         
    -- | This type gets replaced later in flatten:
    L2 "time" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()))
-   
+
+   -- | This variant inserts a loop, controlled by the iters argument on the command line.
+   L2 "iterate" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()))
+                    
    L3 "let" (L bnds) bod -> 
      mkLets (L.map letbind bnds) (exp bod) 
      
@@ -341,6 +344,7 @@ primMap = M.fromList
   , ("*", MulP)
   , ("eq?", EqSymP)
   , ("=",   EqIntP)
+  , ("size-param", SizeParam)
   ]
 
 prim :: Text -> Prim
