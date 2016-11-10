@@ -301,11 +301,12 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                         go (toEndVar vr) Nothing rs
 
 
-  -- | Take a destination cursor.  Assume only a single packed output.
+  -- | Take a destination cursor set.
   --   Here we are in a context that flows to Packed data, we follow a
-  --   convention of returning a pair of value/end.
-  --  CONTRACT: The caller must deal with this pair.
+  --   convention of returning a pair of value/end for each Packed value returned.
+  --  
   exp2 :: Dests -> Exp -> SyM Exp
+  exp2 NoCursor ex = exp ex
   exp2 destC ex0 =
     dbgTrace lvl (" 2. Processing expr in packed context, cursor "++show destC++", exp:\n  "++sdoc ex0) $ 
     let go = exp2 destC in

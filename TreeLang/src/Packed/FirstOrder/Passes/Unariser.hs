@@ -61,11 +61,16 @@ unariserExp _ = go [] []
   discharge [] e = e
   discharge (ix:rst) (MkProdE ls) = discharge rst (ls ! ix)
   discharge (ix:rst) e = discharge rst (ProjE ix e)
-                         
+
+  -- FIXME: need to track full expr binds like InlineTrivs
   go :: ProjStack -> [(Var,[Var])] -> L1.Exp -> SyM L1.Exp
   go stk env e0 =
    -- dbgTrace 5 ("Inline, processing with env:\n "++sdoc env++"\n exp: "++sdoc e0) $
    case e0 of
+    -- TEMP: HACK/workaround.  See FIXME above.
+    LetE (v1,ProdTy tys,rhs) (ProjE ix (VarE v2)) | v1 == v2 ->
+       go (ix:stk) env rhs
+     
     (ProjE i e)  -> go (i:stk) env e  -- Push a projection inside lets or conditionals.
     (MkProdE es) -> case stk of
                       (ix:s') -> go s' env (es ! ix)
