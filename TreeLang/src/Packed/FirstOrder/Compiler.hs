@@ -32,6 +32,7 @@ import Packed.FirstOrder.Passes.InlineTriv
 import Packed.FirstOrder.Passes.ShakeTree 
 import Packed.FirstOrder.Passes.Lower
 import Packed.FirstOrder.Passes.InlinePacked
+import Packed.FirstOrder.Passes.Unariser
 
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import Packed.FirstOrder.Target (codegenProg)
@@ -298,7 +299,8 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp0 = do
                        l2n <- pass  "shakeTree"                shakeTree                 l2m
                        return l2n
                      else return l2
-                 l3  <-       pass  "lower"                    (lower packed)           l2'
+                 l2'' <-       pass  "unariser"                 unariser                 l2'
+                 l3   <-       pass  "lower"                    (lower packed)           l2''
 
                  if mode == Interp2
                   then do mapM_ (\(IntVal v) -> liftIO $ print v) (execProg l3)
