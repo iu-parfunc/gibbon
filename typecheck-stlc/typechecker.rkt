@@ -2,7 +2,8 @@
 
 ;; use structs/data instead of sexp
 (provide typecheck-expr
-         Int_ Bool_ Lamt P S N B Begin Lam App)
+         Int_ Bool_ Lamt NullT P S N B Begin Lam App Null
+	 CONSEXPR NULLEXPR CONSPARAM NULLPARAM CONSTYPE NULLTYPE)
 
 (data ListExpr
       [CONSEXPR Expr ListExpr]
@@ -44,13 +45,13 @@
   (case exprs
     [(CONSEXPR e rest)
      (case rest
-      [(CONSEXPR e2 rest)
+      [(CONSEXPR e2 rest2)
        (let ([t : Type (typecheck e env)])
          (typecheck-begin rest env))]
       [(NULLEXPR)
        (typecheck e env)])]
     [(NULLEXPR)
-     (error "Should never get here.")]))
+     (error "Should never get here: ~a\n" exprs)]))
 
 (define (lam-extend-env [params : ListParam] [env : (SymDict Type)]) : (SymDict Type)
   (case params
@@ -58,8 +59,8 @@
      (let ([nenv : (SymDict Type) (case param
        	  	            	    [(P e t)
         		  	     (case e
-	 		 	    [(S sym)
-      		          	     (extend-env sym t)])])])
+	 		 	       [(S sym)
+      		          	        (extend-env env sym t)])])])
        (lam-extend-env rest nenv))]
     [(NULLPARAM)
      env]))
@@ -113,7 +114,7 @@
     [(NULLTYPE)
      (case args
       [(CONSEXPR e rest) (error "Args and Params not same length.")]
-      [(NULLTYPE) #t])]
+      [(NULLEXPR) #t])]
     [(CONSTYPE t rest)
      (case args
        [(CONSEXPR e rest2)
@@ -153,5 +154,5 @@
             (error "no type"))])]))
 
 (define (typecheck-expr [expr : Expr]) : Type
-  (typecheck expr (Empty)))
+  (typecheck expr (empty-dict)))
 
