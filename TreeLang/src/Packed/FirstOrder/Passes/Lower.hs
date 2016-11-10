@@ -69,9 +69,9 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                       , T.funBody = tl }
 
   tail :: L1.Exp -> SyM T.Tail
-  tail ex =
-   -- dbgTrace 6 ("\n [lower] processing tail:\n  "++sdoc ex) $
-   case ex of
+  tail ex0 =
+   dbgTrace 7 ("\n [lower] processing tail:\n  "++sdoc ex0) $
+   case ex0 of
 
     -- HACK! We don't have LetSwitchT yet.  This means potential exponential code duplication:
     -- LetE (_,_, CaseE _ _) _ ->
@@ -223,7 +223,9 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
          
     -- Hack: no good way to express EndTimer in the source lang, so we
     -- stick it in just-in-time here.
-    LetE (vr, ty, L1.TimeIt rhs _) bod -> do
+    LetE (vr, ty, L1.TimeIt rhs _) bod ->
+     dbgTrace 1 ("Dealing with TimeIt:"++ndoc ex0) $    
+     do
       tm <- gensym "tmr"
       tail $ StartTimer tm $
               LetE (vr, ty, rhs) $
@@ -282,7 +284,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     --------------------------------End PrimApps----------------------------------
 
     -- 
-    L1.AppE v e | notSpecial ex -> return $ T.TailCall ( v) [triv "operand" e]
+    L1.AppE v e | notSpecial ex0 -> return $ T.TailCall ( v) [triv "operand" e]
 
     -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
     ProjE ix ap@(AppE f e) | notSpecial ap -> do
@@ -364,7 +366,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                 -- mkLetTail (vr,ty,rhs'') $             
                   tail bod
 -}
-    _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex
+    _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex0
 
 -- | View pattern for matching agaist projections of Foo rather than just Foo.
 projOf (ProjE ix e) = let (stk,e') = projOf e in
@@ -415,7 +417,10 @@ eliminateProjs vr tys bod =
  do
     tmps <- mapM (\_ -> gensym "pvrtmp") [1.. (length tys)]
 
-    let go _ [] acc = acc
+            
+    let go _ [] acc =
+            -- If there are ANY references left, we are forced to make the products:
+            L1.subst vr (MkProdE (L.map VarE tmps)) acc
         go ix ((pvr,_pty):rs) acc =
            go (ix+1) rs
              (L1.substE (ProjE ix (VarE vr)) (VarE pvr) acc)
