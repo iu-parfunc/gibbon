@@ -19,7 +19,7 @@ module Packed.FirstOrder.LTraverse
     , Exp(..)
       
     -- * Utilities for dealing with the extended types:
-    , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc
+    , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc, unknownCursor
     , hasRealPacked, isRealPacked, hasCursorTy
     , tyWithFreshLocs, stripTyLocs, getTyLocs
     , getFunTy, substTy, substEffs
@@ -275,6 +275,10 @@ allLocVars t =
 
 -- Cursor types encoded into the current language
 --------------------------------------------------------------------------------
+
+-- | A placeholder for a cursor witness that we don't know.
+unknownCursor :: Var
+unknownCursor = "UNKNOWN_CURSOR_VAL" 
 
 -- Use a hack rather than extending the IR at this point:
 cursorTy :: Ty

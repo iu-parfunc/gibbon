@@ -270,7 +270,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                                            return (zip tmps (L.map typ ls), e)
                         _ -> return ([(v,typ t)], bod)
         case arg of
-          MkProdE es -> error "Unexpected MkProdE parameter to AppE"
+          MkProdE es -> error $ "Unexpected MkProdE parameter to AppE:\n "++sdoc es
           _ -> T.LetCallT vsts f
                  [(triv "app rand") arg]
                  <$>

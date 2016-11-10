@@ -173,21 +173,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
           | otherwise -> do rhs' <- exp rhs
                             LetE (v,ty,rhs') <$> exp bod
 
-      AppE f e ->
-          -- If the function argument is of a packed type, we need to switch modes:
-          -- data ArrowTy t = ArrowTy { arrIn :: t, arrEffs:: (Set Effect), arrOut:: t }
-          let ArrowTy arg _ _ret = L2.getFunTy fundefs f in
-          case arg of
-            -- TODO: apply the allocFree trick that we use below.  Abstract it out.
-            PackedTy{} -> do cr <- gensym "argbuf"
-                             LetE (cr,CursorTy,ScopedBuffer) <$> do
-                               e' <- exp2 cr e                             
-                               withDilated arg e' $ \e'' ->                                                               
-                                 pure $ AppE f e''
-
-            ty | L1.hasPacked ty -> error $
-                    "cursorDirect: need to handle function argument of tupled packed types: "++show ty
-               | otherwise -> AppE f <$> exp e
+      AppE f e -> doapp Nothing f e
 
       PrimAppE p ls -> PrimAppE p <$> mapM exp ls
       ProjE i e  -> ProjE i <$> exp e
@@ -230,6 +216,45 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
            Left  e  -> mkit e
            Right di -> withDilated tyScrut di mkit
 
+  doapp :: Maybe Var -> Var -> Exp -> SyM Exp
+  doapp mcurs f e = 
+          -- If the function argument is of a packed type, we need to switch modes:
+          -- data ArrowTy t = ArrowTy { arrIn :: t, arrEffs:: (Set Effect), arrOut:: t }
+          let at@(ArrowTy arg _ ret) = L2.getFunTy fundefs f
+              (nat@(ArrowTy newArg _ newRet),_) = L2.cursorizeTy2 at
+              mkapp arg'' =
+                 case mcurs of
+                   Nothing -> return $ AppE f arg''
+                   Just destCurs ->
+                     -- TODO: need to generalize this to handle arbitrary-in/arbitrary-out combinations.
+                     case (newArg,ret) of                       
+                       (ProdTy [curt,_],PackedTy{}) | L2.isCursorTy curt -> do                                
+                          -- In this particular case, there's only one return val, so we don't need
+                          -- to unpack the result. 
+                          endCur <- gensym "endCur" -- FIXME: this needs to have a name based on LOC
+                          return $
+                           LetE (endCur,CursorTy, AppE f (MkProdE [VarE destCurs,arg''])) $
+                            -- The calling convention is that we get back the updated cursor.  But
+                            -- we are returning from exp2, so we are expected to return a dilated,
+                            -- packed value.                                                        
+                            MkProdE [ VarE destCurs -- Starting cursor position becomes value witness.
+                                    , VarE endCur ]
+                       _ -> error $ "cursorDirect: Need to handle app with ty: "++show nat
+                       -- PackedTy k l -> __ 
+          in
+          case arg of
+            -- TODO: apply the allocFree trick that we use below.  Abstract it out.
+            PackedTy{} -> do cr <- gensym "argbuf"
+                             LetE (cr,CursorTy,ScopedBuffer) <$> do
+                               e' <- exp2 cr e                             
+                               withDilated arg e' $ \e'' ->                                                               
+                                 mkapp e''
+                                      
+            ty | L1.hasPacked ty -> error $
+                    "cursorDirect: need to handle function argument of tupled packed types: "++show ty
+               | otherwise -> mkapp =<< exp e 
+
+                       
   -- | Given a cursor to the position right after the tag, unpack the
   -- fields of a datacon, and return the given expression in that context.
   unpackDataCon :: Var -> (Constr, [Var]) -> Exp -> SyM Exp
@@ -315,38 +340,44 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                      VarE _      -> rhs
                      _           -> error$ "Cursorize: broken assumptions about what a witness binding should look like:\n  "
                                     ++sdoc ex0           
-         LetE (v,ty,rhs') <$> exp2 destC bod
+         LetE (v,ty,rhs') <$> go bod
 
-      LetE (v,ty, tr) bod | L1.isTriv tr ->
-         LetE (v,ty,tr) <$> exp2 destC bod
+      -- For the most part, we just dive under the let and address its body.
+      LetE (v,ty, tr) bod | L1.isTriv tr -> LetE (v,ty,tr)            <$> go bod
+      LetE (v,ty, PrimAppE p ls) bod     -> LetE (v,ty,PrimAppE p ls) <$> go bod
               
       -- LetE (v1,t1, LetE (v2,t2, rhs2) rhs1) bod ->
-      --    exp2 destC $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
+      --    go $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
               
       LetE (v,_,rhs) bod -> error$ "cursorDirect: finish let binding cases in packed context:\n "++sdoc ex0
 
       -- An application that returns packed values is treated just like a 
       -- MkPackedE constructor: cursors are routed to it, and returned from it.
-
-      AppE v e -> error$ "cursorDirect: ouch, finish App case:\n "++sdoc ex0
+      AppE v e ->  -- To appear here, the function must have at least one Packed result.
+        doapp (Just destC) v e
 
       -- This should not be possible.  Types don't work out:
       PrimAppE _ _ -> error$ "cursorDirect: unexpected PrimAppE in packed context: "++sdoc ex0
 
-      -- IfE a b c  -> IfE <$> go a <*> go b <*> go c
+      -- Here we route the dest cursor to both braches.  We switch
+      -- back to the other mode for the (non-packed) test condition.
+      IfE a b c  -> IfE <$> exp a <*> go b <*> go c
 
       -- An allocating case is just like an allocating If: 
       CaseE scrtE ls -> docase (Just destC) (scrtE, tyOfCaseScrut ddefs ex0) ls
       -- CaseE <$> (projVal <$> go e) <*>
       --                mapM (\(k,vrs,e) -> (k,vrs,) <$> go e) ls
 
-      -- ProjE i e  -> ProjE i <$> go e
-          
-      -- MkProdE ls -> MkProdE <$> mapM go ls
-      -- TimeIt e t -> TimeIt <$> go e <*> pure t
+      -- Here we need to figure out WHICH branch has the packed data.
+      -- We need a bundle of multiple cursors.
+      MkProdE ls ->          -- MkProdE <$> mapM go ls
+          error$ "cursorDirect: MkProdE: probable need to track the type in order to traverse further: "++sdoc ex0
 
+     -- ProjE i e  -> ProjE i <$> go e
+                        
+      TimeIt e t -> TimeIt <$> go e <*> pure t
 
-      _ -> error$ "cursorDirect: needs finishing:\n  "++sdoc ex0
+      _ -> error$ "cursorDirect: packed case needs finishing:\n  "++sdoc ex0
 -- --        MapE (v,t,rhs) bod -> __
 -- --        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
 
