@@ -67,33 +67,18 @@ instance Out WitnessEnv
 
 --------------------------------------------------------------------------------
 
--- | This inserts cursors and REMOVES effect signatures.  It returns
---   the new type as well as how many extra params were added to input
---   and return types.
-cursorizeTy :: L2.ArrowTy L2.Ty -> (ArrowTy L2.Ty, [LocVar], [LocVar])
-cursorizeTy (ArrowTy inT ef ouT) = (newArr, newIn, newOut)
- where
-  newArr = ArrowTy newInTy S.empty newOutTy
-  newInTy  = prependArgs (L.map L2.mkCursorTy newIn)
-                         (mapPacked (\_ l -> L2.mkCursorTy l) inT)
-  -- Let's turn output values into updated-output-cursors:
-  newOutTy = prependArgs (L.map L2.mkCursorTy newOut)
-                         (mapPacked (\_ l -> L2.mkCursorTy (toEndVar l)) ouT)
-                         -- Or they could be void...
-
-  -- Every _traversed_ packed input means another output (new return value for the
-  -- moved cursor), and conversely, EVERY output cursor must have had
-  -- an original position (new input param):
-  newOut   = [ toEndVar v  -- This determines the ORDER of added inputs.
-             | Traverse v <- S.toList ef ] -- ^ Because we traverse all outputs,
-                                           -- this effect set  is just what we need.
-  newIn    = L2.allLocVars ouT -- These stay in their original order (preorder)
 
 -- Injected cursor args go first in input and output:
 prependArgs :: [L2.Ty] -> L2.Ty -> L2.Ty
 prependArgs [] t = t
 prependArgs ls t = ProdTy $ ls ++ [t]
 
+-- | Combines cursorize 1 and 2.  Returns (arrow, newIn, newOut)
+cursorizeTy :: ArrowTy L2.Ty -> (ArrowTy L2.Ty, [LocVar], [LocVar]) 
+cursorizeTy arr = (a2,b,c)
+ where
+  (a1,c) = L2.cursorizeTy1 arr
+  (a2,b) = L2.cursorizeTy2 a1
 
 mkArrowTy :: L2.Ty -> L2.Ty -> ArrowTy L2.Ty
 mkArrowTy x y = ArrowTy x S.empty y
@@ -109,15 +94,6 @@ replacePacked (t2::L2.Ty) (t::L2.Ty) =
     (SymDictTy x) -> SymDictTy $ (replacePacked t2) x
     PackedTy{}    -> t2
 
-mapPacked :: (Var -> LocVar -> L2.Ty) -> L2.Ty -> L2.Ty
-mapPacked fn t =
-  case t of
-    IntTy  -> IntTy
-    BoolTy -> BoolTy
-    SymTy  -> SymTy
-    (ProdTy x)    -> ProdTy $ L.map (mapPacked fn) x
-    (SymDictTy x) -> SymDictTy $ mapPacked fn x
-    PackedTy k l  -> fn k l
 
 
 -- | Binding a variable to a value at a given (abstract) location can

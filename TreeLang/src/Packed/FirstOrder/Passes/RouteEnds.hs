@@ -11,7 +11,6 @@ import qualified Packed.FirstOrder.LTraverse as L2
 
 -- We use some pieces from this other attempt:
 import           Packed.FirstOrder.LTraverse as L2
-import           Packed.FirstOrder.Passes.Cursorize2 (cursorizeTy)
 import           Packed.FirstOrder.Passes.InferEffects (zipLT, zipTL, instantiateApp, freshLoc)
 import Data.List as L hiding (tail)
 import Data.Map as M
@@ -58,16 +57,13 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
    
   fd :: L2.FunDef -> SyM L2.FunDef
   fd (f@L2.FunDef{funname,funty,funarg,funbod}) =
-      let ArrowTy oldInT effs _ = funty
+      let ArrowTy oldInT _effs _ = funty
           -- FIXME: split cursorizeTy into two stages.
-          (tmpTy@(ArrowTy inT _ newOutT),newIn,newOut) = cursorizeTy funty 
-          -- This pass doesn't deal with injected arguments, only returns...
-          newTy = ArrowTy oldInT effs newOutT
+          (newTy@(ArrowTy inT _ _),newOut) = cursorizeTy1 funty 
       in
       dbgTrace lvl ("Processing fundef: "++show(doc f)++
-                    "\n  new type: "++sdoc newTy++"\n  newIn/newOut: " ++ show (newIn,newOut)) $
+                    "\n  new type: "++sdoc newTy++"\n  newOut: " ++ show (newOut)) $
    do
-      fresh <- gensym "tupin"
       -- First off, we need to use the lexical variable name to name
       -- the input's fixed abstract location (from the lambda body's prspective).      
       let argLoc  = argtyToLoc (L2.mangle funarg) oldInT
@@ -174,7 +170,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
     -- need to decide which branch can fulfill a given demand.
      LetE (v,t,rhs) bod -> 
       do
-         ((fulfilled,demanded'), rhs', rloc) <- maybeFulfill demanded env rhs         
+         ((fulfilled,demanded'), rhs', _rloc) <- maybeFulfill demanded env rhs         
          env' <- extendLocEnv [(v,t)] env
          (bod', bloc) <- exp demanded' env' bod
          let num1 = length fulfilled

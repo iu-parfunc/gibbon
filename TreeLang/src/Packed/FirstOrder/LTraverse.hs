@@ -23,6 +23,7 @@ module Packed.FirstOrder.LTraverse
     , hasRealPacked, isRealPacked, hasCursorTy
     , tyWithFreshLocs, stripTyLocs, getTyLocs
     , getFunTy, substTy, substEffs
+    , cursorizeTy1, cursorizeTy2, mapPacked
 
     -- * Lattices of abstract locations:
     , Loc(..), LocVar
@@ -316,8 +317,69 @@ hasCursorTy t =
 isRealPacked :: Ty1 a -> Bool                                         
 isRealPacked t@PackedTy{} = not (isCursorTy t)
 isRealPacked _ = False
-                     
-                
+
+-- Cursorizing types:                 
+--------------------------------------------------------------------------------                 
+
+-- Cursorizing types.                   
+--------------------------------------------------------------------------------
+-- This happens in two stages, corresponding to the passes RouteEnds
+-- and CursorDirect.
+
+-- | Step 1/2: add additional outputs corresponding to
+-- end-of-input-value witnesses.  Return the new type and the added
+-- outputs.
+cursorizeTy1 :: ArrowTy Ty -> (ArrowTy Ty, [LocVar])
+cursorizeTy1 (ArrowTy inT ef ouT) = (newArr, newOut)
+ where
+  newArr = ArrowTy inT ef newOutTy
+  newOutTy = prependArgs (L.map mkCursorTy newOut)
+                         ouT
+  -- Every _traversed_ packed input means a POTENTIAL output (new
+  -- return value for the cursor's final value).
+  newOut   = [ toEndVar v  -- This determines the ORDER of added inputs.
+             | Traverse v <- S.toList ef ] -- ^ Because we traverse all outputs,
+                                           -- this effect set  is just what we need.
+             
+-- | Step 2/2: finalize the conversion by:
+--
+--  (1) First, adding additional input arguments for the destination
+--      cursors to which outputs are written.
+--  (2) Packed types in the output then become end-cursors for those
+--      same destinations.
+--  (3) Packed types in the input likewise become (read-only) cursors.
+--  (4) Finally, it REMOVES effect signatures, which are no longer needed.
+-- 
+--  RETURNS: the new type as well as the extra params added to the
+--  input type.
+cursorizeTy2 :: ArrowTy Ty -> (ArrowTy Ty, [LocVar])
+cursorizeTy2 (ArrowTy inT ef ouT) = (newArr, newIn)
+ where
+  newArr  = ArrowTy newInTy S.empty newOutTy
+  newInTy  = prependArgs (L.map mkCursorTy newIn)
+                         (mapPacked (\_ l -> mkCursorTy l) inT)
+  -- Let's turn output values into updated-output-cursors:
+  newOutTy = mapPacked (\_ l -> mkCursorTy (toEndVar l)) ouT
+  newIn    = allLocVars ouT -- These stay in their original order (preorder)
+
+-- Injected cursor args go first in input and output:
+prependArgs :: [Ty] -> Ty -> Ty
+prependArgs [] t = t
+prependArgs ls t = ProdTy $ ls ++ [t]
+
+             
+
+mapPacked :: (Var -> LocVar -> Ty) -> Ty -> Ty
+mapPacked fn t =
+  case t of
+    IntTy  -> IntTy
+    BoolTy -> BoolTy
+    SymTy  -> SymTy
+    (ProdTy x)    -> ProdTy $ L.map (mapPacked fn) x
+    (SymDictTy x) -> SymDictTy $ mapPacked fn x
+    PackedTy k l  -> fn k l
+
+             
 --------------------------------------------------------------------------------
                      
 -- | Map every lexical variable in scope to an abstract location.
