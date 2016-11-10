@@ -63,13 +63,11 @@ unariserExp _ = go [] []
   discharge (ix:rst) e = discharge rst (ProjE ix e)
 
   -- FIXME: need to track full expr binds like InlineTrivs
+  -- Or do we?  Not clear yet.                         
   go :: ProjStack -> [(Var,[Var])] -> L1.Exp -> SyM L1.Exp
   go stk env e0 =
    -- dbgTrace 5 ("Inline, processing with env:\n "++sdoc env++"\n exp: "++sdoc e0) $
    case e0 of
-    -- TEMP: HACK/workaround.  See FIXME above.
-    LetE (v1,ProdTy tys,rhs) (ProjE ix (VarE v2)) | v1 == v2 ->
-       go (ix:stk) env rhs
      
     (ProjE i e)  -> go (i:stk) env e  -- Push a projection inside lets or conditionals.
     (MkProdE es) -> case stk of
@@ -85,6 +83,10 @@ unariserExp _ = go [] []
                   Nothing -> pure$ VarE (var v)
                   Just vs -> pure$ MkProdE [ VarE v | v <- vs ]
 
+    -- TEMP: HACK/workaround.  See FIXME above.
+    LetE (v1,ProdTy tys,rhs) (ProjE ix (VarE v2)) | v1 == v2 ->
+       go (ix:stk) env rhs
+                             
     -- Flatten so that we can see what's stopping us from unzipping:
     (LetE (v1,t1, LetE (v2,t2,rhs2) rhs1) bod) -> do
          go stk env $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod

@@ -232,17 +232,6 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     StartTimer nm bod -> T.StartTimerT nm <$> tail bod
     EndTimer   nm bod -> T.EndTimerT   nm <$> tail bod
                         
-    L1.AppE v e        -> return $ T.TailCall ( v) [triv "operand" e]
-
-    -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
-    ProjE ix (AppE f e) -> do
-        tmp <- gensym "prjapp"
-        let L2.ArrowTy (L2.ProdTy inTs) _ _ = funty (fundefs # f)        
-        tail $ LetE ( tmp
-                    , fmap (const ()) (inTs !! ix)
-                    , ProjE ix (AppE f e))
-                 (VarE tmp)
-
     --------------------------------Start PrimApps----------------------------------
     -- (1) Primapps that become Tails:
 
@@ -292,7 +281,19 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
              (tail bod)
     --------------------------------End PrimApps----------------------------------
 
+    -- 
+    L1.AppE v e  -> return $ T.TailCall ( v) [triv "operand" e]
 
+    -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
+    ProjE ix (AppE f e) -> do
+        tmp <- gensym "prjapp"
+        let L2.ArrowTy (L2.ProdTy inTs) _ _ = funty (fundefs # f)        
+        tail $ LetE ( tmp
+                    , fmap (const ()) (inTs !! ix)
+                    , ProjE ix (AppE f e))
+                 (VarE tmp)
+
+             
     L1.LetE (_,_,L1.AppE f _) _ | M.notMember f fundefs ->
       error $ "Application of unbound function: "++show f
 
