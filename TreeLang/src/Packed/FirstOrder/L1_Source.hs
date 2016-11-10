@@ -310,10 +310,10 @@ hasTimeIt :: Exp -> Bool
 hasTimeIt rhs =
     case rhs of
       TimeIt _ _ -> True
-      MkPackedE _ _ -> True
-      VarE _   -> False
-      LitE _   -> False 
-      AppE _ _ -> False
+      MkPackedE _ _ -> False
+      VarE _        -> False
+      LitE _        -> False 
+      AppE _ _      -> False
       PrimAppE _ _ -> False
       ProjE _ e    -> hasTimeIt e      
       MkProdE ls   -> any hasTimeIt ls 
