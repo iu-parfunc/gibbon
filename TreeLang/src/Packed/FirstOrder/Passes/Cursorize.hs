@@ -137,12 +137,12 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                [_cur] ->                  
                   do tmp <- gensym "fnarg"
                      -- 1st: Bind (out) cursor arguments:
-                     b <- mkLets [ (cur, CursorTy, ProjE ix (VarE tmp))
+                     b <- mkLets [ (cur, CursorTy, mkProjE ix (VarE tmp))
                                  | (cur,ix) <- zip outCurs [0..] ] <$>
                            -- 2nd: Unpack the "real" argument, which is after the prepended output cursors:
                            LetE ( funarg
                                 , fmap (const ()) (arrIn funty')
-                                , ProjE (length outCurs) (VarE tmp)) <$>
+                                , mkProjE (length outCurs) (VarE tmp)) <$>
                             -- 3rd: Return value at the original type:
                             undilate <$> exp2 outDests funbod
                      return (tmp,b)
@@ -190,7 +190,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                      return e'
 
       PrimAppE p ls -> PrimAppE p <$> mapM exp ls
-      ProjE i e  -> ProjE i <$> exp e
+      ProjE i e  -> mkProjE i <$> exp e
       CaseE scrtE ls -> do
           Left x <- docase Nothing (scrtE,tyOfCaseScrut ddefs ex0) ls
           return x 
@@ -355,7 +355,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                      d'   <- gensym "dest"
                      Di rnd' <- exp2 (Cursor d) rnd
                      LetE (tup, dilateTy thetype, rnd') <$>
-                      LetE (d', CursorTy, ProjE 1 (VarE tup) ) <$>
+                      LetE (d', CursorTy, projCur (Di (VarE tup)) ) <$>
                        (go2 d' rst)
              in go2 dest' (zip ls (lookupDataCon ddefs k))
 
@@ -445,7 +445,7 @@ concatProds dests prods = do
           | (len,pexp,flat) <- zip3 lens prods flats ]
     -- Then we can build one big tuple expression combining everything:
     (MkProdE
-     [ ProjE ix (VarE flat)
+     [ mkProjE ix (VarE flat)
      | (len,flat) <- zip lens flats
      , ix <- [0..(len-1)] ])
 
@@ -489,20 +489,20 @@ snocCursor :: Ty1 () -> Ty1 ()
 snocCursor ty = ProdTy[ty,CursorTy]
 
 cdrCursor :: Exp -> Exp
-cdrCursor = ProjE 1
+cdrCursor = mkProjE 1
 
 carVal :: Exp -> Exp
-carVal  = ProjE 0
+carVal  = mkProjE 0
 ----------------------------------------                
 
 
 -- | Project the cursor package from a dilated expression.             
 projCur :: DiExp -> Exp
-projCur (Di e) = ProjE 1 e
+projCur (Di e) = mkProjE 1 e
 
 -- | Project the original value from a dilated expression.
 projVal :: DiExp -> Exp
-projVal (Di e) = ProjE 0 e
+projVal (Di e) = mkProjE 0 e
             
 -- Packed types are gone, replaced by cursPair:
 {-
@@ -646,6 +646,10 @@ tyOfCaseScrut _ e = error $ "tyOfCaseScrut, takes only Case:\n  "++sdoc e
 mkLets :: [(Var,L1.Ty,Exp)] -> Exp -> Exp
 mkLets [] bod = bod
 mkLets (b:bs) bod = LetE b (mkLets bs bod)
+
+-- | Smart constructor that immediately destroys products if it can:
+mkProjE ix (MkProdE ls) = ls !! ix
+mkProjE ix e = ProjE ix e
                     
 
 -- Conventions encoded inside the existing Core IR 

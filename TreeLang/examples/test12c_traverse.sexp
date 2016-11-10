@@ -15,5 +15,5 @@
 (case (MkFoo (Suc (Zero)) 71)
   ;; This needs no copy insertion.  Just witnessing.
   [(MkFoo q s)
-   (let ([_ : Int (trav q)])
+   (let ([ignored : Int (trav q)])
      s)])

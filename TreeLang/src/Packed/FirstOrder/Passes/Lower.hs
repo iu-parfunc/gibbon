@@ -70,7 +70,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
   tail :: L1.Exp -> SyM T.Tail
   tail ex =
-   dbgTrace 5 ("\n [lower] processing tail:\n  "++sdoc ex) $
+   -- dbgTrace 6 ("\n [lower] processing tail:\n  "++sdoc ex) $
    case ex of
 
     -- HACK! We don't have LetSwitchT yet.  This means potential exponential code duplication:
