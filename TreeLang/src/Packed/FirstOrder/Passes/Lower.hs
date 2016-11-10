@@ -4,6 +4,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns #-}
 
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
@@ -28,6 +29,7 @@ import           Packed.FirstOrder.LTraverse ( FunDef(..), Prog(..) )
 import qualified Packed.FirstOrder.Target as T
 import qualified Packed.FirstOrder.Passes.Cursorize as C
 import Data.Maybe
+import qualified Data.List as L
 import Data.List as L hiding (tail)
 import Data.Map as M
 
@@ -232,6 +234,15 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                         
     L1.AppE v e        -> return $ T.TailCall ( v) [triv "operand" e]
 
+    -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
+    ProjE ix (AppE f e) -> do
+        tmp <- gensym "prjapp"
+        let L2.ArrowTy (L2.ProdTy inTs) _ _ = funty (fundefs # f)        
+        tail $ LetE ( tmp
+                    , fmap (const ()) (inTs !! ix)
+                    , ProjE ix (AppE f e))
+                 (VarE tmp)
+
     --------------------------------Start PrimApps----------------------------------
     -- (1) Primapps that become Tails:
 
@@ -286,12 +297,23 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       error $ "Application of unbound function: "++show f
 
     -- Non-tail call:
-    L1.LetE (v,t,L1.AppE f arg) bod -> do
+    L1.LetE (vr,t, projOf -> (stk, L1.AppE f arg)) bod -> do
+        let L2.ArrowTy _ _ outTy = funty (fundefs # f)
         let f' = cleanFunName f
-        (vsts,bod') <- case t of
-                        L1.ProdTy ls -> do (tmps,e) <- eliminateProjs v ls bod
-                                           return (zip tmps (L.map typ ls), e)
-                        _ -> return ([(v,typ t)], bod)
+        (vsts,bod') <- case outTy of
+                        L1.ProdTy [] -> error "lower: FINISHME: unit valued function"
+                        L1.ProdTy tys ->
+                          case stk of
+                            [] -> do (tmps,e) <- eliminateProjs vr (L.map (fmap (const ())) tys) bod
+                                     return (zip tmps (L.map typ tys), e)
+                            -- More than one should not currently be
+                            -- possible (no nested tuple returns):
+                            [ix] -> do garbages <- sequence [ gensym "garbage" | _ <- L.tail tys ]
+                                       let (lead,trail) = L.splitAt ix garbages
+                                       return ( zip (lead++[vr]++trail)
+                                                    (L.map typ tys)
+                                              , bod)
+                        _ -> return ([(vr,typ t)], bod)
         case arg of
           MkProdE es ->
                T.LetCallT vsts f' (L.map (triv "app rands") es) <$> (tail bod')
@@ -342,6 +364,11 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                   tail bod
 -}
     _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex
+
+-- | View pattern for matching agaist projections of Foo rather than just Foo.
+projOf (ProjE ix e) = let (stk,e') = projOf e in
+                      (stk++[ix], e')
+projOf e = ([],e)
 
 pattern StartTimer t bod = AppE "StartTimer" (MkProdE [VarE t, bod])
 pattern EndTimer t   bod = AppE "EndTimer"   (MkProdE [VarE t, bod])
