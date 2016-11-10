@@ -80,11 +80,27 @@ unariserExp _ = go [] []
                   Nothing -> pure$ VarE (var v)
                   Just vs -> pure$ MkProdE [ VarE v | v <- vs ]
 
+    -- Flatten so that we can see what's stopping us from unzipping:
+    (LetE (v1,t1, LetE (v2,t2,rhs2) rhs1) bod) -> do
+         go stk env $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
+
     (LetE (v,ProdTy tys, MkProdE ls) e) -> do
         vs <- sequence [ gensym "unzip" | _ <- ls ]
         let env' = (v,vs):env
         -- Here we *reprocess* the results in case there is more unzipping to do:
         go stk env' $ mklets (zip3 vs tys ls) e
+
+    ----- These three cases are permitted to remain tupled by Lower: -----
+    (LetE (v,ty@ProdTy{}, rhs@IfE{})   bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
+    (LetE (v,ty@ProdTy{}, rhs@CaseE{}) bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
+    (LetE (v,ty@ProdTy{}, rhs@AppE{})  bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
+
+    -- And this is a HACK.  Need a more general solution:
+    (LetE (v,ty@ProdTy{}, rhs@(TimeIt _ _)) bod)->
+        LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
+    ------------------
+    (LetE (_,ProdTy _, _) _) ->
+        error$ " [unariser] this is stopping us from unzipping a tupled binding:\n "++sdoc e0
         
     (LetE (v,t,rhs) e) -> LetE <$> ((v,t,) <$> go [] env rhs) <*>
                             (go stk env e)
