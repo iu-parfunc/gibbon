@@ -56,7 +56,7 @@ shakeTreeExp = go
                             (c,args,go ae)
                     in CaseE (go e) mp'
     (MkPackedE c es) -> MkPackedE c $ map (go) es
-    (TimeIt e t) -> TimeIt (go e) t
+    (TimeIt e t b) -> TimeIt (go e) t b
     (MapE (v,t,e') e) -> MapE (v,t,go e') (go e)
     (FoldE (v1,t1,e1) (v2,t2,e2) e3) ->
          FoldE (v1,t1,go e1) (v2,t2,go e2)
@@ -91,7 +91,7 @@ hasEffect rhs =
       IfE a b c -> hasEffect a || hasEffect b || hasEffect c
       CaseE _ _ -> True -- Umm, just don't drop for now. FIXME/ REVISIT THIS!
 
-      TimeIt _ _ -> True -- Yes, has effect of printing!
+      TimeIt{} -> True -- Yes, has effect of printing!
 
       LetE (_,_,e1) e2 -> hasEffect e1 || hasEffect e2
                     

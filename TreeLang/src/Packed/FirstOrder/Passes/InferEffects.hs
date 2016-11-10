@@ -213,7 +213,7 @@ inferExp (ddefs,fenv) env e = exp env e
             return (S.union eff1 (S.intersection eff2 eff3),
                     fst (join loc2 loc3))
 
-     L1.TimeIt e _ -> exp env e
+     L1.TimeIt e _ _ -> exp env e
 
      -- Construct output packed data.  We will always "scroll to the end" of 
      -- output values, so they are not interesting for this effect analysis.

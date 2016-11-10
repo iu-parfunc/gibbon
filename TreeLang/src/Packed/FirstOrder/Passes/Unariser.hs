@@ -104,7 +104,7 @@ unariserExp _ = go [] []
         go stk env' $ mklets (zip3 vs tys ls) e
                                               
     -- And this is a HACK.  Need a more general solution:
-    (LetE (v,ty@ProdTy{}, rhs@(TimeIt _ _)) bod)->
+    (LetE (v,ty@ProdTy{}, rhs@(TimeIt{})) bod)->
         LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
     ------------------
     (LetE (_,ProdTy _, _) _) ->
@@ -127,11 +127,11 @@ unariserExp _ = go [] []
                               | (k,ls,x) <- ls ]
 
     (MkPackedE c es) -> case stk of [] -> MkPackedE c <$> mapM (go [] env) es
-    (TimeIt e ty) -> do
+    (TimeIt e ty b) -> do
        -- Put this in the form Lower wants:
        tmp <- gensym "timed"
        e' <- go stk env e
-       return $ LetE (tmp,ty, TimeIt e' ty) (VarE tmp)
+       return $ LetE (tmp,ty, TimeIt e' ty b) (VarE tmp)
 
     -- (MapE (v,t,e') e) -> let env' = (v,Nothing) : env in
     --                      MapE (var v,t,go stk env e') (go stk env' e)

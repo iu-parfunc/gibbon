@@ -34,8 +34,8 @@ findWitnesses = L2.mapMExprs fn
                in if ex1 == ex2 then ex2 else goFix ex2 (n - 1)
   go mp ex =
     case ex of 
-      LetE (v,t,TimeIt e ty) bod -> 
-          handle mp $ LetE (v,t,TimeIt (go Map.empty e) ty) (go Map.empty bod)
+      LetE (v,t,TimeIt e ty b) bod -> 
+          handle mp $ LetE (v,t,TimeIt (go Map.empty e) ty b) (go Map.empty bod)
 
       LetE (v,t,rhs) bod
           -- | isWitnessVar v -> error$ " findWitnesses: internal error, did not expect to see BINDING of witness var: "++show v
@@ -50,7 +50,7 @@ findWitnesses = L2.mapMExprs fn
       CaseE e ls     -> handle mp $ CaseE e [ (k,vs,go Map.empty e) | (k,vs,e) <- ls ] 
       MkProdE ls     -> handle mp $ MkProdE (map (go Map.empty) ls)
       MkPackedE k ls -> handle mp $ MkPackedE k (map (go Map.empty) ls)
-      TimeIt e t     -> handle mp $ TimeIt (go Map.empty e) t -- prevent pushing work into timeit
+      TimeIt e t b   -> handle mp $ TimeIt (go Map.empty e) t b -- prevent pushing work into timeit
       IfE a b c      -> handle mp $ IfE a (go Map.empty b) (go Map.empty c)
       MapE (v,t,rhs) bod -> handle mp $ MapE (v,t,rhs) (go Map.empty bod)
       FoldE (v1,t1,r1) (v2,t2,r2) bod -> handle mp $ FoldE (v1,t1,r1) (v2,t2,r2) (go Map.empty bod)

@@ -223,7 +223,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
          
     -- Hack: no good way to express EndTimer in the source lang, so we
     -- stick it in just-in-time here.
-    LetE (vr, ty, L1.TimeIt rhs _) bod ->
+    LetE (vr, ty, L1.TimeIt rhs _ flg) bod ->
      dbgTrace 1 ("Dealing with TimeIt:"++ndoc ex0) $    
      do
       tm <- gensym "tmr"

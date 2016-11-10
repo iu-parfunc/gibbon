@@ -196,7 +196,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
           return x 
 
       MkProdE ls -> MkProdE <$> mapM exp ls
-      TimeIt e t -> TimeIt <$> exp e <*> pure t
+      TimeIt e t b -> TimeIt <$> exp e <*> pure t <*> pure b
       IfE a b c  -> IfE <$> exp a <*> exp b <*> exp c
 --        MapE (v,t,rhs) bod -> __
 --        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
@@ -419,8 +419,8 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
 
      -- ProjE i e  -> ProjE i <$> go e
                         
-      TimeIt e t -> do Di e' <- go e
-                       return $ Di $ TimeIt e' t
+      TimeIt e t b -> do Di e' <- go e
+                         return $ Di $ TimeIt e' t b
 
       _ -> error$ "cursorDirect: packed case needs finishing:\n  "++sdoc ex0
 -- --        MapE (v,t,rhs) bod -> __
@@ -634,7 +634,7 @@ allocFree ex =
    (ProjE _ x2)   -> allocFree x2
    (MkProdE x)    -> all allocFree x
    (CaseE x1 x2)  -> allocFree x1 && all (\(_,_,e) -> allocFree e) x2
-   (TimeIt e _)   -> allocFree e
+   (TimeIt e _ _) -> allocFree e
    (MapE (_,_,x1) x2) -> allocFree x1 && allocFree x2 
    (FoldE (_,_,x1) (_,_,x2) x3) -> allocFree x1 && allocFree x2 && allocFree x3
 

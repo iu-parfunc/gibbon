@@ -63,9 +63,9 @@ freshNames (L1.Prog defs funs main) =
           freshExp vs (L1.MkPackedE c es) =
               do es' <- mapM (freshExp vs) es
                  return $ L1.MkPackedE c es'
-          freshExp vs (L1.TimeIt e t) =
+          freshExp vs (L1.TimeIt e t b) =
               do e' <- freshExp vs e
-                 return $ L1.TimeIt e' t
+                 return $ L1.TimeIt e' t b
           freshExp vs (L1.MapE (v,t,b) e) =
               do b' <- freshExp vs b
                  e' <- freshExp vs e

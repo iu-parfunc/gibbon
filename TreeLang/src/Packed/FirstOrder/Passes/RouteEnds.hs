@@ -247,8 +247,8 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
        let (retloc,_) = L2.join bloc cloc
        return (IfE a b' c', retloc)
 
-     TimeIt e t -> do (e',l) <- exp demanded env e
-                      return (TimeIt e' t, l)
+     TimeIt e t b -> do (e',l) <- exp demanded env e
+                        return (TimeIt e' t b, l)
               
      _ -> error$ "[routeEnds] Unfinished.  Needs to handle:\n  "++sdoc ex
 {-

@@ -73,7 +73,7 @@ data Exp = VarE Var
          | CaseE Exp [(Constr, [Var], Exp)]
            -- ^ Case on a PACKED datatype.
          | MkPackedE Constr [Exp]
-         | TimeIt Exp Ty
+         | TimeIt Exp Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
 
            -- Limited list handling:
          | MapE  (Var,Ty,Exp) Exp
@@ -184,7 +184,7 @@ freeVars ex =
                   (S.unions $ L.map (\(_, _, ee) -> freeVars ee) ls)
     MkProdE ls     -> S.unions $ L.map freeVars ls
     MkPackedE _ ls -> S.unions $ L.map freeVars ls
-    TimeIt e _ -> freeVars e
+    TimeIt e _ _ -> freeVars e
     IfE a b c -> freeVars a `S.union` freeVars b `S.union` freeVars c
     MapE (v,t,rhs) bod -> freeVars rhs `S.union`
                           S.delete v (freeVars bod)
@@ -209,7 +209,7 @@ subst old new ex =
     CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
     MkProdE ls     -> MkProdE $ L.map go ls
     MkPackedE k ls -> MkPackedE k $ L.map go ls
-    TimeIt e t -> TimeIt (go e) t
+    TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE (go a) (go b) (go c)
     MapE (v,t,rhs) bod | v == old  -> MapE (v,t, rhs)    (go bod)
                        | otherwise -> MapE (v,t, go rhs) (go bod)
@@ -236,7 +236,7 @@ substE old new ex =
     CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
     MkProdE ls     -> MkProdE $ L.map go ls
     MkPackedE k ls -> MkPackedE k $ L.map go ls
-    TimeIt e t -> TimeIt (go e) t
+    TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE (go a) (go b) (go c)
     MapE (v,t,rhs) bod | VarE v == old  -> MapE (v,t, rhs)    (go bod)
                        | otherwise -> MapE (v,t, go rhs) (go bod)
@@ -310,7 +310,7 @@ isTriv e =
 hasTimeIt :: Exp -> Bool
 hasTimeIt rhs =
     case rhs of
-      TimeIt _ _ -> True
+      TimeIt _ _ _ -> True
       MkPackedE _ _ -> False
       VarE _        -> False
       LitE _        -> False 
