@@ -18,7 +18,6 @@ module Packed.FirstOrder.Passes.Cursorize
 
 import Control.Monad
 import Control.Applicative
-import Control.DeepSeq
 import           Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import qualified Packed.FirstOrder.LTraverse as L2
@@ -28,13 +27,10 @@ import           Packed.FirstOrder.LTraverse
      FunDef(..), Prog(..), Exp(..))
 
 -- We use some pieces from this other attempt:
-import           Packed.FirstOrder.Passes.Cursorize2 (cursorizeTy)
 import Data.Maybe
 import Data.List as L hiding (tail)
-import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
-import Debug.Trace
 import Prelude hiding (exp)
 
 -- | Chatter level for this module:
@@ -449,6 +445,7 @@ concatProds dests prods = do
 mkCursorProd :: Int -> L1.Ty
 mkCursorProd len = ProdTy $ replicate len CursorTy
 
+countCursors :: forall a. Num a => Dests -> a
 countCursors (Cursor _) = 1
 countCursors NoCursor   = 0
 countCursors (TupOut ls) = sum $ L.map countCursors ls
@@ -471,8 +468,10 @@ data Dests = Cursor Var
 newtype DiExp = Di Exp
 --type DiExp = Exp
 
+onDi :: (Exp -> Exp) -> DiExp -> DiExp
 onDi f (Di x) = Di (f x)
 
+fromDi :: DiExp -> Exp
 fromDi (Di x) = x
                 
 -- Pairs of (<something>,Cursor) which may not be proper dilated type:
@@ -481,13 +480,13 @@ fromDi (Di x) = x
 snocCursor :: Ty1 () -> Ty1 ()
 snocCursor ty = ProdTy[ty,CursorTy]
 
+cdrCursor :: Exp -> Exp
 cdrCursor = ProjE 1
 
-carVal  = ProjE 1 
+carVal :: Exp -> Exp
+carVal  = ProjE 0
 ----------------------------------------                
 
-cursPairTy :: L1.Ty
-cursPairTy = ProdTy [CursorTy, CursorTy]
 
 -- | Project the cursor package from a dilated expression.             
 projCur :: DiExp -> Exp
@@ -543,6 +542,7 @@ undilate = projVal -- redundant, we can get rid of this.
 dilateTrivial :: Exp -> DiExp
 dilateTrivial e = Di $ MkProdE [e, MkProdE []]
                   
+dilate :: forall t. t
 dilate = __
 
 {-                  
@@ -648,9 +648,10 @@ pattern NewBuffer = AppE "NewBuffer" (MkProdE [])
 -- | output buffer space that is known not to escape the current function.
 pattern ScopedBuffer = AppE "ScopedBuffer" (MkProdE [])
                     
--- Tag writing is still modeled by MkPackedE.
+-- | Tag writing is still modeled by MkPackedE.
 pattern WriteInt v e = AppE "WriteInt" (MkProdE [VarE v, e])
--- One cursor in, (int,cursor') output.
+
+-- | One cursor in, (int,cursor') output.
 pattern ReadInt v = AppE "ReadInt" (VarE v)
 
 pattern CursorTy = PackedTy "CURSOR_TY" () -- Tempx

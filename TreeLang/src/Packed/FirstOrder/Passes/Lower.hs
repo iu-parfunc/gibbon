@@ -282,10 +282,10 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     --------------------------------End PrimApps----------------------------------
 
     -- 
-    L1.AppE v e  -> return $ T.TailCall ( v) [triv "operand" e]
+    L1.AppE v e | notSpecial ex -> return $ T.TailCall ( v) [triv "operand" e]
 
     -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
-    ProjE ix (AppE f e) -> do
+    ProjE ix ap@(AppE f e) | notSpecial ap -> do
         tmp <- gensym "prjapp"
         let L2.ArrowTy (L2.ProdTy inTs) _ _ = funty (fundefs # f)        
         tail $ LetE ( tmp
@@ -371,9 +371,20 @@ projOf (ProjE ix e) = let (stk,e') = projOf e in
                       (stk++[ix], e')
 projOf e = ([],e)
 
+           
 pattern StartTimer t bod = AppE "StartTimer" (MkProdE [VarE t, bod])
 pattern EndTimer t   bod = AppE "EndTimer"   (MkProdE [VarE t, bod])
 
+-- | Make sure an AppE doesn't encode one of our "virtual primops":
+notSpecial :: Exp -> Bool
+notSpecial ap =
+  case ap of
+   C.WriteInt _ _ -> False
+   C.NewBuffer    -> False
+   C.ScopedBuffer -> False
+   C.ReadInt _    -> False
+   _              -> True
+                           
 {-
 -- | Go under bindings and transform the very last return point.
 chainTail :: T.Tail -> (T.Tail -> T.Tail) -> T.Tail 
