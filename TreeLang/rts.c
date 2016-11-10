@@ -138,7 +138,7 @@ int main(int argc, char** argv)
 
     int num_iterations = 10;
     int tree_size = 10;
-    int buffer_size = DEFAULT_BUF_SIZE; // 10M
+    long long buffer_size = DEFAULT_BUF_SIZE; // 10M
 
     // test by default
     int benchmark = 0;
@@ -161,7 +161,7 @@ int main(int argc, char** argv)
         else*/
         if (strcmp(argv[i], "-buffer-size") == 0 && i < argc - 1)
         {
-            buffer_size = atoi(argv[i + 1]);
+            buffer_size = atoll(argv[i + 1]);
             ++i;
         }
         else if ((strcmp(argv[i], "-benchmark") == 0) || (strcmp(argv[i], "-bench") == 0))
@@ -173,8 +173,8 @@ int main(int argc, char** argv)
             exit(1);
           }
           // In this mode, we expect the last two arguments to be 
-          global_size_param  = atoi(argv[i + 1]);
-          global_iters_param = atoi(argv[i + 2]);
+          global_size_param  = atoll(argv[i + 1]);
+          global_iters_param = atoll(argv[i + 2]);
           break;
         }
         else

@@ -109,6 +109,25 @@ treebench_c_packed_parallel3.exe: treebench_packed_parallel3.c $(HEADERS)
 treebench.class: treebench.java
 	time javac $^ 
 
+# BuildTree benchmark
+# ==============================================================================
+
+TREELANGDIR=$(shell cd ..; pwd)
+TREEC=$(shell cd ../TreeLang; stack exec -- which treec)
+
+buildtree: buildtree_treelang_c_packed.exe
+# buildtree_treelang_c_pointer.exe
+
+# Don't build in parallel!!!
+buildtree_treelang_c_packed.exe: buildtree_treelang.sexp
+# FIXME: Need -o argument.
+	$(TREEC)  --packed $^
+	mv buildtree_treelang.exe $@
+
+buildtree_treelang_c_pointer.exe: buildtree_treelang.sexp
+	$(TREEC)  --pointer $^
+	mv buildtree_treelang.exe $@
+
 # Running
 # ==============================================================================
 
@@ -159,4 +178,4 @@ docker:
 clean:
 	rm -f *.exe *.o *.hi treebench treebench_lazy *.cmi *.cmo *.cmx
 
-.PHONY: all clean ghc run_chez run_java run_all run_small c ghc
+.PHONY: all clean ghc run_chez run_java run_all run_small c ghc buildtree
