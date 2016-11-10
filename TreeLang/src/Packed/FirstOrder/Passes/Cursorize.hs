@@ -99,7 +99,8 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                 }
  where
   fd :: L2.FunDef -> SyM L2.FunDef
-  fd L2.FunDef{funname,funty,funarg,funbod} = do
+  fd L2.FunDef{funname,funty,funarg,funbod} =
+      dbgTrace lvl (" [cursorDirect] processing fundef "++show(funname,funty)) $ do
      -- We don't add new function arguments yet, rather we leave
      -- unbound references to the function's output cursors, named
      -- "f_1, f_2..." for a function "f".    
@@ -116,7 +117,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                      -- let go = -- TODO: do a loop for multiple added cursors.
                      b <- LetE (cur, CursorTy, ProjE 0 (VarE tmp)) <$>
                            LetE ( funarg
-                                , fmap (const ()) (arrIn funty)
+                                , fmap (const ()) (arrIn funty')
                                 , projVal (VarE tmp)) <$>
                             projVal <$> exp2 cur funbod
                      return (tmp,b)

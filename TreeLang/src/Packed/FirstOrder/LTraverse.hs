@@ -352,19 +352,24 @@ cursorizeTy1 (ArrowTy inT ef ouT) = (newArr, newOut)
 --  (2) Packed types in the output then become end-cursors for those
 --      same destinations.
 --  (3) Packed types in the input likewise become (read-only) cursors.
---  (4) Finally, it REMOVES effect signatures, which are no longer needed.
 -- 
 --  RETURNS: the new type as well as the extra params added to the
 --  input type.
 cursorizeTy2 :: ArrowTy Ty -> (ArrowTy Ty, [LocVar])
-cursorizeTy2 (ArrowTy inT ef ouT) = (newArr, newIn)
+cursorizeTy2 (ArrowTy inT ef ouT) =  (newArr, newIn)
  where
-  newArr  = ArrowTy newInTy S.empty newOutTy
+  newArr  = ArrowTy newInTy ef newOutTy
   newInTy  = prependArgs (L.map mkCursorTy newIn)
                          (mapPacked (\_ l -> mkCursorTy l) inT)
   -- Let's turn output values into updated-output-cursors:
-  newOutTy = mapPacked (\_ l -> mkCursorTy (toEndVar l)) ouT
+  -- NOTE: we could distinguish between the (size ef) output cursors
+  -- that are already prepended here:
+  newOutTy = mapPacked (\_ l -> mkCursorTy (ensureEndVar l)) ouT
   newIn    = allLocVars ouT -- These stay in their original order (preorder)
+
+ensureEndVar :: Var -> Var
+ensureEndVar v | isEndVar v = v
+               | otherwise  = toEndVar v
 
 -- Injected cursor args go first in input and output:
 prependArgs :: [Ty] -> Ty -> Ty
