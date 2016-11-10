@@ -119,7 +119,12 @@ unariserExp _ = go [] []
                               | (k,ls,x) <- ls ]
 
     (MkPackedE c es) -> case stk of [] -> MkPackedE c <$> mapM (go [] env) es
-    (TimeIt e t) -> TimeIt <$> go stk env e <*> pure t
+    (TimeIt e ty) -> do
+       -- Put this in the form Lower wants:
+       tmp <- gensym "timed"
+       e' <- go stk env e
+       return $ LetE (tmp,ty, TimeIt e' ty) (VarE tmp)
+
     -- (MapE (v,t,e') e) -> let env' = (v,Nothing) : env in
     --                      MapE (var v,t,go stk env e') (go stk env' e)
     -- (FoldE (v1,t1,e1) (v2,t2,e2) e3) ->

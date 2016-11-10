@@ -49,10 +49,20 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
   T.Prog <$> mapM fund (M.elems fundefs) <*> pure mn
  where
   fund :: L2.FunDef -> SyM T.FunDecl
-  fund L2.FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do
-      tl <- tail funbod
+  fund L2.FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do                                             
+      (args,bod) <- dbgTrace 1 ("Inspecting function with input type: "++show inty) $
+                    case inty of
+                      -- ASSUMPTION: no nested tuples after unariser:
+                      L2.ProdTy ls -> do let tys'  = L.map (fmap (const ())) ls
+                                             tys'' = L.map typ ls
+                                         (vs,e') <- eliminateProjs funarg tys' funbod
+                                         return $
+                                          dbgTrace 5 (" [lower] unzipping funarg "++show funarg++" to "++show vs) $
+                                          (zip vs tys'', e')
+                      _ -> return ([(funarg, typ inty)], funbod)
+      tl <- tail bod
       return T.FunDecl{ T.funName = funname
-                      , T.funArgs = [(funarg, typ inty)]
+                      , T.funArgs = args
                       , T.funRetTy = typ outty
                       , T.funBody = tl }
 
@@ -208,7 +218,18 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                                       (T.IntAlts [(0, c')])
                                       -- And tag "1" is true:
                                       (Just b')
-
+         
+    -- Hack: no good way to express EndTimer in the source lang, so we
+    -- stick it in just-in-time here.
+    LetE (vr, ty, L1.TimeIt rhs _) bod -> do
+      tm <- gensym "tmr"
+      tail $ StartTimer tm $
+              LetE (vr, ty, rhs) $
+               EndTimer tm bod
+    -- For internal use only:
+    StartTimer nm bod -> T.StartTimerT nm <$> tail bod
+    EndTimer   nm bod -> T.EndTimerT   nm <$> tail bod
+                        
     L1.AppE v e        -> return $ T.TailCall ( v) [triv "operand" e]
 
     --------------------------------Start PrimApps----------------------------------
@@ -288,6 +309,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
              T.LetIfT (zip tmps (L.map typ ls)) (a', b', c') <$> tail bod'
         _ -> T.LetIfT [(v, typ t)] (a', b', c') <$> tail bod
 
+{-
     L1.TimeIt e ty ->
         do tmp <- gensym "timed"
            -- Hack: no good way to express EndTimer in the source lang:
@@ -303,10 +325,49 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
              T.LetIfT bnd (tst,con,els) bod ->
                  T.LetIfT bnd (tst, endT con, endT els) (endT bod)
              _ -> error $ "lower: expected let binding back from recursive call:\n  "++sdoc e'
-
+-}
+{-        
+        case ty of
+          -- This gets tricky:
+          L2.ProdTy ls -> error$ "[lower] Unfinished: time statement with tupled return: "++show ex
+          _ -> do 
+           tm <- gensym "tmr"
+           rhs' <- tail rhs
+           -- let rhs'' = wrapLast (T.EndTimerT tm) rhs'
+           return $
+            T.StartTimerT tm $
+             chainTail rhs' $ \ _ ->
+                 T.EndTimerT tm $
+                -- mkLetTail (vr,ty,rhs'') $             
+                  tail bod
+-}
     _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex
 
+pattern StartTimer t bod = AppE "StartTimer" (MkProdE [VarE t, bod])
+pattern EndTimer t   bod = AppE "EndTimer"   (MkProdE [VarE t, bod])
 
+{-
+-- | Go under bindings and transform the very last return point.
+chainTail :: T.Tail -> (T.Tail -> T.Tail) -> T.Tail 
+chainTail tl fn =
+  case tl of
+    T.LetCallT   bnd rat rnds bod -> T.LetCallT   bnd rat rnds (chainTail bod fn)
+    T.LetPrimCallT bnd p rnds bod -> T.LetPrimCallT bnd p rnds (chainTail bod fn)
+    T.LetTrivT  bnd           bod -> T.LetTrivT           bnd  (chainTail bod fn)
+    T.LetIfT bnd pr bod           -> T.LetIfT           bnd pr (chainTail bod fn)
+    T.LetAllocT lhs vals bod      -> T.LetAllocT     lhs vals  (chainTail bod fn)
+    -- Question here is whether we plan to go under Ifs and Cases...
+    -- T.IfE a b c -> T.IfE a (chainTail b fn) (chainTail c fn)
+    oth -> fn oth
+
+-- | Create the right kind of Target let binding based on the form of the RHS:a
+mkLetTail :: (Var,L2.Ty, T.Tail) -> T.Tail -> T.Tail
+mkLetTail (vr,ty,rhs) =
+  case rhs of
+    RetValsT [one] -> __
+    _ -> __
+-}
+         
 -- | Eliminate projections from a given tuple variable.  INEFFICIENT!
 eliminateProjs :: Var -> [L1.Ty] -> Exp -> SyM ([Var],Exp)
 eliminateProjs vr tys bod =

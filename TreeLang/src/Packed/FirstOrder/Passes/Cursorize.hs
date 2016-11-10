@@ -121,7 +121,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                             projVal <$> exp2 cur funbod
                      return (tmp,b)
                _ -> error $ "cursorDirect: add support for functionwith multiple output cursors: "++ funname
-     return $ L2.FunDef funname funty' funarg exp'
+     return $ L2.FunDef funname funty' arg exp'
 
   ------------------------------------------------------------
 
