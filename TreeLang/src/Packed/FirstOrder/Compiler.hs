@@ -33,6 +33,7 @@ import Packed.FirstOrder.Passes.ShakeTree
 import Packed.FirstOrder.Passes.Lower
 import Packed.FirstOrder.Passes.InlinePacked
 import Packed.FirstOrder.Passes.Unariser
+import Packed.FirstOrder.Passes.HoistNewBuf
 
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import Packed.FirstOrder.Target (codegenProg)
@@ -310,7 +311,8 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                        l2l <- pass' "flatten"                  flatten2                  l2k
                        l2m <- pass  "inlineTriv"               inline2                   l2l
                        l2n <- pass  "shakeTree"                shakeTree                 l2m
-                       return l2n
+                       l2o <- pass  "hoistNewBuf"              hoistNewBuf               l2n
+                       return l2o
                      else return l2
                  l2'' <-       pass  "unariser"                 unariser                 l2'
                  l3   <-       pass  "lower"                    (lower packed)           l2''

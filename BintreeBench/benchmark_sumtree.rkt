@@ -2,9 +2,9 @@
 
 ;; WARNING: Code duplication with benchmark_buildtree.rkt
 
-;; Run make sumtree before this
-
 (require "command_line_runner.rkt")
+
+(system "make sumtree")
 
 (define PASSNAME "sumtree")
 
