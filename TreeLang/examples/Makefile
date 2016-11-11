@@ -3,8 +3,10 @@ default:
 	rm -f *.err
 	$(MAKE) test
 
-test: answers parse_all
+test: answers
 # Sequentialize these, they stomp on *.out:
+	@echo "Answers available, now proceeding..."
+	$(MAKE) parse_all
 	$(MAKE) run_tests 
 	$(MAKE) run_tests_packed
 	$(MAKE) run_tests_interp2
@@ -14,7 +16,11 @@ test: answers parse_all
 #	$(MAKE) racket_invalid
 
 
-EXTRA_SUFFIX ?= 
+EXTRA_SUFFIX ?= .ptr
+# How far to compile, --toC, --exe, --run:
+RUN_MODE     ?= --run
+# Additional args besides RUN_MODE:
+TREECARGS ?=
 
 #----------------------------------------
 # Test direct Racket execution:
@@ -72,8 +78,6 @@ FAILING_TESTS ?= test11d_funrec.sexp test11f_funrec.sexp  \
 
 PASSING_TESTS = $(filter-out $(FAILING_TESTS),$(ALL_TESTS))
 
-TREECARGS ?= --run
-
 OUT_FILES=$(addsuffix $(EXTRA_SUFFIX).out,$(PASSING_TESTS))
 
 # Run the tests that work:
@@ -87,9 +91,9 @@ run_tests: build
 all_tests: answers $(OUT_FILES)
 
 # Assumes stack build:
-%.sexp$(EXTRA_SUFFIX).out : %.sexp 
-	$(TREEC) $(TREECARGS) $^ > $@ || (touch $^$(EXTRA_SUFFIX).err; rm -f $@; exit 1)
-	@./diff.sh $^.ans $@ || (touch $^$(EXTRA_SUFFIX).err; rm -f $@; exit 1)
+%.sexp$(EXTRA_SUFFIX).out : %.sexp
+	$(TREEC) $(RUN_MODE) $(TREECARGS) $^ > $@ || ./err.sh $^$(EXTRA_SUFFIX)
+	@./diff.sh $^.ans $@ || ./err.sh $^$(EXTRA_SUFFIX)
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
   test13_build.sexp test20b_bintree.sexp test20c_bintree.sexp
@@ -104,7 +108,7 @@ PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
 
 # Run the tests that work under the packed regime:
 run_tests_packed: answers
-	$(MAKE) run_tests TREECARGS="--run --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
+	$(MAKE) run_tests TREECARGS="--packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
 
 
 INTERP_FAILING = test06b_case.sexp test06_case.sexp test06c_nested.sexp \
@@ -119,7 +123,7 @@ INTERP_FAILING = test06b_case.sexp test06_case.sexp test06c_nested.sexp \
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: test00_add.sexp.ans
-	$(MAKE) run_tests TREECARGS="--interp2" FAILING_TESTS="$(INTERP_FAILING)" EXTRA_SUFFIX=".intrp"
+	$(MAKE) run_tests TREECARGS= RUN_MODE="--interp2" FAILING_TESTS="$(INTERP_FAILING)" EXTRA_SUFFIX=".intrp"
 
 
 # --------------------------------------------------------------------------------
@@ -135,9 +139,13 @@ answers: $(ANSWERS)
 
 valgrind_packed:
 	rm -f *.exe *.pkd.out
-	$(MAKE) valgrind TREECARGS="--run --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
+	$(MAKE) run_valgrind RUN_MODE="--exe" TREECARGS="--packed --optc=-g " FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
 
-valgrind: all_tests $(addsuffix .valgrind,$(PASSING_TESTS))
+valgrind:
+	rm -f *.exe *.ptr.out
+	$(MAKE) run_valgrind RUN_MOED="--exe" TREECARGS="--run --optc=-g "
+
+run_valgrind: all_tests $(addsuffix .valgrind,$(PASSING_TESTS))
 
 %.sexp.valgrind : %.sexp %.sexp$(EXTRA_SUFFIX).out
 	@echo "\n Valgrind, testing $^"
@@ -151,7 +159,11 @@ treelang_lib:
 	raco make -v ../treelang.rkt 
 
 clean:
-	rm -f *.exe *.o *.c *.ans *.out *.err
-	cd error/; rm -f *.exe *.o *.c *.ans *.out *.err
+	rm -f *.exe *.o *.c  *.out *.err
+	cd error/; rm -f *.exe *.o *.c  *.out *.err
+
+distclean: clean
+	rm -f *.ans
+	cd error/; rm -f *.ans
 
 .PHONY: run_racket treelang_lib answers run_tests run_tests_interp2 run_tests_packed

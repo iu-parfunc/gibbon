@@ -27,7 +27,6 @@ if [ "$code" == "0" ]; then
     #    echo "  -> Success.";
     exit $code;
 else
-    echo "ERROR: Answers differed!: $1 vs $2";
-    exit $code
+    echo "ERROR: Answers differed!: diff $1  $2";
+    exit $code;
 fi
-
