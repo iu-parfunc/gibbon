@@ -257,7 +257,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
            Just _  -> Right . Di <$> mkit scrtE'
 
   doapp :: Bool -> Maybe Dests -> Var -> Exp -> SyM (Either Exp DiExp)
-  doapp isMain mcurs f e = do 
+  doapp isMain mcurs f argE = do 
           ------------------ Result handling ----------------------
           -- If the function argument is of a packed type, we need to switch modes:
           let at@(ArrowTy argTy _ retTy) = L2.getFunTy fundefs f
@@ -284,16 +284,17 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                        _ -> error $ "cursorDirect: Need to handle app with ty: "++show nat
           ------------------ Argument handling ----------------------
           new <- case argTy of
-                  -- TODO: apply the allocFree trick that we use above.  Abstract it out.
-                  PackedTy{} -> do cr <- gensym "argbuf"
-                                   LetE (cr,CursorTy,chooseBuffer isMain) <$> do
-                                     e' <- exp2 isMain (Cursor cr) e
-                                     mkapp (undilate e')
-                                     -- withDilated arg e' $ \e'' -> mkapp e''
+                  PackedTy{}
+                      | allocFree argE -> mkapp =<< exp isMain argE
+                      | otherwise -> do cr <- gensym "argbuf"
+                                        LetE (cr,CursorTy,chooseBuffer isMain) <$> do
+                                          e' <- exp2 isMain (Cursor cr) argE
+                                          mkapp (undilate e')
+                                          -- withDilated arg e' $ \e'' -> mkapp e''
 
                   ty | L1.hasPacked ty -> error $
                           "cursorDirect: need to handle function argument of tupled packed types: "++show ty
-                     | otherwise -> mkapp =<< exp isMain e
+                     | otherwise -> mkapp =<< exp isMain argE
           -- Restore more type-safety by tagging the output appropriately.
           case mcurs of
             Nothing -> return $ Left new
