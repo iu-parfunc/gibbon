@@ -140,7 +140,7 @@ parseSExp ses =
                                args
          (arg,ty,bod'') <-
                case args' of
-                 []   -> (,voidTy,bod') <$> gensym "vd" 
+                 []   -> (,voidTy,bod') <$> gensym "void" 
                  [(a,t)] -> pure (a,t,bod')
                  _    -> do let (vs,ts) = unzip args'
                             vr <- gensym (L.concat$ L.intersperse "_" vs)

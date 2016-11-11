@@ -30,7 +30,8 @@
 \newcommand{\keywdr}[1]{\; \texttt{#1}^{*} \;}
 
 \newif\ifcurly
-\curlytrue
+% \curlytrue
+
 
 %----------------------------------------
 %% \usepackage[colorinlistoftodos,prependcaption,textsize=tiny]{todonotes}
@@ -281,10 +282,10 @@ we consider this paper is already a subset of most existing languages.
 The above program is not substantially different in C, Haskell, ML, Scala,
 Swift, Rust, etc.  Only the details of switching on sum types (tagged unions) differ.
 
-\note{The first problem for tree-walks such as this is memory management. 
-  \il{add1} can easy become a malloc or garbage collector benchmark.  For
-  instance, the following C code is over twice as slow as the same
-  implementation in Java or a good functional compiler:}
+The first problem for tree-walks such as this is memory management.  \il{add1}
+can easy become a malloc or garbage collector benchmark.  For instance, the
+following C code is over twice as slow as the same implementation in Java or a
+good functional compiler:
 
 \begin{code}[language=c]
   Tree* add1(Tree* t) {
@@ -300,15 +301,82 @@ Swift, Rust, etc.  Only the details of switching on sum types (tagged unions) di
   }
 \end{code}
 
-\note{But even if we assume optimal layout, bump-pointer allocation, and {\em no
-    header objects}---even if we go further and enable \il{__packed__} attribute
-  for our structs to save tag space---the performance of the above code is still
-  several times below what is achievable.}
+But even if we assume optimal layout, bump-pointer allocation, and {\em no
+  header objects}---even if we go further and enable \il{__packed__} attribute
+for our structs to save tag space---the performance of the above code is still
+several times below what is achievable.  The main observation of this paper is
+that bulk tree walks are efficient if done directly on pre-order serialization
+of the tree, and that it is possible to automate the translation of recursive
+functions, such as @add1@ above, into code that directly manipulates data
+buffers containing serialized trees.
 
-\note{Yet, code performing raw manipulation of a pointer into a byte buffer
-  containing a serialized tree is extremely error prone and tedious to write.
-  It certainly is inappropriate for writing compilers, which contain reams and
-  reams of tree-walking code.}
+For our simple example, this buffer passing code isn't complicated:
+%
+\begin{code}[language=c]
+char* add1(char* tin, char* tout) {
+  if (*tin == Leaf) {
+    *tout = Leaf;
+    tin++; tout++;
+    *(int*)tout = *(int*)tin;
+    return (tin + sizeof(int));
+  } else {
+    *tout = Node;
+    tin++; tout++;
+    char* t2 = add1Tree(tin,tout);
+    tout += (t2 - t);
+    return add1Tree(t2,tout);
+  }
+}
+\end{code}
+%
+But it is tedious and error prone to write, and cannot scale.  Clearly, no one
+would use a technique like this for building a compiler!
+
+The above program is similar to the output produced by the prototype compiler we
+describe in this paper.  We refer to the input and output pointers as {\em
+  cursors}, and one of the primary jobs of the compiler is automatic cursor
+insertion.
+
+%% \note{Yet, code performing raw manipulation of a pointer into a byte buffer
+%%   containing a serialized tree is extremely error prone and tedious to write.
+%%   It certainly is inappropriate for writing compilers, which contain reams and
+%%   reams of tree-walking code.}
+
+\subsection{Challenges and Limitations}
+
+\note{Rightmost vs leftmost}
+
+
+\ifcurly
+\begin{code}[language=c]
+fun left(t) {
+  match(t) {
+    Leaf(n):   return n;
+    Node(x,_): return left(x);
+  }}
+fun right(t) {
+  match(t) {
+    Leaf(n):   return n;
+    Node(_,y): return right(y);
+  }}
+\end{code}
+\else
+\begin{code}
+ left t = case t of
+            Leaf n   -> n
+            Node x _ -> left x
+ right t = case t of
+             Leaf n   -> n
+             Node _ y -> right y
+\end{code}
+\fi
+
+
+\subsection{Related Work}
+
+\rn{Milind, some of the related work was going to go up here?}
+
+
 
 % ================================================================================
 \section{The \treelang{} Language}

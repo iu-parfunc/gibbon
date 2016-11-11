@@ -54,7 +54,8 @@ FAILING_TESTS ?= test11d_funrec.sexp test11f_funrec.sexp  \
   test06g_rec.sexp  test06i_casecase.sexp \
   test12b_traverse.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
   test06f_rec.sexp \
-  text08_dict.sexp test08b_dict.sexp test08c_dict.sexp test08d_sharedict.sexp
+  text08_dict.sexp test08b_dict.sexp test08c_dict.sexp test08d_sharedict.sexp \
+  test13_build.sexp test13b_build.sexp test20b_bintree.sexp 
 
 # test 6i -- WRONG ANSWER, returning 101 !! [2016.11.09]
 # test 6f -- seeing weird discrepanancies where sometimes a tag is not initialized [2016.11.09] 
@@ -89,8 +90,11 @@ all_tests: answers $(OUT_FILES)
 	$(TREEC) $(TREECARGS) $^ > $@ || (touch $^$(EXTRA_SUFFIX).err; rm -f $@; exit 1)
 	@./diff.sh $^.ans $@ || (touch $^$(EXTRA_SUFFIX).err; rm -f $@; exit 1)
 
-PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp 
+PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
+  test13_build.sexp test20b_bintree.sexp
 
+
+# test13_build.sexp -- problem with unit functions
 # test12_skip.sexp       -- Requires copy insertion!! unbound var thru to C code
 # test16_forlist.sexp    -- No lists yet
 # test17_forfold.sexp    -- No lists yet
@@ -108,7 +112,9 @@ INTERP_FAILING = test06b_case.sexp test06_case.sexp test06c_nested.sexp \
   test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp  \
   test12b_traverse.sexp test12c_traverse.sexp test12_skip.sexp \
   test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
-  text08_dict.sexp test08b_dict.sexp test08c_dict.sexp test08d_sharedict.sexp
+  text08_dict.sexp test08b_dict.sexp test08c_dict.sexp test08d_sharedict.sexp \
+  test13_build.sexp test13b_build.sexp  test20b_bintree.sexp
+
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: test00_add.sexp.ans

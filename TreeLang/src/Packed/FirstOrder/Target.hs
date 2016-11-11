@@ -414,7 +414,7 @@ codegenTail (EndTimerT begin tal flg) ty =
        let label = "start_timer_"++begin
            iters = "iters_"++begin
        return $ (if flg
-                 then [C.BlockStm [cstm| if($id:iters > 0) { $id:iters --; goto $id:label; } else { } |]]
+                 then [C.BlockStm [cstm| if($id:iters > 1) { $id:iters --; goto $id:label; } else { } |]]
                  else []) ++
                 [ C.BlockDecl [cdecl| struct timespec $id:end; |]
                 , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid end)); |]

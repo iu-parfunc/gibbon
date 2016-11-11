@@ -124,12 +124,13 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                 then outTFull
                 else let ProdTy ls = outTFull
                      in mkProdTy (L.drop (S.size ef) ls)
+     -- Enumerate packed types in our core output:
      outDests <- tyToCursors funname (fmap (const ()) outT)
-         -- outCurs = [ funname ++"_"++ show ix | ix <- [1 .. countPacked outT] ]
+
      let outCurs  = allCursors outDests
      (arg,exp') <-
            dbgTrace lvl (" [cursorDirect] for function "++funname++" outcursors: "
-                         ++show outCurs++" for ty "++show outT) $ 
+                         ++show outCurs++" for core return ty (undilated): "++show outT) $ 
            case outCurs of
                -- Keep the orginal argument name.
                [] -> (funarg,) <$> exp funbod -- not hasPacked
@@ -142,9 +143,26 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                            -- 2nd: Unpack the "real" argument, which is after the prepended output cursors:
                            LetE ( funarg
                                 , fmap (const ()) (arrIn funty')
-                                , mkProjE (length outCurs) (VarE tmp)) <$>
-                            -- 3rd: Return value at the original type:
-                            undilate <$> exp2 outDests funbod
+                                , mkProjE (length outCurs) (VarE tmp)) <$> do
+                            -- 3rd: Bind the result of the function body so we can operate on it:
+                            Di bod2 <- exp2 outDests funbod
+                            btmp <- gensym "bodtmp"
+                            LetE (btmp, dilateTy outTFull, bod2) <$> do
+                              -- 4th: separate updated input cursors from the core return type:
+                              upds <- sequence$ replicate (S.size ef) (gensym "updtCurs" )
+                              mkLets [ (upd, CursorTy, ProjE ix (VarE btmp))
+                                     | (ix,upd) <- zip [0..] upds ] <$> do
+                               -- 5th: perform surgery on the tuple, replacing the "start" values in
+                               -- the output with corresponding "end" values from the dilated representation:
+                               newCore <- spliceUpdatedCursors
+                                          (Di (VarE btmp)) -- (ProjE (S.size ef) (VarE btmp))
+                                          (fmap (const ()) outT)
+                               -- 6th: Return value at the type outTFull, including updated input cursors:
+                               return $
+                                  dbgTrace 5 ("Finished wrapping up body: outTFull/dilated "
+                                              ++ show (outTFull, dilateTy outTFull)
+                                              ++ " core starts at "++show (ProjE (S.size ef) (VarE btmp))) $
+                                  L1.mkProd $ [ VarE u | u <- upds ] ++ [newCore]
                      return (tmp,b)
                _ -> error $ "cursorDirect: add support for functionwith multiple output cursors: "++ funname
      return $ L2.FunDef funname funty' arg exp'
@@ -299,11 +317,12 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
          tmp <- gensym "tptmp"
          let -- Each end-cursor position is either the witness of
              -- the next thing, or the witness of the end of the last thing:
-             witNext e =
-               dbgTrace 5 ("WITNESS NEXT: "++show(vr,rs)) $
+             witNext :: Exp -> Exp -> Exp 
+             witNext end_this e =
+               dbgTrace 5 ("WITNESS NEXT: "++show(vr,rs, end_this)) $
                  case rs of
                     []       -> e
-                    (v2,_):_ -> LetE (binderWitness v2, CursorTy, cdrCursor (VarE tmp)) e
+                    (v2,_):_ -> LetE (binderWitness v2, CursorTy, end_this) e
              go2 = -- Do the type-specific reading of the fields:
               case ty of
                 -- TODO: Generalize to other scalar types:
@@ -314,11 +333,11 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                      LetE (vr, IntTy, carVal (VarE tmp)) <$>
                        let gorst = go (toEndVar vr) (liftA2 (+) (L1.sizeOf IntTy) offset) rs
                        in if offset == Nothing
-                          then witNext <$> gorst
+                          then witNext (cdrCursor (VarE tmp)) <$> gorst
                           else gorst -- If offset is still static, don't need to to help our dowstream find themselves.
                 ty | isPacked ty -> 
                  -- Strategy: ALLOW unbound witness variables. A later traversal will reorder.
-                 witNext <$>                                    
+                 witNext (VarE (toEndVar vr)) <$> 
                    go (toEndVar vr) Nothing rs
                                                  
          -- No matter what type of field is next, we always prefer a static witness:
@@ -539,7 +558,7 @@ dilate ty =
 dilateTy :: Show a => Ty1 a -> L1.Ty
 dilateTy ty0 = if L.null ls
              then ty'
-             else L2.ProdTy [ty', ProdTy ls]
+             else L1.mkProdTy [ty', L1.mkProdTy ls]
   where
    ty' = fmap (const ()) ty0
    ls = go ty0
@@ -559,12 +578,59 @@ dilateTy ty0 = if L.null ls
 undilate :: DiExp -> Exp
 undilate = projVal -- redundant, we can get rid of this.
 
+-- | Undilate throws away the end-cursors, but when we return from a
+-- function, the calling convention demands something different, that
+-- we return updated output cursors in place of each of the original
+-- packed-value outputs.
+--
+-- This takes (1) a trivial expression referring the DILATED core return value.
+-- And (2), the type of the core return valu.
+spliceUpdatedCursors :: DiExp -> L1.Ty -> SyM Exp
+spliceUpdatedCursors (Di trv) ty0
+    | not (L1.hasPacked ty0) = return trv                     
+    | otherwise =
+        dbgTrace 6 ("spliceUpdatedCursors, processing "++show(trv,ty0)
+                   ++" val/ends refs: "++show(valStart,endsStart)) $ 
+        return $ go [] orig 0 
+    -- If there are no packed types, there's nothing to splice.                            
+  where 
+   ProdTy [orig, endCurs]  = dilateTy ty0 
+   allEndCurs = toList endCurs
+                             
+   toList (ProdTy ls) = ls
+   toList t = [t]
+
+   valStart  = projVal (Di trv)
+   endsStart = projCur (Di trv)   
+
+   refVal [] = valStart
+   refVal (ix:is) = ProjE ix (refVal is)
+
+   refEnds :: Int -> Exp
+   refEnds ix = L1.mkProj ix (length allEndCurs) endsStart
+                    
+   go :: [Int] -> L1.Ty -> Int -> Exp
+   go stk ty endIx =
+    dbgTrace 6 ("splice loop "++show (stk,ty,endIx)) $ 
+    case ty of
+     -- Replace with the value from the endCursors
+     (PackedTy _ _) -> refEnds endIx
+     -- Divide and conquer:
+     (ProdTy flds) -> L1.mkProd
+                      [ go (ix:stk) fld
+                           (endIx + sum (L.map countPacked (take ix flds)))
+                      | (ix,fld) <- zip [0..] flds ]
+      
+     IntTy         -> refVal stk
+     BoolTy        -> refVal stk
+     (SymDictTy _) -> refVal stk                
+     (ListTy _) -> error "spliceUpdatedCursors -- unfinished, list case"
+
+
+                   
 -- | For non-cursor types, dilation is very simple:
 dilateTrivial :: Exp -> DiExp
 dilateTrivial e = Di $ MkProdE [e, MkProdE []]
-                  
-dilate :: forall t. t
-dilate = __
 
 {-                  
 -- | Type-directed dissassembly/reassembly of a dilated value.

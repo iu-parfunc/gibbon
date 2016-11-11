@@ -21,7 +21,7 @@ module Packed.FirstOrder.L1_Source
     , freeVars, subst, substE, mapExprs
       -- * Trivial expressions
     , assertTriv, assertTrivs, isTriv, hasTimeIt
-    , projNonFirst, mkProj, mkProd
+    , projNonFirst, mkProj, mkProd, mkProdTy
       -- * Examples
     , add1Prog
     )
@@ -340,6 +340,11 @@ mkProd :: [Exp]-> Exp
 mkProd [e] = e
 mkProd ls = MkProdE ls
 
+-- | Same as mkProd, at the type level
+mkProdTy :: [Ty]-> Ty
+mkProdTy [t] = t
+mkProdTy ls = ProdTy ls
+            
                 
 {-
 -- | Promote a value to a term that evaluates to it.

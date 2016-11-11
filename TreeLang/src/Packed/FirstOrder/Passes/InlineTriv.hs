@@ -63,4 +63,4 @@ inlineTrivExp = go []
 
 mkProj :: Int -> Exp -> Exp
 mkProj ix (MkProdE ls) = ls !! ix
-mkProj ix (VarE v) = ProjE ix (VarE v)
+mkProj ix e = ProjE ix e

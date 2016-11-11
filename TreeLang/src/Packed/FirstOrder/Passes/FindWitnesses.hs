@@ -64,8 +64,7 @@ findWitnesses = L2.mapMExprs fn
   -- TODO: this needs to preserve any bindings that have TimeIt forms (hasTimeIt).
   -- OR we can only match a certain pattern like (Let (_,_,TimeIt _ _) _)
   handle mp exp =
-      -- dbgTrace 5 (" [findWitnesses] building lets using graph "++show edges) $
-      dbgTrace 5 (" [findWitnesses] building lets using vars "++show vs++" for expr: "++ take 80 (show exp)) $      
+      dbgTrace 6 (" [findWitnesses] building lets using vars "++show vs++" for expr: "++ take 80 (show exp)) $      
       buildLets mp vars exp
       where freeInBind v = case Map.lookup (view v) mp of
                              Nothing -> []

@@ -6,6 +6,8 @@
 #include <time.h>
 #include <alloca.h>
 
+#include <sys/resource.h>
+
 #define ALLOC malloc
 #define ALLOC_PACKED ALLOC
 
@@ -53,8 +55,15 @@ int dict_lookup_int(dict_item_t *ptr, int key) {
 // Could try alloca() here.  Better yet, we could keep our own,
 // separate stack and insert our own code to restore the pointer
 // before any function that (may have) called ALLOC_SCOPED returns.
-#define ALLOC_SCOPED() alloca(1024)
+
+// #define ALLOC_SCOPED() alloca(1024)
+#define ALLOC_SCOPED() alloca(DEFAULT_BUF_SIZE)
 // #define ALLOC_SCOPED() alloc_scoped()
+
+// Stack allocation is either too small or blows our stack.
+// We need a way to make a giant stack if we want to use alloca.
+// #define ALLOC_SCOPED() ALLOC(DEFAULT_BUF_SIZE)
+
 
 // Our global pointer.  No parallelism.
 // static char* stack_scoped_region;
@@ -136,6 +145,14 @@ int main(int argc, char** argv)
     //   tree size: An integer passes to `build_tree()`. Default: 10.
     //   buffer size: Default 10M.
 
+    struct rlimit lim;
+    lim.rlim_cur = 1024LU * 1024LU * 1024LU; // 1GB stack.
+    lim.rlim_max = lim.rlim_cur;
+    int code = setrlimit(RLIMIT_STACK, &lim);
+    if (code) {
+      fprintf(stderr, "Failed to set stack size to %lu, code %d\n", lim.rlim_cur, code);
+    }
+  
     int num_iterations = 10;
     int tree_size = 10;
     long long buffer_size = DEFAULT_BUF_SIZE; // 10M

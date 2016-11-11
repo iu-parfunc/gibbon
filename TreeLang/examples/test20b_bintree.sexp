@@ -11,10 +11,17 @@
             [r : Tree (build-tree (- n 1))])
         (Node l r))))
 
+;; Non-recursive, two-level match:
 (define (sum-tree [tr : Tree]) : Int
   (case tr
     [(Leaf n) n]
-    [(Node x y) (+ (sum-tree x) (sum-tree y))]))
+    [(Node x y)
+     (+ (case x
+          [(Leaf m) m]
+          [(Node a b) 100])
+        (case y
+          [(Leaf q) q]
+          [(Node r s) 100]))]))
 
 ;; Here we time a fold over the tree:
 (let ((tr0 : Tree (build-tree (size-param))))
