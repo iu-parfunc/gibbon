@@ -57,7 +57,7 @@ int dict_lookup_int(dict_item_t *ptr, int key) {
 // before any function that (may have) called ALLOC_SCOPED returns.
 
 // #define ALLOC_SCOPED() alloca(1024)
-#define ALLOC_SCOPED() alloca(DEFAULT_BUF_SIZE)
+#define ALLOC_SCOPED() alloca(100LU*1024LU)
 // #define ALLOC_SCOPED() alloc_scoped()
 
 // Stack allocation is either too small or blows our stack.
