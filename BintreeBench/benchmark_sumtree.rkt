@@ -2,7 +2,7 @@
 
 ;; WARNING: Code duplication with benchmark_buildtree.rkt
 
-(require "command_line_runner.rkt")
+(require "command_line_runner.rkt" racket/system)
 
 (system "make sumtree")
 
