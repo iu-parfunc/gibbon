@@ -35,7 +35,7 @@ module Packed.FirstOrder.Common
 
 import Data.Char
 import Data.Word
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Control.DeepSeq (NFData)
 import Data.List as L
 import Data.Map as M

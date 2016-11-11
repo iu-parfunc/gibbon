@@ -36,6 +36,8 @@ import Data.Map as M
 import qualified Prelude as P
 import Prelude hiding (tail)
 
+import Debug.Trace
+
 -------------------------------------------------------------------------------
 
 -- | Convert into the target language.  This does not make much of a
@@ -51,7 +53,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
   T.Prog <$> mapM fund (M.elems fundefs) <*> pure mn
  where
   fund :: L2.FunDef -> SyM T.FunDecl
-  fund L2.FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do                                             
+  fund L2.FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do
       (args,bod) <- dbgTrace 1 ("Inspecting function with input type: "++show inty) $
                     case inty of
                       -- ASSUMPTION: no nested tuples after unariser:
@@ -132,57 +134,55 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       -- TODO(osa): enable this
       -- ASSERT(length tys == length bndrs)
 
-      let T.VarTriv e_var = triv "case scrutinee" e
+      let T.VarTriv e_var = triv "product case scrutinee" e
       rhs' <- tail rhs
       return (T.LetUnpackT (zip bndrs tys) e_var rhs')
 
     CaseE e (def_alt : alts) | not pkd -> do
-      tag <- gensym "tag"
-      buf0 <- gensym "buf"
-      let e_triv = triv "case scrutinee" e
+      tag_bndr <- gensym "tag"
+      tail_bndr <- gensym "tail"
 
       let
-        bind_tag = T.LetPrimCallT [(tag, T.TagTy), (buf0, T.CursorTy)] T.ReadTag [e_triv]
+        e_triv = triv "sum case scrutinee" e
 
+        mk_alt :: (Constr, [Var], Exp) -> SyM (T.Tag, T.Tail)
         mk_alt (con, bndrs, rhs) = do
-          rhs_triv <- tail rhs
-          ptr_vars <- (buf0 :) <$> replicateM (length bndrs) (gensym "buf")
-          let ptr_vars' = zip ptr_vars (P.tail ptr_vars)
-
           let
+            con_tag = getTagOfDataCon ddefs con
             bndr_tys = L.map typ (lookupDataCon ddefs con)
-            con_tag  = getTagOfDataCon ddefs con
+          rhs' <- tail rhs
+          return ( con_tag, T.LetUnpackT (zip bndrs bndr_tys) tail_bndr rhs' )
 
-            rhs = Prelude.foldr
-                    (\(bndr, _bndr_ty, (cur_ptr, next_ptr)) body ->
-                      -- TODO: bndr type is not used here because Target is
-                      -- is assuming it's an int
-                      T.LetPrimCallT [(bndr, T.IntTy), (next_ptr, T.CursorTy)] T.ReadInt [T.VarTriv cur_ptr] body)
-                    rhs_triv (zip3 bndrs bndr_tys ptr_vars')
+      alts'    <- mapM mk_alt alts
+      (_, def) <- mk_alt def_alt
 
-          return (con_tag, rhs)
-
-      alts' <- mapM mk_alt alts
-      (_, def_alt') <- mk_alt def_alt
-
-      return $ bind_tag $ T.Switch (T.VarTriv tag) (T.TagAlts alts') (Just def_alt')
+      return $
+        T.LetPrimCallT
+          [(tag_bndr, T.TagTy), (tail_bndr, T.CursorTy)]
+          T.ReadTag
+          [e_triv]
+          (T.Switch (T.VarTriv tag_bndr) (T.TagAlts alts') (Just def))
 
     -- Accordingly, constructor allocation becomes an allocation.
     LetE (v, _, MkPackedE k ls) bod | not pkd -> L1.assertTrivs ls $ do
-      -- is this a product?
       let tycon    = getTyOfDataCon ddefs k
           all_cons = dataCons (lookupDDef ddefs tycon)
           is_prod  = length all_cons == 1
           tag      = fromJust (L.findIndex ((==) k . fst) all_cons)
-          fields0  = L.map (triv "MkPackedE args") ls
+
+          field_tys= L.map typ (lookupDataCon ddefs k)
+          fields0  = fragileZip field_tys (L.map (triv "MkPackedE args") ls)
           fields
             | is_prod   = fields0
-            | otherwise = T.TagTriv (fromIntegral tag) : fields0
+            | otherwise = (T.TagTy, T.TagTriv (fromIntegral tag)) : fields0
+
+      -- trace ("data con: " ++ show k) (return ())
+      -- trace ("is_prod: " ++ show is_prod) (return ())
+      -- trace ("fields: " ++ show fields) (return ())
 
       bod' <- tail bod
 
-      let tys = L.map typ (lookupDataCon ddefs k)
-      return (T.LetAllocT v (zip tys fields) bod')
+      return (T.LetAllocT v fields bod')
 
     --------------------------------------------------------------------------------
 
@@ -220,20 +220,20 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                                       (T.IntAlts [(0, c')])
                                       -- And tag "1" is true:
                                       (Just b')
-         
+
     -- Hack: no good way to express EndTimer in the source lang, so we
     -- stick it in just-in-time here.
     LetE (vr, ty, L1.TimeIt rhs _ flg) bod ->
-     dbgTrace 1 ("Dealing with TimeIt:"++ndoc ex0) $    
+     dbgTrace 1 ("Dealing with TimeIt:"++ndoc ex0) $
      do
       tm <- gensym "tmr"
       tail $ StartTimer tm (show flg) $
               LetE (vr, ty, rhs) $
-               EndTimer tm (show flg) bod 
+               EndTimer tm (show flg) bod
     -- For internal use only:
     StartTimer nm flg bod -> T.StartTimerT nm <$> tail bod <*> pure (read flg)
     EndTimer   nm flg bod -> T.EndTimerT   nm <$> tail bod <*> pure (read flg)
-                        
+
     --------------------------------Start PrimApps----------------------------------
     -- (1) Primapps that become Tails:
 
@@ -283,19 +283,19 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
              (tail bod)
     --------------------------------End PrimApps----------------------------------
 
-    -- 
+    --
     L1.AppE v e | notSpecial ex0 -> return $ T.TailCall ( v) [triv "operand" e]
 
     -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
     ProjE ix ap@(AppE f e) | notSpecial ap -> do
         tmp <- gensym "prjapp"
-        let L2.ArrowTy (L2.ProdTy inTs) _ _ = funty (fundefs # f)        
+        let L2.ArrowTy (L2.ProdTy inTs) _ _ = funty (fundefs # f)
         tail $ LetE ( tmp
                     , fmap (const ()) (inTs !! ix)
                     , ProjE ix (AppE f e))
                  (VarE tmp)
 
-             
+
     L1.LetE (_,_,L1.AppE f _) _ | M.notMember f fundefs ->
       error $ "Application of unbound function: "++show f
 
@@ -321,7 +321,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
           MkProdE es ->
                T.LetCallT vsts f' (L.map (triv "app rands") es) <$> (tail bod')
           _ -> T.LetCallT vsts f' [(triv "app rand") arg]       <$> (tail bod')
-                  
+
 
     L1.LetE (v, t, L1.IfE a b c) bod -> do
       let a' = triv "if test" a
@@ -351,11 +351,11 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                  T.LetIfT bnd (tst, endT con, endT els) (endT bod)
              _ -> error $ "lower: expected let binding back from recursive call:\n  "++sdoc e'
 -}
-{-        
+{-
         case ty of
           -- This gets tricky:
           L2.ProdTy ls -> error$ "[lower] Unfinished: time statement with tupled return: "++show ex
-          _ -> do 
+          _ -> do
            tm <- gensym "tmr"
            rhs' <- tail rhs
            -- let rhs'' = wrapLast (T.EndTimerT tm) rhs'
@@ -363,7 +363,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
             T.StartTimerT tm $
              chainTail rhs' $ \ _ ->
                  T.EndTimerT tm $
-                -- mkLetTail (vr,ty,rhs'') $             
+                -- mkLetTail (vr,ty,rhs'') $
                   tail bod
 -}
     _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex0
@@ -373,7 +373,7 @@ projOf (ProjE ix e) = let (stk,e') = projOf e in
                       (stk++[ix], e')
 projOf e = ([],e)
 
-           
+
 pattern StartTimer t flg bod = AppE "StartTimer" (MkProdE [VarE t, VarE flg, bod])
 pattern EndTimer t   flg bod = AppE "EndTimer"   (MkProdE [VarE t, VarE flg, bod])
 
@@ -386,10 +386,10 @@ notSpecial ap =
    C.ScopedBuffer -> False
    C.ReadInt _    -> False
    _              -> True
-                           
+
 {-
 -- | Go under bindings and transform the very last return point.
-chainTail :: T.Tail -> (T.Tail -> T.Tail) -> T.Tail 
+chainTail :: T.Tail -> (T.Tail -> T.Tail) -> T.Tail
 chainTail tl fn =
   case tl of
     T.LetCallT   bnd rat rnds bod -> T.LetCallT   bnd rat rnds (chainTail bod fn)
@@ -408,7 +408,7 @@ mkLetTail (vr,ty,rhs) =
     RetValsT [one] -> __
     _ -> __
 -}
-         
+
 -- | Eliminate projections from a given tuple variable.  INEFFICIENT!
 eliminateProjs :: Var -> [L1.Ty] -> Exp -> SyM ([Var],Exp)
 eliminateProjs vr tys bod =
@@ -417,7 +417,7 @@ eliminateProjs vr tys bod =
  do
     tmps <- mapM (\_ -> gensym "pvrtmp") [1.. (length tys)]
 
-            
+
     let go _ [] acc =
             -- If there are ANY references left, we are forced to make the products:
             L1.subst vr (MkProdE (L.map VarE tmps)) acc
