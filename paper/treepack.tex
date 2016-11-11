@@ -379,34 +379,34 @@ fun right(t) {
 
 One line of closely related work focuses on managing data layout in trees and
 other data structures to promote spatial
-locality~\cite{chilimbi99a,chilimbi99b,Truong1998,Lattner2005,chilimbi98}, by
-modifying garbage collection to co-locate objects~\cite{chilimbi98}, modifying
-memory allocators to proactively place objects with similar access patterns
-together~\cite{Lattner2005,chilimbi99a}, or to modify the internal layout of
-objects to place hot fields near each other~\cite{chilimbi99b}. These
-approaches attempt to ``pack'' data together, using various techniques, into
-cache lines to improve spatial locality, and hence have some resemblance to
-our packed representations, which gain some performance benefits from packing
-tree data into a compact format that promotes spatial locality.
+locality~\cite{Chilimbi1999,Chilimbi1999b,Truong1998,Lattner2005,Chilimbi1999},
+by modifying garbage collection to co-locate objects~\cite{Chilimbi1999a},
+modifying memory allocators to proactively place objects with similar access
+patterns together~\cite{Lattner2005,Chilimbi1999}, or to modify the internal
+layout of objects to place hot fields near each other~\cite{Chilimbi1999b}.
+These approaches attempt to ``pack'' data together, using various techniques,
+into cache lines to improve spatial locality, and hence have some resemblance
+to our packed representations, which gain some performance benefits from
+packing tree data into a compact format that promotes spatial locality.
 
 Perhaps the most closely related of these is Chilimbi et al.'s {\em cache
-conscious structure layout}~\cite{chilimbi99a}. They propose a cache-conscious
-data placement scheme where, given a traversal function, tree-structured data
-will be laid out in memory in a {\em clustered} manner: nodes from small
-subtrees will be placed on single cache lines. By matching the tree layout to
-a specified traversal order, spatial locality is improved when the tree is
-traversed in that order. A key difference between our packed representation
-and Chilimbi et al.'s work is that this work focused on object layout, without
-changing the internal {\em representation} of the objects. Leaving the object
-representation of tree nodes the same allows code that manipulates the objects
-to remain the same, but incurs costs: there is no opportunity to reduce the
-space or instruction overhead incurred by pointers linking nodes in the tree
-(see Figure~\ref{fig:intro-fig}), as exploiting that opportunity requires code
-transformation. Most of the aforementioned spatial locality work makes the
-same tradeoff.
+conscious structure layout}~\cite{Chilimbi1999}. They propose a
+cache-conscious data placement scheme where, given a traversal function,
+tree-structured data will be laid out in memory in a {\em clustered} manner:
+nodes from small subtrees will be placed on single cache lines. By matching
+the tree layout to a specified traversal order, spatial locality is improved
+when the tree is traversed in that order. A key difference between our packed
+representation and Chilimbi et al.'s work is that this work focused on object
+layout, without changing the internal {\em representation} of the objects.
+Leaving the object representation of tree nodes the same allows code that
+manipulates the objects to remain the same, but incurs costs: there is no
+opportunity to reduce the space or instruction overhead incurred by pointers
+linking nodes in the tree (see Figure~\ref{fig:intro-fig}), as exploiting that
+opportunity requires code transformation. Most of the aforementioned spatial
+locality work makes the same tradeoff.
 
 One exception is Chilimbi et al.'s work on {\em automatic structure
-splitting}~\cite{chilimbi99b}, where objects are transformed into split
+splitting}~\cite{Chilimbi1999b}, where objects are transformed into split
 representations, allowing hot fields from multiple objects to be co-located on
 a single cache line while those objects' cold fields are placed elsewhere.
 Because this layout optimization changes the internal representation of the
