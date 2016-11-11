@@ -79,6 +79,7 @@ FAILING_TESTS ?= test11d_funrec.sexp test11f_funrec.sexp  \
 PASSING_TESTS = $(filter-out $(FAILING_TESTS),$(ALL_TESTS))
 
 OUT_FILES=$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).out)
+EXE_FILES=$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).exe)
 
 # Run the tests that work:
 run_tests: build
@@ -90,10 +91,18 @@ run_tests: build
 
 all_tests: answers $(OUT_FILES)
 
-# Assumes stack build:
+# Assumes stack build. Builds AND RUNS all the tests:
+# Take care to not collide between different EXTRA_SUFFIX modes.
 %$(EXTRA_SUFFIX).out : %.sexp
-	$(TREEC) $(RUN_MODE) $(TREECARGS) $^ > $@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
+	$(TREEC) $(RUN_MODE) $(TREECARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
 	@./diff.sh $(basename $^).ans $@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
+
+# Just build the tests
+build_tests: $(EXE_FILES)
+
+%$(EXTRA_SUFFIX).exe : %.sexp
+	$(TREEC) --exe $(TREECARGS) $^ --exefile=$@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
+
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
   test13_build.sexp test20b_bintree.sexp test20c_bintree.sexp
@@ -123,7 +132,7 @@ INTERP_FAILING = test06b_case.sexp test06_case.sexp test06c_nested.sexp \
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: answers
-	$(MAKE) run_tests TREECARGS= RUN_MODE="--interp2" FAILING_TESTS="$(INTERP_FAILING)" EXTRA_SUFFIX=".intrp"
+	$(MAKE) run_tests RUN_MODE="--interp2" TREECARGS=  FAILING_TESTS="$(INTERP_FAILING)" EXTRA_SUFFIX=".intrp"
 
 
 # --------------------------------------------------------------------------------
@@ -138,19 +147,18 @@ answers: $(ANSWERS)
 # --------------------------------------------------------------------------------
 
 valgrind_packed:
-	rm -f *.exe *.pkd.out
-	$(MAKE) run_valgrind RUN_MODE="--exe" TREECARGS="--packed --optc=-g " FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
+	$(MAKE) TREECARGS="--packed --optc=-g " FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd" run_valgrind 
 
 valgrind:
-	rm -f *.exe *.ptr.out
-	$(MAKE) run_valgrind RUN_MOED="--exe" TREECARGS="--run --optc=-g "
+	$(MAKE) RUN_MODE="" TREECARGS=" --optc=-g " EXTRA_SUFFIX=".ptr" run_valgrind
 
-run_valgrind: all_tests $(PASSING_TESTS:.sexp=.valgrind)
+run_valgrind: $(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).valgrind)
 
-%.valgrind : %.sexp %$(EXTRA_SUFFIX).out
-	@echo "\n Valgrind, testing $^"
+%$(EXTRA_SUFFIX).valgrind : %.sexp $(EXE_FILES)
+	@echo "\n Valgrind, testing $(basename $(basename $@))"
 	@echo "--------------------------------------------------"
-	valgrind -q --error-exitcode=1 ./$(basename $@).exe
+	valgrind -q --error-exitcode=1 ./$(basename $(basename $@))$(EXTRA_SUFFIX).exe
+	@touch $@
 
 # --------------------------------------------------------------------------------
 

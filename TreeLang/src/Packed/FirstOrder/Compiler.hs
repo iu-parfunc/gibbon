@@ -89,6 +89,8 @@ data Config = Config
   , cc        :: String -- ^ C compiler to use
   , optc      :: String -- ^ Options to the C compiler
   , warnc     :: Bool
+  , cfile     :: Maybe FilePath -- ^ Optional override to destination .c file.
+  , exefile   :: Maybe FilePath -- ^ Optional override to destination binary file.
   }
 
 -- | What input format to expect on disk.
@@ -115,6 +117,8 @@ defaultConfig =
          , cc = "gcc"
          , optc = " -std=gnu11 -O3  "
          , warnc = False
+         , cfile = Nothing
+         , exefile = Nothing
          }
 
 suppress_warnings :: String
@@ -136,6 +140,11 @@ configParser = Config <$> inputParser <*> modeParser
                            <|> pure (optc defaultConfig))
                       <*> switch (short 'w' <> long "warnc" <>
                                   help "Show warnings from C compiler, normally suppressed")
+                      <*> ((fmap Just (strOption $ long "cfile" <> help "set the destination file for generated C code"))
+                           <|> pure (cfile defaultConfig))
+                      <*> ((fmap Just (strOption $ short 'o' <> long "exefile" <>
+                                       help "set the destination file for the executable"))
+                           <|> pure (exefile defaultConfig))
  where
   -- Most direct way, but I don't like it:
   _inputParser :: Parser Input
@@ -201,7 +210,7 @@ lvl = 3
 -- files to process.
 compile :: Config -> FilePath -> IO ()
 -- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp0 = do
+compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
   -- TERRIBLE HACK!!  This value is global, "pure" and can be read anywhere
   when (verbosity > 1) $ do
     setEnv "DEBUG" (show verbosity)
@@ -260,8 +269,12 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp0 = do
     when (mode == Interp1) $
       error "Early-phase interpreter not implemented yet!"
 
-    let outfile = (replaceExtension fp ".c")
-        exe     = replaceExtension fp ".exe"
+    let outfile = case cfile of
+                    Nothing -> (replaceExtension fp ".c")
+                    Just f -> f
+        exe     = case exefile of
+                    Nothing -> replaceExtension fp ".exe"
+                    Just f -> f
 
     clearFile outfile
     clearFile exe
