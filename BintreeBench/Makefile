@@ -119,15 +119,29 @@ buildtree: buildtree_treelang_c_packed.exe
 	raco make buildtree_treelang.sexp
 # buildtree_treelang_c_pointer.exe
 
-# Don't build in parallel!!!
+# Here we control the C file output in case we build in parallel:
 buildtree_treelang_c_packed.exe: buildtree_treelang.sexp
-# FIXME: Need -o argument.
-	$(TREEC)  --packed $^
-	mv buildtree_treelang.exe $@
+	$(TREEC)  --packed --cfile=$(@:.exe=.c) --exefile $@ $^
 
 buildtree_treelang_c_pointer.exe: buildtree_treelang.sexp
-	$(TREEC)  --pointer $^
-	mv buildtree_treelang.exe $@
+	$(TREEC)  --pointer --cfile=$(@:.exe=.c) --exefile $@ $^
+
+# SumTree benchmark
+# ==============================================================================
+# Identical to buildtree.  s/buildtree/sumtree/
+
+# --pointer not working yet:
+sumtree: sumtree_treelang_c_packed.exe
+	raco make sumtree_treelang.sexp
+
+sumtree_treelang_c_packed.exe: sumtree_treelang.sexp
+	$(TREEC)  --packed --cfile=$(@:.exe=.c) --exefile $@ $^
+
+sumtree_treelang_c_pointer.exe: sumtree_treelang.sexp
+	$(TREEC)  --pointer --cfile=$(@:.exe=.c) --exefile $@ $^
+
+
+
 
 # Running
 # ==============================================================================
