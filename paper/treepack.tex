@@ -30,7 +30,7 @@
 \newcommand{\keywdr}[1]{\; \texttt{#1}^{*} \;}
 
 \newif\ifcurly
-% \curlytrue
+\curlytrue % Comment to deactivate.
 
 
 %----------------------------------------
@@ -257,6 +257,7 @@ a recursive walk on
 the tree would typically use pattern matching:
 
 \ifcurly
+% [language=python]
 \begin{code}[language=c]
 type Tree = Leaf(Int) | Node(Tree,Tree);
 
@@ -492,11 +493,14 @@ with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 \note{While we've seen examples above of cursor-passing programs that operate on
 serialized data, these programs are extremely tedious and error prone.}
 
-\note{}
-
 
 \subsection{Inferring effects}
 
+% \newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{\overrightarrow{#2}} {#3}}}
+\newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{trav({#2})} {#3}}}
+% $\xrightarrow[world]{hello}$
+
+\note{We denote a function with traversal effects as \arr{A}{A}{B}. }
 
 
 \subsection{Routing end-of-value witnesses}
