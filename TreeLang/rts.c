@@ -13,8 +13,8 @@
 
 #define SIZE 1000
 
-// 10MB default:
-#define DEFAULT_BUF_SIZE 10000000
+// Big default:
+#define DEFAULT_BUF_SIZE (500lu * 1000lu * 1000lu)
 
 static long long global_size_param = 1;
 static long long  global_iters_param = 1;
@@ -145,9 +145,8 @@ int main(int argc, char** argv)
 {
     // parameters to parse:
     //
-    //   num iterations: How many times to repeat a benchmark. Default: 10.
-    //   tree size: An integer passes to `build_tree()`. Default: 10.
-    //   buffer size: Default 10M.
+    //   num iterations: How many times to repeat a benchmark. 
+    //   tree size: An integer passes to `build_tree()`. 
 
     struct rlimit lim;
     lim.rlim_cur = 1024LU * 1024LU * 1024LU; // 1GB stack.

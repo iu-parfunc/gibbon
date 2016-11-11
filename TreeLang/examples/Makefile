@@ -107,14 +107,14 @@ build_tests: $(EXE_FILES)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
-  test13_build.sexp test20b_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp
+  test13_build.sexp test20b_bintree.sexp  test20e_bintree.sexp
 
+# test20b_bintree.sexp   -- requires copy insertion
 # test13_build.sexp -- problem with unit functions
 # test12_skip.sexp       -- Requires copy insertion!! unbound var thru to C code
 # test16_forlist.sexp    -- No lists yet
 # test17_forfold.sexp    -- No lists yet
 
-# test20b_bintree.sexp   -- requires copy insertion
 
 
 # Run the tests that work under the packed regime:
