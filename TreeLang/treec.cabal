@@ -33,6 +33,7 @@ library
                   Packed.FirstOrder.Passes.FindWitnesses,
                   Packed.FirstOrder.Passes.RouteEnds,
                   Packed.FirstOrder.Passes.Unariser,
+                  Packed.FirstOrder.Passes.HoistNewBuf,
                   Packed.FirstOrder.SExpFrontend,
                   Packed.FirstOrder.Target
 
