@@ -90,8 +90,8 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                      mkLets [ (cur,CursorTy,NewBuffer)
                             | cur <- allCursors dests ] <$>
                       -- Return the original type:
-                      undilate <$> exp2 dests x
-             else exp x
+                      undilate <$> exp2 True dests x
+             else exp True x
   return L2.Prog{ fundefs = M.fromList $ L.map (\f -> (L2.funname f,f)) fds'
                 , ddefs = ddefs
                 , mainExp = mn
@@ -133,7 +133,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                          ++show outCurs++" for core return ty (undilated): "++show outT) $ 
            case outCurs of
                -- Keep the orginal argument name.
-               [] -> (funarg,) <$> exp funbod -- not hasPacked
+               [] -> (funarg,) <$> exp False funbod -- not hasPacked
                -- TODO: handle more than one output cursor:
                [_cur] ->                  
                   do tmp <- gensym "fnarg"
@@ -145,7 +145,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                                 , fmap (const ()) (arrIn funty')
                                 , mkProjE (length outCurs) (VarE tmp)) <$> do
                             -- 3rd: Bind the result of the function body so we can operate on it:
-                            Di bod2 <- exp2 outDests funbod
+                            Di bod2 <- exp2 False outDests funbod
                             btmp <- gensym "bodtmp"
                             LetE (btmp, dilateTy outTFull, bod2) <$> do
                               -- 4th: separate updated input cursors from the core return type:
@@ -181,8 +181,9 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                     
   -- | Here we are not in a context that flows to Packed data, thus no
   --   destination cursor.
-  exp :: Exp -> SyM Exp
-  exp ex0 =
+  exp :: Bool -> Exp -> SyM Exp
+  exp isMain ex0 =
+    let go = exp isMain in 
     dbgTrace lvl (" 1. Processing expr in non-packed context, exp:\n  "++sdoc ex0) $ 
     case ex0 of
       VarE _ -> return ex0
@@ -194,36 +195,39 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       -- escape.  I.e. a temporary one:
       LetE (v,ty,rhs) bod
           | L2.isRealPacked ty -> do tmp <- gensym  "tmpbuf"
-                                     rhs2 <- onDi (LetE (tmp,CursorTy,ScopedBuffer)) <$>
-                                                exp2 (Cursor tmp) rhs
-                                     LetE (v,ty, undilate rhs2) <$> exp bod
+                                     rhs2 <- onDi (LetE (tmp,CursorTy,chooseBuffer isMain)) <$>
+                                                exp2 isMain (Cursor tmp) rhs
+                                     LetE (v,ty, undilate rhs2) <$> go bod
                                      -- withDilated ty rhs2 $ \rhs3 ->
                                      --    -- Here we've reassembled the non-dialated view, original type:
-                                     --    LetE (v,ty, rhs3) <$> exp bod
+                                     --    LetE (v,ty, rhs3) <$> go bod
           | L2.hasRealPacked ty -> error "cursorDirect: finishme, let bound tuple containing packed."
-          | otherwise -> do rhs' <- exp rhs
-                            LetE (v,ty,rhs') <$> exp bod
+          | otherwise -> do rhs' <- go rhs
+                            LetE (v,ty,rhs') <$> go bod
 
-      AppE f e -> do Left e' <- doapp Nothing f e
+      AppE f e -> do Left e' <- doapp isMain Nothing f e
                      return e'
 
-      PrimAppE p ls -> PrimAppE p <$> mapM exp ls
-      ProjE i e  -> mkProjE i <$> exp e
+      PrimAppE p ls -> PrimAppE p <$> mapM go ls
+      ProjE i e  -> mkProjE i <$> go e
       CaseE scrtE ls -> do
-          Left x <- docase Nothing (scrtE,tyOfCaseScrut ddefs ex0) ls
+          Left x <- docase isMain Nothing (scrtE,tyOfCaseScrut ddefs ex0) ls
           return x 
 
-      MkProdE ls -> MkProdE <$> mapM exp ls
-      TimeIt e t b -> TimeIt <$> exp e <*> pure t <*> pure b
-      IfE a b c  -> IfE <$> exp a <*> exp b <*> exp c
+      MkProdE ls -> MkProdE <$> mapM go ls
+      TimeIt e t b -> TimeIt <$> go e <*> pure t <*> pure b
+      IfE a b c  -> IfE <$> go a <*> go b <*> go c
 --        MapE (v,t,rhs) bod -> __
 --        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
 
+  chooseBuffer isMain = if isMain
+                        then NewBuffer
+                        else ScopedBuffer
 
   -- | Handle a case expression in packed or unpacked context.  Take a
   -- cursor in the former case and not in the latter.
-  docase :: Maybe Dests -> (Exp,L1.Ty) -> [(Constr,[Var],Exp)] -> SyM (Either Exp DiExp)
-  docase mcurs (scrtE, _tyScrut) ls = do         
+  docase :: Bool -> Maybe Dests -> (Exp,L1.Ty) -> [(Constr,[Var],Exp)] -> SyM (Either Exp DiExp)
+  docase isMain mcurs (scrtE, _tyScrut) ls = do         
          cur0 <- gensym "cursIn" -- our read cursor
 
          -- Because the scrutinee is, naturally, of packed type, it
@@ -231,11 +235,11 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
          -- But we take a little shortcut here and don't bother
          -- creating a new scoped region if we don't need to.
          scrtE' <- if allocFree scrtE
-                   then exp scrtE
+                   then exp isMain scrtE
                    else do tmp <- gensym "scopd"
                            undilate <$>
-                            onDi (LetE (tmp,CursorTy,ScopedBuffer)) <$>
-                             exp2 (Cursor tmp) scrtE
+                            onDi (LetE (tmp,CursorTy,chooseBuffer isMain)) <$>
+                             exp2 isMain (Cursor tmp) scrtE
 
          dbgTrace 1 (" 3. Case scrutinee "++sdoc scrtE++" alloc free?"++show (allocFree scrtE)) $ return ()
          let mkit e =
@@ -245,15 +249,15 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                 (forM ls $ \ (k,vrs,e) -> do
                    let unpackit = unpackDataCon cur0 (k,vrs)
                    e'  <- case mcurs of
-                            Nothing -> unpackit =<< exp e
-                            Just dc -> unpackit =<< fromDi <$> exp2 dc e
+                            Nothing -> unpackit =<< exp isMain e
+                            Just dc -> unpackit =<< fromDi <$> exp2 isMain dc e
                    return (k,[cur0],e'))
          case mcurs of
            Nothing -> Left       <$> mkit scrtE'
            Just _  -> Right . Di <$> mkit scrtE'
 
-  doapp :: Maybe Dests -> Var -> Exp -> SyM (Either Exp DiExp)
-  doapp mcurs f e = do 
+  doapp :: Bool -> Maybe Dests -> Var -> Exp -> SyM (Either Exp DiExp)
+  doapp isMain mcurs f e = do 
           ------------------ Result handling ----------------------
           -- If the function argument is of a packed type, we need to switch modes:
           let at@(ArrowTy argTy _ retTy) = L2.getFunTy fundefs f
@@ -282,14 +286,14 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
           new <- case argTy of
                   -- TODO: apply the allocFree trick that we use above.  Abstract it out.
                   PackedTy{} -> do cr <- gensym "argbuf"
-                                   LetE (cr,CursorTy,ScopedBuffer) <$> do
-                                     e' <- exp2 (Cursor cr) e
+                                   LetE (cr,CursorTy,chooseBuffer isMain) <$> do
+                                     e' <- exp2 isMain (Cursor cr) e
                                      mkapp (undilate e')
                                      -- withDilated arg e' $ \e'' -> mkapp e''
 
                   ty | L1.hasPacked ty -> error $
                           "cursorDirect: need to handle function argument of tupled packed types: "++show ty
-                     | otherwise -> mkapp =<< exp e
+                     | otherwise -> mkapp =<< exp isMain e
           -- Restore more type-safety by tagging the output appropriately.
           case mcurs of
             Nothing -> return $ Left new
@@ -353,11 +357,11 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
   --   flows to Packed data, we follow a convention of returning an
   --   expression that generates a dilated value.  See `DiExp` below.
   --  
-  exp2 :: Dests -> Exp -> SyM DiExp
-  exp2 NoCursor ex = dilateTrivial <$> exp ex
-  exp2 destC ex0 =
+  exp2 :: Bool -> Dests -> Exp -> SyM DiExp
+  exp2 isMain NoCursor ex = dilateTrivial <$> exp isMain ex
+  exp2 isMain destC ex0 =
     -- dbgTrace lvl (" 2. Processing expr in packed context, cursor "++show destC++", exp:\n  "++sdoc ex0) $ 
-    let go = exp2 destC in
+    let go = exp2 isMain destC in
     case ex0 of
       -- Here the allocation has already been performed:
       -- Our variable in the lexical environment is bound to the start only, not (st,en).
@@ -385,7 +389,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                  go2 d ((rnd,ty@PackedTy{}):rst) = do
                      tup  <- gensym "tup"
                      d'   <- gensym "dest"
-                     Di rnd' <- exp2 (Cursor d) rnd
+                     Di rnd' <- exp2 isMain (Cursor d) rnd
                      LetE (tup, dilateTy thetype, rnd') <$>
                       LetE (d', CursorTy, projCur (Di (VarE tup)) ) <$>
                        (go2 d' rst)
@@ -412,7 +416,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       -- An application that returns packed values is treated just like a 
       -- MkPackedE constructor: cursors are routed to it, and returned from it.
       AppE v e ->  -- To appear here, the function must have at least one Packed result.
-        do Right e <- doapp (Just destC) v e
+        do Right e <- doapp isMain (Just destC) v e
            return e
 
       -- This should not be possible.  Types don't work out:
@@ -422,12 +426,12 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       -- back to the other mode for the (non-packed) test condition.
       IfE a b c  -> do Di b' <- go b
                        Di c' <- go c
-                       a'    <- exp a
+                       a'    <- exp isMain a
                        return $ Di $ IfE a' b' c'
 
       -- An allocating case is just like an allocating If: 
       CaseE scrtE ls ->
-          do Right de <- docase (Just destC) (scrtE, tyOfCaseScrut ddefs ex0) ls
+          do Right de <- docase isMain (Just destC) (scrtE, tyOfCaseScrut ddefs ex0) ls
              return de
       -- CaseE <$> (projVal <$> go e) <*>
       --                mapM (\(k,vrs,e) -> (k,vrs,) <$> go e) ls
@@ -441,7 +445,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
         case destC of
           TupOut ds -> do
             -- First, we compute all the individual, dialed results:
-            es <- mapM (\(dst,e) -> exp2 dst e)
+            es <- mapM (\(dst,e) -> exp2 isMain dst e)
                        (fragileZip ds ls)
             -- Next, we recombine each of the individual dilated values:
             combineDilated (zip ds es)
