@@ -49,9 +49,9 @@ parse_all: build
 
 ALL_TESTS= $(shell ls test*.sexp)
 
-all_parsed: $(addsuffix .parsed,$(ALL_TESTS))
+all_parsed:  $(ALL_TESTS:.sexp=.parsed)
 
-%.sexp.parsed : %.sexp
+%.parsed : %.sexp
 #	@echo "Parsing $^"
 	$(TREEC) --parse $^ 2> $@
 
@@ -78,7 +78,7 @@ FAILING_TESTS ?= test11d_funrec.sexp test11f_funrec.sexp  \
 
 PASSING_TESTS = $(filter-out $(FAILING_TESTS),$(ALL_TESTS))
 
-OUT_FILES=$(addsuffix $(EXTRA_SUFFIX).out,$(PASSING_TESTS))
+OUT_FILES=$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).out)
 
 # Run the tests that work:
 run_tests: build
@@ -91,9 +91,9 @@ run_tests: build
 all_tests: answers $(OUT_FILES)
 
 # Assumes stack build:
-%.sexp$(EXTRA_SUFFIX).out : %.sexp
-	$(TREEC) $(RUN_MODE) $(TREECARGS) $^ > $@ || ./err.sh $^$(EXTRA_SUFFIX)
-	@./diff.sh $^.ans $@ || ./err.sh $^$(EXTRA_SUFFIX)
+%$(EXTRA_SUFFIX).out : %.sexp
+	$(TREEC) $(RUN_MODE) $(TREECARGS) $^ > $@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
+	@./diff.sh $(basename $^).ans $@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
   test13_build.sexp test20b_bintree.sexp test20c_bintree.sexp
@@ -122,15 +122,15 @@ INTERP_FAILING = test06b_case.sexp test06_case.sexp test06c_nested.sexp \
 
 
 # Running through interpreter, no --packed/cursorize:
-run_tests_interp2: test00_add.sexp.ans
+run_tests_interp2: answers
 	$(MAKE) run_tests TREECARGS= RUN_MODE="--interp2" FAILING_TESTS="$(INTERP_FAILING)" EXTRA_SUFFIX=".intrp"
 
 
 # --------------------------------------------------------------------------------
 
-ANSWERS= $(addsuffix .ans,$(INTERP_TESTS)) $(addsuffix .ans,$(PASSING_TESTS)) $(addsuffix .ans,$(PACKED_TESTS))
+ANSWERS= $(INTERP_TESTS:.sexp=.ans) $(PASSING_TESTS:.sexp=.ans) $(PACKED_TESTS:.sexp=.ans)
 
-%.sexp.ans : %.sexp
+%.ans : %.sexp
 	racket $^ | tee $@
 
 answers: $(ANSWERS)
@@ -145,12 +145,12 @@ valgrind:
 	rm -f *.exe *.ptr.out
 	$(MAKE) run_valgrind RUN_MOED="--exe" TREECARGS="--run --optc=-g "
 
-run_valgrind: all_tests $(addsuffix .valgrind,$(PASSING_TESTS))
+run_valgrind: all_tests $(PASSING_TESTS:.sexp=.valgrind)
 
-%.sexp.valgrind : %.sexp %.sexp$(EXTRA_SUFFIX).out
+%.valgrind : %.sexp %$(EXTRA_SUFFIX).out
 	@echo "\n Valgrind, testing $^"
 	@echo "--------------------------------------------------"
-	valgrind -q --error-exitcode=1 ./$(basename $(basename $@)).exe
+	valgrind -q --error-exitcode=1 ./$(basename $@).exe
 
 # --------------------------------------------------------------------------------
 
