@@ -330,8 +330,8 @@ char* add1(char* tin, char* tout) {
 }
 \end{code}
 %
-But it is tedious and error prone to write, and cannot scale.  Clearly, no one
-would use a technique like this for building a compiler!
+Yet this approach cannot scale--it quickly becomes tedious and error prone.
+Clearly, no one would use a technique like this for building a compiler!
 
 The above program is similar to the output produced by the prototype compiler we
 describe in this paper.  We refer to the input and output pointers as {\em
@@ -490,24 +490,86 @@ with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 \section{Compilation Algorithms}
 % ================================================================================
 
-\note{While we've seen examples above of cursor-passing programs that operate on
-serialized data, these programs are extremely tedious and error prone.}
+\note{The central issue in compiling \treelang, is deriving runtime witnesses of
+  the {\em end} of values in memory.  If we recursively unpack adjacent fields
+  without storing a pointer to the later fields, we must rediscover those
+  downstream fields as a side effect of traversing their upstream ones.}
+
 
 
 \subsection{Inferring effects}
+% ----------------------------------------
 
 % \newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{\overrightarrow{#2}} {#3}}}
-\newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{trav({#2})} {#3}}}
+% \newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{trav({#2})} {#3}}}
+\newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{#2} {#3}}}
 % $\xrightarrow[world]{hello}$
 
-\note{We denote a function with traversal effects as \arr{A}{A}{B}. }
+We denote a function with traversal effects as \arr{A}{\alpha}{B}, meaning a
+function that traverses the value located at $\alpha$ during its execution.
 
+
+\begin{figure}
+\begin{verbatim}
+    Top
+  Fixed a   Fixed b   ....
+  Fresh a   Fresh b   ....
+    Bottom
+\end{verbatim}
+  \caption{The lattice for abstract location analysis.}
+  \label{fig:lattice}
+\end{figure}
+
+
+\subsection{Copy and traversal insertion}
+% ----------------------------------------
+
+
+\note{During analysis, we generated all the information we need not only to {\em
+    label} traversal effects, but to recognize where they are needed, but
+  missing.}
+
+\note{With the inter-procedural traversal types settled, we reprocess the and
+  perform the same location analysis, but wherever we are missing a witness of a
+  field stored within a packed buffer, we perform a program synthesis to
+  generate a recursive call that meets that constraint.}
+
+\note{We insert calls to only two functions---copy and insert---whose
+  definitions the compiler generates in a subsequent pass.}
+
+\note{Even still, there's a search space of potential places to insert code.  We
+  follow a simple heuristic of introducing traversals in as large a scope as
+  possible, e.g. just under a case expression that binds the field variables.}
+%% directly at the point of missing constraints.  This may introduce the same
+%%   traversal multiple times, for example within different branches of an If
 
 \subsection{Routing end-of-value witnesses}
+% ----------------------------------------
+
+
+\subsection{Reordering to discover witnesses}
+% ----------------------------------------
+
+\note{}
+
 
 
 \subsection{Output cursor insertion}
+% ----------------------------------------
 
+\note{Locally dilated representation of packed values.}
+
+\newcommand{\END}[1]{\ensuremath{\overline{#1}}}
+
+\note{Several ways to encode these:}
+
+\begin{code}
+  (Tree@$_a$@,Tree@$_b$@)
+
+  ((Cur@$_a$@,Cur@$_{\END{a}}$@),(Cur@$_b$@,Cur@$_{\END{b}}$@))
+
+  ((Cur@$_a$@,Cur@$_b$@),(Cur@$_{\END{a}}$@,Cur@$_{\END{b}}$@))
+\end{code}
 
 
 % ================================================================================
