@@ -25,10 +25,11 @@ module Packed.FirstOrder.Target
 import Control.DeepSeq
 import Control.Monad
 import Data.Word (Word8)
+import Data.Int
 import Data.Maybe
-import Debug.Trace
+-- import Debug.Trace
 import Data.Bifunctor (first)
-import Data.Loc (noLoc)
+-- import Data.Loc (noLoc)
 import qualified Data.Set as S
 -- import Data.Traversable
 import GHC.Generics (Generic)
@@ -45,8 +46,6 @@ import Text.PrettyPrint.Mainland
 
 import Packed.FirstOrder.Common hiding (funBody)
 
-import Debug.Trace
-
 --------------------------------------------------------------------------------
 -- * AST definition
 
@@ -58,7 +57,7 @@ data Prog = Prog
 data MainExp
   = PrintExp Tail
       -- ^ Evaluate the expression and print the result. Type of the expression
-      -- must be `int`.
+      -- must be Int64.
   | RunRacketCorePass Var Var
       -- ^ Run the pass. First `Var` is a function for building initial trees,
       -- second `Var` is the function to benchmark. Return value of benchmark
@@ -69,7 +68,7 @@ type Tag = Word8
 
 data Triv
     = VarTriv Var
-    | IntTriv Int
+    | IntTriv Int64
     | TagTriv Tag
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
@@ -77,10 +76,14 @@ data Triv
 data Alts
   = TagAlts [(Tag, Tail)]
       -- ^ Casing on tags.
-  | IntAlts [(Int, Tail)]
+  | IntAlts [(Int64, Tail)]
       -- ^ Casing on integers.
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
+instance Out Int64 where
+  doc w = doc (fromIntegral w :: Integer)
+  docPrec n w = docPrec n (fromIntegral w :: Integer)
+           
 instance Out Word8 where
   doc w = doc (fromIntegral w :: Int)
   docPrec n w = docPrec n (fromIntegral w :: Int)
@@ -275,19 +278,19 @@ codegenProg prg@(Prog funs mtal) = do
         case mtal of
           Just (RunRacketCorePass build_tree bench) ->
             [cunit|
-              void __fn_to_bench(char* in, char* out) {
+              void __fn_to_bench( $ty:(codegenTy PtrTy) in, $ty:(codegenTy PtrTy) out) {
                   $(cid bench)(in, out);
               }
-              void __build_tree(int tree_size, char* buffer) {
+              void __build_tree( $ty:(codegenTy IntTy) tree_size, char* buffer) {
                   $(cid build_tree)(tree_size, buffer);
               } |]
           _ ->
             [cunit|
-              void __fn_to_bench(char* in, char* out) {
+              void __fn_to_bench( $ty:(codegenTy PtrTy) in, $ty:(codegenTy PtrTy) out) {
                 fprintf(stderr, "Benchmark is not implemented for this program.\n");
                 exit(1);
               }
-              void __build_tree(int tree_size, char* buffer) {
+              void __build_tree( $ty:(codegenTy IntTy) tree_size, char* buffer) {
                 fprintf(stderr, "Benchmark is not implemented for this program.\n");
                 exit(1);
               } |]
@@ -297,9 +300,9 @@ codegenProg prg@(Prog funs mtal) = do
         case mtal of
           Just (PrintExp t) -> do
             t' <- codegenTail t (codegenTy IntTy)
-            return $ C.FuncDef [cfun| int __main_expr() { $items:t' } |] noLoc
+            return $ C.FuncDef [cfun| $ty:(codegenTy IntTy) __main_expr() { $items:t' } |] noLoc
           _ ->
-            return $ C.FuncDef [cfun| int __main_expr() { return 0; } |] noLoc
+            return $ C.FuncDef [cfun| $ty:(codegenTy IntTy) __main_expr() { return 0; } |] noLoc
 
 codegenFun :: FunDecl -> SyM C.Definition
 codegenFun (FunDecl nam args ty tal) =
@@ -402,7 +405,7 @@ codegenTail (StartTimerT begin tal _flg) ty =
        let iters = "iters_"++begin
        return $ [ C.BlockDecl [cdecl| struct timespec $id:begin; |]
                 , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid begin));  |]
-                , C.BlockDecl [cdecl| long long $id:iters = global_iters_param; |] 
+                , C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:iters = global_iters_param; |] 
                 -- Can also use C.EscStm for raw strings it seems:
                 , C.BlockStm (C.Label (C.Id ("start_timer_"++begin) dummyLoc)
                                    [] (C.Block [] dummyLoc) dummyLoc)
@@ -509,10 +512,10 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     DictInsertP ty -> error $ "DictInsertP not implemented for type " ++ (show ty)
                     DictLookupP IntTy -> let [(outV,IntTy)] = bnds
                                              [(VarTriv dict),keyTriv] = rnds
-                                         in [ C.BlockDecl [cdecl| int $id:outV = dict_lookup_int($id:dict, $(codegenTriv keyTriv)); |] ]
+                                         in [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = dict_lookup_int($id:dict, $(codegenTriv keyTriv)); |] ]
                     DictLookupP SymTy -> let [(outV,IntTy)] = bnds
                                              [(VarTriv dict),keyTriv] = rnds
-                                         in [ C.BlockDecl [cdecl| int $id:outV = dict_lookup_int($id:dict, $(codegenTriv keyTriv)); |] ]
+                                         in [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = dict_lookup_int($id:dict, $(codegenTriv keyTriv)); |] ]
                     DictLookupP ty -> error $ "DictLookupP not implemented for type " ++ (show ty)
                     DictEmptyP _ty -> let [(outV,ty)] = bnds
                                       in [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = 0; |] ]
@@ -526,16 +529,16 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                    , C.BlockDecl [cdecl| char* $id:outV = $id:cur + 1; |] ]
                     WriteInt -> let [(outV,CursorTy)] = bnds
                                     [val,(VarTriv cur)] = rnds
-                                in [ C.BlockStm [cstm| *(int*)($id:cur) = $(codegenTriv val); |]
-                                   , C.BlockDecl [cdecl| char* $id:outV = ($id:cur) + sizeof(int); |] ]
+                                in [ C.BlockStm [cstm| *( $ty:(codegenTy IntTy)  *)($id:cur) = $(codegenTriv val); |]
+                                   , C.BlockDecl [cdecl| char* $id:outV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
                     ReadTag -> let [(tagV,TagTy),(curV,CursorTy)] = bnds
                                    [(VarTriv cur)] = rnds
                                in [ C.BlockDecl [cdecl| $ty:(codegenTy TagTy) $id:tagV = *($id:cur); |]
                                   , C.BlockDecl [cdecl| char* $id:curV = $id:cur + 1; |] ]
                     ReadInt -> let [(valV,IntTy),(curV,CursorTy)] = bnds
                                    [(VarTriv cur)] = rnds
-                               in [ C.BlockDecl [cdecl| int $id:valV = *(int*)($id:cur); |]
-                                  , C.BlockDecl [cdecl| char* $id:curV = ($id:cur) + sizeof(int); |] ]
+                               in [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:valV = *( $ty:(codegenTy IntTy) *)($id:cur); |]
+                                  , C.BlockDecl [cdecl| char* $id:curV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
 
                     GetFirstWord ->
                      let [ptr] = rnds in
@@ -553,9 +556,10 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
        return $ pre ++ bod'
 
 codegenTy :: Ty -> C.Type
-codegenTy IntTy = [cty|int|]
-codegenTy TagTy = [cty|int|]
-codegenTy SymTy = [cty|int|]
+                  -- ARGH: C-quote won't allow us to use a typedef here, e.g. "IntTy":
+codegenTy IntTy = [cty|long long|] -- Must be consistent IntTy, rts.c
+codegenTy TagTy = [cty|char|]      -- Must be consistent TagTy, rts.c
+codegenTy SymTy = [cty|long long|] -- Must be consistent SymTy, rts.c
 codegenTy PtrTy = [cty|char*|] -- Hack, this could be void* if we have enough casts. [2016.11.06]
 codegenTy CursorTy = [cty|char*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
@@ -566,7 +570,7 @@ makeName :: [Ty] -> String
 makeName tys = concatMap makeName' tys ++ "Prod"
 
 makeName' :: Ty -> String
-makeName' IntTy = "Int"
+makeName' IntTy = "Int64"
 makeName' CursorTy = "Cursor"
 makeName' TagTy = "Tag"
 makeName' PtrTy = "Ptr"
@@ -587,5 +591,3 @@ assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
 mut :: (C.ToIdent v, C.ToExp e) => C.Type -> v -> e -> C.BlockItem
 mut _t x y = C.BlockStm [cstm| $id:x = $exp:y; |]
 
-unfinished :: Int -> a
-unfinished n = error $ "Target.hs: unfinished hole #"++show n

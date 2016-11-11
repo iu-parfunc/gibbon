@@ -19,6 +19,10 @@
 static long long global_size_param = 1;
 static long long  global_iters_param = 1;
 
+typedef char TagTy;
+typedef long long IntTy;
+typedef IntTy SymTy;
+
 typedef struct dict_item {
   struct dict_item * next;
   int key;
@@ -32,7 +36,7 @@ dict_item_t * dict_alloc() {
   return ALLOC(sizeof(dict_item_t));
 }
 
-dict_item_t *dict_insert_int(dict_item_t *ptr, int key, int val) {
+dict_item_t *dict_insert_int(dict_item_t *ptr, SymTy key, IntTy val) {
   dict_item_t *ret = dict_alloc();
   ret->key = key;
   ret->intval = val;
@@ -40,7 +44,7 @@ dict_item_t *dict_insert_int(dict_item_t *ptr, int key, int val) {
   return ret;
 }
 
-int dict_lookup_int(dict_item_t *ptr, int key) {
+IntTy dict_lookup_int(dict_item_t *ptr, SymTy key) {
   while (ptr != 0) {
     if (ptr->key == key) {
       return ptr->intval;
@@ -48,7 +52,7 @@ int dict_lookup_int(dict_item_t *ptr, int key) {
       ptr = ptr->next;
     }
   }
-  printf("Error, key %d not found!\n",key);
+  printf("Error, key %lld not found!\n",key);
   exit(1);
 }
 
@@ -74,8 +78,8 @@ int dict_lookup_int(dict_item_t *ptr, int key) {
 // fun fact: __ prefix is actually reserved and this is an undefined behavior.
 // These functions must be provided by the code generator.
 void __fn_to_bench(char* in, char* out);
-int __main_expr();
-void __build_tree(int tree_size, char* buffer);
+IntTy __main_expr();
+void __build_tree(IntTy tree_size, char* buffer);
 
 void show_usage()
 {
@@ -103,14 +107,14 @@ int compare_doubles(const void *a, const void *b)
     return (*da > *db) - (*da < *db);
 }
 
-void bench(int num_iterations, int tree_size, int buffer_size)
+void bench(IntTy num_iterations, int tree_size, int buffer_size)
 {
     printf("Generating initial tree...\n");
     char* initial_buffer = (char*)malloc(buffer_size);
     assert(initial_buffer);
     __build_tree(tree_size, initial_buffer);
 
-    printf("Benchmarking. Iteration count: %d\n", num_iterations);
+    printf("Benchmarking. Iteration count: %lld\n", num_iterations);
     char* bench_buffer = (char*)malloc(buffer_size);
     assert(bench_buffer);
 
@@ -134,7 +138,7 @@ void bench(int num_iterations, int tree_size, int buffer_size)
 
 void run()
 {
-    printf("%d\n", __main_expr());
+    printf("%lld\n", __main_expr());
 }
 
 int main(int argc, char** argv)
@@ -153,9 +157,10 @@ int main(int argc, char** argv)
       fprintf(stderr, "Failed to set stack size to %lu, code %d\n", lim.rlim_cur, code);
     }
   
-    int num_iterations = 10;
+    IntTy num_iterations = 10;
     int tree_size = 10;
-    long long buffer_size = DEFAULT_BUF_SIZE; // 10M
+    // We COULD make this larger than 4GB:
+    IntTy buffer_size = DEFAULT_BUF_SIZE; // 10M
 
     // test by default
     int benchmark = 0;

@@ -12,6 +12,7 @@
         (Node l r))))
 
 ;; Non-recursive, two-level match:
+;; This is actually a hard one -- it requires copy insertion.
 (define (sum-tree [tr : Tree]) : Int
   (case tr
     [(Leaf n) n]

@@ -439,7 +439,7 @@ triv :: String -> L1.Exp -> T.Triv
 triv msg e0 =
   case e0 of
     (L1.VarE x) -> T.VarTriv x
-    (L1.LitE x) -> T.IntTriv x
+    (L1.LitE x) -> T.IntTriv (fromIntegral x) -- TODO: back propogate Int64 toL1
     -- Bools become ints:
     (L1.PrimAppE L1.MkTrue [])  -> T.IntTriv 1
     (L1.PrimAppE L1.MkFalse []) -> T.IntTriv 0

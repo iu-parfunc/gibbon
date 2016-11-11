@@ -17,5 +17,5 @@
     [(Node x y) (+ (sum-tree x) (sum-tree y))]))
 
 ;; Here we time a fold over the tree:
-(let ((tr0 : Tree (build-tree (size-param))))
-  (iterate (sum-tree tr0)))
+(let ((tr0 : Tree (Leaf 99)))
+  (sum-tree tr0))

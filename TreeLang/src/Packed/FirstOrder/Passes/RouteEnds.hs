@@ -207,12 +207,19 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                   return (newExp,loc)
                          
      -- Here we must fulfill the demand on ALL branches uniformly.
+     -- 
+     -- FIXME: We will also need to create NEW DEMAND to witness the
+     -- end of our non-first packed fields within the subexpressions
+     -- of this case.  After copy insertion we know it is POSSIBLE,
+     -- but we still need to figure out which subexpressions shoud be 
+     -- be demanded to produce them.
      CaseE e1 ls -> L1.assertTriv e1 $
       let scrutloc = let VarE sv = e1 in env # sv
 
           docase (dcon,patVs,rhs) = do
             let tys    = lookupDataCon ddefs dcon
                 zipped = fragileZip patVs tys
+                         
             env' <- extendLocEnv zipped env
             (rhs',loc) <- exp demanded env' rhs
             
