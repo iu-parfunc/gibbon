@@ -115,7 +115,7 @@ defaultConfig =
          , packed = False
          , verbosity = 1
          , cc = "gcc"
-         , optc = " -std=gnu11 -O3  "
+         , optc = " -O3  "
          , warnc = False
          , cfile = Nothing
          , exefile = Nothing
@@ -329,7 +329,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
 
     writeFile outfile str
     when (mode == ToExe || mode == RunExe) $ do
-      let cmd = cc ++" "++optc++" "++" "
+      let cmd = cc ++" -std=gnu11 "++optc++" "++" "
                    ++(if warnc then "" else suppress_warnings)
                    ++" "++outfile++" -o "++ exe
       dbgPrintLn 1 cmd
