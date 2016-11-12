@@ -10,6 +10,9 @@ import Data.Time.Clock
 import System.Environment
 import Control.Monad
 import Data.List (sort)
+
+-- import System.Clock
+
     
 type TreeTag = Word8
 
