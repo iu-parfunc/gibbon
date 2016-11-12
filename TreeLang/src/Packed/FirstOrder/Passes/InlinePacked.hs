@@ -83,18 +83,27 @@ inlinePackedExp ddefs = exp True
                    | not strong -> VarE v
                     -- Finally, we don't fully inline, but rather leave names visible:
                    | isConstructor rhs -> NamedVal v ty keepGoing
+                   | CaseE{} <- rhs    -> NamedVal v ty keepGoing
+                   | IfE{}   <- rhs    -> NamedVal v ty keepGoing
                    | otherwise -> error $ "inlinePacked: internal error, should not have "
                                         ++ "this is the inlining environment:\n "++sdoc rhs
                    where
                     keepGoing = exp strong env rhs
                                            
     (LetE (v,t,rhs) bod)
-       | VarE v2 <- rhs    -> addAndGo  -- ^ We always do copy-prop.
-       | not (L2.hasRealPacked t) -> LetE (var v,t, rhs')
-                                     (exp strong ((v,(t,Nothing)):env) bod)                                     
-       | ProjE _ _ <- rhs  -> addAndGo
-       | L1.hasTimeIt rhs  -> __ -- AUDITME: is this still needed?
-       | isConstructor rhs -> addAndGo 
+       | VarE v2    <- rhs  -> addAndGo  -- ^ We always do copy-prop.
+       | not (L2.hasRealPacked t) -> LetE (var v,t, rhs') 
+                                     (exp strong ((v,(t,Nothing)):env) bod)
+       | TimeIt{}   <- rhs  -> LetE (var v,t, rhs') (exp strong ((v,(t,Nothing)):env) bod)
+       | ProjE _ _  <- rhs  -> addAndGo
+
+--      | L1.hasTimeIt rhs  -> __ -- AUDITME: is this still needed?
+       | isConstructor rhs -> addAndGo
+
+       -- Otherwise we have a case or an If.  We still inline those.
+       | CaseE{} <- rhs  -> addAndGo
+       | IfE{}  <- rhs   -> addAndGo
+       | otherwise -> error $ " [inlinePacked] unexpected Let RHS:\n  "++sdoc e0
       where
         -- Don't reduce anything on the RHS yet, just add it:
         addAndGo = exp strong ((v,(t,Just rhs)):env) bod

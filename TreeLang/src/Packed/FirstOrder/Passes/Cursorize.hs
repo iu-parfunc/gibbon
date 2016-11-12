@@ -337,14 +337,6 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
               mkapp arg'' =
                  -- Attach the cursor arguments:
                  let aarg = augmentArg arg'' in
-                 dbgTrace 1
-                      ("\n>>>>>> [cursorDirect] doapp/mkapp: building APP: "
-                       ++show (prjstk,isMain,mcurs, f, argE)++"\n  final type: "++show nat
-                       ++"\n  fulldests: "++show fullDests++"\n endVars: "++show endVs
-                       ++"\n argPoss: "++show (argPoss)
-                       ++"\n augmented arg: "++sdoc aarg
-                       ++"\n final type projected: "++show finalTy
-                       )$
                  -- The return context is ALREADY expecting the extra args, after RouteEnds:
                  case mcurs of                   
                    Nothing -> return $ AppE f aarg -- But here no dilation is expected
@@ -376,11 +368,29 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                                                                  | (ix,t) <- zip [0..] ts ]
                                    flat _  _ = []
 
+                                   -- This ASSUMES that the end witnesses will be only cursors, and those cursors will
+                                   -- not be reflected in the dilated type (just like, say Ints):
                                    allEnds = [ buildProjE ps (L1.mkProj numNewOut (1+numNewOut) (VarE tmp))
                                              | (ps,_lc) <- flat [] coreT ]
+                                   
+                                   restoreEndWits e = L1.mkProd $
+                                                       [ L1.mkProj ix (1+numNewOut) (VarE tmp)
+                                                       | ix <- [0..numNewOut-1] ]
+                                                      ++ [e]
                                in
-                                buildProjE prjstk $ 
-                                 L1.mkProd [ flpd, L1.mkProd allEnds ]
+                                dbgTrace 1
+                                     ("\n>>>>>> [cursorDirect] doapp/mkapp: building APP: "
+                                      ++show (prjstk,isMain,mcurs, f, argE)++"\n  final type: "++show nat
+                                      ++"\n  fulldests: "++show fullDests++"\n endVars: "++show endVs
+                                      ++"\n argPoss: "++show (argPoss)
+                                      ++"\n augmented arg: "++sdoc aarg
+                                      ++"\n final type projected: "++show finalTy
+                                      ++"\n core ret before prjstk / without witnesses: "++sdoc flpd
+                                      ++"\n"
+                                      )$
+                                 buildProjE prjstk $
+                                   L1.mkProd [ restoreEndWits flpd
+                                             , L1.mkProd allEnds ]
 
           ------------------ Argument hanling ----------------------
           -- Here we handle the evaluation of the *original* input arguments.
@@ -510,8 +520,8 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                        (go2 d' rst)
                  -- Here we recursively transfer control
                  go2 d ((rnd,ty@PackedTy{}):rst) = do
-                     tup  <- gensym "tup"
-                     d'   <- gensym "dest"
+                     tup  <- gensym "fldtup"
+                     d'   <- gensym "flddst"
                      Di rnd' <- exp2 isMain (Cursor d) rnd
                      LetE (tup, dilateTy thetype, rnd') <$>
                       LetE (d', CursorTy, projCur (Di (VarE tup)) ) <$>
@@ -520,13 +530,16 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
 
       -- Eliminate this form, while leaving bindings around.
       NamedVal nm ty val -> do Di val' <- go val
-                               tmp <- gensym "dsgNamed"
-                               return $ Di $ LetE (tmp, dilateTy ty, val') $
-                                              LetE (nm, ty, undilate (Di (VarE tmp))) $
-                                               (VarE nm)
+                               return $ Di $ LetE (nm, dilateTy ty, val') (VarE nm)
+
+                               -- tmp <- gensym ("dila_"++nm)
+                               -- return $ Di $ LetE (tmp, dilateTy ty, val') $
+                               --                LetE (nm, ty, undilate (Di (VarE tmp))) $
+                               --                 (VarE nm)
                 
       -- This is already a witness binding, we leave it alone.
       LetE (v,ty,rhs) bod | L2.isCursorTy ty -> do
+         -- We do NOT dilate the cursor types:
          if isWitnessExpr rhs
          then onDi (LetE (v,ty,rhs)) <$> go bod
          else error$ "Cursorize: broken assumptions about what a witness binding should look like:\n  "
@@ -564,12 +577,10 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       -- CaseE <$> (projVal <$> go e) <*>
       --                mapM (\(k,vrs,e) -> (k,vrs,) <$> go e) ls
 
-      -- In order to divide-and-conquer, we need navigate our bundle
+      -- In order to divide-and-conquer, we need to navigate our bundle
       -- of output cursors and also recombine the end-cursors returned
       -- from our dilated results.
       MkProdE ls -> do 
-        let loop = loop
-            tys = __
         case destC of
           TupOut ds -> do
             -- First, we compute all the individual, dialed results:
@@ -598,7 +609,7 @@ combineDilated ls = do
   let (ds,es) = unzip ls
   bigpkg <- concatProds ds (L.map projCur es)
   return $ 
-    Di $ MkProdE [ MkProdE (L.map projVal es)
+    Di $ MkProdE [ L1.mkProd (L.map projVal es)
                  , bigpkg ]
 
 -- Concatenation for tuple values:
@@ -611,7 +622,7 @@ concatProds dests prods = do
    mkLets [ (flat, mkCursorProd len, pexp)
           | (len,pexp,flat) <- zip3 lens prods flats ]
     -- Then we can build one big tuple expression combining everything:
-    (MkProdE
+    (L1.mkProd
      [ mkProjE ix (VarE flat)
      | (len,flat) <- zip lens flats
      , ix <- [0..(len-1)] ])
