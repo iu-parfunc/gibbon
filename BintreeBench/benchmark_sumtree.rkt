@@ -12,6 +12,4 @@
 
 (launch-benchmarks "racket sumtree_treelang.sexp " PASSNAME "treelang-racket")
 
-;; NEW
-
-(launch-benchmarks "./treebench_mlton.exe " PASSNAME "handwritten-mlton")
+(launch-benchmarks "racket treebench.rkt sum " PASSNAME "handwritten-racket")

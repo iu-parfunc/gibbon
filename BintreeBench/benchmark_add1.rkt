@@ -25,3 +25,9 @@
 ;;(launch-benchmarks "./treebench_c_parallel.exe" PASSNAME ...)
 
 ;; add more here
+
+;; NEW
+
+(launch-benchmarks "./treebench_mlton.exe " PASSNAME "handwritten-mlton")
+
+(launch-bencharks "racket treebench.rkt add1 " PASSNAME "handwritten-racket")

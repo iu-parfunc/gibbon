@@ -153,6 +153,7 @@ sumtree_treelang_c_pointer.exe: sumtree_treelang.sexp
 
 DEPTH=20
 DEFAULT_ITERS=17
+DEFAULT_PASS=add1
 
 run_small:
 	$(MAKE) DEPTH=6 DEFAULT_ITERS=10 run_all
@@ -184,7 +185,7 @@ run_chez:
 	scheme --script treebench.ss $(DEPTH) $(DEFAULT_ITERS)
 
 run_racket:
-	racket treebench.rkt $(DEPTH) $(DEFAULT_ITERS)
+	racket treebench.rkt $(DEFAULT_PASS) $(DEPTH) $(DEFAULT_ITERS)
 
 run_racket_packed:
 	racket treebench_packed.rkt $(DEPTH)

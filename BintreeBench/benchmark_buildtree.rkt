@@ -16,5 +16,6 @@
 
 (launch-benchmarks "./treebench_mlton.exe build " PASSNAME "handwritten-mlton")
 
+(launch-benchmarks "racket treebench.rkt build " PASSNAME "handwritten-racket")
 
 
