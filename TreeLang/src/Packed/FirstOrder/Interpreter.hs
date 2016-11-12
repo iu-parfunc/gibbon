@@ -11,6 +11,7 @@ module Packed.FirstOrder.Interpreter
 
 import qualified Data.Map.Strict as M
 import Data.Maybe (listToMaybe)
+import Data.Int
 import Data.Sequence (Seq, ViewL ((:<)), (|>))
 import qualified Data.Sequence as Seq
 import Packed.FirstOrder.Target
@@ -68,7 +69,7 @@ clk = Monotonic
     
 eval :: Env -> Triv -> Val
 eval env (VarTriv v) = M.findWithDefault (error ("Unbound var: " ++ v)) v env
-eval _   (IntTriv i) = IntVal i
+eval _   (IntTriv i) = IntVal (fromIntegral i) -- TODO: Change L1 to Int64 too.
 eval _   (TagTriv t) = TagVal t
 
 
@@ -110,7 +111,7 @@ exec env (IfT v1 then_ else_) =
 exec _ (ErrT s) =
     error $ "ErrT: " ++ s
 
-exec env (StartTimerT begin e) = do
+exec env (StartTimerT begin e flg) = do
     !_ <- return $! force env
     -- st <- return $! unsafePerformIO getCurrentTime
     st <- return $! unsafePerformIO $ getTime clk
@@ -119,7 +120,7 @@ exec env (StartTimerT begin e) = do
     -- We don't time in the interpreter
     exec env' e
 
-exec env (EndTimerT begin e) = do
+exec env (EndTimerT begin e flg) = do
     !_ <- return $! force env
     -- en <- return $! unsafePerformIO getCurrentTime
     en <- return $! unsafePerformIO $ getTime clk
@@ -156,7 +157,7 @@ exec env (Switch tr alts def) =
     final_alt =
       maybe def return $
         case tr' of
-          IntVal i -> chooseIntAlt i
+          IntVal i -> chooseIntAlt (fromIntegral i)
           TagVal t -> chooseTagAlt t
           _        -> error ("Switch: invalid value in scrutinee position: " ++ show tr')
 
@@ -166,7 +167,7 @@ exec env (TailCall fn args) =
     fn' = eval env (VarTriv fn)
     args' = map (eval env) args
 
-exec env e = error$ "Interpreter/exec, unhandled expression:\n  "++show (doc e)
+exec _ e = error$ "Interpreter/exec, unhandled expression:\n  "++show (doc e)
 
             
 extendEnv :: Env -> [(String, Val)] -> Env

@@ -20,7 +20,8 @@ module Packed.FirstOrder.L1_Source
     -- * Expression and Prog helpers
     , freeVars, subst, substE, mapExprs
       -- * Trivial expressions
-    , assertTriv, assertTrivs, isTriv, projNonFirst, mkProj, mkProd
+    , assertTriv, assertTrivs, isTriv, hasTimeIt
+    , projNonFirst, mkProj, mkProd, mkProdTy
       -- * Examples
     , add1Prog
     )
@@ -72,7 +73,7 @@ data Exp = VarE Var
          | CaseE Exp [(Constr, [Var], Exp)]
            -- ^ Case on a PACKED datatype.
          | MkPackedE Constr [Exp]
-         | TimeIt Exp Ty
+         | TimeIt Exp Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
 
            -- Limited list handling:
          | MapE  (Var,Ty,Exp) Exp
@@ -95,6 +96,7 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
 
 --          | GetLoc Var
 --          | AddLoc Int Var
+          | SizeParam
 
           | MkTrue -- ^ Zero argument constructor.
           | MkFalse -- ^ Zero argument constructor.
@@ -182,7 +184,7 @@ freeVars ex =
                   (S.unions $ L.map (\(_, _, ee) -> freeVars ee) ls)
     MkProdE ls     -> S.unions $ L.map freeVars ls
     MkPackedE _ ls -> S.unions $ L.map freeVars ls
-    TimeIt e _ -> freeVars e
+    TimeIt e _ _ -> freeVars e
     IfE a b c -> freeVars a `S.union` freeVars b `S.union` freeVars c
     MapE (v,t,rhs) bod -> freeVars rhs `S.union`
                           S.delete v (freeVars bod)
@@ -207,7 +209,7 @@ subst old new ex =
     CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
     MkProdE ls     -> MkProdE $ L.map go ls
     MkPackedE k ls -> MkPackedE k $ L.map go ls
-    TimeIt e t -> TimeIt (go e) t
+    TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE (go a) (go b) (go c)
     MapE (v,t,rhs) bod | v == old  -> MapE (v,t, rhs)    (go bod)
                        | otherwise -> MapE (v,t, go rhs) (go bod)
@@ -234,7 +236,7 @@ substE old new ex =
     CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
     MkProdE ls     -> MkProdE $ L.map go ls
     MkPackedE k ls -> MkPackedE k $ L.map go ls
-    TimeIt e t -> TimeIt (go e) t
+    TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE (go a) (go b) (go c)
     MapE (v,t,rhs) bod | VarE v == old  -> MapE (v,t, rhs)    (go bod)
                        | otherwise -> MapE (v,t, go rhs) (go bod)
@@ -304,7 +306,24 @@ isTriv e =
      MkProdE ls -> all isTriv ls  
      _  -> False
 
-
+-- | Does the expression contain a TimeIt form?
+hasTimeIt :: Exp -> Bool
+hasTimeIt rhs =
+    case rhs of
+      TimeIt _ _ _ -> True
+      MkPackedE _ _ -> False
+      VarE _        -> False
+      LitE _        -> False 
+      AppE _ _      -> False
+      PrimAppE _ _ -> False
+      ProjE _ e    -> hasTimeIt e      
+      MkProdE ls   -> any hasTimeIt ls 
+      IfE a b c -> hasTimeIt a || hasTimeIt b || hasTimeIt c
+      CaseE _ ls -> any hasTimeIt [ e | (_,_,e) <- ls ]
+      LetE (_,_,e1) e2 -> hasTimeIt e1 || hasTimeIt e2
+      MapE (_,_,e1) e2 -> hasTimeIt e1 || hasTimeIt e2
+      FoldE (_,_,e1) (_,_,e2) e3 -> hasTimeIt e1 || hasTimeIt e2 || hasTimeIt e3
+           
 -- | Project something which had better not be the first thing in a tuple.
 projNonFirst :: Int -> Exp -> Exp
 projNonFirst 0 e = error $ "projNonFirst: expected nonzero index into expr: "++sdoc e
@@ -321,6 +340,11 @@ mkProd :: [Exp]-> Exp
 mkProd [e] = e
 mkProd ls = MkProdE ls
 
+-- | Same as mkProd, at the type level
+mkProdTy :: [Ty]-> Ty
+mkProdTy [t] = t
+mkProdTy ls = ProdTy ls
+            
                 
 {-
 -- | Promote a value to a term that evaluates to it.

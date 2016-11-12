@@ -207,12 +207,19 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                   return (newExp,loc)
                          
      -- Here we must fulfill the demand on ALL branches uniformly.
+     -- 
+     -- FIXME: We will also need to create NEW DEMAND to witness the
+     -- end of our non-first packed fields within the subexpressions
+     -- of this case.  After copy insertion we know it is POSSIBLE,
+     -- but we still need to figure out which subexpressions shoud be 
+     -- be demanded to produce them.
      CaseE e1 ls -> L1.assertTriv e1 $
       let scrutloc = let VarE sv = e1 in env # sv
 
           docase (dcon,patVs,rhs) = do
             let tys    = lookupDataCon ddefs dcon
                 zipped = fragileZip patVs tys
+                         
             env' <- extendLocEnv zipped env
             (rhs',loc) <- exp demanded env' rhs
             
@@ -221,11 +228,10 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
             let rhs'' = 
                   let Fixed v = scrutloc                                
                   in LetE (toEndVar v, mkCursorTy (),
-                           -- If there is no last field, the constructors
-                           -- end is just after the tag:
-                           if L.null patVs
-                           then PrimAppE L1.AddP [VarE (L2.toWitnessVar v), LitE 1]
-                           else VarE (toEndVar (L.last patVs)))
+                           case sequence (L.map L1.sizeOf tys) of
+                             -- Here we statically know the layout, plus one for the tag:
+                             Just ns -> PrimAppE L1.AddP [VarE (L2.toWitnessVar v), LitE (sum ns+1)]
+                             Nothing -> VarE (toEndVar (L.last patVs)))
                        rhs'
                         
             return ((dcon,patVs,rhs''),loc)
@@ -248,8 +254,8 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
        let (retloc,_) = L2.join bloc cloc
        return (IfE a b' c', retloc)
 
-     TimeIt e t -> do (e',l) <- exp demanded env e
-                      return (TimeIt e' t, l)
+     TimeIt e t b -> do (e',l) <- exp demanded env e
+                        return (TimeIt e' t b, l)
               
      _ -> error$ "[routeEnds] Unfinished.  Needs to handle:\n  "++sdoc ex
 {-

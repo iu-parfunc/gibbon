@@ -311,6 +311,6 @@ case_add1 =
       _proc_out <-
         bracket_ (return ())
                  (removeFile "add1")
-                 (readCreateProcess (shell "./add1 -bench") "")
+                 (readCreateProcess (shell "./add1 -benchmark 10 10") "")
 
       return ()

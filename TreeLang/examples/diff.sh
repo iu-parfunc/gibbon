@@ -15,8 +15,8 @@ checkfile $2
 A=`mktemp`
 B=`mktemp`
 
-grep -v SELFTIMED $1 > $A
-grep -v SELFTIMED $2 > $B
+grep -v SELFTIMED $1 | grep -v BATCHTIME > $A
+grep -v SELFTIMED $2 | grep -v BATCHTIME > $B
 
 diff $A $B
 code=$?
@@ -27,7 +27,6 @@ if [ "$code" == "0" ]; then
     #    echo "  -> Success.";
     exit $code;
 else
-    echo "ERROR: Answers differed!: $1 vs $2";
-    exit $code
+    echo "ERROR: Answers differed!: diff $1  $2";
+    exit $code;
 fi
-

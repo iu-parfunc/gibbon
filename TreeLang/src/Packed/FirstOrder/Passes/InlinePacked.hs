@@ -65,7 +65,7 @@ inlinePackedExp = go
     (PrimAppE p es) -> PrimAppE p $ map (go env) es
     (LetE (v,t,rhs) e) 
        -- We do NOT inline cursors, because cursorDirect will want these.
-       | L2.hasRealPacked t ->
+       | L2.hasRealPacked t && not (L1.hasTimeIt rhs) ->
             if L2.hasCursorTy t
              then error$ "Internal error: do not expect binding containing both cursors and real packed types:\n "
                          ++ sdoc (v,t,rhs)
@@ -86,7 +86,7 @@ inlinePackedExp = go
                             (c,args,go env' ae)
                     in CaseE (go env e) mp'
     (MkPackedE c es) -> MkPackedE c $ map (go env) es
-    (TimeIt e t) -> TimeIt (go env e) t
+    (TimeIt e t b) -> TimeIt (go env e) t b
     (MapE (v,t,e') e) -> let env' = (v,Nothing) : env in
                          MapE (var v,t,go env e') (go env' e)
     (FoldE (v1,t1,e1) (v2,t2,e2) e3) ->

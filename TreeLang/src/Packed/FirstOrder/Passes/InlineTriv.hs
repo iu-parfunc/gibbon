@@ -53,7 +53,7 @@ inlineTrivExp = go []
            mp' = map (\(c,args,ae) -> (c,args,go env ae)) mp
        in L1.CaseE e' mp'
   exp env (L1.MkPackedE c es) = L1.MkPackedE c $ map (go env) es
-  exp env (L1.TimeIt e t) = L1.TimeIt (go env e) t
+  exp env (L1.TimeIt e t b) = L1.TimeIt (go env e) t b
   exp env (L1.MapE (v,t,e') e) = L1.MapE (v,t,go env e') (go env e)
   exp env (L1.FoldE (v1,t1,e1) (v2,t2,e2) e3) =
        L1.FoldE (v1,t1,go env e1) (v2,t2,go env e2) (go env e3)
@@ -63,4 +63,4 @@ inlineTrivExp = go []
 
 mkProj :: Int -> Exp -> Exp
 mkProj ix (MkProdE ls) = ls !! ix
-mkProj ix (VarE v) = ProjE ix (VarE v)
+mkProj ix e = ProjE ix e

@@ -149,6 +149,7 @@ lit := int | #t | #f
              (run-n (sub1 n) f))))
 (define-syntax-rule (iterate e)
   (begin (printf "ITERS: ~a\n" (iters-param))
+         (printf "SIZE: ~a\n" (size-param))
          (let-values ([(ls cpu real gc)
                        (time-apply (lambda () (run-n (iters-param)
                                                      (lambda () e))) '())])

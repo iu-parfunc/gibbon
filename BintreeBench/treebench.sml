@@ -67,9 +67,44 @@ fun benchmark (power: int): micro =
       Time.toMicroseconds realTime
    end
 
-val trials = 17
+fun benchmark_build (power: int): micro =
+  let
+     val realTimer = startRealTimer ()
+     val t = buildTree power
+     val realTime = checkRealTimer realTimer
+  in
+     Time.toMicroseconds realTime
+  end
+
+(* val trials = 17 *)
+
+fun benchmarks_build (power: int, trials: int): (microreal * microreal) =
+   let
+      val _ = print "Benchmarking building"
+      fun computeTimes (its: int): micro list =
+         if its = 0
+            then []
+            else
+               let
+                  val _ = print "."
+               in
+                  benchmark_build power :: computeTimes (its-1)
+               end
+      val times = computeTimes trials
+      val _ = putStrLn ".Done!"
+      val timeSum = foldl LargeInt.+ 0 times
+      val _ = putStrLn "BATCHTIME: "
+      val _ = printLargeReal ((LargeReal.fromLargeInt timeSum) / 1000000.0)
+      val meanTime = LargeReal./ ( LargeReal.fromLargeInt timeSum
+                                 , LargeReal.fromInt      trials
+                                 )
+(*      val sorted = FINISHME *)
+      val medianTime = 0.0
+   in
+      (meanTime, medianTime)
+   end
        
-fun benchmarks (power: int): (microreal * microreal) =
+fun benchmarks (power: int, trials: int): (microreal * microreal) =
    let
       val _ = print "Benchmarking"
       fun computeTimes (its: int): micro list =
@@ -84,6 +119,8 @@ fun benchmarks (power: int): (microreal * microreal) =
       val times = computeTimes trials
       val _ = putStrLn ".Done!"
       val timeSum = foldl LargeInt.+ 0 times
+      val _ = print "BATCHTIME: "
+      val _ = printLargeReal ((LargeReal.fromLargeInt timeSum) / 1000000.0)
       val meanTime = LargeReal./ ( LargeReal.fromLargeInt timeSum
                                  , LargeReal.fromInt      trials
                                  )
@@ -93,13 +130,39 @@ fun benchmarks (power: int): (microreal * microreal) =
       (meanTime, medianTime)
    end
 
-val power = case map Int.fromString (CommandLine.arguments ()) of
-                    SOME i :: _ => i
+fun run (args : string list): (microreal * microreal) =
+  if EQUAL = (String.compare ((hd args), "build"))
+     then 
+         let
+	    val (power,trials) = case map Int.fromString (tl args) of
+                    SOME i :: SOME j :: _ => (i,j)
                   | _           => raise Fail "Can't parse number of iterations"
-val _ = print "Benchmark: add 1 to all leaves of binary tree, size 2^"
-val _ = putStrLn (Int.toString power)
-val _ = print "  trials = "
-val _ = putStrLn (Int.toString trials)
-val (meanTime,median) = benchmarks power
-val _ = print "Mean time (seconds): "
-val _ = printLargeReal (meanTime / 1000000.0)
+            val _ = print "Benchmark: build tree size 2^"
+     	    val _ = putStrLn (Int.toString power)
+     	    val _ = print "  trials = "
+     	    val _ = putStrLn (Int.toString trials)
+     	    val (meanTime,median) = benchmarks_build (power, trials)
+     	    val _ = print "Mean time (seconds): "
+     	    val _ = printLargeReal (meanTime / 1000000.0)
+         in 
+	    (meanTime,median)
+	 end
+     else
+	 let
+	    val (power,trials) = case map Int.fromString args of
+                    SOME i :: SOME j :: _ => (i,j)
+                  | _           => raise Fail "Can't parse number of iterations"
+	    val _ = print "Benchmark: add 1 to all leaves of binary tree, size 2^"
+     	    val _ = putStrLn (Int.toString power)
+     	    val _ = print "  trials = "
+     	    val _ = putStrLn (Int.toString trials)
+     	    val (meanTime,median) = benchmarks (power, trials)
+     	    val _ = print "Mean time (seconds): "
+     	    val _ = printLargeReal (meanTime / 1000000.0) 
+	 in
+	    (meanTime,median)
+	 end
+
+val args = CommandLine.arguments ()
+val _ = run args
+ 

@@ -111,7 +111,7 @@ tagDataCons ddefs = go allCons
        CaseE e ls -> CaseE (go cons e) (L.map (\(c,vs,er) -> (c,vs,go cons er)) ls)
        MkProdE ls     -> MkProdE $ L.map (go cons) ls
        MkPackedE k ls -> MkPackedE k $ L.map (go cons) ls
-       TimeIt e t -> TimeIt (go cons e) t
+       TimeIt e t b -> TimeIt (go cons e) t b
        IfE a b c -> IfE (go cons a) (go cons b) (go cons c)   
 
        MapE  (v,t,e) bod -> MapE (v,t, go cons e) (go cons bod)
@@ -140,7 +140,7 @@ parseSExp ses =
                                args
          (arg,ty,bod'') <-
                case args' of
-                 []   -> (,voidTy,bod') <$> gensym "vd" 
+                 []   -> (,voidTy,bod') <$> gensym "void" 
                  [(a,t)] -> pure (a,t,bod')
                  _    -> do let (vs,ts) = unzip args'
                             vr <- gensym (L.concat$ L.intersperse "_" vs)
@@ -250,8 +250,11 @@ exp se =
    RSAtom (HSInt n)  -> LitE (fromIntegral n)
                         
    -- | This type gets replaced later in flatten:
-   L2 "time" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()))
-   
+   L2 "time" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) False)
+
+   -- | This variant inserts a loop, controlled by the iters argument on the command line.
+   L2 "iterate" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) True)
+                    
    L3 "let" (L bnds) bod -> 
      mkLets (L.map letbind bnds) (exp bod) 
      
@@ -341,6 +344,7 @@ primMap = M.fromList
   , ("*", MulP)
   , ("eq?", EqSymP)
   , ("=",   EqIntP)
+  , ("size-param", SizeParam)
   ]
 
 prim :: Text -> Prim

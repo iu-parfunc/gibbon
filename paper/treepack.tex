@@ -30,7 +30,8 @@
 \newcommand{\keywdr}[1]{\; \texttt{#1}^{*} \;}
 
 \newif\ifcurly
-\curlytrue
+\curlytrue % Comment to deactivate.
+
 
 %----------------------------------------
 %% \usepackage[colorinlistoftodos,prependcaption,textsize=tiny]{todonotes}
@@ -256,6 +257,7 @@ a recursive walk on
 the tree would typically use pattern matching:
 
 \ifcurly
+% [language=python]
 \begin{code}[language=c]
 type Tree = Leaf(Int) | Node(Tree,Tree);
 
@@ -281,10 +283,10 @@ we consider this paper is already a subset of most existing languages.
 The above program is not substantially different in C, Haskell, ML, Scala,
 Swift, Rust, etc.  Only the details of switching on sum types (tagged unions) differ.
 
-\note{The first problem for tree-walks such as this is memory management. 
-  \il{add1} can easy become a malloc or garbage collector benchmark.  For
-  instance, the following C code is over twice as slow as the same
-  implementation in Java or a good functional compiler:}
+The first problem for tree-walks such as this is memory management.  \il{add1}
+can easy become a malloc or garbage collector benchmark.  For instance, the
+following C code is over twice as slow as the same implementation in Java or a
+good functional compiler:
 
 \begin{code}[language=c]
   Tree* add1(Tree* t) {
@@ -300,15 +302,120 @@ Swift, Rust, etc.  Only the details of switching on sum types (tagged unions) di
   }
 \end{code}
 
-\note{But even if we assume optimal layout, bump-pointer allocation, and {\em no
-    header objects}---even if we go further and enable \il{__packed__} attribute
-  for our structs to save tag space---the performance of the above code is still
-  several times below what is achievable.}
+But even if we assume optimal layout, bump-pointer allocation, and {\em no
+  header objects}---even if we go further and enable \il{__packed__} attribute
+for our structs to save tag space---the performance of the above code is still
+several times below what is achievable.  The main observation of this paper is
+that bulk tree walks are efficient if done directly on pre-order serialization
+of the tree, and that it is possible to automate the translation of recursive
+functions, such as @add1@ above, into code that directly manipulates data
+buffers containing serialized trees.
 
-\note{Yet, code performing raw manipulation of a pointer into a byte buffer
-  containing a serialized tree is extremely error prone and tedious to write.
-  It certainly is inappropriate for writing compilers, which contain reams and
-  reams of tree-walking code.}
+For our simple example, this buffer passing code isn't complicated:
+%
+\begin{code}[language=c]
+char* add1(char* tin, char* tout) {
+  if (*tin == Leaf) {
+    *tout = Leaf;
+    tin++; tout++;
+    *(int*)tout = *(int*)tin;
+    return (tin + sizeof(int));
+  } else {
+    *tout = Node;
+    tin++; tout++;
+    char* t2 = add1Tree(tin,tout);
+    tout += (t2 - t);
+    return add1Tree(t2,tout);
+  }
+}
+\end{code}
+%
+Yet this approach cannot scale--it quickly becomes tedious and error prone.
+Clearly, no one would use a technique like this for building a compiler!
+
+The above program is similar to the output produced by the prototype compiler we
+describe in this paper.  We refer to the input and output pointers as {\em
+  cursors}, and one of the primary jobs of the compiler is automatic cursor
+insertion.
+
+%% \note{Yet, code performing raw manipulation of a pointer into a byte buffer
+%%   containing a serialized tree is extremely error prone and tedious to write.
+%%   It certainly is inappropriate for writing compilers, which contain reams and
+%%   reams of tree-walking code.}
+
+\subsection{Challenges and Limitations}
+
+\note{Rightmost vs leftmost}
+
+
+\ifcurly
+\begin{code}[language=c]
+fun left(t) {
+  match(t) {
+    Leaf(n):   return n;
+    Node(x,_): return left(x);
+  }}
+fun right(t) {
+  match(t) {
+    Leaf(n):   return n;
+    Node(_,y): return right(y);
+  }}
+\end{code}
+\else
+\begin{code}
+ left t = case t of
+            Leaf n   -> n
+            Node x _ -> left x
+ right t = case t of
+             Leaf n   -> n
+             Node _ y -> right y
+\end{code}
+\fi
+
+
+\subsection{Related Work}
+
+\rn{Milind, some of the related work was going to go up here?}
+
+One line of closely related work focuses on managing data layout in trees and
+other data structures to promote spatial
+locality~\cite{Chilimbi1999,Chilimbi1999b,Truong1998,Lattner2005,Chilimbi1999},
+by modifying garbage collection to co-locate objects~\cite{Chilimbi1999a},
+modifying memory allocators to proactively place objects with similar access
+patterns together~\cite{Lattner2005,Chilimbi1999}, or to modify the internal
+layout of objects to place hot fields near each other~\cite{Chilimbi1999b}.
+These approaches attempt to ``pack'' data together, using various techniques,
+into cache lines to improve spatial locality, and hence have some resemblance
+to our packed representations, which gain some performance benefits from
+packing tree data into a compact format that promotes spatial locality.
+
+Perhaps the most closely related of these is Chilimbi et al.'s {\em cache
+conscious structure layout}~\cite{Chilimbi1999}. They propose a
+cache-conscious data placement scheme where, given a traversal function,
+tree-structured data will be laid out in memory in a {\em clustered} manner:
+nodes from small subtrees will be placed on single cache lines. By matching
+the tree layout to a specified traversal order, spatial locality is improved
+when the tree is traversed in that order. A key difference between our packed
+representation and Chilimbi et al.'s work is that this work focused on object
+layout, without changing the internal {\em representation} of the objects.
+Leaving the object representation of tree nodes the same allows code that
+manipulates the objects to remain the same, but incurs costs: there is no
+opportunity to reduce the space or instruction overhead incurred by pointers
+linking nodes in the tree (see Figure~\ref{fig:intro-fig}), as exploiting that
+opportunity requires code transformation. Most of the aforementioned spatial
+locality work makes the same tradeoff.
+
+One exception is Chilimbi et al.'s work on {\em automatic structure
+splitting}~\cite{Chilimbi1999b}, where objects are transformed into split
+representations, allowing hot fields from multiple objects to be co-located on
+a single cache line while those objects' cold fields are placed elsewhere.
+Because this layout optimization changes the internal representation of the
+object, Chilimbi et al. develop a compiler pass that automatically transforms
+code to work with the split representation. The transformations for structure
+splitting concern how to access object fields, and hence, unlike our work, do
+not require deeper transformations to remove the pointer dereferences inherent
+in traversing linked data structures.
+
 
 % ================================================================================
 \section{The \treelang{} Language}
@@ -421,21 +528,86 @@ with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 \section{Compilation Algorithms}
 % ================================================================================
 
-\note{While we've seen examples above of cursor-passing programs that operate on
-serialized data, these programs are extremely tedious and error prone.}
+\note{The central issue in compiling \treelang, is deriving runtime witnesses of
+  the {\em end} of values in memory.  If we recursively unpack adjacent fields
+  without storing a pointer to the later fields, we must rediscover those
+  downstream fields as a side effect of traversing their upstream ones.}
+
+
+
+\subsection{Inferring effects}
+% ----------------------------------------
+
+% \newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{\overrightarrow{#2}} {#3}}}
+% \newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{trav({#2})} {#3}}}
+\newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{#2} {#3}}}
+% $\xrightarrow[world]{hello}$
+
+We denote a function with traversal effects as \arr{A}{\alpha}{B}, meaning a
+function that traverses the value located at $\alpha$ during its execution.
+
+
+\begin{figure}
+\begin{verbatim}
+    Top
+  Fixed a   Fixed b   ....
+  Fresh a   Fresh b   ....
+    Bottom
+\end{verbatim}
+  \caption{The lattice for abstract location analysis.}
+  \label{fig:lattice}
+\end{figure}
+
+
+\subsection{Copy and traversal insertion}
+% ----------------------------------------
+
+
+\note{During analysis, we generated all the information we need not only to {\em
+    label} traversal effects, but to recognize where they are needed, but
+  missing.}
+
+\note{With the inter-procedural traversal types settled, we reprocess the and
+  perform the same location analysis, but wherever we are missing a witness of a
+  field stored within a packed buffer, we perform a program synthesis to
+  generate a recursive call that meets that constraint.}
+
+\note{We insert calls to only two functions---copy and insert---whose
+  definitions the compiler generates in a subsequent pass.}
+
+\note{Even still, there's a search space of potential places to insert code.  We
+  follow a simple heuristic of introducing traversals in as large a scope as
+  possible, e.g. just under a case expression that binds the field variables.}
+%% directly at the point of missing constraints.  This may introduce the same
+%%   traversal multiple times, for example within different branches of an If
+
+\subsection{Routing end-of-value witnesses}
+% ----------------------------------------
+
+
+\subsection{Reordering to discover witnesses}
+% ----------------------------------------
 
 \note{}
 
 
-\subsection{Inferring effects}
-
-
-
-\subsection{Routing end-of-value witnesses}
-
 
 \subsection{Output cursor insertion}
+% ----------------------------------------
 
+\note{Locally dilated representation of packed values.}
+
+\newcommand{\END}[1]{\ensuremath{\overline{#1}}}
+
+\note{Several ways to encode these:}
+
+\begin{code}
+  (Tree@$_a$@,Tree@$_b$@)
+
+  ((Cur@$_a$@,Cur@$_{\END{a}}$@),(Cur@$_b$@,Cur@$_{\END{b}}$@))
+
+  ((Cur@$_a$@,Cur@$_b$@),(Cur@$_{\END{a}}$@,Cur@$_{\END{b}}$@))
+\end{code}
 
 
 % ================================================================================

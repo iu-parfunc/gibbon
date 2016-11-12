@@ -109,6 +109,45 @@ treebench_c_packed_parallel3.exe: treebench_packed_parallel3.c $(HEADERS)
 treebench.class: treebench.java
 	time javac $^ 
 
+
+# BuildTree benchmark
+# ==============================================================================
+
+TREELANGDIR=$(shell cd ..; pwd)
+TREEC=$(shell cd ../TreeLang; stack exec -- which treec)
+
+# Make sure the compiler is build and not stale:
+stack_build:
+	cd $(TREELANGDIR)/TreeLang; stack build
+
+buildtree: stack_build buildtree_treelang_c_packed.exe
+	raco make buildtree_treelang.sexp
+# buildtree_treelang_c_pointer.exe
+
+# Here we control the C file output in case we build in parallel:
+buildtree_treelang_c_packed.exe: buildtree_treelang.sexp
+	$(TREEC)  --packed --cfile=$(@:.exe=.c) --exefile $@ $^
+
+buildtree_treelang_c_pointer.exe: buildtree_treelang.sexp
+	$(TREEC)  --pointer --cfile=$(@:.exe=.c) --exefile $@ $^
+
+# SumTree benchmark
+# ==============================================================================
+# Identical to buildtree.  s/buildtree/sumtree/
+
+# --pointer not working yet:
+sumtree: stack_build sumtree_treelang_c_packed.exe
+	raco make sumtree_treelang.sexp
+
+sumtree_treelang_c_packed.exe: sumtree_treelang.sexp
+	$(TREEC)  --packed --cfile=$(@:.exe=.c) --exefile $@ $^
+
+sumtree_treelang_c_pointer.exe: sumtree_treelang.sexp
+	$(TREEC)  --pointer --cfile=$(@:.exe=.c) --exefile $@ $^
+
+
+
+
 # Running
 # ==============================================================================
 
@@ -159,4 +198,4 @@ docker:
 clean:
 	rm -f *.exe *.o *.hi treebench treebench_lazy *.cmi *.cmo *.cmx
 
-.PHONY: all clean ghc run_chez run_java run_all run_small c ghc
+.PHONY: all clean ghc run_chez run_java run_all run_small c ghc buildtree stack_build

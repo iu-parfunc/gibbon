@@ -32,6 +32,8 @@ import Packed.FirstOrder.Passes.InlineTriv
 import Packed.FirstOrder.Passes.ShakeTree 
 import Packed.FirstOrder.Passes.Lower
 import Packed.FirstOrder.Passes.InlinePacked
+import Packed.FirstOrder.Passes.Unariser
+import Packed.FirstOrder.Passes.HoistNewBuf
 
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import Packed.FirstOrder.Target (codegenProg)
@@ -88,6 +90,8 @@ data Config = Config
   , cc        :: String -- ^ C compiler to use
   , optc      :: String -- ^ Options to the C compiler
   , warnc     :: Bool
+  , cfile     :: Maybe FilePath -- ^ Optional override to destination .c file.
+  , exefile   :: Maybe FilePath -- ^ Optional override to destination binary file.
   }
 
 -- | What input format to expect on disk.
@@ -112,8 +116,10 @@ defaultConfig =
          , packed = False
          , verbosity = 1
          , cc = "gcc"
-         , optc = " -std=gnu11 -O3  "
+         , optc = " -O3  "
          , warnc = False
+         , cfile = Nothing
+         , exefile = Nothing
          }
 
 suppress_warnings :: String
@@ -135,6 +141,11 @@ configParser = Config <$> inputParser <*> modeParser
                            <|> pure (optc defaultConfig))
                       <*> switch (short 'w' <> long "warnc" <>
                                   help "Show warnings from C compiler, normally suppressed")
+                      <*> ((fmap Just (strOption $ long "cfile" <> help "set the destination file for generated C code"))
+                           <|> pure (cfile defaultConfig))
+                      <*> ((fmap Just (strOption $ short 'o' <> long "exefile" <>
+                                       help "set the destination file for the executable"))
+                           <|> pure (exefile defaultConfig))
  where
   -- Most direct way, but I don't like it:
   _inputParser :: Parser Input
@@ -200,7 +211,7 @@ lvl = 3
 -- files to process.
 compile :: Config -> FilePath -> IO ()
 -- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp0 = do
+compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
   -- TERRIBLE HACK!!  This value is global, "pure" and can be read anywhere
   when (verbosity > 1) $ do
     setEnv "DEBUG" (show verbosity)
@@ -253,13 +264,18 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp0 = do
           lift$ dbgPrintLn lvl $ "Running pass: " ++who++":\n"++sepline
           put cnt'
           _ <- lift $ evaluate $ force y
+          lift$ dbgPrintLn 6 $ sdoc y -- Still print if you crank it up.
           return y
 
     when (mode == Interp1) $
       error "Early-phase interpreter not implemented yet!"
 
-    let outfile = (replaceExtension fp ".c")
-        exe     = replaceExtension fp ".exe"
+    let outfile = case cfile of
+                    Nothing -> (replaceExtension fp ".c")
+                    Just f -> f
+        exe     = case exefile of
+                    Nothing -> replaceExtension fp ".exe"
+                    Just f -> f
 
     clearFile outfile
     clearFile exe
@@ -295,9 +311,11 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp0 = do
                        l2l <- pass' "flatten"                  flatten2                  l2k
                        l2m <- pass  "inlineTriv"               inline2                   l2l
                        l2n <- pass  "shakeTree"                shakeTree                 l2m
-                       return l2n
+                       l2o <- pass  "hoistNewBuf"              hoistNewBuf               l2n
+                       return l2o
                      else return l2
-                 l3  <-       pass  "lower"                    (lower packed)           l2'
+                 l2'' <-       pass  "unariser"                 unariser                 l2'
+                 l3   <-       pass  "lower"                    (lower packed)           l2''
 
                  if mode == Interp2
                   then do mapM_ (\(IntVal v) -> liftIO $ print v) (execProg l3)
@@ -313,7 +331,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc} fp0 = do
 
     writeFile outfile str
     when (mode == ToExe || mode == RunExe) $ do
-      let cmd = cc ++" "++optc++" "++" "
+      let cmd = cc ++" -std=gnu11 "++optc++" "++" "
                    ++(if warnc then "" else suppress_warnings)
                    ++" "++outfile++" -o "++ exe
       dbgPrintLn 1 cmd

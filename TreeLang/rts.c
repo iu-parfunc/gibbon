@@ -1,17 +1,27 @@
 #include <assert.h>
 #include <stdio.h>
+// #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <alloca.h>
+
+#include <sys/resource.h>
 
 #define ALLOC malloc
 #define ALLOC_PACKED ALLOC
 
 #define SIZE 1000
 
-// 10MB default:
-#define DEFAULT_BUF_SIZE 10000000
+// Big default:
+#define DEFAULT_BUF_SIZE (500lu * 1000lu * 1000lu)
+
+static long long global_size_param = 1;
+static long long  global_iters_param = 1;
+
+typedef char TagTy;
+typedef long long IntTy;
+typedef IntTy SymTy;
 
 typedef struct dict_item {
   struct dict_item * next;
@@ -26,7 +36,7 @@ dict_item_t * dict_alloc() {
   return ALLOC(sizeof(dict_item_t));
 }
 
-dict_item_t *dict_insert_int(dict_item_t *ptr, int key, int val) {
+dict_item_t *dict_insert_int(dict_item_t *ptr, SymTy key, IntTy val) {
   dict_item_t *ret = dict_alloc();
   ret->key = key;
   ret->intval = val;
@@ -34,7 +44,7 @@ dict_item_t *dict_insert_int(dict_item_t *ptr, int key, int val) {
   return ret;
 }
 
-int dict_lookup_int(dict_item_t *ptr, int key) {
+IntTy dict_lookup_int(dict_item_t *ptr, SymTy key) {
   while (ptr != 0) {
     if (ptr->key == key) {
       return ptr->intval;
@@ -42,15 +52,22 @@ int dict_lookup_int(dict_item_t *ptr, int key) {
       ptr = ptr->next;
     }
   }
-  printf("Error, key %d not found!\n",key);
+  printf("Error, key %lld not found!\n",key);
   exit(1);
 }
 
 // Could try alloca() here.  Better yet, we could keep our own,
 // separate stack and insert our own code to restore the pointer
 // before any function that (may have) called ALLOC_SCOPED returns.
-#define ALLOC_SCOPED() alloca(1024)
+
+// #define ALLOC_SCOPED() alloca(1024)
+#define ALLOC_SCOPED() alloca(100LU*1024LU)
 // #define ALLOC_SCOPED() alloc_scoped()
+
+// Stack allocation is either too small or blows our stack.
+// We need a way to make a giant stack if we want to use alloca.
+// #define ALLOC_SCOPED() ALLOC(DEFAULT_BUF_SIZE)
+
 
 // Our global pointer.  No parallelism.
 // static char* stack_scoped_region;
@@ -61,8 +78,8 @@ int dict_lookup_int(dict_item_t *ptr, int key) {
 // fun fact: __ prefix is actually reserved and this is an undefined behavior.
 // These functions must be provided by the code generator.
 void __fn_to_bench(char* in, char* out);
-int __main_expr();
-void __build_tree(int tree_size, char* buffer);
+IntTy __main_expr();
+void __build_tree(IntTy tree_size, char* buffer);
 
 void show_usage()
 {
@@ -90,14 +107,14 @@ int compare_doubles(const void *a, const void *b)
     return (*da > *db) - (*da < *db);
 }
 
-void bench(int num_iterations, int tree_size, int buffer_size)
+void bench(IntTy num_iterations, int tree_size, int buffer_size)
 {
     printf("Generating initial tree...\n");
     char* initial_buffer = (char*)malloc(buffer_size);
     assert(initial_buffer);
     __build_tree(tree_size, initial_buffer);
 
-    printf("Benchmarking. Iteration count: %d\n", num_iterations);
+    printf("Benchmarking. Iteration count: %lld\n", num_iterations);
     char* bench_buffer = (char*)malloc(buffer_size);
     assert(bench_buffer);
 
@@ -121,20 +138,28 @@ void bench(int num_iterations, int tree_size, int buffer_size)
 
 void run()
 {
-    printf("%d\n", __main_expr());
+    printf("%lld\n", __main_expr());
 }
 
 int main(int argc, char** argv)
 {
     // parameters to parse:
     //
-    //   num iterations: How many times to repeat a benchmark. Default: 10.
-    //   tree size: An integer passes to `build_tree()`. Default: 10.
-    //   buffer size: Default 10M.
+    //   num iterations: How many times to repeat a benchmark. 
+    //   tree size: An integer passes to `build_tree()`. 
 
-    int num_iterations = 10;
+    struct rlimit lim;
+    lim.rlim_cur = 1024LU * 1024LU * 1024LU; // 1GB stack.
+    lim.rlim_max = lim.rlim_cur;
+    int code = setrlimit(RLIMIT_STACK, &lim);
+    if (code) {
+      fprintf(stderr, "Failed to set stack size to %lu, code %d\n", lim.rlim_cur, code);
+    }
+  
+    IntTy num_iterations = 10;
     int tree_size = 10;
-    int buffer_size = DEFAULT_BUF_SIZE; // 10M
+    // We COULD make this larger than 4GB:
+    IntTy buffer_size = DEFAULT_BUF_SIZE; // 10M
 
     // test by default
     int benchmark = 0;
@@ -143,6 +168,7 @@ int main(int argc, char** argv)
 
     for (int i = 1; i < argc; ++i)
     {
+      /* 
         if (strcmp(argv[i], "-num-iterations") == 0 && i < argc - 1)
         {
             num_iterations = atoi(argv[i + 1]);
@@ -153,14 +179,24 @@ int main(int argc, char** argv)
             tree_size = atoi(argv[i + 1]);
             ++i;
         }
-        else if (strcmp(argv[i], "-buffer-size") == 0 && i < argc - 1)
+        else*/
+        if (strcmp(argv[i], "-buffer-size") == 0 && i < argc - 1)
         {
-            buffer_size = atoi(argv[i + 1]);
+            buffer_size = atoll(argv[i + 1]);
             ++i;
         }
         else if ((strcmp(argv[i], "-benchmark") == 0) || (strcmp(argv[i], "-bench") == 0))
         {
-            benchmark = 1;
+          // benchmark = 1;
+          if (i+2 >= argc) {
+            fprintf(stderr, "Not enough arguments after -benchmark, expected <size> <iters>.\n");
+            show_usage();
+            exit(1);
+          }
+          // In this mode, we expect the last two arguments to be 
+          global_size_param  = atoll(argv[i + 1]);
+          global_iters_param = atoll(argv[i + 2]);
+          break;
         }
         else
         {
@@ -176,6 +212,7 @@ int main(int argc, char** argv)
     // stack_scoped_region = (char*)malloc(DEFAULT_BUF_SIZE);
     
     if (benchmark)
+      // RRN: This will become the harness for runnin on mmap'd data:
         bench(num_iterations, tree_size, buffer_size);
     else
         run();

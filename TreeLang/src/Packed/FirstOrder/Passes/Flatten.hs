@@ -108,10 +108,10 @@ flattenExp defs env2 = fExp (vEnv env2)
                bind ((v,t,e'):xs) e = mkLetE (v,t,e') $ bind xs e
            return $ bind (zip3 nams tys fes) $ L1.MkPackedE c $ map L1.VarE nams
     -- very important to NOT "flatten" the time form:
-    fExp env (L1.TimeIt e _) =
+    fExp env (L1.TimeIt e _ b) =
         do fe <- fExp env e
            let ty = typeExp (defs,env2) env e
-           return $ L1.TimeIt fe ty
+           return $ L1.TimeIt fe ty b
     fExp env (L1.MapE (v,t,e') e) =
         do fe' <- fExp env e'
            fe <- fExp env e
@@ -149,6 +149,7 @@ typeExp (dd,env2) _env (L1.PrimAppE p _es) =
       L1.DictInsertP ty -> L1.SymDictTy ty
       L1.DictLookupP ty -> ty
       L1.DictEmptyP ty -> L1.SymDictTy ty
+      L1.SizeParam -> L1.IntTy
       _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
 typeExp (dd,env2) env (L1.LetE (v,t,_) e) = typeExp (dd,env2) (M.insert v t env) e
 typeExp (dd,env2) env (L1.IfE _ e _) = typeExp (dd,env2) env e
@@ -165,6 +166,6 @@ typeExp (dd,env2) env (L1.CaseE _e mp) =
 
 typeExp (dd,env2) _env (L1.MkPackedE c _es) = L1.Packed (getTyOfDataCon dd c)
 
-typeExp (dd,env2) env (L1.TimeIt e _) = typeExp (dd,env2) env e
-typeExp (dd,env2) env (L1.MapE _ e) = typeExp (dd,env2) env e
-typeExp (dd,env2) env (L1.FoldE _ _ e) = typeExp (dd,env2) env e
+typeExp (dd,env2) env (L1.TimeIt e _ _) = typeExp (dd,env2) env e
+typeExp (dd,env2) env (L1.MapE _ e)     = typeExp (dd,env2) env e
+typeExp (dd,env2) env (L1.FoldE _ _ e)  = typeExp (dd,env2) env e
