@@ -18,4 +18,5 @@
 
 (launch-benchmarks "racket treebench.rkt build " PASSNAME "handwritten-racket")
 
+(launch-benchmarks "java treebench build " PASSNAME "handwritten-java")
 

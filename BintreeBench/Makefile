@@ -191,7 +191,7 @@ run_racket_packed:
 	racket treebench_packed.rkt $(DEPTH)
 
 run_java: treebench.class
-	java treebench $(DEPTH) 33
+	java treebench $(DEFAULT_PASS) $(DEPTH) 33
 
 docker:
 	docker build -t bintree-bench .
