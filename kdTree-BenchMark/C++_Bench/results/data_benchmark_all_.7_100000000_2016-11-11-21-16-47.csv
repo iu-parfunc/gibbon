@@ -1,0 +1,9 @@
+kd-tree,handwritten-c-pointer-updatetree,100000000,10,9599999952,7.323001
+kd-tree,handwritten-c-pointer-intout,100000000,10,9599999952,7.151744
+kd-tree,handwritten-c-pointer-treeout,100000000,10,9599999952,99.434478
+kd-tree,handwritten-c-bumpalloc-updatetree,100000000,10,9599999952,6.050424
+kd-tree,handwritten-c-bumpalloc-intout,100000000,10,9599999952,6.081290
+kd-tree,handwritten-c-bumpalloc-treeout,100000000,10,9599999952,27.103881
+kd-tree,handwritten-c-packed-updatetree,100000000,10,4299999970,5.713705,5.713705
+kd-tree,handwritten-c-packed-intout,100000000,10,4299999970,6.846785,6.846785
+kd-tree,handwritten-c-packed-treeout,100000000,10,3499999978,33.297818,33.298009

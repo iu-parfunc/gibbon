@@ -1,0 +1,77 @@
+benchmarking mode: treeout
+points data of size 1000 are loaded 
+done building two trees, took 0.001649 seconds
+
+  run(0): 0.000451--0.000459
+  run(1): 0.000393--0.000399
+  run(2): 0.000383--0.000386
+  run(3): 0.000377--0.000380
+  run(4): 0.000382--0.000385
+  run(5): 0.000386--0.000389
+  run(6): 0.000387--0.000394
+  run(7): 0.000382--0.000385
+  run(8): 0.000383--0.000384
+  run(9): 0.000384--0.000386
+res:[kd-tree,handwritten-c-packed-treeout,1000,10,34978,0.000391,0.000395]
+benchmarking mode: treeout
+points data of size 10000 are loaded 
+done building two trees, took 0.016430 seconds
+
+  run(0): 0.003217--0.003232
+  run(1): 0.002901--0.002904
+  run(2): 0.002907--0.002913
+  run(3): 0.002866--0.002872
+  run(4): 0.002731--0.002736
+  run(5): 0.002719--0.002723
+  run(6): 0.002735--0.002739
+  run(7): 0.002715--0.002719
+  run(8): 0.002613--0.002617
+  run(9): 0.002582--0.002586
+res:[kd-tree,handwritten-c-packed-treeout,10000,10,349978,0.002799,0.002804]
+benchmarking mode: treeout
+points data of size 100000 are loaded 
+done building two trees, took 0.189363 seconds
+
+  run(0): 0.019112--0.019123
+  run(1): 0.016605--0.016611
+  run(2): 0.015856--0.015858
+  run(3): 0.015266--0.015268
+  run(4): 0.015083--0.015086
+  run(5): 0.015075--0.015077
+  run(6): 0.015073--0.015075
+  run(7): 0.015081--0.015085
+  run(8): 0.015068--0.015071
+  run(9): 0.015080--0.015081
+res:[kd-tree,handwritten-c-packed-treeout,100000,10,3499978,0.015730,0.015733]
+benchmarking mode: treeout
+points data of size 1000000 are loaded 
+done building two trees, took 1.662260 seconds
+
+  run(0): 0.216912--0.217022
+  run(1): 0.216600--0.216710
+  run(2): 0.216081--0.216186
+  run(3): 0.216133--0.216240
+  run(4): 0.216204--0.216313
+  run(5): 0.216184--0.216291
+  run(6): 0.216199--0.216305
+  run(7): 0.216248--0.216358
+  run(8): 0.216227--0.216335
+  run(9): 0.216174--0.216279
+res:[kd-tree,handwritten-c-packed-treeout,1000000,10,34999978,0.216296,0.216404]
+benchmarking mode: treeout
+points data of size 10000000 are loaded 
+done building two trees, took 21.524849 seconds
+
+  run(0): 2.214936--2.215041
+  run(1): 2.213958--2.214063
+  run(2): 2.213687--2.213791
+  run(3): 2.213773--2.213876
+  run(4): 2.214062--2.214167
+  run(5): 2.214053--2.214157
+  run(6): 2.213950--2.214056
+  run(7): 2.214166--2.214271
+  run(8): 2.213965--2.214069
+  run(9): 2.216940--2.217044
+res:[kd-tree,handwritten-c-packed-treeout,10000000,10,349999978,2.214349,2.214453]
+benchmarking mode: treeout
+points data of size 100000000 are loaded 

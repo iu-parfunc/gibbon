@@ -1,0 +1,45 @@
+benchmarking mode: updatetree
+points data of size 100000 are loaded 
+done building two trees, took 0.189294 seconds
+
+  run(0): 0.006740--0.006740
+  run(1): 0.006594--0.006594
+  run(2): 0.006491--0.006491
+  run(3): 0.006330--0.006330
+  run(4): 0.006272--0.006272
+  run(5): 0.006108--0.006108
+  run(6): 0.006068--0.006068
+  run(7): 0.005913--0.005913
+  run(8): 0.005882--0.005882
+  run(9): 0.005736--0.005736
+res:[kd-tree,handwritten-c-packed-updatetree,100000,10,4299970,0.006213,0.006213]
+benchmarking mode: intout
+points data of size 100000 are loaded 
+done building two trees, took 0.177936 seconds
+
+  run(0): 0.007789--0.007789
+  run(1): 0.007594--0.007594
+  run(2): 0.007489--0.007489
+  run(3): 0.007271--0.007271
+  run(4): 0.007161--0.007161
+  run(5): 0.007043--0.007043
+  run(6): 0.006882--0.006882
+  run(7): 0.006831--0.006831
+  run(8): 0.006826--0.006826
+  run(9): 0.006832--0.006832
+res:[kd-tree,handwritten-c-packed-intout,100000,10,4299970,0.007172,0.007172]
+benchmarking mode: treeout
+points data of size 100000 are loaded 
+done building two trees, took 0.190456 seconds
+
+  run(0): 0.032017--0.032029
+  run(1): 0.027879--0.027882
+  run(2): 0.026551--0.026558
+  run(3): 0.026573--0.026574
+  run(4): 0.026575--0.026582
+  run(5): 0.026564--0.026567
+  run(6): 0.026549--0.026550
+  run(7): 0.026633--0.026636
+  run(8): 0.026555--0.026559
+  run(9): 0.026543--0.026547
+res:[kd-tree,handwritten-c-packed-treeout,100000,10,3499978,0.027244,0.027248]
