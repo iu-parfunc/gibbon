@@ -130,16 +130,13 @@ fun benchmarks (power: int, trials: int): (microreal * microreal) =
       (meanTime, medianTime)
    end
 
-val args = CommandLine.arguments ()
-val bt = hd args
-val (power,trials) = case map Int.fromString (tl args) of
-                    SOME i :: SOME j :: _ => (i,j)
-                  | _           => raise Fail "Can't parse number of iterations"
-
-fun run (power: int, trials: int): (microreal * microreal) =
-  if EQUAL = (String.compare (bt, "build"))
+fun run (args : string list): (microreal * microreal) =
+  if EQUAL = (String.compare ((hd args), "build"))
      then 
          let
+	    val (power,trials) = case map Int.fromString (tl args) of
+                    SOME i :: SOME j :: _ => (i,j)
+                  | _           => raise Fail "Can't parse number of iterations"
             val _ = print "Benchmark: build tree size 2^"
      	    val _ = putStrLn (Int.toString power)
      	    val _ = print "  trials = "
@@ -152,6 +149,9 @@ fun run (power: int, trials: int): (microreal * microreal) =
 	 end
      else
 	 let
+	    val (power,trials) = case map Int.fromString args of
+                    SOME i :: SOME j :: _ => (i,j)
+                  | _           => raise Fail "Can't parse number of iterations"
 	    val _ = print "Benchmark: add 1 to all leaves of binary tree, size 2^"
      	    val _ = putStrLn (Int.toString power)
      	    val _ = print "  trials = "
@@ -163,5 +163,6 @@ fun run (power: int, trials: int): (microreal * microreal) =
 	    (meanTime,median)
 	 end
 
-val _ = run (power, trials)
+val args = CommandLine.arguments ()
+val _ = run args
  
