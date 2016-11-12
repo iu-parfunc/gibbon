@@ -11,6 +11,10 @@ let build_tree (n : int) : tree =
   in
   go 1 n
 
+let rec sum_tree = function
+  | Leaf i -> i
+  | Node (x, y) -> (sum_tree x) + (sum_tree y)
+
 let rec add1_tree = function
   | Leaf i -> Leaf (i + 1)
   | Node (x, y) -> Node (add1_tree x, add1_tree y)
@@ -19,27 +23,52 @@ let rec leftmost = function
   | Leaf i -> i
   | Node (x, _) -> leftmost x
 
-let () = begin
-  let repeat = 17 in
-  let total = ref 0.0 in
+let () = (
 
-  if Array.length Sys.argv <> 2 then
-    raise (Failure "Bad command line args. Expected one number (exponent).")
-  else begin
-    let power = int_of_string (Sys.argv.(1)) in
-    for _i = 0 to repeat do
-      let tree = build_tree power in
 
-      (* Sys.time is in seconds *)
-      let start = Sys.time () in
-      let ret = add1_tree tree in
-      let end_ = Sys.time() in
-
-      Printf.printf "(Test, leftmost leaf in output: %d)\n" (leftmost ret);
-      Printf.printf "Took %f seconds.\n" (end_ -. start);
-      total := !total +. (end_ -. start);
-    done
-  end;
-
-  Printf.printf "Average of %d runs: %f seconds.\n" repeat (!total /. float_of_int repeat);
-end
+  if Array.length Sys.argv <> 4 then
+    raise (Failure "Bad command line args. Expected one string and two numbers (exponent).")
+  else (
+      let mode = Sys.argv.(1) in
+      let power = int_of_string (Sys.argv.(2)) in
+      let iters = int_of_string (Sys.argv.(3)) in
+      
+      if mode = "build" then
+        (
+          Printf.printf "Benchmark build\n";
+          let start = Sys.time () in
+          for _i = 0 to iters do
+            let tree = build_tree power in
+            Printf.printf "(Test, leftmost leaf in output: %d)\n" (leftmost tree);
+          done;
+          let end_ = Sys.time() in 
+              Printf.printf "BATCHTIME: %f\n" (end_ -. start);
+        )
+      else if mode = "sum" then
+        (
+          Printf.printf "Benchmark sum\n";
+          let start = Sys.time () in
+          let tree = build_tree power in
+          for _i = 0 to iters do
+            let ret = sum_tree tree in
+            Printf.printf "Sum: %i\n" ret;
+          done;
+          let end_ = Sys.time() in
+          Printf.printf "Took %f seconds.\n" (end_ -. start);
+          Printf.printf "BATCHTIME: %f\n" (end_ -. start);
+        )
+      else 
+        (  
+          Printf.printf "Benchmark add1\n";
+          let start = Sys.time () in
+          let tree = build_tree power in
+          for _i = 0 to iters do
+            let ret = add1_tree tree in
+            Printf.printf "(Test, leftmost leaf in output: %d)\n" (leftmost ret);
+          done;
+          let end_ = Sys.time() in
+          Printf.printf "Took %f seconds.\n" (end_ -. start);
+          Printf.printf "BATCHTIME: %f\n" (end_ -. start);
+        )
+  )
+  )

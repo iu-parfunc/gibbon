@@ -37,3 +37,5 @@
 (launch-benchmarks "scheme --script treebench.ss add1 " PASSNAME "handwritten-chez")
 
 (launch-benchmarks "./treebench_rust.exe add1 " PASSNAME "handwritten-rust")
+
+(launch-benchmarks "./treebench_ocaml.exe add1 " PASSNAME "handwritten-ocaml")
