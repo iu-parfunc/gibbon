@@ -22,3 +22,4 @@
 
 (launch-benchmarks "scheme --script treebench.ss build " PASSNAME "handwritten-chez")
 
+(launch-benchmarks "./treebench_rust.exe build " PASSNAME "handwritten-rust")

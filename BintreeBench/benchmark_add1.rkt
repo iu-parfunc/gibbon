@@ -35,3 +35,5 @@
 (launch-benchmarks "java treebench add1 " PASSNAME "handwritten-java")
 
 (launch-benchmarks "scheme --script treebench.ss add1 " PASSNAME "handwritten-chez")
+
+(launch-benchmarks "./treebench_rust.exe add1 " PASSNAME "handwritten-rust")

@@ -17,3 +17,5 @@
 (launch-benchmarks "java treebench sum " PASSNAME "handwritten-java")
 
 (launch-benchmarks "scheme --script treebench.ss sum " PASSNAME "handwritten-chez")
+
+(launch-benchmarks "./treebench_rust.exe sum " PASSNAME "handwritten-rust")

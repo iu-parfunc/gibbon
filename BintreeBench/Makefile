@@ -165,7 +165,7 @@ run_small_core:
 run_all: all run_core
 	./treebench_mlton.exe       $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_ocaml.exe       $(DEPTH)
-	./treebench_rust.exe        $(DEPTH)
+	./treebench_rust.exe        $(DEFAULT_PASS) $(DEPTH) $(DEFAULT_ITERS)
 	$(MAKE) run_chez
 	$(MAKE) run_java
 
