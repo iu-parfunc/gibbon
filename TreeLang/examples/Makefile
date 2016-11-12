@@ -56,11 +56,8 @@ all_parsed:  $(ALL_TESTS:.sexp=.parsed)
 	$(TREEC) --parse $^ 2> $@
 
 # Failing tests for the pointer-based C backend (default):
-FAILING_TESTS ?= test11f_funrec.sexp  \
-  test06g_rec.sexp  test06i_casecase.sexp \
-  test12b_traverse.sexp test16_forlist.sexp test17_forfold.sexp  \
-  test06f_rec.sexp \
-  text08_dict.sexp test08b_dict.sexp test08c_dict.sexp test08d_sharedict.sexp \
+FAILING_TESTS ?= \
+  test16_forlist.sexp test17_forfold.sexp  \
   test13_build.sexp test13b_build.sexp \
   test20_bintree.sexp test20b_bintree.sexp test20c_bintree.sexp  test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
   test11_fundata.sexp test11c_funrec.sexp test11e_funrec.sexp test12c_traverse.sexp
