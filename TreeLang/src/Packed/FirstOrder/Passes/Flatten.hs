@@ -158,6 +158,7 @@ typeExp (dd,env2) env e0@(L1.ProjE i e) =
      (L1.ProdTy tys) -> tys !! i 
      oth -> error $ "typeExp: Cannot project fields from this type: "++show oth
                   ++"\nExpression:\n  "++sdoc e0
+                  ++"\nEnvironment:\n  "++sdoc env
 typeExp (dd,env2) env (L1.MkProdE es) =
     L1.ProdTy $ map (typeExp (dd,env2) env) es
 typeExp (dd,env2) env (L1.CaseE _e mp) =

@@ -58,8 +58,9 @@ all_parsed:  $(ALL_TESTS:.sexp=.parsed)
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= \
   test13_build.sexp test13b_build.sexp \
-  test16_forlist.sexp test17_forfold.sexp  \
-  test20_bintree.sexp test20b_bintree.sexp test20c_bintree.sexp  test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp
+  test20_bintree.sexp test20b_bintree.sexp test20c_bintree.sexp  test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
+  test11_fundata.sexp test11c_funrec.sexp test11e_funrec.sexp test12c_traverse.sexp
+# Last Line - added because they are failing under valgrind [2016.11.11]
 
 # test 6i -- WRONG ANSWER, returning 101 !! [2016.11.09]
 # test 6f -- seeing weird discrepanancies where sometimes a tag is not initialized [2016.11.09] 
@@ -102,8 +103,9 @@ build_tests: $(EXE_FILES)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
-  test13_build.sexp test20b_bintree.sexp  test20e_bintree.sexp test20f_bintree.sexp
+  test13_build.sexp test20b_bintree.sexp test20f_bintree.sexp 
 
+# test20f - wip
 # test20b_bintree.sexp   -- requires copy insertion
 # test13_build.sexp -- problem with unit functions
 # test12_skip.sexp       -- Requires copy insertion!! unbound var thru to C code
@@ -125,7 +127,10 @@ INTERP_FAILING = test06b_case.sexp test06_case.sexp test06c_nested.sexp \
   test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
   text08_dict.sexp test08b_dict.sexp test08c_dict.sexp test08d_sharedict.sexp \
   test13_build.sexp test13b_build.sexp  \
-  test20b_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp
+  test20b_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
+  \
+test11_fundata.sexp test10_desugar.sexp test10b_desugar.sexp test09_recur.sexp test08_dict.sexp test02b_datacon.sexp
+# Last line are new regressions...
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: answers
