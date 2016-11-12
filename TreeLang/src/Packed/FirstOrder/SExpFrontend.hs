@@ -358,7 +358,25 @@ main = do
   _ <- parseFile file
   return ()
 
-
+handleRequire :: [Sexp] -> IO [Sexp]
+handleRequire [] = return []
+handleRequire ((L2 "require" arg):ls) = do
+  ls' <- handleRequire ls
+  let file = case arg of
+               RSAtom (HSString str) -> unpack str
+               _ -> error $ "bad require line: " ++ (show arg)
+  dbgPrintLn 5 $ "Including required file: "++show file
+  txt <- fmap bracketHacks $ readFile file
+  dbgPrintLn 5 $ "Parsing required text: "++show txt
+  let res :: Either String [RichSExpr HaskLikeAtom]
+      res = fmap (fmap toRich) $
+            decode treelangParser txt
+  case res of
+    Left err -> error err
+    Right l' -> return $ l' ++ ls'
+handleRequire (l:ls) = do
+  ls' <- handleRequire ls
+  return $ l:ls'
 
 parseFile :: FilePath -> IO (Prog, Int)
 parseFile file = do
@@ -372,4 +390,5 @@ parseFile file = do
   dbgPrintLn 5 "Result of parsing:"
   case res of
      Left err -> error err
-     Right ls -> return $ runSyM 0 $ parseSExp ls
+     Right ls -> do ls' <- handleRequire ls
+                    return $ runSyM 0 $ parseSExp ls'
