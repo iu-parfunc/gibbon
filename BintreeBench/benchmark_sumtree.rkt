@@ -13,3 +13,5 @@
 (launch-benchmarks "racket sumtree_treelang.sexp " PASSNAME "treelang-racket")
 
 (launch-benchmarks "racket treebench.rkt sum " PASSNAME "handwritten-racket")
+
+(launch-benchmarks "java treebench sum " PASSNAME "handwritten-java")
