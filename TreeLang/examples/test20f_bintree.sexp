@@ -12,5 +12,5 @@
                       (add1-tree y))]))
 
 ;; Here we time a fold over the tree:
-(let ((tr0 : Tree (add1-tree (Leaf 33))))
+(let ((tr0 : Tree (time (add1-tree (Leaf 33)))))
   987)
