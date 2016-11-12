@@ -19,3 +19,5 @@
 (launch-benchmarks "scheme --script treebench.ss sum " PASSNAME "handwritten-chez")
 
 (launch-benchmarks "./treebench_rust.exe sum " PASSNAME "handwritten-rust")
+
+(launch-benchmarks "./treebench_ocaml.exe sum " PASSNAME "handwritten-ocaml")
