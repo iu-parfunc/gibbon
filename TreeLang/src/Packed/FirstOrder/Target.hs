@@ -285,6 +285,10 @@ codegenProg prg@(Prog funs mtal) = do
                 } |]
           Just (RunRacketCorePass build_tree bench) ->
             [cunit|
+              $ty:(codegenTy IntTy) __fn_with_file( $ty:(codegenTy PtrTy) in ) {
+                fprintf(stderr, "Benchmark is not implemented for this program.\n");
+                exit(1);
+              }              
               void __fn_to_bench( $ty:(codegenTy PtrTy) in, $ty:(codegenTy PtrTy) out) {
                   $(cid bench)(in, out);
               }
