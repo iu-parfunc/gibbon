@@ -5,8 +5,11 @@
 #include <string.h>
 #include <time.h>
 #include <alloca.h>
-
+#include <sys/mman.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #define ALLOC malloc
 #define ALLOC_PACKED ALLOC
@@ -78,6 +81,7 @@ IntTy dict_lookup_int(dict_item_t *ptr, SymTy key) {
 // fun fact: __ prefix is actually reserved and this is an undefined behavior.
 // These functions must be provided by the code generator.
 void __fn_to_bench(char* in, char* out);
+IntTy __fn_with_file(char *in);
 IntTy __main_expr();
 void __build_tree(IntTy tree_size, char* buffer);
 
@@ -105,6 +109,20 @@ int compare_doubles(const void *a, const void *b)
     const double *da = (const double *) a;
     const double *db = (const double *) b;
     return (*da > *db) - (*da < *db);
+}
+
+void benchFile(char *filename) {
+  struct timespec begin, end;
+  int fd = open(filename,O_RDONLY);
+  struct stat st;
+  fstat(fd, &st);
+  void *p = mmap(0,st.st_size,PROT_READ,MAP_PRIVATE,fd,0);
+  clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
+  IntTy res = __fn_with_file((char*) p);
+  clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+  printf("%lld\n", res);
+  printf("TIME: %lf\n", difftimespecs(&begin, &end));
+  close(fd);
 }
 
 void bench(IntTy num_iterations, int tree_size, int buffer_size)
@@ -163,6 +181,8 @@ int main(int argc, char** argv)
 
     // test by default
     int benchmark = 0;
+    int withfile = 0;
+    char *filename = 0;
 
     // TODO: atoi() error checking
 
@@ -198,7 +218,17 @@ int main(int argc, char** argv)
           global_iters_param = atoll(argv[i + 2]);
           break;
         }
-        else
+        else if ((strcmp(argv[i], "-file") == 0)) {
+	  if (i+1 >= argc) {
+            fprintf(stderr, "Not enough arguments after -file, expected <file>.\n");
+            show_usage();
+            exit(1);
+          }
+	  filename = argv[i+1];
+	  withfile = 1;
+	  break;
+	}
+	else
         {
             fprintf(stderr, "Can't parse argument: \"%s\"\n", argv[i]);
             show_usage();
@@ -214,7 +244,10 @@ int main(int argc, char** argv)
     if (benchmark)
       // RRN: This will become the harness for runnin on mmap'd data:
         bench(num_iterations, tree_size, buffer_size);
-    else
+    else if (withfile) {
+      benchFile(filename);
+    }
+    else 
         run();
 
     return 0;
