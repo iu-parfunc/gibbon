@@ -153,6 +153,7 @@ sumtree_treelang_c_pointer.exe: sumtree_treelang.sexp
 
 DEPTH=20
 DEFAULT_ITERS=17
+DEFAULT_PASS=add1
 
 run_small:
 	$(MAKE) DEPTH=6 DEFAULT_ITERS=10 run_all
@@ -162,16 +163,16 @@ run_small_core:
 
 # TODO: replace with an hsbencher harness / Criterion:
 run_all: all run_core
-	./treebench_mlton.exe       $(DEPTH)
+	./treebench_mlton.exe       $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_ocaml.exe       $(DEPTH)
-	./treebench_rust.exe        $(DEPTH)
+	./treebench_rust.exe        $(DEFAULT_PASS) $(DEPTH) $(DEFAULT_ITERS)
 	$(MAKE) run_chez
 	$(MAKE) run_java
 
 # the main ones we are interested in benchmarking:
 run_core: c ghc
 	./treebench_ghc_strict.exe  seq $(DEPTH) $(DEFAULT_ITERS)
-	./treebench_ghc_lazy.exe    $(DEPTH) $(DEFAULT_ITERS)
+	./treebench_ghc_lazy.exe    $(DEFAULT_PASS) $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c.exe           $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c_packed.exe    $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c_packed_loop.exe $(DEPTH) $(DEFAULT_ITERS)
@@ -181,16 +182,16 @@ run_core: c ghc
 #	./treebench_rust_sys_alloc.exe $(DEPTH) 
 
 run_chez:
-	scheme --script treebench.ss $(DEPTH) $(DEFAULT_ITERS)
+	scheme --script treebench.ss $(DEFAULT_PASS) $(DEPTH) $(DEFAULT_ITERS)
 
 run_racket:
-	racket treebench.rkt $(DEPTH) $(DEFAULT_ITERS)
+	racket treebench.rkt $(DEFAULT_PASS) $(DEPTH) $(DEFAULT_ITERS)
 
 run_racket_packed:
 	racket treebench_packed.rkt $(DEPTH)
 
 run_java: treebench.class
-	java treebench $(DEPTH) 33
+	java treebench $(DEFAULT_PASS) $(DEPTH) 33
 
 docker:
 	docker build -t bintree-bench .

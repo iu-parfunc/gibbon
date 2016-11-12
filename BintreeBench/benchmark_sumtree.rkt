@@ -12,6 +12,12 @@
 
 (launch-benchmarks "racket sumtree_treelang.sexp " PASSNAME "treelang-racket")
 
-;; NEW
+(launch-benchmarks "racket treebench.rkt sum " PASSNAME "handwritten-racket")
 
-(launch-benchmarks "./treebench_mlton.exe " PASSNAME "handwritten-mlton")
+(launch-benchmarks "java treebench sum " PASSNAME "handwritten-java")
+
+(launch-benchmarks "scheme --script treebench.ss sum " PASSNAME "handwritten-chez")
+
+(launch-benchmarks "./treebench_rust.exe sum " PASSNAME "handwritten-rust")
+
+(launch-benchmarks "./treebench_ocaml.exe sum " PASSNAME "handwritten-ocaml")

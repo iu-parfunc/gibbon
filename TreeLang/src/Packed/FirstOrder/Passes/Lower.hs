@@ -32,6 +32,7 @@ import Data.Maybe
 import qualified Data.List as L
 import Data.List as L hiding (tail)
 import Data.Map as M
+import Data.Int (Int64)
 
 import qualified Prelude as P
 import Prelude hiding (tail)
@@ -125,6 +126,10 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     --------------------------------------------------------------------------------
     -- Not-packed, pointer-based codegen
     --------------------------------------------------------------------------------
+    -- In pointer-based representation we don't use `TagTy`, because that's
+    -- causing problems because by default gcc aligns struct fields but we don't
+    -- take that into account in our codegen.
+    --
     -- If we get here that means we're NOT packing trees on this run:
     -- Thus this operates on BOXED data:
     CaseE e [(c, bndrs, rhs)] | not pkd -> do
@@ -145,23 +150,23 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       let
         e_triv = triv "sum case scrutinee" e
 
-        mk_alt :: (Constr, [Var], Exp) -> SyM (T.Tag, T.Tail)
+        mk_alt :: (Constr, [Var], Exp) -> SyM (Int64, T.Tail)
         mk_alt (con, bndrs, rhs) = do
           let
             con_tag = getTagOfDataCon ddefs con
             bndr_tys = L.map typ (lookupDataCon ddefs con)
           rhs' <- tail rhs
-          return ( con_tag, T.LetUnpackT (zip bndrs bndr_tys) tail_bndr rhs' )
+          return ( fromIntegral con_tag, T.LetUnpackT (zip bndrs bndr_tys) tail_bndr rhs' )
 
       alts'    <- mapM mk_alt alts
       (_, def) <- mk_alt def_alt
 
       return $
         T.LetPrimCallT
-          [(tag_bndr, T.TagTy), (tail_bndr, T.CursorTy)]
-          T.ReadTag
+          [(tag_bndr, T.IntTy), (tail_bndr, T.CursorTy)]
+          T.ReadInt
           [e_triv]
-          (T.Switch (T.VarTriv tag_bndr) (T.TagAlts alts') (Just def))
+          (T.Switch (T.VarTriv tag_bndr) (T.IntAlts alts') (Just def))
 
     -- Accordingly, constructor allocation becomes an allocation.
     LetE (v, _, MkPackedE k ls) bod | not pkd -> L1.assertTrivs ls $ do
@@ -174,7 +179,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
           fields0  = fragileZip field_tys (L.map (triv "MkPackedE args") ls)
           fields
             | is_prod   = fields0
-            | otherwise = (T.TagTy, T.TagTriv (fromIntegral tag)) : fields0
+            | otherwise = (T.IntTy, T.IntTriv (fromIntegral tag)) : fields0
 
       -- trace ("data con: " ++ show k) (return ())
       -- trace ("is_prod: " ++ show is_prod) (return ())

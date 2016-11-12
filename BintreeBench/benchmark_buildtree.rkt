@@ -16,5 +16,12 @@
 
 (launch-benchmarks "./treebench_mlton.exe build " PASSNAME "handwritten-mlton")
 
+(launch-benchmarks "racket treebench.rkt build " PASSNAME "handwritten-racket")
 
+(launch-benchmarks "java treebench build " PASSNAME "handwritten-java")
 
+(launch-benchmarks "scheme --script treebench.ss build " PASSNAME "handwritten-chez")
+
+(launch-benchmarks "./treebench_rust.exe build " PASSNAME "handwritten-rust")
+
+(launch-benchmarks "./treebench_ocaml.exe build " PASSNAME "handwritten-ocaml")

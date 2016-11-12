@@ -58,6 +58,8 @@ data MainExp
   = PrintExp Tail
       -- ^ Evaluate the expression and print the result. Type of the expression
       -- must be Int64.
+  | RunWithRacketFile Var
+     -- ^ Hack, expects a function from racket ast to int. 
   | RunRacketCorePass Var Var
       -- ^ Run the pass. First `Var` is a function for building initial trees,
       -- second `Var` is the function to benchmark. Return value of benchmark
@@ -276,8 +278,17 @@ codegenProg prg@(Prog funs mtal) = do
       bench_fn :: [C.Definition]
       bench_fn =
         case mtal of
+          Just (RunWithRacketFile fun) ->
+              [cunit|
+                $ty:(codegenTy IntTy) __fn_with_file( $ty:(codegenTy PtrTy) in ) {
+                  return $(cid fun)(in);
+                } |]
           Just (RunRacketCorePass build_tree bench) ->
             [cunit|
+              $ty:(codegenTy IntTy) __fn_with_file( $ty:(codegenTy PtrTy) in ) {
+                fprintf(stderr, "Benchmark is not implemented for this program.\n");
+                exit(1);
+              }              
               void __fn_to_bench( $ty:(codegenTy PtrTy) in, $ty:(codegenTy PtrTy) out) {
                   $(cid bench)(in, out);
               }
@@ -286,6 +297,10 @@ codegenProg prg@(Prog funs mtal) = do
               } |]
           _ ->
             [cunit|
+              $ty:(codegenTy IntTy) __fn_with_file( $ty:(codegenTy PtrTy) in ) {
+                fprintf(stderr, "Benchmark is not implemented for this program.\n");
+                exit(1);
+              }              
               void __fn_to_bench( $ty:(codegenTy PtrTy) in, $ty:(codegenTy PtrTy) out) {
                 fprintf(stderr, "Benchmark is not implemented for this program.\n");
                 exit(1);

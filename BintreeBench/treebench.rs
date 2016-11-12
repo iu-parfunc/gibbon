@@ -5,7 +5,6 @@
 use std::env;
 use std::process;
 use std::time::Instant;
-use std::time::Duration;
 
 enum Tree {
     Leaf(i32),
@@ -34,6 +33,13 @@ fn add_1_tree(tree : &Tree) -> Box<Tree> {
     }
 }
 
+fn sum_tree(tree : &Tree) -> i32 {
+   match *tree {
+       Tree::Leaf(i) => i,
+       Tree::Node(ref left, ref right) => (sum_tree(left) + sum_tree(right))
+   }
+}
+
 fn leftmost(tree : &Tree) -> i32 {
     match *tree {
         Tree::Leaf(i) => i,
@@ -43,32 +49,66 @@ fn leftmost(tree : &Tree) -> i32 {
 
 fn main() {
     let args : Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        println!("Bad command line args. Expected one number (exponent).");
+    if args.len() < 4 {
+        println!("Bad command line args. Expected one string and two numbers (exponent).");
         process::exit(1);
     }
 
-    let power : i32 = args[1].parse().unwrap();
+    let mode: String = args[1].parse().unwrap();
+    let power : i32 = args[2].parse().unwrap();
+    let iters : u32 = args[3].parse().unwrap();
+    
+    if mode == "build".to_string() {
+      let start = Instant::now();
+			
+      for _ in 0 .. iters {
+        let tree = build_tree(power);		
 
-    let times = 10;
-    let mut total : Duration = Duration::new(0, 0);
+        println!("Test, leftmost leaf in output: {}", leftmost(&*tree));
+        // println!("Took {:?}.", elapsed);
+      }
+      let elapsed = start.elapsed();
+      println!("Took {}.{:09}", elapsed.as_secs(), elapsed.subsec_nanos());
+      println!("BATCHTIME: {}", elapsed.as_secs());
 
-    for _ in 0 .. times {
-        let tree = build_tree(power);
+      let average = elapsed / iters;
+      println!("Average of {} runs: {}.{:09} seconds.",
+             iters, average.as_secs(), average.subsec_nanos());
+    
+    } else if mode == "sum".to_string() {
+      let tree = build_tree(power);
+      let start = Instant::now();
+			
+      for _ in 0 .. iters {
+        let tree2 = sum_tree(&*tree);
 
-        let start = Instant::now();
+	println!("Sum {}", tree2);
+        // println!("Took {:?}.", elapsed);
+      }
+      let elapsed = start.elapsed();
+      println!("Took {}.{:09}", elapsed.as_secs(), elapsed.subsec_nanos());
+      println!("BATCHTIME: {}", elapsed.as_secs());
+
+      let average = elapsed / iters;
+      println!("Average of {} runs: {}.{:09} seconds.",
+             iters, average.as_secs(), average.subsec_nanos());    
+
+    } else {   
+      let tree = build_tree(power);
+      let start = Instant::now();
+			
+      for _ in 0 .. iters {
         let tree2 = add_1_tree(&*tree);
-        let elapsed = start.elapsed();
 
         println!("Test, leftmost leaf in output: {}", leftmost(&*tree2));
         // println!("Took {:?}.", elapsed);
-        println!("Took {}.{:09}", elapsed.as_secs(), elapsed.subsec_nanos());
+      }
+      let elapsed = start.elapsed();
+      println!("Took {}.{:09}", elapsed.as_secs(), elapsed.subsec_nanos());
+      println!("BATCHTIME: {}", elapsed.as_secs());
 
-        // Uh, += doesn't work but this works.
-        total = total + elapsed;
+      let average = elapsed / iters;
+      println!("Average of {} runs: {}.{:09} seconds.",
+             iters, average.as_secs(), average.subsec_nanos());
     }
-
-    let average = total / times;
-    println!("Average of {} runs: {}.{:09} seconds.",
-             times, average.as_secs(), average.subsec_nanos());
 }
