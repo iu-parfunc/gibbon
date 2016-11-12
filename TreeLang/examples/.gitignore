@@ -1,4 +1,6 @@
-*.parsed
+.unison*
+*.valgrind
 *.out
-*.ans
+*.err
+*.exe
 test*.c
