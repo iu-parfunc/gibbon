@@ -25,3 +25,15 @@
 ;;(launch-benchmarks "./treebench_c_parallel.exe" PASSNAME ...)
 
 ;; add more here
+
+;; NEW
+
+(launch-benchmarks "./treebench_mlton.exe " PASSNAME "handwritten-mlton")
+
+(launch-bencharks "racket treebench.rkt add1 " PASSNAME "handwritten-racket")
+
+(launch-benchmarks "java treebench add1 " PASSNAME "handwritten-java")
+
+(launch-benchmarks "scheme --script treebench.ss add1 " PASSNAME "handwritten-chez")
+
+(launch-benchmarks "./treebench_rust.exe add1 " PASSNAME "handwritten-rust")
