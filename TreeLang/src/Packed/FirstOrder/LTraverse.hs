@@ -306,6 +306,7 @@ hasRealPacked t =
       BoolTy    -> False
       IntTy     -> False
       SymDictTy t -> hasRealPacked t
+      ListTy {} -> __
 
 hasCursorTy :: Ty1 a -> Bool
 hasCursorTy t =
@@ -316,14 +317,19 @@ hasCursorTy t =
       BoolTy    -> False
       IntTy     -> False
       SymDictTy t -> hasCursorTy t
-
+      ListTy {} -> __
                      
 isRealPacked :: Ty1 a -> Bool                                         
 isRealPacked t@PackedTy{} = not (isCursorTy t)
 isRealPacked _ = False
 
--- Cursorizing types:                 
+-- Cursorizing arguments and returns -- abstracting the conventions
 --------------------------------------------------------------------------------                 
+
+addOutputParamArgs = __
+
+
+addEndWitnessReturns = __
 
 -- Cursorizing types.                   
 --------------------------------------------------------------------------------

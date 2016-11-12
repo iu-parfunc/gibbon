@@ -81,7 +81,7 @@ unariserExp _ = go [] []
     (VarE v) -> discharge stk <$> 
                  case lookup v env of
                   Nothing -> pure$ VarE (var v)
-                  Just vs -> pure$ MkProdE [ VarE v | v <- vs ]
+                  Just vs -> pure$ L1.mkProd[ VarE v | v <- vs ]
 
     -- TEMP: HACK/workaround.  See FIXME above.
     LetE (v1,ProdTy _,rhs@LetE{})  (ProjE ix (VarE v2)) | v1 == v2 -> go (ix:stk) env rhs
@@ -97,16 +97,22 @@ unariserExp _ = go [] []
     (LetE (v1,t1, LetE (v2,t2,rhs2) rhs1) bod) -> do
          go stk env $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
 
-    (LetE (v,ProdTy tys, MkProdE ls) e) -> do
+    (LetE (v,ProdTy tys, MkProdE ls) bod) -> do
         vs <- sequence [ gensym "unzip" | _ <- ls ]
         let env' = (v,vs):env
         -- Here we *reprocess* the results in case there is more unzipping to do:
-        go stk env' $ mklets (zip3 vs tys ls) e
-                                              
+        go stk env' $ mklets (zip3 vs tys ls) bod
+
+    (LetE (v1,ProdTy tys, VarE v2) bod) ->
+        case lookup v2 env of
+          Just vs -> go stk env $ LetE (v1,ProdTy tys, MkProdE (map VarE vs)) bod
+          Nothing -> go stk ((v1,[v2]):env) bod -- Copy-prop
+            
     -- And this is a HACK.  Need a more general solution:
     (LetE (v,ty@ProdTy{}, rhs@(TimeIt{})) bod)->
         LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
-    ------------------
+    ------------------             
+             
     (LetE (_,ProdTy _, _) _) ->
         error$ " [unariser] this is stopping us from unzipping a tupled binding:\n "++sdoc e0
         
