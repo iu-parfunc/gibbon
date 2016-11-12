@@ -33,3 +33,5 @@
 (launch-bencharks "racket treebench.rkt add1 " PASSNAME "handwritten-racket")
 
 (launch-benchmarks "java treebench add1 " PASSNAME "handwritten-java")
+
+(launch-benchmarks "scheme --script treebench.ss add1 " PASSNAME "handwritten-chez")

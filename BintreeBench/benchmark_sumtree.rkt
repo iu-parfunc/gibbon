@@ -15,3 +15,5 @@
 (launch-benchmarks "racket treebench.rkt sum " PASSNAME "handwritten-racket")
 
 (launch-benchmarks "java treebench sum " PASSNAME "handwritten-java")
+
+(launch-benchmarks "scheme --script treebench.ss sum " PASSNAME "handwritten-chez")

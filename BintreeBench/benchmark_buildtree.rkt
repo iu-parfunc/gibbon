@@ -20,3 +20,5 @@
 
 (launch-benchmarks "java treebench build " PASSNAME "handwritten-java")
 
+(launch-benchmarks "scheme --script treebench.ss build " PASSNAME "handwritten-chez")
+

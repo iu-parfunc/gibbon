@@ -172,7 +172,7 @@ run_all: all run_core
 # the main ones we are interested in benchmarking:
 run_core: c ghc
 	./treebench_ghc_strict.exe  seq $(DEPTH) $(DEFAULT_ITERS)
-	./treebench_ghc_lazy.exe    $(DEPTH) $(DEFAULT_ITERS)
+	./treebench_ghc_lazy.exe    $(DEFAULT_PASS) $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c.exe           $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c_packed.exe    $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c_packed_loop.exe $(DEPTH) $(DEFAULT_ITERS)
@@ -182,7 +182,7 @@ run_core: c ghc
 #	./treebench_rust_sys_alloc.exe $(DEPTH) 
 
 run_chez:
-	scheme --script treebench.ss $(DEPTH) $(DEFAULT_ITERS)
+	scheme --script treebench.ss $(DEFAULT_PASS) $(DEPTH) $(DEFAULT_ITERS)
 
 run_racket:
 	racket treebench.rkt $(DEFAULT_PASS) $(DEPTH) $(DEFAULT_ITERS)
