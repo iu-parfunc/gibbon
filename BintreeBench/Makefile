@@ -162,7 +162,7 @@ run_small_core:
 
 # TODO: replace with an hsbencher harness / Criterion:
 run_all: all run_core
-	./treebench_mlton.exe       $(DEPTH)
+	./treebench_mlton.exe       $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_ocaml.exe       $(DEPTH)
 	./treebench_rust.exe        $(DEPTH)
 	$(MAKE) run_chez
