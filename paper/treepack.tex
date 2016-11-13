@@ -24,6 +24,20 @@
 
 \usepackage{wrapfig}
 
+\usepackage[labelformat=simple]{subcaption}
+
+%Re-formatting figure captions to make subfigures look right.
+\newcommand{\myhrule}{ \leaders\hrule width 0pt height .33pt \hfill }
+\renewcommand{\myhrule}{\hrulefill}
+
+\DeclareCaptionFormat{ruled}{\myhrule \\ #1#2#3}
+\DeclareCaptionFormat{plain}{#1#2#3}
+
+\captionsetup[figure]{format=ruled}
+\captionsetup[subfigure]{format=plain}
+
+\renewcommand{\thesubfigure}{(\alph{subfigure})}
+
 \newcommand{\gramdef}{\; ::= \;}
 \newcommand{\gramor}{\; | \;}
 \newcommand{\keywd}[1]{\; \texttt{#1} \;}
