@@ -85,12 +85,16 @@ typecheckExp dd env2 tcenv exp =
     case exp of
       VarE v -> lookupTCVar tcenv v
       LitE _i -> return $ Concrete IntTy
-      AppE v e -> failFresh "AppE case not working"
-          -- do te <- typecheckExp dd env2 tcenv e
-          --    let tvout = Concrete $ snd $ fEnv env2 # v
-          --        tvin = Concrete $ fst $ fEnv env2 # v
-          --    assertEqTCVar exp tvin te
-          --    return tvout
+      AppE v e -> 
+          do te <- typecheckExp dd env2 tcenv e
+             let fty = M.lookup v (fEnv env2)
+             case fty of
+               Nothing -> failFresh $ "Couldn't look up type of function: " ++ (show v)
+               Just t ->
+                   do let tvout = Concrete $ snd t
+                          tvin = Concrete $ fst t
+                      assertEqTCVar exp tvin te
+                      return tvout
       PrimAppE p es ->
           do tes <- mapM (typecheckExp dd env2 tcenv) es
              case p of
