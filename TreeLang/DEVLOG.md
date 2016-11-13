@@ -129,3 +129,50 @@ flattening/inlining.
 
 
 
+[2016.11.13] {Debugging inlineTriv}
+----------------------------------------
+
+There's a new flatten, but it really looks like flatten's output
+typechecks.  Here it is before inlineTriv:
+
+```Haskel
+    (LetE ("unpkcall62",
+           ProdTy [PackedTy "CURSOR_TY"
+                            (),
+                   PackedTy "CURSOR_TY"
+                            ()],
+           AppE "add1_tree"
+                (MkProdE [VarE "flddst58",
+                          VarE "y4"]))
+          (LetE ("hoistapp39",
+                 ProdTy [PackedTy "CURSOR_TY"
+                                  (),
+                         PackedTy "Tree"
+                                  ()],
+                 ProjE 1
+                       (VarE "unpkcall62"))
+```
+
+And then after inlineTriv, we get this:
+
+
+```Haskell
+    (LetE ("unpkcall62",
+        ProdTy [PackedTy "CURSOR_TY" (),
+                PackedTy "CURSOR_TY" ()],
+        AppE "add1_tree"
+             (MkProdE [ProjE 1
+                             (ProjE 1
+                                    (VarE "unpkcall59")),
+                       ProjE 0
+                             (ProjE 1
+                                    (VarE "unpkcall59"))]))
+       (MkProdE [MkProdE [ProjE 0
+                                (ProjE 1
+                                       (VarE "unpkcall62")),
+                          ProjE 0
+                                (VarE "fnarg50")],
+                 ProjE 1
+                       (ProjE 1
+                               (VarE "unpkcall62"))]))))])
+```
