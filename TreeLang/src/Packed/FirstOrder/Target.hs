@@ -129,8 +129,6 @@ data Tail
             con  :: Tail,
             els  :: Tail }
     | ErrT String
-    | StartTimerT Var Tail Bool -- ^ As with TimeIt, boolean indicates whether it's iterate mode
-    | EndTimerT   Var Tail Bool -- ^ ditto
 
     | LetTimedT { isIter :: Bool
                 , binds :: [(Var,Ty)]
@@ -254,8 +252,6 @@ harvestStructTys (Prog funs mtal) =
 
        (IfT _ a b) -> go a ++ go b
        ErrT{} -> []
-       (StartTimerT _ b _) -> go b
-       (EndTimerT _ b _)   -> go b
        (Switch _ (IntAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
        (Switch _ (TagAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
        (TailCall _ _)    -> []
@@ -367,8 +363,6 @@ rewriteReturns tl bnds =
    (LetAllocT lhs vals body) -> LetAllocT lhs vals (go body)
    (IfT a b c) -> IfT a (go b) (go c)
    (ErrT s) -> (ErrT s)
-   (StartTimerT v x2 b) -> StartTimerT v (go x2) b
-   (EndTimerT v x2 b)   -> EndTimerT v (go x2) b
    (Switch tr alts def) -> Switch tr (mapAlts go alts) (fmap go def)
    -- Oops, this is not REALLY a tail call.  Hoist it and go under:
    (TailCall f rnds) -> let (vs,ts) = unzip bnds
@@ -425,34 +419,6 @@ codegenTail (IfT e0 e1 e2) ty = do
 codegenTail (ErrT s) _ty = return $ [ C.BlockStm [cstm| printf("%s\n", $s); |]
                                     , C.BlockStm [cstm| exit(1); |] ]
 
-codegenTail (StartTimerT begin tal _flg) ty =
-    do tal' <- codegenTail tal ty
-       let iters = "iters_"++begin
-       return $ [ C.BlockDecl [cdecl| struct timespec $id:begin; |]
-                , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid begin));  |]
-                , C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:iters = global_iters_param; |] 
-                -- Can also use C.EscStm for raw strings it seems:
-                , C.BlockStm (C.Label (C.Id ("start_timer_"++begin) dummyLoc)
-                                   [] (C.Block [] dummyLoc) dummyLoc)
-                ] ++ tal'
-
-codegenTail (EndTimerT begin tal flg) ty =
-    do end <- gensym "endtmr"
-       tal' <- codegenTail tal ty
-       let label = "start_timer_"++begin
-           iters = "iters_"++begin
-       return $ (if flg
-                 then [C.BlockStm [cstm| if($id:iters > 1) { $id:iters --; goto $id:label; } else { } |]]
-                 else []) ++
-                [ C.BlockDecl [cdecl| struct timespec $id:end; |]
-                , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid end)); |]
-                ] ++
-                (if flg
-                 then [ C.BlockStm [cstm| printf("ITERS: %lld\n", global_iters_param); |]
-                      , C.BlockStm [cstm| printf("SIZE: %lld\n", global_size_param); |]
-                      , C.BlockStm [cstm| printf("BATCHTIME: %lf\n", difftimespecs(&$(cid begin), &$(cid end))); |]]
-                 else [ C.BlockStm [cstm| printf("SELFTIMED: %lf\n", difftimespecs(&$(cid begin), &$(cid end))); |] ])
-                ++tal'
 
 -- We could eliminate these earlier
 codegenTail (LetTrivT (vr,rty,rhs) body) ty =

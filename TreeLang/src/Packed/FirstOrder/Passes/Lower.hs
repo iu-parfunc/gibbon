@@ -233,13 +233,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                                       -- And tag "1" is true:
                                       (Just b')
 
-    -- Hack: no good way to express EndTimer in the source lang, so we
-    -- stick it in just-in-time here.
     LetE (vr, ty, L1.TimeIt rhs _ flg) bod ->
-     -- do tm <- gensym "tmr"
-     --    tail $ StartTimer tm (show flg) $
-     --            LetE (vr, ty, rhs) $
-     --             EndTimer tm (show flg) bod
         do rhs' <- tail rhs
            case ty of 
              L2.ProdTy ls -> 
@@ -247,10 +241,6 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                   T.LetTimedT flg (zip tmps (L.map typ ls)) rhs' <$> tail bod'
              _ -> T.LetTimedT flg   [(vr, typ ty)]          rhs' <$> tail bod
 
-           
-    -- For internal use only:
-    StartTimer nm flg bod -> T.StartTimerT nm <$> tail bod <*> pure (read flg)
-    EndTimer   nm flg bod -> T.EndTimerT   nm <$> tail bod <*> pure (read flg)
 
     --------------------------------Start PrimApps----------------------------------
     -- (1) Primapps that become Tails:
@@ -352,38 +342,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
              T.LetIfT (zip tmps (L.map typ ls)) (a', b', c') <$> tail bod'
         _ -> T.LetIfT [(v, typ t)] (a', b', c') <$> tail bod
 
-{-
-    L1.TimeIt e ty ->
-        do tmp <- gensym "timed"
-           -- Hack: no good way to express EndTimer in the source lang:
-           e' <- tail (L1.LetE (tmp, ty, e) (L1.VarE tmp))
-           tm <- gensym "tmr"
-           -- We splice in the end-timer post-facto:
-           let endT = T.EndTimerT tm
-           return $ T.StartTimerT tm $
-            case e' of
-             T.LetCallT   bnd rat rnds bod -> T.LetCallT   bnd rat rnds (endT bod)
-             T.LetPrimCallT bnd p rnds bod -> T.LetPrimCallT bnd p rnds (endT bod)
-             T.LetTrivT  bnd           bod -> T.LetTrivT           bnd  (endT bod)
-             T.LetIfT bnd (tst,con,els) bod ->
-                 T.LetIfT bnd (tst, endT con, endT els) (endT bod)
-             _ -> error $ "lower: expected let binding back from recursive call:\n  "++sdoc e'
--}
-{-
-        case ty of
-          -- This gets tricky:
-          L2.ProdTy ls -> error$ "[lower] Unfinished: time statement with tupled return: "++show ex
-          _ -> do
-           tm <- gensym "tmr"
-           rhs' <- tail rhs
-           -- let rhs'' = wrapLast (T.EndTimerT tm) rhs'
-           return $
-            T.StartTimerT tm $
-             chainTail rhs' $ \ _ ->
-                 T.EndTimerT tm $
-                -- mkLetTail (vr,ty,rhs'') $
-                  tail bod
--}
+
     _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex0
 
 -- | View pattern for matching agaist projections of Foo rather than just Foo.
@@ -391,9 +350,6 @@ projOf (ProjE ix e) = let (stk,e') = projOf e in
                       (stk++[ix], e')
 projOf e = ([],e)
 
-
-pattern StartTimer t flg bod = AppE "StartTimer" (MkProdE [VarE t, VarE flg, bod])
-pattern EndTimer t   flg bod = AppE "EndTimer"   (MkProdE [VarE t, VarE flg, bod])
 
 -- | Make sure an AppE doesn't encode one of our "virtual primops":
 notSpecial :: Exp -> Bool

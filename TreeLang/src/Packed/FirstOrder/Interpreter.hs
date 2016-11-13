@@ -9,6 +9,8 @@ module Packed.FirstOrder.Interpreter
 
 --------------------------------------------------------------------------------
 
+import Control.Monad
+import Control.Exception
 import qualified Data.Map.Strict as M
 import Data.Maybe (listToMaybe)
 import Data.Int
@@ -30,8 +32,6 @@ data Val
   = FunVal FunDecl
   | IntVal Int  -- ^ These also serve as Bools
   | TagVal Tag
-  | TimeVal TimeSpec
-  -- | TimeVal UTCTime
   | BufVal (Seq Int)
       -- ^ Tags are also written as integers.
   deriving (Eq, Show, Generic, NFData)
@@ -111,26 +111,24 @@ exec env (IfT v1 then_ else_) =
 exec _ (ErrT s) =
     error $ "ErrT: " ++ s
 
-exec env (StartTimerT begin e flg) = do
+exec env (LetTimedT flg bnds rhs bod) = unsafePerformIO $ do
+    let iters = if flg then 1
+                else (error "Implement timed iteration inside the interpreter...")
     !_ <- return $! force env
-    -- st <- return $! unsafePerformIO getCurrentTime
-    st <- return $! unsafePerformIO $ getTime clk
-    let env' = M.insert begin (TimeVal st) env
-    -- let micros = IntVal $ round (st * 10e6)
-    -- We don't time in the interpreter
-    exec env' e
-
-exec env (EndTimerT begin e flg) = do
-    !_ <- return $! force env
-    -- en <- return $! unsafePerformIO getCurrentTime
-    en <- return $! unsafePerformIO $ getTime clk
-    let TimeVal st = env # begin
-        -- tm   = diffUTCTime en st
-        tm = fromIntegral (toNanoSecs $ diffTimeSpec en st)
-              / 10e9 :: Double
-    unsafePerformIO (putStrLn $ "SELFTIMED: "++show tm) `seq`
-     -- We don't time in the interpreter
-     exec env e
+    st <- getTime clk          
+    vals <- foldM (\ _ i -> execWrapper i env rhs)
+                  (error "Internal error: this should be unused.")
+               [1..iters]
+    en <- getTime clk
+    let env' = extendEnv env (zip (map fst bnds) vals)          
+    let tm = fromIntegral (toNanoSecs $ diffTimeSpec en st)
+              / 10e9 :: Double                        
+    if flg
+     then do putStrLn $ "ITERS: "++show iters
+             putStrLn $ "SIZE: " ++show (error "FINISHME: get size param" :: Int)
+             putStrLn $ "BATCHTIME: "++show tm
+     else putStrLn $ "SELFTIMED: "++show tm
+    return $! exec env' bod
          
 exec env (Switch tr alts def) =
     case final_alt of
@@ -169,7 +167,11 @@ exec env (TailCall fn args) =
 
 exec _ e = error$ "Interpreter/exec, unhandled expression:\n  "++show (doc e)
 
-            
+{-# NOINLINE execWrapper #-}
+execWrapper :: Int -> Env -> Tail -> IO [Val]
+execWrapper _i env ex =
+    evaluate $ force $ exec env ex
+           
 extendEnv :: Env -> [(String, Val)] -> Env
 extendEnv = foldr (uncurry M.insert)
 
