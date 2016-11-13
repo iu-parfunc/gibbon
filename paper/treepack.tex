@@ -713,7 +713,25 @@ All benchmarks were conducted on a \dots.
 \subsection{Microbenchmarks}
 % ----------------------------------------
 
-\note{A ``language shootout'' of add1-tree benchmarks.}
+Our first benchmarks return to the example from section 2,
+manipulating simple binary trees. We implement 3 operations:
+constructing a tree, incrementing the values in a tree, and summing
+the elements of a tree. To understand the performance of packed data
+representations, we implemented these three operations in multiple
+ways across a variety of languages: with pointer-based trees in
+Racket, Chez Scheme, MLton, GHC Haskell, and C (using both \texttt{malloc} as well
+as a fast bump-pointer allocator). We also implemented packed versions
+using handwritten C code similar to that of section 2, as well as a
+packed version in Racket. Finally, we implemented the benchmark in
+\treelang{}, and executed it using both the simple Racket backend and
+the optimizing backend that is the focus of this paper.
+
+The results show a clear win for packed representations, in some cases
+with 100x speedup over pointer-based representations in
+garbage-collected languages. Further, our compiler-generated code is
+competetive with handwritten C for packed data.
+
+%\note{A ``language shootout'' of add1-tree benchmarks.}
 
 
 \subsection{Compiler passes on realistic inputs}
