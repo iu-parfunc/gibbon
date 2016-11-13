@@ -34,6 +34,7 @@ library
                   Packed.FirstOrder.Passes.RouteEnds,
                   Packed.FirstOrder.Passes.Unariser,
                   Packed.FirstOrder.Passes.HoistNewBuf,
+                  Packed.FirstOrder.Passes.Typecheck
                   Packed.FirstOrder.SExpFrontend,
                   Packed.FirstOrder.Target
 
