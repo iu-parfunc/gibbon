@@ -178,7 +178,7 @@ And then after inlineTriv, we get this:
 ```
 
 Ok, unsurprisingly the problem is still with Cursorize.  It produces
-this badly typed 
+this badly typed code:
 
 ```Haskell
     LetE ("hoistapp39",
@@ -227,4 +227,98 @@ function result with end-witneses.  This expression pushes the
                         VarE "flddst58"],
                ProjE 1
                      (VarE "unpkcall62")]))
+
+
+[2016.11.13] {Debugging function arguments in inlineTriv}
+---------------------------------------------------------
+
+Next problem seems to be that this function call:
+
+```Haskell
+     AppE "add1_tree"
+      (MkProdE [VarE "flddst58",
+        VarE "y4"]))
+```
+
+Here y4 is an alias for end_x3, and is CursorTy as it should be.
+But then after inlineTrivs, we get this weird thing:
+
+```Haskell
+    (LetE ("unpkcall62",
+        ProdTy [PackedTy "CURSOR_TY" (),
+                PackedTy "CURSOR_TY" ()],
+        AppE "add1_tree"
+             (MkProdE [ProjE 1
+                             (VarE "unpkcall59"),
+                       MkProdE [ProjE 0
+                                      (VarE "unpkcall59"),
+                                VarE "cursplus1_56"]]))
+```
+
+It sure looks like a dilated value is getting stuck in place of a
+"front value". The car of unpkcall59 is indeed the end-of-a witness
+returned by the first call to add1_tree in this Node case.
+
+But cursplus1_56 is bogus... that's actually the output position right
+after the written Node tag.  _56 is indeed the correct output cursor
+to the FIRST call to add1.
+
+So maybe there is a legit problem with the end_x3 witness?
+
+```Haskell
+    (LetE ("hoistapp35",
+           ProdTy [PackedTy "CURSOR_TY"
+                            (),
+                   PackedTy "Tree"
+                            ()],
+           MkProdE [MkProdE [ProjE 0
+                                   (VarE "unpkcall59"),
+                             VarE "cursplus1_56"],
+                    ProjE 13
+                          (VarE "unpkcall59")])
+          (LetE ("fldtup57",
+                 ProdTy [PackedTy "Tree"
+                                  (),
+                         PackedTy "CURSOR_TY"
+                                  ()],
+                 VarE "hoistapp35")
+                (LetE ("flddst58",
+                       PackedTy "CURSOR_TY"
+                                (),
+                       ProjE 1
+                             (VarE "fldtup57"))
+                      (LetE ("end_x3",
+                             PackedTy "CURSOR_TY"
+                                      (),
+                             ProjE 0
+                                   (VarE "hoistapp35"))
+                            (LetE ("y4",
+                                   PackedTy "CURSOR_TY"
+                                            (),
+                                   VarE "end_x3")
+```
+
+Here's what the first of the two add1 call sites looks like BEFORE cursorize:
+
+```Haskell
+    [ProjE 1
+           (LetE ("hoistapp35",
+                  ProdTy [PackedTy "CURSOR_TY"
+                                   (),
+                          PackedTy "Tree"
+                                   ()],
+                  AppE "add1_tree"
+                       (VarE "x3"))
+                 (VarE "NAMED_VAL")),
+```
+
+
+But, above... hoistapp35 is not type checking..  Its type has not been
+updated, but it is clearly returning a dilated version of
+(cursor,tree) which becomes ((cursor,tree),end_tree)
+
+AH!  The NamedVal handling was incorrectly binding names to dilated
+types.
+
+
 

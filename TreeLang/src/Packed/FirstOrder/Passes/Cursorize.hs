@@ -210,6 +210,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                      rhs2 <- let tenv' = M.insert tmp CursorTy tenv in
                                              onDi (LetE (tmp,CursorTy,chooseBuffer isMain)) <$>
                                                 exp2 tenv' isMain (Cursor tmp) rhs
+                                     -- POLICY: we leave the original name bound at the original type:
                                      LetE (v,ty, undilate rhs2) <$>
                                         exp (M.insert v ty tenv) isMain bod
                                      -- withDilated ty rhs2 $ \rhs3 ->
@@ -252,9 +253,9 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
          scrtE' <- if allocFree scrtE
                    then exp tenv isMain scrtE
                    else do tmp <- gensym "scopd"
-                           undilate <$>
-                            onDi (LetE (tmp,CursorTy,chooseBuffer isMain)) <$>
-                             exp2 (M.insert tmp CursorTy tenv) isMain (Cursor tmp) scrtE
+                           LetE (tmp,CursorTy,chooseBuffer isMain) <$>
+                             undilate <$>
+                               exp2 (M.insert tmp CursorTy tenv) isMain (Cursor tmp) scrtE
 
          dbgTrace 1 (" 3. Case scrutinee "++sdoc scrtE++" alloc free?="++show (allocFree scrtE)) $ return ()
          let mkit e =
@@ -484,15 +485,22 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
   exp2 tenv isMain destC ex0 =
     -- dbgTrace lvl (" 2. Processing expr in packed context, cursor "++show destC++", exp:\n  "++sdoc ex0) $ 
     let go tenv = exp2 tenv isMain destC
-        -- | Projections in the packed case.
+        -- | Projections in the packed case.  RETURNS DILATED.
         doproj :: ProjStack -> Int -> Exp -> SyM DiExp
         doproj stk ix ex          
           | (MkProdE ls)         <- ex  = case stk of
                                             []     -> go tenv (ls !! ix)
                                             (i:is) -> doproj is i (ls !! ix)
           | (ProjE i2 e2)        <- ex  = doproj (ix:stk) i2 e2
-          | (NamedVal vr ty val) <- ex  = onDi (\e -> LetE (vr,ty,e) (VarE vr)) <$>
-                                           (doproj stk ix val)
+          -- | (NamedVal vr ty val) <- ex  = onDi (\e -> LetE (vr,ty,e) (VarE vr)) <$>
+          --                                  (doproj stk ix val)
+
+          | (NamedVal vr ty val) <- ex = do Di val' <- doproj stk ix val
+                                            tmp     <- gensym "dila2_"
+                                            return $ Di $ LetE (tmp, dilateTy ty, val') $ 
+                                                          LetE (vr, ty, undilate (Di (VarE tmp)))
+                                                           (VarE tmp)
+
           | AppE f arg           <- ex  =
              -- A function call plus projecting one of its results.  Here, WHICH result we project
              -- determines which tree output we consume, and thus which output cursor we connect.
@@ -540,12 +548,13 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
 
       -- Eliminate this form, while leaving bindings around.
       NamedVal nm ty val -> do Di val' <- go tenv val
-                               return $ Di $ LetE (nm, dilateTy ty, val') (VarE nm)
-
-                               -- tmp <- gensym ("dila_"++nm)
-                               -- return $ Di $ LetE (tmp, dilateTy ty, val') $
-                               --                LetE (nm, ty, undilate (Di (VarE tmp))) $
-                               --                 (VarE nm)
+                               -- return $ Di $ LetE (nm, dilateTy ty, val') (VarE nm)
+                                       
+                               -- Here we bind to the UNDILATED value, as elsewhere:
+                               tmp <- gensym ("dila_"++nm)
+                               return $ Di $ LetE (tmp, dilateTy ty, val') $
+                                              LetE (nm, ty, undilate (Di (VarE tmp))) $
+                                               (VarE tmp) -- We RETURN dilated, which is a postcondition
                 
       -- This is already a witness binding, we leave it alone.
       LetE (v,ty,rhs) bod | L2.isCursorTy ty -> do
