@@ -64,17 +64,20 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
                           return (concat bndss, f ls')
      in
      case e0 of
-       (VarE _) -> return ([],e0)
-       (LitE _) -> return ([],e0)
-       (AppE f arg) -> do (b1,arg') <- triv "Ap" arg
-                          return (b1, AppE f arg')
+       (VarE _)         -> return ([],e0)
+       (LitE _)         -> return ([],e0)
+       (AppE f arg)     -> do (b1,arg') <- triv "Ap" arg
+                              return (b1, AppE f arg')
        (PrimAppE p ls)  -> gols (PrimAppE p)  ls "Prm"
        (MkProdE ls)     -> gols  MkProdE      ls "Prd"
        (MkPackedE k ls) -> gols (MkPackedE k) ls "Pkd"
 
+       (LetE (v1,t1, LetE (v2,t2,rhs2) rhs1) bod) ->
+         go $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
+                           
        (LetE (v,t,rhs) bod) -> do (bnd1,rhs') <- go rhs
                                   (bnd2,bod') <- exp (M.insert v t tenv) bod
-                                  return (bnd1++bnd2, LetE (v,t,rhs') bod')
+                                  return (bnd1++[(v,t,rhs')]++bnd2, bod')
        (IfE a b c) -> do (b1,a') <- triv "If" a 
                          (b2,b') <- go b
                          (b3,c') <- go c

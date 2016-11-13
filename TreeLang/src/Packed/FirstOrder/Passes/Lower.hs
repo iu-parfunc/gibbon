@@ -189,11 +189,18 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
       return (T.LetAllocT v fields bod')
 
+    -- This is legitimately flattened, but we need to move it off the spine:
+    L1.MkPackedE k ls -> do
+       tmp <- gensym "tailift"
+       let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
+       tail $ LetE (tmp, ty, ex0) (VarE tmp)
+             
     --------------------------------------------------------------------------------
-
-    L1.MkProdE ls -> pure$ T.RetValsT (L.map (triv "returned element of tuple") ls)
+             
+--    L1.LitE n       -> pure$ T.RetValsT [triv "literal in tail" (LitE n)]
+    L1.MkProdE ls   -> pure$ T.RetValsT (L.map (triv "returned element of tuple") ls)
     e | L1.isTriv e -> pure$ T.RetValsT [triv "<internal error1>" e]
-
+                       
     -- L1.LetE (v,t, L1.MkProdE ls) bod -> do
     --   let rhss = L.map triv ls
     --   vsts <- unzipTup v t

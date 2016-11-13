@@ -363,6 +363,8 @@ rewriteReturns tl bnds =
    -- tail with respect to our redex:
    (LetIfT bnd (a,b,c) bod) -> LetIfT bnd (a,b,c) (go bod)
    (LetTimedT flg bnd rhs bod) -> LetTimedT flg bnd rhs (go bod)
+   (LetUnpackT bs scrt body) -> LetUnpackT bs scrt (go body)
+   (LetAllocT lhs vals body) -> LetAllocT lhs vals (go body)
    (IfT a b c) -> IfT a (go b) (go c)
    (ErrT s) -> (ErrT s)
    (StartTimerT v x2 b) -> StartTimerT v (go x2) b
@@ -456,7 +458,7 @@ codegenTail (EndTimerT begin tal flg) ty =
 codegenTail (LetTrivT (vr,rty,rhs) body) ty =
     do tal <- codegenTail body ty
        return $ [ C.BlockDecl [cdecl| $ty:(codegenTy rty) $id:vr = $(codegenTriv rhs); |] ]
-                ++ tal
+                ++ tal 
 
 codegenTail (LetAllocT lhs vals body) ty =
     do let structTy = codegenTy (ProdTy (map fst vals))
@@ -511,21 +513,21 @@ codegenTail (LetTimedT flg bnds rhs body) ty =
            iters = "iters_"++ident
        let timebod = [ C.BlockDecl [cdecl| struct timespec $id:begn; |]
                      , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, & $id:begn );  |]
-                     , C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:iters = global_iters_param; |] 
-                     , C.BlockStm [cstm| { $items:rhs'' } |]
+                     , C.BlockStm (if flg
+                                   then [cstm| for (long long $id:iters = 0; $id:iters < global_iters_param; $id:iters ++) { $items:rhs'' }  |]
+                                   else [cstm| { $items:rhs'' } |])
                      , C.BlockDecl [cdecl| struct timespec $id:end; |]
                      , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid end)); |]
                      ]
-           timeblock = if flg
-                       then [ C.BlockStm [cstm| for (int i = 0; i < 10; i++) { $items:timebod }  |]
-                            , C.BlockStm [cstm| printf("ITERS: %lld\n", global_iters_param); |]
+           withPrnt = timebod ++
+                       if flg
+                       then [ C.BlockStm [cstm| printf("ITERS: %lld\n", global_iters_param); |]
                             , C.BlockStm [cstm| printf("SIZE: %lld\n", global_size_param); |]
                             , C.BlockStm [cstm| printf("BATCHTIME: %lf\n", difftimespecs(&$(cid begn), &$(cid end))); |]
                             ]
-                       else timebod ++
-                            [ C.BlockStm [cstm| printf("SELFTIMED: %lf\n", difftimespecs(&$(cid begn), &$(cid end))); |] ]
+                       else [ C.BlockStm [cstm| printf("SELFTIMED: %lf\n", difftimespecs(&$(cid begn), &$(cid end))); |] ]
        tal <- codegenTail body ty
-       return $ decls ++ timeblock ++ tal
+       return $ decls ++ withPrnt ++ tal
 
               
 
