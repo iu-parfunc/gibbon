@@ -6,6 +6,8 @@
 module Packed.FirstOrder.Passes.Unariser
     (unariser) where
 
+import Data.Either
+import Data.Maybe
 import qualified Data.Map as M    
 import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc, gensym, fragileZip)
 import qualified Packed.FirstOrder.L1_Source as L1
@@ -82,10 +84,10 @@ unariserExp _ = go [] []
                              Just vs -> pure$ let (stk,v') = vs ! ix in
                                               applyProj (ix:stk, v')
                              Nothing -> pure$ VarE v -- This must be one that Lower can handle.
-    (VarE v) -> discharge stk <$> 
-                 case lookup v env of
-                  Nothing -> pure$ VarE (var v)
-                  Just vs -> pure$ L1.mkProd (map applyProj vs) -- Works for var-to-var aliases.
+    (VarE v) -> case lookup v env of
+                  Nothing -> pure$ discharge stk $ VarE (var v)
+                  -- Reprocess after substituting in case they were not terminal after all:a
+                  Just vs -> go stk env (L1.mkProd (map applyProj vs)) -- Works for var-to-var aliases.
 
     LetE (vr,ty, CaseE scrt ls) bod | isCheap bod ->
          go stk env $
@@ -106,11 +108,19 @@ unariserExp _ = go [] []
     (LetE (v1,t1, LetE (v2,t2,rhs2) rhs1) bod) -> do
          go stk env $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
 
-    (LetE (v,ProdTy tys, MkProdE ls) bod) -> do
+    (LetE (vr,ProdTy tys, MkProdE ls) bod) -> do
         vs <- sequence [ gensym "unzip" | _ <- ls ]
-        let env' = (v,([ ([],v') | v'<-vs ])):env
+        let -- Here's a little bit of extra complexity to NOT introduce var/var copies:
+            (mbinds,substs) = unzip 
+                              [ case projOfVar e of
+                                  Just pr -> (Nothing, pr)
+                                  Nothing -> (Just (v,t,e), ([],v))
+                              | (v,t,e) <- (zip3 vs tys ls) ]
+            binds = catMaybes mbinds
+            env' = (vr, substs):env
+
         -- Here we *reprocess* the results in case there is more unzipping to do:
-        go stk env' $ mklets (zip3 vs tys ls) bod
+        go stk env' $ mklets binds bod
 
     -- Bulk copy prop, WRONG:
     -- (LetE (v1,ProdTy tys, VarE v2) bod) ->
@@ -191,25 +201,11 @@ buildAliases (v1,tys) (stk,v2) env =
              -- We cannot inline v2, it must come from a function return or something.
              -- So instead we can still unzip ourselves, and reference v2.
              Nothing -> ( v1, [ ([ix],v2) | ix <- [0..maxIx] ] )
-
              -- When we get a hit, we expect it to have the right number of entries:
              Just hits ->
-
-                 -- let findIt []     v = v
-                 --     findIt (s:ss) v = case lookup v env of
-                 --                         Nothing -> _
-                 --                         Just ls -> ( ! s)
-                 -- in
-
                  -- We are bound to a PROJECTION of v2, so combine stk with what's already there.
-
                  (v1, [ (s ++ stk, v')
                       | (_ix,(s,v')) <- fragileZip [0..maxIx] hits ]) 
-
-                 -- We add to end of the projection recipe:
-                 -- (v1, [ (s ++[ix]++ stk, v')
-                 --      | (ix,(_,(s,v'))) <- zip [0..] (fragileZip tys hits) ])
-                 --   : env
   in dbgTrace 5 (" [unariser] Extending environment with these mappings: "++show new) $
      new : env
 
