@@ -60,6 +60,7 @@ FAILING_TESTS ?= \
   test13_build.sexp test13b_build.sexp \
   test20_bintree.sexp test20b_bintree.sexp test20c_bintree.sexp  test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
   test11_fundata.sexp test11c_funrec.sexp test11e_funrec.sexp test12c_traverse.sexp \
+  test25b_racketcore.sexp  \
   test16_forlist.sexp test17_forfold.sexp 
 # Last Line - added because they are failing under valgrind [2016.11.11]
 
@@ -104,7 +105,7 @@ build_tests: $(EXE_FILES)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
-  test13_build.sexp test20b_bintree.sexp test20f_bintree.sexp \
+  test13_build.sexp test20b_bintree.sexp test20f_bintree.sexp test25b_racketcore.sexp \
 
 #   test13b_build.sexp test20_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp
 # ^ New regression [2016.11.12]
@@ -132,7 +133,8 @@ INTERP_FAILING = test06b_case.sexp test06_case.sexp test06c_nested.sexp \
   text08_dict.sexp test08b_dict.sexp test08c_dict.sexp test08d_sharedict.sexp \
   test13_build.sexp test13b_build.sexp  \
   test20b_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
-  test07_time.sexp \
+  test25b_racketcore.sexp test25_rackcore.sexp \
+  test07_time.sexp test25b_racketcore.sexp \
 test11_fundata.sexp test10_desugar.sexp test10b_desugar.sexp test09_recur.sexp test08_dict.sexp test02b_datacon.sexp
 # Last line are new regressions...
 
