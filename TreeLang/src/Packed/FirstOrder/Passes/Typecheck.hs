@@ -137,7 +137,7 @@ typecheckExp dd env2 tcenv exp =
                    return $ Concrete outty'
       CaseE e cs ->
           do te <- typecheckExp dd env2 tcenv e
-             typecheckCases dd cs te
+             typecheckCases dd cs te exp
       MkPackedE c es ->
           do tes <- mapM (typecheckExp dd env2 tcenv) es
              typecheckPacked dd c tes
@@ -167,12 +167,12 @@ typecheckExp dd env2 tcenv exp =
                                  return Nothing
 
 
-           typecheckCases dd cs te = 
+           typecheckCases dd cs te exp = 
                do tcs <- forM cs $ \(c,args,e) ->
                          do let targs = map Concrete $ lookupDataCon dd c
                                 ntcenv = M.fromList (zip args targs) `M.union` tcenv
                             typecheckExp dd env2 ntcenv e
-                  -- FIXME: need to assert that all elements of tcs are the same
+                  foldM_ (\i a -> (assertEqTCVar exp i a) >> (return a)) (head tcs) (tail tcs)
                   -- FIXME: need to assert that the types in tcs match what's expected from te
                   return $ head tcs
 
