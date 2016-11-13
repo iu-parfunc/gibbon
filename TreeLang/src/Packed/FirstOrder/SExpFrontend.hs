@@ -322,9 +322,6 @@ docase s =
       -> (toVar con, L.map getSym args, exp rhs)
     _ -> error$ "bad clause in case expression\n  "++prnt s
 
-mkLets :: [(Var, Ty, Exp)] -> Exp -> Exp
-mkLets [] bod = bod
-mkLets (a:b) bod = LetE a (mkLets b bod)
 
 letbind :: Sexp -> (Var,Ty,Exp)
 letbind s = 

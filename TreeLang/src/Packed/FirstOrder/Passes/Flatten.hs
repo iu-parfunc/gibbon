@@ -11,7 +11,7 @@ module Packed.FirstOrder.Passes.Flatten
 
 import Control.Monad.State
 import Packed.FirstOrder.Common
-import qualified Packed.FirstOrder.L1_Source as L1
+import Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.L1_Source (Exp(..), Prim(..))
 import Packed.FirstOrder.LTraverse (isCursorTy)
 
@@ -41,9 +41,64 @@ flatten prg@(L1.Prog defs funs main) = do
 -- go in there too.  Everything would be simpler.  We would simply have to use other means
 -- to remember that L1 programs are first order.
 
-            
+
+type Binds = (Var,L1.Ty,Exp)
+
 flattenExp :: DDefs L1.Ty -> Env2 L1.Ty -> L1.Exp -> SyM L1.Exp
-flattenExp defs env2 = fExp (vEnv env2)
+flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
+                               return $ flatLets b e'
+ where
+   typeIt = typeExp (ddefs,env2)
+   
+   exp :: TEnv -> Exp -> SyM ([Binds],Exp)
+   exp tenv e0 =
+     let triv m e = -- Force something to be trivial
+           if isTriv e
+           then return ([],e)
+           else do tmp <- gensym $ "flt"++m
+                   let ty = typeIt tenv e
+                   (bnds,e') <- exp tenv e
+                   return (bnds++[(tmp,ty,e')], VarE tmp)
+         go = exp tenv
+         gols f ls m = do (bndss,ls') <- unzip <$> mapM (triv m) ls
+                          return (concat bndss, f ls')
+     in
+     case e0 of
+       (VarE _) -> return ([],e0)
+       (LitE _) -> return ([],e0)
+       (AppE f arg) -> do (b1,arg') <- triv "Ap" arg
+                          return (b1, AppE f arg')
+       (PrimAppE p ls)  -> gols (PrimAppE p)  ls "Prm"
+       (MkProdE ls)     -> gols  MkProdE      ls "Prd"
+       (MkPackedE k ls) -> gols (MkPackedE k) ls "Pkd"
+
+       (LetE (v,t,rhs) bod) -> do (bnd1,rhs') <- go rhs
+                                  (bnd2,bod') <- exp (M.insert v t tenv) bod
+                                  return (bnd1++bnd2, LetE (v,t,rhs') bod')
+       (IfE a b c) -> do (b1,a') <- triv "If" a 
+                         (b2,b') <- go b
+                         (b3,c') <- go c
+                         return (b1, IfE a' (flatLets b2 b') (flatLets b3 c'))
+       -- This can happen anywhere, but doing it here prevents
+       -- unneccessary bloat where we can ill afford it:
+       (ProjE ix (MkProdE ls)) -> go(ls !! ix)
+       (ProjE ix e) -> do (b,e') <- triv "Prj" e
+                          return (b, ProjE ix e')
+       (CaseE e ls) -> do (b,e') <- triv "Cse" e
+                          ls' <- forM ls $ \ (k,vrs,rhs) -> do
+                                   let tys = lookupDataCon ddefs k
+                                       tenv' = M.union (M.fromList (zip vrs tys)) tenv
+                                   (b2,rhs') <- exp tenv' rhs
+                                   return (k,vrs, flatLets b2 rhs')
+                          return (b, CaseE e' ls')
+       -- TimeIt is treated like a conditional.  Don't lift out of it:
+       (TimeIt e _t b) -> do (bnd,e') <- go e
+                             return ([],TimeIt (flatLets bnd e') (typeIt tenv e) b)
+       -- (MapE x1 x2) -> __
+       -- (FoldE _ _ _) -> __
+
+flattenExpOld :: DDefs L1.Ty -> Env2 L1.Ty -> L1.Exp -> SyM L1.Exp
+flattenExpOld defs env2 = fExp (vEnv env2)
   where
     fExp :: M.Map Var L1.Ty -> L1.Exp -> SyM L1.Exp
     fExp _env (L1.VarE v) = return $ L1.VarE v
@@ -122,11 +177,18 @@ flattenExp defs env2 = fExp (vEnv env2)
            fe3 <- fExp env e3
            return $ L1.FoldE (v1,t1,fe1) (v2,t2,fe2) fe3
 
-    -- | Helper function that lifts out Lets on the RHS of other Lets.
-    --   Absolutely requires unique names.
-    mkLetE (vr,ty, L1.LetE bnd e) bod = mkLetE bnd $ mkLetE (vr,ty,e) bod
-    mkLetE bnd bod = L1.LetE bnd bod
+-- | Helper function that lifts out Lets on the RHS of other Lets.
+--   Absolutely requires unique names.
+mkLetE (vr,ty, L1.LetE bnd e) bod = mkLetE bnd $ mkLetE (vr,ty,e) bod
+mkLetE bnd bod = L1.LetE bnd bod
 
+-- | Alternative version of L1.mkLets that also flattens                 
+flatLets :: [(Var,Ty,Exp)] -> Exp -> Exp
+flatLets [] bod = bod
+flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
+
+                     
+                     
 type TEnv = M.Map Var L1.Ty
                      
 typeExp :: (DDefs L1.Ty,Env2 L1.Ty) -> TEnv -> L1.Exp -> L1.Ty

@@ -66,7 +66,7 @@ unariserExp _ = go [] []
   -- Or do we?  Not clear yet.                         
   go :: ProjStack -> [(Var,[Var])] -> L1.Exp -> SyM L1.Exp
   go stk env e0 =
-   -- dbgTrace 5 ("Inline, processing with env:\n "++sdoc env++"\n exp: "++sdoc e0) $
+   dbgTrace 7 ("Unariser processing with env:\n "++sdoc env++"\n exp: "++sdoc e0) $
    case e0 of
      
     (ProjE i e)  -> go (i:stk) env e  -- Push a projection inside lets or conditionals.
@@ -81,8 +81,13 @@ unariserExp _ = go [] []
     (VarE v) -> discharge stk <$> 
                  case lookup v env of
                   Nothing -> pure$ VarE (var v)
-                  Just vs -> pure$ L1.mkProd[ VarE v | v <- vs ]
+                  Just vs -> pure$ L1.mkProd[ VarE vr | vr <- vs ]
 
+    LetE (vr,ty, CaseE scrt ls) bod | isCheap bod ->
+         go stk env $
+          CaseE scrt [ (k,vs, mkLet (vr,ty,e) bod)
+                     | (k,vs,e) <- ls]
+                             
     -- TEMP: HACK/workaround.  See FIXME above.
     LetE (v1,ProdTy _,rhs@LetE{})  (ProjE ix (VarE v2)) | v1 == v2 -> go (ix:stk) env rhs
     LetE (v1,ProdTy _,rhs@CaseE{}) (ProjE ix (VarE v2)) | v1 == v2 -> go (ix:stk) env rhs
@@ -146,3 +151,9 @@ unariserExp _ = go [] []
     --      FoldE (var v1,t1,go stk env e1) (var v2,t2,go stk env e2)
     --            (go stk env' e3)
 
+isCheap :: Exp -> Bool
+isCheap _ = True
+              
+mkLet :: (Var, L1.Ty, Exp) -> Exp -> Exp
+mkLet (v,t,LetE (v2,t2,rhs2) bod1) bod2 = LetE (v2,t2,rhs2) $ LetE (v,t,bod1) bod2
+mkLet (v,t,rhs) bod = LetE (v,t,rhs) bod

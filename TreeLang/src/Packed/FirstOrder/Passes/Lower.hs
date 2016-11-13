@@ -229,12 +229,18 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     -- Hack: no good way to express EndTimer in the source lang, so we
     -- stick it in just-in-time here.
     LetE (vr, ty, L1.TimeIt rhs _ flg) bod ->
-     dbgTrace 1 ("Dealing with TimeIt:"++ndoc ex0) $
-     do
-      tm <- gensym "tmr"
-      tail $ StartTimer tm (show flg) $
-              LetE (vr, ty, rhs) $
-               EndTimer tm (show flg) bod
+     -- do tm <- gensym "tmr"
+     --    tail $ StartTimer tm (show flg) $
+     --            LetE (vr, ty, rhs) $
+     --             EndTimer tm (show flg) bod
+        do rhs' <- tail rhs
+           case ty of 
+             L2.ProdTy ls -> 
+               do (tmps,bod') <- eliminateProjs vr ls bod
+                  T.LetTimedT flg (zip tmps (L.map typ ls)) rhs' <$> tail bod'
+             _ -> T.LetTimedT flg   [(vr, typ ty)]          rhs' <$> tail bod
+
+           
     -- For internal use only:
     StartTimer nm flg bod -> T.StartTimerT nm <$> tail bod <*> pure (read flg)
     EndTimer   nm flg bod -> T.EndTimerT   nm <$> tail bod <*> pure (read flg)

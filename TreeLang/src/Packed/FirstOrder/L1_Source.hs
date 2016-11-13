@@ -21,7 +21,7 @@ module Packed.FirstOrder.L1_Source
     , freeVars, subst, substE, mapExprs
       -- * Trivial expressions
     , assertTriv, assertTrivs, isTriv, hasTimeIt
-    , projNonFirst, mkProj, mkProd, mkProdTy
+    , projNonFirst, mkProj, mkProd, mkProdTy, mkLets
       -- * Examples
     , add1Prog
     )
@@ -345,7 +345,12 @@ mkProdTy :: [Ty]-> Ty
 mkProdTy [t] = t
 mkProdTy ls = ProdTy ls
             
-                
+-- | Make a nested series of lets.
+mkLets :: [(Var,Ty,Exp)] -> Exp -> Exp
+mkLets [] bod = bod
+mkLets (b:bs) bod = LetE b (mkLets bs bod)
+
+              
 {-
 -- | Promote a value to a term that evaluates to it.
 l1FromValue :: Value Exp -> Exp

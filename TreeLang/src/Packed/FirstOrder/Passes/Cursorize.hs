@@ -21,7 +21,7 @@ import Control.Applicative
 import           Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import qualified Packed.FirstOrder.LTraverse as L2
-import           Packed.FirstOrder.L1_Source (Ty1(..),pattern SymTy)
+import           Packed.FirstOrder.L1_Source (Ty1(..),pattern SymTy,mkLets)
 import           Packed.FirstOrder.LTraverse
     (argtyToLoc, Loc(..), ArrowTy(..), Effect(..), toEndVar, toWitnessVar,
      FunDef(..), Prog(..), Exp(..))
@@ -961,10 +961,6 @@ isWitnessExpr = go
 tyOfCaseScrut :: Out a => DDefs a -> Exp -> L1.Ty
 tyOfCaseScrut dd (CaseE _ ((k,_,_):_)) = PackedTy (getTyOfDataCon dd k) ()
 tyOfCaseScrut _ e = error $ "tyOfCaseScrut, takes only Case:\n  "++sdoc e 
-
-mkLets :: [(Var,L1.Ty,Exp)] -> Exp -> Exp
-mkLets [] bod = bod
-mkLets (b:bs) bod = LetE b (mkLets bs bod)
 
 -- | Smart constructor that immediately destroys products if it can:
 --   Does NOT avoid single-element tuples.

@@ -131,6 +131,12 @@ data Tail
     | ErrT String
     | StartTimerT Var Tail Bool -- ^ As with TimeIt, boolean indicates whether it's iterate mode
     | EndTimerT   Var Tail Bool -- ^ ditto
+
+    | LetTimedT { isIter :: Bool
+                , binds :: [(Var,Ty)]
+                , timed :: Tail
+                , bod :: Tail } -- ^ This is like a one-armed if.  It needs a struct return. 
+      
     | Switch Triv Alts (Maybe Tail) -- TODO: remove maybe on default case
     -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
@@ -240,6 +246,7 @@ harvestStructTys (Prog funs mtal) =
        (LetTrivT (_,ty,_) bod)     -> ty : go bod
        -- This should not create a struct.  Again, we add it just for the heck of it:
        (LetIfT binds (_,a,b) bod)  -> ProdTy (map snd binds) : go a ++ go b ++ go bod
+       (LetTimedT _ binds rhs bod) -> ProdTy (map snd binds) : go rhs ++ go bod
 
        -- These are precisely for operating on structs:
        (LetUnpackT binds _ bod)    -> ProdTy (map snd binds) : go bod
@@ -355,6 +362,7 @@ rewriteReturns tl bnds =
    -- We don't recur on the "tails" under the if, because they're not
    -- tail with respect to our redex:
    (LetIfT bnd (a,b,c) bod) -> LetIfT bnd (a,b,c) (go bod)
+   (LetTimedT flg bnd rhs bod) -> LetTimedT flg bnd rhs (go bod)
    (IfT a b c) -> IfT a (go b) (go c)
    (ErrT s) -> (ErrT s)
    (StartTimerT v x2 b) -> StartTimerT v (go x2) b
@@ -489,6 +497,37 @@ codegenTail (LetIfT bnds (e0,e1,e2) body) ty =
        tal <- codegenTail body ty
        return $ decls ++ ifbod ++ tal
 
+codegenTail (LetTimedT flg bnds rhs body) ty =
+
+    do let decls = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:vr0; |]
+                   | (vr0,ty0) <- bnds ]
+       let rhs' = rewriteReturns rhs bnds
+       rhs'' <- codegenTail rhs' ty
+       let ident = case bnds of
+                     ((v,_):_) -> v
+                     _ -> ""
+           begn  = "begin_"++ident
+           end   = "end_"++ident
+           iters = "iters_"++ident
+       let timebod = [ C.BlockDecl [cdecl| struct timespec $id:begn; |]
+                     , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, & $id:begn );  |]
+                     , C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:iters = global_iters_param; |] 
+                     , C.BlockStm [cstm| { $items:rhs'' } |]
+                     , C.BlockDecl [cdecl| struct timespec $id:end; |]
+                     , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid end)); |]
+                     ]
+           timeblock = if flg
+                       then [ C.BlockStm [cstm| for (int i = 0; i < 10; i++) { $items:timebod }  |]
+                            , C.BlockStm [cstm| printf("ITERS: %lld\n", global_iters_param); |]
+                            , C.BlockStm [cstm| printf("SIZE: %lld\n", global_size_param); |]
+                            , C.BlockStm [cstm| printf("BATCHTIME: %lf\n", difftimespecs(&$(cid begn), &$(cid end))); |]
+                            ]
+                       else timebod ++
+                            [ C.BlockStm [cstm| printf("SELFTIMED: %lf\n", difftimespecs(&$(cid begn), &$(cid end))); |] ]
+       tal <- codegenTail body ty
+       return $ decls ++ timeblock ++ tal
+
+              
 
 codegenTail (LetCallT bnds ratr rnds body) ty
     | (length bnds) > 1 = do nam <- gensym "tmp_struct"
