@@ -114,7 +114,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
   tyToCursors nm ty =
     case ty of
       ProdTy ls -> TupOut <$> mapM (tyToCursors nm) ls
-      t | L2.isCursorTy t    -> Cursor <$> gensym nm
+      t | L2.isCursorTy t    -> Cursor <$> gensym ("out_"++nm)
         | otherwise          -> pure NoCursor
                              
   allCursors d = case d of
@@ -128,7 +128,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
      -- We don't add new function arguments yet, rather we leave
      -- unbound references to the function's output cursors, named
      -- "f_1, f_2..." for a function "f".    
-     let (funty'@(ArrowTy inT ef outTFull),_) = L2.cursorizeTy2 funty
+     let (funty'@(ArrowTy inT ef outTFull),newIn) = L2.cursorizeTy2 funty
          -- And without those prepended RouteEnds:
          outT = getCoreOutTy funty'
      -- Enumerate packed types in our core output:
@@ -140,20 +140,20 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
      let outCurs  = allCursors outDests
      (arg,exp') <-
            dbgTrace lvl (" [cursorDirect] for function "++funname++" outDests: "
-                         ++show outDests++" for full return ty (undilated): "++show outTFull) $ 
+                         ++show outDests++", newIn "++show newIn++", for full return ty (undilated): "++show outTFull) $ 
            case outCurs of
                -- Keep the orginal argument name.
                [] -> (funarg,) <$> exp initEnv False funbod -- not hasPacked
                -- TODO: handle more than one output cursor:
                [_cur] ->                  
-                  do tmp <- gensym "fnarg"
+                  do fnargtmp <- gensym "fnarg" 
                      -- 1st: Bind (out) cursor arguments:
-                     b <- mkLets [ (cur, CursorTy, mkProjE2 ix (length outCurs) (VarE tmp)) -- outCurs non null.
+                     b <- mkLets [ (cur, CursorTy, mkProjE2 ix (length newIn + 1) (VarE fnargtmp)) -- outCurs non null.
                                  | (cur,ix) <- zip outCurs [0..] ] <$>
                            -- 2nd: Unpack the "real" argument, which is after the prepended output cursors:
                            LetE ( funarg
                                 , fmap (const ()) (arrIn funty')
-                                , mkProjE2 (length outCurs) (length outCurs+1) (VarE tmp)) <$> do
+                                , mkProjE2 (length outCurs) (length outCurs+1) (VarE fnargtmp)) <$> do
                             -- 3rd: Bind the result of the function body so we can operate on it:
                             Di bod2 <- exp2 initEnv False outDests funbod
                             btmp <- gensym "bodtmp"
@@ -173,7 +173,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                               ++ show (outTFull, dilateTy outTFull)
                                               ++ " core starts at "++show (ProjE (S.size ef) (VarE btmp))) $
                                   L1.mkProd $ [ VarE u | u <- upds ] ++ [newCore]
-                     return (tmp,b)
+                     return (fnargtmp,b)
                _ -> error $ "cursorDirect: add support for functionwith multiple output cursors: "++ funname
      return $ L2.FunDef funname funty' arg exp'
 

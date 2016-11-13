@@ -105,7 +105,8 @@ build_tests: $(EXE_FILES)
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
   test13_build.sexp test20b_bintree.sexp test20f_bintree.sexp \
-  test13b_build.sexp test20_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp
+
+#   test13b_build.sexp test20_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp
 # ^ New regression [2016.11.12]
 
 # test20f - wip
