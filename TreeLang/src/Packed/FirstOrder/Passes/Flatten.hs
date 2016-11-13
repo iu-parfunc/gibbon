@@ -4,7 +4,7 @@
 module Packed.FirstOrder.Passes.Flatten
   ( flatten
   , flattenExp
-  , typeExp
+  , typeExp, TEnv
   ) where
 
 -------------------------------------------------------------------------------
@@ -127,9 +127,9 @@ flattenExp defs env2 = fExp (vEnv env2)
     mkLetE (vr,ty, L1.LetE bnd e) bod = mkLetE bnd $ mkLetE (vr,ty,e) bod
     mkLetE bnd bod = L1.LetE bnd bod
 
-type TyEnv = M.Map Var L1.Ty
+type TEnv = M.Map Var L1.Ty
                      
-typeExp :: (DDefs L1.Ty,Env2 L1.Ty) -> TyEnv -> L1.Exp -> L1.Ty
+typeExp :: (DDefs L1.Ty,Env2 L1.Ty) -> TEnv -> L1.Exp -> L1.Ty
 typeExp (dd,env2) env (L1.VarE v) =
     M.findWithDefault (L1.Packed "CURSOR_TY") v env
 --  M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v env

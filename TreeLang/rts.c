@@ -167,7 +167,8 @@ int main(int argc, char** argv)
     //   tree size: An integer passes to `build_tree()`. 
 
     struct rlimit lim;
-    lim.rlim_cur = 1024LU * 1024LU * 1024LU; // 1GB stack.
+    // lim.rlim_cur = 1024LU * 1024LU * 1024LU; // 1GB stack.
+    lim.rlim_cur = 512LU * 1024LU * 1024LU; // 500MB stack.
     lim.rlim_max = lim.rlim_cur;
     int code = setrlimit(RLIMIT_STACK, &lim);
     if (code) {
