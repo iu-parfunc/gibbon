@@ -7,7 +7,7 @@ module Packed.FirstOrder.Passes.Unariser
     (unariser) where
 
 import qualified Data.Map as M    
-import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc, gensym)
+import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc, gensym, fragileZip)
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.LTraverse as L2
 import Prelude hiding (exp)
@@ -42,7 +42,10 @@ unariser = mapMExprs unariserExp
  --       f { funbod = unariserExp [] [] funbod }
 
 type ProjStack = [Int]
-         
+
+-- Maps variables onto tuples of (projections of) other variables 
+type Env = [(Var,[(ProjStack,Var)])]
+    
 -- | Keep (1) pending projections that enclose our current context,
 -- and (2) a map from variable bindings with tuple type, to
 -- finer-grained bindings to individual components.
@@ -64,7 +67,7 @@ unariserExp _ = go [] []
 
   -- FIXME: need to track full expr binds like InlineTrivs
   -- Or do we?  Not clear yet.                         
-  go :: ProjStack -> [(Var,[Var])] -> L1.Exp -> SyM L1.Exp
+  go :: ProjStack -> Env -> L1.Exp -> SyM L1.Exp
   go stk env e0 =
    dbgTrace 7 ("Unariser processing with env:\n "++sdoc env++"\n exp: "++sdoc e0) $
    case e0 of
@@ -76,12 +79,13 @@ unariserExp _ = go [] []
 
     (ProjE ix (VarE v)) -> discharge stk <$> -- Danger.
                            case lookup v env of
-                             Just vs -> pure$ VarE (vs ! ix)
+                             Just vs -> pure$ let (stk,v') = vs ! ix in
+                                              applyProj (ix:stk, v')
                              Nothing -> pure$ VarE v -- This must be one that Lower can handle.
     (VarE v) -> discharge stk <$> 
                  case lookup v env of
                   Nothing -> pure$ VarE (var v)
-                  Just vs -> pure$ L1.mkProd[ VarE vr | vr <- vs ]
+                  Just vs -> pure$ L1.mkProd (map applyProj vs) -- Works for var-to-var aliases.
 
     LetE (vr,ty, CaseE scrt ls) bod | isCheap bod ->
          go stk env $
@@ -104,15 +108,27 @@ unariserExp _ = go [] []
 
     (LetE (v,ProdTy tys, MkProdE ls) bod) -> do
         vs <- sequence [ gensym "unzip" | _ <- ls ]
-        let env' = (v,vs):env
+        let env' = (v,([ ([],v') | v'<-vs ])):env
         -- Here we *reprocess* the results in case there is more unzipping to do:
         go stk env' $ mklets (zip3 vs tys ls) bod
 
-    (LetE (v1,ProdTy tys, VarE v2) bod) ->
-        case lookup v2 env of
-          Just vs -> go stk env $ LetE (v1,ProdTy tys, MkProdE (map VarE vs)) bod
-          Nothing -> go stk ((v1,[v2]):env) bod -- Copy-prop
-            
+    -- Bulk copy prop, WRONG:
+    -- (LetE (v1,ProdTy tys, VarE v2) bod) ->
+    --     case lookup v2 env of
+    --       Just vs -> go stk env $ LetE (v1,ProdTy tys, MkProdE (map VarE vs)) bod
+    --       Nothing -> go stk ((v1,[v2]):env) bod -- Copy-prop
+
+    -- More nuanced copy-prop:
+    (LetE (v1,ProdTy tys, proj) bod) | Just (stk2,v2) <- projOfVar proj ->
+        let env' = buildAliases (v1,tys) (stk2,v2) env in
+        go stk env' bod
+        -- case lookup v2 env of          
+        --   Just vs -> go stk env $ LetE (v1,ProdTy tys, MkProdE (map VarE vs)) bod
+        --   -- This is problematic:
+        --   -- Nothing -> go stk ((v1,[v2]):env) bod -- Copy-prop
+        --   Nothing -> LetE <$> ((v1,ProdTy tys) <$> go [] proj) <*>
+        --                 go stk ((v1,Nothing):env) bod 
+                     
     -- And this is a HACK.  Need a more general solution:
     (LetE (v,ty@ProdTy{}, rhs@(TimeIt{})) bod)->
         LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
@@ -153,7 +169,51 @@ unariserExp _ = go [] []
 
 isCheap :: Exp -> Bool
 isCheap _ = True
-              
+
+applyProj :: (ProjStack,Var) -> Exp
+applyProj (stk,v) = go stk (VarE v)
+  where
+    go [] e     = e
+    go (i:is) e = go is (ProjE i e)
+             
+projOfVar :: Exp -> Maybe (ProjStack, Var)
+projOfVar = lp []
+ where
+   lp stk (VarE v)    = Just (stk,v)
+   lp stk (ProjE i e) = lp (i:stk) e
+   lp _   _           = Nothing
+
+-- | Binnd v1 to a projection of v2 in the current environment.
+buildAliases :: (Var,[L1.Ty]) -> (ProjStack, Var) -> Env -> Env
+buildAliases (v1,tys) (stk,v2) env =
+  let maxIx = length tys - 1 in
+  let new = case lookup v2 env of
+             -- We cannot inline v2, it must come from a function return or something.
+             -- So instead we can still unzip ourselves, and reference v2.
+             Nothing -> ( v1, [ ([ix],v2) | ix <- [0..maxIx] ] )
+
+             -- When we get a hit, we expect it to have the right number of entries:
+             Just hits ->
+
+                 -- let findIt []     v = v
+                 --     findIt (s:ss) v = case lookup v env of
+                 --                         Nothing -> _
+                 --                         Just ls -> ( ! s)
+                 -- in
+
+                 -- We are bound to a PROJECTION of v2, so combine stk with what's already there.
+
+                 (v1, [ (s ++ stk, v')
+                      | (_ix,(s,v')) <- fragileZip [0..maxIx] hits ]) 
+
+                 -- We add to end of the projection recipe:
+                 -- (v1, [ (s ++[ix]++ stk, v')
+                 --      | (ix,(_,(s,v'))) <- zip [0..] (fragileZip tys hits) ])
+                 --   : env
+  in dbgTrace 5 (" [unariser] Extending environment with these mappings: "++show new) $
+     new : env
+
+                 
 mkLet :: (Var, L1.Ty, Exp) -> Exp -> Exp
 mkLet (v,t,LetE (v2,t2,rhs2) bod1) bod2 = LetE (v2,t2,rhs2) $ LetE (v,t,bod1) bod2
 mkLet (v,t,rhs) bod = LetE (v,t,rhs) bod

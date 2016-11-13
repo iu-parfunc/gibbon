@@ -327,7 +327,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                         _ -> return ([(vr,typ t)], bod)
         case arg of
           MkProdE es ->
-               T.LetCallT vsts f' (L.map (triv "app rands") es) <$> (tail bod')
+               T.LetCallT vsts f' (L.map (triv "one of app rands") es) <$> (tail bod')
           _ -> T.LetCallT vsts f' [(triv "app rand") arg]       <$> (tail bod')
 
 

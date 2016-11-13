@@ -4,26 +4,27 @@ module Packed.FirstOrder.Passes.InlineTriv (inlineTriv, inlineTrivExp) where
     
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L1_Source as L1 hiding (mkProj)
+import Packed.FirstOrder.Passes.Flatten (typeExp, TEnv)
 import Prelude hiding (exp)
 -- import Debug.Trace
 
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
 inlineTriv :: Prog -> Prog
-inlineTriv (Prog defs funs main) =
-    Prog defs (fmap inlineTrivFun funs) (fmap inlineTrivExp main)
+inlineTriv (Prog ddefs funs main) =
+    Prog ddefs (fmap inlineTrivFun funs) (fmap (inlineTrivExp ddefs) main)
   where
     inlineTrivFun (FunDef nam (narg,targ) ty bod) =
-      FunDef nam (narg,targ) ty (inlineTrivExp bod)
+      FunDef nam (narg,targ) ty (inlineTrivExp ddefs bod)
 
-inlineTrivExp :: Exp -> Exp
-inlineTrivExp = go []
+inlineTrivExp :: DDefs _ -> Exp -> Exp
+inlineTrivExp _ddefs = go []
   where
 
   -- Just a hook for debugging:
   go :: [(Var,Exp)] -> Exp -> Exp
   go env e  =
-   -- trace ("Inline, processing with env:\n "++sdoc env++"\n exp: "++sdoc e) $
+      -- dbgTrace 7 ("Inline, processing with env:\n "++sdoc env++"\n exp: "++sdoc e) $
       exp env e          
       
   exp :: [(Var,Exp)] -> Exp -> Exp
@@ -46,7 +47,9 @@ inlineTrivExp = go []
          _ -> LetE (v,t,go env e') (go env e)
   exp env (IfE e1 e2 e3) =
        IfE (go env e1) (go env e2) (go env e3)
-  exp env (ProjE i e) = ProjE i $ go env e
+
+  -- TODO: Type check here:
+  exp env (ProjE i e) = mkProj i $ go env e
   exp env (MkProdE es) = MkProdE $ map (go env) es
   exp env (CaseE e mp) =
        let e' = go env e
@@ -61,6 +64,6 @@ inlineTrivExp = go []
 
 -- Helpers which do opportunistic reduction:
 
--- mkProj :: Int -> Exp -> Exp
--- mkProj ix (MkProdE ls) = ls !! ix
--- mkProj ix e = ProjE ix e
+mkProj :: Int -> Exp -> Exp
+mkProj ix (MkProdE ls) = ls !! ix
+mkProj ix e = ProjE ix e

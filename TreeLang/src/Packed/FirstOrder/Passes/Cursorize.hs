@@ -397,7 +397,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                       ++"\n core ret before prjstk / without witnesses: "++sdoc flpd
                                       ++"\n"
                                       )$
-                                 buildProjE prjstk $
+                                 -- buildProjE prjstk $
                                    L1.mkProd [ restoreEndWits flpd
                                              , L1.mkProd allEnds ]
 

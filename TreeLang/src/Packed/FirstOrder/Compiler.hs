@@ -284,7 +284,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
     let flatten2 :: L2.Prog -> SyM L2.Prog
         flatten2 = L2.mapMExprs (flattenExp (L1.ddefs l1))
         inline2 :: L2.Prog -> SyM L2.Prog
-        inline2 p = return (L2.mapExprs (\_ -> inlineTrivExp) p)
+        inline2 p = return (L2.mapExprs (\_ -> inlineTrivExp (L2.ddefs p)) p)
     str <- evalStateT
              (do l1b <-       pass "freshNames"               freshNames               l1
                  l1c <-       pass "flatten"                  flatten                  l1b

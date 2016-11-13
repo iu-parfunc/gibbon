@@ -176,3 +176,55 @@ And then after inlineTriv, we get this:
                        (ProjE 1
                                (VarE "unpkcall62"))]))))])
 ```
+
+Ok, unsurprisingly the problem is still with Cursorize.  It produces
+this badly typed 
+
+```Haskell
+    LetE ("hoistapp39",
+     ProdTy [PackedTy "CURSOR_TY"
+                      (),
+             PackedTy "Tree"
+                      ()],
+     LetE ("unpkcall62",
+           ProdTy [PackedTy "CURSOR_TY"
+                            (),
+                   PackedTy "CURSOR_TY"
+                            ()],
+           AppE "add1_tree"
+                (MkProdE [VarE "flddst58",
+                          VarE "y4"]))
+          (ProjE 1
+                 (MkProdE [MkProdE [ProjE 0
+                                          (VarE "unpkcall62"),
+                                    VarE "flddst58"],
+                           ProjE 1
+                                 (VarE "unpkcall62")])))
+    (VarE "hoistapp39")
+```
+
+From the correct input:
+
+```Haskell
+    ProjE 1
+          (LetE ("hoistapp39",
+                 ProdTy [PackedTy "CURSOR_TY"
+                                  (),
+                         PackedTy "Tree"
+                                  ()],
+                 AppE "add1_tree"
+                      (VarE "y4"))
+                (VarE "NAMED_VAL"))
+```
+
+Hoistapp39 is supposed to be a tuple.  It's supposed to be the full
+function result with end-witneses.  This expression pushes the
+`ProjE 1` projcetion into the wrong place:
+
+    (ProjE 1
+     (MkProdE [MkProdE [ProjE 0
+                              (VarE "unpkcall62"),
+                        VarE "flddst58"],
+               ProjE 1
+                     (VarE "unpkcall62")]))
+
