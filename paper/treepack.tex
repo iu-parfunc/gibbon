@@ -714,28 +714,20 @@ function that traverses the value located at $\alpha$ during its execution.
 
 \subsection{Point correlation}
 % --------------------------------------------
+Point correlation  is a well-known algorithm that is used in data mining\cite{capnproto},
+given a point p in a k-dimensional space, a radius r, and a set of points in the space,
+point correlation computes the number of nodes that are within a distance r from the point p.
+One efficient way of doing that is to use kd-trees to store to represent the set of points\cite{capnproto}. 
 
-\note{}
-Point correlation algorithm is well-known algorithm that is used in data mining\cite{capnproto},
-given a point p in K-dimensional space , a radius r,and a set of points in the space,
-point correlation compute the number of nodes that are at distance r from the point p.
-One efficient way of doing that is using kd-tree to store to represent the set of points\cite{capnproto}, 
 k-dtree is a binary space partitioning tree, in its simplest form it splits the space at each internal node into two spaces
-around a split axes in one of the space dimensions,the left subtree stores the point on the left of the split access
-and the right subtree sotres the point on the right of the split access,the split axes alternates between the dimensions of
-the space each at each level of the tree ,leaf nodes store the points in the space, finally internal nodes  store the
-boundaries within wich all descendent points lies. In  a naive implementation point correlation need to be executed at leaf node for each input point, however kd-trees 
-allow the it to  prune early and to skip points in a subtree if the point is far enough form the boundaries stored at the root 
-of the tree.
+around a split axes in one of the space dimensions, the left subtree stores the points on the left of the split access
+and the right subtree sotres the points on the right of the split access, the split axes alternates between the dimensions of
+the space at each level of the tree,when the number of the points in the subtree is one a  leaf node is constructed that stores one point of in the space.
 
-In 
-
-% --------------------------------------------
-
-\note{}
-k-d trees are a well known date structure that is used to store points 	that are distributed in k-dimentional space
-
-
+In  a naive implementation point correlation need to be executed at leaf nodes for each input point, however kd-trees 
+allow the it to  prune early by storing at each internal node the boundaries within which all descendent points lies,
+and using that information to skip a subtree if the given point is far enough from the boundaries.
+ 
 \subsection{Parallelism opportunity study}
 % --------------------------------------------
 
