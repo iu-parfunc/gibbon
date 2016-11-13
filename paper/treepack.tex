@@ -24,6 +24,20 @@
 
 \usepackage{wrapfig}
 
+\usepackage[labelformat=simple]{subcaption}
+
+%Re-formatting figure captions to make subfigures look right.
+\newcommand{\myhrule}{ \leaders\hrule width 0pt height .33pt \hfill }
+\renewcommand{\myhrule}{\hrulefill}
+
+\DeclareCaptionFormat{ruled}{\myhrule \\ #1#2#3}
+\DeclareCaptionFormat{plain}{#1#2#3}
+
+\captionsetup[figure]{format=ruled}
+\captionsetup[subfigure]{format=plain}
+
+\renewcommand{\thesubfigure}{(\alph{subfigure})}
+
 \newcommand{\gramdef}{\; ::= \;}
 \newcommand{\gramor}{\; | \;}
 \newcommand{\keywd}[1]{\; \texttt{#1} \;}
@@ -150,7 +164,7 @@ process trees in bulk, reading or writing them in one pass.  On such workloads,
 traditional tree representations are not favored by current trends in computer
 architecture.  Pointer chasing implies randomized memory access patterns.
 %
-While previous work addresses spatial locality for tree data\cite{tree-locality-pldi},
+While previous work addresses spatial locality for tree data\cite{Chilimbi1999},
 %
 much memory is still wasted both in pointers themselves and in tags on nodes
 (e.g. distinguishing ``interior'' vs ``leaf'' objects).  For example, a C
@@ -159,39 +173,51 @@ compiler uses 96 bytes
 %% \rn{Double check that for alignment the C compiler is sacrificing a word for the
 %% one byte tag field.} 
 %
-of memory to represent the following tree:  
-
-% \begin{figure}
-%% \begin{figure}
-%% %\begin{wrapfigure}{r}{0.5\textwidth} 
-%% \Red{PICTURE HERE:  possibly with wrapfig.}
-\begin{verbatim}
- [N|.|.]          struct Tree {
-    /  \           enum { Leaf, Node } tag;
-[L 1]  [N|.|.]     union { 
-         /   \      struct { long long elem; };
-      [L 2] [L 3]   struct { struct Tree* l;
-                             struct Tree* r; }}}
-\end{verbatim}
-
-On the other hand, if we were sending the tree over the network, we would
-naturally use a more compact format in serializing it:
-
-%%   \caption{Traditional, pointer-based tree layout.}
-%% \end{figure}
-%\end{wrapfigure}
-\begin{verbatim}
-  [N L 1  N L 2  L 3 ]
-\end{verbatim}
-% \end{figure}
-
-Here we use the same 24 bytes for the leaf numbers, but only 5 bytes for the
-spine, rather than 72.  Further, a tree traversal processing this memory
+of memory to represent the tree shown in Figure~\ref{fig:intro-tree-unpacked}. On the other hand, if we are sending the tree over the network, we would naturally use a more compact form in serializing it, as shown in Figure~\ref{fig:intro-tree-packed}.   
+In the latter version, we use the same 24 bytes for the data in the leaves, but only 5 bytes for the
+spine (capturing the ``tags'' of the 5 nodes in the tree), rather than 72.  Further, a tree traversal processing this memory
 representation follows a precisely linear memory access pattern, because the
 data is already laid out in a preorder traversal.
 %
 On architectures with inexpensive unaligned access, such as modern x86, this is
 a desirable in-memory representation as well as a serialization format.
+
+\begin{figure}
+  \begin{subfigure}[t]{\linewidth}
+    \centering
+    \includegraphics[scale=0.5]{figs/intro-tree-unpacked}
+    \caption{Standard representation of a tree structure in C}
+    \label{fig:intro-tree-unpacked}
+  \end{subfigure}
+  \begin{subfigure}[t]{\linewidth}
+    \centering
+    \includegraphics[scale=0.5]{figs/intro-tree-packed}
+    \caption{Serialized version of the same tree}
+    \label{fig:intro-tree-packed}    
+  \end{subfigure}
+  \caption{Standard and serialized representations of trees}
+\end{figure}
+
+% \begin{figure}
+%% \begin{figure}
+%% %\begin{wrapfigure}{r}{0.5\textwidth} 
+%% \Red{PICTURE HERE:  possibly with wrapfig.}
+% \begin{verbatim}
+%  [N|.|.]          struct Tree {
+%     /  \           enum { Leaf, Node } tag;
+% [L 1]  [N|.|.]     union { 
+%          /   \      struct { long long elem; };
+%       [L 2] [L 3]   struct { struct Tree* l;
+%                              struct Tree* r; }}}
+% \end{verbatim}
+
+%%   \caption{Traditional, pointer-based tree layout.}
+%% \end{figure}
+%\end{wrapfigure}
+% \begin{verbatim}
+%   [N L 1  N L 2  L 3 ]
+% \end{verbatim}
+% \end{figure}
 
 Indeed, if we can compile programs to operate directly on this serialization, we
 follow a precedent of using serialization formats jointly as in memory formats.
@@ -379,7 +405,7 @@ fun right(t) {
 
 One line of closely related work focuses on managing data layout in trees and
 other data structures to promote spatial
-locality~\cite{Chilimbi1999,Chilimbi1999b,Truong1998,Lattner2005,Chilimbi1999},
+locality~\cite{Chilimbi1999,Chilimbi1999b,Truong1998,Lattner2005,Chilimbi1999a},
 by modifying garbage collection to co-locate objects~\cite{Chilimbi1999a},
 modifying memory allocators to proactively place objects with similar access
 patterns together~\cite{Lattner2005,Chilimbi1999}, or to modify the internal
