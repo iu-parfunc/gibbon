@@ -693,7 +693,22 @@ function that traverses the value located at $\alpha$ during its execution.
 \section{Evaluation}
 % ================================================================================
 
-\note{This is organized as a series of different case studies.}
+We evaluate the performance of our approach in four ways. First, we
+demonstrate via small microbenchmarks that packed data representation
+provides significant performance wins across a variety of
+languages---including languages with good performance on pointer-based
+traversals---and that our compiler produces code competetive with any
+existing system. Second, we build several standard compiler passes
+operating on Racket's intermediate representation, and show
+substantial speedup operating on inputs gathered from existing Racket
+programs. Third, we build a type checker for a small language, and
+benchmark it on large synthetic inputs, demonstrating significant
+speedup for a more complex and data-heavy workload. Fourth, we
+implement a point-correlation benchmark using a kd-tree, again showing
+major performance benefits for packed representations. Additionally,
+we \note{something something parallel}
+
+All benchmarks were conducted on a \dots.
 
 \subsection{Microbenchmarks}
 % ----------------------------------------
@@ -766,16 +781,16 @@ open-world implementation in a managed language.}
 \note{}
 
 
-% ================================================================================
-\appendix
-\section{Appendix Title}
-% ================================================================================
+%% % ================================================================================
+%% \appendix
+%% \section{Appendix Title}
+%% % ================================================================================
 
-This is the text of the appendix, if you need one.
+%% This is the text of the appendix, if you need one.
 
-\acks
+%% \acks
 
-Acknowledgments, if needed.
+%% Acknowledgments, if needed.
 
 % \bibliographystyle{abbrvnat}
 \bibliographystyle{abbrv}
