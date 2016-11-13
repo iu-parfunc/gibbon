@@ -65,4 +65,10 @@ kd-tree,handwritten-c-packed-enhanced-updatetree,10000000,10,429999970,0.57462,0
 kd-tree,handwritten-c-packed-enhanced-intout,10000000,10,429999970,0.687322,0.687322
 kd-tree,handwritten-c-packed-enhanced-updatetree,100000000,10,4299999970,5.720347,5.720347
 kd-tree,handwritten-c-packed-enhanced-intout,100000000,10,4299999970,6.84877,6.84877
-kd-tree,handwritten-c-packed-enhanced-treeout,100000000,10,3499999978,24.052656,24.052852
+kd-tree,handwritten-c-packed-enhanced-treeout,100000000,10,3499999978,23.074663,23.074847
+kd-tree,handwritten-c-packed-enhanced-treeout,10000000,10,349999978,2.218829,2.218965
+kd-tree,handwritten-c-packed-enhanced-treeout,1000000,10,34999978,0.217892,0.217977
+kd-tree,handwritten-c-packed-enhanced-treeout,100000,10,3499978,0.015350,0.015352
+kd-tree,handwritten-c-packed-enhanced-treeout,10000,10,349978,0.003431,0.003437
+kd-tree,handwritten-c-packed-enhanced-treeout,1000,10,34978,0.000420,0.000425
+kd-tree,handwritten-c-packed-enhanced-treeout,100,10,3478,0.000047,0.000051
