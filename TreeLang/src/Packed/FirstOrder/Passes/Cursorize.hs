@@ -144,12 +144,12 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                [_cur] ->                  
                   do tmp <- gensym "fnarg"
                      -- 1st: Bind (out) cursor arguments:
-                     b <- mkLets [ (cur, CursorTy, mkProjE ix (VarE tmp))
+                     b <- mkLets [ (cur, CursorTy, mkProjE2 ix (length outCurs) (VarE tmp)) -- outCurs non null.
                                  | (cur,ix) <- zip outCurs [0..] ] <$>
                            -- 2nd: Unpack the "real" argument, which is after the prepended output cursors:
                            LetE ( funarg
                                 , fmap (const ()) (arrIn funty')
-                                , mkProjE (length outCurs) (VarE tmp)) <$> do
+                                , mkProjE2 (length outCurs) (length outCurs+1) (VarE tmp)) <$> do
                             -- 3rd: Bind the result of the function body so we can operate on it:
                             Di bod2 <- exp2 False outDests funbod
                             btmp <- gensym "bodtmp"
@@ -217,7 +217,7 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
                      return e'
 
       PrimAppE p ls -> PrimAppE p <$> mapM go ls
-      ProjE i e  -> mkProjE i <$> go e
+      ProjE i e  -> ProjE i <$> go e
       CaseE scrtE ls -> do
           Left x <- docase isMain Nothing (scrtE,tyOfCaseScrut ddefs ex0) ls
           return x 
@@ -370,11 +370,11 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
 
                                    -- This ASSUMES that the end witnesses will be only cursors, and those cursors will
                                    -- not be reflected in the dilated type (just like, say Ints):
-                                   allEnds = [ buildProjE ps (L1.mkProj numNewOut (1+numNewOut) (VarE tmp))
+                                   allEnds = [ buildProjE ps (mkProjE2 numNewOut (1+numNewOut) (VarE tmp))
                                              | (ps,_lc) <- flat [] coreT ]
                                    
                                    restoreEndWits e = L1.mkProd $
-                                                       [ L1.mkProj ix (1+numNewOut) (VarE tmp)
+                                                       [ mkProjE2 ix (1+numNewOut) (VarE tmp)
                                                        | ix <- [0..numNewOut-1] ]
                                                       ++ [e]
                                in
@@ -583,10 +583,10 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
       MkProdE ls -> do 
         case destC of
           TupOut ds -> do
-            -- First, we compute all the individual, dialed results:
+            -- First, we compute all the individual, dilated results:
             es <- mapM (\(dst,e) -> exp2 isMain dst e)
                        (fragileZip ds ls)
-            -- Next, we recombine each of the individual dilated values:
+            -- Next, we regroup and combine the front and end values:
             combineDilated (zip ds es)
 
           _ -> error$ "cursorDirect:\n  MkProdE, cursor argument "++show destC
@@ -604,29 +604,47 @@ cursorDirect L2.Prog{ddefs,fundefs,mainExp} = do
 -- --        MapE (v,t,rhs) bod -> __
 -- --        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
 
+-- | Takes ALREADY-PROCESSED, dilated expressions and munges them.
 combineDilated :: [(Dests, DiExp)] -> SyM DiExp
-combineDilated ls = do
+combineDilated ls =
+  dbgTrace 5 ("combineDilated:\n "++show ls) $ 
+ do
+  -- First, let-bind non-trivials:
   let (ds,es) = unzip ls
-  bigpkg <- concatProds ds (L.map projCur es)
+  ls <- forM es $ \ (Di e) ->
+          if L1.isTriv e -- These can still be triv, even with tuples.
+          then return ([],Di e)
+          else do tmp <- gensym "combdil"
+                  return ([(tmp,PackedTy "UNKNOWN_TY_FIXME" (),e)], Di (VarE tmp))
+  let (bnds,es') = unzip ls
+
+  -- Make one big, flattened product of cursors:
+  bigpkg <- concatProds ds (L.map projCur es')
   return $ 
-    Di $ MkProdE [ L1.mkProd (L.map projVal es)
+    Di $ mkLets (concat bnds) $
+         MkProdE [ L1.mkProd (L.map projVal es')
                  , bigpkg ]
 
--- Concatenation for tuple values:
+-- | Concatenation for tuple exprs in the output language of this pass.
+--   Assumes TRIVIAL expressions as input.
 concatProds :: [Dests] -> [Exp] -> SyM Exp
-concatProds dests prods = do
+concatProds dests prods =
+  dbgTrace 5 ("concatProds:\n "++sdoc (dests,prods)) $ 
+ do
   let lens = L.map countCursors dests
-  flats <- sequence [ gensym "flat" | _ <- prods ]
+  -- flats <- sequence [ gensym "flat" | _ <- prods ]
   -- We let-bind each tuple to avoid code duplication:
-  return $
-   mkLets [ (flat, mkCursorProd len, pexp)
-          | (len,pexp,flat) <- zip3 lens prods flats ]
-    -- Then we can build one big tuple expression combining everything:
-    (L1.mkProd
-     [ mkProjE ix (VarE flat)
-     | (len,flat) <- zip lens flats
-     , ix <- [0..(len-1)] ])
-
+  let result = 
+        -- mkLets [ (flat, mkCursorProd len, pexp)
+        --        | (len,pexp,flat) <- zip3 lens prods flats ]
+         -- Then we can build one big tuple expression combining everything:
+         (L1.mkProd
+          [ mkProjE2 ix len x -- (VarE x)
+          | (len,x) <- zip lens prods -- flats
+          , ix <- [0..(len-1)] ])
+  dbgTrace 5 ("concatProds/result:\n  "++sdoc result) $
+   return result
+         
 -- | The type of end-cursor witness packages is very simple in this representation:
 mkCursorProd :: Int -> L1.Ty
 mkCursorProd len = ProdTy $ replicate len CursorTy
@@ -646,7 +664,9 @@ data Dests = Cursor Var
            | NoCursor
            | TupOut [Dests]  -- ^ The layout of this matches the
                              -- ProdTy, but not every field contains a Packed.
- deriving (Eq,Show,Ord,Read) 
+ deriving (Eq,Show,Ord,Read, Generic)
+
+instance Out Dests
              
 -------------------------- Dilation Conventions -------------------------------
 
@@ -656,6 +676,7 @@ data Dests = Cursor Var
 -- of T which are PackedTy.
 -- 
 newtype DiExp = Di Exp
+  deriving (Generic, Out, Show, Read, Eq, Ord)
 --type DiExp = Exp
 
 onDi :: (Exp -> Exp) -> DiExp -> DiExp
@@ -759,7 +780,7 @@ spliceUpdatedCursors (Di trv) ty0
    refVal (ix:is) = ProjE ix (refVal is)
 
    refEnds :: Int -> Exp
-   refEnds ix = L1.mkProj ix (length allEndCurs) endsStart
+   refEnds ix = mkProjE2 ix (length allEndCurs) endsStart
                     
    go :: [Int] -> L1.Ty -> Int -> Exp
    go stk ty endIx =
@@ -936,10 +957,22 @@ mkLets [] bod = bod
 mkLets (b:bs) bod = LetE b (mkLets bs bod)
 
 -- | Smart constructor that immediately destroys products if it can:
+--   Does NOT avoid single-element tuples.
 mkProjE :: Int -> Exp -> Exp
 mkProjE ix (MkProdE ls) = ls !! ix
 mkProjE ix e = ProjE ix e
-                    
+
+-- | Safer verison of `mkProjE`.  Ensures that it does not try to
+-- reference a unary "tuple".
+mkProjE2 :: Int -> Int -> Exp -> Exp
+mkProjE2 0 1 e = e
+mkProjE2 i l e | i >= l = error $ "internal error, out-of bounds mkProj: "
+                          ++show i++" length "++show l++" expression:\n  "++sdoc e
+mkProjE2 ix _ (MkProdE ls) = ls !! ix
+mkProjE2 ix _ e = ProjE ix e
+               
+
+               
 l1Ty :: L2.Ty -> L1.Ty
 l1Ty = fmap (const ())
 
