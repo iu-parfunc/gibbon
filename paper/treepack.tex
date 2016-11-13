@@ -717,16 +717,30 @@ function that traverses the value located at $\alpha$ during its execution.
 Point correlation  is a well-known algorithm that is used in data mining\cite{capnproto},
 given a point p in a k-dimensional space, a radius r, and a set of points in the space,
 point correlation computes the number of nodes that are within a distance r from the point p.
-One efficient way of doing that is to use kd-trees to store to represent the set of points\cite{capnproto}. 
+One efficient way of doing that is to use kd-trees  to store the set of points in the space\cite{capnproto}. 
 
-k-dtree is a binary space partitioning tree, in its simplest form it splits the space at each internal node into two spaces
+A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two spaces
 around a split axes in one of the space dimensions, the left subtree stores the points on the left of the split access
 and the right subtree sotres the points on the right of the split access, the split axes alternates between the dimensions of
-the space at each level of the tree,when the number of the points in the subtree is one a  leaf node is constructed that stores one point of in the space.
+the space at each level of the tree, when the number of the points in the subtree is one a leaf node that stores one point of in the space is constructed .
 
-In  a naive implementation point correlation need to be executed at leaf nodes for each input point, however kd-trees 
-allow the it to  prune early by storing at each internal node the boundaries within which all descendent points lies,
-and using that information to skip a subtree if the given point is far enough from the boundaries.
+In a naive implementation point correlation need to be executed at each leaf node for each input point, however kd-trees 
+allow  it to  prune early by storing at each internal node the boundaries within which all descendent points lies,
+and use that information to skip a subtree if the given point is far enough from the boundaries.
+
+We evaluate two version of the point correlation traversal that operate on a kd-tree representation,int out and tree out, int out version
+produces an integer as the output of the traversal while  tree out version  produces a tree that have the same data of the input tree except
+that that some counters in the lead nodes are incremented, these are the counter in the leaf nodes that correlate with the input point.Unlike 
+the rest of the benchmarks evaluated in this paper, the int out version does not need to traverse the whole tree this
+will requires that the packed version stores the address of the right child for each internal node, this is
+needed because the left nodes is not always traversed and when that happens that address of the right child wont be available and is read form 
+additional field.Tree out version does not need that additional field, although the computation might  truncate at some points during the traversal, 
+the whole tree always need to be traversed to copy the data from the input tree to the output tree, and the right child address is always available.
+
+The traversals are implemented in c++, and for each of the two variants, three different implementation are compared ; 
+a pointer based implementation that uses the standard allocation techniques, a pointer based implementation that uses bump allocation, 
+and a packed implementation as described in section .... 
+
  
 \subsection{Parallelism opportunity study}
 % --------------------------------------------
