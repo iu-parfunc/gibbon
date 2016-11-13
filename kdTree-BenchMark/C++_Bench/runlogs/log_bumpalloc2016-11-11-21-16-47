@@ -1,0 +1,51 @@
+48
+benchmarking mode: updatetree
+points data of size 100000000 are loaded 
+done building, took 280.569752 seconds
+
+  run(0): 6.061677
+  run(1): 6.049706
+  run(2): 6.049097
+  run(3): 6.048189
+  run(4): 6.048867
+  run(5): 6.046621
+  run(6): 6.046838
+  run(7): 6.048666
+  run(8): 6.054460
+  run(9): 6.050116
+number of nodes in tree:199999999
+res:[kd-tree,handwritten-c-bumpalloc-updatetree,100000000,10,9599999952,6.050424]
+48
+benchmarking mode: intout
+points data of size 100000000 are loaded 
+done building, took 280.226335 seconds
+
+  run(0): 6.066579
+  run(1): 6.058957
+  run(2): 6.055797
+  run(3): 6.054000
+  run(4): 6.245540
+  run(5): 6.073482
+  run(6): 6.066810
+  run(7): 6.066286
+  run(8): 6.064331
+  run(9): 6.061115
+number of nodes in tree:199999999
+res:[kd-tree,handwritten-c-bumpalloc-intout,100000000,10,9599999952,6.081290]
+48
+benchmarking mode: treeout
+points data of size 100000000 are loaded 
+done building, took 279.629828 seconds
+
+  run(0): 28.610364
+  run(1): 26.948424
+  run(2): 26.955083
+  run(3): 26.959343
+  run(4): 26.975346
+  run(5): 27.001771
+  run(6): 27.017143
+  run(7): 27.036488
+  run(8): 27.016511
+  run(9): 26.518339
+number of nodes in tree:199999999
+res:[kd-tree,handwritten-c-bumpalloc-treeout,100000000,10,9599999952,27.103881]
