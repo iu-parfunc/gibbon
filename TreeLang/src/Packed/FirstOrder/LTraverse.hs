@@ -23,7 +23,8 @@ module Packed.FirstOrder.LTraverse
     , hasRealPacked, isRealPacked, hasCursorTy
     , tyWithFreshLocs, stripTyLocs, getTyLocs
     , getFunTy, substTy, substEffs
-    , cursorizeTy1, cursorizeTy2, mapPacked
+    , cursorizeTy1, cursorizeTy2, cursorizeArrty3, cursorizeTy3
+    , mapPacked
 
     -- * Lattices of abstract locations:
     , Loc(..), LocVar
@@ -351,22 +352,23 @@ cursorizeTy1 (ArrowTy inT ef ouT) = (newArr, newOut)
              | Traverse v <- S.toList ef ] -- ^ Because we traverse all outputs,
                                            -- this effect set  is just what we need.
              
--- | Step 2/2: finalize the conversion by:
+-- | Step 2/2: continue the conversion by:
 --
 --  (1) First, adding additional input arguments for the destination
 --      cursors to which outputs are written.
 --  (2) Packed types in the output then become end-cursors for those
 --      same destinations.
---  (3) Packed types in the input likewise become (read-only) cursors.
+--  (3) Packed types in the input STAY non-cursor packed types.
 -- 
---  RETURNS: the new type as well as the extra params added to the
+--  Results: the new type as well as the extra params added to the
 --  input type.
 cursorizeTy2 :: ArrowTy Ty -> (ArrowTy Ty, [LocVar])
 cursorizeTy2 (ArrowTy inT ef ouT) =  (newArr, newIn)
  where
   newArr   = ArrowTy newInTy ef newOutTy
-  newInTy  = prependArgs (L.map mkCursorTy newIn)
-                         (mapPacked (\_ l -> mkCursorTy l) inT)
+  newInTy  = prependArgs (L.map mkCursorTy newIn) -- These are cursors
+                         inT -- These remain non-cursors.
+                         -- (mapPacked (\_ l -> mkCursorTy l) inT)
   -- Let's turn output values into updated-output-cursors:
   -- NOTE: we could distinguish between the (size ef) output cursors
   -- that are already prepended here:
@@ -378,7 +380,20 @@ cursorizeTy2 (ArrowTy inT ef ouT) =  (newArr, newIn)
         let ProdTy ls = ouT in
         allLocVars (ProdTy (L.drop (S.size ef) ls))
 
+-- | Take the final step
+--  (3) Packed types in the input likewise become (read-only) cursors.
+cursorizeArrty3 :: ArrowTy Ty -> ArrowTy Ty
+cursorizeArrty3 arr@(ArrowTy inT ef ouT) =
+    if hasRealPacked ouT
+    then error $"Bad input to cursorizeArrty3, has non-cursor packed outputs.  Was this put through cursorizeTy2?:+ "
+             ++show arr
+    else ArrowTy (cursorizeTy3 inT) ef ouT
 
+-- | The non-arrow counterpart to `cursorizeArrTy3`
+cursorizeTy3 :: Ty -> Ty
+cursorizeTy3  = mapPacked (\ k l -> mkCursorTy l)
+
+               
 ensureEndVar :: Var -> Var
 ensureEndVar v | isEndVar v = v
                | otherwise  = toEndVar v
@@ -389,8 +404,7 @@ prependArgs [] t = t
 prependArgs ls t = ProdTy $ ls ++ [t]
 
              
-
-mapPacked :: (Var -> LocVar -> Ty) -> Ty -> Ty
+mapPacked :: (Var -> l -> Ty1 l) -> Ty1 l -> Ty1 l
 mapPacked fn t =
   case t of
     IntTy  -> IntTy

@@ -86,7 +86,7 @@ executable treec
                        treec
 
   default-language:    Haskell2010
-  ghc-options:         -Wall -fdefer-typed-holes
+  ghc-options:         -Wall -rtsopts -fdefer-typed-holes
 
   
 test-suite test-treec
