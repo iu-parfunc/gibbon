@@ -322,3 +322,50 @@ types.
 
 
 
+[2016.11.13] {Seems to be accidentally dilating }
+------------------------------------------------
+
+For add1tree, right before lower we are generating this bad return
+value in tail position:
+
+```Haskell
+    (LetE ("unpkcall57",
+      ProdTy [PackedTy "CURSOR_TY" (),
+              PackedTy "CURSOR_TY" ()],
+      AppE "add1_tree"
+           (MkProdE [ProjE 1
+                           (VarE "unpkcall53"),
+                     ProjE 0
+                           (VarE "unpkcall53")]))
+     (MkProdE [MkProdE [ProjE 0
+                              (VarE "unpkcall57"),
+                        ProjE 0
+                              (VarE "fnarg43")],
+               ProjE 1
+                     (VarE "unpkcall57")]))))]})],
+```
+
+I thought that was just an eroneously dilated value that needed to be
+undilated, but that's not quite it.  The function should return
+`(end_a,end_b)`, and the end-witness in the input program should be
+treated just as a scalar.  That return value above is instead:
+
+    ((end_a, b), end_b)
+
+Now... there is a `b+9` in circulation after cursorize (end_tr0, where
+"a" = tr0 in this example).  The leaf branch terminates returns this:
+
+    (MkProdE [MkProdE [VarE "end_tr0",
+                       ProjE 0
+                             (VarE "combdil48")],
+              ProjE 1
+                    (VarE "combdil48")])
+
+Ok, so it's clear how this is a dilation.  The end_tr0 thing doesn't
+get reflected in the dilation.  Rather, it's the start and end of "b".
+
+`combdil48` is an alias for a (tree,cursor) pair representing the
+completed "b" value.  This actually sure does make it look like the
+"splice" thing is failing its job...
+
+  It was supposed to throw away that "b" and give (end_a,end_b) only.

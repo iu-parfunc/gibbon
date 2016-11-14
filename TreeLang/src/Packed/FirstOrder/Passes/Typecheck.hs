@@ -42,7 +42,8 @@ assertEqTCVar :: Exp -> TCVar s -> TCVar s -> ST s ()
 assertEqTCVar e (Concrete t1) (Concrete t2) = 
     if t1 == t2
     then return ()
-    else reportErr $ "Types not equal: " ++ (show t1) ++ ", " ++ (show t2) ++ " (when checking expression " ++ (show e) ++ ")"
+    else reportErr $ "Types not equal: " ++ (show t1) ++ ", " ++ (show t2)
+                    ++ " (when checking expression " ++ take 80 (show e) ++ "...)"
 assertEqTCVar e (Concrete t) (Alias a) = makeEqTCVar t a e
 assertEqTCVar e (Alias a) (Concrete t) = makeEqTCVar t a e
 assertEqTCVar e (Alias a1) (Alias a2) = makeEqAlias a1 a2 e
