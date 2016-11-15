@@ -114,6 +114,16 @@ Tree* add1Tree(Tree* t) {
   return tout;
 }
 
+
+Num sumTree(Tree* t) {
+  if (t->tag == Leaf) {
+    return t->elem;
+  } else {
+    return sumTree(t->l) + sumTree(t->r);
+  }
+}
+
+
 #ifdef PARALLEL
 Tree* add1TreePar(Tree* t, int n) {
   if (n == 0) return add1Tree(t);
@@ -256,6 +266,31 @@ void bench_build_batch(int depth, int iters)
 }
 
 
+void bench_sum_batch(Tree* tr, int iters)
+{
+    struct timespec begin, end;
+    Num sum;
+    printf("SUM: Timing iterations as a batch\n");
+    printf("ITERS: %d\n", iters);
+
+    clock_gettime(which_clock, &begin);
+    for (int i=0; i<iters; i++)
+    {
+#ifdef PARALLEL
+      printf("No parallel sum yet...\n");
+      exit(1);
+#else      
+      sum = sumTree(tr);
+#endif
+    }
+    clock_gettime(which_clock, &end);
+
+    printf("Final sum of leaves: %lld \n", sum);
+    double time_spent = difftimespecs(&begin, &end);
+    printf("BATCHTIME: %lf\n", time_spent);
+}
+
+
 
 int main(int argc, char** argv)
 {
@@ -315,7 +350,7 @@ int main(int argc, char** argv)
 	DELTREE(tr);
         break;
       case Sum:  
-	printf("Sum mode\n");
+	bench_sum_batch(tr, iters);
 	DELTREE(tr);
         break;
       case Build: 
