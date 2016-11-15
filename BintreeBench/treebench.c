@@ -219,6 +219,43 @@ void bench_add1_batch(Tree* tr, int iters)
 }
 
 
+void bench_build_batch(int depth, int iters)
+{
+    struct timespec begin, end;
+    Tree* t2;
+
+    printf("BUILD: Timing iterations as a batch\n");
+    printf("ITERS: %d\n", iters);
+#ifdef BUMPALLOC
+    char* starting_heap_pointer = heap_ptr;
+    long allocated_bytes;
+#endif
+    clock_gettime(which_clock, &begin);
+    for (int i=0; i<iters; i++)
+    {
+#ifdef PARALLEL
+      printf("No parallel build yet...\n");
+      exit(1);
+#else      
+      t2 = buildTree(depth);      
+#endif
+#ifdef BUMPALLOC
+        allocated_bytes = (long)(heap_ptr - starting_heap_pointer);
+#endif
+      DELTREE(t2);
+    }
+    clock_gettime(which_clock, &end);
+#ifdef BUMPALLOC
+    printf("Bytes allocated during whole batch:\n");
+    printf("BYTESALLOC: %ld\n", allocated_bytes);
+#else
+    malloc_stats();
+#endif
+    double time_spent = difftimespecs(&begin, &end);
+    printf("BATCHTIME: %lf\n", time_spent);
+}
+
+
 
 int main(int argc, char** argv)
 {
@@ -267,21 +304,26 @@ int main(int argc, char** argv)
 
     if (iters < 0)
     {
-        bench_single_pass(tr, iters);
+      bench_single_pass(tr, iters);
+      DELTREE(tr);
     }
     else
-    {
+      {
       switch(mode) {
-      case Add1: bench_add1_batch(tr, iters);
-  	      break;
-      case Sum:  printf("Sum mode\n");
-	      break;
-      case Build: printf("Build mode\n");
-	break;
-      default: printf("Internal error\n"); exit(1);
-      }
-   }
-
-    DELTREE(tr);
+      case Add1: 
+	bench_add1_batch(tr, iters);
+	DELTREE(tr);
+        break;
+      case Sum:  
+	printf("Sum mode\n");
+	DELTREE(tr);
+        break;
+      case Build: 
+	DELTREE(tr); // LAME
+	bench_build_batch(depth,iters);
+        break;
+    default: printf("Internal error\n"); exit(1);
+    }
+    }
     return 0;
 }
