@@ -98,13 +98,13 @@ treebench_c_packed_structs.exe: treebench_packed_structs.c $(HEADERS)
 	time $(CC) $(COPTS) treebench_packed_structs.c -o $@ 
 
 treebench_c_packed_parallel.exe: treebench_packed_parallel.c
-	time $(CPP) -fpermissive -fcilkplus $(CPPOPTS) $^ -o $@ 
+	time $(CPP) -DPARALLEL -fpermissive -fcilkplus $(CPPOPTS) $^ -o $@ 
 
 treebench_c_packed_parallel2.exe: treebench_packed_parallel2.c
-	time $(CC) -fcilkplus $(COPTS) $^ -o $@
+	time $(CC) -DPARALLEL -fcilkplus $(COPTS) $^ -o $@
 
 treebench_c_packed_parallel3.exe: treebench_packed_parallel3.c $(HEADERS)
-	time $(CC) -fcilkplus $(COPTS) treebench_packed_parallel3.c -o $@ 
+	time $(CC) -DPARALLEL -fcilkplus $(COPTS) treebench_packed_parallel3.c -o $@ 
 
 treebench.class: treebench.java
 	time javac $^ 
