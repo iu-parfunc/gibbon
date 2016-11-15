@@ -3,6 +3,7 @@
 // This uses heap-allocation for the trees, just like the other
 // benchmarks.
 
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef PARALLEL
@@ -24,6 +25,8 @@ typedef int64_t Num;
 #else
 #define ATTR
 #endif
+
+enum Mode { Build, Sum, Add1 };
 
 enum ATTR Type { Leaf, Node };
 
@@ -181,11 +184,12 @@ void bench_single_pass(Tree* tr, int iters)
     printf("AVGTIME: %lf\n", avg(trials,iters));
 }
 
-void bench_batch(Tree* tr, int iters)
+void bench_add1_batch(Tree* tr, int iters)
 {
     struct timespec begin, end;
 
-    printf("Timing %d iters as a batch\n", iters);
+    printf("Timing iterations as a batch\n");
+    printf("ITERS: %d\n", iters);
 #ifdef BUMPALLOC
     char* starting_heap_pointer = heap_ptr;
     long allocated_bytes;
@@ -214,21 +218,34 @@ void bench_batch(Tree* tr, int iters)
     printf("BATCHTIME: %lf\n", time_spent);
 }
 
+
+
 int main(int argc, char** argv)
 {
     int depth; // first arg
     int iters; // second arg
+    char* modestr;
+    enum Mode mode;
 
-    if (argc <= 2)
+    if (argc <= 3)
     {
-        fprintf(stderr,"Expected two arguments, <depth> <iters>\n");
+        fprintf(stderr,"Expected three arguments, <build|add1|sum> <depth> <iters>\n");
         fprintf(stderr,"Iters can be negative to time each iteration rather than all together\n");
         exit(1);
     }
 
-    depth = atoi(argv[1]);
-    iters = atoi(argv[2]);
+    modestr = argv[1];
+    depth = atoi(argv[2]);
+    iters = atoi(argv[3]);
 
+    printf("Benchmarking in mode: %s\n", modestr);
+
+    if (!strcmp(modestr, "sum"))   mode = Sum; 
+    else if (!strcmp(modestr, "build")) mode = Build;
+    else if (!strcmp(modestr, "add1"))  mode = Add1;
+    else { printf("Error: unrecognized mode.\n"); exit(1); }
+
+    printf("SIZE: %d\n", depth);
     printf("sizeof(Tree) = %lu\n", sizeof(Tree));
     printf("sizeof(enum Type) = %lu\n", sizeof(enum Type));
     printf("Building tree, depth %d.  Benchmarking %d iters.\n", depth, iters);
@@ -254,8 +271,16 @@ int main(int argc, char** argv)
     }
     else
     {
-        bench_batch(tr, iters);
-    }
+      switch(mode) {
+      case Add1: bench_add1_batch(tr, iters);
+  	      break;
+      case Sum:  printf("Sum mode\n");
+	      break;
+      case Build: printf("Build mode\n");
+	break;
+      default: printf("Internal error\n"); exit(1);
+      }
+   }
 
     DELTREE(tr);
     return 0;

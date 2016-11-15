@@ -151,6 +151,8 @@ sumtree_treelang_c_pointer.exe: sumtree_treelang.sexp
 # Running
 # ==============================================================================
 
+# Or "sum" or "build":
+MODE=add1
 DEPTH=20
 DEFAULT_ITERS=17
 DEFAULT_PASS=add1
@@ -173,7 +175,7 @@ run_all: all run_core
 run_core: c ghc
 	./treebench_ghc_strict.exe  seq $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_ghc_lazy.exe    $(DEFAULT_PASS) $(DEPTH) $(DEFAULT_ITERS)
-	./treebench_c.exe           $(DEPTH) $(DEFAULT_ITERS)
+	./treebench_c.exe           $(MODE) $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c_packed.exe    $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c_packed_loop.exe $(DEPTH) $(DEFAULT_ITERS)
 	$(MAKE) run_racket
