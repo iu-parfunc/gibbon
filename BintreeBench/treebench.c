@@ -70,22 +70,39 @@ char* heap_ptr = 0;
 
 
 // Helper function
-Tree* fillTree(int n, Num root) {
+// This makes leaves 1..N
+Tree* fillTree_linear(int n, Num root) {
   Tree* tr = (Tree*)ALLOC(sizeof(Tree));
   if (n == 0) {
     tr->tag = Leaf;
     tr->elem = root;
   } else {
     tr->tag = Node;
-    tr->l = fillTree(n-1, root);;
-    tr->r = fillTree(n-1, root + (1<<(n-1)));
+    tr->l = fillTree_linear(n-1, root);;
+    tr->r = fillTree_linear(n-1, root + (1<<(n-1)));
+  }
+  return tr;
+}
+
+// This makes leaves constant, 1:
+Tree* fillTree(int n) {
+  Tree* tr = (Tree*)ALLOC(sizeof(Tree));
+  if (n == 0) {
+    tr->tag = Leaf;
+    tr->elem = 1;
+  } else {
+    tr->tag = Node;
+    tr->l = fillTree(n-1);;
+    tr->r = fillTree(n-1);
   }
   return tr;
 }
 
 Tree* buildTree(int n) {
-  return fillTree(n, 1);
+  //  return fillTree_linear(n, 1);
+  return fillTree(n);
 }
+
 
 void printTree(Tree* t) {
   if (t->tag == Leaf) {
