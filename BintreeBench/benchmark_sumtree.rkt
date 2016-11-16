@@ -8,9 +8,9 @@
 
 (define PASSNAME "sumtree")
 
-(launch-benchmarks "./sumtree_treelang_c_packed.exe -benchmark " PASSNAME "treelang-c-packed")
+;;(launch-benchmarks "./sumtree_treelang_c_packed.exe -benchmark " PASSNAME "treelang-c-packed")
 
-(launch-benchmarks "racket sumtree_treelang.sexp " PASSNAME "treelang-racket")
+;;(launch-benchmarks "racket sumtree_treelang.sexp " PASSNAME "treelang-racket")
 
 (launch-benchmarks "racket treebench.rkt sum " PASSNAME "handwritten-racket")
 
@@ -21,3 +21,7 @@
 (launch-benchmarks "./treebench_rust.exe sum " PASSNAME "handwritten-rust")
 
 (launch-benchmarks "./treebench_ocaml.exe sum " PASSNAME "handwritten-ocaml")
+
+(launch-benchmarks "./treebench_ghc_lazy.exe sum " PASSNAME "handwritten-ghc")
+
+(launch-benchmarks "./treebench_mlton.exe sum " PASSNAME "handwritten-mlton")

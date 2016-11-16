@@ -31,6 +31,14 @@ buildTree n = evaluate $ force $ go 1 n
   go root n = Node (go root (n-1))
                    (go (root + 2^(n-1)) (n-1))
 
+-- | Build a fully-evaluated tree
+buildTree2 :: Int -> IO Tree
+buildTree2 n = evaluate $ force $ go 1 n
+  where
+  go root 0 = Leaf root
+  go root n = Node (go root (n-1))
+                   (go root (n-1))
+
 add1Tree :: Tree -> Tree
 add1Tree (Leaf n)   = Leaf (n+1)
 add1Tree (Node x y) = Node (add1Tree x) (add1Tree y)
@@ -50,17 +58,17 @@ benchAdd1 tr = evaluate $ force (add1Tree tr)
 
 {-# NOINLINE benchBuild #-}
 benchBuild :: Int -> IO Tree
-benchBuild n = buildTree n
+benchBuild n = buildTree2 n
 
 {-# NOINLINE benchSum #-}
 benchSum :: Tree -> IO Int
 benchSum tr = evaluate $ sumtree tr
                
-benchOnInt :: Int -> (Int -> IO ()) -> IO ()
-benchOnInt iters act = do
+benchOnInt :: (Int,Int) -> (Int -> IO ()) -> IO ()
+benchOnInt (iters,sz) act = do
     putStrLn $ "ITERS: "++show iters
     t1  <- getCurrentTime  
-    for_ 1 iters act 
+    for_ 1 iters $ \_ -> act sz 
     t2  <- getCurrentTime
     let diffT = diffUTCTime t2 t1
     putStrLn $ "BATCHTIME: " ++ show (fromRational (toRational diffT) :: Double)
@@ -79,7 +87,7 @@ benchOnTree (iters,sz) act = do
     for_ 1 iters $ \_ -> act tr0
     t2  <- getCurrentTime
     let diffT = diffUTCTime t2 t1
-    putStrLn $ "BATCHTIME:" ++ show (fromRational (toRational diffT) :: Double)
+    putStrLn $ "BATCHTIME: " ++ show (fromRational (toRational diffT) :: Double)
 
              
 main =
@@ -91,7 +99,7 @@ main =
     putStrLn $ "Benchmarking depth "++show power++", iters "++show iters
     putStrLn $ "SIZE: "++show power
     case mode of
-      "build" -> benchOnInt   iters        (void . benchBuild)
+      "build" -> benchOnInt  (iters,power) (void . benchBuild)
       "sum"   -> benchOnTree (iters,power) (void . benchSum)
       "add1"  -> benchOnTree (iters,power) (void . benchAdd1)
 

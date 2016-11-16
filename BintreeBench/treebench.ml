@@ -11,6 +11,15 @@ let build_tree (n : int) : tree =
   in
   go 1 n
 
+let build_tree2 (n : int) : tree =
+  let rec go root n =
+    if n == 0 then
+      Leaf root
+    else
+      Node (go root (n - 1), go root (n - 1))
+  in
+  go 1 n
+
 let rec sum_tree = function
   | Leaf i -> i
   | Node (x, y) -> (sum_tree x) + (sum_tree y)
@@ -38,7 +47,7 @@ let () = (
           Printf.printf "Benchmark build\n";
           let start = Sys.time () in
           for _i = 0 to iters do
-            let tree = build_tree power in
+            let tree = build_tree2 power in
             Printf.printf "(Test, leftmost leaf in output: %d)\n" (leftmost tree);
           done;
           let end_ = Sys.time() in 

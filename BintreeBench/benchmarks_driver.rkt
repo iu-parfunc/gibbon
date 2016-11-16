@@ -29,8 +29,10 @@
         (let ([strs (string-split (cast line String))])
           (match strs
             [`("BATCHTIME:" ,t)
-             (cast (string->number t) Real)]
-            [_ (read-batchtime port err-port cmd get-exit-code)])))))
+             (begin (displayln t)
+             (cast (string->number t) Real))]
+            [_ 
+             (read-batchtime port err-port cmd get-exit-code)])))))
 
 ;; port that proccess wrote to
 (define (get-input-port ls)
@@ -60,19 +62,23 @@
   ;; loop through args 1 to 25
   (for ([args (in-range 1 (+ 1 ARGMAX))])
     (printf "ARGS: ~a\n" args)
+    (printf "running process ~a\n" exec)
     (let loop ([iters 1])
+      (printf "iters ~a\n" iters)
       (define cmd (format "~a ~a ~a" exec args iters))
       (define ls (process cmd))
       (define block_func (get-proc ls))
-      (block_func 'wait)
+;;      (block_func 'wait)
       (define op (get-input-port ls))
       (define err (get-error-port ls))
 
       (define batchseconds
         (read-batchtime op err cmd (lambda () (block_func 'exit-code))))
+      (block_func 'wait)
       (close-input-port op)
       (close-output-port (get-output-port ls))
       (close-input-port (get-error-port ls))
+
 
       (if (>= batchseconds target-time)
           (let ([meantime (exact->inexact (/ batchseconds iters))])
@@ -87,4 +93,5 @@
 	    (flush-output csv-port)
 	    )
 	  (begin (printf "~a " batchseconds) (flush-output)
-	         (loop (* 2 iters)))))))
+	         (loop (* 2 iters)))))
+  ))

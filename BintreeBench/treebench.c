@@ -3,6 +3,7 @@
 // This uses heap-allocation for the trees, just like the other
 // benchmarks.
 
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef PARALLEL
@@ -24,6 +25,8 @@ typedef int64_t Num;
 #else
 #define ATTR
 #endif
+
+enum Mode { Build, Sum, Add1 };
 
 enum ATTR Type { Leaf, Node };
 
@@ -67,22 +70,39 @@ char* heap_ptr = 0;
 
 
 // Helper function
-Tree* fillTree(int n, Num root) {
+// This makes leaves 1..N
+Tree* fillTree_linear(int n, Num root) {
   Tree* tr = (Tree*)ALLOC(sizeof(Tree));
   if (n == 0) {
     tr->tag = Leaf;
     tr->elem = root;
   } else {
     tr->tag = Node;
-    tr->l = fillTree(n-1, root);;
-    tr->r = fillTree(n-1, root + (1<<(n-1)));
+    tr->l = fillTree_linear(n-1, root);;
+    tr->r = fillTree_linear(n-1, root + (1<<(n-1)));
+  }
+  return tr;
+}
+
+// This makes leaves constant, 1:
+Tree* fillTree(int n) {
+  Tree* tr = (Tree*)ALLOC(sizeof(Tree));
+  if (n == 0) {
+    tr->tag = Leaf;
+    tr->elem = 1;
+  } else {
+    tr->tag = Node;
+    tr->l = fillTree(n-1);;
+    tr->r = fillTree(n-1);
   }
   return tr;
 }
 
 Tree* buildTree(int n) {
-  return fillTree(n, 1);
+  //  return fillTree_linear(n, 1);
+  return fillTree(n);
 }
+
 
 void printTree(Tree* t) {
   if (t->tag == Leaf) {
@@ -110,6 +130,16 @@ Tree* add1Tree(Tree* t) {
   }
   return tout;
 }
+
+
+Num sumTree(Tree* t) {
+  if (t->tag == Leaf) {
+    return t->elem;
+  } else {
+    return sumTree(t->l) + sumTree(t->r);
+  }
+}
+
 
 #ifdef PARALLEL
 Tree* add1TreePar(Tree* t, int n) {
@@ -181,11 +211,12 @@ void bench_single_pass(Tree* tr, int iters)
     printf("AVGTIME: %lf\n", avg(trials,iters));
 }
 
-void bench_batch(Tree* tr, int iters)
+void bench_add1_batch(Tree* tr, int iters)
 {
     struct timespec begin, end;
 
-    printf("Timing %d iters as a batch\n", iters);
+    printf("Timing iterations as a batch\n");
+    printf("ITERS: %d\n", iters);
 #ifdef BUMPALLOC
     char* starting_heap_pointer = heap_ptr;
     long allocated_bytes;
@@ -214,21 +245,96 @@ void bench_batch(Tree* tr, int iters)
     printf("BATCHTIME: %lf\n", time_spent);
 }
 
+
+void bench_build_batch(int depth, int iters)
+{
+    struct timespec begin, end;
+    Tree* t2;
+
+    printf("BUILD: Timing iterations as a batch\n");
+    printf("ITERS: %d\n", iters);
+#ifdef BUMPALLOC
+    char* starting_heap_pointer = heap_ptr;
+    long allocated_bytes;
+#endif
+    clock_gettime(which_clock, &begin);
+    for (int i=0; i<iters; i++)
+    {
+#ifdef PARALLEL
+      printf("No parallel build yet...\n");
+      exit(1);
+#else      
+      t2 = buildTree(depth);      
+#endif
+#ifdef BUMPALLOC
+        allocated_bytes = (long)(heap_ptr - starting_heap_pointer);
+#endif
+      DELTREE(t2);
+    }
+    clock_gettime(which_clock, &end);
+#ifdef BUMPALLOC
+    printf("Bytes allocated during whole batch:\n");
+    printf("BYTESALLOC: %ld\n", allocated_bytes);
+#else
+    malloc_stats();
+#endif
+    double time_spent = difftimespecs(&begin, &end);
+    printf("BATCHTIME: %lf\n", time_spent);
+}
+
+
+void bench_sum_batch(Tree* tr, int iters)
+{
+    struct timespec begin, end;
+    Num sum;
+    printf("SUM: Timing iterations as a batch\n");
+    printf("ITERS: %d\n", iters);
+
+    clock_gettime(which_clock, &begin);
+    for (int i=0; i<iters; i++)
+    {
+#ifdef PARALLEL
+      printf("No parallel sum yet...\n");
+      exit(1);
+#else      
+      sum = sumTree(tr);
+#endif
+    }
+    clock_gettime(which_clock, &end);
+
+    printf("Final sum of leaves: %lld \n", sum);
+    double time_spent = difftimespecs(&begin, &end);
+    printf("BATCHTIME: %lf\n", time_spent);
+}
+
+
+
 int main(int argc, char** argv)
 {
     int depth; // first arg
     int iters; // second arg
+    char* modestr;
+    enum Mode mode;
 
-    if (argc <= 2)
+    if (argc <= 3)
     {
-        fprintf(stderr,"Expected two arguments, <depth> <iters>\n");
+        fprintf(stderr,"Expected three arguments, <build|add1|sum> <depth> <iters>\n");
         fprintf(stderr,"Iters can be negative to time each iteration rather than all together\n");
         exit(1);
     }
 
-    depth = atoi(argv[1]);
-    iters = atoi(argv[2]);
+    modestr = argv[1];
+    depth = atoi(argv[2]);
+    iters = atoi(argv[3]);
 
+    printf("Benchmarking in mode: %s\n", modestr);
+
+    if (!strcmp(modestr, "sum"))   mode = Sum; 
+    else if (!strcmp(modestr, "build")) mode = Build;
+    else if (!strcmp(modestr, "add1"))  mode = Add1;
+    else { printf("Error: unrecognized mode.\n"); exit(1); }
+
+    printf("SIZE: %d\n", depth);
     printf("sizeof(Tree) = %lu\n", sizeof(Tree));
     printf("sizeof(enum Type) = %lu\n", sizeof(enum Type));
     printf("Building tree, depth %d.  Benchmarking %d iters.\n", depth, iters);
@@ -250,13 +356,26 @@ int main(int argc, char** argv)
 
     if (iters < 0)
     {
-        bench_single_pass(tr, iters);
+      bench_single_pass(tr, iters);
+      DELTREE(tr);
     }
     else
-    {
-        bench_batch(tr, iters);
+      {
+      switch(mode) {
+      case Add1: 
+	bench_add1_batch(tr, iters);
+	DELTREE(tr);
+        break;
+      case Sum:  
+	bench_sum_batch(tr, iters);
+	DELTREE(tr);
+        break;
+      case Build: 
+	DELTREE(tr); // LAME
+	bench_build_batch(depth,iters);
+        break;
+    default: printf("Internal error\n"); exit(1);
     }
-
-    DELTREE(tr);
+    }
     return 0;
 }

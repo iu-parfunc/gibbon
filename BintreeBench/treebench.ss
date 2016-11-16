@@ -10,6 +10,14 @@
                   (sub1 n)))))
   (go 1 n))
 
+(define (build-tree2 n)
+  (define (go root n)
+    (if (zero? n)
+        root
+        (cons (go root (sub1 n))
+              (go root (sub1 n)))))
+  (go 1 n))
+
 (define (add1-tree tr)
   (if (pair? tr)
       (cons (add1-tree (car tr))
@@ -43,19 +51,19 @@
   (printf "Benchmarking build\n")
   (time
    (let* ([start-time (current-time 'time-duration)]
-	  [st-ns (+ (* (expt 1 9) (time-second start-time))
+	  [st-ns (+ (* (expt 10 9) (time-second start-time))
 		    (time-nanosecond start-time))])
      (time (let loop ([i 0])
-	     (build-tree size)
+	     (build-tree2 size)
 	     (when (< i iters)
 		   (loop (add1 i)))))
      (let* ([end-time (current-time 'time-duration)]
-	    [et-ns (+ (* (expt 1 9) (time-second end-time))
+	    [et-ns (+ (* (expt 10 9) (time-second end-time))
 		      (time-nanosecond end-time))]
 	    [diff (- et-ns st-ns)]
-	    [batchseconds (/ diff 1000000.0)]) ;; make sure to print out a real number.
+	    [batchseconds (/ diff 1000000000.0)]) ;; make sure to print out a real number.
        (printf "Time ~a\n" batchseconds)
-       (printf "Batchtime: ~a\n" batchseconds)
+       (printf "BATCHTIME: ~a\n" batchseconds)
        )))
   ]
  [(equal? "sum" mode)
@@ -63,19 +71,19 @@
   (time
    (let ([tr (build-tree size)])
      (let* ([start-time (current-time 'time-duration)]
-	    [st-ns (+ (* (expt 1 9) (time-second start-time))
+	    [st-ns (+ (* (expt 10 9) (time-second start-time))
 		      (time-nanosecond start-time))])
        (time (let loop ([i 0])
 	       (sum-tree tr)
 	       (when (< i iters)
 		     (loop (add1 i)))))
        (let* ([end-time (current-time 'time-duration)]
-	      [et-ns (+ (* (expt 1 9) (time-second end-time))
+	      [et-ns (+ (* (expt 10 9) (time-second end-time))
 			(time-nanosecond end-time))]
 	      [diff (- et-ns st-ns)]
-	      [batchseconds (/ diff 1000000.0)]) ;; make sure to print out a real number.
+	      [batchseconds (/ diff 1000000000.0)]) ;; make sure to print out a real number.
 	 (printf "Time ~a\n" batchseconds)
-	 (printf "Batchtime: ~a\n" batchseconds)
+	 (printf "BATCHTIME: ~a\n" batchseconds)
 	 ))))
   ]
  [else
@@ -83,19 +91,19 @@
   (time
    (let ([tr (build-tree size)])
      (let* ([start-time (current-time 'time-duration)]
-	    [st-ns (+ (* (expt 1 9) (time-second start-time))
+	    [st-ns (+ (* (expt 10 9) (time-second start-time))
 		      (time-nanosecond start-time))])
        (time (let loop ([i 0])
 	       (add1-tree tr)
 	       (when (< i iters)
 		     (loop (add1 i)))))
        (let* ([end-time (current-time 'time-duration)]
-	      [et-ns (+ (* (expt 1 9) (time-second end-time))
+	      [et-ns (+ (* (expt 10 9) (time-second end-time))
 			(time-nanosecond end-time))]
 	      [diff (- et-ns st-ns)]
-	      [batchseconds (/ diff 1000000.0)]) ;; make sure to print out a real number.
+	      [batchseconds (/ diff 1000000000.0)]) ;; make sure to print out a real number.
 	 (printf "Time ~a\n" batchseconds)
-	 (printf "Batchtime: ~a\n" batchseconds)
+	 (printf "BATCHTIME: ~a\n" batchseconds)
 	 ))))
   ])
 
