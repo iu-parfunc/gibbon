@@ -98,13 +98,13 @@ treebench_c_packed_structs.exe: treebench_packed_structs.c $(HEADERS)
 	time $(CC) $(COPTS) treebench_packed_structs.c -o $@ 
 
 treebench_c_packed_parallel.exe: treebench_packed_parallel.c
-	time $(CPP) -fpermissive -fcilkplus $(CPPOPTS) $^ -o $@ 
+	time $(CPP) -DPARALLEL -fpermissive -fcilkplus $(CPPOPTS) $^ -o $@ 
 
 treebench_c_packed_parallel2.exe: treebench_packed_parallel2.c
-	time $(CC) -fcilkplus $(COPTS) $^ -o $@
+	time $(CC) -DPARALLEL -fcilkplus $(COPTS) $^ -o $@
 
 treebench_c_packed_parallel3.exe: treebench_packed_parallel3.c $(HEADERS)
-	time $(CC) -fcilkplus $(COPTS) treebench_packed_parallel3.c -o $@ 
+	time $(CC) -DPARALLEL -fcilkplus $(COPTS) treebench_packed_parallel3.c -o $@ 
 
 treebench.class: treebench.java
 	time javac $^ 
@@ -151,6 +151,8 @@ sumtree_treelang_c_pointer.exe: sumtree_treelang.sexp
 # Running
 # ==============================================================================
 
+# Or "sum" or "build":
+MODE=add1
 DEPTH=20
 DEFAULT_ITERS=17
 DEFAULT_PASS=add1
@@ -173,7 +175,7 @@ run_all: all run_core
 run_core: c ghc
 	./treebench_ghc_strict.exe  seq $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_ghc_lazy.exe    $(DEFAULT_PASS) $(DEPTH) $(DEFAULT_ITERS)
-	./treebench_c.exe           $(DEPTH) $(DEFAULT_ITERS)
+	./treebench_c.exe           $(MODE) $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c_packed.exe    $(DEPTH) $(DEFAULT_ITERS)
 	./treebench_c_packed_loop.exe $(DEPTH) $(DEFAULT_ITERS)
 	$(MAKE) run_racket

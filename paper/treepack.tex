@@ -693,12 +693,45 @@ function that traverses the value located at $\alpha$ during its execution.
 \section{Evaluation}
 % ================================================================================
 
-\note{This is organized as a series of different case studies.}
+We evaluate the performance of our approach in four ways. First, we
+demonstrate via small microbenchmarks that packed data representation
+provides significant performance wins across a variety of
+languages---including languages with good performance on pointer-based
+traversals---and that our compiler produces code competetive with any
+existing system. Second, we build several standard compiler passes
+operating on Racket's intermediate representation, and show
+substantial speedup operating on inputs gathered from existing Racket
+programs. Third, we build a type checker for a small language, and
+benchmark it on large synthetic inputs, demonstrating significant
+speedup for a more complex and data-heavy workload. Fourth, we
+implement a point-correlation benchmark using a kd-tree, again showing
+major performance benefits for packed representations. Additionally,
+we \note{something something parallel}
+
+All benchmarks were conducted on a \dots.
 
 \subsection{Microbenchmarks}
 % ----------------------------------------
 
-\note{A ``language shootout'' of add1-tree benchmarks.}
+Our first benchmarks return to the example from section 2,
+manipulating simple binary trees. We implement 3 operations:
+constructing a tree, incrementing the values in a tree, and summing
+the elements of a tree. To understand the performance of packed data
+representations, we implemented these three operations in multiple
+ways across a variety of languages: with pointer-based trees in
+Racket, Chez Scheme, MLton, GHC Haskell, and C (using both \texttt{malloc} as well
+as a fast bump-pointer allocator). We also implemented packed versions
+using handwritten C code similar to that of section 2, as well as a
+packed version in Racket. Finally, we implemented the benchmark in
+\treelang{}, and executed it using both the simple Racket backend and
+the optimizing backend that is the focus of this paper.
+
+The results show a clear win for packed representations, in some cases
+with 100x speedup over pointer-based representations in
+garbage-collected languages. Further, our compiler-generated code is
+competetive with handwritten C for packed data.
+
+%\note{A ``language shootout'' of add1-tree benchmarks.}
 
 
 \subsection{Compiler passes on realistic inputs}
@@ -712,13 +745,45 @@ function that traverses the value located at $\alpha$ during its execution.
 
 \note{type check the simply-typed $\lambda$ calculus in \treelang{}}
 
-\subsection{KD-tree}
+\subsection{Point correlation}
 % --------------------------------------------
+Point correlation  is a well-known algorithm that is used in data mining\cite{capnproto},
+given a point p in a k-dimensional space, a radius r, and a set of points in the space,
+point correlation computes the number of nodes that are within a distance r from the point p.
+One efficient way of doing that is to use kd-trees  to store the set of points in the space\cite{capnproto}. 
 
-\note{}
-k-d trees are a well known date structure that is used to store points 	that are distributed in k-dimentional space
+A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two spaces
+around a split axes in one of the space dimensions, the left subtree stores the points on the left of the split access
+and the right subtree sotres the points on the right of the split access, the split axes alternates between the dimensions of
+the space at each level of the tree, when the number of the points in the subtree is one a 
+leaf node that stores one point of in the space is constructed .
 
+In a naive implementation point correlation need to be executed at each leaf node for each input point, however kd-trees 
+allow  it to  prune early by storing at each internal node the boundaries within which all descendent points lies,
+and use that information to skip a subtree if the given point is far enough from the boundaries.
 
+We evaluate two versions of the point correlation traversal,intOut and treeOut; intOut version
+produces an integer as the output of the traversal while  tree out version  produces a tree
+that have the same data of the input tree with the some counters in the leaf nodes that 
+correlates with the input point updated.Unlike  the rest of the benchmarks that are  evaluated in this paper,
+ the intOut version does not need to traverse the whole tree due to the early trucation, this requires
+the packed version to store the address of the right child for each internal node.Tree out version on the other hand 
+does not need that additional field, although the computation might  truncate at some points during the traversal, 
+the whole tree always need to be traversed to copy the data from the input tree to the output tree, 
+and the right child address is always available.
+
+The traversals are implemented in c++, and for each of the two variants, three different implementation are compared ; 
+a pointer based implementation that uses the standard allocation techniques, a pointer based implementation that uses bump allocation, 
+and a packed implementation as described in section .... 
+
+The intOut version requires 63\% less amount of memory to represent the tree , and the outTree requires 55\% less memory ,when
+the size of the tree is large the saving is large ,table .. shows that amount of memory saving for different tree sizes,for treeOut 
+yet it also enhances the performance.
+
+Figure .. shows the runtime speedups of over the standerd pointer based implementations for the packed and bump-allocation versions, 
+although it might 
+
+ 
 \subsection{Parallelism opportunity study}
 % --------------------------------------------
 
@@ -743,16 +808,16 @@ open-world implementation in a managed language.}
 \note{}
 
 
-% ================================================================================
-\appendix
-\section{Appendix Title}
-% ================================================================================
+%% % ================================================================================
+%% \appendix
+%% \section{Appendix Title}
+%% % ================================================================================
 
-This is the text of the appendix, if you need one.
+%% This is the text of the appendix, if you need one.
 
-\acks
+%% \acks
 
-Acknowledgments, if needed.
+%% Acknowledgments, if needed.
 
 % \bibliographystyle{abbrvnat}
 \bibliographystyle{abbrv}

@@ -584,6 +584,7 @@ codegenTy TagTy = [cty|char|]      -- Must be consistent TagTy, rts.c
 codegenTy SymTy = [cty|long long|] -- Must be consistent SymTy, rts.c
 codegenTy PtrTy = [cty|char*|] -- Hack, this could be void* if we have enough casts. [2016.11.06]
 codegenTy CursorTy = [cty|char*|]
+codegenTy (ProdTy []) = [cty|void*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts
 codegenTy (SymDictTy _t) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id "dict_item_t*" noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc

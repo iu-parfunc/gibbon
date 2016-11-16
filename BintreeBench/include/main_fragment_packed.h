@@ -35,6 +35,10 @@ int main(int argc, char** argv) {
   
   printf("  Building tree, depth %d.  Benchmarking %d iters.\n", depth, iters);
 
+#ifdef PARALLEL
+  printf("THREADS: %d\n", __cilkrts_get_nworkers());
+#endif
+
   struct timespec begin, end;
   clock_gettime(which_clock, &begin);
   TreeRef tr = buildTree(depth);

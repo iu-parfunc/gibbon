@@ -34,6 +34,7 @@ import Packed.FirstOrder.Passes.Lower
 import Packed.FirstOrder.Passes.InlinePacked
 import Packed.FirstOrder.Passes.Unariser
 import Packed.FirstOrder.Passes.HoistNewBuf
+import Packed.FirstOrder.Passes.Typecheck
 
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import Packed.FirstOrder.Target (codegenProg)
@@ -299,13 +300,14 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                        l2c <- pass' "addCopies"                addCopies                l2b
                        l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
                        ------------------- End Stubs ---------------------
-                              
-                       l2e <- pass  "routeEnds"                routeEnds                 l2d
-                       l2f <- pass' "flatten"                  flatten2                 l2e
+                       l2d' <- pass' "typecheck"                typecheck                 l2d
+                       l2e <- pass  "routeEnds"                routeEnds                 l2d'
+                       l2f <- pass' "flatten"                  flatten2                  l2e
                        l2g <- pass  "findWitnesses"            findWitnesses             l2f
                        l2h <- pass  "inlinePacked"             inlinePacked              l2g
                        l2i <- pass  "cursorDirect"             cursorDirect              l2h
-                       l2j <- pass' "flatten"                  flatten2                  l2i
+                       l2i' <- pass' "typecheck"                typecheck                l2i
+                       l2j <- pass' "flatten"                  flatten2                  l2i'
                        l2k <- pass  "findWitnesses"            findWitnesses             l2j
                               
                        l2l <- pass' "flatten"                  flatten2                  l2k

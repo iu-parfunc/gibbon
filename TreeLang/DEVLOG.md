@@ -178,7 +178,7 @@ And then after inlineTriv, we get this:
 ```
 
 Ok, unsurprisingly the problem is still with Cursorize.  It produces
-this badly typed 
+this badly typed code:
 
 ```Haskell
     LetE ("hoistapp39",
@@ -228,3 +228,144 @@ function result with end-witneses.  This expression pushes the
                ProjE 1
                      (VarE "unpkcall62")]))
 
+
+[2016.11.13] {Debugging function arguments in inlineTriv}
+---------------------------------------------------------
+
+Next problem seems to be that this function call:
+
+```Haskell
+     AppE "add1_tree"
+      (MkProdE [VarE "flddst58",
+        VarE "y4"]))
+```
+
+Here y4 is an alias for end_x3, and is CursorTy as it should be.
+But then after inlineTrivs, we get this weird thing:
+
+```Haskell
+    (LetE ("unpkcall62",
+        ProdTy [PackedTy "CURSOR_TY" (),
+                PackedTy "CURSOR_TY" ()],
+        AppE "add1_tree"
+             (MkProdE [ProjE 1
+                             (VarE "unpkcall59"),
+                       MkProdE [ProjE 0
+                                      (VarE "unpkcall59"),
+                                VarE "cursplus1_56"]]))
+```
+
+It sure looks like a dilated value is getting stuck in place of a
+"front value". The car of unpkcall59 is indeed the end-of-a witness
+returned by the first call to add1_tree in this Node case.
+
+But cursplus1_56 is bogus... that's actually the output position right
+after the written Node tag.  _56 is indeed the correct output cursor
+to the FIRST call to add1.
+
+So maybe there is a legit problem with the end_x3 witness?
+
+```Haskell
+    (LetE ("hoistapp35",
+           ProdTy [PackedTy "CURSOR_TY"
+                            (),
+                   PackedTy "Tree"
+                            ()],
+           MkProdE [MkProdE [ProjE 0
+                                   (VarE "unpkcall59"),
+                             VarE "cursplus1_56"],
+                    ProjE 13
+                          (VarE "unpkcall59")])
+          (LetE ("fldtup57",
+                 ProdTy [PackedTy "Tree"
+                                  (),
+                         PackedTy "CURSOR_TY"
+                                  ()],
+                 VarE "hoistapp35")
+                (LetE ("flddst58",
+                       PackedTy "CURSOR_TY"
+                                (),
+                       ProjE 1
+                             (VarE "fldtup57"))
+                      (LetE ("end_x3",
+                             PackedTy "CURSOR_TY"
+                                      (),
+                             ProjE 0
+                                   (VarE "hoistapp35"))
+                            (LetE ("y4",
+                                   PackedTy "CURSOR_TY"
+                                            (),
+                                   VarE "end_x3")
+```
+
+Here's what the first of the two add1 call sites looks like BEFORE cursorize:
+
+```Haskell
+    [ProjE 1
+           (LetE ("hoistapp35",
+                  ProdTy [PackedTy "CURSOR_TY"
+                                   (),
+                          PackedTy "Tree"
+                                   ()],
+                  AppE "add1_tree"
+                       (VarE "x3"))
+                 (VarE "NAMED_VAL")),
+```
+
+
+But, above... hoistapp35 is not type checking..  Its type has not been
+updated, but it is clearly returning a dilated version of
+(cursor,tree) which becomes ((cursor,tree),end_tree)
+
+AH!  The NamedVal handling was incorrectly binding names to dilated
+types.
+
+
+
+[2016.11.13] {Seems to be accidentally dilating }
+------------------------------------------------
+
+For add1tree, right before lower we are generating this bad return
+value in tail position:
+
+```Haskell
+    (LetE ("unpkcall57",
+      ProdTy [PackedTy "CURSOR_TY" (),
+              PackedTy "CURSOR_TY" ()],
+      AppE "add1_tree"
+           (MkProdE [ProjE 1
+                           (VarE "unpkcall53"),
+                     ProjE 0
+                           (VarE "unpkcall53")]))
+     (MkProdE [MkProdE [ProjE 0
+                              (VarE "unpkcall57"),
+                        ProjE 0
+                              (VarE "fnarg43")],
+               ProjE 1
+                     (VarE "unpkcall57")]))))]})],
+```
+
+I thought that was just an eroneously dilated value that needed to be
+undilated, but that's not quite it.  The function should return
+`(end_a,end_b)`, and the end-witness in the input program should be
+treated just as a scalar.  That return value above is instead:
+
+    ((end_a, b), end_b)
+
+Now... there is a `b+9` in circulation after cursorize (end_tr0, where
+"a" = tr0 in this example).  The leaf branch terminates returns this:
+
+    (MkProdE [MkProdE [VarE "end_tr0",
+                       ProjE 0
+                             (VarE "combdil48")],
+              ProjE 1
+                    (VarE "combdil48")])
+
+Ok, so it's clear how this is a dilation.  The end_tr0 thing doesn't
+get reflected in the dilation.  Rather, it's the start and end of "b".
+
+`combdil48` is an alias for a (tree,cursor) pair representing the
+completed "b" value.  This actually sure does make it look like the
+"splice" thing is failing its job...
+
+  It was supposed to throw away that "b" and give (end_a,end_b) only.
