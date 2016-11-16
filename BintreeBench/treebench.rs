@@ -15,12 +15,25 @@ fn build_tree(n : i32) -> Box<Tree> {
     build_tree_iter(1, n)
 }
 
+fn build_tree2(n : i32) -> Box<Tree> {
+    build_tree_iter2(1, n)
+}
+
 fn build_tree_iter(root : i32, n : i32) -> Box<Tree> {
     if n == 0 {
         Box::new(Tree::Leaf(root))
     } else {
         Box::new(Tree::Node(build_tree_iter(root, n - 1),
                             build_tree_iter(root + 2^(n - 1), n - 1)))
+    }
+}
+
+fn build_tree_iter2(root : i32, n : i32) -> Box<Tree> {
+    if n == 0 {
+        Box::new(Tree::Leaf(root))
+    } else {
+        Box::new(Tree::Node(build_tree_iter2(root, n - 1),
+                            build_tree_iter2(root, n - 1)))
     }
 }
 
@@ -62,14 +75,14 @@ fn main() {
       let start = Instant::now();
 			
       for _ in 0 .. iters {
-        let tree = build_tree(power);		
+        let tree = build_tree2(power);		
 
         println!("Test, leftmost leaf in output: {}", leftmost(&*tree));
         // println!("Took {:?}.", elapsed);
       }
       let elapsed = start.elapsed();
       println!("Took {}.{:09}", elapsed.as_secs(), elapsed.subsec_nanos());
-      println!("BATCHTIME: {}", elapsed.as_secs());
+      println!("BATCHTIME: {}.{}", elapsed.as_secs(), elapsed.subsec_nanos());
 
       let average = elapsed / iters;
       println!("Average of {} runs: {}.{:09} seconds.",

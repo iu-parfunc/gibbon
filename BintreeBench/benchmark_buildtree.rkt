@@ -8,9 +8,9 @@
 
 (define PASSNAME "buildtree")
 
-(launch-benchmarks "./buildtree_treelang_c_packed.exe -benchmark " PASSNAME "treelang-c-packed")
+;;(launch-benchmarks "./buildtree_treelang_c_packed.exe -benchmark " PASSNAME "treelang-c-packed")
 
-(launch-benchmarks "racket buildtree_treelang.sexp " PASSNAME "treelang-racket")
+;;(launch-benchmarks "racket buildtree_treelang.sexp " PASSNAME "treelang-racket")
 
 ;; NEW
 
@@ -25,3 +25,5 @@
 (launch-benchmarks "./treebench_rust.exe build " PASSNAME "handwritten-rust")
 
 (launch-benchmarks "./treebench_ocaml.exe build " PASSNAME "handwritten-ocaml")
+
+;;(launch-benchmarks "./treebench_ghc_lazy.exe build " PASSNAME "handwritten-ghc")

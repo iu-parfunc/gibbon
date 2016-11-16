@@ -13,6 +13,15 @@
                   (sub1 n)))))
   (go 1 n))
 
+(define (build-tree2 n)
+  (define (go root n)
+    (if (zero? n)
+        root
+        (cons (go root (sub1 n))
+              (go root
+                  (sub1 n)))))
+  (go 1 n))
+
 (define (add1-tree tr)
   (if (pair? tr)
       (cons (add1-tree (car tr))
@@ -55,7 +64,7 @@
      (define-values (_ cpu real gc)
        (time-apply (λ ()
                      (for ([i (in-range iters)])
-                       (set! tree (build-tree size))))
+                       (set! tree (build-tree2 size))))
                    '()))
      (define batchseconds (exact->inexact (/ real 1000.0)))
      (printf "BATCHTIME: ~a\n" batchseconds)

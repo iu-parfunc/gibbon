@@ -30,10 +30,23 @@ public class treebench {
         }
     }
 
+    private static Tree buildTreeHelper2(int n, long root) {
+        if(n == 0) {
+            return new Leaf(root);
+        } else {
+            return new Node(buildTreeHelper2(n-1, root), 
+                            buildTreeHelper2(n-1, root));
+        }
+    }
+
     public static Tree buildTree(int n) {
         return buildTreeHelper(n, 1);
     }
-    
+
+    public static Tree buildTree2(int n) {
+        return buildTreeHelper2(n, 1);
+    }    
+
     public static Tree add1Tree(Tree t) {
         if (t instanceof Leaf) {
             return new Leaf(((Leaf)t).elem + 1);
@@ -66,7 +79,7 @@ public class treebench {
 
 	  for(int i=0; i<numTrials; i++) {
             final long startTime = System.currentTimeMillis();
-            Tree t2 = buildTree(depth);
+            Tree t2 = buildTree2(depth);
             final long endTime = System.currentTimeMillis();
             if(numTrials <= 500)
                 System.out.print(" " + (endTime - startTime));
