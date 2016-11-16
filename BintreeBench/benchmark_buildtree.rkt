@@ -26,4 +26,8 @@
 
 (launch-benchmarks "./treebench_ocaml.exe build " PASSNAME "handwritten-ocaml")
 
+(launch-benchmarks "./treebench_c_packed.exe build " PASSNAME "handwritten-c-packed")
+
+(launch-benchmarks "./treebench_c.exe build " PASSNAME "handwritten-c")
+
 ;;(launch-benchmarks "./treebench_ghc_lazy.exe build " PASSNAME "handwritten-ghc")
