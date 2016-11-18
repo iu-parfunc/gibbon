@@ -2,7 +2,7 @@
 echo "clear all binaries" rm -r ./bin
 mkdir bin
 echo "building unpacked..."
-g++ -std=c++11 -O3 -Wall ./src/pointCorrelation_unpacked/main.cpp ./src/pointCorrelation_unpacked/build_tree.cpp ./src/pointCorrelation_unpacked/traversals_unpacked.cpp  -o ./bin/unpacked
+g++ -std=c++11 -O3 -Wall ./src/pointCorrelation_pointer/main.cpp ./src/pointCorrelation_pointer/build_tree.cpp ./src/pointCorrelation_pointer/traversals_unpacked.cpp  -o ./bin/unpacked
 
 echo "building bumpalloc..."
 g++ -std=c++11 -O3 -Wall ./src/pointCorrelation_bumpalloc/main.cpp ./src/pointCorrelation_bumpalloc/build_tree.cpp ./src/pointCorrelation_bumpalloc/traversals_bumpalloc.cpp  -o ./bin/bumpalloc

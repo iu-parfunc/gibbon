@@ -53,8 +53,6 @@ void readInput(int argc, char **argv,Point * & data , float & rad, int & npoints
     else  if(varient.compare("intout")==0)
         mode=Varient::intOut;
 
-        
-    
     srand(0);
     for(int i = 0; i < npoints; i++) {
         data[i].x_val= (float)rand() / RAND_MAX;
@@ -73,7 +71,7 @@ float min(float a, float b){
     return a < b ? a : b;
 }
 
-int treeSize(int n){
+int getTreeSize(int n){
     return (sizeof(Node_Leaf))* n +  (sizeof(Node_Inner))*n + (2*n)*sizeof(char * )+100;
 }
 

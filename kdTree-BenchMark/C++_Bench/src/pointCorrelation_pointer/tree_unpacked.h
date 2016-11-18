@@ -21,6 +21,11 @@
 
 using namespace std;
 
+extern int counter;
+extern int counter2;
+extern int counter3;
+extern int nodeCount;
+extern int nodeCount_test;
 enum Varient {updateTree, treeOut, intOut};
 
 struct Point{
@@ -31,7 +36,6 @@ struct Point{
 struct  Node_Leaf{
     float x_val;
     float y_val;
-    //out
     int   corr;
 };
 struct Tree_Node;
@@ -57,18 +61,10 @@ struct  Node_Inner{
     };
 };
 
-extern int counter;
-extern int counter2;
-extern int counter3;
-extern int nodeCount;
-extern int nodeCount_test;
 
 void readInput(int argc, char **argv,Point * & data , float & rad, int & npoints, Varient & mode);
-
 Tree_Node *  buildTree(int n , Point * data );
-
 void         printUnpackedTree(Tree_Node * node);
-
 void         performPointCorr_OnTree(Point & p,Tree_Node * node ,float rad);
 int          performPointCorr_IntOut(Point & p,Tree_Node * node ,float rad);
 Tree_Node *  performPointCorr_TreeOut(Point & p,Tree_Node * node ,float rad);

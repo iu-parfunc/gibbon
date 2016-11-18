@@ -2,34 +2,46 @@
 
 mkdir runlogs
 mkdir results
-echo "benchmarking unpakced version......"
 NOW=$(date +"%Y-%m-%d-%H-%M-%S")
 
-echo "running updatetree"
-./bin/unpacked $1 $2 updatetree >> ./runlogs/"log_unpacked""$NOW"
-echo "running intout"
-./bin/unpacked $1 $2    intout >>      ./runlogs/"log_unpacked""$NOW"
-echo "running treeout"
-./bin/unpacked $1 $2 treeout >>     ./runlogs/"log_unpacked""$NOW"
 
-grep '^res:\['  ./runlogs/"log_unpacked""$NOW" |sed -e 's/res:\[//g' -e 's/\]//g'  >>./results/"data_benchmark_all_$1_$2_""$NOW"".csv"
 
-echo "benchmarking bumpalloc version......"
-echo "running updatetree"
-./bin/bumpalloc $1 $2 updatetree >> ./runlogs/"log_bumpalloc""$NOW"
-echo "running intout"
-./bin/bumpalloc $1 $2    intout >>      ./runlogs/"log_bumpalloc""$NOW"
-echo "running treeout"
-./bin/bumpalloc $1 $2 treeout >>     ./runlogs/"log_bumpalloc""$NOW"
+echo "benchmarking updateTree varient........... "
+_OutFile="log_updateTree""$NOW"
 
-grep '^res:\['  ./runlogs/"log_bumpalloc""$NOW" |sed -e 's/res:\[//g' -e 's/\]//g'  >>./results/"data_benchmark_all_$1_$2_""$NOW"".csv"
+for _size in   100 1000 10000 100000 1000000 10000000 100000000
+do
+./bin/unpacked $1 $_size updatetree >> ./runlogs/$_OutFile
+./bin/bumpalloc $1 $_size  updatetree >> ./runlogs/$_OutFile
+./bin/packed $1 $_size  updatetree >>     ./runlogs/$_OutFile
+./bin/packed_enhanced $1 $_size  updatetree >> ./runlogs/$_OutFile
+done
+grep '^res:\['  ./runlogs/$_OutFile |sed -e 's/res:\[//g' -e 's/\]//g'  >>./results/"data_benchmark_updateTree_$2_""$NOW"".csv"
+echo "done benchmarking updateTree varient........... "
 
-echo "benchmarking packed version......"
-echo "running updatetree"
-./bin/packed $1 $2 updatetree >> ./runlogs/"log_packed""$NOW"
-echo "running intout"
-./bin/packed $1 $2    intout >>      ./runlogs/"log_packed""$NOW"
-echo "running treeout"
-./bin/packed $1 $2 treeout >>     ./runlogs/"log_packed""$NOW"
+echo "benchmarking intOut varient.............. "
+_OutFile="log_intOut""$NOW"
 
-grep '^res:\['  ./runlogs/"log_packed""$NOW" |sed -e 's/res:\[//g' -e 's/\]//g'  >>./results/"data_benchmark_all_$1_$2_""$NOW"".csv"
+for _size in     100 1000 10000 100000 1000000 10000000 100000000
+do
+./bin/unpacked $1 $_size intout >>  ./runlogs/$_OutFile
+./bin/bumpalloc $1 $_size intout >> ./runlogs/$_OutFile
+./bin/packed $1 $_size intout >>     ./runlogs/$_OutFile
+./bin/packed_enhanced $1 $_size intout >> ./runlogs/$_OutFile
+done
+
+
+grep '^res:\['  ./runlogs/$_OutFile |sed -e 's/res:\[//g' -e 's/\]//g'  >>./results/"data_benchmark_intOut_$2_""$NOW"".csv"
+echo "done benchmarking intOut varient.............. "
+
+echo "benchmarking treeOut varient.............. "
+_OutFile="log_treeOut""$NOW"
+for _size in    100 1000 10000 100000 1000000 10000000 100000000
+do
+./bin/unpacked $1 $_size treeout >> ./runlogs/$_OutFile
+./bin/bumpalloc $1 $_size treeout >> ./runlogs/$_OutFile
+./bin/packed $1 $_size treeout >>     ./runlogs/$_OutFile
+./bin/packed_enhanced $1 $_size  treeout >> ./runlogs/$_OutFile
+done
+grep '^res:\['  ./runlogs/$_OutFile |sed -e 's/res:\[//g' -e 's/\]//g'  >>./results/"data_benchmark_treeOut_$2_""$NOW"".csv"
+echo "done benchmarking treeOut varient.............. "

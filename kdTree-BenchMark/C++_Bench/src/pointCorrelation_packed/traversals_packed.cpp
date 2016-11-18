@@ -12,36 +12,37 @@
 using  namespace std;
 
 
+/*
+char *  printPackedTree(char * & cur){
+    //print Tag
+    
+    cout<<"address:"<<(void * )cur;
+    cout<<" ,tag:"<<*(char*) (cur)<<endl;
+    if(*((char*) (cur))==LEAF_TAG){
+        cur +=sizeof(char);
+        struct Node_Leaf * leaf=(struct Node_Leaf*) (cur);
+        cout<<"x:"<<leaf->x_val<<" ,y:"<<leaf->y_val<<endl;
+        cur+=sizeof(Node_Leaf);
+        return cur;
+    }
+    else{
+        cur +=sizeof(char);
+        struct Node_Inner_NoIndirection * inner=(struct Node_Inner_NoIndirection*) (cur);
+        cout<<" ,splitAxis:"<<inner->splitAxis<<" ,splitLocation:"<<inner->splitLoc<<endl;
+        cout<<" ,min_x:"<<inner->min_x;
+        cout<<" ,max_x:"<<inner->max_x<<endl;
+        cout<<" ,min_y:"<<inner->min_y;
+        cout<<" ,max_y:"<<inner->max_y<<endl;
+        //cout<<" ,right child address:"<<(void * )inner->RightChild<<endl;;
+        cur+=sizeof(Node_Inner_NoIndirection);
+        
+        char * rightChild=printPackedTree(cur);
+        //assert(rightChild==inner->RightChild && "error in right child address in the built tree\n");
+        return printPackedTree(rightChild);
+    }
+    
+}*/
 
- char *  printPackedTree(char * & cur){
- //print Tag
- 
- cout<<"address:"<<(void * )cur;
- cout<<" ,tag:"<<*(char*) (cur)<<endl;
- if(*((char*) (cur))==LEAF_TAG){
- cur +=sizeof(char);
- struct Node_Leaf * leaf=(struct Node_Leaf*) (cur);
- cout<<"x:"<<leaf->x_val<<" ,y:"<<leaf->y_val<<endl;
- cur+=sizeof(Node_Leaf);
- return cur;
- }
- else{
- cur +=sizeof(char);
- struct Node_Inner_NoIndirection * inner=(struct Node_Inner_NoIndirection*) (cur);
- cout<<" ,splitAxis:"<<inner->splitAxis<<" ,splitLocation:"<<inner->splitLoc<<endl;
- cout<<" ,min_x:"<<inner->min_x;
- cout<<" ,max_x:"<<inner->max_x<<endl;
- cout<<" ,min_y:"<<inner->min_y;
- cout<<" ,max_y:"<<inner->max_y<<endl;
- //cout<<" ,right child address:"<<(void * )inner->RightChild<<endl;;
- cur+=sizeof(Node_Inner_NoIndirection);
- 
- char * rightChild=printPackedTree(cur);
- //assert(rightChild==inner->RightChild && "error in right child address in the built tree\n");
- return printPackedTree(rightChild);
- }
- 
- }
 void performPointCorr_treeOut_rec(Point & p,char * & cur,char * & curOut,float rad);
 
 bool performPointCorr_OnTree(Point & p,char * & cur,float rad){
@@ -112,7 +113,6 @@ bool performPointCorr_OnTree(Point & p,char * & cur,float rad){
     }
 }
 
-
 pair<int ,bool> performPointCorr_IntOut(Point & p,char * & cur,float rad){
     
     if(*cur == LEAF_TAG){
@@ -182,12 +182,7 @@ pair<int ,bool> performPointCorr_IntOut(Point & p,char * & cur,float rad){
         }
     }
 }
-/*
-char * performPointCorr_treeOut(Point & p,char * & cur,float rad,int pointCount){
-       performPointCorr_treeOut_rec(p,cur,tmp,rad);
-    return buf;
-    
-}*/
+
 
 
 
@@ -205,11 +200,11 @@ void  copyNodes(char * & cur, char * & curOut){
         cur += sizeof(float);
         curOut+=sizeof(float);
         *((float *)curOut)= *((float *)cur);
-
+        
         cur += sizeof(float);
         curOut += sizeof(float);
         *((int *)curOut)=(*(int *)cur);
-
+        
         cur += sizeof(int);
         curOut += sizeof(int);
         
@@ -253,8 +248,6 @@ void  copyNodes(char * & cur, char * & curOut){
     }
     
 }
-
-
 
 
 void performPointCorr_treeOut_rec(Point & p,char * & cur,char * & curOut,float rad){

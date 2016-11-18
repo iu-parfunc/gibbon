@@ -7,14 +7,12 @@
 #include <iostream>
 #include <fstream>
 #include <stdio.h>
-#include <time.h>
 
 
 #define LEAF_TAG 'l'
 #define INNER_TAG 'i'
 
 #define SIZE_OF_LEAF sizeof(char ) +sizeof(Node_Leaf)
-
 #define SIZE_OF_INNER sizeof(char ) +sizeof(Node_Inner)
 
 //#define TEST
