@@ -6,7 +6,13 @@
 
 (data Tree
       [Leaf Float Float Int ]
-      [Node Int Float Float Float Float Float Tree Tree ])
+      [Node Int         ;; splitAccess
+            Float       ;; splitLoc 
+            Float Float ;; minX / maxX
+            Float Float ;; minY / maxY 
+            Tree        ;; left
+            Tree        ;; right
+            ])
 
 
 (data Point
@@ -23,12 +29,21 @@
     (let ( [dist_x : Float (fl- px center_x)]
            [dist_y : Float (fl- py center_y) ])
       (let ([sum : Float (fl+ (fl* dist_y dist_y) (fl* dist_x dist_x))]
-            [boxsum : Float (fl+ (fl* boxdist_y boxdist_y) (fl* boxdist_x boxdist_x))])
+            [boxsum : Float (fl+ (fl* boxdist_y boxdist_y)
+                                 (fl* boxdist_x boxdist_x))])
         (fl< (fl- (flsqrt sum) (flsqrt boxsum) ) rad  )))))
 
- 
+
+(define (copy [tr : Tree]) : Tree tr) ;; FIXME:
+
+;; RRN doesn't think this version makes so much sense.  For
+;; out-of-place, just return the neighborhood, not a new version of
+;; the WHOLE tree.
+;;
 #| not yet done |#
-(define (pointCorrelation [tr : Tree] [px : Float] [py : Float] [rad : Float]) : Tree
+(define (pointCorrelation [tr : Tree]
+                          [px : Float] [py : Float] [rad : Float])
+        : Tree
   (case tr
     [(Leaf x y c )
      (Leaf x y (if (fl<  (flsqrt (fl+ (fl* (fl- px x ) (fl- px  x))
@@ -41,9 +56,16 @@
              (Node splitAccess splitLoc minX maxX minY maxY
                    (pointCorrelation leftChild px py rad)
                    (pointCorrelation rightChild px py rad))
-             (Node splitAccess splitLoc minX maxX minY maxY leftChild rightChild))]))
+             (Node splitAccess splitLoc minX maxX minY maxY
+                   ;; Will need copies for this to work in the packed version:
+                   (copy leftChild)
+                   (copy rightChild)
+                   ))]))
 
-(define (pointCorrelation_v2 [tr : Tree] [px : Float][py : Float] [rad : Float]) : Int
+;; This will be a benchmark we can run given nodes with layout info.
+(define (pointCorrelation_v2 [tr : Tree]
+                             [px : Float][py : Float] [rad : Float])
+        : Int
   (case tr
     [(Leaf x y c)
      (if (fl<  (flsqrt ( fl+ (fl* ( fl- px x ) (fl- px  x)  )
@@ -53,7 +75,8 @@
          )]
     [ (Node splitAccess splitLoc minX maxX minY maxY leftChild rightChild)
        ( if  (canCorrelate minX maxX minY maxY px py rad)
-             (+ (pointCorrelation_v2 leftChild px py rad) (pointCorrelation_v2 rightChild px py rad))
+             (+ (pointCorrelation_v2 leftChild px py rad)
+                (pointCorrelation_v2 rightChild px py rad))
              0
        )]))
 
