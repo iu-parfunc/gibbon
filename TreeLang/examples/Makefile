@@ -173,8 +173,8 @@ treelang_lib:
 	raco make -v ../treelang.rkt 
 
 clean:
-	rm -f *.exe *.o *.c  *.out *.err
-	cd error/; rm -f *.exe *.o *.c  *.out *.err
+	rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed
+	cd error/; rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed
 
 distclean: clean
 	rm -f *.ans
