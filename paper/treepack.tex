@@ -1,4 +1,5 @@
 
+
 % This varies by conference, sometimes 9pt:
 \documentclass[preprint,10pt,nocopyrightspace,nonatbib]{./bibs/sigplanconf}
 % The following \documentclass options may be useful:
@@ -748,33 +749,33 @@ competetive with handwritten C for packed data.
 \subsection{Point correlation}
 % --------------------------------------------
 Point correlation  is a well-known algorithm that is used in data mining\cite{capnproto},
-given a point p in a k-dimensional space, a radius r, and a set of points in the space,
-point correlation computes the number of nodes that are within a distance r from the point p.
-One efficient way of doing that is to use kd-trees  to store the set of points in the space\cite{capnproto}. 
+given set of points in a k-dimensional space, point correlation computes the number of points in the space  that lies within a
+distance r from a given point p, one efficient way of searching such spaces is to store them in  kd-trees \cite{capnproto}. 
 
-A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two spaces
-around a split axes in one of the space dimensions, the left subtree stores the points on the left of the split access
-and the right subtree sotres the points on the right of the split access, the split axes alternates between the dimensions of
-the space at each level of the tree, when the number of the points in the subtree is one a 
-leaf node that stores one point of in the space is constructed .
+A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two sub-spaces
+around a split axes in one of the space dimensions, the left subtree stores the points to the left of the split access
+and the right subtree sotres the points to the right of the split access, the split axes alternates between the dimensions of
+the space at each level of the tree, when the number of the points in the subtree is one, a leaf node that stores
+that point is constructed.
 
-In a naive implementation point correlation need to be executed at each leaf node for each input point, however kd-trees 
-allow  it to  prune early by storing at each internal node the boundaries within which all descendent points lies,
+In a naive implementation of point correlation each point in the spaced need to be checked, however kd-trees 
+allow the search process to skip some regions in the space ;by storing at each internal node the boundaries within which all descendent points lies,
 and use that information to skip a subtree if the given point is far enough from the boundaries.
 
-We evaluate two versions of the point correlation traversal,intOut and treeOut; intOut version
+In this work two different variants of the point correlation traversal were impelmented (int out and  tree out), int out version
 produces an integer as the output of the traversal while  tree out version  produces a tree
-that have the same data of the input tree with the some counters in the leaf nodes that 
-correlates with the input point updated.Unlike  the rest of the benchmarks that are  evaluated in this paper,
- the intOut version does not need to traverse the whole tree due to the early trucation, this requires
-the packed version to store the address of the right child for each internal node.Tree out version on the other hand 
+that have the same data of the input tree with the some counters in the leaf nodes incremented, those of points that  
+correlate with the input point. Unlike other benchmarks  in this paper, the int out variant does traverse the whole tree due to the early trucation condition ,
+this requires that the packed version stores the address of the right child for each internal node as discussed in section .... Tree out version on the other hand 
 does not need that additional field, although the computation might  truncate at some points during the traversal, 
 the whole tree always need to be traversed to copy the data from the input tree to the output tree, 
-and the right child address is always available.
+and hence the right child location thus is always available.
 
-The traversals are implemented in c++, and for each of the two variants, three different implementation are compared ; 
+The traversals are implemented in c++, for each of the two variants, three different implementation are compared ; 
 a pointer based implementation that uses the standard allocation techniques, a pointer based implementation that uses bump allocation, 
-and a packed implementation as described in section .... 
+and a packed implementation. 
+
+data
 
 The intOut version requires 63\% less amount of memory to represent the tree , and the outTree requires 55\% less memory ,when
 the size of the tree is large the saving is large ,table .. shows that amount of memory saving for different tree sizes,for treeOut 
