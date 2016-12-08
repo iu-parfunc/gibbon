@@ -19,8 +19,6 @@ module Packed.FirstOrder.Common
 
        , LocVar, Env2(..)
 
-         -- * Values (for interpreters)
-       , Value(..), ValEnv
          -- * Top-level function defs
        , FunDef(..), FunDefs
        , insertFD, fromListFD
@@ -59,18 +57,6 @@ varAppend :: Var -> Var -> Var
 varAppend = (++)
 
 --------------------------------------------------------------------------------
-
-data Value a = VInt Int
---             | VLam (ValEnv a) Var a
-             | VProd [Value a]
---             | VLeft (Value a)
---             | VRight (Value a)
-             | VPacked Constr [Value a]
-  deriving (Read,Show,Eq,Ord,Generic)
-
-type ValEnv a = Map Var (Value a)
-
-------------------------------------------------------------
 
 -- | A common currency for a two part environment consisting of
 -- function bindings and regular value bindings.
