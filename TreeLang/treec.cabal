@@ -18,7 +18,7 @@ library
                   Packed.FirstOrder.Common
                   Packed.FirstOrder.Compiler
                   Packed.FirstOrder.HaskellFrontend,
-                  Packed.FirstOrder.Interpreter
+                  Packed.FirstOrder.TargetInterp                  
                   Packed.FirstOrder.L1_Source,
                   Packed.FirstOrder.LTraverse
                   Packed.FirstOrder.Passes.Cursorize

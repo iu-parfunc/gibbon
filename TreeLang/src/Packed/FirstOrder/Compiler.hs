@@ -18,7 +18,7 @@ import Control.Monad.State.Strict
 import Options.Applicative
 import Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.HaskellFrontend as HS
-import Packed.FirstOrder.Interpreter (Val (..), execProg)
+import Packed.FirstOrder.TargetInterp (Val (..), execProg)
 import qualified Packed.FirstOrder.L1_Source as L1
 import qualified Packed.FirstOrder.LTraverse as L2
 

@@ -1,8 +1,10 @@
+-- | Interpreter for the target language (L3)
+
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE BangPatterns #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Packed.FirstOrder.Interpreter
+module Packed.FirstOrder.TargetInterp
     ( Val(..)
     , execProg
     ) where
