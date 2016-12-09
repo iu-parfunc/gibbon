@@ -6,7 +6,7 @@ export TREELANGDIR=`pwd`
 
 function tc() {
     cur=`pwd`
-    cd $TREELANGDIR/TreeLang/
+    cd $TREELANGDIR/Gibbon/
     stack build 
     if [ "$?" == "0" ]; then
         CMD=`stack exec -- which treec`;
@@ -22,7 +22,7 @@ function tc() {
 # A quick verison that doesn't check for recompile.
 function tcq() {    
     cur=`pwd`
-    cd $TREELANGDIR/TreeLang/
+    cd $TREELANGDIR/Gibbon/
     CMD=`stack exec -- which treec`
     cd $cur
     $CMD $@

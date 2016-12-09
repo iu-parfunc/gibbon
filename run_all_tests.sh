@@ -36,12 +36,12 @@ set +x; echo
 echo "  Compiler"
 echo "----------------------------------------"
 set -x
-cd $top/TreeLang
+cd $top/Gibbon
 
 # Run compiler unit tests 
 stack --install-ghc test "$STACKARGS"
 
-cd $top/TreeLang/examples
+cd $top/Gibbon/examples
 make test $MKPARARGS
 # Turning of -j for now [2016.11.06]
 

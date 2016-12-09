@@ -1,4 +1,4 @@
-#lang sweet-exp "./TreeLang/treelang.rkt"
+#lang sweet-exp "./Gibbon/treelang.rkt"
 
 (require (only-in racket bytes-length))
 ; define x 3
