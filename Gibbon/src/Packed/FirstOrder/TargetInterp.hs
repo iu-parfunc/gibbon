@@ -5,7 +5,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Packed.FirstOrder.TargetInterp
-    ( Val(..)
+    ( Val(..), applyPrim
     , execProg
     ) where
 
@@ -94,7 +94,7 @@ exec env (LetCallT binds op args body) =
 exec env (LetPrimCallT binds op args body) =
     exec env' body
   where
-    rets = applyOp op (map (eval env) args)
+    rets = applyPrim op (map (eval env) args)
     env' = extendEnv env (zip (map fst binds) rets)
 
 exec env (LetIfT bnds (tst,thn,els) bod) =
@@ -187,26 +187,26 @@ apply _ notFun _ =
 
 --------------------------------------------------------------------------------
 
-applyOp :: Prim -> [Val] -> [Val]
+applyPrim :: Prim -> [Val] -> [Val]
 
-applyOp AddP [IntVal i1, IntVal i2] = [IntVal (i1 + i2)]
-applyOp SubP [IntVal i1, IntVal i2] = [IntVal (i1 - i2)]
-applyOp MulP [IntVal i1, IntVal i2] = [IntVal (i1 * i2)]
+applyPrim AddP [IntVal i1, IntVal i2] = [IntVal (i1 + i2)]
+applyPrim SubP [IntVal i1, IntVal i2] = [IntVal (i1 - i2)]
+applyPrim MulP [IntVal i1, IntVal i2] = [IntVal (i1 * i2)]
 
-applyOp EqP  [IntVal i1, IntVal i2] = [IntVal (if i1 == i2 then 1 else 0)]
+applyPrim EqP  [IntVal i1, IntVal i2] = [IntVal (if i1 == i2 then 1 else 0)]
 
-applyOp NewBuf [] = [BufVal Seq.empty]
+applyPrim NewBuf [] = [BufVal Seq.empty]
 
-applyOp WriteTag [TagVal tag, BufVal is] = [BufVal (is |> fromIntegral tag)]
-applyOp WriteInt [IntVal i,   BufVal is] = [BufVal (is |> i)]
+applyPrim WriteTag [TagVal tag, BufVal is] = [BufVal (is |> fromIntegral tag)]
+applyPrim WriteInt [IntVal i,   BufVal is] = [BufVal (is |> i)]
 
-applyOp ReadTag [BufVal is] = case Seq.viewl is of
+applyPrim ReadTag [BufVal is] = case Seq.viewl is of
                                 Seq.EmptyL -> error "ReadTag: Empty buffer"
                                 t :< is'   -> [TagVal (fromIntegral t), BufVal is']
 
-applyOp ReadInt [BufVal is] = case Seq.viewl is of
+applyPrim ReadInt [BufVal is] = case Seq.viewl is of
                                 Seq.EmptyL -> error "ReadInt: Empty buffer"
                                 i :< is'   -> [IntVal i, BufVal is']
 
-applyOp op args = error ("applyOp: Unsupported form: " ++ show op ++ " " ++ show args)
+applyPrim op args = error ("applyPrim: Unsupported form: " ++ show op ++ " " ++ show args)
 

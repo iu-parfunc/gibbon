@@ -122,7 +122,7 @@ run_tests_packed: answers
 	$(MAKE) run_tests RUN_MODE="--run" TREECARGS="$(TREECARGS) --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
 
 
-INTERP_FAILING = test06b_case.sexp test06_case.sexp test06c_nested.sexp \
+INTERP2_FAILING = test06b_case.sexp test06_case.sexp test06c_nested.sexp \
      test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
   test06h_rec.sexp test06i_casecase.sexp test11b_fundata.sexp test11c_funrec.sexp \
   test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp  \
@@ -138,12 +138,18 @@ test11_fundata.sexp test10_desugar.sexp test10b_desugar.sexp test09_recur.sexp t
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: answers
-	$(MAKE) run_tests RUN_MODE="--interp2"  FAILING_TESTS="$(INTERP_FAILING)" EXTRA_SUFFIX=".intrp"
+	$(MAKE) run_tests RUN_MODE="--interp2"  FAILING_TESTS="$(INTERP2_FAILING)" EXTRA_SUFFIX=".intrp"
+
+
+INTERP1_FAILING = 
+
+run_tests_interp1: answers
+	$(MAKE) run_tests RUN_MODE="--interp1"  FAILING_TESTS="$(INTERP1_FAILING)" EXTRA_SUFFIX=".intrp"
 
 
 # --------------------------------------------------------------------------------
 
-ANSWERS= $(INTERP_TESTS:.sexp=.ans) $(PASSING_TESTS:.sexp=.ans) $(PACKED_TESTS:.sexp=.ans)
+ANSWERS= $(INTERP2_TESTS:.sexp=.ans) $(PASSING_TESTS:.sexp=.ans) $(PACKED_TESTS:.sexp=.ans)
 
 %.ans : %.sexp
 	racket $^ | tee $@

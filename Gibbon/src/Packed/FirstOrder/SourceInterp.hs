@@ -13,21 +13,28 @@ import Packed.FirstOrder.Common
 import GHC.Generics    
 import Text.PrettyPrint.GenericPretty
 
+-- TODO:
+-- It's a SUPERSET, but use the Value type from TargetInterp anyway:
+-- Actually, we should merge these into one type with a simple extension story.
+-- import Packed.FirstOrder.TargetInterp (Val(..), applyPrim)
+
+------------------------------------------------------------
+    
 -- | It's a first order language with simple values.
-data Value a = VInt Int
-             | VBool Bool
+data Value = VInt Int
+           | VBool Bool
 -- FINISH:       | VDict
 -- FINISH:       | VList
-             | VProd [Value a]
-             | VPacked Constr [Value a]
+           | VProd [Value]
+           | VPacked Constr [Value]
   deriving (Read,Show,Eq,Ord,Generic)
 
-type ValEnv a = Map Var (Value a)
+type ValEnv a = Map Var Value
 
 ------------------------------------------------------------
     
 -- | Promote a value to a term that evaluates to it.
-l1FromValue :: Value Exp -> Exp
+l1FromValue :: Value -> Exp
 l1FromValue x =
   case x of
     (VInt y) -> __
@@ -35,22 +42,46 @@ l1FromValue x =
     (VPacked y1 y2) -> __
 
 
-execAndPrint :: Prog -> IO ()
-execAndPrint prg =
-  case interpProg prg of
+execAndPrint :: RunConfig -> Prog -> IO ()
+execAndPrint rc prg =
+  case interpProg rc prg of
    VInt n -> print n
                                                     
-interpProg :: Prog -> Value Exp
-interpProg Prog {ddefs,mainExp=Just e} = interp e
+interpProg :: RunConfig -> Prog -> Value
+interpProg rc Prog {ddefs,mainExp=Just e} = interp e
 
  where
-  interp :: Exp -> Value Exp
+  applyPrim :: Prim -> [Value] -> Value
+  applyPrim p ls =
+   case (p,ls) of
+     (MkTrue,[])  -> VBool True
+     (MkFalse,[]) -> VBool False
+     (AddP,[VInt x, VInt y]) -> VInt (x+y)
+     (SubP,[VInt x, VInt y]) -> VInt (x-y)
+     (MulP,[VInt x, VInt y]) -> VInt (x*y)
+     (EqSymP,[VInt x, VInt y]) -> VBool (x==y)
+     (EqIntP,[VInt x, VInt y]) -> VBool (x==y)
+     ((DictInsertP x1),x2) -> __finishDict
+     ((DictLookupP x1),x2) -> __finishDict
+     ((DictEmptyP x1),x2) -> __finishDict
+     ((ErrorP msg _ty),[]) -> error msg
+     (SizeParam,x2) -> VInt (rcSize rc)
+     oth -> error $ "unhandled prim or wrong number of arguments: "++show oth
+
+  interp :: Exp -> Value
   interp = go M.empty
     where
       go env x =
           case x of
             LitE c    -> VInt c
             VarE v -> env ! v
+
+            PrimAppE p ls  ->
+                let val = applyPrim p (L.map (go env) ls)
+                in val
+--                error $ "unhandled: "++show x
+            ProjE i e -> __proj
+
             AppE v b ->               
               let rand = go env b
                   bod  = __ -- funenv # v
@@ -75,6 +106,21 @@ interpProg Prog {ddefs,mainExp=Just e} = interp e
             --                (VInt c, VInt d) -> VInt $ c+d
             --                _ -> error "L1 interp: type error"
 
+            -- TimeIt e t b -> TimeIt (go e) t b
+                                
+            IfE a b c -> case go env a of
+                           VBool flg -> if flg
+                                        then go env b
+                                        else go env c
+                           oth -> error$ "interp: expected bool, got: "++show oth
+
+--            MapE (v,t,rhs) bod -> MapE (v,t, rhs) (go bod)
+--            FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
+
+                              
+
+-- Misc Helpers
+--------------------------------------------------------------------------------
 
 lookup3 :: (Eq k, Show k, Show a, Show b) =>
            k -> [(k,a,b)] -> (k,a,b)
@@ -84,7 +130,7 @@ lookup3 k ls = go ls
    go ((k1,a1,b1):r)
       | k1 == k   = (k1,a1,b1)
       | otherwise = go r
-                                
+                    
 --------------------------------------------------------------------------------
 
 p1 :: Prog
@@ -93,4 +139,8 @@ p1 = Prog emptyDD  M.empty
          -- IntTy
 
 main :: IO ()
-main = print (interpProg p1)
+main = print (interpProg (RunConfig 1 1 dbgLvl) p1)
+
+
+
+       

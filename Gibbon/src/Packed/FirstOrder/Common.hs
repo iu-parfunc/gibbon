@@ -19,6 +19,9 @@ module Packed.FirstOrder.Common
 
        , LocVar, Env2(..)
 
+         -- * Runtime configuration
+       , RunConfig(..), getRunConfig
+
          -- * Top-level function defs
        , FunDef(..), FunDefs
        , insertFD, fromListFD
@@ -228,7 +231,39 @@ ndoc x = let s = sdoc x in
          if L.length s > 40
          then "\n  " ++ s
          else s
-       
+
+
+----------------------------------------------------------------------------------------------------
+-- Global parameters              
+----------------------------------------------------------------------------------------------------
+
+-- | Runtime configuration for executing interpreters.
+data RunConfig =
+    RunConfig { rcSize  :: Int
+              , rcIters :: Word64
+              , rcDbg   :: Int
+              }
+  
+-- | We currently use the hacky approach of using env vars OR command
+-- line args to set the two universal benchmark params: SIZE and ITERS.
+--
+-- This takes extra, optional command line args [Size, Iters] provided
+-- after the file to process on the command line.  If these are not
+-- present it
+getRunConfig :: [String] -> IO RunConfig
+getRunConfig ls =
+ case ls of   
+   [] -> case L.lookup "SIZE" theEnv of
+           Nothing -> getRunConfig ["1"]
+           Just n  -> getRunConfig [n]
+   [sz] -> case L.lookup "ITERS" theEnv  of
+             Nothing -> getRunConfig [sz,"1"]
+             Just i  -> getRunConfig [sz,i]
+   [sz,iters] ->
+     return $ RunConfig { rcSize=read sz, rcIters=read iters, rcDbg= dbgLvl }
+   _ -> error $ "getRunConfig: too many command line args, expected <size> <iters> at most: "++show ls
+
+            
 ----------------------------------------------------------------------------------------------------
 -- DEBUGGING
 ----------------------------------------------------------------------------------------------------

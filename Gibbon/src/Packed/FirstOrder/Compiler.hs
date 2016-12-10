@@ -195,7 +195,10 @@ configWithArgs = (,) <$> configParser
 compileCmd :: [String] -> IO ()
 compileCmd args = withArgs args $
     do (cfg,files) <- execParser opts
-       mapM_ (compile cfg) files
+       case files of
+         [f] -> compile cfg f
+         _ -> do dbgPrintLn 1 $ "Compiling multiple files:  "++show files
+                 mapM_ (compile cfg) files
   where
     opts = info (helper <*> configWithArgs)
       ( fullDesc
@@ -239,6 +242,12 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                           else error$ "compile: unrecognized file extension: "++
                                   show oth++"  Please specify compile input format."
   (l1,cnt0) <- parser fp
+  
+  when (mode == Interp1) $ do
+      runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
+      SI.execAndPrint runConf l1
+      exitSuccess
+
   let printParse l = dbgPrintLn l $ sdoc l1
   if mode == ToParse
    then do -- dbgPrintLn lvl "Parsed program:"
@@ -268,9 +277,6 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
           _ <- lift $ evaluate $ force y
           lift$ dbgPrintLn 6 $ sdoc y -- Still print if you crank it up.
           return y
-
-    when (mode == Interp1) $
-      error "Early-phase interpreter not implemented yet!"
 
     let outfile = case cfile of
                     Nothing -> (replaceExtension fp ".c")
