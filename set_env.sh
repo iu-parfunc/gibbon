@@ -2,14 +2,13 @@
 
 export TREELANGDIR=`pwd`
 
-# alias tc="stack build && stack exec -- treec"
-
+# A shortcut to make things easier:
 function tc() {
     cur=`pwd`
     cd $TREELANGDIR/Gibbon/
     stack build 
     if [ "$?" == "0" ]; then
-        CMD=`stack exec -- which treec`;
+        CMD=`stack exec -- which gibbon`;
         cd $cur;
         $CMD $@;
     else
@@ -23,7 +22,7 @@ function tc() {
 function tcq() {    
     cur=`pwd`
     cd $TREELANGDIR/Gibbon/
-    CMD=`stack exec -- which treec`
+    CMD=`stack exec -- which gibbon`
     cd $cur
     $CMD $@
 }
