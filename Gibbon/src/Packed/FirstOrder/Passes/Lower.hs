@@ -19,7 +19,7 @@ module Packed.FirstOrder.Passes.Lower
 
 -------------------------------------------------------------------------------
 
-import Data.Char
+
 import Control.Monad
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
@@ -34,10 +34,10 @@ import Data.List as L hiding (tail)
 import Data.Map as M
 import Data.Int (Int64)
 
-import qualified Prelude as P
+
 import Prelude hiding (tail)
 
-import Debug.Trace
+
 
 -------------------------------------------------------------------------------
 

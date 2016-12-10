@@ -34,6 +34,11 @@ l1FromValue x =
     (VProd ls) -> __
     (VPacked y1 y2) -> __
 
+
+execAndPrint :: Prog -> IO ()
+execAndPrint prg =
+  case interpProg prg of
+   VInt n -> print n
                                                     
 interpProg :: Prog -> Value Exp
 interpProg Prog {ddefs,mainExp=Just e} = interp e

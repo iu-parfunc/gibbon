@@ -15,11 +15,11 @@ import Control.Monad
 import Control.Exception
 import qualified Data.Map.Strict as M
 import Data.Maybe (listToMaybe)
-import Data.Int
+
 import Data.Sequence (Seq, ViewL ((:<)), (|>))
 import qualified Data.Sequence as Seq
 import Packed.FirstOrder.Target
-import Packed.FirstOrder.Common ((#))
+-- import Packed.FirstOrder.Common ((#))
 import System.IO.Unsafe
 import GHC.Generics
 import Control.DeepSeq

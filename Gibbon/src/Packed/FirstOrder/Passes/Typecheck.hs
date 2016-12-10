@@ -7,8 +7,8 @@ module Packed.FirstOrder.Passes.Typecheck
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.LTraverse as L2
 import qualified Packed.FirstOrder.L1_Source as L1
-import Data.Maybe
-import qualified Data.Set as S
+
+
 import qualified Data.Map as M
 import Control.Monad.ST
 import Control.Monad
