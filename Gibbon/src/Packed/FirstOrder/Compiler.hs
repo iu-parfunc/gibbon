@@ -242,13 +242,16 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                           else error$ "compile: unrecognized file extension: "++
                                   show oth++"  Please specify compile input format."
   (l1,cnt0) <- parser fp
-  
+
+  let printParse l = dbgPrintLn l $ sdoc l1  
   when (mode == Interp1) $ do
       runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
+      dbgPrintLn 2 $ "Running the following through SourceInterp:\n "++sepline
+      printParse 2
+                 
       SI.execAndPrint runConf l1
       exitSuccess
 
-  let printParse l = dbgPrintLn l $ sdoc l1
   if mode == ToParse
    then do -- dbgPrintLn lvl "Parsed program:"
            -- dbgPrintLn l sepline
