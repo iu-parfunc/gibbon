@@ -32,7 +32,7 @@ data Value = VInt Int
 type ValEnv a = Map Var Value
 
 ------------------------------------------------------------
-    
+{-    
 -- | Promote a value to a term that evaluates to it.
 l1FromValue :: Value -> Exp
 l1FromValue x =
@@ -40,13 +40,16 @@ l1FromValue x =
     (VInt y) -> __
     (VProd ls) -> __
     (VPacked y1 y2) -> __
-
+-}
 
 execAndPrint :: RunConfig -> Prog -> IO ()
 execAndPrint rc prg =
   case interpProg rc prg of
-   VInt n -> print n
-                                                    
+   VInt n  -> print n
+   VBool b -> putStrLn $ if b then "true" else "false"
+--   VProd 
+   
+                                                  
 interpProg :: RunConfig -> Prog -> Value
 interpProg rc Prog {ddefs,mainExp=Just e} = interp e
 

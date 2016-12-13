@@ -1,4 +1,4 @@
-#lang s-exp "../../../Gibbon/treelang.rkt"
+#lang s-exp "../../../Gibbon/gibbon.rkt"
 
 (require "../../grammar_racket.sexp")
 (provide subst)

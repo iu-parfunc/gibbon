@@ -178,7 +178,7 @@ run_valgrind: $(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).valgrind)
 
 
 treelang_lib:
-	raco make -v ../treelang.rkt 
+	raco make -v ../gibbon.rkt 
 
 clean:
 	rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp*

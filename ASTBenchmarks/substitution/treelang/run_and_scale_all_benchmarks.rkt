@@ -1,7 +1,7 @@
 #! /usr/bin/env racket
 #lang typed/racket
 
-(require "./subst_treelang.rkt"
+(require "./subst_gibbon.rkt"
          "../../common/racket/command_line_runner.rkt"
          "../../grammar_racket.sexp")
 

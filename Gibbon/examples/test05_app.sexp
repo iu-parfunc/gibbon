@@ -1,4 +1,4 @@
-#lang s-exp "../treelang.rkt"
+#lang s-exp "../gibbon.rkt"
 
 (define (id [x : Int]) : Int
   x)

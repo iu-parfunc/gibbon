@@ -1,3 +1,3 @@
-#lang s-exp "../treelang.rkt"
+#lang s-exp "../gibbon.rkt"
 
 (+ (* 3 4) (- 8 9))

@@ -1,4 +1,4 @@
-#lang s-exp "../../Gibbon/treelang.rkt"
+#lang s-exp "../../Gibbon/gibbon.rkt"
 
 (provide (all-defined-out))
 ; (provide Leaf Leaf? Node Node?  Int pointCorrelation pointCorrelation_v2)
