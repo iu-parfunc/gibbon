@@ -3,8 +3,15 @@ default:
 	rm -f *.err
 	$(MAKE) test
 
-test: answers
-# Sequentialize these, they stomp on *.out:
+ALL_TESTS= $(shell ls test*.sexp)
+ANSWERS= $(ALL_TESTS:.sexp=.ans) 
+# ANSWERS= $(INTERP1_TESTS:.sexp=.ans) $(INTERP2_TESTS:.sexp=.ans) $(PASSING_TESTS:.sexp=.ans) $(PACKED_TESTS:.sexp=.ans)
+
+
+test: 
+# Having weird trouble with race conditons on answers:
+	$(MAKE) answers
+	wc -l $(ANSWERS)
 	@echo "Answers available, now proceeding..."
 	$(MAKE) parse_all
 	$(MAKE) run_tests 
@@ -48,7 +55,6 @@ parse_all: build
 	rm -f *.parsed
 	$(MAKE) all_parsed
 
-ALL_TESTS= $(shell ls test*.sexp)
 
 all_parsed:  $(ALL_TESTS:.sexp=.parsed)
 
@@ -84,8 +90,8 @@ EXE_FILES=$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).exe)
 
 # Run the tests that work:
 run_tests: build
-	@echo "\n Compiling and running tests through our compiler:"
-	@echo "--------------------------------------------------"
+	@echo "\n Compiling and running tests through our compiler ($(EXTRA_SUFFIX)):"
+	@echo "------------------------------------------------------------------"
 	@echo "Running test set: "$(PASSING_TESTS)
 	rm -f $(OUT_FILES)
 	$(MAKE) all_tests
@@ -150,8 +156,6 @@ run_tests_interp1: answers
 
 
 # --------------------------------------------------------------------------------
-
-ANSWERS= $(INTERP2_TESTS:.sexp=.ans) $(PASSING_TESTS:.sexp=.ans) $(PACKED_TESTS:.sexp=.ans)
 
 %.ans : %.sexp
 	racket $^ | tee $@
