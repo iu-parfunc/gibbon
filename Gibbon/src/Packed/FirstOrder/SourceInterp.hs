@@ -60,7 +60,7 @@ execAndPrint rc prg = print =<< interpProg rc prg
 interpProg :: RunConfig -> Prog -> IO Value
 interpProg _ Prog {mainExp=Nothing} =
     error "SourceInterp: cannot interpret program with no main expression"
-interpProg rc Prog {ddefs,mainExp=Just e} = interp e
+interpProg rc Prog {ddefs,fundefs, mainExp=Just e} = interp e
 
  where
   applyPrim :: Prim -> [Value] -> Value
@@ -89,12 +89,12 @@ interpProg rc Prog {ddefs,mainExp=Just e} = interp e
             VarE v         -> return $ env ! v
             PrimAppE p ls  -> do args <- mapM (go env) ls
                                  return $ applyPrim p args
-            ProjE ix e -> do VProd ls <- go env e
-                             return $ ls !! ix
+            ProjE ix ex -> do VProd ls <- go env ex
+                              return $ ls !! ix
 
-            AppE v b -> do rand <- go env b
-                           let bod  = __ -- funenv # v
-                           go (M.insert v rand env) bod
+            AppE f b -> do rand <- go env b
+                           let FunDef{funArg=(vr,_),funBody}  = fundefs # f
+                           go (M.insert vr rand env) funBody
 
             (CaseE x1 ls1) -> do
                    v <- go env x1
@@ -115,9 +115,6 @@ interpProg rc Prog {ddefs,mainExp=Just e} = interp e
             -- TODO: Should check this against the ddefs.
             (MkPackedE k ls) -> VPacked k <$> mapM (go env) ls
 
-            -- (Add a b) -> case (go env a, go env b) of
-            --                (VInt c, VInt d) -> VInt $ c+d
-            --                _ -> error "L1 interp: type error"
 
             TimeIt bod _ isIter ->
               go env bod -- FINISHME
@@ -133,9 +130,8 @@ interpProg rc Prog {ddefs,mainExp=Just e} = interp e
                                           else go env c
                              oth -> error$ "interp: expected bool, got: "++show oth
 
---            MapE (v,t,rhs) bod -> MapE (v,t, rhs) (go bod)
---            FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
-
+            MapE (v,t,rhs) bod              -> error "SourceInterp: finish MapE"
+            FoldE (v1,t1,r1) (v2,t2,r2) bod -> error "SourceInterp: finish FoldE"
                               
 
 -- Misc Helpers

@@ -1,8 +1,8 @@
 
 # RRN: having problems with my ubuntu 6.10 laptop on LTS 7.  Leaving this
 # at lts 6 for now.  It shouldn't really matter either way.
-# resolver: lts-6.23
-resolver: lts-7.13
+resolver: lts-6.23
+# resolver: lts-7.13
 packages:
 - '.'
 extra-deps:
