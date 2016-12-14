@@ -149,7 +149,7 @@ run_tests_interp2: answers
 
 
 # Populated [2016.12.10]
-INTERP1_FAILING = test07_time.sexp test08c_dict.sexp test08d_sharedict.sexp test09_recur.sexp test11b_fundata.sexp test11c_funrec.sexp test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp test12b_traverse.sexp test12c_traverse.sexp test13b_build.sexp test13_build.sexp test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp test20b_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp test25b_racketcore.sexp
+INTERP1_FAILING = test16_forlist.sexp test17_forfold.sexp test25b_racketcore.sexp
 
 run_tests_interp1: answers
 	$(MAKE) run_tests RUN_MODE="--interp1"  FAILING_TESTS="$(INTERP1_FAILING)" EXTRA_SUFFIX=".intrp1"
