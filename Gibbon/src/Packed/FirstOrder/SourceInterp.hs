@@ -83,7 +83,8 @@ interpProg rc Prog {ddefs,mainExp=Just e} = interp e
                 let val = applyPrim p (L.map (go env) ls)
                 in val
 --                error $ "unhandled: "++show x
-            ProjE i e -> __proj
+            ProjE ix e -> let VProd ls = go env e in
+                          ls !! ix
 
             AppE v b ->               
               let rand = go env b
