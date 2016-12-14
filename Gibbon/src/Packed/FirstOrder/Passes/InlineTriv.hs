@@ -17,7 +17,7 @@ inlineTriv (Prog ddefs funs main) =
     inlineTrivFun (FunDef nam (narg,targ) ty bod) =
       FunDef nam (narg,targ) ty (inlineTrivExp ddefs bod)
 
-inlineTrivExp :: DDefs _ -> Exp -> Exp
+inlineTrivExp :: DDefs a -> Exp -> Exp
 inlineTrivExp _ddefs = go []
   where
 

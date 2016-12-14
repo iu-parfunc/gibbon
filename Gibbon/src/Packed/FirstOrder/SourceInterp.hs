@@ -4,7 +4,7 @@
 --
 -- UNFINISHED / PLACEHOLDER
 
-module Packed.FirstOrder.SourceInterp where
+module Packed.FirstOrder.SourceInterp (execAndPrint, main) where
 
 import Data.List as L 
 import Data.Map as M
@@ -23,13 +23,24 @@ import Text.PrettyPrint.GenericPretty
 -- | It's a first order language with simple values.
 data Value = VInt Int
            | VBool Bool
--- FINISH:       | VDict
+           | VDict (M.Map Value Value)
 -- FINISH:       | VList
            | VProd [Value]
            | VPacked Constr [Value]
-  deriving (Read,Show,Eq,Ord,Generic)
+  deriving (Read,Eq,Ord,Generic)
 
-type ValEnv a = Map Var Value
+instance Out Value
+           
+instance Show Value where                      
+ show v =
+  case v of
+   VInt n   -> show n
+   VBool b  -> if b then "true" else "false"
+   VProd ls -> "("++ concat(intersperse ", " (L.map show ls)) ++")"
+   VPacked k ls -> k ++ show (VProd ls)
+   VDict m      -> show (M.toList m)
+                   
+-- type ValEnv a = Map Var Value
 
 ------------------------------------------------------------
 {-    
@@ -43,80 +54,84 @@ l1FromValue x =
 -}
 
 execAndPrint :: RunConfig -> Prog -> IO ()
-execAndPrint rc prg =
-  case interpProg rc prg of
-   VInt n  -> print n
-   VBool b -> putStrLn $ if b then "true" else "false"
---   VProd 
+execAndPrint rc prg = print =<< interpProg rc prg
    
                                                   
-interpProg :: RunConfig -> Prog -> Value
+interpProg :: RunConfig -> Prog -> IO Value
+interpProg _ Prog {mainExp=Nothing} =
+    error "SourceInterp: cannot interpret program with no main expression"
 interpProg rc Prog {ddefs,mainExp=Just e} = interp e
 
  where
   applyPrim :: Prim -> [Value] -> Value
   applyPrim p ls =
    case (p,ls) of
-     (MkTrue,[])  -> VBool True
-     (MkFalse,[]) -> VBool False
+     (MkTrue,[])             -> VBool True
+     (MkFalse,[])            -> VBool False
      (AddP,[VInt x, VInt y]) -> VInt (x+y)
      (SubP,[VInt x, VInt y]) -> VInt (x-y)
      (MulP,[VInt x, VInt y]) -> VInt (x*y)
      (EqSymP,[VInt x, VInt y]) -> VBool (x==y)
      (EqIntP,[VInt x, VInt y]) -> VBool (x==y)
-     ((DictInsertP x1),x2) -> __finishDict
-     ((DictLookupP x1),x2) -> __finishDict
-     ((DictEmptyP x1),x2) -> __finishDict
+     ((DictInsertP _ty),[VDict mp, key, val]) -> VDict (M.insert key val mp)
+     ((DictLookupP _),[VDict mp, key])        -> mp # key
+     ((DictEmptyP _),[])                      -> VDict M.empty
      ((ErrorP msg _ty),[]) -> error msg
-     (SizeParam,x2) -> VInt (rcSize rc)
+     (SizeParam,[]) -> VInt (rcSize rc)
      oth -> error $ "unhandled prim or wrong number of arguments: "++show oth
 
-  interp :: Exp -> Value
+  interp :: Exp -> IO Value
   interp = go M.empty
     where
       go env x =
           case x of
-            LitE c    -> VInt c
-            VarE v -> env ! v
+            LitE c         -> return $ VInt c
+            VarE v         -> return $ env ! v
+            PrimAppE p ls  -> do args <- mapM (go env) ls
+                                 return $ applyPrim p args
+            ProjE ix e -> do VProd ls <- go env e
+                             return $ ls !! ix
 
-            PrimAppE p ls  ->
-                let val = applyPrim p (L.map (go env) ls)
-                in val
---                error $ "unhandled: "++show x
-            ProjE ix e -> let VProd ls = go env e in
-                          ls !! ix
+            AppE v b -> do rand <- go env b
+                           let bod  = __ -- funenv # v
+                           go (M.insert v rand env) bod
 
-            AppE v b ->               
-              let rand = go env b
-                  bod  = __ -- funenv # v
-              in go (M.insert v rand env) bod
-            (CaseE x1 ls1) -> case go env x1 of
-                               VPacked k ls2 ->
-                                   let (_,vs,rhs) = lookup3 k ls1
-                                       env' = M.union (M.fromList (zip vs ls2))
-                                                env
-                                   in go env' rhs
-                               _ -> error "L1 interp: type error"
-            (LetE (v,_ty,rhs) bod) ->
+            (CaseE x1 ls1) -> do
+                   v <- go env x1
+                   case v of
+                     VPacked k ls2 ->
+                         let (_,vs,rhs) = lookup3 k ls1
+                             env' = M.union (M.fromList (zip vs ls2))
+                                    env
+                         in go env' rhs
+                     _ -> error "L1 interp: type error"
+
+            (LetE (v,_ty,rhs) bod) -> do
+              rhs' <- go env rhs
               let env' = M.insert v rhs' env
-                  rhs' = go env' rhs
-              in go env' bod
+              go env' bod
 
-            (MkProdE ls) -> VProd (L.map (go env) ls) 
+            (MkProdE ls) -> VProd <$> mapM (go env) ls
             -- TODO: Should check this against the ddefs.
-            (MkPackedE k ls) -> VPacked k $ L.map (go env) ls
+            (MkPackedE k ls) -> VPacked k <$> mapM (go env) ls
 
             -- (Add a b) -> case (go env a, go env b) of
             --                (VInt c, VInt d) -> VInt $ c+d
             --                _ -> error "L1 interp: type error"
 
-            -- TimeIt e t b -> TimeIt (go e) t b
+            TimeIt bod _ isIter ->
+              go env bod -- FINISHME
+              -- if isIter then
+              --   __ --rcIters 
+              --  else
+              --   __ -- (go env bod) 
                                 
-            IfE a b c -> case go env a of
-                           VBool flg -> if flg
-                                        then go env b
-                                        else go env c
-                           oth -> error$ "interp: expected bool, got: "++show oth
+            IfE a b c -> do v <- go env a
+                            case v of
+                             VBool flg -> if flg
+                                          then go env b
+                                          else go env c
+                             oth -> error$ "interp: expected bool, got: "++show oth
 
 --            MapE (v,t,rhs) bod -> MapE (v,t, rhs) (go bod)
 --            FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
@@ -143,7 +158,7 @@ p1 = Prog emptyDD  M.empty
          -- IntTy
 
 main :: IO ()
-main = print (interpProg (RunConfig 1 1 dbgLvl) p1)
+main = print =<< interpProg (RunConfig 1 1 dbgLvl) p1
 
 
 
