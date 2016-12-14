@@ -59,13 +59,17 @@ l1FromValue x =
 -}
 
 execAndPrint :: RunConfig -> Prog -> IO ()
-execAndPrint rc prg = print =<< interpProg rc prg
-   
+execAndPrint rc prg = do
+  val <- interpProg rc prg
+  case val of
+    -- Special case: don't print void return:
+    VProd [] -> return () -- FIXME: remove this.
+    _ -> print val   
                                                   
 interpProg :: RunConfig -> Prog -> IO Value
-interpProg _ Prog {mainExp=Nothing} =
-    error "SourceInterp: cannot interpret program with no main expression"
-interpProg rc Prog {ddefs,fundefs, mainExp=Just e} = interp e
+-- Print nothing, return "void"              :
+interpProg _ Prog {mainExp=Nothing} = return $ VProd []
+interpProg rc Prog {fundefs, mainExp=Just e} = interp e
 
  where
   applyPrim :: Prim -> [Value] -> Value

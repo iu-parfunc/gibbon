@@ -101,6 +101,9 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | MkTrue -- ^ Zero argument constructor.
           | MkFalse -- ^ Zero argument constructor.
 
+-- TODO: Need list construction if we're going to have list:
+--          | MkList
+            
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 instance Out Prim
