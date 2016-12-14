@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE BangPatterns #-}
 
 -- | Interpreter for the source language (L1) 
 --
@@ -6,12 +7,15 @@
 
 module Packed.FirstOrder.SourceInterp (execAndPrint, main) where
 
+import Control.Monad
+import Control.DeepSeq
 import Data.List as L 
 import Data.Map as M
 import Packed.FirstOrder.L1_Source
 import Packed.FirstOrder.Common
 import GHC.Generics    
 import Text.PrettyPrint.GenericPretty
+import System.Clock
 
 -- TODO:
 -- It's a SUPERSET, but use the Value type from TargetInterp anyway:
@@ -30,6 +34,7 @@ data Value = VInt Int
   deriving (Read,Eq,Ord,Generic)
 
 instance Out Value
+instance NFData Value    
            
 instance Show Value where                      
  show v =
@@ -83,6 +88,9 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} = interp e
   interp :: Exp -> IO Value
   interp = go M.empty
     where
+      {-# NOINLINE goWrapper #-}
+      goWrapper !_ix env ex = go env ex
+      
       go env x =
           case x of
             LitE c         -> return $ VInt c
@@ -116,12 +124,23 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} = interp e
             (MkPackedE k ls) -> VPacked k <$> mapM (go env) ls
 
 
-            TimeIt bod _ isIter ->
-              go env bod -- FINISHME
-              -- if isIter then
-              --   __ --rcIters 
-              --  else
-              --   __ -- (go env bod) 
+            TimeIt bod _ isIter -> do
+                let iters = if isIter then rcIters rc else 1
+                !_ <- return $! force env
+                st <- getTime clk          
+                val <- foldM (\ _ i -> goWrapper i env bod)
+                              (error "Internal error: this should be unused.")
+                           [1..iters]
+                en <- getTime clk
+                let tm = fromIntegral (toNanoSecs $ diffTimeSpec en st)
+                          / 10e9 :: Double                        
+                if isIter
+                 then do putStrLn $ "ITERS: "++show iters
+                         putStrLn $ "SIZE: " ++show (rcSize rc)
+                         putStrLn $ "BATCHTIME: "++show tm
+                 else putStrLn $ "SELFTIMED: "++show tm
+                return $! val
+              
                                 
             IfE a b c -> do v <- go env a
                             case v of
@@ -134,6 +153,10 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} = interp e
             FoldE (v1,t1,r1) (v2,t2,r2) bod -> error "SourceInterp: finish FoldE"
                               
 
+clk :: Clock
+clk = Monotonic
+
+                                               
 -- Misc Helpers
 --------------------------------------------------------------------------------
 

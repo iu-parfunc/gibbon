@@ -114,8 +114,8 @@ exec _ (ErrT s) =
     error $ "ErrT: " ++ s
 
 exec env (LetTimedT flg bnds rhs bod) = unsafePerformIO $ do
-    let iters = if flg then 1
-                else (error "Implement timed iteration inside the interpreter...")
+    let iters = if flg then (error "Implement timed iteration inside the interpreter...")
+                else 1
     !_ <- return $! force env
     st <- getTime clk          
     vals <- foldM (\ _ i -> execWrapper i env rhs)
