@@ -39,7 +39,7 @@ set -x
 cd $top/Gibbon
 
 # Run compiler unit tests 
-stack --install-ghc test "$STACKARGS"
+stack --allow-different-user --install-ghc test "$STACKARGS"
 
 cd $top/Gibbon/examples
 make test $MKPARARGS
