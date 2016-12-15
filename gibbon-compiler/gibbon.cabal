@@ -79,7 +79,7 @@ library
 -- -XDeriveAnyClass 
     
 executable gibbon
-  hs-source-dirs:      execs
+  hs-source-dirs:      app
   main-is:             Frontend.hs
 
   build-depends:       base,
