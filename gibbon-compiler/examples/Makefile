@@ -158,7 +158,8 @@ run_tests_interp1: answers
 # --------------------------------------------------------------------------------
 
 %.ans : %.sexp
-	racket $^ | tee $@
+	racket $^ > $@ || rm -f $@
+#	racket $^ | tee $@
 
 answers: $(ANSWERS)
 
@@ -182,7 +183,7 @@ run_valgrind: $(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).valgrind)
 
 
 treelang_lib:
-	raco make -v ../gibbon.rkt 
+	raco make -v ../../gibbon/main.rkt 
 
 clean:
 	rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp*

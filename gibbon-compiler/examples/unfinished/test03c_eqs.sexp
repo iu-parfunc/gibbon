@@ -1,4 +1,4 @@
-#lang s-exp "../gibbon.rkt"
+#lang s-exp "../../gibbon/main.rkt"
 
 ;; There are issue with interning here:
 (let ([x : Bool (eq? (quote hi) (quote there))])

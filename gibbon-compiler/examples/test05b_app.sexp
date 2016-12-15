@@ -1,4 +1,4 @@
-#lang s-exp "../gibbon.rkt"
+#lang s-exp "../../gibbon/main.rkt"
 
 (define (dbl [x : Int]) : Int
   (+ x x))

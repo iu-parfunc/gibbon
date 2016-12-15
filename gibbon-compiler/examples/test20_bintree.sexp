@@ -1,6 +1,6 @@
-#lang s-exp "../gibbon.rkt"
+#lang s-exp "../../gibbon/main.rkt"
 
-;; This is redundant with /BintreeBench/treebench_gibbon.rkt
+;; This is redundant with /BintreeBench/treebench_main.rkt
 
 ;; It existed here because it was manually flattened and uniquified.
 

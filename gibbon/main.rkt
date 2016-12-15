@@ -36,7 +36,7 @@
 
 #| Grammar
 
-prog := #lang s-exp "/path/to/gibbon.rkt"
+prog := #lang s-exp "/path/to/main.rkt"
         d ... f ... e
 
 ;; Data definitions:

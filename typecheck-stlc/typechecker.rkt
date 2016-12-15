@@ -1,4 +1,4 @@
-#lang s-exp "../gibbon/gibbon.rkt"
+#lang s-exp "../gibbon/main.rkt"
 
 ;; use structs/data instead of sexp
 (provide typecheck-expr
