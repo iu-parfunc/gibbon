@@ -1,4 +1,4 @@
-#lang s-exp "../../../Gibbon/gibbon.rkt"
+#lang s-exp "../../../gibbon/gibbon.rkt"
 
 (require "../../grammar_racket.sexp" (only-in racket gensym))
 

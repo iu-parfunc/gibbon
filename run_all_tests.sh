@@ -36,12 +36,12 @@ set +x; echo
 echo "  Compiler"
 echo "----------------------------------------"
 set -x
-cd $top/Gibbon
+cd $top/gibbon-compiler
 
 # Run compiler unit tests 
 stack --allow-different-user --install-ghc test "$STACKARGS"
 
-cd $top/Gibbon/examples
+cd $top/gibbon-compiler/examples
 make test $MKPARARGS
 # Turning of -j for now [2016.11.06]
 

@@ -5,7 +5,7 @@ export TREELANGDIR=`pwd`
 # A shortcut to make things easier:
 function tc() {
     cur=`pwd`
-    cd $TREELANGDIR/Gibbon/
+    cd $TREELANGDIR/gibbon-compiler/
     stack build 
     if [ "$?" == "0" ]; then
         CMD=`stack exec -- which gibbon`;
@@ -21,7 +21,7 @@ function tc() {
 # A quick verison that doesn't check for recompile.
 function tcq() {    
     cur=`pwd`
-    cd $TREELANGDIR/Gibbon/
+    cd $TREELANGDIR/gibbon-compiler/
     CMD=`stack exec -- which gibbon`
     cd $cur
     $CMD $@

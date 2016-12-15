@@ -1,4 +1,4 @@
-#lang sweet-exp "./Gibbon/gibbon.rkt"
+#lang sweet-exp "./gibbon/gibbon.rkt"
 
 (require (only-in racket bytes-length))
 ; define x 3
