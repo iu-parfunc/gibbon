@@ -30,8 +30,9 @@ module Packed.FirstOrder.Common
        , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
          -- * Misc
        , (#), fragileZip, sdoc, ndoc
+
          -- * Debugging/logging:
-       , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt
+       , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
        ) where
 
 import Data.Char
@@ -279,10 +280,17 @@ dbgLvl = case L.lookup "DEBUG" theEnv of
        Just ""  -> defaultDbg
        Just "0" -> defaultDbg
        Just s   ->
-         trace (" ! Responding to env Var: DEBUG="++s)$
          case reads s of
-           ((n,_):_) -> n
+           ((n,_):_) ->
+               if n >= minChatLvl
+               then trace (" ! Responding to env Var: DEBUG="++s) n
+               else n
            [] -> error$"Attempt to parse DEBUG env var as Int failed: "++show s
+
+-- | We should not create chatter below this level.  DEBUG=1 is used
+-- for assertions only, not chatter.
+minChatLvl :: Int
+minChatLvl = 2
 
 defaultDbg :: Int
 defaultDbg = 0

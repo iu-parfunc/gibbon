@@ -248,7 +248,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                                   show oth++"  Please specify compile input format."
   (l1,cnt0) <- parser fp
 
-  let printParse l = dbgPrintLn l $ sdoc l1  
+  let printParse l = dbgPrintLn l $ sdoc l1    
   when (mode == Interp1) $ do
       runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
       dbgPrintLn 2 $ "Running the following through SourceInterp:\n "++sepline
@@ -301,6 +301,12 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
         flatten2 = L2.mapMExprs (flattenExp (L1.ddefs l1))
         inline2 :: L2.Prog -> SyM L2.Prog
         inline2 p = return (L2.mapExprs (\_ -> inlineTrivExp (L2.ddefs p)) p)
+    initResult <- if dbgLvl >= 2
+                  then do runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
+                          val <- SI.interpProg runConf l1
+                          dbgPrintLn 2 $ " [eval] Init prog evaluated to: "++show val
+                          return $ Just val
+                  else return Nothing
     str <- evalStateT
              (do l1b <-       pass "freshNames"               freshNames               l1
                  l1c <-       pass "flatten"                  flatten                  l1b
@@ -340,18 +346,19 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                   else do
                    str <- lift (codegenProg l3)
                    -- The C code is long, so put this at a higher level.
-                   lift$ dbgPrintLn 1 $ "Final C codegen: "++show (length str)++" characters."
+                   lift$ dbgPrintLn minChatLvl $ "Final C codegen: "++show (length str)++" characters."
                    lift$ dbgPrintLn 5 sepline
                    lift$ dbgPrintLn 5 str
                    return str)
-              (CompileState {cnt=cnt0, result=Nothing})
+              (CompileState { cnt=cnt0
+                            , result= initResult })
 
     writeFile outfile str
     when (mode == ToExe || mode == RunExe) $ do
       let cmd = cc ++" -std=gnu11 "++optc++" "++" "
                    ++(if warnc then "" else suppress_warnings)
                    ++" "++outfile++" -o "++ exe
-      dbgPrintLn 1 cmd
+      dbgPrintLn minChatLvl cmd
       cd <- system cmd
       case cd of
        ExitFailure n -> error$ "C compiler failed!  Code: "++show n

@@ -6,7 +6,8 @@
 -- UNFINISHED / PLACEHOLDER
 
 module Packed.FirstOrder.SourceInterp
-    ( execAndPrint, Value(..)
+    ( execAndPrint, interpProg
+    , Value(..)
     , main
     ) where
 
@@ -68,7 +69,8 @@ execAndPrint rc prg = do
     -- Special case: don't print void return:
     VProd [] -> return () -- FIXME: remove this.
     _ -> print val   
-                                                  
+
+-- | Interpret a program, including printing timings to the screen.
 interpProg :: RunConfig -> Prog -> IO Value
 -- Print nothing, return "void"              :
 interpProg _ Prog {mainExp=Nothing} = return $ VProd []

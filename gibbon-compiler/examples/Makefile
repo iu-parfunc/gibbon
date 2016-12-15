@@ -43,7 +43,7 @@ racket_invalid: treelang_lib
 
 # ----------------------------------------
 
-TREEC= stack exec -- gibbon
+TREEC= DEBUG=1 stack exec -- gibbon
 
 # Make sure the compiler is built
 build:
