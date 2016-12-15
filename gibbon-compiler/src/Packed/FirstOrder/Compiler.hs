@@ -212,6 +212,11 @@ sepline = replicate 80 '='
 lvl :: Int
 lvl = 3
 
+data CompileState =
+     CompileState { cnt :: Int -- ^ Gensym counter
+                  , result :: Maybe SI.Value -- ^ Result of evaluating output of prior pass, if available.
+                  }
+      
 -- | Compiler entrypoint, given a full configuration and a list of
 -- files to process.
 compile :: Config -> FilePath -> IO ()
@@ -259,24 +264,24 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
    else do
     dbgPrintLn lvl $ "Compiler pipeline starting, parsed program:\n"++sepline
     printParse lvl
-    let pass :: (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
+    let pass :: (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT CompileState IO b
         pass who fn x = do
-          cnt <- get
+          cs@CompileState{cnt} <- get
           _ <- lift $ evaluate $ force x
           let (y,cnt') = runSyM cnt (fn x)
-          put cnt'
+          put cs{cnt=cnt'}
           lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":\n"++sepline
           _ <- lift $ evaluate $ force y
           lift$ dbgPrintLn lvl $ sdoc y
           return y
 
         -- No reason to chatter from passes that are stubbed out anyway:
-        pass' :: (Out b, NFData b) => String -> (a -> SyM b) -> a -> StateT Int IO b
+        pass' :: (Out b, NFData b) => String -> (a -> SyM b) -> a -> StateT CompileState IO b
         pass' who fn x = do
-          cnt <- get
+          cs@CompileState{cnt} <- get
           let (y,cnt') = runSyM cnt (fn x)
           lift$ dbgPrintLn lvl $ "Running pass: " ++who++":\n"++sepline
-          put cnt'
+          put cs{cnt=cnt'}
           _ <- lift $ evaluate $ force y
           lift$ dbgPrintLn 6 $ sdoc y -- Still print if you crank it up.
           return y
@@ -339,7 +344,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                    lift$ dbgPrintLn 5 sepline
                    lift$ dbgPrintLn 5 str
                    return str)
-              cnt0
+              (CompileState {cnt=cnt0, result=Nothing})
 
     writeFile outfile str
     when (mode == ToExe || mode == RunExe) $ do

@@ -5,7 +5,10 @@
 --
 -- UNFINISHED / PLACEHOLDER
 
-module Packed.FirstOrder.SourceInterp (execAndPrint, main) where
+module Packed.FirstOrder.SourceInterp
+    ( execAndPrint, Value(..)
+    , main
+    ) where
 
 import Control.Monad
 import Control.DeepSeq
