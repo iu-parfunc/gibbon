@@ -9,6 +9,8 @@ extra-deps:
 - s-cargot-0.1.1.1
 # - tslogger-0.1.0.0
 # - async-2.0.2
+- system-posix-redirect-1.1.0.1
+
 flags: {}
 extra-package-dbs: []
 

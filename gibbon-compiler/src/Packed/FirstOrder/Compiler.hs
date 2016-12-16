@@ -48,6 +48,8 @@ import System.IO.Error (isDoesNotExistError)
 import System.Process
 import Text.PrettyPrint.GenericPretty
 
+import System.Posix.Redirect (redirectStdout)
+    
 ------------------------------------------------------------
 
 import Data.Set as S hiding (map)
@@ -286,6 +288,20 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
           lift$ dbgPrintLn 6 $ sdoc y -- Still print if you crank it up.
           return y
 
+        -- | Like pass, but also evaluates and checks the result.
+        passE :: String -> (L1.Prog -> SyM L1.Prog) -> L1.Prog -> StateT CompileState IO L1.Prog
+        passE who fn x =
+          do CompileState{result} <- get
+             p2 <- pass who fn x
+             when (dbgLvl >= interpDbgLevel) $ lift $ do
+               let Just res1 = result 
+               runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
+               (_, res2) <- redirectStdout $ SI.interpProg runConf p2
+               unless (res1 == res2) $ 
+                 error $ "After pass "++who++", evaluating the program yielded the wrong answer.\nReceived:  "
+                         ++show res2++"\nExpected:  "++show res1
+             return p2
+
     let outfile = case cfile of
                     Nothing -> (replaceExtension fp ".c")
                     Just f -> f
@@ -301,14 +317,14 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
         flatten2 = L2.mapMExprs (flattenExp (L1.ddefs l1))
         inline2 :: L2.Prog -> SyM L2.Prog
         inline2 p = return (L2.mapExprs (\_ -> inlineTrivExp (L2.ddefs p)) p)
-    initResult <- if dbgLvl >= 2
+    initResult <- if dbgLvl >= interpDbgLevel
                   then do runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
-                          val <- SI.interpProg runConf l1
+                          (_,val) <- redirectStdout $ SI.interpProg runConf l1
                           dbgPrintLn 2 $ " [eval] Init prog evaluated to: "++show val
                           return $ Just val
                   else return Nothing
     str <- evalStateT
-             (do l1b <-       pass "freshNames"               freshNames               l1
+             (do l1b <-       passE "freshNames"               freshNames               l1
                  l1c <-       pass "flatten"                  flatten                  l1b
                  l1d <-       pass "inlineTriv"               (return . inlineTriv)    l1c
                  l2  <-       pass  "inferEffects"            inferEffects             l1d
@@ -370,9 +386,14 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
             ExitSuccess -> return ()
             ExitFailure n -> error$ "Treelang program exited with error code "++ show n
 
-
+-- | The debug level at which we start to call the interpreter on the program during compilation.
+interpDbgLevel :: Int
+interpDbgLevel = 1
+                             
 clearFile :: FilePath -> IO ()
 clearFile fileName = removeFile fileName `catch` handleErr
   where
    handleErr e | isDoesNotExistError e = return ()
                | otherwise = throwIO e
+
+

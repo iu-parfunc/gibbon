@@ -142,7 +142,7 @@ interpProg rc Prog {fundefs, mainExp=Just e} = interp e
                            [1..iters]
                 en <- getTime clk
                 let tm = fromIntegral (toNanoSecs $ diffTimeSpec en st)
-                          / 10e9 :: Double                        
+                          / 10e9 :: Double         
                 if isIter
                  then do putStrLn $ "ITERS: "++show iters
                          putStrLn $ "SIZE: " ++show (rcSize rc)
