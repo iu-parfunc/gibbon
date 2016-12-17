@@ -70,7 +70,7 @@ l1FromValue x =
 execAndPrint :: RunConfig -> Prog -> IO ()
 execAndPrint rc prg = do
   (val,logs) <- interpProg rc prg
-  B.putStrLn logs
+  B.putStr logs
   case val of
     -- Special case: don't print void return:
     VProd [] -> return () -- FIXME: remove this.
@@ -155,10 +155,10 @@ interpProg rc Prog {fundefs, mainExp=Just e} =
                 let tm = fromIntegral (toNanoSecs $ diffTimeSpec en st)
                           / 10e9 :: Double         
                 if isIter
-                 then do tell$ fromString $ "ITERS: "++show iters
-                         tell$ fromString $ "SIZE: " ++show (rcSize rc)
-                         tell$ fromString $ "BATCHTIME: "++show tm
-                 else tell$ fromString $ "SELFTIMED: "++show tm
+                 then do tell$ fromString $ "ITERS: "++show iters       ++"\n"
+                         tell$ fromString $ "SIZE: " ++show (rcSize rc) ++"\n"
+                         tell$ fromString $ "BATCHTIME: "++show tm      ++"\n"
+                 else tell$ fromString $ "SELFTIMED: "++show tm ++"\n"
                 return $! val
               
                                 
