@@ -323,8 +323,8 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                   else return Nothing
     str <- evalStateT
              (do l1b <-       passE "freshNames"               freshNames               l1
-                 l1c <-       pass "flatten"                  flatten                  l1b
-                 l1d <-       pass "inlineTriv"               (return . inlineTriv)    l1c
+                 l1c <-       passE "flatten"                  flatten                  l1b
+                 l1d <-       passE "inlineTriv"               (return . inlineTriv)    l1c
                  l2  <-       pass  "inferEffects"            inferEffects             l1d
                  l2' <-
                      if packed
