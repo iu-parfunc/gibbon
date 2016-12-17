@@ -12,15 +12,20 @@ module Packed.FirstOrder.SourceInterp
     ) where
 
 import Control.Monad
+import Control.Monad.Writer
 import Control.DeepSeq
 import Data.List as L 
 import Data.Map as M
+import qualified Data.ByteString.Lazy.Char8 as B
 import Packed.FirstOrder.L1_Source
 import Packed.FirstOrder.Common
 import GHC.Generics    
 import Text.PrettyPrint.GenericPretty
 import System.Clock
 
+import Blaze.ByteString.Builder (Builder, toLazyByteString)
+import Blaze.ByteString.Builder.Char.Utf8 (fromString)
+    
 -- TODO:
 -- It's a SUPERSET, but use the Value type from TargetInterp anyway:
 -- Actually, we should merge these into one type with a simple extension story.
@@ -49,7 +54,7 @@ instance Show Value where
    VPacked k ls -> k ++ show (VProd ls)
    VDict m      -> show (M.toList m)
                    
--- type ValEnv a = Map Var Value
+type ValEnv = Map Var Value
 
 ------------------------------------------------------------
 {-    
@@ -64,17 +69,22 @@ l1FromValue x =
 
 execAndPrint :: RunConfig -> Prog -> IO ()
 execAndPrint rc prg = do
-  val <- interpProg rc prg
+  (val,logs) <- interpProg rc prg
+  B.putStrLn logs
   case val of
     -- Special case: don't print void return:
     VProd [] -> return () -- FIXME: remove this.
     _ -> print val   
 
+type Log = Builder
+         
 -- | Interpret a program, including printing timings to the screen.
-interpProg :: RunConfig -> Prog -> IO Value
+interpProg :: RunConfig -> Prog -> IO (Value, B.ByteString)
 -- Print nothing, return "void"              :
-interpProg _ Prog {mainExp=Nothing} = return $ VProd []
-interpProg rc Prog {fundefs, mainExp=Just e} = interp e
+interpProg _ Prog {mainExp=Nothing} = return $ (VProd [], B.empty)
+interpProg rc Prog {fundefs, mainExp=Just e} =
+    do (x,logs) <- runWriterT (interp e)
+       return (x, toLazyByteString logs)
 
  where
   applyPrim :: Prim -> [Value] -> Value
@@ -94,12 +104,13 @@ interpProg rc Prog {fundefs, mainExp=Just e} = interp e
      (SizeParam,[]) -> VInt (rcSize rc)
      oth -> error $ "unhandled prim or wrong number of arguments: "++show oth
 
-  interp :: Exp -> IO Value
+  interp :: Exp -> WriterT Log IO Value
   interp = go M.empty
     where
       {-# NOINLINE goWrapper #-}
       goWrapper !_ix env ex = go env ex
       
+      go :: ValEnv -> Exp -> WriterT Log IO Value
       go env x =
           case x of
             LitE c         -> return $ VInt c
@@ -136,18 +147,18 @@ interpProg rc Prog {fundefs, mainExp=Just e} = interp e
             TimeIt bod _ isIter -> do
                 let iters = if isIter then rcIters rc else 1
                 !_ <- return $! force env
-                st <- getTime clk          
+                st <- lift $ getTime clk          
                 val <- foldM (\ _ i -> goWrapper i env bod)
                               (error "Internal error: this should be unused.")
                            [1..iters]
-                en <- getTime clk
+                en <- lift $ getTime clk
                 let tm = fromIntegral (toNanoSecs $ diffTimeSpec en st)
                           / 10e9 :: Double         
                 if isIter
-                 then do putStrLn $ "ITERS: "++show iters
-                         putStrLn $ "SIZE: " ++show (rcSize rc)
-                         putStrLn $ "BATCHTIME: "++show tm
-                 else putStrLn $ "SELFTIMED: "++show tm
+                 then do tell$ fromString $ "ITERS: "++show iters
+                         tell$ fromString $ "SIZE: " ++show (rcSize rc)
+                         tell$ fromString $ "BATCHTIME: "++show tm
+                 else tell$ fromString $ "SELFTIMED: "++show tm
                 return $! val
               
                                 
@@ -158,8 +169,8 @@ interpProg rc Prog {fundefs, mainExp=Just e} = interp e
                                           else go env c
                              oth -> error$ "interp: expected bool, got: "++show oth
 
-            MapE (v,t,rhs) bod              -> error "SourceInterp: finish MapE"
-            FoldE (v1,t1,r1) (v2,t2,r2) bod -> error "SourceInterp: finish FoldE"
+            MapE _ bod    -> error "SourceInterp: finish MapE"
+            FoldE _ _ bod -> error "SourceInterp: finish FoldE"
                               
 
 clk :: Clock
@@ -186,7 +197,7 @@ p1 = Prog emptyDD  M.empty
          -- IntTy
 
 main :: IO ()
-main = print =<< interpProg (RunConfig 1 1 dbgLvl) p1
+main = execAndPrint (RunConfig 1 1 dbgLvl) p1
 
 
 

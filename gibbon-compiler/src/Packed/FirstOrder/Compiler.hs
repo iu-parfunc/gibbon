@@ -48,8 +48,6 @@ import System.IO.Error (isDoesNotExistError)
 import System.Process
 import Text.PrettyPrint.GenericPretty
 
-import System.Posix.Redirect (redirectStdout)
-    
 ------------------------------------------------------------
 
 import Data.Set as S hiding (map)
@@ -296,7 +294,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
              when (dbgLvl >= interpDbgLevel) $ lift $ do
                let Just res1 = result 
                runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
-               (_, res2) <- redirectStdout $ SI.interpProg runConf p2
+               (res2, _stdout) <- SI.interpProg runConf p2
                unless (res1 == res2) $ 
                  error $ "After pass "++who++", evaluating the program yielded the wrong answer.\nReceived:  "
                          ++show res2++"\nExpected:  "++show res1
@@ -319,7 +317,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
         inline2 p = return (L2.mapExprs (\_ -> inlineTrivExp (L2.ddefs p)) p)
     initResult <- if dbgLvl >= interpDbgLevel
                   then do runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
-                          (_,val) <- redirectStdout $ SI.interpProg runConf l1
+                          (val,_stdout) <- SI.interpProg runConf l1
                           dbgPrintLn 2 $ " [eval] Init prog evaluated to: "++show val
                           return $ Just val
                   else return Nothing
