@@ -6,7 +6,7 @@ export TREELANGDIR=`pwd`
 function tc() {
     cur=`pwd`
     cd $TREELANGDIR/gibbon-compiler/
-    stack build 
+    stack --install-ghc build 
     if [ "$?" == "0" ]; then
         CMD=`stack exec -- which gibbon`;
         cd $cur;
