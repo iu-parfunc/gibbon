@@ -10,6 +10,7 @@ ANSWERS= $(ALL_TESTS:.sexp=.ans)
 
 test: 
 # Having weird trouble with race conditons on answers:
+	$(MAKE) prebuild
 	$(MAKE) answers
 	wc -l $(ANSWERS)
 	@echo "Answers available, now proceeding..."
@@ -29,6 +30,9 @@ EXTRA_SUFFIX ?= .ptr
 RUN_MODE     ?= --run
 # Additional args besides RUN_MODE:
 TREECARGS ?= --optc=-g
+
+prebuild:
+	raco make -v $(ALL_TESTS)
 
 #----------------------------------------
 # Test direct Racket execution:
@@ -193,4 +197,4 @@ distclean: clean
 	rm -f *.ans
 	cd error/; rm -f *.ans
 
-.PHONY: run_racket treelang_lib answers run_tests run_tests_interp2 run_tests_packed
+.PHONY: prebuild run_racket treelang_lib answers run_tests run_tests_interp2 run_tests_packed
