@@ -1,4 +1,4 @@
-#lang typed/racket
+#lang typed/racket/base
 
 (provide Int Sym Bool Float SymDict data empty-dict lookup insert delete
          has-key? case
@@ -30,7 +30,9 @@
          racket/unsafe/ops
          typed/racket/unsafe
          racket/flonum
-         (for-syntax racket/syntax syntax/parse))
+         racket/match
+         racket/list
+         (for-syntax racket/syntax syntax/parse racket/base))
 
 ;; add for/list  w/types
 
