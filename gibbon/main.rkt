@@ -241,3 +241,6 @@ lit := int | #t | #f
   [(vector)     (void)]
   [args (error (format "expected 0-2 optional command line arguments <depth> <iters>, got ~a:\n  ~a"
                        (vector-length args) args))])
+
+(module reader syntax/module-reader
+  gibbon)
