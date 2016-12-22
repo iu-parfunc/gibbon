@@ -37,7 +37,7 @@ import Data.Map as M
 import Text.PrettyPrint.GenericPretty
 import Prelude hiding (exp)
 
--- | Chatter level for this module:
+-- | Baseline chatter level for this module:
 lvl :: Int
 lvl = 4
 
@@ -285,7 +285,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                              undilate <$>
                                exp2 (M.insert tmp (CursorTy ()) tenv) isMain (Cursor tmp) scrtE
 
-         dbgTrace 1 (" 3. Case scrutinee "++sdoc scrtE++" alloc free?="++show (allocFree scrtE)) $ return ()
+         dbgTrace 2 (" 3. Case scrutinee "++sdoc scrtE++" alloc free?="++show (allocFree scrtE)) $ return ()
          let mkit e =
               -- Danger: this is an "Exp", but type of this expression
               -- varies based on which mode we're in:
