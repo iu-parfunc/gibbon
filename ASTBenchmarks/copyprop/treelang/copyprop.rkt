@@ -5,22 +5,73 @@
 (provide copyprop)
 
 (define (copyprop [e : Toplvl]) : Toplvl
-  (top e (empty-dict)))
+  (let ([nexpr : Expr (top-pass1 e)])
+    (let ([mut : (SymDict Bool) (top-pass2 nexpr (empty-dict))])
+      (top-pass3 nexpr (empty-dict) mut))))
 
-(define (loop1 [ls : ListToplvl] [env : (SymDict Sym)]) : ListToplvl
+(define (loop1 [ls : ListToplvl]) : ListToplvl
   (case ls
     [(CONSTOPLVL tl ls)
-     (CONSTOPLVL (top tl env) (loop1 ls env))]
+     (CONSTOPLVL (top-pass1 tl) (loop1 ls))]
     [(NULLTOPLVL)
      ls]))
 
-(define (loop2 [ls : ListExpr] [env : (SymDict Sym)]): ListExpr
+(define (loop-begintop [ls : ListTopvlvl] [mut : (SymDict Bool)]) : (SymDict Bool)
+  (case ls
+    [(CONSTOPLVL tl ls)
+     (loop-begintop ls (pass2 tl mut))]
+    [(NULLTOPLVL)
+     mut]))
+
+(define (loop-begintop2 [ls : ListToplvl] [mut : (SymDict Bool)]) : ListToplvl
+  (case ls
+    [(CONSTOPLVL tl ls)
+     (CONSTOPLVL (top-pass3 tl mut) (loop-begintop2 ls mut))]
+    [(NULLTOPLVL)
+     ls]))
+
+;; call pass1 on list of exprs
+(define (loop2 [ls : ListExpr] [env : (SymDict Sym)]) : ListExpr
   (case ls
     [(CONSEXPR e ls)
-     (CONSEXPR (expr e env) (loop2 ls env))]
+     (CONSEXPR (pass1 e env) (loop2 ls env))]
     [(NULLEXPR)
-     ls]))   
+     ls]))
 
+(define (listexpr-pass3 [ls : ListExpr] [env : (SymDict Sym)] [mut : (SymDict Bool)]) : ListExpr
+  (case ls
+    [(CONSEXPR e ls)
+     (CONSEXPR (pass3 e env mut)
+               (listexpr-pass3 ls env mut))]
+    [(NULLEXPR)
+     ls]))
+
+(define (listexpr-pass2 [ls : ListExpr] [mut : (SymDict Bool)]) : (SymDict Bool)
+  (case ls
+    [(CONSEXPR e ls)
+     (listexpr-pass2 ls (pass2 e mut))]
+    [(NULLEXPR)
+     mut]))
+
+(define (caselambda-pass2 [ls : LAMBDACASE] [mut : (SymDict Bool)]) : (SymDict Bool)
+  (case ls
+    [(CONSLAMBDACASE fs le ls)
+     (caselambda-pass2 ls (listexpr-pass2 le mut))]
+    [(NULLLAMBDACASE)
+     mut]))
+
+(define (caselambda-pass3 [ls : LAMBDACASE] [env : (SymDict Sym)] [mut : (SymDict Bool)]) : LAMBDACASE
+  (case ls
+    [(CONSLAMBDACASE fs le ls)
+     (CONSLAMBDACASE fs (listexpr-pass3 le env mut)
+                     (caselambda-pass3 ls env mut))]
+    [(NULLLAMBDACASE)
+     ls]))
+
+;; rename each lambda's params
+;; update params with new names
+;; update body
+;; loop
 (define (loop3 [ls : LAMBDACASE] [env : (SymDict Sym)]) : LAMBDACASE
   (case ls
     [(CONSLAMBDACASE fs le ls)
@@ -31,18 +82,14 @@
     [(NULLLAMBDACASE)
      ls]))
 
-(define (extend-env1 [syms : ListSym] [sym : Sym] [env : (SymDict Sym)]) : (SymDict Sym)
+;; updates 
+(define (lookup-syms [syms : ListSym] [env : (SymDict Sym)]) : ListSym
   (case syms
     [(CONSSYM s rest)
-     (insert env s sym)]
-    [(NULLSYM)
-     env]))
-
-(define (lookup-env1 [syms : ListSym] [env : (SymDict Sym)]) : ListSym
-  (case syms
-    [(CONSSYM s rest)
-     (CONSSYM (lookup env s)
-      (lookup-env1 rest env))]
+     (CONSSYM (if (has-key? env s) 
+                  (lookup env s)
+                  s)
+              (lookup-syms rest env))]
     [(NULLSYM)
      syms]))
 
@@ -60,28 +107,44 @@
     [(NULLSYM)
      ls]))
   
-(define (top [e : Toplvl] [env : (SymDict Sym)]) : Toplvl
+(define (top-pass1 [e : Toplvl]) : Toplvl
   (case e
     [(DefineValues ls e)
-     (DefineValues ls (expr e env))]
+     (DefineValues ls (pass1 e (empty-dict)))]
     [(DefineSyntaxes ls e)
-     (DefineSyntaxes ls (expr e env))]
+     (DefineSyntaxes ls (pass1 e (empty-dict)))]
     [(BeginTop ls)
-     (BeginTop (loop1 ls env))]
+     (BeginTop (loop1 ls))]
     [(Expression e)
-     (Expression (expr e env))]))
+     (Expression (pass1 e (empty-dict)))]))
 
-(define (lookup-env [s : Sym] [env : (SymDict Sym)]) : Sym
-  (lookup env s))
-
-(define (expr [e : Expr] [env : (SymDict Sym)]) : Expr
+(define (top-pass2 [e : Toplvl] [mut : (SymDict Bool)]) : (SymDict Bool)
   (case e
-    ;; Variable references:
+    [(DefineValues ls e)
+     (pass2 e mut)]
+    [(DefineSyntaxes ls e)
+     (pass2 e mut)]
+    [(BeginTop ls)
+     (loop-begintop ls mut)]
+    [(Expression e)
+     (pass2 e mut)]))
+
+(define (top-pass3 [e : Toplvl] [mut : (SymDict Bool)]) : Topvlv
+  (case e
+    [(DefineValues ls e)
+     (DefineValues ls (pass3 e (empty-dict) mut))]
+    [(DefineSyntaxes ls e)
+     (DefineSyntaxes ls (pass3 e (empty-dict) mut))]
+    [(BeginTop ls)
+     (BeginTop (loop-begintop2 ls mut))]))
+
+;; rename variables
+(define (pass1 [e : Expr] [env : (SymDict Sym)]) : Expr
+  (case e
     [(VARREF s)
-     (VARREF
-      (if (has-key? env s)
-          (lookup-env s env)
-	  s))]
+     (VARREF (if (has-key? env s)
+                 (lookup env s)
+                 s))]
     [(Top s)
      e]
     [(VariableReference s)   ; #%variable-reference
@@ -97,34 +160,194 @@
 
     ;; Binding forms:
     [(Lambda formals body)
-     (let ([nenv : (SymDict Sym) (formals-ee formals env)])
-       (Lambda (formals-update formals nenv)
-       	       (loop2 body nenv)))]
+     (let ([nenv : (SymDict Sym) (formals-ee formals env)]) ;; rename the params
+       (Lambda (formals-update formals nenv) ;; update params with new names
+       	       (loop2 body nenv)))] ;; update body with new names
+
     [(CaseLambda cases)
-     (CaseLambda (loop3 cases env))]
+     (CaseLambda (loop3 cases env))] ;; do the above, but for case lambda
+
     [(LetValues binds body)
-     (let ([nbinds : LVBIND (lvbind-update-rhs binds env)])	
-       (let ([nenv : (SymDict Sym) (lvbind-ee nbinds env)])
-         (LetValues (lvbind-update nbinds nenv)
-       		    (loop2 body nenv))))]
-    [(LetrecValues binds body) ;; anything different here?
-     (let ([nenv : (SymDict Sym) (letrec-lvbind-ee1 binds env)])
-       (let ([nbinds : LVBIND (letrec-lvbind-update binds nenv)])
-         (let ([nenv : (SymDict Sym) (letrec-lvbind-ee2 nbinds nenv)])
-	   (let ([nbinds : LVBIND (letrec-rhs-update nbinds nenv)])
-	     (LetrecValues nbinds (loop2 body nenv))))))]
+     (let ([nenv : (SymDict Sym) (lvbind-rename binds env)])
+       (let ([nbinds : LVBIND (lvbind-update-lhs binds nenv)])
+         (let ([nbinds : LVBIND (lvbind-update-rhs binds env)]) ;; env because not a let*
+           (LetValues nbinds (loop2 body nenv)))))]
+
+    [(LetrecValues binds body) ;; anything different here? one thing
+     (let ([nenv : (SymDict Sym) (lvbind-rename binds env)])
+       (let ([nbinds : LVBIND (lvbind-update-lhs binds nenv)])
+         (let ([nbinds : LVBIND (lvbind-update-rhs binds nenv)]) ;; nenv because recursive.
+           (LetrecValues nbinds (loop2 body nenv)))))]
+
     [(If cond then else)
-     (If (expr cond env) (expr then env) (expr else env))]
+     (If (pass1 cond env) (pass1 then env) (pass1 else env))]
     [(Begin exprs)
      (Begin (loop2 exprs env))]
     [(Begin0 e1 exprs)
-     (Begin0 (expr e1 env) (loop2 exprs env))]
+     (Begin0 (pass1 e1 env) (loop2 exprs env))]
     [(App e1 exprs)  ;; (#%plain-app expr ...+)
-     (App (expr e1 env) (loop2 exprs env))]
+     (App (pass1 e1 env) (loop2 exprs env))]
     [(SetBang s e)
-     (SetBang s (expr e env))]
+     (SetBang s (pass1 e env))]
     [(WithContinuationMark e1 e2 e3)
-     (WithContinuationMark (expr e1 env) (expr e2 env) (expr e3 env))]))
+     (WithContinuationMark (pass1 e1 env) (pass1 e2 env) (pass1 e3 env))]))
+
+;; gather list of mutated variables
+(define (pass2 [e : Expr] [mut : (SymDict Bool)]) : (SymDict Bool)
+  (case e
+    [(VARREF s)
+     mut]
+    [(Top s)
+     mut]
+    [(VariableReference s)   ; #%variable-reference
+     mut]
+    [(VariableReferenceTop s)   ; #%variable-reference (#%top . id)
+     mut]     
+    ;; Leaf forms:
+    [(VariableReferenceNull)     ; (#%variable-reference)
+     mut]
+    [(Quote d) mut]
+    [(QuoteSyntax d) mut]
+    [(QuoteSyntaxLocal d) mut] ;; (quote-syntax datum #:local)
+
+    ;; Binding forms:
+    [(Lambda formals body)
+     (listexpr-pass2 body mut)]
+
+    [(CaseLambda cases)
+     (caselambda-pass2 cases env)]
+
+    [(LetValues binds body)
+     ;; need to look for setbang on rhs
+     (listexpr-pass2 body (lvbind-pass2 binds mut))]
+    
+    [(LetrecValues binds body)
+     (listexpr-pass2 body (lvbind-pass2 binds mut))]
+
+    [(If cond then else)
+     (let ([mut : (SymDict Bool) (pass2 cond mut)])
+       (let ([mut : (SymDict Bool) (pass2 then mut)])
+         (pass2 else mut)))]
+
+    [(Begin exprs)
+     (listexpr-pass2 exprs mut)]
+
+    [(Begin0 e1 exprs)
+     (listexpr-pass2 exprs (pass2 e1 mut))]
+
+    [(App e1 exprs)  ;; (#%plain-app expr ...+)
+     (listexpr-pass2 exprs (pass2 e1 mut))]
+
+    [(SetBang s e)
+     (insert mut s #t)]
+
+    [(WithContinuationMark e1 e2 e3)
+     (let ([mut : (SymDict Bool) (pass2 e1 mut)])
+       (let ([mut : (SymDict Bool) (pass2 e2 mut)])
+         (pass2 e3 mut)))]))
+
+(define (pass3 [e : Expr] [env : (SymDict Sym)] [mut : (SymDict Bool)]) : Expr
+  (case e
+    [(VARREF s)
+     (VARREF (if (has-key? mut s)
+                 s
+                 (if (has-key? env s)
+                     (lookup env s)
+                     s)))]
+    [(Top s)
+     e]
+    [(VariableReference s)   ; #%variable-reference
+     e]
+    [(VariableReferenceTop s)   ; #%variable-reference (#%top . id)
+     e]     
+    ;; Leaf forms:
+    [(VariableReferenceNull)     ; (#%variable-reference)
+     e]
+    [(Quote d) e]
+    [(QuoteSyntax d) e]
+    [(QuoteSyntaxLocal d) e] ;; (quote-syntax datum #:local)
+
+    ;; Binding forms:
+    [(Lambda formals body)
+     (Lambda formals (listexpr-pass3 body env mut))]
+
+    [(CaseLambda cases)
+     (CaseLambda (caselambda-pass3 cases env mut))]
+
+    [(LetValues binds body) 
+     ;; extend environment. 
+     (let ([nenv : (SymDict Sym) (letvalues-extend-env binds env)])
+       (LetValues binds (pass3 body nenv mut)))]
+    
+    [(LetrecValues binds body)
+     (let ([lhs : (SymDict Bool) (list-of-syms)])
+       (let ([nenv : (SymDict Sym) (letrecvalues-extend-env binds lhs env)])
+         (LetrecValues binds (pass3 body nenv mut))))]
+
+    [(If cond then else)
+     (If (pass3 cond env mut)
+         (pass3 then env mut)
+         (pass3 else env mut))]
+
+    [(Begin exprs)
+     (Begin (listexpr-pass3 exprs env mut))]
+
+    [(Begin0 e1 exprs)
+     (Begin0 (pass3 e1 env mut) (listexpr-pass3 exprs env mut))]
+
+    [(App e1 exprs)  ;; (#%plain-app expr ...+)
+     (App (pass3 e1 env mut) (listexpr-pass3 exprs env mut))]
+
+    [(SetBang s e)
+     (SetBang s (pass3 e env mut))]
+
+    [(WithContinuationMark e1 e2 e3)
+     (WithContinuationMark (pass3 e1 env mut)
+                           (pass3 e2 env mut)
+                           (pass3 e3 env mut))]))
+
+(define (list-of-syms [lv : LVBIND]) : (SymDict Bool)
+  (case lv
+    [(CONSLVBIND syms e lv)
+     (insert-syms syms (list-of-syms lv))]
+    [(NULLLVBIND)
+     (empty-dict)]))
+
+(define (insert-syms [ls : ListSym] [syms : (SymDict Bool)]) : (SymDict Bool)
+  (case ls
+    [(CONSSYM s ls)
+     (insert-syms ls (insert syms s #t))]
+    [(NULLSYM)
+     syms]))
+
+(define (letrecvalues-extend-env [lv : LVBIND] [lhs : (SymDict Bool)] [env : (SymDict Sym)]) : (SymDict Sym)
+  (case lv
+    [(CONSLVBIND syms e lv)
+     (letrecvalues-extend-env lv lhs (case e
+                                       [(VARREF s)
+                                        (if (has-key? env s)
+                                            env
+                                            (listsym-extend-env syms s env))]
+                                       [_ env]))]
+    [(NULLLVBIND)
+     env]))
+
+(define (letvalues-extend-env [lv : LVBIND] [env : (SymDict Sym)]) : (SymDict Sym)
+  (case lv
+    [(CONSLVBIND syms e lv)
+     (letvalues-extend-env lv (case e
+                                [(VARREF s)
+                                 (listsym-extend-env syms s env)]
+                                [_ env]))]
+    [(NULLLVBIND)
+     env]))
+
+(define (listsym-extend-env [ls : ListSym] [sym : Sym] [env : (SymDict Sym)]) : (SymDict Sym)
+  (case ls
+    [(CONSSYM s ls)
+     (listsym-extend-env ls sym (insert env s sym))]
+    [(NULLSYM)
+     env]))
 
 ;; gensym formals and extend the env with the mapping
 (define (formals-ee [f : Formals] [env : (SymDict Sym)]) : (SymDict Sym)
@@ -147,64 +370,43 @@
    [(F3 s)
     (F3 (lookup env s))]))
 
-;; gensym let bindings and extend env with new mappings. 2 new mappings for each lvbind
-(define (lvbind-ee [ls : LVBIND] [env : (SymDict Sym)]) : (SymDict Sym)
+;; gensym for a list of syms and insert mappings into environment
+(define (rename-syms [ls : ListSym] [env : (SymDict Sym)]) : (SymDict Sym)
+  (case ls
+    [(CONSSYM s ls)
+     (rename-syms ls (insert env s (gensym)))]
+    [(NULLSYM)
+     env]
+
+(define (lvbind-pass2 [ls : LVBIND] [mut : (SymDict Bool)]) : (SymDict Bool)
   (case ls
     [(CONSLVBIND syms e ls)
-     (lvbind-ee ls (case e
-               	     [(VARREF sym)
-		      (let ([tmp : Sym (gensym)])
-		        (insert (extend-env1 syms tmp env) tmp sym))]
-                     [_ env]))]
+     (lvbind-pass2 ls (pass2 e mut))]
+    [(NULLLVBIND)
+     mut]))
+
+;; gensym let bindings and extend env with new mappings. 
+(define (lvbind-rename [ls : LVBIND] [env : (SymDict Sym)]) : (SymDict Sym)
+  (case ls
+    [(CONSLVBIND syms e ls)
+     (lvbind-rename ls (rename-syms syms env))]
     [(NULLLVBIND)
      env]))
 
-(define (lvbind-update [ls : LVBIND] [env : (SymDict Sym)]) : LVBIND
+;; 
+(define (lvbind-update-lhs [ls : LVBIND] [env : (SymDict Sym)]) : LVBIND
   (case ls
     [(CONSLVBIND syms e ls)
-     (CONSLVBIND (lookup-env1 syms env)
+     (CONSLVBIND (lookup-syms syms env)
                  e ;; what about here?
-		 (lvbind-update ls env))]
+		 (lvbind-update-lhs ls env))]
     [(NULLLVBIND)
      ls]))
 
 (define (lvbind-update-rhs [ls : LVBIND] [env : (SymDict Sym)]) : LVBIND
   (case ls
     [(CONSLVBIND syms e ls)
-     (CONSLVBIND syms (expr e env) (lvbind-update-rhs ls env))]
-    [(NULLLVBIND)
-     ls]))
-
-(define (letrec-lvbind-ee1 [ls : LVBIND] [env : (SymDict Sym)]) : (SymDict Sym)
-  (case ls
-    [(CONSLVBIND syms e ls)
-     (letrec-lvbind-ee1 ls (extend-env1 syms (gensym) env))]
-    [(NULLLVBIND)
-     env]))
-
-(define (letrec-lvbind-update [ls : LVBIND] [env : (SymDict Sym)]) : LVBIND
-  (case ls
-   [(CONSLVBIND syms e ls)
-    (CONSLVBIND (lookup-env1 syms env)
-    		(expr e env)
-		(letrec-lvbind-update ls env))]
-   [(NULLLVBIND)
-    ls]))
-
-(define (letrec-lvbind-ee2 [ls : LVBIND] [env : (SymDict Sym)]) : (SymDict Sym)
-  (case ls
-    [(CONSLVBIND syms e ls)
-     (letrec-lvbind-ee2 ls (case e
-     			     [(VARREF sym)
-			      (extend-env1 syms sym env)]
-			     [_ env]))]
-    [(NULLLVBIND)
-     env]))
-
-(define (letrec-rhs-update [ls : LVBIND] [env : (SymDict Sym)]) : LVBIND
-  (case ls
-    [(CONSLVBIND syms e ls)
-     (CONSLVBIND syms (expr e env) (letrec-rhs-update ls env))]
+     (CONSLVBIND syms (pass1 e env) (lvbind-update-rhs ls env))]
     [(NULLLVBIND)
      ls]))
 
