@@ -25,11 +25,21 @@ import System.Clock
 
 import Blaze.ByteString.Builder (Builder, toLazyByteString)
 import Blaze.ByteString.Builder.Char.Utf8 (fromString)
+
+import System.IO.Unsafe (unsafePerformIO)
     
 -- TODO:
 -- It's a SUPERSET, but use the Value type from TargetInterp anyway:
 -- Actually, we should merge these into one type with a simple extension story.
 -- import Packed.FirstOrder.TargetInterp (Val(..), applyPrim)
+
+------------------------------------------------------------
+
+instance Interp Prog where    
+  interpNoLogs rc p = unsafePerformIO $ show . fst <$> interpProg rc p
+  interpWithStdout rc p = do
+   (v,logs) <- interpProg rc p
+   return (show v, lines (B.unpack logs))
 
 ------------------------------------------------------------
     

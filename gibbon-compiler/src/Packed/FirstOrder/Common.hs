@@ -33,6 +33,7 @@ module Packed.FirstOrder.Common
 
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
+       , Interp(..)
        ) where
 
 import Data.Char
@@ -60,6 +61,19 @@ type LocVar = Var
 varAppend :: Var -> Var -> Var
 varAppend = (++)
 
+--------------------------------------------------------------------------------
+
+-- | Pure Gibbon programs, at any stage of compilation, should always
+-- be evaluatable to a unique value.  The only side effects are timing
+class Interp a where
+  -- | Interpret while ignoring timing constructs, and dropping the
+  -- corresponding output to stdout.
+  interpNoLogs     :: RunConfig -> a -> String
+
+  -- | Interpret and produce a "log" of output lines, as well as a
+  -- final, printed result.
+  interpWithStdout :: RunConfig -> a -> IO (String,[String])
+                  
 --------------------------------------------------------------------------------
 
 -- | A common currency for a two part environment consisting of
