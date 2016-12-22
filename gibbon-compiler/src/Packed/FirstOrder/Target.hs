@@ -140,18 +140,20 @@ data Tail
     | TailCall Var [Triv]
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
--- | For boxed data, we use a distinct storage format for the tag as compared to the packed data.
-pattern BoxedTagTy = IntTy
-
 data Ty
     = IntTy
-    | TagTy -- ^ A single byte / Word8.  Used in PACKED mode.
-    | SymTy -- ^ Symbols used in writing compiler passes.
-            --   It's an alias for Int, an index into a symbol table.
+    | TagTyPacked  -- ^ A single byte / Word8.  Used in PACKED mode.
+    | TagTyBoxed   -- ^ A tag used in the UNPACKED, boxed, pointer-based, graph-of-structs representation.
+                   --   This can usually be the same as TagTy, but needn't necessarily be.
+
+    | SymTy    -- ^ Symbols used in writing compiler passes.
+               --   It's an alias for Int, an index into a symbol table.
     | CursorTy -- ^ A byte-indexing pointer.
 
-    | PtrTy   -- ^ A machine word.  Same as IntTy.  Untyped.
-    | StructPtrTy { fields :: [Ty] } -- ^ A pointer to a struct containing the given fields.
+    | PtrTy   -- ^ A machine word.  Same width as IntTy.  Untyped.
+
+-- TODO: Make Ptrs more type safe like this:      
+--    | StructPtrTy { fields :: [Ty] } -- ^ A pointer to a struct containing the given fields.
 
     | ProdTy [Ty]
     | SymDictTy Ty
@@ -553,9 +555,9 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                     [val,(VarTriv cur)] = rnds
                                 in [ C.BlockStm [cstm| *( $ty:(codegenTy IntTy)  *)($id:cur) = $(codegenTriv val); |]
                                    , C.BlockDecl [cdecl| char* $id:outV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
-                    ReadTag -> let [(tagV,TagTy),(curV,CursorTy)] = bnds
+                    ReadTag -> let [(tagV,TagTyPacked),(curV,CursorTy)] = bnds
                                    [(VarTriv cur)] = rnds
-                               in [ C.BlockDecl [cdecl| $ty:(codegenTy TagTy) $id:tagV = *($id:cur); |]
+                               in [ C.BlockDecl [cdecl| $ty:(codegenTy TagTyPacked) $id:tagV = *($id:cur); |]
                                   , C.BlockDecl [cdecl| char* $id:curV = $id:cur + 1; |] ]
                     ReadInt -> let [(valV,IntTy),(curV,CursorTy)] = bnds
                                    [(VarTriv cur)] = rnds
@@ -580,7 +582,8 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
 codegenTy :: Ty -> C.Type
                   -- ARGH: C-quote won't allow us to use a typedef here, e.g. "IntTy":
 codegenTy IntTy = [cty|long long|] -- Must be consistent IntTy, rts.c
-codegenTy TagTy = [cty|char|]      -- Must be consistent TagTy, rts.c
+codegenTy TagTyPacked = [cty|char|]      -- Must be consistent TagTyPacked, rts.c
+codegenTy TagTyBoxed  = codegenTy IntTy  -- Must be consistent TagTyBoxed, rts.c
 codegenTy SymTy = [cty|long long|] -- Must be consistent SymTy, rts.c
 codegenTy PtrTy = [cty|char*|] -- Hack, this could be void* if we have enough casts. [2016.11.06]
 codegenTy CursorTy = [cty|char*|]
@@ -595,7 +598,9 @@ makeName tys = concatMap makeName' tys ++ "Prod"
 makeName' :: Ty -> String
 makeName' IntTy = "Int64"
 makeName' CursorTy = "Cursor"
-makeName' TagTy = "Tag"
+makeName' TagTyPacked = "Tag"
+-- makeName' TagTyBoxed  = "Btag"
+makeName' TagTyBoxed  = makeName' IntTy
 makeName' PtrTy = "Ptr"
 makeName' (SymDictTy _ty) = "Dict"
 makeName' x = error $ "makeName', not handled: " ++ show x
@@ -613,4 +618,5 @@ assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
 -- | Mutate an existing binding:
 mut :: (C.ToIdent v, C.ToExp e) => C.Type -> v -> e -> C.BlockItem
 mut _t x y = C.BlockStm [cstm| $id:x = $exp:y; |]
+
 
