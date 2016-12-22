@@ -1,0 +1,7 @@
+(Expression (LetrecValues (CONSLVBIND (CONSSYM x (NULLSYM))
+                                      (VARREF y) 
+                          (CONSLVBIND (CONSSYM y (NULLSYM))
+			  	      (VARREF x)
+                          (NULLLVBIND)))
+             (CONSEXPR (VARREF y)
+	     	       (NULLEXPR))))

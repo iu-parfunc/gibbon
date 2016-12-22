@@ -1,0 +1,2 @@
+(Expression (LetValues (CONSLVBIND (CONSSYM x (NULLSYM)) (VARREF z) (NULLLVBIND))
+	      (CONSEXPR (SetBang x (Quote (INTLIT 5))) (CONSEXPR (VARREF x) (NULLEXPR)))))
