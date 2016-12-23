@@ -34,11 +34,52 @@ import Data.List as L hiding (tail)
 import Data.Map as M
 import Data.Int (Int64)
 
-
 import Prelude hiding (tail)
 
+mkUnpackerName :: Constr -> Var
+mkUnpackerName tyCons = "unpack_" ++ tyCons
+
+genDcons :: [L1.Ty] -> Var -> [(T.Ty, T.Triv)] -> SyM T.Tail 
+genDcons (x:xs) tail fields = case x of
+  L2.IntTy             ->  do
+    val  <- gensym "val"
+    T.LetPrimCallT [(val, T.IntTy), (tail, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] 
+      <$> genDcons xs tail (fields ++ [(T.IntTy, T.VarTriv val)])
+      
+  L2.PackedTy tyCons _ -> do
+    ptr  <- gensym "ptr"
+    T.LetCallT [(ptr, T.CursorTy), (tail, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
+      <$> genDcons xs tail (fields ++ [(T.CursorTy, T.VarTriv ptr)]) 
+  _                    -> undefined
+
+genDcons [] tail fields     = do 
+  ptr <- gensym "ptr"
+  return $ T.LetAllocT ptr fields $ T.RetValsT [T.VarTriv ptr, T.VarTriv tail] 
+
+genAlts :: [(Constr,[L1.Ty])] -> Var -> Int64 -> SyM T.Alts 
+genAlts ((_, typs):xs) tail n = do
+  curTail <- genDcons typs tail [] 
+  alts    <- genAlts xs tail (n+1) 
+  case alts of
+    T.IntAlts tags -> return $ T.IntAlts ((n, curTail) : tags)
+    _              -> undefined
+
+genAlts [] _ _                    = return $ T.IntAlts [] 
 
 
+genUnpacker :: DDef L1.Ty -> SyM T.FunDecl    
+genUnpacker DDef{tyName, dataCons} = do
+  p    <- gensym "p"
+  tag  <- gensym "tag"
+  tail <- gensym "tail"
+  alts <- genAlts dataCons tail 0
+  bod  <- return $ T.LetPrimCallT [(tag, T.TagTy), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
+            T.Switch (T.VarTriv p) alts Nothing
+  return T.FunDecl{ T.funName  = (mkUnpackerName tyName),
+                    T.funArgs  = [(p, T.CursorTy)],
+                    T.funRetTy = T.CursorTy,
+                    T.funBody  = bod } 
+                    
 -------------------------------------------------------------------------------
 
 -- | Convert into the target language.  This does not make much of a
@@ -48,9 +89,12 @@ import Prelude hiding (tail)
 -- multiple argument functions.
 lower :: Bool -> L2.Prog -> SyM T.Prog
 lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
-  mn <- case mainExp of
-          Nothing    -> return Nothing
-          Just (x,_) -> (Just . T.PrintExp) <$> tail x
+  mn        <- case mainExp of
+                 Nothing    -> return Nothing
+                 Just (x,_) -> (Just . T.PrintExp) <$> tail x
+--  funs       <- mapM fund (M.elems fundefs) 
+--  unpackers  <- mapM genUnpacker (M.elems ddefs) 
+--  T.Prog <$> pure (funs ++ unpackers) <*> pure mn
   T.Prog <$> mapM fund (M.elems fundefs) <*> pure mn
  where
   fund :: L2.FunDef -> SyM T.FunDecl
