@@ -10,7 +10,6 @@ ANSWERS= $(ALL_TESTS:.sexp=.ans)
 
 test: 
 # Having weird trouble with race conditons on answers:
-	$(MAKE) prebuild
 	$(MAKE) answers
 	wc -l $(ANSWERS)
 	@echo "Answers available, now proceeding..."
@@ -31,6 +30,8 @@ RUN_MODE     ?= --run
 # Additional args besides RUN_MODE:
 TREECARGS ?= --optc=-g
 
+
+# Not necessary, because we build each module before we run it:
 prebuild:
 	raco make -v $(ALL_TESTS)
 
@@ -133,7 +134,7 @@ run_tests_packed: answers
 	$(MAKE) run_tests RUN_MODE="--run" TREECARGS="$(TREECARGS) --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
 
 
-INTERP2_FAILING = test06b_case.sexp test06_case.sexp test06c_nested.sexp \
+INTERP2_FAILING = test06a_two_cases.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp \
      test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
   test06h_rec.sexp test06i_casecase.sexp test11b_fundata.sexp test11c_funrec.sexp \
   test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp  \
@@ -162,6 +163,7 @@ run_tests_interp1: answers
 # --------------------------------------------------------------------------------
 
 %.ans : %.sexp
+	raco make -v $^
 	racket $^ > $@ || rm -f $@
 #	racket $^ | tee $@
 

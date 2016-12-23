@@ -269,7 +269,7 @@ add1_prog = T.Prog [build_tree, add1] (Just (RunRacketCorePass "build_tree" "add
           RetValsT [VarTriv "tout3"]
 
     add1_tail =
-        LetPrimCallT [("ttag",T.TagTy),("t2",T.CursorTy)] ReadTag [VarTriv "t"] $
+        LetPrimCallT [("ttag",T.TagTyPacked),("t2",T.CursorTy)] ReadTag [VarTriv "t"] $
         Switch (VarTriv "ttag")
                (TagAlts [(leafTag,leafCase),
                          (nodeTag,nodeCase)])

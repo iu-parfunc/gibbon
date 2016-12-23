@@ -82,6 +82,7 @@ genUnpacker DDef{tyName, dataCons} = do
                     
 -------------------------------------------------------------------------------
 
+
 -- | Convert into the target language.  This does not make much of a
 -- change, but it checks the changes that have already occurred.
 --
@@ -162,7 +163,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
         alts <- mapM doalt rest
         (_,last') <- doalt last
         return $
-         T.LetPrimCallT [(tagtmp,T.TagTy),(ctmp,T.CursorTy)] T.ReadTag [T.VarTriv scrut] $
+         T.LetPrimCallT [(tagtmp,T.TagTyPacked),(ctmp,T.CursorTy)] T.ReadTag [T.VarTriv scrut] $
           T.Switch (T.VarTriv tagtmp)
                    (T.TagAlts alts)
                    (Just last')
@@ -170,9 +171,9 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     --------------------------------------------------------------------------------
     -- Not-packed, pointer-based codegen
     --------------------------------------------------------------------------------
-    -- In pointer-based representation we don't use `TagTy`, because that's
-    -- causing problems because by default gcc aligns struct fields but we don't
-    -- take that into account in our codegen.
+    -- In pointer-based representation we don't use `TagTyPacked`, because it is
+    -- causing problems.  By default gcc aligns struct fields but we don't
+    -- take that padding into account in our codegen.
     --
     -- If we get here that means we're NOT packing trees on this run:
     -- Thus this operates on BOXED data:
@@ -500,4 +501,5 @@ prim p =
 
     L1.MkTrue  -> error "lower/prim: internal error. MkTrue should not get here."
     L1.MkFalse -> error "lower/prim: internal error. MkFalse should not get here."
+
 

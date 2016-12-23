@@ -273,7 +273,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
     let offered = locToEndVars loc
         matches = S.intersection (S.fromList demand) (S.fromList offered)
 
-    if dbgTrace 1 ("[routeEnds] maybeFulfill, offered "++show offered
+    if dbgTrace 2 ("[routeEnds] maybeFulfill, offered "++show offered
                    ++", demanded "++show demand++", from: "++show ex) $
        S.null matches
      then return (([],demand),ex',loc)

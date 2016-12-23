@@ -294,8 +294,8 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
              when (dbgLvl >= interpDbgLevel) $ lift $ do
                let Just res1 = result 
                runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
-               (res2, _stdout) <- SI.interpProg runConf p2
-               unless (res1 == res2) $ 
+               let res2 = interpNoLogs runConf p2
+               unless (show res1 == res2) $ 
                  error $ "After pass "++who++", evaluating the program yielded the wrong answer.\nReceived:  "
                          ++show res2++"\nExpected:  "++show res1
              return p2

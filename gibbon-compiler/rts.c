@@ -22,7 +22,8 @@
 static long long global_size_param = 1;
 static long long  global_iters_param = 1;
 
-typedef char TagTy;
+typedef char TagTyPacked;  // Must be consistent with codegen in Target.hs
+typedef char TagTyBoxed;   // Must be consistent with codegen in Target.hs
 typedef long long IntTy;
 typedef IntTy SymTy;
 
