@@ -97,10 +97,13 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
   mn        <- case mainExp of
                  Nothing    -> return Nothing
                  Just (x,_) -> (Just . T.PrintExp) <$> tail x
+
 --  funs       <- mapM fund (M.elems fundefs) 
 --  unpackers  <- mapM genUnpacker (M.elems ddefs) 
 --  T.Prog <$> pure (funs ++ unpackers) <*> pure mn
+
   T.Prog <$> mapM fund (M.elems fundefs) <*> pure mn
+
  where
   fund :: L2.FunDef -> SyM T.FunDecl
   fund L2.FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do

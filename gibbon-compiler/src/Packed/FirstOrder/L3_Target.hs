@@ -162,6 +162,8 @@ data Prim
 
     | GetFirstWord -- ^ takes a PtrTy, returns IntTy containing the (first) word pointed to.
 
+    | PrintInt -- ^ Print an integer to stdout.
+
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data FunDecl = FunDecl

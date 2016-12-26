@@ -412,6 +412,10 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     SizeParam -> let [(outV,IntTy)] = bnds in
                                 [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = global_size_param; |] ]
 
+                    PrintInt | [] <- bnds -> let [arg] = rnds in
+                                             [ C.BlockStm [cstm| printf("%lld", $(codegenTriv arg)); |] ]
+
+
                     -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'
 
