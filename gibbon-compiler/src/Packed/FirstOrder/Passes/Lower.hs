@@ -23,8 +23,8 @@ import Control.Monad
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import           Packed.FirstOrder.L1_Source (Exp(..))
-import qualified Packed.FirstOrder.LTraverse as L2
-import           Packed.FirstOrder.LTraverse ( FunDef(..), Prog(..) )
+import qualified Packed.FirstOrder.L2_Traverse as L2
+import           Packed.FirstOrder.L2_Traverse ( FunDef(..), Prog(..) )
 import qualified Packed.FirstOrder.Target as T
 import qualified Packed.FirstOrder.Passes.Cursorize as C
 import Data.Maybe

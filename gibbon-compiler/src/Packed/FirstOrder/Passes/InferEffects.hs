@@ -19,7 +19,7 @@ module Packed.FirstOrder.Passes.InferEffects
 import Control.Monad (when)
 import Control.DeepSeq
 import qualified Packed.FirstOrder.Common as C
-import           Packed.FirstOrder.LTraverse
+import           Packed.FirstOrder.L2_Traverse
 import Packed.FirstOrder.Passes.Flatten (typeExp)
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1

@@ -19,7 +19,7 @@ import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.Common as C
 -- import Packed.FirstOrder.L1_Source (Exp (..))
 import qualified Packed.FirstOrder.L1_Source as L1
-import           Packed.FirstOrder.LTraverse as L2
+import           Packed.FirstOrder.L2_Traverse as L2
 import           Packed.FirstOrder.Passes.InferEffects
 import Packed.FirstOrder.Passes.Cursorize
 import Packed.FirstOrder.Target hiding (Prog (..), Ty (..))
@@ -28,7 +28,7 @@ import qualified Packed.FirstOrder.Target as T
 main :: IO ()
 main = $(defaultMainGenerator)
 
--- Unit test the LTraverse.hs functions:
+-- Unit test the L2_Traverse.hs functions:
 --------------------------------------------------------------------------------
 
 t0 :: Set Effect -> Set Effect

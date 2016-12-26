@@ -11,7 +11,7 @@ module Packed.FirstOrder.Passes.InlinePacked
 import qualified Data.Map as M    
 import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc, lookupDataCon, DDefs)
 import qualified Packed.FirstOrder.L1_Source as L1
-import Packed.FirstOrder.LTraverse as L2
+import Packed.FirstOrder.L2_Traverse as L2
 import Prelude hiding (exp)
 
 -- | This pass gets ready for cursorDirect by pushing tree-creating

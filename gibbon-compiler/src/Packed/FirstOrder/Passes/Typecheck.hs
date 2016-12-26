@@ -5,7 +5,7 @@ module Packed.FirstOrder.Passes.Typecheck
     ) where
 
 import Packed.FirstOrder.Common
-import Packed.FirstOrder.LTraverse as L2
+import Packed.FirstOrder.L2_Traverse as L2
 import qualified Packed.FirstOrder.L1_Source as L1
 
 

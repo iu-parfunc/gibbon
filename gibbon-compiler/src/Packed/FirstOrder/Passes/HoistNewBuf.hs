@@ -10,7 +10,7 @@ module Packed.FirstOrder.Passes.HoistNewBuf
 import qualified Data.List as L
 import Packed.FirstOrder.Common 
 import qualified Packed.FirstOrder.L1_Source as L1
-import Packed.FirstOrder.LTraverse as L2
+import Packed.FirstOrder.L2_Traverse as L2
 import Packed.FirstOrder.Passes.Cursorize as C 
 import Prelude hiding (exp)
 

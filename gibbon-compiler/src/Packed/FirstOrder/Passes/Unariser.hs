@@ -11,7 +11,7 @@ import Data.Maybe
 import qualified Data.Map as M    
 import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc, gensym, fragileZip)
 import qualified Packed.FirstOrder.L1_Source as L1
-import Packed.FirstOrder.LTraverse as L2
+import Packed.FirstOrder.L2_Traverse as L2
 import Prelude hiding (exp)
 
 -- | This pass gets ready for Lower by converting most uses of

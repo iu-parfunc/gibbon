@@ -21,7 +21,7 @@ library
                   Packed.FirstOrder.TargetInterp
                   Packed.FirstOrder.SourceInterp                  
                   Packed.FirstOrder.L1_Source,
-                  Packed.FirstOrder.LTraverse
+                  Packed.FirstOrder.L2_Traverse
                   Packed.FirstOrder.Passes.Cursorize
                   Packed.FirstOrder.Passes.Cursorize2
                   Packed.FirstOrder.Passes.Flatten,

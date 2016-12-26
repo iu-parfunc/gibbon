@@ -21,9 +21,9 @@ import Control.Applicative
 import Control.Exception
 import           Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
-import qualified Packed.FirstOrder.LTraverse as L2
+import qualified Packed.FirstOrder.L2_Traverse as L2
 import           Packed.FirstOrder.L1_Source (Ty1(..),pattern SymTy,mkLets)
-import           Packed.FirstOrder.LTraverse
+import           Packed.FirstOrder.L2_Traverse
     (argtyToLoc, Loc(..), ArrowTy(..), Effect(..), toEndVar, toWitnessVar,
      FunDef(..), Prog(..), Exp(..))
 import           Packed.FirstOrder.Passes.InlinePacked (pattern NamedVal)

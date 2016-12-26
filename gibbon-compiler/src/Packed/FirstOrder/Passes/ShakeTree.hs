@@ -9,7 +9,7 @@ module Packed.FirstOrder.Passes.ShakeTree
 import qualified Data.Map as M    
 import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc)
 import qualified Packed.FirstOrder.L1_Source as L1
-import Packed.FirstOrder.LTraverse as L2
+import Packed.FirstOrder.L2_Traverse as L2
 import Packed.FirstOrder.Passes.Cursorize
 import Prelude hiding (exp)
 import qualified Data.Set as S

@@ -19,9 +19,9 @@ import Control.Applicative
 import Control.DeepSeq
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
-import qualified Packed.FirstOrder.LTraverse as L2
+import qualified Packed.FirstOrder.L2_Traverse as L2
 import           Packed.FirstOrder.L1_Source (Ty1(..),pattern SymTy)
-import           Packed.FirstOrder.LTraverse
+import           Packed.FirstOrder.L2_Traverse
     (argtyToLoc, Loc(..), ArrowTy(..), Effect(..), toEndVar,
      FunDef(..), Prog(..), Exp(..))
 import Data.Maybe

@@ -4,7 +4,7 @@
 module Packed.FirstOrder.Passes.FindWitnesses (findWitnesses) where
 
 import Packed.FirstOrder.Common hiding (FunDef)
-import Packed.FirstOrder.LTraverse as L2
+import Packed.FirstOrder.L2_Traverse as L2
 import qualified Packed.FirstOrder.L1_Source as L1
 -- import Data.List as L hiding (tail)
 import qualified Data.Map as Map
