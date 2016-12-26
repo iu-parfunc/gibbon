@@ -18,7 +18,7 @@ import Data.Maybe (listToMaybe)
 
 import Data.Sequence (Seq, ViewL ((:<)), (|>))
 import qualified Data.Sequence as Seq
-import Packed.FirstOrder.Target
+import Packed.FirstOrder.L3_Target
 -- import Packed.FirstOrder.Common ((#))
 import System.IO.Unsafe
 import GHC.Generics

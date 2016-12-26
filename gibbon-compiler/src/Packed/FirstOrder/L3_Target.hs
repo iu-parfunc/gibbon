@@ -12,7 +12,7 @@
 -- | Defines the target language for first-order L1 language with C code
 -- generator for it.
 
-module Packed.FirstOrder.Target
+module Packed.FirstOrder.L3_Target
     ( Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..),
       Alts(..), Prog(..), MainExp(..),
       codegenProg,

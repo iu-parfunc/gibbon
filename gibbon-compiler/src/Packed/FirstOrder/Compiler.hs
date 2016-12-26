@@ -38,7 +38,7 @@ import Packed.FirstOrder.Passes.HoistNewBuf
 import Packed.FirstOrder.Passes.Typecheck
 
 import qualified Packed.FirstOrder.SExpFrontend as SExp
-import Packed.FirstOrder.Target (codegenProg)
+import Packed.FirstOrder.L3_Target (codegenProg)
 import System.Directory
 import System.Environment
 import System.Exit
