@@ -12,45 +12,41 @@ module Packed.FirstOrder.Compiler
     )
   where
 
-import Control.DeepSeq
-import Control.Exception
-import Control.Monad.State.Strict
-import Options.Applicative
-import Packed.FirstOrder.Common
+import           Control.DeepSeq
+import           Control.Exception
+import           Control.Monad.State.Strict
+import           Data.Set as S hiding (map)
+import           Options.Applicative
+import           Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.HaskellFrontend as HS
-import Packed.FirstOrder.TargetInterp (Val (..), execProg)
-import qualified Packed.FirstOrder.SourceInterp as SI
 import qualified Packed.FirstOrder.L1_Source as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
-
-import Packed.FirstOrder.Passes.InferEffects (inferEffects)
-import Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
-import Packed.FirstOrder.Passes.RouteEnds (routeEnds)
-import Packed.FirstOrder.Passes.Freshen
-import Packed.FirstOrder.Passes.Cursorize
-import Packed.FirstOrder.Passes.Flatten
-import Packed.FirstOrder.Passes.InlineTriv
-import Packed.FirstOrder.Passes.ShakeTree 
-import Packed.FirstOrder.Passes.Lower
-import Packed.FirstOrder.Passes.InlinePacked
-import Packed.FirstOrder.Passes.Unariser
-import Packed.FirstOrder.Passes.HoistNewBuf
-import Packed.FirstOrder.Passes.Typecheck
-
+import           Packed.FirstOrder.Passes.Codegen (codegenProg)
+import           Packed.FirstOrder.Passes.Cursorize
+import           Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
+import           Packed.FirstOrder.Passes.Flatten
+import           Packed.FirstOrder.Passes.Freshen
+import           Packed.FirstOrder.Passes.HoistNewBuf
+import           Packed.FirstOrder.Passes.InferEffects (inferEffects)
+import           Packed.FirstOrder.Passes.InlinePacked
+import           Packed.FirstOrder.Passes.InlineTriv
+import           Packed.FirstOrder.Passes.Lower
+import           Packed.FirstOrder.Passes.RouteEnds (routeEnds)
+import           Packed.FirstOrder.Passes.ShakeTree 
+import           Packed.FirstOrder.Passes.Typecheck
+import           Packed.FirstOrder.Passes.Unariser
 import qualified Packed.FirstOrder.SExpFrontend as SExp
-import Packed.FirstOrder.L3_Target (codegenProg)
-import System.Directory
-import System.Environment
-import System.Exit
-import System.FilePath
-import System.IO
-import System.IO.Error (isDoesNotExistError)
-import System.Process
-import Text.PrettyPrint.GenericPretty
+import qualified Packed.FirstOrder.SourceInterp as SI
+import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
+import           System.Directory
+import           System.Environment
+import           System.Exit
+import           System.FilePath
+import           System.IO
+import           System.IO.Error (isDoesNotExistError)
+import           System.Process
+import           Text.PrettyPrint.GenericPretty
 
-------------------------------------------------------------
-
-import Data.Set as S hiding (map)
 
 ----------------------------------------
 -- PASS STUBS
