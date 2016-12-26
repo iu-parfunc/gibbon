@@ -21,9 +21,9 @@ import qualified Packed.FirstOrder.Common as C
 import qualified Packed.FirstOrder.L1_Source as L1
 import           Packed.FirstOrder.L2_Traverse as L2
 import           Packed.FirstOrder.Passes.InferEffects
-import Packed.FirstOrder.Passes.Cursorize
-import Packed.FirstOrder.Target hiding (Prog (..), Ty (..))
-import qualified Packed.FirstOrder.Target as T
+import           Packed.FirstOrder.Passes.Cursorize
+import           Packed.FirstOrder.L3_Target hiding (Prog (..), Ty (..))
+import qualified Packed.FirstOrder.L3_Target as T
 
 main :: IO ()
 main = $(defaultMainGenerator)
