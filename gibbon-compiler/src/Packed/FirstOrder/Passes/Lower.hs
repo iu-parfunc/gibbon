@@ -19,7 +19,6 @@ module Packed.FirstOrder.Passes.Lower
 
 -------------------------------------------------------------------------------
 
-
 import Control.Monad
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
@@ -36,6 +35,10 @@ import Data.Int (Int64)
 
 import Prelude hiding (tail)
 
+
+-- Generating unpack functions from Packed->Pointer representation:
+-------------------------------------------------------------------------------
+    
 mkUnpackerName :: Constr -> Var
 mkUnpackerName tyCons = "unpack_" ++ tyCons
 
@@ -73,15 +76,16 @@ genUnpacker DDef{tyName, dataCons} = do
   tag  <- gensym "tag"
   tail <- gensym "tail"
   alts <- genAlts dataCons tail 0
-  bod  <- return $ T.LetPrimCallT [(tag, T.TagTy), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
+  bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
             T.Switch (T.VarTriv p) alts Nothing
   return T.FunDecl{ T.funName  = (mkUnpackerName tyName),
                     T.funArgs  = [(p, T.CursorTy)],
                     T.funRetTy = T.CursorTy,
                     T.funBody  = bod } 
                     
--------------------------------------------------------------------------------
 
+-- The compiler pass
+-------------------------------------------------------------------------------a
 
 -- | Convert into the target language.  This does not make much of a
 -- change, but it checks the changes that have already occurred.
@@ -390,6 +394,10 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
     _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex0
 
+
+-- Helpers         
+--------------------------------------------------------------------------------
+         
 -- | View pattern for matching agaist projections of Foo rather than just Foo.
 projOf (ProjE ix e) = let (stk,e') = projOf e in
                       (stk++[ix], e')
