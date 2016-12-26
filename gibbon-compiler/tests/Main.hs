@@ -24,6 +24,7 @@ import           Packed.FirstOrder.Passes.InferEffects
 import           Packed.FirstOrder.Passes.Cursorize
 import           Packed.FirstOrder.L3_Target hiding (Prog (..), Ty (..))
 import qualified Packed.FirstOrder.L3_Target as T
+import           Packed.FirstOrder.Passes.Codegen 
 
 main :: IO ()
 main = $(defaultMainGenerator)
