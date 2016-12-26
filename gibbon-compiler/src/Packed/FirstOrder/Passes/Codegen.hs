@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
+
 {-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE QuasiQuotes        #-}
@@ -9,15 +11,12 @@
 module Packed.FirstOrder.Passes.Codegen
     ( codegenProg ) where
 
-import           Control.DeepSeq
 import           Control.Monad
 import           Data.Bifunctor (first)
 import           Data.Int
 import           Data.Loc -- For SrcLoc
 import           Data.Maybe
 import qualified Data.Set as S
-import           Data.Word (Word8)
-import           GHC.Generics (Generic)
 import           Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty, cunit)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
@@ -25,7 +24,6 @@ import           Packed.FirstOrder.Common hiding (funBody)
 import           Prelude hiding (init)
 import           System.Directory
 import           System.Environment
-import           Text.PrettyPrint.GenericPretty (Out (..))
 import           Text.PrettyPrint.Mainland
 
 import           Packed.FirstOrder.L3_Target
@@ -207,8 +205,9 @@ rewriteReturns tl bnds =
                             vs' = map (++"hack") vs -- FIXME: Gensym
                         in LetCallT (zip vs' ts) f rnds
                             (rewriteReturns (RetValsT (map VarTriv vs')) bnds)
-dummyLoc :: SrcLoc
-dummyLoc = (SrcLoc (Loc (Pos "" 0 0 0) (Pos "" 0 0 0)))
+
+-- dummyLoc :: SrcLoc
+-- dummyLoc = (SrcLoc (Loc (Pos "" 0 0 0) (Pos "" 0 0 0)))
                             
 codegenTriv :: Triv -> C.Exp
 codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
@@ -408,6 +407,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                             $ty:(codegenTy outTy) $id:outV =
                               * (( $ty:(codegenTy outTy) *) $(codegenTriv ptr));
                           |] ]
+                       _ -> error $ "wrong number of return bindings from GetFirstWord: "++show bnds
 
                     SizeParam -> let [(outV,IntTy)] = bnds in
                                 [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = global_size_param; |] ]
