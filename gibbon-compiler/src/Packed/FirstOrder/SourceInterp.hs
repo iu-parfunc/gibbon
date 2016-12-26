@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE BangPatterns #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 -- | Interpreter for the source language (L1) 
 --
@@ -11,22 +12,21 @@ module Packed.FirstOrder.SourceInterp
     , main
     ) where
 
-import Control.Monad
-import Control.Monad.Writer
-import Control.DeepSeq
-import Data.List as L 
-import Data.Map as M
+import           Blaze.ByteString.Builder (Builder, toLazyByteString)
+import           Blaze.ByteString.Builder.Char.Utf8 (fromString)
+import           Control.DeepSeq
+import           Control.Monad
+import           Control.Monad.Writer
 import qualified Data.ByteString.Lazy.Char8 as B
-import Packed.FirstOrder.L1_Source
-import Packed.FirstOrder.Common
-import GHC.Generics    
-import Text.PrettyPrint.GenericPretty
-import System.Clock
-
-import Blaze.ByteString.Builder (Builder, toLazyByteString)
-import Blaze.ByteString.Builder.Char.Utf8 (fromString)
-
-import System.IO.Unsafe (unsafePerformIO)
+import           Data.List as L 
+import           Data.Map as M
+import           GHC.Generics    
+import           Packed.FirstOrder.Common
+import           Packed.FirstOrder.L1_Source
+import qualified Packed.FirstOrder.L2_Traverse as L2
+import           System.Clock
+import           System.IO.Unsafe (unsafePerformIO)
+import           Text.PrettyPrint.GenericPretty
     
 -- TODO:
 -- It's a SUPERSET, but use the Value type from TargetInterp anyway:
@@ -41,6 +41,10 @@ instance Interp Prog where
    (v,logs) <- interpProg rc p
    return (show v, lines (B.unpack logs))
 
+instance Interp L2.Prog where
+  interpNoLogs rc p2     = interpNoLogs     rc (L2.revertToL1 p2)
+  interpWithStdout rc p2 = interpWithStdout rc (L2.revertToL1 p2)
+          
 ------------------------------------------------------------
     
 -- | It's a first order language with simple values.

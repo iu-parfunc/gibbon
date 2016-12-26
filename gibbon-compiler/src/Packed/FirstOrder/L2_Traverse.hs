@@ -4,6 +4,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
@@ -26,6 +27,9 @@ module Packed.FirstOrder.L2_Traverse
     , cursorizeTy1, cursorizeTy2, cursorizeArrty3, cursorizeTy3
     , mapPacked
 
+    -- * Conversion back to L1
+    , revertToL1
+      
     -- * Lattices of abstract locations:
     , Loc(..), LocVar
     , toWitnessVar, isWitnessVar, fromWitnessVar
@@ -514,4 +518,17 @@ mapMExprs fn (Prog dd fundefs mainExp) =
              
     
 --------------------------------------------------------------------------------
+
+-- | Because L2 just adds a bit of metadata and enriched types, it is
+-- possible to strip it back down to L1.
+revertToL1 :: Prog -> L1.Prog
+revertToL1 Prog{ ..} =
+  L1.Prog { L1.ddefs   = fmap (fmap (fmap (const ()))) ddefs
+          , L1.fundefs = M.map go fundefs
+          , L1.mainExp = fmap fst mainExp
+          }
+ where   
+   go FunDef{..} =
+       let ArrowTy{arrIn,arrOut} = funty in 
+       L1.FunDef funname (funarg, stripTyLocs arrIn) (stripTyLocs arrOut) funbod
 
