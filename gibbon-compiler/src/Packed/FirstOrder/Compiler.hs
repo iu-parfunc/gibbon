@@ -287,7 +287,9 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
           return y
 
         -- | Like pass, but also evaluates and checks the result.
-        passE :: String -> (L1.Prog -> SyM L1.Prog) -> L1.Prog -> StateT CompileState IO L1.Prog
+        -- passE :: String -> (L1.Prog -> SyM L1.Prog) -> L1.Prog -> StateT CompileState IO L1.Prog
+        passE :: (NFData p1, NFData p2, Interp p2, Out p2) =>
+                 String -> (p1 -> SyM p2) -> p1 -> StateT CompileState IO p2
         passE who fn x =
           do CompileState{result} <- get
              p2 <- pass who fn x
@@ -325,7 +327,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
              (do l1b <-       passE "freshNames"               freshNames               l1
                  l1c <-       passE "flatten"                  flatten                  l1b
                  l1d <-       passE "inlineTriv"               (return . inlineTriv)    l1c
-                 l2  <-       pass  "inferEffects"            inferEffects             l1d
+                 l2  <-       passE "inferEffects"            inferEffects              l1d
                  l2' <-
                      if packed
                      then do
