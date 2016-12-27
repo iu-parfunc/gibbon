@@ -83,7 +83,7 @@ IntTy dict_lookup_int(dict_item_t *ptr, SymTy key) {
 // These functions must be provided by the code generator.
 void __fn_to_bench(char* in, char* out);
 IntTy __fn_with_file(char *in);
-IntTy __main_expr();
+void __main_expr();
 void __build_tree(IntTy tree_size, char* buffer);
 
 void show_usage()
@@ -155,10 +155,6 @@ void bench(IntTy num_iterations, int tree_size, int buffer_size)
     printf("AVGTIME: %lf\n",    avg(trials, num_iterations));
 }
 
-void run()
-{
-    printf("%lld\n", __main_expr());
-}
 
 int main(int argc, char** argv)
 {
@@ -250,7 +246,7 @@ int main(int argc, char** argv)
       benchFile(filename);
     }
     else 
-        run();
+        __main_expr();
 
     return 0;
 }

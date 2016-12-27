@@ -84,10 +84,18 @@ genUnpacker DDef{tyName, dataCons} = do
                     T.funBody  = bod } 
                     
 
+-- | Modify a Tail to *print* its return value and then 
+addPrintToTail :: L1.Ty -> T.Tail-> SyM T.Tail
+addPrintToTail L1.IntTy tl0 =
+    T.withTail (tl0, T.IntTy) $ \ [trv] ->
+      T.LetPrimCallT [] T.PrintInt [trv] $
+       T.RetValsT [] -- Void return after printing.
+addPrintToTail oth _ = error$ "FINISHME: addPrintToTail needs to handle type "++show oth
+
 -- The compiler pass
 -------------------------------------------------------------------------------a
 
--- | Convert into the target language.  This does not make much of a
+-- | Convert into the target language.  This does not make much of a 
 -- change, but it checks the changes that have already occurred.
 --
 -- The only substantitive conversion here is of tupled arguments to
@@ -96,7 +104,9 @@ lower :: Bool -> L2.Prog -> SyM T.Prog
 lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
   mn        <- case mainExp of
                  Nothing    -> return Nothing
-                 Just (x,_) -> (Just . T.PrintExp) <$> tail x
+                 Just (x,mty) -> (Just . T.PrintExp) <$>
+                                 (addPrintToTail mty =<<
+                                  tail x)
 
 --  funs       <- mapM fund (M.elems fundefs) 
 --  unpackers  <- mapM genUnpacker (M.elems ddefs) 
@@ -443,11 +453,9 @@ mkLetTail (vr,ty,rhs) =
 eliminateProjs :: Var -> [L1.Ty] -> Exp -> SyM ([Var],Exp)
 eliminateProjs vr tys bod =
  dbgTrace 5 (" [lower] eliminating "++show (length tys)++
-             " projections on variable "++show vr++" in expr with types "++show tys++":\n   "++sdoc bod) $
- do
-    tmps <- mapM (\_ -> gensym "pvrtmp") [1.. (length tys)]
-
-
+             " projections on variable "++show vr++" in expr with types "
+                                        ++show tys++":\n   "++sdoc bod) $
+ do tmps <- mapM (\_ -> gensym "pvrtmp") [1.. (length tys)]
     let go _ [] acc =
             -- If there are ANY references left, we are forced to make the products:
             L1.subst vr (MkProdE (L.map VarE tmps)) acc

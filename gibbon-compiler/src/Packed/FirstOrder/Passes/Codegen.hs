@@ -50,7 +50,9 @@ harvestStructTys (Prog funs mtal) =
 
   allTails = (case mtal of
                 Just (PrintExp t) -> [t]
-                _ -> []) ++
+                Just (RunWithRacketFile{}) -> []
+                Just (RunRacketCorePass{}) -> []
+                Nothing -> []) ++
              map funBody funs
 
   -- We may have nested products; this finds everything:
@@ -154,9 +156,9 @@ codegenProg prg@(Prog funs mtal) = do
         case mtal of
           Just (PrintExp t) -> do
             t' <- codegenTail t (codegenTy IntTy)
-            return $ C.FuncDef [cfun| $ty:(codegenTy IntTy) __main_expr() { $items:t' } |] noLoc
+            return $ C.FuncDef [cfun| void __main_expr() { $items:t' } |] noLoc
           _ ->
-            return $ C.FuncDef [cfun| $ty:(codegenTy IntTy) __main_expr() { return 0; } |] noLoc
+            return $ C.FuncDef [cfun| void __main_expr() { return 0; } |] noLoc
 
 codegenFun :: FunDecl -> SyM C.Definition
 codegenFun (FunDecl nam args ty tal) =
@@ -180,11 +182,13 @@ mapAlts :: (Tail->Tail) -> Alts -> Alts
 mapAlts f (TagAlts ls) = TagAlts $ zip (map fst ls) (map (f . snd) ls)
 mapAlts f (IntAlts ls) = IntAlts $ zip (map fst ls) (map (f . snd) ls)
 
+-- | Replace returns with assignments to a given set of destinations.
 rewriteReturns :: Tail -> [(Var,Ty)] -> Tail
 rewriteReturns tl bnds =
  let go x = rewriteReturns x bnds in
  case tl of
    (RetValsT ls) -> AssnValsT [ (v,t,e) | (v,t) <- bnds | e <- ls ]
+
    -- Here we've already rewritten the tail to assign values
    -- somewhere.. and now we want to REREWRITE it?
    (AssnValsT _) -> error$ "rewriteReturns: Internal invariant broken:\n "++sdoc tl
@@ -216,8 +220,11 @@ codegenTriv (TagTriv i) = [cexp| $i |]
 
 codegenTail :: Tail -> C.Type -> SyM [C.BlockItem]
 
+-- Void type:
+codegenTail (RetValsT []) _ty   = return [ C.BlockStm [cstm| return; |] ] 
+-- Single return:
 codegenTail (RetValsT [tr]) _ty = return [ C.BlockStm [cstm| return $(codegenTriv tr); |] ]
-
+-- Multiple return:
 codegenTail (RetValsT ts) ty =
     return $ [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
     where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
@@ -414,7 +421,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
 
                     PrintInt | [] <- bnds -> let [arg] = rnds in
                                              [ C.BlockStm [cstm| printf("%lld", $(codegenTriv arg)); |] ]
-
+                             | otherwise -> error$ "wrong number of return values expected from PrintInt prim: "++show bnds
 
                     -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'

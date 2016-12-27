@@ -8,8 +8,9 @@
 -- generator for it.
 
 module Packed.FirstOrder.L3_Target
-    ( Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..),
-      Alts(..), Prog(..), MainExp(..)
+    ( Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..)
+    , Alts(..), Prog(..), MainExp(..)
+    , withTail
     ) where
 
 import           Control.DeepSeq
@@ -100,15 +101,15 @@ data Tail
     --   Initialize all fields Return PtrTy.
 
 
-    | IfT { tst :: Triv,
+    | IfT { tst  :: Triv,
             con  :: Tail,
             els  :: Tail }
     | ErrT String
 
     | LetTimedT { isIter :: Bool
-                , binds :: [(Var,Ty)]
-                , timed :: Tail
-                , bod :: Tail } -- ^ This is like a one-armed if.  It needs a struct return. 
+                , binds  :: [(Var,Ty)]
+                , timed  :: Tail
+                , bod    :: Tail } -- ^ This is like a one-armed if.  It needs a struct return. 
       
     | Switch Triv Alts (Maybe Tail) -- TODO: remove maybe on default case
     -- ^ For casing on numeric tags or integers.
@@ -173,3 +174,38 @@ data FunDecl = FunDecl
   , funBody  :: Tail
   } deriving (Show, Ord, Eq, Generic, NFData, Out)
 
+
+-- | Extend the tail of a Tail.  Take the return values from a Tail
+-- expression and do some more computation.
+--
+-- WARNING: presently this may invoke the given function more than
+-- once and duplicate code.
+withTail :: (Tail,Ty) -> ([Triv] -> Tail) -> SyM Tail
+withTail (tl0,retty) fn =
+  let go x = withTail (x,retty) fn in -- ^ Warning: assumes same type.
+  case tl0 of
+    RetValsT ls -> return $ fn ls
+    (ErrT x)    -> return $ ErrT x
+    (AssnValsT _) -> error $ "withTail: expected tail expression returning values, not: "++show tl0
+    (LetCallT { binds, rator, rands, bod })    -> LetCallT binds rator rands    <$> go bod
+    (LetPrimCallT { binds, prim, rands, bod }) -> LetPrimCallT binds prim rands <$> go bod
+    (LetTrivT { bnd, bod })                    -> LetTrivT   bnd                <$> go bod
+    (LetIfT { binds, ife, bod })               -> LetIfT     binds ife          <$> go bod
+    (LetUnpackT { binds, ptr, bod })           -> LetUnpackT binds ptr          <$> go bod
+    (LetAllocT { lhs, vals, bod })             -> LetAllocT  lhs   vals         <$> go bod
+    (LetTimedT { isIter, binds, timed, bod })  -> LetTimedT isIter binds timed  <$> go bod
+
+    -- We could DUPLICATE code in both branches or just let-bind the result instead:
+    (IfT { tst, con, els }) -> IfT tst <$> go con <*> go els
+        -- LetIfT _vr (tst,con,els)  $ fn [VarTriv _vr]
+
+    -- Uh oh, here we don't have a LetSwitch form... duplicate code.
+    (Switch trv alts mlast) -> Switch trv <$> mapAlts go alts <*> sequence (fmap go mlast)
+    (TailCall x1 x2)        -> do bnds <- genTmps retty
+                                  return $ LetCallT bnds x1 x2 $ fn (map (VarTriv . fst) bnds)
+ where
+   mapAlts f (TagAlts ls) = TagAlts <$> sequence [ (tg,) <$> f tl | (tg,tl) <- ls ]
+   mapAlts f (IntAlts ls) = IntAlts <$> sequence [ (tg,) <$> f tl | (tg,tl) <- ls ]
+
+   genTmps (ProdTy ls) = flip zip ls <$> sequence (replicate (length ls) (gensym "tctmp"))
+   genTmps ty          = do t <- gensym "tctmp"; return [(t,ty)]
