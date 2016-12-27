@@ -178,10 +178,6 @@ makeStructs (ts : ts') = d : makeStructs ts'
           decls = zipWith (\t n -> [csdecl| $ty:(codegenTy t) $id:("field"++(show n)); |])
                   ts [0 :: Int ..]
 
-mapAlts :: (Tail->Tail) -> Alts -> Alts
-mapAlts f (TagAlts ls) = TagAlts $ zip (map fst ls) (map (f . snd) ls)
-mapAlts f (IntAlts ls) = IntAlts $ zip (map fst ls) (map (f . snd) ls)
-
 -- | Replace returns with assignments to a given set of destinations.
 rewriteReturns :: Tail -> [(Var,Ty)] -> Tail
 rewriteReturns tl bnds =
@@ -209,7 +205,11 @@ rewriteReturns tl bnds =
                             vs' = map (++"hack") vs -- FIXME: Gensym
                         in LetCallT (zip vs' ts) f rnds
                             (rewriteReturns (RetValsT (map VarTriv vs')) bnds)
+ where
+   mapAlts f (TagAlts ls) = TagAlts $ zip (map fst ls) (map (f . snd) ls)
+   mapAlts f (IntAlts ls) = IntAlts $ zip (map fst ls) (map (f . snd) ls)
 
+                            
 -- dummyLoc :: SrcLoc
 -- dummyLoc = (SrcLoc (Loc (Pos "" 0 0 0) (Pos "" 0 0 0)))
                             
@@ -422,6 +422,9 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                     PrintInt | [] <- bnds -> let [arg] = rnds in
                                              [ C.BlockStm [cstm| printf("%lld", $(codegenTriv arg)); |] ]
                              | otherwise -> error$ "wrong number of return values expected from PrintInt prim: "++show bnds
+
+                    PrintString str | [] <- bnds, [] <- rnds -> [ C.BlockStm [cstm| puts( $string:str ); |] ]
+                                    | otherwise -> error$ "wrong number of args/return values expected from PrintString prim: "++show (rnds,bnds)
 
                     -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'

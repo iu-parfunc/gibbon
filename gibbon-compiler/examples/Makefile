@@ -134,7 +134,7 @@ run_tests_packed: answers
 	$(MAKE) run_tests RUN_MODE="--run" TREECARGS="$(TREECARGS) --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
 
 
-INTERP2_FAILING = test06a_two_cases.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp \
+INTERP2_FAILING = test00b_printBool.sexp test06a_two_cases.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp \
      test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
   test06h_rec.sexp test06i_casecase.sexp test11b_fundata.sexp test11c_funrec.sexp \
   test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp  \

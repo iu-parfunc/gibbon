@@ -34,6 +34,9 @@ module Packed.FirstOrder.Common
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
        , Interp(..)
+
+         -- * Establish conventions for the output of #lang gibbon:
+       , truePrinted, falsePrinted
        ) where
 
 import Data.Char
@@ -330,3 +333,15 @@ dbgTraceIt lvl msg x = dbgTrace lvl (msg++": "++show x) x
 
 dbgPrintLn :: Int -> String -> IO ()
 dbgPrintLn lvl str = dbgPrint lvl (str++"\n")
+
+--------------------------------------------------------------------------------
+
+-- | For now this is designed to match the Racket output of "#lang
+-- gibbon" which itself should change once we implement a custom
+-- printer.
+truePrinted :: String
+truePrinted = "#t"
+-- truePrinted = "true"
+
+falsePrinted :: String
+falsePrinted = "#f"

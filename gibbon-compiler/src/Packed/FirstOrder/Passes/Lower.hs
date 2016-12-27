@@ -90,6 +90,12 @@ addPrintToTail L1.IntTy tl0 =
     T.withTail (tl0, T.IntTy) $ \ [trv] ->
       T.LetPrimCallT [] T.PrintInt [trv] $
        T.RetValsT [] -- Void return after printing.
+
+addPrintToTail L1.BoolTy tl0 =
+    T.withTail (tl0, T.IntTy) $ \ [trv] ->
+      let prnt m = T.LetPrimCallT [] (T.PrintString m) [] (T.RetValsT []) in
+      T.IfT trv (prnt truePrinted) (prnt falsePrinted)
+
 addPrintToTail oth _ = error$ "FINISHME: addPrintToTail needs to handle type "++show oth
 
 -- The compiler pass
@@ -102,11 +108,11 @@ addPrintToTail oth _ = error$ "FINISHME: addPrintToTail needs to handle type "++
 -- multiple argument functions.
 lower :: Bool -> L2.Prog -> SyM T.Prog
 lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
-  mn        <- case mainExp of
-                 Nothing    -> return Nothing
-                 Just (x,mty) -> (Just . T.PrintExp) <$>
-                                 (addPrintToTail mty =<<
-                                  tail x)
+  mn <- case mainExp of
+          Nothing    -> return Nothing
+          Just (x,mty) -> (Just . T.PrintExp) <$>
+                          (addPrintToTail mty =<<
+                           tail x)
 
 --  funs       <- mapM fund (M.elems fundefs) 
 --  unpackers  <- mapM genUnpacker (M.elems ddefs) 

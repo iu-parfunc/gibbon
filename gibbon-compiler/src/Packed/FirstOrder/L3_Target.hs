@@ -9,7 +9,8 @@
 
 module Packed.FirstOrder.L3_Target
     ( Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..)
-    , Alts(..), Prog(..), MainExp(..)
+    , Alts(..), Prog(..), MainExp(..)      
+    -- * Utility functions
     , withTail
     ) where
 
@@ -163,7 +164,9 @@ data Prim
 
     | GetFirstWord -- ^ takes a PtrTy, returns IntTy containing the (first) word pointed to.
 
-    | PrintInt -- ^ Print an integer to stdout.
+    | PrintInt    -- ^ Print an integer to stdout.
+    | PrintString String -- ^ Print a constant string to stdout.
+                         -- TODO: add string values to the language.
 
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
@@ -200,12 +203,12 @@ withTail (tl0,retty) fn =
         -- LetIfT _vr (tst,con,els)  $ fn [VarTriv _vr]
 
     -- Uh oh, here we don't have a LetSwitch form... duplicate code.
-    (Switch trv alts mlast) -> Switch trv <$> mapAlts go alts <*> sequence (fmap go mlast)
+    (Switch trv alts mlast) -> Switch trv <$> mapAltsM go alts <*> sequence (fmap go mlast)
     (TailCall x1 x2)        -> do bnds <- genTmps retty
                                   return $ LetCallT bnds x1 x2 $ fn (map (VarTriv . fst) bnds)
  where
-   mapAlts f (TagAlts ls) = TagAlts <$> sequence [ (tg,) <$> f tl | (tg,tl) <- ls ]
-   mapAlts f (IntAlts ls) = IntAlts <$> sequence [ (tg,) <$> f tl | (tg,tl) <- ls ]
+   mapAltsM f (TagAlts ls) = TagAlts <$> sequence [ (tg,) <$> f tl | (tg,tl) <- ls ]
+   mapAltsM f (IntAlts ls) = IntAlts <$> sequence [ (tg,) <$> f tl | (tg,tl) <- ls ]
 
    genTmps (ProdTy ls) = flip zip ls <$> sequence (replicate (length ls) (gensym "tctmp"))
    genTmps ty          = do t <- gensym "tctmp"; return [(t,ty)]

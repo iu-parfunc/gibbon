@@ -63,7 +63,7 @@ instance Show Value where
  show v =
   case v of
    VInt n   -> show n
-   VBool b  -> if b then "true" else "false"
+   VBool b  -> if b then truePrinted else falsePrinted
    VProd ls -> "("++ concat(intersperse ", " (L.map show ls)) ++")"
    VPacked k ls -> k ++ show (VProd ls)
    VDict m      -> show (M.toList m)
