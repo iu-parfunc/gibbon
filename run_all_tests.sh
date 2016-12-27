@@ -63,6 +63,11 @@ set +x; echo
 echo "  Racket code"
 echo "----------------------------------------"
 set -x
+
+# First the core #lang implementation:
+cd $top/; make racket
+
+# Then misc other code/benchmarks:
 cd $top/ASTBenchmarks/common/racket; make
 cd $top/ASTBenchmarks/substitution/treelang; make
 
