@@ -1,4 +1,4 @@
-#lang s-exp "../../gibbon/main.rkt"
+#lang gibbon
 
 ;; Data type of unknown size.
 (data Nat [Zero] [Suc Nat])

@@ -1,4 +1,4 @@
-#lang s-exp "../../gibbon/main.rkt"
+#lang gibbon
 
 (require "../../ASTBenchmarks/grammar_racket.sexp")
 

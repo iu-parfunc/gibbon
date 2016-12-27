@@ -1,3 +1,3 @@
-#lang s-exp "../../gibbon/main.rkt"
+#lang gibbon
 
 (time (+ 3 4))

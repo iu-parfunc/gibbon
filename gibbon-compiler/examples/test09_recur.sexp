@@ -1,4 +1,4 @@
-#lang s-exp "../../gibbon/main.rkt"
+#lang gibbon
 
 (define (fib [n : Int]) : Int
   (if (= n 2) 1

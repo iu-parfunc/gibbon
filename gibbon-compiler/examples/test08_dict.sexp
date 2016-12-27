@@ -1,4 +1,4 @@
-#lang s-exp "../../gibbon/main.rkt"
+#lang gibbon
 
 (let ([x : (SymDict Int) (ann (empty-dict) (SymDict Int))])
   44)

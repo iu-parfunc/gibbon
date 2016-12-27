@@ -1,4 +1,4 @@
-#lang s-exp "../../gibbon/main.rkt"
+#lang gibbon
 
 (let ([x : Bool (= 3 3)])
   (let ([y : Bool (= 3 4)])

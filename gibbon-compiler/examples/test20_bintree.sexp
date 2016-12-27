@@ -1,4 +1,4 @@
-#lang s-exp "../../gibbon/main.rkt"
+#lang gibbon
 
 ;; This is redundant with /BintreeBench/treebench_main.rkt
 

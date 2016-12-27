@@ -1,4 +1,4 @@
-#lang s-exp "../gibbon/main.rkt"
+#lang gibbon
 
 (provide DefineValues DefineSyntaxes Expression VARREF Lambda
          CaseLambda If Begin Begin0 LetValues LetrecValues SetBang
