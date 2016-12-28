@@ -302,6 +302,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                unless (show res1 == res2) $ 
                  error $ "After pass "++who++", evaluating the program yielded the wrong answer.\nReceived:  "
                          ++show res2++"\nExpected:  "++show res1
+               dbgPrintLn 5 $ " [interp] answer was: "++sdoc res2
              return p2
 
         -- | Wrapper to enable running a pass AND interpreting the result.
@@ -352,7 +353,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                        l2f  <- passE' "flatten"                  flatten2                  l2e
                        l2g  <- passE  "findWitnesses"            findWitnesses             l2f
                        l2h  <- passE  "inlinePacked"             inlinePacked              l2g
-                       l2i  <- pass  "cursorDirect"             cursorDirect              l2h
+                       l2i  <- passE  "cursorDirect"             cursorDirect              l2h
                        l2i' <- pass' "typecheck"                typecheck                l2i
                        l2j  <- pass' "flatten"                  flatten2                  l2i'
                        l2k  <- pass  "findWitnesses"            findWitnesses             l2j
