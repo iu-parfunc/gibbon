@@ -215,8 +215,8 @@ rewriteReturns tl bnds =
                             
 codegenTriv :: Triv -> C.Exp
 codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
-codegenTriv (IntTriv i) = [cexp| $i |]
-codegenTriv (TagTriv i) = [cexp| $i |]
+codegenTriv (IntTriv i) = [cexp| $llint:i |]  -- Must be consistent with codegenTy IntTy
+codegenTriv (TagTriv i) = [cexp| (char)$i |]  -- Must be consistent with codegenTy TagTyPacked
 
 codegenTail :: Tail -> C.Type -> SyM [C.BlockItem]
 
