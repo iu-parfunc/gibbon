@@ -6,4 +6,6 @@
           (+ (fib (- n 1))
              (fib (- n 2))))))
 
-(time (fib 28))
+;; Reducing this for DEBUG=1 execution where we interpret after every pass:
+;; (time (fib 28))
+(time (fib 10))

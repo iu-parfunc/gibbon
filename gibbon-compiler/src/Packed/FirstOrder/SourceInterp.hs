@@ -27,6 +27,9 @@ import qualified Packed.FirstOrder.L2_Traverse as L2
 import           System.Clock
 import           System.IO.Unsafe (unsafePerformIO)
 import           Text.PrettyPrint.GenericPretty
+
+import           Packed.FirstOrder.Passes.InlinePacked(pattern NamedVal)
+
     
 -- TODO:
 -- It's a SUPERSET, but use the Value type from TargetInterp anyway:
@@ -128,7 +131,7 @@ interpProg rc Prog {fundefs, mainExp=Just e} =
       go env x =
           case x of
             LitE c         -> return $ VInt c
-            VarE v         -> return $ env ! v
+            VarE v         -> return $ env # v
             PrimAppE p ls  -> do args <- mapM (go env) ls
                                  return $ applyPrim p args
             ProjE ix ex -> do VProd ls <- go env ex
@@ -147,6 +150,8 @@ interpProg rc Prog {fundefs, mainExp=Just e} =
                                     env
                          in go env' rhs
                      _ -> error "L1 interp: type error"
+
+            NamedVal vr ty e -> go env e
 
             (LetE (v,_ty,rhs) bod) -> do
               rhs' <- go env rhs
