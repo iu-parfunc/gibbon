@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# LANGUAGE NamedFieldPuns        #-}
@@ -212,7 +213,11 @@ data CompileState =
      CompileState { cnt :: Int -- ^ Gensym counter
                   , result :: Maybe SI.Value -- ^ Result of evaluating output of prior pass, if available.
                   }
-      
+
+
+-- type PassRunner = forall a b . (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT CompileState IO b
+type PassRunner a b = (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT CompileState IO b
+     
 -- | Compiler entrypoint, given a full configuration and a list of
 -- files to process.
 compile :: Config -> FilePath -> IO ()
@@ -260,7 +265,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
    else do
     dbgPrintLn lvl $ "Compiler pipeline starting, parsed program:\n"++sepline
     printParse lvl
-    let pass :: (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT CompileState IO b
+    let pass :: PassRunner a b
         pass who fn x = do
           cs@CompileState{cnt} <- get
           _ <- lift $ evaluate $ force x
@@ -272,7 +277,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
           return y
 
         -- No reason to chatter from passes that are stubbed out anyway:
-        pass' :: (Out b, NFData b) => String -> (a -> SyM b) -> a -> StateT CompileState IO b
+        pass' :: PassRunner a b
         pass' who fn x = do
           cs@CompileState{cnt} <- get
           let (y,cnt') = runSyM cnt (fn x)
@@ -284,9 +289,10 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
 
         -- | Like pass, but also evaluates and checks the result.
         -- passE :: String -> (L1.Prog -> SyM L1.Prog) -> L1.Prog -> StateT CompileState IO L1.Prog
-        passE :: (NFData p1, NFData p2, Interp p2, Out p2) =>
-                 String -> (p1 -> SyM p2) -> p1 -> StateT CompileState IO p2
-        passE who fn x =
+
+        wrapInterp :: (NFData p1, NFData p2, Interp p2, Out p2) =>
+                      PassRunner p1 p2 -> String -> (p1 -> SyM p2) -> p1 -> StateT CompileState IO p2
+        wrapInterp pass who fn x =
           do CompileState{result} <- get
              p2 <- pass who fn x
              when (dbgLvl >= interpDbgLevel) $ lift $ do
@@ -298,6 +304,14 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                          ++show res2++"\nExpected:  "++show res1
              return p2
 
+        -- | Wrapper to enable running a pass AND interpreting the result.
+        passE :: Interp p2 => PassRunner p1 p2
+        passE = wrapInterp pass
+
+        -- | Version of 'passE' which does not print the output.
+        passE' :: Interp p2 => PassRunner p1 p2
+        passE' = wrapInterp pass'
+                    
     let outfile = case cfile of
                     Nothing -> (replaceExtension fp ".c")
                     Just f -> f
@@ -328,25 +342,25 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                      if packed
                      then do
                        ---------------- Stubs currently ------------------
-                       mt  <- pass' "findMissingTraversals"    findMissingTraversals    l2
-                       l2b <- pass' "addTraversals"            (addTraversals mt)       l2
-                       l2c <- pass' "addCopies"                addCopies                l2b
-                       l2d <- pass' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
+                       mt  <- pass'  "findMissingTraversals"    findMissingTraversals    l2
+                       l2b <- passE' "addTraversals"            (addTraversals mt)       l2
+                       l2c <- passE' "addCopies"                addCopies                l2b
+                       l2d <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
                        ------------------- End Stubs ---------------------
-                       l2d' <- pass' "typecheck"                typecheck                 l2d
-                       l2e <- pass  "routeEnds"                routeEnds                 l2d'
-                       l2f <- pass' "flatten"                  flatten2                  l2e
-                       l2g <- pass  "findWitnesses"            findWitnesses             l2f
-                       l2h <- pass  "inlinePacked"             inlinePacked              l2g
-                       l2i <- pass  "cursorDirect"             cursorDirect              l2h
+                       l2d' <- passE' "typecheck"                typecheck                 l2d
+                       l2e  <- pass   "routeEnds"                routeEnds                 l2d'
+                       l2f  <- pass' "flatten"                  flatten2                  l2e
+                       l2g  <- pass  "findWitnesses"            findWitnesses             l2f
+                       l2h  <- pass  "inlinePacked"             inlinePacked              l2g
+                       l2i  <- pass  "cursorDirect"             cursorDirect              l2h
                        l2i' <- pass' "typecheck"                typecheck                l2i
-                       l2j <- pass' "flatten"                  flatten2                  l2i'
-                       l2k <- pass  "findWitnesses"            findWitnesses             l2j
+                       l2j  <- pass' "flatten"                  flatten2                  l2i'
+                       l2k  <- pass  "findWitnesses"            findWitnesses             l2j
                               
-                       l2l <- pass' "flatten"                  flatten2                  l2k
-                       l2m <- pass  "inlineTriv"               inline2                   l2l
-                       l2n <- pass  "shakeTree"                shakeTree                 l2m
-                       l2o <- pass  "hoistNewBuf"              hoistNewBuf               l2n
+                       l2l  <- pass' "flatten"                  flatten2                  l2k
+                       l2m  <- pass  "inlineTriv"               inline2                   l2l
+                       l2n  <- pass  "shakeTree"                shakeTree                 l2m
+                       l2o  <- pass  "hoistNewBuf"              hoistNewBuf               l2n
                        return l2o
                      else return l2
                  l2'' <-       pass  "unariser"                 unariser                 l2'
