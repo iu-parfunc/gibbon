@@ -29,11 +29,21 @@ stack --version
 racket --version
 gcc --version
 
+# Set TREELANGDIR:
 source set_env.sh
 
 
 set +x; echo
-echo "  Compiler"
+echo "  Racket code (1/2)"
+echo "----------------------------------------"
+set -x
+
+# First the core #lang implementation:
+cd $top/; make racket
+
+
+set +x; echo
+echo "  Gibbon Compiler"
 echo "----------------------------------------"
 set -x
 cd $top/gibbon-compiler
@@ -60,12 +70,9 @@ make check
 
 
 set +x; echo
-echo "  Racket code"
+echo "  Racket code (2/2)"
 echo "----------------------------------------"
 set -x
-
-# First the core #lang implementation:
-cd $top/; make racket
 
 # Then misc other code/benchmarks:
 cd $top/ASTBenchmarks/common/racket; make

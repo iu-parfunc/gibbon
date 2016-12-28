@@ -10,6 +10,7 @@ subst:
 
 racket: gibbon-lang
 gibbon-lang:
-	raco pkg update --link ./gibbon
+# RRN [2016.12.28] was there a single command that is idempotent?
+	raco pkg install --link ./gibbon || raco pkg update --link ./gibbon
 
 .PHONY: subst deps all racket gibbon-lang
