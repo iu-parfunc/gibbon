@@ -367,7 +367,8 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                  l3   <-       pass  "lower"                    (lower packed)           l2''
 
                  if mode == Interp2
-                  then do mapM_ (\(IntVal v) -> liftIO $ print v) (execProg l3)
+                  then do l3res <- lift $ execProg l3
+                          mapM_ (\(IntVal v) -> liftIO $ print v) l3res
                           liftIO $ exitSuccess
                   else do
                    str <- lift (codegenProg l3)

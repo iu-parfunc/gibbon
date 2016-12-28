@@ -127,7 +127,8 @@ test20b_bintree.sexp test20f_bintree.sexp test25b_racketcore.sexp \
 # test16_forlist.sexp    -- No lists yet
 # test17_forfold.sexp    -- No lists yet
 
-
+# This is the default mode:
+run_tests_pointer: run_tests
 
 # Run the tests that work under the packed regime:
 run_tests_packed: answers

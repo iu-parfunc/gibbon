@@ -12,7 +12,6 @@ module Packed.FirstOrder.TargetInterp
 --------------------------------------------------------------------------------
 
 import Control.Monad
-import Control.Exception
 import qualified Data.Map.Strict as M
 import Data.Maybe (listToMaybe)
 
@@ -20,7 +19,6 @@ import Data.Sequence (Seq, ViewL ((:<)), (|>))
 import qualified Data.Sequence as Seq
 import Packed.FirstOrder.L3_Target
 -- import Packed.FirstOrder.Common ((#))
-import System.IO.Unsafe
 import GHC.Generics
 import Control.DeepSeq
 import Text.PrettyPrint.GenericPretty
@@ -39,7 +37,7 @@ data Val
   deriving (Eq, Show, Generic, NFData)
 
 instance NFData TimeSpec where
-  rnf (TimeSpec !a !b) = ()
+  rnf (TimeSpec !_ !_) = ()
 
 {-           
 instance Out UTCTime where
@@ -48,14 +46,16 @@ instance Out UTCTime where
 -}
 instance Out TimeSpec where
     doc s = text (show s)
-    docPrec n s = text (show s)
+    docPrec _ s = text (show s)
 instance (Out a, Show a) => Out (Seq a) where
     doc s = text (show s)
-    docPrec n s = text (show s)
+    docPrec _ s = text (show s)
 instance Out Val
            
-execProg :: Prog -> [Val]
+execProg :: Prog -> IO [Val]
 execProg (Prog _ Nothing) = error "Can't evaluate program: No expression given"
+execProg (Prog _funs (Just RunWithRacketFile{})) = error $ "TargetInterp/execProg - RunWithRacketFile not handled"
+execProg (Prog _funs (Just RunRacketCorePass{})) = error $ "TargetInterp/execProg - RunRacketCorePass not handled"
 execProg (Prog funs (Just (PrintExp expr))) = exec env expr
   where
     env = M.fromList (map (\f -> (funName f, FunVal f)) funs)
@@ -75,34 +75,32 @@ eval _   (IntTriv i) = IntVal (fromIntegral i) -- TODO: Change L1 to Int64 too.
 eval _   (TagTriv t) = TagVal t
 
 
-exec :: Env -> Tail -> [Val]
+exec :: Env -> Tail -> IO [Val]
 
-exec env (RetValsT ts) = map (eval env) ts
+exec env (RetValsT ts) = return $! map (eval env) ts
 
-exec env (LetTrivT (v,t,rhs) body) = 
+exec env (LetTrivT (v,_t,rhs) body) = 
     exec env' body
   where
     env' = extendEnv env [(v,rhs')]
     rhs' = eval env rhs
                          
-exec env (LetCallT binds op args body) =
+exec env (LetCallT binds op args body) = do
+    rets <- apply env (eval env (VarTriv op)) (map (eval env) args)
+    let env' = extendEnv env (zip (map fst binds) rets)
     exec env' body
-  where
-    rets = apply env (eval env (VarTriv op)) (map (eval env) args)
-    env' = extendEnv env (zip (map fst binds) rets)
 
-exec env (LetPrimCallT binds op args body) =
+exec env (LetPrimCallT binds op args body) = do
+    rets <- applyPrim op (map (eval env) args)
+    let env' = extendEnv env (zip (map fst binds) rets)
     exec env' body
-  where
-    rets = applyPrim op (map (eval env) args)
-    env' = extendEnv env (zip (map fst binds) rets)
 
 exec env (LetIfT bnds (tst,thn,els) bod) =
   do let scrut = eval env tst
-         vals = if scrut == IntVal 1
-                then exec env thn
-                else exec env els
-         env' = extendEnv env (zip (map fst bnds) vals)
+     vals <- if scrut == IntVal 1
+             then exec env thn
+             else exec env els
+     let env' = extendEnv env (zip (map fst bnds) vals)
      exec env' bod
 
 exec env (IfT v1 then_ else_) =
@@ -113,7 +111,7 @@ exec env (IfT v1 then_ else_) =
 exec _ (ErrT s) =
     error $ "ErrT: " ++ s
 
-exec env (LetTimedT flg bnds rhs bod) = unsafePerformIO $ do
+exec env (LetTimedT flg bnds rhs bod) = do
     let iters = if flg then (error "Implement timed iteration inside the interpreter...")
                 else 1
     !_ <- return $! force env
@@ -130,7 +128,7 @@ exec env (LetTimedT flg bnds rhs bod) = unsafePerformIO $ do
              putStrLn $ "SIZE: " ++show (error "FINISHME: get size param" :: Int)
              putStrLn $ "BATCHTIME: "++show tm
      else putStrLn $ "SELFTIMED: "++show tm
-    return $! exec env' bod
+    exec env' bod
          
 exec env (Switch tr alts def) =
     case final_alt of
@@ -171,13 +169,12 @@ exec _ e = error$ "Interpreter/exec, unhandled expression:\n  "++show (doc e)
 
 {-# NOINLINE execWrapper #-}
 execWrapper :: Int -> Env -> Tail -> IO [Val]
-execWrapper _i env ex =
-    evaluate $ force $ exec env ex
+execWrapper _i env ex = fmap force $ exec env ex
            
 extendEnv :: Env -> [(String, Val)] -> Env
 extendEnv = foldr (uncurry M.insert)
 
-apply :: Env -> Val -> [Val] -> [Val]
+apply :: Env -> Val -> [Val] -> IO [Val]
 
 apply env (FunVal (FunDecl _ as _ body)) args =
     exec (extendEnv env (zip (map fst as) args)) body
@@ -187,26 +184,38 @@ apply _ notFun _ =
 
 --------------------------------------------------------------------------------
 
-applyPrim :: Prim -> [Val] -> [Val]
+applyPrim :: Prim -> [Val] -> IO [Val]
 
-applyPrim AddP [IntVal i1, IntVal i2] = [IntVal (i1 + i2)]
-applyPrim SubP [IntVal i1, IntVal i2] = [IntVal (i1 - i2)]
-applyPrim MulP [IntVal i1, IntVal i2] = [IntVal (i1 * i2)]
+applyPrim AddP [IntVal i1, IntVal i2] = pure [IntVal (i1 + i2)]
+applyPrim SubP [IntVal i1, IntVal i2] = pure [IntVal (i1 - i2)]
+applyPrim MulP [IntVal i1, IntVal i2] = pure [IntVal (i1 * i2)]
 
-applyPrim EqP  [IntVal i1, IntVal i2] = [IntVal (if i1 == i2 then 1 else 0)]
+applyPrim EqP  [IntVal i1, IntVal i2] = pure [IntVal (if i1 == i2 then 1 else 0)]
 
-applyPrim NewBuf [] = [BufVal Seq.empty]
+applyPrim NewBuf [] = pure [BufVal Seq.empty]
 
-applyPrim WriteTag [TagVal tag, BufVal is] = [BufVal (is |> fromIntegral tag)]
-applyPrim WriteInt [IntVal i,   BufVal is] = [BufVal (is |> i)]
+applyPrim WriteTag [TagVal tag, BufVal is] = pure [BufVal (is |> fromIntegral tag)]
+applyPrim WriteInt [IntVal i,   BufVal is] = pure [BufVal (is |> i)]
 
 applyPrim ReadTag [BufVal is] = case Seq.viewl is of
                                 Seq.EmptyL -> error "ReadTag: Empty buffer"
-                                t :< is'   -> [TagVal (fromIntegral t), BufVal is']
+                                t :< is'   -> pure [TagVal (fromIntegral t), BufVal is']
 
 applyPrim ReadInt [BufVal is] = case Seq.viewl is of
                                 Seq.EmptyL -> error "ReadInt: Empty buffer"
-                                i :< is'   -> [IntVal i, BufVal is']
+                                i :< is'   -> pure  [IntVal i, BufVal is']
 
-applyPrim op args = error ("applyPrim: Unsupported form: " ++ show op ++ " " ++ show args)
+applyPrim PrintInt [IntVal i] = do print i; return []
+applyPrim (PrintString st) [] = do putStrLn st; return []
+
+applyPrim SizeParam [] = error "TargetInterp/applyPrim: finish SizeParam"
+applyPrim ScopedBuf [] = error "TargetInterp/applyPrim: finish ScopedBuf"
+applyPrim GetFirstWord [] = error "TargetInterp/applyPrim: finish GetFirstWord"
+
+applyPrim (DictInsertP _) [] = error "TargetInterp/applyPrim: finish DictInsertP"
+applyPrim (DictLookupP _) [] = error $ "TargetInterp/applyPrim: finish DictLookupP"
+applyPrim (DictEmptyP _) []  = error $ "TargetInterp/applyPrim: finish DictEmptyP"
+
+                                              
+applyPrim op args = error ("applyPrim: Unsupported form or bad arguments: " ++ show op ++ " " ++ show args)
 

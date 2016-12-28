@@ -123,8 +123,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
  where
   fund :: L2.FunDef -> SyM T.FunDecl
   fund L2.FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do
-      (args,bod) <- dbgTrace 1 ("Inspecting function with input type: "++show inty) $
-                    case inty of
+      (args,bod) <- case inty of
                       -- ASSUMPTION: no nested tuples after unariser:
                       L2.ProdTy ls -> do let tys'  = L.map (fmap (const ())) ls
                                              tys'' = L.map typ ls
