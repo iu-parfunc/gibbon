@@ -348,10 +348,10 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                        l2d <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
                        ------------------- End Stubs ---------------------
                        l2d' <- passE' "typecheck"                typecheck                 l2d
-                       l2e  <- pass   "routeEnds"                routeEnds                 l2d'
-                       l2f  <- pass' "flatten"                  flatten2                  l2e
-                       l2g  <- pass  "findWitnesses"            findWitnesses             l2f
-                       l2h  <- pass  "inlinePacked"             inlinePacked              l2g
+                       l2e  <- passE  "routeEnds"                routeEnds                 l2d'
+                       l2f  <- passE' "flatten"                  flatten2                  l2e
+                       l2g  <- passE  "findWitnesses"            findWitnesses             l2f
+                       l2h  <- passE  "inlinePacked"             inlinePacked              l2g
                        l2i  <- pass  "cursorDirect"             cursorDirect              l2h
                        l2i' <- pass' "typecheck"                typecheck                l2i
                        l2j  <- pass' "flatten"                  flatten2                  l2i'
