@@ -46,12 +46,14 @@ genDcons :: [L1.Ty] -> Var -> [(T.Ty, T.Triv)] -> SyM T.Tail
 genDcons (x:xs) tail fields = case x of
   L2.IntTy             ->  do
     val  <- gensym "val"
-    T.LetPrimCallT [(val, T.IntTy), (tail, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] 
+    t    <- gensym "tail"
+    T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] 
       <$> genDcons xs tail (fields ++ [(T.IntTy, T.VarTriv val)])
       
   L2.PackedTy tyCons _ -> do
     ptr  <- gensym "ptr"
-    T.LetCallT [(ptr, T.CursorTy), (tail, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
+    t    <- gensym "tail"
+    T.LetCallT [(ptr, T.CursorTy), (t, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
       <$> genDcons xs tail (fields ++ [(T.CursorTy, T.VarTriv ptr)]) 
   _                    -> undefined
 
@@ -114,11 +116,11 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                           (addPrintToTail mty =<<
                            tail x)
 
---  funs       <- mapM fund (M.elems fundefs) 
---  unpackers  <- mapM genUnpacker (M.elems ddefs) 
---  T.Prog <$> pure (funs ++ unpackers) <*> pure mn
+  funs       <- mapM fund (M.elems fundefs) 
+  unpackers  <- mapM genUnpacker (M.elems ddefs) 
+  T.Prog <$> pure (funs ++ unpackers) <*> pure mn
 
-  T.Prog <$> mapM fund (M.elems fundefs) <*> pure mn
+--  T.Prog <$> mapM fund (M.elems fundefs) <*> pure mn
 
  where
   fund :: L2.FunDef -> SyM T.FunDecl
