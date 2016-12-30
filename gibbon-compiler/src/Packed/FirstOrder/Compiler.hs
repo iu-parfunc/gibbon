@@ -312,6 +312,10 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
         -- | Version of 'passE' which does not print the output.
         passE' :: Interp p2 => PassRunner p1 p2
         passE' = wrapInterp pass'
+
+        -- | An alternative version that allows FAILURE while running
+        -- the interpreter part.
+        passF = pass -- FINISHME! For now not interpreting.
                     
     let outfile = case cfile of
                     Nothing -> (replaceExtension fp ".c")
@@ -353,10 +357,10 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                        l2f  <- passE' "flatten"                  flatten2                  l2e
                        l2g  <- passE  "findWitnesses"            findWitnesses             l2f
                        l2h  <- passE  "inlinePacked"             inlinePacked              l2g
-                       l2i  <- passE  "cursorDirect"             cursorDirect              l2h
-                       l2i' <- pass' "typecheck"                typecheck                l2i
-                       l2j  <- pass' "flatten"                  flatten2                  l2i'
-                       l2k  <- pass  "findWitnesses"            findWitnesses             l2j
+                       l2i  <- passF  "cursorDirect"             cursorDirect              l2h
+                       l2i' <- pass'  "typecheck"                typecheck                 l2i
+                       l2j  <- pass'  "flatten"                  flatten2                  l2i'
+                       l2k  <- passE  "findWitnesses"            findWitnesses             l2j
                               
                        l2l  <- pass' "flatten"                  flatten2                  l2k
                        l2m  <- pass  "inlineTriv"               inline2                   l2l

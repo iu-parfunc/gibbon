@@ -11,7 +11,11 @@
 -- | Utilities and common types.
 
 module Packed.FirstOrder.Common
-       ( -- * Type and Data Constructors
+       (
+         -- * Global constants
+--         cPackedTagSize, cPointerTagSize -- FINISHME
+
+         -- * Type and Data Constructors
          Constr
          -- * Variables and gensyms
        , Var, varAppend, SyM, gensym, genLetter, runSyM
@@ -25,11 +29,13 @@ module Packed.FirstOrder.Common
          -- * Top-level function defs
        , FunDef(..), FunDefs
        , insertFD, fromListFD
+
          -- * Data definitions
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
-         -- * Misc
-       , (#), fragileZip, sdoc, ndoc
+
+         -- * Misc helpers
+       , (#), fragileZip, sdoc, ndoc         
 
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl

@@ -17,9 +17,11 @@ import           Blaze.ByteString.Builder.Char.Utf8 (fromString)
 import           Control.DeepSeq
 import           Control.Monad
 import           Control.Monad.Writer
+import           Control.Monad.State
 import qualified Data.ByteString.Lazy.Char8 as B
 import           Data.List as L 
 import           Data.Map as M
+import           Data.IntMap as IM
 import           Data.Word
 import           GHC.Generics    
 import           Packed.FirstOrder.Common
@@ -57,12 +59,23 @@ instance Interp Prog where
 instance Interp L2.Prog where
   interpNoLogs rc p2     = interpNoLogs     rc{rcCursors=True} (L2.revertToL1 p2)
   interpWithStdout rc p2 = interpWithStdout rc{rcCursors=True} (L2.revertToL1 p2)
-          
+
+-- Stores and buffers:
 ------------------------------------------------------------
+
+-- | A store is an address space full of buffers.  
+data Store = Store (IntMap Buffer)
+-- data Store = Store (Seq Buffer)
+
+data Buffer = Buffer (Seq SerializedVal)
 
 data SerializedVal = SerTag Word8 | SerInt Int
   deriving (Read,Eq,Ord,Generic, Show)
 
+byteSize :: SerializedVal -> Int
+byteSize (SerInt _) = 8 -- FIXME: get this constant from elsewhere.
+byteSize (SerTag _) = 1
+           
 instance Out SerializedVal
 instance NFData SerializedVal
 
@@ -73,6 +86,9 @@ instance Out Word8 where
 instance Out a => Out (Seq a) where
   doc s       = doc       (F.toList s)
   docPrec n s = docPrec n (F.toList s)
+
+-- Values                
+-------------------------------------------------------------
                 
 -- | It's a first order language with simple values.
 data Value = VInt Int
@@ -82,8 +98,8 @@ data Value = VInt Int
            | VProd [Value]
            | VPacked Constr [Value]
 
-           | VBuf (Seq SerializedVal)
-             -- ^ We write values to the right end of this sequence.
+           | VCursor { bufID :: Int, offset :: Int }
+             -- ^ Cursor are a pointer into the Store plus an offset into the Buffer.
 
   deriving (Read,Eq,Ord,Generic)
 
@@ -99,7 +115,7 @@ instance Show Value where
    VPacked k ls -> k ++ show (VProd ls)
    VDict m      -> show (M.toList m)
                    
-   VBuf s -> "<Buffer containing: "++show s++">"
+   VCursor idx off -> "<cursor "++show idx++", "++show off++">"
                 
 type ValEnv = Map Var Value
 
@@ -132,16 +148,36 @@ interpProg :: RunConfig -> Prog -> IO (Value, B.ByteString)
 -- Print nothing, return "void"              :
 interpProg _ Prog {mainExp=Nothing} = return $ (VProd [], B.empty)
 interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
-    do (x,logs) <- runWriterT (interp e)
+    do (x,logs) <- evalStateT (runWriterT (interp e)) (Store IM.empty)
        return (x, toLazyByteString logs)
 
  where
-  applyPrim :: Prim -> [Value] -> Value
-  applyPrim p ls =
+  applyPrim :: Store -> Prim -> [Value] -> Value
+  applyPrim (Store store) p ls =
    case (p,ls) of
      (MkTrue,[])             -> VBool True
      (MkFalse,[])            -> VBool False
      (AddP,[VInt x, VInt y]) -> VInt (x+y)
+
+     -- After Cursorize we abuse AddP for cursor arithmetic too... could introduce a new
+     -- prim for this.
+     (AddP,[VCursor idx off, VInt bytesadd]) ->
+         -- Note: the added offset is always in BYTES:
+         let Buffer sq = store IM.! idx
+             dropped = go bytesadd (S.viewl sq)
+             go 0 _ = 0
+             go n (hd :< tl) | n >= byteSize hd = go (n - byteSize hd) (S.viewl tl)
+                             | otherwise = error $ "pointer arithmetic error.  Cannot skip "++
+                                               show n++" bytes, next value in buffer is: "++ show hd
+                                               ++" of size "++show (byteSize hd)
+             go n S.EmptyL = error $ "pointer arithmetic error.  Cannot skip ahead "
+                             ++show n++" bytes.  Buffer is empty."
+
+         in
+         VCursor idx (off+dropped)
+                      
+     (AddP,[x@VInt{},y@VCursor{}]) -> applyPrim (Store store) p [y,x]
+                                
      (SubP,[VInt x, VInt y]) -> VInt (x-y)
      (MulP,[VInt x, VInt y]) -> VInt (x*y)
      (EqSymP,[VInt x, VInt y]) -> VBool (x==y)
@@ -153,34 +189,44 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
      (SizeParam,[]) -> VInt (rcSize rc)
      oth -> error $ "unhandled prim or wrong number of arguments: "++show oth
 
-  interp :: Exp -> WriterT Log IO Value
-  interp = go M.empty
+  interp :: Exp -> WriterT Log (StateT Store IO) Value
+  interp = go M.empty 
     where
       {-# NOINLINE goWrapper #-}
       goWrapper !_ix env ex = go env ex
       
-      go :: ValEnv -> Exp -> WriterT Log IO Value
+      go :: ValEnv -> Exp -> WriterT Log (StateT Store IO) Value
       go env x0 =
           case x0 of
             LitE c         -> return $ VInt c
             VarE v         -> return $ env # v
             PrimAppE p ls  -> do args <- mapM (go env) ls
-                                 return $ applyPrim p args            
+                                 str  <- get
+                                 return $ applyPrim str p args
             ProjE ix ex -> do VProd ls <- go env ex
                               return $ ls !! ix
 
             --- Pattern synonyms specific to post-cursorize ASTs:
-            NewBuffer    -> return $ VBuf S.empty
-            ScopedBuffer -> return $ VBuf S.empty
-            WriteInt v ex -> do let VBuf s = env # v
-                                VInt n <- go env ex
-                                return $ VBuf $ s |> SerInt n
+            NewBuffer    -> do Store store0 <- get
+                               let idx = IM.size store0
+                                   store1 = IM.insert idx (Buffer S.empty) store0
+                               put (Store store1)
+                               return $ VCursor idx 0
+            ScopedBuffer -> go env NewBuffer -- ^ No operational difference.
+            WriteInt v ex -> do let VCursor idx off = env # v
+                                VInt num <- go env ex
+                                Store store0 <- get
+                                let store1 = IM.alter (\(Just (Buffer s1)) -> Just (Buffer $ s1 |> SerInt num)) idx store0
+                                put (Store store1)
+                                return $ VCursor idx (off+1)
             ReadInt v -> do
-              let VBuf s = env # v
-              case S.viewl s of
-                SerInt n :< rst -> return $ VProd [VInt n, VBuf rst]
-                S.EmptyL        -> error "SourceInterp: ReadInt on empty cursor/buffer."
-                oth :< _ ->
+              Store store <- get
+              let VCursor idx off = env # v
+                  Buffer buf = store IM.! idx
+              case S.viewl (S.drop off buf) of
+                SerInt n :< _ -> return $ VProd [VInt n, VCursor idx (off+1)]
+                S.EmptyL      -> error "SourceInterp: ReadInt on empty cursor/buffer."
+                oth :< _      ->
                  error $"SourceInterp: ReadInt expected Int in buffer, found: "++show oth
                                      
             AppE f b -> do rand <- go env b
@@ -190,10 +236,26 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
             (CaseE x1 ls1) -> do
                    v <- go env x1
                    case v of
+                     VCursor idx off | rcCursors rc ->
+                        do Store store <- get
+                           let Buffer seq1 = store IM.! idx
+                           case S.viewl (S.drop off seq1) of
+                             S.EmptyL -> error "SourceInterp: case scrutinize on empty/out-of-bounds cursor."
+                             SerTag tg :< _rst -> do
+                               -- ASSUMPTION: Id is just an ordered index.  We could explicitly map back
+                               -- to the datacon instead...
+
+                               let (tagsym,[curname],rhs) = ls1 !! fromIntegral tg
+                                   -- At this ^ point, we assume that a pattern match against a cursor binds ONE value.
+                                   _fields = lookupDataCon ddefs tagsym
+
+                               let env' = M.insert curname (VCursor idx (off+1)) env
+                               go env' rhs
+                             oth :< _ -> error $ "SourceInterp: expected to read tag from scrutinee cursor, found: "++show oth
+
                      VPacked k ls2 ->
                          let (_,vs,rhs) = lookup3 k ls1
-                             env' = M.union (M.fromList (zip vs ls2))
-                                    env
+                             env' = M.union (M.fromList (zip vs ls2)) env
                          in go env' rhs
                      _ -> error$ "SourceInterp: type error, expected data constructor, got:\n "++sdoc v++
                                  "\nWhen evaluating scrutinee of case expression:\n "++sdoc x1
@@ -212,18 +274,23 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                 case args of
                 -- Constructors are overloaded.  They have different behavior depending on
                 -- whether we are AFTER Cursorize or not.
-                  [ VBuf sq ] | rcCursors rc -> return $ VBuf $ sq |> SerTag (getTagOfDataCon ddefs k)
+                  [ VCursor idx off ] | rcCursors rc ->
+                      do Store store <- get
+                         let tag       = SerTag (getTagOfDataCon ddefs k)
+                             store'    = IM.alter (\(Just (Buffer s1)) -> Just (Buffer $ s1 |> tag)) idx store
+                         put (Store store')
+                         return $ VCursor idx (off+1)
                   _ -> return $ VPacked k args
 
 
             TimeIt bod _ isIter -> do
                 let iters = if isIter then rcIters rc else 1
                 !_ <- return $! force env
-                st <- lift $ getTime clk          
+                st <- liftIO $ getTime clk          
                 val <- foldM (\ _ i -> goWrapper i env bod)
                               (error "Internal error: this should be unused.")
                            [1..iters]
-                en <- lift $ getTime clk
+                en <- liftIO $ getTime clk
                 let tm = fromIntegral (toNanoSecs $ diffTimeSpec en st)
                           / 10e9 :: Double         
                 if isIter
@@ -243,6 +310,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
 
             MapE _ _bod    -> error "SourceInterp: finish MapE"
             FoldE _ _ _bod -> error "SourceInterp: finish FoldE"
+
                               
 
 clk :: Clock
