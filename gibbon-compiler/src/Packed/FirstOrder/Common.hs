@@ -260,6 +260,7 @@ data RunConfig =
     RunConfig { rcSize  :: Int
               , rcIters :: Word64
               , rcDbg   :: Int
+              , rcCursors :: Bool -- ^ Do we support cursors in L1.Exp at this point in the compiler.
               }
   
 -- | We currently use the hacky approach of using env vars OR command
@@ -278,7 +279,7 @@ getRunConfig ls =
              Nothing -> getRunConfig [sz,"1"]
              Just i  -> getRunConfig [sz,i]
    [sz,iters] ->
-     return $ RunConfig { rcSize=read sz, rcIters=read iters, rcDbg= dbgLvl }
+     return $ RunConfig { rcSize=read sz, rcIters=read iters, rcDbg= dbgLvl, rcCursors= False }
    _ -> error $ "getRunConfig: too many command line args, expected <size> <iters> at most: "++show ls
 
             

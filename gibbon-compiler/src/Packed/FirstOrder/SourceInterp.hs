@@ -20,6 +20,7 @@ import           Control.Monad.Writer
 import qualified Data.ByteString.Lazy.Char8 as B
 import           Data.List as L 
 import           Data.Map as M
+import           Data.Word
 import           GHC.Generics    
 import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.L1_Source
@@ -28,8 +29,13 @@ import           System.Clock
 import           System.IO.Unsafe (unsafePerformIO)
 import           Text.PrettyPrint.GenericPretty
 
-import           Packed.FirstOrder.Passes.InlinePacked(pattern NamedVal)
 
+import           Data.Sequence (Seq, ViewL ((:<)), (|>))
+import qualified Data.Sequence as S 
+import qualified Data.Foldable as F
+import           Packed.FirstOrder.Passes.InlinePacked(pattern NamedVal)
+import           Packed.FirstOrder.Passes.Cursorize( pattern WriteInt, pattern ReadInt, pattern NewBuffer
+                                                   , pattern CursorTy, pattern ScopedBuffer)
     
 -- TODO:
 -- It's a SUPERSET, but use the Value type from TargetInterp anyway:
@@ -44,12 +50,30 @@ instance Interp Prog where
    (v,logs) <- interpProg rc p
    return (show v, lines (B.unpack logs))
 
+-- | HACK: we don't have a type-level distinction for when cursors are
+-- allowed in the AST.  We use L2 as a proxy for this, allowing
+-- cursors whenver executing L2, even though this is a bit premature
+-- in the compiler pipeline.
 instance Interp L2.Prog where
-  interpNoLogs rc p2     = interpNoLogs     rc (L2.revertToL1 p2)
-  interpWithStdout rc p2 = interpWithStdout rc (L2.revertToL1 p2)
+  interpNoLogs rc p2     = interpNoLogs     rc{rcCursors=True} (L2.revertToL1 p2)
+  interpWithStdout rc p2 = interpWithStdout rc{rcCursors=True} (L2.revertToL1 p2)
           
 ------------------------------------------------------------
-    
+
+data SerializedVal = SerTag Word8 | SerInt Int
+  deriving (Read,Eq,Ord,Generic, Show)
+
+instance Out SerializedVal
+instance NFData SerializedVal
+
+instance Out Word8 where
+  doc w       = doc       (fromIntegral w :: Int)
+  docPrec n w = docPrec n (fromIntegral w :: Int)
+
+instance Out a => Out (Seq a) where
+  doc s       = doc       (F.toList s)
+  docPrec n s = docPrec n (F.toList s)
+                
 -- | It's a first order language with simple values.
 data Value = VInt Int
            | VBool Bool
@@ -57,6 +81,10 @@ data Value = VInt Int
 -- FINISH:       | VList
            | VProd [Value]
            | VPacked Constr [Value]
+
+           | VBuf (Seq SerializedVal)
+             -- ^ We write values to the right end of this sequence.
+
   deriving (Read,Eq,Ord,Generic)
 
 instance Out Value
@@ -71,6 +99,8 @@ instance Show Value where
    VPacked k ls -> k ++ show (VProd ls)
    VDict m      -> show (M.toList m)
                    
+   VBuf s -> "<Buffer containing: "++show s++">"
+                
 type ValEnv = Map Var Value
 
 ------------------------------------------------------------
@@ -94,12 +124,14 @@ execAndPrint rc prg = do
     _ -> print val   
 
 type Log = Builder
-         
+
+-- TODO: add a flag for whether we support cursors:
+    
 -- | Interpret a program, including printing timings to the screen.
 interpProg :: RunConfig -> Prog -> IO (Value, B.ByteString)
 -- Print nothing, return "void"              :
 interpProg _ Prog {mainExp=Nothing} = return $ (VProd [], B.empty)
-interpProg rc Prog {fundefs, mainExp=Just e} =
+interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
     do (x,logs) <- runWriterT (interp e)
        return (x, toLazyByteString logs)
 
@@ -128,15 +160,29 @@ interpProg rc Prog {fundefs, mainExp=Just e} =
       goWrapper !_ix env ex = go env ex
       
       go :: ValEnv -> Exp -> WriterT Log IO Value
-      go env x =
-          case x of
+      go env x0 =
+          case x0 of
             LitE c         -> return $ VInt c
             VarE v         -> return $ env # v
             PrimAppE p ls  -> do args <- mapM (go env) ls
-                                 return $ applyPrim p args
+                                 return $ applyPrim p args            
             ProjE ix ex -> do VProd ls <- go env ex
                               return $ ls !! ix
 
+            --- Pattern synonyms specific to post-cursorize ASTs:
+            NewBuffer    -> return $ VBuf S.empty
+            ScopedBuffer -> return $ VBuf S.empty
+            WriteInt v ex -> do let VBuf s = env # v
+                                VInt n <- go env ex
+                                return $ VBuf $ s |> SerInt n
+            ReadInt v -> do
+              let VBuf s = env # v
+              case S.viewl s of
+                SerInt n :< rst -> return $ VProd [VInt n, VBuf rst]
+                S.EmptyL        -> error "SourceInterp: ReadInt on empty cursor/buffer."
+                oth :< _ ->
+                 error $"SourceInterp: ReadInt expected Int in buffer, found: "++show oth
+                                     
             AppE f b -> do rand <- go env b
                            let FunDef{funArg=(vr,_),funBody}  = fundefs # f
                            go (M.insert vr rand env) funBody
@@ -149,9 +195,10 @@ interpProg rc Prog {fundefs, mainExp=Just e} =
                              env' = M.union (M.fromList (zip vs ls2))
                                     env
                          in go env' rhs
-                     _ -> error "L1 interp: type error"
+                     _ -> error$ "SourceInterp: type error, expected data constructor, got:\n "++sdoc v++
+                                 "\nWhen evaluating scrutinee of case expression:\n "++sdoc x1
 
-            NamedVal vr ty e -> go env e
+            NamedVal _ _ bd -> go env bd
 
             (LetE (v,_ty,rhs) bod) -> do
               rhs' <- go env rhs
@@ -160,7 +207,13 @@ interpProg rc Prog {fundefs, mainExp=Just e} =
 
             (MkProdE ls) -> VProd <$> mapM (go env) ls
             -- TODO: Should check this against the ddefs.
-            (MkPackedE k ls) -> VPacked k <$> mapM (go env) ls
+            (MkPackedE k ls) -> do
+                args <- mapM (go env) ls
+                case args of
+                -- Constructors are overloaded.  They have different behavior depending on
+                -- whether we are AFTER Cursorize or not.
+                  [ VBuf sq ] | rcCursors rc -> return $ VBuf $ sq |> SerTag (getTagOfDataCon ddefs k)
+                  _ -> return $ VPacked k args
 
 
             TimeIt bod _ isIter -> do
@@ -188,8 +241,8 @@ interpProg rc Prog {fundefs, mainExp=Just e} =
                                           else go env c
                              oth -> error$ "interp: expected bool, got: "++show oth
 
-            MapE _ bod    -> error "SourceInterp: finish MapE"
-            FoldE _ _ bod -> error "SourceInterp: finish FoldE"
+            MapE _ _bod    -> error "SourceInterp: finish MapE"
+            FoldE _ _ _bod -> error "SourceInterp: finish FoldE"
                               
 
 clk :: Clock
@@ -216,7 +269,7 @@ p1 = Prog emptyDD  M.empty
          -- IntTy
 
 main :: IO ()
-main = execAndPrint (RunConfig 1 1 dbgLvl) p1
+main = execAndPrint (RunConfig 1 1 dbgLvl False) p1
 
 
 
