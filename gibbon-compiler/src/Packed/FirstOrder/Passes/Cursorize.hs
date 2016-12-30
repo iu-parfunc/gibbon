@@ -419,7 +419,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                                        | ix <- [0..numNewOut-1] ]
                                                       ++ [e]
                                in
-                                dbgTrace 1
+                                dbgTrace minChatLvl
                                      ("\n>>>>>> [cursorDirect] doapp/mkapp: building APP: "
                                       ++show (prjstk,isMain,mcurs, f, argE)++"\n  final type: "++show nat
                                       ++"\n  fulldests: "++show fullDests++"\n endVars: "++show endVs

@@ -164,8 +164,8 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
        return (x, toLazyByteString logs)
 
  where
-  applyPrim :: Store -> Prim -> [Value] -> Value
-  applyPrim (Store store) p ls =
+  applyPrim :: (Store,[Exp]) -> Prim -> [Value] -> Value
+  applyPrim (Store store,argcode) p ls =
    case (p,ls) of
      (MkTrue,[])             -> VBool True
      (MkFalse,[])            -> VBool False
@@ -176,19 +176,26 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
      (AddP,[VCursor idx off, VInt bytesadd]) ->
          -- Note: the added offset is always in BYTES:
          let Buffer sq = store IM.! idx
-             dropped = go bytesadd (S.viewl sq)
+             dropped = go bytesadd (S.viewl (S.drop off sq))
              go 0 _ = 0
-             go n (hd :< tl) | n >= byteSize hd = go (n - byteSize hd) (S.viewl tl)
-                             | otherwise = error $ "pointer arithmetic error.  Cannot skip "++
+             go n (hd :< tl) | n >= byteSize hd = 1 + go (n - byteSize hd) (S.viewl tl)
+                             | otherwise = error $ errHeader ++ "Cannot skip "++
                                                show n++" bytes, next value in buffer is: "++ show hd
-                                               ++" of size "++show (byteSize hd)
-             go n S.EmptyL = error $ "pointer arithmetic error.  Cannot skip ahead "
-                             ++show n++" bytes.  Buffer is empty."
+                                               ++" of size "++show (byteSize hd) ++".\n"++moreContext
+             go n S.EmptyL = error $ errHeader ++ "Cannot skip ahead "
+                             ++show n++" bytes.  Buffer is empty.\n"++moreContext
 
+             errHeader = "Pointer arithmetic error in AddP of "++show argcode++".  "
+             moreContext = " Starting cursor, "++show (VCursor idx off)
+                           ++" in Buffer: "++ndoc sq
          in
+         dbgTrace interpChatter ("\n [AddP Ptr, "++ (abbrv 60 argcode)
+                                                 ++"] scroll "++show bytesadd++" bytes, "
+                                                 ++"dropping" ++show dropped++" elems,\n     "
+                                                 ++moreContext) $ 
          VCursor idx (off+dropped)
                       
-     (AddP,[x@VInt{},y@VCursor{}]) -> applyPrim (Store store) p [y,x]
+     (AddP,[x@VInt{},y@VCursor{}]) -> applyPrim (Store store,argcode) p [y,x]
                                 
      (SubP,[VInt x, VInt y]) -> VInt (x-y)
      (MulP,[VInt x, VInt y]) -> VInt (x*y)
@@ -214,7 +221,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
             VarE v         -> return $ env # v
             PrimAppE p ls  -> do args <- mapM (go env) ls
                                  str  <- get
-                                 return $ applyPrim str p args
+                                 return $ applyPrim (str,ls) p args
             ProjE ix ex -> do VProd ls <- go env ex
                               return $ ls !! ix
 
@@ -233,11 +240,11 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                 return $ VCursor idx (off+1)
             ReadInt v -> do
               Store store <- get
-              liftIO$ dbgPrint interpChatter $ " [ReadInt "++v++"] from store:\n "++sdoc store
+              liftIO$ dbgPrint interpChatter $ " [ReadInt "++v++"] from store: "++ndoc store
               let VCursor idx off = env # v
                   Buffer buf = store IM.! idx
-              liftIO$ dbgPrintLn interpChatter $ " [ReadInt "++v++"] from that store at pos:\n "
-                        ++show (VCursor idx off)
+              liftIO$ dbgPrintLn interpChatter $ " [ReadInt "++v++"] from that store at pos: "
+                                                 ++show (VCursor idx off)
               case S.viewl (S.drop off buf) of
                 SerInt n :< _ -> return $ VProd [VInt n, VCursor idx (off+1)]
                 S.EmptyL      -> error "SourceInterp: ReadInt on empty cursor/buffer."
@@ -272,8 +279,8 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                          let (_,vs,rhs) = lookup3 k ls1
                              env' = M.union (M.fromList (zip vs ls2)) env
                          in go env' rhs
-                     _ -> error$ "SourceInterp: type error, expected data constructor, got:\n "++sdoc v++
-                                 "\nWhen evaluating scrutinee of case expression:\n "++sdoc x1
+                     _ -> error$ "SourceInterp: type error, expected data constructor, got: "++ndoc v++
+                                 "\nWhen evaluating scrutinee of case expression: "++ndoc x1
 
             NamedVal _ _ bd -> go env bd
 
