@@ -44,6 +44,9 @@ import           Packed.FirstOrder.Passes.Cursorize( pattern WriteInt, pattern R
 -- Actually, we should merge these into one type with a simple extension story.
 -- import Packed.FirstOrder.TargetInterp (Val(..), applyPrim)
 
+interpChatter :: Int
+interpChatter = 7 
+
 ------------------------------------------------------------
 
 instance Interp Prog where    
@@ -65,10 +68,19 @@ instance Interp L2.Prog where
 
 -- | A store is an address space full of buffers.  
 data Store = Store (IntMap Buffer)
--- data Store = Store (Seq Buffer)
+  deriving (Read,Eq,Ord,Generic, Show)
+
+instance Out Store
+  
+instance Out a => Out (IntMap a) where
+  doc im       = doc       (IM.toList im)
+  docPrec n im = docPrec n (IM.toList im)
 
 data Buffer = Buffer (Seq SerializedVal)
+  deriving (Read,Eq,Ord,Generic, Show)
 
+instance Out Buffer
+           
 data SerializedVal = SerTag Word8 | SerInt Int
   deriving (Read,Eq,Ord,Generic, Show)
 
@@ -221,8 +233,11 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                 return $ VCursor idx (off+1)
             ReadInt v -> do
               Store store <- get
+              liftIO$ dbgPrint interpChatter $ " [ReadInt "++v++"] from store:\n "++sdoc store
               let VCursor idx off = env # v
                   Buffer buf = store IM.! idx
+              liftIO$ dbgPrintLn interpChatter $ " [ReadInt "++v++"] from that store at pos:\n "
+                        ++show (VCursor idx off)
               case S.viewl (S.drop off buf) of
                 SerInt n :< _ -> return $ VProd [VInt n, VCursor idx (off+1)]
                 S.EmptyL      -> error "SourceInterp: ReadInt on empty cursor/buffer."
