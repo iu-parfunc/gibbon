@@ -32,6 +32,7 @@ import qualified Data.List as L
 import Data.List as L hiding (tail)
 import Data.Map as M
 import Data.Int (Int64)
+import Data.Word
 
 import Prelude hiding (tail)
 
@@ -48,28 +49,31 @@ genDcons (x:xs) tail fields = case x of
     val  <- gensym "val"
     t    <- gensym "tail"
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] 
-      <$> genDcons xs tail (fields ++ [(T.IntTy, T.VarTriv val)])
+      <$> genDcons xs t (fields ++ [(T.IntTy, T.VarTriv val)])
       
   L2.PackedTy tyCons _ -> do
     ptr  <- gensym "ptr"
     t    <- gensym "tail"
     T.LetCallT [(ptr, T.CursorTy), (t, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
-      <$> genDcons xs tail (fields ++ [(T.CursorTy, T.VarTriv ptr)]) 
+      <$> genDcons xs t (fields ++ [(T.CursorTy, T.VarTriv ptr)]) 
   _                    -> undefined
 
 genDcons [] tail fields     = do 
   ptr <- gensym "ptr"
   return $ T.LetAllocT ptr fields $ T.RetValsT [T.VarTriv ptr, T.VarTriv tail] 
 
-genAlts :: [(Constr,[L1.Ty])] -> Var -> Int64 -> SyM T.Alts 
+genAlts :: Num a => [(Constr,[L1.Ty])] -> Var -> Int64 -> SyM T.Alts 
 genAlts ((_, typs):xs) tail n = do
   curTail <- genDcons typs tail [] 
   alts    <- genAlts xs tail (n+1) 
   case alts of
-    T.IntAlts tags -> return $ T.IntAlts ((n, curTail) : tags)
-    _              -> undefined
+    T.IntAlts []   -> return $ T.IntAlts [(n::Int64, curTail)]
+    -- T.TagAlts []   -> return $ T.TagAlts [(n::Word8, curTail)] 
+    T.IntAlts tags -> return $ T.IntAlts ((n::Int64, curTail) : tags)
+    -- T.TagAlts tags -> return $ T.TagAlts ((n::Word8, curTail) : tags)
+    _              -> error $ "Invalid case statement type."
 
-genAlts [] _ _                    = return $ T.IntAlts [] 
+genAlts [] _ _                = return $ T.IntAlts [] 
 
 
 genUnpacker :: DDef L1.Ty -> SyM T.FunDecl    
@@ -82,7 +86,7 @@ genUnpacker DDef{tyName, dataCons} = do
             T.Switch (T.VarTriv p) alts Nothing
   return T.FunDecl{ T.funName  = (mkUnpackerName tyName),
                     T.funArgs  = [(p, T.CursorTy)],
-                    T.funRetTy = T.CursorTy,
+                    T.funRetTy = T.ProdTy [T.CursorTy, T.CursorTy],
                     T.funBody  = bod } 
                     
 
