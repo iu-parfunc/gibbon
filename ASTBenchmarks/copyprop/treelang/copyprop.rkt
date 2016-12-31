@@ -5,9 +5,9 @@
 (provide copyprop)
 
 (define (copyprop [e : Toplvl]) : Toplvl
-  (let ([nexpr : Expr (top-pass1 e)])
+  (let ([nexpr : Toplvl (top-pass1 e)])
     (let ([mut : (SymDict Bool) (top-pass2 nexpr (empty-dict))])
-      (top-pass3 nexpr (empty-dict) mut))))
+      (top-pass3 nexpr mut))))
 
 (define (loop1 [ls : ListToplvl]) : ListToplvl
   (case ls
@@ -16,10 +16,10 @@
     [(NULLTOPLVL)
      ls]))
 
-(define (loop-begintop [ls : ListTopvlvl] [mut : (SymDict Bool)]) : (SymDict Bool)
+(define (loop-begintop [ls : ListToplvl] [mut : (SymDict Bool)]) : (SymDict Bool)
   (case ls
     [(CONSTOPLVL tl ls)
-     (loop-begintop ls (pass2 tl mut))]
+     (loop-begintop ls (top-pass2 tl mut))]
     [(NULLTOPLVL)
      mut]))
 
@@ -129,14 +129,16 @@
     [(Expression e)
      (pass2 e mut)]))
 
-(define (top-pass3 [e : Toplvl] [mut : (SymDict Bool)]) : Topvlv
+(define (top-pass3 [e : Toplvl] [mut : (SymDict Bool)]) : Toplvl
   (case e
     [(DefineValues ls e)
      (DefineValues ls (pass3 e (empty-dict) mut))]
     [(DefineSyntaxes ls e)
      (DefineSyntaxes ls (pass3 e (empty-dict) mut))]
     [(BeginTop ls)
-     (BeginTop (loop-begintop2 ls mut))]))
+     (BeginTop (loop-begintop2 ls mut))]
+    [(Expression e)
+     (Expression (pass3 e (empty-dict) mut))]))
 
 ;; rename variables
 (define (pass1 [e : Expr] [env : (SymDict Sym)]) : Expr
@@ -215,7 +217,7 @@
      (listexpr-pass2 body mut)]
 
     [(CaseLambda cases)
-     (caselambda-pass2 cases env)]
+     (caselambda-pass2 cases mut)]
 
     [(LetValues binds body)
      ;; need to look for setbang on rhs
@@ -277,12 +279,12 @@
     [(LetValues binds body) 
      ;; extend environment. 
      (let ([nenv : (SymDict Sym) (letvalues-extend-env binds env)])
-       (LetValues binds (pass3 body nenv mut)))]
+       (LetValues binds (listexpr-pass3 body nenv mut)))]
     
     [(LetrecValues binds body)
-     (let ([lhs : (SymDict Bool) (list-of-syms)])
+     (let ([lhs : (SymDict Bool) (list-of-syms binds)])
        (let ([nenv : (SymDict Sym) (letrecvalues-extend-env binds lhs env)])
-         (LetrecValues binds (pass3 body nenv mut))))]
+         (LetrecValues binds (listexpr-pass3 body nenv mut))))]
 
     [(If cond then else)
      (If (pass3 cond env mut)
@@ -376,7 +378,7 @@
     [(CONSSYM s ls)
      (rename-syms ls (insert env s (gensym)))]
     [(NULLSYM)
-     env]
+     env]))
 
 (define (lvbind-pass2 [ls : LVBIND] [mut : (SymDict Bool)]) : (SymDict Bool)
   (case ls
