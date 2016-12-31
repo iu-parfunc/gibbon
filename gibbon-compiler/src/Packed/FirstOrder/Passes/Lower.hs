@@ -26,7 +26,6 @@ import           Packed.FirstOrder.L1_Source (Exp(..))
 import qualified Packed.FirstOrder.L2_Traverse as L2
 import           Packed.FirstOrder.L2_Traverse ( FunDef(..), Prog(..) )
 import qualified Packed.FirstOrder.L3_Target as T
-import qualified Packed.FirstOrder.Passes.Cursorize as C
 import Data.Maybe
 import qualified Data.List as L
 import Data.List as L hiding (tail)
@@ -257,7 +256,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       return (T.LetAllocT v fields bod')
 
     -- This is legitimately flattened, but we need to move it off the spine:
-    L1.MkPackedE k ls -> do
+    L1.MkPackedE k _ls -> do
        tmp <- gensym "tailift"
        let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
        tail $ LetE (tmp, ty, ex0) (VarE tmp)
@@ -325,11 +324,11 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
     ---------------------
     -- (2) Next FAKE Primapps.  These could be added to L1 if we wanted to pollute it.
-    L1.LetE (v,_,C.WriteInt c e) bod ->
+    L1.LetE (v,_,L2.WriteInt c e) bod ->
       T.LetPrimCallT [(v,T.CursorTy)] T.WriteInt [triv "WriteTag arg" e, T.VarTriv c] <$>
          tail bod
 
-    L1.LetE (pr,_,C.ReadInt c) bod -> do
+    L1.LetE (pr,_,L2.ReadInt c) bod -> do
       vtmp <- gensym "tmpval"
       ctmp <- gensym "tmpcur"
       T.LetPrimCallT [(vtmp,T.IntTy),(ctmp,T.CursorTy)] T.ReadInt [T.VarTriv c] <$>
@@ -340,11 +339,11 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
           dbgTrace 5 (" [lower] ReadInt, after substing references to "++pr++":\n  "++sdoc bod')$
           tail bod'
 
-    L1.LetE (v,_,C.NewBuffer) bod ->
+    L1.LetE (v,_,L2.NewBuffer) bod ->
       T.LetPrimCallT [(v,T.CursorTy)] T.NewBuf [] <$>
          tail bod
 
-    L1.LetE (v,_,C.ScopedBuffer) bod ->
+    L1.LetE (v,_,L2.ScopedBuffer) bod ->
       T.LetPrimCallT [(v,T.CursorTy)] T.ScopedBuf [] <$>
          tail bod
 
@@ -417,6 +416,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 --------------------------------------------------------------------------------
          
 -- | View pattern for matching agaist projections of Foo rather than just Foo.
+projOf :: Exp -> ([Int], Exp)
 projOf (ProjE ix e) = let (stk,e') = projOf e in
                       (stk++[ix], e')
 projOf e = ([],e)
@@ -426,11 +426,11 @@ projOf e = ([],e)
 notSpecial :: Exp -> Bool
 notSpecial ap =
   case ap of
-   C.WriteInt _ _ -> False
-   C.NewBuffer    -> False
-   C.ScopedBuffer -> False
-   C.ReadInt _    -> False
-   _              -> True
+   L2.WriteInt _ _ -> False
+   L2.NewBuffer    -> False
+   L2.ScopedBuffer -> False
+   L2.ReadInt _    -> False
+   _               -> True
 
 {-
 -- | Go under bindings and transform the very last return point.

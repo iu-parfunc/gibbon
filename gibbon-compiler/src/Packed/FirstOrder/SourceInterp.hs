@@ -36,8 +36,8 @@ import           Data.Sequence (Seq, ViewL ((:<)), (|>))
 import qualified Data.Sequence as S 
 import qualified Data.Foldable as F
 import           Packed.FirstOrder.Passes.InlinePacked(pattern NamedVal)
-import           Packed.FirstOrder.Passes.Cursorize( pattern WriteInt, pattern ReadInt, pattern NewBuffer
-                                                   , pattern CursorTy, pattern ScopedBuffer)
+import           Packed.FirstOrder.L2_Traverse ( pattern WriteInt, pattern ReadInt, pattern NewBuffer
+                                               , pattern CursorTy, pattern ScopedBuffer, pattern AddCursor)
     
 -- TODO:
 -- It's a SUPERSET, but use the Value type from TargetInterp anyway:

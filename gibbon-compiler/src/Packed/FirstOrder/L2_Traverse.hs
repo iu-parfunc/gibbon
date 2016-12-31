@@ -40,6 +40,10 @@ module Packed.FirstOrder.L2_Traverse
 
     -- * Constraints
     , Constraint(..)
+
+    -- * Extended L2.5, for after cursor insertion:
+    , pattern WriteInt, pattern ReadInt, pattern NewBuffer
+    , pattern CursorTy, pattern ScopedBuffer, pattern AddCursor
     )
     where
 
@@ -532,3 +536,26 @@ revertToL1 Prog{ ..} =
        let ArrowTy{arrIn,arrOut} = funty in 
        L1.FunDef funname (funarg, stripTyLocs arrIn) (stripTyLocs arrOut) funbod
 
+--------------------------------------------------------------------------------
+
+
+-- Conventions encoded inside the existing Core IR 
+-- =============================================================================
+
+pattern NewBuffer = AppE "NewBuffer" (MkProdE [])
+
+-- | output buffer space that is known not to escape the current function.
+pattern ScopedBuffer = AppE "ScopedBuffer" (MkProdE [])
+                    
+-- | Tag writing is still modeled by MkPackedE.
+pattern WriteInt v e = AppE "WriteInt" (MkProdE [VarE v, e])
+
+-- | One cursor in, (int,cursor') output.
+pattern ReadInt v = AppE "ReadInt" (VarE v)
+
+pattern CursorTy l = PackedTy "CURSOR_TY" l
+
+-- | Add a constant offset to a cursor variable.
+pattern AddCursor v i = PrimAppE AddP [VarE v, LitE i]
+-- NEXT/TODO:
+-- pattern AddCursor v i = AppE "AddCursor" (MkProdE [VarE v, LitE i])

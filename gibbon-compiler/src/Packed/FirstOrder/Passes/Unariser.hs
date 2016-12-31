@@ -33,24 +33,21 @@ import Prelude hiding (exp)
 --
 unariser :: L2.Prog -> SyM L2.Prog
 unariser = mapMExprs unariserExp 
--- unariser prg@L2.Prog{fundefs,mainExp} = return $
- --  prg { fundefs = M.map fd fundefs 
- --      , mainExp = case mainExp of
- --                    Nothing      -> Nothing
- --                    (Just (e,t)) -> Just (unariserExp [] [] e, t)
- --      }
- -- where
- --   fd f@FunDef{funarg, funbod} =
- --       f { funbod = unariserExp [] [] funbod }
 
+
+-- | A projection stack can be viewed as a list of ProjE operations to
+-- perform, from left to right.
 type ProjStack = [Int]
 
--- Maps variables onto tuples of (projections of) other variables 
+-- | Maps variables onto tuples of (projections of) other variables 
 type Env = [(Var,[(ProjStack,Var)])]
     
--- | Keep (1) pending projections that enclose our current context,
--- and (2) a map from variable bindings with tuple type, to
--- finer-grained bindings to individual components.
+-- | Take an ignored argument to match mapMExprs' conventions.
+-- 
+-- In the recursive loop here, we maintain (1) pending projections
+-- that enclose our current context, and (2) a map from variable
+-- bindings with tuple type, to finer-grained bindings to individual
+-- components.
 --
 unariserExp :: ignored -> L1.Exp -> SyM L1.Exp
 unariserExp _ = go [] [] 

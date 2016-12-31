@@ -37,9 +37,9 @@ hoistExp _ ex0 = return $ gocap ex0
     (TimeIt e t b) -> let (lts,e') = go e in
                       (lts, TimeIt e' t b)
      
-    (LetE (v,t, C.NewBuffer) bod) ->
+    (LetE (v,t, NewBuffer) bod) ->
         let (lts1,bod') = go bod in
-        ((v,t, C.NewBuffer):lts1, bod')
+        ((v,t, NewBuffer):lts1, bod')
 
     -- boilerplate
     (LetE (v,t,rhs) bod) ->
