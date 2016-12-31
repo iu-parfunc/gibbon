@@ -27,7 +27,6 @@ import           System.Environment
 import           Text.PrettyPrint.Mainland
 
 import           Packed.FirstOrder.L3_Target
-
 --------------------------------------------------------------------------------
         
 
@@ -63,13 +62,13 @@ harvestStructTys (Prog funs mtal) =
       go (t:ts) =
        case t of
          ProdTy ls -> S.insert ls $ S.union (go ls) (go ts)
-         _ -> S.empty
+         _ -> go ts -- S.empty
 
   -- This finds all types that maybe grouped together as a ProdTy:
   allTypes :: Tail -> [Ty]
   allTypes = go
    where
-    go tl =
+    go tl = 
      case tl of
        (RetValsT _)  -> []
        (AssnValsT ls)-> [ProdTy (map (\(_,x,_) -> x) ls)]
@@ -78,7 +77,7 @@ harvestStructTys (Prog funs mtal) =
        (LetCallT binds _ _  bod)   -> ProdTy (map snd binds) : go bod
        -- INVARIANT: This does not create a struct:
        -- But just in case it does in the future, we add it:
-       (LetPrimCallT binds _ _ bod) -> ProdTy (map snd binds) : go bod
+       (LetPrimCallT binds _ _ bod)-> ProdTy (map snd binds) : go bod
        (LetTrivT (_,ty,_) bod)     -> ty : go bod
        -- This should not create a struct.  Again, we add it just for the heck of it:
        (LetIfT binds (_,a,b) bod)  -> ProdTy (map snd binds) : go a ++ go b ++ go bod
@@ -86,7 +85,7 @@ harvestStructTys (Prog funs mtal) =
 
        -- These are precisely for operating on structs:
        (LetUnpackT binds _ bod)    -> ProdTy (map snd binds) : go bod
-       (LetAllocT _ vals bod)    -> ProdTy (map fst vals) : go bod
+       (LetAllocT _ vals bod)      -> ProdTy (map fst vals) : go bod
 
        (IfT _ a b) -> go a ++ go b
        ErrT{} -> []
@@ -113,8 +112,9 @@ codegenProg prg@(Prog funs mtal) = do
     where
       defs = fst $ runSyM 0 $ do
         funs' <- mapM codegenFun funs
+        prots <- mapM makeProt funs
         main_expr' <- main_expr
-        return (makeStructs (S.toList $ harvestStructTys prg) ++ funs' ++ main_expr' : bench_fn)
+        return (makeStructs (S.toList $ harvestStructTys prg) ++ prots ++ funs' ++ main_expr' : bench_fn)
 
       bench_fn :: [C.Definition]
       bench_fn =
@@ -160,14 +160,23 @@ codegenProg prg@(Prog funs mtal) = do
           _ ->
             return $ C.FuncDef [cfun| void __main_expr() { return 0; } |] noLoc
 
-codegenFun :: FunDecl -> SyM C.Definition
-codegenFun (FunDecl nam args ty tal) =
+makeProt :: FunDecl -> SyM C.Definition
+makeProt fd = do fn <- codegenFun' fd  -- This is bad and I apologize
+                 return $ C.DecDef (C.funcProto fn) noLoc
+
+codegenFun' :: FunDecl -> SyM C.Func
+codegenFun' (FunDecl nam args ty tal) =
     do let retTy   = codegenTy ty
            params  = map (\(v,t) -> [cparam| $ty:(codegenTy t) $id:v |]) args
        body <- codegenTail tal retTy
        let fun     = [cfun| $ty:retTy $id:nam ($params:params) {
                             $items:body
                      } |]
+       return fun
+
+codegenFun :: FunDecl -> SyM C.Definition
+codegenFun fd =
+    do fun <- codegenFun' fd
        return $ C.FuncDef fun noLoc
 
 makeStructs :: [[Ty]] -> [C.Definition]
