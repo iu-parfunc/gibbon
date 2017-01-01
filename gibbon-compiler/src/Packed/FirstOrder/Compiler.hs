@@ -355,14 +355,14 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                        l2c <- passE' "addCopies"                addCopies                l2b
                        l2d <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
                        ------------------- End Stubs ---------------------
-                       l2d' <- passE' "typecheck"                typecheck                 l2d
+                       l2d' <- passE' "typecheck"                typecheckPermissive       l2d
                        l2e  <- pass   "routeEnds"                routeEnds                 l2d'
                        l2f  <- pass'  "flatten"                  flatten2                  l2e
                        l2g  <- pass   "findWitnesses"            findWitnesses             l2f
                        l2h  <- pass   "inlinePacked"             inlinePacked              l2g
                        -- [2016.12.31] For now witness vars only work out after cursorDirect then findWitnesses:
                        l2i  <- passF  "cursorDirect"             cursorDirect              l2h
-                       l2i' <- pass'  "typecheck"                typecheck                 l2i
+                       l2i' <- pass'  "typecheck"                typecheckPermissive       l2i
                        l2j  <- pass'  "flatten"                  flatten2                  l2i'
                        l2k  <- passE  "findWitnesses"            findWitnesses             l2j
                               

@@ -511,7 +511,8 @@ mapMExprs fn (Prog dd fundefs mainExp) =
          (mapM (\ (FunDef nm arrTy@(ArrowTy inT _ _) arg bod) ->
                  let env = Env2 (M.singleton arg (fmap (\_->()) inT))
                                 funEnv
-                 in FunDef nm arrTy arg <$> (fn env bod))
+                 in
+                   FunDef nm arrTy arg <$> (fn env bod))
             fundefs)
          <*>
          (mapM (\ (e,t) ->
