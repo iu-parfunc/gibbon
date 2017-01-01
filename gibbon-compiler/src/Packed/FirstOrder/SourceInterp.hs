@@ -164,39 +164,12 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
        return (x, toLazyByteString logs)
 
  where
-  applyPrim :: (Store,[Exp]) -> Prim -> [Value] -> Value
-  applyPrim (Store store,argcode) p ls =
+  applyPrim :: Prim -> [Value] -> Value
+  applyPrim p ls =
    case (p,ls) of
      (MkTrue,[])             -> VBool True
      (MkFalse,[])            -> VBool False
-     (AddP,[VInt x, VInt y]) -> VInt (x+y)
-
-     -- After Cursorize we abuse AddP for cursor arithmetic too... could introduce a new
-     -- prim for this.
-     (AddP,[VCursor idx off, VInt bytesadd]) ->
-         -- Note: the added offset is always in BYTES:
-         let Buffer sq = store IM.! idx
-             dropped = go bytesadd (S.viewl (S.drop off sq))
-             go 0 _ = 0
-             go n (hd :< tl) | n >= byteSize hd = 1 + go (n - byteSize hd) (S.viewl tl)
-                             | otherwise = error $ errHeader ++ "Cannot skip "++
-                                               show n++" bytes, next value in buffer is: "++ show hd
-                                               ++" of size "++show (byteSize hd) ++".\n"++moreContext
-             go n S.EmptyL = error $ errHeader ++ "Cannot skip ahead "
-                             ++show n++" bytes.  Buffer is empty.\n"++moreContext
-
-             errHeader = "Pointer arithmetic error in AddP of "++show argcode++".  "
-             moreContext = " Starting cursor, "++show (VCursor idx off)
-                           ++" in Buffer: "++ndoc sq
-         in
-         dbgTrace interpChatter ("\n [AddP Ptr, "++ (abbrv 60 argcode)
-                                                 ++"] scroll "++show bytesadd++" bytes, "
-                                                 ++"dropping" ++show dropped++" elems,\n     "
-                                                 ++moreContext) $ 
-         VCursor idx (off+dropped)
-                      
-     (AddP,[x@VInt{},y@VCursor{}]) -> applyPrim (Store store,argcode) p [y,x]
-                                
+     (AddP,[VInt x, VInt y]) -> VInt (x+y)                                
      (SubP,[VInt x, VInt y]) -> VInt (x-y)
      (MulP,[VInt x, VInt y]) -> VInt (x*y)
      (EqSymP,[VInt x, VInt y]) -> VBool (x==y)
@@ -218,13 +191,40 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
       go env x0 =
           case x0 of
             LitE c         -> return $ VInt c
-            VarE v         -> return $ env # v
+
+            -- In L2.5 witnesses are really justs casts:
+            -- FIXME: We need some way to mediate between symbolic
+            -- values and Cursors... or this won't work.
+            VarE v -- | Just v' <- L2.fromWitnessVar v -> return $ env # v'
+                   | otherwise                      -> return $ env # v
             PrimAppE p ls  -> do args <- mapM (go env) ls
-                                 str  <- get
-                                 return $ applyPrim (str,ls) p args
+                                 return $ applyPrim p args
             ProjE ix ex -> do VProd ls <- go env ex
                               return $ ls !! ix
 
+            AddCursor vr bytesadd -> do
+                Store store <- get
+                -- Note: the added offset is always in BYTES:
+                let VCursor idx off = env # vr
+                    Buffer sq = store IM.! idx
+                    dropped = lp bytesadd (S.viewl (S.drop off sq))
+                    lp 0 _ = 0
+                    lp n (hd :< tl) | n >= byteSize hd = 1 + lp (n - byteSize hd) (S.viewl tl)
+                                    | otherwise = error $ errHeader ++ "Cannot skip "++
+                                                      show n++" bytes, next value in buffer is: "++ show hd
+                                                      ++" of size "++show (byteSize hd) ++".\n"++moreContext
+                    lp n S.EmptyL = error $ errHeader ++ "Cannot skip ahead "
+                                    ++show n++" bytes.  Buffer is empty.\n"++moreContext
+
+                    errHeader = "Pointer arithmetic error in AddCursor of "++show (vr,bytesadd)++".  "
+                    moreContext = " Starting cursor, "++show (VCursor idx off)
+                                  ++" in Buffer: "++ndoc sq
+                liftIO $ dbgPrintLn interpChatter ("\n [AddP Ptr, "++ show (vr,bytesadd)
+                                                   ++"] scroll "++show bytesadd++" bytes, "
+                                                   ++"dropping" ++show dropped++" elems,\n     "
+                                                   ++moreContext)
+                return $ VCursor idx (off+dropped)
+                                     
             --- Pattern synonyms specific to post-cursorize ASTs:
             NewBuffer    -> do Store store0 <- get
                                let idx = IM.size store0

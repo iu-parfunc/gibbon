@@ -32,7 +32,11 @@ lvl = 4
 -- them into extra arguments and returns.  This pass does not worry
 -- about where the witnesses come from to synthesize these extra
 -- returns, it just inserts references to them that create demand.
--- 
+--
+-- This pass introduces *witness variables*.  These are operationally
+-- equivalent to the original variable, but they always have type
+-- CursorTy, even though the original value they are witnessing has
+-- not YET been turned into a cursor.  Thus, `witness_x = (CursorTy)x`.
 -- 
 routeEnds :: L2.Prog -> SyM L2.Prog
 routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
@@ -176,7 +180,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
              newExp = LetE (v,t, L1.mkProj num1 (num1+1) rhs') bod'
          assert (num1 + num2 == length demanded) $
             return (newExp, bloc)
-           
+     
      --  We're allowing these as tail calls:
      AppE rat rand -> -- L1.assertTriv rnd $
        let loc = trivLoc rand in

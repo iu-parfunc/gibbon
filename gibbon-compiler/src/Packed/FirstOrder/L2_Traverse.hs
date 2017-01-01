@@ -44,6 +44,7 @@ module Packed.FirstOrder.L2_Traverse
     -- * Extended L2.5, for after cursor insertion:
     , pattern WriteInt, pattern ReadInt, pattern NewBuffer
     , pattern CursorTy, pattern ScopedBuffer, pattern AddCursor
+    , isExtendedPattern
     )
     where
 
@@ -212,7 +213,7 @@ getTyLocs t =
       PackedTy _ lv -> S.singleton lv
       -- This is a tricky case:
       SymDictTy elt -> getTyLocs elt
-      
+      ListTy{} -> error "FINISHLISTS"
                   
 -- | Annotate a naked type with fresh location variables.
 tyWithFreshLocs :: L1.Ty -> SyM Ty
@@ -556,6 +557,16 @@ pattern ReadInt v = AppE "ReadInt" (VarE v)
 pattern CursorTy l = PackedTy "CURSOR_TY" l
 
 -- | Add a constant offset to a cursor variable.
-pattern AddCursor v i = PrimAppE AddP [VarE v, LitE i]
--- NEXT/TODO:
--- pattern AddCursor v i = AppE "AddCursor" (MkProdE [VarE v, LitE i])
+pattern AddCursor v i = AppE "AddCursor" (MkProdE [VarE v, LitE i])
+
+-- | A predicate to check if the form is part of the extended "L2.5" language.
+isExtendedPattern :: Exp -> Bool
+isExtendedPattern e =
+  case e of
+    NewBuffer{}    -> True
+    ScopedBuffer{} -> True
+    ReadInt{}      -> True
+    WriteInt{}     -> True
+    AddCursor{}    -> True
+    _              -> False
+

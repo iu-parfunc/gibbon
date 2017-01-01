@@ -246,6 +246,8 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                             LetE (v,ty,rhs') <$>
                               exp (M.insert v ty tenv) isMain bod
 
+      L2.AddCursor _ _ -> return ex0
+      _ | L2.isExtendedPattern ex0 -> error$ "cursorDirect/exp: Unhandled extended L2 pattern: "++ndoc ex0 
       AppE f e -> do Left e' <- doapp [] tenv isMain Nothing f e
                      return e'
 
@@ -532,6 +534,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                                           LetE (vr, ty, undilate (Di (VarE tmp)))
                                                            (VarE tmp)
 
+          | L2.isExtendedPattern ex     = error$ "cursorDirect/exp2: Unhandled extended L2 pattern: "++ndoc ex
           | AppE f arg           <- ex  =
              -- A function call plus projecting one of its results.  Here, WHICH result we project
              -- determines which tree output we consume, and thus which output cursor we connect.
@@ -971,7 +974,9 @@ isWitnessExpr = go
    case ex of   
    (VarE _x)         -> True
    (LitE _x)         -> True
-   (PrimAppE _x1 _x2) -> True -- ^ For adding offsets.
+
+   (AddCursor _ _)   -> True -- ^ For adding offsets.
+   -- (PrimAppE L1.AddP _x2) -> True -- ^ For adding offsets.  
 
    (NamedVal _ _ e)  -> go e
    (LetE (_,_,e1) e2) -> go e1 && go e2

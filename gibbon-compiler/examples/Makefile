@@ -8,12 +8,16 @@ ANSWERS= $(ALL_TESTS:.sexp=.ans)
 # ANSWERS= $(INTERP1_TESTS:.sexp=.ans) $(INTERP2_TESTS:.sexp=.ans) $(PASSING_TESTS:.sexp=.ans) $(PACKED_TESTS:.sexp=.ans)
 
 
-test: 
+test: build
 # Having weird trouble with race conditons on answers:
 	$(MAKE) answers
 	wc -l $(ANSWERS)
 	@echo "Answers available, now proceeding..."
 	$(MAKE) parse_all
+	$(MAKE) core_tests
+
+# Assumes answers and build already available:
+core_tests:
 	$(MAKE) run_tests 
 	$(MAKE) run_tests_packed
 	$(MAKE) run_tests_interp1
@@ -93,8 +97,8 @@ PASSING_TESTS = $(filter-out $(FAILING_TESTS),$(ALL_TESTS))
 OUT_FILES=$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).out)
 EXE_FILES=$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).exe)
 
-# Run the tests that work:
-run_tests: build
+# Run the tests that work.  Assumes "build" has already executed.
+run_tests: 
 	@echo "\n Compiling and running tests through our compiler ($(EXTRA_SUFFIX)):"
 	@echo "------------------------------------------------------------------"
 	@echo "Running test set: "$(PASSING_TESTS)
@@ -199,4 +203,5 @@ distclean: clean
 	rm -f *.ans
 	cd error/; rm -f *.ans
 
-.PHONY: prebuild run_racket treelang_lib answers run_tests run_tests_interp2 run_tests_packed
+.PHONY: prebuild build run_racket treelang_lib answers run_tests core_tests
+.PHONY: run_tests_interp2 run_tests_packed clean distclean

@@ -347,6 +347,12 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       T.LetPrimCallT [(v,T.CursorTy)] T.ScopedBuf [] <$>
          tail bod
 
+    -- In Target, AddP is overloaded still:
+    L1.LetE (v,_, L2.AddCursor c n) bod ->
+      T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv "addCursor base" (L2.VarE c)
+                                             , triv "addCursor offset" (L2.LitE n)] <$>
+         tail bod
+
     ---------------------
     -- (3) Proper primapps.
     L1.LetE (v,t,L1.PrimAppE p ls) bod ->
@@ -357,11 +363,11 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
              (tail bod)
     --------------------------------End PrimApps----------------------------------
 
-    --
-    L1.AppE v e | notSpecial ex0 -> return $ T.TailCall ( v) [triv "operand" e]
+    L1.AppE v e | L2.isExtendedPattern ex0 -> error$ "Lower: Unhandled extended L2 pattern(1): "++ndoc ex0
+                | otherwise -> return $ T.TailCall ( v) [triv "operand" e]
 
     -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
-    ProjE ix ap@(AppE f e) | notSpecial ap -> do
+    ProjE ix ap@(AppE f e) | not (L2.isExtendedPattern ap) -> do
         tmp <- gensym "prjapp"
         let L2.ArrowTy (L2.ProdTy inTs) _ _ = funty (fundefs # f)
         tail $ LetE ( tmp
@@ -369,12 +375,14 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                     , ProjE ix (AppE f e))
                  (VarE tmp)
 
-
-    L1.LetE (_,_,L1.AppE f _) _ | M.notMember f fundefs ->
-      error $ "Application of unbound function: "++show f
+    L1.LetE (_,_, ap@(L1.AppE f _)) _
+        | L2.isExtendedPattern ap -> error$ "Lower: Unhandled extended L2 pattern(2): "++ndoc ap
+        | M.notMember f fundefs -> error $ "Application of unbound function: "++show f
 
     -- Non-tail call:
-    L1.LetE (vr,t, projOf -> (stk, L1.AppE f arg)) bod -> do
+    L1.LetE (vr,t, projOf -> (stk, ap@(L1.AppE f arg))) bod
+      | L2.isExtendedPattern ap -> error$ "Lower: Unhandled extended L2 pattern(3): "++ndoc ap
+      | otherwise -> do
         let L2.ArrowTy _ _ outTy = funty (fundefs # f)
         let f' = cleanFunName f
         (vsts,bod') <- case outTy of
@@ -422,15 +430,6 @@ projOf (ProjE ix e) = let (stk,e') = projOf e in
 projOf e = ([],e)
 
 
--- | Make sure an AppE doesn't encode one of our "virtual primops":
-notSpecial :: Exp -> Bool
-notSpecial ap =
-  case ap of
-   L2.WriteInt _ _ -> False
-   L2.NewBuffer    -> False
-   L2.ScopedBuffer -> False
-   L2.ReadInt _    -> False
-   _               -> True
 
 {-
 -- | Go under bindings and transform the very last return point.
