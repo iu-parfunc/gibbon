@@ -11,7 +11,7 @@ import qualified Packed.FirstOrder.L2_Traverse as L2
 
 -- We use some pieces from this other attempt:
 import           Packed.FirstOrder.L2_Traverse as L2
-import           Packed.FirstOrder.Passes.InferEffects (zipLT, zipTL, instantiateApp, freshLoc)
+import           Packed.FirstOrder.Passes.InferEffects (instantiateApp, freshLoc)
 import Data.List as L hiding (tail)
 import Data.Map as M
 import Data.Set as S
@@ -32,7 +32,11 @@ lvl = 4
 -- them into extra arguments and returns.  This pass does not worry
 -- about where the witnesses come from to synthesize these extra
 -- returns, it just inserts references to them that create demand.
--- 
+--
+-- This pass introduces *witness variables*.  These are operationally
+-- equivalent to the original variable, but they always have type
+-- CursorTy, even though the original value they are witnessing has
+-- not YET been turned into a cursor.  Thus, `witness_x = (CursorTy)x`.
 -- 
 routeEnds :: L2.Prog -> SyM L2.Prog
 routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
@@ -176,7 +180,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
              newExp = LetE (v,t, L1.mkProj num1 (num1+1) rhs') bod'
          assert (num1 + num2 == length demanded) $
             return (newExp, bloc)
-           
+     
      --  We're allowing these as tail calls:
      AppE rat rand -> -- L1.assertTriv rnd $
        let loc = trivLoc rand in
@@ -228,7 +232,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                   in LetE (toEndVar v, mkCursorTy (),
                            case sequence (L.map L1.sizeOf tys) of
                              -- Here we statically know the layout, plus one for the tag:
-                             Just ns -> PrimAppE L1.AddP [VarE (L2.toWitnessVar v), LitE (sum ns+1)]
+                             Just ns -> AddCursor (L2.toWitnessVar v) (sum ns+1)
                              Nothing -> VarE (toEndVar (L.last patVs)))
                        rhs'
                         

@@ -12,6 +12,7 @@ module Packed.FirstOrder.Passes.Flatten
 import Control.Monad.State
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L1_Source as L1
+import qualified Packed.FirstOrder.L2_Traverse as L2
 
 -- import Packed.FirstOrder.L2_Traverse (isCursorTy)
 
@@ -66,6 +67,20 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
      case e0 of
        (VarE _)         -> return ([],e0)
        (LitE _)         -> return ([],e0)
+
+       -- This pass is run at multiple points in the compiler pipeline.
+       -- We COULD just let these patterns be treated as arbitrary AppE forms,
+       -- but it is safer to handle them explicitly.
+       L2.AddCursor _ _ -> return ([],e0) -- Already flat.
+                           
+       L2.NewBuffer     -> return ([],e0) -- Already flat.
+       L2.ScopedBuffer  -> return ([],e0) -- Already flat.
+       L2.ReadInt _     -> return ([],e0) -- Already flat.
+       -- Mimics the AppE case:
+       L2.WriteInt v e  -> do (b1,e') <- triv "WI" e; return (b1, L2.WriteInt v e')
+       -- A fail-safe:
+       _ | L2.isExtendedPattern e0 -> error$ "Unhandled extended L2 pattern: "++ndoc e0
+                                         
        (AppE f arg)     -> do (b1,arg') <- triv "Ap" arg
                               return (b1, AppE f arg')
        (PrimAppE p ls)  -> gols (PrimAppE p)  ls "Prm"

@@ -2,11 +2,13 @@
 
 export TREELANGDIR=`pwd`
 
+INSTALL="stack --install-ghc build "
+
 # A shortcut to make things easier:
 function tc() {
     cur=`pwd`
     cd $TREELANGDIR/gibbon-compiler/
-    stack --install-ghc build 
+    $INSTALL
     if [ "$?" == "0" ]; then
         CMD=`stack exec -- which gibbon`;
         cd $cur;
@@ -16,6 +18,15 @@ function tc() {
         echo "'stack build' failed";
         return 1;
     fi
+}
+
+# A debugging version that prints back-traces upon exceptions.
+#
+# WARNING: as of stack 1.2 you need to stack-clean between using
+# tc/tcd.  It is not smart enough to rebuild automatically and keep
+# the build artifacts separate.
+function tcd() {    
+    INSTALL="$INSTALL --trace" tc $@
 }
 
 # A quick verison that doesn't check for recompile.

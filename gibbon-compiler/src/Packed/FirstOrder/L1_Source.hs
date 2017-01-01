@@ -150,7 +150,8 @@ hasPacked t = case t of
                 SymTy     -> False
                 BoolTy    -> False
                 IntTy     -> False
-                SymDictTy t -> hasPacked t
+                SymDictTy ty -> hasPacked ty
+                ListTy _     -> error "FINISHLISTS"
 
 -- | Provide a size in bytes, if it is statically known.                               
 sizeOf :: Ty1 a -> Maybe Int

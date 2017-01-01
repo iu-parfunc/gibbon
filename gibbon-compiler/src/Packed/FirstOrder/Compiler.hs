@@ -269,9 +269,9 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
         pass who fn x = do
           cs@CompileState{cnt} <- get
           _ <- lift $ evaluate $ force x
+          lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":\n"++sepline
           let (y,cnt') = runSyM cnt (fn x)
           put cs{cnt=cnt'}
-          lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":\n"++sepline
           _ <- lift $ evaluate $ force y
           lift$ dbgPrintLn lvl $ sdoc y
           return y
@@ -280,8 +280,8 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
         pass' :: PassRunner a b
         pass' who fn x = do
           cs@CompileState{cnt} <- get
-          let (y,cnt') = runSyM cnt (fn x)
           lift$ dbgPrintLn lvl $ "Running pass: " ++who++":\n"++sepline
+          let (y,cnt') = runSyM cnt (fn x)          
           put cs{cnt=cnt'}
           _ <- lift $ evaluate $ force y
           lift$ dbgPrintLn 6 $ sdoc y -- Still print if you crank it up.
@@ -299,10 +299,13 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                let Just res1 = result 
                runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
                let res2 = interpNoLogs runConf p2
-               unless (show res1 == res2) $ 
+               res2' <- catch (evaluate (force res2))                        
+                         (\exn -> error $ "Exception while running interpreter on pass result:\n"++sepline++"\n"
+                                  ++ show (exn::SomeException) ++ "\n"++sepline++"\nProgram was: "++abbrv 300 p2)
+               unless (show res1 == res2') $ 
                  error $ "After pass "++who++", evaluating the program yielded the wrong answer.\nReceived:  "
-                         ++show res2++"\nExpected:  "++show res1
-               dbgPrintLn 5 $ " [interp] answer was: "++sdoc res2
+                         ++show res2'++"\nExpected:  "++show res1
+               dbgPrintLn 5 $ " [interp] answer was: "++sdoc res2'
              return p2
 
         -- | Wrapper to enable running a pass AND interpreting the result.
@@ -312,6 +315,10 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
         -- | Version of 'passE' which does not print the output.
         passE' :: Interp p2 => PassRunner p1 p2
         passE' = wrapInterp pass'
+
+        -- | An alternative version that allows FAILURE while running
+        -- the interpreter part.
+        passF = pass -- FINISHME! For now not interpreting.
                     
     let outfile = case cfile of
                     Nothing -> (replaceExtension fp ".c")
@@ -349,14 +356,15 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                        l2d <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
                        ------------------- End Stubs ---------------------
                        l2d' <- passE' "typecheck"                typecheck                 l2d
-                       l2e  <- passE  "routeEnds"                routeEnds                 l2d'
-                       l2f  <- passE' "flatten"                  flatten2                  l2e
-                       l2g  <- passE  "findWitnesses"            findWitnesses             l2f
-                       l2h  <- passE  "inlinePacked"             inlinePacked              l2g
-                       l2i  <- passE  "cursorDirect"             cursorDirect              l2h
-                       l2i' <- pass' "typecheck"                typecheck                l2i
-                       l2j  <- pass' "flatten"                  flatten2                  l2i'
-                       l2k  <- pass  "findWitnesses"            findWitnesses             l2j
+                       l2e  <- pass   "routeEnds"                routeEnds                 l2d'
+                       l2f  <- pass'  "flatten"                  flatten2                  l2e
+                       l2g  <- pass   "findWitnesses"            findWitnesses             l2f
+                       l2h  <- pass   "inlinePacked"             inlinePacked              l2g
+                       -- [2016.12.31] For now witness vars only work out after cursorDirect then findWitnesses:
+                       l2i  <- passF  "cursorDirect"             cursorDirect              l2h
+                       l2i' <- pass'  "typecheck"                typecheck                 l2i
+                       l2j  <- pass'  "flatten"                  flatten2                  l2i'
+                       l2k  <- passE  "findWitnesses"            findWitnesses             l2j
                               
                        l2l  <- pass' "flatten"                  flatten2                  l2k
                        l2m  <- pass  "inlineTriv"               inline2                   l2l

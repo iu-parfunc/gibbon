@@ -40,6 +40,11 @@ module Packed.FirstOrder.L2_Traverse
 
     -- * Constraints
     , Constraint(..)
+
+    -- * Extended L2.5, for after cursor insertion:
+    , pattern WriteInt, pattern ReadInt, pattern NewBuffer
+    , pattern CursorTy, pattern ScopedBuffer, pattern AddCursor
+    , isExtendedPattern
     )
     where
 
@@ -208,7 +213,7 @@ getTyLocs t =
       PackedTy _ lv -> S.singleton lv
       -- This is a tricky case:
       SymDictTy elt -> getTyLocs elt
-      
+      ListTy{} -> error "FINISHLISTS"
                   
 -- | Annotate a naked type with fresh location variables.
 tyWithFreshLocs :: L1.Ty -> SyM Ty
@@ -531,4 +536,37 @@ revertToL1 Prog{ ..} =
    go FunDef{..} =
        let ArrowTy{arrIn,arrOut} = funty in 
        L1.FunDef funname (funarg, stripTyLocs arrIn) (stripTyLocs arrOut) funbod
+
+--------------------------------------------------------------------------------
+
+
+-- Conventions encoded inside the existing Core IR 
+-- =============================================================================
+
+pattern NewBuffer = AppE "NewBuffer" (MkProdE [])
+
+-- | output buffer space that is known not to escape the current function.
+pattern ScopedBuffer = AppE "ScopedBuffer" (MkProdE [])
+                    
+-- | Tag writing is still modeled by MkPackedE.
+pattern WriteInt v e = AppE "WriteInt" (MkProdE [VarE v, e])
+
+-- | One cursor in, (int,cursor') output.
+pattern ReadInt v = AppE "ReadInt" (VarE v)
+
+pattern CursorTy l = PackedTy "CURSOR_TY" l
+
+-- | Add a constant offset to a cursor variable.
+pattern AddCursor v i = AppE "AddCursor" (MkProdE [VarE v, LitE i])
+
+-- | A predicate to check if the form is part of the extended "L2.5" language.
+isExtendedPattern :: Exp -> Bool
+isExtendedPattern e =
+  case e of
+    NewBuffer{}    -> True
+    ScopedBuffer{} -> True
+    ReadInt{}      -> True
+    WriteInt{}     -> True
+    AddCursor{}    -> True
+    _              -> False
 

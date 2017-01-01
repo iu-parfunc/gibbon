@@ -26,7 +26,6 @@ import           Packed.FirstOrder.L1_Source (Exp(..))
 import qualified Packed.FirstOrder.L2_Traverse as L2
 import           Packed.FirstOrder.L2_Traverse ( FunDef(..), Prog(..) )
 import qualified Packed.FirstOrder.L3_Target as T
-import qualified Packed.FirstOrder.Passes.Cursorize as C
 import Data.Maybe
 import qualified Data.List as L
 import Data.List as L hiding (tail)
@@ -263,7 +262,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       return (T.LetAllocT v fields bod')
 
     -- This is legitimately flattened, but we need to move it off the spine:
-    L1.MkPackedE k ls -> do
+    L1.MkPackedE k _ls -> do
        tmp <- gensym "tailift"
        let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
        tail $ LetE (tmp, ty, ex0) (VarE tmp)
@@ -331,11 +330,11 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
     ---------------------
     -- (2) Next FAKE Primapps.  These could be added to L1 if we wanted to pollute it.
-    L1.LetE (v,_,C.WriteInt c e) bod ->
+    L1.LetE (v,_,L2.WriteInt c e) bod ->
       T.LetPrimCallT [(v,T.CursorTy)] T.WriteInt [triv "WriteTag arg" e, T.VarTriv c] <$>
          tail bod
 
-    L1.LetE (pr,_,C.ReadInt c) bod -> do
+    L1.LetE (pr,_,L2.ReadInt c) bod -> do
       vtmp <- gensym "tmpval"
       ctmp <- gensym "tmpcur"
       T.LetPrimCallT [(vtmp,T.IntTy),(ctmp,T.CursorTy)] T.ReadInt [T.VarTriv c] <$>
@@ -346,12 +345,18 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
           dbgTrace 5 (" [lower] ReadInt, after substing references to "++pr++":\n  "++sdoc bod')$
           tail bod'
 
-    L1.LetE (v,_,C.NewBuffer) bod ->
+    L1.LetE (v,_,L2.NewBuffer) bod ->
       T.LetPrimCallT [(v,T.CursorTy)] T.NewBuf [] <$>
          tail bod
 
-    L1.LetE (v,_,C.ScopedBuffer) bod ->
+    L1.LetE (v,_,L2.ScopedBuffer) bod ->
       T.LetPrimCallT [(v,T.CursorTy)] T.ScopedBuf [] <$>
+         tail bod
+
+    -- In Target, AddP is overloaded still:
+    L1.LetE (v,_, L2.AddCursor c n) bod ->
+      T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv "addCursor base" (L2.VarE c)
+                                             , triv "addCursor offset" (L2.LitE n)] <$>
          tail bod
 
     ---------------------
@@ -364,11 +369,11 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
              (tail bod)
     --------------------------------End PrimApps----------------------------------
 
-    --
-    L1.AppE v e | notSpecial ex0 -> return $ T.TailCall ( v) [triv "operand" e]
+    L1.AppE v e | L2.isExtendedPattern ex0 -> error$ "Lower: Unhandled extended L2 pattern(1): "++ndoc ex0
+                | otherwise -> return $ T.TailCall ( v) [triv "operand" e]
 
     -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
-    ProjE ix ap@(AppE f e) | notSpecial ap -> do
+    ProjE ix ap@(AppE f e) | not (L2.isExtendedPattern ap) -> do
         tmp <- gensym "prjapp"
         let L2.ArrowTy (L2.ProdTy inTs) _ _ = funty (fundefs # f)
         tail $ LetE ( tmp
@@ -376,12 +381,14 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                     , ProjE ix (AppE f e))
                  (VarE tmp)
 
-
-    L1.LetE (_,_,L1.AppE f _) _ | M.notMember f fundefs ->
-      error $ "Application of unbound function: "++show f
+    L1.LetE (_,_, ap@(L1.AppE f _)) _
+        | L2.isExtendedPattern ap -> error$ "Lower: Unhandled extended L2 pattern(2): "++ndoc ap
+        | M.notMember f fundefs -> error $ "Application of unbound function: "++show f
 
     -- Non-tail call:
-    L1.LetE (vr,t, projOf -> (stk, L1.AppE f arg)) bod -> do
+    L1.LetE (vr,t, projOf -> (stk, ap@(L1.AppE f arg))) bod
+      | L2.isExtendedPattern ap -> error$ "Lower: Unhandled extended L2 pattern(3): "++ndoc ap
+      | otherwise -> do
         let L2.ArrowTy _ _ outTy = funty (fundefs # f)
         let f' = cleanFunName f
         (vsts,bod') <- case outTy of
@@ -423,20 +430,12 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 --------------------------------------------------------------------------------
          
 -- | View pattern for matching agaist projections of Foo rather than just Foo.
+projOf :: Exp -> ([Int], Exp)
 projOf (ProjE ix e) = let (stk,e') = projOf e in
                       (stk++[ix], e')
 projOf e = ([],e)
 
 
--- | Make sure an AppE doesn't encode one of our "virtual primops":
-notSpecial :: Exp -> Bool
-notSpecial ap =
-  case ap of
-   C.WriteInt _ _ -> False
-   C.NewBuffer    -> False
-   C.ScopedBuffer -> False
-   C.ReadInt _    -> False
-   _              -> True
 
 {-
 -- | Go under bindings and transform the very last return point.

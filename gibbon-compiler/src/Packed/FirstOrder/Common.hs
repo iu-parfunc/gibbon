@@ -11,7 +11,11 @@
 -- | Utilities and common types.
 
 module Packed.FirstOrder.Common
-       ( -- * Type and Data Constructors
+       (
+         -- * Global constants
+--         cPackedTagSize, cPointerTagSize -- FINISHME
+
+         -- * Type and Data Constructors
          Constr
          -- * Variables and gensyms
        , Var, varAppend, SyM, gensym, genLetter, runSyM
@@ -25,11 +29,13 @@ module Packed.FirstOrder.Common
          -- * Top-level function defs
        , FunDef(..), FunDefs
        , insertFD, fromListFD
+
          -- * Data definitions
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
-         -- * Misc
-       , (#), fragileZip, sdoc, ndoc
+
+         -- * Misc helpers
+       , (#), fragileZip, sdoc, ndoc, abbrv
 
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
@@ -41,8 +47,9 @@ module Packed.FirstOrder.Common
 
 import Data.Char
 import Data.Word
+import Control.Exception (evaluate)
 import Control.Monad.State.Strict
-import Control.DeepSeq (NFData)
+import Control.DeepSeq (NFData(..), force)
 import Data.List as L
 import Data.Map as M
 import GHC.Generics
@@ -250,7 +257,15 @@ ndoc x = let s = sdoc x in
          then "\n  " ++ s
          else s
 
-
+-- | Like ndoc/sdoc but cut it off with "..." after a char limit.
+abbrv :: (Out a) => Int -> a -> String
+abbrv n x = 
+    let str = show (doc x)
+        len = length str
+    in if len <= n
+       then str
+       else take (n-3) str ++ "..."
+              
 ----------------------------------------------------------------------------------------------------
 -- Global parameters              
 ----------------------------------------------------------------------------------------------------
@@ -316,6 +331,7 @@ defaultDbg = 0
 -- | Print if the debug level is at or above a threshold.
 dbgPrint :: Int -> String -> IO ()
 dbgPrint lvl str = if dbgLvl < lvl then return () else do
+    _ <- evaluate (force str) -- Force it first to squeeze out any dbgTrace msgs.
     hPutStrLn stderr str
     -- hPrintf stderr str
     -- hFlush stderr
