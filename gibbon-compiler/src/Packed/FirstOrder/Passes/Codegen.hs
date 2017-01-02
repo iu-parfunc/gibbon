@@ -136,8 +136,10 @@ codegenProg prg@(Prog funs mtal) = do
               void __build_tree( $ty:(codegenTy IntTy) tree_size, char* buffer) {
                   $(cid build_tree)(tree_size, buffer);
               } |]
-          _ ->
-            [cunit|
+          Just (PrintExp _) -> def 
+          Nothing -> def
+         where              
+          def = [cunit|
               $ty:(codegenTy IntTy) __fn_with_file( $ty:(codegenTy PtrTy) in ) {
                 fprintf(stderr, "Benchmark is not implemented for this program.\n");
                 exit(1);
