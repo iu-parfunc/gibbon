@@ -172,13 +172,13 @@
     [(LetValues binds body)
      (let ([nenv : (SymDict Sym) (lvbind-rename binds env)])
        (let ([nbinds : LVBIND (lvbind-update-lhs binds nenv)])
-         (let ([nbinds : LVBIND (lvbind-update-rhs binds env)]) ;; env because not a let*
+         (let ([nbinds : LVBIND (lvbind-update-rhs nbinds env)]) ;; env because not a let*
            (LetValues nbinds (loop2 body nenv)))))]
 
     [(LetrecValues binds body) ;; anything different here? one thing
      (let ([nenv : (SymDict Sym) (lvbind-rename binds env)])
        (let ([nbinds : LVBIND (lvbind-update-lhs binds nenv)])
-         (let ([nbinds : LVBIND (lvbind-update-rhs binds nenv)]) ;; nenv because recursive.
+         (let ([nbinds : LVBIND (lvbind-update-rhs nbinds nenv)]) ;; nenv because recursive.
            (LetrecValues nbinds (loop2 body nenv)))))]
 
     [(If cond then else)
@@ -190,7 +190,10 @@
     [(App e1 exprs)  ;; (#%plain-app expr ...+)
      (App (pass1 e1 env) (loop2 exprs env))]
     [(SetBang s e)
-     (SetBang s (pass1 e env))]
+     (SetBang (if (has-key? env s)
+                  (lookup env s)
+                  s)
+              (pass1 e env))]
     [(WithContinuationMark e1 e2 e3)
      (WithContinuationMark (pass1 e1 env) (pass1 e2 env) (pass1 e3 env))]))
 
