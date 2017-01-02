@@ -350,21 +350,22 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                      if packed
                      then do
                        ---------------- Stubs currently ------------------
-                       mt  <- pass'  "findMissingTraversals"    findMissingTraversals    l2
-                       l2b <- passE' "addTraversals"            (addTraversals mt)       l2
-                       l2c <- passE' "addCopies"                addCopies                l2b
-                       l2d <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2c
+                       mt  <- pass'  "findMissingTraversals"    findMissingTraversals     l2
+                       l2b <- passE' "addTraversals"            (addTraversals mt)        l2
+                       l2c <- passE' "addCopies"                addCopies                 l2b
+                       l2d <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals  l2c
                        ------------------- End Stubs ---------------------
-                       l2d' <- passE' "typecheck"                typecheckPermissive       l2d
-                       l2e  <- pass   "routeEnds"                routeEnds                 l2d'
-                       l2f  <- pass'  "flatten"                  flatten2                  l2e
-                       l2g  <- pass   "findWitnesses"            findWitnesses             l2f
-                       l2h  <- pass   "inlinePacked"             inlinePacked              l2g
+                       -- l2d' <- passE' "typecheck"                typecheckStrict          l2d
+                       l2d' <- passE' "typecheck"                typecheckPermissive      l2d
+                       l2e  <- pass   "routeEnds"                routeEnds                l2d'
+                       l2f  <- pass'  "flatten"                  flatten2                 l2e
+                       l2g  <- pass   "findWitnesses"            findWitnesses            l2f
+                       l2h  <- pass   "inlinePacked"             inlinePacked             l2g
                        -- [2016.12.31] For now witness vars only work out after cursorDirect then findWitnesses:
-                       l2i  <- passF  "cursorDirect"             cursorDirect              l2h
-                       l2i' <- pass'  "typecheck"                typecheckPermissive       l2i
-                       l2j  <- pass'  "flatten"                  flatten2                  l2i'
-                       l2k  <- passE  "findWitnesses"            findWitnesses             l2j
+                       l2i  <- passF  "cursorDirect"             cursorDirect             l2h
+                       l2i' <- pass'  "typecheck"                typecheckPermissive      l2i
+                       l2j  <- pass'  "flatten"                  flatten2                 l2i'
+                       l2k  <- passE  "findWitnesses"            findWitnesses            l2j
                               
                        l2l  <- pass' "flatten"                  flatten2                  l2k
                        l2m  <- pass  "inlineTriv"               inline2                   l2l

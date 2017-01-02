@@ -571,3 +571,18 @@ isExtendedPattern e =
     AddCursor{}    -> True
     _              -> False
 
+
+-- | A type environment listing the types of built-in functions.
+-- 
+--   Using this table represents a policy decision.  Specifically,
+--   that a type checker is relying on the fact that all the L2.5
+--   patterns above are valid AppE forms.  The alternative is for that
+--   typechecker to match against these patterns before the AppE
+--   cases.
+--
+builtinTEnv :: M.Map Var (ArrowTy L1.Ty)
+builtinTEnv = M.fromList
+  [ ("NewBuffer", ArrowTy voidTy S.empty (CursorTy ()))
+  ]
+
+                      

@@ -33,15 +33,15 @@ type TCEnv s = M.Map Var (TCVar s)
 typecheckStrict :: L2.Prog -> SyM L2.Prog
 typecheckStrict prg = if typecheck prg
                       then return prg
-                      else error "Exiting due to above type errors."
-
+                      else error "Compiler exiting due to above type errors."
+-- WARNING: depending on DEBUG, "above type errors" may not actually show.
+-- !!TODO!!: switch to a writer monad to accumulate error messages, rather than dbgTrace.
 
 -- | In contrast with 'typecheckStrict', this issues type errors only as warnings.
 typecheckPermissive :: L2.Prog -> SyM L2.Prog
 typecheckPermissive prg = do let !_ = typecheck prg 
                              return prg
-                           
--- !!TODO!!: switch to a writer monad to accumulate error messages, rather than dbgTrace.
+                          
                    
 -- | Run typecheck and report errors using the trace mechanism.
 -- Returns true if the program typechecks.
@@ -54,9 +54,12 @@ typecheck prg = runST $ do
 typecheck' :: forall s . STRef s Bool -> L2.Prog -> ST s L2.Prog 
 typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
  where
-  fn env2 exp0 = do t <- typecheckExp defs env2 M.empty exp0
-                    reportTCVar t
-                    return exp0
+  fn env2 exp0 = do tv <- typecheckExp defs env2 M.empty exp0
+                    mty <- extractTCVar tv
+                    case mty of
+                      Just ty -> dbgTrace 2 ("Typecheck program returned: " ++ (show ty)) $ 
+                                  return exp0
+                      Nothing -> return exp0
 
   typecheckExp :: DDefs L1.Ty -> Env2 L1.Ty -> TCEnv s -> Exp -> ST s (TCVar s)
   typecheckExp dd env2 tcenv ex0 =
@@ -91,7 +94,13 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
                  L1.DictEmptyP t -> return $ Concrete $ SymDictTy t
                  L1.DictLookupP t -> return $ Concrete t
                  L1.DictInsertP t -> return $ Concrete $ SymDictTy t
-                 _ -> failFresh $ "Case not handled in typecheck: " ++ (show p)
+
+                 L1.SizeParam -> return $ Concrete IntTy 
+                 L1.MkTrue    -> return $ Concrete BoolTy
+                 L1.MkFalse   -> return $ Concrete BoolTy
+                                     
+                 -- _ -> failFresh $ "Case not handled in typecheck: " ++ (show p)
+
         LetE (v,t,e') e ->
             do te' <- typecheckExp dd env2 tcenv e'
                assertEqTCVar ex0 (Concrete t) te'
@@ -136,11 +145,16 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
                         Right () -> failFresh $ "I ran into a ProjE of " ++ (show e) ++
                                             ", but I don't know the type of that thing."
 
-    allConcrete ((Concrete t):ts) es = do pts <- allConcrete ts es
-                                          case pts of
-                                            Nothing -> return Nothing
-                                            Just (ProdTy ts') -> 
-                                                return $ Just $ ProdTy $ t:ts'
+    allConcrete [] _ = return $ Just $ ProdTy [] -- Unit type.
+    allConcrete ((Concrete t1):t2:ts) es = do pts <- allConcrete (t2:ts) es
+                                              case pts of
+                                                Nothing -> return Nothing
+                                                Just (ProdTy ts') -> 
+                                                    return $ Just $ ProdTy $ t1:ts'
+                                                Just _ -> error "impossible."
+
+    -- We don't allow singleton tuples in general, but here we plan to
+    -- recursively build up the product types.
     allConcrete [(Concrete t)] _es = return $ Just $ ProdTy [t]
     allConcrete _ es = do reportErr $ "Tried to do a MkProdE of " ++ (show es) ++
                                       " but couldn't determine its type."
@@ -207,11 +221,12 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
               (Right (), Left tcv) -> writeSTRef r1 $ Left tcv
               (Left tc1, Left tc2) -> assertEqTCVar e tc1 tc2
 
-  reportTCVar :: (TCVar s) -> ST s ()
-  reportTCVar (Concrete t) = reportErr $ "Typecheck returned: " ++ (show t)
-  reportTCVar (Alias r) =
+  extractTCVar :: (TCVar s) -> ST s (Maybe L1.Ty)
+  extractTCVar (Concrete t) = return (Just t)
+  extractTCVar (Alias r) =
       do r' <- readSTRef r
          case r' of
-           Left tcv -> reportTCVar tcv
-           Right () -> reportErr "Expression didn't have a type that I could figure out"
+           Left tcv -> extractTCVar tcv
+           Right () -> do reportErr "Expression didn't have a type that I could figure out"
+                          return Nothing
 
