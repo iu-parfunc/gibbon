@@ -10,6 +10,6 @@ ASTBenchmarks/cleaned_*
 ASTBenchmarks/expanded_*
 ASTBenchmarks/*.tgz
 BintreeBench/*.exe
-Gibbon/.stack-work
+gibbon-compiler/.stack-work
 
 compiled/

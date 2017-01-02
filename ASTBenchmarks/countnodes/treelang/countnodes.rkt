@@ -1,4 +1,4 @@
-#lang s-exp "../../../Gibbon/gibbon.rkt"
+#lang gibbon
 
 (require "../../grammar_racket.sexp")
 (provide countnodes)

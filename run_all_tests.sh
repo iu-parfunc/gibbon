@@ -29,19 +29,29 @@ stack --version
 racket --version
 gcc --version
 
+# Set TREELANGDIR:
 source set_env.sh
 
 
 set +x; echo
-echo "  Compiler"
+echo "  Racket code (1/2)"
 echo "----------------------------------------"
 set -x
-cd $top/Gibbon
+
+# First the core #lang implementation:
+cd $top/; make racket
+
+
+set +x; echo
+echo "  Gibbon Compiler"
+echo "----------------------------------------"
+set -x
+cd $top/gibbon-compiler
 
 # Run compiler unit tests 
-stack --install-ghc test "$STACKARGS"
+stack --allow-different-user --install-ghc test "$STACKARGS"
 
-cd $top/Gibbon/examples
+cd $top/gibbon-compiler/examples
 make test $MKPARARGS
 # Turning of -j for now [2016.11.06]
 
@@ -60,9 +70,11 @@ make check
 
 
 set +x; echo
-echo "  Racket code"
+echo "  Racket code (2/2)"
 echo "----------------------------------------"
 set -x
+
+# Then misc other code/benchmarks:
 cd $top/ASTBenchmarks/common/racket; make
 cd $top/ASTBenchmarks/substitution/treelang; make
 

@@ -1,4 +1,4 @@
-#lang s-exp "../../Gibbon/gibbon.rkt"
+#lang gibbon
 
 (provide (all-defined-out))
 
