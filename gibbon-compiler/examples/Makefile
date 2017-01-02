@@ -149,8 +149,8 @@ INTERP2_FAILING = test00b_printBool.sexp test06a_two_cases.sexp test06b_case.sex
   test20b_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
   test25b_racketcore.sexp test25_rackcore.sexp \
   test07b_iterate.sexp test25b_racketcore.sexp \
-  test11_fundata.sexp test10_desugar.sexp test10b_desugar.sexp \
-  test09_recur.sexp test08_dict.sexp test02b_datacon.sexp test02c_case.sexp
+  test11_fundata.sexp test10_desugar.sexp test10b_desugar.sexp test24_defs.sexp \
+  test09_recur.sexp test08_dict.sexp test02b_datacon.sexp test02c_case.sexp 
 # Last line are new regressions...
 
 # Running through interpreter, no --packed/cursorize:

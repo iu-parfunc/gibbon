@@ -1,0 +1,5 @@
+
+;; This file provides a simple input datum for the data ingestion and
+;; binary packing test.
+
+(MkBar (MkFoo 34))
