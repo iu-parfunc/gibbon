@@ -7,8 +7,16 @@ ALL_TESTS= $(shell ls test*.sexp)
 ANSWERS= $(ALL_TESTS:.sexp=.ans) 
 # ANSWERS= $(INTERP1_TESTS:.sexp=.ans) $(INTERP2_TESTS:.sexp=.ans) $(PASSING_TESTS:.sexp=.ans) $(PACKED_TESTS:.sexp=.ans)
 
+# Here's a hacky way to try several things until one works:
+PROCS = $(shell nproc || \
+          getconf _NPROCESSORS_ONLN || \
+          stack exec -- ghc -e GHC.Conc.getNumProcessors || \
+          python -c 'import multiprocessing as m; print m.cpu_count()' )
+# On Mac: sysctl -n hw.ncpu
+# On Windows?
 
-test: build
+
+test: prebuild build
 # Having weird trouble with race conditons on answers:
 	$(MAKE) answers
 	wc -l $(ANSWERS)
@@ -36,8 +44,12 @@ TREECARGS ?= --optc=-g
 
 
 # Not necessary, because we build each module before we run it:
-prebuild:
-	raco make -v $(ALL_TESTS)
+prebuild: test24_output.bin
+	raco make -j $(PROCS) -v $(ALL_TESTS) 
+
+
+test24_output.bin: test24_input.dat test24_packit.rkt test24_defs.sexp
+	racket test24_packit.rkt
 
 #----------------------------------------
 # Test direct Racket execution:
@@ -197,7 +209,8 @@ treelang_lib:
 	raco make -v ../../gibbon/main.rkt 
 
 clean:
-	rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp*
+	rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp* test24_output.bin
+	rm -rf ./compiled
 	cd error/; rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed
 
 distclean: clean
