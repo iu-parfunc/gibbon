@@ -7,7 +7,8 @@
 
 (data Bar (MkBar Foo))
 
-;; A "pass" to run.
+;; A "pass" to run.  You can run this directly with the following command:
+;;   gibbon --bench pass --bench-input "foo.bin" 
 (define (pass [x : Bar]) : Bar
   (case x
     [(MkBar foo)
@@ -17,7 +18,7 @@
 
 
 ;; Here's what it would look like to run the tests from within the
-;; gibbon code itself.  
+;; gibbon code itself.
 
 ;; (define (main) : Bar
 ;;   (let ([x : Bar (ann (read-packed "test24_input.bin") Bar)])

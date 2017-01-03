@@ -21,6 +21,7 @@ import           Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, 
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import           Packed.FirstOrder.Common hiding (funBody)
+import qualified Packed.FirstOrder.L1_Source as L1
 import           Prelude hiding (init)
 import           System.Directory
 import           System.Environment
@@ -367,77 +368,94 @@ codegenTail (LetCallT bnds ratr rnds body) ty
 
 codegenTail (LetPrimCallT bnds prm rnds body) ty =
     do bod' <- codegenTail body ty
-       let pre  = case prm of
-                    AddP -> let [(outV,outT)] = bnds
-                                [pleft,pright] = rnds
-                            in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) + $(codegenTriv pright); |] ]
-                    SubP -> let (outV,outT) = head bnds
-                                [pleft,pright] = rnds
-                            in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) - $(codegenTriv pright); |] ]
-                    MulP -> let [(outV,outT)] = bnds
-                                [pleft,pright] = rnds
-                            in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) * $(codegenTriv pright); |]]
-                    EqP -> let [(outV,outT)] = bnds
-                               [pleft,pright] = rnds
-                           in [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv pleft) == $(codegenTriv pright)); |]]
-                    DictInsertP IntTy -> let [(outV,ty)] = bnds
-                                             [(VarTriv dict),keyTriv,valTriv] = rnds
-                                         in [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = dict_insert_int($id:dict, $(codegenTriv keyTriv), $(codegenTriv valTriv)); |] ]
-                    DictInsertP SymTy -> let [(outV,ty)] = bnds
-                                             [(VarTriv dict),keyTriv,valTriv] = rnds
-                                         in [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = dict_insert_int($id:dict, $(codegenTriv keyTriv), $(codegenTriv valTriv)); |] ]
-                    DictInsertP ty -> error $ "DictInsertP not implemented for type " ++ (show ty)
-                    DictLookupP IntTy -> let [(outV,IntTy)] = bnds
-                                             [(VarTriv dict),keyTriv] = rnds
-                                         in [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = dict_lookup_int($id:dict, $(codegenTriv keyTriv)); |] ]
-                    DictLookupP SymTy -> let [(outV,IntTy)] = bnds
-                                             [(VarTriv dict),keyTriv] = rnds
-                                         in [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = dict_lookup_int($id:dict, $(codegenTriv keyTriv)); |] ]
-                    DictLookupP ty -> error $ "DictLookupP not implemented for type " ++ (show ty)
-                    DictEmptyP _ty -> let [(outV,ty)] = bnds
-                                      in [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = 0; |] ]
-                    NewBuf   -> let [(outV,CursorTy)] = bnds in
-                                [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED(DEFAULT_BUF_SIZE); |] ]
-                    ScopedBuf -> let [(outV,CursorTy)] = bnds in
-                                [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_SCOPED(); |] ]
-                    WriteTag -> let [(outV,CursorTy)] = bnds
-                                    [(TagTriv tag),(VarTriv cur)] = rnds
-                                in [ C.BlockStm [cstm| *($id:cur) = $tag; |]
-                                   , C.BlockDecl [cdecl| char* $id:outV = $id:cur + 1; |] ]
-                    WriteInt -> let [(outV,CursorTy)] = bnds
-                                    [val,(VarTriv cur)] = rnds
-                                in [ C.BlockStm [cstm| *( $ty:(codegenTy IntTy)  *)($id:cur) = $(codegenTriv val); |]
-                                   , C.BlockDecl [cdecl| char* $id:outV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
-                    ReadTag -> let [(tagV,TagTyPacked),(curV,CursorTy)] = bnds
-                                   [(VarTriv cur)] = rnds
-                               in [ C.BlockDecl [cdecl| $ty:(codegenTy TagTyPacked) $id:tagV = *($id:cur); |]
-                                  , C.BlockDecl [cdecl| char* $id:curV = $id:cur + 1; |] ]
-                    ReadInt -> let [(valV,IntTy),(curV,CursorTy)] = bnds
-                                   [(VarTriv cur)] = rnds
-                               in [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:valV = *( $ty:(codegenTy IntTy) *)($id:cur); |]
-                                  , C.BlockDecl [cdecl| char* $id:curV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
+       pre <- case prm of
+                 AddP -> let [(outV,outT)] = bnds
+                             [pleft,pright] = rnds in pure 
+                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) + $(codegenTriv pright); |] ]
+                 SubP -> let (outV,outT) = head bnds
+                             [pleft,pright] = rnds in pure 
+                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) - $(codegenTriv pright); |] ]
+                 MulP -> let [(outV,outT)] = bnds
+                             [pleft,pright] = rnds in pure 
+                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv pleft) * $(codegenTriv pright); |]]
+                 EqP -> let [(outV,outT)] = bnds
+                            [pleft,pright] = rnds in pure 
+                        [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($(codegenTriv pleft) == $(codegenTriv pright)); |]]
+                 DictInsertP IntTy -> let [(outV,ty)] = bnds
+                                          [(VarTriv dict),keyTriv,valTriv] = rnds in pure
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = dict_insert_int($id:dict, $(codegenTriv keyTriv), $(codegenTriv valTriv)); |] ]
+                 DictInsertP SymTy -> let [(outV,ty)] = bnds
+                                          [(VarTriv dict),keyTriv,valTriv] = rnds in pure 
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = dict_insert_int($id:dict, $(codegenTriv keyTriv), $(codegenTriv valTriv)); |] ]
+                 DictInsertP ty -> error $ "DictInsertP not implemented for type " ++ (show ty)
+                 DictLookupP IntTy -> let [(outV,IntTy)] = bnds
+                                          [(VarTriv dict),keyTriv] = rnds in pure
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = dict_lookup_int($id:dict, $(codegenTriv keyTriv)); |] ]
+                 DictLookupP SymTy -> let [(outV,IntTy)] = bnds
+                                          [(VarTriv dict),keyTriv] = rnds in pure
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = dict_lookup_int($id:dict, $(codegenTriv keyTriv)); |] ]
+                 DictLookupP ty -> error $ "DictLookupP not implemented for type " ++ (show ty)
+                 DictEmptyP _ty -> let [(outV,ty)] = bnds
+                                   in pure [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = 0; |] ]
+                 NewBuf   -> let [(outV,CursorTy)] = bnds in pure
+                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED(DEFAULT_BUF_SIZE); |] ]
+                 ScopedBuf -> let [(outV,CursorTy)] = bnds in pure
+                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_SCOPED(); |] ]
+                 WriteTag -> let [(outV,CursorTy)] = bnds
+                                 [(TagTriv tag),(VarTriv cur)] = rnds in pure
+                             [ C.BlockStm [cstm| *($id:cur) = $tag; |]
+                             , C.BlockDecl [cdecl| char* $id:outV = $id:cur + 1; |] ]
+                 WriteInt -> let [(outV,CursorTy)] = bnds
+                                 [val,(VarTriv cur)] = rnds in pure
+                             [ C.BlockStm [cstm| *( $ty:(codegenTy IntTy)  *)($id:cur) = $(codegenTriv val); |]
+                             , C.BlockDecl [cdecl| char* $id:outV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
+                 ReadTag -> let [(tagV,TagTyPacked),(curV,CursorTy)] = bnds
+                                [(VarTriv cur)] = rnds in pure
+                            [ C.BlockDecl [cdecl| $ty:(codegenTy TagTyPacked) $id:tagV = *($id:cur); |]
+                            , C.BlockDecl [cdecl| char* $id:curV = $id:cur + 1; |] ]
+                 ReadInt -> let [(valV,IntTy),(curV,CursorTy)] = bnds
+                                [(VarTriv cur)] = rnds in pure
+                            [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:valV = *( $ty:(codegenTy IntTy) *)($id:cur); |]
+                            , C.BlockDecl [cdecl| char* $id:curV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]                    
 
-                    GetFirstWord ->
-                     let [ptr] = rnds in
-                     case bnds of
-                       [(outV,outTy)] ->
-                        [ C.BlockDecl [cdecl|
+                 GetFirstWord ->
+                  let [ptr] = rnds in
+                  case bnds of
+                    [(outV,outTy)] -> pure
+                     [ C.BlockDecl [cdecl|
                             $ty:(codegenTy outTy) $id:outV =
                               * (( $ty:(codegenTy outTy) *) $(codegenTriv ptr));
                           |] ]
-                       _ -> error $ "wrong number of return bindings from GetFirstWord: "++show bnds
+                    _ -> error $ "wrong number of return bindings from GetFirstWord: "++show bnds
 
-                    SizeParam -> let [(outV,IntTy)] = bnds in
-                                [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = global_size_param; |] ]
+                 SizeParam -> let [(outV,IntTy)] = bnds in pure
+                      [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = global_size_param; |] ]
 
-                    PrintInt | [] <- bnds -> let [arg] = rnds in
-                                             [ C.BlockStm [cstm| printf("%lld", $(codegenTriv arg)); |] ]
-                             | otherwise -> error$ "wrong number of return values expected from PrintInt prim: "++show bnds
+                 PrintInt | [] <- bnds -> let [arg] = rnds in pure
+                                          [ C.BlockStm [cstm| printf("%lld", $(codegenTriv arg)); |] ]
+                          | otherwise -> error$ "wrong number of return values expected from PrintInt prim: "++show bnds
 
-                    PrintString str | [] <- bnds, [] <- rnds -> [ C.BlockStm [cstm| puts( $string:str ); |] ]
-                                    | otherwise -> error$ "wrong number of args/return values expected from PrintString prim: "++show (rnds,bnds)
+                 PrintString str | [] <- bnds, [] <- rnds -> pure [ C.BlockStm [cstm| puts( $string:str ); |] ]
+                                 | otherwise -> error$ "wrong number of args/return values expected from PrintString prim: "++show (rnds,bnds)
 
-                    -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
+                 ReadPackedFile mfile l1ty
+                     | [] <- rnds, [(outV,outT)] <- bnds -> do
+                             let filename = case mfile of
+                                              Just f  -> [cexp| $string:f |]
+                                              Nothing -> [cexp| global_input_file |] -- Will be initialized with command line arg.
+                                 L1.PackedTy dcon _ = l1ty
+                                 unpackName = mkUnpackerName dcon
+                                 funcall = LetCallT [(outV,CursorTy),("junk",CursorTy)]
+                                                    unpackName [VarTriv "ptr"] (AssnValsT [])
+                             docall <- codegenTail funcall (codegenTy (ProdTy []))
+                             pure $ 
+                              [ C.BlockDecl[cdecl| int fd = open( $filename, O_RDONLY); |]
+                              , C.BlockDecl[cdecl| struct stat st; |]
+                              , C.BlockStm [cstm|  fstat(fd, &st); |]
+                              , C.BlockDecl[cdecl| $ty:(codegenTy CursorTy) *ptr = mmap(0,st.st_size,PROT_READ,MAP_PRIVATE,fd,0); |]
+                              ] ++ docall
+
+                  -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'
 
 codegenTy :: Ty -> C.Type

@@ -20,6 +20,8 @@ import           Data.Maybe
 import           Data.Word (Word8)
 import           GHC.Generics (Generic)
 import           Packed.FirstOrder.Common hiding (funBody)
+
+import qualified Packed.FirstOrder.L1_Source as L1
 import           Prelude hiding (init)
 import           Text.PrettyPrint.GenericPretty (Out (..))
 
@@ -114,7 +116,7 @@ data Tail
             els  :: Tail }
     | ErrT String
 
-    | LetTimedT { isIter :: Bool
+    | LetTimedT { isIter :: Bool   -- ^ Run the RHS multiple times, if true.
                 , binds  :: [(Var,Ty)]
                 , timed  :: Tail
                 , bod    :: Tail } -- ^ This is like a one-armed if.  It needs a struct return. 
@@ -132,9 +134,12 @@ data Ty
 
     | SymTy    -- ^ Symbols used in writing compiler passes.
                --   It's an alias for Int, an index into a symbol table.
-    | CursorTy -- ^ A byte-indexing pointer.
+
+    | CursorTy -- ^ A byte-indexing pointer.  This is always a pointer to a raw buffer of
+               -- bytes that does not contain pointers.
 
     | PtrTy   -- ^ A machine word.  Same width as IntTy.  Untyped.
+              -- This is a pointer to a struct value which may contain other pointers.
 
 -- TODO: Make Ptrs more type safe like this:      
 --    | StructPtrTy { fields :: [Ty] } -- ^ A pointer to a struct containing the given fields.
@@ -153,6 +158,9 @@ data Prim
     | DictInsertP Ty-- ^ takes k,v,dict
     | DictLookupP Ty -- ^ takes k,dict, errors if absent
     | DictEmptyP Ty
+
+    | ReadPackedFile (Maybe FilePath) L1.Ty
+
     | NewBuf
     -- ^ Allocate a new buffer, return a cursor.
     | ScopedBuf

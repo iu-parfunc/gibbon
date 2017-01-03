@@ -179,6 +179,8 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
      ((DictEmptyP _),[])                      -> VDict M.empty
      ((ErrorP msg _ty),[]) -> error msg
      (SizeParam,[]) -> VInt (rcSize rc)
+     (ReadPackedFile file ty,[]) ->
+         error $ "SourceInterp: unfinished, need to read a packed file: "++show (file,ty)
      oth -> error $ "unhandled prim or wrong number of arguments: "++show oth
 
   interp :: Exp -> WriterT Log (StateT Store IO) Value

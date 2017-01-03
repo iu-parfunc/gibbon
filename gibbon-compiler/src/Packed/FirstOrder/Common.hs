@@ -12,11 +12,12 @@
 
 module Packed.FirstOrder.Common
        (
-         -- * Global constants
+         -- * Global constants or conventions
 --         cPackedTagSize, cPointerTagSize -- FINISHME
+         mkUnpackerName
 
          -- * Type and Data Constructors
-         Constr
+       , Constr
          -- * Variables and gensyms
        , Var, varAppend, SyM, gensym, genLetter, runSyM
        , cleanFunName
@@ -362,3 +363,8 @@ truePrinted = "#t"
 
 falsePrinted :: String
 falsePrinted = "#f"
+
+
+-- | Map a DataCon onto the name of the generated unpack function.
+mkUnpackerName :: Constr -> Var
+mkUnpackerName tyCons = "unpack_" ++ tyCons

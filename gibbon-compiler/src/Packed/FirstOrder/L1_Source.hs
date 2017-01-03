@@ -11,17 +11,24 @@
 --   genarating C code like a DSL.
 
 module Packed.FirstOrder.L1_Source
-    ( Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), progToEnv
+    (
+     -- * Core types
+      Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), progToEnv
+          
       -- * Primitive operations
     , Prim(..), primRetTy, primArgsTy
+      
       -- * Types and helpers
     , Ty, Ty1(..), pattern Packed, pattern SymTy
-    , voidTy, hasPacked, sizeOf 
+    , voidTy, hasPacked, sizeOf
+      
     -- * Expression and Prog helpers
-    , freeVars, subst, substE, mapExprs
+    , freeVars, subst, substE, mapExprs, getFunTy
+      
       -- * Trivial expressions
     , assertTriv, assertTrivs, isTriv, hasTimeIt
     , projNonFirst, mkProj, mkProd, mkProdTy, mkLets
+      
       -- * Examples
     , add1Prog
     )
@@ -101,6 +108,9 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | MkTrue -- ^ Zero argument constructor.
           | MkFalse -- ^ Zero argument constructor.
 
+          | ReadPackedFile (Maybe FilePath) Ty -- ^ Read (mmap) a binary file containing
+            -- packed data.  This must be annotated with the type of the file being read.
+            
 -- TODO: Need list construction if we're going to have list:
 --          | MkList
             
@@ -161,7 +171,7 @@ sizeOf t = case t of
              SymDictTy _ -> Just 8 -- Always a pointer.
              IntTy       -> Just 8
              BoolTy      -> sizeOf IntTy
-             ListTy _    -> __
+             ListTy _    -> error "FINISHLISTS"
                                
 -- | Transform the expressions within a program.
 mapExprs :: (Exp -> Exp) -> Prog -> Prog
@@ -171,6 +181,13 @@ mapExprs fn prg@Prog{fundefs,mainExp} =
 
 
 --------------------------------------------------------------------------------
+
+-- | Look up the input/output type of a top-level function binding.
+getFunTy :: Var -> Prog -> (Ty,Ty)
+getFunTy fn Prog{fundefs} =
+    case M.lookup fn fundefs of
+      Just FunDef{funArg=(vr,argty), funRetTy} -> (argty,funRetTy)
+      Nothing -> error $ "getFunTy: L1 program does not contain binding for function: "++show fn
 
 -- | Free data variables.  Does not include function variables, which
 -- currently occupy a different namespace.

@@ -38,9 +38,6 @@ import Prelude hiding (tail)
 
 -- Generating unpack functions from Packed->Pointer representation:
 -------------------------------------------------------------------------------
-    
-mkUnpackerName :: Constr -> Var
-mkUnpackerName tyCons = "unpack_" ++ tyCons
 
 genDcons :: [L1.Ty] -> Var -> [(T.Ty, T.Triv)] -> SyM T.Tail 
 genDcons (x:xs) tail fields = case x of
@@ -526,6 +523,9 @@ prim p =
     L1.DictInsertP ty -> T.DictInsertP $ typ ty
     L1.DictLookupP ty -> T.DictLookupP $ typ ty
     L1.DictEmptyP ty -> T.DictEmptyP $ typ ty
+
+    L1.ReadPackedFile mf ty -> T.ReadPackedFile mf ty
+
     L1.ErrorP{} -> error$ "lower/prim: internal error, should not have got to here: "++show p
 
     L1.MkTrue  -> error "lower/prim: internal error. MkTrue should not get here."

@@ -134,8 +134,8 @@ configParser :: Parser Config
 configParser = Config <$> inputParser
                       <*> modeParser
                       <*> ((Just <$> strOption (long "bench-input" <> metavar "FILE" <>
-                                      help ("hard-code the input file for --bench, otherwise it"++
-                                            " becomes a command-line argument of the resulting binarya")))
+                                      help ("Hard-code the input file for --bench, otherwise it"++
+                                            " becomes a command-line argument of the resulting binary.")))
                           <|> pure Nothing)
                       <*> (switch (short 'p' <> long "packed" <>
                                   help "enable packed tree representation in C backend")
@@ -172,7 +172,8 @@ configParser = Config <$> inputParser
                flag' RunExe  (short 'r' <> long "run"     <> help "compile and then run executable") <|>
                flag ToExe ToExe (long "exe"  <> help "compile through C to executable (default)") <|>
                (Bench <$> strOption (short 'b' <> long "bench" <> metavar "FUN" <>
-                                     help "benchmark 1-argument FUN on input packed file")) 
+                                     help ("generate code to benchmark a 1-argument FUN against a input packed file."++
+                                           "  If --bench-input is provided, then the benchmark is run as well.")))
                
 
 -- | Parse configuration as well as file arguments.
@@ -295,7 +296,8 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
         wrapInterp pass who fn x =
           do CompileState{result} <- get
              p2 <- pass who fn x
-             when (dbgLvl >= interpDbgLevel) $ lift $ do
+             -- In benchmark mode we simply turn OFF the interpreter.  This decision should be finer grained.
+             when (dbgLvl >= interpDbgLevel && not (isBench mode)) $ lift $ do
                let Just res1 = result 
                runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
                let res2 = interpNoLogs runConf p2
@@ -343,9 +345,26 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                   else return Nothing
     str <- evalStateT
              (do l1b <-       passE "freshNames"               freshNames               l1
-                 l1c <-       passE "flatten"                  flatten                  l1b
-                 l1d <-       passE "inlineTriv"               (return . inlineTriv)    l1c
-                 l2  <-       passE "inferEffects"            inferEffects              l1d
+
+                 -- -- If we are executing a benchmark, then we
+                 -- -- replace the main function with benchmark code:
+                 let l1c = case mode of
+                             Bench fnname ->
+                                 let tmp = "bnch"
+                                     (arg,ret) = L1.getFunTy fnname l1b
+                                 in
+                                 l1b{ L1.mainExp = Just $
+                                      -- At L1, we assume ReadPackedFile has a single return value:
+                                      L1.LetE (tmp, arg, L1.PrimAppE (L1.ReadPackedFile benchInput arg) []) $ 
+                                        L1.LetE ("ignored", ret, L1.TimeIt (L1.AppE fnname (L1.VarE tmp)) ret True) $
+                                          -- FIXME: should actually return the result, as soon as we are able to print it.
+                                          (L1.LitE 0)
+                                    }
+                             _ -> l1b
+
+                 l1d <-       passE "flatten"                  flatten                  l1c
+                 l1e <-       passE "inlineTriv"               (return . inlineTriv)    l1d
+                 l2  <-       passE "inferEffects"            inferEffects              l1e
                  l2' <-
                      if packed
                      then do
@@ -377,17 +396,12 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                  l2'' <-       pass  "unariser"                 unariser                 l2'
                  l3   <-       pass  "lower"                    (lower packed)           l2''
 
-                 -- If we are executing a benchmark, then we replace the main function with the benchmark:
-                 let l3' = case mode of
-                             Bench fnname -> l3{ L3.mainExp = Just (L3.RunBenchFun fnname benchInput) }
-                             _ -> l3
-
                  if mode == Interp2
-                  then do l3res <- lift $ execProg l3'
+                  then do l3res <- lift $ execProg l3
                           mapM_ (\(IntVal v) -> liftIO $ print v) l3res
                           liftIO $ exitSuccess
                   else do                   
-                   str <- lift (codegenProg l3')
+                   str <- lift (codegenProg l3)
 
                    -- The C code is long, so put this at a higher verbosity level.
                    lift$ dbgPrintLn minChatLvl $ "Final C codegen: "++show (length str)++" characters."
