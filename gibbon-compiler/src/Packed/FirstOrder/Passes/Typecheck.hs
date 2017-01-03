@@ -98,6 +98,8 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
                  L1.SizeParam -> return $ Concrete IntTy 
                  L1.MkTrue    -> return $ Concrete BoolTy
                  L1.MkFalse   -> return $ Concrete BoolTy
+
+                 L1.ReadPackedFile _ ty -> return $ Concrete ty
                                      
                  -- _ -> failFresh $ "Case not handled in typecheck: " ++ (show p)
 
@@ -160,7 +162,7 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
                                       " but couldn't determine its type."
                           return Nothing
 
-    typecheckCases dd1 cs te1 ex1 = 
+    typecheckCases dd1 cs _te1 ex1 = 
         do tcs <- forM cs $ \(c,args,e) ->
                   do let targs = map Concrete $ lookupDataCon dd c
                          ntcenv = M.fromList (zip args targs) `M.union` tcenv
@@ -169,7 +171,7 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
            -- FIXME: need to assert that the types in tcs match what's expected from te
            return $ head tcs
 
-    typecheckPacked dd1 c tes =
+    typecheckPacked dd1 c _tes =
         do let te = Concrete $ L1.Packed $ getTyOfDataCon dd1 c
            -- FIXME: need to assert that tes match te
            return te

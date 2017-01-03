@@ -32,9 +32,14 @@ test: prebuild build
 benchtest: test24_input.bin
 	@echo "\n Testing Gibbon's benchmarking mode."
 	@echo "--------------------------------------------------"
-	DEBUG=1 $(GIBBON) --bench pass test24_defs.sexp
+	$(GIBBON) --bench pass test24_defs.sexp
 	./test24_defs.exe -bench 10 10 -file test24_input.bin 
-	DEBUG=1 $(GIBBON) -b pass --bench-input test24_input.bin  test24_defs.sexp
+	$(GIBBON) -b pass --bench-input test24_input.bin  test24_defs.sexp
+
+# Next is this:
+#	@echo "\nNow in packed mode:"
+#	$(GIBBON) --packed --bench pass --bench-input test24_input.bin test24_defs.sexp
+
 
 # Assumes answers and build already available:
 core_tests:
@@ -98,7 +103,7 @@ FAILING_TESTS ?= \
   test13_build.sexp test13b_build.sexp \
   test20_bintree.sexp test20b_bintree.sexp test20c_bintree.sexp  test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
   test11_fundata.sexp test11c_funrec.sexp test11e_funrec.sexp test12c_traverse.sexp \
-  test25b_racketcore.sexp  \
+  test25c_racketcore.sexp test25d_racketcore.sexp \
   test16_forlist.sexp test17_forfold.sexp 
 # Last Line - added because they are failing under valgrind [2016.11.11]
 
@@ -143,7 +148,7 @@ build_tests: $(EXE_FILES)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
-test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25b_racketcore.sexp 
+test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25c_racketcore.sexp test25d_racketcore.sexp
 
 # test20f - wip
 # test20b_bintree.sexp   -- requires copy insertion
@@ -162,7 +167,7 @@ run_tests_packed: answers
 
 INTERP2_FAILING = test00b_printBool.sexp test06a_two_cases.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp \
      test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
-  test06h_rec.sexp test06i_casecase.sexp test11b_fundata.sexp test11c_funrec.sexp \
+  test06h_rec.sexp test06i_casecase.sexp test07b_iterate.sexp test11b_fundata.sexp test11c_funrec.sexp \
   test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp  \
   test12b_traverse.sexp test12c_traverse.sexp test12_skip.sexp \
   test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
@@ -170,7 +175,7 @@ INTERP2_FAILING = test00b_printBool.sexp test06a_two_cases.sexp test06b_case.sex
   test13_build.sexp test13b_build.sexp  \
   test20b_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
   test25b_racketcore.sexp test25_rackcore.sexp \
-  test07b_iterate.sexp test25b_racketcore.sexp \
+  test25c_racketcore.sexp test25d_racketcore.sexp \
   test11_fundata.sexp test10_desugar.sexp test10b_desugar.sexp test24_defs.sexp \
   test09_recur.sexp test08_dict.sexp test02b_datacon.sexp test02c_case.sexp 
 # Last line are new regressions...

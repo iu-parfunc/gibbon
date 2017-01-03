@@ -122,7 +122,7 @@ codegenProg prg@(Prog funs mtal) = do
             t' <- codegenTail t (codegenTy IntTy)
             return $ C.FuncDef [cfun| void __main_expr() { $items:t' } |] noLoc
           _ ->
-            return $ C.FuncDef [cfun| void __main_expr() { return 0; } |] noLoc
+            return $ C.FuncDef [cfun| void __main_expr() { return; } |] noLoc
 
 makeProt :: FunDecl -> SyM C.Definition
 makeProt fd = do fn <- codegenFun' fd  -- This is bad and I apologize
