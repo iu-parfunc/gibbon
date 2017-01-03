@@ -406,9 +406,8 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                               Just f  -> [cexp| $string:f |]
                                               Nothing -> [cexp| read_benchfile_param() |] -- Will be set by command line arg.
                                  L1.PackedTy dcon _ = l1ty
-                                 unpackName = mkUnpackerName dcon
-                                 --  FIXME: outV needs to change to PtrTy when the unpackers are fixed.  (Issue #26)
-                                 funcall = LetCallT [(outV,CursorTy),("junk",CursorTy)]
+                                 unpackName = mkUnpackerName dcon                                
+                                 funcall = LetCallT [(outV,PtrTy),("junk",CursorTy)]
                                                     unpackName [VarTriv "ptr"] (AssnValsT [])
                              docall <- codegenTail funcall (codegenTy (ProdTy []))
                              pure $ 
