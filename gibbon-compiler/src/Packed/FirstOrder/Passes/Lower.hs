@@ -50,7 +50,7 @@ genDcons (x:xs) tail fields = case x of
   L2.PackedTy tyCons _ -> do
     ptr  <- gensym "ptr"
     t    <- gensym "tail"
-    T.LetCallT [(ptr, T.CursorTy), (t, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
+    T.LetCallT [(ptr, T.PtrTy), (t, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
       <$> genDcons xs t (fields ++ [(T.CursorTy, T.VarTriv ptr)]) 
   _                    -> undefined
 
@@ -82,7 +82,7 @@ genUnpacker DDef{tyName, dataCons} = do
             T.Switch (T.VarTriv tag) alts Nothing
   return T.FunDecl{ T.funName  = (mkUnpackerName tyName),
                     T.funArgs  = [(p, T.CursorTy)],
-                    T.funRetTy = T.ProdTy [T.CursorTy, T.CursorTy],
+                    T.funRetTy = T.ProdTy [T.PtrTy, T.CursorTy],
                     T.funBody  = bod } 
                     
 
