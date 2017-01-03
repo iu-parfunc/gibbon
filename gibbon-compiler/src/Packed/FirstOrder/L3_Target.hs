@@ -35,20 +35,9 @@ data Prog = Prog
 
 data MainExp
   = PrintExp Tail
-      -- ^ Evaluate the expression and print the result. Type of the expression
-      -- must be Int64.
-  | RunWithRacketFile Var
-     -- ^ Hack, expects a function from racket ast to int.
-  
-  | RunRacketCorePass Var Var
-      -- ^ Run the pass. First `Var` is a function for building initial trees,
-      -- second `Var` is the void function to benchmark. Return value of benchmark
-      -- function is ignored.
-
-  | RunBenchFun Var (Maybe FilePath)
-      -- ^ Run the designated top-level function on input read from an
-      -- optional file.  If the file is not provided, we must generate
-      -- an executable that will read the file from command line args.
+      -- ^ Evaluate the expression and print the result. Type of the
+      -- expression must will eventually be anything, but not all
+      -- types support printing currently [2017.01.03].
 
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 

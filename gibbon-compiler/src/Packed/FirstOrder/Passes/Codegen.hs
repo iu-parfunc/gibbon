@@ -17,7 +17,7 @@ import           Data.Int
 import           Data.Loc -- For SrcLoc
 import           Data.Maybe
 import qualified Data.Set as S
-import           Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty, cunit)
+import           Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import           Packed.FirstOrder.Common hiding (funBody)
@@ -50,8 +50,6 @@ harvestStructTys (Prog funs mtal) =
 
   allTails = (case mtal of
                 Just (PrintExp t) -> [t]
-                Just (RunWithRacketFile{}) -> []
-                Just (RunRacketCorePass{}) -> []
                 Nothing -> []) ++
              map funBody funs
 
@@ -115,44 +113,7 @@ codegenProg prg@(Prog funs mtal) = do
         funs' <- mapM codegenFun funs
         prots <- mapM makeProt funs
         main_expr' <- main_expr
-        return (makeStructs (S.toList $ harvestStructTys prg) ++ prots ++ funs' ++ main_expr' : bench_fn)
-
-      bench_fn :: [C.Definition]
-      bench_fn =
-        case mtal of
-          Just (RunWithRacketFile fun) ->
-              [cunit|
-                $ty:(codegenTy IntTy) __fn_with_file( $ty:(codegenTy PtrTy) in ) {
-                  return $(cid fun)(in);
-                } |]
-          Just (RunRacketCorePass build_tree bench) ->
-            [cunit|
-              $ty:(codegenTy IntTy) __fn_with_file( $ty:(codegenTy PtrTy) in ) {
-                fprintf(stderr, "Benchmark is not implemented for this program.\n");
-                exit(1);
-              }              
-              void __fn_to_bench( $ty:(codegenTy PtrTy) in, $ty:(codegenTy PtrTy) out) {
-                  $(cid bench)(in, out);
-              }
-              void __build_tree( $ty:(codegenTy IntTy) tree_size, char* buffer) {
-                  $(cid build_tree)(tree_size, buffer);
-              } |]
-          Just (PrintExp _) -> def 
-          Nothing -> def
-         where              
-          def = [cunit|
-              $ty:(codegenTy IntTy) __fn_with_file( $ty:(codegenTy PtrTy) in ) {
-                fprintf(stderr, "Benchmark is not implemented for this program.\n");
-                exit(1);
-              }              
-              void __fn_to_bench( $ty:(codegenTy PtrTy) in, $ty:(codegenTy PtrTy) out) {
-                fprintf(stderr, "Benchmark is not implemented for this program.\n");
-                exit(1);
-              }
-              void __build_tree( $ty:(codegenTy IntTy) tree_size, char* buffer) {
-                fprintf(stderr, "Benchmark is not implemented for this program.\n");
-                exit(1);
-              } |]
+        return (makeStructs (S.toList $ harvestStructTys prg) ++ prots ++ funs' ++ [main_expr'])
 
       main_expr :: SyM C.Definition
       main_expr =
@@ -398,7 +359,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                  DictEmptyP _ty -> let [(outV,ty)] = bnds
                                    in pure [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = 0; |] ]
                  NewBuf   -> let [(outV,CursorTy)] = bnds in pure
-                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED(DEFAULT_BUF_SIZE); |] ]
+                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED(global_default_buf_size); |] ]
                  ScopedBuf -> let [(outV,CursorTy)] = bnds in pure
                              [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_SCOPED(); |] ]
                  WriteTag -> let [(outV,CursorTy)] = bnds
@@ -438,23 +399,25 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                  PrintString str | [] <- bnds, [] <- rnds -> pure [ C.BlockStm [cstm| puts( $string:str ); |] ]
                                  | otherwise -> error$ "wrong number of args/return values expected from PrintString prim: "++show (rnds,bnds)
 
+                 -- FINISHME: Codegen here depends on whether we are in --packed mode or not.
                  ReadPackedFile mfile l1ty
-                     | [] <- rnds, [(outV,outT)] <- bnds -> do
+                     | [] <- rnds, [(outV,_outT)] <- bnds -> do
                              let filename = case mfile of
                                               Just f  -> [cexp| $string:f |]
-                                              Nothing -> [cexp| global_input_file |] -- Will be initialized with command line arg.
+                                              Nothing -> [cexp| read_benchfile_param() |] -- Will be set by command line arg.
                                  L1.PackedTy dcon _ = l1ty
                                  unpackName = mkUnpackerName dcon
+                                 --  FIXME: outV needs to change to PtrTy when the unpackers are fixed.  (Issue #26)
                                  funcall = LetCallT [(outV,CursorTy),("junk",CursorTy)]
                                                     unpackName [VarTriv "ptr"] (AssnValsT [])
                              docall <- codegenTail funcall (codegenTy (ProdTy []))
                              pure $ 
                               [ C.BlockDecl[cdecl| int fd = open( $filename, O_RDONLY); |]
                               , C.BlockDecl[cdecl| struct stat st; |]
-                              , C.BlockStm [cstm|  fstat(fd, &st); |]
+                              , C.BlockStm  [cstm| fstat(fd, &st); |]
                               , C.BlockDecl[cdecl| $ty:(codegenTy CursorTy) *ptr = mmap(0,st.st_size,PROT_READ,MAP_PRIVATE,fd,0); |]
                               ] ++ docall
-
+                     | otherwise -> error $ "ReadPackedFile, wrong arguments "++show rnds++", or expected bindings "++show bnds
                   -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'
 

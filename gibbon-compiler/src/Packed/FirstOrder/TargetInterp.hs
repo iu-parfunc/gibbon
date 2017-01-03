@@ -54,8 +54,6 @@ instance Out Val
            
 execProg :: Prog -> IO [Val]
 execProg (Prog _ Nothing) = error "Can't evaluate program: No expression given"
-execProg (Prog _funs (Just RunWithRacketFile{})) = error $ "TargetInterp/execProg - RunWithRacketFile not handled"
-execProg (Prog _funs (Just RunRacketCorePass{})) = error $ "TargetInterp/execProg - RunRacketCorePass not handled"
 execProg (Prog funs (Just (PrintExp expr))) = exec env expr
   where
     env = M.fromList (map (\f -> (funName f, FunVal f)) funs)

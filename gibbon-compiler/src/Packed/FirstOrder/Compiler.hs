@@ -423,12 +423,15 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
        ExitFailure n -> error$ "C compiler failed!  Code: "++show n
        ExitSuccess -> do
          -- (Stage 3) Binary compiled, run if appropriate
-         when (mode == RunExe || isBench mode )$ do
-          exepath <- makeAbsolute exe
-          c2 <- system exepath
-          case c2 of
-            ExitSuccess -> return ()
-            ExitFailure n -> error$ "Treelang program exited with error code "++ show n
+         let runExe = do exepath <- makeAbsolute exe
+                         c2 <- system exepath
+                         case c2 of
+                           ExitSuccess -> return ()
+                           ExitFailure n -> error$ "Treelang program exited with error code "++ show n
+         case benchInput of
+           Just _ | isBench mode -> runExe
+           _ | mode == RunExe    -> runExe
+           _                     -> return ()
 
 
 isBench :: Mode -> Bool

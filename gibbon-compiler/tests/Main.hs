@@ -248,7 +248,14 @@ case_copy =
 -- add1 example encoded as AST by hand
 
 add1_prog :: T.Prog
-add1_prog = T.Prog [build_tree, add1] (Just (RunRacketCorePass "build_tree" "add1"))
+add1_prog = T.Prog [build_tree, add1]
+            (Just $ PrintExp $ 
+             LetPrimCallT [("buf", T.CursorTy)] T.NewBuf [] $
+             LetPrimCallT [("buf2", T.CursorTy)] T.NewBuf [] $
+             LetCallT [("tr", T.PtrTy)] "build_tree" [IntTriv 10, VarTriv "buf"] $
+             LetCallT [("ignored1", T.CursorTy), ("ignored2", T.CursorTy)] "add1"  [VarTriv "tr", VarTriv "buf2"] $ 
+             (RetValsT [])
+            )
   where
     build_tree = FunDecl "build_tree" [("n",T.IntTy),("tout",T.CursorTy)] T.CursorTy buildTree_tail
     add1 = FunDecl "add1" [("t",T.CursorTy),("tout",T.CursorTy)] (T.ProdTy [T.CursorTy,T.CursorTy]) add1_tail
