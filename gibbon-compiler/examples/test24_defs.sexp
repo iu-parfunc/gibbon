@@ -7,3 +7,20 @@
 
 (data Bar (MkBar Foo))
 
+;; A "pass" to run.
+(define (pass [x : Bar]) : Bar
+  (case x
+    [(MkBar foo)
+     (MkBar 
+      (case foo
+        [(MkFoo i) (MkFoo (+ i 1))]))]))
+
+
+;; Here's what it would look like to run the tests from within the
+;; gibbon code itself.  
+
+;; (define (main) : Bar
+;;   (let ([x : Bar (ann (read-packed "test24_input.bin") Bar)])
+;;     (iterate (pass x))))
+
+;; But for this we need string literals!

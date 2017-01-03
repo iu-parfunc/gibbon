@@ -20,8 +20,9 @@ import           Data.Set as S hiding (map)
 import           Options.Applicative
 import           Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.HaskellFrontend as HS
-import qualified Packed.FirstOrder.L1_Source as L1
+import qualified Packed.FirstOrder.L1_Source   as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
+import qualified Packed.FirstOrder.L3_Target   as L3
 import           Packed.FirstOrder.Passes.Codegen (codegenProg)
 import           Packed.FirstOrder.Passes.Cursorize
 import           Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
@@ -47,7 +48,6 @@ import           System.IO
 import           System.IO.Error (isDoesNotExistError)
 import           System.Process
 import           Text.PrettyPrint.GenericPretty
-
 
 ----------------------------------------
 -- PASS STUBS
@@ -84,6 +84,7 @@ lowerCopiesAndTraversals p = pure p
 data Config = Config
   { input     :: Input
   , mode      :: Mode -- ^ How to run, which backend.
+  , benchInput :: Maybe FilePath -- ^ What backed, binary file to use as input.
   , packed    :: Bool -- ^ Use packed representation.
   , verbosity :: Int  -- ^ Debugging output, equivalent to DEBUG env var.
   , cc        :: String -- ^ C compiler to use
@@ -106,12 +107,17 @@ data Mode = ToParse  -- ^ Parse and then stop
           | RunExe   -- ^ Compile to executable then run.
           | Interp2  -- ^ Interp late in the compiler pipeline.
           | Interp1  -- ^ Interp early.  Not implemented.
-  deriving (Show,Read,Eq,Ord,Enum,Bounded)
+
+          | Bench Var -- ^ Benchmark a particular function applied to the packed data within an input file.
+
+          | BenchInput FilePath -- ^ Hardcode the input file to the benchmark in the C code.
+  deriving (Show,Read,Eq,Ord) 
 
 defaultConfig :: Config
 defaultConfig =
   Config { input = Unspecified
          , mode  = ToExe
+         , benchInput = Nothing
          , packed = False
          , verbosity = 1
          , cc = "gcc"
@@ -125,7 +131,12 @@ suppress_warnings :: String
 suppress_warnings = " -Wno-incompatible-pointer-types -Wno-int-conversion "
   
 configParser :: Parser Config
-configParser = Config <$> inputParser <*> modeParser
+configParser = Config <$> inputParser
+                      <*> modeParser
+                      <*> ((Just <$> strOption (long "bench-input" <> metavar "FILE" <>
+                                      help ("hard-code the input file for --bench, otherwise it"++
+                                            " becomes a command-line argument of the resulting binarya")))
+                          <|> pure Nothing)
                       <*> (switch (short 'p' <> long "packed" <>
                                   help "enable packed tree representation in C backend")
                            <|> fmap not (switch (long "pointer" <>
@@ -146,20 +157,6 @@ configParser = Config <$> inputParser <*> modeParser
                                        help "set the destination file for the executable"))
                            <|> pure (exefile defaultConfig))
  where
-  -- Most direct way, but I don't like it:
-  _inputParser :: Parser Input
-  _inputParser = option auto
-   ( long "input"
-        <> metavar "I"
-        <> help ("Input file format, if unspecified based on file extension. " ++
-               "Options are: "++show [minBound .. maxBound::Input]))
-  _modeParser :: Parser Mode
-  _modeParser = option auto
-   ( long "mode"
-        <> metavar "I"
-        <> help ("Compilation mode. " ++
-                "Options are: "++show [minBound .. maxBound::Mode]))
-
   inputParser :: Parser Input
                 -- I'd like to display a separator and some more info.  How?
   inputParser = -- infoOption "foo" (help "bar") <*>
@@ -173,7 +170,10 @@ configParser = Config <$> inputParser <*> modeParser
                flag' Interp2 (short 'i' <> long "interp2" <>
                               help "run through the interpreter after cursor insertion") <|>
                flag' RunExe  (short 'r' <> long "run"     <> help "compile and then run executable") <|>
-               flag ToExe ToExe (long "exe"  <> help "compile through C to executable (default)")
+               flag ToExe ToExe (long "exe"  <> help "compile through C to executable (default)") <|>
+               (Bench <$> strOption (short 'b' <> long "bench" <> metavar "FUN" <>
+                                     help "benchmark 1-argument FUN on input packed file")) 
+               
 
 -- | Parse configuration as well as file arguments.
 configWithArgs :: Parser (Config,[FilePath])
@@ -222,7 +222,7 @@ type PassRunner a b = (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a
 -- files to process.
 compile :: Config -> FilePath -> IO ()
 -- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
+compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
   -- TERRIBLE HACK!!  This value is global, "pure" and can be read anywhere
   when (verbosity > 1) $ do
     setEnv "DEBUG" (show verbosity)
@@ -355,6 +355,7 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                        l2c <- passE' "addCopies"                addCopies                 l2b
                        l2d <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals  l2c
                        ------------------- End Stubs ---------------------
+                       -- TODO / WIP: tighten this up:
                        -- l2d' <- passE' "typecheck"                typecheckStrict          l2d
                        l2d' <- passE' "typecheck"                typecheckPermissive      l2d
                        l2e  <- pass   "routeEnds"                routeEnds                l2d'
@@ -376,13 +377,19 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                  l2'' <-       pass  "unariser"                 unariser                 l2'
                  l3   <-       pass  "lower"                    (lower packed)           l2''
 
+                 -- If we are executing a benchmark, then we replace the main function with the benchmark:
+                 let l3' = case mode of
+                             Bench fnname -> l3{ L3.mainExp = Just (L3.RunBenchFun fnname benchInput) }
+                             _ -> l3
+
                  if mode == Interp2
-                  then do l3res <- lift $ execProg l3
+                  then do l3res <- lift $ execProg l3'
                           mapM_ (\(IntVal v) -> liftIO $ print v) l3res
                           liftIO $ exitSuccess
-                  else do
-                   str <- lift (codegenProg l3)
-                   -- The C code is long, so put this at a higher level.
+                  else do                   
+                   str <- lift (codegenProg l3')
+
+                   -- The C code is long, so put this at a higher verbosity level.
                    lift$ dbgPrintLn minChatLvl $ "Final C codegen: "++show (length str)++" characters."
                    lift$ dbgPrintLn 5 sepline
                    lift$ dbgPrintLn 5 str
@@ -391,7 +398,8 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
                             , result= initResult })
 
     writeFile outfile str
-    when (mode == ToExe || mode == RunExe) $ do
+    -- (Stage 2) Code written, now compile if warranted.
+    when (mode == ToExe || mode == RunExe || isBench mode ) $ do
       let cmd = cc ++" -std=gnu11 "++optc++" "++" "
                    ++(if warnc then "" else suppress_warnings)
                    ++" "++outfile++" -o "++ exe
@@ -400,13 +408,19 @@ compile Config{input,mode,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
       case cd of
        ExitFailure n -> error$ "C compiler failed!  Code: "++show n
        ExitSuccess -> do
-         when (mode == RunExe)$ do
+         -- (Stage 3) Binary compiled, run if appropriate
+         when (mode == RunExe || isBench mode )$ do
           exepath <- makeAbsolute exe
           c2 <- system exepath
           case c2 of
             ExitSuccess -> return ()
             ExitFailure n -> error$ "Treelang program exited with error code "++ show n
 
+
+isBench :: Mode -> Bool
+isBench (Bench _) = True
+isBench _ = False
+                             
 -- | The debug level at which we start to call the interpreter on the program during compilation.
 interpDbgLevel :: Int
 interpDbgLevel = 1

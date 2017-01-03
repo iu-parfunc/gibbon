@@ -36,11 +36,18 @@ data MainExp
       -- ^ Evaluate the expression and print the result. Type of the expression
       -- must be Int64.
   | RunWithRacketFile Var
-     -- ^ Hack, expects a function from racket ast to int. 
+     -- ^ Hack, expects a function from racket ast to int.
+  
   | RunRacketCorePass Var Var
       -- ^ Run the pass. First `Var` is a function for building initial trees,
-      -- second `Var` is the function to benchmark. Return value of benchmark
+      -- second `Var` is the void function to benchmark. Return value of benchmark
       -- function is ignored.
+
+  | RunBenchFun Var (Maybe FilePath)
+      -- ^ Run the designated top-level function on input read from an
+      -- optional file.  If the file is not provided, we must generate
+      -- an executable that will read the file from command line args.
+
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 type Tag = Word8

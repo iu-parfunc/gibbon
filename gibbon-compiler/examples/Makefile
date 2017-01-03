@@ -44,11 +44,11 @@ TREECARGS ?= --optc=-g
 
 
 # Not necessary, because we build each module before we run it:
-prebuild: test24_output.bin
+prebuild: test24_input.bin
 	raco make -j $(PROCS) -v $(ALL_TESTS) 
 
 
-test24_output.bin: test24_input.dat test24_packit.rkt test24_defs.sexp
+test24_input.bin: test24_input.dat test24_packit.rkt test24_defs.sexp
 	racket test24_packit.rkt
 
 #----------------------------------------
@@ -133,7 +133,7 @@ build_tests: $(EXE_FILES)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
-test20b_bintree.sexp test20f_bintree.sexp test25b_racketcore.sexp
+test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25b_racketcore.sexp 
 
 # test20f - wip
 # test20b_bintree.sexp   -- requires copy insertion
@@ -209,7 +209,7 @@ treelang_lib:
 	raco make -v ../../gibbon/main.rkt 
 
 clean:
-	rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp* test24_output.bin
+	rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp* test24_input.bin
 	rm -rf ./compiled
 	cd error/; rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed
 
