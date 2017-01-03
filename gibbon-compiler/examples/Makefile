@@ -7,7 +7,8 @@ ALL_TESTS= $(shell ls test*.sexp)
 ANSWERS= $(ALL_TESTS:.sexp=.ans) 
 # ANSWERS= $(INTERP1_TESTS:.sexp=.ans) $(INTERP2_TESTS:.sexp=.ans) $(PASSING_TESTS:.sexp=.ans) $(PACKED_TESTS:.sexp=.ans)
 
-# Here's a hacky way to try several things until one works:
+# Number of processors:
+# Here's a hacky way to try several things until one works.
 PROCS = $(shell nproc || \
           getconf _NPROCESSORS_ONLN || \
           stack exec -- ghc -e GHC.Conc.getNumProcessors || \
@@ -15,14 +16,25 @@ PROCS = $(shell nproc || \
 # On Mac: sysctl -n hw.ncpu
 # On Windows?
 
+GIBBON= DEBUG=1 stack exec -- gibbon
+
 
 test: prebuild build
+	$(MAKE) benchtest
 # Having weird trouble with race conditons on answers:
-	$(MAKE) answers
+	$(MAKE) run_answers
 	wc -l $(ANSWERS)
 	@echo "Answers available, now proceeding..."
 	$(MAKE) parse_all
 	$(MAKE) core_tests
+
+# Test the benchmarking mode
+benchtest: test24_input.bin
+	@echo "\n Testing Gibbon's benchmarking mode."
+	@echo "--------------------------------------------------"
+	DEBUG=1 $(GIBBON) --bench pass test24_defs.sexp
+	./test24_defs.exe -bench 10 10 -file test24_input.bin 
+	DEBUG=1 $(GIBBON) -b pass --bench-input test24_input.bin  test24_defs.sexp
 
 # Assumes answers and build already available:
 core_tests:
@@ -40,7 +52,7 @@ EXTRA_SUFFIX ?= .ptr
 # How far to compile, --toC, --exe, --run:
 RUN_MODE     ?= --run
 # Additional args besides RUN_MODE:
-TREECARGS ?= --optc=-g
+GIBBONARGS ?= --optc=-g
 
 
 # Not necessary, because we build each module before we run it:
@@ -64,8 +76,6 @@ racket_invalid: treelang_lib
 
 # ----------------------------------------
 
-TREEC= DEBUG=1 stack exec -- gibbon
-
 # Make sure the compiler is built
 build:
 	stack build
@@ -81,7 +91,7 @@ all_parsed:  $(ALL_TESTS:.sexp=.parsed)
 
 %.parsed : %.sexp
 #	@echo "Parsing $^"
-	$(TREEC) --parse $^ 2> $@
+	$(GIBBON) --parse $^ 2> $@
 
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= \
@@ -122,14 +132,14 @@ all_tests: answers $(OUT_FILES)
 # Assumes stack build. Builds AND RUNS all the tests:
 # Take care to not collide between different EXTRA_SUFFIX modes.
 %$(EXTRA_SUFFIX).out : %.sexp
-	$(TREEC) $(RUN_MODE) $(TREECARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
+	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
 	@./diff.sh $(basename $^).ans $@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
 
 # Just build the tests
 build_tests: $(EXE_FILES)
 
 %$(EXTRA_SUFFIX).exe : %.sexp
-	$(TREEC) --exe $(TREECARGS) $^ --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
+	$(GIBBON) --exe $(GIBBONARGS) $^ --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
@@ -147,7 +157,7 @@ run_tests_pointer: run_tests
 
 # Run the tests that work under the packed regime:
 run_tests_packed: answers
-	$(MAKE) run_tests RUN_MODE="--run" TREECARGS="$(TREECARGS) --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
+	$(MAKE) run_tests RUN_MODE="--run" GIBBONARGS="$(GIBBONARGS) --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
 
 
 INTERP2_FAILING = test00b_printBool.sexp test06a_two_cases.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp \
@@ -184,15 +194,20 @@ run_tests_interp1: answers
 	racket $^ > $@ || rm -f $@
 #	racket $^ | tee $@
 
+run_answers:
+	@echo "\nGenerating canonical answers from Racket:"
+	@echo "-----------------------------------------"
+	$(MAKE) answers
+
 answers: $(ANSWERS)
 
 # --------------------------------------------------------------------------------
 
 valgrind_packed:
-	$(MAKE) run_valgrind TREECARGS="--packed --optc=-g " FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd" 
+	$(MAKE) run_valgrind GIBBONARGS="--packed --optc=-g " FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd" 
 
 valgrind:
-	$(MAKE) run_valgrind TREECARGS=" --optc=-g " EXTRA_SUFFIX=".ptr" 
+	$(MAKE) run_valgrind GIBBONARGS=" --optc=-g " EXTRA_SUFFIX=".ptr" 
 
 run_valgrind: $(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).valgrind)
 
@@ -218,4 +233,4 @@ distclean: clean
 	cd error/; rm -f *.ans
 
 .PHONY: prebuild build run_racket treelang_lib answers run_tests core_tests
-.PHONY: run_tests_interp2 run_tests_packed clean distclean
+.PHONY: run_tests_interp2 run_tests_packed clean distclean benchtest
