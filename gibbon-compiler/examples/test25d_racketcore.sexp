@@ -27,4 +27,4 @@
         [(WithContinuationMark e1 e2 e3) 18])]))
 ;; TODO: Need to fill these out with error cases.
 
-; (foo (Expression (VARREF (quote hi))))
+(foo (Expression (VARREF (quote hi))))

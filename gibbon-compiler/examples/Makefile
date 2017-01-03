@@ -148,7 +148,7 @@ build_tests: $(EXE_FILES)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
-test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25d_racketcore.sexp
+test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp 
 
 # test20f - wip
 # test20b_bintree.sexp   -- requires copy insertion
