@@ -103,7 +103,7 @@ FAILING_TESTS ?= \
   test13_build.sexp test13b_build.sexp \
   test20_bintree.sexp test20b_bintree.sexp test20c_bintree.sexp  test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
   test11_fundata.sexp test11c_funrec.sexp test11e_funrec.sexp test12c_traverse.sexp \
-  test25c_racketcore.sexp test25d_racketcore.sexp \
+  test25d_racketcore.sexp \
   test16_forlist.sexp test17_forfold.sexp 
 # Last Line - added because they are failing under valgrind [2016.11.11]
 
@@ -148,7 +148,7 @@ build_tests: $(EXE_FILES)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
-test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25c_racketcore.sexp test25d_racketcore.sexp
+test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25d_racketcore.sexp
 
 # test20f - wip
 # test20b_bintree.sexp   -- requires copy insertion

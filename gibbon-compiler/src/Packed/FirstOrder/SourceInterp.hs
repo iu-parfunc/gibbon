@@ -257,7 +257,9 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                            let FunDef{funArg=(vr,_),funBody}  = fundefs # f
                            go (M.insert vr rand env) funBody
 
-            (CaseE x1 ls1) -> do
+            (CaseE x1 []) -> error$ "SourceInterp: CaseE with empty alternatives list: "++ndoc x0
+                              
+            (CaseE x1 alts@((sometag,_,_):_)) -> do
                    v <- go env x1
                    case v of
                      VCursor idx off | rcCursors rc ->
@@ -266,19 +268,16 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                            case S.viewl (S.drop off seq1) of
                              S.EmptyL -> error "SourceInterp: case scrutinize on empty/out-of-bounds cursor."
                              SerTag tg :< _rst -> do
-                               -- ASSUMPTION: Id is just an ordered index.  We could explicitly map back
-                               -- to the datacon instead...
-
-                               let (tagsym,[curname],rhs) = ls1 !! fromIntegral tg
+                               let tycon = getTyOfDataCon ddefs sometag
+                                   datacon = (getConOrdering ddefs tycon) !! fromIntegral tg
+                               let (_tagsym,[curname],rhs) = lookup3 datacon alts
                                    -- At this ^ point, we assume that a pattern match against a cursor binds ONE value.
-                                   _fields = lookupDataCon ddefs tagsym
-
                                let env' = M.insert curname (VCursor idx (off+1)) env
                                go env' rhs
                              oth :< _ -> error $ "SourceInterp: expected to read tag from scrutinee cursor, found: "++show oth
 
                      VPacked k ls2 ->
-                         let (_,vs,rhs) = lookup3 k ls1
+                         let (_,vs,rhs) = lookup3 k alts
                              env' = M.union (M.fromList (zip vs ls2)) env
                          in go env' rhs
                      _ -> error$ "SourceInterp: type error, expected data constructor, got: "++ndoc v++

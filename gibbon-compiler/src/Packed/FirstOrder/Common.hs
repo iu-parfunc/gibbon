@@ -65,6 +65,7 @@ import Debug.Trace
 -- type CursorVar = Var
 type Var    = String
 type Constr = String
+type TyCon   = String
 
 -- | Abstract location variables.
 type LocVar = Var
@@ -124,17 +125,17 @@ lookupDDef mp v =
 
 -- | Get the canonical ordering for data constructors, currently based
 -- on ordering in the original source code.  Takes a TyCon as argument.
-getConOrdering :: Out a => DDefs a -> Var -> [Constr]
+getConOrdering :: Out a => DDefs a -> TyCon -> [Constr]
 getConOrdering dd tycon = L.map fst dataCons
   where DDef{dataCons} = lookupDDef dd tycon
 
 -- | Lookup the name of the TyCon that goes with a given DataCon.
 --   Must be unique!
-getTyOfDataCon :: Out a => DDefs a -> Var -> Var
+getTyOfDataCon :: Out a => DDefs a -> Constr -> TyCon
 getTyOfDataCon dds con = fst $ lkp dds con
 
 -- | Look up the numeric tag for a dataCon 
-getTagOfDataCon :: Out a => DDefs a -> Var -> Word8
+getTagOfDataCon :: Out a => DDefs a -> Constr -> Word8
 getTagOfDataCon dds dcon =
     -- dbgTrace 5 ("getTagOfDataCon -- "++sdoc(dds,dcon)) $
     fromIntegral ix
@@ -366,5 +367,5 @@ falsePrinted = "#f"
 
 
 -- | Map a DataCon onto the name of the generated unpack function.
-mkUnpackerName :: Constr -> Var
+mkUnpackerName :: TyCon -> Var
 mkUnpackerName tyCons = "unpack_" ++ tyCons
