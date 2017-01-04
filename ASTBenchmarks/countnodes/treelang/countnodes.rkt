@@ -12,7 +12,7 @@
   (top e0))
 
 ;; For list encodings, do we count the NULL at the end?
-;; (It's a regular tag, so probabl yes.)
+;; (It's a regular tag, so probably yes.)
 (define nullcost : Int 1)  
 ;; Likewise, the cost of a cons.  We can simulate direct list support
 ;; by tweaking conscost and nullcost.
