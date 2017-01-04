@@ -13,7 +13,7 @@ PROCS = $(shell nproc || \
           getconf _NPROCESSORS_ONLN || \
           stack exec -- ghc -e GHC.Conc.getNumProcessors || \
           python -c 'import multiprocessing as m; print m.cpu_count()' )
-# On Mac: sysctl -n hw.ncpu
+# On Mac: "sysctl -n hw.ncpu" also "getconf _NPROCESSORS_ONLN" works
 # On Windows?
 
 GIBBON= DEBUG=1 stack exec -- gibbon

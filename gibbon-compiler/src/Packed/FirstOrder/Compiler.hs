@@ -81,6 +81,8 @@ lowerCopiesAndTraversals p = pure p
 -- Configuring and launching the compiler.
 --------------------------------------------------------------------------------
 
+-- | Overall configuration of the compiler, as determined by command
+-- line arguments and possible environment variables.
 data Config = Config
   { input     :: Input
   , mode      :: Mode -- ^ How to run, which backend.
@@ -401,7 +403,7 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                           mapM_ (\(IntVal v) -> liftIO $ print v) l3res
                           liftIO $ exitSuccess
                   else do                   
-                   str <- lift (codegenProg l3)
+                   str <- lift (codegenProg packed l3)
 
                    -- The C code is long, so put this at a higher verbosity level.
                    lift$ dbgPrintLn minChatLvl $ "Final C codegen: "++show (length str)++" characters."
