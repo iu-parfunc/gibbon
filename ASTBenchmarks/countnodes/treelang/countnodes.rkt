@@ -52,7 +52,8 @@
 (define (loopLVBIND [ls : LVBIND]) : Int
   (case ls
     [(CONSLVBIND syms e ls)
-     (+ conscost (+ (expr e) (loopLVBIND ls)))]
+     (+ conscost (+ (loopSyms syms) 
+                    (+ (expr e) (loopLVBIND ls))))]
     [(NULLLVBIND)
      nullcost]))
 
