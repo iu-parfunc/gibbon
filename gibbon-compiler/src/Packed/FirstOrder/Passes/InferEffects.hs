@@ -259,12 +259,14 @@ inferExp (ddefs,fenv) env e = exp env e
      (effs,loc) <- exp env erhs
      return $ ( True, effs, loc)
 
-  caserhs env (dcon,patVs,erhs) =
+  caserhs env (dcon,patVs,erhs) =       
    -- Subtlety: if the rhs expression consumes the RIGHTMOST
    -- pattern variable, then the later code transformations MUST
    -- ensure that it consumes everything.
    do let tys    = lookupDataCon ddefs dcon
-          zipped = fragileZip patVs tys
+          zipped = fragileZip' patVs tys ("Error in "++dcon++" case: "
+                                         ++"pattern vars, "++show patVs++
+                                         ", do not match the number of types "++show tys)
           freeRHS = L1.freeVars erhs
       env' <- extendLocEnv zipped env
           -- WARNING: we may need to generate "nested inside of" relation

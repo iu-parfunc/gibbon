@@ -36,7 +36,7 @@ module Packed.FirstOrder.Common
        , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
 
          -- * Misc helpers
-       , (#), fragileZip, sdoc, ndoc, abbrv
+       , (#), fragileZip, fragileZip', sdoc, ndoc, abbrv
 
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
@@ -248,6 +248,15 @@ fragileZip (a:as) (b:bs) = (a,b) : fragileZip as bs
 fragileZip as [] = error$ "fragileZip: right ran out, while left still has: "++show as
 fragileZip [] bs = error$ "fragileZip: left ran out, while right still has: "++show bs
 
+
+-- | Like fragileZip, but takes a custom error message.
+fragileZip' :: (Show a, Show b) => [a] -> [b] -> String -> [(a, b)]
+fragileZip' [] [] _ = []
+fragileZip' (a:as) (b:bs) m = (a,b) : fragileZip' as bs m
+fragileZip' as [] m = error m
+fragileZip' [] bs m = error m
+
+                   
 -- | Handy combination of show and doc                   
 sdoc :: Out a => a -> String
 sdoc = show . doc
