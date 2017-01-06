@@ -217,8 +217,10 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
       do r1' <- readSTRef r1
          r2' <- readSTRef r2
          case (r1',r2') of
-              -- FIXME: we shouldn't give up if we run into two fresh type vars
-              (Right (), Right ()) -> reportErr "Typecheck is giving up on a branch. Program must be very broken."
+              (Right (), Right ()) ->
+                  do r <- newSTRef $ Right ()
+                     writeSTRef r1 $ Left $ Alias r
+                     writeSTRef r2 $ Left $ Alias r
               (Left tcv, Right ()) -> writeSTRef r2 $ Left tcv
               (Right (), Left tcv) -> writeSTRef r1 $ Left tcv
               (Left tc1, Left tc2) -> assertEqTCVar e tc1 tc2
