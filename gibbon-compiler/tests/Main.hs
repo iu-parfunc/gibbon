@@ -309,7 +309,7 @@ case_add1 =
 
     runTest :: Handle -> Assertion
     runTest h = do
-      str <- codegenProg add1_prog
+      str <- codegenProg True add1_prog
       hPutStr h str
       hFlush h
       gcc_out <- readCreateProcess (shell ("gcc -std=gnu11 -o add1 " ++ file)) ""
@@ -319,6 +319,6 @@ case_add1 =
       _proc_out <-
         bracket_ (return ())
                  (removeFile "add1")
-                 (readCreateProcess (shell "./add1 -benchmark 10 10") "")
+                 (readCreateProcess (shell "./add1 --benchmark 10 10") "")
 
       return ()
