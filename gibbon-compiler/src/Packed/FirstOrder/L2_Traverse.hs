@@ -500,9 +500,7 @@ mapExprs fn (Prog dd fundefs mainExp) =
          -- TODO: perhaps should re-infer the type here?
          (fmap (\(e,t) -> (fn (Env2 M.empty funEnv) e, t) ) mainExp)
   where
-    -- FIXME: use progToEnv
-    funEnv = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
-                        | FunDef n (ArrowTy a _ b) _ _ <- M.elems fundefs ]
+    funEnv = fEnv $ includeBuiltins $ progToEnv (Prog dd fundefs mainExp)
 
 -- | Map exprs with an initial type environment:
 mapMExprs :: Monad m => (Env2 (Ty1 ()) -> Exp -> m Exp) -> Prog -> m Prog
@@ -518,9 +516,7 @@ mapMExprs fn (Prog dd fundefs mainExp) =
          (mapM (\ (e,t) ->
                  (,t) <$> fn (Env2 M.empty funEnv) e) mainExp)
   where
-    -- FIXME: use progToEnv
-    funEnv = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
-                        | FunDef n (ArrowTy a _ b) _ _ <- M.elems fundefs ]
+    funEnv = fEnv $ includeBuiltins $ progToEnv (Prog dd fundefs mainExp)
              
     
 --------------------------------------------------------------------------------
@@ -585,4 +581,7 @@ builtinTEnv = M.fromList
   [ ("NewBuffer", ArrowTy voidTy S.empty (CursorTy ()))
   ]
 
-                      
+includeBuiltins :: Env2 (Ty1 ()) -> Env2 (Ty1 ())
+includeBuiltins (Env2 v f) = Env2 v (f `M.union` f')
+    where f' = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
+                          | (n, ArrowTy a _ b) <- M.assocs builtinTEnv ]
