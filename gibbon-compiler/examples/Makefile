@@ -4,8 +4,12 @@ default:
 	$(MAKE) test
 
 ALL_TESTS= $(shell ls test*.sexp)
-ANSWERS= $(ALL_TESTS:.sexp=.ans) 
-# ANSWERS= $(INTERP1_TESTS:.sexp=.ans) $(INTERP2_TESTS:.sexp=.ans) $(PASSING_TESTS:.sexp=.ans) $(PACKED_TESTS:.sexp=.ans)
+
+# Temporary output dir:
+BLD=./build_tmp/
+
+ANSWERS= $(addprefix $(BLD),$(ALL_TESTS:.sexp=.ans))
+
 
 # Number of processors:
 # Here's a hacky way to try several things until one works.
@@ -65,9 +69,11 @@ GIBBONARGS ?= --optc=-g
 
 
 # Not necessary, because we build each module before we run it:
-prebuild: test24_input.bin
+prebuild: $(BLD) test24_input.bin
 	raco make -j $(PROCS) -v $(ALL_TESTS) 
 
+$(BLD):
+	mkdir -p $(BLD)
 
 test24_input.bin: test24_input.dat test24_packit.rkt test24_defs.sexp
 	racket test24_packit.rkt
@@ -125,30 +131,32 @@ FAILING_TESTS ?= \
 
 PASSING_TESTS = $(filter-out $(FAILING_TESTS),$(ALL_TESTS))
 
-OUT_FILES=$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).out)
-EXE_FILES=$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).exe)
+OUT_FILES=$(addprefix $(BLD),$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).out))
+EXE_FILES=$(addprefix $(BLD),$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).exe))
 
 # Run the tests that work.  Assumes "build" has already executed.
-run_tests: 
+run_tests: $(BLD)
 	@echo "\n Compiling and running tests through our compiler ($(EXTRA_SUFFIX)):"
 	@echo "------------------------------------------------------------------"
 	@echo "Running test set: "$(PASSING_TESTS)
+	@echo "\nFirst clear output files:"
 	rm -f $(OUT_FILES)
+	@echo ""
 	$(MAKE) all_tests
 
-all_tests: answers $(OUT_FILES)
+all_tests: $(BLD) answers $(OUT_FILES)
 
 # Assumes stack build. Builds AND RUNS all the tests:
 # Take care to not collide between different EXTRA_SUFFIX modes.
-%$(EXTRA_SUFFIX).out : %.sexp
-	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
-	@./diff.sh $(basename $^).ans $@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
+build_tmp/%$(EXTRA_SUFFIX).out : %.sexp
+	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
+	@./diff.sh $(BLD)/$(basename $^).ans $@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
 
 # Just build the tests
 build_tests: $(EXE_FILES)
 
 %$(EXTRA_SUFFIX).exe : %.sexp
-	$(GIBBON) --exe $(GIBBONARGS) $^ --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
+	$(GIBBON) --exe $(GIBBONARGS) $^ --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
@@ -198,8 +206,9 @@ run_tests_interp1: answers
 
 # --------------------------------------------------------------------------------
 
-%.ans : %.sexp
-	raco make -v $^
+build_tmp/%.ans : %.sexp
+# Optional, could prebuild before running:
+#	raco make -v $^
 	racket $^ > $@ || rm -f $@
 #	racket $^ | tee $@
 
@@ -210,6 +219,8 @@ run_answers:
 
 answers: $(ANSWERS)
 
+
+# Valgrind should be part of our regression testing:
 # --------------------------------------------------------------------------------
 
 valgrind_packed:
@@ -218,12 +229,14 @@ valgrind_packed:
 valgrind:
 	$(MAKE) run_valgrind GIBBONARGS=" --optc=-g " EXTRA_SUFFIX=".ptr" 
 
-run_valgrind: $(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).valgrind)
+VALGRIND_FILES=$(addprefix $(BLD),$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).valgrind))
+
+run_valgrind: $(VALGRIND_FILES)
 
 %$(EXTRA_SUFFIX).valgrind : %.sexp %$(EXTRA_SUFFIX).exe
 #	@echo "\n Valgrind, testing $(basename $(basename $@))"
 #	@echo "--------------------------------------------------"
-	valgrind -q --error-exitcode=1 ./$(basename $(basename $@))$(EXTRA_SUFFIX).exe
+	valgrind -q --error-exitcode=1 $(BLD)/$(basename $(basename $@))$(EXTRA_SUFFIX).exe
 	@touch $@
 
 # --------------------------------------------------------------------------------
@@ -233,9 +246,9 @@ treelang_lib:
 	raco make -v ../../gibbon/main.rkt 
 
 clean:
-	rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp* test24_input.bin
-	rm -rf ./compiled
-	cd error/; rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed
+	(cd $(BLD); rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp* )
+	rm -rf test24_input.bin ./compiled 
+	(cd error/; rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed)
 
 distclean: clean
 	rm -f *.ans
