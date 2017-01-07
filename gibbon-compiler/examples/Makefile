@@ -33,20 +33,20 @@ test: prebuild build
 	$(MAKE) core_tests
 
 # Test the benchmarking mode
-benchtest: test24_input.bin
+benchtest: test24_input.gpkd
 	@echo "\n Testing Gibbon's benchmarking mode."
 	@echo "--------------------------------------------------"
 	$(GIBBON) --bench pass test24_defs.sexp
 	@echo
-	./test24_defs.exe --bench 10 10 --bench-input test24_input.bin 
-	$(GIBBON) -b pass --bench-input test24_input.bin  test24_defs.sexp
+	./test24_defs.exe --bench 10 10 --bench-input test24_input.gpkd 
+	$(GIBBON) -b pass --bench-input test24_input.gpkd  test24_defs.sexp
 	@echo
 # Next is this:
 #	@echo "\nNow in packed mode:"
-#	$(GIBBON) --packed --bench pass --bench-input test24_input.bin test24_defs.sexp
+#	$(GIBBON) --packed --bench pass --bench-input test24_input.gpkd test24_defs.sexp
 
 	@echo "\nNow with the full Racket Core grammar:"
-	$(GIBBON) --bench foo --bench-input test25b_input.bin test25b_racketcore.sexp
+	$(GIBBON) --bench foo --bench-input test25b_input.gpkd test25b_racketcore.sexp
 
 
 # Assumes answers and build already available:
@@ -69,13 +69,13 @@ GIBBONARGS ?= --optc=-g
 
 
 # Not necessary, because we build each module before we run it:
-prebuild: $(BLD) test24_input.bin
+prebuild: $(BLD) test24_input.gpkd
 	raco make -j $(PROCS) -v $(ALL_TESTS) 
 
 $(BLD):
 	mkdir -p $(BLD)
 
-test24_input.bin: test24_input.dat test24_packit.rkt test24_defs.sexp
+test24_input.gpkd: test24_input.dat test24_packit.rkt test24_defs.sexp
 	racket test24_packit.rkt
 
 #----------------------------------------
@@ -247,7 +247,7 @@ treelang_lib:
 
 clean:
 	(cd $(BLD); rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp* )
-	rm -rf test24_input.bin ./compiled 
+	rm -rf test24_input.gpkd ./compiled 
 	(cd error/; rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed)
 
 distclean: clean
