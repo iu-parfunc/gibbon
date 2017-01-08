@@ -45,6 +45,7 @@ module Packed.FirstOrder.L2_Traverse
     , pattern WriteInt, pattern ReadInt, pattern NewBuffer
     , pattern CursorTy, pattern ScopedBuffer, pattern AddCursor
     , isExtendedPattern
+    , builtinTEnv
     )
     where
 
@@ -578,7 +579,11 @@ isExtendedPattern e =
 --
 builtinTEnv :: M.Map Var (ArrowTy L1.Ty)
 builtinTEnv = M.fromList
-  [ ("NewBuffer", ArrowTy voidTy S.empty (CursorTy ()))
+  [ ("NewBuffer",    ArrowTy voidTy S.empty (CursorTy ()))
+  , ("ScopedBuffer", ArrowTy voidTy S.empty (CursorTy ()))
+  , ("ReadInt",      ArrowTy (CursorTy ()) S.empty (ProdTy [IntTy, CursorTy ()]))
+  , ("WriteInt",     ArrowTy (ProdTy [CursorTy (), IntTy]) S.empty (CursorTy ()))
+  , ("AddCursor",    ArrowTy (ProdTy [CursorTy (), IntTy]) S.empty (CursorTy ()))
   ]
 
 includeBuiltins :: Env2 (Ty1 ()) -> Env2 (Ty1 ())

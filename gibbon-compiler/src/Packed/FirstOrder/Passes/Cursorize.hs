@@ -137,7 +137,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                                               
   fd :: L2.FunDef -> SyM L2.FunDef
   fd L2.FunDef{funname,funty,funarg,funbod} =
-     dbgTrace lvl (" [cursorDirect] processing fundef "++show(funname,funty)) $ do
+     dbgTrace (lvl) (" [cursorDirect] processing fundef "++show(funname,funty)) $ do
      -- We don't add new function arguments yet, rather we leave
      -- unbound references to the function's output cursors, named
      -- "f_1, f_2..." for a function "f".    
@@ -219,7 +219,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
   exp :: TEnv -> Bool -> Exp -> SyM Exp
   exp tenv isMain ex0 =
     let go = exp tenv isMain in 
-    dbgTrace lvl (" 1. Processing expr in non-packed context, exp:\n  "++sdoc ex0) $ 
+    dbgTrace (lvl+1) (" 1. Processing expr in non-packed context, exp:\n  "++sdoc ex0) $ 
     case ex0 of
       VarE _ -> return ex0
       LitE _ -> return ex0
@@ -311,7 +311,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
   --  
   --   Note that the provided package of cursors corresponds only to the output of `yi`.
   doapp :: ProjStack -> TEnv -> Bool -> Maybe Dests -> Var -> Exp -> SyM (Either Exp DiExp)
-  doapp prjstk _tenv isMain mcurs f argE = do
+  doapp prjstk _tenv isMain mcurs f argE =  
           ------------------ Result handling ----------------------
           -- If the function argument is of a packed type, we may need to switch modes:
           let at@(ArrowTy argTy ef _retTy) = L2.getFunTy fundefs f
@@ -320,6 +320,9 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
               numNewOut = S.size ef                      -- end witnesses
               numNewIn  = countPacked (getCoreOutTy at) -- output cursors
 
+          in dbgTrace (lvl+1) (" 3. doApp, rator= "++ show f ++", argTy= "++show argTy++", arg: "++ndoc argE) $ 
+          do 
+                          
           -- Destinations including results not projected.  With the
           -- current InlinePacked strategy, we push constructors and
           -- constructing functions into a syntactic context where
@@ -433,7 +436,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                    L1.mkProd [ restoreEndWits flpd
                                              , L1.mkProd allEnds ]
 
-          ------------------ Argument hanling ----------------------
+          ------------------ Argument handling ----------------------
           -- Here we handle the evaluation of the *original* input arguments.
           new <- case argTy of
                   PackedTy{}
@@ -516,7 +519,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
   exp2 :: TEnv -> Bool -> Dests -> Exp -> SyM DiExp
   exp2 tenv isMain NoCursor ex = dilateTrivial <$> exp tenv isMain ex
   exp2 tenv isMain destC ex0 =
-    -- dbgTrace lvl (" 2. Processing expr in packed context, cursor "++show destC++", exp:\n  "++sdoc ex0) $ 
+    dbgTrace (lvl+1) (" 2. Processing expr in packed context, cursor "++show destC++", exp:\n  "++sdoc ex0) $ 
     let go tenv = exp2 tenv isMain destC
         -- | Projections in the packed case.  RETURNS DILATED.
         doproj :: ProjStack -> Int -> Exp -> SyM DiExp
@@ -599,6 +602,11 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                       
       -- For the most part, we just dive under the let and address its body.
       LetE (v,ty, tr) bod | L1.isTriv tr -> onDi (LetE (v,ty,tr))            <$> go (M.insert v ty tenv) bod
+
+      -- The only primitive that returns packed data is ReadPackedFile:
+      LetE (v,ty, PrimAppE (L1.ReadPackedFile _ _) []) bod ->
+         error "[Cursorize] FINISH ReadPackedFile"
+
       LetE (v,ty, PrimAppE p ls) bod     -> onDi (LetE (v,ty,PrimAppE p ls)) <$> go (M.insert v ty tenv) bod
               
       -- LetE (v1,t1, LetE (v2,t2, rhs2) rhs1) bod ->
@@ -950,6 +958,9 @@ allocFree ex =
  case ex of   
    (VarE _x)         -> True
    (LitE _x)         -> True
+
+   -- The one primitive that allocates packed data!
+   (PrimAppE (L1.ReadPackedFile _ _) _x2) -> False                        
    (PrimAppE _x1 _x2) -> True
 
    (AppE _x1 _x2)     -> False                       
