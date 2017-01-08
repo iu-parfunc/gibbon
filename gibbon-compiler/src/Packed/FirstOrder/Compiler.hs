@@ -22,7 +22,7 @@ import           Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.HaskellFrontend as HS
 import qualified Packed.FirstOrder.L1_Source   as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
-import qualified Packed.FirstOrder.L3_Target   as L3
+-- import qualified Packed.FirstOrder.L3_Target   as L3
 import           Packed.FirstOrder.Passes.Codegen (codegenProg)
 import           Packed.FirstOrder.Passes.Cursorize
 import           Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
@@ -366,7 +366,8 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
 
                  l1d <-       passE "flatten"                  flatten                  l1c
                  l1e <-       passE "inlineTriv"               (return . inlineTriv)    l1d
-                 l2  <-       passE "inferEffects"            inferEffects              l1e
+                 l2  <-       passE "inferEffects"             inferEffects             l1e
+                 l2  <-       passE' "typecheck"               typecheckStrict          l2
                  l2' <-
                      if packed
                      then do
@@ -377,7 +378,7 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                        l2d <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals  l2c
                        ------------------- End Stubs ---------------------
                        -- TODO / WIP: tighten this up:
-                       -- l2d' <- passE' "typecheck"                typecheckStrict          l2d
+--                       l2d' <- passE' "typecheck"                typecheckStrict          l2d
                        l2d' <- passE' "typecheck"                typecheckPermissive      l2d
                        l2e  <- pass   "routeEnds"                routeEnds                l2d'
                        l2f  <- pass'  "flatten"                  flatten2                 l2e
