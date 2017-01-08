@@ -261,7 +261,8 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     -- This is legitimately flattened, but we need to move it off the spine:
     L1.MkPackedE k _ls -> do
        tmp <- gensym "tailift"
-       let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
+       -- let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
+       let ty = L2.CursorTy ()
        tail $ LetE (tmp, ty, ex0) (VarE tmp)
              
     --------------------------------------------------------------------------------
@@ -456,7 +457,7 @@ mkLetTail (vr,ty,rhs) =
     _ -> __
 -}
 
--- | Eliminate projections from a given tuple variable.  INEFFICIENT!
+-- | Eliminate projections from a given tuple variable.  (INEFFICIENT at compile time!)
 eliminateProjs :: Var -> [L1.Ty] -> Exp -> SyM ([Var],Exp)
 eliminateProjs vr tys bod =
  dbgTrace 5 (" [lower] eliminating "++show (length tys)++

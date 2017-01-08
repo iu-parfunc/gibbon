@@ -378,7 +378,6 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                        l2  <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals  l2
                        ------------------- End Stubs ---------------------
                        -- TODO / WIP: tighten this up:
---                       l2d' <- passE' "typecheck"                typecheckStrict          l2d
                        l2  <- passE' "typecheck"                typecheckPermissive      l2
                        l2  <- pass   "routeEnds"                routeEnds                l2
                        l2  <- pass'  "flatten"                  flatten2                 l2
@@ -396,8 +395,10 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                        l2  <- pass  "hoistNewBuf"              hoistNewBuf               l2
                        return l2
                      else return l2
-                 l2  <-       pass  "unariser"                 unariser                 l2
-                 l3  <-       pass  "lower"                    (lower packed)           l2
+                 l2  <-       pass   "unariser"                 unariser                 l2
+-- TODO: Activate this ASAP:
+--                 l2  <-       passE' "typecheck"                typecheckStrict          l2
+                 l3  <-       pass   "lower"                    (lower packed)           l2
 
                  if mode == Interp2
                   then do l3res <- lift $ execProg l3

@@ -108,6 +108,7 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | MkTrue -- ^ Zero argument constructor.
           | MkFalse -- ^ Zero argument constructor.
 
+          | MkNullCursor -- ^ Zero argument constructor.
           | ReadPackedFile (Maybe FilePath) Ty -- ^ Read (mmap) a binary file containing
             -- packed data.  This must be annotated with the type of the file being read.
             

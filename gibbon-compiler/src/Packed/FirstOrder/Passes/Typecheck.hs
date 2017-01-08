@@ -9,12 +9,13 @@ module Packed.FirstOrder.Passes.Typecheck
 --    , typecheckExp
     ) where
 
+import Prelude hiding (fail)
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L2_Traverse as L2
 import qualified Packed.FirstOrder.L1_Source as L1
 
 import qualified Data.Map as M
-import qualified Data.Set as S
+-- import qualified Data.Set as S
 import Control.Monad.ST
 import Control.Monad
 import Data.STRef
@@ -56,27 +57,36 @@ typecheck prg = runST $ do
                   rf <- newSTRef True
                   !_ <- typecheck' rf prg
                   readSTRef rf
- 
+
+-- | Entrypoint for typechecking just an expression:
+typecheckExp :: DDefs L1.Ty -> L1.Exp -> L1.Ty 
+typecheckExp =
+    -- Reusing code here is tricky... we could wrap it up in a dummy
+    -- Prog, but that requires having a Main type already.
+    error "typecheckExp FINISHME"
+                
 typecheck' :: forall s . STRef s Bool -> L2.Prog -> ST s L2.Prog 
 typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
  where
   fn Env2{vEnv,fEnv} exp0 =
       do let initTCE = M.map Concrete vEnv `M.union`
                        M.map (\(a,b) -> Fun a b) fEnv
-         tv <- typecheckExp defs initTCE exp0
+         tv <- tE defs initTCE exp0
          mty <- extractTCVar tv
          case mty of
            Just ty -> dbgTrace 2 ("Typecheck program returned: " ++ (show ty)) $ 
                       return exp0
            Nothing -> return exp0
 
-  typecheckExp :: DDefs L1.Ty -> TCEnv s -> Exp -> ST s (TCVar s)
-  typecheckExp dd tcenv ex0 =
+  -- | This uses the "success" flag from above.
+  tE :: DDefs L1.Ty -> TCEnv s -> Exp -> ST s (TCVar s)
+  tE dd tcenv ex0 =
+      let go = tE dd tcenv in -- Simple recursion where we don't change the env.
       case ex0 of
         VarE v -> lookupTCVar tcenv v
         LitE _i -> return $ Concrete IntTy
         AppE v e -> 
-            do te <- typecheckExp dd tcenv e
+            do te <- go e
                let fty = M.lookup v tcenv
                case fty of
                  Nothing -> failFresh $ "Couldn't look up type of function: " ++ (show v)
@@ -85,7 +95,7 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
                  Just oth -> failFresh $ "Function had non-arrow type: " ++ show oth
 
         PrimAppE p es ->
-            do tes <- mapM (typecheckExp dd tcenv) es
+            do tes <- mapM (go) es
                case p of
                  L1.AddP -> do mapM_ (assertEqTCVar ex0 (Concrete IntTy)) tes
                                return $ Concrete IntTy
@@ -112,34 +122,34 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
                  -- _ -> failFresh $ "Case not handled in typecheck: " ++ (show p)
 
         LetE (v,t,e') e ->
-            do te' <- typecheckExp dd tcenv e'
+            do te' <- go e'
                assertEqTCVar ex0 (Concrete t) te'
-               typecheckExp dd (M.insert v (Concrete t) tcenv) e
+               tE dd (M.insert v (Concrete t) tcenv) e
         IfE e1 e2 e3 ->
-            do te1 <- typecheckExp dd tcenv e1
-               te2 <- typecheckExp dd tcenv e2
-               te3 <- typecheckExp dd tcenv e3
+            do te1 <- go e1
+               te2 <- go e2
+               te3 <- go e3
                assertEqTCVar ex0 (Concrete BoolTy) te1
                assertEqTCVar ex0 te2 te3
                return te2
         ProjE i e ->
-            do te <- typecheckExp dd tcenv e
+            do te <- go e
                checkProd te i e
         MkProdE es ->
-            do tes <- mapM (typecheckExp dd tcenv) es
+            do tes <- mapM (go) es
                outty <- allConcrete tes es
                case outty of
                  Nothing -> failFresh "Giving up on typing MkProdE"
                  Just outty' ->
                      return $ Concrete outty'
         CaseE e cs ->
-            do te <- typecheckExp dd tcenv e
+            do te <- go e
                typecheckCases dd cs te ex0
         MkPackedE c es ->
-            do tes <- mapM (typecheckExp dd tcenv) es
+            do tes <- mapM (go) es
                typecheckPacked dd c tes
         TimeIt e t _b ->
-            do te <- typecheckExp dd tcenv e
+            do te <- go e
                assertEqTCVar ex0 (Concrete t) te
                return te
         _ -> failFresh $ "Case not handled in typecheckExp: " ++ (show ex0)
@@ -178,7 +188,7 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
         do tcs <- forM cs $ \(c,args,e) ->
                   do let targs = map Concrete $ lookupDataCon dd c
                          ntcenv = M.fromList (zip args targs) `M.union` tcenv
-                     typecheckExp dd1 ntcenv e
+                     tE dd1 ntcenv e
            foldM_ (\i a -> (assertEqTCVar ex1 i a) >> (return a)) (head tcs) (tail tcs)
            -- FIXME: need to assert that the types in tcs match what's expected from te
            return $ head tcs
@@ -211,7 +221,7 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
   assertEqTCVar e (Concrete t1) (Concrete t2) = 
       if t1 == t2
       then return ()
-      else reportErr $ "Types not equal: " ++ (show t1) ++ ", " ++ (show t2)
+      else reportErr $ "Types not equal: " ++ (ndoc t1) ++ ", " ++ (ndoc t2)
                       ++ " (when checking expression " ++ take 80 (show e) ++ "...)"
   assertEqTCVar e (Concrete t) (Alias a) = makeEqTCVar t a e
   assertEqTCVar e (Alias a) (Concrete t) = makeEqTCVar t a e
