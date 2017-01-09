@@ -180,7 +180,12 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = L2.m
                                  _ -> failFresh $ "MkPackedE "++c++" expected one argument, got: "++ndoc es
             | otherwise -> do tes <- mapM (go) es
                               let te = Concrete $ L1.Packed $ getTyOfDataCon dd c
-                              -- FIXME: need to assert that tes match te
+                                  args = lookupDataCon dd c
+                              if length tes /= length args
+                               then reportErr $ "wrong number of arguments to constructor "
+                                      ++show c++": "++show (length tes)
+                               else sequence_ [ assertEqTCVar ex0 (Concrete expect) actual
+                                              | (expect,actual) <- zip args tes ]
                               return te
 
         TimeIt e t _b ->
