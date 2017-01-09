@@ -13,13 +13,15 @@ fetch: ${DATASET}
 $(DATASET):
 	wget http://cs.indiana.edu/~rrnewton/files/${DATASET}
 
-# Updated to no-list version [2016.11.04]:
+# Updated to no-list version, v1.6 [2016.11.04]:
 wget_cleaned:
 	wget http://cs.indiana.edu/~rrnewton/files/racket_cleaned_asts_v1.6.tgz
+	tar xf racket_cleaned_asts_v1.6.tgz
 
+# Updated to version with .gpkd file exts, v1.7 [2017.01.09]
 wget_binary:
-	wget http://cs.indiana.edu/~rrnewton/files/racket_binary_packed_asts_v1.6.tgz
-
+	wget http://cs.indiana.edu/~rrnewton/files/racket_binary_packed_asts_v1.7.tgz
+	tar xf racket_binary_packed_asts_v1.7.tgz
 
 expanded_racket: ${DATASET}
 	mkdir -p $@
