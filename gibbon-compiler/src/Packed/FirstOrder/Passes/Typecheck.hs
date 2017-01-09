@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -16,6 +17,7 @@ import Packed.FirstOrder.L2_Traverse as L2
 import qualified Packed.FirstOrder.L1_Source as L1
 
 import qualified Data.Map as M
+import qualified Data.List as L
 -- import qualified Data.Set as S
 import Control.Monad.ST
 import Control.Monad
@@ -169,7 +171,12 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = L2.m
                                   assertEqTCVar ex0 (Concrete (CursorTy ())) te
                                   typecheckCasesPostCursorize cs 
             | otherwise -> do te <- go e
-                              typecheckCases dd cs te ex0
+                              let tycons = L.map (getTyOfDataCon dd . fst3) cs
+                              case L.nub tycons of
+                                [one] -> do assertEqTCVar ex0 (Concrete (PackedTy one ())) te
+                                            typecheckCases cs
+                                oth -> failFresh $ "case branches have mismatched types, "
+                                         ++ndoc oth++", in "++ndoc ex0
 
         MkPackedE c es
             --  After cursorize, these become single argument; take and return cursors.
@@ -238,13 +245,13 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = L2.m
       acc0 <- freshTCVar
       go acc0 cs
                                  
-    typecheckCases dd1 cs _te1 ex1 = 
+    typecheckCases cs = 
         do tcs <- forM cs $ \(c,args,e) ->
                   do let targs = map Concrete $ lookupDataCon dd c
                          ntcenv = M.fromList (zip args targs) `M.union` tcenv
-                     tE dd1 ntcenv e
-           foldM_ (\i a -> (assertEqTCVar ex1 i a) >> (return a)) (head tcs) (tail tcs)
-           -- FIXME: need to assert that the types in tcs match what's expected from te
+                     tE dd ntcenv e
+           -- Make sure all braches unify:
+           foldM_ (\i a -> (assertEqTCVar ex0 i a) >> (return a)) (head tcs) (tail tcs)
            return $ head tcs
 
 
@@ -280,6 +287,9 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = L2.m
   assertEqTCVar e (Alias a) (Concrete t) = makeEqTCVar t a e
   assertEqTCVar e (Alias a1) (Alias a2) = makeEqAlias a1 a2 e
 
+-- FIXME: finish fun type handling:                                          
+--  assertEqTCVar e (Fun a b) (Fun c d) = 
+                                          
   makeEqTCVar :: L1.Ty -> STRef s (Either (TCVar s) ()) -> Exp -> ST s ()
   makeEqTCVar t r e =
       do r' <- readSTRef r
@@ -309,3 +319,5 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = L2.m
            Right () -> do reportErr "Expression didn't have a type that I could figure out"
                           return Nothing
 
+fst3 :: forall t t1 t2. (t, t1, t2) -> t
+fst3 (a,_,_) = a
