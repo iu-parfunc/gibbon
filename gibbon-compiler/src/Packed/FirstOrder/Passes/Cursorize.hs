@@ -82,7 +82,7 @@ type ProjStack = [Int]
 --
 --  POSTCONDITIONS:
 --   (1) The NamedVal pattern is gone.
---   (2) PackedTy types are gone leaving only CursorTy.
+--         (2) PackedTy types are gone leaving only CursorTy.
 --
 cursorDirect :: L2.Prog -> SyM L2.Prog
 cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
@@ -139,14 +139,6 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
   -- | Process a type to ensure postcondition that PackedTy is gone.
   typ :: Ty1 a -> Ty1 a
   typ = L2.cursorizeTy3
-  -- typ (CursorTy l)    = CursorTy l
-  -- typ (PackedTy _ l)  = CursorTy l -- Discard type information.
-  -- -- typ (PackedTy k l)  = PackedTy k l -- Retain information, but causes mismatches.
-  -- typ IntTy           = IntTy
-  -- typ BoolTy          = BoolTy
-  -- typ (ProdTy ls)     = ProdTy (L.map typ ls)
-  -- typ (SymDictTy elt) = SymDictTy (typ elt)
-  -- typ (ListTy elt)    = ListTy(typ elt)
                         
   fd :: L2.FunDef -> SyM L2.FunDef
   fd L2.FunDef{funname,funty,funarg,funbod} =
@@ -155,7 +147,12 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
      -- unbound references to the function's output cursors, named
      -- "f_1, f_2..." for a function "f".    
      let (ArrowTy _ _ oldOut) = funty
-         (funty'@(ArrowTy inT ef newOutFull),newIn) = L2.cursorizeTy2 funty
+         (tytmp,newIn) = L2.cursorizeTy2 funty
+
+         -- TODO: I believe this needs to happen, but test06a fails if I activate it atm [2017.01.08]:
+         -- funty'@(ArrowTy inT ef newOutFull) = L2.cursorizeArrty3 tytmp
+         funty'@(ArrowTy inT ef newOutFull) = tytmp
+
          -- And without those prepended RouteEnds:
          oldCoreOut = getCoreOutTy funty
          -- newoutT    = fmap toEndVar oldCoreOut -- Flip ins to outs.
@@ -680,7 +677,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       ProjE i ex -> doproj [] i ex
                         
       TimeIt e t b -> do Di e' <- go tenv e
-                         return $ Di $ TimeIt e' t b
+                         return $ Di $ TimeIt e' (typ t) b
 
       MapE{}  -> error$ "cursorDirect: packed case needs finishing:\n  "++sdoc ex0
       FoldE{} -> error$ "cursorDirect: packed case needs finishing:\n  "++sdoc ex0

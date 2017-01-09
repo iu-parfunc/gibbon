@@ -7,6 +7,7 @@ module Packed.FirstOrder.Passes.Typecheck
     , typecheckPermissive
     , typecheck
 --    , typecheckExp
+    , TCConfig(..)
     ) where
 
 import Prelude hiding (fail)
@@ -26,36 +27,43 @@ lvl = 1
 data TCVar s = Concrete L1.Ty
              | Fun L1.Ty L1.Ty
              | Alias (STRef s (Either (TCVar s) ()))
+               -- ^ Left signifies a constraint and Right signifies a
+               -- free, unconstrained var.
 
 instance Show (TCVar s) where
   show (Concrete t) = "Concrete "++show t
   show (Fun a b) = "Fun "++show a++" "++show b
   show (Alias _) = "Alias"
-               
+
+data TCConfig =
+    TCConfig
+    { postCursorize :: Bool -- ^ The typo of certain operations change after Cursorize.
+    }
+                   
 type TCEnv s = M.Map Var (TCVar s)
 
 --------------------------------------------------------------------------------
     
 -- | Entrypoint with the expected type for a pass in the top-level compiler pipeline.
-typecheckStrict :: L2.Prog -> SyM L2.Prog
-typecheckStrict prg = if typecheck prg
-                      then return prg
-                      else error "Compiler exiting due to above type errors."
+typecheckStrict :: TCConfig -> L2.Prog -> SyM L2.Prog
+typecheckStrict cfg prg = if typecheck cfg prg
+                          then return prg
+                          else error "Compiler exiting due to above type errors."
 -- WARNING: depending on DEBUG, "above type errors" may not actually show.
 -- !!TODO!!: switch to a writer monad to accumulate error messages, rather than dbgTrace.
 
 -- | In contrast with 'typecheckStrict', this issues type errors only as warnings.
-typecheckPermissive :: L2.Prog -> SyM L2.Prog
-typecheckPermissive prg = do let !_ = typecheck prg 
-                             return prg
+typecheckPermissive :: TCConfig -> L2.Prog -> SyM L2.Prog
+typecheckPermissive cfg prg = do let !_ = typecheck cfg prg 
+                                 return prg
                           
                    
 -- | Run typecheck and report errors using the trace mechanism.
 -- Returns true if the program typechecks.
-typecheck :: L2.Prog -> Bool
-typecheck prg = runST $ do
+typecheck :: TCConfig -> L2.Prog -> Bool
+typecheck cfg prg = runST $ do
                   rf <- newSTRef True
-                  !_ <- typecheck' rf prg
+                  !_ <- typecheck' cfg rf prg
                   readSTRef rf
 
 -- | Entrypoint for typechecking just an expression:
@@ -65,8 +73,8 @@ typecheckExp =
     -- Prog, but that requires having a Main type already.
     error "typecheckExp FINISHME"
                 
-typecheck' :: forall s . STRef s Bool -> L2.Prog -> ST s L2.Prog 
-typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
+typecheck' :: forall s . TCConfig -> STRef s Bool -> L2.Prog -> ST s L2.Prog 
+typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
  where
   fn Env2{vEnv,fEnv} exp0 =
       do let initTCE = M.map Concrete vEnv `M.union`
@@ -108,8 +116,8 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
                  L1.EqSymP -> do mapM_ (assertEqTCVar ex0 (Concrete SymTy)) tes
                                  return $ Concrete BoolTy                                      
                  -- FIXME: finish cases (need to actually recur)
-                 L1.ErrorP _s t -> return $ Concrete t
-                 L1.DictEmptyP t -> return $ Concrete $ SymDictTy t
+                 L1.ErrorP _s t   -> return $ Concrete t
+                 L1.DictEmptyP t  -> return $ Concrete $ SymDictTy t
                  L1.DictLookupP t -> return $ Concrete t
                  L1.DictInsertP t -> return $ Concrete $ SymDictTy t
 
@@ -117,7 +125,9 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
                  L1.MkTrue    -> return $ Concrete BoolTy
                  L1.MkFalse   -> return $ Concrete BoolTy
 
-                 L1.ReadPackedFile _ ty -> return $ Concrete ty
+                 L1.MkNullCursor -> return $ Concrete (CursorTy ())
+                 L1.ReadPackedFile _ ty | postCursorize -> return $ Concrete (CursorTy ())
+                                        | otherwise     -> return $ Concrete ty
                                      
                  -- _ -> failFresh $ "Case not handled in typecheck: " ++ (show p)
 
@@ -142,12 +152,25 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
                  Nothing -> failFresh "Giving up on typing MkProdE"
                  Just outty' ->
                      return $ Concrete outty'
-        CaseE e cs ->
-            do te <- go e
-               typecheckCases dd cs te ex0
-        MkPackedE c es ->
-            do tes <- mapM (go) es
-               typecheckPacked dd c tes
+        CaseE e cs
+            | postCursorize -> do te <- go e
+                                  assertEqTCVar ex0 (Concrete (CursorTy ())) te
+                                  typecheckCasesPostCursorize cs 
+            | otherwise -> do te <- go e
+                              typecheckCases dd cs te ex0
+
+        MkPackedE c es
+            --  After cursorize, these become single argument; take and return cursors.
+            | postCursorize -> case es of
+                                 [curs] -> do cty <- go curs
+                                              assertEqTCVar ex0 (Concrete (CursorTy ())) cty
+                                              return (Concrete (CursorTy ()))
+                                 _ -> failFresh $ "MkPackedE "++c++" expected one argument, got: "++ndoc es
+            | otherwise -> do tes <- mapM (go) es
+                              let te = Concrete $ L1.Packed $ getTyOfDataCon dd c
+                              -- FIXME: need to assert that tes match te
+                              return te
+
         TimeIt e t _b ->
             do te <- go e
                assertEqTCVar ex0 (Concrete t) te
@@ -184,6 +207,20 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
                                       " but couldn't determine its type."
                           return Nothing
 
+    -- | In the postCursorize world, CaseE takes a cursor and each
+    -- branch receives a cursor argument.
+    typecheckCasesPostCursorize cs = do
+      let go acc []      = return acc
+          go acc ((dcon,ls,rhs):rst) = 
+              case ls of
+                [curV] -> do rty <- tE dd (M.insert curV (Concrete (CursorTy ())) tcenv) rhs
+                             assertEqTCVar ex0 acc rty
+                             go acc rst
+                _ -> do acc' <- failFresh $ "expected one pattern var in post-cursorize case branch: "++ndoc (dcon,ls,rhs)
+                        go acc' rst
+      acc0 <- freshTCVar
+      go acc0 cs
+                                 
     typecheckCases dd1 cs _te1 ex1 = 
         do tcs <- forM cs $ \(c,args,e) ->
                   do let targs = map Concrete $ lookupDataCon dd c
@@ -193,10 +230,6 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
            -- FIXME: need to assert that the types in tcs match what's expected from te
            return $ head tcs
 
-    typecheckPacked dd1 c _tes =
-        do let te = Concrete $ L1.Packed $ getTyOfDataCon dd1 c
-           -- FIXME: need to assert that tes match te
-           return te
 
   --  This is not top-level because it is under the scope of 'success':
   reportErr :: String -> ST s ()
@@ -206,15 +239,18 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
 
   failFresh :: String -> ST s (TCVar s)
   failFresh str = do reportErr str
-                     r <- newSTRef $ Right ()
-                     return $ Alias r
+                     freshTCVar
+
+  freshTCVar :: ST s (TCVar s)
+  freshTCVar = do 
+    r <- newSTRef $ Right ()
+    return $ Alias r
 
   lookupTCVar :: TCEnv s -> Var -> ST s (TCVar s)
   lookupTCVar tcenv v =
       case M.lookup v tcenv of
         Nothing -> do reportErr $ "Failed to look up type of var " ++ (show v)
-                      h <- newSTRef $ Right ()
-                      return $ Alias h
+                      freshTCVar
         Just tcv -> return tcv
 
   assertEqTCVar :: Exp -> TCVar s -> TCVar s -> ST s ()
@@ -222,7 +258,7 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
       if t1 == t2
       then return ()
       else reportErr $ "Types not equal: " ++ (ndoc t1) ++ ", " ++ (ndoc t2)
-                      ++ " (when checking expression " ++ take 80 (show e) ++ "...)"
+                      ++ "\n  (when checking expression " ++ abbrv 80 e ++")"
   assertEqTCVar e (Concrete t) (Alias a) = makeEqTCVar t a e
   assertEqTCVar e (Alias a) (Concrete t) = makeEqTCVar t a e
   assertEqTCVar e (Alias a1) (Alias a2) = makeEqAlias a1 a2 e
@@ -240,9 +276,9 @@ typecheck' success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
          r2' <- readSTRef r2
          case (r1',r2') of
               (Right (), Right ()) ->
-                  do r <- newSTRef $ Right ()
-                     writeSTRef r1 $ Left $ Alias r
-                     writeSTRef r2 $ Left $ Alias r
+                  do tv <- freshTCVar 
+                     writeSTRef r1 $ Left tv
+                     writeSTRef r2 $ Left tv
               (Left tcv, Right ()) -> writeSTRef r2 $ Left tcv
               (Right (), Left tcv) -> writeSTRef r1 $ Left tcv
               (Left tc1, Left tc2) -> assertEqTCVar e tc1 tc2

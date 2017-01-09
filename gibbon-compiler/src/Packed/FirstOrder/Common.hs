@@ -245,8 +245,8 @@ m # k = case M.lookup k m of
 fragileZip :: (Show a, Show b) => [a] -> [b] -> [(a, b)]
 fragileZip [] [] = []
 fragileZip (a:as) (b:bs) = (a,b) : fragileZip as bs
-fragileZip as [] = error$ "fragileZip: right ran out, while left still has: "++show as
-fragileZip [] bs = error$ "fragileZip: left ran out, while right still has: "++show bs
+fragileZip as [] = errorWithStackTrace$ "fragileZip: right ran out, while left still has: "++show as
+fragileZip [] bs = errorWithStackTrace$ "fragileZip: left ran out, while right still has: "++show bs
 
 
 -- | Like fragileZip, but takes a custom error message.

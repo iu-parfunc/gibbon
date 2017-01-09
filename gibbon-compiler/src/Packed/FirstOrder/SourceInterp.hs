@@ -23,7 +23,8 @@ import           Data.List as L
 import           Data.Map as M
 import           Data.IntMap as IM
 import           Data.Word
-import           GHC.Generics    
+import           GHC.Generics
+import           GHC.Stack (errorWithStackTrace)
 import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.L1_Source
 import qualified Packed.FirstOrder.L2_Traverse as L2
@@ -37,7 +38,7 @@ import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 import           Packed.FirstOrder.Passes.InlinePacked(pattern NamedVal)
 import           Packed.FirstOrder.L2_Traverse ( pattern WriteInt, pattern ReadInt, pattern NewBuffer
-                                               , pattern CursorTy, pattern ScopedBuffer, pattern AddCursor)
+                                               , pattern ScopedBuffer, pattern AddCursor)
     
 -- TODO:
 -- It's a SUPERSET, but use the Value type from TargetInterp anyway:
@@ -249,15 +250,18 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                                  ++show (VCursor idx off)
               case S.viewl (S.drop off buf) of
                 SerInt n :< _ -> return $ VProd [VInt n, VCursor idx (off+1)]
-                S.EmptyL      -> error "SourceInterp: ReadInt on empty cursor/buffer."
+                S.EmptyL      -> errorWithStackTrace "SourceInterp: ReadInt on empty cursor/buffer."
                 oth :< _      ->
                  error $"SourceInterp: ReadInt expected Int in buffer, found: "++show oth
+
+            p | L2.isExtendedPattern p -> errorWithStackTrace$ "SourceInterp: Unhandled extended L2 pattern: "++ndoc p
                                      
             AppE f b -> do rand <- go env b
-                           let FunDef{funArg=(vr,_),funBody}  = fundefs # f
-                           go (M.insert vr rand env) funBody
+                           case M.lookup f fundefs of
+                             Just FunDef{funArg=(vr,_),funBody} -> go (M.insert vr rand env) funBody
+                             Nothing -> errorWithStackTrace $ "SourceInterp: unbound function in application: "++ndoc x0
 
-            (CaseE x1 []) -> error$ "SourceInterp: CaseE with empty alternatives list: "++ndoc x0
+            (CaseE _ []) -> error$ "SourceInterp: CaseE with empty alternatives list: "++ndoc x0
                               
             (CaseE x1 alts@((sometag,_,_):_)) -> do
                    v <- go env x1

@@ -1,12 +1,16 @@
 
 -- | Compiler pass to inline trivials.
 module Packed.FirstOrder.Passes.InlineTriv (inlineTriv, inlineTrivExp) where
-    
+
+
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L1_Source as L1 hiding (mkProj)
-import Packed.FirstOrder.Passes.Flatten (typeExp, TEnv)
+-- import Packed.FirstOrder.Passes.Flatten (typeExp, TEnv)
 import Prelude hiding (exp)
 -- import Debug.Trace
+
+-- import qualified Packed.FirstOrder.L2_Traverse as L2
+-- import GHC.Stack (errorWithStackTrace)
 
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
@@ -33,6 +37,15 @@ inlineTrivExp _ddefs = go []
          Nothing -> VarE v
          Just e  -> e
   exp _env (LitE i) = LitE i
+
+  -- Because this pass is applied on both L1 and L2...
+  -- exp _   L2.NewBuffer      = L2.NewBuffer
+  -- exp _   L2.ScopedBuffer   = L2.ScopedBuffer
+  -- exp _   (L2.ReadInt v)    = L2.ReadInt v
+  -- exp env (L2.WriteInt v e) = L2.WriteInt v $ go env e
+  -- exp _   (L2.AddCursor v i) = L2.AddCursor v i
+  -- exp _ p | L2.isExtendedPattern p = errorWithStackTrace $ "InlineTriv: failed to handle extended L2 form: "++ndoc p
+
   exp env (AppE v e) = AppE v $ go env e
   exp env (PrimAppE p es) = PrimAppE p $ map (go env) es
   exp env (LetE (v,t,e') e) =
