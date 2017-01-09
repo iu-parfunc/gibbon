@@ -29,9 +29,9 @@ import qualified Packed.FirstOrder.L3_Target as T
 import Data.Maybe
 import qualified Data.List as L
 import Data.List as L hiding (tail)
-import Data.Map as M
+import Data.Map as M hiding (foldl)
 import Data.Int (Int64)
-import Data.Word
+-- import Data.Word
 
 import Prelude hiding (tail)
 
@@ -41,13 +41,13 @@ import Prelude hiding (tail)
 
 genDcons :: [L1.Ty] -> Var -> [(T.Ty, T.Triv)] -> SyM T.Tail 
 genDcons (x:xs) tail fields = case x of
-  L2.IntTy             ->  do
+  L1.IntTy             ->  do
     val  <- gensym "val"
     t    <- gensym "tail"
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] 
       <$> genDcons xs t (fields ++ [(T.IntTy, T.VarTriv val)])
       
-  L2.PackedTy tyCons _ -> do
+  L1.PackedTy tyCons _ -> do
     ptr  <- gensym "ptr"
     t    <- gensym "tail"
     T.LetCallT [(ptr, T.CursorTy), (t, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
@@ -58,7 +58,7 @@ genDcons [] tail fields     = do
   ptr <- gensym "ptr"
   return $ T.LetAllocT ptr fields $ T.RetValsT [T.VarTriv ptr, T.VarTriv tail] 
 
-genAlts :: Num a => [(Constr,[L1.Ty])] -> Var -> Int64 -> SyM T.Alts 
+genAlts :: [(Constr,[L1.Ty])] -> Var -> Int64 -> SyM T.Alts 
 genAlts ((_, typs):xs) tail n = do
   curTail <- genDcons typs tail [] 
   alts    <- genAlts xs tail (n+1) 
@@ -70,7 +70,6 @@ genAlts ((_, typs):xs) tail n = do
     _              -> error $ "Invalid case statement type."
 
 genAlts [] _ _                = return $ T.IntAlts [] 
-
 
 genUnpacker :: DDef L1.Ty -> SyM T.FunDecl    
 genUnpacker DDef{tyName, dataCons} = do
@@ -87,18 +86,76 @@ genUnpacker DDef{tyName, dataCons} = do
                     
 
 -- | Modify a Tail to *print* its return value and then 
+
+-- Utility functions
+openParen :: String -> (T.Tail -> T.Tail)
+openParen s  = T.LetPrimCallT [] (T.PrintString ("(" ++ s ++ " ")) [] 
+
+closeParen :: T.Tail -> T.Tail
+closeParen   = T.LetPrimCallT [] (T.PrintString ")") [] 
+
+sandwich :: (T.Tail -> T.Tail) -> String -> T.Tail -> T.Tail
+sandwich mid s end = openParen s $ mid $ closeParen end
+
+-- Generate printing functions
+genDconsPrinter :: [L1.Ty] -> Var -> SyM T.Tail 
+genDconsPrinter (x:xs) tail = case x of
+  L1.IntTy             ->  do
+    val  <- gensym "val"
+    t    <- gensym "tail"
+    T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$> 
+      printTy L1.IntTy [T.VarTriv val]  
+        <$> genDconsPrinter xs t 
+      
+  L1.PackedTy tyCons _ -> do
+    t    <- gensym "tail"
+    T.LetCallT [(t, T.CursorTy)] (mkPrinterName tyCons) [(T.VarTriv tail)] 
+        <$> genDconsPrinter xs t  
+  _                    -> undefined
+genDconsPrinter [] tail     = do 
+  return $ closeParen $ T.RetValsT [(T.VarTriv tail)] 
+
+genAltPrinter :: [(Constr,[L1.Ty])] -> Var -> Int64 -> SyM T.Alts 
+genAltPrinter ((dcons, typs):xs) tail n = do
+  curTail <- (openParen dcons) <$> genDconsPrinter typs tail
+  alts    <- genAltPrinter xs tail (n+1) 
+  case alts of
+    T.IntAlts []   -> return $ T.IntAlts [(n::Int64, curTail)]
+    -- T.TagAlts []   -> return $ T.TagAlts [(n::Word8, curTail)] 
+    T.IntAlts tags -> return $ T.IntAlts ((n::Int64, curTail) : tags)
+    -- T.TagAlts tags -> return $ T.TagAlts ((n::Word8, curTail) : tags)
+    _              -> error $ "Invalid case statement type."
+genAltPrinter [] _ _                = return $ T.IntAlts [] 
+
+genPrinter  :: DDef L1.Ty -> SyM T.FunDecl
+genPrinter DDef{tyName, dataCons} = do
+  p    <- gensym "p"
+  tag  <- gensym "tag"
+  tail <- gensym "tail"
+  alts <- genAltPrinter dataCons tail 0 
+  bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
+            T.Switch (T.VarTriv tag) alts Nothing 
+  return T.FunDecl{ T.funName  = (mkPrinterName tyName),
+                    T.funArgs  = [(p, T.CursorTy)],
+                    T.funRetTy = T.CursorTy,
+                    T.funBody  = bod } 
+
+printTy :: L1.Ty -> [T.Triv] -> (T.Tail -> T.Tail)
+printTy L1.IntTy [trv]                = T.LetPrimCallT [] T.PrintInt [trv] 
+printTy L1.BoolTy [trv]               =   
+  let prntBool m                      = T.LetPrimCallT [] (T.PrintString m) [] in
+    \t -> T.IfT trv (prntBool truePrinted $ t) (prntBool falsePrinted $ t)
+printTy (L1.ProdTy xs) [trv]          = \t -> foldl (\y x -> (printTy x [trv] $ y)) t xs   
+printTy (L1.SymDictTy (x)) [trv]      = sandwich (printTy x [trv]) "Dict"
+printTy (L1.PackedTy constr _) _      = T.LetCallT [] (mkPrinterName constr) [] 
+printTy (L1.ListTy (x)) [trv]         = sandwich (printTy x [trv]) "List"
+printTy _ _                           = error $ "Invalid L1 data type."
+
 addPrintToTail :: L1.Ty -> T.Tail-> SyM T.Tail
-addPrintToTail L1.IntTy tl0 =
+addPrintToTail ty tl0 =
     T.withTail (tl0, T.IntTy) $ \ [trv] ->
-      T.LetPrimCallT [] T.PrintInt [trv] $
-       T.RetValsT [] -- Void return after printing.
-
-addPrintToTail L1.BoolTy tl0 =
-    T.withTail (tl0, T.IntTy) $ \ [trv] ->
-      let prnt m = T.LetPrimCallT [] (T.PrintString m) [] (T.RetValsT []) in
-      T.IfT trv (prnt truePrinted) (prnt falsePrinted)
-
-addPrintToTail oth _ = error$ "FINISHME: addPrintToTail needs to handle type "++show oth
+      printTy ty [trv] $
+        T.RetValsT []  -- Void return after printing.
 
 -- The compiler pass
 -------------------------------------------------------------------------------a
@@ -118,7 +175,8 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
   funs       <- mapM fund (M.elems fundefs) 
   unpackers  <- mapM genUnpacker (M.elems ddefs) 
-  T.Prog <$> pure (funs ++ unpackers) <*> pure mn
+  printers   <- mapM genPrinter (M.elems ddefs)
+  T.Prog <$> pure (funs ++ unpackers ++ printers) <*> pure mn
 
 --  T.Prog <$> mapM fund (M.elems fundefs) <*> pure mn
 

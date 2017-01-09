@@ -15,6 +15,7 @@ module Packed.FirstOrder.Common
          -- * Global constants or conventions
 --         cPackedTagSize, cPointerTagSize -- FINISHME
          mkUnpackerName
+       , mkPrinterName
 
          -- * Type and Data Constructors
        , Constr
@@ -368,3 +369,7 @@ falsePrinted = "#f"
 -- | Map a DataCon onto the name of the generated unpack function.
 mkUnpackerName :: Constr -> Var
 mkUnpackerName tyCons = "unpack_" ++ tyCons
+
+-- | Map a DataCon onto the name of the generated print function.
+mkPrinterName :: Constr -> Var
+mkPrinterName tyCons = "print_" ++ tyCons
