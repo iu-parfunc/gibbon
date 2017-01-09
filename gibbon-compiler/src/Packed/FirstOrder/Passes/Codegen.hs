@@ -317,7 +317,8 @@ codegenTail (LetTimedT flg bnds rhs body) ty =
 
                             
 codegenTail (LetCallT bnds ratr rnds body) ty
-    | [] <- bnds = error $ "codegenTail: cannot currently handle call with zero outputs: "++ndoc (ratr,rnds)
+    | [] <- bnds = do tal <- codegenTail body ty
+                      return $ [toStmt (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc)] ++ tal
     | [bnd] <- bnds  = do tal <- codegenTail body ty
                           let call = assn (codegenTy (snd bnd)) (fst bnd)
                                           (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc)
@@ -463,6 +464,9 @@ mkBlock ss = C.Block ss noLoc
 cid :: Var -> C.Exp
 cid v = C.Var (C.toIdent v noLoc) noLoc
 
+toStmt :: C.Exp -> C.BlockItem
+toStmt x = C.BlockStm [cstm| $exp:x; |]
+        
 -- | Create a NEW lexical binding.
 assn :: (C.ToIdent v, C.ToExp e) => C.Type -> v -> e -> C.BlockItem
 assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]
