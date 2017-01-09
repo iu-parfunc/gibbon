@@ -57,11 +57,13 @@ largest_clean:
 
 binary_racket: 
 	mkdir -p $@
+	rm -f ./conversion_list.txt
 	cd cleaned_racket; \
-         for f in `find -name "*.sexp"`; do \
-          mkdir -p `dirname "../binary_racket/$$f"`; \
-	  echo "$$f" "../binary_racket/$$f"; \
-         done | racket ../binary_pack.rkt;
-
+          for f in `find -name "*.sexp"`; do \
+            mkdir -p `dirname "../binary_racket/$$f"`; \
+            echo "$$f" ../binary_racket/`dirname $$f`/`basename $$f .sexp`.gpkd >> ../conversion_list.txt; \
+          done
+	cd cleaned_racket; \
+         cat ../conversion_list.txt | racket ../binary_pack.rkt;
 
 .PHONY: default fetch largest
