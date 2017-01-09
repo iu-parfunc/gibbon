@@ -261,8 +261,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     -- This is legitimately flattened, but we need to move it off the spine:
     L1.MkPackedE k _ls -> do
        tmp <- gensym "tailift"
-       -- let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
-       let ty = L2.CursorTy ()
+       let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
        tail $ LetE (tmp, ty, ex0) (VarE tmp)
              
     --------------------------------------------------------------------------------
@@ -357,6 +356,11 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                                              , triv "addCursor offset" (L2.LitE n)] <$>
          tail bod
 
+    L1.LetE (_,_, p) _ | L2.isExtendedPattern p ->
+     error $ "Lower: missed an extended L2 pattern on rhs of let: "++ndoc p
+    p | L2.isExtendedPattern p ->
+     error $ "Lower: missed an extended L2 pattern: "++ndoc p
+           
     ---------------------
     -- (3) Proper primapps.
     L1.LetE (v,t,L1.PrimAppE p ls) bod ->
@@ -457,7 +461,7 @@ mkLetTail (vr,ty,rhs) =
     _ -> __
 -}
 
--- | Eliminate projections from a given tuple variable.  (INEFFICIENT at compile time!)
+-- | Eliminate projections from a given tuple variable.  INEFFICIENT!
 eliminateProjs :: Var -> [L1.Ty] -> Exp -> SyM ([Var],Exp)
 eliminateProjs vr tys bod =
  dbgTrace 5 (" [lower] eliminating "++show (length tys)++

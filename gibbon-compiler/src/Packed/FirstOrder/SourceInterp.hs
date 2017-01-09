@@ -222,7 +222,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                     errHeader = "Pointer arithmetic error in AddCursor of "++show (vr,bytesadd)++".  "
                     moreContext = " Starting cursor, "++show (VCursor idx off)
                                   ++" in Buffer: "++ndoc sq
-                liftIO $ dbgPrintLn interpChatter ("\n [AddP Ptr, "++ show (vr,bytesadd)
+                liftIO $ dbgPrintLn interpChatter ("\n Interp [AddP Ptr, "++ show (vr,bytesadd)
                                                    ++"] scroll "++show bytesadd++" bytes, "
                                                    ++"dropping" ++show dropped++" elems,\n     "
                                                    ++moreContext)
@@ -243,10 +243,10 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                 return $ VCursor idx (off+1)
             ReadInt v -> do
               Store store <- get
-              liftIO$ dbgPrint interpChatter $ " [ReadInt "++v++"] from store: "++ndoc store
+              liftIO$ dbgPrint interpChatter $ " Interp [ReadInt "++v++"] from store: "++ndoc store
               let VCursor idx off = env # v
                   Buffer buf = store IM.! idx
-              liftIO$ dbgPrintLn interpChatter $ " [ReadInt "++v++"] from that store at pos: "
+              liftIO$ dbgPrintLn interpChatter $ " Interp [ReadInt "++v++"] from that store at pos: "
                                                  ++show (VCursor idx off)
               case S.viewl (S.drop off buf) of
                 SerInt n :< _ -> return $ VProd [VInt n, VCursor idx (off+1)]
