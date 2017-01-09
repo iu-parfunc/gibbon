@@ -179,7 +179,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                      b <- mkLets [ (cur, CursorTy (), mkProjE2 ix (length outCurs+1) (VarE fnargtmp)) -- outCurs non null.
                                  | (cur,ix) <- zip outCurs [0..] ] <$>
                            -- 2nd: Unpack the "real" argument, which is after the prepended output cursors:
-                           let argTy = fmap (const ()) (arrIn funty') in
+                           let argTy = fmap (const ()) (arrIn funty) in
                            LetE ( funarg, typ argTy
                                 , mkProjE2 (length outCurs) (length outCurs+1) (VarE fnargtmp)) <$> do
                             let tenv = M.union (M.fromList ((funarg,argTy):(zip outCurs (repeat (CursorTy())))))
