@@ -22,7 +22,7 @@ import           Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.HaskellFrontend as HS
 import qualified Packed.FirstOrder.L1_Source   as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
-import qualified Packed.FirstOrder.L3_Target   as L3
+-- import qualified Packed.FirstOrder.L3_Target   as L3
 import           Packed.FirstOrder.Passes.Codegen (codegenProg)
 import           Packed.FirstOrder.Passes.Cursorize
 import           Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
@@ -81,6 +81,8 @@ lowerCopiesAndTraversals p = pure p
 -- Configuring and launching the compiler.
 --------------------------------------------------------------------------------
 
+-- | Overall configuration of the compiler, as determined by command
+-- line arguments and possible environment variables.
 data Config = Config
   { input     :: Input
   , mode      :: Mode -- ^ How to run, which backend.
@@ -344,64 +346,65 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                           return $ Just val
                   else return Nothing
     str <- evalStateT
-             (do l1b <-       passE "freshNames"               freshNames               l1
+             (do l1 <-       passE "freshNames"               freshNames               l1
 
                  -- -- If we are executing a benchmark, then we
                  -- -- replace the main function with benchmark code:
-                 let l1c = case mode of
+                 l1 <- pure$ case mode of
                              Bench fnname ->
                                  let tmp = "bnch"
-                                     (arg,ret) = L1.getFunTy fnname l1b
+                                     (arg,ret) = L1.getFunTy fnname l1
                                  in
-                                 l1b{ L1.mainExp = Just $
+                                 l1{ L1.mainExp = Just $
                                       -- At L1, we assume ReadPackedFile has a single return value:
                                       L1.LetE (tmp, arg, L1.PrimAppE (L1.ReadPackedFile benchInput arg) []) $ 
                                         L1.LetE ("ignored", ret, L1.TimeIt (L1.AppE fnname (L1.VarE tmp)) ret True) $
                                           -- FIXME: should actually return the result, as soon as we are able to print it.
                                           (L1.LitE 0)
                                     }
-                             _ -> l1b
+                             _ -> l1
 
-                 l1d <-       passE "flatten"                  flatten                  l1c
-                 l1e <-       passE "inlineTriv"               (return . inlineTriv)    l1d
-                 l2  <-       passE "inferEffects"            inferEffects              l1e
-                 l2' <-
+                 l1  <-       passE "flatten"                  flatten                  l1
+                 l1  <-       passE "inlineTriv"               (return . inlineTriv)    l1
+                 l2  <-       passE "inferEffects"             inferEffects             l1
+                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig False)) l2
+                 l2  <-
                      if packed
                      then do
                        ---------------- Stubs currently ------------------
                        mt  <- pass'  "findMissingTraversals"    findMissingTraversals     l2
-                       l2b <- passE' "addTraversals"            (addTraversals mt)        l2
-                       l2c <- passE' "addCopies"                addCopies                 l2b
-                       l2d <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals  l2c
+                       l2  <- passE' "addTraversals"            (addTraversals mt)        l2
+                       l2  <- passE' "addCopies"                addCopies                 l2
+                       l2  <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals  l2
                        ------------------- End Stubs ---------------------
                        -- TODO / WIP: tighten this up:
-                       -- l2d' <- passE' "typecheck"                typecheckStrict          l2d
-                       l2d' <- passE' "typecheck"                typecheckPermissive      l2d
-                       l2e  <- pass   "routeEnds"                routeEnds                l2d'
-                       l2f  <- pass'  "flatten"                  flatten2                 l2e
-                       l2g  <- pass   "findWitnesses"            findWitnesses            l2f
-                       l2h  <- pass   "inlinePacked"             inlinePacked             l2g
+                       l2  <- passE' "typecheck" (typecheckPermissive (TCConfig False))  l2
+                       l2  <- pass   "routeEnds"                routeEnds                l2
+                       l2  <- pass'  "flatten"                  flatten2                 l2
+                       l2  <- pass   "findWitnesses"            findWitnesses            l2
+                       l2  <- pass   "inlinePacked"             inlinePacked             l2
                        -- [2016.12.31] For now witness vars only work out after cursorDirect then findWitnesses:
-                       l2i  <- passF  "cursorDirect"             cursorDirect             l2h
-                       l2i' <- pass'  "typecheck"                typecheckPermissive      l2i
-                       l2j  <- pass'  "flatten"                  flatten2                 l2i'
-                       l2k  <- passE  "findWitnesses"            findWitnesses            l2j
+                       l2  <- passF  "cursorDirect"             cursorDirect             l2
+                       l2  <- pass'  "typecheck" (typecheckPermissive (TCConfig True))   l2
+                       l2  <- pass'  "flatten"                  flatten2                 l2
+                       l2  <- passE  "findWitnesses"            findWitnesses            l2
                               
-                       l2l  <- pass' "flatten"                  flatten2                  l2k
-                       l2m  <- pass  "inlineTriv"               inline2                   l2l
-                       l2n  <- pass  "shakeTree"                shakeTree                 l2m
-                       l2o  <- pass  "hoistNewBuf"              hoistNewBuf               l2n
-                       return l2o
+                       l2  <- pass' "flatten"                  flatten2                  l2
+                       l2  <- pass  "inlineTriv"               inline2                   l2
+                       l2  <- pass  "shakeTree"                shakeTree                 l2
+                       l2  <- pass  "hoistNewBuf"              hoistNewBuf               l2
+                       return l2
                      else return l2
-                 l2'' <-       pass  "unariser"                 unariser                 l2'
-                 l3   <-       pass  "lower"                    (lower packed)           l2''
+                 l2  <-       pass   "unariser"                 unariser                 l2
+                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig packed)) l2
+                 l3  <-       pass   "lower"                    (lower packed)           l2
 
                  if mode == Interp2
                   then do l3res <- lift $ execProg l3
                           mapM_ (\(IntVal v) -> liftIO $ print v) l3res
                           liftIO $ exitSuccess
                   else do                   
-                   str <- lift (codegenProg l3)
+                   str <- lift (codegenProg packed l3)
 
                    -- The C code is long, so put this at a higher verbosity level.
                    lift$ dbgPrintLn minChatLvl $ "Final C codegen: "++show (length str)++" characters."
@@ -423,12 +426,15 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
        ExitFailure n -> error$ "C compiler failed!  Code: "++show n
        ExitSuccess -> do
          -- (Stage 3) Binary compiled, run if appropriate
-         when (mode == RunExe || isBench mode )$ do
-          exepath <- makeAbsolute exe
-          c2 <- system exepath
-          case c2 of
-            ExitSuccess -> return ()
-            ExitFailure n -> error$ "Treelang program exited with error code "++ show n
+         let runExe = do exepath <- makeAbsolute exe
+                         c2 <- system exepath
+                         case c2 of
+                           ExitSuccess -> return ()
+                           ExitFailure n -> error$ "Treelang program exited with error code "++ show n
+         case benchInput of
+           Just _ | isBench mode -> runExe
+           _ | mode == RunExe    -> runExe
+           _                     -> return ()
 
 
 isBench :: Mode -> Bool

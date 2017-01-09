@@ -50,7 +50,7 @@ genDcons (x:xs) tail fields = case x of
   L1.PackedTy tyCons _ -> do
     ptr  <- gensym "ptr"
     t    <- gensym "tail"
-    T.LetCallT [(ptr, T.CursorTy), (t, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
+    T.LetCallT [(ptr, T.PtrTy), (t, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
       <$> genDcons xs t (fields ++ [(T.CursorTy, T.VarTriv ptr)]) 
   _                    -> undefined
 
@@ -81,7 +81,7 @@ genUnpacker DDef{tyName, dataCons} = do
             T.Switch (T.VarTriv tag) alts Nothing
   return T.FunDecl{ T.funName  = (mkUnpackerName tyName),
                     T.funArgs  = [(p, T.CursorTy)],
-                    T.funRetTy = T.ProdTy [T.CursorTy, T.CursorTy],
+                    T.funRetTy = T.ProdTy [T.PtrTy, T.CursorTy],
                     T.funBody  = bod } 
                     
 
@@ -414,6 +414,11 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
                                              , triv "addCursor offset" (L2.LitE n)] <$>
          tail bod
 
+    L1.LetE (_,_, p) _ | L2.isExtendedPattern p ->
+     error $ "Lower: missed an extended L2 pattern on rhs of let: "++ndoc p
+    p | L2.isExtendedPattern p ->
+     error $ "Lower: missed an extended L2 pattern: "++ndoc p
+           
     ---------------------
     -- (3) Proper primapps.
     L1.LetE (v,t,L1.PrimAppE p ls) bod ->

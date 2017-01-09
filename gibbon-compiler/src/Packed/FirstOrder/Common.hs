@@ -37,7 +37,7 @@ module Packed.FirstOrder.Common
        , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
 
          -- * Misc helpers
-       , (#), fragileZip, sdoc, ndoc, abbrv
+       , (#), fragileZip, fragileZip', sdoc, ndoc, abbrv
 
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
@@ -66,6 +66,7 @@ import Debug.Trace
 -- type CursorVar = Var
 type Var    = String
 type Constr = String
+type TyCon   = String
 
 -- | Abstract location variables.
 type LocVar = Var
@@ -125,17 +126,17 @@ lookupDDef mp v =
 
 -- | Get the canonical ordering for data constructors, currently based
 -- on ordering in the original source code.  Takes a TyCon as argument.
-getConOrdering :: Out a => DDefs a -> Var -> [Constr]
+getConOrdering :: Out a => DDefs a -> TyCon -> [Constr]
 getConOrdering dd tycon = L.map fst dataCons
   where DDef{dataCons} = lookupDDef dd tycon
 
 -- | Lookup the name of the TyCon that goes with a given DataCon.
 --   Must be unique!
-getTyOfDataCon :: Out a => DDefs a -> Var -> Var
+getTyOfDataCon :: Out a => DDefs a -> Constr -> TyCon
 getTyOfDataCon dds con = fst $ lkp dds con
 
 -- | Look up the numeric tag for a dataCon 
-getTagOfDataCon :: Out a => DDefs a -> Var -> Word8
+getTagOfDataCon :: Out a => DDefs a -> Constr -> Word8
 getTagOfDataCon dds dcon =
     -- dbgTrace 5 ("getTagOfDataCon -- "++sdoc(dds,dcon)) $
     fromIntegral ix
@@ -245,9 +246,18 @@ m # k = case M.lookup k m of
 fragileZip :: (Show a, Show b) => [a] -> [b] -> [(a, b)]
 fragileZip [] [] = []
 fragileZip (a:as) (b:bs) = (a,b) : fragileZip as bs
-fragileZip as [] = error$ "fragileZip: right ran out, while left still has: "++show as
-fragileZip [] bs = error$ "fragileZip: left ran out, while right still has: "++show bs
+fragileZip as [] = errorWithStackTrace$ "fragileZip: right ran out, while left still has: "++show as
+fragileZip [] bs = errorWithStackTrace$ "fragileZip: left ran out, while right still has: "++show bs
 
+
+-- | Like fragileZip, but takes a custom error message.
+fragileZip' :: (Show a, Show b) => [a] -> [b] -> String -> [(a, b)]
+fragileZip' [] [] _ = []
+fragileZip' (a:as) (b:bs) m = (a,b) : fragileZip' as bs m
+fragileZip' as [] m = error m
+fragileZip' [] bs m = error m
+
+                   
 -- | Handy combination of show and doc                   
 sdoc :: Out a => a -> String
 sdoc = show . doc
@@ -367,7 +377,7 @@ falsePrinted = "#f"
 
 
 -- | Map a DataCon onto the name of the generated unpack function.
-mkUnpackerName :: Constr -> Var
+mkUnpackerName :: TyCon -> Var
 mkUnpackerName tyCons = "unpack_" ++ tyCons
 
 -- | Map a DataCon onto the name of the generated print function.

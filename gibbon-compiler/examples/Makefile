@@ -4,25 +4,50 @@ default:
 	$(MAKE) test
 
 ALL_TESTS= $(shell ls test*.sexp)
-ANSWERS= $(ALL_TESTS:.sexp=.ans) 
-# ANSWERS= $(INTERP1_TESTS:.sexp=.ans) $(INTERP2_TESTS:.sexp=.ans) $(PASSING_TESTS:.sexp=.ans) $(PACKED_TESTS:.sexp=.ans)
 
-# Here's a hacky way to try several things until one works:
+# Temporary output dir:
+BLD=./build_tmp/
+
+ANSWERS= $(addprefix $(BLD),$(ALL_TESTS:.sexp=.ans))
+
+
+# Number of processors:
+# Here's a hacky way to try several things until one works.
 PROCS = $(shell nproc || \
           getconf _NPROCESSORS_ONLN || \
           stack exec -- ghc -e GHC.Conc.getNumProcessors || \
           python -c 'import multiprocessing as m; print m.cpu_count()' )
-# On Mac: sysctl -n hw.ncpu
+# On Mac: "sysctl -n hw.ncpu" also "getconf _NPROCESSORS_ONLN" works
 # On Windows?
+
+GIBBON= DEBUG=1 stack exec -- gibbon
 
 
 test: prebuild build
+	$(MAKE) benchtest
 # Having weird trouble with race conditons on answers:
-	$(MAKE) answers
+	$(MAKE) run_answers
 	wc -l $(ANSWERS)
 	@echo "Answers available, now proceeding..."
 	$(MAKE) parse_all
 	$(MAKE) core_tests
+
+# Test the benchmarking mode
+benchtest: test24_input.gpkd
+	@echo "\n Testing Gibbon's benchmarking mode."
+	@echo "--------------------------------------------------"
+	$(GIBBON) --bench pass test24_defs.sexp
+	@echo
+	./test24_defs.exe --bench 10 10 --bench-input test24_input.gpkd 
+	$(GIBBON) -b pass --bench-input test24_input.gpkd  test24_defs.sexp
+	@echo
+# Next is this:
+#	@echo "\nNow in packed mode:"
+#	$(GIBBON) --packed --bench pass --bench-input test24_input.gpkd test24_defs.sexp
+
+	@echo "\nNow with the full Racket Core grammar:"
+	$(GIBBON) --bench foo --bench-input test25b_input.gpkd test25b_racketcore.sexp
+
 
 # Assumes answers and build already available:
 core_tests:
@@ -40,15 +65,17 @@ EXTRA_SUFFIX ?= .ptr
 # How far to compile, --toC, --exe, --run:
 RUN_MODE     ?= --run
 # Additional args besides RUN_MODE:
-TREECARGS ?= --optc=-g
+GIBBONARGS ?= --optc=-g
 
 
 # Not necessary, because we build each module before we run it:
-prebuild: test24_input.bin
+prebuild: $(BLD) test24_input.gpkd
 	raco make -j $(PROCS) -v $(ALL_TESTS) 
 
+$(BLD):
+	mkdir -p $(BLD)
 
-test24_input.bin: test24_input.dat test24_packit.rkt test24_defs.sexp
+test24_input.gpkd: test24_input.dat test24_packit.rkt test24_defs.sexp
 	racket test24_packit.rkt
 
 #----------------------------------------
@@ -63,8 +90,6 @@ racket_invalid: treelang_lib
 	for f in `find ./error/ -name '*.sexp'`; do racket $$f | tee $$f.ans; done
 
 # ----------------------------------------
-
-TREEC= DEBUG=1 stack exec -- gibbon
 
 # Make sure the compiler is built
 build:
@@ -81,14 +106,14 @@ all_parsed:  $(ALL_TESTS:.sexp=.parsed)
 
 %.parsed : %.sexp
 #	@echo "Parsing $^"
-	$(TREEC) --parse $^ 2> $@
+	$(GIBBON) --parse $^ 2> $@
 
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= \
   test13_build.sexp test13b_build.sexp \
   test20_bintree.sexp test20b_bintree.sexp test20c_bintree.sexp  test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
   test11_fundata.sexp test11c_funrec.sexp test11e_funrec.sexp test12c_traverse.sexp \
-  test25b_racketcore.sexp  \
+  test25d_racketcore.sexp \
   test16_forlist.sexp test17_forfold.sexp 
 # Last Line - added because they are failing under valgrind [2016.11.11]
 
@@ -106,34 +131,36 @@ FAILING_TESTS ?= \
 
 PASSING_TESTS = $(filter-out $(FAILING_TESTS),$(ALL_TESTS))
 
-OUT_FILES=$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).out)
-EXE_FILES=$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).exe)
+OUT_FILES=$(addprefix $(BLD),$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).out))
+EXE_FILES=$(addprefix $(BLD),$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).exe))
 
 # Run the tests that work.  Assumes "build" has already executed.
-run_tests: 
+run_tests: $(BLD)
 	@echo "\n Compiling and running tests through our compiler ($(EXTRA_SUFFIX)):"
 	@echo "------------------------------------------------------------------"
 	@echo "Running test set: "$(PASSING_TESTS)
+	@echo "\nFirst clear output files:"
 	rm -f $(OUT_FILES)
+	@echo ""
 	$(MAKE) all_tests
 
-all_tests: answers $(OUT_FILES)
+all_tests: $(BLD) answers $(OUT_FILES)
 
 # Assumes stack build. Builds AND RUNS all the tests:
 # Take care to not collide between different EXTRA_SUFFIX modes.
-%$(EXTRA_SUFFIX).out : %.sexp
-	$(TREEC) $(RUN_MODE) $(TREECARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
-	@./diff.sh $(basename $^).ans $@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
+build_tmp/%$(EXTRA_SUFFIX).out : %.sexp
+	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
+	@./diff.sh $(BLD)/$(basename $^).ans $@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
 
 # Just build the tests
 build_tests: $(EXE_FILES)
 
 %$(EXTRA_SUFFIX).exe : %.sexp
-	$(TREEC) --exe $(TREECARGS) $^ --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(basename $^)$(EXTRA_SUFFIX)
+	$(GIBBON) --exe $(GIBBONARGS) $^ --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
-test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25b_racketcore.sexp 
+test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25e_countnodes.sexp
 
 # test20f - wip
 # test20b_bintree.sexp   -- requires copy insertion
@@ -147,12 +174,12 @@ run_tests_pointer: run_tests
 
 # Run the tests that work under the packed regime:
 run_tests_packed: answers
-	$(MAKE) run_tests RUN_MODE="--run" TREECARGS="$(TREECARGS) --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
+	$(MAKE) run_tests RUN_MODE="--run" GIBBONARGS="$(GIBBONARGS) --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
 
 
 INTERP2_FAILING = test00b_printBool.sexp test06a_two_cases.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp \
      test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
-  test06h_rec.sexp test06i_casecase.sexp test11b_fundata.sexp test11c_funrec.sexp \
+  test06h_rec.sexp test06i_casecase.sexp test07b_iterate.sexp test11b_fundata.sexp test11c_funrec.sexp \
   test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp  \
   test12b_traverse.sexp test12c_traverse.sexp test12_skip.sexp \
   test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
@@ -160,7 +187,7 @@ INTERP2_FAILING = test00b_printBool.sexp test06a_two_cases.sexp test06b_case.sex
   test13_build.sexp test13b_build.sexp  \
   test20b_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
   test25b_racketcore.sexp test25_rackcore.sexp \
-  test07b_iterate.sexp test25b_racketcore.sexp \
+  test25c_racketcore.sexp test25d_racketcore.sexp test25e_countnodes.sexp \
   test11_fundata.sexp test10_desugar.sexp test10b_desugar.sexp test24_defs.sexp \
   test09_recur.sexp test08_dict.sexp test02b_datacon.sexp test02c_case.sexp 
 # Last line are new regressions...
@@ -179,27 +206,37 @@ run_tests_interp1: answers
 
 # --------------------------------------------------------------------------------
 
-%.ans : %.sexp
-	raco make -v $^
+build_tmp/%.ans : %.sexp
+# Optional, could prebuild before running:
+#	raco make -v $^
 	racket $^ > $@ || rm -f $@
 #	racket $^ | tee $@
 
+run_answers:
+	@echo "\nGenerating canonical answers from Racket:"
+	@echo "-----------------------------------------"
+	$(MAKE) answers
+
 answers: $(ANSWERS)
 
+
+# Valgrind should be part of our regression testing:
 # --------------------------------------------------------------------------------
 
 valgrind_packed:
-	$(MAKE) run_valgrind TREECARGS="--packed --optc=-g " FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd" 
+	$(MAKE) run_valgrind GIBBONARGS="--packed --optc=-g " FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd" 
 
 valgrind:
-	$(MAKE) run_valgrind TREECARGS=" --optc=-g " EXTRA_SUFFIX=".ptr" 
+	$(MAKE) run_valgrind GIBBONARGS=" --optc=-g " EXTRA_SUFFIX=".ptr" 
 
-run_valgrind: $(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).valgrind)
+VALGRIND_FILES=$(addprefix $(BLD),$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).valgrind))
+
+run_valgrind: $(VALGRIND_FILES)
 
 %$(EXTRA_SUFFIX).valgrind : %.sexp %$(EXTRA_SUFFIX).exe
 #	@echo "\n Valgrind, testing $(basename $(basename $@))"
 #	@echo "--------------------------------------------------"
-	valgrind -q --error-exitcode=1 ./$(basename $(basename $@))$(EXTRA_SUFFIX).exe
+	valgrind -q --error-exitcode=1 $(BLD)/$(basename $(basename $@))$(EXTRA_SUFFIX).exe
 	@touch $@
 
 # --------------------------------------------------------------------------------
@@ -209,13 +246,13 @@ treelang_lib:
 	raco make -v ../../gibbon/main.rkt 
 
 clean:
-	rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp* test24_input.bin
-	rm -rf ./compiled
-	cd error/; rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed
+	(cd $(BLD); rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp* )
+	rm -rf test24_input.gpkd ./compiled 
+	(cd error/; rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed)
 
 distclean: clean
 	rm -f *.ans
 	cd error/; rm -f *.ans
 
 .PHONY: prebuild build run_racket treelang_lib answers run_tests core_tests
-.PHONY: run_tests_interp2 run_tests_packed clean distclean
+.PHONY: run_tests_interp2 run_tests_packed clean distclean benchtest

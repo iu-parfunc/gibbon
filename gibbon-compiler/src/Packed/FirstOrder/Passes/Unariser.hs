@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 -- | Eliminate tuples except under special circumstances expected by
 -- Lower.
 
@@ -6,10 +7,8 @@
 module Packed.FirstOrder.Passes.Unariser
     (unariser) where
 
-import Data.Either
 import Data.Maybe
-import qualified Data.Map as M    
-import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc, gensym, fragileZip)
+import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc, gensym, fragileZip,ndoc)
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.L2_Traverse as L2
 import Prelude hiding (exp)
@@ -44,43 +43,44 @@ type Env = [(Var,[(ProjStack,Var)])]
     
 -- | Take an ignored argument to match mapMExprs' conventions.
 -- 
--- In the recursive loop here, we maintain (1) pending projections
--- that enclose our current context, and (2) a map from variable
--- bindings with tuple type, to finer-grained bindings to individual
--- components.
+-- In the recursive "go" worker here, we maintain:
+--   (1) pending projections that enclose our current context, and
+--   (2) a map from variable bindings with tuple type, to
+--       finer-grained bindings to individual components.
 --
 unariserExp :: ignored -> L1.Exp -> SyM L1.Exp
 unariserExp _ = go [] [] 
   where
   var v = v
-  mklets [] bod = bod
-  mklets (bnd:rst) bod = LetE bnd $ mklets rst bod
-
   l ! i = if i <= length l
           then l!!i
           else error$ "unariserExp: attempt to project index "++show i++" of list:\n "++sdoc l
-                         
+
+  -- | Reify a stack of projections.
   discharge [] e = e
   discharge (ix:rst) (MkProdE ls) = discharge rst (ls ! ix)
+  discharge (ix:rst) p | isExtendedPattern p =
+     error $ "Cannot discharge projections directly agains extended L2 form: "++ndoc p
   discharge (ix:rst) e = discharge rst (ProjE ix e)
 
   -- FIXME: need to track full expr binds like InlineTrivs
   -- Or do we?  Not clear yet.                         
   go :: ProjStack -> Env -> L1.Exp -> SyM L1.Exp
   go stk env e0 =
-   dbgTrace 7 ("Unariser processing with env:\n "++sdoc env++"\n exp: "++sdoc e0) $
-   case e0 of
-     
-    (ProjE i e)  -> go (i:stk) env e  -- Push a projection inside lets or conditionals.
+   dbgTrace 7 ("Unariser processing with stk "++
+               ndoc stk++", env: "++ndoc env++"\n exp: "++sdoc e0) $
+   case e0 of     
     (MkProdE es) -> case stk of
                       (ix:s') -> go s' env (es ! ix)
                       [] -> MkProdE <$> mapM (go stk env) es
 
-    (ProjE ix (VarE v)) -> discharge stk <$> -- Danger.
-                           case lookup v env of
-                             Just vs -> pure$ let (stk,v') = vs ! ix in
-                                              applyProj (ix:stk, v')
-                             Nothing -> pure$ VarE v -- This must be one that Lower can handle.
+    -- (ProjE ix (VarE v)) -> discharge stk <$> -- Danger.
+    --                        case lookup v env of
+    --                          Just vs -> pure$ let (stk,v') = vs ! ix in
+    --                                           applyProj (ix:stk, v')
+    --                          Nothing -> pure$ VarE v -- This must be one that Lower can handle.
+    (ProjE i e)  -> go (i:stk) env e  -- Push a projection inside lets or conditionals.
+
     (VarE v) -> case lookup v env of
                   Nothing -> pure$ discharge stk $ VarE (var v)
                   -- Reprocess after substituting in case they were not terminal after all:a
@@ -90,9 +90,13 @@ unariserExp _ = go [] []
          go stk env $
           CaseE scrt [ (k,vs, mkLet (vr,ty,e) bod)
                      | (k,vs,e) <- ls]
-                             
+
+    -- Flatten so that we can see what's stopping us from unzipping:
+    (LetE (v1,t1, LetE (v2,t2,rhs2) rhs1) bod) -> do
+         go stk env $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
+
     -- TEMP: HACK/workaround.  See FIXME above.
-    LetE (v1,ProdTy _,rhs@LetE{})  (ProjE ix (VarE v2)) | v1 == v2 -> go (ix:stk) env rhs
+    -- LetE (v1,ProdTy _,rhs@LetE{})  (ProjE ix (VarE v2)) | v1 == v2 -> go (ix:stk) env rhs
     LetE (v1,ProdTy _,rhs@CaseE{}) (ProjE ix (VarE v2)) | v1 == v2 -> go (ix:stk) env rhs
 
     ----- These three cases are permitted to remain tupled by Lower: -----
@@ -100,10 +104,6 @@ unariserExp _ = go [] []
     (LetE (v,ty@ProdTy{}, rhs@CaseE{}) bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
     (LetE (v,ty@ProdTy{}, rhs@AppE{})  bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
     ------------------
-                                              
-    -- Flatten so that we can see what's stopping us from unzipping:
-    (LetE (v1,t1, LetE (v2,t2,rhs2) rhs1) bod) -> do
-         go stk env $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
 
     (LetE (vr,ProdTy tys, MkProdE ls) bod) -> do
         vs <- sequence [ gensym "unzip" | _ <- ls ]
@@ -147,12 +147,14 @@ unariserExp _ = go [] []
     (LetE (v,t,rhs) e) -> LetE <$> ((v,t,) <$> go [] env rhs) <*>
                             (go stk env e)
 
-    (LitE i)    -> case stk of [] -> pure$ LitE i
+    (LitE i) | [] <- stk -> pure$ LitE i
+             | otherwise -> error $ "Impossible. Non-empty projection stack on LitE "++show stk
+
+    (PrimAppE p es) -> discharge stk <$>
+                        PrimAppE p <$> mapM (go stk env) es
 
     -- TODO: these need to be handled by lower to become varrefs into a multi-valued return.
     (AppE f e)  -> discharge stk <$> AppE f <$> go [] env e
-    (PrimAppE p es) -> discharge stk <$>
-                        PrimAppE p <$> mapM (go stk env) es
 
     (IfE e1 e2 e3) ->
          IfE <$> go [] env e1 <*> go stk env e2 <*> go stk env e3
@@ -160,13 +162,18 @@ unariserExp _ = go [] []
                      sequence [ (k,ls,) <$> go stk env x
                               | (k,ls,x) <- ls ]
 
-    (MkPackedE c es) -> case stk of [] -> MkPackedE c <$> mapM (go [] env) es
+    (MkPackedE c es)
+        | [] <- stk -> MkPackedE c <$> mapM (go [] env) es
+        | otherwise -> error $ "Impossible. Non-empty projection stack on MkPackedE: "++show stk
+
     (TimeIt e ty b) -> do
        -- Put this in the form Lower wants:
        tmp <- gensym "timed"
        e' <- go stk env e
        return $ LetE (tmp,ty, TimeIt e' ty b) (VarE tmp)
 
+    MapE{}  -> error "FINISHLISTS"
+    FoldE{} -> error "FINISHLISTS"
     -- (MapE (v,t,e') e) -> let env' = (v,Nothing) : env in
     --                      MapE (var v,t,go stk env e') (go stk env' e)
     -- (FoldE (v1,t1,e1) (v2,t2,e2) e3) ->
@@ -205,6 +212,10 @@ buildAliases (v1,tys) (stk,v2) env =
                       | (_ix,(s,v')) <- fragileZip [0..maxIx] hits ]) 
   in dbgTrace 5 (" [unariser] Extending environment with these mappings: "++show new) $
      new : env
+
+mklets :: [(Var, L1.Ty, Exp)] -> Exp -> Exp
+mklets [] bod = bod
+mklets (bnd:rst) bod = LetE bnd $ mklets rst bod
 
                  
 mkLet :: (Var, L1.Ty, Exp) -> Exp -> Exp

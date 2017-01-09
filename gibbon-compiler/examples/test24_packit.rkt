@@ -21,7 +21,7 @@
 
 (printf "Output: ~s\n" bytes)
 
-(call-with-output-file "test24_input.bin"
+(call-with-output-file "test24_input.gpkd"
   (lambda (outp)
     (printf "Bytes written: ~a\n" (write-bytes bytes outp)))
   #:exists 'replace)

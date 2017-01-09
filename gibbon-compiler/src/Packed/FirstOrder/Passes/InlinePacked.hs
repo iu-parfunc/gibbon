@@ -9,7 +9,7 @@ module Packed.FirstOrder.Passes.InlinePacked
     where
 
 import qualified Data.Map as M    
-import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc, lookupDataCon, DDefs)
+import Packed.FirstOrder.Common (SyM, Var, dbgTrace, ndoc, sdoc, lookupDataCon, DDefs)
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.L2_Traverse as L2
 import Prelude hiding (exp)
@@ -48,7 +48,7 @@ inlinePacked prg@L2.Prog{ddefs,fundefs,mainExp} = return $
 -- | Keep a map of the entire lexical environment, but only part of it
 -- is inlinable. (I.e. function arguments are not.)
 --
--- The policy at the momoent is to inline ONLY `isConstructor`
+-- The policy at the moment is to inline ONLY `isConstructor`
 -- bindings, and not to remove 
 inlinePackedExp :: DDefs L1.Ty -> [(Var,(L1.Ty, Maybe L1.Exp))] -> L1.Exp -> L1.Exp
 inlinePackedExp ddefs = exp True
@@ -76,9 +76,9 @@ inlinePackedExp ddefs = exp True
                   Just (_,Nothing)  -> VarE (var v) -- Bound, but non-inlinable binding.
                   -- Here we either inline just the copies, or we inline up to isConstructor
                   Just (ty,Just rhs)
-                   | VarE v2 <- rhs   -> keepGoing
+                   | VarE _v2 <- rhs   -> keepGoing
                      -- We allow a ProjE-of-AppE idiom:
-                   | ProjE i e <- rhs -> keepGoing
+                   | ProjE _i _e <- rhs -> keepGoing
                     -- IF we're in the RHS of an end-witness, don't duplicate code:
                    | not strong -> VarE v
                     -- Finally, we don't fully inline, but rather leave names visible:
@@ -91,7 +91,7 @@ inlinePackedExp ddefs = exp True
                     keepGoing = exp strong env rhs
                                            
     (LetE (v,t,rhs) bod)
-       | VarE v2    <- rhs  -> addAndGo  -- ^ We always do copy-prop.
+       | VarE _v2   <- rhs  -> addAndGo  -- ^ We always do copy-prop.
        | not (L2.hasRealPacked t) -> LetE (var v,t, rhs') 
                                      (exp strong ((v,(t,Nothing)):env) bod)
        | TimeIt{}   <- rhs  -> LetE (var v,t, rhs') (exp strong ((v,(t,Nothing)):env) bod)
@@ -103,7 +103,7 @@ inlinePackedExp ddefs = exp True
        -- Otherwise we have a case or an If.  We still inline those.
        | CaseE{} <- rhs  -> addAndGo
        | IfE{}  <- rhs   -> addAndGo
-       | otherwise -> error $ " [inlinePacked] unexpected Let RHS:\n  "++sdoc e0
+       | otherwise -> error $ " [inlinePacked] unexpected Let RHS:  "++ndoc rhs
       where
         -- Don't reduce anything on the RHS yet, just add it:
         addAndGo = exp strong ((v,(t,Just rhs)):env) bod
@@ -136,14 +136,16 @@ inlinePackedExp ddefs = exp True
          FoldE (var v1,t1,go e1) (var v2,t2,go e2)
                (exp strong env' e3)
 
+-- | Used to inline variable bindings while retaining their (former) name and type.
 pattern NamedVal vr ty e = LetE (vr,ty,e) (VarE "NAMED_VAL_PATTERN_SYN")
 -- pattern NamedVal vr ty e <- LetE (vr,ty,e) (VarE "NAMED_VAL") where
 --   NamedVal vr ty e = LetE (vr,ty,e) (VarE vr)
                
--- | Is it the call that actually allocates output data? 
+-- | Is it a call that actually allocates output data? 
 isConstructor :: Exp -> Bool
 isConstructor ex =
   case ex of
-    AppE{} -> True
+    AppE{}      -> True -- ^ Fixme, shouldn't this depend on the type?
     MkPackedE{} -> True
+    PrimAppE (L1.ReadPackedFile _ _) _ -> True
     _ -> False

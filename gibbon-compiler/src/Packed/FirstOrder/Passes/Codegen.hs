@@ -12,12 +12,13 @@ module Packed.FirstOrder.Passes.Codegen
     ( codegenProg ) where
 
 import           Control.Monad
+import           Control.Monad.Reader
 import           Data.Bifunctor (first)
 import           Data.Int
 import           Data.Loc -- For SrcLoc
 import           Data.Maybe
 import qualified Data.Set as S
-import           Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty, cunit)
+import           Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import           Packed.FirstOrder.Common hiding (funBody)
@@ -50,8 +51,6 @@ harvestStructTys (Prog funs mtal) =
 
   allTails = (case mtal of
                 Just (PrintExp t) -> [t]
-                Just (RunWithRacketFile{}) -> []
-                Just (RunRacketCorePass{}) -> []
                 Nothing -> []) ++
              map funBody funs
 
@@ -97,10 +96,12 @@ harvestStructTys (Prog funs mtal) =
 --------------------------------------------------------------------------------
 -- * C codegen
 
--- | Slightly different entrypoint than mkProgram that enables a
--- "main" expression.
-codegenProg :: Prog -> IO String
-codegenProg prg@(Prog funs mtal) = do
+-- | Compile a program to C code which has the side effect of the
+-- "main" expression in that program.
+--
+--  The boolean flag is true when we are compiling in "Packed" mode.
+codegenProg :: Bool -> Prog -> IO String
+codegenProg isPacked prg@(Prog funs mtal) = do
       env <- getEnvironment
       let rtsPath = case lookup "TREELANGDIR" env of
                       Just p -> p ++"/gibbon-compiler/rts.c"
@@ -115,72 +116,35 @@ codegenProg prg@(Prog funs mtal) = do
         funs' <- mapM codegenFun funs
         prots <- mapM makeProt funs
         main_expr' <- main_expr
-        return (makeStructs (S.toList $ harvestStructTys prg) ++ prots ++ funs' ++ main_expr' : bench_fn)
-
-      bench_fn :: [C.Definition]
-      bench_fn =
-        case mtal of
-          Just (RunWithRacketFile fun) ->
-              [cunit|
-                $ty:(codegenTy IntTy) __fn_with_file( $ty:(codegenTy PtrTy) in ) {
-                  return $(cid fun)(in);
-                } |]
-          Just (RunRacketCorePass build_tree bench) ->
-            [cunit|
-              $ty:(codegenTy IntTy) __fn_with_file( $ty:(codegenTy PtrTy) in ) {
-                fprintf(stderr, "Benchmark is not implemented for this program.\n");
-                exit(1);
-              }              
-              void __fn_to_bench( $ty:(codegenTy PtrTy) in, $ty:(codegenTy PtrTy) out) {
-                  $(cid bench)(in, out);
-              }
-              void __build_tree( $ty:(codegenTy IntTy) tree_size, char* buffer) {
-                  $(cid build_tree)(tree_size, buffer);
-              } |]
-          Just (PrintExp _) -> def 
-          Nothing -> def
-         where              
-          def = [cunit|
-              $ty:(codegenTy IntTy) __fn_with_file( $ty:(codegenTy PtrTy) in ) {
-                fprintf(stderr, "Benchmark is not implemented for this program.\n");
-                exit(1);
-              }              
-              void __fn_to_bench( $ty:(codegenTy PtrTy) in, $ty:(codegenTy PtrTy) out) {
-                fprintf(stderr, "Benchmark is not implemented for this program.\n");
-                exit(1);
-              }
-              void __build_tree( $ty:(codegenTy IntTy) tree_size, char* buffer) {
-                fprintf(stderr, "Benchmark is not implemented for this program.\n");
-                exit(1);
-              } |]
+        return (makeStructs (S.toList $ harvestStructTys prg) ++ prots ++ funs' ++ [main_expr'])
 
       main_expr :: SyM C.Definition
       main_expr =
         case mtal of
           Just (PrintExp t) -> do
-            t' <- codegenTail t (codegenTy IntTy)
+            t' <- runReaderT (codegenTail t (codegenTy IntTy)) isPacked
             return $ C.FuncDef [cfun| void __main_expr() { $items:t' } |] noLoc
           _ ->
-            return $ C.FuncDef [cfun| void __main_expr() { return 0; } |] noLoc
+            return $ C.FuncDef [cfun| void __main_expr() { return; } |] noLoc
 
-makeProt :: FunDecl -> SyM C.Definition
-makeProt fd = do fn <- codegenFun' fd  -- This is bad and I apologize
-                 return $ C.DecDef (C.funcProto fn) noLoc
-
-codegenFun' :: FunDecl -> SyM C.Func
-codegenFun' (FunDecl nam args ty tal) =
-    do let retTy   = codegenTy ty
-           params  = map (\(v,t) -> [cparam| $ty:(codegenTy t) $id:v |]) args
-       body <- codegenTail tal retTy
-       let fun     = [cfun| $ty:retTy $id:nam ($params:params) {
+      codegenFun' :: FunDecl -> SyM C.Func
+      codegenFun' (FunDecl nam args ty tal) =
+          do let retTy   = codegenTy ty
+                 params  = map (\(v,t) -> [cparam| $ty:(codegenTy t) $id:v |]) args
+             body <- runReaderT (codegenTail tal retTy) isPacked
+             let fun     = [cfun| $ty:retTy $id:nam ($params:params) {
                             $items:body
                      } |]
-       return fun
+             return fun
 
-codegenFun :: FunDecl -> SyM C.Definition
-codegenFun fd =
-    do fun <- codegenFun' fd
-       return $ C.FuncDef fun noLoc
+      makeProt :: FunDecl -> SyM C.Definition
+      makeProt fd = do fn <- codegenFun' fd  -- This is bad and I apologize
+                       return $ C.DecDef (C.funcProto fn) noLoc
+
+      codegenFun :: FunDecl -> SyM C.Definition
+      codegenFun fd =
+          do fun <- codegenFun' fd
+             return $ C.FuncDef fun noLoc
 
 makeStructs :: [[Ty]] -> [C.Definition]
 makeStructs [] = []
@@ -230,7 +194,7 @@ codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
 codegenTriv (IntTriv i) = [cexp| $llint:i |]  -- Must be consistent with codegenTy IntTy
 codegenTriv (TagTriv i) = [cexp| (char)$i |]  -- Must be consistent with codegenTy TagTyPacked
 
-codegenTail :: Tail -> C.Type -> SyM [C.BlockItem]
+codegenTail :: Tail -> C.Type -> ReaderT Bool SyM [C.BlockItem]
 
 -- Void type:
 codegenTail (RetValsT []) _ty   = return [ C.BlockStm [cstm| return; |] ] 
@@ -354,7 +318,7 @@ codegenTail (LetTimedT flg bnds rhs body) ty =
               
 
 codegenTail (LetCallT bnds ratr rnds body) ty
-    | (length bnds) > 1 = do nam <- gensym "tmp_struct"
+    | (length bnds) > 1 = do nam <- lift $ gensym "tmp_struct"
                              let bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
                                  fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
                                  ty0 = ProdTy $ map snd bnds
@@ -368,6 +332,7 @@ codegenTail (LetCallT bnds ratr rnds body) ty
 
 codegenTail (LetPrimCallT bnds prm rnds body) ty =
     do bod' <- codegenTail body ty
+       isPacked <- ask
        pre <- case prm of
                  AddP -> let [(outV,outT)] = bnds
                              [pleft,pright] = rnds in pure 
@@ -398,7 +363,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                  DictEmptyP _ty -> let [(outV,ty)] = bnds
                                    in pure [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = 0; |] ]
                  NewBuf   -> let [(outV,CursorTy)] = bnds in pure
-                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED(DEFAULT_BUF_SIZE); |] ]
+                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED(global_default_buf_size); |] ]
                  ScopedBuf -> let [(outV,CursorTy)] = bnds in pure
                              [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_SCOPED(); |] ]
                  WriteTag -> let [(outV,CursorTy)] = bnds
@@ -438,26 +403,32 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                  PrintString str | [] <- bnds, [] <- rnds -> pure [ C.BlockStm [cstm| puts( $string:str ); |] ]
                                  | otherwise -> error$ "wrong number of args/return values expected from PrintString prim: "++show (rnds,bnds)
 
+                 -- FINISHME: Codegen here depends on whether we are in --packed mode or not.
                  ReadPackedFile mfile l1ty
-                     | [] <- rnds, [(outV,outT)] <- bnds -> do
+                     | [] <- rnds, [(outV,_outT)] <- bnds -> do
                              let filename = case mfile of
                                               Just f  -> [cexp| $string:f |]
-                                              Nothing -> [cexp| global_input_file |] -- Will be initialized with command line arg.
+                                              Nothing -> [cexp| read_benchfile_param() |] -- Will be set by command line arg.
                                  L1.PackedTy dcon _ = l1ty
-                                 unpackName = mkUnpackerName dcon
-                                 funcall = LetCallT [(outV,CursorTy),("junk",CursorTy)]
+                                 unpackName = mkUnpackerName dcon                                
+                                 unpackcall = LetCallT [(outV,PtrTy),("junk",CursorTy)]
                                                     unpackName [VarTriv "ptr"] (AssnValsT [])
-                             docall <- codegenTail funcall (codegenTy (ProdTy []))
-                             pure $ 
-                              [ C.BlockDecl[cdecl| int fd = open( $filename, O_RDONLY); |]
-                              , C.BlockDecl[cdecl| struct stat st; |]
-                              , C.BlockStm [cstm|  fstat(fd, &st); |]
-                              , C.BlockDecl[cdecl| $ty:(codegenTy CursorTy) *ptr = mmap(0,st.st_size,PROT_READ,MAP_PRIVATE,fd,0); |]
-                              ] ++ docall
-
+                             let mmapCode =
+                                  [ C.BlockDecl[cdecl| int fd = open( $filename, O_RDONLY); |]
+                                  , C.BlockDecl[cdecl| struct stat st; |]
+                                  , C.BlockStm  [cstm| fstat(fd, &st); |]
+                                  , C.BlockDecl[cdecl| $ty:(codegenTy CursorTy) *ptr = mmap(0,st.st_size,PROT_READ,MAP_PRIVATE,fd,0); |]
+                                  ]
+                             docall <- if isPacked
+                                       -- In packed mode we eagerly FORCE the IO to happen before we start benchmarking:
+                                       then pure [ C.BlockStm [cstm| { int sum=0; for(int i=0; i < st.st_size; i++) sum += ptr[i]; } |] ]
+                                       else codegenTail unpackcall (codegenTy (ProdTy []))
+                             return $ mmapCode ++ docall
+                     | otherwise -> error $ "ReadPackedFile, wrong arguments "++show rnds++", or expected bindings "++show bnds
                   -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'
 
+              
 codegenTy :: Ty -> C.Type
                   -- ARGH: C-quote won't allow us to use a typedef here, e.g. "IntTy":
 codegenTy IntTy = [cty|long long|] -- Must be consistent IntTy, rts.c

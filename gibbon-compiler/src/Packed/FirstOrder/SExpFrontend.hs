@@ -119,19 +119,29 @@ tagDataCons ddefs = go allCons
                     
 parseSExp :: [Sexp] -> SyM Prog
 parseSExp ses = 
-  do prog@Prog {ddefs} <- go ses [] [] Nothing
+  do prog@Prog {ddefs} <- go ses [] [] [] Nothing
      return $ mapExprs (tagDataCons ddefs) prog
- where   
-   go xs dds fds mn = 
+ where
+
+   -- WARNING: top-level constant definitions are INLINED everywhere.
+   inlineConstDefs [] p = p
+   inlineConstDefs ((vr,ty,rhs) : cds) p =
+       inlineConstDefs cds $ 
+        mapExprs (subst vr rhs) p
+   
+   -- Processes an sexpression while accumulating data, function, and constant defs.
+   go xs dds fds cds mn = 
     case xs of
-     [] -> return $ Prog (fromListDD dds) (fromListFD fds) mn
+     [] -> return $
+           inlineConstDefs cds $ 
+           Prog (fromListDD dds) (fromListFD fds) mn
 
      -- IGNORED!:
-     (L (A "provide":_) : rst) -> go rst dds fds mn
-     (L (A "require":_) : rst) -> go rst dds fds mn
+     (L (A "provide":_) : rst) -> go rst dds fds cds mn
+     (L (A "require":_) : rst) -> go rst dds fds cds mn
 
      (L (A "data": A tycon : cs) : rst) ->
-         go rst (DDef (toVar tycon) (L.map docasety cs) : dds) fds mn
+         go rst (DDef (toVar tycon) (L.map docasety cs) : dds) fds cds mn
      (L [A "define", funspec, ":", retty, bod] : rst)
         |  RSList (A name : args) <- funspec
         -> do
@@ -154,18 +164,22 @@ parseSExp ses =
                             , funRetTy = typ retty
                             , funBody  = bod''
                             } : fds)
-            mn
+            cds mn
+
+     -- Top-level definition instead of a function.
+     (L [A "define", A topid, ":", ty, bod] : rst) ->
+         go rst dds fds ((T.unpack topid,ty,exp bod) : cds) mn
 
      (L [A "define", _args, _bod] : _) -> error$ "Function is missing return type:\n  "++prnt (head xs)
      (L (A "define" : _) : _) -> error$ "Badly formed function:\n  "++prnt (head xs)
 
      (L (A "data" : _) : _) -> error$ "Badly formed data definition:\n  "++prnt (head xs)
                                  
-     (L3 "module+" _ bod : rst) -> go (bod:rst) dds fds mn
+     (L3 "module+" _ bod : rst) -> go (bod:rst) dds fds cds mn
 
      (ex : rst) -> 
        let ex' = exp ex
-       in go rst dds fds (case mn of
+       in go rst dds fds cds (case mn of
                             Nothing -> Just ex'
                             Just x  -> error$ "Two main expressions: "++
                                              sdoc x++"\nAnd:\n"++prnt ex)

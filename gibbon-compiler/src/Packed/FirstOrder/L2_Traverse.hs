@@ -45,6 +45,7 @@ module Packed.FirstOrder.L2_Traverse
     , pattern WriteInt, pattern ReadInt, pattern NewBuffer
     , pattern CursorTy, pattern ScopedBuffer, pattern AddCursor
     , isExtendedPattern
+    , builtinTEnv
     )
     where
 
@@ -399,8 +400,8 @@ cursorizeArrty3 arr@(ArrowTy inT ef ouT) =
     else ArrowTy (cursorizeTy3 inT) ef ouT
 
 -- | The non-arrow counterpart to `cursorizeArrTy3`
-cursorizeTy3 :: Ty -> Ty
-cursorizeTy3  = mapPacked (\ k l -> mkCursorTy l)
+cursorizeTy3 :: Ty1 a -> Ty1 a
+cursorizeTy3  = mapPacked (\ _k l -> mkCursorTy l)
 
                
 ensureEndVar :: Var -> Var
@@ -422,7 +423,7 @@ mapPacked fn t =
     (ProdTy x)    -> ProdTy $ L.map (mapPacked fn) x
     (SymDictTy x) -> SymDictTy $ mapPacked fn x
     PackedTy k l  -> fn k l
-
+    ListTy{} -> error "FINISHLISTS"
              
 --------------------------------------------------------------------------------
                      
@@ -500,9 +501,7 @@ mapExprs fn (Prog dd fundefs mainExp) =
          -- TODO: perhaps should re-infer the type here?
          (fmap (\(e,t) -> (fn (Env2 M.empty funEnv) e, t) ) mainExp)
   where
-    -- FIXME: use progToEnv
-    funEnv = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
-                        | FunDef n (ArrowTy a _ b) _ _ <- M.elems fundefs ]
+    funEnv = fEnv $ includeBuiltins $ progToEnv (Prog dd fundefs mainExp)
 
 -- | Map exprs with an initial type environment:
 mapMExprs :: Monad m => (Env2 (Ty1 ()) -> Exp -> m Exp) -> Prog -> m Prog
@@ -518,9 +517,7 @@ mapMExprs fn (Prog dd fundefs mainExp) =
          (mapM (\ (e,t) ->
                  (,t) <$> fn (Env2 M.empty funEnv) e) mainExp)
   where
-    -- FIXME: use progToEnv
-    funEnv = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
-                        | FunDef n (ArrowTy a _ b) _ _ <- M.elems fundefs ]
+    funEnv = fEnv $ includeBuiltins $ progToEnv (Prog dd fundefs mainExp)
              
     
 --------------------------------------------------------------------------------
@@ -582,7 +579,17 @@ isExtendedPattern e =
 --
 builtinTEnv :: M.Map Var (ArrowTy L1.Ty)
 builtinTEnv = M.fromList
-  [ ("NewBuffer", ArrowTy voidTy S.empty (CursorTy ()))
+  [ ("NewBuffer",    ArrowTy voidTy S.empty (CursorTy ()))
+  , ("ScopedBuffer", ArrowTy voidTy S.empty (CursorTy ()))
+  , ("ReadInt",      ArrowTy (CursorTy ()) S.empty (ProdTy [IntTy, CursorTy ()]))
+  , ("WriteInt",     ArrowTy (ProdTy [CursorTy (), IntTy]) S.empty (CursorTy ()))
+  , ("AddCursor",    ArrowTy (ProdTy [CursorTy (), IntTy]) S.empty (CursorTy ()))
+  -- Note: ReadPackedFile is a builtin/primitive.  It is polymorphic,
+  -- which currently doesn't allow us to model it as a function like
+  -- this [2017.01.08].
   ]
 
-                      
+includeBuiltins :: Env2 (Ty1 ()) -> Env2 (Ty1 ())
+includeBuiltins (Env2 v f) = Env2 v (f `M.union` f')
+    where f' = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
+                          | (n, ArrowTy a _ b) <- M.assocs builtinTEnv ]
