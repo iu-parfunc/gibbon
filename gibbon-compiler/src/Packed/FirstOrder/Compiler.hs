@@ -396,8 +396,7 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                        return l2
                      else return l2
                  l2  <-       pass   "unariser"                 unariser                 l2
--- TODO: Activate this ASAP:
---                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig packed)) l2
+                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig packed)) l2
                  l3  <-       pass   "lower"                    (lower packed)           l2
 
                  if mode == Interp2
