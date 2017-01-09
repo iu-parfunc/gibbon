@@ -148,10 +148,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
      -- "f_1, f_2..." for a function "f".    
      let (ArrowTy _ _ oldOut) = funty
          (tytmp,newIn) = L2.cursorizeTy2 funty
-
-         -- TODO: I believe this needs to happen, but test06a fails if I activate it atm [2017.01.08]:
-         -- funty'@(ArrowTy inT ef newOutFull) = L2.cursorizeArrty3 tytmp
-         funty'@(ArrowTy inT ef newOutFull) = tytmp
+         funty'@(ArrowTy inT ef newOutFull) = L2.cursorizeArrty3 tytmp
 
          -- And without those prepended RouteEnds:
          oldCoreOut = getCoreOutTy funty
