@@ -115,11 +115,23 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = L2.m
                                  return $ Concrete BoolTy
                  L1.EqSymP -> do mapM_ (assertEqTCVar ex0 (Concrete SymTy)) tes
                                  return $ Concrete BoolTy                                      
-                 -- FIXME: finish cases (need to actually recur)
+
+                 -- Polymorphic!:
                  L1.ErrorP _s t   -> return $ Concrete t
                  L1.DictEmptyP t  -> return $ Concrete $ SymDictTy t
-                 L1.DictLookupP t -> return $ Concrete t
-                 L1.DictInsertP t -> return $ Concrete $ SymDictTy t
+
+                 -- Only dict lookup on SYMBOL keys for now:
+                 L1.DictLookupP t
+                    | [d,k] <- tes -> do assertEqTCVar ex0 (Concrete (SymDictTy t)) d
+                                         assertEqTCVar ex0 (Concrete SymTy) k
+                                         return $ Concrete t
+                    | otherwise -> failFresh$ "wrong number of arguments to DictLookupP: "++ndoc es
+                 L1.DictInsertP t 
+                    | [d,k,v] <- tes -> do assertEqTCVar ex0 (Concrete (SymDictTy t)) d
+                                           assertEqTCVar ex0 (Concrete SymTy) k
+                                           assertEqTCVar ex0 (Concrete t) v
+                                           return $ Concrete (SymDictTy t)
+                    | otherwise -> failFresh$ "wrong number of arguments to DictInsertP: "++ndoc es
 
                  L1.SizeParam -> return $ Concrete IntTy 
                  L1.MkTrue    -> return $ Concrete BoolTy

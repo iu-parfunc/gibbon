@@ -94,9 +94,9 @@ data Exp = VarE Var
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | EqSymP          -- ^ Equality on Sym
           | EqIntP       -- ^ Equality on Int
-          | DictInsertP Ty  -- ^ takes k,v,dict, type param 
-          | DictLookupP Ty  -- ^ takes k dict, errors if absent, type param
-          | DictEmptyP Ty   -- ^ type param to avoid ambiguity 
+          | DictInsertP Ty  -- ^ takes dict, k,v; annotated with element type
+          | DictLookupP Ty  -- ^ takes dict,k errors if absent; annotated with element type
+          | DictEmptyP Ty   -- ^ annotated with element type to avoid ambiguity
           | ErrorP String Ty
               -- ^ crash and issue a static error message.
               --   To avoid needing inference, this is labeled with a return type.
