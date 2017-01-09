@@ -315,19 +315,21 @@ codegenTail (LetTimedT flg bnds rhs body) ty =
        tal <- codegenTail body ty
        return $ decls ++ withPrnt ++ tal
 
-              
-
+                            
 codegenTail (LetCallT bnds ratr rnds body) ty
-    | (length bnds) > 1 = do nam <- lift $ gensym "tmp_struct"
-                             let bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
-                                 fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
-                                 ty0 = ProdTy $ map snd bnds
-                                 init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
-                             tal <- codegenTail body ty
-                             return $ init ++ zipWith bind bnds fields ++ tal
-    | otherwise = do tal <- codegenTail body ty
-                     let call = assn (codegenTy (snd $ bnds !! 0)) (fst $ bnds !! 0) (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc)
-                     return $ [call] ++ tal
+    | [] <- bnds = error $ "codegenTail: cannot currently handle call with zero outputs: "++ndoc (ratr,rnds)
+    | [bnd] <- bnds  = do tal <- codegenTail body ty
+                          let call = assn (codegenTy (snd bnd)) (fst bnd)
+                                          (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc)
+                          return $ [call] ++ tal
+    | otherwise = do
+       nam <- lift $ gensym "tmp_struct"
+       let bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
+           fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
+           ty0 = ProdTy $ map snd bnds
+           init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
+       tal <- codegenTail body ty
+       return $ init ++ zipWith bind bnds fields ++ tal
 
 
 codegenTail (LetPrimCallT bnds prm rnds body) ty =

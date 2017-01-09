@@ -1,3 +1,5 @@
 #lang s-exp "../../gibbon/main.rkt"
 
-'hi
+(quote hi)
+
+
