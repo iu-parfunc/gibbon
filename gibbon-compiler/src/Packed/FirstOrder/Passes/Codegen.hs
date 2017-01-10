@@ -17,7 +17,7 @@ import           Data.Bifunctor (first)
 import           Data.Int
 import           Data.Loc -- For SrcLoc
 import           Data.Maybe
-import           Data.List
+import           Data.List as L
 import qualified Data.Set as S
 import           Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty)
 import qualified Language.C.Quote.C as C
@@ -214,9 +214,9 @@ codegenTail (AssnValsT ls) _ty =
 -- FIXME : This needs to actually generate a SWITCH!
 codegenTail (Switch tr alts def) ty =
     case def of
-      Nothing -> let (rest,lastone) = splitAlts alts in
-                 genIfCascade tr rest (altTail lastone) ty
-      Just def -> genIfCascade tr alts def ty
+      Nothing  -> let (rest,lastone) = splitAlts alts in
+                  genSwitch tr rest (altTail lastone) ty
+      Just def -> genSwitch tr alts def ty
 
 codegenTail (TailCall v ts) _ty =
     return $ [ C.BlockStm [cstm| return $( C.FnCall (cid v) (map codegenTriv ts) noLoc ); |] ]
@@ -435,14 +435,10 @@ altTail oth = error $ "altTail expected a 'singleton' Alts, got: "++ abbrv 80 ot
 
 -- | Generate a linear chain of tag tests.  Usually less efficient
 -- than letting the C compiler compile a switch statement.
-genIfCascade :: Triv -> Alts -> Tail -> C.Type -> ReaderT Bool SyM [C.BlockItem]
-genIfCascade tr alts lastE ty =
-    do let trE = codegenTriv tr
-           mk_tag_lhs lhs = C.Const (C.IntConst (show lhs) C.Unsigned (fromIntegral lhs) noLoc) noLoc
-           mk_int_lhs lhs = C.Const (C.IntConst (show lhs) C.Signed   (fromIntegral lhs) noLoc) noLoc
-           alts' = case alts of
-                     TagAlts as -> map (first mk_tag_lhs) as
-                     IntAlts as -> map (first mk_int_lhs) as
+_genIfCascade :: Triv -> Alts -> Tail -> C.Type -> ReaderT Bool SyM [C.BlockItem]
+_genIfCascade tr alts lastE ty =
+    do let trE = codegenTriv tr           
+           alts' = normalizeAlts alts
        altPairs <- forM alts' $ \(lhs, rhs) ->
                    do tal <- codegenTail rhs ty
                       return (C.BinOp C.Eq trE lhs noLoc, mkBlock tal)
@@ -453,6 +449,35 @@ genIfCascade tr alts lastE ty =
        ifExpr <- mkIf altPairs
        return $ [ C.BlockStm (fromJust ifExpr) ]
 
+-- Helper for lhs of a case
+mk_tag_lhs :: (Integral a, Show a) => a -> C.Exp
+mk_tag_lhs lhs = C.Const (C.IntConst (show lhs) C.Unsigned (fromIntegral lhs) noLoc) noLoc
+
+mk_int_lhs :: (Integral a, Show a) => a -> C.Exp
+mk_int_lhs lhs = C.Const (C.IntConst (show lhs) C.Signed   (fromIntegral lhs) noLoc) noLoc
+
+normalizeAlts :: Alts -> [(C.Exp, Tail)]
+normalizeAlts alts = 
+    case alts of
+      TagAlts as -> map (first mk_tag_lhs) as
+      IntAlts as -> map (first mk_int_lhs) as
+                 
+-- | Generate a proper switch expression instead.              
+genSwitch :: Triv -> Alts -> Tail -> C.Type -> ReaderT Bool SyM [C.BlockItem]
+genSwitch tr alts lastE ty =
+    do let go :: [(C.Exp,Tail)] -> ReaderT Bool SyM [C.Stm]
+           go [] = do tal <- codegenTail lastE ty
+                      return [[cstm| default: $stm:(mkBlock tal) |]]
+           go ((ex,tl):rst) =
+               do tal <- codegenTail tl ty
+                  let tal2 = tal ++ [ C.BlockStm [cstm| break; |] ]
+                  let this = [cstm| case $exp:ex : $stm:(mkBlock tal2) |]
+                  rst' <- go rst
+                  return (this:rst')
+       alts' <- go (normalizeAlts alts)
+       let body = mkBlock [ C.BlockStm a | a <- alts' ]
+       return $ [C.BlockStm [cstm| switch ( $exp:(codegenTriv tr) ) $stm:body |]]
+              
 
               
 codegenTy :: Ty -> C.Type
