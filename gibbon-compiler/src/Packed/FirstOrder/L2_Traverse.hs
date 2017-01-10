@@ -46,6 +46,7 @@ module Packed.FirstOrder.L2_Traverse
     , pattern CursorTy, pattern ScopedBuffer, pattern AddCursor
     , isExtendedPattern
     , builtinTEnv
+    , includeBuiltins
     )
     where
 

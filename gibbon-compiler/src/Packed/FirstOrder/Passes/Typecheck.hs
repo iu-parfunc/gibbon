@@ -76,17 +76,39 @@ typecheckExp =
     error "typecheckExp FINISHME"
                 
 typecheck' :: forall s . TCConfig -> STRef s Bool -> L2.Prog -> ST s L2.Prog 
-typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = L2.mapMExprs fn prg
+typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = eachFn fn prg
  where
+  eachFn fn (Prog dd fundefs mainExp) =
+      do let funEnv = fEnv $ includeBuiltins $ progToEnv (Prog dd fundefs mainExp)
+         newFunDefs <- forM fundefs $ \(L2.FunDef nm arrTy@(ArrowTy inT _ outT) arg bod) -> do
+                         let env = Env2 (M.singleton arg (fmap (\_->()) inT)) funEnv
+                         mty <- fn env bod
+                         case mty of
+                           Nothing -> reportErr $ "Typecheck of function " ++ nm ++ " failed."
+                           Just ty -> if ty == (fmap (\_->()) outT)
+                                      then return ()
+                                      else reportErr $ "In function " ++ nm ++
+                                               ", expected return type " ++ (show outT) ++
+                                               " and got return type " ++ (show ty) ++ "."
+                         return $ L2.FunDef nm arrTy arg bod
+         newMainExpr <- forM mainExp $ \(e,t) -> do
+                          mty <- fn (Env2 M.empty funEnv) e
+                          case mty of
+                            Nothing -> reportErr $ "Typecheck of main expr failed"
+                            Just _ty -> return ()
+                          return (e,t)
+         return $ Prog dd newFunDefs newMainExpr
+
   fn Env2{vEnv,fEnv} exp0 =
       do let initTCE = M.map Concrete vEnv `M.union`
                        M.map (\(a,b) -> Fun a b) fEnv
          tv <- tE defs initTCE exp0
          mty <- extractTCVar tv
-         case mty of
-           Just ty -> dbgTrace 2 ("Typecheck program returned: " ++ (show ty)) $ 
-                      return exp0
-           Nothing -> return exp0
+         return mty
+         -- case mty of
+         --   Just ty -> dbgTrace 2 ("Typecheck program returned: " ++ (show ty)) $
+         --              return exp0
+         --   Nothing -> return exp0
 
   -- | This uses the "success" flag from above.
   tE :: DDefs L1.Ty -> TCEnv s -> Exp -> ST s (TCVar s)
