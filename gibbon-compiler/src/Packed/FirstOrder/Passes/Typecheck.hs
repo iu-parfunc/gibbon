@@ -115,7 +115,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
   tE dd tcenv ex0 =
       let go = tE dd tcenv in -- Simple recursion where we don't change the env.
       case ex0 of
-        VarE v -> lookupTCVar tcenv v
+        VarE v  -> lookupTCVar tcenv v
         LitE _i -> return $ Concrete IntTy
         AppE v e -> 
             do te <- go e
@@ -295,8 +295,10 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
   lookupTCVar :: TCEnv s -> Var -> ST s (TCVar s)
   lookupTCVar tcenv v =
       case M.lookup v tcenv of
-        Nothing -> do reportErr $ "Failed to look up type of var " ++ (show v)
-                      freshTCVar
+        Nothing | isEndVar v -> return (Concrete (CursorTy ()))
+                                -- Policy: do we allow unbound end-witnesses?  They may not really be used.
+                | otherwise  -> do reportErr $ "Failed to look up type of var " ++ (show v)
+                                   freshTCVar
         Just tcv -> return tcv
 
   assertEqTCVar :: Exp -> TCVar s -> TCVar s -> ST s ()

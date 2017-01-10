@@ -158,14 +158,15 @@ build_tests: $(EXE_FILES)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
-test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25e_countnodes.sexp
+ test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25e_countnodes.sexp
 
 # test20f - wip
+# test13_build.sexp       -- problem with unit functions
+
 # test20b_bintree.sexp   -- requires copy insertion
-# test13_build.sexp -- problem with unit functions
-# test12_skip.sexp       -- Requires copy insertion!! unbound var thru to C code
-# test16_forlist.sexp    -- No lists yet
-# test17_forfold.sexp    -- No lists yet
+# test12_skip.sexp       -- requires copy insertion!! unbound var thru to C code
+# test16_forlist.sexp    -- requires lists. No lists yet
+# test17_forfold.sexp    -- requires lists. No lists yet
 
 # This is the default mode:
 run_tests_pointer: run_tests
