@@ -111,11 +111,9 @@ all_parsed:  $(ALL_TESTS:.sexp=.parsed)
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= \
   test13_build.sexp test13b_build.sexp \
-  test20_bintree.sexp test20b_bintree.sexp test20c_bintree.sexp  test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
   test11_fundata.sexp test11c_funrec.sexp test11e_funrec.sexp test12c_traverse.sexp \
   test25d_racketcore.sexp \
   test16_forlist.sexp test17_forfold.sexp 
-# Last Line - added because they are failing under valgrind [2016.11.11]
 
 # test 6i -- WRONG ANSWER, returning 101 !! [2016.11.09]
 # test 6f -- seeing weird discrepanancies where sometimes a tag is not initialized [2016.11.09] 
