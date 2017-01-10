@@ -1,15 +1,7 @@
 
 
-% This varies by conference, sometimes 9pt:
-\documentclass[preprint,10pt,nocopyrightspace,nonatbib]{./bibs/sigplanconf}
-% The following \documentclass options may be useful:
-%
-% 10pt          To set in 10-point type instead of 9-point.
-% 11pt          To set in 11-point type instead of 9-point.
-% authoryear    To obtain author/year citation style instead of numeric.
-
-
-%% Common packages we use:
+\documentclass[a4paper,english]{lipics-v2016}
+\usepackage{microtype}
 
 %% This is our standard package for code formatting:
 \usepackage{listings}
@@ -70,36 +62,49 @@
 % Sometimes we factor large figures into commands in a separate file:
 % \input{figures}
 
-\begin{document}
 
-\special{papersize=8.5in,11in}
-\setlength{\pdfpageheight}{\paperheight}
-\setlength{\pdfpagewidth}{\paperwidth}
 
-\conferenceinfo{CONF 'yy}{Month d--d, 20yy, City, ST, Country}
-\copyrightyear{20yy}
-\copyrightdata{978-1-nnnn-nnnn-n/yy/mm}
-\copyrightdoi{nnnnnnn.nnnnnnn}
+%\special{papersize=8.5in,11in}
+%\setlength{\pdfpageheight}{\paperheight}
+%\setlength{\pdfpagewidth}{\paperwidth}
+
+%\conferenceinfo{CONF 'yy}{Month d--d, 20yy, City, ST, Country}
+%\copyrightyear{20yy}
+%\copyrightdata{978-1-nnnn-nnnn-n/yy/mm}
+%\copyrightdoi{nnnnnnn.nnnnnnn}
 
 % Uncomment the publication rights you want to use.
 %\publicationrights{transferred}
 %\publicationrights{licensed}     % this is the default
 %\publicationrights{author-pays}
 
-\titlebanner{banner above paper title}        % These are ignored unless
-\preprintfooter{short description of paper}   % 'preprint' option specified.
+%\titlebanner{banner above paper title}        % These are ignored unless
+%\preprintfooter{short description of paper}   % 'preprint' option specified.
 
 \newcommand{\treelang}{Gibbon} % NEED NAME
 
 \title{Compiling tree transforms to operate on packed representations}
 % \subtitle{Faster compiler passes, parallelization ready}
 
-\authorinfo{Name1}
-           {Affiliation1}
-           {Email1}
-\authorinfo{Name2\and Name3}
-           {Affiliation2/3}
-           {Email2/3}
+%\authorinfo{Name1}
+%           {Affiliation1}
+%           {Email1}
+%\authorinfo{Name2\and Name3}
+%           {Affiliation2/3}
+%           {Email2/3}
+
+\author[1]{John Q. Open}
+\author[2]{Joan R. Access}
+\affil[1]{Dummy University Computing Laboratory, Address/City, Country\\
+  \texttt{open@dummyuniversity.org}}
+\affil[2]{Department of Informatics, Dummy College, Address/City, Country\\
+  \texttt{access@dummycollege.org}}
+\Copyright{John Q. Open and Joan R. Access}%mandatory, please use full first names. LIPIcs license is "CC-BY";  http://creativecommons.org/licenses/by/3.0/
+\subjclass{Dummy classification -- please refer to \url{http://www.acm.org/about/class/ccs98-html}}% mandatory: Please choose ACM 1998 classifications from http://www.acm.org/about/class/ccs98-html . E.g., cite as "F.1.1 Models of Computation". 
+\keywords{Dummy keyword -- please provide 1--5 keywords}% mandatory: Please provide 1-5 keywords
+%Editor-only macros:: begin (do not touch as author)%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
 
 \maketitle
 
@@ -121,15 +126,15 @@ creating missing traversals.
   
 \end{abstract}
 
-\category{CR-number}{subcategory}{third-level}
+%\category{CR-number}{subcategory}{third-level}
 
 % general terms are not compulsory anymore,
 % you may leave them out
-\terms
-term1, term2
+%\terms
+%term1, term2
 
-\keywords
-keyword1, keyword2
+%\keywords
+%keyword1, keyword2
 
 % ================================================================================
 \section{Introduction}
