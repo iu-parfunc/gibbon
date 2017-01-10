@@ -245,8 +245,11 @@ run_valgrind: $(VALGRIND_FILES)
 treelang_lib:
 	raco make -v ../../gibbon/main.rkt 
 
+RMINTERMEDIATE = rm -rf *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp* *.exe.dSYM
+
 clean:
-	(cd $(BLD); rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp* )
+	$(RMINTERMEDIATE)
+	(cd $(BLD); $(RMINTERMEDIATE) )
 	rm -rf test24_input.gpkd ./compiled 
 	(cd error/; rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed)
 
