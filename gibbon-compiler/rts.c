@@ -137,7 +137,7 @@ int main(int argc, char** argv)
 
     struct rlimit lim;
     int code;
-    if ( code = getrlimit(RLIMIT_STACK, &lim) ) {
+    if ( (code = getrlimit(RLIMIT_STACK, &lim)) ) {
       fprintf(stderr, " [gibbon rts] failed to getrlimit, code %d\n", code);
       abort();
     }
