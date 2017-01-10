@@ -13,10 +13,10 @@ ANSWERS= $(addprefix $(BLD),$(ALL_TESTS:.sexp=.ans))
 
 # Number of processors:
 # Here's a hacky way to try several things until one works.
-PROCS = $(getconf _NPROCESSORS_ONLN || \
-          shell nproc || \
-          stack exec -- ghc -e GHC.Conc.getNumProcessors || \
-          python -c 'import multiprocessing as m; print m.cpu_count()' )
+PROCS = $(shell getconf _NPROCESSORS_ONLN || \
+                nproc || \
+                stack exec -- ghc -e GHC.Conc.getNumProcessors || \
+                python -c 'import multiprocessing as m; print m.cpu_count()' )
 # On Mac: "sysctl -n hw.ncpu" also "getconf _NPROCESSORS_ONLN" works
 # On Windows?
 
