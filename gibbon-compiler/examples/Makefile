@@ -31,6 +31,9 @@ test: prebuild build
 	@echo "Answers available, now proceeding..."
 	$(MAKE) parse_all
 	$(MAKE) core_tests
+	@echo "For extra assurance, running valgrind!"
+	$(MAKE) valgrind
+	$(MAKE) valgrind_packed
 
 # Test the benchmarking mode
 benchtest: test24_input.gpkd
@@ -146,6 +149,8 @@ all_tests: $(BLD) answers $(OUT_FILES)
 
 # Assumes stack build. Builds AND RUNS all the tests:
 # Take care to not collide between different EXTRA_SUFFIX modes.
+#
+# FIXME: Rather than calling with --run, build the executable then run it:
 build_tmp/%$(EXTRA_SUFFIX).out : %.sexp
 	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
 	@./diff.sh $(BLD)/$(basename $^).ans $@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
@@ -153,7 +158,7 @@ build_tmp/%$(EXTRA_SUFFIX).out : %.sexp
 # Just build the tests
 build_tests: $(EXE_FILES)
 
-%$(EXTRA_SUFFIX).exe : %.sexp
+build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp
 	$(GIBBON) --exe $(GIBBONARGS) $^ --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
 
 
@@ -222,20 +227,37 @@ answers: $(ANSWERS)
 # Valgrind should be part of our regression testing:
 # --------------------------------------------------------------------------------
 
+# Not assuming Valgrind for OSX atm:
+OS := $(shell uname)
+
+ifeq ($(OS),Darwin)
+ VALGRIND_CMD := echo "Not running this: "
+else
+ VALGRIND_CMD := valgrind -q --error-exitcode=99
+endif
+
 valgrind_packed:
-	$(MAKE) run_valgrind GIBBONARGS="--packed --optc=-g " FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd" 
+	$(MAKE) run_valgrind GIBBONARGS="--packed --optc=-g " FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"; \
+
+# if test `uname` == "Linux" ; then \
+        #   $(MAKE) run_valgrind GIBBONARGS="--packed --optc=-g " FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"; \
+        # else echo "Only supporting valgrind on linux."; fi
 
 valgrind:
+	@echo $(VALGRIND_FILES)
+	@echo
 	$(MAKE) run_valgrind GIBBONARGS=" --optc=-g " EXTRA_SUFFIX=".ptr" 
+
 
 VALGRIND_FILES=$(addprefix $(BLD),$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).valgrind))
 
 run_valgrind: $(VALGRIND_FILES)
 
-%$(EXTRA_SUFFIX).valgrind : %.sexp %$(EXTRA_SUFFIX).exe
+build_tmp/%$(EXTRA_SUFFIX).valgrind : %.sexp build_tmp/%$(EXTRA_SUFFIX).exe
 #	@echo "\n Valgrind, testing $(basename $(basename $@))"
 #	@echo "--------------------------------------------------"
-	valgrind -q --error-exitcode=1 $(BLD)/$(basename $(basename $@))$(EXTRA_SUFFIX).exe
+	$(VALGRIND_CMD) $(basename $@).exe
+	@echo
 	@touch $@
 
 # --------------------------------------------------------------------------------
