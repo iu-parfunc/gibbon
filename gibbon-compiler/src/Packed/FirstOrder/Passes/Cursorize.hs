@@ -82,6 +82,7 @@ type ProjStack = [Int]
 --
 --  POSTCONDITIONS:
 --   (1) The NamedVal pattern is gone.
+--         (2) PackedTy types are gone leaving only CursorTy.
 --
 cursorDirect :: L2.Prog -> SyM L2.Prog
 cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
@@ -91,7 +92,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
   
   mn <- case mainExp of
           Nothing -> return Nothing
-          Just (x,mainTy) -> Just . (,mainTy) <$>
+          Just (x,mainTy) -> Just . (,typ mainTy) <$>
              if L1.hasPacked mainTy
              then -- Allocate into a global cursor:
                   do dests <- tyToCursors "globcur" mainTy
@@ -118,7 +119,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
         strip = L2.mapPacked (\_ l -> L2.mkCursorTy l)
     in
     if strip received == strip t
-    then LetE (v,t,rhs) bod
+    then LetE (v,typ t,rhs) bod
     else error $ "safeLet: expected type: "++show t++" when binding, got "
              ++show received++"\n RHS expression: "++sdoc rhs
 
@@ -134,15 +135,21 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                    NoCursor -> []
                    Cursor a -> [a]
                    TupOut ls -> concatMap allCursors ls
-                                                              
+
+  -- | Process a type to ensure postcondition that PackedTy is gone.
+  typ :: Ty1 a -> Ty1 a
+  typ = L2.cursorizeTy3
+                        
   fd :: L2.FunDef -> SyM L2.FunDef
   fd L2.FunDef{funname,funty,funarg,funbod} =
-     dbgTrace lvl (" [cursorDirect] processing fundef "++show(funname,funty)) $ do
+     dbgTrace (lvl) (" [cursorDirect] processing fundef "++show(funname,funty)) $ do
      -- We don't add new function arguments yet, rather we leave
      -- unbound references to the function's output cursors, named
      -- "f_1, f_2..." for a function "f".    
      let (ArrowTy _ _ oldOut) = funty
-         (funty'@(ArrowTy inT ef newOutFull),newIn) = L2.cursorizeTy2 funty
+         (tytmp,newIn) = L2.cursorizeTy2 funty
+         funty'@(ArrowTy inT ef newOutFull) = L2.cursorizeArrty3 tytmp
+
          -- And without those prepended RouteEnds:
          oldCoreOut = getCoreOutTy funty
          -- newoutT    = fmap toEndVar oldCoreOut -- Flip ins to outs.
@@ -172,8 +179,8 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                      b <- mkLets [ (cur, CursorTy (), mkProjE2 ix (length outCurs+1) (VarE fnargtmp)) -- outCurs non null.
                                  | (cur,ix) <- zip outCurs [0..] ] <$>
                            -- 2nd: Unpack the "real" argument, which is after the prepended output cursors:
-                           let argTy = fmap (const ()) (arrIn funty') in
-                           LetE ( funarg, argTy
+                           let argTy = fmap (const ()) (arrIn funty) in
+                           LetE ( funarg, typ argTy
                                 , mkProjE2 (length outCurs) (length outCurs+1) (VarE fnargtmp)) <$> do
                             let tenv = M.union (M.fromList ((funarg,argTy):(zip outCurs (repeat (CursorTy())))))
                                                initEnv
@@ -219,7 +226,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
   exp :: TEnv -> Bool -> Exp -> SyM Exp
   exp tenv isMain ex0 =
     let go = exp tenv isMain in 
-    dbgTrace lvl (" 1. Processing expr in non-packed context, exp:\n  "++sdoc ex0) $ 
+    dbgTrace (lvl+1) (" 1. Processing expr in non-packed context, exp:\n  "++sdoc ex0) $ 
     case ex0 of
       VarE _ -> return ex0
       LitE _ -> return ex0
@@ -236,14 +243,14 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                              onDi (LetE (tmp, CursorTy (), chooseBuffer isMain)) <$>
                                                 exp2 tenv' isMain (Cursor tmp) rhs
                                      -- POLICY: we leave the original name bound at the original type:
-                                     LetE (v,ty, undilate rhs2) <$>
+                                     LetE (v,typ ty, undilate rhs2) <$>
                                         exp (M.insert v ty tenv) isMain bod
                                      -- withDilated ty rhs2 $ \rhs3 ->
                                      --    -- Here we've reassembled the non-dialated view, original type:
                                      --    LetE (v,ty, rhs3) <$> go bod
           | L2.hasRealPacked ty -> error "cursorDirect: finishme, let bound tuple containing packed."
           | otherwise -> do rhs' <- go rhs
-                            LetE (v,ty,rhs') <$>
+                            LetE (v,typ ty,rhs') <$>
                               exp (M.insert v ty tenv) isMain bod
 
       L2.AddCursor _ _ -> return ex0
@@ -258,7 +265,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
           return x 
 
       MkProdE ls -> MkProdE <$> mapM go ls
-      TimeIt e t b -> TimeIt <$> go e <*> pure t <*> pure b
+      TimeIt e t b -> TimeIt <$> go e <*> pure (typ t) <*> pure b
       IfE a b c  -> IfE <$> go a <*> go b <*> go c
 
       MapE (_v,_t,_rhs) _bod -> error "FINISHME - Cursorize - list support"
@@ -311,15 +318,18 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
   --  
   --   Note that the provided package of cursors corresponds only to the output of `yi`.
   doapp :: ProjStack -> TEnv -> Bool -> Maybe Dests -> Var -> Exp -> SyM (Either Exp DiExp)
-  doapp prjstk _tenv isMain mcurs f argE = do
+  doapp prjstk _tenv isMain mcurs f argE =  
           ------------------ Result handling ----------------------
           -- If the function argument is of a packed type, we may need to switch modes:
           let at@(ArrowTy argTy ef _retTy) = L2.getFunTy fundefs f
-              (nat@(ArrowTy newArgT _ newRetT),_) = L2.cursorizeTy2 at
+              nat@(ArrowTy newArgT _ newRetT) = L2.cursorizeArrty3 $ fst $ L2.cursorizeTy2 at
               --                                     ^ ASSERT:  retTy == newRetT 
               numNewOut = S.size ef                      -- end witnesses
               numNewIn  = countPacked (getCoreOutTy at) -- output cursors
 
+          in dbgTrace (lvl+1) (" 3. doApp, rator= "++ show f ++", argTy= "++show argTy++", arg: "++ndoc argE) $ 
+          do 
+                          
           -- Destinations including results not projected.  With the
           -- current InlinePacked strategy, we push constructors and
           -- constructing functions into a syntactic context where
@@ -384,7 +394,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                   
                            -- Our total call result includes (1) end witnesses, (2) out-cursor updates.
                            -- We need to take those and build the dilated result.
-                            LetE (tmp, l1Ty newRetT, AppE f aarg) $
+                            LetE (tmp, typ (l1Ty newRetT), AppE f aarg) $
                                -- Here we impedence match between conventions.  The function returns
                                -- updated out-cursors to us, but we need to flip the sense of all of
                                -- those to instead return start-of-value witnesses.
@@ -433,7 +443,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                    L1.mkProd [ restoreEndWits flpd
                                              , L1.mkProd allEnds ]
 
-          ------------------ Argument hanling ----------------------
+          ------------------ Argument handling ----------------------
           -- Here we handle the evaluation of the *original* input arguments.
           new <- case argTy of
                   PackedTy{}
@@ -516,7 +526,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
   exp2 :: TEnv -> Bool -> Dests -> Exp -> SyM DiExp
   exp2 tenv isMain NoCursor ex = dilateTrivial <$> exp tenv isMain ex
   exp2 tenv isMain destC ex0 =
-    -- dbgTrace lvl (" 2. Processing expr in packed context, cursor "++show destC++", exp:\n  "++sdoc ex0) $ 
+    dbgTrace (lvl+1) (" 2. Processing expr in packed context, cursor "++show destC++", exp:\n  "++sdoc ex0) $ 
     let go tenv = exp2 tenv isMain destC
         -- | Projections in the packed case.  RETURNS DILATED.
         doproj :: ProjStack -> Int -> Exp -> SyM DiExp
@@ -530,8 +540,8 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
 
           | (NamedVal vr ty val) <- ex = do Di val' <- doproj stk ix val
                                             tmp     <- gensym "dila2_"
-                                            return $ Di $ LetE (tmp, dilateTy ty, val') $ 
-                                                          LetE (vr, ty, undilate (Di (VarE tmp)))
+                                            return $ Di $ LetE (tmp, typ (dilateTy ty), val') $ 
+                                                          LetE (vr, typ ty, undilate (Di (VarE tmp)))
                                                            (VarE tmp)
 
           | L2.isExtendedPattern ex     = error$ "cursorDirect/exp2: Unhandled extended L2 pattern: "++ndoc ex
@@ -561,7 +571,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
        do dest' <- gensym "cursplus1_"
           let thetype = PackedTy (getTyOfDataCon ddefs k) ()
           -- This stands for the  "WriteTag" operation:
-          Di . LetE (dest', thetype,
+          Di . LetE (dest', typ thetype,
                      MkPackedE k [VarE curs]) <$>
              let go2 d [] = return $ MkProdE [VarE curs, VarE d]
                     -- ^ The final return value lives at the position of the out cursor
@@ -574,32 +584,47 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                      tup  <- gensym "fldtup"
                      d'   <- gensym "flddst"
                      Di rnd' <- exp2 (M.insert dest' thetype tenv) isMain (Cursor d) rnd
-                     LetE (tup, dilateTy thetype, rnd') <$>
+                     LetE (tup, typ (dilateTy thetype), rnd') <$>
                       LetE (d', CursorTy (), projCur (Di (VarE tup)) ) <$>
                        (go2 d' rst)
              in go2 dest' (zip ls (lookupDataCon ddefs k))
 
+
+      -- FIXME: Generalize this, shouln't require that ReadPackedFile be in this context:
+      NamedVal nm ty pa@(PrimAppE (L1.ReadPackedFile path t2) []) ->
+          -- The ReadPackedFile doesn't follow the dilated convention.
+          -- It does its allocation, and returns just the start pointer.
+          return $ Di (MkProdE [ PrimAppE (L1.ReadPackedFile path t2) []
+                               , PrimAppE L1.MkNullCursor [] ])
+                
       -- Eliminate this form, while leaving bindings around.
       NamedVal nm ty val -> do Di val' <- go tenv val
                                -- return $ Di $ LetE (nm, dilateTy ty, val') (VarE nm)
                                        
                                -- Here we bind to the UNDILATED value, as elsewhere:
                                tmp <- gensym ("dila_"++nm)
-                               return $ Di $ LetE (tmp, dilateTy ty, val') $
-                                              LetE (nm, ty, undilate (Di (VarE tmp))) $
+                               return $ Di $ LetE (tmp, typ (dilateTy ty), val') $
+                                              LetE (nm, typ ty, undilate (Di (VarE tmp))) $
                                                (VarE tmp) -- We RETURN dilated, which is a postcondition
                 
       -- This is already a witness binding, we leave it alone.
       LetE (v,ty,rhs) bod | L2.isCursorTy ty -> do
          -- We do NOT dilate the cursor types:
          if isWitnessExpr rhs
-         then onDi (LetE (v,ty,rhs)) <$> go (M.insert v ty tenv) bod
+         then onDi (LetE (v,typ ty,rhs)) <$> go (M.insert v ty tenv) bod
          else error$ "Cursorize: broken assumptions about what a witness binding should look like:\n  "
                                     ++sdoc ex0           
                                       
       -- For the most part, we just dive under the let and address its body.
-      LetE (v,ty, tr) bod | L1.isTriv tr -> onDi (LetE (v,ty,tr))            <$> go (M.insert v ty tenv) bod
-      LetE (v,ty, PrimAppE p ls) bod     -> onDi (LetE (v,ty,PrimAppE p ls)) <$> go (M.insert v ty tenv) bod
+      LetE (v,ty, tr) bod | L1.isTriv tr -> onDi (LetE (v,typ ty,tr)) <$> go (M.insert v ty tenv) bod
+
+      -- -- The only primitive that returns packed data is ReadPackedFile:
+      -- LetE (_,_, PrimAppE (L1.ReadPackedFile _ _) []) _ ->
+      --    error$ "[Cursorize] Internal error, ReadPackedFile unexpected in this context: " ++ndoc ex0
+
+      LetE (v,ty, PrimAppE p ls) bod
+--         | L1.ReadPackedFile _ _ <- p -> ((v,ty,) <$> go tenv (PrimAppE p ls))
+        | otherwise -> onDi (LetE (v,typ ty,PrimAppE p ls)) <$> go (M.insert v ty tenv) bod
               
       -- LetE (v1,t1, LetE (v2,t2, rhs2) rhs1) bod ->
       --    go $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
@@ -612,7 +637,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
         do Right e <- doapp [] tenv isMain (Just destC) v e
            return e
 
-      -- This should not be possible.  Types don't work out:
+      -- This should not be possible for prims that do not return PackedTy data.
       PrimAppE _ _ -> error$ "cursorDirect: unexpected PrimAppE in packed context: "++sdoc ex0
 
       -- Here we route the dest cursor to both braches.  We switch
@@ -649,7 +674,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       ProjE i ex -> doproj [] i ex
                         
       TimeIt e t b -> do Di e' <- go tenv e
-                         return $ Di $ TimeIt e' t b
+                         return $ Di $ TimeIt e' (typ t) b
 
       MapE{}  -> error$ "cursorDirect: packed case needs finishing:\n  "++sdoc ex0
       FoldE{} -> error$ "cursorDirect: packed case needs finishing:\n  "++sdoc ex0
@@ -950,6 +975,9 @@ allocFree ex =
  case ex of   
    (VarE _x)         -> True
    (LitE _x)         -> True
+
+   -- The one primitive that allocates packed data!
+   (PrimAppE (L1.ReadPackedFile _ _) _x2) -> False                        
    (PrimAppE _x1 _x2) -> True
 
    (AppE _x1 _x2)     -> False                       

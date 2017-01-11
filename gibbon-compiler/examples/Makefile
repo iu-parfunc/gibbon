@@ -13,10 +13,10 @@ ANSWERS= $(addprefix $(BLD),$(ALL_TESTS:.sexp=.ans))
 
 # Number of processors:
 # Here's a hacky way to try several things until one works.
-PROCS = $(shell nproc || \
-          getconf _NPROCESSORS_ONLN || \
-          stack exec -- ghc -e GHC.Conc.getNumProcessors || \
-          python -c 'import multiprocessing as m; print m.cpu_count()' )
+PROCS = $(shell getconf _NPROCESSORS_ONLN || \
+                nproc || \
+                stack exec -- ghc -e GHC.Conc.getNumProcessors || \
+                python -c 'import multiprocessing as m; print m.cpu_count()' )
 # On Mac: "sysctl -n hw.ncpu" also "getconf _NPROCESSORS_ONLN" works
 # On Windows?
 
@@ -31,6 +31,9 @@ test: prebuild build
 	@echo "Answers available, now proceeding..."
 	$(MAKE) parse_all
 	$(MAKE) core_tests
+	@echo "For extra assurance, running valgrind!"
+	$(MAKE) valgrind
+	$(MAKE) valgrind_packed
 
 # Test the benchmarking mode
 benchtest: test24_input.gpkd
@@ -67,16 +70,18 @@ RUN_MODE     ?= --run
 # Additional args besides RUN_MODE:
 GIBBONARGS ?= --optc=-g
 
+SANDBOXDIR= $(TREELANGDIR)/.racket_sandbox/
+RUNRACKET= racket -A $(SANDBOXDIR)
 
 # Not necessary, because we build each module before we run it:
 prebuild: $(BLD) test24_input.gpkd
-	raco make -j $(PROCS) -v $(ALL_TESTS) 
+	PLTADDONDIR=$(SANDBOXDIR) raco make -j $(PROCS) -v $(ALL_TESTS) 
 
 $(BLD):
 	mkdir -p $(BLD)
 
 test24_input.gpkd: test24_input.dat test24_packit.rkt test24_defs.sexp
-	racket test24_packit.rkt
+	$(RUNRACKET) test24_packit.rkt
 
 #----------------------------------------
 # Test direct Racket execution:
@@ -84,10 +89,10 @@ test24_input.gpkd: test24_input.dat test24_packit.rkt test24_defs.sexp
 racket_valid: treelang_lib
 	@echo "\nGenerating canonical answers from Racket:"
 	@echo "-----------------------------------------"
-	for f in `ls test*.sexp`; do racket $$f | tee $$f.ans; done
+	for f in `ls test*.sexp`; do $(RUNRACKET) $$f | tee $$f.ans; done
 
 racket_invalid: treelang_lib
-	for f in `find ./error/ -name '*.sexp'`; do racket $$f | tee $$f.ans; done
+	for f in `find ./error/ -name '*.sexp'`; do $(RUNRACKET) $$f | tee $$f.ans; done
 
 # ----------------------------------------
 
@@ -111,11 +116,9 @@ all_parsed:  $(ALL_TESTS:.sexp=.parsed)
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= \
   test13_build.sexp test13b_build.sexp \
-  test20_bintree.sexp test20b_bintree.sexp test20c_bintree.sexp  test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
   test11_fundata.sexp test11c_funrec.sexp test11e_funrec.sexp test12c_traverse.sexp \
   test25d_racketcore.sexp \
   test16_forlist.sexp test17_forfold.sexp 
-# Last Line - added because they are failing under valgrind [2016.11.11]
 
 # test 6i -- WRONG ANSWER, returning 101 !! [2016.11.09]
 # test 6f -- seeing weird discrepanancies where sometimes a tag is not initialized [2016.11.09] 
@@ -148,26 +151,34 @@ all_tests: $(BLD) answers $(OUT_FILES)
 
 # Assumes stack build. Builds AND RUNS all the tests:
 # Take care to not collide between different EXTRA_SUFFIX modes.
+#
+# FIXME: Rather than calling with --run, build the executable then run it:
 build_tmp/%$(EXTRA_SUFFIX).out : %.sexp
-	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
-	@./diff.sh $(BLD)/$(basename $^).ans $@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
+ifeq ($(RUN_MODE),--run)
+	$(MAKE) $(@:.out=.exe)
+	./$(@:.out=.exe) > $@ || ./err.sh $(@:.out=)
+else
+	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(@:.out=)
+endif
+	@./diff.sh $(BLD)/$(basename $^).ans $@ || ./err.sh $(@:.out=)
 
 # Just build the tests
 build_tests: $(EXE_FILES)
 
-%$(EXTRA_SUFFIX).exe : %.sexp
+build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp
 	$(GIBBON) --exe $(GIBBONARGS) $^ --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
-test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25e_countnodes.sexp
+ test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25e_countnodes.sexp
 
 # test20f - wip
+# test13_build.sexp       -- problem with unit functions
+
 # test20b_bintree.sexp   -- requires copy insertion
-# test13_build.sexp -- problem with unit functions
-# test12_skip.sexp       -- Requires copy insertion!! unbound var thru to C code
-# test16_forlist.sexp    -- No lists yet
-# test17_forfold.sexp    -- No lists yet
+# test12_skip.sexp       -- requires copy insertion!! unbound var thru to C code
+# test16_forlist.sexp    -- requires lists. No lists yet
+# test17_forfold.sexp    -- requires lists. No lists yet
 
 # This is the default mode:
 run_tests_pointer: run_tests
@@ -209,8 +220,8 @@ run_tests_interp1: answers
 build_tmp/%.ans : %.sexp
 # Optional, could prebuild before running:
 #	raco make -v $^
-	racket $^ > $@ || rm -f $@
-#	racket $^ | tee $@
+	$(RUNRACKET) $^ > $@ || rm -f $@
+#	$(RUNRACKET) $^ | tee $@
 
 run_answers:
 	@echo "\nGenerating canonical answers from Racket:"
@@ -223,20 +234,37 @@ answers: $(ANSWERS)
 # Valgrind should be part of our regression testing:
 # --------------------------------------------------------------------------------
 
+# Not assuming Valgrind for OSX atm:
+OS := $(shell uname)
+
+ifeq ($(OS),Darwin)
+ VALGRIND_CMD := echo "Not running this: "
+else
+ VALGRIND_CMD := valgrind -q --error-exitcode=99
+endif
+
 valgrind_packed:
-	$(MAKE) run_valgrind GIBBONARGS="--packed --optc=-g " FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd" 
+	$(MAKE) run_valgrind GIBBONARGS="--packed --optc=-g " FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"; \
+
+# if test `uname` == "Linux" ; then \
+        #   $(MAKE) run_valgrind GIBBONARGS="--packed --optc=-g " FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"; \
+        # else echo "Only supporting valgrind on linux."; fi
 
 valgrind:
+	@echo $(VALGRIND_FILES)
+	@echo
 	$(MAKE) run_valgrind GIBBONARGS=" --optc=-g " EXTRA_SUFFIX=".ptr" 
+
 
 VALGRIND_FILES=$(addprefix $(BLD),$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).valgrind))
 
 run_valgrind: $(VALGRIND_FILES)
 
-%$(EXTRA_SUFFIX).valgrind : %.sexp %$(EXTRA_SUFFIX).exe
+build_tmp/%$(EXTRA_SUFFIX).valgrind : %.sexp build_tmp/%$(EXTRA_SUFFIX).exe
 #	@echo "\n Valgrind, testing $(basename $(basename $@))"
 #	@echo "--------------------------------------------------"
-	valgrind -q --error-exitcode=1 $(BLD)/$(basename $(basename $@))$(EXTRA_SUFFIX).exe
+	$(VALGRIND_CMD) $(basename $@).exe
+	@echo
 	@touch $@
 
 # --------------------------------------------------------------------------------
@@ -245,8 +273,11 @@ run_valgrind: $(VALGRIND_FILES)
 treelang_lib:
 	raco make -v ../../gibbon/main.rkt 
 
+RMINTERMEDIATE = rm -rf *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp* *.exe.dSYM
+
 clean:
-	(cd $(BLD); rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed *.intrp* )
+	$(RMINTERMEDIATE)
+	(cd $(BLD); $(RMINTERMEDIATE) )
 	rm -rf test24_input.gpkd ./compiled 
 	(cd error/; rm -f *.exe *.o *.c  *.out *.err *.valgrind *.parsed)
 

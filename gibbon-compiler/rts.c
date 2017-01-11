@@ -136,14 +136,31 @@ int main(int argc, char** argv)
     //   tree size: An integer passes to `build_tree()`. 
 
     struct rlimit lim;
+    int code;
+    if ( (code = getrlimit(RLIMIT_STACK, &lim)) ) {
+      fprintf(stderr, " [gibbon rts] failed to getrlimit, code %d\n", code);
+      abort();
+    }
+    
     // lim.rlim_cur = 1024LU * 1024LU * 1024LU; // 1GB stack.
     lim.rlim_cur = 512LU * 1024LU * 1024LU; // 500MB stack.
-    lim.rlim_max = lim.rlim_cur;
-    int code = setrlimit(RLIMIT_STACK, &lim);
-    if (code) {
-      fprintf(stderr, "Failed to set stack size to %lu, code %d\n", lim.rlim_cur, code);
+    // lim.rlim_max = lim.rlim_cur; // Normal users may only be able to decrease this.
+
+    // WARNING: Haven't yet figured out why this doesn't work on MacOS...
+    #ifndef __APPLE__
+    code = setrlimit(RLIMIT_STACK, &lim);    
+    while (code) {
+      fprintf(stderr, " [gibbon rts] Failed to set stack size to %llu, code %d\n", (unsigned long long)lim.rlim_cur, code);
+      lim.rlim_cur /= 2;
+      // lim.rlim_max /= 2;
+      if(lim.rlim_cur < 100 * 1024) {
+        fprintf(stderr, " [gibbon rts] Failed setrlimit stack size to something reasonable; giving up.\n");
+        break; // abort();
+      }
+      int code = setrlimit(RLIMIT_STACK, &lim);    
     }
- 
+    #endif
+    
     // TODO: atoi() error checking
     
     for (int i = 1; i < argc; ++i)

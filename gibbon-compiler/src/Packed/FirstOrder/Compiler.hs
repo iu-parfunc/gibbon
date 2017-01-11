@@ -367,7 +367,7 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                  l1  <-       passE "flatten"                  flatten                  l1
                  l1  <-       passE "inlineTriv"               (return . inlineTriv)    l1
                  l2  <-       passE "inferEffects"             inferEffects             l1
-                 l2  <-       passE' "typecheck"               typecheckStrict          l2
+                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig False)) l2
                  l2  <-
                      if packed
                      then do
@@ -377,18 +377,18 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                        l2  <- passE' "addCopies"                addCopies                 l2
                        l2  <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals  l2
                        ------------------- End Stubs ---------------------
-                       -- TODO / WIP: tighten this up:
---                       l2d' <- passE' "typecheck"                typecheckStrict          l2d
-                       l2  <- passE' "typecheck"                typecheckPermissive      l2
                        l2  <- pass   "routeEnds"                routeEnds                l2
                        l2  <- pass'  "flatten"                  flatten2                 l2
                        l2  <- pass   "findWitnesses"            findWitnesses            l2
+                       -- QUESTION: Should programs typecheck and execute at this point?
+                       -- l2  <- passE' "typecheck"     (typecheckStrict (TCConfig True))   l2
                        l2  <- pass   "inlinePacked"             inlinePacked             l2
                        -- [2016.12.31] For now witness vars only work out after cursorDirect then findWitnesses:
                        l2  <- passF  "cursorDirect"             cursorDirect             l2
-                       l2  <- pass'  "typecheck"                typecheckPermissive      l2
                        l2  <- pass'  "flatten"                  flatten2                 l2
-                       l2  <- passE  "findWitnesses"            findWitnesses            l2
+                       l2  <- pass   "findWitnesses"            findWitnesses            l2
+                       -- After findwitnesses is when programs should once again typecheck:
+                       l2  <- passE' "typecheck"     (typecheckStrict (TCConfig True))   l2
                               
                        l2  <- pass' "flatten"                  flatten2                  l2
                        l2  <- pass  "inlineTriv"               inline2                   l2
@@ -396,8 +396,10 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                        l2  <- pass  "hoistNewBuf"              hoistNewBuf               l2
                        return l2
                      else return l2
-                 l2  <-       pass  "unariser"                 unariser                 l2
-                 l3  <-       pass  "lower"                    (lower packed)           l2
+                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig packed)) l2
+                 l2  <-       pass   "unariser"                 unariser                 l2
+                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig packed)) l2
+                 l3  <-       pass   "lower"                    (lower packed)           l2
 
                  if mode == Interp2
                   then do l3res <- lift $ execProg l3

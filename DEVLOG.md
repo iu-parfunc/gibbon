@@ -1,4 +1,10 @@
 
+Development log and developer notes
+===================================
+
+This is a log to track our internal development notes as we're working
+on this repository.
+
 
 [2016.11.12] {Debugging}
 ----------------------------------------

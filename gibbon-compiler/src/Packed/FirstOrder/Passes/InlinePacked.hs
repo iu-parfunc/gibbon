@@ -136,6 +136,7 @@ inlinePackedExp ddefs = exp True
          FoldE (var v1,t1,go e1) (var v2,t2,go e2)
                (exp strong env' e3)
 
+-- | Used to inline variable bindings while retaining their (former) name and type.
 pattern NamedVal vr ty e = LetE (vr,ty,e) (VarE "NAMED_VAL_PATTERN_SYN")
 -- pattern NamedVal vr ty e <- LetE (vr,ty,e) (VarE "NAMED_VAL") where
 --   NamedVal vr ty e = LetE (vr,ty,e) (VarE vr)

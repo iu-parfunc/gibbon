@@ -17,6 +17,7 @@ import           Data.Bifunctor (first)
 import           Data.Int
 import           Data.Loc -- For SrcLoc
 import           Data.Maybe
+import           Data.List as L
 import qualified Data.Set as S
 import           Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty)
 import qualified Language.C.Quote.C as C
@@ -194,6 +195,8 @@ codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
 codegenTriv (IntTriv i) = [cexp| $llint:i |]  -- Must be consistent with codegenTy IntTy
 codegenTriv (TagTriv i) = [cexp| (char)$i |]  -- Must be consistent with codegenTy TagTyPacked
 
+
+-- | The central codegen function.
 codegenTail :: Tail -> C.Type -> ReaderT Bool SyM [C.BlockItem]
 
 -- Void type:
@@ -210,23 +213,10 @@ codegenTail (AssnValsT ls) _ty =
 
 -- FIXME : This needs to actually generate a SWITCH!
 codegenTail (Switch tr alts def) ty =
-    do let trE = codegenTriv tr
-           mk_tag_lhs lhs = C.Const (C.IntConst (show lhs) C.Unsigned (fromIntegral lhs) noLoc) noLoc
-           mk_int_lhs lhs = C.Const (C.IntConst (show lhs) C.Signed   (fromIntegral lhs) noLoc) noLoc
-           alts' = case alts of
-                     TagAlts as -> map (first mk_tag_lhs) as
-                     IntAlts as -> map (first mk_int_lhs) as
-       altPairs <- forM alts' $ \(lhs, rhs) ->
-                   do tal <- codegenTail rhs ty
-                      return (C.BinOp C.Eq trE lhs noLoc, mkBlock tal)
-       let mkIf [] = case def of
-                       Nothing -> return $ Nothing
-                       Just def' -> do tal <- codegenTail def' ty
-                                       return $ Just $ mkBlock tal
-           mkIf ((cond,rhs) : rest) = do rest' <- mkIf rest
-                                         return $ Just $ C.If cond rhs rest' noLoc
-       ifExpr <- mkIf altPairs
-       return $ [ C.BlockStm (fromJust ifExpr) ]
+    case def of
+      Nothing  -> let (rest,lastone) = splitAlts alts in
+                  genSwitch tr rest (altTail lastone) ty
+      Just def -> genSwitch tr alts def ty
 
 codegenTail (TailCall v ts) _ty =
     return $ [ C.BlockStm [cstm| return $( C.FnCall (cid v) (map codegenTriv ts) noLoc ); |] ]
@@ -315,19 +305,22 @@ codegenTail (LetTimedT flg bnds rhs body) ty =
        tal <- codegenTail body ty
        return $ decls ++ withPrnt ++ tal
 
-              
-
+                            
 codegenTail (LetCallT bnds ratr rnds body) ty
-    | (length bnds) > 1 = do nam <- lift $ gensym "tmp_struct"
-                             let bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
-                                 fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
-                                 ty0 = ProdTy $ map snd bnds
-                                 init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
-                             tal <- codegenTail body ty
-                             return $ init ++ zipWith bind bnds fields ++ tal
-    | otherwise = do tal <- codegenTail body ty
-                     let call = assn (codegenTy (snd $ bnds !! 0)) (fst $ bnds !! 0) (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc)
-                     return $ [call] ++ tal
+    | [] <- bnds = do tal <- codegenTail body ty
+                      return $ [toStmt (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc)] ++ tal
+    | [bnd] <- bnds  = do tal <- codegenTail body ty
+                          let call = assn (codegenTy (snd bnd)) (fst bnd)
+                                          (C.FnCall (cid ratr) (map codegenTriv rnds) noLoc)
+                          return $ [call] ++ tal
+    | otherwise = do
+       nam <- lift $ gensym "tmp_struct"
+       let bind (v,t) f = assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc)
+           fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
+           ty0 = ProdTy $ map snd bnds
+           init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(C.FnCall (cid ratr) (map codegenTriv rnds) noLoc); |] ]
+       tal <- codegenTail body ty
+       return $ init ++ zipWith bind bnds fields ++ tal
 
 
 codegenTail (LetPrimCallT bnds prm rnds body) ty =
@@ -428,6 +421,64 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                   -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'
 
+
+splitAlts :: Alts -> (Alts, Alts)
+splitAlts (TagAlts ls) = (TagAlts (init ls), TagAlts [last ls])
+splitAlts (IntAlts ls) = (IntAlts (init ls), IntAlts [last ls])
+
+-- | Take a "singleton" Alts and extract the Tail.
+altTail :: Alts -> Tail
+altTail (TagAlts [(_,t)]) = t
+altTail (IntAlts [(_,t)]) = t
+altTail oth = error $ "altTail expected a 'singleton' Alts, got: "++ abbrv 80 oth
+                         
+
+-- | Generate a linear chain of tag tests.  Usually less efficient
+-- than letting the C compiler compile a switch statement.
+_genIfCascade :: Triv -> Alts -> Tail -> C.Type -> ReaderT Bool SyM [C.BlockItem]
+_genIfCascade tr alts lastE ty =
+    do let trE = codegenTriv tr           
+           alts' = normalizeAlts alts
+       altPairs <- forM alts' $ \(lhs, rhs) ->
+                   do tal <- codegenTail rhs ty
+                      return (C.BinOp C.Eq trE lhs noLoc, mkBlock tal)
+       let mkIf [] = do tal <- codegenTail lastE ty
+                        return $ Just $ mkBlock tal
+           mkIf ((cond,rhs) : rest) = do rest' <- mkIf rest
+                                         return $ Just $ C.If cond rhs rest' noLoc
+       ifExpr <- mkIf altPairs
+       return $ [ C.BlockStm (fromJust ifExpr) ]
+
+-- Helper for lhs of a case
+mk_tag_lhs :: (Integral a, Show a) => a -> C.Exp
+mk_tag_lhs lhs = C.Const (C.IntConst (show lhs) C.Unsigned (fromIntegral lhs) noLoc) noLoc
+
+mk_int_lhs :: (Integral a, Show a) => a -> C.Exp
+mk_int_lhs lhs = C.Const (C.IntConst (show lhs) C.Signed   (fromIntegral lhs) noLoc) noLoc
+
+normalizeAlts :: Alts -> [(C.Exp, Tail)]
+normalizeAlts alts = 
+    case alts of
+      TagAlts as -> map (first mk_tag_lhs) as
+      IntAlts as -> map (first mk_int_lhs) as
+                 
+-- | Generate a proper switch expression instead.              
+genSwitch :: Triv -> Alts -> Tail -> C.Type -> ReaderT Bool SyM [C.BlockItem]
+genSwitch tr alts lastE ty =
+    do let go :: [(C.Exp,Tail)] -> ReaderT Bool SyM [C.Stm]
+           go [] = do tal <- codegenTail lastE ty
+                      return [[cstm| default: $stm:(mkBlock tal) |]]
+           go ((ex,tl):rst) =
+               do tal <- codegenTail tl ty
+                  let tal2 = tal ++ [ C.BlockStm [cstm| break; |] ]
+                  let this = [cstm| case $exp:ex : $stm:(mkBlock tal2) |]
+                  rst' <- go rst
+                  return (this:rst')
+       alts' <- go (normalizeAlts alts)
+       let body = mkBlock [ C.BlockStm a | a <- alts' ]
+       return $ [C.BlockStm [cstm| switch ( $exp:(codegenTriv tr) ) $stm:body |]]
+              
+
               
 codegenTy :: Ty -> C.Type
                   -- ARGH: C-quote won't allow us to use a typedef here, e.g. "IntTy":
@@ -461,6 +512,9 @@ mkBlock ss = C.Block ss noLoc
 cid :: Var -> C.Exp
 cid v = C.Var (C.toIdent v noLoc) noLoc
 
+toStmt :: C.Exp -> C.BlockItem
+toStmt x = C.BlockStm [cstm| $exp:x; |]
+        
 -- | Create a NEW lexical binding.
 assn :: (C.ToIdent v, C.ToExp e) => C.Type -> v -> e -> C.BlockItem
 assn t x y = C.BlockDecl [cdecl| $ty:t $id:x = $exp:y; |]

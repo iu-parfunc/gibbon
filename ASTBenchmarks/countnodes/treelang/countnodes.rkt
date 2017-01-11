@@ -124,8 +124,9 @@
   (case ls
     [(CONSSYM s ls)
      (+ conscost (+ scalarcost (loopSyms ls)))]
-    [(NULLTOPLVL)
-     nullcost]))
+    ; [(NULLTOPLVL) nullcost] ;; This type error is not caughty by #lang gibbon / typed racket
+    [(NULLSYM) nullcost]
+    ))
 
 (define (formals [f : Formals]) : Int
   (case f

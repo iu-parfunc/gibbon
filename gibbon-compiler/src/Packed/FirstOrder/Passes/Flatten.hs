@@ -210,7 +210,9 @@ flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
                      
                      
 type TEnv = M.Map Var L1.Ty
-                     
+
+-- FIXME: Why is this not unified with Typecheck.hs?
+    
 typeExp :: (DDefs L1.Ty,Env2 L1.Ty) -> TEnv -> L1.Exp -> L1.Ty
 typeExp (dd,env2) env (L1.VarE v) =
     M.findWithDefault (L1.Packed "CURSOR_TY") v env
@@ -232,6 +234,7 @@ typeExp (dd,env2) _env (L1.PrimAppE p _es) =
       L1.DictLookupP ty -> ty
       L1.DictEmptyP ty -> L1.SymDictTy ty
       L1.SizeParam -> L1.IntTy
+      L1.ReadPackedFile _ ty -> ty
       _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
 typeExp (dd,env2) env (L1.LetE (v,t,_) e) = typeExp (dd,env2) (M.insert v t env) e
 typeExp (dd,env2) env (L1.IfE _ e _) = typeExp (dd,env2) env e

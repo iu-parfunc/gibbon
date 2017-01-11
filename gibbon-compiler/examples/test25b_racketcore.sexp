@@ -6,8 +6,8 @@
 (define (foo [e : Toplvl]) : Int
   (case e
     ;; In the same order as the data def:
-    [(DefineValues   listSym expr) 101]
-    [(DefineSyntaxes listSym expr) 102]
+    [(DefineValues   listSymA exprA) 101]
+    [(DefineSyntaxes listSymB exprB) 102]
     [(BeginTop listToplvl)         103]
     [(Expression x)                104]
     ))
