@@ -155,7 +155,7 @@ all_tests: $(BLD) answers $(OUT_FILES)
 # FIXME: Rather than calling with --run, build the executable then run it:
 build_tmp/%$(EXTRA_SUFFIX).out : %.sexp
 ifeq ($(RUN_MODE),--run)
-	$(MAKE) $(@:.out=.exe)
+	@$(MAKE) --no-print-directory $(@:.out=.exe)
 	./$(@:.out=.exe) > $@ || ./err.sh $(@:.out=)
 else
 	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(@:.out=)
