@@ -235,7 +235,7 @@ run_valgrind: $(VALGRIND_FILES)
 %$(EXTRA_SUFFIX).valgrind : %.sexp %$(EXTRA_SUFFIX).exe
 #	@echo "\n Valgrind, testing $(basename $(basename $@))"
 #	@echo "--------------------------------------------------"
-	valgrind -q --error-exitcode=1 $(BLD)/$(basename $(basename $@))$(EXTRA_SUFFIX).exe
+	valgrind -q --error-exitcode=99 $(BLD)/$(basename $(basename $@))$(EXTRA_SUFFIX).exe
 	@touch $@
 
 # --------------------------------------------------------------------------------
