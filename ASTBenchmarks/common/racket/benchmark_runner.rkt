@@ -1,6 +1,8 @@
 #! /usr/bin/env racket
 #lang typed/racket/base
 
+;; command_line_runner from bintreebench
+
 (require "benchmarks_driver.rkt")
 (require racket/path racket/cmdline racket/file racket/system)
 (require/typed racket/os [gethostname (-> String)])
@@ -16,8 +18,6 @@
 (system (format "mkdir -p ~a" destdir))
 (printf "Created final output location: ~a\n" destdir)
 
-(define PASSNAME "treebench")
-
 ;; variant is lang like treelang-racket
 #|
 treelang-c-packed - C backend for treelang, packed representation
@@ -27,11 +27,12 @@ handwritten-c-pointer
 handwritten-c-packed
 |#
 
-(define (launch-benchmarks [exec : String] [pass-name : String] [variant : String])  
+(define (launch-benchmarks [exec : String] [pass-name : String] [variant : String]);; [file_list : String])  
   (define outfile (format "results_~a_~a.csv" variant (current-seconds)))
   (define csv (open-output-file outfile #:exists 'replace))
 
-  (driver csv exec pass-name variant)
+  (printf "calling driver\n")
+  (driver csv exec pass-name variant);; file_list)
   (system (format "cp ~a ~a" outfile (string-append destdir outfile)))
   (printf "Output copied to ~a\n" destdir)
   (close-output-port csv)) 

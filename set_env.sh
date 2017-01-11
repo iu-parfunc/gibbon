@@ -2,6 +2,8 @@
 
 export TREELANGDIR=`pwd`
 
+export PLTADDONDIR=$TREELANGDIR/.racket_sandbox/
+
 INSTALL="stack --install-ghc build "
 
 # A shortcut to make things easier:
