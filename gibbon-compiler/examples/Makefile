@@ -152,8 +152,13 @@ all_tests: $(BLD) answers $(OUT_FILES)
 #
 # FIXME: Rather than calling with --run, build the executable then run it:
 build_tmp/%$(EXTRA_SUFFIX).out : %.sexp
-	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
-	@./diff.sh $(BLD)/$(basename $^).ans $@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
+ifeq ($(RUN_MODE),--run)
+	$(MAKE) $(@:.out=.exe)
+	./$(@:.out=.exe) > $@ || ./err.sh $(@:.out=)
+else
+	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(@:.out=)
+endif
+	@./diff.sh $(BLD)/$(basename $^).ans $@ || ./err.sh $(@:.out=)
 
 # Just build the tests
 build_tests: $(EXE_FILES)
