@@ -150,7 +150,7 @@ printTy L1.BoolTy [trv]               =
     \t -> T.IfT trv (prntBool truePrinted $ t) (prntBool falsePrinted $ t)
 printTy (L1.ProdTy xs) [trv]          = \t -> foldl (\y x -> (printTy x [trv] $ y)) t xs   
 printTy (L1.SymDictTy (x)) [trv]      = sandwich (printTy x [trv]) "Dict"
-printTy (L1.PackedTy constr _) _      = T.LetCallT [] (mkPrinterName constr) [] 
+printTy (L1.PackedTy constr _) [trv]  = T.LetCallT [] (mkPrinterName constr) [trv] 
 printTy (L1.ListTy (x)) [trv]         = sandwich (printTy x [trv]) "List"
 printTy _ _                           = error $ "Invalid L1 data type."
 
