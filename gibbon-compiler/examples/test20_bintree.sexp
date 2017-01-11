@@ -33,4 +33,4 @@
 
 ;; If we don't time it, the compiler will drop it:
 (let ((tr0 : Tree (time (build-tree 2))))
-  2222)
+  tr0)
