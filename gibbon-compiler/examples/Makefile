@@ -170,7 +170,8 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
- test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25e_countnodes.sexp
+ test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25e_countnodes.sexp \
+ test19_unarytree.sexp
 
 # test20f - wip
 # test13_build.sexp       -- problem with unit functions
