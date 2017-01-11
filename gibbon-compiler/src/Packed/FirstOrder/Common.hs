@@ -41,6 +41,7 @@ module Packed.FirstOrder.Common
 
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
+--       , err
        , Interp(..)
 
          -- * Establish conventions for the output of #lang gibbon:
@@ -234,6 +235,11 @@ cleanFunName f =
     | c <- f ]
                    
 ----------------------------------------
+
+-- | An alias for the error function we want to use throughout this project.
+{-# INLINE err #-}
+err :: String -> a
+err = errorWithStackTrace
 
 
 (#) :: (Ord a, Out a, Out b, Show a)

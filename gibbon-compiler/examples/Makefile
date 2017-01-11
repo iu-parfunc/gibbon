@@ -28,10 +28,13 @@ test: prebuild build
 # Having weird trouble with race conditons on answers:
 	$(MAKE) run_answers
 	wc -l $(ANSWERS)
+	@echo
 	@echo "Answers available, now proceeding..."
 	$(MAKE) parse_all
 	$(MAKE) core_tests
+	@echo
 	@echo "For extra assurance, running valgrind!"
+	rm -f $(BLD)/*.valgrind
 	$(MAKE) valgrind
 	$(MAKE) valgrind_packed
 
@@ -143,7 +146,7 @@ run_tests: $(BLD)
 	@echo "------------------------------------------------------------------"
 	@echo "Running test set: "$(PASSING_TESTS)
 	@echo "\nFirst clear output files:"
-	rm -f $(OUT_FILES)
+	rm -f $(OUT_FILES) 
 	@echo ""
 	$(MAKE) all_tests
 
@@ -171,7 +174,9 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
  test20b_bintree.sexp test20f_bintree.sexp test24_defs.sexp test25e_countnodes.sexp \
- test19_unarytree.sexp
+ test19_unarytree.sexp \
+ test20_bintree.sexp
+# test20_bintree -- added because of printing.
 
 # test20f - wip
 # test13_build.sexp       -- problem with unit functions
@@ -239,7 +244,7 @@ answers: $(ANSWERS)
 OS := $(shell uname)
 
 ifeq ($(OS),Darwin)
- VALGRIND_CMD := echo "Not running this: "
+ VALGRIND_CMD := @echo "Not running valgrind on this: "
 else
  VALGRIND_CMD := valgrind -q --error-exitcode=99
 endif
@@ -252,8 +257,6 @@ valgrind_packed:
         # else echo "Only supporting valgrind on linux."; fi
 
 valgrind:
-	@echo $(VALGRIND_FILES)
-	@echo
 	$(MAKE) run_valgrind GIBBONARGS=" --optc=-g " EXTRA_SUFFIX=".ptr" 
 
 

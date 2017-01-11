@@ -124,12 +124,17 @@ instance Show Value where
   case v of
    VInt n   -> show n
    VBool b  -> if b then truePrinted else falsePrinted
-   VProd ls -> "("++ concat(intersperse ", " (L.map show ls)) ++")"
-   VPacked k ls -> k ++ show (VProd ls)
+   VProd ls -> "("++ concat(intersperse ", " (L.map show ls)) ++")"   
    VDict m      -> show (M.toList m)
+
+   -- F(x) style.  Maybe we'll switch to sweet-exps to keep everything in sync:
+   -- VPacked k ls -> k ++ show (VProd ls)
+
+   -- For now, Racket style:
+   VPacked k ls -> "(" ++ k ++ concat (L.map ((" "++) . show) ls) ++ ")"
                    
    VCursor idx off -> "<cursor "++show idx++", "++show off++">"
-                
+                      
 type ValEnv = Map Var Value
 
 ------------------------------------------------------------
