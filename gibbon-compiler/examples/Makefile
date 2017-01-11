@@ -70,16 +70,18 @@ RUN_MODE     ?= --run
 # Additional args besides RUN_MODE:
 GIBBONARGS ?= --optc=-g
 
+SANDBOXDIR= $(TREELANGDIR)/.racket_sandbox/
+RUNRACKET= racket -A $(SANDBOXDIR)
 
 # Not necessary, because we build each module before we run it:
 prebuild: $(BLD) test24_input.gpkd
-	raco make -j $(PROCS) -v $(ALL_TESTS) 
+	PLTADDONDIR=$(SANDBOXDIR) raco make -j $(PROCS) -v $(ALL_TESTS) 
 
 $(BLD):
 	mkdir -p $(BLD)
 
 test24_input.gpkd: test24_input.dat test24_packit.rkt test24_defs.sexp
-	racket test24_packit.rkt
+	$(RUNRACKET) test24_packit.rkt
 
 #----------------------------------------
 # Test direct Racket execution:
@@ -87,10 +89,10 @@ test24_input.gpkd: test24_input.dat test24_packit.rkt test24_defs.sexp
 racket_valid: treelang_lib
 	@echo "\nGenerating canonical answers from Racket:"
 	@echo "-----------------------------------------"
-	for f in `ls test*.sexp`; do racket $$f | tee $$f.ans; done
+	for f in `ls test*.sexp`; do $(RUNRACKET) $$f | tee $$f.ans; done
 
 racket_invalid: treelang_lib
-	for f in `find ./error/ -name '*.sexp'`; do racket $$f | tee $$f.ans; done
+	for f in `find ./error/ -name '*.sexp'`; do $(RUNRACKET) $$f | tee $$f.ans; done
 
 # ----------------------------------------
 
@@ -152,8 +154,13 @@ all_tests: $(BLD) answers $(OUT_FILES)
 #
 # FIXME: Rather than calling with --run, build the executable then run it:
 build_tmp/%$(EXTRA_SUFFIX).out : %.sexp
-	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
-	@./diff.sh $(BLD)/$(basename $^).ans $@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
+ifeq ($(RUN_MODE),--run)
+	$(MAKE) $(@:.out=.exe)
+	./$(@:.out=.exe) > $@ || ./err.sh $(@:.out=)
+else
+	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(@:.out=)
+endif
+	@./diff.sh $(BLD)/$(basename $^).ans $@ || ./err.sh $(@:.out=)
 
 # Just build the tests
 build_tests: $(EXE_FILES)
@@ -213,8 +220,8 @@ run_tests_interp1: answers
 build_tmp/%.ans : %.sexp
 # Optional, could prebuild before running:
 #	raco make -v $^
-	racket $^ > $@ || rm -f $@
-#	racket $^ | tee $@
+	$(RUNRACKET) $^ > $@ || rm -f $@
+#	$(RUNRACKET) $^ | tee $@
 
 run_answers:
 	@echo "\nGenerating canonical answers from Racket:"

@@ -32,6 +32,7 @@ gcc --version
 # Set TREELANGDIR:
 source set_env.sh
 
+export PLTADDONDIR=`pwd`/.racket_sandbox/
 
 set +x; echo
 echo "  Racket code (1/2)"
@@ -54,19 +55,6 @@ stack --allow-different-user --install-ghc test "$STACKARGS"
 cd $top/gibbon-compiler/examples
 make test $MKPARARGS
 # Turning of -j for now [2016.11.06]
-
-
-
-set +x; echo
-echo "  Handwritten Parser:"
-echo "----------------------------------------"
-set -x
-cd $top/deps/sexpr-1.3
-make || ./configure && make $MKPARARGS
-# TODO: Move to common:
-cd $top/ASTBenchmarks/common/c/
-make check
-
 
 
 set +x; echo
@@ -109,3 +97,16 @@ if [ "$NOBINTREE" != "1" ]; then
       make run_small_core
   fi
 fi
+
+
+# [2017.01.11] Disabling for now.  Adds dependencies and we aren't using it:
+# set +x; echo
+# echo "  Handwritten Parser:"
+# echo "----------------------------------------"
+# set -x
+# cd $top/deps/sexpr-1.3
+# make || ./configure && make $MKPARARGS
+# # TODO: Move to common:
+# cd $top/ASTBenchmarks/common/c/
+# make check
+
