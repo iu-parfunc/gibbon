@@ -311,9 +311,9 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
 
           field_tys= L.map typ (lookupDataCon ddefs k)
           fields0  = fragileZip field_tys (L.map (triv "MkPackedE args") ls)
-          fields
-            | is_prod   = fields0
-            | otherwise = (T.IntTy, T.IntTriv (fromIntegral tag)) : fields0
+          fields   = (T.IntTy, T.IntTriv (fromIntegral tag)) : fields0 
+          --  | is_prod   = fields0
+          --  | otherwise = (T.IntTy, T.IntTriv (fromIntegral tag)) : fields0
 
       -- trace ("data con: " ++ show k) (return ())
       -- trace ("is_prod: " ++ show is_prod) (return ())
