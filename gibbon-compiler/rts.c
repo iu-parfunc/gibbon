@@ -155,7 +155,7 @@ int main(int argc, char** argv)
       // lim.rlim_max /= 2;
       if(lim.rlim_cur < 100 * 1024) {
         fprintf(stderr, " [gibbon rts] Failed setrlimit stack size to something reasonable; giving up.\n");
-        abort();
+        break; // abort();
       }
       int code = setrlimit(RLIMIT_STACK, &lim);    
     }
