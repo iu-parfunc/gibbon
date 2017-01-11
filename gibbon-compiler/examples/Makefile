@@ -70,16 +70,18 @@ RUN_MODE     ?= --run
 # Additional args besides RUN_MODE:
 GIBBONARGS ?= --optc=-g
 
+SANDBOXDIR= $(TREELANGDIR)/.racket_sandbox/
+RUNRACKET= racket -A $(SANDBOXDIR)
 
 # Not necessary, because we build each module before we run it:
 prebuild: $(BLD) test24_input.gpkd
-	raco make -j $(PROCS) -v $(ALL_TESTS) 
+	PLTADDONDIR=$(SANDBOXDIR) raco make -j $(PROCS) -v $(ALL_TESTS) 
 
 $(BLD):
 	mkdir -p $(BLD)
 
 test24_input.gpkd: test24_input.dat test24_packit.rkt test24_defs.sexp
-	racket test24_packit.rkt
+	$(RUNRACKET) test24_packit.rkt
 
 #----------------------------------------
 # Test direct Racket execution:
@@ -87,10 +89,10 @@ test24_input.gpkd: test24_input.dat test24_packit.rkt test24_defs.sexp
 racket_valid: treelang_lib
 	@echo "\nGenerating canonical answers from Racket:"
 	@echo "-----------------------------------------"
-	for f in `ls test*.sexp`; do racket $$f | tee $$f.ans; done
+	for f in `ls test*.sexp`; do $(RUNRACKET) $$f | tee $$f.ans; done
 
 racket_invalid: treelang_lib
-	for f in `find ./error/ -name '*.sexp'`; do racket $$f | tee $$f.ans; done
+	for f in `find ./error/ -name '*.sexp'`; do $(RUNRACKET) $$f | tee $$f.ans; done
 
 # ----------------------------------------
 
@@ -218,8 +220,8 @@ run_tests_interp1: answers
 build_tmp/%.ans : %.sexp
 # Optional, could prebuild before running:
 #	raco make -v $^
-	racket $^ > $@ || rm -f $@
-#	racket $^ | tee $@
+	$(RUNRACKET) $^ > $@ || rm -f $@
+#	$(RUNRACKET) $^ | tee $@
 
 run_answers:
 	@echo "\nGenerating canonical answers from Racket:"
