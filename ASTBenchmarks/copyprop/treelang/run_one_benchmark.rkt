@@ -1,13 +1,12 @@
 #! /usr/bin/env racket
 #lang typed/racket/base
 
-;; Run copy propogation on a SINGLE input file for a given symbol and num iterations.
-
-(require "../../common/racket/parse.rkt"
+(require (only-in "../../common/racket/parse.rkt" parse)
          "copyprop.rkt"
          racket/cmdline
          racket/file racket/match
          (only-in "../../grammar_racket.sexp" Toplvl))
+
 
 (match-define (cons file iters)
   (command-line #:args (#{f : String} #{i : String})
@@ -26,6 +25,7 @@
   (time-apply (lambda () (for ([_ (in-range iters)])
                            (copyprop ast)))
               '()))
+
 (define batchseconds (/ real 1000.0))
 (printf "ITERS: ~a\n" iters)
 (printf "BATCHTIME: ~a\n" (exact->inexact batchseconds))

@@ -3,7 +3,9 @@
 (require racket/system
 	 racket/match
 	 racket/string
-     racket/port)
+     racket/port
+     racket/file
+     racket/flonum)
 
 (provide driver)
 
@@ -23,8 +25,8 @@
   (define line (read-line port 'any))
   (if (eof-object? line)
       (begin (printf "Got EOF. Process returned ~s.~n" (get-exit-code))
-             (printf "stderr: ~s~n" (port->string err-port))
-             (printf "Command was:~n    $ ~a~n" cmd)
+             (printf "stderr: ~s\n" (port->string err-port))
+             (printf "Command was:\n    $ ~a\n" cmd)
              (error "Error: Got eof."))
       (begin
         (let ([strs (string-split (cast line String))])
@@ -58,14 +60,20 @@
 
 ;; mostly stolen from bintreebench
 (define (driver [csv-port : Output-Port] [exec : String] [pass-name : String]
-		[variant : String])
+		[variant : String]);; [file_list : String])
+
   (fprintf csv-port "NAME, VARIANT, ARGS, ITERS, MEANTIME\n") ;; start csv file
   
   ;; loop through all files
   (define files (file->lines "cleaned_list.txt"))
+  ;;(define files (file->lines file_list))
+  (define location "./cleaned_racket")
+
   (printf "~a files in the dataset.\n" (length files))
   
-  (for ([f (in-list files)])
+  (for ([f_ (in-list files)])
+    (define f (build-path location f_))
+    (printf "file ~a\n" f_)
     (let loop ([iters MINITERS])
       (printf "iters ~a\n" iters)
       (define cmd (format "~a ~a ~a" exec f iters)) ;; make sure this matches copyprop benchamrk
@@ -94,8 +102,8 @@
 	    (fprintf csv-port "~a, ~a, ~a, ~a, ~a\n"
 	  	     pass-name variant f iters meantime)
 	    (flush-output csv-port))
-	  (begin 
-            (printf "~a " batchseconds) 
+	  (let ([multiple (max 2 (truncate (/ (fl->exact-integer target-time) (inexact->exact batchseconds))))])
+            (printf "~a\n " batchseconds) 
             (flush-output)
-            (loop (* 2 iters)))))
+            (loop (* iters multiple)))))
   ))
