@@ -3,7 +3,7 @@
 # Thus you must bild that first:
 FROM bintree-bench
 
-RUN apt-get install -y valgrind
+RUN apt-get update && apt-get install -y valgrind
 
 # ADD ./.git /trees/.git/
 ADD . /trees
