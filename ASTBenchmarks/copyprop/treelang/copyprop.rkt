@@ -6,7 +6,7 @@
 
 (define (copyprop [e : Toplvl]) : Toplvl
   (let ([nexpr : Toplvl (top-pass1 e)])
-    (let ([mut : (SymDict Bool) (top-pass2 nexpr (empty-dict))])
+    (let ([mut : (SymDict Bool) (top-pass2 nexpr (ann (empty-dict) (SymDict Bool)))])
       (top-pass3 nexpr mut))))
 
 (define (loop1 [ls : ListToplvl]) : ListToplvl
@@ -96,27 +96,27 @@
 (define (loop6 [ls : ListSym] [env : (SymDict Sym)]) : (SymDict Sym)
   (case ls
     [(CONSSYM s ls)
-     (loop6 ls (insert env s (gensym)))]
+     (loop6 ls (insert env s (ann (gensym) Sym)))]
     [(NULLSYM)
      env]))
 
 (define (loop7 [ls : ListSym] [env : (SymDict Sym)]) : ListSym
   (case ls
     [(CONSSYM s ls)
-     (CONSSYM (lookup env s) (loop7 ls env))]
+     (CONSSYM (ann (lookup env s) Sym) (loop7 ls env))]
     [(NULLSYM)
      ls]))
   
 (define (top-pass1 [e : Toplvl]) : Toplvl
   (case e
     [(DefineValues ls e)
-     (DefineValues ls (pass1 e (empty-dict)))]
+     (DefineValues ls (pass1 e (ann (empty-dict) (SymDict Sym))))]
     [(DefineSyntaxes ls e)
-     (DefineSyntaxes ls (pass1 e (empty-dict)))]
+     (DefineSyntaxes ls (pass1 e (ann (empty-dict) (SymDict Sym))))]
     [(BeginTop ls)
      (BeginTop (loop1 ls))]
     [(Expression e)
-     (Expression (pass1 e (empty-dict)))]))
+     (Expression (pass1 e (ann (empty-dict) (SymDict Sym))))]))
 
 (define (top-pass2 [e : Toplvl] [mut : (SymDict Bool)]) : (SymDict Bool)
   (case e
@@ -132,20 +132,20 @@
 (define (top-pass3 [e : Toplvl] [mut : (SymDict Bool)]) : Toplvl
   (case e
     [(DefineValues ls e)
-     (DefineValues ls (pass3 e (empty-dict) mut))]
+     (DefineValues ls (pass3 e (ann (empty-dict) (SymDict Sym)) mut))]
     [(DefineSyntaxes ls e)
-     (DefineSyntaxes ls (pass3 e (empty-dict) mut))]
+     (DefineSyntaxes ls (pass3 e (ann (empty-dict) (SymDict Sym)) mut))]
     [(BeginTop ls)
      (BeginTop (loop-begintop2 ls mut))]
     [(Expression e)
-     (Expression (pass3 e (empty-dict) mut))]))
+     (Expression (pass3 e (ann (empty-dict) (SymDict Sym)) mut))]))
 
 ;; rename variables
 (define (pass1 [e : Expr] [env : (SymDict Sym)]) : Expr
   (case e
     [(VARREF s)
      (VARREF (if (has-key? env s)
-                 (lookup env s)
+                 (ann (lookup env s) Sym)
                  s))]
     [(Top s)
      e]
@@ -191,7 +191,7 @@
      (App (pass1 e1 env) (loop2 exprs env))]
     [(SetBang s e)
      (SetBang (if (has-key? env s)
-                  (lookup env s)
+                  (ann (lookup env s) Sym)
                   s)
               (pass1 e env))]
     [(WithContinuationMark e1 e2 e3)
@@ -244,7 +244,7 @@
      (listexpr-pass2 exprs (pass2 e1 mut))]
 
     [(SetBang s e)
-     (insert mut s #t)]
+     (insert mut s (ann True Bool))]
 
     [(WithContinuationMark e1 e2 e3)
      (let ([mut : (SymDict Bool) (pass2 e1 mut)])
@@ -257,7 +257,7 @@
      (VARREF (if (has-key? mut s)
                  s
                  (if (has-key? env s)
-                     (lookup env s)
+                     (ann (lookup env s) Sym)
                      s)))]
     [(Top s)
      e]
@@ -316,12 +316,12 @@
     [(CONSLVBIND syms e lv)
      (insert-syms syms (list-of-syms lv))]
     [(NULLLVBIND)
-     (empty-dict)]))
+     (ann (empty-dict) (SymDict Bool))]))
 
 (define (insert-syms [ls : ListSym] [syms : (SymDict Bool)]) : (SymDict Bool)
   (case ls
     [(CONSSYM s ls)
-     (insert-syms ls (insert syms s #t))]
+     (insert-syms ls (insert syms s (ann True Bool)))]
     [(NULLSYM)
      syms]))
 
@@ -350,7 +350,7 @@
 (define (listsym-extend-env [ls : ListSym] [sym : Sym] [env : (SymDict Sym)]) : (SymDict Sym)
   (case ls
     [(CONSSYM s ls)
-     (listsym-extend-env ls sym (insert env s sym))]
+     (listsym-extend-env ls sym (insert env s (ann sym Sym)))]
     [(NULLSYM)
      env]))
 
@@ -361,9 +361,9 @@
     (loop6 ls env)]
    [(F2 ls s)
     (let ([nenv : (SymDict Sym) (loop6 ls env)])
-      (insert nenv s (gensym)))]
+      (insert nenv s (ann (gensym) Sym)))]
    [(F3 s)
-   (insert env s (gensym))]))
+   (insert env s (ann (gensym) Sym))]))
 
 ;; update formals to match new name in env
 (define (formals-update [f : Formals] [env : (SymDict Sym)]) : Formals
@@ -371,15 +371,15 @@
    [(F1 ls)
     (F1 (loop7 ls env))]
    [(F2 ls s)
-    (F2 (loop7 ls env) (lookup env s))]
+    (F2 (loop7 ls env) (ann (lookup env s) Sym))]
    [(F3 s)
-    (F3 (lookup env s))]))
+    (F3 (ann (lookup env s) Sym))]))
 
 ;; gensym for a list of syms and insert mappings into environment
 (define (rename-syms [ls : ListSym] [env : (SymDict Sym)]) : (SymDict Sym)
   (case ls
     [(CONSSYM s ls)
-     (rename-syms ls (insert env s (gensym)))]
+     (rename-syms ls (insert env s (ann (gensym) Sym)))]
     [(NULLSYM)
      env]))
 
