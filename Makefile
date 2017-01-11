@@ -24,4 +24,12 @@ gibbon-lang: $(SANDBOX)
 $(SANDBOX):
 	mkdir -p $@
 
+# Aggressive clean of the working copy:
+clean:
+	rm -rf $(SANDBOX) 
+	find -name .stack-work | xargs rm -rf
+	cd ./gibbon-compiler/; stack clean
+	find -name compiled     | xargs rm -rf
+	cd ./gibbon-compiler/examples/; make distclean
+
 .PHONY: subst deps all racket gibbon-lang
