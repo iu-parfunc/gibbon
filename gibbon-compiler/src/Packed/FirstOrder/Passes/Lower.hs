@@ -108,9 +108,12 @@ genDconsPrinter (x:xs) tail = case x of
         <$> genDconsPrinter xs t 
       
   L1.PackedTy tyCons _ -> do
+    val  <- gensym "val"
     t    <- gensym "tail"
-    T.LetCallT [(t, T.CursorTy)] (mkPrinterName tyCons) [(T.VarTriv tail)] 
-        <$> genDconsPrinter xs t  
+    tmp  <- gensym "temp"
+    T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$> 
+      T.LetCallT [(tmp, T.PtrTy)] (mkPrinterName tyCons) [(T.VarTriv val)] 
+        <$> genDconsPrinter xs t
   _                    -> undefined
 genDconsPrinter [] tail     = do 
   return $ closeParen $ T.RetValsT [(T.VarTriv tail)] 
@@ -133,11 +136,11 @@ genPrinter DDef{tyName, dataCons} = do
   tag  <- gensym "tag"
   tail <- gensym "tail"
   alts <- genAltPrinter dataCons tail 0 
-  bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
+  bod  <- return $ T.LetPrimCallT [(tag, T.IntTy), (tail, T.CursorTy)] T.ReadInt [(T.VarTriv p)] $
             T.Switch (T.VarTriv tag) alts Nothing 
   return T.FunDecl{ T.funName  = (mkPrinterName tyName),
                     T.funArgs  = [(p, T.CursorTy)],
-                    T.funRetTy = T.CursorTy,
+                    T.funRetTy = T.PtrTy,
                     T.funBody  = bod } 
 
 printTy :: L1.Ty -> [T.Triv] -> (T.Tail -> T.Tail)
