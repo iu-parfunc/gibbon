@@ -58,10 +58,10 @@ genDcons [] tail fields     = do
   ptr <- gensym "ptr"
   return $ T.LetAllocT ptr fields $ T.RetValsT [T.VarTriv ptr, T.VarTriv tail] 
 
-genAlts :: [(Constr,[L1.Ty])] -> Var -> Int64 -> SyM T.Alts 
-genAlts ((_, typs):xs) tail n = do
-  curTail <- genDcons typs tail [] 
-  alts    <- genAlts xs tail (n+1) 
+genAlts :: [(Constr,[L1.Ty])] -> Var -> Var -> Int64 -> SyM T.Alts 
+genAlts ((_, typs):xs) tail tag n = do
+  curTail <- genDcons typs tail [(T.IntTy, T.VarTriv tag)] 
+  alts    <- genAlts xs tail tag (n+1) 
   case alts of
     T.IntAlts []   -> return $ T.IntAlts [(n::Int64, curTail)]
     -- T.TagAlts []   -> return $ T.TagAlts [(n::Word8, curTail)] 
@@ -69,15 +69,15 @@ genAlts ((_, typs):xs) tail n = do
     -- T.TagAlts tags -> return $ T.TagAlts ((n::Word8, curTail) : tags)
     _              -> error $ "Invalid case statement type."
 
-genAlts [] _ _                = return $ T.IntAlts [] 
+genAlts [] _ _ _                  = return $ T.IntAlts [] 
 
 genUnpacker :: DDef L1.Ty -> SyM T.FunDecl    
 genUnpacker DDef{tyName, dataCons} = do
   p    <- gensym "p"
   tag  <- gensym "tag"
   tail <- gensym "tail"
-  alts <- genAlts dataCons tail 0 
-  bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
+  alts <- genAlts dataCons tail tag 0 
+  bod  <- return $ T.LetPrimCallT [(tag, T.IntTy), (tail, T.CursorTy)] T.ReadInt [(T.VarTriv p)] $
             T.Switch (T.VarTriv tag) alts Nothing
   return T.FunDecl{ T.funName  = (mkUnpackerName tyName),
                     T.funArgs  = [(p, T.CursorTy)],
