@@ -270,8 +270,12 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
       -- ASSERT(length tys == length bndrs)
 
       let T.VarTriv e_var = triv "product case scrutinee" e
+      tag_bndr  <- gensym "tag"
+
+      let bndrs' = tag_bndr : bndrs
+          tys'   = T.IntTy  : tys 
       rhs' <- tail rhs
-      return (T.LetUnpackT (zip bndrs tys) e_var rhs')
+      return (T.LetUnpackT (zip bndrs' tys') e_var rhs')
 
     CaseE e (def_alt : alts) | not pkd -> do
       tag_bndr <- gensym "tag"
