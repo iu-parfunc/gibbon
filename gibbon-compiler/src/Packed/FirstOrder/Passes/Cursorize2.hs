@@ -345,7 +345,7 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
      L1.LitE _  -> return ([], e, L1.IntTy, Bottom)
 
      L1.PrimAppE p ls -> L1.assertTrivs ls $
-        let ty = L1.primRetTy p in
+        let ty = L2.primRetTy p in
         return ([], e, ty, retTyToLoc ty)
 
      -- This returns an updated cursor witnessing

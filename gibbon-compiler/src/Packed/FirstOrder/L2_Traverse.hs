@@ -18,6 +18,7 @@ module Packed.FirstOrder.L2_Traverse
     -- * Temporary backwards compatibility, plus rexports
     , Ty1(..), pattern SymTy
     , Exp(..)
+    , primRetTy
       
     -- * Utilities for dealing with the extended types:
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc, unknownCursor
@@ -570,6 +571,25 @@ isExtendedPattern e =
     _              -> False
 
 
+-- | Return type for a primitive operation.                      
+primRetTy :: Prim -> L1.Ty
+primRetTy p =
+  case p of
+    AddP -> IntTy
+    SubP -> IntTy
+    MulP -> IntTy
+    EqSymP  -> BoolTy
+    EqIntP  -> BoolTy
+    MkTrue  -> BoolTy
+    MkFalse -> BoolTy
+    MkNullCursor -> CursorTy ()
+    SizeParam -> IntTy
+    DictEmptyP ty -> SymDictTy ty
+    DictInsertP ty -> SymDictTy ty 
+    DictLookupP ty -> ty
+    (ErrorP _ ty) -> ty
+
+                      
 -- | A type environment listing the types of built-in functions.
 -- 
 --   Using this table represents a policy decision.  Specifically,

@@ -392,7 +392,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     -- Whatever... a little just-in-time flattening.  Should obsolete this:
     L1.PrimAppE p ls -> do
       tmp <- gensym "flt"
-      tail (L1.LetE (tmp, L1.primRetTy p, L1.PrimAppE p ls) (L1.VarE tmp))
+      tail (L1.LetE (tmp, L2.primRetTy p, L1.PrimAppE p ls) (L1.VarE tmp))
 
     ---------------------
     -- (2) Next FAKE Primapps.  These could be added to L1 if we wanted to pollute it.

@@ -48,7 +48,7 @@ type TCEnv s = M.Map Var (TCVar s)
     
 -- | Entrypoint with the expected type for a pass in the top-level compiler pipeline.
 typecheckStrict :: TCConfig -> L2.Prog -> SyM L2.Prog
-typecheckStrict cfg prg = if typecheck cfg prg
+typecheckStrict cfg prg = if typecheck True cfg prg
                           then return prg
                           else error "Compiler exiting due to above type errors."
 -- WARNING: depending on DEBUG, "above type errors" may not actually show.
@@ -56,21 +56,25 @@ typecheckStrict cfg prg = if typecheck cfg prg
 
 -- | In contrast with 'typecheckStrict', this issues type errors only as warnings.
 typecheckPermissive :: TCConfig -> L2.Prog -> SyM L2.Prog
-typecheckPermissive cfg prg = do let !_ = typecheck cfg prg 
+typecheckPermissive cfg prg = do let !_ = typecheck False cfg prg 
                                  return prg
                           
                    
 -- | Run typecheck and report errors using the trace mechanism.
 -- Returns true if the program typechecks.
-typecheck :: TCConfig -> L2.Prog -> Bool
-typecheck cfg prg = runST $ do
+typecheck :: Bool -> TCConfig -> L2.Prog -> Bool
+typecheck strict cfg prg = runST $ do
                   rf <- newSTRef True
                   !_ <- typecheck' cfg rf prg
                   b <- readSTRef rf
-                  dbgTrace lvl (if b
-                                then " [typecheck] Succeeded!\n"
-                                else " [typecheck] Found failures above!\n") $
-                    return b
+                  if b then
+                     (if strict
+                      then return b
+                      else dbgTrace lvl " [typecheck] Succeeded!\n" (return b))
+                    else
+                     dbgTrace lvl " [typecheck] Found failures above!\n"
+                     (return b)
+
 
 -- | Entrypoint for typechecking just an expression:
 typecheckExp :: DDefs L1.Ty -> L1.Exp -> L1.Ty 
@@ -130,6 +134,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
                                       return (Concrete b)
                  Just oth -> failFresh $ "Function had non-arrow type: " ++ show oth
 
+-- FIXME: This is redundant with primRetTy primArgsTy helper functions:
         PrimAppE p es ->
             do tes <- mapM (go) es
                case p of

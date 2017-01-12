@@ -16,7 +16,7 @@ module Packed.FirstOrder.L1_Source
       Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), progToEnv
           
       -- * Primitive operations
-    , Prim(..), primRetTy, primArgsTy
+    , Prim(..), primArgsTy
       
       -- * Types and helpers
     , Ty, Ty1(..), pattern Packed, pattern SymTy
@@ -279,25 +279,12 @@ primArgsTy p =
     EqIntP  -> [IntTy, IntTy]
     MkTrue  -> []
     MkFalse -> []
+    MkNullCursor -> []
+    SizeParam    -> [] 
     DictEmptyP _ty -> []
     DictInsertP _ty -> error "primArgsTy: dicts not handled yet"
     DictLookupP _ty -> error "primArgsTy: dicts not handled yet"
     (ErrorP _ _) -> []
-
-primRetTy :: Prim -> Ty
-primRetTy p =
-  case p of
-    AddP -> IntTy
-    SubP -> IntTy
-    MulP -> IntTy
-    EqSymP  -> BoolTy
-    EqIntP  -> BoolTy
-    MkTrue  -> BoolTy
-    MkFalse -> BoolTy
-    DictEmptyP ty -> SymDictTy ty
-    DictInsertP ty -> SymDictTy ty 
-    DictLookupP ty -> ty
-    (ErrorP _ ty) -> ty
 
 
 --------------------------------------------------------------------------------

@@ -1,14 +1,23 @@
 
 default:
-	rm -f *.err
+	rm -f *.err $(BLD)/*.err
 	$(MAKE) test
+
+test:
+	$(MAKE) smalltest
+	@echo
+	@echo "For extra assurance, running valgrind!"
+	rm -f $(BLD)/*.valgrind
+	$(MAKE) valgrind
+	$(MAKE) valgrind_packed
+
 
 ALL_TESTS= $(shell ls test*.sexp)
 
 # Temporary output dir:
-BLD=./build_tmp/
+BLD=./build_tmp
 
-ANSWERS= $(addprefix $(BLD),$(ALL_TESTS:.sexp=.ans))
+ANSWERS= $(addprefix $(BLD)/,$(ALL_TESTS:.sexp=.ans))
 
 
 # Number of processors:
@@ -22,8 +31,7 @@ PROCS = $(shell getconf _NPROCESSORS_ONLN || \
 
 GIBBON= DEBUG=1 stack exec -- gibbon
 
-
-test: prebuild build
+smalltest: prebuild build
 	$(MAKE) benchtest
 # Having weird trouble with race conditons on answers:
 	$(MAKE) run_answers
@@ -33,11 +41,6 @@ test: prebuild build
 # [2017.01.11] Fairly obsolete:
 #	$(MAKE) parse_all
 	$(MAKE) core_tests
-	@echo
-	@echo "For extra assurance, running valgrind!"
-	rm -f $(BLD)/*.valgrind
-	$(MAKE) valgrind
-	$(MAKE) valgrind_packed
 
 # Test the benchmarking mode
 benchtest: test24_input.gpkd
@@ -66,6 +69,15 @@ core_tests:
 #	$(MAKE) racket_valid
 # Need methodology for this.
 #	$(MAKE) racket_invalid
+
+# Set to the name of a single test you'd like to test:
+ONE=test00_add.sexp
+one:
+	$(MAKE) $(BLD)/$(ONE:.sexp=.ans)
+	$(MAKE) $(BLD)/$(ONE:.sexp=.intrp1.out)   EXTRA_SUFFIX=".intrp1"
+	$(MAKE)                                   EXTRA_SUFFIX=".ptr" $(BLD)/$(ONE:.sexp=.ptr.out)
+	$(MAKE) FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd" $(BLD)/$(ONE:.sexp=.pkd.out)
+#	$(MAKE) $(BLD)/$(ONE).interp2.out
 
 
 EXTRA_SUFFIX ?= .ptr
@@ -138,8 +150,8 @@ FAILING_TESTS ?= \
 
 PASSING_TESTS = $(filter-out $(FAILING_TESTS),$(ALL_TESTS))
 
-OUT_FILES=$(addprefix $(BLD),$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).out))
-EXE_FILES=$(addprefix $(BLD),$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).exe))
+OUT_FILES=$(addprefix $(BLD)/,$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).out))
+EXE_FILES=$(addprefix $(BLD)/,$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).exe))
 
 # Run the tests that work.  Assumes "build" has already executed.
 run_tests: $(BLD)
@@ -195,7 +207,7 @@ run_tests_packed: answers
 	$(MAKE) run_tests RUN_MODE="--run" GIBBONARGS="$(GIBBONARGS) --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
 
 
-INTERP2_FAILING = test00b_printBool.sexp test00d_printData.sexp \
+INTERP2_FAILING = test00a_size.sexp test00b_printBool.sexp test00d_printData.sexp \
   test06a_two_cases.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp \
   test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
   test06h_rec.sexp test06i_casecase.sexp test07b_iterate.sexp test11b_fundata.sexp test11c_funrec.sexp \
@@ -263,7 +275,7 @@ valgrind:
 	$(MAKE) run_valgrind GIBBONARGS=" --optc=-g " EXTRA_SUFFIX=".ptr" 
 
 
-VALGRIND_FILES=$(addprefix $(BLD),$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).valgrind))
+VALGRIND_FILES=$(addprefix $(BLD)/,$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).valgrind))
 
 run_valgrind: $(VALGRIND_FILES)
 
