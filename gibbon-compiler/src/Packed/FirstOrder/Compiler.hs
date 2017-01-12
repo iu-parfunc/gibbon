@@ -86,9 +86,10 @@ lowerCopiesAndTraversals p = pure p
 data Config = Config
   { input     :: Input
   , mode      :: Mode -- ^ How to run, which backend.
-  , benchInput :: Maybe FilePath -- ^ What backed, binary file to use as input.
-  , packed    :: Bool -- ^ Use packed representation.
-  , verbosity :: Int  -- ^ Debugging output, equivalent to DEBUG env var.
+  , benchInput :: Maybe FilePath -- ^ What packed, binary .gpkd file to use as input.
+  , benchPrint :: Bool  -- ^ Should the benchamrked function have its output printed?
+  , packed     :: Bool  -- ^ Use packed representation.
+  , verbosity  :: Int   -- ^ Debugging output, equivalent to DEBUG env var.
   , cc        :: String -- ^ C compiler to use
   , optc      :: String -- ^ Options to the C compiler
   , warnc     :: Bool
@@ -120,6 +121,7 @@ defaultConfig =
   Config { input = Unspecified
          , mode  = ToExe
          , benchInput = Nothing
+         , benchPrint = False
          , packed = False
          , verbosity = 1
          , cc = "gcc"
@@ -140,6 +142,8 @@ configParser = Config <$> inputParser
                                             " becomes a command-line argument of the resulting binary."++
                                             " Also we RUN the benchmark right away if this is provided.")))
                           <|> pure Nothing)
+                      <*> (switch (long "bench-print" <>
+                                  help "print the output of the benchmarked function, rather than #t"))
                       <*> (switch (short 'p' <> long "packed" <>
                                   help "enable packed tree representation in C backend")
                            <|> fmap not (switch (long "pointer" <>
@@ -226,7 +230,7 @@ type PassRunner a b = (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a
 -- files to process.
 compile :: Config -> FilePath -> IO ()
 -- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
+compile Config{input,mode,benchInput,benchPrint,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
   -- TERRIBLE HACK!!  This verbosity value is global, "pure" and can be read anywhere
   when (verbosity > 1) $ do
     setEnv "DEBUG" (show verbosity)
@@ -359,9 +363,11 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                                  l1{ L1.mainExp = Just $
                                       -- At L1, we assume ReadPackedFile has a single return value:
                                       L1.LetE (tmp, arg, L1.PrimAppE (L1.ReadPackedFile benchInput tyc arg) []) $ 
-                                        L1.LetE ("ignored", ret, L1.TimeIt (L1.AppE fnname (L1.VarE tmp)) ret True) $
+                                        L1.LetE ("benchres", ret, L1.TimeIt (L1.AppE fnname (L1.VarE tmp)) ret True) $
                                           -- FIXME: should actually return the result, as soon as we are able to print it.
-                                          (L1.LitE 0)
+                                          (if benchPrint
+                                           then L1.VarE "benchres"
+                                           else L1.PrimAppE L1.MkTrue [])
                                     }
                              _ -> l1
 
