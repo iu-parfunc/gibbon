@@ -1,9 +1,9 @@
 #lang typed/racket
 
 ;; An SExp -> treelang datatype (structs) parser hardcoded to the
-;; grammar_racket.sexp language.
+;; grammar_racket.gib language.
 
-(require "../../grammar_racket.sexp")
+(require "../../grammar_racket.gib")
 (provide parse parse-pack-write)
 
 (: parse-toplvl-list : Any -> ListToplvl)

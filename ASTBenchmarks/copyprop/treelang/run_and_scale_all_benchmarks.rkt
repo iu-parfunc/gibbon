@@ -3,7 +3,7 @@
 
 (require "./copyprop.rkt"
          "../../common/racket/command_line_runner.rkt"
-         "../../grammar_racket.sexp")
+         "../../grammar_racket.gib")
 
 (provide iterate-copyprop)
 

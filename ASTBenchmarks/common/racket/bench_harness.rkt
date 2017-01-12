@@ -3,7 +3,7 @@
 ;; Infrastructure to set up and run the benchmark.
 
 (require "parse.rkt" racket/list
-         (only-in "../../grammar_racket.sexp" Toplvl))
+         (only-in "../../grammar_racket.gib" Toplvl))
 
 (provide run-benchmarks Toplvl) ;; Toplvl needed for type annotations
 

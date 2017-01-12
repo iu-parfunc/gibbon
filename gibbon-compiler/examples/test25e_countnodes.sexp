@@ -3,7 +3,7 @@
 ;; Minature version of countnodes for debugging.
 
 ;; -------------
-;; From: (require "../../ASTBenchmarks/grammar_racket.sexp")
+;; From: (require "../../ASTBenchmarks/grammar_racket.gib")
 
 (data Toplvl
       ;; [DefineValues   ListSym Expr]

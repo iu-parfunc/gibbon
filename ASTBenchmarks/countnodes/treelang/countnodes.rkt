@@ -1,6 +1,6 @@
 #lang gibbon
 
-(require "../../grammar_racket.sexp")
+(require "../../grammar_racket.gib")
 (provide countnodes
          ;; Provide other functions for testing purposes:
          datum formals expr top)

@@ -5,7 +5,7 @@
          "copyprop.rkt"
          racket/cmdline
          racket/file racket/match
-         (only-in "../../grammar_racket.sexp" Toplvl))
+         (only-in "../../grammar_racket.gib" Toplvl))
 
 
 (match-define (cons file iters)

@@ -1,6 +1,6 @@
 #lang gibbon
 
-(require "../../ASTBenchmarks/grammar_racket.sexp")
+(require "../../ASTBenchmarks/grammar_racket.gib")
 (require "../../ASTBenchmarks/countnodes/treelang/countnodes.rkt")
 
 ;; A small test:

@@ -5,7 +5,7 @@
 
 (require "../../common/racket/parse.rkt"
          "subst_gibbon.rkt"
-         (only-in "../../grammar_racket.sexp" Toplvl))
+         (only-in "../../grammar_racket.gib" Toplvl))
 
 (define-values (oldsym file iters)
   (match (current-command-line-arguments)

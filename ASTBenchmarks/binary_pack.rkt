@@ -1,7 +1,7 @@
 #lang racket
 
 (require racket/exn)
-; (require "grammar_racket.sexp")
+; (require "grammar_racket.gib")
 (require "./common/racket/parse.rkt")
 
 (provide (all-defined-out))
