@@ -268,7 +268,6 @@ build_tmp/%$(EXTRA_SUFFIX).valgrind : %.sexp build_tmp/%$(EXTRA_SUFFIX).exe
 #	@echo "\n Valgrind, testing $(basename $(basename $@))"
 #	@echo "--------------------------------------------------"
 	$(VALGRIND_CMD) $(basename $@).exe
-	@echo
 	@touch $@
 
 # --------------------------------------------------------------------------------

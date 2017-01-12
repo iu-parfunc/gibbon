@@ -114,7 +114,9 @@ genDconsPrinter (x:xs) tail = case x of
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$> 
       T.LetCallT [(tmp, T.PtrTy)] (mkPrinterName tyCons) [(T.VarTriv val)] 
         <$> genDconsPrinter xs t
-  _                    -> undefined
+
+  _ -> error "FINISHME: genDconsPrinter"
+
 genDconsPrinter [] tail     = do 
   return $ closeParen $ T.RetValsT [(T.VarTriv tail)] 
 
@@ -158,7 +160,9 @@ addPrintToTail :: L1.Ty -> T.Tail-> SyM T.Tail
 addPrintToTail ty tl0 =
     T.withTail (tl0, T.IntTy) $ \ [trv] ->
       printTy ty [trv] $
-        T.RetValsT []  -- Void return after printing.
+        -- Always print a trailing newline at the end of execution:
+        T.LetPrimCallT [] (T.PrintString "\n") [] $ 
+          T.RetValsT []  -- Void return after printing.
 
 -- The compiler pass
 -------------------------------------------------------------------------------a

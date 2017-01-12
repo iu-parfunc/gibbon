@@ -393,8 +393,9 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                           [ C.BlockStm [cstm| printf("%lld", $(codegenTriv arg)); |] ]
                           | otherwise -> error$ "wrong number of return values expected from PrintInt prim: "++show bnds
 
-                 PrintString str | [] <- bnds, [] <- rnds -> pure [ C.BlockStm [cstm| puts( $string:str ); |] ]
-                                 | otherwise -> error$ "wrong number of args/return values expected from PrintString prim: "++show (rnds,bnds)
+                 PrintString str
+                     | [] <- bnds, [] <- rnds -> pure [ C.BlockStm [cstm| fputs( $string:str, stdout ); |] ]
+                     | otherwise -> error$ "wrong number of args/return values expected from PrintString prim: "++show (rnds,bnds)
 
                  -- FINISHME: Codegen here depends on whether we are in --packed mode or not.
                  ReadPackedFile mfile l1ty
