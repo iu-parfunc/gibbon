@@ -186,7 +186,7 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp $(GIBBONEXEC)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
- test20b_bintree.sexp test25f_countnodes.sexp \
+ test20b_bintree.sexp  \
  test25a_withprint.sexp
 
 # test20b_bintree.sexp   -- requires copy insertion

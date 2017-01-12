@@ -268,6 +268,9 @@ inferExp (ddefs,fenv) env e = exp env e
                                          ++"pattern vars, "++show patVs++
                                          ", do not match the number of types "++show tys)
           freeRHS = L1.freeVars erhs
+
+          packedOnly = L.filter (\(_,t) -> L1.hasPacked t) zipped
+
       env' <- extendLocEnv zipped env
           -- WARNING: we may need to generate "nested inside of" relation
           -- between the patVs and the scrutinee.      
@@ -280,7 +283,13 @@ inferExp (ddefs,fenv) env e = exp env e
            (L.null patVs) ||
            -- If there is NO packed child data, then our object has static size:
            (L.all (not . L1.hasPacked) tys) ||
-              let (lastV,lastTy) = last zipped
+             -- Or if the last non-static item was in fact traversed:
+             (case packedOnly of
+                [] -> False
+                _:_ -> S.member (Traverse (fst$ last packedOnly)) eff) || 
+                                            
+             -- Or maybe the last-use rule applies:
+             (let (lastV,lastTy) = last zipped
                   isUsed = S.member lastV freeRHS
               in
               case lastTy of
@@ -294,6 +303,7 @@ inferExp (ddefs,fenv) env e = exp env e
                 L1.BoolTy -> isUsed
                 L1.SymDictTy{} -> error "no SymDictTy allowed inside Packed"
                 L1.ProdTy{}    -> error "no ProdTy allowed inside Packed"
+                L1.ListTy{} -> error "FINISHLISTS")
 
           -- Also, in any binding form we are obligated to not return
           -- our local bindings in traversal side effects:                   

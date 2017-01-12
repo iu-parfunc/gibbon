@@ -305,7 +305,9 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
   lookupTCVar :: TCEnv s -> Var -> ST s (TCVar s)
   lookupTCVar tcenv v =
       case M.lookup v tcenv of
-        Nothing | isEndVar v -> return (Concrete (CursorTy ()))
+        Nothing
+                -- FIXME: Go stricter and remove this exception:
+                | isEndVar v -> return (Concrete (CursorTy ()))
                                 -- Policy: do we allow unbound end-witnesses?  They may not really be used.
                 | otherwise  -> do reportErr $ "Failed to look up type of var " ++ (show v)
                                    freshTCVar

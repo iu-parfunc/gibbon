@@ -401,7 +401,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                  ReadPackedFile mfile tyc 
                      | [] <- rnds, [(outV,_outT)] <- bnds -> do
                              let filename = case mfile of
-                                              Just f  -> [cexp| $string:f |]
+                                              Just f  -> [cexp| $string:f |] -- Fixed at compile time.
                                               Nothing -> [cexp| read_benchfile_param() |] -- Will be set by command line arg.
                                  unpackName = mkUnpackerName tyc
                                  unpackcall = LetCallT [(outV,PtrTy),("junk",CursorTy)]
