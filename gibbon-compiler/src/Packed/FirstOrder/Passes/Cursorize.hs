@@ -644,7 +644,27 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                return $ Di $ LetE (tmp, typ (dilateTy ty), val') $
                                               LetE (nm, typ ty, projVal (Di (VarE tmp))) $
                                                (VarE tmp) -- We RETURN dilated, which is a postcondition
-                
+      TimeIt e t b -> do Di e' <- go tenv e
+                         return $ Di $ TimeIt e' (typ t) b
+      -- This is what we've mostly AVOIDED by the InlinePacked
+      -- strategy.  We have a packed-generating expression on the RHS.
+      -- We don't know exactly where it flows to at this point.  We
+      -- need to create a fresh buffer for it.
+      LetE (v,ty, TimeIt rhs ty2 isIter) bod ->
+       case ty2 of
+        PackedTy{} -> do
+           tmp <- gensym "timrhs"
+           onDi (LetE (tmp, CursorTy (), ScopedBuffer)) <$>  
+             do rhs' <- exp2 tenv isMain (Cursor tmp) rhs
+                bod' <- go (M.insert v ty tenv) bod
+                return $ onDi (LetE (v, typ ty, TimeIt (projVal rhs') (typ ty2) isIter))
+                               bod'
+        ty | not (L1.hasPacked ty) -> do
+             rhs' <- exp tenv isMain rhs
+             onDi (LetE (v, typ ty, TimeIt rhs' ty2 isIter)) <$>
+                 go (M.insert v ty tenv) bod
+        _ -> error "FINISHE: Cursorize: handle TimeIt on Let RHS binding multiple packed values."
+                               
       -- This is already a witness binding, we leave it alone.
       LetE (v,ty,rhs) bod | L2.isCursorTy ty -> do
          -- We do NOT dilate the cursor types:
@@ -666,7 +686,8 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
               
       -- LetE (v1,t1, LetE (v2,t2, rhs2) rhs1) bod ->
       --    go $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
-              
+        
+        
       LetE bnd _ -> error$ "cursorDirect: finish let binding cases in packed context:\n "++sdoc bnd
 
       -- An application that returns packed values is treated just like a 
@@ -711,9 +732,6 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       -- We should probably run the unariser before this pass:
       ProjE i ex -> doproj [] i ex
                         
-      TimeIt e t b -> do Di e' <- go tenv e
-                         return $ Di $ TimeIt e' (typ t) b
-
       MapE{}  -> error$ "cursorDirect: packed case needs finishing:\n  "++sdoc ex0
       FoldE{} -> error$ "cursorDirect: packed case needs finishing:\n  "++sdoc ex0
 -- --        MapE (v,t,rhs) bod -> __

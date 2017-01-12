@@ -186,13 +186,7 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp $(GIBBONEXEC)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
- test20b_bintree.sexp test25f_countnodes.sexp \
- test00d_printData.sexp test20a_withprint.sexp \
- test25a_withprint.sexp
-
-# 20a: gibbon: cursorDirect: finish let binding cases in packed context: [2017.01.11]
-
-# test13_build.sexp       -- problem with unit functions
+ test20b_bintree.sexp test25f_countnodes.sexp 
 
 # test20b_bintree.sexp   -- requires copy insertion
 # test12_skip.sexp       -- requires copy insertion!! unbound var thru to C code
