@@ -1,5 +1,3 @@
-
-
 \documentclass[a4paper,english]{lipics-v2016}
 \usepackage{microtype}
 
@@ -123,17 +121,21 @@
 When written idiomatically in most programming languages, programs that traverse
 and construct trees operate over pointer-based data structures, with one heap
 object per-leaf and node.  While this may seem tautological, we show that common
-tree traversals---found in compiler passes, space-partitioning trees, and
-elsewhere---can instead be automatically compiled to operate on pointer-free
-pre-order serializations of trees.  On current x86 architectures such programs
-can run up to several times faster than their pointer-based counterparts.
+tree traversals---as found in compiler passes, space-partitioning trees, and
+elsewhere---can  be automatically compiled to operate on \textbf{pointer-free
+pre-order serializations of trees}.  On modern architectures such programs
+often run several times faster than their pointer-based counterparts.
 
-We present a prototype compiler for a small first-order, purely functional
-language of tree traversals.  The output language includes mutable cursors into
-input and output buffers for packed data.  We propose a compilation technique
-with an effect system for capturing traversal behavior, combined with a
-lightweight analysis inferring data flow, and a program synthesis step for
-creating missing traversals.
+We present a prototype compiler for \textsf{Gibbon}, a small
+first-order, purely functional language of tree traversals.  Our
+compiler first transforms this language into one with
+mutable cursors into input and output buffers
+for packed data, which then generates code as efficient as
+hand-written C. The key compiler technologies include an effect
+system for capturing traversal behavior, combined with a lightweight
+analysis inferring data flow, and a program synthesis step for
+creating missing traversals. We evaluate our compiler on several
+simple tree transformations over a real-world dataset of source code.
   
 \end{abstract}
 
