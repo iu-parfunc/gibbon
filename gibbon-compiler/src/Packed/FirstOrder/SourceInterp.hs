@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE BangPatterns #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -34,7 +35,7 @@ import           Text.PrettyPrint.GenericPretty
 
 
 import           Data.Sequence (Seq, ViewL ((:<)), (|>))
-import qualified Data.Sequence as S 
+import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 import           Packed.FirstOrder.Passes.InlinePacked(pattern NamedVal)
 import           Packed.FirstOrder.L2_Traverse ( pattern WriteInt, pattern ReadInt, pattern NewBuffer
@@ -82,12 +83,12 @@ data Buffer = Buffer (Seq SerializedVal)
 
 instance Out Buffer
            
-data SerializedVal = SerTag Word8 | SerInt Int
+data SerializedVal = SerTag Word8 Constr | SerInt Int
   deriving (Read,Eq,Ord,Generic, Show)
 
 byteSize :: SerializedVal -> Int
 byteSize (SerInt _) = 8 -- FIXME: get this constant from elsewhere.
-byteSize (SerTag _) = 1
+byteSize (SerTag _ _) = 1
            
 instance Out SerializedVal
 instance NFData SerializedVal
@@ -132,10 +133,32 @@ instance Show Value where
 
    -- For now, Racket style:
    VPacked k ls -> "(" ++ k ++ concat (L.map ((" "++) . show) ls) ++ ")"
-                   
+
    VCursor idx off -> "<cursor "++show idx++", "++show off++">"
                       
 type ValEnv = Map Var Value
+
+------------------------------------------------------------
+
+-- | Code to read a final answer back out.
+deserialize :: DDefs Ty -> Seq SerializedVal -> Value
+deserialize ddefs seq0 = final
+ where
+  ([final],_) = readN 1 seq0
+   
+  readN 0 seq = ([],seq)
+  readN n seq =
+     case S.viewl seq of
+       S.EmptyL -> error $ "deserialize: unexpected end of sequence: "++ndoc seq0
+       SerInt i :< rst ->
+         let (more,rst') = readN (n-1) rst
+         in (VInt i : more, rst')
+
+       SerTag _ k :< rst ->
+         let (args,rst')  = readN (length (lookupDataCon ddefs k)) rst
+             (more,rst'') = readN (n-1) rst'
+         in (VPacked k args : more, rst'')
+
 
 ------------------------------------------------------------
 {-    
@@ -166,8 +189,16 @@ interpProg :: RunConfig -> Prog -> IO (Value, B.ByteString)
 -- Print nothing, return "void"              :
 interpProg _ Prog {mainExp=Nothing} = return $ (VProd [], B.empty)
 interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
-    do (x,logs) <- evalStateT (runWriterT (interp e)) (Store IM.empty)
-       return (x, toLazyByteString logs)
+    do -- logs contains print side effects:
+       ((x,logs),Store finstore) <- runStateT (runWriterT (interp e)) (Store IM.empty)
+
+       -- Policy: don't return cursors
+       let res = case x of
+                  VCursor ix off ->
+                      let Buffer b = finstore IM.! ix
+                      in deserialize ddefs (S.drop off b)
+                  _ -> x
+       return (res, toLazyByteString logs)
 
  where
   applyPrim :: Prim -> [Value] -> Value
@@ -276,7 +307,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                            let Buffer seq1 = store IM.! idx
                            case S.viewl (S.drop off seq1) of
                              S.EmptyL -> error "SourceInterp: case scrutinize on empty/out-of-bounds cursor."
-                             SerTag tg :< _rst -> do
+                             SerTag tg _ :< _rst -> do
                                let tycon = getTyOfDataCon ddefs sometag
                                    datacon = (getConOrdering ddefs tycon) !! fromIntegral tg
                                let (_tagsym,[curname],rhs) = lookup3 datacon alts
@@ -308,7 +339,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                 -- whether we are AFTER Cursorize or not.
                   [ VCursor idx off ] | rcCursors rc ->
                       do Store store <- get
-                         let tag       = SerTag (getTagOfDataCon ddefs k)
+                         let tag       = SerTag (getTagOfDataCon ddefs k) k
                              store'    = IM.alter (\(Just (Buffer s1)) -> Just (Buffer $ s1 |> tag)) idx store
                          put (Store store')
                          return $ VCursor idx (off+1)
