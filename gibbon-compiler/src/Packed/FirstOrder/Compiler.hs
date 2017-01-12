@@ -226,7 +226,7 @@ type PassRunner a b = (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a
 compile :: Config -> FilePath -> IO ()
 -- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
 compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
-  -- TERRIBLE HACK!!  This value is global, "pure" and can be read anywhere
+  -- TERRIBLE HACK!!  This verbosity value is global, "pure" and can be read anywhere
   when (verbosity > 1) $ do
     setEnv "DEBUG" (show verbosity)
     l <- evaluate dbgLvl
@@ -433,14 +433,17 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
        ExitFailure n -> error$ "C compiler failed!  Code: "++show n
        ExitSuccess -> do
          -- (Stage 3) Binary compiled, run if appropriate
-         let runExe = do exepath <- makeAbsolute exe
-                         c2 <- system exepath
-                         case c2 of
-                           ExitSuccess -> return ()
-                           ExitFailure n -> error$ "Treelang program exited with error code "++ show n
+         let runExe extra =
+                 do exepath <- makeAbsolute exe
+                    c2 <- system (exepath++extra)
+                    case c2 of
+                      ExitSuccess -> return ()
+                      ExitFailure n -> error$ "Treelang program exited with error code "++ show n
+         runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
          case benchInput of
-           Just _ | isBench mode -> runExe
-           _ | mode == RunExe    -> runExe
+           -- CONVENTION: In benchmark mode we expect the generated executable to take 2 extra params:
+           Just _ | isBench mode -> runExe $ " " ++show (rcSize runConf) ++ " " ++ show (rcIters runConf)
+           _ | mode == RunExe    -> runExe ""
            _                     -> return ()
 
 
