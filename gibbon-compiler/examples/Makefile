@@ -175,7 +175,8 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
  test20b_bintree.sexp test24_defs.sexp test25e_countnodes.sexp \
- test20a_withprint.sexp
+ test00d_printData.sexp test20a_withprint.sexp \
+
 
 # 20a: gibbon: cursorDirect: finish let binding cases in packed context: [2017.01.11]
 
@@ -194,8 +195,9 @@ run_tests_packed: answers
 	$(MAKE) run_tests RUN_MODE="--run" GIBBONARGS="$(GIBBONARGS) --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
 
 
-INTERP2_FAILING = test00b_printBool.sexp test06a_two_cases.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp \
-     test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
+INTERP2_FAILING = test00b_printBool.sexp test00d_printData.sexp \
+  test06a_two_cases.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp \
+  test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
   test06h_rec.sexp test06i_casecase.sexp test07b_iterate.sexp test11b_fundata.sexp test11c_funrec.sexp \
   test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp  \
   test12b_traverse.sexp test12c_traverse.sexp test12_skip.sexp \
