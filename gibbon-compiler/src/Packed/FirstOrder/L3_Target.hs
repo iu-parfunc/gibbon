@@ -148,7 +148,7 @@ data Prim
     | DictLookupP Ty -- ^ takes k,dict, errors if absent
     | DictEmptyP Ty
 
-    | ReadPackedFile (Maybe FilePath) L1.Ty
+    | ReadPackedFile (Maybe FilePath) TyCon
 
     | NewBuf
     -- ^ Allocate a new buffer, return a cursor.

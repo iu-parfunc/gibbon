@@ -147,5 +147,5 @@ isConstructor ex =
   case ex of
     AppE{}      -> True -- ^ Fixme, shouldn't this depend on the type?
     MkPackedE{} -> True
-    PrimAppE (L1.ReadPackedFile _ _) _ -> True
+    PrimAppE (L1.ReadPackedFile{}) _ -> True
     _ -> False

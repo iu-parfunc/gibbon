@@ -354,11 +354,11 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                  l1 <- pure$ case mode of
                              Bench fnname ->
                                  let tmp = "bnch"
-                                     (arg,ret) = L1.getFunTy fnname l1
+                                     (arg@(L1.PackedTy tyc _),ret) = L1.getFunTy fnname l1
                                  in
                                  l1{ L1.mainExp = Just $
                                       -- At L1, we assume ReadPackedFile has a single return value:
-                                      L1.LetE (tmp, arg, L1.PrimAppE (L1.ReadPackedFile benchInput arg) []) $ 
+                                      L1.LetE (tmp, arg, L1.PrimAppE (L1.ReadPackedFile benchInput tyc arg) []) $ 
                                         L1.LetE ("ignored", ret, L1.TimeIt (L1.AppE fnname (L1.VarE tmp)) ret True) $
                                           -- FIXME: should actually return the result, as soon as we are able to print it.
                                           (L1.LitE 0)
@@ -379,18 +379,18 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                        l2  <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals  l2
                        ------------------- End Stubs ---------------------
                        l2  <- pass   "routeEnds"                routeEnds                l2
-                       l2  <- pass'  "typecheck"   (typecheckPermissive (TCConfig True)) l2
+                       -- l2  <- pass'  "typecheck"   (typecheckPermissive (TCConfig False)) l2
                        l2  <- pass'  "flatten"                  flatten2                 l2
                        l2  <- pass   "findWitnesses"            findWitnesses            l2
                        -- QUESTION: Should programs typecheck and execute at this point?
                        -- ANSWER: Not yet, PackedTy/CursorTy mismatches remain:
-                       -- l2  <- pass' "typecheck"   (typecheckPermissive (TCConfig True)) l2
+                       -- l2  <- pass' "typecheck"   (typecheckPermissive (TCConfig False)) l2
                        l2  <- pass   "inlinePacked"             inlinePacked             l2
-                       -- l2  <- pass' "typecheck"   (typecheckPermissive (TCConfig True)) l2
+                       -- l2  <- pass' "typecheck"   (typecheckPermissive (TCConfig False)) l2
                        -- [2016.12.31] For now witness vars only work out after cursorDirect then findWitnesses:
                        l2  <- passF  "cursorDirect"             cursorDirect             l2
                        -- This will issue some warnings, but is useful for debugging:
-                       l2  <- pass'  "typecheck" (typecheckPermissive (TCConfig True))   l2
+                       -- l2  <- pass'  "typecheck" (typecheckPermissive (TCConfig True))   l2
 
                        l2  <- pass'  "flatten"                  flatten2                 l2
                        l2  <- pass   "findWitnesses"            findWitnesses            l2
@@ -464,3 +464,5 @@ clearFile fileName = removeFile fileName `catch` handleErr
                | otherwise = throwIO e
 
 
+
+                            
