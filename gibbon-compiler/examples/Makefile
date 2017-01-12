@@ -56,12 +56,26 @@ benchtest: test24_input.gpkd
 	@echo
 	@echo "\nNow with the full Racket Core grammar:"
 	$(GIBBON) --bench-fun foo --bench-print --bench-input test25b_input.gpkd test25b_racketcore.sexp
-
-
 # Printing doesn't work yet:
 	@echo "\nNow in packed mode:"
 	$(GIBBON) --packed --bench-fun pass --bench-input test24_input.gpkd test24_defs.sexp
 	$(GIBBON) --packed --bench-fun foo --bench-print --bench-input test25b_input.gpkd test25b_racketcore.sexp
+
+
+BIG= $(TREELANGDIR)/ASTBenchmarks/cleaned_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.sexp
+BIGPKD= $(TREELANGDIR)/ASTBenchmarks/binary_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.gpkd
+PERF= perf stat -e cycles,instructions,cache-references,cache-misses,bus-cycles
+
+big:
+	ls -l $(BIG)
+	ls -l $(BIGPKD)
+	$(GIBBON) --pointer --bench-print --bench-fun countnodes -o test25f_pointer.exe test25f_countnodes.sexp
+	$(GIBBON) --packed  --bench-print --bench-fun countnodes -o test25f_packed.exe test25f_countnodes.sexp
+	@echo "Pointer version"
+	$(PERF) ./test25f_pointer.exe --bench-input $(BIGPKD) 0 1000
+	@echo "Packed version"
+	$(PERF) ./test25f_packed.exe --bench-input $(BIGPKD) 0 1000
+
 
 
 # Assumes answers and build already available:
@@ -302,5 +316,5 @@ distclean: clean
 	rm -f *.ans
 	cd error/; rm -f *.ans
 
-.PHONY: prebuild build run_racket treelang_lib answers run_tests core_tests
+.PHONY: prebuild build run_racket treelang_lib answers run_tests core_tests big
 .PHONY: run_tests_interp2 run_tests_packed clean distclean benchtest
