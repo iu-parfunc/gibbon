@@ -30,7 +30,8 @@ test: prebuild build
 	wc -l $(ANSWERS)
 	@echo
 	@echo "Answers available, now proceeding..."
-	$(MAKE) parse_all
+# [2017.01.11] Fairly obsolete:
+#	$(MAKE) parse_all
 	$(MAKE) core_tests
 	@echo
 	@echo "For extra assurance, running valgrind!"
@@ -174,10 +175,10 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
  test20b_bintree.sexp test24_defs.sexp test25e_countnodes.sexp \
- test20_bintree.sexp
-# test20_bintree -- added because of printing.
+ test20a_withprint.sexp
 
-# test20f - wip
+# 20a: gibbon: cursorDirect: finish let binding cases in packed context: [2017.01.11]
+
 # test13_build.sexp       -- problem with unit functions
 
 # test20b_bintree.sexp   -- requires copy insertion
@@ -201,7 +202,7 @@ INTERP2_FAILING = test00b_printBool.sexp test06a_two_cases.sexp test06b_case.sex
   test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
   text08_dict.sexp test08b_dict.sexp test08c_dict.sexp test08d_sharedict.sexp \
   test13_build.sexp test13b_build.sexp  \
-  test20b_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
+  test20a_withprint.sexp test20b_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp test20f_bintree.sexp \
   test25b_racketcore.sexp test25_rackcore.sexp \
   test25c_racketcore.sexp test25d_racketcore.sexp test25e_countnodes.sexp \
   test11_fundata.sexp test10_desugar.sexp test10b_desugar.sexp test24_defs.sexp \
