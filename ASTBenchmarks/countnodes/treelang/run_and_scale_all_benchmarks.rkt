@@ -2,7 +2,7 @@
 #lang typed/racket/no-check
 
 (require "../../common/racket/command_line_runner.rkt"
-         "countnodes.rkt"
+         "countnodes.gib"
          (only-in "../../grammar_racket.gib" Toplvl))
 
 (define (iterate-countnodes [ast : Toplvl] [n : Int]) : Toplvl

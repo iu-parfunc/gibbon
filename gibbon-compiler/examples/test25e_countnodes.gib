@@ -15,7 +15,7 @@
 
 
 ;; -------------
-;; From: (require "../../ASTBenchmarks/countnodes/treelang/countnodes.rkt")
+;; From: (require "../../ASTBenchmarks/countnodes/treelang/countnodes.gib")
 
 (define (countnodes [e0 : Toplvl]) : Int
   (top e0))
