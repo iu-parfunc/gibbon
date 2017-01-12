@@ -174,6 +174,20 @@ addPrintToTail ty tl0 =
         T.LetPrimCallT [] (T.PrintString "\n") [] $ 
           T.RetValsT []  -- Void return after printing.
 
+-- | In packed mode we print by unpacking first.
+addPrintToTailPacked :: L1.Ty -> T.Tail-> SyM T.Tail
+addPrintToTailPacked ty tl0 =
+  -- FIXME: Need to handle products of packed!!
+  case ty of
+    L1.PackedTy tycon _ -> 
+       T.withTail (tl0, T.IntTy) $ \ [trv] ->
+          T.LetCallT [("unpkd", T.PtrTy), ("ignre", T.CursorTy)] (mkUnpackerName tycon) [trv] $ 
+           printTy ty [T.VarTriv "unpkd"] $
+             -- Always print a trailing newline at the end of execution:
+             T.LetPrimCallT [] (T.PrintString "\n") [] $ 
+               T.RetValsT []  -- Void return after printing.
+    _ -> addPrintToTail ty tl0
+
 -- The compiler pass
 -------------------------------------------------------------------------------a
 
@@ -182,13 +196,19 @@ addPrintToTail ty tl0 =
 --
 -- The only substantitive conversion here is of tupled arguments to
 -- multiple argument functions.
-lower :: Bool -> L2.Prog -> SyM T.Prog
-lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
+--
+-- First argument indicates (1) whether we're inpacked mode, and (2)
+-- the pre-cursorize type of the mainExp, if there is a mainExp.
+lower :: (Bool,Maybe L1.Ty) -> L2.Prog -> SyM T.Prog
+lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
   mn <- case mainExp of
           Nothing    -> return Nothing
-          Just (x,mty) -> (Just . T.PrintExp) <$>
-                          (addPrintToTail mty =<<
-                           tail x)
+          Just (x,mty) -> let Just origMainTy = mMainTy
+                              addPrint = if pkd
+                                           then addPrintToTailPacked origMainTy
+                                           else addPrintToTail mty
+                          in (Just . T.PrintExp) <$>
+                              (addPrint =<< tail x)
 
   funs       <- mapM fund (M.elems fundefs) 
   unpackers  <- mapM genUnpacker (M.elems ddefs) 

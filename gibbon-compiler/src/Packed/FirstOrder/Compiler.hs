@@ -375,6 +375,7 @@ compile Config{input,mode,benchInput,benchPrint,packed,verbosity,cc,optc,warnc,c
                  l1  <-       passE "inlineTriv"               (return . inlineTriv)    l1
                  l2  <-       passE "inferEffects"             inferEffects             l1
                  l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig False)) l2
+                 let mmainTyPre = fmap snd $ L2.mainExp l2
                  l2  <-
                      if packed
                      then do
@@ -412,7 +413,7 @@ compile Config{input,mode,benchInput,benchPrint,packed,verbosity,cc,optc,warnc,c
                  l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig packed)) l2
                  l2  <-       pass   "unariser"                 unariser                 l2
                  l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig packed)) l2
-                 l3  <-       pass   "lower"                    (lower packed)           l2
+                 l3  <-       pass   "lower"         (lower (packed,mmainTyPre)) l2
 
                  if mode == Interp2
                   then do l3res <- lift $ execProg l3

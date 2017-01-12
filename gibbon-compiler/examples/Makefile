@@ -190,7 +190,7 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp $(GIBBONEXEC)
 	$(GIBBON) --exe $(GIBBONARGS) $< --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(BLD)/$(basename $<)$(EXTRA_SUFFIX)
 
 
-PACKED_FAILING ?=  test02d_printPair.sexp test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
+PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
  test20b_bintree.sexp test25f_countnodes.sexp \
  test00d_printData.sexp test20a_withprint.sexp \
 
