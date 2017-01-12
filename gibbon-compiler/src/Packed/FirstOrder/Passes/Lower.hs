@@ -94,6 +94,9 @@ openParen s  = T.LetPrimCallT [] (T.PrintString ("(" ++ s ++ " ")) []
 closeParen :: T.Tail -> T.Tail
 closeParen   = T.LetPrimCallT [] (T.PrintString ")") [] 
 
+printSpace :: T.Tail -> T.Tail
+printSpace = T.LetPrimCallT [] (T.PrintString " ") []
+               
 sandwich :: (T.Tail -> T.Tail) -> String -> T.Tail -> T.Tail
 sandwich mid s end = openParen s $ mid $ closeParen end
 
@@ -104,19 +107,26 @@ genDconsPrinter (x:xs) tail = case x of
     val  <- gensym "val"
     t    <- gensym "tail"
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$> 
-      printTy L1.IntTy [T.VarTriv val]  
-        <$> genDconsPrinter xs t 
+      printTy L1.IntTy [T.VarTriv val] <$> 
+       maybeSpace <$>              
+        genDconsPrinter xs t 
       
   L1.PackedTy tyCons _ -> do
     val  <- gensym "val"
     t    <- gensym "tail"
     tmp  <- gensym "temp"
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$> 
-      T.LetCallT [(tmp, T.PtrTy)] (mkPrinterName tyCons) [(T.VarTriv val)] 
-        <$> genDconsPrinter xs t
+      T.LetCallT [(tmp, T.PtrTy)] (mkPrinterName tyCons) [(T.VarTriv val)] <$>
+       maybeSpace <$>  
+         genDconsPrinter xs t
 
   _ -> error "FINISHME: genDconsPrinter"
 
+ where
+  maybeSpace = if L.null xs
+               then id
+               else printSpace
+       
 genDconsPrinter [] tail     = do 
   return $ closeParen $ T.RetValsT [(T.VarTriv tail)] 
 

@@ -190,7 +190,7 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp $(GIBBONEXEC)
 	$(GIBBON) --exe $(GIBBONARGS) $< --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(BLD)/$(basename $<)$(EXTRA_SUFFIX)
 
 
-PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
+PACKED_FAILING ?=  test02d_printPair.sexp test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
  test20b_bintree.sexp test25f_countnodes.sexp \
  test00d_printData.sexp test20a_withprint.sexp \
 
@@ -211,8 +211,9 @@ run_tests_pointer: run_tests
 run_tests_packed: answers
 	$(MAKE) run_tests RUN_MODE="--run" GIBBONARGS="$(GIBBONARGS) --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
 
-
+# This one is seriously rotted:
 INTERP2_FAILING = test00a_size.sexp test00b_printBool.sexp test00d_printData.sexp \
+  test02d_printPair.sexp \
   test06a_two_cases.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp \
   test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
   test06h_rec.sexp test06i_casecase.sexp test07b_iterate.sexp test11b_fundata.sexp test11c_funrec.sexp \
