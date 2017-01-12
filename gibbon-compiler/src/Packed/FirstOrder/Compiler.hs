@@ -163,7 +163,7 @@ configParser = Config <$> inputParser
                 -- I'd like to display a separator and some more info.  How?
   inputParser = -- infoOption "foo" (help "bar") <*>
                 flag' Haskell (long "hs")  <|>
-                flag Unspecified SExpr (long "sexp")
+                flag Unspecified SExpr (long "gib")
 
   modeParser = -- infoOption "foo" (help "bar") <*>
                flag' ToParse (long "parse" <> help "only parse, then print & stop") <|>
@@ -190,7 +190,7 @@ configWithArgs = (,) <$> configParser
 -- line arguments given as string inputs.  This also allows us to run
 -- conveniently from within GHCI.  For example:
 --
--- >  compileCmd $ words $ " -r -p -v5 examples/test11c_funrec.sexp "
+-- >  compileCmd $ words $ " -r -p -v5 examples/test11c_funrec.gib "
 -- 
 compileCmd :: [String] -> IO ()
 compileCmd args = withArgs args $
@@ -240,14 +240,15 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                      ".hs"   -> return (HS.parseFile, fp0)
                      ".sexp" -> return (SExp.parseFile, fp0)
                      ".rkt"  -> return (SExp.parseFile, fp0)
+                     ".gib"  -> return (SExp.parseFile, fp0)
                      oth -> do
                        -- Here's a silly hack just out of sheer laziness vis-a-vis tab completion:
-                         f1 <- doesFileExist $ fp0++".sexp"
-                         f2 <- doesFileExist $ fp0++"sexp"
+                         f1 <- doesFileExist $ fp0++".gib"
+                         f2 <- doesFileExist $ fp0++"gib"
                          if f1 && oth == ""
-                          then return (SExp.parseFile, fp0++".sexp")
+                          then return (SExp.parseFile, fp0++".gib")
                           else if f2 && oth == "."
-                          then return (SExp.parseFile, fp0++"sexp")
+                          then return (SExp.parseFile, fp0++"gib")
                           else error$ "compile: unrecognized file extension: "++
                                   show oth++"  Please specify compile input format."
   (l1,cnt0) <- parser fp

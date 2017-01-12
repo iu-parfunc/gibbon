@@ -1,6 +1,6 @@
 #lang racket
 
-(require "test24_defs.sexp")
+(require "test24_defs.gib")
 
 (define datum (file->value "test24_input.dat"))
 
