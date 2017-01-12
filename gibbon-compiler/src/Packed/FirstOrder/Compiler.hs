@@ -136,8 +136,9 @@ configParser :: Parser Config
 configParser = Config <$> inputParser
                       <*> modeParser
                       <*> ((Just <$> strOption (long "bench-input" <> metavar "FILE" <>
-                                      help ("Hard-code the input file for --bench, otherwise it"++
-                                            " becomes a command-line argument of the resulting binary.")))
+                                      help ("Hard-code the input file for --bench-fun, otherwise it"++
+                                            " becomes a command-line argument of the resulting binary."++
+                                            " Also we RUN the benchmark right away if this is provided.")))
                           <|> pure Nothing)
                       <*> (switch (short 'p' <> long "packed" <>
                                   help "enable packed tree representation in C backend")
@@ -173,7 +174,7 @@ configParser = Config <$> inputParser
                               help "run through the interpreter after cursor insertion") <|>
                flag' RunExe  (short 'r' <> long "run"     <> help "compile and then run executable") <|>
                flag ToExe ToExe (long "exe"  <> help "compile through C to executable (default)") <|>
-               (Bench <$> strOption (short 'b' <> long "bench" <> metavar "FUN" <>
+               (Bench <$> strOption (short 'b' <> long "bench-fun" <> metavar "FUN" <>
                                      help ("generate code to benchmark a 1-argument FUN against a input packed file."++
                                            "  If --bench-input is provided, then the benchmark is run as well.")))
                
