@@ -31,6 +31,8 @@ PROCS = $(shell getconf _NPROCESSORS_ONLN || \
 
 GIBBON= DEBUG=1 stack exec -- gibbon
 
+GIBBONEXEC=$(shell stack exec -- which gibbon)
+
 smalltest: prebuild build
 	$(MAKE) benchtest
 # Having weird trouble with race conditons on answers:
@@ -92,7 +94,8 @@ RUNRACKET= racket -A $(SANDBOXDIR)
 
 # Not necessary, because we build each module before we run it:
 prebuild: $(BLD) test24_input.gpkd
-	PLTADDONDIR=$(SANDBOXDIR) raco make -j $(PROCS) -v $(ALL_TESTS) 
+# [2017.01.12] It's probably good enough to build ONE test, which builds upstream stuff:
+	PLTADDONDIR=$(SANDBOXDIR) raco make -j $(PROCS) -v test00_add.sexp
 
 $(BLD):
 	mkdir -p $(BLD)
@@ -127,8 +130,8 @@ parse_all: build
 all_parsed:  $(ALL_TESTS:.sexp=.parsed)
 
 %.parsed : %.sexp
-#	@echo "Parsing $^"
-	$(GIBBON) --parse $^ 2> $@
+#	@echo "Parsing $<"
+	$(GIBBON) --parse $< 2> $@
 
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= \
@@ -159,8 +162,8 @@ run_tests: $(BLD)
 	@echo "\n Compiling and running tests through our compiler ($(EXTRA_SUFFIX)):"
 	@echo "------------------------------------------------------------------"
 	@echo "Running test set: "$(PASSING_TESTS)
-	@echo "\nFirst clear output files:"
-	rm -f $(OUT_FILES) 
+#	@echo "\nFirst clear output files:"
+#	rm -f $(OUT_FILES) 
 	@echo ""
 	$(MAKE) all_tests
 
@@ -169,21 +172,21 @@ all_tests: $(BLD) answers $(OUT_FILES)
 # Assumes stack build. Builds AND RUNS all the tests:
 # Take care to not collide between different EXTRA_SUFFIX modes.
 #
-# FIXME: Rather than calling with --run, build the executable then run it:
-build_tmp/%$(EXTRA_SUFFIX).out : %.sexp
+# Depend on GIBBONEXEC so we retest when the binary changes.
+build_tmp/%$(EXTRA_SUFFIX).out : %.sexp $(GIBBONEXEC)
 ifeq ($(RUN_MODE),--run)
 	@$(MAKE) --no-print-directory $(@:.out=.exe)
 	./$(@:.out=.exe) > $@ || ./err.sh $(@:.out=)
 else
-	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $^ > $@ || ./err.sh $(@:.out=)
+	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $< > $@ || ./err.sh $(@:.out=)
 endif
-	@./diff.sh $(BLD)/$(basename $^).ans $@ || ./err.sh $(@:.out=)
+	@./diff.sh $(BLD)/$(basename $<).ans $@ || ./err.sh $(@:.out=)
 
 # Just build the tests
 build_tests: $(EXE_FILES)
 
-build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp
-	$(GIBBON) --exe $(GIBBONARGS) $^ --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(BLD)/$(basename $^)$(EXTRA_SUFFIX)
+build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp $(GIBBONEXEC)
+	$(GIBBON) --exe $(GIBBONARGS) $< --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(BLD)/$(basename $<)$(EXTRA_SUFFIX)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
@@ -241,9 +244,9 @@ run_tests_interp1: answers
 
 build_tmp/%.ans : %.sexp
 # Optional, could prebuild before running:
-#	raco make -v $^
-	$(RUNRACKET) $^ > $@ || rm -f $@
-#	$(RUNRACKET) $^ | tee $@
+#	raco make -v $<
+	$(RUNRACKET) $< > $@ || rm -f $@
+#	$(RUNRACKET) $< | tee $@
 
 run_answers:
 	@echo "\nGenerating canonical answers from Racket:"
