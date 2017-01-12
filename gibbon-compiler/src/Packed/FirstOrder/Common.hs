@@ -18,7 +18,7 @@ module Packed.FirstOrder.Common
        , mkPrinterName
 
          -- * Type and Data Constructors
-       , Constr
+       , Constr, TyCon
          -- * Variables and gensyms
        , Var, varAppend, SyM, gensym, genLetter, runSyM
        , cleanFunName

@@ -40,7 +40,7 @@ lvl = 4
 type ProjStack = [Int]
       
 --------------------------------------------------------------------------------
--- STRATEGY ONE - inline until we have direct cursor handoff
+-- STRATEGY ONE - inline until we have direct cursor hand-off
 --------------------------------------------------------------------------------
 
 -- Some expressions are ready to take and return cursors.  Namely,
@@ -629,10 +629,10 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
 
 
       -- FIXME: Generalize this, shouln't require that ReadPackedFile be in this context:
-      NamedVal _nm _ty (PrimAppE (L1.ReadPackedFile path t2) []) ->
+      NamedVal _nm _ty (PrimAppE (L1.ReadPackedFile path tyc t2) []) ->
           -- The ReadPackedFile doesn't follow the dilated convention.
           -- It does its allocation, and returns just the start pointer.
-          return $ Di (MkProdE [ PrimAppE (L1.ReadPackedFile path t2) []
+          return $ Di (MkProdE [ PrimAppE (L1.ReadPackedFile path tyc (typ t2)) []
                                , PrimAppE L1.MkNullCursor [] ])
                 
       -- Eliminate this form, while leaving bindings around.
@@ -1043,7 +1043,7 @@ allocFree ex =
    (LitE _x)         -> True
 
    -- The one primitive that allocates packed data!
-   (PrimAppE (L1.ReadPackedFile _ _) _x2) -> False                        
+   (PrimAppE (L1.ReadPackedFile{}) _x2) -> False                        
    (PrimAppE _x1 _x2) -> True
 
    (AppE _x1 _x2)     -> False                       

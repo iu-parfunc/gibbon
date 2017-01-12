@@ -598,11 +598,11 @@ prim p =
     L1.DictLookupP ty -> T.DictLookupP $ typ ty
     L1.DictEmptyP ty -> T.DictEmptyP $ typ ty
 
-    L1.ReadPackedFile mf ty -> T.ReadPackedFile mf ty
+    L1.ReadPackedFile mf tyc _ -> T.ReadPackedFile mf tyc
 
-    L1.ErrorP{} -> error$ "lower/prim: internal error, should not have got to here: "++show p
-
-    L1.MkTrue  -> error "lower/prim: internal error. MkTrue should not get here."
-    L1.MkFalse -> error "lower/prim: internal error. MkFalse should not get here."
+    L1.MkNullCursor -> error$ "lower/prim: internal error, should not have got to here: "++show p
+    L1.ErrorP{}     -> error$ "lower/prim: internal error, should not have got to here: "++show p
+    L1.MkTrue       -> error "lower/prim: internal error. MkTrue should not get here."
+    L1.MkFalse      -> error "lower/prim: internal error. MkFalse should not get here."
 
 

@@ -48,18 +48,19 @@ smalltest: prebuild build
 benchtest: test24_input.gpkd
 	@echo "\n Testing Gibbon's benchmarking mode."
 	@echo "--------------------------------------------------"
-	$(GIBBON) --bench pass test24_defs.sexp
+	$(GIBBON) --bench-fun pass test24_defs.sexp
 	@echo
 	./test24_defs.exe --bench-input test24_input.gpkd  10 10
 	@echo "Same benchmark, but in one command:"
 	$(GIBBON) -b pass --bench-input test24_input.gpkd  test24_defs.sexp
 	@echo
-# Next is this:
-#	@echo "\nNow in packed mode:"
-#	$(GIBBON) --packed --bench pass --bench-input test24_input.gpkd test24_defs.sexp
-
 	@echo "\nNow with the full Racket Core grammar:"
-	$(GIBBON) --bench foo --bench-input test25b_input.gpkd test25b_racketcore.sexp
+	$(GIBBON) --bench-fun foo --bench-input test25b_input.gpkd test25b_racketcore.sexp
+
+
+	@echo "\nNow in packed mode:"
+	$(GIBBON) --packed --bench-fun pass --bench-input test24_input.gpkd test24_defs.sexp
+
 
 
 # Assumes answers and build already available:
@@ -190,7 +191,7 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp $(GIBBONEXEC)
 
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
- test20b_bintree.sexp test24_defs.sexp test25f_countnodes.sexp \
+ test20b_bintree.sexp test25f_countnodes.sexp \
  test00d_printData.sexp test20a_withprint.sexp \
 
 
