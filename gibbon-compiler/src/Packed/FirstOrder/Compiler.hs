@@ -382,9 +382,9 @@ compile Config{input,mode,benchInput,packed,verbosity,cc,optc,warnc,cfile,exefil
                        l2  <- pass   "findWitnesses"            findWitnesses            l2
                        -- QUESTION: Should programs typecheck and execute at this point?
                        -- ANSWER: Not yet, PackedTy/CursorTy mismatches remain:
-                       l2  <- passE' "typecheck"   (typecheckPermissive (TCConfig True)) l2
+                       -- l2  <- passE' "typecheck"   (typecheckPermissive (TCConfig True)) l2
                        l2  <- pass   "inlinePacked"             inlinePacked             l2
-                       l2  <- passE' "typecheck"   (typecheckPermissive (TCConfig True)) l2
+                       -- l2  <- passE' "typecheck"   (typecheckPermissive (TCConfig True)) l2
                        -- [2016.12.31] For now witness vars only work out after cursorDirect then findWitnesses:
                        l2  <- passF  "cursorDirect"             cursorDirect             l2
                        -- This will issue some warnings, but is useful for debugging:

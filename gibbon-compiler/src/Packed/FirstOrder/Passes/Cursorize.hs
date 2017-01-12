@@ -71,6 +71,13 @@ type ProjStack = [Int]
 -- "start" component of the (start,end) pair which is sent.  Likewise
 -- end cursors come back traveling on their own.
 --
+-- REASONING: Why the dilated convention?  In a word: conditionals.  At the
+-- end of each function body we need to return the appropriate end cursors.
+-- But during the computation, we may need to add an arbitrary amount of
+-- extra state to the return type of a conditional.  Thus it's difficult to
+-- do this routing of information without changing the types of intermediate
+-- expressions significantly.  Dilation is the current strategy.
+--
 -- We proceed with two loops, corresponding to packed and unpacked
 -- context.  When the type of the current expression satisfies
 -- `hasPacked`, that's when we're in packed context.  And, when in
@@ -101,7 +108,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                      mkLets [ (cur,CursorTy (),NewBuffer)
                             | cur <- allCursors dests ] <$>
                          -- Return the original type:
-                         undilate <$> exp2 M.empty True dests x
+                         projVal <$> exp2 M.empty True dests x
              else exp M.empty True x
   return L2.Prog{ fundefs = M.fromList $ L.map (\f -> (L2.funname f,f)) fds'
                 , ddefs = ddefs
@@ -159,8 +166,9 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
      -- Enumerate packed types in our core output:
      outDests0 <- tyToCursors funname (fmap (const ()) oldCoreOut)
      -- We do not provide a cursor param for end-witnesses added by RouteEnds
-     let outDests = mkTupOut$ (L.replicate (S.size ef) NoCursor) ++ [outDests0]
-
+     let outDests = mkTupOut$ (L.replicate numNewOut NoCursor) ++ [outDests0]
+         numNewOut = S.size ef
+                    
      let outDilated = dilateTy oldOut 
                     
      let initEnv = M.singleton funarg (fmap (const ()) inT)
@@ -193,23 +201,23 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                             safeLet tenv (btmp, outDilated, bod2) <$> do
                               let bref = Di (VarE btmp) -- Don't forget this is dilated.
                                                      
-                              -- 4th: separate updated end witnesses from the core return type:
-                              upds <- sequence$ replicate (S.size ef) (gensym "updtCurs" )
-                              mkLets [ (upd, CursorTy (), getNthEnd ix bref)
+                              -- 4th: separate end witnesses from the core return type.
+                              -- These shouldn't really have changed, they were added by RouteEnds.
+                              upds <- sequence$ replicate numNewOut (gensym "updtEndWts" )
+                              mkLets [ (upd, CursorTy (), getNthEnd ix (projVal bref))
                                      | (ix,upd) <- zip [0..] upds ] <$> do
 
                                -- 5th: perform surgery on the tuple, replacing the "start" values in
                                -- the output with corresponding "end" values from the dilated representation:
                                -- This works on the DILATED rep, and returns undilated.
                                newCore <- spliceUpdatedCursors
-                                          bref -- (ProjE (S.size ef) (VarE btmp))
+                                          bref -- (ProjE numNewOut (VarE btmp))
                                           (fmap (const ()) oldCoreOut) -- core type, non-dialated, no end-wits.
 
                                -- 6th: Return value at the type newOutFull, including updated input cursors:
                                return $
                                   dbgTrace 5 ("Finished wrapping up body: newOutFull/dilated "
-                                              ++ ndoc newOutFull ++" / "++ ndoc outDilated 
-                                              ++ "\n core starts at "++show (getCore (S.size ef) bref)) $
+                                              ++ ndoc newOutFull ++" / "++ ndoc outDilated ) $
                                   -- 7th: At the very end, (re)attach end-witnesses:
                                   L1.mkProd $ [ VarE u | u <- upds ] ++ [newCore]
                      return (fnargtmp,b)
@@ -250,7 +258,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                              onDi (LetE (tmp, CursorTy (), chooseBuffer isMain)) <$>
                                                 exp2 tenv' isMain (Cursor tmp) rhs
                                      -- POLICY: we leave the original name bound at the original type:
-                                     LetE (v,typ ty, undilate rhs2) <$>
+                                     LetE (v,typ ty, projVal rhs2) <$>
                                         exp (M.insert v ty tenv) isMain bod
                                      -- withDilated ty rhs2 $ \rhs3 ->
                                      --    -- Here we've reassembled the non-dialated view, original type:
@@ -296,7 +304,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                    then exp tenv isMain scrtE
                    else do tmp <- gensym "scopd"
                            LetE (tmp, CursorTy (), chooseBuffer isMain) <$>
-                             undilate <$>
+                             projVal <$>
                                exp2 (M.insert tmp (CursorTy ()) tenv) isMain (Cursor tmp) scrtE
 
          dbgTrace 2 (" 3. Case scrutinee "++sdoc scrtE++" alloc free?="++show (allocFree scrtE)) $ return ()
@@ -341,10 +349,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
           -- InlinePacked strategy, we push constructors and constructing-functions into a
           -- syntactic context where they can only produce output to ONE destination.
           -- Thus we are limited here:
-          let fullDests = let lp stk _ | stk == prjstk = let Just c = mcurs in c
-                              lp stk (ProdTy ls) = TupOut [ lp (ix:stk) t | (ix,t) <- zip [0..] ls ]
-                              lp _ _ = NoCursor -- Limitation!
-                          in lp [] newRetT
+          let fullDests = deProj newRetT prjstk (let Just c = mcurs in c)                          
                 -- Note: fullDests lines up the new return type against the cursor(s) to
                 -- which the returned, Packed value(s) flows.
 
@@ -456,7 +461,8 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                       ++"\n flpd: core ret before prjstk / without witnesses: "++sdoc flpd
                                       ++"\n"
                                       )$
-                                 -- buildProjE prjstk $
+                                 buildProjE prjstk $ -- Do the final projection.
+                                   -- Fully construct the dilated output of the function:
                                    L1.mkProd [ restoreEndWits flpd
                                              , L1.mkProd allEnds ]
 
@@ -468,7 +474,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                       | otherwise -> do cr <- gensym "argbuf"
                                         LetE (cr, CursorTy (), chooseBuffer isMain) <$> do
                                           e' <- exp2 _tenv isMain (Cursor cr) argE
-                                          mkapp (undilate e')
+                                          mkapp (projVal e')
                                           -- withDilated arg e' $ \e'' -> mkapp e''
 
                   ty | L1.hasPacked ty -> error $
@@ -555,11 +561,17 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
           -- | (NamedVal vr ty val) <- ex  = onDi (\e -> LetE (vr,ty,e) (VarE vr)) <$>
           --                                  (doproj stk ix val)
 
-          | (NamedVal vr ty val) <- ex = do Di val' <- doproj stk ix val
+          -- This is tricky.  The projection is applied AFTER the naming.  Other bits of the
+          -- code can be counting on this name.  It needs to retain the same type.
+          | (NamedVal vr ty val) <- ex = do -- Di val' <- doproj stk ix val
+                                            let stk' = (ix:stk)
+                                            Di val' <- exp2 tenv isMain (deProj ty stk' destC) val
                                             tmp     <- gensym "dila2_"
-                                            return $ Di $ LetE (tmp, typ (dilateTy ty), val') $ 
-                                                          LetE (vr, typ ty, undilate (Di (VarE tmp)))
-                                                           (VarE tmp)
+                                            return $ Di $ 
+                                                      LetE (tmp, typ (dilateTy ty), val') $ 
+                                                          LetE (vr, typ ty, projVal (Di (VarE tmp))) $
+                                                           fromDi $ buildDilaProjE ty stk' $
+                                                                    Di (VarE tmp)
 
           | L2.isExtendedPattern ex     = error$ "cursorDirect/exp2: Unhandled extended L2 pattern: "++ndoc ex
           | AppE f arg           <- ex  =
@@ -579,31 +591,40 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       -- Our variable in the lexical environment is bound to the start only, not (st,en).
       -- To follow the calling convention, we are reponsible for tagging on the end here:
       VarE v -> -- ASSERT: isPacked
-          return $ Di $ MkProdE [VarE (binderWitness v), VarE (toEndVar v)] -- FindEndOf v
+          return $ mkDi (VarE (binderWitness v)) [ VarE (toEndVar v) ] -- FindEndOf v
       LitE _ -> error$ "cursorDirect/exp2: Should not encounter Lit in packed context: "++show ex0
 
-      -- Here's where we write the dest cursor:
+      -- HERE we finally write the dest cursor:
       MkPackedE k ls ->
        let Cursor curs = destC in 
        do dest' <- gensym "cursplus1_"
-          let thetype = PackedTy (getTyOfDataCon ddefs k) ()
-          -- This stands for the  "WriteTag" operation:
-          Di . LetE (dest', typ thetype,
+          let _thetype = PackedTy (getTyOfDataCon ddefs k) () -- Pre-cursorize ret type of this MkPackedE
+          -- This stands for the  "WriteTag" operation.  dest' points just after the tag.
+          -- It's "type", if that is appropriate, is the type of the first field.
+          Di . LetE (dest', CursorTy (),
                      MkPackedE k [VarE curs]) <$>
-             let go2 d [] = return $ MkProdE [VarE curs, VarE d]
-                    -- ^ The final return value lives at the position of the out cursor
+             let 
+                 -- Return (start,end).  The final return value lives at the position of the out cursoara:
+                 go2 d [] = return $ MkProdE [VarE curs, VarE d]
+                 -- Int fields are currently our only "scalar" fields:
                  go2 d ((rnd,IntTy):rst) | L1.isTriv rnd = do
                      d'    <- gensym "curstmp"
                      LetE (d', CursorTy (), WriteInt d rnd ) <$>
                        (go2 d' rst)
-                 -- Here we recursively transfer control
-                 go2 d ((rnd,PackedTy{}):rst) = do
-                     tup  <- gensym "fldtup"
-                     d'   <- gensym "flddst"
-                     Di rnd' <- exp2 (M.insert dest' thetype tenv) isMain (Cursor d) rnd
-                     LetE (tup, typ (dilateTy thetype), rnd') <$>
-                      LetE (d', CursorTy (), projCur (Di (VarE tup)) ) <$>
-                       (go2 d' rst)
+
+                 -- Here we recursively transfer control to the operand:
+                 go2 d ((rnd,PackedTy k l):rst) = do
+                     dila  <- gensym "flddila"
+                     d'    <- gensym "flddst"
+                     Di rnd' <- exp2 tenv isMain (Cursor d) rnd
+                     dbgTrace (lvl+1) (" (**) processing field flowing to MkPackedE, type "++k++", dilated operand: "++ndoc rnd') $ 
+                      LetE (dila, typ (dilateTy (PackedTy k l)), rnd') <$>
+                       LetE (d', CursorTy (), projEnds (Di (VarE dila)) ) <$>
+                        (go2 d' rst)
+
+                 go2 _d ((rnd,unhandled):_rst) =
+                   error $ "Cursorize: support unhandled field type: "++show unhandled
+                   
              in go2 dest' (zip ls (lookupDataCon ddefs k))
 
 
@@ -621,7 +642,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                -- Here we bind to the UNDILATED value, as elsewhere:
                                tmp <- gensym ("dila_"++nm)
                                return $ Di $ LetE (tmp, typ (dilateTy ty), val') $
-                                              LetE (nm, typ ty, undilate (Di (VarE tmp))) $
+                                              LetE (nm, typ ty, projVal (Di (VarE tmp))) $
                                                (VarE tmp) -- We RETURN dilated, which is a postcondition
                 
       -- This is already a witness binding, we leave it alone.
@@ -698,7 +719,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
 -- --        MapE (v,t,rhs) bod -> __
 -- --        FoldE (v1,t1,r1) (v2,t2,r2) bod -> __
 
--- | Takes ALREADY-PROCESSED, dilated expressions and munges them.
+-- | Takes ALREADY-PROCESSED, dilated expressions and tuples them together.
 combineDilated :: (Exp -> L1.Ty) -> [(Dests, DiExp)] -> SyM DiExp
 combineDilated getType ls =
   dbgTrace 5 ("combineDilated:\n "++show ls) $ 
@@ -713,7 +734,7 @@ combineDilated getType ls =
   let (bnds,es') = unzip ls
 
   -- Make one big, flattened product of cursors:
-  bigpkg <- concatProds ds (L.map projCur es')
+  bigpkg <- concatProds ds (L.map projEnds es')
   return $ 
     Di $ mkLets (concat bnds) $
          MkProdE [ L1.mkProd (L.map projVal es')
@@ -791,13 +812,17 @@ carVal  = mkProjE 0
 
 -- And then, once this is working, move it over to Common and use it in RouteEnds as well.
 
+type AugArgs = Exp
+type AugRet  = Exp
 
--- FIXME:  These really look wrong.  Refactoring before fixing.
-getNthEnd :: Int -> DiExp -> Exp
-getNthEnd ix (Di ex) = ProjE ix ex
 
-getCore :: Int -> DiExp -> Exp
-getCore = getNthEnd
+getNthEnd :: Int -> AugRet -> Exp
+getNthEnd = ProjE
+
+-- -- FIXME:  These really look wrong.  Refactoring before fixing.
+-- getNthEnd :: Int -> DiExp -> Exp
+-- getNthEnd ix (Di ex) = ProjE ix ex
+
 
 
 
@@ -817,6 +842,13 @@ newtype DiExp = Di Exp
   deriving (Generic, Out, Show, Read, Eq, Ord)
 --type DiExp = Exp
 
+-- | Constructor that combines a regular expression with a list of
+-- corresponding end cursors.
+mkDi :: Exp -> [Exp] -> DiExp
+mkDi x []  = Di $ MkProdE [x, MkProdE []]
+mkDi x [o] = Di $ MkProdE [x, o]
+mkDi x ls  = Di $ MkProdE [x, MkProdE ls]
+
 onDi :: (Exp -> Exp) -> DiExp -> DiExp
 onDi f (Di x) = Di (f x)
 
@@ -824,10 +856,11 @@ fromDi :: DiExp -> Exp
 fromDi (Di x) = x
 
 
--- | Project the cursor package from a dilated expression.             
-projCur :: DiExp -> Exp
-projCur (Di e) = mkProjE 1 e
-
+-- | Project the cursor package from a dilated expression, contains pointers
+-- to all the ENDs.
+projEnds :: DiExp -> Exp
+projEnds (Di e) = mkProjE 1 e
+                 
 -- | Project the original value from a dilated expression.
 projVal :: DiExp -> Exp
 projVal (Di e) = mkProjE 0 e
@@ -862,10 +895,6 @@ dilateTy ty0 = if L.null tls
          (ListTy _) -> error "FINISHLISTS" -- ListTy $ dilate x
          
 
--- | Drop the extra record of cursors on the floor.
-undilate :: DiExp -> Exp
-undilate = projVal -- redundant, we can get rid of this.
-
 -- | For non-cursor types, dilation is very simple:
 dilateTrivial :: Exp -> DiExp
 dilateTrivial e = Di $ MkProdE [e, MkProdE []]
@@ -897,7 +926,7 @@ spliceUpdatedCursors (Di trv) ty0
    toList t = [t]
 
    valStart  = projVal (Di trv)
-   endsStart = projCur (Di trv)   
+   endsStart = projEnds (Di trv)   
 
    -- Reference a path containing a regular val within the original value.
    refVal [] = valStart
@@ -1082,7 +1111,15 @@ mkProjE2 ix _ e = ProjE ix e
 l1Ty :: L2.Ty -> L1.Ty
 l1Ty = fmap (const ())
 
-
+-- | Compute an inverse, such that when the given projection-stack is applied, the origin Dests
+-- comes back.
+deProj :: Ty1 a -> ProjStack -> Dests -> Dests
+deProj ty prjstk curs = lp [] ty
+  where
+    lp stk _ | stk == prjstk = curs
+    lp stk (ProdTy ls) = TupOut [ lp (ix:stk) t | (ix,t) <- zip [0..] ls ]
+    lp _ _ = NoCursor -- Only the one position includes the cursor pkg.
+                    
 projTy :: Show t => ProjStack -> Ty1 t -> Ty1 t
 projTy [] t = t
 projTy (ix:is) (ProdTy ls) = projTy is (ls!!ix)
@@ -1092,6 +1129,29 @@ projTy stk t = error $ "cursorize/projTy: could not project indices "++show stk+
 buildProjE :: ProjStack -> Exp -> Exp
 buildProjE [] e = e
 buildProjE (ix:is) e = buildProjE is (ProjE ix e)
+
+-- | Translate a projection onto a dilated type, as though it were applied to
+-- the undilated one.  That is,
+--   `buildDilaProjE _ p (dilate x) == dilate (buildProjE p x)`
+-- 
+-- Takes as an argument the PRE-dilated type (x::t above)
+buildDilaProjE :: Show a => Ty1 a -> ProjStack -> DiExp -> DiExp
+buildDilaProjE ty stk de =
+  let core  = buildProjE stk (projVal de)
+      newty = projTy stk ty
+      num   = countPacked newty
+      pkg   = tupleTake num (projEnds de)
+  in mkDi core pkg
+
+tupleTake :: Int -> Exp -> [Exp]
+tupleTake 0 _ = []
+tupleTake 1 e = [e]
+tupleTake n e = [ ProjE i e | i <- [0..n-1] ]
+     
+-- buildDilaProjE ty [] de = de
+-- buildDilaProjE ty (ix:is) (Di e) =
+--     buildProjE is (ProjE ix e)
+                       
                
 -- | Flip end markers to start markers.  Affects only abstract locations.
 flipEnds :: L2.Ty -> L2.Ty

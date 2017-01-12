@@ -66,7 +66,11 @@ typecheck :: TCConfig -> L2.Prog -> Bool
 typecheck cfg prg = runST $ do
                   rf <- newSTRef True
                   !_ <- typecheck' cfg rf prg
-                  readSTRef rf
+                  b <- readSTRef rf
+                  dbgTrace lvl (if b
+                                then " [typecheck] Succeeded!\n"
+                                else " [typecheck] Found failures above!\n") $
+                    return b
 
 -- | Entrypoint for typechecking just an expression:
 typecheckExp :: DDefs L1.Ty -> L1.Exp -> L1.Ty 
