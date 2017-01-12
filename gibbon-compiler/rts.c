@@ -104,9 +104,8 @@ void show_usage(char** argv)
     printf("\n");
     printf("Options:\n");
     printf(" --buffer-size <bytes>      Set the buffer size (default %lld).\n", global_default_buf_size);
-    //    printf(" --bench <size> <iters>     Run the file while setting these global benchmark params.\n");
     printf(" --bench-input <path>       Set the input file read for benchmarking. Applies only\n");
-    printf("                            if the program was *compiled* with --bench. \n");
+    printf("                            IF the program was *compiled* with --bench-fun. \n");
     return;
 }
 

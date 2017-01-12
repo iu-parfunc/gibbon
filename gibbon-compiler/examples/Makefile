@@ -48,7 +48,7 @@ smalltest: prebuild build
 benchtest: test24_input.gpkd
 	@echo "\n Testing Gibbon's benchmarking mode."
 	@echo "--------------------------------------------------"
-	$(GIBBON) --bench pass test24_defs.sexp
+	$(GIBBON) --bench-fun pass test24_defs.sexp
 	@echo
 	./test24_defs.exe --bench-input test24_input.gpkd  10 10
 	@echo "Same benchmark, but in one command:"
@@ -59,7 +59,7 @@ benchtest: test24_input.gpkd
 #	$(GIBBON) --packed --bench pass --bench-input test24_input.gpkd test24_defs.sexp
 
 	@echo "\nNow with the full Racket Core grammar:"
-	$(GIBBON) --bench foo --bench-input test25b_input.gpkd test25b_racketcore.sexp
+	$(GIBBON) --bench-fun foo --bench-input test25b_input.gpkd test25b_racketcore.sexp
 
 
 # Assumes answers and build already available:

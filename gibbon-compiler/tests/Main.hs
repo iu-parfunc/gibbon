@@ -337,6 +337,6 @@ _case_add1 =
       _proc_out <-
         bracket_ (return ())
                  (return ()) -- (removeFile "add1.exe") -- Leave around for debugging [2017.01.11].
-                 (readCreateProcess (shell (valgrind++"./add1.exe --benchmark 10 10")) "")
+                 (readCreateProcess (shell (valgrind++"./add1.exe 10 10")) "")
 
       return ()
