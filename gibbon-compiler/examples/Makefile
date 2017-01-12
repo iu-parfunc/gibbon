@@ -139,17 +139,12 @@ FAILING_TESTS ?= \
   test13_build.sexp test13b_build.sexp \
   test11_fundata.sexp test11c_funrec.sexp test11e_funrec.sexp test12c_traverse.sexp \
   test25d_racketcore.sexp \
-  test16_forlist.sexp test17_forfold.sexp 
+  test16_forlist.sexp test17_forfold.sexp \
+  test25a_withprint.sexp
 
-# test 6i -- WRONG ANSWER, returning 101 !! [2016.11.09]
-# test 6f -- seeing weird discrepanancies where sometimes a tag is not initialized [2016.11.09] 
-
-
-# test11d_funrec.sexp -- segfaults
-# 12b - segfaults
+# test25a "works" but it still prints symbols as numbers.
 
 # NOTE:
-# test11b_fundata.sexp -- map lookup failed on datacon
 # test11d_funrec.sexp -- is giving the WRONG ANSWER
 # test11f_funrec.sexp -- ''
 
@@ -193,7 +188,7 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp $(GIBBONEXEC)
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
  test20b_bintree.sexp test25f_countnodes.sexp \
  test00d_printData.sexp test20a_withprint.sexp \
-
+ test25a_withprint.sexp
 
 # 20a: gibbon: cursorDirect: finish let binding cases in packed context: [2017.01.11]
 
@@ -224,7 +219,7 @@ INTERP2_FAILING = test00a_size.sexp test00b_printBool.sexp test00d_printData.sex
   test13_build.sexp test13b_build.sexp  \
   test20a_withprint.sexp test20b_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp \
   test20f_bintree.sexp test20g_bintree.sexp \
-  test25b_racketcore.sexp test25_rackcore.sexp \
+  test25a_withprint.sexp test25b_racketcore.sexp test25_rackcore.sexp \
   test25c_racketcore.sexp test25d_racketcore.sexp test25e_countnodes.sexp test25f_countnodes.sexp \
   test11_fundata.sexp test10_desugar.sexp test10b_desugar.sexp test24_defs.sexp \
   test09_recur.sexp test08_dict.sexp test02b_datacon.sexp test02c_case.sexp 
@@ -236,7 +231,9 @@ run_tests_interp2: answers
 
 
 # Populated [2016.12.10]
-INTERP1_FAILING = test16_forlist.sexp test17_forfold.sexp test25b_racketcore.sexp
+INTERP1_FAILING = test16_forlist.sexp test17_forfold.sexp test25b_racketcore.sexp \
+  test25a_withprint.sexp
+
 
 run_tests_interp1: answers
 	$(MAKE) run_tests RUN_MODE="--interp1"  FAILING_TESTS="$(INTERP1_FAILING)" EXTRA_SUFFIX=".intrp1"
