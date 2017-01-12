@@ -48,7 +48,8 @@ benchtest: test24_input.gpkd
 	@echo "--------------------------------------------------"
 	$(GIBBON) --bench pass test24_defs.sexp
 	@echo
-	./test24_defs.exe --bench 10 10 --bench-input test24_input.gpkd 
+	./test24_defs.exe --bench-input test24_input.gpkd  10 10
+	@echo "Same benchmark, but in one command:"
 	$(GIBBON) -b pass --bench-input test24_input.gpkd  test24_defs.sexp
 	@echo
 # Next is this:
