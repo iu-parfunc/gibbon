@@ -77,7 +77,7 @@ genUnpacker DDef{tyName, dataCons} = do
   tag  <- gensym "tag"
   tail <- gensym "tail"
   alts <- genAlts dataCons tail tag 0 
-  bod  <- return $ T.LetPrimCallT [(tag, T.IntTy), (tail, T.CursorTy)] T.ReadInt [(T.VarTriv p)] $
+  bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
             T.Switch (T.VarTriv tag) alts Nothing
   return T.FunDecl{ T.funName  = (mkUnpackerName tyName),
                     T.funArgs  = [(p, T.CursorTy)],
