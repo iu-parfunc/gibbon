@@ -108,7 +108,7 @@
     [(Begin0 e1 exprs)
      (+ tag (+ (expr e1) (loopExpr exprs)))]
     [(App e1 es)  ;; (#%plain-app expr ...+)
-     (+ tag (+ (expr e) (loopExpr es)))]
+     (+ tag (+ (expr e1) (loopExpr es)))]
     [(SetBang s e)
      (+ tag (+ scalarcost (expr e)))]
     [(WithContinuationMark e1 e2 e3)
