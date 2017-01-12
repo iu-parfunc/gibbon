@@ -15,6 +15,7 @@ SANDBOX=.racket_sandbox
 
 gibbon-lang: $(SANDBOX)
 	rm -rf $(SANDBOX)/*
+	PLTADDONDIR=`pwd`/$(SANDBOX) raco pkg install typed-racket
 	PLTADDONDIR=`pwd`/$(SANDBOX) raco pkg install --link ./gibbon
 
 # OLD WAY: user-wide install.  No good for testing.
