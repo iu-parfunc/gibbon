@@ -61,6 +61,7 @@ benchtest: test24_input.gpkd
 # Printing doesn't work yet:
 	@echo "\nNow in packed mode:"
 	$(GIBBON) --packed --bench-fun pass --bench-input test24_input.gpkd test24_defs.sexp
+	$(GIBBON) --packed --bench-fun foo --bench-print --bench-input test25b_input.gpkd test25b_racketcore.sexp
 
 
 # Assumes answers and build already available:
