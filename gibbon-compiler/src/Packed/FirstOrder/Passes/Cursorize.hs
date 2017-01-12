@@ -248,7 +248,12 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       MkPackedE _ _ -> error$ "cursorDirect: Should not have encountered MkPacked if type is not packed: "++ndoc ex0
 
       NamedVal _ _ _ -> error$ "cursorDirect: only expected NamedVal convention in packed context: "++ndoc ex0
-                       
+
+      -- Mostly DUPLICATED with exp2 case
+      LetE (vr, _ty, PrimAppE (L1.ReadPackedFile path tyc ty2) []) bod ->
+        (LetE (vr, CursorTy (), PrimAppE (L1.ReadPackedFile path tyc (typ ty2)) [])) <$>
+          exp (M.insert vr (CursorTy ()) tenv) isMain bod
+                        
       -- If we're not returning a packed type in the current
       -- context, then we can only possibly encounter one that does NOT
       -- escape.  I.e. a temporary one:
@@ -634,6 +639,14 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
           -- It does its allocation, and returns just the start pointer.
           return $ Di (MkProdE [ PrimAppE (L1.ReadPackedFile path tyc (typ t2)) []
                                , PrimAppE L1.MkNullCursor [] ])
+
+      -- The only primitive that returns packed data is ReadPackedFile:
+      -- This is simpler than TimeIt below.  While it's out-of-line,
+      -- it doesn't need memory allocation (NewBuffer/ScopedBuffer).
+      -- This is more like the witness case below.
+      LetE (vr, _ty, PrimAppE (L1.ReadPackedFile path tyc ty2) []) bod ->
+        onDi (LetE (vr, CursorTy (), PrimAppE (L1.ReadPackedFile path tyc (typ ty2)) [])) <$>
+          go (M.insert vr (CursorTy ()) tenv) bod
                 
       -- Eliminate this form, while leaving bindings around.
       NamedVal nm ty val -> do Di val' <- go tenv val
@@ -675,10 +688,6 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                       
       -- For the most part, we just dive under the let and address its body.
       LetE (v,ty, tr) bod | L1.isTriv tr -> onDi (LetE (v,typ ty,tr)) <$> go (M.insert v ty tenv) bod
-
-      -- -- The only primitive that returns packed data is ReadPackedFile:
-      -- LetE (_,_, PrimAppE (L1.ReadPackedFile _ _) []) _ ->
-      --    error$ "[Cursorize] Internal error, ReadPackedFile unexpected in this context: " ++ndoc ex0
 
       LetE (v,ty, PrimAppE p ls) bod
 --         | L1.ReadPackedFile _ _ <- p -> ((v,ty,) <$> go tenv (PrimAppE p ls))
