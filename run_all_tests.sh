@@ -72,16 +72,17 @@ raco make -v $RACOPARARG \
      $top/ASTBenchmarks/substitution/racket/subst.rkt \
      $top/ASTBenchmarks/rewrite.rkt
 
-racket $top/typecheck-stlc/examples.rkt
+racket $top/typecheck-stlc/examples.gib
 
 # If we wanted to be really aggressive we could run all racket files
 # in the Repo:
+# TODO(cskksc): change BintreeBench/treebench_gibbon.rkt to .gib
 racket $top/ASTBenchmarks/tests/*.rkt
 
 
 # [2016.11.08] {Having problems with this -RRN}
 # raco make -v $top/kdTree-BenchMark/racket/*.rkt
-racket $top/kdTree-BenchMark/racket/traversal.rkt
+racket $top/kdTree-BenchMark/racket/traversal.gib
 
 
 set +x; echo

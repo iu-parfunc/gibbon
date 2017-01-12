@@ -1,7 +1,7 @@
 #lang racket
 
 (require "expr-gen-stlc.rkt"
-	 "typechecker.rkt")
+	 "typechecker.gib")
 
 
 (define expr (gen-well-formed-sexp 2 2))
