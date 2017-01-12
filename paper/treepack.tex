@@ -1064,9 +1064,9 @@ competetive with handwritten C for packed data.
 
 \subsection{Point correlation}
 % --------------------------------------------
-Point correlation  is a well-known algorithm that is used in data mining\cite{capnproto},
-given set of points in a k-dimensional space, point correlation computes the number of points in the space  that lies within a
-distance r from a given point p, one efficient way of searching such spaces is to store them in  kd-trees \cite{capnproto}. 
+Point correlation  is a well-known algorithm that is used in data mining\cite{gray2000n},
+given a set of points in a k-dimensional space, point correlation computes the number of points in the space  that lies within a
+distance r from a given point p, one efficient way of searching such spaces is to store them in  kd-trees \cite{gray2000n}. 
 
 A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two sub-spaces
 around a split axes in one of the space dimensions, the left subtree stores the points to the left of the split access
@@ -1074,33 +1074,45 @@ and the right subtree sotres the points to the right of the split access, the sp
 the space at each level of the tree, when the number of the points in the subtree is one, a leaf node that stores
 that point is constructed.
 
-In a naive implementation of point correlation each point in the spaced need to be checked, however kd-trees 
+
+In a naive implementation of point correlation each point in the space need to be checked, however kd-trees 
 allow the search process to skip some regions in the space ;by storing at each internal node the boundaries within which all descendent points lies,
 and use that information to skip a subtree if the given point is far enough from the boundaries.
 
-In this work two different variants of the point correlation traversal were impelmented (int out and  tree out), int out version
-produces an integer as the output of the traversal while  tree out version  produces a tree
-that have the same data of the input tree with the some counters in the leaf nodes incremented, those of points that  
-correlate with the input point. Unlike other benchmarks  in this paper, the int out variant does traverse the whole tree due to the early trucation condition ,
-this requires that the packed version stores the address of the right child for each internal node as discussed in section .... Tree out version on the other hand 
-does not need that additional field, although the computation might  truncate at some points during the traversal, 
-the whole tree always need to be traversed to copy the data from the input tree to the output tree, 
-and hence the right child location thus is always available.
+Unlike the rest of the benchmarks, point correlation does not necessary traverse the whole tree due to the early trucation condition,
+this requires an additional pointer to be stored at each internal node  as discussed earlier, this pointer will be read if an early truncation occur to redirect the traversal to the
+next node to be visited.
 
-The traversals are implemented in c++, for each of the two variants, three different implementation are compared ; 
-a pointer based implementation that uses the standard allocation techniques, a pointer based implementation that uses bump allocation, 
-and a packed implementation. 
+  
+\begin{figure}[htp]
+\begin{minipage}{1.04\textwidth}
+  \begin{minipage}{.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{./figs/pointCorr_perf.pdf}
 
-data
+  \end{minipage}
+  $ $ 
+  \begin{minipage}{.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{./figs/pointCorr_MemUsage.pdf}
+    % \includegraphics[width=60mm]{example-image-b}
+%    \label{fig:}
 
-The intOut version requires 63\% less amount of memory to represent the tree , and the outTree requires 55\% less memory ,when
-the size of the tree is large the saving is large ,table .. shows that amount of memory saving for different tree sizes,for treeOut 
-yet it also enhances the performance.
+  \end{minipage}
+\end{minipage}
+   \caption{normalized runtime performance and memory usage of packed point correlation with respect pointer based implementation }
+         \label{fig:pointCorr}
+\end{figure}
 
-Figure .. shows the runtime speedups of over the standerd pointer based implementations for the packed and bump-allocation versions, 
-although it might 
+  
+Figure \ref{fig:pointCorr} shows the speedup and the memory usage of the  packed version  with respect to the standard pointer based implementation for different tree sizes,
+packed representation uses 56\% less memory to represents the the tree than the pointer based representation, this reduction in memory usage has two sources;
+the elimination of the left child pointer and the elimination of the gaps between the structure data members that are added by default for memory alignment purposes.
+The runtime performance of the packed version is almost the same as the pointer based for small trees, however when the size of the tree is large enough the packed version 
+shows up to 35\% speed up.
 
- 
+
+
 \subsection{Parallelism opportunity study}
 % --------------------------------------------
 
