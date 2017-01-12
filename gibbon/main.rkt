@@ -239,7 +239,7 @@ lit := int | #t | #f
   [(vector s)   (size-param  (cast (string->number s) Int))
                 #;(printf "SIZE: ~a\n" (size-param))]
   [(vector)     (void)]
-  [args (error (format "expected 0-2 optional command line arguments <depth> <iters>, got ~a:\n  ~a"
+  [args (error (format "Usage error.\nExpected 0-2 optional command line arguments <size> <iters>, got ~a:\n  ~a"
                        (vector-length args) args))])
 
 (module reader syntax/module-reader
