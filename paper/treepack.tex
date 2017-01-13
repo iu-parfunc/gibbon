@@ -1082,6 +1082,24 @@ Note again that cursors are used in an immutable way, which is why each
 operation that side effects a buffer (e.g. @write@), returns a fresh cursor
 representing the new value of the cursor.
 
+Finally, what becomes of the \il{case} expression?  \il{case e1 of K x y -> e2} is
+translated to:
+
+\begin{code}
+  switch start([e1]) of
+    K(cur) -> let (x,cur2) = read(cur)
+                  (y,cur3) = read(cur2)
+              in [e]
+\end{code}
+
+% Here, switch is similar to C's switch.
+Here @switch@ reads a single byte tag from the cursor given in its scrutinee
+position, and it dispatches based on that tag (just like C's switch statement).
+It is a binding form only insofar as it binds a cursor, @curs@ to the position
+just after the tag---i.e., the start of @K@'s fields.  Then, we generate
+explicit code to read the fields one at a time from the appropriate positions in
+the byte stream.
+
 % ----------------------------------------
 % \vspace{-2mm}
 \subsection{Code generation}
@@ -1152,7 +1170,7 @@ programs. Third, we build a type checker for a small language, and
 benchmark it on large synthetic inputs, demonstrating significant
 speedup for a more complex and data-heavy workload. 
 
-All benchmarks were conducted on a \dots.
+All benchmarks were conducted on a \Red{XYZ}.
 
 \subsection{Microbenchmarks}
 % ----------------------------------------
