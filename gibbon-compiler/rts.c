@@ -42,10 +42,11 @@ static const int num_workers = 1;
   // Requires -std=gnu11
   int dbgprintf(const char *format, ...)
   {
+      int code = 0;
       va_list args;
       va_start(args, format);
   #ifdef DEBUG
-      int code = vprintf(format, args);
+      code = vprintf(format, args);
   #endif
       va_end(args);
       return code;

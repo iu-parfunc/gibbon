@@ -80,16 +80,22 @@ bigfold:
 
 # Don't print with this one.  It's too big. I verified by hand that it worked [2017.01.12].
 bigmap:
-	ls -l $(BIG)
-	ls -l $(BIGPKD)
 	$(GIBBON) --pointer  --bench-fun treewalk -o test26a_pointer.exe --cfile=test26a_pointer.c test26a_treewalk.sexp
 	$(GIBBON) --packed   --bench-fun treewalk -o test26a_packed.exe  --cfile=test26a_packed.c  test26a_treewalk.sexp
-	@echo "Pointer version"
-	$(PERF) ./test26a_pointer.exe --bench-input $(BIGPKD) 0 100
-	@echo "Packed version"
+	$(GIBBON) --pointer --bumpalloc --bench-fun treewalk -o test26a_pointer_bumpalloc.exe --cfile=test26a_pointer_bumpalloc.c test26a_treewalk.sexp
+	DEBUG=2 stack exec -- gibbon --optc="-g -DDEBUG" --pointer --bumpalloc --bench-fun treewalk -o test26a_pointer_bumpalloc_dbg.exe --cfile=test26a_pointer_bumpalloc.c test26a_treewalk.sexp
+
+	@echo; echo "Packed version"
+	@echo "============================================================"
 	$(PERF) ./test26a_packed.exe --bench-input $(BIGPKD) 0 100
 
+	@echo; echo "Pointer version"
+	@echo "============================================================"
+	$(PERF) ./test26a_pointer.exe --bench-input $(BIGPKD) 0 100
 
+	@echo; echo "Bumpalloc pointer version"
+	@echo "============================================================"
+	$(PERF) ./test26a_pointer_bumpalloc.exe --bench-input $(BIGPKD) 0 100
 
 
 # Assumes answers and build already available:
