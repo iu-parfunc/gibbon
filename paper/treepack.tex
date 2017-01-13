@@ -70,7 +70,38 @@
 \input{./bibs/latex_templates/editingmarks}
 
 % If we are using Haskell code in this paper:
+% Defines ``code'' environment:
 \input{./bibs/latex_templates/haskell_style}
+
+\lstloadlanguages{C++}
+\lstnewenvironment{cpp}
+    {\lstset{}%
+      \csname lst@SetFirstLabel\endcsname}
+    {\csname lst@SaveFirstLabel\endcsname}
+    \lstset{
+      language=C++,
+      basicstyle=\footnotesize\ttfamily,
+%      basicstyle=\small\ttfamily,
+      flexiblecolumns=false,
+      basewidth={0.5em,0.45em},
+      keywordstyle=\color{blue},
+      % commentstyle=\color{darkgreen},
+      commentstyle=\color{MidnightBlue}\it,
+      morekeywords={uint64_t, ticks, ticks_t, avg_t, histogram_t, stack_t, sync,
+      long_spawn, fun, match}
+      % deletekeywords={map,sort,zipWith,replicate,Num,Char,Bool,Array,Int,Double
+      %                ,sqrt,not,filter,IO,Maybe,Either,quot,scanl,scanr,reverse,fst,id},
+      % literate= {+}{{$+$}}1 {/}{{$/$}}1 {*}{{$*$}}1 % {=}{{$=$}}1
+      %           {>}{{$>$}}1 {<}{{$<$}}1
+      %          {\\}{{$\lambda$}}1
+      %          {\\\\}{{\char`\\\char`\\}}1
+      %          {->}{{$\rightarrow$}}2 {>=}{{$\geq$}}2 {<-}{{$\leftarrow$}}2
+      %          {<=}{{$\leq$}}2 {=>}{{$\Rightarrow$}}2
+      %          {\ .}{{$\circ$}}2 {\ .\ }{{$\circ$}}2
+      %          {>>}{{>>}}2 {>>=}{{>>=}}2 {=<<}{{=<<}}2
+      %          {|}{{$\mid$}}1
+      %          {dotdotdot}{{$\ldots$}}3
+    }
 
 % Sometimes we have extra short-cuts:
 % \input{macro-defs}
@@ -124,7 +155,9 @@ object per-leaf and node.  While this may seem tautological, we show that common
 tree traversals---as found in compiler passes, space-partitioning trees, and
 elsewhere---can  be automatically compiled to operate on \textbf{pointer-free
 pre-order serializations of trees}.  On modern architectures such programs
-often run several times faster than their pointer-based counterparts.
+often run \Red{significantly} faster than their pointer-based counterparts,
+\Red{and additionally are directly suited to storage and transmission without
+  requiring marshaling.}
 
 We present a prototype compiler for \textsf{Gibbon}, a small
 first-order, purely functional language of tree traversals.  Our
@@ -133,9 +166,9 @@ mutable cursors into input and output buffers
 for packed data, which then generates code as efficient as
 hand-written C. The key compiler technologies include an effect
 system for capturing traversal behavior, combined with a lightweight
-analysis inferring data flow, and a program synthesis step for
-creating missing traversals. We evaluate our compiler on several
-simple tree transformations over a real-world dataset of source code.
+\Red{analysis inferring data flow}, and a program synthesis step for
+creating missing traversals. We evaluate our compiler on 
+tree transformations over a real-world dataset of source code syntax trees.
   
 \end{abstract}
 
@@ -153,11 +186,11 @@ simple tree transformations over a real-world dataset of source code.
 \section{Introduction}
 % ================================================================================
 
-\rn{This is an example peanut-gallery comment.}
+% \rn{This is an example peanut-gallery comment.}
 
 Programs that traverse and construct trees are widely used across all
-domains of computer science, ranging from compiler passes to the
-browser Document Object Model to particle simulations with
+domains of computer science, ranging from compiler passes, to the
+browser Document Object Model, to particle simulations with
 space-partitioning trees.
 %
 Yet almost all modern programming languages and
@@ -242,7 +275,7 @@ serialization format.\footnote{Even restricted to aligned access, we
 % \end{figure}
 
 Indeed, if we can compile programs to operate directly on this serialization, we
-follow a precedent of using serialization formats jointly as in memory formats.
+follow a precedent of using serialization formats jointly as memory formats.
 For example, Cap'N Proto \cite{capnproto} makes it ergonomic for C++ code to operate directly
 on the Protobuf serialization format in memory.  Likewise ``data baking''
 \cite{data-baking} is an established practice in video games---caching assets on
@@ -250,14 +283,14 @@ disk in a format that allows them to be \il{mmap}'d into memory and used
 without further conversion.  As a general example of this capability, the
 Glasgow Haskell Compiler (GHC) recently added the capability to store any closed
 subgraph of the heap as a {\em Compact Normal Form} (CNF) \cite{cnf-icfp15}---a
-contiguous memory region that is treated as a kind of ``super object'', never
+contiguous memory region that is treated as a kind of ``super heap object'', never
 traced by the GC and collected only when there are no pointers into any of the
 sub-parts of the CNF.
 
 The packed tree format above is precisely a dense encoding of a CNF---a
 transitive closure of heap objects with no escaping pointers, in this case, no
-pointers {\em at all}.  But unlike GHC's CNF support, which uses regular heap
-objects, colocated together, the dense tree format {\em requires a complete
+pointers {\em at all}.  But unlike GHC's CNF support---which uses regular heap
+objects, colocated together---the dense tree format {\em requires a complete
 rearrangement of the compiled code that operates on the data}. This
 rearrangement is fundamental to the space savings and format
 simplicity---in contrast, CNF retains all of the pointers and tags of
@@ -276,26 +309,28 @@ following contributions:
 
 \begin{itemize}
 \item We use a small core language, \calculus{}, to formalize a transformation
-  on programs with threes that creates an output program that operates only on
+  on programs that creates an output program operating only on
   pointers in the serialized representation.  This involves a small program
   synthesis step, and we show how the program synthesis and the selection of
-  data structure shape go benefit from co-optimization.
+  data structure shape benefit from co-optimization.
   
-\item We present a prototype language implementation, dubbed \treelang,
-  based on this transformation that can compile a range of tree transforms
-  to be several times faster than standard
-  techniques~\cref{sec:eval-compiler}.
+\item We present a prototype language implementation based on this
+  transformation, dubbed \treelang, that can compile a range of tree transforms
+  to be \Red{several times} faster than standard techniques~\cref{sec:eval-compiler}.
   
 \item We show that the principle of packed-tree traversals works
   broadly across a variety of language implementations, by benchmarking simple
   handwritten packed-tree programs~\cref{sec:eval-shootout} and
   demonstrating speedup even \emph{without} compiler support.
+\rn{This implies we will show results for GHC/Packed, which we don't currently.}
   
-\item We show that not only do tree traversals become faster, but that their
-  {\em potential parallel speedup}, increases as well
+\item We show that not only do tree traversals become faster, \Red{but that their
+  {\em potential parallel speedup}, increases as well}
   \cref{sec:eval-parallel}. To leverage parallelism, we need
   additional information stored in trees---a feature that also allows
   other tree-processing programs to be expressed in our framework.
+\rn{Need to include the KDTree business in the speculative part}
+  
 \end{itemize}
 
 
@@ -305,7 +340,7 @@ following contributions:
 % ================================================================================
 
 We begin our study of packed tree representations with perhaps the
-simplest version: binary trees with
+simplest example: binary trees with
 integer leaves.
 %
 In a language with algebraic datatypes,
@@ -340,12 +375,12 @@ we consider this paper is already a subset of most existing languages.
 The above program is not substantially different in C, Haskell, ML, Scala,
 Swift, Rust, etc.  Only the details of switching on sum types (tagged unions) differ.
 
-The first problem for tree-walks such as this is memory management.  \il{add1}
+The first problem for tree-walks such as this is memory management, as \il{add1}
 can easy become a malloc or garbage collector benchmark.  For instance, the
 following C code is over twice as slow as the same implementation in Java or a
 good functional compiler, thanks to overhead in \il{malloc}.
 
-\begin{code}[language=c]
+\begin{cpp}
   Tree* add1(Tree* t) {
     Tree* tout = (Tree*)malloc(sizeof(Tree));
     tout->tag = t->tag;
@@ -357,7 +392,7 @@ good functional compiler, thanks to overhead in \il{malloc}.
     }
     return tout;
   }
-\end{code}
+\end{cpp}
 
 But even if we assume optimal layout, bump-pointer allocation, and {\em no
   header objects}---even if we go further and enable \il{__packed__} attribute
@@ -368,7 +403,7 @@ of the tree, and that it is possible to automate the translation of recursive
 functions, such as \il{add1} above, into code that directly manipulates data
 buffers containing serialized trees.
 
-For our simple example, this buffer passing code isn't complicated:
+For our simple example, this buffer passing code isn't complicated in C:
 %
 \begin{code}[language=c]
 char* add1(char* tin, char* tout) {
@@ -387,7 +422,7 @@ char* add1(char* tin, char* tout) {
 }
 \end{code}
 %
-Yet this approach cannot scale--it quickly becomes tedious and error prone.
+Yet this approach cannot scale---it quickly becomes tedious and error prone.
 Clearly, no one would use a technique like this for building a
 non-trivial tree processing program such as a compiler or a web browser!
 
