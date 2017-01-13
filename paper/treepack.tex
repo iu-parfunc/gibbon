@@ -48,7 +48,7 @@
 \newcommand{\locend}[1]{\ensuremath{\overline{#1}}}
 
 \newif\ifcurly
-\curlytrue % Comment to deactivate.
+% \curlytrue % Comment to deactivate.
 
 
 %----------------------------------------
@@ -363,17 +363,29 @@ fun add1(t) {
 \begin{code}
  data Tree = Leaf Int | Node Tree Tree
   
- add1 t =
-  case t of
-    Leaf n   -> Leaf (n+1)
-    Node x y -> Node (add1 x) (add1 y)
+ add1 t = case t of
+            Leaf n   -> Leaf (n+1)
+            Node x y -> Node (add1 x) (add1 y)
 \end{code}
 \fi
 
-In fact, the small, first-order, purely functional language of tree traversals
+\ifcurly
+In fact,
+\else
+Here we use a Haskell-like syntax, but in fact
+\fi
+ the small, strict, first-order, purely functional language of tree traversals
 we consider this paper is already a subset of most existing languages.
 The above program is not substantially different in C, Haskell, ML, Scala,
-Swift, Rust, etc.  Only the details of switching on sum types (tagged unions) differ.
+Swift, Rust, etc.  Only the details of switching on sum types (tagged unions)
+differ (as well as the syntax for construct an object while initializing its
+fields, here: 
+\ifcurly
+\il{Node(e1,e2)}).
+\else
+\il{Node e1 e2}).
+\fi
+
 
 The first problem for tree-walks such as this is memory management, as \il{add1}
 can easy become a malloc or garbage collector benchmark.  For instance, the
@@ -524,8 +536,12 @@ interesting programs, such as common compiler passes.
 Programs consist of a series of data type declarations and function
 declarations. Similar to most functional programming languages,
 programmers may define \emph{algebraic data types}, and dispatch on
-them with a \texttt{match} language form (called \texttt{case} or
-\texttt{switch} in some languages).
+them with a
+\ifcurly
+\texttt{match} language form (called \texttt{case} or \texttt{switch} in some languages).
+\else
+\texttt{case} language form (called \texttt{match} or \texttt{switch} in some languages).
+\fi
 %% For example, a data type for peano
 %% numbers would have two cases: zero and successor.
 
@@ -548,12 +564,13 @@ them with a \texttt{match} language form (called \texttt{case} or
 %% \end{code}
 
 In addition to algebraic data types and various numerical types, $\treelang{}$ supports
-general purpose persistent dictionaries, which are useful for implementing compiler
+\Red{general purpose persistent dictionaries}, which are useful for implementing compiler
 passes in a functional style.
+\rn{Perhaps need not mention this if we don't evaluate on dictionaries.}
 
 \note{Show an example of using a dictionary? Or just give the types?}
 
-\note{Describe the Racket front-end and how it works.}
+\note{Describe the Racket front-end and how it works.\rn{No that will go in implementation.}}
 
 % ================================================================================
 \section{Formal Language}
@@ -946,7 +963,7 @@ implementation of these programs in a safe, functional, language, this
 strongly points to the potential of our approach.
 
 \paragraph{Parallelism} A final goal of this project is to explore the role
-these alternate CNF and DPNF representations can play in parallelizing programs.
+\Red{these alternate CNF and DPNF} representations can play in parallelizing programs.
 \Cref{fig:shootout2} shows how a hand-parallelized version the packed approach
 scales much better than a traditional functional compiler.  We believe this
 approach has great potential for improving both single core and multicore performance.

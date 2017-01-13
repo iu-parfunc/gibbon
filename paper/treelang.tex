@@ -10,7 +10,13 @@
 \newcommand{\VD}{\keywd{vd}}
 \newcommand{\TC}{\keywd{T}}
 \newcommand{\DC}{\keywd{K}}
+
+\ifcurly
+\newcommand{\DATA}{\gramwd{type}}
+\else
 \newcommand{\DATA}{\gramwd{data}}
+\fi
+
 \newcommand{\sDC}{\skeywd{K}}
 \newcommand{\sTYP}{\skeywd{\tau}}
 \newcommand{\sEXPR}{\skeywd{e}}
@@ -28,7 +34,11 @@
 \newcommand{\sumtype}[2]{\; {#1} \; + \; {#2} \;}
 \newcommand{\pairtype}[2]{\; {#1}, {#2} \;}
 \newcommand{\dicttype}[1]{\; dictionary(#1)\;}
+\ifcurly
+\newcommand{\case}[2]{\gramwd{match}\; #1\; \gramwd{of}\; #2 \;}
+\else
 \newcommand{\case}[2]{\gramwd{case}\; #1\; \gramwd{of}\; #2 \;}
+\fi
 \newcommand{\pcase}[2]{\gramwd{switch}\; #1\; \gramwd{of}\; #2 \;}
 \newcommand{\pair}[2]{\; ({#1} \,,\, {#2}) \;}
 \newcommand{\fst}[1]{\; \gramwd{fst} \; {#1} \;}
@@ -104,7 +114,7 @@
 \gramor \ENDOF{\sTYP} \\
     \end{aligned}
   \end{displaymath}
-  \caption{Extensions to the core language for DPNF compilation.}  
+  \caption{Extensions to the core language for cursor-inserting compilation.}
   %  \label{fig:gram2}
   \label{fig:target}
 \end{figure*}
