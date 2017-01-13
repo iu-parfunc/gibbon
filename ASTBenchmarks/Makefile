@@ -87,12 +87,13 @@ megas:
 	$(MAKE) MEGASIZE=50 mega
 	$(MAKE) MEGASIZE=100 mega
 	$(MAKE) MEGASIZE=500 mega
+	$(MAKE) MEGASIZE=4456 mega
 
 mega: mega_asts mega_asts/mega_$(MEGASIZE).gpkd
 
 mega_asts/mega_$(MEGASIZE).sexp: cleaned_racket sorted_cleaned_files.txt
 	head -n$(MEGASIZE) sorted_cleaned_files.txt | awk '{ print "./cleaned_racket/"$$2 }' > $@.list
-	cat $@.list | xargs racket combine.rkt --out $@
+	cat $@.list | racket combine.rkt --out $@
 
 mega_asts/mega_$(MEGASIZE).gpkd: mega_asts/mega_$(MEGASIZE).sexp
 	raco make binary_pack.rkt
@@ -110,9 +111,9 @@ largest_clean:
 clean:
 	rm -f sorted_binary_files.txt sorted_cleaned_files.txt
 	rm -rf racket_cleaned*.tgz racket_binary*.tgz
-	rm -rf mega_asts
 
 distclean: clean
 	rm -rf ./expanded_racket ./cleaned_racket ./binary_racket 
+	rm -rf mega_asts
 
 .PHONY: default fetch largest rebuild_binary_racket mega
