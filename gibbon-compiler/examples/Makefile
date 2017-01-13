@@ -238,7 +238,7 @@ run_tests_packed: answers
 
 # This one is seriously rotted:
 INTERP2_FAILING = test00a_size.sexp test00b_printBool.sexp test00d_printData.sexp \
-  test02d_printPair.sexp test03d_eqs.sexp \
+  test02d_printPair.sexp test02e_printNest.sexp test03d_eqs.sexp \
   test06a_two_cases.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp \
   test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
   test06h_rec.sexp test06i_casecase.sexp test07b_iterate.sexp test11b_fundata.sexp test11c_funrec.sexp \
