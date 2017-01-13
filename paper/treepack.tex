@@ -27,6 +27,7 @@
 \captionsetup[figure]{format=ruled}
 \captionsetup[subfigure]{format=plain}
 
+\newcommand{\treelang}{Gibbon\xspace} % NEED NAME
 \newcommand{\treecomp}{Gibbon compiler{}}
 
 %% Traversal effects:
@@ -49,6 +50,8 @@
 
 \newif\ifcurly
 % \curlytrue % Comment to deactivate.
+
+\newcommand{\finishmecurly}{\ifcurly \Red{FINISHME - do ifcurly version here} \else}
 
 
 %----------------------------------------
@@ -127,8 +130,6 @@
 
 %\titlebanner{banner above paper title}        % These are ignored unless
 %\preprintfooter{short description of paper}   % 'preprint' option specified.
-
-\newcommand{\treelang}{Gibbon\xspace} % NEED NAME
 
 \title{Compiling tree transforms to operate on packed representations}
 % \subtitle{Faster compiler passes, parallelization ready}
@@ -648,6 +649,39 @@ passes in a functional style.
 % ================================================================================
 
 \note{Ryan holds lock}
+
+\treelang{}'s approach is to convert programs into a form of {\em destination
+  passing style}, except where destinations are not per-data-constructor, but
+rather per entire tree or subtree.  This approach implies function calls
+producing datatypes do not generally call the allocator, for example, even a
+simple function such as @f@ below is transformed to take a destination cursor
+argument.
+
+\finishmecurly
+\begin{code}
+  data Foo = MkFoo Int
+  f() = MkFoo 3
+\end{code}
+\fi
+
+We say that datatypes like @Foo@ are {\em packed} types, whereas, @Int@, @Bool@,
+@Symbol@, etc are not.  As we'll see in this section, the data constructors for
+packed types (@MkFoo@) will themselves come to require destination cursor arguments.
+
+Functions do not merely have the effect of writing destination memory, however.
+Sometimes functions will need to allocate new memory regions as well.  We treat
+tuples @(e1,e2)@, as value types, so they don't account for allocation.  But
+consider expressions @(e : T)@ where @T@ does not contain packed values, yet
+subexpressions of @e@ have types which do.  For instance:
+
+\finishmecurly
+\begin{code}
+  g n = (case MkFoo n of MkFoo i -> i) + 4
+\end{code}
+\fi
+
+\note{If the optimizer does not eliminate this silly expression, then .............}
+
 
 \note{The central issue in compiling \treelang, is deriving runtime witnesses of
   the {\em end} of values in memory.  If we recursively unpack adjacent fields
