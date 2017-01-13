@@ -448,6 +448,7 @@ describe in this paper.  We refer to the input and output pointers as {\em
   cursors}, and one of the primary jobs of the compiler is to insert
 them automatically.
 
+
 %% \note{Yet, code performing raw manipulation of a pointer into a byte buffer
 %%   containing a serialized tree is extremely error prone and tedious to write.
 %%   It certainly is inappropriate for writing compilers, which contain reams and
@@ -455,12 +456,27 @@ them automatically.
 
 \subsection{Challenges and Limitations}
 
-\note{Rightmost vs leftmost}
+At a basic level, the remainder of the paper describes how to generate
+this efficient but complex C code automatically from the simple
+functional tree walking program we began with.
+%
+However, this code generation process is not as easy as our initial
+example makes it seem. Our compiler must solve several challenging
+problems: ensuring complete traversal, tracking the state of cursors
+into the tree, and more. We begin by outlining some of those
+challenges, and delve into their solutions in subsequent sections.
 
-\note{In the course of this research, we will explore various extensions to the basic
-preorder serialization.  But if we consider only the most basic scenario, where
-all data for a tree resides in one buffer, contiguously, then we must have away
-to compile these functions:}
+Of course, many challenges can be overcome with extensions to the data
+format, and in section~\ref{sec:sizes} we will explore various
+extensions to the basic preorder serialization.  But we begin with the
+most basic scenario, where all data for a tree resides in one buffer,
+contiguously.
+
+
+\paragraph*{Ensuring complete traversal} Our \il{add1} function is
+well-behaved and easy to compile. But many real programs, even very
+simple ones, pose more challenges. For example, consider the following
+two seemingly-similar functions:
 
 \ifcurly
 \begin{code}[language=c]
@@ -486,18 +502,31 @@ to compile these functions:}
 \end{code}
 \fi
 
-\note{These are isomorphic with a pointer-based representation.  But with a preorder,
-packed representation there is the stark difference between them.  The \il{left}
-function only needs access to left branches, which are serialized immediately
-after the tag for \il{Node}.  But the \il{right} function needs to {\em skip over}
-that left child, to reach the right child.  One, brute force solution for this
-problem is to generate a {\em dummy traversal} that walks the left child to
-reach the right.
+These functions are isomorphic to each other in a pointer-based
+representation.  But with a preorder, packed representation there is
+the stark difference between them.  The \il{left} function only needs
+access to left branches, which are serialized immediately after the
+tag for \il{Node}.  But the \il{right} function needs to {\em skip
+  over} that left child, to reach the right child.  Our prototype
+adopts a simple
+solution for this problem: generate a {\em dummy traversal} that
+walks the left child to reach the right.
 %
-Indeed, to establish a complete algorithm for compilation, we do just this.  But
-moving forward in the later two thirds of this research project, we aim to
-explore a range of extensions that cover for the limitations of this basic
-preorder approach.}
+This of course is inefficient for many applications, if the tree
+traversal need only consider a small portion of the tree. But in bulk
+processing where most of the tree is visited, dummy traversal is
+simple and fast, preserving the linear memory access pattern favored
+by modern processors. 
+%
+However, merely adopting this strategy is not enough---the compiler
+must determine when these extra traversals are needed. This requires
+the addition of an effect system to track how much of the input buffer
+is \emph{read}, corresponding to the effect of moving a cursor in the
+resulting code.
+
+\paragraph*{Copying}
+
+\note{Need something here about copy insertion, maybe?}
 
 \paragraph*{Extensions}
 
