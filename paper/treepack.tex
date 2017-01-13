@@ -1262,7 +1262,7 @@ this case converting from pointer graphs to packed representations.
 Indeed, this arrangement is similar to that used by existing EDSLs for, e.g, GPU
 programming~\cite{accelerate,delite,obsidian}.  Except that those languages are
 typically focused on arrays and matrices and exclude recursive sum types and
-recursion---which are the exact emphasis of \treelang.
+recursion---which are \treelang's emphasis.
 
 Currently, we've taken the first steps to making \treelang available as an
 embedded language in the host language Racket.
@@ -1289,21 +1289,34 @@ different modes supported by the C backend (packed/pointer).
 \section{Evaluation}\label{sec:eval}
 % ================================================================================
 
-We evaluate the performance of our approach in three ways. First, we
-demonstrate via small microbenchmarks that packed data representation
-provides significant performance wins across a variety of
-languages---including languages with good performance on pointer-based
-traversals---and that our compiler produces code competitive with any
-existing system. Second, we build several standard compiler passes
+We evaluate the performance of our approach in three ways. First, we examine the
+performance of packed vs. pointer-based tree walks in idealized microbenchmarks.
+We also use these microbenchmarks to examine the state of the art in several
+existing compilers.  And while we find significant variation between compilers,
+no existing system we're aware of comes close to matching \treelang's packed
+mode out of the box.
+
+%% demonstrate via small microbenchmarks that packed data representation
+%% provides significant performance wins across a variety of
+%% languages---including languages with good performance on pointer-based
+%% traversals---and that our compiler produces code competitive with any
+%% existing system.
+
+Second, in \cref{sec:astbench} 
+we build several standard compiler passes
 operating on Racket's intermediate representation, and show
 substantial speedup operating on inputs gathered from existing Racket
 programs. Third, we build a type checker for a small language, and
 benchmark it on large synthetic inputs, demonstrating significant
 speedup for a more complex and data-heavy workload. 
 
-All benchmarks were conducted on a \Red{XYZ}.
+All benchmarks were conducted on a cluster of identical, dedicated Intel
+machines in a two socket configuration with Xeon E5-2670 CPUs at 2.60 Ghz, and
+32GB RAM, running Ubuntu 14.04 LTS.
+\Red{GCC}.
+% (16 cores)
 
-\subsection{Microbenchmarks}
+\subsection{Microbenchmarks}\label{sec:microbench}
 % ----------------------------------------
 
 Our first benchmarks return to the example from section 2,
@@ -1430,7 +1443,7 @@ performance.
 
 
 
-\subsection{Compiler passes on realistic inputs}
+\subsection{Compiler passes on realistic inputs} \label{sec:astbench}
 % --------------------------------------------
 
 While our microbenchmarks demonstrate the potential of the packed
@@ -1482,12 +1495,16 @@ We see \note{something -- describe these figures once we see them!}
 \note{Are we also going to show the same charts ordered by size, instead?}
 
 
-\subsection{Typechecking benchmark}
-% --------------------------------------------
+%% \subsection{Typechecking benchmark}
+%% % --------------------------------------------
 
-\note{type check the simply-typed $\lambda$ calculus in \treelang{}}
+%% \note{type check the simply-typed $\lambda$ calculus in \treelang{}}
 
-\section{Evaluation of Extensions}
+
+
+\section{Evaluation of Extensions} \label{sec:eval-extensions}
+% ================================================================================
+
 
 This section evaluates two extensions to \treelang{} that enable more complicated traversals and expose more opportunities for performance.
 
@@ -1498,7 +1515,7 @@ major performance benefits for packed representations. Additionally,
 we \note{something something parallel}
 
 
-\subsection{Point correlation}
+\subsection{Point correlation} \label{sec:eval-kdtree}
 % --------------------------------------------
 Point correlation  is a well-known algorithm that is used in data mining\cite{gray2000n},
 given a set of points in a k-dimensional space, point correlation computes the number of points in the space  that lies within a
@@ -1549,8 +1566,8 @@ shows up to 35\% speed up.
 
 
 
-\subsection{Parallelism opportunity study}
-% --------------------------------------------
+\subsection{Parallelism opportunity study} \label{sec:eval-parallelism}
+% ---------------------------------------------------------------------
 
 \note{Report preliminary parallel microbenchmark results, showing the potential
   for future work here.}
