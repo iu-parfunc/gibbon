@@ -645,7 +645,7 @@ passes in a functional style.
 
 
 % ================================================================================
-\section{Compilation Algorithms\rn{Ryan holds lock}}
+\section{Compilation Algorithms} \label{sec:compiler}
 % ================================================================================
 
 \treelang{}'s approach is to convert programs into a form of {\em destination
@@ -1150,20 +1150,82 @@ includes code for allocation and initialization.
 
 
 
-
 % ================================================================================
-\section{Implementation}
+\section{Implementation}\label{sec:impl}
 % ================================================================================
 
-\note{Current prototype implementation, status}
+In the next section we evaluate a prototype \treelang compiler, implemented in
+Haskell, and generating code via GCC 5.3.  \Red{(What version is Laith using!!?)}
+%
+This compiler implements the algorithms of the prior section, with a few current
+limitations.  We've implemented copy insertion by hand, and the current compiler
+will potentially duplicate work (rather than copying) if a packed result of a
+function call is used in multiple places, or when a function returns multiple
+packed results.
+
+\paragraph*{Packed \& Pointer, malloc \& bumpalloc}
+
+The \treelang C backend supports multiple modes of code generation, which we
+compare in the next section.  The first distinction is between:
+
+\begin{itemize}
+\item {\bf packed}: generate code using all the compiler passes of
+  \cref{sec:compiler}.  Data of packed type can be read from disk in human
+  readable or binary/packed formats, but in memory it stays always in preorder
+  serialized representation.
+\item {\bf pointer}: use traditional C struct representations.  This mode shares
+  the front and back of the compiler with packed mode.  But it skips the
+  invasive transformations of the source program which introduce cursors and
+  packed representations.  Rather, it uses a traditional pointer graph of heap
+  objects to represent all data.
+\end{itemize}
+
+The packed mode manages tree data by allocating large buffers to serve as output
+destinations (and an additional large region for scoped allocations).  In the
+future we will change this implementation to use a linked list of blocks
+
+
+Then, within the {\bf pointer}
+
+
 
 
 \paragraph*{Embedding Gibbon}
 
-\note{Ultimately the ideas in Gibbon should either be ported to a compiler for
-  existing languages, or the prototype compiler should be used as an EDSL.}
+Ultimately the ideas in Gibbon should either be ported to a mature compiler for
+existing general purpose languages, or the prototype Gibbon compiler should be
+used as an EDSL from within such a host language.
+%
+In the latter scenario, we would write tree-traversals in a subset of the host
+language that corresponds to Gibbon, and those traversals would then be compiled
+to a shared object file and linked back into the host program for transparent
+interoperability.  Tree data would be marshaled at the boundary, as usual, in
+this case converting from pointer graphs to packed representations.
+%
+Indeed, this arrangement is similar to that used by existing EDSLs for, e.g, GPU
+programming~\cite{accelerate,delite,obsidian}.  Except that those languages are
+typically focused on arrays and matrices and exclude recursive sum types and
+recursion---which are the exact emphasis of \treelang.
 
-\note{Racket \#lang mode}
+Currently, we've taken the first steps to making \treelang available as an
+embedded language in the host language Racket.
+%
+Our front-end \treelang is available as a custom \verb|#lang gibbon| mode in
+Racket.  This provides IDE support via DrRacket, while enforcing all the
+specific restrictions of our minimal language (including using Typed Racket to
+enforce the type system with good error messages and source locations).
+%
+What remains is to enable in-calls and out-calls between Racket and Gibbon.
+%
+Indeed, these are already possible using a Gibbon backend which simple expands
+Gibbon (during macro expansion) to run as native Racket code.  Eventually, the C
+backend will likewise be supported without modifying the program.
+%
+
+In the next section we use compare to the Racket backend as a baseline for a
+high-level language with significant overheads.  This information is useful, but
+the more relavant data for evaluating the packing technique is to compare the
+different modes supported by the C backend (packed/pointer).
 
 
 % ================================================================================
