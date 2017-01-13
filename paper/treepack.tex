@@ -9,7 +9,7 @@
 \usepackage{graphicx}
 % \usepackage{mathabx}
 % \usepackage{mathpartir}
-
+\usepackage{xspace}
 \usepackage[noabbrev]{cleveref}
 \usepackage{enumitem}
 
@@ -97,7 +97,7 @@
 %\titlebanner{banner above paper title}        % These are ignored unless
 %\preprintfooter{short description of paper}   % 'preprint' option specified.
 
-\newcommand{\treelang}{Gibbon} % NEED NAME
+\newcommand{\treelang}{Gibbon\xspace} % NEED NAME
 
 \title{Compiling tree transforms to operate on packed representations}
 % \subtitle{Faster compiler passes, parallelization ready}
@@ -171,7 +171,7 @@ dynamically typed.  The only deviations from this consensus are found within
 limited high-performance scenarios where complete trees can be laid out using
 address arithmetic with no intermediate nodes~\cite{hpc-trees}.
 
-But perhaps this consensus is premature?  In numerical computing it is an axiom
+We submit that this consensus is premature.  In numerical computing it is an axiom
 that you cannot treat the numbers in a matrix as individual heap objects.
 Rather, the emphasis is on bulk efficiency.  Likewise, many tree traversals
 process trees in bulk, reading or writing them in one pass.  On such workloads,
@@ -187,14 +187,22 @@ compiler uses 96 bytes
 %% \rn{Double check that for alignment the C compiler is sacrificing a word for the
 %% one byte tag field.} 
 %
-of memory to represent the tree shown in Figure~\ref{fig:intro-tree-unpacked}. On the other hand, if we are sending the tree over the network, we would naturally use a more compact form in serializing it, as shown in Figure~\ref{fig:intro-tree-packed}.   
-In the latter version, we use the same 24 bytes for the data in the leaves, but only 5 bytes for the
-spine (capturing the ``tags'' of the 5 nodes in the tree), rather than 72.  Further, a tree traversal processing this memory
-representation follows a precisely linear memory access pattern, because the
-data is already laid out in a preorder traversal.
+of memory to represent the tree shown in
+Figure~\ref{fig:intro-tree-unpacked}. On the other hand, if we are
+sending the tree over the network, we would naturally use a more
+compact form in serializing it, as shown in
+Figure~\ref{fig:intro-tree-packed}.  In the latter version, we use the
+same 24 bytes for the data in the leaves, but only 5 bytes for the
+spine (capturing the ``tags'' of the 5 nodes in the tree), rather than
+72.  Further, a tree traversal processing this memory representation
+follows a precisely linear memory access pattern, because the data is
+already laid out in a preorder traversal.
 %
-On architectures with inexpensive unaligned access, such as modern x86, this is
-a desirable in-memory representation as well as a serialization format.
+On architectures with inexpensive unaligned access, such as modern
+x86, this is a desirable in-memory representation as well as a
+serialization format.\footnote{Even restricted to aligned access, we
+  would still shrink from 72 bytes to 20 by switching to a packed
+  format.}
 
 \begin{figure}
   \begin{subfigure}[t]{\linewidth}
@@ -250,15 +258,18 @@ The packed tree format above is precisely a dense encoding of a CNF---a
 transitive closure of heap objects with no escaping pointers, in this case, no
 pointers {\em at all}.  But unlike GHC's CNF support, which uses regular heap
 objects, colocated together, the dense tree format {\em requires a complete
-rearrangement of the compiled code that operates on the data}.
+rearrangement of the compiled code that operates on the data}. This
+rearrangement is fundamental to the space savings and format
+simplicity---in contrast, CNF retains all of the pointers and tags of
+the original data.
 
 % Shall we acronymize it?
 % DTF - dense tree form, or dense tree format
 % PTF - packed tree form
 % DTP - dense tree packing
 
-In this paper, we take a first step towards compiler support for transparently
-packing tree datatypes {\em without} changing the source program.  We make the
+In this paper, we take a first step towards compiler support for 
+packed tree datatypes {\em without} changing the source program.  We make the
 following contributions:
 
 \newcommand{\calculus}{$\lambda^D_T$} % uh, Dense Tree?
@@ -270,16 +281,21 @@ following contributions:
   synthesis step, and we show how the program synthesis and the selection of
   data structure shape go benefit from co-optimization.
   
-\item We demonstrate that a prototype language implementation based on this
-  transformation can compile a range of tree transforms to be several times
-  faster than existing techniques~\cref{sec:eval-compiler}.
+\item We present a prototype language implementation, dubbed \treelang,
+  based on this transformation that can compile a range of tree transforms
+  to be several times faster than standard
+  techniques~\cref{sec:eval-compiler}.
   
-\item We show that the principle of packed-tree traversals works across a
-  variety of language implementations, by benchmarking handwritten packed-tree
-  programs~\cref{sec:eval-shootout}.
+\item We show that the principle of packed-tree traversals works
+  broadly across a variety of language implementations, by benchmarking simple
+  handwritten packed-tree programs~\cref{sec:eval-shootout} and
+  demonstrating speedup even \emph{without} compiler support.
   
 \item We show that not only do tree traversals become faster, but that their
-  {\em potential parallel speedup}, increases as well \cref{sec:eval-parallel}.
+  {\em potential parallel speedup}, increases as well
+  \cref{sec:eval-parallel}. To leverage parallelism, we need
+  additional information stored in trees---a feature that also allows
+  other tree-processing programs to be expressed in our framework.
 \end{itemize}
 
 
@@ -288,9 +304,10 @@ following contributions:
 \section{Background and Example}
 % ================================================================================
 
-While our main emphasis in this paper is on accelerating compiler passes, here
-we continue with our simple example from the introduction: binary trees with
+We begin our study of packed tree representations with perhaps the
+simplest version: binary trees with
 integer leaves.
+%
 In a language with algebraic datatypes,
 % In a strongly typed functional language,
 a recursive walk on
@@ -326,7 +343,7 @@ Swift, Rust, etc.  Only the details of switching on sum types (tagged unions) di
 The first problem for tree-walks such as this is memory management.  \il{add1}
 can easy become a malloc or garbage collector benchmark.  For instance, the
 following C code is over twice as slow as the same implementation in Java or a
-good functional compiler:
+good functional compiler, thanks to overhead in \il{malloc}.
 
 \begin{code}[language=c]
   Tree* add1(Tree* t) {
@@ -348,7 +365,7 @@ for our structs to save tag space---the performance of the above code is still
 several times below what is achievable.  The main observation of this paper is
 that bulk tree walks are efficient if done directly on pre-order serialization
 of the tree, and that it is possible to automate the translation of recursive
-functions, such as @add1@ above, into code that directly manipulates data
+functions, such as \il{add1} above, into code that directly manipulates data
 buffers containing serialized trees.
 
 For our simple example, this buffer passing code isn't complicated:
@@ -371,12 +388,13 @@ char* add1(char* tin, char* tout) {
 \end{code}
 %
 Yet this approach cannot scale--it quickly becomes tedious and error prone.
-Clearly, no one would use a technique like this for building a compiler!
+Clearly, no one would use a technique like this for building a
+non-trivial tree processing program such as a compiler or a web browser!
 
-The above program is similar to the output produced by the prototype compiler we
+The above program is similar to the output produced by the \treelang compiler we
 describe in this paper.  We refer to the input and output pointers as {\em
-  cursors}, and one of the primary jobs of the compiler is automatic cursor
-insertion.
+  cursors}, and one of the primary jobs of the compiler is to insert
+them automatically.
 
 %% \note{Yet, code performing raw manipulation of a pointer into a byte buffer
 %%   containing a serialized tree is extremely error prone and tedious to write.
