@@ -567,7 +567,7 @@ in traversing linked data structures.
 \section{The \treelang{} Language}
 % ================================================================================
 
-\note{Informal overview of language}
+\note{Sam holds lock.  Overview of language, including introducing its formal grammar}
 
 To demonstrate the compilation technique we are presenting, we present
 $\treelang{}$, a typed programming language that is simple enough to
@@ -585,6 +585,21 @@ them with a
 \fi
 %% For example, a data type for peano
 %% numbers would have two cases: zero and successor.
+
+\input{treelang}  %% Definitions and figures.
+
+\note{Figure~\cref{fig:source} shows the grammar for our language of tree traversals.
+It is nothing but a standard functional language, with the caveat that algebraic
+datatypes, declared with \il{data}, are implicitly {\em packed} in this language.
+In this basic design, the only non-packed datatypes are tuples \il{(e1,e2)}.
+%% though as the project progresses we plan to allow arbitrary {\em subsets} of
+%% datatypes to be marked with a ``packed'' compiler pragma.
+Note, however, that even tuples allow functions to take and return arbitrary
+numbers of packed datatypes.  When we perform cursor translation in our
+compiler, this will mean passing multiple {\em output cursors} to a function in
+order to provide buffers for it to write its results to.
+}
+
 
 \note{We already gave an example of a program in Gibbon earlier...
   probably only need one, unless we're doing something different here}
@@ -604,6 +619,17 @@ them with a
 %% }}
 %% \end{code}
 
+\paragraph{Extensions for cursor manipulation}
+
+%% We present two languages: L1, a simple purely functional, first-order programming
+%% language with sum and product types; and L2, an imperative programming language
+%% with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
+
+\note{\cref{fig:target}}
+
+
+\paragraph{Dictionaries}
+
 In addition to algebraic data types and various numerical types, $\treelang{}$ supports
 \Red{general purpose persistent dictionaries}, which are useful for implementing compiler
 passes in a functional style.
@@ -613,30 +639,6 @@ passes in a functional style.
 
 \note{Describe the Racket front-end and how it works.\rn{No that will go in implementation.}}
 
-% ================================================================================
-% \section{Formal Language}
-% ================================================================================
-
-\note{The calculus, plus the core lowering transforms in figures.}
-
-%% We present two languages: L1, a simple purely functional, first-order programming
-%% language with sum and product types; and L2, an imperative programming language
-%% with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
-
-\input{treelang}  %% Definitions and figures.
-
-\note{Figure~\cref{fig:source} shows the grammar for our language of tree traversals.
-It is nothing but a standard functional language, with the caveat that algebraic
-datatypes, declared with \il{data}, are implicitly {\em packed} in this language.
-In this initial design, the only non-packed datatypes are tuples \il{(e1,e2)},
-though as the project progresses we plan to allow arbitrary {\em subsets} of
-datatypes to be marked with a ``packed'' compiler pragma.
-Note, however, that even tuples allow functions to take and return arbitrary
-numbers of packed datatypes.  When we perform cursor translation in our
-compiler, this will mean passing multiple {\em output cursors} to a function in
-order to provide buffers for it to write its results to.
-}
-
 
 
 
@@ -644,6 +646,8 @@ order to provide buffers for it to write its results to.
 % \section{A tree-packing compiler}
 \section{Compilation Algorithms}
 % ================================================================================
+
+\note{Ryan holds lock}
 
 \note{The central issue in compiling \treelang, is deriving runtime witnesses of
   the {\em end} of values in memory.  If we recursively unpack adjacent fields
