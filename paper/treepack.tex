@@ -645,10 +645,8 @@ passes in a functional style.
 
 
 % ================================================================================
-\section{Compilation Algorithms}
+\section{Compilation Algorithms\rn{Ryan holds lock}}
 % ================================================================================
-
-\note{Ryan holds lock}
 
 \treelang{}'s approach is to convert programs into a form of {\em destination
   passing style}, except where destinations are not per-data-constructor, but
@@ -705,14 +703,13 @@ analysis of which functions are able to traverse their inputs.
 
 The overall structure of the compiler, covered throughout the rest of this
 section, is:
-
-\begin{itemize}
+\begin{enumerate}
 \item Infer traversal effects.
 % \item Copy and traversal insertion 
-\item Routing end-of-value witnesses.
-\item Switch fully to destination cursor-passing.
-\item Code generation
-\end{itemize}
+\item Route end-of-value witnesses as additional function returns.
+\item Switch to destination cursor-passing with additional function arguments.
+\item Code generation.
+\end{enumerate}
 
 
 \subsection{Inferring traversal effects}
