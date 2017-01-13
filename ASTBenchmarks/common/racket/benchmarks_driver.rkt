@@ -60,13 +60,13 @@
 
 ;; mostly stolen from bintreebench
 (define (driver [csv-port : Output-Port] [exec : String] [pass-name : String]
-		[variant : String]);; [file_list : String])
+		[variant : String] [file_list : String])
 
   (fprintf csv-port "NAME, VARIANT, ARGS, ITERS, MEANTIME\n") ;; start csv file
   
   ;; loop through all files
-  (define files (file->lines "cleaned_list.txt"))
-  ;;(define files (file->lines file_list))
+  ;;(define files (file->lines "cleaned_list.txt"))
+  (define files (file->lines file_list))
   (define location "./cleaned_racket")
 
   (printf "~a files in the dataset.\n" (length files))
@@ -102,8 +102,14 @@
 	    (fprintf csv-port "~a, ~a, ~a, ~a, ~a\n"
 	  	     pass-name variant f iters meantime)
 	    (flush-output csv-port))
-	  (let ([multiple (max 2 (truncate (/ (fl->exact-integer target-time) (inexact->exact batchseconds))))])
+	  (let ([x (inexact->exact batchseconds)])
+	  (if (= x 0)
+	      (begin
+	        (printf "~a\n " batchseconds)
+		(flush-output)
+		(loop (* iters 2)))
+	      (let ([multiple (max 2 (truncate (/ (fl->exact-integer target-time) (inexact->exact batchseconds))))])
             (printf "~a\n " batchseconds) 
             (flush-output)
-            (loop (* iters multiple)))))
+            (loop (* iters multiple)))))))
   ))
