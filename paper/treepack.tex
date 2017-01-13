@@ -155,23 +155,23 @@ simple tree transformations over a real-world dataset of source code.
 
 \rn{This is an example peanut-gallery comment.}
 
-Programs that traverse and construct trees are a niche, but an important one,
-including compiler passes, HTML DOM, and particle simulations with
+Programs that traverse and construct trees are widely used across all
+domains of computer science, ranging from compiler passes to the
+browser Document Object Model to particle simulations with
 space-partitioning trees.
 %
-Yet there is almost no diversity in how modern programming languages and
-compilers represent trees and their traversals, so the matter would seem to be
-settled.
+Yet almost all modern programming languages and
+compilers represent trees and their traversals identically.
 % In the traditional representation,
 Each node of the tree is a heap object, followed by fields for child nodes or
-leaf values.  This representation hasn't changed since the dawn of computing and
+leaf values.  This representation has not changed since early LISP systems and
 is shared across source languages with quite different type
 systems---whether algebraic datatypes or class hierarchies, either statically or
 dynamically typed.  The only deviations from this consensus are found within
 limited high-performance scenarios where complete trees can be laid out using
-address arithmetic with no intermediate nodes \cite{hpc-trees}.
+address arithmetic with no intermediate nodes~\cite{hpc-trees}.
 
-But perhaps the consensus was premature?  In numerical computing it is an axiom
+But perhaps this consensus is premature?  In numerical computing it is an axiom
 that you cannot treat the numbers in a matrix as individual heap objects.
 Rather, the emphasis is on bulk efficiency.  Likewise, many tree traversals
 process trees in bulk, reading or writing them in one pass.  On such workloads,
