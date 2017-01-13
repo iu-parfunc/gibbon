@@ -455,30 +455,68 @@ them automatically.
 
 \note{Rightmost vs leftmost}
 
+\note{In the course of this research, we will explore various extensions to the basic
+preorder serialization.  But if we consider only the most basic scenario, where
+all data for a tree resides in one buffer, contiguously, then we must have away
+to compile these functions:}
 
 \ifcurly
 \begin{code}[language=c]
-fun left(t) {
-  match(t) {
-    Leaf(n):   return n;
-    Node(x,_): return left(x);
+  fun left(t) {
+    match(t) {
+      Leaf(n):   return n;
+      Node(x,_): return left(x);
   }}
-fun right(t) {
-  match(t) {
-    Leaf(n):   return n;
-    Node(_,y): return right(y);
+  fun right(t) {
+    match(t) {
+      Leaf(n):   return n;
+      Node(_,y): return right(y);
   }}
 \end{code}
 \else
 \begin{code}
- left t = case t of
-            Leaf n   -> n
-            Node x _ -> left x
- right t = case t of
+  left t = case t of
              Leaf n   -> n
-             Node _ y -> right y
+             Node x _ -> left x
+  right t = case t of
+              Leaf n   -> n
+              Node _ y -> right y
 \end{code}
 \fi
+
+\note{These are isomorphic with a pointer-based representation.  But with a preorder,
+packed representation there is the stark difference between them.  The \il{left}
+function only needs access to left branches, which are serialized immediately
+after the tag for \il{Node}.  But the \il{right} function needs to {\em skip over}
+that left child, to reach the right child.  One, brute force solution for this
+problem is to generate a {\em dummy traversal} that walks the left child to
+reach the right.
+%
+Indeed, to establish a complete algorithm for compilation, we do just this.  But
+moving forward in the later two thirds of this research project, we aim to
+explore a range of extensions that cover for the limitations of this basic
+preorder approach.}
+
+\paragraph{Extensions}
+
+\note{There are many possible extensions to the basic preorder format. For example, we
+can include {\em indirection nodes}, which use a unique tag to insert a pointer to
+another buffer. We can also selectively use alternative constructors that
+include size information and allow random access.  Note that we can {\em still}
+save space even while storing layout.  For instance, the \il{Node} record above
+could be laid out as: {\il{NodeTag <size_left> <left> <right>}}}
+
+\note{Whereas a pointer based representation would spend {\em two words} for the left
+and right pointer (16 bytes~\footnote{One basic advantage that we leverage here
+  is that 64 bit platforms have become wasteful of memory, using 8 bytes for
+  every pointer, even though most of the time it is unneeded.  }), if we assume
+individual tree values are less than 4GB, we need only four bytes for the size
+of the left tree, and we needn't store the size of the right tree at all!
+% This gives us a total of 4 bytes overhead rather than 
+Indeed, we plan to explore the tradeoff between density of encoding, and
+computational overhead.  A dense encoding in the style of UTF8 would enable us
+to store small values of \il{<size_left>} in as little as one byte.}
+
 
 
 \subsection{Related Work}
