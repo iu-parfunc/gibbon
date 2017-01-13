@@ -665,6 +665,10 @@ argument.
 We say that datatypes like @Foo@ are {\em packed} types, whereas, @Int@, @Bool@,
 @Symbol@, etc are not.  As we'll see in this section, the data constructors for
 packed types (@MkFoo@) will themselves come to require destination cursor arguments.
+%
+We insert these cursors using the extended language of \cref{fig:target}, which
+includes an extended type-system for safely dealing with cursors (currently used
+only by the compiler, and not exposed to the user).
 
 Functions do not, however, merely have the effect of writing destination memory.
 Sometimes functions will need to allocate new memory regions as well.  We treat
@@ -885,7 +889,7 @@ let x = f t in  Node x x
 \end{code}
 
 In future work (\cref{sec:future}), we will use these missing traversals to go
-back and {\em change the data format} (i.e. use packed records augmented with
+back and {\em change the data format} (i.e. use packed records {augmented} with
 indirection nodes, rather than the most straightforward preorder serialization).
 %
 For our preliminary experiments, we instead naively insert copies for the
@@ -896,7 +900,7 @@ program above.
 % ----------------------------------------
 
 After all traversal constraints are satisfied by recursive calls or
-compiler-inserted traversals, then we transform the program in a type-directed
+compiler-inserted traversals, we then transform the program in a type-directed
 way, to include additional return-values: end-witnesses.
 
 \begin{code}
@@ -909,32 +913,50 @@ way, to include additional return-values: end-witnesses.
 Here the type of the end-witness is $\ENDOF{\locend{\freshA}}$, which signifies
 a pointer to the end of a value, which is not useful by itself.  Rather, it is
 useful if it witnesses the {\em start of another value}.
-
+%
 This brings us to the topic of our {\bf type system for cursors}.  Even though
 cursors are internal to the compiler, rather than exposed to the user, we use 
 {\em session types} to insure their correct handling.  In addition to an
-$\ENDOF()$ cursor, which isn't directly usable for anything, we also have
+$\ENDOF$ cursor, which isn't directly usable for anything, we also have
 $\HAS{}$ cursors for reading and $\NEEDS{}$ cursors for writing, as we will
 describe further in \cref{sec:cursorize}.
 
+% Before we deal further with cursors,
+During the routing pass, we also insert additional bindings in the program that
+explicitly encode facts about how to reach the end of a given location.  Namely:
 
-\vspace{-2mm}\subsubsection{Reordering to discover witnesses}
-% ----------------------------------------
+\begin{itemize}
+\item One field's end becomes the its successor's start.  This becomes a
+  binding \il{let y = end(x)}.
+\item Fields of static sizes have known offsets, such as \il{let y = start(x) +
+  offset}.  
+\item In \il{case a of K b1 ... bn -> ...}, the end of last field \il{bn} is
+  also the end of \il{a}, thus \\ \il{let end(a) = end(bn) in ...}
+\end{itemize}
 
-But before we deal further with cursors, we first must repair the program after
-routing end-witnesses.  At this point in the compilation process, ``witnesses''
-have been inserted, and code has been generated to consume them. The program is
-not necessarily valid, however, because the places in the code where witnesses
-are consumed are not guaranteed to be within the scope of the binders that
-introduced the witness.
+We could record these facts in program metadata, but in our current approach we
+instead manifest them explicitly as let bindings.  Note, however, that they may
+refer to (temporarily) unbound end-variables!  We solve this later with a pass
+that reorders these bindings.
+%
+%% \vspace{-2mm}\subsubsection{Reordering to discover witnesses}
+%% % ----------------------------------------
+%
+%% ......... we first must repair the program after
+%% routing end-witnesses.  At this point in the compilation process, end-witnesses
+%% are returned from functions, and code has been elsewhere been generated to consume them. The program is
+%% .......... not necessarily valid, however, because the places in the code where witnesses
+%% are consumed are not guaranteed to be within the scope of the binders that
+%% introduced the witness.
+%
+%% Due to the fact that our programs are {\em purely functional}, and that our
+%% programs are in A-normal form (each sub-expression is bound to a name), we have
+%% great flexibility in code motion and reordering.  We simply represent a program
+%% as a graph where each bound name is a node and its edges are the bindings it
+%% depends on. A correct reordering of a program is a topological sort of this
+%% graph.  After this phase any unbound variables introduced as end-witnesses are
+%% bound again.
 
-Due to the fact that our programs are {\em purely functional}, and that our
-programs are in A-normal form (each sub-expression is bound to a name), we have
-great flexibility in code motion and reordering.  We simply represent a program
-as a graph where each bound name is a node and its edges are the bindings it
-depends on. A correct reordering of a program is a topological sort of this
-graph.  After this phase any unbound variables introduced as end-witnesses are
-bound again.
 
 \vspace{-2mm}\subsubsection{Output cursor insertion}\label{sec:cursorize}
 % ----------------------------------------
