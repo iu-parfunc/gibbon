@@ -114,11 +114,11 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
        -- TimeIt is treated like a conditional.  Don't lift out of it:
        (TimeIt e _t b) -> do (bnd,e') <- go e
                              return ([],TimeIt (flatLets bnd e') (typeIt tenv e) b)
-       -- (MapE x1 x2) -> __
-       -- (FoldE _ _ _) -> __
+       (MapE _ _)    -> error "FINISHLISTS"
+       (FoldE _ _ _) -> error "FINISHLISTS"
 
-flattenExpOld :: DDefs L1.Ty -> Env2 L1.Ty -> L1.Exp -> SyM L1.Exp
-flattenExpOld defs env2 = fExp (vEnv env2)
+_flattenExpOld :: DDefs L1.Ty -> Env2 L1.Ty -> L1.Exp -> SyM L1.Exp
+_flattenExpOld defs env2 = fExp (vEnv env2)
   where
     fExp :: M.Map Var L1.Ty -> L1.Exp -> SyM L1.Exp
     fExp _env (L1.VarE v) = return $ L1.VarE v
@@ -199,6 +199,7 @@ flattenExpOld defs env2 = fExp (vEnv env2)
 
 -- | Helper function that lifts out Lets on the RHS of other Lets.
 --   Absolutely requires unique names.
+mkLetE :: (Var, Ty, Exp) -> Exp -> Exp
 mkLetE (vr,ty, L1.LetE bnd e) bod = mkLetE bnd $ mkLetE (vr,ty,e) bod
 mkLetE bnd bod = L1.LetE bnd bod
 
@@ -214,14 +215,14 @@ type TEnv = M.Map Var L1.Ty
 -- FIXME: Why is this not unified with Typecheck.hs?
     
 typeExp :: (DDefs L1.Ty,Env2 L1.Ty) -> TEnv -> L1.Exp -> L1.Ty
-typeExp (dd,env2) env (L1.VarE v) =
+typeExp (_dd,_env2) env (L1.VarE v) =
     M.findWithDefault (L1.Packed "CURSOR_TY") v env
 --  M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v env
 
-typeExp (dd,env2) _env (L1.LitE _i) = L1.IntTy
-typeExp (dd,env2) _env (L1.AppE v _e) = snd $ fEnv env2 # v
+typeExp (_dd,_env2) _env (L1.LitE _i) = L1.IntTy
+typeExp (_dd,env2) _env (L1.AppE v _e) = snd $ fEnv env2 # v
 
-typeExp (dd,env2) _env (L1.PrimAppE p _es) =
+typeExp (_,_) _env (L1.PrimAppE p _es) =
     case p of
       L1.AddP -> L1.IntTy
       L1.SubP -> L1.IntTy
@@ -234,8 +235,10 @@ typeExp (dd,env2) _env (L1.PrimAppE p _es) =
       L1.DictLookupP ty -> ty
       L1.DictEmptyP ty -> L1.SymDictTy ty
       L1.SizeParam -> L1.IntTy
-      L1.ReadPackedFile _ ty -> ty
+      L1.ReadPackedFile _ _ ty -> ty
+
       _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
+
 typeExp (dd,env2) env (L1.LetE (v,t,_) e) = typeExp (dd,env2) (M.insert v t env) e
 typeExp (dd,env2) env (L1.IfE _ e _) = typeExp (dd,env2) env e
 typeExp (dd,env2) env e0@(L1.ProjE i e) =
@@ -250,7 +253,7 @@ typeExp (dd,env2) env (L1.CaseE _e mp) =
     let (c,args,e) = head mp
     in typeExp (dd,env2) (M.fromList (zip args (lookupDataCon dd c)) `M.union` env) e
 
-typeExp (dd,env2) _env (L1.MkPackedE c _es) = L1.Packed (getTyOfDataCon dd c)
+typeExp (dd,_) _env (L1.MkPackedE c _es) = L1.Packed (getTyOfDataCon dd c)
 
 typeExp (dd,env2) env (L1.TimeIt e _ _) = typeExp (dd,env2) env e
 typeExp (dd,env2) env (L1.MapE _ e)     = typeExp (dd,env2) env e

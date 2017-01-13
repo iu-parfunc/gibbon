@@ -1,5 +1,3 @@
-
-
 \documentclass[a4paper,english]{lipics-v2016}
 \usepackage{microtype}
 
@@ -111,16 +109,9 @@
 %           {Affiliation2/3}
 %           {Email2/3}
 
-\author[1]{John Q. Open}
-\author[2]{Joan R. Access}
-\affil[1]{Dummy University Computing Laboratory, Address/City, Country\\
-  \texttt{open@dummyuniversity.org}}
-\affil[2]{Department of Informatics, Dummy College, Address/City, Country\\
-  \texttt{access@dummycollege.org}}
-\Copyright{John Q. Open and Joan R. Access}%mandatory, please use full first names. LIPIcs license is "CC-BY";  http://creativecommons.org/licenses/by/3.0/
-\subjclass{Dummy classification -- please refer to \url{http://www.acm.org/about/class/ccs98-html}}% mandatory: Please choose ACM 1998 classifications from http://www.acm.org/about/class/ccs98-html . E.g., cite as "F.1.1 Models of Computation". 
-\keywords{Dummy keyword -- please provide 1--5 keywords}% mandatory: Please provide 1-5 keywords
-%Editor-only macros:: begin (do not touch as author)%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\author[1]{}
+\Copyright{}%mandatory, please use full first names. LIPIcs license is "CC-BY";  http://creativecommons.org/licenses/by/3.0/
+%
 
 \begin{document}
 
@@ -130,17 +121,21 @@
 When written idiomatically in most programming languages, programs that traverse
 and construct trees operate over pointer-based data structures, with one heap
 object per-leaf and node.  While this may seem tautological, we show that common
-tree traversals---found in compiler passes, space-partitioning trees, and
-elsewhere---can instead be automatically compiled to operate on pointer-free
-pre-order serializations of trees.  On current x86 architectures such programs
-can run up to several times faster than their pointer-based counterparts.
+tree traversals---as found in compiler passes, space-partitioning trees, and
+elsewhere---can  be automatically compiled to operate on \textbf{pointer-free
+pre-order serializations of trees}.  On modern architectures such programs
+often run several times faster than their pointer-based counterparts.
 
-We present a prototype compiler for a small first-order, purely functional
-language of tree traversals.  The output language includes mutable cursors into
-input and output buffers for packed data.  We propose a compilation technique
-with an effect system for capturing traversal behavior, combined with a
-lightweight analysis inferring data flow, and a program synthesis step for
-creating missing traversals.
+We present a prototype compiler for \textsf{Gibbon}, a small
+first-order, purely functional language of tree traversals.  Our
+compiler first transforms this language into one with
+mutable cursors into input and output buffers
+for packed data, which then generates code as efficient as
+hand-written C. The key compiler technologies include an effect
+system for capturing traversal behavior, combined with a lightweight
+analysis inferring data flow, and a program synthesis step for
+creating missing traversals. We evaluate our compiler on several
+simple tree transformations over a real-world dataset of source code.
   
 \end{abstract}
 
@@ -160,23 +155,23 @@ creating missing traversals.
 
 \rn{This is an example peanut-gallery comment.}
 
-Programs that traverse and construct trees are a niche, but an important one,
-including compiler passes, HTML DOM, and particle simulations with
+Programs that traverse and construct trees are widely used across all
+domains of computer science, ranging from compiler passes to the
+browser Document Object Model to particle simulations with
 space-partitioning trees.
 %
-Yet there is almost no diversity in how modern programming languages and
-compilers represent trees and their traversals, so the matter would seem to be
-settled.
+Yet almost all modern programming languages and
+compilers represent trees and their traversals identically.
 % In the traditional representation,
 Each node of the tree is a heap object, followed by fields for child nodes or
-leaf values.  This representation hasn't changed since the dawn of computing and
+leaf values.  This representation has not changed since early LISP systems and
 is shared across source languages with quite different type
 systems---whether algebraic datatypes or class hierarchies, either statically or
 dynamically typed.  The only deviations from this consensus are found within
 limited high-performance scenarios where complete trees can be laid out using
-address arithmetic with no intermediate nodes \cite{hpc-trees}.
+address arithmetic with no intermediate nodes~\cite{hpc-trees}.
 
-But perhaps the consensus was premature?  In numerical computing it is an axiom
+But perhaps this consensus is premature?  In numerical computing it is an axiom
 that you cannot treat the numbers in a matrix as individual heap objects.
 Rather, the emphasis is on bulk efficiency.  Likewise, many tree traversals
 process trees in bulk, reading or writing them in one pass.  On such workloads,
@@ -1064,9 +1059,9 @@ competetive with handwritten C for packed data.
 
 \subsection{Point correlation}
 % --------------------------------------------
-Point correlation  is a well-known algorithm that is used in data mining\cite{capnproto},
-given set of points in a k-dimensional space, point correlation computes the number of points in the space  that lies within a
-distance r from a given point p, one efficient way of searching such spaces is to store them in  kd-trees \cite{capnproto}. 
+Point correlation  is a well-known algorithm that is used in data mining\cite{gray2000n},
+given a set of points in a k-dimensional space, point correlation computes the number of points in the space  that lies within a
+distance r from a given point p, one efficient way of searching such spaces is to store them in  kd-trees \cite{gray2000n}. 
 
 A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two sub-spaces
 around a split axes in one of the space dimensions, the left subtree stores the points to the left of the split access
@@ -1074,33 +1069,45 @@ and the right subtree sotres the points to the right of the split access, the sp
 the space at each level of the tree, when the number of the points in the subtree is one, a leaf node that stores
 that point is constructed.
 
-In a naive implementation of point correlation each point in the spaced need to be checked, however kd-trees 
+
+In a naive implementation of point correlation each point in the space need to be checked, however kd-trees 
 allow the search process to skip some regions in the space ;by storing at each internal node the boundaries within which all descendent points lies,
 and use that information to skip a subtree if the given point is far enough from the boundaries.
 
-In this work two different variants of the point correlation traversal were impelmented (int out and  tree out), int out version
-produces an integer as the output of the traversal while  tree out version  produces a tree
-that have the same data of the input tree with the some counters in the leaf nodes incremented, those of points that  
-correlate with the input point. Unlike other benchmarks  in this paper, the int out variant does traverse the whole tree due to the early trucation condition ,
-this requires that the packed version stores the address of the right child for each internal node as discussed in section .... Tree out version on the other hand 
-does not need that additional field, although the computation might  truncate at some points during the traversal, 
-the whole tree always need to be traversed to copy the data from the input tree to the output tree, 
-and hence the right child location thus is always available.
+Unlike the rest of the benchmarks, point correlation does not necessary traverse the whole tree due to the early trucation condition,
+this requires an additional pointer to be stored at each internal node  as discussed earlier, this pointer will be read if an early truncation occur to redirect the traversal to the
+next node to be visited.
 
-The traversals are implemented in c++, for each of the two variants, three different implementation are compared ; 
-a pointer based implementation that uses the standard allocation techniques, a pointer based implementation that uses bump allocation, 
-and a packed implementation. 
+  
+\begin{figure}[htp]
+\begin{minipage}{1.04\textwidth}
+  \begin{minipage}{.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{./figs/pointCorr_perf.pdf}
 
-data
+  \end{minipage}
+  $ $ 
+  \begin{minipage}{.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{./figs/pointCorr_MemUsage.pdf}
+    % \includegraphics[width=60mm]{example-image-b}
+%    \label{fig:}
 
-The intOut version requires 63\% less amount of memory to represent the tree , and the outTree requires 55\% less memory ,when
-the size of the tree is large the saving is large ,table .. shows that amount of memory saving for different tree sizes,for treeOut 
-yet it also enhances the performance.
+  \end{minipage}
+\end{minipage}
+   \caption{normalized runtime performance and memory usage of packed point correlation with respect pointer based implementation }
+         \label{fig:pointCorr}
+\end{figure}
 
-Figure .. shows the runtime speedups of over the standerd pointer based implementations for the packed and bump-allocation versions, 
-although it might 
+  
+Figure \ref{fig:pointCorr} shows the speedup and the memory usage of the  packed version  with respect to the standard pointer based implementation for different tree sizes,
+packed representation uses 56\% less memory to represents the the tree than the pointer based representation, this reduction in memory usage has two sources;
+the elimination of the left child pointer and the elimination of the gaps between the structure data members that are added by default for memory alignment purposes.
+The runtime performance of the packed version is almost the same as the pointer based for small trees, however when the size of the tree is large enough the packed version 
+shows up to 35\% speed up.
 
- 
+
+
 \subsection{Parallelism opportunity study}
 % --------------------------------------------
 

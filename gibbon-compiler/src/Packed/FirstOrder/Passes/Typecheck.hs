@@ -171,8 +171,9 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
                  L1.MkFalse   -> return $ Concrete BoolTy
 
                  L1.MkNullCursor -> return $ Concrete (CursorTy ())
-                 L1.ReadPackedFile _ ty | postCursorize -> return $ Concrete (CursorTy ())
-                                        | otherwise     -> return $ Concrete ty
+                 -- WARNING: tricky convention here.  We DONT update 'ty' to CursorTy, because we need to remember
+                 -- the name of this type for later (i.e. calling the right print function).
+                 L1.ReadPackedFile _ _ ty -> return $ Concrete ty
                                      
                  -- _ -> failFresh $ "Case not handled in typecheck: " ++ (show p)
 
@@ -304,7 +305,9 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
   lookupTCVar :: TCEnv s -> Var -> ST s (TCVar s)
   lookupTCVar tcenv v =
       case M.lookup v tcenv of
-        Nothing | isEndVar v -> return (Concrete (CursorTy ()))
+        Nothing
+                -- FIXME: Go stricter and remove this exception:
+                | isEndVar v -> return (Concrete (CursorTy ()))
                                 -- Policy: do we allow unbound end-witnesses?  They may not really be used.
                 | otherwise  -> do reportErr $ "Failed to look up type of var " ++ (show v)
                                    freshTCVar

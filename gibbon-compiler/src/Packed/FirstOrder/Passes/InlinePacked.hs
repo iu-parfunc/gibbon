@@ -59,7 +59,7 @@ inlinePackedExp ddefs = exp True
   var v | isWitnessVar v = let Just v' = fromWitnessVar v in v'
         | otherwise = v
 
-  -- | THis takes a flag indicating how aggressively to inline.  We
+  -- | This takes a flag indicating how aggressively to inline.  We
   -- have a special case where for end-var witnesses we don't inline as much.
   --
   -- Here the environment contains code that has NOT yet been recursively processed.
@@ -94,9 +94,14 @@ inlinePackedExp ddefs = exp True
        | VarE _v2   <- rhs  -> addAndGo  -- ^ We always do copy-prop.
        | not (L2.hasRealPacked t) -> LetE (var v,t, rhs') 
                                      (exp strong ((v,(t,Nothing)):env) bod)
-       | TimeIt{}   <- rhs  -> LetE (var v,t, rhs') (exp strong ((v,(t,Nothing)):env) bod)
        | ProjE _ _  <- rhs  -> addAndGo
 
+       -- DONT inline timing:                 
+       | TimeIt{}   <- rhs  -> LetE (var v,t, rhs') (exp strong ((v,(t,Nothing)):env) bod)
+       -- DONT inline file reading:
+       | PrimAppE (L1.ReadPackedFile{}) _ <- rhs ->
+          LetE (var v,t, rhs') (exp strong ((v,(t,Nothing)):env) bod)
+                       
 --      | L1.hasTimeIt rhs  -> __ -- AUDITME: is this still needed?
        | isConstructor rhs -> addAndGo
 
@@ -147,5 +152,5 @@ isConstructor ex =
   case ex of
     AppE{}      -> True -- ^ Fixme, shouldn't this depend on the type?
     MkPackedE{} -> True
-    PrimAppE (L1.ReadPackedFile _ _) _ -> True
+--    PrimAppE (L1.ReadPackedFile{}) _ -> True
     _ -> False

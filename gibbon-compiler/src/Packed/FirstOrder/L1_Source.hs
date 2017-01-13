@@ -109,8 +109,10 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | MkFalse -- ^ Zero argument constructor.
 
           | MkNullCursor -- ^ Zero argument constructor.
-          | ReadPackedFile (Maybe FilePath) Ty -- ^ Read (mmap) a binary file containing
-            -- packed data.  This must be annotated with the type of the file being read.
+          | ReadPackedFile (Maybe FilePath) TyCon Ty
+            -- ^ Read (mmap) a binary file containing packed data.  This must be annotated with the
+            -- type of the file being read.  The `Ty` tracks the type as the program evolvels
+            -- (first PackedTy then CursorTy).  The TyCon tracks the original type name.
             
 -- TODO: Need list construction if we're going to have list:
 --          | MkList
@@ -187,7 +189,7 @@ mapExprs fn prg@Prog{fundefs,mainExp} =
 getFunTy :: Var -> Prog -> (Ty,Ty)
 getFunTy fn Prog{fundefs} =
     case M.lookup fn fundefs of
-      Just FunDef{funArg=(vr,argty), funRetTy} -> (argty,funRetTy)
+      Just FunDef{funArg=(_vr,argty), funRetTy} -> (argty,funRetTy)
       Nothing -> error $ "getFunTy: L1 program does not contain binding for function: "++show fn
 
 -- | Free data variables.  Does not include function variables, which
@@ -208,9 +210,9 @@ freeVars ex =
     MkPackedE _ ls -> S.unions $ L.map freeVars ls
     TimeIt e _ _ -> freeVars e
     IfE a b c -> freeVars a `S.union` freeVars b `S.union` freeVars c
-    MapE (v,t,rhs) bod -> freeVars rhs `S.union`
-                          S.delete v (freeVars bod)
-    FoldE (v1,t1,r1) (v2,t2,r2) bod ->
+    MapE (v,_t,rhs) bod -> freeVars rhs `S.union`
+                           S.delete v (freeVars bod)
+    FoldE (v1,_t1,r1) (v2,_t2,r2) bod ->
         freeVars r1 `S.union` freeVars r2 `S.union`
         (S.delete v1 $ S.delete v2 $ freeVars bod)
 
@@ -284,6 +286,7 @@ primArgsTy p =
     DictEmptyP _ty -> []
     DictInsertP _ty -> error "primArgsTy: dicts not handled yet"
     DictLookupP _ty -> error "primArgsTy: dicts not handled yet"
+    ReadPackedFile{} -> []
     (ErrorP _ _) -> []
 
 

@@ -40,7 +40,7 @@ lvl = 4
 type ProjStack = [Int]
       
 --------------------------------------------------------------------------------
--- STRATEGY ONE - inline until we have direct cursor handoff
+-- STRATEGY ONE - inline until we have direct cursor hand-off
 --------------------------------------------------------------------------------
 
 -- Some expressions are ready to take and return cursors.  Namely,
@@ -248,7 +248,12 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       MkPackedE _ _ -> error$ "cursorDirect: Should not have encountered MkPacked if type is not packed: "++ndoc ex0
 
       NamedVal _ _ _ -> error$ "cursorDirect: only expected NamedVal convention in packed context: "++ndoc ex0
-                       
+
+      -- Mostly DUPLICATED with exp2 case
+      LetE (vr, _ty, PrimAppE (L1.ReadPackedFile path tyc ty2) []) bod ->
+        (LetE (vr, CursorTy (), PrimAppE (L1.ReadPackedFile path tyc (typ ty2)) [])) <$>
+          exp (M.insert vr (CursorTy ()) tenv) isMain bod
+                        
       -- If we're not returning a packed type in the current
       -- context, then we can only possibly encounter one that does NOT
       -- escape.  I.e. a temporary one:
@@ -629,11 +634,19 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
 
 
       -- FIXME: Generalize this, shouln't require that ReadPackedFile be in this context:
-      NamedVal _nm _ty (PrimAppE (L1.ReadPackedFile path t2) []) ->
+      NamedVal _nm _ty (PrimAppE (L1.ReadPackedFile path tyc t2) []) ->
           -- The ReadPackedFile doesn't follow the dilated convention.
           -- It does its allocation, and returns just the start pointer.
-          return $ Di (MkProdE [ PrimAppE (L1.ReadPackedFile path t2) []
+          return $ Di (MkProdE [ PrimAppE (L1.ReadPackedFile path tyc (typ t2)) []
                                , PrimAppE L1.MkNullCursor [] ])
+
+      -- The only primitive that returns packed data is ReadPackedFile:
+      -- This is simpler than TimeIt below.  While it's out-of-line,
+      -- it doesn't need memory allocation (NewBuffer/ScopedBuffer).
+      -- This is more like the witness case below.
+      LetE (vr, _ty, PrimAppE (L1.ReadPackedFile path tyc ty2) []) bod ->
+        onDi (LetE (vr, CursorTy (), PrimAppE (L1.ReadPackedFile path tyc (typ ty2)) [])) <$>
+          go (M.insert vr (CursorTy ()) tenv) bod
                 
       -- Eliminate this form, while leaving bindings around.
       NamedVal nm ty val -> do Di val' <- go tenv val
@@ -644,7 +657,27 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                return $ Di $ LetE (tmp, typ (dilateTy ty), val') $
                                               LetE (nm, typ ty, projVal (Di (VarE tmp))) $
                                                (VarE tmp) -- We RETURN dilated, which is a postcondition
-                
+      TimeIt e t b -> do Di e' <- go tenv e
+                         return $ Di $ TimeIt e' (typ t) b
+      -- This is what we've mostly AVOIDED by the InlinePacked
+      -- strategy.  We have a packed-generating expression on the RHS.
+      -- We don't know exactly where it flows to at this point.  We
+      -- need to create a fresh buffer for it.
+      LetE (v,ty, TimeIt rhs ty2 isIter) bod ->
+       case ty2 of
+        PackedTy{} -> do
+           tmp <- gensym "timrhs"
+           onDi (LetE (tmp, CursorTy (), ScopedBuffer)) <$>  
+             do rhs' <- exp2 tenv isMain (Cursor tmp) rhs
+                bod' <- go (M.insert v ty tenv) bod
+                return $ onDi (LetE (v, typ ty, TimeIt (projVal rhs') (typ ty2) isIter))
+                               bod'
+        ty | not (L1.hasPacked ty) -> do
+             rhs' <- exp tenv isMain rhs
+             onDi (LetE (v, typ ty, TimeIt rhs' ty2 isIter)) <$>
+                 go (M.insert v ty tenv) bod
+        _ -> error "FINISHE: Cursorize: handle TimeIt on Let RHS binding multiple packed values."
+                               
       -- This is already a witness binding, we leave it alone.
       LetE (v,ty,rhs) bod | L2.isCursorTy ty -> do
          -- We do NOT dilate the cursor types:
@@ -656,17 +689,14 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       -- For the most part, we just dive under the let and address its body.
       LetE (v,ty, tr) bod | L1.isTriv tr -> onDi (LetE (v,typ ty,tr)) <$> go (M.insert v ty tenv) bod
 
-      -- -- The only primitive that returns packed data is ReadPackedFile:
-      -- LetE (_,_, PrimAppE (L1.ReadPackedFile _ _) []) _ ->
-      --    error$ "[Cursorize] Internal error, ReadPackedFile unexpected in this context: " ++ndoc ex0
-
       LetE (v,ty, PrimAppE p ls) bod
 --         | L1.ReadPackedFile _ _ <- p -> ((v,ty,) <$> go tenv (PrimAppE p ls))
         | otherwise -> onDi (LetE (v,typ ty,PrimAppE p ls)) <$> go (M.insert v ty tenv) bod
               
       -- LetE (v1,t1, LetE (v2,t2, rhs2) rhs1) bod ->
       --    go $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
-              
+        
+        
       LetE bnd _ -> error$ "cursorDirect: finish let binding cases in packed context:\n "++sdoc bnd
 
       -- An application that returns packed values is treated just like a 
@@ -711,9 +741,6 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       -- We should probably run the unariser before this pass:
       ProjE i ex -> doproj [] i ex
                         
-      TimeIt e t b -> do Di e' <- go tenv e
-                         return $ Di $ TimeIt e' (typ t) b
-
       MapE{}  -> error$ "cursorDirect: packed case needs finishing:\n  "++sdoc ex0
       FoldE{} -> error$ "cursorDirect: packed case needs finishing:\n  "++sdoc ex0
 -- --        MapE (v,t,rhs) bod -> __
@@ -1043,7 +1070,7 @@ allocFree ex =
    (LitE _x)         -> True
 
    -- The one primitive that allocates packed data!
-   (PrimAppE (L1.ReadPackedFile _ _) _x2) -> False                        
+   (PrimAppE (L1.ReadPackedFile{}) _x2) -> False                        
    (PrimAppE _x1 _x2) -> True
 
    (AppE _x1 _x2)     -> False                       

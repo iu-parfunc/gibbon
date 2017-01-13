@@ -48,18 +48,35 @@ smalltest: prebuild build
 benchtest: test24_input.gpkd
 	@echo "\n Testing Gibbon's benchmarking mode."
 	@echo "--------------------------------------------------"
-	$(GIBBON) --bench pass test24_defs.gib
+
+	$(GIBBON) --bench-fun pass --bench-print test24_defs.gib
 	@echo
 	./test24_defs.exe --bench-input test24_input.gpkd  10 10
 	@echo "Same benchmark, but in one command:"
-	$(GIBBON) -b pass --bench-input test24_input.gpkd  test24_defs.gib
+	$(GIBBON) -b pass --bench-print --bench-input test24_input.gpkd  test24_defs.gib
 	@echo
-# Next is this:
-#	@echo "\nNow in packed mode:"
-#	$(GIBBON) --packed --bench pass --bench-input test24_input.gpkd test24_defs.gib
-
 	@echo "\nNow with the full Racket Core grammar:"
-	$(GIBBON) --bench foo --bench-input test25b_input.gpkd test25b_racketcore.gib
+	$(GIBBON) --bench-fun foo --bench-print --bench-input test25b_input.gpkd test25b_racketcore.gib
+# Printing doesn't work yet:
+	@echo "\nNow in packed mode:"
+	$(GIBBON) --packed --bench-fun pass --bench-input test24_input.gpkd test24_defs.gib
+	$(GIBBON) --packed --bench-fun foo --bench-print --bench-input test25b_input.gpkd test25b_racketcore.gib
+
+
+BIG= $(TREELANGDIR)/ASTBenchmarks/cleaned_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.gib
+BIGPKD= $(TREELANGDIR)/ASTBenchmarks/binary_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.gpkd
+PERF= perf stat -e cycles,instructions,cache-references,cache-misses,bus-cycles
+
+big:
+	ls -l $(BIG)
+	ls -l $(BIGPKD)
+	$(GIBBON) --pointer --bench-print --bench-fun countnodes -o test25f_pointer.exe test25f_countnodes.gib
+	$(GIBBON) --packed  --bench-print --bench-fun countnodes -o test25f_packed.exe test25f_countnodes.gib
+	@echo "Pointer version"
+	$(PERF) ./test25f_pointer.exe --bench-input $(BIGPKD) 0 1000
+	@echo "Packed version"
+	$(PERF) ./test25f_packed.exe --bench-input $(BIGPKD) 0 1000
+
 
 
 # Assumes answers and build already available:
@@ -138,17 +155,12 @@ FAILING_TESTS ?= \
   test13_build.gib test13b_build.gib \
   test11_fundata.gib test11c_funrec.gib test11e_funrec.gib test12c_traverse.gib \
   test25d_racketcore.gib \
-  test16_forlist.gib test17_forfold.gib 
+  test16_forlist.gib test17_forfold.gib \
+  test25a_withprint.gib
 
-# test 6i -- WRONG ANSWER, returning 101 !! [2016.11.09]
-# test 6f -- seeing weird discrepanancies where sometimes a tag is not initialized [2016.11.09] 
-
-
-# test11d_funrec.gib -- segfaults
-# 12b - segfaults
+# test25a "works" but it still prints symbols as numbers.
 
 # NOTE:
-# test11b_fundata.gib -- map lookup failed on datacon
 # test11d_funrec.gib -- is giving the WRONG ANSWER
 # test11f_funrec.gib -- ''
 
@@ -190,13 +202,8 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.gib $(GIBBONEXEC)
 
 
 PACKED_FAILING ?=  test12_skip.gib  test16_forlist.gib test17_forfold.gib \
- test20b_bintree.gib test24_defs.gib test25f_countnodes.gib \
- test00d_printData.gib test20a_withprint.gib \
-
-
-# 20a: gibbon: cursorDirect: finish let binding cases in packed context: [2017.01.11]
-
-# test13_build.gib       -- problem with unit functions
+ test20b_bintree.gib  \
+ test25a_withprint.gib
 
 # test20b_bintree.gib   -- requires copy insertion
 # test12_skip.gib       -- requires copy insertion!! unbound var thru to C code
@@ -210,8 +217,9 @@ run_tests_pointer: run_tests
 run_tests_packed: answers
 	$(MAKE) run_tests RUN_MODE="--run" GIBBONARGS="$(GIBBONARGS) --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
 
-
+# This one is seriously rotted:
 INTERP2_FAILING = test00a_size.gib test00b_printBool.gib test00d_printData.gib \
+  test02d_printPair.gib \
   test06a_two_cases.gib test06b_case.gib test06_case.gib test06c_nested.gib \
   test06d_rec.gib test06e_rec.gib test06f_rec.gib test06g_rec.gib \
   test06h_rec.gib test06i_casecase.gib test07b_iterate.gib test11b_fundata.gib test11c_funrec.gib \
@@ -222,7 +230,7 @@ INTERP2_FAILING = test00a_size.gib test00b_printBool.gib test00d_printData.gib \
   test13_build.gib test13b_build.gib  \
   test20a_withprint.gib test20b_bintree.gib test20c_bintree.gib test20d_bintree.gib test20e_bintree.gib \
   test20f_bintree.gib test20g_bintree.gib \
-  test25b_racketcore.gib test25_rackcore.gib \
+  test25a_withprint.gib test25b_racketcore.gib test25_rackcore.gib \
   test25c_racketcore.gib test25d_racketcore.gib test25e_countnodes.gib test25f_countnodes.gib \
   test11_fundata.gib test10_desugar.gib test10b_desugar.gib test24_defs.gib \
   test09_recur.gib test08_dict.gib test02b_datacon.gib test02c_case.gib 
@@ -234,7 +242,9 @@ run_tests_interp2: answers
 
 
 # Populated [2016.12.10]
-INTERP1_FAILING = test16_forlist.gib test17_forfold.gib test25b_racketcore.gib
+INTERP1_FAILING = test16_forlist.gib test17_forfold.gib test25b_racketcore.gib \
+  test25a_withprint.gib
+
 
 run_tests_interp1: answers
 	$(MAKE) run_tests RUN_MODE="--interp1"  FAILING_TESTS="$(INTERP1_FAILING)" EXTRA_SUFFIX=".intrp1"
@@ -307,5 +317,5 @@ distclean: clean
 	rm -f *.ans
 	cd error/; rm -f *.ans
 
-.PHONY: prebuild build run_racket treelang_lib answers run_tests core_tests
+.PHONY: prebuild build run_racket treelang_lib answers run_tests core_tests big
 .PHONY: run_tests_interp2 run_tests_packed clean distclean benchtest

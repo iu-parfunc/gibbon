@@ -398,24 +398,24 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                      | otherwise -> error$ "wrong number of args/return values expected from PrintString prim: "++show (rnds,bnds)
 
                  -- FINISHME: Codegen here depends on whether we are in --packed mode or not.
-                 ReadPackedFile mfile l1ty
+                 ReadPackedFile mfile tyc 
                      | [] <- rnds, [(outV,_outT)] <- bnds -> do
                              let filename = case mfile of
-                                              Just f  -> [cexp| $string:f |]
+                                              Just f  -> [cexp| $string:f |] -- Fixed at compile time.
                                               Nothing -> [cexp| read_benchfile_param() |] -- Will be set by command line arg.
-                                 L1.PackedTy dcon _ = l1ty
-                                 unpackName = mkUnpackerName dcon                                
+                                 unpackName = mkUnpackerName tyc
                                  unpackcall = LetCallT [(outV,PtrTy),("junk",CursorTy)]
                                                     unpackName [VarTriv "ptr"] (AssnValsT [])
                              let mmapCode =
                                   [ C.BlockDecl[cdecl| int fd = open( $filename, O_RDONLY); |]
                                   , C.BlockDecl[cdecl| struct stat st; |]
                                   , C.BlockStm  [cstm| fstat(fd, &st); |]
-                                  , C.BlockDecl[cdecl| $ty:(codegenTy CursorTy) *ptr = mmap(0,st.st_size,PROT_READ,MAP_PRIVATE,fd,0); |]
+                                  , C.BlockDecl[cdecl| $ty:(codegenTy CursorTy) ptr = ($ty:(codegenTy CursorTy)) mmap(0,st.st_size,PROT_READ,MAP_PRIVATE,fd,0); |]
                                   ]
                              docall <- if isPacked
                                        -- In packed mode we eagerly FORCE the IO to happen before we start benchmarking:
-                                       then pure [ C.BlockStm [cstm| { int sum=0; for(int i=0; i < st.st_size; i++) sum += ptr[i]; } |] ]
+                                       then pure [ C.BlockStm [cstm| { int sum=0; for(int i=0; i < st.st_size; i++) sum += ptr[i]; } |]
+                                                 , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ptr; |]]
                                        else codegenTail unpackcall (codegenTy (ProdTy []))
                              return $ mmapCode ++ docall
                      | otherwise -> error $ "ReadPackedFile, wrong arguments "++show rnds++", or expected bindings "++show bnds
