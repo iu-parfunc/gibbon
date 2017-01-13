@@ -43,7 +43,8 @@
 \else
 \newcommand{\case}[2]{\gramwd{case}\; #1\; \gramwd{of}\; #2 \;}
 \fi
-\newcommand{\pcase}[2]{\gramwd{switch}\; #1\; \gramwd{of}\; #2 \;}
+\newcommand{\pcasesym}{\gramwd{switch}}
+\newcommand{\pcase}[2]{\pcasesym{}\; #1\; \gramwd{of}\; #2 \;}
 \newcommand{\pair}[2]{\; ({#1} \,,\, {#2}) \;}
 \newcommand{\fst}[1]{\; \gramwd{fst} \; {#1} \;}
 \newcommand{\snd}[1]{\; \gramwd{snd} \; {#1} \;}

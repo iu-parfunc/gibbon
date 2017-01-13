@@ -1051,8 +1051,40 @@ all $Needs()$ cursors must be used in a {\em linear}, but pure way.
 %%   ((Cur@$_a$@,Cur@$_b$@),(Cur@$_{\END{a}}$@,Cur@$_{\END{b}}$@))
 %% \end{code}
 
+\paragraph*{The fate of constructors and case expressions}
 % ----------------------------------------
-\vspace{-2mm}\subsubsection{Code generation}
+
+The final feature of the target language (\cref{fig:target}), which we have not
+addressed yet, is the $\pcasesym$ form.
+%
+The cursor insertion pass lowers constructors to operate directly on destination
+cursors.  Thus \il{MkFoo 55} becomes a multi-step operation:
+% \il{MkFoo(curs)}
+
+\begin{code}
+  let cur2 = MkFoo(curs)
+      cur3 = write(55,cur2)
+  in (curs, curs + 9) -- one byte tag + 8 byte int
+\end{code}
+
+Here, the original constructor took its argument directly, whereas in the target
+language the constructor takes a destination cursor and writes a {\em single
+  character} to that destination (its runtime tag).  Writing the field is a
+separate @write@ operation.
+%
+The above program is well-typed, following the protocol on output cursors.
+%
+The ``value'' of the resulting data constructor is now equivalent to the pointer
+location at which it was written, i.e. @curs@, which we return in the body,
+together with and end-witness to match the dilated convention.
+%
+Note again that cursors are used in an immutable way, which is why each
+operation that side effects a buffer (e.g. @write@), returns a fresh cursor
+representing the new value of the cursor.
+
+% ----------------------------------------
+% \vspace{-2mm}
+\subsection{Code generation}
 % ----------------------------------------
 
 The final step for \treecomp{} is to generate C code.  Because our first
@@ -1080,10 +1112,10 @@ The cursors become merely \il{char*} pointers.
   some helper procedures and benchmark harnesses).}
 
 % --------------------------------------------------------------------------------
-\subsection{Discussion}
+% \subsection{Discussion}
 % --------------------------------------------------------------------------------
 
-\note{Purity is important to reordering for witness search.}
+% \note{Purity is important to reordering for witness search.}
 
 
 
