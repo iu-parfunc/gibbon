@@ -1424,11 +1424,12 @@ error prone. On the other hand, writing such a traversal in an idiomatic style
 using pattern matching is fairly straightforward. This, then, is an ideal use
 case for \treelang{}'s approach.
 
+\paragraph*{Benchmarks}
 In this portion of the evaluation, we look at two compiler passes, each of
 which takes a Racket abstract syntax tree as input and produces a new abstract
 syntax tree. The two passes are copy propagation and substitution. In both
 cases, the structure of the output AST might differ from that of the input
-AST.
+AST. While we only evaluate two compiler passes,\footnote{An artifact of \treelang{}'s prototype compiler's limitations, not \treelang{}'s expressiveness.} we note that these passes contain the two major operation types that might be performed on trees: {\tt map}s, where the output tree is structurally similar to the input tree but with a function applied to each node, and {\tt fold}s, which in this context is transforming an entire subtree into some differently-structured output (something as simple as a single node, representing a reduction). Seen at this high level, all compiler passes on ASTs are roughly similar, differing mostly in the work done near the leaves of trees. Hence, we expect the results of these two passes to be representative.
 
 We write each pass in \treelang{}. We then generate two versions of each
 benchmark, one using \treelang{}'s {\em pointer-based} backend (which
@@ -1443,7 +1444,14 @@ idiomatic code.
 
 As input, we use a variety of different ASTs generated from the Racket code
 base, ranging in size from XXX nodes to YYY nodes, with ZZZ different inputs,
-overall. Figures~\ref{fig:copyprop} and~\ref{fig:subst} present the results
+overall. Note that these inputs represent real-world programs of varying
+sizes, ranging from XXX bytes to YYY bytes. This range of programs and sizes
+allows us to understand how input-dependent the behavior of our cursor passing
+transformations and our packed representations are, as well as confirm that
+our approach works across a wide range of real inputs.
+
+\paragraph*{Results}
+Figures~\ref{fig:copyprop} and~\ref{fig:subst} present the results
 for copy propagation and substitution, respectively. The x-axis of each figure
 shows the different possible inputs, ordered by the speedup of the packed
 version over the pointer version (higher is better). The dashed horizontal
