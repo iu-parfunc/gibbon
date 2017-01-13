@@ -144,8 +144,8 @@
 \Copyright{}%mandatory, please use full first names. LIPIcs license is "CC-BY";  http://creativecommons.org/licenses/by/3.0/
 %
 
-\makeatcode
-\makeatchar
+\lstMakeShortInline[style=inline]@
+% \lstDeleteShortInline@
 
 \begin{document}
 
@@ -497,7 +497,7 @@ moving forward in the later two thirds of this research project, we aim to
 explore a range of extensions that cover for the limitations of this basic
 preorder approach.}
 
-\paragraph{Extensions}
+\paragraph*{Extensions}
 
 \note{There are many possible extensions to the basic preorder format. For example, we
 can include {\em indirection nodes}, which use a unique tag to insert a pointer to
@@ -693,7 +693,7 @@ Ultimately we will rewrite the function to return such a witness.  For now, the
 goal of effect inference is to determine a table traversal type for all
 functions jointly.
 
-\paragraph{A lattice of locations}
+\paragraph*{A lattice of locations}
 
 The locations above (\freshA, \freshB) are {\em metavariables} that can range
 over different locations, depending on what the (location-polymorphic) function
@@ -759,7 +759,7 @@ Further, ends are always distinct locations from starts: $end(l) \neq l$.
 %% \end{figure}
 
 
-\paragraph{Analysis and fixed point}
+\paragraph*{Analysis and fixed point}
 
 We use the lattice of locations above to perform a program analysis, assigning a
 location to each subexpression, as well as a set of traversal effects.  The
@@ -912,7 +912,7 @@ all the obligations have been satisfied, this can be accomplished
 \end{code}
 
 
-\paragraph{Locally dilated representation of packed values}
+\paragraph*{Locally dilated representation of packed values}
 
 Sometimes the end-witness of a given region is computed, say, underneath a
 conditional.  Our proposed cursor-inserting transformation internally switches
