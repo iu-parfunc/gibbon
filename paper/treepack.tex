@@ -1105,30 +1105,42 @@ the byte stream.
 \subsection{Code generation}
 % ----------------------------------------
 
-The final step for \treecomp{} is to generate C code.  Because the current
-\treelang design is a {first order} language,
-%  \cref{fig:source}
-this is straightforward.  The compiler walks through the program to accumulate all
-anonymous product (tuple) types, and emits C struct declarations for each.
+The final step for \treecomp{} is to generate native code.  Any backend target
+would do (LLVM, native code etc), but we presently generate C code.
 %
-The cursors become merely \il{char*} pointers.
+Because the current \treelang design is a {first order} language,
+%  \cref{fig:source}
+this is straightforward.  We generate C code in static single assignment form.
 
+The compiler eliminates tuples through ``unarization'', except at function call
+returns.  Tuple function arguments become multiple arguments.  Conditionals that
+return tuples instead write multiple destination variables.  The compiler walks
+through the program to accumulate all remaining anonymous tuple types, and emits
+C struct declarations for each.
 
-\note{In the intermediate language, cursors are returned along with
-  the ordinary return value during any operation on a buffer---for
-  example, reading an int from a cursor returns the int and a new
-  cursor. A simple implementation strategy for this would be a
-  function that returns a struct of int and cursor, but we have found
-  that even when such a function is marked for inlining it is slower
-  than directly inlining the code and avoiding the returned struct.
-  So, when translating this into C code, we generate a series of C
-  declarations, with each variable only assigned once. We attempt to
-  avoid the creation of structs whenever possible, preferring to
-  inline operations that return tuples and to unzip tuples into
-  ordinary variables.}
-  
-\note{C code is linked with a simple ``run time system'' (a C file with
-  some helper procedures and benchmark harnesses).}
+The cursors become merely \il{char*} pointers, and 
+%
+@switch@ statements closely correspond to C switches, and @read@ and @write@ are
+open-coded as pointer operations.  Because @read@ returns two values, it
+generates multiple statements rather than creating a tuple, but it needn't
+create a struct.
+%
+%% \note{In the intermediate language, cursors are returned along with
+%%   the ordinary return value during any operation on a buffer---for
+%%   example, reading an int from a cursor returns the int and a new
+%%   cursor. A simple implementation strategy for this would be a
+%%   function that returns a struct of int and cursor, but we have found
+%%   that even when such a function is marked for inlining it is slower
+%%   than directly inlining the code and avoiding the returned struct.
+%%   So, when translating this into C code, we generate a series of C
+%%   declarations, with each variable only assigned once. We attempt to
+%%   avoid the creation of structs whenever possible, preferring to
+%%   inline operations that return tuples and to unzip tuples into
+%%   ordinary variables.}
+%
+Finally, the generated C code is linked with a simple run time system that
+includes code for allocation and initialization.
+% (a C file with  some helper procedures and benchmark harnesses).}
 
 % --------------------------------------------------------------------------------
 % \subsection{Discussion}
