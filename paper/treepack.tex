@@ -1102,11 +1102,11 @@ The cursors become merely \il{char*} pointers.
 \section{Evaluation}
 % ================================================================================
 
-We evaluate the performance of our approach in four ways. First, we
+We evaluate the performance of our approach in three ways. First, we
 demonstrate via small microbenchmarks that packed data representation
 provides significant performance wins across a variety of
 languages---including languages with good performance on pointer-based
-traversals---and that our compiler produces code competetive with any
+traversals---and that our compiler produces code competitive with any
 existing system. Second, we build several standard compiler passes
 operating on Racket's intermediate representation, and show
 substantial speedup operating on inputs gathered from existing Racket
@@ -1126,57 +1126,7 @@ the elements of a tree. To understand the performance of packed data
 representations, we implemented these three operations in multiple
 ways across a variety of languages: with pointer-based trees in
 Racket, Chez Scheme, MLton, GHC Haskell, and C (using both \texttt{malloc} as well
-as a fast bump-pointer allocator). We also implemented packed versions
-using handwritten C code similar to that of section 2, as well as a
-packed version in Racket. Finally, we implemented the benchmark in
-\treelang{}, and executed it using both the simple Racket backend and
-the optimizing backend that is the focus of this paper.
-
-The results show a clear win for packed representations, in some cases
-with 100x speedup over pointer-based representations in
-garbage-collected languages. Further, our compiler-generated code is
-competetive with handwritten C for packed data.
-
-%\note{A ``language shootout'' of add1-tree benchmarks.}
-
-\subsection{Old text - take or leave}
-
-While our \treelang{} compiler is still a prototype, we already have
-promising results on simple programs. We compared three programs on
-binary trees of 64-bit integers: one program which constructed a tree,
-one program which adds 1 to each leaf, constructing a new tree, and
-one program which sums the elements of a tree.
-
-In order to validate our packed data structure approach separately
-from our compiler implementation, we began with hand-written versions
-of each program across a range of language implementations, and
-implemented the programs with both packed and typical pointer-based
-techniques. The results of these experiments, plotting runtime versus
-the size of the tree in logaritmic scale, are seen in
-Figure~\ref{fig:shootout1}.
-
-These results demonstrate two things. First, as simple data
-structure and memory management benchmarks, allocation performance is
-critical and modern safe languages perform well compared to C with
-\texttt{malloc()}/\texttt{free()}.
-%
-%% Second, packed implementations are
-%% a major speedup \emph{across multiple languages}, with consistent wins
-%% ranging from 2x to 10x.
-%
-Second, our low-level packed C implentation is
-consistently fastest, suggesting that a mature compiler following our
-strategy should perform well. 
-%
-We then tested our cursor-inserting \treelang{} compiler on these same
-benchmarks, comparing it to the handwritten packed C implementation
-(the fastest handwritten version from the previous figure). These
-results are plotted in Figure~\ref{fig:shootout2}. The results show
-that our compiler approaches or exceeds the performance of
-handwritten C code, despite it being a simplified prototype. Since this
-C program is already many times faster than a conventional
-implementation of these programs in a safe, functional, language, this
-strongly points to the potential of our approach.
+as a fast bump-pointer allocator).
 
 \begin{figure}[t]
   \vspace{-7mm}
@@ -1209,6 +1159,10 @@ strongly points to the potential of our approach.
   \label{fig:shootout1}
 \end{figure}
 
+Figure~\ref{fig:shootout1} shows the results for these three microbenchmarks. The results show a clear win for packed representations (note the log scale), in some cases
+with 100x speedup over pointer-based representations in
+garbage-collected languages. 
+
 \begin{figure}[t]
   \vspace{-2mm}
 \begin{minipage}{1.04\textwidth}
@@ -1235,6 +1189,49 @@ strongly points to the potential of our approach.
    \label{fig:shootout2}
    \vspace{-4mm}
 \end{figure}
+
+Our first ``shootout'' demonstrates the performance gains afforded by the packed representation. We next implement the tree building and summing benchmarks in \treelang{}, and use our prototype cursor-inserting compiler to generate code over packed representations. Figure~\ref{fig:shootout2} shows the results of comparing this generated code to the hand-written C code over the packed representation (because \treelang{} is embedded in Racket, we also show the results of a Racket backend). We see that our compiler generated code is competitive with, and occasionally exceeds, hand-written C code in performance.
+
+%\note{A ``language shootout'' of add1-tree benchmarks.}
+
+% \subsection{Old text - take or leave}
+% 
+% While our \treelang{} compiler is still a prototype, we already have
+% promising results on simple programs. We compared three programs on
+% binary trees of 64-bit integers: one program which constructed a tree,
+% one program which adds 1 to each leaf, constructing a new tree, and
+% one program which sums the elements of a tree.
+% 
+% In order to validate our packed data structure approach separately
+% from our compiler implementation, we began with hand-written versions
+% of each program across a range of language implementations, and
+% implemented the programs with both packed and typical pointer-based
+% techniques. The results of these experiments, plotting runtime versus
+% the size of the tree in logaritmic scale, are seen in
+% Figure~\ref{fig:shootout1}.
+% 
+% These results demonstrate two things. First, as simple data
+% structure and memory management benchmarks, allocation performance is
+% critical and modern safe languages perform well compared to C with
+% \texttt{malloc()}/\texttt{free()}.
+% %
+% %% Second, packed implementations are
+% %% a major speedup \emph{across multiple languages}, with consistent wins
+% %% ranging from 2x to 10x.
+% %
+% Second, our low-level packed C implentation is
+% consistently fastest, suggesting that a mature compiler following our
+% strategy should perform well. 
+% %
+% We then tested our cursor-inserting \treelang{} compiler on these same
+% benchmarks, comparing it to the handwritten packed C implementation
+% (the fastest handwritten version from the previous figure). These
+% results are plotted in Figure~\ref{fig:shootout2}. The results show
+% that our compiler approaches or exceeds the performance of
+% handwritten C code, despite it being a simplified prototype. Since this
+% C program is already many times faster than a conventional
+% implementation of these programs in a safe, functional, language, this
+% strongly points to the potential of our approach.
 
 
 
