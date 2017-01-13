@@ -79,12 +79,16 @@ static const int num_workers = 1;
       return NULL;
     }
     void* ALLOC(int n) {
-      void* temp = (heap_ptr ? heap_ptr += n : my_abort());
-      printf("ALLOC: %d bytes, returning %p\n", n, temp);
-      return temp;
+      if (!heap_ptr) my_abort();
+      char* old = heap_ptr;
+      printf("ALLOC: %d bytes, returning %p\n", n, old);
+      // heap_ptr += 16 * n; // Optional padding for debugging.
+      heap_ptr += n;
+      return old;
     }
   #else
-   #define ALLOC(n) (heap_ptr += n)
+    // #define ALLOC(n) (do heap_ptr += n)
+    void* ALLOC(int n) { char* old= heap_ptr; heap_ptr += n; return old; }
   #endif // DEBUG
 
   // Snapshot the current heap pointer value across all threads.

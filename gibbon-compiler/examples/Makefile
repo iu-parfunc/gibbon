@@ -222,7 +222,7 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp $(GIBBONEXEC)
 
 PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
  test20b_bintree.sexp  \
- test25a_withprint.sexp  test27a_subst.sexp
+ test25a_withprint.sexp test26_treewalk.sexp test27a_subst.sexp
 
 # test20b_bintree.sexp   -- requires copy insertion
 # test12_skip.sexp       -- requires copy insertion!! unbound var thru to C code
@@ -253,7 +253,7 @@ INTERP2_FAILING = test00a_size.sexp test00b_printBool.sexp test00d_printData.sex
   test25c_racketcore.sexp test25d_racketcore.sexp test25e_countnodes.sexp test25f_countnodes.sexp \
   test11_fundata.sexp test10_desugar.sexp test10b_desugar.sexp test24_defs.sexp \
   test09_recur.sexp test08_dict.sexp test02b_datacon.sexp test02c_case.sexp \
-  test26a_treewalk.sexp test27a_subst.sexp
+  test26_treewalk.sexp test26a_treewalk.sexp test27a_subst.sexp
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: answers
