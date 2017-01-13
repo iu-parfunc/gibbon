@@ -619,16 +619,17 @@ order to provide buffers for it to write its results to.
 %% }}
 %% \end{code}
 
-\paragraph{Extensions for cursor manipulation}
+\paragraph*{Extensions for cursor manipulation}
 
 %% We present two languages: L1, a simple purely functional, first-order programming
 %% language with sum and product types; and L2, an imperative programming language
 %% with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 
-\note{\cref{fig:target}}
+\note{This can be described either as the target language, or as an extension of
+  the starting language: \cref{fig:target}.}
 
 
-\paragraph{Dictionaries}
+\paragraph*{Dictionaries}
 
 In addition to algebraic data types and various numerical types, $\treelang{}$ supports
 \Red{general purpose persistent dictionaries}, which are useful for implementing compiler
@@ -638,7 +639,6 @@ passes in a functional style.
 \note{Show an example of using a dictionary? Or just give the types?}
 
 \note{Describe the Racket front-end and how it works.\rn{No that will go in implementation.}}
-
 
 
 
@@ -655,10 +655,8 @@ passes in a functional style.
   downstream fields as a side effect of traversing their upstream ones.}
 
 
-
 \subsection{Inferring effects}
-
-\vspace{-2mm}\subsubsection{Inferring effects}
+% \vspace{-2mm}\subsubsection{Inferring effects}
 % ----------------------------------------
 
 We associate with every packed type an abstract location. This is different from
@@ -972,17 +970,75 @@ The cursors become merely \il{char*} pointers.
 \note{C code is linked with a simple ``run time system'' (a C file with
   some helper procedures and benchmark harnesses).}
 
-
-% ================================================================================
+% --------------------------------------------------------------------------------
 \subsection{Discussion}
-% ================================================================================
+% --------------------------------------------------------------------------------
 
 \note{Purity is important to reordering for witness search.}
 
 \note{Our interpreter depends on this fact by modeling cursors {\em as lists}.}
 
-\section{Prototype and Results} % FIXME: Split into the following sections
 
+% ================================================================================
+\section{Implementation}
+% ================================================================================
+
+\note{Current prototype implementation, status}
+
+
+\paragraph*{Embedding Gibbon}
+
+\note{Ultimately the ideas in Gibbon should either be ported to a compiler for
+  existing languages, or the prototype compiler should be used as an EDSL.}
+
+\note{Racket \#lang mode}
+
+
+% ================================================================================
+\section{Evaluation}
+% ================================================================================
+
+We evaluate the performance of our approach in four ways. First, we
+demonstrate via small microbenchmarks that packed data representation
+provides significant performance wins across a variety of
+languages---including languages with good performance on pointer-based
+traversals---and that our compiler produces code competetive with any
+existing system. Second, we build several standard compiler passes
+operating on Racket's intermediate representation, and show
+substantial speedup operating on inputs gathered from existing Racket
+programs. Third, we build a type checker for a small language, and
+benchmark it on large synthetic inputs, demonstrating significant
+speedup for a more complex and data-heavy workload. Fourth, we
+implement a point-correlation benchmark using a kd-tree, again showing
+major performance benefits for packed representations. Additionally,
+we \note{something something parallel}
+
+All benchmarks were conducted on a \dots.
+
+\subsection{Microbenchmarks}
+% ----------------------------------------
+
+Our first benchmarks return to the example from section 2,
+manipulating simple binary trees. We implement 3 operations:
+constructing a tree, incrementing the values in a tree, and summing
+the elements of a tree. To understand the performance of packed data
+representations, we implemented these three operations in multiple
+ways across a variety of languages: with pointer-based trees in
+Racket, Chez Scheme, MLton, GHC Haskell, and C (using both \texttt{malloc} as well
+as a fast bump-pointer allocator). We also implemented packed versions
+using handwritten C code similar to that of section 2, as well as a
+packed version in Racket. Finally, we implemented the benchmark in
+\treelang{}, and executed it using both the simple Racket backend and
+the optimizing backend that is the focus of this paper.
+
+The results show a clear win for packed representations, in some cases
+with 100x speedup over pointer-based representations in
+garbage-collected languages. Further, our compiler-generated code is
+competetive with handwritten C for packed data.
+
+%\note{A ``language shootout'' of add1-tree benchmarks.}
+
+\subsection{Old text - take or leave}
 
 While our \treelang{} compiler is still a prototype, we already have
 promising results on simple programs. We compared three programs on
@@ -1020,12 +1076,6 @@ handwritten C code, despite it being a simplified prototype. Since this
 C program is already many times faster than a conventional
 implementation of these programs in a safe, functional, language, this
 strongly points to the potential of our approach.
-
-\paragraph{Parallelism} A final goal of this project is to explore the role
-\Red{these alternate CNF and DPNF} representations can play in parallelizing programs.
-\Cref{fig:shootout2} shows how a hand-parallelized version the packed approach
-scales much better than a traditional functional compiler.  We believe this
-approach has great potential for improving both single core and multicore performance.
 
 \begin{figure}[t]
   \vspace{-7mm}
@@ -1085,94 +1135,6 @@ approach has great potential for improving both single core and multicore perfor
    \vspace{-4mm}
 \end{figure}
 
-
-\begin{figure}[t]
-  \vspace{-5mm}
-\begin{minipage}{1.04\textwidth}
-  \begin{minipage}{.49\textwidth}
-    \centering
-    \includegraphics[width=\textwidth]{./figs/speedup_cilk.pdf}
-%    \label{fig:}
-  \end{minipage}
-  %  \hspace{0.1\textwidth}
-  $ $ 
-  \begin{minipage}{.49\textwidth}
-    \centering
-    \includegraphics[width=\textwidth]{./figs/speedup_ghc.pdf}
-    % \includegraphics[width=60mm]{example-image-b}
-%    \label{fig:}
-  \end{minipage}
-\end{minipage}
-   \caption{Parallel speedup: mapping a function over a packed tree.  This
-     compares a Cilk (C) implementation using the packed with layout information
-     that allows random access to subtrees (left).  For comparison, we also show
-     the parallel speedup from a mature parallel functional compiler (GHC,
-     right).  All lines are normalized to their own 1-core speeds.  In absolute
-     terms, GHC starts off 34$\times$ slower than our approach at one core, and
-     grows to 223$\times$ slower at 16 cores.}
-   \label{fig:shootout}
-      \vspace{-4mm}
-\end{figure}
-% C/1 0.0036089296875
-% HS/1 0.1226078125,
-% (/ 0.1226078125 0.0036089296875 ) 34 times
-
-% C/16    0.000319918212890625
-% HS/16   0.07138175
-% (/ 0.07138175 0.000319918212890625) 223 times
-
-
-% ================================================================================
-\section{Implementation}
-% ================================================================================
-
-\note{Current prototype implementation, status}
-
-
-
-% ================================================================================
-\section{Evaluation}
-% ================================================================================
-
-We evaluate the performance of our approach in four ways. First, we
-demonstrate via small microbenchmarks that packed data representation
-provides significant performance wins across a variety of
-languages---including languages with good performance on pointer-based
-traversals---and that our compiler produces code competetive with any
-existing system. Second, we build several standard compiler passes
-operating on Racket's intermediate representation, and show
-substantial speedup operating on inputs gathered from existing Racket
-programs. Third, we build a type checker for a small language, and
-benchmark it on large synthetic inputs, demonstrating significant
-speedup for a more complex and data-heavy workload. Fourth, we
-implement a point-correlation benchmark using a kd-tree, again showing
-major performance benefits for packed representations. Additionally,
-we \note{something something parallel}
-
-All benchmarks were conducted on a \dots.
-
-\subsection{Microbenchmarks}
-% ----------------------------------------
-
-Our first benchmarks return to the example from section 2,
-manipulating simple binary trees. We implement 3 operations:
-constructing a tree, incrementing the values in a tree, and summing
-the elements of a tree. To understand the performance of packed data
-representations, we implemented these three operations in multiple
-ways across a variety of languages: with pointer-based trees in
-Racket, Chez Scheme, MLton, GHC Haskell, and C (using both \texttt{malloc} as well
-as a fast bump-pointer allocator). We also implemented packed versions
-using handwritten C code similar to that of section 2, as well as a
-packed version in Racket. Finally, we implemented the benchmark in
-\treelang{}, and executed it using both the simple Racket backend and
-the optimizing backend that is the focus of this paper.
-
-The results show a clear win for packed representations, in some cases
-with 100x speedup over pointer-based representations in
-garbage-collected languages. Further, our compiler-generated code is
-competetive with handwritten C for packed data.
-
-%\note{A ``language shootout'' of add1-tree benchmarks.}
 
 
 \subsection{Compiler passes on realistic inputs}
@@ -1242,6 +1204,48 @@ shows up to 35\% speed up.
 
 \note{Report preliminary parallel microbenchmark results, showing the potential
   for future work here.}
+
+\note{ A final goal of this project is to explore the role
+\Red{these alternate CNF and DPNF} representations can play in parallelizing programs.
+\Cref{fig:shootout2} shows how a hand-parallelized version the packed approach
+scales much better than a traditional functional compiler.  We believe this
+approach has great potential for improving both single core and multicore performance.
+\Cref{fig:par-shootout}.............}
+
+\begin{figure}[t]
+  \vspace{-5mm}
+\begin{minipage}{1.04\textwidth}
+  \begin{minipage}{.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{./figs/speedup_cilk.pdf}
+%    \label{fig:}
+  \end{minipage}
+  %  \hspace{0.1\textwidth}
+  $ $ 
+  \begin{minipage}{.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{./figs/speedup_ghc.pdf}
+    % \includegraphics[width=60mm]{example-image-b}
+%    \label{fig:}
+  \end{minipage}
+\end{minipage}
+   \caption{Parallel speedup: mapping a function over a packed tree.  This
+     compares a Cilk (C) implementation using the packed with layout information
+     that allows random access to subtrees (left).  For comparison, we also show
+     the parallel speedup from a mature parallel functional compiler (GHC,
+     right).  All lines are normalized to their own 1-core speeds.  In absolute
+     terms, GHC starts off 34$\times$ slower than our approach at one core, and
+     grows to 223$\times$ slower at 16 cores.}
+   \label{fig:par-shootout}
+      \vspace{-4mm}
+\end{figure}
+% C/1 0.0036089296875
+% HS/1 0.1226078125,
+% (/ 0.1226078125 0.0036089296875 ) 34 times
+
+% C/16    0.000319918212890625
+% HS/16   0.07138175
+% (/ 0.07138175 0.000319918212890625) 223 times
 
 
 
