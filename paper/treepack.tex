@@ -1495,16 +1495,34 @@ We see \note{something -- describe these figures once we see them!}
 
 \note{type check the simply-typed $\lambda$ calculus in \treelang{}}
 
-\section{Evaluation of Extensions}
+\section{Extensions}
 
 This section evaluates two extensions to \treelang{} that enable more complicated traversals and expose more opportunities for performance.
 
-%%Fix this
-Fourth, we
-implement a point-correlation benchmark using a kd-tree, again showing
-major performance benefits for packed representations. Additionally,
-we \note{something something parallel}
+Our benchmarks up until now focus on ``full'' treewalks: traversals that visit
+every node of the input tree, in order. While this assumption is accurate for
+most compiler passes, there are some scenarios and applications where this may
+not be true:
+\begin{itemize}
+  \item If a traversal exploits {\em truncation}. Some tree traversals, such as those of space partitioning trees~\cite{gray2000n} gain asymptotic improvements by {\em truncating} traversals of subtrees. Based on some condition (for example, that a given subspace in a space partitioning tree is unimportant), traversal of a node's entire subtree is skipped, and the traversal continues on to the sibling of the current node. This optimization means that not all of the tree is visited by the traversal.
+  \item If a traversal is {\em parallelized}. To run a traversal in parallel, multiple threads collaborate to walk over a tree. In many traversals, this parallelism is natural: walks over different subtrees are independent of each other. In {\em this} scenario, a single thread may not walk over the entire tree and, indeed, may not even start its tree walk at the beginning of the buffer holding the tree.
+\end{itemize}
 
+For both of these cases, our current \treelang{} compiler is insufficient,
+because it does not support non-full treewalks. The assumption is that the
+cursor moving through the buffer runs by each node in the tree during the tree
+walk, and the transformations that ensure that cursors get routed correctly
+assume the same. The key distinction here is that in both the truncation case
+and the parallelism case, we need some way to move a cursor to (or generate a
+cursor at) some later point in a packed tree buffer {\em without} walking over
+the intermediate tree nodes.
+
+This section describes an extension to \treelang{}'s packed representation---{\em layout information}---that enables these more sophisticated traversals, as well as a evaluation of two benchmarks that use this extended representation.
+
+
+\subsection{Evaluation}
+
+Because \treelang{} does not currently support a packed representation extended with layout information, our evaluation 
 
 \subsection{Point correlation}
 % --------------------------------------------
