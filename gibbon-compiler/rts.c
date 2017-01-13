@@ -10,7 +10,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
-
+#include <stdarg.h> // For va_start etc
+#include <errno.h>
 
 // Big default.  Used for --packed and --pointer/bumpalloc
 static long long global_default_buf_size = (500lu * 1000lu * 1000lu);
@@ -27,68 +28,81 @@ static const int num_workers = 1;
 // Helpers and debugging:
 //--------------------------------------------------------------------------------
 
-// Requires -std=gnu11
-/*int dbgprintf(const char *format, ...)
-{
-    va_list args;
-    va_start(args, format);
-#ifdef DEBUG
-      vprintf(format, args);
-#endif
-    va_end(args);
-}*/
-
 //--------------------------------------------------------------------------------
 
 #ifdef BUMPALLOC
-// #warning "Using bump allocator."
-  // Here we use one heap_ptr per thread:
-  typedef char* HeapPtr;
-  HeapPtr heap_ptr = (HeapPtr)0;
+// #define DEBUG
+#warning "Using bump allocator."
 
-  // An array storing the location of each thread's heap_ptr:
-  HeapPtr** heap_addrs;
-  HeapPtr* saved_heap_ptrs;
-  
+  char* heap_ptr = (char*)NULL;
+
+  char* saved_heap_ptr_stack[100];
+  int num_saved_heap_ptr = 0;
+
+  // Requires -std=gnu11
+  int dbgprintf(const char *format, ...)
+  {
+      va_list args;
+      va_start(args, format);
+  #ifdef DEBUG
+      int code = vprintf(format, args);
+  #endif
+      va_end(args);
+      return code;
+  }
+
   // For simplicity just use a single large slab:
   void INITALLOC() {
-    if (! heap_ptr) {
-      heap_ptr = (HeapPtr)malloc(global_default_buf_size);
-      // printf("Arena size for bump alloc: %lld\n", global_default_buf_size);
-      heap_addrs      = (HeapPtr**)calloc(num_workers, sizeof(HeapPtr*));
-      saved_heap_ptrs = (HeapPtr*) calloc(num_workers, sizeof(HeapPtr));
+    if (! heap_ptr)
+    {
+      // Use a fixed address in debug mode for easy reading:
+      #ifdef DEBUG     
+      // heap_ptr = (char*)mmap(0x010000000000, global_default_buf_size, PROT_READ|PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+        heap_ptr = (char*)mmap(0x010000000000, global_default_buf_size, PROT_READ|PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+        if (heap_ptr == MAP_FAILED) {
+          fprintf(stderr, "Error: mmap failed: %s\n", strerror(errno));
+          abort();
+        }
+      #else      
+        heap_ptr = (char*)malloc(global_default_buf_size);
+      #endif
+      dbgprintf("Arena size for bump alloc: %lld\n", global_default_buf_size);
     }
-    // printf("INIT ALLOC DONE: heap_ptr = %p\n", heap_ptr);
+    dbgprintf("BUMPALLOC/INITALLOC DONE: heap_ptr = %p\n", heap_ptr);
   }
 
   #ifdef DEBUG
-   char* my_abort() {
-     fprintf(stderr, "Error: this thread's heap was not initalized.\n");
-     abort();
-     return NULL;
-   }
-   #define ALLOC(n) (heap_ptr ? heap_ptr += n : my_abort())
+    char* my_abort() {
+      fprintf(stderr, "Error: this thread's heap was not initalized.\n");
+      abort();
+      return NULL;
+    }
+    void* ALLOC(int n) {
+      void* temp = (heap_ptr ? heap_ptr += n : my_abort());
+      printf("ALLOC: %d bytes, returning %p\n", n, temp);
+      return temp;
+    }
   #else
    #define ALLOC(n) (heap_ptr += n)
   #endif // DEBUG
 
   // Snapshot the current heap pointer value across all threads.
   void save_alloc_state() {
-    // dbgprintf("   Saving(%d): ", num_workers);
-    for(int i=0; i<num_workers; i++) {
-      saved_heap_ptrs[i] = * heap_addrs[i];
-      // dbgprintf("%p ", saved_heap_ptrs[i]);
-    }
-    // dbgprintf("\n");    
+    dbgprintf("   Saving(%p): pos %d", heap_ptr, num_saved_heap_ptr);
+    saved_heap_ptr_stack[num_saved_heap_ptr] = heap_ptr;
+    num_saved_heap_ptr++;
+    dbgprintf("\n");    
   }
 
   void restore_alloc_state() {
-    // dbgprintf("Restoring(%d): ", num_workers);
-    for(int i=0; i<num_workers; i++) {
-      *heap_addrs[i] = saved_heap_ptrs[i];
-      //dbgprintf("%p ", saved_heap_ptrs[i]);
+    if(num_saved_heap_ptr <= 0) {
+      fprintf(stderr, "Bad call to restore_alloc_state!  Saved stack empty!\ne");
+      abort();
     }
-    //dbgprintf("\n");
+    num_saved_heap_ptr--;
+    dbgprintf("Restoring(%p): pos %d, discarding %p",
+              saved_heap_ptr_stack[num_saved_heap_ptr], num_saved_heap_ptr, heap_ptr);
+    heap_ptr = saved_heap_ptr_stack[num_saved_heap_ptr];
   }
 
 #else
@@ -96,7 +110,6 @@ static const int num_workers = 1;
   void INITALLOC() {}
 
   #define ALLOC(n) malloc(n)
-//  #define DELTREE deleteTree
 
 #endif // BUMPALLOC
 
@@ -283,6 +296,9 @@ int main(int argc, char** argv)
     }
 
     INITALLOC();
+#ifdef BUMPALLOC      
+    //    save_alloc_state();   
+#endif
     __main_expr();
 
     return 0;
