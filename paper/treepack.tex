@@ -802,7 +802,7 @@ when two locations are incompatible.  For example, the following term has
 location $\top$ because it attempts to unify two fixed locations \fixed{x} and \fixed{y}.
 
 \begin{code}
-(case p of Node x y -> if _ then x else y) :: SomePackedData
+(case p of Node x y -> if _ then x else y) :: SomePackedDatatype
 \end{code}
 
 % This term has location top.  Fixed x and fixed y join to top.
@@ -852,26 +852,30 @@ If it were not, this program couldn't compile!
 Even with this assumption, determining the traversal effect signature for each
 function is nontrivial because of interdependencies between functions.
 % E.g. @f@ traverses it input only if @g@ traverses its input.
-Thus we design this pass as
-a \Red{traditional program analysis} that iterates to a fixed point.
+Thus we design this pass as a \Red{traditional program analysis} that iterates
+to a fixed point.
 %
 We begin with every function having a {\em maximum} traversal signature---we
 assume it reaches the end of {\em every} packed input. Then, this set
 monotonically decreases in every round, until the fixed point is reached.
 
+\subsection{Copy and traversal insertion}\label{sec:copy-insert}
+
 {During analysis, we generated all the information we need not only to {\em
-    label} traversal effects, but to recognize where they are needed, but
-  missing.}  {With the inter-procedural traversal types settled, we reprocess
+    label} traversal effects in function signatures, but to recognize where they are needed, but
+  missing.}
+\Red
+{With the inter-procedural traversal types settled, we reprocess
   the program and repeat the same location analysis, but this time, wherever we
   are missing a witness of a field stored within a packed buffer, we perform a
-  {\em program synthesis} to generate a recursive call that meets that constraint.}
+  {\em program synthesis} to generate a recursive call that meets that constraint.
 %a
 In our prototype, we keep this program synthesis very simple: we insert calls to
 only two functions---copy and empty-traverse---whose definitions the compiler
 generates in a subsequent pass.  {Even still, there's a search space of
   potential places to insert code.  We follow a simple heuristic of introducing
   traversals in as large a scope as possible, e.g. just under a case expression
-  that binds the field variables.}
+  that binds the field variables.}}
 %% directly at the point of missing constraints.  This may introduce the same
 %%   traversal multiple times, for example within different branches of an If
 A simple example of a program that forces a copy is one that introduces sharing:
@@ -880,45 +884,12 @@ A simple example of a program that forces a copy is one that introduces sharing:
 let x = f t in  Node x x 
 \end{code}
 
-In the course of the proposed project, we will use these missing traversals to
-go back and {\em change the data format}, i.e. use packed records with layout
-information, rather than the minimal preorder serialization.
+In future work (\cref{sec:future}), we will use these missing traversals to go
+back and {\em change the data format} (i.e. use packed records augmented with
+indirection nodes, rather than the most straightforward preorder serialization).
 %
 For our preliminary experiments, we instead naively insert copies for the
 program above.
-
-\if{0}
-    \vspace{-2mm}\subsubsection{Copy and traversal insertion}\label{sec:copy-insert}
-    % ----------------------------------------
-
-    {During analysis, we generated all the information we need not only to {\em
-        label} traversal effects, but to recognize where they are needed, but
-      missing.}  {With the inter-procedural traversal types settled, we reprocess
-      the program and repeat the same location analysis, but this time, wherever we
-      are missing a witness of a field stored within a packed buffer, we perform a
-      {\em program synthesis} to generate a recursive call that meets that constraint.}
-    %a
-    In our prototype, we keep this program synthesis very simple: we insert calls to
-    only two functions---copy and empty-traverse---whose definitions the compiler
-    generates in a subsequent pass.  {Even still, there's a search space of
-      potential places to insert code.  We follow a simple heuristic of introducing
-      traversals in as large a scope as possible, e.g. just under a case expression
-      that binds the field variables.}
-    %% directly at the point of missing constraints.  This may introduce the same
-    %%   traversal multiple times, for example within different branches of an If
-    A simple example of a program that forces a copy is one that introduces sharing:
-    %
-    \begin{code}
-    let x = f t in  Node x x 
-    \end{code}
-
-    In the course of the proposed project, we will use these missing traversals to
-    go back and {\em change the data format}, i.e. use packed records with layout
-    information, rather than the minimal preorder serialization.
-    %
-    For our preliminary experiments, we instead naively insert copies for the
-    program above.
-\fi
 
 
 \vspace{-2mm}\subsubsection{Routing end-of-value witnesses}
@@ -929,7 +900,7 @@ compiler-inserted traversals, then we transform the program in a type-directed
 way, to include additional return-values: end-witnesses.
 
 \begin{code}
-  f  :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$              -- Before
+  f  :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$                  -- Before
   f' :: Tree$_\freshA$ -> ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$) -- After
 \end{code}
 
