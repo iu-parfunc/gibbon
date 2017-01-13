@@ -866,7 +866,7 @@ basic idea is that an expression @case e of ...@, creates a traversal effect for
 the location of @e@ provided that all the branches of the case traverse the
 (non-statically-sized) arguments of their data constructors.
 %
-\Red{This stage of the process is {\em optimistic}, in that it assumes that any
+{This stage of the process is {\em optimistic}, in that it assumes that any
   additional traversals that are {\em necessary} but not {\em present} will
   subsequently be inserted later.  For example:}
 \begin{code}
@@ -885,7 +885,7 @@ If it were not, this program couldn't compile!
 Even with this assumption, determining the traversal effect signature for each
 function is nontrivial because of interdependencies between functions.
 % E.g. @f@ traverses it input only if @g@ traverses its input.
-Thus we design this pass as a \Red{traditional program analysis} that iterates
+Thus we design this pass as a {traditional program analysis} that iterates
 to a fixed point.
 %
 We begin with every function having a {\em maximum} traversal signature---we
@@ -895,20 +895,33 @@ monotonically decreases in every round, until the fixed point is reached.
 \subsection{Copy and traversal insertion}\label{sec:copy-insert}
 
 {During analysis, we generated all the information we need not only to {\em
-    label} traversal effects in function signatures, but to recognize where they are needed, but
-  missing.}
-\Red
-{With the inter-procedural traversal types settled, we reprocess
-  the program and repeat the same location analysis, but this time, wherever we
-  are missing a witness of a field stored within a packed buffer, we perform a
-  {\em program synthesis} to generate a recursive call that meets that constraint.
-%a
-In our prototype, we keep this program synthesis very simple: we insert calls to
-only two functions---copy and empty-traverse---whose definitions the compiler
-generates in a subsequent pass.  {Even still, there's a search space of
-  potential places to insert code.  We follow a simple heuristic of introducing
-  traversals in as large a scope as possible, e.g. just under a case expression
-  that binds the field variables.}}
+    label} traversal effects in function signatures, but to recognize where they
+  are needed, but missing, and where destination-location constraints conflict.}
+%
+  With the inter-procedural traversal types settled,
+  we reprocess the program and repeat the same location analysis, but this time,
+  we mark wherever we are (1) {\em missing} a witness of a field stored within a
+  packed buffer, or (2) have {\em conflicting} constraints where a packed value
+  flows to two destinations (sharing).
+%
+  A missing end witness can always be restored, if necessary, by inserting a
+  call to a dummy traversal function.  Likewise, a conflicting destination
+  location can always be resolved by inserting a copy function\footnote{More
+    generally, we can perform a {\em program synthesis} here to fix the program
+    by generating a recursive call that meets that constraint.
+    %% Ultimately this interacts with data-structure layout choices, because
+    %% sharing can be addressed by adding (limited) indirections back in.
+  }.
+ % 
+%% e insert calls to
+%% only two functions---copy and empty-traverse---whose definitions the compiler
+%% generates in a subsequent pass.
+%
+%% {Even still, there's a search space of
+%%   potential places to insert code.  We follow a simple heuristic of introducing
+%%   traversals in as large a scope as possible, e.g. just under a case expression
+  %%   that binds the field variables.}
+  %
 %% directly at the point of missing constraints.  This may introduce the same
 %%   traversal multiple times, for example within different branches of an If
 A simple example of a program that forces a copy is one that introduces sharing:
@@ -917,12 +930,15 @@ A simple example of a program that forces a copy is one that introduces sharing:
 let x = f t in  Node x x 
 \end{code}
 
-In future work (\cref{sec:future}), we will use these missing traversals to go
-back and {\em change the data format} (i.e. use packed records {augmented} with
-indirection nodes, rather than the most straightforward preorder serialization).
+In future work (\cref{sec:future}), we will use these missing traversals and
+conflicts to go back and {\em change the data format} (i.e. use packed records
+{augmented} with indirection nodes, rather than the most straightforward
+preorder serialization).
 %
-For our preliminary experiments, we instead naively insert copies for the
-program above.
+But, for {\em completeness}, it always suffices to naively insert copies or dummy
+traversals.
+%% For our preliminary experiments, we instead naively insert copies for the
+%% program above.
 
 
 % \vspace{-2mm}
