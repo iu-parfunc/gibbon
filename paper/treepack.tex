@@ -74,7 +74,8 @@
 
 % If we are using Haskell code in this paper:
 % Defines ``code'' environment:
-\input{./bibs/latex_templates/haskell_style}
+% \input{./bibs/latex_templates/haskell_style}
+\input{haskell_style} 
 
 \lstloadlanguages{C++}
 \lstnewenvironment{cpp}
@@ -644,7 +645,6 @@ passes in a functional style.
 
 
 % ================================================================================
-% \section{A tree-packing compiler}
 \section{Compilation Algorithms}
 % ================================================================================
 
@@ -668,7 +668,7 @@ We say that datatypes like @Foo@ are {\em packed} types, whereas, @Int@, @Bool@,
 @Symbol@, etc are not.  As we'll see in this section, the data constructors for
 packed types (@MkFoo@) will themselves come to require destination cursor arguments.
 
-Functions do not merely have the effect of writing destination memory, however.
+Functions do not, however, merely have the effect of writing destination memory.
 Sometimes functions will need to allocate new memory regions as well.  We treat
 tuples @(e1,e2)@, as value types, so they don't account for allocation.  But
 consider expressions @(e : T)@ where @T@ does not contain packed values, yet
@@ -680,16 +680,42 @@ subexpressions of @e@ have types which do.  For instance:
 \end{code}
 \fi
 
-\note{If the optimizer does not eliminate this silly expression, then .............}
+If the optimizer does not eliminate this silly expression, then @MkFoo@ {\em
+  must} be given a destination, even though the constructed data does not escape
+the function @g@.  For this purpose, we will use a very simple form of region
+allocation which takes advantage of the purely functional nature of the
+\treelang language.  Namely, we know that the case expression of type @Int@
+above can have no other visible effect or communication than producing an @Int@,
+so thus we can {\em region allocate} the @MkFoo@ constructor inside a buffer
+that is freed when the expression returns (in the implementation, this resembles
+stack allocation).  This follows the precedent of other languages such as
+UrWeb~\cite{urweb}, as well as previous work on region
+types~\cite{mlkit,cyclone}.
 
 
-\note{The central issue in compiling \treelang, is deriving runtime witnesses of
-  the {\em end} of values in memory.  If we recursively unpack adjacent fields
-  without storing a pointer to the later fields, we must rediscover those
-  downstream fields as a side effect of traversing their upstream ones.}
+This matter of destination routing is the primary function of the \treelang
+compiler.  However, to support it, other analyses are required.  For instance,
+determining the destination cursor for a field requires determining an {\em end
+  witness} for the field before it---that is, a pointer to the position in the
+buffer that marks the end of one field and the start of the next.  If we
+recursively unpack adjacent fields without storing a pointer to the later
+fields, we must rediscover those downstream fields as a side effect of
+{\em traversing} their upstream ones.  Thus we begin with an inter-procedural
+analysis of which functions are able to traverse their inputs.
+
+The overall structure of the compiler, covered throughout the rest of this
+section, is:
+
+\begin{itemize}
+\item Infer traversal effects.
+% \item Copy and traversal insertion 
+\item Routing end-of-value witnesses.
+\item Switch fully to destination cursor-passing.
+\item Code generation
+\end{itemize}
 
 
-\subsection{Inferring effects}
+\subsection{Inferring traversal effects}
 % \vspace{-2mm}\subsubsection{Inferring effects}
 % ----------------------------------------
 
@@ -849,6 +875,39 @@ information, rather than the minimal preorder serialization.
 %
 For our preliminary experiments, we instead naively insert copies for the
 program above.
+
+\if{0}
+    \vspace{-2mm}\subsubsection{Copy and traversal insertion}\label{sec:copy-insert}
+    % ----------------------------------------
+
+    {During analysis, we generated all the information we need not only to {\em
+        label} traversal effects, but to recognize where they are needed, but
+      missing.}  {With the inter-procedural traversal types settled, we reprocess
+      the program and repeat the same location analysis, but this time, wherever we
+      are missing a witness of a field stored within a packed buffer, we perform a
+      {\em program synthesis} to generate a recursive call that meets that constraint.}
+    %a
+    In our prototype, we keep this program synthesis very simple: we insert calls to
+    only two functions---copy and empty-traverse---whose definitions the compiler
+    generates in a subsequent pass.  {Even still, there's a search space of
+      potential places to insert code.  We follow a simple heuristic of introducing
+      traversals in as large a scope as possible, e.g. just under a case expression
+      that binds the field variables.}
+    %% directly at the point of missing constraints.  This may introduce the same
+    %%   traversal multiple times, for example within different branches of an If
+    A simple example of a program that forces a copy is one that introduces sharing:
+    %
+    \begin{code}
+    let x = f t in  Node x x 
+    \end{code}
+
+    In the course of the proposed project, we will use these missing traversals to
+    go back and {\em change the data format}, i.e. use packed records with layout
+    information, rather than the minimal preorder serialization.
+    %
+    For our preliminary experiments, we instead naively insert copies for the
+    program above.
+\fi
 
 
 \vspace{-2mm}\subsubsection{Routing end-of-value witnesses}

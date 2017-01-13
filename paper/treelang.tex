@@ -74,7 +74,10 @@
       \textup{Expressions} && \EXPR && \gramdef & \num \gramor \var \gramor \primexpr{\overline{\sEXPR}} \gramor \app{\EXPR}{\sEXPR} \gramor \fun{\var:\TYP}{\EXPR} \\
       && && \gramor & \pair{\sEXPR}{\sEXPR} \gramor \EXPR.\num \gramor \letexpr{\var:\TYP}{\EXPR}{\EXPR} \\
       && && \gramor & \case{\sEXPR}{\overline{[\bind{\DC \; \overline{\svar} \;}{\EXPR}]}} \gramor  \ife{\EXPR}{\EXPR}{\EXPR} \\
-      \textup{Types} && \TYP && \gramdef & \gramwd{int} \gramor \gramwd{bool} \gramor \TC \gramor \pairtype{\TYP}{\TYP} \gramor \TYP \ARROW \TYP \\
+      \textup{Types} && \TYP && \gramdef &
+      \TC \gramor \pairtype{\TYP}{\TYP} \gramor \TYP \ARROW \TYP
+      \gramor \gramwd{Int} \gramor \gramwd{Bool} \gramor \dots
+      \\
       %% && && \gramor & \NEEDS{[\overline{\sTYP}]}{\sTYP} \gramor \HAS{\sTYP} \\
       \textup{Prim Ops} && \PRIM && \gramdef & + \gramor - \gramor * \gramor \ldots \\
     \end{aligned}
