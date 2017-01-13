@@ -1184,39 +1184,67 @@ includes code for allocation and initialization.
 % ================================================================================
 
 In the next section we evaluate a prototype \treelang compiler, implemented in
-Haskell, and generating code via GCC 5.3.  \Red{(What version is Laith using!!?)}
+Haskell, and generating code via GCC 5.3.  \rn{(What version is Laith using!!?)}
 %
 This compiler implements the algorithms of the prior section, with a few current
 limitations.  We've implemented copy insertion by hand, and the current compiler
-will potentially duplicate work (rather than copying) if a packed result of a
-function call is used in multiple places, or when a function returns multiple
+will potentially duplicate work (rather than copying) if (1) a packed result of a
+function call is used in multiple places, or (2) when a function returns multiple
 packed results.
+% that need to be routed separately.
 
 \paragraph*{Packed \& Pointer, malloc \& bumpalloc}
 
 The \treelang C backend supports multiple modes of code generation, which we
-compare in the next section.  The first distinction is between:
+compare in the next section.  The first distinction is between two primary
+implementation strategies:
 
 \begin{itemize}
-\item {\bf packed}: generate code using all the compiler passes of
+\item {\bf packed}: Generate code using all the compiler passes of
   \cref{sec:compiler}.  Data of packed type can be read from disk in human
   readable or binary/packed formats, but in memory it stays always in preorder
   serialized representation.
-\item {\bf pointer}: use traditional C struct representations.  This mode shares
-  the front and back of the compiler with packed mode.  But it skips the
-  invasive transformations of the source program which introduce cursors and
-  packed representations.  Rather, it uses a traditional pointer graph of heap
-  objects to represent all data.
+\item {\bf pointer}: Use traditional C struct representations.  This mode
+  provides a baseline for comparison.  It shares the front and back of the
+  compiler with packed mode.  But, in pointer mode, we skip the transformations
+  that introduce cursors and packed representations.  Rather, we use a
+  traditional pointer graph of heap objects to represent all data.  Using the
+  default policies of the C compiler for \il{struct} layout.
 \end{itemize}
 
 The packed mode manages tree data by allocating large buffers to serve as output
 destinations (and an additional large region for scoped allocations).  In the
-future we will change this implementation to use a linked list of blocks
+future, we will employ the standard technique for a block-structured heap, where a
+linked list of blocks provides growable storage areas for destination cursors.
 
 
-Then, within the {\bf pointer}
+Within the {\bf pointer} mode, we allocate regular heap objects and thus need an
+allocation strategy.  One policy is to use the system \il{malloc}
+implementation, but this does not typically perform well given the large numbers
+of fine-grained allocations incurred by out-of-place tree transformations.
+%
+A second strategy is to use a custom arena-allocation method for storing heap
+objects.  This doesn't change the internal layout of heap objects, but it does
+pack them densely within cache lines and provides a near-optimal memory
+management strategy---about the best you can do without going to packed.
+%
+We use a simple arena implementation where a single global variable stores the
+heap pointer, which is incremented upon allocation.
 
-
+For benchmarking, we add an @iterate(e)@ form to the language which runs and
+expression multiple times and reports the time for all iterations together.
+Iterate {\em also} resets the state of the arena allocator, after each iteration
+but the final one, in order to ``undo'' the effects of previous iterations
+and avoid leaking memory.
+%
+Thus, when we benchmark a traversal with @iterate(treetraversal(tr1))@, we
+repeatedly walk @tr1@ to produce @tr2@, such that @tr2@ is allocated into the
+same memory region on each iteration.  This optimizes our use of the cache if
+both input and output trees fit in memory.
+%
+It is this optimized version of the ``bumpalloc'' pointer-based mode that
+provides the most competitive baseline against which to evaluate our proposed
+packed-mode compiler pipeline in \cref{sec:eval}.
 
 
 \paragraph*{Embedding Gibbon}
@@ -1258,7 +1286,7 @@ different modes supported by the C backend (packed/pointer).
 
 
 % ================================================================================
-\section{Evaluation}
+\section{Evaluation}\label{sec:eval}
 % ================================================================================
 
 We evaluate the performance of our approach in three ways. First, we
