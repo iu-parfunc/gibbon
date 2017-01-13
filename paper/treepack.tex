@@ -623,7 +623,21 @@ passes in a functional style.
 %% language with sum and product types; and L2, an imperative programming language
 %% with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 
-\input{treelang}
+\input{treelang}  %% Definitions and figures.
+
+\note{Figure~\cref{fig:source} shows the grammar for our language of tree traversals.
+It is nothing but a standard functional language, with the caveat that algebraic
+datatypes, declared with \il{data}, are implicitly {\em packed} in this language.
+In this initial design, the only non-packed datatypes are tuples \il{(e1,e2)},
+though as the project progresses we plan to allow arbitrary {\em subsets} of
+datatypes to be marked with a ``packed'' compiler pragma.
+Note, however, that even tuples allow functions to take and return arbitrary
+numbers of packed datatypes.  When we perform cursor translation in our
+compiler, this will mean passing multiple {\em output cursors} to a function in
+order to provide buffers for it to write its results to.
+}
+
+
 
 
 % ================================================================================
