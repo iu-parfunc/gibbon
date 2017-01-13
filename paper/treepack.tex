@@ -1318,13 +1318,21 @@ mode out of the box.
 %% traversals---and that our compiler produces code competitive with any
 %% existing system.
 
-Second, in \cref{sec:astbench} 
-we build several standard compiler passes
-operating on Racket's intermediate representation, and show
-substantial speedup operating on inputs gathered from existing Racket
-programs. Third, we build a type checker for a small language, and
-benchmark it on large synthetic inputs, demonstrating significant
-speedup for a more complex and data-heavy workload. 
+Second, in \cref{sec:astbench}, we evaluate an important class of tree
+traversals---compiler passes---using realistic sized and shaped ASTs gathered from
+real programs.
+%
+Namely, these tree walks operate on Racket's intermediate representation, and
+show \Red{substantial speedup} using the packed representation to operate on
+ASTs gathered from existing Racket programs.
+% 
+%% Third, we build a type checker for a small language, and benchmark it
+%% on large synthetic inputs, demonstrating significant speedup for a more complex
+%% and data-heavy workload.
+
+Finally, in \cref{sec:eval-extensions}, we look ahead to what a future compiler
+will be able to achieve {\em if} it extends the basic preorder packed format,
+including indirections or layout information which allows parallel traversals.
 
 All benchmarks were conducted on a cluster of identical, dedicated Intel
 machines in a two socket configuration with Xeon E5-2670 CPUs at 2.60 Ghz, and
