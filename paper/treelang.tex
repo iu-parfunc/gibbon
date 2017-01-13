@@ -26,6 +26,10 @@
 \newcommand{\WRITETAG}[2]{\gramwd{write}(#1,#2)}
 \newcommand{\FINISH}[1]{\gramwd{finish}(#1)}
 \newcommand{\READTAG}[1]{\gramwd{read}(#1)}
+
+\newcommand{\STARTV}[1]{\gramwd{start}(#1)}
+\newcommand{\ENDV}[1]{\gramwd{end}(#1)}
+
 \newcommand{\skeywd}[1]{#1}
 \newcommand{\keywd}[1]{\; {#1} \;}
 \newcommand{\keywdr}[1]{\; {#1}_1 \ldots {#1}_n \;}
@@ -110,7 +114,10 @@
 \begin{figure*}
   \begin{displaymath}
     \begin{aligned}
-      \textup{Expressions} && \EXPR && \gramdef & \ldots \gramor \pcase{\sEXPR}{\overline{[\bind{\DC}{\EXPR}]}} \\
+      \textup{Expressions} && \EXPR && 
+     \gramdef & \ldots \gramor \pcase{\sEXPR}{\overline{[\bind{\DC}{\EXPR}]}} 
+     \gramor \STARTV{v} \gramor \ENDV{v}
+      \\
       && && \gramor & \WRITETAG{\sDC}{\sEXPR} \gramor \READTAG{\sEXPR} \gramor
       \FINISH{\sEXPR} \\      
       \textup{Types} && \TYP && \gramdef & \ldots \gramor \NEEDS{[\overline{\sTYP}]}{\sTYP} \gramor \HAS{\sTYP} 

@@ -896,7 +896,8 @@ For our preliminary experiments, we instead naively insert copies for the
 program above.
 
 
-\vspace{-2mm}\subsubsection{Routing end-of-value witnesses}
+% \vspace{-2mm}
+\subsection{Routing end-of-value witnesses}
 % ----------------------------------------
 
 After all traversal constraints are satisfied by recursive calls or
@@ -958,18 +959,19 @@ that reorders these bindings.
 %% bound again.
 
 
-\vspace{-2mm}\subsubsection{Output cursor insertion}\label{sec:cursorize}
+% \vspace{-2mm}
+\subsection{Output cursor insertion}\label{sec:cursorize}
 % ----------------------------------------
 
 Finally we are ready for the core translation in the compiler---switching to
-cursor-passing calling conventions.  This proceeds in two phases:
+destination-cursor-passing calling conventions.  This proceeds in two phases:
 
 \begin{itemize}
 \item First, perform a dataflow analysis and mark every data construct, ($K$)
       or function call which returns packed data, with a {\em destination}.  A
       destination is a static source location of another constructor
-      application, or is one of the output terminals of a function,
-      i.e. location \freshB{} in a \il{Tree$_\freshB$} output.
+      application, or is one of the output terminals of the enclosing function
+      definition, i.e. location \freshB{} in a \il{Tree$_\freshB$} output.
       Copy-insertion will have guaranteed a unique destination for each such
       value (i.e. no sharing).
 \item Second, perform a type-directed, type-preserving cursor-insertion pass.
@@ -989,43 +991,53 @@ For example, the tree function from above, becomes:
 %
 
 Here the return value has turned into a $\ENDOF$ cursor, whereas the inputs have
-turned into read and write cursors respectively.  These are session types, and
+turned into read and write cursors respectively ($Has$ and $Needs$).  These are session types, and
 behave much like typed channels with protocols.  We use the extensions in
-\cref{fig:target} to write and cursors:
+\cref{fig:target} to write and read cursors:
 
 \begin{code}
-  write :: ( $Needs(T:a,\; b)$, $T$) -> $Needs(a,b)$
-  read  :: $Has(T:a)$ -> ( $Has(a)$, $T$ )
+  write :: ( $\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
+  read  :: $\HAS{T:a}$ ->   ( $\HAS{a}$, $T$ )
 \end{code}
 
 That is, @Needs@ tracks a list of values its {\em waiting for}.  For instance,
 given a datatype, @data Foo = MkFoo Int Int@, after we write a tag for @MkFoo@
 to an output buffer, the output cursor has type \il{$Needs$([Int,Int],Foo)}.
-The second component of the $Needs$ is the value which will be completed after
-all the obligations have been satisfied, this can be accomplished 
+The second argument of the $Needs$ is the type of the value which will be
+completed only after all the obligations have been satisfied.  Retrieving that
+completed value can be accomplished with @finish@:
 
 \begin{code}
-  finish :: $Needs$([],$T$) ->  Has($T$)
+  finish :: $Needs$([],$T$) -> $\HAS{T}$
 \end{code}
 
 
 \paragraph*{Locally dilated representation of packed values}
 
-Sometimes the end-witness of a given region is computed, say, underneath a
-conditional.  Our proposed cursor-inserting transformation internally switches
-to a {\em dilated} representation of every packed value.  Inside the local scope
-of a function body, processing a subexpression that returns @Tree@, must instead
-return a pair \il{($Has$(Tree$_\freshA$), $\ENDOF$($\freshA$))}.
+Sometimes the end-witness of a given value is computed, say, underneath a
+conditional.  Thus we may need to change the types of expressions to (locally)
+tack on additional return values.
 %
-The transformed program routes these tuple value throughout the function body,
-making it possible for the compiler to directly produce $\ENDOF(\freshA)$ to
+In order to accomplish this.  Our cursor-inserting transformation internally
+switches to a {\em dilated} representation of every packed value.  Inside the
+local scope of a function body, a subexpression that originally returned @Tree@$_\freshA$,
+must instead return a pair \il{($Has$(Tree$_\freshA$), $\ENDOF{\freshA}$)}.
+%
+The transformed program routes these tuple values throughout the function body,
+making it possible for the compiler to directly produce $\ENDOF{\freshA}$ to
 satisfy the calling convention by returning and end-witness.
+%
+Note that the inter-procedural calling conventions do not change to reflect this
+dilated representation, rather, mediation happens at the call sites.
 
 
 One surprising aspect of the cursor-passing output language is that it is {\em
   still purely functional}.  Rather than directly encoding effects, we have
 created a purely functional interface where @write@ returns a new cursor, and
 all $Needs()$ cursors must be used in a {\em linear}, but pure way.
+%
+(For instance, in the \treelang interpreter we use for debugging, we model cursors as {\em
+  lists}, where write is cons.)
 
 \newcommand{\END}[1]{\ensuremath{\overline{#1}}}
 
@@ -1073,7 +1085,7 @@ The cursors become merely \il{char*} pointers.
 
 \note{Purity is important to reordering for witness search.}
 
-\note{Our interpreter depends on this fact by modeling cursors {\em as lists}.}
+
 
 
 % ================================================================================
