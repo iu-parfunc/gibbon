@@ -1112,10 +1112,7 @@ operating on Racket's intermediate representation, and show
 substantial speedup operating on inputs gathered from existing Racket
 programs. Third, we build a type checker for a small language, and
 benchmark it on large synthetic inputs, demonstrating significant
-speedup for a more complex and data-heavy workload. Fourth, we
-implement a point-correlation benchmark using a kd-tree, again showing
-major performance benefits for packed representations. Additionally,
-we \note{something something parallel}
+speedup for a more complex and data-heavy workload. 
 
 All benchmarks were conducted on a \dots.
 
@@ -1251,6 +1248,17 @@ strongly points to the potential of our approach.
 % --------------------------------------------
 
 \note{type check the simply-typed $\lambda$ calculus in \treelang{}}
+
+\section{Evaluation of Extensions}
+
+This section evaluates two extensions to \treelang{} that enable more complicated traversals and expose more opportunities for performance.
+
+%%Fix this
+Fourth, we
+implement a point-correlation benchmark using a kd-tree, again showing
+major performance benefits for packed representations. Additionally,
+we \note{something something parallel}
+
 
 \subsection{Point correlation}
 % --------------------------------------------
