@@ -77,7 +77,7 @@ genUnpacker DDef{tyName, dataCons} = do
   tag  <- gensym "tag"
   tail <- gensym "tail"
   alts <- genAlts dataCons tail tag 0 
-  bod  <- return $ T.LetPrimCallT [(tag, T.IntTy), (tail, T.CursorTy)] T.ReadInt [(T.VarTriv p)] $
+  bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
             T.Switch (T.VarTriv tag) alts Nothing
   return T.FunDecl{ T.funName  = (mkUnpackerName tyName),
                     T.funArgs  = [(p, T.CursorTy)],
@@ -94,6 +94,9 @@ openParen s  = T.LetPrimCallT [] (T.PrintString ("(" ++ s ++ " ")) []
 closeParen :: T.Tail -> T.Tail
 closeParen   = T.LetPrimCallT [] (T.PrintString ")") [] 
 
+printSpace :: T.Tail -> T.Tail
+printSpace = T.LetPrimCallT [] (T.PrintString " ") []
+               
 sandwich :: (T.Tail -> T.Tail) -> String -> T.Tail -> T.Tail
 sandwich mid s end = openParen s $ mid $ closeParen end
 
@@ -104,17 +107,26 @@ genDconsPrinter (x:xs) tail = case x of
     val  <- gensym "val"
     t    <- gensym "tail"
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$> 
-      printTy L1.IntTy [T.VarTriv val]  
-        <$> genDconsPrinter xs t 
+      printTy L1.IntTy [T.VarTriv val] <$> 
+       maybeSpace <$>              
+        genDconsPrinter xs t 
       
   L1.PackedTy tyCons _ -> do
     val  <- gensym "val"
     t    <- gensym "tail"
     tmp  <- gensym "temp"
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$> 
-      T.LetCallT [(tmp, T.PtrTy)] (mkPrinterName tyCons) [(T.VarTriv val)] 
-        <$> genDconsPrinter xs t
-  _                    -> undefined
+      T.LetCallT [(tmp, T.PtrTy)] (mkPrinterName tyCons) [(T.VarTriv val)] <$>
+       maybeSpace <$>  
+         genDconsPrinter xs t
+
+  _ -> error "FINISHME: genDconsPrinter"
+
+ where
+  maybeSpace = if L.null xs
+               then id
+               else printSpace
+       
 genDconsPrinter [] tail     = do 
   return $ closeParen $ T.RetValsT [(T.VarTriv tail)] 
 
@@ -150,7 +162,7 @@ printTy L1.BoolTy [trv]               =
     \t -> T.IfT trv (prntBool truePrinted $ t) (prntBool falsePrinted $ t)
 printTy (L1.ProdTy xs) [trv]          = \t -> foldl (\y x -> (printTy x [trv] $ y)) t xs   
 printTy (L1.SymDictTy (x)) [trv]      = sandwich (printTy x [trv]) "Dict"
-printTy (L1.PackedTy constr _) _      = T.LetCallT [] (mkPrinterName constr) [] 
+printTy (L1.PackedTy constr _) [trv]  = T.LetCallT [] (mkPrinterName constr) [trv] 
 printTy (L1.ListTy (x)) [trv]         = sandwich (printTy x [trv]) "List"
 printTy _ _                           = error $ "Invalid L1 data type."
 
@@ -158,7 +170,23 @@ addPrintToTail :: L1.Ty -> T.Tail-> SyM T.Tail
 addPrintToTail ty tl0 =
     T.withTail (tl0, T.IntTy) $ \ [trv] ->
       printTy ty [trv] $
-        T.RetValsT []  -- Void return after printing.
+        -- Always print a trailing newline at the end of execution:
+        T.LetPrimCallT [] (T.PrintString "\n") [] $ 
+          T.RetValsT []  -- Void return after printing.
+
+-- | In packed mode we print by unpacking first.
+addPrintToTailPacked :: L1.Ty -> T.Tail-> SyM T.Tail
+addPrintToTailPacked ty tl0 =
+  -- FIXME: Need to handle products of packed!!
+  case ty of
+    L1.PackedTy tycon _ -> 
+       T.withTail (tl0, T.IntTy) $ \ [trv] ->
+          T.LetCallT [("unpkd", T.PtrTy), ("ignre", T.CursorTy)] (mkUnpackerName tycon) [trv] $ 
+           printTy ty [T.VarTriv "unpkd"] $
+             -- Always print a trailing newline at the end of execution:
+             T.LetPrimCallT [] (T.PrintString "\n") [] $ 
+               T.RetValsT []  -- Void return after printing.
+    _ -> addPrintToTail ty tl0
 
 -- The compiler pass
 -------------------------------------------------------------------------------a
@@ -168,13 +196,19 @@ addPrintToTail ty tl0 =
 --
 -- The only substantitive conversion here is of tupled arguments to
 -- multiple argument functions.
-lower :: Bool -> L2.Prog -> SyM T.Prog
-lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
+--
+-- First argument indicates (1) whether we're inpacked mode, and (2)
+-- the pre-cursorize type of the mainExp, if there is a mainExp.
+lower :: (Bool,Maybe L1.Ty) -> L2.Prog -> SyM T.Prog
+lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
   mn <- case mainExp of
           Nothing    -> return Nothing
-          Just (x,mty) -> (Just . T.PrintExp) <$>
-                          (addPrintToTail mty =<<
-                           tail x)
+          Just (x,mty) -> let Just origMainTy = mMainTy
+                              addPrint = if pkd
+                                           then addPrintToTailPacked origMainTy
+                                           else addPrintToTail mty
+                          in (Just . T.PrintExp) <$>
+                              (addPrint =<< tail x)
 
   funs       <- mapM fund (M.elems fundefs) 
   unpackers  <- mapM genUnpacker (M.elems ddefs) 
@@ -388,7 +422,7 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
     -- Whatever... a little just-in-time flattening.  Should obsolete this:
     L1.PrimAppE p ls -> do
       tmp <- gensym "flt"
-      tail (L1.LetE (tmp, L1.primRetTy p, L1.PrimAppE p ls) (L1.VarE tmp))
+      tail (L1.LetE (tmp, L2.primRetTy p, L1.PrimAppE p ls) (L1.VarE tmp))
 
     ---------------------
     -- (2) Next FAKE Primapps.  These could be added to L1 if we wanted to pollute it.
@@ -436,8 +470,9 @@ lower pkd L2.Prog{fundefs,ddefs,mainExp} = do
              (tail bod)
     --------------------------------End PrimApps----------------------------------
 
-    L1.AppE v e | L2.isExtendedPattern ex0 -> error$ "Lower: Unhandled extended L2 pattern(1): "++ndoc ex0
-                | otherwise -> return $ T.TailCall ( v) [triv "operand" e]
+    L1.AppE{} | L2.isExtendedPattern ex0 -> error$ "Lower: Unhandled extended L2 pattern(1): "++ndoc ex0
+    L1.AppE v (MkProdE ls) -> return $ T.TailCall ( v) (L.map (triv "operands") ls)
+    L1.AppE v e            -> return $ T.TailCall ( v) [triv "operand" e]
 
     -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
     ProjE ix ap@(AppE f e) | not (L2.isExtendedPattern ap) -> do
@@ -594,11 +629,11 @@ prim p =
     L1.DictLookupP ty -> T.DictLookupP $ typ ty
     L1.DictEmptyP ty -> T.DictEmptyP $ typ ty
 
-    L1.ReadPackedFile mf ty -> T.ReadPackedFile mf ty
+    L1.ReadPackedFile mf tyc _ -> T.ReadPackedFile mf tyc
 
-    L1.ErrorP{} -> error$ "lower/prim: internal error, should not have got to here: "++show p
-
-    L1.MkTrue  -> error "lower/prim: internal error. MkTrue should not get here."
-    L1.MkFalse -> error "lower/prim: internal error. MkFalse should not get here."
+    L1.MkNullCursor -> error$ "lower/prim: internal error, should not have got to here: "++show p
+    L1.ErrorP{}     -> error$ "lower/prim: internal error, should not have got to here: "++show p
+    L1.MkTrue       -> error "lower/prim: internal error. MkTrue should not get here."
+    L1.MkFalse      -> error "lower/prim: internal error. MkFalse should not get here."
 
 

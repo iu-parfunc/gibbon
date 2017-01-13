@@ -230,15 +230,16 @@ inferExp (ddefs,fenv) env e = exp env e
          return (S.union beff reff, bloc)
 
      -- We need to reach a fixed point where we jointly infer effects
-     -- for all functions.
-     L1.AppE rat rand ->
-      case rand of
-        L1.VarE vr -> 
-          do let loc   = env # vr
-             let arrTy = fenv # rat
-             instantiateApp arrTy loc
-        _ -> error$ "FINISHME: handle this rand: "++show rand
-
+     -- for all functions.                
+     L1.AppE rat rand -> -- rand guaranteed to be trivial here.
+      let getloc (VarE v) = env # v
+          getloc (MkProdE trvz) = TupLoc (L.map getloc trvz)
+          getloc (ProjE ix trv) = let TupLoc ls = getloc trv 
+                                  in ls !! ix
+          getloc oth =  error$ "FINISHME: handle this rand: "++show oth
+          arrTy = fenv # rat
+      in instantiateApp arrTy (getloc rand)
+         
      -- If rands are already trivial, no traversal effects can occur here.
      L1.PrimAppE _ rands -> L1.assertTrivs rands $ 
          return (S.empty, Bottom) -- All primitives operate on non-packed data.
@@ -248,8 +249,8 @@ inferExp (ddefs,fenv) env e = exp env e
                          return (S.unions effs, TupLoc locs)
      L1.ProjE _ e -> exp env e
 
-     L1.MapE{}  -> __nolists
-     L1.FoldE{} -> __nolists
+     L1.MapE{}  -> error "FINISHLISTS"
+     L1.FoldE{} -> error "FINISHLISTS"
 
 --     L1.MkPacked k ls ->
 
@@ -268,6 +269,9 @@ inferExp (ddefs,fenv) env e = exp env e
                                          ++"pattern vars, "++show patVs++
                                          ", do not match the number of types "++show tys)
           freeRHS = L1.freeVars erhs
+
+          packedOnly = L.filter (\(_,t) -> L1.hasPacked t) zipped
+
       env' <- extendLocEnv zipped env
           -- WARNING: we may need to generate "nested inside of" relation
           -- between the patVs and the scrutinee.      
@@ -280,7 +284,13 @@ inferExp (ddefs,fenv) env e = exp env e
            (L.null patVs) ||
            -- If there is NO packed child data, then our object has static size:
            (L.all (not . L1.hasPacked) tys) ||
-              let (lastV,lastTy) = last zipped
+             -- Or if the last non-static item was in fact traversed:
+             (case packedOnly of
+                [] -> False
+                _:_ -> S.member (Traverse (fst$ last packedOnly)) eff) || 
+                                            
+             -- Or maybe the last-use rule applies:
+             (let (lastV,lastTy) = last zipped
                   isUsed = S.member lastV freeRHS
               in
               case lastTy of
@@ -294,6 +304,7 @@ inferExp (ddefs,fenv) env e = exp env e
                 L1.BoolTy -> isUsed
                 L1.SymDictTy{} -> error "no SymDictTy allowed inside Packed"
                 L1.ProdTy{}    -> error "no ProdTy allowed inside Packed"
+                L1.ListTy{} -> error "FINISHLISTS")
 
           -- Also, in any binding form we are obligated to not return
           -- our local bindings in traversal side effects:                   

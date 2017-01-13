@@ -1,5 +1,5 @@
 
-default: cleaned_racket
+default: binary_racket cleaned_racket sorted_binary_files.txt sorted_cleaned_files.txt
 
 # We don't check in input data sets to git. We fetch them.
 
@@ -23,6 +23,10 @@ wget_binary:
 	wget http://cs.indiana.edu/~rrnewton/files/racket_binary_packed_asts_v1.7.tgz
 	tar xf racket_binary_packed_asts_v1.7.tgz
 
+wget_mega:
+	wget http://cs.indiana.edu/~rrnewton/files/mega_asts_1.0.tbz
+	tar xf mega_asts_1.0.tbz
+
 expanded_racket: ${DATASET}
 	mkdir -p $@
 	cd $@; time tar xf ../${DATASET}
@@ -37,7 +41,10 @@ expanded_racket: ${DATASET}
 	echo "\nOffenders and zero-sized removed.  Done."
 	$(MAKE) largest
 
-cleaned_racket: rewrite.rkt
+cleaned_racket:
+	$(MAKE) wget_cleaned
+
+rebuild_cleaned_racket: rewrite.rkt
 	mkdir -p $@
 	cd expanded_racket; \
          for f in `find -name "*.sexp"`; do \
@@ -46,16 +53,13 @@ cleaned_racket: rewrite.rkt
          done | racket ../rewrite.rkt;
 	$(MAKE) largest_clean
 
-largest:
-	echo "Here are some of the larger files:"
-	find expanded_racket/ -type f -printf "%s\t%p\n" | sort -n | tail
-
-largest_clean:
-	echo "Here are some of the larger, cleaned files:"
-	find cleaned_racket -type f -printf "%s\t%p\n" | sort -n | tail
 
 
-binary_racket: 
+# [2017.01.12] Make the default fetching it
+binary_racket:
+	$(MAKE) wget_binary
+
+rebuild_binary_racket: 
 	mkdir -p $@
 	rm -f ./conversion_list.txt
 	cd cleaned_racket; \
@@ -66,4 +70,56 @@ binary_racket:
 	cd cleaned_racket; \
          cat ../conversion_list.txt | racket ../binary_pack.rkt;
 
-.PHONY: default fetch largest
+# --------------------------------------------------------------------------------
+
+# Build a list of all files from biggest to smallest:
+sorted_binary_files.txt:
+	cd binary_racket; find ./ -name "*.gpkd" -type f -printf "%s %p\n" | sort -n -r > ../$@
+
+sorted_cleaned_files.txt:
+	cd cleaned_racket; find ./ -name "*.sexp" -type f -printf "%s %p\n" | sort -n -r > ../$@
+
+# Default:
+MEGASIZE=10
+
+mega_asts:
+	$(MAKE) wget_mega
+
+megas:
+	$(MAKE) MEGASIZE=1 mega
+	$(MAKE) MEGASIZE=5 mega
+	$(MAKE) MEGASIZE=10 mega
+	$(MAKE) MEGASIZE=50 mega
+	$(MAKE) MEGASIZE=100 mega
+	$(MAKE) MEGASIZE=500 mega
+	$(MAKE) MEGASIZE=4456 mega
+
+mega: mega_asts/mega_$(MEGASIZE).gpkd
+
+mega_asts/mega_$(MEGASIZE).sexp: cleaned_racket sorted_cleaned_files.txt
+	mkdir -p ./mega_asts
+	head -n$(MEGASIZE) sorted_cleaned_files.txt | awk '{ print "./cleaned_racket/"$$2 }' > $@.list
+	cat $@.list | racket combine.rkt --out $@
+
+mega_asts/mega_$(MEGASIZE).gpkd: mega_asts/mega_$(MEGASIZE).sexp
+	raco make binary_pack.rkt
+	echo $< $@ | racket binary_pack.rkt
+
+largest:
+	echo "Here are some of the larger files:"
+	find expanded_racket/ -type f -printf "%s\t%p\n" | sort -n | tail
+
+largest_clean:
+	echo "Here are some of the larger, cleaned files:"
+	find cleaned_racket -type f -printf "%s\t%p\n" | sort -n | tail
+
+
+clean:
+	rm -f sorted_binary_files.txt sorted_cleaned_files.txt
+	rm -rf racket_cleaned*.tgz racket_binary*.tgz
+
+distclean: clean
+	rm -rf ./expanded_racket ./cleaned_racket ./binary_racket 
+	rm -rf mega_asts
+
+.PHONY: default fetch largest rebuild_binary_racket mega

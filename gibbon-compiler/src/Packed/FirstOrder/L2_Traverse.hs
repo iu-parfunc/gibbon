@@ -18,6 +18,7 @@ module Packed.FirstOrder.L2_Traverse
     -- * Temporary backwards compatibility, plus rexports
     , Ty1(..), pattern SymTy
     , Exp(..)
+    , primRetTy
       
     -- * Utilities for dealing with the extended types:
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc, unknownCursor
@@ -348,7 +349,7 @@ addEndWitnessReturns = __
 -- This happens in two stages, corresponding to the passes RouteEnds
 -- and CursorDirect.
 
--- | Step 1/2: add additional outputs corresponding to
+-- | Step 1/3: add additional outputs corresponding to
 -- end-of-input-value witnesses.  Return the new type and the added
 -- outputs.
 cursorizeTy1 :: ArrowTy Ty -> (ArrowTy Ty, [LocVar])
@@ -363,7 +364,7 @@ cursorizeTy1 (ArrowTy inT ef ouT) = (newArr, newOut)
              | Traverse v <- S.toList ef ] -- ^ Because we traverse all outputs,
                                            -- this effect set  is just what we need.
              
--- | Step 2/2: continue the conversion by:
+-- | Step 2/3: continue the conversion by:
 --
 --  (1) First, adding additional input arguments for the destination
 --      cursors to which outputs are written.
@@ -391,8 +392,8 @@ cursorizeTy2 (ArrowTy inT ef ouT) =  (newArr, newIn)
         let ProdTy ls = ouT in
         allLocVars (ProdTy (L.drop (S.size ef) ls))
 
--- | Take the final step
---  (3) Packed types in the input likewise become (read-only) cursors.
+-- | Take the final step (3/3)
+--   Packed types in the input now become (read-only) cursors.
 cursorizeArrty3 :: ArrowTy Ty -> ArrowTy Ty
 cursorizeArrty3 arr@(ArrowTy inT ef ouT) =
     if hasRealPacked ouT
@@ -570,6 +571,25 @@ isExtendedPattern e =
     _              -> False
 
 
+-- | Return type for a primitive operation.                      
+primRetTy :: Prim -> L1.Ty
+primRetTy p =
+  case p of
+    AddP -> IntTy
+    SubP -> IntTy
+    MulP -> IntTy
+    EqSymP  -> BoolTy
+    EqIntP  -> BoolTy
+    MkTrue  -> BoolTy
+    MkFalse -> BoolTy
+    MkNullCursor -> CursorTy ()
+    SizeParam -> IntTy
+    DictEmptyP ty -> SymDictTy ty
+    DictInsertP ty -> SymDictTy ty 
+    DictLookupP ty -> ty
+    (ErrorP _ ty) -> ty
+
+                      
 -- | A type environment listing the types of built-in functions.
 -- 
 --   Using this table represents a policy decision.  Specifically,

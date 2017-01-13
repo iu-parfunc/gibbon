@@ -15,10 +15,14 @@ checkfile $2
 A=`mktemp`
 B=`mktemp`
 
-grep -v SELFTIMED $1 | grep -v BATCHTIME > $A
-grep -v SELFTIMED $2 | grep -v BATCHTIME > $B
+# TEMP: This ignores NEWLINES [2017.01.11].  May want to revert that eventually:
+grep -v SELFTIMED $1 | grep -v BATCHTIME | tr '\n' ' ' > $A
+grep -v SELFTIMED $2 | grep -v BATCHTIME | tr '\n' ' ' > $B
+# did not work:
+# sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/ /g' 
 
-diff $A $B
+# Policy: ignore whitespace on diff:
+diff -w $A $B
 code=$?
 
 rm $A $B

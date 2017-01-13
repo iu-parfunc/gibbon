@@ -31,7 +31,7 @@ lvl = 4
 -- | The goal of this pass is to take effect signatures and translate
 -- them into extra arguments and returns.  This pass does not worry
 -- about where the witnesses come from to synthesize these extra
--- returns, it just inserts references to them that create demand.
+-- returns, it just inserts references to them that create *demand*.
 --
 -- This pass introduces *witness variables*.  These are operationally
 -- equivalent to the original variable, but they always have type
@@ -39,13 +39,9 @@ lvl = 4
 -- not YET been turned into a cursor.  Thus, `witness_x = (CursorTy)x`.
 -- 
 routeEnds :: L2.Prog -> SyM L2.Prog
-routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
-    dbgTrace lvl ("Starting routeEnds on "++show(doc fundefs)) $ do
-    -- Prog emptyDD <$> mapM fd fundefs <*> pure Nothing
-
+routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
     fds' <- mapM fd $ M.elems fundefs
 
-    -- let gloc = "global"
     mn <- case mainExp of
             Nothing -> return Nothing
             Just (x,t)  -> do (x',_) <- exp [] M.empty x
@@ -62,7 +58,6 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
   fd :: L2.FunDef -> SyM L2.FunDef
   fd (f@L2.FunDef{funname,funty,funarg,funbod}) =
       let ArrowTy oldInT _effs _ = funty
-          -- FIXME: split cursorizeTy into two stages.
           (newTy@(ArrowTy inT _ _),newOut) = cursorizeTy1 funty 
       in
       dbgTrace lvl ("Processing fundef: "++show(doc f)++
@@ -107,7 +102,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
 
      _ -> error$ " [routeEnds] trivial expected: "++sdoc tr
                   
-  -- Arguments:
+  -- | Arguments:
   --
   --  (1) the N demanded traversal witnesses (end-of-input cursors)
   --  (2) an environment mapping lexical variables to abstract locations
@@ -135,6 +130,8 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
         trivLoc (PrimAppE L1.MkTrue [])  = Bottom
         trivLoc (PrimAppE L1.MkFalse []) = Bottom
         trivLoc t = error $ "Case in trivLoc not handled for: " ++ (show t)
+
+        -- When we get to the end... we just mention the names of what we want:
         defaultReturn e = L1.mkProd $ (L.map VarE demanded) ++ [e]
     in
     case ex of
@@ -206,7 +203,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                                  (ProjE (length effs) (VarE tmp))
                 dbgTrace lvl (" [routeEnds] processing app with these extra returns: "++
                                  show effs++", new expr:\n "++sdoc newExp) $! 
-                  return (newExp,loc)
+                  return (defaultReturn newExp,loc)
                          
      -- Here we must fulfill the demand on ALL branches uniformly.
      -- 
@@ -216,7 +213,11 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
      -- but we still need to figure out which subexpressions shoud be 
      -- be demanded to produce them.
      CaseE e1 ls -> L1.assertTriv e1 $
-      let scrutloc = let VarE sv = e1 in env # sv
+      let scrutloc = let lp (VarE sv)     = env # sv
+                         lp (ProjE ix e') = let TupLoc ls = lp e'
+                                            in ls !!! ix
+                         lp oth = error$ "[RouteEnds] FINISHME, handle case scrutinee at loc: "++show oth
+                     in lp e1
 
           docase (dcon,patVs,rhs) = do
             let tys    = lookupDataCon ddefs dcon

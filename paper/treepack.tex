@@ -1,5 +1,3 @@
-
-
 \documentclass[a4paper,english]{lipics-v2016}
 \usepackage{microtype}
 
@@ -29,7 +27,25 @@
 \captionsetup[figure]{format=ruled}
 \captionsetup[subfigure]{format=plain}
 
+\newcommand{\treecomp}{Gibbon compiler{}}
+
+%% Traversal effects:
+\newcommand{\travarr}[1]{\xrightarrow{#1}}
+% \newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{\overrightarrow{#2}} {#3}}}
+% \newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{trav({#2})} {#3}}}
+\newcommand{\arr}[3]{\ensuremath{{#1} \travarr{#2} {#3}}}
+% $\xrightarrow[world]{hello}$
+
+
+
 \renewcommand{\thesubfigure}{(\alph{subfigure})}
+
+\newcommand{\fresh}[1]{\ensuremath{#1}}
+\newcommand{\fixed}[1]{\ensuremath{\texttt{#1}}}
+
+\newcommand{\freshA}{\fresh{\alpha}}
+\newcommand{\freshB}{\fresh{\beta}}
+\newcommand{\locend}[1]{\ensuremath{\overline{#1}}}
 
 \newif\ifcurly
 \curlytrue % Comment to deactivate.
@@ -93,16 +109,9 @@
 %           {Affiliation2/3}
 %           {Email2/3}
 
-\author[1]{John Q. Open}
-\author[2]{Joan R. Access}
-\affil[1]{Dummy University Computing Laboratory, Address/City, Country\\
-  \texttt{open@dummyuniversity.org}}
-\affil[2]{Department of Informatics, Dummy College, Address/City, Country\\
-  \texttt{access@dummycollege.org}}
-\Copyright{John Q. Open and Joan R. Access}%mandatory, please use full first names. LIPIcs license is "CC-BY";  http://creativecommons.org/licenses/by/3.0/
-\subjclass{Dummy classification -- please refer to \url{http://www.acm.org/about/class/ccs98-html}}% mandatory: Please choose ACM 1998 classifications from http://www.acm.org/about/class/ccs98-html . E.g., cite as "F.1.1 Models of Computation". 
-\keywords{Dummy keyword -- please provide 1--5 keywords}% mandatory: Please provide 1-5 keywords
-%Editor-only macros:: begin (do not touch as author)%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\author[1]{}
+\Copyright{}%mandatory, please use full first names. LIPIcs license is "CC-BY";  http://creativecommons.org/licenses/by/3.0/
+%
 
 \begin{document}
 
@@ -112,17 +121,21 @@
 When written idiomatically in most programming languages, programs that traverse
 and construct trees operate over pointer-based data structures, with one heap
 object per-leaf and node.  While this may seem tautological, we show that common
-tree traversals---found in compiler passes, space-partitioning trees, and
-elsewhere---can instead be automatically compiled to operate on pointer-free
-pre-order serializations of trees.  On current x86 architectures such programs
-can run up to several times faster than their pointer-based counterparts.
+tree traversals---as found in compiler passes, space-partitioning trees, and
+elsewhere---can  be automatically compiled to operate on \textbf{pointer-free
+pre-order serializations of trees}.  On modern architectures such programs
+often run several times faster than their pointer-based counterparts.
 
-We present a prototype compiler for a small first-order, purely functional
-language of tree traversals.  The output language includes mutable cursors into
-input and output buffers for packed data.  We propose a compilation technique
-with an effect system for capturing traversal behavior, combined with a
-lightweight analysis inferring data flow, and a program synthesis step for
-creating missing traversals.
+We present a prototype compiler for \textsf{Gibbon}, a small
+first-order, purely functional language of tree traversals.  Our
+compiler first transforms this language into one with
+mutable cursors into input and output buffers
+for packed data, which then generates code as efficient as
+hand-written C. The key compiler technologies include an effect
+system for capturing traversal behavior, combined with a lightweight
+analysis inferring data flow, and a program synthesis step for
+creating missing traversals. We evaluate our compiler on several
+simple tree transformations over a real-world dataset of source code.
   
 \end{abstract}
 
@@ -142,23 +155,23 @@ creating missing traversals.
 
 \rn{This is an example peanut-gallery comment.}
 
-Programs that traverse and construct trees are a niche, but an important one,
-including compiler passes, HTML DOM, and particle simulations with
+Programs that traverse and construct trees are widely used across all
+domains of computer science, ranging from compiler passes to the
+browser Document Object Model to particle simulations with
 space-partitioning trees.
 %
-Yet there is almost no diversity in how modern programming languages and
-compilers represent trees and their traversals, so the matter would seem to be
-settled.
+Yet almost all modern programming languages and
+compilers represent trees and their traversals identically.
 % In the traditional representation,
 Each node of the tree is a heap object, followed by fields for child nodes or
-leaf values.  This representation hasn't changed since the dawn of computing and
+leaf values.  This representation has not changed since early LISP systems and
 is shared across source languages with quite different type
 systems---whether algebraic datatypes or class hierarchies, either statically or
 dynamically typed.  The only deviations from this consensus are found within
 limited high-performance scenarios where complete trees can be laid out using
-address arithmetic with no intermediate nodes \cite{hpc-trees}.
+address arithmetic with no intermediate nodes~\cite{hpc-trees}.
 
-But perhaps the consensus was premature?  In numerical computing it is an axiom
+But perhaps this consensus is premature?  In numerical computing it is an axiom
 that you cannot treat the numbers in a matrix as individual heap objects.
 Rather, the emphasis is on bulk efficiency.  Likewise, many tree traversals
 process trees in bulk, reading or writing them in one pass.  On such workloads,
@@ -515,99 +528,304 @@ passes in a functional style.
 
 
 \subsection{Inferring effects}
+
+\vspace{-2mm}\subsubsection{Inferring effects}
 % ----------------------------------------
 
-% \newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{\overrightarrow{#2}} {#3}}}
-% \newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{trav({#2})} {#3}}}
-\newcommand{\arr}[3]{\ensuremath{{#1} \xrightarrow{#2} {#3}}}
-% $\xrightarrow[world]{hello}$
-
-We denote a function with traversal effects as \arr{A}{\alpha}{B}, meaning a
-function that traverses the value located at $\alpha$ during its execution.
-
-
-\begin{figure}
-\begin{verbatim}
-    Top
-  Fixed a   Fixed b   ....
-  Fresh a   Fresh b   ....
-    Bottom
-\end{verbatim}
-  \caption{The lattice for abstract location analysis.}
-  \label{fig:lattice}
-\end{figure}
-
-
-\subsection{Copy and traversal insertion}
-% ----------------------------------------
-
-
-\note{During analysis, we generated all the information we need not only to {\em
-    label} traversal effects, but to recognize where they are needed, but
-  missing.}
-
-\note{With the inter-procedural traversal types settled, we reprocess the and
-  perform the same location analysis, but wherever we are missing a witness of a
-  field stored within a packed buffer, we perform a program synthesis to
-  generate a recursive call that meets that constraint.}
-
-\note{We insert calls to only two functions---copy and insert---whose
-  definitions the compiler generates in a subsequent pass.}
-
-\note{Even still, there's a search space of potential places to insert code.  We
-  follow a simple heuristic of introducing traversals in as large a scope as
-  possible, e.g. just under a case expression that binds the field variables.}
-%% directly at the point of missing constraints.  This may introduce the same
-%%   traversal multiple times, for example within different branches of an If
-
-\subsection{Routing end-of-value witnesses}
-% ----------------------------------------
-
-
-\subsection{Reordering to discover witnesses}
-% ----------------------------------------
-
-\note{At this point in the compilation process, ``witnesses'' have been inserted,
-  and code has been generated to consume them. The program is not necessarily valid,
-  however, because the places in the code where witnesses are consumed are not
-  guaranteed to be within the scope of the binders that introduced the witness.}
-
-\note{Briefly explain why we generate code weirdly like this.}
-
-\note{Due to the fact that our programs have few effects (can we say they're
-  purely functional?), and that our programs are in A-normal form (each sub-expression
-  is bound to a name), we can represent a program as a graph where each bound name
-  is a node and its edges are the bindings it depends on. A correct reordering of
-  a program is a topological sort of this graph.}
-
-
-
-\subsection{Output cursor insertion}
-% ----------------------------------------
-
-\note{Locally dilated representation of packed values.}
-
-\newcommand{\END}[1]{\ensuremath{\overline{#1}}}
-
-\note{Several ways to encode these:}
+We associate with every packed type an abstract location. This is different from
+a region variable in prior work, because it represents an abstraction of the
+{\em exact memory location} that a value starts at.  No two distinct variables
+can share the same location, whereas two variables can share the same ``region''.
+The type signature of a function on trees becomes:
 
 \begin{code}
-  (Tree@$_a$@,Tree@$_b$@)
+f :: Tree$_\alpha$ -> Tree$_\beta$
+\end{code}
 
-  ((Cur@$_a$@,Cur@$_{\END{a}}$@),(Cur@$_b$@,Cur@$_{\END{b}}$@))
+This is read ``function f takes a tree at location $\alpha$ and produces one at
+location $\beta$''.
+Note that a function of type \lstinline{Tree$_\alpha$ -> Tree$_\alpha$} is necessarily the identity.
+%
+Next, if @f@ examines all the bytes in $\alpha$, we say it has the effect $traverse(\alpha)$
+and we write its type as:
 
-  ((Cur@$_a$@,Cur@$_b$@),(Cur@$_{\END{a}}$@,Cur@$_{\END{b}}$@))
+% $\arr{\text{Tree}_a }{ a }{ \text{Tree}_b}$
+\begin{code}
+f :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$
+\end{code}
+
+%% We denote a function with traversal effects as \arr{A}{\alpha}{B}, meaning a
+%% function that traverses the value located at $\alpha$ during its execution.
+
+We write $end(\freshA)$ to signify the location after the last byte of \freshA,
+or \locend{\freshA} for short.  One way of looking at a function that traverses
+a is that it can {\em witness} $end(\freshA)$.  At runtime, this witness is
+merely a pointer value.
+%
+Ultimately we will rewrite the function to return such a witness.  For now, the
+goal of effect inference is to determine a table traversal type for all
+functions jointly.
+
+\paragraph{A lattice of locations}
+
+The locations above (\freshA, \freshB) are {\em metavariables} that can range
+over different locations, depending on what the (location-polymorphic) function
+@f@ is applied to.
+%
+This is in contrast with lexically-bound variables introduced by $\lambda$s or
+pattern matching.  These we regard as having {\em fixed} (predetermined)
+locations.  For example, the variables @tr@, @x@, and @y@ below.
+
+\begin{code}
+f :: Tree -> Tree
+f(tr) = case tr of Node x y -> ...
+\end{code}
+
+In fact we name these fixed regions after their lexical variables, simply:
+\fixed{tr}, \fixed{x}, \fixed{y}.  Together with tuple locations $(l,l)$, these
+fresh and fixed locations form a lattice under unification.
+For example, $(l_1,l_2)\sqsubseteq (l_3,l_4)$, if and only if there exists a
+substitution on metavariables that ensures $l_1 = l_3 \wedge l_2 = l_4$ .
+%
+Such a substitution assigns fixed locations to metavariables, and does {\em not}
+allow metavariables to range over entire tuple locations.
+
+%% \begin{itemize}
+%% \item $\freshA \sqsubseteq l$, for all locations $l \in Locs$
+%% \item
+%%   $l_1 \sqsubseteq l_2 \wedge l_3 \sqsubseteq l_4
+%%   \Rightarrow (l_1,l_2)\sqsubseteq (l_3,l_4)$
+%% \item $\forall l . \bot \sqsubseteq l$  
+%% \item $\forall l .  l  \sqsubseteq \top$  
+%% \end{itemize}
+
+Non-packed values such as integers always have location $\bot$.  On the other
+hand a 
+%% To implement the analysis we associate every lexical variable with an abstract
+%% location drawn from the lattice in figure \cref{fig:lattice}.
+% The lattice is ordered on unification of fresh variables. A
+top value is reached
+when two locations are incompatible.  For example, the following term has
+location top because it attempts to unify two fixed locations \fixed{x} and \fixed{y}.
+
+\begin{code}
+case p of
+  Node x y ->
+    if _ then x else y
+\end{code}
+
+% This term has location top.  Fixed x and fixed y join to top.
+Indeed, we cannot statically know what location this expression will return.
+Further, ends are always distinct locations from starts: $end(l) \neq l$.
+
+
+%% \begin{figure}
+%% \begin{verbatim}
+%%     Top
+%%   Fixed x   Fixed y   ....   (Fixed x, Fixed y) (Fixed x, Fixed x)
+%%   Fresh a   Fresh b   ....   (Fresh a, Fresh a)
+%%     Bottom
+%% \end{verbatim}
+%% \caption{The lattice for abstract location analysis.
+%%   $(\alpha,\alpha) \sqsubseteq (\texttt{x},\texttt{y})$}
+%%   \label{fig:lattice}
+%% \end{figure}
+
+
+\paragraph{Analysis and fixed point}
+
+We use the lattice of locations above to perform a program analysis, assigning a
+location to each subexpression, as well as a set of traversal effects.  The
+basic idea is that an expression @case e of ...@, creates a traversal effect for
+the location of @e@ provided that all the branches of the case traverse the
+(non-statically-sized) arguments of their data constructors.
+%
+This stage of the process is {\em optimistic}, in that it assumes that any
+additional traversals that are necessary will subsequently be inserted.  For example:
+\begin{code}
+  case _ of K (y::Tree) (x::Int) -> x
+\end{code}
+
+When reading datatype @K@ from a a preorder serialization in a buffer, accessing
+the simple scalar @x@, requires somehow traversing @y@ to witness
+\locend{\fixed{y}}, where $\locend{\fixed{y}} = \fixed{x}$.  During the infer
+effects phase, we assign the traverse effect to the above code, assuming that a
+dummy traversal will later be inserted (\cref{sec:copy-insert}).
+
+Even with this assumption, determining the traversal effect signature for each
+function is nontrivial because of interdependencies between functions.  E.g. @f@
+traverses it input only if @g@ traverses its input. Thus we design this pass as
+a program analysis that iterates to a fixed point.
+%
+We begin with every function having a {\em maximum} traversal signature---we
+assume it reaches the end of every input. Then, this set monotonically decreases
+in every round, until the fixed point is reached.
+
+{During analysis, we generated all the information we need not only to {\em
+    label} traversal effects, but to recognize where they are needed, but
+  missing.}  {With the inter-procedural traversal types settled, we reprocess
+  the program and repeat the same location analysis, but this time, wherever we
+  are missing a witness of a field stored within a packed buffer, we perform a
+  {\em program synthesis} to generate a recursive call that meets that constraint.}
+%a
+In our prototype, we keep this program synthesis very simple: we insert calls to
+only two functions---copy and empty-traverse---whose definitions the compiler
+generates in a subsequent pass.  {Even still, there's a search space of
+  potential places to insert code.  We follow a simple heuristic of introducing
+  traversals in as large a scope as possible, e.g. just under a case expression
+  that binds the field variables.}
+%% directly at the point of missing constraints.  This may introduce the same
+%%   traversal multiple times, for example within different branches of an If
+A simple example of a program that forces a copy is one that introduces sharing:
+%
+\begin{code}
+let x = f t in  Node x x 
+\end{code}
+
+In the course of the proposed project, we will use these missing traversals to
+go back and {\em change the data format}, i.e. use packed records with layout
+information, rather than the minimal preorder serialization.
+%
+For our preliminary experiments, we instead naively insert copies for the
+program above.
+
+
+\vspace{-2mm}\subsubsection{Routing end-of-value witnesses}
+% ----------------------------------------
+
+After all traversal constraints are satisfied by recursive calls or
+compiler-inserted traversals, then we transform the program in a type-directed
+way, to include additional return-values: end-witnesses.
+
+\begin{code}
+  f  :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$              -- Before
+  f' :: Tree$_\freshA$ -> ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$) -- After
+\end{code}
+
+% But, following our formal language, the full type for the cursor pointer is @@.
+
+Here the type of the end-witness is $\ENDOF{\locend{\freshA}}$, which signifies
+a pointer to the end of a value, which is not useful by itself.  Rather, it is
+useful if it witnesses the {\em start of another value}.
+
+This brings us to the topic of our {\bf type system for cursors}.  Even though
+cursors are internal to the compiler, rather than exposed to the user, we use 
+{\em session types} to insure their correct handling.  In addition to an
+$\ENDOF()$ cursor, which isn't directly usable for anything, we also have
+$\HAS{}$ cursors for reading and $\NEEDS{}$ cursors for writing, as we will
+describe further in \cref{sec:cursorize}.
+
+
+\vspace{-2mm}\subsubsection{Reordering to discover witnesses}
+% ----------------------------------------
+
+But before we deal further with cursors, we first must repair the program after
+routing end-witnesses.  At this point in the compilation process, ``witnesses''
+have been inserted, and code has been generated to consume them. The program is
+not necessarily valid, however, because the places in the code where witnesses
+are consumed are not guaranteed to be within the scope of the binders that
+introduced the witness.
+
+Due to the fact that our programs are {\em purely functional}, and that our
+programs are in A-normal form (each sub-expression is bound to a name), we have
+great flexibility in code motion and reordering.  We simply represent a program
+as a graph where each bound name is a node and its edges are the bindings it
+depends on. A correct reordering of a program is a topological sort of this
+graph.  After this phase any unbound variables introduced as end-witnesses are
+bound again.
+
+\vspace{-2mm}\subsubsection{Output cursor insertion}\label{sec:cursorize}
+% ----------------------------------------
+
+Finally we are ready for the core translation in the compiler---switching to
+cursor-passing calling conventions.  This proceeds in two phases:
+
+\begin{itemize}
+\item First, perform a dataflow analysis and mark every data construct, ($K$)
+      or function call which returns packed data, with a {\em destination}.  A
+      destination is a static source location of another constructor
+      application, or is one of the output terminals of a function,
+      i.e. location \freshB{} in a \il{Tree$_\freshB$} output.
+      Copy-insertion will have guaranteed a unique destination for each such
+      value (i.e. no sharing).
+\item Second, perform a type-directed, type-preserving cursor-insertion pass.
+  This augments functions with additional inputs (output cursors), and changes
+  their return value convention to return end witnesses {\em rather} than
+  pointers to the heads of their output values.
+\end{itemize}
+
+\noindent
+For example, the tree function from above, becomes:
+\begin{code}
+  f'  :: Tree$_\freshA$ -> ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$) -- After route-ends
+  f'' :: ($Needs([\text{Tree}_\freshB],\_)$, $Has(\text{Tree}_\freshA)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$)
+\end{code}
+% $\NEEDS{[\text{Tree}_\freshB}]}$, )
+% ($\NEEDS{[\text{Tree$_\freshB$}]}$, ) -> 
+%
+
+Here the return value has turned into a $\ENDOF$ cursor, whereas the inputs have
+turned into read and write cursors respectively.  These are session types, and
+behave much like typed channels with protocols.  We use the extensions in
+\cref{fig:target} to write and cursors:
+
+\begin{code}
+  write :: ( $Needs(T:a,\; b)$, $T$) -> $Needs(a,b)$
+  read  :: $Has(T:a)$ -> ( $Has(a)$, $T$ )
+\end{code}
+
+That is, @Needs@ tracks a list of values its {\em waiting for}.  For instance,
+given a datatype, @data Foo = MkFoo Int Int@, after we write a tag for @MkFoo@
+to an output buffer, the output cursor has type \il{$Needs$([Int,Int],Foo)}.
+The second component of the $Needs$ is the value which will be completed after
+all the obligations have been satisfied, this can be accomplished 
+
+\begin{code}
+  finish :: $Needs$([],$T$) ->  Has($T$)
 \end{code}
 
 
-\subsection{Code generation}
+\paragraph{Locally dilated representation of packed values}
+
+Sometimes the end-witness of a given region is computed, say, underneath a
+conditional.  Our proposed cursor-inserting transformation internally switches
+to a {\em dilated} representation of every packed value.  Inside the local scope
+of a function body, processing a subexpression that returns @Tree@, must instead
+return a pair \il{($Has$(Tree$_\freshA$), $\ENDOF$($\freshA$))}.
+%
+The transformed program routes these tuple value throughout the function body,
+making it possible for the compiler to directly produce $\ENDOF(\freshA)$ to
+satisfy the calling convention by returning and end-witness.
+
+
+One surprising aspect of the cursor-passing output language is that it is {\em
+  still purely functional}.  Rather than directly encoding effects, we have
+created a purely functional interface where @write@ returns a new cursor, and
+all $Needs()$ cursors must be used in a {\em linear}, but pure way.
+
+\newcommand{\END}[1]{\ensuremath{\overline{#1}}}
+
+%% \note{Several ways to encode these:}
+
+%% \begin{code}
+%%   (Tree@$_a$@,Tree@$_b$@)
+
+%%   ((Cur@$_a$@,Cur@$_{\END{a}}$@),(Cur@$_b$@,Cur@$_{\END{b}}$@))
+
+%%   ((Cur@$_a$@,Cur@$_b$@),(Cur@$_{\END{a}}$@,Cur@$_{\END{b}}$@))
+%% \end{code}
+
+% ----------------------------------------
+\vspace{-2mm}\subsubsection{Code generation}
 % ----------------------------------------
 
-\note{Programs are compiled to C code.}
+The final step for \treecomp{} is to generate C code.  Because our first
+prototype targets only {\em first order} subset of \cref{fig:source}, this is
+straightforward.  The compiler walks through the program to accumulate all
+anonymous product (tuple) types, and emits C struct declarations for each.
+%
+The cursors become merely \il{char*} pointers.
 
-\note{The compiler walks through the program to accumulate all
-  anonymous product (tuple) types, and emits C struct declarations for
-  each.}
 
 \note{In the intermediate language, cursors are returned along with
   the ordinary return value during any operation on a buffer---for
@@ -633,6 +851,146 @@ function that traverses the value located at $\alpha$ during its execution.
 \note{Purity is important to reordering for witness search.}
 
 \note{Our interpreter depends on this fact by modeling cursors {\em as lists}.}
+
+\section{Prototype and Results} % FIXME: Split into the following sections
+
+
+While our \treelang{} compiler is still a prototype, we already have
+promising results on simple programs. We compared three programs on
+binary trees of 64-bit integers: one program which constructed a tree,
+one program which adds 1 to each leaf, constructing a new tree, and
+one program which sums the elements of a tree.
+
+In order to validate our packed data structure approach separately
+from our compiler implementation, we began with hand-written versions
+of each program across a range of language implementations, and
+implemented the programs with both packed and typical pointer-based
+techniques. The results of these experiments, plotting runtime versus
+the size of the tree in logaritmic scale, are seen in
+Figure~\ref{fig:shootout1}.
+
+These results demonstrate two things. First, as simple data
+structure and memory management benchmarks, allocation performance is
+critical and modern safe languages perform well compared to C with
+\texttt{malloc()}/\texttt{free()}.
+%
+%% Second, packed implementations are
+%% a major speedup \emph{across multiple languages}, with consistent wins
+%% ranging from 2x to 10x.
+%
+Second, our low-level packed C implentation is
+consistently fastest, suggesting that a mature compiler following our
+strategy should perform well. 
+%
+We then tested our cursor-inserting \treelang{} compiler on these same
+benchmarks, comparing it to the handwritten packed C implementation
+(the fastest handwritten version from the previous figure). These
+results are plotted in Figure~\ref{fig:shootout2}. The results show
+that our compiler approaches or exceeds the performance of
+handwritten C code, despite it being a simplified prototype. Since this
+C program is already many times faster than a conventional
+implementation of these programs in a safe, functional, language, this
+strongly points to the potential of our approach.
+
+\paragraph{Parallelism} A final goal of this project is to explore the role
+these alternate CNF and DPNF representations can play in parallelizing programs.
+\Cref{fig:shootout2} shows how a hand-parallelized version the packed approach
+scales much better than a traditional functional compiler.  We believe this
+approach has great potential for improving both single core and multicore performance.
+
+\begin{figure}[t]
+  \vspace{-7mm}
+\begin{minipage}{1.04\textwidth}
+  \begin{minipage}{.32\textwidth}
+    \centering
+    \includegraphics[width=2.9in]{./figs/shootout_buildtree.pdf}    
+%    \label{fig:}
+  \end{minipage}
+  $ $ 
+  \begin{minipage}{.32\textwidth}
+    \hspace{-4mm}
+    \hspace{2mm}
+    \includegraphics[width=2.9in]{./figs/shootout_add1.pdf}
+%    \label{fig:}
+  \end{minipage}
+  $ $
+  \begin{minipage}{.32\textwidth}
+    \centering
+        \includegraphics[width=2.9in]{./figs/shootout_sumtree.pdf}
+%    \label{fig:}
+  \end{minipage}
+
+\end{minipage}
+  \vspace{-3mm}
+  \caption{Performance when building, mapping add1, and summing a tree respectively.
+    Traditional compiler approaches vs. the packed approach.  All handwritten
+    implementations.  X axis is tree {\em depth}, implying $2^N$ leaves.  Y axis
+  shows time in seconds.}
+  \label{fig:shootout1}
+\end{figure}
+
+\begin{figure}[t]
+  \vspace{-2mm}
+\begin{minipage}{1.04\textwidth}
+  \begin{minipage}{.49\textwidth}
+    \centering
+    %   \includegraphics[width=\textwidth]{./figs/.pdf}
+    \includegraphics[width=3.8in]{./figs/shootout_gibbon_buildtree.pdf}
+%    \label{fig:}
+  \end{minipage}
+  %  \hspace{0.1\textwidth}
+  $ $ 
+  \begin{minipage}{.49\textwidth}
+    \centering
+    %   \includegraphics[width=\textwidth]{./figs/.pdf}
+    \includegraphics[width=3.8in]{./figs/shootout_gibbon_sumtree.pdf}
+%    \label{fig:}
+  \end{minipage}
+\end{minipage}
+   \vspace{-4mm}
+   \caption{Cursor-inserting compiler---performance compared to handwritten C
+     implementation.  Tree building (left) and tree summing (right). The Gibbon
+     prototype is currently embedded in Racket, so we show its Racket backend as
+   well.}
+   \label{fig:shootout2}
+   \vspace{-4mm}
+\end{figure}
+
+
+\begin{figure}[t]
+  \vspace{-5mm}
+\begin{minipage}{1.04\textwidth}
+  \begin{minipage}{.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{./figs/speedup_cilk.pdf}
+%    \label{fig:}
+  \end{minipage}
+  %  \hspace{0.1\textwidth}
+  $ $ 
+  \begin{minipage}{.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{./figs/speedup_ghc.pdf}
+    % \includegraphics[width=60mm]{example-image-b}
+%    \label{fig:}
+  \end{minipage}
+\end{minipage}
+   \caption{Parallel speedup: mapping a function over a packed tree.  This
+     compares a Cilk (C) implementation using the packed with layout information
+     that allows random access to subtrees (left).  For comparison, we also show
+     the parallel speedup from a mature parallel functional compiler (GHC,
+     right).  All lines are normalized to their own 1-core speeds.  In absolute
+     terms, GHC starts off 34$\times$ slower than our approach at one core, and
+     grows to 223$\times$ slower at 16 cores.}
+   \label{fig:shootout}
+      \vspace{-4mm}
+\end{figure}
+% C/1 0.0036089296875
+% HS/1 0.1226078125,
+% (/ 0.1226078125 0.0036089296875 ) 34 times
+
+% C/16    0.000319918212890625
+% HS/16   0.07138175
+% (/ 0.07138175 0.000319918212890625) 223 times
 
 
 % ================================================================================
@@ -701,9 +1059,9 @@ competetive with handwritten C for packed data.
 
 \subsection{Point correlation}
 % --------------------------------------------
-Point correlation  is a well-known algorithm that is used in data mining\cite{capnproto},
-given set of points in a k-dimensional space, point correlation computes the number of points in the space  that lies within a
-distance r from a given point p, one efficient way of searching such spaces is to store them in  kd-trees \cite{capnproto}. 
+Point correlation  is a well-known algorithm that is used in data mining\cite{gray2000n},
+given a set of points in a k-dimensional space, point correlation computes the number of points in the space  that lies within a
+distance r from a given point p, one efficient way of searching such spaces is to store them in  kd-trees \cite{gray2000n}. 
 
 A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two sub-spaces
 around a split axes in one of the space dimensions, the left subtree stores the points to the left of the split access
@@ -711,33 +1069,45 @@ and the right subtree sotres the points to the right of the split access, the sp
 the space at each level of the tree, when the number of the points in the subtree is one, a leaf node that stores
 that point is constructed.
 
-In a naive implementation of point correlation each point in the spaced need to be checked, however kd-trees 
+
+In a naive implementation of point correlation each point in the space need to be checked, however kd-trees 
 allow the search process to skip some regions in the space ;by storing at each internal node the boundaries within which all descendent points lies,
 and use that information to skip a subtree if the given point is far enough from the boundaries.
 
-In this work two different variants of the point correlation traversal were impelmented (int out and  tree out), int out version
-produces an integer as the output of the traversal while  tree out version  produces a tree
-that have the same data of the input tree with the some counters in the leaf nodes incremented, those of points that  
-correlate with the input point. Unlike other benchmarks  in this paper, the int out variant does traverse the whole tree due to the early trucation condition ,
-this requires that the packed version stores the address of the right child for each internal node as discussed in section .... Tree out version on the other hand 
-does not need that additional field, although the computation might  truncate at some points during the traversal, 
-the whole tree always need to be traversed to copy the data from the input tree to the output tree, 
-and hence the right child location thus is always available.
+Unlike the rest of the benchmarks, point correlation does not necessary traverse the whole tree due to the early trucation condition,
+this requires an additional pointer to be stored at each internal node  as discussed earlier, this pointer will be read if an early truncation occur to redirect the traversal to the
+next node to be visited.
 
-The traversals are implemented in c++, for each of the two variants, three different implementation are compared ; 
-a pointer based implementation that uses the standard allocation techniques, a pointer based implementation that uses bump allocation, 
-and a packed implementation. 
+  
+\begin{figure}[htp]
+\begin{minipage}{1.04\textwidth}
+  \begin{minipage}{.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{./figs/pointCorr_perf.pdf}
 
-data
+  \end{minipage}
+  $ $ 
+  \begin{minipage}{.49\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{./figs/pointCorr_MemUsage.pdf}
+    % \includegraphics[width=60mm]{example-image-b}
+%    \label{fig:}
 
-The intOut version requires 63\% less amount of memory to represent the tree , and the outTree requires 55\% less memory ,when
-the size of the tree is large the saving is large ,table .. shows that amount of memory saving for different tree sizes,for treeOut 
-yet it also enhances the performance.
+  \end{minipage}
+\end{minipage}
+   \caption{normalized runtime performance and memory usage of packed point correlation with respect pointer based implementation }
+         \label{fig:pointCorr}
+\end{figure}
 
-Figure .. shows the runtime speedups of over the standerd pointer based implementations for the packed and bump-allocation versions, 
-although it might 
+  
+Figure \ref{fig:pointCorr} shows the speedup and the memory usage of the  packed version  with respect to the standard pointer based implementation for different tree sizes,
+packed representation uses 56\% less memory to represents the the tree than the pointer based representation, this reduction in memory usage has two sources;
+the elimination of the left child pointer and the elimination of the gaps between the structure data members that are added by default for memory alignment purposes.
+The runtime performance of the packed version is almost the same as the pointer based for small trees, however when the size of the tree is large enough the packed version 
+shows up to 35\% speed up.
 
- 
+
+
 \subsection{Parallelism opportunity study}
 % --------------------------------------------
 

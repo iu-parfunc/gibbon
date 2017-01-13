@@ -378,7 +378,7 @@ handleRequire ((L2 "require" arg):ls) = do
                _ -> error $ "bad require line: " ++ (show arg)
   dbgPrintLn 5 $ "Including required file: "++show file
   txt <- fmap bracketHacks $ readFile file
-  dbgPrintLn 5 $ "Parsing required text: "++show txt
+  -- dbgPrintLn 5 $ "Parsing required text: "++show txt
   let res :: Either String [RichSExpr HaskLikeAtom]
       res = fmap (fmap toRich) $
             decode treelangParser txt

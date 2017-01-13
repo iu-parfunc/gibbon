@@ -12,7 +12,5 @@
             [r : Tree (build-tree min1)])
         (Node l r)))))
 
-;; Since we're not using tr0 in our result, if we don't time it, the
-;; compiler will drop it:
 (let ((tr0 : Tree (time (build-tree 2))))
-  2222)
+  tr0)
