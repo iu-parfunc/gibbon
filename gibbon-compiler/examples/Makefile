@@ -69,8 +69,8 @@ PERF= perf stat -e cycles,instructions,cache-references,cache-misses,bus-cycles
 big:
 	ls -l $(BIG)
 	ls -l $(BIGPKD)
-	$(GIBBON) --pointer --bench-print --bench-fun countnodes -o test25f_pointer.exe test25f_countnodes.sexp
-	$(GIBBON) --packed  --bench-print --bench-fun countnodes -o test25f_packed.exe test25f_countnodes.sexp
+	$(GIBBON) --pointer --bench-print --bench-fun countnodes -o test25f_pointer.exe --cfile=test25f_pointer.c test25f_countnodes.sexp
+	$(GIBBON) --packed  --bench-print --bench-fun countnodes -o test25f_packed.exe  --cfile=test25f_packed.c  test25f_countnodes.sexp
 	@echo "Pointer version"
 	$(PERF) ./test25f_pointer.exe --bench-input $(BIGPKD) 0 1000
 	@echo "Packed version"

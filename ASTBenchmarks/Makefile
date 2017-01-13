@@ -23,6 +23,10 @@ wget_binary:
 	wget http://cs.indiana.edu/~rrnewton/files/racket_binary_packed_asts_v1.7.tgz
 	tar xf racket_binary_packed_asts_v1.7.tgz
 
+wget_mega:
+	wget http://cs.indiana.edu/~rrnewton/files/mega_asts_1.0.tbz
+	tar xf mega_asts_1.0.tbz
+
 expanded_racket: ${DATASET}
 	mkdir -p $@
 	cd $@; time tar xf ../${DATASET}
@@ -75,10 +79,11 @@ sorted_binary_files.txt:
 sorted_cleaned_files.txt:
 	cd cleaned_racket; find ./ -name "*.sexp" -type f -printf "%s %p\n" | sort -n -r > ../$@
 
+# Default:
 MEGASIZE=10
 
 mega_asts:
-	mkdir -p $@
+	$(MAKE) wget_mega
 
 megas:
 	$(MAKE) MEGASIZE=1 mega
@@ -89,9 +94,10 @@ megas:
 	$(MAKE) MEGASIZE=500 mega
 	$(MAKE) MEGASIZE=4456 mega
 
-mega: mega_asts mega_asts/mega_$(MEGASIZE).gpkd
+mega: mega_asts/mega_$(MEGASIZE).gpkd
 
 mega_asts/mega_$(MEGASIZE).sexp: cleaned_racket sorted_cleaned_files.txt
+	mkdir -p ./mega_asts
 	head -n$(MEGASIZE) sorted_cleaned_files.txt | awk '{ print "./cleaned_racket/"$$2 }' > $@.list
 	cat $@.list | racket combine.rkt --out $@
 
