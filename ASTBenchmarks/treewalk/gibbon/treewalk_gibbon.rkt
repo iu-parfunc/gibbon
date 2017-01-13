@@ -1,7 +1,7 @@
 #lang gibbon
 
 (require "../../grammar_racket.sexp")
-(provide treewalk)
+(provide (all-defined-out))
 
 ;; Identity function on ASTs:
 (define (treewalk [e : Toplvl]) : Toplvl
