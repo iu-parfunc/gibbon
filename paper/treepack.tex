@@ -701,7 +701,7 @@ fields, we must rediscover those downstream fields as a side effect of
 {\em traversing} their upstream ones.  Thus we begin with an inter-procedural
 analysis of which functions are able to traverse their inputs.
 
-The overall structure of the compiler, covered throughout the rest of this
+The overall structure of the compiler, covered in the rest of this
 section, is:
 \begin{enumerate}
 \item Infer traversal effects.
@@ -716,11 +716,12 @@ section, is:
 % \vspace{-2mm}\subsubsection{Inferring effects}
 % ----------------------------------------
 
-We associate with every packed type an abstract location. This is different from
-a region variable in prior work, because it represents an abstraction of the
-{\em exact memory location} that a value starts at.  No two distinct variables
-can share the same location, whereas two variables can share the same ``region''.
-The type signature of a function on trees becomes:
+To reason about traversals, we associate with every packed type an {\em abstract
+  location}. This is different from a region variable in prior work, because it
+represents an abstraction of the {\em exact memory location} that a value starts
+at.  No two distinct variables can share the same location, whereas two
+variables can share the same ``region''.  The type signature of a function on
+trees becomes:
 
 \begin{code}
 f :: Tree$_\alpha$ -> Tree$_\beta$
@@ -728,7 +729,7 @@ f :: Tree$_\alpha$ -> Tree$_\beta$
 
 This is read ``function f takes a tree at location $\alpha$ and produces one at
 location $\beta$''.
-Note that a function of type \lstinline{Tree$_\alpha$ -> Tree$_\alpha$} is necessarily the identity.
+Note that a function of type \lstinline{Tree$_\alpha$ -> Tree$_\alpha$} is {\em necessarily} the identity.
 %
 Next, if @f@ examines all the bytes in $\alpha$, we say it has the effect $traverse(\alpha)$
 and we write its type as:
