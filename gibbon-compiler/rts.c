@@ -11,12 +11,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#define ALLOC malloc
-#define ALLOC_PACKED ALLOC
 
-#define SIZE 1000
-
-// Big default:
+// Big default.  Used for --packed and --pointer/bumpalloc
 static long long global_default_buf_size = (500lu * 1000lu * 1000lu);
 
 static long long global_size_param = 1;
@@ -24,6 +20,89 @@ static long long global_iters_param = 1;
 
 static char*     global_benchfile_param = NULL;
 
+// Sequential for now:
+static const int num_workers = 1;
+
+
+// Helpers and debugging:
+//--------------------------------------------------------------------------------
+
+// Requires -std=gnu11
+/*int dbgprintf(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+#ifdef DEBUG
+      vprintf(format, args);
+#endif
+    va_end(args);
+}*/
+
+//--------------------------------------------------------------------------------
+
+#ifdef BUMPALLOC
+// #warning "Using bump allocator."
+  // Here we use one heap_ptr per thread:
+  typedef char* HeapPtr;
+  HeapPtr heap_ptr = (HeapPtr)0;
+
+  // An array storing the location of each thread's heap_ptr:
+  HeapPtr** heap_addrs;
+  HeapPtr* saved_heap_ptrs;
+  
+  // For simplicity just use a single large slab:
+  void INITALLOC() {
+    if (! heap_ptr) {
+      heap_ptr = (HeapPtr)malloc(global_default_buf_size);
+      // printf("Arena size for bump alloc: %lld\n", global_default_buf_size);
+      heap_addrs      = (HeapPtr**)calloc(num_workers, sizeof(HeapPtr*));
+      saved_heap_ptrs = (HeapPtr*) calloc(num_workers, sizeof(HeapPtr));
+    }
+    // printf("INIT ALLOC DONE: heap_ptr = %p\n", heap_ptr);
+  }
+
+  #ifdef DEBUG
+   char* my_abort() {
+     fprintf(stderr, "Error: this thread's heap was not initalized.\n");
+     abort();
+     return NULL;
+   }
+   #define ALLOC(n) (heap_ptr ? heap_ptr += n : my_abort())
+  #else
+   #define ALLOC(n) (heap_ptr += n)
+  #endif // DEBUG
+
+  // Snapshot the current heap pointer value across all threads.
+  void save_alloc_state() {
+    // dbgprintf("   Saving(%d): ", num_workers);
+    for(int i=0; i<num_workers; i++) {
+      saved_heap_ptrs[i] = * heap_addrs[i];
+      // dbgprintf("%p ", saved_heap_ptrs[i]);
+    }
+    // dbgprintf("\n");    
+  }
+
+  void restore_alloc_state() {
+    // dbgprintf("Restoring(%d): ", num_workers);
+    for(int i=0; i<num_workers; i++) {
+      *heap_addrs[i] = saved_heap_ptrs[i];
+      //dbgprintf("%p ", saved_heap_ptrs[i]);
+    }
+    //dbgprintf("\n");
+  }
+
+#else
+  // Regular malloc mode:
+  void INITALLOC() {}
+
+  #define ALLOC(n) malloc(n)
+//  #define DELTREE deleteTree
+
+#endif // BUMPALLOC
+
+#define ALLOC_PACKED(n) ALLOC(n)
+
+// --------------------------------------------------------------------------------
 
 typedef char TagTyPacked;  // Must be consistent with codegen in Target.hs
 typedef char TagTyBoxed;   // Must be consistent with codegen in Target.hs
@@ -203,8 +282,7 @@ int main(int argc, char** argv)
       exit(1);
     }
 
-    
-    
+    INITALLOC();
     __main_expr();
 
     return 0;
