@@ -718,7 +718,7 @@ section, is:
 
 To reason about traversals, we associate with every packed type an {\em abstract
   location}. This is different from a region variable in prior work, because it
-represents an abstraction of the {\em exact memory location} that a value starts
+is a symbolic value representing the {\em exact memory location} that a value starts
 at.  No two distinct variables can share the same location, whereas two
 variables can share the same ``region''.  The type signature of a function on
 trees becomes:
@@ -748,32 +748,40 @@ a is that it can {\em witness} $end(\freshA)$.  At runtime, this witness is
 merely a pointer value.
 %
 Ultimately we will rewrite the function to return such a witness.  For now, the
-goal of effect inference is to determine a table traversal type for all
+goal of the effect inference pass is to determine a consistent traversal type for all
 functions jointly.
+%
+Of course, if @f@ calls @g@, whether @f@ reaches (witnesses) the end of its
+input may depend on whether @g@ does likewise.
 
 \paragraph*{A lattice of locations}
 
-The locations above (\freshA, \freshB) are {\em metavariables} that can range
+The locations used above, \freshA, \freshB, are {\em metavariables} that can range
 over different locations, depending on what the (location-polymorphic) function
 @f@ is applied to.
 %
-This is in contrast with lexically-bound variables introduced by $\lambda$s or
-pattern matching.  These we regard as having {\em fixed} (predetermined)
-locations.  For example, the variables @tr@, @x@, and @y@ below.
+Intuitively, we expect {\em outputs} to be polymorphic in location,
+corresponding to the as-yet-undetermined destination parameter.  Conversely,
+inputs already exist in memory at a fixed location.
+%
+This includes lexically-bound variables introduced by $\lambda$s or
+pattern matching.
+% These we regard as having {\em fixed} (predetermined) locations.
+For example, the variables @tr@, @x@, and @y@ below.
 
 \begin{code}
 f :: Tree -> Tree
 f(tr) = case tr of Node x y -> ...
 \end{code}
 
-In fact we name these fixed regions after their lexical variables, simply:
+In fact we name these fixed locations after their lexical variables, simply:
 \fixed{tr}, \fixed{x}, \fixed{y}.  Together with tuple locations $(l,l)$, these
 fresh and fixed locations form a lattice under unification.
 For example, $(l_1,l_2)\sqsubseteq (l_3,l_4)$, if and only if there exists a
 substitution on metavariables that ensures $l_1 = l_3 \wedge l_2 = l_4$ .
 %
 Such a substitution assigns fixed locations to metavariables, and does {\em not}
-allow metavariables to range over entire tuple locations.
+allow metavariables to range over entire tuple locations.  
 
 %% \begin{itemize}
 %% \item $\freshA \sqsubseteq l$, for all locations $l \in Locs$
@@ -784,24 +792,24 @@ allow metavariables to range over entire tuple locations.
 %% \item $\forall l .  l  \sqsubseteq \top$  
 %% \end{itemize}
 
-Non-packed values such as integers always have location $\bot$.  On the other
-hand a 
+In this lattice, non-packed values such as integers always have location $\bot$.
+On the other hand a
 %% To implement the analysis we associate every lexical variable with an abstract
 %% location drawn from the lattice in figure \cref{fig:lattice}.
 % The lattice is ordered on unification of fresh variables. A
-top value is reached
+top value ($\top$) is reached
 when two locations are incompatible.  For example, the following term has
-location top because it attempts to unify two fixed locations \fixed{x} and \fixed{y}.
+location $\top$ because it attempts to unify two fixed locations \fixed{x} and \fixed{y}.
 
 \begin{code}
-case p of
-  Node x y ->
-    if _ then x else y
+(case p of Node x y -> if _ then x else y) :: SomePackedData
 \end{code}
 
 % This term has location top.  Fixed x and fixed y join to top.
-Indeed, we cannot statically know what location this expression will return.
-Further, ends are always distinct locations from starts: $end(l) \neq l$.
+Indeed, we cannot statically know what {\em location} this expression will
+return, even symbolically.  (We have no notion of disjunction locations in our
+definition: e.g., @x@ $\vee$ @y@.)
+Finally, ends are always distinct locations from starts: $\forall l . end(l) \neq l$.
 
 
 %% \begin{figure}
@@ -825,26 +833,31 @@ basic idea is that an expression @case e of ...@, creates a traversal effect for
 the location of @e@ provided that all the branches of the case traverse the
 (non-statically-sized) arguments of their data constructors.
 %
-This stage of the process is {\em optimistic}, in that it assumes that any
-additional traversals that are necessary will subsequently be inserted.  For example:
+\Red{This stage of the process is {\em optimistic}, in that it assumes that any
+  additional traversals that are {\em necessary} but not {\em present} will
+  subsequently be inserted later.  For example:}
 \begin{code}
   case _ of K (y::Tree) (x::Int) -> x
 \end{code}
-
-When reading datatype @K@ from a a preorder serialization in a buffer, accessing
-the simple scalar @x@, requires somehow traversing @y@ to witness
+%
+Here, when reading datatype @K@ from a a preorder serialization in a buffer,
+accessing the simple scalar @x@, requires somehow traversing @y@ to witness
 \locend{\fixed{y}}, where $\locend{\fixed{y}} = \fixed{x}$.  During the infer
-effects phase, we assign the traverse effect to the above code, assuming that a
-dummy traversal will later be inserted (\cref{sec:copy-insert}).
+effects phase, we optimistically assign the traverse effect to the above code,
+assuming that a dummy traversal will later be inserted (\cref{sec:copy-insert}).
+%
+If it were not, this program couldn't compile!
+
 
 Even with this assumption, determining the traversal effect signature for each
-function is nontrivial because of interdependencies between functions.  E.g. @f@
-traverses it input only if @g@ traverses its input. Thus we design this pass as
-a program analysis that iterates to a fixed point.
+function is nontrivial because of interdependencies between functions.
+% E.g. @f@ traverses it input only if @g@ traverses its input.
+Thus we design this pass as
+a \Red{traditional program analysis} that iterates to a fixed point.
 %
 We begin with every function having a {\em maximum} traversal signature---we
-assume it reaches the end of every input. Then, this set monotonically decreases
-in every round, until the fixed point is reached.
+assume it reaches the end of {\em every} packed input. Then, this set
+monotonically decreases in every round, until the fixed point is reached.
 
 {During analysis, we generated all the information we need not only to {\em
     label} traversal effects, but to recognize where they are needed, but
