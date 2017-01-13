@@ -88,10 +88,15 @@ megas:
 	$(MAKE) MEGASIZE=100 mega
 	$(MAKE) MEGASIZE=500 mega
 
-mega: mega_asts mega_asts/mega_$(MEGASIZE).sexp
+mega: mega_asts mega_asts/mega_$(MEGASIZE).gpkd
+
 mega_asts/mega_$(MEGASIZE).sexp: cleaned_racket sorted_cleaned_files.txt
 	head -n$(MEGASIZE) sorted_cleaned_files.txt | awk '{ print "./cleaned_racket/"$$2 }' > $@.list
 	cat $@.list | xargs racket combine.rkt --out $@
+
+mega_asts/mega_$(MEGASIZE).gpkd: mega_asts/mega_$(MEGASIZE).sexp
+	raco make binary_pack.rkt
+	echo $< $@ | racket binary_pack.rkt
 
 largest:
 	echo "Here are some of the larger files:"
