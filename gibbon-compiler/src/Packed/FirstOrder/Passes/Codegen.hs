@@ -289,9 +289,13 @@ codegenTail (LetTimedT flg bnds rhs body) ty =
            iters = "iters_"++ident
        let timebod = [ C.BlockDecl [cdecl| struct timespec $id:begn; |]
                      , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, & $id:begn );  |]
-                     , C.BlockStm (if flg
-                                   then [cstm| for (long long $id:iters = 0; $id:iters < global_iters_param; $id:iters ++) { $items:rhs'' }  |]
-                                   else [cstm| { $items:rhs'' } |])
+                     , (if flg
+                        -- Save and restore EXCEPT on the last iteration.  This "cancels out" the effect of intermediate allocations.
+                        then let body = [ C.BlockStm [cstm| if ( $id:iters != global_iters_param-1) save_alloc_state(); |] ] ++
+                                        rhs''++
+                                        [ C.BlockStm [cstm| if ( $id:iters != global_iters_param-1) restore_alloc_state(); |] ]
+                             in C.BlockStm [cstm| for (long long $id:iters = 0; $id:iters < global_iters_param; $id:iters ++) { $items:body } |]
+                        else C.BlockStm [cstm| { $items:rhs'' } |])
                      , C.BlockDecl [cdecl| struct timespec $id:end; |]
                      , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid end)); |]
                      ]

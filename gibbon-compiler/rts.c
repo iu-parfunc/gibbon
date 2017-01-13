@@ -114,6 +114,9 @@ static const int num_workers = 1;
   // Regular malloc mode:
   void INITALLOC() {}
 
+  void save_alloc_state() {}
+  void restore_alloc_state() {}
+
   #define ALLOC(n) malloc(n)
 
 #endif // BUMPALLOC
