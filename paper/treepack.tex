@@ -1195,7 +1195,15 @@ garbage-collected languages.
    \vspace{-4mm}
 \end{figure}
 
-Our first ``shootout'' demonstrates the performance gains afforded by the packed representation. We next implement the tree building and summing benchmarks in \treelang{}, and use our prototype cursor-inserting compiler to generate code over packed representations. Figure~\ref{fig:shootout2} shows the results of comparing this generated code to the hand-written C code over the packed representation (because \treelang{} is embedded in Racket, we also show the results of a Racket backend). We see that our compiler generated code is competitive with, and occasionally exceeds, hand-written C code in performance.
+Our first ``shootout'' demonstrates the performance gains afforded by the
+packed representation. We next implement the tree building and summing
+benchmarks in \treelang{}, and use our prototype cursor-inserting compiler to
+generate code over packed representations. Figure~\ref{fig:shootout2} shows
+the results of comparing this generated code to the hand-written C code over
+the packed representation (because \treelang{} is embedded in Racket, we also
+show the results of a Racket backend). We see that our compiler generated code
+is competitive with, and occasionally exceeds, hand-written C code in
+performance.
 
 %\note{A ``language shootout'' of add1-tree benchmarks.}
 
@@ -1243,7 +1251,53 @@ Our first ``shootout'' demonstrates the performance gains afforded by the packed
 \subsection{Compiler passes on realistic inputs}
 % --------------------------------------------
 
-\note{Racket core AST benchmarks}
+While our microbenchmarks demonstrate the potential of the packed
+representation, and also demonstrate \treelang{}'s ability to automatically
+generate code that operates on the packed representation from idiomatic
+implementations, directly implementing simple applications like node counting
+on a packed representation is not too difficult.
+
+More challenging, however, is to operate on trees that have more complex
+structure, such as the abstract syntax trees (ASTs) that arise in compiler
+passes: (i) the trees themselves do not have homogeneous structure, so the
+location of a particular tree node in a packed buffer is intimately related to
+the types of the other nodes in the tree; and (ii) the operations on the tree
+nodes are not homogeneous, so the structure of computations (including how to
+extract particular fields from a serialized representation of a tree node)
+varies based on the type of the tree node. In this setting, writing a tree
+traversal that operates directly over a packed representation is complex and
+error prone. On the other hand, writing such a traversal in an idiomatic style
+using pattern matching is fairly straightforward. This, then, is an ideal use
+case for \treelang{}'s approach.
+
+In this portion of the evaluation, we look at two compiler passes, each of
+which takes a Racket abstract syntax tree as input and produces a new abstract
+syntax tree. The two passes are copy propagation and substitution. In both
+cases, the structure of the output AST might differ from that of the input
+AST.
+
+We write each pass in \treelang{}. We then generate two versions of each
+benchmark, one using \treelang{}'s {\em pointer-based} backend (which
+generates passes over pointer-based ASTs in C), and one using \treelang{}'s
+{\em packed} backend (which uses our new representation). By letting the
+implementations differ only in the backends used to generate them, we isolate
+the performance differences to those that arise from the difference in
+representation. Because \treelang{} allows for tree traversals to be written
+using standard algebraic data type match operations, this evaluation also
+serves to confirm our ability to generate packed implementations from
+idiomatic code.
+
+As input, we use a variety of different ASTs generated from the Racket code
+base, ranging in size from XXX nodes to YYY nodes, with ZZZ different inputs,
+overall. Figures~\ref{fig:copyprop} and~\ref{fig:subst} present the results
+for copy propagation and substitution, respectively. The x-axis of each figure
+shows the different possible inputs, ordered by the speedup of the packed
+version over the pointer version (higher is better). The dashed horizontal
+line on each figure represents the geomean speedup across all inputs.
+
+We see \note{something -- describe these figures once we see them!}
+
+\note{Are we also going to show the same charts ordered by size, instead?}
 
 
 \subsection{Typechecking benchmark}
