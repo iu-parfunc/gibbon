@@ -1087,9 +1087,10 @@ representing the new value of the cursor.
 \subsection{Code generation}
 % ----------------------------------------
 
-The final step for \treecomp{} is to generate C code.  Because our first
-prototype targets only {\em first order} subset of \cref{fig:source}, this is
-straightforward.  The compiler walks through the program to accumulate all
+The final step for \treecomp{} is to generate C code.  Because the current
+\treelang design is a {first order} language,
+%  \cref{fig:source}
+this is straightforward.  The compiler walks through the program to accumulate all
 anonymous product (tuple) types, and emits C struct declarations for each.
 %
 The cursors become merely \il{char*} pointers.
