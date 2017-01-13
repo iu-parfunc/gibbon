@@ -12,8 +12,10 @@
 
 (define (combine-all fs out)
   (define ls (map file->value fs))
+  (define outp (if out (open-output-file out) (current-output-port)))
   (write
    `(BeginTop
      ,(for/fold ([v '(NULLTOPLVL)]) ([l ls])
-        `(CONSTOPLVL l v)))
-   (if out (open-output-file out) (current-output-port))))
+        `(CONSTOPLVL ,l ,v)))
+   outp)
+  (newline outp))
