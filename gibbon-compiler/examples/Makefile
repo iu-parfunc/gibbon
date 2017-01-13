@@ -66,7 +66,9 @@ BIG= $(TREELANGDIR)/ASTBenchmarks/cleaned_racket/share/pkgs/typed-racket-more/ty
 BIGPKD= $(TREELANGDIR)/ASTBenchmarks/binary_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.gpkd
 PERF= perf stat -e cycles,instructions,cache-references,cache-misses,bus-cycles
 
-big:
+# Run on a single biggish file:
+big: bigfold bigmap
+bigfold:
 	ls -l $(BIG)
 	ls -l $(BIGPKD)
 	$(GIBBON) --pointer --bench-print --bench-fun countnodes -o test25f_pointer.exe --cfile=test25f_pointer.c test25f_countnodes.sexp
@@ -75,6 +77,18 @@ big:
 	$(PERF) ./test25f_pointer.exe --bench-input $(BIGPKD) 0 1000
 	@echo "Packed version"
 	$(PERF) ./test25f_packed.exe --bench-input $(BIGPKD) 0 1000
+
+# Don't print with this one.  It's too big. I verified by hand that it worked [2017.01.12].
+bigmap:
+	ls -l $(BIG)
+	ls -l $(BIGPKD)
+	$(GIBBON) --pointer  --bench-fun treewalk -o test26a_pointer.exe --cfile=test26a_pointer.c test26a_treewalk.sexp
+	$(GIBBON) --packed   --bench-fun treewalk -o test26a_packed.exe  --cfile=test26a_packed.c  test26a_treewalk.sexp
+	@echo "Pointer version"
+	$(PERF) ./test26a_pointer.exe --bench-input $(BIGPKD) 0 100
+	@echo "Packed version"
+	$(PERF) ./test26a_packed.exe --bench-input $(BIGPKD) 0 100
+
 
 
 
