@@ -646,6 +646,8 @@ numbers would have two cases: \il{Zero} and \il{Successor}.
 Data types declared with \il{data} are automatically and implicitly
 {\em packed} in this language.  In this basic design, the only
 non-packed datatypes are tuples $\mathtt{(e_1,\dots,e_n)}$, accessed with
+$\mathtt{e} . n$.
+%
 %% though as the project progresses we plan to allow arbitrary {\em subsets} of
 %% datatypes to be marked with a ``packed'' compiler pragma.
 Note, however, that even tuples allow functions to take and return arbitrary
@@ -654,8 +656,8 @@ compiler, this will mean passing multiple {\em output cursors} to a function in
 order to provide buffers for it to write its results to.
 
 Other language features are standard: tuple access, let binding,
-conditionals, and primitive operations. The only base values
-provided are integers and booleans.
+conditionals, and primitive operations.  Standard primitive values are included
+such as integers, booleans, and symbols.
 %
 Finally, \treelang provides dictionaries to support more sophisticated
 operations such as bulk transformations---substitution on an abstract
@@ -663,7 +665,7 @@ syntax tree is one example.
 
 A fuller language would support richer data types, more operations,
 and data structures such as arrays and lists, but the crucial elements
-for expressing tree-shaped data and transformations on it is present. 
+for expressing tree-shaped data and transformations on trees are present. 
 
 
 %% \note{We already gave an example of a program in Gibbon earlier...
@@ -706,7 +708,7 @@ for expressing tree-shaped data and transformations on it is present.
 \paragraph*{Using Gibbon}
 
 \treelang is implemented as a language built on Racket~\cite{plt-tr1},
-using Racket's language implmenetation and extension
+using Racket's language implementation and extension
 facilities. \treelang's type checking support is implemented by
 compiling to Typed Racket~\cite{typed-racket-popl08}. A programmer can
 develop and test a \treelang program using the DrRacket IDE and tools,
@@ -716,7 +718,7 @@ checking, and more.
 Given a working \treelang program, it can then be compiled using our
 compiler via a C backend and a standard C compiler. These backends
 apply the techniques described in subsequent sections to automatically
-use  packed data to represent all type declared using the
+use  packed data to represent all types declared using the
 \texttt{data} form.  
 
 
