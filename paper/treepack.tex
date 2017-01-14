@@ -2042,7 +2042,7 @@ spawn}s, producing coarse-grained leaf tasks, we revert to the full tree-walks
 supported by \treelang{}.
 
 \begin{figure}[t]
-%  \vspace{-5mm}
+  \vspace{-5mm}
 % \begin{minipage}{1.04\textwidth}
     \centering
   \begin{minipage}{.75\textwidth}
@@ -2060,9 +2060,12 @@ supported by \treelang{}.
 %    \label{fig:}
   \end{minipage}
 %\end{minipage}
-   \caption{Parallel speedup: mapping a function over a packed tree.  This
-     compares a Cilk (C) implementation using the packed with layout information
-     that allows random access to subtrees (left).  For comparison, we also show
+  \caption{Parallel speedup: mapping a function over a packed tree.
+    Each line is labeled with the tree depth that it represents, including
+    trees of $2^{15}$ to $2^{25}$ leaves.
+     This
+     compares a Cilk (C) implementation using the packed trees with layout information
+     that allow random access to subtrees (left).  For comparison, we also show
      the parallel speedup from a mature parallel functional compiler (GHC,
      right).  All lines are normalized to their own 1-core speeds.  In absolute
      terms, GHC starts off 34$\times$ slower than our approach at one core, and
@@ -2095,7 +2098,7 @@ When comparing the packed implementation directly to
 GHC, the packed version is 34$\times$ faster on a single core
 and 223$\times$ faster on 16 cores!
 
-While adding parallelism to \treelang{} is future work, these results
+While automatically exploiting parallelism in \treelang{} is future work, these results
 demonstrate the potential for large performance gains.
 
 % \note{Report preliminary parallel microbenchmark results, showing the potential
@@ -2131,7 +2134,7 @@ KD-trees allow the search
 process to skip some regions in the space. By storing at each internal node
 the boundaries within which all descendent points lies, the search process can
 skip a subtree is a given point is far enough from the boundaries. As a
-result, querying a kd-tree to perform point-correlation is $O(log n)$ instead
+result, querying a kd-tree to perform point-correlation is $O(log\; n)$ instead
 of $O(n)$. Note that it is exactly the process of ``skipping'' subtrees that
 gives kd-tree-based point correlation its efficiency, but also that prevents a
 normal packed representation from sufficing to implement the algorithm: there
