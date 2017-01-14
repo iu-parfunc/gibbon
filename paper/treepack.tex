@@ -1419,7 +1419,7 @@ Racket, Chez Scheme, MLton, GHC Haskell, and C (using both \texttt{malloc} as we
 as a fast bump-pointer allocator).
 
 \begin{figure}[t]
-  \vspace{-7mm}
+%  \vspace{-7mm}
 \begin{minipage}{1.04\textwidth}
   \begin{minipage}{.32\textwidth}
     \centering
@@ -1441,7 +1441,7 @@ as a fast bump-pointer allocator).
   \end{minipage}
 
 \end{minipage}
-  \vspace{-3mm}
+%  \vspace{-3mm}
   \caption{Performance when building, mapping add1, and summing a tree respectively.
     Traditional compiler approaches vs. the packed approach.  All handwritten
     implementations.  X axis is tree {\em depth}, implying $2^N$ leaves.  Y axis
@@ -1457,16 +1457,16 @@ competing implementations use their default memory management settings,
 including GC parameters as well as the ``C (pointer)'' using the system malloc.
 
 \begin{figure}[t]
-  \vspace{-2mm}
-\begin{minipage}{1.04\textwidth}
+  %  \vspace{-2mm}
+\hspace{-6mm}  
+\begin{minipage}{1.00\textwidth}
   \begin{minipage}{.49\textwidth}
     \centering
     %   \includegraphics[width=\textwidth]{./figs/.pdf}
     \includegraphics[width=3.8in]{./figs/shootout_gibbon_buildtree.pdf}
 %    \label{fig:}
   \end{minipage}
-  %  \hspace{0.1\textwidth}
-  $ $ 
+  \hspace{0.03\textwidth}
   \begin{minipage}{.49\textwidth}
     \centering
     %   \includegraphics[width=\textwidth]{./figs/.pdf}
@@ -1474,13 +1474,13 @@ including GC parameters as well as the ``C (pointer)'' using the system malloc.
 %    \label{fig:}
   \end{minipage}
 \end{minipage}
-   \vspace{-4mm}
+%   \vspace{-4mm}
    \caption{Cursor-inserting compiler---performance compared to handwritten C
      implementation.  Tree building (left) and tree summing (right). The Gibbon
      prototype is currently embedded in Racket, so we show its Racket backend as
    well.}
    \label{fig:shootout2}
-   \vspace{-4mm}
+%   \vspace{-4mm}
 \end{figure}
 
 %% Our first ``shootout'' demonstrates the performance gains afforded by the
