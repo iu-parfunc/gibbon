@@ -1827,9 +1827,10 @@ We note that the relatively smaller performance improvement for this benchmark v
 
 
 % ================================================================================
-\section{Future work}
+\section{Future Work and Conclusions}
 % ================================================================================
 
+\paragraph*{Future work}
 \note{Data type factoring, storing leaves in a separate, dense, aligned vector.
 This enables (1) vectorization of numeric operations, and (2) separating
 out pointers that the GC must traverse.  This can prove essential for an
@@ -1840,6 +1841,28 @@ open-world implementation in a managed language.}
 
 \note{How much of this do we want to leave in?
 }
+
+\paragraph*{Conclusions}
+
+This paper investigates the use of {\em packed} representations to represent
+tree structures, which serialize a tree and eliminate the pointers connecting
+the various nodes. While this representation saves space and, with
+carefully-written code, can result in performance improvements (due to
+prefetching and spatial locality), writing programs that operate directly on
+the packed representation is challenging and error prone. To address this
+problem, this paper introduces \treelang{}, a simple functional language and
+compiler that allows programmers to write tree traversal algorithms in
+standard, idiomatic ways (recursion over algebraic data types), and a compiler
+that automatically generates the packed representation for an application and
+transforms \treelang{} programs to operate directly on that representation.
+
+We show through a series of microbenchmarks and case studies that our packed
+representation is highly efficient compared to pointer-based representations,
+both in terms of space usage and time, and that we can write even fairly
+complex compiler passes over ASTs in \treelang{} and automatically translate
+them to packed implementations. We also discuss extensions to \treelang{} that
+introduces selective random access to tree nodes in packed representations,
+opening up \treelang{} to more complex applications.
 
 %% % ================================================================================
 %% \appendix
