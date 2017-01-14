@@ -548,8 +548,8 @@ resulting code.
 
 \subsubsection{Extensions} \label{sec:extensions1}
 There are many possible extensions to the basic preorder format. For example, we
-can include {\em indirection nodes}, which use a unique tag to insert a pointer to
-another buffer. We can also selectively use alternative constructors that
+can include {\em indirections}, which use a unique tag to insert a pointer to
+another buffer or portion of the existing buffer. We can also selectively use alternative constructors that
 include size information and allow random access.  Note that we can {\em still}
 save space even while storing layout.  For instance, the \il{Node} record above
 could be laid out as: {\il{NodeTag <size_left> <left> <right>}}.
@@ -565,7 +565,7 @@ Indeed, we plan to explore the tradeoff between density of encoding, and
 computational overhead.  A dense encoding in the style of UTF8 would enable us
 to store small values of \il{<size_left>} in as little as one byte.
 %
-We return to the topic of extending the basic format in \cref{sec:future}.
+We return to the topic of extending the basic format in \cref{sec:extensions}.
 
 
 \subsection{Related Work}
@@ -577,7 +577,7 @@ other data structures to promote spatial
 locality~\cite{Chilimbi1999,Chilimbi1999b,Truong1998,Lattner2005,Chilimbi1999a},
 by modifying garbage collection to co-locate objects~\cite{Chilimbi1999a},
 modifying memory allocators to proactively place objects with similar access
-patterns together~\cite{Lattner2005,Chilimbi1999}, or to modify the internal
+patterns together~\cite{Lattner2005,Chilimbi1999}, or modifying the internal
 layout of objects to place hot fields near each other~\cite{Chilimbi1999b}.
 These approaches attempt to ``pack'' data together, using various techniques,
 into cache lines to improve spatial locality, and hence have some resemblance
