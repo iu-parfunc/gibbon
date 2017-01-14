@@ -14,7 +14,8 @@
 #include <errno.h>
 
 // Big default.  Used for --packed and --pointer/bumpalloc
-static long long global_default_buf_size = (500lu * 1000lu * 1000lu);
+// static long long global_default_buf_size = (500lu * 1000lu * 1000lu);
+static long long global_default_buf_size = (5 * 1000lu * 1000lu * 1000lu); // 9GB.
 
 static long long global_size_param = 1;
 static long long global_iters_param = 1;

@@ -66,6 +66,8 @@ BIG= $(TREELANGDIR)/ASTBenchmarks/cleaned_racket/share/pkgs/typed-racket-more/ty
 BIGPKD= $(TREELANGDIR)/ASTBenchmarks/binary_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.gpkd
 PERF= perf stat -e cycles,instructions,cache-references,cache-misses,bus-cycles
 
+ITERS=100
+
 # Run on a single biggish file:
 big: bigfold bigmap
 bigfold:
@@ -87,18 +89,27 @@ bigmap:
 
 	@echo; echo "Packed version"
 	@echo "============================================================"
-	$(PERF) ./test26a_packed.exe --bench-input $(BIGPKD) 0 100
+	$(PERF) ./test26a_packed.exe --bench-input $(BIGPKD) 0 $(ITERS)
 
 	@echo; echo "Pointer version"
 	@echo "============================================================"
-	$(PERF) ./test26a_pointer.exe --bench-input $(BIGPKD) 0 100
+	$(PERF) ./test26a_pointer.exe --bench-input $(BIGPKD) 0 $(ITERS)
 
 	@echo; echo "Bumpalloc pointer version"
 	@echo "============================================================"
-	$(PERF) ./test26a_pointer_bumpalloc.exe --bench-input $(BIGPKD) 0 100
+	$(PERF) ./test26a_pointer_bumpalloc.exe --bench-input $(BIGPKD) 0 $(ITERS)
 
 megamap:
 	$(MAKE) BIGPKD=$(TREELANGDIR)/ASTBenchmarks/mega_asts/mega1_1.gpkd bigmap
+
+# Less than 1K
+# SMALL=./share/pkgs/htdp-lib/2htdp/planetcute/roof-north-east.rkt.out.gpkd
+# exactly 4096 bytes:
+SMALL=./share/pkgs/web-server-doc/web-server/scribblings/tutorial/examples/iteration-10.rkt.out.gpkd
+minimap:
+	du -sch $(TREELANGDIR)/ASTBenchmarks/binary_racket/$(SMALL)
+	$(MAKE) BIGPKD=$(TREELANGDIR)/ASTBenchmarks/binary_racket/$(SMALL) ITERS=100000 bigmap
+
 
 # Assumes answers and build already available:
 core_tests:
