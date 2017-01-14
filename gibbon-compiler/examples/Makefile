@@ -97,6 +97,8 @@ bigmap:
 	@echo "============================================================"
 	$(PERF) ./test26a_pointer_bumpalloc.exe --bench-input $(BIGPKD) 0 100
 
+megamap:
+	$(MAKE) BIGPKD=$(TREELANGDIR)/ASTBenchmarks/mega_asts/mega1_1.gpkd bigmap
 
 # Assumes answers and build already available:
 core_tests:
