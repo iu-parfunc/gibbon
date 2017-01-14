@@ -1425,21 +1425,21 @@ as a fast bump-pointer allocator).
   %% \begin{minipage}{.48\textwidth}
   \hspace{12mm}
   %%   \hspace{2mm}
-  \includegraphics[width=3.9in]{./figs/shootout_add1.pdf}
+  \includegraphics[width=4.4in]{./figs/shootout_add1.pdf}
 %  \vspace{-4mm}
 %   \end{minipage}
 
-\begin{minipage}{1.00\textwidth}
-\hspace{-4mm}      
+\begin{minipage}{1.02\textwidth}
+\hspace{-5mm}      
   \begin{minipage}{.48\textwidth}
     \centering
-    \includegraphics[width=3.6in]{./figs/shootout_buildtree.pdf}    
+    \includegraphics[width=3.8in]{./figs/shootout_buildtree.pdf}    
 %    \label{fig:}
   \end{minipage}
-  $ $
+  \hspace{3mm}
   \begin{minipage}{.48\textwidth}
     \centering
-        \includegraphics[width=3.6in]{./figs/shootout_sumtree.pdf}
+        \includegraphics[width=3.8in]{./figs/shootout_sumtree.pdf}
 %    \label{fig:}
   \end{minipage}
 
@@ -1508,21 +1508,22 @@ execution in Racket).
 
 
 \begin{figure}[t]
-  \vspace{-2mm}
+%  \vspace{-2mm}
+  \hspace{-4mm}
   \begin{minipage}{1.04\textwidth}
     \begin{minipage}{.49\textwidth}
       \centering
-      \includegraphics[width=3.3in]{./figs/slowdown_leaves_build.pdf}
+      \includegraphics[width=3.8in]{./figs/slowdown_leaves_build.pdf}
     \end{minipage}
     \begin{minipage}{.49\textwidth}
-      \includegraphics[width=3.3in]{./figs/slowdown_leaves_add1.pdf}
+      \includegraphics[width=3.8in]{./figs/slowdown_leaves_add1.pdf}
     \end{minipage}
   \end{minipage}
   \vspace{-4mm}
   \caption{\Red{Slowdown relative to packed version...  varying the number of
       word-sized scalars hanging off of each leaf of the binary tree.}}
   \label{fig:slowdown}
-  \vspace{-4mm}
+%  \vspace{-4mm}
 \end{figure}
 
 
@@ -1580,8 +1581,8 @@ because directly implementing simple functions on simple data in a packed
 representation is tractable.
 
 More challenging, however, is to operate on trees that have more complex
-structure, such as the abstract syntax trees (ASTs) that arise in compiler
-passes: (i) the trees themselves do not have homogeneous structure, so the
+structure, such as the abstract syntax trees (ASTs) that arise in full blown
+programming languages: (i) the trees themselves do not have homogeneous structure, so the
 location of a particular tree node in a packed buffer is intimately related to
 the types of the other nodes in the tree; and (ii) the operations on the tree
 nodes are not homogeneous, so the structure of computations (including how to
@@ -1593,16 +1594,44 @@ using pattern matching is fairly straightforward. This, then, is an ideal use
 case for \treelang{}'s approach.
 
 \paragraph*{Benchmarks}
-In this portion of the evaluation, we look at two compiler passes, each of
-which takes a Racket abstract syntax tree as input and produces a new abstract
-syntax tree. The two passes are copy propagation and substitution. In both
-cases, the structure of the output AST might differ from that of the input
-AST. While we only evaluate two compiler passes,\footnote{An artifact of \treelang{}'s prototype compiler's limitations, not \treelang{}'s expressiveness.} we note that these passes contain the two major operation types that might be performed on trees: {\tt map}s, where the output tree is structurally similar to the input tree but with a function applied to each node, and {\tt fold}s, which in this context is transforming an entire subtree into some differently-structured output (something as simple as a single node, representing a reduction). Seen at this high level, all compiler passes on ASTs are roughly similar, differing mostly in the work done near the leaves of trees. Hence, we expect the results of these two passes to be representative.
+In this portion of the evaluation, we look at
+% two compiler passes, each of which takes a
+the performance of two classes of tree walk
+% (a fold and a map)
+on full Racket core syntax, 
+whose definition is excerpted in \cref{fig:racket-core}.
+%
+These benchmarks consume a Racket abstract syntax tree as input and produce
+either (1) a count of nodes, or (2) a new abstract syntax tree.
+% The two passes are copy propagation and substitution.
+%% In both cases, the structure of the output AST might differ from that of the
+%% input AST.
+%
+While we only evaluate two simple treewalks,
+%% \footnote{An artifact of  \treelang{}'s prototype compiler's limitations, not \treelang{}'s
+%%   expressiveness.}
+we note that these traversals contain the two major operation
+types that might be performed on trees: {\tt map}s, where the output tree is
+structurally similar to the input tree but with a function applied to each node,
+and {\tt fold}s, which in this context is transforming an entire subtree into
+some differently-structured result.
+%
+Seen at this high level, all compiler passes on ASTs
+are roughly similar, differing mostly in the work done near the leaves of
+trees.
+%
+For example, substitution, copy-propagation, and constant folding all traverse a
+tree and ``act locally''.  Especially transformations that only transform a
+small fraction of the input spend most of their time simply walking over syntax.
+%
+%% Hence, we expect the results of these two traversals to be representative for
+%% map-like passes and simple analysis passes (folds).
 
-We write each pass in \treelang{}. We then generate two versions of each
+
+We write both benchmarks in \treelang{}. We then generate two versions of each
 benchmark, one using \treelang{}'s {\em pointer-based} backend (which
 generates passes over pointer-based ASTs in C), and one using \treelang{}'s
-{\em packed} backend (which uses our new representation). By letting the
+{\em packed} backend. By letting the
 implementations differ only in the backends used to generate them, we isolate
 the performance differences to those that arise from the difference in
 representation. Because \treelang{} allows for tree traversals to be written
@@ -1610,13 +1639,23 @@ using standard algebraic data type match operations, this evaluation also
 serves to confirm our ability to generate packed implementations from
 idiomatic code.
 
-As input, we use a variety of different ASTs generated from the Racket code
-base, ranging in size from XXX nodes to YYY nodes, with ZZZ different inputs,
-overall. Note that these inputs represent real-world programs of varying
-sizes, ranging from XXX bytes to YYY bytes. This range of programs and sizes
-allows us to understand how input-dependent the behavior of our cursor passing
-transformations and our packed representations are, as well as confirm that
-our approach works across a wide range of real inputs.
+We generated a dataset of inputs by collecting all of the (macro-expanded) source
+code from the main Racket distribution, which contains 4,456 files consuming
+102MB once packed in our dense representation (disregarding symbol tables).
+%
+As input, \Red{we ASTs drawn from this input set},
+%
+further, to simulate larger programs (as found in whole-program compilation), we combined
+multiple files into one.
+%
+%% ranging in size from \Red{XXX nodes to YYY nodes, with ZZZ different inputs},
+%% overall. Note that these inputs represent real-world programs of varying sizes,
+%% ranging from XXX bytes to YYY bytes.
+%
+%% This range of programs and sizes allows us
+%% to understand how input-dependent the behavior of our cursor passing
+%% transformations and our packed representations are, as well as confirm that our
+%% approach works across a wide range of real inputs.
 
 \paragraph*{Results}
 \Red{Figures~\ref{fig:copyprop} and~\ref{fig:subst} present the results
@@ -1636,20 +1675,21 @@ We see \note{something -- describe these figures once we see them!}
 %% \note{type check the simply-typed $\lambda$ calculus in \treelang{}}
 
 \begin{figure}[t]
-  \vspace{-2mm}
+%  \vspace{-2mm}
+  \hspace{-5mm}
   \begin{minipage}{1.04\textwidth}
     \begin{minipage}{.49\textwidth}
       \centering
-      \includegraphics[width=3.3in]{./figs/slowdown_countnodes.pdf}
+      \includegraphics[width=3.8in]{./figs/slowdown_countnodes.pdf}
     \end{minipage}
     \begin{minipage}{.49\textwidth}
-      \includegraphics[width=3.3in]{./figs/slowdown_treewalk.pdf}
+      \includegraphics[width=3.8in]{./figs/slowdown_treewalk.pdf}
     \end{minipage}
   \end{minipage}
-  \vspace{-4mm}
+%  \vspace{-4mm}
   \caption{\Red{Slowdown relative to packed version...}}
   \label{fig:slowdown}
-  \vspace{-4mm}
+%  \vspace{-4mm}
 \end{figure}
       
 
@@ -1734,9 +1774,9 @@ We see \note{something -- describe these figures once we see them!}
 %%       (CONSSYM Sym ListSym)
 %%       (NULLSYM))
 
-  \caption{Racket Core AST definition.
-   Follows \url{https://docs.racket-lang.org/reference/syntax-model.html}.
-   Nine datatypes total.}
+  \caption{Excerpt of Racket Core AST definition in Gibbon., which 
+   follows \url{https://docs.racket-lang.org/reference/syntax-model.html}.
+   In total there are nine datatypes total.}
   \label{fig:racket-core}
 \end{figure}}
 
@@ -1877,22 +1917,23 @@ spawn}s, producing coarse-grained leaf tasks, we revert to the full tree-walks
 supported by \treelang{}.
 
 \begin{figure}[t]
-  \vspace{-5mm}
-\begin{minipage}{1.04\textwidth}
-  \begin{minipage}{.49\textwidth}
+%  \vspace{-5mm}
+% \begin{minipage}{1.04\textwidth}
+    \centering
+  \begin{minipage}{.75\textwidth}
     \centering
     \includegraphics[width=\textwidth]{./figs/speedup_cilk.pdf}
 %    \label{fig:}
   \end{minipage}
   %  \hspace{0.1\textwidth}
   $ $ 
-  \begin{minipage}{.49\textwidth}
+  \begin{minipage}{.75\textwidth} 
     \centering
     \includegraphics[width=\textwidth]{./figs/speedup_ghc.pdf}
     % \includegraphics[width=60mm]{example-image-b}
 %    \label{fig:}
   \end{minipage}
-\end{minipage}
+%\end{minipage}
    \caption{Parallel speedup: mapping a function over a packed tree.  This
      compares a Cilk (C) implementation using the packed with layout information
      that allows random access to subtrees (left).  For comparison, we also show
@@ -1901,7 +1942,7 @@ supported by \treelang{}.
      terms, GHC starts off 34$\times$ slower than our approach at one core, and
      grows to 223$\times$ slower at 16 cores.}
    \label{fig:par-shootout}
-      \vspace{-4mm}
+%      \vspace{-4mm}
 \end{figure}
 % C/1 0.0036089296875
 % HS/1 0.1226078125,
@@ -1974,7 +2015,7 @@ rest of the tree.
 % \begin{minipage}{1.04\textwidth}
   % \begin{minipage}{.49\textwidth}
     \centering
-    \includegraphics[width=0.5\textwidth]{./figs/pointCorr_perf.pdf}
+    \includegraphics[width=0.7\textwidth]{./figs/pointCorr_perf.pdf}
 
   % \end{minipage}
   % $ $ 

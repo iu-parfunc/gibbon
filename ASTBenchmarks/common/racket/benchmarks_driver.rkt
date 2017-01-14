@@ -77,6 +77,7 @@
     (let loop ([iters MINITERS])
       (printf "iters ~a\n" iters)
       (define cmd (format "~a ~a ~a" exec f iters)) ;; make sure this matches copyprop benchamrk
+      (printf ">>>RUNNING:>>> ~a\n" cmd)
       (define ls (process cmd))
       (define func (get-proc ls))
       
@@ -108,8 +109,8 @@
 	        (printf "~a\n " batchseconds)
 		(flush-output)
 		(loop (* iters 2)))
-	      (let ([multiple (max 2 (truncate (/ (fl->exact-integer target-time) (inexact->exact batchseconds))))])
-            (printf "~a\n " batchseconds) 
-            (flush-output)
-            (loop (* iters multiple)))))))
+	      (let ([multiple (min 100 (max 2 (truncate (/ (fl->exact-integer target-time) (inexact->exact batchseconds)))))])
+                (printf "~a\n " batchseconds) 
+                (flush-output)
+                (loop (* iters multiple)))))))
   ))
