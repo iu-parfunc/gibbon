@@ -180,7 +180,8 @@ algorithm to insert destination cursors.
 % creating missing traversals.
 We evaluate our compiler on 
 tree transformations over a real-world dataset of source code syntax trees.
-\Red{We demonstrate speedups from ABC to XYZ}
+{Packed data allows speedups of over $2\times$ compared to highly-optimized
+  pointer-based baseline.}
 
 \end{abstract}
 
@@ -330,7 +331,7 @@ following contributions:
 \item We present a simple language,
 %  prototype language implementation based on this
  dubbed \treelang, that can compile a range of tree transforms
- to be \Red{several times} faster than standard techniques.
+ to be {more than twice as} fast as standard techniques.
  We evaluate Gibbon against both a number of existing compilers and
  its own best performance (without packing) in \cref{sec:eval}.
 
@@ -1488,6 +1489,7 @@ including GC parameters as well as the ``C (pointer)'' using the system malloc.
 %   \vspace{-4mm}
 \end{figure}
 
+
 %% Our first ``shootout'' demonstrates the performance gains afforded by the
 %% packed representation.
 We next implement the tree building and summing benchmarks in \treelang{}, and
@@ -1504,7 +1506,7 @@ execution in Racket).
   traversals.}
 % \rn{That's not the point... finish this}
 
-\note{Figure~\ref{fig:shootout2} shows summing and building a tree, separately.
+\Red{Figure~\ref{fig:shootout2} shows summing and building a tree, separately.
   In \cref{fig:shootout2B}, we show the add1-to-leaves function, which both
   consumes and produces a tree.  Here we also introduce couple additional
   comparisons for context, which we will carry into the next section.  First,
@@ -1517,6 +1519,15 @@ execution in Racket).
   optimal memory management with cheap arena allocation.  Still, it remains the
   case that on add1, packed is geomean 1.75$\times$ faster than bumpalloc, and
   18$\times$ faster than the malloc-based pointer.}
+
+\begin{figure}[]
+  \centering
+  \includegraphics[width=4.3in]{./figs/shootout_treebench_five.pdf}
+%  \includegraphics[width=4.8in]{./figs/shootout_treebench.pdf}
+   \caption{\Red{ADD1}}
+   \label{fig:shootout2B}
+%   \vspace{-4mm}
+\end{figure}
 
 % \note{REMAINDER OF THE BUMPALLOC/PACKED RESULTS HERE}
 
