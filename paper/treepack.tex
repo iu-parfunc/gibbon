@@ -1611,7 +1611,23 @@ We see \note{something -- describe these figures once we see them!}
 
 %% \note{type check the simply-typed $\lambda$ calculus in \treelang{}}
 
-
+\begin{figure}[t]
+  \vspace{-2mm}
+  \begin{minipage}{1.04\textwidth}
+    \begin{minipage}{.49\textwidth}
+      \centering
+      \includegraphics[width=3.3in]{./figs/slowdown_countnodes.pdf}
+    \end{minipage}
+    \begin{minipage}{.49\textwidth}
+      \includegraphics[width=3.3in]{./figs/slowdown_treewalk.pdf}
+    \end{minipage}
+  \end{minipage}
+  \vspace{-4mm}
+  \caption{Slowdown relative to packed version...}
+  \label{fig:slowdown}
+  \vspace{-4mm}
+\end{figure}
+      
 
 \section{Extensions}
 %============================================================================
@@ -1882,18 +1898,37 @@ We note that the relatively smaller performance improvement for this benchmark v
 % ================================================================================
 \section{Future Work and Conclusions}
 % ================================================================================
-
+\label{sec:future}
+\label{sec:conclusion}
 \paragraph*{Future work}
-\note{Data type factoring, storing leaves in a separate, dense, aligned vector.
-This enables (1) vectorization of numeric operations, and (2) separating
-out pointers that the GC must traverse.  This can prove essential for an
-open-world implementation in a managed language.}
 
+While our initial results show that packed tree-based data
+representation have significant promise for accelerating tree
+transformations, much more work remains to be done. First,
+our \treelang compiler remains an initial prototype---a more realistic
+implementation supporting arrays, lists, and more base values would
+allow the construction of more interesting programs, further
+validating our hypotheses. We also plan to support optional automatic
+inclusion of layout size information to enable applications such as
+kd-trees directly in the \treelang language.
 
-\note{A large space of parallelism design choices.}
+Further extensions to the simplest model of packed data provide the
+promise of additional gains. One extension to the model is the
+addition of \emph{indirection nodes}, allowing allocation of unknown
+sizes by chaning together buffers, or supporting parallelism more
+effectively with pointers at the top of a tree and dense packing
+further down. Another extension is \emph{data type factoring}, storing
+leaves in a separate, dense, aligned vector.  This enables (1)
+vectorization of numeric operations, and (2) separating out pointers
+that the GC must traverse.  This may prove essential for an open-world
+implementation in a managed language such as Java, Haskell, or Racket,
+where the low-level control provided by C is not possible, and
+interoperation with arbitrary pointer-based values is desirable.
 
-\note{How much of this do we want to leave in?
-}
+Finally, while our parallelism opportunity study shows that packed
+data is an excellent approach to parallel computation, we have not yet
+explored this further. Turning promise into reality will require
+significant additional work.
 
 \paragraph*{Conclusions}
 
