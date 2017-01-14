@@ -329,7 +329,7 @@ following contributions:
 \item We present a simple language,
 %  prototype language implementation based on this
  dubbed \treelang, that can compile a range of tree transforms
- to be \Red{several times} faster than standard techniques.
+ to be \Red{several times} faster than standard techniques (Section~\ref{sec:language}).
  We evaluate Gibbon against both a number of existing compilers and
  its own best performance (without packing) in \cref{sec:eval}.
 
@@ -399,7 +399,7 @@ Here we use a Haskell-like syntax, but in fact
 we consider this paper is already a subset of most existing languages.
 The above program is not substantially different in C, Haskell, ML, Scala,
 Swift, Rust, etc.  Only the details of switching on sum types (tagged unions)
-differ (as well as the syntax for construct an object while initializing its
+differ (as well as the syntax for constructing an object while initializing its
 fields, here: 
 \ifcurly
 \il{Node(e1,e2)}).
@@ -409,7 +409,7 @@ fields, here:
 
 
 The first problem for tree-walks such as this is memory management, as \il{add1}
-can easy become a malloc or garbage collector benchmark.  For instance, the
+can easily become a malloc or garbage collector benchmark.  For instance, the
 following C code is over twice as slow as the same implementation in Java or a
 good functional compiler, thanks to overhead in \il{malloc}.
 
@@ -431,7 +431,7 @@ But even if we assume optimal layout, bump-pointer allocation, and {\em no
   header objects}---even if we go further and enable \il{__packed__} attribute
 for our structs to save tag space---the performance of the above code is still
 several times below what is achievable.  The main observation of this paper is
-that bulk tree walks are efficient if done directly on pre-order serialization
+that bulk tree walks are efficient if done directly on a pre-order serialization
 of the tree, and that it is possible to automate the translation of recursive
 functions, such as \il{add1} above, into code that directly manipulates data
 buffers containing serialized trees.
@@ -484,7 +484,7 @@ into the tree, and more. We begin by outlining some of those
 challenges, and delve into their solutions in subsequent sections.
 
 Of course, many challenges can be overcome with extensions to the data
-{format, and in \cref{sec:extensions1,sec:future} we will explore various
+{format, and in \cref{sec:extensions1,sec:extensions} we will explore various
 extensions to the basic preorder serialization}.  But we begin with the
 most basic scenario, where all data for a tree resides in one buffer,
 contiguously.
@@ -629,6 +629,7 @@ representation.
 
 % ================================================================================
 \section{The \treelang{} Language}
+\label{sec:language}
 % ================================================================================
 
 
