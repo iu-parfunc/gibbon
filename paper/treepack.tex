@@ -455,6 +455,7 @@ them automatically.
 %%   reams of tree-walking code.}
 
 \subsection{Challenges and Limitations}
+\label{sec:limitations}
 
 At a basic level, the remainder of the paper describes how to generate
 this efficient but complex C code automatically from the simple
@@ -529,15 +530,14 @@ resulting code.
 \note{Need something here about copy insertion, maybe?}
 
 \paragraph*{Extensions}
-
-\note{There are many possible extensions to the basic preorder format. For example, we
+There are many possible extensions to the basic preorder format. For example, we
 can include {\em indirection nodes}, which use a unique tag to insert a pointer to
 another buffer. We can also selectively use alternative constructors that
 include size information and allow random access.  Note that we can {\em still}
 save space even while storing layout.  For instance, the \il{Node} record above
-could be laid out as: {\il{NodeTag <size_left> <left> <right>}}}
+could be laid out as: {\il{NodeTag <size_left> <left> <right>}}.
 
-\note{Whereas a pointer based representation would spend {\em two words} for the left
+Whereas a pointer based representation would spend {\em two words} for the left
 and right pointer (16 bytes~\footnote{One basic advantage that we leverage here
   is that 64 bit platforms have become wasteful of memory, using 8 bytes for
   every pointer, even though most of the time it is unneeded.  }), if we assume
@@ -546,7 +546,7 @@ of the left tree, and we needn't store the size of the right tree at all!
 % This gives us a total of 4 bytes overhead rather than 
 Indeed, we plan to explore the tradeoff between density of encoding, and
 computational overhead.  A dense encoding in the style of UTF8 would enable us
-to store small values of \il{<size_left>} in as little as one byte.}
+to store small values of \il{<size_left>} in as little as one byte.
 
 
 
@@ -601,10 +601,12 @@ in traversing linked data structures.
 \note{Sam holds lock.  Overview of language, including introducing its formal grammar}
 
 To demonstrate the compilation technique we are presenting, we present
-$\treelang{}$, a typed programming language that is simple enough to
+\treelang, a typed programming language that is simple enough to
 present briefly in a paper, and featureful enough to express some
-interesting programs, such as common compiler passes.
+interesting tree-manipulating, such as common compiler passes.
 
+The syntax of \treelang is given in Figure~\cref{fig:source}---it is
+simply a standard first-order funcitonal language.
 Programs consist of a series of data type declarations and function
 declarations. Similar to most functional programming languages,
 programmers may define \emph{algebraic data types}, and dispatch on
@@ -614,26 +616,34 @@ them with a
 \else
 \texttt{case} language form (called \texttt{match} or \texttt{switch} in some languages).
 \fi
-%% For example, a data type for peano
-%% numbers would have two cases: zero and successor.
+For example, a data type for peano
+numbers would have two cases: \il{Zero} and \il{Successor}.
 
 \input{treelang}  %% Definitions and figures.
 
-\note{Figure~\cref{fig:source} shows the grammar for our language of tree traversals.
-It is nothing but a standard functional language, with the caveat that algebraic
-datatypes, declared with \il{data}, are implicitly {\em packed} in this language.
-In this basic design, the only non-packed datatypes are tuples \il{(e1,e2)}.
+Data types declared with \il{data} are automatically and implicitly
+{\em packed} in this language.  In this basic design, the only
+non-packed datatypes are tuples $\mathtt{(e_1,\dots,e_n)}$, accessed with
 %% though as the project progresses we plan to allow arbitrary {\em subsets} of
 %% datatypes to be marked with a ``packed'' compiler pragma.
 Note, however, that even tuples allow functions to take and return arbitrary
 numbers of packed datatypes.  When we perform cursor translation in our
 compiler, this will mean passing multiple {\em output cursors} to a function in
 order to provide buffers for it to write its results to.
-}
+
+Other language features are standard: tuple access, let binding,
+conditionals, and primitive operations. The only base values
+provided are integers and booleans.
+
+\note{Finally, we provide dictionaries to support ...}
+
+A fuller language would support richer data types, more operations,
+and data structures such as arrays and lists, but the crucial elements
+for expressing tree-shaped data and transformations on it is present. 
 
 
-\note{We already gave an example of a program in Gibbon earlier...
-  probably only need one, unless we're doing something different here}
+%% \note{We already gave an example of a program in Gibbon earlier...
+%%   probably only need one, unless we're doing something different here}
 
 %% \begin{code}[language=haskell]
 %% type Nat = Zero | Suc(Nat);
@@ -1534,18 +1544,110 @@ We see \note{something -- describe these figures once we see them!}
 
 
 
-\section{Evaluation of Extensions} \label{sec:eval-extensions}
-% ================================================================================
-
+\section{Extensions}
+%============================================================================
+\label{sec:future}
 
 This section evaluates two extensions to \treelang{} that enable more complicated traversals and expose more opportunities for performance.
 
-%%Fix this
-Fourth, we
-implement a point-correlation benchmark using a kd-tree, again showing
-major performance benefits for packed representations. Additionally,
-we \note{something something parallel}
+Our benchmarks up until now focus on ``full'' treewalks: traversals that visit
+every node of the input tree, in order. While this assumption is accurate for
+most compiler passes, there are some scenarios and applications where this may
+not be true:
+\begin{itemize}
+  \item If a traversal exploits {\em truncation}. Some tree traversals, such as those of space partitioning trees~\cite{gray2000n} gain asymptotic improvements by {\em truncating} traversals of subtrees. Based on some condition (for example, that a given subspace in a space partitioning tree is unimportant), traversal of a node's entire subtree is skipped, and the traversal continues on to the sibling of the current node. This optimization means that not all of the tree is visited by the traversal.
+  \item If a traversal is {\em parallelized}. To run a traversal in parallel, multiple threads collaborate to walk over a tree. In many traversals, this parallelism is natural: walks over different subtrees are independent of each other. In {\em this} scenario, a single thread may not walk over the entire tree and, indeed, may not even start its tree walk at the beginning of the buffer holding the tree.
+\end{itemize}
 
+For both of these cases, our current \treelang{} compiler is insufficient,
+because it does not support non-full treewalks. It assumes that the
+cursor moving through the buffer runs by each node in the tree during the tree
+walk, and the transformations that ensure that cursors get routed correctly
+assume the same. The key distinction here is that in both the truncation case
+and the parallelism case, we need some way to move a cursor to (or generate a
+cursor at) some later point in a packed tree buffer {\em without} walking over
+the intermediate tree nodes.
+
+This section describes an extension to \treelang{}'s packed representation---{\em layout information}---that enables these more sophisticated traversals, as well as a evaluation of two benchmarks that use this extended representation.
+
+\subsection{Adding Layout Information for Indirection}
+
+As described in Section~\ref{sec:copy-insert}, our current approach for
+handling traversals where we need a cursor position (e.g., the position of a
+right child) without an accompanying traversal that generates it---in other
+words, if we need to skip over a portion of the tree---is to insert a {\em
+copy} traversal that traverses the portion of the tree we are skipping. This
+dummy traversal generates the required cursor position to continue with the
+``real'' traversal. However, this can be inefficient if the amount of work
+done by the dummy traversal is large: in the original pointer-based code, a
+traversal has direct access to all children, and can hence immediately skip
+over any subtrees that are unecessary, whereas code using the packed
+representation must traverse the entire tree at all times. In some situations,
+these dummy traversals can turn $O(\log n)$ traversals into $O(n)$ traversals,
+an unacceptable increase in complexity (consider, for example, the {\tt right} example from Section~\ref{sec:limitations}).
+
+
+Our solution to this problem is the introduction of {\em indirections} in the
+packed representation. These are, effectively, values stored in the packed
+tree that can be used to generate necessary cursor positions without
+performing traversals. This layout information amounts, essentially, to adding
+pointers to our packed representation (albeit ones that only have to be used
+in lieu of dummy traversals). However, they still preserve some of the space
+benefits of the packed representation for three reasons. First, indirections
+are not necessary for the first child, as it is placed immediately after its
+parent. Second, indirections are
+only necessary during some portions of traversal; if a particular type of node
+does not have computations that require skipping subtrees, there is no need to
+add indirections to that type of node. Third, even if indirections {\em are}
+required everywhere, they are only required to be offsets within the buffer,
+not full (64-bit) pointers, which can enable space savings.
+
+The particular type of indirection needed depends on the mechanism of the
+traversal. Automatically inferring what type of indirection is necessary and
+inserting them into packed representations is a topic for future work. Here,
+we discuss two common patterns.
+
+\begin{description}
+  \item[Pointer-style indirection] The most common type of indirection is a
+  ``pointer style'' indirection, where the indirection serves to provide easy
+  access to children beyond the first child: a node contains a field that
+  contains the size of the left subtree. Adding that value to the current
+  cursor allows the cursor to be moved past the left subtree and on to the
+  right subtree. These types of indirections are useful to quickly access,
+  say, the right child of a node without traversing the left child's subtree.
+  The {\tt right} code example from Section~\ref{sec:limitations} can benefit
+  from a pointer-style indirection.
+  \item[Rope-style indirection] This is a more subtle style of indirection. In
+  some types of tree traversals (such as those that arise in n-body
+  codes~\cite{gray2000n}), an interior node is visited and, based on some {\em
+  data-dependent} condition, either both children of the interior node are
+  visited or {\em neither} is visited, effectively truncating the traversal of
+  both the left and the right subtrees. This truncation effectively serves as
+  a data-dependent base case for a recursive traversal. We call these {\em
+  rope-style} indirections because these types of indirection pointers are
+  frequently called ``ropes'' when used in GPU implementations of tree
+  traversals~\cite{goldfarb13sc,popov07,hapala11}. An indirection pointer
+  captures the size of both the left and right subtrees (generalizing, all
+  child subtrees) of a node, allowing the cursor to be bumped to the necessary
+  location upon truncation.
+  
+  Interestingly, \treelang{}'s packed representation makes finding the next
+  node easy---a simple calculation of the size of subtrees. In pointer-based
+  representations, finding the next node of the tree requires more work: it
+  could be the right sibling of the current node, it could be the node's
+  parent's right sibling, etc.
+\end{description}
+
+Note that in both cases, the indirection pointer's main job is to capture the
+size of a subtree or subtrees rooted at a particular node. In general, if a
+given interior node knows the sizes of all of its child subtrees, it can use
+these indirection pointers to provide {\em random access} to a tree, even if
+that tree is in a packed representation. Hence, we call this indirection
+information {\em layout information}.
+
+\subsection{Evaluation}
+
+Because \treelang{} does not currently support a packed representation extended with layout information, our evaluation 
 
 \subsection{Point correlation} \label{sec:eval-kdtree}
 % --------------------------------------------
