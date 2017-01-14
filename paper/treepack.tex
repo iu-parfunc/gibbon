@@ -1277,7 +1277,7 @@ In the next section we evaluate a prototype \treelang compiler, implemented in
 Haskell, and generating code via C. 
 %
 This compiler implements the algorithms of the prior section, with a few current
-limitations.  We've implemented copy insertion by hand, and the current compiler
+limitations.  We have implemented copy insertion by hand, and the current compiler
 will potentially duplicate work (rather than copying) if (1) a packed result of a
 function call is used in multiple places, or (2) when a function returns multiple
 packed results.
@@ -1298,7 +1298,7 @@ implementation strategies:
   provides a baseline for comparison.  It shares the front and back of the
   compiler with packed mode.  But, in pointer mode, we skip the transformations
   that introduce cursors and packed representations.  Rather, we use a
-  traditional pointer graph of heap objects to represent all data.  Using the
+  traditional pointer graph of heap objects to represent all data.  This mode uses the
   default policies of the C compiler for \il{struct} layout.
 \end{itemize}
 
@@ -1321,7 +1321,7 @@ management strategy---about the best you can do without going to packed.
 We use a simple arena implementation where a single global variable stores the
 heap pointer, which is incremented upon allocation.
 
-For benchmarking, we add an @iterate(e)@ form to the language which runs and
+For benchmarking, we add an @iterate(e)@ form to the language which runs an
 expression multiple times and reports the time for all iterations together.
 Iterate {\em also} resets the state of the arena allocator, after each iteration
 but the final one, in order to ``undo'' the effects of previous iterations
@@ -1350,7 +1350,7 @@ interoperability.  Tree data would be marshaled at the boundary, as usual, in
 this case converting from pointer graphs to packed representations.
 %
 Indeed, this arrangement is similar to that used by existing EDSLs for, e.g, GPU
-programming~\cite{accelerate-icfp13,delite,obsidian-cacm}.  Except that those languages are
+programming~\cite{accelerate-icfp13,delite,obsidian-cacm}, except that those languages are
 typically focused on arrays and matrices and exclude recursive sum types and
 recursion---which are \treelang's emphasis.
 
@@ -1364,15 +1364,15 @@ enforce the type system with good error messages and source locations).
 %
 What remains is to enable in-calls and out-calls between Racket and Gibbon.
 %
-Indeed, these are already possible using a Gibbon backend which simple expands
+Indeed, these are already possible using a Gibbon backend which simply expands
 Gibbon (during macro expansion) to run as native Racket code.  Eventually, the C
 backend will likewise be supported without modifying the program.
 %
 
-In the next section we use compare to the Racket backend as a baseline for a
+In the next section we compare to the Racket backend as a baseline for a
 high-level language with significant overheads.  This information is useful, but
-the more relavant data for evaluating the packing technique is to compare the
-different modes supported by the C backend (packed/pointer).
+the more relevant data for evaluating the packing technique is to compare the
+different modes supported by the C backend (packed and pointer).
 
 
 % ================================================================================
