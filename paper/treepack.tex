@@ -727,7 +727,7 @@ and described in \cref{sec:compiler}.
 \treelang is implemented as a language built on Racket~\cite{plt-tr1},
 using Racket's language implementation and extension
 facilities. \treelang's type checking support is implemented by
-compiling to Typed Racket~\cite{typed-racket-popl08}. A programmer can
+compiling to Typed Racket~\cite{popl08}. A programmer can
 develop and test a \treelang program using the DrRacket IDE and tools,
 which include code coverage, syntax highlighting, on-the-fly type
 checking, and more.
@@ -788,7 +788,7 @@ so thus we can {\em region allocate} the @MkFoo@ constructor inside a buffer
 that is freed when the expression returns (in the implementation, this resembles
 stack allocation).  This follows the precedent of other languages such as
 UrWeb~\cite{urweb}, as well as previous work on region
-types~\cite{mlkit,cyclone}.
+types~\cite{mlkit,Grossman2002}.
 
 
 This matter of destination routing is the primary function of the \treelang
@@ -1343,7 +1343,7 @@ interoperability.  Tree data would be marshaled at the boundary, as usual, in
 this case converting from pointer graphs to packed representations.
 %
 Indeed, this arrangement is similar to that used by existing EDSLs for, e.g, GPU
-programming~\cite{accelerate,delite,obsidian}.  Except that those languages are
+programming~\cite{accelerate-icfp13,delite,obsidian-cacm}.  Except that those languages are
 typically focused on arrays and matrices and exclude recursive sum types and
 recursion---which are \treelang's emphasis.
 
