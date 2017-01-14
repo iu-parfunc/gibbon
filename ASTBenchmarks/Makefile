@@ -79,6 +79,13 @@ sorted_binary_files.txt:
 sorted_cleaned_files.txt:
 	cd cleaned_racket; find ./ -name "*.sexp" -type f -printf "%s %p\n" | sort -n -r > ../$@
 
+# Debugging cruft:
+sorted_success.txt:
+	rm -f debug/sized_succeeded.txt 
+	for file in `cat debug/packed_succeeded.txt`; do \
+          echo `stat -c %s ./binary_racket/$$file` $$file; done > debug/sized_succeeded.txt
+	cat debug/sized_succeeded.txt | sort -n -r > $@
+
 # Default:
 MEGASIZE=10
 

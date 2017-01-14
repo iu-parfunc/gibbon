@@ -10,7 +10,7 @@
 % \usepackage{mathabx}
 % \usepackage{mathpartir}
 \usepackage{xspace}
-\usepackage[noabbrev]{cleveref}
+\usepackage[noabbrev,capitalise]{cleveref}
 \usepackage{enumitem}
 
 \usepackage{wrapfig}
@@ -160,8 +160,8 @@ object per-leaf and node.  While this may seem tautological, we show that common
 tree traversals---as found in compiler passes, space-partitioning trees, and
 elsewhere---can  be automatically compiled to operate on \textbf{pointer-free
 pre-order serializations of trees}.  On modern architectures such programs
-often run \Red{significantly} faster than their pointer-based counterparts,
-\Red{and additionally are directly suited to storage and transmission without
+often run {significantly} faster than their pointer-based counterparts,
+{and additionally are directly suited to storage and transmission without
   requiring marshaling.}
 
 We present a prototype compiler for \textsf{Gibbon}, a small
@@ -170,11 +170,16 @@ compiler first transforms this language into one with
 mutable cursors into input and output buffers
 for packed data, which then generates code as efficient as
 hand-written C. The key compiler technologies include an effect
-system for capturing traversal behavior, combined with a lightweight
-\Red{analysis inferring data flow}, and a program synthesis step for
-creating missing traversals. We evaluate our compiler on 
+system for capturing traversal behavior, combined with an
+algorithm to insert destination cursors.
+% lightweight
+% {analysis inferring data flow},
+% and a program synthesis step for
+% creating missing traversals.
+We evaluate our compiler on 
 tree transformations over a real-world dataset of source code syntax trees.
-  
+\Red{We demonstrate speedups from ABC to XYZ}
+
 \end{abstract}
 
 %\category{CR-number}{subcategory}{third-level}
@@ -314,28 +319,36 @@ following contributions:
 \newcommand{\calculus}{$\lambda^D_T$} % uh, Dense Tree?
 
 \begin{itemize}
-\item We use a small core language, \calculus{}, to formalize a transformation
-  on programs that creates an output program operating only on
-  pointers in the serialized representation.  This involves a small program
-  synthesis step, and we show how the program synthesis and the selection of
-  data structure shape benefit from co-optimization.
+ %% \item We use a small core language, \calculus{}, to formalize a transformation
+  %% on programs that creates an output program operating only on
+  %% pointers in the serialized representation.  This involves a small program
+  %% synthesis step, and we show how the program synthesis and the selection of
+  %% data structure shape benefit from co-optimization.
+   
+\item We present a simple language,
+%  prototype language implementation based on this
+ dubbed \treelang, that can compile a range of tree transforms
+ to be \Red{several times} faster than standard techniques.
+ We evaluate Gibbon against both a number of existing compilers and
+ its own best performance (without packing) (\cref{sec:eval}).
+
+\item We present Gibbon's compiler (\cref{sec:compiler}), which includes new
+  algorithms for determining when a function reaches the end of its input(s), and
+  for converting to a destination-cursor-passing style.
+
+%% \item We show that the principle of packed-tree traversals works
+%%   broadly across a variety of language implementations, by benchmarking simple
+%%   handwritten packed-tree programs~\cref{sec:eval-shootout} and
+%%   demonstrating speedup even \emph{without} compiler support.
+%% \rn{This implies we will show results for GHC/Packed, which we don't currently.}
   
-\item We present a prototype language implementation based on this
-  transformation, dubbed \treelang, that can compile a range of tree transforms
-  to be \Red{several times} faster than standard techniques~\cref{sec:eval-compiler}.
-  
-\item We show that the principle of packed-tree traversals works
-  broadly across a variety of language implementations, by benchmarking simple
-  handwritten packed-tree programs~\cref{sec:eval-shootout} and
-  demonstrating speedup even \emph{without} compiler support.
-\rn{This implies we will show results for GHC/Packed, which we don't currently.}
-  
-\item We show that not only do tree traversals become faster, \Red{but that their
-  {\em potential parallel speedup}, increases as well}
-  \cref{sec:eval-parallel}. To leverage parallelism, we need
-  additional information stored in trees---a feature that also allows
-  other tree-processing programs to be expressed in our framework.
-\rn{Need to include the KDTree business in the speculative part}
+\item In an additional evaluation, we show that not only do tree traversals
+  become faster in the packed representation, {but that in some cases {\em
+      potential parallel speedup}, increases as well} \cref{sec:eval-parallel}.
+  To leverage parallelism, we need additional information stored in trees---a
+  feature that also allows other tree-processing programs to be expressed in our
+  framework, such as a point correlation application which we evaluate (\cref{sec:eval-kdtree}).
+% \rn{Need to include the KDTree business in the speculative part}
   
 \end{itemize}
 
@@ -460,7 +473,7 @@ them automatically.
 
 At a basic level, the remainder of the paper describes how to generate
 this efficient but complex C code automatically from the simple
-functional tree walking program we began with.
+functional tree-walking program we began with.
 %
 However, this code generation process is not as easy as our initial
 example makes it seem. Our compiler must solve several challenging
@@ -469,13 +482,13 @@ into the tree, and more. We begin by outlining some of those
 challenges, and delve into their solutions in subsequent sections.
 
 Of course, many challenges can be overcome with extensions to the data
-format, and in section~\ref{sec:sizes} we will explore various
-extensions to the basic preorder serialization.  But we begin with the
+{format, and in \cref{sec:extensions1,sec:future} we will explore various
+extensions to the basic preorder serialization}.  But we begin with the
 most basic scenario, where all data for a tree resides in one buffer,
 contiguously.
 
 
-\paragraph*{Ensuring complete traversal} Our \il{add1} function is
+\subsubsection{Ensuring complete traversal} Our \il{add1} function is
 well-behaved and easy to compile. But many real programs, even very
 simple ones, pose more challenges. For example, consider the following
 two seemingly-similar functions:
@@ -526,11 +539,11 @@ the addition of an effect system to track how much of the input buffer
 is \emph{read}, corresponding to the effect of moving a cursor in the
 resulting code.
 
-\paragraph*{Copying}
+%% \paragraph*{Copying}
 
-\note{Need something here about copy insertion, maybe?}
+%% \note{Need something here about copy insertion, maybe?}
 
-\paragraph*{Extensions}
+\subsubsection{Extensions} \label{sec:extensions1}
 There are many possible extensions to the basic preorder format. For example, we
 can include {\em indirection nodes}, which use a unique tag to insert a pointer to
 another buffer. We can also selectively use alternative constructors that
@@ -539,7 +552,7 @@ save space even while storing layout.  For instance, the \il{Node} record above
 could be laid out as: {\il{NodeTag <size_left> <left> <right>}}.
 
 Whereas a pointer based representation would spend {\em two words} for the left
-and right pointer (16 bytes~\footnote{One basic advantage that we leverage here
+and right pointer (16 bytes\footnote{One basic advantage that we leverage here
   is that 64 bit platforms have become wasteful of memory, using 8 bytes for
   every pointer, even though most of the time it is unneeded.  }), if we assume
 individual tree values are less than 4GB, we need only four bytes for the size
@@ -548,7 +561,8 @@ of the left tree, and we needn't store the size of the right tree at all!
 Indeed, we plan to explore the tradeoff between density of encoding, and
 computational overhead.  A dense encoding in the style of UTF8 would enable us
 to store small values of \il{<size_left>} in as little as one byte.
-
+%
+We return to the topic of extending the basic format in \cref{sec:future}.
 
 
 \subsection{Related Work}
@@ -615,14 +629,13 @@ representation.
 \section{The \treelang{} Language}
 % ================================================================================
 
-\note{Sam holds lock.  Overview of language, including introducing its formal grammar}
 
-To demonstrate the compilation technique we are presenting, we present
-\treelang, a typed programming language that is simple enough to
+To demonstrate the compilation technique we propose, we present
+\treelang, a typed programming language simple enough to
 present briefly in a paper, and featureful enough to express some
-interesting tree-manipulating, such as common compiler passes.
+interesting tree-manipulating functions, such as compiler passes.
 
-The syntax of \treelang is given in Figure~\cref{fig:source}---it is
+The syntax of \treelang is given in \cref{fig:source}---it is
 simply a standard first-order funcitonal language.
 Programs consist of a series of data type declarations and function
 declarations. Similar to most functional programming languages,
@@ -641,6 +654,8 @@ numbers would have two cases: \il{Zero} and \il{Successor}.
 Data types declared with \il{data} are automatically and implicitly
 {\em packed} in this language.  In this basic design, the only
 non-packed datatypes are tuples $\mathtt{(e_1,\dots,e_n)}$, accessed with
+$\mathtt{e} . n$.
+%
 %% though as the project progresses we plan to allow arbitrary {\em subsets} of
 %% datatypes to be marked with a ``packed'' compiler pragma.
 Note, however, that even tuples allow functions to take and return arbitrary
@@ -649,14 +664,23 @@ compiler, this will mean passing multiple {\em output cursors} to a function in
 order to provide buffers for it to write its results to.
 
 Other language features are standard: tuple access, let binding,
-conditionals, and primitive operations. The only base values
-provided are integers and booleans.
-
-\note{Finally, we provide dictionaries to support ...}
+conditionals, and primitive operations.  Standard primitive values are included
+such as integers, booleans, and symbols.
+%
+Finally, \treelang provides dictionaries to support more sophisticated
+operations such as bulk transformations---substitution on an abstract
+syntax tree is one example.
 
 A fuller language would support richer data types, more operations,
 and data structures such as arrays and lists, but the crucial elements
-for expressing tree-shaped data and transformations on it is present. 
+for expressing tree-shaped data and transformations on trees are present. 
+
+
+Rather than moving directly from a high-level functional language to
+cursor-oriented low-level C code, our compiler transforms programs
+first into an intermediate language which expresses the crucial
+invariants.  These additional forms are presented in \cref{fig:target}
+and described in \cref{sec:compiler}.
 
 
 %% \note{We already gave an example of a program in Gibbon earlier...
@@ -677,26 +701,41 @@ for expressing tree-shaped data and transformations on it is present.
 %% }}
 %% \end{code}
 
-\paragraph*{Extensions for cursor manipulation}
+
+%% \paragraph*{Dictionaries}
+
+%% In addition to algebraic data types and various numerical types, $\treelang{}$ supports
+%% \Red{general purpose persistent dictionaries}, which are useful for implementing compiler
+%% passes in a functional style.
+%% \rn{Perhaps need not mention this if we don't evaluate on dictionaries.}
+
+%% \note{Show an example of using a dictionary? Or just give the types?}
+
+%\paragraph*{Extensions for cursor manipulation}
+
 
 %% We present two languages: L1, a simple purely functional, first-order programming
 %% language with sum and product types; and L2, an imperative programming language
 %% with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 
-\note{This can be described either as the target language, or as an extension of
-  the starting language: \cref{fig:target}.}
+%% \note{This can be described either as the target language, or as an extension of
+%%   the starting language: \cref{fig:target}.}
 
+\paragraph*{Using Gibbon}
 
-\paragraph*{Dictionaries}
+\treelang is implemented as a language built on Racket~\cite{plt-tr1},
+using Racket's language implementation and extension
+facilities. \treelang's type checking support is implemented by
+compiling to Typed Racket~\cite{typed-racket-popl08}. A programmer can
+develop and test a \treelang program using the DrRacket IDE and tools,
+which include code coverage, syntax highlighting, on-the-fly type
+checking, and more.
 
-In addition to algebraic data types and various numerical types, $\treelang{}$ supports
-\Red{general purpose persistent dictionaries}, which are useful for implementing compiler
-passes in a functional style.
-\rn{Perhaps need not mention this if we don't evaluate on dictionaries.}
-
-\note{Show an example of using a dictionary? Or just give the types?}
-
-\note{Describe the Racket front-end and how it works.\rn{No that will go in implementation.}}
+Given a working \treelang program, it can then be compiled using our
+compiler via a C backend and a standard C compiler. These backends
+apply the techniques described in subsequent sections to automatically
+use  packed data to represent all types declared using the
+\texttt{data} form.  
 
 
 
@@ -705,11 +744,11 @@ passes in a functional style.
 % ================================================================================
 
 \treelang{}'s approach is to convert programs into a form of {\em destination
-  passing style}~\cite{larus89}, except where destinations are not per-data-constructor, but
-rather per entire tree or subtree.  This approach implies function calls
-producing datatypes do not generally call the allocator, for example, even a
-simple function such as @f@ below is transformed to take a destination cursor
-argument.
+  passing style}~\cite{larus89}, except where destinations are not managed
+per-data-constructor (heap object), but rather for entire trees or subtrees.  This approach
+implies function calls producing datatypes do not generally call the allocator,
+for example, even a simple function such as @f@ below is transformed to take a
+destination cursor argument.
 
 \finishmecurly
 \begin{code}
@@ -1667,7 +1706,8 @@ packed trees.
 Automatically inferring what layout information is necessary,
 inserting them into packed representations, and synthesizing cursor updates based on that layout information is a topic for future work.
 
-\subsection{Evaluation}
+
+\subsection{Evaluation}\label{sec:eval-parallelism}
 
 Because \treelang{} does not currently support a packed representation extended with layout information, our evaluation uses hand-written packed implementations (in C) that include that layout information, mimicking what would be produced by a backend that understands indirections. We evaluate two benchmarks: a {\em parallelization} microbenchmark (Section~\ref{sec:eval-parallelism}) that uses pointer-style indirections to distribute the traversal of a tree, and an implementation of {\em two-point correlation} (Section~\ref{sec:eval-kdtree}) that uses ropes-style indirections.
 
