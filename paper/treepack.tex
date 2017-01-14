@@ -669,6 +669,13 @@ and data structures such as arrays and lists, but the crucial elements
 for expressing tree-shaped data and transformations on trees are present. 
 
 
+Rather than moving directly from a high-level functional language to
+cursor-oriented low-level C code, our compiler transforms programs
+first into an intermediate language which expresses the crucial
+invariants.  These additional forms are presented in \cref{fig:target}
+and described in \cref{sec:compiler}.
+
+
 %% \note{We already gave an example of a program in Gibbon earlier...
 %%   probably only need one, unless we're doing something different here}
 
@@ -697,14 +704,15 @@ for expressing tree-shaped data and transformations on trees are present.
 
 %% \note{Show an example of using a dictionary? Or just give the types?}
 
-\paragraph*{Extensions for cursor manipulation}
+%\paragraph*{Extensions for cursor manipulation}
+
 
 %% We present two languages: L1, a simple purely functional, first-order programming
 %% language with sum and product types; and L2, an imperative programming language
 %% with mutable arrays and pointer arithmetic, as well as a type-and-effect system.
 
-\note{This can be described either as the target language, or as an extension of
-  the starting language: \cref{fig:target}.}
+%% \note{This can be described either as the target language, or as an extension of
+%%   the starting language: \cref{fig:target}.}
 
 \paragraph*{Using Gibbon}
 
