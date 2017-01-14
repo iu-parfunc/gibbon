@@ -1653,6 +1653,95 @@ We see \note{something -- describe these figures once we see them!}
 \end{figure}
       
 
+{\begin{figure}
+  \begin{code}   
+ data Expr = VARREF Sym                     data Toplvl = DefineValues   ListSym Expr 
+           | Lambda Formals ListExpr	                | DefineSyntaxes ListSym Expr  
+           | CaseLambda LAMBDACASE                      | BeginTop ListToplvl         
+           | If Expr Expr Expr                          | Expression Expr             
+           | Begin ListExpr
+           | Begin0 Expr ListExpr           
+           | LetValues    LVBIND ListExpr   data Formals = F1 ListSym    
+           | LetrecValues LVBIND ListExpr                | F2 ListSym Sym
+           | SetBang Sym Expr                            | F3 Sym        
+           | Quote Datum
+           | QuoteSyntax Datum
+           | QuoteSyntaxLocal Datum
+           | WithContinuationMark Expr Expr Expr
+           | App Expr ListExpr 
+           | Top Sym
+           | VariableReference    Sym 
+           | VariableReferenceTop Sym 
+           | VariableReferenceNull
+    ....
+  \end{code}
+%% (data Toplvl
+%%       [DefineValues   ListSym Expr]
+%%       [DefineSyntaxes ListSym Expr]
+%%       [BeginTop ListToplvl]
+%%       [Expression Expr])
+
+%% (data Expr
+%%       (VARREF Sym)              
+%%       (Lambda Formals ListExpr)	
+%%       (CaseLambda LAMBDACASE)
+%%       (If Expr Expr Expr)
+%%       (Begin ListExpr)
+%%       (Begin0 Expr ListExpr)
+%%       (LetValues    LVBIND ListExpr)
+%%       (LetrecValues LVBIND ListExpr)
+%%       (SetBang Sym Expr)
+%%       (Quote Datum)
+%%       (QuoteSyntax Datum)
+%%       (QuoteSyntaxLocal Datum)  ;; (quote-syntax datum #:local)
+%%       (WithContinuationMark Expr Expr Expr)
+%%       (App Expr ListExpr) 
+%%       (Top Sym)
+%%       (VariableReference    Sym) 
+%%       (VariableReferenceTop Sym) 
+%%       (VariableReferenceNull))
+      
+%% (data LVBIND
+%%       (CONSLVBIND ListSym Expr LVBIND)
+%%       (NULLLVBIND ))
+
+%% (data LAMBDACASE
+%%       (CONSLAMBDACASE Formals ListExpr LAMBDACASE)  ;; (formals expr ...+) 
+%%       (NULLLAMBDACASE ))
+
+%% ;; RRN: How far do we need to go here?
+%% (data Datum
+%%       (INTLIT Int)
+%%       ; (SYMLIT Sym)
+%%       ; (CONS Datum Datum)
+%%       ; (NULL)
+%%       )
+
+%% (data Formals
+%%       [F1 ListSym]        ;; Tag 0
+%%       [F2 ListSym Sym]    ;; Tag 1
+%%       [F3 Sym])                ;; Tag 2
+
+%% (data ListToplvl
+%%       (CONSTOPLVL Toplvl ListToplvl)
+%%       (NULLTOPLVL))
+
+%% (data ListExpr
+%%       (CONSEXPR Expr ListExpr)
+%%       (NULLEXPR))
+
+%% (data ListSym
+%%       (CONSSYM Sym ListSym)
+%%       (NULLSYM))
+
+  \caption{Racket Core AST definition.
+   Follows \url{https://docs.racket-lang.org/reference/syntax-model.html}.
+   Nine datatypes total.}
+  \label{fig:racket-core}
+\end{figure}}
+
+
+
 \section{Extensions}
 %============================================================================
 \label{sec:extensions}
