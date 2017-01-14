@@ -2085,9 +2085,15 @@ functional compiler, GHC, running the same benchmark (right). While for small
 trees we see that our parallel implementation does not yield much scaling, for
 large trees we can achieve a speedup of about 11$\times$ on 16 cores (relative
 to one-core execution). In contrast, the GHC implementation cannot scale
-beyond eight cores. When comparing the packed implementation directly to the
-GHC implementation, the packed version is 34$\times$ faster on a single core
-and 226$\times$ faster on 16 cores!
+beyond eight cores.
+%
+At these allocation rates, GHC spends much of its time in garbage
+collection, and the runtime system presents a bottleneck.
+% \footnote{Unfortunately, GHC, as of 8.0, has a non-scalable  stop-the-world collector.}
+%
+When comparing the packed implementation directly to 
+GHC, the packed version is 34$\times$ faster on a single core
+and 223$\times$ faster on 16 cores!
 
 While adding parallelism to \treelang{} is future work, these results
 demonstrate the potential for large performance gains.
