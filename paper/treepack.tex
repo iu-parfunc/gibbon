@@ -1597,7 +1597,7 @@ transformations and our packed representations are, as well as confirm that
 our approach works across a wide range of real inputs.
 
 \paragraph*{Results}
-Figures~\ref{fig:copyprop} and~\ref{fig:subst} present the results
+\Red{Figures~\ref{fig:copyprop} and~\ref{fig:subst} present the results
 for copy propagation and substitution, respectively. The x-axis of each figure
 shows the different possible inputs, ordered by the speedup of the packed
 version over the pointer version (higher is better). The dashed horizontal
@@ -1606,7 +1606,7 @@ line on each figure represents the geomean speedup across all inputs.
 We see \note{something -- describe these figures once we see them!}
 
 \note{Are we also going to show the same charts ordered by size, instead?}
-
+}
 
 %% \subsection{Typechecking benchmark}
 %% % --------------------------------------------
@@ -1633,7 +1633,7 @@ We see \note{something -- describe these figures once we see them!}
 
 \section{Extensions}
 %============================================================================
-\label{sec:future}
+\label{sec:extensions}
 
 This section evaluates two extensions to \treelang{} that enable more complicated traversals and expose more opportunities for performance.
 
@@ -1738,11 +1738,13 @@ Automatically inferring what layout information is necessary,
 inserting them into packed representations, and synthesizing cursor updates based on that layout information is a topic for future work.
 
 
-\subsection{Evaluation}\label{sec:eval-parallelism}
+\subsection{Evaluation}%\label{sec:eval-parallelism}
+\label{sec:eval-extensions}
 
 Because \treelang{} does not currently support a packed representation extended with layout information, our evaluation uses hand-written packed implementations (in C) that include that layout information, mimicking what would be produced by a backend that understands indirections. We evaluate two benchmarks: a {\em parallelization} microbenchmark (Section~\ref{sec:eval-parallelism}) that uses pointer-style indirections to distribute the traversal of a tree, and an implementation of {\em two-point correlation} (Section~\ref{sec:eval-kdtree}) that uses ropes-style indirections.
 
 \subsubsection{Parallelism opportunity study} \label{sec:eval-parallelism}
+\label{sec:eval-parallel}
 % ---------------------------------------------------------------------
 
 We evaluate a {\em parallel} version of our {\tt add1} benchmark from
