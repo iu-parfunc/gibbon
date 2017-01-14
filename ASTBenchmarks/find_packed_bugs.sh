@@ -16,7 +16,8 @@ cd $TOP/binary_racket/
 
 rm -f ../packed_succeeded.txt ../packed_failed.txt
 
-# for file in cat ../debug/packed_succeeded.txt; do
+# This runs them back through to verify.  They check out:
+# for file in `cat ../debug/packed_succeeded.txt`; do
 
 for file in `find ./ -name "*.gpkd"`; do
     echo
