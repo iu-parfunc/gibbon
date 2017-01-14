@@ -530,15 +530,14 @@ resulting code.
 \note{Need something here about copy insertion, maybe?}
 
 \paragraph*{Extensions}
-
-\note{There are many possible extensions to the basic preorder format. For example, we
+There are many possible extensions to the basic preorder format. For example, we
 can include {\em indirection nodes}, which use a unique tag to insert a pointer to
 another buffer. We can also selectively use alternative constructors that
 include size information and allow random access.  Note that we can {\em still}
 save space even while storing layout.  For instance, the \il{Node} record above
-could be laid out as: {\il{NodeTag <size_left> <left> <right>}}}
+could be laid out as: {\il{NodeTag <size_left> <left> <right>}}.
 
-\note{Whereas a pointer based representation would spend {\em two words} for the left
+Whereas a pointer based representation would spend {\em two words} for the left
 and right pointer (16 bytes~\footnote{One basic advantage that we leverage here
   is that 64 bit platforms have become wasteful of memory, using 8 bytes for
   every pointer, even though most of the time it is unneeded.  }), if we assume
@@ -547,7 +546,7 @@ of the left tree, and we needn't store the size of the right tree at all!
 % This gives us a total of 4 bytes overhead rather than 
 Indeed, we plan to explore the tradeoff between density of encoding, and
 computational overhead.  A dense encoding in the style of UTF8 would enable us
-to store small values of \il{<size_left>} in as little as one byte.}
+to store small values of \il{<size_left>} in as little as one byte.
 
 
 
@@ -602,10 +601,12 @@ in traversing linked data structures.
 \note{Sam holds lock.  Overview of language, including introducing its formal grammar}
 
 To demonstrate the compilation technique we are presenting, we present
-$\treelang{}$, a typed programming language that is simple enough to
+\treelang, a typed programming language that is simple enough to
 present briefly in a paper, and featureful enough to express some
-interesting programs, such as common compiler passes.
+interesting tree-manipulating, such as common compiler passes.
 
+The syntax of \treelang is given in Figure~\cref{fig:source}---it is
+simply a standard first-order funcitonal language.
 Programs consist of a series of data type declarations and function
 declarations. Similar to most functional programming languages,
 programmers may define \emph{algebraic data types}, and dispatch on
@@ -615,26 +616,34 @@ them with a
 \else
 \texttt{case} language form (called \texttt{match} or \texttt{switch} in some languages).
 \fi
-%% For example, a data type for peano
-%% numbers would have two cases: zero and successor.
+For example, a data type for peano
+numbers would have two cases: \il{Zero} and \il{Successor}.
 
 \input{treelang}  %% Definitions and figures.
 
-\note{Figure~\cref{fig:source} shows the grammar for our language of tree traversals.
-It is nothing but a standard functional language, with the caveat that algebraic
-datatypes, declared with \il{data}, are implicitly {\em packed} in this language.
-In this basic design, the only non-packed datatypes are tuples \il{(e1,e2)}.
+Data types declared with \il{data} are automatically and implicitly
+{\em packed} in this language.  In this basic design, the only
+non-packed datatypes are tuples $\mathtt{(e_1,\dots,e_n)}$, accessed with
 %% though as the project progresses we plan to allow arbitrary {\em subsets} of
 %% datatypes to be marked with a ``packed'' compiler pragma.
 Note, however, that even tuples allow functions to take and return arbitrary
 numbers of packed datatypes.  When we perform cursor translation in our
 compiler, this will mean passing multiple {\em output cursors} to a function in
 order to provide buffers for it to write its results to.
-}
+
+Other language features are standard: tuple access, let binding,
+conditionals, and primitive operations. The only base values
+provided are integers and booleans.
+
+\note{Finally, we provide dictionaries to support ...}
+
+A fuller language would support richer data types, more operations,
+and data structures such as arrays and lists, but the crucial elements
+for expressing tree-shaped data and transformations on it is present. 
 
 
-\note{We already gave an example of a program in Gibbon earlier...
-  probably only need one, unless we're doing something different here}
+%% \note{We already gave an example of a program in Gibbon earlier...
+%%   probably only need one, unless we're doing something different here}
 
 %% \begin{code}[language=haskell]
 %% type Nat = Zero | Suc(Nat);
