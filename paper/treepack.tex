@@ -1470,12 +1470,22 @@ including GC parameters as well as the ``C (pointer)'' using the system malloc.
 
 \begin{figure}[t]
   %  \vspace{-2mm}
-\hspace{-6mm}  
+  %\begin{figure}[]
+  \hspace{5mm}
+  \centering
+  \includegraphics[width=4.3in]{./figs/shootout_treebench_five.pdf}
+%  \includegraphics[width=4.8in]{./figs/shootout_treebench.pdf}
+%   \caption{\Red{ADD1}}
+%   \label{fig:shootout2B}
+%   \vspace{-4mm}
+%\end{figure}
+
+  \hspace{-6mm}  
 \begin{minipage}{1.00\textwidth}
   \begin{minipage}{.49\textwidth}
     \centering
     %   \includegraphics[width=\textwidth]{./figs/.pdf}
-        \includegraphics[width=3.8in]{./figs/shootout_gibbon_buildtree.pdf}
+       \includegraphics[width=3.8in]{./figs/shootout_gibbon_buildtree.pdf}
 %        \includegraphics[width=3.8in]{./figs/shootout_gibbon_buildtree2.pdf}
 %    \label{fig:}
   \end{minipage}
@@ -1483,16 +1493,17 @@ including GC parameters as well as the ``C (pointer)'' using the system malloc.
   \begin{minipage}{.49\textwidth}
     \centering
     %   \includegraphics[width=\textwidth]{./figs/.pdf}
-    \includegraphics[width=3.8in]{./figs/shootout_gibbon_sumtree.pdf}
-%    \includegraphics[width=3.8in]{./figs/shootout_gibbon_sumtree2.pdf}
+%    \includegraphics[width=3.8in]{./figs/shootout_gibbon_sumtree.pdf}
+    \includegraphics[width=3.8in]{./figs/shootout_gibbon_sumtree2.pdf}
 %    \label{fig:}
   \end{minipage}
 \end{minipage}
 %   \vspace{-4mm}
    \caption{Cursor-inserting compiler's performance compared to handwritten
-     cursorized C implementation.  Tree building (left) and tree summing
-     (right). The Gibbon prototype is currently embedded in Racket, so we show
-     its Racket backend as well.}
+     cursorized C implementation.  Tree building (left), tree summing (right),
+     and mapping add1 over the tree (top). The Gibbon prototype is currently
+     embedded in Racket, so we show its Racket backend as well, as different
+     modes of its C backend (packed, pointer, bumpalloc).}
    \label{fig:shootout2}
 %   \vspace{-4mm}
 \end{figure}
@@ -1528,14 +1539,6 @@ execution in Racket).
   case that on add1, packed yields a geomean speedup 1.75$\times$ over
   bumpalloc, and 18$\times$ faster than the malloc-based pointer.}
 
-\begin{figure}[]
-  \centering
-  \includegraphics[width=4.3in]{./figs/shootout_treebench_five.pdf}
-%  \includegraphics[width=4.8in]{./figs/shootout_treebench.pdf}
-   \caption{\Red{ADD1}}
-   \label{fig:shootout2B}
-%   \vspace{-4mm}
-\end{figure}
 
 
 \paragraph*{The influence of leaf size}
