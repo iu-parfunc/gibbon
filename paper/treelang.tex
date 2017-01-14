@@ -79,7 +79,8 @@
       \textup{Packed Data Declarations} && \DD && \gramdef & \DATA \TC = \overline{[\DC \; \overline{\sTYP}\;]} \\
       \textup{Value Declarations}    && \VD && \gramdef & \var : \TYP  ; \var = \EXPR \\ 
       \textup{Function Declarations} && \FD && \gramdef & \fvar : \TYP ; \fvar(\overline{\var}) = \EXPR \\ 
-      \textup{Expressions} && \EXPR && \gramdef & \num \gramor \var \gramor \primexpr{\overline{\sEXPR}} \gramor 
+      \textup{Expressions} && \EXPR && \gramdef & \var \gramor \num \gramor \gramwd{True} \gramor \gramwd{False}
+                                  \gramor \primexpr{\overline{\sEXPR}} \gramor 
 % FIRST ORDER version:
        \app{f}{\sEXPR} \\
 % HIGHER ORDER version:
