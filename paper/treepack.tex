@@ -180,7 +180,8 @@ algorithm to insert destination cursors.
 % creating missing traversals.
 We evaluate our compiler on 
 tree transformations over a real-world dataset of source code syntax trees.
-\Red{We demonstrate speedups from ABC to XYZ}
+{Packed data allows speedups of over $2\times$ compared to highly-optimized
+  pointer-based baseline.}
 
 \end{abstract}
 
@@ -330,7 +331,7 @@ following contributions:
 \item We present a simple language,
 %  prototype language implementation based on this
  dubbed \treelang, that can compile a range of tree transforms
- to be \Red{several times} faster than standard techniques.
+ to be {more than twice as} fast as standard techniques (Section~\ref{sec:language}).
  We evaluate Gibbon against both a number of existing compilers and
  its own best performance (without packing) in \cref{sec:eval}.
 
@@ -400,7 +401,7 @@ Here we use a Haskell-like syntax, but in fact
 we consider this paper is already a subset of most existing languages.
 The above program is not substantially different in C, Haskell, ML, Scala,
 Swift, Rust, etc.  Only the details of switching on sum types (tagged unions)
-differ (as well as the syntax for construct an object while initializing its
+differ (as well as the syntax for constructing an object while initializing its
 fields, here: 
 \ifcurly
 \il{Node(e1,e2)}).
@@ -410,7 +411,7 @@ fields, here:
 
 
 The first problem for tree-walks such as this is memory management, as \il{add1}
-can easy become a malloc or garbage collector benchmark.  For instance, the
+can easily become a malloc or garbage collector benchmark.  For instance, the
 following C code is over twice as slow as the same implementation in Java or a
 good functional compiler, thanks to overhead in \il{malloc}.
 
@@ -432,7 +433,7 @@ But even if we assume optimal layout, bump-pointer allocation, and {\em no
   header objects}---even if we go further and enable \il{__packed__} attribute
 for our structs to save tag space---the performance of the above code is still
 several times below what is achievable.  The main observation of this paper is
-that bulk tree walks are efficient if done directly on pre-order serialization
+that bulk tree walks are efficient if done directly on a pre-order serialization
 of the tree, and that it is possible to automate the translation of recursive
 functions, such as \il{add1} above, into code that directly manipulates data
 buffers containing serialized trees.
@@ -485,7 +486,7 @@ into the tree, and more. We begin by outlining some of those
 challenges, and delve into their solutions in subsequent sections.
 
 Of course, many challenges can be overcome with extensions to the data
-{format, and in \cref{sec:extensions1,sec:future} we will explore various
+{format, and in \cref{sec:extensions1,sec:extensions} we will explore various
 extensions to the basic preorder serialization}.  But we begin with the
 most basic scenario, where all data for a tree resides in one buffer,
 contiguously.
@@ -548,8 +549,8 @@ resulting code.
 
 \subsubsection{Extensions} \label{sec:extensions1}
 There are many possible extensions to the basic preorder format. For example, we
-can include {\em indirection nodes}, which use a unique tag to insert a pointer to
-another buffer. We can also selectively use alternative constructors that
+can include {\em indirections}, which use a unique tag to insert a pointer to
+another buffer or portion of the existing buffer. We can also selectively use alternative constructors that
 include size information and allow random access.  Note that we can {\em still}
 save space even while storing layout.  For instance, the \il{Node} record above
 could be laid out as: {\il{NodeTag <size_left> <left> <right>}}.
@@ -565,7 +566,7 @@ Indeed, we plan to explore the tradeoff between density of encoding, and
 computational overhead.  A dense encoding in the style of UTF8 would enable us
 to store small values of \il{<size_left>} in as little as one byte.
 %
-We return to the topic of extending the basic format in \cref{sec:future}.
+We return to the topic of extending the basic format in \cref{sec:extensions}.
 
 
 \subsection{Related Work}
@@ -577,7 +578,7 @@ other data structures to promote spatial
 locality~\cite{Chilimbi1999,Chilimbi1999b,Truong1998,Lattner2005,Chilimbi1999a},
 by modifying garbage collection to co-locate objects~\cite{Chilimbi1999a},
 modifying memory allocators to proactively place objects with similar access
-patterns together~\cite{Lattner2005,Chilimbi1999}, or to modify the internal
+patterns together~\cite{Lattner2005,Chilimbi1999}, or modifying the internal
 layout of objects to place hot fields near each other~\cite{Chilimbi1999b}.
 These approaches attempt to ``pack'' data together, using various techniques,
 into cache lines to improve spatial locality, and hence have some resemblance
@@ -630,6 +631,7 @@ representation.
 
 % ================================================================================
 \section{The \treelang{} Language}
+\label{sec:language}
 % ================================================================================
 
 
@@ -761,7 +763,7 @@ destination cursor argument.
 \fi
 
 We say that datatypes like @Foo@ are {\em packed} types, whereas, @Int@, @Bool@,
-@Symbol@, etc are not.  As we'll see in this section, the data constructors for
+@Symbol@, etc are not.  As we will see in this section, the data constructors for
 packed types (@MkFoo@) will themselves come to require destination cursor arguments.
 %
 We insert these cursors using the extended language of \cref{fig:target}, which
@@ -806,15 +808,16 @@ analysis of which functions are able to traverse their inputs.
 The overall structure of the compiler, covered in the rest of this
 section, is:
 \begin{enumerate}
-\item Infer traversal effects.
-% \item Copy and traversal insertion 
-\item Route end-of-value witnesses as additional function returns.
-\item Switch to destination cursor-passing with additional function arguments.
-\item Code generation.
+\item Infer traversal effects (Section~\ref{subsec:inferring}).
+\item Generate additional traversals as necessary to reach input ends (Section~\ref{sec:copy-insert}).
+\item Route end-of-value witnesses as additional function returns (Section~\ref{subsec:routing}).
+\item Switch to destination cursor-passing with additional function arguments (Section~\ref{sec:cursorize}).
+\item Code generation (Section~\ref{subsec:codegen}).
 \end{enumerate}
 
 
 \subsection{Inferring traversal effects}
+\label{subsec:inferring}
 % \vspace{-2mm}\subsubsection{Inferring effects}
 % ----------------------------------------
 
@@ -846,7 +849,7 @@ f :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$
 
 We write $end(\freshA)$ to signify the location after the last byte of \freshA,
 or \locend{\freshA} for short.  One way of looking at a function that traverses
-a is that it can {\em witness} $end(\freshA)$.  At runtime, this witness is
+\freshA is that it can {\em witness} $end(\freshA)$.  At runtime, this witness is
 merely a pointer value.
 %
 Ultimately we will rewrite the function to return such a witness.  For now, the
@@ -999,7 +1002,7 @@ A simple example of a program that forces a copy is one that introduces sharing:
 let x = f t in  Node x x 
 \end{code}
 
-In future work (\cref{sec:future}), we will use these missing traversals and
+In later extensions (\cref{sec:extensions}), we will use these missing traversals and
 conflicts to go back and {\em change the data format} (i.e. use packed records
 {augmented} with indirection nodes, rather than the most straightforward
 preorder serialization).
@@ -1012,6 +1015,7 @@ traversals.
 
 % \vspace{-2mm}
 \subsection{Routing end-of-value witnesses}
+\label{subsec:routing}
 % ----------------------------------------
 
 After all traversal constraints are satisfied by recursive calls or
@@ -1031,7 +1035,7 @@ useful if it witnesses the {\em start of another value}.
 %
 This brings us to the topic of our {\bf type system for cursors}.  Even though
 cursors are internal to the compiler, rather than exposed to the user, we use 
-{\em session types} to insure their correct handling.  In addition to an
+{\em session types} to ensure their correct handling.  In addition to an
 $\ENDOF$ cursor, which isn't directly usable for anything, we also have
 $\HAS{}$ cursors for reading and $\NEEDS{}$ cursors for writing, as we will
 describe further in \cref{sec:cursorize}.
@@ -1041,7 +1045,7 @@ During the routing pass, we also insert additional bindings in the program that
 explicitly encode facts about how to reach the end of a given location.  Namely:
 
 \begin{itemize}
-\item One field's end becomes the its successor's start.  This becomes a
+\item One field's end becomes its successor's start.  This becomes a
   binding \il{let y = end(x)}.
 \item Fields of static sizes have known offsets, such as \il{let y = start(x) +
   offset}.  
@@ -1110,8 +1114,8 @@ behave much like typed channels with protocols.  We use the extensions in
 \cref{fig:target} to write and read cursors:
 
 \begin{code}
-  write :: ( $\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
-  read  :: $\HAS{T:a}$ ->   ( $\HAS{a}$, $T$ )
+  write :: ($\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
+  read  :: $\HAS{T:a}$ ->   ($\HAS{a}$, $T$)
 \end{code}
 
 That is, @Needs@ tracks a list of values its {\em waiting for}.  For instance,
@@ -1209,7 +1213,7 @@ translated to:
 % Here, switch is similar to C's switch.
 Here @switch@ reads a single byte tag from the cursor given in its scrutinee
 position, and it dispatches based on that tag (just like C's switch statement).
-It is a binding form only insofar as it binds a cursor, @curs@ to the position
+It is a binding form only insofar as it binds a cursor, @cur@, to the position
 just after the tag---i.e., the start of @K@'s fields.  Then, we generate
 explicit code to read the fields one at a time from the appropriate positions in
 the byte stream.
@@ -1217,10 +1221,11 @@ the byte stream.
 % ----------------------------------------
 % \vspace{-2mm}
 \subsection{Code generation}
+\label{subsec:codegen}
 % ----------------------------------------
 
 The final step for \treecomp{} is to generate native code.  Any backend target
-would do (LLVM, native code etc), but we presently generate C code.
+would do (LLVM, native code, etc.), but we presently generate C code.
 %
 Because the current \treelang design is a {first order} language,
 %  \cref{fig:source}
@@ -1236,7 +1241,7 @@ The cursors become merely \il{char*} pointers, and
 %
 @switch@ statements closely correspond to C switches, and @read@ and @write@ are
 open-coded as pointer operations.  Because @read@ returns two values, it
-generates multiple statements rather than creating a tuple, but it needn't
+generates multiple statements rather than creating a tuple, but it need not
 create a struct.
 %
 %% \note{In the intermediate language, cursors are returned along with
@@ -1379,7 +1384,7 @@ performance of packed vs. pointer-based tree walks in idealized microbenchmarks.
 We also use these microbenchmarks to examine the state of the art in several
 existing compilers.  And while we find significant variation between compilers,
 no existing system we're aware of comes close to matching \treelang's packed
-mode out of the box.
+mode.
 %
 %% demonstrate via small microbenchmarks that packed data representation
 %% provides significant performance wins across a variety of
@@ -1388,12 +1393,14 @@ mode out of the box.
 %% existing system.
 %
 Second, in \cref{sec:astbench}, we evaluate an important class of tree
-traversals---compiler passes---using realistic sized and shaped ASTs gathered from
-real programs.
+traversals---AST traversals, as found in a compiler.
 %
-Namely, these tree walks operate on Racket's intermediate representation, and
-show \Red{substantial speedup} using the packed representation to operate on
-ASTs gathered from existing Racket programs.
+We use ASTs gathered from real programs to ensure realistic shape and depth.
+%
+Specifically, these tree benchmarks operate on Racket's intermediate
+representation, and show {substantial speedup} using the packed
+representation.
+% to operate on ASTs gathered from existing Racket programs.
 % 
 %% Third, we build a type checker for a small language, and benchmark it
 %% on large synthetic inputs, demonstrating significant speedup for a more complex
@@ -1488,6 +1495,7 @@ including GC parameters as well as the ``C (pointer)'' using the system malloc.
 %   \vspace{-4mm}
 \end{figure}
 
+
 %% Our first ``shootout'' demonstrates the performance gains afforded by the
 %% packed representation.
 We next implement the tree building and summing benchmarks in \treelang{}, and
@@ -1504,7 +1512,7 @@ execution in Racket).
   traversals.}
 % \rn{That's not the point... finish this}
 
-\note{Figure~\ref{fig:shootout2} shows summing and building a tree, separately.
+\Red{Figure~\ref{fig:shootout2} shows summing and building a tree, separately.
   In \cref{fig:shootout2B}, we show the add1-to-leaves function, which both
   consumes and produces a tree.  Here we also introduce couple additional
   comparisons for context, which we will carry into the next section.  First,
@@ -1517,6 +1525,15 @@ execution in Racket).
   optimal memory management with cheap arena allocation.  Still, it remains the
   case that on add1, packed is geomean 1.75$\times$ faster than bumpalloc, and
   18$\times$ faster than the malloc-based pointer.}
+
+\begin{figure}[]
+  \centering
+  \includegraphics[width=4.3in]{./figs/shootout_treebench_five.pdf}
+%  \includegraphics[width=4.8in]{./figs/shootout_treebench.pdf}
+   \caption{\Red{ADD1}}
+   \label{fig:shootout2B}
+%   \vspace{-4mm}
+\end{figure}
 
 % \note{REMAINDER OF THE BUMPALLOC/PACKED RESULTS HERE}
 
@@ -1734,7 +1751,7 @@ We see \note{something -- describe these figures once we see them!}
 %%   \end{code}
 
 
-{\begin{figure}
+{\begin{figure}[t]
   \begin{code}   
  data Toplvl = DefineValues   ListSym Expr 
              | DefineSyntaxes ListSym Expr 
@@ -1971,7 +1988,8 @@ supported by \treelang{}.
     \centering
   \begin{minipage}{.75\textwidth}
     \centering
-    \includegraphics[width=\textwidth]{./figs/speedup_cilk.pdf}
+%    \includegraphics[width=\textwidth]{./figs/speedup_cilk.pdf}
+    \includegraphics[width=\textwidth]{./figs/speedup_handwritten-c-packed-cilk_cutter_pardepth8.pdf}    
 %    \label{fig:}
   \end{minipage}
   %  \hspace{0.1\textwidth}
