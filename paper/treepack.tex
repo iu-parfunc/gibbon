@@ -1487,10 +1487,10 @@ including GC parameters as well as the ``C (pointer)'' using the system malloc.
   \end{minipage}
 \end{minipage}
 %   \vspace{-4mm}
-   \caption{Cursor-inserting compiler---performance compared to handwritten C
-     implementation.  Tree building (left) and tree summing (right). The Gibbon
-     prototype is currently embedded in Racket, so we show its Racket backend as
-   well.}
+   \caption{Cursor-inserting compiler's performance compared to handwritten
+     cursorized C implementation.  Tree building (left) and tree summing
+     (right). The Gibbon prototype is currently embedded in Racket, so we show
+     its Racket backend as well.}
    \label{fig:shootout2}
 %   \vspace{-4mm}
 \end{figure}
@@ -1523,8 +1523,8 @@ execution in Racket).
     pointer}, also described in \cref{sec:packed-pointer}, which shrinks the gap
   further.  bumpalloc uses the same representations as pointer, but approximates
   optimal memory management with cheap arena allocation.  Still, it remains the
-  case that on add1, packed is geomean 1.75$\times$ faster than bumpalloc, and
-  18$\times$ faster than the malloc-based pointer.}
+  case that on add1, packed yields a geomean 1.75$\times$ geomean faster than
+  bumpalloc, and 18$\times$ faster than the malloc-based pointer.}
 
 \begin{figure}[]
   \centering
@@ -1535,11 +1535,26 @@ execution in Racket).
 %   \vspace{-4mm}
 \end{figure}
 
+
+\paragraph*{The influence of leaf size}
 % \note{REMAINDER OF THE BUMPALLOC/PACKED RESULTS HERE}
 
-% \note{BUDDHIKA'S PARAM STUDY HERE}
-
-
+In our simple tree example, we have thus far used a single @Int@ as
+the payload of the leaf.  This implies a certain, fixed ratio of payload bytes
+to the memory used for storing the structure of the tree (whether packed or
+pointer based).
+%
+We would expect that increasingly ``heavy'' nodes with many scalar fields, would
+directly reduce the advantage of the packed representation.
+% (Indeed, we see this again in \cref{sec:eval-kdtree}.)
+To verify this hypothesis, we ran a simple parameter study where we generated
+alternate versions of the @Tree@ datatype and add1 traversal over it, varying
+the number of @Leaf@ fields.
+\cref{fig:vary-leaves} shows the results.
+%
+As expected, the best performance of the packed approach is with {\em zero}
+leaves, and the performance of the ``bumpalloc'' version catches up as the
+scalar payload of leaves increases.
 
 \begin{figure}[t]
 %  \vspace{-2mm}
@@ -1556,7 +1571,7 @@ execution in Racket).
   \vspace{-4mm}
   \caption{\Red{Slowdown relative to packed version...  varying the number of
       word-sized scalars hanging off of each leaf of the binary tree.}}
-  \label{fig:slowdown}
+  \label{fig:vary-leaves}
 %  \vspace{-4mm}
 \end{figure}
 
@@ -1611,7 +1626,7 @@ While our microbenchmarks demonstrate the potential of the packed
 representation, and also demonstrate \treelang{}'s ability to automatically
 generate code that operates on the packed representation from idiomatic
 implementations, they don't demonstrate a large savings of programmer effort,
-because directly implementing simple functions on simple data in a packed
+because directly implementing functions on simple data in a packed
 representation is tractable.
 
 More challenging, however, is to operate on trees that have more complex
@@ -1632,8 +1647,7 @@ In this portion of the evaluation, we look at
 % two compiler passes, each of which takes a
 the performance of two classes of tree walk
 % (a fold and a map)
-on full Racket core syntax, 
-whose definition is excerpted in \cref{fig:racket-core}.
+on full Racket Core syntax, an AST definition which is excerpted in \cref{fig:racket-core}.
 %
 These benchmarks consume a Racket abstract syntax tree as input and produce
 either (1) a count of nodes, or (2) a new abstract syntax tree.
