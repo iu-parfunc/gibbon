@@ -3,6 +3,7 @@
 
 %% This is our standard package for code formatting:
 \usepackage{listings}
+\usepackage{url}
 \usepackage{amsmath}
 \usepackage{amsthm}
 \usepackage{hyperref}
@@ -288,8 +289,8 @@ serialization format.\footnote{Even restricted to aligned access, we
 Indeed, if we can compile programs to operate directly on this serialization, we
 follow a precedent of using serialization formats jointly as memory formats.
 For example, Cap'N Proto \cite{capnproto} makes it ergonomic for C++ code to operate directly
-on the Protobuf serialization format in memory.  Likewise ``data baking''
-\cite{data-baking} is an established practice in video games---caching assets on
+on the Protobuf serialization format in memory.  Likewise ``data baking''\footnote{Described here \url{http://nullprogram.com/blog/2016/11/15/}}.
+ is an established practice in video games---caching assets on
 disk in a format that allows them to be \il{mmap}'d into memory and used
 without further conversion.  As a general example of this capability, the
 Glasgow Haskell Compiler (GHC) recently added the capability to store any closed
