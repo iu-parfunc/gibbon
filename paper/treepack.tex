@@ -193,7 +193,7 @@ tree transformations over a real-world dataset of source code syntax trees.
 %keyword1, keyword2
 
 % ================================================================================
-\section{Introduction}
+\section{Introduction}\label{sec:intro}
 % ================================================================================
 
 % \rn{This is an example peanut-gallery comment.}
@@ -356,7 +356,7 @@ following contributions:
 
 % ================================================================================
 % \section{Motivating Example}
-\section{Background and Example}
+\section{Background and Example}\label{sec:background}
 % ================================================================================
 
 We begin our study of packed tree representations with perhaps the
@@ -1409,7 +1409,7 @@ machines in a two socket configuration with Xeon E5-2670 CPUs at 2.60 Ghz, and
 \subsection{Microbenchmarks}\label{sec:microbench}
 % ----------------------------------------
 
-Our first benchmarks return to the example from section 2:
+Our first benchmarks return to the example from \cref{sec:background}:
 simple binary trees. We implement three operations:
 constructing a tree, incrementing the values in a tree, and summing
 the elements of a tree. To understand the performance of packed data
@@ -1503,6 +1503,27 @@ execution in Racket).
 \note{REMAINDER OF THE BUMPALLOC/PACKED RESULTS HERE}
 
 \note{BUDDHIKA'S PARAM STUDY HERE}
+
+
+
+\begin{figure}[t]
+  \vspace{-2mm}
+  \begin{minipage}{1.04\textwidth}
+    \begin{minipage}{.49\textwidth}
+      \centering
+      \includegraphics[width=3.3in]{./figs/slowdown_leaves_build.pdf}
+    \end{minipage}
+    \begin{minipage}{.49\textwidth}
+      \includegraphics[width=3.3in]{./figs/slowdown_leaves_add1.pdf}
+    \end{minipage}
+  \end{minipage}
+  \vspace{-4mm}
+  \caption{\Red{Slowdown relative to packed version...  varying the number of
+      word-sized scalars hanging off of each leaf of the binary tree.}}
+  \label{fig:slowdown}
+  \vspace{-4mm}
+\end{figure}
+
 
 %\note{A ``language shootout'' of add1-tree benchmarks.}
 
@@ -1625,7 +1646,7 @@ We see \note{something -- describe these figures once we see them!}
     \end{minipage}
   \end{minipage}
   \vspace{-4mm}
-  \caption{Slowdown relative to packed version...}
+  \caption{\Red{Slowdown relative to packed version...}}
   \label{fig:slowdown}
   \vspace{-4mm}
 \end{figure}
