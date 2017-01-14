@@ -1893,15 +1893,14 @@ This section describes an extension to \treelang{}'s packed representation---{\e
 As described in Section~\ref{sec:copy-insert}, our current approach for
 handling traversals where we need a cursor position (e.g., the position of a
 right child) without an accompanying traversal that generates it---in other
-words, if we need to skip over a portion of the tree---is to insert a {\em
-copy} traversal that traverses the portion of the tree we are skipping. This
+words, if we need to skip over a portion of the tree---is to insert a dummy traversal that traverses the portion of the tree we are skipping. This
 dummy traversal generates the required cursor position to continue with the
-``real'' traversal. However, this can be inefficient if the amount of work
+``real'' traversal. However, this approach can be inefficient if the amount of work
 done by the dummy traversal is large: in the original pointer-based code, a
 traversal has direct access to all children, and can hence immediately skip
-over any subtrees that are unecessary, whereas code using the packed
+over any subtrees that are unnecessary, whereas code using the packed
 representation must traverse the entire tree at all times. In some situations,
-these dummy traversals can turn $O(\log n)$ traversals into $O(n)$ traversals,
+these dummy traversals can turn $O(\log n)$ operations into $O(n)$ ones,
 an unacceptable increase in complexity (consider, for example, the {\tt right} example from Section~\ref{sec:limitations}).
 
 
@@ -1972,7 +1971,15 @@ inserting them into packed representations, and synthesizing cursor updates base
 \subsection{Evaluation}%\label{sec:eval-parallelism}
 \label{sec:eval-extensions}
 
-Because \treelang{} does not currently support a packed representation extended with layout information, our evaluation uses hand-written packed implementations (in C) that include that layout information, mimicking what would be produced by a backend that understands indirections. We evaluate two benchmarks: a {\em parallelization} microbenchmark (Section~\ref{sec:eval-parallelism}) that uses pointer-style indirections to distribute the traversal of a tree, and an implementation of {\em two-point correlation} (Section~\ref{sec:eval-kdtree}) that uses ropes-style indirections.
+Because \treelang{} does not currently support a packed representation
+extended with layout information, our evaluation uses hand-written packed
+implementations (in C) that include that layout information, mimicking what
+would be produced by a backend that understands indirections. We evaluate two
+benchmarks: a {\em parallelization} microbenchmark
+(Section~\ref{sec:eval-parallelism}) that uses pointer-style indirections to
+distribute the traversal of a tree, and an implementation of {\em two-point
+correlation} (Section~\ref{sec:eval-kdtree}) that uses rope-style
+indirections.
 
 \subsubsection{Parallelism opportunity study} \label{sec:eval-parallelism}
 \label{sec:eval-parallel}
@@ -2062,7 +2069,9 @@ demonstrate the potential for large performance gains.
 % --------------------------------------------
 Point correlation  is a well-known algorithm used in data mining~\cite{gray2000n}:
 given a set of points in a k-dimensional space, point correlation computes the number of points in that space  that lie within a
-distance r from a given point p. Rather than comparing each point in the space to the query point, one efficient way of searching such spaces is to store them in kd-trees~\cite{bentley75}. KD-trees are space partitioning trees where the root of the kd tree represents the entire space, and each node's children represents a partition of that node's space into two subspaces.
+distance r from a given point p. 
+
+% Rather than comparing each point in the space to the query point, one efficient way of searching such spaces is to store them in kd-trees~\cite{bentley75}. KD-trees are space partitioning trees where the root of the kd tree represents the entire space, and each node's children represents a partition of that node's space into two subspaces.
 
 % A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two sub-spaces
 % around a split axes in one of the space dimensions, the left subtree stores the points to the left of the split access
@@ -2072,7 +2081,9 @@ distance r from a given point p. Rather than comparing each point in the space t
 
 
 In a naive implementation of point correlation, each point in the space needs
-to be checked against the query point. However kd-trees allow the search
+to be checked against the query point. 
+A more efficient approach is to use kd-trees~\cite{bentley75} to store the points. KD-trees are space partitioning trees where the root of the kd tree represents the entire space, and each node's children represents a partition of that node's space into two subspaces.
+KD-trees allow the search
 process to skip some regions in the space. By storing at each internal node
 the boundaries within which all descendent points lies, the search process can
 skip a subtree is a given point is far enough from the boundaries. As a
@@ -2085,7 +2096,7 @@ obviating the asymptotic performance gains.
 
 We implemented both a standard pointer-based version of 2-point correlation in
 C, as well as a version that operates over a packed representation augmented
-with indirection pointers. Each interior node stores an ropes-style
+with indirection pointers. Each interior node stores a rope-style
 indirection pointer that maintains the size of its child subtrees. If a
 traversal is truncated at that node, the cursor is incremented by the value in
 that indirection pointer, skipping the subtrees and resuming traversal on the
