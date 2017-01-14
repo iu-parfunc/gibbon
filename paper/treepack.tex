@@ -651,8 +651,10 @@ order to provide buffers for it to write its results to.
 Other language features are standard: tuple access, let binding,
 conditionals, and primitive operations. The only base values
 provided are integers and booleans.
-
-\note{Finally, we provide dictionaries to support ...}
+%
+Finally, \treelang provides dictionaries to support more sophisticated
+operations such as bulk transformations---substitution on an abstract
+syntax tree is one example.
 
 A fuller language would support richer data types, more operations,
 and data structures such as arrays and lists, but the crucial elements
@@ -677,6 +679,16 @@ for expressing tree-shaped data and transformations on it is present.
 %% }}
 %% \end{code}
 
+
+%% \paragraph*{Dictionaries}
+
+%% In addition to algebraic data types and various numerical types, $\treelang{}$ supports
+%% \Red{general purpose persistent dictionaries}, which are useful for implementing compiler
+%% passes in a functional style.
+%% \rn{Perhaps need not mention this if we don't evaluate on dictionaries.}
+
+%% \note{Show an example of using a dictionary? Or just give the types?}
+
 \paragraph*{Extensions for cursor manipulation}
 
 %% We present two languages: L1, a simple purely functional, first-order programming
@@ -686,17 +698,21 @@ for expressing tree-shaped data and transformations on it is present.
 \note{This can be described either as the target language, or as an extension of
   the starting language: \cref{fig:target}.}
 
+\paragraph*{Using Gibbon}
 
-\paragraph*{Dictionaries}
+\treelang is implemented as a language built on Racket~\cite{plt-tr1},
+using Racket's language implmenetation and extension
+facilities. \treelang's type checking support is implemented by
+compiling to Typed Racket~\cite{typed-racket-popl08}. A programmer can
+develop and test a \treelang program using the DrRacket IDE and tools,
+which include code coverage, syntax highlighting, on-the-fly type
+checking, and more.
 
-In addition to algebraic data types and various numerical types, $\treelang{}$ supports
-\Red{general purpose persistent dictionaries}, which are useful for implementing compiler
-passes in a functional style.
-\rn{Perhaps need not mention this if we don't evaluate on dictionaries.}
-
-\note{Show an example of using a dictionary? Or just give the types?}
-
-\note{Describe the Racket front-end and how it works.\rn{No that will go in implementation.}}
+Given a working \treelang program, it can then be compiled using our
+compiler via a C backend and a standard C compiler. These backends
+apply the techniques described in subsequent sections to automatically
+use  packed data to represent all type declared using the
+\texttt{data} form.  
 
 
 
