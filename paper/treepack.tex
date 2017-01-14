@@ -1603,8 +1603,7 @@ required everywhere, they are only required to be offsets within the buffer,
 not full (64-bit) pointers, which can enable space savings.
 
 The particular type of indirection needed depends on the mechanism of the
-traversal. Automatically inferring what type of indirection is necessary and
-inserting them into packed representations is a topic for future work. Here,
+traversal. Here,
 we discuss two common patterns.
 
 \begin{description}
@@ -1645,62 +1644,17 @@ these indirection pointers to provide {\em random access} to a tree, even if
 that tree is in a packed representation. Hence, we call this indirection
 information {\em layout information}.
 
+Not every traversal requires full random access to the tree, and hence not
+every piece of layout information is necessary to synthesize traversals over
+packed trees.
+Automatically inferring what layout information is necessary,
+inserting them into packed representations, and synthesizing cursor updates based on that layout information is a topic for future work.
+
 \subsection{Evaluation}
 
-Because \treelang{} does not currently support a packed representation extended with layout information, our evaluation 
+Because \treelang{} does not currently support a packed representation extended with layout information, our evaluation uses hand-written packed implementations (in C) that include that layout information, mimicking what would be produced by a backend that understands indirections. We evaluate two benchmarks: a {\em parallelization} microbenchmark (Section~\ref{sec:eval-parallel}) that uses pointer-style indirections to distribute the traversal of a tree, and an implementation of {\em two-point correlation} (Section~\ref{sec:eval-kdtree}) that uses ropes-style indirections.
 
-\subsection{Point correlation} \label{sec:eval-kdtree}
-% --------------------------------------------
-Point correlation  is a well-known algorithm that is used in data mining\cite{gray2000n},
-given a set of points in a k-dimensional space, point correlation computes the number of points in the space  that lies within a
-distance r from a given point p, one efficient way of searching such spaces is to store them in  kd-trees \cite{gray2000n}. 
-
-A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two sub-spaces
-around a split axes in one of the space dimensions, the left subtree stores the points to the left of the split access
-and the right subtree sotres the points to the right of the split access, the split axes alternates between the dimensions of
-the space at each level of the tree, when the number of the points in the subtree is one, a leaf node that stores
-that point is constructed.
-
-
-In a naive implementation of point correlation each point in the space need to be checked, however kd-trees 
-allow the search process to skip some regions in the space ;by storing at each internal node the boundaries within which all descendent points lies,
-and use that information to skip a subtree if the given point is far enough from the boundaries.
-
-Unlike the rest of the benchmarks, point correlation does not necessary traverse the whole tree due to the early trucation condition,
-this requires an additional pointer to be stored at each internal node  as discussed earlier, this pointer will be read if an early truncation occur to redirect the traversal to the
-next node to be visited.
-
-  
-\begin{figure}[htp]
-\begin{minipage}{1.04\textwidth}
-  \begin{minipage}{.49\textwidth}
-    \centering
-    \includegraphics[width=\textwidth]{./figs/pointCorr_perf.pdf}
-
-  \end{minipage}
-  $ $ 
-  \begin{minipage}{.49\textwidth}
-    \centering
-    \includegraphics[width=\textwidth]{./figs/pointCorr_MemUsage.pdf}
-    % \includegraphics[width=60mm]{example-image-b}
-%    \label{fig:}
-
-  \end{minipage}
-\end{minipage}
-   \caption{normalized runtime performance and memory usage of packed point correlation with respect pointer based implementation }
-         \label{fig:pointCorr}
-\end{figure}
-
-  
-Figure \ref{fig:pointCorr} shows the speedup and the memory usage of the  packed version  with respect to the standard pointer based implementation for different tree sizes,
-packed representation uses 56\% less memory to represents the the tree than the pointer based representation, this reduction in memory usage has two sources;
-the elimination of the left child pointer and the elimination of the gaps between the structure data members that are added by default for memory alignment purposes.
-The runtime performance of the packed version is almost the same as the pointer based for small trees, however when the size of the tree is large enough the packed version 
-shows up to 35\% speed up.
-
-
-
-\subsection{Parallelism opportunity study} \label{sec:eval-parallelism}
+\subsubsection{Parallelism opportunity study} \label{sec:eval-parallelism}
 % ---------------------------------------------------------------------
 
 \note{Report preliminary parallel microbenchmark results, showing the potential
@@ -1748,6 +1702,77 @@ approach has great potential for improving both single core and multicore perfor
 % HS/16   0.07138175
 % (/ 0.07138175 0.000319918212890625) 223 times
 
+\subsubsection{Point correlation} \label{sec:eval-kdtree}
+% --------------------------------------------
+Point correlation  is a well-known algorithm used in data mining~\cite{gray2000n}:
+given a set of points in a k-dimensional space, point correlation computes the number of points in that space  that lie within a
+distance r from a given point p. Rather than comparing each point in the space to the query point, one efficient way of searching such spaces is to store them in kd-trees~\cite{bentley75}. KD-trees are space partitioning trees where the root of the kd tree represents the entire space, and each node's children represents a partition of that node's space into two subspaces.
+
+% A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two sub-spaces
+% around a split axes in one of the space dimensions, the left subtree stores the points to the left of the split access
+% and the right subtree sotres the points to the right of the split access, the split axes alternates between the dimensions of
+% the space at each level of the tree, when the number of the points in the subtree is one, a leaf node that stores
+% that point is constructed.
+
+
+In a naive implementation of point correlation, each point in the space needs
+to be checked against the query point. However kd-trees allow the search
+process to skip some regions in the space. By storing at each internal node
+the boundaries within which all descendent points lies, the search process can
+skip a subtree is a given point is far enough from the boundaries. As a
+result, querying a kd-tree to perform point-correlation is $O(log n)$ instead
+of $O(n)$. Note that it is exactly the process of ``skipping'' subtrees that
+gives kd-tree-based point correlation its efficiency, but also that prevents a
+normal packed representation from sufficing to implement the algorithm: there
+is no way to skip past a subtree without performing a dummy traversal,
+obviating the asymptotic performance gains.
+
+We implemented both a standard pointer-based version of 2-point correlation in
+C, as well as a version that operates over a packed representation augmented
+with indirection pointers. Each interior node stores an ropes-style
+indirection pointer that maintains the size of its child subtrees. If a
+traversal is truncated at that node, the cursor is incremented by the value in
+that indirection pointer, skipping the subtrees and resuming traversal on the
+rest of the tree.
+
+  
+\begin{figure}[htp]
+% \begin{minipage}{1.04\textwidth}
+  % \begin{minipage}{.49\textwidth}
+    \centering
+    \includegraphics[width=0.5\textwidth]{./figs/pointCorr_perf.pdf}
+
+  % \end{minipage}
+  % $ $ 
+  % \begin{minipage}{.49\textwidth}
+    % \centering
+    % \includegraphics[width=\textwidth]{./figs/pointCorr_MemUsage.pdf}
+    % \includegraphics[width=60mm]{example-image-b}
+%    \label{fig:}
+
+%   \end{minipage}
+% \end{minipage}
+   \caption{Speedup of packed implementation of point correlation over pointer-based implementation. X axis shows varying tree sizes (represented in number of nodes).}
+         \label{fig:pointCorr}
+\end{figure}
+
+  
+Figure \ref{fig:pointCorr} shows the speedup of the packed version with respect to the standard pointer-based implementation for different tree sizes. For each tree size, we ran 10 query points through the tree. For small trees, the queries were performed 10000 times to produce sufficient runtime for accurate measurements. Each experiment was performed 10 times, and the mean is reported. 
+
+We note first that for every tree size, the packed representation uses 56\% less memory than the pointer-based trees. This reduction in memory usage has two sources: nodes do not need to store left-child pointers; and more efficient packing of data in the packed representation. For small trees, the runtime performance of the packed and pointer versions are comparable. For large trees, the packed version is 35\% faster than the pointer-based version.
+
+We note that the relatively smaller performance improvement for this benchmark versus the AST benchmarks is unsurprising. First, taking an indirection means that any spatial locality gains from the packed representation are lost, resulting in similar behavior to the pointer-based version. Second, there is relatively more work to be done per node in this benchmark, so the time spent in traversal of the tree is relatively less, reducing the opportunity for improvement.
+% 
+%  We
+% packed representation uses 56\% less memory to represents the the tree than the pointer based representation, this reduction in memory usage has two sources;
+% the elimination of the left child pointer and the elimination of the gaps between the structure data members that are added by default for memory alignment purposes.
+% The runtime performance of the packed version is almost the same as the pointer based for small trees, however when the size of the tree is large enough the packed version 
+% shows up to 35\% speed up.
+
+
+
+
+
 
 
 
@@ -1763,8 +1788,8 @@ open-world implementation in a managed language.}
 
 \note{A large space of parallelism design choices.}
 
-\note{}
-
+\note{How much of this do we want to leave in?
+}
 
 %% % ================================================================================
 %% \appendix
