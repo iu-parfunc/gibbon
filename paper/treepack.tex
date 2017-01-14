@@ -160,8 +160,8 @@ object per-leaf and node.  While this may seem tautological, we show that common
 tree traversals---as found in compiler passes, space-partitioning trees, and
 elsewhere---can  be automatically compiled to operate on \textbf{pointer-free
 pre-order serializations of trees}.  On modern architectures such programs
-often run \Red{significantly} faster than their pointer-based counterparts,
-\Red{and additionally are directly suited to storage and transmission without
+often run {significantly} faster than their pointer-based counterparts,
+{and additionally are directly suited to storage and transmission without
   requiring marshaling.}
 
 We present a prototype compiler for \textsf{Gibbon}, a small
@@ -170,11 +170,16 @@ compiler first transforms this language into one with
 mutable cursors into input and output buffers
 for packed data, which then generates code as efficient as
 hand-written C. The key compiler technologies include an effect
-system for capturing traversal behavior, combined with a lightweight
-\Red{analysis inferring data flow}, and a program synthesis step for
-creating missing traversals. We evaluate our compiler on 
+system for capturing traversal behavior, combined with an
+algorithm to insert destination cursors.
+% lightweight
+% {analysis inferring data flow},
+% and a program synthesis step for
+% creating missing traversals.
+We evaluate our compiler on 
 tree transformations over a real-world dataset of source code syntax trees.
-  
+\Red{We demonstrate speedups from....}
+
 \end{abstract}
 
 %\category{CR-number}{subcategory}{third-level}
@@ -617,12 +622,12 @@ representation.
 
 \note{Sam holds lock.  Overview of language, including introducing its formal grammar}
 
-To demonstrate the compilation technique we are presenting, we present
-\treelang, a typed programming language that is simple enough to
+To demonstrate the compilation technique we propose, we present
+\treelang, a typed programming language simple enough to
 present briefly in a paper, and featureful enough to express some
-interesting tree-manipulating, such as common compiler passes.
+interesting tree-manipulating functions, such as compiler passes.
 
-The syntax of \treelang is given in Figure~\cref{fig:source}---it is
+The syntax of \treelang is given in \cref{fig:source}---it is
 simply a standard first-order funcitonal language.
 Programs consist of a series of data type declarations and function
 declarations. Similar to most functional programming languages,
