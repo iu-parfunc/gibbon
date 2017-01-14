@@ -1508,21 +1508,22 @@ execution in Racket).
 
 
 \begin{figure}[t]
-  \vspace{-2mm}
+%  \vspace{-2mm}
+  \hspace{-4mm}
   \begin{minipage}{1.04\textwidth}
     \begin{minipage}{.49\textwidth}
       \centering
-      \includegraphics[width=3.3in]{./figs/slowdown_leaves_build.pdf}
+      \includegraphics[width=3.8in]{./figs/slowdown_leaves_build.pdf}
     \end{minipage}
     \begin{minipage}{.49\textwidth}
-      \includegraphics[width=3.3in]{./figs/slowdown_leaves_add1.pdf}
+      \includegraphics[width=3.8in]{./figs/slowdown_leaves_add1.pdf}
     \end{minipage}
   \end{minipage}
   \vspace{-4mm}
   \caption{\Red{Slowdown relative to packed version...  varying the number of
       word-sized scalars hanging off of each leaf of the binary tree.}}
   \label{fig:slowdown}
-  \vspace{-4mm}
+%  \vspace{-4mm}
 \end{figure}
 
 
@@ -1623,7 +1624,8 @@ For example, substitution, copy-propagation, and constant folding all traverse a
 tree and ``act locally''.  Especially transformations that only transform a
 small fraction of the input spend most of their time simply walking over syntax.
 %
-Hence, we expect the results of these two traversals to be representative.
+%% Hence, we expect the results of these two traversals to be representative for
+%% map-like passes and simple analysis passes (folds).
 
 
 We write both benchmarks in \treelang{}. We then generate two versions of each
@@ -1641,13 +1643,19 @@ We generated a dataset of inputs by collecting all of the (macro-expanded) sourc
 code from the main Racket distribution, which contains 4,456 files consuming
 102MB once packed in our dense representation (disregarding symbol tables).
 %
-As input, we use a variety of different ASTs \Red{drawn from this input set},
-ranging in size from \Red{XXX nodes to YYY nodes, with ZZZ different inputs},
-overall. Note that these inputs represent real-world programs of varying sizes,
-ranging from XXX bytes to YYY bytes. This range of programs and sizes allows us
-to understand how input-dependent the behavior of our cursor passing
-transformations and our packed representations are, as well as confirm that our
-approach works across a wide range of real inputs.
+As input, \Red{we ASTs drawn from this input set},
+%
+further, to simulate larger programs (as found in whole-program compilation), we combined
+multiple files into one.
+%
+%% ranging in size from \Red{XXX nodes to YYY nodes, with ZZZ different inputs},
+%% overall. Note that these inputs represent real-world programs of varying sizes,
+%% ranging from XXX bytes to YYY bytes.
+%
+%% This range of programs and sizes allows us
+%% to understand how input-dependent the behavior of our cursor passing
+%% transformations and our packed representations are, as well as confirm that our
+%% approach works across a wide range of real inputs.
 
 \paragraph*{Results}
 \Red{Figures~\ref{fig:copyprop} and~\ref{fig:subst} present the results
@@ -1667,20 +1675,21 @@ We see \note{something -- describe these figures once we see them!}
 %% \note{type check the simply-typed $\lambda$ calculus in \treelang{}}
 
 \begin{figure}[t]
-  \vspace{-2mm}
+%  \vspace{-2mm}
+  \hspace{-5mm}
   \begin{minipage}{1.04\textwidth}
     \begin{minipage}{.49\textwidth}
       \centering
-      \includegraphics[width=3.3in]{./figs/slowdown_countnodes.pdf}
+      \includegraphics[width=3.8in]{./figs/slowdown_countnodes.pdf}
     \end{minipage}
     \begin{minipage}{.49\textwidth}
-      \includegraphics[width=3.3in]{./figs/slowdown_treewalk.pdf}
+      \includegraphics[width=3.8in]{./figs/slowdown_treewalk.pdf}
     \end{minipage}
   \end{minipage}
-  \vspace{-4mm}
+%  \vspace{-4mm}
   \caption{\Red{Slowdown relative to packed version...}}
   \label{fig:slowdown}
-  \vspace{-4mm}
+%  \vspace{-4mm}
 \end{figure}
       
 
@@ -1908,22 +1917,23 @@ spawn}s, producing coarse-grained leaf tasks, we revert to the full tree-walks
 supported by \treelang{}.
 
 \begin{figure}[t]
-  \vspace{-5mm}
-\begin{minipage}{1.04\textwidth}
-  \begin{minipage}{.49\textwidth}
+%  \vspace{-5mm}
+% \begin{minipage}{1.04\textwidth}
+    \centering
+  \begin{minipage}{.75\textwidth}
     \centering
     \includegraphics[width=\textwidth]{./figs/speedup_cilk.pdf}
 %    \label{fig:}
   \end{minipage}
   %  \hspace{0.1\textwidth}
   $ $ 
-  \begin{minipage}{.49\textwidth}
+  \begin{minipage}{.75\textwidth} 
     \centering
     \includegraphics[width=\textwidth]{./figs/speedup_ghc.pdf}
     % \includegraphics[width=60mm]{example-image-b}
 %    \label{fig:}
   \end{minipage}
-\end{minipage}
+%\end{minipage}
    \caption{Parallel speedup: mapping a function over a packed tree.  This
      compares a Cilk (C) implementation using the packed with layout information
      that allows random access to subtrees (left).  For comparison, we also show
@@ -1932,7 +1942,7 @@ supported by \treelang{}.
      terms, GHC starts off 34$\times$ slower than our approach at one core, and
      grows to 223$\times$ slower at 16 cores.}
    \label{fig:par-shootout}
-      \vspace{-4mm}
+%      \vspace{-4mm}
 \end{figure}
 % C/1 0.0036089296875
 % HS/1 0.1226078125,
@@ -2005,7 +2015,7 @@ rest of the tree.
 % \begin{minipage}{1.04\textwidth}
   % \begin{minipage}{.49\textwidth}
     \centering
-    \includegraphics[width=0.5\textwidth]{./figs/pointCorr_perf.pdf}
+    \includegraphics[width=0.7\textwidth]{./figs/pointCorr_perf.pdf}
 
   % \end{minipage}
   % $ $ 
