@@ -330,11 +330,12 @@ following contributions:
  dubbed \treelang, that can compile a range of tree transforms
  to be \Red{several times} faster than standard techniques.
  We evaluate Gibbon against both a number of existing compilers and
- its own best performance (without packing) (\cref{sec:eval}).
+ its own best performance (without packing) in \cref{sec:eval}.
 
 \item We present Gibbon's compiler (\cref{sec:compiler}), which includes new
   algorithms for determining when a function reaches the end of its input(s), and
-  for converting to a destination-cursor-passing style.
+  for converting to a destination-cursor-passing style, that supports
+  operating on data in dense byte streams.
 
 %% \item We show that the principle of packed-tree traversals works
 %%   broadly across a variety of language implementations, by benchmarking simple
@@ -1265,8 +1266,8 @@ includes code for allocation and initialization.
 \section{Implementation}\label{sec:impl}
 % ================================================================================
 
-In the next section we evaluate a prototype \treelang compiler, implemented in
-Haskell, and generating code via GCC 5.3.  \rn{(What version is Laith using!!?)}
+In the next section we evaluaSte a prototype \treelang compiler, implemented in
+Haskell, and generating code via C. 
 %
 This compiler implements the algorithms of the prior section, with a few current
 limitations.  We've implemented copy insertion by hand, and the current compiler
@@ -1377,13 +1378,13 @@ We also use these microbenchmarks to examine the state of the art in several
 existing compilers.  And while we find significant variation between compilers,
 no existing system we're aware of comes close to matching \treelang's packed
 mode out of the box.
-
+%
 %% demonstrate via small microbenchmarks that packed data representation
 %% provides significant performance wins across a variety of
 %% languages---including languages with good performance on pointer-based
 %% traversals---and that our compiler produces code competitive with any
 %% existing system.
-
+%
 Second, in \cref{sec:astbench}, we evaluate an important class of tree
 traversals---compiler passes---using realistic sized and shaped ASTs gathered from
 real programs.
@@ -1395,22 +1396,21 @@ ASTs gathered from existing Racket programs.
 %% Third, we build a type checker for a small language, and benchmark it
 %% on large synthetic inputs, demonstrating significant speedup for a more complex
 %% and data-heavy workload.
-
-Finally, in \cref{sec:eval-extensions}, we look ahead to what a future compiler
+%
+Finally, in \cref{sec:future}, we look ahead to what a future compiler
 will be able to achieve {\em if} it extends the basic preorder packed format,
 including indirections or layout information which allows parallel traversals.
 
 All benchmarks were conducted on a cluster of identical, dedicated Intel
 machines in a two socket configuration with Xeon E5-2670 CPUs at 2.60 Ghz, and
-32GB RAM, running Ubuntu 14.04 LTS.
-\Red{GCC}.
+32GB RAM, running Ubuntu 14.04 LTS and GCC 5.3.
 % (16 cores)
 
 \subsection{Microbenchmarks}\label{sec:microbench}
 % ----------------------------------------
 
 Our first benchmarks return to the example from section 2:
-simple binary trees. We implement 3 operations:
+simple binary trees. We implement three operations:
 constructing a tree, incrementing the values in a tree, and summing
 the elements of a tree. To understand the performance of packed data
 representations, we implemented these three operations in multiple
@@ -1419,7 +1419,7 @@ Racket, Chez Scheme, MLton, GHC Haskell, and C (using both \texttt{malloc} as we
 as a fast bump-pointer allocator).
 
 \begin{figure}[t]
-  \vspace{-7mm}
+%  \vspace{-7mm}
 \begin{minipage}{1.04\textwidth}
   \begin{minipage}{.32\textwidth}
     \centering
@@ -1441,7 +1441,7 @@ as a fast bump-pointer allocator).
   \end{minipage}
 
 \end{minipage}
-  \vspace{-3mm}
+%  \vspace{-3mm}
   \caption{Performance when building, mapping add1, and summing a tree respectively.
     Traditional compiler approaches vs. the packed approach.  All handwritten
     implementations.  X axis is tree {\em depth}, implying $2^N$ leaves.  Y axis
@@ -1449,21 +1449,24 @@ as a fast bump-pointer allocator).
   \label{fig:shootout1}
 \end{figure}
 
-Figure~\ref{fig:shootout1} shows the results for these three microbenchmarks. The results show a clear win for packed representations (note the log scale), in some cases
-with 100x speedup over pointer-based representations in
-garbage-collected languages. 
+Figure~\ref{fig:shootout1} shows the results for these three microbenchmarks on
+purely {\em handwritten} implementations. The results show a clear advantage for
+packed representations (note the log scale), in some cases with 100x speedup
+over pointer-based representations in garbage-collected languages.  All
+competing implementations use their default memory management settings,
+including GC parameters as well as the ``C (pointer)'' using the system malloc.
 
 \begin{figure}[t]
-  \vspace{-2mm}
-\begin{minipage}{1.04\textwidth}
+  %  \vspace{-2mm}
+\hspace{-6mm}  
+\begin{minipage}{1.00\textwidth}
   \begin{minipage}{.49\textwidth}
     \centering
     %   \includegraphics[width=\textwidth]{./figs/.pdf}
     \includegraphics[width=3.8in]{./figs/shootout_gibbon_buildtree.pdf}
 %    \label{fig:}
   \end{minipage}
-  %  \hspace{0.1\textwidth}
-  $ $ 
+  \hspace{0.03\textwidth}
   \begin{minipage}{.49\textwidth}
     \centering
     %   \includegraphics[width=\textwidth]{./figs/.pdf}
@@ -1471,24 +1474,33 @@ garbage-collected languages.
 %    \label{fig:}
   \end{minipage}
 \end{minipage}
-   \vspace{-4mm}
+%   \vspace{-4mm}
    \caption{Cursor-inserting compiler---performance compared to handwritten C
      implementation.  Tree building (left) and tree summing (right). The Gibbon
      prototype is currently embedded in Racket, so we show its Racket backend as
    well.}
    \label{fig:shootout2}
-   \vspace{-4mm}
+%   \vspace{-4mm}
 \end{figure}
 
-Our first ``shootout'' demonstrates the performance gains afforded by the
-packed representation. We next implement the tree building and summing
-benchmarks in \treelang{}, and use our prototype cursor-inserting compiler to
-generate code over packed representations. Figure~\ref{fig:shootout2} shows
-the results of comparing this generated code to the hand-written C code over
-the packed representation (because \treelang{} is embedded in Racket, we also
-show the results of a Racket backend). We see that our compiler generated code
-is competitive with, and occasionally exceeds, hand-written C code in
-performance.
+%% Our first ``shootout'' demonstrates the performance gains afforded by the
+%% packed representation.
+We next implement the tree building and summing benchmarks in \treelang{}, and
+use our prototype cursor-inserting compiler to generate code over packed
+representations. Figure~\ref{fig:shootout2} shows the results of comparing this
+generated code to the handwritten C version of the the packed representation
+(because \treelang{} is embedded in Racket, we also show the results of direct
+execution in Racket).
+%
+\Red{We see that our compiler generated code that is competitive with, and
+  occasionally exceeds, hand-written C code for the purpose of {\em packed} tree
+  traversals.}
+\rn{That's not the point... finish this}
+
+
+\note{REMAINDER OF THE BUMPALLOC/PACKED RESULTS HERE}
+
+\note{BUDDHIKA'S PARAM STUDY HERE}
 
 %\note{A ``language shootout'' of add1-tree benchmarks.}
 
@@ -1539,8 +1551,9 @@ performance.
 While our microbenchmarks demonstrate the potential of the packed
 representation, and also demonstrate \treelang{}'s ability to automatically
 generate code that operates on the packed representation from idiomatic
-implementations, directly implementing simple applications like node counting
-on a packed representation is not too difficult.
+implementations, they don't demonstrate a large savings of programmer effort,
+because directly implementing simple functions on simple data in a packed
+representation is tractable.
 
 More challenging, however, is to operate on trees that have more complex
 structure, such as the abstract syntax trees (ASTs) that arise in compiler
