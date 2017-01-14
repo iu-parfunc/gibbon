@@ -1475,7 +1475,8 @@ including GC parameters as well as the ``C (pointer)'' using the system malloc.
   \begin{minipage}{.49\textwidth}
     \centering
     %   \includegraphics[width=\textwidth]{./figs/.pdf}
-    \includegraphics[width=3.8in]{./figs/shootout_gibbon_buildtree.pdf}
+        \includegraphics[width=3.8in]{./figs/shootout_gibbon_buildtree.pdf}
+%        \includegraphics[width=3.8in]{./figs/shootout_gibbon_buildtree2.pdf}
 %    \label{fig:}
   \end{minipage}
   \hspace{0.03\textwidth}
@@ -1483,6 +1484,7 @@ including GC parameters as well as the ``C (pointer)'' using the system malloc.
     \centering
     %   \includegraphics[width=\textwidth]{./figs/.pdf}
     \includegraphics[width=3.8in]{./figs/shootout_gibbon_sumtree.pdf}
+%    \includegraphics[width=3.8in]{./figs/shootout_gibbon_sumtree2.pdf}
 %    \label{fig:}
   \end{minipage}
 \end{minipage}
@@ -1539,10 +1541,10 @@ execution in Racket).
 \paragraph*{The influence of leaf size}
 % \note{REMAINDER OF THE BUMPALLOC/PACKED RESULTS HERE}
 
-In our simple tree example, we have thus far used a single @Int@ as
-the payload of the leaf.  This implies a certain, fixed ratio of payload bytes
-to the memory used for storing the structure of the tree (whether packed or
-pointer based).
+In our simple tree example, we have thus far used a single @Int@ as the payload
+of the leaf.  This implies a certain, fixed ratio of payload bytes to the memory
+used for storing the structure of the tree---i.e., just tags in the packed
+representation, or tags and pointers in a traditional representation.
 %
 We would expect that increasingly ``heavy'' nodes with many scalar fields, would
 directly reduce the advantage of the packed representation.
@@ -1569,8 +1571,9 @@ scalar payload of leaves increases.
     \end{minipage}
   \end{minipage}
   \vspace{-4mm}
-  \caption{\Red{Slowdown relative to packed version...  varying the number of
-      word-sized scalars hanging off of each leaf of the binary tree.}}
+  \caption{The factor {\em slowdown} of competing approaches compared to a
+    baseline of Gibbon's packed mode.  The malloc-based implementation performs
+    especially badly when given large structs of over 800 bytes each.}
   \label{fig:vary-leaves}
 %  \vspace{-4mm}
 \end{figure}
@@ -1735,7 +1738,8 @@ We see \note{something -- describe these figures once we see them!}
     \end{minipage}
   \end{minipage}
 %  \vspace{-4mm}
-  \caption{\Red{Slowdown relative to packed version...}}
+  \caption{The factor {\em slowdown} of competing approaches compared to a
+    baseline of Gibbon's packed mode.}
   \label{fig:slowdown}
 %  \vspace{-4mm}
 \end{figure}
