@@ -762,7 +762,7 @@ destination cursor argument.
 \fi
 
 We say that datatypes like @Foo@ are {\em packed} types, whereas, @Int@, @Bool@,
-@Symbol@, etc are not.  As we'll see in this section, the data constructors for
+@Symbol@, etc are not.  As we will see in this section, the data constructors for
 packed types (@MkFoo@) will themselves come to require destination cursor arguments.
 %
 We insert these cursors using the extended language of \cref{fig:target}, which
@@ -807,15 +807,16 @@ analysis of which functions are able to traverse their inputs.
 The overall structure of the compiler, covered in the rest of this
 section, is:
 \begin{enumerate}
-\item Infer traversal effects.
-% \item Copy and traversal insertion 
-\item Route end-of-value witnesses as additional function returns.
-\item Switch to destination cursor-passing with additional function arguments.
-\item Code generation.
+\item Infer traversal effects (Section~\ref{subsec:inferring}).
+\item Generate additional traversals as necessary to reach input ends (Section~\ref{sec:copy-insert}).
+\item Route end-of-value witnesses as additional function returns (Section~\ref{subsec:routing}).
+\item Switch to destination cursor-passing with additional function arguments (Section~\ref{sec:cursorize}).
+\item Code generation (Section~\ref{subsec:codegen}).
 \end{enumerate}
 
 
 \subsection{Inferring traversal effects}
+\label{subsec:inferring}
 % \vspace{-2mm}\subsubsection{Inferring effects}
 % ----------------------------------------
 
@@ -847,7 +848,7 @@ f :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$
 
 We write $end(\freshA)$ to signify the location after the last byte of \freshA,
 or \locend{\freshA} for short.  One way of looking at a function that traverses
-a is that it can {\em witness} $end(\freshA)$.  At runtime, this witness is
+\freshA is that it can {\em witness} $end(\freshA)$.  At runtime, this witness is
 merely a pointer value.
 %
 Ultimately we will rewrite the function to return such a witness.  For now, the
@@ -1000,7 +1001,7 @@ A simple example of a program that forces a copy is one that introduces sharing:
 let x = f t in  Node x x 
 \end{code}
 
-In future work (\cref{sec:future}), we will use these missing traversals and
+In later extensions (\cref{sec:extensions}), we will use these missing traversals and
 conflicts to go back and {\em change the data format} (i.e. use packed records
 {augmented} with indirection nodes, rather than the most straightforward
 preorder serialization).
@@ -1013,6 +1014,7 @@ traversals.
 
 % \vspace{-2mm}
 \subsection{Routing end-of-value witnesses}
+\label{subsec:routing}
 % ----------------------------------------
 
 After all traversal constraints are satisfied by recursive calls or
@@ -1032,7 +1034,7 @@ useful if it witnesses the {\em start of another value}.
 %
 This brings us to the topic of our {\bf type system for cursors}.  Even though
 cursors are internal to the compiler, rather than exposed to the user, we use 
-{\em session types} to insure their correct handling.  In addition to an
+{\em session types} to ensure their correct handling.  In addition to an
 $\ENDOF$ cursor, which isn't directly usable for anything, we also have
 $\HAS{}$ cursors for reading and $\NEEDS{}$ cursors for writing, as we will
 describe further in \cref{sec:cursorize}.
@@ -1042,7 +1044,7 @@ During the routing pass, we also insert additional bindings in the program that
 explicitly encode facts about how to reach the end of a given location.  Namely:
 
 \begin{itemize}
-\item One field's end becomes the its successor's start.  This becomes a
+\item One field's end becomes its successor's start.  This becomes a
   binding \il{let y = end(x)}.
 \item Fields of static sizes have known offsets, such as \il{let y = start(x) +
   offset}.  
@@ -1111,8 +1113,8 @@ behave much like typed channels with protocols.  We use the extensions in
 \cref{fig:target} to write and read cursors:
 
 \begin{code}
-  write :: ( $\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
-  read  :: $\HAS{T:a}$ ->   ( $\HAS{a}$, $T$ )
+  write :: ($\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
+  read  :: $\HAS{T:a}$ ->   ($\HAS{a}$, $T$)
 \end{code}
 
 That is, @Needs@ tracks a list of values its {\em waiting for}.  For instance,
@@ -1210,7 +1212,7 @@ translated to:
 % Here, switch is similar to C's switch.
 Here @switch@ reads a single byte tag from the cursor given in its scrutinee
 position, and it dispatches based on that tag (just like C's switch statement).
-It is a binding form only insofar as it binds a cursor, @curs@ to the position
+It is a binding form only insofar as it binds a cursor, @cur@, to the position
 just after the tag---i.e., the start of @K@'s fields.  Then, we generate
 explicit code to read the fields one at a time from the appropriate positions in
 the byte stream.
@@ -1218,10 +1220,11 @@ the byte stream.
 % ----------------------------------------
 % \vspace{-2mm}
 \subsection{Code generation}
+\label{subsec:codegen}
 % ----------------------------------------
 
 The final step for \treecomp{} is to generate native code.  Any backend target
-would do (LLVM, native code etc), but we presently generate C code.
+would do (LLVM, native code, etc.), but we presently generate C code.
 %
 Because the current \treelang design is a {first order} language,
 %  \cref{fig:source}
@@ -1237,7 +1240,7 @@ The cursors become merely \il{char*} pointers, and
 %
 @switch@ statements closely correspond to C switches, and @read@ and @write@ are
 open-coded as pointer operations.  Because @read@ returns two values, it
-generates multiple statements rather than creating a tuple, but it needn't
+generates multiple statements rather than creating a tuple, but it need not
 create a struct.
 %
 %% \note{In the intermediate language, cursors are returned along with
