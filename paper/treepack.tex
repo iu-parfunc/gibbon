@@ -1404,9 +1404,9 @@ ASTs gathered from existing Racket programs.
 %% on large synthetic inputs, demonstrating significant speedup for a more complex
 %% and data-heavy workload.
 %
-Finally, in \cref{sec:future}, we look ahead to what a future compiler
+Finally, in \cref{sec:extensions}, we look ahead to what a future compiler
 will be able to achieve {\em if} it extends the basic preorder packed format,
-including indirections or layout information which allows parallel traversals.
+including indirections or layout information to enable parallel traversals.
 
 All benchmarks were conducted on a cluster of identical, dedicated Intel
 machines in a two socket configuration with Xeon E5-2670 CPUs at 2.60 Ghz, and
@@ -1512,16 +1512,16 @@ execution in Racket).
 
 \Red{Figure~\ref{fig:shootout2} shows summing and building a tree, separately.
   In \cref{fig:shootout2B}, we show the add1-to-leaves function, which both
-  consumes and produces a tree.  Here we also introduce couple additional
+  consumes and produces a tree.  Here we also introduce a couple of additional
   comparisons for context, which we will carry into the next section.  First,
   the {\bf pointer} version of Gibbon, as explained in
   \cref{sec:packed-pointer}, uses the same code generator but does not pack
   trees.  This version is faster than the Racket backend, but much slower than
-  packed.  However, there's one more mode of the Gibbon code generator, {\bf
-    pointer}, also described in \cref{sec:packed-pointer}, which shrinks the gap
+  packed.  However, there is one more mode of the Gibbon code generator, {\bf
+    bumpalloc}, also described in \cref{sec:packed-pointer}, which shrinks the gap
   further.  bumpalloc uses the same representations as pointer, but approximates
   optimal memory management with cheap arena allocation.  Still, it remains the
-  case that on add1, packed is geomean 1.75$\times$ faster than bumpalloc, and
+  case that, on add1, packed is geomean 1.75$\times$ faster than bumpalloc, and
   18$\times$ faster than the malloc-based pointer.}
 
 \begin{figure}[]
