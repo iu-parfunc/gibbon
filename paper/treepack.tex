@@ -1277,7 +1277,7 @@ In the next section we evaluate a prototype \treelang compiler, implemented in
 Haskell, and generating code via C. 
 %
 This compiler implements the algorithms of the prior section, with a few current
-limitations.  We've implemented copy insertion by hand, and the current compiler
+limitations.  We have implemented copy insertion by hand, and the current compiler
 will potentially duplicate work (rather than copying) if (1) a packed result of a
 function call is used in multiple places, or (2) when a function returns multiple
 packed results.
@@ -1298,7 +1298,7 @@ implementation strategies:
   provides a baseline for comparison.  It shares the front and back of the
   compiler with packed mode.  But, in pointer mode, we skip the transformations
   that introduce cursors and packed representations.  Rather, we use a
-  traditional pointer graph of heap objects to represent all data.  Using the
+  traditional pointer graph of heap objects to represent all data.  This mode uses the
   default policies of the C compiler for \il{struct} layout.
 \end{itemize}
 
@@ -1321,7 +1321,7 @@ management strategy---about the best you can do without going to packed.
 We use a simple arena implementation where a single global variable stores the
 heap pointer, which is incremented upon allocation.
 
-For benchmarking, we add an @iterate(e)@ form to the language which runs and
+For benchmarking, we add an @iterate(e)@ form to the language which runs an
 expression multiple times and reports the time for all iterations together.
 Iterate {\em also} resets the state of the arena allocator, after each iteration
 but the final one, in order to ``undo'' the effects of previous iterations
@@ -1350,7 +1350,7 @@ interoperability.  Tree data would be marshaled at the boundary, as usual, in
 this case converting from pointer graphs to packed representations.
 %
 Indeed, this arrangement is similar to that used by existing EDSLs for, e.g, GPU
-programming~\cite{accelerate-icfp13,delite,obsidian-cacm}.  Except that those languages are
+programming~\cite{accelerate-icfp13,delite,obsidian-cacm}, except that those languages are
 typically focused on arrays and matrices and exclude recursive sum types and
 recursion---which are \treelang's emphasis.
 
@@ -1364,15 +1364,15 @@ enforce the type system with good error messages and source locations).
 %
 What remains is to enable in-calls and out-calls between Racket and Gibbon.
 %
-Indeed, these are already possible using a Gibbon backend which simple expands
+Indeed, these are already possible using a Gibbon backend which simply expands
 Gibbon (during macro expansion) to run as native Racket code.  Eventually, the C
 backend will likewise be supported without modifying the program.
 %
 
-In the next section we use compare to the Racket backend as a baseline for a
+In the next section we compare to the Racket backend as a baseline for a
 high-level language with significant overheads.  This information is useful, but
-the more relavant data for evaluating the packing technique is to compare the
-different modes supported by the C backend (packed/pointer).
+the more relevant data for evaluating the packing technique is to compare the
+different modes supported by the C backend (packed and pointer).
 
 
 % ================================================================================
@@ -1406,9 +1406,9 @@ representation.
 %% on large synthetic inputs, demonstrating significant speedup for a more complex
 %% and data-heavy workload.
 %
-Finally, in \cref{sec:future}, we look ahead to what a future compiler
+Finally, in \cref{sec:extensions}, we look ahead to what a future compiler
 will be able to achieve {\em if} it extends the basic preorder packed format,
-including indirections or layout information which allows parallel traversals.
+including indirections or layout information to enable parallel traversals.
 
 All benchmarks were conducted on a cluster of identical, dedicated Intel
 machines in a two socket configuration with Xeon E5-2670 CPUs at 2.60 Ghz, and
@@ -1487,10 +1487,10 @@ including GC parameters as well as the ``C (pointer)'' using the system malloc.
   \end{minipage}
 \end{minipage}
 %   \vspace{-4mm}
-   \caption{Cursor-inserting compiler---performance compared to handwritten C
-     implementation.  Tree building (left) and tree summing (right). The Gibbon
-     prototype is currently embedded in Racket, so we show its Racket backend as
-   well.}
+   \caption{Cursor-inserting compiler's performance compared to handwritten
+     cursorized C implementation.  Tree building (left) and tree summing
+     (right). The Gibbon prototype is currently embedded in Racket, so we show
+     its Racket backend as well.}
    \label{fig:shootout2}
 %   \vspace{-4mm}
 \end{figure}
@@ -1514,17 +1514,17 @@ execution in Racket).
 
 \Red{Figure~\ref{fig:shootout2} shows summing and building a tree, separately.
   In \cref{fig:shootout2B}, we show the add1-to-leaves function, which both
-  consumes and produces a tree.  Here we also introduce couple additional
+  consumes and produces a tree.  Here we also introduce a couple of additional
   comparisons for context, which we will carry into the next section.  First,
   the {\bf pointer} version of Gibbon, as explained in
   \cref{sec:packed-pointer}, uses the same code generator but does not pack
   trees.  This version is faster than the Racket backend, but much slower than
-  packed.  However, there's one more mode of the Gibbon code generator, {\bf
-    pointer}, also described in \cref{sec:packed-pointer}, which shrinks the gap
+  packed.  However, there is one more mode of the Gibbon code generator, {\bf
+    bumpalloc}, also described in \cref{sec:packed-pointer}, which shrinks the gap
   further.  bumpalloc uses the same representations as pointer, but approximates
   optimal memory management with cheap arena allocation.  Still, it remains the
-  case that on add1, packed is geomean 1.75$\times$ faster than bumpalloc, and
-  18$\times$ faster than the malloc-based pointer.}
+  case that on add1, packed yields a geomean speedup 1.75$\times$ over
+  bumpalloc, and 18$\times$ faster than the malloc-based pointer.}
 
 \begin{figure}[]
   \centering
@@ -1535,11 +1535,26 @@ execution in Racket).
 %   \vspace{-4mm}
 \end{figure}
 
+
+\paragraph*{The influence of leaf size}
 % \note{REMAINDER OF THE BUMPALLOC/PACKED RESULTS HERE}
 
-% \note{BUDDHIKA'S PARAM STUDY HERE}
-
-
+In our simple tree example, we have thus far used a single @Int@ as
+the payload of the leaf.  This implies a certain, fixed ratio of payload bytes
+to the memory used for storing the structure of the tree (whether packed or
+pointer based).
+%
+We would expect that increasingly ``heavy'' nodes with many scalar fields, would
+directly reduce the advantage of the packed representation.
+% (Indeed, we see this again in \cref{sec:eval-kdtree}.)
+To verify this hypothesis, we ran a simple parameter study where we generated
+alternate versions of the @Tree@ datatype and add1 traversal over it, varying
+the number of @Leaf@ fields.
+\cref{fig:vary-leaves} shows the results.
+%
+As expected, the best performance of the packed approach is with {\em zero}
+leaves, and the performance of the ``bumpalloc'' version catches up as the
+scalar payload of leaves increases.
 
 \begin{figure}[t]
 %  \vspace{-2mm}
@@ -1556,7 +1571,7 @@ execution in Racket).
   \vspace{-4mm}
   \caption{\Red{Slowdown relative to packed version...  varying the number of
       word-sized scalars hanging off of each leaf of the binary tree.}}
-  \label{fig:slowdown}
+  \label{fig:vary-leaves}
 %  \vspace{-4mm}
 \end{figure}
 
@@ -1611,7 +1626,7 @@ While our microbenchmarks demonstrate the potential of the packed
 representation, and also demonstrate \treelang{}'s ability to automatically
 generate code that operates on the packed representation from idiomatic
 implementations, they don't demonstrate a large savings of programmer effort,
-because directly implementing simple functions on simple data in a packed
+because directly implementing functions on simple data in a packed
 representation is tractable.
 
 More challenging, however, is to operate on trees that have more complex
@@ -1632,8 +1647,7 @@ In this portion of the evaluation, we look at
 % two compiler passes, each of which takes a
 the performance of two classes of tree walk
 % (a fold and a map)
-on full Racket core syntax, 
-whose definition is excerpted in \cref{fig:racket-core}.
+on full Racket Core syntax, an AST definition which is excerpted in \cref{fig:racket-core}.
 %
 These benchmarks consume a Racket abstract syntax tree as input and produce
 either (1) a count of nodes, or (2) a new abstract syntax tree.
