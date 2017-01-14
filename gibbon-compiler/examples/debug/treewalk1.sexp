@@ -8,16 +8,10 @@
           (Expression
            (CaseLambda
              (CONSLAMBDACASE
-              (F1
-               (CONSSYM
-                (quote given-kws)
-                (CONSSYM (quote given-args) (CONSSYM (quote f) (NULLSYM)))))
-              (CONSEXPR
-               (VARREF (quote skip))
-               (NULLEXPR))
+              (F1 (NULLSYM))
+              (NULLEXPR)
               (NULLLAMBDACASE)))
-            )
-          )))
+            ))))
   ; True
   x
   )
