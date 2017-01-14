@@ -37,9 +37,10 @@
 \lstdefinestyle{haskell}{%
     language=Haskell,
     upquote=true,
-    deletekeywords={case,class,data,default,deriving,do,in,instance,let,of,type,where,IO,ST,STM},
+    deletekeywords={case,class,data,default,deriving,do,in,instance,let,of,type,where,IO,ST,STM,read},
+%    morekeywords={[1]read,write,finish},
     morekeywords={[2]class,data,default,deriving,family,instance,type,where},
-    morekeywords={[3]in,let,case,of,do},
+    morekeywords={[3]in,let,case,of,do,switch},
     morekeywords={[4]IORef,IO,ST,STM,Symbol},
     literate=
         {\\}{{$\lambda$}}1

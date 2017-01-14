@@ -256,6 +256,7 @@ serialization format.\footnote{Even restricted to aligned access, we
     \label{fig:intro-tree-packed}    
   \end{subfigure}
   \caption{Standard and serialized representations of trees}
+  \label{fig:intro-fig}
 \end{figure}
 
 % \begin{figure}
@@ -448,19 +449,36 @@ describe in this paper.  We refer to the input and output pointers as {\em
   cursors}, and one of the primary jobs of the compiler is to insert
 them automatically.
 
+
 %% \note{Yet, code performing raw manipulation of a pointer into a byte buffer
 %%   containing a serialized tree is extremely error prone and tedious to write.
 %%   It certainly is inappropriate for writing compilers, which contain reams and
 %%   reams of tree-walking code.}
 
 \subsection{Challenges and Limitations}
+\label{sec:limitations}
 
-\note{Rightmost vs leftmost}
+At a basic level, the remainder of the paper describes how to generate
+this efficient but complex C code automatically from the simple
+functional tree walking program we began with.
+%
+However, this code generation process is not as easy as our initial
+example makes it seem. Our compiler must solve several challenging
+problems: ensuring complete traversal, tracking the state of cursors
+into the tree, and more. We begin by outlining some of those
+challenges, and delve into their solutions in subsequent sections.
 
-\note{In the course of this research, we will explore various extensions to the basic
-preorder serialization.  But if we consider only the most basic scenario, where
-all data for a tree resides in one buffer, contiguously, then we must have away
-to compile these functions:}
+Of course, many challenges can be overcome with extensions to the data
+format, and in section~\ref{sec:sizes} we will explore various
+extensions to the basic preorder serialization.  But we begin with the
+most basic scenario, where all data for a tree resides in one buffer,
+contiguously.
+
+
+\paragraph*{Ensuring complete traversal} Our \il{add1} function is
+well-behaved and easy to compile. But many real programs, even very
+simple ones, pose more challenges. For example, consider the following
+two seemingly-similar functions:
 
 \ifcurly
 \begin{code}[language=c]
@@ -486,29 +504,41 @@ to compile these functions:}
 \end{code}
 \fi
 
-\note{These are isomorphic with a pointer-based representation.  But with a preorder,
-packed representation there is the stark difference between them.  The \il{left}
-function only needs access to left branches, which are serialized immediately
-after the tag for \il{Node}.  But the \il{right} function needs to {\em skip over}
-that left child, to reach the right child.  One, brute force solution for this
-problem is to generate a {\em dummy traversal} that walks the left child to
-reach the right.
+These functions are isomorphic to each other in a pointer-based
+representation.  But with a preorder, packed representation there is
+the stark difference between them.  The \il{left} function only needs
+access to left branches, which are serialized immediately after the
+tag for \il{Node}.  But the \il{right} function needs to {\em skip
+  over} that left child, to reach the right child.  Our prototype
+adopts a simple
+solution for this problem: generate a {\em dummy traversal} that
+walks the left child to reach the right.
 %
-Indeed, to establish a complete algorithm for compilation, we do just this.  But
-moving forward in the later two thirds of this research project, we aim to
-explore a range of extensions that cover for the limitations of this basic
-preorder approach.}
+This of course is inefficient for many applications, if the tree
+traversal need only consider a small portion of the tree. But in bulk
+processing where most of the tree is visited, dummy traversal is
+simple and fast, preserving the linear memory access pattern favored
+by modern processors. 
+%
+However, merely adopting this strategy is not enough---the compiler
+must determine when these extra traversals are needed. This requires
+the addition of an effect system to track how much of the input buffer
+is \emph{read}, corresponding to the effect of moving a cursor in the
+resulting code.
+
+\paragraph*{Copying}
+
+\note{Need something here about copy insertion, maybe?}
 
 \paragraph*{Extensions}
-
-\note{There are many possible extensions to the basic preorder format. For example, we
+There are many possible extensions to the basic preorder format. For example, we
 can include {\em indirection nodes}, which use a unique tag to insert a pointer to
 another buffer. We can also selectively use alternative constructors that
 include size information and allow random access.  Note that we can {\em still}
 save space even while storing layout.  For instance, the \il{Node} record above
-could be laid out as: {\il{NodeTag <size_left> <left> <right>}}}
+could be laid out as: {\il{NodeTag <size_left> <left> <right>}}.
 
-\note{Whereas a pointer based representation would spend {\em two words} for the left
+Whereas a pointer based representation would spend {\em two words} for the left
 and right pointer (16 bytes~\footnote{One basic advantage that we leverage here
   is that 64 bit platforms have become wasteful of memory, using 8 bytes for
   every pointer, even though most of the time it is unneeded.  }), if we assume
@@ -517,7 +547,7 @@ of the left tree, and we needn't store the size of the right tree at all!
 % This gives us a total of 4 bytes overhead rather than 
 Indeed, we plan to explore the tradeoff between density of encoding, and
 computational overhead.  A dense encoding in the style of UTF8 would enable us
-to store small values of \il{<size_left>} in as little as one byte.}
+to store small values of \il{<size_left>} in as little as one byte.
 
 
 
@@ -564,6 +594,22 @@ splitting concern how to access object fields, and hence, unlike our work, do
 not require deeper transformations to remove the pointer dereferences inherent
 in traversing linked data structures.
 
+Hsu looks at a representation of abstract syntax trees that uses a matrix
+layout, allowing operations to be specified in a data-parallel manner without
+traversing pointers~\cite{hsu2016key}. While this representation shares a goal
+with ours of avoiding pointers, it is not ``packed''---the representation
+requires a dense representation of a sparse matrix---and hence does not yield
+the type of space savings we target.
+
+In the HPC community, linearizing trees and tree traversals for improved
+performance has been a common technique~\cite{makino90,goldfarb13sc}. These
+linearizations tend to be {\em ad hoc}, written specifically for a given
+application, and each application must be re-written by hand to benefit. This
+contrasts with our compiler-based approach which allows programmers to write
+using idiomatic traversal algorithms, relying on the compiler to synthesize
+the packed representation as well as the algorithm to traverse that
+representation.
+
 
 % ================================================================================
 \section{The \treelang{} Language}
@@ -572,10 +618,12 @@ in traversing linked data structures.
 \note{Sam holds lock.  Overview of language, including introducing its formal grammar}
 
 To demonstrate the compilation technique we are presenting, we present
-$\treelang{}$, a typed programming language that is simple enough to
+\treelang, a typed programming language that is simple enough to
 present briefly in a paper, and featureful enough to express some
-interesting programs, such as common compiler passes.
+interesting tree-manipulating, such as common compiler passes.
 
+The syntax of \treelang is given in Figure~\cref{fig:source}---it is
+simply a standard first-order funcitonal language.
 Programs consist of a series of data type declarations and function
 declarations. Similar to most functional programming languages,
 programmers may define \emph{algebraic data types}, and dispatch on
@@ -585,26 +633,34 @@ them with a
 \else
 \texttt{case} language form (called \texttt{match} or \texttt{switch} in some languages).
 \fi
-%% For example, a data type for peano
-%% numbers would have two cases: zero and successor.
+For example, a data type for peano
+numbers would have two cases: \il{Zero} and \il{Successor}.
 
 \input{treelang}  %% Definitions and figures.
 
-\note{Figure~\cref{fig:source} shows the grammar for our language of tree traversals.
-It is nothing but a standard functional language, with the caveat that algebraic
-datatypes, declared with \il{data}, are implicitly {\em packed} in this language.
-In this basic design, the only non-packed datatypes are tuples \il{(e1,e2)}.
+Data types declared with \il{data} are automatically and implicitly
+{\em packed} in this language.  In this basic design, the only
+non-packed datatypes are tuples $\mathtt{(e_1,\dots,e_n)}$, accessed with
 %% though as the project progresses we plan to allow arbitrary {\em subsets} of
 %% datatypes to be marked with a ``packed'' compiler pragma.
 Note, however, that even tuples allow functions to take and return arbitrary
 numbers of packed datatypes.  When we perform cursor translation in our
 compiler, this will mean passing multiple {\em output cursors} to a function in
 order to provide buffers for it to write its results to.
-}
+
+Other language features are standard: tuple access, let binding,
+conditionals, and primitive operations. The only base values
+provided are integers and booleans.
+
+\note{Finally, we provide dictionaries to support ...}
+
+A fuller language would support richer data types, more operations,
+and data structures such as arrays and lists, but the crucial elements
+for expressing tree-shaped data and transformations on it is present. 
 
 
-\note{We already gave an example of a program in Gibbon earlier...
-  probably only need one, unless we're doing something different here}
+%% \note{We already gave an example of a program in Gibbon earlier...
+%%   probably only need one, unless we're doing something different here}
 
 %% \begin{code}[language=haskell]
 %% type Nat = Zero | Suc(Nat);
@@ -645,7 +701,7 @@ passes in a functional style.
 
 
 % ================================================================================
-\section{Compilation Algorithms\rn{Ryan holds lock}}
+\section{Compilation Algorithms} \label{sec:compiler}
 % ================================================================================
 
 \treelang{}'s approach is to convert programs into a form of {\em destination
@@ -665,6 +721,10 @@ argument.
 We say that datatypes like @Foo@ are {\em packed} types, whereas, @Int@, @Bool@,
 @Symbol@, etc are not.  As we'll see in this section, the data constructors for
 packed types (@MkFoo@) will themselves come to require destination cursor arguments.
+%
+We insert these cursors using the extended language of \cref{fig:target}, which
+includes an extended type-system for safely dealing with cursors (currently used
+only by the compiler, and not exposed to the user).
 
 Functions do not, however, merely have the effect of writing destination memory.
 Sometimes functions will need to allocate new memory regions as well.  We treat
@@ -802,7 +862,7 @@ when two locations are incompatible.  For example, the following term has
 location $\top$ because it attempts to unify two fixed locations \fixed{x} and \fixed{y}.
 
 \begin{code}
-(case p of Node x y -> if _ then x else y) :: SomePackedData
+(case p of Node x y -> if _ then x else y) :: SomePackedDatatype
 \end{code}
 
 % This term has location top.  Fixed x and fixed y join to top.
@@ -833,7 +893,7 @@ basic idea is that an expression @case e of ...@, creates a traversal effect for
 the location of @e@ provided that all the branches of the case traverse the
 (non-statically-sized) arguments of their data constructors.
 %
-\Red{This stage of the process is {\em optimistic}, in that it assumes that any
+{This stage of the process is {\em optimistic}, in that it assumes that any
   additional traversals that are {\em necessary} but not {\em present} will
   subsequently be inserted later.  For example:}
 \begin{code}
@@ -852,26 +912,43 @@ If it were not, this program couldn't compile!
 Even with this assumption, determining the traversal effect signature for each
 function is nontrivial because of interdependencies between functions.
 % E.g. @f@ traverses it input only if @g@ traverses its input.
-Thus we design this pass as
-a \Red{traditional program analysis} that iterates to a fixed point.
+Thus we design this pass as a {traditional program analysis} that iterates
+to a fixed point.
 %
 We begin with every function having a {\em maximum} traversal signature---we
 assume it reaches the end of {\em every} packed input. Then, this set
 monotonically decreases in every round, until the fixed point is reached.
 
+\subsection{Copy and traversal insertion}\label{sec:copy-insert}
+
 {During analysis, we generated all the information we need not only to {\em
-    label} traversal effects, but to recognize where they are needed, but
-  missing.}  {With the inter-procedural traversal types settled, we reprocess
-  the program and repeat the same location analysis, but this time, wherever we
-  are missing a witness of a field stored within a packed buffer, we perform a
-  {\em program synthesis} to generate a recursive call that meets that constraint.}
-%a
-In our prototype, we keep this program synthesis very simple: we insert calls to
-only two functions---copy and empty-traverse---whose definitions the compiler
-generates in a subsequent pass.  {Even still, there's a search space of
-  potential places to insert code.  We follow a simple heuristic of introducing
-  traversals in as large a scope as possible, e.g. just under a case expression
-  that binds the field variables.}
+    label} traversal effects in function signatures, but to recognize where they
+  are needed, but missing, and where destination-location constraints conflict.}
+%
+  With the inter-procedural traversal types settled,
+  we reprocess the program and repeat the same location analysis, but this time,
+  we mark wherever we are (1) {\em missing} a witness of a field stored within a
+  packed buffer, or (2) have {\em conflicting} constraints where a packed value
+  flows to two destinations (sharing).
+%
+  A missing end witness can always be restored, if necessary, by inserting a
+  call to a dummy traversal function.  Likewise, a conflicting destination
+  location can always be resolved by inserting a copy function\footnote{More
+    generally, we can perform a {\em program synthesis} here to fix the program
+    by generating a recursive call that meets that constraint.
+    %% Ultimately this interacts with data-structure layout choices, because
+    %% sharing can be addressed by adding (limited) indirections back in.
+  }.
+ % 
+%% e insert calls to
+%% only two functions---copy and empty-traverse---whose definitions the compiler
+%% generates in a subsequent pass.
+%
+%% {Even still, there's a search space of
+%%   potential places to insert code.  We follow a simple heuristic of introducing
+%%   traversals in as large a scope as possible, e.g. just under a case expression
+  %%   that binds the field variables.}
+  %
 %% directly at the point of missing constraints.  This may introduce the same
 %%   traversal multiple times, for example within different branches of an If
 A simple example of a program that forces a copy is one that introduces sharing:
@@ -880,56 +957,27 @@ A simple example of a program that forces a copy is one that introduces sharing:
 let x = f t in  Node x x 
 \end{code}
 
-In the course of the proposed project, we will use these missing traversals to
-go back and {\em change the data format}, i.e. use packed records with layout
-information, rather than the minimal preorder serialization.
+In future work (\cref{sec:future}), we will use these missing traversals and
+conflicts to go back and {\em change the data format} (i.e. use packed records
+{augmented} with indirection nodes, rather than the most straightforward
+preorder serialization).
 %
-For our preliminary experiments, we instead naively insert copies for the
-program above.
-
-\if{0}
-    \vspace{-2mm}\subsubsection{Copy and traversal insertion}\label{sec:copy-insert}
-    % ----------------------------------------
-
-    {During analysis, we generated all the information we need not only to {\em
-        label} traversal effects, but to recognize where they are needed, but
-      missing.}  {With the inter-procedural traversal types settled, we reprocess
-      the program and repeat the same location analysis, but this time, wherever we
-      are missing a witness of a field stored within a packed buffer, we perform a
-      {\em program synthesis} to generate a recursive call that meets that constraint.}
-    %a
-    In our prototype, we keep this program synthesis very simple: we insert calls to
-    only two functions---copy and empty-traverse---whose definitions the compiler
-    generates in a subsequent pass.  {Even still, there's a search space of
-      potential places to insert code.  We follow a simple heuristic of introducing
-      traversals in as large a scope as possible, e.g. just under a case expression
-      that binds the field variables.}
-    %% directly at the point of missing constraints.  This may introduce the same
-    %%   traversal multiple times, for example within different branches of an If
-    A simple example of a program that forces a copy is one that introduces sharing:
-    %
-    \begin{code}
-    let x = f t in  Node x x 
-    \end{code}
-
-    In the course of the proposed project, we will use these missing traversals to
-    go back and {\em change the data format}, i.e. use packed records with layout
-    information, rather than the minimal preorder serialization.
-    %
-    For our preliminary experiments, we instead naively insert copies for the
-    program above.
-\fi
+But, for {\em completeness}, it always suffices to naively insert copies or dummy
+traversals.
+%% For our preliminary experiments, we instead naively insert copies for the
+%% program above.
 
 
-\vspace{-2mm}\subsubsection{Routing end-of-value witnesses}
+% \vspace{-2mm}
+\subsection{Routing end-of-value witnesses}
 % ----------------------------------------
 
 After all traversal constraints are satisfied by recursive calls or
-compiler-inserted traversals, then we transform the program in a type-directed
+compiler-inserted traversals, we then transform the program in a type-directed
 way, to include additional return-values: end-witnesses.
 
 \begin{code}
-  f  :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$              -- Before
+  f  :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$                  -- Before
   f' :: Tree$_\freshA$ -> ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$) -- After
 \end{code}
 
@@ -938,45 +986,64 @@ way, to include additional return-values: end-witnesses.
 Here the type of the end-witness is $\ENDOF{\locend{\freshA}}$, which signifies
 a pointer to the end of a value, which is not useful by itself.  Rather, it is
 useful if it witnesses the {\em start of another value}.
-
+%
 This brings us to the topic of our {\bf type system for cursors}.  Even though
 cursors are internal to the compiler, rather than exposed to the user, we use 
 {\em session types} to insure their correct handling.  In addition to an
-$\ENDOF()$ cursor, which isn't directly usable for anything, we also have
+$\ENDOF$ cursor, which isn't directly usable for anything, we also have
 $\HAS{}$ cursors for reading and $\NEEDS{}$ cursors for writing, as we will
 describe further in \cref{sec:cursorize}.
 
+% Before we deal further with cursors,
+During the routing pass, we also insert additional bindings in the program that
+explicitly encode facts about how to reach the end of a given location.  Namely:
 
-\vspace{-2mm}\subsubsection{Reordering to discover witnesses}
-% ----------------------------------------
+\begin{itemize}
+\item One field's end becomes the its successor's start.  This becomes a
+  binding \il{let y = end(x)}.
+\item Fields of static sizes have known offsets, such as \il{let y = start(x) +
+  offset}.  
+\item In \il{case a of K b1 ... bn -> ...}, the end of last field \il{bn} is
+  also the end of \il{a}, thus \\ \il{let end(a) = end(bn) in ...}
+\end{itemize}
 
-But before we deal further with cursors, we first must repair the program after
-routing end-witnesses.  At this point in the compilation process, ``witnesses''
-have been inserted, and code has been generated to consume them. The program is
-not necessarily valid, however, because the places in the code where witnesses
-are consumed are not guaranteed to be within the scope of the binders that
-introduced the witness.
+We could record these facts in program metadata, but in our current approach we
+instead manifest them explicitly as let bindings.  Note, however, that they may
+refer to (temporarily) unbound end-variables!  We solve this later with a pass
+that reorders these bindings.
+%
+%% \vspace{-2mm}\subsubsection{Reordering to discover witnesses}
+%% % ----------------------------------------
+%
+%% ......... we first must repair the program after
+%% routing end-witnesses.  At this point in the compilation process, end-witnesses
+%% are returned from functions, and code has been elsewhere been generated to consume them. The program is
+%% .......... not necessarily valid, however, because the places in the code where witnesses
+%% are consumed are not guaranteed to be within the scope of the binders that
+%% introduced the witness.
+%
+%% Due to the fact that our programs are {\em purely functional}, and that our
+%% programs are in A-normal form (each sub-expression is bound to a name), we have
+%% great flexibility in code motion and reordering.  We simply represent a program
+%% as a graph where each bound name is a node and its edges are the bindings it
+%% depends on. A correct reordering of a program is a topological sort of this
+%% graph.  After this phase any unbound variables introduced as end-witnesses are
+%% bound again.
 
-Due to the fact that our programs are {\em purely functional}, and that our
-programs are in A-normal form (each sub-expression is bound to a name), we have
-great flexibility in code motion and reordering.  We simply represent a program
-as a graph where each bound name is a node and its edges are the bindings it
-depends on. A correct reordering of a program is a topological sort of this
-graph.  After this phase any unbound variables introduced as end-witnesses are
-bound again.
 
-\vspace{-2mm}\subsubsection{Output cursor insertion}\label{sec:cursorize}
+% \vspace{-2mm}
+\subsection{Output cursor insertion}\label{sec:cursorize}
 % ----------------------------------------
 
 Finally we are ready for the core translation in the compiler---switching to
-cursor-passing calling conventions.  This proceeds in two phases:
+destination-cursor-passing calling conventions.  This proceeds in two phases:
 
 \begin{itemize}
 \item First, perform a dataflow analysis and mark every data construct, ($K$)
       or function call which returns packed data, with a {\em destination}.  A
       destination is a static source location of another constructor
-      application, or is one of the output terminals of a function,
-      i.e. location \freshB{} in a \il{Tree$_\freshB$} output.
+      application, or is one of the output terminals of the enclosing function
+      definition, i.e. location \freshB{} in a \il{Tree$_\freshB$} output.
       Copy-insertion will have guaranteed a unique destination for each such
       value (i.e. no sharing).
 \item Second, perform a type-directed, type-preserving cursor-insertion pass.
@@ -996,43 +1063,53 @@ For example, the tree function from above, becomes:
 %
 
 Here the return value has turned into a $\ENDOF$ cursor, whereas the inputs have
-turned into read and write cursors respectively.  These are session types, and
+turned into read and write cursors respectively ($Has$ and $Needs$).  These are session types, and
 behave much like typed channels with protocols.  We use the extensions in
-\cref{fig:target} to write and cursors:
+\cref{fig:target} to write and read cursors:
 
 \begin{code}
-  write :: ( $Needs(T:a,\; b)$, $T$) -> $Needs(a,b)$
-  read  :: $Has(T:a)$ -> ( $Has(a)$, $T$ )
+  write :: ( $\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
+  read  :: $\HAS{T:a}$ ->   ( $\HAS{a}$, $T$ )
 \end{code}
 
 That is, @Needs@ tracks a list of values its {\em waiting for}.  For instance,
 given a datatype, @data Foo = MkFoo Int Int@, after we write a tag for @MkFoo@
 to an output buffer, the output cursor has type \il{$Needs$([Int,Int],Foo)}.
-The second component of the $Needs$ is the value which will be completed after
-all the obligations have been satisfied, this can be accomplished 
+The second argument of the $Needs$ is the type of the value which will be
+completed only after all the obligations have been satisfied.  Retrieving that
+completed value can be accomplished with @finish@:
 
 \begin{code}
-  finish :: $Needs$([],$T$) ->  Has($T$)
+  finish :: $Needs$([],$T$) -> $\HAS{T}$
 \end{code}
 
 
 \paragraph*{Locally dilated representation of packed values}
 
-Sometimes the end-witness of a given region is computed, say, underneath a
-conditional.  Our proposed cursor-inserting transformation internally switches
-to a {\em dilated} representation of every packed value.  Inside the local scope
-of a function body, processing a subexpression that returns @Tree@, must instead
-return a pair \il{($Has$(Tree$_\freshA$), $\ENDOF$($\freshA$))}.
+Sometimes the end-witness of a given value is computed, say, underneath a
+conditional.  Thus we may need to change the types of expressions to (locally)
+tack on additional return values.
 %
-The transformed program routes these tuple value throughout the function body,
-making it possible for the compiler to directly produce $\ENDOF(\freshA)$ to
+In order to accomplish this.  Our cursor-inserting transformation internally
+switches to a {\em dilated} representation of every packed value.  Inside the
+local scope of a function body, a subexpression that originally returned @Tree@$_\freshA$,
+must instead return a pair \il{($Has$(Tree$_\freshA$), $\ENDOF{\freshA}$)}.
+%
+The transformed program routes these tuple values throughout the function body,
+making it possible for the compiler to directly produce $\ENDOF{\freshA}$ to
 satisfy the calling convention by returning and end-witness.
+%
+Note that the inter-procedural calling conventions do not change to reflect this
+dilated representation, rather, mediation happens at the call sites.
 
 
 One surprising aspect of the cursor-passing output language is that it is {\em
   still purely functional}.  Rather than directly encoding effects, we have
 created a purely functional interface where @write@ returns a new cursor, and
 all $Needs()$ cursors must be used in a {\em linear}, but pure way.
+%
+(For instance, in the \treelang interpreter we use for debugging, we model cursors as {\em
+  lists}, where write is cons.)
 
 \newcommand{\END}[1]{\ensuremath{\overline{#1}}}
 
@@ -1046,140 +1123,261 @@ all $Needs()$ cursors must be used in a {\em linear}, but pure way.
 %%   ((Cur@$_a$@,Cur@$_b$@),(Cur@$_{\END{a}}$@,Cur@$_{\END{b}}$@))
 %% \end{code}
 
-% ----------------------------------------
-\vspace{-2mm}\subsubsection{Code generation}
+\paragraph*{The fate of constructors and case expressions}
 % ----------------------------------------
 
-The final step for \treecomp{} is to generate C code.  Because our first
-prototype targets only {\em first order} subset of \cref{fig:source}, this is
-straightforward.  The compiler walks through the program to accumulate all
-anonymous product (tuple) types, and emits C struct declarations for each.
+The final feature of the target language (\cref{fig:target}), which we have not
+addressed yet, is the $\pcasesym$ form.
 %
-The cursors become merely \il{char*} pointers.
+The cursor insertion pass lowers constructors to operate directly on destination
+cursors.  Thus \il{MkFoo 55} becomes a multi-step operation:
+% \il{MkFoo(curs)}
 
+\begin{code}
+  let cur2 = MkFoo(curs)
+      cur3 = write(55,cur2)
+  in (curs, curs + 9) -- one byte tag + 8 byte int
+\end{code}
 
-\note{In the intermediate language, cursors are returned along with
-  the ordinary return value during any operation on a buffer---for
-  example, reading an int from a cursor returns the int and a new
-  cursor. A simple implementation strategy for this would be a
-  function that returns a struct of int and cursor, but we have found
-  that even when such a function is marked for inlining it is slower
-  than directly inlining the code and avoiding the returned struct.
-  So, when translating this into C code, we generate a series of C
-  declarations, with each variable only assigned once. We attempt to
-  avoid the creation of structs whenever possible, preferring to
-  inline operations that return tuples and to unzip tuples into
-  ordinary variables.}
-  
-\note{C code is linked with a simple ``run time system'' (a C file with
-  some helper procedures and benchmark harnesses).}
+Here, the original constructor took its argument directly, whereas in the target
+language the constructor takes a destination cursor and writes a {\em single
+  character} to that destination (its runtime tag).  Writing the field is a
+separate @write@ operation.
+%
+The above program is well-typed, following the protocol on output cursors.
+%
+The ``value'' of the resulting data constructor is now equivalent to the pointer
+location at which it was written, i.e. @curs@, which we return in the body,
+together with and end-witness to match the dilated convention.
+%
+Note again that cursors are used in an immutable way, which is why each
+operation that side effects a buffer (e.g. @write@), returns a fresh cursor
+representing the new value of the cursor.
+
+Finally, what becomes of the \il{case} expression?  \il{case e1 of K x y -> e2} is
+translated to:
+
+\begin{code}
+  switch start([e1]) of
+    K(cur) -> let (x,cur2) = read(cur)
+                  (y,cur3) = read(cur2)
+              in [e]
+\end{code}
+
+% Here, switch is similar to C's switch.
+Here @switch@ reads a single byte tag from the cursor given in its scrutinee
+position, and it dispatches based on that tag (just like C's switch statement).
+It is a binding form only insofar as it binds a cursor, @curs@ to the position
+just after the tag---i.e., the start of @K@'s fields.  Then, we generate
+explicit code to read the fields one at a time from the appropriate positions in
+the byte stream.
+
+% ----------------------------------------
+% \vspace{-2mm}
+\subsection{Code generation}
+% ----------------------------------------
+
+The final step for \treecomp{} is to generate native code.  Any backend target
+would do (LLVM, native code etc), but we presently generate C code.
+%
+Because the current \treelang design is a {first order} language,
+%  \cref{fig:source}
+this is straightforward.  We generate C code in static single assignment form.
+
+The compiler eliminates tuples through ``unarization'', except at function call
+returns.  Tuple function arguments become multiple arguments.  Conditionals that
+return tuples instead write multiple destination variables.  The compiler walks
+through the program to accumulate all remaining anonymous tuple types, and emits
+C struct declarations for each.
+
+The cursors become merely \il{char*} pointers, and 
+%
+@switch@ statements closely correspond to C switches, and @read@ and @write@ are
+open-coded as pointer operations.  Because @read@ returns two values, it
+generates multiple statements rather than creating a tuple, but it needn't
+create a struct.
+%
+%% \note{In the intermediate language, cursors are returned along with
+%%   the ordinary return value during any operation on a buffer---for
+%%   example, reading an int from a cursor returns the int and a new
+%%   cursor. A simple implementation strategy for this would be a
+%%   function that returns a struct of int and cursor, but we have found
+%%   that even when such a function is marked for inlining it is slower
+%%   than directly inlining the code and avoiding the returned struct.
+%%   So, when translating this into C code, we generate a series of C
+%%   declarations, with each variable only assigned once. We attempt to
+%%   avoid the creation of structs whenever possible, preferring to
+%%   inline operations that return tuples and to unzip tuples into
+%%   ordinary variables.}
+%
+Finally, the generated C code is linked with a simple run time system that
+includes code for allocation and initialization.
+% (a C file with  some helper procedures and benchmark harnesses).}
 
 % --------------------------------------------------------------------------------
-\subsection{Discussion}
+% \subsection{Discussion}
 % --------------------------------------------------------------------------------
 
-\note{Purity is important to reordering for witness search.}
+% \note{Purity is important to reordering for witness search.}
 
-\note{Our interpreter depends on this fact by modeling cursors {\em as lists}.}
 
 
 % ================================================================================
-\section{Implementation}
+\section{Implementation}\label{sec:impl}
 % ================================================================================
 
-\note{Current prototype implementation, status}
+In the next section we evaluate a prototype \treelang compiler, implemented in
+Haskell, and generating code via GCC 5.3.  \rn{(What version is Laith using!!?)}
+%
+This compiler implements the algorithms of the prior section, with a few current
+limitations.  We've implemented copy insertion by hand, and the current compiler
+will potentially duplicate work (rather than copying) if (1) a packed result of a
+function call is used in multiple places, or (2) when a function returns multiple
+packed results.
+% that need to be routed separately.
+
+\paragraph*{Packed \& Pointer, malloc \& bumpalloc}
+
+The \treelang C backend supports multiple modes of code generation, which we
+compare in the next section.  The first distinction is between two primary
+implementation strategies:
+
+\begin{itemize}
+\item {\bf packed}: Generate code using all the compiler passes of
+  \cref{sec:compiler}.  Data of packed type can be read from disk in human
+  readable or binary/packed formats, but in memory it stays always in preorder
+  serialized representation.
+\item {\bf pointer}: Use traditional C struct representations.  This mode
+  provides a baseline for comparison.  It shares the front and back of the
+  compiler with packed mode.  But, in pointer mode, we skip the transformations
+  that introduce cursors and packed representations.  Rather, we use a
+  traditional pointer graph of heap objects to represent all data.  Using the
+  default policies of the C compiler for \il{struct} layout.
+\end{itemize}
+
+The packed mode manages tree data by allocating large buffers to serve as output
+destinations (and an additional large region for scoped allocations).  In the
+future, we will employ the standard technique for a block-structured heap, where a
+linked list of blocks provides growable storage areas for destination cursors.
+
+
+Within the {\bf pointer} mode, we allocate regular heap objects and thus need an
+allocation strategy.  One policy is to use the system \il{malloc}
+implementation, but this does not typically perform well given the large numbers
+of fine-grained allocations incurred by out-of-place tree transformations.
+%
+A second strategy is to use a custom arena-allocation method for storing heap
+objects.  This doesn't change the internal layout of heap objects, but it does
+pack them densely within cache lines and provides a near-optimal memory
+management strategy---about the best you can do without going to packed.
+%
+We use a simple arena implementation where a single global variable stores the
+heap pointer, which is incremented upon allocation.
+
+For benchmarking, we add an @iterate(e)@ form to the language which runs and
+expression multiple times and reports the time for all iterations together.
+Iterate {\em also} resets the state of the arena allocator, after each iteration
+but the final one, in order to ``undo'' the effects of previous iterations
+and avoid leaking memory.
+%
+Thus, when we benchmark a traversal with @iterate(treetraversal(tr1))@, we
+repeatedly walk @tr1@ to produce @tr2@, such that @tr2@ is allocated into the
+same memory region on each iteration.  This optimizes our use of the cache if
+both input and output trees fit in memory.
+%
+It is this optimized version of the ``bumpalloc'' pointer-based mode that
+provides the most competitive baseline against which to evaluate our proposed
+packed-mode compiler pipeline in \cref{sec:eval}.
 
 
 \paragraph*{Embedding Gibbon}
 
-\note{Ultimately the ideas in Gibbon should either be ported to a compiler for
-  existing languages, or the prototype compiler should be used as an EDSL.}
+Ultimately the ideas in Gibbon should either be ported to a mature compiler for
+existing general purpose languages, or the prototype Gibbon compiler should be
+used as an EDSL from within such a host language.
+%
+In the latter scenario, we would write tree-traversals in a subset of the host
+language that corresponds to Gibbon, and those traversals would then be compiled
+to a shared object file and linked back into the host program for transparent
+interoperability.  Tree data would be marshaled at the boundary, as usual, in
+this case converting from pointer graphs to packed representations.
+%
+Indeed, this arrangement is similar to that used by existing EDSLs for, e.g, GPU
+programming~\cite{accelerate,delite,obsidian}.  Except that those languages are
+typically focused on arrays and matrices and exclude recursive sum types and
+recursion---which are \treelang's emphasis.
 
-\note{Racket \#lang mode}
+Currently, we've taken the first steps to making \treelang available as an
+embedded language in the host language Racket.
+%
+Our front-end \treelang is available as a custom \verb|#lang gibbon| mode in
+Racket.  This provides IDE support via DrRacket, while enforcing all the
+specific restrictions of our minimal language (including using Typed Racket to
+enforce the type system with good error messages and source locations).
+%
+What remains is to enable in-calls and out-calls between Racket and Gibbon.
+%
+Indeed, these are already possible using a Gibbon backend which simple expands
+Gibbon (during macro expansion) to run as native Racket code.  Eventually, the C
+backend will likewise be supported without modifying the program.
+%
+
+In the next section we use compare to the Racket backend as a baseline for a
+high-level language with significant overheads.  This information is useful, but
+the more relavant data for evaluating the packing technique is to compare the
+different modes supported by the C backend (packed/pointer).
 
 
 % ================================================================================
-\section{Evaluation}
+\section{Evaluation}\label{sec:eval}
 % ================================================================================
 
-We evaluate the performance of our approach in four ways. First, we
-demonstrate via small microbenchmarks that packed data representation
-provides significant performance wins across a variety of
-languages---including languages with good performance on pointer-based
-traversals---and that our compiler produces code competetive with any
-existing system. Second, we build several standard compiler passes
-operating on Racket's intermediate representation, and show
-substantial speedup operating on inputs gathered from existing Racket
-programs. Third, we build a type checker for a small language, and
-benchmark it on large synthetic inputs, demonstrating significant
-speedup for a more complex and data-heavy workload. Fourth, we
-implement a point-correlation benchmark using a kd-tree, again showing
-major performance benefits for packed representations. Additionally,
-we \note{something something parallel}
+We evaluate the performance of our approach in three ways. First, we examine the
+performance of packed vs. pointer-based tree walks in idealized microbenchmarks.
+We also use these microbenchmarks to examine the state of the art in several
+existing compilers.  And while we find significant variation between compilers,
+no existing system we're aware of comes close to matching \treelang's packed
+mode out of the box.
 
-All benchmarks were conducted on a \dots.
+%% demonstrate via small microbenchmarks that packed data representation
+%% provides significant performance wins across a variety of
+%% languages---including languages with good performance on pointer-based
+%% traversals---and that our compiler produces code competitive with any
+%% existing system.
 
-\subsection{Microbenchmarks}
+Second, in \cref{sec:astbench}, we evaluate an important class of tree
+traversals---compiler passes---using realistic sized and shaped ASTs gathered from
+real programs.
+%
+Namely, these tree walks operate on Racket's intermediate representation, and
+show \Red{substantial speedup} using the packed representation to operate on
+ASTs gathered from existing Racket programs.
+% 
+%% Third, we build a type checker for a small language, and benchmark it
+%% on large synthetic inputs, demonstrating significant speedup for a more complex
+%% and data-heavy workload.
+
+Finally, in \cref{sec:eval-extensions}, we look ahead to what a future compiler
+will be able to achieve {\em if} it extends the basic preorder packed format,
+including indirections or layout information which allows parallel traversals.
+
+All benchmarks were conducted on a cluster of identical, dedicated Intel
+machines in a two socket configuration with Xeon E5-2670 CPUs at 2.60 Ghz, and
+32GB RAM, running Ubuntu 14.04 LTS.
+\Red{GCC}.
+% (16 cores)
+
+\subsection{Microbenchmarks}\label{sec:microbench}
 % ----------------------------------------
 
-Our first benchmarks return to the example from section 2,
-manipulating simple binary trees. We implement 3 operations:
+Our first benchmarks return to the example from section 2:
+simple binary trees. We implement 3 operations:
 constructing a tree, incrementing the values in a tree, and summing
 the elements of a tree. To understand the performance of packed data
 representations, we implemented these three operations in multiple
 ways across a variety of languages: with pointer-based trees in
 Racket, Chez Scheme, MLton, GHC Haskell, and C (using both \texttt{malloc} as well
-as a fast bump-pointer allocator). We also implemented packed versions
-using handwritten C code similar to that of section 2, as well as a
-packed version in Racket. Finally, we implemented the benchmark in
-\treelang{}, and executed it using both the simple Racket backend and
-the optimizing backend that is the focus of this paper.
-
-The results show a clear win for packed representations, in some cases
-with 100x speedup over pointer-based representations in
-garbage-collected languages. Further, our compiler-generated code is
-competetive with handwritten C for packed data.
-
-%\note{A ``language shootout'' of add1-tree benchmarks.}
-
-\subsection{Old text - take or leave}
-
-While our \treelang{} compiler is still a prototype, we already have
-promising results on simple programs. We compared three programs on
-binary trees of 64-bit integers: one program which constructed a tree,
-one program which adds 1 to each leaf, constructing a new tree, and
-one program which sums the elements of a tree.
-
-In order to validate our packed data structure approach separately
-from our compiler implementation, we began with hand-written versions
-of each program across a range of language implementations, and
-implemented the programs with both packed and typical pointer-based
-techniques. The results of these experiments, plotting runtime versus
-the size of the tree in logaritmic scale, are seen in
-Figure~\ref{fig:shootout1}.
-
-These results demonstrate two things. First, as simple data
-structure and memory management benchmarks, allocation performance is
-critical and modern safe languages perform well compared to C with
-\texttt{malloc()}/\texttt{free()}.
-%
-%% Second, packed implementations are
-%% a major speedup \emph{across multiple languages}, with consistent wins
-%% ranging from 2x to 10x.
-%
-Second, our low-level packed C implentation is
-consistently fastest, suggesting that a mature compiler following our
-strategy should perform well. 
-%
-We then tested our cursor-inserting \treelang{} compiler on these same
-benchmarks, comparing it to the handwritten packed C implementation
-(the fastest handwritten version from the previous figure). These
-results are plotted in Figure~\ref{fig:shootout2}. The results show
-that our compiler approaches or exceeds the performance of
-handwritten C code, despite it being a simplified prototype. Since this
-C program is already many times faster than a conventional
-implementation of these programs in a safe, functional, language, this
-strongly points to the potential of our approach.
+as a fast bump-pointer allocator).
 
 \begin{figure}[t]
   \vspace{-7mm}
@@ -1212,6 +1410,10 @@ strongly points to the potential of our approach.
   \label{fig:shootout1}
 \end{figure}
 
+Figure~\ref{fig:shootout1} shows the results for these three microbenchmarks. The results show a clear win for packed representations (note the log scale), in some cases
+with 100x speedup over pointer-based representations in
+garbage-collected languages. 
+
 \begin{figure}[t]
   \vspace{-2mm}
 \begin{minipage}{1.04\textwidth}
@@ -1239,82 +1441,256 @@ strongly points to the potential of our approach.
    \vspace{-4mm}
 \end{figure}
 
+Our first ``shootout'' demonstrates the performance gains afforded by the
+packed representation. We next implement the tree building and summing
+benchmarks in \treelang{}, and use our prototype cursor-inserting compiler to
+generate code over packed representations. Figure~\ref{fig:shootout2} shows
+the results of comparing this generated code to the hand-written C code over
+the packed representation (because \treelang{} is embedded in Racket, we also
+show the results of a Racket backend). We see that our compiler generated code
+is competitive with, and occasionally exceeds, hand-written C code in
+performance.
+
+%\note{A ``language shootout'' of add1-tree benchmarks.}
+
+% \subsection{Old text - take or leave}
+% 
+% While our \treelang{} compiler is still a prototype, we already have
+% promising results on simple programs. We compared three programs on
+% binary trees of 64-bit integers: one program which constructed a tree,
+% one program which adds 1 to each leaf, constructing a new tree, and
+% one program which sums the elements of a tree.
+% 
+% In order to validate our packed data structure approach separately
+% from our compiler implementation, we began with hand-written versions
+% of each program across a range of language implementations, and
+% implemented the programs with both packed and typical pointer-based
+% techniques. The results of these experiments, plotting runtime versus
+% the size of the tree in logaritmic scale, are seen in
+% Figure~\ref{fig:shootout1}.
+% 
+% These results demonstrate two things. First, as simple data
+% structure and memory management benchmarks, allocation performance is
+% critical and modern safe languages perform well compared to C with
+% \texttt{malloc()}/\texttt{free()}.
+% %
+% %% Second, packed implementations are
+% %% a major speedup \emph{across multiple languages}, with consistent wins
+% %% ranging from 2x to 10x.
+% %
+% Second, our low-level packed C implentation is
+% consistently fastest, suggesting that a mature compiler following our
+% strategy should perform well. 
+% %
+% We then tested our cursor-inserting \treelang{} compiler on these same
+% benchmarks, comparing it to the handwritten packed C implementation
+% (the fastest handwritten version from the previous figure). These
+% results are plotted in Figure~\ref{fig:shootout2}. The results show
+% that our compiler approaches or exceeds the performance of
+% handwritten C code, despite it being a simplified prototype. Since this
+% C program is already many times faster than a conventional
+% implementation of these programs in a safe, functional, language, this
+% strongly points to the potential of our approach.
 
 
-\subsection{Compiler passes on realistic inputs}
+
+\subsection{Compiler passes on realistic inputs} \label{sec:astbench}
 % --------------------------------------------
 
-\note{Racket core AST benchmarks}
+While our microbenchmarks demonstrate the potential of the packed
+representation, and also demonstrate \treelang{}'s ability to automatically
+generate code that operates on the packed representation from idiomatic
+implementations, directly implementing simple applications like node counting
+on a packed representation is not too difficult.
+
+More challenging, however, is to operate on trees that have more complex
+structure, such as the abstract syntax trees (ASTs) that arise in compiler
+passes: (i) the trees themselves do not have homogeneous structure, so the
+location of a particular tree node in a packed buffer is intimately related to
+the types of the other nodes in the tree; and (ii) the operations on the tree
+nodes are not homogeneous, so the structure of computations (including how to
+extract particular fields from a serialized representation of a tree node)
+varies based on the type of the tree node. In this setting, writing a tree
+traversal that operates directly over a packed representation is complex and
+error prone. On the other hand, writing such a traversal in an idiomatic style
+using pattern matching is fairly straightforward. This, then, is an ideal use
+case for \treelang{}'s approach.
+
+\paragraph*{Benchmarks}
+In this portion of the evaluation, we look at two compiler passes, each of
+which takes a Racket abstract syntax tree as input and produces a new abstract
+syntax tree. The two passes are copy propagation and substitution. In both
+cases, the structure of the output AST might differ from that of the input
+AST. While we only evaluate two compiler passes,\footnote{An artifact of \treelang{}'s prototype compiler's limitations, not \treelang{}'s expressiveness.} we note that these passes contain the two major operation types that might be performed on trees: {\tt map}s, where the output tree is structurally similar to the input tree but with a function applied to each node, and {\tt fold}s, which in this context is transforming an entire subtree into some differently-structured output (something as simple as a single node, representing a reduction). Seen at this high level, all compiler passes on ASTs are roughly similar, differing mostly in the work done near the leaves of trees. Hence, we expect the results of these two passes to be representative.
+
+We write each pass in \treelang{}. We then generate two versions of each
+benchmark, one using \treelang{}'s {\em pointer-based} backend (which
+generates passes over pointer-based ASTs in C), and one using \treelang{}'s
+{\em packed} backend (which uses our new representation). By letting the
+implementations differ only in the backends used to generate them, we isolate
+the performance differences to those that arise from the difference in
+representation. Because \treelang{} allows for tree traversals to be written
+using standard algebraic data type match operations, this evaluation also
+serves to confirm our ability to generate packed implementations from
+idiomatic code.
+
+As input, we use a variety of different ASTs generated from the Racket code
+base, ranging in size from XXX nodes to YYY nodes, with ZZZ different inputs,
+overall. Note that these inputs represent real-world programs of varying
+sizes, ranging from XXX bytes to YYY bytes. This range of programs and sizes
+allows us to understand how input-dependent the behavior of our cursor passing
+transformations and our packed representations are, as well as confirm that
+our approach works across a wide range of real inputs.
+
+\paragraph*{Results}
+Figures~\ref{fig:copyprop} and~\ref{fig:subst} present the results
+for copy propagation and substitution, respectively. The x-axis of each figure
+shows the different possible inputs, ordered by the speedup of the packed
+version over the pointer version (higher is better). The dashed horizontal
+line on each figure represents the geomean speedup across all inputs.
+
+We see \note{something -- describe these figures once we see them!}
+
+\note{Are we also going to show the same charts ordered by size, instead?}
 
 
-\subsection{Typechecking benchmark}
-% --------------------------------------------
+%% \subsection{Typechecking benchmark}
+%% % --------------------------------------------
 
-\note{type check the simply-typed $\lambda$ calculus in \treelang{}}
-
-\subsection{Point correlation}
-% --------------------------------------------
-Point correlation  is a well-known algorithm that is used in data mining\cite{gray2000n},
-given a set of points in a k-dimensional space, point correlation computes the number of points in the space  that lies within a
-distance r from a given point p, one efficient way of searching such spaces is to store them in  kd-trees \cite{gray2000n}. 
-
-A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two sub-spaces
-around a split axes in one of the space dimensions, the left subtree stores the points to the left of the split access
-and the right subtree sotres the points to the right of the split access, the split axes alternates between the dimensions of
-the space at each level of the tree, when the number of the points in the subtree is one, a leaf node that stores
-that point is constructed.
+%% \note{type check the simply-typed $\lambda$ calculus in \treelang{}}
 
 
-In a naive implementation of point correlation each point in the space need to be checked, however kd-trees 
-allow the search process to skip some regions in the space ;by storing at each internal node the boundaries within which all descendent points lies,
-and use that information to skip a subtree if the given point is far enough from the boundaries.
 
-Unlike the rest of the benchmarks, point correlation does not necessary traverse the whole tree due to the early trucation condition,
-this requires an additional pointer to be stored at each internal node  as discussed earlier, this pointer will be read if an early truncation occur to redirect the traversal to the
-next node to be visited.
+\section{Extensions}
+%============================================================================
+\label{sec:future}
 
+This section evaluates two extensions to \treelang{} that enable more complicated traversals and expose more opportunities for performance.
+
+Our benchmarks up until now focus on ``full'' treewalks: traversals that visit
+every node of the input tree, in order. While this assumption is accurate for
+most compiler passes, there are some scenarios and applications where this may
+not be true:
+\begin{itemize}
+  \item If a traversal exploits {\em truncation}. Some tree traversals, such as those of space partitioning trees~\cite{gray2000n} gain asymptotic improvements by {\em truncating} traversals of subtrees. Based on some condition (for example, that a given subspace in a space partitioning tree is unimportant), traversal of a node's entire subtree is skipped, and the traversal continues on to the sibling of the current node. This optimization means that not all of the tree is visited by the traversal.
+  \item If a traversal is {\em parallelized}. To run a traversal in parallel, multiple threads collaborate to walk over a tree. In many traversals, this parallelism is natural: walks over different subtrees are independent of each other. In {\em this} scenario, a single thread may not walk over the entire tree and, indeed, may not even start its tree walk at the beginning of the buffer holding the tree.
+\end{itemize}
+
+For both of these cases, our current \treelang{} compiler is insufficient,
+because it does not support non-full treewalks. It assumes that the
+cursor moving through the buffer runs by each node in the tree during the tree
+walk, and the transformations that ensure that cursors get routed correctly
+assume the same. The key distinction here is that in both the truncation case
+and the parallelism case, we need some way to move a cursor to (or generate a
+cursor at) some later point in a packed tree buffer {\em without} walking over
+the intermediate tree nodes.
+
+This section describes an extension to \treelang{}'s packed representation---{\em layout information}---that enables these more sophisticated traversals, as well as a evaluation of two benchmarks that use this extended representation.
+
+\subsection{Adding Layout Information for Indirection}
+
+As described in Section~\ref{sec:copy-insert}, our current approach for
+handling traversals where we need a cursor position (e.g., the position of a
+right child) without an accompanying traversal that generates it---in other
+words, if we need to skip over a portion of the tree---is to insert a {\em
+copy} traversal that traverses the portion of the tree we are skipping. This
+dummy traversal generates the required cursor position to continue with the
+``real'' traversal. However, this can be inefficient if the amount of work
+done by the dummy traversal is large: in the original pointer-based code, a
+traversal has direct access to all children, and can hence immediately skip
+over any subtrees that are unecessary, whereas code using the packed
+representation must traverse the entire tree at all times. In some situations,
+these dummy traversals can turn $O(\log n)$ traversals into $O(n)$ traversals,
+an unacceptable increase in complexity (consider, for example, the {\tt right} example from Section~\ref{sec:limitations}).
+
+
+Our solution to this problem is the introduction of {\em indirections} in the
+packed representation. These are, effectively, values stored in the packed
+tree that can be used to generate necessary cursor positions without
+performing traversals. This layout information amounts, essentially, to adding
+pointers to our packed representation (albeit ones that only have to be used
+in lieu of dummy traversals). However, they still preserve some of the space
+benefits of the packed representation for three reasons. First, indirections
+are not necessary for the first child, as it is placed immediately after its
+parent. Second, indirections are
+only necessary during some portions of traversal; if a particular type of node
+does not have computations that require skipping subtrees, there is no need to
+add indirections to that type of node. Third, even if indirections {\em are}
+required everywhere, they are only required to be offsets within the buffer,
+not full (64-bit) pointers, which can enable space savings.
+
+The particular type of indirection needed depends on the mechanism of the
+traversal. Here,
+we discuss two common patterns.
+
+\begin{description}
+  \item[Pointer-style indirection] The most common type of indirection is a
+  ``pointer style'' indirection, where the indirection serves to provide easy
+  access to children beyond the first child: a node contains a field that
+  contains the size of the left subtree. Adding that value to the current
+  cursor allows the cursor to be moved past the left subtree and on to the
+  right subtree. These types of indirections are useful to quickly access,
+  say, the right child of a node without traversing the left child's subtree.
+  The {\tt right} code example from Section~\ref{sec:limitations} can benefit
+  from a pointer-style indirection.
+  \item[Rope-style indirection] This is a more subtle style of indirection. In
+  some types of tree traversals (such as those that arise in n-body
+  codes~\cite{gray2000n}), an interior node is visited and, based on some {\em
+  data-dependent} condition, either both children of the interior node are
+  visited or {\em neither} is visited, effectively truncating the traversal of
+  both the left and the right subtrees. This truncation effectively serves as
+  a data-dependent base case for a recursive traversal. We call these {\em
+  rope-style} indirections because these types of indirection pointers are
+  frequently called ``ropes'' when used in GPU implementations of tree
+  traversals~\cite{goldfarb13sc,popov07,hapala11}. An indirection pointer
+  captures the size of both the left and right subtrees (generalizing, all
+  child subtrees) of a node, allowing the cursor to be bumped to the necessary
+  location upon truncation.
   
-\begin{figure}[htp]
-\begin{minipage}{1.04\textwidth}
-  \begin{minipage}{.49\textwidth}
-    \centering
-    \includegraphics[width=\textwidth]{./figs/pointCorr_perf.pdf}
+  Interestingly, \treelang{}'s packed representation makes finding the next
+  node easy---a simple calculation of the size of subtrees. In pointer-based
+  representations, finding the next node of the tree requires more work: it
+  could be the right sibling of the current node, it could be the node's
+  parent's right sibling, etc.
+\end{description}
 
-  \end{minipage}
-  $ $ 
-  \begin{minipage}{.49\textwidth}
-    \centering
-    \includegraphics[width=\textwidth]{./figs/pointCorr_MemUsage.pdf}
-    % \includegraphics[width=60mm]{example-image-b}
-%    \label{fig:}
+Note that in both cases, the indirection pointer's main job is to capture the
+size of a subtree or subtrees rooted at a particular node. In general, if a
+given interior node knows the sizes of all of its child subtrees, it can use
+these indirection pointers to provide {\em random access} to a tree, even if
+that tree is in a packed representation. Hence, we call this indirection
+information {\em layout information}.
 
-  \end{minipage}
-\end{minipage}
-   \caption{normalized runtime performance and memory usage of packed point correlation with respect pointer based implementation }
-         \label{fig:pointCorr}
-\end{figure}
+Not every traversal requires full random access to the tree, and hence not
+every piece of layout information is necessary to synthesize traversals over
+packed trees.
+Automatically inferring what layout information is necessary,
+inserting them into packed representations, and synthesizing cursor updates based on that layout information is a topic for future work.
 
-  
-Figure \ref{fig:pointCorr} shows the speedup and the memory usage of the  packed version  with respect to the standard pointer based implementation for different tree sizes,
-packed representation uses 56\% less memory to represents the the tree than the pointer based representation, this reduction in memory usage has two sources;
-the elimination of the left child pointer and the elimination of the gaps between the structure data members that are added by default for memory alignment purposes.
-The runtime performance of the packed version is almost the same as the pointer based for small trees, however when the size of the tree is large enough the packed version 
-shows up to 35\% speed up.
+\subsection{Evaluation}
 
+Because \treelang{} does not currently support a packed representation extended with layout information, our evaluation uses hand-written packed implementations (in C) that include that layout information, mimicking what would be produced by a backend that understands indirections. We evaluate two benchmarks: a {\em parallelization} microbenchmark (Section~\ref{sec:eval-parallelism}) that uses pointer-style indirections to distribute the traversal of a tree, and an implementation of {\em two-point correlation} (Section~\ref{sec:eval-kdtree}) that uses ropes-style indirections.
 
+\subsubsection{Parallelism opportunity study} \label{sec:eval-parallelism}
+% ---------------------------------------------------------------------
 
-\subsection{Parallelism opportunity study}
-% --------------------------------------------
+We evaluate a {\em parallel} version of our {\tt add1} benchmark from
+Section~\ref{sec:microbench}. In the pointer-based version of this code,
+adding parallelism using Cilk~\cite{cilk} is straightforward: because the {\tt
+add1} operation treats the left and right subtrees independently, we can
+simply add Cilk {\tt spawn} commands to recursive calls to introduce
+parallelism, cutting off parallelism as necessary to avoid runtime overhead.
 
-\note{Report preliminary parallel microbenchmark results, showing the potential
-  for future work here.}
-
-\note{ A final goal of this project is to explore the role
-\Red{these alternate CNF and DPNF} representations can play in parallelizing programs.
-\Cref{fig:shootout2} shows how a hand-parallelized version the packed approach
-scales much better than a traditional functional compiler.  We believe this
-approach has great potential for improving both single core and multicore performance.
-\Cref{fig:par-shootout}.............}
+For the packed representation, however, we cannot simply adopt this approach:
+being able to {\tt spawn} a task that processes the right subtree of a node
+requires being able to reach that right subtree {\em without traversing the
+left subtree}. We thus manually introduce {\em pointer-style} indirections
+that allow programs written over the packed representation to directly access
+the right subtree, facilitating parallel execution. In any scenario where
+there is a Cilk {\tt spawn}, we use the indirection pointer to launch the
+right-subtree task, allowing that work to be stolen. Once we cease using {\tt
+spawn}s, producing coarse-grained leaf tasks, we revert to the full tree-walks
+supported by \treelang{}.
 
 \begin{figure}[t]
   \vspace{-5mm}
@@ -1352,6 +1728,102 @@ approach has great potential for improving both single core and multicore perfor
 % (/ 0.07138175 0.000319918212890625) 223 times
 
 
+Figure~\ref{fig:par-shootout} shows the result of our parallel packed
+implementation (left), compared to the performance of a mature parallel
+functional compiler, GHC, running the same benchmark (right). While for small
+trees we see that our parallel implementation does not yield much scaling, for
+large trees we can achieve a speedup of about 11$\times$ on 16 cores (relative
+to one-core execution). In contrast, the GHC implementation cannot scale
+beyond eight cores. When comparing the packed implementation directly to the
+GHC implementation, the packed version is 34$\times$ faster on a single core
+and 226$\times$ faster on 16 cores!
+
+While adding parallelism to \treelang{} is future work, these results
+demonstrate the potential for large performance gains.
+
+% \note{Report preliminary parallel microbenchmark results, showing the potential
+%   for future work here.}
+% 
+% \note{ A final goal of this project is to explore the role
+% \Red{these alternate CNF and DPNF} representations can play in parallelizing programs.
+% \Cref{fig:shootout2} shows how a hand-parallelized version the packed approach
+% scales much better than a traditional functional compiler.  We believe this
+% approach has great potential for improving both single core and multicore performance.
+% \Cref{fig:par-shootout}.............}
+
+
+\subsubsection{Point correlation} \label{sec:eval-kdtree}
+% --------------------------------------------
+Point correlation  is a well-known algorithm used in data mining~\cite{gray2000n}:
+given a set of points in a k-dimensional space, point correlation computes the number of points in that space  that lie within a
+distance r from a given point p. Rather than comparing each point in the space to the query point, one efficient way of searching such spaces is to store them in kd-trees~\cite{bentley75}. KD-trees are space partitioning trees where the root of the kd tree represents the entire space, and each node's children represents a partition of that node's space into two subspaces.
+
+% A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two sub-spaces
+% around a split axes in one of the space dimensions, the left subtree stores the points to the left of the split access
+% and the right subtree sotres the points to the right of the split access, the split axes alternates between the dimensions of
+% the space at each level of the tree, when the number of the points in the subtree is one, a leaf node that stores
+% that point is constructed.
+
+
+In a naive implementation of point correlation, each point in the space needs
+to be checked against the query point. However kd-trees allow the search
+process to skip some regions in the space. By storing at each internal node
+the boundaries within which all descendent points lies, the search process can
+skip a subtree is a given point is far enough from the boundaries. As a
+result, querying a kd-tree to perform point-correlation is $O(log n)$ instead
+of $O(n)$. Note that it is exactly the process of ``skipping'' subtrees that
+gives kd-tree-based point correlation its efficiency, but also that prevents a
+normal packed representation from sufficing to implement the algorithm: there
+is no way to skip past a subtree without performing a dummy traversal,
+obviating the asymptotic performance gains.
+
+We implemented both a standard pointer-based version of 2-point correlation in
+C, as well as a version that operates over a packed representation augmented
+with indirection pointers. Each interior node stores an ropes-style
+indirection pointer that maintains the size of its child subtrees. If a
+traversal is truncated at that node, the cursor is incremented by the value in
+that indirection pointer, skipping the subtrees and resuming traversal on the
+rest of the tree.
+
+  
+\begin{figure}[htp]
+% \begin{minipage}{1.04\textwidth}
+  % \begin{minipage}{.49\textwidth}
+    \centering
+    \includegraphics[width=0.5\textwidth]{./figs/pointCorr_perf.pdf}
+
+  % \end{minipage}
+  % $ $ 
+  % \begin{minipage}{.49\textwidth}
+    % \centering
+    % \includegraphics[width=\textwidth]{./figs/pointCorr_MemUsage.pdf}
+    % \includegraphics[width=60mm]{example-image-b}
+%    \label{fig:}
+
+%   \end{minipage}
+% \end{minipage}
+   \caption{Speedup of packed implementation of point correlation over pointer-based implementation. X axis shows varying tree sizes (represented in number of nodes).}
+         \label{fig:pointCorr}
+\end{figure}
+
+  
+Figure \ref{fig:pointCorr} shows the speedup of the packed version with respect to the standard pointer-based implementation for different tree sizes. For each tree size, we ran 10 query points through the tree. For small trees, the queries were performed 10000 times to produce sufficient runtime for accurate measurements. Each experiment was performed 10 times, and the mean is reported. 
+
+We note first that for every tree size, the packed representation uses 56\% less memory than the pointer-based trees. This reduction in memory usage has two sources: nodes do not need to store left-child pointers; and more efficient packing of data in the packed representation. For small trees, the runtime performance of the packed and pointer versions are comparable. For large trees, the packed version is 35\% faster than the pointer-based version.
+
+We note that the relatively smaller performance improvement for this benchmark versus the AST benchmarks is unsurprising. First, taking an indirection means that any spatial locality gains from the packed representation are lost, resulting in similar behavior to the pointer-based version. Second, there is relatively more work to be done per node in this benchmark, so the time spent in traversal of the tree is relatively less, reducing the opportunity for improvement.
+% 
+%  We
+% packed representation uses 56\% less memory to represents the the tree than the pointer based representation, this reduction in memory usage has two sources;
+% the elimination of the left child pointer and the elimination of the gaps between the structure data members that are added by default for memory alignment purposes.
+% The runtime performance of the packed version is almost the same as the pointer based for small trees, however when the size of the tree is large enough the packed version 
+% shows up to 35\% speed up.
+
+
+
+
+
+
 
 
 % ================================================================================
@@ -1366,8 +1838,8 @@ open-world implementation in a managed language.}
 
 \note{A large space of parallelism design choices.}
 
-\note{}
-
+\note{How much of this do we want to leave in?
+}
 
 %% % ================================================================================
 %% \appendix
