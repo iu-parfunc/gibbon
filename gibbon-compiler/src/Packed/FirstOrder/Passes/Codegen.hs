@@ -412,9 +412,11 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                                     unpackName [VarTriv "ptr"] (AssnValsT [])
                              let mmapCode =
                                   [ C.BlockDecl[cdecl| int fd = open( $filename, O_RDONLY); |]
+                                  , C.BlockStm[cstm| { if(fd == -1) { fprintf(stderr,"fopen failed\n"); abort(); }} |]
                                   , C.BlockDecl[cdecl| struct stat st; |]
                                   , C.BlockStm  [cstm| fstat(fd, &st); |]
                                   , C.BlockDecl[cdecl| $ty:(codegenTy CursorTy) ptr = ($ty:(codegenTy CursorTy)) mmap(0,st.st_size,PROT_READ,MAP_PRIVATE,fd,0); |]
+                                  , C.BlockStm[cstm| { if(ptr==MAP_FAILED) { fprintf(stderr,"mmap failed\n"); abort(); }} |]
                                   ]
                              docall <- if isPacked
                                        -- In packed mode we eagerly FORCE the IO to happen before we start benchmarking:
