@@ -23,30 +23,7 @@
                   (CONSEXPR (VARREF (quote f)) (NULLEXPR)))))
                (NULLEXPR))
               (NULLLAMBDACASE)))
-            (CONSEXPR
-             (VARREF (quote null))
-             (CONSEXPR
-              (Quote (INTLIT 5))
-              (CONSEXPR
-               (LetValues
-                (CONSLVBIND
-                 (CONSSYM (quote register-external-file) (NULLSYM))
-                 (CaseLambda
-                  (CONSLAMBDACASE
-                   (F1 (CONSSYM (quote f) (NULLSYM)))
-                   (CONSEXPR
-                    (App
-                     (VARREF (quote unpack5))
-                     (CONSEXPR
-                      (VARREF (quote null))
-                      (CONSEXPR
-                       (VARREF (quote null))
-                       (CONSEXPR (VARREF (quote f)) (NULLEXPR)))))
-                    (NULLEXPR))
-                   (NULLLAMBDACASE)))
-                 (NULLLVBIND))
-                (CONSEXPR (VARREF (quote register-external-file)) (NULLEXPR)))
-               (NULLEXPR))))))
+            (NULLEXPR)))
             )
           )))
   ; True
