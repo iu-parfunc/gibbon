@@ -2,9 +2,6 @@
 
 
 (data Toplvl
-      [DefineValues   ListSym Expr]
-      [DefineSyntaxes ListSym Expr]
-      [BeginTop ListToplvl]
       [Expression Expr])
 
 (data Expr
@@ -12,17 +9,13 @@
       (CaseLambda LAMBDACASE)
       )
 
-(data LVBIND
-      (CONSLVBIND ListSym Expr LVBIND)
-      (NULLLVBIND ))
-
 (data LAMBDACASE
       (CONSLAMBDACASE Formals ListExpr LAMBDACASE)  ;; (formals expr ...+) 
       (NULLLAMBDACASE ))
 
 (data Formals
-      [F1 ListSym]        ;; Tag 0
-      [F2 ListSym Sym]    ;; Tag 1
+;      [F1 ListSym]        ;; Tag 0
+;      [F2 ListSym Sym]    ;; Tag 1
       [F3 Sym])                ;; Tag 2
 
 (data ListToplvl
@@ -40,9 +33,6 @@
 ;; Identity function on ASTs:
 (define (treewalk [e : Toplvl]) : Toplvl
   (case e
-    [(DefineValues ls e)    (DefineValues (sym-ls ls) (expr e))]
-    [(DefineSyntaxes ls e)  (DefineSyntaxes (sym-ls ls) (expr e))]
-    [(BeginTop ls)          (BeginTop (top-ls ls))]
     [(Expression e)         (Expression (expr e))]))
 
 (define (top-ls [es : ListToplvl]) : ListToplvl
@@ -54,12 +44,6 @@
   (case es
     [(CONSEXPR e es) (CONSEXPR (expr e) (expr-ls es))]
     [(NULLEXPR) (NULLEXPR)]))
-
-(define (walk-lvbind [lv : LVBIND]) : LVBIND
-  (case lv
-    [(NULLLVBIND) (NULLLVBIND)]
-    [(CONSLVBIND syms e rest)
-     (CONSLVBIND (sym-ls syms) (expr e) (walk-lvbind rest))]))
 
 (define (walk-lambdacase [lc : LAMBDACASE]) : LAMBDACASE
        (case lc
@@ -74,8 +58,8 @@
 
 (define (walk-formals [formals : Formals]) : Formals
   (case formals
-    [(F1 syms)   (F1 (sym-ls syms))]
-    [(F2 syms s) (F2 (sym-ls syms) s)]
+;    [(F1 syms)   (F1 (sym-ls syms))]
+;    [(F2 syms s) (F2 (sym-ls syms) s)]
     [(F3 s)      (F3 s)]))
 
 (define (expr [e : Expr]) : Expr
