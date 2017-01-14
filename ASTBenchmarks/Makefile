@@ -96,12 +96,31 @@ megas:
 
 mega: mega_asts/mega_$(MEGASIZE).gpkd
 
+mega1s: 
+	$(MAKE) REPLICATE=1 mega1
+	$(MAKE) REPLICATE=5 mega1
+	$(MAKE) REPLICATE=10 mega1
+	$(MAKE) REPLICATE=50 mega1
+	$(MAKE) REPLICATE=100 mega1
+	$(MAKE) REPLICATE=500 mega1
+	$(MAKE) REPLICATE=4456 mega1
+
+mega1: mega_asts/mega1_$(REPLICATE).gpkd
+
 mega_asts/mega_$(MEGASIZE).sexp: cleaned_racket sorted_cleaned_files.txt
 	mkdir -p ./mega_asts
 	head -n$(MEGASIZE) sorted_cleaned_files.txt | awk '{ print "./cleaned_racket/"$$2 }' > $@.list
 	cat $@.list | racket combine.rkt --out $@
 
 mega_asts/mega_$(MEGASIZE).gpkd: mega_asts/mega_$(MEGASIZE).sexp
+	raco make binary_pack.rkt
+	echo $< $@ | racket binary_pack.rkt
+
+mega_asts/mega1_$(REPLICATE).sexp: mega_asts/mega_1.sexp
+	( cat `yes ./mega_asts/mega_1.sexp.list | head -$(REPLICATE) | paste -s` )> mega_asts/mega1_$(REPLICATE).sexp.list
+	cat mega_asts/mega1_$(REPLICATE).sexp.list | racket combine.rkt --out mega_asts/mega1_$(REPLICATE).sexp
+
+mega_asts/mega1_$(REPLICATE).gpkd: mega_asts/mega1_$(REPLICATE).sexp
 	raco make binary_pack.rkt
 	echo $< $@ | racket binary_pack.rkt
 
