@@ -1419,33 +1419,35 @@ Racket, Chez Scheme, MLton, GHC Haskell, and C (using both \texttt{malloc} as we
 as a fast bump-pointer allocator).
 
 \begin{figure}[t]
-%  \vspace{-7mm}
-\begin{minipage}{1.04\textwidth}
-  \begin{minipage}{.32\textwidth}
+  \vspace{-4mm}
+  \centering
+  %% \begin{minipage}{.48\textwidth}
+  \hspace{12mm}
+  %%   \hspace{2mm}
+  \includegraphics[width=3.9in]{./figs/shootout_add1.pdf}
+%  \vspace{-4mm}
+%   \end{minipage}
+
+\begin{minipage}{1.00\textwidth}
+\hspace{-4mm}      
+  \begin{minipage}{.48\textwidth}
     \centering
-    \includegraphics[width=2.9in]{./figs/shootout_buildtree.pdf}    
-%    \label{fig:}
-  \end{minipage}
-  $ $ 
-  \begin{minipage}{.32\textwidth}
-    \hspace{-4mm}
-    \hspace{2mm}
-    \includegraphics[width=2.9in]{./figs/shootout_add1.pdf}
+    \includegraphics[width=3.6in]{./figs/shootout_buildtree.pdf}    
 %    \label{fig:}
   \end{minipage}
   $ $
-  \begin{minipage}{.32\textwidth}
+  \begin{minipage}{.48\textwidth}
     \centering
-        \includegraphics[width=2.9in]{./figs/shootout_sumtree.pdf}
+        \includegraphics[width=3.6in]{./figs/shootout_sumtree.pdf}
 %    \label{fig:}
   \end{minipage}
 
 \end{minipage}
 %  \vspace{-3mm}
-  \caption{Performance when building, mapping add1, and summing a tree respectively.
-    Traditional compiler approaches vs. the packed approach.  All handwritten
-    implementations.  X axis is tree {\em depth}, implying $2^N$ leaves.  Y axis
-  shows time in seconds.}
+  \caption{Performance when building (left), mapping add1 (top), and summing
+    (right) a tree respectively.  Traditional compiler approaches vs. the packed
+    approach.  All handwritten implementations.  X axis is tree {\em depth},
+    implying $2^N$ leaves.  Y axis shows time in seconds.}
   \label{fig:shootout1}
 \end{figure}
 
