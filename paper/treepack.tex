@@ -1380,7 +1380,7 @@ performance of packed vs. pointer-based tree walks in idealized microbenchmarks.
 We also use these microbenchmarks to examine the state of the art in several
 existing compilers.  And while we find significant variation between compilers,
 no existing system we're aware of comes close to matching \treelang's packed
-mode out of the box.
+mode.
 %
 %% demonstrate via small microbenchmarks that packed data representation
 %% provides significant performance wins across a variety of
@@ -1389,12 +1389,14 @@ mode out of the box.
 %% existing system.
 %
 Second, in \cref{sec:astbench}, we evaluate an important class of tree
-traversals---compiler passes---using realistic sized and shaped ASTs gathered from
-real programs.
+traversals---AST traversals, as found in a compiler.
 %
-Namely, these tree walks operate on Racket's intermediate representation, and
-show \Red{substantial speedup} using the packed representation to operate on
-ASTs gathered from existing Racket programs.
+We use ASTs gathered from real programs to ensure realistic shape and depth.
+%
+Specifically, these tree benchmarks operate on Racket's intermediate
+representation, and show {substantial speedup} using the packed
+representation.
+% to operate on ASTs gathered from existing Racket programs.
 % 
 %% Third, we build a type checker for a small language, and benchmark it
 %% on large synthetic inputs, demonstrating significant speedup for a more complex
@@ -1745,7 +1747,7 @@ We see \note{something -- describe these figures once we see them!}
 %%   \end{code}
 
 
-{\begin{figure}
+{\begin{figure}[t]
   \begin{code}   
  data Toplvl = DefineValues   ListSym Expr 
              | DefineSyntaxes ListSym Expr 
@@ -1982,7 +1984,8 @@ supported by \treelang{}.
     \centering
   \begin{minipage}{.75\textwidth}
     \centering
-    \includegraphics[width=\textwidth]{./figs/speedup_cilk.pdf}
+%    \includegraphics[width=\textwidth]{./figs/speedup_cilk.pdf}
+    \includegraphics[width=\textwidth]{./figs/speedup_handwritten-c-packed-cilk_cutter_pardepth8.pdf}    
 %    \label{fig:}
   \end{minipage}
   %  \hspace{0.1\textwidth}
