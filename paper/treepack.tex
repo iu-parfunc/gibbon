@@ -85,7 +85,8 @@
     {\csname lst@SaveFirstLabel\endcsname}
     \lstset{
       language=C++,
-      basicstyle=\footnotesize\ttfamily,
+%      basicstyle=\footnotesize\ttfamily,
+      basicstyle=\ttfamily,              
 %      basicstyle=\small\ttfamily,
       flexiblecolumns=false,
       basewidth={0.5em,0.45em},
@@ -1434,13 +1435,13 @@ as a fast bump-pointer allocator).
 \hspace{-5mm}      
   \begin{minipage}{.48\textwidth}
     \centering
-    \includegraphics[width=3.8in]{./figs/shootout_buildtree.pdf}    
+    \includegraphics[width=3.75in]{./figs/shootout_buildtree.pdf}    
 %    \label{fig:}
   \end{minipage}
   \hspace{3mm}
   \begin{minipage}{.48\textwidth}
     \centering
-        \includegraphics[width=3.8in]{./figs/shootout_sumtree.pdf}
+        \includegraphics[width=3.75in]{./figs/shootout_sumtree.pdf}
 %    \label{fig:}
   \end{minipage}
 
@@ -1693,18 +1694,47 @@ We see \note{something -- describe these figures once we see them!}
 %  \vspace{-4mm}
 \end{figure}
       
+%% This works well in footnotesize
+%% {\begin{figure}
+%%   \begin{code}   
+%%  data Expr = VARREF Sym                     data Toplvl = DefineValues   ListSym Expr 
+%%            | Lambda Formals ListExpr	                | DefineSyntaxes ListSym Expr  
+%%            | CaseLambda LAMBDACASE                      | BeginTop ListToplvl         
+%%            | If Expr Expr Expr                          | Expression Expr             
+%%            | Begin ListExpr
+%%            | Begin0 Expr ListExpr           
+%%            | LetValues    LVBIND ListExpr   data Formals = F1 ListSym    
+%%            | LetrecValues LVBIND ListExpr                | F2 ListSym Sym
+%%            | SetBang Sym Expr                            | F3 Sym        
+%%            | Quote Datum
+%%            | QuoteSyntax Datum
+%%            | QuoteSyntaxLocal Datum
+%%            | WithContinuationMark Expr Expr Expr
+%%            | App Expr ListExpr 
+%%            | Top Sym
+%%            | VariableReference    Sym 
+%%            | VariableReferenceTop Sym 
+%%            | VariableReferenceNull
+%%     ....
+%%   \end{code}
+
 
 {\begin{figure}
   \begin{code}   
- data Expr = VARREF Sym                     data Toplvl = DefineValues   ListSym Expr 
-           | Lambda Formals ListExpr	                | DefineSyntaxes ListSym Expr  
-           | CaseLambda LAMBDACASE                      | BeginTop ListToplvl         
-           | If Expr Expr Expr                          | Expression Expr             
+ data Toplvl = DefineValues   ListSym Expr 
+             | DefineSyntaxes ListSym Expr 
+             | BeginTop ListToplvl         
+             | Expression Expr             
+             
+ data Expr = VARREF Sym                     
+           | Lambda Formals ListExpr	     
+           | CaseLambda LAMBDACASE          
+           | If Expr Expr Expr              
            | Begin ListExpr
            | Begin0 Expr ListExpr           
-           | LetValues    LVBIND ListExpr   data Formals = F1 ListSym    
-           | LetrecValues LVBIND ListExpr                | F2 ListSym Sym
-           | SetBang Sym Expr                            | F3 Sym        
+           | LetValues    LVBIND ListExpr   
+           | LetrecValues LVBIND ListExpr   
+           | SetBang Sym Expr               
            | Quote Datum
            | QuoteSyntax Datum
            | QuoteSyntaxLocal Datum
@@ -1716,6 +1746,9 @@ We see \note{something -- describe these figures once we see them!}
            | VariableReferenceNull
     ....
   \end{code}
+
+
+
 %% (data Toplvl
 %%       [DefineValues   ListSym Expr]
 %%       [DefineSyntaxes ListSym Expr]
