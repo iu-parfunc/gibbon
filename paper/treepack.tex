@@ -178,7 +178,7 @@ algorithm to insert destination cursors.
 % creating missing traversals.
 We evaluate our compiler on 
 tree transformations over a real-world dataset of source code syntax trees.
-\Red{We demonstrate speedups from....}
+\Red{We demonstrate speedups from ABC to XYZ}
 
 \end{abstract}
 
@@ -319,28 +319,36 @@ following contributions:
 \newcommand{\calculus}{$\lambda^D_T$} % uh, Dense Tree?
 
 \begin{itemize}
-\item We use a small core language, \calculus{}, to formalize a transformation
-  on programs that creates an output program operating only on
-  pointers in the serialized representation.  This involves a small program
-  synthesis step, and we show how the program synthesis and the selection of
-  data structure shape benefit from co-optimization.
+ %% \item We use a small core language, \calculus{}, to formalize a transformation
+  %% on programs that creates an output program operating only on
+  %% pointers in the serialized representation.  This involves a small program
+  %% synthesis step, and we show how the program synthesis and the selection of
+  %% data structure shape benefit from co-optimization.
+   
+\item We present a simple language,
+%  prototype language implementation based on this
+ dubbed \treelang, that can compile a range of tree transforms
+ to be \Red{several times} faster than standard techniques.
+ We evaluate Gibbon against both a number of existing compilers and
+ its own best performance (without packing) (\cref{sec:eval}).
+
+\item We present Gibbon's compiler (\cref{sec:compiler}), which includes new
+  algorithms for determining when a function reaches the end of its input(s), and
+  for converting to a destination-cursor-passing style.
+
+%% \item We show that the principle of packed-tree traversals works
+%%   broadly across a variety of language implementations, by benchmarking simple
+%%   handwritten packed-tree programs~\cref{sec:eval-shootout} and
+%%   demonstrating speedup even \emph{without} compiler support.
+%% \rn{This implies we will show results for GHC/Packed, which we don't currently.}
   
-\item We present a prototype language implementation based on this
-  transformation, dubbed \treelang, that can compile a range of tree transforms
-  to be \Red{several times} faster than standard techniques~\cref{sec:eval-compiler}.
-  
-\item We show that the principle of packed-tree traversals works
-  broadly across a variety of language implementations, by benchmarking simple
-  handwritten packed-tree programs~\cref{sec:eval-shootout} and
-  demonstrating speedup even \emph{without} compiler support.
-\rn{This implies we will show results for GHC/Packed, which we don't currently.}
-  
-\item We show that not only do tree traversals become faster, \Red{but that their
-  {\em potential parallel speedup}, increases as well}
-  \cref{sec:eval-parallel}. To leverage parallelism, we need
-  additional information stored in trees---a feature that also allows
-  other tree-processing programs to be expressed in our framework.
-\rn{Need to include the KDTree business in the speculative part}
+\item In an additional evaluation, we show that not only do tree traversals
+  become faster in the packed representation, {but that in some cases {\em
+      potential parallel speedup}, increases as well} \cref{sec:eval-parallel}.
+  To leverage parallelism, we need additional information stored in trees---a
+  feature that also allows other tree-processing programs to be expressed in our
+  framework, such as a point correlation application which we evaluate (\cref{sec:eval-kdtree}).
+% \rn{Need to include the KDTree business in the speculative part}
   
 \end{itemize}
 
