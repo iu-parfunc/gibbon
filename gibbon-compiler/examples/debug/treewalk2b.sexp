@@ -62,5 +62,6 @@
     [(VARREF s)               (VARREF s)]
     [(CaseLambda cases)        (CaseLambda (walk-lambdacase cases))]))
 
-;; This passes in --pointer but gives an type error in --packed:
-(let ((x : Toplvl (treewalk (Expression (CaseLambda (NULLLAMBDACASE)))))) 0)
+
+;; This stack-overflows after calling a long long chain of unpack_ListSym:
+(treewalk (Expression (CaseLambda (NULLLAMBDACASE))))
