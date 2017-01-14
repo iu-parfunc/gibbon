@@ -1727,11 +1727,11 @@ way of measuring both traversals over very small trees and very large ones.
 
 
 \cref{fig:slowdown} shows the performance of Gibbon's packed mode vs gibbon's
-pointer (malloc) and bumpalloc modes.  We measured the last level cache
+pointer (malloc) and bumpalloc modes, expressed as slowdowns of the pointer-based approaches over packed.  We measured the last level cache
 reference and cache misses and found dramatic improvements in these for the
 packed approach (and modest differences in the number of instructions executed).
 %
-Yet nevertheless the performance of pointer-based approaches is good at small
+Nevertheless the performance of pointer-based approaches is good at small
 sizes: (1) trees are small and fit in cache, (2) the single threaded workload
 can acquire all of the last level cache, not contending with other threads on
 the 16-core machine.  The end result is that the system is able to mask the bad
