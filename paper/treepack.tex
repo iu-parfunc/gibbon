@@ -1675,8 +1675,8 @@ are roughly similar, differing mostly in the work done near the leaves of
 trees.
 %
 For example, substitution, copy-propagation, and constant folding all traverse a
-tree and ``act locally''.  Especially transformations that only transform a
-small fraction of the input spend most of their time simply walking over syntax.
+tree and ``act locally''.  In general, many transformations only transform a
+small fraction of the input and spend most of their time simply walking over syntax.
 %
 %% Hence, we expect the results of these two traversals to be representative for
 %% map-like passes and simple analysis passes (folds).
@@ -1704,7 +1704,7 @@ a spectrum of sizes.
 %As input, \Red{we ASTs drawn from this input set},
 %
 The largest single file was 1.4MB. 
-To simulate larger programs (as found in whole-program compilation), we
+To simulate larger programs (as would be found in whole-program compilation), we
 combined the largest $K$ files into one, varying $K$ from 1 to 4,456.
 %
 This is representative of a whole program compiler, which would indeed need to
