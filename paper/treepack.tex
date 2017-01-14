@@ -1525,7 +1525,7 @@ execution in Racket).
   traversals.}
 % \rn{That's not the point... finish this}
 
-\Red{Figure~\ref{fig:shootout2} shows build, mapping over, and summing a tree, separately.
+{Figure~\ref{fig:shootout2} shows build, mapping over, and summing a tree, separately.
 %% In \cref{fig:shootout2B}, we show the add1-to-leaves function, which both
 %% consumes and produces a tree.
   Here we introduce a couple of additional variants, which we will carry into
@@ -1682,25 +1682,33 @@ small fraction of the input spend most of their time simply walking over syntax.
 %% map-like passes and simple analysis passes (folds).
 
 
-We write both benchmarks in \treelang{}. We then generate two versions of each
-benchmark, one using \treelang{}'s {\em pointer-based} backend (which
+We write both benchmarks in \treelang{}. We then generate versions of each
+benchmark, as before, one using \treelang{}'s {\em pointer-based} backend (which
 generates passes over pointer-based ASTs in C), and one using \treelang{}'s
 {\em packed} backend. By letting the
 implementations differ only in the backends used to generate them, we isolate
 the performance differences to those that arise from the difference in
-representation. Because \treelang{} allows for tree traversals to be written
-using standard algebraic data type match operations, this evaluation also
+representation. Because \treelang{} allows tree traversals to be written
+using standard datatype match operations, this evaluation also
 serves to confirm our ability to generate packed implementations from
 idiomatic code.
 
 We generated a dataset of inputs by collecting all of the (macro-expanded) source
 code from the main Racket distribution, which contains 4,456 files consuming
-102MB once packed in our dense representation (disregarding symbol tables).
+1GB of code which drops to 485MB when stripped of whitespace and comments, and 
+102MB once packed in our dense representation.
+% (disregarding symbol tables).
 %
-As input, \Red{we ASTs drawn from this input set},
+We benchmark on this entire dataset, but report only on a subset, sampling from
+a spectrum of sizes.
+%As input, \Red{we ASTs drawn from this input set},
 %
-further, to simulate larger programs (as found in whole-program compilation), we combined
-multiple files into one.
+The largest single file was 1.4MB. 
+To simulate larger programs (as found in whole-program compilation), we
+combined the largest $K$ files into one, varying $K$ from 1 to 4,456.
+%
+This is representative of a whole program compiler, which would indeed need to
+load these modules as one tree.
 %
 %% ranging in size from \Red{XXX nodes to YYY nodes, with ZZZ different inputs},
 %% overall. Note that these inputs represent real-world programs of varying sizes,
