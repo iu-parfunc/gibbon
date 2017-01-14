@@ -1470,27 +1470,40 @@ including GC parameters as well as the ``C (pointer)'' using the system malloc.
 
 \begin{figure}[t]
   %  \vspace{-2mm}
-\hspace{-6mm}  
+  %\begin{figure}[]
+  \hspace{5mm}
+  \centering
+  \includegraphics[width=4.3in]{./figs/shootout_treebench_five.pdf}
+%  \includegraphics[width=4.8in]{./figs/shootout_treebench.pdf}
+%   \caption{\Red{ADD1}}
+%   \label{fig:shootout2B}
+%   \vspace{-4mm}
+%\end{figure}
+
+  \hspace{-6mm}  
 \begin{minipage}{1.00\textwidth}
   \begin{minipage}{.49\textwidth}
     \centering
     %   \includegraphics[width=\textwidth]{./figs/.pdf}
-    \includegraphics[width=3.8in]{./figs/shootout_gibbon_buildtree.pdf}
+       \includegraphics[width=3.8in]{./figs/shootout_gibbon_buildtree.pdf}
+%        \includegraphics[width=3.8in]{./figs/shootout_gibbon_buildtree2.pdf}
 %    \label{fig:}
   \end{minipage}
   \hspace{0.03\textwidth}
   \begin{minipage}{.49\textwidth}
     \centering
     %   \includegraphics[width=\textwidth]{./figs/.pdf}
-    \includegraphics[width=3.8in]{./figs/shootout_gibbon_sumtree.pdf}
+%    \includegraphics[width=3.8in]{./figs/shootout_gibbon_sumtree.pdf}
+    \includegraphics[width=3.8in]{./figs/shootout_gibbon_sumtree2.pdf}
 %    \label{fig:}
   \end{minipage}
 \end{minipage}
 %   \vspace{-4mm}
    \caption{Cursor-inserting compiler's performance compared to handwritten
-     cursorized C implementation.  Tree building (left) and tree summing
-     (right). The Gibbon prototype is currently embedded in Racket, so we show
-     its Racket backend as well.}
+     cursorized C implementation.  Tree building (left), tree summing (right),
+     and mapping add1 over the tree (top). The Gibbon prototype is currently
+     embedded in Racket, so we show its Racket backend as well, as different
+     modes of its C backend (packed, pointer, bumpalloc).}
    \label{fig:shootout2}
 %   \vspace{-4mm}
 \end{figure}
@@ -1512,37 +1525,29 @@ execution in Racket).
   traversals.}
 % \rn{That's not the point... finish this}
 
-\Red{Figure~\ref{fig:shootout2} shows summing and building a tree, separately.
-  In \cref{fig:shootout2B}, we show the add1-to-leaves function, which both
-  consumes and produces a tree.  Here we also introduce a couple of additional
-  comparisons for context, which we will carry into the next section.  First,
-  the {\bf pointer} version of Gibbon, as explained in
+{Figure~\ref{fig:shootout2} shows build, mapping over, and summing a tree, separately.
+%% In \cref{fig:shootout2B}, we show the add1-to-leaves function, which both
+%% consumes and produces a tree.
+  Here we introduce a couple of additional variants, which we will carry into
+  the next section.  First, the {\bf pointer} version of Gibbon, as explained in
   \cref{sec:packed-pointer}, uses the same code generator but does not pack
   trees.  This version is faster than the Racket backend, but much slower than
   packed.  However, there is one more mode of the Gibbon code generator, {\bf
-    bumpalloc}, also described in \cref{sec:packed-pointer}, which shrinks the gap
-  further.  bumpalloc uses the same representations as pointer, but approximates
-  optimal memory management with cheap arena allocation.  Still, it remains the
-  case that on add1, packed yields a geomean speedup 1.75$\times$ over
-  bumpalloc, and 18$\times$ faster than the malloc-based pointer.}
+    bumpalloc}, also described in \cref{sec:packed-pointer}, which shrinks the
+  gap further.  bumpalloc uses the same representations as pointer, but
+  approximates optimal memory management with cheap arena allocation.  Still, it
+  remains the case that on add1, packed yields a geomean speedup 1.75$\times$
+  over bumpalloc, and 18$\times$ faster than the malloc-based pointer.}
 
-\begin{figure}[]
-  \centering
-  \includegraphics[width=4.3in]{./figs/shootout_treebench_five.pdf}
-%  \includegraphics[width=4.8in]{./figs/shootout_treebench.pdf}
-   \caption{\Red{ADD1}}
-   \label{fig:shootout2B}
-%   \vspace{-4mm}
-\end{figure}
 
 
 \paragraph*{The influence of leaf size}
 % \note{REMAINDER OF THE BUMPALLOC/PACKED RESULTS HERE}
 
-In our simple tree example, we have thus far used a single @Int@ as
-the payload of the leaf.  This implies a certain, fixed ratio of payload bytes
-to the memory used for storing the structure of the tree (whether packed or
-pointer based).
+In our simple tree example, we have thus far used a single @Int@ as the payload
+of the leaf.  This implies a certain, fixed ratio of payload bytes to the memory
+used for storing the structure of the tree---i.e., just tags in the packed
+representation, or tags and pointers in a traditional representation.
 %
 We would expect that increasingly ``heavy'' nodes with many scalar fields, would
 directly reduce the advantage of the packed representation.
@@ -1569,8 +1574,9 @@ scalar payload of leaves increases.
     \end{minipage}
   \end{minipage}
   \vspace{-4mm}
-  \caption{\Red{Slowdown relative to packed version...  varying the number of
-      word-sized scalars hanging off of each leaf of the binary tree.}}
+  \caption{The factor {\em slowdown} of competing approaches compared to a
+    baseline of Gibbon's packed mode.  The malloc-based implementation performs
+    especially badly when given large structs of over 800 bytes each.}
   \label{fig:vary-leaves}
 %  \vspace{-4mm}
 \end{figure}
@@ -1676,25 +1682,33 @@ small fraction of the input spend most of their time simply walking over syntax.
 %% map-like passes and simple analysis passes (folds).
 
 
-We write both benchmarks in \treelang{}. We then generate two versions of each
-benchmark, one using \treelang{}'s {\em pointer-based} backend (which
+We write both benchmarks in \treelang{}. We then generate versions of each
+benchmark, as before, one using \treelang{}'s {\em pointer-based} backend (which
 generates passes over pointer-based ASTs in C), and one using \treelang{}'s
 {\em packed} backend. By letting the
 implementations differ only in the backends used to generate them, we isolate
 the performance differences to those that arise from the difference in
-representation. Because \treelang{} allows for tree traversals to be written
-using standard algebraic data type match operations, this evaluation also
+representation. Because \treelang{} allows tree traversals to be written
+using standard datatype match operations, this evaluation also
 serves to confirm our ability to generate packed implementations from
 idiomatic code.
 
 We generated a dataset of inputs by collecting all of the (macro-expanded) source
 code from the main Racket distribution, which contains 4,456 files consuming
-102MB once packed in our dense representation (disregarding symbol tables).
+1GB of code which drops to 485MB when stripped of whitespace and comments, and 
+102MB once packed in our dense representation.
+% (disregarding symbol tables).
 %
-As input, \Red{we ASTs drawn from this input set},
+We benchmark on this entire dataset, but report only on a subset, sampling from
+a spectrum of sizes.
+%As input, \Red{we ASTs drawn from this input set},
 %
-further, to simulate larger programs (as found in whole-program compilation), we combined
-multiple files into one.
+The largest single file was 1.4MB. 
+To simulate larger programs (as found in whole-program compilation), we
+combined the largest $K$ files into one, varying $K$ from 1 to 4,456.
+%
+This is representative of a whole program compiler, which would indeed need to
+load these modules as one tree.
 %
 %% ranging in size from \Red{XXX nodes to YYY nodes, with ZZZ different inputs},
 %% overall. Note that these inputs represent real-world programs of varying sizes,
@@ -1735,7 +1749,8 @@ We see \note{something -- describe these figures once we see them!}
     \end{minipage}
   \end{minipage}
 %  \vspace{-4mm}
-  \caption{\Red{Slowdown relative to packed version...}}
+  \caption{The factor {\em slowdown} of competing approaches compared to a
+    baseline of Gibbon's packed mode.}
   \label{fig:slowdown}
 %  \vspace{-4mm}
 \end{figure}
@@ -1893,15 +1908,14 @@ This section describes an extension to \treelang{}'s packed representation---{\e
 As described in Section~\ref{sec:copy-insert}, our current approach for
 handling traversals where we need a cursor position (e.g., the position of a
 right child) without an accompanying traversal that generates it---in other
-words, if we need to skip over a portion of the tree---is to insert a {\em
-copy} traversal that traverses the portion of the tree we are skipping. This
+words, if we need to skip over a portion of the tree---is to insert a dummy traversal that traverses the portion of the tree we are skipping. This
 dummy traversal generates the required cursor position to continue with the
-``real'' traversal. However, this can be inefficient if the amount of work
+``real'' traversal. However, this approach can be inefficient if the amount of work
 done by the dummy traversal is large: in the original pointer-based code, a
 traversal has direct access to all children, and can hence immediately skip
-over any subtrees that are unecessary, whereas code using the packed
+over any subtrees that are unnecessary, whereas code using the packed
 representation must traverse the entire tree at all times. In some situations,
-these dummy traversals can turn $O(\log n)$ traversals into $O(n)$ traversals,
+these dummy traversals can turn $O(\log n)$ operations into $O(n)$ ones,
 an unacceptable increase in complexity (consider, for example, the {\tt right} example from Section~\ref{sec:limitations}).
 
 
@@ -1972,7 +1986,15 @@ inserting them into packed representations, and synthesizing cursor updates base
 \subsection{Evaluation}%\label{sec:eval-parallelism}
 \label{sec:eval-extensions}
 
-Because \treelang{} does not currently support a packed representation extended with layout information, our evaluation uses hand-written packed implementations (in C) that include that layout information, mimicking what would be produced by a backend that understands indirections. We evaluate two benchmarks: a {\em parallelization} microbenchmark (Section~\ref{sec:eval-parallelism}) that uses pointer-style indirections to distribute the traversal of a tree, and an implementation of {\em two-point correlation} (Section~\ref{sec:eval-kdtree}) that uses ropes-style indirections.
+Because \treelang{} does not currently support a packed representation
+extended with layout information, our evaluation uses hand-written packed
+implementations (in C) that include that layout information, mimicking what
+would be produced by a backend that understands indirections. We evaluate two
+benchmarks: a {\em parallelization} microbenchmark
+(Section~\ref{sec:eval-parallelism}) that uses pointer-style indirections to
+distribute the traversal of a tree, and an implementation of {\em two-point
+correlation} (Section~\ref{sec:eval-kdtree}) that uses rope-style
+indirections.
 
 \subsubsection{Parallelism opportunity study} \label{sec:eval-parallelism}
 \label{sec:eval-parallel}
@@ -2062,7 +2084,9 @@ demonstrate the potential for large performance gains.
 % --------------------------------------------
 Point correlation  is a well-known algorithm used in data mining~\cite{gray2000n}:
 given a set of points in a k-dimensional space, point correlation computes the number of points in that space  that lie within a
-distance r from a given point p. Rather than comparing each point in the space to the query point, one efficient way of searching such spaces is to store them in kd-trees~\cite{bentley75}. KD-trees are space partitioning trees where the root of the kd tree represents the entire space, and each node's children represents a partition of that node's space into two subspaces.
+distance r from a given point p. 
+
+% Rather than comparing each point in the space to the query point, one efficient way of searching such spaces is to store them in kd-trees~\cite{bentley75}. KD-trees are space partitioning trees where the root of the kd tree represents the entire space, and each node's children represents a partition of that node's space into two subspaces.
 
 % A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two sub-spaces
 % around a split axes in one of the space dimensions, the left subtree stores the points to the left of the split access
@@ -2072,7 +2096,9 @@ distance r from a given point p. Rather than comparing each point in the space t
 
 
 In a naive implementation of point correlation, each point in the space needs
-to be checked against the query point. However kd-trees allow the search
+to be checked against the query point. 
+A more efficient approach is to use kd-trees~\cite{bentley75} to store the points. KD-trees are space partitioning trees where the root of the kd tree represents the entire space, and each node's children represents a partition of that node's space into two subspaces.
+KD-trees allow the search
 process to skip some regions in the space. By storing at each internal node
 the boundaries within which all descendent points lies, the search process can
 skip a subtree is a given point is far enough from the boundaries. As a
@@ -2085,7 +2111,7 @@ obviating the asymptotic performance gains.
 
 We implemented both a standard pointer-based version of 2-point correlation in
 C, as well as a version that operates over a packed representation augmented
-with indirection pointers. Each interior node stores an ropes-style
+with indirection pointers. Each interior node stores a rope-style
 indirection pointer that maintains the size of its child subtrees. If a
 traversal is truncated at that node, the cursor is incremented by the value in
 that indirection pointer, skipping the subtrees and resuming traversal on the
@@ -2152,9 +2178,14 @@ kd-trees directly in the \treelang language.
 Further extensions to the simplest model of packed data provide the
 promise of additional gains. One extension to the model is the
 addition of \emph{indirection nodes}, allowing allocation of unknown
-sizes by chaning together buffers, or supporting parallelism more
+sizes by chaining together buffers, or supporting parallelism more
 effectively with pointers at the top of a tree and dense packing
-further down. Another extension is \emph{data type factoring}, storing
+further down. Indirection nodes are a generalization of the indirections
+described in Section~\ref{sec:extensions}: rather than pointing only to other
+locations within the same buffer, an indirection node could point to a {\em
+different} buffer.
+
+Another extension is \emph{data type factoring}, storing
 leaves in a separate, dense, aligned vector.  This enables (1)
 vectorization of numeric operations, and (2) separating out pointers
 that the GC must traverse.  This may prove essential for an open-world
