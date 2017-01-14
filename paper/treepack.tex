@@ -2167,9 +2167,14 @@ kd-trees directly in the \treelang language.
 Further extensions to the simplest model of packed data provide the
 promise of additional gains. One extension to the model is the
 addition of \emph{indirection nodes}, allowing allocation of unknown
-sizes by chaning together buffers, or supporting parallelism more
+sizes by chaining together buffers, or supporting parallelism more
 effectively with pointers at the top of a tree and dense packing
-further down. Another extension is \emph{data type factoring}, storing
+further down. Indirection nodes are a generalization of the indirections
+described in Section~\ref{sec:extensions}: rather than pointing only to other
+locations within the same buffer, an indirection node could point to a {\em
+different} buffer.
+
+Another extension is \emph{data type factoring}, storing
 leaves in a separate, dense, aligned vector.  This enables (1)
 vectorization of numeric operations, and (2) separating out pointers
 that the GC must traverse.  This may prove essential for an open-world
