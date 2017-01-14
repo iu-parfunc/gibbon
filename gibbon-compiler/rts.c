@@ -265,6 +265,9 @@ int main(int argc, char** argv)
     #endif
     
     // TODO: atoi() error checking
+
+    int got_numargs = 0; // How many numeric arguments have we got.
+    
     int i;
     for (i = 1; i < argc; ++i)
     {
@@ -286,22 +289,20 @@ int main(int argc, char** argv)
 	  global_benchfile_param = argv[i+1];
 	  i++;
 	}
-        else break;
-    }
-    // If present, we expect the last two arguments to be <size> <iters>
-    if (i < argc) {
-      global_size_param  = atoll(argv[i]);
-      i++;
-    }
-    if (i < argc) {
-      global_iters_param = atoll(argv[i]);
-      i++;
-    }
-    if (i < argc) {
-      fprintf(stderr, "Extra arguments left over: ");
-      for(; i < argc; i++) fprintf(stderr, "%s ", argv[i]);
-      show_usage(argv);
-      exit(1);
+        // If present, we expect the two arguments to be <size> <iters>
+        else if (got_numargs >= 2) {
+            fprintf(stderr, "Extra arguments left over: ");
+            for(; i < argc; i++) fprintf(stderr, "%s ", argv[i]);
+            show_usage(argv);
+            exit(1);
+        } else {
+          if (got_numargs == 0) { 
+            global_size_param  = atoll(argv[i]);
+            got_numargs ++;
+          } else {
+            global_iters_param = atoll(argv[i]);
+          }          
+        }
     }
 
     INITALLOC();
