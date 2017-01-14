@@ -2246,8 +2246,10 @@ transforms \treelang{} programs to operate directly on that representation.
 
 We show through a series of microbenchmarks and case studies that our packed
 representation is highly efficient compared to pointer-based representations,
-both in terms of space usage and time, and that we can write even fairly
-complex compiler passes over ASTs in \treelang{} and automatically translate
+both in terms of space usage and time, and that we can
+%write even fairly complex compiler passes over
+process complex data, such as the full Racket language's
+ASTs in \treelang{}, and automatically translate
 them to packed implementations. We also discuss extensions to \treelang{} that
 introduces selective random access to tree nodes in packed representations,
 opening up \treelang{} to more complex applications.
