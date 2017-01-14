@@ -705,7 +705,7 @@ passes in a functional style.
 % ================================================================================
 
 \treelang{}'s approach is to convert programs into a form of {\em destination
-  passing style}, except where destinations are not per-data-constructor, but
+  passing style}~\cite{larus89}, except where destinations are not per-data-constructor, but
 rather per entire tree or subtree.  This approach implies function calls
 producing datatypes do not generally call the allocator, for example, even a
 simple function such as @f@ below is transformed to take a destination cursor
