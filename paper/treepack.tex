@@ -1720,16 +1720,40 @@ load these modules as one tree.
 %% approach works across a wide range of real inputs.
 
 \paragraph*{Results}
-\Red{Figures~\ref{fig:copyprop} and~\ref{fig:subst} present the results
-for copy propagation and substitution, respectively. The x-axis of each figure
-shows the different possible inputs, ordered by the speedup of the packed
-version over the pointer version (higher is better). The dashed horizontal
-line on each figure represents the geomean speedup across all inputs.
 
-We see \note{something -- describe these figures once we see them!}
+First, our benchmark methodology is to run traverse each input tree $N$ times,
+doubling $N$ until the run takes at least two seconds.  This gives us a uniform
+way of measuring both traversals over very small trees and very large ones.
 
-\note{Are we also going to show the same charts ordered by size, instead?}
-}
+
+\cref{fig:slowdown} shows the performance of Gibbon's packed mode vs gibbon's
+pointer (malloc) and bumpalloc modes.  We measured the last level cache
+reference and cache misses and found dramatic improvements in these for the
+packed approach (and modest differences in the number of instructions executed).
+%
+Yet nevertheless the performance of pointer-based approaches is good at small
+sizes: (1) trees are small and fit in cache, (2) the single threaded workload
+can acquire all of the last level cache, not contending with other threads on
+the 16-core machine.  The end result is that the system is able to mask the bad
+behavior of these implementations at these sizes.
+%
+When the input/output tree sizes exceed the cache size, however, we see a phase
+shift.  Once we need to stream trees from memory, the smaller memory footprints
+and linear access patterns of Gibbon's packed approach yield speedups of
+2.5-3$\times$ for fold and 2$\times$ for map.
+
+%% \Red{Figures~\ref{fig:copyprop} and~\ref{fig:subst} present the results
+%% for copy propagation and substitution, respectively. The x-axis of each figure
+%% shows the different possible inputs, ordered by the speedup of the packed
+%% version over the pointer version (higher is better). The dashed horizontal
+%% line on each figure represents the geomean speedup across all inputs.
+
+%% We see \note{something -- describe these figures once we see them!}
+
+% \note{Are we also going to show the same charts ordered by size, instead?}
+
+\note{Phase shift from in cache to out of cache}
+
 
 %% \subsection{Typechecking benchmark}
 %% % --------------------------------------------
@@ -1750,7 +1774,9 @@ We see \note{something -- describe these figures once we see them!}
   \end{minipage}
 %  \vspace{-4mm}
   \caption{The factor {\em slowdown} of competing approaches compared to a
-    baseline of Gibbon's packed mode.}
+    baseline of Gibbon's packed mode.  The X axis is the size in bytes of the
+    (packed) input tree.  Left is the fold benchmark which counts the AST nodes
+    in the tree.  On the right is a map over the tree.}
   \label{fig:slowdown}
 %  \vspace{-4mm}
 \end{figure}
