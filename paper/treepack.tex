@@ -1595,8 +1595,10 @@ case for \treelang{}'s approach.
 \paragraph*{Benchmarks}
 In this portion of the evaluation, we look at
 % two compiler passes, each of which takes a
-the performance of two classes of tree walk (a fold and a map)
-on full Racket core syntax, which is excerpted in \cref{fig:racket-core}.
+the performance of two classes of tree walk
+% (a fold and a map)
+on full Racket core syntax, 
+whose definition is excerpted in \cref{fig:racket-core}.
 %
 These benchmarks consume a Racket abstract syntax tree as input and produce
 either (1) a count of nodes, or (2) a new abstract syntax tree.
@@ -1763,9 +1765,9 @@ We see \note{something -- describe these figures once we see them!}
 %%       (CONSSYM Sym ListSym)
 %%       (NULLSYM))
 
-  \caption{Racket Core AST definition.
-   Follows \url{https://docs.racket-lang.org/reference/syntax-model.html}.
-   Nine datatypes total.}
+  \caption{Excerpt of Racket Core AST definition in Gibbon., which 
+   follows \url{https://docs.racket-lang.org/reference/syntax-model.html}.
+   In total there are nine datatypes total.}
   \label{fig:racket-core}
 \end{figure}}
 
