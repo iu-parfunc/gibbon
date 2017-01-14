@@ -43,8 +43,9 @@ compile()
 run() 
 {
   echo -e "\nRunning each benchmark with 1000 iterations..\n\n"
-  echo -e "Bench,Variant,LeafSize,BatchTime" > $BENCH_BIN/leaves_results.csv
+  echo -e "Bench,Variant,LeafSize,PayloadBytes,SpineBytes,BatchTime" > $BENCH_BIN/leaves_results.csv
 
+  N=`echo -e "2^15"|bc`
   for sz in 1 16 32 64 128
   do
     for bench in $ADD1 $BUILD 
@@ -58,7 +59,15 @@ run()
         batchtime=`awk -F':' '/BATCHTIME*/ { print $2 }' temp.txt`
         echo -e "BATCHTIME: $batchtime"
         rm temp.txt
-        echo -e "${bench#*_}, ${variant#*_}, $sz, $batchtime" >> $BENCH_BIN/leaves_results.csv
+        if [ $variant = "_packed" ]; then
+          spineBytes=`echo -e "8*(2*$N-1)" |bc`
+          payloadBytes=`echo -e "8*$N*$sz" |bc`
+          echo -e "${bench#*_},${variant#*_},$sz,$payloadBytes,$spineBytes,$batchtime" >> $BENCH_BIN/leaves_results.csv
+        else
+          spineBytes=`echo -e "8*(2*$N-1)+8*(2*$N-2)" |bc`
+          payloadBytes=`echo -e "8*$N*$sz" |bc`
+          echo -e "${bench#*_},${variant#*_},$sz,$payloadBytes,$spineBytes,$batchtime" >> $BENCH_BIN/leaves_results.csv
+        fi
       done
     done
   done
