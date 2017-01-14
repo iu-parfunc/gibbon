@@ -594,6 +594,22 @@ splitting concern how to access object fields, and hence, unlike our work, do
 not require deeper transformations to remove the pointer dereferences inherent
 in traversing linked data structures.
 
+Hsu looks at a representation of abstract syntax trees that uses a matrix
+layout, allowing operations to be specified in a data-parallel manner without
+traversing pointers~\cite{hsu2016key}. While this representation shares a goal
+with ours of avoiding pointers, it is not ``packed''---the representation
+requires a dense representation of a sparse matrix---and hence does not yield
+the type of space savings we target.
+
+In the HPC community, linearizing trees and tree traversals for improved
+performance has been a common technique~\cite{makino90,goldfarb13sc}. These
+linearizations tend to be {\em ad hoc}, written specifically for a given
+application, and each application must be re-written by hand to benefit. This
+contrasts with our compiler-based approach which allows programmers to write
+using idiomatic traversal algorithms, relying on the compiler to synthesize
+the packed representation as well as the algorithm to traverse that
+representation.
+
 
 % ================================================================================
 \section{The \treelang{} Language}
@@ -1657,6 +1673,8 @@ Because \treelang{} does not currently support a packed representation extended 
 
 \subsubsection{Parallelism opportunity study} \label{sec:eval-parallelism}
 % ---------------------------------------------------------------------
+
+We evaluate a simple microbenchmark
 
 \note{Report preliminary parallel microbenchmark results, showing the potential
   for future work here.}
