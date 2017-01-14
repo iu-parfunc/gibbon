@@ -1652,7 +1652,7 @@ inserting them into packed representations, and synthesizing cursor updates base
 
 \subsection{Evaluation}
 
-Because \treelang{} does not currently support a packed representation extended with layout information, our evaluation uses hand-written packed implementations (in C) that include that layout information, mimicking what would be produced by a backend that understands indirections. We evaluate two benchmarks: a {\em parallelization} microbenchmark (Section~\ref{sec:eval-parallel}) that uses pointer-style indirections to distribute the traversal of a tree, and an implementation of {\em two-point correlation} (Section~\ref{sec:eval-kdtree}) that uses ropes-style indirections.
+Because \treelang{} does not currently support a packed representation extended with layout information, our evaluation uses hand-written packed implementations (in C) that include that layout information, mimicking what would be produced by a backend that understands indirections. We evaluate two benchmarks: a {\em parallelization} microbenchmark (Section~\ref{sec:eval-parallelism}) that uses pointer-style indirections to distribute the traversal of a tree, and an implementation of {\em two-point correlation} (Section~\ref{sec:eval-kdtree}) that uses ropes-style indirections.
 
 \subsubsection{Parallelism opportunity study} \label{sec:eval-parallelism}
 % ---------------------------------------------------------------------
