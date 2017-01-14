@@ -465,7 +465,7 @@ them automatically.
 
 At a basic level, the remainder of the paper describes how to generate
 this efficient but complex C code automatically from the simple
-functional tree walking program we began with.
+functional tree-walking program we began with.
 %
 However, this code generation process is not as easy as our initial
 example makes it seem. Our compiler must solve several challenging
@@ -474,13 +474,13 @@ into the tree, and more. We begin by outlining some of those
 challenges, and delve into their solutions in subsequent sections.
 
 Of course, many challenges can be overcome with extensions to the data
-format, and in section~\ref{sec:sizes} we will explore various
-extensions to the basic preorder serialization.  But we begin with the
+{format, and in \cref{sec:extensions1,sec:future} we will explore various
+extensions to the basic preorder serialization}.  But we begin with the
 most basic scenario, where all data for a tree resides in one buffer,
 contiguously.
 
 
-\paragraph*{Ensuring complete traversal} Our \il{add1} function is
+\subsubsection{Ensuring complete traversal} Our \il{add1} function is
 well-behaved and easy to compile. But many real programs, even very
 simple ones, pose more challenges. For example, consider the following
 two seemingly-similar functions:
@@ -531,11 +531,11 @@ the addition of an effect system to track how much of the input buffer
 is \emph{read}, corresponding to the effect of moving a cursor in the
 resulting code.
 
-\paragraph*{Copying}
+%% \paragraph*{Copying}
 
-\note{Need something here about copy insertion, maybe?}
+%% \note{Need something here about copy insertion, maybe?}
 
-\paragraph*{Extensions}
+\subsubsection{Extensions} \label{sec:extensions1}
 There are many possible extensions to the basic preorder format. For example, we
 can include {\em indirection nodes}, which use a unique tag to insert a pointer to
 another buffer. We can also selectively use alternative constructors that
@@ -544,7 +544,7 @@ save space even while storing layout.  For instance, the \il{Node} record above
 could be laid out as: {\il{NodeTag <size_left> <left> <right>}}.
 
 Whereas a pointer based representation would spend {\em two words} for the left
-and right pointer (16 bytes~\footnote{One basic advantage that we leverage here
+and right pointer (16 bytes\footnote{One basic advantage that we leverage here
   is that 64 bit platforms have become wasteful of memory, using 8 bytes for
   every pointer, even though most of the time it is unneeded.  }), if we assume
 individual tree values are less than 4GB, we need only four bytes for the size
@@ -553,7 +553,8 @@ of the left tree, and we needn't store the size of the right tree at all!
 Indeed, we plan to explore the tradeoff between density of encoding, and
 computational overhead.  A dense encoding in the style of UTF8 would enable us
 to store small values of \il{<size_left>} in as little as one byte.
-
+%
+We return to the topic of extending the basic format in \cref{sec:future}.
 
 
 \subsection{Related Work}
@@ -728,11 +729,11 @@ use  packed data to represent all types declared using the
 % ================================================================================
 
 \treelang{}'s approach is to convert programs into a form of {\em destination
-  passing style}~\cite{larus89}, except where destinations are not per-data-constructor, but
-rather per entire tree or subtree.  This approach implies function calls
-producing datatypes do not generally call the allocator, for example, even a
-simple function such as @f@ below is transformed to take a destination cursor
-argument.
+  passing style}~\cite{larus89}, except where destinations are not managed
+per-data-constructor (heap object), but rather for entire trees or subtrees.  This approach
+implies function calls producing datatypes do not generally call the allocator,
+for example, even a simple function such as @f@ below is transformed to take a
+destination cursor argument.
 
 \finishmecurly
 \begin{code}
@@ -1690,7 +1691,8 @@ packed trees.
 Automatically inferring what layout information is necessary,
 inserting them into packed representations, and synthesizing cursor updates based on that layout information is a topic for future work.
 
-\subsection{Evaluation}
+
+\subsection{Evaluation}\label{sec:eval-parallelism}
 
 Because \treelang{} does not currently support a packed representation extended with layout information, our evaluation uses hand-written packed implementations (in C) that include that layout information, mimicking what would be produced by a backend that understands indirections. We evaluate two benchmarks: a {\em parallelization} microbenchmark (Section~\ref{sec:eval-parallelism}) that uses pointer-style indirections to distribute the traversal of a tree, and an implementation of {\em two-point correlation} (Section~\ref{sec:eval-kdtree}) that uses ropes-style indirections.
 
