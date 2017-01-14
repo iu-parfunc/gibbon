@@ -1580,8 +1580,8 @@ because directly implementing simple functions on simple data in a packed
 representation is tractable.
 
 More challenging, however, is to operate on trees that have more complex
-structure, such as the abstract syntax trees (ASTs) that arise in compiler
-passes: (i) the trees themselves do not have homogeneous structure, so the
+structure, such as the abstract syntax trees (ASTs) that arise in full blown
+programming languages: (i) the trees themselves do not have homogeneous structure, so the
 location of a particular tree node in a packed buffer is intimately related to
 the types of the other nodes in the tree; and (ii) the operations on the tree
 nodes are not homogeneous, so the structure of computations (including how to
@@ -1593,16 +1593,41 @@ using pattern matching is fairly straightforward. This, then, is an ideal use
 case for \treelang{}'s approach.
 
 \paragraph*{Benchmarks}
-In this portion of the evaluation, we look at two compiler passes, each of
-which takes a Racket abstract syntax tree as input and produces a new abstract
-syntax tree. The two passes are copy propagation and substitution. In both
-cases, the structure of the output AST might differ from that of the input
-AST. While we only evaluate two compiler passes,\footnote{An artifact of \treelang{}'s prototype compiler's limitations, not \treelang{}'s expressiveness.} we note that these passes contain the two major operation types that might be performed on trees: {\tt map}s, where the output tree is structurally similar to the input tree but with a function applied to each node, and {\tt fold}s, which in this context is transforming an entire subtree into some differently-structured output (something as simple as a single node, representing a reduction). Seen at this high level, all compiler passes on ASTs are roughly similar, differing mostly in the work done near the leaves of trees. Hence, we expect the results of these two passes to be representative.
+In this portion of the evaluation, we look at
+% two compiler passes, each of which takes a
+the performance of two classes of tree walk (a fold and a map)
+on full Racket core syntax, which is excerpted in \cref{fig:racket-core}.
+%
+These benchmarks consume a Racket abstract syntax tree as input and produce
+either (1) a count of nodes, or (2) a new abstract syntax tree.
+% The two passes are copy propagation and substitution.
+%% In both cases, the structure of the output AST might differ from that of the
+%% input AST.
+%
+While we only evaluate two simple treewalks,
+%% \footnote{An artifact of  \treelang{}'s prototype compiler's limitations, not \treelang{}'s
+%%   expressiveness.}
+we note that these traversals contain the two major operation
+types that might be performed on trees: {\tt map}s, where the output tree is
+structurally similar to the input tree but with a function applied to each node,
+and {\tt fold}s, which in this context is transforming an entire subtree into
+some differently-structured result.
+%
+Seen at this high level, all compiler passes on ASTs
+are roughly similar, differing mostly in the work done near the leaves of
+trees.
+%
+For example, substitution, copy-propagation, and constant folding all traverse a
+tree and ``act locally''.  Especially transformations that only transform a
+small fraction of the input spend most of their time simply walking over syntax.
+%
+Hence, we expect the results of these two traversals to be representative.
 
-We write each pass in \treelang{}. We then generate two versions of each
+
+We write both benchmarks in \treelang{}. We then generate two versions of each
 benchmark, one using \treelang{}'s {\em pointer-based} backend (which
 generates passes over pointer-based ASTs in C), and one using \treelang{}'s
-{\em packed} backend (which uses our new representation). By letting the
+{\em packed} backend. By letting the
 implementations differ only in the backends used to generate them, we isolate
 the performance differences to those that arise from the difference in
 representation. Because \treelang{} allows for tree traversals to be written
@@ -1610,13 +1635,17 @@ using standard algebraic data type match operations, this evaluation also
 serves to confirm our ability to generate packed implementations from
 idiomatic code.
 
-As input, we use a variety of different ASTs generated from the Racket code
-base, ranging in size from XXX nodes to YYY nodes, with ZZZ different inputs,
-overall. Note that these inputs represent real-world programs of varying
-sizes, ranging from XXX bytes to YYY bytes. This range of programs and sizes
-allows us to understand how input-dependent the behavior of our cursor passing
-transformations and our packed representations are, as well as confirm that
-our approach works across a wide range of real inputs.
+We generated a dataset of inputs by collecting all of the (macro-expanded) source
+code from the main Racket distribution, which contains 4,456 files consuming
+102MB once packed in our dense representation (disregarding symbol tables).
+%
+As input, we use a variety of different ASTs \Red{drawn from this input set},
+ranging in size from \Red{XXX nodes to YYY nodes, with ZZZ different inputs},
+overall. Note that these inputs represent real-world programs of varying sizes,
+ranging from XXX bytes to YYY bytes. This range of programs and sizes allows us
+to understand how input-dependent the behavior of our cursor passing
+transformations and our packed representations are, as well as confirm that our
+approach works across a wide range of real inputs.
 
 \paragraph*{Results}
 \Red{Figures~\ref{fig:copyprop} and~\ref{fig:subst} present the results
