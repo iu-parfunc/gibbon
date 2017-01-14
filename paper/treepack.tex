@@ -3,6 +3,7 @@
 
 %% This is our standard package for code formatting:
 \usepackage{listings}
+\usepackage{url}
 \usepackage{amsmath}
 \usepackage{amsthm}
 \usepackage{hyperref}
@@ -288,8 +289,8 @@ serialization format.\footnote{Even restricted to aligned access, we
 Indeed, if we can compile programs to operate directly on this serialization, we
 follow a precedent of using serialization formats jointly as memory formats.
 For example, Cap'N Proto \cite{capnproto} makes it ergonomic for C++ code to operate directly
-on the Protobuf serialization format in memory.  Likewise ``data baking''
-\cite{data-baking} is an established practice in video games---caching assets on
+on the Protobuf serialization format in memory.  Likewise ``data baking''\footnote{Described here \url{http://nullprogram.com/blog/2016/11/15/}}.
+ is an established practice in video games---caching assets on
 disk in a format that allows them to be \il{mmap}'d into memory and used
 without further conversion.  As a general example of this capability, the
 Glasgow Haskell Compiler (GHC) recently added the capability to store any closed
@@ -727,7 +728,7 @@ and described in \cref{sec:compiler}.
 \treelang is implemented as a language built on Racket~\cite{plt-tr1},
 using Racket's language implementation and extension
 facilities. \treelang's type checking support is implemented by
-compiling to Typed Racket~\cite{typed-racket-popl08}. A programmer can
+compiling to Typed Racket~\cite{popl08}. A programmer can
 develop and test a \treelang program using the DrRacket IDE and tools,
 which include code coverage, syntax highlighting, on-the-fly type
 checking, and more.
@@ -788,7 +789,7 @@ so thus we can {\em region allocate} the @MkFoo@ constructor inside a buffer
 that is freed when the expression returns (in the implementation, this resembles
 stack allocation).  This follows the precedent of other languages such as
 UrWeb~\cite{urweb}, as well as previous work on region
-types~\cite{mlkit,cyclone}.
+types~\cite{mlkit,Grossman2002}.
 
 
 This matter of destination routing is the primary function of the \treelang
@@ -1343,7 +1344,7 @@ interoperability.  Tree data would be marshaled at the boundary, as usual, in
 this case converting from pointer graphs to packed representations.
 %
 Indeed, this arrangement is similar to that used by existing EDSLs for, e.g, GPU
-programming~\cite{accelerate,delite,obsidian}.  Except that those languages are
+programming~\cite{accelerate-icfp13,delite,obsidian-cacm}.  Except that those languages are
 typically focused on arrays and matrices and exclude recursive sum types and
 recursion---which are \treelang's emphasis.
 
