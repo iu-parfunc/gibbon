@@ -1,443 +1,443 @@
 (BeginTop
-  (CONSTOPLVL
-   (BeginTop
-    (CONSTOPLVL
-     (BeginTop
-      (CONSTOPLVL
-       (BeginTop
-        (CONSTOPLVL
-         (BeginTop (NULLTOPLVL))
-         (CONSTOPLVL
-          (Expression
-           (App (VARREF configure) (CONSEXPR (Quote (INTLIT 5)) (NULLEXPR))))
-          (NULLTOPLVL))))
-       (NULLTOPLVL)))
-     (CONSTOPLVL
-      (BeginTop (NULLTOPLVL))
-      (CONSTOPLVL
-       (DefineSyntaxes
-        (CONSSYM register-external-file (NULLSYM))
-        (App
-         (VARREF make-keyword-syntax)
-         (CONSEXPR
-          (Lambda
-           (F1 (NULLSYM))
-           (CONSEXPR
-            (App
-             (VARREF values)
-             (CONSEXPR
-              (QuoteSyntax (INTLIT 5))
-              (CONSEXPR (QuoteSyntax (INTLIT 5)) (NULLEXPR))))
-            (NULLEXPR)))
-          (CONSEXPR
-           (Quote (INTLIT 1))
-           (CONSEXPR
-            (Quote (INTLIT 0))
-            (CONSEXPR
-             (Quote (INTLIT 5))
-             (CONSEXPR
-              (Quote (INTLIT 5))
-              (CONSEXPR (Quote (INTLIT 5)) (NULLEXPR)))))))))
-       (CONSTOPLVL
-        (DefineValues
-         (CONSSYM register-external-file4 (NULLSYM))
-         (Lambda
-          (F1 (CONSSYM indirect1 (CONSSYM indirect2 (CONSSYM f3 (NULLSYM)))))
-          (CONSEXPR
-           (LetValues
-            (CONSLVBIND (CONSSYM f (NULLSYM)) (VARREF f3) (NULLLVBIND))
-            (CONSEXPR
-             (LetValues
-              (CONSLVBIND
-               (CONSSYM indirect (NULLSYM))
-               (If (VARREF indirect2) (VARREF indirect1) (Quote (INTLIT 5)))
-               (NULLLVBIND))
-              (CONSEXPR
-               (LetValues
-                (NULLLVBIND)
-                (CONSEXPR
-                 (App
-                  (VARREF register-external)
-                  (CONSEXPR
-                   (Quote (INTLIT 5))
-                   (CONSEXPR
-                    (VARREF f)
-                    (CONSEXPR
-                     (Quote (INTLIT 5))
-                     (CONSEXPR (VARREF indirect) (NULLEXPR))))))
-                 (NULLEXPR)))
-               (NULLEXPR)))
-             (NULLEXPR)))
-           (NULLEXPR))))
-        (CONSTOPLVL
-         (DefineValues
-          (CONSSYM unpack5 (NULLSYM))
-          (Lambda
-           (F1 (CONSSYM given-kws (CONSSYM given-args (CONSSYM f3 (NULLSYM)))))
-           (CONSEXPR
-            (LetValues
-             (CONSLVBIND
-              (CONSSYM indirect2 (NULLSYM))
-              (App (VARREF pair) (CONSEXPR (VARREF given-kws) (NULLEXPR)))
-              (NULLLVBIND))
-             (CONSEXPR
-              (LetValues
-               (CONSLVBIND
-                (CONSSYM indirect1 (NULLSYM))
-                (If
-                 (VARREF indirect2)
-                 (App (VARREF car) (CONSEXPR (VARREF given-args) (NULLEXPR)))
-                 (App (VARREF void) (NULLEXPR)))
-                (NULLLVBIND))
-               (CONSEXPR
-                (App
-                 (VARREF register-external-file4)
-                 (CONSEXPR
-                  (VARREF indirect1)
-                  (CONSEXPR
-                   (VARREF indirect2)
-                   (CONSEXPR (VARREF f3) (NULLEXPR)))))
-                (NULLEXPR)))
-              (NULLEXPR)))
-            (NULLEXPR))))
-         (CONSTOPLVL
-          (DefineValues
-           (CONSSYM register-external-file6 (NULLSYM))
-           (App
-            (VARREF make-optional-keyword-procedure)
-            (CONSEXPR
-             (Lambda
-              (F1 (CONSSYM given-kws (CONSSYM given-argc (NULLSYM))))
-              (CONSEXPR
-               (If
-                (App
-                 (VARREF symbol-wiped-out-by-character-filtration)
-                 (CONSEXPR
-                  (VARREF given-argc)
-                  (CONSEXPR (Quote (INTLIT 3)) (NULLEXPR))))
-                (LetValues
-                 (CONSLVBIND
-                  (CONSSYM l1 (NULLSYM))
-                  (VARREF given-kws)
-                  (NULLLVBIND))
-                 (CONSEXPR
-                  (LetValues
-                   (CONSLVBIND
-                    (CONSSYM l1 (NULLSYM))
-                    (If
-                     (App (VARREF null) (CONSEXPR (VARREF l1) (NULLEXPR)))
-                     (VARREF l1)
-                     (If
-                      (App
-                       (VARREF eq)
-                       (CONSEXPR
-                        (App (VARREF car) (CONSEXPR (VARREF l1) (NULLEXPR)))
-                        (CONSEXPR (Quote (INTLIT 5)) (NULLEXPR))))
-                      (App (VARREF cdr) (CONSEXPR (VARREF l1) (NULLEXPR)))
-                      (VARREF l1)))
-                    (NULLLVBIND))
-                   (CONSEXPR
-                    (App (VARREF null) (CONSEXPR (VARREF l1) (NULLEXPR)))
-                    (NULLEXPR)))
-                  (NULLEXPR)))
-                (Quote (INTLIT 5)))
-               (NULLEXPR)))
-             (CONSEXPR
-              (CaseLambda
-               (CONSLAMBDACASE
-                (F1
-                 (CONSSYM
-                  given-kws
-                  (CONSSYM given-args (CONSSYM f (NULLSYM)))))
-                (CONSEXPR
-                 (App
-                  (VARREF unpack5)
-                  (CONSEXPR
-                   (VARREF given-kws)
-                   (CONSEXPR
-                    (VARREF given-args)
-                    (CONSEXPR (VARREF f) (NULLEXPR)))))
-                 (NULLEXPR))
-                (NULLLAMBDACASE)))
-              (CONSEXPR
-               (VARREF null)
-               (CONSEXPR
-                (Quote (INTLIT 5))
-                (CONSEXPR
-                 (LetValues
-                  (CONSLVBIND
-                   (CONSSYM register-external-file (NULLSYM))
-                   (CaseLambda
-                    (CONSLAMBDACASE
-                     (F1 (CONSSYM f (NULLSYM)))
-                     (CONSEXPR
-                      (App
-                       (VARREF unpack5)
-                       (CONSEXPR
-                        (VARREF null)
-                        (CONSEXPR
-                         (VARREF null)
-                         (CONSEXPR (VARREF f) (NULLEXPR)))))
-                      (NULLEXPR))
-                     (NULLLAMBDACASE)))
-                   (NULLLVBIND))
-                  (CONSEXPR (VARREF register-external-file) (NULLEXPR)))
-                 (NULLEXPR))))))))
-          (CONSTOPLVL
-           (DefineSyntaxes
-            (CONSSYM register-external-module (NULLSYM))
-            (App
-             (VARREF make-keyword-syntax)
-             (CONSEXPR
-              (Lambda
-               (F1 (NULLSYM))
-               (CONSEXPR
-                (App
-                 (VARREF values)
-                 (CONSEXPR
-                  (QuoteSyntax (INTLIT 5))
-                  (CONSEXPR (QuoteSyntax (INTLIT 5)) (NULLEXPR))))
-                (NULLEXPR)))
-              (CONSEXPR
-               (Quote (INTLIT 1))
-               (CONSEXPR
-                (Quote (INTLIT 0))
-                (CONSEXPR
-                 (Quote (INTLIT 5))
-                 (CONSEXPR
-                  (Quote (INTLIT 5))
-                  (CONSEXPR (Quote (INTLIT 5)) (NULLEXPR)))))))))
-           (CONSTOPLVL
-            (DefineValues
-             (CONSSYM register-external-module10 (NULLSYM))
-             (Lambda
-              (F1
-               (CONSSYM indirect7 (CONSSYM indirect8 (CONSSYM f9 (NULLSYM)))))
-              (CONSEXPR
-               (LetValues
-                (CONSLVBIND (CONSSYM f (NULLSYM)) (VARREF f9) (NULLLVBIND))
-                (CONSEXPR
-                 (LetValues
-                  (CONSLVBIND
-                   (CONSSYM indirect (NULLSYM))
-                   (If
-                    (VARREF indirect8)
-                    (VARREF indirect7)
-                    (Quote (INTLIT 5)))
-                   (NULLLVBIND))
-                  (CONSEXPR
-                   (LetValues
-                    (NULLLVBIND)
-                    (CONSEXPR
-                     (App
-                      (VARREF register-external)
-                      (CONSEXPR
-                       (Quote (INTLIT 5))
-                       (CONSEXPR
-                        (VARREF f)
-                        (CONSEXPR
-                         (Quote (INTLIT 5))
-                         (CONSEXPR (VARREF indirect) (NULLEXPR))))))
-                     (NULLEXPR)))
-                   (NULLEXPR)))
-                 (NULLEXPR)))
-               (NULLEXPR))))
             (CONSTOPLVL
-             (DefineValues
-              (CONSSYM unpack11 (NULLSYM))
-              (Lambda
-               (F1
-                (CONSSYM
-                 given-kws
-                 (CONSSYM given-args (CONSSYM f9 (NULLSYM)))))
-               (CONSEXPR
-                (LetValues
-                 (CONSLVBIND
-                  (CONSSYM indirect8 (NULLSYM))
-                  (App (VARREF pair) (CONSEXPR (VARREF given-kws) (NULLEXPR)))
-                  (NULLLVBIND))
-                 (CONSEXPR
-                  (LetValues
-                   (CONSLVBIND
-                    (CONSSYM indirect7 (NULLSYM))
-                    (If
-                     (VARREF indirect8)
-                     (App
-                      (VARREF car)
-                      (CONSEXPR (VARREF given-args) (NULLEXPR)))
-                     (App (VARREF void) (NULLEXPR)))
-                    (NULLLVBIND))
-                   (CONSEXPR
+             (BeginTop
+               (CONSTOPLVL
+                (BeginTop
+                  (CONSTOPLVL
+                   (BeginTop
+                     (CONSTOPLVL
+                      (BeginTop (NULLTOPLVL))
+                      (CONSTOPLVL
+                       (Expression
+                        (App (VARREF (quote configure)) (CONSEXPR (Quote (INTLIT 5)) (NULLEXPR))))
+                       (NULLTOPLVL))))
+                   (NULLTOPLVL)))
+                (CONSTOPLVL
+                 (BeginTop (NULLTOPLVL))
+                 (CONSTOPLVL
+                  (DefineSyntaxes
+                    (CONSSYM (quote register-external-file) (NULLSYM))
                     (App
-                     (VARREF register-external-module10)
+                     (VARREF (quote make-keyword-syntax))
                      (CONSEXPR
-                      (VARREF indirect7)
-                      (CONSEXPR
-                       (VARREF indirect8)
-                       (CONSEXPR (VARREF f9) (NULLEXPR)))))
-                    (NULLEXPR)))
-                  (NULLEXPR)))
-                (NULLEXPR))))
-             (CONSTOPLVL
-              (DefineValues
-               (CONSSYM register-external-module12 (NULLSYM))
-               (App
-                (VARREF make-optional-keyword-procedure)
-                (CONSEXPR
-                 (Lambda
-                  (F1 (CONSSYM given-kws (CONSSYM given-argc (NULLSYM))))
-                  (CONSEXPR
-                   (If
-                    (App
-                     (VARREF symbol-wiped-out-by-character-filtration)
-                     (CONSEXPR
-                      (VARREF given-argc)
-                      (CONSEXPR (Quote (INTLIT 3)) (NULLEXPR))))
-                    (LetValues
-                     (CONSLVBIND
-                      (CONSSYM l1 (NULLSYM))
-                      (VARREF given-kws)
-                      (NULLLVBIND))
-                     (CONSEXPR
-                      (LetValues
-                       (CONSLVBIND
-                        (CONSSYM l1 (NULLSYM))
-                        (If
-                         (App (VARREF null) (CONSEXPR (VARREF l1) (NULLEXPR)))
-                         (VARREF l1)
-                         (If
-                          (App
-                           (VARREF eq)
-                           (CONSEXPR
-                            (App
-                             (VARREF car)
-                             (CONSEXPR (VARREF l1) (NULLEXPR)))
-                            (CONSEXPR (Quote (INTLIT 5)) (NULLEXPR))))
-                          (App (VARREF cdr) (CONSEXPR (VARREF l1) (NULLEXPR)))
-                          (VARREF l1)))
-                        (NULLLVBIND))
-                       (CONSEXPR
-                        (App (VARREF null) (CONSEXPR (VARREF l1) (NULLEXPR)))
-                        (NULLEXPR)))
-                      (NULLEXPR)))
-                    (Quote (INTLIT 5)))
-                   (NULLEXPR)))
-                 (CONSEXPR
-                  (CaseLambda
-                   (CONSLAMBDACASE
-                    (F1
-                     (CONSSYM
-                      given-kws
-                      (CONSSYM given-args (CONSSYM f (NULLSYM)))))
-                    (CONSEXPR
-                     (App
-                      (VARREF unpack11)
-                      (CONSEXPR
-                       (VARREF given-kws)
-                       (CONSEXPR
-                        (VARREF given-args)
-                        (CONSEXPR (VARREF f) (NULLEXPR)))))
-                     (NULLEXPR))
-                    (NULLLAMBDACASE)))
-                  (CONSEXPR
-                   (VARREF null)
-                   (CONSEXPR
-                    (Quote (INTLIT 5))
-                    (CONSEXPR
-                     (LetValues
-                      (CONSLVBIND
-                       (CONSSYM register-external-module (NULLSYM))
-                       (CaseLambda
-                        (CONSLAMBDACASE
-                         (F1 (CONSSYM f (NULLSYM)))
-                         (CONSEXPR
-                          (App
-                           (VARREF unpack11)
-                           (CONSEXPR
-                            (VARREF null)
-                            (CONSEXPR
-                             (VARREF null)
-                             (CONSEXPR (VARREF f) (NULLEXPR)))))
-                          (NULLEXPR))
-                         (NULLLAMBDACASE)))
-                       (NULLLVBIND))
-                      (CONSEXPR (VARREF register-external-module) (NULLEXPR)))
-                     (NULLEXPR))))))))
-              (CONSTOPLVL
-               (DefineValues
-                (CONSSYM register-external (NULLSYM))
-                (Lambda
-                 (F1
-                  (CONSSYM
-                   who
-                   (CONSSYM f (CONSSYM module (CONSSYM indirect (NULLSYM))))))
-                 (CONSEXPR
-                  (If
-                   (If
-                    (App (VARREF path) (CONSEXPR (VARREF f) (NULLEXPR)))
-                    (App
-                     (VARREF complete-path)
-                     (CONSEXPR (VARREF f) (NULLEXPR)))
-                    (Quote (INTLIT 5)))
-                   (App (VARREF void) (NULLEXPR))
-                   (LetValues
-                    (NULLLVBIND)
-                    (CONSEXPR
-                     (App
-                      (VARREF raise-type-error)
-                      (CONSEXPR
-                       (VARREF who)
-                       (CONSEXPR
-                        (Quote (INTLIT 5))
-                        (CONSEXPR (VARREF f) (NULLEXPR)))))
-                     (NULLEXPR))))
-                  (CONSEXPR
-                   (App
-                    (VARREF log-message)
-                    (CONSEXPR
-                     (App (VARREF current-logger) (NULLEXPR))
-                     (CONSEXPR
-                      (Quote (INTLIT 5))
-                      (CONSEXPR
-                       (Quote (INTLIT 5))
+                      (Lambda
+                       (F1 (NULLSYM))
                        (CONSEXPR
                         (App
-                         (VARREF format)
+                         (VARREF (quote values))
+                         (CONSEXPR
+                          (QuoteSyntax (INTLIT 5))
+                          (CONSEXPR (QuoteSyntax (INTLIT 5)) (NULLEXPR))))
+                        (NULLEXPR)))
+                      (CONSEXPR
+                       (Quote (INTLIT 1))
+                       (CONSEXPR
+                        (Quote (INTLIT 0))
+                        (CONSEXPR
+                         (Quote (INTLIT 5))
                          (CONSEXPR
                           (Quote (INTLIT 5))
-                          (CONSEXPR (VARREF f) (NULLEXPR))))
+                          (CONSEXPR (Quote (INTLIT 5)) (NULLEXPR)))))))))
+                  (CONSTOPLVL
+                   (DefineValues
+                     (CONSSYM (quote register-external-file4) (NULLSYM))
+                     (Lambda
+                      (F1 (CONSSYM (quote indirect1) (CONSSYM (quote indirect2) (CONSSYM (quote f3) (NULLSYM)))))
+                      (CONSEXPR
+                       (LetValues
+                        (CONSLVBIND (CONSSYM (quote f) (NULLSYM)) (VARREF (quote f3)) (NULLLVBIND))
                         (CONSEXPR
-                         (If
-                          (VARREF indirect)
-                          (App
-                           (VARREF apply)
-                           (CONSEXPR
-                            (VARREF make-prefab-struct)
+                         (LetValues
+                          (CONSLVBIND
+                           (CONSSYM (quote indirect) (NULLSYM))
+                           (If (VARREF (quote indirect2)) (VARREF (quote indirect1)) (Quote (INTLIT 5)))
+                           (NULLLVBIND))
+                          (CONSEXPR
+                           (LetValues
+                            (NULLLVBIND)
                             (CONSEXPR
-                             (Quote (INTLIT 5))
-                             (CONSEXPR
-                              (App
-                               (VARREF list)
+                             (App
+                              (VARREF (quote register-external))
+                              (CONSEXPR
+                               (Quote (INTLIT 5))
                                (CONSEXPR
-                                (VARREF f)
+                                (VARREF (quote f))
                                 (CONSEXPR
-                                 (VARREF module)
-                                 (CONSEXPR (Quote (INTLIT 5)) (NULLEXPR)))))
-                              (NULLEXPR)))))
-                          (App
-                           (VARREF apply)
+                                 (Quote (INTLIT 5))
+                                 (CONSEXPR (VARREF (quote indirect)) (NULLEXPR))))))
+                             (NULLEXPR)))
+                           (NULLEXPR)))
+                         (NULLEXPR)))
+                       (NULLEXPR))))
+                   (CONSTOPLVL
+                    (DefineValues
+                      (CONSSYM (quote unpack5) (NULLSYM))
+                      (Lambda
+                       (F1 (CONSSYM (quote given-kws) (CONSSYM (quote given-args) (CONSSYM (quote f3) (NULLSYM)))))
+                       (CONSEXPR
+                        (LetValues
+                         (CONSLVBIND
+                          (CONSSYM (quote indirect2) (NULLSYM))
+                          (App (VARREF (quote pair)) (CONSEXPR (VARREF (quote given-kws)) (NULLEXPR)))
+                          (NULLLVBIND))
+                         (CONSEXPR
+                          (LetValues
+                           (CONSLVBIND
+                            (CONSSYM (quote indirect1) (NULLSYM))
+                            (If
+                             (VARREF (quote indirect2))
+                             (App (VARREF (quote car)) (CONSEXPR (VARREF (quote given-args)) (NULLEXPR)))
+                             (App (VARREF (quote void)) (NULLEXPR)))
+                            (NULLLVBIND))
                            (CONSEXPR
-                            (VARREF make-prefab-struct)
+                            (App
+                             (VARREF (quote register-external-file4))
+                             (CONSEXPR
+                              (VARREF (quote indirect1))
+                              (CONSEXPR
+                               (VARREF (quote indirect2))
+                               (CONSEXPR (VARREF (quote f3)) (NULLEXPR)))))
+                            (NULLEXPR)))
+                          (NULLEXPR)))
+                        (NULLEXPR))))
+                    (CONSTOPLVL
+                     (DefineValues
+                       (CONSSYM (quote register-external-file6) (NULLSYM))
+                       (App
+                        (VARREF (quote make-optional-keyword-procedure))
+                        (CONSEXPR
+                         (Lambda
+                          (F1 (CONSSYM (quote given-kws) (CONSSYM (quote given-argc) (NULLSYM))))
+                          (CONSEXPR
+                           (If
+                            (App
+                             (VARREF (quote symbol-wiped-out-by-character-filtration))
+                             (CONSEXPR
+                              (VARREF (quote given-argc))
+                              (CONSEXPR (Quote (INTLIT 3)) (NULLEXPR))))
+                            (LetValues
+                             (CONSLVBIND
+                              (CONSSYM (quote l1) (NULLSYM))
+                              (VARREF (quote given-kws))
+                              (NULLLVBIND))
+                             (CONSEXPR
+                              (LetValues
+                               (CONSLVBIND
+                                (CONSSYM (quote l1) (NULLSYM))
+                                (If
+                                 (App (VARREF (quote null)) (CONSEXPR (VARREF (quote l1)) (NULLEXPR)))
+                                 (VARREF (quote l1))
+                                 (If
+                                  (App
+                                   (VARREF (quote eq))
+                                   (CONSEXPR
+                                    (App (VARREF (quote car)) (CONSEXPR (VARREF (quote l1)) (NULLEXPR)))
+                                    (CONSEXPR (Quote (INTLIT 5)) (NULLEXPR))))
+                                  (App (VARREF (quote cdr)) (CONSEXPR (VARREF (quote l1)) (NULLEXPR)))
+                                  (VARREF (quote l1))))
+                                (NULLLVBIND))
+                               (CONSEXPR
+                                (App (VARREF (quote null)) (CONSEXPR (VARREF (quote l1)) (NULLEXPR)))
+                                (NULLEXPR)))
+                              (NULLEXPR)))
+                            (Quote (INTLIT 5)))
+                           (NULLEXPR)))
+                         (CONSEXPR
+                          (CaseLambda
+                           (CONSLAMBDACASE
+                            (F1
+                             (CONSSYM
+                              (quote given-kws)
+                              (CONSSYM (quote given-args) (CONSSYM (quote f) (NULLSYM)))))
+                            (CONSEXPR
+                             (App
+                              (VARREF (quote unpack5))
+                              (CONSEXPR
+                               (VARREF (quote given-kws))
+                               (CONSEXPR
+                                (VARREF (quote given-args))
+                                (CONSEXPR (VARREF (quote f)) (NULLEXPR)))))
+                             (NULLEXPR))
+                            (NULLLAMBDACASE)))
+                          (CONSEXPR
+                           (VARREF (quote null))
+                           (CONSEXPR
+                            (Quote (INTLIT 5))
+                            (CONSEXPR
+                             (LetValues
+                              (CONSLVBIND
+                               (CONSSYM (quote register-external-file) (NULLSYM))
+                               (CaseLambda
+                                (CONSLAMBDACASE
+                                 (F1 (CONSSYM (quote f) (NULLSYM)))
+                                 (CONSEXPR
+                                  (App
+                                   (VARREF (quote unpack5))
+                                   (CONSEXPR
+                                    (VARREF (quote null))
+                                    (CONSEXPR
+                                     (VARREF (quote null))
+                                     (CONSEXPR (VARREF (quote f)) (NULLEXPR)))))
+                                  (NULLEXPR))
+                                 (NULLLAMBDACASE)))
+                               (NULLLVBIND))
+                              (CONSEXPR (VARREF (quote register-external-file)) (NULLEXPR)))
+                             (NULLEXPR))))))))
+                     (CONSTOPLVL
+                      (DefineSyntaxes
+                        (CONSSYM (quote register-external-module) (NULLSYM))
+                        (App
+                         (VARREF (quote make-keyword-syntax))
+                         (CONSEXPR
+                          (Lambda
+                           (F1 (NULLSYM))
+                           (CONSEXPR
+                            (App
+                             (VARREF (quote values))
+                             (CONSEXPR
+                              (QuoteSyntax (INTLIT 5))
+                              (CONSEXPR (QuoteSyntax (INTLIT 5)) (NULLEXPR))))
+                            (NULLEXPR)))
+                          (CONSEXPR
+                           (Quote (INTLIT 1))
+                           (CONSEXPR
+                            (Quote (INTLIT 0))
                             (CONSEXPR
                              (Quote (INTLIT 5))
                              (CONSEXPR
-                              (App
-                               (VARREF list)
+                              (Quote (INTLIT 5))
+                              (CONSEXPR (Quote (INTLIT 5)) (NULLEXPR)))))))))
+                      (CONSTOPLVL
+                       (DefineValues
+                         (CONSSYM (quote register-external-module10) (NULLSYM))
+                         (Lambda
+                          (F1
+                           (CONSSYM (quote indirect7) (CONSSYM (quote indirect8) (CONSSYM (quote f9) (NULLSYM)))))
+                          (CONSEXPR
+                           (LetValues
+                            (CONSLVBIND (CONSSYM (quote f) (NULLSYM)) (VARREF (quote f9)) (NULLLVBIND))
+                            (CONSEXPR
+                             (LetValues
+                              (CONSLVBIND
+                               (CONSSYM (quote indirect) (NULLSYM))
+                               (If
+                                (VARREF (quote indirect8))
+                                (VARREF (quote indirect7))
+                                (Quote (INTLIT 5)))
+                               (NULLLVBIND))
+                              (CONSEXPR
+                               (LetValues
+                                (NULLLVBIND)
+                                (CONSEXPR
+                                 (App
+                                  (VARREF (quote register-external))
+                                  (CONSEXPR
+                                   (Quote (INTLIT 5))
+                                   (CONSEXPR
+                                    (VARREF (quote f))
+                                    (CONSEXPR
+                                     (Quote (INTLIT 5))
+                                     (CONSEXPR (VARREF (quote indirect)) (NULLEXPR))))))
+                                 (NULLEXPR)))
+                               (NULLEXPR)))
+                             (NULLEXPR)))
+                           (NULLEXPR))))
+                       (CONSTOPLVL
+                        (DefineValues
+                          (CONSSYM (quote unpack11) (NULLSYM))
+                          (Lambda
+                           (F1
+                            (CONSSYM
+                             (quote given-kws)
+                             (CONSSYM (quote given-args) (CONSSYM (quote f9) (NULLSYM)))))
+                           (CONSEXPR
+                            (LetValues
+                             (CONSLVBIND
+                              (CONSSYM (quote indirect8) (NULLSYM))
+                              (App (VARREF (quote pair)) (CONSEXPR (VARREF (quote given-kws)) (NULLEXPR)))
+                              (NULLLVBIND))
+                             (CONSEXPR
+                              (LetValues
+                               (CONSLVBIND
+                                (CONSSYM (quote indirect7) (NULLSYM))
+                                (If
+                                 (VARREF (quote indirect8))
+                                 (App
+                                  (VARREF (quote car))
+                                  (CONSEXPR (VARREF (quote given-args)) (NULLEXPR)))
+                                 (App (VARREF (quote void)) (NULLEXPR)))
+                                (NULLLVBIND))
                                (CONSEXPR
-                                (VARREF f)
-                                (CONSEXPR (VARREF module) (NULLEXPR))))
-                              (NULLEXPR))))))
-                         (NULLEXPR)))))))
-                   (NULLEXPR)))))
-               (NULLTOPLVL)))))))))))))
-   (NULLTOPLVL)))
+                                (App
+                                 (VARREF (quote register-external-module10))
+                                 (CONSEXPR
+                                  (VARREF (quote indirect7))
+                                  (CONSEXPR
+                                   (VARREF (quote indirect8))
+                                   (CONSEXPR (VARREF (quote f9)) (NULLEXPR)))))
+                                (NULLEXPR)))
+                              (NULLEXPR)))
+                            (NULLEXPR))))
+                        (CONSTOPLVL
+                         (DefineValues
+                           (CONSSYM (quote register-external-module12) (NULLSYM))
+                           (App
+                            (VARREF (quote make-optional-keyword-procedure))
+                            (CONSEXPR
+                             (Lambda
+                              (F1 (CONSSYM (quote given-kws) (CONSSYM (quote given-argc) (NULLSYM))))
+                              (CONSEXPR
+                               (If
+                                (App
+                                 (VARREF (quote symbol-wiped-out-by-character-filtration))
+                                 (CONSEXPR
+                                  (VARREF (quote given-argc))
+                                  (CONSEXPR (Quote (INTLIT 3)) (NULLEXPR))))
+                                (LetValues
+                                 (CONSLVBIND
+                                  (CONSSYM (quote l1) (NULLSYM))
+                                  (VARREF (quote given-kws))
+                                  (NULLLVBIND))
+                                 (CONSEXPR
+                                  (LetValues
+                                   (CONSLVBIND
+                                    (CONSSYM (quote l1) (NULLSYM))
+                                    (If
+                                     (App (VARREF (quote null)) (CONSEXPR (VARREF (quote l1)) (NULLEXPR)))
+                                     (VARREF (quote l1))
+                                     (If
+                                      (App
+                                       (VARREF (quote eq))
+                                       (CONSEXPR
+                                        (App
+                                         (VARREF (quote car))
+                                         (CONSEXPR (VARREF (quote l1)) (NULLEXPR)))
+                                        (CONSEXPR (Quote (INTLIT 5)) (NULLEXPR))))
+                                      (App (VARREF (quote cdr)) (CONSEXPR (VARREF (quote l1)) (NULLEXPR)))
+                                      (VARREF (quote l1))))
+                                    (NULLLVBIND))
+                                   (CONSEXPR
+                                    (App (VARREF (quote null)) (CONSEXPR (VARREF (quote l1)) (NULLEXPR)))
+                                    (NULLEXPR)))
+                                  (NULLEXPR)))
+                                (Quote (INTLIT 5)))
+                               (NULLEXPR)))
+                             (CONSEXPR
+                              (CaseLambda
+                               (CONSLAMBDACASE
+                                (F1
+                                 (CONSSYM
+                                  (quote given-kws)
+                                  (CONSSYM (quote given-args) (CONSSYM (quote f) (NULLSYM)))))
+                                (CONSEXPR
+                                 (App
+                                  (VARREF (quote unpack11))
+                                  (CONSEXPR
+                                   (VARREF (quote given-kws))
+                                   (CONSEXPR
+                                    (VARREF (quote given-args))
+                                    (CONSEXPR (VARREF (quote f)) (NULLEXPR)))))
+                                 (NULLEXPR))
+                                (NULLLAMBDACASE)))
+                              (CONSEXPR
+                               (VARREF (quote null))
+                               (CONSEXPR
+                                (Quote (INTLIT 5))
+                                (CONSEXPR
+                                 (LetValues
+                                  (CONSLVBIND
+                                   (CONSSYM (quote register-external-module) (NULLSYM))
+                                   (CaseLambda
+                                    (CONSLAMBDACASE
+                                     (F1 (CONSSYM (quote f) (NULLSYM)))
+                                     (CONSEXPR
+                                      (App
+                                       (VARREF (quote unpack11))
+                                       (CONSEXPR
+                                        (VARREF (quote null))
+                                        (CONSEXPR
+                                         (VARREF (quote null))
+                                         (CONSEXPR (VARREF (quote f)) (NULLEXPR)))))
+                                      (NULLEXPR))
+                                     (NULLLAMBDACASE)))
+                                   (NULLLVBIND))
+                                  (CONSEXPR (VARREF (quote register-external-module)) (NULLEXPR)))
+                                 (NULLEXPR))))))))
+                         (CONSTOPLVL
+                          (DefineValues
+                            (CONSSYM (quote register-external) (NULLSYM))
+                            (Lambda
+                             (F1
+                              (CONSSYM
+                               (quote who)
+                               (CONSSYM (quote f) (CONSSYM (quote module) (CONSSYM (quote indirect) (NULLSYM))))))
+                             (CONSEXPR
+                              (If
+                               (If
+                                (App (VARREF (quote path)) (CONSEXPR (VARREF (quote f)) (NULLEXPR)))
+                                (App
+                                 (VARREF (quote complete-path))
+                                 (CONSEXPR (VARREF (quote f)) (NULLEXPR)))
+                                (Quote (INTLIT 5)))
+                               (App (VARREF (quote void)) (NULLEXPR))
+                               (LetValues
+                                (NULLLVBIND)
+                                (CONSEXPR
+                                 (App
+                                  (VARREF (quote raise-type-error))
+                                  (CONSEXPR
+                                   (VARREF (quote who))
+                                   (CONSEXPR
+                                    (Quote (INTLIT 5))
+                                    (CONSEXPR (VARREF (quote f)) (NULLEXPR)))))
+                                 (NULLEXPR))))
+                              (CONSEXPR
+                               (App
+                                (VARREF (quote log-message))
+                                (CONSEXPR
+                                 (App (VARREF (quote current-logger)) (NULLEXPR))
+                                 (CONSEXPR
+                                  (Quote (INTLIT 5))
+                                  (CONSEXPR
+                                   (Quote (INTLIT 5))
+                                   (CONSEXPR
+                                    (App
+                                     (VARREF (quote format))
+                                     (CONSEXPR
+                                      (Quote (INTLIT 5))
+                                      (CONSEXPR (VARREF (quote f)) (NULLEXPR))))
+                                    (CONSEXPR
+                                     (If
+                                      (VARREF (quote indirect))
+                                      (App
+                                       (VARREF (quote apply))
+                                       (CONSEXPR
+                                        (VARREF (quote make-prefab-struct))
+                                        (CONSEXPR
+                                         (Quote (INTLIT 5))
+                                         (CONSEXPR
+                                          (App
+                                           (VARREF (quote list))
+                                           (CONSEXPR
+                                            (VARREF (quote f))
+                                            (CONSEXPR
+                                             (VARREF (quote module))
+                                             (CONSEXPR (Quote (INTLIT 5)) (NULLEXPR)))))
+                                          (NULLEXPR)))))
+                                      (App
+                                       (VARREF (quote apply))
+                                       (CONSEXPR
+                                        (VARREF (quote make-prefab-struct))
+                                        (CONSEXPR
+                                         (Quote (INTLIT 5))
+                                         (CONSEXPR
+                                          (App
+                                           (VARREF (quote list))
+                                           (CONSEXPR
+                                            (VARREF (quote f))
+                                            (CONSEXPR (VARREF (quote module)) (NULLEXPR))))
+                                          (NULLEXPR))))))
+                                     (NULLEXPR)))))))
+                               (NULLEXPR)))))
+                          (NULLTOPLVL)))))))))))))
+             (NULLTOPLVL)))
