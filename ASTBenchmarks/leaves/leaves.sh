@@ -43,7 +43,7 @@ compile()
 run() 
 {
   echo -e "\nRunning each benchmark with 1000 iterations..\n\n"
-  echo -e "Bench, LeafSize, Variant, BatchTime\n" > leaves_results.csv
+  echo -e "Bench,Variant,LeafSize,BatchTime" > $BENCH_BIN/leaves_results.csv
 
   for sz in 1 16 32 64 128
   do
@@ -58,7 +58,7 @@ run()
         batchtime=`awk -F':' '/BATCHTIME*/ { print $2 }' temp.txt`
         echo -e "BATCHTIME: $batchtime"
         rm temp.txt
-        echo -e "$bench, $variant, $sz, $batchtime\n" >> leaves_results.csv
+        echo -e "${bench#*_}, ${variant#*_}, $sz, $batchtime" >> $BENCH_BIN/leaves_results.csv
       done
     done
   done
