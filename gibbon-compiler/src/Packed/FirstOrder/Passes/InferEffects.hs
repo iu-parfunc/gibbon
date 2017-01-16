@@ -230,15 +230,16 @@ inferExp (ddefs,fenv) env e = exp env e
          return (S.union beff reff, bloc)
 
      -- We need to reach a fixed point where we jointly infer effects
-     -- for all functions.
-     L1.AppE rat rand ->
-      case rand of
-        L1.VarE vr -> 
-          do let loc   = env # vr
-             let arrTy = fenv # rat
-             instantiateApp arrTy loc
-        _ -> error$ "FINISHME: handle this rand: "++show rand
-
+     -- for all functions.                
+     L1.AppE rat rand -> -- rand guaranteed to be trivial here.
+      let getloc (VarE v) = env # v
+          getloc (MkProdE trvz) = TupLoc (L.map getloc trvz)
+          getloc (ProjE ix trv) = let TupLoc ls = getloc trv 
+                                  in ls !! ix
+          getloc oth =  error$ "FINISHME: handle this rand: "++show oth
+          arrTy = fenv # rat
+      in instantiateApp arrTy (getloc rand)
+         
      -- If rands are already trivial, no traversal effects can occur here.
      L1.PrimAppE _ rands -> L1.assertTrivs rands $ 
          return (S.empty, Bottom) -- All primitives operate on non-packed data.
@@ -248,8 +249,8 @@ inferExp (ddefs,fenv) env e = exp env e
                          return (S.unions effs, TupLoc locs)
      L1.ProjE _ e -> exp env e
 
-     L1.MapE{}  -> __nolists
-     L1.FoldE{} -> __nolists
+     L1.MapE{}  -> error "FINISHLISTS"
+     L1.FoldE{} -> error "FINISHLISTS"
 
 --     L1.MkPacked k ls ->
 

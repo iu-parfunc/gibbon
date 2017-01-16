@@ -37,7 +37,7 @@ module Packed.FirstOrder.Common
        , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
 
          -- * Misc helpers
-       , (#), fragileZip, fragileZip', sdoc, ndoc, abbrv
+       , (#), (!!!), fragileZip, fragileZip', sdoc, ndoc, abbrv
 
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
@@ -166,9 +166,9 @@ lkp dds con =
 
 
 insertDD :: DDef a -> DDefs a -> DDefs a
-insertDD d = M.insertWith err (tyName d) d
+insertDD d = M.insertWith err' (tyName d) d
   where
-   err = error $ "insertDD: data definition with duplicate name: "++show (tyName d)
+   err' = error $ "insertDD: data definition with duplicate name: "++show (tyName d)
 
 emptyDD :: DDefs a
 emptyDD  = M.empty
@@ -196,9 +196,9 @@ instance (NFData t, NFData e) => NFData (FunDef t e) where
 instance (Out a, Out b) => Out (FunDef a b)
 
 insertFD :: FunDef t e -> FunDefs t e -> FunDefs t e
-insertFD d = M.insertWith err (funName d) d
+insertFD d = M.insertWith err' (funName d) d
   where
-   err = error $ "insertFD: function definition with duplicate name: "++show (funName d)
+   err' = error $ "insertFD: function definition with duplicate name: "++show (funName d)
 
 fromListFD :: [FunDef t e] -> FunDefs t e
 fromListFD = L.foldr insertFD M.empty
@@ -246,14 +246,24 @@ err = errorWithStackTrace
     => Map a b -> a -> b
 m # k = case M.lookup k m of
           Just x  -> x
-          Nothing -> errorWithStackTrace $ "Map lookup failed on key: "++show k
+          Nothing -> err $ "Map lookup failed on key: "++show k
                      ++ " in map:\n "++ show (doc m)
 
+
+(!!!) :: (Out a, Show a) => [a] -> Int -> a
+ls0 !!! ix0 = go ls0 ix0
+ where
+   go [] _ = err $ "Not enough elements in list to retrieve "++show ix0
+                   ++", list:\n"++abbrv 300 ls0
+   go (x:_) 0 = x
+   go (_:xs) n = go xs (n-1)
+
+                        
 fragileZip :: (Show a, Show b) => [a] -> [b] -> [(a, b)]
 fragileZip [] [] = []
 fragileZip (a:as) (b:bs) = (a,b) : fragileZip as bs
-fragileZip as [] = errorWithStackTrace$ "fragileZip: right ran out, while left still has: "++show as
-fragileZip [] bs = errorWithStackTrace$ "fragileZip: left ran out, while right still has: "++show bs
+fragileZip as [] = err$ "fragileZip: right ran out, while left still has: "++show as
+fragileZip [] bs = err$ "fragileZip: left ran out, while right still has: "++show bs
 
 
 -- | Like fragileZip, but takes a custom error message.

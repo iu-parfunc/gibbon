@@ -22,7 +22,7 @@
 (printf "Done ingesting AST.\n")
 
 (define-values (cn cpu real gc)
-  (time-apply (lambda () (for/list : (Listof Integer) ([_ (in-range iters)])
+  (time-apply (lambda () (for ([_ (in-range iters)])
                            (countnodes ast)))
               '()))
 
@@ -30,5 +30,5 @@
 (printf "ITERS: ~a\n" iters)
 (printf "BATCHTIME: ~a\n" (exact->inexact batchseconds))
 (printf "MEANTIME: ~a\n" (/ batchseconds iters))
-(printf "Node count: ~a\n" (caar cn))
+(printf "Node count: ~a\n" (car cn))
 (printf "Done with count nodes pass.\n")

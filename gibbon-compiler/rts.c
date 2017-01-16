@@ -10,20 +10,121 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <stdarg.h> // For va_start etc
+#include <errno.h>
 
-#define ALLOC malloc
-#define ALLOC_PACKED ALLOC
-
-#define SIZE 1000
-
-// Big default:
-static long long global_default_buf_size = (500lu * 1000lu * 1000lu);
+// Big default.  Used for --packed and --pointer/bumpalloc
+// static long long global_default_buf_size = (500lu * 1000lu * 1000lu);
+static long long global_default_buf_size = (5 * 1000lu * 1000lu * 1000lu); // 9GB.
 
 static long long global_size_param = 1;
 static long long global_iters_param = 1;
 
 static char*     global_benchfile_param = NULL;
 
+// Sequential for now:
+static const int num_workers = 1;
+
+
+// Helpers and debugging:
+//--------------------------------------------------------------------------------
+
+//--------------------------------------------------------------------------------
+
+#ifdef BUMPALLOC
+// #define DEBUG
+#warning "Using bump allocator."
+
+  char* heap_ptr = (char*)NULL;
+
+  char* saved_heap_ptr_stack[100];
+  int num_saved_heap_ptr = 0;
+
+  // Requires -std=gnu11
+  int dbgprintf(const char *format, ...)
+  {
+      int code = 0;
+      va_list args;
+      va_start(args, format);
+  #ifdef DEBUG
+      code = vprintf(format, args);
+  #endif
+      va_end(args);
+      return code;
+  }
+
+  // For simplicity just use a single large slab:
+  void INITALLOC() {
+    if (! heap_ptr)
+    {
+      // Use a fixed address in debug mode for easy reading:
+      #ifdef DEBUG     
+      // heap_ptr = (char*)mmap(0x010000000000, global_default_buf_size, PROT_READ|PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+        heap_ptr = (char*)mmap(0x010000000000, global_default_buf_size, PROT_READ|PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+        if (heap_ptr == MAP_FAILED) {
+          fprintf(stderr, "Error: mmap failed: %s\n", strerror(errno));
+          abort();
+        }
+      #else      
+        heap_ptr = (char*)malloc(global_default_buf_size);
+      #endif
+      dbgprintf("Arena size for bump alloc: %lld\n", global_default_buf_size);
+    }
+    dbgprintf("BUMPALLOC/INITALLOC DONE: heap_ptr = %p\n", heap_ptr);
+  }
+
+  #ifdef DEBUG
+    char* my_abort() {
+      fprintf(stderr, "Error: this thread's heap was not initalized.\n");
+      abort();
+      return NULL;
+    }
+    void* ALLOC(int n) {
+      if (!heap_ptr) my_abort();
+      char* old = heap_ptr;
+      printf("ALLOC: %d bytes, returning %p\n", n, old);
+      // heap_ptr += 16 * n; // Optional padding for debugging.
+      heap_ptr += n;
+      return old;
+    }
+  #else
+    // #define ALLOC(n) (do heap_ptr += n)
+    void* ALLOC(int n) { char* old= heap_ptr; heap_ptr += n; return old; }
+  #endif // DEBUG
+
+  // Snapshot the current heap pointer value across all threads.
+  void save_alloc_state() {
+    dbgprintf("   Saving(%p): pos %d", heap_ptr, num_saved_heap_ptr);
+    saved_heap_ptr_stack[num_saved_heap_ptr] = heap_ptr;
+    num_saved_heap_ptr++;
+    dbgprintf("\n");    
+  }
+
+  void restore_alloc_state() {
+    if(num_saved_heap_ptr <= 0) {
+      fprintf(stderr, "Bad call to restore_alloc_state!  Saved stack empty!\ne");
+      abort();
+    }
+    num_saved_heap_ptr--;
+    dbgprintf("Restoring(%p): pos %d, discarding %p",
+              saved_heap_ptr_stack[num_saved_heap_ptr], num_saved_heap_ptr, heap_ptr);
+    heap_ptr = saved_heap_ptr_stack[num_saved_heap_ptr];
+  }
+
+#else
+  // Regular malloc mode:
+  void INITALLOC() {}
+
+  void save_alloc_state() {}
+  void restore_alloc_state() {}
+
+  #define ALLOC(n) malloc(n)
+
+#endif // BUMPALLOC
+
+#define ALLOC_PACKED(n) ALLOC(n)
+
+// --------------------------------------------------------------------------------
 
 typedef char TagTyPacked;  // Must be consistent with codegen in Target.hs
 typedef char TagTyBoxed;   // Must be consistent with codegen in Target.hs
@@ -164,6 +265,9 @@ int main(int argc, char** argv)
     #endif
     
     // TODO: atoi() error checking
+
+    int got_numargs = 0; // How many numeric arguments have we got.
+    
     int i;
     for (i = 1; i < argc; ++i)
     {
@@ -185,26 +289,26 @@ int main(int argc, char** argv)
 	  global_benchfile_param = argv[i+1];
 	  i++;
 	}
-        else break;
-    }
-    // If present, we expect the last two arguments to be <size> <iters>
-    if (i < argc) {
-      global_size_param  = atoll(argv[i]);
-      i++;
-    }
-    if (i < argc) {
-      global_iters_param = atoll(argv[i]);
-      i++;
-    }
-    if (i < argc) {
-      fprintf(stderr, "Extra arguments left over: ");
-      for(; i < argc; i++) fprintf(stderr, "%s ", argv[i]);
-      show_usage(argv);
-      exit(1);
+        // If present, we expect the two arguments to be <size> <iters>
+        else if (got_numargs >= 2) {
+            fprintf(stderr, "Extra arguments left over: ");
+            for(; i < argc; i++) fprintf(stderr, "%s ", argv[i]);
+            show_usage(argv);
+            exit(1);
+        } else {
+          if (got_numargs == 0) { 
+            global_size_param  = atoll(argv[i]);
+            got_numargs ++;
+          } else {
+            global_iters_param = atoll(argv[i]);
+          }          
+        }
     }
 
-    
-    
+    INITALLOC();
+#ifdef BUMPALLOC      
+    //    save_alloc_state();   
+#endif
     __main_expr();
 
     return 0;

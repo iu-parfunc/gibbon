@@ -8,9 +8,17 @@
                          (unless (equal? out "-")
                            (set! outf out))]
                 #:args args args))
-  (combine-all args outf))
+  (if (null? args)
+      (combine-all
+       (let loop ()
+         (define l (read-line))
+         (if (eof-object? l) '()
+             (cons l (loop))))
+       outf)
+      (combine-all args outf)))
 
 (define (combine-all fs out)
+  (printf "Combining ~a files.\n" (length fs))
   (define ls (map file->value fs))
   (define outp (if out (open-output-file out) (current-output-port)))
   (write

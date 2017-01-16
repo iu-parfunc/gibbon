@@ -27,12 +27,12 @@ handwritten-c-pointer
 handwritten-c-packed
 |#
 
-(define (launch-benchmarks [exec : String] [pass-name : String] [variant : String]);; [file_list : String])  
+(define (launch-benchmarks [exec : String] [pass-name : String] [variant : String] [file_list : String])  
   (define outfile (format "results_~a_~a.csv" variant (current-seconds)))
   (define csv (open-output-file outfile #:exists 'replace))
 
   (printf "calling driver\n")
-  (driver csv exec pass-name variant);; file_list)
+  (driver csv exec pass-name variant file_list)
   (system (format "cp ~a ~a" outfile (string-append destdir outfile)))
   (printf "Output copied to ~a\n" destdir)
   (close-output-port csv)) 

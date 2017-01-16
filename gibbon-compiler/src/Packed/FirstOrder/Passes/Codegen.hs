@@ -289,9 +289,13 @@ codegenTail (LetTimedT flg bnds rhs body) ty =
            iters = "iters_"++ident
        let timebod = [ C.BlockDecl [cdecl| struct timespec $id:begn; |]
                      , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, & $id:begn );  |]
-                     , C.BlockStm (if flg
-                                   then [cstm| for (long long $id:iters = 0; $id:iters < global_iters_param; $id:iters ++) { $items:rhs'' }  |]
-                                   else [cstm| { $items:rhs'' } |])
+                     , (if flg
+                        -- Save and restore EXCEPT on the last iteration.  This "cancels out" the effect of intermediate allocations.
+                        then let body = [ C.BlockStm [cstm| if ( $id:iters != global_iters_param-1) save_alloc_state(); |] ] ++
+                                        rhs''++
+                                        [ C.BlockStm [cstm| if ( $id:iters != global_iters_param-1) restore_alloc_state(); |] ]
+                             in C.BlockStm [cstm| for (long long $id:iters = 0; $id:iters < global_iters_param; $id:iters ++) { $items:body } |]
+                        else C.BlockStm [cstm| { $items:rhs'' } |])
                      , C.BlockDecl [cdecl| struct timespec $id:end; |]
                      , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid end)); |]
                      ]
@@ -408,9 +412,11 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                                     unpackName [VarTriv "ptr"] (AssnValsT [])
                              let mmapCode =
                                   [ C.BlockDecl[cdecl| int fd = open( $filename, O_RDONLY); |]
+                                  , C.BlockStm[cstm| { if(fd == -1) { fprintf(stderr,"fopen failed\n"); abort(); }} |]
                                   , C.BlockDecl[cdecl| struct stat st; |]
                                   , C.BlockStm  [cstm| fstat(fd, &st); |]
                                   , C.BlockDecl[cdecl| $ty:(codegenTy CursorTy) ptr = ($ty:(codegenTy CursorTy)) mmap(0,st.st_size,PROT_READ,MAP_PRIVATE,fd,0); |]
+                                  , C.BlockStm[cstm| { if(ptr==MAP_FAILED) { fprintf(stderr,"mmap failed\n"); abort(); }} |]
                                   ]
                              docall <- if isPacked
                                        -- In packed mode we eagerly FORCE the IO to happen before we start benchmarking:

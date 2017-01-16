@@ -89,6 +89,7 @@ data Config = Config
   , benchInput :: Maybe FilePath -- ^ What packed, binary .gpkd file to use as input.
   , benchPrint :: Bool  -- ^ Should the benchamrked function have its output printed?
   , packed     :: Bool  -- ^ Use packed representation.
+  , bumpAlloc  :: Bool  -- ^ Use bump-pointer allocation if using the non-packed backend.
   , verbosity  :: Int   -- ^ Debugging output, equivalent to DEBUG env var.
   , cc        :: String -- ^ C compiler to use
   , optc      :: String -- ^ Options to the C compiler
@@ -122,7 +123,8 @@ defaultConfig =
          , mode  = ToExe
          , benchInput = Nothing
          , benchPrint = False
-         , packed = False
+         , packed    = False
+         , bumpAlloc = False
          , verbosity = 1
          , cc = "gcc"
          , optc = " -O3  "
@@ -130,7 +132,7 @@ defaultConfig =
          , cfile = Nothing
          , exefile = Nothing
          }
-
+  
 suppress_warnings :: String
 suppress_warnings = " -Wno-incompatible-pointer-types -Wno-int-conversion "
   
@@ -149,6 +151,9 @@ configParser = Config <$> inputParser
                            <|> fmap not (switch (long "pointer" <>
                                          help "enable pointer-based trees in C backend (default)"))
                           )
+                      <*> switch (long "bumpalloc" <>
+                                  help "Use BUMPALLOC mode in generated C code.  Only affects --pointer")
+                      
                       <*> (option auto (short 'v' <> long "verbose" <>
                                        help "Set the debug output level, 1-5, mirrors DEBUG env var.")
                            <|> pure 1)
@@ -230,7 +235,7 @@ type PassRunner a b = (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a
 -- files to process.
 compile :: Config -> FilePath -> IO ()
 -- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compile Config{input,mode,benchInput,benchPrint,packed,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
+compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
   -- TERRIBLE HACK!!  This verbosity value is global, "pure" and can be read anywhere
   when (verbosity > 1) $ do
     setEnv "DEBUG" (show verbosity)
@@ -434,7 +439,9 @@ compile Config{input,mode,benchInput,benchPrint,packed,verbosity,cc,optc,warnc,c
     writeFile outfile str
     -- (Stage 2) Code written, now compile if warranted.
     when (mode == ToExe || mode == RunExe || isBench mode ) $ do
-      let cmd = cc ++" -std=gnu11 "++optc++" "++" "
+      let cmd = cc ++" -std=gnu11 "
+                   ++(if bumpAlloc then "-DBUMPALLOC " else "")
+                   ++optc++"  "
                    ++(if warnc then "" else suppress_warnings)
                    ++" "++outfile++" -o "++ exe
       dbgPrintLn minChatLvl cmd

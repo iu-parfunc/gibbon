@@ -67,16 +67,49 @@ BIG= $(TREELANGDIR)/ASTBenchmarks/cleaned_racket/share/pkgs/typed-racket-more/ty
 BIGPKD= $(TREELANGDIR)/ASTBenchmarks/binary_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.gpkd
 PERF= perf stat -e cycles,instructions,cache-references,cache-misses,bus-cycles
 
-big:
+ITERS=100
+
+# Run on a single biggish file:
+big: bigfold bigmap
+bigfold:
 	ls -l $(BIG)
 	ls -l $(BIGPKD)
-	$(GIBBON) --pointer --bench-print --bench-fun countnodes -o test25f_pointer.exe test25f_countnodes.gib
-	$(GIBBON) --packed  --bench-print --bench-fun countnodes -o test25f_packed.exe test25f_countnodes.gib
+	$(GIBBON) --pointer --bench-print --bench-fun countnodes -o test25f_pointer.exe --cfile=test25f_pointer.c test25f_countnodes.gib
+	$(GIBBON) --packed  --bench-print --bench-fun countnodes -o test25f_packed.exe  --cfile=test25f_packed.c  test25f_countnodes.gib
 	@echo "Pointer version"
 	$(PERF) ./test25f_pointer.exe --bench-input $(BIGPKD) 0 1000
 	@echo "Packed version"
 	$(PERF) ./test25f_packed.exe --bench-input $(BIGPKD) 0 1000
 
+# Don't print with this one.  It's too big. I verified by hand that it worked [2017.01.12].
+bigmap:
+	$(GIBBON) --pointer  --bench-fun treewalk -o test26a_pointer.exe --cfile=test26a_pointer.c test26a_treewalk.sexp
+	$(GIBBON) --packed   --bench-fun treewalk -o test26a_packed.exe  --cfile=test26a_packed.c  test26a_treewalk.sexp
+	$(GIBBON) --pointer --bumpalloc --bench-fun treewalk -o test26a_pointer_bumpalloc.exe --cfile=test26a_pointer_bumpalloc.c test26a_treewalk.sexp
+	DEBUG=2 stack exec -- gibbon --optc="-g -DDEBUG" --pointer --bumpalloc --bench-fun treewalk -o test26a_pointer_bumpalloc_dbg.exe --cfile=test26a_pointer_bumpalloc.c test26a_treewalk.sexp
+
+	@echo; echo "Packed version"
+	@echo "============================================================"
+	$(PERF) ./test26a_packed.exe --bench-input $(BIGPKD) 0 $(ITERS)
+
+	@echo; echo "Pointer version"
+	@echo "============================================================"
+	$(PERF) ./test26a_pointer.exe --bench-input $(BIGPKD) 0 $(ITERS)
+
+	@echo; echo "Bumpalloc pointer version"
+	@echo "============================================================"
+	$(PERF) ./test26a_pointer_bumpalloc.exe --bench-input $(BIGPKD) 0 $(ITERS)
+
+megamap:
+	$(MAKE) BIGPKD=$(TREELANGDIR)/ASTBenchmarks/mega_asts/mega1_1.gpkd bigmap
+
+# Less than 1K
+# SMALL=./share/pkgs/htdp-lib/2htdp/planetcute/roof-north-east.rkt.out.gpkd
+# exactly 4096 bytes:
+SMALL=./share/pkgs/web-server-doc/web-server/scribblings/tutorial/examples/iteration-10.rkt.out.gpkd
+minimap:
+	du -sch $(TREELANGDIR)/ASTBenchmarks/binary_racket/$(SMALL)
+	$(MAKE) BIGPKD=$(TREELANGDIR)/ASTBenchmarks/binary_racket/$(SMALL) ITERS=100000 bigmap
 
 
 # Assumes answers and build already available:
@@ -203,7 +236,7 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.gib $(GIBBONEXEC)
 
 PACKED_FAILING ?=  test12_skip.gib  test16_forlist.gib test17_forfold.gib \
  test20b_bintree.gib  \
- test25a_withprint.gib
+ test25a_withprint.gib test26_treewalk.sexp test27a_subst.sexp
 
 # test20b_bintree.gib   -- requires copy insertion
 # test12_skip.gib       -- requires copy insertion!! unbound var thru to C code
@@ -219,7 +252,7 @@ run_tests_packed: answers
 
 # This one is seriously rotted:
 INTERP2_FAILING = test00a_size.gib test00b_printBool.gib test00d_printData.gib \
-  test02d_printPair.gib \
+  test02d_printPair.gib test02e_printNest.gib test03d_eqs.gib \
   test06a_two_cases.gib test06b_case.gib test06_case.gib test06c_nested.gib \
   test06d_rec.gib test06e_rec.gib test06f_rec.gib test06g_rec.gib \
   test06h_rec.gib test06i_casecase.gib test07b_iterate.gib test11b_fundata.gib test11c_funrec.gib \
@@ -233,8 +266,8 @@ INTERP2_FAILING = test00a_size.gib test00b_printBool.gib test00d_printData.gib \
   test25a_withprint.gib test25b_racketcore.gib test25_rackcore.gib \
   test25c_racketcore.gib test25d_racketcore.gib test25e_countnodes.gib test25f_countnodes.gib \
   test11_fundata.gib test10_desugar.gib test10b_desugar.gib test24_defs.gib \
-  test09_recur.gib test08_dict.gib test02b_datacon.gib test02c_case.gib 
-# Last line are new regressions...
+  test09_recur.gib test08_dict.gib test02b_datacon.gib test02c_case.gib \
+  test26_treewalk.sexp test26a_treewalk.sexp test27a_subst.sexp
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: answers

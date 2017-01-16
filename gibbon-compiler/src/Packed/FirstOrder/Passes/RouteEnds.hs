@@ -213,7 +213,11 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
      -- but we still need to figure out which subexpressions shoud be 
      -- be demanded to produce them.
      CaseE e1 ls -> L1.assertTriv e1 $
-      let scrutloc = let VarE sv = e1 in env # sv
+      let scrutloc = let lp (VarE sv)     = env # sv
+                         lp (ProjE ix e') = let TupLoc ls = lp e'
+                                            in ls !!! ix
+                         lp oth = error$ "[RouteEnds] FINISHME, handle case scrutinee at loc: "++show oth
+                     in lp e1
 
           docase (dcon,patVs,rhs) = do
             let tys    = lookupDataCon ddefs dcon

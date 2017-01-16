@@ -9,16 +9,30 @@
 (define (subst [old : Sym] [new : Sym] [e0 : Toplvl]) : Toplvl
   (top old new e0))
 
-;; (data Toplvl
-;;       [DefineValues   (Listof Sym) Expr]
-;;       [DefineSyntaxes (Listof Sym) Expr]
-;;       [Expression Expr])
+;; Foldish functions
+; ------------------------------------------------------------
+
+(define (memq [v : Sym] [ls : ListSym]) : Bool
+  (case ls
+    [(CONSSYM s ls) (or (eq? v s) (memq v ls))]
+    [(NULLSYM) False]))
+
+(define (bound? [old : Sym] [ls : LVBIND]) : Bool
+  (case ls
+    [(CONSLVBIND syms e rest) (if (memq old syms)
+                                  True
+                                  (bound? old rest))]
+    [(NULLLVBIND) False]))
+
+;; Subst style functions
+;; ------------------------------------------------------------
+
 (define (top [old : Sym] [new : Sym] [e : Toplvl]) : Toplvl
   (case e
     [(DefineValues ls e)
-     (DefineValues ls (expr old new e))]
+     (DefineValues (sym-ls ls) (expr old new e))]
     [(DefineSyntaxes ls e)
-     (DefineSyntaxes ls (expr old new e))]
+     (DefineSyntaxes (sym-ls ls) (expr old new e))]
     [(BeginTop ls)
      (BeginTop (top-ls old new ls))]
     [(Expression e)
@@ -34,71 +48,62 @@
     [(CONSEXPR e es) (CONSEXPR (expr old new e) (expr-ls old new es))]
     [(NULLEXPR) (NULLEXPR)]))
 
-(define (memq [v : Sym] [ls : ListSym]) : Bool
-  (case ls
-    [(CONSSYM s ls) (or (eq? v s) (memq v ls))]
-    [(NULLSYM) False]))
-
-(define (bound? [old : Sym] [ls : LVBIND]) : Bool
-  (case ls
-    [(CONSLVBIND syms e rest) (if (memq old syms)
-                                  True
-                                  (bound? old rest))]
-    [(NULLLVBIND) False]))
 (define (subst-lvbind [old : Sym] [new : Sym] [lv : LVBIND]) : LVBIND
   (case lv
     [(NULLLVBIND) (NULLLVBIND)]
     [(CONSLVBIND syms e rest)
-     (CONSLVBIND syms (expr old new e) (subst-lvbind old new rest))]))
+     (CONSLVBIND (sym-ls syms) (expr old new e) (subst-lvbind old new rest))]))
+
 (define (subst-lambdacase [old : Sym] [new : Sym] [lc : LAMBDACASE]) : LAMBDACASE
        (case lc
          [(NULLLAMBDACASE) lc]
          [(CONSLAMBDACASE formals exprs rest)
           (if (bound-in? old formals)
-              (CONSLAMBDACASE formals exprs (subst-lambdacase old new rest))
-              (CONSLAMBDACASE formals (expr-ls old new exprs) (subst-lambdacase old new rest)))]))
+              (CONSLAMBDACASE (walk-formals formals) (copy-exprs exprs)      (subst-lambdacase old new rest))
+              (CONSLAMBDACASE (walk-formals formals) (expr-ls old new exprs) (subst-lambdacase old new rest)))]))
 
-(define (expr [old : Sym] [new : Sym] [e : Expr]) : Expr
-  (case e
+(define (expr [old : Sym] [new : Sym] [e0 : Expr]) : Expr
+  (case e0
     ;; Variable references:
     [(VARREF s)
      (if (eq? old s)
          (VARREF new)
-         e)]
+         (VARREF s))]
     [(Top s)
      (if (eq? old s)
          (Top new)
-         e)]
+         (Top s))]
     [(VariableReference s)   ; #%variable-reference
      (if (eq? old s)
          (VariableReference new)
-         e)] 
+         (VariableReference s))]
     [(VariableReferenceTop s)   ; #%variable-reference (#%top . id)
      (if (eq? old s)
          (VariableReferenceTop new)
-         e)]
+         (VariableReferenceTop s))]
 
     ;; Leaf forms:
     [(VariableReferenceNull)     ; (#%variable-reference)
-     e]
-    [(Quote d) e]
-    [(QuoteSyntax d) e]
-    [(QuoteSyntaxLocal d) e] ;; (quote-syntax datum #:local)
+     (VariableReferenceNull)]
+    [(Quote d)            (Quote (walk-datum d))]
+    [(QuoteSyntax d)      (QuoteSyntax (walk-datum d))]
+    [(QuoteSyntaxLocal d) (QuoteSyntaxLocal (walk-datum d))] ;; (quote-syntax datum #:local)
 
     ;; Binding forms:
     [(Lambda formals lse)
-     (Lambda formals (if (bound-in? old formals)
-                         lse
-                         (expr-ls old new lse)))]
+     (Lambda (walk-formals formals)
+             (if (bound-in? old formals)
+                 (copy-exprs lse)
+                 (expr-ls old new lse)))]
     [(CaseLambda cases)
      (CaseLambda (subst-lambdacase old new cases))]
     [(LetValues binds body)
      (if (bound? old binds)
-         (LetValues (subst-lvbind old new binds) body)
+         (LetValues (subst-lvbind old new binds) (copy-exprs body))
          (LetValues (subst-lvbind old new binds) (expr-ls old new body)))]
     [(LetrecValues binds body)
      (if (bound? old binds)
-         (LetrecValues binds body)
+         (LetrecValues (copy-binds binds)           (copy-exprs body))
          (LetrecValues (subst-lvbind old new binds) (expr-ls old new body)))]
     [(If cond then else)
      (If (expr old new cond) (expr old new then) (expr old new else))]
@@ -123,4 +128,30 @@
          (memq sym syms))]
     [(F3 s)
      (eq? sym s)]))
+
+;; Identity treewalks that could be replaced with sharing:
+;;--------------------------------------------------------
+
+(define (sym-ls [ls : ListSym]) : ListSym
+  (case ls
+    [(CONSSYM s ls) (CONSSYM s (sym-ls ls))]
+    [(NULLSYM)      (NULLSYM)]))
+
+(define (walk-formals [formals : Formals]) : Formals
+  (case formals
+    [(F1 syms)   (F1 (sym-ls syms))]
+    [(F2 syms s) (F2 (sym-ls syms) s)]
+    [(F3 s)      (F3 s)]))
+
+(define (walk-datum [d : Datum]) : Datum
+  (case d
+    [(INTLIT i) (INTLIT i)]))
+
+;; IMPLEMENT ME: this should be a copy/pasted tree-walk from treewalk_gibbon.rkt:
+(define (copy-exprs [es : ListExpr]) : ListExpr
+  (expr-ls (quote ignored) (quote ignored) es))
+
+(define (copy-binds [lv : LVBIND]) : LVBIND
+  (subst-lvbind (quote ignored) (quote ignored) lv))
+
 

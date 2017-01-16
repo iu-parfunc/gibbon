@@ -470,8 +470,9 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
              (tail bod)
     --------------------------------End PrimApps----------------------------------
 
-    L1.AppE v e | L2.isExtendedPattern ex0 -> error$ "Lower: Unhandled extended L2 pattern(1): "++ndoc ex0
-                | otherwise -> return $ T.TailCall ( v) [triv "operand" e]
+    L1.AppE{} | L2.isExtendedPattern ex0 -> error$ "Lower: Unhandled extended L2 pattern(1): "++ndoc ex0
+    L1.AppE v (MkProdE ls) -> return $ T.TailCall ( v) (L.map (triv "operands") ls)
+    L1.AppE v e            -> return $ T.TailCall ( v) [triv "operand" e]
 
     -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
     ProjE ix ap@(AppE f e) | not (L2.isExtendedPattern ap) -> do
