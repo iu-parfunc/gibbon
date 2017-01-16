@@ -1,6 +1,6 @@
 #lang racket
 
-(require "../../BintreeBench/treebench_gibbon.rkt"
+(require "../../BintreeBench/treebench_gibbon.gib"
          rackunit)
 
 (define tr10 (build-tree 10))

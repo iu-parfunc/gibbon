@@ -1,7 +1,7 @@
 #lang racket
 
 (require "s-exp-stlc.rkt"
-	 (except-in "typechecker.rkt" typecheck-expr)
+	 (except-in "typechecker.gib" typecheck-expr)
          racket/random)
 
 (provide gen-well-formed-sexp)
@@ -199,4 +199,3 @@
 	     [expr (car (cdr (cdr arg)))])
         (CONSPARAM (P (S sym) (sexp->type expr))
       		   (vector->listParam params (+ 1 pos))))))
-  

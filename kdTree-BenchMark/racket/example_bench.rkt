@@ -2,8 +2,8 @@
 ;; We get to use the full Racket language here.
 
 ;; We import the code from the more restricted language: 
-(require "example_traverse.rkt") ;; just test garbage
-(require "traversal.rkt")
+(require "example_traverse.gib") ;; just test garbage
+(require "traversal.gib")
 
 (display "Here's a data value, from treelang, but allocated in Racket code:\n" )
 (write (Foo 3))

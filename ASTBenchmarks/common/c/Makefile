@@ -16,7 +16,7 @@ deps:
 LOG=subst_all_expanded_1.2.log
 
 racket_build:
-	raco make -v subst_gibbon.rkt subst.rkt
+	raco make -v subst_gibbon.gib subst.rkt
 
 scan_for_errors:
 	grep -v "Benchmark:" $(LOG)  | grep -v  "==========" | grep -v "Done ingesting" | grep -v "cpu time" | grep -v "^$$" | tee wc 

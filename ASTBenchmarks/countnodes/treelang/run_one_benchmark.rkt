@@ -4,8 +4,8 @@
 ;; Run countnode on a SINGLE input file for a given symbol and num iterations.
 
 (require "../../common/racket/parse.rkt"
-         "countnodes.rkt"
-         (only-in "../../grammar_racket.sexp" Toplvl))
+         "countnodes.gib"
+         (only-in "../../grammar_racket.gib" Toplvl))
 
 (define-values (file iters)
   (match (current-command-line-arguments)

@@ -1,9 +1,9 @@
 #! /usr/bin/env racket
 #lang typed/racket
 
-(require "./subst_gibbon.rkt"
+(require "./subst_gibbon.gib"
          "../../common/racket/command_line_runner.rkt"
-         "../../grammar_racket.sexp")
+         "../../grammar_racket.gib")
 
 (define oldsym 'call-with-values) ;; Hardcode this, doesn't matter.
 (define newsym (string->symbol (string-append (symbol->string oldsym) "99")))

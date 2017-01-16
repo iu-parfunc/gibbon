@@ -1,6 +1,6 @@
 #lang gibbon
 
-(require "../../grammar_racket.sexp" (only-in racket gensym))
+(require "../../grammar_racket.gib" (only-in racket gensym))
 
 (provide copyprop)
 

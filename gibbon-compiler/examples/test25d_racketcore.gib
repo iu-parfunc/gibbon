@@ -1,6 +1,6 @@
 #lang gibbon
 
-(require "../../ASTBenchmarks/grammar_racket.sexp")
+(require "../../ASTBenchmarks/grammar_racket.gib")
 
 ;; Non-exhaustive pattern match
 (define (foo [e : Toplvl]) : Int

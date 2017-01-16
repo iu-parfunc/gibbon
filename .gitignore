@@ -13,3 +13,22 @@ BintreeBench/*.exe
 gibbon-compiler/.stack-work
 
 compiled/
+
+deps/*
+.racket_sandbox/*
+
+
+## From the github/gitignore repository
+## https://github.com/github/gitignore/blob/master/TeX.gitignore
+## Core latex/pdflatex auxiliary files:
+paper/*.aux
+paper/*.lof
+paper/*.log
+paper/*.lot
+paper/*.fls
+paper/*.out
+paper/*.toc
+paper/*.fmt
+paper/*.fot
+paper/*.cb
+paper/*.cb2

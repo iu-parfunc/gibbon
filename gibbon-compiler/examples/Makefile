@@ -12,12 +12,12 @@ test:
 	$(MAKE) valgrind_packed
 
 
-ALL_TESTS= $(shell ls test*.sexp)
+ALL_TESTS= $(shell ls test*.gib)
 
 # Temporary output dir:
 BLD=./build_tmp
 
-ANSWERS= $(addprefix $(BLD)/,$(ALL_TESTS:.sexp=.ans))
+ANSWERS= $(addprefix $(BLD)/,$(ALL_TESTS:.gib=.ans))
 
 
 # Number of processors:
@@ -48,21 +48,22 @@ smalltest: prebuild build
 benchtest: test24_input.gpkd
 	@echo "\n Testing Gibbon's benchmarking mode."
 	@echo "--------------------------------------------------"
-	$(GIBBON) --bench-fun pass --bench-print test24_defs.sexp
+
+	$(GIBBON) --bench-fun pass --bench-print test24_defs.gib
 	@echo
 	./test24_defs.exe --bench-input test24_input.gpkd  10 10
 	@echo "Same benchmark, but in one command:"
-	$(GIBBON) -b pass --bench-print --bench-input test24_input.gpkd  test24_defs.sexp
+	$(GIBBON) -b pass --bench-print --bench-input test24_input.gpkd  test24_defs.gib
 	@echo
 	@echo "\nNow with the full Racket Core grammar:"
-	$(GIBBON) --bench-fun foo --bench-print --bench-input test25b_input.gpkd test25b_racketcore.sexp
+	$(GIBBON) --bench-fun foo --bench-print --bench-input test25b_input.gpkd test25b_racketcore.gib
 # Printing doesn't work yet:
 	@echo "\nNow in packed mode:"
-	$(GIBBON) --packed --bench-fun pass --bench-input test24_input.gpkd test24_defs.sexp
-	$(GIBBON) --packed --bench-fun foo --bench-print --bench-input test25b_input.gpkd test25b_racketcore.sexp
+	$(GIBBON) --packed --bench-fun pass --bench-input test24_input.gpkd test24_defs.gib
+	$(GIBBON) --packed --bench-fun foo --bench-print --bench-input test25b_input.gpkd test25b_racketcore.gib
 
 
-BIG= $(TREELANGDIR)/ASTBenchmarks/cleaned_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.sexp
+BIG= $(TREELANGDIR)/ASTBenchmarks/cleaned_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.gib
 BIGPKD= $(TREELANGDIR)/ASTBenchmarks/binary_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.gpkd
 PERF= perf stat -e cycles,instructions,cache-references,cache-misses,bus-cycles
 
@@ -73,8 +74,8 @@ big: bigfold bigmap
 bigfold:
 	ls -l $(BIG)
 	ls -l $(BIGPKD)
-	$(GIBBON) --pointer --bench-print --bench-fun countnodes -o test25f_pointer.exe --cfile=test25f_pointer.c test25f_countnodes.sexp
-	$(GIBBON) --packed  --bench-print --bench-fun countnodes -o test25f_packed.exe  --cfile=test25f_packed.c  test25f_countnodes.sexp
+	$(GIBBON) --pointer --bench-print --bench-fun countnodes -o test25f_pointer.exe --cfile=test25f_pointer.c test25f_countnodes.gib
+	$(GIBBON) --packed  --bench-print --bench-fun countnodes -o test25f_packed.exe  --cfile=test25f_packed.c  test25f_countnodes.gib
 	@echo "Pointer version"
 	$(PERF) ./test25f_pointer.exe --bench-input $(BIGPKD) 0 1000
 	@echo "Packed version"
@@ -82,10 +83,10 @@ bigfold:
 
 # Don't print with this one.  It's too big. I verified by hand that it worked [2017.01.12].
 bigmap:
-	$(GIBBON) --pointer  --bench-fun treewalk -o test26a_pointer.exe --cfile=test26a_pointer.c test26a_treewalk.sexp
-	$(GIBBON) --packed   --bench-fun treewalk -o test26a_packed.exe  --cfile=test26a_packed.c  test26a_treewalk.sexp
-	$(GIBBON) --pointer --bumpalloc --bench-fun treewalk -o test26a_pointer_bumpalloc.exe --cfile=test26a_pointer_bumpalloc.c test26a_treewalk.sexp
-	DEBUG=2 stack exec -- gibbon --optc="-g -DDEBUG" --pointer --bumpalloc --bench-fun treewalk -o test26a_pointer_bumpalloc_dbg.exe --cfile=test26a_pointer_bumpalloc.c test26a_treewalk.sexp
+	$(GIBBON) --pointer  --bench-fun treewalk -o test26a_pointer.exe --cfile=test26a_pointer.c test26a_treewalk.gib
+	$(GIBBON) --packed   --bench-fun treewalk -o test26a_packed.exe  --cfile=test26a_packed.c  test26a_treewalk.gib
+	$(GIBBON) --pointer --bumpalloc --bench-fun treewalk -o test26a_pointer_bumpalloc.exe --cfile=test26a_pointer_bumpalloc.c test26a_treewalk.gib
+	DEBUG=2 stack exec -- gibbon --optc="-g -DDEBUG" --pointer --bumpalloc --bench-fun treewalk -o test26a_pointer_bumpalloc_dbg.exe --cfile=test26a_pointer_bumpalloc.c test26a_treewalk.gib
 
 	@echo; echo "Packed version"
 	@echo "============================================================"
@@ -123,12 +124,12 @@ core_tests:
 #	$(MAKE) racket_invalid
 
 # Set to the name of a single test you'd like to test:
-ONE=test00_add.sexp
+ONE=test00_add.gib
 one:
-	$(MAKE) $(BLD)/$(ONE:.sexp=.ans)
-	$(MAKE) $(BLD)/$(ONE:.sexp=.intrp1.out)   EXTRA_SUFFIX=".intrp1"
-	$(MAKE)                                   EXTRA_SUFFIX=".ptr" $(BLD)/$(ONE:.sexp=.ptr.out)
-	$(MAKE) FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd" $(BLD)/$(ONE:.sexp=.pkd.out)
+	$(MAKE) $(BLD)/$(ONE:.gib=.ans)
+	$(MAKE) $(BLD)/$(ONE:.gib=.intrp1.out)   EXTRA_SUFFIX=".intrp1"
+	$(MAKE)                                   EXTRA_SUFFIX=".ptr" $(BLD)/$(ONE:.gib=.ptr.out)
+	$(MAKE) FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd" $(BLD)/$(ONE:.gib=.pkd.out)
 #	$(MAKE) $(BLD)/$(ONE).interp2.out
 
 
@@ -144,12 +145,12 @@ RUNRACKET= racket -A $(SANDBOXDIR)
 # Not necessary, because we build each module before we run it:
 prebuild: $(BLD) test24_input.gpkd
 # [2017.01.12] It's probably good enough to build ONE test, which builds upstream stuff:
-	PLTADDONDIR=$(SANDBOXDIR) raco make -j $(PROCS) -v test00_add.sexp
+	PLTADDONDIR=$(SANDBOXDIR) raco make -j $(PROCS) -v test00_add.gib
 
 $(BLD):
 	mkdir -p $(BLD)
 
-test24_input.gpkd: test24_input.dat test24_packit.rkt test24_defs.sexp
+test24_input.gpkd: test24_input.dat test24_packit.rkt test24_defs.gib
 	$(RUNRACKET) test24_packit.rkt
 
 #----------------------------------------
@@ -158,10 +159,10 @@ test24_input.gpkd: test24_input.dat test24_packit.rkt test24_defs.sexp
 racket_valid: treelang_lib
 	@echo "\nGenerating canonical answers from Racket:"
 	@echo "-----------------------------------------"
-	for f in `ls test*.sexp`; do $(RUNRACKET) $$f | tee $$f.ans; done
+	for f in `ls test*.gib`; do $(RUNRACKET) $$f | tee $$f.ans; done
 
 racket_invalid: treelang_lib
-	for f in `find ./error/ -name '*.sexp'`; do $(RUNRACKET) $$f | tee $$f.ans; done
+	for f in `find ./error/ -name '*.gib'`; do $(RUNRACKET) $$f | tee $$f.ans; done
 
 # ----------------------------------------
 
@@ -176,30 +177,30 @@ parse_all: build
 	$(MAKE) all_parsed
 
 
-all_parsed:  $(ALL_TESTS:.sexp=.parsed)
+all_parsed:  $(ALL_TESTS:.gib=.parsed)
 
-%.parsed : %.sexp
+%.parsed : %.gib
 #	@echo "Parsing $<"
 	$(GIBBON) --parse $< 2> $@
 
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= \
-  test13_build.sexp test13b_build.sexp \
-  test11_fundata.sexp test11c_funrec.sexp test11e_funrec.sexp test12c_traverse.sexp \
-  test25d_racketcore.sexp \
-  test16_forlist.sexp test17_forfold.sexp \
-  test25a_withprint.sexp
+  test13_build.gib test13b_build.gib \
+  test11_fundata.gib test11c_funrec.gib test11e_funrec.gib test12c_traverse.gib \
+  test25d_racketcore.gib \
+  test16_forlist.gib test17_forfold.gib \
+  test25a_withprint.gib
 
 # test25a "works" but it still prints symbols as numbers.
 
 # NOTE:
-# test11d_funrec.sexp -- is giving the WRONG ANSWER
-# test11f_funrec.sexp -- ''
+# test11d_funrec.gib -- is giving the WRONG ANSWER
+# test11f_funrec.gib -- ''
 
 PASSING_TESTS = $(filter-out $(FAILING_TESTS),$(ALL_TESTS))
 
-OUT_FILES=$(addprefix $(BLD)/,$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).out))
-EXE_FILES=$(addprefix $(BLD)/,$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).exe))
+OUT_FILES=$(addprefix $(BLD)/,$(PASSING_TESTS:.gib=$(EXTRA_SUFFIX).out))
+EXE_FILES=$(addprefix $(BLD)/,$(PASSING_TESTS:.gib=$(EXTRA_SUFFIX).exe))
 
 # Run the tests that work.  Assumes "build" has already executed.
 run_tests: $(BLD)
@@ -217,7 +218,7 @@ all_tests: $(BLD) answers $(OUT_FILES)
 # Take care to not collide between different EXTRA_SUFFIX modes.
 #
 # Depend on GIBBONEXEC so we retest when the binary changes.
-build_tmp/%$(EXTRA_SUFFIX).out : %.sexp $(GIBBONEXEC)
+build_tmp/%$(EXTRA_SUFFIX).out : %.gib $(GIBBONEXEC)
 ifeq ($(RUN_MODE),--run)
 	@$(MAKE) --no-print-directory $(@:.out=.exe)
 	./$(@:.out=.exe) > $@ || ./err.sh $(@:.out=)
@@ -229,18 +230,18 @@ endif
 # Just build the tests
 build_tests: $(EXE_FILES)
 
-build_tmp/%$(EXTRA_SUFFIX).exe : %.sexp $(GIBBONEXEC)
+build_tmp/%$(EXTRA_SUFFIX).exe : %.gib $(GIBBONEXEC)
 	$(GIBBON) --exe $(GIBBONARGS) $< --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(BLD)/$(basename $<)$(EXTRA_SUFFIX)
 
 
-PACKED_FAILING ?=  test12_skip.sexp  test16_forlist.sexp test17_forfold.sexp \
- test20b_bintree.sexp  \
- test25a_withprint.sexp test26_treewalk.sexp test27a_subst.sexp
+PACKED_FAILING ?=  test12_skip.gib  test16_forlist.gib test17_forfold.gib \
+ test20b_bintree.gib  \
+ test25a_withprint.gib test26_treewalk.gib test27a_subst.gib
 
-# test20b_bintree.sexp   -- requires copy insertion
-# test12_skip.sexp       -- requires copy insertion!! unbound var thru to C code
-# test16_forlist.sexp    -- requires lists. No lists yet
-# test17_forfold.sexp    -- requires lists. No lists yet
+# test20b_bintree.gib   -- requires copy insertion
+# test12_skip.gib       -- requires copy insertion!! unbound var thru to C code
+# test16_forlist.gib    -- requires lists. No lists yet
+# test17_forfold.gib    -- requires lists. No lists yet
 
 # This is the default mode:
 run_tests_pointer: run_tests
@@ -250,23 +251,23 @@ run_tests_packed: answers
 	$(MAKE) run_tests RUN_MODE="--run" GIBBONARGS="$(GIBBONARGS) --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
 
 # This one is seriously rotted:
-INTERP2_FAILING = test00a_size.sexp test00b_printBool.sexp test00d_printData.sexp \
-  test02d_printPair.sexp test02e_printNest.sexp test03d_eqs.sexp \
-  test06a_two_cases.sexp test06b_case.sexp test06_case.sexp test06c_nested.sexp \
-  test06d_rec.sexp test06e_rec.sexp test06f_rec.sexp test06g_rec.sexp \
-  test06h_rec.sexp test06i_casecase.sexp test07b_iterate.sexp test11b_fundata.sexp test11c_funrec.sexp \
-  test11d_funrec.sexp test11e_funrec.sexp test11f_funrec.sexp  \
-  test12b_traverse.sexp test12c_traverse.sexp test12_skip.sexp \
-  test16_forlist.sexp test17_forfold.sexp test20_bintree.sexp \
-  text08_dict.sexp test08b_dict.sexp test08c_dict.sexp test08d_sharedict.sexp \
-  test13_build.sexp test13b_build.sexp  \
-  test20a_withprint.sexp test20b_bintree.sexp test20c_bintree.sexp test20d_bintree.sexp test20e_bintree.sexp \
-  test20f_bintree.sexp test20g_bintree.sexp \
-  test25a_withprint.sexp test25b_racketcore.sexp test25_rackcore.sexp \
-  test25c_racketcore.sexp test25d_racketcore.sexp test25e_countnodes.sexp test25f_countnodes.sexp \
-  test11_fundata.sexp test10_desugar.sexp test10b_desugar.sexp test24_defs.sexp \
-  test09_recur.sexp test08_dict.sexp test02b_datacon.sexp test02c_case.sexp \
-  test26_treewalk.sexp test26a_treewalk.sexp test27a_subst.sexp
+INTERP2_FAILING = test00a_size.gib test00b_printBool.gib test00d_printData.gib \
+  test02d_printPair.gib test02e_printNest.gib test03d_eqs.gib \
+  test06a_two_cases.gib test06b_case.gib test06_case.gib test06c_nested.gib \
+  test06d_rec.gib test06e_rec.gib test06f_rec.gib test06g_rec.gib \
+  test06h_rec.gib test06i_casecase.gib test07b_iterate.gib test11b_fundata.gib test11c_funrec.gib \
+  test11d_funrec.gib test11e_funrec.gib test11f_funrec.gib  \
+  test12b_traverse.gib test12c_traverse.gib test12_skip.gib \
+  test16_forlist.gib test17_forfold.gib test20_bintree.gib \
+  text08_dict.gib test08b_dict.gib test08c_dict.gib test08d_sharedict.gib \
+  test13_build.gib test13b_build.gib  \
+  test20a_withprint.gib test20b_bintree.gib test20c_bintree.gib test20d_bintree.gib test20e_bintree.gib \
+  test20f_bintree.gib test20g_bintree.gib \
+  test25a_withprint.gib test25b_racketcore.gib test25_rackcore.gib \
+  test25c_racketcore.gib test25d_racketcore.gib test25e_countnodes.gib test25f_countnodes.gib \
+  test11_fundata.gib test10_desugar.gib test10b_desugar.gib test24_defs.gib \
+  test09_recur.gib test08_dict.gib test02b_datacon.gib test02c_case.gib \
+  test26_treewalk.gib test26a_treewalk.gib test27a_subst.gib
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: answers
@@ -274,8 +275,8 @@ run_tests_interp2: answers
 
 
 # Populated [2016.12.10]
-INTERP1_FAILING = test16_forlist.sexp test17_forfold.sexp test25b_racketcore.sexp \
-  test25a_withprint.sexp
+INTERP1_FAILING = test16_forlist.gib test17_forfold.gib test25b_racketcore.gib \
+  test25a_withprint.gib
 
 
 run_tests_interp1: answers
@@ -284,7 +285,7 @@ run_tests_interp1: answers
 
 # --------------------------------------------------------------------------------
 
-build_tmp/%.ans : %.sexp
+build_tmp/%.ans : %.gib
 # Optional, could prebuild before running:
 #	raco make -v $<
 	$(RUNRACKET) $< > $@ || rm -f $@
@@ -321,11 +322,11 @@ valgrind:
 	$(MAKE) run_valgrind GIBBONARGS=" --optc=-g " EXTRA_SUFFIX=".ptr" 
 
 
-VALGRIND_FILES=$(addprefix $(BLD)/,$(PASSING_TESTS:.sexp=$(EXTRA_SUFFIX).valgrind))
+VALGRIND_FILES=$(addprefix $(BLD)/,$(PASSING_TESTS:.gib=$(EXTRA_SUFFIX).valgrind))
 
 run_valgrind: $(VALGRIND_FILES)
 
-build_tmp/%$(EXTRA_SUFFIX).valgrind : %.sexp build_tmp/%$(EXTRA_SUFFIX).exe
+build_tmp/%$(EXTRA_SUFFIX).valgrind : %.gib build_tmp/%$(EXTRA_SUFFIX).exe
 #	@echo "\n Valgrind, testing $(basename $(basename $@))"
 #	@echo "--------------------------------------------------"
 	$(VALGRIND_CMD) $(basename $@).exe

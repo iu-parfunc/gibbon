@@ -1,6 +1,6 @@
 #lang gibbon
 
-(require "typechecker.rkt")
+(require "typechecker.gib")
 
 ;; [2016.11.11] FIXME: these need update for no-list:
 

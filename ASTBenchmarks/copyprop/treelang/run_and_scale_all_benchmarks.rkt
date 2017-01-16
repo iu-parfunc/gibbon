@@ -1,9 +1,9 @@
 #! /usr/bin/env racket
 #lang typed/racket
 
-(require "./copyprop.rkt"
+(require "./copyprop.gib"
          "../../common/racket/command_line_runner.rkt"
-         "../../grammar_racket.sexp")
+         "../../grammar_racket.gib")
 
 (provide iterate-copyprop)
 

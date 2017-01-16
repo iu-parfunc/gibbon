@@ -1,6 +1,6 @@
 #lang gibbon
 
-(require "../../grammar_racket.sexp")
+(require "../../grammar_racket.gib")
 (provide (all-defined-out))
 
 ;; Identity function on ASTs:
