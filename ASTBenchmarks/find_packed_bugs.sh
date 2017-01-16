@@ -7,10 +7,10 @@ TOP=`pwd`
 cd ..
 source set_env.sh
 
-# tc --bumpalloc --bench-fun treewalk ./treewalk/gibbon/treewalk_gibbon.rkt -o treewalk_pointer_bumpalloc.exe
+# tc --bumpalloc --bench-fun treewalk ./treewalk/gibbon/treewalk_gibbon.gib -o treewalk_pointer_bumpalloc.exe
 
 cd $TOP/treewalk/gibbon/
-tc --packed --bench-fun treewalk treewalk_gibbon.rkt -o ../../treewalk_packed.exe
+tc --packed --bench-fun treewalk treewalk_gibbon.gib -o ../../treewalk_packed.exe
 
 cd $TOP/binary_racket/
 

@@ -147,7 +147,7 @@
   (case d
     [(INTLIT i) (INTLIT i)]))
 
-;; IMPLEMENT ME: this should be a copy/pasted tree-walk from treewalk_gibbon.rkt:
+;; IMPLEMENT ME: this should be a copy/pasted tree-walk from treewalk_gibbon.gib:
 (define (copy-exprs [es : ListExpr]) : ListExpr
   (expr-ls (quote ignored) (quote ignored) es))
 

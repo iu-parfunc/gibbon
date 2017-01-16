@@ -5,7 +5,7 @@
 ;;  (Ignores <size>...)
 
 
-(require "../../ASTBenchmarks/treewalk/gibbon/treewalk_gibbon.rkt")
+(require "../../ASTBenchmarks/treewalk/gibbon/treewalk_gibbon.gib")
 (require "../../ASTBenchmarks/common/racket/parse.rkt")
 (require gibbon)
 

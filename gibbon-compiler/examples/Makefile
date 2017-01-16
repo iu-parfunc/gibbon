@@ -83,10 +83,10 @@ bigfold:
 
 # Don't print with this one.  It's too big. I verified by hand that it worked [2017.01.12].
 bigmap:
-	$(GIBBON) --pointer  --bench-fun treewalk -o test26a_pointer.exe --cfile=test26a_pointer.c test26a_treewalk.sexp
-	$(GIBBON) --packed   --bench-fun treewalk -o test26a_packed.exe  --cfile=test26a_packed.c  test26a_treewalk.sexp
-	$(GIBBON) --pointer --bumpalloc --bench-fun treewalk -o test26a_pointer_bumpalloc.exe --cfile=test26a_pointer_bumpalloc.c test26a_treewalk.sexp
-	DEBUG=2 stack exec -- gibbon --optc="-g -DDEBUG" --pointer --bumpalloc --bench-fun treewalk -o test26a_pointer_bumpalloc_dbg.exe --cfile=test26a_pointer_bumpalloc.c test26a_treewalk.sexp
+	$(GIBBON) --pointer  --bench-fun treewalk -o test26a_pointer.exe --cfile=test26a_pointer.c test26a_treewalk.gib
+	$(GIBBON) --packed   --bench-fun treewalk -o test26a_packed.exe  --cfile=test26a_packed.c  test26a_treewalk.gib
+	$(GIBBON) --pointer --bumpalloc --bench-fun treewalk -o test26a_pointer_bumpalloc.exe --cfile=test26a_pointer_bumpalloc.c test26a_treewalk.gib
+	DEBUG=2 stack exec -- gibbon --optc="-g -DDEBUG" --pointer --bumpalloc --bench-fun treewalk -o test26a_pointer_bumpalloc_dbg.exe --cfile=test26a_pointer_bumpalloc.c test26a_treewalk.gib
 
 	@echo; echo "Packed version"
 	@echo "============================================================"
@@ -236,7 +236,7 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.gib $(GIBBONEXEC)
 
 PACKED_FAILING ?=  test12_skip.gib  test16_forlist.gib test17_forfold.gib \
  test20b_bintree.gib  \
- test25a_withprint.gib test26_treewalk.sexp test27a_subst.sexp
+ test25a_withprint.gib test26_treewalk.gib test27a_subst.gib
 
 # test20b_bintree.gib   -- requires copy insertion
 # test12_skip.gib       -- requires copy insertion!! unbound var thru to C code
@@ -267,7 +267,7 @@ INTERP2_FAILING = test00a_size.gib test00b_printBool.gib test00d_printData.gib \
   test25c_racketcore.gib test25d_racketcore.gib test25e_countnodes.gib test25f_countnodes.gib \
   test11_fundata.gib test10_desugar.gib test10b_desugar.gib test24_defs.gib \
   test09_recur.gib test08_dict.gib test02b_datacon.gib test02c_case.gib \
-  test26_treewalk.sexp test26a_treewalk.sexp test27a_subst.sexp
+  test26_treewalk.gib test26a_treewalk.gib test27a_subst.gib
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: answers
