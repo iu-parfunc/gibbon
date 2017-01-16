@@ -1,7 +1,7 @@
 #lang gibbon
 
-(require "../../ASTBenchmarks/grammar_racket.sexp")
-; (require "../../ASTBenchmarks/substitution/treelang/subst_gibbon.rkt")
+e(require "../../ASTBenchmarks/grammar_racket.gib")
+; (require "../../ASTBenchmarks/substitution/treelang/subst_gibbon.gib")
 
 (define (memq [v : Sym] [ls : ListSym]) : Bool
   (case ls
