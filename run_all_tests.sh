@@ -76,7 +76,6 @@ racket $top/typecheck-stlc/examples.gib
 
 # If we wanted to be really aggressive we could run all racket files
 # in the Repo:
-# TODO(cskksc): change BintreeBench/treebench_gibbon.rkt to .gib
 racket $top/ASTBenchmarks/tests/*.rkt
 
 
