@@ -77,9 +77,9 @@ data Exp = VarE Var
          | IfE Exp Exp Exp
          | ProjE Int Exp
          | MkProdE [Exp]
-         | CaseE Exp [(Constr, [Var], Exp)]
+         | CaseE Exp [(DataCon, [Var], Exp)]
            -- ^ Case on a PACKED datatype.
-         | MkPackedE Constr [Exp]
+         | MkPackedE DataCon [Exp]
          | TimeIt Exp Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
 
            -- Limited list handling:
@@ -146,7 +146,7 @@ data Ty1 a =
         | BoolTy
         | ProdTy [Ty1 a]     -- ^ An N-ary tuple
         | SymDictTy (Ty1 a)  -- ^ A map from SymTy to Ty
-        | PackedTy Constr a  -- ^ No type arguments to TyCons for now.
+        | PackedTy DataCon a  -- ^ No type arguments to TyCons for now.
           -- ^ We allow built-in dictionaries from symbols to a value type.
         | ListTy (Ty1 a) -- ^ These are not fully first class.  They are onlyae
                          -- allowed as the fields of data constructors.

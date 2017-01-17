@@ -205,7 +205,7 @@ getSym :: RichSExpr HaskLikeAtom -> Var
 getSym (RSAtom (HSIdent id)) = toVar id
 getSym s = error $ "expected identifier sexpr, got: "++prnt s
 
-docasety :: Sexp -> (Constr,[Ty])
+docasety :: Sexp -> (DataCon,[Ty])
 docasety s = 
   case s of
     (RSList ((A id) : tys)) -> (toVar id, L.map typ tys)
@@ -328,7 +328,7 @@ exp se =
 
 
 -- | One case of a case expression
-docase :: Sexp -> (Constr,[Var],Exp)
+docase :: Sexp -> (DataCon,[Var],Exp)
 docase s = 
   case s of
     RSList [ RSList (A con : args)

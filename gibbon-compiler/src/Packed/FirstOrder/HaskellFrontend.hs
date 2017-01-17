@@ -183,7 +183,7 @@ generateBind not_pat_bind _ =
 
 --------------------------------------------------------------------------------
 
-desugarAlt :: H.Alt -> Ds (Constr, [Var], L1.Exp)
+desugarAlt :: H.Alt -> Ds (DataCon, [Var], L1.Exp)
 
 desugarAlt (H.Alt _ (PApp qname ps) (UnGuardedRhs rhs) Nothing) = do
     con_name <- qname_to_str qname

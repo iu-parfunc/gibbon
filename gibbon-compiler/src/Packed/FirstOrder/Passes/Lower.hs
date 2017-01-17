@@ -58,7 +58,7 @@ genDcons [] tail fields     = do
   ptr <- gensym "ptr"
   return $ T.LetAllocT ptr fields $ T.RetValsT [T.VarTriv ptr, T.VarTriv tail] 
 
-genAlts :: [(Constr,[L1.Ty])] -> Var -> Var -> Int64 -> SyM T.Alts 
+genAlts :: [(DataCon,[L1.Ty])] -> Var -> Var -> Int64 -> SyM T.Alts
 genAlts ((_, typs):xs) tail tag n = do
   curTail <- genDcons typs tail [(T.IntTy, T.VarTriv tag)] 
   alts    <- genAlts xs tail tag (n+1) 
@@ -130,7 +130,7 @@ genDconsPrinter (x:xs) tail = case x of
 genDconsPrinter [] tail     = do 
   return $ closeParen $ T.RetValsT [(T.VarTriv tail)] 
 
-genAltPrinter :: [(Constr,[L1.Ty])] -> Var -> Int64 -> SyM T.Alts 
+genAltPrinter :: [(DataCon,[L1.Ty])] -> Var -> Int64 -> SyM T.Alts
 genAltPrinter ((dcons, typs):xs) tail n = do
   curTail <- (openParen dcons) <$> genDconsPrinter typs tail
   alts    <- genAltPrinter xs tail (n+1) 
@@ -318,7 +318,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
       let
         e_triv = triv "sum case scrutinee" e
 
-        mk_alt :: (Constr, [Var], Exp) -> SyM (Int64, T.Tail)
+        mk_alt :: (DataCon, [Var], Exp) -> SyM (Int64, T.Tail)
         mk_alt (con, bndrs, rhs) = do
           let
             con_tag = getTagOfDataCon ddefs con

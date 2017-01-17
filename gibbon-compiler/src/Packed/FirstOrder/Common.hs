@@ -17,8 +17,8 @@ module Packed.FirstOrder.Common
          mkUnpackerName
        , mkPrinterName
 
-         -- * Type and Data Constructors
-       , Constr, TyCon
+         -- * Type and Data DataConuctors
+       , DataCon, TyCon
          -- * Variables and gensyms
        , Var, varAppend, SyM, gensym, genLetter, runSyM
        , cleanFunName
@@ -66,7 +66,7 @@ import Debug.Trace
 
 -- type CursorVar = Var
 type Var    = String
-type Constr = String
+type DataCon = String
 type TyCon   = String
 
 -- | Abstract location variables.
@@ -104,7 +104,7 @@ type DDefs a = Map Var (DDef a)
 -- context of our monomorphic programs.
 data DDef a = DDef { tyName:: Var
                    -- , tyArgs:: [Var] -- ^ No polymorphism for now!
-                   , dataCons :: [(Constr,[a])] }
+                   , dataCons :: [(DataCon,[a])] }
   deriving (Read,Show,Eq,Ord, Functor, Generic)
 
 instance NFData a => NFData (DDef a) where
@@ -127,17 +127,17 @@ lookupDDef mp v =
 
 -- | Get the canonical ordering for data constructors, currently based
 -- on ordering in the original source code.  Takes a TyCon as argument.
-getConOrdering :: Out a => DDefs a -> TyCon -> [Constr]
+getConOrdering :: Out a => DDefs a -> TyCon -> [DataCon]
 getConOrdering dd tycon = L.map fst dataCons
   where DDef{dataCons} = lookupDDef dd tycon
 
 -- | Lookup the name of the TyCon that goes with a given DataCon.
 --   Must be unique!
-getTyOfDataCon :: Out a => DDefs a -> Constr -> TyCon
+getTyOfDataCon :: Out a => DDefs a -> DataCon -> TyCon
 getTyOfDataCon dds con = fst $ lkp dds con
 
 -- | Look up the numeric tag for a dataCon 
-getTagOfDataCon :: Out a => DDefs a -> Constr -> Word8
+getTagOfDataCon :: Out a => DDefs a -> DataCon -> Word8
 getTagOfDataCon dds dcon =
     -- dbgTrace 5 ("getTagOfDataCon -- "++sdoc(dds,dcon)) $
     fromIntegral ix
@@ -145,13 +145,13 @@ getTagOfDataCon dds dcon =
         (tycon,_) = lkp dds dcon
 
 -- | Lookup the arguments to a data contstructor.
-lookupDataCon :: Out a => DDefs a -> Constr -> [a]
+lookupDataCon :: Out a => DDefs a -> DataCon -> [a]
 lookupDataCon dds con =
     -- dbgTrace 5 ("lookupDataCon -- "++sdoc(dds,con)) $
     snd $ snd $ lkp dds con
 
 -- | Lookup a Datacon.  Return (TyCon, (DataCon, [flds]))
-lkp :: Out a => DDefs a -> Constr -> (Var, (Constr, [a]))
+lkp :: Out a => DDefs a -> DataCon -> (Var, (DataCon, [a]))
 lkp dds con =
    -- Here we try to lookup in ALL datatypes, assuming unique datacons:
   case [ (tycon,variant)
@@ -397,5 +397,5 @@ mkUnpackerName :: TyCon -> Var
 mkUnpackerName tyCons = "unpack_" ++ tyCons
 
 -- | Map a DataCon onto the name of the generated print function.
-mkPrinterName :: Constr -> Var
+mkPrinterName :: DataCon -> Var
 mkPrinterName tyCons = "print_" ++ tyCons

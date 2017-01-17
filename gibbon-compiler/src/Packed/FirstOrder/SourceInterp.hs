@@ -83,7 +83,7 @@ data Buffer = Buffer (Seq SerializedVal)
 
 instance Out Buffer
            
-data SerializedVal = SerTag Word8 Constr | SerInt Int
+data SerializedVal = SerTag Word8 DataCon | SerInt Int
   deriving (Read,Eq,Ord,Generic, Show)
 
 byteSize :: SerializedVal -> Int
@@ -110,7 +110,7 @@ data Value = VInt Int
            | VDict (M.Map Value Value)
 -- FINISH:       | VList
            | VProd [Value]
-           | VPacked Constr [Value]
+           | VPacked DataCon [Value]
 
            | VCursor { bufID :: Int, offset :: Int }
              -- ^ Cursor are a pointer into the Store plus an offset into the Buffer.
