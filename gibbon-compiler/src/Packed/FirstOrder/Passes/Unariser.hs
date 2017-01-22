@@ -8,7 +8,7 @@ module Packed.FirstOrder.Passes.Unariser
     (unariser) where
 
 import Data.Maybe
-import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc, gensym, fragileZip,ndoc)
+import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc, gensym, fragileZip,ndoc,toVar)
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.L2_Traverse as L2
 import Prelude hiding (exp)
@@ -31,25 +31,25 @@ import Prelude hiding (exp)
 -- transformed to varrefs in lower.
 --
 unariser :: L2.Prog -> SyM L2.Prog
-unariser = mapMExprs unariserExp 
+unariser = mapMExprs unariserExp
 
 
 -- | A projection stack can be viewed as a list of ProjE operations to
 -- perform, from left to right.
 type ProjStack = [Int]
 
--- | Maps variables onto tuples of (projections of) other variables 
+-- | Maps variables onto tuples of (projections of) other variables
 type Env = [(Var,[(ProjStack,Var)])]
-    
+
 -- | Take an ignored argument to match mapMExprs' conventions.
--- 
+--
 -- In the recursive "go" worker here, we maintain:
 --   (1) pending projections that enclose our current context, and
 --   (2) a map from variable bindings with tuple type, to
 --       finer-grained bindings to individual components.
 --
 unariserExp :: ignored -> L1.Exp -> SyM L1.Exp
-unariserExp _ = go [] [] 
+unariserExp _ = go [] []
   where
   var v = v
   l ! i = if i <= length l
@@ -64,12 +64,12 @@ unariserExp _ = go [] []
   discharge (ix:rst) e = discharge rst (ProjE ix e)
 
   -- FIXME: need to track full expr binds like InlineTrivs
-  -- Or do we?  Not clear yet.                         
+  -- Or do we?  Not clear yet.
   go :: ProjStack -> Env -> L1.Exp -> SyM L1.Exp
   go stk env e0 =
    dbgTrace 7 ("Unariser processing with stk "++
                ndoc stk++", env: "++ndoc env++"\n exp: "++sdoc e0) $
-   case e0 of     
+   case e0 of
     (MkProdE es) -> case stk of
                       (ix:s') -> go s' env (es ! ix)
                       [] -> MkProdE <$> mapM (go stk env) es
@@ -106,9 +106,9 @@ unariserExp _ = go [] []
     ------------------
 
     (LetE (vr,ProdTy tys, MkProdE ls) bod) -> do
-        vs <- sequence [ gensym "unzip" | _ <- ls ]
+        vs <- sequence [ gensym (toVar "unzip") | _ <- ls ]
         let -- Here's a little bit of extra complexity to NOT introduce var/var copies:
-            (mbinds,substs) = unzip 
+            (mbinds,substs) = unzip
                               [ case projOfVar e of
                                   Just pr -> (Nothing, pr)
                                   Nothing -> (Just (v,t,e), ([],v))
@@ -129,21 +129,21 @@ unariserExp _ = go [] []
     (LetE (v1,ProdTy tys, proj) bod) | Just (stk2,v2) <- projOfVar proj ->
         let env' = buildAliases (v1,tys) (stk2,v2) env in
         go stk env' bod
-        -- case lookup v2 env of          
+        -- case lookup v2 env of
         --   Just vs -> go stk env $ LetE (v1,ProdTy tys, MkProdE (map VarE vs)) bod
         --   -- This is problematic:
         --   -- Nothing -> go stk ((v1,[v2]):env) bod -- Copy-prop
         --   Nothing -> LetE <$> ((v1,ProdTy tys) <$> go [] proj) <*>
-        --                 go stk ((v1,Nothing):env) bod 
-                     
+        --                 go stk ((v1,Nothing):env) bod
+
     -- And this is a HACK.  Need a more general solution:
     (LetE (v,ty@ProdTy{}, rhs@(TimeIt{})) bod)->
         LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
-    ------------------             
-             
+    ------------------
+
     (LetE (_,ProdTy _, _) _) ->
         error$ " [unariser] this is stopping us from unzipping a tupled binding:\n "++sdoc e0
-        
+
     (LetE (v,t,rhs) e) -> LetE <$> ((v,t,) <$> go [] env rhs) <*>
                             (go stk env e)
 
@@ -168,7 +168,7 @@ unariserExp _ = go [] []
 
     (TimeIt e ty b) -> do
        -- Put this in the form Lower wants:
-       tmp <- gensym "timed"
+       tmp <- gensym $ toVar "timed"
        e' <- go stk env e
        return $ LetE (tmp,ty, TimeIt e' ty b) (VarE tmp)
 
@@ -189,7 +189,7 @@ applyProj (stk,v) = go stk (VarE v)
   where
     go [] e     = e
     go (i:is) e = go is (ProjE i e)
-             
+
 projOfVar :: Exp -> Maybe (ProjStack, Var)
 projOfVar = lp []
  where
@@ -209,7 +209,7 @@ buildAliases (v1,tys) (stk,v2) env =
              Just hits ->
                  -- We are bound to a PROJECTION of v2, so combine stk with what's already there.
                  (v1, [ (s ++ stk, v')
-                      | (_ix,(s,v')) <- fragileZip [0..maxIx] hits ]) 
+                      | (_ix,(s,v')) <- fragileZip [0..maxIx] hits ])
   in dbgTrace 5 (" [unariser] Extending environment with these mappings: "++show new) $
      new : env
 
@@ -217,7 +217,7 @@ mklets :: [(Var, L1.Ty, Exp)] -> Exp -> Exp
 mklets [] bod = bod
 mklets (bnd:rst) bod = LetE bnd $ mklets rst bod
 
-                 
+
 mkLet :: (Var, L1.Ty, Exp) -> Exp -> Exp
 mkLet (v,t,LetE (v2,t2,rhs2) bod1) bod2 = LetE (v2,t2,rhs2) $ LetE (v,t,bod1) bod2
 mkLet (v,t,rhs) bod = LetE (v,t,rhs) bod

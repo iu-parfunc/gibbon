@@ -34,7 +34,7 @@ import           Packed.FirstOrder.Passes.InlinePacked
 import           Packed.FirstOrder.Passes.InlineTriv
 import           Packed.FirstOrder.Passes.Lower
 import           Packed.FirstOrder.Passes.RouteEnds (routeEnds)
-import           Packed.FirstOrder.Passes.ShakeTree 
+import           Packed.FirstOrder.Passes.ShakeTree
 import           Packed.FirstOrder.Passes.Typecheck
 import           Packed.FirstOrder.Passes.Unariser
 import qualified Packed.FirstOrder.SExpFrontend as SExp
@@ -115,7 +115,7 @@ data Mode = ToParse  -- ^ Parse and then stop
           | Bench Var -- ^ Benchmark a particular function applied to the packed data within an input file.
 
           | BenchInput FilePath -- ^ Hardcode the input file to the benchmark in the C code.
-  deriving (Show,Read,Eq,Ord) 
+  deriving (Show,Read,Eq,Ord)
 
 defaultConfig :: Config
 defaultConfig =
@@ -132,10 +132,10 @@ defaultConfig =
          , cfile = Nothing
          , exefile = Nothing
          }
-  
+
 suppress_warnings :: String
 suppress_warnings = " -Wno-incompatible-pointer-types -Wno-int-conversion "
-  
+
 configParser :: Parser Config
 configParser = Config <$> inputParser
                       <*> modeParser
@@ -153,7 +153,7 @@ configParser = Config <$> inputParser
                           )
                       <*> switch (long "bumpalloc" <>
                                   help "Use BUMPALLOC mode in generated C code.  Only affects --pointer")
-                      
+
                       <*> (option auto (short 'v' <> long "verbose" <>
                                        help "Set the debug output level, 1-5, mirrors DEBUG env var.")
                            <|> pure 1)
@@ -183,10 +183,10 @@ configParser = Config <$> inputParser
                               help "run through the interpreter after cursor insertion") <|>
                flag' RunExe  (short 'r' <> long "run"     <> help "compile and then run executable") <|>
                flag ToExe ToExe (long "exe"  <> help "compile through C to executable (default)") <|>
-               (Bench <$> strOption (short 'b' <> long "bench-fun" <> metavar "FUN" <>
+               (Bench <$> toVar <$> strOption (short 'b' <> long "bench-fun" <> metavar "FUN" <>
                                      help ("generate code to benchmark a 1-argument FUN against a input packed file."++
                                            "  If --bench-input is provided, then the benchmark is run as well.")))
-               
+
 
 -- | Parse configuration as well as file arguments.
 configWithArgs :: Parser (Config,[FilePath])
@@ -201,7 +201,7 @@ configWithArgs = (,) <$> configParser
 -- conveniently from within GHCI.  For example:
 --
 -- >  compileCmd $ words $ " -r -p -v5 examples/test11c_funrec.gib "
--- 
+--
 compileCmd :: [String] -> IO ()
 compileCmd args = withArgs args $
     do (cfg,files) <- execParser opts
@@ -230,7 +230,7 @@ data CompileState =
 
 -- type PassRunner = forall a b . (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT CompileState IO b
 type PassRunner a b = (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT CompileState IO b
-     
+
 -- | Compiler entrypoint, given a full configuration and a list of
 -- files to process.
 compile :: Config -> FilePath -> IO ()
@@ -263,12 +263,12 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
                                   show oth++"  Please specify compile input format."
   (l1,cnt0) <- parser fp
 
-  let printParse l = dbgPrintLn l $ sdoc l1    
+  let printParse l = dbgPrintLn l $ sdoc l1
   when (mode == Interp1) $ do
       runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
       dbgPrintLn 2 $ "Running the following through SourceInterp:\n "++sepline
       printParse 2
-                 
+
       SI.execAndPrint runConf l1
       exitSuccess
 
@@ -295,7 +295,7 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
         pass' who fn x = do
           cs@CompileState{cnt} <- get
           lift$ dbgPrintLn lvl $ "Running pass: " ++who++":\n"++sepline
-          let (y,cnt') = runSyM cnt (fn x)          
+          let (y,cnt') = runSyM cnt (fn x)
           put cs{cnt=cnt'}
           _ <- lift $ evaluate $ force y
           lift$ dbgPrintLn 6 $ sdoc y -- Still print if you crank it up.
@@ -311,13 +311,13 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
              p2 <- pass who fn x
              -- In benchmark mode we simply turn OFF the interpreter.  This decision should be finer grained.
              when (dbgLvl >= interpDbgLevel && not (isBench mode)) $ lift $ do
-               let Just res1 = result 
+               let Just res1 = result
                runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
                let res2 = interpNoLogs runConf p2
-               res2' <- catch (evaluate (force res2))                        
+               res2' <- catch (evaluate (force res2))
                          (\exn -> error $ "Exception while running interpreter on pass result:\n"++sepline++"\n"
                                   ++ show (exn::SomeException) ++ "\n"++sepline++"\nProgram was: "++abbrv 300 p2)
-               unless (show res1 == res2') $ 
+               unless (show res1 == res2') $
                  error $ "After pass "++who++", evaluating the program yielded the wrong answer.\nReceived:  "
                          ++show res2'++"\nExpected:  "++show res1
                dbgPrintLn 5 $ " [interp] answer was: "++sdoc res2'
@@ -334,7 +334,7 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
         -- | An alternative version that allows FAILURE while running
         -- the interpreter part.
         passF = pass -- FINISHME! For now not interpreting.
-                    
+
     let outfile = case cfile of
                     Nothing -> (replaceExtension fp ".c")
                     Just f -> f
@@ -368,11 +368,11 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
                                  in
                                  l1{ L1.mainExp = Just $
                                       -- At L1, we assume ReadPackedFile has a single return value:
-                                      L1.LetE (tmp, arg, L1.PrimAppE (L1.ReadPackedFile benchInput tyc arg) []) $ 
-                                        L1.LetE ("benchres", ret, L1.TimeIt (L1.AppE fnname (L1.VarE tmp)) ret True) $
+                                      L1.LetE (toVar tmp, arg, L1.PrimAppE (L1.ReadPackedFile benchInput tyc arg) []) $
+                                        L1.LetE (toVar "benchres", ret, L1.TimeIt (L1.AppE fnname (L1.VarE (toVar tmp))) ret True) $
                                           -- FIXME: should actually return the result, as soon as we are able to print it.
                                           (if benchPrint
-                                           then L1.VarE "benchres"
+                                           then L1.VarE (toVar "benchres")
                                            else L1.PrimAppE L1.MkTrue [])
                                     }
                              _ -> l1
@@ -409,7 +409,7 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
                        l2  <- pass   "findWitnesses"            findWitnesses            l2
                        -- After findwitnesses is when programs should once again typecheck:
                        l2  <- passE' "typecheck"     (typecheckStrict (TCConfig True))   l2
-                              
+
                        l2  <- pass' "flatten"                  flatten2                  l2
                        l2  <- pass  "inlineTriv"               inline2                   l2
                        l2  <- pass  "shakeTree"                shakeTree                 l2
@@ -425,7 +425,7 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
                   then do l3res <- lift $ execProg l3
                           mapM_ (\(IntVal v) -> liftIO $ print v) l3res
                           liftIO $ exitSuccess
-                  else do                   
+                  else do
                    str <- lift (codegenProg packed l3)
 
                    -- The C code is long, so put this at a higher verbosity level.
@@ -467,17 +467,13 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
 isBench :: Mode -> Bool
 isBench (Bench _) = True
 isBench _ = False
-                             
+
 -- | The debug level at which we start to call the interpreter on the program during compilation.
 interpDbgLevel :: Int
 interpDbgLevel = 1
-                             
+
 clearFile :: FilePath -> IO ()
 clearFile fileName = removeFile fileName `catch` handleErr
   where
    handleErr e | isDoesNotExistError e = return ()
                | otherwise = throwIO e
-
-
-
-                            

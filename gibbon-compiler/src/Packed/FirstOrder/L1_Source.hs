@@ -14,21 +14,21 @@ module Packed.FirstOrder.L1_Source
     (
      -- * Core types
       Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), progToEnv
-          
+
       -- * Primitive operations
     , Prim(..), primArgsTy
-      
+
       -- * Types and helpers
     , Ty, Ty1(..), pattern Packed, pattern SymTy
     , voidTy, hasPacked, sizeOf
-      
+
     -- * Expression and Prog helpers
     , freeVars, subst, substE, mapExprs, getFunTy
-      
+
       -- * Trivial expressions
     , assertTriv, assertTrivs, isTriv, hasTimeIt
     , projNonFirst, mkProj, mkProd, mkProdTy, mkLets
-      
+
       -- * Examples
     , add1Prog
     )
@@ -59,11 +59,11 @@ data Prog = Prog { ddefs    :: DDefs Ty
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.
 progToEnv :: Prog -> Env2 (Ty1 ())
-progToEnv Prog{fundefs} = 
+progToEnv Prog{fundefs} =
     Env2 M.empty
          (M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
                      | FunDef n (_,a) b _ <- M.elems fundefs ])
-           
+
 
 -- | The source language.  It has pointer based sums and products, as
 -- well as packed algebraic datatypes.
@@ -113,10 +113,10 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
             -- ^ Read (mmap) a binary file containing packed data.  This must be annotated with the
             -- type of the file being read.  The `Ty` tracks the type as the program evolvels
             -- (first PackedTy then CursorTy).  The TyCon tracks the original type name.
-            
+
 -- TODO: Need list construction if we're going to have list:
 --          | MkList
-            
+
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 instance Out Prim
@@ -166,7 +166,7 @@ hasPacked t = case t of
                 SymDictTy ty -> hasPacked ty
                 ListTy _     -> error "FINISHLISTS"
 
--- | Provide a size in bytes, if it is statically known.                               
+-- | Provide a size in bytes, if it is statically known.
 sizeOf :: Ty1 a -> Maybe Int
 sizeOf t = case t of
              PackedTy{}  -> Nothing
@@ -175,7 +175,7 @@ sizeOf t = case t of
              IntTy       -> Just 8
              BoolTy      -> sizeOf IntTy
              ListTy _    -> error "FINISHLISTS"
-                               
+
 -- | Transform the expressions within a program.
 mapExprs :: (Exp -> Exp) -> Prog -> Prog
 mapExprs fn prg@Prog{fundefs,mainExp} =
@@ -270,7 +270,7 @@ substE old new ex =
         in FoldE (v1,t1,r1') (v2,t2,r2') (go bod)
 
 
-           
+
 primArgsTy :: Prim -> [Ty]
 primArgsTy p =
   case p of
@@ -282,7 +282,7 @@ primArgsTy p =
     MkTrue  -> []
     MkFalse -> []
     MkNullCursor -> []
-    SizeParam    -> [] 
+    SizeParam    -> []
     DictEmptyP _ty -> []
     DictInsertP _ty -> error "primArgsTy: dicts not handled yet"
     DictLookupP _ty -> error "primArgsTy: dicts not handled yet"
@@ -315,7 +315,7 @@ isTriv e =
      ----------------- POLICY DECISION ---------------
      -- Leave these as trivial for now:
      ProjE _ et | isTriv et -> True
-     MkProdE ls -> all isTriv ls  
+     MkProdE ls -> all isTriv ls
      _  -> False
 
 -- | Does the expression contain a TimeIt form?
@@ -325,17 +325,17 @@ hasTimeIt rhs =
       TimeIt _ _ _ -> True
       MkPackedE _ _ -> False
       VarE _        -> False
-      LitE _        -> False 
+      LitE _        -> False
       AppE _ _      -> False
       PrimAppE _ _ -> False
-      ProjE _ e    -> hasTimeIt e      
-      MkProdE ls   -> any hasTimeIt ls 
+      ProjE _ e    -> hasTimeIt e
+      MkProdE ls   -> any hasTimeIt ls
       IfE a b c -> hasTimeIt a || hasTimeIt b || hasTimeIt c
       CaseE _ ls -> any hasTimeIt [ e | (_,_,e) <- ls ]
       LetE (_,_,e1) e2 -> hasTimeIt e1 || hasTimeIt e2
       MapE (_,_,e1) e2 -> hasTimeIt e1 || hasTimeIt e2
       FoldE (_,_,e1) (_,_,e2) e3 -> hasTimeIt e1 || hasTimeIt e2 || hasTimeIt e3
-           
+
 -- | Project something which had better not be the first thing in a tuple.
 projNonFirst :: Int -> Exp -> Exp
 projNonFirst 0 e = error $ "projNonFirst: expected nonzero index into expr: "++sdoc e
@@ -346,7 +346,7 @@ projNonFirst i e = ProjE i e
 mkProj :: (Eq a, Num a) => Int -> a -> Exp -> Exp
 mkProj 0 1 e = e
 mkProj ix _ e = ProjE ix e
-                   
+
 -- | Make a product type while avoiding unary products.
 mkProd :: [Exp]-> Exp
 mkProd [e] = e
@@ -356,13 +356,13 @@ mkProd ls = MkProdE ls
 mkProdTy :: [Ty]-> Ty
 mkProdTy [t] = t
 mkProdTy ls = ProdTy ls
-            
+
 -- | Make a nested series of lets.
 mkLets :: [(Var,Ty,Exp)] -> Exp -> Exp
 mkLets [] bod = bod
 mkLets (b:bs) bod = LetE b (mkLets bs bod)
 
-              
+
 
 --------------------------------------------------------------------------------
 
@@ -370,20 +370,19 @@ treeTy :: Ty
 treeTy = Packed "Tree"
 
 add1Prog :: Prog
-add1Prog = Prog (fromListDD [DDef "Tree" [ ("Leaf",[IntTy])
-                                         , ("Node",[Packed "Tree", Packed "Tree"])]])
-                (M.fromList [("add1",exadd1)])
+add1Prog = Prog (fromListDD [DDef (toVar "Tree") [ ("Leaf",[IntTy])
+                                                 , ("Node",[Packed "Tree", Packed "Tree"])]])
+                (M.fromList [(toVar "add1",exadd1)])
                 Nothing
 
 exadd1 :: FunDef Ty Exp
-exadd1 = FunDef "add1" ("tr",treeTy) treeTy exadd1Bod
+exadd1 = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy exadd1Bod
 
 exadd1Bod :: Exp
 exadd1Bod =
-    CaseE (VarE "tr") $
-      [ ("Leaf", ["n"], PrimAppE AddP [VarE "n", LitE 1])
-      , ("Node", ["x","y"], MkPackedE "Node"
-                             [ AppE "add1" (VarE "x")
-                             , AppE "add1" (VarE "y")])
+    CaseE (VarE (toVar "tr")) $
+      [ ("Leaf", [toVar "n"], PrimAppE AddP [VarE (toVar "n"), LitE 1])
+      , ("Node", [toVar "x",toVar "y"], MkPackedE "Node"
+                             [ AppE (toVar "add1") (VarE $ toVar "x")
+                             , AppE (toVar "add1") (VarE $ toVar "y")])
       ]
-

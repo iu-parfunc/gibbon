@@ -2,7 +2,7 @@
 
 -- | A pass to route end-witnesses as additional function returns.
 
-module Packed.FirstOrder.Passes.RouteEnds 
+module Packed.FirstOrder.Passes.RouteEnds
     ( routeEnds ) where
 
 import           Packed.FirstOrder.Common hiding (FunDef)
@@ -27,7 +27,7 @@ lvl = 4
 
 -- =============================================================================
 
-    
+
 -- | The goal of this pass is to take effect signatures and translate
 -- them into extra arguments and returns.  This pass does not worry
 -- about where the witnesses come from to synthesize these extra
@@ -37,7 +37,7 @@ lvl = 4
 -- equivalent to the original variable, but they always have type
 -- CursorTy, even though the original value they are witnessing has
 -- not YET been turned into a cursor.  Thus, `witness_x = (CursorTy)x`.
--- 
+--
 routeEnds :: L2.Prog -> SyM L2.Prog
 routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
     fds' <- mapM fd $ M.elems fundefs
@@ -45,7 +45,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
     mn <- case mainExp of
             Nothing -> return Nothing
             Just (x,t)  -> do (x',_) <- exp [] M.empty x
-                              return $ Just (x',t) 
+                              return $ Just (x',t)
                 -- do let initWenv = WE (M.singleton gloc (L1.VarE "gcurs")) M.empty
                 --    tl' <- tail [] (M.empty,initWenv) x
                 --    return $ Just $ L1.LetE ("gcurs", CursorTy, NewBuffer) tl'
@@ -54,32 +54,32 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
                   , mainExp = mn
                   }
  where
-   
+
   fd :: L2.FunDef -> SyM L2.FunDef
   fd (f@L2.FunDef{funname,funty,funarg,funbod}) =
       let ArrowTy oldInT _effs _ = funty
-          (newTy@(ArrowTy inT _ _),newOut) = cursorizeTy1 funty 
+          (newTy@(ArrowTy inT _ _),newOut) = cursorizeTy1 funty
       in
       dbgTrace lvl ("Processing fundef: "++show(doc f)++
                     "\n  new type: "++sdoc newTy++"\n  newOut: " ++ show (newOut)) $
    do
       -- First off, we need to use the lexical variable name to name
-      -- the input's fixed abstract location (from the lambda body's prspective).      
+      -- the input's fixed abstract location (from the lambda body's prspective).
       let argLoc  = argtyToLoc (L2.mangle funarg) oldInT
-      
+
 --          localizedEffects  = substEffs (zipLT argLoc inT) effs
 --          localizedEffects2 = substEffs (zipTL inT argLoc) effs
-      
+
       -- We use the new type to determine the NEW return values:
-      (_efs, retlocs) <- instantiateApp newTy argLoc 
+      (_efs, retlocs) <- instantiateApp newTy argLoc
       let augments = if L.null newOut
                      then []
                      else case retlocs of
                             TupLoc l -> L.init l
                             _ -> error$ "routeEnds: expected a tuple return location: "++show retlocs
-      let env0 = 
-           dbgTrace lvl (" !!! argLoc "++show argLoc++", inTy "++show inT++", instantiate: "++show retlocs) $ 
---           dbgTrace lvl (" !!! localEffs1 "++show localizedEffects++" locEffs2 "++show localizedEffects2) $ 
+      let env0 =
+           dbgTrace lvl (" !!! argLoc "++show argLoc++", inTy "++show inT++", instantiate: "++show retlocs) $
+--           dbgTrace lvl (" !!! localEffs1 "++show localizedEffects++" locEffs2 "++show localizedEffects2) $
            M.singleton newArg argLoc
           newArg = funarg
           bod = funbod
@@ -92,22 +92,22 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
 
   triv :: L1.Exp -> L1.Exp
   triv tr =
-   case tr of 
+   case tr of
      VarE _                 -> tr -- Think about witness/end marking here.
      LitE _                 -> tr
      PrimAppE L1.MkTrue  [] -> tr
-     PrimAppE L1.MkFalse [] -> tr               
+     PrimAppE L1.MkFalse [] -> tr
      MkProdE ls             -> MkProdE $ L.map triv ls
      ProjE ix e             -> ProjE ix $ triv e
 
      _ -> error$ " [routeEnds] trivial expected: "++sdoc tr
-                  
+
   -- | Arguments:
   --
   --  (1) the N demanded traversal witnesses (end-of-input cursors)
   --  (2) an environment mapping lexical variables to abstract locations
   --  (3) expression to process
-  -- 
+  --
   -- Return values:
   --
   --  (1) The updated expression, possibly with a tupled return type
@@ -122,7 +122,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
         trivLoc (MkProdE ls) =
             let go [] = True
                 go ((LitE _):xs) = go xs
-                go _ = False            
+                go _ = False
             in if go ls
                then Bottom
                else error $ "Not handled in trivLoc, product of non-literals: " ++ (show ls)
@@ -141,7 +141,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
      tr | L1.isTriv tr -> return ( defaultReturn (triv tr)
                                  , trivLoc tr)
      ----------------End Trivials-------------------
-                              
+
      -- PrimApps do not currently produce end-witnesses:
      PrimAppE p ls -> L1.assertTrivs ls $
                        pure (defaultReturn (PrimAppE p (L.map triv ls)),Bottom)
@@ -151,25 +151,25 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
      MkPackedE k ls -> L1.assertTrivs ls $
        do fresh <- freshLoc "dunno"
           return (defaultReturn (MkPackedE k ls), fresh)
-         
+
      -- Allocating new data doesn't witness the end of any data being read.
-     LetE (v,ty, MkPackedE k ls) bod -> L1.assertTrivs ls $ 
+     LetE (v,ty, MkPackedE k ls) bod -> L1.assertTrivs ls $
        do env' <- extendLocEnv [(v,ty)] env
           (bod',loc) <- exp demanded env' bod
           return (LetE (v,ty,MkPackedE k ls) bod', loc)
 
      -- FIXME: Need unariser pass:
-     LetE (vr,ty, MkProdE ls) bod -> L1.assertTrivs ls $ do 
+     LetE (vr,ty, MkProdE ls) bod -> L1.assertTrivs ls $ do
       -- As long as we keep these trivial, this is book-keeping only.  Nothing to route out of here.
       env' <- extendLocEnv [(vr,ty)] env
       (bod',loc) <- exp demanded env' bod
       return (LetE (vr,ty,MkProdE ls) bod', loc)
-                 
+
     -- A let is a fork in the road, a compound expression where we
     -- need to decide which branch can fulfill a given demand.
-     LetE (v,t,rhs) bod -> 
+     LetE (v,t,rhs) bod ->
       do
-         ((fulfilled,demanded'), rhs', _rloc) <- maybeFulfill demanded env rhs         
+         ((fulfilled,demanded'), rhs', _rloc) <- maybeFulfill demanded env rhs
          env' <- extendLocEnv [(v,t)] env
          (bod', bloc) <- exp demanded' env' bod
          let num1 = length fulfilled
@@ -177,40 +177,40 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
              newExp = LetE (v,t, L1.mkProj num1 (num1+1) rhs') bod'
          assert (num1 + num2 == length demanded) $
             return (newExp, bloc)
-     
+
      --  We're allowing these as tail calls:
      AppE rat rand -> -- L1.assertTriv rnd $
        let loc = trivLoc rand in
-          do 
+          do
              -- This looks up the type before this pass, not with end cursors:
              let arrTy@(ArrowTy _ _ ouT) = funType rat
              (effs,loc) <- instantiateApp arrTy loc
              if L.null effs
               then dbgTrace lvl (" [routeEnds] processing app with ZERO extra end-witness returns:\n  "++sdoc ex) $
-                   assert (demanded == []) $ 
+                   assert (demanded == []) $
                    return (AppE rat rand, loc) -- Nothing to see here.
               else do
                 -- FIXME: THESE COULD BE IN THE WRONG ORDER:  (But it doesn't matter below.)
                 let outs = L.map (\(Traverse v) -> toEndVar v) (S.toList effs)
                 -- FIXME: assert that the demands match what we got back...
-                -- might need to shuffle the order 
+                -- might need to shuffle the order
                 assert (length demanded == length outs) $! return ()
                 let ouT' = L1.ProdTy $ (L.map mkCursorTy outs) ++ [ouT]
-                tmp <- gensym "hoistapp"
+                tmp <- gensym $ toVar "hoistapp"
                 let newExp = LetE (tmp, fmap (const ()) ouT', AppE rat rand) $
                                letBindProjections (L.map (\v -> (v,mkCursorTy ())) outs) (VarE tmp) $
                                  -- FIXME/TODO: unpack the witnesses we know about, returns 1-(N-1):
                                  (ProjE (length effs) (VarE tmp))
                 dbgTrace lvl (" [routeEnds] processing app with these extra returns: "++
-                                 show effs++", new expr:\n "++sdoc newExp) $! 
+                                 show effs++", new expr:\n "++sdoc newExp) $!
                   return (defaultReturn newExp,loc)
-                         
+
      -- Here we must fulfill the demand on ALL branches uniformly.
-     -- 
+     --
      -- FIXME: We will also need to create NEW DEMAND to witness the
      -- end of our non-first packed fields within the subexpressions
      -- of this case.  After copy insertion we know it is POSSIBLE,
-     -- but we still need to figure out which subexpressions shoud be 
+     -- but we still need to figure out which subexpressions shoud be
      -- be demanded to produce them.
      CaseE e1 ls -> L1.assertTriv e1 $
       let scrutloc = let lp (VarE sv)     = env # sv
@@ -222,25 +222,25 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
           docase (dcon,patVs,rhs) = do
             let tys    = lookupDataCon ddefs dcon
                 zipped = fragileZip patVs tys
-                         
+
             env' <- extendLocEnv zipped env
             (rhs',loc) <- exp demanded env' rhs
-            
+
             -- Since this pass is the one concerned with End propogation,
             -- it's the one that reifies the fact "last field's end is constructors end".
-            let rhs'' = 
-                  let Fixed v = scrutloc                                
+            let rhs'' =
+                  let Fixed v = scrutloc
                   in LetE (toEndVar v, mkCursorTy (),
                            case sequence (L.map L1.sizeOf tys) of
                              -- Here we statically know the layout, plus one for the tag:
                              Just ns -> AddCursor (L2.toWitnessVar v) (sum ns+1)
                              Nothing -> VarE (toEndVar (L.last patVs)))
                        rhs'
-                        
+
             return ((dcon,patVs,rhs''),loc)
-         
-      in do 
-            (ls',locs) <- unzip <$> mapM docase ls   
+
+      in do
+            (ls',locs) <- unzip <$> mapM docase ls
             -- unless (1 == (length $ nub $ L.map L.length extras)) $
             --   error $ "Got inconsintent-length augmented-return types from branches of case:\n  "
             --           ++show extras++"\nExpr:\n  "++sdoc ex
@@ -259,7 +259,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
 
      TimeIt e t b -> do (e',l) <- exp demanded env e
                         return (TimeIt e' t b, l)
-              
+
      _ -> error$ "[routeEnds] Unfinished.  Needs to handle:\n  "++sdoc ex
 {-
       -- MapE (v,t,rhs) bod -> MapE <$> ((v,t,) <$> go rhs) <*> go bod
@@ -282,12 +282,12 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
                    ++", demanded "++show demand++", from: "++show ex) $
        S.null matches
      then return (([],demand),ex',loc)
-     else do 
+     else do
       let (hits,misses) = L.partition (`S.member` matches) demand
       (ex',loc) <- exp [] env ex
       return ((hits,misses), ex', loc)
-           
-           
+
+
 
 locToEndVars :: Loc -> [Var]
 locToEndVars l =
@@ -295,18 +295,18 @@ locToEndVars l =
    (Fixed x) | isEndVar x -> [x]
              | otherwise -> []
    (Fresh _) -> []
-   (TupLoc ls) -> concatMap locToEndVars ls 
+   (TupLoc ls) -> concatMap locToEndVars ls
    Top    -> []
    Bottom -> []
-     
+
 
 letBindProjections :: [(Var, L1.Ty)] -> Exp -> Exp -> Exp
 letBindProjections ls tupname bod = go 0 ls
   where
     go _ [] = bod
     go ix ((vr,ty):rst) = LetE (vr, ty, ProjE ix tupname) $ go (ix+1) rst
-                   
-     
+
+
 -- | Let bind IFF there are extra cursor results.
 maybeLetTup :: [Loc] -> (L1.Ty, L1.Exp) -> WitnessEnv
             -> (L1.Exp -> WitnessEnv -> SyM L1.Exp) -> SyM L1.Exp
@@ -328,9 +328,9 @@ maybeLetTup locs (ty,ex) env fn = __refactor
      return $ L1.LetE (tmp, ty, ex) bod
 -}
 
--- | A variable binding may be able to 
+-- | A variable binding may be able to
 varToWitnesses :: Var -> Loc -> M.Map LocVar Exp
-varToWitnesses = __                  
+varToWitnesses = __
 {- varToWitnesses vr loc = WE (M.fromList $ go loc (L1.VarE vr)) M.empty
   where
    go (TupLoc ls) ex =

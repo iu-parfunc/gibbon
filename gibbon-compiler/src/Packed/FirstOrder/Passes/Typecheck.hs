@@ -41,11 +41,11 @@ data TCConfig =
     TCConfig
     { postCursorize :: Bool -- ^ The typo of certain operations change after Cursorize.
     }
-                   
+
 type TCEnv s = M.Map Var (TCVar s)
 
 --------------------------------------------------------------------------------
-    
+
 -- | Entrypoint with the expected type for a pass in the top-level compiler pipeline.
 typecheckStrict :: TCConfig -> L2.Prog -> SyM L2.Prog
 typecheckStrict cfg prg = if typecheck True cfg prg
@@ -56,10 +56,10 @@ typecheckStrict cfg prg = if typecheck True cfg prg
 
 -- | In contrast with 'typecheckStrict', this issues type errors only as warnings.
 typecheckPermissive :: TCConfig -> L2.Prog -> SyM L2.Prog
-typecheckPermissive cfg prg = do let !_ = typecheck False cfg prg 
+typecheckPermissive cfg prg = do let !_ = typecheck False cfg prg
                                  return prg
-                          
-                   
+
+
 -- | Run typecheck and report errors using the trace mechanism.
 -- Returns true if the program typechecks.
 typecheck :: Bool -> TCConfig -> L2.Prog -> Bool
@@ -77,13 +77,13 @@ typecheck strict cfg prg = runST $ do
 
 
 -- | Entrypoint for typechecking just an expression:
-typecheckExp :: DDefs L1.Ty -> L1.Exp -> L1.Ty 
+typecheckExp :: DDefs L1.Ty -> L1.Exp -> L1.Ty
 typecheckExp =
     -- Reusing code here is tricky... we could wrap it up in a dummy
     -- Prog, but that requires having a Main type already.
     error "typecheckExp FINISHME"
-                
-typecheck' :: forall s . TCConfig -> STRef s Bool -> L2.Prog -> ST s L2.Prog 
+
+typecheck' :: forall s . TCConfig -> STRef s Bool -> L2.Prog -> ST s L2.Prog
 typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = eachFn fn prg
  where
   eachFn fn (Prog dd fundefs mainExp) =
@@ -92,10 +92,10 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
                          let env = Env2 (M.singleton arg (fmap (\_->()) inT)) funEnv
                          mty <- fn env bod
                          case mty of
-                           Nothing -> reportErr $ "Typecheck of function " ++ nm ++ " failed."
+                           Nothing -> reportErr $ "Typecheck of function " ++ (fromVar nm) ++ " failed."
                            Just ty -> if ty == (fmap (\_->()) outT)
                                       then return ()
-                                      else reportErr $ "In function " ++ nm ++
+                                      else reportErr $ "In function " ++ (fromVar nm) ++
                                                ", expected return type " ++ (show outT) ++
                                                " and got return type " ++ (show ty) ++ "."
                          return $ L2.FunDef nm arrTy arg bod
@@ -125,7 +125,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
       case ex0 of
         VarE v  -> lookupTCVar tcenv v
         LitE _i -> return $ Concrete IntTy
-        AppE v e -> 
+        AppE v e ->
             do te <- go e
                let fty = M.lookup v tcenv
                case fty of
@@ -147,7 +147,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
                  L1.EqIntP -> do mapM_ (assertEqTCVar ex0 (Concrete IntTy)) tes
                                  return $ Concrete BoolTy
                  L1.EqSymP -> do mapM_ (assertEqTCVar ex0 (Concrete SymTy)) tes
-                                 return $ Concrete BoolTy                                      
+                                 return $ Concrete BoolTy
 
                  -- Polymorphic!:
                  L1.ErrorP _s t   -> return $ Concrete t
@@ -159,14 +159,14 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
                                          assertEqTCVar ex0 (Concrete SymTy) k
                                          return $ Concrete t
                     | otherwise -> failFresh$ "wrong number of arguments to DictLookupP: "++ndoc es
-                 L1.DictInsertP t 
+                 L1.DictInsertP t
                     | [d,k,v] <- tes -> do assertEqTCVar ex0 (Concrete (SymDictTy t)) d
                                            assertEqTCVar ex0 (Concrete SymTy) k
                                            assertEqTCVar ex0 (Concrete t) v
                                            return $ Concrete (SymDictTy t)
                     | otherwise -> failFresh$ "wrong number of arguments to DictInsertP: "++ndoc es
 
-                 L1.SizeParam -> return $ Concrete IntTy 
+                 L1.SizeParam -> return $ Concrete IntTy
                  L1.MkTrue    -> return $ Concrete BoolTy
                  L1.MkFalse   -> return $ Concrete BoolTy
 
@@ -174,7 +174,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
                  -- WARNING: tricky convention here.  We DONT update 'ty' to CursorTy, because we need to remember
                  -- the name of this type for later (i.e. calling the right print function).
                  L1.ReadPackedFile _ _ ty -> return $ Concrete ty
-                                     
+
                  -- _ -> failFresh $ "Case not handled in typecheck: " ++ (show p)
 
         LetE (v,t,e') e ->
@@ -201,7 +201,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
         CaseE e cs
             | postCursorize -> do te <- go e
                                   assertEqTCVar ex0 (Concrete (CursorTy ())) te
-                                  typecheckCasesPostCursorize cs 
+                                  typecheckCasesPostCursorize cs
             | otherwise -> do te <- go e
                               let tycons = L.map (getTyOfDataCon dd . fst3) cs
                               case L.nub tycons of
@@ -252,7 +252,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
     allConcrete ((Concrete t1):t2:ts) es = do pts <- allConcrete (t2:ts) es
                                               case pts of
                                                 Nothing -> return Nothing
-                                                Just (ProdTy ts') -> 
+                                                Just (ProdTy ts') ->
                                                     return $ Just $ ProdTy $ t1:ts'
                                                 Just _ -> error "impossible."
 
@@ -267,7 +267,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
     -- branch receives a cursor argument.
     typecheckCasesPostCursorize cs = do
       let go acc []      = return acc
-          go acc ((dcon,ls,rhs):rst) = 
+          go acc ((dcon,ls,rhs):rst) =
               case ls of
                 [curV] -> do rty <- tE dd (M.insert curV (Concrete (CursorTy ())) tcenv) rhs
                              assertEqTCVar ex0 acc rty
@@ -276,8 +276,8 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
                         go acc' rst
       acc0 <- freshTCVar
       go acc0 cs
-                                 
-    typecheckCases cs = 
+
+    typecheckCases cs =
         do tcs <- forM cs $ \(c,args,e) ->
                   do let targs = map Concrete $ lookupDataCon dd c
                          ntcenv = M.fromList (zip args targs) `M.union` tcenv
@@ -290,7 +290,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
   --  This is not top-level because it is under the scope of 'success':
   reportErr :: String -> ST s ()
   reportErr str = do
-    writeSTRef success False 
+    writeSTRef success False
     return $! dbgTrace lvl (" [typecheck] " ++ str) ()
 
   failFresh :: String -> ST s (TCVar s)
@@ -298,7 +298,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
                      freshTCVar
 
   freshTCVar :: ST s (TCVar s)
-  freshTCVar = do 
+  freshTCVar = do
     r <- newSTRef $ Right ()
     return $ Alias r
 
@@ -314,7 +314,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
         Just tcv -> return tcv
 
   assertEqTCVar :: Exp -> TCVar s -> TCVar s -> ST s ()
-  assertEqTCVar e (Concrete t1) (Concrete t2) = 
+  assertEqTCVar e (Concrete t1) (Concrete t2) =
       if t1 == t2
       then return ()
       else reportErr $ "Types not equal: " ++ (ndoc t1) ++ ", " ++ (ndoc t2)
@@ -323,9 +323,9 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
   assertEqTCVar e (Alias a) (Concrete t) = makeEqTCVar t a e
   assertEqTCVar e (Alias a1) (Alias a2) = makeEqAlias a1 a2 e
 
--- FIXME: finish fun type handling:                                          
---  assertEqTCVar e (Fun a b) (Fun c d) = 
-                                          
+-- FIXME: finish fun type handling:
+--  assertEqTCVar e (Fun a b) (Fun c d) =
+
   makeEqTCVar :: L1.Ty -> STRef s (Either (TCVar s) ()) -> Exp -> ST s ()
   makeEqTCVar t r e =
       do r' <- readSTRef r
@@ -339,7 +339,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
          r2' <- readSTRef r2
          case (r1',r2') of
               (Right (), Right ()) ->
-                  do tv <- freshTCVar 
+                  do tv <- freshTCVar
                      writeSTRef r1 $ Left tv
                      writeSTRef r2 $ Left tv
               (Left tcv, Right ()) -> writeSTRef r2 $ Left tcv

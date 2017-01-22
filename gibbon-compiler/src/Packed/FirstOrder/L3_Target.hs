@@ -9,7 +9,7 @@
 
 module Packed.FirstOrder.L3_Target
     ( Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..)
-    , Alts(..), Prog(..), MainExp(..)      
+    , Alts(..), Prog(..), MainExp(..)
     -- * Utility functions
     , withTail
     ) where
@@ -60,7 +60,7 @@ data Alts
 instance Out Int64 where
   doc w = doc (fromIntegral w :: Integer)
   docPrec n w = docPrec n (fromIntegral w :: Integer)
-           
+
 instance Out Word8 where
   doc w = doc (fromIntegral w :: Int)
   docPrec n w = docPrec n (fromIntegral w :: Int)
@@ -108,8 +108,8 @@ data Tail
     | LetTimedT { isIter :: Bool   -- ^ Run the RHS multiple times, if true.
                 , binds  :: [(Var,Ty)]
                 , timed  :: Tail
-                , bod    :: Tail } -- ^ This is like a one-armed if.  It needs a struct return. 
-      
+                , bod    :: Tail } -- ^ This is like a one-armed if.  It needs a struct return.
+
     | Switch Triv Alts (Maybe Tail) -- TODO: remove maybe on default case
     -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
@@ -130,7 +130,7 @@ data Ty
     | PtrTy   -- ^ A machine word.  Same width as IntTy.  Untyped.
               -- This is a pointer to a struct value which may contain other pointers.
 
--- TODO: Make Ptrs more type safe like this:      
+-- TODO: Make Ptrs more type safe like this:
 --    | StructPtrTy { fields :: [Ty] } -- ^ A pointer to a struct containing the given fields.
 
     | ProdTy [Ty]
@@ -156,7 +156,7 @@ data Prim
     -- ^ Returns a pointer to a buffer, with the invariant that data written
     -- to this region is no longer used after the enclosing function returns.
     -- I.e. this can be stack allocated data.
-      
+
     | WriteTag
     -- ^ Write a static tag value, takes a cursor to target.
     | WriteInt
@@ -214,5 +214,5 @@ withTail (tl0,retty) fn =
    mapAltsM f (TagAlts ls) = TagAlts <$> sequence [ (tg,) <$> f tl | (tg,tl) <- ls ]
    mapAltsM f (IntAlts ls) = IntAlts <$> sequence [ (tg,) <$> f tl | (tg,tl) <- ls ]
 
-   genTmps (ProdTy ls) = flip zip ls <$> sequence (replicate (length ls) (gensym "tctmp"))
-   genTmps ty          = do t <- gensym "tctmp"; return [(t,ty)]
+   genTmps (ProdTy ls) = flip zip ls <$> sequence (replicate (length ls) (gensym $ toVar "tctmp"))
+   genTmps ty          = do t <- gensym (toVar "tctmp"); return [(t,ty)]

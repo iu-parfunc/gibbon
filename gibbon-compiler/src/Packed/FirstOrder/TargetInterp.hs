@@ -18,7 +18,7 @@ import Data.Maybe (listToMaybe)
 import Data.Sequence (Seq, ViewL ((:<)), (|>))
 import qualified Data.Sequence as Seq
 import Packed.FirstOrder.L3_Target
--- import Packed.FirstOrder.Common ((#))
+import Packed.FirstOrder.Common (fromVar)
 import GHC.Generics
 import Control.DeepSeq
 import Text.PrettyPrint.GenericPretty
@@ -39,7 +39,7 @@ data Val
 instance NFData TimeSpec where
   rnf (TimeSpec !_ !_) = ()
 
-{-           
+{-
 instance Out UTCTime where
     doc s = text (show s)
     docPrec n s = text (show s)
@@ -51,14 +51,14 @@ instance (Out a, Show a) => Out (Seq a) where
     doc s = text (show s)
     docPrec _ s = text (show s)
 instance Out Val
-           
+
 execProg :: Prog -> IO [Val]
 execProg (Prog _ Nothing) = error "Can't evaluate program: No expression given"
 execProg (Prog funs (Just (PrintExp expr))) = exec env expr
   where
     env = M.fromList (map (\f -> (funName f, FunVal f)) funs)
 
-type Env = M.Map String Val
+type Env = M.Map Var Val
 
 
 clk :: Clock
@@ -66,9 +66,9 @@ clk = Monotonic
 -- Linux specific:
 -- clk = MonotonicRaw
 
-    
+
 eval :: Env -> Triv -> Val
-eval env (VarTriv v) = M.findWithDefault (error ("Unbound var: " ++ v)) v env
+eval env (VarTriv v) = M.findWithDefault (error ("Unbound var: " ++ (fromVar v))) v env
 eval _   (IntTriv i) = IntVal (fromIntegral i) -- TODO: Change L1 to Int64 too.
 eval _   (TagTriv t) = TagVal t
 
@@ -77,12 +77,12 @@ exec :: Env -> Tail -> IO [Val]
 
 exec env (RetValsT ts) = return $! map (eval env) ts
 
-exec env (LetTrivT (v,_t,rhs) body) = 
+exec env (LetTrivT (v,_t,rhs) body) =
     exec env' body
   where
     env' = extendEnv env [(v,rhs')]
     rhs' = eval env rhs
-                         
+
 exec env (LetCallT binds op args body) = do
     rets <- apply env (eval env (VarTriv op)) (map (eval env) args)
     let env' = extendEnv env (zip (map fst binds) rets)
@@ -102,7 +102,7 @@ exec env (LetIfT bnds (tst,thn,els) bod) =
      exec env' bod
 
 exec env (IfT v1 then_ else_) =
-    if v1' == IntVal 1 then exec env then_ else exec env else_    
+    if v1' == IntVal 1 then exec env then_ else exec env else_
   where
     v1' = eval env v1
 
@@ -113,21 +113,21 @@ exec env (LetTimedT flg bnds rhs bod) = do
     let iters = if flg then (error "Implement timed iteration inside the interpreter...")
                 else 1
     !_ <- return $! force env
-    st <- getTime clk          
+    st <- getTime clk
     vals <- foldM (\ _ i -> execWrapper i env rhs)
                   (error "Internal error: this should be unused.")
                [1..iters]
     en <- getTime clk
-    let env' = extendEnv env (zip (map fst bnds) vals)          
+    let env' = extendEnv env (zip (map fst bnds) vals)
     let tm = fromIntegral (toNanoSecs $ diffTimeSpec en st)
-              / 10e9 :: Double                        
+              / 10e9 :: Double
     if flg
      then do putStrLn $ "ITERS: "++show iters
              putStrLn $ "SIZE: " ++show (error "FINISHME: get size param" :: Int)
              putStrLn $ "BATCHTIME: "++show tm
      else putStrLn $ "SELFTIMED: "++show tm
     exec env' bod
-         
+
 exec env (Switch tr alts def) =
     case final_alt of
       Nothing -> error "Switch: No branch to choose."
@@ -168,8 +168,8 @@ exec _ e = error$ "Interpreter/exec, unhandled expression:\n  "++show (doc e)
 {-# NOINLINE execWrapper #-}
 execWrapper :: Int -> Env -> Tail -> IO [Val]
 execWrapper _i env ex = fmap force $ exec env ex
-           
-extendEnv :: Env -> [(String, Val)] -> Env
+
+extendEnv :: Env -> [(Var, Val)] -> Env
 extendEnv = foldr (uncurry M.insert)
 
 apply :: Env -> Val -> [Val] -> IO [Val]
@@ -214,6 +214,5 @@ applyPrim (DictInsertP _) [] = error "TargetInterp/applyPrim: finish DictInsertP
 applyPrim (DictLookupP _) [] = error $ "TargetInterp/applyPrim: finish DictLookupP"
 applyPrim (DictEmptyP _) []  = error $ "TargetInterp/applyPrim: finish DictEmptyP"
 
-                                              
-applyPrim op args = error ("applyPrim: Unsupported form or bad arguments: " ++ show op ++ " " ++ show args)
 
+applyPrim op args = error ("applyPrim: Unsupported form or bad arguments: " ++ show op ++ " " ++ show args)

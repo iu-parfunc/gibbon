@@ -8,24 +8,25 @@ module Packed.FirstOrder.Passes.InlinePacked
     , pattern NamedVal)
     where
 
-import qualified Data.Map as M    
+import qualified Data.Map as M
 import Packed.FirstOrder.Common (SyM, Var, dbgTrace, ndoc, sdoc, lookupDataCon, DDefs)
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.L2_Traverse as L2
 import Prelude hiding (exp)
+import Packed.FirstOrder.Common (Var(..), toVar, fromVar)
 
 -- | This pass gets ready for cursorDirect by pushing tree-creating
 -- expressions within the syntactic scope of data constructor
 -- applications.
 --
 -- STARTING INVARIANTS:
--- 
+--
 --   (1) Variables used only as witnesses are marked, and we NEVER
 --      inline Datacons into those locations.  We should already be
 --      thinking of those just as pointers.
---  
+--
 -- ENDING INVARIANTS:
--- 
+--
 --   (1) unbound variables may occur in the RHS of (LetE (_,CursorTy,_))
 --       bindings, but nowwhere else.
 --
@@ -34,7 +35,7 @@ import Prelude hiding (exp)
 --
 inlinePacked :: L2.Prog -> SyM L2.Prog
 inlinePacked prg@L2.Prog{ddefs,fundefs,mainExp} = return $
-  prg { fundefs = M.map fd fundefs 
+  prg { fundefs = M.map fd fundefs
       , mainExp = case mainExp of
                     Nothing      -> Nothing
                     (Just (e,t)) -> Just (inlinePackedExp ddefs [] e, t)
@@ -49,14 +50,14 @@ inlinePacked prg@L2.Prog{ddefs,fundefs,mainExp} = return $
 -- is inlinable. (I.e. function arguments are not.)
 --
 -- The policy at the moment is to inline ONLY `isConstructor`
--- bindings, and not to remove 
+-- bindings, and not to remove
 inlinePackedExp :: DDefs L1.Ty -> [(Var,(L1.Ty, Maybe L1.Exp))] -> L1.Exp -> L1.Exp
 inlinePackedExp ddefs = exp True
   where
 
   -- After this pass, these markers have served their purpose and can go away:
   var :: Var -> Var
-  var v | isWitnessVar v = let Just v' = fromWitnessVar v in v'
+  var v | isWitnessVar v = let Just v' = fromWitnessVar v in (toVar v')
         | otherwise = v
 
   -- | This takes a flag indicating how aggressively to inline.  We
@@ -71,7 +72,7 @@ inlinePackedExp ddefs = exp True
    case e0 of
     -- Here the witness variable markers intentionally prevent inlining:
     (VarE v) -> case lookup v env of
-                  Nothing -> dbgTrace 1 ("WARNING [inlinePacked] unbound variable: "++v)$
+                  Nothing -> dbgTrace 1 ("WARNING [inlinePacked] unbound variable: "++ fromVar v)$
                              VarE (var v)
                   Just (_,Nothing)  -> VarE (var v) -- Bound, but non-inlinable binding.
                   -- Here we either inline just the copies, or we inline up to isConstructor
@@ -89,19 +90,19 @@ inlinePackedExp ddefs = exp True
                                         ++ "this is the inlining environment:\n "++sdoc rhs
                    where
                     keepGoing = exp strong env rhs
-                                           
+
     (LetE (v,t,rhs) bod)
        | VarE _v2   <- rhs  -> addAndGo  -- ^ We always do copy-prop.
-       | not (L2.hasRealPacked t) -> LetE (var v,t, rhs') 
+       | not (L2.hasRealPacked t) -> LetE (var v,t, rhs')
                                      (exp strong ((v,(t,Nothing)):env) bod)
        | ProjE _ _  <- rhs  -> addAndGo
 
-       -- DONT inline timing:                 
+       -- DONT inline timing:
        | TimeIt{}   <- rhs  -> LetE (var v,t, rhs') (exp strong ((v,(t,Nothing)):env) bod)
        -- DONT inline file reading:
        | PrimAppE (L1.ReadPackedFile{}) _ <- rhs ->
           LetE (var v,t, rhs') (exp strong ((v,(t,Nothing)):env) bod)
-                       
+
 --      | L1.hasTimeIt rhs  -> __ -- AUDITME: is this still needed?
        | isConstructor rhs -> addAndGo
 
@@ -142,11 +143,11 @@ inlinePackedExp ddefs = exp True
                (exp strong env' e3)
 
 -- | Used to inline variable bindings while retaining their (former) name and type.
-pattern NamedVal vr ty e = LetE (vr,ty,e) (VarE "NAMED_VAL_PATTERN_SYN")
+pattern NamedVal vr ty e = LetE (vr,ty,e) (VarE (Var "NAMED_VAL_PATTERN_SYN"))
 -- pattern NamedVal vr ty e <- LetE (vr,ty,e) (VarE "NAMED_VAL") where
 --   NamedVal vr ty e = LetE (vr,ty,e) (VarE vr)
-               
--- | Is it a call that actually allocates output data? 
+
+-- | Is it a call that actually allocates output data?
 isConstructor :: Exp -> Bool
 isConstructor ex =
   case ex of

@@ -7,7 +7,7 @@ module Packed.FirstOrder.HaskellFrontend
   , desugarModule
   , desugarExp
   , desugarTopType
-  , desugarType  
+  , desugarType
   ) where
 
 --------------------------------------------------------------------------------
@@ -22,7 +22,7 @@ import Language.Haskell.Exts.Parser -- (parse)
 import Language.Haskell.Exts.Syntax as H
 import Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.Common
-    
+
 --------------------------------------------------------------------------------
 
 type Ds a = Either String a
@@ -48,14 +48,14 @@ desugarModule (H.Module _ _ _ _ _ _ decls) = do
 
       (main_fn, fun_map_no_main) =
         -- ugh, no alterF in this 'containers' version
-        ( funBody <$> M.lookup "main" fun_map
-        , M.delete "main" fun_map
+        ( funBody <$> M.lookup (toVar "main") fun_map
+        , M.delete (toVar "main") fun_map
         )
 
     return (Prog data_map fun_map_no_main main_fn)
 
 collectTopFunTy :: H.Decl -> Ds (Maybe (Var, TopTy))
-collectTopFunTy (TypeSig _ [n] ty) = Just <$> (name_to_str n,) <$> desugarTopType ty
+collectTopFunTy (TypeSig _ [n] ty) = Just <$> ((toVar . name_to_str) n ,) <$> desugarTopType ty
 collectTopFunTy ty@TypeSig{} = err ("Unsupported top-level type declaration: " ++ show ty)
 collectTopFunTy FunBind{} = return Nothing
 collectTopFunTy DataDecl{} = return Nothing
@@ -66,9 +66,9 @@ collectTopLevel :: M.Map Var TopTy -> H.Decl -> Ds (Maybe (Either (DDef Ty) (Fun
 collectTopLevel _ TypeSig{} = return Nothing
 
 collectTopLevel fun_tys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) Nothing]) = do
-    let fname' = name_to_str fname
-        fun_ty = M.findWithDefault (error ("Can't find function in type env: " ++ fname'))
-                                   fname' fun_tys
+    let fname'      = (toVar . name_to_str) fname
+        fun_ty      = M.findWithDefault (error ("Can't find function in type env: " ++ (fromVar fname')))
+                      fname' fun_tys
     [arg']   <- mapM collectArg args
     -- Limiting to one argument for now:
     [arg_ty] <- mapM (getArgTy fun_ty) [ 1 .. length [arg'] ]
@@ -76,7 +76,7 @@ collectTopLevel fun_tys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) 
     return (Just (Right (FunDef fname' (arg',arg_ty) (getRetTy fun_ty) rhs')))
   where
     collectArg :: Pat -> Ds Var
-    collectArg (PVar n) = return (name_to_str n)
+    collectArg (PVar n) = return $ (toVar . name_to_str) n
     collectArg arg      = err ("Unsupported function arg: " ++ show arg)
 
     getArgTy :: TopTy -> Int -> Ds Ty
@@ -90,7 +90,7 @@ collectTopLevel fun_tys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) 
 collectTopLevel _ (DataDecl _ DataType [] ty_name [] cons []) = do
     let ty_name' = name_to_str ty_name
     constrs <- mapM collectConstr cons
-    return (Just (Left (DDef ty_name' constrs)))
+    return (Just (Left (DDef (toVar ty_name') constrs)))
   where
     collectConstr (QualConDecl _ [] [] (ConDecl con_name arg_tys)) =
       ( name_to_str con_name, ) <$> mapM desugarType arg_tys
@@ -105,7 +105,7 @@ desugarExp :: H.Exp -> Ds L1.Exp
 desugarExp e =
     case e of
 
-      Var qname -> VarE <$> qname_to_str qname
+      H.Var qname -> VarE <$> toVar <$> qname_to_str qname
 
       Con qname -> MkPackedE <$> qname_to_str qname <*> pure []
 
@@ -113,9 +113,9 @@ desugarExp e =
 
       H.App e1 e2 ->
         desugarExp e1 >>= \case
-          VarE "fst" ->
+          VarE (Packed.FirstOrder.Common.Var "fst") ->
             L1.ProjE 0 <$> desugarExp e2
-          VarE "snd" ->
+          VarE (Packed.FirstOrder.Common.Var "snd") ->
             L1.ProjE 1 <$> desugarExp e2
           VarE f ->
             L1.AppE f <$> desugarExp e2
@@ -173,7 +173,7 @@ generateBind (PatBind _ _ GuardedRhss{} _) _ =
 
 generateBind (PatBind _ (PVar v) (UnGuardedRhs rhs) Nothing) e = do
     rhs' <- desugarExp rhs
-    return (LetE (name_to_str v, __, rhs') e)
+    return (LetE ((toVar . name_to_str) v, __, rhs') e)
 
 generateBind (PatBind _ not_var _ _) _ =
     err ("Only variable bindings are allowed in let. (found: " ++ show not_var ++ ")")
@@ -187,7 +187,7 @@ desugarAlt :: H.Alt -> Ds (DataCon, [Var], L1.Exp)
 
 desugarAlt (H.Alt _ (PApp qname ps) (UnGuardedRhs rhs) Nothing) = do
     con_name <- qname_to_str qname
-    ps' <- forM ps $ \case PVar v -> return (name_to_str v)
+    ps' <- forM ps $ \case PVar v -> return $ (toVar . name_to_str) v
                            _      -> err "Non-variable pattern in case."
     rhs' <- desugarExp rhs
     return (con_name, ps', rhs')
@@ -261,7 +261,7 @@ lit_to_int l         = err ("Literal not supported: " ++ show l)
 ----------------------------------------
 
 parseFile :: FilePath -> IO (L1.Prog, Int)
-parseFile path = do 
+parseFile path = do
     fmap parse (readFile path) >>= \case
       ParseOk hs -> do
         putStrLn "haskell-src-exts parsed OK. Desugaring..."

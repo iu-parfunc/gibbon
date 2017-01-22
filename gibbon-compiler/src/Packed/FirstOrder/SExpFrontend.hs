@@ -58,9 +58,12 @@ type Sexp = RichSExpr HaskLikeAtom
 prnt :: Sexp -> String
 prnt = T.unpack . encodeOne haskLikePrinter . fromRich
 
-toVar :: Text -> Var
-toVar = T.unpack
-    
+textToVar :: Text -> Var
+textToVar = toVar . T.unpack
+
+textToDataCon :: Text -> DataCon
+textToDataCon = T.unpack
+
 -- Ideally, we'd extend the parser to ignore #lang lines.
 -- But for now we'll just do that in a preprocessing hack.
 treelangParser :: SExprParser HaskLikeAtom (SExpr HaskLikeAtom)
@@ -90,13 +93,13 @@ bracketHacks = T.map $ \case '[' -> '('
 tagDataCons :: DDefs Ty -> Exp -> Exp
 tagDataCons ddefs = go allCons
   where 
-   allCons = S.fromList [ con
+   allCons = S.fromList [ (toVar con)
                         | DDef{dataCons} <- M.elems ddefs
                         , (con,_tys) <- dataCons ]
    go cons ex = 
      case ex of
-       AppE v (MkProdE ls) | S.member v cons -> MkPackedE v (L.map (go cons) ls)
-       AppE v e | S.member v cons -> MkPackedE v [go cons e]
+       AppE v (MkProdE ls) | S.member v cons -> MkPackedE (fromVar v) (L.map (go cons) ls)
+       AppE v e | S.member v cons -> MkPackedE (fromVar v) [go cons e]
                 | otherwise       -> AppE      v (go cons e)
        LetE (v,t,rhs) bod -> 
          let go' = if S.member v cons
@@ -141,7 +144,7 @@ parseSExp ses =
      (L (A "require":_) : rst) -> go rst dds fds cds mn
 
      (L (A "data": A tycon : cs) : rst) ->
-         go rst (DDef (toVar tycon) (L.map docasety cs) : dds) fds cds mn
+         go rst (DDef (textToVar tycon) (L.map docasety cs) : dds) fds cds mn
      (L [A "define", funspec, ":", retty, bod] : rst)
         |  RSList (A name : args) <- funspec
         -> do
@@ -150,16 +153,17 @@ parseSExp ses =
                                args
          (arg,ty,bod'') <-
                case args' of
-                 []   -> (,voidTy,bod') <$> gensym "void" 
+                 []   -> (,voidTy,bod') <$> gensym (toVar "void")
                  [(a,t)] -> pure (a,t,bod')
                  _    -> do let (vs,ts) = unzip args'
-                            vr <- gensym (L.concat$ L.intersperse "_" vs)
+                            vr <- gensym (toVar (L.concat $ L.intersperse "_" $
+                                                 L.map fromVar vs))
                             let ty = ProdTy ts
                                 newbod = tuplizeRefs vr vs bod'
                             return (vr,ty,newbod)
          -- Here we directly desugar multiple arguments into a tuple
          -- argument.
-         go rst dds (FunDef { funName  = toVar name
+         go rst dds (FunDef { funName  = textToVar name
                             , funArg   = (arg, ty)
                             , funRetTy = typ retty
                             , funBody  = bod''
@@ -168,7 +172,7 @@ parseSExp ses =
 
      -- Top-level definition instead of a function.
      (L [A "define", A topid, ":", ty, bod] : rst) ->
-         go rst dds fds ((T.unpack topid,ty,exp bod) : cds) mn
+         go rst dds fds ((textToVar topid,ty,exp bod) : cds) mn
 
      (L [A "define", _args, _bod] : _) -> error$ "Function is missing return type:\n  "++prnt (head xs)
      (L (A "define" : _) : _) -> error$ "Badly formed function:\n  "++prnt (head xs)
@@ -195,20 +199,20 @@ typ s = case s of
          (A "Int")  -> IntTy
          (A "Sym")  -> SymTy
          (A "Bool") -> BoolTy
-         (A other)  -> Packed (toVar other)
+         (A other)  -> Packed (textToDataCon other)
          (RSList (A "Vector"  : rst)) -> ProdTy $ L.map typ rst
          (RSList [A "SymDict", t]) -> SymDictTy $ typ t
          (RSList [A "Listof", t])  -> ListTy $ typ t
          _ -> error$ "SExpression encodes invalid type:\n "++prnt s
 
 getSym :: RichSExpr HaskLikeAtom -> Var
-getSym (RSAtom (HSIdent id)) = toVar id
+getSym (RSAtom (HSIdent id)) = textToVar id
 getSym s = error $ "expected identifier sexpr, got: "++prnt s
 
 docasety :: Sexp -> (DataCon,[Ty])
 docasety s = 
   case s of
-    (RSList ((A id) : tys)) -> (toVar id, L.map typ tys)
+    (RSList ((A id) : tys)) -> (textToDataCon id, L.map typ tys)
     _ -> error$ "Badly formed variant of datatype:\n "++prnt s
 
 pattern A s = RSAtom (HSIdent s)
@@ -260,7 +264,7 @@ exp se =
    L2 "quote" (A v) -> LitE $ hackySymbol (T.unpack v)
      
    -- Any other naked symbol is a variable:
-   A v -> VarE (toVar v)
+   A v -> VarE (textToVar v)
    RSAtom (HSInt n)  -> LitE (fromIntegral n)
                         
    -- | This type gets replaced later in flatten:
@@ -278,15 +282,15 @@ exp se =
    L (A p : ls) | isPrim p -> PrimAppE (prim p) $ L.map exp ls
 
    L3 "for/list" (L1 (L4 v ":" t e)) bod ->     
-     S.MapE (T.unpack v, typ t, exp e) (exp bod)
+     S.MapE (textToVar v, typ t, exp e) (exp bod)
 
    -- I don't see why we need the extra type annotation:
    L4 "for/fold"
           (L1 (L4 v1 ":" t1 e1))
           (L1 (L4 v2 ":" t2 e2))
           bod -> 
-     S.FoldE (T.unpack v1, typ t1, exp e1)
-             (T.unpack v2, typ t2, exp e2)
+     S.FoldE (textToVar v1, typ t1, exp e1)
+             (textToVar v2, typ t2, exp e2)
              (exp bod)
 
    L3 "vector-ref" evec (RSAtom (HSInt ind)) -> S.ProjE (fromIntegral ind) (exp evec)
@@ -317,7 +321,7 @@ exp se =
    ----------------------------------------                                                
    -- If NOTHING else matches, we are an application.  Be careful we didn't miss anything:             
    L (A rator : rands) -> 
-     let app = AppE (toVar rator)
+     let app = AppE (textToVar rator)
      in case rands of   
          [] -> app (MkProdE [])
          [rand] -> app (exp rand)
@@ -333,7 +337,7 @@ docase s =
   case s of
     RSList [ RSList (A con : args)
            , rhs ]
-      -> (toVar con, L.map getSym args, exp rhs)
+      -> (textToDataCon con, L.map getSym args, exp rhs)
     _ -> error$ "bad clause in case expression\n  "++prnt s
 
 
@@ -342,7 +346,7 @@ letbind s =
   case s of
    RSList [A vr, A ":",
            ty, rhs]
-     -> (toVar vr, typ ty, exp rhs)
+     -> (textToVar vr, typ ty, exp rhs)
    _ -> error $ "Badly formed let binding:\n  "++prnt s
 
 isPrim :: Text -> Bool

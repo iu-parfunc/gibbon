@@ -39,85 +39,85 @@ import Prelude hiding (tail)
 -- Generating unpack functions from Packed->Pointer representation:
 -------------------------------------------------------------------------------
 
-genDcons :: [L1.Ty] -> Var -> [(T.Ty, T.Triv)] -> SyM T.Tail 
+genDcons :: [L1.Ty] -> Var -> [(T.Ty, T.Triv)] -> SyM T.Tail
 genDcons (x:xs) tail fields = case x of
   L1.IntTy             ->  do
-    val  <- gensym "val"
-    t    <- gensym "tail"
-    T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] 
+    val  <- gensym $ toVar "val"
+    t    <- gensym $ toVar "tail"
+    T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)]
       <$> genDcons xs t (fields ++ [(T.IntTy, T.VarTriv val)])
-      
+
   L1.PackedTy tyCons _ -> do
-    ptr  <- gensym "ptr"
-    t    <- gensym "tail"
+    ptr  <- gensym $ toVar "ptr"
+    t    <- gensym $ toVar "tail"
     T.LetCallT [(ptr, T.PtrTy), (t, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
-      <$> genDcons xs t (fields ++ [(T.CursorTy, T.VarTriv ptr)]) 
+      <$> genDcons xs t (fields ++ [(T.CursorTy, T.VarTriv ptr)])
   _                    -> undefined
 
-genDcons [] tail fields     = do 
-  ptr <- gensym "ptr"
-  return $ T.LetAllocT ptr fields $ T.RetValsT [T.VarTriv ptr, T.VarTriv tail] 
+genDcons [] tail fields     = do
+  ptr <- gensym $ toVar "ptr"
+  return $ T.LetAllocT ptr fields $ T.RetValsT [T.VarTriv ptr, T.VarTriv tail]
 
 genAlts :: [(DataCon,[L1.Ty])] -> Var -> Var -> Int64 -> SyM T.Alts
 genAlts ((_, typs):xs) tail tag n = do
-  curTail <- genDcons typs tail [(T.IntTy, T.VarTriv tag)] 
-  alts    <- genAlts xs tail tag (n+1) 
+  curTail <- genDcons typs tail [(T.IntTy, T.VarTriv tag)]
+  alts    <- genAlts xs tail tag (n+1)
   case alts of
     T.IntAlts []   -> return $ T.IntAlts [(n::Int64, curTail)]
-    -- T.TagAlts []   -> return $ T.TagAlts [(n::Word8, curTail)] 
+    -- T.TagAlts []   -> return $ T.TagAlts [(n::Word8, curTail)]
     T.IntAlts tags -> return $ T.IntAlts ((n::Int64, curTail) : tags)
     -- T.TagAlts tags -> return $ T.TagAlts ((n::Word8, curTail) : tags)
     _              -> error $ "Invalid case statement type."
 
-genAlts [] _ _ _                  = return $ T.IntAlts [] 
+genAlts [] _ _ _                  = return $ T.IntAlts []
 
-genUnpacker :: DDef L1.Ty -> SyM T.FunDecl    
+genUnpacker :: DDef L1.Ty -> SyM T.FunDecl
 genUnpacker DDef{tyName, dataCons} = do
-  p    <- gensym "p"
-  tag  <- gensym "tag"
-  tail <- gensym "tail"
-  alts <- genAlts dataCons tail tag 0 
+  p    <- gensym $ toVar "p"
+  tag  <- gensym $ toVar "tag"
+  tail <- gensym $ toVar "tail"
+  alts <- genAlts dataCons tail tag 0
   bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
             T.Switch (T.VarTriv tag) alts Nothing
-  return T.FunDecl{ T.funName  = (mkUnpackerName tyName),
+  return T.FunDecl{ T.funName  = mkUnpackerName (fromVar tyName),
                     T.funArgs  = [(p, T.CursorTy)],
                     T.funRetTy = T.ProdTy [T.PtrTy, T.CursorTy],
-                    T.funBody  = bod } 
-                    
+                    T.funBody  = bod }
 
--- | Modify a Tail to *print* its return value and then 
+
+-- | Modify a Tail to *print* its return value and then
 
 -- Utility functions
 openParen :: String -> (T.Tail -> T.Tail)
-openParen s  = T.LetPrimCallT [] (T.PrintString ("(" ++ s ++ " ")) [] 
+openParen s  = T.LetPrimCallT [] (T.PrintString ("(" ++ s ++ " ")) []
 
 closeParen :: T.Tail -> T.Tail
-closeParen   = T.LetPrimCallT [] (T.PrintString ")") [] 
+closeParen   = T.LetPrimCallT [] (T.PrintString ")") []
 
 printSpace :: T.Tail -> T.Tail
 printSpace = T.LetPrimCallT [] (T.PrintString " ") []
-               
+
 sandwich :: (T.Tail -> T.Tail) -> String -> T.Tail -> T.Tail
 sandwich mid s end = openParen s $ mid $ closeParen end
 
 -- Generate printing functions
-genDconsPrinter :: [L1.Ty] -> Var -> SyM T.Tail 
+genDconsPrinter :: [L1.Ty] -> Var -> SyM T.Tail
 genDconsPrinter (x:xs) tail = case x of
   L1.IntTy             ->  do
-    val  <- gensym "val"
-    t    <- gensym "tail"
-    T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$> 
-      printTy L1.IntTy [T.VarTriv val] <$> 
-       maybeSpace <$>              
-        genDconsPrinter xs t 
-      
+    val  <- gensym $ toVar "val"
+    t    <- gensym $ toVar "tail"
+    T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$>
+      printTy L1.IntTy [T.VarTriv val] <$>
+       maybeSpace <$>
+        genDconsPrinter xs t
+
   L1.PackedTy tyCons _ -> do
-    val  <- gensym "val"
-    t    <- gensym "tail"
-    tmp  <- gensym "temp"
-    T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$> 
+    val  <- gensym $ toVar "val"
+    t    <- gensym $ toVar "tail"
+    tmp  <- gensym $ toVar "temp"
+    T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$>
       T.LetCallT [(tmp, T.PtrTy)] (mkPrinterName tyCons) [(T.VarTriv val)] <$>
-       maybeSpace <$>  
+       maybeSpace <$>
          genDconsPrinter xs t
 
   _ -> error "FINISHME: genDconsPrinter"
@@ -126,43 +126,43 @@ genDconsPrinter (x:xs) tail = case x of
   maybeSpace = if L.null xs
                then id
                else printSpace
-       
-genDconsPrinter [] tail     = do 
-  return $ closeParen $ T.RetValsT [(T.VarTriv tail)] 
+
+genDconsPrinter [] tail     = do
+  return $ closeParen $ T.RetValsT [(T.VarTriv tail)]
 
 genAltPrinter :: [(DataCon,[L1.Ty])] -> Var -> Int64 -> SyM T.Alts
 genAltPrinter ((dcons, typs):xs) tail n = do
   curTail <- (openParen dcons) <$> genDconsPrinter typs tail
-  alts    <- genAltPrinter xs tail (n+1) 
+  alts    <- genAltPrinter xs tail (n+1)
   case alts of
     T.IntAlts []   -> return $ T.IntAlts [(n::Int64, curTail)]
-    -- T.TagAlts []   -> return $ T.TagAlts [(n::Word8, curTail)] 
+    -- T.TagAlts []   -> return $ T.TagAlts [(n::Word8, curTail)]
     T.IntAlts tags -> return $ T.IntAlts ((n::Int64, curTail) : tags)
     -- T.TagAlts tags -> return $ T.TagAlts ((n::Word8, curTail) : tags)
     _              -> error $ "Invalid case statement type."
-genAltPrinter [] _ _                = return $ T.IntAlts [] 
+genAltPrinter [] _ _                = return $ T.IntAlts []
 
 genPrinter  :: DDef L1.Ty -> SyM T.FunDecl
 genPrinter DDef{tyName, dataCons} = do
-  p    <- gensym "p"
-  tag  <- gensym "tag"
-  tail <- gensym "tail"
-  alts <- genAltPrinter dataCons tail 0 
+  p    <- gensym $ toVar "p"
+  tag  <- gensym $ toVar "tag"
+  tail <- gensym $ toVar "tail"
+  alts <- genAltPrinter dataCons tail 0
   bod  <- return $ T.LetPrimCallT [(tag, T.IntTy), (tail, T.CursorTy)] T.ReadInt [(T.VarTriv p)] $
-            T.Switch (T.VarTriv tag) alts Nothing 
-  return T.FunDecl{ T.funName  = (mkPrinterName tyName),
+            T.Switch (T.VarTriv tag) alts Nothing
+  return T.FunDecl{ T.funName  = mkPrinterName (fromVar tyName),
                     T.funArgs  = [(p, T.CursorTy)],
                     T.funRetTy = T.PtrTy,
-                    T.funBody  = bod } 
+                    T.funBody  = bod }
 
 printTy :: L1.Ty -> [T.Triv] -> (T.Tail -> T.Tail)
-printTy L1.IntTy [trv]                = T.LetPrimCallT [] T.PrintInt [trv] 
-printTy L1.BoolTy [trv]               =   
+printTy L1.IntTy [trv]                = T.LetPrimCallT [] T.PrintInt [trv]
+printTy L1.BoolTy [trv]               =
   let prntBool m                      = T.LetPrimCallT [] (T.PrintString m) [] in
     \t -> T.IfT trv (prntBool truePrinted $ t) (prntBool falsePrinted $ t)
-printTy (L1.ProdTy xs) [trv]          = \t -> foldl (\y x -> (printTy x [trv] $ y)) t xs   
+printTy (L1.ProdTy xs) [trv]          = \t -> foldl (\y x -> (printTy x [trv] $ y)) t xs
 printTy (L1.SymDictTy (x)) [trv]      = sandwich (printTy x [trv]) "Dict"
-printTy (L1.PackedTy constr _) [trv]  = T.LetCallT [] (mkPrinterName constr) [trv] 
+printTy (L1.PackedTy constr _) [trv]  = T.LetCallT [] (mkPrinterName constr) [trv]
 printTy (L1.ListTy (x)) [trv]         = sandwich (printTy x [trv]) "List"
 printTy _ _                           = error $ "Invalid L1 data type."
 
@@ -171,7 +171,7 @@ addPrintToTail ty tl0 =
     T.withTail (tl0, T.IntTy) $ \ [trv] ->
       printTy ty [trv] $
         -- Always print a trailing newline at the end of execution:
-        T.LetPrimCallT [] (T.PrintString "\n") [] $ 
+        T.LetPrimCallT [] (T.PrintString "\n") [] $
           T.RetValsT []  -- Void return after printing.
 
 -- | In packed mode we print by unpacking first.
@@ -179,19 +179,19 @@ addPrintToTailPacked :: L1.Ty -> T.Tail-> SyM T.Tail
 addPrintToTailPacked ty tl0 =
   -- FIXME: Need to handle products of packed!!
   case ty of
-    L1.PackedTy tycon _ -> 
+    L1.PackedTy tycon _ ->
        T.withTail (tl0, T.IntTy) $ \ [trv] ->
-          T.LetCallT [("unpkd", T.PtrTy), ("ignre", T.CursorTy)] (mkUnpackerName tycon) [trv] $ 
-           printTy ty [T.VarTriv "unpkd"] $
+          T.LetCallT [(toVar "unpkd", T.PtrTy), (toVar "ignre", T.CursorTy)] (mkUnpackerName tycon) [trv] $
+           printTy ty [T.VarTriv (toVar "unpkd")] $
              -- Always print a trailing newline at the end of execution:
-             T.LetPrimCallT [] (T.PrintString "\n") [] $ 
+             T.LetPrimCallT [] (T.PrintString "\n") [] $
                T.RetValsT []  -- Void return after printing.
     _ -> addPrintToTail ty tl0
 
 -- The compiler pass
 -------------------------------------------------------------------------------a
 
--- | Convert into the target language.  This does not make much of a 
+-- | Convert into the target language.  This does not make much of a
 -- change, but it checks the changes that have already occurred.
 --
 -- The only substantitive conversion here is of tupled arguments to
@@ -210,8 +210,8 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
                           in (Just . T.PrintExp) <$>
                               (addPrint =<< tail x)
 
-  funs       <- mapM fund (M.elems fundefs) 
-  unpackers  <- mapM genUnpacker (M.elems ddefs) 
+  funs       <- mapM fund (M.elems fundefs)
+  unpackers  <- mapM genUnpacker (M.elems ddefs)
   printers   <- mapM genPrinter (M.elems ddefs)
   T.Prog <$> pure (funs ++ unpackers ++ printers) <*> pure mn
 
@@ -271,8 +271,8 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
     -- Likewise, Case really means ReadTag.  Argument is a cursor.
     CaseE (VarE scrut) ls | pkd -> do
         let (last:restrev) = reverse ls; rest = reverse restrev
-        tagtmp <- gensym "tmpval"
-        ctmp   <- gensym "tmpcur"
+        tagtmp <- gensym $ toVar "tmpval"
+        ctmp   <- gensym $ toVar "tmpcur"
         -- We only need to thread one value through, the cursor resulting from read.
         let doalt (k,ls,rhs) =
              (getTagOfDataCon ddefs k,) <$>
@@ -304,16 +304,16 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
       -- ASSERT(length tys == length bndrs)
 
       let T.VarTriv e_var = triv "product case scrutinee" e
-      tag_bndr  <- gensym "tag"
+      tag_bndr  <- gensym $ toVar "tag"
 
       let bndrs' = tag_bndr : bndrs
-          tys'   = T.IntTy  : tys 
+          tys'   = T.IntTy  : tys
       rhs' <- tail rhs
       return (T.LetUnpackT (zip bndrs' tys') e_var rhs')
 
     CaseE e (def_alt : alts) | not pkd -> do
-      tag_bndr <- gensym "tag"
-      tail_bndr <- gensym "tail"
+      tag_bndr <- gensym $ toVar "tag"
+      tail_bndr <- gensym $ toVar "tail"
 
       let
         e_triv = triv "sum case scrutinee" e
@@ -339,13 +339,13 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
     -- Accordingly, constructor allocation becomes an allocation.
     LetE (v, _, MkPackedE k ls) bod | not pkd -> L1.assertTrivs ls $ do
       let tycon    = getTyOfDataCon ddefs k
-          all_cons = dataCons (lookupDDef ddefs tycon)
+          all_cons = dataCons (lookupDDef ddefs (toVar tycon))
           is_prod  = length all_cons == 1
           tag      = fromJust (L.findIndex ((==) k . fst) all_cons)
 
           field_tys= L.map typ (lookupDataCon ddefs k)
           fields0  = fragileZip field_tys (L.map (triv "MkPackedE args") ls)
-          fields   = (T.IntTy, T.IntTriv (fromIntegral tag)) : fields0 
+          fields   = (T.IntTy, T.IntTriv (fromIntegral tag)) : fields0
           --  | is_prod   = fields0
           --  | otherwise = (T.IntTy, T.IntTriv (fromIntegral tag)) : fields0
 
@@ -359,16 +359,16 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
 
     -- This is legitimately flattened, but we need to move it off the spine:
     L1.MkPackedE k _ls -> do
-       tmp <- gensym "tailift"
+       tmp <- gensym $ toVar "tailift"
        let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
        tail $ LetE (tmp, ty, ex0) (VarE tmp)
-             
+
     --------------------------------------------------------------------------------
-             
+
 --    L1.LitE n       -> pure$ T.RetValsT [triv "literal in tail" (LitE n)]
     L1.MkProdE ls   -> pure$ T.RetValsT (L.map (triv "returned element of tuple") ls)
     e | L1.isTriv e -> pure$ T.RetValsT [triv "<internal error1>" e]
-                       
+
     -- L1.LetE (v,t, L1.MkProdE ls) bod -> do
     --   let rhss = L.map triv ls
     --   vsts <- unzipTup v t
@@ -403,8 +403,8 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
 
     LetE (vr, ty, L1.TimeIt rhs _ flg) bod ->
         do rhs' <- tail rhs
-           case ty of 
-             L2.ProdTy ls -> 
+           case ty of
+             L2.ProdTy ls ->
                do (tmps,bod') <- eliminateProjs vr ls bod
                   T.LetTimedT flg (zip tmps (L.map typ ls)) rhs' <$> tail bod'
              _ -> T.LetTimedT flg   [(vr, typ ty)]          rhs' <$> tail bod
@@ -421,7 +421,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
 
     -- Whatever... a little just-in-time flattening.  Should obsolete this:
     L1.PrimAppE p ls -> do
-      tmp <- gensym "flt"
+      tmp <- gensym $ toVar "flt"
       tail (L1.LetE (tmp, L2.primRetTy p, L1.PrimAppE p ls) (L1.VarE tmp))
 
     ---------------------
@@ -431,14 +431,14 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
          tail bod
 
     L1.LetE (pr,_,L2.ReadInt c) bod -> do
-      vtmp <- gensym "tmpval"
-      ctmp <- gensym "tmpcur"
+      vtmp <- gensym $ toVar "tmpval"
+      ctmp <- gensym $ toVar "tmpcur"
       T.LetPrimCallT [(vtmp,T.IntTy),(ctmp,T.CursorTy)] T.ReadInt [T.VarTriv c] <$>
         -- Here we lamely chase down all the tuple references and make them variablesa:
         let bod' = L1.substE (L1.ProjE 0 (L1.VarE pr)) (L1.VarE vtmp) $
                    L1.substE (L1.ProjE 1 (L1.VarE pr)) (L1.VarE ctmp) bod
         in
-          dbgTrace 5 (" [lower] ReadInt, after substing references to "++pr++":\n  "++sdoc bod')$
+          dbgTrace 5 (" [lower] ReadInt, after substing references to "++(fromVar pr)++":\n  "++sdoc bod')$
           tail bod'
 
     L1.LetE (v,_,L2.NewBuffer) bod ->
@@ -459,7 +459,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
      error $ "Lower: missed an extended L2 pattern on rhs of let: "++ndoc p
     p | L2.isExtendedPattern p ->
      error $ "Lower: missed an extended L2 pattern: "++ndoc p
-           
+
     ---------------------
     -- (3) Proper primapps.
     L1.LetE (v,t,L1.PrimAppE p ls) bod ->
@@ -476,7 +476,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
 
     -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
     ProjE ix ap@(AppE f e) | not (L2.isExtendedPattern ap) -> do
-        tmp <- gensym "prjapp"
+        tmp <- gensym $ toVar "prjapp"
         let L2.ArrowTy (L2.ProdTy inTs) _ _ = funty (fundefs # f)
         tail $ LetE ( tmp
                     , fmap (const ()) (inTs !! ix)
@@ -501,7 +501,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
                                      return (zip tmps (L.map typ tys), e)
                             -- More than one should not currently be
                             -- possible (no nested tuple returns):
-                            [ix] -> do garbages <- sequence [ gensym "garbage" | _ <- L.tail tys ]
+                            [ix] -> do garbages <- sequence [ gensym (toVar "garbage") | _ <- L.tail tys ]
                                        let (lead,trail) = L.splitAt ix garbages
                                        return ( zip (lead++[vr]++trail)
                                                     (L.map typ tys)
@@ -528,9 +528,9 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
     _ -> error$ "lower: unexpected expression in tail position:\n  "++sdoc ex0
 
 
--- Helpers         
+-- Helpers
 --------------------------------------------------------------------------------
-         
+
 -- | View pattern for matching agaist projections of Foo rather than just Foo.
 projOf :: Exp -> ([Int], Exp)
 projOf (ProjE ix e) = let (stk,e') = projOf e in
@@ -567,7 +567,7 @@ eliminateProjs vr tys bod =
  dbgTrace 5 (" [lower] eliminating "++show (length tys)++
              " projections on variable "++show vr++" in expr with types "
                                         ++show tys++":\n   "++sdoc bod) $
- do tmps <- mapM (\_ -> gensym "pvrtmp") [1.. (length tys)]
+ do tmps <- mapM (\_ -> gensym (toVar "pvrtmp")) [1.. (length tys)]
     let go _ [] acc =
             -- If there are ANY references left, we are forced to make the products:
             L1.subst vr (MkProdE (L.map VarE tmps)) acc
@@ -635,5 +635,3 @@ prim p =
     L1.ErrorP{}     -> error$ "lower/prim: internal error, should not have got to here: "++show p
     L1.MkTrue       -> error "lower/prim: internal error. MkTrue should not get here."
     L1.MkFalse      -> error "lower/prim: internal error. MkFalse should not get here."
-
-

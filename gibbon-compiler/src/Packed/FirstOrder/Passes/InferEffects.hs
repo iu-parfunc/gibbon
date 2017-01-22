@@ -56,7 +56,7 @@ initialEnv mp = M.map (\x -> fst $ runSyM 0 (go x))  mp
                             (S.union (getTyLocs argTy) (getTyLocs retTy))
            return $ ArrowTy argTy maxEffects retTy
 
-                  
+
 inferEffects :: L1.Prog -> SyM Prog
 inferEffects prg@(L1.Prog dd fds mainE) = do
   finalFunTys <- fixpoint 1 fds (initialEnv fds)
@@ -66,10 +66,10 @@ inferEffects prg@(L1.Prog dd fds mainE) = do
 
       mainE' = fmap addTy mainE
       addTy e = (e, typeExp (dd,progToEnv (Prog dd funs Nothing)) M.empty e)
-             
+
   return $ force finalFunTys `seq`
            Prog dd funs mainE'
- where   
+ where
    fixpoint :: Int -> OldFuns -> FunEnv -> SyM FunEnv
    fixpoint iter funs env =
     do effs' <- M.fromList <$>
@@ -83,10 +83,10 @@ inferEffects prg@(L1.Prog dd fds mainE) = do
              return env
         else fixpoint (iter+1) funs env'
 
-               
+
 freshenVar :: LocVar -> SyM LocVar
 freshenVar = gensym
-               
+
 freshenArrowSchema :: ArrowTy Ty -> SyM (ArrowTy Ty)
 freshenArrowSchema (ArrowTy inT effs outT) = do
     let lvs = allLocVars inT ++ allLocVars outT
@@ -95,14 +95,14 @@ freshenArrowSchema (ArrowTy inT effs outT) = do
     return $ ArrowTy (substTy subst inT)
                      (substEffs subst effs)
                      (substTy subst outT)
-               
+
 -- | Take a polymorphic ArrowTy, instantiate its location variables
 --   and traversal effects with the given (input) locations.
 --   Return the location that the result of the application will occupy.
 instantiateApp :: ArrowTy Ty -> Loc -> SyM (Set Effect, Loc)
 instantiateApp arrty0 loc = do
     (ArrowTy inT effs outT) <- freshenArrowSchema arrty0
-    let subst = zipTL inT loc 
+    let subst = zipTL inT loc
     dbgTrace lvl ("\n  instantiateApp: Came up with subst: "++show subst) $
      return (substEffs subst effs,
             dbgTraceIt lvl "   instantiate result loc" $ rettyToLoc (substTy subst outT))
@@ -118,7 +118,7 @@ instantiateApp arrty0 loc = do
        SymDictTy _  -> Top
        ProdTy ls    -> TupLoc $ L.map rettyToLoc ls
        PackedTy _ l -> Fresh l
-    
+
 -- | Unify type and locaion , creating a mapping between variables in
 -- the former to the latter.
 zipTL :: Ty -> Loc -> M.Map LocVar LocVar
@@ -127,7 +127,7 @@ zipTL (PackedTy _ v) (Fixed l) = M.singleton v l
 zipTL (PackedTy _ v) (Fresh l) = M.singleton v l
 zipTL (ProdTy l1) (TupLoc l2)  = M.unions (zipWith zipTL l1 l2)
 
--- Here is a tricky one. 
+-- Here is a tricky one.
 zipTL (PackedTy l v) Top =
     error $ "zipTL: don't yet know what to do with Packed/Top case: "++
           show (PackedTy l v)
@@ -142,7 +142,7 @@ zipLT Bottom _                 = M.empty
 zipLT (Fixed l) (PackedTy _ v) = M.singleton l v
 zipLT (Fresh l) (PackedTy _ v) = M.singleton l v
 zipLT (TupLoc l1) (ProdTy l2)  = M.unions (zipWith zipLT l1 l2)
--- Here is a tricky one. 
+-- Here is a tricky one.
 zipLT Top       (PackedTy l v) =
     error $ "zipLT: don't yet know what to do with Top/Packed case: "++
           show (PackedTy l v)
@@ -150,14 +150,14 @@ zipLT Top       (PackedTy l v) =
 zipLT loc ty = error$ "zipLT: argument type "++show(doc ty)
                    ++"does not have matching structure to location: "++show(doc loc)
 
-               
+
 --------------------------------------------------------------------------------
 
 
 freshLoc :: String -> SyM Loc
-freshLoc m = Fresh <$> gensym m
+freshLoc m = Fresh <$> gensym (toVar m)
 
-             
+
 inferFunDef :: (DDefs L1.Ty,FunEnv) -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
 inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
     -- For this pass we don't need to know the output location:
@@ -188,7 +188,8 @@ inferExp (ddefs,fenv) env e = exp env e
      L1.LitE  _ -> return (S.empty, Bottom)
      L1.CaseE e1 mp ->
       do (eff1,loc1) <- exp env e1
-         (bools,effs,locs) <- unzip3 <$> mapM (caserhs env) mp
+         (bools,effs,locs) <- unzip3 <$>
+           mapM (\(dcon,patVs,erhs) -> caserhs env (toVar dcon,patVs,erhs)) mp
          -- Critical policy point!  We only get to the end if ALL
          -- branches get to the end.
          let end = if all id bools
@@ -200,22 +201,22 @@ inferExp (ddefs,fenv) env e = exp env e
 
          when (not (L.null cnstrts)) $
            dbgTrace 1 ("Warning: FINISHME: process these constraints: "++show cnstrts) (return ())
-                                
+
          return $ dbgTrace lvl ("\n==>Results on subcases: "++show (doc(bools,effs,locs))) $
                 (S.union (S.union eff1 end)
                          (L.foldl1 S.intersection effs),
                  locFin)
 
-     L1.IfE a b c -> 
+     L1.IfE a b c ->
          do (eff1,_loc1) <- exp env a
             (eff2,loc2) <- exp env b
-            (eff3,loc3) <- exp env c             
+            (eff3,loc3) <- exp env c
             return (S.union eff1 (S.intersection eff2 eff3),
                     fst (join loc2 loc3))
 
      L1.TimeIt e _ _ -> exp env e
 
-     -- Construct output packed data.  We will always "scroll to the end" of 
+     -- Construct output packed data.  We will always "scroll to the end" of
      -- output values, so they are not interesting for this effect analysis.
      L1.MkPackedE k ls -> L1.assertTrivs ls $
         -- And because it's freshly allocated, it has unconstrained location:
@@ -223,27 +224,27 @@ inferExp (ddefs,fenv) env e = exp env e
            return (S.empty,l)
 
      -- Here we UNION the end-points that are reached in the RHS and the BOD:
-     L1.LetE (v,_t,rhs) bod -> 
+     L1.LetE (v,_t,rhs) bod ->
       do (reff,rloc) <- exp env rhs
-         let env' = M.insert v rloc env 
-         (beff,bloc) <- exp env' bod         
+         let env' = M.insert v rloc env
+         (beff,bloc) <- exp env' bod
          return (S.union beff reff, bloc)
 
      -- We need to reach a fixed point where we jointly infer effects
-     -- for all functions.                
+     -- for all functions.
      L1.AppE rat rand -> -- rand guaranteed to be trivial here.
       let getloc (VarE v) = env # v
           getloc (MkProdE trvz) = TupLoc (L.map getloc trvz)
-          getloc (ProjE ix trv) = let TupLoc ls = getloc trv 
+          getloc (ProjE ix trv) = let TupLoc ls = getloc trv
                                   in ls !! ix
           getloc oth =  error$ "FINISHME: handle this rand: "++show oth
           arrTy = fenv # rat
       in instantiateApp arrTy (getloc rand)
-         
+
      -- If rands are already trivial, no traversal effects can occur here.
-     L1.PrimAppE _ rands -> L1.assertTrivs rands $ 
+     L1.PrimAppE _ rands -> L1.assertTrivs rands $
          return (S.empty, Bottom) -- All primitives operate on non-packed data.
-                          
+
      -- If any sub-expression reaches a destination, we can reach the destination:
      L1.MkProdE ls -> do (effs,locs) <- unzip <$> mapM (exp env) ls
                          return (S.unions effs, TupLoc locs)
@@ -260,12 +261,12 @@ inferExp (ddefs,fenv) env e = exp env e
      (effs,loc) <- exp env erhs
      return $ ( True, effs, loc)
 
-  caserhs env (dcon,patVs,erhs) =       
+  caserhs env (dcon,patVs,erhs) =
    -- Subtlety: if the rhs expression consumes the RIGHTMOST
    -- pattern variable, then the later code transformations MUST
    -- ensure that it consumes everything.
-   do let tys    = lookupDataCon ddefs dcon
-          zipped = fragileZip' patVs tys ("Error in "++dcon++" case: "
+   do let tys    = lookupDataCon ddefs (fromVar dcon)
+          zipped = fragileZip' patVs tys ("Error in "++ (fromVar dcon) ++" case: "
                                          ++"pattern vars, "++show patVs++
                                          ", do not match the number of types "++show tys)
           freeRHS = L1.freeVars erhs
@@ -274,9 +275,9 @@ inferExp (ddefs,fenv) env e = exp env e
 
       env' <- extendLocEnv zipped env
           -- WARNING: we may need to generate "nested inside of" relation
-          -- between the patVs and the scrutinee.      
+          -- between the patVs and the scrutinee.
       (eff,rloc) <- exp env' erhs
-      let winner =           
+      let winner =
            dbgTrace lvl ("\nInside caserhs, for "++show (dcon,patVs,tys)
                         ++ "\n  freevars "++show freeRHS
                         ++",\n  env "++show env'++",\n  eff "++show eff) $
@@ -287,8 +288,8 @@ inferExp (ddefs,fenv) env e = exp env e
              -- Or if the last non-static item was in fact traversed:
              (case packedOnly of
                 [] -> False
-                _:_ -> S.member (Traverse (fst$ last packedOnly)) eff) || 
-                                            
+                _:_ -> S.member (Traverse (fst$ last packedOnly)) eff) ||
+
              -- Or maybe the last-use rule applies:
              (let (lastV,lastTy) = last zipped
                   isUsed = S.member lastV freeRHS
@@ -307,9 +308,7 @@ inferExp (ddefs,fenv) env e = exp env e
                 L1.ListTy{} -> error "FINISHLISTS")
 
           -- Also, in any binding form we are obligated to not return
-          -- our local bindings in traversal side effects:                   
+          -- our local bindings in traversal side effects:
           isLocal (Traverse v) = L.elem v patVs -- FIXME... need LocVar
           stripped  = S.filter isLocal eff
       return ( winner, stripped, rloc )
-
-

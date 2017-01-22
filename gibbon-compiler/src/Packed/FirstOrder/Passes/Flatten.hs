@@ -50,13 +50,13 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
                                return $ flatLets b e'
  where
    typeIt = typeExp (ddefs,env2)
-   
+
    exp :: TEnv -> Exp -> SyM ([Binds],Exp)
    exp tenv e0 =
      let triv m e = -- Force something to be trivial
            if isTriv e
            then return ([],e)
-           else do tmp <- gensym $ "flt"++m
+           else do tmp <- gensym $ toVar $ "flt" ++ m
                    let ty = typeIt tenv e
                    (bnds,e') <- exp tenv e
                    return (bnds++[(tmp,ty,e')], VarE tmp)
@@ -72,7 +72,7 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
        -- We COULD just let these patterns be treated as arbitrary AppE forms,
        -- but it is safer to handle them explicitly.
        L2.AddCursor _ _ -> return ([],e0) -- Already flat.
-                           
+
        L2.NewBuffer     -> return ([],e0) -- Already flat.
        L2.ScopedBuffer  -> return ([],e0) -- Already flat.
        L2.ReadInt _     -> return ([],e0) -- Already flat.
@@ -80,7 +80,7 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
        L2.WriteInt v e  -> do (b1,e') <- triv "WI" e; return (b1, L2.WriteInt v e')
        -- A fail-safe:
        _ | L2.isExtendedPattern e0 -> error$ "Unhandled extended L2 pattern: "++ndoc e0
-                                         
+
        (AppE f arg)     -> do (b1,arg') <- triv "Ap" arg
                               return (b1, AppE f arg')
        (PrimAppE p ls)  -> gols (PrimAppE p)  ls "Prm"
@@ -89,11 +89,11 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
 
        (LetE (v1,t1, LetE (v2,t2,rhs2) rhs1) bod) ->
          go $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
-                           
+
        (LetE (v,t,rhs) bod) -> do (bnd1,rhs') <- go rhs
                                   (bnd2,bod') <- exp (M.insert v t tenv) bod
                                   return (bnd1++[(v,t,rhs')]++bnd2, bod')
-       (IfE a b c) -> do (b1,a') <- triv "If" a 
+       (IfE a b c) -> do (b1,a') <- triv "If" a
                          (b2,b') <- go b
                          (b3,c') <- go c
                          return (b1, IfE a' (flatLets b2 b') (flatLets b3 c'))
@@ -127,12 +127,12 @@ _flattenExpOld defs env2 = fExp (vEnv env2)
     fExp _env (L1.AppE v (L1.MkProdE [])) = return $ L1.AppE v (L1.MkProdE [])
     fExp env (L1.AppE v e) =
         do e' <- fExp env e
-           v' <- gensym "flatAp"
+           v' <- gensym $ toVar "flatAp"
            let ty = typeExp (defs,env2) env e
            return $ mkLetE (v',ty,e') (L1.AppE v (L1.VarE v'))
     fExp env (L1.PrimAppE p es) =
         do es' <- mapM (fExp env) es
-           nams <- mapM gensym $ replicate (length es) "flatPA"
+           nams <- mapM (gensym . toVar) $ replicate (length es) "flatPA"
            let bind [] e = e
                bind ((v,e'):xs) e = mkLetE (v,(typeExp (defs,env2) env e'),e') $ bind xs e
            let exp = bind (zip nams es') $ L1.PrimAppE p $ map L1.VarE nams
@@ -142,7 +142,7 @@ _flattenExpOld defs env2 = fExp (vEnv env2)
            return $ L1.LetE (v,t,L1.VarE i) e'
     fExp env (L1.LetE (v,t,L1.LitE i) e) =
         do e' <- fExp (M.insert v t env) e
-           return $ L1.LetE (v,t,L1.LitE i) e'                  
+           return $ L1.LetE (v,t,L1.LitE i) e'
     fExp env (L1.LetE (v,t,e') e) =
         do fe' <- fExp env e'
            fe  <- fExp (M.insert v t env) e
@@ -152,23 +152,23 @@ _flattenExpOld defs env2 = fExp (vEnv env2)
         do fe1 <- fExp env e1
            fe2 <- fExp env e2
            fe3 <- fExp env e3
-           v1 <- gensym "flatIf"
+           v1 <- gensym $ toVar "flatIf"
            return $ mkLetE (v1,L1.BoolTy,fe1) $ L1.IfE (L1.VarE v1) fe2 fe3
     fExp env (L1.ProjE i e) =
         do fe <- fExp env e
            let ty = typeExp (defs,env2) env e
-           v1 <- gensym "flatPj"
+           v1 <- gensym $ toVar "flatPj"
            return $ mkLetE (v1,ty,fe) $ L1.ProjE i (L1.VarE v1)
     fExp env (L1.MkProdE es) =
         do fes <- mapM (fExp env) es
-           nams <- mapM gensym $ replicate (length fes) "flatPr"
+           nams <- mapM (gensym . toVar) $ replicate (length fes) "flatPr"
            let tys = map (typeExp (defs,env2) env) fes
                bind [] e            = e
                bind ((v,t,e'):xs) e = mkLetE (v,t,e') $ bind xs e
            return $ bind (zip3 nams tys fes) $ L1.MkProdE $ map L1.VarE nams
     fExp env (L1.CaseE e mp) =
         do fe <- fExp env e
-           v <- gensym "flatCs"
+           v <- gensym $ toVar "flatCs"
            let ty  = typeExp (defs,env2) env fe
            fals <- forM mp $ \(c,args,ae) -> do
                      let tys = lookupDataCon defs c
@@ -177,7 +177,7 @@ _flattenExpOld defs env2 = fExp (vEnv env2)
            return $ mkLetE (v,ty,fe) $ L1.CaseE (L1.VarE v) fals
     fExp env (L1.MkPackedE c es) =
         do fes <- mapM (fExp env) es
-           nams <- mapM gensym $ replicate (length fes) "flatPk"
+           nams <- mapM (gensym . toVar) $ replicate (length fes) "flatPk"
            let tys = map (typeExp (defs,env2) env) fes
                bind [] e            = e
                bind ((v,t,e'):xs) e = mkLetE (v,t,e') $ bind xs e
@@ -203,17 +203,17 @@ mkLetE :: (Var, Ty, Exp) -> Exp -> Exp
 mkLetE (vr,ty, L1.LetE bnd e) bod = mkLetE bnd $ mkLetE (vr,ty,e) bod
 mkLetE bnd bod = L1.LetE bnd bod
 
--- | Alternative version of L1.mkLets that also flattens                 
+-- | Alternative version of L1.mkLets that also flattens
 flatLets :: [(Var,Ty,Exp)] -> Exp -> Exp
 flatLets [] bod = bod
 flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
 
-                     
-                     
+
+
 type TEnv = M.Map Var L1.Ty
 
 -- FIXME: Why is this not unified with Typecheck.hs?
-    
+
 typeExp :: (DDefs L1.Ty,Env2 L1.Ty) -> TEnv -> L1.Exp -> L1.Ty
 typeExp (_dd,_env2) env (L1.VarE v) =
     M.findWithDefault (L1.Packed "CURSOR_TY") v env
@@ -242,8 +242,8 @@ typeExp (_,_) _env (L1.PrimAppE p _es) =
 typeExp (dd,env2) env (L1.LetE (v,t,_) e) = typeExp (dd,env2) (M.insert v t env) e
 typeExp (dd,env2) env (L1.IfE _ e _) = typeExp (dd,env2) env e
 typeExp (dd,env2) env e0@(L1.ProjE i e) =
-    case typeExp (dd,env2) env e of 
-     (L1.ProdTy tys) -> tys !! i 
+    case typeExp (dd,env2) env e of
+     (L1.ProdTy tys) -> tys !! i
      oth -> error $ "typeExp: Cannot project fields from this type: "++show oth
                   ++"\nExpression:\n  "++sdoc e0
                   ++"\nEnvironment:\n  "++sdoc env

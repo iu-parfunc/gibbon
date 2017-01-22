@@ -3,7 +3,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
--- | Interpreter for the source language (L1) 
+-- | Interpreter for the source language (L1)
 --
 -- UNFINISHED / PLACEHOLDER
 
@@ -20,7 +20,7 @@ import           Control.Monad
 import           Control.Monad.Writer
 import           Control.Monad.State
 import qualified Data.ByteString.Lazy.Char8 as B
-import           Data.List as L 
+import           Data.List as L
 import           Data.Map as M
 import           Data.IntMap as IM
 import           Data.Word
@@ -40,18 +40,18 @@ import qualified Data.Foldable as F
 import           Packed.FirstOrder.Passes.InlinePacked(pattern NamedVal)
 import           Packed.FirstOrder.L2_Traverse ( pattern WriteInt, pattern ReadInt, pattern NewBuffer
                                                , pattern ScopedBuffer, pattern AddCursor)
-    
+
 -- TODO:
 -- It's a SUPERSET, but use the Value type from TargetInterp anyway:
 -- Actually, we should merge these into one type with a simple extension story.
 -- import Packed.FirstOrder.TargetInterp (Val(..), applyPrim)
 
 interpChatter :: Int
-interpChatter = 7 
+interpChatter = 7
 
 ------------------------------------------------------------
 
-instance Interp Prog where    
+instance Interp Prog where
   interpNoLogs rc p = unsafePerformIO $ show . fst <$> interpProg rc p
   interpWithStdout rc p = do
    (v,logs) <- interpProg rc p
@@ -68,12 +68,12 @@ instance Interp L2.Prog where
 -- Stores and buffers:
 ------------------------------------------------------------
 
--- | A store is an address space full of buffers.  
+-- | A store is an address space full of buffers.
 data Store = Store (IntMap Buffer)
   deriving (Read,Eq,Ord,Generic, Show)
 
 instance Out Store
-  
+
 instance Out a => Out (IntMap a) where
   doc im       = doc       (IM.toList im)
   docPrec n im = docPrec n (IM.toList im)
@@ -82,14 +82,14 @@ data Buffer = Buffer (Seq SerializedVal)
   deriving (Read,Eq,Ord,Generic, Show)
 
 instance Out Buffer
-           
+
 data SerializedVal = SerTag Word8 DataCon | SerInt Int
   deriving (Read,Eq,Ord,Generic, Show)
 
 byteSize :: SerializedVal -> Int
 byteSize (SerInt _) = 8 -- FIXME: get this constant from elsewhere.
 byteSize (SerTag _ _) = 1
-           
+
 instance Out SerializedVal
 instance NFData SerializedVal
 
@@ -101,9 +101,9 @@ instance Out a => Out (Seq a) where
   doc s       = doc       (F.toList s)
   docPrec n s = docPrec n (F.toList s)
 
--- Values                
+-- Values
 -------------------------------------------------------------
-                
+
 -- | It's a first order language with simple values.
 data Value = VInt Int
            | VBool Bool
@@ -118,14 +118,14 @@ data Value = VInt Int
   deriving (Read,Eq,Ord,Generic)
 
 instance Out Value
-instance NFData Value    
-           
-instance Show Value where                      
+instance NFData Value
+
+instance Show Value where
  show v =
   case v of
    VInt n   -> show n
    VBool b  -> if b then truePrinted else falsePrinted
-   VProd ls -> "("++ concat(intersperse ", " (L.map show ls)) ++")"   
+   VProd ls -> "("++ concat(intersperse ", " (L.map show ls)) ++")"
    VDict m      -> show (M.toList m)
 
    -- F(x) style.  Maybe we'll switch to sweet-exps to keep everything in sync:
@@ -135,7 +135,7 @@ instance Show Value where
    VPacked k ls -> "(" ++ k ++ concat (L.map ((" "++) . show) ls) ++ ")"
 
    VCursor idx off -> "<cursor "++show idx++", "++show off++">"
-                      
+
 type ValEnv = Map Var Value
 
 ------------------------------------------------------------
@@ -145,7 +145,7 @@ deserialize :: DDefs Ty -> Seq SerializedVal -> Value
 deserialize ddefs seq0 = final
  where
   ([final],_) = readN 1 seq0
-   
+
   readN 0 seq = ([],seq)
   readN n seq =
      case S.viewl seq of
@@ -161,7 +161,7 @@ deserialize ddefs seq0 = final
 
 
 ------------------------------------------------------------
-{-    
+{-
 -- | Promote a value to a term that evaluates to it.
 l1FromValue :: Value -> Exp
 l1FromValue x =
@@ -178,12 +178,12 @@ execAndPrint rc prg = do
   case val of
     -- Special case: don't print void return:
     VProd [] -> return () -- FIXME: remove this.
-    _ -> print val   
+    _ -> print val
 
 type Log = Builder
 
 -- TODO: add a flag for whether we support cursors:
-    
+
 -- | Interpret a program, including printing timings to the screen.
 interpProg :: RunConfig -> Prog -> IO (Value, B.ByteString)
 -- Print nothing, return "void"              :
@@ -206,7 +206,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
    case (p,ls) of
      (MkTrue,[])             -> VBool True
      (MkFalse,[])            -> VBool False
-     (AddP,[VInt x, VInt y]) -> VInt (x+y)                                
+     (AddP,[VInt x, VInt y]) -> VInt (x+y)
      (SubP,[VInt x, VInt y]) -> VInt (x-y)
      (MulP,[VInt x, VInt y]) -> VInt (x*y)
      (EqSymP,[VInt x, VInt y]) -> VBool (x==y)
@@ -221,11 +221,11 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
      oth -> error $ "unhandled prim or wrong number of arguments: "++show oth
 
   interp :: Exp -> WriterT Log (StateT Store IO) Value
-  interp = go M.empty 
+  interp = go M.empty
     where
       {-# NOINLINE goWrapper #-}
       goWrapper !_ix env ex = go env ex
-      
+
       go :: ValEnv -> Exp -> WriterT Log (StateT Store IO) Value
       go env x0 =
           case x0 of
@@ -263,7 +263,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                                    ++"dropping" ++show dropped++" elems,\n     "
                                                    ++moreContext)
                 return $ VCursor idx (off+dropped)
-                                     
+
             --- Pattern synonyms specific to post-cursorize ASTs:
             NewBuffer    -> do Store store0 <- get
                                let idx = IM.size store0
@@ -279,10 +279,10 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                 return $ VCursor idx (off+1)
             ReadInt v -> do
               Store store <- get
-              liftIO$ dbgPrint interpChatter $ " Interp [ReadInt "++v++"] from store: "++ndoc store
+              liftIO$ dbgPrint interpChatter $ " Interp [ReadInt "++(fromVar v)++"] from store: "++ndoc store
               let VCursor idx off = env # v
                   Buffer buf = store IM.! idx
-              liftIO$ dbgPrintLn interpChatter $ " Interp [ReadInt "++v++"] from that store at pos: "
+              liftIO$ dbgPrintLn interpChatter $ " Interp [ReadInt "++(fromVar v)++"] from that store at pos: "
                                                  ++show (VCursor idx off)
               case S.viewl (S.drop off buf) of
                 SerInt n :< _ -> return $ VProd [VInt n, VCursor idx (off+1)]
@@ -291,14 +291,14 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                  error $"SourceInterp: ReadInt expected Int in buffer, found: "++show oth
 
             p | L2.isExtendedPattern p -> errorWithStackTrace$ "SourceInterp: Unhandled extended L2 pattern: "++ndoc p
-                                     
+
             AppE f b -> do rand <- go env b
                            case M.lookup f fundefs of
                              Just FunDef{funArg=(vr,_),funBody} -> go (M.insert vr rand env) funBody
                              Nothing -> errorWithStackTrace $ "SourceInterp: unbound function in application: "++ndoc x0
 
             (CaseE _ []) -> error$ "SourceInterp: CaseE with empty alternatives list: "++ndoc x0
-                              
+
             (CaseE x1 alts@((sometag,_,_):_)) -> do
                    v <- go env x1
                    case v of
@@ -349,21 +349,21 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
             TimeIt bod _ isIter -> do
                 let iters = if isIter then rcIters rc else 1
                 !_ <- return $! force env
-                st <- liftIO $ getTime clk          
+                st <- liftIO $ getTime clk
                 val <- foldM (\ _ i -> goWrapper i env bod)
                               (error "Internal error: this should be unused.")
                            [1..iters]
                 en <- liftIO $ getTime clk
                 let tm = fromIntegral (toNanoSecs $ diffTimeSpec en st)
-                          / 10e9 :: Double         
+                          / 10e9 :: Double
                 if isIter
                  then do tell$ fromString $ "ITERS: "++show iters       ++"\n"
                          tell$ fromString $ "SIZE: " ++show (rcSize rc) ++"\n"
                          tell$ fromString $ "BATCHTIME: "++show tm      ++"\n"
                  else tell$ fromString $ "SELFTIMED: "++show tm ++"\n"
                 return $! val
-              
-                                
+
+
             IfE a b c -> do v <- go env a
                             case v of
                              VBool flg -> if flg
@@ -374,12 +374,12 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
             MapE _ _bod    -> error "SourceInterp: finish MapE"
             FoldE _ _ _bod -> error "SourceInterp: finish FoldE"
 
-                              
+
 
 clk :: Clock
 clk = Monotonic
 
-                                               
+
 -- Misc Helpers
 --------------------------------------------------------------------------------
 
@@ -391,17 +391,13 @@ lookup3 k ls = go ls
    go ((k1,a1,b1):r)
       | k1 == k   = (k1,a1,b1)
       | otherwise = go r
-                    
+
 --------------------------------------------------------------------------------
 
 p1 :: Prog
 p1 = Prog emptyDD  M.empty
-          (Just (LetE ("x", IntTy, LitE 3) (VarE "x")))
+          (Just (LetE ((toVar "x"), IntTy, LitE 3) (VarE (toVar "x"))))
          -- IntTy
 
 main :: IO ()
 main = execAndPrint (RunConfig 1 1 dbgLvl False) p1
-
-
-
-       

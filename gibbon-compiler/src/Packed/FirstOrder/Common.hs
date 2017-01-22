@@ -20,7 +20,7 @@ module Packed.FirstOrder.Common
          -- * Type and Data DataConuctors
        , DataCon, TyCon
          -- * Variables and gensyms
-       , Var, varAppend, SyM, gensym, genLetter, runSyM
+       , Var(..), fromVar, toVar, varAppend, SyM, gensym, genLetter, runSyM
        , cleanFunName
 
        , LocVar, Env2(..)
@@ -63,9 +63,28 @@ import System.IO
 import System.Environment
 import System.IO.Unsafe (unsafePerformIO)
 import Debug.Trace
+import Language.C.Quote.CUDA (ToIdent, toIdent)
 
 -- type CursorVar = Var
-type Var    = String
+newtype Var = Var String
+  deriving (Eq, Ord, Read, Show)
+
+instance Out Var where
+  doc         = doc . fromVar
+  docPrec n v = docPrec n (fromVar v)
+
+instance NFData Var where
+  rnf (Var a) = rnf a
+
+instance ToIdent Var where
+  toIdent (Var a) = toIdent a
+
+fromVar :: Var -> String
+fromVar (Var v) = v
+
+toVar :: String -> Var
+toVar s = Var s
+
 type DataCon = String
 type TyCon   = String
 
@@ -73,7 +92,7 @@ type TyCon   = String
 type LocVar = Var
 
 varAppend :: Var -> Var -> Var
-varAppend = (++)
+varAppend x y = Var (fromVar x ++ fromVar y)
 
 --------------------------------------------------------------------------------
 
@@ -87,7 +106,7 @@ class Interp a where
   -- | Interpret and produce a "log" of output lines, as well as a
   -- final, printed result.
   interpWithStdout :: RunConfig -> a -> IO (String,[String])
-                  
+
 --------------------------------------------------------------------------------
 
 -- | A common currency for a two part environment consisting of
@@ -122,26 +141,26 @@ lookupDDef :: Out a => DDefs a -> Var -> DDef a
 lookupDDef mp v =
     case M.lookup v mp of
       Just x -> x
-      Nothing -> error $ "lookupDDef failed on symbol: "++v++"\nDDefs: "++sdoc mp
-                 
+      Nothing -> error $ "lookupDDef failed on symbol: "++ fromVar v ++"\nDDefs: "++sdoc mp
+
 
 -- | Get the canonical ordering for data constructors, currently based
 -- on ordering in the original source code.  Takes a TyCon as argument.
 getConOrdering :: Out a => DDefs a -> TyCon -> [DataCon]
 getConOrdering dd tycon = L.map fst dataCons
-  where DDef{dataCons} = lookupDDef dd tycon
+  where DDef{dataCons} = lookupDDef dd (toVar tycon)
 
 -- | Lookup the name of the TyCon that goes with a given DataCon.
 --   Must be unique!
 getTyOfDataCon :: Out a => DDefs a -> DataCon -> TyCon
-getTyOfDataCon dds con = fst $ lkp dds con
+getTyOfDataCon dds con = (fromVar . fst) $ lkp dds con
 
--- | Look up the numeric tag for a dataCon 
+-- | Look up the numeric tag for a dataCon
 getTagOfDataCon :: Out a => DDefs a -> DataCon -> Word8
 getTagOfDataCon dds dcon =
     -- dbgTrace 5 ("getTagOfDataCon -- "++sdoc(dds,dcon)) $
     fromIntegral ix
-  where Just ix = L.elemIndex dcon $ getConOrdering dds tycon
+  where Just ix = L.elemIndex dcon $ getConOrdering dds (fromVar tycon)
         (tycon,_) = lkp dds dcon
 
 -- | Lookup the arguments to a data contstructor.
@@ -209,17 +228,17 @@ fromListFD = L.foldr insertFD M.empty
 
 newtype SyM a = SyM (State Int a)
  deriving (Functor, Applicative, Monad, MonadState Int)
-          
+
 -- | Generate a unique symbol by attaching a numeric suffix.
 gensym :: Var -> SyM Var
-gensym v = state (\n -> (cleanFunName v `varAppend` show n, n + 1))
+gensym v = state (\n -> (cleanFunName v `varAppend` toVar (show n), n + 1))
 
 -- | Generate alphabetic variables 'a','b',...
 genLetter :: SyM Var
 genLetter = do
     n <- get
     modify (+1)
-    return [chr (n + ord 'a')]
+    return $ toVar $ [chr (n + ord 'a')]
 
 runSyM :: Int -> SyM a -> (a,Int)
 runSyM n (SyM a) = runState a n
@@ -229,11 +248,11 @@ runSyM n (SyM a) = runState a n
 -- gensym'd also....
 cleanFunName :: Var -> Var
 cleanFunName f =
-    [ if isNumber c || isAlpha c
-      then c
-      else '_'
-    | c <- f ]
-                   
+  toVar [ if isNumber c || isAlpha c
+          then c
+          else '_'
+        | c <- (fromVar f) ]
+
 ----------------------------------------
 
 -- | An alias for the error function we want to use throughout this project.
@@ -254,11 +273,11 @@ m # k = case M.lookup k m of
 ls0 !!! ix0 = go ls0 ix0
  where
    go [] _ = err $ "Not enough elements in list to retrieve "++show ix0
-                   ++", list:\n"++abbrv 300 ls0
+                   ++", list:\n" ++ abbrv 300 ls0
    go (x:_) 0 = x
    go (_:xs) n = go xs (n-1)
 
-                        
+
 fragileZip :: (Show a, Show b) => [a] -> [b] -> [(a, b)]
 fragileZip [] [] = []
 fragileZip (a:as) (b:bs) = (a,b) : fragileZip as bs
@@ -273,8 +292,8 @@ fragileZip' (a:as) (b:bs) m = (a,b) : fragileZip' as bs m
 fragileZip' as [] m = error m
 fragileZip' [] bs m = error m
 
-                   
--- | Handy combination of show and doc                   
+
+-- | Handy combination of show and doc
 sdoc :: Out a => a -> String
 sdoc = show . doc
 
@@ -287,15 +306,15 @@ ndoc x = let s = sdoc x in
 
 -- | Like ndoc/sdoc but cut it off with "..." after a char limit.
 abbrv :: (Out a) => Int -> a -> String
-abbrv n x = 
+abbrv n x =
     let str = show (doc x)
         len = length str
     in if len <= n
        then str
        else take (n-3) str ++ "..."
-              
+
 ----------------------------------------------------------------------------------------------------
--- Global parameters              
+-- Global parameters
 ----------------------------------------------------------------------------------------------------
 
 -- | Runtime configuration for executing interpreters.
@@ -305,7 +324,7 @@ data RunConfig =
               , rcDbg   :: Int
               , rcCursors :: Bool -- ^ Do we support cursors in L1.Exp at this point in the compiler.
               }
-  
+
 -- | We currently use the hacky approach of using env vars OR command
 -- line args to set the two universal benchmark params: SIZE and ITERS.
 --
@@ -314,7 +333,7 @@ data RunConfig =
 -- present it
 getRunConfig :: [String] -> IO RunConfig
 getRunConfig ls =
- case ls of   
+ case ls of
    [] -> case L.lookup "SIZE" theEnv of
            Nothing -> getRunConfig ["1"]
            Just n  -> getRunConfig [n]
@@ -325,7 +344,7 @@ getRunConfig ls =
      return $ RunConfig { rcSize=read sz, rcIters=read iters, rcDbg= dbgLvl, rcCursors= False }
    _ -> error $ "getRunConfig: too many command line args, expected <size> <iters> at most: "++show ls
 
-            
+
 ----------------------------------------------------------------------------------------------------
 -- DEBUGGING
 ----------------------------------------------------------------------------------------------------
@@ -379,7 +398,7 @@ dbgTraceIt lvl msg x = dbgTrace lvl (msg++": "++show x) x
 dbgPrintLn :: Int -> String -> IO ()
 dbgPrintLn lvl str = dbgPrint lvl (str++"\n")
 
---------------------------------------------------------------------------------
+
 
 -- | For now this is designed to match the Racket output of "#lang
 -- gibbon" which itself should change once we implement a custom
@@ -394,8 +413,8 @@ falsePrinted = "#f"
 
 -- | Map a DataCon onto the name of the generated unpack function.
 mkUnpackerName :: TyCon -> Var
-mkUnpackerName tyCons = "unpack_" ++ tyCons
+mkUnpackerName tyCons = toVar $ "unpack_" ++ tyCons
 
 -- | Map a DataCon onto the name of the generated print function.
 mkPrinterName :: DataCon -> Var
-mkPrinterName tyCons = "print_" ++ tyCons
+mkPrinterName tyCons = toVar $ "print_" ++ tyCons

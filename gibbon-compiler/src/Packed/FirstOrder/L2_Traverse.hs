@@ -19,7 +19,7 @@ module Packed.FirstOrder.L2_Traverse
     , Ty1(..), pattern SymTy
     , Exp(..)
     , primRetTy
-      
+
     -- * Utilities for dealing with the extended types:
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc, unknownCursor
     , hasRealPacked, isRealPacked, hasCursorTy
@@ -30,7 +30,7 @@ module Packed.FirstOrder.L2_Traverse
 
     -- * Conversion back to L1
     , revertToL1
-      
+
     -- * Lattices of abstract locations:
     , Loc(..), LocVar
     , toWitnessVar, isWitnessVar, fromWitnessVar
@@ -60,7 +60,7 @@ import Data.Maybe
 import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
-    
+
 --------------------------------------------------------------------------------
 
 -- Unchanged from L1, or we could go A-normal:
@@ -87,40 +87,40 @@ instance Out Loc
 toWitnessVar :: Var -> Var
 -- Policy decision here:
 -- witnessOf v = v
-toWitnessVar = (witness_prefix ++)
+toWitnessVar = varAppend (toVar witness_prefix)
 
 witness_prefix :: String
--- witness_prefix = ""                  
+-- witness_prefix = ""
 witness_prefix = "witness_"
 
 fromWitnessVar :: LocVar -> Maybe String
-fromWitnessVar v | isWitnessVar v = Just (drop (length witness_prefix) v)
+fromWitnessVar v | isWitnessVar v = Just (drop (length witness_prefix) (fromVar v))
                  | otherwise = Nothing
 
 isWitnessVar :: LocVar -> Bool
-isWitnessVar = isPrefixOf witness_prefix
-                            
+isWitnessVar lv = isPrefixOf witness_prefix (fromVar lv)
+
 ---------
 
 toEndVar :: LocVar -> LocVar
 toEndVar v =
   if isEndVar v
-  then error$ "toEndVar: cannot add an end marker to something already at end: "++show v
-  else end_prefix ++ v
+  then error$ "toEndVar: cannot add an end marker to something already at end: "++ (fromVar v)
+  else varAppend (toVar end_prefix) v
 
 fromEndVar :: LocVar -> Maybe LocVar
-fromEndVar v | isEndVar v = Just (drop (length end_prefix) v)
+fromEndVar v | isEndVar v = Just (toVar (drop (length end_prefix) (fromVar v)))
              | otherwise = Nothing
 
 isEndVar :: LocVar -> Bool
-isEndVar = isPrefixOf end_prefix
+isEndVar lv = isPrefixOf end_prefix (fromVar lv)
 
 end_prefix :: String
 end_prefix = "end_" -- Hacky way to encode end-of-region variables.
 
 --------------------------------------------
-             
-    
+
+
 -- | This should be a semi-join lattice.
 join :: Loc -> Loc -> (Loc,[Constraint])
 join Bottom y      = (y,[])
@@ -140,7 +140,7 @@ join l1 l2 = error$ "join: locations have inconsistent shapes: "++show(doc (l1,l
 
 joins :: [Loc]-> (Loc,[Constraint])
 joins [] = (Bottom,[])
-joins (a:b) = let (l,c) = joins b 
+joins (a:b) = let (l,c) = joins b
                   (l2,c2) = join a l
               in (l2,c++c2)
 
@@ -172,7 +172,7 @@ instance Out Prog
 type Ty = L1.Ty1 LocVar
 
 type NewFuns = M.Map Var FunDef
-    
+
 -- | Here we only change the types of FUNCTIONS:
 data Prog = Prog { ddefs    :: DDefs L1.Ty
                  , fundefs  :: NewFuns
@@ -184,12 +184,12 @@ data Prog = Prog { ddefs    :: DDefs L1.Ty
 --   having a common way to extract an initial environment.  The
 --   initial environment has types only for functions.
 progToEnv :: Prog -> Env2 (Ty1 ())
-progToEnv Prog{fundefs} = 
+progToEnv Prog{fundefs} =
     Env2 M.empty
          (M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
                      | FunDef n (ArrowTy a _ b) _ _ <- M.elems fundefs ])
 
-           
+
 -- | A function definition with the function's effects.
 data FunDef = FunDef { funname :: Var
                      , funty   :: (ArrowTy Ty)
@@ -204,7 +204,7 @@ getFunTy mp f = case M.lookup f mp of
                   Nothing -> error $ "getFunTy: function was not bound: "++show f
                   Just (FunDef{funty}) -> funty
 
-                                    
+
 -- | Retrieve all LocVars mentioned in a type
 getTyLocs :: Ty -> Set LocVar
 getTyLocs t =
@@ -217,12 +217,12 @@ getTyLocs t =
       -- This is a tricky case:
       SymDictTy elt -> getTyLocs elt
       ListTy{} -> error "FINISHLISTS"
-                  
+
 -- | Annotate a naked type with fresh location variables.
 tyWithFreshLocs :: L1.Ty -> SyM Ty
 tyWithFreshLocs t =
   case t of
-    L1.Packed k -> PackedTy k <$> genLetter                   
+    L1.Packed k -> PackedTy k <$> genLetter
     L1.IntTy    -> return IntTy
     L1.SymTy    -> return SymTy
     L1.BoolTy   -> return BoolTy
@@ -245,7 +245,7 @@ stripTyLocs = fmap (const ())
 substTy :: Map LocVar LocVar -> Ty -> Ty
 substTy mp t = go t
   where
-    go t = 
+    go t =
      case t of
       IntTy  -> IntTy
       SymTy  -> SymTy
@@ -264,10 +264,10 @@ substTy mp t = go t
                 -- errorWithStackTrace $ "substTy: failed to find "++show l++
                 --   "\n  in map: "++show mp++", when processing type "++show t
 
--- | Apply a substitution to an effect set.                                   
+-- | Apply a substitution to an effect set.
 substEffs :: Map LocVar LocVar -> Set Effect -> Set Effect
 substEffs mp ef =
-    dbgTrace 5 ("\n  Substituting in effects "++show(mp,ef)) $ 
+    dbgTrace 5 ("\n  Substituting in effects "++show(mp,ef)) $
     S.map (\(Traverse v) ->
                case M.lookup v mp of
                  Just v2 -> Traverse v2
@@ -283,22 +283,22 @@ allLocVars t =
       IntTy     -> []
       PackedTy _ v -> [v]
       ProdTy ls  -> L.concatMap allLocVars ls
-      SymDictTy elt -> allLocVars elt    
-               
+      SymDictTy elt -> allLocVars elt
+
 
 -- Cursor types encoded into the current language
 --------------------------------------------------------------------------------
 
 -- | A placeholder for a cursor witness that we don't know.
 unknownCursor :: Var
-unknownCursor = "UNKNOWN_CURSOR_VAL" 
+unknownCursor = toVar "UNKNOWN_CURSOR_VAL"
 
 -- Use a hack rather than extending the IR at this point:
 cursorTy :: Ty
-cursorTy = PackedTy "CURSOR_TY" ""
+cursorTy = PackedTy "CURSOR_TY" (toVar "")
 
 mkCursorTy :: a -> Ty1 a
-mkCursorTy = PackedTy "CURSOR_TY" 
+mkCursorTy = PackedTy "CURSOR_TY"
 
 isCursorTy :: Ty1 a -> Bool
 isCursorTy (PackedTy "CURSOR_TY" _) = True
@@ -331,20 +331,20 @@ hasCursorTy t =
       IntTy     -> False
       SymDictTy t -> hasCursorTy t
       ListTy {} -> __
-                     
-isRealPacked :: Ty1 a -> Bool                                         
+
+isRealPacked :: Ty1 a -> Bool
 isRealPacked t@PackedTy{} = not (isCursorTy t)
 isRealPacked _ = False
 
 -- Cursorizing arguments and returns -- abstracting the conventions
---------------------------------------------------------------------------------                 
+--------------------------------------------------------------------------------
 
 addOutputParamArgs = __
 
 
 addEndWitnessReturns = __
 
--- Cursorizing types.                   
+-- Cursorizing types.
 --------------------------------------------------------------------------------
 -- This happens in two stages, corresponding to the passes RouteEnds
 -- and CursorDirect.
@@ -363,7 +363,7 @@ cursorizeTy1 (ArrowTy inT ef ouT) = (newArr, newOut)
   newOut   = [ toEndVar v  -- This determines the ORDER of added inputs.
              | Traverse v <- S.toList ef ] -- ^ Because we traverse all outputs,
                                            -- this effect set  is just what we need.
-             
+
 -- | Step 2/3: continue the conversion by:
 --
 --  (1) First, adding additional input arguments for the destination
@@ -371,7 +371,7 @@ cursorizeTy1 (ArrowTy inT ef ouT) = (newArr, newOut)
 --  (2) Packed types in the output then become end-cursors for those
 --      same destinations.
 --  (3) Packed types in the input STAY non-cursor packed types.
--- 
+--
 --  Results: the new type as well as the extra params added to the
 --  input type.
 cursorizeTy2 :: ArrowTy Ty -> (ArrowTy Ty, [LocVar])
@@ -405,7 +405,7 @@ cursorizeArrty3 arr@(ArrowTy inT ef ouT) =
 cursorizeTy3 :: Ty1 a -> Ty1 a
 cursorizeTy3  = mapPacked (\ _k l -> mkCursorTy l)
 
-               
+
 ensureEndVar :: Var -> Var
 ensureEndVar v | isEndVar v = v
                | otherwise  = toEndVar v
@@ -415,7 +415,7 @@ prependArgs :: [Ty] -> Ty -> Ty
 prependArgs [] t = t
 prependArgs ls t = ProdTy $ ls ++ [t]
 
-             
+
 mapPacked :: (Var -> l -> Ty1 l) -> Ty1 l -> Ty1 l
 mapPacked fn t =
   case t of
@@ -424,11 +424,11 @@ mapPacked fn t =
     SymTy  -> SymTy
     (ProdTy x)    -> ProdTy $ L.map (mapPacked fn) x
     (SymDictTy x) -> SymDictTy $ mapPacked fn x
-    PackedTy k l  -> fn k l
+    PackedTy k l  -> fn (toVar k) l
     ListTy{} -> error "FINISHLISTS"
-             
+
 --------------------------------------------------------------------------------
-                     
+
 -- | Map every lexical variable in scope to an abstract location.
 --   This is useful for compiler passes that need to track abstract
 --   locations of program terms.
@@ -438,7 +438,7 @@ type LocEnv = M.Map Var Loc
 -- for that function argument.
 argtyToLoc :: Var -> Ty -> Loc
 argtyToLoc v ty =
- case ty of   
+ case ty of
   PackedTy{}
     | isCursorTy ty -> Fixed $ cursorTyLoc ty
     | otherwise -> Fixed v
@@ -453,7 +453,7 @@ argtyToLoc v ty =
     Fixed v
     -- if hasPacked t then Top else Bottom
 
-                             
+
 -- A bit of name mangling when promoting lexical variables to location vars
 ---------------------------------------------------------------------------
 -- | First, lift program variables so they don't interfere with ones
@@ -464,7 +464,7 @@ mangle v = v
 
 -- | Refer to a portion of the data associated with a var.
 subloc :: Var -> Int -> Var
-subloc v n = v ++"_"++show n
+subloc v n = varAppend v (toVar (show n))
 
 -- Strip off any subloc modifiers
 -- root :: Var -> Var
@@ -478,7 +478,7 @@ getLocVar (Fixed v) = Just v
 getLocVar Top = Nothing
 getLocVar l = error $"getLocVar: expected a single packed value location, got: "
                     ++show(doc l)
-             
+
 
 
 -- | We extend the environment when going under lexical binders, which
@@ -520,8 +520,8 @@ mapMExprs fn (Prog dd fundefs mainExp) =
                  (,t) <$> fn (Env2 M.empty funEnv) e) mainExp)
   where
     funEnv = fEnv $ includeBuiltins $ progToEnv (Prog dd fundefs mainExp)
-             
-    
+
+
 --------------------------------------------------------------------------------
 
 -- | Because L2 just adds a bit of metadata and enriched types, it is
@@ -532,32 +532,32 @@ revertToL1 Prog{ ..} =
           , L1.fundefs = M.map go fundefs
           , L1.mainExp = fmap fst mainExp
           }
- where   
+ where
    go FunDef{..} =
-       let ArrowTy{arrIn,arrOut} = funty in 
+       let ArrowTy{arrIn,arrOut} = funty in
        L1.FunDef funname (funarg, stripTyLocs arrIn) (stripTyLocs arrOut) funbod
 
 --------------------------------------------------------------------------------
 
 
--- Conventions encoded inside the existing Core IR 
+-- Conventions encoded inside the existing Core IR
 -- =============================================================================
 
-pattern NewBuffer = AppE "NewBuffer" (MkProdE [])
+pattern NewBuffer = AppE (Var "NewBuffer") (MkProdE [])
 
 -- | output buffer space that is known not to escape the current function.
-pattern ScopedBuffer = AppE "ScopedBuffer" (MkProdE [])
-                    
+pattern ScopedBuffer = AppE (Var "ScopedBuffer") (MkProdE [])
+
 -- | Tag writing is still modeled by MkPackedE.
-pattern WriteInt v e = AppE "WriteInt" (MkProdE [VarE v, e])
+pattern WriteInt v e = AppE (Var "WriteInt") (MkProdE [VarE v, e])
 
 -- | One cursor in, (int,cursor') output.
-pattern ReadInt v = AppE "ReadInt" (VarE v)
+pattern ReadInt v = AppE (Var "ReadInt") (VarE v)
 
 pattern CursorTy l = PackedTy "CURSOR_TY" l
 
 -- | Add a constant offset to a cursor variable.
-pattern AddCursor v i = AppE "AddCursor" (MkProdE [VarE v, LitE i])
+pattern AddCursor v i = AppE (Var "AddCursor") (MkProdE [VarE v, LitE i])
 
 -- | A predicate to check if the form is part of the extended "L2.5" language.
 isExtendedPattern :: Exp -> Bool
@@ -571,7 +571,7 @@ isExtendedPattern e =
     _              -> False
 
 
--- | Return type for a primitive operation.                      
+-- | Return type for a primitive operation.
 primRetTy :: Prim -> L1.Ty
 primRetTy p =
   case p of
@@ -585,13 +585,13 @@ primRetTy p =
     MkNullCursor -> CursorTy ()
     SizeParam -> IntTy
     DictEmptyP ty -> SymDictTy ty
-    DictInsertP ty -> SymDictTy ty 
+    DictInsertP ty -> SymDictTy ty
     DictLookupP ty -> ty
     (ErrorP _ ty) -> ty
 
-                      
+
 -- | A type environment listing the types of built-in functions.
--- 
+--
 --   Using this table represents a policy decision.  Specifically,
 --   that a type checker is relying on the fact that all the L2.5
 --   patterns above are valid AppE forms.  The alternative is for that
@@ -600,11 +600,11 @@ primRetTy p =
 --
 builtinTEnv :: M.Map Var (ArrowTy L1.Ty)
 builtinTEnv = M.fromList
-  [ ("NewBuffer",    ArrowTy voidTy S.empty (CursorTy ()))
-  , ("ScopedBuffer", ArrowTy voidTy S.empty (CursorTy ()))
-  , ("ReadInt",      ArrowTy (CursorTy ()) S.empty (ProdTy [IntTy, CursorTy ()]))
-  , ("WriteInt",     ArrowTy (ProdTy [CursorTy (), IntTy]) S.empty (CursorTy ()))
-  , ("AddCursor",    ArrowTy (ProdTy [CursorTy (), IntTy]) S.empty (CursorTy ()))
+  [ (toVar "NewBuffer",    ArrowTy voidTy S.empty (CursorTy ()))
+  , (toVar "ScopedBuffer", ArrowTy voidTy S.empty (CursorTy ()))
+  , (toVar "ReadInt",      ArrowTy (CursorTy ()) S.empty (ProdTy [IntTy, CursorTy ()]))
+  , (toVar "WriteInt",     ArrowTy (ProdTy [CursorTy (), IntTy]) S.empty (CursorTy ()))
+  , (toVar "AddCursor",    ArrowTy (ProdTy [CursorTy (), IntTy]) S.empty (CursorTy ()))
   -- Note: ReadPackedFile is a builtin/primitive.  It is polymorphic,
   -- which currently doesn't allow us to model it as a function like
   -- this [2017.01.08].

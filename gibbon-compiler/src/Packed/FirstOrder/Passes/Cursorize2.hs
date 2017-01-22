@@ -34,7 +34,7 @@ import Debug.Trace
 -- | Chatter level for this module:
 lvl :: Int
 lvl = 5
-    
+
 --------------------------------------------------------------------------------
 -- STRATEGY TWO - see the future (dataflow analysis)
 --------------------------------------------------------------------------------
@@ -43,7 +43,7 @@ lvl = 5
 -- call to know *which* output cursors apply, based on the downstream
 -- usage of the value returned by the functions.
 
-      
+
 -- Some general types and utilities:
 -- =============================================================================
 
@@ -74,7 +74,7 @@ prependArgs [] t = t
 prependArgs ls t = ProdTy $ ls ++ [t]
 
 -- | Combines cursorize 1 and 2.  Returns (arrow, newIn, newOut)
-cursorizeTy :: ArrowTy L2.Ty -> (ArrowTy L2.Ty, [LocVar], [LocVar]) 
+cursorizeTy :: ArrowTy L2.Ty -> (ArrowTy L2.Ty, [LocVar], [LocVar])
 cursorizeTy arr = (a2,b,c)
  where
   (a1,c) = L2.cursorizeTy1 arr
@@ -152,7 +152,7 @@ addWitness locvar ls fn orig@WE{known} =
   where
    lkp lvr = case M.lookup lvr known of
               Just wex -> return (wex,Nothing)
-              Nothing -> do tmp <- gensym "hl"
+              Nothing -> do tmp <- gensym $ toVar "hl"
                             return (L1.VarE tmp, Just (lvr,tmp))
 
 extendEnv :: [(Var,(L1.Ty,Loc))] -> Env -> Env
@@ -172,9 +172,9 @@ extendEnv ls e = (M.fromList ls) `M.union` e
 -- insertLocs
 
 -- pattern MarkCursor e = AppE "MarkCursor" (MkProdE [e])
-pattern MarkCursor c e = AppE "MarkCursor" (AppE c e)
+pattern MarkCursor c e = AppE (Var "MarkCursor") (AppE c e)
 
-pattern GlobalC = "GlobalC"
+pattern GlobalC = (Var "GlobalC")
 
 --------------------------------------------------------------------------------
 
@@ -201,13 +201,13 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
                   , mainExp = mn
                   }
  where
-   
+
   fd :: L2.FunDef -> SyM L2.FunDef
   fd (f@L2.FunDef{funname,funty,funarg,funbod}) =
       let (newTy@(ArrowTy inT _ _outT),newIn,newOut) = cursorizeTy funty in
       dbgTrace lvl ("Processing fundef: "++show(doc f)++"\n  new type: "++sdoc newTy) $
    do
-      fresh <- gensym "tupin"
+      fresh <- gensym $ toVar "tupin"
       let argLoc  = argtyToLoc (L2.mangle newArg) inT
           (newArg, bod, wenv) =
               if newIn == [] -- No injected cursor params..
@@ -225,7 +225,7 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
       let env = M.singleton newArg (L2.stripTyLocs inT, argLoc)
       exp' <- tail newOut (env,wenv) bod
       return $ L2.FunDef funname newTy newArg exp'
-             
+
   -- Process the "spine" of a flattened program.
   --
   -- When processing something in tail position, we take a DEMAND for
@@ -269,17 +269,17 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
              -- assert rty == tv
            then do bod' <- tail demanded (env',wenv) bod -- No new witnesses.
                    return $ L1.LetE (v, tv, rhs') bod'
-           else do tmp <- gensym "tmp"
+           else do tmp <- gensym $ toVar "tmp"
                    let go []       _  we = return we
                        go (lc:rst) ix we =
                         go rst (ix+1) =<<
                           let Just v = L2.getLocVar lc in
-                          addWitness v [] (\[] -> L1.ProjE ix (L1.VarE "tmp")) we
+                          addWitness v [] (\[] -> L1.ProjE ix (L1.VarE (toVar "tmp"))) we
                    wenv' <- go new 0 wenv
                    bod' <- tail demanded (env',wenv') bod -- No new witnesses.
                    let ix = length new
-                   return $ L1.LetE ("tmp", rty, rhs') $
-                            L1.LetE (v, tv, L1.projNonFirst ix (L1.VarE "tmp")) $
+                   return $ L1.LetE ((toVar "tmp"), rty, rhs') $
+                            L1.LetE (v, tv, L1.projNonFirst ix (L1.VarE (toVar "tmp"))) $
                             finishEXP
 
      L1.IfE a b c -> do
@@ -371,7 +371,7 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
 mkProd :: [Exp] -> Exp -> Exp
 mkProd [] e = e
 mkProd ls e = MkProdE $ ls++[e]
-          
+
 endOf :: Loc -> LocVar
 endOf (Fixed a) = toEndVar a
 endOf l = error $ "endOf: should not take endOf this location: "++show l
@@ -397,7 +397,7 @@ maybeLetTup locs (ty,ex) env fn =
    -- Otherwise the layout of the tuple is (cursor0,..cursorn, origValue):
    _   -> do
      -- The name doesn't matter, just that it's in the environment:
-     tmp <- gensym "mlt"
+     tmp <- gensym $ toVar "mlt"
      -- Let-bind all the new things that come back with the exp
      -- to bring them into the environment.
      let env' = witnessBinding tmp (TupLoc locs) `unionWEnv` env
@@ -418,11 +418,10 @@ meetDemand we@WE{known} vr =
 
 
 finishEXP :: L1.Exp
-finishEXP = (L1.VarE "FINISHME")
+finishEXP = (L1.VarE (toVar "FINISHME"))
 
 finishLOC :: Loc
-finishLOC = Fresh "FINISHME"
+finishLOC = Fresh (toVar "FINISHME")
 
 finishTYP :: L1.Ty
 finishTYP = L1.Packed "FINISHME"
-
