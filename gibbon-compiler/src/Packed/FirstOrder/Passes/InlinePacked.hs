@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -- | Aggressive inliner to put Packed-typed expressions syntactically
 -- under constructors that they flow to.
 
@@ -143,7 +144,8 @@ inlinePackedExp ddefs = exp True
                (exp strong env' e3)
 
 -- | Used to inline variable bindings while retaining their (former) name and type.
-pattern NamedVal vr ty e = LetE (vr,ty,e) (VarE (Var "NAMED_VAL_PATTERN_SYN"))
+pattern NamedVal vr ty e <- LetE (vr,ty,e) (VarE (Var "NAMED_VAL_PATTERN_SYN"))
+  where NamedVal vr ty e = LetE (vr,ty,e) (VarE (toVar "NAMED_VAL_PATTERN_SYN"))
 -- pattern NamedVal vr ty e <- LetE (vr,ty,e) (VarE "NAMED_VAL") where
 --   NamedVal vr ty e = LetE (vr,ty,e) (VarE vr)
 

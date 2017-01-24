@@ -1,5 +1,6 @@
-{-# LANGUAGE LambdaCase    #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE TupleSections        #-}
 
 module Packed.FirstOrder.HaskellFrontend
   ( parseFile
@@ -21,7 +22,7 @@ import Data.Maybe (catMaybes)
 import Language.Haskell.Exts.Parser -- (parse)
 import Language.Haskell.Exts.Syntax as H
 import Packed.FirstOrder.L1_Source as L1
-import Packed.FirstOrder.Common
+import Packed.FirstOrder.Common as C
 
 --------------------------------------------------------------------------------
 
@@ -101,6 +102,12 @@ collectTopLevel _ unsupported = err ("collectTopLevel: Unsupported top-level thi
 
 --------------------------------------------------------------------------------
 
+pattern FstVar <- VarE (C.Var "fst")
+  where FstVar = VarE (toVar "fst")
+
+pattern SndVar <- VarE (C.Var "snd")
+  where SndVar = VarE (toVar "snd")
+
 desugarExp :: H.Exp -> Ds L1.Exp
 desugarExp e =
     case e of
@@ -113,9 +120,9 @@ desugarExp e =
 
       H.App e1 e2 ->
         desugarExp e1 >>= \case
-          VarE (Packed.FirstOrder.Common.Var "fst") ->
+          FstVar ->
             L1.ProjE 0 <$> desugarExp e2
-          VarE (Packed.FirstOrder.Common.Var "snd") ->
+          SndVar ->
             L1.ProjE 1 <$> desugarExp e2
           VarE f ->
             L1.AppE f <$> desugarExp e2

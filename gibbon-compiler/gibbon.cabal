@@ -19,7 +19,7 @@ library
                   Packed.FirstOrder.Compiler
                   Packed.FirstOrder.HaskellFrontend
                   Packed.FirstOrder.TargetInterp
-                  Packed.FirstOrder.SourceInterp                  
+                  Packed.FirstOrder.SourceInterp
                   Packed.FirstOrder.L1_Source
                   Packed.FirstOrder.L2_Traverse
                   Packed.FirstOrder.L3_Target
@@ -51,7 +51,7 @@ library
   other-extensions:    DeriveDataTypeable
 
   build-depends:
-                aeson, 
+                aeson,
                 base >=4.8,
                 bytestring,
                 containers,
@@ -70,17 +70,18 @@ library
                 process,
                 directory,
                 -- time,
-                clock, 
---                tslogger,
-                blaze-builder
-                
+                clock,
+                -- tslogger,
+                blaze-builder,
+                symbol
+
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall -fdefer-typed-holes
   extensions: ScopedTypeVariables PatternSynonyms DeriveGeneric DeriveFunctor NamedFieldPuns TupleSections
 -- This can break things:
--- -XDeriveAnyClass 
-    
+-- -XDeriveAnyClass
+
 executable gibbon
   hs-source-dirs:      app
   main-is:             Frontend.hs
@@ -93,7 +94,7 @@ executable gibbon
   default-language:    Haskell2010
   ghc-options:         -Wall -rtsopts -fdefer-typed-holes
 
-  
+
 test-suite test-gibbon
   type:                exitcode-stdio-1.0
   hs-source-dirs:      tests

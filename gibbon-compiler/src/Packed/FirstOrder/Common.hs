@@ -55,6 +55,7 @@ import Control.Monad.State.Strict
 import Control.DeepSeq (NFData(..), force)
 import Data.List as L
 import Data.Map as M
+import Data.Symbol
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
 import GHC.Stack (errorWithStackTrace)
@@ -66,7 +67,7 @@ import Debug.Trace
 import Language.C.Quote.CUDA (ToIdent, toIdent)
 
 -- type CursorVar = Var
-newtype Var = Var String
+newtype Var = Var Symbol
   deriving (Eq, Ord, Read, Show)
 
 instance Out Var where
@@ -74,16 +75,16 @@ instance Out Var where
   docPrec n v = docPrec n (fromVar v)
 
 instance NFData Var where
-  rnf (Var a) = rnf a
+  rnf = (rnf . fromVar)
 
 instance ToIdent Var where
-  toIdent (Var a) = toIdent a
+  toIdent = (toIdent . fromVar)
 
 fromVar :: Var -> String
-fromVar (Var v) = v
+fromVar (Var v) = unintern v
 
 toVar :: String -> Var
-toVar s = Var s
+toVar s = Var $ intern s
 
 type DataCon = String
 type TyCon   = String
@@ -92,7 +93,7 @@ type TyCon   = String
 type LocVar = Var
 
 varAppend :: Var -> Var -> Var
-varAppend x y = Var (fromVar x ++ fromVar y)
+varAppend x y = toVar (fromVar x ++ fromVar y)
 
 --------------------------------------------------------------------------------
 
