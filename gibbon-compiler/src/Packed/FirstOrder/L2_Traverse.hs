@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -543,21 +544,26 @@ revertToL1 Prog{ ..} =
 -- Conventions encoded inside the existing Core IR
 -- =============================================================================
 
-pattern NewBuffer = AppE (Var "NewBuffer") (MkProdE [])
+pattern NewBuffer <- AppE (Var "NewBuffer") (MkProdE [])
+  where NewBuffer = AppE (toVar "NewBuffer") (MkProdE [])
 
 -- | output buffer space that is known not to escape the current function.
-pattern ScopedBuffer = AppE (Var "ScopedBuffer") (MkProdE [])
+pattern ScopedBuffer <- AppE (Var "ScopedBuffer") (MkProdE [])
+  where ScopedBuffer = AppE (toVar "ScopedBuffer") (MkProdE [])
 
 -- | Tag writing is still modeled by MkPackedE.
-pattern WriteInt v e = AppE (Var "WriteInt") (MkProdE [VarE v, e])
+pattern WriteInt v e <- AppE (Var "WriteInt") (MkProdE [VarE v, e])
+  where WriteInt v e = AppE (toVar "WriteInt") (MkProdE [VarE v, e])
 
 -- | One cursor in, (int,cursor') output.
-pattern ReadInt v = AppE (Var "ReadInt") (VarE v)
+pattern ReadInt v <- AppE (Var "ReadInt") (VarE v)
+  where ReadInt v = AppE (toVar "ReadInt") (VarE v)
 
 pattern CursorTy l = PackedTy "CURSOR_TY" l
 
 -- | Add a constant offset to a cursor variable.
-pattern AddCursor v i = AppE (Var "AddCursor") (MkProdE [VarE v, LitE i])
+pattern AddCursor v i <- AppE (Var "AddCursor") (MkProdE [VarE v, LitE i])
+  where AddCursor v i = AppE (toVar "AddCursor") (MkProdE [VarE v, LitE i])
 
 -- | A predicate to check if the form is part of the extended "L2.5" language.
 isExtendedPattern :: Exp -> Bool

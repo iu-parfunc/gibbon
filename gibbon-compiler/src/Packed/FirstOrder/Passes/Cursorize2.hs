@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -172,9 +173,12 @@ extendEnv ls e = (M.fromList ls) `M.union` e
 -- insertLocs
 
 -- pattern MarkCursor e = AppE "MarkCursor" (MkProdE [e])
-pattern MarkCursor c e = AppE (Var "MarkCursor") (AppE c e)
+pattern MarkCursor c e <- AppE (Var "MarkCursor") (AppE c e)
+  where MarkCursor c e = AppE (toVar "MarkCursor") (AppE c e)
 
-pattern GlobalC = (Var "GlobalC")
+pattern GlobalC :: Var
+pattern GlobalC <- (Var "GlobalC")
+  where GlobalC = toVar "GlobalC"
 
 --------------------------------------------------------------------------------
 
