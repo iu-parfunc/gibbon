@@ -7,3 +7,6 @@
 [submodule "BintreeBench"]
 	path = BintreeBench
 	url = git@github.com:iu-parfunc/BintreeShootout.git
+[submodule "gibbon-compiler/llvm-hs"]
+	path = gibbon-compiler/llvm-hs
+	url = https://github.com/llvm-hs/llvm-hs.git

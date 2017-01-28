@@ -39,6 +39,9 @@ library
                   Packed.FirstOrder.Passes.Typecheck
                   Packed.FirstOrder.Passes.Codegen
                   Packed.FirstOrder.SExpFrontend
+                  Packed.FirstOrder.Passes.LLVM.Codegen
+                  Packed.FirstOrder.Passes.LLVM.Monad
+                  Packed.FirstOrder.Passes.LLVM.C
 
 
 -- First attempt, slated for removal:
@@ -73,7 +76,9 @@ library
                 clock,
                 -- tslogger,
                 blaze-builder,
-                symbol
+                symbol,
+                llvm-general-pure,
+                llvm-general
 
   hs-source-dirs:      src
   default-language:    Haskell2010
