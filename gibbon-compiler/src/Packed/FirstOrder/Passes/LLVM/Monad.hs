@@ -16,22 +16,21 @@ module Packed.FirstOrder.Passes.LLVM.Monad (
   genModule, genBlocks, createBlocks, setBlock, newBlock, beginBlock,
 
   -- instructions
-  declare, retval_, return_, call, printString
+  declare, retval_, return_, call, add, namedInstr, allocate, getvar,
+  toPtrType, localRef, getElemPtr, store,
+
+  next
 
 ) where
 
 -- | standard library
 import Data.Map (Map)
 import Data.Sequence (Seq)
-import Data.Char (ord)
 import Data.Maybe (fromJust)
-import Data.Word
 import Control.Monad.State
 import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 import qualified Data.Foldable as F
-
-import qualified Packed.FirstOrder.Passes.LLVM.C as LC
 
 -- | llvm-general
 import qualified LLVM.General.AST as AST
@@ -50,9 +49,10 @@ import qualified LLVM.General.AST.AddrSpace as AS
 -- AST, and one for each of the basic blocks that are generated during the walk.
 --
 data CodeGenState = CodeGenState
-  { blockChain   :: Seq BlockState         -- blocks for this function
-  , symbolTable  :: Map String G.Global    -- external functions symbol table
-  , next         :: Word                   -- names supply
+  { blockChain  :: Seq BlockState         -- blocks for this function
+  , globalTable :: Map String G.Global    -- external functions symbol table
+  , localVars   :: Map String AST.Operand -- local vars
+  , next        :: Word                   -- names supply
   } deriving Show
 
 
@@ -72,11 +72,12 @@ genModule :: CodeGen a -> AST.Module
 genModule x =
   let initialState = CodeGenState
                      { blockChain  = initBlockChain
-                     , symbolTable = Map.empty
+                     , globalTable = Map.empty
+                     , localVars   = Map.empty
                      , next        = 0
                      }
       (_ , st) = runState (runCodegen x) initialState
-      definitions = map AST.GlobalDefinition (Map.elems $ symbolTable st)
+      definitions = map AST.GlobalDefinition (Map.elems $ globalTable st)
       name  = "first-module"
   in AST.Module
     {
@@ -92,7 +93,8 @@ genBlocks :: CodeGen [AST.BasicBlock] -> [AST.BasicBlock]
 genBlocks m =
   let initialState = CodeGenState
                      { blockChain  = Seq.empty
-                     , symbolTable = Map.empty
+                     , globalTable = Map.empty
+                     , localVars   = Map.empty
                      , next        = 0
                      }
   in
@@ -220,7 +222,7 @@ declare g =
                AST.Name n   -> n
                AST.UnName n -> show n
   in
-    modify $ \s -> s { symbolTable = Map.insert name g (symbolTable s)}
+    modify $ \s -> s { globalTable = Map.insert name g (globalTable s)}
 
 
 -- | Generate a fresh (un)name.
@@ -247,6 +249,14 @@ instr ty ins = do
   return $ AST.LocalReference ty name
 
 
+namedInstr :: T.Type -> String -> I.Instruction -> CodeGen AST.Operand
+namedInstr ty nm ins = do
+  instr_ $ (AST.Name nm) AST.:= ins
+  ref <- return $ AST.LocalReference ty (AST.Name nm)
+  modify $ \s -> s { localVars = Map.insert nm ref (localVars s)}
+  return $ ref
+
+
 -- | Add raw assembly instructions to the execution stream
 --
 instr_ :: AST.Named AST.Instruction -> CodeGen ()
@@ -256,14 +266,27 @@ instr_ ins =
       Seq.EmptyR  -> error "instr_ empty block chain"
       bs Seq.:> b -> s { blockChain = bs Seq.|> b { instructions = instructions b Seq.|> ins } }
 
+-- | Return local var reference
+--
+getvar :: String -> CodeGen AST.Operand
+getvar nm = do
+  vars <- gets localVars
+  case Map.lookup nm vars of
+    Just x  -> return x
+    Nothing -> error $ "Local variable not in scope: " ++ show nm
+
 
 -- | Return a global reference pointing to an operand
 --
 globalOp :: T.Type -> AST.Name -> AST.Operand
 globalOp ty nm = AST.ConstantOperand $ C.GlobalReference ty nm
 
+
+-- | Return a local reference
+--
 localRef :: T.Type -> AST.Name -> AST.Operand
 localRef = AST.LocalReference
+
 
 -- | Convert operands to the expected args format
 --
@@ -300,34 +323,13 @@ getElemPtr inbounds addr idxs = instr T.i32 $ I.GetElementPtr inbounds addr idxs
 -- TODO(cskksc): dont know if T.i8 is correct
 
 
--- | Print a string using puts
+-- | Add two operands
 --
-printString :: String -> CodeGen BlockState
-printString s = do
-  var <- allocate ty
-  _   <- store var chars
-  nm  <- gets next
-  -- TODO(cskksc): figure out the -2. its probably because store doesn't assign
-  -- anything to an unname
-  _   <- getElemPtr True (localRef (toPtrType ty) (AST.UnName (nm - 2))) idxs
-  _   <- call L.External LC.printIntType (AST.Name "puts") [localRef (toPtrType ty) (AST.UnName nm)]
-  return_
-    where (chars, len) = stringToChar s
-          ty    = T.ArrayType len T.i8
-          idx   = AST.ConstantOperand (C.Int 32 0)
-          idxs  = [idx, idx]
+add :: [AST.Operand] -> CodeGen AST.Operand
+add [x,y] = instr T.i32 $ I.Add False False x y []
 
 
 -- | Convert the type to a pointer type
 --
 toPtrType :: T.Type -> T.Type
 toPtrType ty = T.PointerType ty (AS.AddrSpace 0)
-
-
--- | Convert string to a char array in LLVM format
---
-stringToChar :: String -> (AST.Operand, Word64)
-stringToChar s = (AST.ConstantOperand $ C.Array ty chars, len)
-  where len   = fromIntegral $ length chars
-        chars = (++ [C.Int 8 0]) $ map (\x -> C.Int 8 (toInteger x)) $ map ord s
-        ty    = T.IntegerType 8

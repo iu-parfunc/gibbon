@@ -1,9 +1,14 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Packed.FirstOrder.Passes.LLVM.Codegen where
 
 import Packed.FirstOrder.Passes.LLVM.Monad
-import qualified Packed.FirstOrder.Passes.LLVM.C as LC
 import Packed.FirstOrder.L3_Target
+import Packed.FirstOrder.Common (Var(..), fromVar)
+import Data.Char (ord)
+import Data.Word
+import qualified Packed.FirstOrder.Passes.LLVM.C as LC
 
+import Control.Monad.State
 import Control.Monad.Except
 
 import qualified LLVM.General.AST as AST
@@ -11,6 +16,7 @@ import qualified LLVM.General.AST.Global as G
 import qualified LLVM.General.Context as CTX
 import qualified LLVM.General.Module as M
 import qualified LLVM.General.AST.Constant as C
+import qualified LLVM.General.AST.Instruction as I
 import qualified LLVM.General.AST.Linkage as L
 import qualified LLVM.General.AST.Type as T
 
@@ -22,6 +28,9 @@ toLLVM m = CTX.withContext $ \ctx -> do
       Left err -> error $ "error: " ++ err
       Right llvm -> return llvm
 
+
+-- | Generate LLVM instructions for Prog
+--
 codegenProg :: Prog -> IO String
 codegenProg prog = do
   cg' <- return $ genModule $ codegenProg' prog
@@ -50,35 +59,98 @@ codegenProg' (Prog _ body) = do
           Just (PrintExp t) -> codegenTail t
           _ -> retval_ (AST.ConstantOperand (C.Int 8 8))
 
-
+-- | Generate LLVM instructions for Tail
+--
 codegenTail :: Tail -> CodeGen BlockState
 codegenTail (RetValsT []) = return_
-codegenTail (RetValsT [t]) = retval_ $ codegenTriv t
+codegenTail (RetValsT [t]) = do
+  t' <- codegenTriv t
+  retval_ t'
 
 codegenTail (LetPrimCallT bnds prm rnds body) = do
-  rnds' <- return $ map codegenTriv rnds
-  pre   <- case prm of
+  rnds' <- mapM codegenTriv rnds
+  _     <- case prm of
              PrintInt -> do
                _ <- call L.External LC.printIntType (AST.Name "print_int") rnds'
                return_
              PrintString s -> do
                _ <- printString s
                return_
+             AddP -> do
+               addp bnds rnds'
              _ -> __
   bod' <- codegenTail body
   return bod'
 
 codegenTail _ = __
 
-
-codegenTriv :: Triv -> AST.Operand
-codegenTriv (IntTriv i) = AST.ConstantOperand $ C.Int 32 (toInteger i)
+-- | Generate LLVM instructions for Triv
+--
+codegenTriv :: Triv -> CodeGen AST.Operand
+codegenTriv (IntTriv i) = return $ AST.ConstantOperand $ C.Int 32 (toInteger i)
+codegenTriv (VarTriv v) = do
+  nm <- return $ fromVar v
+  getvar nm
 codegenTriv _ = __
 
 
+-- | Gibbon PrintString
+--
+printString :: String -> CodeGen BlockState
+printString s = do
+  var <- allocate ty
+  _   <- store var chars
+  nm  <- gets next
+  -- TODO(cskksc): figure out the -2. its probably because store doesn't assign
+  -- anything to an unname
+  _   <- getElemPtr True (localRef (toPtrType ty) (AST.UnName (nm - 2))) idxs
+  _   <- call L.External LC.printIntType (AST.Name "puts") [localRef (toPtrType ty) (AST.UnName nm)]
+  return_
+    where (chars, len) = stringToChar s
+          ty    = T.ArrayType len T.i8
+          idx   = AST.ConstantOperand (C.Int 32 0)
+          idxs  = [idx, idx]
+
+
+-- | Convert string to a char array in LLVM format
+--
+stringToChar :: String -> (AST.Operand, Word64)
+stringToChar s = (AST.ConstantOperand $ C.Array ty chars, len)
+  where len   = fromIntegral $ length chars
+        chars = (++ [C.Int 8 0]) $ map (\x -> C.Int 8 (toInteger x)) $ map ord s
+        ty    = T.IntegerType 8
+
+
+-- | Gibbon AddP instruction
+--
+addp :: [(Var,Ty)] -> [AST.Operand] -> CodeGen BlockState
+addp [] rnds = do
+  add rnds
+  return_
+addp [(v, ty)] [x,y] = do
+  nm  <- return $ fromVar v
+  var <- namedInstr (toLLVMTy ty) nm (I.Add False False x y [])
+  retval_ var
+
+-- | Convert Gibbon types to LLVM types
+--
+toLLVMTy :: Ty -> T.Type
+toLLVMTy IntTy = T.IntegerType 64
+toLLVMTy _ = __
+
+
+-- | tests
+--
 testprog0 = Prog {fundefs = [], mainExp = Nothing}
 test0 = codegenProg testprog0
-
--- testprog1 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [], prim = PrintInt, rands = [IntTriv 42], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [IntTriv 23], bod = RetValsT []}}))}
 testprog1 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [], prim = PrintInt, rands = [IntTriv 42], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}))}
 test1 = codegenProg testprog1
+
+-- testprog2 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "flt0",IntTy)], prim = AddP, rands = [IntTriv 10,IntTriv 40], bod = RetValsT []}))}
+
+testprog2 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "flt0",IntTy)], prim = AddP, rands = [IntTriv 10,IntTriv 40], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "flt0")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
+test2 = codegenProg testprog2
+
+-- a <- getvar var
+  -- cval <- cgen val
+  -- store a cval
