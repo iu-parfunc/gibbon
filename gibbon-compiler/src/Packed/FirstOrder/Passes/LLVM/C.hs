@@ -2,10 +2,6 @@
 
 module Packed.FirstOrder.Passes.LLVM.C where
 
-import Data.Foldable (toList)
-import Data.Sequence (Seq)
-import qualified Data.Sequence as Seq
-
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Global as G
 import qualified LLVM.General.AST.Type as T
@@ -25,6 +21,19 @@ mainFn :: [AST.BasicBlock] -> G.Global
 mainFn instrs = G.functionDefaults
        { G.name        = AST.Name "main"
        , G.parameters  = ([], False)
-       , G.returnType  = T.i8
+       , G.returnType  = T.VoidType
        , G.basicBlocks = instrs
        }
+
+-- | must match with lib.c
+printIntType :: T.Type
+printIntType = T.i32
+
+printInt :: G.Global
+printInt = G.functionDefaults
+           { G.name        = AST.Name "print_int"
+           , G.parameters  = ([G.Parameter ty nm []], False)
+           , G.returnType  = T.i32
+           }
+  where ty = printIntType
+        nm = AST.UnName 0
