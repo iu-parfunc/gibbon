@@ -1,15 +1,16 @@
 -- | Export C functions
 
-module Packed.FirstOrder.Passes.LLVM.C where
+module Packed.FirstOrder.Passes.LLVM.Global where
 
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Global as G
 import qualified LLVM.General.AST.Type as T
 import qualified LLVM.General.AST.AddrSpace as AS
+import qualified LLVM.General.AST.Constant as C
 
 puts :: G.Global
 puts = G.functionDefaults
-       { G.name        = AST.Name "puts"
+       { G.name        = AST.Name "gibbon_fputs"
        , G.parameters  = ([G.Parameter ty nm []], False)
        , G.returnType  = T.i32
        }
@@ -19,7 +20,7 @@ puts = G.functionDefaults
 
 mainFn :: [AST.BasicBlock] -> G.Global
 mainFn instrs = G.functionDefaults
-       { G.name        = AST.Name "main"
+       { G.name        = AST.Name "__main_expr"
        , G.parameters  = ([], False)
        , G.returnType  = T.VoidType
        , G.basicBlocks = instrs
@@ -27,13 +28,19 @@ mainFn instrs = G.functionDefaults
 
 -- | must match with lib.c
 printIntType :: T.Type
-printIntType = T.i32
+printIntType = T.i64
 
 printInt :: G.Global
 printInt = G.functionDefaults
-           { G.name        = AST.Name "print_int"
+           { G.name        = AST.Name "gibbon_print_int"
            , G.parameters  = ([G.Parameter ty nm []], False)
            , G.returnType  = T.i32
            }
   where ty = printIntType
         nm = AST.UnName 0
+
+globalSizeParam = G.globalVariableDefaults
+                  { G.name  = AST.Name "global_size_param"
+                  , G.type' = T.IntegerType 64
+                  , G.initializer = Just $ C.Int 64 1
+                  }

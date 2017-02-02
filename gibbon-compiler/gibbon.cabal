@@ -41,7 +41,7 @@ library
                   Packed.FirstOrder.SExpFrontend
                   Packed.FirstOrder.Passes.LLVM.Codegen
                   Packed.FirstOrder.Passes.LLVM.Monad
-                  Packed.FirstOrder.Passes.LLVM.C
+                  Packed.FirstOrder.Passes.LLVM.Global
 
 
 -- First attempt, slated for removal:

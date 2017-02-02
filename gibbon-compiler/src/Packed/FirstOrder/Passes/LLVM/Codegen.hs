@@ -6,7 +6,7 @@ import Packed.FirstOrder.L3_Target
 import Packed.FirstOrder.Common (Var(..), fromVar)
 import Data.Char (ord)
 import Data.Word
-import qualified Packed.FirstOrder.Passes.LLVM.C as LC
+import qualified Packed.FirstOrder.Passes.LLVM.Global as LG
 
 import Control.Monad.State
 import Control.Monad.Except
@@ -42,9 +42,10 @@ codegenProg prog = do
 -- more fns. print_T needs it right now
 codegenProg' :: Prog -> CodeGen ()
 codegenProg' (Prog _ body) = do
-  declare LC.puts
-  declare LC.printInt
-  declare (LC.mainFn mainBody)
+  declare LG.puts
+  declare LG.printInt
+  declare LG.globalSizeParam
+  declare (LG.mainFn mainBody)
     where
       mainBody :: [G.BasicBlock]
       mainBody = genBlocks $ do
@@ -71,13 +72,15 @@ codegenTail (LetPrimCallT bnds prm rnds body) = do
   rnds' <- mapM codegenTriv rnds
   _     <- case prm of
              PrintInt -> do
-               _ <- call L.External LC.printIntType (AST.Name "print_int") rnds'
+               _ <- call L.External LG.printIntType (AST.Name "gibbon_print_int") rnds'
                return_
              PrintString s -> do
                _ <- printString s
                return_
              AddP -> do
                addp bnds rnds'
+             SizeParam -> do
+               sizeParam bnds
              _ -> __
   bod' <- codegenTail body
   return bod'
@@ -104,7 +107,7 @@ printString s = do
   -- TODO(cskksc): figure out the -2. its probably because store doesn't assign
   -- anything to an unname
   _   <- getElemPtr True (localRef (toPtrType ty) (AST.UnName (nm - 2))) idxs
-  _   <- call L.External LC.printIntType (AST.Name "puts") [localRef (toPtrType ty) (AST.UnName nm)]
+  _   <- call L.External LG.printIntType (AST.Name "gibbon_fputs") [localRef (toPtrType ty) (AST.UnName nm)]
   return_
     where (chars, len) = stringToChar s
           ty    = T.ArrayType len T.i8
@@ -127,9 +130,9 @@ addp :: [(Var,Ty)] -> [AST.Operand] -> CodeGen BlockState
 addp [] rnds = do
   add rnds
   return_
-addp [(v, ty)] [x,y] = do
+addp [(v, ty)] rnds = do
   nm  <- return $ fromVar v
-  var <- namedInstr (toLLVMTy ty) nm (I.Add False False x y [])
+  var <- namedAdd nm (toLLVMTy ty) rnds
   retval_ var
 
 -- | Convert Gibbon types to LLVM types
@@ -139,18 +142,24 @@ toLLVMTy IntTy = T.IntegerType 64
 toLLVMTy _ = __
 
 
+-- | Gibbon SizeParam instruction
+--
+sizeParam :: [(Var,Ty)] -> CodeGen BlockState
+sizeParam [(v,ty)] = do
+  nm <- return $ fromVar v
+  _  <- namedLoad nm lty op
+  return_
+  where lty = (toLLVMTy ty)
+        op = globalOp lty (AST.Name "global_size_param")
+
 -- | tests
 --
 testprog0 = Prog {fundefs = [], mainExp = Nothing}
 test0 = codegenProg testprog0
 testprog1 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [], prim = PrintInt, rands = [IntTriv 42], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}))}
 test1 = codegenProg testprog1
-
--- testprog2 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "flt0",IntTy)], prim = AddP, rands = [IntTriv 10,IntTriv 40], bod = RetValsT []}))}
-
 testprog2 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "flt0",IntTy)], prim = AddP, rands = [IntTriv 10,IntTriv 40], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "flt0")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
 test2 = codegenProg testprog2
 
--- a <- getvar var
-  -- cval <- cgen val
-  -- store a cval
+testprog3 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "flt0",IntTy)], prim = SizeParam, rands = [], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "flt0")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
+test3 = codegenProg testprog3

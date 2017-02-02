@@ -16,8 +16,11 @@ module Packed.FirstOrder.Passes.LLVM.Monad (
   genModule, genBlocks, createBlocks, setBlock, newBlock, beginBlock,
 
   -- instructions
-  declare, retval_, return_, call, add, namedInstr, allocate, getvar,
-  toPtrType, localRef, getElemPtr, store,
+  declare, retval_, return_, call,
+  getvar, allocate, load, namedLoad, store, getElemPtr,
+
+  add, namedAdd,
+  instr, namedInstr, toPtrType, localRef, globalOp,
 
   next
 
@@ -303,17 +306,34 @@ call L.External retTy nm args = do
 call L.Internal _ _ _ = __
 
 
--- | allocate memory for this type
+-- | Allocate memory for the type
 --
 allocate :: T.Type -> CodeGen AST.Operand
 allocate ty = instr ty $ I.Alloca ty Nothing 0 []
 
 
--- | store operand as a new local
+-- | Store operand as a new local unname
 --
 store :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
 store addr val = instr T.i8 $ I.Store False addr val Nothing 0 []
 -- TODO(cskksc): dont know if T.i8 is correct
+
+
+-- | Read from memory into a local unname
+--
+
+load :: T.Type -> AST.Operand -> CodeGen AST.Operand
+load ty addr = instr ty $ loadInstr addr
+
+-- | Read from memory into a local var named nm
+--
+namedLoad :: String -> T.Type -> AST.Operand -> CodeGen AST.Operand
+namedLoad nm ty addr = namedInstr ty nm $ loadInstr addr
+
+
+-- | LLVM load instruction
+loadInstr :: AST.Operand -> I.Instruction
+loadInstr addr = I.Load False addr Nothing 8 []
 
 
 -- | Get the address of a subelement of an aggregate data structure
@@ -323,10 +343,22 @@ getElemPtr inbounds addr idxs = instr T.i32 $ I.GetElementPtr inbounds addr idxs
 -- TODO(cskksc): dont know if T.i8 is correct
 
 
--- | Add two operands
+-- | Add two operands and store result in local unname
 --
 add :: [AST.Operand] -> CodeGen AST.Operand
-add [x,y] = instr T.i32 $ I.Add False False x y []
+add [x,y] = instr T.i32 $ addInstr x y
+
+
+-- | Add two operands and store result in local nm
+--
+namedAdd :: String -> T.Type -> [AST.Operand] -> CodeGen AST.Operand
+namedAdd nm ty [x,y] = namedInstr ty nm $ addInstr x y
+
+
+-- | LLVM add instruction
+--
+addInstr :: AST.Operand -> AST.Operand -> I.Instruction
+addInstr x y = I.Add False False x y []
 
 
 -- | Convert the type to a pointer type
