@@ -1,6 +1,6 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase    #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE LambdaCase           #-}
+{-# LANGUAGE TupleSections        #-}
 
 module Packed.FirstOrder.HaskellFrontend
   ( parseFile
