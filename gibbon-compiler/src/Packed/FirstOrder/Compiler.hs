@@ -24,6 +24,7 @@ import qualified Packed.FirstOrder.L1_Source   as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
 -- import qualified Packed.FirstOrder.L3_Target   as L3
 import           Packed.FirstOrder.Passes.Codegen (codegenProg)
+import qualified Packed.FirstOrder.Passes.LLVM.Codegen as LLVM
 import           Packed.FirstOrder.Passes.Cursorize
 import           Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
 import           Packed.FirstOrder.Passes.Flatten
@@ -115,6 +116,9 @@ data Mode = ToParse  -- ^ Parse and then stop
           | Bench Var -- ^ Benchmark a particular function applied to the packed data within an input file.
 
           | BenchInput FilePath -- ^ Hardcode the input file to the benchmark in the C code.
+          | ToLLVMExe -- ^ Compile to exe using the LLVM backend
+          | ToLLVM    -- ^ Compile to LLVM (.ll)
+          | RunLLVMExe -- ^ Compile and run a exe using the LLVM backend
   deriving (Show,Read,Eq,Ord)
 
 defaultConfig :: Config
@@ -182,7 +186,9 @@ configParser = Config <$> inputParser
                flag' Interp2 (short 'i' <> long "interp2" <>
                               help "run through the interpreter after cursor insertion") <|>
                flag' RunExe  (short 'r' <> long "run"     <> help "compile and then run executable") <|>
-               flag ToExe ToExe (long "exe"  <> help "compile through C to executable (default)") <|>
+               flag' ToLLVMExe  (long "llvm-exe"  <> help "compile through LLVM to executable") <|>
+               flag' RunLLVMExe   (long "run-llvm"  <> help "compile and then run executable through LLVM to executable") <|>
+               flag' ToLLVM   (long "llvm"  <> help "compile to a .ll file, named after the input") <|>
                (Bench <$> toVar <$> strOption (short 'b' <> long "bench-fun" <> metavar "FUN" <>
                                      help ("generate code to benchmark a 1-argument FUN against a input packed file."++
                                            "  If --bench-input is provided, then the benchmark is run as well.")))
@@ -335,7 +341,11 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
         -- the interpreter part.
         passF = pass -- FINISHME! For now not interpreting.
 
-    let outfile = case cfile of
+    let outfile = if (mode == ToLLVM || mode == ToLLVMExe || mode == RunLLVMExe)
+                  then
+                    (replaceExtension fp ".ll")
+                  else
+                    case cfile of
                     Nothing -> (replaceExtension fp ".c")
                     Just f -> f
         exe     = case exefile of
@@ -426,7 +436,15 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
                           mapM_ (\(IntVal v) -> liftIO $ print v) l3res
                           liftIO $ exitSuccess
                   else do
-                   str <- lift (codegenProg packed l3)
+                   str <- case mode of
+                     ToLLVM  -> do
+                       lift (LLVM.codegenProg packed l3)
+                     ToLLVMExe -> do
+                       lift (LLVM.codegenProg packed l3)
+                     RunLLVMExe -> do
+                       lift (LLVM.codegenProg packed l3)
+                     _ -> do
+                       lift (codegenProg packed l3)
 
                    -- The C code is long, so put this at a higher verbosity level.
                    lift$ dbgPrintLn minChatLvl $ "Final C codegen: "++show (length str)++" characters."
@@ -438,6 +456,21 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
 
     writeFile outfile str
     -- (Stage 2) Code written, now compile if warranted.
+    when (mode == ToLLVMExe || mode == RunLLVMExe) $ do
+      let cmd = "clang lib.o" ++ " " ++ outfile ++ " -o" ++ exe
+      dbgPrintLn minChatLvl cmd
+      cd <- system cmd
+      case cd of
+        ExitFailure n -> error$ "LLVM compiler failed!  Code: "++show n
+        ExitSuccess -> do
+          if (mode == RunLLVMExe) then
+            do exepath <- makeAbsolute exe
+               c2 <- system exepath
+               case c2 of
+                 ExitSuccess -> return ()
+                 ExitFailure n -> error$ "Treelang program exited with error code "++ show n
+          else
+            return ()
     when (mode == ToExe || mode == RunExe || isBench mode ) $ do
       let cmd = cc ++" -std=gnu11 "
                    ++(if bumpAlloc then "-DBUMPALLOC " else "")

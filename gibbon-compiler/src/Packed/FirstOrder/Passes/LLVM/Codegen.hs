@@ -31,11 +31,10 @@ toLLVM m = CTX.withContext $ \ctx -> do
 
 -- | Generate LLVM instructions for Prog
 --
-codegenProg :: Prog -> IO String
-codegenProg prog = do
+codegenProg :: Bool -> Prog -> IO String
+codegenProg _ prog = do
   cg' <- return $ genModule $ codegenProg' prog
   llvm <-  toLLVM cg'
-  putStrLn llvm
   return llvm
 
 -- TODO(cskksc): abstract out main fn generation. it'll will help in generating
@@ -72,7 +71,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) = do
   rnds' <- mapM codegenTriv rnds
   _     <- case prm of
              PrintInt -> do
-               _ <- call L.External LG.printIntType (AST.Name "gibbon_print_int") rnds'
+               _ <- call L.External LG.printIntType (AST.Name "__print_int") rnds'
                return_
              PrintString s -> do
                _ <- printString s
@@ -90,7 +89,7 @@ codegenTail _ = __
 -- | Generate LLVM instructions for Triv
 --
 codegenTriv :: Triv -> CodeGen AST.Operand
-codegenTriv (IntTriv i) = return $ AST.ConstantOperand $ C.Int 32 (toInteger i)
+codegenTriv (IntTriv i) = return $ AST.ConstantOperand $ C.Int 64 (toInteger i)
 codegenTriv (VarTriv v) = do
   nm <- return $ fromVar v
   getvar nm
@@ -107,7 +106,7 @@ printString s = do
   -- TODO(cskksc): figure out the -2. its probably because store doesn't assign
   -- anything to an unname
   _   <- getElemPtr True (localRef (toPtrType ty) (AST.UnName (nm - 2))) idxs
-  _   <- call L.External LG.printIntType (AST.Name "gibbon_fputs") [localRef (toPtrType ty) (AST.UnName nm)]
+  _   <- call L.External LG.printIntType (AST.Name "__fputs") [localRef (toPtrType ty) (AST.UnName nm)]
   return_
     where (chars, len) = stringToChar s
           ty    = T.ArrayType len T.i8
@@ -155,11 +154,11 @@ sizeParam [(v,ty)] = do
 -- | tests
 --
 testprog0 = Prog {fundefs = [], mainExp = Nothing}
-test0 = codegenProg testprog0
+test0 = codegenProg False testprog0
 testprog1 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [], prim = PrintInt, rands = [IntTriv 42], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}))}
-test1 = codegenProg testprog1
+test1 = codegenProg False testprog1
 testprog2 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "flt0",IntTy)], prim = AddP, rands = [IntTriv 10,IntTriv 40], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "flt0")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
-test2 = codegenProg testprog2
+test2 = codegenProg False testprog2
 
 testprog3 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "flt0",IntTy)], prim = SizeParam, rands = [], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "flt0")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
-test3 = codegenProg testprog3
+test3 = codegenProg False testprog3

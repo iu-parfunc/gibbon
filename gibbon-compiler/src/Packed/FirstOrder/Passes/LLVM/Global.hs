@@ -10,7 +10,7 @@ import qualified LLVM.General.AST.Constant as C
 
 puts :: G.Global
 puts = G.functionDefaults
-       { G.name        = AST.Name "gibbon_fputs"
+       { G.name        = AST.Name "__fputs"
        , G.parameters  = ([G.Parameter ty nm []], False)
        , G.returnType  = T.i32
        }
@@ -32,7 +32,7 @@ printIntType = T.i64
 
 printInt :: G.Global
 printInt = G.functionDefaults
-           { G.name        = AST.Name "gibbon_print_int"
+           { G.name        = AST.Name "__print_int"
            , G.parameters  = ([G.Parameter ty nm []], False)
            , G.returnType  = T.i32
            }
