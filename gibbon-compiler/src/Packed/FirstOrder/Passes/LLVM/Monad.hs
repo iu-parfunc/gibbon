@@ -40,7 +40,6 @@ import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Global as G
 import qualified LLVM.General.AST.Constant as C
 import qualified LLVM.General.AST.Type as T
-import qualified LLVM.General.AST.Linkage as L
 import qualified LLVM.General.AST.Instruction as I
 import qualified LLVM.General.AST.CallingConvention as CC
 import qualified LLVM.General.AST.Attribute as A
@@ -52,17 +51,17 @@ import qualified LLVM.General.AST.AddrSpace as AS
 -- AST, and one for each of the basic blocks that are generated during the walk.
 --
 data CodeGenState = CodeGenState
-  { blockChain  :: Seq BlockState         -- blocks for this function
-  , globalTable :: Map String G.Global    -- external functions symbol table
-  , localVars   :: Map String AST.Operand -- local vars
-  , next        :: Word                   -- names supply
+  { blockChain  :: Seq BlockState         -- ^ blocks for this function
+  , globalTable :: Map String G.Global    -- ^ external functions symbol table
+  , localVars   :: Map String AST.Operand -- ^ local vars
+  , next        :: Word                   -- ^ names supply
   } deriving Show
 
 
 data BlockState = BlockState
-  { blockLabel   :: String                           -- block name
-  , instructions :: Seq (AST.Named AST.Instruction)  -- stack of instructions
-  , terminator   :: Maybe AST.Terminator             -- block terminator
+  { blockLabel   :: String                           -- ^ block name
+  , instructions :: Seq (AST.Named AST.Instruction)  -- ^ stack of instructions
+  , terminator   :: Maybe AST.Terminator             -- ^ block terminator
   } deriving Show
 
 
@@ -88,7 +87,7 @@ genModule x =
     , AST.moduleSourceFileName = []
     , AST.moduleDefinitions = definitions
     , AST.moduleDataLayout = Nothing
-    , AST.moduleTargetTriple = Nothing
+    , AST.moduleTargetTriple = Just "x86_64-unknown-linux-gnu"
     }
 
 
@@ -291,19 +290,21 @@ localRef :: T.Type -> AST.Name -> AST.Operand
 localRef = AST.LocalReference
 
 
+-- | Add a function call to the execution stream
+--
+call :: G.Global -> [AST.Operand] -> CodeGen AST.Operand
+call fn args = do
+  instr retTy $ I.Call Nothing CC.C [] (Right fn') args' [] []
+  where fn'   = globalOp retTy nm
+        args' = toArgs args
+        nm    = G.name fn
+        retTy = G.returnType fn
+
+
 -- | Convert operands to the expected args format
 --
 toArgs :: [AST.Operand] -> [(AST.Operand, [A.ParameterAttribute])]
 toArgs = map (\x -> (x, []))
-
-
--- | Add a function call to the execution stream
---
-call :: L.Linkage -> T.Type -> AST.Name -> [AST.Operand] -> CodeGen AST.Operand
-call L.External retTy nm args = do
-  fn  <- return $ globalOp retTy nm
-  instr retTy $ I.Call Nothing CC.C [] (Right fn) (toArgs args) [] []
-call L.Internal _ _ _ = __
 
 
 -- | Allocate memory for the type
@@ -324,6 +325,7 @@ store addr val = instr T.i8 $ I.Store False addr val Nothing 0 []
 
 load :: T.Type -> AST.Operand -> CodeGen AST.Operand
 load ty addr = instr ty $ loadInstr addr
+
 
 -- | Read from memory into a local var named nm
 --

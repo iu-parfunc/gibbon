@@ -26,21 +26,19 @@ mainFn instrs = G.functionDefaults
        , G.basicBlocks = instrs
        }
 
--- | must match with lib.c
-printIntType :: T.Type
-printIntType = T.i64
-
 printInt :: G.Global
 printInt = G.functionDefaults
            { G.name        = AST.Name "__print_int"
            , G.parameters  = ([G.Parameter ty nm []], False)
            , G.returnType  = T.i32
            }
-  where ty = printIntType
+  where ty = T.i64
         nm = AST.UnName 0
 
+
+globalSizeParam :: G.Global
 globalSizeParam = G.globalVariableDefaults
                   { G.name  = AST.Name "global_size_param"
-                  , G.type' = T.IntegerType 64
+                  , G.type' = T.i64
                   , G.initializer = Just $ C.Int 64 1
                   }

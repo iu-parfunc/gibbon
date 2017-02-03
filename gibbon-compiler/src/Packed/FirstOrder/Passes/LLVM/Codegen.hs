@@ -2,6 +2,7 @@
 module Packed.FirstOrder.Passes.LLVM.Codegen where
 
 import Packed.FirstOrder.Passes.LLVM.Monad
+
 import Packed.FirstOrder.L3_Target
 import Packed.FirstOrder.Common (Var(..), fromVar)
 import Data.Char (ord)
@@ -71,7 +72,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) = do
   rnds' <- mapM codegenTriv rnds
   _     <- case prm of
              PrintInt -> do
-               _ <- call L.External LG.printIntType (AST.Name "__print_int") rnds'
+               _ <- call LG.printInt rnds'
                return_
              PrintString s -> do
                _ <- printString s
@@ -106,21 +107,12 @@ printString s = do
   -- TODO(cskksc): figure out the -2. its probably because store doesn't assign
   -- anything to an unname
   _   <- getElemPtr True (localRef (toPtrType ty) (AST.UnName (nm - 2))) idxs
-  _   <- call L.External LG.printIntType (AST.Name "__fputs") [localRef (toPtrType ty) (AST.UnName nm)]
+  _   <- call LG.puts [localRef (toPtrType ty) (AST.UnName nm)]
   return_
     where (chars, len) = stringToChar s
           ty    = T.ArrayType len T.i8
           idx   = AST.ConstantOperand (C.Int 32 0)
           idxs  = [idx, idx]
-
-
--- | Convert string to a char array in LLVM format
---
-stringToChar :: String -> (AST.Operand, Word64)
-stringToChar s = (AST.ConstantOperand $ C.Array ty chars, len)
-  where len   = fromIntegral $ length chars
-        chars = (++ [C.Int 8 0]) $ map (\x -> C.Int 8 (toInteger x)) $ map ord s
-        ty    = T.IntegerType 8
 
 
 -- | Gibbon AddP instruction
@@ -134,12 +126,6 @@ addp [(v, ty)] rnds = do
   var <- namedAdd nm (toLLVMTy ty) rnds
   retval_ var
 
--- | Convert Gibbon types to LLVM types
---
-toLLVMTy :: Ty -> T.Type
-toLLVMTy IntTy = T.IntegerType 64
-toLLVMTy _ = __
-
 
 -- | Gibbon SizeParam instruction
 --
@@ -150,6 +136,22 @@ sizeParam [(v,ty)] = do
   return_
   where lty = (toLLVMTy ty)
         op = globalOp lty (AST.Name "global_size_param")
+
+
+-- | Convert Gibbon types to LLVM types
+--
+toLLVMTy :: Ty -> T.Type
+toLLVMTy IntTy = T.i64
+toLLVMTy _ = __
+
+
+-- | Convert string to a char array in LLVM format
+--
+stringToChar :: String -> (AST.Operand, Word64)
+stringToChar s = (AST.ConstantOperand $ C.Array T.i8 chars, len)
+  where len   = fromIntegral $ length chars
+        chars = (++ [C.Int 8 0]) $ map (\x -> C.Int 8 (toInteger x)) $ map ord s
+
 
 -- | tests
 --
