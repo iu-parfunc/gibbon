@@ -12,7 +12,7 @@ puts :: G.Global
 puts = G.functionDefaults
        { G.name        = AST.Name "__fputs"
        , G.parameters  = ([G.Parameter ty nm []], False)
-       , G.returnType  = T.i32
+       , G.returnType  = T.i64
        }
   where ty = T.PointerType T.i8 (AS.AddrSpace 0)
         nm = AST.UnName 0
@@ -30,7 +30,7 @@ printInt :: G.Global
 printInt = G.functionDefaults
            { G.name        = AST.Name "__print_int"
            , G.parameters  = ([G.Parameter ty nm []], False)
-           , G.returnType  = T.i32
+           , G.returnType  = T.i64
            }
   where ty = T.i64
         nm = AST.UnName 0

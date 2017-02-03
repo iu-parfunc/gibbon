@@ -14,12 +14,14 @@ import Control.Monad.Except
 
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Global as G
-import qualified LLVM.General.Context as CTX
-import qualified LLVM.General.Module as M
 import qualified LLVM.General.AST.Constant as C
 import qualified LLVM.General.AST.Instruction as I
 import qualified LLVM.General.AST.Linkage as L
 import qualified LLVM.General.AST.Type as T
+import qualified LLVM.General.AST.IntegerPredicate as IP
+import qualified LLVM.General.Context as CTX
+import qualified LLVM.General.Module as M
+
 
 
 toLLVM :: AST.Module -> IO String
@@ -84,6 +86,10 @@ codegenTail (LetPrimCallT bnds prm rnds body) = do
              _ -> __
   bod' <- codegenTail body
   return bod'
+
+codegenTail (IfT test consq els') = do
+  _ <- ifThenElse (genIfTest test) (codegenTail consq) (codegenTail els')
+  return_
 
 codegenTail _ = __
 
@@ -153,6 +159,19 @@ stringToChar s = (AST.ConstantOperand $ C.Array T.i8 chars, len)
         chars = (++ [C.Int 8 0]) $ map (\x -> C.Int 8 (toInteger x)) $ map ord s
 
 
+-- | Generate the correct LLVM predicate
+-- We implement the C notion of true/false i.e every !=0 value is truthy
+--
+genIfTest :: Triv -> CodeGen AST.Operand
+genIfTest triv =
+  let op0 = case triv of
+              (IntTriv i) -> AST.ConstantOperand $ C.Int 64 (toInteger i)
+              _ -> __
+      z   = AST.ConstantOperand $ C.Int 64 0
+  in
+    instr T.i64 $ I.ICmp IP.NE op0 z []
+
+
 -- | tests
 --
 testprog0 = Prog {fundefs = [], mainExp = Nothing}
@@ -164,3 +183,7 @@ test2 = codegenProg False testprog2
 
 testprog3 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "flt0",IntTy)], prim = SizeParam, rands = [], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "flt0")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
 test3 = codegenProg False testprog3
+
+
+testprog4 = Prog {fundefs = [], mainExp = Just (PrintExp (IfT {tst = IntTriv 1, con = LetPrimCallT {binds = [], prim = PrintString "#t", rands = [], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}, els = LetPrimCallT {binds = [], prim = PrintString "#f", rands = [], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
+test4 = codegenProg False testprog4

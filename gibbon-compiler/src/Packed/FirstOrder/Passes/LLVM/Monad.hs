@@ -19,7 +19,7 @@ module Packed.FirstOrder.Passes.LLVM.Monad (
   declare, retval_, return_, call,
   getvar, allocate, load, namedLoad, store, getElemPtr,
 
-  add, namedAdd,
+  add, namedAdd, ifThenElse,
   instr, namedInstr, toPtrType, localRef, globalOp,
 
   next
@@ -59,7 +59,7 @@ data CodeGenState = CodeGenState
 
 
 data BlockState = BlockState
-  { blockLabel   :: String                           -- ^ block name
+  { blockLabel   :: AST.Name                         -- ^ block name
   , instructions :: Seq (AST.Named AST.Instruction)  -- ^ stack of instructions
   , terminator   :: Maybe AST.Terminator             -- ^ block terminator
   } deriving Show
@@ -108,7 +108,7 @@ genBlocks m =
 -- | initial block chain
 --
 initBlockChain :: Seq BlockState
-initBlockChain = Seq.singleton $ BlockState "entry" Seq.empty Nothing
+initBlockChain = Seq.singleton $ BlockState (AST.Name"entry") Seq.empty Nothing
 
 
 -- | Create a new basic block, but don't yet add it to the block chain. You need
@@ -143,7 +143,7 @@ newBlock nm =
   state $ \s ->
     let idx     = Seq.length (blockChain s)
         label   = let (h,t) = break (== '.') nm in (h ++ shows idx t)
-        next    = BlockState label Seq.empty Nothing
+        next    = BlockState (AST.Name label) Seq.empty Nothing
         -- err     = error "Block has no terminator"
     in
     ( next, s )
@@ -182,17 +182,11 @@ createBlocks
           ( F.toList blocks , s' )
   where
     makeBlock BlockState{..} =
-      AST.BasicBlock (AST.Name blockLabel) (F.toList instructions) (AST.Do $ fromJust terminator)
+      AST.BasicBlock blockLabel (F.toList instructions) (AST.Do $ fromJust terminator)
 
 
 -- Instructions
 -- ============
-
--- | Unconditional branch. Return the name of the block that was branched from.
---
-br :: BlockState -> CodeGen BlockState
-br target = terminate $ AST.Br (AST.Name (blockLabel target)) []
-
 
 -- | Add a termination condition to the current instruction stream. Also return
 -- the block that was just terminated.
@@ -316,8 +310,8 @@ allocate ty = instr ty $ I.Alloca ty Nothing 0 []
 -- | Store operand as a new local unname
 --
 store :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
-store addr val = instr T.i8 $ I.Store False addr val Nothing 0 []
--- TODO(cskksc): dont know if T.i8 is correct
+store addr val = instr T.VoidType $ I.Store False addr val Nothing 0 []
+-- TODO(cskksc): dont know if T.VoidType is correct
 
 
 -- | Read from memory into a local unname
@@ -341,8 +335,8 @@ loadInstr addr = I.Load False addr Nothing 8 []
 -- | Get the address of a subelement of an aggregate data structure
 --
 getElemPtr :: Bool -> AST.Operand -> [AST.Operand] -> CodeGen AST.Operand
-getElemPtr inbounds addr idxs = instr T.i32 $ I.GetElementPtr inbounds addr idxs []
--- TODO(cskksc): dont know if T.i8 is correct
+getElemPtr inbounds addr idxs = instr T.VoidType $ I.GetElementPtr inbounds addr idxs []
+-- TODO(cskksc): dont know if T.VoidType is correct
 
 
 -- | Add two operands and store result in local unname
@@ -367,3 +361,55 @@ addInstr x y = I.Add False False x y []
 --
 toPtrType :: T.Type -> T.Type
 toPtrType ty = T.PointerType ty (AS.AddrSpace 0)
+
+
+-- | Add a phi node to the top of the current block
+--
+phi :: T.Type -> [(AST.Operand, AST.Name)] -> CodeGen AST.Operand
+phi ty incoming = instr ty $ I.Phi ty incoming []
+
+
+-- | Unconditional branch. Return the name of the block that was branched from.
+--
+br :: BlockState -> CodeGen BlockState
+br target = terminate $ AST.Br (blockLabel target) []
+
+
+-- | Conditional branch. Return the name of the block that was branched from.
+--
+cbr :: AST.Operand -> BlockState -> BlockState -> CodeGen BlockState
+cbr cond t f = terminate $ I.CondBr cond (blockLabel t) (blockLabel f) []
+
+
+-- | Standard if-then-else expression
+--
+ifThenElse :: CodeGen AST.Operand -> CodeGen BlockState -> CodeGen BlockState -> CodeGen AST.Operand
+ifThenElse test yes no = do
+  ifThen <- newBlock "if.then"
+  ifElse <- newBlock "if.else"
+  ifExit <- newBlock "if.exit"
+
+  _  <- beginBlock "if.entry"
+  p  <- test
+  _  <- cbr p ifThen ifElse
+
+  setBlock ifThen
+  _ <- yes
+  tb <- br ifExit
+  -- Since yes/no are BlockState's, we extract the last unname, assuming it's the
+  -- last instruction of the then block, and use that as an Operand
+  -- TODO(cskksc): This won't work if the block ends with a named instruction
+  --               Also, somehow infer the T.i64 here
+  tv <- do
+    a <- gets next
+    return $ AST.LocalReference T.i64 (AST.UnName (a - 1))
+
+  setBlock ifElse
+  _ <- no
+  fb <- br ifExit
+  fv <- do
+    a <- gets next
+    return $ AST.LocalReference T.i64 (AST.UnName (a - 1))
+
+  setBlock ifExit
+  phi T.i64 [(tv, (blockLabel tb)), (fv, (blockLabel fb))]
