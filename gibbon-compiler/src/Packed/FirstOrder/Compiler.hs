@@ -343,14 +343,22 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
 
     let outfile = if (mode == ToLLVM || mode == ToLLVMExe || mode == RunLLVMExe)
                   then
-                    (replaceExtension fp ".ll")
+                    case cfile of
+                      Nothing -> (replaceExtension fp ".ll")
+                      Just f -> f
                   else
                     case cfile of
                     Nothing -> (replaceExtension fp ".c")
                     Just f -> f
-        exe     = case exefile of
-                    Nothing -> replaceExtension fp ".exe"
-                    Just f -> f
+        exe     = if (mode == ToLLVM || mode == ToLLVMExe || mode == RunLLVMExe)
+                  then
+                    case exefile of
+                      Nothing -> replaceExtension (replaceFileName fp ((takeBaseName fp) ++ "-llvm")) ".exe"
+                      Just f  -> f
+                  else
+                    case exefile of
+                      Nothing -> replaceExtension fp ".exe"
+                      Just f -> f
 
     clearFile outfile
     clearFile exe
