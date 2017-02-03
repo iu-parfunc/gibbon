@@ -97,6 +97,7 @@ data Config = Config
   , warnc     :: Bool
   , cfile     :: Maybe FilePath -- ^ Optional override to destination .c file.
   , exefile   :: Maybe FilePath -- ^ Optional override to destination binary file.
+  , backend   :: Backend -- ^ Compilation backend used
   }
 
 -- | What input format to expect on disk.
@@ -116,10 +117,11 @@ data Mode = ToParse  -- ^ Parse and then stop
           | Bench Var -- ^ Benchmark a particular function applied to the packed data within an input file.
 
           | BenchInput FilePath -- ^ Hardcode the input file to the benchmark in the C code.
-          | ToLLVMExe -- ^ Compile to exe using the LLVM backend
-          | ToLLVM    -- ^ Compile to LLVM (.ll)
-          | RunLLVMExe -- ^ Compile and run a exe using the LLVM backend
   deriving (Show,Read,Eq,Ord)
+
+-- | Compilation backend used
+data Backend = C | LLVM
+  deriving (Show)
 
 defaultConfig :: Config
 defaultConfig =
@@ -135,6 +137,7 @@ defaultConfig =
          , warnc = False
          , cfile = Nothing
          , exefile = Nothing
+         , backend = C
          }
 
 suppress_warnings :: String
@@ -172,6 +175,7 @@ configParser = Config <$> inputParser
                       <*> ((fmap Just (strOption $ short 'o' <> long "exefile" <>
                                        help "set the destination file for the executable"))
                            <|> pure (exefile defaultConfig))
+                      <*> backendParser
  where
   inputParser :: Parser Input
                 -- I'd like to display a separator and some more info.  How?
@@ -186,12 +190,13 @@ configParser = Config <$> inputParser
                flag' Interp2 (short 'i' <> long "interp2" <>
                               help "run through the interpreter after cursor insertion") <|>
                flag' RunExe  (short 'r' <> long "run"     <> help "compile and then run executable") <|>
-               flag' ToLLVMExe  (long "llvm-exe"  <> help "compile through LLVM to executable") <|>
-               flag' RunLLVMExe   (long "run-llvm"  <> help "compile and then run executable through LLVM to executable") <|>
-               flag' ToLLVM   (long "llvm"  <> help "compile to a .ll file, named after the input") <|>
                (Bench <$> toVar <$> strOption (short 'b' <> long "bench-fun" <> metavar "FUN" <>
                                      help ("generate code to benchmark a 1-argument FUN against a input packed file."++
                                            "  If --bench-input is provided, then the benchmark is run as well.")))
+
+  -- use C as the default backend
+  backendParser :: Parser Backend
+  backendParser = flag C LLVM (long "llvm" <> help "use the llvm backend for compilation")
 
 
 -- | Parse configuration as well as file arguments.
@@ -241,7 +246,7 @@ type PassRunner a b = (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a
 -- files to process.
 compile :: Config -> FilePath -> IO ()
 -- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,optc,warnc,cfile,exefile} fp0 = do
+compile config@Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,optc,warnc,cfile,exefile,backend} fp0 = do
   -- TERRIBLE HACK!!  This verbosity value is global, "pure" and can be read anywhere
   when (verbosity > 1) $ do
     setEnv "DEBUG" (show verbosity)
@@ -341,24 +346,8 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
         -- the interpreter part.
         passF = pass -- FINISHME! For now not interpreting.
 
-    let outfile = if (mode == ToLLVM || mode == ToLLVMExe || mode == RunLLVMExe)
-                  then
-                    case cfile of
-                      Nothing -> (replaceExtension fp ".ll")
-                      Just f -> f
-                  else
-                    case cfile of
-                    Nothing -> (replaceExtension fp ".c")
-                    Just f -> f
-        exe     = if (mode == ToLLVM || mode == ToLLVMExe || mode == RunLLVMExe)
-                  then
-                    case exefile of
-                      Nothing -> replaceExtension (replaceFileName fp ((takeBaseName fp) ++ "-llvm")) ".exe"
-                      Just f  -> f
-                  else
-                    case exefile of
-                      Nothing -> replaceExtension fp ".exe"
-                      Just f -> f
+    let outfile = getOutfile backend fp cfile
+        exe     = getExeFile backend fp exefile
 
     clearFile outfile
     clearFile exe
@@ -444,15 +433,9 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
                           mapM_ (\(IntVal v) -> liftIO $ print v) l3res
                           liftIO $ exitSuccess
                   else do
-                   str <- case mode of
-                     ToLLVM  -> do
-                       lift (LLVM.codegenProg packed l3)
-                     ToLLVMExe -> do
-                       lift (LLVM.codegenProg packed l3)
-                     RunLLVMExe -> do
-                       lift (LLVM.codegenProg packed l3)
-                     _ -> do
-                       lift (codegenProg packed l3)
+                   str <- case backend of
+                     LLVM -> lift $ LLVM.codegenProg packed l3
+                     C    -> lift $ codegenProg packed l3
 
                    -- The C code is long, so put this at a higher verbosity level.
                    lift$ dbgPrintLn minChatLvl $ "Final C codegen: "++show (length str)++" characters."
@@ -464,45 +447,61 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
 
     writeFile outfile str
     -- (Stage 2) Code written, now compile if warranted.
-    when (mode == ToLLVMExe || mode == RunLLVMExe) $ do
-      let cmd = "clang lib.o" ++ " " ++ outfile ++ " -o" ++ exe
-      dbgPrintLn minChatLvl cmd
-      cd <- system cmd
-      case cd of
-        ExitFailure n -> error$ "LLVM compiler failed!  Code: "++show n
-        ExitSuccess -> do
-          if (mode == RunLLVMExe) then
-            do exepath <- makeAbsolute exe
-               c2 <- system exepath
-               case c2 of
-                 ExitSuccess -> return ()
-                 ExitFailure n -> error$ "Treelang program exited with error code "++ show n
-          else
-            return ()
     when (mode == ToExe || mode == RunExe || isBench mode ) $ do
-      let cmd = cc ++" -std=gnu11 "
-                   ++(if bumpAlloc then "-DBUMPALLOC " else "")
-                   ++optc++"  "
-                   ++(if warnc then "" else suppress_warnings)
-                   ++" "++outfile++" -o "++ exe
-      dbgPrintLn minChatLvl cmd
-      cd <- system cmd
-      case cd of
-       ExitFailure n -> error$ "C compiler failed!  Code: "++show n
-       ExitSuccess -> do
-         -- (Stage 3) Binary compiled, run if appropriate
-         let runExe extra =
-                 do exepath <- makeAbsolute exe
-                    c2 <- system (exepath++extra)
-                    case c2 of
-                      ExitSuccess -> return ()
-                      ExitFailure n -> error$ "Treelang program exited with error code "++ show n
-         runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
-         case benchInput of
-           -- CONVENTION: In benchmark mode we expect the generated executable to take 2 extra params:
-           Just _ | isBench mode -> runExe $ " " ++show (rcSize runConf) ++ " " ++ show (rcIters runConf)
-           _ | mode == RunExe    -> runExe ""
-           _                     -> return ()
+      genAndRunExe config outfile exe
+
+
+-- | Return the correct filename to store the generated code,
+-- based on the backend used, and override options specified
+--
+getOutfile :: Backend -> FilePath -> Maybe FilePath -> FilePath
+getOutfile _ _ (Just override) = override
+getOutfile LLVM fp Nothing = replaceExtension fp ".ll"
+getOutfile C fp Nothing  = replaceExtension fp ".c"
+
+
+-- | Return the correct filename for the generated exe,
+-- based on the backend used, and override options specified
+--
+getExeFile :: Backend -> FilePath -> Maybe FilePath -> FilePath
+getExeFile _ _ (Just override) = override
+getExeFile LLVM fp Nothing = replaceExtension (replaceFileName fp ((takeBaseName fp) ++ "_llvm")) ".exe"
+getExeFile C fp Nothing = replaceExtension fp ".exe"
+
+
+-- | Compile and run (if appropriate) the generated code
+--
+genAndRunExe :: Config -> FilePath -> FilePath -> IO ()
+genAndRunExe config outfile exe = do
+  dbgPrintLn minChatLvl cmd
+  cd <- system cmd
+  case cd of
+    ExitFailure n -> error$ (show $ backend config) ++" compiler failed!  Code: "++show n
+    ExitSuccess -> do
+      -- (Stage 3) Binary compiled, run if appropriate
+      let runExe extra = do
+            exepath <- makeAbsolute exe
+            c2 <- system (exepath++extra)
+            case c2 of
+              ExitSuccess -> return ()
+              ExitFailure n -> error$ "Treelang program exited with error code "++ show n
+      runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
+      case (benchInput config) of
+        -- CONVENTION: In benchmark mode we expect the generated executable to take 2 extra params:
+        Just _ | isBench (mode config)   -> runExe $ " " ++show (rcSize runConf) ++ " " ++ show (rcIters runConf)
+        _      | (mode config) == RunExe -> runExe ""
+        _                                -> return ()
+  where cmd = compilationCmd (backend config) config ++ outfile ++ " -o " ++ exe
+
+
+-- | Compilation command
+--
+compilationCmd :: Backend -> Config -> String
+compilationCmd LLVM _   = "clang lib.o "
+compilationCmd C config = (cc config) ++" -std=gnu11 "
+                          ++(if (bumpAlloc config) then "-DBUMPALLOC " else "")
+                          ++(optc config)++"  "
+                          ++(if (warnc config) then "" else suppress_warnings)
 
 
 isBench :: Mode -> Bool

@@ -133,6 +133,7 @@ one:
 #	$(MAKE) $(BLD)/$(ONE).interp2.out
 
 
+BACKEND="C"
 EXTRA_SUFFIX ?= .ptr
 # How far to compile, --toC, --exe, --run:
 RUN_MODE     ?= --run
@@ -223,9 +224,8 @@ ifeq ($(RUN_MODE),--run)
 	@$(MAKE) --no-print-directory $(@:.out=.exe)
 	./$(@:.out=.exe) > $@ || ./err.sh $(@:.out=)
 else
-ifeq ($(RUN_MODE),--run-llvm)
-	@$(MAKE) --no-print-directory $(@:.out=.exe)
-	./$(@:.out=.exe) > $@ || ./err.sh $(@:.out=)
+ifeq ($(BACKEND),LLVM)
+	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.ll) --exefile=$(@:.out=.exe) $< > $@ || ./err.sh $(@:.out=)
 else
 	$(GIBBON) $(RUN_MODE) $(GIBBONARGS) --cfile=$(@:.out=.c) --exefile=$(@:.out=.exe) $< > $@ || ./err.sh $(@:.out=)
 endif
@@ -236,7 +236,11 @@ endif
 build_tests: $(EXE_FILES)
 
 build_tmp/%$(EXTRA_SUFFIX).exe : %.gib $(GIBBONEXEC)
+ifeq ($(BACKEND),LLVM)
+	$(GIBBON) --run $(GIBBONARGS) $< --cfile=$(@:.exe=.ll) --exefile=$@ || ./err.sh $(BLD)/$(basename $<)$(EXTRA_SUFFIX)
+else
 	$(GIBBON) --run $(GIBBONARGS) $< --cfile=$(@:.exe=.c) --exefile=$@ || ./err.sh $(BLD)/$(basename $<)$(EXTRA_SUFFIX)
+endif
 
 
 PACKED_FAILING ?=  test12_skip.gib  test16_forlist.gib test17_forfold.gib \
@@ -309,7 +313,7 @@ LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
   test00c_printBool.gib
 
 run_tests_llvm: answers
-	$(MAKE) run_tests RUN_MODE="--run-llvm" PASSING_TESTS="$(LLVM_PASSING_TESTS)" GIBBONARGS="" EXTRA_SUFFIX="_llvm"
+	$(MAKE) run_tests PASSING_TESTS="$(LLVM_PASSING_TESTS)" GIBBONARGS="--llvm" EXTRA_SUFFIX="_llvm" BACKEND="LLVM"
 
 
 # Valgrind should be part of our regression testing:
