@@ -14,12 +14,13 @@ module Packed.FirstOrder.Passes.LLVM.Monad (
 
   -- basic blocks
   genModule, genBlocks, createBlocks, setBlock, newBlock, beginBlock,
+  getLastLocal,
 
   -- instructions
   declare, retval_, return_, call,
   getvar, allocate, load, namedLoad, store, getElemPtr,
 
-  add, namedAdd, ifThenElse,
+  add, namedAdd, ifThenElse, eq, namedEq, neq, namedNeq,
   instr, namedInstr, toPtrType, localRef, globalOp,
 
   next
@@ -44,6 +45,7 @@ import qualified LLVM.General.AST.Instruction as I
 import qualified LLVM.General.AST.CallingConvention as CC
 import qualified LLVM.General.AST.Attribute as A
 import qualified LLVM.General.AST.AddrSpace as AS
+import qualified LLVM.General.AST.IntegerPredicate as IP
 
 -- | The code generation state for our AST.
 --
@@ -181,34 +183,19 @@ createBlocks
           in
           ( F.toList blocks , s' )
   where
-    makeBlock BlockState{..} =
-      AST.BasicBlock blockLabel (F.toList instructions) (AST.Do $ fromJust terminator)
+    makeBlock blk@BlockState{..} =
+      case terminator of
+        Just x -> AST.BasicBlock blockLabel (F.toList instructions) (AST.Do $ x)
+        Nothing -> error $ "No terminator for block " ++ show blk
 
+
+getLastName :: CodeGen AST.Name
+getLastName = do
+  a <- gets next
+  return $ AST.UnName (a - 1)
 
 -- Instructions
 -- ============
-
--- | Add a termination condition to the current instruction stream. Also return
--- the block that was just terminated.
---
-terminate :: AST.Terminator -> CodeGen BlockState
-terminate term =
-  state $ \s ->
-    case Seq.viewr (blockChain s) of
-      Seq.EmptyR  -> error "terminate empty block chain"
-      bs Seq.:> b -> ( b, s { blockChain = bs Seq.|> b { terminator = Just term } } )
-
-
--- | Return a value from a basic block
---
-retval_ :: AST.Operand -> CodeGen BlockState
-retval_ x = terminate $ AST.Ret (Just x) []
-
--- | Return void from a basic block
---
-return_ :: CodeGen BlockState
-return_ = terminate $ AST.Ret Nothing []
-
 
 -- | Add a global declaration to the symbol table
 --
@@ -262,6 +249,7 @@ instr_ ins =
       Seq.EmptyR  -> error "instr_ empty block chain"
       bs Seq.:> b -> s { blockChain = bs Seq.|> b { instructions = instructions b Seq.|> ins } }
 
+
 -- | Return local var reference
 --
 getvar :: String -> CodeGen AST.Operand
@@ -270,6 +258,12 @@ getvar nm = do
   case Map.lookup nm vars of
     Just x  -> return x
     Nothing -> error $ "Local variable not in scope: " ++ show nm
+
+
+getLastLocal :: CodeGen AST.Name
+getLastLocal = do
+  a <- gets next
+  return $ AST.UnName (a - 1)
 
 
 -- | Return a global reference pointing to an operand
@@ -314,22 +308,18 @@ store addr val = instr T.VoidType $ I.Store False addr val Nothing 0 []
 -- TODO(cskksc): dont know if T.VoidType is correct
 
 
--- | Read from memory into a local unname
+-- | Read from memory
 --
+
+load' :: Maybe String -> T.Type -> AST.Operand -> CodeGen AST.Operand
+load' Nothing ty addr = instr ty $ I.Load False addr Nothing 8 []
+load' (Just nm) ty addr = namedInstr ty nm $ I.Load False addr Nothing 8 []
 
 load :: T.Type -> AST.Operand -> CodeGen AST.Operand
-load ty addr = instr ty $ loadInstr addr
+load = load' Nothing
 
-
--- | Read from memory into a local var named nm
---
 namedLoad :: String -> T.Type -> AST.Operand -> CodeGen AST.Operand
-namedLoad nm ty addr = namedInstr ty nm $ loadInstr addr
-
-
--- | LLVM load instruction
-loadInstr :: AST.Operand -> I.Instruction
-loadInstr addr = I.Load False addr Nothing 8 []
+namedLoad nm = load' (Just nm)
 
 
 -- | Get the address of a subelement of an aggregate data structure
@@ -339,22 +329,41 @@ getElemPtr inbounds addr idxs = instr T.VoidType $ I.GetElementPtr inbounds addr
 -- TODO(cskksc): dont know if T.VoidType is correct
 
 
--- | Add two operands and store result in local unname
+-- | Add two operands
 --
-add :: [AST.Operand] -> CodeGen AST.Operand
-add [x,y] = instr T.i32 $ addInstr x y
+
+add' :: Maybe String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
+add' Nothing x y = instr T.i64 $ I.Add False False x y []
+add' (Just nm) x y = namedInstr T.i64 nm $ I.Add False False x y []
+
+add :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
+add = add' Nothing
+
+namedAdd :: String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
+namedAdd nm = add' (Just nm)
 
 
--- | Add two operands and store result in local nm
+-- | Compare two operands
 --
-namedAdd :: String -> T.Type -> [AST.Operand] -> CodeGen AST.Operand
-namedAdd nm ty [x,y] = namedInstr ty nm $ addInstr x y
+icmp :: IP.IntegerPredicate -> Maybe String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
+icmp p Nothing x y = instr T.i64 $ I.ICmp p x y []
+icmp p (Just nm) x y = namedInstr T.i64 nm $ I.ICmp p x y []
 
 
--- | LLVM add instruction
+-- | Equality operators
 --
-addInstr :: AST.Operand -> AST.Operand -> I.Instruction
-addInstr x y = I.Add False False x y []
+
+eq :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
+eq = icmp IP.EQ Nothing
+
+namedEq :: String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
+namedEq nm = icmp IP.EQ (Just nm)
+
+neq :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
+neq = icmp IP.NE Nothing
+
+namedNeq :: String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
+namedNeq nm = icmp IP.NE (Just nm)
 
 
 -- | Convert the type to a pointer type
@@ -368,6 +377,30 @@ toPtrType ty = T.PointerType ty (AS.AddrSpace 0)
 phi :: T.Type -> [(AST.Operand, AST.Name)] -> CodeGen AST.Operand
 phi ty incoming = instr ty $ I.Phi ty incoming []
 
+-- Terminators
+-- ===========
+
+-- | Add a termination condition to the current instruction stream. Also return
+-- the block that was just terminated.
+--
+terminate :: AST.Terminator -> CodeGen BlockState
+terminate term =
+  state $ \s ->
+    case Seq.viewr (blockChain s) of
+      Seq.EmptyR  -> error "terminate empty block chain"
+      bs Seq.:> b -> ( b, s { blockChain = bs Seq.|> b { terminator = Just term } } )
+
+
+-- | Return a value from a basic block
+--
+retval_ :: AST.Operand -> CodeGen BlockState
+retval_ x = terminate $ AST.Ret (Just x) []
+
+-- | Return void from a basic block
+--
+return_ :: CodeGen BlockState
+return_ = terminate $ AST.Ret Nothing []
+
 
 -- | Unconditional branch. Return the name of the block that was branched from.
 --
@@ -379,7 +412,6 @@ br target = terminate $ AST.Br (blockLabel target) []
 --
 cbr :: AST.Operand -> BlockState -> BlockState -> CodeGen BlockState
 cbr cond t f = terminate $ I.CondBr cond (blockLabel t) (blockLabel f) []
-
 
 -- | Standard if-then-else expression
 --
@@ -400,16 +432,14 @@ ifThenElse test yes no = do
   -- last instruction of the then block, and use that as an Operand
   -- TODO(cskksc): This won't work if the block ends with a named instruction
   --               Also, somehow infer the T.i64 here
-  tv <- do
-    a <- gets next
-    return $ AST.LocalReference T.i64 (AST.UnName (a - 1))
+  last <- getLastName
+  tv <- return $ AST.LocalReference T.i64 last
 
   setBlock ifElse
   _ <- no
   fb <- br ifExit
-  fv <- do
-    a <- gets next
-    return $ AST.LocalReference T.i64 (AST.UnName (a - 1))
+  last <- getLastName
+  fv <- return $ AST.LocalReference T.i64 last
 
   setBlock ifExit
   phi T.i64 [(tv, (blockLabel tb)), (fv, (blockLabel fb))]

@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Packed.FirstOrder.Passes.LLVM.Codegen where
-
 import Packed.FirstOrder.Passes.LLVM.Monad
 
 import Packed.FirstOrder.L3_Target
@@ -16,12 +15,10 @@ import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Global as G
 import qualified LLVM.General.AST.Constant as C
 import qualified LLVM.General.AST.Instruction as I
-import qualified LLVM.General.AST.Linkage as L
 import qualified LLVM.General.AST.Type as T
 import qualified LLVM.General.AST.IntegerPredicate as IP
 import qualified LLVM.General.Context as CTX
 import qualified LLVM.General.Module as M
-
 
 
 toLLVM :: AST.Module -> IO String
@@ -83,12 +80,14 @@ codegenTail (LetPrimCallT bnds prm rnds body) = do
                addp bnds rnds'
              SizeParam -> do
                sizeParam bnds
+             EqP -> do
+               eqp bnds rnds'
              _ -> __
   bod' <- codegenTail body
   return bod'
 
 codegenTail (IfT test consq els') = do
-  _ <- ifThenElse (genIfTest test) (codegenTail consq) (codegenTail els')
+  _ <- ifThenElse (genIfPred test) (codegenTail consq) (codegenTail els')
   return_
 
 codegenTail _ = __
@@ -121,19 +120,31 @@ printString s = do
           idxs  = [idx, idx]
 
 
--- | Gibbon AddP instruction
+-- | Gibbon AddP primitive
 --
 addp :: [(Var,Ty)] -> [AST.Operand] -> CodeGen BlockState
-addp [] rnds = do
-  add rnds
+addp [] [x,y] = do
+  _ <- add x y
   return_
-addp [(v, ty)] rnds = do
+addp [(v, _)] [x,y] = do
   nm  <- return $ fromVar v
-  var <- namedAdd nm (toLLVMTy ty) rnds
+  var <- namedAdd nm x y
   retval_ var
 
 
--- | Gibbon SizeParam instruction
+-- | Gibbon EqP primitive
+--
+eqp :: [(Var, Ty)] -> [AST.Operand] -> CodeGen BlockState
+eqp [] [x,y] = do
+  _ <- eq x y
+  return_
+eqp [(v,_)] [x,y] = do
+  nm  <- return $ fromVar v
+  var <- namedEq nm x y
+  retval_ var
+
+
+-- | Gibbon SizeParam primitive
 --
 sizeParam :: [(Var,Ty)] -> CodeGen BlockState
 sizeParam [(v,ty)] = do
@@ -147,7 +158,7 @@ sizeParam [(v,ty)] = do
 -- | Convert Gibbon types to LLVM types
 --
 toLLVMTy :: Ty -> T.Type
-toLLVMTy IntTy = T.i64
+
 toLLVMTy _ = __
 
 
@@ -162,14 +173,14 @@ stringToChar s = (AST.ConstantOperand $ C.Array T.i8 chars, len)
 -- | Generate the correct LLVM predicate
 -- We implement the C notion of true/false i.e every !=0 value is truthy
 --
-genIfTest :: Triv -> CodeGen AST.Operand
-genIfTest triv =
+genIfPred :: Triv -> CodeGen AST.Operand
+genIfPred triv =
   let op0 = case triv of
               (IntTriv i) -> AST.ConstantOperand $ C.Int 64 (toInteger i)
               _ -> __
       z   = AST.ConstantOperand $ C.Int 64 0
   in
-    instr T.i64 $ I.ICmp IP.NE op0 z []
+    neq op0 z
 
 
 -- | tests
@@ -180,10 +191,7 @@ testprog1 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = 
 test1 = codegenProg False testprog1
 testprog2 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "flt0",IntTy)], prim = AddP, rands = [IntTriv 10,IntTriv 40], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "flt0")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
 test2 = codegenProg False testprog2
-
 testprog3 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "flt0",IntTy)], prim = SizeParam, rands = [], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "flt0")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
 test3 = codegenProg False testprog3
-
-
 testprog4 = Prog {fundefs = [], mainExp = Just (PrintExp (IfT {tst = IntTriv 1, con = LetPrimCallT {binds = [], prim = PrintString "#t", rands = [], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}, els = LetPrimCallT {binds = [], prim = PrintString "#f", rands = [], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
 test4 = codegenProg False testprog4
