@@ -6,6 +6,7 @@ import Packed.FirstOrder.L3_Target
 import Packed.FirstOrder.Common (Var(..), fromVar)
 import Data.Char (ord)
 import Data.Word
+import Data.Int (Int64)
 import qualified Packed.FirstOrder.Passes.LLVM.Global as LG
 
 import Control.Monad.State
@@ -34,6 +35,7 @@ toLLVM m = CTX.withContext $ \ctx -> do
 codegenProg :: Bool -> Prog -> IO String
 codegenProg _ prog = do
   cg' <- return $ genModule $ codegenProg' prog
+  -- putStrLn $ show cg'
   llvm <-  toLLVM cg'
   return llvm
 
@@ -89,6 +91,46 @@ codegenTail (LetPrimCallT bnds prm rnds body) = do
 codegenTail (IfT test consq els') = do
   _ <- ifThenElse (genIfPred test) (codegenTail consq) (codegenTail els')
   return_
+
+codegenTail (Switch trv alts def) =
+  let (alts', def') = case def of
+                        Nothing -> let (rest,lastone) = splitAlts alts
+                                   in  (rest, altTail lastone)
+                        Just d  -> (alts, d)
+      alts'' = case alts' of
+                 IntAlts xs -> xs
+
+        -- | Split alts to return a default case, in case switch was not given one
+      splitAlts :: Alts -> (Alts, Alts)
+      splitAlts (TagAlts ls) = (TagAlts (init ls), TagAlts [last ls])
+      splitAlts (IntAlts ls) = (IntAlts (init ls), IntAlts [last ls])
+
+      -- | Take a "singleton" Alts and extract the Tail.
+      altTail :: Alts -> Tail
+      altTail (TagAlts [(_,t)]) = t
+      altTail (IntAlts [(_,t)]) = t
+
+      dests :: [(C.Constant, AST.Name)]
+      dests = map (\((casei,_), i) -> (C.Int 64 (toInteger casei), AST.Name $ "switch" ++ show i ++ ".case")) $ zip alts'' [1..]
+
+  in
+    do
+      switchDefault <- newBlock "switch.default"
+
+      trv' <- codegenTriv trv
+      _ <- switch trv' (blockLabel switchDefault) dests
+
+      -- generate alt blocks
+      _ <- mapM (\(_,t) -> do
+                    x <- newBlock "switch.case"
+                    setBlock x
+                    codegenTail t)
+           alts''
+
+      -- generate the default block
+      setBlock switchDefault
+      codegenTail def'
+
 
 codegenTail _ = __
 
@@ -158,7 +200,7 @@ sizeParam [(v,ty)] = do
 -- | Convert Gibbon types to LLVM types
 --
 toLLVMTy :: Ty -> T.Type
-
+toLLVMTy IntTy = T.i64
 toLLVMTy _ = __
 
 
@@ -171,7 +213,7 @@ stringToChar s = (AST.ConstantOperand $ C.Array T.i8 chars, len)
 
 
 -- | Generate the correct LLVM predicate
--- We implement the C notion of true/false i.e every !=0 value is truthy
+-- We implement the C notion of true/false i.e every value !=0 is truthy
 --
 genIfPred :: Triv -> CodeGen AST.Operand
 genIfPred triv =
@@ -195,3 +237,5 @@ testprog3 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = 
 test3 = codegenProg False testprog3
 testprog4 = Prog {fundefs = [], mainExp = Just (PrintExp (IfT {tst = IntTriv 1, con = LetPrimCallT {binds = [], prim = PrintString "#t", rands = [], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}, els = LetPrimCallT {binds = [], prim = PrintString "#f", rands = [], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
 test4 = codegenProg False testprog4
+testprog5 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "fltIf0",IntTy)], prim = EqP, rands = [IntTriv 2,IntTriv 2], bod = Switch (VarTriv (Var "fltIf0")) (IntAlts [(0,LetPrimCallT {binds = [], prim = PrintInt, rands = [IntTriv 101], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}})]) (Just (LetPrimCallT {binds = [], prim = PrintInt, rands = [IntTriv 99], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}))}))}
+test5 = codegenProg False testprog5

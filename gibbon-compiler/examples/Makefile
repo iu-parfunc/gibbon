@@ -310,7 +310,7 @@ answers: $(ANSWERS)
 # Run tests through the LLVM backend
 
 LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
-  test00c_printBool.gib
+  test00c_printBool.gib test01_if.gib test01b_ifif.gib
 
 run_tests_llvm: answers
 	$(MAKE) run_tests PASSING_TESTS="$(LLVM_PASSING_TESTS)" GIBBONARGS="--llvm" EXTRA_SUFFIX="_llvm" BACKEND="LLVM"

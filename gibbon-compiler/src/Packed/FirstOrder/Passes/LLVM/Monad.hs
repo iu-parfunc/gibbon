@@ -14,13 +14,13 @@ module Packed.FirstOrder.Passes.LLVM.Monad (
 
   -- basic blocks
   genModule, genBlocks, createBlocks, setBlock, newBlock, beginBlock,
-  getLastLocal,
+  getLastLocal, blockLabel,
 
   -- instructions
   declare, retval_, return_, call,
   getvar, allocate, load, namedLoad, store, getElemPtr,
 
-  add, namedAdd, ifThenElse, eq, namedEq, neq, namedNeq,
+  add, namedAdd, ifThenElse, eq, namedEq, neq, namedNeq, switch,
   instr, namedInstr, toPtrType, localRef, globalOp,
 
   next
@@ -70,17 +70,18 @@ data BlockState = BlockState
 newtype CodeGen a = CodeGen { runCodegen :: State CodeGenState a }
   deriving (Functor, Applicative, Monad, MonadState CodeGenState )
 
-
--- | Run the CodeGen to produce an LLVM module
-genModule :: CodeGen a -> AST.Module
-genModule x =
-  let initialState = CodeGenState
-                     { blockChain  = initBlockChain
+initialCodeGenState = CodeGenState
+                     { blockChain  = Seq.empty
                      , globalTable = Map.empty
                      , localVars   = Map.empty
                      , next        = 0
                      }
-      (_ , st) = runState (runCodegen x) initialState
+
+
+-- | Run the CodeGen to produce an LLVM module
+genModule :: CodeGen a -> AST.Module
+genModule x =
+  let (_ , st) = runState (runCodegen x) initialCodeGenState
       definitions = map AST.GlobalDefinition (Map.elems $ globalTable st)
       name  = "first-module"
   in AST.Module
@@ -94,15 +95,8 @@ genModule x =
 
 
 genBlocks :: CodeGen [AST.BasicBlock] -> [AST.BasicBlock]
-genBlocks m =
-  let initialState = CodeGenState
-                     { blockChain  = Seq.empty
-                     , globalTable = Map.empty
-                     , localVars   = Map.empty
-                     , next        = 0
-                     }
-  in
-    evalState (runCodegen m) initialState
+genBlocks m = evalState (runCodegen m) initialCodeGenState
+
 
 -- Basic Blocks
 -- ============
@@ -150,7 +144,6 @@ newBlock nm =
     in
     ( next, s )
 
-
 -- | Add this block to the block stream. Any instructions pushed onto the stream
 -- by 'instr' and friends will now apply to this block.
 --
@@ -189,11 +182,6 @@ createBlocks
         Nothing -> error $ "No terminator for block " ++ show blk
 
 
-getLastName :: CodeGen AST.Name
-getLastName = do
-  a <- gets next
-  return $ AST.UnName (a - 1)
-
 -- Instructions
 -- ============
 
@@ -213,6 +201,23 @@ declare g =
 freshName :: CodeGen AST.Name
 freshName = state $ \s@CodeGenState{..} -> ( AST.UnName next,
                                              s { next = next + 1 } )
+
+
+-- | Return local var reference
+--
+getvar :: String -> CodeGen AST.Operand
+getvar nm = do
+  vars <- gets localVars
+  case Map.lookup nm vars of
+    Just x  -> return x
+    Nothing -> error $ "Local variable not in scope: " ++ show nm
+
+
+getLastLocal :: CodeGen AST.Name
+getLastLocal = do
+  a <- gets next
+  return $ AST.UnName (a - 1)
+
 
 -- Causes GHC panic!
 -- -- | Return the most recent unname
@@ -246,24 +251,8 @@ instr_ :: AST.Named AST.Instruction -> CodeGen ()
 instr_ ins =
   modify $ \s ->
     case Seq.viewr (blockChain s) of
-      Seq.EmptyR  -> error "instr_ empty block chain"
+      Seq.EmptyR  -> error $ "instr_ empty block chain "  ++ show s
       bs Seq.:> b -> s { blockChain = bs Seq.|> b { instructions = instructions b Seq.|> ins } }
-
-
--- | Return local var reference
---
-getvar :: String -> CodeGen AST.Operand
-getvar nm = do
-  vars <- gets localVars
-  case Map.lookup nm vars of
-    Just x  -> return x
-    Nothing -> error $ "Local variable not in scope: " ++ show nm
-
-
-getLastLocal :: CodeGen AST.Name
-getLastLocal = do
-  a <- gets next
-  return $ AST.UnName (a - 1)
 
 
 -- | Return a global reference pointing to an operand
@@ -377,6 +366,39 @@ toPtrType ty = T.PointerType ty (AS.AddrSpace 0)
 phi :: T.Type -> [(AST.Operand, AST.Name)] -> CodeGen AST.Operand
 phi ty incoming = instr ty $ I.Phi ty incoming []
 
+
+-- | Standard if-then-else expression
+--
+ifThenElse :: CodeGen AST.Operand -> CodeGen BlockState -> CodeGen BlockState -> CodeGen AST.Operand
+ifThenElse test yes no = do
+  ifThen <- newBlock "if.then"
+  ifElse <- newBlock "if.else"
+  ifExit <- newBlock "if.exit"
+
+  _  <- beginBlock "if.entry"
+  p  <- test
+  _  <- cbr p ifThen ifElse
+
+  setBlock ifThen
+  _ <- yes
+  tb <- br ifExit
+  -- Since yes/no are BlockState's, we extract the last unname, assuming it's the
+  -- last instruction of the then block, and use that as an Operand
+  -- TODO(cskksc): This won't work if the block ends with a named instruction
+  --               Also, somehow infer the T.i64 here
+  last <- getLastLocal
+  tv <- return $ AST.LocalReference T.i64 last
+
+  setBlock ifElse
+  _ <- no
+  fb <- br ifExit
+  last <- getLastLocal
+  fv <- return $ AST.LocalReference T.i64 last
+
+  setBlock ifExit
+  phi T.i64 [(tv, (blockLabel tb)), (fv, (blockLabel fb))]
+
+
 -- Terminators
 -- ===========
 
@@ -387,7 +409,7 @@ terminate :: AST.Terminator -> CodeGen BlockState
 terminate term =
   state $ \s ->
     case Seq.viewr (blockChain s) of
-      Seq.EmptyR  -> error "terminate empty block chain"
+      Seq.EmptyR  -> error $ "terminate empty block chain " ++ show s
       bs Seq.:> b -> ( b, s { blockChain = bs Seq.|> b { terminator = Just term } } )
 
 
@@ -413,33 +435,8 @@ br target = terminate $ AST.Br (blockLabel target) []
 cbr :: AST.Operand -> BlockState -> BlockState -> CodeGen BlockState
 cbr cond t f = terminate $ I.CondBr cond (blockLabel t) (blockLabel f) []
 
--- | Standard if-then-else expression
+
+-- | Transfer control flow to one of several different places
 --
-ifThenElse :: CodeGen AST.Operand -> CodeGen BlockState -> CodeGen BlockState -> CodeGen AST.Operand
-ifThenElse test yes no = do
-  ifThen <- newBlock "if.then"
-  ifElse <- newBlock "if.else"
-  ifExit <- newBlock "if.exit"
-
-  _  <- beginBlock "if.entry"
-  p  <- test
-  _  <- cbr p ifThen ifElse
-
-  setBlock ifThen
-  _ <- yes
-  tb <- br ifExit
-  -- Since yes/no are BlockState's, we extract the last unname, assuming it's the
-  -- last instruction of the then block, and use that as an Operand
-  -- TODO(cskksc): This won't work if the block ends with a named instruction
-  --               Also, somehow infer the T.i64 here
-  last <- getLastName
-  tv <- return $ AST.LocalReference T.i64 last
-
-  setBlock ifElse
-  _ <- no
-  fb <- br ifExit
-  last <- getLastName
-  fv <- return $ AST.LocalReference T.i64 last
-
-  setBlock ifExit
-  phi T.i64 [(tv, (blockLabel tb)), (fv, (blockLabel fb))]
+switch :: AST.Operand -> AST.Name -> [(C.Constant, AST.Name)] -> CodeGen BlockState
+switch cmp defaultDest dests = terminate $ I.Switch cmp defaultDest dests []
