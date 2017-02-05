@@ -1,4 +1,4 @@
-module Packed.FirstOrder.Passes.LLVM.Terminators where
+module Packed.FirstOrder.Passes.LLVM.Terminator where
 
 -- |
 -- Copyright   : [2015] Trevor L. McDonell

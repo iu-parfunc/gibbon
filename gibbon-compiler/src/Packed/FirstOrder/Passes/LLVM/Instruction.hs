@@ -5,7 +5,7 @@
 -- License     : BSD3
 --
 
-module Packed.FirstOrder.Passes.LLVM.Instructions (
+module Packed.FirstOrder.Passes.LLVM.Instruction (
   declare, getvar, getLastLocal
   , instr, namedInstr, globalOp, localRef, toPtrType
   , allocate, store, load, namedLoad, getElemPtr, call
@@ -30,7 +30,7 @@ import qualified LLVM.General.AST.AddrSpace as AS
 import qualified LLVM.General.AST.IntegerPredicate as IP
 
 import Packed.FirstOrder.Passes.LLVM.Monad
-import Packed.FirstOrder.Passes.LLVM.Terminators
+import Packed.FirstOrder.Passes.LLVM.Terminator
 
 
 -- | Add a global declaration to the symbol table

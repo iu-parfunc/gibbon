@@ -12,8 +12,8 @@ import Control.Monad.State
 import Packed.FirstOrder.L3_Target
 import Packed.FirstOrder.Common (fromVar)
 import Packed.FirstOrder.Passes.LLVM.Monad
-import Packed.FirstOrder.Passes.LLVM.Instructions
-import Packed.FirstOrder.Passes.LLVM.Terminators
+import Packed.FirstOrder.Passes.LLVM.Instruction
+import Packed.FirstOrder.Passes.LLVM.Terminator
 import qualified Packed.FirstOrder.Passes.LLVM.Global as LG
 
 -- | llvm-general
