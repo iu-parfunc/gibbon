@@ -25,8 +25,8 @@ addp [] [x,y] = do
   _ <- add x y
   return_
 addp [(v, _)] [x,y] = do
-  nm  <- return $ fromVar v
-  var <- namedAdd nm x y
+  let nm = fromVar v
+  var   <- namedAdd nm x y
   retval_ var
 
 
@@ -37,8 +37,8 @@ eqp [] [x,y] = do
   _ <- eq x y
   return_
 eqp [(v,_)] [x,y] = do
-  nm  <- return $ fromVar v
-  var <- namedEq nm x y
+  let nm = fromVar v
+  var   <- namedEq nm x y
   retval_ var
 
 
@@ -46,11 +46,11 @@ eqp [(v,_)] [x,y] = do
 --
 sizeParam :: [(Var,Ty)] -> CodeGen BlockState
 sizeParam [(v,ty)] = do
-  nm <- return $ fromVar v
-  _  <- namedLoad nm lty op
+  let nm = fromVar v
+  _     <- namedLoad nm lty op
   return_
-  where lty = (toLLVMTy ty)
-        op = globalOp lty (AST.Name "global_size_param")
+  where lty = toLLVMTy ty
+        op  = globalOp lty (AST.Name "global_size_param")
 
 
 -- | Convert Gibbon types to LLVM types
@@ -83,7 +83,7 @@ printString s = do
 stringToChar :: String -> (AST.Operand, Word64)
 stringToChar s = (AST.ConstantOperand $ C.Array T.i8 chars, len)
   where len   = fromIntegral $ length chars
-        chars = (++ [C.Int 8 0]) $ map (\x -> C.Int 8 (toInteger x)) $ map ord s
+        chars = (++ [C.Int 8 0]) $ map (C.Int 8 . toInteger . ord) s
 
 -- | Generate the correct LLVM predicate
 -- We implement the C notion of true/false i.e every value !=0 is truthy

@@ -87,9 +87,9 @@ instr ty ins = do
 namedInstr :: T.Type -> String -> I.Instruction -> CodeGen AST.Operand
 namedInstr ty nm ins = do
   instr_ $ (AST.Name nm) AST.:= ins
-  ref <- return $ AST.LocalReference ty (AST.Name nm)
+  let ref = AST.LocalReference ty (AST.Name nm)
   modify $ \s -> s { localVars = Map.insert nm ref (localVars s)}
-  return $ ref
+  return ref
 
 
 -- | Add raw assembly instructions to the execution stream
@@ -117,8 +117,7 @@ localRef = AST.LocalReference
 -- | Add a function call to the execution stream
 --
 call :: G.Global -> [AST.Operand] -> CodeGen AST.Operand
-call fn args = do
-  instr retTy $ I.Call Nothing CC.C [] (Right fn') args' [] []
+call fn args = instr retTy $ I.Call Nothing CC.C [] (Right fn') args' [] []
   where fn'   = globalOp retTy nm
         args' = toArgs args
         nm    = G.name fn
@@ -218,31 +217,31 @@ phi ty incoming = instr ty $ I.Phi ty incoming []
 --
 ifThenElse :: CodeGen AST.Operand -> CodeGen BlockState -> CodeGen BlockState -> CodeGen AST.Operand
 ifThenElse test yes no = do
-  ifThen <- newBlock "if.then"
-  ifElse <- newBlock "if.else"
-  ifExit <- newBlock "if.exit"
-
+  ifThen  <- newBlock "if.then"
+  ifElse  <- newBlock "if.else"
+  ifExit  <- newBlock "if.exit"
   ifEntry <- newBlock "if.entry"
-  _ <- br ifEntry
+
+  _  <- br ifEntry
   setBlock ifEntry
   p  <- test
   _  <- cbr p ifThen ifElse
 
   setBlock ifThen
-  _ <- yes
+  _  <- yes
   tb <- br ifExit
   -- Since yes/no are BlockState's, we extract the last unname, assuming it's the
   -- last instruction of the then block, and use that as an Operand
   -- TODO(cskksc): This won't work if the block ends with a named instruction
   --               Also, somehow infer the T.i64 here
-  last' <- getLastLocal
-  tv <- return $ AST.LocalReference T.i64 last'
+  last'  <- getLastLocal
+  let tv = AST.LocalReference T.i64 last'
 
   setBlock ifElse
-  _ <- no
-  fb <- br ifExit
+  _     <- no
+  fb    <- br ifExit
   last' <- getLastLocal
-  fv <- return $ AST.LocalReference T.i64 last'
+  let fv = AST.LocalReference T.i64 last'
 
   setBlock ifExit
-  phi T.i64 [(tv, (blockLabel tb)), (fv, (blockLabel fb))]
+  phi T.i64 [(tv, blockLabel tb), (fv, blockLabel fb)]

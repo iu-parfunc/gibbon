@@ -143,5 +143,5 @@ createBlocks
   where
     makeBlock blk@BlockState{..} =
       case terminator of
-        Just x -> AST.BasicBlock blockLabel (F.toList instructions) (AST.Do $ x)
+        Just x -> AST.BasicBlock blockLabel (F.toList instructions) (AST.Do x)
         Nothing -> error $ "No terminator for block " ++ show blk

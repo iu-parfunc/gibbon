@@ -31,9 +31,8 @@ toLLVM m = CTX.withContext $ \ctx -> do
 --
 codegenProg :: Bool -> Prog -> IO String
 codegenProg _ prog = do
-  cg' <- return $ genModule $ codegenProg' prog
-  llvm <-  toLLVM cg'
-  return llvm
+  let cg' = genModule $ codegenProg' prog
+  toLLVM cg'
 
 -- TODO(cskksc): abstract out main fn generation. it'll will help in generating
 -- more fns. print_T needs it right now
@@ -74,15 +73,11 @@ codegenTail (LetPrimCallT bnds prm rnds body) = do
              PrintString s -> do
                _ <- printString s
                return_
-             AddP -> do
-               addp bnds rnds'
-             SizeParam -> do
-               sizeParam bnds
-             EqP -> do
-               eqp bnds rnds'
+             AddP -> addp bnds rnds'
+             SizeParam -> sizeParam bnds
+             EqP -> eqp bnds rnds'
              _ -> __
-  bod' <- codegenTail body
-  return bod'
+  codegenTail body
 
 codegenTail (IfT test consq els') = do
   _ <- ifThenElse (genIfPred test) (codegenTail consq) (codegenTail els')
@@ -135,7 +130,7 @@ codegenTail _ = __
 codegenTriv :: Triv -> CodeGen AST.Operand
 codegenTriv (IntTriv i) = return $ AST.ConstantOperand $ C.Int 64 (toInteger i)
 codegenTriv (VarTriv v) = do
-  nm <- return $ fromVar v
+  let nm = fromVar v
   getvar nm
 codegenTriv _ = __
 
