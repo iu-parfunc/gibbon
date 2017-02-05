@@ -9,7 +9,8 @@ module Packed.FirstOrder.Passes.LLVM.Instructions (
   declare, getvar, getLastLocal
   , instr, namedInstr, globalOp, localRef, toPtrType
   , allocate, store, load, namedLoad, getElemPtr, call
-  , add, namedAdd, eq, namedEq, neq, namedNeq, ifThenElse
+  , add, namedAdd, mul, namedMul, sub, namedSub
+  , eq, namedEq, neq, namedNeq, ifThenElse
 ) where
 
 -- | standard library
@@ -164,19 +165,32 @@ getElemPtr inbounds addr idxs = instr T.VoidType $ I.GetElementPtr inbounds addr
 -- TODO(cskksc): dont know if T.VoidType is correct
 
 
--- | Add two operands
+-- | Arithmetic operations
 --
 
-add' :: Maybe String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
-add' Nothing x y = instr T.i64 $ I.Add False False x y []
-add' (Just nm) x y = namedInstr T.i64 nm $ I.Add False False x y []
+binop :: Maybe String
+      -> (AST.Operand -> AST.Operand -> I.InstructionMetadata -> I.Instruction)
+      -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
+binop Nothing ins x y = instr T.i64 $ ins x y []
+binop (Just nm) ins x y= namedInstr T.i64 nm $ ins x y []
 
 add :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
-add = add' Nothing
+add = binop Nothing (I.Add False False)
 
 namedAdd :: String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
-namedAdd nm = add' (Just nm)
+namedAdd nm = binop (Just nm) (I.Add False False)
 
+mul :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
+mul = binop Nothing (I.Mul False False)
+
+namedMul :: String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
+namedMul nm = binop (Just nm) (I.Mul False False)
+
+sub :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
+sub = binop Nothing (I.Sub False False)
+
+namedSub :: String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
+namedSub nm = binop (Just nm) (I.Sub False False)
 
 -- | Compare two operands
 --

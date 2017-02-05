@@ -1,11 +1,14 @@
 module Packed.FirstOrder.Passes.LLVM.Gibbon (
-  addp, eqp, sizeParam, toLLVMTy, printString, genIfPred
+  addp, subp, mulp, eqp
+  , sizeParam, toLLVMTy, printString, genIfPred
 ) where
 
+-- | standard library
 import Data.Char (ord)
 import Data.Word (Word64)
 import Control.Monad.State
 
+-- | gibbon internals
 import Packed.FirstOrder.L3_Target
 import Packed.FirstOrder.Common (fromVar)
 import Packed.FirstOrder.Passes.LLVM.Monad
@@ -13,33 +16,35 @@ import Packed.FirstOrder.Passes.LLVM.Instructions
 import Packed.FirstOrder.Passes.LLVM.Terminators
 import qualified Packed.FirstOrder.Passes.LLVM.Global as LG
 
+-- | llvm-general
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
 import qualified LLVM.General.AST.Type as T
 
 
--- | Gibbon AddP primitive
+-- | Gibbon binary operations
 --
-addp :: [(Var,Ty)] -> [AST.Operand] -> CodeGen BlockState
-addp [] [x,y] = do
-  _ <- add x y
+
+gibbonBinop :: (AST.Operand -> AST.Operand -> CodeGen AST.Operand)
+            -> (String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand)
+            -> [(Var,Ty)] -> [AST.Operand]
+            -> CodeGen BlockState
+gibbonBinop op namedOp [] [x,y] = do
+  _ <- op x y
   return_
-addp [(v, _)] [x,y] = do
+gibbonBinop op namedOp [(v, _)] [x,y] = do
   let nm = fromVar v
-  var   <- namedAdd nm x y
+  var   <- namedOp nm x y
   retval_ var
 
 
--- | Gibbon EqP primitive
---
-eqp :: [(Var, Ty)] -> [AST.Operand] -> CodeGen BlockState
-eqp [] [x,y] = do
-  _ <- eq x y
-  return_
-eqp [(v,_)] [x,y] = do
-  let nm = fromVar v
-  var   <- namedEq nm x y
-  retval_ var
+addp = gibbonBinop add namedAdd
+
+mulp = gibbonBinop mul namedMul
+
+subp = gibbonBinop sub namedSub
+
+eqp  = gibbonBinop eq namedEq
 
 
 -- | Gibbon SizeParam primitive

@@ -42,6 +42,9 @@ library
                   Packed.FirstOrder.Passes.LLVM.Codegen
                   Packed.FirstOrder.Passes.LLVM.Monad
                   Packed.FirstOrder.Passes.LLVM.Global
+                  Packed.FirstOrder.Passes.LLVM.Gibbon
+                  Packed.FirstOrder.Passes.LLVM.Instructions
+                  Packed.FirstOrder.Passes.LLVM.Terminators
 
 
 -- First attempt, slated for removal:

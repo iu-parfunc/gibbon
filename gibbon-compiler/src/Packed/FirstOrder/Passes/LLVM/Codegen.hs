@@ -1,20 +1,22 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Packed.FirstOrder.Passes.LLVM.Codegen where
 
+-- | standard library
 import Control.Monad.Except
 
+-- | gibbon internals
 import Packed.FirstOrder.L3_Target
 import Packed.FirstOrder.Common (Var(..), fromVar)
 import Packed.FirstOrder.Passes.LLVM.Monad
 import Packed.FirstOrder.Passes.LLVM.Instructions
 import Packed.FirstOrder.Passes.LLVM.Terminators
 import Packed.FirstOrder.Passes.LLVM.Gibbon
-import qualified Packed.FirstOrder.Passes.LLVM.Global as LG
+import Packed.FirstOrder.Passes.LLVM.Global
 
+-- | llvm-general
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Global as G
 import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Type as T
 import qualified LLVM.General.Context as CTX
 import qualified LLVM.General.Module as M
 
@@ -38,10 +40,10 @@ codegenProg _ prog = do
 -- more fns. print_T needs it right now
 codegenProg' :: Prog -> CodeGen ()
 codegenProg' (Prog _ body) = do
-  declare LG.puts
-  declare LG.printInt
-  declare LG.globalSizeParam
-  declare (LG.mainFn mainBody)
+  declare puts
+  declare printInt
+  declare globalSizeParam
+  declare (mainFn mainBody)
     where
       mainBody :: [G.BasicBlock]
       mainBody = genBlocks $ do
@@ -68,14 +70,16 @@ codegenTail (LetPrimCallT bnds prm rnds body) = do
   rnds' <- mapM codegenTriv rnds
   _     <- case prm of
              PrintInt -> do
-               _ <- call LG.printInt rnds'
+               _ <- call printInt rnds'
                return_
              PrintString s -> do
                _ <- printString s
                return_
              AddP -> addp bnds rnds'
+             SubP -> subp bnds rnds'
+             MulP -> mulp bnds rnds'
+             EqP  -> eqp bnds rnds'
              SizeParam -> sizeParam bnds
-             EqP -> eqp bnds rnds'
              _ -> __
   codegenTail body
 
@@ -149,3 +153,6 @@ testprog4 = Prog {fundefs = [], mainExp = Just (PrintExp (IfT {tst = IntTriv 1, 
 test4 = codegenProg False testprog4
 testprog5 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "fltIf0",IntTy)], prim = EqP, rands = [IntTriv 2,IntTriv 2], bod = Switch (VarTriv (Var "fltIf0")) (IntAlts [(0,LetPrimCallT {binds = [], prim = PrintInt, rands = [IntTriv 101], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}})]) (Just (LetPrimCallT {binds = [], prim = PrintInt, rands = [IntTriv 99], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}))}))}
 test5 = codegenProg False testprog5
+
+testprog6 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "fltPrm0",IntTy)], prim = MulP, rands = [IntTriv 3,IntTriv 4], bod = LetPrimCallT {binds = [(Var "fltPrm1",IntTy)], prim = SubP, rands = [IntTriv 8,IntTriv 9], bod = LetPrimCallT {binds = [(Var "flt2",IntTy)], prim = AddP, rands = [VarTriv (Var "fltPrm0"),VarTriv (Var "fltPrm1")], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "flt2")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}}}))}
+test6 = codegenProg False testprog6
