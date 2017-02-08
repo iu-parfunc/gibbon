@@ -27,10 +27,11 @@ import qualified LLVM.General.AST.Global as G
 -- AST, and one for each of the basic blocks that are generated during the walk.
 --
 data CodeGenState = CodeGenState
-  { blockChain  :: Seq BlockState         -- ^ blocks for this function
-  , globalTable :: Map String G.Global    -- ^ external functions symbol table
-  , localVars   :: Map String AST.Operand -- ^ local vars
-  , next        :: Word                   -- ^ names supply
+  { blockChain  :: Seq BlockState            -- ^ blocks for this function
+  , globalTable :: Map String G.Global       -- ^ external functions symbol table
+  , definitions :: Map String AST.Definition -- ^ Global definitions
+  , localVars   :: Map String AST.Operand    -- ^ local vars
+  , next        :: Word                      -- ^ names supply
   } deriving Show
 
 
@@ -48,6 +49,7 @@ initialCodeGenState :: CodeGenState
 initialCodeGenState = CodeGenState
                      { blockChain  = Seq.empty
                      , globalTable = Map.empty
+                     , definitions = Map.empty
                      , localVars   = Map.empty
                      , next        = 0
                      }
@@ -57,13 +59,13 @@ initialCodeGenState = CodeGenState
 genModule :: CodeGen a -> AST.Module
 genModule x =
   let (_ , st) = runState (runCodegen x) initialCodeGenState
-      definitions = map AST.GlobalDefinition (Map.elems $ globalTable st)
+      globals = map AST.GlobalDefinition (Map.elems $ globalTable st)
       name  = "first-module"
   in AST.Module
     {
       AST.moduleName = name
     , AST.moduleSourceFileName = []
-    , AST.moduleDefinitions = definitions
+    , AST.moduleDefinitions = (Map.elems $ definitions st) ++ globals
     , AST.moduleDataLayout = Nothing
     , AST.moduleTargetTriple = Just "x86_64-unknown-linux-gnu"
     }

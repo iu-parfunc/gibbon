@@ -6,7 +6,7 @@
 --
 
 module Packed.FirstOrder.Passes.LLVM.Instruction (
-  declare, getvar, getLastLocal
+    declare, getvar, getLastLocal, addDefinition
   , instr, namedInstr, globalOp, localRef, toPtrType
   , allocate, store, load, namedLoad, getElemPtr, call
   , add, namedAdd, mul, namedMul, sub, namedSub
@@ -31,6 +31,13 @@ import qualified LLVM.General.AST.IntegerPredicate as IP
 
 import Packed.FirstOrder.Passes.LLVM.Monad
 import Packed.FirstOrder.Passes.LLVM.Terminator
+
+
+-- | Add a definition to the module's global definitions
+--
+addDefinition :: String -> AST.Definition -> CodeGen ()
+addDefinition nm d =
+  modify $ \s -> s { definitions = Map.insert nm d (definitions s)}
 
 
 -- | Add a global declaration to the symbol table

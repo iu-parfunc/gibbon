@@ -39,7 +39,8 @@ codegenProg _ prog = do
 -- TODO(cskksc): abstract out main fn generation. it'll will help in generating
 -- more fns. print_T needs it right now
 codegenProg' :: Prog -> CodeGen ()
-codegenProg' (Prog _ body) = do
+codegenProg' prg@(Prog _ body) = do
+  _ <- addStructs prg
   declare puts
   declare printInt
   declare globalSizeParam
@@ -84,7 +85,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) = do
   codegenTail body
 
 codegenTail (IfT test consq els') = do
-  _ <- ifThenElse (genIfPred test) (codegenTail consq) (codegenTail els')
+  _ <- ifThenElse (toIfPred test) (codegenTail consq) (codegenTail els')
   return_
 
 codegenTail (Switch trv alts def) =

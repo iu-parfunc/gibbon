@@ -1,15 +1,20 @@
 module Packed.FirstOrder.Passes.LLVM.Gibbon (
-  addp, subp, mulp, eqp
-  , sizeParam, toLLVMTy, printString, genIfPred
+    addp, subp, mulp, eqp
+  , sizeParam, toLLVMTy, printString, toIfPred
+  , addStructs
 ) where
 
 -- | standard library
 import Data.Char (ord)
 import Data.Word (Word64)
+import Data.Maybe (maybeToList)
 import Control.Monad.State
+import qualified Data.Set as S
+
 
 -- | gibbon internals
 import Packed.FirstOrder.L3_Target
+import Packed.FirstOrder.Passes.Codegen (harvestStructTys, makeName)
 import Packed.FirstOrder.Common (fromVar)
 import Packed.FirstOrder.Passes.LLVM.Monad
 import Packed.FirstOrder.Passes.LLVM.Instruction
@@ -93,11 +98,27 @@ stringToChar s = (AST.ConstantOperand $ C.Array T.i8 chars, len)
 -- | Generate the correct LLVM predicate
 -- We implement the C notion of true/false i.e every value !=0 is truthy
 --
-genIfPred :: Triv -> CodeGen AST.Operand
-genIfPred triv =
+toIfPred :: Triv -> CodeGen AST.Operand
+toIfPred triv =
   let op0 = case triv of
               (IntTriv i) -> AST.ConstantOperand $ C.Int 64 (toInteger i)
               _ -> __
       z   = AST.ConstantOperand $ C.Int 64 0
   in
     neq op0 z
+
+
+-- | Add all required structs
+--
+addStructs :: Prog -> CodeGen [()]
+addStructs prog = mapM ((\(nm,d) -> addDefinition nm d) . makeStruct) $
+                  harvestStructTys prog
+
+
+-- | Generate LLVM type definitions (structs)
+--
+makeStruct :: [Ty] -> (String, AST.Definition)
+makeStruct [] = __
+makeStruct ts = (nm, AST.TypeDefinition (AST.Name nm) (Just $ T.StructureType False elememtTypes))
+  where nm = "struct." ++ makeName ts
+        elememtTypes = map toLLVMTy ts
