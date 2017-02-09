@@ -8,7 +8,7 @@
 module Packed.FirstOrder.Passes.LLVM.Instruction (
     declare, getvar, getLastLocal, addDefinition
   , instr, namedInstr, globalOp, localRef, toPtrType
-  , allocate, store, load, namedLoad, getElemPtr, call
+  , allocate, store, load, namedLoad, getElemPtr, call, namedCall
   , add, namedAdd, mul, namedMul, sub, namedSub
   , int_, char_, constop_, string_
   , eq, namedEq, neq, namedNeq, ifThenElse
@@ -120,14 +120,26 @@ localRef = AST.LocalReference
 
 -- | Add a function call to the execution stream
 --
-call :: G.Global -> [AST.Operand] -> CodeGen AST.Operand
-call fn args = instr retTy $ I.Call Nothing CC.C [] (Right fn') args' [] []
+call' :: Maybe String -> G.Global -> [AST.Operand] -> CodeGen AST.Operand
+call' varNm fn args =
+  let fn'   = globalOp retTy nm
+      args' = toArgs args
+      nm    = G.name fn
+      retTy = G.returnType fn
+      cmd   = I.Call Nothing CC.C [] (Right fn') args' [] []
   -- TODO(cskksc): declare fn -- ^ this doesn't work
-  where fn'   = globalOp retTy nm
-        args' = toArgs args
-        nm    = G.name fn
-        retTy = G.returnType fn
+  in case varNm of
+       Just varNm' -> namedInstr retTy varNm' cmd
+       Nothing     -> instr retTy cmd
 
+
+call :: G.Global -> [AST.Operand] -> CodeGen AST.Operand
+call fn args = call' Nothing fn args
+
+namedCall :: String -> G.Global -> [AST.Operand] -> CodeGen AST.Operand
+namedCall nm fn args = call' (Just nm) fn args
+
+-- binop (Just nm) ins x y= namedInstr T.i64 nm $ ins x y []
 
 -- | Convert operands to the expected args format
 --

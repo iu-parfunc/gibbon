@@ -167,7 +167,7 @@ codegenTail (LetCallT bnds rator rnds body) = do
   fn <- case Map.lookup (fromVar rator) gt of
           Just x -> return x
           Nothing -> error $ "Function doesn't exist " ++ show gt
-  _ <- call fn rnds'
+  _ <- gcall bnds fn rnds'
   codegenTail body
 
 codegenTail _ = __
@@ -204,3 +204,5 @@ test7 = codegenProg False testprog7
 testprog8 = Prog {fundefs = [FunDecl {funName = Var "add2", funArgs = [(Var "a", IntTy), (Var "b", IntTy)], funRetTy = IntTy, funBody = LetPrimCallT {binds = [(Var "res", IntTy)], prim = AddP, rands = [VarTriv (Var "a"), VarTriv (Var "b")], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "res")], bod = RetValsT [VarTriv (Var "res")]}}}],
                    mainExp = Just (PrintExp (RetValsT []))}
 test8 = codegenProg False testprog8
+testprog9 = Prog {fundefs = [FunDecl {funName = Var "add2", funArgs = [(Var "pvrtmp3",IntTy),(Var "pvrtmp4",IntTy)], funRetTy = IntTy, funBody = LetPrimCallT {binds = [(Var "flt5",IntTy)], prim = AddP, rands = [VarTriv (Var "pvrtmp3"),VarTriv (Var "pvrtmp4")], bod = RetValsT [VarTriv (Var "flt5")]}}], mainExp = Just (PrintExp (LetCallT {binds = [(Var "tctmp2",IntTy)], rator = Var "add2", rands = [IntTriv 40,IntTriv 2], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "tctmp2")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
+test9 = codegenProg False testprog9

@@ -1,5 +1,5 @@
 module Packed.FirstOrder.Passes.LLVM.Gibbon (
-    addp, subp, mulp, eqp
+    addp, subp, mulp, eqp, gcall
   , sizeParam, toLLVMTy, printString, toIfPred
   , addStructs
 ) where
@@ -25,6 +25,7 @@ import qualified Packed.FirstOrder.Passes.LLVM.Global as LG
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
 import qualified LLVM.General.AST.Type as T
+import qualified LLVM.General.AST.Global as G
 
 
 -- | Gibbon binary operations
@@ -50,6 +51,12 @@ mulp = gibbonBinop mul namedMul
 subp = gibbonBinop sub namedSub
 
 eqp  = gibbonBinop eq namedEq
+
+
+-- TODO(cskksc): abstract out gibbonBinop and gcall
+gcall :: [(Var,Ty)] -> G.Global -> [AST.Operand] -> CodeGen AST.Operand
+gcall [] fn args = call fn args
+gcall [(v, _)] fn args = namedCall (fromVar v) fn args
 
 
 -- | Gibbon SizeParam primitive
