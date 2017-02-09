@@ -110,8 +110,8 @@ toIfPred triv =
 
 -- | Add all required structs
 --
-addStructs :: Prog -> CodeGen [()]
-addStructs prog = mapM ((\(nm,d) -> addDefinition nm d) . makeStruct) $
+addStructs :: Prog -> CodeGen ()
+addStructs prog = mapM_ ((\(nm,d) -> addDefinition nm d) . makeStruct) $
                   harvestStructTys prog
 
 

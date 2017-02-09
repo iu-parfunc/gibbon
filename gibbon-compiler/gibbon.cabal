@@ -43,8 +43,8 @@ library
                   Packed.FirstOrder.Passes.LLVM.Monad
                   Packed.FirstOrder.Passes.LLVM.Global
                   Packed.FirstOrder.Passes.LLVM.Gibbon
-                  Packed.FirstOrder.Passes.LLVM.Instructions
-                  Packed.FirstOrder.Passes.LLVM.Terminators
+                  Packed.FirstOrder.Passes.LLVM.Instruction
+                  Packed.FirstOrder.Passes.LLVM.Terminator
 
 
 -- First attempt, slated for removal:

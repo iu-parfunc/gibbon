@@ -8,7 +8,7 @@
 module Packed.FirstOrder.Passes.LLVM.Instruction (
     declare, getvar, getLastLocal, addDefinition
   , instr, namedInstr, globalOp, localRef, toPtrType
-  , allocate, store, load, namedLoad, getElemPtr, call
+  , allocate, store, load, namedLoad, getElemPtr, call, call2
   , add, namedAdd, mul, namedMul, sub, namedSub
   , eq, namedEq, neq, namedNeq, ifThenElse
 ) where
@@ -37,12 +37,12 @@ import Packed.FirstOrder.Passes.LLVM.Terminator
 --
 addDefinition :: String -> AST.Definition -> CodeGen ()
 addDefinition nm d =
-  modify $ \s -> s { definitions = Map.insert nm d (definitions s)}
+  modify $ \s -> s { structs = Map.insert nm d (structs s)}
 
 
 -- | Add a global declaration to the symbol table
 --
-declare :: G.Global -> CodeGen()
+declare :: G.Global -> CodeGen ()
 declare g =
   let name = case G.name g of
                AST.Name n   -> n
@@ -126,11 +126,16 @@ localRef = AST.LocalReference
 --
 call :: G.Global -> [AST.Operand] -> CodeGen AST.Operand
 call fn args = instr retTy $ I.Call Nothing CC.C [] (Right fn') args' [] []
+  -- TODO(cskksc): declare fn -- ^ this doesn't work
   where fn'   = globalOp retTy nm
         args' = toArgs args
         nm    = G.name fn
         retTy = G.returnType fn
 
+call2 :: T.Type -> AST.Name -> [AST.Operand] -> CodeGen AST.Operand
+call2 ty nm args = instr ty $ I.Call Nothing CC.C [] (Right fn) args' [] []
+  where fn = globalOp ty nm
+        args' = toArgs args
 
 -- | Convert operands to the expected args format
 --

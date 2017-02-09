@@ -2,7 +2,9 @@
 module Packed.FirstOrder.Passes.LLVM.Codegen where
 
 -- | standard library
+import qualified Data.Map as Map
 import Control.Monad.Except
+import Control.Monad.State
 
 -- | gibbon internals
 import Packed.FirstOrder.L3_Target
@@ -17,6 +19,7 @@ import Packed.FirstOrder.Passes.LLVM.Global
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Global as G
 import qualified LLVM.General.AST.Constant as C
+import qualified LLVM.General.AST.Type as T
 import qualified LLVM.General.Context as CTX
 import qualified LLVM.General.Module as M
 
@@ -36,28 +39,53 @@ codegenProg _ prog = do
   let cg' = genModule $ codegenProg' prog
   toLLVM cg'
 
--- TODO(cskksc): abstract out main fn generation. it'll will help in generating
--- more fns. print_T needs it right now
+
 codegenProg' :: Prog -> CodeGen ()
-codegenProg' prg@(Prog _ body) = do
+codegenProg' prg@(Prog fns body) = do
+  mapM_ codegenFun fns
   _ <- addStructs prg
+  let mainBody = genBlocks $ do
+        entry <- newBlock "entry"
+        setBlock entry
+        _ <- case body of
+          Just (PrintExp t) -> codegenTail t
+          _ -> retval_ (AST.ConstantOperand (C.Int 8 8))
+        createBlocks
   declare puts
   declare printInt
   declare globalSizeParam
   declare (mainFn mainBody)
-    where
-      mainBody :: [G.BasicBlock]
-      mainBody = genBlocks $ do
-        _ <- mainBody'
-        createBlocks
 
-      mainBody' :: CodeGen BlockState
-      mainBody' = do
-        entry <- newBlock "entry"
-        setBlock entry
-        case body of
-          Just (PrintExp t) -> codegenTail t
-          _ -> retval_ (AST.ConstantOperand (C.Int 8 8))
+
+-- | Generate LLVM instructions for function definitions
+--
+codegenFun :: FunDecl -> CodeGen ()
+codegenFun (FunDecl fnName args retTy tail) = do
+  let fnName' = fromVar fnName
+  fnBody <- do
+    entry <- newBlock $ "fn." ++ fnName' ++ "entry"
+    _     <- setBlock entry
+
+    -- add all args to localVars
+    forM_ args $ \(v,ty) -> do
+      modify $ \s ->
+        let nm  = fromVar v
+            ty' = toLLVMTy ty
+        in s { localVars = Map.insert nm (localRef ty' (AST.Name nm)) (localVars s)}
+    _ <- codegenTail tail
+    createBlocks
+
+  -- add the function to globalTable
+  let fn = G.functionDefaults
+           { G.name        = AST.Name fnName'
+           , G.parameters  = ([G.Parameter (toLLVMTy ty) (AST.Name $ fromVar v) []
+                              | (v, ty) <- args],
+                              False)
+           , G.returnType  = (toLLVMTy retTy)
+           , G.basicBlocks = fnBody
+           }
+  declare fn
+
 
 -- | Generate LLVM instructions for Tail
 --
@@ -127,6 +155,16 @@ codegenTail (Switch trv alts def) =
       setBlock switchDefault
       codegenTail def'
 
+codegenTail (LetCallT bnds rator rnds body) = do
+  rnds' <- mapM codegenTriv rnds
+  -- TODO(cskksc): declare doesn't seem to work
+  -- gt <- gets globalTable
+  -- fn <- case Map.lookup (fromVar rator) gt of
+  --         Just x -> return $ x
+  --         Nothing -> error $ "Function doesn't exist" ++ show gt
+  -- _ <- call fn rnds'
+  _ <- call2 T.i64 (AST.Name $ fromVar rator) rnds'
+  codegenTail body
 
 codegenTail _ = __
 
@@ -156,3 +194,12 @@ testprog5 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = 
 test5 = codegenProg False testprog5
 testprog6 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "fltPrm0",IntTy)], prim = MulP, rands = [IntTriv 3,IntTriv 4], bod = LetPrimCallT {binds = [(Var "fltPrm1",IntTy)], prim = SubP, rands = [IntTriv 8,IntTriv 9], bod = LetPrimCallT {binds = [(Var "flt2",IntTy)], prim = AddP, rands = [VarTriv (Var "fltPrm0"),VarTriv (Var "fltPrm1")], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "flt2")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}}}))}
 test6 = codegenProg False testprog6
+
+-- doesn't work. there's something wrong with declare ..
+testprog7 = Prog {fundefs = [FunDecl {funName = Var "add2", funArgs = [(Var "a", IntTy), (Var "b", IntTy)], funRetTy = IntTy, funBody = LetPrimCallT {binds = [(Var "res", IntTy)], prim = AddP, rands = [VarTriv (Var "a"), VarTriv (Var "b")], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "res")], bod = RetValsT [VarTriv (Var "res")]}}}],
+                   mainExp = Just (PrintExp (LetCallT {binds = [], rator = Var "add2", rands = [IntTriv 2,IntTriv 2], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}))}
+test7 = codegenProg False testprog7
+
+testprog8 = Prog {fundefs = [FunDecl {funName = Var "add2", funArgs = [(Var "a", IntTy), (Var "b", IntTy)], funRetTy = IntTy, funBody = LetPrimCallT {binds = [(Var "res", IntTy)], prim = AddP, rands = [VarTriv (Var "a"), VarTriv (Var "b")], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "res")], bod = RetValsT [VarTriv (Var "res")]}}}],
+                   mainExp = Just (PrintExp (RetValsT []))}
+test8 = codegenProg False testprog8

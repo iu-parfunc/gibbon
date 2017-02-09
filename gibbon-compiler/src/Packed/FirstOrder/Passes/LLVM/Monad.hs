@@ -29,7 +29,7 @@ import qualified LLVM.General.AST.Global as G
 data CodeGenState = CodeGenState
   { blockChain  :: Seq BlockState            -- ^ blocks for this function
   , globalTable :: Map String G.Global       -- ^ external functions symbol table
-  , definitions :: Map String AST.Definition -- ^ Global definitions
+  , structs     :: Map String AST.Definition -- ^ structs
   , localVars   :: Map String AST.Operand    -- ^ local vars
   , next        :: Word                      -- ^ names supply
   } deriving Show
@@ -49,7 +49,7 @@ initialCodeGenState :: CodeGenState
 initialCodeGenState = CodeGenState
                      { blockChain  = Seq.empty
                      , globalTable = Map.empty
-                     , definitions = Map.empty
+                     , structs     = Map.empty
                      , localVars   = Map.empty
                      , next        = 0
                      }
@@ -65,7 +65,7 @@ genModule x =
     {
       AST.moduleName = name
     , AST.moduleSourceFileName = []
-    , AST.moduleDefinitions = (Map.elems $ definitions st) ++ globals
+    , AST.moduleDefinitions = (Map.elems $ structs st) ++ globals
     , AST.moduleDataLayout = Nothing
     , AST.moduleTargetTriple = Just "x86_64-unknown-linux-gnu"
     }
