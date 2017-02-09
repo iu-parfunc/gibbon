@@ -8,7 +8,7 @@
 module Packed.FirstOrder.Passes.LLVM.Instruction (
     declare, getvar, getLastLocal, addDefinition
   , instr, namedInstr, globalOp, localRef, toPtrType
-  , allocate, store, load, namedLoad, getElemPtr, call, call2
+  , allocate, store, load, namedLoad, getElemPtr, call
   , add, namedAdd, mul, namedMul, sub, namedSub
   , int_, char_, constop_, string_
   , eq, namedEq, neq, namedNeq, ifThenElse
@@ -76,12 +76,6 @@ getLastLocal = do
   return $ AST.UnName (a - 1)
 
 
--- Causes GHC panic!
--- -- | Return the most recent unname
--- currentName :: CodeGen AST.Name
--- currentName = return $ AST.UnName . fromIntegral $ do gets next
-
-
 -- | Add an instruction to the state of the currently active block so that it is
 -- computed, and return the operand (LocalReference) that can be used to later
 -- refer to it.
@@ -134,10 +128,6 @@ call fn args = instr retTy $ I.Call Nothing CC.C [] (Right fn') args' [] []
         nm    = G.name fn
         retTy = G.returnType fn
 
-call2 :: T.Type -> AST.Name -> [AST.Operand] -> CodeGen AST.Operand
-call2 ty nm args = instr ty $ I.Call Nothing CC.C [] (Right fn) args' [] []
-  where fn = globalOp ty nm
-        args' = toArgs args
 
 -- | Convert operands to the expected args format
 --
