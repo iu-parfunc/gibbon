@@ -84,16 +84,16 @@ printString s = do
   return_
     where (chars, len) = stringToChar s
           ty    = T.ArrayType len T.i8
-          idx   = AST.ConstantOperand (C.Int 32 0)
+          idx   = (constop_ . int_) 0
           idxs  = [idx, idx]
 
 
 -- | Convert string to a char array in LLVM format
 --
 stringToChar :: String -> (AST.Operand, Word64)
-stringToChar s = (AST.ConstantOperand $ C.Array T.i8 chars, len)
-  where len   = fromIntegral $ length chars
-        chars = (++ [C.Int 8 0]) $ map (C.Int 8 . toInteger . ord) s
+stringToChar s = (constop_ $ string_ s', len)
+  where len = (fromIntegral . length) s'
+        s'  = s ++ ['\NUL']
 
 -- | Generate the correct LLVM predicate
 -- We implement the C notion of true/false i.e every value !=0 is truthy
@@ -101,9 +101,9 @@ stringToChar s = (AST.ConstantOperand $ C.Array T.i8 chars, len)
 toIfPred :: Triv -> CodeGen AST.Operand
 toIfPred triv =
   let op0 = case triv of
-              (IntTriv i) -> AST.ConstantOperand $ C.Int 64 (toInteger i)
+              (IntTriv i) -> (constop_ . int_ . toInteger) i
               _ -> __
-      z   = AST.ConstantOperand $ C.Int 64 0
+      z   = (constop_ . int_) 0
   in
     neq op0 z
 

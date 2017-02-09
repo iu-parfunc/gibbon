@@ -2,9 +2,9 @@
 module Packed.FirstOrder.Passes.LLVM.Codegen where
 
 -- | standard library
-import qualified Data.Map as Map
 import Control.Monad.Except
 import Control.Monad.State
+import qualified Data.Map as Map
 
 -- | gibbon internals
 import Packed.FirstOrder.L3_Target
@@ -49,7 +49,7 @@ codegenProg' prg@(Prog fns body) = do
         setBlock entry
         _ <- case body of
           Just (PrintExp t) -> codegenTail t
-          _ -> retval_ (AST.ConstantOperand (C.Int 8 8))
+          _ -> (retval_ . constop_ . int_) 0
         createBlocks
   declare puts
   declare printInt
@@ -135,7 +135,7 @@ codegenTail (Switch trv alts def) =
       altTail (IntAlts [(_,t)]) = t
 
       dests :: [(C.Constant, AST.Name)]
-      dests = map (\((casei,_), i) -> (C.Int 64 (toInteger casei), AST.Name $ "switch" ++ show i ++ ".case")) $ zip alts'' [1..]
+      dests = map (\((casei,_), i) -> (int_ $ toInteger casei, AST.Name $ "switch" ++ show i ++ ".case")) $ zip alts'' [1..]
 
   in
     do
@@ -160,8 +160,8 @@ codegenTail (LetCallT bnds rator rnds body) = do
   -- TODO(cskksc): declare doesn't seem to work
   -- gt <- gets globalTable
   -- fn <- case Map.lookup (fromVar rator) gt of
-  --         Just x -> return $ x
-  --         Nothing -> error $ "Function doesn't exist" ++ show gt
+  --         Just x -> return x
+  --         Nothing -> error $ "Function doesn't exist " ++ show gt
   -- _ <- call fn rnds'
   _ <- call2 T.i64 (AST.Name $ fromVar rator) rnds'
   codegenTail body
@@ -171,7 +171,7 @@ codegenTail _ = __
 -- | Generate LLVM instructions for Triv
 --
 codegenTriv :: Triv -> CodeGen AST.Operand
-codegenTriv (IntTriv i) = return $ AST.ConstantOperand $ C.Int 64 (toInteger i)
+codegenTriv (IntTriv i) = (return . constop_ . int_ . toInteger) i
 codegenTriv (VarTriv v) = do
   let nm = fromVar v
   getvar nm

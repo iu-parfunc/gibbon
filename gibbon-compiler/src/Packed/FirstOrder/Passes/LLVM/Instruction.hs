@@ -10,11 +10,13 @@ module Packed.FirstOrder.Passes.LLVM.Instruction (
   , instr, namedInstr, globalOp, localRef, toPtrType
   , allocate, store, load, namedLoad, getElemPtr, call, call2
   , add, namedAdd, mul, namedMul, sub, namedSub
+  , int_, char_, constop_, string_
   , eq, namedEq, neq, namedNeq, ifThenElse
 ) where
 
 -- | standard library
 import Control.Monad.State
+import Data.Char (ord)
 import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 
@@ -204,6 +206,7 @@ sub = binop Nothing (I.Sub False False)
 namedSub :: String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
 namedSub nm = binop (Just nm) (I.Sub False False)
 
+
 -- | Compare two operands
 --
 icmp :: IP.IntegerPredicate -> Maybe String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
@@ -271,3 +274,19 @@ ifThenElse test yes no = do
 
   setBlock ifExit
   phi T.i64 [(tv, blockLabel tb), (fv, blockLabel fb)]
+
+
+-- | Constructors for literals
+--
+
+constop_ :: C.Constant -> AST.Operand
+constop_ = AST.ConstantOperand
+
+int_ :: Integer -> C.Constant
+int_ = C.Int 64
+
+char_ :: Char -> C.Constant
+char_ = C.Int 8 . toInteger . ord
+
+string_ :: String -> C.Constant
+string_ = C.Array T.i8 . map char_
