@@ -7,11 +7,10 @@
 
 module Packed.FirstOrder.Passes.LLVM.Instruction (
     declare, getvar, getLastLocal, addDefinition
-  , instr, namedInstr, globalOp, localRef, toPtrType
-  , allocate, store, load, namedLoad, getElemPtr, call, namedCall
-  , add, namedAdd, mul, namedMul, sub, namedSub
+  , instr, globalOp, localRef, toPtrType
+  , allocate, store, load, getElemPtr, call, add, mul, sub
+  , eq, neq, ifThenElse
   , int_, char_, constop_, string_
-  , eq, namedEq, neq, namedNeq, ifThenElse
 ) where
 
 -- | standard library
@@ -80,20 +79,16 @@ getLastLocal = do
 -- computed, and return the operand (LocalReference) that can be used to later
 -- refer to it.
 --
-
-instr :: T.Type -> AST.Instruction -> CodeGen AST.Operand
-instr ty ins = do
-  name <- freshName
+instr :: T.Type -> Maybe String -> I.Instruction -> CodeGen AST.Operand
+instr ty nm ins = do
+  name <- case nm of
+            Just x  -> do
+              let ref = AST.LocalReference ty (AST.Name x)
+              modify $ \s -> s { localVars = Map.insert x ref (localVars s)}
+              return $ AST.Name x
+            Nothing -> freshName
   instr_ $ name AST.:= ins
   return $ AST.LocalReference ty name
-
-
-namedInstr :: T.Type -> String -> I.Instruction -> CodeGen AST.Operand
-namedInstr ty nm ins = do
-  instr_ $ (AST.Name nm) AST.:= ins
-  let ref = AST.LocalReference ty (AST.Name nm)
-  modify $ \s -> s { localVars = Map.insert nm ref (localVars s)}
-  return ref
 
 
 -- | Add raw assembly instructions to the execution stream
@@ -118,27 +113,6 @@ localRef :: T.Type -> AST.Name -> AST.Operand
 localRef = AST.LocalReference
 
 
--- | Add a function call to the execution stream
---
-call' :: Maybe String -> G.Global -> [AST.Operand] -> CodeGen AST.Operand
-call' varNm fn args =
-  let fn'   = globalOp retTy nm
-      args' = toArgs args
-      nm    = G.name fn
-      retTy = G.returnType fn
-      cmd   = I.Call Nothing CC.C [] (Right fn') args' [] []
-  -- TODO(cskksc): declare fn -- ^ this doesn't work
-  in case varNm of
-       Just varNm' -> namedInstr retTy varNm' cmd
-       Nothing     -> instr retTy cmd
-
-
-call :: G.Global -> [AST.Operand] -> CodeGen AST.Operand
-call fn args = call' Nothing fn args
-
-namedCall :: String -> G.Global -> [AST.Operand] -> CodeGen AST.Operand
-namedCall nm fn args = call' (Just nm) fn args
-
 -- binop (Just nm) ins x y= namedInstr T.i64 nm $ ins x y []
 
 -- | Convert operands to the expected args format
@@ -150,86 +124,68 @@ toArgs = map (\x -> (x, []))
 -- | Allocate memory for the type
 --
 allocate :: T.Type -> CodeGen AST.Operand
-allocate ty = instr ty $ I.Alloca ty Nothing 0 []
+allocate ty = instr ty Nothing $ I.Alloca ty Nothing 0 []
 
 
 -- | Store operand as a new local unname
 --
 store :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
-store addr val = instr T.VoidType $ I.Store False addr val Nothing 0 []
+store addr val = instr T.VoidType Nothing $ I.Store False addr val Nothing 0 []
 -- TODO(cskksc): dont know if T.VoidType is correct
 
 
 -- | Read from memory
 --
 
-load' :: Maybe String -> T.Type -> AST.Operand -> CodeGen AST.Operand
-load' Nothing ty addr = instr ty $ I.Load False addr Nothing 8 []
-load' (Just nm) ty addr = namedInstr ty nm $ I.Load False addr Nothing 8 []
-
-load :: T.Type -> AST.Operand -> CodeGen AST.Operand
-load = load' Nothing
-
-namedLoad :: String -> T.Type -> AST.Operand -> CodeGen AST.Operand
-namedLoad nm = load' (Just nm)
+load :: T.Type -> Maybe String -> AST.Operand -> CodeGen AST.Operand
+load ty nm addr = instr ty nm $ I.Load False addr Nothing 8 []
 
 
 -- | Get the address of a subelement of an aggregate data structure
 --
 getElemPtr :: Bool -> AST.Operand -> [AST.Operand] -> CodeGen AST.Operand
-getElemPtr inbounds addr idxs = instr T.VoidType $ I.GetElementPtr inbounds addr idxs []
+getElemPtr inbounds addr idxs = instr T.VoidType Nothing $ I.GetElementPtr inbounds addr idxs []
 -- TODO(cskksc): dont know if T.VoidType is correct
+
+
+-- | Add a function call to the execution stream
+--
+call :: G.Global -> Maybe String -> [AST.Operand] -> CodeGen AST.Operand
+call fn varNm args = instr retTy varNm cmd
+  -- TODO(cskksc): declare fn -- ^ this doesn't work
+  where fn'   = globalOp retTy nm
+        args' = toArgs args
+        nm    = G.name fn
+        retTy = G.returnType fn
+        cmd   = I.Call Nothing CC.C [] (Right fn') args' [] []
 
 
 -- | Arithmetic operations
 --
 
-binop :: Maybe String
-      -> (AST.Operand -> AST.Operand -> I.InstructionMetadata -> I.Instruction)
-      -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
-binop Nothing ins x y = instr T.i64 $ ins x y []
-binop (Just nm) ins x y= namedInstr T.i64 nm $ ins x y []
+-- TODO(cskksc): handle more than 2 args
 
-add :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
-add = binop Nothing (I.Add False False)
+add :: Maybe String -> [AST.Operand] -> CodeGen AST.Operand
+add nm [x,y] = instr T.i64 nm $ I.Add False False x y []
 
-namedAdd :: String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
-namedAdd nm = binop (Just nm) (I.Add False False)
+mul :: Maybe String -> [AST.Operand] -> CodeGen AST.Operand
+mul nm [x,y] = instr T.i64 nm $ I.Mul False False x y []
 
-mul :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
-mul = binop Nothing (I.Mul False False)
-
-namedMul :: String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
-namedMul nm = binop (Just nm) (I.Mul False False)
-
-sub :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
-sub = binop Nothing (I.Sub False False)
-
-namedSub :: String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
-namedSub nm = binop (Just nm) (I.Sub False False)
+sub :: Maybe String -> [AST.Operand] -> CodeGen AST.Operand
+sub nm [x,y] = instr T.i64 nm $ I.Sub False False x y []
 
 
--- | Compare two operands
---
-icmp :: IP.IntegerPredicate -> Maybe String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
-icmp p Nothing x y = instr T.i64 $ I.ICmp p x y []
-icmp p (Just nm) x y = namedInstr T.i64 nm $ I.ICmp p x y []
-
-
--- | Equality operators
+-- | Comparision and equality operators
 --
 
-eq :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
-eq = icmp IP.EQ Nothing
+icmp :: IP.IntegerPredicate -> Maybe String -> [AST.Operand] -> CodeGen AST.Operand
+icmp p nm [x,y] = instr T.i64 nm $ I.ICmp p x y []
 
-namedEq :: String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
-namedEq nm = icmp IP.EQ (Just nm)
+eq :: Maybe String ->  [AST.Operand] -> CodeGen AST.Operand
+eq nm = icmp IP.EQ nm
 
-neq :: AST.Operand -> AST.Operand -> CodeGen AST.Operand
-neq = icmp IP.NE Nothing
-
-namedNeq :: String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand
-namedNeq nm = icmp IP.NE (Just nm)
+neq :: Maybe String -> [AST.Operand] -> CodeGen AST.Operand
+neq nm = icmp IP.NE nm
 
 
 -- | Convert the type to a pointer type
@@ -241,7 +197,7 @@ toPtrType ty = T.PointerType ty (AS.AddrSpace 0)
 -- | Add a phi node to the top of the current block
 --
 phi :: T.Type -> [(AST.Operand, AST.Name)] -> CodeGen AST.Operand
-phi ty incoming = instr ty $ I.Phi ty incoming []
+phi ty incoming = instr ty Nothing $ I.Phi ty incoming []
 
 
 -- | Standard if-then-else expression

@@ -1,5 +1,5 @@
 module Packed.FirstOrder.Passes.LLVM.Gibbon (
-    addp, subp, mulp, eqp, gcall
+    addp, subp, mulp, eqp, callp
   , sizeParam, toLLVMTy, printString, toIfPred
   , addStructs
 ) where
@@ -28,35 +28,35 @@ import qualified LLVM.General.AST.Type as T
 import qualified LLVM.General.AST.Global as G
 
 
--- | Gibbon binary operations
+-- | Allow named results for LLVM operations
 --
 
-gibbonBinop :: (AST.Operand -> AST.Operand -> CodeGen AST.Operand)
-            -> (String -> AST.Operand -> AST.Operand -> CodeGen AST.Operand)
+gibbonOp :: (Maybe String -> [AST.Operand] -> CodeGen AST.Operand)
             -> [(Var,Ty)] -> [AST.Operand]
             -> CodeGen BlockState
-gibbonBinop op namedOp [] [x,y] = do
-  _ <- op x y
+gibbonOp op [] args = do
+  _ <- op Nothing args
   return_
-gibbonBinop op namedOp [(v, _)] [x,y] = do
+gibbonOp op [(v, _)] args = do
   let nm = fromVar v
-  var   <- namedOp nm x y
+  var   <- op (Just nm) args
   retval_ var
 
 
-addp = gibbonBinop add namedAdd
+addp :: [(Var, Ty)] -> [AST.Operand] -> CodeGen BlockState
+addp = gibbonOp add
 
-mulp = gibbonBinop mul namedMul
+mulp :: [(Var, Ty)] -> [AST.Operand] -> CodeGen BlockState
+mulp = gibbonOp mul
 
-subp = gibbonBinop sub namedSub
+subp :: [(Var, Ty)] -> [AST.Operand] -> CodeGen BlockState
+subp = gibbonOp sub
 
-eqp  = gibbonBinop eq namedEq
+eqp :: [(Var, Ty)] -> [AST.Operand] -> CodeGen BlockState
+eqp  = gibbonOp eq
 
-
--- TODO(cskksc): abstract out gibbonBinop and gcall
-gcall :: [(Var,Ty)] -> G.Global -> [AST.Operand] -> CodeGen AST.Operand
-gcall [] fn args = call fn args
-gcall [(v, _)] fn args = namedCall (fromVar v) fn args
+callp :: G.Global -> [(Var, Ty)] -> [AST.Operand] -> CodeGen BlockState
+callp fn = gibbonOp (call fn)
 
 
 -- | Gibbon SizeParam primitive
@@ -64,7 +64,7 @@ gcall [(v, _)] fn args = namedCall (fromVar v) fn args
 sizeParam :: [(Var,Ty)] -> CodeGen BlockState
 sizeParam [(v,ty)] = do
   let nm = fromVar v
-  _     <- namedLoad nm lty op
+  _     <- load lty (Just nm) op
   return_
   where lty = toLLVMTy ty
         op  = globalOp lty (AST.Name "global_size_param")
@@ -87,7 +87,7 @@ printString s = do
   -- TODO(cskksc): figure out the -2. its probably because store doesn't assign
   -- anything to an unname
   _   <- getElemPtr True (localRef (toPtrType ty) (AST.UnName (nm - 2))) idxs
-  _   <- call LG.puts [localRef (toPtrType ty) (AST.UnName nm)]
+  _   <- call LG.puts Nothing [localRef (toPtrType ty) (AST.UnName nm)]
   return_
     where (chars, len) = stringToChar s
           ty    = T.ArrayType len T.i8
@@ -112,7 +112,7 @@ toIfPred triv =
               _ -> __
       z   = (constop_ . int_) 0
   in
-    neq op0 z
+    neq Nothing [op0,z]
 
 
 -- | Add all required structs

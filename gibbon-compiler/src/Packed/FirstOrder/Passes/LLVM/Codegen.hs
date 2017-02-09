@@ -105,7 +105,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) = do
   rnds' <- mapM codegenTriv rnds
   _     <- case prm of
              PrintInt -> do
-               _ <- call printInt rnds'
+               _ <- call printInt Nothing rnds'
                return_
              PrintString s -> do
                _ <- printString s
@@ -167,7 +167,7 @@ codegenTail (LetCallT bnds rator rnds body) = do
   fn <- case Map.lookup (fromVar rator) gt of
           Just x -> return x
           Nothing -> error $ "Function doesn't exist " ++ show gt
-  _ <- gcall bnds fn rnds'
+  _ <- callp fn bnds rnds'
   codegenTail body
 
 codegenTail _ = __
