@@ -118,6 +118,7 @@ core_tests:
 	$(MAKE) run_tests_packed
 	$(MAKE) run_tests_interp1
 	$(MAKE) run_tests_interp2
+	$(MAKE) run_tests_llvm
 
 #	$(MAKE) racket_valid
 # Need methodology for this.
@@ -309,11 +310,14 @@ answers: $(ANSWERS)
 
 # Run tests through the LLVM backend
 
+build_gibbon_llvm_lib:
+	llc-3.9 -filetype=obj -o lib.o $(TREELANGDIR)/gibbon-compiler/lib.ll
+
 LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
   test00c_printBool.gib test01_if.gib test01b_ifif.gib test02_arith.gib \
   test00e_func.gib
 
-run_tests_llvm: answers
+run_tests_llvm: answers build_gibbon_llvm_lib
 	$(MAKE) run_tests PASSING_TESTS="$(LLVM_PASSING_TESTS)" GIBBONARGS="--llvm" EXTRA_SUFFIX="_llvm" BACKEND="LLVM"
 
 
