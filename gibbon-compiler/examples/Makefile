@@ -314,8 +314,11 @@ build_gibbon_llvm_lib:
 	llc-3.9 -filetype=obj -o lib.o $(TREELANGDIR)/gibbon-compiler/lib.ll
 
 LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
-  test00c_printBool.gib test01_if.gib test01b_ifif.gib test02_arith.gib \
-  test00e_func.gib
+  test00c_printBool.gib test00e_func.gib test01_if.gib test01b_ifif.gib \
+  test02_arith.gib
+
+
+# test00d_printData.gib test02d_printPair.gib
 
 run_tests_llvm: answers build_gibbon_llvm_lib
 	$(MAKE) run_tests PASSING_TESTS="$(LLVM_PASSING_TESTS)" GIBBONARGS="--llvm" EXTRA_SUFFIX="_llvm" BACKEND="LLVM"

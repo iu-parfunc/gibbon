@@ -3,4 +3,7 @@
 (define (add2 [x : Int] [y : Int]) : Int
   (+ x y))
 
-(add2 40 2)
+(define (mul2 [x : Int] [y : Int]) : Int
+  (* x y))
+
+(mul2 10 (add2 40 2))

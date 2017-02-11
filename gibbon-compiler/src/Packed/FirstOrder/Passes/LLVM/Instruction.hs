@@ -7,10 +7,10 @@
 
 module Packed.FirstOrder.Passes.LLVM.Instruction (
     declare, getvar, getLastLocal, addDefinition
-  , instr, globalOp, localRef, toPtrType
+  , instr, globalOp, localRef
   , allocate, store, load, getElemPtr, call, add, mul, sub
-  , eq, neq, ifThenElse
-  , int_, char_, constop_, string_
+  , eq, neq, ifThenElse, ptrToInt, bitcast
+  , int_, int32_, char_, constop_, string_
 ) where
 
 -- | standard library
@@ -27,7 +27,6 @@ import qualified LLVM.General.AST.Type as T
 import qualified LLVM.General.AST.Instruction as I
 import qualified LLVM.General.AST.CallingConvention as CC
 import qualified LLVM.General.AST.Attribute as A
-import qualified LLVM.General.AST.AddrSpace as AS
 import qualified LLVM.General.AST.IntegerPredicate as IP
 
 import Packed.FirstOrder.Passes.LLVM.Monad
@@ -38,7 +37,7 @@ import Packed.FirstOrder.Passes.LLVM.Terminator
 --
 addDefinition :: String -> AST.Definition -> CodeGen ()
 addDefinition nm d =
-  modify $ \s -> s { structs = Map.insert nm d (structs s)}
+  modify $ \s -> s { globalTypeDefs = Map.insert nm d (globalTypeDefs s)}
 
 
 -- | Add a global declaration to the symbol table
@@ -49,7 +48,7 @@ declare g =
                AST.Name n   -> n
                AST.UnName n -> show n
   in
-    modify $ \s -> s { globalTable = Map.insert name g (globalTable s)}
+    modify $ \s -> s { globalFns = Map.insert name g (globalFns s)}
 
 
 -- | Generate a fresh (un)name.
@@ -123,8 +122,8 @@ toArgs = map (\x -> (x, []))
 
 -- | Allocate memory for the type
 --
-allocate :: T.Type -> CodeGen AST.Operand
-allocate ty = instr ty Nothing $ I.Alloca ty Nothing 0 []
+allocate :: T.Type -> Maybe String -> CodeGen AST.Operand
+allocate ty nm = instr ty nm $ I.Alloca ty Nothing 0 []
 
 
 -- | Store operand as a new local unname
@@ -144,8 +143,18 @@ load ty nm addr = instr ty nm $ I.Load False addr Nothing 8 []
 -- | Get the address of a subelement of an aggregate data structure
 --
 getElemPtr :: Bool -> AST.Operand -> [AST.Operand] -> CodeGen AST.Operand
-getElemPtr inbounds addr idxs = instr T.VoidType Nothing $ I.GetElementPtr inbounds addr idxs []
+getElemPtr inbounds addr idxs = instr T.i64 Nothing $ I.GetElementPtr inbounds addr idxs []
 -- TODO(cskksc): dont know if T.VoidType is correct
+
+
+-- | Convert value to type ty without changing any bits
+bitcast :: T.Type -> AST.Operand -> CodeGen AST.Operand
+bitcast ty op = instr ty Nothing $ I.BitCast op ty []
+
+-- | Convert pointer to Integer type
+--
+ptrToInt :: Maybe String -> [AST.Operand] -> CodeGen AST.Operand
+ptrToInt nm [x] = instr T.VoidType nm $ I.PtrToInt x T.i64 []
 
 
 -- | Add a function call to the execution stream
@@ -186,12 +195,6 @@ eq nm = icmp IP.EQ nm
 
 neq :: Maybe String -> [AST.Operand] -> CodeGen AST.Operand
 neq nm = icmp IP.NE nm
-
-
--- | Convert the type to a pointer type
---
-toPtrType :: T.Type -> T.Type
-toPtrType ty = T.PointerType ty (AS.AddrSpace 0)
 
 
 -- | Add a phi node to the top of the current block
@@ -242,6 +245,9 @@ constop_ = AST.ConstantOperand
 
 int_ :: Integer -> C.Constant
 int_ = C.Int 64
+
+int32_ :: Integer -> C.Constant
+int32_ = C.Int 32
 
 char_ :: Char -> C.Constant
 char_ = C.Int 8 . toInteger . ord

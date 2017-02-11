@@ -35,6 +35,15 @@ printInt = G.functionDefaults
   where ty = T.i64
         nm = AST.UnName 0
 
+malloc :: G.Global
+malloc = G.functionDefaults
+         { G.name        = AST.Name "malloc"
+         , G.parameters  = ([G.Parameter ty nm []], False)
+         , G.returnType  = T.PointerType T.i8 (AS.AddrSpace 0)
+         }
+  where ty = T.i64
+        nm = AST.UnName 0
+
 
 globalSizeParam :: G.Global
 globalSizeParam = G.globalVariableDefaults

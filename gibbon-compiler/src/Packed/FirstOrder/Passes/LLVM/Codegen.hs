@@ -8,7 +8,7 @@ import qualified Data.Map as Map
 
 -- | gibbon internals
 import Packed.FirstOrder.L3_Target
-import Packed.FirstOrder.Common (Var(..), fromVar)
+import Packed.FirstOrder.Common (fromVar)
 import Packed.FirstOrder.Passes.LLVM.Monad
 import Packed.FirstOrder.Passes.LLVM.Instruction
 import Packed.FirstOrder.Passes.LLVM.Terminator
@@ -19,7 +19,6 @@ import Packed.FirstOrder.Passes.LLVM.Global
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Global as G
 import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Type as T
 import qualified LLVM.General.Context as CTX
 import qualified LLVM.General.Module as M
 
@@ -43,9 +42,11 @@ codegenProg _ prog = do
 codegenProg' :: Prog -> CodeGen ()
 codegenProg' prg@(Prog fns body) = do
   fns' <- mapM codegenFun fns
+  mapM_ declare fns'
   _ <- addStructs prg
   let mainBody = genBlocks $ do
-        -- TODO(cskksc): why does this work here ?
+        -- TODO(cskksc): why is this required ?
+        _ <- addStructs prg
         mapM_ declare fns'
         entry <- newBlock "entry"
         setBlock entry
@@ -56,6 +57,7 @@ codegenProg' prg@(Prog fns body) = do
 
   declare puts
   declare printInt
+  declare malloc
   declare globalSizeParam
   declare (mainFn mainBody)
 
@@ -66,7 +68,7 @@ codegenFun :: FunDecl -> CodeGen G.Global
 codegenFun (FunDecl fnName args retTy tail) = do
   let fnName' = fromVar fnName
   fnBody <- do
-    entry <- newBlock $ "fn." ++ fnName' ++ "entry"
+    entry <- newBlock $ "fn." ++ fnName' ++ ".entry"
     _     <- setBlock entry
 
     -- add all args to localVars
@@ -78,19 +80,15 @@ codegenFun (FunDecl fnName args retTy tail) = do
     _ <- codegenTail tail
     createBlocks
 
-  -- add the function to globalTable
-  let fn = G.functionDefaults
-           { G.name        = AST.Name fnName'
-           , G.parameters  = ([G.Parameter (toLLVMTy ty) (AST.Name $ fromVar v) []
-                              | (v, ty) <- args],
-                              False)
-           , G.returnType  = (toLLVMTy retTy)
-           , G.basicBlocks = fnBody
-           }
-
-  -- TODO(cskksc): doesn't work without this declaration here
-  declare fn
-  return fn
+  -- return the generated function
+  return G.functionDefaults
+         { G.name        = AST.Name fnName'
+         , G.parameters  = ([G.Parameter (toLLVMTy ty) (AST.Name $ fromVar v) []
+                            | (v, ty) <- args],
+                            False)
+         , G.returnType  = toLLVMTy retTy
+         , G.basicBlocks = fnBody
+         }
 
 
 -- | Generate LLVM instructions for Tail
@@ -100,6 +98,8 @@ codegenTail (RetValsT []) = return_
 codegenTail (RetValsT [t]) = do
   t' <- codegenTriv t
   retval_ t'
+-- TODO(cskksc): handle multiple return values (structs)
+codegenTail (RetValsT ts) = return_
 
 codegenTail (LetPrimCallT bnds prm rnds body) = do
   rnds' <- mapM codegenTriv rnds
@@ -115,7 +115,9 @@ codegenTail (LetPrimCallT bnds prm rnds body) = do
              MulP -> mulp bnds rnds'
              EqP  -> eqp bnds rnds'
              SizeParam -> sizeParam bnds
-             _ -> __
+             ReadTag -> readTag bnds rnds'
+             ReadInt -> readInt bnds rnds'
+             _ -> error $ "Prim: Not implemented yet: " ++ show prm
   codegenTail body
 
 codegenTail (IfT test consq els') = do
@@ -163,14 +165,38 @@ codegenTail (Switch trv alts def) =
 
 codegenTail (LetCallT bnds rator rnds body) = do
   rnds' <- mapM codegenTriv rnds
-  gt <- gets globalTable
-  fn <- case Map.lookup (fromVar rator) gt of
+  gt <- gets globalFns
+  let nm = fromVar rator
+  fn <- case Map.lookup nm gt of
           Just x -> return x
-          Nothing -> error $ "Function doesn't exist " ++ show gt
+          Nothing -> error $ "Function" ++ nm ++ " doesn't exist " ++ show gt
   _ <- callp fn bnds rnds'
   codegenTail body
 
-codegenTail _ = __
+codegenTail (LetAllocT lhs vals body) =
+  let structTy' = toPtrTy $ structTy $ map fst vals
+  in do
+    size <- sizeof structTy'
+    -- char* lhs = malloc ...
+    a <- allocate (toLLVMTy PtrTy) Nothing
+    b <- call malloc Nothing [size]
+    _ <- store a b
+
+    -- assign struct fields
+    forM_ (zip vals [0..]) $ \((_,v),i) -> do
+      c <- load (toLLVMTy PtrTy) Nothing a
+      d <- bitcast structTy' c
+      -- When indexing into a (optionally packed) structure, only i32 integer
+      -- constants are allowed
+      e <- getElemPtr True d [constop_ $ int32_ 0, constop_ $ int32_ i]
+      f <- codegenTriv v
+      _ <- store e f
+      load (toLLVMTy PtrTy) (Just $ fromVar lhs) a
+
+    codegenTail body
+
+codegenTail t = error $ "Tail: Not implemented yet: " ++ show t
+
 
 -- | Generate LLVM instructions for Triv
 --
@@ -179,30 +205,4 @@ codegenTriv (IntTriv i) = (return . constop_ . int_ . toInteger) i
 codegenTriv (VarTriv v) = do
   let nm = fromVar v
   getvar nm
-codegenTriv _ = __
-
-
--- | tests
---
-testprog0 = Prog {fundefs = [], mainExp = Nothing}
-test0 = codegenProg False testprog0
-testprog1 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [], prim = PrintInt, rands = [IntTriv 42], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}))}
-test1 = codegenProg False testprog1
-testprog2 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "flt0",IntTy)], prim = AddP, rands = [IntTriv 10,IntTriv 40], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "flt0")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
-test2 = codegenProg False testprog2
-testprog3 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "flt0",IntTy)], prim = SizeParam, rands = [], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "flt0")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
-test3 = codegenProg False testprog3
-testprog4 = Prog {fundefs = [], mainExp = Just (PrintExp (IfT {tst = IntTriv 1, con = LetPrimCallT {binds = [], prim = PrintString "#t", rands = [], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}, els = LetPrimCallT {binds = [], prim = PrintString "#f", rands = [], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
-test4 = codegenProg False testprog4
-testprog5 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "fltIf0",IntTy)], prim = EqP, rands = [IntTriv 2,IntTriv 2], bod = Switch (VarTriv (Var "fltIf0")) (IntAlts [(0,LetPrimCallT {binds = [], prim = PrintInt, rands = [IntTriv 101], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}})]) (Just (LetPrimCallT {binds = [], prim = PrintInt, rands = [IntTriv 99], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}))}))}
-test5 = codegenProg False testprog5
-testprog6 = Prog {fundefs = [], mainExp = Just (PrintExp (LetPrimCallT {binds = [(Var "fltPrm0",IntTy)], prim = MulP, rands = [IntTriv 3,IntTriv 4], bod = LetPrimCallT {binds = [(Var "fltPrm1",IntTy)], prim = SubP, rands = [IntTriv 8,IntTriv 9], bod = LetPrimCallT {binds = [(Var "flt2",IntTy)], prim = AddP, rands = [VarTriv (Var "fltPrm0"),VarTriv (Var "fltPrm1")], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "flt2")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}}}))}
-test6 = codegenProg False testprog6
-testprog7 = Prog {fundefs = [FunDecl {funName = Var "add2", funArgs = [(Var "a", IntTy), (Var "b", IntTy)], funRetTy = IntTy, funBody = LetPrimCallT {binds = [(Var "res", IntTy)], prim = AddP, rands = [VarTriv (Var "a"), VarTriv (Var "b")], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "res")], bod = RetValsT [VarTriv (Var "res")]}}}],
-                   mainExp = Just (PrintExp (LetCallT {binds = [], rator = Var "add2", rands = [IntTriv 2,IntTriv 2], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}))}
-test7 = codegenProg False testprog7
-testprog8 = Prog {fundefs = [FunDecl {funName = Var "add2", funArgs = [(Var "a", IntTy), (Var "b", IntTy)], funRetTy = IntTy, funBody = LetPrimCallT {binds = [(Var "res", IntTy)], prim = AddP, rands = [VarTriv (Var "a"), VarTriv (Var "b")], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "res")], bod = RetValsT [VarTriv (Var "res")]}}}],
-                   mainExp = Just (PrintExp (RetValsT []))}
-test8 = codegenProg False testprog8
-testprog9 = Prog {fundefs = [FunDecl {funName = Var "add2", funArgs = [(Var "pvrtmp3",IntTy),(Var "pvrtmp4",IntTy)], funRetTy = IntTy, funBody = LetPrimCallT {binds = [(Var "flt5",IntTy)], prim = AddP, rands = [VarTriv (Var "pvrtmp3"),VarTriv (Var "pvrtmp4")], bod = RetValsT [VarTriv (Var "flt5")]}}], mainExp = Just (PrintExp (LetCallT {binds = [(Var "tctmp2",IntTy)], rator = Var "add2", rands = [IntTriv 40,IntTriv 2], bod = LetPrimCallT {binds = [], prim = PrintInt, rands = [VarTriv (Var "tctmp2")], bod = LetPrimCallT {binds = [], prim = PrintString "\n", rands = [], bod = RetValsT []}}}))}
-test9 = codegenProg False testprog9
+codegenTriv t = error $ "Triv: Not implemented yet: " ++ show t

@@ -16,9 +16,11 @@ import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 import qualified Data.Foldable as F
 
+
 -- | llvm-general
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Global as G
+import qualified LLVM.General.AST.Constant as C
 
 
 -- | The code generation state for our AST.
@@ -27,11 +29,11 @@ import qualified LLVM.General.AST.Global as G
 -- AST, and one for each of the basic blocks that are generated during the walk.
 --
 data CodeGenState = CodeGenState
-  { blockChain  :: Seq BlockState            -- ^ blocks for this function
-  , globalTable :: Map String G.Global       -- ^ external functions symbol table
-  , structs     :: Map String AST.Definition -- ^ structs
-  , localVars   :: Map String AST.Operand    -- ^ local vars
-  , next        :: Word                      -- ^ names supply
+  { blockChain     :: Seq BlockState            -- ^ blocks for this function
+  , globalFns      :: Map String G.Global       -- ^ external functions symbol table
+  , globalTypeDefs :: Map String AST.Definition -- ^ structs
+  , localVars      :: Map String AST.Operand    -- ^ local vars
+  , next           :: Word                      -- ^ names supply
   } deriving Show
 
 
@@ -48,8 +50,8 @@ newtype CodeGen a = CodeGen { runCodegen :: State CodeGenState a }
 initialCodeGenState :: CodeGenState
 initialCodeGenState = CodeGenState
                      { blockChain  = Seq.empty
-                     , globalTable = Map.empty
-                     , structs     = Map.empty
+                     , globalFns = Map.empty
+                     , globalTypeDefs     = Map.empty
                      , localVars   = Map.empty
                      , next        = 0
                      }
@@ -59,13 +61,13 @@ initialCodeGenState = CodeGenState
 genModule :: CodeGen a -> AST.Module
 genModule x =
   let (_ , st) = runState (runCodegen x) initialCodeGenState
-      globals = map AST.GlobalDefinition (Map.elems $ globalTable st)
+      globals = map AST.GlobalDefinition (Map.elems $ globalFns st)
       name  = "first-module"
   in AST.Module
     {
       AST.moduleName = name
     , AST.moduleSourceFileName = []
-    , AST.moduleDefinitions = (Map.elems $ structs st) ++ globals
+    , AST.moduleDefinitions = (Map.elems $ globalTypeDefs st) ++ globals
     , AST.moduleDataLayout = Nothing
     , AST.moduleTargetTriple = Just "x86_64-unknown-linux-gnu"
     }
@@ -81,7 +83,7 @@ genBlocks m = evalState (runCodegen m) initialCodeGenState
 -- | initial block chain
 --
 initBlockChain :: Seq BlockState
-initBlockChain = Seq.singleton $ BlockState (AST.Name"entry") Seq.empty Nothing
+initBlockChain = Seq.empty
 
 
 -- | Create a new basic block, but don't yet add it to the block chain. You need
@@ -117,7 +119,6 @@ newBlock nm =
     let idx     = Seq.length (blockChain s)
         label   = let (h,t) = break (== '.') nm in (h ++ shows idx t)
         next    = BlockState (AST.Name label) Seq.empty Nothing
-        -- err     = error "Block has no terminator"
     in
     ( next, s )
 
@@ -138,8 +139,6 @@ createBlocks
   = state
   $ \s -> let s'     = s { blockChain = initBlockChain, next = 0 }
               blocks = makeBlock `fmap` blockChain s
-              -- m      = Seq.length (blockChain s)
-              -- n      = F.foldl' (\i b -> i + Seq.length (instructions b)) 0 (blockChain s)
           in
           ( F.toList blocks , s' )
   where
