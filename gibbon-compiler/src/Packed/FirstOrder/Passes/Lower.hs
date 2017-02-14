@@ -77,7 +77,7 @@ genUnpacker DDef{tyName, dataCons} = do
   tag  <- gensym $ toVar "tag"
   tail <- gensym $ toVar "tail"
   alts <- genAlts dataCons tail tag 0
-  bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
+  bod  <- return $ T.LetPrimCallT [(tag, T.IntTy), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
             T.Switch (T.VarTriv tag) alts Nothing
   return T.FunDecl{ T.funName  = mkUnpackerName (fromVar tyName),
                     T.funArgs  = [(p, T.CursorTy)],
@@ -282,7 +282,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
         alts <- mapM doalt rest
         (_,last') <- doalt last
         return $
-         T.LetPrimCallT [(tagtmp,T.TagTyPacked),(ctmp,T.CursorTy)] T.ReadTag [T.VarTriv scrut] $
+         T.LetPrimCallT [(tagtmp,T.IntTy),(ctmp,T.CursorTy)] T.ReadTag [T.VarTriv scrut] $
           T.Switch (T.VarTriv tagtmp)
                    (T.TagAlts alts)
                    (Just last')
