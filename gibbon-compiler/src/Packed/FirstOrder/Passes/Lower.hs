@@ -60,7 +60,7 @@ genDcons [] tail fields     = do
 
 genAlts :: [(DataCon,[L1.Ty])] -> Var -> Var -> Int64 -> SyM T.Alts
 genAlts ((_, typs):xs) tail tag n = do
-  curTail <- genDcons typs tail [(T.IntTy, T.VarTriv tag)]
+  curTail <- genDcons typs tail [(T.TagTyPacked, T.VarTriv tag)]
   alts    <- genAlts xs tail tag (n+1)
   case alts of
     T.IntAlts []   -> return $ T.IntAlts [(n::Int64, curTail)]
@@ -148,7 +148,7 @@ genPrinter DDef{tyName, dataCons} = do
   tag  <- gensym $ toVar "tag"
   tail <- gensym $ toVar "tail"
   alts <- genAltPrinter dataCons tail 0
-  bod  <- return $ T.LetPrimCallT [(tag, T.IntTy), (tail, T.CursorTy)] T.ReadInt [(T.VarTriv p)] $
+  bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadInt [(T.VarTriv p)] $
             T.Switch (T.VarTriv tag) alts Nothing
   return T.FunDecl{ T.funName  = mkPrinterName (fromVar tyName),
                     T.funArgs  = [(p, T.CursorTy)],
@@ -331,7 +331,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
 
       return $
         T.LetPrimCallT
-          [(tag_bndr, T.IntTy), (tail_bndr, T.CursorTy)]
+          [(tag_bndr, T.TagTyPacked), (tail_bndr, T.CursorTy)]
           T.ReadInt
           [e_triv]
           (T.Switch (T.VarTriv tag_bndr) (T.IntAlts alts') (Just def))
@@ -345,7 +345,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
 
           field_tys= L.map typ (lookupDataCon ddefs k)
           fields0  = fragileZip field_tys (L.map (triv "MkPackedE args") ls)
-          fields   = (T.IntTy, T.IntTriv (fromIntegral tag)) : fields0
+          fields   = (T.TagTyPacked, T.IntTriv (fromIntegral tag)) : fields0
           --  | is_prod   = fields0
           --  | otherwise = (T.IntTy, T.IntTriv (fromIntegral tag)) : fields0
 
