@@ -130,6 +130,8 @@ typedef char TagTyPacked;  // Must be consistent with codegen in Target.hs
 typedef char TagTyBoxed;   // Must be consistent with codegen in Target.hs
 typedef long long IntTy;
 typedef IntTy SymTy;
+typedef char* PtrTy;
+typedef char* CursorTy;
 
 typedef struct dict_item {
   struct dict_item * next;
