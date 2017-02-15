@@ -192,8 +192,8 @@ rewriteReturns tl bnds =
 
 codegenTriv :: Triv -> C.Exp
 codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
-codegenTriv (IntTriv i) = [cexp| $llint:i |]  -- Must be consistent with codegenTy IntTy
-codegenTriv (TagTriv i) = [cexp| ( $ty:(codegenTy TagTyPacked) )$i |]  -- Must be consistent with codegenTy TagTyPacked
+codegenTriv (IntTriv i) = [cexp| ( $ty:(codegenTy IntTy) ) $int:i |]
+codegenTriv (TagTriv i) = [cexp| ( $ty:(codegenTy TagTyPacked) )$i |]
 
 
 -- | The central codegen function.
@@ -366,19 +366,19 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                  WriteTag -> let [(outV,CursorTy)] = bnds
                                  [(TagTriv tag),(VarTriv cur)] = rnds in pure
                              [ C.BlockStm [cstm| *($id:cur) = $tag; |]
-                             , C.BlockDecl [cdecl| char* $id:outV = $id:cur + 1; |] ]
+                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:cur + 1; |] ]
                  WriteInt -> let [(outV,CursorTy)] = bnds
                                  [val,(VarTriv cur)] = rnds in pure
                              [ C.BlockStm [cstm| *( $ty:(codegenTy IntTy)  *)($id:cur) = $(codegenTriv val); |]
-                             , C.BlockDecl [cdecl| char* $id:outV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
+                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
                  ReadTag -> let [(tagV,TagTyPacked),(curV,CursorTy)] = bnds
                                 [(VarTriv cur)] = rnds in pure
                             [ C.BlockDecl [cdecl| $ty:(codegenTy TagTyPacked) $id:tagV = *($id:cur); |]
-                            , C.BlockDecl [cdecl| char* $id:curV = $id:cur + 1; |] ]
+                            , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:curV = $id:cur + 1; |] ]
                  ReadInt -> let [(valV,valTy),(curV,CursorTy)] = bnds
                                 [(VarTriv cur)] = rnds in pure
                             [ C.BlockDecl [cdecl| $ty:(codegenTy valTy) $id:valV = *( $ty:(codegenTy valTy) *)($id:cur); |]
-                            , C.BlockDecl [cdecl| char* $id:curV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
+                            , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:curV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
 
                  GetFirstWord ->
                   let [ptr] = rnds in
@@ -485,16 +485,15 @@ genSwitch tr alts lastE ty =
        let body = mkBlock [ C.BlockStm a | a <- alts' ]
        return $ [C.BlockStm [cstm| switch ( $exp:(codegenTriv tr) ) $stm:body |]]
 
-
-
+-- | The identifier after typename refers to typedefs defined in rts.c
+--
 codegenTy :: Ty -> C.Type
-                  -- ARGH: C-quote won't allow us to use a typedef here, e.g. "IntTy":
-codegenTy IntTy = [cty|long long|] -- Must be consistent IntTy, rts.c
-codegenTy TagTyPacked = [cty|char|]      -- Must be consistent TagTyPacked, rts.c
-codegenTy TagTyBoxed  = codegenTy IntTy  -- Must be consistent TagTyBoxed, rts.c
-codegenTy SymTy = [cty|long long|] -- Must be consistent SymTy, rts.c
-codegenTy PtrTy = [cty|char*|] -- Hack, this could be void* if we have enough casts. [2016.11.06]
-codegenTy CursorTy = [cty|char*|]
+codegenTy IntTy = [cty|typename IntTy|]
+codegenTy TagTyPacked = [cty|typename TagTyPacked|]
+codegenTy TagTyBoxed  = [cty|typename TagTyBoxed|]
+codegenTy SymTy = [cty|typename SymTy|]
+codegenTy PtrTy = [cty|typename PtrTy|] -- char* - Hack, this could be void* if we have enough casts. [2016.11.06]
+codegenTy CursorTy = [cty|typename CursorTy|]
 codegenTy (ProdTy []) = [cty|void*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts
