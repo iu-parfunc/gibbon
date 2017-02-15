@@ -194,7 +194,7 @@ rewriteReturns tl bnds =
 codegenTriv :: Triv -> C.Exp
 codegenTriv (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
 codegenTriv (IntTriv i) = [cexp| $llint:i |]  -- Must be consistent with codegenTy IntTy
-codegenTriv (TagTriv i) = [cexp| (char)$i |]  -- Must be consistent with codegenTy TagTyPacked
+codegenTriv (TagTriv i) = [cexp| ( $ty:(codegenTy TagTyPacked) )$i |]  -- Must be consistent with codegenTy TagTyPacked
 
 
 -- | The central codegen function.
@@ -376,9 +376,9 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                 [(VarTriv cur)] = rnds in pure
                             [ C.BlockDecl [cdecl| $ty:(codegenTy TagTyPacked) $id:tagV = *($id:cur); |]
                             , C.BlockDecl [cdecl| char* $id:curV = $id:cur + 1; |] ]
-                 ReadInt -> let [(valV,IntTy),(curV,CursorTy)] = bnds
+                 ReadInt -> let [(valV,valTy),(curV,CursorTy)] = bnds
                                 [(VarTriv cur)] = rnds in pure
-                            [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:valV = *( $ty:(codegenTy IntTy) *)($id:cur); |]
+                            [ C.BlockDecl [cdecl| $ty:(codegenTy valTy) $id:valV = *( $ty:(codegenTy valTy) *)($id:cur); |]
                             , C.BlockDecl [cdecl| char* $id:curV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
 
                  GetFirstWord ->
