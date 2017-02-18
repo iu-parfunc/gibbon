@@ -48,6 +48,7 @@ codegenProg' prg@(Prog fns body) = do
         -- TODO(cskksc): why is this required ?
         _ <- addStructs prg
         mapM_ declare fns'
+
         entry <- newBlock "entry"
         setBlock entry
         _ <- case body of
@@ -86,7 +87,9 @@ codegenFun (FunDecl fnName args retTy tail) = do
          , G.parameters  = ([G.Parameter (toLLVMTy ty) (AST.Name $ fromVar v) []
                             | (v, ty) <- args],
                             False)
-         , G.returnType  = toLLVMTy retTy
+         , G.returnType  = case retTy of
+                             ProdTy x -> AST.VoidType
+                             _ -> toLLVMTy retTy
          , G.basicBlocks = fnBody
          }
 
@@ -153,11 +156,10 @@ codegenTail (Switch trv alts def) =
       _ <- switch trv' (blockLabel switchDefault) dests
 
       -- generate alt blocks
-      _ <- mapM (\(_,t) -> do
+      mapM_ (\(_,t) -> do
                     x <- newBlock "switch.case"
                     setBlock x
-                    codegenTail t)
-           alts''
+                    codegenTail t) alts''
 
       -- generate the default block
       setBlock switchDefault
@@ -175,23 +177,20 @@ codegenTail (LetCallT bnds rator rnds body) = do
 
 codegenTail (LetAllocT lhs vals body) =
   let structTy' = toPtrTy $ structTy $ map fst vals
+      ptrTy     = toLLVMTy PtrTy
+      lhsV      = fromVar lhs
   in do
-    size <- sizeof structTy'
-    -- char* lhs = malloc ...
-    a <- allocate (toLLVMTy PtrTy) Nothing
-    b <- call malloc Nothing [size]
-    _ <- store a b
+    -- PtrTy lhs = malloc ...
+    mem <- sizeof structTy' >>= \size -> call malloc Nothing [size]
+    lhs' <- assign (Just $ lhsV) ptrTy mem >>= convert structTy'
 
     -- assign struct fields
-    forM_ (zip vals [0..]) $ \((_,v),i) -> do
-      c <- load (toLLVMTy PtrTy) Nothing a
-      d <- bitcast structTy' c
+    forM_ (zip vals [0..]) $ \((ty,v),i) -> do
       -- When indexing into a (optionally packed) structure, only i32 integer
       -- constants are allowed
-      e <- getElemPtr True d [constop_ $ int32_ 0, constop_ $ int32_ i]
-      f <- codegenTriv v
-      _ <- store e f
-      load (toLLVMTy PtrTy) (Just $ fromVar lhs) a
+      field <- getElemPtr True lhs' [constop_ $ int32_ 0, constop_ $ int32_ i]
+      triv <- codegenTriv v >>= convert (toLLVMTy ty)
+      store field triv
 
     codegenTail body
 

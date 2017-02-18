@@ -49,11 +49,11 @@ newtype CodeGen a = CodeGen { runCodegen :: State CodeGenState a }
 
 initialCodeGenState :: CodeGenState
 initialCodeGenState = CodeGenState
-                     { blockChain  = Seq.empty
-                     , globalFns = Map.empty
-                     , globalTypeDefs     = Map.empty
-                     , localVars   = Map.empty
-                     , next        = 0
+                     { blockChain     = Seq.empty
+                     , globalFns      = Map.empty
+                     , globalTypeDefs = Map.empty
+                     , localVars      = Map.empty
+                     , next           = 0
                      }
 
 

@@ -6,10 +6,10 @@
 --
 
 module Packed.FirstOrder.Passes.LLVM.Instruction (
-    declare, getvar, getLastLocal, addDefinition
+    declare, getvar, getLastLocal, addTypeDef
   , instr, globalOp, localRef
   , allocate, store, load, getElemPtr, call, add, mul, sub
-  , eq, neq, ifThenElse, ptrToInt, bitcast
+  , eq, neq, ifThenElse, ptrToInt, bitcast, sext
   , int_, int32_, char_, constop_, string_
 ) where
 
@@ -35,8 +35,8 @@ import Packed.FirstOrder.Passes.LLVM.Terminator
 
 -- | Add a definition to the module's global definitions
 --
-addDefinition :: String -> AST.Definition -> CodeGen ()
-addDefinition nm d =
+addTypeDef :: String -> AST.Definition -> CodeGen ()
+addTypeDef nm d =
   modify $ \s -> s { globalTypeDefs = Map.insert nm d (globalTypeDefs s)}
 
 
@@ -148,13 +148,18 @@ getElemPtr inbounds addr idxs = instr T.i64 Nothing $ I.GetElementPtr inbounds a
 
 
 -- | Convert value to type ty without changing any bits
-bitcast :: T.Type -> AST.Operand -> CodeGen AST.Operand
-bitcast ty op = instr ty Nothing $ I.BitCast op ty []
+bitcast :: Maybe String -> T.Type -> AST.Operand -> CodeGen AST.Operand
+bitcast nm ty op = instr ty nm $ I.BitCast op ty []
 
 -- | Convert pointer to Integer type
 --
-ptrToInt :: Maybe String -> [AST.Operand] -> CodeGen AST.Operand
-ptrToInt nm [x] = instr T.VoidType nm $ I.PtrToInt x T.i64 []
+ptrToInt :: Maybe String -> AST.Operand -> CodeGen AST.Operand
+ptrToInt nm x = instr T.VoidType nm $ I.PtrToInt x T.i64 []
+
+-- | Extend value to the type ty (both integer types)
+--
+sext :: Maybe String -> T.Type -> AST.Operand -> CodeGen AST.Operand
+sext nm ty op = instr T.VoidType nm $ I.SExt op ty []
 
 
 -- | Add a function call to the execution stream

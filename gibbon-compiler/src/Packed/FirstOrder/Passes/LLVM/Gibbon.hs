@@ -1,7 +1,7 @@
 module Packed.FirstOrder.Passes.LLVM.Gibbon (
     addp, subp, mulp, eqp, callp
   , addStructs, sizeParam, toLLVMTy, printString, toIfPred
-  , readTag, readInt, sizeof, structName, structTy, toPtrTy
+  , readTag, readInt, sizeof, structName, structTy, toPtrTy, convert, assign
 ) where
 
 -- | standard library
@@ -128,7 +128,7 @@ toIfPred triv =
 -- | Add all required structs
 --
 addStructs :: Prog -> CodeGen ()
-addStructs prog = mapM_ ((\(nm,d) -> addDefinition nm d) . makeStruct) $
+addStructs prog = mapM_ ((\(nm,d) -> addTypeDef nm d) . makeStruct) $
                   harvestStructTys prog
 
 
@@ -143,76 +143,81 @@ makeStruct tys = (nm, AST.TypeDefinition (AST.Name nm) (Just $ T.StructureType F
 
 -- | Read one byte from the cursor and advance it
 --
--- char tagV = *cur;
--- char *curV = cur + 1;
+-- TagTyPacked tagV = *(IntTy/TagTyPacked *) cur;
+-- CursorTy curV = cur + 1;
 --
 readTag :: [(Var,Ty)] -> [AST.Operand] -> CodeGen BlockState
 readTag [(tagV,TagTyPacked),(curV,CursorTy)] [cur] =
-  let tagTy = toLLVMTy TagTyPacked -- char
-      tagVV = fromVar tagV
-      curTy = toLLVMTy CursorTy -- char*
-      curVV = fromVar curV
-  in do
-    -- store the input char* somewhere
-    a <- allocate curTy Nothing
-    _ <- store a cur
-    b <- load curTy Nothing a
-
-    -- char tagV = *cur;
-    c <- load tagTy Nothing b
-    tagV' <- allocate tagTy Nothing
-    _ <- store tagV' c
-    _ <- load tagTy (Just tagVV) tagV'
-
-    -- char *curV = cur + 1
-    _ <- load curTy Nothing b
-    d <- getElemPtr True b [constop_ $ int_ 1]
-    curV' <- allocate curTy Nothing
-    _ <- store curV' d
-    _ <- load curTy (Just curVV) curV'
-
-    return_
+  readCursor [(tagV, TagTyPacked),(curV, CursorTy)] cur 1
 
 
 -- | Read an 8 byte Int from the cursor and advance
 --
--- long long valV = *(long long *) cur;
--- char *curV = cur + sizeof(long long);
+-- (IntTy/TagTyPacked) valV = *(IntTy/TagTyPacked *) cur
+-- CursorTy curV = cur + sizeof(IntTy)
 --
 readInt :: [(Var,Ty)] -> [AST.Operand] -> CodeGen BlockState
-readInt [(valV,IntTy),(curV,CursorTy)] [cur] =
-  let valTy = toLLVMTy IntTy
-      valVV = fromVar valV
-      curTy = toLLVMTy CursorTy
-      curVV = fromVar curV
+readInt [(valV,valTy),(curV,CursorTy)] [cur] =
+  readCursor [(valV,valTy), (curV,CursorTy)] cur 8
+
+
+readCursor :: [(Var, Ty)] -> AST.Operand -> Integer -> CodeGen BlockState
+readCursor [(valV', valTy'), (curV', curTy')] cur offset =
+  let valTy = toLLVMTy valTy'
+      valV = fromVar valV'
+      curTy = toLLVMTy curTy'
+      curV = fromVar curV'
   in do
-    -- store the input char* somewhere
-    a <- allocate curTy Nothing
-    _ <- store a cur
-    c <- load curTy Nothing a -- %4
+    cur' <- assign Nothing curTy cur
 
-    -- long long valV = *(long long *) cur;
-    d <- bitcast (toPtrTy valTy) c
-    e <- load valTy Nothing d
+    -- valTy valV = *cur
+    valVV <- load valTy Nothing cur' >>= convert valTy
+    _ <- assign (Just valV) valTy valVV
 
-    valV' <- allocate valTy Nothing
-    _ <- store valV' e
-    _ <- load valTy (Just valVV) valV'
-
-    -- char *curV = cur + sizeof(long long);
-    curV' <- allocate curTy Nothing
-    -- TODO(cskksc): remove hard coded 8
-    f <- getElemPtr True c [constop_ $ int_ 8]
-    _ <- store curV' f
-    _ <- load curTy (Just curVV) curV'
+    -- curTy curV = cur + offset;
+    curVV <- getElemPtr True cur' [constop_ $ int_ offset]
+    _ <- assign (Just curV) curTy curVV
     return_
 
+
+-- | ty _var_ = val
+--
+assign :: Maybe String -> T.Type -> AST.Operand -> CodeGen AST.Operand
+assign nm ty val = do
+  x <- allocate ty nm
+  _ <- store x val
+  load ty nm x
+
+
+-- | Generate instructions to convert op from type-of-op -> toTy
+--
+convert :: T.Type -> AST.Operand -> CodeGen AST.Operand
+convert toTy op
+  | intP toTy && intP fromTy = sext Nothing toTy op
+  | otherwise                = bitcast Nothing toTy op
+  where fromTy = getOpTy op
+        intP = (`elem` [T.i8, T.i32, T.i64])
+
+
+-- |
+getOpTy :: AST.Operand -> T.Type
+getOpTy (AST.LocalReference ty' _) = ty'
+getOpTy (AST.ConstantOperand c) = getConstTy c
+getOpTy op = error $ "getOpTy: Not implemented " ++ show op
+
+
+-- |
+getConstTy :: C.Constant -> T.Type
+getConstTy (C.Int bits _) = case bits of
+                                8  -> T.i8
+                                32 -> T.i32
+                                64 -> T.i64
 
 -- |
 sizeof :: T.Type -> CodeGen AST.Operand
 sizeof ty = do
   a <- getElemPtr True (AST.ConstantOperand $ C.Null ty) [constop_ $ int_ 1]
-  ptrToInt Nothing [a]
+  ptrToInt Nothing a
 
 
 -- |
