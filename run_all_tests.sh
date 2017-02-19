@@ -83,6 +83,7 @@ racket $top/ASTBenchmarks/tests/*.rkt
 # raco make -v $top/kdTree-BenchMark/racket/*.rkt
 racket $top/kdTree-BenchMark/racket/traversal.gib
 
+if [ "$DOCKER" == "1" ]; then
 
 set +x; echo
 echo "  Gibbon Compiler (1/2): build & unit tests"
@@ -100,7 +101,7 @@ cd $top/gibbon-compiler/examples
 make test $MKPARARGS
 # Turning of -j for now [2016.11.06]
 
-
+fi
 
 if [ "$NOBINTREE" != "1" ]; then 
   set +x; echo

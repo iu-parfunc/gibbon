@@ -45,6 +45,7 @@ library
                   Packed.FirstOrder.Passes.LLVM.Gibbon
                   Packed.FirstOrder.Passes.LLVM.Instruction
                   Packed.FirstOrder.Passes.LLVM.Terminator
+                  Packed.FirstOrder.Passes.LLVM.Type
 
 
 -- First attempt, slated for removal:

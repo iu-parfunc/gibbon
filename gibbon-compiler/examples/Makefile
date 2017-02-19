@@ -114,11 +114,15 @@ minimap:
 
 # Assumes answers and build already available:
 core_tests:
-	$(MAKE) run_tests 
+	$(MAKE) run_tests
 	$(MAKE) run_tests_packed
 	$(MAKE) run_tests_interp1
 	$(MAKE) run_tests_interp2
+ifeq ($(DOCKER),1)
+	@echo "Running LLVM tests ..."
 	$(MAKE) run_tests_llvm
+else
+endif
 
 #	$(MAKE) racket_valid
 # Need methodology for this.
