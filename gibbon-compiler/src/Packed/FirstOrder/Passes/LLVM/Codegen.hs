@@ -76,7 +76,7 @@ codegenFun (FunDecl fnName args retTy tail) = do
     forM_ args $ \(v,ty) -> do
       modify $ \s ->
         let nm  = fromVar v
-            ty' = toLLVMTy ty
+            ty' = typeOf ty
         in s { localVars = Map.insert nm (localRef ty' (AST.Name nm)) (localVars s)}
     _ <- codegenTail tail
     createBlocks
@@ -84,12 +84,12 @@ codegenFun (FunDecl fnName args retTy tail) = do
   -- return the generated function
   return G.functionDefaults
          { G.name        = AST.Name fnName'
-         , G.parameters  = ([G.Parameter (toLLVMTy ty) (AST.Name $ fromVar v) []
+         , G.parameters  = ([G.Parameter (typeOf ty) (AST.Name $ fromVar v) []
                             | (v, ty) <- args],
                             False)
          , G.returnType  = case retTy of
                              ProdTy x -> AST.VoidType
-                             _ -> toLLVMTy retTy
+                             _ -> typeOf retTy
          , G.basicBlocks = fnBody
          }
 
@@ -177,7 +177,7 @@ codegenTail (LetCallT bnds rator rnds body) = do
 
 codegenTail (LetAllocT lhs vals body) =
   let structTy' = toPtrTy $ structTy $ map fst vals
-      ptrTy     = toLLVMTy PtrTy
+      ptrTy     = typeOf PtrTy
       lhsV      = fromVar lhs
   in do
     -- PtrTy lhs = malloc ...
@@ -189,7 +189,7 @@ codegenTail (LetAllocT lhs vals body) =
       -- When indexing into a (optionally packed) structure, only i32 integer
       -- constants are allowed
       field <- getElemPtr True lhs' [constop_ $ int32_ 0, constop_ $ int32_ i]
-      triv <- codegenTriv v >>= convert (toLLVMTy ty)
+      triv <- codegenTriv v >>= convert (typeOf ty)
       store field triv
 
     codegenTail body

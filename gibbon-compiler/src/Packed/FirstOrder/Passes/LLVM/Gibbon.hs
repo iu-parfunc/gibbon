@@ -1,6 +1,6 @@
 module Packed.FirstOrder.Passes.LLVM.Gibbon (
     addp, subp, mulp, eqp, callp
-  , addStructs, sizeParam, toLLVMTy, printString, toIfPred
+  , addStructs, sizeParam, typeOf, printString, toIfPred
   , readTag, readInt, sizeof, structName, structTy, toPtrTy, convert, assign
 ) where
 
@@ -15,6 +15,7 @@ import Packed.FirstOrder.Common (fromVar)
 import Packed.FirstOrder.Passes.LLVM.Monad
 import Packed.FirstOrder.Passes.LLVM.Instruction
 import Packed.FirstOrder.Passes.LLVM.Terminator
+import Packed.FirstOrder.Passes.LLVM.Type
 import qualified Packed.FirstOrder.Passes.LLVM.Global as LG
 
 -- | llvm-general
@@ -63,22 +64,26 @@ sizeParam [(v,ty)] = do
   let nm = fromVar v
   _     <- load lty (Just nm) op
   return_
-  where lty = toLLVMTy ty
+  where lty = typeOf ty
         op  = globalOp lty (AST.Name "global_size_param")
 
 
--- | Convert Gibbon types to LLVM types
+-- | Convert Gibbon types to LLVM types.
 --
-toLLVMTy :: Ty -> T.Type
-toLLVMTy IntTy       = T.i64                 -- ^ long long
-toLLVMTy TagTyPacked = T.i8                  -- ^ char
-toLLVMTy TagTyBoxed  = toLLVMTy IntTy        -- ^ long long
-toLLVMTy SymTy       = T.i64                 -- ^ long long
-toLLVMTy PtrTy       = toPtrTy T.i8          -- ^ char*
-toLLVMTy CursorTy    = toPtrTy T.i8          -- ^ char*
-toLLVMTy (ProdTy []) = toPtrTy T.VoidType    -- ^ void*
-toLLVMTy (ProdTy ts) = T.StructureType False $ map toLLVMTy ts
-toLLVMTy (SymDictTy _t) = __
+-- Should be defined in Type.hs. But this would be right place to
+-- define it, if we ever convert this into an independent library
+-- as an abstraction over llvm-general
+--
+instance TypeOf Ty where
+  typeOf IntTy       = T.i64                 -- ^ long long
+  typeOf TagTyPacked = T.i8                  -- ^ char
+  typeOf TagTyBoxed  = typeOf IntTy          -- ^ long long
+  typeOf SymTy       = T.i64                 -- ^ long long
+  typeOf PtrTy       = toPtrTy T.i8          -- ^ char*
+  typeOf CursorTy    = toPtrTy T.i8          -- ^ char*
+  typeOf (ProdTy []) = toPtrTy T.VoidType    -- ^ void*
+  typeOf (ProdTy ts) = T.StructureType False $ map typeOf  ts
+  typeOf (SymDictTy _t) = __
 
 
 -- | Convert the type to a pointer type
@@ -138,7 +143,7 @@ makeStruct :: [Ty] -> (String, AST.Definition)
 makeStruct [] = __
 makeStruct tys = (nm, AST.TypeDefinition (AST.Name nm) (Just $ T.StructureType False elememtTypes))
   where nm = structName tys
-        elememtTypes = map toLLVMTy tys
+        elememtTypes = map typeOf tys
 
 
 -- | Read one byte from the cursor and advance it
@@ -162,20 +167,20 @@ readInt [(valV,valTy),(curV,CursorTy)] [cur] =
 
 
 readCursor :: [(Var, Ty)] -> AST.Operand -> Integer -> CodeGen BlockState
-readCursor [(valV', valTy'), (curV', curTy')] cur offset =
-  let valTy = toLLVMTy valTy'
+readCursor [(valV', valTy'), (curV', curTy')] cur' offset =
+  let valTy = typeOf valTy'
       valV = fromVar valV'
-      curTy = toLLVMTy curTy'
+      curTy = typeOf curTy'
       curV = fromVar curV'
   in do
-    cur' <- assign Nothing curTy cur
+    cur <- assign Nothing curTy cur'
 
     -- valTy valV = *cur
-    valVV <- load valTy Nothing cur' >>= convert valTy
+    valVV <- load valTy Nothing cur >>= convert valTy
     _ <- assign (Just valV) valTy valVV
 
     -- curTy curV = cur + offset;
-    curVV <- getElemPtr True cur' [constop_ $ int_ offset]
+    curVV <- getElemPtr True cur [constop_ $ int_ offset]
     _ <- assign (Just curV) curTy curVV
     return_
 
@@ -195,29 +200,12 @@ convert :: T.Type -> AST.Operand -> CodeGen AST.Operand
 convert toTy op
   | intP toTy && intP fromTy = sext Nothing toTy op
   | otherwise                = bitcast Nothing toTy op
-  where fromTy = getOpTy op
+  where fromTy = typeOf op
         intP = (`elem` [T.i8, T.i32, T.i64])
-
-
--- |
-getOpTy :: AST.Operand -> T.Type
-getOpTy (AST.LocalReference ty' _) = ty'
-getOpTy (AST.ConstantOperand c) = getConstTy c
-getOpTy op = error $ "getOpTy: Not implemented " ++ show op
-
-
--- |
-getConstTy :: C.Constant -> T.Type
-getConstTy (C.Int bits _) = case bits of
-                                8  -> T.i8
-                                32 -> T.i32
-                                64 -> T.i64
 
 -- |
 sizeof :: T.Type -> CodeGen AST.Operand
-sizeof ty = do
-  a <- getElemPtr True (AST.ConstantOperand $ C.Null ty) [constop_ $ int_ 1]
-  ptrToInt Nothing a
+sizeof ty = getElemPtr True (constop_ $ C.Null ty) [constop_ $ int_ 1] >>= ptrToInt Nothing
 
 
 -- |
