@@ -17,9 +17,6 @@ extra-deps:
 - llvm-general-pure-3.9.0.0
 - llvm-general-3.9.0.0
 
-ghc-options:
-  llvm-general: -pgml g++ -optl-Wl,-lLLVM
-
 flags: {}
 extra-package-dbs: []
 
