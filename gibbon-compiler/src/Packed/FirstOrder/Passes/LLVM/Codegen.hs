@@ -52,7 +52,7 @@ codegenProg' prg@(Prog fns body) = do
         entry <- newBlock "entry"
         setBlock entry
         _ <- case body of
-          Just (PrintExp t) -> codegenTail t
+          Just (PrintExp t) -> codegenTail t IntTy
           _ -> (retval_ . constop_ . int_) 0
         createBlocks
 
@@ -78,7 +78,7 @@ codegenFun (FunDecl fnName args retTy tail) = do
         let nm  = fromVar v
             ty' = typeOf ty
         in s { localVars = Map.insert nm (localRef ty' (AST.Name nm)) (localVars s)}
-    _ <- codegenTail tail
+    _ <- codegenTail tail retTy
     createBlocks
 
   -- return the generated function
@@ -87,24 +87,27 @@ codegenFun (FunDecl fnName args retTy tail) = do
          , G.parameters  = ([G.Parameter (typeOf ty) (AST.Name $ fromVar v) []
                             | (v, ty) <- args],
                             False)
-         , G.returnType  = case retTy of
-                             ProdTy x -> AST.VoidType
-                             _ -> typeOf retTy
+         , G.returnType  = typeOf retTy
          , G.basicBlocks = fnBody
          }
 
 
 -- | Generate LLVM instructions for Tail
 --
-codegenTail :: Tail -> CodeGen BlockState
-codegenTail (RetValsT []) = return_
-codegenTail (RetValsT [t]) = do
+codegenTail :: Tail -> Ty -> CodeGen BlockState
+codegenTail (RetValsT []) _ = return_
+codegenTail (RetValsT [t]) _ = do
   t' <- codegenTriv t
   retval_ t'
--- TODO(cskksc): handle multiple return values (structs)
-codegenTail (RetValsT ts) = return_
+codegenTail (RetValsT ts) (ProdTy tys) =
+  let structTy = typeOf tys
+  in do
+    ts' <- mapM codegenTriv ts
+    struct <- populateStruct structTy Nothing ts'
+    struct' <- convert (toPtrTy $ typeOf $ ProdTy tys) struct
+    load (typeOf $ ProdTy tys) Nothing struct' >>= retval_
 
-codegenTail (LetPrimCallT bnds prm rnds body) = do
+codegenTail (LetPrimCallT bnds prm rnds body) ty = do
   rnds' <- mapM codegenTriv rnds
   _     <- case prm of
              PrintInt -> do
@@ -121,13 +124,13 @@ codegenTail (LetPrimCallT bnds prm rnds body) = do
              ReadTag -> readTag bnds rnds'
              ReadInt -> readInt bnds rnds'
              _ -> error $ "Prim: Not implemented yet: " ++ show prm
-  codegenTail body
+  codegenTail body ty
 
-codegenTail (IfT test consq els') = do
-  _ <- ifThenElse (toIfPred test) (codegenTail consq) (codegenTail els')
+codegenTail (IfT test consq els') ty = do
+  _ <- ifThenElse (toIfPred test) (codegenTail consq ty) (codegenTail els' ty)
   return_
 
-codegenTail (Switch trv alts def) =
+codegenTail (Switch trv alts def) ty =
   let (alts', def') = case def of
                         Nothing -> let (rest,lastone) = splitAlts alts
                                    in  (rest, altTail lastone)
@@ -159,13 +162,13 @@ codegenTail (Switch trv alts def) =
       mapM_ (\(_,t) -> do
                     x <- newBlock "switch.case"
                     setBlock x
-                    codegenTail t) alts''
+                    codegenTail t ty) alts''
 
       -- generate the default block
       setBlock switchDefault
-      codegenTail def'
+      codegenTail def' ty
 
-codegenTail (LetCallT bnds rator rnds body) = do
+codegenTail (LetCallT bnds rator rnds body) ty = do
   rnds' <- mapM codegenTriv rnds
   gt <- gets globalFns
   let nm = fromVar rator
@@ -173,28 +176,18 @@ codegenTail (LetCallT bnds rator rnds body) = do
           Just x -> return x
           Nothing -> error $ "Function" ++ nm ++ " doesn't exist " ++ show gt
   _ <- callp fn bnds rnds'
-  codegenTail body
+  codegenTail body ty
 
-codegenTail (LetAllocT lhs vals body) =
-  let structTy' = toPtrTy $ structTy $ map fst vals
-      ptrTy     = typeOf PtrTy
+codegenTail (LetAllocT lhs vals body) ty =
+  let structTy = typeOf $ map fst vals
       lhsV      = fromVar lhs
   in do
-    -- PtrTy lhs = malloc ...
-    mem <- sizeof structTy' >>= \size -> call malloc Nothing [size]
-    lhs' <- assign (Just $ lhsV) ptrTy mem >>= convert structTy'
+    ts <- mapM codegenTriv $ map snd vals
+    struct <- populateStruct structTy Nothing ts
+    _ <- bitcast (Just lhsV) (typeOf PtrTy) struct
+    codegenTail body ty
 
-    -- assign struct fields
-    forM_ (zip vals [0..]) $ \((ty,v),i) -> do
-      -- When indexing into a (optionally packed) structure, only i32 integer
-      -- constants are allowed
-      field <- getElemPtr True lhs' [constop_ $ int32_ 0, constop_ $ int32_ i]
-      triv <- codegenTriv v >>= convert (typeOf ty)
-      store field triv
-
-    codegenTail body
-
-codegenTail t = error $ "Tail: Not implemented yet: " ++ show t
+codegenTail t _ = error $ "Tail: Not implemented yet: " ++ show t
 
 
 -- | Generate LLVM instructions for Triv

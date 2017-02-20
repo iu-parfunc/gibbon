@@ -1,7 +1,9 @@
+{-# LANGUAGE FlexibleInstances #-}
 module Packed.FirstOrder.Passes.LLVM.Gibbon (
     addp, subp, mulp, eqp, callp
-  , addStructs, sizeParam, typeOf, printString, toIfPred
-  , readTag, readInt, sizeof, structName, structTy, toPtrTy, convert, assign
+  , sizeParam, typeOf, printString, toIfPred
+  , readTag, readInt, sizeof, toPtrTy, convert, assign
+  , addStructs, structName, populateStruct
 ) where
 
 -- | standard library
@@ -40,6 +42,7 @@ gibbonOp op [(v, _)] args = do
   var   <- op (Just nm) args
   retval_ var
 
+gibbonOp op vars args = error $ "gibbonOp: Not implemented " ++ show vars
 
 addp :: [(Var, Ty)] -> [AST.Operand] -> CodeGen BlockState
 addp = gibbonOp add
@@ -84,6 +87,10 @@ instance TypeOf Ty where
   typeOf (ProdTy []) = toPtrTy T.VoidType    -- ^ void*
   typeOf (ProdTy ts) = T.StructureType False $ map typeOf  ts
   typeOf (SymDictTy _t) = __
+
+-- | struct types
+instance TypeOf [Ty] where
+  typeOf = T.NamedTypeReference . AST.Name . structName
 
 
 -- | Convert the type to a pointer type
@@ -133,15 +140,15 @@ toIfPred triv =
 -- | Add all required structs
 --
 addStructs :: Prog -> CodeGen ()
-addStructs prog = mapM_ ((\(nm,d) -> addTypeDef nm d) . makeStruct) $
+addStructs prog = mapM_ ((\(nm,d) -> addTypeDef nm d) . defineStruct) $
                   harvestStructTys prog
 
 
 -- | Generate LLVM type definitions (structs)
 --
-makeStruct :: [Ty] -> (String, AST.Definition)
-makeStruct [] = __
-makeStruct tys = (nm, AST.TypeDefinition (AST.Name nm) (Just $ T.StructureType False elememtTypes))
+defineStruct :: [Ty] -> (String, AST.Definition)
+defineStruct [] = __
+defineStruct tys = (nm, AST.TypeDefinition (AST.Name nm) (Just $ T.StructureType False elememtTypes))
   where nm = structName tys
         elememtTypes = map typeOf tys
 
@@ -194,6 +201,18 @@ assign nm ty val = do
   load ty nm x
 
 
+-- | Return a reference to the struct, with its fields assigned to triv's
+--
+populateStruct :: T.Type -> Maybe String -> [AST.Operand] -> CodeGen AST.Operand
+populateStruct ty nm ts = do
+  struct <- allocate ty nm
+  forM_ (zip ts [0..]) $ \(triv,i) -> do
+    -- When indexing into a (optionally packed) structure, only i32 integer
+    -- constants are allowed
+    field <- getElemPtr True struct [constop_ $ int32_ 0, constop_ $ int32_ i]
+    store field triv
+  return struct
+
 -- | Generate instructions to convert op from type-of-op -> toTy
 --
 convert :: T.Type -> AST.Operand -> CodeGen AST.Operand
@@ -211,8 +230,3 @@ sizeof ty = getElemPtr True (constop_ $ C.Null ty) [constop_ $ int_ 1] >>= ptrTo
 -- |
 structName :: [Ty] -> String
 structName tys = "struct." ++ makeName tys
-
-
--- |
-structTy :: [Ty] -> T.Type
-structTy = (T.NamedTypeReference . AST.Name . structName)
