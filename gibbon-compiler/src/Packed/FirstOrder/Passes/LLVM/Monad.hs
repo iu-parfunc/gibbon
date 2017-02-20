@@ -67,7 +67,7 @@ genModule x =
     {
       AST.moduleName = name
     , AST.moduleSourceFileName = []
-    , AST.moduleDefinitions = (Map.elems $ globalTypeDefs st) ++ globals
+    , AST.moduleDefinitions = Map.elems (globalTypeDefs st) ++ globals
     , AST.moduleDataLayout = Nothing
     , AST.moduleTargetTriple = Just "x86_64-unknown-linux-gnu"
     }

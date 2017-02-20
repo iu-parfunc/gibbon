@@ -137,22 +137,6 @@ toIfPred triv =
     neq Nothing [op0,z]
 
 
--- | Add all required structs
---
-addStructs :: Prog -> CodeGen ()
-addStructs prog = mapM_ ((\(nm,d) -> addTypeDef nm d) . defineStruct) $
-                  harvestStructTys prog
-
-
--- | Generate LLVM type definitions (structs)
---
-defineStruct :: [Ty] -> (String, AST.Definition)
-defineStruct [] = __
-defineStruct tys = (nm, AST.TypeDefinition (AST.Name nm) (Just $ T.StructureType False elememtTypes))
-  where nm = structName tys
-        elememtTypes = map typeOf tys
-
-
 -- | Read one byte from the cursor and advance it
 --
 -- TagTyPacked tagV = *(IntTy/TagTyPacked *) cur;
@@ -183,7 +167,7 @@ readCursor [(valV', valTy'), (curV', curTy')] cur' offset =
     cur <- assign Nothing curTy cur'
 
     -- valTy valV = *cur
-    valVV <- load valTy Nothing cur >>= convert valTy
+    valVV <- load valTy Nothing cur >>= convert valTy Nothing
     _ <- assign (Just valV) valTy valVV
 
     -- curTy curV = cur + offset;
@@ -201,6 +185,36 @@ assign nm ty val = do
   load ty nm x
 
 
+-- | Generate instructions to convert op from type-of-op -> toTy
+--
+convert :: T.Type -> Maybe String -> AST.Operand -> CodeGen AST.Operand
+convert toTy nm op
+  | intP toTy && intP fromTy = sext toTy nm op
+  | otherwise                = bitcast toTy nm op
+  where fromTy = typeOf op
+        intP = (`elem` [T.i8, T.i32, T.i64])
+
+-- |
+sizeof :: T.Type -> CodeGen AST.Operand
+sizeof ty = getElemPtr True (constop_ $ C.Null ty) [constop_ $ int_ 1] >>= ptrToInt Nothing
+
+
+-- | Add all required structs
+--
+addStructs :: Prog -> CodeGen ()
+addStructs prog = mapM_ (uncurry addTypeDef . defineStruct) $
+                  harvestStructTys prog
+
+
+-- | Generate LLVM type definitions (structs)
+--
+defineStruct :: [Ty] -> (String, AST.Definition)
+defineStruct [] = __
+defineStruct tys = (nm, AST.TypeDefinition (AST.Name nm) (Just $ T.StructureType False elememtTypes))
+  where nm = structName tys
+        elememtTypes = map typeOf tys
+
+
 -- | Return a reference to the struct, with its fields assigned to triv's
 --
 populateStruct :: T.Type -> Maybe String -> [AST.Operand] -> CodeGen AST.Operand
@@ -212,19 +226,6 @@ populateStruct ty nm ts = do
     field <- getElemPtr True struct [constop_ $ int32_ 0, constop_ $ int32_ i]
     store field triv
   return struct
-
--- | Generate instructions to convert op from type-of-op -> toTy
---
-convert :: T.Type -> AST.Operand -> CodeGen AST.Operand
-convert toTy op
-  | intP toTy && intP fromTy = sext Nothing toTy op
-  | otherwise                = bitcast Nothing toTy op
-  where fromTy = typeOf op
-        intP = (`elem` [T.i8, T.i32, T.i64])
-
--- |
-sizeof :: T.Type -> CodeGen AST.Operand
-sizeof ty = getElemPtr True (constop_ $ C.Null ty) [constop_ $ int_ 1] >>= ptrToInt Nothing
 
 
 -- |

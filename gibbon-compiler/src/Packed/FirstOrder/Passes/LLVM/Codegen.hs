@@ -73,7 +73,7 @@ codegenFun (FunDecl fnName args retTy tail) = do
     _     <- setBlock entry
 
     -- add all args to localVars
-    forM_ args $ \(v,ty) -> do
+    forM_ args $ \(v,ty) ->
       modify $ \s ->
         let nm  = fromVar v
             ty' = typeOf ty
@@ -102,9 +102,8 @@ codegenTail (RetValsT [t]) _ = do
 codegenTail (RetValsT ts) (ProdTy tys) =
   let structTy = typeOf tys
   in do
-    ts' <- mapM codegenTriv ts
-    struct <- populateStruct structTy Nothing ts'
-    struct' <- convert (toPtrTy $ typeOf $ ProdTy tys) struct
+    struct <- mapM codegenTriv ts >>= populateStruct structTy Nothing
+    struct' <- convert (toPtrTy $ typeOf $ ProdTy tys) Nothing struct
     load (typeOf $ ProdTy tys) Nothing struct' >>= retval_
 
 codegenTail (LetPrimCallT bnds prm rnds body) ty = do
@@ -182,9 +181,8 @@ codegenTail (LetAllocT lhs vals body) ty =
   let structTy = typeOf $ map fst vals
       lhsV      = fromVar lhs
   in do
-    ts <- mapM codegenTriv $ map snd vals
-    struct <- populateStruct structTy Nothing ts
-    _ <- bitcast (Just lhsV) (typeOf PtrTy) struct
+    struct <- mapM (codegenTriv . snd) vals >>= populateStruct structTy Nothing
+    _ <- convert (typeOf PtrTy) (Just lhsV) struct
     codegenTail body ty
 
 codegenTail t _ = error $ "Tail: Not implemented yet: " ++ show t

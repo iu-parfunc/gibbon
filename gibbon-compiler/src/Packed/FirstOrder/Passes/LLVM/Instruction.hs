@@ -148,8 +148,8 @@ getElemPtr inbounds addr idxs = instr T.i64 Nothing $ I.GetElementPtr inbounds a
 
 
 -- | Convert value to type ty without changing any bits
-bitcast :: Maybe String -> T.Type -> AST.Operand -> CodeGen AST.Operand
-bitcast nm ty op = instr ty nm $ I.BitCast op ty []
+bitcast :: T.Type -> Maybe String -> AST.Operand -> CodeGen AST.Operand
+bitcast ty nm op = instr ty nm $ I.BitCast op ty []
 
 -- | Convert pointer to Integer type
 --
@@ -158,8 +158,8 @@ ptrToInt nm x = instr T.VoidType nm $ I.PtrToInt x T.i64 []
 
 -- | Extend value to the type ty (both integer types)
 --
-sext :: Maybe String -> T.Type -> AST.Operand -> CodeGen AST.Operand
-sext nm ty op = instr T.VoidType nm $ I.SExt op ty []
+sext :: T.Type -> Maybe String -> AST.Operand -> CodeGen AST.Operand
+sext ty nm op = instr T.VoidType nm $ I.SExt op ty []
 
 
 -- | Add a function call to the execution stream
@@ -196,10 +196,10 @@ icmp :: IP.IntegerPredicate -> Maybe String -> [AST.Operand] -> CodeGen AST.Oper
 icmp p nm [x,y] = instr T.i64 nm $ I.ICmp p x y []
 
 eq :: Maybe String ->  [AST.Operand] -> CodeGen AST.Operand
-eq nm = icmp IP.EQ nm
+eq = icmp IP.EQ
 
 neq :: Maybe String -> [AST.Operand] -> CodeGen AST.Operand
-neq nm = icmp IP.NE nm
+neq = icmp IP.NE
 
 
 -- | Add a phi node to the top of the current block
