@@ -380,7 +380,7 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
                  l1  <-       passE "flatten"                  flatten                  l1
                  l1  <-       passE "inlineTriv"               (return . inlineTriv)    l1
                  l2  <-       passE "inferEffects"             inferEffects             l1
-                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig False)) l2
+                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig False False)) l2
                  let mmainTyPre = fmap snd $ L2.mainExp l2
                  l2  <-
                      if packed
@@ -408,7 +408,7 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
                        l2  <- pass'  "flatten"                  flatten2                 l2
                        l2  <- pass   "findWitnesses"            findWitnesses            l2
                        -- After findwitnesses is when programs should once again typecheck:
-                       l2  <- passE' "typecheck"     (typecheckStrict (TCConfig True))   l2
+                       l2  <- passE' "typecheck"     (typecheckStrict (TCConfig True False))   l2
 
                        l2  <- pass' "flatten"                  flatten2                  l2
                        l2  <- pass  "inlineTriv"               inline2                   l2
@@ -416,9 +416,9 @@ compile Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,op
                        l2  <- pass  "hoistNewBuf"              hoistNewBuf               l2
                        return l2
                      else return l2
-                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig packed)) l2
+                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig packed False)) l2
                  l2  <-       pass   "unariser"                 unariser                 l2
-                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig packed)) l2
+                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig packed False)) l2
                  l3  <-       pass   "lower"         (lower (packed,mmainTyPre)) l2
 
                  if mode == Interp2

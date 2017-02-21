@@ -18,7 +18,7 @@ import qualified Packed.FirstOrder.L1_Source as L1
 
 import qualified Data.Map as M
 import qualified Data.List as L
--- import qualified Data.Set as S
+import qualified Data.Set as S
 import Control.Monad.ST
 import Control.Monad
 import Data.STRef
@@ -39,7 +39,8 @@ instance Show (TCVar s) where
 
 data TCConfig =
     TCConfig
-    { postCursorize :: Bool -- ^ The typo of certain operations change after Cursorize.
+    { postCursorize :: Bool -- ^ The type of certain operations change after Cursorize.
+    , checkCursors  :: Bool -- ^ WIP: typecheck cursors (MV)
     }
 
 type TCEnv s = M.Map Var (TCVar s)
@@ -84,7 +85,7 @@ typecheckExp =
     error "typecheckExp FINISHME"
 
 typecheck' :: forall s . TCConfig -> STRef s Bool -> L2.Prog -> ST s L2.Prog
-typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = eachFn fn prg
+typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs _main) = eachFn fn prg
  where
   eachFn fn (Prog dd fundefs mainExp) =
       do let funEnv = fEnv $ includeBuiltins $ progToEnv (Prog dd fundefs mainExp)
@@ -112,11 +113,10 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
                        M.map (\(a,b) -> Fun a b) fEnv
          tv <- tE defs initTCE exp0
          mty <- extractTCVar tv
-         return mty
-         -- case mty of
-         --   Just ty -> dbgTrace 2 ("Typecheck program returned: " ++ (show ty)) $
-         --              return exp0
-         --   Nothing -> return exp0
+         if checkCursors -- do special check if flag is set
+         then do if tECur defs [] exp0 then return mty 
+                 else return Nothing -- TODO: do something smarter if cursor check fails
+         else return mty
 
   -- | This uses the "success" flag from above.
   tE :: DDefs L1.Ty -> TCEnv s -> Exp -> ST s (TCVar s)
@@ -286,6 +286,10 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
            foldM_ (\i a -> (assertEqTCVar ex0 i a) >> (return a)) (head tcs) (tail tcs)
            return $ head tcs
 
+  --  Simple function to check cursors
+  --  (Could be merged with tE, not sure if making a separate function is the right approach.)
+  tECur :: DDefs L1.Ty -> [S.Set Var] -> Exp -> Bool
+  tECur dd obl ex0 = undefined -- TODO: finish function
 
   --  This is not top-level because it is under the scope of 'success':
   reportErr :: String -> ST s ()
