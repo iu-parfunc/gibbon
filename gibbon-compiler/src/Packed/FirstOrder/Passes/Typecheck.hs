@@ -116,9 +116,9 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
          mty <- extractTCVar tv
          let args' = case args of
                        Nothing -> []
-                       Just v  -> [v]
+                       Just v  -> [S.singleton v]
          if checkCursors -- do special check if flag is set
-         then do if tECur defs [(S.fromList args')] exp0 then return mty 
+         then do if tECur defs args' exp0 then return mty 
                  else return Nothing -- TODO: do something smarter if cursor check fails
          else return mty
 
@@ -328,11 +328,13 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
             -- both the then and else of the if need to be checked
             (tECur dd obl e2) && (tECur dd obl e3)
         CaseE (VarE v) cs ->
-            if varPresent v obl
-            -- TODO: matching should introduce alias for matched variable
-            -- TODO: introduce obligations for variables in each case in cs
-            then undefined
-            else undefined
+            let f (_dc,vs,e) = 
+                    case vs of
+                      [v'] -> if varPresent v obl
+                              then tECur dd (mergeVars v v' obl) e
+                              else tECur dd ((S.singleton v):obl) e
+                      vs -> tECur dd ((map S.singleton vs)++(removeVar v obl)) e
+            in all f cs
                  
         _ -> dbgTrace lvl (" [typecheck] Failed to match in tECur on " ++ (show ex0)) False
       where
@@ -349,13 +351,17 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
             else dbgTrace lvl (" [typecheck] Failed to meet obligations: " ++ (show obl)) False
 
 
-  -- TODO: implement these functions
-                 
   varPresent :: Var -> [S.Set Var] -> Bool
-  varPresent = undefined
+  varPresent _ [] = False
+  varPresent v (s:ss) = if S.member v s then True else varPresent v ss
 
   removeVar :: Var -> [S.Set Var] -> [S.Set Var]
-  removeVar = undefined
+  removeVar v [] = error ("removeVar: expected " ++ (show v) ++ " in set")
+  removeVar v (s:ss) = if S.member v s then (S.delete v s):ss else removeVar v ss
+
+  mergeVars :: Var -> Var -> [S.Set Var] -> [S.Set Var]
+  mergeVars v _v' [] = error ("mergeVars: expected " ++ (show v) ++ " in set")
+  mergeVars v v' (s:ss) = if S.member v s then (S.insert v' s):ss else mergeVars v v' ss
 
   --  This is not top-level because it is under the scope of 'success':
   reportErr :: String -> ST s ()
