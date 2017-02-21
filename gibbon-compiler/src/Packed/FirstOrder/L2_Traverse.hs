@@ -194,7 +194,7 @@ progToEnv Prog{fundefs} =
 -- | A function definition with the function's effects.
 data FunDef = FunDef { funname :: Var
                      , funty   :: (ArrowTy Ty)
-                     , funarg   :: Var
+                     , funarg  :: Var
                      , funbod  :: L1.Exp }
   deriving (Show, Read, Ord, Eq, Generic, NFData)
 --------------------------------------------------------------------------------

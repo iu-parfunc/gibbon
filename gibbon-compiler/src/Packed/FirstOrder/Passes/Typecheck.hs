@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 
 {-# LANGUAGE BangPatterns #-}
@@ -91,7 +92,7 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
       do let funEnv = fEnv $ includeBuiltins $ progToEnv (Prog dd fundefs mainExp)
          newFunDefs <- forM fundefs $ \(L2.FunDef nm arrTy@(ArrowTy inT _ outT) arg bod) -> do
                          let env = Env2 (M.singleton arg (fmap (\_->()) inT)) funEnv
-                         mty <- fn env bod
+                         mty <- fn env (Just arg) bod
                          case mty of
                            Nothing -> reportErr $ "Typecheck of function " ++ (fromVar nm) ++ " failed."
                            Just ty -> if ty == (fmap (\_->()) outT)
@@ -101,20 +102,23 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
                                                " and got return type " ++ (show ty) ++ "."
                          return $ L2.FunDef nm arrTy arg bod
          newMainExpr <- forM mainExp $ \(e,t) -> do
-                          mty <- fn (Env2 M.empty funEnv) e
+                          mty <- fn (Env2 M.empty funEnv) Nothing e
                           case mty of
                             Nothing -> reportErr $ "Typecheck of main expr failed"
                             Just _ty -> return ()
                           return (e,t)
          return $ Prog dd newFunDefs newMainExpr
 
-  fn Env2{vEnv,fEnv} exp0 =
+  fn Env2{vEnv,fEnv} args exp0 =
       do let initTCE = M.map Concrete vEnv `M.union`
                        M.map (\(a,b) -> Fun a b) fEnv
          tv <- tE defs initTCE exp0
          mty <- extractTCVar tv
+         let args' = case args of
+                       Nothing -> []
+                       Just v  -> [v]
          if checkCursors -- do special check if flag is set
-         then do if tECur defs [] exp0 then return mty 
+         then do if tECur defs [(S.fromList args')] exp0 then return mty 
                  else return Nothing -- TODO: do something smarter if cursor check fails
          else return mty
 
@@ -289,7 +293,69 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
   --  Simple function to check cursors
   --  (Could be merged with tE, not sure if making a separate function is the right approach.)
   tECur :: DDefs L1.Ty -> [S.Set Var] -> Exp -> Bool
-  tECur dd obl ex0 = undefined -- TODO: finish function
+  tECur dd obl ex0 =
+      -- check that all obligations are met in ex0
+      case ex0 of
+        
+        -- when we hit a tail call we check if obl is empty
+        VarE _v ->
+            check obl
+        LitE _i ->
+            check obl
+        AppE _v _e ->
+            check obl
+        PrimAppE _p _es ->
+            check obl
+        ProjE _i _e ->
+            check obl
+        MkProdE _es ->
+            check obl
+        MkPackedE _c _es ->
+            check obl
+        TimeIt e _t _b ->
+            tECur dd obl e
+
+        -- otherwise see if a binding met an obligation
+        LetE (v,_t,e') e ->
+            case fromEndVar v of
+              Nothing -> handleLet e' e
+              Just v' -> if varPresent v' obl
+                         -- don't need to recur on rhs? should be flattened
+                         then let obl' = removeVar v' obl
+                              in tECur dd obl' e
+                         else handleLet e' e
+        IfE _e1 e2 e3 ->
+            -- both the then and else of the if need to be checked
+            (tECur dd obl e2) && (tECur dd obl e3)
+        CaseE (VarE v) cs ->
+            if varPresent v obl
+            -- TODO: matching should introduce alias for matched variable
+            -- TODO: introduce obligations for variables in each case in cs
+            then undefined
+            else undefined
+                 
+        _ -> dbgTrace lvl (" [typecheck] Failed to match in tECur on " ++ (show ex0)) False
+      where
+        handleLet (AppE f (MkProdE [VarE v,_])) e =
+            if ((fromVar f) == "AddCursor")
+            then if varPresent v obl
+                 then tECur dd (removeVar v obl) e
+                 else dbgTrace lvl (" [typecheck] AddCursor I don't understand: " ++ (show v)) $ tECur dd obl e
+            else tECur dd obl e
+        handleLet (AppE f e') e = undefined -- TODO: handle recursive calls, etc
+        handleLet _ e = tECur dd obl e
+        check obl =
+            if L.null obl then True
+            else dbgTrace lvl (" [typecheck] Failed to meet obligations: " ++ (show obl)) False
+
+
+  -- TODO: implement these functions
+                 
+  varPresent :: Var -> [S.Set Var] -> Bool
+  varPresent = undefined
+
+  removeVar :: Var -> [S.Set Var] -> [S.Set Var]
+  removeVar = undefined
 
   --  This is not top-level because it is under the scope of 'success':
   reportErr :: String -> ST s ()
