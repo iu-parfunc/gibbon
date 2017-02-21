@@ -39,8 +39,12 @@ gibbonOp op [] args = do
   return_
 gibbonOp op [(v, _)] args = do
   let nm = fromVar v
-  var   <- op (Just nm) args
-  retval_ var
+  res   <- op (Just nm) args
+  retval_ res
+-- assuming that the caller handles the returned struct
+gibbonOp op bnds args = do
+  res <- op Nothing args
+  retval_ res
 
 gibbonOp op vars args = error $ "gibbonOp: Not implemented " ++ show vars
 
@@ -164,22 +168,22 @@ readCursor [(valV', valTy'), (curV', curTy')] cur' offset =
       curTy = typeOf curTy'
       curV = fromVar curV'
   in do
-    cur <- assign Nothing curTy cur'
+    cur <- assign curTy Nothing cur'
 
     -- valTy valV = *cur
     valVV <- load valTy Nothing cur >>= convert valTy Nothing
-    _ <- assign (Just valV) valTy valVV
+    _ <- assign valTy (Just valV) valVV
 
     -- curTy curV = cur + offset;
     curVV <- getElemPtr True cur [constop_ $ int_ offset]
-    _ <- assign (Just curV) curTy curVV
+    _ <- assign curTy (Just curV) curVV
     return_
 
 
 -- | ty _var_ = val
 --
-assign :: Maybe String -> T.Type -> AST.Operand -> CodeGen AST.Operand
-assign nm ty val = do
+assign :: T.Type -> Maybe String -> AST.Operand -> CodeGen AST.Operand
+assign ty nm val = do
   x <- allocate ty nm
   _ <- store x val
   load ty nm x

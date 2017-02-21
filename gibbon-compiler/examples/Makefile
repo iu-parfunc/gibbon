@@ -321,8 +321,9 @@ LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib test0
   test01_if.gib test01b_ifif.gib \
   test02_arith.gib test02d_printPair.gib \
   test03_let.gib test03b_eqs.gib \
-  test04b_vector.gib test04_vector.gib \
+  test04_vector.gib test04b_vector.gib \
   test05_app.gib test05b_app.gib test05c_arity2.gib \
+  test06_case.gib test06b_case.gib
 
 run_tests_llvm: answers build_gibbon_llvm_lib
 	$(MAKE) run_tests PASSING_TESTS="$(LLVM_PASSING_TESTS)" GIBBONARGS="--llvm" EXTRA_SUFFIX="_llvm" BACKEND="LLVM"
