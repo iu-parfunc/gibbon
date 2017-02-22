@@ -88,7 +88,7 @@ instance TypeOf Ty where
   typeOf SymTy       = T.i64                 -- ^ long long
   typeOf PtrTy       = toPtrTy T.i8          -- ^ char*
   typeOf CursorTy    = toPtrTy T.i8          -- ^ char*
-  typeOf (ProdTy []) = toPtrTy T.VoidType    -- ^ void*
+  typeOf (ProdTy []) = T.VoidType            -- ^ void (pointers to void are invalid in LLVM)
   typeOf (ProdTy ts) = T.StructureType False $ map typeOf  ts
   typeOf (SymDictTy _t) = __
 

@@ -34,38 +34,24 @@ toLLVM m = CTX.withContext $ \ctx -> do
 -- | Generate LLVM instructions for Prog
 --
 codegenProg :: Bool -> Prog -> IO String
-codegenProg _ prog = do
-  let cg' = genModule $ codegenProg' prog
-  toLLVM cg'
-
-
-codegenProg' :: Prog -> CodeGen ()
-codegenProg' prg@(Prog fns body) = do
-  fns' <- mapM codegenFun fns
-  mapM_ declare fns'
-  _ <- addStructs prg
-  let mainBody = genBlocks $ do
-        -- TODO(cskksc): why is this required ?
-        _ <- addStructs prg
-        mapM_ declare fns'
-
-        entry <- newBlock "entry"
-        setBlock entry
-        _ <- case body of
-          Just (PrintExp t) -> codegenTail t IntTy
-          _ -> (retval_ . constop_ . int_) 0
-        createBlocks
-
-  declare puts
+codegenProg _ prg@(Prog fns body) = (toLLVM . genModule) $ do
+  -- declare helpers declared in lib.c
   declare printInt
-  declare malloc
+  declare puts
   declare globalSizeParam
-  declare (mainFn mainBody)
+
+  -- generate structs and fns
+  _ <- addStructs prg
+  mapM_ codegenFun fns'
+  where expr = case body of
+                     Just (PrintExp t) -> t
+                     _ -> RetValsT []
+        fns' =  fns ++ [FunDecl (toVar "__main_expr") [] (ProdTy []) expr]
 
 
 -- | Generate LLVM instructions for function definitions
 --
-codegenFun :: FunDecl -> CodeGen G.Global
+codegenFun :: FunDecl -> CodeGen ()
 codegenFun (FunDecl fnName args retTy tail) = do
   let fnName' = fromVar fnName
   fnBody <- do
@@ -81,15 +67,15 @@ codegenFun (FunDecl fnName args retTy tail) = do
     _ <- codegenTail tail retTy
     createBlocks
 
-  -- return the generated function
-  return G.functionDefaults
-         { G.name        = AST.Name fnName'
-         , G.parameters  = ([G.Parameter (typeOf ty) (AST.Name $ fromVar v) []
-                            | (v, ty) <- args],
-                            False)
-         , G.returnType  = typeOf retTy
-         , G.basicBlocks = fnBody
-         }
+  -- add the generated function to globalFns map
+  declare G.functionDefaults
+          { G.name        = AST.Name fnName'
+          , G.parameters  = ([G.Parameter (typeOf ty) (AST.Name $ fromVar v) []
+                             | (v, ty) <- args],
+                             False)
+          , G.returnType  = typeOf retTy
+          , G.basicBlocks = fnBody
+          }
 
 
 -- | Generate LLVM instructions for Tail
