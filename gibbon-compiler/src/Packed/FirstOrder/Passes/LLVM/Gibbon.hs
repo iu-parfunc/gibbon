@@ -3,7 +3,7 @@ module Packed.FirstOrder.Passes.LLVM.Gibbon (
     addp, subp, mulp, eqp, callp
   , sizeParam, typeOf, printString, toIfPred
   , readTag, readInt, sizeof, toPtrTy, convert, assign
-  , addStructs, structName, populateStruct
+  , addStructs, structName, populateStruct, unpackStruct
 ) where
 
 -- | standard library
@@ -37,14 +37,15 @@ gibbonOp :: (Maybe String -> [AST.Operand] -> CodeGen AST.Operand)
 gibbonOp op [] args = do
   _ <- op Nothing args
   return_
+
 gibbonOp op [(v, _)] args = do
   let nm = fromVar v
   res   <- op (Just nm) args
   retval_ res
--- assuming that the caller handles the returned struct
+
 gibbonOp op bnds args = do
-  res <- op Nothing args
-  retval_ res
+  struct <- op Nothing args
+  unpackStruct Nothing struct bnds >>= retval_
 
 gibbonOp op vars args = error $ "gibbonOp: Not implemented " ++ show vars
 
@@ -230,6 +231,21 @@ populateStruct ty nm ts = do
     field <- getElemPtr True struct [constop_ $ int32_ 0, constop_ $ int32_ i]
     store field triv
   return struct
+
+
+-- | Store members of struct in bound vars (bnds). Reverse of populatestruct
+--
+unpackStruct :: Maybe String -> AST.Operand -> [(Var, Ty)] -> CodeGen AST.Operand
+unpackStruct nm struct bnds = do
+  structTy <- case bnds of
+                [] -> return $ typeOf struct
+                _  -> return $ typeOf $ map snd bnds
+  struct' <- convert (toPtrTy structTy) Nothing struct
+  forM_ (zip bnds [0..]) $ \((v,vty), i) -> do
+    field <- getElemPtr True struct' [constop_ $ int32_ 0, constop_ $ int32_ i]
+    field' <- load (typeOf vty) Nothing field
+    assign (typeOf vty) (Just $ fromVar v) field'
+  return struct'
 
 
 -- |

@@ -16,11 +16,9 @@ import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 import qualified Data.Foldable as F
 
-
 -- | llvm-general
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Global as G
-import qualified LLVM.General.AST.Constant as C
 
 
 -- | The code generation state for our AST.
@@ -137,7 +135,10 @@ setBlock next =
 createBlocks :: CodeGen [AST.BasicBlock]
 createBlocks
   = state
-  $ \s -> let s'     = s { blockChain = initBlockChain, next = 0 }
+  $ \s -> let s'     = s { blockChain = initBlockChain
+                         , next = 0
+                         , localVars = Map.empty
+                         }
               blocks = makeBlock `fmap` blockChain s
           in
           ( F.toList blocks , s' )

@@ -176,15 +176,10 @@ codegenTail (LetAllocT lhs vals body) ty =
     _ <- convert (typeOf PtrTy) (Just lhsV) struct
     codegenTail body ty
 
-codegenTail (LetUnpackT bnds ptr body) ty =
-  let structTy = typeOf $ map snd bnds
-  in do
-    struct <- getvar (fromVar ptr) >>= convert (toPtrTy structTy) Nothing
-    forM_ (zip bnds [0..]) $ \((v,vty), i) -> do
-      field <- getElemPtr True struct [constop_ $ int32_ 0, constop_ $ int32_ i]
-      field' <- load (typeOf vty) Nothing field
-      assign (typeOf vty) (Just $ fromVar v) field'
-    codegenTail body ty
+codegenTail (LetUnpackT bnds ptr body) ty = do
+  struct <- getvar (fromVar ptr)
+  _ <- unpackStruct Nothing struct bnds
+  codegenTail body ty
 
 codegenTail t _ = error $ "Tail: Not implemented yet: " ++ show t
 
