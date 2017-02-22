@@ -52,30 +52,35 @@ codegenProg _ prg@(Prog fns body) = (toLLVM . genModule) $ do
 -- | Generate LLVM instructions for function definitions
 --
 codegenFun :: FunDecl -> CodeGen ()
-codegenFun (FunDecl fnName args retTy tail) = do
+codegenFun (FunDecl fnName args retTy tail) =
   let fnName' = fromVar fnName
-  fnBody <- do
-    entry <- newBlock $ "fn." ++ fnName' ++ ".entry"
-    _     <- setBlock entry
+      fnsig = G.functionDefaults
+                {  G.name        = AST.Name fnName'
+                ,  G.parameters  = ([G.Parameter (typeOf ty) (AST.Name $ fromVar v) []
+                                    | (v, ty) <- args],
+                                    False)
+                , G.returnType  = typeOf retTy
+                }
+  in do
+    -- Only store the fn signature in globalFns for now. This is intended to be
+    -- used by the call fn (LetCallT). Storing only the signature is important
+    -- to allow recursive fn definitions
+    declare fnsig
+    fnBody <- do
+      entry <- newBlock $ "fn." ++ fnName' ++ ".entry"
+      _     <- setBlock entry
 
-    -- add all args to localVars
-    forM_ args $ \(v,ty) ->
-      modify $ \s ->
-        let nm  = fromVar v
-            ty' = typeOf ty
-        in s { localVars = Map.insert nm (localRef ty' (AST.Name nm)) (localVars s)}
-    _ <- codegenTail tail retTy
-    createBlocks
+      -- add all args to localVars
+      forM_ args $ \(v,ty) ->
+        modify $ \s ->
+          let nm  = fromVar v
+              ty' = typeOf ty
+          in s { localVars = Map.insert nm (localRef ty' (AST.Name nm)) (localVars s)}
+      _ <- codegenTail tail retTy
+      createBlocks
 
-  -- add the generated function to globalFns map
-  declare G.functionDefaults
-          { G.name        = AST.Name fnName'
-          , G.parameters  = ([G.Parameter (typeOf ty) (AST.Name $ fromVar v) []
-                             | (v, ty) <- args],
-                             False)
-          , G.returnType  = typeOf retTy
-          , G.basicBlocks = fnBody
-          }
+    -- Now that we have the fn body, override the fn definition in globalFns
+    declare $ fnsig {G.basicBlocks = fnBody}
 
 
 -- | Generate LLVM instructions for Tail
