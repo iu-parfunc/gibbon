@@ -8,7 +8,7 @@ import qualified Data.Map as Map
 
 -- | gibbon internals
 import Packed.FirstOrder.L3_Target
-import Packed.FirstOrder.Common (fromVar)
+import Packed.FirstOrder.Common (fromVar,toVar)
 import Packed.FirstOrder.Passes.LLVM.Monad
 import Packed.FirstOrder.Passes.LLVM.Instruction
 import Packed.FirstOrder.Passes.LLVM.Terminator
