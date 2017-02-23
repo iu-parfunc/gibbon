@@ -6,7 +6,7 @@
 --
 
 module Packed.FirstOrder.Passes.LLVM.Instruction (
-    declare, getvar, getLastLocal, addTypeDef
+    declare, getvar, getLastLocal, getfn, addTypeDef
   , instr, globalOp, localRef
   , allocate, store, load, getElemPtr, call, add, mul, sub
   , eq, neq, ifThenElse, ptrToInt, bitcast, sext
@@ -72,6 +72,14 @@ getLastLocal :: CodeGen AST.Name
 getLastLocal = do
   a <- gets next
   return $ AST.UnName (a - 1)
+
+
+getfn :: String -> CodeGen G.Global
+getfn nm = do
+  fns <- gets globalFns
+  case Map.lookup nm fns of
+    Just x -> return x
+    Nothing -> error $ "Function " ++ nm ++ " doesn't exist " ++ show fns
 
 
 -- | Add an instruction to the state of the currently active block so that it is

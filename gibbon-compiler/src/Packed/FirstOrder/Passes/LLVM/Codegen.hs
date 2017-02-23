@@ -42,6 +42,7 @@ codegenProg _ prg@(Prog fns body) = (toLLVM . genModule) $ do
 
   -- generate structs and fns
   _ <- addStructs prg
+  mapM_ codegenFunSig fns'
   mapM_ codegenFun fns'
   where expr = case body of
                      Just (PrintExp t) -> t
@@ -49,10 +50,14 @@ codegenProg _ prg@(Prog fns body) = (toLLVM . genModule) $ do
         fns' =  fns ++ [FunDecl (toVar "__main_expr") [] (ProdTy []) expr]
 
 
--- | Generate LLVM instructions for function definitions
+-- | Add fn signatures to globalFns
 --
-codegenFun :: FunDecl -> CodeGen ()
-codegenFun (FunDecl fnName args retTy tail) =
+-- This is intended to be used by the call fn (LetCallT).
+-- Storing only the signature is important to allow recursive fn definitions
+-- and forward references
+--
+codegenFunSig :: FunDecl -> CodeGen ()
+codegenFunSig (FunDecl fnName args retTy _) =
   let fnName' = fromVar fnName
       fnsig = G.functionDefaults
                 {  G.name        = AST.Name fnName'
@@ -61,26 +66,30 @@ codegenFun (FunDecl fnName args retTy tail) =
                                     False)
                 , G.returnType  = typeOf retTy
                 }
-  in do
-    -- Only store the fn signature in globalFns for now. This is intended to be
-    -- used by the call fn (LetCallT). Storing only the signature is important
-    -- to allow recursive fn definitions
-    declare fnsig
-    fnBody <- do
-      entry <- newBlock $ "fn." ++ fnName' ++ ".entry"
-      _     <- setBlock entry
+  in declare fnsig
 
-      -- add all args to localVars
-      forM_ args $ \(v,ty) ->
-        modify $ \s ->
-          let nm  = fromVar v
-              ty' = typeOf ty
-          in s { localVars = Map.insert nm (localRef ty' (AST.Name nm)) (localVars s)}
-      _ <- codegenTail tail retTy
-      createBlocks
 
-    -- Now that we have the fn body, override the fn definition in globalFns
-    declare $ fnsig {G.basicBlocks = fnBody}
+-- | Generate LLVM instructions for function definitions
+--
+codegenFun :: FunDecl -> CodeGen ()
+codegenFun (FunDecl fnName args retTy tail) = do
+  let fnName' = fromVar fnName
+  fns <- gets globalFns
+  fnsig <- getfn fnName'
+  fnBody <- do
+    entry <- newBlock $ "fn." ++ fnName' ++ ".entry"
+    _     <- setBlock entry
+    -- add all args to localVars
+    forM_ args $ \(v,ty) ->
+      modify $ \s ->
+        let nm  = fromVar v
+            ty' = typeOf ty
+        in s { localVars = Map.insert nm (localRef ty' (AST.Name nm)) (localVars s)}
+    _ <- codegenTail tail retTy
+    createBlocks
+
+  -- Now that we have the fn body, override the fn definition in globalFns
+  declare $ fnsig {G.basicBlocks = fnBody}
 
 
 -- | Generate LLVM instructions for Tail
@@ -162,9 +171,7 @@ codegenTail (LetCallT bnds rator rnds body) ty = do
   rnds' <- mapM codegenTriv rnds
   gt <- gets globalFns
   let nm = fromVar rator
-  fn <- case Map.lookup nm gt of
-          Just x -> return x
-          Nothing -> error $ "Function" ++ nm ++ " doesn't exist " ++ show gt
+  fn <- getfn nm
   _ <- callp fn bnds rnds'
   codegenTail body ty
 
