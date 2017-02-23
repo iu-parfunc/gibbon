@@ -329,7 +329,7 @@ LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
   test06_case.gib test06b_case.gib \
   test11_fundata.gib test11b_fundata.gib
 
-LLVM_NOT_IMPLEMENTED = test02b_datacon.gib test04c_ifvector.gib
+LLVM_NOT_IMPLEMENTED = test02b_datacon.gib test04c_ifvector.gib \
   test07_time.gib test07b_iterate.gib \
   test08b_dict.gib test08c_dict.gib test08_dict.gib test08d_sharedict.gib \
   test09_recur.gib test10_desugar.gib test10b_desugar.gib \
