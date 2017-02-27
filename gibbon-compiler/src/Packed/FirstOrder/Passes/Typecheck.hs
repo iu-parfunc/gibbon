@@ -115,10 +115,10 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
          tv <- tE defs initTCE exp0
          mty <- extractTCVar tv
          let args' = case args of
-                       Nothing -> []
-                       Just v  -> [S.singleton v]
+                       Nothing -> S.empty
+                       Just v  -> S.singleton v
          if checkCursors -- do special check if flag is set
-         then do if tECur defs args' exp0 then return mty 
+         then do if tECur True defs args' exp0 then return mty 
                  else return Nothing -- TODO: do something smarter if cursor check fails
          else return mty
 
@@ -292,8 +292,8 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
 
   --  Simple function to check cursors
   --  (Could be merged with tE, not sure if making a separate function is the right approach.)
-  tECur :: DDefs L1.Ty -> [S.Set Var] -> Exp -> Bool
-  tECur dd obl ex0 =
+  tECur :: Bool -> DDefs L1.Ty -> S.Set Var -> Exp -> Bool
+  tECur b dd obl ex0 =
       -- check that all obligations are met in ex0
       case ex0 of
         
@@ -313,7 +313,7 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
         MkPackedE _c _es ->
             check obl
         TimeIt e _t _b ->
-            tECur dd obl e
+            tECur b dd obl e
 
         -- otherwise see if a binding met an obligation
         LetE (v,_t,e') e ->
@@ -322,46 +322,55 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
               Just v' -> if varPresent v' obl
                          -- don't need to recur on rhs? should be flattened
                          then let obl' = removeVar v' obl
-                              in tECur dd obl' e
+                              in tECur b dd obl' e
                          else handleLet e' e
         IfE _e1 e2 e3 ->
             -- both the then and else of the if need to be checked
-            (tECur dd obl e2) && (tECur dd obl e3)
+            (tECur b dd obl e2) && (tECur b dd obl e3)
         CaseE (VarE v) cs ->
-            let f (_dc,vs,e) = 
-                    case vs of
-                      [v'] -> if varPresent v obl
-                              then tECur dd (mergeVars v v' obl) e
-                              else tECur dd ((S.singleton v):obl) e
-                      vs -> tECur dd ((map S.singleton vs)++(removeVar v obl)) e
-            in all f cs
-                 
-        _ -> dbgTrace lvl (" [typecheck] Failed to match in tECur on " ++ (show ex0)) False
+            if varPresent v obl
+            then let f (_dc,vs,e) = tECur b dd (combineVars (fromCaseArgs vs) (removeVar v obl)) e
+                 in all f cs
+            else cursorError ("expected to find " ++ (show v) ++ " in need set " ++ (show obl) ++ " in expression " ++ (show ex0))
+
+        _ -> cursorError $ "failed to match in tECur on " ++ (show ex0)
       where
+        cursorError str = dbgTrace lvl (" [typecheck] [cursor] " ++ str) False
+        cursorWarn str e = dbgTrace lvl (" [typecheck] [cursor] " ++ str) e
         handleLet (AppE f (MkProdE [VarE v,_])) e =
             if ((fromVar f) == "AddCursor")
             then if varPresent v obl
-                 then tECur dd (removeVar v obl) e
-                 else dbgTrace lvl (" [typecheck] AddCursor I don't understand: " ++ (show v)) $ tECur dd obl e
-            else tECur dd obl e
-        handleLet (AppE f e') e = undefined -- TODO: handle recursive calls, etc
-        handleLet _ e = tECur dd obl e
+                 then tECur b dd (removeVar v obl) e
+                 else cursorWarn ("tried to do AddCursor of " ++ (show v) ++ ", but that's not in my traversal list: " ++ (show obl))  $ tECur False dd obl e
+            else tECur b dd obl e
+        handleLet (AppE f e') e = -- TODO: handle function calls
+            if containsVars obl e'
+            then undefined
+            else undefined
+        handleLet _ e = tECur b dd obl e
         check obl =
-            if L.null obl then True
-            else dbgTrace lvl (" [typecheck] Failed to meet obligations: " ++ (show obl)) False
+            if L.null obl
+            then cursorWarn ("cursor check success: " ++ (show b)) b
+            else cursorError $ "reached end of expression, but failed to traverse: " ++ (show obl)
 
 
-  varPresent :: Var -> [S.Set Var] -> Bool
-  varPresent _ [] = False
-  varPresent v (s:ss) = if S.member v s then True else varPresent v ss
+  varPresent :: Var -> S.Set Var -> Bool
+  varPresent = S.member
 
-  removeVar :: Var -> [S.Set Var] -> [S.Set Var]
-  removeVar v [] = error ("removeVar: expected " ++ (show v) ++ " in set")
-  removeVar v (s:ss) = if S.member v s then (S.delete v s):ss else removeVar v ss
+  removeVar :: Var -> S.Set Var -> S.Set Var
+  removeVar = S.delete
 
-  mergeVars :: Var -> Var -> [S.Set Var] -> [S.Set Var]
-  mergeVars v _v' [] = error ("mergeVars: expected " ++ (show v) ++ " in set")
-  mergeVars v v' (s:ss) = if S.member v s then (S.insert v' s):ss else mergeVars v v' ss
+  combineVars :: S.Set Var -> S.Set Var -> S.Set Var
+  combineVars = S.union
+
+  fromCaseArgs :: [Var] -> S.Set Var
+  fromCaseArgs = S.fromList
+
+  containsVars :: S.Set Var -> Exp -> Bool
+  containsVars obl e =
+      case e of -- TODO: this is a problem... have to identify whether any cursors are referenced in e
+        MkProdE es -> undefined
+        VarE v -> undefined
 
   --  This is not top-level because it is under the scope of 'success':
   reportErr :: String -> ST s ()
