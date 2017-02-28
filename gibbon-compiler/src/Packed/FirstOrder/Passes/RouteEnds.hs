@@ -195,10 +195,10 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
                 -- FIXME: assert that the demands match what we got back...
                 -- might need to shuffle the order
                 assert (length demanded == length outs) $! return ()
-                let ouT' = L1.ProdTy $ (L.map mkCursorTy outs) ++ [ouT]
+                let ouT' = L1.ProdTy $ (L.map (\l -> mkCursorTy l L1.NoneCur) outs) ++ [ouT]
                 tmp <- gensym $ toVar "hoistapp"
                 let newExp = LetE (tmp, fmap (const ()) ouT', AppE rat rand) $
-                               letBindProjections (L.map (\v -> (v,mkCursorTy ())) outs) (VarE tmp) $
+                               letBindProjections (L.map (\v -> (v,mkCursorTy () L1.NoneCur)) outs) (VarE tmp) $
                                  -- FIXME/TODO: unpack the witnesses we know about, returns 1-(N-1):
                                  (ProjE (length effs) (VarE tmp))
                 dbgTrace lvl (" [routeEnds] processing app with these extra returns: "++
@@ -230,7 +230,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
             -- it's the one that reifies the fact "last field's end is constructors end".
             let rhs'' =
                   let Fixed v = scrutloc
-                  in LetE (toEndVar v, mkCursorTy (),
+                  in LetE (toEndVar v, mkCursorTy () L1.NoneCur,
                            case sequence (L.map L1.sizeOf tys) of
                              -- Here we statically know the layout, plus one for the tag:
                              Just ns -> AddCursor (L2.toWitnessVar v) (sum ns+1)

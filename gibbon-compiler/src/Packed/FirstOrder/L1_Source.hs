@@ -20,7 +20,7 @@ module Packed.FirstOrder.L1_Source
 
       -- * Types and helpers
     , Ty, Ty1(..), pattern Packed, pattern SymTy
-    , voidTy, hasPacked, sizeOf
+    , voidTy, hasPacked, sizeOf, TyCur(..)
 
     -- * Expression and Prog helpers
     , freeVars, subst, substE, mapExprs, getFunTy
@@ -120,6 +120,7 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 instance Out Prim
+instance Out TyCur
 instance Out a => Out (Ty1 a)
 -- Do this manually to get prettier formatting:
 -- instance Out Ty where  doc x = __
@@ -134,7 +135,7 @@ pattern SymTy = IntTy
 
 type Ty = Ty1 ()
 
-pattern Packed c = PackedTy c ()
+pattern Packed c = PackedTy c () NoneCur
 
 -- | Types include boxed/pointer-based products as well as unpacked
 -- algebraic datatypes.  This data is parameterized to allow
@@ -144,13 +145,19 @@ data Ty1 a =
 --        | SymTy -- ^ Symbols used in writing compiler passes.
 --                --   It's an alias for Int, an index into a symbol table.
         | BoolTy
-        | ProdTy [Ty1 a]     -- ^ An N-ary tuple
-        | SymDictTy (Ty1 a)  -- ^ A map from SymTy to Ty
-        | PackedTy DataCon a  -- ^ No type arguments to TyCons for now.
+        | ProdTy [Ty1 a]               -- ^ An N-ary tuple
+        | SymDictTy (Ty1 a)            -- ^ A map from SymTy to Ty
+        | PackedTy DataCon a TyCur     -- ^ No type arguments to TyCons for now.
           -- ^ We allow built-in dictionaries from symbols to a value type.
-        | ListTy (Ty1 a) -- ^ These are not fully first class.  They are onlyae
-                         -- allowed as the fields of data constructors.
+        | ListTy (Ty1 a)               -- ^ These are not fully first class.  They are onlyae
+                                       -- allowed as the fields of data constructors.
   deriving (Show, Read, Ord, Eq, Generic, NFData, Functor)
+
+data TyCur = NoneCur -- ^ Ordinary packed ty, with no fancy annotation
+           -- For fancy cursor types, is it enough to have lists of types? 
+           | HasCur [Ty1 ()] -- ^ Has(..)
+           | NeedsCur [Ty1 ()] -- ^ Needs(..)
+  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 voidTy :: Ty
 voidTy = ProdTy []

@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 
 {-# LANGUAGE BangPatterns #-}
@@ -19,7 +18,7 @@ import qualified Packed.FirstOrder.L1_Source as L1
 
 import qualified Data.Map as M
 import qualified Data.List as L
-import qualified Data.Set as S
+-- import qualified Data.Set as S
 import Control.Monad.ST
 import Control.Monad
 import Data.STRef
@@ -40,8 +39,7 @@ instance Show (TCVar s) where
 
 data TCConfig =
     TCConfig
-    { postCursorize :: Bool -- ^ The type of certain operations change after Cursorize.
-    , checkCursors  :: Bool -- ^ WIP: typecheck cursors (MV)
+    { postCursorize :: Bool -- ^ The typo of certain operations change after Cursorize.
     }
 
 type TCEnv s = M.Map Var (TCVar s)
@@ -86,13 +84,13 @@ typecheckExp =
     error "typecheckExp FINISHME"
 
 typecheck' :: forall s . TCConfig -> STRef s Bool -> L2.Prog -> ST s L2.Prog
-typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs _main) = eachFn fn prg
+typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = eachFn fn prg
  where
   eachFn fn (Prog dd fundefs mainExp) =
       do let funEnv = fEnv $ includeBuiltins $ progToEnv (Prog dd fundefs mainExp)
          newFunDefs <- forM fundefs $ \(L2.FunDef nm arrTy@(ArrowTy inT _ outT) arg bod) -> do
                          let env = Env2 (M.singleton arg (fmap (\_->()) inT)) funEnv
-                         mty <- fn env (Just arg) bod
+                         mty <- fn env bod
                          case mty of
                            Nothing -> reportErr $ "Typecheck of function " ++ (fromVar nm) ++ " failed."
                            Just ty -> if ty == (fmap (\_->()) outT)
@@ -102,25 +100,23 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
                                                " and got return type " ++ (show ty) ++ "."
                          return $ L2.FunDef nm arrTy arg bod
          newMainExpr <- forM mainExp $ \(e,t) -> do
-                          mty <- fn (Env2 M.empty funEnv) Nothing e
+                          mty <- fn (Env2 M.empty funEnv) e
                           case mty of
                             Nothing -> reportErr $ "Typecheck of main expr failed"
                             Just _ty -> return ()
                           return (e,t)
          return $ Prog dd newFunDefs newMainExpr
 
-  fn Env2{vEnv,fEnv} args exp0 =
+  fn Env2{vEnv,fEnv} exp0 =
       do let initTCE = M.map Concrete vEnv `M.union`
                        M.map (\(a,b) -> Fun a b) fEnv
          tv <- tE defs initTCE exp0
          mty <- extractTCVar tv
-         let args' = case args of
-                       Nothing -> S.empty
-                       Just v  -> S.singleton v
-         if checkCursors -- do special check if flag is set
-         then do if tECur True defs args' exp0 then return mty 
-                 else return Nothing -- TODO: do something smarter if cursor check fails
-         else return mty
+         return mty
+         -- case mty of
+         --   Just ty -> dbgTrace 2 ("Typecheck program returned: " ++ (show ty)) $
+         --              return exp0
+         --   Nothing -> return exp0
 
   -- | This uses the "success" flag from above.
   tE :: DDefs L1.Ty -> TCEnv s -> Exp -> ST s (TCVar s)
@@ -174,7 +170,7 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
                  L1.MkTrue    -> return $ Concrete BoolTy
                  L1.MkFalse   -> return $ Concrete BoolTy
 
-                 L1.MkNullCursor -> return $ Concrete (CursorTy ())
+                 L1.MkNullCursor -> return $ Concrete (CursorTy () L1.NoneCur)
                  -- WARNING: tricky convention here.  We DONT update 'ty' to CursorTy, because we need to remember
                  -- the name of this type for later (i.e. calling the right print function).
                  L1.ReadPackedFile _ _ ty -> return $ Concrete ty
@@ -204,12 +200,12 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
                      return $ Concrete outty'
         CaseE e cs
             | postCursorize -> do te <- go e
-                                  assertEqTCVar ex0 (Concrete (CursorTy ())) te
+                                  assertEqTCVar ex0 (Concrete (CursorTy () L1.NoneCur)) te
                                   typecheckCasesPostCursorize cs
             | otherwise -> do te <- go e
                               let tycons = L.map (getTyOfDataCon dd . fst3) cs
                               case L.nub tycons of
-                                [one] -> do assertEqTCVar ex0 (Concrete (PackedTy one ())) te
+                                [one] -> do assertEqTCVar ex0 (Concrete (PackedTy one () L1.NoneCur)) te
                                             typecheckCases cs
                                 oth -> failFresh $ "case branches have mismatched types, "
                                          ++ndoc oth++", in "++ndoc ex0
@@ -218,8 +214,8 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
             --  After cursorize, these become single argument; take and return cursors.
             | postCursorize -> case es of
                                  [curs] -> do cty <- go curs
-                                              assertEqTCVar ex0 (Concrete (CursorTy ())) cty
-                                              return (Concrete (CursorTy ()))
+                                              assertEqTCVar ex0 (Concrete (CursorTy () L1.NoneCur)) cty
+                                              return (Concrete (CursorTy () L1.NoneCur))
                                  _ -> failFresh $ "MkPackedE "++c++" expected one argument, got: "++ndoc es
             | otherwise -> do tes <- mapM (go) es
                               let te = Concrete $ L1.Packed $ getTyOfDataCon dd c
@@ -273,7 +269,7 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
       let go acc []      = return acc
           go acc ((dcon,ls,rhs):rst) =
               case ls of
-                [curV] -> do rty <- tE dd (M.insert curV (Concrete (CursorTy ())) tcenv) rhs
+                [curV] -> do rty <- tE dd (M.insert curV (Concrete (CursorTy () L1.NoneCur)) tcenv) rhs
                              assertEqTCVar ex0 acc rty
                              go acc rst
                 _ -> do acc' <- failFresh $ "expected one pattern var in post-cursorize case branch: "++ndoc (dcon,ls,rhs)
@@ -290,87 +286,6 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
            foldM_ (\i a -> (assertEqTCVar ex0 i a) >> (return a)) (head tcs) (tail tcs)
            return $ head tcs
 
-  --  Simple function to check cursors
-  --  (Could be merged with tE, not sure if making a separate function is the right approach.)
-  tECur :: Bool -> DDefs L1.Ty -> S.Set Var -> Exp -> Bool
-  tECur b dd obl ex0 =
-      -- check that all obligations are met in ex0
-      case ex0 of
-        
-        -- when we hit a tail call we check if obl is empty
-        VarE _v ->
-            check obl
-        LitE _i ->
-            check obl
-        AppE _v _e ->
-            check obl
-        PrimAppE _p _es ->
-            check obl
-        ProjE _i _e ->
-            check obl
-        MkProdE _es ->
-            check obl
-        MkPackedE _c _es ->
-            check obl
-        TimeIt e _t _b ->
-            tECur b dd obl e
-
-        -- otherwise see if a binding met an obligation
-        LetE (v,_t,e') e ->
-            case fromEndVar v of
-              Nothing -> handleLet e' e
-              Just v' -> if varPresent v' obl
-                         -- don't need to recur on rhs? should be flattened
-                         then let obl' = removeVar v' obl
-                              in tECur b dd obl' e
-                         else handleLet e' e
-        IfE _e1 e2 e3 ->
-            -- both the then and else of the if need to be checked
-            (tECur b dd obl e2) && (tECur b dd obl e3)
-        CaseE (VarE v) cs ->
-            if varPresent v obl
-            then let f (_dc,vs,e) = tECur b dd (combineVars (fromCaseArgs vs) (removeVar v obl)) e
-                 in all f cs
-            else cursorError ("expected to find " ++ (show v) ++ " in need set " ++ (show obl) ++ " in expression " ++ (show ex0))
-
-        _ -> cursorError $ "failed to match in tECur on " ++ (show ex0)
-      where
-        cursorError str = dbgTrace lvl (" [typecheck] [cursor] " ++ str) False
-        cursorWarn str e = dbgTrace lvl (" [typecheck] [cursor] " ++ str) e
-        handleLet (AppE f (MkProdE [VarE v,_])) e =
-            if ((fromVar f) == "AddCursor")
-            then if varPresent v obl
-                 then tECur b dd (removeVar v obl) e
-                 else cursorWarn ("tried to do AddCursor of " ++ (show v) ++ ", but that's not in my traversal list: " ++ (show obl))  $ tECur False dd obl e
-            else tECur b dd obl e
-        handleLet (AppE f e') e = -- TODO: handle function calls
-            if containsVars obl e'
-            then undefined
-            else undefined
-        handleLet _ e = tECur b dd obl e
-        check obl =
-            if L.null obl
-            then cursorWarn ("cursor check success: " ++ (show b)) b
-            else cursorError $ "reached end of expression, but failed to traverse: " ++ (show obl)
-
-
-  varPresent :: Var -> S.Set Var -> Bool
-  varPresent = S.member
-
-  removeVar :: Var -> S.Set Var -> S.Set Var
-  removeVar = S.delete
-
-  combineVars :: S.Set Var -> S.Set Var -> S.Set Var
-  combineVars = S.union
-
-  fromCaseArgs :: [Var] -> S.Set Var
-  fromCaseArgs = S.fromList
-
-  containsVars :: S.Set Var -> Exp -> Bool
-  containsVars obl e =
-      case e of -- TODO: this is a problem... have to identify whether any cursors are referenced in e
-        MkProdE es -> undefined
-        VarE v -> undefined
 
   --  This is not top-level because it is under the scope of 'success':
   reportErr :: String -> ST s ()
@@ -392,7 +307,7 @@ typecheck' TCConfig{postCursorize,checkCursors} success prg@(L2.Prog defs _funs 
       case M.lookup v tcenv of
         Nothing
                 -- FIXME: Go stricter and remove this exception:
-                | isEndVar v -> return (Concrete (CursorTy ()))
+                | isEndVar v -> return (Concrete (CursorTy () L1.NoneCur))
                                 -- Policy: do we allow unbound end-witnesses?  They may not really be used.
                 | otherwise  -> do reportErr $ "Failed to look up type of var " ++ (show v)
                                    freshTCVar

@@ -268,10 +268,10 @@ exp se =
    RSAtom (HSInt n)  -> LitE (fromIntegral n)
                         
    -- | This type gets replaced later in flatten:
-   L2 "time" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) False)
+   L2 "time" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" () NoneCur) False)
 
    -- | This variant inserts a loop, controlled by the iters argument on the command line.
-   L2 "iterate" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) True)
+   L2 "iterate" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" () NoneCur) True)
                     
    L3 "let" (L bnds) bod -> 
      mkLets (L.map letbind bnds) (exp bod) 

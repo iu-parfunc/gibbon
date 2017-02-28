@@ -115,22 +115,22 @@ instantiateApp arrty0 loc = do
        IntTy  -> Bottom
        SymTy  -> Bottom
        BoolTy -> Bottom
-       SymDictTy _  -> Top
-       ProdTy ls    -> TupLoc $ L.map rettyToLoc ls
-       PackedTy _ l -> Fresh l
+       SymDictTy _    -> Top
+       ProdTy ls      -> TupLoc $ L.map rettyToLoc ls
+       PackedTy _ l _ -> Fresh l
 
 -- | Unify type and locaion , creating a mapping between variables in
 -- the former to the latter.
 zipTL :: Ty -> Loc -> M.Map LocVar LocVar
-zipTL _ Bottom                 = M.empty
-zipTL (PackedTy _ v) (Fixed l) = M.singleton v l
-zipTL (PackedTy _ v) (Fresh l) = M.singleton v l
-zipTL (ProdTy l1) (TupLoc l2)  = M.unions (zipWith zipTL l1 l2)
+zipTL _ Bottom                   = M.empty
+zipTL (PackedTy _ v _) (Fixed l) = M.singleton v l
+zipTL (PackedTy _ v _) (Fresh l) = M.singleton v l
+zipTL (ProdTy l1) (TupLoc l2)    = M.unions (zipWith zipTL l1 l2)
 
 -- Here is a tricky one.
-zipTL (PackedTy l v) Top =
+zipTL (PackedTy l v p) Top =
     error $ "zipTL: don't yet know what to do with Packed/Top case: "++
-          show (PackedTy l v)
+          show (PackedTy l v p)
     -- M.empty -- M.singleton v l
 zipTL ty loc = error$ "zipTL: argument type "++show(doc ty)
                    ++"does not have matching structure to location: "++show(doc loc)
@@ -138,14 +138,14 @@ zipTL ty loc = error$ "zipTL: argument type "++show(doc ty)
 -- | Unify location and type, creating a mapping between variables in
 -- the former to the latter.
 zipLT :: Loc -> Ty -> M.Map LocVar LocVar
-zipLT Bottom _                 = M.empty
-zipLT (Fixed l) (PackedTy _ v) = M.singleton l v
-zipLT (Fresh l) (PackedTy _ v) = M.singleton l v
-zipLT (TupLoc l1) (ProdTy l2)  = M.unions (zipWith zipLT l1 l2)
+zipLT Bottom _                   = M.empty
+zipLT (Fixed l) (PackedTy _ v _) = M.singleton l v
+zipLT (Fresh l) (PackedTy _ v _) = M.singleton l v
+zipLT (TupLoc l1) (ProdTy l2)    = M.unions (zipWith zipLT l1 l2)
 -- Here is a tricky one.
-zipLT Top       (PackedTy l v) =
+zipLT Top       (PackedTy l v p) =
     error $ "zipLT: don't yet know what to do with Top/Packed case: "++
-          show (PackedTy l v)
+          show (PackedTy l v p)
     -- M.empty -- M.singleton v l
 zipLT loc ty = error$ "zipLT: argument type "++show(doc ty)
                    ++"does not have matching structure to location: "++show(doc loc)

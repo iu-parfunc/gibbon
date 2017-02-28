@@ -47,7 +47,7 @@ genDcons (x:xs) tail fields = case x of
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)]
       <$> genDcons xs t (fields ++ [(T.IntTy, T.VarTriv val)])
 
-  L1.PackedTy tyCons _ -> do
+  L1.PackedTy tyCons _ _ -> do
     ptr  <- gensym $ toVar "ptr"
     t    <- gensym $ toVar "tail"
     T.LetCallT [(ptr, T.PtrTy), (t, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
@@ -111,7 +111,7 @@ genDconsPrinter (x:xs) tail = case x of
        maybeSpace <$>
         genDconsPrinter xs t
 
-  L1.PackedTy tyCons _ -> do
+  L1.PackedTy tyCons _ _ -> do
     val  <- gensym $ toVar "val"
     t    <- gensym $ toVar "tail"
     tmp  <- gensym $ toVar "temp"
@@ -162,7 +162,7 @@ printTy L1.BoolTy [trv]               =
     \t -> T.IfT trv (prntBool truePrinted $ t) (prntBool falsePrinted $ t)
 printTy (L1.ProdTy xs) [trv]          = \t -> foldl (\y x -> (printTy x [trv] $ y)) t xs
 printTy (L1.SymDictTy (x)) [trv]      = sandwich (printTy x [trv]) "Dict"
-printTy (L1.PackedTy constr _) [trv]  = T.LetCallT [] (mkPrinterName constr) [trv]
+printTy (L1.PackedTy constr _ _) [trv]  = T.LetCallT [] (mkPrinterName constr) [trv]
 printTy (L1.ListTy (x)) [trv]         = sandwich (printTy x [trv]) "List"
 printTy _ _                           = error $ "Invalid L1 data type."
 
@@ -179,7 +179,7 @@ addPrintToTailPacked :: L1.Ty -> T.Tail-> SyM T.Tail
 addPrintToTailPacked ty tl0 =
   -- FIXME: Need to handle products of packed!!
   case ty of
-    L1.PackedTy tycon _ ->
+    L1.PackedTy tycon _ _ ->
        T.withTail (tl0, T.IntTy) $ \ [trv] ->
           T.LetCallT [(toVar "unpkd", T.PtrTy), (toVar "ignre", T.CursorTy)] (mkUnpackerName tycon) [trv] $
            printTy ty [T.VarTriv (toVar "unpkd")] $
@@ -361,7 +361,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
     L1.MkPackedE k _ls -> do
        tmp <- gensym $ toVar "tailift"
        let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
-       tail $ LetE (tmp, ty, ex0) (VarE tmp)
+       tail $ LetE (tmp, ty L1.NoneCur, ex0) (VarE tmp)
 
     --------------------------------------------------------------------------------
 

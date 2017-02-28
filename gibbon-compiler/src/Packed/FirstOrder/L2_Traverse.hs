@@ -214,7 +214,7 @@ getTyLocs t =
       SymTy  -> S.empty
       BoolTy -> S.empty
       ProdTy ls -> S.unions (L.map getTyLocs ls)
-      PackedTy _ lv -> S.singleton lv
+      PackedTy _ lv _ -> S.singleton lv
       -- This is a tricky case:
       SymDictTy elt -> getTyLocs elt
       ListTy{} -> error "FINISHLISTS"
@@ -223,7 +223,7 @@ getTyLocs t =
 tyWithFreshLocs :: L1.Ty -> SyM Ty
 tyWithFreshLocs t =
   case t of
-    L1.Packed k -> PackedTy k <$> genLetter
+    L1.Packed k -> PackedTy k <$> genLetter <*> return NoneCur
     L1.IntTy    -> return IntTy
     L1.SymTy    -> return SymTy
     L1.BoolTy   -> return BoolTy
@@ -253,15 +253,15 @@ substTy mp t = go t
       BoolTy -> BoolTy
       SymDictTy te -> SymDictTy (go te)
       ProdTy    ts -> ProdTy    (L.map go ts)
-      PackedTy k l
+      PackedTy k l p
           | isEndVar l ->
               case M.lookup (fromJust $ fromEndVar l) mp of
-                Just v  -> PackedTy k (toEndVar v)
-                Nothing -> PackedTy k l
+                Just v  -> PackedTy k (toEndVar v) p
+                Nothing -> PackedTy k l p
           | otherwise ->
               case M.lookup l mp of
-                Just v  -> PackedTy k v
-                Nothing -> PackedTy k l
+                Just v  -> PackedTy k v p
+                Nothing -> PackedTy k l p
                 -- errorWithStackTrace $ "substTy: failed to find "++show l++
                 --   "\n  in map: "++show mp++", when processing type "++show t
 
@@ -282,7 +282,7 @@ allLocVars t =
       SymTy     -> []
       BoolTy    -> []
       IntTy     -> []
-      PackedTy _ v -> [v]
+      PackedTy _ v _ -> [v]
       ProdTy ls  -> L.concatMap allLocVars ls
       SymDictTy elt -> allLocVars elt
 
@@ -295,18 +295,18 @@ unknownCursor :: Var
 unknownCursor = toVar "UNKNOWN_CURSOR_VAL"
 
 -- Use a hack rather than extending the IR at this point:
-cursorTy :: Ty
-cursorTy = PackedTy "CURSOR_TY" (toVar "")
+cursorTy :: TyCur -> Ty
+cursorTy ann = PackedTy "CURSOR_TY" (toVar "") ann
 
-mkCursorTy :: a -> Ty1 a
+mkCursorTy :: a -> TyCur -> Ty1 a
 mkCursorTy = PackedTy "CURSOR_TY"
 
 isCursorTy :: Ty1 a -> Bool
-isCursorTy (PackedTy "CURSOR_TY" _) = True
+isCursorTy (PackedTy "CURSOR_TY" _ _) = True
 isCursorTy _ = False
 
 cursorTyLoc :: Show a => Ty1 a -> a
-cursorTyLoc (PackedTy "CURSOR_TY" l) = l
+cursorTyLoc (PackedTy "CURSOR_TY" l _) = l
 cursorTyLoc t = error $ "cursorTyLoc: should only be called on a cursor type, not "++show t
 
 -- | We need to ammend this function to NOT consider cursors as "packed".
@@ -357,7 +357,7 @@ cursorizeTy1 :: ArrowTy Ty -> (ArrowTy Ty, [LocVar])
 cursorizeTy1 (ArrowTy inT ef ouT) = (newArr, newOut)
  where
   newArr = ArrowTy inT ef newOutTy
-  newOutTy = prependArgs (L.map mkCursorTy newOut)
+  newOutTy = prependArgs (L.map (\l -> mkCursorTy l NoneCur) newOut)
                          ouT
   -- Every _traversed_ packed input means a POTENTIAL output (new
   -- return value for the cursor's final value).
@@ -379,13 +379,13 @@ cursorizeTy2 :: ArrowTy Ty -> (ArrowTy Ty, [LocVar])
 cursorizeTy2 (ArrowTy inT ef ouT) =  (newArr, newIn)
  where
   newArr   = ArrowTy newInTy ef newOutTy
-  newInTy  = prependArgs (L.map mkCursorTy newIn) -- These are cursors
+  newInTy  = prependArgs (L.map (\l -> mkCursorTy l NoneCur) newIn) -- These are cursors
                          inT -- These remain non-cursors.
                          -- (mapPacked (\_ l -> mkCursorTy l) inT)
   -- Let's turn output values into updated-output-cursors:
   -- NOTE: we could distinguish between the (size ef) output cursors
   -- that are already prepended here:
-  newOutTy = mapPacked (\_ l -> mkCursorTy (ensureEndVar l)) ouT
+  newOutTy = mapPacked (\_ l -> mkCursorTy (ensureEndVar l) NoneCur) ouT
   newIn    =
    if S.null ef
    then allLocVars ouT -- These stay in their original order (preorder)
@@ -404,7 +404,7 @@ cursorizeArrty3 arr@(ArrowTy inT ef ouT) =
 
 -- | The non-arrow counterpart to `cursorizeArrTy3`
 cursorizeTy3 :: Ty1 a -> Ty1 a
-cursorizeTy3  = mapPacked (\ _k l -> mkCursorTy l)
+cursorizeTy3  = mapPacked (\ _k l -> mkCursorTy l NoneCur)
 
 
 ensureEndVar :: Var -> Var
@@ -423,9 +423,9 @@ mapPacked fn t =
     IntTy  -> IntTy
     BoolTy -> BoolTy
     SymTy  -> SymTy
-    (ProdTy x)    -> ProdTy $ L.map (mapPacked fn) x
-    (SymDictTy x) -> SymDictTy $ mapPacked fn x
-    PackedTy k l  -> fn (toVar k) l
+    (ProdTy x)     -> ProdTy $ L.map (mapPacked fn) x
+    (SymDictTy x)  -> SymDictTy $ mapPacked fn x
+    PackedTy k l _ -> fn (toVar k) l
     ListTy{} -> error "FINISHLISTS"
 
 --------------------------------------------------------------------------------
@@ -559,7 +559,7 @@ pattern WriteInt v e <- AppE (Var "WriteInt") (MkProdE [VarE v, e])
 pattern ReadInt v <- AppE (Var "ReadInt") (VarE v)
   where ReadInt v = AppE (toVar "ReadInt") (VarE v)
 
-pattern CursorTy l = PackedTy "CURSOR_TY" l
+pattern CursorTy l p = PackedTy "CURSOR_TY" l p
 
 -- | Add a constant offset to a cursor variable.
 pattern AddCursor v i <- AppE (Var "AddCursor") (MkProdE [VarE v, LitE i])
@@ -588,7 +588,7 @@ primRetTy p =
     EqIntP  -> BoolTy
     MkTrue  -> BoolTy
     MkFalse -> BoolTy
-    MkNullCursor -> CursorTy ()
+    MkNullCursor -> CursorTy () NoneCur
     SizeParam -> IntTy
     DictEmptyP ty -> SymDictTy ty
     DictInsertP ty -> SymDictTy ty
@@ -606,11 +606,13 @@ primRetTy p =
 --
 builtinTEnv :: M.Map Var (ArrowTy L1.Ty)
 builtinTEnv = M.fromList
-  [ (toVar "NewBuffer",    ArrowTy voidTy S.empty (CursorTy ()))
-  , (toVar "ScopedBuffer", ArrowTy voidTy S.empty (CursorTy ()))
-  , (toVar "ReadInt",      ArrowTy (CursorTy ()) S.empty (ProdTy [IntTy, CursorTy ()]))
-  , (toVar "WriteInt",     ArrowTy (ProdTy [CursorTy (), IntTy]) S.empty (CursorTy ()))
-  , (toVar "AddCursor",    ArrowTy (ProdTy [CursorTy (), IntTy]) S.empty (CursorTy ()))
+  [ (toVar "NewBuffer",    ArrowTy voidTy S.empty (CursorTy () NoneCur))
+  , (toVar "ScopedBuffer", ArrowTy voidTy S.empty (CursorTy () NoneCur))
+  -- , (toVar "ReadInt",      ArrowTy (CursorTy () NoneCur) S.empty (ProdTy [IntTy, CursorTy () NoneCur]))
+  -- , (toVar "WriteInt",     ArrowTy (ProdTy [CursorTy () NoneCur, IntTy]) S.empty (CursorTy () NoneCur))
+  -- , (toVar "AddCursor",    ArrowTy (ProdTy [CursorTy () NoneCur, IntTy]) S.empty (CursorTy () NoneCur))
+  -- Note: ReadInt, WriteInt, and AddCursor now are annotated with fancy cursor types, so they can't
+  -- be written down here easily.
   -- Note: ReadPackedFile is a builtin/primitive.  It is polymorphic,
   -- which currently doesn't allow us to model it as a function like
   -- this [2017.01.08].
