@@ -510,6 +510,8 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
        go _c _off [] = return rhs -- Everything is now in scope for the body.
                      -- TODO: we could witness the end if we still have the offset.
        go c offset ((vr,ty):rs) = do
+         let curty  = L1.HasCur $ ty : Prelude.map snd rs -- Has(..) at vr
+         let kcurty = L1.HasCur $ Prelude.map snd rs -- Has(..) after consuming vr
          tmp <- gensym $ toVar "tptmp"
          let -- Each end-cursor position is either the witness of
              -- the next thing, or the witness of the end of the last thing:
@@ -517,20 +519,22 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
              witNext end_this e =
                dbgTrace 5 ("WITNESS NEXT: "++show(vr,rs, end_this)) $
                  case rs of
-                    []       -> e
-                    (v2,_):_ -> LetE (binderWitness v2, CursorTy () L1.NoneCur, end_this) e
+                    []         -> e
+                    (v2,t):rs' -> LetE (binderWitness v2, CursorTy () (L1.HasCur $ t : Prelude.map snd rs'), end_this) e
              go2 = -- Do the type-specific reading of the fields:
               case ty of
                 -- TODO: Generalize to other scalar types:
                 IntTy ->
                   -- Warning: this is not a dilated type per se, it's a specific record for this prim:
-                  LetE (tmp, snocCursor IntTy, ReadInt c) <$>
-                    LetE (toEndVar vr, CursorTy () L1.NoneCur, cdrCursor (VarE tmp)) <$>
-                     LetE (vr, IntTy, carVal (VarE tmp)) <$>
-                       let gorst = go (toEndVar vr) (liftA2 (+) (L1.sizeOf IntTy) offset) rs
-                       in if offset == Nothing
-                          then witNext (cdrCursor (VarE tmp)) <$> gorst
-                          else gorst -- If offset is still static, don't need to to help our dowstream find themselves.
+                  let snocCur = snocCursor IntTy kcurty
+                  in 
+                    LetE (tmp, snocCur, ReadInt c) <$>
+                         LetE (toEndVar vr, CursorTy () kcurty, cdrCursor (VarE tmp)) <$>
+                              LetE (vr, IntTy, carVal (VarE tmp)) <$>
+                                   let gorst = go (toEndVar vr) (liftA2 (+) (L1.sizeOf IntTy) offset) rs
+                                   in if offset == Nothing
+                                      then witNext (cdrCursor (VarE tmp)) <$> gorst
+                                      else gorst -- If offset is still static, don't need to to help our dowstream find themselves.
                 ty | isPacked ty ->
                  -- Strategy: ALLOW unbound witness variables. A later traversal will reorder.
                  witNext (VarE (toEndVar vr)) <$>
@@ -541,7 +545,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
          -- No matter what type of field is next, we always prefer a static witness:
          case offset of
             -- Statically sized, we know right where it is:
-            Just n  -> LetE (binderWitness vr, CursorTy () L1.NoneCur, add cur0 n) <$> go2
+            Just n  -> LetE (binderWitness vr, CursorTy () curty, add cur0 n) <$> go2
             -- Dynamically sized, we can still chain things
             -- together, but we don't know the answer straight out.
             Nothing -> go2
@@ -817,8 +821,8 @@ instance Out Dests
 -- Pairs of (<something>,Cursor) which may not be proper dilated type:
 ----------------------------------------------------------------------
 -- | Utility function: blindly add one cursor to the end.
-snocCursor :: Ty1 () -> Ty1 ()
-snocCursor ty = ProdTy[ty, CursorTy () L1.NoneCur]
+snocCursor :: Ty1 () -> L1.TyCur -> Ty1 ()
+snocCursor ty p = ProdTy[ty, CursorTy () p]
 
 cdrCursor :: Exp -> Exp
 cdrCursor = mkProjE 1

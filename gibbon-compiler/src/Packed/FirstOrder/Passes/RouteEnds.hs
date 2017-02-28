@@ -230,7 +230,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
             -- it's the one that reifies the fact "last field's end is constructors end".
             let rhs'' =
                   let Fixed v = scrutloc
-                  in LetE (toEndVar v, mkCursorTy () L1.NoneCur,
+                  in LetE (toEndVar v, mkCursorTy () (L1.HasCur []),
                            case sequence (L.map L1.sizeOf tys) of
                              -- Here we statically know the layout, plus one for the tag:
                              Just ns -> AddCursor (L2.toWitnessVar v) (sum ns+1)

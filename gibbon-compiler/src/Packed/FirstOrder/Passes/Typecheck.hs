@@ -315,13 +315,19 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
 
   assertEqTCVar :: Exp -> TCVar s -> TCVar s -> ST s ()
   assertEqTCVar e (Concrete t1) (Concrete t2) =
-      if t1 == t2
+      if t1 `tceq` t2
       then return ()
       else reportErr $ "Types not equal: " ++ (ndoc t1) ++ ", " ++ (ndoc t2)
                       ++ "\n  (when checking expression " ++ abbrv 80 e ++")"
   assertEqTCVar e (Concrete t) (Alias a) = makeEqTCVar t a e
   assertEqTCVar e (Alias a) (Concrete t) = makeEqTCVar t a e
   assertEqTCVar e (Alias a1) (Alias a2) = makeEqAlias a1 a2 e
+
+  tceq :: L1.Ty -> L1.Ty -> Bool
+  -- FIXME: hack that avoids actually checking cursor types!
+  tceq (L1.PackedTy n1 l1 _p1) (L1.PackedTy n2 l2 _p2) = n1 == n2 && l1 == l2
+  tceq (L1.ProdTy ls1) (L1.ProdTy ls2) = all id $ zipWith tceq ls1 ls2
+  tceq t1 t2 = t1 == t2
 
 -- FIXME: finish fun type handling:
 --  assertEqTCVar e (Fun a b) (Fun c d) =

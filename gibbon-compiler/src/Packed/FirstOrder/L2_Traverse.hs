@@ -608,11 +608,11 @@ builtinTEnv :: M.Map Var (ArrowTy L1.Ty)
 builtinTEnv = M.fromList
   [ (toVar "NewBuffer",    ArrowTy voidTy S.empty (CursorTy () NoneCur))
   , (toVar "ScopedBuffer", ArrowTy voidTy S.empty (CursorTy () NoneCur))
-  -- , (toVar "ReadInt",      ArrowTy (CursorTy () NoneCur) S.empty (ProdTy [IntTy, CursorTy () NoneCur]))
-  -- , (toVar "WriteInt",     ArrowTy (ProdTy [CursorTy () NoneCur, IntTy]) S.empty (CursorTy () NoneCur))
-  -- , (toVar "AddCursor",    ArrowTy (ProdTy [CursorTy () NoneCur, IntTy]) S.empty (CursorTy () NoneCur))
+  , (toVar "ReadInt",      ArrowTy (CursorTy () NoneCur) S.empty (ProdTy [IntTy, CursorTy () NoneCur]))
+  , (toVar "WriteInt",     ArrowTy (ProdTy [CursorTy () NoneCur, IntTy]) S.empty (CursorTy () NoneCur))
+  , (toVar "AddCursor",    ArrowTy (ProdTy [CursorTy () NoneCur, IntTy]) S.empty (CursorTy () NoneCur))
   -- Note: ReadInt, WriteInt, and AddCursor now are annotated with fancy cursor types, so they can't
-  -- be written down here easily.
+  -- be written down here easily... they're left in to avoid breaking existing code
   -- Note: ReadPackedFile is a builtin/primitive.  It is polymorphic,
   -- which currently doesn't allow us to model it as a function like
   -- this [2017.01.08].
