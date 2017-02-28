@@ -44,7 +44,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
 
     mn <- case mainExp of
             Nothing -> return Nothing
-            Just (x,t)  -> do (x',_) <- exp [] M.empty x
+            Just (x,t)  -> do (x',_) <- exp [] M.empty M.empty x
                               return $ Just (x',t)
                 -- do let initWenv = WE (M.singleton gloc (L1.VarE "gcurs")) M.empty
                 --    tl' <- tail [] (M.empty,initWenv) x
@@ -84,7 +84,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
           newArg = funarg
           bod = funbod
           demand = L.map ((\(Just x) -> x) . getLocVar) augments -- newOut
-      (exp',_) <- exp demand env0 bod
+      (exp',_) <- exp demand env0 M.empty bod
       return $ L2.FunDef funname newTy newArg exp'
 
 
@@ -114,8 +114,8 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
   --      thereby including the N new cursor returns.
   --  (2) The location of the processed expression, NOT including the
   --      added returns.
-  exp :: [LocVar] -> LocEnv -> L1.Exp -> SyM (L1.Exp, Loc)
-  exp demanded env ex =
+  exp :: [LocVar] -> LocEnv -> M.Map Var [L1.Ty] -> L1.Exp -> SyM (L1.Exp, Loc)
+  exp demanded env hasMap ex =
     dbgTrace lvl ("\n [routeEnds] exp, demanding "++show demanded++": "++show ex++"\n  with env: "++show env) $
     let trivLoc (VarE v)  = env # v
         trivLoc (LitE _i) = Bottom
@@ -155,23 +155,23 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
      -- Allocating new data doesn't witness the end of any data being read.
      LetE (v,ty, MkPackedE k ls) bod -> L1.assertTrivs ls $
        do env' <- extendLocEnv [(v,ty)] env
-          (bod',loc) <- exp demanded env' bod
+          (bod',loc) <- exp demanded env' hasMap bod
           return (LetE (v,ty,MkPackedE k ls) bod', loc)
 
      -- FIXME: Need unariser pass:
      LetE (vr,ty, MkProdE ls) bod -> L1.assertTrivs ls $ do
       -- As long as we keep these trivial, this is book-keeping only.  Nothing to route out of here.
       env' <- extendLocEnv [(vr,ty)] env
-      (bod',loc) <- exp demanded env' bod
+      (bod',loc) <- exp demanded env' M.empty bod
       return (LetE (vr,ty,MkProdE ls) bod', loc)
 
     -- A let is a fork in the road, a compound expression where we
     -- need to decide which branch can fulfill a given demand.
      LetE (v,t,rhs) bod ->
       do
-         ((fulfilled,demanded'), rhs', _rloc) <- maybeFulfill demanded env rhs
+         ((fulfilled,demanded'), rhs', _rloc) <- maybeFulfill demanded env hasMap rhs
          env' <- extendLocEnv [(v,t)] env
-         (bod', bloc) <- exp demanded' env' bod
+         (bod', bloc) <- exp demanded' env' hasMap bod
          let num1 = length fulfilled
              num2 = length demanded'
              newExp = LetE (v,t, L1.mkProj num1 (num1+1) rhs') bod'
@@ -192,13 +192,17 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
               else do
                 -- FIXME: THESE COULD BE IN THE WRONG ORDER:  (But it doesn't matter below.)
                 let outs = L.map (\(Traverse v) -> toEndVar v) (S.toList effs)
+                let curtys = L.map (\(Traverse v) -> case M.lookup v hasMap of
+                                                       Nothing -> L1.NoneCur
+                                                       Just ts -> L1.HasCur ts
+                                                     ) (S.toList effs)
                 -- FIXME: assert that the demands match what we got back...
                 -- might need to shuffle the order
                 assert (length demanded == length outs) $! return ()
-                let ouT' = L1.ProdTy $ (L.map (\l -> mkCursorTy l L1.NoneCur) outs) ++ [ouT]
+                let ouT' = L1.ProdTy $ (L.zipWith (\l p -> mkCursorTy l p) outs curtys) ++ [ouT]
                 tmp <- gensym $ toVar "hoistapp"
                 let newExp = LetE (tmp, fmap (const ()) ouT', AppE rat rand) $
-                               letBindProjections (L.map (\v -> (v,mkCursorTy () L1.NoneCur)) outs) (VarE tmp) $
+                               letBindProjections (L.zipWith (\v p -> (v,mkCursorTy () p)) outs curtys) (VarE tmp) $
                                  -- FIXME/TODO: unpack the witnesses we know about, returns 1-(N-1):
                                  (ProjE (length effs) (VarE tmp))
                 dbgTrace lvl (" [routeEnds] processing app with these extra returns: "++
@@ -219,12 +223,16 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
                          lp oth = error$ "[RouteEnds] FINISHME, handle case scrutinee at loc: "++show oth
                      in lp e1
 
+          newMap [] m = m
+          newMap ((v,_t):zs) m = M.insert v (L.map snd zs) (newMap zs m)
+
           docase (dcon,patVs,rhs) = do
-            let tys    = lookupDataCon ddefs dcon
-                zipped = fragileZip patVs tys
+            let tys     = lookupDataCon ddefs dcon
+                zipped  = fragileZip patVs tys
+                hasMap' = newMap zipped hasMap
 
             env' <- extendLocEnv zipped env
-            (rhs',loc) <- exp demanded env' rhs
+            (rhs',loc) <- exp demanded env' hasMap' rhs
 
             -- Since this pass is the one concerned with End propogation,
             -- it's the one that reifies the fact "last field's end is constructors end".
@@ -252,12 +260,12 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
             return (CaseE e1 ls', locFin)
 
      IfE a b c -> L1.assertTriv a $ do
-       (b',bloc) <- exp demanded env b
-       (c',cloc) <- exp demanded env c
+       (b',bloc) <- exp demanded env hasMap b
+       (c',cloc) <- exp demanded env hasMap c
        let (retloc,_) = L2.join bloc cloc
        return (IfE a b' c', retloc)
 
-     TimeIt e t b -> do (e',l) <- exp demanded env e
+     TimeIt e t b -> do (e',l) <- exp demanded env hasMap e
                         return (TimeIt e' t b, l)
 
      _ -> error$ "[routeEnds] Unfinished.  Needs to handle:\n  "++sdoc ex
@@ -272,9 +280,9 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
   -- | Process an expression multiple times, first to see what it can
   -- offer, and then again if it can offer something we want.
   -- Returns hits followed by misses.
-  maybeFulfill :: [LocVar] -> LocEnv -> L1.Exp -> SyM (([LocVar],[LocVar]),L1.Exp, Loc)
-  maybeFulfill demand env ex = do
-    (ex', loc) <- exp [] env ex
+  maybeFulfill :: [LocVar] -> LocEnv -> M.Map Var [L1.Ty] -> L1.Exp -> SyM (([LocVar],[LocVar]),L1.Exp, Loc)
+  maybeFulfill demand env hasMap ex = do
+    (ex', loc) <- exp [] env hasMap ex
     let offered = locToEndVars loc
         matches = S.intersection (S.fromList demand) (S.fromList offered)
 
@@ -284,7 +292,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
      then return (([],demand),ex',loc)
      else do
       let (hits,misses) = L.partition (`S.member` matches) demand
-      (ex',loc) <- exp [] env ex
+      (ex',loc) <- exp [] env hasMap ex
       return ((hits,misses), ex', loc)
 
 

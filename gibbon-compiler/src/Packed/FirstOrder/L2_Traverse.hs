@@ -385,7 +385,7 @@ cursorizeTy2 (ArrowTy inT ef ouT) =  (newArr, newIn)
   -- Let's turn output values into updated-output-cursors:
   -- NOTE: we could distinguish between the (size ef) output cursors
   -- that are already prepended here:
-  newOutTy = mapPacked (\_ l -> mkCursorTy (ensureEndVar l) NoneCur) ouT
+  newOutTy = mapPacked (\_ l p -> mkCursorTy (ensureEndVar l) p) ouT
   newIn    =
    if S.null ef
    then allLocVars ouT -- These stay in their original order (preorder)
@@ -404,7 +404,7 @@ cursorizeArrty3 arr@(ArrowTy inT ef ouT) =
 
 -- | The non-arrow counterpart to `cursorizeArrTy3`
 cursorizeTy3 :: Ty1 a -> Ty1 a
-cursorizeTy3  = mapPacked (\ _k l -> mkCursorTy l NoneCur)
+cursorizeTy3  = mapPacked (\ _k l p -> mkCursorTy l p)
 
 
 ensureEndVar :: Var -> Var
@@ -417,7 +417,7 @@ prependArgs [] t = t
 prependArgs ls t = ProdTy $ ls ++ [t]
 
 
-mapPacked :: (Var -> l -> Ty1 l) -> Ty1 l -> Ty1 l
+mapPacked :: (Var -> l -> TyCur -> Ty1 l) -> Ty1 l -> Ty1 l
 mapPacked fn t =
   case t of
     IntTy  -> IntTy
@@ -425,7 +425,7 @@ mapPacked fn t =
     SymTy  -> SymTy
     (ProdTy x)     -> ProdTy $ L.map (mapPacked fn) x
     (SymDictTy x)  -> SymDictTy $ mapPacked fn x
-    PackedTy k l _ -> fn (toVar k) l
+    PackedTy k l p -> fn (toVar k) l p
     ListTy{} -> error "FINISHLISTS"
 
 --------------------------------------------------------------------------------

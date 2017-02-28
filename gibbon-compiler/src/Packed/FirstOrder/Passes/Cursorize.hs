@@ -125,7 +125,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
   safeLet :: TEnv -> (Var,L1.Ty,Exp) -> Exp -> Exp
   safeLet tenv (v,t,rhs) bod =
     let received = recoverType tenv rhs
-        strip = L2.mapPacked (\_ l -> L2.mkCursorTy l L1.NoneCur)
+        strip = L2.mapPacked (\_ l p -> L2.mkCursorTy l p)
     in
     if strip received == strip t
     then LetE (v,typ t,rhs) bod
@@ -610,7 +610,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
           let _thetype = PackedTy (getTyOfDataCon ddefs k) () -- Pre-cursorize ret type of this MkPackedE
           -- This stands for the  "WriteTag" operation.  dest' points just after the tag.
           -- It's "type", if that is appropriate, is the type of the first field.
-          Di . LetE (dest', CursorTy () L1.NoneCur,
+          Di . LetE (dest', CursorTy () L1.NoneCur, -- TODO CURSOR 
                      MkPackedE k [VarE curs]) <$>
              let
                  -- Return (start,end).  The final return value lives at the position of the out cursoara:
