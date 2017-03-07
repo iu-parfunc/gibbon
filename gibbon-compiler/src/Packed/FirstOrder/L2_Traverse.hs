@@ -356,9 +356,14 @@ addEndWitnessReturns = __
 cursorizeTy1 :: ArrowTy Ty -> (ArrowTy Ty, [LocVar])
 cursorizeTy1 (ArrowTy inT ef ouT) = (newArr, newOut)
  where
-  newArr = ArrowTy inT ef newOutTy
-  newOutTy = prependArgs (L.map (\l -> mkCursorTy l NoneCur) newOut)
+  newArr = ArrowTy newInTy ef newOutTy
+  newOutTy = prependArgs (L.map (\l -> mkCursorTy l $ L1.HasCur []) newOut)
                          ouT
+  newInTy = updateIn inT
+  updateIn (ProdTy ls) = ProdTy $ L.map updateIn ls
+  updateIn (PackedTy k l L1.NoneCur) = PackedTy k l $ L1.HasCur [stripTyLocs $ PackedTy k l L1.NoneCur]
+  updateIn (PackedTy k l p) = PackedTy k l p
+  updateIn t = t
   -- Every _traversed_ packed input means a POTENTIAL output (new
   -- return value for the cursor's final value).
   newOut   = [ toEndVar v  -- This determines the ORDER of added inputs.
