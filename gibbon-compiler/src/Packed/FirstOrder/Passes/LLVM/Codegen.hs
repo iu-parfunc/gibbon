@@ -188,6 +188,11 @@ codegenTail (LetUnpackT bnds ptr body) ty = do
   _ <- unpackStruct Nothing struct bnds
   codegenTail body ty
 
+codegenTail (LetTrivT (v,trvTy,trv) bod) ty = do
+  trv' <- codegenTriv trv
+  _ <- assign (typeOf trvTy) (Just $ fromVar v) trv'
+  codegenTail bod ty
+
 codegenTail t _ = error $ "Tail: Not implemented yet: " ++ show t
 
 
@@ -195,7 +200,5 @@ codegenTail t _ = error $ "Tail: Not implemented yet: " ++ show t
 --
 codegenTriv :: Triv -> CodeGen AST.Operand
 codegenTriv (IntTriv i) = (return . constop_ . int_ . toInteger) i
-codegenTriv (VarTriv v) = do
-  let nm = fromVar v
-  getvar nm
+codegenTriv (VarTriv v) = getvar (fromVar v)
 codegenTriv t = error $ "Triv: Not implemented yet: " ++ show t
