@@ -24,6 +24,9 @@ int __fputs(char* ch) {
   return fputs(ch, stdout);
 }
 
+int __print_difftime(double d) {
+  return printf("SELFTIMED: %lf\n", d);
+}
 
 // Big default.  Used for --packed and --pointer/bumpalloc
 // static long long global_default_buf_size = (500lu * 1000lu * 1000lu);

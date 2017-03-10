@@ -9,7 +9,7 @@
 -- | The final pass of the compiler: generate C code.
 
 module Packed.FirstOrder.Passes.Codegen
-  ( codegenProg, harvestStructTys, makeName
+  ( codegenProg, harvestStructTys, makeName, rewriteReturns
   ) where
 
 import           Control.Monad
