@@ -8,8 +8,8 @@
 module Packed.FirstOrder.Passes.LLVM.Instruction (
     declare, getvar, getLastLocal, getfn, addTypeDef
   , instr, globalOp, localRef
-  , allocate, store, load, getElemPtr, call, add, mul, sub
-  , eq, neq, ifThenElse, ptrToInt, bitcast, sext
+  , allocate, store, load, getElemPtr, call, add, mul, sub, for, assign
+  , eq, neq, ult, ifThenElse, ptrToInt, bitcast, sext
   , int_, int32_, char_, constop_, string_
 ) where
 
@@ -209,6 +209,8 @@ eq = icmp IP.EQ
 neq :: Maybe String -> [AST.Operand] -> CodeGen AST.Operand
 neq = icmp IP.NE
 
+ult :: Maybe String -> [AST.Operand] -> CodeGen AST.Operand
+ult = icmp IP.ULT
 
 -- | Add a phi node to the top of the current block
 --
@@ -248,6 +250,50 @@ ifThenElse test yes no = do
 
   setBlock ifExit
   phi T.i64 [(tv, blockLabel tb), (fv, blockLabel fb)]
+
+
+for :: Integer -> Integer -> AST.Operand -> CodeGen AST.Operand -> CodeGen BlockState
+for start step end body = do
+  forCond <- newBlock "for.cond"
+  forBody <- newBlock "for.body"
+  forIncr <- newBlock "for.incr"
+  forExit <- newBlock "for.exit"
+
+  -- allocate the counter
+  iterV <- allocate T.i64 Nothing
+  _ <- store iterV (constop_ $ int_ start)
+  br forCond
+
+  -- check the condition
+  setBlock forCond
+  iter <- load T.i64 Nothing iterV
+  p <- ult Nothing [iter, end]
+  _ <- cbr p forBody forExit
+
+  -- execute body
+  setBlock forBody
+  _ <- body
+  br forIncr
+
+  -- increment the counter
+  setBlock forIncr
+  iter' <- load T.i64 Nothing iterV
+  iterAdd <- add Nothing [iter', constop_ $ int_ step]
+  store iterV iterAdd
+  br forCond
+
+  -- exit loop
+  setBlock forExit
+  return_
+
+
+-- | ty _var_ = val
+--
+assign :: T.Type -> Maybe String -> AST.Operand -> CodeGen AST.Operand
+assign ty nm val = do
+  x <- allocate ty nm
+  _ <- store x val
+  load ty nm x
 
 
 -- | Constructors for literals

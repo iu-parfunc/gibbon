@@ -20,6 +20,7 @@ import Packed.FirstOrder.Passes.LLVM.Global hiding (toPtrTy)
 import qualified LLVM.General.AST as AST
 import qualified LLVM.General.AST.Global as G
 import qualified LLVM.General.AST.Constant as C
+import qualified LLVM.General.AST.Type as T
 import qualified LLVM.General.Context as CTX
 import qualified LLVM.General.Module as M
 
@@ -36,13 +37,17 @@ toLLVM m = CTX.withContext $ \ctx -> do
 --
 codegenProg :: Bool -> Prog -> IO String
 codegenProg _ prg@(Prog fns body) = (toLLVM . genModule) $ do
-  -- declare helpers declared in lib.c
+  -- declare helpers defined in lib.c
   declare printInt
-  declare puts
+  declare fputs
   declare globalSizeParam
+  declare globalItersParam
   declare clockGetTime
   declare difftimespecs
   declare printDiffTime
+  declare printIterDiffTime
+  declare saveAllocState
+  declare restoreAllocState
 
   -- generate structs and fns
   _ <- addStructs prg
@@ -50,9 +55,9 @@ codegenProg _ prg@(Prog fns body) = (toLLVM . genModule) $ do
   mapM_ codegenFunSig fns'
   mapM_ codegenFun fns'
   where expr = case body of
-                     Just (PrintExp t) -> t
-                     _ -> RetValsT []
-        fns' =  fns ++ [FunDecl (toVar "__main_expr") [] (ProdTy []) expr]
+                 Just (PrintExp t) -> t
+                 _ -> RetValsT []
+        fns' = fns ++ [FunDecl (toVar "__main_expr") [] (ProdTy []) expr]
 
 
 -- | Add fn signatures to globalFns
@@ -130,8 +135,8 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty = do
              _ -> error $ "Prim: Not implemented yet: " ++ show prm
   codegenTail body ty
 
-codegenTail (IfT test consq els') ty = do
-  _ <- ifThenElse (toIfPred test) (codegenTail consq ty) (codegenTail els' ty)
+codegenTail (IfT test consq els) ty = do
+  _ <- ifThenElse (toIfPred test) (codegenTail consq ty) (codegenTail els ty)
   return_
 
 codegenTail (Switch trv alts def) ty =
@@ -198,9 +203,7 @@ codegenTail (LetTrivT (v,trvTy,trv) bod) ty = do
   _ <- assign (typeOf trvTy) (Just $ fromVar v) trv'
   codegenTail bod ty
 
--- TODO(cskksc): implement isIter
 codegenTail (LetTimedT isIter bnds timed bod) ty =
-  -- CLOCK_MONOTONIC_RAW = T.i32 4
   let clockMonotonicRaw = constop_ $ int32_ 4
       ident     = case bnds of
                     ((v,_):_) -> v
@@ -210,23 +213,65 @@ codegenTail (LetTimedT isIter bnds timed bod) ty =
       iterVar   = "iters_" ++ (fromVar ident)
       timespecT = AST.NamedTypeReference $ AST.Name "struct.timespec"
   in do
+    -- allocate variables
     forM_ bnds $ \(v,vty) -> do
       allocate (typeOf vty) (Just $ fromVar v)
-
-    -- let timed' = rewriteReturns timed bnds
     _    <- allocate timespecT (Just begnVar)
     _    <- allocate timespecT (Just endVar)
     begn <- getvar begnVar
     end  <- getvar endVar
+    if isIter then
+      do
+        -- TODO(cskksc): Fix ifThenElse
+        let savealloc = do
+              _ <- call saveAllocState Nothing []
+              x <- allocate T.i64 Nothing
+              _ <- load T.i64 Nothing x
+              return_
+        let restalloc = do
+              _ <- call restoreAllocState Nothing []
+              x <- allocate T.i64 Nothing
+              _ <- load T.i64 Nothing x
+              return_
+        let noop = do
+              x <- allocate T.i64 Nothing
+              _ <- load T.i64 Nothing x
+              return_
 
-    -- get timing information
-    _ <- call clockGetTime Nothing [clockMonotonicRaw, begn]
-    _ <- codegenTail timed ty
-    _ <- call clockGetTime Nothing [clockMonotonicRaw, end]
+        let loopBody = do
+              _ <- call printInt Nothing [constop_ $ int_ 42]
+              _ <- call clockGetTime Nothing [clockMonotonicRaw, begn]
+              i <- load T.i64 Nothing $ globalOp T.i64 (AST.Name "global_iters_param")
+              i_minus_1 <- sub Nothing [i, constop_ $ int_ 1]
+              let zerop = neq Nothing [i_minus_1, constop_ $ int_ 0]
 
-    diff <- call difftimespecs Nothing [begn, end]
-    _    <- call printDiffTime Nothing [diff]
+              _ <- ifThenElse zerop savealloc noop
+              -- let timed' = rewriteReturns timed bnds
+              _ <- codegenTail timed ty
+              _ <- ifThenElse zerop restalloc noop
 
+              -- print BATCHTIME
+              _ <- call clockGetTime Nothing [clockMonotonicRaw, end]
+              diff <- call difftimespecs Nothing [begn, end]
+              call printIterDiffTime Nothing [diff]
+
+        end <- load T.i64 Nothing $ globalOp T.i64 (AST.Name "global_iters_param")
+        for 0 1 end loopBody
+        return_
+    else
+      do
+        -- execute and get running time
+        _ <- call clockGetTime Nothing [clockMonotonicRaw, begn]
+        -- let timed' = rewriteReturns timed bnds
+        _ <- codegenTail timed ty
+        _ <- call clockGetTime Nothing [clockMonotonicRaw, end]
+
+        -- print SELFTIMED
+        diff <- call difftimespecs Nothing [begn, end]
+        call printDiffTime Nothing [diff]
+        return_
+
+    -- process body
     codegenTail bod ty
 
 codegenTail t _ = error $ "Tail: Not implemented yet: " ++ show t

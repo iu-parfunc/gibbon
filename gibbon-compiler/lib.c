@@ -15,6 +15,18 @@
 #include <stdarg.h> // For va_start etc
 #include <errno.h>
 
+
+// Big default.  Used for --packed and --pointer/bumpalloc
+// static long long global_default_buf_size = (500lu * 1000lu * 1000lu);
+static long long global_default_buf_size = (5 * 1000lu * 1000lu * 1000lu); // 9GB.
+
+// static long long global_size_param = 1;
+extern long long global_size_param;
+// static long long global_iters_param = 1;
+extern long long global_iters_param;
+
+static char* global_benchfile_param = NULL;
+
 // extra functions
 int __print_int(long long n) {
   return printf("%lld", n);
@@ -28,16 +40,12 @@ int __print_difftime(double d) {
   return printf("SELFTIMED: %lf\n", d);
 }
 
-// Big default.  Used for --packed and --pointer/bumpalloc
-// static long long global_default_buf_size = (500lu * 1000lu * 1000lu);
-static long long global_default_buf_size = (5 * 1000lu * 1000lu * 1000lu); // 9GB.
 
-// static long long global_size_param = 1;
-extern long long global_size_param;
-static long long global_iters_param;
-static long long global_iters_param = 1;
-
-static char*     global_benchfile_param = NULL;
+int __print_iter_difftime(double d) {
+    /* printf("ITERS: %lld\n", global_iters_param); */
+    /* printf("SIZE: %lld\n", global_size_param); */
+    return printf("BATCHTIME: %lf\n", d);
+}
 
 // Sequential for now:
 static const int num_workers = 1;
@@ -314,10 +322,10 @@ int main(int argc, char** argv)
       exit(1);
     } else {
       if (got_numargs == 0) {
-        global_size_param  = atoll(argv[i]);
-        got_numargs ++;
+          global_size_param  = atoll(argv[i]);
+          got_numargs ++;
       } else {
-        global_iters_param = atoll(argv[i]);
+          global_iters_param = atoll(argv[i]);
       }
     }
   }

@@ -10,12 +10,12 @@ import qualified LLVM.General.AST.Constant as C
 
 -- | Must be consistent with function defined in lib.c
 --
-puts :: G.Global
-puts = G.functionDefaults
-       { G.name        = AST.Name "__fputs"
-       , G.parameters  = ([G.Parameter ty arg []], False)
-       , G.returnType  = T.i64
-       }
+fputs :: G.Global
+fputs = G.functionDefaults
+        { G.name        = AST.Name "__fputs"
+        , G.parameters  = ([G.Parameter ty arg []], False)
+        , G.returnType  = T.i64
+        }
   where ty  = T.PointerType T.i8 (AS.AddrSpace 0)
         arg = AST.UnName 0
 
@@ -56,6 +56,13 @@ globalSizeParam = G.globalVariableDefaults
                   , G.type' = T.i64
                   , G.initializer = Just $ C.Int 64 1
                   }
+
+globalItersParam :: G.Global
+globalItersParam = G.globalVariableDefaults
+                   { G.name  = AST.Name "global_iters_param"
+                   , G.type' = T.i64
+                   , G.initializer = Just $ C.Int 64 1
+                   }
 
 -- | int clock_gettime(clockid_t clk_id, struct timespec *tp);
 --
@@ -101,6 +108,31 @@ printDiffTime = G.functionDefaults
                 }
   where ty  = T.double
         arg = AST.UnName 0
+
+-- | Must be consistent with function defined in lib.c
+--
+printIterDiffTime :: G.Global
+printIterDiffTime = G.functionDefaults
+                { G.name        = AST.Name "__print_iter_difftime"
+                , G.parameters  = ([G.Parameter ty arg []], False)
+                , G.returnType  = T.i64
+                }
+  where ty  = T.double
+        arg = AST.UnName 0
+
+saveAllocState :: G.Global
+saveAllocState = G.functionDefaults
+                 { G.name        = AST.Name "save_alloc_state"
+                 , G.parameters  = ([], False)
+                 , G.returnType  = T.VoidType
+                 }
+
+restoreAllocState :: G.Global
+restoreAllocState = G.functionDefaults
+                    { G.name        = AST.Name "restore_alloc_state"
+                    , G.parameters  = ([], False)
+                    , G.returnType  = T.VoidType
+                    }
 
 -- | Convert the type to a pointer type
 --

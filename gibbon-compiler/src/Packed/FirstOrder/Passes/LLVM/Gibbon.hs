@@ -2,7 +2,7 @@
 module Packed.FirstOrder.Passes.LLVM.Gibbon (
     addp, subp, mulp, eqp, callp
   , sizeParam, typeOf, printString, toIfPred
-  , readTag, readInt, sizeof, toPtrTy, convert, assign
+  , readTag, readInt, sizeof, toPtrTy, convert
   , addStructs, structName, populateStruct, unpackStruct
 ) where
 
@@ -114,7 +114,7 @@ printString s = do
   -- TODO(cskksc): figure out the -2. its probably because store doesn't assign
   -- anything to an unname
   _   <- getElemPtr True (localRef (toPtrTy ty) (AST.UnName (nm - 2))) idxs
-  _   <- call LG.puts Nothing [localRef (toPtrTy ty) (AST.UnName nm)]
+  _   <- call LG.fputs Nothing [localRef (toPtrTy ty) (AST.UnName nm)]
   return_
     where (chars, len) = stringToChar s
           ty    = T.ArrayType len T.i8
@@ -179,15 +179,6 @@ readCursor [(valV', valTy'), (curV', curTy')] cur' offset =
     curVV <- getElemPtr True cur [constop_ $ int_ offset]
     _ <- assign curTy (Just curV) curVV
     return_
-
-
--- | ty _var_ = val
---
-assign :: T.Type -> Maybe String -> AST.Operand -> CodeGen AST.Operand
-assign ty nm val = do
-  x <- allocate ty nm
-  _ <- store x val
-  load ty nm x
 
 
 -- | Generate instructions to convert op from type-of-op -> toTy
