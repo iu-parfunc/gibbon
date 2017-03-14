@@ -315,7 +315,8 @@ answers: $(ANSWERS)
 # Run tests through the LLVM backend
 
 build_gibbon_llvm_lib:
-	llc-3.9 -filetype=obj -o lib.o $(TREELANGDIR)/gibbon-compiler/lib.ll
+	clang-3.9 -S -emit-llvm $(TREELANGDIR)/gibbon-compiler/lib.c
+	llc-3.9 -filetype=obj -o lib.o lib.ll
 
 
 
