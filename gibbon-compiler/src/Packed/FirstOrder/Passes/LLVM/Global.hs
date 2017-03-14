@@ -72,7 +72,7 @@ clockGetTime = G.functionDefaults
                , G.parameters = ([ G.Parameter T.i32 arg0 []
                                  , G.Parameter (toPtrTy timespecT) arg1 []]
                                 , False)
-               , G.returnType = T.i32
+               , G.returnType = T.i64
                }
   where timespecT = T.NamedTypeReference (AST.Name "struct.timespec")
         arg0      = AST.UnName 0

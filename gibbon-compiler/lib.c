@@ -42,8 +42,8 @@ int __print_difftime(double d) {
 
 
 int __print_iter_difftime(double d) {
-    /* printf("ITERS: %lld\n", global_iters_param); */
-    /* printf("SIZE: %lld\n", global_size_param); */
+    printf("ITERS: %lld\n", global_iters_param);
+    printf("SIZE: %lld\n", global_size_param);
     return printf("BATCHTIME: %lf\n", d);
 }
 

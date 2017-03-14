@@ -18,6 +18,8 @@ import qualified Data.Foldable as F
 
 -- | llvm-general
 import qualified LLVM.General.AST as AST
+import qualified LLVM.General.AST.Constant as C
+import qualified LLVM.General.AST.Type as T
 import qualified LLVM.General.AST.Global as G
 
 
@@ -32,6 +34,7 @@ data CodeGenState = CodeGenState
   , globalTypeDefs :: Map String AST.Definition -- ^ structs
   , localVars      :: Map String AST.Operand    -- ^ local vars
   , next           :: Word                      -- ^ names supply
+  , lastOp         :: (T.Type, AST.Operand)     -- ^ return value of last instruction executed
   } deriving Show
 
 
@@ -52,6 +55,7 @@ initialCodeGenState = CodeGenState
                      , globalTypeDefs = Map.empty
                      , localVars      = Map.empty
                      , next           = 0
+                     , lastOp         = (T.i64, AST.ConstantOperand $ C.Int 64 0)
                      }
 
 

@@ -7,9 +7,9 @@
 
 module Packed.FirstOrder.Passes.LLVM.Instruction (
     declare, getvar, getLastLocal, getfn, addTypeDef
-  , instr, globalOp, localRef
+  , instr, globalOp, localRef, getLastOp
   , allocate, store, load, getElemPtr, call, add, mul, sub, for, assign
-  , eq, neq, ult, ifThenElse, ptrToInt, bitcast, sext
+  , eq, neq, ult, ifThenElse, ptrToInt, bitcast, sext, toPtrTy
   , int_, int32_, char_, constop_, string_
 ) where
 
@@ -27,6 +27,7 @@ import qualified LLVM.General.AST.Type as T
 import qualified LLVM.General.AST.Instruction as I
 import qualified LLVM.General.AST.CallingConvention as CC
 import qualified LLVM.General.AST.Attribute as A
+import qualified LLVM.General.AST.AddrSpace as AS
 import qualified LLVM.General.AST.IntegerPredicate as IP
 
 import Packed.FirstOrder.Passes.LLVM.Monad
@@ -69,10 +70,11 @@ getvar nm = do
 
 
 getLastLocal :: CodeGen AST.Name
-getLastLocal = do
-  a <- gets next
-  return $ AST.UnName (a - 1)
+getLastLocal = gets next >>= \a -> return $ AST.UnName (a - 1)
 
+
+getLastOp :: CodeGen (T.Type, AST.Operand)
+getLastOp = gets lastOp >>= return
 
 getfn :: String -> CodeGen G.Global
 getfn nm = do
@@ -91,7 +93,9 @@ instr ty nm ins = do
   name <- case nm of
             Just x  -> do
               let ref = AST.LocalReference ty (AST.Name x)
-              modify $ \s -> s { localVars = Map.insert x ref (localVars s)}
+              modify $ \s -> s { localVars = Map.insert x ref (localVars s)
+                               , lastOp    = (ty, ref)
+                               }
               return $ AST.Name x
             Nothing -> freshName
   instr_ $ name AST.:= ins
@@ -131,7 +135,7 @@ toArgs = map (\x -> (x, []))
 -- | Allocate memory for the type
 --
 allocate :: T.Type -> Maybe String -> CodeGen AST.Operand
-allocate ty nm = instr ty nm $ I.Alloca ty Nothing 0 []
+allocate ty nm = instr (toPtrTy ty) nm $ I.Alloca ty Nothing 0 []
 
 
 -- | Store operand as a new local unname
@@ -227,29 +231,27 @@ ifThenElse test yes no = do
   ifExit  <- newBlock "if.exit"
   ifEntry <- newBlock "if.entry"
 
+  -- check condition
   _  <- br ifEntry
   setBlock ifEntry
   p  <- test
   _  <- cbr p ifThen ifElse
 
+  -- then block
   setBlock ifThen
   _  <- yes
+  (ty, tv) <- getLastOp
   tb <- br ifExit
-  -- Since yes/no are BlockState's, we extract the last unname, assuming it's the
-  -- last instruction of the then block, and use that as an Operand
-  -- TODO(cskksc): This won't work if the block ends with a named instruction
-  --               Also, somehow infer the T.i64 here
-  last'  <- getLastLocal
-  let tv = AST.LocalReference T.i64 last'
 
+  -- else block
   setBlock ifElse
-  _     <- no
-  fb    <- br ifExit
-  last' <- getLastLocal
-  let fv = AST.LocalReference T.i64 last'
+  _  <- no
+  (_, fv) <- getLastOp
+  fb <- br ifExit
 
+  -- exit
   setBlock ifExit
-  phi T.i64 [(tv, blockLabel tb), (fv, blockLabel fb)]
+  phi ty [(tv, blockLabel tb), (fv, blockLabel fb)]
 
 
 for :: Integer -> Integer -> AST.Operand -> CodeGen AST.Operand -> CodeGen BlockState
@@ -262,7 +264,7 @@ for start step end body = do
   -- allocate the counter
   iterV <- allocate T.i64 Nothing
   _ <- store iterV (constop_ $ int_ start)
-  br forCond
+  _ <- br forCond
 
   -- check the condition
   setBlock forCond
@@ -273,14 +275,14 @@ for start step end body = do
   -- execute body
   setBlock forBody
   _ <- body
-  br forIncr
+  _ <- br forIncr
 
   -- increment the counter
   setBlock forIncr
   iter' <- load T.i64 Nothing iterV
   iterAdd <- add Nothing [iter', constop_ $ int_ step]
-  store iterV iterAdd
-  br forCond
+  _ <- store iterV iterAdd
+  _ <- br forCond
 
   -- exit loop
   setBlock forExit
@@ -313,3 +315,9 @@ char_ = C.Int 8 . toInteger . ord
 
 string_ :: String -> C.Constant
 string_ = C.Array T.i8 . map char_
+
+
+-- | Convert the type to a pointer type
+--
+toPtrTy :: T.Type -> T.Type
+toPtrTy ty = T.PointerType ty (AS.AddrSpace 0)

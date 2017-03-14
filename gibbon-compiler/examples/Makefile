@@ -323,15 +323,15 @@ build_gibbon_llvm_lib:
 LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
   test00c_printBool.gib test00d_printData.gib test00e_func.gib \
   test01_if.gib test01b_ifif.gib \
-  test02_arith.gib test02d_printPair.gib \
+  test02_arith.gib test02b_datacon.gib test02d_printPair.gib \
   test03_let.gib test03b_eqs.gib \
   test04_vector.gib test04b_vector.gib \
   test05_app.gib test05b_app.gib test05c_arity2.gib \
   test06_case.gib test06b_case.gib \
+  test07_time.gib test07b_iterate.gib \
   test11_fundata.gib test11b_fundata.gib
 
-LLVM_NOT_IMPLEMENTED = test02b_datacon.gib test04c_ifvector.gib \
-  test07_time.gib test07b_iterate.gib \
+LLVM_NOT_IMPLEMENTED = test04c_ifvector.gib \
   test08b_dict.gib test08c_dict.gib test08_dict.gib test08d_sharedict.gib \
   test09_recur.gib test10_desugar.gib test10b_desugar.gib \
   test20a_withprint.gib test20b_bintree.gib test20e_bintree.gib \

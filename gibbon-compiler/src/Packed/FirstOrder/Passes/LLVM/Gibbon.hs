@@ -2,7 +2,7 @@
 module Packed.FirstOrder.Passes.LLVM.Gibbon (
     addp, subp, mulp, eqp, callp
   , sizeParam, typeOf, printString, toIfPred
-  , readTag, readInt, sizeof, toPtrTy, convert
+  , readTag, readInt, sizeof, convert
   , addStructs, structName, populateStruct, unpackStruct
 ) where
 
@@ -96,12 +96,6 @@ instance TypeOf Ty where
 -- | struct types
 instance TypeOf [Ty] where
   typeOf = T.NamedTypeReference . AST.Name . structName
-
-
--- | Convert the type to a pointer type
---
-toPtrTy :: T.Type -> T.Type
-toPtrTy ty = T.PointerType ty (AS.AddrSpace 0)
 
 
 -- | Gibbon PrintString

@@ -119,12 +119,8 @@ codegenTail (RetValsT ts) (ProdTy tys) =
 codegenTail (LetPrimCallT bnds prm rnds body) ty = do
   rnds' <- mapM codegenTriv rnds
   _     <- case prm of
-             PrintInt -> do
-               _ <- call printInt Nothing rnds'
-               return_
-             PrintString s -> do
-               _ <- printString s
-               return_
+             PrintInt -> call printInt Nothing rnds' >>= \_ -> return_
+             PrintString s -> printString s >>= \_ -> return_
              AddP -> addp bnds rnds'
              SubP -> subp bnds rnds'
              MulP -> mulp bnds rnds'
@@ -214,49 +210,37 @@ codegenTail (LetTimedT isIter bnds timed bod) ty =
       timespecT = AST.NamedTypeReference $ AST.Name "struct.timespec"
   in do
     -- allocate variables
-    forM_ bnds $ \(v,vty) -> do
-      allocate (typeOf vty) (Just $ fromVar v)
     _    <- allocate timespecT (Just begnVar)
     _    <- allocate timespecT (Just endVar)
     begn <- getvar begnVar
     end  <- getvar endVar
     if isIter then
       do
-        -- TODO(cskksc): Fix ifThenElse
-        let savealloc = do
-              _ <- call saveAllocState Nothing []
-              x <- allocate T.i64 Nothing
-              _ <- load T.i64 Nothing x
-              return_
-        let restalloc = do
-              _ <- call restoreAllocState Nothing []
-              x <- allocate T.i64 Nothing
-              _ <- load T.i64 Nothing x
-              return_
-        let noop = do
-              x <- allocate T.i64 Nothing
-              _ <- load T.i64 Nothing x
-              return_
-
+        let savealloc = call saveAllocState Nothing [] >>= \_ -> return_
+        let restalloc = call restoreAllocState Nothing [] >>= \_ -> return_
+        let noop = return_
         let loopBody = do
-              _ <- call printInt Nothing [constop_ $ int_ 42]
               _ <- call clockGetTime Nothing [clockMonotonicRaw, begn]
               i <- load T.i64 Nothing $ globalOp T.i64 (AST.Name "global_iters_param")
               i_minus_1 <- sub Nothing [i, constop_ $ int_ 1]
-              let zerop = neq Nothing [i_minus_1, constop_ $ int_ 0]
+              let isZero = neq Nothing [i_minus_1, constop_ $ int_ 0]
 
-              _ <- ifThenElse zerop savealloc noop
+              _ <- ifThenElse isZero savealloc noop
               -- let timed' = rewriteReturns timed bnds
               _ <- codegenTail timed ty
-              _ <- ifThenElse zerop restalloc noop
+              (_, l) <- getLastOp
+              _ <- ifThenElse isZero restalloc noop
+
+              case bnds of
+                ((v,t):_) -> assign (typeOf t) (Just $ fromVar v) l
 
               -- print BATCHTIME
-              _ <- call clockGetTime Nothing [clockMonotonicRaw, end]
-              diff <- call difftimespecs Nothing [begn, end]
-              call printIterDiffTime Nothing [diff]
+              call clockGetTime Nothing [clockMonotonicRaw, end]
 
-        end <- load T.i64 Nothing $ globalOp T.i64 (AST.Name "global_iters_param")
-        for 0 1 end loopBody
+        loopEnd <- load T.i64 Nothing $ globalOp T.i64 (AST.Name "global_iters_param")
+        for 0 1 loopEnd loopBody
+        diff <- call difftimespecs Nothing [begn, end]
+        call printIterDiffTime Nothing [diff]
         return_
     else
       do
@@ -264,7 +248,11 @@ codegenTail (LetTimedT isIter bnds timed bod) ty =
         _ <- call clockGetTime Nothing [clockMonotonicRaw, begn]
         -- let timed' = rewriteReturns timed bnds
         _ <- codegenTail timed ty
+        (_, l) <- getLastOp
         _ <- call clockGetTime Nothing [clockMonotonicRaw, end]
+
+        case bnds of
+          ((v,t):_) -> assign (typeOf t) (Just $ fromVar v) l
 
         -- print SELFTIMED
         diff <- call difftimespecs Nothing [begn, end]
