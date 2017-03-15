@@ -12,6 +12,9 @@
 #include <fcntl.h>
 #include <stdarg.h> // For va_start etc
 #include <errno.h>
+#ifdef GCALLOC
+#include "gc.h" // Try to use conservative gc
+#endif
 
 // Big default.  Used for --packed and --pointer/bumpalloc
 // static long long global_default_buf_size = (500lu * 1000lu * 1000lu);
@@ -118,11 +121,29 @@ static const int num_workers = 1;
   void save_alloc_state() {}
   void restore_alloc_state() {}
 
-  #define ALLOC(n) malloc(n)
+  #ifdef GCALLOC
+
+    #define ALLOC(n) GC_MALLOC(n)
+
+  #else
+
+    #define ALLOC(n) malloc(n)
+
+  #endif // GCALLOC
 
 #endif // BUMPALLOC
 
 #define ALLOC_PACKED(n) ALLOC(n)
+
+#ifdef GCALLOC
+
+  #define ATOM_ALLOC(n) GC_MALLOC_ATOMIC(n)
+
+#else
+
+  #define ATOM_ALLOC(n) ALLOC(n)
+
+#endif // GCALLOC
 
 // --------------------------------------------------------------------------------
 
