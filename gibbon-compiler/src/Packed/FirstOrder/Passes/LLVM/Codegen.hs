@@ -48,6 +48,7 @@ codegenProg _ prg@(Prog fns body) = (toLLVM . genModule) $ do
   declare printIterDiffTime
   declare saveAllocState
   declare restoreAllocState
+  declare dictInsertInt
 
   -- generate structs and fns
   _ <- addStructs prg
@@ -130,10 +131,20 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty = do
              SizeParam -> sizeParam bnds
              ReadTag -> readTag bnds rnds'
              ReadInt -> readInt bnds rnds'
-             DictEmptyP _ -> let [(outV,ty)] = bnds
-                              in do
-                                _ <- assign (typeOf ty) (Just $ fromVar outV) (constop_ $ C.Null $ toPtrTy $ T.NamedTypeReference $ AST.Name "struct.dict_item")
-                                return_
+             DictEmptyP _ -> let [(outV,outTy)] = bnds
+                             in do
+                               _ <- assign (typeOf outTy) (Just $ fromVar outV) (constop_ $ C.Null $ toPtrTy $ T.NamedTypeReference $ AST.Name "struct.dict_item")
+                               return_
+             -- Will only work when ty is IntTy or SymTy
+             DictInsertP _ -> let [(outV,_)] = bnds
+                                  [(VarTriv dict),key,val] = rnds
+                               in do
+                                  dict' <- getvar (fromVar dict)
+                                  key'  <- codegenTriv key
+                                  val'  <- codegenTriv val
+                                  _     <- call dictInsertInt (Just $ fromVar outV) [dict', key', val']
+                                  return_
+
              _ -> error $ "Prim: Not implemented yet: " ++ show prm
   codegenTail body ty
 

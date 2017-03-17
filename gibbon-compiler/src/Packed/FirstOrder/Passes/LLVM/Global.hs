@@ -141,9 +141,25 @@ dictItemUnion = AST.TypeDefinition (AST.Name "union.dict_item")
 
 dictItemStruct :: AST.Definition
 dictItemStruct = AST.TypeDefinition (AST.Name "struct.dict_item")
-                 (Just $ T.StructureType False [(toPtrTy (T.NamedTypeReference (AST.Name "struct.dict_item"))),
-                                               T.i32,
-                                               (T.NamedTypeReference (AST.Name "union.dict_item"))])
+                 (Just $ T.StructureType False [toPtrTy $ T.NamedTypeReference (AST.Name "struct.dict_item"),
+                                               T.i64,
+                                               T.NamedTypeReference $ AST.Name "union.dict_item"])
+
+dictInsertInt :: G.Global
+dictInsertInt = G.functionDefaults
+                { G.name        = AST.Name "dict_insert_int"
+                , G.parameters  = ( [ G.Parameter dictItemTy arg0 []
+                                    , G.Parameter T.i64 arg1 [] -- SymTy
+                                    , G.Parameter T.i64 arg2 [] -- IntTy
+                                    ]
+                                  , False)
+                , G.returnType  = dictItemTy
+                }
+  where
+    arg0 = AST.UnName 0
+    arg1 = AST.UnName 1
+    arg2 = AST.UnName 2
+    dictItemTy = toPtrTy $ T.NamedTypeReference $ AST.Name "struct.dict_item"
 
 -- | Convert the type to a pointer type
 --
