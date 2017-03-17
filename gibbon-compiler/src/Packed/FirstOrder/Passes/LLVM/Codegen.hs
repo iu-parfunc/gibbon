@@ -52,6 +52,8 @@ codegenProg _ prg@(Prog fns body) = (toLLVM . genModule) $ do
   -- generate structs and fns
   _ <- addStructs prg
   _ <- addTypeDef "struct.timespec" timespecStruct
+  _ <- addTypeDef "union.dict_item" dictItemUnion
+  _ <- addTypeDef "struct.dict_item" dictItemStruct
   mapM_ codegenFunSig fns'
   mapM_ codegenFun fns'
   where expr = case body of
@@ -128,6 +130,10 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty = do
              SizeParam -> sizeParam bnds
              ReadTag -> readTag bnds rnds'
              ReadInt -> readInt bnds rnds'
+             DictEmptyP _ -> let [(outV,ty)] = bnds
+                              in do
+                                _ <- assign (typeOf ty) (Just $ fromVar outV) (constop_ $ C.Null $ toPtrTy $ T.NamedTypeReference $ AST.Name "struct.dict_item")
+                                return_
              _ -> error $ "Prim: Not implemented yet: " ++ show prm
   codegenTail body ty
 
@@ -175,7 +181,6 @@ codegenTail (Switch trv alts def) ty =
 
 codegenTail (LetCallT bnds rator rnds body) ty = do
   rnds' <- mapM codegenTriv rnds
-  gt <- gets globalFns
   let nm = fromVar rator
   fn <- getfn nm
   _ <- callp fn bnds rnds'
@@ -206,7 +211,6 @@ codegenTail (LetTimedT isIter bnds timed bod) ty =
                     _ -> (toVar "")
       begnVar   = "begin_" ++ (fromVar ident)
       endVar    = "end_" ++ (fromVar ident)
-      iterVar   = "iters_" ++ (fromVar ident)
       timespecT = AST.NamedTypeReference $ AST.Name "struct.timespec"
   in do
     -- allocate variables

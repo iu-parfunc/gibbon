@@ -134,6 +134,17 @@ restoreAllocState = G.functionDefaults
                     , G.returnType  = T.VoidType
                     }
 
+-- TODO(cskksc): refer the structs defined in lib.c instead of redefining them
+dictItemUnion :: AST.Definition
+dictItemUnion = AST.TypeDefinition (AST.Name "union.dict_item")
+                (Just $ T.StructureType False [(toPtrTy T.i64)])
+
+dictItemStruct :: AST.Definition
+dictItemStruct = AST.TypeDefinition (AST.Name "struct.dict_item")
+                 (Just $ T.StructureType False [(toPtrTy (T.NamedTypeReference (AST.Name "struct.dict_item"))),
+                                               T.i32,
+                                               (T.NamedTypeReference (AST.Name "union.dict_item"))])
+
 -- | Convert the type to a pointer type
 --
 toPtrTy :: T.Type -> T.Type

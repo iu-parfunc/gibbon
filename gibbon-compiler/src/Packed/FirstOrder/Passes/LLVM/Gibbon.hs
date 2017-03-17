@@ -91,7 +91,7 @@ instance TypeOf Ty where
   typeOf CursorTy    = toPtrTy T.i8          -- ^ char*
   typeOf (ProdTy []) = T.VoidType            -- ^ void (pointers to void are invalid in LLVM)
   typeOf (ProdTy ts) = T.StructureType False $ map typeOf  ts
-  typeOf (SymDictTy _t) = __
+  typeOf (SymDictTy _t) = toPtrTy $ T.NamedTypeReference $ AST.Name "struct.dict_item"
 
 -- | struct types
 instance TypeOf [Ty] where
