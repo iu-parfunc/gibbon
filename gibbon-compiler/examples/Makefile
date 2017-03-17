@@ -333,10 +333,8 @@ LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
   test11_fundata.gib test11b_fundata.gib
 
 LLVM_NOT_IMPLEMENTED = test04c_ifvector.gib \
-  test09_recur.gib test10_desugar.gib test10b_desugar.gib \
-  test20a_withprint.gib test20b_bintree.gib test20e_bintree.gib \
-  test25e_countnodes.gib test25f_countnodes.gib \
-  test26_treewalk.gib test26a_treewalk.gib
+  test10_desugar.gib test10b_desugar.gib \
+  test25e_countnodes.gib test25f_countnodes.gib
 
 # type mismatch in genDconsPrinter (Lower.hs#L119)
 LLVM_TYPE_MISMATCH_TESTS = test02c_case.gib test02e_printNest.gib \
@@ -344,12 +342,12 @@ LLVM_TYPE_MISMATCH_TESTS = test02c_case.gib test02e_printNest.gib \
   test11c_funrec.gib test11d_funrec.gib test11e_funrec.gib \
   test11f_funrec.gib test12_skip.gib test13_build.gib test13b_build.gib \
   test12b_traverse.gib test19_unarytree.gib \
-  test20c_bintree.gib test20d_bintree.gib \
+  test20a_withprint.gib test20b_bintree.gib test20c_bintree.gib test20d_bintree.gib  test20e_bintree.gib\
   test20f_bintree.gib test20g_bintree.gi test24_defs.gib \
-  test25_rackcore.gib test25b_racketcore.gib test25c_racketcore.gib \
-  test25d_racketcore.gib
+  test25_rackcore.gib test25b_racketcore.gib test25c_racketcore.gib test25d_racketcore.gib \
+  test26_treewalk.gib test26a_treewalk.gib
 
-LLVM_FAILING_TESTS = test03c_eqs.gib
+LLVM_FAILING_TESTS = test03c_eqs.gib test09_recur.gib
 
 run_tests_llvm: answers build_gibbon_llvm_lib
 	$(MAKE) run_tests PASSING_TESTS="$(LLVM_PASSING_TESTS)" GIBBONARGS="--llvm" EXTRA_SUFFIX="_llvm" BACKEND="LLVM"
