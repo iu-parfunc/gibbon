@@ -9,7 +9,7 @@ module Packed.FirstOrder.Passes.LLVM.Instruction (
     declare, getvar, getLastLocal, getfn, addTypeDef
   , instr, globalOp, localRef, getLastOp
   , allocate, store, load, getElemPtr, call, add, mul, sub, for, assign
-  , eq, neq, ult, ifThenElse, ptrToInt, bitcast, sext, toPtrTy
+  , eq, neq, ult, notZeroP, ifThenElse, ptrToInt, bitcast, sext, toPtrTy
   , int_, int32_, char_, constop_, string_
 ) where
 
@@ -216,12 +216,16 @@ neq = icmp IP.NE
 ult :: Maybe String -> [AST.Operand] -> CodeGen AST.Operand
 ult = icmp IP.ULT
 
+notZeroP :: Maybe String -> AST.Operand -> CodeGen AST.Operand
+notZeroP nm op = neq nm [op, constop_ $ int_ 0]
+
 -- | Add a phi node to the top of the current block
 --
 phi :: T.Type -> [(AST.Operand, AST.Name)] -> CodeGen AST.Operand
 phi ty incoming = instr ty Nothing $ I.Phi ty incoming []
 
 
+-- TODO(cskksc): This is wrong
 -- | Standard if-then-else expression
 --
 ifThenElse :: CodeGen AST.Operand -> CodeGen BlockState -> CodeGen BlockState -> CodeGen AST.Operand

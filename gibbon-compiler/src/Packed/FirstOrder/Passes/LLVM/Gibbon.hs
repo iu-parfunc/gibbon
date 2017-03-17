@@ -124,17 +124,16 @@ stringToChar s = (constop_ $ string_ s', len)
         s'  = s ++ ['\NUL']
 
 -- | Generate the correct LLVM predicate
+--
 -- We implement the C notion of true/false i.e every value !=0 is truthy
 --
 toIfPred :: Triv -> CodeGen AST.Operand
-toIfPred triv =
-  let op0 = case triv of
-              (IntTriv i) -> (constop_ . int_ . toInteger) i
-              _ -> __
-      z   = (constop_ . int_) 0
-  in
-    neq Nothing [op0,z]
-
+toIfPred (IntTriv i) = do
+  let op0 = (constop_ . int_ . toInteger) i
+  notZeroP Nothing op0
+toIfPred (VarTriv v) = do
+  v' <- getvar (fromVar v)
+  notZeroP Nothing v'
 
 -- | Read one byte from the cursor and advance it
 --

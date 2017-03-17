@@ -223,12 +223,12 @@ codegenTail (LetTimedT isIter bnds timed bod) ty =
               _ <- call clockGetTime Nothing [clockMonotonicRaw, begn]
               i <- load T.i64 Nothing $ globalOp T.i64 (AST.Name "global_iters_param")
               i_minus_1 <- sub Nothing [i, constop_ $ int_ 1]
-              let isZero = neq Nothing [i_minus_1, constop_ $ int_ 0]
+              let notZero = notZeroP Nothing i_minus_1
 
-              _ <- ifThenElse isZero savealloc noop
+              _ <- ifThenElse notZero savealloc noop
               let timed' = rewriteReturns timed bnds
               _ <- codegenTail timed' ty
-              _ <- ifThenElse isZero restalloc noop
+              _ <- ifThenElse notZero restalloc noop
 
               -- print BATCHTIME
               call clockGetTime Nothing [clockMonotonicRaw, end]
