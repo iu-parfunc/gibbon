@@ -226,41 +226,39 @@ codegenTail (LetTimedT isIter bnds timed bod) ty =
               let isZero = neq Nothing [i_minus_1, constop_ $ int_ 0]
 
               _ <- ifThenElse isZero savealloc noop
-              -- let timed' = rewriteReturns timed bnds
-              _ <- codegenTail timed ty
-              (_, l) <- getLastOp
+              let timed' = rewriteReturns timed bnds
+              _ <- codegenTail timed' ty
               _ <- ifThenElse isZero restalloc noop
-
-              case bnds of
-                ((v,t):_) -> assign (typeOf t) (Just $ fromVar v) l
 
               -- print BATCHTIME
               call clockGetTime Nothing [clockMonotonicRaw, end]
 
         loopEnd <- load T.i64 Nothing $ globalOp T.i64 (AST.Name "global_iters_param")
-        for 0 1 loopEnd loopBody
+        _ <- for 0 1 loopEnd loopBody
         diff <- call difftimespecs Nothing [begn, end]
-        call printIterDiffTime Nothing [diff]
+        _ <- call printIterDiffTime Nothing [diff]
         return_
     else
       do
         -- execute and get running time
         _ <- call clockGetTime Nothing [clockMonotonicRaw, begn]
-        -- let timed' = rewriteReturns timed bnds
-        _ <- codegenTail timed ty
-        (_, l) <- getLastOp
+        let timed' = rewriteReturns timed bnds
+        _ <- codegenTail timed' ty
         _ <- call clockGetTime Nothing [clockMonotonicRaw, end]
-
-        case bnds of
-          ((v,t):_) -> assign (typeOf t) (Just $ fromVar v) l
 
         -- print SELFTIMED
         diff <- call difftimespecs Nothing [begn, end]
-        call printDiffTime Nothing [diff]
+        _ <- call printDiffTime Nothing [diff]
         return_
 
     -- process body
     codegenTail bod ty
+
+codegenTail (AssnValsT ls) _ = do
+  forM_ ls $ \(v,ty,triv) -> do
+    triv' <- codegenTriv triv
+    assign (typeOf ty) (Just $ fromVar v) triv'
+  return_
 
 codegenTail t _ = error $ "Tail: Not implemented yet: " ++ show t
 
