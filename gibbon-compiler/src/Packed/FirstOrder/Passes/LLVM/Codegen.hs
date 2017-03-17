@@ -49,6 +49,7 @@ codegenProg _ prg@(Prog fns body) = (toLLVM . genModule) $ do
   declare saveAllocState
   declare restoreAllocState
   declare dictInsertInt
+  declare dictLookupInt
 
   -- generate structs and fns
   _ <- addStructs prg
@@ -139,11 +140,18 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty = do
              DictInsertP _ -> let [(outV,_)] = bnds
                                   [(VarTriv dict),key,val] = rnds
                                in do
-                                  dict' <- getvar (fromVar dict)
-                                  key'  <- codegenTriv key
-                                  val'  <- codegenTriv val
-                                  _     <- call dictInsertInt (Just $ fromVar outV) [dict', key', val']
-                                  return_
+                                 dict' <- getvar (fromVar dict)
+                                 key'  <- codegenTriv key
+                                 val'  <- codegenTriv val
+                                 _     <- call dictInsertInt (Just $ fromVar outV) [dict', key', val']
+                                 return_
+             DictLookupP _ -> let [(outV,_)] = bnds
+                                  [(VarTriv dict),key] = rnds
+                              in do
+                                dict' <- getvar (fromVar dict)
+                                key'  <- codegenTriv key
+                                _     <- call dictLookupInt (Just $ fromVar outV) [dict', key']
+                                return_
 
              _ -> error $ "Prim: Not implemented yet: " ++ show prm
   codegenTail body ty

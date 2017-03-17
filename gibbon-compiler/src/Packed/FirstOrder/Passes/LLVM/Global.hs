@@ -161,6 +161,21 @@ dictInsertInt = G.functionDefaults
     arg2 = AST.UnName 2
     dictItemTy = toPtrTy $ T.NamedTypeReference $ AST.Name "struct.dict_item"
 
+dictLookupInt :: G.Global
+dictLookupInt = G.functionDefaults
+                { G.name        = AST.Name "dict_lookup_int"
+                , G.parameters  = ( [ G.Parameter dictItemTy arg0 []
+                                    , G.Parameter T.i64 arg1 [] -- SymTy
+                                    ]
+                                  , False)
+                , G.returnType  = T.i64 -- IntTy
+                }
+  where
+    arg0 = AST.UnName 0
+    arg1 = AST.UnName 1
+    dictItemTy = toPtrTy $ T.NamedTypeReference $ AST.Name "struct.dict_item"
+
+
 -- | Convert the type to a pointer type
 --
 toPtrTy :: T.Type -> T.Type
