@@ -9,7 +9,7 @@ import qualified Data.Map as Map
 -- | gibbon internals
 import Packed.FirstOrder.L3_Target
 import Packed.FirstOrder.Passes.Codegen (rewriteReturns)
-import Packed.FirstOrder.Common (fromVar,toVar)
+import Packed.FirstOrder.Common (fromVar,toVar, varAppend)
 import Packed.FirstOrder.Passes.LLVM.Monad
 import Packed.FirstOrder.Passes.LLVM.Instruction
 import Packed.FirstOrder.Passes.LLVM.Terminator
@@ -240,9 +240,9 @@ codegenTail (LetTimedT isIter bnds timed bod) ty =
     if isIter then
       do
         let savealloc = call saveAllocState Nothing [] >>= \_ -> return_
-        let restalloc = call restoreAllocState Nothing [] >>= \_ -> return_
-        let noop = return_
-        let loopBody = do
+            restalloc = call restoreAllocState Nothing [] >>= \_ -> return_
+            noop = return_
+            loopBody = do
               _ <- call clockGetTime Nothing [clockMonotonicRaw, begn]
               i <- load T.i64 Nothing $ globalOp T.i64 (AST.Name "global_iters_param")
               i_minus_1 <- sub Nothing [i, constop_ $ int_ 1]
@@ -282,6 +282,31 @@ codegenTail (AssnValsT ls) _ = do
     triv' <- codegenTriv triv
     assign (typeOf ty) (Just $ fromVar v) triv'
   return_
+
+codegenTail (LetIfT bnds (cond,thn,els) bod) ty = do
+  let thn' = rewriteReturns thn bnds
+      els' = rewriteReturns els bnds
+      cond' = codegenTriv cond >>= notZeroP Nothing
+  case (thn', els') of
+    (AssnValsT thnA, AssnValsT elsA) -> do
+      let thnA' = map (\(v,vty,triv) -> (thenVar v,vty,triv)) thnA
+          elsA' = map (\(v,vty,triv) -> (elseVar v,vty,triv)) elsA
+          thn'' = codegenTail (AssnValsT thnA') ty
+          els'' = codegenTail (AssnValsT elsA') ty
+      (tb, fb) <- ifThenElse cond' thn'' els''
+      forM_ thnA $ \(v,vty,_) ->
+        phi (typeOf vty) (Just $ fromVar v) [(varToOp (thenVar v), blockLabel tb),
+                                             (varToOp (elseVar v), blockLabel fb)]
+      return_
+    _ -> do
+      let thn'' = codegenTail thn' ty
+          els'' = codegenTail els' ty
+      _ <- ifThenElse cond' thn'' els''
+      return_
+  codegenTail bod ty
+  where thenVar v = varAppend v (toVar "then")
+        elseVar v = varAppend v (toVar "else")
+        varToOp   = localRef T.VoidType . AST.Name . fromVar
 
 codegenTail t _ = error $ "Tail: Not implemented yet: " ++ show t
 

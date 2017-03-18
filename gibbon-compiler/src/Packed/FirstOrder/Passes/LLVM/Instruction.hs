@@ -8,7 +8,7 @@
 module Packed.FirstOrder.Passes.LLVM.Instruction (
     declare, getvar, getLastLocal, getfn, addTypeDef
   , instr, globalOp, localRef
-  , allocate, store, load, getElemPtr, call, add, mul, sub, for, assign
+  , allocate, store, load, getElemPtr, call, add, mul, sub, for, assign, phi
   , eq, neq, ult, notZeroP, ifThenElse, ptrToInt, bitcast, sext, toPtrTy
   , int_, int32_, char_, constop_, string_
 ) where
@@ -217,13 +217,13 @@ notZeroP nm op = neq nm [op, constop_ $ int_ 0]
 
 -- | Add a phi node to the top of the current block
 --
-phi :: T.Type -> [(AST.Operand, AST.Name)] -> CodeGen AST.Operand
-phi ty incoming = instr ty Nothing $ I.Phi ty incoming []
+phi :: T.Type -> Maybe String -> [(AST.Operand, AST.Name)] -> CodeGen AST.Operand
+phi ty nm incoming = instr ty nm $ I.Phi ty incoming []
 
 
 -- | Standard if-then-else expression
 --
-ifThenElse :: CodeGen AST.Operand -> CodeGen BlockState -> CodeGen BlockState -> CodeGen ()
+ifThenElse :: CodeGen AST.Operand -> CodeGen BlockState -> CodeGen BlockState -> CodeGen (BlockState, BlockState)
 ifThenElse test yes no = do
   ifEntry <- newBlock "if.entry"
   ifThen  <- newBlock "if.then"
@@ -248,6 +248,7 @@ ifThenElse test yes no = do
 
   -- exit
   setBlock ifExit
+  return (ifThen, ifElse)
 
 
 for :: Integer -> Integer -> AST.Operand -> CodeGen AST.Operand -> CodeGen BlockState

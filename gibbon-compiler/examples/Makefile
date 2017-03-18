@@ -325,15 +325,14 @@ LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
   test01_if.gib test01b_ifif.gib \
   test02_arith.gib test02b_datacon.gib test02d_printPair.gib \
   test03_let.gib test03b_eqs.gib \
-  test04_vector.gib test04b_vector.gib \
+  test04_vector.gib test04b_vector.gib test04c_ifvector.gib \
   test05_app.gib test05b_app.gib test05c_arity2.gib \
   test06_case.gib test06b_case.gib \
   test07_time.gib test07b_iterate.gib \
   test08_dict.gib test08b_dict.gib test08c_dict.gib test08d_sharedict.gib \
   test11_fundata.gib test11b_fundata.gib
 
-LLVM_NOT_IMPLEMENTED = test04c_ifvector.gib \
-  test10_desugar.gib test10b_desugar.gib \
+LLVM_NOT_IMPLEMENTED = test10_desugar.gib test10b_desugar.gib \
   test25e_countnodes.gib test25f_countnodes.gib
 
 # type mismatch in genDconsPrinter (Lower.hs#L119)
