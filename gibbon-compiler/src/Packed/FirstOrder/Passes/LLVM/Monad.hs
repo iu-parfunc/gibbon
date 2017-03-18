@@ -34,7 +34,6 @@ data CodeGenState = CodeGenState
   , globalTypeDefs :: Map String AST.Definition -- ^ structs
   , localVars      :: Map String AST.Operand    -- ^ local vars
   , next           :: Word                      -- ^ names supply
-  , lastOp         :: (T.Type, AST.Operand)     -- ^ return value of last instruction executed
   } deriving Show
 
 
@@ -55,7 +54,6 @@ initialCodeGenState = CodeGenState
                      , globalTypeDefs = Map.empty
                      , localVars      = Map.empty
                      , next           = 0
-                     , lastOp         = (T.i64, AST.ConstantOperand $ C.Int 64 0)
                      }
 
 

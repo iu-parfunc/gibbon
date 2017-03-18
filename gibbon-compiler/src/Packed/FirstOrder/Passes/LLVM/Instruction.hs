@@ -7,7 +7,7 @@
 
 module Packed.FirstOrder.Passes.LLVM.Instruction (
     declare, getvar, getLastLocal, getfn, addTypeDef
-  , instr, globalOp, localRef, getLastOp
+  , instr, globalOp, localRef
   , allocate, store, load, getElemPtr, call, add, mul, sub, for, assign
   , eq, neq, ult, notZeroP, ifThenElse, ptrToInt, bitcast, sext, toPtrTy
   , int_, int32_, char_, constop_, string_
@@ -73,9 +73,6 @@ getLastLocal :: CodeGen AST.Name
 getLastLocal = gets next >>= \a -> return $ AST.UnName (a - 1)
 
 
-getLastOp :: CodeGen (T.Type, AST.Operand)
-getLastOp = gets lastOp >>= return
-
 getfn :: String -> CodeGen G.Global
 getfn nm = do
   fns <- gets globalFns
@@ -93,9 +90,7 @@ instr ty nm ins = do
   name <- case nm of
             Just x  -> do
               let ref = AST.LocalReference ty (AST.Name x)
-              modify $ \s -> s { localVars = Map.insert x ref (localVars s)
-                               , lastOp    = (ty, ref)
-                               }
+              modify $ \s -> s { localVars = Map.insert x ref (localVars s) }
               return $ AST.Name x
             Nothing -> freshName
   instr_ $ name AST.:= ins
@@ -219,21 +214,21 @@ ult = icmp IP.ULT
 notZeroP :: Maybe String -> AST.Operand -> CodeGen AST.Operand
 notZeroP nm op = neq nm [op, constop_ $ int_ 0]
 
+
 -- | Add a phi node to the top of the current block
 --
 phi :: T.Type -> [(AST.Operand, AST.Name)] -> CodeGen AST.Operand
 phi ty incoming = instr ty Nothing $ I.Phi ty incoming []
 
 
--- TODO(cskksc): This is wrong
 -- | Standard if-then-else expression
 --
-ifThenElse :: CodeGen AST.Operand -> CodeGen BlockState -> CodeGen BlockState -> CodeGen AST.Operand
+ifThenElse :: CodeGen AST.Operand -> CodeGen BlockState -> CodeGen BlockState -> CodeGen ()
 ifThenElse test yes no = do
+  ifEntry <- newBlock "if.entry"
   ifThen  <- newBlock "if.then"
   ifElse  <- newBlock "if.else"
   ifExit  <- newBlock "if.exit"
-  ifEntry <- newBlock "if.entry"
 
   -- check condition
   _  <- br ifEntry
@@ -243,19 +238,16 @@ ifThenElse test yes no = do
 
   -- then block
   setBlock ifThen
-  _  <- yes
-  (ty, tv) <- getLastOp
-  tb <- br ifExit
+  _ <- yes
+  _ <- br ifExit
 
   -- else block
   setBlock ifElse
-  _  <- no
-  (_, fv) <- getLastOp
-  fb <- br ifExit
+  _ <- no
+  _ <- br ifExit
 
   -- exit
   setBlock ifExit
-  phi ty [(tv, blockLabel tb), (fv, blockLabel fb)]
 
 
 for :: Integer -> Integer -> AST.Operand -> CodeGen AST.Operand -> CodeGen BlockState
