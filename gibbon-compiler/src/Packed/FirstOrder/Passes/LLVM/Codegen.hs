@@ -311,6 +311,11 @@ codegenTail (LetIfT bnds (cond,thn,els) bod) ty = do
         elseVar v = varAppend v (toVar "else")
         varToOp   = localRef T.VoidType . AST.Name . fromVar
 
+codegenTail (TailCall v ts) _ = do
+  rnds <- mapM codegenTriv ts
+  fn   <- getfn (fromVar v)
+  callp fn [] rnds
+
 codegenTail t _ = error $ "Tail: Not implemented yet: " ++ show t
 
 

@@ -34,9 +34,8 @@ import qualified LLVM.General.AST.AddrSpace as AS
 gibbonOp :: (Maybe String -> [AST.Operand] -> CodeGen AST.Operand)
             -> [(Var,Ty)] -> [AST.Operand]
             -> CodeGen BlockState
-gibbonOp op [] args = do
-  _ <- op Nothing args
-  return_
+
+gibbonOp op [] args = op Nothing args >>= retval_
 
 gibbonOp op [(v, _)] args = do
   let nm = fromVar v
