@@ -50,6 +50,7 @@ codegenProg _ prg@(Prog fns body) = (toLLVM . genModule) $ do
   declare restoreAllocState
   declare dictInsertInt
   declare dictLookupInt
+  declare exit
 
   -- generate structs and fns
   _ <- addStructs prg
@@ -315,6 +316,11 @@ codegenTail (TailCall v ts) _ = do
   rnds <- mapM codegenTriv ts
   fn   <- getfn (fromVar v)
   callp fn [] rnds
+
+codegenTail (ErrT msg) ty = do
+  _ <- printString msg
+  _ <- call exit Nothing [constop_ $ int_ 1]
+  return_
 
 codegenTail t _ = error $ "Tail: Not implemented yet: " ++ show t
 

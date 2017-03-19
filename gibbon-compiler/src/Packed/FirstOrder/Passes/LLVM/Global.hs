@@ -175,6 +175,14 @@ dictLookupInt = G.functionDefaults
     arg1 = AST.UnName 1
     dictItemTy = toPtrTy $ T.NamedTypeReference $ AST.Name "struct.dict_item"
 
+exit :: G.Global
+exit = G.functionDefaults
+       { G.name        = AST.Name "exit"
+       , G.parameters  = ( [ G.Parameter ty arg [] ], False )
+       , G.returnType  = T.VoidType
+       }
+  where ty  = T.i64
+        arg = AST.UnName 0
 
 -- | Convert the type to a pointer type
 --
