@@ -319,7 +319,6 @@ build_gibbon_llvm_lib:
 	llc-3.9 -filetype=obj -o lib.o lib.ll
 
 
-
 LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
   test00c_printBool.gib test00d_printData.gib test00e_func.gib \
   test01_if.gib test01b_ifif.gib \
@@ -330,10 +329,10 @@ LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
   test06_case.gib test06b_case.gib \
   test07_time.gib test07b_iterate.gib \
   test08_dict.gib test08b_dict.gib test08c_dict.gib test08d_sharedict.gib \
+  test10_desugar.gib \
   test11_fundata.gib test11b_fundata.gib
 
-LLVM_NOT_IMPLEMENTED = test10_desugar.gib test10b_desugar.gib \
-  test25e_countnodes.gib test25f_countnodes.gib
+LLVM_NOT_IMPLEMENTED = test25e_countnodes.gib test25f_countnodes.gib
 
 # type mismatch in genDconsPrinter (Lower.hs#L119)
 LLVM_TYPE_MISMATCH_TESTS = test02c_case.gib test02e_printNest.gib \
@@ -346,7 +345,7 @@ LLVM_TYPE_MISMATCH_TESTS = test02c_case.gib test02e_printNest.gib \
   test25_rackcore.gib test25b_racketcore.gib test25c_racketcore.gib test25d_racketcore.gib \
   test26_treewalk.gib test26a_treewalk.gib
 
-LLVM_FAILING_TESTS = test03c_eqs.gib test09_recur.gib
+LLVM_FAILING_TESTS = test03c_eqs.gib test09_recur.gib test10b_desugar.gib
 
 run_tests_llvm: answers build_gibbon_llvm_lib
 	$(MAKE) run_tests PASSING_TESTS="$(LLVM_PASSING_TESTS)" GIBBONARGS="--llvm" EXTRA_SUFFIX="_llvm" BACKEND="LLVM"

@@ -168,31 +168,34 @@ codegenTail (Switch trv alts def) ty =
       alts'' = case alts' of
                  IntAlts xs -> xs
 
-        -- | Split alts to return a default case, in case switch was not given one
+      -- | Split alts to return a default case, in case switch was not given one
       splitAlts :: Alts -> (Alts, Alts)
       splitAlts (TagAlts ls) = (TagAlts (init ls), TagAlts [last ls])
       splitAlts (IntAlts ls) = (IntAlts (init ls), IntAlts [last ls])
 
-      -- | Take a "singleton" Alts and extract the Tail.
+      -- | Take a "singleton" Alts and extract the Tail
       altTail :: Alts -> Tail
       altTail (TagAlts [(_,t)]) = t
       altTail (IntAlts [(_,t)]) = t
-
-      dests :: [(C.Constant, AST.Name)]
-      dests = map (\((casei,_), i) -> (int_ $ toInteger casei, AST.Name $ "switch" ++ show i ++ ".case")) $ zip alts'' [1..]
-
   in
     do
       switchDefault <- newBlock "switch.default"
 
       trv' <- codegenTriv trv
+      caseBlocks <- mapM (\(_,i) -> newBlock $ "switch.case" ++ show i)
+                    (zip alts'' [1..])
+
+      let caseBlockNames = map blockLabel caseBlocks
+          dests = map (\((casei,_),b) -> do
+                          (int_ $ toInteger casei, b))
+                  (zip alts'' caseBlockNames)
+
       _ <- switch trv' (blockLabel switchDefault) dests
 
-      -- generate alt blocks
-      mapM_ (\(_,t) -> do
-                    x <- newBlock "switch.case"
-                    setBlock x
-                    codegenTail t ty) alts''
+      -- generate case blocks
+      forM_ (zip alts'' caseBlocks) $ \((_,t), b) -> do
+        setBlock b
+        codegenTail t ty
 
       -- generate the default block
       setBlock switchDefault
