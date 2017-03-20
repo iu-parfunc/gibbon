@@ -219,12 +219,13 @@ codegenTail (LetAllocT lhs vals body) ty =
 
 codegenTail (LetUnpackT bnds ptr body) ty = do
   struct <- getvar (fromVar ptr)
-  _ <- unpackStruct Nothing struct bnds
+  _ <- unpackPtrStruct Nothing struct bnds
   codegenTail body ty
 
 codegenTail (LetTrivT (v,trvTy,trv) bod) ty = do
   trv' <- codegenTriv trv
-  _ <- assign (typeOf trvTy) (Just $ fromVar v) trv'
+  x <- convert (typeOf trvTy) Nothing trv'
+  _ <- assign (typeOf trvTy) (Just $ fromVar v) x
   codegenTail bod ty
 
 codegenTail (LetTimedT isIter bnds timed bod) ty =

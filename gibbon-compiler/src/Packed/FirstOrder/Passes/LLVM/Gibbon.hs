@@ -3,7 +3,7 @@ module Packed.FirstOrder.Passes.LLVM.Gibbon (
     addp, subp, mulp, eqp, callp
   , sizeParam, typeOf, printString, toIfPred
   , readTag, readInt, sizeof, convert
-  , addStructs, structName, populateStruct, unpackStruct
+  , addStructs, structName, populateStruct, unpackPtrStruct
 ) where
 
 -- | standard library
@@ -44,7 +44,7 @@ gibbonOp op [(v, _)] args = do
 
 gibbonOp op bnds args = do
   struct <- op Nothing args
-  unpackStruct Nothing struct bnds >>= retval_
+  unpackValStruct Nothing struct bnds
 
 gibbonOp op vars args = error $ "gibbonOp: Not implemented " ++ show vars
 
@@ -89,7 +89,7 @@ instance TypeOf Ty where
   typeOf PtrTy       = toPtrTy T.i8          -- ^ char*
   typeOf CursorTy    = toPtrTy T.i8          -- ^ char*
   typeOf (ProdTy []) = T.VoidType            -- ^ void (pointers to void are invalid in LLVM)
-  typeOf (ProdTy ts) = T.StructureType False $ map typeOf  ts
+  typeOf (ProdTy ts) = typeOf ts
   typeOf (SymDictTy _t) = toPtrTy $ T.NamedTypeReference $ AST.Name "struct.dict_item"
 
 -- | struct types
@@ -176,11 +176,12 @@ readCursor [(valV', valTy'), (curV', curTy')] cur' offset =
 -- | Generate instructions to convert op from type-of-op -> toTy
 --
 convert :: T.Type -> Maybe String -> AST.Operand -> CodeGen AST.Operand
-convert toTy nm op
-  | intP toTy && intP fromTy = sext toTy nm op
-  | otherwise                = bitcast toTy nm op
+convert toTy nm op =
+  case (kindOf fromTy, kindOf toTy) of
+    (IntegerK, IntegerK) -> sext toTy nm op
+    (IntegerK, PointerK) -> inttoptr toTy nm op
+    _                    -> bitcast toTy nm op
   where fromTy = typeOf op
-        intP = (`elem` [T.i8, T.i32, T.i64])
 
 -- |
 sizeof :: T.Type -> CodeGen AST.Operand
@@ -216,10 +217,12 @@ populateStruct ty nm ts = do
   return struct
 
 
--- | Store members of struct in bound vars (bnds). Reverse of populatestruct
+-- | Unpack elements of a struct from a var pointing to that struct
 --
-unpackStruct :: Maybe String -> AST.Operand -> [(Var, Ty)] -> CodeGen AST.Operand
-unpackStruct nm struct bnds = do
+-- IntTy tag3 = ((Int64Int64Int64Prod *) fltCse2)->field0;
+-- IntTy x0 = ((Int64Int64Int64Prod *) fltCse2)->field1;
+unpackPtrStruct :: Maybe String -> AST.Operand -> [(Var, Ty)] -> CodeGen AST.Operand
+unpackPtrStruct nm struct bnds = do
   structTy <- case bnds of
                 [] -> return $ typeOf struct
                 _  -> return $ typeOf $ map snd bnds
@@ -230,6 +233,19 @@ unpackStruct nm struct bnds = do
     assign (typeOf vty) (Just $ fromVar v) field'
   return struct'
 
+
+-- | Unpack elements of a struct
+--
+-- PtrTy ptr5 = tmp_struct0.field0;
+-- CursorTy tail6 = tmp_struct0.field1;
+unpackValStruct :: Maybe String -> AST.Operand -> [(Var, Ty)] -> CodeGen BlockState
+unpackValStruct nm struct bnds = do
+  structTy <- case bnds of
+                [] -> return $ typeOf struct
+                _  -> return $ typeOf $ map snd bnds
+  forM_ (zip bnds [0..]) $ \((v,vty), i) -> do
+    extractValue Nothing struct [i] >>= assign (typeOf vty) (Just $ fromVar v)
+  return_
 
 -- |
 structName :: [Ty] -> String

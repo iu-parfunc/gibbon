@@ -10,12 +10,14 @@ module Packed.FirstOrder.Passes.LLVM.Instruction (
   , instr, globalOp, localRef
   , allocate, store, load, getElemPtr, call, add, mul, sub, for, assign, phi
   , eq, neq, ult, notZeroP, ifThenElse, ptrToInt, bitcast, sext, toPtrTy
+  , inttoptr, extractValue
   , int_, int32_, char_, constop_, string_
 ) where
 
 -- | standard library
 import Control.Monad.State
 import Data.Char (ord)
+import Data.Word (Word32)
 import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 
@@ -168,6 +170,9 @@ ptrToInt nm x = instr T.VoidType nm $ I.PtrToInt x T.i64 []
 sext :: T.Type -> Maybe String -> AST.Operand -> CodeGen AST.Operand
 sext ty nm op = instr T.VoidType nm $ I.SExt op ty []
 
+-- |
+inttoptr :: T.Type -> Maybe String -> AST.Operand -> CodeGen AST.Operand
+inttoptr ty nm op = instr T.VoidType nm $ I.IntToPtr op ty []
 
 -- | Add a function call to the execution stream
 --
@@ -180,6 +185,9 @@ call fn varNm args = instr retTy varNm cmd
         retTy = G.returnType fn
         cmd   = I.Call Nothing CC.C [] (Right fn') args' [] []
 
+-- |
+extractValue :: Maybe String -> AST.Operand -> [Word32] -> CodeGen AST.Operand
+extractValue nm aggr indices = instr T.VoidType nm $ I.ExtractValue aggr indices []
 
 -- | Arithmetic operations
 --
@@ -290,7 +298,7 @@ for start step end body = do
 --
 assign :: T.Type -> Maybe String -> AST.Operand -> CodeGen AST.Operand
 assign ty nm val = do
-  x <- allocate ty nm
+  x <- allocate ty Nothing
   _ <- store x val
   load ty nm x
 

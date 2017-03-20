@@ -19,3 +19,10 @@ instance TypeOf C.Constant where
     case c of
       (C.Int bits _) -> T.IntegerType bits
       c -> error $ "typeOf Constant: Not implemented " ++ show c
+
+data KindOf = IntegerK | PointerK | NamedK
+
+kindOf :: T.Type -> KindOf
+kindOf (T.IntegerType x) = IntegerK
+kindOf (T.PointerType _ _) = PointerK
+kindOf (T.NamedTypeReference (AST.Name _)) = NamedK
