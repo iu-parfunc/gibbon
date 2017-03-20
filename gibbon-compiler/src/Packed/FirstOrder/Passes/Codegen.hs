@@ -234,7 +234,7 @@ codegenTail (ErrT s) _ty = return $ [ C.BlockStm [cstm| printf("%s\n", $s); |]
 -- We could eliminate these earlier
 codegenTail (LetTrivT (vr,rty,rhs) body) ty =
     do tal <- codegenTail body ty
-       return $ [ C.BlockDecl [cdecl| $ty:(codegenTy rty) $id:vr = $(codegenTriv rhs); |] ]
+       return $ [ C.BlockDecl [cdecl| $ty:(codegenTy rty) $id:vr = ($ty:(codegenTy rty)) $(codegenTriv rhs); |] ]
                 ++ tal
 
 codegenTail (LetAllocT lhs vals body) ty =

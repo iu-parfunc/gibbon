@@ -115,8 +115,10 @@ genDconsPrinter (x:xs) tail = case x of
     val  <- gensym $ toVar "val"
     t    <- gensym $ toVar "tail"
     tmp  <- gensym $ toVar "temp"
+    valc <- gensym $ toVar "valcur"
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$>
-      T.LetCallT [(tmp, T.PtrTy)] (mkPrinterName tyCons) [(T.VarTriv val)] <$>
+      T.LetTrivT (valc, T.CursorTy, T.VarTriv val) <$>
+      T.LetCallT [(tmp, T.PtrTy)] (mkPrinterName tyCons) [(T.VarTriv valc)] <$>
        maybeSpace <$>
          genDconsPrinter xs t
 
