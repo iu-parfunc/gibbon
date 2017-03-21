@@ -103,6 +103,10 @@ inlinePackedExp ddefs = exp True
        -- DONT inline file reading:
        | PrimAppE (L1.ReadPackedFile{}) _ <- rhs ->
           LetE (var v,t, rhs') (exp strong ((v,(t,Nothing)):env) bod)
+       -- Skip inlining empty dictionary creation
+       | PrimAppE (L1.DictEmptyP{}) _ <- rhs ->
+          LetE (var v,t,rhs') (exp strong ((v,(t,Nothing)):env) bod)
+       -- TODO: handle other dictionary operations
 
 --      | L1.hasTimeIt rhs  -> __ -- AUDITME: is this still needed?
        | isConstructor rhs -> addAndGo

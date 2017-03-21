@@ -187,6 +187,26 @@ IntTy dict_lookup_int(dict_item_t *ptr, SymTy key) {
   exit(1);
 }
 
+dict_item_t *dict_insert_ptr(dict_item_t *ptr, SymTy key, void* val) {
+  dict_item_t *ret = dict_alloc();
+  ret->key = key;
+  ret->ptrval = val;
+  ret->next = ptr;
+  return ret;
+}
+
+void* dict_lookup_ptr(dict_item_t *ptr, SymTy key) {
+  while (ptr != 0) {
+    if (ptr->key == key) {
+      return ptr->ptrval;
+    } else {
+      ptr = ptr->next;
+    }
+  }
+  printf("Error, key %lld not found!\n",key);
+  exit(1);
+}
+
 char* read_benchfile_param() {
   if (global_benchfile_param == NULL) {
     fprintf(stderr, "read_benchfile_param: benchmark input file was not set!\n");
@@ -267,6 +287,10 @@ int main(int argc, char** argv)
       fprintf(stderr, " [gibbon rts] failed to getrlimit, code %d\n", code);
       abort();
     }
+
+    #ifdef GCALLOC
+    GC_INIT();
+    #endif
     
     // lim.rlim_cur = 1024LU * 1024LU * 1024LU; // 1GB stack.
     lim.rlim_cur = 512LU * 1024LU * 1024LU; // 500MB stack.
