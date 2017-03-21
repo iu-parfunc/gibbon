@@ -1,0 +1,331 @@
+===========================================================================
+                          ECOOP 2017 Review #97A
+---------------------------------------------------------------------------
+ Paper #97: Compiling tree transforms to operate on packed representations
+---------------------------------------------------------------------------
+
+                      Overall merit: A. Accept
+                 Reviewer expertise: X. I am an expert in this area
+
+                         ===== Paper summary =====
+
+The paper proposes a novel approach to compiling tree data
+structures into a serialised representation format in preorder for
+improved performance. The paper proposes a smallish programming
+language, Gibbon, programs in which can automatically be
+translated to used a packed representation. Embedding a
+Gibbon-like language in a high-level language is simple and
+straightforward.
+
+Through a series of steps (interestingly involving something quite
+similar to session types), a Gibbon program is transformed so that
+each node "physically nests" its subtrees, which involves moving
+cursors in the contiguous memory space of a tree to the correct
+places of insertion of (nested) subtrees. To support operations on
+the tree that does not require full preorder traversal to derive
+the location of all subtrees, indirection data can be inserted
+into the compact representation, basically an offset to the
+start of the subtree.
+
+Performance results are as expected (great!). Parallelism on a
+packed representation is straightforward and performs well.
+
+                    ===== Points For and Against =====
+
+Points in favour:
++ Important problem in programs where performance is crucial 
++ The approach is automatic --- the programmers do not need to annotate or change their programs. 
++ The evaluation performed shows great results
+
+Points against:
+- There is no thorough discussion of what is NOT possible when using packed representations
+- Evaluation results not properly discussed
+- No discussion about the correctness (even though I am convinced it works)
+
+                      ===== Comments for author =====
+
+I like this paper a lot. The idea is nice, and the approach is
+very nice. 
+
+The packed representation is reminiscent of the array list vs.
+linked list discussion, where insertion in an array list may
+require sliding lots of elements down which involves far more
+write operations than for a linked list, which is in turn far
+slower when it comes to random access, even if by chance all nodes
+were allocated contiguously. What is the story of changing the
+shape of a tree in-place? 
+
+Also, storing values of non-fixed size is only possible with this
+approach by pointer-indirections. But this is will re-introduce
+the pointer chasing again, and probably give you problems with
+cache locality. A mostly-packed tree could be an interesting
+representation which could allow certain destructive updates
+in-place, and others via performance-degrading pointer
+indirections. A later full tree transformation could then
+effectively re-pack the tree.
+
+Evaluation seems very tailored to show off only the strengths of
+the approach. I fully believe the approach taken is great and will
+result in good performance for the operations shown in the
+evaluation, but for completeness, the paper should also show
+performance of other common tree operations like find. As fas as I
+can see, Gibbon will not allow e.g., moving nodes in the tree
+without completely changing the tree. I don't find the discussion
+about the weak aspects of the proposal convincing and thorough.
+I'd like to see the performance of postorder and inorder
+traversals too, in the evaluation.
+
+
+Description of Approach
+
+The discussion of the use of session types (presumably to
+guarantee the correctness of the approach) is superficial. I also
+do not see the relation between your reads and writes to session
+types. Is is just because they need to be linear? Do you use
+session types to check the ordering of reads and writes? If so I
+would not call this session types, but behavioural types (minor
+point).
+
+It would be nice to further discuss correctness, and whether it is
+possible to write a Gibbon program which is "not correct" or
+cannot be correctly transformed into a packed representation and
+how that can be fed back to a programmer. Essentially, "what can
+go wrong" is still a bit flaky in my mind after having read the
+paper thoroughly.
+
+A more formal definition of the passes of the compiler would be a
+great help to a reader that wants to implement this and reproduce
+your result in another setting.
+
+
+Evaluation
+
+The evaluation is missing some detail like version of compilers,
+level of optimisation for C code, cache sizes of the machine. It
+would be nice if the results were discussed an analysed a bit
+more. For example, is the reason for the slowdown of C in Figure 7
+(left) between 10^6 and 10^7 on the x-axis because you exhausted
+the last-level cache on the machine, and is the main reason why
+you did not see that with Gibbon because you are able to pack more
+nodes into the same amount of bytes? Have you exhausted the
+last-level cache also on packed data and seen whether the
+difference between Gibbon and C is lowered on say 10^9? (""We
+measured the last level cache reference and cache misses ..."":
+where are those results? It would be very helpful to have those
+numbers, in order to understand why the differences in times.)
+
+Is GC time included in run-times? 
+
+You say in the conclusion that this work is highly efficient when
+compared [...] in terms of space and time. Where are the results
+for memory usage? (Fig 6 shows the impact of "bigger" nodes, not
+memory usage). I think it would be very interesting to show how
+much memory was allocated in total! 
+
+In the future, you say you will support packed trees in
+non-contiguous spaces, allocated in block-chain fashion. Do you
+have a strategy for keeping the packed indirections, seeing as a
+simple offset may no longer do the trick? It feels a bit like you
+benchmark the system at a point in time when you will not pay the
+price for more solid implementation of allocation which is
+promised to come in the future. 
+
+Maybe I missed it, but it is not clear to me if indirection is
+used in the evaluations (regardless of needed or not). In my
+opinion, it should have been used to pay the cost for this in the
+evaluation. The approach is hardly automated without it. 
+
+
+Misc
+
+- Citation missing for session types! 
+
+- You assume that the reader knows session types and it might not
+  be the case. It would be helpful to explain this more if you can
+  find the space.
+
+===========================================================================
+                          ECOOP 2017 Review #97B
+---------------------------------------------------------------------------
+ Paper #97: Compiling tree transforms to operate on packed representations
+---------------------------------------------------------------------------
+
+                      Overall merit: C. Weak reject
+                 Reviewer expertise: Y. I am knowledgeable in this area,
+                                        but not an expert
+
+                         ===== Paper summary =====
+
+The idea investigated in this paper is to store trees not as objects with pointers, but in serialized form in buffers, so called packed trees. For computations that follow the serialization order, i.e., preorder traversals, this can give performance benefits. First, the trees take less memory, and larger trees may therefore fit into the memory cache. Second, the recursive traversal of the data can be translated to low-level code that efficiently traverses the packed data with a buffer cursor.
+
+The authors have designed a tiny first-order functional language, Gibbon, to try out the idea. The Gibbon compiler recognizes pre-order traversals and translates them to code operating over the packed data.
+
+Examples of typical traversals that can be handled are folds, where a result is computed by traversing a tree, and maps, where a tree is transformed to a new tree.
+
+The core of the paper discusses the formalization of the Gibbon language and how it is compiled to cursor-oriented code.
+
+The Gibbon compiler is implemented in Haskell and compiles Gibbon to C code. The technique is evaluated both on binary trees (with Branch and Leaf node types), and multi-sorted abstract syntax trees, generated from Racket programs. In both cases very simple operations are performed: a map operation simply copying the tree, or adding 1 to all leaves, and a fold operation that sums up the values of all leaves, or counts the number of nodes.
+ 
+The evaluations show that there is not much of an improvement if the trees fit in the cache, but for larger trees (1MB for the packed representation), the packed approach get speedups of around 2 as compared to a "bumpless" allocation of objects in C (using arenas instead of malloc).
+
+                    ===== Points For and Against =====
+
+For:
+- Somewhat interesting idea.
+- Implemented language and compiler, substantial evaluation.
+
+Against:
+
+- Very limited practical use. Only extremely simple operations are considered. Probably very few realistic problems fit into this form. For more complex operations the importance of optimizing the traversals will be less, and for more complex traversals additional "layout" information is needed in the packed representation to mimic pointers.
+ 
+- Problem focused on FP-style implementations. Not so interesting to an OOP audience.
+
+- Presentation needs improvement.
+
+                      ===== Comments for author =====
+
+I found the idea interesting, but of very limited practical use as it fits only very simple problems.
+
+The presentation could be improved by explaining the intuition better and not relying on the reader to have to read code examples in detail to get the general idea.
+
+I don't think the benchmarks on the Racket ASTs say very much since the operations performed on them are so extremely simple. I'm not at all convinced this approach is suitable for compilers.
+
+Questions for author rebuttal:
+
+As far as I understand, it is not possible to modify the structure of a packed tree. The programmer will have to construct a new (packed) tree instead. Please confirm.
+
+
+Details:
+
+Section 2.
+
+Explain what the code in the examples do, so that the reader does not have to study it in detail. It should be sufficient to read the text to get the general idea.
+
+The buffer passing code has a method named add1. Shouldn't it be named add1Tree?
+
+Spell out acronyms. E.g., HPC. EDSL.
+
+Section 4.
+
+I think the intuition of the compiler should be explained in a much more accessible way, making use of examples and not only relying on details in the formalization.
+
+Page 8.
+I could not match the following example with the syntax in figure 2:
+  g n = (case MkFoo n of MkFoo i -> i) + 4
+
+===========================================================================
+                          ECOOP 2017 Review #97C
+---------------------------------------------------------------------------
+ Paper #97: Compiling tree transforms to operate on packed representations
+---------------------------------------------------------------------------
+
+                      Overall merit: B. Weak accept
+                 Reviewer expertise: Z. I am not an expert; my evaluation
+                                        is that of an informed outsider
+
+                         ===== Paper summary =====
+
+The paper presents a compilation technique that automatically
+transforms algebraic data types (ADT) into a packed representation. In
+this representations, the nodes of an ADT tree are laid out
+contiguously in memory according to an in-order traversal of the
+tree. This enables code to fully traverse the tree without making use
+of explicit pointers to child nodes in the data structure. The packed
+representation has several advantages including considerable space
+savings and better data locality compared to traditional pointer-based
+representations. Together this leads to better cache performance.
+
+The main technical contribution is a type and effect system that
+automatically translates code operating on ADTs that is written in
+high-level functional languages into low-level code that operates on
+the packed representation. Key challenges include the problem of
+dealing with code that only partially traverses a tree as well as
+enabling efficient parallel traversals of packed representations.
+
+The approach has been implemented in a prototype compiler and
+evaluated both on micro benchmarks and application code taken from the
+Racket compiler (including code that operates on ADTs representing
+abstract syntax of Racket programs).
+
+                    ===== Points For and Against =====
+
+Strengths:
+
++ Interesting problem and proposed solution appears to be promising.
+
++ Thorough experimental evaluation.
+
+Weaknesses:
+
+- Presentation of technical details is not clear.
+
+- Unclear how well the technique will work in general when there are
+  many different traversal strategies applied to the same ADT.
+
+I was very excited about the paper after reading the introduction. The
+automatic optimization of ADT operations is an interesting
+problem. The proposed approach is promising as it automates existing
+techniques that, so far, have only been applied manually and produce
+code that is difficult to maintain without automation. The
+experimental evaluation shows that the approach can yield significant
+performance improvements on realistic benchmarks.
+
+My main concern is that the presentation of the core technical
+contribution, the type and effect system for the translation to the
+packed representation, is very hard to follow. I would be unable to
+reimplement the proposed technique following only the description
+given in the paper. There is no formal description of the actual type
+system and translation, nor is there a fully worked out example that
+shows how the individual steps of the translation fit together. It
+would have helped, if the authors explained their approach using the
+example in Section 2 as a running example throughout the
+paper. Section 4.4 is particularly mysterious. I was unable to follow
+what role session types play here. The code/type snippets given in
+this section are not helpful in understanding what is going on since
+their syntax is not explained (e.g., what does Needs(T:a,b,) mean in
+the type of write on p.11?).
+
+I have given the paper a more positive verdict despite these serious
+shortcomings because I believe that these presentation problems are
+fixable. However, the authors will have to make a considerable effort
+in improving the quality of the presentation should the paper get
+accepted.
+
+                      ===== Comments for author =====
+
+How do you deal with programs that do not follow a (partial) in-order
+traversal of a tree. E.g., how will the following function on binary
+trees be translated:
+
+sum t = case t of
+          Leaf n -> n
+          Node x y -> sum y + sum x
+
+Will the generated code traverse x twice?
+
+Also, how is deallocation of the packed buffers handled in the
+generated C code? Is there some form of garbage collection? The
+comparison in Figure 4 would not really be fair if the generated code
+does not also pay all the costs of memory management.
+
+- p.3: we consider [in] this paper
+
+- p.4: I believe the first line of the code snippet at the top of the
+  page shold be: `*(int*)tout = *(int*)tin + 1;`
+
+- p.6: funcitonal -> functional
+
+- p.9: overloading lexical variables to also mean their locations is
+  very confusing later in the section. I suggest to use a different
+  notation (e.g., l_x for the location of variable x).
+
+- p.10: please add a citation to a paper on session types.
+
+- p.11: its waiting for -> it is waiting for
+
+- p.11: and end-witness -> an end-witness
+
+- p.14: the the
+
+- p.18: to run traverse
+
