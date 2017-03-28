@@ -705,6 +705,14 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
         do Right e <- doapp [] tenv isMain (Just destC) v e
            return e
 
+      -- Dict operations... AUDITME: should we route cursors to and from dict ops?
+      PrimAppE (L1.DictInsertP t) [d,v] -> do d' <- go tenv d
+                                              v' <- exp tenv isMain v
+                                              return $ Di $ PrimAppE (L1.DictInsertP t) [fromDi d',v']
+      PrimAppE (L1.DictLookupP t) [d,k] -> do d' <- go tenv d
+                                              k' <- exp tenv isMain k
+                                              return $ Di $ PrimAppE (L1.DictInsertP t) [fromDi d',k']
+                                          
       -- This should not be possible for prims that do not return PackedTy data.
       PrimAppE _ _ -> error$ "cursorDirect: unexpected PrimAppE in packed context: "++sdoc ex0
 
