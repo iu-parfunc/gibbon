@@ -254,6 +254,17 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
         (LetE (vr, CursorTy (), PrimAppE (L1.ReadPackedFile path tyc (typ ty2)) [])) <$>
           exp (M.insert vr (CursorTy ()) tenv) isMain bod
 
+      LetE (vr, _ty, PrimAppE (L1.DictLookupP (PackedTy _da _a)) args) bod ->
+        (LetE (vr, CursorTy (), PrimAppE (L1.DictLookupP (CursorTy ())) args)) <$>
+          exp (M.insert vr (CursorTy ()) tenv) isMain bod
+      LetE (vr, _ty, PrimAppE (L1.DictInsertP (PackedTy _da _a)) args) bod ->
+        (LetE (vr, SymDictTy (CursorTy ()), PrimAppE (L1.DictInsertP (CursorTy ())) args)) <$>
+          exp tenv isMain bod
+      LetE (vr, _ty, PrimAppE (L1.DictEmptyP (PackedTy _da _a)) args) bod ->
+        (LetE (vr, SymDictTy (CursorTy ()), PrimAppE (L1.DictEmptyP (CursorTy ())) args)) <$>
+          exp tenv isMain bod
+
+
       -- If we're not returning a packed type in the current
       -- context, then we can only possibly encounter one that does NOT
       -- escape.  I.e. a temporary one:
@@ -704,6 +715,17 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       AppE v e ->  -- To appear here, the function must have at least one Packed result.
         do Right e <- doapp [] tenv isMain (Just destC) v e
            return e
+
+      -- Dict operations... AUDITME: should we route cursors to and from dict ops?
+      PrimAppE (L1.DictInsertP (PackedTy _da a)) [d,k,v] ->
+          do -- d' <- go tenv d
+             v' <- exp tenv isMain v
+             k' <- exp tenv isMain k
+             return $ Di $ PrimAppE (L1.DictInsertP (PackedTy "CURSOR_TY" a)) [d,k',v']
+      PrimAppE (L1.DictLookupP (PackedTy _da a)) [d,k] -> 
+          do -- d' <- go tenv d
+             k' <- exp tenv isMain k
+             return $ Di $ PrimAppE (L1.DictLookupP (PackedTy "CURSOR_TY" a)) [d,k']
 
       -- This should not be possible for prims that do not return PackedTy data.
       PrimAppE _ _ -> error$ "cursorDirect: unexpected PrimAppE in packed context: "++sdoc ex0
