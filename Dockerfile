@@ -8,4 +8,4 @@ RUN apt-get update && apt-get install -y valgrind
 # ADD ./.git /trees/.git/
 ADD . /trees
 
-RUN cd /trees && DOCKER=1 ./run_all_tests.sh
+RUN cd /trees && DOCKER=1 LLVM=1 ./run_all_tests.sh

@@ -118,7 +118,7 @@ core_tests:
 	$(MAKE) run_tests_packed
 	$(MAKE) run_tests_interp1
 	$(MAKE) run_tests_interp2
-ifeq ($(DOCKER),1)
+ifeq ($(LLVM),1)
 	@echo "Running LLVM tests ..."
 	$(MAKE) run_tests_llvm
 else
@@ -174,7 +174,11 @@ racket_invalid: treelang_lib
 
 # Make sure the compiler is built
 build:
+ifeq ($(LLVM),1)
+	stack build --flag gibbon:llvm
+else
 	stack build
+endif
 
 parse_all: build
 	@echo "\n Parsing all tests, even those that don't run yet."
@@ -348,7 +352,7 @@ LLVM_FAILING_TESTS = test02e_printNest.gib \
   test20a_withprint.gib test20b_bintree.gib test20e_bintree.gib \
   test25_rackcore.gib test25a_withprint.gib test25b_racketcore.gib test25c_racketcore.gib test25d_racketcore.gib test25f_countnodes.gib \
   test26_treewalk.gib test26a_treewalk.gib \
-  test27a_subst.gib
+  test27a_subst.gib test27b_subst.gib test28_copyprop.gib
 
 # test16_forlist.gib test17_forfold.gib
 

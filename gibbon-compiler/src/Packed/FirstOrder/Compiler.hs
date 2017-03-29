@@ -1,7 +1,9 @@
 {-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
-{-# LANGUAGE NamedFieldPuns        #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE CPP #-}
+
 -- | The compiler pipeline, assembled from several passes.
 
 module Packed.FirstOrder.Compiler
@@ -24,7 +26,9 @@ import qualified Packed.FirstOrder.L1_Source   as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
 -- import qualified Packed.FirstOrder.L3_Target   as L3
 import           Packed.FirstOrder.Passes.Codegen (codegenProg)
+#ifdef LLVMF
 import qualified Packed.FirstOrder.Passes.LLVM.Codegen as LLVM
+#endif
 import           Packed.FirstOrder.Passes.Cursorize
 import           Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
 import           Packed.FirstOrder.Passes.Flatten
@@ -54,7 +58,7 @@ import           Text.PrettyPrint.GenericPretty
 -- PASS STUBS
 ----------------------------------------
 -- All of these need to be implemented, but are just the identity
--- function for now.  Move to Passes/*.hs when implemented.
+-- function for now.  Move to Passes/ when implemented
 
 
 -- | Find all local variables bound by case expressions which must be
@@ -434,8 +438,11 @@ compile config@Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosit
                           liftIO $ exitSuccess
                   else do
                    str <- case backend of
+#ifdef LLVMF
                      LLVM -> lift $ LLVM.codegenProg packed l3
+#endif
                      C    -> lift $ codegenProg packed l3
+                     LLVM -> error "Cannot execute through the LLVM backend. To build Gibbon with LLVM;\n  stack build --flag gibbon:llvm"
 
                    -- The C code is long, so put this at a higher verbosity level.
                    lift$ dbgPrintLn minChatLvl $ "Final C codegen: "++show (length str)++" characters."
