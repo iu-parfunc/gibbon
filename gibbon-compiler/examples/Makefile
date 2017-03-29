@@ -189,7 +189,8 @@ FAILING_TESTS ?= \
   test11_fundata.gib test11c_funrec.gib test11e_funrec.gib test12c_traverse.gib \
   test25d_racketcore.gib \
   test16_forlist.gib test17_forfold.gib \
-  test25a_withprint.gib
+  test25a_withprint.gib \
+  test27b_subst.gib test28_copyprop.gib
 
 # test25a "works" but it still prints symbols as numbers.
 
@@ -236,7 +237,8 @@ build_tmp/%$(EXTRA_SUFFIX).exe : %.gib $(GIBBONEXEC)
 
 PACKED_FAILING ?=  test12_skip.gib  test16_forlist.gib test17_forfold.gib \
  test20b_bintree.gib  \
- test25a_withprint.gib test26_treewalk.gib test27a_subst.gib
+ test25a_withprint.gib test26_treewalk.gib test27a_subst.gib \
+ test27b_subst.gib test28_copyprop.gib
 
 # test20b_bintree.gib   -- requires copy insertion
 # test12_skip.gib       -- requires copy insertion!! unbound var thru to C code
@@ -267,7 +269,8 @@ INTERP2_FAILING = test00a_size.gib test00b_printBool.gib test00d_printData.gib \
   test25c_racketcore.gib test25d_racketcore.gib test25e_countnodes.gib test25f_countnodes.gib \
   test11_fundata.gib test10_desugar.gib test10b_desugar.gib test24_defs.gib \
   test09_recur.gib test08_dict.gib test02b_datacon.gib test02c_case.gib \
-  test26_treewalk.gib test26a_treewalk.gib test27a_subst.gib
+  test26_treewalk.gib test26a_treewalk.gib test27a_subst.gib \
+  test27b_subst.gib test28_copyprop.gib
 
 # Running through interpreter, no --packed/cursorize:
 run_tests_interp2: answers
@@ -276,7 +279,7 @@ run_tests_interp2: answers
 
 # Populated [2016.12.10]
 INTERP1_FAILING = test16_forlist.gib test17_forfold.gib test25b_racketcore.gib \
-  test25a_withprint.gib
+  test25a_withprint.gib test27b_subst.gib test28_copyprop.gib
 
 
 run_tests_interp1: answers
