@@ -1,3 +1,3 @@
-(Expression (Lambda (F1 (CONSSYM x (CONSSYM y (CONSSYM z (NULLSYM)))))
-	     (CONSEXPR (Begin (CONSEXPR (VARREF x) (CONSEXPR (VARREF y) (CONSEXPR (VARREF z) (NULLEXPR)))))
-	     	       (NULLEXPR))))
+(Expression (Lambda (F1 (CONSSYM (quote x) (CONSSYM (quote) (CONSSYM (quote z) (NULLSYM)))))
+	     (CONSEXPR (Begin (CONSEXPR (VARREF (quote x)) (CONSEXPR (VARREF (quote y)) (CONSEXPR (VARREF (quote z)) (NULLEXPR)))))
+             (NULLEXPR))))
