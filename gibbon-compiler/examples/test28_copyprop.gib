@@ -3,6 +3,7 @@
 (require "../../ASTBenchmarks/grammar_racket.gib")
 (require "../../ASTBenchmarks/copyprop/treelang/copyprop.gib")
 
-(copyprop (Expression (LetValues (CONSLVBIND (CONSSYM x (CONSSYM y (NULLSYM))) (Quote (INTLIT 5)) (NULLLVBIND))
-	      (CONSEXPR (LetValues (CONSLVBIND (CONSSYM z (CONSSYM a (NULLSYM))) (VARREF x) (NULLLVBIND))
-	                  (CONSEXPR (VARREF a) (NULLEXPR))) (NULLEXPR)))))
+(copyprop (Expression (LetValues (CONSLVBIND (CONSSYM (quote x) (NULLSYM))
+                                  (Quote (INTLIT 5))
+                                  (NULLLVBIND))
+                      (CONSEXPR (VARREF (quote x)) (NULLEXPR)))))

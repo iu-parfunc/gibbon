@@ -1,3 +1,3 @@
-(Expression (LetValues (CONSLVBIND (CONSSYM x (CONSSYM y (NULLSYM))) (Quote (INTLIT 5)) (NULLLVBIND))
-	      (CONSEXPR (LetValues (CONSLVBIND (CONSSYM z (CONSSYM a (NULLSYM))) (VARREF x) (NULLLVBIND))
-	                  (CONSEXPR (VARREF a) (NULLEXPR))) (NULLEXPR))))
+(Expression (LetValues (CONSLVBIND (CONSSYM (quote x) (CONSSYM (quote y) (NULLSYM))) (Quote (INTLIT 5)) (NULLLVBIND))
+	      (CONSEXPR (LetValues (CONSLVBIND (CONSSYM (quote z) (CONSSYM (quote a) (NULLSYM))) (VARREF (quote x)) (NULLLVBIND))
+	                  (CONSEXPR (VARREF (quote a)) (NULLEXPR))) (NULLEXPR))))
