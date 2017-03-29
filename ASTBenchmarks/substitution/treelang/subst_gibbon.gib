@@ -29,14 +29,14 @@
 
 (define (top [old : Sym] [new : Sym] [e : Toplvl]) : Toplvl
   (case e
-    [(DefineValues ls e)
-     (DefineValues (sym-ls ls) (expr old new e))]
-    [(DefineSyntaxes ls e)
-     (DefineSyntaxes (sym-ls ls) (expr old new e))]
+    [(DefineValues ls e0)
+     (DefineValues (sym-ls ls) (expr old new e0))]
+    [(DefineSyntaxes ls e1)
+     (DefineSyntaxes (sym-ls ls) (expr old new e1))]
     [(BeginTop ls)
      (BeginTop (top-ls old new ls))]
-    [(Expression e)
-     (Expression (expr old new e))]))
+    [(Expression e2)
+     (Expression (expr old new e2))]))
 
 (define (top-ls [old : Sym] [new : Sym] [es : ListToplvl]) : ListToplvl
   (case es
