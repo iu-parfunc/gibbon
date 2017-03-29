@@ -63,7 +63,7 @@ benchtest: test24_input.gpkd
 	$(GIBBON) --packed --bench-fun foo --bench-print --bench-input test25b_input.gpkd test25b_racketcore.gib
 
 
-BIG= $(TREELANGDIR)/ASTBenchmarks/cleaned_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.gib
+BIG= $(TREELANGDIR)/ASTBenchmarks/cleaned_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.sexp
 BIGPKD= $(TREELANGDIR)/ASTBenchmarks/binary_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.gpkd
 PERF= perf stat -e cycles,instructions,cache-references,cache-misses,bus-cycles
 
