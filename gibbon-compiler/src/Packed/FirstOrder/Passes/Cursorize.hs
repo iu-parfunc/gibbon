@@ -254,15 +254,26 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
         (LetE (vr, CursorTy (), PrimAppE (L1.ReadPackedFile path tyc (typ ty2)) [])) <$>
           exp (M.insert vr (CursorTy ()) tenv) isMain bod
 
-      LetE (vr, _ty, PrimAppE (L1.DictLookupP (PackedTy _da _a)) args) bod ->
-        (LetE (vr, CursorTy (), PrimAppE (L1.DictLookupP (CursorTy ())) args)) <$>
-          exp (M.insert vr (CursorTy ()) tenv) isMain bod
-      LetE (vr, _ty, PrimAppE (L1.DictInsertP (PackedTy _da _a)) args) bod ->
-        (LetE (vr, SymDictTy (CursorTy ()), PrimAppE (L1.DictInsertP (CursorTy ())) args)) <$>
-          exp tenv isMain bod
+      -- LetE (vr, _ty, PrimAppE (L1.DictLookupP (PackedTy _da _a)) args) bod ->
+      --   (LetE (vr, CursorTy (), PrimAppE (L1.DictLookupP (CursorTy ())) args)) <$>
+      --     exp (M.insert vr (CursorTy ()) tenv) isMain bod
+      -- LetE (vr, _ty, PrimAppE (L1.DictInsertP (PackedTy _da _a)) args) bod ->
+      --   (LetE (vr, SymDictTy (CursorTy ()), PrimAppE (L1.DictInsertP (CursorTy ())) args)) <$>
+      --     exp tenv isMain bod
       LetE (vr, _ty, PrimAppE (L1.DictEmptyP (PackedTy _da _a)) args) bod ->
         (LetE (vr, SymDictTy (CursorTy ()), PrimAppE (L1.DictEmptyP (CursorTy ())) args)) <$>
           exp tenv isMain bod
+      -- PrimAppE (L1.DictLookupP (PackedTy _da a)) [d,k] -> 
+      --     do -- d' <- go tenv d
+      --        k' <- exp tenv isMain k
+      --        return $ PrimAppE (L1.DictLookupP (PackedTy "CURSOR_TY" a)) [(ProjE 1 d),k']
+      -- LetE (vr, _ty, PrimAppE (L1.DictLookupP (PackedTy _da _a)) [d,k]) bod ->
+      --     do vr' <- gensym (toVar "tmpdict")
+      --        (\x -> (LetE (vr', CursorTy (), PrimAppE (L1.DictLookupP (PackedTy _da _a)) [(ProjE 1 d),k])
+      --                     (LetE (vr, ProdTy [CursorTy (), CursorTy ()],
+      --                              MkProdE [(ProjE 0 d), (VarE vr')]) x))) <$>
+      --             exp (M.insert vr' (CursorTy ()) (M.insert vr (ProdTy [CursorTy (), CursorTy ()]) tenv)) isMain bod 
+          
 
 
       -- If we're not returning a packed type in the current
@@ -651,6 +662,26 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
           return $ Di (MkProdE [ PrimAppE (L1.ReadPackedFile path tyc (typ t2)) []
                                , PrimAppE L1.MkNullCursor [] ])
 
+      LetE (vr, _ty, PrimAppE (L1.DictEmptyP (PackedTy _da _a)) []) bod ->
+        onDi (LetE (vr, SymDictTy (CursorTy ()), PrimAppE (L1.DictEmptyP (CursorTy ())) [])) <$>
+          go (M.insert vr (SymDictTy (CursorTy ())) tenv) bod
+      LetE (vr, _ty, PrimAppE (L1.DictInsertP (PackedTy _da _a)) [d,k,v]) bod ->
+          do v' <- go tenv v
+             vr' <- gensym (toVar "tmpdict")
+             onDi (\x -> (LetE (vr', ProdTy [CursorTy (), CursorTy ()], fromDi v')
+                               (LetE (vr, ProdTy [CursorTy (), SymDictTy (CursorTy ())],
+                                        MkProdE [(ProjE 1 (VarE vr')),
+                                                 PrimAppE (L1.DictInsertP (CursorTy ())) [d,k,ProjE 0 (VarE vr')]]) x))) <$>
+                  go (M.insert vr' (ProdTy [CursorTy (), CursorTy ()])
+                           (M.insert vr (ProdTy [CursorTy (), (SymDictTy (CursorTy ()))]) tenv)) bod
+      LetE (vr, _ty, PrimAppE (L1.DictLookupP (PackedTy _da _a)) [d,k]) bod ->
+          do vr' <- gensym (toVar "tmpdict")
+             onDi (\x -> (LetE (vr', CursorTy (), PrimAppE (L1.DictLookupP (PackedTy _da _a)) [(ProjE 1 d),k])
+                          (LetE (vr, ProdTy [CursorTy (), CursorTy ()],
+                                   MkProdE [(ProjE 0 d), (VarE vr')]) x))) <$>
+                  go (M.insert vr' (CursorTy ()) (M.insert vr (ProdTy [CursorTy (), CursorTy ()]) tenv)) bod 
+                                                     
+
       -- The only primitive that returns packed data is ReadPackedFile:
       -- This is simpler than TimeIt below.  While it's out-of-line,
       -- it doesn't need memory allocation (NewBuffer/ScopedBuffer).
@@ -702,6 +733,10 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
 
       LetE (v,ty, PrimAppE p ls) bod
 --         | L1.ReadPackedFile _ _ <- p -> ((v,ty,) <$> go tenv (PrimAppE p ls))
+        -- | L1.DictEmptyP (PackedTy _da _a) <- p -> onDi (LetE (v,SymDictTy (CursorTy ()), PrimAppE (L1.DictEmptyP (CursorTy ())) [])) <$>
+        --                                      go (M.insert v (SymDictTy (CursorTy ())) tenv) bod
+        -- | L1.DictInsertP (PackedTy _da _a) <- p -> onDi (LetE (v,SymDictTy (CursorTy ()), PrimAppE (L1.DictInsertP (CursorTy ())) ls)) <$>
+        --                                       go (M.insert v (SymDictTy (CursorTy ())) tenv) bod 
         | otherwise -> onDi (LetE (v,typ ty,PrimAppE p ls)) <$> go (M.insert v ty tenv) bod
 
       -- LetE (v1,t1, LetE (v2,t2, rhs2) rhs1) bod ->
@@ -716,16 +751,9 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
         do Right e <- doapp [] tenv isMain (Just destC) v e
            return e
 
-      -- Dict operations... AUDITME: should we route cursors to and from dict ops?
-      PrimAppE (L1.DictInsertP (PackedTy _da a)) [d,k,v] ->
-          do -- d' <- go tenv d
-             v' <- exp tenv isMain v
-             k' <- exp tenv isMain k
-             return $ Di $ PrimAppE (L1.DictInsertP (PackedTy "CURSOR_TY" a)) [d,k',v']
-      PrimAppE (L1.DictLookupP (PackedTy _da a)) [d,k] -> 
-          do -- d' <- go tenv d
-             k' <- exp tenv isMain k
-             return $ Di $ PrimAppE (L1.DictLookupP (PackedTy "CURSOR_TY" a)) [d,k']
+      PrimAppE (L1.DictLookupP (PackedTy _da _a)) [d,k] -> 
+          do k' <- exp tenv isMain k
+             return $ Di $ PrimAppE (L1.DictLookupP (CursorTy ())) [(ProjE 1 d),k']
 
       -- This should not be possible for prims that do not return PackedTy data.
       PrimAppE _ _ -> error$ "cursorDirect: unexpected PrimAppE in packed context: "++sdoc ex0
