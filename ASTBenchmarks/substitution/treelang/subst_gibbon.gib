@@ -1,7 +1,7 @@
 #lang gibbon
 
 (require "../../grammar_racket.gib")
-(provide subst)
+(provide subst expr)
 
 ;; copied exactly
 
