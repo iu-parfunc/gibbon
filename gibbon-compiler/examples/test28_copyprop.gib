@@ -3,7 +3,4 @@
 (require "../../ASTBenchmarks/grammar_racket.gib")
 (require "../../ASTBenchmarks/copyprop/treelang/copyprop.gib")
 
-(copyprop (Expression (LetValues (CONSLVBIND (CONSSYM (quote x) (NULLSYM))
-                                  (Quote (INTLIT 5))
-                                  (NULLLVBIND))
-                      (CONSEXPR (VARREF (quote x)) (NULLEXPR)))))
+(copyprop (Expression (VARREF (quote x))))
