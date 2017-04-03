@@ -4,10 +4,13 @@
 resolver: lts-6.23
 # resolver: lts-7.13
 packages:
-- location: llvm-hs/llvm-general
+- location:
+    git: https://github.com/llvm-hs/llvm-hs
+    commit: fcfbe26ca1a93a98891a4791b7c22cde74dfd369
   extra-dep: true
-- location: llvm-hs/llvm-general-pure
-  extra-dep: true
+  subdirs:
+    - llvm-general
+    - llvm-general-pure
 - '.'
 
 extra-deps:
