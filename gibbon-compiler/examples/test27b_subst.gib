@@ -3,6 +3,6 @@
 (require "../../ASTBenchmarks/grammar_racket.gib")
 (require "../../ASTBenchmarks/substitution/treelang/subst_gibbon.gib")
 
-(expr (quote hi)
-      (quote hello)
-      (VARREF (quote hi)))
+(subst (quote hi)
+       (quote hello)
+       (Expression (VARREF (quote hi))))
