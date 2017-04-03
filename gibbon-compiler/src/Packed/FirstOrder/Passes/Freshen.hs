@@ -31,8 +31,7 @@ freshNames (L1.Prog defs funs main) =
           freshExp _ (L1.LitE i) =
               return $ L1.LitE i
           freshExp _ (L1.LitSymE v) =
-              do v' <- gensym v
-                 return $ L1.LitSymE v'
+              return $ L1.LitSymE v
           freshExp vs (L1.AppE v e) =
               do e' <- freshExp vs e
                  return $ L1.AppE (cleanFunName v) e'
