@@ -125,6 +125,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
       case ex0 of
         VarE v  -> lookupTCVar tcenv v
         LitE _i -> return $ Concrete IntTy
+        LitSymE _v -> return $ Concrete SymTy
         AppE v e ->
             do te <- go e
                let fty = M.lookup v tcenv

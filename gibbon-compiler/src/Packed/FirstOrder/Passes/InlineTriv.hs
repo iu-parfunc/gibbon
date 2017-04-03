@@ -54,6 +54,7 @@ inlineTrivExp _ddefs = go []
          Nothing -> VarE v
          Just (_,e) -> e
   exp _env (LitE i) = LitE i
+  exp _env (LitSymE v) = LitSymE v
 
   -- Because this pass is applied on both L1 and L2...
   exp _   L2.NewBuffer      = L2.NewBuffer

@@ -95,6 +95,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
    case tr of
      VarE _                 -> tr -- Think about witness/end marking here.
      LitE _                 -> tr
+     LitSymE _              -> tr
      PrimAppE L1.MkTrue  [] -> tr
      PrimAppE L1.MkFalse [] -> tr
      MkProdE ls             -> MkProdE $ L.map triv ls
@@ -119,6 +120,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
     dbgTrace lvl ("\n [routeEnds] exp, demanding "++show demanded++": "++show ex++"\n  with env: "++show env) $
     let trivLoc (VarE v)  = env # v
         trivLoc (LitE _i) = Bottom
+        trivLoc (LitSymE _v) = Bottom
         trivLoc (MkProdE ls) =
             let go [] = True
                 go ((LitE _):xs) = go xs

@@ -184,8 +184,9 @@ inferExp (ddefs,fenv) env e = exp env e
      -- QUESTION: does a variable reference count as traversing to the end?
      -- If so, the identity function has the traverse effect.
      -- I'd prefer that the identity function get type (Tree_p -{}-> Tree_p).
-     L1.VarE v  -> return (S.empty, env # v)
-     L1.LitE  _ -> return (S.empty, Bottom)
+     L1.VarE v    -> return (S.empty, env # v)
+     L1.LitE    _ -> return (S.empty, Bottom)
+     L1.LitSymE _ -> return (S.empty, Bottom)
      L1.CaseE e1 mp ->
       do (eff1,loc1) <- exp env e1
          (bools,effs,locs) <- unzip3 <$>

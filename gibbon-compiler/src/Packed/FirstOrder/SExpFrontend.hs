@@ -108,6 +108,7 @@ tagDataCons ddefs = go allCons
          in LetE (v,t,go' rhs) (go' bod)
        ------------boilerplate------------
        VarE v          -> VarE v
+       LitSymE v       -> LitSymE v
        LitE _          -> ex
        PrimAppE p ls   -> PrimAppE p $ L.map (go cons) ls
        ProjE i e  -> ProjE i (go cons e)
@@ -260,8 +261,7 @@ exp se =
    L4 "if" test conseq altern -> 
      IfE (exp test) (exp conseq) (exp altern)
 
-   -- FIXME: Need LitSym:
-   L2 "quote" (A v) -> LitE $ hackySymbol (T.unpack v)
+   L2 "quote" (A v) -> LitSymE (textToVar v)
      
    -- Any other naked symbol is a variable:
    A v -> VarE (textToVar v)
@@ -305,6 +305,11 @@ exp se =
 
    L3 "ann" (L3 "lookup" d k) ty ->
        PrimAppE (DictLookupP $ typ ty) [(exp d),(exp k)]
+
+   L (A "gensym" : _) -> PrimAppE Gensym []
+
+   L3 "ann" (L3 "has-key?" d k) ty ->
+     PrimAppE (DictHasKeyP $ typ ty) [(exp d),(exp k)]
 
    -- L [A "error",arg] ->
    L3 "ann" (L2 "error" arg) ty -> 

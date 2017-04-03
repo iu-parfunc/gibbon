@@ -359,6 +359,13 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                  DictLookupP ty -> error $ "DictLookupP not implemented for type " ++ (show ty)
                  DictEmptyP _ty -> let [(outV,ty)] = bnds
                                    in pure [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = 0; |] ]
+                 DictHasKeyP IntTy -> let [(outV,IntTy)] = bnds
+                                          [(VarTriv dict)] = rnds in pure
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = dict_has_key_int($id:dict); |] ]
+                 DictHasKeyP SymTy -> let [(outV,IntTy)] = bnds
+                                          [(VarTriv dict)] = rnds in pure
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = dict_has_key_int($id:dict); |] ]
+
                  NewBuf   -> let [(outV,CursorTy)] = bnds in pure
                              [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED(global_default_buf_size); |] ]
                  ScopedBuf -> let [(outV,CursorTy)] = bnds in pure

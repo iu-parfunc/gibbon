@@ -44,6 +44,7 @@ findWitnesses = L2.mapMExprs fn
 
       VarE v         -> handle mp $ VarE v
       LitE n         -> handle mp $ LitE n
+      LitSymE v      -> handle mp $ LitSymE v
       AppE v e       -> handle mp $ AppE v (go Map.empty e)
       PrimAppE p ls  -> handle mp $ PrimAppE p (map (go Map.empty) ls)
       ProjE i e      -> handle mp $ ProjE i (go Map.empty e)

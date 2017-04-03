@@ -245,6 +245,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
     case ex0 of
       VarE _ -> return ex0
       LitE _ -> return ex0
+      LitSymE _ -> return ex0
       MkPackedE _ _ -> error$ "cursorDirect: Should not have encountered MkPacked if type is not packed: "++ndoc ex0
 
       NamedVal _ _ _ -> error$ "cursorDirect: only expected NamedVal convention in packed context: "++ndoc ex0

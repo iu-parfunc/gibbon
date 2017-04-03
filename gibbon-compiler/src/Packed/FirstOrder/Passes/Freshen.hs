@@ -30,9 +30,15 @@ freshNames (L1.Prog defs funs main) =
                 Just v' -> return $ L1.VarE v'
           freshExp _ (L1.LitE i) =
               return $ L1.LitE i
+          freshExp _ (L1.LitSymE v) =
+              do v' <- gensym v
+                 return $ L1.LitSymE v'
           freshExp vs (L1.AppE v e) =
               do e' <- freshExp vs e
                  return $ L1.AppE (cleanFunName v) e'
+          freshExp _ (L1.PrimAppE L1.Gensym []) = 
+              do v <- gensym (toVar "gensym")
+                 return $ L1.LitSymE v
           freshExp vs (L1.PrimAppE p es) =
               do es' <- mapM (freshExp vs) es
                  return $ L1.PrimAppE p es'

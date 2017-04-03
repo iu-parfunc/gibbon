@@ -121,6 +121,7 @@ inlinePackedExp ddefs = exp True
 
     ------ boilerplate -------
     (LitE i)    -> LitE i
+    (LitSymE v) -> LitSymE v
     (AppE f e)  -> AppE f $ go e
     (PrimAppE p es) -> PrimAppE p $ map (go) es
     (IfE e1 e2 e3) ->

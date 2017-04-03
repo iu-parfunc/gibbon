@@ -149,6 +149,8 @@ unariserExp _ = go [] []
 
     (LitE i) | [] <- stk -> pure$ LitE i
              | otherwise -> error $ "Impossible. Non-empty projection stack on LitE "++show stk
+    (LitSymE v) | [] <- stk -> pure $ LitSymE v
+                | otherwise -> error $ "Impossible. Non-empty projection stack on LitSymE "++show stk
 
     (PrimAppE p es) -> discharge stk <$>
                         PrimAppE p <$> mapM (go stk env) es

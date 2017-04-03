@@ -67,6 +67,7 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
      case e0 of
        (VarE _)         -> return ([],e0)
        (LitE _)         -> return ([],e0)
+       (LitSymE _)      -> return ([],e0)
 
        -- This pass is run at multiple points in the compiler pipeline.
        -- We COULD just let these patterns be treated as arbitrary AppE forms,
@@ -231,9 +232,11 @@ typeExp (_,_) _env (L1.PrimAppE p _es) =
       L1.EqSymP -> L1.BoolTy
       L1.MkTrue -> L1.BoolTy
       L1.MkFalse -> L1.BoolTy
+      L1.Gensym -> L1.SymTy
       L1.DictInsertP ty -> L1.SymDictTy ty
       L1.DictLookupP ty -> ty
       L1.DictEmptyP ty -> L1.SymDictTy ty
+      L1.DictHasKeyP ty -> L1.SymDictTy ty
       L1.SizeParam -> L1.IntTy
       L1.ReadPackedFile _ _ ty -> ty
 

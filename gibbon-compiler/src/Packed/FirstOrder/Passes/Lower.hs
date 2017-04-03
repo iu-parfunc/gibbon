@@ -20,6 +20,7 @@ module Packed.FirstOrder.Passes.Lower
 -------------------------------------------------------------------------------
 
 import Control.Monad
+import Data.Char    
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import           Packed.FirstOrder.L1_Source (Exp(..))
@@ -590,6 +591,7 @@ triv msg e0 =
   case e0 of
     (L1.VarE x) -> T.VarTriv x
     (L1.LitE x) -> T.IntTriv (fromIntegral x) -- TODO: back propogate Int64 toL1
+    (L1.LitSymE s) -> T.IntTriv $ fromIntegral $ product $ L.map ord $ fromVar s
     -- Bools become ints:
     (L1.PrimAppE L1.MkTrue [])  -> T.IntTriv 1
     (L1.PrimAppE L1.MkFalse []) -> T.IntTriv 0
@@ -628,6 +630,7 @@ prim p =
     L1.DictInsertP ty -> T.DictInsertP $ typ ty
     L1.DictLookupP ty -> T.DictLookupP $ typ ty
     L1.DictEmptyP ty -> T.DictEmptyP $ typ ty
+    L1.DictHasKeyP ty -> T.DictHasKeyP $ typ ty
 
     L1.ReadPackedFile mf tyc _ -> T.ReadPackedFile mf tyc
 

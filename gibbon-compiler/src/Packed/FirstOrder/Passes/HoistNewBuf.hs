@@ -28,9 +28,10 @@ hoistExp _ ex0 = return $ gocap ex0
   go :: L1.Exp -> ([(Var,L1.Ty,Exp)], L1.Exp)
   go e0 =
    case e0 of
-    (LitE _)   -> ([], e0)
-    (VarE _)   -> ([], e0)
-    (AppE _ _) -> ([], e0)
+    (LitE _)     -> ([], e0)
+    (LitSymE _)  -> ([],e0)
+    (VarE _)     -> ([], e0)
+    (AppE _ _)   -> ([], e0)
     (PrimAppE{}) -> ([], e0)
 
     -- Here's where we lift outside timings!!                        

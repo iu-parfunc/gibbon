@@ -147,6 +147,7 @@ data Prim
     | DictInsertP Ty-- ^ takes k,v,dict
     | DictLookupP Ty -- ^ takes k,dict, errors if absent
     | DictEmptyP Ty
+    | DictHasKeyP Ty
 
     | ReadPackedFile (Maybe FilePath) TyCon
 

@@ -69,6 +69,7 @@ progToEnv Prog{fundefs} =
 -- well as packed algebraic datatypes.
 data Exp = VarE Var
          | LitE Int
+         | LitSymE Var 
          | AppE Var Exp -- Only apply top-level / first-order functions
          | PrimAppE Prim [Exp]
          | LetE (Var,Ty,Exp) Exp
@@ -97,6 +98,8 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | DictInsertP Ty  -- ^ takes dict, k,v; annotated with element type
           | DictLookupP Ty  -- ^ takes dict,k errors if absent; annotated with element type
           | DictEmptyP Ty   -- ^ annotated with element type to avoid ambiguity
+          | DictHasKeyP Ty  -- ^ takes dict,k; returns a Bool, annotated with element type
+          | Gensym
           | ErrorP String Ty
               -- ^ crash and issue a static error message.
               --   To avoid needing inference, this is labeled with a return type.
@@ -199,6 +202,7 @@ freeVars ex =
   case ex of
     VarE v -> S.singleton v
     LitE _ -> S.empty
+    LitSymE _ -> S.empty
     AppE _v e -> freeVars e  -- S.insert v (freeVars e)
     PrimAppE _ ls -> S.unions (L.map freeVars ls)
     LetE (v,_,rhs) bod -> freeVars rhs `S.union`
@@ -309,6 +313,7 @@ isTriv e =
    case e of
      VarE _ -> True
      LitE _ -> True
+     LitSymE _ -> True
      -- These should really turn to literalS:
      PrimAppE MkTrue  [] -> True
      PrimAppE MkFalse [] -> True
@@ -326,6 +331,7 @@ hasTimeIt rhs =
       MkPackedE _ _ -> False
       VarE _        -> False
       LitE _        -> False
+      LitSymE _     -> False
       AppE _ _      -> False
       PrimAppE _ _ -> False
       ProjE _ e    -> hasTimeIt e

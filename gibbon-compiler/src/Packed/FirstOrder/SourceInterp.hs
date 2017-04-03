@@ -213,6 +213,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
      (EqIntP,[VInt x, VInt y]) -> VBool (x==y)
      ((DictInsertP _ty),[VDict mp, key, val]) -> VDict (M.insert key val mp)
      ((DictLookupP _),[VDict mp, key])        -> mp # key
+     ((DictHasKeyP _),[VDict mp, key])        -> VBool (M.member key mp)
      ((DictEmptyP _),[])                      -> VDict M.empty
      ((ErrorP msg _ty),[]) -> error msg
      (SizeParam,[]) -> VInt (rcSize rc)
@@ -236,6 +237,10 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
             -- values and Cursors... or this won't work.
             VarE v -- | Just v' <- L2.fromWitnessVar v -> return $ env # v'
                    | otherwise                      -> return $ env # v
+            PrimAppE Gensym [] ->
+              -- return current nanosecond from the clock as a gensym'd symbol
+              -- TODO(cskksc): need a VSym ?
+              liftIO (getTime clk) >>= (return . VInt . fromIntegral . nsec)
             PrimAppE p ls  -> do args <- mapM (go env) ls
                                  return $ applyPrim p args
             ProjE ix ex -> do VProd ls <- go env ex
