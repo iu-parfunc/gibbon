@@ -9,7 +9,8 @@
 -- | The final pass of the compiler: generate C code.
 
 module Packed.FirstOrder.Passes.Codegen
-    ( codegenProg ) where
+  ( codegenProg, harvestStructTys, makeName, rewriteReturns
+  ) where
 
 import           Control.Monad
 import           Control.Monad.Reader
@@ -37,7 +38,7 @@ import           Packed.FirstOrder.L3_Target
 harvestStructTys :: Prog -> S.Set [Ty]
 harvestStructTys (Prog funs mtal) =
     -- if S.null (S.difference tys0 tys1)
-    S.union tys0 tys1
+    S.delete [] (S.union tys0 tys1)
   where
   tys0 :: S.Set [Ty]
   tys0 = findAllProds $ concatMap allTypes allTails
@@ -233,7 +234,7 @@ codegenTail (ErrT s) _ty = return $ [ C.BlockStm [cstm| printf("%s\n", $s); |]
 -- We could eliminate these earlier
 codegenTail (LetTrivT (vr,rty,rhs) body) ty =
     do tal <- codegenTail body ty
-       return $ [ C.BlockDecl [cdecl| $ty:(codegenTy rty) $id:vr = $(codegenTriv rhs); |] ]
+       return $ [ C.BlockDecl [cdecl| $ty:(codegenTy rty) $id:vr = ($ty:(codegenTy rty)) $(codegenTriv rhs); |] ]
                 ++ tal
 
 codegenTail (LetAllocT lhs vals body) ty =

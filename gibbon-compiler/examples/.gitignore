@@ -6,4 +6,5 @@
 test*.c
 *.ans
 *.parsed
+*.ll
 test24_output.bin

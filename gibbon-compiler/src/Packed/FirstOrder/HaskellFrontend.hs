@@ -111,7 +111,6 @@ pattern SndVar <- VarE (C.Var "snd")
 desugarExp :: H.Exp -> Ds L1.Exp
 desugarExp e =
     case e of
-
       H.Var qname -> VarE <$> toVar <$> qname_to_str qname
 
       Con qname -> MkPackedE <$> qname_to_str qname <*> pure []

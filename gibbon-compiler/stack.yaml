@@ -4,12 +4,18 @@
 resolver: lts-6.23
 # resolver: lts-7.13
 packages:
+- location: llvm-hs/llvm-general
+  extra-dep: true
+- location: llvm-hs/llvm-general-pure
+  extra-dep: true
 - '.'
+
 extra-deps:
 - s-cargot-0.1.1.1
 # - tslogger-0.1.0.0
 # - async-2.0.2
-
+- llvm-general-pure-3.9.0.0
+- llvm-general-3.9.0.0
 
 flags: {}
 extra-package-dbs: []

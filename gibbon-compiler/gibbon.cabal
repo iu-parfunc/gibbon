@@ -13,6 +13,10 @@ build-type:          Simple
 extra-source-files:  README.md, rts.c
 cabal-version:       >=1.10
 
+flag LLVM_ENABLED
+  description: Enable LLVM backend
+  default: False
+
 library
   exposed-modules:
                   Packed.FirstOrder.Common
@@ -40,7 +44,6 @@ library
                   Packed.FirstOrder.Passes.Codegen
                   Packed.FirstOrder.SExpFrontend
 
-
 -- First attempt, slated for removal:
                     -- Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate,
                     -- Packed.HigherOrder.L3_Target,
@@ -48,7 +51,7 @@ library
 
 
   -- other-modules:
-  other-extensions:    DeriveDataTypeable
+  other-extensions:    DeriveDataTypeable CPP
 
   build-depends:
                 aeson,
@@ -74,6 +77,19 @@ library
                 -- tslogger,
                 blaze-builder,
                 symbol
+  if flag(LLVM_ENABLED)
+    exposed-modules:
+                    Packed.FirstOrder.Passes.LLVM.Codegen
+                    Packed.FirstOrder.Passes.LLVM.Monad
+                    Packed.FirstOrder.Passes.LLVM.Global
+                    Packed.FirstOrder.Passes.LLVM.Gibbon
+                    Packed.FirstOrder.Passes.LLVM.Instruction
+                    Packed.FirstOrder.Passes.LLVM.Terminator
+                    Packed.FirstOrder.Passes.LLVM.Type
+    build-depends:
+                  llvm-general-pure,
+                  llvm-general
+    cpp-options: -DLLVM_ENABLED
 
   hs-source-dirs:      src
   default-language:    Haskell2010

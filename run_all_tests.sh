@@ -4,6 +4,7 @@
 #   * DOCKER
 #   * STACKARGS 
 #   * PAR
+#   * LLVM
 
 # Hack, treat `./run_all_tests.sh -j` specially
 if [ "$1" == "-j" ]; then
@@ -83,15 +84,18 @@ racket $top/ASTBenchmarks/tests/*.rkt
 # raco make -v $top/kdTree-BenchMark/racket/*.rkt
 racket $top/kdTree-BenchMark/racket/traversal.gib
 
-
 set +x; echo
 echo "  Gibbon Compiler (1/2): build & unit tests"
 echo "-------------------------------------------"
 set -x
 cd $top/gibbon-compiler
 
-# Run compiler unit tests 
-stack --allow-different-user --install-ghc test "$STACKARGS" $MKPARARGS
+if [ "$LLVM_ENABLED" == "1" ]; then
+  echo "Building Gibbon with LLVM enabled"
+  stack --allow-different-user --install-ghc test --flag gibbon:llvm_enabled "$STACKARGS" $MKPARARGS
+else
+  stack --allow-different-user --install-ghc test "$STACKARGS" $MKPARARGS
+fi
 
 echo "  Gibbon Compiler (2/2): compiler test suite"
 echo "--------------------------------------------"
@@ -99,7 +103,6 @@ echo "--------------------------------------------"
 cd $top/gibbon-compiler/examples
 make test $MKPARARGS
 # Turning of -j for now [2016.11.06]
-
 
 
 if [ "$NOBINTREE" != "1" ]; then 
