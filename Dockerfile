@@ -13,4 +13,4 @@ RUN cd /trees/gibbon-compiler/ && stack build gibbon --flag gibbon:llvm --only-d
 # ADD ./.git /trees/.git/
 ADD . /trees
 
-RUN cd /trees && DOCKER=1 LLVM=1 ./run_all_tests.sh
+RUN cd /trees && DOCKER=1 LLVM_ENABLED=1 ./run_all_tests.sh

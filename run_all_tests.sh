@@ -90,9 +90,9 @@ echo "-------------------------------------------"
 set -x
 cd $top/gibbon-compiler
 
-if [ "$LLVM" == "1" ]; then
+if [ "$LLVM_ENABLED" == "1" ]; then
   echo "Building Gibbon with LLVM enabled"
-  stack --allow-different-user --install-ghc test --flag gibbon:llvm "$STACKARGS" $MKPARARGS
+  stack --allow-different-user --install-ghc test --flag gibbon:llvm_enabled "$STACKARGS" $MKPARARGS
 else
   stack --allow-different-user --install-ghc test "$STACKARGS" $MKPARARGS
 fi

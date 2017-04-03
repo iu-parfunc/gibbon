@@ -26,7 +26,7 @@ import qualified Packed.FirstOrder.L1_Source   as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
 -- import qualified Packed.FirstOrder.L3_Target   as L3
 import           Packed.FirstOrder.Passes.Codegen (codegenProg)
-#ifdef LLVMF
+#ifdef LLVM_ENABLED
 import qualified Packed.FirstOrder.Passes.LLVM.Codegen as LLVM
 #endif
 import           Packed.FirstOrder.Passes.Cursorize
@@ -438,11 +438,11 @@ compile config@Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosit
                           liftIO $ exitSuccess
                   else do
                    str <- case backend of
-#ifdef LLVMF
+#ifdef LLVM_ENABLED
                      LLVM -> lift $ LLVM.codegenProg packed l3
 #endif
                      C    -> lift $ codegenProg packed l3
-                     LLVM -> error "Cannot execute through the LLVM backend. To build Gibbon with LLVM;\n  stack build --flag gibbon:llvm"
+                     LLVM -> error "Cannot execute through the LLVM backend. To build Gibbon with LLVM;\n  stack build --flag gibbon:llvm_enabled"
 
                    -- The C code is long, so put this at a higher verbosity level.
                    lift$ dbgPrintLn minChatLvl $ "Final C codegen: "++show (length str)++" characters."

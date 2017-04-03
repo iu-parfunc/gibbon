@@ -118,7 +118,7 @@ core_tests:
 	$(MAKE) run_tests_packed
 	$(MAKE) run_tests_interp1
 	$(MAKE) run_tests_interp2
-ifeq ($(LLVM),1)
+ifeq ($(LLVM_ENABLED),1)
 	@echo "Running LLVM tests ..."
 	$(MAKE) run_tests_llvm
 else
@@ -174,8 +174,8 @@ racket_invalid: treelang_lib
 
 # Make sure the compiler is built
 build:
-ifeq ($(LLVM),1)
-	stack build --flag gibbon:llvm
+ifeq ($(LLVM_ENABLED),1)
+	stack build --flag gibbon:llvm_enabled
 else
 	stack build
 endif

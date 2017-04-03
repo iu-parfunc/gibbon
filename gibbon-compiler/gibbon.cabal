@@ -13,8 +13,8 @@ build-type:          Simple
 extra-source-files:  README.md, rts.c
 cabal-version:       >=1.10
 
-flag LLVM
-  description: Enable LLVM
+flag LLVM_ENABLED
+  description: Enable LLVM backend
   default: False
 
 library
@@ -77,7 +77,7 @@ library
                 -- tslogger,
                 blaze-builder,
                 symbol
-  if flag(LLVM)
+  if flag(LLVM_ENABLED)
     exposed-modules:
                     Packed.FirstOrder.Passes.LLVM.Codegen
                     Packed.FirstOrder.Passes.LLVM.Monad
@@ -89,7 +89,7 @@ library
     build-depends:
                   llvm-general-pure,
                   llvm-general
-    cpp-options: -DLLVMF
+    cpp-options: -DLLVM_ENABLED
 
   hs-source-dirs:      src
   default-language:    Haskell2010
