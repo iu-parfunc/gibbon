@@ -24,6 +24,7 @@ import           Data.List as L
 import           Data.Map as M
 import           Data.IntMap as IM
 import           Data.Word
+import Data.Char   
 import           GHC.Generics
 import           GHC.Stack (errorWithStackTrace)
 import           Packed.FirstOrder.Common
@@ -231,7 +232,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
       go env x0 =
           case x0 of
             LitE c         -> return $ VInt c
-
+            LitSymE s      -> return $ VInt $ fromIntegral $ product $ L.map ord $ fromVar s
             -- In L2.5 witnesses are really justs casts:
             -- FIXME: We need some way to mediate between symbolic
             -- values and Cursors... or this won't work.
