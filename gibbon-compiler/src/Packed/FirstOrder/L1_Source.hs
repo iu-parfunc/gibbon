@@ -69,7 +69,7 @@ progToEnv Prog{fundefs} =
 -- well as packed algebraic datatypes.
 data Exp = VarE Var
          | LitE Int
-         | LitSymE Var 
+         | LitSymE Var
          | AppE Var Exp -- Only apply top-level / first-order functions
          | PrimAppE Prim [Exp]
          | LetE (Var,Ty,Exp) Exp
@@ -228,6 +228,7 @@ subst old new ex =
     VarE v | v == old  -> new
            | otherwise -> VarE v
     LitE _          -> ex
+    LitSymE _       -> ex
     AppE v e        -> AppE v (go e)
     PrimAppE p ls   -> PrimAppE p $ L.map go ls
     LetE (v,t,rhs) bod | v == old  -> LetE (v,t,go rhs) bod
@@ -259,6 +260,7 @@ substE old new ex =
     _ | ex == old -> new
     VarE v          -> VarE v
     LitE _          -> ex
+    LitSymE _       -> ex
     AppE v e        -> AppE v (go e)
     PrimAppE p ls   -> PrimAppE p $ L.map go ls
     LetE (v,t,rhs) bod | (VarE v) == old  -> LetE (v,t,go rhs) bod

@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y valgrind
 # Cache Gibbon build and test dependencies in the container
 WORKDIR /trees
 COPY ./gibbon-compiler/stack.yaml ./gibbon-compiler/gibbon.cabal /trees/gibbon-compiler/
-RUN cd /trees/gibbon-compiler/ && stack build gibbon --flag gibbon:llvm --only-dependencies
+RUN cd /trees/gibbon-compiler/ && stack build gibbon --flag gibbon:llvm_enabled --only-dependencies
 
 # ADD ./.git /trees/.git/
 ADD . /trees

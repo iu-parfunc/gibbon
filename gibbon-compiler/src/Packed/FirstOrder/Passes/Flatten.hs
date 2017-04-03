@@ -221,6 +221,7 @@ typeExp (_dd,_env2) env (L1.VarE v) =
 --  M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v env
 
 typeExp (_dd,_env2) _env (L1.LitE _i) = L1.IntTy
+typeExp _ env (L1.LitSymE _)          = L1.SymTy
 typeExp (_dd,env2) _env (L1.AppE v _e) = snd $ fEnv env2 # v
 
 typeExp (_,_) _env (L1.PrimAppE p _es) =
@@ -239,7 +240,6 @@ typeExp (_,_) _env (L1.PrimAppE p _es) =
       L1.DictHasKeyP ty -> L1.SymDictTy ty
       L1.SizeParam -> L1.IntTy
       L1.ReadPackedFile _ _ ty -> ty
-
       _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
 
 typeExp (dd,env2) env (L1.LetE (v,t,_) e) = typeExp (dd,env2) (M.insert v t env) e
@@ -261,3 +261,4 @@ typeExp (dd,_) _env (L1.MkPackedE c _es) = L1.Packed (getTyOfDataCon dd c)
 typeExp (dd,env2) env (L1.TimeIt e _ _) = typeExp (dd,env2) env e
 typeExp (dd,env2) env (L1.MapE _ e)     = typeExp (dd,env2) env e
 typeExp (dd,env2) env (L1.FoldE _ _ e)  = typeExp (dd,env2) env e
+typeExp (dd,env2) env exp = error $ "typeExp: " ++ show exp ++ " not implemented"
