@@ -234,7 +234,11 @@ subst old new ex =
                        | otherwise -> LetE (v,t,go rhs) (go bod)
 
     ProjE i e  -> ProjE i (go e)
-    CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
+    CaseE e ls -> -- CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
+                  CaseE (go e) (L.map f ls)
+                      where f (c,vs,er) = if L.elem old vs
+                                          then (c,vs,er)
+                                          else (c,vs,go er)
     MkProdE ls     -> MkProdE $ L.map go ls
     MkPackedE k ls -> MkPackedE k $ L.map go ls
     TimeIt e t b -> TimeIt (go e) t b
