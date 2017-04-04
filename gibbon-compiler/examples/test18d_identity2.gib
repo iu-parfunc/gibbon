@@ -1,0 +1,8 @@
+#lang gibbon
+
+(data Foo (A Int) (B Int))
+
+(define (id2 [ev : Foo]) : Foo
+  (if True ev ev))
+
+(id2 (A 1))

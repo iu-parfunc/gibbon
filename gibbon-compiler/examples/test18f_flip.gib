@@ -1,0 +1,21 @@
+#lang gibbon
+
+(data List (Null) (Cons Int List))
+
+;; Length traverses its input.
+(define (length [x : List]) : Int
+  (case x
+    [(Null)     0]
+    [(Cons x y) (+ 1 (length y))]))
+
+;; TODO: This should really be a polymorphic flip when we can handle it.
+(define (flip [x : (Vector List List)]) : (Vector List List)
+  (vector (vector-ref x 1)
+          (vector-ref x 0)))
+
+;; This traverses the SECOND component of the pair.
+(define (tricky [pair : (Vector List List)]) : Int
+  (length (vector-ref (flip pair) 0)))
+
+(tricky (vector (Cons 1 (Cons 2 (Null)))
+                (Cons 3 (Cons 4 (Cons 5 (Null))))))
