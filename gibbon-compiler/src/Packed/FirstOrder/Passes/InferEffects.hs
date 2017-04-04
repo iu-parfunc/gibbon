@@ -9,7 +9,7 @@
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
 
 -- | An intermediate language with an effect system that captures traversals.
--- 
+--
 -- GRAMMAR: takes an L1 program to an L2 program.
 -- ASSUMES that the flatten pass has run, and thus we have trivial AppE operands.
 --
@@ -255,7 +255,12 @@ inferExp (ddefs,fenv) env e = exp env e
      -- If any sub-expression reaches a destination, we can reach the destination:
      L1.MkProdE ls -> do (effs,locs) <- unzip <$> mapM (exp env) ls
                          return (S.unions effs, TupLoc locs)
-     L1.ProjE _ e -> exp env e
+     L1.ProjE n e -> do
+       (eff, loc) <- exp env e
+       let loc' = case loc of
+                    TupLoc ls -> ls !! n
+                    _ -> error $ "inferExp: ProjE "++ show e ++ " expects a TupLoc, but got: " ++ show loc
+       return (eff, loc')
 
      L1.MapE{}  -> error "FINISHLISTS"
      L1.FoldE{} -> error "FINISHLISTS"

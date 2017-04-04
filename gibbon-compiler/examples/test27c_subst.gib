@@ -1,0 +1,14 @@
+#lang gibbon
+
+(require "../../ASTBenchmarks/grammar_racket.gib")
+
+(define (subst [old : Sym] [new : Sym] [e : Expr]) : Expr
+  (case e
+    [(VARREF s) (if (eq? old s)
+                    (VARREF new)
+                    (VARREF s))]
+    [(Top s) (if (eq? old s)
+                 (Top new)
+                 (Top s))]))
+
+(subst (quote a) (quote b) (Top (quote a)))
