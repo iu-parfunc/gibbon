@@ -1,14 +1,25 @@
 #lang gibbon
 
-(require "../../ASTBenchmarks/grammar_racket.gib")
+; (require "../../ASTBenchmarks/grammar_racket.gib")
 
-(define (subst [old : Sym] [new : Sym] [e : Expr]) : Expr
+(data Expr
+      (VARREF Sym)
+      (Top Sym))
+
+;; (define (copy [x : Expr]) : Expr
+;;   (case x
+;;     [(VARREF s) (VARREF s)]
+;;     [(Top s) (Top s)]))
+
+; (define (subst [old : Sym] [new : Sym] [e : Expr]) : Expr
+(define (subst [old : Int] [e : Expr]) : Expr
   (case e
-    [(VARREF s) (if (eq? old s)
-                    (VARREF new)
-                    (VARREF s))]
-    [(Top s) (if (eq? old s)
-                 (Top new)
-                 (Top s))]))
+    [(VARREF s) (VARREF s)]
+    [(Top s)
+     ; e 
+     ; (copy e)
+     (Top s)
+     ]))
 
-(subst (quote a) (quote b) (Top (quote a)))
+; (subst (quote a) (quote b) (Top (quote a)))
+

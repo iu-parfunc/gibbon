@@ -21,7 +21,7 @@ import Data.Set as S
 import Text.PrettyPrint.GenericPretty
 import Control.Monad
 import Control.Exception
-import Prelude hiding (exp)
+import Prelude hiding (exp) 
 
 -- | Chatter level for this module:
 lvl :: Int
@@ -124,16 +124,14 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
     let trivLoc (VarE v)  = env # v
         trivLoc (LitE _i) = Bottom
         trivLoc (LitSymE _v) = Bottom
-        trivLoc (MkProdE ls) =
-            let go [] = True
-                go ((LitE _):xs) = go xs
-                go _ = False
-            in if go ls
-               then Bottom
-               else error $ "Not handled in trivLoc, product of non-literals: " ++ (show ls)
-
+        trivLoc (MkProdE ls) = TupLoc (L.map trivLoc ls)
+        trivLoc (ProjE ix trv) =
+            case trivLoc trv of
+              TupLoc ls -> ls !! ix
+              oth -> error $ "No way to describe a location projected from a tuple of this location: "++show oth
+                    
         trivLoc (PrimAppE L1.MkTrue [])  = Bottom
-        trivLoc (PrimAppE L1.MkFalse []) = Bottom
+        trivLoc (PrimAppE L1.MkFalse []) = Bottom                                           
         trivLoc t = error $ "Case in trivLoc not handled for: " ++ (show t)
 
         -- When we get to the end... we just mention the names of what we want:
