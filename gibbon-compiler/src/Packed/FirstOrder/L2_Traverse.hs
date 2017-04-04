@@ -133,6 +133,10 @@ join (Fresh v) (Fixed w) = (Fixed w, [Eql v w])
 join (Fixed v) (Fresh w) = (Fixed v, [Eql v w])
 join (Fixed v) (Fixed w) | v == w    = (Fixed v, [])
                          | otherwise = (Top, [])
+
+join (Fresh v) (TupLoc ls) = (TupLoc ls, [EqTup v ls])
+join (TupLoc ls) (Fresh v) = (TupLoc ls, [EqTup v ls])
+
 join (TupLoc l1) (TupLoc l2) =
     let (locs,cs) = unzip $ zipWith join l1 l2 in
     (TupLoc locs, concat cs)
@@ -150,6 +154,8 @@ joins (a:b) = let (l,c) = joins b
 data Constraint = Eql Var Var
                 | Neq Var Var
 --                | EqlOffset Var (Int,Var)
+                | EqTup Var [Loc] -- A variable is equal to a tuple of locations.
+
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 instance Out Constraint
 

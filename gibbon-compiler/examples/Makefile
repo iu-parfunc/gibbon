@@ -6,6 +6,7 @@ default:
 	rm -f *.err $(BLD)/*.err
 	$(MAKE) test
 
+# Our default testing entrypoint.
 test:
 	$(MAKE) smalltest
 	@echo
@@ -36,6 +37,7 @@ GIBBON= DEBUG=1 stack exec -- gibbon
 
 GIBBONEXEC=$(shell stack exec -- which gibbon)
 
+# Run the most important tests while still going quickly.
 smalltest: prebuild build
 	$(MAKE) benchtest
 # Having weird trouble with race conditons on answers:
@@ -283,7 +285,7 @@ INTERP2_FAILING = test00a_size.gib test00b_printBool.gib test00d_printData.gib \
   test06h_rec.gib test06i_casecase.gib test07b_iterate.gib test11b_fundata.gib test11c_funrec.gib \
   test11d_funrec.gib test11e_funrec.gib test11f_funrec.gib  \
   test12b_traverse.gib test12c_traverse.gib test12_skip.gib \
-  test16_forlist.gib test17_forfold.gib test20_bintree.gib \
+  test16_forlist.gib test17_forfold.gib test18_badconstraint.gib test20_bintree.gib \
   text08_dict.gib test08b_dict.gib test08c_dict.gib test08d_sharedict.gib \
   test13_build.gib test13b_build.gib  \
   test20a_withprint.gib test20b_bintree.gib test20c_bintree.gib test20d_bintree.gib test20e_bintree.gib \

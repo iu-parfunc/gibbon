@@ -1,0 +1,12 @@
+#lang gibbon
+
+(data Foo (A Int) (B Int))
+
+(define (foo [ev : Foo]) : Foo
+  (case ev
+    [(A x) (B x)]
+    [(B y) ev]))
+
+    ; [(B y) (A y)]
+
+(foo (A 1))

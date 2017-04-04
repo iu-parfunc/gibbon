@@ -1,5 +1,9 @@
+
 -- | Put the program in A-normal form where only varrefs and literals are
 -- allowed in operand position.
+--
+--- GRAMMAR: takes an L1 program and returns an L1 program in
+--- restricted form.
 
 module Packed.FirstOrder.Passes.Flatten
   ( flatten

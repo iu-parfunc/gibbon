@@ -9,6 +9,10 @@
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
 
 -- | An intermediate language with an effect system that captures traversals.
+-- 
+-- GRAMMAR: takes an L1 program to an L2 program.
+-- ASSUMES that the flatten pass has run, and thus we have trivial AppE operands.
+--
 
 module Packed.FirstOrder.Passes.InferEffects
     ( inferEffects, inferFunDef
@@ -157,7 +161,7 @@ zipLT loc ty = error$ "zipLT: argument type "++show(doc ty)
 freshLoc :: String -> SyM Loc
 freshLoc m = Fresh <$> gensym (toVar m)
 
-
+-- | Infer the traversal effects for a function.
 inferFunDef :: (DDefs L1.Ty,FunEnv) -> C.FunDef L1.Ty L1.Exp -> SyM (Set Effect)
 inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
     -- For this pass we don't need to know the output location:
@@ -173,6 +177,7 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
            externalLocs = S.fromList $ allLocVars inTy ++ allLocVars outTy
        return $ S.filter (\(Traverse v) -> S.member v externalLocs) allEffs
 
+-- | Infer the traversal effects and abstract return value location for an expression.
 inferExp :: (DDefs L1.Ty, FunEnv) -> LocEnv -> L1.Exp -> SyM (Set Effect, Loc)
 inferExp (ddefs,fenv) env e = exp env e
   where
@@ -238,7 +243,8 @@ inferExp (ddefs,fenv) env e = exp env e
           getloc (MkProdE trvz) = TupLoc (L.map getloc trvz)
           getloc (ProjE ix trv) = let TupLoc ls = getloc trv
                                   in ls !! ix
-          getloc oth =  error$ "FINISHME: handle this rand: "++show oth
+          getloc oth | isTriv oth = error$ "InferEffects/FINISHME: handle this trivial rand: "++show oth
+                     | otherwise  = error$ "InferEffects: expected flattened program found non-trivial operand: "++show oth
           arrTy = fenv # rat
       in instantiateApp arrTy (getloc rand)
 
