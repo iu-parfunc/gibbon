@@ -1,3 +1,6 @@
+# =================================================================
+# This Makefile contains several entrypoints for driving the tests.
+# =================================================================
 
 default:
 	rm -f *.err $(BLD)/*.err
@@ -62,7 +65,8 @@ benchtest: test24_input.gpkd
 	$(GIBBON) --packed --bench-fun pass --bench-input test24_input.gpkd test24_defs.gib
 	$(GIBBON) --packed --bench-fun foo --bench-print --bench-input test25b_input.gpkd test25b_racketcore.gib
 
-
+# Testing on larger inputs.
+# ================================================================================
 BIG= $(TREELANGDIR)/ASTBenchmarks/cleaned_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.sexp
 BIGPKD= $(TREELANGDIR)/ASTBenchmarks/binary_racket/share/pkgs/typed-racket-more/typed/private/framework-types.rkt.out.gpkd
 PERF= perf stat -e cycles,instructions,cache-references,cache-misses,bus-cycles
@@ -110,8 +114,9 @@ SMALL=./share/pkgs/web-server-doc/web-server/scribblings/tutorial/examples/itera
 minimap:
 	du -sch $(TREELANGDIR)/ASTBenchmarks/binary_racket/$(SMALL)
 	$(MAKE) BIGPKD=$(TREELANGDIR)/ASTBenchmarks/binary_racket/$(SMALL) ITERS=100000 bigmap
+# ================================================================================
 
-
+# Run all small examples / system tests.
 # Assumes answers and build already available:
 core_tests:
 	$(MAKE) run_tests
@@ -395,7 +400,7 @@ build_tmp/%$(EXTRA_SUFFIX).valgrind : %.gib build_tmp/%$(EXTRA_SUFFIX).exe
 
 # --------------------------------------------------------------------------------
 
-
+# Build the Racket library-based implementation of #lang gibbon.
 treelang_lib:
 	raco make -v ../../gibbon/main.rkt 
 
@@ -411,5 +416,6 @@ distclean: clean
 	rm -f *.ans
 	cd error/; rm -f *.ans
 
+.PHONY: default test valgrind_packed valgrind run_valgrind
 .PHONY: prebuild build run_racket treelang_lib answers run_tests core_tests big
 .PHONY: run_tests_interp2 run_tests_packed clean distclean benchtest
