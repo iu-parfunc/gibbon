@@ -62,8 +62,8 @@ packed data (as in our ICFP'15 paper on Compact Normal Form).
 We will clarify our terminology: recording the size of subtrees only works
 intra-buffer, but embedding full pointers in the packed representations will
 reach between buffers.  Because the compiler knows when it is missing "end
-witnesses", that drives activating layout (i.e. as on optimization, instead of
-the naive dummy-traversal insertion of section 4.2, which can be
+witnesses", that drives including layout information (i.e. as on optimization,
+instead of the naive dummy-traversal insertion of section 4.2, which can be
 complete/automated even without layout).
 
 The current performance is representative of large blocks capped with guard
@@ -115,12 +115,12 @@ within a large program.
 
 > Node x y -> sum y + sum x
 
-This program is compiled the irrespective of the textual order in the code.
-Once the effect analysis identifies that a traversal occurs, we quite
-aggressively reorganize and reorder the program to connect end-witnesses to
-their consumers.  This is made easier by the current language being pure.
+This program is compiled the same irrespective of the textual order in the code.
+Once the effect analysis identifies that a traversal occurs, we aggressively
+reorganize and reorder the program to connect end-witnesses to their consumers.
+This is made easier by the current language being pure.
 
-# GC/deallocation
+> GC/deallocation
 
 See above re: arena deallocation / region-discipline.
 
