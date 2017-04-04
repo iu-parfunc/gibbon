@@ -264,6 +264,7 @@ endif
 PACKED_FAILING ?= \
  test04d_vecfun.gib \
  test12_skip.gib  test16_forlist.gib test17_forfold.gib \
+ test18b_tupconstraint.gib \
  test20b_bintree.gib  \
  test25a_withprint.gib test26_treewalk.gib test27a_subst.gib \
  test27b_subst.gib test28_copyprop.gib
@@ -289,7 +290,8 @@ INTERP2_FAILING = test00a_size.gib test00b_printBool.gib test00d_printData.gib \
   test06h_rec.gib test06i_casecase.gib test07b_iterate.gib test11b_fundata.gib test11c_funrec.gib \
   test11d_funrec.gib test11e_funrec.gib test11f_funrec.gib  \
   test12b_traverse.gib test12c_traverse.gib test12_skip.gib \
-  test16_forlist.gib test17_forfold.gib test18_badconstraint.gib test20_bintree.gib \
+  test16_forlist.gib test17_forfold.gib \
+  test18_badconstraint.gib test18b_tupconstraint.gib test20_bintree.gib \
   text08_dict.gib test08b_dict.gib test08c_dict.gib test08d_sharedict.gib \
   test13_build.gib test13b_build.gib  \
   test20a_withprint.gib test20b_bintree.gib test20c_bintree.gib test20d_bintree.gib test20e_bintree.gib \
