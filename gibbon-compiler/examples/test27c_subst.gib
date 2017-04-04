@@ -16,9 +16,9 @@
   (case e
     [(VARREF s) (VARREF s)]
     [(Top s)
-     ; e 
+     e 
      ; (copy e)
-     (Top s)
+     ; (Top s)
      ]))
 
 ; (subst (quote a) (quote b) (Top (quote a)))
