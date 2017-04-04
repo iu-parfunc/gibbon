@@ -1,0 +1,11 @@
+#lang gibbon
+
+(data Foo (A Int) (B Int))
+
+;; Actually this is misnamed. It doesn't yet generate a var=tuple constraint.
+(define (foo [ev : Foo]) : (Vector Int Foo)
+  (case ev
+    [(A x) (vector x (A x))]
+    [(B y) (foo (A y))]))
+
+(vector-ref (foo (B 33)) 0)

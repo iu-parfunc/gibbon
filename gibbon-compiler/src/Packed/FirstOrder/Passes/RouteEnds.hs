@@ -1,7 +1,10 @@
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 
 -- | A pass to route end-witnesses as additional function returns.
-
+--
+-- GRAMMAR: takes and produces a flattened L2 program.
+-- Returns a program following the "end-witnesses" calling convention.
+-- 
 module Packed.FirstOrder.Passes.RouteEnds
     ( routeEnds ) where
 
