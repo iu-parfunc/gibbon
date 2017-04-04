@@ -202,6 +202,7 @@ all_parsed:  $(ALL_TESTS:.gib=.parsed)
 
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= \
+  test04d_vecfun.gib \
   test13_build.gib test13b_build.gib \
   test11_fundata.gib test11c_funrec.gib test11e_funrec.gib test12c_traverse.gib \
   test25d_racketcore.gib \
@@ -260,7 +261,9 @@ else
 endif
 
 
-PACKED_FAILING ?=  test12_skip.gib  test16_forlist.gib test17_forfold.gib \
+PACKED_FAILING ?= \
+ test04d_vecfun.gib \
+ test12_skip.gib  test16_forlist.gib test17_forfold.gib \
  test20b_bintree.gib  \
  test25a_withprint.gib test26_treewalk.gib test27a_subst.gib \
  test27b_subst.gib test28_copyprop.gib
@@ -280,6 +283,7 @@ run_tests_packed: answers
 # This one is seriously rotted:
 INTERP2_FAILING = test00a_size.gib test00b_printBool.gib test00d_printData.gib \
   test02d_printPair.gib test02e_printNest.gib test03d_eqs.gib \
+  test04d_vecfun.gib \
   test06a_two_cases.gib test06b_case.gib test06_case.gib test06c_nested.gib \
   test06d_rec.gib test06e_rec.gib test06f_rec.gib test06g_rec.gib \
   test06h_rec.gib test06i_casecase.gib test07b_iterate.gib test11b_fundata.gib test11c_funrec.gib \

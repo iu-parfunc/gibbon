@@ -4,7 +4,7 @@
          has-key? case
          define let  if :
          for/list for/fold or and
-         vector vector-ref
+         Vector vector vector-ref
          list and empty? error 
          eq? = Listof True False
 

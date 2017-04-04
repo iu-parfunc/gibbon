@@ -1,0 +1,8 @@
+#lang gibbon
+
+(define (foo) : (Vector Int Int)
+  (if True
+      (vector 10 20)
+      (vector 30 40)))
+
+(foo)
