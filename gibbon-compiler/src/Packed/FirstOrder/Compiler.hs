@@ -24,7 +24,7 @@ import           Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.HaskellFrontend as HS
 import qualified Packed.FirstOrder.L1_Source   as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
--- import qualified Packed.FirstOrder.L3_Target   as L3
+import qualified Packed.FirstOrder.L3_Target   as L3
 import           Packed.FirstOrder.Passes.Codegen (codegenProg)
 #ifdef LLVM_ENABLED
 import qualified Packed.FirstOrder.Passes.LLVM.Codegen as LLVM
@@ -243,219 +243,313 @@ data CompileState =
                   }
 
 
--- type PassRunner = forall a b . (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT CompileState IO b
-type PassRunner a b = (Out b, NFData a, NFData b) => String -> (a -> SyM b) -> a -> StateT CompileState IO b
-
 -- | Compiler entrypoint, given a full configuration and a list of
 -- files to process.
+--
 compile :: Config -> FilePath -> IO ()
--- compileFile :: (FilePath -> IO (L1.Prog,Int)) -> FilePath -> IO ()
-compile config@Config{input,mode,benchInput,benchPrint,packed,bumpAlloc,verbosity,cc,optc,warnc,cfile,exefile,backend} fp0 = do
-  -- TERRIBLE HACK!!  This verbosity value is global, "pure" and can be read anywhere
+compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
+  -- set the env var DEBUG, to verbosity, when > 1
+  setDebugEnvVar verbosity
+
+  -- parse the input file
+  (parsed, fp) <- parseInput input fp0
+  (l1, cnt0) <- parsed
+
+  case mode of
+    Interp1 -> do
+      -- FIXME: no command line option atm.  Just env vars.
+      runConf <- getRunConfig []
+      dbgPrintLn 2 $ "Running the following through SourceInterp:\n "++sepline ++ "\n" ++ sdoc l1
+      SI.execAndPrint runConf l1
+      exitSuccess
+
+    ToParse -> dbgPrintLn 0 $ sdoc l1
+
+    _ -> do
+      dbgPrintLn lvl $ "Compiler pipeline starting, parsed program:\n"++sepline ++ "\n" ++ sdoc l1
+
+      -- (Stage 1) Run the program through the interpreter
+      initResult <- interpProg l1
+
+      -- (Stage 2) C/LLVM codegen
+      let outfile = getOutfile backend fp cfile
+
+      -- run the initial program through the compiler pipeline
+      l3 <- return $ passes config l1
+      l3 <- evalStateT l3 (CompileState {cnt=cnt0, result=initResult})
+
+      if mode == Interp2
+        then do
+          l3res <- execProg l3
+          mapM_ (\(IntVal v) -> liftIO $ print v) l3res
+          exitSuccess
+        else do
+          str <- case backend of
+            C    -> codegenProg packed l3
+#ifdef LLVM_ENABLED
+            LLVM -> LLVM.codegenProg packed l3
+#endif
+            LLVM -> error $ "Cannot execute through the LLVM backend. To build Gibbon with LLVM;"
+                    ++ "stack build --flag gibbon:llvm_enabled"
+
+          -- The C code is long, so put this at a higher verbosity level.
+          dbgPrintLn minChatLvl $ "Final C codegen: " ++show (length str) ++" characters.\n" ++ sepline ++ "\n" ++ str
+
+          clearFile outfile
+          writeFile outfile str
+
+          -- (Stage 3) Code written, now compile if warranted.
+          when (mode == ToExe || mode == RunExe || isBench mode ) $ do
+            compileAndRunExe config fp
+
+
+-- | Set the env var DEBUG, to verbosity, when > 1
+-- TERRIBLE HACK!!
+-- This verbosity value is global, "pure" and can be read anywhere
+--
+setDebugEnvVar :: Int -> IO ()
+setDebugEnvVar verbosity =
   when (verbosity > 1) $ do
     setEnv "DEBUG" (show verbosity)
     l <- evaluate dbgLvl
     hPutStrLn stderr$ " ! We set DEBUG based on command-line verbose arg: "++show l
 
-  (parser,fp) <- case input of
-                  Haskell -> return (HS.parseFile, fp0)
-                  SExpr   -> return (SExp.parseFile, fp0)
-                  Unspecified ->
-                   case takeExtension fp0 of
-                     ".hs"   -> return (HS.parseFile, fp0)
-                     ".sexp" -> return (SExp.parseFile, fp0)
-                     ".rkt"  -> return (SExp.parseFile, fp0)
-                     ".gib"  -> return (SExp.parseFile, fp0)
-                     oth -> do
-                       -- Here's a silly hack just out of sheer laziness vis-a-vis tab completion:
-                         f1 <- doesFileExist $ fp0++".gib"
-                         f2 <- doesFileExist $ fp0++"gib"
-                         if f1 && oth == ""
-                          then return (SExp.parseFile, fp0++".gib")
-                          else if f2 && oth == "."
-                          then return (SExp.parseFile, fp0++"gib")
-                          else error$ "compile: unrecognized file extension: "++
-                                  show oth++"  Please specify compile input format."
-  (l1,cnt0) <- parser fp
 
-  let printParse l = dbgPrintLn l $ sdoc l1
-  when (mode == Interp1) $ do
+-- |
+parseInput :: Input -> FilePath -> IO (IO (L1.Prog, Int), FilePath)
+parseInput ip fp =
+  case ip of
+    Haskell -> return (HS.parseFile fp, fp)
+    SExpr   -> return (SExp.parseFile fp, fp)
+    Unspecified ->
+      case takeExtension fp of
+        ".hs" -> return (HS.parseFile fp, fp)
+        ".sexp" -> return (SExp.parseFile fp, fp)
+        ".rkt"  -> return (SExp.parseFile fp, fp)
+        ".gib"  -> return (SExp.parseFile fp, fp)
+        oth -> do
+          -- A silly hack just out of sheer laziness vis-a-vis tab completion:
+          let f1 = fp ++ ".gib"
+              f2 = fp ++ "gib"
+          f1' <- doesFileExist f1
+          f2' <- doesFileExist f2
+          if f1' && oth == ""
+            then return (SExp.parseFile f1, f2)
+            else if f2' && oth == "."
+                   then return (SExp.parseFile f2, f2)
+                   else error$ "compile: unrecognized file extension: "++
+                        show oth++"  Please specify compile input format."
+
+
+-- |
+interpProg :: L1.Prog -> IO (Maybe SI.Value)
+interpProg l1 =
+  if dbgLvl >= interpDbgLevel
+  then do
+    -- FIXME: no command line option atm.  Just env vars.
+    runConf <- getRunConfig []
+    (val,_stdout) <- SI.interpProg runConf l1
+    dbgPrintLn 2 $ " [eval] Init prog evaluated to: "++show val
+    return $ Just val
+  else
+    return Nothing
+
+
+-- |
+passes :: Config -> L1.Prog -> StateT CompileState IO L3.Prog
+passes config@Config{mode,packed} l1 = do
+      l1 <- passE mode "freshNames" freshNames l1
+      -- If we are executing a benchmark, then we
+      -- replace the main function with benchmark code:
+      l1 <- pure $ case mode of
+                     Bench fnname -> benchMainExp config l1 fnname
+                     _ -> l1
+
+      l1 <- passE  mode "flatten"       flatten                                   l1
+      l1 <- passE  mode "inlineTriv"    (return . inlineTriv)                     l1
+      l2 <- passE  mode "inferEffects"  inferEffects                              l1
+      l2 <- passE' mode "typecheck"     (typecheckStrict (TCConfig False))        l2
+      let mmainTyPre = fmap snd $ L2.mainExp l2
+      l2  <-
+          if packed
+          then do
+            ---------------- Stubs currently ------------------
+
+            mt <- pass False "findMissingTraversals" findMissingTraversals        l2
+            l2 <- passE' mode "addTraversals"          (addTraversals mt)         l2
+            l2 <- passE' mode "addCopies"              addCopies                  l2
+            l2 <- passE' mode "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2
+
+            ------------------- End Stubs ---------------------
+
+            l2 <- pass True  "routeEnds"     routeEnds                            l2
+            -- l2  <- pass' mode  "typecheck"   (typecheckPermissive (TCConfig False)) l2
+            l2 <- pass False  "flatten"      (flatten2 l1)                        l2
+            l2 <- pass True  "findWitnesses" findWitnesses                        l2
+
+            -- QUESTION: Should programs typecheck and execute at this point?
+            -- ANSWER: Not yet, PackedTy/CursorTy mismatches remain:
+            -- l2 <- pass' mode "typecheck" (typecheckPermissive (TCConfig False)) l2
+
+            l2 <- pass True  "inlinePacked"  inlinePacked                         l2
+
+            -- l2  <- pass' mode "typecheck"   (typecheckPermissive (TCConfig False)) l2
+            -- [2016.12.31] For now witness vars only work out after cursorDirect then findWitnesses:
+
+            l2 <- passF "cursorDirect"         cursorDirect                       l2
+
+            -- This will issue some warnings, but is useful for debugging:
+            -- l2  <- pass' mode  "typecheck" (typecheckPermissive (TCConfig True))   l2
+
+            l2 <- pass False "flatten"       (flatten2 l1)                        l2
+            l2 <- pass True  "findWitnesses" findWitnesses                        l2
+
+            -- After findwitnesses is when programs should once again typecheck:
+            l2 <- passE' mode "typecheck"  (typecheckStrict (TCConfig True))      l2
+            l2 <- pass False "flatten"    (flatten2 l1)                           l2
+            l2 <- pass True "inlineTriv"  (inline2 l1)                            l2
+            l2 <- pass True "shakeTree"   shakeTree                               l2
+            l2 <- pass True "hoistNewBuf" hoistNewBuf                             l2
+            return l2
+          else return l2
+
+      l2  <- passE' mode "typecheck" (typecheckStrict (TCConfig packed))          l2
+      l2  <- pass True  "unariser" unariser                                       l2
+      l2  <- passE' mode "typecheck" (typecheckStrict (TCConfig packed))          l2
+      l3  <- pass True "lower"     (lower (packed,mmainTyPre))                    l2
+      return l3
+
+
+-- | Repurposing L1 passes for L2:
+--
+flatten2 :: L1.Prog -> L2.Prog -> SyM L2.Prog
+flatten2 l1 = L2.mapMExprs (flattenExp (L1.ddefs l1))
+
+inline2 :: L1.Prog -> L2.Prog -> SyM L2.Prog
+inline2 _ p = return (L2.mapExprs (\_ -> inlineTrivExp (L2.ddefs p)) p)
+
+
+-- | Replace the main function with benchmark code
+--
+benchMainExp :: Config -> L1.Prog -> Var -> L1.Prog
+benchMainExp Config{benchInput,benchPrint} l1 fnname = do
+  let tmp = "bnch"
+      (arg@(L1.PackedTy tyc _),ret) = L1.getFunTy fnname l1
+      -- At L1, we assume ReadPackedFile has a single return value:
+      newExp = L1.LetE (toVar tmp,
+                         arg,
+                         L1.PrimAppE (L1.ReadPackedFile benchInput tyc arg) [])
+                $
+                L1.LetE (toVar "benchres",
+                         ret,
+                         L1.TimeIt (L1.AppE fnname (L1.VarE (toVar tmp))) ret True)
+                $
+                -- FIXME: should actually return the result,
+                -- as soon as we are able to print it.
+                (if benchPrint
+                  then L1.VarE (toVar "benchres")
+                  else L1.PrimAppE L1.MkTrue [])
+  l1{ L1.mainExp = Just newExp }
+
+
+type PassRunner a b = (Out b, NFData a, NFData b) =>
+                      String -> (a -> SyM b) -> a -> StateT CompileState IO b
+
+
+-- | Run a pass and return the result
+--
+pass :: Bool -> PassRunner a b
+pass quiet who fn x = do
+  cs@CompileState{cnt} <- get
+  if quiet
+    then do
+      _ <- lift $ evaluate $ force x
+      lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":\n"++sepline
+    else
+      lift$ dbgPrintLn lvl $ "Running pass: " ++who++":\n"++sepline
+  let (y,cnt') = runSyM cnt (fn x)
+  put cs{cnt=cnt'}
+  _ <- lift $ evaluate $ force y
+  if quiet
+    then lift$ dbgPrintLn lvl $ sdoc y
+     -- Still print if you crank it up.
+    else lift$ dbgPrintLn 6 $ sdoc y
+  return y
+
+
+-- | Like pass, but also evaluates and checks the result.
+--
+passE :: Mode -> Interp p2 => PassRunner p1 p2
+passE mode = wrapInterp mode (pass True)
+
+
+-- | Version of 'passE' which does not print the output.
+--
+passE' :: Mode -> Interp p2 => PassRunner p1 p2
+passE' mode = wrapInterp mode (pass False)
+
+
+-- | An alternative version that allows FAILURE while running
+-- the interpreter part.
+-- FINISHME! For now not interpreting.
+--
+passF :: PassRunner p1 p2
+passF = pass True
+
+
+-- | Wrapper to enable running a pass AND interpreting the result.
+--
+wrapInterp :: (NFData p1, NFData p2, Interp p2, Out p2) =>
+              Mode -> PassRunner p1 p2 -> String -> (p1 -> SyM p2) -> p1 ->
+              StateT CompileState IO p2
+wrapInterp mode pass who fn x =
+  do CompileState{result} <- get
+     p2 <- pass who fn x
+     -- In benchmark mode we simply turn OFF the interpreter.
+     -- This decision should be finer grained.
+     when (dbgLvl >= interpDbgLevel && not (isBench mode)) $ lift $ do
+       let Just res1 = result
+       -- FIXME: no command line option atm.  Just env vars.
+       runConf <- getRunConfig []
+       let res2 = interpNoLogs runConf p2
+       res2' <- catch (evaluate (force res2))
+                (\exn -> error $ "Exception while running interpreter on pass result:\n"++sepline++"\n"
+                         ++ show (exn::SomeException) ++ "\n"++sepline++"\nProgram was: "++abbrv 300 p2)
+       unless (show res1 == res2') $
+         error $ "After pass "++who++", evaluating the program yielded the wrong answer.\nReceived:  "
+         ++show res2'++"\nExpected:  "++show res1
+       dbgPrintLn 5 $ " [interp] answer was: "++sdoc res2'
+     return p2
+
+
+-- | Compile and run the generated code if appropriate
+--
+compileAndRunExe :: Config -> FilePath -> IO ()
+compileAndRunExe cfg@Config{backend,benchInput,mode,cfile,exefile} fp = do
+  clearFile exe
+
+  -- (Stage 4) Codegen finished, generate a binary
+  dbgPrintLn minChatLvl cmd
+  cd <- system cmd
+  case cd of
+    ExitFailure n -> error$ (show backend) ++" compiler failed!  Code: "++show n
+    ExitSuccess -> do
+      -- (Stage 5) Binary compiled, run if appropriate
+      let runExe extra = do
+            exepath <- makeAbsolute exe
+            c2 <- system (exepath++extra)
+            case c2 of
+              ExitSuccess -> return ()
+              ExitFailure n -> error$ "Treelang program exited with error code "++ show n
       runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
-      dbgPrintLn 2 $ "Running the following through SourceInterp:\n "++sepline
-      printParse 2
-
-      SI.execAndPrint runConf l1
-      exitSuccess
-
-  if mode == ToParse
-   then do -- dbgPrintLn lvl "Parsed program:"
-           -- dbgPrintLn l sepline
-           printParse 0
-   else do
-    dbgPrintLn lvl $ "Compiler pipeline starting, parsed program:\n"++sepline
-    printParse lvl
-    let pass :: PassRunner a b
-        pass who fn x = do
-          cs@CompileState{cnt} <- get
-          _ <- lift $ evaluate $ force x
-          lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":\n"++sepline
-          let (y,cnt') = runSyM cnt (fn x)
-          put cs{cnt=cnt'}
-          _ <- lift $ evaluate $ force y
-          lift$ dbgPrintLn lvl $ sdoc y
-          return y
-
-        -- No reason to chatter from passes that are stubbed out anyway:
-        pass' :: PassRunner a b
-        pass' who fn x = do
-          cs@CompileState{cnt} <- get
-          lift$ dbgPrintLn lvl $ "Running pass: " ++who++":\n"++sepline
-          let (y,cnt') = runSyM cnt (fn x)
-          put cs{cnt=cnt'}
-          _ <- lift $ evaluate $ force y
-          lift$ dbgPrintLn 6 $ sdoc y -- Still print if you crank it up.
-          return y
-
-        -- | Like pass, but also evaluates and checks the result.
-        -- passE :: String -> (L1.Prog -> SyM L1.Prog) -> L1.Prog -> StateT CompileState IO L1.Prog
-
-        wrapInterp :: (NFData p1, NFData p2, Interp p2, Out p2) =>
-                      PassRunner p1 p2 -> String -> (p1 -> SyM p2) -> p1 -> StateT CompileState IO p2
-        wrapInterp pass who fn x =
-          do CompileState{result} <- get
-             p2 <- pass who fn x
-             -- In benchmark mode we simply turn OFF the interpreter.  This decision should be finer grained.
-             when (dbgLvl >= interpDbgLevel && not (isBench mode)) $ lift $ do
-               let Just res1 = result
-               runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
-               let res2 = interpNoLogs runConf p2
-               res2' <- catch (evaluate (force res2))
-                         (\exn -> error $ "Exception while running interpreter on pass result:\n"++sepline++"\n"
-                                  ++ show (exn::SomeException) ++ "\n"++sepline++"\nProgram was: "++abbrv 300 p2)
-               unless (show res1 == res2') $
-                 error $ "After pass "++who++", evaluating the program yielded the wrong answer.\nReceived:  "
-                         ++show res2'++"\nExpected:  "++show res1
-               dbgPrintLn 5 $ " [interp] answer was: "++sdoc res2'
-             return p2
-
-        -- | Wrapper to enable running a pass AND interpreting the result.
-        passE :: Interp p2 => PassRunner p1 p2
-        passE = wrapInterp pass
-
-        -- | Version of 'passE' which does not print the output.
-        passE' :: Interp p2 => PassRunner p1 p2
-        passE' = wrapInterp pass'
-
-        -- | An alternative version that allows FAILURE while running
-        -- the interpreter part.
-        passF = pass -- FINISHME! For now not interpreting.
-
-    let outfile = getOutfile backend fp cfile
-        exe     = getExeFile backend fp exefile
-
-    clearFile outfile
-    clearFile exe
-
-    -- Repurposing L1 passes for L2:
-    let flatten2 :: L2.Prog -> SyM L2.Prog
-        flatten2 = L2.mapMExprs (flattenExp (L1.ddefs l1))
-        inline2 :: L2.Prog -> SyM L2.Prog
-        inline2 p = return (L2.mapExprs (\_ -> inlineTrivExp (L2.ddefs p)) p)
-    initResult <- if dbgLvl >= interpDbgLevel
-                  then do runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
-                          (val,_stdout) <- SI.interpProg runConf l1
-                          dbgPrintLn 2 $ " [eval] Init prog evaluated to: "++show val
-                          return $ Just val
-                  else return Nothing
-    str <- evalStateT
-             (do l1 <-       passE "freshNames"               freshNames               l1
-
-                 -- -- If we are executing a benchmark, then we
-                 -- -- replace the main function with benchmark code:
-                 l1 <- pure$ case mode of
-                             Bench fnname ->
-                                 let tmp = "bnch"
-                                     (arg@(L1.PackedTy tyc _),ret) = L1.getFunTy fnname l1
-                                 in
-                                 l1{ L1.mainExp = Just $
-                                      -- At L1, we assume ReadPackedFile has a single return value:
-                                      L1.LetE (toVar tmp, arg, L1.PrimAppE (L1.ReadPackedFile benchInput tyc arg) []) $
-                                        L1.LetE (toVar "benchres", ret, L1.TimeIt (L1.AppE fnname (L1.VarE (toVar tmp))) ret True) $
-                                          -- FIXME: should actually return the result, as soon as we are able to print it.
-                                          (if benchPrint
-                                           then L1.VarE (toVar "benchres")
-                                           else L1.PrimAppE L1.MkTrue [])
-                                    }
-                             _ -> l1
-
-                 l1  <-       passE "flatten"                  flatten                  l1
-                 l1  <-       passE "inlineTriv"               (return . inlineTriv)    l1
-                 l2  <-       passE "inferEffects"             inferEffects             l1
-                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig False)) l2
-                 let mmainTyPre = fmap snd $ L2.mainExp l2
-                 l2  <-
-                     if packed
-                     then do
-                       ---------------- Stubs currently ------------------
-                       mt  <- pass'  "findMissingTraversals"    findMissingTraversals     l2
-                       l2  <- passE' "addTraversals"            (addTraversals mt)        l2
-                       l2  <- passE' "addCopies"                addCopies                 l2
-                       l2  <- passE' "lowerCopiesAndTraversals" lowerCopiesAndTraversals  l2
-                       ------------------- End Stubs ---------------------
-                       l2  <- pass   "routeEnds"                routeEnds                l2
-                       -- l2  <- pass'  "typecheck"   (typecheckPermissive (TCConfig False)) l2
-                       l2  <- pass'  "flatten"                  flatten2                 l2
-                       l2  <- pass   "findWitnesses"            findWitnesses            l2
-                       -- QUESTION: Should programs typecheck and execute at this point?
-                       -- ANSWER: Not yet, PackedTy/CursorTy mismatches remain:
-                       -- l2  <- pass' "typecheck"   (typecheckPermissive (TCConfig False)) l2
-                       l2  <- pass   "inlinePacked"             inlinePacked             l2
-                       -- l2  <- pass' "typecheck"   (typecheckPermissive (TCConfig False)) l2
-                       -- [2016.12.31] For now witness vars only work out after cursorDirect then findWitnesses:
-                       l2  <- passF  "cursorDirect"             cursorDirect             l2
-                       -- This will issue some warnings, but is useful for debugging:
-                       -- l2  <- pass'  "typecheck" (typecheckPermissive (TCConfig True))   l2
-
-                       l2  <- pass'  "flatten"                  flatten2                 l2
-                       l2  <- pass   "findWitnesses"            findWitnesses            l2
-                       -- After findwitnesses is when programs should once again typecheck:
-                       l2  <- passE' "typecheck"     (typecheckStrict (TCConfig True))   l2
-
-                       l2  <- pass' "flatten"                  flatten2                  l2
-                       l2  <- pass  "inlineTriv"               inline2                   l2
-                       l2  <- pass  "shakeTree"                shakeTree                 l2
-                       l2  <- pass  "hoistNewBuf"              hoistNewBuf               l2
-                       return l2
-                     else return l2
-                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig packed)) l2
-                 l2  <-       pass   "unariser"                 unariser                 l2
-                 l2  <-       passE' "typecheck"     (typecheckStrict (TCConfig packed)) l2
-                 l3  <-       pass   "lower"         (lower (packed,mmainTyPre)) l2
-
-                 if mode == Interp2
-                  then do l3res <- lift $ execProg l3
-                          mapM_ (\(IntVal v) -> liftIO $ print v) l3res
-                          liftIO $ exitSuccess
-                  else do
-                   str <- case backend of
-#ifdef LLVM_ENABLED
-                     LLVM -> lift $ LLVM.codegenProg packed l3
-#endif
-                     C    -> lift $ codegenProg packed l3
-                     LLVM -> error "Cannot execute through the LLVM backend. To build Gibbon with LLVM;\n  stack build --flag gibbon:llvm_enabled"
-
-                   -- The C code is long, so put this at a higher verbosity level.
-                   lift$ dbgPrintLn minChatLvl $ "Final C codegen: "++show (length str)++" characters."
-                   lift$ dbgPrintLn 5 sepline
-                   lift$ dbgPrintLn 5 str
-                   return str)
-              (CompileState { cnt=cnt0
-                            , result= initResult })
-
-    writeFile outfile str
-    -- (Stage 2) Code written, now compile if warranted.
-    when (mode == ToExe || mode == RunExe || isBench mode ) $ do
-      genAndRunExe config outfile exe
+      case benchInput of
+        -- CONVENTION: In benchmark mode we expect the generated executable to take 2 extra params:
+        Just _ | isBench mode   -> runExe $ " " ++show (rcSize runConf) ++ " " ++ show (rcIters runConf)
+        _      | mode == RunExe -> runExe ""
+        _                                -> return ()
+  where outfile = getOutfile backend fp cfile
+        exe = getExeFile backend fp exefile
+        cmd = compilationCmd backend cfg ++ outfile ++ " -o " ++ exe
 
 
 -- | Return the correct filename to store the generated code,
@@ -476,31 +570,6 @@ getExeFile LLVM fp Nothing = replaceExtension (replaceFileName fp ((takeBaseName
 getExeFile C fp Nothing = replaceExtension fp ".exe"
 
 
--- | Compile and run (if appropriate) the generated code
---
-genAndRunExe :: Config -> FilePath -> FilePath -> IO ()
-genAndRunExe config outfile exe = do
-  dbgPrintLn minChatLvl cmd
-  cd <- system cmd
-  case cd of
-    ExitFailure n -> error$ (show $ backend config) ++" compiler failed!  Code: "++show n
-    ExitSuccess -> do
-      -- (Stage 3) Binary compiled, run if appropriate
-      let runExe extra = do
-            exepath <- makeAbsolute exe
-            c2 <- system (exepath++extra)
-            case c2 of
-              ExitSuccess -> return ()
-              ExitFailure n -> error$ "Treelang program exited with error code "++ show n
-      runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
-      case (benchInput config) of
-        -- CONVENTION: In benchmark mode we expect the generated executable to take 2 extra params:
-        Just _ | isBench (mode config)   -> runExe $ " " ++show (rcSize runConf) ++ " " ++ show (rcIters runConf)
-        _      | (mode config) == RunExe -> runExe ""
-        _                                -> return ()
-  where cmd = compilationCmd (backend config) config ++ outfile ++ " -o " ++ exe
-
-
 -- | Compilation command
 --
 compilationCmd :: Backend -> Config -> String
@@ -510,7 +579,7 @@ compilationCmd C config = (cc config) ++" -std=gnu11 "
                           ++(optc config)++"  "
                           ++(if (warnc config) then "" else suppress_warnings)
 
-
+-- |
 isBench :: Mode -> Bool
 isBench (Bench _) = True
 isBench _ = False
@@ -519,6 +588,7 @@ isBench _ = False
 interpDbgLevel :: Int
 interpDbgLevel = 1
 
+-- |
 clearFile :: FilePath -> IO ()
 clearFile fileName = removeFile fileName `catch` handleErr
   where
