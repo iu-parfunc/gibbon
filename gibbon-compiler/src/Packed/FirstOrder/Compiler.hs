@@ -102,7 +102,7 @@ data Config = Config
   , cfile     :: Maybe FilePath -- ^ Optional override to destination .c file.
   , exefile   :: Maybe FilePath -- ^ Optional override to destination binary file.
   , backend   :: Backend -- ^ Compilation backend used
-  , stopAt    :: String  -- ^ Stop the compilation pipeline after this pass
+  , stopAfter    :: String  -- ^ Stop the compilation pipeline after this pass
   }
 
 -- | What input format to expect on disk.
@@ -143,7 +143,7 @@ defaultConfig =
          , cfile = Nothing
          , exefile = Nothing
          , backend = C
-         , stopAt = ""
+         , stopAfter = ""
          }
 
 suppress_warnings :: String
@@ -182,8 +182,8 @@ configParser = Config <$> inputParser
                                        help "set the destination file for the executable"))
                            <|> pure (exefile defaultConfig))
                       <*> backendParser
-                      <*> ((strOption $ long "stop-at" <> help "Stop the compilation pipeline after this pass")
-                            <|> pure (stopAt defaultConfig))
+                      <*> ((strOption $ long "stop-after" <> help "Stop the compilation pipeline after this pass")
+                            <|> pure (stopAfter defaultConfig))
  where
   inputParser :: Parser Input
                 -- I'd like to display a separator and some more info.  How?
@@ -463,7 +463,7 @@ type PassRunner a b = (Out b, NFData a, NFData b) =>
 -- | Run a pass and return the result
 --
 pass :: Bool -> Config -> PassRunner a b
-pass quiet Config{stopAt} who fn x = do
+pass quiet Config{stopAfter} who fn x = do
   cs@CompileState{cnt} <- get
   if quiet
     then do
@@ -478,8 +478,8 @@ pass quiet Config{stopAt} who fn x = do
     then lift$ dbgPrintLn lvl $ sdoc y
      -- Still print if you crank it up.
     else lift$ dbgPrintLn 6 $ sdoc y
-  when (stopAt == who) $ do
-    dbgTrace 0 ("Compilation stopped; --stop-at=" ++ who) (return ())
+  when (stopAfter == who) $ do
+    dbgTrace 0 ("Compilation stopped; --stop-after=" ++ who) (return ())
     liftIO exitSuccess
   return y
 
