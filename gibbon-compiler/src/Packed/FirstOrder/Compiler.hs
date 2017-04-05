@@ -102,6 +102,7 @@ data Config = Config
   , cfile     :: Maybe FilePath -- ^ Optional override to destination .c file.
   , exefile   :: Maybe FilePath -- ^ Optional override to destination binary file.
   , backend   :: Backend -- ^ Compilation backend used
+  , stopAt    :: String  -- ^ Stop the compilation pipeline after this pass
   }
 
 -- | What input format to expect on disk.
@@ -142,6 +143,7 @@ defaultConfig =
          , cfile = Nothing
          , exefile = Nothing
          , backend = C
+         , stopAt = ""
          }
 
 suppress_warnings :: String
@@ -180,6 +182,8 @@ configParser = Config <$> inputParser
                                        help "set the destination file for the executable"))
                            <|> pure (exefile defaultConfig))
                       <*> backendParser
+                      <*> ((strOption $ long "stop-at" <> help "Stop the compilation pipeline after this pass")
+                            <|> pure (stopAt defaultConfig))
  where
   inputParser :: Parser Input
                 -- I'd like to display a separator and some more info.  How?
@@ -358,65 +362,65 @@ interpProg l1 =
 -- |
 passes :: Config -> L1.Prog -> StateT CompileState IO L3.Prog
 passes config@Config{mode,packed} l1 = do
-      l1 <- passE mode "freshNames" freshNames l1
+      l1 <- passE config "freshNames" freshNames l1
       -- If we are executing a benchmark, then we
       -- replace the main function with benchmark code:
       l1 <- pure $ case mode of
                      Bench fnname -> benchMainExp config l1 fnname
                      _ -> l1
 
-      l1 <- passE  mode "flatten"       flatten                                   l1
-      l1 <- passE  mode "inlineTriv"    (return . inlineTriv)                     l1
-      l2 <- passE  mode "inferEffects"  inferEffects                              l1
-      l2 <- passE' mode "typecheck"     (typecheckStrict (TCConfig False))        l2
+      l1 <- passE  config "flatten"       flatten                                   l1
+      l1 <- passE  config "inlineTriv"    (return . inlineTriv)                     l1
+      l2 <- passE  config "inferEffects"  inferEffects                              l1
+      l2 <- passE' config "typecheck"     (typecheckStrict (TCConfig False))        l2
       let mmainTyPre = fmap snd $ L2.mainExp l2
       l2  <-
           if packed
           then do
             ---------------- Stubs currently ------------------
 
-            mt <- pass False "findMissingTraversals" findMissingTraversals        l2
-            l2 <- passE' mode "addTraversals"          (addTraversals mt)         l2
-            l2 <- passE' mode "addCopies"              addCopies                  l2
-            l2 <- passE' mode "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2
+            mt <- pass False config "findMissingTraversals" findMissingTraversals   l2
+            l2 <- passE' config "addTraversals"          (addTraversals mt)         l2
+            l2 <- passE' config "addCopies"              addCopies                  l2
+            l2 <- passE' config "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2
 
             ------------------- End Stubs ---------------------
 
-            l2 <- pass True  "routeEnds"     routeEnds                            l2
+            l2 <- pass True config "routeEnds"     routeEnds                        l2
             -- l2  <- pass' mode  "typecheck"   (typecheckPermissive (TCConfig False)) l2
-            l2 <- pass False  "flatten"      (flatten2 l1)                        l2
-            l2 <- pass True  "findWitnesses" findWitnesses                        l2
+            l2 <- pass False config "flatten"      (flatten2 l1)                    l2
+            l2 <- pass True config "findWitnesses" findWitnesses                    l2
 
             -- QUESTION: Should programs typecheck and execute at this point?
             -- ANSWER: Not yet, PackedTy/CursorTy mismatches remain:
             -- l2 <- pass' mode "typecheck" (typecheckPermissive (TCConfig False)) l2
 
-            l2 <- pass True  "inlinePacked"  inlinePacked                         l2
+            l2 <- pass True config "inlinePacked"  inlinePacked                     l2
 
             -- l2  <- pass' mode "typecheck"   (typecheckPermissive (TCConfig False)) l2
             -- [2016.12.31] For now witness vars only work out after cursorDirect then findWitnesses:
 
-            l2 <- passF "cursorDirect"         cursorDirect                       l2
+            l2 <- passF config "cursorDirect"         cursorDirect                  l2
 
             -- This will issue some warnings, but is useful for debugging:
             -- l2  <- pass' mode  "typecheck" (typecheckPermissive (TCConfig True))   l2
 
-            l2 <- pass False "flatten"       (flatten2 l1)                        l2
-            l2 <- pass True  "findWitnesses" findWitnesses                        l2
+            l2 <- pass False config "flatten"       (flatten2 l1)                   l2
+            l2 <- pass True config "findWitnesses" findWitnesses                    l2
 
             -- After findwitnesses is when programs should once again typecheck:
-            l2 <- passE' mode "typecheck"  (typecheckStrict (TCConfig True))      l2
-            l2 <- pass False "flatten"    (flatten2 l1)                           l2
-            l2 <- pass True "inlineTriv"  (inline2 l1)                            l2
-            l2 <- pass True "shakeTree"   shakeTree                               l2
-            l2 <- pass True "hoistNewBuf" hoistNewBuf                             l2
+            l2 <- passE' config "typecheck"  (typecheckStrict (TCConfig True))      l2
+            l2 <- pass False config "flatten"    (flatten2 l1)                      l2
+            l2 <- pass True config "inlineTriv"  (inline2 l1)                       l2
+            l2 <- pass True config "shakeTree"   shakeTree                          l2
+            l2 <- pass True config "hoistNewBuf" hoistNewBuf                        l2
             return l2
           else return l2
 
-      l2  <- passE' mode "typecheck" (typecheckStrict (TCConfig packed))          l2
-      l2  <- pass True  "unariser" unariser                                       l2
-      l2  <- passE' mode "typecheck" (typecheckStrict (TCConfig packed))          l2
-      l3  <- pass True "lower"     (lower (packed,mmainTyPre))                    l2
+      l2  <- passE' config "typecheck" (typecheckStrict (TCConfig packed))          l2
+      l2  <- pass True config "unariser" unariser                                   l2
+      l2  <- passE' config "typecheck" (typecheckStrict (TCConfig packed))          l2
+      l3  <- pass True config "lower"     (lower (packed,mmainTyPre))               l2
       return l3
 
 
@@ -458,8 +462,8 @@ type PassRunner a b = (Out b, NFData a, NFData b) =>
 
 -- | Run a pass and return the result
 --
-pass :: Bool -> PassRunner a b
-pass quiet who fn x = do
+pass :: Bool -> Config -> PassRunner a b
+pass quiet Config{stopAt} who fn x = do
   cs@CompileState{cnt} <- get
   if quiet
     then do
@@ -474,27 +478,30 @@ pass quiet who fn x = do
     then lift$ dbgPrintLn lvl $ sdoc y
      -- Still print if you crank it up.
     else lift$ dbgPrintLn 6 $ sdoc y
+  when (stopAt == who) $ do
+    dbgTrace 0 ("Compilation stopped; --stop-at=" ++ who) (return ())
+    liftIO exitSuccess
   return y
 
 
 -- | Like pass, but also evaluates and checks the result.
 --
-passE :: Mode -> Interp p2 => PassRunner p1 p2
-passE mode = wrapInterp mode (pass True)
+passE :: Config -> Interp p2 => PassRunner p1 p2
+passE config@Config{mode} = wrapInterp mode (pass True config)
 
 
 -- | Version of 'passE' which does not print the output.
 --
-passE' :: Mode -> Interp p2 => PassRunner p1 p2
-passE' mode = wrapInterp mode (pass False)
+passE' :: Config -> Interp p2 => PassRunner p1 p2
+passE' config@Config{mode} = wrapInterp mode (pass False config)
 
 
 -- | An alternative version that allows FAILURE while running
 -- the interpreter part.
 -- FINISHME! For now not interpreting.
 --
-passF :: PassRunner p1 p2
-passF = pass True
+passF :: Config -> PassRunner p1 p2
+passF config = pass True config
 
 
 -- | Wrapper to enable running a pass AND interpreting the result.
