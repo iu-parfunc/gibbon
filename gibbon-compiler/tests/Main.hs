@@ -35,7 +35,7 @@ main = $(defaultMainGenerator)
 --------------------------------------------------------------------------------
 
 t0 :: Set Effect -> Set Effect
-t0 eff = fst $ runSyM 0 $
+t0 eff = arrEffs $ fst $ runSyM 0 $
      inferFunDef (M.empty,
                    M.singleton (toVar "foo") (ArrowTy (PackedTy "K" (toVar "p"))
                                               eff
@@ -55,7 +55,7 @@ case_t0b = assertEqual "infinite loop cannot bootstrap with bad initial effect s
 -- The function foo below should traverse "a" but does not have any
 -- output locations.
 t1 :: (Set Effect)
-t1 = fst $ runSyM 0 $
+t1 = arrEffs $ fst $ runSyM 0 $
      inferFunDef (M.empty,
                    M.fromList
                    [(toVar "copy",(ArrowTy (PackedTy "K" (toVar "p"))
@@ -80,7 +80,7 @@ fooBoolInt :: a -> L1.FunDef L1.Ty a
 fooBoolInt = C.FunDef (toVar "foo") ((toVar "x"), L1.Packed "Bool") L1.IntTy
 
 t2 :: (Set Effect)
-t2 = fst $ runSyM 0 $
+t2 = arrEffs $ fst $ runSyM 0 $
      inferFunDef t2env
                   (fooBoolInt $
                     L1.CaseE (VarE (toVar "x")) $
@@ -92,14 +92,14 @@ case_t2 = assertEqual "Traverse a Bool with case"
             (S.fromList [Traverse (toVar "p")]) t2
 
 t2b :: (Set Effect)
-t2b = fst $ runSyM 0 $
+t2b = arrEffs $ fst $ runSyM 0 $
      inferFunDef t2env (fooBoolInt $ LitE 33)
 
 case_t2b :: Assertion
 case_t2b = assertEqual "No traverse from a lit" S.empty t2b
 
 t2c :: (Set Effect)
-t2c = fst $ runSyM 0 $
+t2c = arrEffs $ fst $ runSyM 0 $
      inferFunDef t2env (fooBoolInt $ VarE (toVar "x"))
 
 case_t2c :: Assertion
@@ -107,7 +107,7 @@ case_t2c = assertEqual "No traverse from identity function" S.empty t2b
 
 
 t3 :: Exp -> Set Effect
-t3 bod = fst $ runSyM 0 $
+t3 bod = arrEffs $ fst $ runSyM 0 $
      inferFunDef ( fromListDD [DDef (toVar "SillyTree")
                                   [ ("Leaf",[])
                                   , ("Node",[L1.Packed "SillyTree", L1.IntTy])]]
@@ -138,7 +138,7 @@ case_t3d = assertEqual "sillytree3: reference leftmost"
             , ("Node", [toVar "l",toVar "r"], VarE (toVar "l"))]
 
 t4 :: Exp -> Set Effect
-t4 bod = fst $ runSyM 0 $
+t4 bod = arrEffs $ fst $ runSyM 0 $
      inferFunDef t4env
                   (C.FunDef (toVar "foo") ((toVar "x"), L1.Packed "Tree") L1.IntTy
                     bod)
