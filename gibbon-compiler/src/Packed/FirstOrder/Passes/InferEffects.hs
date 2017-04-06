@@ -166,19 +166,30 @@ inferFunDef (ddefs,fenv) (C.FunDef name (arg,argty) _retty bod) =
            env0    = M.singleton arg argLoc
            argLoc  = argtyToLoc (mangle arg) argty'
 
-       (effs1,bodloc) <- inferExp (ddefs,fenv) env0 bod
-       dbgTrace lvl ("  inferFunDef: body returned value at location: "++show bodloc) $ return ()
-       -- TODO / FIXME: Unify resulting location with the output type to
-       -- create equalities between input and output locations.
-       -- THEN substitute into the return type using the resulting equalities.
-                
-       dbgTrace lvl ("  zip bodloc/outty: " ++ show (zipTL outTy bodloc)) $ return()
-                
+       (effs1,bodLoc) <- inferExp (ddefs,fenv) env0 bod
+
+       -- Unify resulting location with the output type to create equalities between input and output locations.
+       -- Then substitute into the return type using the resulting equalities.
+       -- This helps to infer the right type signature for identity functions ; (tests 18c, 18d, 18e, 18f).
+       let argIn   = zipLT argLoc inTy
+           bodOut  = zipLT bodLoc outTy
+           eqs     = M.fromList $ M.foldrWithKey
+                                 (\k v acc -> if M.member k argIn
+                                              then (v, (argIn # k)):acc
+                                              else (v,v):acc)
+                                 [] bodOut
+           outTy'  = substTy eqs outTy
+
+       when (outTy' /= outTy) $ do
+         dbgTrace lvl ("\nInput/Output location equalities: " ++ show (M.toList eqs)) return()
+         dbgTrace lvl ("\nOutput type for " ++ show (fromVar name) ++ " changed from: " ++ show outTy ++ " to: " ++ show outTy') return()
+
        -- Finally, restate the effects in terms of the type schema for the fun:
-       let allEffs = substEffs (zipLT argLoc inTy) effs1
-           externalLocs = S.fromList $ allLocVars inTy ++ allLocVars outTy
+       let allEffs = substEffs argIn effs1
+           externalLocs = S.fromList $ allLocVars inTy ++ allLocVars outTy'
            finalEffs = S.filter (\(Traverse v) -> S.member v externalLocs) allEffs
-       return $ ArrowTy inTy finalEffs outTy
+       return $ ArrowTy inTy finalEffs outTy'
+
 
 -- | Infer the traversal effects and abstract return value location for an expression.
 inferExp :: (DDefs L1.Ty, FunEnv) -> LocEnv -> L1.Exp -> SyM (Set Effect, Loc)
