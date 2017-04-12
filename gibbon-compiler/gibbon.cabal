@@ -36,6 +36,7 @@ library
                   Packed.FirstOrder.Passes.InlinePacked
                   Packed.FirstOrder.Passes.ShakeTree
                   Packed.FirstOrder.Passes.InferEffects
+                  Packed.FirstOrder.Passes.CopyInsertion
                   Packed.FirstOrder.Passes.FindWitnesses
                   Packed.FirstOrder.Passes.RouteEnds
                   Packed.FirstOrder.Passes.Unariser

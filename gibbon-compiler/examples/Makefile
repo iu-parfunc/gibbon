@@ -264,7 +264,7 @@ endif
 PACKED_FAILING ?= \
  test04d_vecfun.gib \
  test12_skip.gib  test16_forlist.gib test17_forfold.gib \
- test18b_tupconstraint.gib test18c_identity1.gib test18d_identity2.gib test18e_identity3.gib test18f_flip.gib \
+ test18b_tupconstraint.gib test18d_identity2.gib test18e_identity3.gib test18f_flip.gib \
  test20b_bintree.gib  \
  test25a_withprint.gib test26_treewalk.gib test27a_subst.gib \
  test27b_subst.gib test27c_subst.gib test28_copyprop.gib

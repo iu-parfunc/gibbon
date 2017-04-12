@@ -22,6 +22,7 @@ import qualified Packed.FirstOrder.Common as C
 import qualified Packed.FirstOrder.L1_Source as L1
 import           Packed.FirstOrder.L2_Traverse as L2
 import           Packed.FirstOrder.Passes.InferEffects
+import           Packed.FirstOrder.Passes.CopyInsertion
 import           Packed.FirstOrder.Passes.Cursorize
 import           Packed.FirstOrder.L3_Target hiding (Prog (..), Ty (..))
 import qualified Packed.FirstOrder.L3_Target as T
@@ -340,3 +341,63 @@ _case_add1 =
                  (readCreateProcess (shell (valgrind++"./add1.exe 10 10")) "")
 
       return ()
+
+-- Tests for copy-insertion
+
+t5p :: Prog
+t5p = Prog {ddefs = M.fromList [(toVar "Expr",
+                                 DDef {tyName = toVar "Expr",
+                                       dataCons = [("VARREF", [IntTy]),("Top", [IntTy])]}),
+                                 (toVar "Bar",
+                                  DDef {tyName = toVar "Bar",
+                                        dataCons = [("C", [IntTy]),("D", [PackedTy "Foo" ()])]}),
+                                 (toVar "Foo",
+                                  DDef {tyName = toVar "Foo",
+                                        dataCons = [("A", [IntTy, IntTy]),("B", [PackedTy "Bar" ()])]})],
+             fundefs = M.fromList [(toVar "id",
+                                    L2.FunDef {funname = toVar "id",
+                                               funty = ArrowTy {arrIn = PackedTy "Foo" (toVar "a"),
+                                                                arrEffs = S.fromList [],
+                                                                arrOut = PackedTy "Foo" (toVar "a")},
+                                               funarg = (toVar "x0"),
+                                               funbod = VarE (toVar "x0")})],
+             mainExp = Just (LetE (toVar "fltAp1",
+                                   PackedTy "Foo" (),
+                                   MkPackedE "A" [LitE 1])
+                              (AppE (toVar "id") (VarE (toVar "fltAp1"))),
+                             PackedTy "Foo" ())
+           }
+
+case_t5p1 :: Assertion
+case_t5p1 = assertEqual "Generate copy function for a simple DDef"
+            ( toVar "copyExpr"
+            , L1.FunDef {L1.funName = toVar "copyExpr",
+                      L1.funArg = (toVar "arg0",PackedTy "Expr" ()),
+                      L1.funRetTy = PackedTy "Expr" (),
+                      L1.funBody = CaseE (VarE (toVar "arg0"))
+                       [("VARREF",[toVar "x1"],
+                         LetE (toVar "y2",IntTy,VarE (toVar "x1"))
+                         (MkPackedE "VARREF" [VarE (toVar "y2")])),
+                        ("Top",[toVar "x3"],
+                         LetE (toVar "y4",IntTy,VarE (toVar "x3"))
+                         (MkPackedE "Top" [VarE (toVar "y4")]))]})
+            (fst $ runSyM 0 $ genCopyFn ddef)
+  where ddef = (ddefs t5p) M.! (toVar "Expr")
+
+
+case_t5p2 :: Assertion
+case_t5p2 = assertEqual "Generate copy function for a DDef containing recursively packed data"
+            ( toVar "copyFoo"
+            , L1.FunDef {L1.funName = toVar "copyFoo",
+                         L1.funArg = (toVar "arg0",PackedTy "Foo" ()),
+                         L1.funRetTy = PackedTy "Foo" (),
+                         L1.funBody = CaseE (VarE (toVar "arg0"))
+                          [("A",[toVar "x1",toVar "x2"],
+                            LetE (toVar "y3",IntTy,VarE (toVar "x1"))
+                            (LetE (toVar "y4",IntTy,VarE (toVar "x2"))
+                             (MkPackedE "A" [VarE (toVar "y3"),VarE (toVar "y4")]))),
+                           ("B",[toVar "x5"],
+                            LetE (toVar "y6",PackedTy "Bar" (),AppE (toVar "copyBar") (VarE (toVar "x5")))
+                            (MkPackedE "B" [VarE (toVar "y6")]))]})
+            (fst $ runSyM 0 $ genCopyFn ddef)
+  where ddef = (ddefs t5p) M.! (toVar "Foo")

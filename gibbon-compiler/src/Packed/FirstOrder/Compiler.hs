@@ -36,6 +36,7 @@ import           Packed.FirstOrder.Passes.Freshen
 import           Packed.FirstOrder.Passes.HoistNewBuf
 import           Packed.FirstOrder.Passes.InferEffects (inferEffects)
 import           Packed.FirstOrder.Passes.InlinePacked
+import           Packed.FirstOrder.Passes.CopyInsertion
 import           Packed.FirstOrder.Passes.InlineTriv
 import           Packed.FirstOrder.Passes.Lower
 import           Packed.FirstOrder.Passes.RouteEnds (routeEnds)
@@ -70,13 +71,6 @@ findMissingTraversals _ = pure S.empty
 -- function of type `p -> ()` for any packed type p.
 addTraversals :: Set Var -> L2.Prog -> SyM L2.Prog
 addTraversals _ p = pure p
-
--- | Add calls to an implicitly-defined, polymorphic "copy" function,
---   of type `p -> p` that works on all packed data `p`.  A copy is
---   added every time constraints conflict disallowing an argument of
---   a data constructor to be unified with the needed output location.
-addCopies :: L2.Prog -> SyM L2.Prog
-addCopies p = pure p
 
 -- | Generate code
 lowerCopiesAndTraversals :: L2.Prog -> SyM L2.Prog
@@ -380,16 +374,17 @@ passes config@Config{mode,packed} l1 = do
             ---------------- Stubs currently ------------------
 
             mt <- pass False config "findMissingTraversals" findMissingTraversals   l2
-            l2 <- passE' config "addTraversals"          (addTraversals mt)         l2
-            l2 <- passE' config "addCopies"              addCopies                  l2
+            l2 <- passE' config "addTraversals"             (addTraversals mt)      l2
             l2 <- passE' config "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2
 
             ------------------- End Stubs ---------------------
 
-            l2 <- pass True config "routeEnds"     routeEnds                        l2
+            l1 <- pass True  config "addCopies"     addCopies                        l2
+            l2 <- pass True  config "inferEffects"  inferEffects                     l1
+            l2 <- pass True  config "routeEnds"     routeEnds                        l2
             -- l2  <- pass' mode  "typecheck"   (typecheckPermissive (TCConfig False)) l2
-            l2 <- pass False config "flatten"      (flatten2 l1)                    l2
-            l2 <- pass True config "findWitnesses" findWitnesses                    l2
+            l2 <- pass False config "flatten"       (flatten2 l1)                    l2
+            l2 <- pass True  config "findWitnesses" findWitnesses                    l2
 
             -- QUESTION: Should programs typecheck and execute at this point?
             -- ANSWER: Not yet, PackedTy/CursorTy mismatches remain:
