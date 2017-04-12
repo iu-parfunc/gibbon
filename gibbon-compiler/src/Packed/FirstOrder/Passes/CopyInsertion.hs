@@ -24,7 +24,7 @@ lvl = 4
 -- a data constructor to be unified with the needed output location.
 --
 -- But here, we're just generating call's to a copyDDef function,
--- for each Packed input argument in identity functions.
+-- for each Packed input argument in identity functions
 
 addCopies :: L2.Prog -> SyM L1.Prog
 addCopies p@L2.Prog{fundefs} = do
@@ -33,31 +33,38 @@ addCopies p@L2.Prog{fundefs} = do
       idFns = M.filterWithKey (\k _ -> k `elem` idFnNames) fndefs -- L1 fndefs
 
       go :: L1.FunDef L1.Ty Exp -> SyM (L1.FunDef L1.Ty Exp)
-      go f@L1.FunDef{funArg,funBody} =
-        let (arg,ty) = funArg
-        in
-          if L1.hasPacked ty
-          then
-            case ty of
-              ProdTy tys      -> error $ "addCopies: FIXME - handle identity functions of complex types"
-              PackedTy dcon r -> do
-                x <- gensym $ toVar "x"
-                let newbod = LetE (x, PackedTy dcon r, AppE (mkCopyName $ toVar dcon) (VarE arg))
-                             (L1.substE (VarE arg) (VarE x) funBody)
-                return f{funBody = newbod}
-              oth -> error $ "addCopies: handle " ++ show oth
-          else return f
+      go f@L1.FunDef{funArg=(arg,ty), funBody} =
+        if L1.hasPacked ty
+        then
+          case ty of
+            ProdTy tys      -> do
+              let locs :: [(L1.Ty, Int)]
+                  locs = filter (\(ty',_) -> isPacked ty') (zip tys [0..])
+
+              newbod  <- foldrM (\(ty',l) acc -> do
+                                    let dcon = tyToDataCon ty'
+                                    x <- gensym $ toVar "x"
+                                    return $ LetE (x, ty', AppE (mkCopyName $ toVar dcon) (ProjE l (VarE arg)))
+                                             (L1.substE (ProjE l (VarE arg)) (VarE x) acc))
+                         funBody locs
+              return f{funBody = newbod}
+            PackedTy dcon r -> do
+              x <- gensym $ toVar "x"
+              let newbod = LetE (x, PackedTy dcon r, AppE (mkCopyName $ toVar dcon) (VarE arg))
+                           (L1.substE (VarE arg) (VarE x) funBody)
+              return f{funBody = newbod}
+            oth -> error $ "addCopies: handle " ++ show oth
+        else return f
 
   copyFns <- mapM genCopyFn (M.elems ddfs)
   dbgTrace lvl ("\n[addCopies] Adding copy fn calls in :" ++ show idFnNames) return()
   fndefs' <- mapM go idFns
   let fndefs'' = M.unions [(M.fromList copyFns), fndefs', fndefs]
-
   return (L1.Prog ddfs fndefs'' mnExp)
 
 
 -- | Generate a copy function for a data definition
-genCopyFn :: DDef L1.Ty -> SyM (Var, (L1.FunDef L1.Ty Exp))
+genCopyFn :: DDef L1.Ty -> SyM (Var, L1.FunDef L1.Ty Exp)
 genCopyFn DDef{tyName, dataCons} = do
   arg <- gensym $ toVar "arg"
   -- casebod :: [(DataCon, [Var], Exp)]
@@ -65,12 +72,12 @@ genCopyFn DDef{tyName, dataCons} = do
                       xs <- mapM (\ty -> gensym (toVar "x")) tys
                       ys <- mapM (\ty -> gensym (toVar "y")) tys
                       let ys' = map VarE ys
-                      exp <- foldrM (\(ty,x,y) acc -> do
+                          exp = foldr (\(ty,x,y) acc ->
                                         if isPacked ty
-                                        then return $ LetE (y,ty,AppE (mkCopyName $ toVar $ tyToDataCon ty) (VarE x)) acc
-                                        else return $ LetE (y,ty,VarE x) acc)
-                              (L1.MkPackedE dcon ys')
-                              (zip3 tys xs ys)
+                                        then LetE (y,ty,AppE (mkCopyName $ toVar $ tyToDataCon ty) (VarE x)) acc
+                                        else LetE (y,ty,VarE x) acc)
+                                (L1.MkPackedE dcon ys')
+                                (zip3 tys xs ys)
                       return (dcon, xs, exp))
              dataCons
   return (mkCopyName tyName,
@@ -85,9 +92,11 @@ genCopyFn DDef{tyName, dataCons} = do
 -- TODO(cskksc): Handle fns with complex types,
 -- Eg: (Tree α, Tree β , Tree γ) -> Tree α
 isId :: L2.FunDef -> Bool
-isId L2.FunDef{funty} =
-  let (ArrowTy inT ef outT) = funty
-  in inT == outT && S.null ef
+isId L2.FunDef{funty=ArrowTy inT ef outT} =
+  case inT of
+    PackedTy _ _ -> inT == outT && S.null ef
+    ProdTy tys   -> outT `elem` tys
+    _            -> False
 
 -- |
 mkCopyName :: Var -> Var
