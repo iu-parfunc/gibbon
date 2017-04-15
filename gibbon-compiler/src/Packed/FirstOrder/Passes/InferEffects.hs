@@ -257,6 +257,7 @@ inferExp (ddefs,fenv) env e = exp env e
           getloc (MkProdE trvz) = TupLoc (L.map getloc trvz)
           getloc (ProjE ix trv) = let TupLoc ls = getloc trv
                                   in ls !! ix
+          getloc (LitSymE v)    = Bottom
           getloc oth | isTriv oth = error$ "InferEffects/FINISHME: handle this trivial rand: "++show oth
                      | otherwise  = error$ "InferEffects: expected flattened program found non-trivial operand: "++show oth
           arrTy = fenv # rat
