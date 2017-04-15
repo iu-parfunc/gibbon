@@ -398,7 +398,7 @@ In fact,
 Here we use a Haskell-like syntax, but in fact
 \fi
  the small, strict, first-order, purely functional language of tree traversals
-we consider this paper is already a subset of most existing languages.
+we consider in this paper is already a subset of most existing languages.
 The above program is not substantially different in C, Haskell, ML, Scala,
 Swift, Rust, etc.  Only the details of switching on sum types (tagged unions)
 differ (as well as the syntax for constructing an object while initializing its
@@ -445,7 +445,7 @@ char* add1(char* tin, char* tout) {
   if (*tin == Leaf) {
     *tout = Leaf;
     tin++; tout++;
-    *(int*)tout = *(int*)tin;
+    *(int*)tout = *(int*)tin + 1;
     return (tin + sizeof(int));
   } else {
     *tout = Node;
@@ -641,7 +641,7 @@ present briefly in a paper, and featureful enough to express some
 interesting tree-manipulating functions, such as compiler passes.
 
 The syntax of \treelang is given in \cref{fig:source}---it is
-simply a standard first-order funcitonal language.
+simply a standard first-order functional language.
 Programs consist of a series of data type declarations and function
 declarations. Similar to most functional programming languages,
 programmers may define \emph{algebraic data types}, and dispatch on
@@ -1194,7 +1194,7 @@ The above program is well-typed, following the protocol on output cursors.
 %
 The ``value'' of the resulting data constructor is now equivalent to the pointer
 location at which it was written, i.e. @curs@, which we return in the body,
-together with and end-witness to match the dilated convention.
+together with an end-witness to match the dilated convention.
 %
 Note again that cursors are used in an immutable way, which is why each
 operation that side effects a buffer (e.g. @write@), returns a fresh cursor
@@ -1515,7 +1515,7 @@ use our prototype cursor-inserting compiler to generate code over packed
 representations.
 % 
 Figure~\ref{fig:shootout2} shows the results of comparing this
-generated code to the handwritten C version of the the packed representation
+generated code to the handwritten C version of the packed representation
 (because \treelang{} is embedded in Racket, we also show the results of direct
 execution in Racket).
 %
@@ -1719,7 +1719,7 @@ load these modules as one tree.
 
 \paragraph*{Results}
 
-First, our benchmark methodology is to run traverse each input tree $N$ times,
+First, our benchmark methodology is to traverse each input tree $N$ times,
 doubling $N$ until the run takes at least two seconds.  This gives us a uniform
 way of measuring both traversals over very small trees and very large ones.
 
@@ -2178,7 +2178,7 @@ We note first that for every tree size, the packed representation uses 56\% less
 We note that the relatively smaller performance improvement for this benchmark versus the AST benchmarks is unsurprising. First, taking an indirection means that any spatial locality gains from the packed representation are lost, resulting in similar behavior to the pointer-based version. Second, there is relatively more work to be done per node in this benchmark, so the time spent in traversal of the tree is relatively less, reducing the opportunity for improvement.
 % 
 %  We
-% packed representation uses 56\% less memory to represents the the tree than the pointer based representation, this reduction in memory usage has two sources;
+% packed representation uses 56\% less memory to represents the tree than the pointer based representation, this reduction in memory usage has two sources;
 % the elimination of the left child pointer and the elimination of the gaps between the structure data members that are added by default for memory alignment purposes.
 % The runtime performance of the packed version is almost the same as the pointer based for small trees, however when the size of the tree is large enough the packed version 
 % shows up to 35\% speed up.
