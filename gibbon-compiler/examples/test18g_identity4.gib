@@ -1,0 +1,8 @@
+#lang gibbon
+
+(data Foo (A Int) (B Int))
+
+(define (id [x : Int] [y : Foo]) : Foo
+  y)
+
+(id 10 (A 20))

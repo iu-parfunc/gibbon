@@ -264,7 +264,7 @@ endif
 PACKED_FAILING ?= \
  test04d_vecfun.gib \
  test12_skip.gib  test16_forlist.gib test17_forfold.gib \
- test18b_tupconstraint.gib test18d_identity2.gib test18e_identity3.gib test18f_flip.gib \
+ test18b_tupconstraint.gib test18d_identity2.gib test18e_identity3.gib test18f_flip.gib test18g_identity4.gib \
  test20b_bintree.gib  \
  test25a_withprint.gib test26_treewalk.gib test27a_subst.gib \
  test27b_subst.gib test27c_subst.gib test28_copyprop.gib
@@ -292,7 +292,7 @@ INTERP2_FAILING = test00a_size.gib test00b_printBool.gib test00d_printData.gib \
   test12b_traverse.gib test12c_traverse.gib test12_skip.gib \
   test16_forlist.gib test17_forfold.gib \
   test18_badconstraint.gib test18b_tupconstraint.gib \
-  test18c_identity1.gib test18d_identity2.gib test18e_identity3.gib test18f_flip.gib \
+  test18c_identity1.gib test18d_identity2.gib test18e_identity3.gib test18f_flip.gib test18g_identity4.gib \
   test20_bintree.gib \
   text08_dict.gib test08b_dict.gib test08c_dict.gib test08d_sharedict.gib \
   test13_build.gib test13b_build.gib  \
@@ -364,6 +364,8 @@ LLVM_FAILING_TESTS = test02e_printNest.gib \
   test03c_eqs.gib \
   test09_recur.gib \
   test10b_desugar.gib \
+  test18_badconstraint.gib test18b_tupconstraint.gib \
+  test18c_identity1.gib test18d_identity2.gib test18e_identity3.gib test18f_flip.gib test18g_identity4.gib \
   test20a_withprint.gib test20b_bintree.gib test20e_bintree.gib \
   test25_rackcore.gib test25a_withprint.gib test25b_racketcore.gib test25c_racketcore.gib test25d_racketcore.gib test25f_countnodes.gib \
   test26_treewalk.gib test26a_treewalk.gib \
