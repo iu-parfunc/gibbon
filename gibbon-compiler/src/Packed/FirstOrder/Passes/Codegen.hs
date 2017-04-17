@@ -108,20 +108,18 @@ codegenProg isPacked prg@(Prog funs mtal) = do
       let rtsPath = case lookup "TREELANGDIR" env of
                       Just p -> p ++"/gibbon-compiler/rts.c"
                       Nothing -> "rts.c" -- Assume we're running from the compiler dir!
-      e <- doesFileExist rtsPath
-      unless e $ error$ "codegen: rts.c file not found at path: "++rtsPath
-                       ++"\n Consider setting TREELANGDIR to repo root.\n"
-      rts <- readFile rtsPath -- TODO (maybe): We can read this in in compile time using TH
-      return (rts ++ '\n' : pretty 80 (stack (map ppr defs)))
-    where
+      let imp = "#include \"" ++ rtsPath ++ "\"" -- include rts via CPP
+          bod = pretty 80 $ stack $ map ppr defs
+      return $ imp ++ '\n' : bod
+    where 
       defs = fst $ runSyM 0 $ do
         funs' <- mapM codegenFun funs
         prots <- mapM makeProt funs
-        main_expr' <- main_expr
-        return (makeStructs (S.toList $ harvestStructTys prg) ++ prots ++ funs' ++ [main_expr'])
+        mainExpr' <- mainExpr
+        return $ makeStructs (S.toList $ harvestStructTys prg) ++ prots ++ funs' ++ [mainExpr']
 
-      main_expr :: SyM C.Definition
-      main_expr =
+      mainExpr :: SyM C.Definition
+      mainExpr =
         case mtal of
           Just (PrintExp t) -> do
             t' <- runReaderT (codegenTail t (codegenTy IntTy)) isPacked

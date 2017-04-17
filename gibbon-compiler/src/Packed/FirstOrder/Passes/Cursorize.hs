@@ -255,6 +255,20 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
         (LetE (vr, CursorTy (), PrimAppE (L1.ReadPackedFile path tyc (typ ty2)) [])) <$>
           exp (M.insert vr (CursorTy ()) tenv) isMain bod
 
+      LetE (vr, _ty, PrimAppE (L1.DictEmptyP (PackedTy _da _a)) args) bod ->
+        (LetE (vr, SymDictTy (CursorTy ()), PrimAppE (L1.DictEmptyP (CursorTy ())) args)) <$>
+          exp (M.insert vr (SymDictTy (CursorTy ())) tenv) isMain bod
+      LetE (vr, _ty, PrimAppE (L1.DictInsertP (PackedTy _da _a)) [d,k,v]) bod ->
+          do d' <- exp tenv isMain d
+             k' <- exp tenv isMain k
+             tmp <- gensym (toVar "dictbuf")
+             v' <- let tenv' = M.insert tmp (CursorTy ()) tenv in
+                   onDi (LetE (tmp, CursorTy (), NewBuffer)) <$> -- AUDITME: do we need a new buffer?
+                        exp2 tenv' isMain (Cursor tmp) v
+             (LetE (vr, SymDictTy (CursorTy ()), PrimAppE (L1.DictInsertP (CursorTy ())) [d',k',projVal v'])) <$>
+                  exp (M.insert vr (SymDictTy (CursorTy ())) tenv) isMain bod
+
+
       -- If we're not returning a packed type in the current
       -- context, then we can only possibly encounter one that does NOT
       -- escape.  I.e. a temporary one:
@@ -641,6 +655,11 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
           return $ Di (MkProdE [ PrimAppE (L1.ReadPackedFile path tyc (typ t2)) []
                                , PrimAppE L1.MkNullCursor [] ])
 
+      LetE (vr, _ty, PrimAppE (L1.DictEmptyP (PackedTy _da _a)) []) bod ->
+        onDi (LetE (vr, SymDictTy (CursorTy ()), PrimAppE (L1.DictEmptyP (CursorTy ())) [])) <$>
+          go (M.insert vr (SymDictTy (CursorTy ())) tenv) bod
+                                                     
+
       -- The only primitive that returns packed data is ReadPackedFile:
       -- This is simpler than TimeIt below.  While it's out-of-line,
       -- it doesn't need memory allocation (NewBuffer/ScopedBuffer).
@@ -705,6 +724,12 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       AppE v e ->  -- To appear here, the function must have at least one Packed result.
         do Right e <- doapp [] tenv isMain (Just destC) v e
            return e
+
+      PrimAppE (L1.DictLookupP (PackedTy _da _a)) [d,k] -> 
+          do k' <- exp tenv isMain k
+             d' <- exp tenv isMain d
+             -- return $ Di $ PrimAppE (L1.DictLookupP (CursorTy ())) [d',k']
+             return $ Di $ MkProdE [PrimAppE (L1.DictLookupP (CursorTy ())) [d',k']]
 
       -- This should not be possible for prims that do not return PackedTy data.
       PrimAppE _ _ -> error$ "cursorDirect: unexpected PrimAppE in packed context: "++sdoc ex0

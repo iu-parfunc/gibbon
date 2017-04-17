@@ -12,6 +12,9 @@
 #include <fcntl.h>
 #include <stdarg.h> // For va_start etc
 #include <errno.h>
+#ifdef GCALLOC
+#include "gc.h" // Try to use conservative gc
+#endif
 
 // Big default.  Used for --packed and --pointer/bumpalloc
 // static long long global_default_buf_size = (500lu * 1000lu * 1000lu);
@@ -118,11 +121,29 @@ static const int num_workers = 1;
   void save_alloc_state() {}
   void restore_alloc_state() {}
 
-  #define ALLOC(n) malloc(n)
+  #ifdef GCALLOC
+
+    #define ALLOC(n) GC_MALLOC(n)
+
+  #else
+
+    #define ALLOC(n) malloc(n)
+
+  #endif // GCALLOC
 
 #endif // BUMPALLOC
 
 #define ALLOC_PACKED(n) ALLOC(n)
+
+#ifdef GCALLOC
+
+  #define ATOM_ALLOC(n) GC_MALLOC_ATOMIC(n)
+
+#else
+
+  #define ATOM_ALLOC(n) ALLOC(n)
+
+#endif // GCALLOC
 
 // --------------------------------------------------------------------------------
 
@@ -158,6 +179,26 @@ IntTy dict_lookup_int(dict_item_t *ptr, SymTy key) {
   while (ptr != 0) {
     if (ptr->key == key) {
       return ptr->intval;
+    } else {
+      ptr = ptr->next;
+    }
+  }
+  printf("Error, key %lld not found!\n",key);
+  exit(1);
+}
+
+dict_item_t *dict_insert_ptr(dict_item_t *ptr, SymTy key, void* val) {
+  dict_item_t *ret = dict_alloc();
+  ret->key = key;
+  ret->ptrval = val;
+  ret->next = ptr;
+  return ret;
+}
+
+void* dict_lookup_ptr(dict_item_t *ptr, SymTy key) {
+  while (ptr != 0) {
+    if (ptr->key == key) {
+      return ptr->ptrval;
     } else {
       ptr = ptr->next;
     }
@@ -246,6 +287,10 @@ int main(int argc, char** argv)
       fprintf(stderr, " [gibbon rts] failed to getrlimit, code %d\n", code);
       abort();
     }
+
+    #ifdef GCALLOC
+    GC_INIT();
+    #endif
     
     // lim.rlim_cur = 1024LU * 1024LU * 1024LU; // 1GB stack.
     lim.rlim_cur = 512LU * 1024LU * 1024LU; // 500MB stack.

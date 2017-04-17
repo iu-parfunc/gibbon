@@ -1,0 +1,7 @@
+#lang gibbon
+
+(let ([d : (SymDict Sym) (ann (empty-dict) (SymDict Sym))])
+  (let ([d2 : (SymDict Sym) (insert d (quote x) (ann (quote a) Sym))])
+    (let ([d3 : (SymDict Sym) (insert d2 (quote y) (ann (quote b) Sym))])
+      (let ([d4 : (SymDict Sym) (insert d2 (quote y) (ann (quote c) Sym))])
+        (ann (lookup d4 (quote y)) Sym)))))
