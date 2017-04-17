@@ -22,51 +22,50 @@ lvl = 4
 -- General strategy: track function arguments and case bindings, and find which ones appear
 -- in tail position, then insert calls to copy functions in their place.
 addCopies :: L1.Prog -> SyM L1.Prog
-addCopies = eachFn go
-    where eachFn :: (Exp -> SyM Exp) -> L1.Prog -> SyM L1.Prog
-          eachFn fn (L1.Prog dd fundefs mainExp) =
-              do mainExp' <- case mainExp of
-                               Just m -> do m' <- fn m
-                                            return $ Just m'
-                               Nothing -> return $ Nothing
-                 fundefs' <- forM fundefs $ \(L1.FunDef nm (arg,inT) outT bod) -> do
-                                            if L1.hasPacked inT
-                                            then case inT of
-                                                   ProdTy tys -> do
-                                                            let locs = filter (\(ty',_) -> isPacked ty') (zip tys [0..])
-                                                            newbod <- foldrM (\(ty',l) acc -> do
-                                                                                let tls = exprTails bod
-                                                                                if (ProjE l (VarE arg)) `S.member` tls
-                                                                                then do 
-                                                                                  let dcon = tyToDataCon ty'
-                                                                                  arg' <- gensym arg
-                                                                                  dbgTrace lvl ("\n[addCopies] (prod) subst " ++ (show (ProjE l (VarE arg)))) $ return ()
-                                                                                  bod' <- go $ substTail (ProjE l (VarE arg)) (VarE arg') acc
-                                                                                  return $ LetE (arg', ty',
-                                                                                                 AppE (mkCopyName $ toVar dcon)
-                                                                                                 (ProjE l (VarE arg))) bod'
-                                                                                else return acc)
-                                                                      bod locs
-                                                            return $ L1.FunDef nm (arg,inT) outT newbod
-                                                   PackedTy dcon r -> do
-                                                            let tls = exprTails bod
-                                                            if (VarE arg) `S.member` tls
-                                                            then do
-                                                              arg' <- gensym arg
-                                                              dbgTrace lvl ("\n[addCopies] (packed) subst " ++ (show (VarE arg))) $ return ()
-                                                              bod' <- go $ substTail (VarE arg) (VarE arg') bod
-                                                              dbgTrace lvl ("\n[addCopies] before subst " ++ (show bod)) $ return ()
-                                                              dbgTrace lvl ("\n[addCopies] after subst " ++ (show bod')) $ return ()
-                                                              let bod'' = LetE (arg', PackedTy dcon r,
-                                                                                AppE (mkCopyName $ toVar dcon) (VarE arg)) bod'
-                                                              return $ L1.FunDef nm (arg,inT) outT bod''
-                                                            else return $ L1.FunDef nm (arg,inT) outT bod 
-                                                   oth -> error $ "addCopies: handle " ++ show oth
-                                            else do bod' <- go bod
-                                                    return $ L1.FunDef nm (arg,inT) outT bod'
-                 copyfuns <- mapM genCopyFn (M.elems dd)
-                 return $ L1.Prog dd (fundefs' `M.union` (M.fromList copyfuns)) mainExp'
-          go ex =
+addCopies (L1.Prog dd fundefs mainExp) =
+    do mainExp' <- case mainExp of
+                     Just m -> do m' <- go m
+                                  return $ Just m'
+                     Nothing -> return $ Nothing
+       fundefs' <- forM fundefs $ \(L1.FunDef nm (arg,inT) outT bod) -> do
+                                  if L1.hasPacked inT
+                                  then case inT of
+                                         ProdTy tys -> do
+                                                  let locs = filter (\(ty',_) -> isPacked ty') (zip tys [0..])
+                                                  newbod <- foldrM (\(ty',l) acc -> do
+                                                                      let tls = exprTails bod
+                                                                      if (ProjE l (VarE arg)) `S.member` tls
+                                                                      then do 
+                                                                        let dcon = tyToDataCon ty'
+                                                                        arg' <- gensym arg
+                                                                        dbgTrace lvl ("\n[addCopies] (prod) subst " ++ (show (ProjE l (VarE arg)))) $ return ()
+                                                                        bod' <- go $ substTail (ProjE l (VarE arg)) (VarE arg') acc
+                                                                        return $ LetE (arg', ty',
+                                                                                       AppE (mkCopyName $ toVar dcon)
+                                                                                                (ProjE l (VarE arg))) bod'
+                                                                      else return acc)
+                                                                        bod locs
+                                                  return $ L1.FunDef nm (arg,inT) outT newbod
+                                         PackedTy dcon r -> do
+                                                  let tls = exprTails bod
+                                                  if (VarE arg) `S.member` tls
+                                                  then do
+                                                    arg' <- gensym arg
+                                                    dbgTrace lvl ("\n[addCopies] (packed) subst " ++ (show (VarE arg))) $ return ()
+                                                    bod' <- go $ substTail (VarE arg) (VarE arg') bod
+                                                    dbgTrace lvl ("\n[addCopies] before subst " ++ (show bod)) $ return ()
+                                                    dbgTrace lvl ("\n[addCopies] after subst " ++ (show bod')) $ return ()
+                                                    let bod'' = LetE (arg', PackedTy dcon r,
+                                                                      AppE (mkCopyName $ toVar dcon) (VarE arg)) bod'
+                                                    return $ L1.FunDef nm (arg,inT) outT bod''
+                                                  else return $ L1.FunDef nm (arg,inT) outT bod 
+                                         oth -> error $ "addCopies: handle " ++ show oth
+                                  else do bod' <- go bod
+                                          return $ L1.FunDef nm (arg,inT) outT bod'
+       copyfuns <- mapM genCopyFn (M.elems dd)
+       return $ L1.Prog dd (fundefs' `M.union` (M.fromList copyfuns)) mainExp'
+          
+    where go ex =
               dbgTrace lvl ("\n[addCopies] go " ++ (show ex)) $ 
               case ex of
                 LetE (v,t,e1) e2 -> do e2' <- go e2
@@ -78,11 +77,17 @@ addCopies = eachFn go
                 PrimAppE p ls -> return $ PrimAppE p ls
                 ProjE i e -> return $ ProjE i e
                 CaseE ce ls -> do ls' <- forM ls $ \(k,vs,bod) -> do
-                                           let tls = exprTails bod 
-                                           bod' <- if ce `S.member` tls
-                                                   then go $ L1.substE ce (AppE (mkCopyName $ toVar k) ce) bod -- FIXME: could duplicate work
-                                                   else go bod 
-                                           -- TODO: handle copies of vars in vs
+                                           let tls = exprTails bod
+                                           let vts = zip vs $ lookupDataCon dd k
+                                           bod' <- foldrM (\(v,ty) acc -> do
+                                                             if isPacked ty && (VarE v) `S.member` tls
+                                                             then do let (PackedTy dcon _r) = ty
+                                                                     v' <- gensym v
+                                                                     dbgTrace lvl ("\n[addCopies] (case) subst " ++ (show v)) $ return ()
+                                                                     acc' <- go $ substTail (VarE v) (VarE v') acc
+                                                                     return $ LetE (v', ty, AppE (mkCopyName $ toVar dcon) (VarE v)) acc'
+                                                             else return acc)
+                                                   bod vts
                                            return (k,vs,bod')
                                   return $ CaseE ce ls'
                 MkProdE ls -> return $ MkProdE ls
