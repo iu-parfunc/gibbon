@@ -12,6 +12,7 @@ import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc, gensym, fragileZip,nd
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.L2_Traverse as L2
 import Prelude hiding (exp)
+import qualified Data.Map as M
 
 -- | This pass gets ready for Lower by converting most uses of
 -- projection and tuple-construction into finer-grained bindings.
@@ -31,7 +32,11 @@ import Prelude hiding (exp)
 -- transformed to varrefs in lower.
 --
 unariser :: L2.Prog -> SyM L2.Prog
-unariser = mapMExprs unariserExp
+unariser prg = do
+  prg' <- mapMExprs unariserExp prg
+  fns  <- mapM unariserFun $ M.elems (fundefs prg')
+  let fns' = M.fromList $ map (\f -> (L2.funname f,f)) fns
+  return prg'{fundefs = fns'}
 
 
 -- | A projection stack can be viewed as a list of ProjE operations to
@@ -40,6 +45,44 @@ type ProjStack = [Int]
 
 -- | Maps variables onto tuples of (projections of) other variables
 type Env = [(Var,[(ProjStack,Var)])]
+
+
+-- | Modifies function to satisfy output invariant (1)
+--
+unariserFun :: L2.FunDef -> SyM L2.FunDef
+unariserFun f@L2.FunDef{funty,funarg,funbod} = do
+  let inT = arrIn funty
+
+      flattenTy :: Ty -> [Ty]
+      flattenTy (ProdTy tys) = concatMap flattenTy tys
+      flattenTy ty = [ty]
+
+      -- | Generate projections for non-product types inside a tuple
+      --
+      -- Examples:
+      -- (1) ProdTy [IntTy, ProdTy [IntTy, IntTy, IntTy]] ==
+      --     [[0],[1,0],[1,1],[1,2]]
+      --
+      -- (2) ProdTy [IntTy, ProdTy [IntTy, IntTy, IntTy, ProdTy [IntTy, IntTy]]] ==
+      --     [[0],[1,0],[1,1],[1,2],[1,3,0],[1,3,1]]
+      --
+      projections :: Ty -> ProjStack -> [ProjStack]
+      projections (ProdTy tys) acc =
+        concatMap (\(ty,i) -> projections ty (acc ++ [i])) (zip tys [0..])
+      projections _ acc = [acc]
+
+  case inT of
+    ProdTy tys -> do
+      let projs = projections inT []
+          substs = map (\ps -> (foldr (\i acc -> ProjE i acc) (VarE funarg) ps,
+                                ProjE (sum ps) (VarE funarg)))
+                   projs
+          -- FIXME: This is in-efficient because of the substE ?
+          bod = foldr (\(from,to) acc -> L1.substE from to acc) funbod substs
+      return f{funbod = bod, funty = funty{arrIn = ProdTy $ concatMap flattenTy tys}}
+
+    _ -> return f
+
 
 -- | Take an ignored argument to match mapMExprs' conventions.
 --
@@ -63,6 +106,10 @@ unariserExp _ = go [] []
      error $ "Cannot discharge projections directly agains extended L2 form: "++ndoc p
   discharge (ix:rst) e = discharge rst (ProjE ix e)
 
+  flattenExp :: Exp -> [Exp]
+  flattenExp (MkProdE es) = concatMap flattenExp es
+  flattenExp e = [e]
+
   -- FIXME: need to track full expr binds like InlineTrivs
   -- Or do we?  Not clear yet.
   go :: ProjStack -> Env -> L1.Exp -> SyM L1.Exp
@@ -72,7 +119,7 @@ unariserExp _ = go [] []
    case e0 of
     (MkProdE es) -> case stk of
                       (ix:s') -> go s' env (es ! ix)
-                      [] -> MkProdE <$> mapM (go stk env) es
+                      [] -> MkProdE <$> mapM (go stk env) (concatMap flattenExp es)
 
     -- (ProjE ix (VarE v)) -> discharge stk <$> -- Danger.
     --                        case lookup v env of

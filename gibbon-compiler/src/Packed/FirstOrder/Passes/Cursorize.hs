@@ -483,8 +483,13 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                                           mkapp (projVal e')
                                           -- withDilated arg e' $ \e'' -> mkapp e''
 
-                  ty | L1.hasPacked ty -> error $
-                          "cursorDirect: need to handle function argument of tupled packed types: "++show ty
+                  ty | L1.hasPacked ty ->
+                       do cr <- gensym $ toVar "argbuf"
+                          dests <- tyToCursors cr (l1Ty ty)
+                          mkLets [ (cur,CursorTy (),ScopedBuffer) | cur <- allCursors dests ] <$> do
+                            e' <- exp2 _tenv isMain dests argE
+                            mkapp (projVal e')
+
                      | otherwise -> mkapp =<< exp _tenv isMain argE
           ------------------------------------------------------------
           -- Restore more type-safety by tagging the output appropriately.
