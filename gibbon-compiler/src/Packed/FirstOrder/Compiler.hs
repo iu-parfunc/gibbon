@@ -365,6 +365,7 @@ passes config@Config{mode,packed} l1 = do
 
       l1 <- passE  config "flatten"       flatten                                   l1
       l1 <- passE  config "inlineTriv"    (return . inlineTriv)                     l1
+      l1 <- pass True  config "addCopies"     addCopies                             l1
       l2 <- passE  config "inferEffects"  inferEffects                              l1
       l2 <- passE' config "typecheck"     (typecheckStrict (TCConfig False))        l2
       let mmainTyPre = fmap snd $ L2.mainExp l2
@@ -379,8 +380,6 @@ passes config@Config{mode,packed} l1 = do
 
             ------------------- End Stubs ---------------------
 
-            l1 <- pass True  config "addCopies"     addCopies                        l2
-            l2 <- pass True  config "inferEffects"  inferEffects                     l1
             l2 <- pass True  config "routeEnds"     routeEnds                        l2
             -- l2  <- pass' mode  "typecheck"   (typecheckPermissive (TCConfig False)) l2
             l2 <- pass False config "flatten"       (flatten2 l1)                    l2
