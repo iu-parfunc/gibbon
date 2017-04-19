@@ -20,7 +20,7 @@ module Packed.FirstOrder.Passes.Lower
 -------------------------------------------------------------------------------
 
 import Control.Monad
-import Data.Char    
+import Data.Char
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import           Packed.FirstOrder.L1_Source (Exp(..))
@@ -30,7 +30,7 @@ import qualified Packed.FirstOrder.L3_Target as T
 import Data.Maybe
 import qualified Data.List as L
 import Data.List as L hiding (tail)
-import Data.Map as M hiding (foldl)
+import Data.Map as M hiding (foldl, foldr)
 import Data.Int (Int64)
 -- import Data.Word
 
@@ -53,7 +53,7 @@ genDcons (x:xs) tail fields = case x of
     t    <- gensym $ toVar "tail"
     T.LetCallT [(ptr, T.PtrTy), (t, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
       <$> genDcons xs t (fields ++ [(T.CursorTy, T.VarTriv ptr)])
-  _                    -> undefined
+  _                    -> error $ "genDcons: FIXME " ++ show x
 
 genDcons [] tail fields     = do
   ptr <- gensym $ toVar "ptr"
@@ -89,14 +89,17 @@ genUnpacker DDef{tyName, dataCons} = do
 -- | Modify a Tail to *print* its return value and then
 
 -- Utility functions
+printString :: String -> (T.Tail -> T.Tail)
+printString s = T.LetPrimCallT [] (T.PrintString s) []
+
 openParen :: String -> (T.Tail -> T.Tail)
-openParen s  = T.LetPrimCallT [] (T.PrintString ("(" ++ s ++ " ")) []
+openParen s = printString $ "(" ++ s ++ " "
 
 closeParen :: T.Tail -> T.Tail
-closeParen   = T.LetPrimCallT [] (T.PrintString ")") []
+closeParen   = printString ")"
 
 printSpace :: T.Tail -> T.Tail
-printSpace = T.LetPrimCallT [] (T.PrintString " ") []
+printSpace = printString " "
 
 sandwich :: (T.Tail -> T.Tail) -> String -> T.Tail -> T.Tail
 sandwich mid s end = openParen s $ mid $ closeParen end
@@ -160,19 +163,31 @@ genPrinter DDef{tyName, dataCons} = do
 
 printTy :: L1.Ty -> [T.Triv] -> (T.Tail -> T.Tail)
 printTy L1.IntTy [trv]                = T.LetPrimCallT [] T.PrintInt [trv]
-printTy L1.BoolTy [trv]               =
-  let prntBool m                      = T.LetPrimCallT [] (T.PrintString m) [] in
-    \t -> T.IfT trv (prntBool truePrinted $ t) (prntBool falsePrinted $ t)
-printTy (L1.ProdTy xs) [trv]          = \t -> foldl (\y x -> (printTy x [trv] $ y)) t xs
 printTy (L1.SymDictTy (x)) [trv]      = sandwich (printTy x [trv]) "Dict"
 printTy (L1.PackedTy constr _) [trv]  = T.LetCallT [] (mkPrinterName constr) [trv]
 printTy (L1.ListTy (x)) [trv]         = sandwich (printTy x [trv]) "List"
-printTy _ _                           = error $ "Invalid L1 data type."
+
+printTy L1.BoolTy [trv] =
+  let prntBool m = T.LetPrimCallT [] (T.PrintString m) [] in
+    \t -> T.IfT trv (prntBool truePrinted $ t) (prntBool falsePrinted $ t)
+
+printTy (L1.ProdTy tys) trvs =
+  let printTupStart = printString "'#("
+      (bltrvs,ltrv) = (init trvs, last trvs)
+      (bltys,lty)   = (init tys, last tys)
+  in \t ->
+       printTupStart $
+       foldr (\(ty,trv) acc -> printTy ty [trv] $ printSpace acc)
+       (printTy lty [ltrv] $ closeParen t)
+       (zip bltys bltrvs)
+
+printTy ty trvs = error $ "Invalid L1 data type; " ++ show ty ++ " " ++ show trvs
 
 addPrintToTail :: L1.Ty -> T.Tail-> SyM T.Tail
 addPrintToTail ty tl0 =
-    T.withTail (tl0, T.IntTy) $ \ [trv] ->
-      printTy ty [trv] $
+  let ty' = T.fromL1Ty ty in
+    T.withTail (tl0, ty') $ \ trvs ->
+      printTy ty trvs $
         -- Always print a trailing newline at the end of execution:
         T.LetPrimCallT [] (T.PrintString "\n") [] $
           T.RetValsT []  -- Void return after printing.

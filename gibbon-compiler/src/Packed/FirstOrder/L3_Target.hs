@@ -12,6 +12,7 @@ module Packed.FirstOrder.L3_Target
     , Alts(..), Prog(..), MainExp(..)
     -- * Utility functions
     , withTail
+    , fromL1Ty
     ) where
 
 import           Control.DeepSeq
@@ -217,3 +218,13 @@ withTail (tl0,retty) fn =
 
    genTmps (ProdTy ls) = flip zip ls <$> sequence (replicate (length ls) (gensym $ toVar "tctmp"))
    genTmps ty          = do t <- gensym (toVar "tctmp"); return [(t,ty)]
+
+
+fromL1Ty :: L1.Ty -> Ty
+fromL1Ty ty =
+  case ty of
+    L1.IntTy -> IntTy
+    L1.SymTy -> SymTy
+    L1.ProdTy tys -> ProdTy $ map fromL1Ty tys
+    L1.SymDictTy t -> SymDictTy $ fromL1Ty t
+    _ -> IntTy -- FIXME: review this

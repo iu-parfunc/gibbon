@@ -202,7 +202,6 @@ all_parsed:  $(ALL_TESTS:.gib=.parsed)
 
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= \
-  test04d_vecfun.gib \
   test13_build.gib test13b_build.gib \
   test11_fundata.gib test11c_funrec.gib test11e_funrec.gib test12c_traverse.gib \
   test25d_racketcore.gib \
@@ -262,7 +261,6 @@ endif
 
 
 PACKED_FAILING ?= \
- test04d_vecfun.gib \
  test12_skip.gib  test16_forlist.gib test17_forfold.gib \
  test18b_tupconstraint.gib test18d_identity2.gib test18e_identity3.gib test18f_flip.gib test18g_identity4.gib \
  test20b_bintree.gib  \
