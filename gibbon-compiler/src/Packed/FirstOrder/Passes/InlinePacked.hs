@@ -56,10 +56,11 @@ inlinePacked prg@L2.Prog{ddefs,fundefs,mainExp} = return $
 
 
 data InlineStatus = DontInline -- ^ Move along, nothing to see here.
---                  | DependsOn  (S.Set Var) -- ^ I'm a binding that doesn't *want* to inline,
-                                           -- but I'm being drug along for the ride, because
-                                           -- I depend on something else whose original binding
-                                           -- was blasted away.
+                  | DependsOn  (S.Set Var) L1.Exp
+                    -- ^ I'm a binding that doesn't *want* to inline,
+                    -- but I'm being drug along for the ride, because
+                    -- I depend on something else whose original binding
+                    -- was blasted away.
                   | InlineMe L1.Exp -- ^ I exist only as an expression to be inlined.
 
 -- | 'Nothing' on the RHS indicates "not inlinable".
@@ -85,7 +86,19 @@ inlinePackedExp ddefs = exp True
   -- Here the environment contains code that has NOT yet been recursively processed.
   exp :: Bool -> InlineEnv -> L1.Exp -> L1.Exp
   exp strong env e0 =
-   let go = exp strong env in
+   let go = exp strong env
+       -- Heuristic policy, drop down dependent bindings as soon as we
+       -- get under its last enclosing conditional.  findWitnesses
+       -- will sort out the details.
+       dischargeDependent ex =
+         let freeHere = freeNoBranch ex
+             binds = [ (v,ty,rhs) | (v,(ty,DependsOn _ rhs)) <- env
+                                  , S.member v freeHere ]
+             used = S.fromList [ v | (v,_,_) <- binds ]
+             env' = [ (v,r) | (v,r) <- env, not (S.member v used) ]
+         in buildLets binds $ 
+            exp strong env' ex
+   in
    -- dbgTrace 5 ("Inline "++show strong++", processing with env:\n   "++
    --             show [v | (v,(_,Just _)) <- env]++"\n   EXP: "++show e0) $
    case e0 of
@@ -94,6 +107,15 @@ inlinePackedExp ddefs = exp True
                   Nothing -> dbgTrace 1 ("WARNING [inlinePacked] unbound variable: "++ fromVar v)$
                              VarE (var v)
                   Just (_,DontInline)  -> VarE (var v) -- Bound, but non-inlinable binding.
+
+                  -- If we let it get to this point, we have a bit of a problem.  We are duplicating
+                  -- code, perhaps excessively, if we recapitulate the dependent bindings here.
+                  -- Better would be to catch this situation earlier and discharge these bindings
+                  -- within the closest enclosing conditional or case.
+                  Just (ty,DependsOn s rhs) ->
+                      -- error $ "FinishMe: dependent binding for "++show v++", depends on "++show s
+                      LetE (v,ty,rhs) (VarE (var v))
+
                   -- Here we either inline just the copies, or we inline up to `isConstructor`
                   Just (ty,InlineMe rhs)
                    | VarE _v2 <- rhs    -> keepGoing
@@ -109,6 +131,7 @@ inlinePackedExp ddefs = exp True
                                         ++ "this is the inlining environment:\n "++sdoc rhs
                    where
                     keepGoing = exp strong env rhs
+
 
     (LetE (v,t,rhs) bod)
        | VarE _v2   <- rhs  -> addAndGo  -- ^ We always do copy-prop.
@@ -132,13 +155,17 @@ inlinePackedExp ddefs = exp True
         --  >  let y = f x in ...
         --------------------------------------------------------------
         rhsFree     = L1.freeVars rhs
-        usedInlined = S.intersection rhsFree (S.fromList (L.map fst env)) -- Expensive. FIXME.
+        usedInlined = S.intersection rhsFree
+                       (S.fromList [ vr | (vr,(_,InlineMe{})) <- env]) -- Expensive. FIXME.
         keepIt =
-            if True -- S.null usedInlined -- TODO FINISHME
+            if S.null usedInlined -- TODO FINISHME
             then -- It's all good here, our RHS won't have any unmet dependencies:
                  LetE (var v,t, rhs') (exp strong ((v,(t,DontInline)):env) bod)
-            else error $ " [inlinePacked] Cannot keep let binding in place which refers to inlined vars ("
-                        ++show (S.toList usedInlined)++"): " ++show (var v, t)
+            else
+                -- LetE (var v,t, rhs') $ -- Keep it AND bring it with us.  Wont work.
+                exp strong ((v,(t,DependsOn usedInlined rhs')):env) bod
+                -- error $ " [inlinePacked] Cannot keep let binding in place which refers to inlined vars ("
+                --         ++show (S.toList usedInlined)++"): " ++show (var v, t)
 
         -- Don't reduce anything on the RHS yet, just add it:
         addAndGo = exp strong ((v,(t,InlineMe rhs)):env) bod -- KILL the let binding!
@@ -153,7 +180,9 @@ inlinePackedExp ddefs = exp True
     (AppE f e)  -> AppE f $ go e
     (PrimAppE p es) -> PrimAppE p $ map (go) es
     (IfE e1 e2 e3) ->
-         IfE (go e1) (go e2) (go e3)
+         IfE (go e1)
+             (dischargeDependent e2)
+             (dischargeDependent e3)
     (ProjE i e) -> ProjE i $ go e
     (MkProdE es) -> MkProdE $ map (go) es
     -- We don't rename field binders with to/from witness:
@@ -187,3 +216,36 @@ isConstructor ex =
     MkPackedE{} -> True
 --    PrimAppE (L1.ReadPackedFile{}) _ -> True
     _ -> False
+
+
+buildLets :: [(Var, L1.Ty, Exp)] -> Exp -> Exp
+buildLets [] bod = bod
+buildLets (bnd:rst) bod = LetE bnd $ buildLets rst bod
+
+
+-- | A silly notion of free variables that only looks at straight-line
+-- code, NOT going under branches or cases.
+freeNoBranch :: Exp -> S.Set Var
+freeNoBranch ex =
+  case ex of
+    -- STOP traversing code:
+    CaseE e _ -> freeNoBranch e
+    IfE a _ _ -> freeNoBranch a 
+
+    -- Regular free vars:
+    VarE v -> S.singleton v
+    LitE _ -> S.empty
+    LitSymE _ -> S.empty
+    AppE _v e -> freeNoBranch e  -- S.insert v (freeNoBranch e)
+    PrimAppE _ ls -> S.unions (L.map freeNoBranch ls)
+    LetE (v,_,rhs) bod -> freeNoBranch rhs `S.union`
+                          S.delete v (freeNoBranch bod)
+    ProjE _ e -> freeNoBranch e
+    MkProdE ls     -> S.unions $ L.map freeNoBranch ls
+    MkPackedE _ ls -> S.unions $ L.map freeNoBranch ls
+    TimeIt e _ _ -> freeNoBranch e
+    MapE (v,_t,rhs) bod -> freeNoBranch rhs `S.union`
+                           S.delete v (freeNoBranch bod)
+    FoldE (v1,_t1,r1) (v2,_t2,r2) bod ->
+        freeNoBranch r1 `S.union` freeNoBranch r2 `S.union`
+        (S.delete v1 $ S.delete v2 $ freeNoBranch bod)
