@@ -10,6 +10,8 @@ module Packed.FirstOrder.Passes.InlinePacked
     where
 
 import qualified Data.Map as M
+import qualified Data.Set as S 
+import qualified Data.List as L
 import Packed.FirstOrder.Common (SyM, Var, dbgTrace, ndoc, sdoc, lookupDataCon, DDefs)
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.L2_Traverse as L2
@@ -34,6 +36,11 @@ import Packed.FirstOrder.Common (Var(..), toVar, fromVar)
 --   (2) "witness" marked vars no longer occur. These markings have
 --       served their purpose and are stripped.
 --
+--   (3) Wherever possible, (e :: PackedType) subexpressions only
+--       occur inside the arguments to data constructors.  Any place
+--       where this is not the case will involve either a scoped
+--       region or extra copying.
+-- 
 inlinePacked :: L2.Prog -> SyM L2.Prog
 inlinePacked prg@L2.Prog{ddefs,fundefs,mainExp} = return $
   prg { fundefs = M.map fd fundefs
@@ -44,15 +51,26 @@ inlinePacked prg@L2.Prog{ddefs,fundefs,mainExp} = return $
  where
    fd f@FunDef{funarg, funty= ArrowTy inT _ _, funbod} =
        f { funbod = inlinePackedExp ddefs
-                    [(funarg, (fmap (const ()) inT, Nothing))]
+                    [(funarg, (fmap (const ()) inT, DontInline))]
                     funbod }
+
+
+data InlineStatus = DontInline -- ^ Move along, nothing to see here.
+--                  | DependsOn  (S.Set Var) -- ^ I'm a binding that doesn't *want* to inline,
+                                           -- but I'm being drug along for the ride, because
+                                           -- I depend on something else whose original binding
+                                           -- was blasted away.
+                  | InlineMe L1.Exp -- ^ I exist only as an expression to be inlined.
+
+-- | 'Nothing' on the RHS indicates "not inlinable".
+type InlineEnv = [(Var,(L1.Ty, InlineStatus))]
 
 -- | Keep a map of the entire lexical environment, but only part of it
 -- is inlinable. (I.e. function arguments are not.)
 --
 -- The policy at the moment is to inline ONLY `isConstructor`
 -- bindings, and not to remove
-inlinePackedExp :: DDefs L1.Ty -> [(Var,(L1.Ty, Maybe L1.Exp))] -> L1.Exp -> L1.Exp
+inlinePackedExp :: DDefs L1.Ty -> InlineEnv -> L1.Exp -> L1.Exp
 inlinePackedExp ddefs = exp True
   where
 
@@ -65,7 +83,7 @@ inlinePackedExp ddefs = exp True
   -- have a special case where for end-var witnesses we don't inline as much.
   --
   -- Here the environment contains code that has NOT yet been recursively processed.
-  exp :: Bool -> [(Var,(L1.Ty,Maybe L1.Exp))] -> L1.Exp -> L1.Exp
+  exp :: Bool -> InlineEnv -> L1.Exp -> L1.Exp
   exp strong env e0 =
    let go = exp strong env in
    -- dbgTrace 5 ("Inline "++show strong++", processing with env:\n   "++
@@ -75,15 +93,15 @@ inlinePackedExp ddefs = exp True
     (VarE v) -> case lookup v env of
                   Nothing -> dbgTrace 1 ("WARNING [inlinePacked] unbound variable: "++ fromVar v)$
                              VarE (var v)
-                  Just (_,Nothing)  -> VarE (var v) -- Bound, but non-inlinable binding.
-                  -- Here we either inline just the copies, or we inline up to isConstructor
-                  Just (ty,Just rhs)
-                   | VarE _v2 <- rhs   -> keepGoing
+                  Just (_,DontInline)  -> VarE (var v) -- Bound, but non-inlinable binding.
+                  -- Here we either inline just the copies, or we inline up to `isConstructor`
+                  Just (ty,InlineMe rhs)
+                   | VarE _v2 <- rhs    -> keepGoing
                      -- We allow a ProjE-of-AppE idiom:
                    | ProjE _i _e <- rhs -> keepGoing
                     -- IF we're in the RHS of an end-witness, don't duplicate code:
                    | not strong -> VarE v
-                    -- Finally, we don't fully inline, but rather leave names visible:
+                    -- Finally, we don't fully inline, but rather leave *names* visible:
                    | isConstructor rhs -> NamedVal v ty keepGoing
                    | CaseE{} <- rhs    -> NamedVal v ty keepGoing
                    | IfE{}   <- rhs    -> NamedVal v ty keepGoing
@@ -94,26 +112,36 @@ inlinePackedExp ddefs = exp True
 
     (LetE (v,t,rhs) bod)
        | VarE _v2   <- rhs  -> addAndGo  -- ^ We always do copy-prop.
-       | not (L2.hasRealPacked t) -> LetE (var v,t, rhs')
-                                     (exp strong ((v,(t,Nothing)):env) bod)
+       | not (L2.hasRealPacked t) -> keepIt
        | ProjE _ _  <- rhs  -> addAndGo
 
        -- DONT inline timing:
-       | TimeIt{}   <- rhs  -> LetE (var v,t, rhs') (exp strong ((v,(t,Nothing)):env) bod)
+       | TimeIt{}   <- rhs  -> keepIt
        -- DONT inline file reading:
-       | PrimAppE (L1.ReadPackedFile{}) _ <- rhs ->
-          LetE (var v,t, rhs') (exp strong ((v,(t,Nothing)):env) bod)
-
---      | L1.hasTimeIt rhs  -> __ -- AUDITME: is this still needed?
+       | PrimAppE (L1.ReadPackedFile{}) _ <- rhs -> keepIt
        | isConstructor rhs -> addAndGo
-
        -- Otherwise we have a case or an If.  We still inline those.
        | CaseE{} <- rhs  -> addAndGo
        | IfE{}  <- rhs   -> addAndGo
        | otherwise -> error $ " [inlinePacked] unexpected Let RHS:  "++ndoc rhs
       where
+        --------------------------------------------------------------
+        -- NOTE: If we drag an inlined binding past a let binding that
+        -- USES it in the RHS, then we have some work to do.
+        --  >  let x = inlinable in
+        --  >  let y = f x in ...
+        --------------------------------------------------------------
+        rhsFree     = L1.freeVars rhs
+        usedInlined = S.intersection rhsFree (S.fromList (L.map fst env)) -- Expensive. FIXME.
+        keepIt =
+            if True -- S.null usedInlined -- TODO FINISHME
+            then -- It's all good here, our RHS won't have any unmet dependencies:
+                 LetE (var v,t, rhs') (exp strong ((v,(t,DontInline)):env) bod)
+            else error $ " [inlinePacked] Cannot keep let binding in place which refers to inlined vars ("
+                        ++show (S.toList usedInlined)++"): " ++show (var v, t)
+
         -- Don't reduce anything on the RHS yet, just add it:
-        addAndGo = exp strong ((v,(t,Just rhs)):env) bod
+        addAndGo = exp strong ((v,(t,InlineMe rhs)):env) bod -- KILL the let binding!
         -- Subtlety: a binding for an end-witness should not have
         -- computational content.  We will not inline constructors into its RHS.
         rhs' | isEndVar v = exp False env rhs
@@ -132,15 +160,16 @@ inlinePackedExp ddefs = exp True
     (CaseE e mp) -> let mp' = map dorhs mp
                         dorhs (c,args,ae) =
                             let tys = lookupDataCon ddefs c
-                                env' = [(v,(t,Nothing)) | (v,t) <- (zip args tys)] ++ env in
+                                env' = [(v,(t,DontInline)) | (v,t) <- (zip args tys)] ++ env in
                             (c,args,exp strong env' ae)
                     in CaseE (go e) mp'
     (MkPackedE c es) -> MkPackedE c $ map (go) es
     (TimeIt e t b) -> TimeIt (go e) t b
-    (MapE (v,t,e') e) -> let env' = (v,(t,Nothing)) : env in
+    (MapE (v,t,e') e) -> let env' = (v,(t,DontInline)) : env in
                          MapE (var v,t,go e') (exp strong env' e)
     (FoldE (v1,t1,e1) (v2,t2,e2) e3) ->
-         let env' = (v1,(t1,Nothing)) : (v2,(t2,Nothing)) : env in
+         let env' = (v1,(t1,DontInline)) :
+                    (v2,(t2,DontInline)) : env in
          FoldE (var v1,t1,go e1) (var v2,t2,go e2)
                (exp strong env' e3)
 

@@ -267,13 +267,13 @@ PACKED_FAILING ?= \
  test25a_withprint.gib test26_treewalk.gib test27a_subst.gib \
  test27b_subst.gib test27c_subst.gib test28_copyprop.gib
 
+# inline-packed / typechecking errors
+# test18_badconstraint.gib test25_rackcore.gib test26a_treewalk.gib
+
 # test20b_bintree.gib   -- requires copy insertion
 # test12_skip.gib       -- requires copy insertion!! unbound var thru to C code
 # test16_forlist.gib    -- requires lists. No lists yet
 # test17_forfold.gib    -- requires lists. No lists yet
-
-# inline-packed / typechecking errors
-# test18_badconstraint.gib test25_rackcore.gib test26a_treewalk.gib
 
 # This is the default mode:
 run_tests_pointer: run_tests

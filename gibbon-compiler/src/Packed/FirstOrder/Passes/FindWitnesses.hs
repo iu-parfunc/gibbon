@@ -22,7 +22,7 @@ findWitnesses = L2.mapMExprs fn
  where
   -- From the point of view of this pass, we "see through" witness markerS:
   view :: Var -> Var
-  view v = v  -- RRN: actually, coming up with a good policy her is problematic.
+  view v = v  -- RRN: actually, coming up with a good policy here is problematic.
            
   -- view v | isWitnessVar v = let Just v' = fromWitnessVar v in v'
   --        | otherwise      = v
@@ -52,6 +52,7 @@ findWitnesses = L2.mapMExprs fn
       MkProdE ls     -> handle mp $ MkProdE (map (go Map.empty) ls)
       MkPackedE k ls -> handle mp $ MkPackedE k (map (go Map.empty) ls)
       TimeIt e t b   -> handle mp $ TimeIt (go Map.empty e) t b -- prevent pushing work into timeit
+      -- Discharge what we've got and don't move code in/out of conditionals:
       IfE a b c      -> handle mp $ IfE a (go Map.empty b) (go Map.empty c)
       MapE (v,t,rhs) bod -> handle mp $ MapE (v,t,rhs) (go Map.empty bod)
       FoldE (v1,t1,r1) (v2,t2,r2) bod -> handle mp $ FoldE (v1,t1,r1) (v2,t2,r2) (go Map.empty bod)
