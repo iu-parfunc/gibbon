@@ -26,6 +26,10 @@ import Prelude hiding (exp)
 
 -------------------------------------------------------------------------------
 
+-- | Flatten ensures that function operands are "trivial".
+-- 
+--   In the process, it also lifts lets out of case scrutinees, if
+--   conditions, and tuple operands.
 flatten :: L1.Prog -> SyM L1.Prog
 flatten prg@(L1.Prog defs funs main) = do
     main' <- mapM (flattenExp defs env20) main

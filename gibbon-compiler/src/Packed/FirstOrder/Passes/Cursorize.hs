@@ -500,7 +500,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
 
   -- | Given a cursor to the position right after the tag, unpack the
   -- fields of a datacon, and return the given expression in that context.
-  -- This also has the job of inserting `end_x2==start_x1` witnesses.
+  -- This also has the job of inserting `start_field2==end_field1` witnesses.
   unpackDataCon :: Var -> (DataCon, [Var]) -> Exp -> SyM Exp
   unpackDataCon cur0 (k,vrs) rhs =
       dbgTrace 5 ("unpackDataCon: "++show(cur0, (k,vsts))) $
