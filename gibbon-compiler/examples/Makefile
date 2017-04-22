@@ -202,14 +202,11 @@ all_parsed:  $(ALL_TESTS:.gib=.parsed)
 
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= \
-  test13_build.gib test13b_build.gib \
-  test11_fundata.gib test11c_funrec.gib test11e_funrec.gib test12c_traverse.gib \
-  test25d_racketcore.gib \
   test16_forlist.gib test17_forfold.gib \
-  test25a_withprint.gib \
-  test27b_subst.gib test27c_subst.gib test28_copyprop.gib
+  test28_copyprop.gib \
+  test27b_subst.gib
 
-# test25a "works" but it still prints symbols as numbers.
+# test27b - works except needs proper SYMBOL PRINTING
 
 # NOTE:
 # test11d_funrec.gib -- is giving the WRONG ANSWER
