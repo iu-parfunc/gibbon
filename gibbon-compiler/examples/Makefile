@@ -204,9 +204,10 @@ all_parsed:  $(ALL_TESTS:.gib=.parsed)
 FAILING_TESTS ?= \
   test16_forlist.gib test17_forfold.gib \
   test28_copyprop.gib \
+  test25a_withprint.gib \
   test27b_subst.gib
 
-# test27b - works except needs proper SYMBOL PRINTING
+# test25a, test27b - works except needs proper SYMBOL PRINTING
 
 # NOTE:
 # test11d_funrec.gib -- is giving the WRONG ANSWER
@@ -260,6 +261,7 @@ PACKED_FAILING ?= \
  test12_skip.gib  test16_forlist.gib test17_forfold.gib \
  test18b_tupconstraint.gib test18d_identity2.gib  test18f_flip.gib \
  test20b_bintree.gib  \
+ test25a_withprint.gib \
  test27a_subst.gib \
  test27b_subst.gib test27c_subst.gib test28_copyprop.gib
 
