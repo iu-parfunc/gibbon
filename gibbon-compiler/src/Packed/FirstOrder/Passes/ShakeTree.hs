@@ -1,4 +1,4 @@
--- | Aggressive dead code elimination.  No regard for terminator,
+-- | Aggressive dead code elimination.  No regard for termination,
 -- effects, or partiality.
 
 -- [Populated with duplicated code from InlinePacked]

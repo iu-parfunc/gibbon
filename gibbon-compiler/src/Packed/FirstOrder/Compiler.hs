@@ -401,6 +401,7 @@ passes config@Config{mode,packed} l1 = do
 
             l2 <- pass False config "flatten"       (flatten2 l1)                   l2
             l2 <- pass True config "findWitnesses" findWitnesses                    l2
+            l2 <- pass True config "shakeTree"   shakeTree                          l2
 
             -- After findwitnesses is when programs should once again typecheck:
             l2 <- passE' config "typecheck"  (typecheckStrict (TCConfig True))      l2
