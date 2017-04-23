@@ -258,15 +258,12 @@ else
 endif
 
 PACKED_FAILING ?= \
- test12_skip.gib  test16_forlist.gib test17_forfold.gib \
- test18b_tupconstraint.gib test18d_identity2.gib  test18f_flip.gib \
+ test12_skip.gib test16_forlist.gib test17_forfold.gib \
+ test18b_tupconstraint.gib test18f_flip.gib \
  test20b_bintree.gib  \
  test25a_withprint.gib \
  test27a_subst.gib \
  test27b_subst.gib test27c_subst.gib test28_copyprop.gib
-
-# inline-packed / typechecking errors
-# test18_badconstraint.gib test25_rackcore.gib test26a_treewalk.gib
 
 # test20b_bintree.gib   -- requires copy insertion
 # test12_skip.gib       -- requires copy insertion!! unbound var thru to C code
@@ -338,7 +335,6 @@ answers: $(ANSWERS)
 build_gibbon_llvm_lib:
 	clang-3.9 -S -emit-llvm $(TREELANGDIR)/gibbon-compiler/lib.c
 	llc-3.9 -filetype=obj -o lib.o lib.ll
-
 
 LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
   test00c_printBool.gib test00d_printData.gib test00e_func.gib \

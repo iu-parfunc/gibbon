@@ -34,9 +34,7 @@ import qualified Data.Map as M
 unariser :: L2.Prog -> SyM L2.Prog
 unariser prg = do
   prg' <- mapMExprs unariserExp prg
-  fns  <- mapM unariserFun $ M.elems (fundefs prg')
-  let fns' = M.fromList $ map (\f -> (L2.funname f,f)) fns
-  return prg'{fundefs = fns'}
+  return prg'{fundefs = M.map unariserFun (fundefs prg')}
 
 
 -- | A projection stack can be viewed as a list of ProjE operations to
@@ -49,39 +47,15 @@ type Env = [(Var,[(ProjStack,Var)])]
 
 -- | Modifies function to satisfy output invariant (1)
 --
-unariserFun :: L2.FunDef -> SyM L2.FunDef
-unariserFun f@L2.FunDef{funty,funarg,funbod} = do
-  let inT = arrIn funty
-
-      flattenTy :: Ty -> [Ty]
-      flattenTy (ProdTy tys) = concatMap flattenTy tys
-      flattenTy ty = [ty]
-
-      -- | Generate projections for non-product types inside a tuple
-      --
-      -- Examples:
-      -- (1) ProdTy [IntTy, ProdTy [IntTy, IntTy, IntTy]] ==
-      --     [[0],[1,0],[1,1],[1,2]]
-      --
-      -- (2) ProdTy [IntTy, ProdTy [IntTy, IntTy, IntTy, ProdTy [IntTy, IntTy]]] ==
-      --     [[0],[1,0],[1,1],[1,2],[1,3,0],[1,3,1]]
-      --
-      projections :: Ty -> ProjStack -> [ProjStack]
-      projections (ProdTy tys) acc =
-        concatMap (\(ty,i) -> projections ty (acc ++ [i])) (zip tys [0..])
-      projections _ acc = [acc]
-
+unariserFun :: L2.FunDef -> L2.FunDef
+unariserFun f@L2.FunDef{funty,funarg,funbod} =
   case inT of
-    ProdTy tys -> do
-      let projs = projections inT []
-          substs = map (\ps -> (foldr (\i acc -> ProjE i acc) (VarE funarg) ps,
-                                ProjE (sum ps) (VarE funarg)))
-                   projs
-          -- FIXME: This is in-efficient because of the substE ?
-          bod = foldr (\(from,to) acc -> L1.substE from to acc) funbod substs
-      return f{funbod = bod, funty = funty{arrIn = ProdTy $ concatMap flattenTy tys}}
-
-    _ -> return f
+    ProdTy _ ->
+      let ty  = flattenTy inT
+          bod = flattenExp funarg inT funbod
+      in f{funbod = bod, funty = funty{arrIn = ty}}
+    _ -> f
+  where inT = arrIn funty
 
 
 -- | Take an ignored argument to match mapMExprs' conventions.
@@ -106,9 +80,9 @@ unariserExp _ = go [] []
      error $ "Cannot discharge projections directly agains extended L2 form: "++ndoc p
   discharge (ix:rst) e = discharge rst (ProjE ix e)
 
-  flattenExp :: Exp -> [Exp]
-  flattenExp (MkProdE es) = concatMap flattenExp es
-  flattenExp e = [e]
+  flattenProd :: Exp -> [Exp]
+  flattenProd (MkProdE es) = concatMap flattenProd es
+  flattenProd e = [e]
 
   -- FIXME: need to track full expr binds like InlineTrivs
   -- Or do we?  Not clear yet.
@@ -119,7 +93,7 @@ unariserExp _ = go [] []
    case e0 of
     (MkProdE es) -> case stk of
                       (ix:s') -> go s' env (es ! ix)
-                      [] -> MkProdE <$> mapM (go stk env) (concatMap flattenExp es)
+                      [] ->  MkProdE <$> mapM (go stk env) (concatMap flattenProd es)
 
     -- (ProjE ix (VarE v)) -> discharge stk <$> -- Danger.
     --                        case lookup v env of
@@ -145,12 +119,6 @@ unariserExp _ = go [] []
     -- TEMP: HACK/workaround.  See FIXME above.
     -- LetE (v1,ProdTy _,rhs@LetE{})  (ProjE ix (VarE v2)) | v1 == v2 -> go (ix:stk) env rhs
     LetE (v1,ProdTy _,rhs@CaseE{}) (ProjE ix (VarE v2)) | v1 == v2 -> go (ix:stk) env rhs
-
-    ----- These three cases are permitted to remain tupled by Lower: -----
-    (LetE (v,ty@ProdTy{}, rhs@IfE{})   bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
-    (LetE (v,ty@ProdTy{}, rhs@CaseE{}) bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
-    (LetE (v,ty@ProdTy{}, rhs@AppE{})  bod)-> LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
-    ------------------
 
     (LetE (vr,ProdTy tys, MkProdE ls) bod) -> do
         vs <- sequence [ gensym (toVar "unzip") | _ <- ls ]
@@ -186,7 +154,13 @@ unariserExp _ = go [] []
     -- And this is a HACK.  Need a more general solution:
     (LetE (v,ty@ProdTy{}, rhs@(TimeIt{})) bod)->
         LetE <$> ((v,ty,) <$> go [] env rhs) <*> go stk env bod
-    ------------------
+
+    (LetE (v,ty@(ProdTy _), rhs) bod) -> do
+      dbgTrace 5 ("[unariser] flattening " ++ show e0) return()
+      rhs' <- go [] env rhs
+      ty' <- flattenTy <$> tyWithFreshLocs ty       -- tyWithFreshLocs is just to convert L1.Ty -> L2.Ty
+      bod' <- flattenExp v ty' <$> go stk env bod
+      return $ LetE (v, stripTyLocs ty', rhs') bod' -- and stripTyLocs for L2.Ty -> L1.Ty
 
     (LetE (_,ProdTy _, _) _) ->
         error$ " [unariser] this is stopping us from unzipping a tupled binding:\n "++sdoc e0
@@ -270,3 +244,49 @@ mklets (bnd:rst) bod = LetE bnd $ mklets rst bod
 mkLet :: (Var, L1.Ty, Exp) -> Exp -> Exp
 mkLet (v,t,LetE (v2,t2,rhs2) bod1) bod2 = LetE (v2,t2,rhs2) $ LetE (v,t,bod1) bod2
 mkLet (v,t,rhs) bod = LetE (v,t,rhs) bod
+
+
+-- | Flatten nested tuple types.
+-- Example:
+--
+-- ProdTy [IntTy, ProdTy [IntTy, IntTy, IntTy, ProdTy [IntTy, IntTy]]] =>
+-- ProdTy [IntTy, IntTy, IntTy, IntTy, IntTy, IntTy]
+--
+flattenTy :: Ty -> Ty
+flattenTy ty =
+  case ty of
+    ProdTy _ -> ProdTy $ go ty
+    _ -> ty
+  where go :: Ty -> [Ty]
+        go (ProdTy tys) = concatMap go tys
+        go ty = [ty]
+
+
+-- | Flatten nested tuples in a type-safe way
+--
+flattenExp :: Var -> Ty -> Exp -> Exp
+flattenExp v ty bod =
+  case ty of
+    ProdTy _ ->
+      let
+          -- | Generate projections for non-product types inside a tuple
+          --
+          -- Examples:
+          -- (1) ProdTy [IntTy, ProdTy [IntTy, IntTy, IntTy]] ==
+          --     [[0],[1,0],[1,1],[1,2]]
+          --
+          -- (2) ProdTy [IntTy, ProdTy [IntTy, IntTy, IntTy, ProdTy [IntTy, IntTy]]]
+          --     [[0],[1,0],[1,1],[1,2],[1,3,0],[1,3,1]]
+          --
+          projections :: Ty -> ProjStack -> [ProjStack]
+          projections (ProdTy tys) acc =
+            concatMap (\(ty,i) -> projections ty (acc ++ [i])) (zip tys [0..])
+          projections _ acc = [acc]
+
+          projs = projections ty []
+          substs = map (\ps -> (foldr (\i acc -> ProjE i acc) (VarE v) ps,
+                                ProjE (sum ps) (VarE v)))
+                   projs
+          -- FIXME: This is in-efficient because of the substE ?
+      in foldr (\(from,to) acc -> L1.substE from to acc) bod substs
+    _ -> bod
