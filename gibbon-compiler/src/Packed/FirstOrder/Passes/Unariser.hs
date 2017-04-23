@@ -158,9 +158,11 @@ unariserExp _ = go [] []
     (LetE (v,ty@(ProdTy _), rhs) bod) -> do
       dbgTrace 5 ("[unariser] flattening " ++ show e0) return()
       rhs' <- go [] env rhs
-      ty' <- flattenTy <$> tyWithFreshLocs ty       -- tyWithFreshLocs is just to convert L1.Ty -> L2.Ty
-      bod' <- flattenExp v ty' <$> go stk env bod
-      return $ LetE (v, stripTyLocs ty', rhs') bod' -- and stripTyLocs for L2.Ty -> L1.Ty
+      ty'  <- tyWithFreshLocs ty -- convert L1.Ty -> L2.Ty
+      bod' <- go stk env bod
+      let ty''  = flattenTy ty'
+          bod'' = flattenExp v ty' bod'
+      return $ LetE (v, stripTyLocs ty'', rhs') bod''  -- stripTyLocs converts L2.Ty -> L1.Ty
 
     (LetE (_,ProdTy _, _) _) ->
         error$ " [unariser] this is stopping us from unzipping a tupled binding:\n "++sdoc e0
