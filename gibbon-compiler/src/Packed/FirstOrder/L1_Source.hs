@@ -88,7 +88,7 @@ fromE1 (E1 e) = e
 -- It is parameterized by a decoration attached to every binder.
 data PreExp d (exp :: * -> *) =
      VarE Var              -- ^ Variable reference
-   | RetE [LocVar] (exp d) -- ^ Return a value together with extra loc values.
+   | RetE [LocVar] Var     -- ^ Return a value together with extra loc values.
    | LitE Int              -- ^ Numeric literal
    | LitSymE Var           -- ^ A quoted symbol literal.
    | AppE Var [LocVar] (exp d)

@@ -3,8 +3,9 @@
 # =================================================================
 
 test: temporary
-temporary:
+temporary: prebuild build
 #	$(MAKE) run_tests_packed
+	$(MAKE) run_answers
 	$(MAKE) run_tests_interp2
 	$(MAKE) run_tests_interp1
 
