@@ -363,11 +363,11 @@ t5p = Prog {ddefs = M.fromList [(toVar "Expr",
                                                                 arrEffs = S.fromList [],
                                                                 arrOut = PackedTy "Foo" (toVar "a")},
                                                funarg = (toVar "x0"),
-                                               funbod = VarE (toVar "x0")})],
-             mainExp = Just (LetE (toVar "fltAp1",
-                                   PackedTy "Foo" (),
-                                   MkPackedE "A" [LitE 1])
-                              (AppE (toVar "id") (VarE (toVar "fltAp1"))),
+                                               funbod = L1.E1 $ VarE (toVar "x0")})],
+             mainExp = Just (L1.E1 (LetE (toVar "fltAp1",
+                                          PackedTy "Foo" (),
+                                          L1.E1 $ MkPackedE "A" [L1.E1 $ LitE 1])
+                                    (L1.E1 $ (AppE (toVar "id") (L1.E1 $ VarE (toVar "fltAp1"))))),
                              PackedTy "Foo" ())
            }
 
