@@ -384,6 +384,8 @@ Here is my proposal for a new region calculus.  To render it in Ascii
 (lacking overlines), I'll use "*" or ellipses to indicate
 repetition.
 
+#### Refined Region+Location calculus
+
 Constraints are stored separately, but typically we will generate
 `(Prog,Constraints)`.
 
@@ -406,11 +408,20 @@ Constraints are stored separately, but typically we will generate
     TypeSchemas S := forall l* . T* -> T
     Types T := Int | D_l    
 
-    Constraint C := l =^r l + A
-    ArithExpr A := N | { C | c >= N }
+    Constraint C :=  l ==^r l + A
+    ArithExpr A := N | { c | c >= N }
     Lits N := 0 | 1 | 2 ...
 
-And then the target language.  We could keep multi-arg functions here
+Shorthands:
+
+    l \in r      ==  (l ==^r l)
+    l1,l2 \in r  ==  (l1 ==^r l2 + c) \/ (l2 ==^r l1 + c) where c is a free variable c>=0
+
+In the constraint grammar, it would be the refinement {c|c>=0}.
+
+#### Target language:
+
+Next, the target language.  We could keep multi-arg functions here
 or get rid of them.  (We will mess up names anyway, as we squish in
 location args.)  
 
@@ -440,3 +451,4 @@ passed linearly.
 
 The above is an adaption of our current L2, and the below of our L3.  
 For readability, `Tag N` could just as well be `Tag STR`.
+
