@@ -62,7 +62,7 @@ initialEnv mp = M.map (\x -> fst $ runSyM 0 (go x))  mp
 
 
 inferEffects :: L1.Prog -> SyM Prog
-inferEffects prg@(L1.Prog dd fds mainE) = do
+inferEffects (L1.Prog dd fds mainE) = do
   finalFunTys <- fixpoint 1 fds (initialEnv fds)
   let funs = (M.intersectionWith (\ (C.FunDef nm (arg,_) _ bod) arrTy ->
                                   FunDef nm arrTy arg bod)
@@ -118,6 +118,7 @@ instantiateApp arrty0 loc = do
        SymDictTy _  -> Top
        ProdTy ls    -> TupLoc $ L.map rettyToLoc ls
        PackedTy _ l -> Fresh l
+       ListTy _ -> error "rettyToLoc: FINISHME lists"
 
 -- | Unify type and locaion , creating a mapping between variables in
 -- the former to the latter.
@@ -257,7 +258,7 @@ inferExp (ddefs,fenv) env e = exp env e
           getloc (MkProdE trvz) = TupLoc (L.map getloc trvz)
           getloc (ProjE ix trv) = let TupLoc ls = getloc trv
                                   in ls !! ix
-          getloc (LitSymE v)    = Bottom
+          getloc (LitSymE _)    = Bottom
           getloc oth | isTriv oth = error$ "InferEffects/FINISHME: handle this trivial rand: "++show oth
                      | otherwise  = error$ "InferEffects: expected flattened program found non-trivial operand: "++show oth
           arrTy = fenv # rat

@@ -4,7 +4,7 @@
 --
 -- GRAMMAR: takes and produces a flattened L2 program.
 -- Returns a program following the "end-witnesses" calling convention.
--- 
+--
 module Packed.FirstOrder.Passes.RouteEnds
     ( routeEnds ) where
 
@@ -21,7 +21,7 @@ import Data.Set as S
 import Text.PrettyPrint.GenericPretty
 import Control.Monad
 import Control.Exception
-import Prelude hiding (exp) 
+import Prelude hiding (exp)
 
 -- | Chatter level for this module:
 lvl :: Int
@@ -129,9 +129,9 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
             case trivLoc trv of
               TupLoc ls -> ls !! ix
               oth -> error $ "No way to describe a location projected from a tuple of this location: "++show oth
-                    
+
         trivLoc (PrimAppE L1.MkTrue [])  = Bottom
-        trivLoc (PrimAppE L1.MkFalse []) = Bottom                                           
+        trivLoc (PrimAppE L1.MkFalse []) = Bottom
         trivLoc t = error $ "Case in trivLoc not handled for: " ++ (show t)
 
         -- When we get to the end... we just mention the names of what we want:
@@ -311,9 +311,10 @@ letBindProjections ls tupname bod = go 0 ls
 
 
 -- | Let bind IFF there are extra cursor results.
-maybeLetTup :: [Loc] -> (L1.Ty, L1.Exp) -> WitnessEnv
-            -> (L1.Exp -> WitnessEnv -> SyM L1.Exp) -> SyM L1.Exp
-maybeLetTup locs (ty,ex) env fn = __refactor
+
+-- maybeLetTup :: [Loc] -> (L1.Ty, L1.Exp) -> WitnessEnv
+--             -> (L1.Exp -> WitnessEnv -> SyM L1.Exp) -> SyM L1.Exp
+-- maybeLetTup locs (ty,ex) env fn = __refactor
 {-maybeLetTup locs (ty,ex) env fn =
   case locs of
    -- []  -> error$ "maybeLetTup: didn't expect zero locs:\n  " ++sdoc (ty,ex)
@@ -332,8 +333,9 @@ maybeLetTup locs (ty,ex) env fn = __refactor
 -}
 
 -- | A variable binding may be able to
-varToWitnesses :: Var -> Loc -> M.Map LocVar Exp
-varToWitnesses = __
+
+-- varToWitnesses :: Var -> Loc -> M.Map LocVar Exp
+-- varToWitnesses = __
 {- varToWitnesses vr loc = WE (M.fromList $ go loc (L1.VarE vr)) M.empty
   where
    go (TupLoc ls) ex =
@@ -344,4 +346,4 @@ varToWitnesses = __
    go Top       _ = []
    go Bottom    _ = [] -}
 
-data WitnessEnv -- WIP: REMOVE ME
+-- data WitnessEnv -- WIP: REMOVE ME
