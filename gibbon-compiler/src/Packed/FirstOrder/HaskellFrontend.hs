@@ -108,9 +108,6 @@ pattern FstVar <- VarE (C.Var "fst")
 pattern SndVar <- VarE (C.Var "snd")
   where SndVar = VarE (toVar "snd")
 
-dummyLoc :: LocVar
-dummyLoc = "l_dummy"
-
 -- | Convert Haskell src-exts syntax to our syntax.  Handle infix operators, etc.
 -- Disambiguate things that look like applications.
 desugarExp :: H.Exp -> Ds L1.Exp

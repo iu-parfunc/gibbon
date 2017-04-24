@@ -4,6 +4,7 @@
 -- {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 -- {-# LANGUAGE DeriveAnyClass #-} -- Actually breaks Applicative SymM deriving!
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -23,7 +24,8 @@ module Packed.FirstOrder.Common
        , Var(..), fromVar, toVar, varAppend, SyM, gensym, genLetter, runSyM
        , cleanFunName
 
-       , LocVar, Env2(..)
+       , LocVar, dummyLoc
+       , Env2(..)
 
          -- * Runtime configuration
        , RunConfig(..), getRunConfig
@@ -96,6 +98,10 @@ type TyCon   = String
 -- | Abstract location variables.
 type LocVar = Var
 -- TODO: add start(r) form.
+
+-- | A designated not-really-there LocVar.  Filled in by a later pass.
+dummyLoc :: LocVar
+dummyLoc = "l_dummy"
     
 varAppend :: Var -> Var -> Var
 varAppend x y = toVar (fromVar x ++ fromVar y)

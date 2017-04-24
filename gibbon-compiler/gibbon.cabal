@@ -31,7 +31,7 @@ library
                   -- Packed.FirstOrder.Passes.Cursorize2
                   -- Packed.FirstOrder.Passes.Flatten
                   -- Packed.FirstOrder.Passes.Lower
-                  -- Packed.FirstOrder.Passes.Freshen
+                  Packed.FirstOrder.Passes.Freshen
                   -- Packed.FirstOrder.Passes.InlineTriv
                   -- Packed.FirstOrder.Passes.InlinePacked
                   -- Packed.FirstOrder.Passes.ShakeTree

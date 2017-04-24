@@ -33,7 +33,7 @@ import qualified Packed.FirstOrder.L3_Target   as L3
 -- import           Packed.FirstOrder.Passes.Cursorize
 -- import           Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
 -- import           Packed.FirstOrder.Passes.Flatten
--- import           Packed.FirstOrder.Passes.Freshen
+import           Packed.FirstOrder.Passes.Freshen
 -- import           Packed.FirstOrder.Passes.HoistNewBuf
 -- import           Packed.FirstOrder.Passes.InferEffects (inferEffects)
 -- import           Packed.FirstOrder.Passes.InlinePacked
@@ -374,14 +374,12 @@ data InProgress = L1 L1.Prog
 -- |
 passes :: Config -> L1.Prog -> StateT CompileState IO InProgress
 passes config@Config{mode,packed} l1 = do
-{-  -- UNDER_CONSTRUCTION
       l1 <- passE config "freshNames" freshNames l1
       -- If we are executing a benchmark, then we
       -- replace the main function with benchmark code:
       l1 <- pure $ case mode of
                      Bench fnname -> benchMainExp config l1 fnname
                      _ -> l1
--}
       return (L1 l1)
 {- -- UNDER_CONSTRUCTION
       l1 <- passE  config "flatten"       flatten                                   l1

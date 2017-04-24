@@ -94,10 +94,6 @@ bracketHacks :: Text -> Text
 bracketHacks = T.map $ \case '[' -> '('
                              ']' -> ')'
                              x   -> x
-
--- | Filled in by a later pass.
-dummyLoc :: LocVar
-dummyLoc = "l_dummy"
   
 -- | Change regular applications into data constructor syntax.
 tagDataCons :: DDefs Ty -> Exp -> Exp

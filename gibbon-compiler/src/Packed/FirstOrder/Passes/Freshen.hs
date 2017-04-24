@@ -1,3 +1,5 @@
+-- {-# LANGUAGE OverloadedStrings #-}
+
 -- | Unique names.
 
 module Packed.FirstOrder.Passes.Freshen (freshNames) where
@@ -5,9 +7,12 @@ module Packed.FirstOrder.Passes.Freshen (freshNames) where
 import Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.L1_Source as L1
 import qualified Data.Map as M
+import qualified Data.List as L
 
+genLocVar :: String -> SyM LocVar
+genLocVar s = gensym (toVar ("l"++s))
 
--- | Rename all local variables
+-- | Rename all local variables.  Rename all dummy locations.
 freshNames :: L1.Prog -> SyM L1.Prog
 freshNames (L1.Prog defs funs main) =
     do main' <- case main of
@@ -32,20 +37,20 @@ freshNames (L1.Prog defs funs main) =
               return $ L1.E1 $ L1.LitE i
           freshExp _ (L1.E1 (L1.LitSymE v)) =
               return $ L1.E1 $ L1.LitSymE v
-          freshExp vs (L1.E1 (L1.AppE v e)) =
+          freshExp vs (L1.E1 (L1.AppE v [] e)) =
               do e' <- freshExp vs e
-                 return $ L1.E1 $ L1.AppE (cleanFunName v) e'
+                 return $ L1.E1 $ L1.AppE (cleanFunName v) [] e'
           freshExp _ (L1.E1 (L1.PrimAppE L1.Gensym [])) =
               do v <- gensym (toVar "gensym")
                  return $ L1.E1 $ L1.LitSymE v
           freshExp vs (L1.E1 (L1.PrimAppE p es)) =
               do es' <- mapM (freshExp vs) es
                  return $ L1.E1 $ L1.PrimAppE p es'
-          freshExp vs (L1.E1 (L1.LetE (v,t,e1) e2)) =
+          freshExp vs (L1.E1 (L1.LetE (v,[],t,e1) e2)) =
               do e1' <- freshExp vs e1
                  v' <- gensym v
                  e2' <- freshExp ((v,v'):vs) e2
-                 return $ L1.E1 $ L1.LetE (v',t,e1') e2'
+                 return $ L1.E1 $ L1.LetE (v',[],t,e1') e2'
           freshExp vs (L1.E1 (L1.IfE e1 e2 e3)) =
               do e1' <- freshExp vs e1
                  e2' <- freshExp vs e2
@@ -59,15 +64,24 @@ freshNames (L1.Prog defs funs main) =
                  return $ L1.E1 $ L1.MkProdE es'
           freshExp vs (L1.E1 (L1.CaseE e mp)) =
               do e' <- freshExp vs e
-                 mp' <- mapM (\(c,args,ae) -> do
+                 -- Here we freshen locations:
+                 mp' <- mapM (\(c,prs,ae) -> do
+                                let (args,locs) = unzip prs
+                                let [l] | l == dummyLoc = L.nub locs
+                                locs' <- mapM (\_ -> genLocVar "") locs
                                 args' <- mapM gensym args
                                 let vs' = (zip args args') ++ vs
                                 ae' <- freshExp vs' ae
-                                return (c,args',ae')) mp
+                                return (c,zip args' locs',ae')) mp
                  return $ L1.E1 $ L1.CaseE e' mp'
-          freshExp vs (L1.E1 (L1.MkPackedE c es)) =
+          freshExp vs (L1.E1 (L1.MkPackedE c d es)) =
               do es' <- mapM (freshExp vs) es
-                 return $ L1.E1 $ L1.MkPackedE c es'
+                 case d of
+                   Nothing -> return ()
+                   Just x | x==dummyLoc -> return ()
+                          | otherwise -> error$ "freshExp: expects only dummyLoc on input forms, found: "++show d
+                 loc <- genLocVar ""
+                 return $ L1.E1 $ L1.MkPackedE c (fmap (\_ -> loc) d) es'
           freshExp vs (L1.E1 (L1.TimeIt e t b)) =
               do e' <- freshExp vs e
                  return $ L1.E1 $ L1.TimeIt e' t b
