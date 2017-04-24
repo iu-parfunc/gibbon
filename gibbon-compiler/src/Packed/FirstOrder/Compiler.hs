@@ -242,7 +242,7 @@ compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
   (l1, cnt0) <- parsed
 
   case mode of
-    Interp1 -> runL1 l1 
+    Interp1 -> runL1 l1
     ToParse -> dbgPrintLn 0 $ sdoc l1
 
     _ -> do
@@ -256,15 +256,15 @@ compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
 
       -- run the initial program through the compiler pipeline
       stM <- return $ passes config l1
-      inprog <- evalStateT stM (CompileState {cnt=cnt0, result=initResult})      
+      inprog <- evalStateT stM (CompileState {cnt=cnt0, result=initResult})
       ------------------------------ TEMPORARY ------------------------------------
       -- UNDER_CONSTRUCTION
       hPutStrLn stderr "WARNING: UNDER_CONSTRUCTION.  Compiler mostly disabled atm."
       case inprog of
         L1 l1 -> runL1 l1
-        L2 l2 -> runL2 l2 
+        L2 l2 -> runL2 l2
       ------------------------------ TEMPORARY ------------------------------------
-        L3 l3 -> do 
+        L3 l3 -> do
          if mode == Interp2
            then do
              l3res <- execProg l3
@@ -303,7 +303,7 @@ runL1 l1 = do
 -- | The compiler's policy for running/printing L2 programs.
 runL2 :: L2.Prog -> IO ()
 runL2 l2 = runL1 (L2.revertToL1 l2)
-    
+
 -- | Set the env var DEBUG, to verbosity, when > 1
 -- TERRIBLE HACK!!
 -- This verbosity value is global, "pure" and can be read anywhere
@@ -359,7 +359,7 @@ interpProg l1 =
 data InProgress = L1 L1.Prog
                 | L2 L2.Prog
                 | L3 L3.Prog
-                  
+
 -- |
 passes :: Config -> L1.Prog -> StateT CompileState IO InProgress
 passes config@Config{mode,packed} l1 = do
@@ -446,18 +446,18 @@ benchMainExp Config{benchInput,benchPrint} l1 fnname = do
       -- At L1, we assume ReadPackedFile has a single return value:
       newExp = L1.LetE (toVar tmp,
                          arg,
-                         L1.PrimAppE (L1.ReadPackedFile benchInput tyc arg) [])
+                         L1.E1 $ L1.PrimAppE (L1.ReadPackedFile benchInput tyc arg) [])
                 $
-                L1.LetE (toVar "benchres",
+                L1.E1 $ L1.LetE (toVar "benchres",
                          ret,
-                         L1.TimeIt (L1.AppE fnname (L1.VarE (toVar tmp))) ret True)
+                         L1.E1 $ L1.TimeIt (L1.E1 $ L1.AppE fnname (L1.E1 $ L1.VarE (toVar tmp))) ret True)
                 $
                 -- FIXME: should actually return the result,
                 -- as soon as we are able to print it.
                 (if benchPrint
-                  then L1.VarE (toVar "benchres")
-                  else L1.PrimAppE L1.MkTrue [])
-  l1{ L1.mainExp = Just newExp }
+                  then L1.E1 $ L1.VarE (toVar "benchres")
+                  else L1.E1 $ L1.PrimAppE L1.MkTrue [])
+  l1{ L1.mainExp = Just $ L1.E1 newExp }
 
 
 type PassRunner a b = (Out b, NFData a, NFData b) =>
