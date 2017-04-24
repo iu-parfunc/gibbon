@@ -67,14 +67,14 @@
 \newcommand{\num}{\; n \;}
 \newcommand{\primexpr}[1]{\; \PRIM(#1) \;}
 \newcommand{\letexpr}[3]{\;\gramwd{let} \; #1 = #2 \; \gramwd{in} \; #3 \;}
-\newcommand{\ife}[3]{\; \gramwd{if}\; #1 #2 #3 \;}
+\newcommand{\ife}[3]{\; \gramwd{if}#1\gramwd{then}#2\gramwd{else}#3 \;}
 \newcommand{\app}[2]{\; #1(#2) \;}
 \newcommand{\mapp}[3]{\; #1\;[\,#2\,]\;(\,#3\,) \;}
 \newcommand{\return}[2]{\; \gramwd{return}\;[\,#1\,]\;#2\;}
 \newcommand{\project}[2]{\; \gramwd{prj}_{#1}\,{#2}\;}
 \newcommand{\anonfun}[2]{\; \lambda\,(#1)\,.\,#2\;}
 \newcommand{\letlexpr}[4]{\;\gramwd{let} \; [\,#1\,]\; #2 = #3 \; \gramwd{in} \; #3 \;}
-\newcommand{\letregion}[2]{\; \gramwd{letregion}\;#1\;#2 \;}
+\newcommand{\letregion}[2]{\; \gramwd{letregion}\;#1\; \gramwd{in}\; #2 \;}
 \newcommand{\mkdata}[3]{\; #1\;#2\;\;#3 \;}
 \newcommand{\LOC}{\keywd{\iota}}
 \newcommand{\REG}{\keywd{r}}
@@ -82,41 +82,44 @@
 \newcommand{\lstart}[1]{\; \gramwd{start}(#1) \;}
 \newcommand{\CONSTR}{\keywd{C}}
 \newcommand{\A}{\keywd{A}}
+\newcommand{\casetag}[3]{\; \gramwd{caseTag}\;#1\;\gramwd{of}\;(#2 \rightarrow #3)\;}
 
 \begin{document}
 \maketitle
 
-\section{Grammar from paper (first order)}
+%% \section{Grammar from paper (first order)}
 
+%% \begin{displaymath}
+%%     \DC \in \; \textup{Data Constructors}, \:\: \TC \in \; \textup{Type Constructors}, \:\: \var \in \; \textup{Variables}
+%% \end{displaymath} 
+%% \begin{displaymath}
+%%     \begin{aligned}
+%%       \textup{Program} && \PROG && \gramdef & \DD_1 \ldots \DD_n \; ; 
+%%                           \VD_1 \ldots \VD_m \; ; \FD_1 \ldots \FD_m \; ; \EXPR \\
+%%       \textup{Packed Data Declarations} && \DD && \gramdef & \DATA \TC = \overline{[\DC \; \overline{\sTYP}\;]} \\
+%%       \textup{Value Declarations}    && \VD && \gramdef & \var : \TYP  ; \var = \EXPR \\ 
+%%       \textup{Function Declarations} && \FD && \gramdef & \fvar : \TYP ; \fvar(\var) = \EXPR \\ 
+%%       \textup{Expressions} && \EXPR && \gramdef & \var \gramor \num \gramor \gramwd{True} \gramor \gramwd{False}
+%%                                   \gramor \primexpr{\overline{\sEXPR}} \gramor 
+%%        \app{f}{\sEXPR} \\
+%%       && && \gramor & 
+%%       %    \pair{\sEXPR}{\sEXPR} \gramor \fst{e} \gramor \snd{e}
+%%       \;(e_1,\, \dots\, , e_n)\; \gramor \EXPR.\num 
+%%       \gramor \letexpr{\var:\TYP}{\EXPR}{\EXPR} \\
+%%       && && \gramor & \case{\sEXPR}{\overline{[\bind{\DC \; \overline{\svar} \;}{\EXPR}]}} \gramor  \ife{\EXPR}{\EXPR}{\EXPR} \\
+%%       \textup{Types} && \TYP && \gramdef &
+%%       \TC \gramor \pairtype{\TYP}{\TYP} \gramor \TYP \ARROW \TYP
+%%       \gramor \gramwd{Int} \gramor \gramwd{Bool} \gramor \dots
+%%       \\
+%%       %% && && \gramor & \NEEDS{[\overline{\sTYP}]}{\sTYP} \gramor \HAS{\sTYP} \\
+%%       \textup{Prim Ops} && \PRIM && \gramdef & + \gramor - \gramor * \gramor \ldots \\
+%%     \end{aligned}
+%% \end{displaymath}
+
+\section{Region+Location Calculus}
 \begin{displaymath}
     \DC \in \; \textup{Data Constructors}, \:\: \TC \in \; \textup{Type Constructors}, \:\: \var \in \; \textup{Variables}
 \end{displaymath} 
-\begin{displaymath}
-    \begin{aligned}
-      \textup{Program} && \PROG && \gramdef & \DD_1 \ldots \DD_n \; ; 
-                          \VD_1 \ldots \VD_m \; ; \FD_1 \ldots \FD_m \; ; \EXPR \\
-      \textup{Packed Data Declarations} && \DD && \gramdef & \DATA \TC = \overline{[\DC \; \overline{\sTYP}\;]} \\
-      \textup{Value Declarations}    && \VD && \gramdef & \var : \TYP  ; \var = \EXPR \\ 
-      \textup{Function Declarations} && \FD && \gramdef & \fvar : \TYP ; \fvar(\var) = \EXPR \\ 
-      \textup{Expressions} && \EXPR && \gramdef & \var \gramor \num \gramor \gramwd{True} \gramor \gramwd{False}
-                                  \gramor \primexpr{\overline{\sEXPR}} \gramor 
-       \app{f}{\sEXPR} \\
-      && && \gramor & 
-      %    \pair{\sEXPR}{\sEXPR} \gramor \fst{e} \gramor \snd{e}
-      \;(e_1,\, \dots\, , e_n)\; \gramor \EXPR.\num 
-      \gramor \letexpr{\var:\TYP}{\EXPR}{\EXPR} \\
-      && && \gramor & \case{\sEXPR}{\overline{[\bind{\DC \; \overline{\svar} \;}{\EXPR}]}} \gramor  \ife{\EXPR}{\EXPR}{\EXPR} \\
-      \textup{Types} && \TYP && \gramdef &
-      \TC \gramor \pairtype{\TYP}{\TYP} \gramor \TYP \ARROW \TYP
-      \gramor \gramwd{Int} \gramor \gramwd{Bool} \gramor \dots
-      \\
-      %% && && \gramor & \NEEDS{[\overline{\sTYP}]}{\sTYP} \gramor \HAS{\sTYP} \\
-      \textup{Prim Ops} && \PRIM && \gramdef & + \gramor - \gramor * \gramor \ldots \\
-    \end{aligned}
-\end{displaymath}
-
-\section{Region+Location Calculus}
-
 \begin{displaymath}
   \begin{aligned}
       \textup{Program} && \PROG && \gramdef & \DD_1 \ldots \DD_n \; ; 
@@ -127,12 +130,12 @@
       \textup{Function Declarations} && \FD && \gramdef & \fvar : \STYP ; \fvar(\overline{\var}) = \EXPR \\
       \textup{Primitives} && \PRIM && \gramdef & + \gramor - \gramor * \gramor \ldots \\
       \textup{Expressions} && \EXPR && \gramdef & \var \gramor \num \gramor \gramwd{True} \gramor \gramwd{False} \gramor
-            \primexpr{\overline{\sEXPR}} \gramor \mapp{f}{\overline{l}}{\overline{e}} \\
-      && && \gramor & \anonfun{\overline{x : \TYP}}{e} \gramor \letlexpr{\overline{\LOC}}{\var:\TYP}{\EXPR}{\EXPR} \\
+            \primexpr{\overline{\sEXPR}} \gramor \mapp{\fvar}{\overline{\LOC}}{\overline{\EXPR}} \\
+      && && \gramor & \anonfun{\overline{\var : \TYP}}{\EXPR} \gramor \letlexpr{\overline{\LOC}}{\var:\TYP}{\EXPR}{\EXPR} \\
       && && \gramor & \;(e_1,\, \dots\, , e_n)\; \gramor \project{\num}{\EXPR} \\
       && && \gramor & \return{\overline{\LOC}}{\EXPR} \gramor \ife{\EXPR}{\EXPR}{\EXPR} \\
       && && \gramor & \letregion{\REG}{\EXPR} \\
-      && && \gramor & \mkdata{\DC}{\atloc{\LOC}}{\overline{e}} \gramor \case{\sEXPR}{\overline{[\bind{\DC \; \overline{\svar} \;}{\EXPR}]}} \\
+      && && \gramor & \mkdata{\DC}{\atloc{\LOC}}{\overline{\EXPR}} \gramor \case{\sEXPR}{\overline{[\bind{\DC \; \overline{\svar} \;}{\EXPR}]}} \\
       \textup{Locations} && \LOC && \gramdef & \LOC_1 \gramor \LOC_2 \gramor \ldots \gramor \lstart{\REG} \\
       \textup{Type Schemas} && \STYP && \gramdef & \forall\;\overline{\LOC}\;.\;\overline{\TYP}\rightarrow\TYP \\
       \textup{Types} && \TYP && \gramdef & \TC_{\LOC} \gramor \pairtype{\TYP}{\TYP} \gramor \gramwd{Int} \gramor \gramwd{Bool} \\
@@ -142,5 +145,22 @@
 \end{displaymath}
 
 \section{Target Language}
+
+\begin{displaymath}
+  \begin{aligned}
+      \textup{Program} && \PROG && \gramdef & \FD_1 \ldots \FD_m \; ; \EXPR \\
+      \textup{Function Declarations} && \FD && \gramdef & \fvar(\overline{\var:\TYP}) : \TYP = \EXPR \\
+      \textup{Expressions} && \EXPR && \gramdef & \var \gramor \num \gramor \gramwd{Tag}\num \\
+      && && \gramor & \anonfun{\overline{var : \TYP}}{e} \gramor \fvar \EXPR \\
+      && && \gramor & \ife{\EXPR}{\EXPR}{\EXPR} \gramor \gramwd{True} \gramor \gramwd{False} \\
+      && && \gramor & \letexpr{\var:\TYP}{\EXPR}{\EXPR} \\
+      && && \gramor & \;(e_1,\, \dots\, , e_n)\; \gramor \project{\num}{\EXPR} \\
+      && && \gramor & \letregion{\REG}{\EXPR} \gramor \gramwd{startR}(\REG) \gramor \gramwd{startW}(\REG) \\
+      && && \gramor & \casetag{\EXPR}{\gramwd{Tag}\num \;\& \var}{\EXPR} \\
+      && && \gramor & \gramwd{readInt} \var \gramor \gramwd{writeInt} \var \EXPR \\
+      && && \gramor & \gramwd{readTag} \var \gramor \gramwd{writeTag} \var \EXPR \\
+      \textup{Types} && \TYP && \gramdef & \gramwd{Int} \gramor \gramwd{Tag} \gramor \gramwd{OutLoc} [\,\overline{\TYP}\,] \gramor \gramwd{InLoc} [\,\overline{\TYP}\,]
+  \end{aligned}
+\end{displaymath}
 
 \end{document}
