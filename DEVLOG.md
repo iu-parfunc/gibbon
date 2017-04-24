@@ -399,6 +399,7 @@ Constraints are stored separately, but typically we will generate
     Primitive := + | * | ...
 
     Expr e := x | N | lambda(x:T, ...) . e* | f [l*] e*
+            | return [l*] e
             | let [l*] x : T = e in e
             | (e,e*) | prj_i e 
             | letregion r in e
@@ -411,6 +412,9 @@ Constraints are stored separately, but typically we will generate
     Constraint C :=  l ==^r l + A
     ArithExpr A := N | { c | c >= N }
     Lits N := 0 | 1 | 2 ...
+
+Above the "return" form attaches the invisible return location values
+in tail position.
 
 Shorthands:
 
@@ -451,4 +455,36 @@ passed linearly.
 
 The above is an adaption of our current L2, and the below of our L3.  
 For readability, `Tag N` could just as well be `Tag STR`.
+
+
+#### Example add1 program:
+
+Here we write add1 which is annotated with locations, but where the
+locations are merely metadata, and don't affect the operational
+semantics of the program.
+
+This produces output `t2 @ lo_3` which is the same as `t2 @ start(p2)`.
+
+```sml
+letregion p1 in
+  let [li_1]      t1 = buildTree [startR(p1)] 10 in
+  let [li_2,lo_3] t2 = add1 [startR(p1), startW(p2)] t1
+  in return [] t2
+```
+
+If we run add1 twice, we can free/reuse the first buffer:
+
+```sml
+letregion p2 in
+  let [li_st4,li_en4] t3 =
+                 (letregion p1 in
+                   (let [li_1]      t1 = buildTree [startR(p1)] 10 in
+                    let [li_2,lo_3] t2 = add1 [startR(p1), startW(p2)] t1
+                    in return [startR(p1),li_2] t2))
+  in letregion p3 in
+     let [li_5,lo_6] t4 = add1 [li_st4, startW(p3)] t1 in
+     return [] t4
+```
+
+In this program, the storage from `p1` can be reused for `p3`.
 
