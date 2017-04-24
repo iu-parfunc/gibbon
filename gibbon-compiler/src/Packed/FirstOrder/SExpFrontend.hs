@@ -102,9 +102,10 @@ tagDataCons ddefs = go allCons
    allCons = S.fromList [ (toVar con)
                         | DDef{dataCons} <- M.elems ddefs
                         , (con,_tys) <- dataCons ]
-   go cons ex =
+   go cons (Exp' ex) = Exp' $ 
      case ex of
-       AppE v (MkProdE ls) | S.member v cons -> MkPackedE (fromVar v) (L.map (go cons) ls)
+       AppE v (Exp' (MkProdE ls))
+                | S.member v cons -> MkPackedE (fromVar v) (L.map (go cons) ls)
        AppE v e | S.member v cons -> MkPackedE (fromVar v) [go cons e]
                 | otherwise       -> AppE      v (go cons e)
        LetE (v,t,rhs) bod ->
@@ -135,7 +136,7 @@ parseSExp ses =
 
    -- WARNING: top-level constant definitions are INLINED everywhere.
    inlineConstDefs [] p = p
-   inlineConstDefs ((vr,ty,rhs) : cds) p =
+   inlineConstDefs ((vr,_ty,rhs) : cds) p =
        inlineConstDefs cds $
         mapExprs (subst vr rhs) p
 
@@ -199,7 +200,7 @@ tuplizeRefs :: Var -> [Var] -> Exp -> Exp
 tuplizeRefs tmp ls  = go (L.zip [0..] ls)
   where
    go []          e = e
-   go ((ix,v):vs) e = go vs (subst v (ProjE ix (VarE tmp)) e)
+   go ((ix,v):vs) e = go vs (subst v (Exp' (ProjE ix (Exp' (VarE tmp)))) e)
 
 typ :: RichSExpr HaskLikeAtom -> Ty
 typ s = case s of
@@ -232,10 +233,10 @@ pattern L4 a b c d   = RSList [A a, b, c, d]
 pattern L5 a b c d e = RSList [A a, b, c, d, e]
 
 trueE :: Exp
-trueE = PrimAppE MkTrue []
+trueE = Exp'$ PrimAppE MkTrue []
 
 falseE :: Exp
-falseE = PrimAppE MkFalse []
+falseE = Exp'$ PrimAppE MkFalse []
 
 -- FIXME: we cannot intern strings until runtime.
 hackySymbol :: String -> Int
@@ -259,84 +260,84 @@ exp se =
    A "False"         -> falseE
    L ("and" : args)  -> go args
      where go [] = trueE
-           go (x:xs) = IfE (exp x) (go xs) falseE
+           go (x:xs) = Exp'$ IfE (exp x) (go xs) falseE
    L ("or" : args)  -> go args
      where go [] = falseE
-           go (x:xs) = IfE (exp x) trueE (go xs)
+           go (x:xs) = Exp'$ IfE (exp x) trueE (go xs)
 
    L4 "if" test conseq altern ->
-     IfE (exp test) (exp conseq) (exp altern)
+     Exp'$ IfE (exp test) (exp conseq) (exp altern)
 
-   L2 "quote" (A v) -> LitSymE (textToVar v)
+   L2 "quote" (A v) -> Exp'$ LitSymE (textToVar v)
 
    -- Any other naked symbol is a variable:
-   A v -> VarE (textToVar v)
-   RSAtom (HSInt n)  -> LitE (fromIntegral n)
+   A v               -> Exp'$ VarE (textToVar v)
+   RSAtom (HSInt n)  -> Exp'$ LitE (fromIntegral n)
 
    -- | This type gets replaced later in flatten:
-   L2 "time" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) False)
+   L2 "time" arg -> (Exp'$ TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) False)
 
    -- | This variant inserts a loop, controlled by the iters argument on the command line.
-   L2 "iterate" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) True)
+   L2 "iterate" arg -> (Exp'$ TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) True)
 
    L3 "let" (L bnds) bod ->
      mkLets (L.map letbind bnds) (exp bod)
 
    L (A "case": scrut: cases) ->
-     CaseE (exp scrut) (L.map docase cases)
+     Exp'$ CaseE (exp scrut) (L.map docase cases)
 
-   L (A p : ls) | isPrim p -> PrimAppE (prim p) $ L.map exp ls
+   L (A p : ls) | isPrim p -> Exp'$ PrimAppE (prim p) $ L.map exp ls
 
    L3 "for/list" (L1 (L4 v ":" t e)) bod ->
-     S.MapE (textToVar v, typ t, exp e) (exp bod)
+     Exp'$ S.MapE (textToVar v, typ t, exp e) (exp bod)
 
    -- I don't see why we need the extra type annotation:
    L4 "for/fold"
           (L1 (L4 v1 ":" t1 e1))
           (L1 (L4 v2 ":" t2 e2))
           bod ->
-     S.FoldE (textToVar v1, typ t1, exp e1)
+     Exp'$ S.FoldE (textToVar v1, typ t1, exp e1)
              (textToVar v2, typ t2, exp e2)
              (exp bod)
 
-   L3 "vector-ref" evec (RSAtom (HSInt ind)) -> S.ProjE (fromIntegral ind) (exp evec)
-   L (A "vector" : es) -> S.MkProdE $ L.map exp es
+   L3 "vector-ref" evec (RSAtom (HSInt ind)) -> Exp'$ S.ProjE (fromIntegral ind) (exp evec)
+   L (A "vector" : es) -> Exp'$ S.MkProdE $ L.map exp es
 
    -- Dictionaries require type annotations for now.  No inference!
    L3 "ann" (L1 "empty-dict") (L2 "SymDict" ty) ->
-       PrimAppE (DictEmptyP $ typ ty) []
+       Exp'$ PrimAppE (DictEmptyP $ typ ty) []
 
    L4 "insert" d k (L3 "ann" v ty) ->
-       PrimAppE (DictInsertP $ typ ty) [(exp d),(exp k),(exp v)]
+       Exp'$ PrimAppE (DictInsertP $ typ ty) [(exp d),(exp k),(exp v)]
 
    L3 "ann" (L3 "lookup" d k) ty ->
-       PrimAppE (DictLookupP $ typ ty) [(exp d),(exp k)]
+       Exp'$ PrimAppE (DictLookupP $ typ ty) [(exp d),(exp k)]
 
-   L (A "gensym" : _) -> PrimAppE Gensym []
+   L (A "gensym" : _) -> Exp'$ PrimAppE Gensym []
 
    L3 "ann" (L3 "has-key?" d k) ty ->
-     PrimAppE (DictHasKeyP $ typ ty) [(exp d),(exp k)]
+     Exp'$ PrimAppE (DictHasKeyP $ typ ty) [(exp d),(exp k)]
 
    -- L [A "error",arg] ->
    L3 "ann" (L2 "error" arg) ty ->
       case arg of
-        RSAtom (HSString str) -> PrimAppE (ErrorP (T.unpack str) (typ ty)) []
+        RSAtom (HSString str) -> Exp'$ PrimAppE (ErrorP (T.unpack str) (typ ty)) []
         _ -> error$ "bad argument to 'error' primitive: "++prnt arg
 
    -- Other annotations are dropped:
    L3 "ann" e _ty -> exp e
 
-   L (A kwd : args) | isKeyword kwd ->
+   L (A kwd : _args) | isKeyword kwd ->
       error $ "Error reading treelang.  Badly formed expression:\n "++prnt se
 
    ----------------------------------------
    -- If NOTHING else matches, we are an application.  Be careful we didn't miss anything:
    L (A rator : rands) ->
-     let app = AppE (textToVar rator)
+     let app = Exp' . AppE (textToVar rator)
      in case rands of
-         [] -> app (MkProdE [])
+         [] -> app (Exp'$ MkProdE [])
          [rand] -> app (exp rand)
-         _ -> app (MkProdE (L.map exp rands))
+         _ -> app (Exp'$ MkProdE (L.map exp rands))
 
    _ -> error $ "Expression form not handled (yet):\n  "++
                sdoc se ++ "\nMore concisely:\n  "++ prnt se
