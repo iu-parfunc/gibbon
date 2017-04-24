@@ -21,20 +21,21 @@ import qualified Packed.FirstOrder.Common as C
 -- import Packed.FirstOrder.L1_Source (Exp (..))
 import qualified Packed.FirstOrder.L1_Source as L1
 import           Packed.FirstOrder.L2_Traverse as L2
-import           Packed.FirstOrder.Passes.InferEffects
-import           Packed.FirstOrder.Passes.CopyInsertion
-import           Packed.FirstOrder.Passes.Cursorize
+-- import           Packed.FirstOrder.Passes.InferEffects  -- UNDER_CONSTRUCTION.
+-- import           Packed.FirstOrder.Passes.CopyInsertion
+-- import           Packed.FirstOrder.Passes.Cursorize
+-- import           Packed.FirstOrder.Passes.Codegen
 import           Packed.FirstOrder.L3_Target hiding (Prog (..), Ty (..))
 import qualified Packed.FirstOrder.L3_Target as T
 import qualified Packed.FirstOrder.TargetInterp as TI
-import           Packed.FirstOrder.Passes.Codegen
+
 
 main :: IO ()
 main = $(defaultMainGenerator)
 
 -- Unit test the L2_Traverse.hs functions:
 --------------------------------------------------------------------------------
-
+{- -- UNDER_CONSTRUCTION.
 t0 :: Set Effect -> Set Effect
 t0 eff = arrEffs $ fst $ runSyM 0 $
      inferFunDef (M.empty,
@@ -44,12 +45,12 @@ t0 eff = arrEffs $ fst $ runSyM 0 $
                   (C.FunDef (toVar "foo") (toVar "x", L1.Packed "K") (L1.Packed "K")
                    (L1.AppE (toVar "foo") (L1.VarE (toVar "x"))))
 
-case_t0 :: Assertion
-case_t0 = assertEqual "infinite loop traverses anything"
+_case_t0 :: Assertion
+_case_t0 = assertEqual "infinite loop traverses anything"
                      (S.fromList [Traverse (toVar "p")]) (t0 (S.singleton (Traverse (toVar "p"))))
 
-case_t0b :: Assertion
-case_t0b = assertEqual "infinite loop cannot bootstrap with bad initial effect set"
+_case_t0b :: Assertion
+_case_t0b = assertEqual "infinite loop cannot bootstrap with bad initial effect set"
                      S.empty (t0 S.empty)
 
 
@@ -68,8 +69,8 @@ t1 = arrEffs $ fst $ runSyM 0 $
                      L1.LitE 33
                   )
 
-case_t1 :: Assertion
-case_t1 = assertEqual "traverse input via another call"
+_case_t1 :: Assertion
+_case_t1 = assertEqual "traverse input via another call"
           (S.fromList [Traverse (toVar "a")]) t1
 
 type FunEnv = M.Map Var (L2.ArrowTy Ty)
@@ -88,23 +89,23 @@ t2 = arrEffs $ fst $ runSyM 0 $
                       [ ("True",[],LitE 3)
                       , ("False",[],LitE 3) ])
 
-case_t2 :: Assertion
-case_t2 = assertEqual "Traverse a Bool with case"
+_case_t2 :: Assertion
+_case_t2 = assertEqual "Traverse a Bool with case"
             (S.fromList [Traverse (toVar "p")]) t2
 
 t2b :: (Set Effect)
 t2b = arrEffs $ fst $ runSyM 0 $
      inferFunDef t2env (fooBoolInt $ LitE 33)
 
-case_t2b :: Assertion
-case_t2b = assertEqual "No traverse from a lit" S.empty t2b
+_case_t2b :: Assertion
+_case_t2b = assertEqual "No traverse from a lit" S.empty t2b
 
 t2c :: (Set Effect)
 t2c = arrEffs $ fst $ runSyM 0 $
      inferFunDef t2env (fooBoolInt $ VarE (toVar "x"))
 
-case_t2c :: Assertion
-case_t2c = assertEqual "No traverse from identity function" S.empty t2b
+_case_t2c :: Assertion
+_case_t2c = assertEqual "No traverse from identity function" S.empty t2b
 
 
 t3 :: Exp -> Set Effect
@@ -116,23 +117,23 @@ t3 bod = arrEffs $ fst $ runSyM 0 $
                   (C.FunDef (toVar "foo") ((toVar "x"), L1.Packed "SillyTree") L1.IntTy
                     bod)
 
-case_t3a :: Assertion
-case_t3a = assertEqual "sillytree1" S.empty (t3 (LitE 33))
+_case_t3a :: Assertion
+_case_t3a = assertEqual "sillytree1" S.empty (t3 (LitE 33))
 
-case_t3b :: Assertion
-case_t3b = assertEqual "sillytree2" S.empty $ t3 $ VarE (toVar "x")
+_case_t3b :: Assertion
+_case_t3b = assertEqual "sillytree2" S.empty $ t3 $ VarE (toVar "x")
 
 
-case_t3c :: Assertion
-case_t3c = assertEqual "sillytree3: reference rightmost"
+_case_t3c :: Assertion
+_case_t3c = assertEqual "sillytree3: reference rightmost"
            (S.singleton (Traverse (toVar "p"))) $ t3 $
            L1.CaseE (VarE (toVar "x"))
             [ ("Leaf", [],     LitE 3)
             , ("Node", [(toVar "l"),(toVar "r")], VarE (toVar "r"))
             ]
 
-case_t3d :: Assertion
-case_t3d = assertEqual "sillytree3: reference leftmost"
+_case_t3d :: Assertion
+_case_t3d = assertEqual "sillytree3: reference leftmost"
            S.empty $ t3 $
            L1.CaseE (VarE (toVar "x"))
             [ ("Leaf", [],     LitE 3)
@@ -152,32 +153,32 @@ t4env = ( fromListDD [DDef (toVar "Tree")
                        (S.singleton (Traverse (toVar "p")))
                        IntTy)])
 
-case_t4a :: Assertion
-case_t4a = assertEqual "bintree1" S.empty (t4 (LitE 33))
+_case_t4a :: Assertion
+_case_t4a = assertEqual "bintree1" S.empty (t4 (LitE 33))
 
-case_t4b :: Assertion
-case_t4b = assertEqual "bintree2: matching is not enough for traversal"
+_case_t4b :: Assertion
+_case_t4b = assertEqual "bintree2: matching is not enough for traversal"
            S.empty $ t4 $
            L1.CaseE (VarE (toVar "x"))
             [ ("Leaf", [toVar "n"],     LitE 3)
             , ("Node", [toVar "l",toVar "r"], LitE 4)]
 
-case_t4c :: Assertion
-case_t4c = assertEqual "bintree2: referencing is not enough for traversal"
+_case_t4c :: Assertion
+_case_t4c = assertEqual "bintree2: referencing is not enough for traversal"
            S.empty $ t4 $
            L1.CaseE (VarE (toVar "x"))
             [ ("Leaf", [toVar "n"],     LitE 3)
             , ("Node", [toVar "l",toVar "r"], VarE (toVar "r"))]
 
-case_t4d :: Assertion
-case_t4d = assertEqual "bintree2: recurring left is not enough"
+_case_t4d :: Assertion
+_case_t4d = assertEqual "bintree2: recurring left is not enough"
            S.empty $ t4 $
            L1.CaseE (VarE (toVar "x"))
             [ ("Leaf", [toVar "n"],     LitE 3)
             , ("Node", [toVar "l",toVar "r"], AppE (toVar "foo") (VarE (toVar "l")))]
 
-case_t4e :: Assertion
-case_t4e = assertEqual "bintree2: recurring on the right IS enough"
+_case_t4e :: Assertion
+_case_t4e = assertEqual "bintree2: recurring on the right IS enough"
            (S.singleton (Traverse (toVar "p"))) $ t4 $
            trav_right_bod
 
@@ -197,15 +198,15 @@ t4_prog = L1.Prog (fst t4env)
 t4p :: Prog
 t4p = fst $ runSyM 0 $ inferEffects t4_prog
 
-case_t4p :: Assertion
-case_t4p =
+_case_t4p :: Assertion
+_case_t4p =
     assertEqual "Infer the effects for an entire tree-traversal prog:"
       (S.singleton (Traverse (toVar "a")))
       (let FunDef _ (ArrowTy _ efs _) _ _ = fundefs t4p M.! (toVar "foo")
        in efs)
 
-case_t4p2 :: Assertion
-case_t4p2 =
+_case_t4p2 :: Assertion
+_case_t4p2 =
     assertEqual "A program which needs more than one fix-point iteration."
       (S.empty)
       (let prg = fst $ runSyM 0 $ inferEffects
@@ -235,8 +236,8 @@ copy = fst $ runSyM 0 $ inferEffects
                         )] ])
       Nothing)
 
-case_copy :: Assertion
-case_copy =
+_case_copy :: Assertion
+_case_copy =
      assertEqual "A program which needs more than one fix-point iteration."
       (S.singleton (Traverse (toVar "a")))
       (let prg = copy
@@ -246,7 +247,7 @@ case_copy =
 -- t5 :: Prog
 -- t5 = fst $ runSyM 1000 $
 --      cursorize copy
-
+-}
 --------------------------------------------------------------------------------
 -- add1 example encoded as AST by hand
 
@@ -312,6 +313,7 @@ _case_interp_add1 =
        -- FIXME: assert correct val.
        return ()
 
+{- UNDER_CONSTRUCTION.
 _case_add1 :: Assertion
 _case_add1 =
     bracket (openFile file WriteMode)
@@ -341,6 +343,7 @@ _case_add1 =
                  (readCreateProcess (shell (valgrind++"./add1.exe 10 10")) "")
 
       return ()
+-}
 
 -- Tests for copy-insertion
 
@@ -368,8 +371,9 @@ t5p = Prog {ddefs = M.fromList [(toVar "Expr",
                              PackedTy "Foo" ())
            }
 
-case_t5p1 :: Assertion
-case_t5p1 = assertEqual "Generate copy function for a simple DDef"
+{- -- UNDER_CONSTRUCTION.
+_case_t5p1 :: Assertion
+_case_t5p1 = assertEqual "Generate copy function for a simple DDef"
             ( toVar "copyExpr"
             , L1.FunDef {L1.funName = toVar "copyExpr",
                       L1.funArg = (toVar "arg0",PackedTy "Expr" ()),
@@ -385,8 +389,8 @@ case_t5p1 = assertEqual "Generate copy function for a simple DDef"
   where ddef = (ddefs t5p) M.! (toVar "Expr")
 
 
-case_t5p2 :: Assertion
-case_t5p2 = assertEqual "Generate copy function for a DDef containing recursively packed data"
+_case_t5p2 :: Assertion
+_case_t5p2 = assertEqual "Generate copy function for a DDef containing recursively packed data"
             ( toVar "copyFoo"
             , L1.FunDef {L1.funName = toVar "copyFoo",
                          L1.funArg = (toVar "arg0",PackedTy "Foo" ()),
@@ -401,3 +405,4 @@ case_t5p2 = assertEqual "Generate copy function for a DDef containing recursivel
                             (MkPackedE "B" [VarE (toVar "y6")]))]})
             (fst $ runSyM 0 $ genCopyFn ddef)
   where ddef = (ddefs t5p) M.! (toVar "Foo")
+-}
