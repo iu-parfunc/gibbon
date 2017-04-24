@@ -19,13 +19,13 @@ genLocVar s = gensym (toVar ("l"++s))
 
 -- | Rename all local variables.  Rename all dummy locations.
 freshNames :: L1.Prog -> SyM L1.Prog
-freshNames (L1.Prog defs funs main) =
+freshNames (L1.Prog defs funs main cstrs) =
     do main' <- case main of
                   Nothing -> return Nothing
                   Just (E1 m) -> do m' <- freshExp [] m
                                     return $ Just m'
        funs' <- freshFuns funs
-       return $ L1.Prog defs funs' main'
+       return $ L1.Prog defs funs' main' cstrs
     where freshFuns m = M.fromList <$> mapM freshFun (M.toList m)
           freshFun (nam, FunDef _ (narg,targ) ty (E1 bod)) =
               do narg' <- gensym narg

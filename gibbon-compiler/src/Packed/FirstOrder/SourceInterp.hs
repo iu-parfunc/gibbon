@@ -408,7 +408,7 @@ lookup3 k ls = go ls
 
 p1 :: Prog
 p1 = Prog emptyDD  M.empty
-          (Just (E1$ LetE ("x", [], IntTy, E1$ LitE 3) (E1$VarE (toVar "x"))))
+          (Just (E1$ LetE ("x", [], IntTy, E1$ LitE 3) (E1$VarE (toVar "x")))) []
          -- IntTy
 
 main :: IO ()

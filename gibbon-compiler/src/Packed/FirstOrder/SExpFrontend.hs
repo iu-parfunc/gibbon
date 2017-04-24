@@ -146,7 +146,7 @@ parseSExp ses =
     case xs of
      [] -> return $
            inlineConstDefs cds $
-           Prog (fromListDD dds) (fromListFD fds) mn
+           Prog (fromListDD dds) (fromListFD fds) mn []
 
      -- IGNORED!:
      (L (A "provide":_) : rst) -> go rst dds fds cds mn

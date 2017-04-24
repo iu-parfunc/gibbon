@@ -58,8 +58,14 @@ import Control.DeepSeq (NFData)
 data Prog = Prog { ddefs    :: DDefs Ty
                  , fundefs  :: FunDefs Ty Exp
                  , mainExp  :: Maybe Exp
+                 , constraints :: [Constraint]
                  }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
+
+-- FIXME: Finish this and merge with L2.Constraint
+data Constraint = Constraint
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
+instance Out Constraint
 
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.
@@ -428,7 +434,7 @@ add1Prog :: Prog
 add1Prog = Prog (fromListDD [DDef (toVar "Tree") [ ("Leaf",[IntTy])
                                                  , ("Node",[Packed "Tree", Packed "Tree"])]])
                 (M.fromList [(toVar "add1",exadd1)])
-                Nothing
+                Nothing []
 
 exadd1 :: FunDef Ty Exp
 exadd1 = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy exadd1Bod

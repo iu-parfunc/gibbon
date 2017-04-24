@@ -53,7 +53,7 @@ desugarModule (H.Module _ _ _ _ _ _ decls) = do
         , M.delete (toVar "main") fun_map
         )
 
-    return (Prog data_map fun_map_no_main main_fn)
+    return (Prog data_map fun_map_no_main main_fn [])
 
 collectTopFunTy :: H.Decl -> Ds (Maybe (Var, TopTy))
 collectTopFunTy (TypeSig _ [n] ty) = Just <$> ((toVar . name_to_str) n ,) <$> desugarTopType ty
