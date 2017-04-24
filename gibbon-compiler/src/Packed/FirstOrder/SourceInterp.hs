@@ -410,3 +410,5 @@ p1 = Prog emptyDD  M.empty
 
 main :: IO ()
 main = execAndPrint (RunConfig 1 1 dbgLvl False) p1
+
+
