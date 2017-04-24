@@ -5,6 +5,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wall #-}
 
 -- | The source language for recursive tree traversals.
@@ -85,28 +86,41 @@ fromE1 (E1 e) = e
 -- well as packed algebraic datatypes.
 --
 -- It is parameterized by a decoration attached to every binder.
---
-data PreExp d (exp :: * -> *) = VarE Var
-         | LitE Int
-         | LitSymE Var
-         | AppE Var (exp d) -- Only apply top-level / first-order functions
-         | PrimAppE Prim [exp d]
-         | LetE (Var,d,(exp d)) (exp d)
-          -- ^ One binding at a time, but could bind a tuple for
-          -- mutual recursion.
-         | IfE (exp d) (exp d) (exp d)
-         | ProjE Int (exp d)
-         | MkProdE [exp d]
-         | CaseE (exp d) [(DataCon, [Var], (exp d))]
-           -- ^ Case on a PACKED datatype.
-         | MkPackedE DataCon [(exp d)]
-         | TimeIt (exp d) Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
+data PreExp d (exp :: * -> *) =
+     VarE Var              -- ^ Variable reference
+   | RetE [LocVar] (exp d) -- ^ Return a value together with extra loc values.
+   | LitE Int              -- ^ Numeric literal
+   | LitSymE Var           -- ^ A quoted symbol literal.
+   | AppE Var [LocVar] (exp d)
+     -- ^ Apply a top-level / first-order function.  Instantiate
+     -- its type schema by providing location-variable arguments.
+   | PrimAppE Prim [exp d]
+   | LetE (Var,[LocVar],d, exp d) -- binding
+          (exp d)                 -- body
+    -- ^ One binding at a time.  Allows binding a list of
+    -- implicit location return vales from the RHS, plus a single "real" value.
+   | IfE (exp d) (exp d) (exp d)
 
-           -- Limited list handling:
-         | MapE  (Var,Ty,(exp d)) (exp d)
-         | FoldE { initial  :: (Var,Ty,(exp d))
-                 , iterator :: (Var,Ty,(exp d))
-                 , body     :: (exp d) }
+   | MkProdE [exp d]     -- ^ Tuple construction
+   | ProjE Int (exp d)   -- ^ Tuple projection.
+
+   | CaseE (exp d) [(DataCon, [Var], exp d)]
+     -- ^ Case on a PACKED datatype.  We don't bind location
+     -- variables explicitly with (Var,LocVar) because we allow the lexical
+     -- variables to do double-duty as location variables.
+
+   | MkPackedE DataCon LocVar [exp d]
+     -- ^ Construct data with the first byte at the given abstract location.
+
+   | MkData DataCon [exp d]
+
+   | TimeIt (exp d) Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
+
+     -- Limited list handling:
+   | MapE  (Var,Ty, exp d) (exp d)
+   | FoldE { initial  :: (Var,Ty,exp d)
+           , iterator :: (Var,Ty,exp d)
+           , body     :: exp d }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 -- | Some of these primitives are (temporarily) tagged directly with
@@ -219,22 +233,22 @@ getFunTy fn Prog{fundefs} =
       Nothing -> error $ "getFunTy: L1 program does not contain binding for function: "++show fn
 
 -- | Free data variables.  Does not include function variables, which
--- currently occupy a different namespace.
+-- currently occupy a different namespace.  Does not include location/region variables.
 freeVars :: Exp -> S.Set Var
 freeVars (E1 ex) =
   case ex of
     VarE v -> S.singleton v
     LitE _ -> S.empty
     LitSymE _ -> S.empty
-    AppE _v e -> freeVars e  -- S.insert v (freeVars e)
+    AppE _v _ e -> freeVars e  -- S.insert v (freeVars e)
     PrimAppE _ ls -> S.unions (L.map freeVars ls)
-    LetE (v,_,rhs) bod -> freeVars rhs `S.union`
+    LetE (v,_,_,rhs) bod -> freeVars rhs `S.union`
                           S.delete v (freeVars bod)
     ProjE _ e -> freeVars e
     CaseE e ls -> S.union (freeVars e)
                   (S.unions $ L.map (\(_, _, ee) -> freeVars ee) ls)
     MkProdE ls     -> S.unions $ L.map freeVars ls
-    MkPackedE _ ls -> S.unions $ L.map freeVars ls
+    MkPackedE _ _ ls -> S.unions $ L.map freeVars ls
     TimeIt e _ _ -> freeVars e
     IfE a b c -> freeVars a `S.union` freeVars b `S.union` freeVars c
     MapE (v,_t,rhs) bod -> freeVars rhs `S.union`
@@ -252,10 +266,10 @@ subst old (E1 new) (E1 ex) = E1 $
            | otherwise -> VarE v
     LitE _          -> ex
     LitSymE _       -> ex
-    AppE v e        -> AppE v (go e)
+    AppE v l e        -> AppE v l (go e)
     PrimAppE p ls   -> PrimAppE p $ L.map go ls
-    LetE (v,t,rhs) bod | v == old  -> LetE (v,t,go rhs) bod
-                       | otherwise -> LetE (v,t,go rhs) (go bod)
+    LetE (v,l,t,rhs) bod | v == old  -> LetE (v,l,t,go rhs) bod
+                         | otherwise -> LetE (v,l,t,go rhs) (go bod)
 
     ProjE i e  -> ProjE i (go e)
     CaseE e ls -> -- CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
@@ -264,7 +278,7 @@ subst old (E1 new) (E1 ex) = E1 $
                                           then (c,vs,er)
                                           else (c,vs,go er)
     MkProdE ls     -> MkProdE $ L.map go ls
-    MkPackedE k ls -> MkPackedE k $ L.map go ls
+    MkPackedE k l ls -> MkPackedE k l $ L.map go ls
     TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE (go a) (go b) (go c)
     MapE (v,t,rhs) bod | v == old  -> MapE (v,t, rhs)    (go bod)
@@ -275,7 +289,7 @@ subst old (E1 new) (E1 ex) = E1 $
         in FoldE (v1,t1,r1') (v2,t2,r2') (go bod)
 
 -- | Expensive subst that looks for a whole matching sub-EXPRESSION.
---   If the old expression is a variable, this still avoids going under binder.s
+--   If the old expression is a variable, this still avoids going under binder.
 substE :: Exp -> Exp -> Exp -> Exp
 substE (E1 old) (E1 new) (E1 ex) = E1 $
   let go = substE (E1 old) (E1 new) in
@@ -284,15 +298,15 @@ substE (E1 old) (E1 new) (E1 ex) = E1 $
     VarE v          -> VarE v
     LitE _          -> ex
     LitSymE _       -> ex
-    AppE v e        -> AppE v (go e)
+    AppE v l e        -> AppE v l (go e)
     PrimAppE p ls   -> PrimAppE p $ L.map go ls
-    LetE (v,t,rhs) bod | (VarE v) == old  -> LetE (v,t,go rhs) bod
-                       | otherwise -> LetE (v,t,go rhs) (go bod)
+    LetE (v,l,t,rhs) bod | (VarE v) == old  -> LetE (v,l,t,go rhs) bod
+                         | otherwise -> LetE (v,l,t,go rhs) (go bod)
 
     ProjE i e  -> ProjE i (go e)
     CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
     MkProdE ls     -> MkProdE $ L.map go ls
-    MkPackedE k ls -> MkPackedE k $ L.map go ls
+    MkPackedE k l ls -> MkPackedE k l $ L.map go ls
     TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE (go a) (go b) (go c)
     MapE (v,t,rhs) bod | VarE v == old  -> MapE (v,t, rhs)    (go bod)
@@ -356,19 +370,19 @@ isTriv (E1 e) =
 hasTimeIt :: Exp -> Bool
 hasTimeIt (E1 rhs) =
     case rhs of
-      TimeIt _ _ _ -> True
-      MkPackedE _ _ -> False
+      TimeIt _ _ _  -> True
+      MkPackedE{}   -> False
       VarE _        -> False
       LitE _        -> False
       LitSymE _     -> False
-      AppE _ _      -> False
+      AppE _ _ _    -> False
       PrimAppE _ _ -> False
       ProjE _ e    -> hasTimeIt e
       MkProdE ls   -> any hasTimeIt ls
       IfE a b c -> hasTimeIt a || hasTimeIt b || hasTimeIt c
       CaseE _ ls -> any hasTimeIt [ e | (_,_,e) <- ls ]
-      LetE (_,_,e1) e2 -> hasTimeIt e1 || hasTimeIt e2
-      MapE (_,_,e1) e2 -> hasTimeIt e1 || hasTimeIt e2
+      LetE (_,_,_,e1) e2 -> hasTimeIt e1 || hasTimeIt e2
+      MapE (_,_,e1) e2   -> hasTimeIt e1 || hasTimeIt e2
       FoldE (_,_,e1) (_,_,e2) e3 -> hasTimeIt e1 || hasTimeIt e2 || hasTimeIt e3
 
 -- | Project something which had better not be the first thing in a tuple.
@@ -393,7 +407,7 @@ mkProdTy [t] = t
 mkProdTy ls = ProdTy ls
 
 -- | Make a nested series of lets.
-mkLets :: [(Var,Ty,Exp)] -> Exp -> Exp
+mkLets :: [(Var,[LocVar],Ty,Exp)] -> Exp -> Exp
 mkLets [] bod = bod
 mkLets (b:bs) bod = E1 $ LetE b (mkLets bs bod)
 
@@ -417,7 +431,7 @@ exadd1Bod :: Exp
 exadd1Bod = E1 $
     CaseE (E1 $ VarE (toVar "tr")) $
       [ ("Leaf", [toVar "n"], E1 $ PrimAppE AddP [E1 $ VarE (toVar "n"), E1$ LitE 1])
-      , ("Node", [toVar "x",toVar "y"], E1 $ MkPackedE "Node"
-                             [ E1 $ AppE (toVar "add1") (E1$ VarE $ toVar "x")
-                             , E1 $ AppE (toVar "add1") (E1$ VarE $ toVar "y")])
+      , ("Node", [toVar "x",toVar "y"], E1 $ MkPackedE "Node" (Var "l0")
+                             [ E1 $ AppE (toVar "add1") [] (E1$ VarE $ toVar "x")
+                             , E1 $ AppE (toVar "add1") [] (E1$ VarE $ toVar "y")])
       ]
