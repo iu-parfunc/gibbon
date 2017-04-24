@@ -13,7 +13,7 @@
 module Packed.FirstOrder.L1_Source
     (
      -- * Core types
-      Prog(..), DDef(..), FunDefs, FunDef(..), Exp(..), progToEnv
+      Prog(..), DDef(..), FunDefs, FunDef(..), Exp, PreExp(..), progToEnv
 
       -- * Primitive operations
     , Prim(..), primArgsTy
@@ -65,29 +65,33 @@ progToEnv Prog{fundefs} =
                      | FunDef n (_,a) b _ <- M.elems fundefs ])
 
 
+type Exp = PreExp Ty
+         
 -- | The source language.  It has pointer based sums and products, as
 -- well as packed algebraic datatypes.
-data Exp = VarE Var
+--
+-- It is parameterized by a decoration attached to every binder.
+data PreExp d = VarE Var
          | LitE Int
          | LitSymE Var
-         | AppE Var Exp -- Only apply top-level / first-order functions
-         | PrimAppE Prim [Exp]
-         | LetE (Var,Ty,Exp) Exp
+         | AppE Var (PreExp d) -- Only apply top-level / first-order functions
+         | PrimAppE Prim [(PreExp d)]
+         | LetE (Var,d,(PreExp d)) (PreExp d)
           -- ^ One binding at a time, but could bind a tuple for
           -- mutual recursion.
-         | IfE Exp Exp Exp
-         | ProjE Int Exp
-         | MkProdE [Exp]
-         | CaseE Exp [(DataCon, [Var], Exp)]
+         | IfE (PreExp d) (PreExp d) (PreExp d)
+         | ProjE Int (PreExp d)
+         | MkProdE [(PreExp d)]
+         | CaseE (PreExp d) [(DataCon, [Var], (PreExp d))]
            -- ^ Case on a PACKED datatype.
-         | MkPackedE DataCon [Exp]
-         | TimeIt Exp Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
+         | MkPackedE DataCon [(PreExp d)]
+         | TimeIt (PreExp d) Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
 
            -- Limited list handling:
-         | MapE  (Var,Ty,Exp) Exp
-         | FoldE { initial  :: (Var,Ty,Exp)
-                 , iterator :: (Var,Ty,Exp)
-                 , body     :: Exp }
+         | MapE  (Var,Ty,(PreExp d)) (PreExp d)
+         | FoldE { initial  :: (Var,Ty,(PreExp d))
+                 , iterator :: (Var,Ty,(PreExp d))
+                 , body     :: (PreExp d) }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 -- | Some of these primitives are (temporarily) tagged directly with
@@ -127,7 +131,7 @@ instance Out a => Out (Ty1 a)
 -- Do this manually to get prettier formatting:
 -- instance Out Ty where  doc x = __
 
-instance Out Exp
+instance Out d => Out (PreExp d)
 instance Out Prog
 
 -- type TEnv = Map Var Ty
