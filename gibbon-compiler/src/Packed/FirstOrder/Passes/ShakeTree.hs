@@ -6,18 +6,17 @@
 module Packed.FirstOrder.Passes.ShakeTree
     (shakeTree) where
 
-import qualified Data.Map as M    
-import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc)
+import qualified Data.Map as M
+import Packed.FirstOrder.Common (SyM, dbgTrace)
 import qualified Packed.FirstOrder.L1_Source as L1
 import Packed.FirstOrder.L2_Traverse as L2
-import Packed.FirstOrder.Passes.Cursorize
 import Prelude hiding (exp)
 import qualified Data.Set as S
 
--- | Drop all unreferenced let-bindings.    
+-- | Drop all unreferenced let-bindings.
 shakeTree :: L2.Prog -> SyM L2.Prog
 shakeTree prg@L2.Prog{fundefs,mainExp} = return $
-  prg { fundefs = M.map fd fundefs 
+  prg { fundefs = M.map fd fundefs
       , mainExp = case mainExp of
                     Nothing      -> Nothing
                     (Just (e,t)) -> Just (shakeTreeExp e, t)
@@ -27,7 +26,7 @@ shakeTree prg@L2.Prog{fundefs,mainExp} = return $
 
 shakeTreeExp :: L1.Exp -> L1.Exp
 shakeTreeExp = go
-  where 
+  where
 
   go :: L1.Exp -> L1.Exp
   go e0 =
@@ -43,7 +42,7 @@ shakeTreeExp = go
         else dbgTrace 4 (" [shakeTreeExp] dropping binding: "++show (v,t,rhs))$
              bod'
 
-    (VarE v)           -> VarE v 
+    (VarE v)           -> VarE v
     (LitE i)           -> LitE i
     (LitSymE v)        -> LitSymE v
     (AppE f e)         -> AppE f $ go e
@@ -77,24 +76,26 @@ hasEffect rhs =
       MkPackedE _ _ -> True
       WriteInt _ _  -> True
       -- Reads are covered by dataflow...
-      -- AppE _ _      
+      -- AppE _ _
       VarE _ -> False
-      LitE _ -> False 
+      LitE _ -> False
+      LitSymE _ -> False
 
       -- These might have effects on output cursors, but the output cursors aren't used
       -- again!  We need to tie the not in dataflow dependencies, making the start (value)
       -- depend on the end (final cursor).
       AppE _ _ -> True  -- For now, don't drop.
-      PrimAppE _ _ -> False -- No prims have effects.      
+      PrimAppE _ _ -> False -- No prims have effects.
       ProjE _ e    -> hasEffect e      -- Flattening should make this equivalent to "False"
       MkProdE ls   -> any hasEffect ls -- Flattening should make this equivalent to "False"
-                        
+
       IfE a b c -> hasEffect a || hasEffect b || hasEffect c
       CaseE _ _ -> True -- Umm, just don't drop for now. FIXME/ REVISIT THIS!
 
       TimeIt{} -> True -- Yes, has effect of printing!
 
       LetE (_,_,e1) e2 -> hasEffect e1 || hasEffect e2
-                    
+      MapE _ _ -> error "hasEffect: FIXME MapE"
+      FoldE _ _ _ -> error "hasEffect: FIXME FoldE"
+
       -- oth -> error $" [shakeTrees] unexpected RHS on Let:\n "++sdoc rhs
-               

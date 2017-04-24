@@ -601,6 +601,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       -- Here the allocation has already been performed:
       -- Our variable in the lexical environment is bound to the start only, not (st,en).
       -- To follow the calling convention, we are reponsible for tagging on the end here:
+      LitSymE _ -> error$ "cursorDirect/exp2: Should not encounter LitSymE in packed context: "++show ex0
       VarE v -> -- ASSERT: isPacked
           return $ mkDi (VarE (binderWitness v)) [ VarE (toEndVar v) ] -- FindEndOf v
       LitE _ -> error$ "cursorDirect/exp2: Should not encounter Lit in packed context: "++show ex0
@@ -633,7 +634,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                        LetE (d', CursorTy (), projEnds (Di (VarE dila)) ) <$>
                         (go2 d' rst)
 
-                 go2 _d ((rnd,unhandled):_rst) =
+                 go2 _d ((_,unhandled):_rst) =
                    error $ "Cursorize: support unhandled field type: "++show unhandled
 
              in go2 dest' (zip ls (lookupDataCon ddefs k))
@@ -845,7 +846,7 @@ carVal  = mkProjE 0
 
 -- And then, once this is working, move it over to Common and use it in RouteEnds as well.
 
-type AugArgs = Exp
+-- type AugArgs = Exp
 type AugRet  = Exp
 
 
@@ -1074,6 +1075,7 @@ allocFree ex =
  case ex of
    (VarE _x)         -> True
    (LitE _x)         -> True
+   (LitSymE _)       -> True
 
    -- The one primitive that allocates packed data!
    (PrimAppE (L1.ReadPackedFile{}) _x2) -> False
@@ -1100,6 +1102,7 @@ isWitnessExpr = go
   go ex =
    case ex of
    (VarE _x)         -> True
+   (LitSymE _)       -> True
    (LitE _x)         -> True
 
    (AddCursor _ _)   -> True -- ^ For adding offsets.

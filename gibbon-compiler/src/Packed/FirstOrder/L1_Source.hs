@@ -334,9 +334,11 @@ primArgsTy p =
     MkFalse -> []
     MkNullCursor -> []
     SizeParam    -> []
+    Gensym -> []
     DictEmptyP _ty -> []
     DictInsertP _ty -> error "primArgsTy: dicts not handled yet"
     DictLookupP _ty -> error "primArgsTy: dicts not handled yet"
+    DictHasKeyP _ty -> error "primArgsTy: dicts not handled yet"
     ReadPackedFile{} -> []
     (ErrorP _ _) -> []
 

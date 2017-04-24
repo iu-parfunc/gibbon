@@ -77,8 +77,8 @@ typecheck strict cfg prg = runST $ do
 
 
 -- | Entrypoint for typechecking just an expression:
-typecheckExp :: DDefs L1.Ty -> L1.Exp -> L1.Ty
-typecheckExp =
+_typecheckExp :: DDefs L1.Ty -> L1.Exp -> L1.Ty
+_typecheckExp =
     -- Reusing code here is tricky... we could wrap it up in a dummy
     -- Prog, but that requires having a Main type already.
     error "typecheckExp FINISHME"
@@ -154,6 +154,12 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
                  L1.ErrorP _s t   -> return $ Concrete t
                  L1.DictEmptyP t  -> return $ Concrete $ SymDictTy t
 
+                 L1.DictHasKeyP t
+                   | [d,k] <- tes -> do assertEqTCVar ex0 (Concrete (SymDictTy t)) d
+                                        assertEqTCVar ex0 (Concrete SymTy) k
+                                        return $ Concrete BoolTy
+                   | otherwise -> failFresh$ "wrong number of arguments to DictLookupP: "++ndoc es
+
                  -- Only dict lookup on SYMBOL keys for now:
                  L1.DictLookupP t
                     | [d,k] <- tes -> do assertEqTCVar ex0 (Concrete (SymDictTy t)) d
@@ -170,6 +176,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
                  L1.SizeParam -> return $ Concrete IntTy
                  L1.MkTrue    -> return $ Concrete BoolTy
                  L1.MkFalse   -> return $ Concrete BoolTy
+                 L1.Gensym -> return $ Concrete SymTy
 
                  L1.MkNullCursor -> return $ Concrete (CursorTy ())
                  -- WARNING: tricky convention here.  We DONT update 'ty' to CursorTy, because we need to remember
@@ -323,6 +330,9 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
   assertEqTCVar e (Concrete t) (Alias a) = makeEqTCVar t a e
   assertEqTCVar e (Alias a) (Concrete t) = makeEqTCVar t a e
   assertEqTCVar e (Alias a1) (Alias a2) = makeEqAlias a1 a2 e
+  assertEqTCVar _ (Fun _ _) _ = error "assertEqTCVar: FIXME"
+  assertEqTCVar _ (Concrete _) (Fun _ _) = error "assertEqTCVar: FIXME"
+  assertEqTCVar _ (Alias _) (Fun _ _) = error "assertEqTCVar: FIXME"
 
 -- FIXME: finish fun type handling:
 --  assertEqTCVar e (Fun a b) (Fun c d) =
@@ -355,6 +365,7 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
            Left tcv -> extractTCVar tcv
            Right () -> do reportErr "Expression didn't have a type that I could figure out"
                           return Nothing
+  extractTCVar (Fun _ _) = error "extractTCVar: unexpected data: Fun"
 
 fst3 :: forall t t1 t2. (t, t1, t2) -> t
 fst3 (a,_,_) = a

@@ -16,14 +16,13 @@ module Packed.FirstOrder.Passes.Cursorize2
     ) where
 
 import Control.Monad
-import Control.Applicative
 import Control.DeepSeq
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
 import           Packed.FirstOrder.L1_Source (Ty1(..),pattern SymTy)
 import           Packed.FirstOrder.L2_Traverse
-    (argtyToLoc, Loc(..), ArrowTy(..), Effect(..), toEndVar,
+    (argtyToLoc, Loc(..), ArrowTy(..), toEndVar,
      FunDef(..), Prog(..), Exp(..))
 import Data.Maybe
 import Data.List as L hiding (tail)
@@ -58,7 +57,7 @@ type Env = M.Map Var (L1.Ty,L2.Loc)
 -- that are not (yet) bound in the `WitnessEnv`
 data WitnessEnv = WE { known :: M.Map LocVar L1.Exp
                      -- ^ Known open terms that witness locations.
-                     , open  :: M.Map LocVar Var
+                     , _open  :: M.Map LocVar Var
                      -- ^ "Holes" for unknown witnesses, and the
                      -- unbound variables that are expected to receive them.
                      }
@@ -70,9 +69,9 @@ instance Out WitnessEnv
 
 
 -- Injected cursor args go first in input and output:
-prependArgs :: [L2.Ty] -> L2.Ty -> L2.Ty
-prependArgs [] t = t
-prependArgs ls t = ProdTy $ ls ++ [t]
+_prependArgs :: [L2.Ty] -> L2.Ty -> L2.Ty
+_prependArgs [] t = t
+_prependArgs ls t = ProdTy $ ls ++ [t]
 
 -- | Combines cursorize 1 and 2.  Returns (arrow, newIn, newOut)
 cursorizeTy :: ArrowTy L2.Ty -> (ArrowTy L2.Ty, [LocVar], [LocVar])
@@ -81,19 +80,20 @@ cursorizeTy arr = (a2,b,c)
   (a1,c) = L2.cursorizeTy1 arr
   (a2,b) = L2.cursorizeTy2 a1
 
-mkArrowTy :: L2.Ty -> L2.Ty -> ArrowTy L2.Ty
-mkArrowTy x y = ArrowTy x S.empty y
+_mkArrowTy :: L2.Ty -> L2.Ty -> ArrowTy L2.Ty
+_mkArrowTy x y = ArrowTy x S.empty y
 
 -- | Replace all packed types with something else.
-replacePacked :: L2.Ty -> L2.Ty -> L2.Ty
-replacePacked (t2::L2.Ty) (t::L2.Ty) =
+_replacePacked :: L2.Ty -> L2.Ty -> L2.Ty
+_replacePacked (t2::L2.Ty) (t::L2.Ty) =
   case t of
     IntTy  -> IntTy
     BoolTy -> BoolTy
     SymTy  -> SymTy
-    (ProdTy x)    -> ProdTy $ L.map (replacePacked t2) x
-    (SymDictTy x) -> SymDictTy $ (replacePacked t2) x
+    (ProdTy x)    -> ProdTy $ L.map (_replacePacked t2) x
+    (SymDictTy x) -> SymDictTy $ (_replacePacked t2) x
     PackedTy{}    -> t2
+    ListTy _ -> error "_replacePacked: FINISHME lists"
 
 
 
@@ -112,11 +112,11 @@ witnessBinding vr loc = WE (M.fromList $ go loc (L1.VarE vr)) M.empty
 
 -- FIXME: We should be able to combine `Loc` and the annotated `Ty`
 -- data types....
-witnessTypedBinds :: [(Var,L2.Ty)] -> WitnessEnv
-witnessTypedBinds [] = emptyWEnv
-witnessTypedBinds ((vr,ty):rst) =
+_witnessTypedBinds :: [(Var,L2.Ty)] -> WitnessEnv
+_witnessTypedBinds [] = emptyWEnv
+_witnessTypedBinds ((vr,ty):rst) =
     witnessBinding vr (argtyToLoc (L2.mangle vr) ty)  `unionWEnv`
-    witnessTypedBinds rst
+    _witnessTypedBinds rst
 
 -- This is only used for primitives for now
 retTyToLoc :: L1.Ty -> Loc
@@ -156,8 +156,8 @@ addWitness locvar ls fn orig@WE{known} =
               Nothing -> do tmp <- gensym $ toVar "hl"
                             return (L1.VarE tmp, Just (lvr,tmp))
 
-extendEnv :: [(Var,(L1.Ty,Loc))] -> Env -> Env
-extendEnv ls e = (M.fromList ls) `M.union` e
+_extendEnv :: [(Var,(L1.Ty,Loc))] -> Env -> Env
+_extendEnv ls e = (M.fromList ls) `M.union` e
 
 
 --------------------------------------------------------------------------------
@@ -273,14 +273,14 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
              -- assert rty == tv
            then do bod' <- tail demanded (env',wenv) bod -- No new witnesses.
                    return $ L1.LetE (v, tv, rhs') bod'
-           else do tmp <- gensym $ toVar "tmp"
+           else do _tmp <- gensym $ toVar "tmp"
                    let go []       _  we = return we
                        go (lc:rst) ix we =
                         go rst (ix+1) =<<
                           let Just v = L2.getLocVar lc in
                           addWitness v [] (\[] -> L1.ProjE ix (L1.VarE (toVar "tmp"))) we
                    wenv' <- go new 0 wenv
-                   bod' <- tail demanded (env',wenv') bod -- No new witnesses.
+                   _bod' <- tail demanded (env',wenv') bod -- No new witnesses.
                    let ix = length new
                    return $ L1.LetE ((toVar "tmp"), rty, rhs') $
                             L1.LetE (v, tv, L1.projNonFirst ix (L1.VarE (toVar "tmp"))) $
@@ -424,8 +424,8 @@ meetDemand we@WE{known} vr =
 finishEXP :: L1.Exp
 finishEXP = (L1.VarE (toVar "FINISHME"))
 
-finishLOC :: Loc
-finishLOC = Fresh (toVar "FINISHME")
+_finishLOC :: Loc
+_finishLOC = Fresh (toVar "FINISHME")
 
-finishTYP :: L1.Ty
-finishTYP = L1.Packed "FINISHME"
+_finishTYP :: L1.Ty
+_finishTYP = L1.Packed "FINISHME"

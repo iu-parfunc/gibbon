@@ -27,7 +27,7 @@ import Prelude hiding (exp)
 -------------------------------------------------------------------------------
 
 -- | Flatten ensures that function operands are "trivial".
--- 
+--
 --   In the process, it also lifts lets out of case scrutinees, if
 --   conditions, and tuple operands.
 flatten :: L1.Prog -> SyM L1.Prog
@@ -130,6 +130,7 @@ _flattenExpOld :: DDefs L1.Ty -> Env2 L1.Ty -> L1.Exp -> SyM L1.Exp
 _flattenExpOld defs env2 = fExp (vEnv env2)
   where
     fExp :: M.Map Var L1.Ty -> L1.Exp -> SyM L1.Exp
+    fExp _env (LitSymE v) = return $ LitSymE v
     fExp _env (L1.VarE v) = return $ L1.VarE v
     fExp _env (L1.LitE i) = return $ L1.LitE i
     fExp _env (L1.AppE v (L1.VarE v')) = return $ L1.AppE v (L1.VarE v')
@@ -229,7 +230,7 @@ typeExp (_dd,_env2) env (L1.VarE v) =
 --  M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v env
 
 typeExp (_dd,_env2) _env (L1.LitE _i) = L1.IntTy
-typeExp _ env (L1.LitSymE _)          = L1.SymTy
+typeExp _ _ (L1.LitSymE _)          = L1.SymTy
 typeExp (_dd,env2) _env (L1.AppE v _e) = snd $ fEnv env2 # v
 
 typeExp (_,_) _env (L1.PrimAppE p _es) =
@@ -269,4 +270,4 @@ typeExp (dd,_) _env (L1.MkPackedE c _es) = L1.Packed (getTyOfDataCon dd c)
 typeExp (dd,env2) env (L1.TimeIt e _ _) = typeExp (dd,env2) env e
 typeExp (dd,env2) env (L1.MapE _ e)     = typeExp (dd,env2) env e
 typeExp (dd,env2) env (L1.FoldE _ _ e)  = typeExp (dd,env2) env e
-typeExp (dd,env2) env exp = error $ "typeExp: " ++ show exp ++ " not implemented"
+typeExp (_,_) _ exp = error $ "typeExp: " ++ show exp ++ " not implemented"

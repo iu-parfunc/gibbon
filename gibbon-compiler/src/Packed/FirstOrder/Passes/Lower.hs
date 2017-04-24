@@ -297,6 +297,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
              case ls of
                []  -> tail rhs -- AUDITME -- is this legit, or should it have one cursor param anyway?
                [c] -> tail (L1.subst c (VarE ctmp) rhs)
+               oth -> error $ "lower.tail.CaseE: unexpected pattern" ++ show oth
         alts <- mapM doalt rest
         (_,last') <- doalt last
         return $
@@ -358,7 +359,6 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
     LetE (v, _, MkPackedE k ls) bod | not pkd -> L1.assertTrivs ls $ do
       let tycon    = getTyOfDataCon ddefs k
           all_cons = dataCons (lookupDDef ddefs (toVar tycon))
-          is_prod  = length all_cons == 1
           tag      = fromJust (L.findIndex ((==) k . fst) all_cons)
 
           field_tys= L.map typ (lookupDataCon ddefs k)
@@ -524,6 +524,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
                                        return ( zip (lead++[vr]++trail)
                                                     (L.map typ tys)
                                               , bod)
+                            oth -> error $ "lower.tail.LetE: unexpected pattern" ++ show oth
                         _ -> return ([(vr,typ t)], bod)
         case arg of
           MkProdE es ->
@@ -643,6 +644,7 @@ prim p =
     L1.MulP -> T.MulP
     L1.EqSymP -> T.EqP
     L1.EqIntP -> T.EqP
+    L1.Gensym -> error "prim: FIXME gensym"
     L1.SizeParam -> T.SizeParam
     L1.DictInsertP ty -> T.DictInsertP $ typ ty
     L1.DictLookupP ty -> T.DictLookupP $ typ ty

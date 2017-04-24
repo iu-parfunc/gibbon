@@ -301,9 +301,8 @@ fragileZip [] bs = err$ "fragileZip: left ran out, while right still has: "++sho
 fragileZip' :: (Show a, Show b) => [a] -> [b] -> String -> [(a, b)]
 fragileZip' [] [] _ = []
 fragileZip' (a:as) (b:bs) m = (a,b) : fragileZip' as bs m
-fragileZip' _as [] m = error m
-fragileZip' [] _bs m = error m
-
+fragileZip' _ [] m = error m
+fragileZip' [] _ m = error m
 
 -- | Handy combination of show and doc
 sdoc :: Out a => a -> String

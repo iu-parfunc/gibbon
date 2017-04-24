@@ -238,6 +238,8 @@ tyWithFreshLocs t =
     L1.BoolTy   -> return BoolTy
     L1.ProdTy l -> ProdTy <$> mapM tyWithFreshLocs l
     L1.SymDictTy v -> SymDictTy <$> tyWithFreshLocs v
+    L1.PackedTy _ _ -> error $ "tyWithFreshLocs: unexpected type: " ++ show t
+    L1.ListTy _ -> error "tyWithFreshLocs: FIXME implement lists"
 
 -- | Remove the extra location annotations.
 stripTyLocs :: Ty -> L1.Ty
@@ -273,6 +275,7 @@ substTy mp t = go t
                 Nothing -> PackedTy k l
                 -- errorWithStackTrace $ "substTy: failed to find "++show l++
                 --   "\n  in map: "++show mp++", when processing type "++show t
+      ListTy _ -> error "tyWithFreshLocs: FIXME implement lists"
 
 -- | Apply a substitution to an effect set.
 substEffs :: Map LocVar LocVar -> Set Effect -> Set Effect
@@ -294,6 +297,7 @@ allLocVars t =
       PackedTy _ v -> [v]
       ProdTy ls  -> L.concatMap allLocVars ls
       SymDictTy elt -> allLocVars elt
+      ListTy _ -> error "allLocVars: FIXME lists"
 
 
 -- Cursor types encoded into the current language
@@ -329,7 +333,7 @@ hasRealPacked t =
       BoolTy    -> False
       IntTy     -> False
       SymDictTy t -> hasRealPacked t
-      ListTy {} -> __
+      ListTy {} -> error "hasRealPacked: FIXME implement lists"
 
 hasCursorTy :: Ty1 a -> Bool
 hasCursorTy t =
@@ -340,7 +344,7 @@ hasCursorTy t =
       BoolTy    -> False
       IntTy     -> False
       SymDictTy t -> hasCursorTy t
-      ListTy {} -> __
+      ListTy {} -> error "hasCursorty: FIXME implement lists"
 
 isRealPacked :: Ty1 a -> Bool
 isRealPacked t@PackedTy{} = not (isCursorTy t)
@@ -349,10 +353,10 @@ isRealPacked _ = False
 -- Cursorizing arguments and returns -- abstracting the conventions
 --------------------------------------------------------------------------------
 
-addOutputParamArgs = __
+-- _addOutputParamArgs = __
 
 
-addEndWitnessReturns = __
+-- _addEndWitnessReturns = __
 
 -- Cursorizing types.
 --------------------------------------------------------------------------------
@@ -462,6 +466,7 @@ argtyToLoc v ty =
   SymDictTy _t  -> -- ^ This may contain packed objects, but it is not contiguous.
     Fixed v
     -- if hasPacked t then Top else Bottom
+  ListTy _ -> error "allLocVars: FIXME lists"
 
 
 -- A bit of name mangling when promoting lexical variables to location vars
@@ -610,16 +615,19 @@ primRetTy p =
     AddP -> IntTy
     SubP -> IntTy
     MulP -> IntTy
+    Gensym -> SymTy
     EqSymP  -> BoolTy
     EqIntP  -> BoolTy
     MkTrue  -> BoolTy
     MkFalse -> BoolTy
     MkNullCursor -> CursorTy ()
     SizeParam -> IntTy
+    DictHasKeyP _ -> BoolTy
     DictEmptyP ty -> SymDictTy ty
     DictInsertP ty -> SymDictTy ty
     DictLookupP ty -> ty
     (ErrorP _ ty) -> ty
+    ReadPackedFile _ _ ty -> ty
 
 
 -- | A type environment listing the types of built-in functions.
