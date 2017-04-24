@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- |
 
@@ -254,50 +255,50 @@ _case_copy =
 add1_prog :: T.Prog
 add1_prog = T.Prog [build_tree, add1]
             (Just $ PrintExp $
-             LetPrimCallT [(toVar "buf", T.CursorTy)] T.NewBuf [] $
-             LetPrimCallT [(toVar "buf2", T.CursorTy)] T.NewBuf [] $
-             LetCallT [(toVar "tr", T.PtrTy)] (toVar "build_tree") [IntTriv 10, VarTriv (toVar "buf")] $
-             LetCallT [(toVar "ignored1", T.CursorTy), (toVar "ignored2", T.CursorTy)] (toVar "add1")  [VarTriv (toVar "tr"), VarTriv (toVar "buf2")] $
+             LetPrimCallT [("buf", T.CursorTy)] T.NewBuf [] $
+             LetPrimCallT [("buf2", T.CursorTy)] T.NewBuf [] $
+             LetCallT [( "tr", T.PtrTy)] "build_tree" [IntTriv 10, VarTriv "buf"] $
+             LetCallT [("ignored1", T.CursorTy), ("ignored2", T.CursorTy)] "add1"  [VarTriv "tr", VarTriv "buf2"] $
              (RetValsT [])
             )
   where
-    build_tree = FunDecl (toVar "build_tree") [(toVar "n",T.IntTy),(toVar "tout",T.CursorTy)] T.CursorTy buildTree_tail
-    add1 = FunDecl (toVar "add1") [((toVar "t"),T.CursorTy),(toVar "tout",T.CursorTy)] (T.ProdTy [T.CursorTy,T.CursorTy]) add1_tail
+    build_tree = FunDecl "build_tree" [("n",T.IntTy),("tout",T.CursorTy)] T.CursorTy buildTree_tail
+    add1 = FunDecl "add1" [("t",T.CursorTy),("tout",T.CursorTy)] (T.ProdTy [T.CursorTy,T.CursorTy]) add1_tail
 
     buildTree_tail =
-        Switch (VarTriv (toVar "n")) (IntAlts [(0, base_case)]) (Just recursive_case)
+        Switch (VarTriv "n") (IntAlts [(0, base_case)]) (Just recursive_case)
       where
         base_case, recursive_case :: Tail
 
         base_case =
-          LetPrimCallT [(toVar "tout1", T.CursorTy)] T.WriteInt [IntTriv 0, VarTriv (toVar "tout")] $
-          RetValsT [VarTriv (toVar "tout1")]
+          LetPrimCallT [("tout1", T.CursorTy)] T.WriteInt [IntTriv 0, VarTriv "tout"] $
+          RetValsT [VarTriv "tout1"]
 
         recursive_case =
-          LetPrimCallT [(toVar "n1",T.IntTy)] SubP [VarTriv (toVar "n"), IntTriv 1] $
-          LetPrimCallT [(toVar "tout1",T.CursorTy)] WriteTag [TagTriv 1, VarTriv (toVar "tout")] $
-          LetCallT [(toVar "tout2",T.CursorTy)] (toVar "build_tree") [VarTriv (toVar "n1"), VarTriv (toVar "tout1")] $
-          LetCallT [(toVar "tout3",T.CursorTy)] (toVar "build_tree") [VarTriv (toVar "n1"), VarTriv (toVar "tout2")] $
-          RetValsT [VarTriv (toVar "tout3")]
+          LetPrimCallT [("n1",T.IntTy)] SubP [VarTriv "n", IntTriv 1] $
+          LetPrimCallT [("tout1",T.CursorTy)] WriteTag [TagTriv 1, VarTriv "tout"] $
+          LetCallT [("tout2",T.CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout1"] $
+          LetCallT [("tout3",T.CursorTy)] "build_tree" [VarTriv "n1", VarTriv "tout2"] $
+          RetValsT [VarTriv "tout3"]
 
     add1_tail =
-        LetPrimCallT [(toVar "ttag",T.TagTyPacked),((toVar "t2"),T.CursorTy)] ReadTag [VarTriv (toVar "t")] $
-        Switch (VarTriv (toVar "ttag"))
+        LetPrimCallT [("ttag",T.TagTyPacked),("t2",T.CursorTy)] ReadTag [VarTriv "t"] $
+        Switch (VarTriv "ttag")
                (TagAlts [(leafTag,leafCase),
                          (nodeTag,nodeCase)])
                Nothing
       where
         leafCase =
-          LetPrimCallT [(toVar "tout2",T.CursorTy)] WriteTag [TagTriv leafTag, VarTriv (toVar "tout")] $
-          LetPrimCallT [(toVar "n",T.IntTy),((toVar "t3"),T.CursorTy)] T.ReadInt [VarTriv (toVar "t2")] $
-          LetPrimCallT [(toVar "n1",T.IntTy)] AddP [VarTriv (toVar "n"), IntTriv 1] $
-          LetPrimCallT [(toVar "tout3",T.CursorTy)] T.WriteInt [VarTriv (toVar "n1"), VarTriv (toVar "tout2")] $
-          RetValsT [VarTriv (toVar "t3"), VarTriv (toVar "tout3")]
+          LetPrimCallT [("tout2",T.CursorTy)] WriteTag [TagTriv leafTag, VarTriv "tout"] $
+          LetPrimCallT [("n",T.IntTy),("t3",T.CursorTy)] T.ReadInt [VarTriv "t2"] $
+          LetPrimCallT [("n1",T.IntTy)] AddP [VarTriv "n", IntTriv 1] $
+          LetPrimCallT [("tout3",T.CursorTy)] T.WriteInt [VarTriv "n1", VarTriv "tout2"] $
+          RetValsT [VarTriv "t3", VarTriv "tout3"]
 
         nodeCase =
-          LetPrimCallT [(toVar "tout2",T.CursorTy)] WriteTag [TagTriv nodeTag, VarTriv (toVar "tout")] $
-          LetCallT [(toVar "t3",T.CursorTy),(toVar "tout3",T.CursorTy)] (toVar "add1") [VarTriv (toVar "t2"), VarTriv (toVar "tout2")] $
-          TailCall (toVar "add1") [VarTriv (toVar "t3"), VarTriv (toVar "tout3")]
+          LetPrimCallT [("tout2",T.CursorTy)] WriteTag [TagTriv nodeTag, VarTriv "tout"] $
+          LetCallT [("t3",T.CursorTy),("tout3",T.CursorTy)] "add1" [VarTriv "t2", VarTriv "tout2"] $
+          TailCall "add1" [VarTriv "t3", VarTriv "tout3"]
 
         leafTag, nodeTag :: Word8
         leafTag = 0
@@ -348,26 +349,26 @@ _case_add1 =
 -- Tests for copy-insertion
 
 t5p :: Prog
-t5p = Prog {ddefs = M.fromList [(toVar "Expr",
-                                 DDef {tyName = toVar "Expr",
+t5p = Prog {ddefs = M.fromList [("Expr",
+                                 DDef {tyName = "Expr",
                                        dataCons = [("VARREF", [IntTy]),("Top", [IntTy])]}),
-                                 (toVar "Bar",
-                                  DDef {tyName = toVar "Bar",
+                                 ("Bar",
+                                  DDef {tyName = "Bar",
                                         dataCons = [("C", [IntTy]),("D", [PackedTy "Foo" ()])]}),
-                                 (toVar "Foo",
-                                  DDef {tyName = toVar "Foo",
+                                 ("Foo",
+                                  DDef {tyName = "Foo",
                                         dataCons = [("A", [IntTy, IntTy]),("B", [PackedTy "Bar" ()])]})],
-             fundefs = M.fromList [(toVar "id",
-                                    L2.FunDef {funname = toVar "id",
-                                               funty = ArrowTy {arrIn = PackedTy "Foo" (toVar "a"),
+             fundefs = M.fromList [("id",
+                                    L2.FunDef {funname = "id",
+                                               funty = ArrowTy {arrIn = PackedTy "Foo" "a",
                                                                 arrEffs = S.fromList [],
-                                                                arrOut = PackedTy "Foo" (toVar "a")},
-                                               funarg = (toVar "x0"),
-                                               funbod = L1.E1 $ VarE (toVar "x0")})],
-             mainExp = Just (L1.E1 (LetE (toVar "fltAp1",
+                                                                arrOut = PackedTy "Foo" "a"},
+                                               funarg = "x0",
+                                               funbod = L1.E1 $ VarE "x0"})],
+             mainExp = Just (L1.E1 (LetE ("fltAp1",
                                           PackedTy "Foo" (),
                                           L1.E1 $ MkPackedE "A" [L1.E1 $ LitE 1])
-                                    (L1.E1 $ (AppE (toVar "id") (L1.E1 $ VarE (toVar "fltAp1"))))),
+                                    (L1.E1 $ (AppE "id" (L1.E1 $ VarE "fltAp1")))),
                              PackedTy "Foo" ())
            }
 

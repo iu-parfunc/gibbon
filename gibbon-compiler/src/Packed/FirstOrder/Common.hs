@@ -50,6 +50,7 @@ module Packed.FirstOrder.Common
 
 import Data.Char
 import Data.Word
+import Data.String
 import Control.Exception (evaluate)
 import Control.Monad.State.Strict
 import Control.DeepSeq (NFData(..), force)
@@ -79,6 +80,9 @@ instance NFData Var where
 
 instance ToIdent Var where
   toIdent = (toIdent . fromVar)
+
+instance IsString Var where
+  fromString = toVar
 
 fromVar :: Var -> String
 fromVar (Var v) = unintern v
