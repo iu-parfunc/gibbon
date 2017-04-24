@@ -398,7 +398,7 @@ Constraints are stored separately, but typically we will generate
     FunName f := Primitive | Top-level-user-defined-fun 
     Primitive := + | * | ...
 
-    Expr e := x | N | lambda(x:T)* . e* | f [l*] e*
+    Expr e := x | N | lambda(x:T, ...) . e* | f [l*] e*
             | let [l*] x : T = e in e
             | (e,e*) | prj_i e 
             | letregion r in e
