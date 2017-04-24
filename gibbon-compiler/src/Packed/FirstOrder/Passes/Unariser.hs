@@ -76,7 +76,7 @@ unariserExp _ = go [] []
   -- | Reify a stack of projections.
   discharge [] e = e
   discharge (ix:rst) (MkProdE ls) = discharge rst (ls ! ix)
-  discharge (ix:rst) p | isExtendedPattern p =
+  discharge (_:_) p | isExtendedPattern p =
      error $ "Cannot discharge projections directly agains extended L2 form: "++ndoc p
   discharge (ix:rst) e = discharge rst (ProjE ix e)
 
@@ -163,9 +163,6 @@ unariserExp _ = go [] []
       let ty''  = flattenTy ty'
           bod'' = flattenExp v ty' bod'
       return $ LetE (v, stripTyLocs ty'', rhs') bod''  -- stripTyLocs converts L2.Ty -> L1.Ty
-
-    (LetE (_,ProdTy _, _) _) ->
-        error$ " [unariser] this is stopping us from unzipping a tupled binding:\n "++sdoc e0
 
     (LetE (v,t,rhs) e) -> LetE <$> ((v,t,) <$> go [] env rhs) <*>
                             (go stk env e)

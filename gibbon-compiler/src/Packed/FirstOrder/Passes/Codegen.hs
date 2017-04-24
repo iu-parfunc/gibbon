@@ -433,7 +433,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                        else codegenTail unpackcall (codegenTy (ProdTy []))
                              return $ mmapCode ++ docall
                      | otherwise -> error $ "ReadPackedFile, wrong arguments "++show rnds++", or expected bindings "++show bnds
-                  -- oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
+                 oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'
 
 

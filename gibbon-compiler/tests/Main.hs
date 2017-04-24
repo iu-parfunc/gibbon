@@ -8,7 +8,6 @@ import Control.Exception (bracket, bracket_)
 import Data.Map as M
 import Data.Set as S
 import Data.Word (Word8)
-import System.Directory (removeFile)
 import System.IO
 import System.Info
 import System.Process (readCreateProcess, shell)
@@ -23,7 +22,6 @@ import qualified Packed.FirstOrder.L1_Source as L1
 import           Packed.FirstOrder.L2_Traverse as L2
 import           Packed.FirstOrder.Passes.InferEffects
 import           Packed.FirstOrder.Passes.CopyInsertion
-import           Packed.FirstOrder.Passes.Cursorize
 import           Packed.FirstOrder.L3_Target hiding (Prog (..), Ty (..))
 import qualified Packed.FirstOrder.L3_Target as T
 import qualified Packed.FirstOrder.TargetInterp as TI
@@ -108,13 +106,13 @@ case_t2c = assertEqual "No traverse from identity function" S.empty t2b
 
 
 t3 :: Exp -> Set Effect
-t3 bod = arrEffs $ fst $ runSyM 0 $
+t3 bod0 = arrEffs $ fst $ runSyM 0 $
      inferFunDef ( fromListDD [DDef (toVar "SillyTree")
                                   [ ("Leaf",[])
                                   , ("Node",[L1.Packed "SillyTree", L1.IntTy])]]
                   , M.fromList [((toVar "foo"), ArrowTy (PackedTy "SillyTree" (toVar "p")) S.empty IntTy)])
                   (C.FunDef (toVar "foo") ((toVar "x"), L1.Packed "SillyTree") L1.IntTy
-                    bod)
+                    bod0)
 
 case_t3a :: Assertion
 case_t3a = assertEqual "sillytree1" S.empty (t3 (LitE 33))

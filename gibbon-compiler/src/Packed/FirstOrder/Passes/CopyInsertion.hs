@@ -6,9 +6,8 @@ module Packed.FirstOrder.Passes.CopyInsertion
 import Data.Foldable
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.Maybe
 import Control.Monad
-    
+
 -- | gibbon internals
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L2_Traverse as L2
@@ -35,7 +34,7 @@ addCopies (L1.Prog dd fundefs mainExp) =
                                                   newbod <- foldrM (\(ty',l) acc -> do
                                                                       let tls = exprTails bod
                                                                       if (ProjE l (VarE arg)) `S.member` tls
-                                                                      then do 
+                                                                      then do
                                                                         let dcon = tyToDataCon ty'
                                                                         arg' <- gensym arg
                                                                         dbgTrace lvl ("\n[addCopies] (prod) subst " ++ (show (ProjE l (VarE arg)))) $ return ()
@@ -58,15 +57,15 @@ addCopies (L1.Prog dd fundefs mainExp) =
                                                     let bod'' = LetE (arg', PackedTy dcon r,
                                                                       AppE (mkCopyName $ toVar dcon) (VarE arg)) bod'
                                                     return $ L1.FunDef nm (arg,inT) outT bod''
-                                                  else return $ L1.FunDef nm (arg,inT) outT bod 
+                                                  else return $ L1.FunDef nm (arg,inT) outT bod
                                          oth -> error $ "addCopies: handle " ++ show oth
                                   else do bod' <- go bod
                                           return $ L1.FunDef nm (arg,inT) outT bod'
        copyfuns <- mapM genCopyFn (M.elems dd)
        return $ L1.Prog dd (fundefs' `M.union` (M.fromList copyfuns)) mainExp'
-          
+
     where go ex =
-              dbgTrace lvl ("\n[addCopies] go " ++ (show ex)) $ 
+              dbgTrace lvl ("\n[addCopies] go " ++ (show ex)) $
               case ex of
                 LetE (v,t,e1) e2 -> do e2' <- go e2
                                        return $ LetE (v,t,e1) e2'
@@ -97,6 +96,8 @@ addCopies (L1.Prog dd fundefs mainExp) =
                 IfE a b c -> do b' <- go b
                                 c' <- go c
                                 return $ IfE a b' c'
+                MapE _ _ -> error "addCopies.go: FINISHME MapE"
+                FoldE _ _ _ -> error "addCopies.go: FINISHME FoldE"
 
 
 -- | Generate a copy function for a data definition
@@ -104,16 +105,16 @@ genCopyFn :: DDef L1.Ty -> SyM (Var, L1.FunDef L1.Ty Exp)
 genCopyFn DDef{tyName, dataCons} = do
   arg <- gensym $ toVar "arg"
   casebod <- mapM (\(dcon, tys) -> do
-                      xs <- mapM (\ty -> gensym (toVar "x")) tys
-                      ys <- mapM (\ty -> gensym (toVar "y")) tys
+                      xs <- mapM (\_ -> gensym (toVar "x")) tys
+                      ys <- mapM (\_ -> gensym (toVar "y")) tys
                       let ys' = map VarE ys
-                          exp = foldr (\(ty,x,y) acc ->
+                          exp' = foldr (\(ty,x,y) acc ->
                                         if isPacked ty
                                         then LetE (y,ty,AppE (mkCopyName $ toVar $ tyToDataCon ty) (VarE x)) acc
                                         else LetE (y,ty,VarE x) acc)
                                 (L1.MkPackedE dcon ys')
                                 (zip3 tys xs ys)
-                      return (dcon, xs, exp))
+                      return (dcon, xs, exp'))
              dataCons
   return (mkCopyName tyName,
           L1.FunDef { funName = mkCopyName tyName
@@ -130,7 +131,7 @@ exprTails e =
       LitE _i -> S.empty
       LitSymE _v -> S.empty
       AppE _v _e' -> S.empty
-      PrimAppE p ls -> S.empty
+      PrimAppE _ _ -> S.empty
       LetE (v,_,_e2) e1 ->
           let tls = exprTails e1
           in S.delete (VarE v) tls
@@ -145,7 +146,7 @@ exprTails e =
 -- | Expression substitution, but only for tail position and only in certain situations.
 -- This is meant for when we need to insert a reference to a copy.
 substTail :: Exp -> Exp -> Exp -> Exp
-substTail old new ex = 
+substTail old new ex =
   let go = substTail old new in
   case ex of
     VarE v | (VarE v) == old  -> new
@@ -166,6 +167,8 @@ substTail old new ex =
     MkPackedE _ _  -> ex
     TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE a (go b) (go c)
+    MapE _ _ -> error "substTail: FINISHME MapE"
+    FoldE _ _ _ -> error "substTail: FINISHME FoldE"
 
 
 -- |

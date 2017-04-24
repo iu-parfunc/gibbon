@@ -135,7 +135,7 @@ parseSExp ses =
 
    -- WARNING: top-level constant definitions are INLINED everywhere.
    inlineConstDefs [] p = p
-   inlineConstDefs ((vr,ty,rhs) : cds) p =
+   inlineConstDefs ((vr,_,rhs) : cds) p =
        inlineConstDefs cds $
         mapExprs (subst vr rhs) p
 
@@ -229,7 +229,7 @@ pattern L1 a         = RSList [a]
 pattern L2 a b       = RSList [A a, b]
 pattern L3 a b c     = RSList [A a, b, c]
 pattern L4 a b c d   = RSList [A a, b, c, d]
-pattern L5 a b c d e = RSList [A a, b, c, d, e]
+-- pattern L5 a b c d e = RSList [A a, b, c, d, e]
 
 trueE :: Exp
 trueE = PrimAppE MkTrue []
@@ -237,9 +237,9 @@ trueE = PrimAppE MkTrue []
 falseE :: Exp
 falseE = PrimAppE MkFalse []
 
--- FIXME: we cannot intern strings until runtime.
-hackySymbol :: String -> Int
-hackySymbol s = product (L.map ord s)
+-- -- FIXME: we cannot intern strings until runtime.
+-- hackySymbol :: String -> Int
+-- hackySymbol s = product (L.map ord s)
 
 keywords :: S.Set Text
 keywords = S.fromList $ L.map pack $
