@@ -30,9 +30,20 @@ import qualified Packed.FirstOrder.L3_Target   as L3
 -- #ifdef LLVM_ENABLED
 -- import qualified Packed.FirstOrder.Passes.LLVM.Codegen as LLVM
 -- #endif
+-- import           Packed.FirstOrder.Passes.Cursorize
+-- import           Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
 -- import           Packed.FirstOrder.Passes.Flatten
-import           Packed.FirstOrder.Passes.Freshen
+-- import           Packed.FirstOrder.Passes.Freshen
+-- import           Packed.FirstOrder.Passes.HoistNewBuf
+-- import           Packed.FirstOrder.Passes.InferEffects (inferEffects)
+-- import           Packed.FirstOrder.Passes.InlinePacked
+-- import           Packed.FirstOrder.Passes.CopyInsertion
 -- import           Packed.FirstOrder.Passes.InlineTriv
+-- import           Packed.FirstOrder.Passes.Lower
+-- import           Packed.FirstOrder.Passes.RouteEnds (routeEnds)
+-- import           Packed.FirstOrder.Passes.ShakeTree
+-- import           Packed.FirstOrder.Passes.Typecheck
+-- import           Packed.FirstOrder.Passes.Unariser
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import qualified Packed.FirstOrder.SourceInterp as SI
 import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
@@ -363,12 +374,14 @@ data InProgress = L1 L1.Prog
 -- |
 passes :: Config -> L1.Prog -> StateT CompileState IO InProgress
 passes config@Config{mode,packed} l1 = do
+{-  -- UNDER_CONSTRUCTION
       l1 <- passE config "freshNames" freshNames l1
       -- If we are executing a benchmark, then we
       -- replace the main function with benchmark code:
       l1 <- pure $ case mode of
                      Bench fnname -> benchMainExp config l1 fnname
                      _ -> l1
+-}
       return (L1 l1)
 {- -- UNDER_CONSTRUCTION
       l1 <- passE  config "flatten"       flatten                                   l1
@@ -444,13 +457,13 @@ benchMainExp Config{benchInput,benchPrint} l1 fnname = do
   let tmp = "bnch"
       (arg@(L1.PackedTy tyc _),ret) = L1.getFunTy fnname l1
       -- At L1, we assume ReadPackedFile has a single return value:
-      newExp = L1.LetE (toVar tmp,
+      newExp = L1.LetE (toVar tmp, [],
                          arg,
                          L1.E1 $ L1.PrimAppE (L1.ReadPackedFile benchInput tyc arg) [])
                 $
-                L1.E1 $ L1.LetE (toVar "benchres",
+                L1.E1 $ L1.LetE (toVar "benchres", [],
                          ret,
-                         L1.E1 $ L1.TimeIt (L1.E1 $ L1.AppE fnname (L1.E1 $ L1.VarE (toVar tmp))) ret True)
+                         L1.E1 $ L1.TimeIt (L1.E1 $ L1.AppE fnname [] (L1.E1 $ L1.VarE (toVar tmp))) ret True)
                 $
                 -- FIXME: should actually return the result,
                 -- as soon as we are able to print it.

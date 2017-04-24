@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 -- | Interpreter for the source language (L1)
@@ -302,10 +303,10 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
             p | L2.isExtendedPattern (E1 p) ->
                errorWithStackTrace$ "SourceInterp: Unhandled extended L2 pattern: "++ndoc p
 
-            AppE f b -> do rand <- go env b
-                           case M.lookup f fundefs of
-                             Just FunDef{funArg=(vr,_),funBody} -> go (M.insert vr rand env) funBody
-                             Nothing -> errorWithStackTrace $ "SourceInterp: unbound function in application: "++ndoc x0
+            AppE f _ b ->  do rand <- go env b
+                              case M.lookup f fundefs of
+                               Just FunDef{funArg=(vr,_),funBody} -> go (M.insert vr rand env) funBody
+                               Nothing -> errorWithStackTrace $ "SourceInterp: unbound function in application: "++ndoc x0
 
             (CaseE _ []) -> error$ "SourceInterp: CaseE with empty alternatives list: "++ndoc x0
 
@@ -320,14 +321,15 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                              SerTag tg _ :< _rst -> do
                                let tycon = getTyOfDataCon ddefs sometag
                                    datacon = (getConOrdering ddefs tycon) !! fromIntegral tg
-                               let (_tagsym,[curname],rhs) = lookup3 datacon alts
+                               let (_tagsym,[(curname,_)],rhs) = lookup3 datacon alts
                                    -- At this ^ point, we assume that a pattern match against a cursor binds ONE value.
                                let env' = M.insert curname (VCursor idx (off+1)) env
                                go env' rhs
                              oth :< _ -> error $ "SourceInterp: expected to read tag from scrutinee cursor, found: "++show oth
 
                      VPacked k ls2 ->
-                         let (_,vs,rhs) = lookup3 k alts
+                         let vs = L.map fst prs
+                             (_,prs,rhs) = lookup3 k alts
                              env' = M.union (M.fromList (zip vs ls2)) env
                          in go env' rhs
                      _ -> error$ "SourceInterp: type error, expected data constructor, got: "++ndoc v++
@@ -335,14 +337,14 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
 
             NamedVal _ _ bd -> go env bd
 
-            (LetE (v,_ty,rhs) bod) -> do
+            (LetE (v,_,_ty,rhs) bod) -> do
               rhs' <- go env rhs
               let env' = M.insert v rhs' env
               go env' bod
 
             (MkProdE ls) -> VProd <$> mapM (go env) ls
             -- TODO: Should check this against the ddefs.
-            (MkPackedE k ls) -> do
+            (MkPackedE k _ ls) -> do
                 args <- mapM (go env) ls
                 case args of
                 -- Constructors are overloaded.  They have different behavior depending on
@@ -406,7 +408,7 @@ lookup3 k ls = go ls
 
 p1 :: Prog
 p1 = Prog emptyDD  M.empty
-          (Just (E1$ LetE ((toVar "x"), IntTy, E1$ LitE 3) (E1$VarE (toVar "x"))))
+          (Just (E1$ LetE ("x", [], IntTy, E1$ LitE 3) (E1$VarE (toVar "x"))))
          -- IntTy
 
 main :: IO ()

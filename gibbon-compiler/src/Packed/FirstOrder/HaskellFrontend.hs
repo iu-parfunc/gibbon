@@ -108,12 +108,17 @@ pattern FstVar <- VarE (C.Var "fst")
 pattern SndVar <- VarE (C.Var "snd")
   where SndVar = VarE (toVar "snd")
 
+dummyLoc :: LocVar
+dummyLoc = "l_dummy"
+
+-- | Convert Haskell src-exts syntax to our syntax.  Handle infix operators, etc.
+-- Disambiguate things that look like applications.
 desugarExp :: H.Exp -> Ds L1.Exp
 desugarExp e = E1 <$>
     case e of
       H.Var qname -> VarE <$> toVar <$> qname_to_str qname
 
-      Con qname -> MkPackedE <$> qname_to_str qname <*> pure []
+      Con qname -> MkPackedE <$> qname_to_str qname <*> pure (Just dummyLoc) <*> pure []
 
       H.Lit l   -> L1.LitE <$> lit_to_int l
 
@@ -124,13 +129,13 @@ desugarExp e = E1 <$>
           E1 SndVar ->
             L1.ProjE 1 <$> desugarExp e2
           E1 (VarE f) ->
-            L1.AppE f <$> desugarExp e2
-          E1 (MkPackedE c as) -> do
+            L1.AppE f [] <$> desugarExp e2
+          E1 (MkPackedE c ml as) -> do
             e2' <- desugarExp e2
-            return (L1.MkPackedE c (as ++ [e2']))
-          E1 (L1.AppE f l) -> do
+            return (L1.MkPackedE c ml (as ++ [e2']))
+          E1 (L1.AppE f [] l) -> do
             e2' <- desugarExp e2
-            return (L1.AppE f (E1$ MkProdE [l,e2']))
+            return (L1.AppE f [] (E1$ MkProdE [l,e2']))
           f ->
             err ("Only variables allowed in operator position in function applications. (found: " ++ show f ++ ")")
 
@@ -182,7 +187,7 @@ generateBind (PatBind _ _ GuardedRhss{} _) _ =
 
 generateBind (PatBind _ (PVar v) (UnGuardedRhs rhs) Nothing) e = E1 <$> do
     rhs' <- desugarExp rhs
-    return (LetE ((toVar . name_to_str) v, __, rhs') e)
+    return (LetE ((toVar . name_to_str) v, [], error "Haskell front end doesn't know type.  Must infer", rhs') e)
 
 generateBind (PatBind _ not_var _ _) _ =
     err ("Only variable bindings are allowed in let. (found: " ++ show not_var ++ ")")
@@ -192,14 +197,14 @@ generateBind not_pat_bind _ =
 
 --------------------------------------------------------------------------------
 
-desugarAlt :: H.Alt -> Ds (DataCon, [Var], L1.Exp)
+desugarAlt :: H.Alt -> Ds (DataCon, [(Var,LocVar)], L1.Exp)
 
 desugarAlt (H.Alt _ (PApp qname ps) (UnGuardedRhs rhs) Nothing) = do
     con_name <- qname_to_str qname
     ps' <- forM ps $ \case PVar v -> return $ (toVar . name_to_str) v
                            _      -> err "Non-variable pattern in case."
     rhs' <- desugarExp rhs
-    return (con_name, ps', rhs')
+    return (con_name, [(v,dummyLoc) | v <- ps'], rhs')
 
 desugarAlt (H.Alt _ _ GuardedRhss{} _) =
     err "Guarded RHS not supported in case."

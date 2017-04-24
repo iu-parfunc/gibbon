@@ -95,6 +95,10 @@ bracketHacks = T.map $ \case '[' -> '('
                              ']' -> ')'
                              x   -> x
 
+-- | Filled in by a later pass.
+dummyLoc :: LocVar
+dummyLoc = "l_dummy"
+  
 -- | Change regular applications into data constructor syntax.
 tagDataCons :: DDefs Ty -> Exp -> Exp
 tagDataCons ddefs = go allCons
@@ -104,15 +108,16 @@ tagDataCons ddefs = go allCons
                         , (con,_tys) <- dataCons ]
    go cons (E1 ex) = E1 $
      case ex of
-       AppE v (E1 (MkProdE ls))
-                | S.member v cons -> MkPackedE (fromVar v) (L.map (go cons) ls)
-       AppE v e | S.member v cons -> MkPackedE (fromVar v) [go cons e]
-                | otherwise       -> AppE      v (go cons e)
-       LetE (v,t,rhs) bod ->
+       AppE v _ (E1 (MkProdE ls))
+                  -- FIXME: check the type to determine if this is packed/unpacked:
+                  | S.member v cons -> MkPackedE (fromVar v) (Just dummyLoc) (L.map (go cons) ls)
+       AppE v l e | S.member v cons -> MkPackedE (fromVar v) (Just dummyLoc) [go cons e]
+                  | otherwise       -> AppE v l (go cons e)
+       LetE (v,l,t,rhs) bod ->
          let go' = if S.member v cons
                       then go (S.delete v cons)
                       else go cons
-         in LetE (v,t,go' rhs) (go' bod)
+         in LetE (v,l,t,go' rhs) (go' bod)
        ------------boilerplate------------
        VarE v          -> VarE v
        LitSymE v       -> LitSymE v
@@ -121,7 +126,7 @@ tagDataCons ddefs = go allCons
        ProjE i e  -> ProjE i (go cons e)
        CaseE e ls -> CaseE (go cons e) (L.map (\(c,vs,er) -> (c,vs,go cons er)) ls)
        MkProdE ls     -> MkProdE $ L.map (go cons) ls
-       MkPackedE k ls -> MkPackedE k $ L.map (go cons) ls
+       MkPackedE k ml ls -> MkPackedE k ml $ L.map (go cons) ls
        TimeIt e t b -> TimeIt (go cons e) t b
        IfE a b c -> IfE (go cons a) (go cons b) (go cons c)
 
@@ -333,7 +338,7 @@ exp se =
    ----------------------------------------
    -- If NOTHING else matches, we are an application.  Be careful we didn't miss anything:
    L (A rator : rands) ->
-     let app = E1 . AppE (textToVar rator)
+     let app = E1 . AppE (textToVar rator) []
      in case rands of
          [] -> app (E1$ MkProdE [])
          [rand] -> app (exp rand)
@@ -344,21 +349,22 @@ exp se =
 
 
 -- | One case of a case expression
-docase :: Sexp -> (DataCon,[Var],Exp)
+docase :: Sexp -> (DataCon,[(Var,LocVar)],Exp)
 docase s =
   case s of
     RSList [ RSList (A con : args)
            , rhs ]
-      -> (textToDataCon con, L.map getSym args, exp rhs)
+      -> (textToDataCon con, L.map f args, exp rhs)
     _ -> error$ "bad clause in case expression\n  "++prnt s
+ where
+   f x  = (getSym x, dummyLoc)
 
-
-letbind :: Sexp -> (Var,Ty,Exp)
+letbind :: Sexp -> (Var,[LocVar],Ty,Exp)
 letbind s =
   case s of
    RSList [A vr, A ":",
            ty, rhs]
-     -> (textToVar vr, typ ty, exp rhs)
+     -> (textToVar vr, [], typ ty, exp rhs)
    _ -> error $ "Badly formed let binding:\n  "++prnt s
 
 isPrim :: Text -> Bool

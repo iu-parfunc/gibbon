@@ -104,15 +104,19 @@ data PreExp d (exp :: * -> *) =
    | MkProdE [exp d]     -- ^ Tuple construction
    | ProjE Int (exp d)   -- ^ Tuple projection.
 
-   | CaseE (exp d) [(DataCon, [Var], exp d)]
-     -- ^ Case on a PACKED datatype.  We don't bind location
-     -- variables explicitly with (Var,LocVar) because we allow the lexical
-     -- variables to do double-duty as location variables.
+--   | CaseE (exp d) [(DataCon, [Var], exp d)]
+     -- ^ Case on pointer-based, non-packed data.
+   
+   | CaseE (exp d) [(DataCon, [(Var,LocVar)], exp d)]
+     -- ^ Case on a PACKED datatype.  Each bound variable lives at a *fixed* location.
+     -- TODO: Rename to CasePackedE.
 
-   | MkPackedE DataCon LocVar [exp d]
-     -- ^ Construct data with the first byte at the given abstract location.
+   | MkPackedE DataCon (Maybe LocVar) [exp d]
+     -- ^ Construct data that may be either Packed or unpacked.
+     -- If Packed: the first byte at the given abstract location.
+     -- If Unpacked: Nothing for LocVar, data is allocated on a GC'd heap (UNFINISHED)     
 
-   | MkData DataCon [exp d]
+    -- TODO: Rename MkPackedE => DataCon
 
    | TimeIt (exp d) Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
 
@@ -274,7 +278,7 @@ subst old (E1 new) (E1 ex) = E1 $
     ProjE i e  -> ProjE i (go e)
     CaseE e ls -> -- CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
                   CaseE (go e) (L.map f ls)
-                      where f (c,vs,er) = if L.elem old vs
+                      where f (c,vs,er) = if L.elem old (L.map fst vs)
                                           then (c,vs,er)
                                           else (c,vs,go er)
     MkProdE ls     -> MkProdE $ L.map go ls
@@ -430,8 +434,9 @@ exadd1 = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy exadd1Bod
 exadd1Bod :: Exp
 exadd1Bod = E1 $
     CaseE (E1 $ VarE (toVar "tr")) $
-      [ ("Leaf", [toVar "n"], E1 $ PrimAppE AddP [E1 $ VarE (toVar "n"), E1$ LitE 1])
-      , ("Node", [toVar "x",toVar "y"], E1 $ MkPackedE "Node" (Var "l0")
-                             [ E1 $ AppE (toVar "add1") [] (E1$ VarE $ toVar "x")
-                             , E1 $ AppE (toVar "add1") [] (E1$ VarE $ toVar "y")])
+      [ ("Leaf", [("n","l0")], E1 $ PrimAppE AddP [E1 $ VarE (toVar "n"), E1$ LitE 1])
+      , ("Node", [("x","l1"),("y","l2")],
+         E1 $ MkPackedE "Node" (Just "l0")
+          [ E1 $ AppE (toVar "add1") [] (E1$ VarE $ toVar "x")
+          , E1 $ AppE (toVar "add1") [] (E1$ VarE $ toVar "y")])
       ]
