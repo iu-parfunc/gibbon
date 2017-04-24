@@ -375,3 +375,68 @@ completed "b" value.  This actually sure does make it look like the
 "splice" thing is failing its job...
 
   It was supposed to throw away that "b" and give (end_a,end_b) only.
+
+
+[2017.04.24] {New region calculus, add letregion}
+-------------------------------------------------
+
+Here is my proposal for a new region calculus.  To render it in Ascii
+(lacking overlines), I'll use "*" or ellipses to indicate
+repetition.
+
+Constraints are stored separately, but typically we will generate
+`(Prog,Constraints)`.
+
+    Prog p := DDefs; FDefs; main= e
+
+    DDefs := data D = K T*; ...
+    FDefs := f :: S;
+             f [l*] (x*) = e
+
+    FunName f := Primitive | Top-level-user-defined-fun 
+    Primitive := + | * | ...
+
+    Expr e := x | N | lambda(x:T)* . e* | f [l*] e*
+            | let [l*] x : T = e in e
+            | (e,e*) | prj_i e 
+            | letregion r in e
+            | K @l e* | case e of (K x* -> e); ...
+
+    Locations l = l1 | l2 ... | start(r)
+    TypeSchemas S := forall l* . T* -> T
+    Types T := Int | D_l    
+
+    Constraint C := l =^r l + A
+    ArithExpr A := N | { C | c >= N }
+    Lits N := 0 | 1 | 2 ...
+
+And then the target language.  We could keep multi-arg functions here
+or get rid of them.  (We will mess up names anyway, as we squish in
+location args.)  
+
+    Prog p := FDefs; main= e
+    FDefs := f (x:T, ...) : T = e
+
+    Expr e := x | N | Tag N
+            | lambda(x:T) . e | f e
+            | let x : T = e in e
+            | (e,e*) | prj_i e 
+            | letregion r in e | startR(r) | startW(r)
+            | caseTag e of (Tag N &x -> e); ...
+            | readInt x   | writeInt x e
+            | readTag x e | writeTag x e
+
+    Types T := Int | Tag | OutLoc [T*] | InLoc [T*]
+
+    ----- unchanged -----
+    ArithExpr A := N | { C | c >= N }
+    Lits N := 0 | 1 | 2 ...
+    FunName f := Primitive | Top-level-user-defined-fun 
+    Primitive := + | * | ...
+
+Here we don't have any different type of linear arrow (or any arrow at
+all), but rather we assume that all OutLoc-typed arguments must be
+passed linearly.
+
+The above is an adaption of our current L2, and the below of our L3.  
+For readability, `Tag N` could just as well be `Tag STR`.
