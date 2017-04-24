@@ -20,9 +20,9 @@ import Control.Exception
 import           Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
+import qualified Packed.FirstOrder.L2_Traverse (pattern NamedVal)
 import           Packed.FirstOrder.L1_Source (mkLets)
 import           Packed.FirstOrder.L2_Traverse
-import           Packed.FirstOrder.Passes.InlinePacked (pattern NamedVal)
 import           Packed.FirstOrder.Passes.Flatten (typeExp, TEnv)
 -- We use some pieces from this other attempt:
 import Data.Maybe

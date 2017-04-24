@@ -30,6 +30,7 @@ import           GHC.Stack (errorWithStackTrace)
 import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.L1_Source
 import qualified Packed.FirstOrder.L2_Traverse as L2
+import           Packed.FirstOrder.L2_Traverse (pattern NamedVal)
 import           System.Clock
 import           System.IO.Unsafe (unsafePerformIO)
 import           Text.PrettyPrint.GenericPretty
@@ -38,7 +39,6 @@ import           Text.PrettyPrint.GenericPretty
 import           Data.Sequence (Seq, ViewL ((:<)), (|>))
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
-import           Packed.FirstOrder.Passes.InlinePacked(pattern NamedVal)
 import           Packed.FirstOrder.L2_Traverse ( pattern WriteInt, pattern ReadInt, pattern NewBuffer
                                                , pattern ScopedBuffer, pattern AddCursor)
 
@@ -332,7 +332,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                      _ -> error$ "SourceInterp: type error, expected data constructor, got: "++ndoc v++
                                  "\nWhen evaluating scrutinee of case expression: "++ndoc x1
 
-            NamedVal _ _ bd -> go env bd
+            NamedVal _ _ bd -> go env bd 
 
             (LetE (v,_ty,rhs) bod) -> do
               rhs' <- go env rhs

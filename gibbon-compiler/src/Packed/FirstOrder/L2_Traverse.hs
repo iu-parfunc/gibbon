@@ -43,7 +43,10 @@ module Packed.FirstOrder.L2_Traverse
     -- * Constraints
     , Constraint(..)
 
-    -- * Extended L2.5, for after cursor insertion:
+    -- * Extended "L2.1", for inline packed:
+    , pattern NamedVal
+      
+    -- * Extended "L2.2", for after cursor insertion:
     , pattern WriteInt, pattern ReadInt, pattern NewBuffer
     , pattern CursorTy, pattern ScopedBuffer, pattern AddCursor
     , isExtendedPattern
@@ -550,6 +553,19 @@ revertToL1 Prog{ ..} =
 -- Conventions encoded inside the existing Core IR
 -- =============================================================================
 
+-- For use after inlinePacked / before cursorize:
+-------------------------------------------------
+                        
+-- | Used to inline variable bindings while retaining their (former) name and type.
+pattern NamedVal vr ty e <- LetE (vr,ty,e) (VarE (Var "NAMED_VAL_PATTERN_SYN"))
+  where NamedVal vr ty e = LetE (vr,ty,e) (VarE (toVar "NAMED_VAL_PATTERN_SYN"))
+-- pattern NamedVal vr ty e <- LetE (vr,ty,e) (VarE "NAMED_VAL") where
+--   NamedVal vr ty e = LetE (vr,ty,e) (VarE vr)
+
+
+-- For use after cursorize:
+--------------------------------------------------------------------------------
+
 pattern NewBuffer <- AppE (Var "NewBuffer") (MkProdE [])
   where NewBuffer = AppE (toVar "NewBuffer") (MkProdE [])
 
@@ -570,6 +586,9 @@ pattern CursorTy l = PackedTy "CURSOR_TY" l
 -- | Add a constant offset to a cursor variable.
 pattern AddCursor v i <- AppE (Var "AddCursor") (MkProdE [VarE v, LitE i])
   where AddCursor v i = AppE (toVar "AddCursor") (MkProdE [VarE v, LitE i])
+
+
+
 
 -- | A predicate to check if the form is part of the extended "L2.5" language.
 isExtendedPattern :: Exp -> Bool

@@ -5,8 +5,7 @@
 -- WARNING: DUPLICATED code from InlineTriv.hs
 
 module Packed.FirstOrder.Passes.InlinePacked
-    ( inlinePacked
-    , pattern NamedVal)
+    ( inlinePacked )
     where
 
 import qualified Data.Map as M
@@ -172,12 +171,6 @@ inlinePackedExp ddefs = exp True
                     (v2,(t2,DontInline)) : env in
          FoldE (var v1,t1,go e1) (var v2,t2,go e2)
                (exp strong env' e3)
-
--- | Used to inline variable bindings while retaining their (former) name and type.
-pattern NamedVal vr ty e <- LetE (vr,ty,e) (VarE (Var "NAMED_VAL_PATTERN_SYN"))
-  where NamedVal vr ty e = LetE (vr,ty,e) (VarE (toVar "NAMED_VAL_PATTERN_SYN"))
--- pattern NamedVal vr ty e <- LetE (vr,ty,e) (VarE "NAMED_VAL") where
---   NamedVal vr ty e = LetE (vr,ty,e) (VarE vr)
 
 -- | Is it a call that actually allocates output data?
 isConstructor :: Exp -> Bool

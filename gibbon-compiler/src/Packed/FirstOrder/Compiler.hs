@@ -25,13 +25,13 @@ import qualified Packed.FirstOrder.HaskellFrontend as HS
 import qualified Packed.FirstOrder.L1_Source   as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
 import qualified Packed.FirstOrder.L3_Target   as L3
-import           Packed.FirstOrder.Passes.Codegen (codegenProg)
-#ifdef LLVM_ENABLED
-import qualified Packed.FirstOrder.Passes.LLVM.Codegen as LLVM
-#endif
-import           Packed.FirstOrder.Passes.Flatten
+-- import           Packed.FirstOrder.Passes.Codegen (codegenProg)
+-- #ifdef LLVM_ENABLED
+-- import qualified Packed.FirstOrder.Passes.LLVM.Codegen as LLVM
+-- #endif
+-- import           Packed.FirstOrder.Passes.Flatten
 import           Packed.FirstOrder.Passes.Freshen
-import           Packed.FirstOrder.Passes.InlineTriv
+-- import           Packed.FirstOrder.Passes.InlineTriv
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import qualified Packed.FirstOrder.SourceInterp as SI
 import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
@@ -257,7 +257,7 @@ compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
       stM <- return $ passes config l1
       inprog <- evalStateT stM (CompileState {cnt=cnt0, result=initResult})
       ------------------------------ TEMPORARY ------------------------------------
-      hPutStrLn stderr "WARNING: Under construction.  Compiler mostly disabled atm."
+      hPutStrLn stderr "WARNING: UNDER_CONSTRUCTION.  Compiler mostly disabled atm."
       case inprog of
         L1 l1 -> runL1 l1
         L2 l2 -> runL2 l2 
@@ -268,7 +268,8 @@ compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
              l3res <- execProg l3
              mapM_ (\(IntVal v) -> liftIO $ print v) l3res
              exitSuccess
-           else do
+           else do error "UNDER_CONSTRUCTION"
+{-
              str <- case backend of
                C    -> codegenProg packed l3
 #ifdef LLVM_ENABLED
@@ -286,6 +287,7 @@ compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
              -- (Stage 3) Code written, now compile if warranted.
              when (mode == ToExe || mode == RunExe || isBench mode ) $ do
                compileAndRunExe config fp
+-}
 
 -- | The compiler's policy for running/printing L1 programs.
 runL1 :: L1.Prog -> IO ()
@@ -423,6 +425,7 @@ passes config@Config{mode,packed} l1 = do
       return l3
 -}
 
+{-
 -- | Repurposing L1 passes for L2:
 --
 flatten2 :: L1.Prog -> L2.Prog -> SyM L2.Prog
@@ -430,7 +433,7 @@ flatten2 l1 = L2.mapMExprs (flattenExp (L1.ddefs l1))
 
 inline2 :: L1.Prog -> L2.Prog -> SyM L2.Prog
 inline2 _ p = return (L2.mapExprs (\_ -> inlineTrivExp (L2.ddefs p)) p)
-
+-}
 
 -- | Replace the main function with benchmark code
 --
