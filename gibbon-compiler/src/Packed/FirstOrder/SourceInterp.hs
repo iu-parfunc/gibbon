@@ -24,7 +24,7 @@ import           Data.List as L
 import           Data.Map as M
 import           Data.IntMap as IM
 import           Data.Word
-import Data.Char   
+import Data.Char
 import           GHC.Generics
 import           GHC.Stack (errorWithStackTrace)
 import           Packed.FirstOrder.Common
@@ -232,7 +232,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
       goWrapper !_ix env ex = go env ex
 
       go :: ValEnv -> Exp -> WriterT Log (StateT Store IO) Value
-      go env (Exp' x0) =
+      go env (E1 x0) =
           case x0 of
             LitE c         -> return $ VInt c
             LitSymE s      -> return $ VInt $ fromIntegral $ product $ L.map ord $ fromVar s
@@ -279,7 +279,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                    store1 = IM.insert idx (Buffer S.empty) store0
                                put (Store store1)
                                return $ VCursor idx 0
-            ScopedBuffer -> go env (Exp' NewBuffer) -- ^ No operational difference.
+            ScopedBuffer -> go env (E1 NewBuffer) -- ^ No operational difference.
             WriteInt v ex -> do let VCursor idx off = env # v
                                 VInt num <- go env ex
                                 Store store0 <- get
@@ -299,7 +299,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                 oth :< _      ->
                  error $"SourceInterp: ReadInt expected Int in buffer, found: "++show oth
 
-            p | L2.isExtendedPattern (Exp' p) ->
+            p | L2.isExtendedPattern (E1 p) ->
                errorWithStackTrace$ "SourceInterp: Unhandled extended L2 pattern: "++ndoc p
 
             AppE f b -> do rand <- go env b
@@ -333,7 +333,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                      _ -> error$ "SourceInterp: type error, expected data constructor, got: "++ndoc v++
                                  "\nWhen evaluating scrutinee of case expression: "++ndoc x1
 
-            NamedVal _ _ bd -> go env bd 
+            NamedVal _ _ bd -> go env bd
 
             (LetE (v,_ty,rhs) bod) -> do
               rhs' <- go env rhs
@@ -406,10 +406,8 @@ lookup3 k ls = go ls
 
 p1 :: Prog
 p1 = Prog emptyDD  M.empty
-          (Just (Exp'$ LetE ((toVar "x"), IntTy, Exp'$ LitE 3) (Exp'$VarE (toVar "x"))))
+          (Just (E1$ LetE ((toVar "x"), IntTy, E1$ LitE 3) (E1$VarE (toVar "x"))))
          -- IntTy
 
 main :: IO ()
 main = execAndPrint (RunConfig 1 1 dbgLvl False) p1
-
-

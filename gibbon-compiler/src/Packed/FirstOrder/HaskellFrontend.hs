@@ -109,7 +109,7 @@ pattern SndVar <- VarE (C.Var "snd")
   where SndVar = VarE (toVar "snd")
 
 desugarExp :: H.Exp -> Ds L1.Exp
-desugarExp e = Exp' <$>
+desugarExp e = E1 <$>
     case e of
       H.Var qname -> VarE <$> toVar <$> qname_to_str qname
 
@@ -119,18 +119,18 @@ desugarExp e = Exp' <$>
 
       H.App e1 e2 ->
         desugarExp e1 >>= \case
-          Exp' FstVar ->
+          E1 FstVar ->
             L1.ProjE 0 <$> desugarExp e2
-          Exp' SndVar ->
+          E1 SndVar ->
             L1.ProjE 1 <$> desugarExp e2
-          Exp' (VarE f) ->
+          E1 (VarE f) ->
             L1.AppE f <$> desugarExp e2
-          Exp' (MkPackedE c as) -> do
+          E1 (MkPackedE c as) -> do
             e2' <- desugarExp e2
             return (L1.MkPackedE c (as ++ [e2']))
-          Exp' (L1.AppE f l) -> do
+          E1 (L1.AppE f l) -> do
             e2' <- desugarExp e2
-            return (L1.AppE f (Exp'$ MkProdE [l,e2']))
+            return (L1.AppE f (E1$ MkProdE [l,e2']))
           f ->
             err ("Only variables allowed in operator position in function applications. (found: " ++ show f ++ ")")
 
@@ -143,7 +143,7 @@ desugarExp e = Exp' <$>
 
       H.Let (BDecls decls) rhs -> do
         rhs' <- desugarExp rhs
-        (Exp' xs) <- foldrM generateBind rhs' decls
+        (E1 xs) <- foldrM generateBind rhs' decls
         Right xs
 
       H.Case scrt alts -> do
@@ -151,7 +151,7 @@ desugarExp e = Exp' <$>
         CaseE scrt' <$> mapM desugarAlt alts
 
       H.Paren e0 -> do
-        (Exp' e') <- desugarExp e0
+        (E1 e') <- desugarExp e0
         Right e'
 
       H.InfixApp e1 op e2 -> do
@@ -180,7 +180,7 @@ generateBind (PatBind _ _ _ Just{}) _ =
 generateBind (PatBind _ _ GuardedRhss{} _) _ =
     err "Guarded right hand side not supported."
 
-generateBind (PatBind _ (PVar v) (UnGuardedRhs rhs) Nothing) e = Exp' <$> do
+generateBind (PatBind _ (PVar v) (UnGuardedRhs rhs) Nothing) e = E1 <$> do
     rhs' <- desugarExp rhs
     return (LetE ((toVar . name_to_str) v, __, rhs') e)
 

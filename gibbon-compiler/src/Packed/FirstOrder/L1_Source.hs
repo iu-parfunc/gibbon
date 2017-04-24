@@ -16,7 +16,7 @@ module Packed.FirstOrder.L1_Source
     (
      -- * Core types
       Prog(..), DDef(..), FunDefs, FunDef(..),
-      Exp, Exp'(..), PreExp(..), fromExp'
+      Exp, E1(..), PreExp(..), fromE1
     , progToEnv
 
       -- * Primitive operations
@@ -72,20 +72,20 @@ progToEnv Prog{fundefs} =
 -- type Exp = PreExp Ty PreExp
 
 -- | A convenient, default instantiation of the L1 expression type.
-type Exp = Exp' Ty
+type Exp = E1 Ty
 
 -- | Knot tying.  No language extensions here.
-newtype Exp' d = Exp' (PreExp d Exp')
+newtype E1 d = E1 (PreExp d E1)
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
-fromExp' :: Exp' d -> PreExp d Exp'
-fromExp' (Exp' e) = e
+fromE1 :: E1 d -> PreExp d E1
+fromE1 (E1 e) = e
 
 -- | The source language.  It has pointer based sums and products, as
 -- well as packed algebraic datatypes.
 --
 -- It is parameterized by a decoration attached to every binder.
--- 
+--
 data PreExp d (exp :: * -> *) = VarE Var
          | LitE Int
          | LitSymE Var
@@ -148,9 +148,9 @@ instance Out a => Out (Ty1 a)
 -- Do this manually to get prettier formatting:
 -- instance Out Ty where  doc x = __
 
-instance Out d => Out (PreExp d Exp')
+instance Out d => Out (PreExp d E1)
 
-instance Out d => Out (Exp' d)
+instance Out d => Out (E1 d)
 instance Out Prog
 
 -- type TEnv = Map Var Ty
@@ -221,7 +221,7 @@ getFunTy fn Prog{fundefs} =
 -- | Free data variables.  Does not include function variables, which
 -- currently occupy a different namespace.
 freeVars :: Exp -> S.Set Var
-freeVars (Exp' ex) =
+freeVars (E1 ex) =
   case ex of
     VarE v -> S.singleton v
     LitE _ -> S.empty
@@ -245,8 +245,8 @@ freeVars (Exp' ex) =
 
 
 subst :: Var -> Exp -> Exp -> Exp
-subst old (Exp' new) (Exp' ex) = Exp' $
-  let go = subst old (Exp' new) in
+subst old (E1 new) (E1 ex) = E1 $
+  let go = subst old (E1 new) in
   case ex of
     VarE v | v == old  -> new
            | otherwise -> VarE v
@@ -277,8 +277,8 @@ subst old (Exp' new) (Exp' ex) = Exp' $
 -- | Expensive subst that looks for a whole matching sub-EXPRESSION.
 --   If the old expression is a variable, this still avoids going under binder.s
 substE :: Exp -> Exp -> Exp -> Exp
-substE (Exp' old) (Exp' new) (Exp' ex) = Exp' $ 
-  let go = substE (Exp' old) (Exp' new) in
+substE (E1 old) (E1 new) (E1 ex) = E1 $
+  let go = substE (E1 old) (E1 new) in
   case ex of
     _ | ex == old -> new
     VarE v          -> VarE v
@@ -338,7 +338,7 @@ assertTrivs [] = id
 assertTrivs (a:b) = assertTriv a . assertTrivs b
 
 isTriv :: Exp -> Bool
-isTriv (Exp' e) =
+isTriv (E1 e) =
    case e of
      VarE _ -> True
      LitE _ -> True
@@ -354,7 +354,7 @@ isTriv (Exp' e) =
 
 -- | Does the expression contain a TimeIt form?
 hasTimeIt :: Exp -> Bool
-hasTimeIt (Exp' rhs) =
+hasTimeIt (E1 rhs) =
     case rhs of
       TimeIt _ _ _ -> True
       MkPackedE _ _ -> False
@@ -374,18 +374,18 @@ hasTimeIt (Exp' rhs) =
 -- | Project something which had better not be the first thing in a tuple.
 projNonFirst :: Int -> Exp -> Exp
 projNonFirst 0 e = error $ "projNonFirst: expected nonzero index into expr: "++sdoc e
-projNonFirst i (Exp' e) = Exp' $ ProjE i (Exp' e)
+projNonFirst i (E1 e) = E1 $ ProjE i (E1 e)
 
 -- | Project position K of N, unless (K,N) = (0,1) in which case no
 -- projection is necessary.
 mkProj :: (Eq a, Num a) => Int -> a -> Exp -> Exp
 mkProj 0 1 e = e
-mkProj ix _ (Exp' e) = Exp' $ ProjE ix (Exp' e)
+mkProj ix _ (E1 e) = E1 $ ProjE ix (E1 e)
 
 -- | Make a product type while avoiding unary products.
 mkProd :: [Exp]-> Exp
 mkProd [e] = e
-mkProd ls = Exp' $ MkProdE ls
+mkProd ls = E1 $ MkProdE ls
 
 -- | Same as mkProd, at the type level
 mkProdTy :: [Ty]-> Ty
@@ -395,7 +395,7 @@ mkProdTy ls = ProdTy ls
 -- | Make a nested series of lets.
 mkLets :: [(Var,Ty,Exp)] -> Exp -> Exp
 mkLets [] bod = bod
-mkLets (b:bs) bod = Exp' $ LetE b (mkLets bs bod)
+mkLets (b:bs) bod = E1 $ LetE b (mkLets bs bod)
 
 
 
@@ -414,10 +414,10 @@ exadd1 :: FunDef Ty Exp
 exadd1 = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy exadd1Bod
 
 exadd1Bod :: Exp
-exadd1Bod = Exp' $ 
-    CaseE (Exp' $ VarE (toVar "tr")) $
-      [ ("Leaf", [toVar "n"], Exp' $ PrimAppE AddP [Exp' $ VarE (toVar "n"), Exp'$ LitE 1])
-      , ("Node", [toVar "x",toVar "y"], Exp' $ MkPackedE "Node"
-                             [ Exp' $ AppE (toVar "add1") (Exp'$ VarE $ toVar "x")
-                             , Exp' $ AppE (toVar "add1") (Exp'$ VarE $ toVar "y")])
+exadd1Bod = E1 $
+    CaseE (E1 $ VarE (toVar "tr")) $
+      [ ("Leaf", [toVar "n"], E1 $ PrimAppE AddP [E1 $ VarE (toVar "n"), E1$ LitE 1])
+      , ("Node", [toVar "x",toVar "y"], E1 $ MkPackedE "Node"
+                             [ E1 $ AppE (toVar "add1") (E1$ VarE $ toVar "x")
+                             , E1 $ AppE (toVar "add1") (E1$ VarE $ toVar "y")])
       ]
