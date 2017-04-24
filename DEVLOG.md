@@ -398,8 +398,9 @@ Constraints are stored separately, but typically we will generate
     FunName f := Primitive | Top-level-user-defined-fun 
     Primitive := + | * | ...
 
-    Expr e := x | N | lambda(x:T, ...) . e* | f [l*] e*
+    Expr e := x | N | lambda(x:T, ...) . e* | f [l*] e*    
             | return [l*] e
+            | if e then e else e | True | False
             | let [l*] x : T = e in e
             | (e,e*) | prj_i e 
             | letregion r in e
@@ -407,14 +408,15 @@ Constraints are stored separately, but typically we will generate
 
     Locations l = l1 | l2 ... | start(r)
     TypeSchemas S := forall l* . T* -> T
-    Types T := Int | D_l    
+    Types T := Int | Bool | D_l
 
     Constraint C :=  l ==^r l + A
     ArithExpr A := N | { c | c >= N }
     Lits N := 0 | 1 | 2 ...
 
 Above the "return" form attaches the invisible return location values
-in tail position.
+wherever we need them.  Booleans and tuples aren't necessary for a
+calculus, but bring the above closer to an "IR".
 
 Shorthands:
 
@@ -434,6 +436,7 @@ location args.)
 
     Expr e := x | N | Tag N
             | lambda(x:T) . e | f e
+            | if e then e else e | True | False
             | let x : T = e in e
             | (e,e*) | prj_i e 
             | letregion r in e | startR(r) | startW(r)
