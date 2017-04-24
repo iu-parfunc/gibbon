@@ -600,6 +600,9 @@ isExtendedPattern (E1 e) =
     _              -> False
 
 
+-- Initial type environments
+--------------------------------------------------------------------------------
+
 -- | Return type for a primitive operation.
 primRetTy :: Prim -> L1.Ty
 primRetTy p =
