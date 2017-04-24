@@ -134,7 +134,7 @@ type DDefs a = Map Var (DDef a)
 -- that they always be fully instantiated to monomorphic types in the
 -- context of our monomorphic programs.
 data DDef a = DDef { tyName:: Var
---                   , isPacked :: Bool -- ^ Should the datatype be represented in a packed buffer at runtime?                   
+                   , isPacked :: Bool -- ^ Should the datatype be represented in a packed buffer at runtime?                   
                    -- , tyArgs:: [Var] -- ^ No polymorphism for now!
                    , dataCons :: [(DataCon,[a])] }
   deriving (Read,Show,Eq,Ord, Functor, Generic)

@@ -349,13 +349,13 @@ _case_add1 =
 
 t5p :: Prog
 t5p = Prog {ddefs = M.fromList [("Expr",
-                                 DDef {tyName = "Expr",
+                                 DDef {tyName = "Expr", isPacked=True,
                                        dataCons = [("VARREF", [IntTy]),("Top", [IntTy])]}),
                                  ("Bar",
-                                  DDef {tyName = "Bar",
+                                  DDef {tyName = "Bar", isPacked=True,
                                         dataCons = [("C", [IntTy]),("D", [PackedTy "Foo" ()])]}),
                                  ("Foo",
-                                  DDef {tyName = "Foo",
+                                  DDef {tyName = "Foo", isPacked=True,
                                         dataCons = [("A", [IntTy, IntTy]),("B", [PackedTy "Bar" ()])]})],
              fundefs = M.fromList [("id",
                                     L2.FunDef {funname = "id",

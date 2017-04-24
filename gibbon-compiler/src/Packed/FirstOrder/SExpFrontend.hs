@@ -14,7 +14,6 @@
 module Packed.FirstOrder.SExpFrontend
        (parseFile, parseSExp, primMap, main) where
 
-import Data.Char
 import Data.Text as T hiding (head)
 import Data.List as L
 import Data.Set as S
@@ -153,7 +152,7 @@ parseSExp ses =
      (L (A "require":_) : rst) -> go rst dds fds cds mn
 
      (L (A "data": A tycon : cs) : rst) ->
-         go rst (DDef (textToVar tycon) (L.map docasety cs) : dds) fds cds mn
+         go rst (DDef (textToVar tycon) True (L.map docasety cs) : dds) fds cds mn
      (L [A "define", funspec, ":", retty, bod] : rst)
         |  RSList (A name : args) <- funspec
         -> do

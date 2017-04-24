@@ -91,7 +91,7 @@ collectTopLevel fun_tys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) 
 collectTopLevel _ (DataDecl _ DataType [] ty_name [] cons []) = do
     let ty_name' = name_to_str ty_name
     constrs <- mapM collectConstr cons
-    return (Just (Left (DDef (toVar ty_name') constrs)))
+    return (Just (Left (DDef (toVar ty_name') True constrs)))
   where
     collectConstr (QualConDecl _ [] [] (ConDecl con_name arg_tys)) =
       ( name_to_str con_name, ) <$> mapM desugarType arg_tys

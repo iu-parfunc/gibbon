@@ -431,8 +431,9 @@ treeTy :: Ty
 treeTy = Packed "Tree"
 
 add1Prog :: Prog
-add1Prog = Prog (fromListDD [DDef (toVar "Tree") [ ("Leaf",[IntTy])
-                                                 , ("Node",[Packed "Tree", Packed "Tree"])]])
+add1Prog = Prog (fromListDD [DDef (toVar "Tree") True
+                              [ ("Leaf",[IntTy])
+                              , ("Node",[Packed "Tree", Packed "Tree"])]])
                 (M.fromList [(toVar "add1",exadd1)])
                 Nothing []
 
