@@ -105,6 +105,9 @@ make test $MKPARARGS
 # Turning of -j for now [2016.11.06]
 
 
+# [2017.04.24] TEMP: Disabling below here while the compiler is under construction.
+exit 0
+
 if [ "$NOBINTREE" != "1" ]; then 
   set +x; echo
   echo "  Bintree Microbench:"

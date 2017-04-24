@@ -29,20 +29,9 @@ import           Packed.FirstOrder.Passes.Codegen (codegenProg)
 #ifdef LLVM_ENABLED
 import qualified Packed.FirstOrder.Passes.LLVM.Codegen as LLVM
 #endif
-import           Packed.FirstOrder.Passes.Cursorize
-import           Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
 import           Packed.FirstOrder.Passes.Flatten
 import           Packed.FirstOrder.Passes.Freshen
-import           Packed.FirstOrder.Passes.HoistNewBuf
-import           Packed.FirstOrder.Passes.InferEffects (inferEffects)
-import           Packed.FirstOrder.Passes.InlinePacked
-import           Packed.FirstOrder.Passes.CopyInsertion
 import           Packed.FirstOrder.Passes.InlineTriv
-import           Packed.FirstOrder.Passes.Lower
-import           Packed.FirstOrder.Passes.RouteEnds (routeEnds)
-import           Packed.FirstOrder.Passes.ShakeTree
-import           Packed.FirstOrder.Passes.Typecheck
-import           Packed.FirstOrder.Passes.Unariser
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import qualified Packed.FirstOrder.SourceInterp as SI
 import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
@@ -240,10 +229,8 @@ data CompileState =
                   , result :: Maybe SI.Value -- ^ Result of evaluating output of prior pass, if available.
                   }
 
-
 -- | Compiler entrypoint, given a full configuration and a list of
--- files to process.
---
+-- files to process, do the thing.
 compile :: Config -> FilePath -> IO ()
 compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
   -- set the env var DEBUG, to verbosity, when > 1
@@ -254,13 +241,7 @@ compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
   (l1, cnt0) <- parsed
 
   case mode of
-    Interp1 -> do
-      -- FIXME: no command line option atm.  Just env vars.
-      runConf <- getRunConfig []
-      dbgPrintLn 2 $ "Running the following through SourceInterp:\n "++sepline ++ "\n" ++ sdoc l1
-      SI.execAndPrint runConf l1
-      exitSuccess
-
+    Interp1 -> runL1 l1 
     ToParse -> dbgPrintLn 0 $ sdoc l1
 
     _ -> do
@@ -273,34 +254,52 @@ compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
       let outfile = getOutfile backend fp cfile
 
       -- run the initial program through the compiler pipeline
-      l3 <- return $ passes config l1
-      l3 <- evalStateT l3 (CompileState {cnt=cnt0, result=initResult})
-
-      if mode == Interp2
-        then do
-          l3res <- execProg l3
-          mapM_ (\(IntVal v) -> liftIO $ print v) l3res
-          exitSuccess
-        else do
-          str <- case backend of
-            C    -> codegenProg packed l3
+      stM <- return $ passes config l1
+      inprog <- evalStateT stM (CompileState {cnt=cnt0, result=initResult})
+      ------------------------------ TEMPORARY ------------------------------------
+      hPutStrLn stderr "WARNING: Under construction.  Compiler mostly disabled atm."
+      case inprog of
+        L1 l1 -> runL1 l1
+        L2 l2 -> runL2 l2 
+      ------------------------------ TEMPORARY ------------------------------------
+        L3 l3 -> do 
+         if mode == Interp2
+           then do
+             l3res <- execProg l3
+             mapM_ (\(IntVal v) -> liftIO $ print v) l3res
+             exitSuccess
+           else do
+             str <- case backend of
+               C    -> codegenProg packed l3
 #ifdef LLVM_ENABLED
-            LLVM -> LLVM.codegenProg packed l3
+               LLVM -> LLVM.codegenProg packed l3
 #endif
-            LLVM -> error $ "Cannot execute through the LLVM backend. To build Gibbon with LLVM;"
-                    ++ "stack build --flag gibbon:llvm_enabled"
+               LLVM -> error $ "Cannot execute through the LLVM backend. To build Gibbon with LLVM;"
+                       ++ "stack build --flag gibbon:llvm_enabled"
 
-          -- The C code is long, so put this at a higher verbosity level.
-          dbgPrintLn minChatLvl $ "Final C codegen: " ++show (length str) ++" characters.\n" ++ sepline ++ "\n" ++ str
+             -- The C code is long, so put this at a higher verbosity level.
+             dbgPrintLn minChatLvl $ "Final C codegen: " ++show (length str) ++" characters.\n" ++ sepline ++ "\n" ++ str
 
-          clearFile outfile
-          writeFile outfile str
+             clearFile outfile
+             writeFile outfile str
 
-          -- (Stage 3) Code written, now compile if warranted.
-          when (mode == ToExe || mode == RunExe || isBench mode ) $ do
-            compileAndRunExe config fp
+             -- (Stage 3) Code written, now compile if warranted.
+             when (mode == ToExe || mode == RunExe || isBench mode ) $ do
+               compileAndRunExe config fp
 
+-- | The compiler's policy for running/printing L1 programs.
+runL1 :: L1.Prog -> IO ()
+runL1 l1 = do
+    -- FIXME: no command line option atm.  Just env vars.
+    runConf <- getRunConfig []
+    dbgPrintLn 2 $ "Running the following through SourceInterp:\n "++sepline ++ "\n" ++ sdoc l1
+    SI.execAndPrint runConf l1
+    exitSuccess
 
+-- | The compiler's policy for running/printing L2 programs.
+runL2 :: L2.Prog -> IO ()
+runL2 l2 = runL1 (L2.revertToL1 l2)
+    
 -- | Set the env var DEBUG, to verbosity, when > 1
 -- TERRIBLE HACK!!
 -- This verbosity value is global, "pure" and can be read anywhere
@@ -352,9 +351,13 @@ interpProg l1 =
   else
     return Nothing
 
-
+-- | A compile job stopped somewhere in the middle.
+data InProgress = L1 L1.Prog
+                | L2 L2.Prog
+                | L3 L3.Prog
+                  
 -- |
-passes :: Config -> L1.Prog -> StateT CompileState IO L3.Prog
+passes :: Config -> L1.Prog -> StateT CompileState IO InProgress
 passes config@Config{mode,packed} l1 = do
       l1 <- passE config "freshNames" freshNames l1
       -- If we are executing a benchmark, then we
@@ -362,7 +365,8 @@ passes config@Config{mode,packed} l1 = do
       l1 <- pure $ case mode of
                      Bench fnname -> benchMainExp config l1 fnname
                      _ -> l1
-
+      return (L1 l1)
+{-
       l1 <- passE  config "flatten"       flatten                                   l1
       l1 <- passE  config "inlineTriv"    (return . inlineTriv)                     l1
       l1 <- pass True  config "addCopies"     addCopies                             l1
@@ -417,7 +421,7 @@ passes config@Config{mode,packed} l1 = do
       l2  <- passE' config "typecheck" (typecheckStrict (TCConfig packed))          l2
       l3  <- pass True config "lower"     (lower (packed,mmainTyPre))               l2
       return l3
-
+-}
 
 -- | Repurposing L1 passes for L2:
 --

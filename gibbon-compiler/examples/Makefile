@@ -2,12 +2,18 @@
 # This Makefile contains several entrypoints for driving the tests.
 # =================================================================
 
+test: temporary
+temporary:
+#	$(MAKE) run_tests_packed
+	$(MAKE) run_tests_interp2
+	$(MAKE) run_tests_interp1
+
 default:
 	rm -f *.err $(BLD)/*.err
 	$(MAKE) test
 
 # Our default testing entrypoint.
-test:
+old_test:
 	$(MAKE) smalltest
 	@echo
 	@echo "For extra assurance, running valgrind!"
@@ -33,7 +39,9 @@ PROCS = $(shell getconf _NPROCESSORS_ONLN || \
 # On Mac: "sysctl -n hw.ncpu" also "getconf _NPROCESSORS_ONLN" works
 # On Windows?
 
-GIBBON= DEBUG=1 stack exec -- gibbon
+# DEBUG=1 is currently where we start turning on the pass-by-pass interpreter.
+DEBUG ?= 1
+GIBBON= DEBUG=$(DEBUG) stack exec -- gibbon
 
 GIBBONEXEC=$(shell stack exec -- which gibbon)
 
@@ -278,7 +286,14 @@ run_tests_packed: answers
 	$(MAKE) run_tests RUN_MODE="--run" GIBBONARGS="$(GIBBONARGS) --packed" FAILING_TESTS="$(PACKED_FAILING)" EXTRA_SUFFIX=".pkd"
 
 # This one is seriously rotted:
-INTERP2_FAILING = test00a_size.gib test00b_printBool.gib test00d_printData.gib \
+INTERP2_FAILING = \
+  test16_forlist.gib test17_forfold.gib \
+  test28_copyprop.gib \
+  test25a_withprint.gib \
+  test27b_subst.gib
+
+# [2017.04.24] TEMP disabled:
+#  test00a_size.gib test00b_printBool.gib test00d_printData.gib \
   test02d_printPair.gib test02e_printNest.gib test03d_eqs.gib \
   test04d_vecfun.gib \
   test06a_two_cases.gib test06b_case.gib test06_case.gib test06c_nested.gib \
