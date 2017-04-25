@@ -93,7 +93,7 @@ bracketHacks :: Text -> Text
 bracketHacks = T.map $ \case '[' -> '('
                              ']' -> ')'
                              x   -> x
-  
+
 -- | Change regular applications into data constructor syntax.
 tagDataCons :: DDefs Ty -> Exp -> Exp
 tagDataCons ddefs = go allCons
@@ -116,6 +116,7 @@ tagDataCons ddefs = go allCons
        ------------boilerplate------------
        VarE v          -> VarE v
        LitSymE v       -> LitSymE v
+       RetE _ _        -> ex
        LitE _          -> ex
        PrimAppE p ls   -> PrimAppE p $ L.map (go cons) ls
        ProjE i e  -> ProjE i (go cons e)

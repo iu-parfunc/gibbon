@@ -112,7 +112,7 @@ data PreExp d (exp :: * -> *) =
 
 --   | CaseE (exp d) [(DataCon, [Var], exp d)]
      -- ^ Case on pointer-based, non-packed data.
-   
+
    | CaseE (exp d) [(DataCon, [(Var,LocVar)], exp d)]
      -- ^ Case on a PACKED datatype.  Each bound variable lives at a *fixed* location.
      -- TODO: Rename to CasePackedE.
@@ -120,7 +120,7 @@ data PreExp d (exp :: * -> *) =
    | MkPackedE DataCon (Maybe LocVar) [exp d]
      -- ^ Construct data that may be either Packed or unpacked.
      -- If Packed: the first byte at the given abstract location.
-     -- If Unpacked: Nothing for LocVar, data is allocated on a GC'd heap (UNFINISHED)     
+     -- If Unpacked: Nothing for LocVar, data is allocated on a GC'd heap (UNFINISHED)
 
     -- TODO: Rename MkPackedE => DataCon
 
@@ -248,6 +248,7 @@ freeVars :: Exp -> S.Set Var
 freeVars (E1 ex) =
   case ex of
     VarE v -> S.singleton v
+    RetE _ v -> S.singleton v
     LitE _ -> S.empty
     LitSymE _ -> S.empty
     AppE _v _ e -> freeVars e  -- S.insert v (freeVars e)
@@ -274,6 +275,8 @@ subst old (E1 new) (E1 ex) = E1 $
   case ex of
     VarE v | v == old  -> new
            | otherwise -> VarE v
+    RetE _ v | v == old  -> new
+             | otherwise -> ex
     LitE _          -> ex
     LitSymE _       -> ex
     AppE v l e        -> AppE v l (go e)
@@ -308,6 +311,7 @@ substE (E1 old) (E1 new) (E1 ex) = E1 $
     VarE v          -> VarE v
     LitE _          -> ex
     LitSymE _       -> ex
+    RetE _ _        -> ex
     AppE v l e        -> AppE v l (go e)
     PrimAppE p ls   -> PrimAppE p $ L.map go ls
     LetE (v,l,t,rhs) bod | (VarE v) == old  -> LetE (v,l,t,go rhs) bod
@@ -385,6 +389,7 @@ hasTimeIt (E1 rhs) =
       TimeIt _ _ _  -> True
       MkPackedE{}   -> False
       VarE _        -> False
+      RetE _ _      -> False
       LitE _        -> False
       LitSymE _     -> False
       AppE _ _ _    -> False
