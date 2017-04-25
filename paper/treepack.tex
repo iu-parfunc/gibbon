@@ -70,13 +70,14 @@
 
 % Tweak width of margin notes for this documentclass:
 \setlength{\marginparwidth}{1.75cm}
-% Copy this if needed to customize:
-\input{./bibs/latex_templates/editingmarks}
 
 % If we are using Haskell code in this paper:
 % Defines ``code'' environment:
 % \input{./bibs/latex_templates/haskell_style}
 \input{haskell_style} 
+
+% Copy this if needed to customize:
+\input{./bibs/latex_templates/editingmarks}
 
 \lstloadlanguages{C++}
 \lstnewenvironment{cpp}
@@ -1033,12 +1034,14 @@ Here the type of the end-witness is $\ENDOF{\locend{\freshA}}$, which signifies
 a pointer to the end of a value, which is not useful by itself.  Rather, it is
 useful if it witnesses the {\em start of another value}.
 %
-This brings us to the topic of our {\bf type system for cursors}.  Even though
-cursors are internal to the compiler, rather than exposed to the user, we use 
-{\em session types} to ensure their correct handling.  In addition to an
-$\ENDOF$ cursor, which isn't directly usable for anything, we also have
-$\HAS{}$ cursors for reading and $\NEEDS{}$ cursors for writing, as we will
-describe further in \cref{sec:cursorize}.
+This brings us to the topic of our {\bf type system for cursors}.
+Even though cursors are internal to the compiler, rather than exposed
+to the user, we use a typing discipline resembling {\em session
+  types}~\cite{SessionTypesHonda} to ensure their correct handling.
+In addition to an $\ENDOF$ cursor, which isn't directly usable for
+anything, we also have $\HAS{}$ cursors for reading and $\NEEDS{}$
+cursors for writing, as we will describe further in
+\cref{sec:cursorize}.
 
 % Before we deal further with cursors,
 During the routing pass, we also insert additional bindings in the program that
