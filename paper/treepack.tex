@@ -451,9 +451,9 @@ char* add1(char* tin, char* tout) {
   } else {
     *tout = Node;
     tin++; tout++;
-    char* t2 = add1Tree(tin,tout);
+    char* t2 = add1(tin,tout);
     tout += (t2 - t);
-    return add1Tree(t2,tout);
+    return add1(t2,tout);
   }
 }
 \end{code}
@@ -629,6 +629,11 @@ using idiomatic traversal algorithms, relying on the compiler to synthesize
 the packed representation as well as the algorithm to traverse that
 representation.
 
+\mv{Contrast with papers by Mytkowicz, etc. required for ECOOP
+  acceptance.  Is Milind handling this?  Seems like a big difference
+  is that their work is focused on using SIMD operations in tree
+  traversals.}
+
 
 % ================================================================================
 \section{The \treelang{} Language}
@@ -679,8 +684,10 @@ syntax tree is one example.
 
 A fuller language would support richer data types, more operations,
 and data structures such as arrays and lists, but the crucial elements
-for expressing tree-shaped data and transformations on trees are present. 
+for expressing tree-shaped data and transformations on trees are present.
 
+\mv{Should we bring up our add1 example here again, in the language described
+  in the Gibbon grammar?}
 
 Rather than moving directly from a high-level functional language to
 cursor-oriented low-level C code, our compiler transforms programs
@@ -832,6 +839,9 @@ trees becomes:
 \begin{code}
 f :: Tree$_\alpha$ -> Tree$_\beta$
 \end{code}
+
+\mv{Since we're talking about some fake function f, can we make this
+  more concrete and refer to our ongoing add1 example?}
 
 This is read ``function f takes a tree at location $\alpha$ and produces one at
 location $\beta$''.
@@ -1083,6 +1093,9 @@ that reorders these bindings.
 % \vspace{-2mm}
 \subsection{Output cursor insertion}\label{sec:cursorize}
 % ----------------------------------------
+
+\mv{We can also hopefully repeat add1 here, since it was apparently
+  the subsection that the reviewers had the most trouble with.}
 
 Finally we are ready for the core translation in the compiler---switching to
 destination-cursor-passing calling conventions.  This proceeds in two phases:
