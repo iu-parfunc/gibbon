@@ -131,7 +131,7 @@
       \textup{Primitives} && \PRIM && \gramdef & + \gramor - \gramor * \gramor \ldots \\
       \textup{Expressions} && \EXPR && \gramdef & \var \gramor \num \gramor \gramwd{True} \gramor \gramwd{False} \gramor
             \primexpr{\overline{\sEXPR}} \gramor \mapp{\fvar}{\overline{\LOC}}{\overline{\EXPR}} \\
-      && && \gramor & \anonfun{\overline{\var : \TYP}}{\EXPR} \gramor \letlexpr{\overline{\LOC}}{\var:\TYP}{\EXPR}{\EXPR} \\
+      && && \gramor & \letlexpr{\overline{\LOC}}{\var:\TYP}{\EXPR}{\EXPR} \\
       && && \gramor & \;(e_1,\, \dots\, , e_n)\; \gramor \project{\num}{\EXPR} \\
       && && \gramor & \return{\overline{\LOC}}{\EXPR} \gramor \ife{\EXPR}{\EXPR}{\EXPR} \\
       && && \gramor & \letregion{\REG}{\EXPR} \\
@@ -151,7 +151,7 @@
       \textup{Program} && \PROG && \gramdef & \FD_1 \ldots \FD_m \; ; \EXPR \\
       \textup{Function Declarations} && \FD && \gramdef & \fvar(\overline{\var:\TYP}) : \TYP = \EXPR \\
       \textup{Expressions} && \EXPR && \gramdef & \var \gramor \num \gramor \gramwd{Tag}\num \\
-      && && \gramor & \anonfun{\overline{var : \TYP}}{e} \gramor \fvar \EXPR \\
+      && && \gramor & \fvar \overline{\EXPR} \\
       && && \gramor & \ife{\EXPR}{\EXPR}{\EXPR} \gramor \gramwd{True} \gramor \gramwd{False} \\
       && && \gramor & \letexpr{\var:\TYP}{\EXPR}{\EXPR} \\
       && && \gramor & \;(e_1,\, \dots\, , e_n)\; \gramor \project{\num}{\EXPR} \\
