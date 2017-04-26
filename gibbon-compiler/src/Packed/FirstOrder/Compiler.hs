@@ -25,25 +25,6 @@ import qualified Packed.FirstOrder.HaskellFrontend as HS
 import qualified Packed.FirstOrder.L1_Source   as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
 import qualified Packed.FirstOrder.L3_Target   as L3
--- UNDER_CONSTRUCTION
--- import           Packed.FirstOrder.Passes.Codegen (codegenProg)
--- #ifdef LLVM_ENABLED
--- import qualified Packed.FirstOrder.Passes.LLVM.Codegen as LLVM
--- #endif
--- import           Packed.FirstOrder.Passes.Cursorize
--- import           Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
--- import           Packed.FirstOrder.Passes.Flatten
-import           Packed.FirstOrder.Passes.Freshen
--- import           Packed.FirstOrder.Passes.HoistNewBuf
--- import           Packed.FirstOrder.Passes.InferEffects (inferEffects)
--- import           Packed.FirstOrder.Passes.InlinePacked
--- import           Packed.FirstOrder.Passes.CopyInsertion
--- import           Packed.FirstOrder.Passes.InlineTriv
--- import           Packed.FirstOrder.Passes.Lower
--- import           Packed.FirstOrder.Passes.RouteEnds (routeEnds)
--- import           Packed.FirstOrder.Passes.ShakeTree
--- import           Packed.FirstOrder.Passes.Typecheck
--- import           Packed.FirstOrder.Passes.Unariser
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import qualified Packed.FirstOrder.SourceInterp as SI
 import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
@@ -55,6 +36,28 @@ import           System.IO
 import           System.IO.Error (isDoesNotExistError)
 import           System.Process
 import           Text.PrettyPrint.GenericPretty
+
+-- compiler passes
+import           Packed.FirstOrder.Passes.Freshen
+import           Packed.FirstOrder.Passes.Flatten
+
+-- UNDER_CONSTRUCTION
+-- import           Packed.FirstOrder.Passes.Codegen (codegenProg)
+-- #ifdef LLVM_ENABLED
+-- import qualified Packed.FirstOrder.Passes.LLVM.Codegen as LLVM
+-- #endif
+-- import           Packed.FirstOrder.Passes.Cursorize
+-- import           Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
+-- import           Packed.FirstOrder.Passes.HoistNewBuf
+-- import           Packed.FirstOrder.Passes.InferEffects (inferEffects)
+-- import           Packed.FirstOrder.Passes.InlinePacked
+-- import           Packed.FirstOrder.Passes.CopyInsertion
+-- import           Packed.FirstOrder.Passes.InlineTriv
+-- import           Packed.FirstOrder.Passes.Lower
+-- import           Packed.FirstOrder.Passes.RouteEnds (routeEnds)
+-- import           Packed.FirstOrder.Passes.ShakeTree
+-- import           Packed.FirstOrder.Passes.Typecheck
+-- import           Packed.FirstOrder.Passes.Unariser
 
 ----------------------------------------
 -- PASS STUBS
@@ -380,9 +383,9 @@ passes config@Config{mode,packed} l1 = do
       l1 <- pure $ case mode of
                      Bench fnname -> benchMainExp config l1 fnname
                      _ -> l1
+      l1 <- passE  config "flatten"       flatten                                   l1
       return (L1 l1)
 {- -- UNDER_CONSTRUCTION
-      l1 <- passE  config "flatten"       flatten                                   l1
       l1 <- passE  config "inlineTriv"    (return . inlineTriv)                     l1
       l1 <- pass True  config "addCopies"     addCopies                             l1
       l2 <- passE  config "inferEffects"  inferEffects                              l1
