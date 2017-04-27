@@ -10,7 +10,7 @@
 \usepackage{hyperref}
 \usepackage{graphicx}
 % \usepackage{mathabx}
-% \usepackage{mathpartir}
+\usepackage{mathpartir}
 \usepackage{xspace}
 \usepackage[noabbrev,capitalise]{cleveref}
 \usepackage{enumitem}
@@ -42,6 +42,7 @@
 \newcommand{\READTAG}[1]{\gramwd{read}(#1)}
 \newcommand{\STARTV}[1]{\gramwd{start}(#1)}
 \newcommand{\ENDV}[1]{\gramwd{end}(#1)}
+\newcommand{\typeof}[2]{\, #1 : #2 \,}
 \newcommand{\skeywd}[1]{#1}
 \newcommand{\keywd}[1]{\; {#1} \;}
 \newcommand{\keywdr}[1]{\; {#1}_1 \ldots {#1}_n \;}
@@ -148,15 +149,16 @@
       \textup{Arithmetic} && \A && \gramdef & \num \gramor \{ c\, |\, c \, \leq \num \}
   \end{aligned}
 \end{displaymath}
-\subsection{Example}
-\begin{displaymath}
-\begin{aligned}
-\letregionb{p_1}
-  {\letlexprb{li_1}{t_1}{\gramwd{buildTree}[\gramwd{startR}(p_1)] 10}
-    {\letlexprb{li_1,lo_3}{t_2}{\gramwd{add1}[\gramwd{startR}(p_1),\gramwd{startW}(p_2)] t_1}
-      {\returnb{a}{t_2}}}}
-\end{aligned}
-\end{displaymath}
+\subsection{Type System}
+Of the form:
+\[ \Gamma, \Delta\, \vdash \typeof{\EXPR}{\TYP} \]
+\emph{WIP}
+\begin{mathpar}
+\inferrule[APP]
+  {\Gamma,\Delta\,\vdash \typeof{\EXPR_1}{\TYP_1 \rightarrow \TYP_2} \\
+  \Gamma,\Delta\,\vdash \typeof{\EXPR_2}{\TYP_1}}
+  {\Gamma,\Delta\,\vdash \typeof{\app{\EXPR_1}{\EXPR_2}}{\TYP_2}}
+\end{mathpar}
 
 \section{Target Language}
 \subsection{Grammar}
@@ -175,6 +177,15 @@
       && && \gramor & \gramwd{readTag} \var \gramor \gramwd{writeTag} \var \EXPR \\
       \textup{Types} && \TYP && \gramdef & \gramwd{Int} \gramor \gramwd{Tag} \gramor \gramwd{OutLoc} [\,\overline{\TYP}\,] \gramor \gramwd{InLoc} [\,\overline{\TYP}\,]
   \end{aligned}
+\end{displaymath}
+\subsection{Example}
+\begin{displaymath}
+\begin{aligned}
+\letregionb{p_1}
+  {\letlexprb{li_1}{t_1}{\gramwd{buildTree}[\gramwd{startR}(p_1)] 10}
+    {\letlexprb{li_1,lo_3}{t_2}{\gramwd{add1}[\gramwd{startR}(p_1),\gramwd{startW}(p_2)] t_1}
+      {\returnb{a}{t_2}}}}
+\end{aligned}
 \end{displaymath}
 
 \end{document}
