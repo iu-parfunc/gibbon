@@ -67,14 +67,18 @@
 \newcommand{\num}{\; n \;}
 \newcommand{\primexpr}[1]{\; \PRIM(#1) \;}
 \newcommand{\letexpr}[3]{\;\gramwd{let} \; #1 = #2 \; \gramwd{in} \; #3 \;}
+\newcommand{\letexprb}[3]{\; & \gramwd{let} & \; #1 = #2 \; \gramwd{in} \; \\ #3 \;}
 \newcommand{\ife}[3]{\; \gramwd{if}#1\gramwd{then}#2\gramwd{else}#3 \;}
 \newcommand{\app}[2]{\; #1(#2) \;}
 \newcommand{\mapp}[3]{\; #1\;[\,#2\,]\;(\,#3\,) \;}
 \newcommand{\return}[2]{\; \gramwd{return}\;[\,#1\,]\;#2\;}
+\newcommand{\returnb}[2]{\; & \gramwd{return}\; [\,#1\,]\;#2\;& \\}
 \newcommand{\project}[2]{\; \gramwd{prj}_{#1}\,{#2}\;}
 \newcommand{\anonfun}[2]{\; \lambda\,(#1)\,.\,#2\;}
 \newcommand{\letlexpr}[4]{\;\gramwd{let} \; [\,#1\,]\; #2 = #3 \; \gramwd{in} \; #3 \;}
+\newcommand{\letlexprb}[4]{\;&\gramwd{let}\; [\,#1\,]\; #2 = #3 \; \gramwd{in}& \; \\ #4 \;}
 \newcommand{\letregion}[2]{\; \gramwd{letregion}\;#1\; \gramwd{in}\; #2 \;}
+\newcommand{\letregionb}[2]{\; & \gramwd{letregion}\; #1\; \gramwd{in}\;& \\ #2 \;}
 \newcommand{\mkdata}[3]{\; #1\;#2\;\;#3 \;}
 \newcommand{\LOC}{\keywd{\iota}}
 \newcommand{\REG}{\keywd{r}}
@@ -117,6 +121,7 @@
 %% \end{displaymath}
 
 \section{Region+Location Calculus}
+\subsection{Grammar}
 \begin{displaymath}
     \DC \in \; \textup{Data Constructors}, \:\: \TC \in \; \textup{Type Constructors}, \:\: \var \in \; \textup{Variables}
 \end{displaymath} 
@@ -143,9 +148,18 @@
       \textup{Arithmetic} && \A && \gramdef & \num \gramor \{ c\, |\, c \, \leq \num \}
   \end{aligned}
 \end{displaymath}
+\subsection{Example}
+\begin{displaymath}
+\begin{aligned}
+\letregionb{p_1}
+  {\letlexprb{li_1}{t_1}{\gramwd{buildTree}[\gramwd{startR}(p_1)] 10}
+    {\letlexprb{li_1,lo_3}{t_2}{\gramwd{add1}[\gramwd{startR}(p_1),\gramwd{startW}(p_2)] t_1}
+      {\returnb{a}{t_2}}}}
+\end{aligned}
+\end{displaymath}
 
 \section{Target Language}
-
+\subsection{Grammar}
 \begin{displaymath}
   \begin{aligned}
       \textup{Program} && \PROG && \gramdef & \FD_1 \ldots \FD_m \; ; \EXPR \\
