@@ -370,7 +370,9 @@ integer leaves.
 In a language with algebraic datatypes,
 % In a strongly typed functional language,
 a recursive walk on
-the tree would typically use pattern matching:
+the tree would typically use pattern matching, which we
+demonstrate with the following function that increments each
+integer leaf by one. 
 
 \ifcurly
 % [language=python]
@@ -410,6 +412,8 @@ fields, here:
 \il{Node e1 e2}).
 \fi
 
+%% For the purposes of establishing the problems we solve, and for explaining the details of
+%% our solution, this \il{add1} function will be used as an ongoing example.
 
 The first problem for tree-walks such as this is memory management, as \il{add1}
 can easily become a malloc or garbage collector benchmark.  For instance, the
@@ -688,6 +692,19 @@ for expressing tree-shaped data and transformations on trees are present.
 
 \mv{Should we bring up our add1 example here again, in the language described
   in the Gibbon grammar?}
+
+The simple \il{add1} example from section~\ref{sec:background} is representable
+in \treelang:
+
+\begin{displaymath}
+  \begin{aligned}
+  &\DATA \gramwd{Tree} = [\gramwd{Leaf} \gramwd{Int}] [\gramwd{Node} \gramwd{Tree} \gramwd{Tree}] \;; \\
+  &\gramwd{add1} : \gramwd{Tree} \rightarrow \gramwd{Tree} ; \\
+  &\gramwd{add1}(t) = 
+     \case{t}{ [\bind{\gramwd{Leaf} \gramwd{x}}{\gramwd{x} + 1\;}]
+               [\bind{\gramwd{Node} \gramwd{l} \gramwd{r}}{\gramwd{Node} \app{\gramwd{add1}}{\gramwd{l}} \app{\gramwd{add1}}{\gramwd{r}}}]} ; \\
+  \end{aligned}
+\end{displaymath}
 
 Rather than moving directly from a high-level functional language to
 cursor-oriented low-level C code, our compiler transforms programs
