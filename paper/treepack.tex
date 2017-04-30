@@ -47,7 +47,7 @@
 
 \newcommand{\freshA}{\fresh{\alpha}}
 \newcommand{\freshB}{\fresh{\beta}}
-\newcommand{\locend}[1]{\ensuremath{\overline{#1}}}
+\newcommand{\locend}[1]{\ensuremath{\hat{#1}}}
 
 \newif\ifcurly
 % \curlytrue % Comment to deactivate.
@@ -686,25 +686,30 @@ Finally, \treelang provides dictionaries to support more sophisticated
 operations such as bulk transformations---substitution on an abstract
 syntax tree is one example.
 
+%% As an example, the \il{add1} example from Section~\ref{sec:background}
+%% is representable in \treelang, shown in figure~\ref{fig:add1gibbon}.
+
 A fuller language would support richer data types, more operations,
 and data structures such as arrays and lists, but the crucial elements
 for expressing tree-shaped data and transformations on trees are present.
 
-\mv{Should we bring up our add1 example here again, in the language described
-  in the Gibbon grammar?}
+%% \mv{Should we bring up our add1 example here again, in the language described
+%%   in the Gibbon grammar?}
 
-The simple \il{add1} example from section~\ref{sec:background} is representable
-in \treelang:
-
-\begin{displaymath}
-  \begin{aligned}
-  &\DATA \gramwd{Tree} = [\gramwd{Leaf} \gramwd{Int}] [\gramwd{Node} \gramwd{Tree} \gramwd{Tree}] \;; \\
-  &\gramwd{add1} : \gramwd{Tree} \rightarrow \gramwd{Tree} ; \\
-  &\gramwd{add1}(t) = 
-     \case{t}{ [\bind{\gramwd{Leaf} \gramwd{x}}{\gramwd{x} + 1\;}]
-               [\bind{\gramwd{Node} \gramwd{l} \gramwd{r}}{\gramwd{Node} \app{\gramwd{add1}}{\gramwd{l}} \app{\gramwd{add1}}{\gramwd{r}}}]} ; \\
-  \end{aligned}
-\end{displaymath}
+%% \begin{figure}
+%% \begin{displaymath}
+%%   \begin{aligned}
+%%   &\DATA \gramwd{Tree} = [\gramwd{Leaf} \gramwd{Int}] [\gramwd{Node} \gramwd{Tree} \gramwd{Tree}] \;; \\
+%%   &\gramwd{add1} : \gramwd{Tree} \rightarrow \gramwd{Tree} ; \\
+%%   &\gramwd{add1}(t) = 
+%%      \case{t}{ [\bind{\gramwd{Leaf} \gramwd{x}}{\gramwd{x} + 1\;}]
+%%                [\bind{\gramwd{Node} \gramwd{l} \gramwd{r}}{\gramwd{Node} \app{\gramwd{add1}}{\gramwd{l}} \app{\gramwd{add1}}{\gramwd{r}}}]} ; \\
+%%   \end{aligned}
+%% \end{displaymath}
+%% \caption{\treelang function that walks through a binary tree and increments
+%%   all leaves.}
+%% \label{fig:add1gibbon}
+%% \end{figure}
 
 Rather than moving directly from a high-level functional language to
 cursor-oriented low-level C code, our compiler transforms programs
@@ -787,6 +792,13 @@ destination cursor argument.
 \end{code}
 \fi
 
+%% \begin{displaymath}
+%%   \begin{aligned}
+%%     & \DATA \gramwd{Foo} = \gramwd{MkFoo} \gramwd{Int} ; \\
+%%     & \gramwd{f}() = \gramwd{MkFoo} 3\;; \\
+%%   \end{aligned}
+%% \end{displaymath}
+
 We say that datatypes like @Foo@ are {\em packed} types, whereas, @Int@, @Bool@,
 @Symbol@, etc are not.  As we will see in this section, the data constructors for
 packed types (@MkFoo@) will themselves come to require destination cursor arguments.
@@ -850,26 +862,27 @@ To reason about traversals, we associate with every packed type an {\em abstract
   location}. This is different from a region variable in prior work, because it
 is a symbolic value representing the {\em exact memory location} that a value starts
 at.  No two distinct variables can share the same location, whereas two
-variables can share the same ``region''.  The type signature of a function on
-trees becomes:
+variables can share the same ``region''.
+%
+The type signature of \il{add1} becomes:
 
 \begin{code}
-f :: Tree$_\alpha$ -> Tree$_\beta$
+add1 : Tree$_\alpha$ ->  Tree$_\beta$
 \end{code}
 
-\mv{Since we're talking about some fake function f, can we make this
-  more concrete and refer to our ongoing add1 example?}
+%% \mv{Since we're talking about some fake function f, can we make this
+%%   more concrete and refer to our ongoing add1 example?}
 
 This is read ``function f takes a tree at location $\alpha$ and produces one at
-location $\beta$''.
-Note that a function of type \lstinline{Tree$_\alpha$ -> Tree$_\alpha$} is {\em necessarily} the identity.
+location $\beta$.''
+Note that a function of type \lstinline{Tree$_\alpha$ ->  Tree$_\alpha$} is {\em necessarily} the identity function.
 %
 Next, if @f@ examines all the bytes in $\alpha$, we say it has the effect $traverse(\alpha)$
 and we write its type as:
 
 % $\arr{\text{Tree}_a }{ a }{ \text{Tree}_b}$
 \begin{code}
-f :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$
+add1 : Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$
 \end{code}
 
 %% We denote a function with traversal effects as \arr{A}{\alpha}{B}, meaning a
@@ -877,7 +890,7 @@ f :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$
 
 We write $end(\freshA)$ to signify the location after the last byte of \freshA,
 or \locend{\freshA} for short.  One way of looking at a function that traverses
-\freshA is that it can {\em witness} $end(\freshA)$.  At runtime, this witness is
+\freshA\, is that it can {\em witness} $end(\freshA)$.  At runtime, this witness is
 merely a pointer value.
 %
 Ultimately we will rewrite the function to return such a witness.  For now, the
@@ -900,10 +913,10 @@ inputs already exist in memory at a fixed location.
 This includes lexically-bound variables introduced by $\lambda$s or
 pattern matching.
 % These we regard as having {\em fixed} (predetermined) locations.
-For example, the variables @tr@, @x@, and @y@ below.
+For example, the variables @tr@, @x@, and @y@ from \il{add1} below.
 
 \begin{code}
-f :: Tree -> Tree
+add1 : Tree -> Tree
 f(tr) = case tr of Node x y -> ...
 \end{code}
 
@@ -970,7 +983,7 @@ the location of @e@ provided that all the branches of the case traverse the
   additional traversals that are {\em necessary} but not {\em present} will
   subsequently be inserted later.  For example:}
 \begin{code}
-  case _ of K (y::Tree) (x::Int) -> x
+  case _ of K (y : Tree) (x : Int) -> x
 \end{code}
 %
 Here, when reading datatype @K@ from a a preorder serialization in a buffer,
@@ -1051,8 +1064,8 @@ compiler-inserted traversals, we then transform the program in a type-directed
 way, to include additional return-values: end-witnesses.
 
 \begin{code}
-  f  :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$                  -- Before
-  f' :: Tree$_\freshA$ -> ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$) -- After
+  add1  : Tree$_\freshA$ $\travarr{\freshA}$  Tree$_\freshB$                   -- Before
+  add1' : Tree$_\freshA$ ->  ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$ ) -- After
 \end{code}
 
 % But, following our formal language, the full type for the cursor pointer is @@.
@@ -1064,7 +1077,9 @@ useful if it witnesses the {\em start of another value}.
 This brings us to the topic of our {\bf type system for cursors}.
 Even though cursors are internal to the compiler, rather than exposed
 to the user, we use a typing discipline resembling {\em session
-  types}~\cite{SessionTypesHonda} to ensure their correct handling.
+  types}~\cite{SessionTypesHonda} to ensure their correct
+handling---specifically that data is read from and written to buffers
+in the correct order.
 In addition to an $\ENDOF$ cursor, which isn't directly usable for
 anything, we also have $\HAS{}$ cursors for reading and $\NEEDS{}$
 cursors for writing, as we will describe further in
@@ -1087,6 +1102,26 @@ We could record these facts in program metadata, but in our current approach we
 instead manifest them explicitly as let bindings.  Note, however, that they may
 refer to (temporarily) unbound end-variables!  We solve this later with a pass
 that reorders these bindings.
+
+Performing this transformation on \il{add1} yields a program with a few
+additional bindings:
+
+\begin{code}
+  add1 : Tree$_\freshA$ ->  ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$ )
+  add1 tr = case tr of
+      Leaf n ->  let start(n) = start(tr) + tag in
+                 let end(n)   = start(n) + offset in
+                 let end(tr)  = end(n) in
+                 (end(tr), Leaf n+1)
+      Node x y ->  let start(x) = start(tr) + tag in
+                   let (end(x),x') = add1 x in
+                   let (end(y),y') = add1 y in
+                   let end(tr) = end(y) in
+                   (end(tr), Leaf x' y')
+\end{code}
+\mv{Does it make sense to put types on these let bindings? Should
+  we wait until the version with read/write to include the session
+  types?}
 %
 %% \vspace{-2mm}\subsubsection{Reordering to discover witnesses}
 %% % ----------------------------------------
@@ -1134,21 +1169,22 @@ destination-cursor-passing calling conventions.  This proceeds in two phases:
 \noindent
 For example, the tree function from above, becomes:
 \begin{code}
-  f'  :: Tree$_\freshA$ -> ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$) -- After route-ends
-  f'' :: ($Needs([\text{Tree}_\freshB],\_)$, $Has(\text{Tree}_\freshA)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$)
+  add1'  : Tree$_\freshA$ -> ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$) -- After route-ends
+  add1'' : ($Needs([\text{Tree}_\freshB],\_)$, $Has(\text{Tree}_\freshA)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$)
 \end{code}
 % $\NEEDS{[\text{Tree}_\freshB}]}$, )
 % ($\NEEDS{[\text{Tree$_\freshB$}]}$, ) -> 
 %
 
 Here the return value has turned into a $\ENDOF$ cursor, whereas the inputs have
-turned into read and write cursors respectively ($Has$ and $Needs$).  These are session types, and
+turned into read and write cursors respectively ($Has$ and $Needs$).  These 
 behave much like typed channels with protocols.  We use the extensions in
 \cref{fig:target} to write and read cursors:
 
+% the macro for NEEDS puts space on the end and messes this up:
 \begin{code}
-  write :: ($\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
-  read  :: $\HAS{T:a}$ ->   ($\HAS{a}$, $T$)
+  write : ($\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
+  read  : $\HAS{T:a}$ ->   ($\HAS{a}$, $T$)
 \end{code}
 
 That is, @Needs@ tracks a list of values its {\em waiting for}.  For instance,
@@ -1159,9 +1195,10 @@ completed only after all the obligations have been satisfied.  Retrieving that
 completed value can be accomplished with @finish@:
 
 \begin{code}
-  finish :: $Needs$([],$T$) -> $\HAS{T}$
+  finish : $Needs$([],$T$) -> $\HAS{T}$
 \end{code}
 
+\mv{TODO: notes for rest of edits}
 
 \paragraph*{Locally dilated representation of packed values}
 
