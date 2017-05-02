@@ -948,7 +948,7 @@ when two locations are incompatible.  For example, the following term has
 location $\top$ because it attempts to unify two fixed locations \fixed{x} and \fixed{y}.
 
 \begin{code}
-(case p of Node x y -> if _ then x else y) :: SomePackedDatatype
+(case p of Node x y -> if _ then x else y) : SomePackedDatatype
 \end{code}
 
 % This term has location top.  Fixed x and fixed y join to top.
@@ -1107,7 +1107,7 @@ Performing this transformation on \il{add1} yields a program with a few
 additional bindings:
 
 \begin{code}
-  add1 : Tree$_\freshA$ ->  ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$ )
+  add1 : Tree$_\freshA$ ->  ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$ ) ;
   add1 tr = case tr of
       Leaf n ->  let start(n) = start(tr) + tag in
                  let end(n)   = start(n) + offset in
@@ -1117,7 +1117,7 @@ additional bindings:
                    let (end(x),x') = add1 x in
                    let (end(y),y') = add1 y in
                    let end(tr) = end(y) in
-                   (end(tr), Leaf x' y')
+                   (end(tr), Leaf x' y') ;
 \end{code}
 \mv{Does it make sense to put types on these let bindings? Should
   we wait until the version with read/write to include the session
@@ -1167,14 +1167,28 @@ destination-cursor-passing calling conventions.  This proceeds in two phases:
 \end{itemize}
 
 \noindent
-For example, the tree function from above, becomes:
+For example, the \il{add1} example becomes:
+%% \begin{code}
+%%   add1'  : Tree$_\freshA$ -> ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$) -- After route-ends
+%%   add1'' : ($Needs([\text{Tree}_\freshB],\_)$, $Has(\text{Tree}_\freshA)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$)
+%% \end{code}
+%% % $\NEEDS{[\text{Tree}_\freshB}]}$, )
+%% % ($\NEEDS{[\text{Tree$_\freshB$}]}$, ) -> 
+%% %
 \begin{code}
-  add1'  : Tree$_\freshA$ -> ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$) -- After route-ends
-  add1'' : ($Needs([\text{Tree}_\freshB],\_)$, $Has(\text{Tree}_\freshA)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$)
+  add1'' : ($Has(\text{Tree}_\freshA)$, $Needs([\text{Tree}_\freshB],\_)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$) ;
+  add1'' cin cout = let (cin, tag) = read cin in
+    switch tag of
+      Leaf -> let cout = write cout Leaf in
+              let (cin, n) = read cin in
+              let cout = write cout (n + 1) in
+              (cin, finish cout)
+      Node -> let cout = write cout Node in
+              let (cin, cout) = add1'' cin cout in
+              let (cin, cout) = add1'' cin cout in
+              (cin, finish cout) ;
 \end{code}
-% $\NEEDS{[\text{Tree}_\freshB}]}$, )
-% ($\NEEDS{[\text{Tree$_\freshB$}]}$, ) -> 
-%
+\mv{Does this need type annotations? Also the use of finish vs the expected endof type are confusing.}
 
 Here the return value has turned into a $\ENDOF$ cursor, whereas the inputs have
 turned into read and write cursors respectively ($Has$ and $Needs$).  These 
@@ -1197,8 +1211,6 @@ completed value can be accomplished with @finish@:
 \begin{code}
   finish : $Needs$([],$T$) -> $\HAS{T}$
 \end{code}
-
-\mv{TODO: notes for rest of edits}
 
 \paragraph*{Locally dilated representation of packed values}
 
