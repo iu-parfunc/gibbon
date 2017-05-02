@@ -40,6 +40,7 @@ import           Text.PrettyPrint.GenericPretty
 -- compiler passes
 import           Packed.FirstOrder.Passes.Freshen
 import           Packed.FirstOrder.Passes.Flatten
+import           Packed.FirstOrder.Passes.InlineTriv
 
 -- UNDER_CONSTRUCTION
 -- import           Packed.FirstOrder.Passes.Codegen (codegenProg)
@@ -52,7 +53,6 @@ import           Packed.FirstOrder.Passes.Flatten
 -- import           Packed.FirstOrder.Passes.InferEffects (inferEffects)
 -- import           Packed.FirstOrder.Passes.InlinePacked
 -- import           Packed.FirstOrder.Passes.CopyInsertion
--- import           Packed.FirstOrder.Passes.InlineTriv
 -- import           Packed.FirstOrder.Passes.Lower
 -- import           Packed.FirstOrder.Passes.RouteEnds (routeEnds)
 -- import           Packed.FirstOrder.Passes.ShakeTree
@@ -384,9 +384,10 @@ passes config@Config{mode,packed} l1 = do
                      Bench fnname -> benchMainExp config l1 fnname
                      _ -> l1
       l1 <- passE  config "flatten"       flatten                                   l1
-      return (L1 l1)
-{- -- UNDER_CONSTRUCTION
       l1 <- passE  config "inlineTriv"    (return . inlineTriv)                     l1
+      return (L1 l1)
+
+{- -- UNDER_CONSTRUCTION
       l1 <- pass True  config "addCopies"     addCopies                             l1
       l2 <- passE  config "inferEffects"  inferEffects                              l1
       l2 <- passE' config "typecheck"     (typecheckStrict (TCConfig False))        l2

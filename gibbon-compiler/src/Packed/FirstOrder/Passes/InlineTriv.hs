@@ -15,14 +15,14 @@ import GHC.Stack (errorWithStackTrace)
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
 inlineTriv :: Prog -> Prog
-inlineTriv (Prog ddefs funs main) =
-    Prog ddefs (fmap inlineTrivFun funs) (fmap (inlineTrivExp ddefs) main)
+inlineTriv (Prog ddefs funs main cnstraints) =
+    Prog ddefs (fmap inlineTrivFun funs) (fmap (inlineTrivExp ddefs) main) cnstraints
   where
     inlineTrivFun (FunDef nam (narg,targ) ty bod) =
       FunDef nam (narg,targ) ty (inlineTrivExp ddefs bod)
 
 type Env = [(Var, (Ty,Exp))]
-             
+
 inlineTrivExp :: DDefs a -> Exp -> Exp
 inlineTrivExp _ddefs = go []
   where
@@ -31,72 +31,75 @@ inlineTrivExp _ddefs = go []
   go :: Env -> Exp -> Exp
   go env e  =
       -- dbgTrace 7 ("Inline, processing with env:\n "++sdoc env++"\n exp: "++sdoc e) $
-      exp env e          
+      exp env e
 
   -- | Hree we go to some lengths to maintain the syntactic invariants
   -- for the extended L2 forms. The idea is that we can only reference
   -- variables within these forms, but we still must apply the
   -- environment because the old bindings have been removed.
-  -- 
+  --
   -- An alternative would be to let the extended forms disappear at
   -- this point, and handle them at the level of "AppE" in Lower.hs.
   withVar :: Env -> Var -> (Var -> Exp) -> Exp
   withVar env v fn =
     case lookup v env of
       Nothing        -> fn v
-      Just (_,VarE v2) -> fn v2
+      Just (_, E1 (VarE v2)) -> fn v2
       -- fixme, need gensym:
-      Just (ty,oth)  -> LetE (v,ty,oth) $ fn v
-          
+      Just (ty,oth)  -> E1 $ LetE (v,[],ty,oth) $ fn v
+
   exp :: Env -> Exp -> Exp
-  exp env (VarE v) =
-       case lookup v env of
-         Nothing -> VarE v
-         Just (_,e) -> e
-  exp _env (LitE i) = LitE i
-  exp _env (LitSymE v) = LitSymE v
+  exp env (E1 e) = E1 $
+    case e of
+      VarE v -> case lookup v env of
+                    Nothing -> VarE v
+                    Just (_,e) -> fromE1 e
+      LitE i -> LitE i
+      LitSymE v -> LitSymE v
 
-  -- Because this pass is applied on both L1 and L2...
-  exp _   L2.NewBuffer      = L2.NewBuffer
-  exp _   L2.ScopedBuffer   = L2.ScopedBuffer
-  exp env (L2.ReadInt v)     = withVar env v $ L2.ReadInt 
-  exp env (L2.WriteInt v e)  = withVar env v $ \v2 -> L2.WriteInt v2 (go env e)
-  exp env (L2.AddCursor v i) = withVar env v $ \v2 -> L2.AddCursor v2 i
-  exp env p | L2.isExtendedPattern p =
-    errorWithStackTrace $ "InlineTriv: failed to handle extended L2 form: "
-                          ++ndoc p++", env: "++ndoc env
+      AppE v lvs e -> AppE v lvs $ go env e
+      PrimAppE p es -> PrimAppE p $ map (go env) es
 
-  exp env (AppE v e) = AppE v $ go env e
-  exp env (PrimAppE p es) = PrimAppE p $ map (go env) es
-  exp env (LetE (v,t,e') e) =
+      LetE (v,lvs,t,(E1 e')) e ->
        case e' of
-         VarE v' -> case lookup v' env of
-                         Nothing -> go ((v,(t,e')):env) e
-                         Just pr -> go ((v,pr):env) e
-         et | isTriv et ->
+         VarE v' -> fromE1 $ case lookup v' env of
+                               Nothing -> go ((v,(t,E1 e')):env) e
+                               Just pr -> go ((v,pr):env) e
+         et | isTriv (E1 et) ->
                 -- Apply existing renames:
-                let et' = go env et in
-                go ((v,(t,et')):env) e
-         _ -> LetE (v,t,go env e') (go env e)
-  exp env (IfE e1 e2 e3) =
-       IfE (go env e1) (go env e2) (go env e3)
+                let et' = go env (E1 et) in
+                fromE1 $ go ((v,(t,et')):env) e
+         _ -> LetE (v,lvs,t,go env (E1 e')) (go env e)
 
-  -- TODO: Type check here:
-  exp env (ProjE i e) = mkProj i $ go env e
-  exp env (MkProdE es) = MkProdE $ map (go env) es
-  exp env (CaseE e mp) =
+      IfE e1 e2 e3 -> IfE (go env e1) (go env e2) (go env e3)
+
+      -- TODO: Type check here:
+      ProjE i e -> fromE1 $ mkProj i $ go env e
+
+      MkProdE es -> MkProdE $ map (go env) es
+      CaseE e mp ->
        let e' = go env e
            mp' = map (\(c,args,ae) -> (c,args,go env ae)) mp
        in CaseE e' mp'
-  exp env (MkPackedE c es) = MkPackedE c $ map (go env) es
-  exp env (TimeIt e t b) = TimeIt (go env e) t b
-  exp env (MapE (v,t,e') e) = MapE (v,t,go env e') (go env e)
-  exp env (FoldE (v1,t1,e1) (v2,t2,e2) e3) =
+
+      MkPackedE c lv es -> MkPackedE c lv $ map (go env) es
+      TimeIt e t b -> TimeIt (go env e) t b
+      MapE (v,t,e') e -> MapE (v,t,go env e') (go env e)
+      FoldE (v1,t1,e1) (v2,t2,e2) e3 ->
        FoldE (v1,t1,go env e1) (v2,t2,go env e2) (go env e3)
 
+      L2.NewBuffer -> L2.NewBuffer
+      L2.NewBuffer -> L2.NewBuffer
+      L2.ReadInt v -> fromE1 $ withVar env v $ \v2 -> E1 $ L2.ReadInt v2
+      L2.WriteInt v e -> fromE1 $ withVar env v $ \v2 -> E1 $ L2.WriteInt v2 (go env e)
+      L2.AddCursor v i -> fromE1 $ withVar env v $ \v2 -> E1 $ L2.AddCursor v2 i
+
+      p | L2.isExtendedPattern (E1 p) ->
+          errorWithStackTrace $ "InlineTriv: failed to handle extended L2 form: "
+          ++ndoc p++", env: "++ndoc env
 
 -- Helpers which do opportunistic reduction:
 
 mkProj :: Int -> Exp -> Exp
-mkProj ix (MkProdE ls) = ls !! ix
-mkProj ix e = ProjE ix e
+mkProj ix (E1 (MkProdE ls)) = ls !! ix
+mkProj ix e = E1 $ ProjE ix e
