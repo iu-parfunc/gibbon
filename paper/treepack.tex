@@ -615,7 +615,20 @@ object, Chilimbi et al. develop a compiler pass that automatically transforms
 code to work with the split representation. The transformations for structure
 splitting concern how to access object fields, and hence, unlike our work, do
 not require deeper transformations to remove the pointer dereferences inherent
-in traversing linked data structures.
+in traversing linked data structures. Indeed, neither this work nor
+cache-conscious structure placement affect the behavior of pointers in data
+structures.
+
+Lattner and Adve's {\em automatic pool allocation} identifies memory
+allocations that, roughly, correspond to different data structures so that
+objects from disjoint data structures can be allocated into separate
+pools~\cite{Lattner2005}. This approach does not change the internal layout of
+data structures (and hence does not require substantial modifications to the
+way a data structure is used) nor does it do any further layout optimization
+to promote locality. However, it does enable a {\em compression} step. Because
+pointers {\em internal} to data structures point to other objects in the same
+pool, these pointers do not need to point to arbitrary addresses, and can
+instead use fewer bits to represent the target~\cite{Lattner2005mspc}.
 
 Hsu looks at a representation of abstract syntax trees that uses a matrix
 layout, allowing operations to be specified in a data-parallel manner without
@@ -632,6 +645,22 @@ contrasts with our compiler-based approach which allows programmers to write
 using idiomatic traversal algorithms, relying on the compiler to synthesize
 the packed representation as well as the algorithm to traverse that
 representation.
+
+Similar {\em ad hoc} layout transformations have recently been pursued in the
+context of vectorization~\cite{Meyerovich2011,ren13cgo,ren14taco}. Meyerovich
+et al. discuss different linearization schemes that can promote packed SIMD
+loads and stores, improving vectorization efficiency~\cite{Meyerovich2011}.
+These layouts have the implicit effect of eliminating pointer dereferences, as
+in our packed representations, but rely on index arithmetic to traverse
+formerly-linked nodes, rather than encoding particular traversal orders. Ren
+et al. look at a wide range of tree layouts for vectorization, each targeted
+at different traversal patterns~\cite{ren13cgo,ren14taco}. These layouts are
+chosen to match the traversal patterns of an application, enabling the removal
+of pointers, as in our layouts. Ren et al. use a library-based approach:
+applications are written using high-level tree interfaces, with specific
+layouts chosen based on hardware and application considerations. In contrast,
+our work focuses on compiler-driven transformations of both the tree layout
+and the code that traverses the tree.
 
 \mv{Contrast with papers by Mytkowicz, etc. required for ECOOP
   acceptance.  Is Milind handling this?  Seems like a big difference
