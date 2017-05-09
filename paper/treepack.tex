@@ -158,10 +158,17 @@
 
 \begin{abstract}
 When written idiomatically in most programming languages, programs that traverse
-and construct trees operate over pointer-based data structures, with one heap
-object per-leaf and node.  While this may seem tautological, we show that common
-tree traversals---as found in compiler passes, space-partitioning trees, and
-elsewhere---can  be automatically compiled to operate on \textbf{pointer-free
+and construct trees operate over pointer-based data structures, using one heap
+object per-leaf and per-node.
+%
+\new{This representation is efficient for random access and shape-changing
+  modifications, but for traversals that process all or most of a tree in bulk}---including
+%
+compiler passes, space-partitioning trees, and
+elsewhere---\new{it can be inefficient.
+%
+  In this work we instead compile tree traversals}
+to operate on \textbf{pointer-free
 pre-order serializations of trees}.  On modern architectures such programs
 often run {significantly} faster than their pointer-based counterparts,
 {and additionally are directly suited to storage and transmission without
