@@ -1133,19 +1133,19 @@ additional bindings:
 \begin{code}
   add1 : Tree$_\freshA$ ->  ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$ ) ;
   add1 tr = case tr of
-      Leaf n ->  let start(n) = start(tr) + tag in
-                 let end(n)   = start(n) + offset in
+      Leaf n ->  let end(n)   = start(n) + offset in
                  let end(tr)  = end(n) in
                  (end(tr), Leaf n+1)
-      Node x y ->  let start(x) = start(tr) + tag in
-                   let (end(x),x') = add1 x in
-                   let (end(y),y') = add1 y in
+      Node x y ->  let (end(x),x') = add1(x) in
+                   let (end(y),y') = add1(y) in
                    let end(tr) = end(y) in
                    (end(tr), Leaf x' y') ;
 \end{code}
 \mv{Does it make sense to put types on these let bindings? Should
   we wait until the version with read/write to include the session
   types?}
+\mv{Do we need to write bindings for \il{start(n)} and so on here?
+  It's a bit awkward.}
 %
 %% \vspace{-2mm}\subsubsection{Reordering to discover witnesses}
 %% % ----------------------------------------
@@ -1201,7 +1201,7 @@ For example, the \il{add1} example becomes:
 %% %
 \begin{code}
   add1'' : ($Has(\text{Tree}_\freshA)$, $Needs([\text{Tree}_\freshB],\_)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$) ;
-  add1'' cin cout = let (cin, tag) = read cin in
+  add1'' cin cout = let (cin, tag) = read(cin) in
     switch tag of
       Leaf -> let cout = Leaf(cout) in
               let (cin, n) = read(cin) in
