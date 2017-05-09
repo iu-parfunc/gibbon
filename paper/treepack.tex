@@ -662,12 +662,6 @@ layouts chosen based on hardware and application considerations. In contrast,
 our work focuses on compiler-driven transformations of both the tree layout
 and the code that traverses the tree.
 
-\mv{Contrast with papers by Mytkowicz, etc. required for ECOOP
-  acceptance.  Is Milind handling this?  Seems like a big difference
-  is that their work is focused on using SIMD operations in tree
-  traversals.}
-
-
 % ================================================================================
 \section{The \treelang{} Language}
 \label{sec:language}
@@ -1104,14 +1098,15 @@ a pointer to the end of a value, which is not useful by itself.  Rather, it is
 useful if it witnesses the {\em start of another value}.
 %
 This brings us to the topic of our {\bf type system for cursors}.
-Even though cursors are internal to the compiler, rather than exposed
-to the user, we use a typing discipline resembling {\em session
+Cursors are internal to the compiler, rather than exposed
+to the user. We use a typing discipline resembling {\em session
   types}~\cite{SessionTypesHonda} to ensure their correct
-handling---specifically that data is read from and written to buffers
+handling in the compiler's intermediate language---specifically,
+the types ensure that data is read from and written to buffers
 in the correct order.
-In addition to an $\ENDOF$ cursor, which isn't directly usable for
-anything, we also have $\HAS{}$ cursors for reading and $\NEEDS{}$
-cursors for writing, as we will describe further in
+We add three new cursor types: the $\ENDOF{}$ type, as mentioned above,
+$\HAS{}$ cursors for reading, and $\NEEDS{}$
+cursors for writing. These will be described further in
 \cref{sec:cursorize}.
 
 % Before we deal further with cursors,
@@ -1175,8 +1170,8 @@ additional bindings:
 \subsection{Output cursor insertion}\label{sec:cursorize}
 % ----------------------------------------
 
-\mv{We can also hopefully repeat add1 here, since it was apparently
-  the subsection that the reviewers had the most trouble with.}
+%% \mv{We can also hopefully repeat add1 here, since it was apparently
+%%   the subsection that the reviewers had the most trouble with.}
 
 Finally we are ready for the core translation in the compiler---switching to
 destination-cursor-passing calling conventions.  This proceeds in two phases:
@@ -1221,7 +1216,8 @@ For example, the \il{add1} example becomes:
 
 Here the return value has turned into a $\ENDOF$ cursor, whereas the inputs have
 turned into read and write cursors respectively ($Has$ and $Needs$).  These 
-behave much like typed channels with protocols.  We use the extensions in
+behave much like typed channels with protocols. 
+We use the extensions in
 \cref{fig:target} to write and read cursors:
 
 % the macro for NEEDS puts space on the end and messes this up:
@@ -1240,6 +1236,8 @@ completed value can be accomplished with @finish@:
 \begin{code}
   finish : $Needs$([],$T$) -> $\HAS{T}$
 \end{code}
+
+\mv{Should we explain how we get from $\HAS{T}$ to $\ENDOF{T}$?}
 
 \paragraph*{Locally dilated representation of packed values}
 
@@ -1287,7 +1285,9 @@ The final feature of the target language (\cref{fig:target}), which we have not
 addressed yet, is the $\pcasesym$ form.
 %
 The cursor insertion pass lowers constructors to operate directly on destination
-cursors.  Thus \il{MkFoo 55} becomes a multi-step operation:
+cursors.  Thus \il{MkFoo 55} becomes a multi-step operation, where we first initialize
+the \il{MkFoo} structure (returning a cursor pointing to its \il{Int} field), then write the
+\il{55} to that cursor:
 % \il{MkFoo(curs)}
 
 \begin{code}
