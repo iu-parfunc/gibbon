@@ -1203,14 +1203,14 @@ For example, the \il{add1} example becomes:
   add1'' : ($Has(\text{Tree}_\freshA)$, $Needs([\text{Tree}_\freshB],\_)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$) ;
   add1'' cin cout = let (cin, tag) = read cin in
     switch tag of
-      Leaf -> let cout = write cout Leaf in
-              let (cin, n) = read cin in
-              let cout = write cout (n + 1) in
-              (cin, finish cout)
-      Node -> let cout = write cout Node in
-              let (cin, cout) = add1'' cin cout in
-              let (cin, cout) = add1'' cin cout in
-              (cin, finish cout) ;
+      Leaf -> let cout = Leaf(cout) in
+              let (cin, n) = read(cin) in
+              let cout = write(cout, n + 1) in
+              (cin, finish(cout))
+      Node -> let cout = Node(cout) in
+              let (cin, cout) = add1''(cin, cout) in
+              let (cin, cout) = add1''(cin, cout) in
+              (cin, finish(cout)) ;
 \end{code}
 \mv{Does this need type annotations? Also the use of finish vs the expected endof type are confusing.}
 
@@ -1292,7 +1292,7 @@ the \il{MkFoo} structure (returning a cursor pointing to its \il{Int} field), th
 
 \begin{code}
   let cur2 = MkFoo(curs)
-      cur3 = write(55,cur2)
+      cur3 = write(cur2,55)
   in (curs, curs + 9) -- one byte tag + 8 byte int
 \end{code}
 
