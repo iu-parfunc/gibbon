@@ -371,7 +371,7 @@ We make the following contributions:
 %%   demonstrating speedup even \emph{without} compiler support.
 %% \rn{This implies we will show results for GHC/Packed, which we don't currently.}
   
-\item In an additional evaluation, we show that not only do tree traversals
+\item In an additional evaluation, we show that not only can tree traversals
   become faster in the packed representation, but that they are still amenable
   to parallel speedup (\cref{sec:eval-parallel}).  To leverage parallelism, we
   need random access and thus extra layout information in dense encodings---a
@@ -426,14 +426,14 @@ Here we use a Haskell-like syntax, but in fact
 \fi
  the small, strict, first-order, purely functional language of tree traversals
 we consider in this paper is already a subset of most existing languages.
-The above program is not substantially different in C, Haskell, ML, Scala,
+The above program is not substantially different in C, Haskell, ML, F\#, Scala,
 Swift, Rust, etc.  Only the details of switching on sum types (tagged unions)
-differ (as well as the syntax for constructing an object while initializing its
+differ, as well as the syntax for constructing an object while initializing its
 fields, here: 
 \ifcurly
 \il{Node(e1,e2)}).
 \else
-\il{Node e1 e2}).
+\il{Node e1 e2}.
 \fi
 
 %% For the purposes of establishing the problems we solve, and for explaining the details of
@@ -458,8 +458,8 @@ good functional compiler, thanks to overhead in \il{malloc}.
   }
 \end{cpp}
 
-But even if we assume optimal layout, bump-pointer allocation, and {\em no
-  header objects}---even if we go further and enable \il{__packed__} attribute
+But even if we assume bump-pointer allocation in an arena, and {\em no
+  header objects}---even if we go further and enable the \il{__packed__} attribute
 for our structs to save tag space---the performance of the above code is still
 several times below what is achievable.  The main observation of this paper is
 that bulk tree walks are efficient if done directly on a pre-order serialization
@@ -467,8 +467,9 @@ of the tree, and that it is possible to automate the translation of recursive
 functions, such as \il{add1} above, into code that directly manipulates data
 buffers containing serialized trees.
 
-For our simple example, this buffer passing code isn't complicated in C:
-%
+% \begin{wrapfigure}[6]{r}[-05pt]{6cm}
+\begin{wrapfigure}{r}{6.8cm}
+\vspace{-8mm}
 \begin{code}[language=c]
 char* add1(char* tin, char* tout) {
   if (*tin == Leaf) {
@@ -485,6 +486,10 @@ char* add1(char* tin, char* tout) {
   }
 }
 \end{code}
+\end{wrapfigure}
+
+For our simple example, this buffer-passing code isn't complicated to write by
+hand in C, as pictured on the right.
 %
 Yet this approach cannot scale---it quickly becomes tedious and error prone.
 Clearly, no one would use a technique like this for building a
