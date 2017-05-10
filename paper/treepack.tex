@@ -1268,16 +1268,27 @@ to the user. We use a typing discipline resembling {\em session
 handling in the compiler's intermediate language---specifically,
 the types ensure that data is read from and written to buffers
 in the correct order.
+
 We add three new cursor types: the $\ENDOF{}$ type, as mentioned above,
 $\HAS{}$ cursors for reading, and $\NEEDS{}$
 cursors for writing. These will be described further in
 \cref{sec:cursorize}.
+% 
+In brief, a $\HAS{A}$ cursor is simply a pointer to a fully initialized value of
+type $A$, which can be read any number of times.  $\NEEDS{}$ cursors are more
+complicated.  $\NEEDS{[A,B],C}$ is an output pointer that requires a value of
+type $A$ be written to the pointer, followed by $B$, after which a fully
+initialized value of type $C$ can be read from the buffer.  A given $\NEEDS{}$
+cursor must be used linearly, after that address is written to, writing it again
+would clobber existing data.
 
-\note{Really?  Shouldn't they be described further RIGHT HERE?}
+% $\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
+%   read  :: $\HAS{T:a}$ ->   ($\HAS{a}$, $T$)
 
 % Before we deal further with cursors,
-During the routing pass, we also insert additional bindings in the program that
-explicitly encode facts about how to reach the end of a given location.
+During the routing pass, we use these cursor types to insert additional bindings
+in the program that explicitly encode facts about how to reach the end of a
+given location.
 %
 This uses @start(v)@ and @end(v)@ as special variables to refer to the physical
 start and end locations of other variables.  (@start(v)@ is roughly \verb|&v|
@@ -1373,12 +1384,14 @@ destination-cursor-passing calling conventions.  This proceeds in two phases:
       value (i.e. no sharing).
 \item Second, perform a type-directed, type-preserving cursor-insertion pass.
   This augments functions with additional inputs (output cursors), and changes
-  their return value convention to return end witnesses {\em rather} than
-  pointers to the heads of their output values.
+  their return value convention to return additional end witnesses for outputs
+  as well as inputs.  That is, rather than conventionally returning the start
+  address of an output value, the function now returns the end-address of that
+  same value.
 \end{itemize}
 
 \noindent
-For example, the \il{add1} example becomes:
+For example, the \il{add1} function becomes:
 %% \begin{code}
 %%   add1'  :: Tree$_\freshA$ -> ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$) -- After route-ends
 %%   add1'' :: ($Needs([\text{Tree}_\freshB],\_)$, $Has(\text{Tree}_\freshA)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$)
@@ -1387,19 +1400,22 @@ For example, the \il{add1} example becomes:
 %% % ($\NEEDS{[\text{Tree$_\freshB$}]}$, ) -> 
 %% %
 \begin{code}
-  add1'' :: ($Has(\text{Tree}_\freshA)$, $Needs([\text{Tree}_\freshB],\_)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$) ;
-  add1'' cin cout = let (cin, tag) = read(cin) in
+  add1'' :: ($Has(\text{Tree}_\freshA)$, $Needs([\text{Tree}_\freshB],\gamma)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$) ;
+  add1'' cin cout =
+    let (end1, tag::Byte) = read(cin) in
     switch tag of
-      Leaf -> let cout = Leaf(cout) in
-              let (cin, n) = read(cin) in
-              let cout = write(cout, n + 1) in
-              (cin, finish(cout))
-      Node -> let cout = Node(cout) in
-              let (cin, cout) = add1'' cin cout in
-              let (cin, cout) = add1'' cin cout in
-              (cin, finish(cout)) ;
+      LEAF -> let cout2    = write(LEAF,cout) in
+              let (end2,n) = read(coerce(end1)) in
+              let cout3    = write(cout2, n+1) in
+              (end2, finish(cout3))
+      NODE -> let cout2         = write(NODE,cout) in
+              let (end2, cout3) = add1'' coerce(end1) cout2 in
+              let (end3, cout4) = add1'' coerce(end2) cout3 in
+              (end3, finish(cout4))
 \end{code}
 \mv{Does this need type annotations? Also the use of finish vs the expected endof type are confusing.}
+\note{FIXME - the above coercion story is ugly, but it may still be even if
+  READ's type changed...}
 
 Here the return value has turned into a $\ENDOF$ cursor, whereas the inputs have
 turned into read and write cursors respectively ($Has$ and $Needs$).  These 
@@ -1409,9 +1425,10 @@ We use the extensions in
 
 % the macro for NEEDS puts space on the end and messes this up:
 \begin{code}
-  write :: ($\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
-  read  :: $\HAS{T:a}$ ->   ($\HAS{a}$, $T$)
+  write :: ($\NEEDS{a:rst, b}$, $a$) ->  $\NEEDS{rst,b}$
+  read  :: $\HAS{T_\ell}$ ->   ($\ENDOF{\locend{\ell}}$, $T_\ell$)
 \end{code}
+%  read  :: $\HAS{a:rst}$ ->   ($\HAS{a}$, $T$)
 
 That is, @Needs@ tracks a list of values its {\em waiting for}.  For instance,
 given a data type, @data Foo = MkFoo Int Int@, after we write a tag for @MkFoo@
@@ -1423,6 +1440,8 @@ completed value can be accomplished with @finish@:
 \begin{code}
   finish :: $Needs$([],$T$) -> $\HAS{T}$
 \end{code}
+
+In the context of the above example, if @cout :: $\NEEDS{Tree,\gamma}$@
 
 \mv{Should we explain how we get from $\HAS{T}$ to $\ENDOF{T}$?}
 
