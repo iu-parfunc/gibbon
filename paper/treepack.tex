@@ -551,11 +551,31 @@ two seemingly-similar functions:
   }}
 \end{code}
 \else
+%% \begin{code}
+%%   left t = case t of                  right t = case t of
+%%              Leaf n   -> n                        Leaf n   -> n
+%%              Node x _ -> left x                   Node _ y -> right y
+%% \end{code}
+{
+%  \begin{center}
+% \hspace{1mm}
+\begin{minipage}{0.45\textwidth} 
 \begin{code}
-  left t = case t of                  right t = case t of
-             Leaf n   -> n                        Leaf n   -> n
-             Node x _ -> left x                   Node _ y -> right y
+  left t = case t of                
+             Leaf n   -> n        
+             Node x _ -> left x
 \end{code}
+\end{minipage}
+\hspace{2mm}
+\begin{minipage}{0.45\textwidth} 
+\begin{code}
+  right t = case t of
+              Leaf n   -> n
+              Node _ y -> right y
+\end{code}
+\end{minipage}
+%\end{center}
+}
 \fi
 
 These functions are isomorphic to each other in a pointer-based
