@@ -162,24 +162,24 @@ and construct trees operate over pointer-based data structures, using one heap
 object per-leaf and per-node.
 %
 \new{This representation is efficient for random access and shape-changing
-  modifications, but for traversals that process all or most of a tree in bulk}---including
+  modifications, but for traversals, such as compiler passes, that process most or all of a tree in bulk
+  it can be inefficient.
 %
-compiler passes, space-partitioning trees, and
-elsewhere---\new{it can be inefficient.
-%
-  In this work we instead compile tree traversals}
+In this work we instead compile tree traversals}
 to operate on \textbf{pointer-free
 pre-order serializations of trees}.  On modern architectures such programs
 often run {significantly} faster than their pointer-based counterparts,
 {and additionally are directly suited to storage and transmission without
   requiring marshaling.}
 
-We present a prototype compiler for \textsf{Gibbon}, a small
-first-order, purely functional language of tree traversals.  Our
-compiler first transforms this language into one with
-mutable cursors into input and output buffers
-for packed data, which then generates code as efficient as
-hand-written C. The key compiler technologies include an effect
+We present a prototype compiler, \textsf{Gibbon}, that compiles a small
+first-order, purely functional language sufficient for tree traversals.
+The compiler transforms this language into intermediate representation with
+explicit pointers into input and output buffers
+for packed data.
+% , which then generates code as efficient as hand-written C.
+%
+The key compiler technologies include an effect
 system for capturing traversal behavior, combined with an
 algorithm to insert destination cursors.
 % lightweight
@@ -187,9 +187,10 @@ algorithm to insert destination cursors.
 % and a program synthesis step for
 % creating missing traversals.
 We evaluate our compiler on 
-tree transformations over a real-world dataset of source code syntax trees.
-{Packed data allows speedups of over $2\times$ compared to highly-optimized
-  pointer-based baseline.}
+tree transformations over a real-world dataset of source-code syntax trees.
+%
+{For map- and fold-style traversals, packed data allows speedups of over
+  $2\times$ compared to a highly-optimized pointer-based baseline.}
 
 \end{abstract}
 
