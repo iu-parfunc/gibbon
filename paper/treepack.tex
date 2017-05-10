@@ -1274,13 +1274,20 @@ $\HAS{}$ cursors for reading, and $\NEEDS{}$
 cursors for writing. These will be described further in
 \cref{sec:cursorize}.
 % 
-In brief, a $\HAS{A}$ cursor is simply a pointer to a fully initialized value of
-type $A$, which can be read any number of times.  $\NEEDS{}$ cursors are more
-complicated.  $\NEEDS{[A,B],C}$ is an output pointer that requires a value of
-type $A$ be written to the pointer, followed by $B$, after which a fully
-initialized value of type $C$ can be read from the buffer.  A given $\NEEDS{}$
-cursor must be used linearly, after that address is written to, writing it again
-would clobber existing data.
+%% In brief, a $\HAS{A}$ cursor is simply a pointer to a fully initialized value of
+%% type $A$, which can be read any number of times.  $\NEEDS{}$ cursors are more
+%% complicated.
+In brief, $\HAS{[A,B]}$ is an input pointer that, when read from,
+yields a value of type $A$ as well as a pointer of type $\HAS{[B]}$.
+The $\HAS{}$ type is parameterized by a list of types $A$, $B$,
+\ldots, which correspond to the types of values that must be read in a
+particular order from the buffer.
+%
+$\NEEDS{[A,B],C}$ is an output pointer that requires a value of type
+$A$ be written to the pointer, followed by $B$, after which a fully
+initialized value of type $C$ can be read from the buffer. A given
+$\NEEDS{}$ cursor must be used linearly, after that address is written
+to, writing it again would clobber existing data.
 
 % $\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
 %   read  :: $\HAS{T:a}$ ->   ($\HAS{a}$, $T$)
@@ -1400,7 +1407,7 @@ For example, the \il{add1} function becomes:
 %% % ($\NEEDS{[\text{Tree$_\freshB$}]}$, ) -> 
 %% %
 \begin{code}
-  add1'' :: ($Has(\text{Tree}_\freshA)$, $Needs([\text{Tree}_\freshB],\gamma)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$) ;
+  add1'' :: ($Has([\text{Tree}_\freshA])$, $Needs([\text{Tree}_\freshB],\gamma)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$) ;
   add1'' cin cout =
     let (end1, tag::Byte) = read(cin) in
     switch tag of
@@ -1427,10 +1434,15 @@ These behave much like typed channels with protocols.  We use the extensions in
 \cref{fig:target} to write and read cursors:
 
 % the macro for NEEDS puts space on the end and messes this up:
+%% \begin{code}
+%%   write :: ($\NEEDS{a:rst, b}$, $a$) ->  $\NEEDS{rst,b}$
+%%   read  :: $\HAS{T_\ell}$ ->   ($\ENDOF{\locend{\ell}}$, $T_\ell$)
+%% \end{code}
 \begin{code}
   write :: ($\NEEDS{a:rst, b}$, $a$) ->  $\NEEDS{rst,b}$
-  read  :: $\HAS{T_\ell}$ ->   ($\ENDOF{\locend{\ell}}$, $T_\ell$)
+  read  :: $\HAS{t:rst}$ ->   ($t$, $\HAS{rst}$)
 \end{code}
+\mv{Not talking about $\ENDOF{}$ here anymore?}
 %  read  :: $\HAS{a:rst}$ ->   ($\HAS{a}$, $T$)
 
 Here we use Haskell-style list syntax at the type-level, so single-colon is
