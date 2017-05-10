@@ -1482,10 +1482,11 @@ dilated representation, rather, mediation happens at the call sites.
 One surprising aspect of the cursor-passing output language is that it is {\em
   still purely functional}.  Rather than directly encoding effects, we have
 created a purely functional interface where @write@ returns a new cursor, and
-all $Needs()$ cursors must be used in a {\em linear}, but pure way.
+all $Needs()$ cursors must be used in a {\em linear}, but pure, way.
 %
-(For instance, in the \treelang interpreter we use for debugging, we model cursors as {\em
-  lists}, where write is cons.)
+(For instance, in the \treelang interpreter we use for debugging,
+evaluating programs after every compiler pass,
+we model cursors as {\em lists}, where write is ``cons''.)
 
 \newcommand{\END}[1]{\ensuremath{\overline{#1}}}
 
@@ -1502,10 +1503,11 @@ all $Needs()$ cursors must be used in a {\em linear}, but pure way.
 \paragraph*{The fate of constructors and case expressions}
 % ----------------------------------------
 
-The final feature of the target language (\cref{fig:target}), which we have not
-addressed yet, is the $\pcasesym$ form.
+% The final feature of the target language (\cref{fig:target}), which we have not
+% addressed yet, is the
+Here we cover the $\pcasesym$ form in more detail.
 %
-The cursor insertion pass lowers constructors to operate directly on destination
+The cursor-insertion pass lowers constructors to operate directly on destination
 cursors.  Thus \il{MkFoo 55} becomes a multi-step operation, where we first initialize
 the \il{MkFoo} structure (returning a cursor pointing to its \il{Int} field), then write the
 \il{55} to that cursor:
