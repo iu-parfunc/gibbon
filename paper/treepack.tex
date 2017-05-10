@@ -28,7 +28,7 @@
 \captionsetup[figure]{format=ruled}
 \captionsetup[subfigure]{format=plain}
 
-\newcommand{\treelang}{Gibbon\xspace} % NEED NAME
+\newcommand{\treelang}{Gibbon\xspace} 
 \newcommand{\treecomp}{Gibbon compiler{}}
 
 %% Traversal effects:
@@ -161,9 +161,9 @@ When written idiomatically in most programming languages, programs that traverse
 and construct trees operate over pointer-based data structures, using one heap
 object per-leaf and per-node.
 %
-\new{This representation is efficient for random access and shape-changing
-  modifications, but for traversals, such as compiler passes, that process most or all of a tree in bulk
-  it can be inefficient.
+{This representation is efficient for random access and shape-changing
+  modifications, but for traversals, such as compiler passes, that process most
+  or all of a tree in bulk, it can be inefficient.
 %
 In this work we instead compile tree traversals}
 to operate on \textbf{pointer-free
@@ -189,8 +189,9 @@ algorithm to insert destination cursors.
 We evaluate our compiler on 
 tree transformations over a real-world dataset of source-code syntax trees.
 %
-{For map- and fold-style traversals, packed data allows speedups of over
-  $2\times$ compared to a highly-optimized pointer-based baseline.}
+{For traversals touching the whole tree, such as maps and folds, packed data
+  allows speedups of over $2\times$ compared to a highly-optimized pointer-based
+  baseline.}
 
 \end{abstract}
 
@@ -220,9 +221,9 @@ compilers represent trees and their traversals identically.
 % In the traditional representation,
 Each node of the tree is a heap object, followed by fields for child nodes or
 leaf values.  This representation has not changed since early LISP systems and
-is shared across source languages with quite different type
-systems---whether algebraic datatypes or class hierarchies, either statically or
-dynamically typed.  The only deviations from this consensus are found within
+is shared across source languages with diverse type
+systems---whether algebraic datatypes or class hierarchies, statically or
+dynamically typed.  The deviations from this consensus are found within
 limited high-performance scenarios where complete trees can be laid out using
 address arithmetic with no intermediate nodes.
 
@@ -231,9 +232,9 @@ that you cannot treat the numbers in a matrix as individual heap objects.
 Rather, the emphasis is on bulk efficiency.  Likewise, many tree traversals
 process trees in bulk, reading or writing them in one pass.  On such workloads,
 traditional tree representations are not favored by current trends in computer
-architecture.  Pointer chasing implies randomized memory access patterns.
+architecture.  Pointer-chasing implies randomized memory access patterns.
 %
-While previous work addresses spatial locality for tree data\cite{Chilimbi1999},
+While previous work addresses spatial locality for tree data~\cite{Chilimbi1999},
 %
 much memory is still wasted both in pointers themselves and in tags on nodes
 (e.g. distinguishing ``interior'' vs ``leaf'' objects).  For example, a C
@@ -312,12 +313,16 @@ sub-parts of the CNF.
 
 The packed tree format above is precisely a dense encoding of a CNF---a
 transitive closure of heap objects with no escaping pointers, in this case, no
-pointers {\em at all}.  But unlike GHC's CNF support---which uses regular heap
-objects, colocated together---the dense tree format {\em requires a complete
+pointers {\em at all}.  GHC's CNF support---like related efforts at
+region~\cite{mlkit} or pool memory management~\cite{Lattner2005}---colocates
+heap objects without changing their representation.
+%
+Code accessing the data can remain unchanged.
+In contrast, the dense tree format {\em requires a complete
 rearrangement of the compiled code that operates on the data}. This
 rearrangement is fundamental to the space savings and format
-simplicity---in contrast, CNF retains all of the pointers and tags of
-the original data.
+simplicity.
+% ---in contrast, CNF retains all of the pointers and tags of the original data.
 
 % Shall we acronymize it?
 % DTF - dense tree form, or dense tree format
@@ -325,8 +330,20 @@ the original data.
 % DTP - dense tree packing
 
 In this paper, we take a first step towards compiler support for 
-packed tree datatypes {\em without} changing the source program.  We make the
-following contributions:
+packed tree datatypes {\em without} changing the source program.
+%
+Packed representations aren't always appropriate, and we don't automate the
+choice of {\em when} to use them, but rather automate the necessary code
+transformations to transparently use packed representations for selected
+datatypes.
+%
+Henceforth, we use {\em tree traversals} or {\em tree transforms} to refer to
+programs that walk over an immutable tree, building an output tree of size
+proportional to the input tree, without substantially relying on {\em sharing}
+in the representation.  We also address a limited class of {\em tree
+  searches} that require random access within a tree.
+%
+We make the following contributions:
 
 \newcommand{\calculus}{$\lambda^D_T$} % uh, Dense Tree?
 
@@ -337,17 +354,16 @@ following contributions:
   %% synthesis step, and we show how the program synthesis and the selection of
   %% data structure shape benefit from co-optimization.
    
-\item We present a simple language,
-%  prototype language implementation based on this
- dubbed \treelang, that can compile a range of tree transforms
+\item We present a compiler, dubbed \treelang, 
+  that can compile a range of tree transforms, written in a minimal functional language,
  to be {more than twice as} fast as standard techniques (Section~\ref{sec:language}).
- We evaluate Gibbon against both a number of existing compilers and
+ We evaluate \treelang against both a number of existing compilers and
  its own best performance (without packing) in \cref{sec:eval}.
 
-\item We present Gibbon's compiler (\cref{sec:compiler}), which includes new
-  algorithms for determining when a function reaches the end of its input(s), and
-  for converting to a destination-cursor-passing style, that supports
-  operating on data in dense byte streams.
+\item We present compilation algorithms for data packing (\cref{sec:compiler}),
+  including a method for determining when a function reaches the end of its
+  input(s), and for converting to a destination-cursor-passing style, which
+  supports operating on data in dense byte streams.
 
 %% \item We show that the principle of packed-tree traversals works
 %%   broadly across a variety of language implementations, by benchmarking simple
@@ -356,11 +372,11 @@ following contributions:
 %% \rn{This implies we will show results for GHC/Packed, which we don't currently.}
   
 \item In an additional evaluation, we show that not only do tree traversals
-  become faster in the packed representation, {but that in some cases {\em
-      potential parallel speedup}, increases as well} \cref{sec:eval-parallel}.
-  To leverage parallelism, we need additional information stored in trees---a
-  feature that also allows other tree-processing programs to be expressed in our
-  framework, such as a point correlation application which we evaluate (\cref{sec:eval-kdtree}).
+  become faster in the packed representation, but that they are still amenable
+  to parallel speedup (\cref{sec:eval-parallel}).  To leverage parallelism, we
+  need random access and thus extra layout information in dense encodings---a
+  feature that also allows tree searches to be expressed in our framework, such
+  as a point correlation application evaluated in \cref{sec:eval-kdtree}.
 % \rn{Need to include the KDTree business in the speculative part}
   
 \end{itemize}
