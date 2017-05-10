@@ -765,8 +765,8 @@ compiler, this will mean passing multiple {\em output cursors} to a function in
 order to provide buffers for it to write its results to.
 
 Other language features are standard: tuple access, let binding, conditionals,
-and primitive operations.  Conditionals are included to avoid the need for \gramwd{Bool}
-to be packed data (because \gramwd{case} operates on packed data only).
+and primitive operations.  Conditionals are included to avoid the need for \il{Bool}
+to be packed data (because \il{case} operates on packed data only).
 %
 Standard primitive values are included
 such as integers, booleans, and symbols.
@@ -1277,11 +1277,16 @@ cursors for writing. These will be described further in
 During the routing pass, we also insert additional bindings in the program that
 explicitly encode facts about how to reach the end of a given location.
 %
+This uses @start(v)@ and @end(v)@ as special variables to refer to the physical
+start and end locations of other variables.  (@start(v)@ is roughly \verb|&v|
+in C.)
+%
 Namely:
 
 \begin{itemize}
 \item One field's end becomes its successor's start.  This becomes a
-  binding \il{let start(y) = end(x)}.
+  binding, such as: \\
+  \il{let start(y) = end(x)}.
 \item Fields of static sizes have known offsets, such as \il{let y = start(x) +
   offset}.  
 \item In \il{case a of K b1 $\ldots$ bn -> $\ldots$}, the end of last field \il{bn} is
@@ -1293,8 +1298,8 @@ instead manifest them explicitly as let bindings.  Note, however, that they may
 refer to (temporarily) unbound end-variables!  We solve this later with a pass
 that reorders these bindings.
 
-Performing this transformation on \il{add1} yields a program with a few
-additional bindings:
+Performing this transformation on \il{add1} yields a program with extra bindings
+as well as the additional end-address-of-input return values:
 
 \begin{code}
   add1 : Tree$_\freshA$ ->  ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$ ) ;
