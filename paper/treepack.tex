@@ -1119,7 +1119,7 @@ accessing the simple scalar @x@ requires somehow traversing @y@ to witness
 effects phase, we optimistically assign the traverse effect, $traverse(\ell_v)$,
 to the above code,
 {\em assuming} that a dummy traversal will later be inserted (\cref{sec:copy-insert}).
-%
+i%
 If it were not, this program couldn't compile!
 
 
@@ -1166,20 +1166,39 @@ the effect annotation on the function's type ($\travarr{\freshA}$).
     label} traversal effects in function signatures, but to recognize where they
   are needed, but missing, and where destination-location constraints conflict.}
 %
+Next we need to {\em repair} the program to fix these problems.
+%
   With the inter-procedural traversal types settled,
   we reprocess the program and repeat the same location analysis, but this time,
   we mark wherever we are (1) {\em missing} a witness of a field stored within a
   packed buffer, or (2) have {\em conflicting} constraints where a packed value
-  flows to two destinations (sharing).
+  flows to two incompatible destinations (sharing).
+
+
+  First, a missing end-witness can always be restored, if necessary, by
+  inserting a call to a dummy traversal function.  For example, the program
+  fragment from the previous subsection (with a missing traversal) would take
+  the following form after a dummy-traversal insertion:
 %
-  A missing end witness can always be restored, if necessary, by inserting a
-  call to a dummy traversal function.  Likewise, a conflicting destination
-  location can always be resolved by inserting a copy function\footnote{More
-    generally, we can perform a {\em program synthesis} here to fix the program
-    by generating a recursive call that meets that constraint.
-    %% Ultimately this interacts with data-structure layout choices, because
-    %% sharing can be addressed by adding (limited) indirections back in.
-  }.
+  \begin{code}
+  case v of K (y : Tree) (x : Int) ->  -- We know $\ell_x = \locend{\ell_y}$
+    let end_y = traverseTree y  in x     
+  \end{code}
+%
+Here, @traverseTree@ is synthesized by the compiler based on the structure of the
+type definition.
+%
+The call to @traverseTree@ may look like dead code, but it's dead code with
+the correct location, which lets the compiler pass described in the next
+section reuse the end of @y@ as the start address of @x@.
+  
+Second, a {\em conflicting} destination location can always be resolved by
+inserting a copy function\footnote{More generally, we can perform a {\em program
+    synthesis} here to fix the program by generating a recursive call that meets
+  that constraint.  Copies work, but so does inlining.  Ultimately, when we
+  consider indirection extensions to the data format (\cref{sec:extensions}),
+  the program repair process interacts with data-structure layout choices,
+  because sharing can be addressed by adding (limited) indirections back in.}.
  % 
 %% e insert calls to
 %% only two functions---copy and empty-traverse---whose definitions the compiler
@@ -1207,7 +1226,20 @@ But, for {\em completeness}, it always suffices to naively insert copies or dumm
 traversals.
 %% For our preliminary experiments, we instead naively insert copies for the
 %% program above.
+Copy insertion for the above program would break the sharing:
 
+\begin{code}
+let x = f t in  Node x (copy x)
+\end{code}
+
+Here the call to @x@ can flow to the destination location right after the @Node@
+constructor, and can, from there, be copied to occur a second time in the output
+buffer.
+%
+Inlining can also resolve these conflicts, producing @Node (f t) (f t)@, in 
+which the two calls flow to different destations in the output buffer.  Our
+current prototype compiler prefers inlining where possible (because it enables
+subsequent optimizations), and uses copy-insertion otherwise.
 
 % \vspace{-2mm}
 \subsection{Routing end-of-value witnesses}
