@@ -709,9 +709,9 @@ declarations. Similar to most functional programming languages,
 programmers may define \emph{algebraic data types}, and dispatch on
 them with a
 \ifcurly
-\texttt{match} language form (called \texttt{case} or \texttt{switch} in some languages).
+\texttt{match} form (called \texttt{case} or \texttt{switch} in some languages).
 \else
-\texttt{case} language form (called \texttt{match} or \texttt{switch} in some languages).
+\texttt{case} form (called \texttt{match} or \texttt{switch} in some languages).
 \fi
 For example, a data type for peano
 numbers would have two cases: \il{Zero} and \il{Successor}.
@@ -725,7 +725,7 @@ $\mathtt{e} . n$.
 %
 %% though as the project progresses we plan to allow arbitrary {\em subsets} of
 %% data types to be marked with a ``packed'' compiler pragma.
-Note, however, that even tuples allow functions to take and return arbitrary
+Note, however, that tuples are sufficient for functions to take and return arbitrary
 numbers of packed data types.  When we perform cursor translation in our
 compiler, this will mean passing multiple {\em output cursors} to a function in
 order to provide buffers for it to write its results to.
