@@ -1407,20 +1407,23 @@ For example, the \il{add1} function becomes:
       LEAF -> let cout2    = write(LEAF,cout) in
               let (end2,n) = read(coerce(end1)) in
               let cout3    = write(cout2, n+1) in
-              (end2, finish(cout3))
+              (end2, coerce(cout3))
       NODE -> let cout2         = write(NODE,cout) in
               let (end2, cout3) = add1'' coerce(end1) cout2 in
               let (end3, cout4) = add1'' coerce(end2) cout3 in
-              (end3, finish(cout4))
+              (end3, coerce(cout4))
 \end{code}
 \mv{Does this need type annotations? Also the use of finish vs the expected endof type are confusing.}
 \note{FIXME - the above coercion story is ugly, but it may still be even if
   READ's type changed...}
 
-Here the return value has turned into a $\ENDOF$ cursor, whereas the inputs have
-turned into read and write cursors respectively ($Has$ and $Needs$).  These 
-behave much like typed channels with protocols. 
-We use the extensions in
+
+@LEAF@ and @NODE@ have become simply ``enum'' types, and 
+switch dispatches on these single byte values.
+%
+The return value of the function has turned into a $\ENDOF$ cursor, whereas the
+inputs have turned into read and write cursors respectively ($Has$ and $Needs$).
+These behave much like typed channels with protocols.  We use the extensions in
 \cref{fig:target} to write and read cursors:
 
 % the macro for NEEDS puts space on the end and messes this up:
@@ -1430,20 +1433,32 @@ We use the extensions in
 \end{code}
 %  read  :: $\HAS{a:rst}$ ->   ($\HAS{a}$, $T$)
 
-That is, @Needs@ tracks a list of values its {\em waiting for}.  For instance,
+Here we use Haskell-style list syntax at the type-level, so single-colon is
+``cons'', and the list literal @[a,b]@ is shorthand for @a : b : []@.
+%
+$\NEEDS{}$ tracks a list of values its {\em waiting for}.  For instance,
 given a data type, @data Foo = MkFoo Int Int@, after we write a tag for @MkFoo@
 to an output buffer, the output cursor has type \il{$Needs$([Int,Int],Foo)}.
+%
 The second argument of the $Needs$ is the type of the value which will be
-completed only after all the obligations have been satisfied.  Retrieving that
-completed value can be accomplished with @finish@:
+completed only after all the obligations have been satisfied.
+%
+Once the list of needed-values is empty, retrieving the completed value can be
+accomplished with @finish@:
 
 \begin{code}
   finish :: $Needs$([],$T$) -> $\HAS{T}$
 \end{code}
 
-In the context of the above example, if @cout :: $\NEEDS{Tree,\gamma}$@
+In the context of the above example, if @cout :: $\NEEDS{[Tree_\ell],\gamma}$@,
+then the expression
+ @write(cout,LEAF)@ has type @$\NEEDS{[Int],\gamma}$@, whereas
+ @write(cout,NODE)@ has type @$\NEEDS{[Tree,Tree],\gamma}$@, corresponding
+to the different number and type of the fields for those respective data constructors.
+ 
 
-\mv{Should we explain how we get from $\HAS{T}$ to $\ENDOF{T}$?}
+ % \mv{Should we explain how we get from $\HAS{T}$ to $\ENDOF{T}$?}
+ % \rn{yes, coercions}
 
 \paragraph*{Locally dilated representation of packed values}
 
