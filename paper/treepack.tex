@@ -1135,19 +1135,24 @@ monotonically decreases in every round, until the fixed point is reached.
 
 The running @add1@ example does not contain mutual recursion, so it takes only
 one iteration to reach a fixed point.  But the reasoning is still recursive
-(inductive) where add1 is only able to traverse its input because its recursive
+(inductive)---add1 is only able to traverse its input because its recursive
 call sites traverse their (subtree) inputs:
 \begin{code}
 add1 : Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$
-add1 t$@\freshA$ =
- case t of                 -- case has traverse($\ell_t$), because all branches do
+add1 t =       -- when the polymorphic type is instantiated, $\freshA \mapsto \ell_t$
+ case t of     -- case has traverse($\ell_t$), because all branches do
   Leaf n   -> Leaf (n+1)   -- fresh location; $\gamma$, static size, thus traverse($\ell_t$)
-   Node x y -> let x' = add1 x in -- x' at fresh loc, call's effect: traverse($\ell_x$)
-               let y' = add1 y in -- y' at fresh loc, call's effect: traverse($\ell_y$)
+   Node x y -> let x' = add1 x in -- x' at fresh loc; call's effect: traverse($\ell_x$)
+               let y' = add1 y in -- y' at fresh loc; call's effect: traverse($\ell_y$)
                Node x' y' -- traverse($\ell_y$) implies traverse($\ell_t$)
 \end{code}
 Here we the compiler has also performed a bit of standard flattening,
 introducing temporaries.
+%
+Inferring the traverse effect for the @Leaf@ case is trivial, because once we
+know @t@ is a @Leaf@, we know its exact byte size, and can compute
+$\locend(\ell_t) = \ell_t + 9$ (in bytes).
+%
 Because of the polymorphic signature, 
 (@$\forall \freshA \freshB .$ Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$@),
 the lexical variables @x'@ and @y'@ have fresh, unrestricted locations, but,
