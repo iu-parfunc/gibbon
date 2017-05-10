@@ -877,12 +877,28 @@ generally call the allocator, for example, even a simple function such as @f@
 below (on the left) is transformed to take a destination cursor argument, as
 shown on the right:
 
-\finishmecurly
-\begin{code}
-  data Foo = MkFoo Int             f ptr = let p2 = write('MkFoo',ptr)
-  f() = MkFoo 3                            in write(3,p2) 
-\end{code}
-\fi
+\noindent
+{
+\begin{minipage}{0.45\textwidth}
+  \begin{code}
+  data Foo = MkFoo Int
+  f() = MkFoo 3       
+  \end{code}
+\end{minipage}
+\hspace{2mm}
+\begin{minipage}{0.5\textwidth}
+  \begin{code}
+  f ptr = let p2 = write('MkFoo',ptr) 
+          in write(3,p2) 
+  \end{code}
+\end{minipage}
+}
+% \finishmecurly
+% \begin{code}
+%   data Foo = MkFoo Int             f ptr = let p2 = write('MkFoo',ptr)
+%   f() = MkFoo 3                            in write(3,p2) 
+% \end{code}
+% \fi
 
 
 
