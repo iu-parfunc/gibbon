@@ -839,17 +839,20 @@ use  packed data to represent all types declared using the
 
 \treelang{}'s approach is to convert programs into a form of {\em destination
   passing style}~\cite{larus89}, where destinations are not managed
-per-heap-object (i.e. per-data-constructor), but rather for entire trees or subtrees.  This approach
-implies function calls producing data types do not generally call the allocator,
-for example, even a simple function such as @f@ below is transformed to take a
-destination cursor argument.
+per-heap-object (i.e. per-data-constructor), but rather for entire trees or
+subtrees.  This approach implies function calls producing data types do not
+generally call the allocator, for example, even a simple function such as @f@
+below (on the left) is transformed to take a destination cursor argument, as
+shown on the right:
 
 \finishmecurly
 \begin{code}
-  data Foo = MkFoo Int
-  f() = MkFoo 3
+  data Foo = MkFoo Int             f ptr = let p2 = write('MkFoo',ptr)
+  f() = MkFoo 3                            in write(3,p2) 
 \end{code}
 \fi
+
+
 
 %% \begin{displaymath}
 %%   \begin{aligned}
@@ -858,9 +861,11 @@ destination cursor argument.
 %%   \end{aligned}
 %% \end{displaymath}
 
-We say that data types like @Foo@ are {\em packed} types, whereas, @Int@, @Bool@,
-@Symbol@, etc are not.  As we will see in this section, the data constructors for
-packed types (@MkFoo@) will themselves come to require destination cursor arguments.
+We say that data types like @Foo@ are {\em packed} types, whereas, @Int@,
+@Bool@, @Symbol@, etc are not.  As we will see in this section, during
+compilation the data constructors for packed types (@MkFoo@) will themselves
+come to require destination cursor arguments, before eventually ending up in the
+final state (shown above) of writing directly to input and output data streams.
 %
 We insert these cursors using the extended language of \cref{fig:target}, which
 includes an extended type-system for safely dealing with cursors (currently used
@@ -893,12 +898,19 @@ types~\cite{mlkit,Grossman2002}.
 
 This matter of destination routing is the primary function of the \treelang
 compiler.  However, to support it, other analyses are required.  For instance,
-determining the destination cursor for a field requires determining an {\em end
+determining the destination cursor for a field within a data record
+requires determining an {\em end
   witness} for the field before it---that is, a pointer to the position in the
 buffer that marks the end of one field and the start of the next.  If we
 recursively unpack adjacent fields without storing a pointer to the later
 fields, we must rediscover those downstream fields as a side effect of
-{\em traversing} their upstream ones.  Thus we begin with an inter-procedural
+{\em traversing} their upstream ones.
+%
+(For example, in our binary tree data type, to discover the start location of
+@y@ in @Node x y@, we must first scroll through @x@ in the preorder packed
+data.)
+%
+Thus we begin with an inter-procedural
 analysis of which functions are able to traverse their inputs.
 
 The overall structure of the compiler, covered in the rest of this

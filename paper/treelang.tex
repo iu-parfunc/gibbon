@@ -26,6 +26,7 @@
 \newcommand{\HAS}[1]{\; Has(#1) \;}
 \newcommand{\ENDOF}[1]{\; EndOf(#1) \;}
 \newcommand{\WRITETAG}[2]{\gramwd{write}(#1,#2)}
+\newcommand{\WRITENUM}[2]{\gramwd{write}(#1,#2)}
 \newcommand{\FINISH}[1]{\gramwd{finish}(#1)}
 \newcommand{\READTAG}[1]{\gramwd{read}(#1)}
 
@@ -145,8 +146,10 @@
       \textup{Expressions} && \EXPR && 
      \gramdef & \ldots \gramor \pcase{\sEXPR}{\overline{[\bind{\DC}{\EXPR}]}} 
      \gramor \STARTV{v} \gramor \ENDV{v}
-      \\
-      && && \gramor & \WRITETAG{\sDC}{\sEXPR} \gramor \READTAG{\sEXPR} \gramor
+     \\     
+     && && \gramor & \WRITETAG{`\sDC\textrm'}{\var}
+           \gramor \WRITENUM{\num}{\var}
+           \gramor \READTAG{\var} \gramor
       \FINISH{\sEXPR} \\      
       \textup{Types} && \TYP && \gramdef & \ldots \gramor \NEEDS{[\overline{\sTYP}]}{\sTYP} \gramor \HAS{\sTYP} 
 \gramor \ENDOF{\sTYP} \\
