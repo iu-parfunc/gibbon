@@ -1943,6 +1943,20 @@ scalar payload of leaves increases.
 %  \vspace{-4mm}
 \end{figure}
 
+\paragraph*{Pathalogical cases}
+
+Because \treelang fixes a traversal order, it is possible to write programs that exhibit pathalogically
+bad performance when compiled with the packed approach. A simple example
+is a function that traverses a binary tree to return its right-most leaf.
+With the pointer approach, the function is need not ever inspect the
+left child of any node, while with the packed approach the compiler must
+traverse both left and right children of every node, leading to asymptotically
+worse run-time complexity. On tree sizes of the sizes measured in \cref{fig:shootout1},
+the generated packed code runs roughly $6\times$ slower than the pointer code.
+%
+In \cref{sec:extensions}, we propose a solution to this problem: the
+addition of indirection in packed buffers.
+
 
 %\note{A ``language shootout'' of add1-tree benchmarks.}
 
