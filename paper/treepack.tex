@@ -697,6 +697,8 @@ and the code that traverses the tree.
 \label{sec:language}
 % ================================================================================
 
+\input{treelang}  %% Definitions and figures.
+
 To demonstrate the compilation technique we propose, we use
 a typed programming language simple enough to
 present briefly in a paper, and featureful enough to express some
@@ -716,7 +718,6 @@ them with a
 For example, a data type for peano
 numbers would have two cases: \il{Zero} and \il{Successor}.
 
-\input{treelang}  %% Definitions and figures.
 
 Data types declared with \il{data} are automatically and implicitly
 {\em packed} in this language.  In this basic design, the only
@@ -734,13 +735,13 @@ Other language features are standard: tuple access, let binding,
 conditionals, and primitive operations.  Standard primitive values are included
 such as integers, booleans, and symbols.
 %
-Finally, \treelang provides dictionaries to support more sophisticated
+Finally, \treelang provides dictionaries (not shown) to support more sophisticated
 operations such as bulk transformations---substitution on an abstract
 syntax tree is one example.
-
+%
 %% As an example, the \il{add1} example from Section~\ref{sec:background}
 %% is representable in \treelang, shown in figure~\ref{fig:add1gibbon}.
-
+%
 A fuller language would support richer data types, more operations,
 and data structures such as arrays and lists, but the crucial elements
 for expressing tree-shaped data and transformations on trees are present.
