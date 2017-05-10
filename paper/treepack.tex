@@ -1,3 +1,4 @@
+
 \documentclass[a4paper,english]{lipics-v2016}
 \usepackage{microtype}
 
@@ -733,8 +734,11 @@ numbers of packed data types.  When we perform cursor translation in our
 compiler, this will mean passing multiple {\em output cursors} to a function in
 order to provide buffers for it to write its results to.
 
-Other language features are standard: tuple access, let binding,
-conditionals, and primitive operations.  Standard primitive values are included
+Other language features are standard: tuple access, let binding, conditionals,
+and primitive operations.  Conditionals are included to avoid the need for \gramwd{Bool}
+to be packed data (because \gramwd{case} operates on packed data only).
+%
+Standard primitive values are included
 such as integers, booleans, and symbols.
 %
 Finally, \treelang provides dictionaries (not shown) to support more sophisticated
@@ -768,7 +772,7 @@ for expressing tree-shaped data and transformations on trees are present.
 
 Rather than moving directly from a high-level functional language to
 cursor-oriented low-level C code, our compiler transforms programs
-first into an intermediate language which expresses the crucial
+first into an intermediate language which captures the crucial
 invariants.  These additional forms are presented in \cref{fig:target}
 and described in \cref{sec:compiler}.
 
