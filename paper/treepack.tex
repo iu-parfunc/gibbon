@@ -468,7 +468,7 @@ functions, such as \il{add1} above, into code that directly manipulates data
 buffers containing serialized trees.
 
 % \begin{wrapfigure}[6]{r}[-05pt]{6cm}
-\begin{wrapfigure}{r}{6.8cm}
+\begin{wrapfigure}[14]{r}{6.8cm}
 \vspace{-8mm}
 \begin{code}[language=c]
 char* add1(char* tin, char* tout) {
@@ -495,7 +495,7 @@ Yet this approach cannot scale---it quickly becomes tedious and error prone.
 Clearly, no one would use a technique like this for building a
 non-trivial tree processing program such as a compiler or a web browser!
 
-The above program is similar to the output produced by the \treelang compiler we
+This C program is similar to the output produced by the \treelang compiler we
 describe in this paper.  We refer to the input and output pointers as {\em
   cursors}, and one of the primary jobs of the compiler is to insert
 them automatically.
@@ -510,15 +510,15 @@ them automatically.
 \label{sec:limitations}
 
 At a basic level, the remainder of the paper describes how to generate
-this efficient but complex C code automatically from the simple
+efficient, but complex, cursor-passing C code automatically from the simple
 functional tree-walking program we began with.
 %
-However, this code generation process is not as easy as our initial
-example makes it seem. Our compiler must solve several challenging
-problems: ensuring complete traversal, tracking the state of cursors
-into the tree, and more. We begin by outlining some of those
-challenges, and delve into their solutions in subsequent sections.
-
+However, this code generation process is not as easy as our initial example
+makes it seem. Our compiler must solve several challenging problems: ensuring
+complete traversal to consume the stream in order, tracking the state of cursors
+into the tree, and more. We begin by outlining some of those challenges, and
+delve into their solutions in subsequent sections.
+%
 Of course, many challenges can be overcome with extensions to the data
 {format, and in \cref{sec:extensions1,sec:extensions} we will explore various
 extensions to the basic preorder serialization}.  But we begin with the
@@ -546,12 +546,9 @@ two seemingly-similar functions:
 \end{code}
 \else
 \begin{code}
-  left t = case t of
-             Leaf n   -> n
-             Node x _ -> left x
-  right t = case t of
-              Leaf n   -> n
-              Node _ y -> right y
+  left t = case t of                  right t = case t of
+             Leaf n   -> n                        Leaf n   -> n
+             Node x _ -> left x                   Node _ y -> right y
 \end{code}
 \fi
 
