@@ -222,7 +222,7 @@ compilers represent trees and their traversals identically.
 Each node of the tree is a heap object, followed by fields for child nodes or
 leaf values.  This representation has not changed since early LISP systems and
 is shared across source languages with diverse type
-systems---whether algebraic datatypes or class hierarchies, statically or
+systems---whether algebraic data types or class hierarchies, statically or
 dynamically typed.  The deviations from this consensus are found within
 limited high-performance scenarios where complete trees can be laid out using
 address arithmetic with no intermediate nodes.
@@ -330,12 +330,12 @@ simplicity.
 % DTP - dense tree packing
 
 In this paper, we take a first step towards compiler support for 
-packed tree datatypes {\em without} changing the source program.
+packed tree data types {\em without} changing the source program.
 %
 Packed representations aren't always appropriate, and we don't automate the
 choice of {\em when} to use them, but rather automate the necessary code
 transformations to transparently use packed representations for selected
-datatypes.
+data types.
 %
 Henceforth, we use {\em tree traversals} or {\em tree transforms} to refer to
 programs that walk over an immutable tree, building an output tree of size
@@ -391,7 +391,7 @@ We begin our study of packed tree representations with perhaps the
 simplest example: binary trees with
 integer leaves.
 %
-In a language with algebraic datatypes,
+In a language with algebraic data types,
 % In a strongly typed functional language,
 a recursive walk on
 the tree would typically use pattern matching, which we
@@ -693,17 +693,16 @@ our work focuses on compiler-driven transformations of both the tree layout
 and the code that traverses the tree.
 
 % ================================================================================
-\section{The \treelang{} Language}
+\section{The \treelang{} Input Language}
 \label{sec:language}
 % ================================================================================
 
-
-To demonstrate the compilation technique we propose, we present
-\treelang, a typed programming language simple enough to
+To demonstrate the compilation technique we propose, we use
+a typed programming language simple enough to
 present briefly in a paper, and featureful enough to express some
 interesting tree-manipulating functions, such as compiler passes.
 
-The syntax of \treelang is given in \cref{fig:source}---it is
+The syntax is given in \cref{fig:source}---it is
 simply a standard first-order functional language.
 Programs consist of a series of data type declarations and function
 declarations. Similar to most functional programming languages,
@@ -721,13 +720,13 @@ numbers would have two cases: \il{Zero} and \il{Successor}.
 
 Data types declared with \il{data} are automatically and implicitly
 {\em packed} in this language.  In this basic design, the only
-non-packed datatypes are tuples $\mathtt{(e_1,\dots,e_n)}$, accessed with
+non-packed data types are tuples $\mathtt{(e_1,\dots,e_n)}$, accessed with
 $\mathtt{e} . n$.
 %
 %% though as the project progresses we plan to allow arbitrary {\em subsets} of
-%% datatypes to be marked with a ``packed'' compiler pragma.
+%% data types to be marked with a ``packed'' compiler pragma.
 Note, however, that even tuples allow functions to take and return arbitrary
-numbers of packed datatypes.  When we perform cursor translation in our
+numbers of packed data types.  When we perform cursor translation in our
 compiler, this will mean passing multiple {\em output cursors} to a function in
 order to provide buffers for it to write its results to.
 
@@ -834,7 +833,7 @@ use  packed data to represent all types declared using the
 \treelang{}'s approach is to convert programs into a form of {\em destination
   passing style}~\cite{larus89}, except where destinations are not managed
 per-data-constructor (heap object), but rather for entire trees or subtrees.  This approach
-implies function calls producing datatypes do not generally call the allocator,
+implies function calls producing data types do not generally call the allocator,
 for example, even a simple function such as @f@ below is transformed to take a
 destination cursor argument.
 
@@ -852,7 +851,7 @@ destination cursor argument.
 %%   \end{aligned}
 %% \end{displaymath}
 
-We say that datatypes like @Foo@ are {\em packed} types, whereas, @Int@, @Bool@,
+We say that data types like @Foo@ are {\em packed} types, whereas, @Int@, @Bool@,
 @Symbol@, etc are not.  As we will see in this section, the data constructors for
 packed types (@MkFoo@) will themselves come to require destination cursor arguments.
 %
@@ -1039,7 +1038,7 @@ the location of @e@ provided that all the branches of the case traverse the
   case _ of K (y : Tree) (x : Int) -> x
 \end{code}
 %
-Here, when reading datatype @K@ from a a preorder serialization in a buffer,
+Here, when reading data type @K@ from a a preorder serialization in a buffer,
 accessing the simple scalar @x@, requires somehow traversing @y@ to witness
 \locend{\fixed{y}}, where $\locend{\fixed{y}} = \fixed{x}$.  During the infer
 effects phase, we optimistically assign the traverse effect to the above code,
@@ -1257,7 +1256,7 @@ We use the extensions in
 \end{code}
 
 That is, @Needs@ tracks a list of values its {\em waiting for}.  For instance,
-given a datatype, @data Foo = MkFoo Int Int@, after we write a tag for @MkFoo@
+given a data type, @data Foo = MkFoo Int Int@, after we write a tag for @MkFoo@
 to an output buffer, the output cursor has type \il{$Needs$([Int,Int],Foo)}.
 The second argument of the $Needs$ is the type of the value which will be
 completed only after all the obligations have been satisfied.  Retrieving that
@@ -1693,7 +1692,7 @@ We would expect that increasingly ``heavy'' nodes with many scalar fields, would
 directly reduce the advantage of the packed representation.
 % (Indeed, we see this again in \cref{sec:eval-kdtree}.)
 To verify this hypothesis, we ran a simple parameter study where we generated
-alternate versions of the @Tree@ datatype and add1 traversal over it, varying
+alternate versions of the @Tree@ data type and add1 traversal over it, varying
 the number of @Leaf@ fields.
 \cref{fig:vary-leaves} shows the results.
 %
@@ -1829,7 +1828,7 @@ generates passes over pointer-based ASTs in C), and one using \treelang{}'s
 implementations differ only in the backends used to generate them, we isolate
 the performance differences to those that arise from the difference in
 representation. Because \treelang{} allows tree traversals to be written
-using standard datatype match operations, this evaluation also
+using standard data type match operations, this evaluation also
 serves to confirm our ability to generate packed implementations from
 idiomatic code.
 
@@ -2035,7 +2034,7 @@ and linear access patterns of Gibbon's packed approach yield speedups of
 
   \caption{Excerpt of Racket Core AST definition in Gibbon., which 
    follows \url{https://docs.racket-lang.org/reference/syntax-model.html}.
-   There are nine datatypes total.}
+   There are nine data types total.}
   \label{fig:racket-core}
 \end{figure}}
 
