@@ -1141,7 +1141,7 @@ call sites traverse their (subtree) inputs:
 add1 :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$
 add1 t =       -- when the polymorphic type is instantiated, $\freshA \mapsto \ell_t$
  case t of     -- case has traverse($\ell_t$), because all branches do
-  Leaf n   -> Leaf (n+1)   -- fresh location; $\gamma$, static size, thus traverse($\ell_t$)
+   Leaf n   -> Leaf (n+1)   -- fresh location; $\gamma$, static size, thus traverse($\ell_t$)
    Node x y -> let x' = add1 x in -- x' at fresh loc; call's effect: traverse($\ell_x$)
                let y' = add1 y in -- y' at fresh loc; call's effect: traverse($\ell_y$)
                Node x' y' -- traverse($\ell_y$) implies traverse($\ell_t$)
@@ -1321,8 +1321,8 @@ as well as the additional end-address-of-input return values.
                  let end(tr)  = end(n) in
                  (end(tr), Leaf n+1)
       Node x y ->  let start(y) = coerce(end(x)) in
-                   let (end(x),x') = add1(x) in
-                   let (end(y),y') = add1(y) in
+                   let (end(x),x') = add1 x in
+                   let (end(y),y') = add1 y in
                    let end(tr) = end(y) in
                    (end(tr), Leaf x' y') ;
 \end{code}
@@ -1409,8 +1409,8 @@ For example, the \il{add1} function becomes:
               let cout3    = write(cout2, n+1) in
               (end2, finish(cout3))
       NODE -> let cout2         = write(NODE,cout) in
-              let (end2, cout3) = add1''(coerce(end1), cout2) in
-              let (end3, cout4) = add1''(coerce(end2), cout3) in
+              let (end2, cout3) = add1'' coerce(end1) cout2 in
+              let (end3, cout4) = add1'' coerce(end2) cout3 in
               (end3, finish(cout4))
 \end{code}
 \mv{Does this need type annotations? Also the use of finish vs the expected endof type are confusing.}

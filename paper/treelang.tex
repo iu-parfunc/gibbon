@@ -64,7 +64,7 @@
 \newcommand{\letexpr}[3]{\;\gramwd{let} \; #1 = #2 \; \gramwd{in} \; #3 \;}
 % \newcommand{\ife}[3]{\; \gramwd{if}\; #1 #2 #3 \;}
 \newcommand{\ife}[3]{\gramwd{if} #1 \gramwd{then} #2 \gramwd{else} #3}
-\newcommand{\app}[2]{\; #1(#2) \;}
+\newcommand{\app}[2]{\; #1 #2 \;}
 
 %% \begin{figure}
 %% \hspace{-0.05\textwidth}
@@ -81,7 +81,7 @@
 %        \DD_1 \ldots \DD_n \; ; \VD_1 \ldots \VD_m \; ; \FD_1 \ldots \FD_m \; ; \EXPR 
         \overline{\DD} \;; \overline{\VD} \; ; \overline{\FD} \; ; \EXPR 
         \\
-      \textup{Packed Data Declarations} && \DD && \gramdef & \DATA \TC = \overline{[\DC \; \overline{\sTYP}\;]} \\
+      \textup{Packed Data Declarations} && \DD && \gramdef & \DATA \TC = \overline{\DC \; \overline{\sTYP}\;} \\
       \textup{Value Declarations}    && \VD && \gramdef & \var : \TYP  ; \var = \EXPR \\ 
       \textup{Function Declarations} && \FD && \gramdef &
          \fvar : \TYP \ARROW \TYP; 
@@ -99,7 +99,7 @@
       %    \pair{\sEXPR}{\sEXPR} \gramor \fst{e} \gramor \snd{e}
       \;(e_1,\, \dots\, , e_n) \gramor \EXPR.\num 
       \gramor \letexpr{\var:\TYP}{\EXPR}{\EXPR} \\
-      && && \gramor & \case{\sEXPR}{\overline{[\bind{\DC \; \overline{\svar} \;}{\EXPR}]}} 
+      && && \gramor & \case{\sEXPR}{\overline{\bind{\DC \; \overline{\svar} \;}{\EXPR}}} 
             \gramor  \ife{\EXPR}{\EXPR}{\EXPR} \\
       \textup{Types} && \TYP && \gramdef &
          \TC \gramor
@@ -144,7 +144,7 @@
   \begin{displaymath}
     \begin{aligned}
       \textup{Expressions} && \EXPR && 
-     \gramdef & \ldots \gramor \pcase{\sEXPR}{\overline{[\bind{\DC}{\EXPR}]}} 
+     \gramdef & \ldots \gramor \pcase{\sEXPR}{\overline{\bind{\DC}{\EXPR}}} 
      \gramor \STARTV{v} \gramor \ENDV{v}
      \\     
      && && \gramor & \WRITETAG{`\sDC\textrm'}{\var}
