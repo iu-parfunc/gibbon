@@ -1409,24 +1409,26 @@ For example, the \il{add1} function becomes:
 \begin{code}
   add1'' :: ($Has([\text{Tree}_\freshA])$, $Needs([\text{Tree}_\freshB],\gamma)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$) ;
   add1'' cin cout =
-    let (end1, tag::Byte) = read(cin) in
-    switch tag of
-      LEAF -> let cout2    = write(LEAF,cout) in
-              let (end2,n) = read(coerce(end1)) in
-              let cout3    = write(cout2, n+1) in
-              (end2, coerce(cout3))
-      NODE -> let cout2         = write(NODE,cout) in
-              let (end2, cout3) = add1'' coerce(end1) cout2 in
-              let (end3, cout4) = add1'' coerce(end2) cout3 in
-              (end3, coerce(cout4))
+    switch cin of
+      Leaf end1 -> let cout2    = write(LEAF,cout) in
+                   let (end2,n) = read(end1) in
+                   let cout3    = write(cout2, n+1) in
+                   (end2, coerce(cout3))
+      Node end1 -> let cout2         = write(NODE,cout) in
+                   let (end2, cout3) = add1'' end1 cout2 in
+                   let (end3, cout4) = add1'' end2 cout3 in
+                   (end3, coerce(cout4))
 \end{code}
 \mv{Does this need type annotations? Also the use of finish vs the expected endof type are confusing.}
 \note{FIXME - the above coercion story is ugly, but it may still be even if
   READ's type changed...}
 
 
-@LEAF@ and @NODE@ have become simply ``enum'' types, and 
-switch dispatches on these single byte values.
+%% @LEAF@ and @NODE@ have become simply ``enum'' types, and 
+%% switch dispatches on these single byte values.
+The new @switch@ form dispatches based on the tag read from an input buffer,
+and each case of the switch statement binds a cursor pointing to the beginning
+of the first field of the matched data. 
 %
 The return value of the function has turned into a $\ENDOF$ cursor, whereas the
 inputs have turned into read and write cursors respectively ($Has$ and $Needs$).
