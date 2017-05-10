@@ -732,8 +732,6 @@ and the code that traverses the tree.
 \label{sec:language}
 % ================================================================================
 
-\input{treelang}  %% Definitions and figures.
-
 To demonstrate the compilation technique we propose, we use
 a typed programming language simple enough to
 present briefly in a paper, and featureful enough to express some
@@ -808,6 +806,8 @@ first into an intermediate language which captures the crucial
 invariants.  These additional forms are presented in \cref{fig:target}
 and described in \cref{sec:compiler}.
 
+
+\input{treelang}  %% Definitions and figures.
 
 %% \note{We already gave an example of a program in Gibbon earlier...
 %%   probably only need one, unless we're doing something different here}
@@ -1258,7 +1258,7 @@ way, to include additional return-values: end-witnesses.
 % But, following our formal language, the full type for the cursor pointer is @@.
 
 Here the type of the end-witness is $\ENDOF{\locend{\freshA}}$, which signifies
-a pointer to the end of a value, which is not useful by itself.  Rather, it is
+a cursor (pointer) to the end of a value, which is not useful by itself.  Rather, it is
 useful if it witnesses the {\em start of another value}.
 %
 This brings us to the topic of our {\bf type system for cursors}.
@@ -1275,14 +1275,16 @@ cursors for writing. These will be described further in
 
 % Before we deal further with cursors,
 During the routing pass, we also insert additional bindings in the program that
-explicitly encode facts about how to reach the end of a given location.  Namely:
+explicitly encode facts about how to reach the end of a given location.
+%
+Namely:
 
 \begin{itemize}
 \item One field's end becomes its successor's start.  This becomes a
-  binding \il{let y = end(x)}.
+  binding \il{let start(y) = end(x)}.
 \item Fields of static sizes have known offsets, such as \il{let y = start(x) +
   offset}.  
-\item In \il{case a of K b1 ... bn -> ...}, the end of last field \il{bn} is
+\item In \il{case a of K b1 $\ldots$ bn -> $\ldots$}, the end of last field \il{bn} is
   also the end of \il{a}, thus \\ \il{let end(a) = end(bn) in ...}
 \end{itemize}
 
@@ -1297,7 +1299,7 @@ additional bindings:
 \begin{code}
   add1 : Tree$_\freshA$ ->  ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$ ) ;
   add1 tr = case tr of
-      Leaf n ->  let end(n)   = start(n) + offset in
+      Leaf n ->  let end(n)   = start(n) + 8 in
                  let end(tr)  = end(n) in
                  (end(tr), Leaf n+1)
       Node x y ->  let (end(x),x') = add1(x) in
