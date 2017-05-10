@@ -789,7 +789,7 @@ for expressing tree-shaped data and transformations on trees are present.
 %% \begin{displaymath}
 %%   \begin{aligned}
 %%   &\DATA \gramwd{Tree} = [\gramwd{Leaf} \gramwd{Int}] [\gramwd{Node} \gramwd{Tree} \gramwd{Tree}] \;; \\
-%%   &\gramwd{add1} : \gramwd{Tree} \rightarrow \gramwd{Tree} ; \\
+%%   &\gramwd{add1} :: \gramwd{Tree} \rightarrow \gramwd{Tree} ; \\
 %%   &\gramwd{add1}(t) = 
 %%      \case{t}{ [\bind{\gramwd{Leaf} \gramwd{x}}{\gramwd{x} + 1\;}]
 %%                [\bind{\gramwd{Node} \gramwd{l} \gramwd{r}}{\gramwd{Node} \app{\gramwd{add1}}{\gramwd{l}} \app{\gramwd{add1}}{\gramwd{r}}}]} ; \\
@@ -922,7 +922,7 @@ only by the compiler, and not exposed to the user).
 Functions do not, however, merely have the effect of writing destination memory.
 Sometimes functions will need to allocate new memory regions as well.  We treat
 tuples @(e1,e2)@, as value types, so they don't account for allocation.  But
-consider expressions @(e : T)@ where @T@ does not contain packed values, yet
+consider expressions @(e :: T)@ where @T@ does not contain packed values, yet
 subexpressions of @e@ have types which do.  For instance:
 
 \finishmecurly
@@ -986,7 +986,7 @@ values can share the same ``region''.
 The type signature of \il{add1} becomes:
 
 \begin{code}
-add1 : Tree$_\alpha$ ->  Tree$_\beta$
+add1 :: Tree$_\alpha$ ->  Tree$_\beta$
 \end{code}
 
 %% \mv{Since we're talking about some fake function f, can we make this
@@ -1001,7 +1001,7 @@ and we write its type as:
 
 % $\arr{\text{Tree}_a }{ a }{ \text{Tree}_b}$
 \begin{code}
-add1 : Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$
+add1 :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$
 \end{code}
 
 %% We denote a function with traversal effects as \arr{A}{\alpha}{B}, meaning a
@@ -1035,7 +1035,7 @@ pattern matching.
 For example, the variables @tr@, @x@, and @y@ from \il{add1} below.
 
 \begin{code}
-add1 : Tree -> Tree
+add1 :: Tree -> Tree
 f(tr) = case tr of Node x y -> ...
 \end{code}
 
@@ -1075,7 +1075,7 @@ when two locations are incompatible.  For example, the following term has
 location $\top$ because it attempts to unify two fixed locations \fixed{x} and \fixed{y}.
 
 \begin{code}
-(case p of Node x y -> if _ then x else y) : SomePackedDatatype
+(case p of Node x y -> if _ then x else y) :: SomePackedDatatype
 \end{code}
 
 % This term has location top.  Fixed x and fixed y join to top.
@@ -1110,7 +1110,7 @@ the location of @e@ provided that all the branches of the case traverse the
   additional traversals that are {\em necessary} but not {\em present} will
   subsequently be inserted later.  For example:}
 \begin{code}
-  case v of K (y : Tree) (x : Int) -> x
+  case v of K (y :: Tree) (x :: Int) -> x
 \end{code}
 %
 Here, when reading data type @K@ from a a preorder serialization in a buffer,
@@ -1138,7 +1138,7 @@ one iteration to reach a fixed point.  But the reasoning is still recursive
 (inductive)---add1 is only able to traverse its input because its recursive
 call sites traverse their (subtree) inputs:
 \begin{code}
-add1 : Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$
+add1 :: Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$
 add1 t =       -- when the polymorphic type is instantiated, $\freshA \mapsto \ell_t$
  case t of     -- case has traverse($\ell_t$), because all branches do
   Leaf n   -> Leaf (n+1)   -- fresh location; $\gamma$, static size, thus traverse($\ell_t$)
@@ -1181,7 +1181,7 @@ Next we need to {\em repair} the program to fix these problems.
   the following form after a dummy-traversal insertion:
 %
   \begin{code}
-  case v of K (y : Tree) (x : Int) ->  -- We know $\ell_x = \locend{\ell_y}$
+  case v of K (y :: Tree) (x :: Int) ->  -- We know $\ell_x = \locend{\ell_y}$
     let end_y = traverseTree y  in x     
   \end{code}
 %
@@ -1251,8 +1251,8 @@ compiler-inserted traversals, we then transform the program in a type-directed
 way, to include additional return-values: end-witnesses.
 
 \begin{code}
-  add1  : Tree$_\freshA$ $\travarr{\freshA}$  Tree$_\freshB$                   -- Before
-  add1' : Tree$_\freshA$ ->  ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$ ) -- After
+  add1  :: Tree$_\freshA$ $\travarr{\freshA}$  Tree$_\freshB$                   -- Before
+  add1' :: Tree$_\freshA$ ->  ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$ ) -- After
 \end{code}
 
 % But, following our formal language, the full type for the cursor pointer is @@.
@@ -1302,7 +1302,7 @@ Performing this transformation on \il{add1} yields a program with extra bindings
 as well as the additional end-address-of-input return values:
 
 \begin{code}
-  add1 : Tree$_\freshA$ ->  ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$ ) ;
+  add1 :: Tree$_\freshA$ ->  ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$ ) ;
   add1 tr = case tr of
       Leaf n ->  let end(n)   = start(n) + 8 in
                  let end(tr)  = end(n) in
@@ -1364,14 +1364,14 @@ destination-cursor-passing calling conventions.  This proceeds in two phases:
 \noindent
 For example, the \il{add1} example becomes:
 %% \begin{code}
-%%   add1'  : Tree$_\freshA$ -> ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$) -- After route-ends
-%%   add1'' : ($Needs([\text{Tree}_\freshB],\_)$, $Has(\text{Tree}_\freshA)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$)
+%%   add1'  :: Tree$_\freshA$ -> ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$) -- After route-ends
+%%   add1'' :: ($Needs([\text{Tree}_\freshB],\_)$, $Has(\text{Tree}_\freshA)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$)
 %% \end{code}
 %% % $\NEEDS{[\text{Tree}_\freshB}]}$, )
 %% % ($\NEEDS{[\text{Tree$_\freshB$}]}$, ) -> 
 %% %
 \begin{code}
-  add1'' : ($Has(\text{Tree}_\freshA)$, $Needs([\text{Tree}_\freshB],\_)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$) ;
+  add1'' :: ($Has(\text{Tree}_\freshA)$, $Needs([\text{Tree}_\freshB],\_)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$) ;
   add1'' cin cout = let (cin, tag) = read(cin) in
     switch tag of
       Leaf -> let cout = Leaf(cout) in
@@ -1393,8 +1393,8 @@ We use the extensions in
 
 % the macro for NEEDS puts space on the end and messes this up:
 \begin{code}
-  write : ($\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
-  read  : $\HAS{T:a}$ ->   ($\HAS{a}$, $T$)
+  write :: ($\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
+  read  :: $\HAS{T:a}$ ->   ($\HAS{a}$, $T$)
 \end{code}
 
 That is, @Needs@ tracks a list of values its {\em waiting for}.  For instance,
@@ -1405,7 +1405,7 @@ completed only after all the obligations have been satisfied.  Retrieving that
 completed value can be accomplished with @finish@:
 
 \begin{code}
-  finish : $Needs$([],$T$) -> $\HAS{T}$
+  finish :: $Needs$([],$T$) -> $\HAS{T}$
 \end{code}
 
 \mv{Should we explain how we get from $\HAS{T}$ to $\ENDOF{T}$?}
