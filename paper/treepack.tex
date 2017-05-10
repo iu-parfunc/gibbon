@@ -1274,13 +1274,20 @@ $\HAS{}$ cursors for reading, and $\NEEDS{}$
 cursors for writing. These will be described further in
 \cref{sec:cursorize}.
 % 
-In brief, a $\HAS{A}$ cursor is simply a pointer to a fully initialized value of
-type $A$, which can be read any number of times.  $\NEEDS{}$ cursors are more
-complicated.  $\NEEDS{[A,B],C}$ is an output pointer that requires a value of
-type $A$ be written to the pointer, followed by $B$, after which a fully
-initialized value of type $C$ can be read from the buffer.  A given $\NEEDS{}$
-cursor must be used linearly, after that address is written to, writing it again
-would clobber existing data.
+%% In brief, a $\HAS{A}$ cursor is simply a pointer to a fully initialized value of
+%% type $A$, which can be read any number of times.  $\NEEDS{}$ cursors are more
+%% complicated.
+In brief, $\HAS{[A,B]}$ is an input pointer that, when read from,
+yields a value of type $A$ as well as a pointer of type $\HAS{[B]}$.
+The $\HAS{}$ type is parameterized by a list of types $A$, $B$,
+\ldots, which correspond to the types of values that must be read in a
+particular order from the buffer.
+%
+$\NEEDS{[A,B],C}$ is an output pointer that requires a value of type
+$A$ be written to the pointer, followed by $B$, after which a fully
+initialized value of type $C$ can be read from the buffer. A given
+$\NEEDS{}$ cursor must be used linearly, after that address is written
+to, writing it again would clobber existing data.
 
 % $\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
 %   read  :: $\HAS{T:a}$ ->   ($\HAS{a}$, $T$)
@@ -1400,25 +1407,27 @@ For example, the \il{add1} function becomes:
 %% % ($\NEEDS{[\text{Tree$_\freshB$}]}$, ) -> 
 %% %
 \begin{code}
-  add1'' :: ($Has(\text{Tree}_\freshA)$, $Needs([\text{Tree}_\freshB],\gamma)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$) ;
+  add1'' :: ($Has([\text{Tree}_\freshA])$, $Needs([\text{Tree}_\freshB],\gamma)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$) ;
   add1'' cin cout =
-    let (end1, tag::Byte) = read(cin) in
-    switch tag of
-      LEAF -> let cout2    = write(LEAF,cout) in
-              let (end2,n) = read(fromEnd(end1)) in
-              let cout3    = write(cout2, n+1) in
-              (end2, toEnd(cout3))
-      NODE -> let cout2         = write(NODE,cout) in
-              let (end2, cout3) = add1'' fromEnd(end1) cout2 in
-              let (end3, cout4) = add1'' fromEnd(end2) cout3 in
-              (end3, toEnd(cout4))
+    switch cin of
+      LEAF cin1 -> let cout2    = write(LEAF,cout) in
+                   let (cin2,n) = read(cin1) in
+                   let cout3    = write(cout2, n+1) in
+                   (toEnd(cin2), toEnd(cout3))
+      NODE cin1 -> let cout2         = write(NODE,cout) in
+                   let (cin2, cout3) = add1'' cin1 cout2 in
+                   let (cin3, cout4) = add1'' cin2 cout3 in
+                   (toEnd(cin3), toEnd(cout4))
 \end{code}
 \mv{Does this need type annotations? Also the use of finish vs the expected endof type are confusing.}
 \rn{FIXME - the above coercion story is ugly.  Consider eliminating End types.}
 
 
-@LEAF@ and @NODE@ have become simply ``enum'' types, and 
-switch dispatches on these single byte values.
+%% @LEAF@ and @NODE@ have become simply ``enum'' types, and 
+%% switch dispatches on these single byte values.
+The new @switch@ form dispatches based on the tag read from an input buffer,
+and each case of the switch statement binds a cursor pointing to the beginning
+of the first field of the matched data. 
 %
 The return value of the function has turned into a $\ENDOF$ cursor, whereas the
 inputs have turned into read and write cursors respectively ($Has$ and $Needs$).
@@ -1426,10 +1435,15 @@ These behave much like typed channels with protocols.  We use the extensions in
 \cref{fig:target} to write and read cursors:
 
 % the macro for NEEDS puts space on the end and messes this up:
+%% \begin{code}
+%%   write :: ($\NEEDS{a:rst, b}$, $a$) ->  $\NEEDS{rst,b}$
+%%   read  :: $\HAS{T_\ell}$ ->   ($\ENDOF{\locend{\ell}}$, $T_\ell$)
+%% \end{code}
 \begin{code}
   write :: ($\NEEDS{a:rst, b}$, $a$) ->  $\NEEDS{rst,b}$
-  read  :: $\HAS{T_\ell}$ ->   ($\ENDOF{\locend{\ell}}$, $T_\ell$)
+  read  :: $\HAS{t:rst}$ ->   ($t$, $\HAS{rst}$)
 \end{code}
+\mv{Not talking about $\ENDOF{}$ here anymore?}
 %  read  :: $\HAS{a:rst}$ ->   ($\HAS{a}$, $T$)
 
 Here we use Haskell-style list syntax at the type-level, so single-colon is
@@ -1446,7 +1460,7 @@ Once the list of needed-values is empty, retrieving the completed value can be
 accomplished with @finish@:
 
 \begin{code}
-  finish :: $Needs$([],$T$) -> $\HAS{T}$
+  finish :: $Needs$([],$T$) -> $\HAS{[T]}$
 \end{code}
 
 In the context of the above example, if @cout :: $\NEEDS{[Tree_\ell],\gamma}$@,
