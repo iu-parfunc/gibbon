@@ -25,6 +25,7 @@
 \newcommand{\NEEDS}[2]{\, Needs(#1,#2)}
 \newcommand{\HAS}[1]{\, Has(#1)}
 \newcommand{\ENDOF}[1]{\, EndOf(#1)}
+\newcommand{\COERCE}[1]{\gramwd{coerce}(#1)}
 \newcommand{\WRITETAG}[2]{\gramwd{write}(#1,#2)}
 \newcommand{\WRITENUM}[2]{\gramwd{write}(#1,#2)}
 \newcommand{\FINISH}[1]{\gramwd{finish}(#1)}
@@ -145,11 +146,11 @@
     \begin{aligned}
       \textup{Expressions} && \EXPR && 
      \gramdef & \ldots \gramor \pcase{\sEXPR}{\overline{\bind{\DC}{\EXPR}}} 
-     \gramor \STARTV{v} \gramor \ENDV{v}
+     \gramor  \COERCE{\sEXPR}
      \\     
      && && \gramor & \WRITETAG{`\sDC\textrm'}{\var}
            \gramor \WRITENUM{\num}{\var}
-           \gramor \READTAG{\var} \gramor
+           \gramor \READTAG{\var} \gramor 
       \FINISH{\sEXPR} \\      
       \textup{Types} && \TYP && \gramdef & \ldots 
                \gramor T_{\ell}
