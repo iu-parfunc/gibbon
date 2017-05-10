@@ -1425,9 +1425,12 @@ For example, the \il{add1} function becomes:
 
 %% @LEAF@ and @NODE@ have become simply ``enum'' types, and 
 %% switch dispatches on these single byte values.
-The new @switch@ form dispatches based on the tag read from an input buffer,
-and each case of the switch statement binds a cursor pointing to the beginning
-of the first field of the matched data. 
+The new @switch@ form reads one byte from an input buffer and dispatches based
+on the contained tag.
+%
+Each case of the switch statement binds a cursor pointing to the beginning
+of the first field of the matched data; naturally these cursors have different
+$\HAS{}$ types based on the types of fields in the respective data constructor.
 %
 The return value of the function has turned into a $\ENDOF$ cursor, whereas the
 inputs have turned into read and write cursors respectively ($Has$ and $Needs$).
