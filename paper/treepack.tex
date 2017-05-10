@@ -568,11 +568,12 @@ processing where most of the tree is visited, dummy traversal is
 simple and fast, preserving the linear memory access pattern favored
 by modern processors. 
 %
-However, merely adopting this strategy is not enough---the compiler
+However, adopting this strategy is not straightforward---the compiler
 must determine when these extra traversals are needed. This requires
 the addition of an effect system to track how much of the input buffer
 is \emph{read}, corresponding to the effect of moving a cursor in the
-resulting code.
+resulting code (\Cref{subsec:inferring}).
+
 
 %% \paragraph*{Copying}
 
@@ -580,11 +581,14 @@ resulting code.
 
 \subsubsection{Extensions} \label{sec:extensions1}
 There are many possible extensions to the basic preorder format. For example, we
-can include {\em indirections}, which use a unique tag to insert a pointer to
-another buffer or portion of the existing buffer. We can also selectively use alternative constructors that
-include size information and allow random access.  Note that we can {\em still}
-save space even while storing layout.  For instance, the \il{Node} record above
-could be laid out as: {\il{NodeTag <size_left> <left> <right>}}.
+can include {\em indirections}, which use a distinct tag in the serialized
+stream to insert a pointer to another buffer or portion of the existing
+buffer. We can also selectively use alternative constructors that include size
+information and allow random access.  Note that we can {\em still} save space
+even while storing size (layout) information.
+%
+For instance, the \il{Node}
+record above could be laid out as: {\il{NodeTag <size_left> <left> <right>}}.
 
 Whereas a pointer based representation would spend {\em two words} for the left
 and right pointer (16 bytes\footnote{One basic advantage that we leverage here
