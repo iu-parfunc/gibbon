@@ -44,7 +44,8 @@
 \renewcommand{\thesubfigure}{(\alph{subfigure})}
 
 \newcommand{\fresh}[1]{\ensuremath{#1}}
-\newcommand{\fixed}[1]{\ensuremath{\texttt{#1}}}
+% \newcommand{\fixed}[1]{\ensuremath{\texttt{#1}}}
+\newcommand{\fixed}[1]{\ensuremath{\ell_{\textrm{#1}}}}
 
 \newcommand{\freshA}{\fresh{\alpha}}
 \newcommand{\freshB}{\fresh{\beta}}
@@ -265,13 +266,15 @@ serialization format.\footnote{Even restricted to aligned access, we
   \begin{subfigure}[t]{\linewidth}
     \centering
     \includegraphics[scale=0.5]{figs/intro-tree-unpacked}
-    \caption{Standard representation of a tree structure in C}
+    \caption{Standard representation of a tree structure in C: by default,
+      word-sized tags {\em and} pointers.}
     \label{fig:intro-tree-unpacked}
   \end{subfigure}
   \begin{subfigure}[t]{\linewidth}
     \centering
     \includegraphics[scale=0.5]{figs/intro-tree-packed}
-    \caption{Serialized version of the same tree}
+    \caption{Serialized version of the same tree.  Not to scale: tags take one
+      byte and integers eight.}
     \label{fig:intro-tree-packed}    
   \end{subfigure}
   \caption{Standard and serialized representations of trees}
@@ -603,9 +606,18 @@ of the left tree, and we needn't store the size of the right tree at all!
 Indeed, we plan to explore the tradeoff between density of encoding, and
 computational overhead.  A dense encoding in the style of UTF8 would enable us
 to store small values of \il{<size_left>} in as little as one byte.
-%
-We return to the topic of extending the basic format in \cref{sec:extensions}.
 
+We return to the topic of extending the basic format in \cref{sec:extensions},
+%
+and we present preliminary experiments using layout and indirection extensions
+in \cref{sec:eval-parallelism} and \cref{sec:eval-kdtree}.
+%
+Further, in the future, it makes sense to fully explore the spectrum of
+representations between packed and pointer-based.
+%
+In this paper, to simplify the exposition, we present our core language plus our
+compilation algorithms in the setting of the simple, {\em completely} serialized
+representation.
 
 \subsection{Related Work}
 
@@ -932,8 +944,8 @@ section, is:
 To reason about traversals, we associate with every packed type an {\em abstract
   location}. This is different from a region variable in prior work, because it
 is a symbolic value representing the {\em exact memory location} that a value starts
-at.  No two distinct variables can share the same location, whereas two
-variables can share the same ``region''.
+at.  No two distinct data constructors can share the same location, whereas two
+values can share the same ``region''.
 %
 The type signature of \il{add1} becomes:
 
@@ -992,10 +1004,18 @@ f(tr) = case tr of Node x y -> ...
 \end{code}
 
 In fact we name these fixed locations after their lexical variables, simply:
-\fixed{tr}, \fixed{x}, \fixed{y}.  Together with tuple locations $(l,l)$, these
+\fixed{tr}, \fixed{x}, \fixed{y}.
+%
+In contrast, @let@-bound variables take on the locations of their right-hand-side.
+%
+Every data constructor in the program introduces a {\em fresh} location.  Fixed
+variables only unify with themselves, but fresh variables unify with any other
+(non-tuple) location.
+%
+Together with tuple locations $(\ell,\ell)$, these
 fresh and fixed locations form a lattice under unification.
-For example, $(l_1,l_2)\sqsubseteq (l_3,l_4)$, if and only if there exists a
-substitution on metavariables that ensures $l_1 = l_3 \wedge l_2 = l_4$ .
+For example, $(\ell_1,\ell_2)\sqsubseteq (\ell_3,\ell_4)$, if and only if there exists a
+substitution on metavariables that ensures $\ell_1 = \ell_3 \wedge \ell_2 = \ell_4$ .
 %
 Such a substitution assigns fixed locations to metavariables, and does {\em not}
 allow metavariables to range over entire tuple locations.  
@@ -1025,8 +1045,8 @@ location $\top$ because it attempts to unify two fixed locations \fixed{x} and \
 % This term has location top.  Fixed x and fixed y join to top.
 Indeed, we cannot statically know what {\em location} this expression will
 return, even symbolically.  (We have no notion of disjunction locations in our
-definition: e.g., @x@ $\vee$ @y@.)
-Finally, ends are always distinct locations from starts: $\forall l . end(l) \neq l$.
+definition: e.g., \fixed{x} $\vee$ \fixed{y}.)
+Finally, ends are always distinct locations from starts: $\forall \ell . end(\ell) \neq \ell$.
 
 
 %% \begin{figure}
@@ -1054,13 +1074,14 @@ the location of @e@ provided that all the branches of the case traverse the
   additional traversals that are {\em necessary} but not {\em present} will
   subsequently be inserted later.  For example:}
 \begin{code}
-  case _ of K (y : Tree) (x : Int) -> x
+  case v of K (y : Tree) (x : Int) -> x
 \end{code}
 %
 Here, when reading data type @K@ from a a preorder serialization in a buffer,
 accessing the simple scalar @x@, requires somehow traversing @y@ to witness
 \locend{\fixed{y}}, where $\locend{\fixed{y}} = \fixed{x}$.  During the infer
-effects phase, we optimistically assign the traverse effect to the above code,
+effects phase, we optimistically assign the traverse effect, $traverse(\ell_v)$,
+to the above code,
 assuming that a dummy traversal will later be inserted (\cref{sec:copy-insert}).
 %
 If it were not, this program couldn't compile!
