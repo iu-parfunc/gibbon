@@ -1151,9 +1151,10 @@ introducing temporaries.
 %
 Inferring the traverse effect for the @Leaf@ case is trivial, because once we
 know @t@ is a @Leaf@, we know its exact byte size, and can compute
-$\locend(\ell_t) = \ell_t + 9$ (in bytes).
+$\locend{\ell_t} = \ell_t + 9$ bytes.
 %
-Because of the polymorphic signature, 
+In the @Node@ case,
+because of the polymorphic signature, 
 (@$\forall \freshA \freshB .$ Tree$_\freshA$ $\travarr{\freshA}$ Tree$_\freshB$@),
 the lexical variables @x'@ and @y'@ have fresh, unrestricted locations, but,
 more importantly the recursive call gets the effect $traverse(\ell_y)$, due to
