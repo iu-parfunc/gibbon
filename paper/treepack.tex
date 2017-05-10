@@ -1420,8 +1420,8 @@ For example, the \il{add1} function becomes:
                    (coerce(cin3), coerce(cout4))
 \end{code}
 \mv{Does this need type annotations? Also the use of finish vs the expected endof type are confusing.}
-\note{FIXME - the above coercion story is ugly, but it may still be even if
-  READ's type changed...}
+\note{FIXME - the above coercion story is ugly.  At least replace coerce with
+  toEnd/fromEnd}
 
 
 %% @LEAF@ and @NODE@ have become simply ``enum'' types, and 
@@ -1483,10 +1483,11 @@ tack on additional return values.
 In order to accomplish this.  Our cursor-inserting transformation internally
 switches to a {\em dilated} representation of every packed value.  Inside the
 local scope of a function body, a subexpression that originally returned @Tree@$_\freshA$,
-must instead return a pair \il{($Has$(Tree$_\freshA$), $\ENDOF{\freshA}$)}.
+must instead return a pair \il{($Has$(Tree$_\freshA$), $\ENDOF{\locend{\freshA}}$)}.
 %
 The transformed program routes these tuple values throughout the function body,
-making it possible for the compiler to directly produce $\ENDOF{\freshA}$ to
+making it possible for the compiler to directly produce
+$\ENDOF{\locend{\freshA}}$, in the tail position of the function body, to
 satisfy the calling convention by returning and end-witness.
 %
 Note that the inter-procedural calling conventions do not change to reflect this
@@ -1496,10 +1497,11 @@ dilated representation, rather, mediation happens at the call sites.
 One surprising aspect of the cursor-passing output language is that it is {\em
   still purely functional}.  Rather than directly encoding effects, we have
 created a purely functional interface where @write@ returns a new cursor, and
-all $Needs()$ cursors must be used in a {\em linear}, but pure way.
+all $Needs()$ cursors must be used in a {\em linear}, but pure, way.
 %
-(For instance, in the \treelang interpreter we use for debugging, we model cursors as {\em
-  lists}, where write is cons.)
+(For instance, in the \treelang interpreter we use for debugging,
+evaluating programs after every compiler pass,
+we model cursors as {\em lists}, where write is ``cons''.)
 
 \newcommand{\END}[1]{\ensuremath{\overline{#1}}}
 
@@ -1516,25 +1518,27 @@ all $Needs()$ cursors must be used in a {\em linear}, but pure way.
 \paragraph*{The fate of constructors and case expressions}
 % ----------------------------------------
 
-The final feature of the target language (\cref{fig:target}), which we have not
-addressed yet, is the $\pcasesym$ form.
+% The final feature of the target language (\cref{fig:target}), which we have not
+% addressed yet, is the
+Here we cover the $\pcasesym$ form in more detail.
 %
-The cursor insertion pass lowers constructors to operate directly on destination
+The cursor-insertion pass lowers constructors to operate directly on destination
 cursors.  Thus \il{MkFoo 55} becomes a multi-step operation, where we first initialize
 the \il{MkFoo} structure (returning a cursor pointing to its \il{Int} field), then write the
-\il{55} to that cursor:
+\il{55} to that cursor.  We capitalize data constructor names when they are used
+as simple one-byte ``enum'' values:
 % \il{MkFoo(curs)}
 
 \begin{code}
-  let cur2 = MkFoo(curs)
-      cur3 = write(cur2,55)
-  in (curs, curs + 9) -- one byte tag + 8 byte int
+  let cur2 = write(MKFOO,curs) -- 1 byte tag 
+      cur3 = write(cur2,55)    -- 8 byte int
+  in (curs, coerce(cur3))  -- Return dilated start/end pair. cur3 = curs+9
 \end{code}
 
-Here, the original constructor took its argument directly, whereas in the target
-language the constructor takes a destination cursor and writes a {\em single
-  character} to that destination (its runtime tag).  Writing the field is a
-separate @write@ operation.
+%% Here, the original constructor took its argument directly, whereas in the target
+%% language the constructor takes a destination cursor and writes a {\em single
+%%   character} to that destination (its runtime tag).  Writing the field is a
+%% separate @write@ operation.
 %
 The above program is well-typed, following the protocol on output cursors.
 %
