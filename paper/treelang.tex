@@ -3,7 +3,8 @@
 \newcommand{\gramor}{\; | \;}
 \newcommand{\PROG}{\keywd{prog}}
 \newcommand{\EXPR}{\keywd{e}}
-\newcommand{\PRIM}{\keywd{\rho}}
+% \newcommand{\PRIM}{\keywd{\rho}}
+\newcommand{\PRIM}{\odot}
 \newcommand{\TYP}{\keywd{\tau}}
 \newcommand{\ARROW}{\rightarrow}
 \newcommand{\DD}{\keywd{dd}}
@@ -60,7 +61,8 @@
 \newcommand{\num}{\; n \;}
 \newcommand{\primexpr}[1]{\; \PRIM(#1) \;}
 \newcommand{\letexpr}[3]{\;\gramwd{let} \; #1 = #2 \; \gramwd{in} \; #3 \;}
-\newcommand{\ife}[3]{\; \gramwd{if}\; #1 #2 #3 \;}
+% \newcommand{\ife}[3]{\; \gramwd{if}\; #1 #2 #3 \;}
+\newcommand{\ife}[3]{\gramwd{if} #1 \gramwd{then} #2 \gramwd{else} #3}
 \newcommand{\app}[2]{\; #1(#2) \;}
 
 %% \begin{figure}
@@ -84,7 +86,9 @@
          \fvar : \TYP \ARROW \TYP; 
          \fvar({\var}) = \EXPR \\ 
       \textup{Expressions} && \EXPR && \gramdef & \var \gramor \num \gramor \gramwd{True} \gramor \gramwd{False}
-                                  \gramor \primexpr{\overline{\sEXPR}} \gramor 
+%      \gramor \primexpr{\overline{\sEXPR}}
+      \gramor \sEXPR \PRIM \sEXPR
+      \gramor 
 % FIRST ORDER version:
        \app{f}{\sEXPR} \\
 % HIGHER ORDER version:
@@ -94,7 +98,8 @@
       %    \pair{\sEXPR}{\sEXPR} \gramor \fst{e} \gramor \snd{e}
       \;(e_1,\, \dots\, , e_n) \gramor \EXPR.\num 
       \gramor \letexpr{\var:\TYP}{\EXPR}{\EXPR} \\
-      && && \gramor & \case{\sEXPR}{\overline{[\bind{\DC \; \overline{\svar} \;}{\EXPR}]}} \gramor  \ife{\EXPR}{\EXPR}{\EXPR} \\
+      && && \gramor & \case{\sEXPR}{\overline{[\bind{\DC \; \overline{\svar} \;}{\EXPR}]}} 
+            \gramor  \ife{\EXPR}{\EXPR}{\EXPR} \\
       \textup{Types} && \TYP && \gramdef &
          \TC \gramor
          \;(\TYP_1,\, \dots\, , \TYP_n)

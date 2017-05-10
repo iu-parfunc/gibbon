@@ -525,6 +525,8 @@ extensions to the basic preorder serialization}.  But we begin with the
 most basic scenario, where all data for a tree resides in one buffer,
 contiguously.
 
+\note{A bit more here about how it can't do search-tree ``insert''}
+
 
 \subsubsection{Ensuring complete traversal} Our \il{add1} function is
 well-behaved and easy to compile. But many real programs, even very
@@ -817,7 +819,7 @@ facilities. \treelang's type checking support is implemented by
 compiling to Typed Racket~\cite{popl08}. A programmer can
 develop and test a \treelang program using the DrRacket IDE and tools,
 which include code coverage, syntax highlighting, on-the-fly type
-checking, and more.
+checking, etc.
 
 Given a working \treelang program, it can then be compiled using our
 compiler via a C backend and a standard C compiler. These backends
@@ -832,8 +834,8 @@ use  packed data to represent all types declared using the
 % ================================================================================
 
 \treelang{}'s approach is to convert programs into a form of {\em destination
-  passing style}~\cite{larus89}, except where destinations are not managed
-per-data-constructor (heap object), but rather for entire trees or subtrees.  This approach
+  passing style}~\cite{larus89}, where destinations are not managed
+per-heap-object (i.e. per-data-constructor), but rather for entire trees or subtrees.  This approach
 implies function calls producing data types do not generally call the allocator,
 for example, even a simple function such as @f@ below is transformed to take a
 destination cursor argument.

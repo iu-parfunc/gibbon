@@ -156,17 +156,34 @@ Misc
 
                          ===== Paper summary =====
 
-The idea investigated in this paper is to store trees not as objects with pointers, but in serialized form in buffers, so called packed trees. For computations that follow the serialization order, i.e., preorder traversals, this can give performance benefits. First, the trees take less memory, and larger trees may therefore fit into the memory cache. Second, the recursive traversal of the data can be translated to low-level code that efficiently traverses the packed data with a buffer cursor.
+The idea investigated in this paper is to store trees not as objects with pointers, but in
+serialized form in buffers, so called packed trees. For computations that follow the
+serialization order, i.e., preorder traversals, this can give performance benefits. First,
+the trees take less memory, and larger trees may therefore fit into the memory
+cache. Second, the recursive traversal of the data can be translated to low-level code
+that efficiently traverses the packed data with a buffer cursor.
 
-The authors have designed a tiny first-order functional language, Gibbon, to try out the idea. The Gibbon compiler recognizes pre-order traversals and translates them to code operating over the packed data.
+The authors have designed a tiny first-order functional language, Gibbon, to try out the
+idea. The Gibbon compiler recognizes pre-order traversals and translates them to code
+operating over the packed data.
 
-Examples of typical traversals that can be handled are folds, where a result is computed by traversing a tree, and maps, where a tree is transformed to a new tree.
+Examples of typical traversals that can be handled are folds, where a result is computed
+by traversing a tree, and maps, where a tree is transformed to a new tree.
 
-The core of the paper discusses the formalization of the Gibbon language and how it is compiled to cursor-oriented code.
+The core of the paper discusses the formalization of the Gibbon language and how it is
+compiled to cursor-oriented code.
 
-The Gibbon compiler is implemented in Haskell and compiles Gibbon to C code. The technique is evaluated both on binary trees (with Branch and Leaf node types), and multi-sorted abstract syntax trees, generated from Racket programs. In both cases very simple operations are performed: a map operation simply copying the tree, or adding 1 to all leaves, and a fold operation that sums up the values of all leaves, or counts the number of nodes.
+The Gibbon compiler is implemented in Haskell and compiles Gibbon to C code. The technique
+is evaluated both on binary trees (with Branch and Leaf node types), and multi-sorted
+abstract syntax trees, generated from Racket programs. In both cases very simple
+operations are performed: a map operation simply copying the tree, or adding 1 to all
+leaves, and a fold operation that sums up the values of all leaves, or counts the number
+of nodes.
  
-The evaluations show that there is not much of an improvement if the trees fit in the cache, but for larger trees (1MB for the packed representation), the packed approach get speedups of around 2 as compared to a "bumpless" allocation of objects in C (using arenas instead of malloc).
+The evaluations show that there is not much of an improvement if the trees fit in the
+cache, but for larger trees (1MB for the packed representation), the packed approach get
+speedups of around 2 as compared to a "bumpless" allocation of objects in C (using arenas
+instead of malloc).
 
                     ===== Points For and Against =====
 
