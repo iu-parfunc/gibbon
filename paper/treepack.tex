@@ -1414,8 +1414,8 @@ For example, the \il{add1} function becomes:
               (end3, coerce(cout4))
 \end{code}
 \mv{Does this need type annotations? Also the use of finish vs the expected endof type are confusing.}
-\note{FIXME - the above coercion story is ugly, but it may still be even if
-  READ's type changed...}
+\note{FIXME - the above coercion story is ugly.  At least replace coerce with
+  toEnd/fromEnd}
 
 
 @LEAF@ and @NODE@ have become simply ``enum'' types, and 
@@ -1469,10 +1469,11 @@ tack on additional return values.
 In order to accomplish this.  Our cursor-inserting transformation internally
 switches to a {\em dilated} representation of every packed value.  Inside the
 local scope of a function body, a subexpression that originally returned @Tree@$_\freshA$,
-must instead return a pair \il{($Has$(Tree$_\freshA$), $\ENDOF{\freshA}$)}.
+must instead return a pair \il{($Has$(Tree$_\freshA$), $\ENDOF{\locend{\freshA}}$)}.
 %
 The transformed program routes these tuple values throughout the function body,
-making it possible for the compiler to directly produce $\ENDOF{\freshA}$ to
+making it possible for the compiler to directly produce
+$\ENDOF{\locend{\freshA}}$, in the tail position of the function body, to
 satisfy the calling convention by returning and end-witness.
 %
 Note that the inter-procedural calling conventions do not change to reflect this
@@ -1510,19 +1511,20 @@ Here we cover the $\pcasesym$ form in more detail.
 The cursor-insertion pass lowers constructors to operate directly on destination
 cursors.  Thus \il{MkFoo 55} becomes a multi-step operation, where we first initialize
 the \il{MkFoo} structure (returning a cursor pointing to its \il{Int} field), then write the
-\il{55} to that cursor:
+\il{55} to that cursor.  We capitalize data constructor names when they are used
+as simple one-byte ``enum'' values:
 % \il{MkFoo(curs)}
 
 \begin{code}
-  let cur2 = MkFoo(curs)
-      cur3 = write(cur2,55)
-  in (curs, curs + 9) -- one byte tag + 8 byte int
+  let cur2 = write(MKFOO,curs) -- 1 byte tag 
+      cur3 = write(cur2,55)    -- 8 byte int
+  in (curs, coerce(cur3))  -- Return dilated start/end pair. cur3 = curs+9
 \end{code}
 
-Here, the original constructor took its argument directly, whereas in the target
-language the constructor takes a destination cursor and writes a {\em single
-  character} to that destination (its runtime tag).  Writing the field is a
-separate @write@ operation.
+%% Here, the original constructor took its argument directly, whereas in the target
+%% language the constructor takes a destination cursor and writes a {\em single
+%%   character} to that destination (its runtime tag).  Writing the field is a
+%% separate @write@ operation.
 %
 The above program is well-typed, following the protocol on output cursors.
 %
