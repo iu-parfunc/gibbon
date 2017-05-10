@@ -80,7 +80,9 @@
         \\
       \textup{Packed Data Declarations} && \DD && \gramdef & \DATA \TC = \overline{[\DC \; \overline{\sTYP}\;]} \\
       \textup{Value Declarations}    && \VD && \gramdef & \var : \TYP  ; \var = \EXPR \\ 
-      \textup{Function Declarations} && \FD && \gramdef & \fvar : \TYP ; \fvar(\overline{\var}) = \EXPR \\ 
+      \textup{Function Declarations} && \FD && \gramdef &
+         \fvar : \TYP \ARROW \TYP; 
+         \fvar({\var}) = \EXPR \\ 
       \textup{Expressions} && \EXPR && \gramdef & \var \gramor \num \gramor \gramwd{True} \gramor \gramwd{False}
                                   \gramor \primexpr{\overline{\sEXPR}} \gramor 
 % FIRST ORDER version:
@@ -94,8 +96,11 @@
       \gramor \letexpr{\var:\TYP}{\EXPR}{\EXPR} \\
       && && \gramor & \case{\sEXPR}{\overline{[\bind{\DC \; \overline{\svar} \;}{\EXPR}]}} \gramor  \ife{\EXPR}{\EXPR}{\EXPR} \\
       \textup{Types} && \TYP && \gramdef &
-      \TC \gramor \pairtype{\TYP}{\TYP} \gramor \TYP \ARROW \TYP
-      \gramor \gramwd{Int} \gramor \gramwd{Bool} \gramor \dots
+         \TC \gramor
+         \;(\TYP_1,\, \dots\, , \TYP_n)
+         % \pairtype{\TYP}{\TYP} 
+         % \gramor \TYP \ARROW \TYP
+         \gramor \gramwd{Int} \gramor \gramwd{Bool} \gramor \dots
       \\
       %% && && \gramor & \NEEDS{[\overline{\sTYP}]}{\sTYP} \gramor \HAS{\sTYP} \\
       \textup{Prim Ops} && \PRIM && \gramdef & + \gramor - \gramor * \gramor \ldots \\
