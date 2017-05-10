@@ -1735,8 +1735,9 @@ will be able to achieve {\em if} it extends the basic preorder packed format,
 including indirections or layout information to enable parallel traversals.
 
 All benchmarks were conducted on a cluster of identical, dedicated Intel
-machines in a two socket configuration with Xeon E5-2670 CPUs at 2.60 Ghz, and
-32GB RAM, running Ubuntu 14.04 LTS and GCC 5.3.
+machines in a two socket configuration with Xeon E5-2670 CPUs at 2.60 Ghz,
+20MB cache, and 32GB RAM, running Ubuntu 14.04 LTS. All C code is compiled
+with and GCC 5.3 and \il{-O3}. 
 % (16 cores)
 
 \subsection{Microbenchmarks}\label{sec:microbench}
