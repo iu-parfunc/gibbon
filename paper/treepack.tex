@@ -1373,8 +1373,10 @@ destination-cursor-passing calling conventions.  This proceeds in two phases:
       value (i.e. no sharing).
 \item Second, perform a type-directed, type-preserving cursor-insertion pass.
   This augments functions with additional inputs (output cursors), and changes
-  their return value convention to return end witnesses {\em rather} than
-  pointers to the heads of their output values.
+  their return value convention to return additional end witnesses for outputs
+  as well as inputs.  That is, rather than conventionally returning the start
+  address of an output value, the function now returns the end-address of that
+  same value.
 \end{itemize}
 
 \noindent
