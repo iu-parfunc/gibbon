@@ -1462,6 +1462,13 @@ management strategy---about the best you can do without going to packed.
 We use a simple arena implementation where a single global variable stores the
 heap pointer, which is incremented upon allocation.
 
+For each of these implementation strategies, no garbage collection is
+required.  In the case of pointer mode, calls to malloc and free are
+inserted into the generated C code (when using that policy), while
+packed uses arena-based memory management---for example, temporary
+packed data that does not escape a lexical scope is freed at the end
+of the scope.
+
 For benchmarking, we add an @iterate(e)@ form to the language which runs an
 expression multiple times and reports the time for all iterations together.
 Iterate {\em also} resets the state of the arena allocator, after each iteration
@@ -1656,30 +1663,33 @@ use our prototype cursor-inserting compiler to generate code over packed
 representations.
 % 
 Figure~\ref{fig:shootout2} shows the results of comparing this
-generated code to the handwritten C version of the packed representation
-(because \treelang{} is embedded in Racket, we also show the results of direct
-execution in Racket).
+generated code to both Racket and the handwritten C version of the packed
+representation.
+%% (because \treelang{} is embedded in Racket, we also show the results of direct
+%% execution in Racket).
 %
 {We see that our compiler generated code that is competitive with, and
   occasionally exceeds, hand-written C code for the purpose of {\em packed} tree
   traversals.}
 % \rn{That's not the point... finish this}
 
-{Figure~\ref{fig:shootout2} shows build, mapping over, and summing a tree, separately.
+Figure~\ref{fig:shootout2} shows build, mapping over, and summing a tree, separately.
 %% In \cref{fig:shootout2B}, we show the add1-to-leaves function, which both
 %% consumes and produces a tree.
   Here we introduce a couple of additional variants, which we will carry into
   the next section.  First, the {\bf pointer} version of Gibbon, as explained in
-  \cref{sec:packed-pointer}, uses the same code generator but does not pack
-  trees.  This version is faster than the Racket backend, but much slower than
-  packed.  However, there is one more mode of the Gibbon code generator, {\bf
+  \cref{sec:packed-pointer}, uses the same code generator, but does not pack
+  trees, and uses system malloc and free to manage memory.
+  This version is faster than the Racket backend, but much slower than
+  packed.  
+
+  However, there is one more mode of the Gibbon code generator, {\bf
     bumpalloc}, also described in \cref{sec:packed-pointer}, which shrinks the
   gap further.  bumpalloc uses the same representations as pointer, but
-  approximates optimal memory management with cheap arena allocation.  Still, it
+  approximates optimal memory management with cheap arena allocation rather
+  than simple malloc. Still, it
   remains the case that on add1, packed yields a geomean speedup 1.75$\times$
-  over bumpalloc, and 18$\times$ faster than the malloc-based pointer.}
-
-
+  over bumpalloc, and 18$\times$ faster than the malloc-based pointer.
 
 \paragraph*{The influence of leaf size}
 % \note{REMAINDER OF THE BUMPALLOC/PACKED RESULTS HERE}
