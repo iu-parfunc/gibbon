@@ -147,6 +147,7 @@
 \author[1]{Sarah Spall}
 \author[1]{Buddhika Chamith}
 \author[2]{Laith Sakka}
+\author[1]{Chaitanya Koparkar}
 \author[2]{Milind Kulkarni}
 \author[1]{Sam Tobin-Hochstadt}
 \author[1]{Ryan Newton}
@@ -1930,21 +1931,21 @@ Figure~\ref{fig:shootout2} shows build, mapping over, and summing a tree, separa
 
   However, there is one more mode of the Gibbon code generator, {\bf
     bumpalloc}, also described in \cref{sec:packed-pointer}, which shrinks the
-  gap further.  bumpalloc uses the same representations as pointer, but
+  gap further.  ``bumpalloc'' uses the same representations as ``pointer'', but
   approximates optimal memory management with cheap arena allocation rather
   than simple malloc. Still, it
   remains the case that on add1, packed yields a geomean speedup 1.75$\times$
-  over bumpalloc, and 18$\times$ faster than the malloc-based pointer.
+  over bumpalloc, and 18$\times$ faster than the malloc-based pointer code.
 
 \paragraph*{The influence of leaf size}
 % \note{REMAINDER OF THE BUMPALLOC/PACKED RESULTS HERE}
 
 In our simple tree example, we have thus far used a single @Int@ as the payload
 of the leaf.  This implies a certain, fixed ratio of payload bytes to the memory
-used for storing the structure of the tree---i.e., just tags in the packed
+used for storing the {\em structure} of the tree---i.e., the tags in the packed
 representation, or tags and pointers in a traditional representation.
 %
-We would expect that increasingly ``heavy'' nodes with many scalar fields, would
+We would expect that increasingly ``heavy'' nodes, with many scalar fields, would
 directly reduce the advantage of the packed representation.
 % (Indeed, we see this again in \cref{sec:eval-kdtree}.)
 To verify this hypothesis, we ran a simple parameter study where we generated
