@@ -1602,19 +1602,20 @@ would do (LLVM, native code, etc.), but we presently generate C code.
 %
 Because the current \treelang design is a {first order} language,
 %  \cref{fig:source}
-this is straightforward.  We generate C code in static single assignment form.
+this is straightforward.  We generate C code in static single-assignment form.
 
 The compiler eliminates tuples through ``unarization'', except at function call
-returns.  Tuple function arguments become multiple arguments.  Conditionals that
-return tuples instead write multiple destination variables.  The compiler walks
-through the program to accumulate all remaining anonymous tuple types, and emits
-C struct declarations for each.
+returns where structs encoding tuple are returned.  Tuple function arguments
+become multiple arguments.  Conditionals that return tuples instead write
+multiple destination variables.  The compiler walks through the program to
+accumulate all remaining anonymous tuple types, and emits C struct declarations
+for each.
 
 The cursors become merely \il{char*} pointers, and 
 %
-@switch@ statements closely correspond to C switches, and @read@ and @write@ are
+@switch@ statements closely correspond to C switches, while @read@ and @write@ are
 open-coded as pointer operations.  Because @read@ returns two values, it
-generates multiple statements rather than creating a tuple, but it need not
+generates multiple statements rather than creating a tuple, and thus need not
 create a struct.
 %
 %% \note{In the intermediate language, cursors are returned along with
@@ -1631,7 +1632,7 @@ create a struct.
 %%   ordinary variables.}
 %
 Finally, the generated C code is linked with a simple run time system that
-includes code for allocation and initialization.
+includes code for (de)allocation and initialization.
 % (a C file with  some helper procedures and benchmark harnesses).}
 
 
