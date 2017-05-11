@@ -2629,31 +2629,42 @@ our \treelang compiler remains an initial prototype---a more realistic
 implementation supporting arrays, lists, and more base values would
 allow the construction of more interesting programs, further
 validating our hypotheses. We also plan to support optional automatic
-inclusion of layout size information to enable applications such as
-kd-trees directly in the \treelang language.
+inclusion of layout information to enable applications such as
+kd-trees directly in \treelang.
+%
+This should support studies in auto-parallelization, which can use packed data
+regions to coarsen tasks and help with parallel communication and memory
+management.
 
-Further extensions to the simplest model of packed data provide the
-promise of additional gains. One extension to the model is the
-addition of \emph{indirection nodes}, allowing allocation of unknown
-sizes by chaining together buffers, or supporting parallelism more
-effectively with pointers at the top of a tree and dense packing
-further down. Indirection nodes are a generalization of the indirections
-described in Section~\ref{sec:extensions}: rather than pointing only to other
-locations within the same buffer, an indirection node could point to a {\em
-different} buffer.
+The area of buffer management also deserves attention.  For example, using
+indirections, it is possible to write a insert or rebalancing operation on an
+immutable packed tree, by writing the new nodes into a fresh buffer (like a
+transaction log).  But this quickly introduces fragmentation and memory
+reclamation problems that must be managed.
 
-Another extension is \emph{data type factoring}, storing
-leaves in a separate, dense, aligned vector.  This enables (1)
-vectorization of numeric operations, and (2) separating out pointers
-that the GC must traverse.  This may prove essential for an open-world
-implementation in a managed language such as Java, Haskell, or Racket,
-where the low-level control provided by C is not possible, and
-interoperation with arbitrary pointer-based values is desirable.
+%% Further extensions to the simplest model of packed data provide the
+%% promise of additional gains. One extension to the model is the
+%% addition of \emph{indirection nodes}, allowing allocation of unknown
+%% sizes by chaining together buffers, or supporting parallelism more
+%% effectively with pointers at the top of a tree and dense packing
+%% further down. Indirection nodes are a generalization of the indirections
+%% described in Section~\ref{sec:extensions}: rather than pointing only to other
+%% locations within the same buffer, an indirection node could point to a {\em
+%% different} buffer.
 
-Finally, while our parallelism opportunity study shows that packed
-data is an excellent approach to parallel computation, we have not yet
-explored this further. Turning promise into reality will require
-significant additional work.
+Another extension is \emph{data type factoring}, storing leaves in a separate,
+dense, aligned vector.  This enables (1) vectorization of numeric operations,
+and (2) separating out pointers that the GC must traverse.  This may prove
+essential for an open-world implementation of the \treelang approach in a
+managed language such as Java, Haskell, or Racket,
+% where the low-level control provided by C is not possible, and
+GC support is necessary and interoperation with arbitrary pointer-based values
+is desirable.
+
+%% Finally, while our parallelism opportunity study shows that packed
+%% data is an excellent approach to parallel computation, we have not yet
+%% explored this further. Turning promise into reality will require
+%% significant additional work.
 
 \paragraph*{Conclusions}
 
