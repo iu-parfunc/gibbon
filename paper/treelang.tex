@@ -146,7 +146,7 @@
   \begin{displaymath}
     \begin{aligned}
       \textup{Expressions} && \EXPR && 
-     \gramdef & \ldots \gramor \pcase{\sEXPR}{\overline{\bind{\DC}{\EXPR}}} 
+     \gramdef & \ldots \gramor \pcase{v}{\overline{\bind{\DC}{\EXPR}}} 
      \gramor  \TOEND{\sEXPR}
      \gramor  \FROMEND{\sEXPR}
      \\     
@@ -159,8 +159,8 @@
                \gramor \NEEDS{[\overline{\sTYP}]}{\sTYP} \gramor \HAS{[\overline{\sTYP}]} 
                \gramor \ENDOF{\sTYP} \\
       \textup{Extended vars} && \var && \gramdef & 
-           v \gramor \gramwd{end}(v) 
-                \gramor \gramwd{start}(v) \\
+           \textrm{v} \gramor \gramwd{end}_{\textrm{v}}
+             \gramor \gramwd{start}_{\textrm{v}} \\
       \textup{Location vars} && \ell && \gramdef & \alpha \gramor \beta \gramor \ldots \\
     \end{aligned}
   \end{displaymath}
