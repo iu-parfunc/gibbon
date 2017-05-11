@@ -24,7 +24,8 @@
 \newcommand{\sEXPR}{\skeywd{e}}
 \newcommand{\NEEDS}[2]{\, Needs(#1,#2)}
 \newcommand{\HAS}[1]{\, Has(#1)}
-\newcommand{\ENDOF}[1]{\, EndOf(#1)}
+% \newcommand{\ENDOF}[1]{\, EndOf(#1)}
+\newcommand{\ENDOF}[1]{\, End(\locend{#1})}
 \newcommand{\TOEND}[1]{\gramwd{toEnd}(#1)}
 \newcommand{\FROMEND}[1]{\gramwd{fromEnd}(#1)}
 \newcommand{\WRITETAG}[2]{\gramwd{write}(#1,#2)}
@@ -157,7 +158,7 @@
       \textup{Types} && \TYP && \gramdef & \ldots 
                \gramor T_{\ell}
                \gramor \NEEDS{[\overline{\sTYP}]}{\sTYP} \gramor \HAS{[\overline{\sTYP}]} 
-               \gramor \ENDOF{\sTYP} \\
+               \gramor \ENDOF{\ell} \\
       \textup{Extended vars} && \var && \gramdef & 
            \textrm{v} \gramor \gramwd{end}_{\textrm{v}}
              \gramor \gramwd{start}_{\textrm{v}} \\

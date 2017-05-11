@@ -1252,12 +1252,12 @@ way, to include additional return-values: end-witnesses.
 
 \begin{code}
   add1  :: Tree$_\freshA$ $\travarr{\freshA}$  Tree$_\freshB$                   -- Before
-  add1' :: Tree$_\freshA$ ->  ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$ ) -- After
+  add1' :: Tree$_\freshA$ ->  ($\ENDOF{\freshA}$, Tree$_\freshB$ ) -- After
 \end{code}
 
 % But, following our formal language, the full type for the cursor pointer is @@.
 
-Here the type of the end-witness is $\ENDOF{\locend{\freshA}}$, which signifies
+Here the type of the end-witness is $\ENDOF{\freshA}$, which signifies
 a cursor (pointer) to the end of a value, which is not useful by itself.  Rather, it is
 useful if it witnesses the {\em start of another value}.
 %
@@ -1322,7 +1322,7 @@ Performing this transformation on \il{add1} yields a program with extra bindings
 as well as the additional end-address-of-input return values.  
 
 \begin{code}
-  add1 :: Tree$_\freshA$ ->  ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$ ) ;
+  add1 :: Tree$_\freshA$ ->  ($\ENDOF{\freshA}$, Tree$_\freshB$ ) ;
   add1 tr = case tr of
       Leaf n ->  let end$_n$ = toEnd(start$_n$ + 8) in
                  let end$_{tr}$ = end$_n$ in
@@ -1400,14 +1400,14 @@ destination-cursor-passing calling conventions.  This proceeds in two phases:
 \noindent
 For example, the \il{add1} function becomes:
 %% \begin{code}
-%%   add1'  :: Tree$_\freshA$ -> ($\ENDOF{\locend{\freshA}}$, Tree$_\freshB$) -- After route-ends
-%%   add1'' :: ($Needs([\text{Tree}_\freshB],\_)$, $Has(\text{Tree}_\freshA)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$)
+%%   add1'  :: Tree$_\freshA$ -> ($\ENDOF{\freshA}$, Tree$_\freshB$) -- After route-ends
+%%   add1'' :: ($Needs([\text{Tree}_\freshB],\_)$, $Has(\text{Tree}_\freshA)$) -> ($\ENDOF{{\freshA}}$, $\ENDOF{{\freshB}}$)
 %% \end{code}
 %% % $\NEEDS{[\text{Tree}_\freshB}]}$, )
 %% % ($\NEEDS{[\text{Tree$_\freshB$}]}$, ) -> 
 %% %
 \begin{code}
-  add1'' :: ($Has([\text{Tree}_\freshA])$, $Needs([\text{Tree}_\freshB],\gamma)$) -> ($\ENDOF{\locend{\freshA}}$, $\ENDOF{\locend{\freshB}}$) ;
+  add1'' :: ($Has([\text{Tree}_\freshA])$, $Needs([\text{Tree}_\freshB],\gamma)$) -> ($\ENDOF{{\freshA}}$, $\ENDOF{{\freshB}}$) ;
   add1'' cin cout =
     switch cin of
       LEAF cin1 -> let cout2    = write(LEAF,cout) in
@@ -1440,7 +1440,7 @@ These behave much like typed channels with protocols.  We use the extensions in
 % the macro for NEEDS puts space on the end and messes this up:
 %% \begin{code}
 %%   write :: ($\NEEDS{a:rst, b}$, $a$) ->  $\NEEDS{rst,b}$
-%%   read  :: $\HAS{T_\ell}$ ->   ($\ENDOF{\locend{\ell}}$, $T_\ell$)
+%%   read  :: $\HAS{T_\ell}$ ->   ($\ENDOF{{\ell}}$, $T_\ell$)
 %% \end{code}
 \begin{code}
   write :: ($\NEEDS{a:rst, b}$, $a$) ->  $\NEEDS{rst,b}$
@@ -1485,11 +1485,11 @@ tack on additional return values.
 In order to accomplish this.  Our cursor-inserting transformation internally
 switches to a {\em dilated} representation of every packed value.  Inside the
 local scope of a function body, a subexpression that originally returned @Tree@$_\freshA$,
-must instead return a pair \il{($Has$(Tree$_\freshA$), $\ENDOF{\locend{\freshA}}$)}.
+must instead return a pair \il{($Has$(Tree$_\freshA$), $\ENDOF{{\freshA}}$)}.
 %
 The transformed program routes these tuple values throughout the function body,
 making it possible for the compiler to directly produce
-$\ENDOF{\locend{\freshA}}$, in the tail position of the function body, to
+$\ENDOF{{\freshA}}$, in the tail position of the function body, to
 satisfy the calling convention by returning and end-witness.
 %
 Note that the inter-procedural calling conventions do not change to reflect this
