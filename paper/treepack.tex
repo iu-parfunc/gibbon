@@ -1322,14 +1322,14 @@ Performing this transformation on \il{add1} yields a program with extra bindings
 as well as the additional end-address-of-input return values.  
 
 \begin{code}
-  add1 :: Tree$_\freshA$ ->  ($\ENDOF{\freshA}$, Tree$_\freshB$ ) ;
-  add1 tr = case tr of
+  add1' :: Tree$_\freshA$ ->  ($\ENDOF{\freshA}$, Tree$_\freshB$ ) ;
+  add1' tr = case tr of
       Leaf n ->  let end$_n$ = toEnd(start$_n$ + 8) in
                  let end$_{tr}$ = end$_n$ in
                  (end$_{tr}$, Leaf n+1)
       Node x y ->  let start$_y$ = fromEnd(end$_x$) in
-                   let (end$_x$,x') = add1 x in
-                   let (end$_y$,y') = add1 y in
+                   let (end$_x$,x') = add1' x in
+                   let (end$_y$,y') = add1' y in
                    let end$_{tr}$ = end$_y$ in
                    (end$_{tr}$, Leaf x' y') ;
 \end{code}
