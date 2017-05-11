@@ -2309,8 +2309,13 @@ every node of the input tree, in order. While this assumption is accurate for
 most compiler passes, there are some scenarios and applications where this may
 not be true:
 \begin{itemize}
-  \item If a traversal exploits {\em truncation}. Some tree traversals, such as those of space partitioning trees~\cite{gray2000n} gain asymptotic improvements by {\em truncating} traversals of subtrees. Based on some condition (for example, that a given subspace in a space partitioning tree is unimportant), traversal of a node's entire subtree is skipped, and the traversal continues on to the sibling of the current node. This optimization means that not all of the tree is visited by the traversal.
-  \item If a traversal is {\em parallelized}. To run a traversal in parallel, multiple threads collaborate to walk over a tree. In many traversals, this parallelism is natural: walks over different subtrees are independent of each other. In {\em this} scenario, a single thread may not walk over the entire tree and, indeed, may not even start its tree walk at the beginning of the buffer holding the tree.
+  \item If a traversal exploits {\em truncation}. Some tree traversals, such as those of space-partitioning trees~\cite{gray2000n} gain asymptotic improvements by {\em truncating} traversals of subtrees. Based on some condition (for example, that a given subspace in a space-partitioning tree is unimportant), traversal of a node's entire subtree is skipped, and the traversal continues on to the sibling of the current node. This optimization means that not all of the tree is visited by the traversal.
+  \item If a traversal is {\em parallelized}. To run a traversal in parallel,
+    multiple threads collaborate to walk over a tree. In many traversals, this
+    parallelism is natural: walks over different subtrees are independent of
+    each other. In such a scenario, a single thread may not walk over the entire
+    tree and, indeed, may not even start its tree walk at the beginning of the
+    buffer holding the tree.
 \end{itemize}
 
 For both of these cases, our current \treelang{} compiler is insufficient,
@@ -2329,15 +2334,21 @@ This section describes an extension to \treelang{}'s packed representation---{\e
 As described in Section~\ref{sec:copy-insert}, our current approach for
 handling traversals where we need a cursor position (e.g., the position of a
 right child) without an accompanying traversal that generates it---in other
-words, if we need to skip over a portion of the tree---is to insert a dummy traversal that traverses the portion of the tree we are skipping. This
-dummy traversal generates the required cursor position to continue with the
-``real'' traversal. However, this approach can be inefficient if the amount of work
-done by the dummy traversal is large: in the original pointer-based code, a
-traversal has direct access to all children, and can hence immediately skip
-over any subtrees that are unnecessary, whereas code using the packed
-representation must traverse the entire tree at all times. In some situations,
+words, if we need to skip over a portion of the tree---is to insert a dummy
+traversal that traverses the portion of the tree we are skipping.
+%
+This dummy traversal generates the required cursor position to continue with the
+``real'' traversal. However, this approach can be inefficient if the amount of
+work done by the dummy traversal is large.
+%% whereas code using the packed
+%% representation must traverse the entire tree at all times.
+In some situations,
 these dummy traversals can turn $O(\log n)$ operations into $O(n)$ ones,
-an unacceptable increase in complexity (consider, for example, the {\tt right} example from Section~\ref{sec:limitations}).
+an unacceptable increase in complexity (consider, for example, the {\tt right}
+example from Section~\ref{sec:limitations}).
+%% Of course, in the original pointer-based code, a
+%% traversal has direct access to all children, and can hence immediately skip
+%% over any subtrees that are unnecessary.
 
 
 Our solution to this problem is the introduction of {\em indirections} in the
@@ -2352,8 +2363,8 @@ parent. Second, indirections are
 only necessary during some portions of traversal; if a particular type of node
 does not have computations that require skipping subtrees, there is no need to
 add indirections to that type of node. Third, even if indirections {\em are}
-required everywhere, they are only required to be offsets within the buffer,
-not full (64-bit) pointers, which can enable space savings.
+required everywhere, if they are only offsets within the buffer,
+full (64-bit) pointers are not required, enabling space savings~\cite{Lattner2005}.
 
 The particular type of indirection needed depends on the mechanism of the
 traversal. Here,
@@ -2426,11 +2437,11 @@ Section~\ref{sec:microbench}. In the pointer-based version of this code,
 adding parallelism using Cilk~\cite{cilk} is straightforward: because the {\tt
 add1} operation treats the left and right subtrees independently, we can
 simply add Cilk {\tt spawn} commands to recursive calls to introduce
-parallelism, cutting off parallelism as necessary to avoid runtime overhead.
+parallelism, cutting off parallelism (after depth 5) to avoid runtime overhead.
 
 For the packed representation, however, we cannot simply adopt this approach:
 being able to {\tt spawn} a task that processes the right subtree of a node
-requires being able to reach that right subtree {\em without traversing the
+requires being able to reach that right subtree {without traversing the
 left subtree}. We thus manually introduce {\em pointer-style} indirections
 that allow programs written over the packed representation to directly access
 the right subtree, facilitating parallel execution. In any scenario where
@@ -2514,11 +2525,11 @@ demonstrate the potential for large performance gains.
 % --------------------------------------------
 Point correlation  is a well-known algorithm used in data mining~\cite{gray2000n}:
 given a set of points in a k-dimensional space, point correlation computes the number of points in that space  that lie within a
-distance r from a given point p. 
+distance $r$ from a given point $p$. 
 
-% Rather than comparing each point in the space to the query point, one efficient way of searching such spaces is to store them in kd-trees~\cite{bentley75}. KD-trees are space partitioning trees where the root of the kd tree represents the entire space, and each node's children represents a partition of that node's space into two subspaces.
+% Rather than comparing each point in the space to the query point, one efficient way of searching such spaces is to store them in kd-trees~\cite{bentley75}. KD-trees are space-partitioning trees where the root of the kd tree represents the entire space, and each node's children represents a partition of that node's space into two subspaces.
 
-% A kd-tree is a binary space partitioning tree that in its simplest form  splits the space at each internal node into two sub-spaces
+% A kd-tree is a binary space-partitioning tree that in its simplest form  splits the space at each internal node into two sub-spaces
 % around a split axes in one of the space dimensions, the left subtree stores the points to the left of the split access
 % and the right subtree sotres the points to the right of the split access, the split axes alternates between the dimensions of
 % the space at each level of the tree, when the number of the points in the subtree is one, a leaf node that stores
@@ -2527,7 +2538,8 @@ distance r from a given point p.
 
 In a naive implementation of point correlation, each point in the space needs
 to be checked against the query point. 
-A more efficient approach is to use kd-trees~\cite{bentley75} to store the points. KD-trees are space partitioning trees where the root of the kd tree represents the entire space, and each node's children represents a partition of that node's space into two subspaces.
+A more efficient approach is to use kd-trees~\cite{bentley75} to store the
+points. KD-trees are space-partitioning trees where the root of the kd tree represents the entire space, and each node's children represents a partition of that node's space into two subspaces.
 KD-trees allow the search
 process to skip some regions in the space. By storing at each internal node
 the boundaries within which all descendent points lies, the search process can
