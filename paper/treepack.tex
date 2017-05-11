@@ -561,7 +561,7 @@ extensions to the basic preorder serialization}.  But we begin with the
 most basic scenario, where all data for a tree resides in one buffer,
 contiguously.
 
-\note{A bit more here about how it can't do search-tree ``insert''}
+% \note{A bit more here about how it can't do search-tree ``insert''}
 
 
 \subsubsection{Ensuring complete traversal} Our \il{add1} function is
@@ -1261,7 +1261,7 @@ traversals.
 Copy insertion for the above program would break the sharing:
 
 \begin{code}
-let x = f t in  Node x (copy x)
+let x = f t in  Node x (copyTree x)
 \end{code}
 
 Here the call to @x@ can flow to the destination location right after the @Node@
@@ -1953,8 +1953,8 @@ Figure~\ref{fig:shootout2} shows building, mapping over, and summing a tree, sep
   trees, and uses system malloc and free to manage memory.
   This version is faster than the Racket backend, but much slower than
   packed.  
-
-\note{Also, over these benchmarking runs, at these tree sizes, the pointer-based
+%
+{Also, over these benchmarking runs, at these tree sizes, the pointer-based
 processes have a total memory $6\times$ higher than packed.}
   
 However, there is one more mode of the Gibbon code generator, {\bf
