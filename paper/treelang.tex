@@ -24,8 +24,10 @@
 \newcommand{\sEXPR}{\skeywd{e}}
 \newcommand{\NEEDS}[2]{\, Needs(#1,#2)}
 \newcommand{\HAS}[1]{\, Has(#1)}
-% \newcommand{\ENDOF}[1]{\, EndOf(#1)}
-\newcommand{\ENDOF}[1]{\, End(\locend{#1})}
+
+% \newcommand{\ENDSYM}{\, EndOf}
+\newcommand{\ENDSYM}{\, End}
+\newcommand{\ENDOF}[1]{\, \ENDSYM(\locend{#1})}
 \newcommand{\TOEND}[1]{\gramwd{toEnd}(#1)}
 \newcommand{\FROMEND}[1]{\gramwd{fromEnd}(#1)}
 \newcommand{\WRITETAG}[2]{\gramwd{write}(#1,#2)}

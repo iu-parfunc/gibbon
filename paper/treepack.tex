@@ -1251,7 +1251,7 @@ compiler-inserted traversals, we then transform the program in a type-directed
 way, to include additional return-values: end-witnesses.
 
 \begin{code}
-  add1  :: Tree$_\freshA$ $\travarr{\freshA}$  Tree$_\freshB$                   -- Before
+  add1  :: Tree$_\freshA$ $\travarr{\freshA}$  Tree$_\freshB$      -- Before
   add1' :: Tree$_\freshA$ ->  ($\ENDOF{\freshA}$, Tree$_\freshB$ ) -- After
 \end{code}
 
@@ -1269,24 +1269,24 @@ handling in the compiler's intermediate language---specifically,
 the types ensure that data is read from and written to buffers
 in the correct order.
 
-We add three new cursor types: the $\ENDOF{}$ type, as mentioned above,
-$\HAS{}$ cursors for reading, and $\NEEDS{}$
+We add three new cursor types: the $\ENDSYM$ type, as mentioned above,
+$Has$ cursors for reading, and $Needs$
 cursors for writing. These will be described further in
 \cref{sec:cursorize}.
 % 
 %% In brief, a $\HAS{A}$ cursor is simply a pointer to a fully initialized value of
-%% type $A$, which can be read any number of times.  $\NEEDS{}$ cursors are more
+%% type $A$, which can be read any number of times.  $Needs$ cursors are more
 %% complicated.
 In brief, $\HAS{[A,B]}$ is an input pointer that, when read from,
 yields a value of type $A$ as well as a pointer of type $\HAS{[B]}$.
-The $\HAS{}$ type is parameterized by a list of types $A$, $B$,
+The $Has$ type is parameterized by a list of types $A$, $B$,
 \ldots, which correspond to the types of values that must be read in a
 particular order from the buffer.
 %
 $\NEEDS{[A,B],C}$ is an output pointer that requires a value of type
 $A$ be written to the pointer, followed by $B$, after which a fully
 initialized value of type $C$ can be read from the buffer. A given
-$\NEEDS{}$ cursor must be used linearly, after that address is written
+$Needs$ cursor must be used linearly, after the address is written
 to, writing it again would clobber existing data.
 
 % $\NEEDS{T:a, b}$, $T$) ->  $\NEEDS{a,b}$
@@ -1340,7 +1340,7 @@ as well as the additional end-address-of-input return values.
   It's a bit awkward.}
 
 Further, to make these extra bindings type check, the compiler must insert {\em
-  coercions} between $\HAS{}$/$\NEEDS{}$ types on the one hand and $\ENDOF{}$
+  coercions} between $Has$/$Needs$ types on the one hand and $\ENDSYM$
 types on the other.  The @toEnd@/@fromEnd@ forms are coercions.
 %% Indeed, these coercions must be trusted, because there's no way in general to
 %% know that after, say, a @Bool@ field comes an @Int@ field.
@@ -1430,9 +1430,9 @@ on the contained tag.
 %
 Each case of the switch statement binds a cursor pointing to the beginning
 of the first field of the matched data---naturally these cursors have different
-$\HAS{}$ types based on the types of fields in the respective data constructor.
+$Has$ types based on the types of fields in the respective data constructor.
 %
-The return value of the function has turned into a $\ENDOF$ cursor, whereas the
+The return value of the function has turned into a $\ENDSYM$ cursor, whereas the
 inputs have turned into read and write cursors respectively ($Has$ and $Needs$).
 These behave much like typed channels with protocols.  We use the extensions in
 \cref{fig:target} to write and read cursors:
@@ -1446,13 +1446,13 @@ These behave much like typed channels with protocols.  We use the extensions in
   write :: ($\NEEDS{a:rst, b}$, $a$) ->  $\NEEDS{rst,b}$
   read  :: $\HAS{t:rst}$ ->   ($t$, $\HAS{rst}$)
 \end{code}
-\mv{Not talking about $\ENDOF{}$ here anymore?}
+\mv{Not talking about $\ENDSYM$ here anymore?}
 %  read  :: $\HAS{a:rst}$ ->   ($\HAS{a}$, $T$)
 
 Here we use Haskell-style list syntax at the type-level, so single-colon is
 ``cons'', and the list literal @[a,b]@ is shorthand for @a : b : []@.
 %
-$\NEEDS{}$ tracks a list of values its {\em waiting for}.  For instance,
+$Needs$ tracks a list of values its {\em waiting for}.  For instance,
 given a data type, @data Foo = MkFoo Int Int@, after we write a tag for @MkFoo@
 to an output buffer, the output cursor has type \il{$Needs$([Int,Int],Foo)}.
 %
