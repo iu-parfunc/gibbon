@@ -724,7 +724,7 @@ with ours of avoiding pointers, it is not ``packed''---the representation
 requires a dense representation of a sparse matrix---and hence does not yield
 the type of space savings we target.
 
-In the HPC community, linearizing trees and tree traversals for improved
+In the high-performance computing community, linearizing trees and tree traversals for improved
 performance has been a common technique~\cite{makino90,goldfarb13sc}. These
 linearizations tend to be {\em ad hoc}, written specifically for a given
 application, and each application must be re-written by hand to benefit. This
@@ -1749,7 +1749,7 @@ packed-mode compiler pipeline in \cref{sec:eval}.
 
 Ultimately the ideas in Gibbon should either be ported to a mature compiler for
 existing general purpose languages, or the prototype Gibbon compiler should be
-used as an EDSL from within such a host language.
+used as an embedded domain-specific language (EDSL) from within such a host.
 %
 In the latter scenario, we would write tree-traversals in a subset of the host
 language that corresponds to Gibbon, and those traversals would then be compiled
@@ -1934,7 +1934,7 @@ representation.
   traversals.}
 % \rn{That's not the point... finish this}
 
-Figure~\ref{fig:shootout2} shows build, mapping over, and summing a tree, separately.
+Figure~\ref{fig:shootout2} shows building, mapping over, and summing a tree, separately.
 %% In \cref{fig:shootout2B}, we show the add1-to-leaves function, which both
 %% consumes and produces a tree.
   Here we introduce a couple of additional variants, which we will carry into
@@ -1944,7 +1944,10 @@ Figure~\ref{fig:shootout2} shows build, mapping over, and summing a tree, separa
   This version is faster than the Racket backend, but much slower than
   packed.  
 
-  However, there is one more mode of the Gibbon code generator, {\bf
+\note{Also, over these benchmarking runs, at these tree sizes, the pointer-based
+processes have a total memory $6\times$ higher than packed.}
+  
+However, there is one more mode of the Gibbon code generator, {\bf
     bumpalloc}, also described in \cref{sec:packed-pointer}, which shrinks the
   gap further.  ``bumpalloc'' uses the same representations as ``pointer'', but
   approximates optimal memory management with cheap arena allocation rather
@@ -2001,7 +2004,8 @@ With the pointer approach, the function is need not ever inspect the
 left child of any node, while with the packed approach the compiler must
 traverse both left and right children of every node, leading to asymptotically
 worse run-time complexity. On tree sizes of the sizes measured in \cref{fig:shootout1},
-the generated packed code runs roughly $6\times$ slower than the pointer code.
+the generated packed code runs roughly
+\Red{XXXXXXXXXXXYYYYYYYYYYYYZZZZZZZZZ} slower than the pointer code.
 %
 In \cref{sec:extensions}, we propose a solution to this problem: the
 addition of indirection in packed buffers.
