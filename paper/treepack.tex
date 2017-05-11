@@ -2014,8 +2014,7 @@ With the pointer approach, the function is need not ever inspect the
 left child of any node, while with the packed approach the compiler must
 traverse both left and right children of every node, leading to asymptotically
 worse run-time complexity. On tree sizes of the sizes measured in \cref{fig:shootout1},
-the generated packed code runs roughly
-\Red{XXXXXXXXXXXYYYYYYYYYYYYZZZZZZZZZ} slower than the pointer code.
+the generated packed code runs as much as $100\times$ slower than the pointer code.
 %
 In \cref{sec:extensions}, we propose a solution to this problem: the
 addition of indirection in packed buffers.
