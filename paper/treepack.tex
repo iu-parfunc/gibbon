@@ -1501,7 +1501,7 @@ Sometimes the end-witness of a given value is computed, say, underneath a
 conditional.  Thus we may need to change the types of expressions to (locally)
 tack on additional return values.
 %
-In order to accomplish this.  Our cursor-inserting transformation internally
+In order to accomplish this, our cursor-inserting transformation internally
 switches to a {\em dilated} representation of every packed value.  Inside the
 local scope of a function body, a subexpression that originally returned @Tree@$_\freshA$,
 must instead return a pair \il{($Has$(Tree$_\freshA$), $\ENDOF{{\freshA}}$)}.
