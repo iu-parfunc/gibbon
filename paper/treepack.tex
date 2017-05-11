@@ -157,18 +157,18 @@
 \author[3]{Buddhika Chamith}
 \author[4]{Laith Sakka}
 \author[5]{Chaitanya Koparkar}
-\author[5]{Milind Kulkarni}
-\author[6]{Sam Tobin-Hochstadt}
-\author[7]{Ryan Newton}
+\author[6]{Milind Kulkarni}
+\author[7]{Sam Tobin-Hochstadt}
+\author[8]{Ryan Newton}
 \affil[1]{Indiana University \\ vollmerm@indiana.edu}
 \affil[2]{Indiana University \\ sjspall@indiana.edu}
 \affil[3]{Indiana University \\ budkahaw@indiana.edu}
 \affil[4]{Purdue University \\ lsakka@purdue.edu}
-\affil[5]{Purdue University \\ milind@purdue.edu}
-\affil[6]{Indiana University \\ samth@indiana.edu}
-\affil[7]{Indiana University \\ rrnewton@indiana.edu}
+\affil[5]{Indiana University \\ ckoparka@indiana.edu}
+\affil[6]{Purdue University \\ milind@purdue.edu}
+\affil[7]{Indiana University \\ samth@indiana.edu}
+\affil[8]{Indiana University \\ rrnewton@indiana.edu}
 \authorrunning{M. Vollmer, S. Spall, B. Chamith, L. Sakka, C. Koparkar, M. Kulkarni, S. Tobin-Hochstadt and R. Newton}
-
 %\author[1]{}
 \Copyright{}%mandatory, please use full first names. LIPIcs license is "CC-BY";  http://creativecommons.org/licenses/by/3.0/
 %
@@ -1946,21 +1946,21 @@ Figure~\ref{fig:shootout2} shows build, mapping over, and summing a tree, separa
 
   However, there is one more mode of the Gibbon code generator, {\bf
     bumpalloc}, also described in \cref{sec:packed-pointer}, which shrinks the
-  gap further.  bumpalloc uses the same representations as pointer, but
+  gap further.  ``bumpalloc'' uses the same representations as ``pointer'', but
   approximates optimal memory management with cheap arena allocation rather
   than simple malloc. Still, it
   remains the case that on add1, packed yields a geomean speedup 1.75$\times$
-  over bumpalloc, and 18$\times$ faster than the malloc-based pointer.
+  over bumpalloc, and 18$\times$ faster than the malloc-based pointer code.
 
 \paragraph*{The influence of leaf size}
 % \note{REMAINDER OF THE BUMPALLOC/PACKED RESULTS HERE}
 
 In our simple tree example, we have thus far used a single @Int@ as the payload
 of the leaf.  This implies a certain, fixed ratio of payload bytes to the memory
-used for storing the structure of the tree---i.e., just tags in the packed
+used for storing the {\em structure} of the tree---i.e., the tags in the packed
 representation, or tags and pointers in a traditional representation.
 %
-We would expect that increasingly ``heavy'' nodes with many scalar fields, would
+We would expect that increasingly ``heavy'' nodes, with many scalar fields, would
 directly reduce the advantage of the packed representation.
 % (Indeed, we see this again in \cref{sec:eval-kdtree}.)
 To verify this hypothesis, we ran a simple parameter study where we generated
@@ -1992,7 +1992,7 @@ scalar payload of leaves increases.
 %  \vspace{-4mm}
 \end{figure}
 
-\paragraph*{Pathalogical cases}
+\paragraph*{Pathological cases}
 
 Because \treelang fixes a traversal order, it is possible to write programs that exhibit pathalogically
 bad performance when compiled with the packed approach. A simple example
@@ -2156,7 +2156,7 @@ reference and cache misses and found dramatic improvements in these for the
 packed approach (and modest differences in the number of instructions executed).
 %
 Nevertheless the performance of pointer-based approaches is good at small
-sizes: (1) trees are small and fit in cache, (2) the single threaded workload
+sizes: (1) trees are small and fit in cache, (2) the single-threaded workload
 can acquire all of the last level cache, not contending with other threads on
 the 16-core machine.  The end result is that the system is able to mask the bad
 behavior of these implementations at these sizes.
