@@ -1571,8 +1571,8 @@ Note again that cursors themselves are persistent, not mutated, which is why eac
 operation with side-effects on a buffer (e.g. @write@), returns a fresh cursor
 representing the new value of the cursor.
 
-Finally, what becomes of the \il{case} expression?
-  \il{$\llbracket$case v of K x y -> e2 $\rrbracket$} is
+Finally, what becomes of the \il{case} expression?  \il{$\llbracket$case v of K
+  x y -> e2 $\rrbracket$}, if both @x@ and @y@ are of fixed size, is ultimately
 translated to:
 
 \begin{code}
@@ -1693,8 +1693,10 @@ We use a simple arena implementation where a single global variable stores the
 heap pointer, which is incremented upon allocation.
 
 For each of these implementation strategies, no garbage collection is
-required.  In both packed and pointer mode, we use coarse-grained arena
-allocation and deallocation.  But our region inference is currently quite simple
+required.  In both packed and pointer mode, we can use coarse-grained arena
+deallocation.
+%
+Our region inference is currently quite simple
 compared to a compiler like MLKit~\cite{mlkit}, and is not yet suitable for
 programs complex programs with complex lifetimes.
 %% In the case of pointer mode, calls to malloc and free are
@@ -1703,6 +1705,10 @@ programs complex programs with complex lifetimes.
 Our present benchmarks allocate regions for input and output trees, and
 temporary packed data that does not escape a lexical scope is freed at the end
 of the scope.
+%
+Finally, for comparison purposes, we also generate code for a fine-grained
+malloc/free mode of the pointer-based backend, which substitutes a recursive
+``free tree'' function in place of arena deallocation.
 
 For benchmarking, we add an @iterate(e)@ form to the language which runs an
 expression multiple times and reports the time for all iterations together.
