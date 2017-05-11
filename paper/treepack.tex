@@ -1341,8 +1341,14 @@ as well as the additional end-address-of-input return values.
   types?}
 \mv{Do we need to write bindings for \il{start$_n$} and so on here?
   It's a bit awkward.}
+%
+Just as with the dummy traversal example earlier, the compiler at this phase
+does not use the @start$_y$@ binding.  Later, when we switch to using explicit
+cursors into input and output byte streams (\cref{sec:cursorize}), we lose
+direct access to fields beyond the first one, and the @start$_y$@ binding then
+replaces the binding for @y@.
 
-Further, to make these extra bindings type check, the compiler must insert {\em
+Further, to make the injected bindings above type check, the compiler must insert {\em
   coercions} between $Has$/$Needs$ types on the one hand and $\ENDSYM$
 types on the other.  The @toEnd@/@fromEnd@ forms are coercions.
 %% Indeed, these coercions must be trusted, because there's no way in general to
