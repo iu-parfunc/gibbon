@@ -1253,7 +1253,7 @@ way, to include additional return-values: end-witnesses.
 \begin{code}
   add1  :: Tree$_\freshA$ $\travarr{\freshA}$  Tree$_\freshB$                -- Before
   add1' :: Tree$_\freshA$ ->  ($\ENDOF{\freshA}$, Tree$_\freshB$ ) -- After
-e\end{code}
+\end{code}
 
 % But, following our formal language, the full type for the cursor pointer is @@.
 
@@ -1357,8 +1357,8 @@ makes this easier.)  For example, the following two programs for summing the
 leaves of a tree are equivalent to the compiler.
 
 \begin{code}
-  sum1 t = case t of Node n -> n | Leaf x y -> sum1 y + sum1 x
-  sum2 t = case t of Node n -> n | Leaf x y -> sum2 x + sum2 y
+  sum1 t = case t of Leaf n -> n | Node x y -> sum1 y + sum1 x
+  sum2 t = case t of Leaf n -> n | Node x y -> sum2 x + sum2 y
 \end{code}
 
 %
