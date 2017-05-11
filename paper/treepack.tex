@@ -2014,7 +2014,8 @@ With the pointer approach, the function is need not ever inspect the
 left child of any node, while with the packed approach the compiler must
 traverse both left and right children of every node, leading to asymptotically
 worse run-time complexity. For example, when run on trees of height 12,
-the generated packed code runs as much as $150\times$ slower than the pointer code.
+the generated packed code runs $150\times$ slower than the pointer code (and
+arbitrarily slower on progressively larger trees).
 %
 In \cref{sec:extensions}, we propose a solution to this problem: the
 addition of indirection in packed buffers.
@@ -2243,8 +2244,10 @@ and linear access patterns of Gibbon's packed approach yield speedups of
 
 
 {\begin{figure}[t]
-  {\footnotesize
-  \begin{code}[basicstyle=\footnotesize\ttfamily]
+    {
+      % \footnotesize
+      \small
+  \begin{code}
 data Toplvl = DefineValues ListSym Expr | DefineSyntaxes ListSym Expr 
             | BeginTop ListToplvl       | Expression Expr  
 data Expr = VARREF Sym | Top Sym  | Lambda Formals ListExpr  | App Expr ListExpr 
