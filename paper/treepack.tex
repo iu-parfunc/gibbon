@@ -1642,13 +1642,13 @@ includes code for (de)allocation and initialization.
 % ================================================================================
 
 In the next section we evaluate a prototype \treelang compiler, implemented in
-Haskell, and generating code via C. 
+Haskell, exposed through a Racket @#lang@ mode, and generating code via C. 
 %
-This compiler implements the algorithms of the prior section, with a few current
-limitations.  We have implemented copy insertion by hand, and the current compiler
-will potentially duplicate work (rather than copying) if (1) a packed result of a
-function call is used in multiple places, or (2) when a function returns multiple
-packed results.
+This compiler implements the algorithms of the prior section, with a few current limitations.
+%% We have implemented copy insertion by hand, and the current compiler
+%% will potentially duplicate work (rather than copying) if (1) a packed result of a
+%% function call is used in multiple places, or (2) when a function returns multiple
+%% packed results.
 % that need to be routed separately.
 
 \paragraph*{Packed \& Pointer, malloc \& bumpalloc}\label{sec:packed-pointer}
@@ -1674,6 +1674,9 @@ The packed mode manages tree data by allocating large buffers to serve as output
 destinations (and an additional large region for scoped allocations).  In the
 future, we will employ the standard technique for a block-structured heap, where a
 linked list of blocks provides growable storage areas for destination cursors.
+%
+The current performance should be representative of an implementation
+strategy that uses large regions capped by guard pages to enable unbounded growth.
 
 
 Within the {\bf pointer} mode, we allocate regular heap objects and thus need an
@@ -1690,10 +1693,15 @@ We use a simple arena implementation where a single global variable stores the
 heap pointer, which is incremented upon allocation.
 
 For each of these implementation strategies, no garbage collection is
-required.  In the case of pointer mode, calls to malloc and free are
-inserted into the generated C code (when using that policy), while
-packed uses arena-based memory management---for example, temporary
-packed data that does not escape a lexical scope is freed at the end
+required.  In both packed and pointer mode, we use coarse-grained arena
+allocation and deallocation.  But our region inference is currently quite simple
+compared to a compiler like MLKit~\cite{mlkit}, and is not yet suitable for
+programs complex programs with complex lifetimes.
+%% In the case of pointer mode, calls to malloc and free are
+%% inserted into the generated C code (when using that policy), while
+%% packed uses arena-based memory management---for example,
+Our present benchmarks allocate regions for input and output trees, and
+temporary packed data that does not escape a lexical scope is freed at the end
 of the scope.
 
 For benchmarking, we add an @iterate(e)@ form to the language which runs an
