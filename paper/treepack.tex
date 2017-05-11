@@ -1251,9 +1251,9 @@ compiler-inserted traversals, we then transform the program in a type-directed
 way, to include additional return-values: end-witnesses.
 
 \begin{code}
-  add1  :: Tree$_\freshA$ $\travarr{\freshA}$  Tree$_\freshB$      -- Before
+  add1  :: Tree$_\freshA$ $\travarr{\freshA}$  Tree$_\freshB$                -- Before
   add1' :: Tree$_\freshA$ ->  ($\ENDOF{\freshA}$, Tree$_\freshB$ ) -- After
-\end{code}
+e\end{code}
 
 % But, following our formal language, the full type for the cursor pointer is @@.
 
@@ -1349,7 +1349,17 @@ The compiler ensures the correctness of these coercions and offset computations.
 For instance, given @start$_n$ :: Has(Int)@, we know that @start$_n$+8@ is a valid
 offset (8 is the size of @Int@), but that 7 would not be.
 
+Finally, before we proceed, note that the original textual order of the program
+does not effect the results of traversal inference or end-witness discovery.
+This is because the compiler aggressively reorders programs in order to connect
+end-witnesses with their consumers.  (Starting with purely functional programs
+makes this easier.)  For example, the following two programs for summing the
+leaves of a tree are equivalent to the compiler.
 
+\begin{code}
+  sum1 t = case t of Node n -> n | Leaf x y -> sum1 y + sum1 x
+  sum2 t = case t of Node n -> n | Leaf x y -> sum2 x + sum2 y
+\end{code}
 
 %
 %% \vspace{-2mm}\subsubsection{Reordering to discover witnesses}
@@ -1548,8 +1558,8 @@ The ``value'' of the resulting data constructor is now equivalent to the pointer
 location at which it was written, i.e. @curs@, which we return in the body,
 together with an end-witness to match the dilated convention.
 %
-Note again that cursors are used in an immutable way, which is why each
-operation that side effects a buffer (e.g. @write@), returns a fresh cursor
+Note again that cursors themselves are persistent, not mutated, which is why each
+operation with side-effects on a buffer (e.g. @write@), returns a fresh cursor
 representing the new value of the cursor.
 
 Finally, what becomes of the \il{case} expression?  \il{case v of K x y -> e2} is
@@ -1612,12 +1622,6 @@ create a struct.
 Finally, the generated C code is linked with a simple run time system that
 includes code for allocation and initialization.
 % (a C file with  some helper procedures and benchmark harnesses).}
-
-% --------------------------------------------------------------------------------
-% \subsection{Discussion}
-% --------------------------------------------------------------------------------
-
-% \note{Purity is important to reordering for witness search.}
 
 
 
