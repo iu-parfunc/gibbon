@@ -1977,7 +1977,7 @@ scalar payload of leaves increases.
 %  \vspace{-4mm}
 \end{figure}
 
-\paragraph*{Pathalogical cases}
+\paragraph*{Pathological cases}
 
 Because \treelang fixes a traversal order, it is possible to write programs that exhibit pathalogically
 bad performance when compiled with the packed approach. A simple example
@@ -2141,7 +2141,7 @@ reference and cache misses and found dramatic improvements in these for the
 packed approach (and modest differences in the number of instructions executed).
 %
 Nevertheless the performance of pointer-based approaches is good at small
-sizes: (1) trees are small and fit in cache, (2) the single threaded workload
+sizes: (1) trees are small and fit in cache, (2) the single-threaded workload
 can acquire all of the last level cache, not contending with other threads on
 the 16-core machine.  The end result is that the system is able to mask the bad
 behavior of these implementations at these sizes.
