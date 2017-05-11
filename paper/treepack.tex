@@ -2197,32 +2197,19 @@ and linear access patterns of Gibbon's packed approach yield speedups of
 
 
 {\begin{figure}[t]
-  \begin{code}   
- data Toplvl = DefineValues   ListSym Expr 
-             | DefineSyntaxes ListSym Expr 
-             | BeginTop ListToplvl         
-             | Expression Expr             
-             
- data Expr = VARREF Sym                     
-           | Lambda Formals ListExpr	     
-           | CaseLambda LAMBDACASE          
-           | If Expr Expr Expr              
-           | Begin ListExpr
-           | Begin0 Expr ListExpr           
-           | LetValues    LVBIND ListExpr   
-           | LetrecValues LVBIND ListExpr   
-           | SetBang Sym Expr               
-           | Quote Datum
-           | QuoteSyntax Datum
-           | QuoteSyntaxLocal Datum
-           | WithContinuationMark Expr Expr Expr
-           | App Expr ListExpr 
-           | Top Sym
-           | VariableReference    Sym 
-           | VariableReferenceTop Sym 
-           | VariableReferenceNull
-    ....
-  \end{code}
+  {\footnotesize
+  \begin{code}[basicstyle=\footnotesize\ttfamily]
+data Toplvl = DefineValues ListSym Expr | DefineSyntaxes ListSym Expr 
+            | BeginTop ListToplvl       | Expression Expr  
+data Expr = VARREF Sym | Top Sym  | Lambda Formals ListExpr  | App Expr ListExpr 
+      | CaseLambda LAMBDACASE     | If Expr Expr Expr        | SetBang Sym Expr
+      | Begin ListExp             | Begin0 Expr ListExpr     | Quote Datum      
+      | QuoteSyntax Datum         | QuoteSyntaxLocal Datum
+      | LetValues LVBIND ListExpr | LetrecValues LVBIND ListExpr   
+      | WithContinuationMark Expr Expr Expr
+      | VariableReference Sym | VariableReferenceTop Sym | VariableReferenceNull
+$\ldots$
+\end{code}}
 
 
 
