@@ -1415,9 +1415,9 @@ For example, the \il{add1} function becomes:
                    let cout3    = write(cout2, n+1) in
                    (toEnd(cin2), toEnd(cout3))
       NODE cin1 -> let cout2         = write(NODE,cout) in
-                   let (cin2, cout3) = add1'' cin1 cout2 in
-                   let (cin3, cout4) = add1'' cin2 cout3 in
-                   (toEnd(cin3), toEnd(cout4))
+                   let (end1, cout3) = add1'' cin1 cout2 in
+                   let (end2, cout4) = add1'' fromEnd(end1) cout3 in
+                   (end2, toEnd(cout4))
 \end{code}
 \mv{Does this need type annotations? Also the use of finish vs the expected endof type are confusing.}
 \rn{FIXME - the above coercion story is ugly.  Consider eliminating End types.}
