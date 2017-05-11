@@ -15,6 +15,9 @@
 \usepackage[noabbrev,capitalise]{cleveref}
 \usepackage{enumitem}
 
+
+\usepackage{stmaryrd} % llbracket
+
 \usepackage{wrapfig}
 
 \usepackage[labelformat=simple]{subcaption}
@@ -1562,14 +1565,15 @@ Note again that cursors themselves are persistent, not mutated, which is why eac
 operation with side-effects on a buffer (e.g. @write@), returns a fresh cursor
 representing the new value of the cursor.
 
-Finally, what becomes of the \il{case} expression?  \il{case v of K x y -> e2} is
+Finally, what becomes of the \il{case} expression?
+  \il{$\llbracket$case v of K x y -> e2 $\rrbracket$} is
 translated to:
 
 \begin{code}
   switch start$_v$ of
-    K(cur) -> let (x,cur2) = read(cur)
-                  (y,cur3) = read(cur2)
-              in [e]
+    K(cur) -> let (cur2,x) = read(cur)
+                  (cur3,y) = read(cur2)
+              in $\llbracket$e2$\rrbracket$
 \end{code}
 
 % Here, switch is similar to C's switch.
@@ -1578,7 +1582,8 @@ then dispatches based on that tag (just like C's switch statement).  It is a
 binding form only insofar as it binds a cursor, @cur@, to the position just
 after the tag---i.e., the start of @K@'s fields.  Then, we generate explicit
 code to read the fields one at a time from the appropriate positions in the byte
-stream.
+stream.  Not that the $Has$ type for @cur@ will contain {\em two} values, @cur2@
+one, and @cur3@ zero remaining values.
 
 % ----------------------------------------
 % \vspace{-2mm}
