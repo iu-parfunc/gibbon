@@ -190,4 +190,34 @@ typeofE dd g c r ls exp =
 --- TODO: finish interpreter
 
 interpE :: DDefs Var -> (Map Var Fdef) -> (Map Var Exp) -> Exp -> Exp
-interpE dd fenv env exp = undefined
+interpE dd fenv env exp =
+    case exp of
+      VarE v -> case M.lookup v env of
+                  Just e -> e
+                  Nothing -> undefined
+      LitE i -> LitE i
+      LitSymE s -> LitSymE s
+      AppE v _ exps -> case M.lookup v fenv of
+                         Just (Fdef _ _ _ vs e) ->
+                             let exps' = L.map (interpE dd fenv env) exps
+                                 env' = M.union env (M.fromList (zip vs exps'))
+                             in interpE dd fenv env' e
+                         Nothing -> undefined
+      LetPackedE v _ e1 e2 -> let e1' = interpE dd fenv env e1
+                                  env' = M.insert v e1' env
+                              in interpE dd fenv env' e2
+      LetRegionE _ exp -> interpE dd fenv env exp
+      LetLocE _ _ exp -> interpE dd fenv env exp
+      MkProdE exps -> let exps' = L.map (interpE dd fenv env) exps
+                      in MkProdE exps'
+      MkPackedE v _ exps -> undefined
+      ProjE i exp -> let exp' = interpE dd fenv env exp
+                     in case exp' of
+                          MkProdE exps -> exps !! i
+                          _ -> undefined
+      IfE e1 e2 e3 -> let e1' = interpE dd fenv env e1
+                      in case e1' of
+                           PrimAppE MkTrue [] -> interpE dd fenv env e2
+                           PrimAppE MkFalse [] -> interpE dd fenv env e3
+                           _ -> undefined
+      PrimAppE p exps -> undefined
