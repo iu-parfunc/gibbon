@@ -8,6 +8,36 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wall #-}
 
+
+--- Rough translation of L1 language from Redex model to Haskell.
+---
+--- Soon this can either be merged with the existing L1_Source module,
+--- discarded in favor of direcly modifying L1_Source, or expanded
+--- to replace L1_Source.
+---
+--- Design goals:
+---  * Mirror the design of the language in the redex model reasonably closely.
+---  * Share some structure with existing AST types (ie. use Common module).
+---  * Avoid fancy parameterized types for now.
+---
+--- Overall picture:
+--- A program consists of a series of data type definitions (DDefs, unchanged),
+--- a series of function definitions, and an optional expression. Functions
+--- now separately take both a normal argument list and a list of in/out
+--- locations. Expressions have different let binding forms for locations,
+--- packed data, non-packed data, and regions.
+---
+--- Big differences from model (so far): arbitrary tuple sizes, and arbitrary
+--- data types (not just leaf/node).
+---
+--- Since this language requires that we thread through location information
+--- and do computation in the right order, it's not suitable as a direct
+--- target from Racket (yet). This can be worked out as we integrate it
+--- into the full compiler. Possibilities:
+---  * AST will be translated to this IR once we infer location info.
+---  * This language is extended with indirection and all source programs
+---    start out using only indirection, to be changed by later optimization.
+
 module Packed.FirstOrder.LocExp where
 
 import Packed.FirstOrder.Common
@@ -22,8 +52,8 @@ type Loc = LocVar
 
 type Reg = Var
     
-data Program = Program (Map Var Fdef) (Maybe Exp)
-               deriving (Read,Show,Eq,Ord, Generic, NFData)
+data LocProgram = LocProgram (Map Var Fdef) (Maybe Exp)
+                  deriving (Read,Show,Eq,Ord, Generic, NFData)
                         
 data Fdef = Fdef Var Ftype [Rp] [Var] Exp
             deriving (Read,Show,Eq,Ord, Generic, NFData)
@@ -64,6 +94,7 @@ data LocExp = StartL Reg
             | PlusSizeOfL Var Loc
               deriving (Read,Show,Eq,Ord, Generic, NFData)
 
+--- TODO: share Prim (put in Common maybe?)
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | EqSymP          -- ^ Equality on Sym
           | EqIntP       -- ^ Equality on Int
@@ -117,20 +148,25 @@ data LocState = InLS Loc
               | AfterLS Loc
               | StartS Reg
 
-typeofE :: DDefs Var -> (Map Var Ptype) -> (Set Constr) -> (Set Reg) -> (Set LocState) -> Exp ->
-           (Ptype,Set LocState)
+--- TODO: finish typechecker
+
+typeofE :: DDefs Var -> (Map Var Ftype) -> (Set Constr) -> (Set Reg) -> (Set LocState) -> Exp ->
+           (Ftype,Set LocState)
 typeofE dd g c r ls exp =
     case exp of
       VarE v -> case M.lookup v g of
                   Just t -> (t, ls)
                   Nothing -> error ("Failed to lookup variable " ++ (show v)
                                    ++ " in gamma: " ++ (show g))
-      LitE _ -> (IntType, ls)
-      LitSymE _ -> (SymType, ls)
-      AppE v rps exps -> undefined
+      LitE _ -> (PrimType IntType, ls)
+      LitSymE _ -> (PrimType SymType, ls)
+      AppE v rps exps -> case M.lookup v g of
+                           Just t -> undefined
+                           Nothing -> error ("Failed to lookup variable " ++ (show v)
+                                            ++ " in gamma: " ++ (show g))
       PrimAppE p exps -> undefined
       LetPackedE v pt e1 e2 -> let (t1, ls1) = typeofE dd g c r ls e1
-                               in if (t1 == pt) then typeofE dd (M.insert v pt g) c r ls1 e2
+                               in if (t1 == (PrimType pt)) then typeofE dd (M.insert v (PrimType pt) g) c r ls1 e2
                                   else error ("Type of let bound expression was " ++ (show t1)
                                              ++ " but expected " ++ (show pt) ++ " for exp: "
                                              ++ (show e1))
@@ -142,7 +178,7 @@ typeofE dd g c r ls exp =
       LetE v pt e1 e2 ->
           if hasPacked pt then error ("Expected unpacked type, found " ++ (show pt))
           else let (t1, ls1) = typeofE dd g c r ls e1
-               in if (t1 == pt) then typeofE dd (M.insert v pt g) c r ls1 e2
+               in if (t1 == (PrimType pt)) then typeofE dd (M.insert v (PrimType pt) g) c r ls1 e2
                   else error ("Type of let bound expression was " ++ (show t1)
                              ++ " but expected " ++ (show pt) ++ " for exp: "
                              ++ (show e1))
@@ -150,3 +186,8 @@ typeofE dd g c r ls exp =
       MkPackedE v l exps -> undefined
       ProjE i exp -> undefined
       IfE e1 e2 e3 -> undefined
+
+--- TODO: finish interpreter
+
+interpE :: DDefs Var -> (Map Var Fdef) -> (Map Var Exp) -> Exp -> Exp
+interpE dd fenv env exp = undefined
