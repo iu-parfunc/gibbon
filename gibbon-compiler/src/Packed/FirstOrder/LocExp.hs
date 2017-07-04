@@ -149,7 +149,7 @@ data LocState = InLS Loc
               | StartS Reg
 
 --- TODO: finish typechecker
-
+--- does it need to be monadic, or can it be pure?
 typeofE :: DDefs Var -> (Map Var Ftype) -> (Set Constr) -> (Set Reg) -> (Set LocState) -> Exp ->
            (Ftype,Set LocState)
 typeofE dd g c r ls exp =
@@ -160,21 +160,12 @@ typeofE dd g c r ls exp =
                                    ++ " in gamma: " ++ (show g))
       LitE _ -> (PrimType IntType, ls)
       LitSymE _ -> (PrimType SymType, ls)
-      AppE v rps exps -> case M.lookup v g of
-                           Just t -> undefined
-                           Nothing -> error ("Failed to lookup variable " ++ (show v)
-                                            ++ " in gamma: " ++ (show g))
-      PrimAppE p exps -> undefined
       LetPackedE v pt e1 e2 -> let (t1, ls1) = typeofE dd g c r ls e1
                                in if (t1 == (PrimType pt)) then typeofE dd (M.insert v (PrimType pt) g) c r ls1 e2
                                   else error ("Type of let bound expression was " ++ (show t1)
                                              ++ " but expected " ++ (show pt) ++ " for exp: "
                                              ++ (show e1))
       LetRegionE r' exp -> typeofE dd g c (S.insert r' r) ls exp  
-      LetLocE v le exp -> case le of
-                            StartL r' -> undefined
-                            PlusCL _ l -> undefined
-                            PlusSizeOfL v l -> undefined
       LetE v pt e1 e2 ->
           if hasPacked pt then error ("Expected unpacked type, found " ++ (show pt))
           else let (t1, ls1) = typeofE dd g c r ls e1
@@ -182,42 +173,74 @@ typeofE dd g c r ls exp =
                   else error ("Type of let bound expression was " ++ (show t1)
                              ++ " but expected " ++ (show pt) ++ " for exp: "
                              ++ (show e1))
+      AppE v rps exps -> case M.lookup v g of
+                           Just t -> undefined
+                           Nothing -> error ("Failed to lookup variable " ++ (show v)
+                                            ++ " in gamma: " ++ (show g))
+      LetLocE v le exp -> case le of
+                            StartL r' -> undefined
+                            PlusCL _ l -> undefined
+                            PlusSizeOfL v l -> undefined
       MkProdE exps -> undefined
       MkPackedE v l exps -> undefined
       ProjE i exp -> undefined
       IfE e1 e2 e3 -> undefined
+      PrimAppE p exps -> undefined
 
 --- TODO: finish interpreter
 
-interpE :: DDefs Var -> (Map Var Fdef) -> (Map Var Exp) -> Exp -> Exp
+interpE :: DDefs Var -> (Map Var Fdef) -> (Map Var Exp) -> Exp -> SyM Exp
 interpE dd fenv env exp =
     case exp of
       VarE v -> case M.lookup v env of
-                  Just e -> e
+                  Just e -> return e
                   Nothing -> undefined
-      LitE i -> LitE i
-      LitSymE s -> LitSymE s
+      LitE i -> return $ LitE i
+      LitSymE s -> return $ LitSymE s
       AppE v _ exps -> case M.lookup v fenv of
                          Just (Fdef _ _ _ vs e) ->
-                             let exps' = L.map (interpE dd fenv env) exps
-                                 env' = M.union env (M.fromList (zip vs exps'))
-                             in interpE dd fenv env' e
+                             do exps' <- mapM (interpE dd fenv env) exps
+                                let env' = M.union env (M.fromList (zip vs exps'))
+                                interpE dd fenv env' e
                          Nothing -> undefined
-      LetPackedE v _ e1 e2 -> let e1' = interpE dd fenv env e1
-                                  env' = M.insert v e1' env
-                              in interpE dd fenv env' e2
+      LetPackedE v _ e1 e2 -> do e1' <- interpE dd fenv env e1
+                                 let env' = M.insert v e1' env
+                                 interpE dd fenv env' e2
       LetRegionE _ exp -> interpE dd fenv env exp
       LetLocE _ _ exp -> interpE dd fenv env exp
-      MkProdE exps -> let exps' = L.map (interpE dd fenv env) exps
-                      in MkProdE exps'
+      MkProdE exps -> do exps' <- mapM (interpE dd fenv env) exps
+                         return $ MkProdE exps'
       MkPackedE v _ exps -> undefined
-      ProjE i exp -> let exp' = interpE dd fenv env exp
-                     in case exp' of
-                          MkProdE exps -> exps !! i
+      ProjE i exp -> do exp' <- interpE dd fenv env exp
+                        case exp' of
+                          MkProdE exps -> return $ exps !! i
                           _ -> undefined
-      IfE e1 e2 e3 -> let e1' = interpE dd fenv env e1
-                      in case e1' of
+      IfE e1 e2 e3 -> do e1' <- interpE dd fenv env e1
+                         case e1' of
                            PrimAppE MkTrue [] -> interpE dd fenv env e2
                            PrimAppE MkFalse [] -> interpE dd fenv env e3
                            _ -> undefined
-      PrimAppE p exps -> undefined
+      PrimAppE p exps ->
+          case p of
+            AddP -> do let [e1,e2] = exps
+                       (LitE i1) <- interpE dd fenv env e1
+                       (LitE i2) <- interpE dd fenv env e2
+                       return $ LitE (i1 + i2)
+            SubP -> do let [e1,e2] = exps
+                       (LitE i1) <- interpE dd fenv env e1
+                       (LitE i2) <- interpE dd fenv env e2
+                       return $ LitE (i1 - i2)
+            MulP -> do let [e1,e2] = exps
+                       (LitE i1) <- interpE dd fenv env e1
+                       (LitE i2) <- interpE dd fenv env e2
+                       return $ LitE (i1 * i2)
+            EqIntP -> do let [e1,e2] = exps
+                         (LitE i1) <- interpE dd fenv env e1
+                         (LitE i2) <- interpE dd fenv env e2
+                         return $ if (i1 == i2) then PrimAppE MkTrue [] else PrimAppE MkFalse []
+            EqSymP -> do let [e1,e2] = exps
+                         (LitSymE i1) <- interpE dd fenv env e1
+                         (LitSymE i2) <- interpE dd fenv env e2
+                         return $ if (i1 == i2) then PrimAppE MkTrue [] else PrimAppE MkFalse []
+            MkTrue -> return $ PrimAppE MkTrue []
+            MkFalse -> return $ PrimAppE MkFalse []
