@@ -52,7 +52,7 @@ type Loc = LocVar
 
 type Reg = Var
     
-data LocProgram = LocProgram (Map Var Fdef) (Maybe Exp)
+data LocProgram = LocProgram (DDefs Ptype) (Map Var Fdef) (Maybe Exp)
                   deriving (Read,Show,Eq,Ord, Generic, NFData)
                         
 data Fdef = Fdef Var Ftype [Rp] [Var] Exp
@@ -71,7 +71,7 @@ data Ptype = ProdType [Ptype]
            | BoolType
            | SymType
            | DictType Ptype
-           | PackedType Var
+           | PackedType Var Loc
              deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 data Exp = VarE Var
@@ -87,6 +87,7 @@ data Exp = VarE Var
          | MkPackedE Var Loc [Exp]
          | ProjE Int Exp
          | IfE Exp Exp Exp
+         | CaseE Exp (Map DataCon ([(Var,Loc,Ptype)],Exp))
            deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 data LocExp = StartL Reg
@@ -116,7 +117,7 @@ voidType = ProdType []
 
 hasPacked :: Ptype -> Bool
 hasPacked (ProdType ls) = any hasPacked ls
-hasPacked (PackedType _) = True
+hasPacked (PackedType _ _) = True
 hasPacked IntType = False
 hasPacked BoolType = False
 hasPacked SymType = False
@@ -150,7 +151,7 @@ data LocState = InLS Loc
 
 --- TODO: finish typechecker
 --- does it need to be monadic, or can it be pure?
-typeofE :: DDefs Var -> (Map Var Ftype) -> (Set Constr) -> (Set Reg) -> (Set LocState) -> Exp ->
+typeofE :: DDefs Ptype -> (Map Var Ftype) -> (Set Constr) -> (Set Reg) -> (Set LocState) -> Exp ->
            (Ftype,Set LocState)
 typeofE dd g c r ls exp =
     case exp of
@@ -186,10 +187,11 @@ typeofE dd g c r ls exp =
       ProjE i exp -> undefined
       IfE e1 e2 e3 -> undefined
       PrimAppE p exps -> undefined
+      CaseE exp mp -> undefined
 
 --- TODO: finish interpreter
 
-interpE :: DDefs Var -> (Map Var Fdef) -> (Map Var Exp) -> Exp -> SyM Exp
+interpE :: DDefs Ptype -> (Map Var Fdef) -> (Map Var Exp) -> Exp -> SyM Exp
 interpE dd fenv env exp =
     case exp of
       VarE v -> case M.lookup v env of
@@ -220,6 +222,7 @@ interpE dd fenv env exp =
                            PrimAppE MkTrue [] -> interpE dd fenv env e2
                            PrimAppE MkFalse [] -> interpE dd fenv env e3
                            _ -> undefined
+      CaseE exp mp -> undefined
       PrimAppE p exps ->
           case p of
             AddP -> do let [e1,e2] = exps
@@ -242,5 +245,50 @@ interpE dd fenv env exp =
                          (LitSymE i1) <- interpE dd fenv env e1
                          (LitSymE i2) <- interpE dd fenv env e2
                          return $ if (i1 == i2) then PrimAppE MkTrue [] else PrimAppE MkFalse []
+            Gensym -> do v <- gensym "gensym"
+                         return $ LitSymE v
             MkTrue -> return $ PrimAppE MkTrue []
             MkFalse -> return $ PrimAppE MkFalse []
+
+
+
+
+--- examples
+
+
+add1Prog :: LocProgram
+add1Prog = LocProgram (fromListDD [DDef (toVar "Tree") True
+                              [ ("Leaf",[IntType])
+                              , ("Node",[PackedType "Tree" (toVar "l1"), PackedType "Tree" (toVar "l2")])]])
+           (M.fromList [(toVar "add1",add1Fun)])
+           Nothing
+
+add1Fun :: Fdef
+add1Fun = Fdef "add1"
+          add1Type
+          [(LocIn (toVar "l1") (toVar "r1")),
+           (LocOut (toVar "l2") (toVar "r2"))]
+          [(toVar "tr")]
+          add1Body
+
+add1Type :: Ftype
+add1Type = FunType
+           [(LocIn "l1" "r1"),
+            (LocOut "l2" "r2")]
+           (PackedType "Tree" "l1") (PackedType "Tree" "l2")
+
+add1Body :: Exp
+add1Body = CaseE (VarE "tr") $
+           M.fromList [("Leaf", ([("n","ln",IntType)],
+                                 MkPackedE "Leaf" "l2" [PrimAppE AddP [(VarE "n"),(LitE 1)]])),
+                       ("Node", ([("x","lx",PackedType "Tree" "lx"),("y","ly",PackedType "Tree" "ly")],
+                                 nodeCase))]
+
+nodeCase :: Exp
+nodeCase = LetLocE "l3" (PlusCL 1 "l2") $
+           LetPackedE "x2" (PackedType "Tree" "l3")
+                      (AppE "add1" [LocIn "lx" "r1",LocOut "l3" "r2"] [(VarE "x")]) $
+           LetLocE "l4" (PlusSizeOfL "x2" "l3") $
+           LetPackedE "y2" (PackedType "Tree" "l4")
+                      (AppE "add1" [LocIn "ly" "r1",LocOut "l4" "r2"] [(VarE "y")]) $
+           MkPackedE "Node" "l2" [VarE "x2", VarE "y2"]
