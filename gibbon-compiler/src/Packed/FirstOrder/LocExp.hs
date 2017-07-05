@@ -84,7 +84,7 @@ data Exp = VarE Var
          | LetLocE Var LocExp Exp
          | LetE Var Ptype Exp Exp
          | MkProdE [Exp]
-         | MkPackedE Var Loc [Exp]
+         | MkPackedE DataCon Loc [Exp]
          | ProjE Int Exp
          | IfE Exp Exp Exp
          | CaseE Exp (Map DataCon ([(Var,Loc,Ptype)],Exp))
@@ -139,6 +139,7 @@ freeVars (MkProdE ls) = S.unions (L.map freeVars ls)
 freeVars (MkPackedE _ _ ls) = S.unions (L.map freeVars ls)
 freeVars (ProjE _ e) = freeVars e
 freeVars (IfE e1 e2 e3) = S.unions [freeVars e1, freeVars e2, freeVars e3]
+freeVars (CaseE e mp) = S.union (freeVars e) $ S.unions $ L.map (freeVars . snd . snd) $ M.toList mp
 
 data Constr = StartOfC Loc Reg
             | AfterC Loc Loc
@@ -189,61 +190,79 @@ typeofE dd g c r ls exp =
       PrimAppE p exps -> undefined
       CaseE exp mp -> undefined
 
---- TODO: finish interpreter
+-- Pure interpreter
+interpProg :: LocProgram -> Exp
+interpProg = fst . runSyM 0 . interpProg'
 
-interpE :: DDefs Ptype -> (Map Var Fdef) -> (Map Var Exp) -> Exp -> SyM Exp
-interpE dd fenv env exp =
+interpProg' :: LocProgram -> SyM Exp
+interpProg' (LocProgram _ _ Nothing) = error "Can't interpret program with no main expression"
+interpProg' (LocProgram _dd fenv (Just e)) = interpE fenv M.empty e
+
+interpE :: (Map Var Fdef) -> (Map Var Exp) -> Exp -> SyM Exp
+interpE fenv env exp =
     case exp of
       VarE v -> case M.lookup v env of
                   Just e -> return e
-                  Nothing -> undefined
+                  Nothing -> error ("Variable " ++ (show v) ++ " not found in env: " ++ (show env))
       LitE i -> return $ LitE i
       LitSymE s -> return $ LitSymE s
       AppE v _ exps -> case M.lookup v fenv of
                          Just (Fdef _ _ _ vs e) ->
-                             do exps' <- mapM (interpE dd fenv env) exps
-                                let env' = M.union env (M.fromList (zip vs exps'))
-                                interpE dd fenv env' e
-                         Nothing -> undefined
-      LetPackedE v _ e1 e2 -> do e1' <- interpE dd fenv env e1
+                             do exps' <- mapM (interpE fenv env) exps
+                                let env' = M.union (M.fromList (zip vs exps')) env
+                                interpE fenv env' e
+                         Nothing -> error ("Function with name " ++ (show v) ++ " not found in fenv: " ++ (show fenv))
+      LetPackedE v _ e1 e2 -> do e1' <- interpE fenv env e1
                                  let env' = M.insert v e1' env
-                                 interpE dd fenv env' e2
-      LetRegionE _ exp -> interpE dd fenv env exp
-      LetLocE _ _ exp -> interpE dd fenv env exp
-      MkProdE exps -> do exps' <- mapM (interpE dd fenv env) exps
+                                 interpE fenv env' e2
+      LetRegionE _ exp -> interpE fenv env exp
+      LetLocE _ _ exp -> interpE fenv env exp
+      LetE v _ e1 e2 -> do e1' <- interpE fenv env e1
+                           let env' = M.insert v e1' env
+                           interpE fenv env' e2
+      MkProdE exps -> do exps' <- mapM (interpE fenv env) exps
                          return $ MkProdE exps'
-      MkPackedE v _ exps -> undefined
-      ProjE i exp -> do exp' <- interpE dd fenv env exp
+      MkPackedE v l exps -> do exps' <- mapM (interpE fenv env) exps
+                               return $ MkPackedE v l exps'
+      ProjE i exp -> do exp' <- interpE fenv env exp
                         case exp' of
                           MkProdE exps -> return $ exps !! i
                           _ -> undefined
-      IfE e1 e2 e3 -> do e1' <- interpE dd fenv env e1
+      IfE e1 e2 e3 -> do e1' <- interpE fenv env e1
                          case e1' of
-                           PrimAppE MkTrue [] -> interpE dd fenv env e2
-                           PrimAppE MkFalse [] -> interpE dd fenv env e3
+                           PrimAppE MkTrue [] -> interpE fenv env e2
+                           PrimAppE MkFalse [] -> interpE fenv env e3
                            _ -> undefined
-      CaseE exp mp -> undefined
+      CaseE exp mp ->
+          do exp' <- interpE fenv env exp
+             case exp' of
+               MkPackedE v _ exps -> case M.lookup v mp of
+                                       Just (bnds,e) -> let vs = L.map (\(v,_,_) -> v) bnds
+                                                            env' = M.union (M.fromList (zip vs exps)) env
+                                                        in interpE fenv env' e
+                                       Nothing -> undefined
+               _ -> error ("Expected case of packed data, got " ++ (show exp'))
       PrimAppE p exps ->
           case p of
             AddP -> do let [e1,e2] = exps
-                       (LitE i1) <- interpE dd fenv env e1
-                       (LitE i2) <- interpE dd fenv env e2
+                       (LitE i1) <- interpE fenv env e1
+                       (LitE i2) <- interpE fenv env e2
                        return $ LitE (i1 + i2)
             SubP -> do let [e1,e2] = exps
-                       (LitE i1) <- interpE dd fenv env e1
-                       (LitE i2) <- interpE dd fenv env e2
+                       (LitE i1) <- interpE fenv env e1
+                       (LitE i2) <- interpE fenv env e2
                        return $ LitE (i1 - i2)
             MulP -> do let [e1,e2] = exps
-                       (LitE i1) <- interpE dd fenv env e1
-                       (LitE i2) <- interpE dd fenv env e2
+                       (LitE i1) <- interpE fenv env e1
+                       (LitE i2) <- interpE fenv env e2
                        return $ LitE (i1 * i2)
             EqIntP -> do let [e1,e2] = exps
-                         (LitE i1) <- interpE dd fenv env e1
-                         (LitE i2) <- interpE dd fenv env e2
+                         (LitE i1) <- interpE fenv env e1
+                         (LitE i2) <- interpE fenv env e2
                          return $ if (i1 == i2) then PrimAppE MkTrue [] else PrimAppE MkFalse []
             EqSymP -> do let [e1,e2] = exps
-                         (LitSymE i1) <- interpE dd fenv env e1
-                         (LitSymE i2) <- interpE dd fenv env e2
+                         (LitSymE i1) <- interpE fenv env e1
+                         (LitSymE i2) <- interpE fenv env e2
                          return $ if (i1 == i2) then PrimAppE MkTrue [] else PrimAppE MkFalse []
             Gensym -> do v <- gensym "gensym"
                          return $ LitSymE v
@@ -255,27 +274,45 @@ interpE dd fenv env exp =
 
 --- examples
 
+testProg :: LocProgram
+testProg = LocProgram (fromListDD [DDef (toVar "Tree") True
+                              [ ("Leaf",[IntType])
+                              , ("Node",[PackedType "Tree" (toVar "l1"), PackedType "Tree" (toVar "l2")])]])
+           M.empty
+           (Just (withTree (caseOnTree "tr")))
 
 add1Prog :: LocProgram
 add1Prog = LocProgram (fromListDD [DDef (toVar "Tree") True
                               [ ("Leaf",[IntType])
                               , ("Node",[PackedType "Tree" (toVar "l1"), PackedType "Tree" (toVar "l2")])]])
-           (M.fromList [(toVar "add1",add1Fun)])
-           Nothing
+           (M.fromList [("add1",add1Fun),("sum",sumFun)])
+           (Just add1Test)
 
 add1Fun :: Fdef
 add1Fun = Fdef "add1"
           add1Type
-          [(LocIn (toVar "l1") (toVar "r1")),
-           (LocOut (toVar "l2") (toVar "r2"))]
-          [(toVar "tr")]
+          [(LocIn "l1" "r1"),
+           (LocOut "l2" "r2")]
+          ["tr"]
           add1Body
+
+sumFun :: Fdef
+sumFun = Fdef "sum"
+         sumType
+         [(LocIn "l1" "r1")]
+         [("tr")]
+         sumBody
 
 add1Type :: Ftype
 add1Type = FunType
            [(LocIn "l1" "r1"),
             (LocOut "l2" "r2")]
            (PackedType "Tree" "l1") (PackedType "Tree" "l2")
+
+sumType :: Ftype
+sumType = FunType
+          [(LocIn "l1" "r1")]
+          (PackedType "Tree" "l1") IntType
 
 add1Body :: Exp
 add1Body = CaseE (VarE "tr") $
@@ -292,3 +329,37 @@ nodeCase = LetLocE "l3" (PlusCL 1 "l2") $
            LetPackedE "y2" (PackedType "Tree" "l4")
                       (AppE "add1" [LocIn "ly" "r1",LocOut "l4" "r2"] [(VarE "y")]) $
            MkPackedE "Node" "l2" [VarE "x2", VarE "y2"]
+
+sumBody :: Exp
+sumBody = CaseE (VarE "tr") $
+           M.fromList [("Leaf", ([("n","ln",IntType)],
+                                 (VarE "n"))),
+                       ("Node", ([("x","lx",PackedType "Tree" "lx"),("y","ly",PackedType "Tree" "ly")],
+                                 LetE "n1" IntType (AppE "sum" [LocIn "lx" "r1"] [(VarE "x")]) $
+                                 LetE "n2" IntType (AppE "sum" [LocIn "ly" "r1"] [(VarE "y")]) $
+                                 PrimAppE AddP [(VarE "n1"),(VarE "n2")]))]
+
+add1Test :: Exp
+add1Test = withTree $
+           LetLocE "o" (StartL "r2") $
+           LetPackedE "tradd" (PackedType "Tree" "o")
+                      (AppE "add1" [LocIn "l" "r1", LocOut "o" "r2"] [(VarE "tr")]) $
+           AppE "sum" [LocIn "o" "r2"] [(VarE "tradd")]
+
+withTree :: Exp -> Exp
+withTree e = LetRegionE "r1" $
+             LetRegionE "r2" $
+             LetLocE "l" (StartL "r1") $
+             LetLocE "l1" (PlusCL 1 "l") $
+             LetPackedE "tr1" (PackedType "Tree" "l1") (MkPackedE "Leaf" "l1" [(LitE 1)]) $
+             LetLocE "l2" (PlusSizeOfL "tr1" "l1") $
+             LetPackedE "tr2" (PackedType "Tree" "l2") (MkPackedE "Leaf" "l2" [(LitE 2)]) $
+             LetPackedE "tr" (PackedType "Tree" "l") (MkPackedE "Node" "l" [(VarE "tr1"),(VarE "tr2")]) $
+             e
+
+caseOnTree :: Var -> Exp
+caseOnTree v = CaseE (VarE v) $
+               M.fromList [("Leaf", ([("n","ln",IntType)],
+                                     (LitE 1))),
+                           ("Node", ([("x","lx",PackedType "Tree" "lx"),("y","ly",PackedType "Tree" "ly")],
+                                     (LitE 2)))]
