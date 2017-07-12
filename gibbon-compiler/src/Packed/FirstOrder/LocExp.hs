@@ -142,13 +142,16 @@ freeVars (IfE e1 e2 e3) = S.unions [freeVars e1, freeVars e2, freeVars e3]
 freeVars (CaseE e mp) = S.union (freeVars e) $ S.unions $ L.map (freeVars . snd . snd) $ M.toList mp
 
 data Constr = StartOfC Loc Reg
-            | AfterC Loc Loc
+            | After1C Int Loc Loc
+            | AfterXC Var Loc Loc
             | InC Loc Reg
-
+              deriving (Read,Show,Eq,Ord, Generic, NFData)
+                       
 data LocState = InLS Loc
               | OutLS Loc
               | AfterLS Loc
               | StartS Reg
+                deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 --- TODO: finish typechecker
 --- does it need to be monadic, or can it be pure?
@@ -160,14 +163,19 @@ typeofE dd g c r ls exp =
                   Just t -> (t, ls)
                   Nothing -> error ("Failed to lookup variable " ++ (show v)
                                    ++ " in gamma: " ++ (show g))
+
       LitE _ -> (PrimType IntType, ls)
+
       LitSymE _ -> (PrimType SymType, ls)
+
       LetPackedE v pt e1 e2 -> let (t1, ls1) = typeofE dd g c r ls e1
                                in if (t1 == (PrimType pt)) then typeofE dd (M.insert v (PrimType pt) g) c r ls1 e2
                                   else error ("Type of let bound expression was " ++ (show t1)
                                              ++ " but expected " ++ (show pt) ++ " for exp: "
                                              ++ (show e1))
+
       LetRegionE r' exp -> typeofE dd g c (S.insert r' r) ls exp  
+
       LetE v pt e1 e2 ->
           if hasPacked pt then error ("Expected unpacked type, found " ++ (show pt))
           else let (t1, ls1) = typeofE dd g c r ls e1
@@ -175,20 +183,57 @@ typeofE dd g c r ls exp =
                   else error ("Type of let bound expression was " ++ (show t1)
                              ++ " but expected " ++ (show pt) ++ " for exp: "
                              ++ (show e1))
+
       AppE v rps exps -> case M.lookup v g of
                            Just t -> undefined
                            Nothing -> error ("Failed to lookup variable " ++ (show v)
                                             ++ " in gamma: " ++ (show g))
       LetLocE v le exp -> case le of
-                            StartL r' -> undefined
-                            PlusCL _ l -> undefined
-                            PlusSizeOfL v l -> undefined
-      MkProdE exps -> undefined
+                            StartL r' -> let c' = S.union c $ S.fromList [StartOfC v r', InC v r']
+                                         in typeofE dd g c' r ls exp
+                            PlusCL i l -> let r' = findRegion r c l
+                                              c' = S.union c $ S.fromList [InC v r', After1C i l v]
+                                              ls' = S.union ls $ S.fromList [OutLS v, AfterLS l]
+                                          in noAfter l ls $ typeofE dd g c' r ls' exp 
+                            PlusSizeOfL v' l' -> case M.lookup v g of
+                                                   Just (PrimType (PackedType v'' l'')) ->
+                                                       if l' == l'' -- should be equal!
+                                                       then undefined 
+                                                       else let r' = findRegion r c l'
+                                                                c' = S.union c $ S.fromList [AfterXC v' l' v, InC v r']
+                                                                ls' = S.union ls $ S.fromList [AfterLS l', OutLS v]
+                                                            in noAfter l' ls $ typeofE dd g c' r ls' exp 
+                                                   _ -> undefined
+      MkProdE exps -> f ls exps
+          where f ls (e:es) = let (PrimType t,ls') = typeofE dd g c r ls e
+                                  (PrimType (ProdType ts),ls'') = f ls' es
+                              in (PrimType $ ProdType $ S.toList $ S.union (S.singleton t) (S.fromList ts), ls'')
+                f ls [] = (PrimType $ voidType, ls)
+
+      ProjE i exp -> let (PrimType (ProdType ts),ls') = typeofE dd g c r ls exp
+                     in (PrimType $ ts !! i, ls')
+
+      IfE e1 e2 e3 -> let (t1,ls') = typeofE dd g c r ls e1
+                          (t2,ls'') = typeofE dd g c r ls' e2
+                          (t3,ls''') = typeofE dd g c r ls'' e3
+                      in if t1 == PrimType (BoolType) && t2 == t3 then (t3,ls''') else undefined
+
       MkPackedE v l exps -> undefined
-      ProjE i exp -> undefined
-      IfE e1 e2 e3 -> undefined
+
       PrimAppE p exps -> undefined
+
       CaseE exp mp -> undefined
+
+findRegion :: (Set Reg) -> (Set Constr) -> Loc -> Reg
+findRegion r c l = case S.foldr f Nothing c of
+                     Nothing -> undefined
+                     Just reg -> if S.member reg r then reg
+                                 else error ("Region " ++ (show reg) ++ " not in environment.")
+    where f (InC loc reg) a = if l == loc then Just reg else a
+          f _c a = a
+
+noAfter :: Loc -> (Set LocState) -> a -> a
+noAfter = undefined
 
 -- Pure interpreter
 interpProg :: LocProgram -> Exp
@@ -204,35 +249,47 @@ interpE fenv env exp =
       VarE v -> case M.lookup v env of
                   Just e -> return e
                   Nothing -> error ("Variable " ++ (show v) ++ " not found in env: " ++ (show env))
+
       LitE i -> return $ LitE i
+
       LitSymE s -> return $ LitSymE s
+
       AppE v _ exps -> case M.lookup v fenv of
                          Just (Fdef _ _ _ vs e) ->
                              do exps' <- mapM (interpE fenv env) exps
                                 let env' = M.union (M.fromList (zip vs exps')) env
                                 interpE fenv env' e
                          Nothing -> error ("Function with name " ++ (show v) ++ " not found in fenv: " ++ (show fenv))
+
       LetPackedE v _ e1 e2 -> do e1' <- interpE fenv env e1
                                  let env' = M.insert v e1' env
                                  interpE fenv env' e2
+
       LetRegionE _ exp -> interpE fenv env exp
+
       LetLocE _ _ exp -> interpE fenv env exp
+
       LetE v _ e1 e2 -> do e1' <- interpE fenv env e1
                            let env' = M.insert v e1' env
                            interpE fenv env' e2
+
       MkProdE exps -> do exps' <- mapM (interpE fenv env) exps
                          return $ MkProdE exps'
+
       MkPackedE v l exps -> do exps' <- mapM (interpE fenv env) exps
                                return $ MkPackedE v l exps'
+
       ProjE i exp -> do exp' <- interpE fenv env exp
                         case exp' of
                           MkProdE exps -> return $ exps !! i
                           _ -> undefined
+
       IfE e1 e2 e3 -> do e1' <- interpE fenv env e1
                          case e1' of
                            PrimAppE MkTrue [] -> interpE fenv env e2
                            PrimAppE MkFalse [] -> interpE fenv env e3
                            _ -> undefined
+
       CaseE exp mp ->
           do exp' <- interpE fenv env exp
              case exp' of
@@ -242,6 +299,7 @@ interpE fenv env exp =
                                                         in interpE fenv env' e
                                        Nothing -> undefined
                _ -> error ("Expected case of packed data, got " ++ (show exp'))
+
       PrimAppE p exps ->
           case p of
             AddP -> do let [e1,e2] = exps
