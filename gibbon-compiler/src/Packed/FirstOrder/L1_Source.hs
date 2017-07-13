@@ -91,7 +91,11 @@ fromE1 (E1 e) = e
 -- | The source language.  It has pointer based sums and products, as
 -- well as packed algebraic datatypes.
 --
--- It is parameterized by a decoration attached to every binder.
+-- It is parameterized by a decoration, d, attached to every binder.
+--
+-- It is also parameterized by an expression type for "knot-tying",
+-- and for enabling a potential extension point.
+-- 
 data PreExp d (exp :: * -> *) =
      VarE Var              -- ^ Variable reference
    | RetE [LocVar] Var     -- ^ Return a value together with extra loc values.
