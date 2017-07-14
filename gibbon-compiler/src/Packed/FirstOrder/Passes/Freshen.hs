@@ -33,7 +33,7 @@ freshNames (L1.Prog defs funs main cstrs) =
                  let nam' = cleanFunName nam
                  return (nam', FunDef nam' (narg',targ) ty bod')
 
-          freshExp :: [(Var,Var)] -> PreExp Ty (E1 Ty) -> SyM L1.Exp
+          freshExp :: [(Var,Var)] -> PreExp () Ty (E1 Ty) -> SyM L1.Exp
           freshExp _ (L1.RetE l v) = return (L1.E1 (L1.RetE l v))
               
           freshExp vs (L1.VarE v) =
@@ -82,14 +82,14 @@ freshNames (L1.Prog defs funs main cstrs) =
                                 ae' <- freshExp vs' ae
                                 return (c,zip args' locs',ae')) mp
                  return $ L1.E1 $ L1.CaseE e' mp'
-          freshExp vs (L1.MkPackedE c d es) =
+          freshExp vs (L1.MkPackedE () c d es) =
               do es' <- mapM (freshExp vs . fromE1) es
                  case d of
                    Nothing -> return ()
                    Just x | x==dummyLoc -> return ()
                           | otherwise -> error$ "freshExp: expects only dummyLoc on input forms, found: "++show d
                  loc <- genLocVar ""
-                 return $ L1.E1 $ L1.MkPackedE c (fmap (\_ -> loc) d) es'
+                 return $ L1.E1 $ L1.MkPackedE () c (fmap (\_ -> loc) d) es'
           freshExp vs (L1.TimeIt (E1 e) t b) =
               do e' <- freshExp vs e
                  return $ L1.E1 $ L1.TimeIt e' t b

@@ -49,8 +49,8 @@ inlineTrivExp _ddefs = go []
       Just (ty,oth)  -> E1 $ LetE (v,[],ty,oth) $ fn v
 
   exp :: Env -> Exp -> Exp
-  exp env (E1 e) = E1 $
-    case e of
+  exp env (E1 e0) = E1 $
+    case e0 of
       VarE v -> case lookup v env of
                     Nothing -> VarE v
                     Just (_,e) -> fromE1 e
@@ -82,7 +82,7 @@ inlineTrivExp _ddefs = go []
            mp' = map (\(c,args,ae) -> (c,args,go env ae)) mp
        in CaseE e' mp'
 
-      MkPackedE c lv es -> MkPackedE c lv $ map (go env) es
+      MkPackedE loc c lv es -> MkPackedE loc c lv $ map (go env) es
       TimeIt e t b -> TimeIt (go env e) t b
       MapE (v,t,e') e -> MapE (v,t,go env e') (go env e)
       FoldE (v1,t1,e1) (v2,t2,e2) e3 ->

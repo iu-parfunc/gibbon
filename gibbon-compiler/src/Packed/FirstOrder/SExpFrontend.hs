@@ -105,8 +105,8 @@ tagDataCons ddefs = go allCons
      case ex of
        AppE v _ (E1 (MkProdE ls))
                   -- FIXME: check the type to determine if this is packed/unpacked:
-                  | S.member v cons -> MkPackedE (fromVar v) (Just dummyLoc) (L.map (go cons) ls)
-       AppE v l e | S.member v cons -> MkPackedE (fromVar v) (Just dummyLoc) [go cons e]
+                  | S.member v cons -> MkPackedE () (fromVar v) (Just dummyLoc) (L.map (go cons) ls)
+       AppE v l e | S.member v cons -> MkPackedE () (fromVar v) (Just dummyLoc) [go cons e]
                   | otherwise       -> AppE v l (go cons e)
        LetE (v,l,t,rhs) bod ->
          let go' = if S.member v cons
@@ -122,7 +122,7 @@ tagDataCons ddefs = go allCons
        ProjE i e  -> ProjE i (go cons e)
        CaseE e ls -> CaseE (go cons e) (L.map (\(c,vs,er) -> (c,vs,go cons er)) ls)
        MkProdE ls     -> MkProdE $ L.map (go cons) ls
-       MkPackedE k ml ls -> MkPackedE k ml $ L.map (go cons) ls
+       MkPackedE loc k ml ls -> MkPackedE loc k ml $ L.map (go cons) ls
        TimeIt e t b -> TimeIt (go cons e) t b
        IfE a b c -> IfE (go cons a) (go cons b) (go cons c)
 
@@ -153,7 +153,7 @@ parseSExp ses =
      (L (A "require":_) : rst) -> go rst dds fds cds mn
 
      (L (A "data": A tycon : cs) : rst) ->
-         go rst (DDef (textToVar tycon) True (L.map docasety cs) : dds) fds cds mn
+         go rst (DDef (textToVar tycon) (L.map docasety cs) : dds) fds cds mn
      (L [A "define", funspec, ":", retty, bod] : rst)
         |  RSList (A name : args) <- funspec
         -> do
@@ -218,10 +218,10 @@ getSym :: RichSExpr HaskLikeAtom -> Var
 getSym (RSAtom (HSIdent id)) = textToVar id
 getSym s = error $ "expected identifier sexpr, got: "++prnt s
 
-docasety :: Sexp -> (DataCon,[Ty])
+docasety :: Sexp -> (DataCon,[(IsBoxed,Ty)])
 docasety s =
   case s of
-    (RSList ((A id) : tys)) -> (textToDataCon id, L.map typ tys)
+    (RSList ((A id) : tys)) -> (textToDataCon id, L.map ((False,) . typ) tys)
     _ -> error$ "Badly formed variant of datatype:\n "++prnt s
 
 pattern A s = RSAtom (HSIdent s)

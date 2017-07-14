@@ -19,7 +19,7 @@ module Packed.FirstOrder.Common
        , mkPrinterName
 
          -- * Type and Data DataConuctors
-       , DataCon, TyCon
+       , DataCon, TyCon, IsBoxed
          -- * Variables and gensyms
        , Var(..), fromVar, toVar, varAppend, SyM, gensym, genLetter, runSyM
        , cleanFunName
@@ -132,14 +132,22 @@ data Env2 a = Env2 { vEnv :: M.Map Var a
 -- Primitive for now:
 type DDefs a = Map Var (DDef a)
 
--- | In the extreme case we can strip packed datatypes of all type
--- parameters, or we can allow them to retain type params but require
--- that they always be fully instantiated to monomorphic types in the
--- context of our monomorphic programs.
+type IsBoxed = Bool
+    
+-- | Data type definitions.
+-- 
+-- Monomorphism: In the extreme case we can strip packed datatypes of
+-- all type parameters, or we can allow them to retain type params but
+-- require that they always be fully instantiated to monomorphic types
+-- in the context of our monomorphic programs.
+--
+-- Here we allow individual to be marked with whether or not they
+-- should be boxed.  We say that a regular, pointer-based datatype has
+-- all-boxed fields, whereas a fully serialized datatype has no boxed
+-- fields.
 data DDef a = DDef { tyName:: Var
-                   , isPacked :: Bool -- ^ Should the datatype be represented in a packed buffer at runtime?                   
                    -- , tyArgs:: [Var] -- ^ No polymorphism for now!
-                   , dataCons :: [(DataCon,[a])] }
+                   , dataCons :: [(DataCon,[(IsBoxed,a)])] }
   deriving (Read,Show,Eq,Ord, Functor, Generic)
 
 instance NFData a => NFData (DDef a) where
@@ -183,10 +191,10 @@ getTagOfDataCon dds dcon =
 lookupDataCon :: Out a => DDefs a -> DataCon -> [a]
 lookupDataCon dds con =
     -- dbgTrace 5 ("lookupDataCon -- "++sdoc(dds,con)) $
-    snd $ snd $ lkp dds con
+    L.map snd $ snd $ snd $ lkp dds con
 
 -- | Lookup a Datacon.  Return (TyCon, (DataCon, [flds]))
-lkp :: Out a => DDefs a -> DataCon -> (Var, (DataCon, [a]))
+lkp :: Out a => DDefs a -> DataCon -> (Var, (DataCon, [(IsBoxed,a)]))
 lkp dds con =
    -- Here we try to lookup in ALL datatypes, assuming unique datacons:
   case [ (tycon,variant)

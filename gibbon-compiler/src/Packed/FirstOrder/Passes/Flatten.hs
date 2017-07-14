@@ -95,7 +95,7 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
                                   return (b1, E1 $ AppE f lvs arg')
        (PrimAppE p ls)  -> gols (PrimAppE p)  ls "Prm"
        (MkProdE ls)     -> gols  MkProdE      ls "Prd"
-       (MkPackedE k lv ls) -> gols (MkPackedE k lv) ls "Pkd"
+       (MkPackedE loc k lv ls) -> gols (MkPackedE loc k lv) ls "Pkd"
 
        (LetE (v1,lv1,t1, E1 (LetE (v2,lv2,t2,rhs2) rhs1)) bod) ->
          go $ E1 $ LetE (v2,lv2,t2,rhs2) $ E1 $ LetE (v1,lv1,t1,rhs1) bod
@@ -271,7 +271,7 @@ typeExp (dd,env2) env (E1 (L1.CaseE _e mp)) =
         args' = map fst args
     in typeExp (dd,env2) (M.fromList (zip args' (lookupDataCon dd c)) `M.union` env) e
 
-typeExp (dd,_) _env (E1 (L1.MkPackedE c _ _es)) = L1.Packed (getTyOfDataCon dd c)
+typeExp (dd,_) _env (E1 (L1.MkPackedE _ c _ _es)) = L1.Packed (getTyOfDataCon dd c)
 
 typeExp (dd,env2) env (E1 (L1.TimeIt e _ _)) = typeExp (dd,env2) env e
 typeExp (dd,env2) env (E1 (L1.MapE _ e))     = typeExp (dd,env2) env e

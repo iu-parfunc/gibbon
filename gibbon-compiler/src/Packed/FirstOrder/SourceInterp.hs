@@ -344,7 +344,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
 
             (MkProdE ls) -> VProd <$> mapM (go env) ls
             -- TODO: Should check this against the ddefs.
-            (MkPackedE k _ ls) -> do
+            (MkPackedE _ k _ ls) -> do
                 args <- mapM (go env) ls
                 case args of
                 -- Constructors are overloaded.  They have different behavior depending on

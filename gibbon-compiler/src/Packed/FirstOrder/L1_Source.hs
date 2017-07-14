@@ -83,11 +83,14 @@ progToEnv Prog{fundefs} =
 type Exp = E1 Ty
 
 -- | Knot tying.  No language extensions here.
-newtype E1 d = E1 (PreExp d (E1 d))
+newtype E1 d = E1 (PreExp () d (E1 d))
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
-fromE1 :: E1 d -> PreExp d (E1 d)
+fromE1 :: E1 d -> PreExp () d (E1 d)
 fromE1 (E1 e) = e
+
+data Region = Region
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 -- | The source language.  It has pointer based sums and products, as
 -- well as packed algebraic datatypes.
@@ -97,7 +100,7 @@ fromE1 (E1 e) = e
 -- It is also parameterized by an expression type for "knot-tying",
 -- and for enabling a potential extension point.
 -- 
-data PreExp d exp =
+data PreExp loc binddecor exp =
      VarE Var              -- ^ Variable reference
    | RetE [LocVar] Var     -- ^ Return a value together with extra loc values.
    | LitE Int              -- ^ Numeric literal
@@ -106,7 +109,7 @@ data PreExp d exp =
      -- ^ Apply a top-level / first-order function.  Instantiate
      -- its type schema by providing location-variable arguments.
    | PrimAppE Prim [exp]
-   | LetE (Var,[LocVar],d, exp) -- binding
+   | LetE (Var,[LocVar],binddecor, exp) -- binding
           exp                 -- body
     -- ^ One binding at a time.  Allows binding a list of
     -- implicit location return vales from the RHS, plus a single "real" value.
@@ -122,7 +125,10 @@ data PreExp d exp =
      -- ^ Case on a PACKED datatype.  Each bound variable lives at a *fixed* location.
      -- TODO: Rename to CasePackedE.
 
-   | MkPackedE DataCon (Maybe LocVar) [exp]
+--  | MkPackedE DataCon loc [Exp]
+--  | MkBoxedE  DataCon     [Exp]
+   
+   | MkPackedE loc DataCon (Maybe LocVar) [exp]
      -- ^ Construct data that may be either Packed or unpacked.
      -- If Packed: the first byte at the given abstract location.
      -- If Unpacked: Nothing for LocVar, data is allocated on a GC'd heap (UNFINISHED)
@@ -136,6 +142,15 @@ data PreExp d exp =
    | FoldE { initial  :: (Var,Ty,exp)
            , iterator :: (Var,Ty,exp)
            , body     :: exp }
+
+   -- Location/Region calculus extensions, not used initially:
+   -----------------------------------------------------------
+--   | LetRegionE Region Exp
+--   | LetLocE Var LocExp Exp
+           
+   ----------------------------------------
+--   | Ext q  -- ^ Extension point for downstream language extensions.
+     
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 -- | Some of these primitives are (temporarily) tagged directly with
@@ -172,12 +187,13 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
 
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
+instance Out Region
 instance Out Prim
 instance Out a => Out (Ty1 a)
 -- Do this manually to get prettier formatting:
 -- instance Out Ty where  doc x = __
 
-instance Out d => Out (PreExp d (E1 d))
+instance (Out l, Out d) => Out (PreExp l d (E1 d))
 
 instance Out d => Out (E1 d)
 instance Out Prog
@@ -201,7 +217,10 @@ data Ty1 a =
         | BoolTy
         | ProdTy [Ty1 a]     -- ^ An N-ary tuple
         | SymDictTy (Ty1 a)  -- ^ A map from SymTy to Ty
-        | PackedTy DataCon a  -- ^ No type arguments to TyCons for now.
+        | PackedTy TyCon a  -- ^ No type arguments to TyCons for now.
+
+--        | CursorTy ...
+          
           -- ^ We allow built-in dictionaries from symbols to a value type.
         | ListTy (Ty1 a) -- ^ These are not fully first class.  They are onlyae
                          -- allowed as the fields of data constructors.
@@ -257,7 +276,7 @@ freeVars = gFreeVars
 instance C.FreeVars (E1 d) where
   gFreeVars (E1 ex) = gFreeVars ex
     
-instance FreeVars e => FreeVars (PreExp d e) where
+instance FreeVars e => FreeVars (PreExp l d e) where
   gFreeVars ex = case ex of
       VarE v    -> S.singleton v
       RetE _ v  -> S.singleton v
@@ -272,7 +291,7 @@ instance FreeVars e => FreeVars (PreExp d e) where
       CaseE e ls -> S.union (gFreeVars e)
                     (S.unions $ L.map (\(_, _, ee) -> gFreeVars ee) ls)
       MkProdE ls       -> S.unions $ L.map gFreeVars ls
-      MkPackedE _ _ ls -> S.unions $ L.map gFreeVars ls
+      MkPackedE _ _ _ ls -> S.unions $ L.map gFreeVars ls
       TimeIt e _ _ -> gFreeVars e
       MapE (v,_t,rhs) bod -> gFreeVars rhs `S.union`
                              S.delete v (gFreeVars bod)
@@ -303,7 +322,7 @@ subst old (E1 new) (E1 ex) = E1 $
                                           then (c,vs,er)
                                           else (c,vs,go er)
     MkProdE ls     -> MkProdE $ L.map go ls
-    MkPackedE k l ls -> MkPackedE k l $ L.map go ls
+    MkPackedE loc k l ls -> MkPackedE loc k l $ L.map go ls
     TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE (go a) (go b) (go c)
     MapE (v,t,rhs) bod | v == old  -> MapE (v,t, rhs)    (go bod)
@@ -332,7 +351,7 @@ substE (E1 old) (E1 new) (E1 ex) = E1 $
     ProjE i e  -> ProjE i (go e)
     CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
     MkProdE ls     -> MkProdE $ L.map go ls
-    MkPackedE k l ls -> MkPackedE k l $ L.map go ls
+    MkPackedE loc k l ls -> MkPackedE loc k l $ L.map go ls
     TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE (go a) (go b) (go c)
     MapE (v,t,rhs) bod | VarE v == old  -> MapE (v,t, rhs)    (go bod)
@@ -448,9 +467,10 @@ treeTy :: Ty
 treeTy = Packed "Tree"
 
 add1Prog :: Prog
-add1Prog = Prog (fromListDD [DDef (toVar "Tree") True
-                              [ ("Leaf",[IntTy])
-                              , ("Node",[Packed "Tree", Packed "Tree"])]])
+add1Prog = Prog (fromListDD [DDef (toVar "Tree") 
+                              [ ("Leaf",[(False,IntTy)])
+                              , ("Node",[(False,Packed "Tree")
+                                        ,(False,Packed "Tree")])]])
                 (M.fromList [(toVar "add1",exadd1)])
                 Nothing []
 
@@ -462,7 +482,7 @@ exadd1Bod = E1 $
     CaseE (E1 $ VarE (toVar "tr")) $
       [ ("Leaf", [("n","l0")], E1 $ PrimAppE AddP [E1 $ VarE (toVar "n"), E1$ LitE 1])
       , ("Node", [("x","l1"),("y","l2")],
-         E1 $ MkPackedE "Node" (Just "l0")
+         E1 $ MkPackedE () "Node" (Just "l0")
           [ E1 $ AppE (toVar "add1") [] (E1$ VarE $ toVar "x")
           , E1 $ AppE (toVar "add1") [] (E1$ VarE $ toVar "y")])
       ]

@@ -17,6 +17,7 @@ import Control.Monad (forM)
 import Data.Either (partitionEithers)
 import Data.Foldable (foldrM)
 import qualified Data.Map as M
+import qualified Data.List as L
 import Data.Maybe (catMaybes)
 
 import Language.Haskell.Exts.Parser -- (parse)
@@ -91,10 +92,12 @@ collectTopLevel fun_tys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) 
 collectTopLevel _ (DataDecl _ DataType [] ty_name [] cons []) = do
     let ty_name' = name_to_str ty_name
     constrs <- mapM collectConstr cons
-    return (Just (Left (DDef (toVar ty_name') True constrs)))
+    return (Just (Left (DDef (toVar ty_name') constrs)))
   where
     collectConstr (QualConDecl _ [] [] (ConDecl con_name arg_tys)) =
-      ( name_to_str con_name, ) <$> mapM desugarType arg_tys
+      ( name_to_str con_name, ) <$>
+      L.map ( False, ) <$>
+      mapM desugarType arg_tys
     collectConstr unsupported =
       err ("Unsupported data constructor: " ++ show unsupported)
 
@@ -115,7 +118,7 @@ desugarExp e = E1 <$>
     case e of
       H.Var qname -> VarE <$> toVar <$> qname_to_str qname
 
-      Con qname -> MkPackedE <$> qname_to_str qname <*> pure (Just dummyLoc) <*> pure []
+      Con qname -> MkPackedE () <$> qname_to_str qname <*> pure (Just dummyLoc) <*> pure []
 
       H.Lit l   -> L1.LitE <$> lit_to_int l
 
@@ -127,9 +130,9 @@ desugarExp e = E1 <$>
             L1.ProjE 1 <$> desugarExp e2
           E1 (VarE f) ->
             L1.AppE f [] <$> desugarExp e2
-          E1 (MkPackedE c ml as) -> do
+          E1 (MkPackedE () c ml as) -> do
             e2' <- desugarExp e2
-            return (L1.MkPackedE c ml (as ++ [e2']))
+            return (L1.MkPackedE () c ml (as ++ [e2']))
           E1 (L1.AppE f [] l) -> do
             e2' <- desugarExp e2
             return (L1.AppE f [] (E1$ MkProdE [l,e2']))
