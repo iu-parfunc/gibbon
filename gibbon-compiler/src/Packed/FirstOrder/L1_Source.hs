@@ -6,6 +6,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE OverloadedStrings #-}
+
 {-# OPTIONS_GHC -Wall #-}
 
 -- | The source language for recursive tree traversals.
@@ -39,7 +40,7 @@ module Packed.FirstOrder.L1_Source
     )
     where
 
-import Packed.FirstOrder.Common
+import Packed.FirstOrder.Common as C
 import Data.Map as M
 import Data.Set as S
 import Data.List as L
@@ -82,10 +83,10 @@ progToEnv Prog{fundefs} =
 type Exp = E1 Ty
 
 -- | Knot tying.  No language extensions here.
-newtype E1 d = E1 (PreExp d E1)
+newtype E1 d = E1 (PreExp d (E1 d))
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
-fromE1 :: E1 d -> PreExp d E1
+fromE1 :: E1 d -> PreExp d (E1 d)
 fromE1 (E1 e) = e
 
 -- | The source language.  It has pointer based sums and products, as
@@ -96,45 +97,45 @@ fromE1 (E1 e) = e
 -- It is also parameterized by an expression type for "knot-tying",
 -- and for enabling a potential extension point.
 -- 
-data PreExp d (exp :: * -> *) =
+data PreExp d exp =
      VarE Var              -- ^ Variable reference
    | RetE [LocVar] Var     -- ^ Return a value together with extra loc values.
    | LitE Int              -- ^ Numeric literal
    | LitSymE Var           -- ^ A quoted symbol literal.
-   | AppE Var [LocVar] (exp d)
+   | AppE Var [LocVar] exp
      -- ^ Apply a top-level / first-order function.  Instantiate
      -- its type schema by providing location-variable arguments.
-   | PrimAppE Prim [exp d]
-   | LetE (Var,[LocVar],d, exp d) -- binding
-          (exp d)                 -- body
+   | PrimAppE Prim [exp]
+   | LetE (Var,[LocVar],d, exp) -- binding
+          exp                 -- body
     -- ^ One binding at a time.  Allows binding a list of
     -- implicit location return vales from the RHS, plus a single "real" value.
-   | IfE (exp d) (exp d) (exp d)
+   | IfE exp exp exp
 
-   | MkProdE [exp d]     -- ^ Tuple construction
-   | ProjE Int (exp d)   -- ^ Tuple projection.
+   | MkProdE [exp]     -- ^ Tuple construction
+   | ProjE Int exp   -- ^ Tuple projection.
 
---   | CaseE (exp d) [(DataCon, [Var], exp d)]
+--   | CaseE exp [(DataCon, [Var], exp)]
      -- ^ Case on pointer-based, non-packed data.
 
-   | CaseE (exp d) [(DataCon, [(Var,LocVar)], exp d)]
+   | CaseE exp [(DataCon, [(Var,LocVar)], exp)]
      -- ^ Case on a PACKED datatype.  Each bound variable lives at a *fixed* location.
      -- TODO: Rename to CasePackedE.
 
-   | MkPackedE DataCon (Maybe LocVar) [exp d]
+   | MkPackedE DataCon (Maybe LocVar) [exp]
      -- ^ Construct data that may be either Packed or unpacked.
      -- If Packed: the first byte at the given abstract location.
      -- If Unpacked: Nothing for LocVar, data is allocated on a GC'd heap (UNFINISHED)
 
     -- TODO: Rename MkPackedE => DataCon
 
-   | TimeIt (exp d) Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
+   | TimeIt exp Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
 
      -- Limited list handling:
-   | MapE  (Var,Ty, exp d) (exp d)
-   | FoldE { initial  :: (Var,Ty,exp d)
-           , iterator :: (Var,Ty,exp d)
-           , body     :: exp d }
+   | MapE  (Var,Ty, exp) exp
+   | FoldE { initial  :: (Var,Ty,exp)
+           , iterator :: (Var,Ty,exp)
+           , body     :: exp }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 -- | Some of these primitives are (temporarily) tagged directly with
@@ -176,7 +177,7 @@ instance Out a => Out (Ty1 a)
 -- Do this manually to get prettier formatting:
 -- instance Out Ty where  doc x = __
 
-instance Out d => Out (PreExp d E1)
+instance Out d => Out (PreExp d (E1 d))
 
 instance Out d => Out (E1 d)
 instance Out Prog
@@ -249,28 +250,35 @@ getFunTy fn Prog{fundefs} =
 -- | Free data variables.  Does not include function variables, which
 -- currently occupy a different namespace.  Does not include location/region variables.
 freeVars :: Exp -> S.Set Var
-freeVars (E1 ex) =
-  case ex of
-    VarE v -> S.singleton v
-    RetE _ v -> S.singleton v
-    LitE _ -> S.empty
-    LitSymE _ -> S.empty
-    AppE _v _ e -> freeVars e  -- S.insert v (freeVars e)
-    PrimAppE _ ls -> S.unions (L.map freeVars ls)
-    LetE (v,_,_,rhs) bod -> freeVars rhs `S.union`
-                          S.delete v (freeVars bod)
-    ProjE _ e -> freeVars e
-    CaseE e ls -> S.union (freeVars e)
-                  (S.unions $ L.map (\(_, _, ee) -> freeVars ee) ls)
-    MkProdE ls     -> S.unions $ L.map freeVars ls
-    MkPackedE _ _ ls -> S.unions $ L.map freeVars ls
-    TimeIt e _ _ -> freeVars e
-    IfE a b c -> freeVars a `S.union` freeVars b `S.union` freeVars c
-    MapE (v,_t,rhs) bod -> freeVars rhs `S.union`
-                           S.delete v (freeVars bod)
-    FoldE (v1,_t1,r1) (v2,_t2,r2) bod ->
-        freeVars r1 `S.union` freeVars r2 `S.union`
-        (S.delete v1 $ S.delete v2 $ freeVars bod)
+freeVars = gFreeVars
+{-# DEPRECATED freeVars "Use gFreeVars instead" #-}
+
+       
+instance C.FreeVars (E1 d) where
+  gFreeVars (E1 ex) = gFreeVars ex
+    
+instance FreeVars e => FreeVars (PreExp d e) where
+  gFreeVars ex = case ex of
+      VarE v    -> S.singleton v
+      RetE _ v  -> S.singleton v
+      LitE _    -> S.empty
+      LitSymE _ -> S.empty
+      ProjE _ e -> gFreeVars e
+      IfE a b c -> gFreeVars a `S.union` gFreeVars b `S.union` gFreeVars c
+      AppE _v _ e          -> gFreeVars e  -- S.insert v (gFreeVars e)
+      PrimAppE _ ls        -> S.unions (L.map gFreeVars ls)
+      LetE (v,_,_,rhs) bod -> gFreeVars rhs `S.union`
+                              S.delete v (gFreeVars bod)
+      CaseE e ls -> S.union (gFreeVars e)
+                    (S.unions $ L.map (\(_, _, ee) -> gFreeVars ee) ls)
+      MkProdE ls       -> S.unions $ L.map gFreeVars ls
+      MkPackedE _ _ ls -> S.unions $ L.map gFreeVars ls
+      TimeIt e _ _ -> gFreeVars e
+      MapE (v,_t,rhs) bod -> gFreeVars rhs `S.union`
+                             S.delete v (gFreeVars bod)
+      FoldE (v1,_t1,r1) (v2,_t2,r2) bod ->
+          gFreeVars r1 `S.union` gFreeVars r2 `S.union`
+          (S.delete v1 $ S.delete v2 $ gFreeVars bod)
 
 
 subst :: Var -> Exp -> Exp -> Exp

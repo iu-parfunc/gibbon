@@ -27,6 +27,9 @@ module Packed.FirstOrder.Common
        , LocVar, dummyLoc
        , Env2(..)
 
+         -- * Free Variables, generic interface
+       , FreeVars(..)
+         
          -- * Runtime configuration
        , RunConfig(..), getRunConfig
 
@@ -50,19 +53,19 @@ module Packed.FirstOrder.Common
        , truePrinted, falsePrinted
        ) where
 
-import Data.Char
-import Data.Word
-import Data.String
+import Control.DeepSeq (NFData(..), force)
 import Control.Exception (evaluate)
 import Control.Monad.State.Strict
-import Control.DeepSeq (NFData(..), force)
+import Data.Char
 import Data.List as L
 import Data.Map as M
+import qualified Data.Set as S
+import Data.String
 import Data.Symbol
+import Data.Word
 import GHC.Generics
-import Text.PrettyPrint.GenericPretty
 import GHC.Stack (errorWithStackTrace)
--- import Text.Printf
+import Text.PrettyPrint.GenericPretty
 import System.IO
 import System.Environment
 import System.IO.Unsafe (unsafePerformIO)
@@ -325,6 +328,14 @@ abbrv n x =
        then str
        else take (n-3) str ++ "..."
 
+----------------------------------------------------------------------------------------------------
+-- Free Variables 
+----------------------------------------------------------------------------------------------------
+
+-- | Expression and program types which support a notion of free variables.
+class FreeVars a where
+    gFreeVars :: a -> S.Set Var
+    
 ----------------------------------------------------------------------------------------------------
 -- Global parameters
 ----------------------------------------------------------------------------------------------------

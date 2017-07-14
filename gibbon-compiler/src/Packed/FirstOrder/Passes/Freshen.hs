@@ -33,7 +33,7 @@ freshNames (L1.Prog defs funs main cstrs) =
                  let nam' = cleanFunName nam
                  return (nam', FunDef nam' (narg',targ) ty bod')
 
-          freshExp :: [(Var,Var)] -> PreExp Ty E1 -> SyM L1.Exp
+          freshExp :: [(Var,Var)] -> PreExp Ty (E1 Ty) -> SyM L1.Exp
           freshExp _ (L1.RetE l v) = return (L1.E1 (L1.RetE l v))
               
           freshExp vs (L1.VarE v) =

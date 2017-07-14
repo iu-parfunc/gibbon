@@ -109,8 +109,8 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
                          return (b1, E1 $ IfE a' (flatLets b2 b') (flatLets b3 c'))
        -- This can happen anywhere, but doing it here prevents
        -- unneccessary bloat where we can ill afford it:
-       (ProjE ix (E1 (MkProdE ls))) ->
-           dbgTrace 5 (" [flatten] Reducing project-of-tuple, index "++show ix++" expr:  "++take 80 (show (MkProdE ls))++"...") $
+       (ProjE ix (E1 l@(MkProdE ls))) ->
+           dbgTrace 5 (" [flatten] Reducing project-of-tuple, index "++show ix++" expr:  "++take 80 (show l)++"...") $
            go (ls !! ix)
        (ProjE ix e) -> do (b,e') <- triv "Prj" e
                           return (b, E1 $ ProjE ix e')
