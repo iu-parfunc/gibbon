@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Responds to environment variables:
 #   * DOCKER
@@ -31,12 +31,12 @@ set -xe
 cd `dirname $0`
 top=`pwd`
 
-hostname
+hostname || echo "No hostname command, env says $HOSTNAME"
 uname -a
 which -a stack
 which -a racket
 which -a gcc
-stack --version
+stack --version | head
 racket --version
 gcc --version
 

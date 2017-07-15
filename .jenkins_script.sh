@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -xe
 
-echo "Running on machine: "`hostname -a`
+echo "Running on machine: "`hostname -a || echo env says $HOSTNAME`
 uname -a
 
 echo "Git commit:"
@@ -23,6 +23,11 @@ if [ "$DOCKER" == "1" ]; then
     # Make dependent image:
     cd $top/
     docker build -t tree-velocity .
+
+elif [ "$USE_NIX" == "1" ]; then
+
+    nix-shell --pure --command  "./run_all_tests.sh $@"
+    
 else
 
     ./run_all_tests.sh $@
