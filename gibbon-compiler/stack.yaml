@@ -27,8 +27,7 @@ extra-package-dbs: []
 # Temp, for tslogger above:
 # allow-newer: true
 
-# system-ghc: false
-
+system-ghc: true
 nix:
   enable: false
   # packages: [gcc, which]

@@ -1,4 +1,8 @@
-
+# ======================================================================
+# This Makefile ties together different pieces and builds the parts of
+# the software that are NOT built by Haskell's stack tool (i.e. like
+# ./gibbon-compiler is).
+# ======================================================================
 
 all: racket subst
 
@@ -7,7 +11,8 @@ deps:
 	cd deps/sexpr-1.3 && ./configure && $(MAKE)
 
 subst:
-	cd ASTBenchmarks/substitution && $(MAKE) 
+# RRN: This makefile is gone.  Was it ever there?
+# 	cd ASTBenchmarks/substitution && $(MAKE) 
 
 racket: gibbon-lang
 

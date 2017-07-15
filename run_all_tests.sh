@@ -84,6 +84,8 @@ racket $top/ASTBenchmarks/tests/*.rkt
 # raco make -v $top/kdTree-BenchMark/racket/*.rkt
 racket $top/kdTree-BenchMark/racket/traversal.gib
 
+STK="stack --allow-different-user --install-ghc"
+
 set +x; echo
 echo "  Gibbon Compiler (1/2): build & unit tests"
 echo "-------------------------------------------"
@@ -92,9 +94,9 @@ cd $top/gibbon-compiler
 
 if [ "$LLVM_ENABLED" == "1" ]; then
   echo "Building Gibbon with LLVM enabled"
-  stack --allow-different-user --install-ghc test --flag gibbon:llvm_enabled "$STACKARGS" $MKPARARGS
+  $STK test --flag gibbon:llvm_enabled "$STACKARGS" $MKPARARGS
 else
-  stack --allow-different-user --install-ghc test "$STACKARGS" $MKPARARGS
+  $STK test "$STACKARGS" $MKPARARGS
 fi
 
 echo "  Gibbon Compiler (2/2): compiler test suite"

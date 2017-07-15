@@ -5,19 +5,19 @@
 
 module Main where
 
-import Control.Exception (bracket, bracket_)
+-- import Control.Exception (bracket, bracket_)
 import Data.Map as M
 import Data.Set as S
 import Data.Word (Word8)
-import System.IO
-import System.Info
-import System.Process (readCreateProcess, shell)
+-- import System.IO
+-- import System.Info
+-- import System.Process (readCreateProcess, shell)
 
 import Test.Tasty.HUnit
 import Test.Tasty.TH
 
 import Packed.FirstOrder.Common hiding (FunDef)
-import qualified Packed.FirstOrder.Common as C
+-- import qualified Packed.FirstOrder.Common as C
 -- import Packed.FirstOrder.L1_Source (Exp (..))
 import qualified Packed.FirstOrder.L1_Source as L1
 import           Packed.FirstOrder.L2_Traverse as L2
@@ -347,16 +347,20 @@ _case_add1 =
 
 -- Tests for copy-insertion
 
+-- Shorthand:
+f :: a -> (Bool,a)
+f x = (False,x)
+
 t5p :: Prog
 t5p = Prog {ddefs = M.fromList [("Expr",
-                                 DDef {tyName = "Expr", isPacked=True,
-                                       dataCons = [("VARREF", [IntTy]),("Top", [IntTy])]}),
+                                 DDef {tyName = "Expr", 
+                                       dataCons = [("VARREF", [f IntTy]),("Top", [f IntTy])]}),
                                  ("Bar",
-                                  DDef {tyName = "Bar", isPacked=True,
-                                        dataCons = [("C", [IntTy]),("D", [PackedTy "Foo" ()])]}),
+                                  DDef {tyName = "Bar", 
+                                        dataCons = [("C", [f IntTy]),("D", [f$ PackedTy "Foo" ()])]}),
                                  ("Foo",
-                                  DDef {tyName = "Foo", isPacked=True,
-                                        dataCons = [("A", [IntTy, IntTy]),("B", [PackedTy "Bar" ()])]})],
+                                  DDef {tyName = "Foo", 
+                                        dataCons = [("A", [f IntTy, f IntTy]),("B", [f$ PackedTy "Bar" ()])]})],
              fundefs = M.fromList [("id",
                                     L2.FunDef {funname = "id",
                                                funty = ArrowTy {arrIn = PackedTy "Foo" "a",
@@ -366,7 +370,7 @@ t5p = Prog {ddefs = M.fromList [("Expr",
                                                funbod = L1.E1 $ VarE "x0"})],
              mainExp = Just (L1.E1 (LetE ("fltAp1",[],
                                           PackedTy "Foo" (),
-                                          L1.E1 $ MkPackedE "A" (Just "l0") [L1.E1 $ LitE 1])
+                                          L1.E1 $ MkPackedE () "A" (Just "l0") [L1.E1 $ LitE 1])
                                     (L1.E1 $ (AppE "id" [] (L1.E1 $ VarE "fltAp1")))),
                              PackedTy "Foo" ())
            }

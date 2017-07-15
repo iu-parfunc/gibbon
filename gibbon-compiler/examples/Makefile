@@ -161,7 +161,9 @@ RUN_MODE     ?= --run
 # Additional args besides RUN_MODE:
 GIBBONARGS ?= --optc=-g
 
+TREELANGDIR ?= ../../
 SANDBOXDIR= $(TREELANGDIR)/.racket_sandbox/
+
 RUNRACKET= racket -A $(SANDBOXDIR)
 
 # Not necessary, because we build each module before we run it:
@@ -188,12 +190,15 @@ racket_invalid: treelang_lib
 
 # ----------------------------------------
 
-# Make sure the compiler is built
+# --no-system-ghc
+STK=stack --no-nix --no-docker
+
+# Make sure the compiler is built, currently this builds it without nix/docker:
 build:
 ifeq ($(LLVM_ENABLED),1)
-	stack build --flag gibbon:llvm_enabled
+	$(STK) build --flag gibbon:llvm_enabled
 else
-	stack build
+	$(STK) build
 endif
 
 parse_all: build
