@@ -4,17 +4,21 @@ export TREELANGDIR=`pwd`
 
 export PLTADDONDIR=$TREELANGDIR/.racket_sandbox/
 
-INSTALL="stack --install-ghc build "
+STK="stack"
+BUILD_ARGS=" --install-ghc build "
 
 # A shortcut to make things easier:
 function tc() {
     cur=`pwd`
     cd $TREELANGDIR/gibbon-compiler/
-    $INSTALL
+    $STK $BUILD_ARGS
     if [ "$?" == "0" ]; then
-        CMD=`stack exec -- which gibbon`;
-        cd $cur;
-        $CMD $@;
+       # Version 1: find the executable, but execute natively:
+       #   CMD=`$STK exec -- which gibbon`;
+       #   cd $cur;
+       #   $CMD $@;
+       # Version 2: execute inside the environment:
+         $STK exec -- gibbon $@;
     else
         cd $cur;
         echo "'stack build' failed";
@@ -28,8 +32,20 @@ function tc() {
 # tc/tcd.  It is not smart enough to rebuild automatically and keep
 # the build artifacts separate.
 function tcd() {    
-    INSTALL="$INSTALL --trace" tc $@
+    BUILD_ARGS="$BUILD_ARGS --trace" tc $@
 }
+
+# Nix version
+function gibn() {    
+    STK="stack --nix" tc $@
+}
+
+function gibd() {
+    # --docker-auto-pull isn't working:
+    (cd $TREELANGDIR/gibbon-compiler/ && stack docker pull 2> /dev/null) && \
+     STK="stack --docker " tc $@
+}
+
 
 # A quick verison that doesn't check for recompile.
 function tcq() {    
