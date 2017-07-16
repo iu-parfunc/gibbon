@@ -18,9 +18,9 @@ module Packed.FirstOrder.Passes.Cursorize2
 import Control.Monad
 import Control.DeepSeq
 import Packed.FirstOrder.Common hiding (FunDef)
-import qualified Packed.FirstOrder.L1_Source as L1
+import qualified Packed.FirstOrder.L1.Syntax as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
-import           Packed.FirstOrder.L1_Source (Ty1(..),pattern SymTy)
+import           Packed.FirstOrder.L1.Syntax (Ty1(..),pattern SymTy)
 import           Packed.FirstOrder.L2_Traverse
     (argtyToLoc, Loc(..), ArrowTy(..), toEndVar,
      FunDef(..), Prog(..), Exp(..))

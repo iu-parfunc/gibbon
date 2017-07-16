@@ -6,7 +6,7 @@ module Packed.FirstOrder.Passes.Freshen (freshNames) where
 
 import Packed.FirstOrder.Common
 import Control.Exception
-import Packed.FirstOrder.L1_Source as L1
+import Packed.FirstOrder.L1.Syntax as L1
 import qualified Data.Map as M
 import qualified Data.List as L
 

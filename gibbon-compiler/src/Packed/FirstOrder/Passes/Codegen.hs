@@ -24,7 +24,7 @@ import           Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, 
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import           Packed.FirstOrder.Common hiding (funBody)
-import qualified Packed.FirstOrder.L1_Source as L1
+import qualified Packed.FirstOrder.L1.Syntax as L1
 import           Prelude hiding (init)
 import           System.Directory
 import           System.Environment

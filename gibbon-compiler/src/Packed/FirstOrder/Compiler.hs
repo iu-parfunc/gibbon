@@ -22,7 +22,7 @@ import           Data.Set as S hiding (map)
 import           Options.Applicative
 import           Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.HaskellFrontend as HS
-import qualified Packed.FirstOrder.L1_Source   as L1
+import qualified Packed.FirstOrder.L1.Syntax   as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
 import qualified Packed.FirstOrder.L3_Target   as L3
 import qualified Packed.FirstOrder.SExpFrontend as SExp

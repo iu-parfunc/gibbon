@@ -11,9 +11,9 @@
 
 --- Rough translation of L1 language from Redex model to Haskell.
 ---
---- Soon this can either be merged with the existing L1_Source module,
---- discarded in favor of direcly modifying L1_Source, or expanded
---- to replace L1_Source.
+--- Soon this can either be merged with the existing.L1.Syntax module,
+--- discarded in favor of direcly modifying.L1.Syntax, or expanded
+--- to replace.L1.Syntax.
 ---
 --- Design goals:
 ---  * Mirror the design of the language in the redex model reasonably closely.

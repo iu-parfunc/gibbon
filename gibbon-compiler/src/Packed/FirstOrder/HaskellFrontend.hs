@@ -22,7 +22,7 @@ import Data.Maybe (catMaybes)
 
 import Language.Haskell.Exts.Parser -- (parse)
 import Language.Haskell.Exts.Syntax as H
-import Packed.FirstOrder.L1_Source as L1
+import Packed.FirstOrder.L1.Syntax as L1
 import Packed.FirstOrder.Common as C
 
 --------------------------------------------------------------------------------

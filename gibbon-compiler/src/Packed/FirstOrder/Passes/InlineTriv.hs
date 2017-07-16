@@ -4,7 +4,7 @@ module Packed.FirstOrder.Passes.InlineTriv (inlineTriv, inlineTrivExp) where
 
 
 import Packed.FirstOrder.Common
-import Packed.FirstOrder.L1_Source as L1 hiding (mkProj)
+import Packed.FirstOrder.L1.Syntax as L1 hiding (mkProj)
 -- import Packed.FirstOrder.Passes.Flatten (typeExp, TEnv)
 import Prelude hiding (exp)
 -- import Debug.Trace

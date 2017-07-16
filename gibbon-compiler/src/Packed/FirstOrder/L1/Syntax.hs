@@ -14,7 +14,7 @@
 --   not integrating with a functional host language, but rather
 --   genarating C code like a DSL.
 
-module Packed.FirstOrder.L1_Source
+module Packed.FirstOrder.L1.Syntax
     (
      -- * Core types
       Prog(..), DDef(..), FunDefs, FunDef(..),

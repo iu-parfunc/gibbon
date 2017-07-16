@@ -24,7 +24,7 @@ library
                   Packed.FirstOrder.HaskellFrontend
                   Packed.FirstOrder.TargetInterp
                   Packed.FirstOrder.SourceInterp
-                  Packed.FirstOrder.L1_Source
+                  Packed.FirstOrder.L1.Syntax
                   Packed.FirstOrder.L2_Traverse
                   Packed.FirstOrder.L3_Target
                   Packed.FirstOrder.SExpFrontend

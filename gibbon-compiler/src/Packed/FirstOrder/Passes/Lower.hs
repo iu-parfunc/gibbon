@@ -22,8 +22,8 @@ module Packed.FirstOrder.Passes.Lower
 import Control.Monad
 import Data.Char
 import Packed.FirstOrder.Common hiding (FunDef)
-import qualified Packed.FirstOrder.L1_Source as L1
-import           Packed.FirstOrder.L1_Source (Exp(..))
+import qualified Packed.FirstOrder.L1.Syntax as L1
+import           Packed.FirstOrder.L1.Syntax (Exp(..))
 import qualified Packed.FirstOrder.L2_Traverse as L2
 import           Packed.FirstOrder.L2_Traverse ( FunDef(..), Prog(..) )
 import qualified Packed.FirstOrder.L3_Target as T

@@ -62,8 +62,8 @@ module Packed.FirstOrder.L2_Traverse
 
 import Control.DeepSeq
 import Packed.FirstOrder.Common hiding (FunDef)
-import qualified Packed.FirstOrder.L1_Source as L1
-import Packed.FirstOrder.L1_Source hiding
+import qualified Packed.FirstOrder.L1.Syntax as L1
+import Packed.FirstOrder.L1.Syntax hiding
     (Ty, FunDef, Prog,
      mapExprs, progToEnv, fundefs, getFunTy, Exp)
 import Data.List as L

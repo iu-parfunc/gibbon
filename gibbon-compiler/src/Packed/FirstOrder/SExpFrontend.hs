@@ -24,7 +24,7 @@ import System.Environment
 import Text.Parsec
 -- import GHC.Generics (Generic)
 import Text.PrettyPrint.GenericPretty
-import Packed.FirstOrder.L1_Source as S
+import Packed.FirstOrder.L1.Syntax as S
 import Packed.FirstOrder.Common
 import Prelude hiding (readFile, exp)
 
