@@ -60,45 +60,45 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
    typeIt = typeExp (ddefs,env2)
 
    exp :: TEnv -> Exp -> SyM ([Binds],Exp)
-   exp tenv (E1 e0) =
+   exp tenv e0 =
      let triv m e = -- Force something to be trivial
            if isTriv e
            then return ([],e)
            else do tmp <- gensym $ toVar $ "flt" ++ m
                    let ty = typeIt tenv e
                    (bnds,e') <- exp tenv e
-                   return (bnds++[(tmp,[],ty,e')], E1 $ VarE tmp)
+                   return (bnds++[(tmp,[],ty,e')], VarE tmp)
          go = exp tenv
          gols f ls m = do (bndss,ls') <- unzip <$> mapM (triv m) ls
-                          return (concat bndss, E1 $ f ls')
+                          return (concat bndss, f ls')
      in
      case e0 of
-       (VarE _)         -> return ([],E1 e0)
-       (LitE _)         -> return ([],E1 e0)
-       (LitSymE _)      -> return ([],E1 e0)
-       (RetE _ _)       -> return ([],E1 e0)
+       (VarE _)         -> return ([],e0)
+       (LitE _)         -> return ([],e0)
+       (LitSymE _)      -> return ([],e0)
+       (RetE _ _)       -> return ([],e0)
 
        -- This pass is run at multiple points in the compiler pipeline.
        -- We COULD just let these patterns be treated as arbitrary AppE forms,
        -- but it is safer to handle them explicitly.
-       L2.AddCursor _ _ -> return ([],E1 e0) -- Already flat.
+       L2.AddCursor _ _ -> return ([],e0) -- Already flat.
 
-       L2.NewBuffer     -> return ([],E1 e0) -- Already flat.
-       L2.ScopedBuffer  -> return ([],E1 e0) -- Already flat.
-       L2.ReadInt _     -> return ([],E1 e0) -- Already flat.
+       L2.NewBuffer     -> return ([],e0) -- Already flat.
+       L2.ScopedBuffer  -> return ([],e0) -- Already flat.
+       L2.ReadInt _     -> return ([],e0) -- Already flat.
        -- Mimics the AppE case:
-       L2.WriteInt v e  -> do (b1,e') <- triv "WI" e; return (b1, E1 $ L2.WriteInt v e')
+       L2.WriteInt v e  -> do (b1,e') <- triv "WI" e; return (b1, L2.WriteInt v e')
        -- A fail-safe:
-       _ | L2.isExtendedPattern (E1 e0) -> error$ "Unhandled extended L2 pattern: "++ndoc e0
+       _ | L2.isExtendedPattern e0 -> error$ "Unhandled extended L2 pattern: "++ndoc e0
 
        (AppE f lvs arg)     -> do (b1,arg') <- triv "Ap" arg
-                                  return (b1, E1 $ AppE f lvs arg')
+                                  return (b1, AppE f lvs arg')
        (PrimAppE p ls)  -> gols (PrimAppE p)  ls "Prm"
        (MkProdE ls)     -> gols  MkProdE      ls "Prd"
        (MkPackedE loc k lv ls) -> gols (MkPackedE loc k lv) ls "Pkd"
 
-       (LetE (v1,lv1,t1, E1 (LetE (v2,lv2,t2,rhs2) rhs1)) bod) ->
-         go $ E1 $ LetE (v2,lv2,t2,rhs2) $ E1 $ LetE (v1,lv1,t1,rhs1) bod
+       (LetE (v1,lv1,t1, (LetE (v2,lv2,t2,rhs2) rhs1)) bod) ->
+         go $ LetE (v2,lv2,t2,rhs2) $ LetE (v1,lv1,t1,rhs1) bod
 
        (LetE (v,_,t,rhs) bod) -> do (bnd1,rhs') <- go rhs
                                     (bnd2,bod') <- exp (M.insert v t tenv) bod
@@ -106,14 +106,14 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
        (IfE a b c) -> do (b1,a') <- triv "If" a
                          (b2,b') <- go b
                          (b3,c') <- go c
-                         return (b1, E1 $ IfE a' (flatLets b2 b') (flatLets b3 c'))
+                         return (b1, IfE a' (flatLets b2 b') (flatLets b3 c'))
        -- This can happen anywhere, but doing it here prevents
        -- unneccessary bloat where we can ill afford it:
-       (ProjE ix (E1 l@(MkProdE ls))) ->
+       (ProjE ix l@(MkProdE ls)) ->
            dbgTrace 5 (" [flatten] Reducing project-of-tuple, index "++show ix++" expr:  "++take 80 (show l)++"...") $
            go (ls !! ix)
        (ProjE ix e) -> do (b,e') <- triv "Prj" e
-                          return (b, E1 $ ProjE ix e')
+                          return (b, ProjE ix e')
        (CaseE e ls) -> do (b,e') <- triv "Cse" e
                           ls' <- forM ls $ \ (k,vrs,rhs) -> do
                                    let tys = lookupDataCon ddefs k
@@ -121,10 +121,10 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
                                        tenv' = M.union (M.fromList (zip vrs' tys)) tenv
                                    (b2,rhs') <- exp tenv' rhs
                                    return (k,vrs, flatLets b2 rhs')
-                          return (b, E1 $ CaseE e' ls')
+                          return (b, CaseE e' ls')
        -- TimeIt is treated like a conditional.  Don't lift out of it:
        (TimeIt e _t b) -> do (bnd,e') <- go e
-                             return ([], E1 $TimeIt (flatLets bnd e') (typeIt tenv e) b)
+                             return ([], TimeIt (flatLets bnd e') (typeIt tenv e) b)
        (MapE _ _)    -> error "FINISHLISTS"
        (FoldE _ _ _) -> error "FINISHLISTS"
 
@@ -216,8 +216,8 @@ _flattenExpOld defs env2 = fExp (vEnv env2)
 -- | Helper function that lifts out Lets on the RHS of other Lets.
 --   Absolutely requires unique names.
 mkLetE :: (Var, [LocVar], Ty, Exp) -> Exp -> Exp
-mkLetE (vr,lvs,ty,E1 (L1.LetE bnd e)) bod = mkLetE bnd $ mkLetE (vr,lvs,ty,e) bod
-mkLetE bnd bod = E1 $ L1.LetE bnd bod
+mkLetE (vr,lvs,ty,(L1.LetE bnd e)) bod = mkLetE bnd $ mkLetE (vr,lvs,ty,e) bod
+mkLetE bnd bod = L1.LetE bnd bod
 
 -- | Alternative version of L1.mkLets that also flattens
 flatLets :: [(Var,[LocVar],Ty,Exp)] -> Exp -> Exp
@@ -230,15 +230,15 @@ type TEnv = M.Map Var L1.Ty
 -- FIXME: Why is this not unified with Typecheck.hs?
 
 typeExp :: (DDefs L1.Ty,Env2 L1.Ty) -> TEnv -> L1.Exp -> L1.Ty
-typeExp (_dd,_env2) env (E1 (L1.VarE v)) =
+typeExp (_dd,_env2) env (L1.VarE v) =
     M.findWithDefault (L1.Packed "CURSOR_TY") v env
 --  M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v env
 
-typeExp (_dd,_env2) _env (E1 (L1.LitE _i)) = L1.IntTy
-typeExp _ _ (E1 (L1.LitSymE _))          = L1.SymTy
-typeExp (_dd,env2) _env (E1 (L1.AppE v _lvs _e)) = snd $ fEnv env2 # v
+typeExp (_dd,_env2) _env (L1.LitE _i) = L1.IntTy
+typeExp _ _ (L1.LitSymE _)          = L1.SymTy
+typeExp (_dd,env2) _env (L1.AppE v _lvs _e) = snd $ fEnv env2 # v
 
-typeExp (_,_) _env (E1 (L1.PrimAppE p _es)) =
+typeExp (_,_) _env (L1.PrimAppE p _es) =
     case p of
       L1.AddP -> L1.IntTy
       L1.SubP -> L1.IntTy
@@ -256,24 +256,24 @@ typeExp (_,_) _env (E1 (L1.PrimAppE p _es)) =
       L1.ReadPackedFile _ _ ty -> ty
       _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
 
-typeExp (dd,env2) env (E1 (L1.LetE (v,_,t,_) e)) = typeExp (dd,env2) (M.insert v t env) e
-typeExp (dd,env2) env (E1 (L1.IfE _ e _)) = typeExp (dd,env2) env e
-typeExp (dd,env2) env e0@(E1 (L1.ProjE i e)) =
+typeExp (dd,env2) env (L1.LetE (v,_,t,_) e) = typeExp (dd,env2) (M.insert v t env) e
+typeExp (dd,env2) env (L1.IfE _ e _) = typeExp (dd,env2) env e
+typeExp (dd,env2) env e0@(L1.ProjE i e) =
     case typeExp (dd,env2) env e of
      (L1.ProdTy tys) -> tys !! i
      oth -> error $ "typeExp: Cannot project fields from this type: "++show oth
                   ++"\nExpression:\n  "++sdoc e0
                   ++"\nEnvironment:\n  "++sdoc env
-typeExp (dd,env2) env (E1 (L1.MkProdE es)) =
+typeExp (dd,env2) env (L1.MkProdE es) =
     L1.ProdTy $ map (typeExp (dd,env2) env) es
-typeExp (dd,env2) env (E1 (L1.CaseE _e mp)) =
+typeExp (dd,env2) env (L1.CaseE _e mp) =
     let (c,args,e) = head mp
         args' = map fst args
     in typeExp (dd,env2) (M.fromList (zip args' (lookupDataCon dd c)) `M.union` env) e
 
-typeExp (dd,_) _env (E1 (L1.MkPackedE _ c _ _es)) = L1.Packed (getTyOfDataCon dd c)
+typeExp (dd,_) _env (L1.MkPackedE _ c _ _es) = L1.Packed (getTyOfDataCon dd c)
 
-typeExp (dd,env2) env (E1 (L1.TimeIt e _ _)) = typeExp (dd,env2) env e
-typeExp (dd,env2) env (E1 (L1.MapE _ e))     = typeExp (dd,env2) env e
-typeExp (dd,env2) env (E1 (L1.FoldE _ _ e))  = typeExp (dd,env2) env e
+typeExp (dd,env2) env (L1.TimeIt e _ _) = typeExp (dd,env2) env e
+typeExp (dd,env2) env (L1.MapE _ e)     = typeExp (dd,env2) env e
+typeExp (dd,env2) env (L1.FoldE _ _ e)  = typeExp (dd,env2) env e
 typeExp (_,_) _ exp = error $ "typeExp: " ++ show exp ++ " not implemented"

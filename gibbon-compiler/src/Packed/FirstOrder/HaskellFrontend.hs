@@ -114,7 +114,7 @@ pattern SndVar <- VarE (C.Var "snd")
 -- | Convert Haskell src-exts syntax to our syntax.  Handle infix operators, etc.
 -- Disambiguate things that look like applications.
 desugarExp :: H.Exp -> Ds L1.Exp
-desugarExp e = E1 <$>
+desugarExp e = 
     case e of
       H.Var qname -> VarE <$> toVar <$> qname_to_str qname
 
@@ -124,18 +124,18 @@ desugarExp e = E1 <$>
 
       H.App e1 e2 ->
         desugarExp e1 >>= \case
-          E1 FstVar ->
+          FstVar ->
             L1.ProjE 0 <$> desugarExp e2
-          E1 SndVar ->
+          SndVar ->
             L1.ProjE 1 <$> desugarExp e2
-          E1 (VarE f) ->
+          (VarE f) ->
             L1.AppE f [] <$> desugarExp e2
-          E1 (MkPackedE () c ml as) -> do
+          (MkPackedE () c ml as) -> do
             e2' <- desugarExp e2
             return (L1.MkPackedE () c ml (as ++ [e2']))
-          E1 (L1.AppE f [] l) -> do
+          (L1.AppE f [] l) -> do
             e2' <- desugarExp e2
-            return (L1.AppE f [] (E1$ MkProdE [l,e2']))
+            return (L1.AppE f [] (MkProdE [l,e2']))
           f ->
             err ("Only variables allowed in operator position in function applications. (found: " ++ show f ++ ")")
 
@@ -148,7 +148,7 @@ desugarExp e = E1 <$>
 
       H.Let (BDecls decls) rhs -> do
         rhs' <- desugarExp rhs
-        (E1 xs) <- foldrM generateBind rhs' decls
+        xs <- foldrM generateBind rhs' decls
         Right xs
 
       H.Case scrt alts -> do
@@ -156,7 +156,7 @@ desugarExp e = E1 <$>
         CaseE scrt' <$> mapM desugarAlt alts
 
       H.Paren e0 -> do
-        (E1 e') <- desugarExp e0
+        e' <- desugarExp e0
         Right e'
 
       H.InfixApp e1 op e2 -> do
@@ -185,7 +185,7 @@ generateBind (PatBind _ _ _ Just{}) _ =
 generateBind (PatBind _ _ GuardedRhss{} _) _ =
     err "Guarded right hand side not supported."
 
-generateBind (PatBind _ (PVar v) (UnGuardedRhs rhs) Nothing) e = E1 <$> do
+generateBind (PatBind _ (PVar v) (UnGuardedRhs rhs) Nothing) e = do
     rhs' <- desugarExp rhs
     return (LetE ((toVar . name_to_str) v, [], error "Haskell front end doesn't know type.  Must infer", rhs') e)
 

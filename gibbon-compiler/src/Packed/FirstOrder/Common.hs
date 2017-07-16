@@ -343,7 +343,10 @@ abbrv n x =
 -- | Expression and program types which support a notion of free variables.
 class FreeVars a where
     gFreeVars :: a -> S.Set Var
-    
+
+instance FreeVars () where
+  gFreeVars () = S.empty 
+                 
 ----------------------------------------------------------------------------------------------------
 -- Global parameters
 ----------------------------------------------------------------------------------------------------

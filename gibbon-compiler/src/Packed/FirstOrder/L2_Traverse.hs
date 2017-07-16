@@ -18,7 +18,7 @@ module Packed.FirstOrder.L2_Traverse
 
     -- * Temporary backwards compatibility, plus rexports
     , Ty1(..), pattern SymTy
-    , Exp, E1(..), PreExp(..)
+    , Exp, PreExp(..)
     , primRetTy
 
     -- * Utilities for dealing with the extended types:
@@ -562,8 +562,8 @@ revertToL1 Prog{ ..} =
 -------------------------------------------------
 
 -- | Used to inline variable bindings while retaining their (former) name and type.
-pattern NamedVal vr ty e <- LetE (vr,[],ty,e) (E1 (VarE (Var "NAMED_VAL_PATTERN_SYN")))
-  where NamedVal vr ty e = LetE (vr,[],ty,e) (E1 (VarE (toVar "NAMED_VAL_PATTERN_SYN")))
+pattern NamedVal vr ty e <- LetE (vr,[],ty,e) (VarE (Var "NAMED_VAL_PATTERN_SYN"))
+  where NamedVal vr ty e = LetE (vr,[],ty,e) (VarE (toVar "NAMED_VAL_PATTERN_SYN"))
 -- pattern NamedVal vr ty e <- LetE (vr,ty,e) (VarE "NAMED_VAL") where
 --   NamedVal vr ty e = LetE (vr,ty,e) (VarE vr)
 
@@ -571,31 +571,31 @@ pattern NamedVal vr ty e <- LetE (vr,[],ty,e) (E1 (VarE (Var "NAMED_VAL_PATTERN_
 -- For use after cursorize:
 --------------------------------------------------------------------------------
 
-pattern NewBuffer <- AppE (Var "NewBuffer") [] (E1 (MkProdE []))
-  where NewBuffer = AppE (toVar "NewBuffer") [] (E1 (MkProdE []))
+pattern NewBuffer <- AppE (Var "NewBuffer") [] (MkProdE [])
+  where NewBuffer = AppE (toVar "NewBuffer") [] (MkProdE [])
 
 -- | output buffer space that is known not to escape the current function.
-pattern ScopedBuffer <- AppE (Var "ScopedBuffer") [] (E1 (MkProdE []))
-  where ScopedBuffer = AppE (toVar "ScopedBuffer") [] (E1 (MkProdE []))
+pattern ScopedBuffer <- AppE (Var "ScopedBuffer") [] (MkProdE [])
+  where ScopedBuffer = AppE (toVar "ScopedBuffer") [] (MkProdE [])
 
 -- | Tag writing is still modeled by MkPackedE.
-pattern WriteInt v e <- AppE (Var "WriteInt") [] (E1 (MkProdE [E1 (VarE v), e]))
-  where WriteInt v e = AppE (toVar "WriteInt") [] (E1 (MkProdE [E1 (VarE v), e]))
+pattern WriteInt v e <- AppE (Var "WriteInt") [] (MkProdE [VarE v, e])
+  where WriteInt v e = AppE (toVar "WriteInt") [] (MkProdE [VarE v, e])
 
 -- | One cursor in, (int,cursor') output.
-pattern ReadInt v <- AppE (Var "ReadInt") [] (E1 (VarE v))
-  where ReadInt v = AppE (toVar "ReadInt") [] (E1 (VarE v))
+pattern ReadInt v <- AppE (Var "ReadInt") [] (VarE v)
+  where ReadInt v = AppE (toVar "ReadInt") [] (VarE v)
 
 pattern CursorTy l = PackedTy "CURSOR_TY" l
 
 -- | Add a constant offset to a cursor variable.
-pattern AddCursor v i <- AppE (Var "AddCursor") [] (E1 (MkProdE [E1 (VarE v), E1 (LitE i)]))
-  where AddCursor v i = AppE (toVar "AddCursor") [] (E1 (MkProdE [E1 (VarE v), E1 (LitE i)]))
+pattern AddCursor v i <- AppE (Var "AddCursor") [] (MkProdE [(VarE v), (LitE i)])
+  where AddCursor v i = AppE (toVar "AddCursor") [] (MkProdE [(VarE v), (LitE i)])
 
 
 -- | A predicate to check if the form is part of the extended "L2.5" language.
 isExtendedPattern :: Exp -> Bool
-isExtendedPattern (E1 e) =
+isExtendedPattern e =
   case e of
     NewBuffer{}    -> True
     ScopedBuffer{} -> True

@@ -18,7 +18,7 @@ module Packed.FirstOrder.L1_Source
     (
      -- * Core types
       Prog(..), DDef(..), FunDefs, FunDef(..),
-      Exp, E1(..), PreExp(..), fromE1
+      Exp, PreExp(..)
     , progToEnv
 
       -- * Primitive operations
@@ -77,17 +77,8 @@ progToEnv Prog{fundefs} =
                      | FunDef n (_,a) b _ <- M.elems fundefs ])
 
 
--- type Exp = PreExp Ty PreExp
-
 -- | A convenient, default instantiation of the L1 expression type.
-type Exp = E1 Ty
-
--- | Knot tying.  No language extensions here.
-newtype E1 d = E1 (PreExp () d (E1 d))
-  deriving (Read,Show,Eq,Ord, Generic, NFData)
-
-fromE1 :: E1 d -> PreExp () d (E1 d)
-fromE1 (E1 e) = e
+type Exp = PreExp () () Ty
 
 data Region = Region
   deriving (Read,Show,Eq,Ord, Generic, NFData)
@@ -100,56 +91,56 @@ data Region = Region
 -- It is also parameterized by an expression type for "knot-tying",
 -- and for enabling a potential extension point.
 -- 
-data PreExp loc binddecor exp =
+data PreExp loc ext dec =
      VarE Var              -- ^ Variable reference
    | RetE [LocVar] Var     -- ^ Return a value together with extra loc values.
    | LitE Int              -- ^ Numeric literal
    | LitSymE Var           -- ^ A quoted symbol literal.
-   | AppE Var [LocVar] exp
+   | AppE Var [LocVar] (PreExp loc ext dec)
      -- ^ Apply a top-level / first-order function.  Instantiate
      -- its type schema by providing location-variable arguments.
-   | PrimAppE Prim [exp]
-   | LetE (Var,[LocVar],binddecor, exp) -- binding
-          exp                 -- body
+   | PrimAppE Prim [(PreExp loc ext dec)]
+   | LetE (Var,[LocVar],dec, (PreExp loc ext dec)) -- binding
+          (PreExp loc ext dec)                 -- body
     -- ^ One binding at a time.  Allows binding a list of
     -- implicit location return vales from the RHS, plus a single "real" value.
-   | IfE exp exp exp
+   | IfE (PreExp loc ext dec) (PreExp loc ext dec) (PreExp loc ext dec)
 
-   | MkProdE [exp]     -- ^ Tuple construction
-   | ProjE Int exp   -- ^ Tuple projection.
+   | MkProdE [(PreExp loc ext dec)]     -- ^ Tuple construction
+   | ProjE Int (PreExp loc ext dec)   -- ^ Tuple projection.
 
---   | CaseE exp [(DataCon, [Var], exp)]
+--   | CaseE (PreExp loc ext dec) [(DataCon, [Var], (PreExp loc ext dec))]
      -- ^ Case on pointer-based, non-packed data.
 
-   | CaseE exp [(DataCon, [(Var,LocVar)], exp)]
+   | CaseE (PreExp loc ext dec) [(DataCon, [(Var,LocVar)], (PreExp loc ext dec))]
      -- ^ Case on a PACKED datatype.  Each bound variable lives at a *fixed* location.
      -- TODO: Rename to CasePackedE.
 
---  | MkPackedE DataCon loc [Exp]
---  | MkBoxedE  DataCon     [Exp]
+--  | MkPackedE DataCon loc [(PreExp Loc Dec Ext)]
+--  | MkBoxedE  DataCon     [(PreExp Loc Dec Ext)]
    
-   | MkPackedE loc DataCon (Maybe LocVar) [exp]
+   | MkPackedE loc DataCon (Maybe LocVar) [(PreExp loc ext dec)]
      -- ^ Construct data that may be either Packed or unpacked.
      -- If Packed: the first byte at the given abstract location.
      -- If Unpacked: Nothing for LocVar, data is allocated on a GC'd heap (UNFINISHED)
 
     -- TODO: Rename MkPackedE => DataCon
 
-   | TimeIt exp Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
+   | TimeIt (PreExp loc ext dec) Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
 
      -- Limited list handling:
-   | MapE  (Var,Ty, exp) exp
-   | FoldE { initial  :: (Var,Ty,exp)
-           , iterator :: (Var,Ty,exp)
-           , body     :: exp }
+   | MapE  (Var,Ty, (PreExp loc ext dec)) (PreExp loc ext dec)
+   | FoldE { initial  :: (Var,Ty,(PreExp loc ext dec))
+           , iterator :: (Var,Ty,(PreExp loc ext dec))
+           , body     :: (PreExp loc ext dec) }
 
    -- Location/Region calculus extensions, not used initially:
    -----------------------------------------------------------
---   | LetRegionE Region Exp
---   | LetLocE Var LocExp Exp
+--   | LetRegionE Region (PreExp Loc Dec Ext)
+--   | LetLocE Var LocExp (PreExp Loc Dec Ext)
            
    ----------------------------------------
---   | Ext q  -- ^ Extension point for downstream language extensions.
+  | Ext ext  -- ^ Extension point for downstream language extensions.
      
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
@@ -193,9 +184,8 @@ instance Out a => Out (Ty1 a)
 -- Do this manually to get prettier formatting:
 -- instance Out Ty where  doc x = __
 
-instance (Out l, Out d) => Out (PreExp l d (E1 d))
+instance (Out l, Out d, Out e) => Out (PreExp l d e)
 
-instance Out d => Out (E1 d)
 instance Out Prog
 
 -- type TEnv = Map Var Ty
@@ -272,11 +262,7 @@ freeVars :: Exp -> S.Set Var
 freeVars = gFreeVars
 {-# DEPRECATED freeVars "Use gFreeVars instead" #-}
 
-       
-instance C.FreeVars (E1 d) where
-  gFreeVars (E1 ex) = gFreeVars ex
-    
-instance FreeVars e => FreeVars (PreExp l d e) where
+instance FreeVars e => FreeVars (PreExp l e d) where
   gFreeVars ex = case ex of
       VarE v    -> S.singleton v
       RetE _ v  -> S.singleton v
@@ -299,10 +285,12 @@ instance FreeVars e => FreeVars (PreExp l d e) where
           gFreeVars r1 `S.union` gFreeVars r2 `S.union`
           (S.delete v1 $ S.delete v2 $ gFreeVars bod)
 
+      Ext q -> gFreeVars q
+          
 
 subst :: Var -> Exp -> Exp -> Exp
-subst old (E1 new) (E1 ex) = E1 $
-  let go = subst old (E1 new) in
+subst old new ex = 
+  let go = subst old new in
   case ex of
     VarE v | v == old  -> new
            | otherwise -> VarE v
@@ -332,11 +320,13 @@ subst old (E1 new) (E1 ex) = E1 $
             r2' = if v2 == old then r2 else go r2
         in FoldE (v1,t1,r1') (v2,t2,r2') (go bod)
 
+    Ext () -> Ext ()
+
 -- | Expensive subst that looks for a whole matching sub-EXPRESSION.
 --   If the old expression is a variable, this still avoids going under binder.
 substE :: Exp -> Exp -> Exp -> Exp
-substE (E1 old) (E1 new) (E1 ex) = E1 $
-  let go = substE (E1 old) (E1 new) in
+substE old new ex = 
+  let go = substE old new in
   case ex of
     _ | ex == old -> new
     VarE v          -> VarE v
@@ -361,7 +351,7 @@ substE (E1 old) (E1 new) (E1 ex) = E1 $
             r2' = if VarE v2 == old then r2 else go r2
         in FoldE (v1,t1,r1') (v2,t2,r2') (go bod)
 
-
+    Ext () -> Ext ()
 
 primArgsTy :: Prim -> [Ty]
 primArgsTy p =
@@ -399,7 +389,7 @@ assertTrivs [] = id
 assertTrivs (a:b) = assertTriv a . assertTrivs b
 
 isTriv :: Exp -> Bool
-isTriv (E1 e) =
+isTriv e =
    case e of
      VarE _ -> True
      LitE _ -> True
@@ -415,7 +405,7 @@ isTriv (E1 e) =
 
 -- | Does the expression contain a TimeIt form?
 hasTimeIt :: Exp -> Bool
-hasTimeIt (E1 rhs) =
+hasTimeIt rhs =
     case rhs of
       TimeIt _ _ _  -> True
       MkPackedE{}   -> False
@@ -433,21 +423,23 @@ hasTimeIt (E1 rhs) =
       MapE (_,_,e1) e2   -> hasTimeIt e1 || hasTimeIt e2
       FoldE (_,_,e1) (_,_,e2) e3 -> hasTimeIt e1 || hasTimeIt e2 || hasTimeIt e3
 
+      Ext () -> False
+
 -- | Project something which had better not be the first thing in a tuple.
 projNonFirst :: Int -> Exp -> Exp
 projNonFirst 0 e = error $ "projNonFirst: expected nonzero index into expr: "++sdoc e
-projNonFirst i (E1 e) = E1 $ ProjE i (E1 e)
+projNonFirst i e = ProjE i e
 
 -- | Project position K of N, unless (K,N) = (0,1) in which case no
 -- projection is necessary.
 mkProj :: (Eq a, Num a) => Int -> a -> Exp -> Exp
 mkProj 0 1 e = e
-mkProj ix _ (E1 e) = E1 $ ProjE ix (E1 e)
+mkProj ix _ e = ProjE ix e
 
 -- | Make a product type while avoiding unary products.
 mkProd :: [Exp]-> Exp
 mkProd [e] = e
-mkProd ls = E1 $ MkProdE ls
+mkProd ls = MkProdE ls
 
 -- | Same as mkProd, at the type level
 mkProdTy :: [Ty]-> Ty
@@ -457,7 +449,7 @@ mkProdTy ls = ProdTy ls
 -- | Make a nested series of lets.
 mkLets :: [(Var,[LocVar],Ty,Exp)] -> Exp -> Exp
 mkLets [] bod = bod
-mkLets (b:bs) bod = E1 $ LetE b (mkLets bs bod)
+mkLets (b:bs) bod = LetE b (mkLets bs bod)
 
 
 
@@ -478,11 +470,13 @@ exadd1 :: FunDef Ty Exp
 exadd1 = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy exadd1Bod
 
 exadd1Bod :: Exp
-exadd1Bod = E1 $
-    CaseE (E1 $ VarE (toVar "tr")) $
-      [ ("Leaf", [("n","l0")], E1 $ PrimAppE AddP [E1 $ VarE (toVar "n"), E1$ LitE 1])
+exadd1Bod = 
+    CaseE (VarE (toVar "tr")) $
+      [ ("Leaf", [("n","l0")], PrimAppE AddP [VarE (toVar "n"), LitE 1])
       , ("Node", [("x","l1"),("y","l2")],
-         E1 $ MkPackedE () "Node" (Just "l0")
-          [ E1 $ AppE (toVar "add1") [] (E1$ VarE $ toVar "x")
-          , E1 $ AppE (toVar "add1") [] (E1$ VarE $ toVar "y")])
+         MkPackedE () "Node" (Just "l0")
+          [ AppE (toVar "add1") [] (VarE $ toVar "x")
+          , AppE (toVar "add1") [] (VarE $ toVar "y")])
       ]
+
+

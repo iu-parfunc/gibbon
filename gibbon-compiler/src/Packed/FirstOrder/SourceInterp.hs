@@ -233,7 +233,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
       goWrapper !_ix env ex = go env ex
 
       go :: ValEnv -> Exp -> WriterT Log (StateT Store IO) Value
-      go env (E1 x0) =
+      go env x0 =
           case x0 of
             LitE c         -> return $ VInt c
             LitSymE s      -> return $ VInt $ fromIntegral $ product $ L.map ord $ fromVar s
@@ -280,7 +280,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                    store1 = IM.insert idx (Buffer S.empty) store0
                                put (Store store1)
                                return $ VCursor idx 0
-            ScopedBuffer -> go env (E1 NewBuffer) -- ^ No operational difference.
+            ScopedBuffer -> go env NewBuffer -- ^ No operational difference.
             WriteInt v ex -> do let VCursor idx off = env # v
                                 VInt num <- go env ex
                                 Store store0 <- get
@@ -300,7 +300,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                 oth :< _      ->
                  error $"SourceInterp: ReadInt expected Int in buffer, found: "++show oth
 
-            p | L2.isExtendedPattern (E1 p) ->
+            p | L2.isExtendedPattern p ->
                errorWithStackTrace$ "SourceInterp: Unhandled extended L2 pattern: "++ndoc p
 
             AppE f _ b ->  do rand <- go env b
@@ -408,7 +408,7 @@ lookup3 k ls = go ls
 
 p1 :: Prog
 p1 = Prog emptyDD  M.empty
-          (Just (E1$ LetE ("x", [], IntTy, E1$ LitE 3) (E1$VarE (toVar "x")))) []
+          (Just (LetE ("x", [], IntTy, LitE 3) (VarE (toVar "x")))) []
          -- IntTy
 
 main :: IO ()

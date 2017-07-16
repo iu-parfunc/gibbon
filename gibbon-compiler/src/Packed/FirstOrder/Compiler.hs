@@ -461,18 +461,18 @@ benchMainExp Config{benchInput,benchPrint} l1 fnname = do
       -- At L1, we assume ReadPackedFile has a single return value:
       newExp = L1.LetE (toVar tmp, [],
                          arg,
-                         L1.E1 $ L1.PrimAppE (L1.ReadPackedFile benchInput tyc arg) [])
+                         L1.PrimAppE (L1.ReadPackedFile benchInput tyc arg) [])
                 $
-                L1.E1 $ L1.LetE (toVar "benchres", [],
+                L1.LetE (toVar "benchres", [],
                          ret,
-                         L1.E1 $ L1.TimeIt (L1.E1 $ L1.AppE fnname [] (L1.E1 $ L1.VarE (toVar tmp))) ret True)
+                         L1.TimeIt (L1.AppE fnname [] (L1.VarE (toVar tmp))) ret True)
                 $
                 -- FIXME: should actually return the result,
                 -- as soon as we are able to print it.
                 (if benchPrint
-                  then L1.E1 $ L1.VarE (toVar "benchres")
-                  else L1.E1 $ L1.PrimAppE L1.MkTrue [])
-  l1{ L1.mainExp = Just $ L1.E1 newExp }
+                  then L1.VarE (toVar "benchres")
+                  else L1.PrimAppE L1.MkTrue [])
+  l1{ L1.mainExp = Just newExp }
 
 
 type PassRunner a b = (Out b, NFData a, NFData b) =>

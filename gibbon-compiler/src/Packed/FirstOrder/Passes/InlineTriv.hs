@@ -44,37 +44,37 @@ inlineTrivExp _ddefs = go []
   withVar env v fn =
     case lookup v env of
       Nothing        -> fn v
-      Just (_, E1 (VarE v2)) -> fn v2
+      Just (_, (VarE v2)) -> fn v2
       -- fixme, need gensym:
-      Just (ty,oth)  -> E1 $ LetE (v,[],ty,oth) $ fn v
+      Just (ty,oth)  -> LetE (v,[],ty,oth) $ fn v
 
   exp :: Env -> Exp -> Exp
-  exp env (E1 e0) = E1 $
+  exp env e0 = 
     case e0 of
       VarE v -> case lookup v env of
                     Nothing -> VarE v
-                    Just (_,e) -> fromE1 e
+                    Just (_,e) -> e
       LitE i -> LitE i
       LitSymE v -> LitSymE v
 
       AppE v lvs e -> AppE v lvs $ go env e
       PrimAppE p es -> PrimAppE p $ map (go env) es
 
-      LetE (v,lvs,t,(E1 e')) e ->
+      LetE (v,lvs,t,e') e ->
        case e' of
-         VarE v' -> fromE1 $ case lookup v' env of
-                               Nothing -> go ((v,(t,E1 e')):env) e
-                               Just pr -> go ((v,pr):env) e
-         et | isTriv (E1 et) ->
+         VarE v' -> case lookup v' env of
+                      Nothing -> go ((v,(t,e')):env) e
+                      Just pr -> go ((v,pr):env) e
+         et | isTriv et ->
                 -- Apply existing renames:
-                let et' = go env (E1 et) in
-                fromE1 $ go ((v,(t,et')):env) e
-         _ -> LetE (v,lvs,t,go env (E1 e')) (go env e)
+                let et' = go env et in
+                go ((v,(t,et')):env) e
+         _ -> LetE (v,lvs,t,go env e') (go env e)
 
       IfE e1 e2 e3 -> IfE (go env e1) (go env e2) (go env e3)
 
       -- TODO: Type check here:
-      ProjE i e -> fromE1 $ mkProj i $ go env e
+      ProjE i e -> mkProj i $ go env e
 
       MkProdE es -> MkProdE $ map (go env) es
       CaseE e mp ->
@@ -90,16 +90,16 @@ inlineTrivExp _ddefs = go []
 
       L2.NewBuffer -> L2.NewBuffer
       L2.NewBuffer -> L2.NewBuffer
-      L2.ReadInt v -> fromE1 $ withVar env v $ \v2 -> E1 $ L2.ReadInt v2
-      L2.WriteInt v e -> fromE1 $ withVar env v $ \v2 -> E1 $ L2.WriteInt v2 (go env e)
-      L2.AddCursor v i -> fromE1 $ withVar env v $ \v2 -> E1 $ L2.AddCursor v2 i
+      L2.ReadInt v     -> withVar env v $ \v2 -> L2.ReadInt v2
+      L2.WriteInt v e  -> withVar env v $ \v2 -> L2.WriteInt v2 (go env e)
+      L2.AddCursor v i -> withVar env v $ \v2 -> L2.AddCursor v2 i
 
-      p | L2.isExtendedPattern (E1 p) ->
+      p | L2.isExtendedPattern p ->
           errorWithStackTrace $ "InlineTriv: failed to handle extended L2 form: "
           ++ndoc p++", env: "++ndoc env
 
 -- Helpers which do opportunistic reduction:
 
 mkProj :: Int -> Exp -> Exp
-mkProj ix (E1 (MkProdE ls)) = ls !! ix
-mkProj ix e = E1 $ ProjE ix e
+mkProj ix (MkProdE ls) = ls !! ix
+mkProj ix e = ProjE ix e
