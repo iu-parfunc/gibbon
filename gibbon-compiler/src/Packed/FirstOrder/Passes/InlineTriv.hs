@@ -98,6 +98,7 @@ inlineTrivExp _ddefs = go []
           errorWithStackTrace $ "InlineTriv: failed to handle extended L2 form: "
           ++ndoc p++", env: "++ndoc env
 
+
 -- Helpers which do opportunistic reduction:
 
 mkProj :: Int -> Exp -> Exp

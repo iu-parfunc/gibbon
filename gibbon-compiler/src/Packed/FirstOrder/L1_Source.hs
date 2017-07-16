@@ -29,7 +29,7 @@ module Packed.FirstOrder.L1_Source
     , voidTy, hasPacked, sizeOf
 
     -- * Expression and Prog helpers
-    , freeVars, subst, substE, mapExprs, getFunTy
+    , freeVars, subst, substE, mapExprs, mapExt, getFunTy
 
       -- * Trivial expressions
     , assertTriv, assertTrivs, isTriv, hasTimeIt
@@ -80,9 +80,6 @@ progToEnv Prog{fundefs} =
 -- | A convenient, default instantiation of the L1 expression type.
 type Exp = PreExp () () Ty
 
-data Region = Region
-  deriving (Read,Show,Eq,Ord, Generic, NFData)
-
 -- | The source language.  It has pointer based sums and products, as
 -- well as packed algebraic datatypes.
 --
@@ -116,9 +113,6 @@ data PreExp loc ext dec =
      -- ^ Case on a PACKED datatype.  Each bound variable lives at a *fixed* location.
      -- TODO: Rename to CasePackedE.
 
---  | MkPackedE DataCon loc [(PreExp Loc Dec Ext)]
---  | MkBoxedE  DataCon     [(PreExp Loc Dec Ext)]
-   
    | MkPackedE loc DataCon (Maybe LocVar) [(PreExp loc ext dec)]
      -- ^ Construct data that may be either Packed or unpacked.
      -- If Packed: the first byte at the given abstract location.
@@ -133,17 +127,37 @@ data PreExp loc ext dec =
    | FoldE { initial  :: (Var,Ty,(PreExp loc ext dec))
            , iterator :: (Var,Ty,(PreExp loc ext dec))
            , body     :: (PreExp loc ext dec) }
-
-   -- Location/Region calculus extensions, not used initially:
-   -----------------------------------------------------------
---   | LetRegionE Region (PreExp Loc Dec Ext)
---   | LetLocE Var LocExp (PreExp Loc Dec Ext)
            
    ----------------------------------------
   | Ext ext  -- ^ Extension point for downstream language extensions.
      
-  deriving (Read,Show,Eq,Ord, Generic, NFData)
+  deriving (Read,Show,Eq,Ord, Generic, NFData, Functor)
 
+-- | Apply a function to the extension points only.
+mapExt :: (a -> b) -> PreExp l a d -> PreExp l b d
+mapExt fn e0 = go e0
+ where
+   go ex =
+     case ex of
+       Ext  x    -> Ext (fn x)
+       VarE v    -> VarE v
+       RetE x v  -> RetE x v
+       LitE n    -> LitE n
+       LitSymE x -> LitSymE x
+       AppE v l e -> AppE v l (go e)
+       PrimAppE p ls   -> PrimAppE p $ L.map go ls
+       LetE (v,l,t,rhs) bod -> LetE (v,l,t,go rhs) (go bod)
+       ProjE i e  -> ProjE i (go e)
+       CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
+       MkProdE ls     -> MkProdE $ L.map go ls
+       MkPackedE loc k l ls -> MkPackedE loc k l $ L.map go ls
+       TimeIt e t b -> TimeIt (go e) t b
+       IfE a b c -> IfE (go a) (go b) (go c)
+       MapE (v,t,rhs) bod -> MapE (v,t, go rhs) (go bod)
+       FoldE (v1,t1,r1) (v2,t2,r2) bod ->
+         FoldE (v1,t1,go r1) (v2,t2,go r2) (go bod)
+
+         
 -- | Some of these primitives are (temporarily) tagged directly with
 -- their return types.
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
@@ -178,7 +192,6 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
 
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
-instance Out Region
 instance Out Prim
 instance Out a => Out (Ty1 a)
 -- Do this manually to get prettier formatting:

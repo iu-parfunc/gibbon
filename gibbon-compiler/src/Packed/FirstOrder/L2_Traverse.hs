@@ -13,14 +13,19 @@
 -- | An intermediate language with an effect system that captures traversals.
 
 module Packed.FirstOrder.L2_Traverse
-    ( Prog(..), Ty, FunDef(..), Effect(..), ArrowTy(..)
+    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..)
     , mapExprs, mapMExprs, progToEnv
 
     -- * Temporary backwards compatibility, plus rexports
-    , Ty1(..), pattern SymTy
-    , Exp, PreExp(..)
+    , Ty1(..), PreExp(..), pattern SymTy
     , primRetTy
 
+    -- * Extended language L2.0 with location types.
+    , Exp2, E2(..), Ty2
+
+    -- * Convenience aliases
+    , Ty, Exp
+      
     -- * Utilities for dealing with the extended types:
     , cursorTy, mkCursorTy, isCursorTy, cursorTyLoc, unknownCursor
     , hasRealPacked, isRealPacked, hasCursorTy
@@ -58,7 +63,9 @@ module Packed.FirstOrder.L2_Traverse
 import Control.DeepSeq
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1_Source as L1
-import Packed.FirstOrder.L1_Source hiding (Ty, FunDef, Prog, mapExprs, progToEnv, fundefs, getFunTy)
+import Packed.FirstOrder.L1_Source hiding
+    (Ty, FunDef, Prog,
+     mapExprs, progToEnv, fundefs, getFunTy, Exp)
 import Data.List as L
 import Data.Maybe
 import Data.Set as S
@@ -66,6 +73,24 @@ import Data.Map as M
 import Text.PrettyPrint.GenericPretty
 
 --------------------------------------------------------------------------------
+
+-- | Extended, L2 Expressions.
+type Exp2 = E2' () Ty
+type Exp = Exp2
+    
+data E2 loc dec = 
+    LetRegionE Region (E2' loc dec) -- ^ Not used until later on.
+  | LetLocE    Var    (E2' loc dec)
+ deriving (Show, Read, Ord, Eq, Generic, NFData)
+
+-- | L1 expressions extended with L2.  Shorthand for recursions above.
+type E2' l d = PreExp l (E2 l d) d
+
+
+data Region = Region
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
+
+instance Out Region
 
 -- Unchanged from L1, or we could go A-normal:
 -- data Exp =
@@ -177,16 +202,19 @@ instance Out a => Out (Set a) where
   doc x = doc (S.toList x)
 instance Out FunDef
 instance Out Prog
+instance (Out l, Out d) => Out (E2 l d)
 
 -- | L1 Types extended with abstract Locations.
-type Ty = L1.Ty1 LocVar
+type Ty = Ty2
+type Ty2 = L1.Ty1 LocVar
 
+    
 type NewFuns = M.Map Var FunDef
 
 -- | Here we only change the types of FUNCTIONS:
 data Prog = Prog { ddefs    :: DDefs L1.Ty
                  , fundefs  :: NewFuns
-                 , mainExp  :: Maybe (L1.Exp, L1.Ty)
+                 , mainExp  :: Maybe (Exp, L1.Ty)
                  }
   deriving (Show, Read, Ord, Eq, Generic, NFData)
 
@@ -203,8 +231,8 @@ progToEnv Prog{fundefs} =
 -- | A function definition with the function's effects.
 data FunDef = FunDef { funname :: Var
                      , funty   :: (ArrowTy Ty)
-                     , funarg   :: Var
-                     , funbod  :: L1.Exp }
+                     , funarg  :: Var
+                     , funbod  :: Exp }
   deriving (Show, Read, Ord, Eq, Generic, NFData)
 --------------------------------------------------------------------------------
 
@@ -545,13 +573,18 @@ revertToL1 :: Prog -> L1.Prog
 revertToL1 Prog{ ..} =
   L1.Prog { L1.ddefs   = fmap (fmap (fmap (const ()))) ddefs
           , L1.fundefs = M.map go fundefs
-          , L1.mainExp = fmap fst mainExp
+          , L1.mainExp = fmap (exp . fst) mainExp
           }
  where
    go FunDef{..} =
        let ArrowTy{arrIn,arrOut} = funty in
-       L1.FunDef funname (funarg, stripTyLocs arrIn) (stripTyLocs arrOut) funbod
+       L1.FunDef funname (funarg, stripTyLocs arrIn) (stripTyLocs arrOut) (exp funbod)
+   exp :: E2' () Ty -> L1.Exp
+   exp ex = mapExt (\(e::E2 () Ty) ->
+                    error $ "revertToL1: cannot revert, essential L2 construct used:\n  "++show e)
+                   (fmap stripTyLocs ex)                   
 
+                   
 --------------------------------------------------------------------------------
 
 
@@ -594,7 +627,7 @@ pattern AddCursor v i <- AppE (Var "AddCursor") [] (MkProdE [(VarE v), (LitE i)]
 
 
 -- | A predicate to check if the form is part of the extended "L2.5" language.
-isExtendedPattern :: Exp -> Bool
+isExtendedPattern :: L1.Exp -> Bool
 isExtendedPattern e =
   case e of
     NewBuffer{}    -> True

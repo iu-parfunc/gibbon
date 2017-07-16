@@ -353,27 +353,27 @@ f x = (False,x)
 
 t5p :: Prog
 t5p = Prog {ddefs = M.fromList [("Expr",
-                                 DDef {tyName = "Expr", 
-                                       dataCons = [("VARREF", [f IntTy]),("Top", [f IntTy])]}),
-                                 ("Bar",
-                                  DDef {tyName = "Bar", 
-                                        dataCons = [("C", [f IntTy]),("D", [f$ PackedTy "Foo" ()])]}),
-                                 ("Foo",
-                                  DDef {tyName = "Foo", 
-                                        dataCons = [("A", [f IntTy, f IntTy]),("B", [f$ PackedTy "Bar" ()])]})],
-             fundefs = M.fromList [("id",
-                                    L2.FunDef {funname = "id",
-                                               funty = ArrowTy {arrIn = PackedTy "Foo" "a",
-                                                                arrEffs = S.fromList [],
-                                                                arrOut = PackedTy "Foo" "a"},
-                                               funarg = "x0",
-                                               funbod = L1.E1 $ VarE "x0"})],
-             mainExp = Just (L1.E1 (LetE ("fltAp1",[],
-                                          PackedTy "Foo" (),
-                                          L1.E1 $ MkPackedE () "A" (Just "l0") [L1.E1 $ LitE 1])
-                                    (L1.E1 $ (AppE "id" [] (L1.E1 $ VarE "fltAp1")))),
-                             PackedTy "Foo" ())
-           }
+                                   DDef {tyName = "Expr", 
+                                         dataCons = [("VARREF", [f IntTy]),("Top", [f IntTy])]}),
+                                   ("Bar",
+                                    DDef {tyName = "Bar", 
+                                          dataCons = [("C", [f IntTy]),("D", [f$ PackedTy "Foo" ()])]}),
+                                   ("Foo",
+                                    DDef {tyName = "Foo", 
+                                          dataCons = [("A", [f IntTy, f IntTy]),("B", [f$ PackedTy "Bar" ()])]})],
+               fundefs = M.fromList [("id",
+                                      L2.FunDef {funname = "id",
+                                                 funty = ArrowTy {arrIn = PackedTy "Foo" "a",
+                                                                  arrEffs = S.fromList [],
+                                                                  arrOut = PackedTy "Foo" "a"},
+                                                 funarg = "x0",
+                                                 funbod = VarE "x0"})],
+               mainExp = Just ((LetE ("fltAp1",[],
+                                      PackedTy "Foo" "l",
+                                      MkPackedE () "A" (Just "l0") [LitE 1])
+                                ((AppE "id" [] (VarE "fltAp1")))),
+                               PackedTy "Foo" ())
+             }
 
 {- -- UNDER_CONSTRUCTION.
 _case_t5p1 :: Assertion

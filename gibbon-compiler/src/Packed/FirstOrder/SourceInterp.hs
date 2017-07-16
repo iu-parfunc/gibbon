@@ -29,7 +29,7 @@ import Data.Char
 import           GHC.Generics
 import           GHC.Stack (errorWithStackTrace)
 import           Packed.FirstOrder.Common
-import           Packed.FirstOrder.L1_Source
+import           Packed.FirstOrder.L1_Source   as L1
 import qualified Packed.FirstOrder.L2_Traverse as L2
 import           Packed.FirstOrder.L2_Traverse (pattern NamedVal)
 import           System.Clock
@@ -232,9 +232,12 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
       {-# NOINLINE goWrapper #-}
       goWrapper !_ix env ex = go env ex
 
-      go :: ValEnv -> Exp -> WriterT Log (StateT Store IO) Value
+      go :: ValEnv -> L1.Exp -> WriterT Log (StateT Store IO) Value
       go env x0 =
           case x0 of
+            Ext () -> error "SourceInterp: Should not interpret empty extension point."
+                      -- ^ Or... we could give this a void/empty-tuple value.
+
             LitE c         -> return $ VInt c
             LitSymE s      -> return $ VInt $ fromIntegral $ product $ L.map ord $ fromVar s
             -- In L2.5 witnesses are really justs casts:
@@ -274,6 +277,8 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                                    ++moreContext)
                 return $ VCursor idx (off+dropped)
 
+-- FIXME: Nead an L2 interpreter.
+
             --- Pattern synonyms specific to post-cursorize ASTs:
             NewBuffer    -> do Store store0 <- get
                                let idx = IM.size store0
@@ -302,7 +307,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
 
             p | L2.isExtendedPattern p ->
                errorWithStackTrace$ "SourceInterp: Unhandled extended L2 pattern: "++ndoc p
-
+                                  
             AppE f _ b ->  do rand <- go env b
                               case M.lookup f fundefs of
                                Just FunDef{funArg=(vr,_),funBody} -> go (M.insert vr rand env) funBody
