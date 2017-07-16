@@ -13,7 +13,7 @@ module Packed.FirstOrder.Passes.Typecheck
 
 import Prelude hiding (fail)
 import Packed.FirstOrder.Common
-import Packed.FirstOrder.L2_Traverse as L2
+import Packed.FirstOrder.L2.Syntax as L2
 import qualified Packed.FirstOrder.L1.Syntax as L1
 
 import qualified Data.Map as M

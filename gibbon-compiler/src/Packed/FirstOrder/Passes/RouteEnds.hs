@@ -10,10 +10,10 @@ module Packed.FirstOrder.Passes.RouteEnds
 
 import           Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1.Syntax as L1
-import qualified Packed.FirstOrder.L2_Traverse as L2
+import qualified Packed.FirstOrder.L2.Syntax as L2
 
 -- We use some pieces from this other attempt:
-import           Packed.FirstOrder.L2_Traverse as L2
+import           Packed.FirstOrder.L2.Syntax as L2
 import           Packed.FirstOrder.Passes.InferEffects (instantiateApp, freshLoc)
 import Data.List as L hiding (tail)
 import Data.Map as M

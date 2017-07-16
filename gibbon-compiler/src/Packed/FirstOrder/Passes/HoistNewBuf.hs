@@ -10,7 +10,7 @@ module Packed.FirstOrder.Passes.HoistNewBuf
 import qualified Data.List as L
 import Packed.FirstOrder.Common
 import qualified Packed.FirstOrder.L1.Syntax as L1
-import Packed.FirstOrder.L2_Traverse as L2
+import Packed.FirstOrder.L2.Syntax as L2
 import Prelude hiding (exp)
 
 -- | Strip out the NewBuf bindings up until the point control flow diverges.

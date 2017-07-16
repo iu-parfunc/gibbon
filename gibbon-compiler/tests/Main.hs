@@ -20,7 +20,7 @@ import Packed.FirstOrder.Common hiding (FunDef)
 -- import qualified Packed.FirstOrder.Common as C
 -- import Packed.FirstOrder.L1_Source (Exp (..))
 import qualified Packed.FirstOrder.L1.Syntax as L1
-import           Packed.FirstOrder.L2_Traverse as L2
+import           Packed.FirstOrder.L2.Syntax as L2
 -- import           Packed.FirstOrder.Passes.InferEffects  -- UNDER_CONSTRUCTION.
 -- import           Packed.FirstOrder.Passes.CopyInsertion
 -- import           Packed.FirstOrder.Passes.Cursorize
@@ -33,7 +33,7 @@ import qualified Packed.FirstOrder.TargetInterp as TI
 main :: IO ()
 main = $(defaultMainGenerator)
 
--- Unit test the L2_Traverse.hs functions:
+-- Unit test the.L2.Syntax.hs functions:
 --------------------------------------------------------------------------------
 {- -- UNDER_CONSTRUCTION.
 t0 :: Set Effect -> Set Effect

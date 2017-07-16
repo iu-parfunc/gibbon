@@ -9,7 +9,7 @@ import Packed.FirstOrder.L1.Syntax as L1 hiding (mkProj)
 import Prelude hiding (exp)
 -- import Debug.Trace
 
-import qualified Packed.FirstOrder.L2_Traverse as L2
+import qualified Packed.FirstOrder.L2.Syntax as L2
 import GHC.Stack (errorWithStackTrace)
 
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up

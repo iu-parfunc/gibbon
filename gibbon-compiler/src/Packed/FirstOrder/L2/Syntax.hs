@@ -12,7 +12,7 @@
 
 -- | An intermediate language with an effect system that captures traversals.
 
-module Packed.FirstOrder.L2_Traverse
+module Packed.FirstOrder.L2.Syntax
     ( Prog(..), FunDef(..), Effect(..), ArrowTy(..)
     , mapExprs, mapMExprs, progToEnv
 

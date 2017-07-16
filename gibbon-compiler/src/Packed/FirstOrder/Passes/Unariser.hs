@@ -10,7 +10,7 @@ module Packed.FirstOrder.Passes.Unariser
 import Data.Maybe
 import Packed.FirstOrder.Common (SyM, Var, dbgTrace, sdoc, gensym, fragileZip,ndoc,toVar)
 import qualified Packed.FirstOrder.L1.Syntax as L1
-import Packed.FirstOrder.L2_Traverse as L2
+import Packed.FirstOrder.L2.Syntax as L2
 import Prelude hiding (exp)
 import qualified Data.Map as M
 

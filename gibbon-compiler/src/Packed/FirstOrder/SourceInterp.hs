@@ -30,8 +30,8 @@ import           GHC.Generics
 import           GHC.Stack (errorWithStackTrace)
 import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.L1.Syntax   as L1
-import qualified Packed.FirstOrder.L2_Traverse as L2
-import           Packed.FirstOrder.L2_Traverse (pattern NamedVal)
+import qualified Packed.FirstOrder.L2.Syntax as L2
+import           Packed.FirstOrder.L2.Syntax (pattern NamedVal)
 import           System.Clock
 import           System.IO.Unsafe (unsafePerformIO)
 import           Text.PrettyPrint.GenericPretty
@@ -40,7 +40,7 @@ import           Text.PrettyPrint.GenericPretty
 import           Data.Sequence (Seq, ViewL ((:<)), (|>))
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
-import           Packed.FirstOrder.L2_Traverse ( pattern WriteInt, pattern ReadInt, pattern NewBuffer
+import           Packed.FirstOrder.L2.Syntax ( pattern WriteInt, pattern ReadInt, pattern NewBuffer
                                                , pattern ScopedBuffer, pattern AddCursor)
 
 -- TODO:

@@ -19,9 +19,9 @@ import Control.Monad
 import Control.DeepSeq
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1.Syntax as L1
-import qualified Packed.FirstOrder.L2_Traverse as L2
+import qualified Packed.FirstOrder.L2.Syntax as L2
 import           Packed.FirstOrder.L1.Syntax (Ty1(..),pattern SymTy)
-import           Packed.FirstOrder.L2_Traverse
+import           Packed.FirstOrder.L2.Syntax
     (argtyToLoc, Loc(..), ArrowTy(..), toEndVar,
      FunDef(..), Prog(..), Exp(..))
 import Data.Maybe
