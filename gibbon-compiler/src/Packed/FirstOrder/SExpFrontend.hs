@@ -117,7 +117,6 @@ tagDataCons ddefs = go allCons
        ------------boilerplate------------
        VarE v          -> VarE v
        LitSymE v       -> LitSymE v
-       RetE _ _        -> ex
        LitE _          -> ex
        PrimAppE p ls   -> PrimAppE p $ L.map (go cons) ls
        ProjE i e  -> ProjE i (go cons e)

@@ -77,7 +77,6 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
        (VarE _)         -> return ([],e0)
        (LitE _)         -> return ([],e0)
        (LitSymE _)      -> return ([],e0)
-       (RetE _ _)       -> return ([],e0)
 
        -- This pass is run at multiple points in the compiler pipeline.
        -- We COULD just let these patterns be treated as arbitrary AppE forms,

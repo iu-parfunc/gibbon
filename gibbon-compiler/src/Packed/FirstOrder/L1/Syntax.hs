@@ -91,7 +91,6 @@ type Exp = PreExp () () Ty
 -- 
 data PreExp loc ext dec =
      VarE Var              -- ^ Variable reference
-   | RetE [LocVar] Var     -- ^ Return a value together with extra loc values.
    | LitE Int              -- ^ Numeric literal
    | LitSymE Var           -- ^ A quoted symbol literal.
    | AppE Var [LocVar] (PreExp loc ext dec)
@@ -142,7 +141,6 @@ mapExt fn e0 = go e0
      case ex of
        Ext  x    -> Ext (fn x)
        VarE v    -> VarE v
-       RetE x v  -> RetE x v
        LitE n    -> LitE n
        LitSymE x -> LitSymE x
        AppE v l e -> AppE v l (go e)
@@ -279,7 +277,6 @@ freeVars = gFreeVars
 instance FreeVars e => FreeVars (PreExp l e d) where
   gFreeVars ex = case ex of
       VarE v    -> S.singleton v
-      RetE _ v  -> S.singleton v
       LitE _    -> S.empty
       LitSymE _ -> S.empty
       ProjE _ e -> gFreeVars e
@@ -308,8 +305,6 @@ subst old new ex =
   case ex of
     VarE v | v == old  -> new
            | otherwise -> VarE v
-    RetE _ v | v == old  -> new
-             | otherwise -> ex
     LitE _          -> ex
     LitSymE _       -> ex
     AppE v l e        -> AppE v l (go e)
@@ -346,7 +341,6 @@ substE old new ex =
     VarE v          -> VarE v
     LitE _          -> ex
     LitSymE _       -> ex
-    RetE _ _        -> ex
     AppE v l e        -> AppE v l (go e)
     PrimAppE p ls   -> PrimAppE p $ L.map go ls
     LetE (v,l,t,rhs) bod | (VarE v) == old  -> LetE (v,l,t,go rhs) bod
@@ -424,7 +418,6 @@ hasTimeIt rhs =
       TimeIt _ _ _  -> True
       MkPackedE{}   -> False
       VarE _        -> False
-      RetE _ _      -> False
       LitE _        -> False
       LitSymE _     -> False
       AppE _ _ _    -> False

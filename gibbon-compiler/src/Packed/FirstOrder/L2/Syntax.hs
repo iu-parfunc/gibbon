@@ -82,7 +82,8 @@ type Exp = Exp2
     
 data E2 loc dec = 
     LetRegionE Region (E2' loc dec) -- ^ Not used until later on.
-  | LetLocE    Var    (E2' loc dec)
+  | LetLocE    Var    (E2' loc dec)    
+--  | RetE [LocVar] Var     -- ^ Return a value together with extra loc values.
  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 -- | L1 expressions extended with L2.  Shorthand for recursions above.
