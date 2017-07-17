@@ -232,7 +232,7 @@ copy = fst $ runSyM 0 $ inferEffects
                       , ("Node", [toVar "l",toVar "r"],
                         LetE ((toVar "a"), L1.Packed "Tree", AppE (toVar "copy") (VarE (toVar "l"))) $
                         LetE ((toVar "b"), L1.Packed "Tree", AppE (toVar "copy") (VarE (toVar "r"))) $
-                        MkPackedE "Node" [VarE (toVar "a"), VarE (toVar "b")]
+                        DataConE "Node" [VarE (toVar "a"), VarE (toVar "b")]
                         )] ])
       Nothing)
 
@@ -370,7 +370,7 @@ t5p = Prog {ddefs = M.fromList [("Expr",
                                                  funbod = VarE "x0"})],
                mainExp = Just ((LetE ("fltAp1",[],
                                       PackedTy "Foo" "l",
-                                      MkPackedE () "A" (Just "l0") [LitE 1])
+                                      DataConE () "A" (Just "l0") [LitE 1])
                                 ((AppE "id" [] (VarE "fltAp1")))),
                                PackedTy "Foo" ())
              }
@@ -385,10 +385,10 @@ _case_t5p1 = assertEqual "Generate copy function for a simple DDef"
                       L1.funBody = CaseE (VarE (toVar "arg0"))
                        [("VARREF",[toVar "x1"],
                          LetE (toVar "y2",IntTy,VarE (toVar "x1"))
-                         (MkPackedE "VARREF" [VarE (toVar "y2")])),
+                         (DataConE "VARREF" [VarE (toVar "y2")])),
                         ("Top",[toVar "x3"],
                          LetE (toVar "y4",IntTy,VarE (toVar "x3"))
-                         (MkPackedE "Top" [VarE (toVar "y4")]))]})
+                         (DataConE "Top" [VarE (toVar "y4")]))]})
             (fst $ runSyM 0 $ genCopyFn ddef)
   where ddef = (ddefs t5p) M.! (toVar "Expr")
 
@@ -403,10 +403,10 @@ _case_t5p2 = assertEqual "Generate copy function for a DDef containing recursive
                           [("A",[toVar "x1",toVar "x2"],
                             LetE (toVar "y3",IntTy,VarE (toVar "x1"))
                             (LetE (toVar "y4",IntTy,VarE (toVar "x2"))
-                             (MkPackedE "A" [VarE (toVar "y3"),VarE (toVar "y4")]))),
+                             (DataConE "A" [VarE (toVar "y3"),VarE (toVar "y4")]))),
                            ("B",[toVar "x5"],
                             LetE (toVar "y6",PackedTy "Bar" (),AppE (toVar "copyBar") (VarE (toVar "x5")))
-                            (MkPackedE "B" [VarE (toVar "y6")]))]})
+                            (DataConE "B" [VarE (toVar "y6")]))]})
             (fst $ runSyM 0 $ genCopyFn ddef)
   where ddef = (ddefs t5p) M.! (toVar "Foo")
 -}

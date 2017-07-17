@@ -162,7 +162,7 @@ inlinePackedExp ddefs = exp True
                                 env' = [(v,(t,DontInline)) | (v,t) <- (zip args tys)] ++ env in
                             (c,args,exp strong env' ae)
                     in CaseE (go e) mp'
-    (MkPackedE c es) -> MkPackedE c $ map (go) es
+    (DataConE c es) -> DataConE c $ map (go) es
     (TimeIt e t b) -> TimeIt (go e) t b
     (MapE (v,t,e') e) -> let env' = (v,(t,DontInline)) : env in
                          MapE (var v,t,go e') (exp strong env' e)
@@ -177,6 +177,6 @@ isConstructor :: Exp -> Bool
 isConstructor ex =
   case ex of
     AppE{}      -> True -- ^ Fixme, shouldn't this depend on the type?
-    MkPackedE{} -> True
+    DataConE{} -> True
 --    PrimAppE (L1.ReadPackedFile{}) _ -> True
     _ -> False

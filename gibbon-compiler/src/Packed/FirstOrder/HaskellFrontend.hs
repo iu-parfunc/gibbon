@@ -118,7 +118,7 @@ desugarExp e =
     case e of
       H.Var qname -> VarE <$> toVar <$> qname_to_str qname
 
-      Con qname -> MkPackedE () <$> qname_to_str qname <*> pure (Just dummyLoc) <*> pure []
+      Con qname -> DataConE () <$> qname_to_str qname <*> pure (Just dummyLoc) <*> pure []
 
       H.Lit l   -> L1.LitE <$> lit_to_int l
 
@@ -130,9 +130,9 @@ desugarExp e =
             L1.ProjE 1 <$> desugarExp e2
           (VarE f) ->
             L1.AppE f [] <$> desugarExp e2
-          (MkPackedE () c ml as) -> do
+          (DataConE () c ml as) -> do
             e2' <- desugarExp e2
-            return (L1.MkPackedE () c ml (as ++ [e2']))
+            return (L1.DataConE () c ml (as ++ [e2']))
           (L1.AppE f [] l) -> do
             e2' <- desugarExp e2
             return (L1.AppE f [] (MkProdE [l,e2']))

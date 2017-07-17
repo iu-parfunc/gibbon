@@ -614,7 +614,7 @@ pattern NewBuffer <- AppE (Var "NewBuffer") [] (MkProdE [])
 pattern ScopedBuffer <- AppE (Var "ScopedBuffer") [] (MkProdE [])
   where ScopedBuffer = AppE (toVar "ScopedBuffer") [] (MkProdE [])
 
--- | Tag writing is still modeled by MkPackedE.
+-- | Tag writing is still modeled by DataConE.
 pattern WriteInt v e <- AppE (Var "WriteInt") [] (MkProdE [VarE v, e])
   where WriteInt v e = AppE (toVar "WriteInt") [] (MkProdE [VarE v, e])
 

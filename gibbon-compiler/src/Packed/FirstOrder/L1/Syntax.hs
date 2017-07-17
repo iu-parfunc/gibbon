@@ -113,12 +113,12 @@ data PreExp loc ext dec =
      -- ^ Case on a PACKED datatype.  Each bound variable lives at a *fixed* location.
      -- TODO: Rename to CasePackedE.
 
-   | MkPackedE loc DataCon (Maybe LocVar) [(PreExp loc ext dec)]
+   | DataConE loc DataCon (Maybe LocVar) [(PreExp loc ext dec)]
      -- ^ Construct data that may be either Packed or unpacked.
      -- If Packed: the first byte at the given abstract location.
      -- If Unpacked: Nothing for LocVar, data is allocated on a GC'd heap (UNFINISHED)
 
-    -- TODO: Rename MkPackedE => DataCon
+    -- TODO: Rename DataConE => DataCon
 
    | TimeIt (PreExp loc ext dec) Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
 
@@ -149,7 +149,7 @@ mapExt fn e0 = go e0
        ProjE i e  -> ProjE i (go e)
        CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
        MkProdE ls     -> MkProdE $ L.map go ls
-       MkPackedE loc k l ls -> MkPackedE loc k l $ L.map go ls
+       DataConE loc k l ls -> DataConE loc k l $ L.map go ls
        TimeIt e t b -> TimeIt (go e) t b
        IfE a b c -> IfE (go a) (go b) (go c)
        MapE (v,t,rhs) bod -> MapE (v,t, go rhs) (go bod)
@@ -288,7 +288,7 @@ instance FreeVars e => FreeVars (PreExp l e d) where
       CaseE e ls -> S.union (gFreeVars e)
                     (S.unions $ L.map (\(_, _, ee) -> gFreeVars ee) ls)
       MkProdE ls       -> S.unions $ L.map gFreeVars ls
-      MkPackedE _ _ _ ls -> S.unions $ L.map gFreeVars ls
+      DataConE _ _ _ ls -> S.unions $ L.map gFreeVars ls
       TimeIt e _ _ -> gFreeVars e
       MapE (v,_t,rhs) bod -> gFreeVars rhs `S.union`
                              S.delete v (gFreeVars bod)
@@ -319,7 +319,7 @@ subst old new ex =
                                           then (c,vs,er)
                                           else (c,vs,go er)
     MkProdE ls     -> MkProdE $ L.map go ls
-    MkPackedE loc k l ls -> MkPackedE loc k l $ L.map go ls
+    DataConE loc k l ls -> DataConE loc k l $ L.map go ls
     TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE (go a) (go b) (go c)
     MapE (v,t,rhs) bod | v == old  -> MapE (v,t, rhs)    (go bod)
@@ -349,7 +349,7 @@ substE old new ex =
     ProjE i e  -> ProjE i (go e)
     CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
     MkProdE ls     -> MkProdE $ L.map go ls
-    MkPackedE loc k l ls -> MkPackedE loc k l $ L.map go ls
+    DataConE loc k l ls -> DataConE loc k l $ L.map go ls
     TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE (go a) (go b) (go c)
     MapE (v,t,rhs) bod | VarE v == old  -> MapE (v,t, rhs)    (go bod)
@@ -416,7 +416,7 @@ hasTimeIt :: Exp -> Bool
 hasTimeIt rhs =
     case rhs of
       TimeIt _ _ _  -> True
-      MkPackedE{}   -> False
+      DataConE{}   -> False
       VarE _        -> False
       LitE _        -> False
       LitSymE _     -> False
@@ -481,7 +481,7 @@ exadd1Bod =
     CaseE (VarE (toVar "tr")) $
       [ ("Leaf", [("n","l0")], PrimAppE AddP [VarE (toVar "n"), LitE 1])
       , ("Node", [("x","l1"),("y","l2")],
-         MkPackedE () "Node" (Just "l0")
+         DataConE () "Node" (Just "l0")
           [ AppE (toVar "add1") [] (VarE $ toVar "x")
           , AppE (toVar "add1") [] (VarE $ toVar "y")])
       ]

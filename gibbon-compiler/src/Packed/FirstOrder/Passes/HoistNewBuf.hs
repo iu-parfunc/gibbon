@@ -61,8 +61,8 @@ hoistExp _ ex0 = return $ gocap ex0
     (CaseE e ls) -> let (lts,e') = go e
                     in (lts, CaseE e' [ (k,vs, gocap e)
                                       | (k,vs,e) <- ls ])
-    (MkPackedE c es) -> let (ltss,es') = unzip $ L.map go es in
-                        (concat ltss, MkPackedE c es')
+    (DataConE c es) -> let (ltss,es') = unzip $ L.map go es in
+                        (concat ltss, DataConE c es')
 
     -- (MapE (v,t,e') e) ->
     -- (FoldE (v1,t1,e1) (v2,t2,e2) e3) ->

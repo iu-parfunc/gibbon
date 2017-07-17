@@ -54,7 +54,7 @@ findWitnesses = L2.mapMExprs fn
         -- of tuples, and so on, because flatten should have done
         -- let-lifting out of these contexts:
         MkProdE ls     -> handle mp $ MkProdE (map goClear ls)
-        MkPackedE k ls -> handle mp $ MkPackedE k (map goClear ls)
+        DataConE k ls -> handle mp $ DataConE k (map goClear ls)
         TimeIt e t b   -> handle mp $ TimeIt (goClear e) t b -- prevent pushing work into timeit
 
         -- FIXME: give CaseE a treatment like IfE:

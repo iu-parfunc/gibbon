@@ -277,14 +277,14 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
     --------------------------------------------------------------------------------
     -- These are in a funny normal form atfer cursor insertion.  They take one cursor arg.
     -- They basically are a WriteTag.
-    LetE (cursOut, _, MkPackedE k ls) bod | pkd -> do
+    LetE (cursOut, _, DataConE k ls) bod | pkd -> do
       case ls of
        [cursIn] -> T.LetPrimCallT [(cursOut,T.CursorTy)] T.WriteTag
                      [ T.TagTriv (getTagOfDataCon ddefs k)
                      , triv "WriteTag cursor" cursIn ] <$>
                     tail bod
        _ -> error$ "Lower: Expected one argument to data-constructor (which becomes WriteTag): "
-                   ++sdoc (MkPackedE k ls)
+                   ++sdoc (DataConE k ls)
 
     -- Likewise, Case really means ReadTag.  Argument is a cursor.
     CaseE (VarE scrut) ls | pkd -> do
@@ -356,13 +356,13 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
           (T.Switch (T.VarTriv tag_bndr) (T.IntAlts alts') (Just def))
 
     -- Accordingly, constructor allocation becomes an allocation.
-    LetE (v, _, MkPackedE k ls) bod | not pkd -> L1.assertTrivs ls $ do
+    LetE (v, _, DataConE k ls) bod | not pkd -> L1.assertTrivs ls $ do
       let tycon    = getTyOfDataCon ddefs k
           all_cons = dataCons (lookupDDef ddefs (toVar tycon))
           tag      = fromJust (L.findIndex ((==) k . fst) all_cons)
 
           field_tys= L.map typ (lookupDataCon ddefs k)
-          fields0  = fragileZip field_tys (L.map (triv "MkPackedE args") ls)
+          fields0  = fragileZip field_tys (L.map (triv "DataConE args") ls)
           fields   = (T.IntTy, T.IntTriv (fromIntegral tag)) : fields0
           --  | is_prod   = fields0
           --  | otherwise = (T.IntTy, T.IntTriv (fromIntegral tag)) : fields0
@@ -376,7 +376,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
       return (T.LetAllocT v fields bod')
 
     -- This is legitimately flattened, but we need to move it off the spine:
-    L1.MkPackedE k _ls -> do
+    L1.DataConE k _ls -> do
        tmp <- gensym $ toVar "tailift"
        let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
        tail $ LetE (tmp, ty, ex0) (VarE tmp)

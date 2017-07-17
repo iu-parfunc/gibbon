@@ -95,7 +95,7 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
                                   return (b1, AppE f lvs arg')
        (PrimAppE p ls)  -> gols (PrimAppE p)  ls "Prm"
        (MkProdE ls)     -> gols  MkProdE      ls "Prd"
-       (MkPackedE loc k lv ls) -> gols (MkPackedE loc k lv) ls "Pkd"
+       (DataConE loc k lv ls) -> gols (DataConE loc k lv) ls "Pkd"
 
        (LetE (v1,lv1,t1, (LetE (v2,lv2,t2,rhs2) rhs1)) bod) ->
          go $ LetE (v2,lv2,t2,rhs2) $ LetE (v1,lv1,t1,rhs1) bod
@@ -189,13 +189,13 @@ _flattenExpOld defs env2 = fExp (vEnv env2)
                      fae <- fExp (M.fromList (zip args tys) `M.union` env) ae
                      return (c,args,fae)
            return $ mkLetE (v,ty,fe) $ L1.CaseE (L1.VarE v) fals
-    fExp env (L1.MkPackedE c es) =
+    fExp env (L1.DataConE c es) =
         do fes <- mapM (fExp env) es
            nams <- mapM (gensym . toVar) $ replicate (length fes) "flatPk"
            let tys = map (typeExp (defs,env2) env) fes
                bind [] e            = e
                bind ((v,t,e'):xs) e = mkLetE (v,t,e') $ bind xs e
-           return $ bind (zip3 nams tys fes) $ L1.MkPackedE c $ map L1.VarE nams
+           return $ bind (zip3 nams tys fes) $ L1.DataConE c $ map L1.VarE nams
     -- very important to NOT "flatten" the time form:
     fExp env (L1.TimeIt e _ b) =
         do fe <- fExp env e
@@ -271,7 +271,7 @@ typeExp (dd,env2) env (L1.CaseE _e mp) =
         args' = map fst args
     in typeExp (dd,env2) (M.fromList (zip args' (lookupDataCon dd c)) `M.union` env) e
 
-typeExp (dd,_) _env (L1.MkPackedE _ c _ _es) = L1.Packed (getTyOfDataCon dd c)
+typeExp (dd,_) _env (L1.DataConE _ c _ _es) = L1.Packed (getTyOfDataCon dd c)
 
 typeExp (dd,env2) env (L1.TimeIt e _ _) = typeExp (dd,env2) env e
 typeExp (dd,env2) env (L1.MapE _ e)     = typeExp (dd,env2) env e

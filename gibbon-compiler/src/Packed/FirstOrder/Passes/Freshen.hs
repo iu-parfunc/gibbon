@@ -82,14 +82,14 @@ freshNames (L1.Prog defs funs main) =
                                 ae' <- freshExp vs' ae
                                 return (c,zip args' locs',ae')) mp
                  return $ L1.CaseE e' mp'
-          freshExp vs (L1.MkPackedE () c d es) =
+          freshExp vs (L1.DataConE () c d es) =
               do es' <- mapM (freshExp vs) es
                  case d of
                    Nothing -> return ()
                    Just x | x==dummyLoc -> return ()
                           | otherwise -> error$ "freshExp: expects only dummyLoc on input forms, found: "++show d
                  loc <- genLocVar ""
-                 return $ L1.MkPackedE () c (fmap (\_ -> loc) d) es'
+                 return $ L1.DataConE () c (fmap (\_ -> loc) d) es'
           freshExp vs (L1.TimeIt e t b) =
               do e' <- freshExp vs e
                  return $ L1.TimeIt e' t b

@@ -90,7 +90,7 @@ addCopies (L1.Prog dd fundefs mainExp) =
                                            return (k,vs,bod')
                                   return $ CaseE ce ls'
                 MkProdE ls -> return $ MkProdE ls
-                MkPackedE k ls -> return $ MkPackedE k ls
+                DataConE k ls -> return $ DataConE k ls
                 TimeIt e t b -> do e' <- go e
                                    return $ TimeIt e' t b
                 IfE a b c -> do b' <- go b
@@ -112,7 +112,7 @@ genCopyFn DDef{tyName, dataCons} = do
                                         if isPacked ty
                                         then LetE (y,ty,AppE (mkCopyName $ toVar $ tyToDataCon ty) (VarE x)) acc
                                         else LetE (y,ty,VarE x) acc)
-                                (L1.MkPackedE dcon ys')
+                                (L1.DataConE dcon ys')
                                 (zip3 tys xs ys)
                       return (dcon, xs, exp'))
              dataCons
@@ -140,7 +140,7 @@ exprTails e =
       IfE _ e1 e2 -> exprTails e1 `S.union` exprTails e2
       ProjE i e' -> S.singleton $ ProjE i e'
       MkProdE es -> S.unions $ map S.singleton es
-      MkPackedE _k _ls -> S.empty
+      DataConE _k _ls -> S.empty
       TimeIt e' _t _b -> exprTails e'
 
 -- | Expression substitution, but only for tail position and only in certain situations.
@@ -164,7 +164,7 @@ substTail old new ex =
                             then (c,vs,er)
                             else (c,vs,go er)
     MkProdE ls     -> MkProdE $ map go ls
-    MkPackedE _ _  -> ex
+    DataConE _ _  -> ex
     TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE a (go b) (go c)
     MapE _ _ -> error "substTail: FINISHME MapE"

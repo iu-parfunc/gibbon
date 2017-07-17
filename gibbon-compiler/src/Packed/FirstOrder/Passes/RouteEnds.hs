@@ -151,15 +151,15 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
 
      -- A datacon is the beginning of something new, it certainly
      -- cannot witness the end of anything else!
-     MkPackedE k ls -> L1.assertTrivs ls $
+     DataConE k ls -> L1.assertTrivs ls $
        do fresh <- freshLoc "dunno"
-          return (defaultReturn (MkPackedE k ls), fresh)
+          return (defaultReturn (DataConE k ls), fresh)
 
      -- Allocating new data doesn't witness the end of any data being read.
-     LetE (v,ty, MkPackedE k ls) bod -> L1.assertTrivs ls $
+     LetE (v,ty, DataConE k ls) bod -> L1.assertTrivs ls $
        do env' <- extendLocEnv [(v,ty)] env
           (bod',loc) <- exp demanded env' bod
-          return (LetE (v,ty,MkPackedE k ls) bod', loc)
+          return (LetE (v,ty,DataConE k ls) bod', loc)
 
      -- FIXME: Need unariser pass:
      LetE (vr,ty, MkProdE ls) bod -> L1.assertTrivs ls $ do

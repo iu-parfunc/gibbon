@@ -218,13 +218,13 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
                                 oth -> failFresh $ "case branches have mismatched types, "
                                          ++ndoc oth++", in "++ndoc ex0
 
-        MkPackedE c es
+        DataConE c es
             --  After cursorize, these become single argument; take and return cursors.
             | postCursorize -> case es of
                                  [curs] -> do cty <- go curs
                                               assertEqTCVar ex0 (Concrete (CursorTy ())) cty
                                               return (Concrete (CursorTy ()))
-                                 _ -> failFresh $ "MkPackedE "++c++" expected one argument, got: "++ndoc es
+                                 _ -> failFresh $ "DataConE "++c++" expected one argument, got: "++ndoc es
             | otherwise -> do tes <- mapM (go) es
                               let te = Concrete $ L1.Packed $ getTyOfDataCon dd c
                                   args = lookupDataCon dd c

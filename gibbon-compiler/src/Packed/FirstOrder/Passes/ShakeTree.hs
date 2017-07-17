@@ -55,7 +55,7 @@ shakeTreeExp = go
                         dorhs (c,args,ae) =
                             (c,args,go ae)
                     in CaseE (go e) mp'
-    (MkPackedE c es) -> MkPackedE c $ map (go) es
+    (DataConE c es) -> DataConE c $ map (go) es
     (TimeIt e t b) -> TimeIt (go e) t b
     (MapE (v,t,e') e) -> MapE (v,t,go e') (go e)
     (FoldE (v1,t1,e1) (v2,t2,e2) e3) ->
@@ -73,7 +73,7 @@ hasEffect :: Exp -> Bool
 hasEffect rhs =
     -- Trivials have been inlined, but we're still flat-ish:
     case rhs of
-      MkPackedE _ _ -> True
+      DataConE _ _ -> True
       WriteInt _ _  -> True
       -- Reads are covered by dataflow...
       -- AppE _ _

@@ -249,8 +249,8 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
      L1.PrimAppE p ls -> L1.assertTrivs ls $
         return $ mkProd cursorRets (L1.PrimAppE p ls)
 
-     -- L1.MkPackedE k ls -> L1.assertTrivs ls $
-     --    return $ mkProd cursorRets (L1.MkPackedE k ls)
+     -- L1.DataConE k ls -> L1.assertTrivs ls $
+     --    return $ mkProd cursorRets (L1.DataConE k ls)
 
      ------------------ Flattened Spine ---------------
 
@@ -258,8 +258,8 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
      -- action and field population actions.  These will subsequently
      -- need reordering, because the field writes may have ALREADY
      -- occured at this point.
-     L1.LetE (v,tv, L1.MkPackedE k ls) bod ->
-       L1.LetE (v,tv, MarkCursor GlobalC (L1.MkPackedE k ls)) <$>
+     L1.LetE (v,tv, L1.DataConE k ls) bod ->
+       L1.LetE (v,tv, MarkCursor GlobalC (L1.DataConE k ls)) <$>
          let env' = M.insert v (tv, Fixed v) env in
          tail demanded (env',wenv) bod
 
@@ -353,7 +353,7 @@ cursorize L2.Prog{ddefs,fundefs,mainExp} = -- ddefs, fundefs
         return ([], e, ty, retTyToLoc ty)
 
      -- This returns an updated cursor witnessing
-     -- L1.MkPackedE
+     -- L1.DataConE
 {-
 
      -- Here's where the magic happens, we must populate new cursor arguments:

@@ -246,7 +246,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       VarE _ -> return ex0
       LitE _ -> return ex0
       LitSymE _ -> return ex0
-      MkPackedE _ _ -> error$ "cursorDirect: Should not have encountered MkPacked if type is not packed: "++ndoc ex0
+      DataConE _ _ -> error$ "cursorDirect: Should not have encountered MkPacked if type is not packed: "++ndoc ex0
 
       NamedVal _ _ _ -> error$ "cursorDirect: only expected NamedVal convention in packed context: "++ndoc ex0
 
@@ -607,14 +607,14 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       LitE _ -> error$ "cursorDirect/exp2: Should not encounter Lit in packed context: "++show ex0
 
       -- HERE we finally write the dest cursor:
-      MkPackedE k ls ->
+      DataConE k ls ->
        let Cursor curs = destC in
        do dest' <- gensym $ toVar "cursplus1_"
-          let _thetype = PackedTy (getTyOfDataCon ddefs k) () -- Pre-cursorize ret type of this MkPackedE
+          let _thetype = PackedTy (getTyOfDataCon ddefs k) () -- Pre-cursorize ret type of this DataConE
           -- This stands for the  "WriteTag" operation.  dest' points just after the tag.
           -- It's "type", if that is appropriate, is the type of the first field.
           Di . LetE (dest', CursorTy (),
-                     MkPackedE k [VarE curs]) <$>
+                     DataConE k [VarE curs]) <$>
              let
                  -- Return (start,end).  The final return value lives at the position of the out cursoara:
                  go2 d [] = return $ MkProdE [VarE curs, VarE d]
@@ -629,7 +629,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                      dila  <- gensym $ toVar "flddila"
                      d'    <- gensym $ toVar "flddst"
                      Di rnd' <- exp2 tenv isMain (Cursor d) rnd
-                     dbgTrace (lvl+1) (" (**) processing field flowing to MkPackedE, type "++k++", dilated operand: "++ndoc rnd') $
+                     dbgTrace (lvl+1) (" (**) processing field flowing to DataConE, type "++k++", dilated operand: "++ndoc rnd') $
                       LetE (dila, typ (dilateTy (PackedTy k l)), rnd') <$>
                        LetE (d', CursorTy (), projEnds (Di (VarE dila)) ) <$>
                         (go2 d' rst)
@@ -707,7 +707,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
       LetE bnd _ -> error$ "cursorDirect: finish let binding cases in packed context:\n "++sdoc bnd
 
       -- An application that returns packed values is treated just like a
-      -- MkPackedE constructor: cursors are routed to it, and returned from it.
+      -- DataConE constructor: cursors are routed to it, and returned from it.
       AppE v e ->  -- To appear here, the function must have at least one Packed result.
         do Right e <- doapp [] tenv isMain (Just destC) v e
            return e
@@ -1082,7 +1082,7 @@ allocFree ex =
    (PrimAppE _x1 _x2) -> True
 
    (AppE _x1 _x2)     -> False
-   (MkPackedE _x1 _x2) -> False
+   (DataConE _x1 _x2) -> False
 
    (NamedVal _ _ e)   -> allocFree e
    (LetE (_,_,e1) e2) -> allocFree e1 && allocFree e2
@@ -1113,7 +1113,7 @@ isWitnessExpr = go
    (ProjE _ x2)   -> go x2
 
    (AppE _x1 _x2)      -> False
-   (MkPackedE _x1 _x2) -> False
+   (DataConE _x1 _x2) -> False
    (IfE _x1 _x2 _x3)   -> False
    (MkProdE _)         -> False
    (CaseE _ _)         -> False

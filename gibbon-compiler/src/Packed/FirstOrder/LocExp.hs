@@ -84,7 +84,7 @@ data Exp = VarE Var
          | LetLocE Var LocExp Exp
          | LetE Var Ptype Exp Exp
          | MkProdE [Exp]
-         | MkPackedE DataCon Loc [Exp]
+         | DataConE DataCon Loc [Exp]
          | ProjE Int Exp
          | IfE Exp Exp Exp
          | CaseE Exp (Map DataCon ([(Var,Loc,Ptype)],Exp))
@@ -136,7 +136,7 @@ freeVars (LetLocE v1 (PlusSizeOfL v2 _) e) = S.union (S.singleton v2) (S.delete 
 freeVars (LetLocE v _ e) = S.delete v (freeVars e)
 freeVars (LetE v _ e1 e2) = S.union (freeVars e1) (S.delete v (freeVars e2))
 freeVars (MkProdE ls) = S.unions (L.map freeVars ls)
-freeVars (MkPackedE _ _ ls) = S.unions (L.map freeVars ls)
+freeVars (DataConE _ _ ls) = S.unions (L.map freeVars ls)
 freeVars (ProjE _ e) = freeVars e
 freeVars (IfE e1 e2 e3) = S.unions [freeVars e1, freeVars e2, freeVars e3]
 freeVars (CaseE e mp) = S.union (freeVars e) $ S.unions $ L.map (freeVars . snd . snd) $ M.toList mp
@@ -218,7 +218,7 @@ typeofE dd g c r ls exp =
                           (t3,ls''') = typeofE dd g c r ls'' e3
                       in if t1 == PrimType (BoolType) && t2 == t3 then (t3,ls''') else undefined
 
-      MkPackedE v l exps -> undefined
+      DataConE v l exps -> undefined
 
       PrimAppE p exps -> undefined
 
@@ -276,8 +276,8 @@ interpE fenv env exp =
       MkProdE exps -> do exps' <- mapM (interpE fenv env) exps
                          return $ MkProdE exps'
 
-      MkPackedE v l exps -> do exps' <- mapM (interpE fenv env) exps
-                               return $ MkPackedE v l exps'
+      DataConE v l exps -> do exps' <- mapM (interpE fenv env) exps
+                               return $ DataConE v l exps'
 
       ProjE i exp -> do exp' <- interpE fenv env exp
                         case exp' of
@@ -293,7 +293,7 @@ interpE fenv env exp =
       CaseE exp mp ->
           do exp' <- interpE fenv env exp
              case exp' of
-               MkPackedE v _ exps -> case M.lookup v mp of
+               DataConE v _ exps -> case M.lookup v mp of
                                        Just (bnds,e) -> let vs = L.map (\(v,_,_) -> v) bnds
                                                             env' = M.union (M.fromList (zip vs exps)) env
                                                         in interpE fenv env' e
@@ -375,7 +375,7 @@ sumType = FunType
 add1Body :: Exp
 add1Body = CaseE (VarE "tr") $
            M.fromList [("Leaf", ([("n","ln",IntType)],
-                                 MkPackedE "Leaf" "l2" [PrimAppE AddP [(VarE "n"),(LitE 1)]])),
+                                 DataConE "Leaf" "l2" [PrimAppE AddP [(VarE "n"),(LitE 1)]])),
                        ("Node", ([("x","lx",PackedType "Tree" "lx"),("y","ly",PackedType "Tree" "ly")],
                                  nodeCase))]
 
@@ -386,7 +386,7 @@ nodeCase = LetLocE "l3" (PlusCL 1 "l2") $
            LetLocE "l4" (PlusSizeOfL "x2" "l3") $
            LetPackedE "y2" (PackedType "Tree" "l4")
                       (AppE "add1" [LocIn "ly" "r1",LocOut "l4" "r2"] [(VarE "y")]) $
-           MkPackedE "Node" "l2" [VarE "x2", VarE "y2"]
+           DataConE "Node" "l2" [VarE "x2", VarE "y2"]
 
 sumBody :: Exp
 sumBody = CaseE (VarE "tr") $
@@ -409,10 +409,10 @@ withTree e = LetRegionE "r1" $
              LetRegionE "r2" $
              LetLocE "l" (StartL "r1") $
              LetLocE "l1" (PlusCL 1 "l") $
-             LetPackedE "tr1" (PackedType "Tree" "l1") (MkPackedE "Leaf" "l1" [(LitE 1)]) $
+             LetPackedE "tr1" (PackedType "Tree" "l1") (DataConE "Leaf" "l1" [(LitE 1)]) $
              LetLocE "l2" (PlusSizeOfL "tr1" "l1") $
-             LetPackedE "tr2" (PackedType "Tree" "l2") (MkPackedE "Leaf" "l2" [(LitE 2)]) $
-             LetPackedE "tr" (PackedType "Tree" "l") (MkPackedE "Node" "l" [(VarE "tr1"),(VarE "tr2")]) $
+             LetPackedE "tr2" (PackedType "Tree" "l2") (DataConE "Leaf" "l2" [(LitE 2)]) $
+             LetPackedE "tr" (PackedType "Tree" "l") (DataConE "Node" "l" [(VarE "tr1"),(VarE "tr2")]) $
              e
 
 caseOnTree :: Var -> Exp

@@ -239,7 +239,7 @@ inferExp (ddefs,fenv) env e = exp env e
 
      -- Construct output packed data.  We will always "scroll to the end" of
      -- output values, so they are not interesting for this effect analysis.
-     L1.MkPackedE k ls -> L1.assertTrivs ls $
+     L1.DataConE k ls -> L1.assertTrivs ls $
         -- And because it's freshly allocated, it has unconstrained location:
         do l <- freshLoc $ "mk"++k
            return (S.empty,l)

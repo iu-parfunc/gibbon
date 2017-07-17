@@ -184,9 +184,9 @@ unariserExp _ = go [] []
                      sequence [ (k,ls,) <$> go stk env x
                               | (k,ls,x) <- ls ]
 
-    (MkPackedE c es)
-        | [] <- stk -> MkPackedE c <$> mapM (go [] env) es
-        | otherwise -> error $ "Impossible. Non-empty projection stack on MkPackedE: "++show stk
+    (DataConE c es)
+        | [] <- stk -> DataConE c <$> mapM (go [] env) es
+        | otherwise -> error $ "Impossible. Non-empty projection stack on DataConE: "++show stk
 
     (TimeIt e ty b) -> do
        -- Put this in the form Lower wants:
