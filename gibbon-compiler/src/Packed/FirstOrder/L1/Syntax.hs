@@ -6,6 +6,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 
 {-# OPTIONS_GHC -Wall #-}
 
@@ -81,6 +82,10 @@ progToEnv Prog{fundefs} =
 -- | A convenient, default instantiation of the L1 expression type.
 type Exp = PreExp () () Ty
 
+-- Shorthand to make the below definition more readable.
+-- I.e., this covers all the verbose recursive fields.
+#define EXP (PreExp loc ext dec)
+    
 -- | The source language.  It has pointer based sums and products, as
 -- well as packed algebraic datatypes.
 --
@@ -93,40 +98,40 @@ data PreExp loc ext dec =
      VarE Var              -- ^ Variable reference
    | LitE Int              -- ^ Numeric literal
    | LitSymE Var           -- ^ A quoted symbol literal.
-   | AppE Var [loc] (PreExp loc ext dec)
+   | AppE Var [loc] EXP
      -- ^ Apply a top-level / first-order function.  Instantiate
      -- its type schema by providing location-variable arguments,
      -- if applicable.
-   | PrimAppE Prim [(PreExp loc ext dec)]
+   | PrimAppE Prim [EXP]
      -- ^ Primitive applications don't manipulate locations.
-   | LetE (Var,[loc],dec, (PreExp loc ext dec)) -- binding
-          (PreExp loc ext dec)                  -- body
+   | LetE (Var,[loc],dec, EXP) -- binding
+          EXP                  -- body
     -- ^ One binding at a time.  Allows binding a list of
     -- implicit location return vales from the RHS, plus a single "real" value.
-   | IfE (PreExp loc ext dec) (PreExp loc ext dec) (PreExp loc ext dec)
+   | IfE EXP EXP EXP
 
    -- TODO: eventually tuples will just be a wired-in datatype.
-   | MkProdE   [(PreExp loc ext dec)] -- ^ Tuple construction
-   | ProjE Int (PreExp loc ext dec)   -- ^ Tuple projection.
+   | MkProdE   [EXP] -- ^ Tuple construction
+   | ProjE Int EXP   -- ^ Tuple projection.
 
-   | CaseE (PreExp loc ext dec) [(DataCon, [(Var,loc)], PreExp loc ext dec)]
+   | CaseE EXP [(DataCon, [(Var,loc)], EXP)]
      -- ^ Case on a datatype.  Each bound, unpacked variable lives at
      -- a fixed, read-only location.  
 
-   | DataConE loc DataCon [(PreExp loc ext dec)]
+   | DataConE loc DataCon [EXP]
      -- ^ Construct data that may unpack some fields.  The location
      -- argument, if applicable, is the byte location at which to
      -- write the tag for the sum type.
 
-   | TimeIt (PreExp loc ext dec) Ty Bool
+   | TimeIt EXP Ty Bool
     -- ^ The boolean being true indicates this TimeIt is really (iterate _)
     -- This iterate form is used for criterion-style benchmarking.
      
      -- Limited list handling:
-   | MapE  (Var,Ty, (PreExp loc ext dec)) (PreExp loc ext dec)
-   | FoldE { initial  :: (Var,Ty,(PreExp loc ext dec))
-           , iterator :: (Var,Ty,(PreExp loc ext dec))
-           , body     :: (PreExp loc ext dec) }
+   | MapE  (Var,Ty, EXP) EXP
+   | FoldE { initial  :: (Var,Ty,EXP)
+           , iterator :: (Var,Ty,EXP)
+           , body     :: EXP }
            
    ----------------------------------------
   | Ext ext  -- ^ Extension point for downstream language extensions.
