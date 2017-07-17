@@ -239,14 +239,23 @@ data UrTy a =
         | BoolTy
         | ProdTy [UrTy a]     -- ^ An N-ary tuple
         | SymDictTy (UrTy a)  -- ^ A map from SymTy to Ty
-        | PackedTy TyCon a    -- ^ No type arguments to TyCons for now.
-
---        | CursorTy ...
---        | PtrTy ...
-          
           -- ^ We allow built-in dictionaries from symbols to a value type.
+
+        | PackedTy TyCon a    -- ^ No type arguments to TyCons for now.  (No polymorphism.)
+          
         | ListTy (UrTy a) -- ^ These are not fully first class.  They are onlyae
                          -- allowed as the fields of data constructors.
+
+        ---------- These are not used initially ----------------
+        -- They could be added in a later IR instead:
+          
+--        | PtrTy Region (UrTy a) -- ^ A machine pointer to a complete value in memory.
+                                  -- This is decorated with the region it points into, which
+                                  -- may affect the memory layout.                      
+--        | CursorTy Region Modality -- ^ A cursor for reading or writing, which may point
+                                     -- to an unkwown type or to a fraction of a complete value.
+                                     -- It is a machine pointer that can point to any byte.
+
   deriving (Show, Read, Ord, Eq, Generic, NFData, Functor)
 
 

@@ -1,11 +1,11 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DeriveGeneric #-}
+-- {-# LANGUAGE DeriveAnyClass #-} -- Actually breaks Applicative SymM deriving!
 -- {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
--- {-# LANGUAGE DeriveAnyClass #-} -- Actually breaks Applicative SymM deriving!
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -24,7 +24,7 @@ module Packed.FirstOrder.Common
        , Var(..), fromVar, toVar, varAppend, SyM, gensym, genLetter, runSyM
        , cleanFunName
 
-       , LocVar, dummyLoc
+       , LocVar, dummyLoc, Region, Modality
        , Env2(..)
          
          -- * Runtime configuration
@@ -97,6 +97,26 @@ type TyCon   = String
 type LocVar = Var
 -- TODO: add start(r) form.
 
+-- | An abstract region identifier.  This is used inside type signatures and elsewhere.
+data Region = GlobR    -- ^ A global region with lifetime equal to the whole program.
+            | DynR Var -- ^ A dynamic region that may be created or destryed, identified
+                       --   by a region variable.
+  deriving (Read,Show,Eq,Ord, Generic)
+instance Out Region
+instance NFData Region where
+  rnf GlobR = ()
+  rnf (DynR v) = rnf v
+
+-- | The modality of locations and cursors: input/output, for reading
+-- and writing, respectively.
+data Modality = Input | Output
+  deriving (Read,Show,Eq,Ord, Generic)
+instance Out Modality
+instance NFData Modality where
+  rnf Input  = ()
+  rnf Output = ()
+
+                 
 -- | A designated not-really-there LocVar.  Filled in by a later pass.
 dummyLoc :: LocVar
 dummyLoc = "l_dummy"

@@ -89,16 +89,10 @@ data E2 loc dec =
 -- | L1 expressions extended with L2.  Shorthand for recursions above.
 type E2' l d = PreExp l (E2 l d) d
 
-type Region = Var
-
 -- | A location and region, together with modality.
 data LRM = LRM LocVar Region Modality
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 instance Out LRM
-
-data Modality = Input | Output
-  deriving (Read,Show,Eq,Ord, Generic, NFData)
-instance Out Modality
 
 
 -- TRASH
