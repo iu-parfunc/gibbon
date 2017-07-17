@@ -10,9 +10,6 @@ import Packed.FirstOrder.L1.Syntax as L1
 import qualified Data.Map as M
 import qualified Data.List as L
 
-genLocVar :: String -> SyM LocVar
-genLocVar s = gensym (toVar ("l"++s))
-
 
 -- FIXME: Naughty to use lists as maps.  Use something with O(N)
 -- lookup.  We should standardize on a fast symbol-map.
@@ -73,23 +70,16 @@ freshNames (L1.Prog defs funs main) =
               do e' <- freshExp vs e
                  -- Here we freshen locations:
                  mp' <- mapM (\(c,prs,ae) ->
-                              let (args,locs) = unzip prs in
-                              let [l] = L.nub locs in
-                              assert (l == dummyLoc) $ do
-                                locs' <- mapM (\_ -> genLocVar "") locs
+                              let (args,_) = unzip prs in
+                              do
                                 args' <- mapM gensym args
                                 let vs' = (zip args args') ++ vs
                                 ae' <- freshExp vs' ae
-                                return (c,zip args' locs',ae')) mp
+                                return (c, L.map (,()) args', ae')) mp
                  return $ L1.CaseE e' mp'
-          freshExp vs (L1.DataConE () c d es) =
+          freshExp vs (L1.DataConE () c es) =
               do es' <- mapM (freshExp vs) es
-                 case d of
-                   Nothing -> return ()
-                   Just x | x==dummyLoc -> return ()
-                          | otherwise -> error$ "freshExp: expects only dummyLoc on input forms, found: "++show d
-                 loc <- genLocVar ""
-                 return $ L1.DataConE () c (fmap (\_ -> loc) d) es'
+                 return $ L1.DataConE () c es'
           freshExp vs (L1.TimeIt e t b) =
               do e' <- freshExp vs e
                  return $ L1.TimeIt e' t b

@@ -83,7 +83,7 @@ inlineTrivExp _ddefs = go []
            mp' = map (\(c,args,ae) -> (c,args,go env ae)) mp
        in CaseE e' mp'
 
-      DataConE loc c lv es -> DataConE loc c lv $ map (go env) es
+      DataConE loc c es -> DataConE loc c $ map (go env) es
       TimeIt e t b -> TimeIt (go env e) t b
       MapE (v,t,e') e -> MapE (v,t,go env e') (go env e)
       FoldE (v1,t1,e1) (v2,t2,e2) e3 ->

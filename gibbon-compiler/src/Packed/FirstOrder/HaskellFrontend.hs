@@ -118,7 +118,7 @@ desugarExp e =
     case e of
       H.Var qname -> VarE <$> toVar <$> qname_to_str qname
 
-      Con qname -> DataConE () <$> qname_to_str qname <*> pure (Just dummyLoc) <*> pure []
+      Con qname -> DataConE () <$> qname_to_str qname <*> pure []
 
       H.Lit l   -> L1.LitE <$> lit_to_int l
 
@@ -130,9 +130,9 @@ desugarExp e =
             L1.ProjE 1 <$> desugarExp e2
           (VarE f) ->
             L1.AppE f [] <$> desugarExp e2
-          (DataConE () c ml as) -> do
+          (DataConE () c as) -> do
             e2' <- desugarExp e2
-            return (L1.DataConE () c ml (as ++ [e2']))
+            return (L1.DataConE () c (as ++ [e2']))
           (L1.AppE f [] l) -> do
             e2' <- desugarExp e2
             return (L1.AppE f [] (MkProdE [l,e2']))
@@ -153,7 +153,7 @@ desugarExp e =
 
       H.Case scrt alts -> do
         scrt' <- desugarExp scrt
-        CaseE scrt' <$> mapM desugarAlt alts
+        CaseE scrt' <$> mapM (desugarAlt ()) alts
 
       H.Paren e0 -> do
         e' <- desugarExp e0
@@ -197,22 +197,22 @@ generateBind not_pat_bind _ =
 
 --------------------------------------------------------------------------------
 
-desugarAlt :: H.Alt -> Ds (DataCon, [(Var,LocVar)], L1.Exp)
+desugarAlt :: l -> H.Alt -> Ds (DataCon, [(Var,l)], L1.Exp)
 
-desugarAlt (H.Alt _ (PApp qname ps) (UnGuardedRhs rhs) Nothing) = do
+desugarAlt dummyL (H.Alt _ (PApp qname ps) (UnGuardedRhs rhs) Nothing) = do
     con_name <- qname_to_str qname
     ps' <- forM ps $ \case PVar v -> return $ (toVar . name_to_str) v
                            _      -> err "Non-variable pattern in case."
     rhs' <- desugarExp rhs
-    return (con_name, [(v,dummyLoc) | v <- ps'], rhs')
+    return (con_name, [(v,dummyL) | v <- ps'], rhs')
 
-desugarAlt (H.Alt _ _ GuardedRhss{} _) =
+desugarAlt _ (H.Alt _ _ GuardedRhss{} _) =
     err "Guarded RHS not supported in case."
 
-desugarAlt (H.Alt _ _ _ Just{}) =
+desugarAlt _ (H.Alt _ _ _ Just{}) =
     err "Where clauses not allowed in case."
 
-desugarAlt (H.Alt _ pat _ _) =
+desugarAlt _ (H.Alt _ pat _ _) =
     err ("Unsupported pattern in case: " ++ show pat)
 
 -------------------------------------------------------------------------------

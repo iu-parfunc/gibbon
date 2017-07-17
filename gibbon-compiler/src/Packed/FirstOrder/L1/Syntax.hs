@@ -29,7 +29,7 @@ module Packed.FirstOrder.L1.Syntax
     , voidTy, hasPacked, sizeOf
 
     -- * Expression and Prog helpers
-    , freeVars, subst, substE, mapExprs, mapExt, getFunTy
+    , freeVars, subst, substE, mapExprs, mapExt, mapLocs, getFunTy
 
       -- * Trivial expressions
     , assertTriv, assertTrivs, isTriv, hasTimeIt
@@ -93,35 +93,35 @@ data PreExp loc ext dec =
      VarE Var              -- ^ Variable reference
    | LitE Int              -- ^ Numeric literal
    | LitSymE Var           -- ^ A quoted symbol literal.
-   | AppE Var [LocVar] (PreExp loc ext dec)
+   | AppE Var [loc] (PreExp loc ext dec)
      -- ^ Apply a top-level / first-order function.  Instantiate
-     -- its type schema by providing location-variable arguments.
+     -- its type schema by providing location-variable arguments,
+     -- if applicable.
    | PrimAppE Prim [(PreExp loc ext dec)]
-   | LetE (Var,[LocVar],dec, (PreExp loc ext dec)) -- binding
-          (PreExp loc ext dec)                 -- body
+     -- ^ Primitive applications don't manipulate locations.
+   | LetE (Var,[loc],dec, (PreExp loc ext dec)) -- binding
+          (PreExp loc ext dec)                  -- body
     -- ^ One binding at a time.  Allows binding a list of
     -- implicit location return vales from the RHS, plus a single "real" value.
    | IfE (PreExp loc ext dec) (PreExp loc ext dec) (PreExp loc ext dec)
 
-   | MkProdE [(PreExp loc ext dec)]     -- ^ Tuple construction
+   -- TODO: eventually tuples will just be a wired-in datatype.
+   | MkProdE   [(PreExp loc ext dec)] -- ^ Tuple construction
    | ProjE Int (PreExp loc ext dec)   -- ^ Tuple projection.
 
---   | CaseE (PreExp loc ext dec) [(DataCon, [Var], (PreExp loc ext dec))]
-     -- ^ Case on pointer-based, non-packed data.
+   | CaseE (PreExp loc ext dec) [(DataCon, [(Var,loc)], PreExp loc ext dec)]
+     -- ^ Case on a datatype.  Each bound, unpacked variable lives at
+     -- a fixed, read-only location.  
 
-   | CaseE (PreExp loc ext dec) [(DataCon, [(Var,LocVar)], (PreExp loc ext dec))]
-     -- ^ Case on a PACKED datatype.  Each bound variable lives at a *fixed* location.
-     -- TODO: Rename to CasePackedE.
+   | DataConE loc DataCon [(PreExp loc ext dec)]
+     -- ^ Construct data that may unpack some fields.  The location
+     -- argument, if applicable, is the byte location at which to
+     -- write the tag for the sum type.
 
-   | DataConE loc DataCon (Maybe LocVar) [(PreExp loc ext dec)]
-     -- ^ Construct data that may be either Packed or unpacked.
-     -- If Packed: the first byte at the given abstract location.
-     -- If Unpacked: Nothing for LocVar, data is allocated on a GC'd heap (UNFINISHED)
-
-    -- TODO: Rename DataConE => DataCon
-
-   | TimeIt (PreExp loc ext dec) Ty Bool -- The boolean indicates this TimeIt is really (iterate _)
-
+   | TimeIt (PreExp loc ext dec) Ty Bool
+    -- ^ The boolean being true indicates this TimeIt is really (iterate _)
+    -- This iterate form is used for criterion-style benchmarking.
+     
      -- Limited list handling:
    | MapE  (Var,Ty, (PreExp loc ext dec)) (PreExp loc ext dec)
    | FoldE { initial  :: (Var,Ty,(PreExp loc ext dec))
@@ -134,29 +134,43 @@ data PreExp loc ext dec =
   deriving (Read,Show,Eq,Ord, Generic, NFData, Functor)
 
 -- | Apply a function to the extension points only.
-mapExt :: (a -> b) -> PreExp l a d -> PreExp l b d
-mapExt fn e0 = go e0
+mapExt :: (e1 -> e2) -> PreExp l e1 d -> PreExp l e2 d
+mapExt fn = visitExp id fn id
+
+-- | Apply a function to the locations, extensions, and
+-- binder-decorations, respectively.
+visitExp :: forall l1 l2 e1 e2 d1 d2 .
+            (l1 -> l2) -> (e1 -> e2) -> (d1 -> d2) ->
+            PreExp l1 e1 d1 -> PreExp l2 e2 d2          
+visitExp fl fe fd = go
  where
+   go :: PreExp l1 e1 d1 -> PreExp l2 e2 d2
    go ex =
      case ex of
-       Ext  x    -> Ext (fn x)
+       Ext  x    -> Ext (fe x)
        VarE v    -> VarE v
        LitE n    -> LitE n
        LitSymE x -> LitSymE x
-       AppE v l e -> AppE v l (go e)
+       AppE v l e -> AppE v (L.map fl l) (go e)
        PrimAppE p ls   -> PrimAppE p $ L.map go ls
-       LetE (v,l,t,rhs) bod -> LetE (v,l,t,go rhs) (go bod)
+       LetE (v,l,t,rhs) bod -> LetE (v,L.map fl l,fd t,go rhs) (go bod)
        ProjE i e  -> ProjE i (go e)
-       CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
+       CaseE e ls -> CaseE (go e)
+                     [ (c, [ (v,fl l) | (v,l) <- vs ],go er)
+                     | (c,vs,er) <- ls ]
        MkProdE ls     -> MkProdE $ L.map go ls
-       DataConE loc k l ls -> DataConE loc k l $ L.map go ls
+       DataConE loc k ls -> DataConE (fl loc) k $ L.map go ls
        TimeIt e t b -> TimeIt (go e) t b
        IfE a b c -> IfE (go a) (go b) (go c)
        MapE (v,t,rhs) bod -> MapE (v,t, go rhs) (go bod)
        FoldE (v1,t1,r1) (v2,t2,r2) bod ->
          FoldE (v1,t1,go r1) (v2,t2,go r2) (go bod)
 
-         
+-- | Apply a function to the locations only.
+mapLocs :: (l1 -> l2) -> PreExp l1 e d -> PreExp l2 e d
+mapLocs fn = visitExp fn id id
+
+               
 -- | Some of these primitives are (temporarily) tagged directly with
 -- their return types.
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
@@ -288,7 +302,7 @@ instance FreeVars e => FreeVars (PreExp l e d) where
       CaseE e ls -> S.union (gFreeVars e)
                     (S.unions $ L.map (\(_, _, ee) -> gFreeVars ee) ls)
       MkProdE ls       -> S.unions $ L.map gFreeVars ls
-      DataConE _ _ _ ls -> S.unions $ L.map gFreeVars ls
+      DataConE _ _ ls -> S.unions $ L.map gFreeVars ls
       TimeIt e _ _ -> gFreeVars e
       MapE (v,_t,rhs) bod -> gFreeVars rhs `S.union`
                              S.delete v (gFreeVars bod)
@@ -319,7 +333,7 @@ subst old new ex =
                                           then (c,vs,er)
                                           else (c,vs,go er)
     MkProdE ls     -> MkProdE $ L.map go ls
-    DataConE loc k l ls -> DataConE loc k l $ L.map go ls
+    DataConE loc k ls -> DataConE loc k $ L.map go ls
     TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE (go a) (go b) (go c)
     MapE (v,t,rhs) bod | v == old  -> MapE (v,t, rhs)    (go bod)
@@ -349,7 +363,7 @@ substE old new ex =
     ProjE i e  -> ProjE i (go e)
     CaseE e ls -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
     MkProdE ls     -> MkProdE $ L.map go ls
-    DataConE loc k l ls -> DataConE loc k l $ L.map go ls
+    DataConE loc k ls -> DataConE loc k $ L.map go ls
     TimeIt e t b -> TimeIt (go e) t b
     IfE a b c -> IfE (go a) (go b) (go c)
     MapE (v,t,rhs) bod | VarE v == old  -> MapE (v,t, rhs)    (go bod)
@@ -454,7 +468,7 @@ mkProdTy [t] = t
 mkProdTy ls = ProdTy ls
 
 -- | Make a nested series of lets.
-mkLets :: [(Var,[LocVar],Ty,Exp)] -> Exp -> Exp
+mkLets :: [(Var,[l],Ty,PreExp l () Ty)] -> PreExp l () Ty -> PreExp l () Ty
 mkLets [] bod = bod
 mkLets (b:bs) bod = LetE b (mkLets bs bod)
 
@@ -474,14 +488,15 @@ add1Prog = Prog (fromListDD [DDef (toVar "Tree")
                 Nothing 
 
 exadd1 :: FunDef Ty Exp
-exadd1 = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy exadd1Bod
+exadd1 = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy
+            (mapLocs (\_ -> ()) exadd1Bod)
 
-exadd1Bod :: Exp
+exadd1Bod :: PreExp LocVar () Ty
 exadd1Bod = 
     CaseE (VarE (toVar "tr")) $
       [ ("Leaf", [("n","l0")], PrimAppE AddP [VarE (toVar "n"), LitE 1])
       , ("Node", [("x","l1"),("y","l2")],
-         DataConE () "Node" (Just "l0")
+         DataConE "l0" "Node" 
           [ AppE (toVar "add1") [] (VarE $ toVar "x")
           , AppE (toVar "add1") [] (VarE $ toVar "y")])
       ]

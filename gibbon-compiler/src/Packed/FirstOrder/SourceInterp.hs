@@ -6,7 +6,6 @@
 
 -- | Interpreter for the source language (L1)
 --
--- UNFINISHED / PLACEHOLDER
 
 module Packed.FirstOrder.SourceInterp
     ( execAndPrint, interpProg
@@ -350,7 +349,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
 
             (MkProdE ls) -> VProd <$> mapM (go env) ls
             -- TODO: Should check this against the ddefs.
-            (DataConE _ k _ ls) -> do
+            (DataConE _ k ls) -> do
                 args <- mapM (go env) ls
                 case args of
                 -- Constructors are overloaded.  They have different behavior depending on

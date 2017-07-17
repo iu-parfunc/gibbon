@@ -370,7 +370,7 @@ t5p = Prog {ddefs = M.fromList [("Expr",
                                                  funbod = VarE "x0"})],
                mainExp = Just ((LetE ("fltAp1",[],
                                       PackedTy "Foo" "l",
-                                      DataConE () "A" (Just "l0") [LitE 1])
+                                      DataConE () "A" [LitE 1])
                                 ((AppE "id" [] (VarE "fltAp1")))),
                                PackedTy "Foo" ())
              }

@@ -51,7 +51,7 @@ flatten prg@(L1.Prog defs funs main) = do
 -- to remember that L1 programs are first order.
 
 
-type Binds = (Var,[LocVar],L1.Ty,Exp)
+type Binds = (Var,[()],L1.Ty,Exp)
 
 flattenExp :: DDefs L1.Ty -> Env2 L1.Ty -> L1.Exp -> SyM L1.Exp
 flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
@@ -95,7 +95,7 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
                                   return (b1, AppE f lvs arg')
        (PrimAppE p ls)  -> gols (PrimAppE p)  ls "Prm"
        (MkProdE ls)     -> gols  MkProdE      ls "Prd"
-       (DataConE loc k lv ls) -> gols (DataConE loc k lv) ls "Pkd"
+       (DataConE loc k ls) -> gols (DataConE loc k) ls "Pkd"
 
        (LetE (v1,lv1,t1, (LetE (v2,lv2,t2,rhs2) rhs1)) bod) ->
          go $ LetE (v2,lv2,t2,rhs2) $ LetE (v1,lv1,t1,rhs1) bod
@@ -215,12 +215,12 @@ _flattenExpOld defs env2 = fExp (vEnv env2)
 
 -- | Helper function that lifts out Lets on the RHS of other Lets.
 --   Absolutely requires unique names.
-mkLetE :: (Var, [LocVar], Ty, Exp) -> Exp -> Exp
+mkLetE :: (Var, [()], Ty, Exp) -> Exp -> Exp
 mkLetE (vr,lvs,ty,(L1.LetE bnd e)) bod = mkLetE bnd $ mkLetE (vr,lvs,ty,e) bod
 mkLetE bnd bod = L1.LetE bnd bod
 
 -- | Alternative version of L1.mkLets that also flattens
-flatLets :: [(Var,[LocVar],Ty,Exp)] -> Exp -> Exp
+flatLets :: [(Var,[()],Ty,Exp)] -> Exp -> Exp
 flatLets [] bod = bod
 flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
 
@@ -271,7 +271,7 @@ typeExp (dd,env2) env (L1.CaseE _e mp) =
         args' = map fst args
     in typeExp (dd,env2) (M.fromList (zip args' (lookupDataCon dd c)) `M.union` env) e
 
-typeExp (dd,_) _env (L1.DataConE _ c _ _es) = L1.Packed (getTyOfDataCon dd c)
+typeExp (dd,_) _env (L1.DataConE _ c _es) = L1.Packed (getTyOfDataCon dd c)
 
 typeExp (dd,env2) env (L1.TimeIt e _ _) = typeExp (dd,env2) env e
 typeExp (dd,env2) env (L1.MapE _ e)     = typeExp (dd,env2) env e

@@ -106,8 +106,8 @@ tagDataCons ddefs = go allCons
        Ext () -> Ext ()
        AppE v _ (MkProdE ls)
                   -- FIXME: check the type to determine if this is packed/unpacked:
-                  | S.member v cons -> DataConE () (fromVar v) (Just dummyLoc) (L.map (go cons) ls)
-       AppE v l e | S.member v cons -> DataConE () (fromVar v) (Just dummyLoc) [go cons e]
+                  | S.member v cons -> DataConE () (fromVar v) (L.map (go cons) ls)
+       AppE v l e | S.member v cons -> DataConE () (fromVar v) [go cons e]
                   | otherwise       -> AppE v l (go cons e)
        LetE (v,l,t,rhs) bod ->
          let go' = if S.member v cons
@@ -122,7 +122,7 @@ tagDataCons ddefs = go allCons
        ProjE i e  -> ProjE i (go cons e)
        CaseE e ls -> CaseE (go cons e) (L.map (\(c,vs,er) -> (c,vs,go cons er)) ls)
        MkProdE ls     -> MkProdE $ L.map (go cons) ls
-       DataConE loc k ml ls -> DataConE loc k ml $ L.map (go cons) ls
+       DataConE loc k ls -> DataConE loc k $ L.map (go cons) ls
        TimeIt e t b -> TimeIt (go cons e) t b
        IfE a b c -> IfE (go cons a) (go cons b) (go cons c)
 
@@ -345,7 +345,7 @@ exp se =
 
 
 -- | One case of a case expression
-docase :: Sexp -> (DataCon,[(Var,LocVar)],Exp)
+docase :: Sexp -> (DataCon,[(Var,())],Exp)
 docase s =
   case s of
     RSList [ RSList (A con : args)
@@ -353,9 +353,9 @@ docase s =
       -> (textToDataCon con, L.map f args, exp rhs)
     _ -> error$ "bad clause in case expression\n  "++prnt s
  where
-   f x  = (getSym x, dummyLoc)
+   f x  = (getSym x, ())
 
-letbind :: Sexp -> (Var,[LocVar],Ty,Exp)
+letbind :: Sexp -> (Var,[l],Ty,Exp)
 letbind s =
   case s of
    RSList [A vr, A ":",
