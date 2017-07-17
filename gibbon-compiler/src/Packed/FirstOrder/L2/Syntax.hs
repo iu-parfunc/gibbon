@@ -632,7 +632,7 @@ pattern AddCursor v i <- AppE (Var "AddCursor") [] (MkProdE [(VarE v), (LitE i)]
 
 
 -- | A predicate to check if the form is part of the extended "L2.5" language.
-isExtendedPattern :: L1.Exp -> Bool
+isExtendedPattern :: PreExp l e d -> Bool
 isExtendedPattern e =
   case e of
     NewBuffer{}    -> True

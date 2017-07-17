@@ -24,10 +24,11 @@ library
                   Packed.FirstOrder.Compiler
                   Packed.FirstOrder.HaskellFrontend
                   Packed.FirstOrder.TargetInterp
-                  Packed.FirstOrder.SourceInterp
                   Packed.FirstOrder.L1.Syntax
                   Packed.FirstOrder.L2.Syntax
                   Packed.FirstOrder.L3_Target
+                  Packed.FirstOrder.L1.Interp
+                  Packed.FirstOrder.L2.Interp                  
                   Packed.FirstOrder.SExpFrontend
                   Packed.FirstOrder.Passes.Freshen
                   Packed.FirstOrder.Passes.Flatten

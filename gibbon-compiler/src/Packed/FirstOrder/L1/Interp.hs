@@ -7,7 +7,7 @@
 -- | Interpreter for the source language (L1)
 --
 
-module Packed.FirstOrder.SourceInterp
+module Packed.FirstOrder.L1.Interp
     ( execAndPrint, interpProg
     , Value(..)
     , main
@@ -29,9 +29,8 @@ import           GHC.Generics
 import           GHC.Stack (errorWithStackTrace)
 import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.GenericOps(Interp, interpNoLogs, interpWithStdout)
-import           Packed.FirstOrder.L1.Syntax   as L1
+import           Packed.FirstOrder.L1.Syntax as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
-import           Packed.FirstOrder.L2.Syntax (pattern NamedVal)
 import           System.Clock
 import           System.IO.Unsafe (unsafePerformIO)
 import           Text.PrettyPrint.GenericPretty
@@ -59,13 +58,6 @@ instance Interp Prog where
    (v,logs) <- interpProg rc p
    return (show v, lines (B.unpack logs))
 
--- | HACK: we don't have a type-level distinction for when cursors are
--- allowed in the AST.  We use L2 as a proxy for this, allowing
--- cursors whenver executing L2, even though this is a bit premature
--- in the compiler pipeline.
-instance Interp L2.Prog where
-  interpNoLogs rc p2     = interpNoLogs     rc{rcCursors=True} (L2.revertToL1 p2)
-  interpWithStdout rc p2 = interpWithStdout rc{rcCursors=True} (L2.revertToL1 p2)
 
 -- Stores and buffers:
 ------------------------------------------------------------
@@ -224,7 +216,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
      ((ErrorP msg _ty),[]) -> error msg
      (SizeParam,[]) -> VInt (rcSize rc)
      (ReadPackedFile file _ ty,[]) ->
-         error $ "SourceInterp: unfinished, need to read a packed file: "++show (file,ty)
+         error $ "L1.Interp: unfinished, need to read a packed file: "++show (file,ty)
      oth -> error $ "unhandled prim or wrong number of arguments: "++show oth
 
   interp :: Exp -> WriterT Log (StateT Store IO) Value
@@ -236,7 +228,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
       go :: ValEnv -> L1.Exp -> WriterT Log (StateT Store IO) Value
       go env x0 =
           case x0 of
-            Ext () -> error "SourceInterp: Should not interpret empty extension point."
+            Ext () -> error "L1.Interp: Should not interpret empty extension point."
                       -- ^ Or... we could give this a void/empty-tuple value.
 
             LitE c         -> return $ VInt c
@@ -302,19 +294,19 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                                  ++show (VCursor idx off)
               case S.viewl (S.drop off buf) of
                 SerInt n :< _ -> return $ VProd [VInt n, VCursor idx (off+1)]
-                S.EmptyL      -> errorWithStackTrace "SourceInterp: ReadInt on empty cursor/buffer."
+                S.EmptyL      -> errorWithStackTrace "L1.Interp: ReadInt on empty cursor/buffer."
                 oth :< _      ->
-                 error $"SourceInterp: ReadInt expected Int in buffer, found: "++show oth
+                 error $"L1.Interp: ReadInt expected Int in buffer, found: "++show oth
 
             p | L2.isExtendedPattern p ->
-               errorWithStackTrace$ "SourceInterp: Unhandled extended L2 pattern: "++ndoc p
+               errorWithStackTrace$ "L1.Interp: Unhandled extended L2 pattern: "++ndoc p
                                   
             AppE f _ b ->  do rand <- go env b
                               case M.lookup f fundefs of
                                Just FunDef{funArg=(vr,_),funBody} -> go (M.insert vr rand env) funBody
-                               Nothing -> errorWithStackTrace $ "SourceInterp: unbound function in application: "++ndoc x0
+                               Nothing -> errorWithStackTrace $ "L1.Interp: unbound function in application: "++ndoc x0
 
-            (CaseE _ []) -> error$ "SourceInterp: CaseE with empty alternatives list: "++ndoc x0
+            (CaseE _ []) -> error$ "L1.Interp: CaseE with empty alternatives list: "++ndoc x0
 
             (CaseE x1 alts@((sometag,_,_):_)) -> do
                    v <- go env x1
@@ -323,7 +315,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                         do Store store <- get
                            let Buffer seq1 = store IM.! idx
                            case S.viewl (S.drop off seq1) of
-                             S.EmptyL -> error "SourceInterp: case scrutinize on empty/out-of-bounds cursor."
+                             S.EmptyL -> error "L1.Interp: case scrutinize on empty/out-of-bounds cursor."
                              SerTag tg _ :< _rst -> do
                                let tycon = getTyOfDataCon ddefs sometag
                                    datacon = (getConOrdering ddefs tycon) !! fromIntegral tg
@@ -331,17 +323,17 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                    -- At this ^ point, we assume that a pattern match against a cursor binds ONE value.
                                let env' = M.insert curname (VCursor idx (off+1)) env
                                go env' rhs
-                             oth :< _ -> error $ "SourceInterp: expected to read tag from scrutinee cursor, found: "++show oth
+                             oth :< _ -> error $ "L1.Interp: expected to read tag from scrutinee cursor, found: "++show oth
 
                      VPacked k ls2 ->
                          let vs = L.map fst prs
                              (_,prs,rhs) = lookup3 k alts
                              env' = M.union (M.fromList (zip vs ls2)) env
                          in go env' rhs
-                     _ -> error$ "SourceInterp: type error, expected data constructor, got: "++ndoc v++
+                     _ -> error$ "L1.Interp: type error, expected data constructor, got: "++ndoc v++
                                  "\nWhen evaluating scrutinee of case expression: "++ndoc x1
 
-            NamedVal _ _ bd -> go env bd
+            L2.NamedVal _ _ bd -> go env bd
 
             (LetE (v,_,_ty,rhs) bod) -> do
               rhs' <- go env rhs
@@ -389,8 +381,8 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                           else go env c
                              oth -> error$ "interp: expected bool, got: "++show oth
 
-            MapE _ _bod    -> error "SourceInterp: finish MapE"
-            FoldE _ _ _bod -> error "SourceInterp: finish FoldE"
+            MapE _ _bod    -> error "L1.Interp: finish MapE"
+            FoldE _ _ _bod -> error "L1.Interp: finish FoldE"
 
 
 

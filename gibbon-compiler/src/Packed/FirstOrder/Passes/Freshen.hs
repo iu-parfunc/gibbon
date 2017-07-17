@@ -14,7 +14,7 @@ import qualified Data.List as L
 -- FIXME: Naughty to use lists as maps.  Use something with O(N)
 -- lookup.  We should standardize on a fast symbol-map.
 
--- | Rename all local variables.  Rename all dummy locations.
+-- | Rename all local variables.
 freshNames :: L1.Prog -> SyM L1.Prog
 freshNames (L1.Prog defs funs main) =
     do main' <- case main of

@@ -27,7 +27,7 @@ import qualified Packed.FirstOrder.L1.Syntax   as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
 import qualified Packed.FirstOrder.L3_Target   as L3
 import qualified Packed.FirstOrder.SExpFrontend as SExp
-import qualified Packed.FirstOrder.SourceInterp as SI
+import qualified Packed.FirstOrder.L1.Interp as SI
 import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
 import           System.Directory
 import           System.Environment
@@ -311,7 +311,7 @@ runL1 :: L1.Prog -> IO ()
 runL1 l1 = do
     -- FIXME: no command line option atm.  Just env vars.
     runConf <- getRunConfig []
-    dbgPrintLn 2 $ "Running the following through SourceInterp:\n "++sepline ++ "\n" ++ sdoc l1
+    dbgPrintLn 2 $ "Running the following through L1.Interp:\n "++sepline ++ "\n" ++ sdoc l1
     SI.execAndPrint runConf l1
     exitSuccess
 
@@ -375,7 +375,8 @@ data InProgress = L1 L1.Prog
                 | L2 L2.Prog
                 | L3 L3.Prog
 
--- |
+-- | The main compiler pipeline, which we permit to return programs in
+-- /various/ states of compilation.
 passes :: Config -> L1.Prog -> StateT CompileState IO InProgress
 passes config@Config{mode,packed} l1 = do
       l1 <- passE config "freshNames" freshNames l1
@@ -444,7 +445,7 @@ passes config@Config{mode,packed} l1 = do
 -}
 
 {-
--- | Repurposing L1 passes for L2:
+-- | HACKY!! Repurposing L1 passes for L2:
 --
 flatten2 :: L1.Prog -> L2.Prog -> SyM L2.Prog
 flatten2 l1 = L2.mapMExprs (flattenExp (L1.ddefs l1))

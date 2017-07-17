@@ -427,7 +427,8 @@ assertTrivs :: [Exp] -> a -> a
 assertTrivs [] = id
 assertTrivs (a:b) = assertTriv a . assertTrivs b
 
-isTriv :: Exp -> Bool
+-- | Is an expression considered trivial (duplicatable by the compiler)?
+isTriv :: (Show e, Show l, Show d) => PreExp l e d -> Bool
 isTriv e =
    case e of
      VarE _ -> True
@@ -436,22 +437,33 @@ isTriv e =
      -- These should really turn to literalS:
      PrimAppE MkTrue  [] -> True
      PrimAppE MkFalse [] -> True
+     PrimAppE _ _        -> False
      ----------------- POLICY DECISION ---------------
-     -- Leave these as trivial for now:
+     -- Leave these tuple ops as trivial for now:
      ProjE _ et | isTriv et -> True
+                | otherwise -> False
      MkProdE ls -> all isTriv ls
-     _  -> False
+                   
+     Ext _ -> error $ "isTriv, got extension point, cannot handle: "++show e
+     IfE{}   -> False
+     CaseE{} -> False
+     LetE {} -> False
+     MapE {} -> False
+     FoldE {} -> False
+     AppE  {}  -> False
+     TimeIt {}  -> False
+     DataConE{} -> False
 
 -- | Does the expression contain a TimeIt form?
 hasTimeIt :: Exp -> Bool
 hasTimeIt rhs =
     case rhs of
-      TimeIt _ _ _  -> True
+      TimeIt _ _ _ -> True
       DataConE{}   -> False
-      VarE _        -> False
-      LitE _        -> False
-      LitSymE _     -> False
-      AppE _ _ _    -> False
+      VarE _       -> False
+      LitE _       -> False
+      LitSymE _    -> False
+      AppE _ _ _   -> False
       PrimAppE _ _ -> False
       ProjE _ e    -> hasTimeIt e
       MkProdE ls   -> any hasTimeIt ls
