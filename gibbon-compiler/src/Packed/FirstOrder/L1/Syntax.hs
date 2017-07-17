@@ -249,12 +249,12 @@ data UrTy a =
         ---------- These are not used initially ----------------
         -- They could be added in a later IR instead:
           
---        | PtrTy Region (UrTy a) -- ^ A machine pointer to a complete value in memory.
-                                  -- This is decorated with the region it points into, which
-                                  -- may affect the memory layout.                      
---        | CursorTy Region Modality -- ^ A cursor for reading or writing, which may point
-                                     -- to an unkwown type or to a fraction of a complete value.
-                                     -- It is a machine pointer that can point to any byte.
+        | PtrTy LRM (UrTy a) -- ^ A machine pointer to a complete value in memory.
+                             -- This is decorated with the region it points into, which
+                             -- may affect the memory layout.                      
+        | CursorTy LRM -- ^ A cursor for reading or writing, which may point
+                       -- to an unkwown type or to a fraction of a complete value.
+                       -- It is a machine pointer that can point to any byte.
 
   deriving (Show, Read, Ord, Eq, Generic, NFData, Functor)
 

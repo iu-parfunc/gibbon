@@ -89,11 +89,6 @@ data E2 loc dec =
 -- | L1 expressions extended with L2.  Shorthand for recursions above.
 type E2' l d = PreExp l (E2 l d) d
 
--- | A location and region, together with modality.
-data LRM = LRM LocVar Region Modality
-  deriving (Read,Show,Eq,Ord, Generic, NFData)
-instance Out LRM
-
 
 -- TRASH
 ------------------------------------
@@ -350,9 +345,10 @@ unknownCursor = toVar "UNKNOWN_CURSOR_VAL"
 cursorTy :: Ty
 cursorTy = PackedTy "CURSOR_TY" (toVar "")
 
-mkCursorTy :: a -> UrTy a
-mkCursorTy = PackedTy "CURSOR_TY"
-
+mkCursorTy :: LocVar -> UrTy LocVar
+mkCursorTy v = CursorTy (LRM v GlobR Input)
+{-# DEPRECATED mkCursorTy "This is transitional" #-}
+             
 isCursorTy :: UrTy a -> Bool
 isCursorTy (PackedTy "CURSOR_TY" _) = True
 isCursorTy _ = False
@@ -455,7 +451,7 @@ cursorizeArrty3 arr@(ArrowTy inT ef ouT) =
     else ArrowTy (cursorizeTy3 inT) ef ouT
 
 -- | The non-arrow counterpart to `cursorizeArrTy3`
-cursorizeTy3 :: UrTy a -> UrTy a
+cursorizeTy3 :: Ty2 -> Ty2
 cursorizeTy3  = mapPacked (\ _k l -> mkCursorTy l)
 
 
@@ -630,8 +626,6 @@ pattern WriteInt v e <- AppE (Var "WriteInt") [] (MkProdE [VarE v, e])
 pattern ReadInt v <- AppE (Var "ReadInt") [] (VarE v)
   where ReadInt v = AppE (toVar "ReadInt") [] (VarE v)
 
-pattern CursorTy l = PackedTy "CURSOR_TY" l
-
 -- | Add a constant offset to a cursor variable.
 pattern AddCursor v i <- AppE (Var "AddCursor") [] (MkProdE [(VarE v), (LitE i)])
   where AddCursor v i = AppE (toVar "AddCursor") [] (MkProdE [(VarE v), (LitE i)])
@@ -652,6 +646,9 @@ isExtendedPattern e =
 -- Initial type environments
 --------------------------------------------------------------------------------
 
+dummyCursorTy :: L1.Ty
+dummyCursorTy = CursorTy dummyLRM
+
 -- | Return type for a primitive operation.
 primRetTy :: Prim -> L1.Ty
 primRetTy p =
@@ -664,7 +661,7 @@ primRetTy p =
     EqIntP  -> BoolTy
     MkTrue  -> BoolTy
     MkFalse -> BoolTy
-    MkNullCursor -> CursorTy ()
+    MkNullCursor -> dummyCursorTy
     SizeParam -> IntTy
     DictHasKeyP _ -> BoolTy
     DictEmptyP ty -> SymDictTy ty
@@ -674,6 +671,7 @@ primRetTy p =
     ReadPackedFile _ _ ty -> ty
 
 
+                             
 -- | A type environment listing the types of built-in functions.
 --
 --   Using this table represents a policy decision.  Specifically,
@@ -684,11 +682,11 @@ primRetTy p =
 --
 builtinTEnv :: M.Map Var (ArrowTy L1.Ty)
 builtinTEnv = M.fromList
-  [ (toVar "NewBuffer",    ArrowTy voidTy S.empty (CursorTy ()))
-  , (toVar "ScopedBuffer", ArrowTy voidTy S.empty (CursorTy ()))
-  , (toVar "ReadInt",      ArrowTy (CursorTy ()) S.empty (ProdTy [IntTy, CursorTy ()]))
-  , (toVar "WriteInt",     ArrowTy (ProdTy [CursorTy (), IntTy]) S.empty (CursorTy ()))
-  , (toVar "AddCursor",    ArrowTy (ProdTy [CursorTy (), IntTy]) S.empty (CursorTy ()))
+  [ (toVar "NewBuffer",    ArrowTy voidTy S.empty dummyCursorTy)
+  , (toVar "ScopedBuffer", ArrowTy voidTy S.empty dummyCursorTy)
+  , (toVar "ReadInt",      ArrowTy dummyCursorTy S.empty (ProdTy [IntTy, dummyCursorTy]))
+  , (toVar "WriteInt",     ArrowTy (ProdTy [dummyCursorTy, IntTy]) S.empty dummyCursorTy)
+  , (toVar "AddCursor",    ArrowTy (ProdTy [dummyCursorTy, IntTy]) S.empty dummyCursorTy)
   -- Note: ReadPackedFile is a builtin/primitive.  It is polymorphic,
   -- which currently doesn't allow us to model it as a function like
   -- this [2017.01.08].

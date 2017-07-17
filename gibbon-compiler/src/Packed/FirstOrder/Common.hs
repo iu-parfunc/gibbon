@@ -24,7 +24,7 @@ module Packed.FirstOrder.Common
        , Var(..), fromVar, toVar, varAppend, SyM, gensym, genLetter, runSyM
        , cleanFunName
 
-       , LocVar, dummyLoc, Region, Modality
+       , LocVar, Region(..), Modality(..), LRM(..), dummyLRM
        , Env2(..)
          
          -- * Runtime configuration
@@ -116,11 +116,18 @@ instance NFData Modality where
   rnf Input  = ()
   rnf Output = ()
 
-                 
--- | A designated not-really-there LocVar.  Filled in by a later pass.
-dummyLoc :: LocVar
-dummyLoc = "l_dummy"
-    
+-- | A location and region, together with modality.
+data LRM = LRM LocVar Region Modality
+  deriving (Read,Show,Eq,Ord, Generic)
+instance Out LRM
+instance NFData LRM where
+  rnf (LRM a b c)  = rnf a `seq` rnf b `seq` rnf c
+
+-- | A designated doesn't-really-exist-anywhere location.
+dummyLRM :: LRM
+dummyLRM = LRM "l_dummy" GlobR Input
+                     
+-- | String concatenation on variables.    
 varAppend :: Var -> Var -> Var
 varAppend x y = toVar (fromVar x ++ fromVar y)
 
