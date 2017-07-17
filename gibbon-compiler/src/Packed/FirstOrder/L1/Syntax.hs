@@ -60,7 +60,7 @@ import Control.DeepSeq (NFData)
 data Prog = Prog { ddefs    :: DDefs Ty
                  , fundefs  :: FunDefs Ty Exp
                  , mainExp  :: Maybe Exp
-                 , constraints :: [Constraint]
+--                 , constraints :: [Constraint]
                  }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
@@ -478,7 +478,7 @@ add1Prog = Prog (fromListDD [DDef (toVar "Tree")
                               , ("Node",[(False,Packed "Tree")
                                         ,(False,Packed "Tree")])]])
                 (M.fromList [(toVar "add1",exadd1)])
-                Nothing []
+                Nothing 
 
 exadd1 :: FunDef Ty Exp
 exadd1 = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy exadd1Bod

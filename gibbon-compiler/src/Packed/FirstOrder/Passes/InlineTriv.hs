@@ -15,8 +15,8 @@ import GHC.Stack (errorWithStackTrace)
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
 inlineTriv :: Prog -> Prog
-inlineTriv (Prog ddefs funs main cnstraints) =
-    Prog ddefs (fmap inlineTrivFun funs) (fmap (inlineTrivExp ddefs) main) cnstraints
+inlineTriv (Prog ddefs funs main) =
+    Prog ddefs (fmap inlineTrivFun funs) (fmap (inlineTrivExp ddefs) main)
   where
     inlineTrivFun (FunDef nam (narg,targ) ty bod) =
       FunDef nam (narg,targ) ty (inlineTrivExp ddefs bod)
@@ -51,6 +51,7 @@ inlineTrivExp _ddefs = go []
   exp :: Env -> Exp -> Exp
   exp env e0 = 
     case e0 of
+      Ext () -> Ext ()
       VarE v -> case lookup v env of
                     Nothing -> VarE v
                     Just (_,e) -> e
