@@ -25,7 +25,7 @@ module Packed.FirstOrder.L1.Syntax
     , Prim(..), primArgsTy
 
       -- * Types and helpers
-    , Ty, Ty1(..), pattern Packed, pattern SymTy
+    , Ty, UrTy(..), pattern Packed, pattern SymTy
     , voidTy, hasPacked, sizeOf
 
     -- * Expression and Prog helpers
@@ -71,7 +71,7 @@ instance Out Constraint
 
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.
-progToEnv :: Prog -> Env2 (Ty1 ())
+progToEnv :: Prog -> Env2 (UrTy ())
 progToEnv Prog{fundefs} =
     Env2 M.empty
          (M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
@@ -194,7 +194,7 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 instance Out Prim
-instance Out a => Out (Ty1 a)
+instance Out a => Out (UrTy a)
 -- Do this manually to get prettier formatting:
 -- instance Out Ty where  doc x = __
 
@@ -207,26 +207,26 @@ instance Out Prog
 -- TEMP/FIXME: leaving out these for now.
 pattern SymTy = IntTy
 
-type Ty = Ty1 ()
+type Ty = UrTy ()
 
 pattern Packed c = PackedTy c ()
 
 -- | Types include boxed/pointer-based products as well as unpacked
 -- algebraic datatypes.  This data is parameterized to allow
 -- annotation later on.
-data Ty1 a =
+data UrTy a =
           IntTy
 --        | SymTy -- ^ Symbols used in writing compiler passes.
 --                --   It's an alias for Int, an index into a symbol table.
         | BoolTy
-        | ProdTy [Ty1 a]     -- ^ An N-ary tuple
-        | SymDictTy (Ty1 a)  -- ^ A map from SymTy to Ty
+        | ProdTy [UrTy a]     -- ^ An N-ary tuple
+        | SymDictTy (UrTy a)  -- ^ A map from SymTy to Ty
         | PackedTy TyCon a  -- ^ No type arguments to TyCons for now.
 
 --        | CursorTy ...
           
           -- ^ We allow built-in dictionaries from symbols to a value type.
-        | ListTy (Ty1 a) -- ^ These are not fully first class.  They are onlyae
+        | ListTy (UrTy a) -- ^ These are not fully first class.  They are onlyae
                          -- allowed as the fields of data constructors.
   deriving (Show, Read, Ord, Eq, Generic, NFData, Functor)
 
@@ -234,7 +234,7 @@ voidTy :: Ty
 voidTy = ProdTy []
 
 -- | Do values of this type contain packed data?
-hasPacked :: Ty1 a -> Bool
+hasPacked :: UrTy a -> Bool
 hasPacked t = case t of
                 PackedTy{} -> True
                 ProdTy ls -> any hasPacked ls
@@ -245,7 +245,7 @@ hasPacked t = case t of
                 ListTy _     -> error "FINISHLISTS"
 
 -- | Provide a size in bytes, if it is statically known.
-sizeOf :: Ty1 a -> Maybe Int
+sizeOf :: UrTy a -> Maybe Int
 sizeOf t = case t of
              PackedTy{}  -> Nothing
              ProdTy ls   -> sum <$> mapM sizeOf ls

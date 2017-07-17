@@ -27,7 +27,7 @@ import           Packed.FirstOrder.L2.Syntax
 import Packed.FirstOrder.Passes.Flatten (typeExp)
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1.Syntax as L1
--- import Packed.FirstOrder.L1.Syntax (Ty1(..), SymTy)
+-- import Packed.FirstOrder.L1.Syntax (UrTy(..), SymTy)
 import Packed.FirstOrder.L1.Syntax hiding (Ty, FunDef, Prog, mapExprs, progToEnv, fundefs)
 import Data.List as L
 import Data.Set as S

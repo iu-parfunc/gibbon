@@ -17,7 +17,9 @@ module Packed.FirstOrder.L2.Syntax
     , mapExprs, mapMExprs, progToEnv
 
     -- * Temporary backwards compatibility, plus rexports
-    , Ty1(..), PreExp(..), pattern SymTy
+    , UrTy(..)
+    , PreExp(..)
+    , pattern SymTy
     , primRetTy
 
     -- * Extended language L2.0 with location types.
@@ -31,7 +33,7 @@ module Packed.FirstOrder.L2.Syntax
     , hasRealPacked, isRealPacked, hasCursorTy
     , tyWithFreshLocs, stripTyLocs, getTyLocs
     , getFunTy, substTy, substEffs
-    , cursorizeTy1, cursorizeTy2, cursorizeArrty3, cursorizeTy3
+    , cursorizeUrTy, cursorizeTy2, cursorizeArrty3, cursorizeTy3
     , mapPacked
 
     -- * Conversion back to L1
@@ -206,7 +208,7 @@ instance (Out l, Out d) => Out (E2 l d)
 
 -- | L1 Types extended with abstract Locations.
 type Ty = Ty2
-type Ty2 = L1.Ty1 LocVar
+type Ty2 = L1.UrTy LocVar
 
     
 type NewFuns = M.Map Var FunDef
@@ -221,7 +223,7 @@ data Prog = Prog { ddefs    :: DDefs L1.Ty
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.  The
 --   initial environment has types only for functions.
-progToEnv :: Prog -> Env2 (Ty1 ())
+progToEnv :: Prog -> Env2 (UrTy ())
 progToEnv Prog{fundefs} =
     Env2 M.empty
          (M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
@@ -339,20 +341,20 @@ unknownCursor = toVar "UNKNOWN_CURSOR_VAL"
 cursorTy :: Ty
 cursorTy = PackedTy "CURSOR_TY" (toVar "")
 
-mkCursorTy :: a -> Ty1 a
+mkCursorTy :: a -> UrTy a
 mkCursorTy = PackedTy "CURSOR_TY"
 
-isCursorTy :: Ty1 a -> Bool
+isCursorTy :: UrTy a -> Bool
 isCursorTy (PackedTy "CURSOR_TY" _) = True
 isCursorTy _ = False
 
-cursorTyLoc :: Show a => Ty1 a -> a
+cursorTyLoc :: Show a => UrTy a -> a
 cursorTyLoc (PackedTy "CURSOR_TY" l) = l
 cursorTyLoc t = error $ "cursorTyLoc: should only be called on a cursor type, not "++show t
 
 -- | We need to ammend this function to NOT consider cursors as "packed".
 -- TODO: switch to some other form of extension on the original Ty data structure!
-hasRealPacked :: Ty1 a -> Bool
+hasRealPacked :: UrTy a -> Bool
 hasRealPacked t =
     case t of
       PackedTy{} -> not $ isCursorTy t
@@ -363,7 +365,7 @@ hasRealPacked t =
       SymDictTy t -> hasRealPacked t
       ListTy {} -> error "hasRealPacked: FIXME implement lists"
 
-hasCursorTy :: Ty1 a -> Bool
+hasCursorTy :: UrTy a -> Bool
 hasCursorTy t =
     case t of
       PackedTy{} -> isCursorTy t
@@ -374,7 +376,7 @@ hasCursorTy t =
       SymDictTy t -> hasCursorTy t
       ListTy {} -> error "hasCursorty: FIXME implement lists"
 
-isRealPacked :: Ty1 a -> Bool
+isRealPacked :: UrTy a -> Bool
 isRealPacked t@PackedTy{} = not (isCursorTy t)
 isRealPacked _ = False
 
@@ -394,8 +396,8 @@ isRealPacked _ = False
 -- | Step 1/3: add additional outputs corresponding to
 -- end-of-input-value witnesses.  Return the new type and the added
 -- outputs.
-cursorizeTy1 :: ArrowTy Ty -> (ArrowTy Ty, [LocVar])
-cursorizeTy1 (ArrowTy inT ef ouT) = (newArr, newOut)
+cursorizeUrTy :: ArrowTy Ty -> (ArrowTy Ty, [LocVar])
+cursorizeUrTy (ArrowTy inT ef ouT) = (newArr, newOut)
  where
   newArr = ArrowTy inT ef newOutTy
   newOutTy = prependArgs (L.map mkCursorTy newOut)
@@ -444,7 +446,7 @@ cursorizeArrty3 arr@(ArrowTy inT ef ouT) =
     else ArrowTy (cursorizeTy3 inT) ef ouT
 
 -- | The non-arrow counterpart to `cursorizeArrTy3`
-cursorizeTy3 :: Ty1 a -> Ty1 a
+cursorizeTy3 :: UrTy a -> UrTy a
 cursorizeTy3  = mapPacked (\ _k l -> mkCursorTy l)
 
 
@@ -458,7 +460,7 @@ prependArgs [] t = t
 prependArgs ls t = ProdTy $ ls ++ [t]
 
 
-mapPacked :: (Var -> l -> Ty1 l) -> Ty1 l -> Ty1 l
+mapPacked :: (Var -> l -> UrTy l) -> UrTy l -> UrTy l
 mapPacked fn t =
   case t of
     IntTy  -> IntTy
@@ -534,7 +536,7 @@ extendLocEnv ((v,t):r) e =
 
 
 -- FIXME: Remove:
-mapExprs :: (Env2 (Ty1 ()) -> Exp -> Exp) -> Prog -> Prog
+mapExprs :: (Env2 (UrTy ()) -> Exp -> Exp) -> Prog -> Prog
 mapExprs fn (Prog dd fundefs mainExp) =
     Prog dd
          (fmap (\ (FunDef nm arrTy@(ArrowTy inT _ _) arg bod) ->
@@ -549,7 +551,7 @@ mapExprs fn (Prog dd fundefs mainExp) =
     funEnv = fEnv $ includeBuiltins $ progToEnv (Prog dd fundefs mainExp)
 
 -- | Map exprs with an initial type environment:
-mapMExprs :: Monad m => (Env2 (Ty1 ()) -> Exp -> m Exp) -> Prog -> m Prog
+mapMExprs :: Monad m => (Env2 (UrTy ()) -> Exp -> m Exp) -> Prog -> m Prog
 mapMExprs fn (Prog dd fundefs mainExp) =
     Prog dd <$>
          (mapM (\ (FunDef nm arrTy@(ArrowTy inT _ _) arg bod) ->
@@ -683,7 +685,7 @@ builtinTEnv = M.fromList
   -- this [2017.01.08].
   ]
 
-includeBuiltins :: Env2 (Ty1 ()) -> Env2 (Ty1 ())
+includeBuiltins :: Env2 (UrTy ()) -> Env2 (UrTy ())
 includeBuiltins (Env2 v f) = Env2 v (f `M.union` f')
     where f' = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
                           | (n, ArrowTy a _ b) <- M.assocs builtinTEnv ]

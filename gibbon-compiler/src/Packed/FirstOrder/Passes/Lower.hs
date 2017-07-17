@@ -624,7 +624,7 @@ triv msg e0 =
                          "\nMessage: "++msg
     _ -> error $ "lower/triv, expected trivial in "++msg++", got "++sdoc e0
 
-typ :: L1.Ty1 a -> T.Ty
+typ :: L1.UrTy a -> T.Ty
 typ t =
   case t of
     L1.IntTy  -> T.IntTy

@@ -20,7 +20,7 @@ import Control.DeepSeq
 import Packed.FirstOrder.Common hiding (FunDef)
 import qualified Packed.FirstOrder.L1.Syntax as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
-import           Packed.FirstOrder.L1.Syntax (Ty1(..),pattern SymTy)
+import           Packed.FirstOrder.L1.Syntax (UrTy(..),pattern SymTy)
 import           Packed.FirstOrder.L2.Syntax
     (argtyToLoc, Loc(..), ArrowTy(..), toEndVar,
      FunDef(..), Prog(..), Exp(..))
@@ -77,7 +77,7 @@ _prependArgs ls t = ProdTy $ ls ++ [t]
 cursorizeTy :: ArrowTy L2.Ty -> (ArrowTy L2.Ty, [LocVar], [LocVar])
 cursorizeTy arr = (a2,b,c)
  where
-  (a1,c) = L2.cursorizeTy1 arr
+  (a1,c) = L2.cursorizeUrTy arr
   (a2,b) = L2.cursorizeTy2 a1
 
 _mkArrowTy :: L2.Ty -> L2.Ty -> ArrowTy L2.Ty

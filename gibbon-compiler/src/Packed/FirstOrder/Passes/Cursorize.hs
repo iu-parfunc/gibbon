@@ -146,7 +146,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                    TupOut ls -> concatMap allCursors ls
 
   -- | Process a type to ensure postcondition that PackedTy is gone.
-  typ :: Ty1 a -> Ty1 a
+  typ :: UrTy a -> UrTy a
   typ = L2.cursorizeTy3
 
   fd :: L2.FunDef -> SyM L2.FunDef
@@ -824,7 +824,7 @@ instance Out Dests
 -- Pairs of (<something>,Cursor) which may not be proper dilated type:
 ----------------------------------------------------------------------
 -- | Utility function: blindly add one cursor to the end.
-snocCursor :: Ty1 () -> Ty1 ()
+snocCursor :: UrTy () -> UrTy ()
 snocCursor ty = ProdTy[ty, CursorTy ()]
 
 cdrCursor :: Exp -> Exp
@@ -906,7 +906,7 @@ projVal (Di e) = mkProjE 0 e
 -- can reside in a separate package, grouped together.
 --
 -- This version implements a separate package.
-dilateTy :: Show a => Ty1 a -> L1.Ty
+dilateTy :: Show a => UrTy a -> L1.Ty
 dilateTy ty0 = if L.null tls
                then ty'
                else L1.mkProdTy [ty', L1.mkProdTy tls]
@@ -916,7 +916,7 @@ dilateTy ty0 = if L.null tls
 
    -- | Provide a flat list of all the packed types in a type (preorder traversal).
    --   Does ** NOT ** include cursor types.
-   allPackedTys :: Show a => Ty1 a -> [a]
+   allPackedTys :: Show a => UrTy a -> [a]
    allPackedTys ty =
        case ty of
          IntTy  -> []
@@ -993,7 +993,7 @@ spliceUpdatedCursors (Di trv) ty0
 --   Take a function that wants to operate on the original portion of the value
 --   (ignoring dilation/end-cursors).  Assume that the function does NOT change the type,
 --   and reattach the end-cursors when it's done.
-_withDilated :: Show a => Ty1 a -> DiExp -> (Exp -> SyM Exp) -> SyM DiExp
+_withDilated :: Show a => UrTy a -> DiExp -> (Exp -> SyM Exp) -> SyM DiExp
 _withDilated _ty (Di _edi) _fn = error "FINISHME"
 
 
@@ -1019,7 +1019,7 @@ splitFunResult arrT@(ArrowTy _ ef _) et =
 
 -- | Strip off the end-witness returns and give the core return type.
 --   Works only on the output types PRIOR to the cursorize transformation.
-getCoreOutTy :: forall a. Show a => ArrowTy (Ty1 a) -> Ty1 a
+getCoreOutTy :: forall a. Show a => ArrowTy (UrTy a) -> UrTy a
 getCoreOutTy at@(ArrowTy _inT ef outTFull) =
     assertNoCursors (show at) $
     if S.null ef
@@ -1027,14 +1027,14 @@ getCoreOutTy at@(ArrowTy _inT ef outTFull) =
     else let ProdTy ls = outTFull
          in mkProdTy (L.drop (S.size ef) ls)
 
-assertNoCursors :: Show a => String -> Ty1 a -> Ty1 a
+assertNoCursors :: Show a => String -> UrTy a -> UrTy a
 assertNoCursors s t =
   if L2.hasCursorTy t
   then error $ " expected no cursor types, found: "++show t++"\n Context: "++s
   else t
 
 -- | Retrieve a list of the end-witnesses
-getEndWitTys :: forall a. ArrowTy (Ty1 a) -> [Ty1 a]
+getEndWitTys :: forall a. ArrowTy (UrTy a) -> [UrTy a]
 getEndWitTys (ArrowTy _ ef outTFull) =
     if S.null ef
     then []
@@ -1045,13 +1045,13 @@ getEndWitTys (ArrowTy _ ef outTFull) =
              res
 
 
-mkProdTy :: forall a. [Ty1 a] -> Ty1 a
+mkProdTy :: forall a. [UrTy a] -> UrTy a
 mkProdTy [t] = t
 mkProdTy ls  = ProdTy ls
 
 -- | If a tuple is returned, how many packed values occur?  This
 -- determines the number of output cursors.
-countPacked :: Ty1 a -> Int
+countPacked :: UrTy a -> Int
 countPacked ty =
   case ty of
     IntTy  -> 0
@@ -1065,7 +1065,7 @@ countPacked ty =
     (PackedTy _ _) -> 1
     (ListTy _)     -> error "FINISHLISTS"
 
-isPacked :: Ty1 t -> Bool
+isPacked :: UrTy t -> Bool
 isPacked PackedTy{} = True
 isPacked _ = False
 
@@ -1149,14 +1149,14 @@ l1Ty = fmap (const ())
 
 -- | Compute an inverse, such that when the given projection-stack is applied, the origin Dests
 -- comes back.
-deProj :: Ty1 a -> ProjStack -> Dests -> Dests
+deProj :: UrTy a -> ProjStack -> Dests -> Dests
 deProj ty prjstk curs = lp [] ty
   where
     lp stk _ | stk == prjstk = curs
     lp stk (ProdTy ls) = TupOut [ lp (ix:stk) t | (ix,t) <- zip [0..] ls ]
     lp _ _ = NoCursor -- Only the one position includes the cursor pkg.
 
-projTy :: Show t => ProjStack -> Ty1 t -> Ty1 t
+projTy :: Show t => ProjStack -> UrTy t -> UrTy t
 projTy [] t = t
 projTy (ix:is) (ProdTy ls) = projTy is (ls!!ix)
 projTy stk t = error $ "cursorize/projTy: could not project indices "++show stk++" from type "++show t
@@ -1171,7 +1171,7 @@ buildProjE (ix:is) e = buildProjE is (ProjE ix e)
 --   `buildDilaProjE _ p (dilate x) == dilate (buildProjE p x)`
 --
 -- Takes as an argument the PRE-dilated type (x::t above)
-buildDilaProjE :: Show a => Ty1 a -> ProjStack -> DiExp -> DiExp
+buildDilaProjE :: Show a => UrTy a -> ProjStack -> DiExp -> DiExp
 buildDilaProjE ty stk de =
   let core  = buildProjE stk (projVal de)
       newty = projTy stk ty

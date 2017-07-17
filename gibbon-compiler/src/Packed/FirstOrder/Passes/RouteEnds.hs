@@ -61,7 +61,7 @@ routeEnds L2.Prog{ddefs,fundefs,mainExp} = do
   fd :: L2.FunDef -> SyM L2.FunDef
   fd (f@L2.FunDef{funname,funty,funarg,funbod}) =
       let ArrowTy oldInT _effs _ = funty
-          (newTy@(ArrowTy inT _ _),newOut) = cursorizeTy1 funty
+          (newTy@(ArrowTy inT _ _),newOut) = cursorizeUrTy funty
       in
       dbgTrace lvl ("Processing fundef: "++show(doc f)++
                     "\n  new type: "++sdoc newTy++"\n  newOut: " ++ show (newOut)) $
