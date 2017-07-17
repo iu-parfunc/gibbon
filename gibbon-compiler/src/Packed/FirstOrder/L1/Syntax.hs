@@ -41,6 +41,7 @@ module Packed.FirstOrder.L1.Syntax
     where
 
 import Packed.FirstOrder.Common as C
+import Packed.FirstOrder.GenericOps (FreeVars, gFreeVars)
 import Data.Map as M
 import Data.Set as S
 import Data.List as L

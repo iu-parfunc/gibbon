@@ -21,6 +21,7 @@ import           Control.Monad.State.Strict
 import           Data.Set as S hiding (map)
 import           Options.Applicative
 import           Packed.FirstOrder.Common
+import           Packed.FirstOrder.GenericOps(Interp, interpNoLogs)
 import qualified Packed.FirstOrder.HaskellFrontend as HS
 import qualified Packed.FirstOrder.L1.Syntax   as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2

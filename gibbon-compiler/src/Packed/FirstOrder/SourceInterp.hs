@@ -29,6 +29,7 @@ import Data.Char
 import           GHC.Generics
 import           GHC.Stack (errorWithStackTrace)
 import           Packed.FirstOrder.Common
+import           Packed.FirstOrder.GenericOps(Interp, interpNoLogs, interpWithStdout)
 import           Packed.FirstOrder.L1.Syntax   as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
 import           Packed.FirstOrder.L2.Syntax (pattern NamedVal)
