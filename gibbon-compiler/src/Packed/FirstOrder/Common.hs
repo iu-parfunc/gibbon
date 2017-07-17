@@ -26,9 +26,6 @@ module Packed.FirstOrder.Common
 
        , LocVar, dummyLoc
        , Env2(..)
-
-         -- * Free Variables, generic interface
-       , FreeVars(..)
          
          -- * Runtime configuration
        , RunConfig(..), getRunConfig
@@ -47,7 +44,6 @@ module Packed.FirstOrder.Common
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
 --       , err
-       , Interp(..)
 
          -- * Establish conventions for the output of #lang gibbon:
        , truePrinted, falsePrinted
@@ -59,7 +55,6 @@ import Control.Monad.State.Strict
 import Data.Char
 import Data.List as L
 import Data.Map as M
-import qualified Data.Set as S
 import Data.String
 import Data.Symbol
 import Data.Word
@@ -109,18 +104,6 @@ dummyLoc = "l_dummy"
 varAppend :: Var -> Var -> Var
 varAppend x y = toVar (fromVar x ++ fromVar y)
 
---------------------------------------------------------------------------------
-
--- | Pure Gibbon programs, at any stage of compilation, should always
--- be evaluatable to a unique value.  The only side effects are timing
-class Interp a where
-  -- | Interpret while ignoring timing constructs, and dropping the
-  -- corresponding output to stdout.
-  interpNoLogs     :: RunConfig -> a -> String
-
-  -- | Interpret and produce a "log" of output lines, as well as a
-  -- final, printed result.
-  interpWithStdout :: RunConfig -> a -> IO (String,[String])
 
 --------------------------------------------------------------------------------
 
@@ -335,17 +318,6 @@ abbrv n x =
     in if len <= n
        then str
        else take (n-3) str ++ "..."
-
-----------------------------------------------------------------------------------------------------
--- Free Variables 
-----------------------------------------------------------------------------------------------------
-
--- | Expression and program types which support a notion of free variables.
-class FreeVars a where
-    gFreeVars :: a -> S.Set Var
-
-instance FreeVars () where
-  gFreeVars () = S.empty 
                  
 ----------------------------------------------------------------------------------------------------
 -- Global parameters
