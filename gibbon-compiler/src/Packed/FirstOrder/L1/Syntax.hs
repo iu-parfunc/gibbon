@@ -127,8 +127,9 @@ data PreExp loc ext dec =
     -- ^ The boolean being true indicates this TimeIt is really (iterate _)
     -- This iterate form is used for criterion-style benchmarking.
      
-     -- Limited list handling:
-   | MapE  (Var,Ty, EXP) EXP
+   -- Limited list handling:
+   -- TODO: RENAME to "Array".
+   | MapE  (Var,Ty, EXP) EXP  -- TODO: Replace with Generate, add array reference.
    | FoldE { initial  :: (Var,Ty,EXP)
            , iterator :: (Var,Ty,EXP)
            , body     :: EXP }
@@ -205,7 +206,6 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
 
 -- TODO: Need list construction if we're going to have list:
 
-
 --          | MkList
 
   deriving (Read,Show,Eq,Ord, Generic, NFData)
@@ -224,7 +224,8 @@ instance Out Prog
 -- TEMP/FIXME: leaving out these for now.
 pattern SymTy = IntTy
 
-type Ty = UrTy ()
+type Ty1 = UrTy ()
+type Ty = Ty1
 
 pattern Packed c = PackedTy c ()
 
@@ -238,14 +239,16 @@ data UrTy a =
         | BoolTy
         | ProdTy [UrTy a]     -- ^ An N-ary tuple
         | SymDictTy (UrTy a)  -- ^ A map from SymTy to Ty
-        | PackedTy TyCon a  -- ^ No type arguments to TyCons for now.
+        | PackedTy TyCon a    -- ^ No type arguments to TyCons for now.
 
 --        | CursorTy ...
+--        | PtrTy ...
           
           -- ^ We allow built-in dictionaries from symbols to a value type.
         | ListTy (UrTy a) -- ^ These are not fully first class.  They are onlyae
                          -- allowed as the fields of data constructors.
   deriving (Show, Read, Ord, Eq, Generic, NFData, Functor)
+
 
 voidTy :: Ty
 voidTy = ProdTy []

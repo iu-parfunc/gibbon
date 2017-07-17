@@ -82,21 +82,27 @@ type Exp = Exp2
     
 data E2 loc dec = 
     LetRegionE Region (E2' loc dec) -- ^ Not used until later on.
-  | LetLocE    Var    (E2' loc dec)    
+  | LetLocE    Var    (E2' loc dec)
 --  | RetE [LocVar] Var     -- ^ Return a value together with extra loc values.
  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 -- | L1 expressions extended with L2.  Shorthand for recursions above.
 type E2' l d = PreExp l (E2 l d) d
 
+type Region = Var
 
-data Region = Region
+-- | A location and region, together with modality.
+data LRM = LRM LocVar Region Modality
   deriving (Read,Show,Eq,Ord, Generic, NFData)
+instance Out LRM
 
-instance Out Region
+data Modality = Input | Output
+  deriving (Read,Show,Eq,Ord, Generic, NFData)
+instance Out Modality
 
--- Unchanged from L1, or we could go A-normal:
--- data Exp =
+
+-- TRASH
+------------------------------------
 
 -- | Abstract locations:
 data Loc = Fixed Var -- ^ A rigid location, such as for an input or output field.
@@ -151,7 +157,7 @@ end_prefix :: String
 end_prefix = "end_" -- Hacky way to encode end-of-region variables.
 
 --------------------------------------------
-
+--- TRASH:
 
 -- | This should be a semi-join lattice.
 join :: Loc -> Loc -> (Loc,[Constraint])
@@ -190,8 +196,16 @@ data Constraint = Eql Var Var
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 instance Out Constraint
 
+--------------------------------------------------
+
+-- | Locations (end-witnesses) returned from functions after RouteEnds.
+data LocRet = EndOf LRM
+
 -- Our type for functions grows to include effects.
-data ArrowTy t = ArrowTy { arrIn :: t, arrEffs:: (Set Effect), arrOut:: t }
+data ArrowTy t = ArrowTy { -- locVars :: [LRM],
+                           arrIn :: t, arrEffs:: (Set Effect), arrOut:: t
+                           -- locRets :: [LocRet]
+                         }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 data Effect = Traverse LocVar

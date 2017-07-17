@@ -16,14 +16,14 @@ import Packed.FirstOrder.Common
 --------------------------------------------------------------------------------
 
 -- | Pure Gibbon programs, at any stage of compilation, should always
--- be evaluatable to a unique value.  The only side effects are timing
+-- be evaluatable to a unique value.  The only side effects are timing.
 class Interp a where
   -- | Interpret while ignoring timing constructs, and dropping the
   -- corresponding output to stdout.
   interpNoLogs     :: RunConfig -> a -> String
 
   -- | Interpret and produce a "log" of output lines, as well as a
-  -- final, printed result.
+  -- final, printed result.  The output lines include timing information.
   interpWithStdout :: RunConfig -> a -> IO (String,[String])
 
 ----------------------------------------------------------------------------------------------------

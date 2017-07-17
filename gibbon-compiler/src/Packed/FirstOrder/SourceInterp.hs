@@ -190,6 +190,7 @@ type Log = Builder
 -- TODO: add a flag for whether we support cursors:
 
 -- | Interpret a program, including printing timings to the screen.
+--   The returned bytestring contains that printed timing info.
 interpProg :: RunConfig -> Prog -> IO (Value, B.ByteString)
 -- Print nothing, return "void"              :
 interpProg _ Prog {mainExp=Nothing} = return $ (VProd [], B.empty)
