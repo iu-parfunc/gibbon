@@ -130,7 +130,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                else do
                  sequence_ [ ensureEqualTy exp ty1 ty2
                            | (ty1,ty2) <- zip args tys ]
-                 ensureDataCon exp tys tstate1
+                 ensureDataCon exp l tys tstate1
                  tstate2 <- switchOutLoc exp tstate1 l
                  return (PackedTy dcty l, tstate2)
                         
@@ -255,7 +255,7 @@ lookupVar env var exp =
       Just ty -> return ty
 
 combineTStates :: Exp -> LocationTypeState -> LocationTypeState -> TcM LocationTypeState
-combineTStates exp ts1 ts2 = if ts1 == ts2 then return ts1 -- TODO: is this right?
+combineTStates exp ts1 ts2 = if ts1 == ts2 then return ts1
                              else throwError $ DivergingEffectsTC exp ts1 ts2
 
 ensureEqual :: Eq a => Exp -> String -> a -> a -> TcM a
@@ -266,7 +266,16 @@ ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
                                          ++ (show a) ++ ", " ++ (show b)) a b
 
 ensureMatchCases :: DDefs Ty -> Exp -> Ty -> [(DataCon, [(Var,LocVar)], Exp)] -> TcM ()
-ensureMatchCases ddfs exp ty cs = undefined -- TODO: Check that case clauses match type
+ensureMatchCases ddfs exp ty cs = do
+  case ty of
+    PackedTy tc _l -> do
+            let cons = S.fromList $ L.map fst $ dataCons $ lookupDDef ddfs $ toVar tc
+            forM cs $ \(dc,_,_) ->
+                do if S.member dc cons
+                   then return ()
+                   else throwError $ GenericTC "Invalid case statement" exp 
+            return ()
+    _ -> throwError $ GenericTC "Cannot case on non-packed type" exp
 
 ensurePackedLoc :: Exp -> Ty -> LocVar -> TcM ()
 ensurePackedLoc exp ty l =
@@ -275,9 +284,22 @@ ensurePackedLoc exp ty l =
                        else throwError $ GenericTC ("Wrong location in type " ++ (show ty)) exp
       _ -> throwError $ GenericTC "Expected a packed type" exp
 
-ensureDataCon :: Exp -> [Ty] -> LocationTypeState -> TcM ()
-ensureDataCon exp tys (LocationTypeState ls) = undefined -- TODO: Check datacon argument order
+ensureDataCon :: Exp -> LocVar -> [Ty] -> LocationTypeState -> TcM ()
+ensureDataCon exp linit tys ls = go Nothing linit tys -- TODO: Audit this
+    where go Nothing linit ((PackedTy dc l):tys) = do
+            ensureAfterConstant ls linit l
+            go (Just (PackedTy dc l)) l tys
+          go Nothing linit (ty:tys) = go Nothing linit tys
+          go (Just (PackedTy dc1 l1)) linit ((PackedTy dc2 l2):tys) = do
+            ensureAfterPacked ls l1 l2 
+            go (Just (PackedTy dc2 l2)) l2 tys
+          go (Just (PackedTy dc l1)) linit (ty:tys) =
+              go Nothing linit tys
+            
 
+ensureAfterConstant = undefined
+ensureAfterPacked = undefined
+                                               
 extendEnv :: Env2 Ty -> Var -> Ty -> Env2 Ty
 extendEnv (Env2 vEnv fEnv) v ty = Env2 (M.insert v ty vEnv) fEnv
 
