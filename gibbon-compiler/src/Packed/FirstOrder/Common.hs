@@ -99,8 +99,10 @@ type LocVar = Var
 
 -- | An abstract region identifier.  This is used inside type signatures and elsewhere.
 data Region = GlobR    -- ^ A global region with lifetime equal to the whole program.
-            | DynR Var -- ^ A dynamic region that may be created or destryed, identified
-                       --   by a region variable.
+            | DynR Var -- ^ A dynamic region that may be created or destryed, tagged
+                       --   by an identifier.
+            | VarR Var -- ^ A region metavariable that can range over
+                       -- either global or dynamic regions.
   deriving (Read,Show,Eq,Ord, Generic)
 instance Out Region
 instance NFData Region where

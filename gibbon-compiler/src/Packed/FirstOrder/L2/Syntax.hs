@@ -53,7 +53,7 @@ import Packed.FirstOrder.L1.Syntax hiding
     (Ty, FunDef, Prog,
      mapExprs, progToEnv, fundefs, getFunTy, Exp)
 import Data.List as L
-import Data.Maybe
+-- import Data.Maybe
 import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
