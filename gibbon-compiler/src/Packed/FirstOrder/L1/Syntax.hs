@@ -42,7 +42,7 @@ module Packed.FirstOrder.L1.Syntax
     where
 
 import Packed.FirstOrder.Common as C
-import Packed.FirstOrder.GenericOps (FreeVars, gFreeVars)
+import Packed.FirstOrder.GenericOps 
 import Data.Map as M
 import Data.Set as S
 import Data.List as L
@@ -138,6 +138,9 @@ data PreExp loc ext dec =
   | Ext ext  -- ^ Extension point for downstream language extensions.
      
   deriving (Read,Show,Eq,Ord, Generic, NFData, Functor)
+
+instance (Out l, Show l, Expression e) => Expression (PreExp l e (UrTy l)) where
+  type (TyOf (PreExp l e (UrTy l))) = UrTy l  
 
 -- | Apply a function to the extension points only.
 mapExt :: (e1 -> e2) -> PreExp l e1 d -> PreExp l e2 d

@@ -108,6 +108,7 @@ instance Out Region
 instance NFData Region where
   rnf GlobR = ()
   rnf (DynR v) = rnf v
+  rnf (VarR v) = rnf v
 
 -- | The modality of locations and cursors: input/output, for reading
 -- and writing, respectively.

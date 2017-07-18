@@ -96,10 +96,10 @@ library
 
   hs-source-dirs:      src
   default-language:    Haskell2010
-  ghc-options:         -Wall -fdefer-typed-holes
-  default-extensions: ScopedTypeVariables PatternSynonyms DeriveGeneric DeriveFunctor NamedFieldPuns TupleSections
--- This can break things:
--- -XDeriveAnyClass
+  ghc-options:         -Wall -fdefer-typed-holes -fno-warn-orphans
+  default-extensions: ScopedTypeVariables PatternSynonyms DeriveGeneric DeriveFunctor
+                      NamedFieldPuns TupleSections TypeFamilies
+                      -- This can break things: DeriveAnyClass
 
 executable gibbon
   hs-source-dirs:      app

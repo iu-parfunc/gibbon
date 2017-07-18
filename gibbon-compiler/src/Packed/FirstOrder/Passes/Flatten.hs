@@ -1,3 +1,5 @@
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 -- | Put the program in A-normal form where only varrefs and literals are
 -- allowed in operand position.
@@ -7,7 +9,7 @@
 
 module Packed.FirstOrder.Passes.Flatten
   ( flatten
-  , flattenExp
+  -- * Some utilities that really should be elsewhere.
   , typeExp, TEnv
   ) where
 
@@ -18,6 +20,7 @@ import Packed.FirstOrder.Common
 import Packed.FirstOrder.L1.Syntax as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
 import Text.PrettyPrint.GenericPretty (Out)
+import Packed.FirstOrder.GenericOps 
     
 -- import Packed.FirstOrder.L2.Syntax (isCursorTy)
 
@@ -33,14 +36,14 @@ import Prelude hiding (exp)
 --   conditions, and tuple operands.
 flatten :: L1.Prog -> SyM L1.Prog
 flatten prg@(L1.Prog defs funs main) = do
-    main' <- mapM (flattenExp defs env20) main
+    main' <- mapM (gFlattenExp defs env20) main
     funs' <- flattenFuns funs
     return $ L1.Prog defs funs' main'
   where
     flattenFuns = mapM flattenFun
     flattenFun (FunDef nam (narg,targ) ty bod) = do
       let env2 = Env2 (M.singleton narg targ) (fEnv env20)
-      bod' <- flattenExp defs env2 bod
+      bod' <- gFlattenExp defs env2 bod
       return $ FunDef nam (narg,targ) ty bod'
 
     env20 = L1.progToEnv prg
@@ -54,11 +57,11 @@ flatten prg@(L1.Prog defs funs main) = do
 
 type Binds l e = (Var,[l],UrTy l, PreExp l e (UrTy l))
 
-flattenExp :: forall l e . (Out l, Out e, Show l, Show e) =>
-              DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp l e (UrTy l) -> SyM (PreExp l e (UrTy l))
-flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
-                               return $ flatLets b e'
- where
+instance (Out l, Show l, Flattenable e) => Flattenable (PreExp l e (UrTy l)) where
+  gFlattenExp :: DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp l e (UrTy l) -> SyM (PreExp l e (UrTy l))
+  gFlattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
+                                  return $ flatLets b e'
+   where
    typeIt :: TEnv l -> PreExp l e (UrTy l) -> (UrTy l)
    typeIt = typeExp (ddefs,env2)
 

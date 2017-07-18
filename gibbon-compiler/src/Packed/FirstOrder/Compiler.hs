@@ -40,7 +40,7 @@ import           Text.PrettyPrint.GenericPretty
 
 -- compiler passes
 import           Packed.FirstOrder.Passes.Freshen
-import           Packed.FirstOrder.Passes.Flatten
+import           Packed.FirstOrder.Passes.Flatten (flatten)
 import           Packed.FirstOrder.Passes.InlineTriv
 
 -- UNDER_CONSTRUCTION

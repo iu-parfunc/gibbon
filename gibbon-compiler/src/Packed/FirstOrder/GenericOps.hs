@@ -7,12 +7,17 @@ module Packed.FirstOrder.GenericOps
 
      -- * Free Variables, generic interface
      , FreeVars(..)
+
+
+     -- * Genereric interface for expressions and select passes
+     , Expression(..), Flattenable(..), Simplifiable(..)
     )
     where
 
 import qualified Data.Set as S
 import Packed.FirstOrder.Common
-
+import Text.PrettyPrint.GenericPretty (Out)
+    
 --------------------------------------------------------------------------------
 -- Things which can be interpreted to yield a final, printed value. 
 --------------------------------------------------------------------------------
@@ -44,19 +49,27 @@ instance FreeVars () where
 -- Compiler passes used in multiple phases
 ----------------------------------------------------------------------------------------------------
 
-{-
+-- | A generic interface to expressions found in different phases of
+-- the compiler.
 class (Show e, Out e) => Expression e where
-
--- IRs amenable to flattening
+  type TyOf e 
+      
+-- | IRs amenable to flattening
 class Expression e => Flattenable e where
-  gFlattenExp :: forall e . (Flattenable e) =>
-                 DDefs (TyOf e) -> Env2 (TyOf e) -> e -> SyM e
-
-instance (Flattenable e, Out l, Show l) => Flattenable (PreExp l e (UrTy l)) where
-
-instance (Flattenable e, Out l, Show l) => Flattenable (Exp2 l (UrTy l)) where
+  gFlattenExp :: DDefs (TyOf e) -> Env2 (TyOf e) -> e -> SyM e
     
--- IRs amenable to simplification/inlineTrivs
+-- | IRs amenable to simplification/inlineTrivs
 class Expression e => Simplifiable e where
-  
--}
+  gInlineTrivExp :: DDefs (TyOf e) -> e -> e
+
+-- | A dummy instance for "no-extension" extension point.
+instance Expression () where
+  type TyOf () = ()
+                    
+-- | A dummy instance for "no-extension" extension point.
+instance Flattenable () where
+  gFlattenExp _ _ () = return ()
+
+-- | A dummy instance for "no-extension" extension point.
+instance Simplifiable () where
+  gInlineTrivExp _ () = ()
