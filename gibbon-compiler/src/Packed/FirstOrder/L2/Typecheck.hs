@@ -10,6 +10,7 @@
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
+{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
 module Packed.FirstOrder.L2.Typecheck
     ( tcExp, tcProg )
@@ -121,7 +122,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                return (tys !! 0,tstate')
                       
       DataConE l dc es -> do
-               (tys,tstate) <- tcExps ddfs env funs constrs regs tstatein es
+               (tys,tstate1) <- tcExps ddfs env funs constrs regs tstatein es
                let dcty = getTyOfDataCon ddfs dc
                let args = lookupDataCon ddfs dc
                if length args /= length es
@@ -129,9 +130,9 @@ tcExp ddfs env funs constrs regs tstatein exp =
                else do
                  sequence_ [ ensureEqualTy exp ty1 ty2
                            | (ty1,ty2) <- zip args tys ]
-                 tstate <- switchOutLoc exp tstate l
-                 -- TODO: ensure correct locations on arguments
-                 return (PackedTy dcty l, tstate)
+                 ensureDataCon exp tys tstate1
+                 tstate2 <- switchOutLoc exp tstate1 l
+                 return (PackedTy dcty l, tstate2)
                         
       TimeIt e _ty _b -> do
                (ty1,tstate1) <- recur tstatein e
@@ -155,6 +156,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                       
       Ext (LetLocE v c e) -> do
                case c of
+                 
                  StartOfC l r -> do
                                if l /= v then throwError $ GenericTC "Invalid location binding" exp
                                else do 
@@ -166,6 +168,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  (ty,tstate2) <- tcExp ddfs env funs constrs1 regs tstate1 e
                                  tstate3 <- removeLoc exp tstate2 v
                                  return (ty,tstate3)
+                                        
                  AfterConstantC i l1 l2 -> do
                                if l1 /= v then throwError $ GenericTC "Invalid location binding" exp
                                else do 
@@ -177,6 +180,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  (ty,tstate2) <- tcExp ddfs env funs constrs1 regs tstate1 e
                                  tstate3 <- removeLoc exp tstate2 v
                                  return (ty,tstate3)
+                                        
                  AfterVariableC x l1 l2 -> do
                                if l1 /= v then throwError $ GenericTC "Invalid location binding" exp
                                else do
@@ -190,6 +194,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  (ty,tstate3) <- tcExp ddfs env funs constrs1 regs tstate2 e
                                  tstate4 <- removeLoc exp tstate3 v
                                  return (ty,tstate4)
+                                        
                  _ -> throwError $ GenericTC "Invalid letloc form" exp
                  
       Ext (RetE ls v) -> do
@@ -269,6 +274,9 @@ ensurePackedLoc exp ty l =
       PackedTy _ l1 -> if l1 == l then return ()
                        else throwError $ GenericTC ("Wrong location in type " ++ (show ty)) exp
       _ -> throwError $ GenericTC "Expected a packed type" exp
+
+ensureDataCon :: Exp -> [Ty] -> LocationTypeState -> TcM ()
+ensureDataCon exp tys (LocationTypeState ls) = undefined -- TODO: Check datacon argument order
 
 extendEnv :: Env2 Ty -> Var -> Ty -> Env2 Ty
 extendEnv (Env2 vEnv fEnv) v ty = Env2 (M.insert v ty vEnv) fEnv
