@@ -17,7 +17,8 @@ import Control.Monad.State
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L1.Syntax as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
-
+import Text.PrettyPrint.GenericPretty (Out)
+    
 -- import Packed.FirstOrder.L2.Syntax (isCursorTy)
 
 import qualified Data.Map as M
@@ -51,29 +52,33 @@ flatten prg@(L1.Prog defs funs main) = do
 -- to remember that L1 programs are first order.
 
 
-type Binds = (Var,[()],L1.Ty,Exp)
+type Binds l e = (Var,[l],UrTy l, PreExp l e (UrTy l))
 
-flattenExp :: DDefs L1.Ty -> Env2 L1.Ty -> L1.Exp -> SyM L1.Exp
+flattenExp :: forall l e . (Out l, Out e, Show l, Show e) =>
+              DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp l e (UrTy l) -> SyM (PreExp l e (UrTy l))
 flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
                                return $ flatLets b e'
  where
+   typeIt :: TEnv l -> PreExp l e (UrTy l) -> (UrTy l)
    typeIt = typeExp (ddefs,env2)
 
-   exp :: TEnv -> Exp -> SyM ([Binds],Exp)
+   exp :: TEnv l -> PreExp l e (UrTy l) -> SyM ([Binds l e],PreExp l e (UrTy l))
    exp tenv e0 =
-     let triv m e = -- Force something to be trivial
+     let triv :: String -> PreExp l e (UrTy l) -> SyM ([Binds l e], PreExp l e (UrTy l))
+         triv m e = -- Force something to be trivial
            if isTriv e
            then return ([],e)
            else do tmp <- gensym $ toVar $ "flt" ++ m
                    let ty = typeIt tenv e
                    (bnds,e') <- exp tenv e
-                   return (bnds++[(tmp,[],ty,e')], VarE tmp)
+                   return ( bnds++[(tmp,[],ty,e')]
+                          , VarE tmp)
          go = exp tenv
          gols f ls m = do (bndss,ls') <- unzip <$> mapM (triv m) ls
                           return (concat bndss, f ls')
      in
      case e0 of
-       (Ext ())         -> return ([],e0)
+       (Ext finishme)   -> error "FINISHME" -- return ([],e0)
        (VarE _)         -> return ([],e0)
        (LitE _)         -> return ([],e0)
        (LitSymE _)      -> return ([],e0)
@@ -131,24 +136,25 @@ flattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
 
 -- | Helper function that lifts out Lets on the RHS of other Lets.
 --   Absolutely requires unique names.
-mkLetE :: (Var, [()], Ty, Exp) -> Exp -> Exp
+mkLetE :: (Var, [l], d, PreExp l e d) -> PreExp l e d -> PreExp l e d
 mkLetE (vr,lvs,ty,(L1.LetE bnd e)) bod = mkLetE bnd $ mkLetE (vr,lvs,ty,e) bod
 mkLetE bnd bod = L1.LetE bnd bod
 
 -- | Alternative version of L1.mkLets that also flattens
-flatLets :: [(Var,[()],Ty,Exp)] -> Exp -> Exp
+flatLets :: [(Var,[l],d,PreExp l e d)] -> PreExp l e d -> PreExp l e d
 flatLets [] bod = bod
 flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
 
 
-type TEnv = M.Map Var L1.Ty
+type TEnv l = M.Map Var (UrTy l)
 
 -- FIXME: Why is this not unified with Typecheck.hs?
 
-typeExp :: (DDefs L1.Ty,Env2 L1.Ty) -> TEnv -> L1.Exp -> L1.Ty
+typeExp :: (Show l, Show e, Out l, Out e) =>
+           (DDefs (UrTy l), Env2 (UrTy l)) -> TEnv l -> PreExp l e (UrTy l) -> (UrTy l)
 typeExp (_dd,_env2) env (L1.VarE v) =
-    M.findWithDefault (L1.Packed "CURSOR_TY") v env
---  M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v env
+--    M.findWithDefault (L1.Packed "CURSOR_TY") v env
+   M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v env
 
 typeExp (_dd,_env2) _env (L1.LitE _i) = L1.IntTy
 typeExp _ _ (L1.LitSymE _)          = L1.SymTy
@@ -164,12 +170,12 @@ typeExp (_,_) _env (L1.PrimAppE p _es) =
       L1.MkTrue -> L1.BoolTy
       L1.MkFalse -> L1.BoolTy
       L1.Gensym -> L1.SymTy
-      L1.DictInsertP ty -> L1.SymDictTy ty
-      L1.DictLookupP ty -> ty
-      L1.DictEmptyP ty -> L1.SymDictTy ty
-      L1.DictHasKeyP ty -> L1.SymDictTy ty
+      L1.DictInsertP ty -> L1.SymDictTy (noLocsHere ty)
+      L1.DictLookupP ty -> noLocsHere ty
+      L1.DictEmptyP ty -> L1.SymDictTy (noLocsHere ty)
+      L1.DictHasKeyP ty -> L1.SymDictTy (noLocsHere ty)
       L1.SizeParam -> L1.IntTy
-      L1.ReadPackedFile _ _ ty -> ty
+      L1.ReadPackedFile _ _ ty -> (noLocsHere ty)
       _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
 
 typeExp (dd,env2) env (L1.LetE (v,_,t,_) e) = typeExp (dd,env2) (M.insert v t env) e
@@ -187,9 +193,14 @@ typeExp (dd,env2) env (L1.CaseE _e mp) =
         args' = map fst args
     in typeExp (dd,env2) (M.fromList (zip args' (lookupDataCon dd c)) `M.union` env) e
 
-typeExp (dd,_) _env (L1.DataConE _ c _es) = L1.Packed (getTyOfDataCon dd c)
+typeExp (dd,_) _env (L1.DataConE l c _es) = L1.PackedTy (getTyOfDataCon dd c) l
 
 typeExp (dd,env2) env (L1.TimeIt e _ _) = typeExp (dd,env2) env e
 typeExp (dd,env2) env (L1.MapE _ e)     = typeExp (dd,env2) env e
 typeExp (dd,env2) env (L1.FoldE _ _ e)  = typeExp (dd,env2) env e
 typeExp (_,_) _ exp = error $ "typeExp: " ++ show exp ++ " not implemented"
+
+
+-- This crops up in the types for primitive operations.  Can we remove the need for this?
+noLocsHere :: Show a => UrTy a -> UrTy b
+noLocsHere t = fmap (\_ -> error $ "This type should not contain a location: "++show t) t

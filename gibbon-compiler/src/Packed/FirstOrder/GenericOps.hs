@@ -12,7 +12,9 @@ module Packed.FirstOrder.GenericOps
 
 import qualified Data.Set as S
 import Packed.FirstOrder.Common
-      
+
+--------------------------------------------------------------------------------
+-- Things which can be interpreted to yield a final, printed value. 
 --------------------------------------------------------------------------------
 
 -- | Pure Gibbon programs, at any stage of compilation, should always
@@ -37,3 +39,19 @@ class FreeVars a where
 instance FreeVars () where
   gFreeVars () = S.empty 
 
+
+----------------------------------------------------------------------------------------------------
+-- Compiler passes used in multiple phases
+----------------------------------------------------------------------------------------------------
+
+{-
+class Expression e where
+
+-- IRs amenable to flattening
+class Flattenable e where
+--  gFlatten :: DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp l e d -> SyM (PreExp l e d)
+    
+-- IRs amenable to simplification/inlineTrivs
+class Simplifiable e where
+  
+-}

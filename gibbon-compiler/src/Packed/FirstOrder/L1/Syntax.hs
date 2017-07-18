@@ -123,15 +123,15 @@ data PreExp loc ext dec =
      -- argument, if applicable, is the byte location at which to
      -- write the tag for the sum type.
 
-   | TimeIt EXP Ty Bool
+   | TimeIt EXP dec Bool
     -- ^ The boolean being true indicates this TimeIt is really (iterate _)
     -- This iterate form is used for criterion-style benchmarking.
      
    -- Limited list handling:
    -- TODO: RENAME to "Array".
    | MapE  (Var,Ty, EXP) EXP  -- TODO: Replace with Generate, add array reference.
-   | FoldE { initial  :: (Var,Ty,EXP)
-           , iterator :: (Var,Ty,EXP)
+   | FoldE { initial  :: (Var,dec,EXP)
+           , iterator :: (Var,dec,EXP)
            , body     :: EXP }
            
    ----------------------------------------
@@ -166,11 +166,11 @@ visitExp fl fe fd = go
                      | (c,vs,er) <- ls ]
        MkProdE ls     -> MkProdE $ L.map go ls
        DataConE loc k ls -> DataConE (fl loc) k $ L.map go ls
-       TimeIt e t b -> TimeIt (go e) t b
+       TimeIt e t b -> TimeIt (go e) (fd t) b
        IfE a b c -> IfE (go a) (go b) (go c)
        MapE (v,t,rhs) bod -> MapE (v,t, go rhs) (go bod)
        FoldE (v1,t1,r1) (v2,t2,r2) bod ->
-         FoldE (v1,t1,go r1) (v2,t2,go r2) (go bod)
+         FoldE (v1,fd t1,go r1) (v2,fd t2,go r2) (go bod)
 
 -- | Apply a function to the locations only.
 mapLocs :: (l1 -> l2) -> PreExp l1 e d -> PreExp l2 e d
@@ -182,12 +182,12 @@ mapLocs fn = visitExp fn id id
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | EqSymP          -- ^ Equality on Sym
           | EqIntP       -- ^ Equality on Int
-          | DictInsertP Ty  -- ^ takes dict, k,v; annotated with element type
-          | DictLookupP Ty  -- ^ takes dict,k errors if absent; annotated with element type
-          | DictEmptyP Ty   -- ^ annotated with element type to avoid ambiguity
-          | DictHasKeyP Ty  -- ^ takes dict,k; returns a Bool, annotated with element type
+          | DictInsertP Ty1  -- ^ takes dict, k,v; annotated with element type
+          | DictLookupP Ty1  -- ^ takes dict,k errors if absent; annotated with element type
+          | DictEmptyP  Ty1  -- ^ annotated with element type to avoid ambiguity
+          | DictHasKeyP Ty1  -- ^ takes dict,k; returns a Bool, annotated with element type
           | Gensym
-          | ErrorP String Ty
+          | ErrorP String Ty1
               -- ^ crash and issue a static error message.
               --   To avoid needing inference, this is labeled with a return type.
 
@@ -225,7 +225,9 @@ instance Out Prog
 pattern SymTy = IntTy
 
 type Ty1 = UrTy ()
+
 type Ty = Ty1
+{-# DEPRECATED Ty "Moving away from generically named Ty/Exp/Prog" #-}
 
 pattern Packed c = PackedTy c ()
 
