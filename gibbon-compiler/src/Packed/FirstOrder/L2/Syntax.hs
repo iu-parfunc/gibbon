@@ -13,7 +13,7 @@
 -- | An intermediate language with an effect system that captures traversals.
 
 module Packed.FirstOrder.L2.Syntax
-    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..), LocRet(..), LocExp, getFunTy
+    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..), LocRet(..), LocExp(..), getFunTy
     -- , mapExprs, mapMExprs, progToEnv
 
     -- * Temporary backwards compatibility, plus rexports

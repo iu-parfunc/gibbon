@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -25,24 +26,6 @@ import Data.Either
 import Text.PrettyPrint.GenericPretty
 import Control.Monad.Except
 
--- data Constr = StartOfC Loc Reg
---             | After1C Int Loc Loc
---             | AfterXC Var Loc Loc
---             | InC Loc Reg
---               deriving (Read,Show,Eq,Ord, Generic, NFData)
-                       
--- data LocState = InLS Loc
---               | OutLS Loc
---               | AfterLS Loc
---               | StartS Reg
---                 deriving (Read,Show,Eq,Ord, Generic, NFData)
-
--- --- TODO: finish typechecker
--- --- does it need to be monadic, or can it be pure?
--- typeofE :: DDefs Ptype -> (Map Var Ftype) -> (Set Constr) -> (Set Reg) -> (Set LocState) -> Exp ->
---            (Ftype,Set LocState)
--- typeofE dd g c r ls exp =
-
 newtype ConstraintSet = ConstraintSet { constraintSet :: S.Set LocExp }
     
 type Aliased = Bool
@@ -52,11 +35,6 @@ newtype LocationTypeState = LocationTypeState { tsmap :: M.Map LocVar (Modality,
     
 newtype RegionSet = RegionSet { regSet :: S.Set Region }
 
-regionInsert :: Exp -> Region -> RegionSet -> TcM RegionSet
-regionInsert e r (RegionSet regSet) = do
-  if (S.member r regSet)
-  then throwError $ GenericTC "Shadowed regions not allowed" e
-  else return $ RegionSet (S.insert r regSet)
 
 data TCError = GenericTC String Exp
              | VarNotFoundTC Var Exp
@@ -66,27 +44,6 @@ data TCError = GenericTC String Exp
     
 type TcM a = ExceptT TCError SyM a
 
-lookupVar :: Env2 Ty -> Var -> Exp -> TcM Ty
-lookupVar env var exp =
-    case M.lookup var $ vEnv env of
-      Nothing -> throwError $ VarNotFoundTC var exp
-      Just ty -> return ty
-
-combineTStates :: Exp -> LocationTypeState -> LocationTypeState -> TcM LocationTypeState
-combineTStates exp ts1 ts2 = if ts1 == ts2 then return ts1 -- TODO: is this right?
-                             else throwError $ DivergingEffectsTC exp ts1 ts2
-
-ensureEqual :: Eq a => Exp -> String -> a -> a -> TcM a
-ensureEqual exp str a b = if a == b then return a else throwError $ GenericTC str exp
-
-ensureEqualTy :: Exp -> Ty -> Ty -> TcM Ty
-ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
-                                         ++ (show a) ++ ", " ++ (show b)) a b
-
-extendEnv :: Env2 Ty -> Var -> Ty -> Env2 Ty
-extendEnv (Env2 vEnv fEnv) v ty = Env2 (M.insert v ty vEnv) fEnv
-
-type NewFuns = M.Map Var L2.FunDef
 
 tcExp :: DDefs Ty -> Env2 Ty -> NewFuns
       -> ConstraintSet -> RegionSet -> LocationTypeState -> Exp
@@ -96,14 +53,18 @@ tcExp ddfs env funs constrs regs tstatein exp =
       VarE v -> do
                ty <- lookupVar env v exp
                return (ty, tstatein)
+                      
       LitE i -> return (IntTy, tstatein)
+                
       LitSymE v -> return (IntTy, tstatein) -- SymTy
+                   
       AppE v ls e ->
           do let (ArrowTy locVars arrIn arrEffs arrOut) = getFunTy funs v
              (ty,tstate) <- recur tstatein e
              ensureEqualTy exp ty arrIn
              -- TODO: update tstate with traversals
              return (arrOut,tstate)
+                    
       PrimAppE pr es -> do
                (tys,tstate) <- tcExps ddfs env funs constrs regs tstatein es
                -- TODO: check argument length
@@ -127,11 +88,13 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  L1.MkFalse -> return $ (BoolTy,tstate)
                  -- TODO: add rest of primops
                  _ -> throwError $ UnsupportedExpTC exp
+                      
       LetE (v,_ls,ty,e1) e2 -> do
                (ty1,tstate1) <- recur tstatein e1
                ensureEqualTy exp ty1 ty
                let env' = extendEnv env v ty
                tcExp ddfs env' funs constrs regs tstate1 e2
+                     
       IfE e1 e2 e3 -> do
                (ty1,tstate1) <- recur tstatein e1
                ensureEqualTy exp ty1 BoolTy
@@ -140,18 +103,22 @@ tcExp ddfs env funs constrs regs tstatein exp =
                tstate <- combineTStates exp tstate2 tstate3
                ensureEqualTy exp ty2 ty3
                return (ty2,tstate)
+               
       MkProdE es -> do
                (tys,tstate) <- tcExps ddfs env funs constrs regs tstatein es
                return (ProdTy tys,tstate)
+                      
       ProjE i e -> do
                (ty,tstate) <- recur tstatein e
                tyi <- tcProj exp i ty
                return (tyi, tstate)
+                      
       CaseE e brs -> do
                (ty,tstate) <- recur tstatein e
                (tys,tstate') <- tcCases ddfs env funs constrs regs tstate brs
                foldM_ (ensureEqualTy exp) (tys !! 0) (tail tys)
                return (tys !! 0,tstate')
+                      
       DataConE l dc es -> do
                (tys,tstate) <- tcExps ddfs env funs constrs regs tstatein es
                let dcty = getTyOfDataCon ddfs dc
@@ -161,19 +128,46 @@ tcExp ddfs env funs constrs regs tstatein exp =
                else do
                  sequence_ [ ensureEqualTy exp ty1 ty2
                            | (ty1,ty2) <- zip args tys ]
-                 -- TODO: update tstate
+                 tstate <- switchOutLoc exp tstate l
                  -- TODO: ensure correct locations on arguments
-                 return (PackedTy dcty l, undefined)
+                 return (PackedTy dcty l, tstate)
+                        
       TimeIt e ty b -> do
                (ty1,tstate1) <- recur tstatein e
                -- ensureEqualTy exp ty ty1
                return (ty1,tstate1)
-      MapE _ _ -> throwError $ UnsupportedExpTC exp 
-      FoldE _ _ _ -> throwError $ UnsupportedExpTC exp 
+                      
+      MapE _ _ -> throwError $ UnsupportedExpTC exp
+                  
+      FoldE _ _ _ -> throwError $ UnsupportedExpTC exp
+                     
       Ext (LetRegionE r e) -> do
                regs' <- regionInsert exp r regs
-               tcExp ddfs env funs constrs regs' tstatein e
-      Ext (LetLocE v c e) -> _
+               (ty,tstate) <- tcExp ddfs env funs constrs regs' tstatein e
+               case ty of
+                 PackedTy _con l -> do
+                                r <- getRegion exp constrs l
+                                if hasRegion r regs
+                                then throwError $ GenericTC ("Escaping region " ++ (show r)) exp
+                                else return (ty,tstate)
+                 _ -> return (ty,tstate)
+                      
+      Ext (LetLocE v c e) -> do
+               case c of
+                 StartOfC l r -> do
+                               ensureRegion exp r regs
+                               absentStart exp constrs l
+                               let tstate1 = extendTS v (Output,False) tstatein
+                               let constrs1 = extendConstrs (StartOfC v r) $
+                                              extendConstrs (InRegionC l r) constrs
+                               (ty,tstate2) <- tcExp ddfs env funs constrs1 regs tstate1 e
+                               tstate3 <- removeLoc exp tstate2 v
+                               return (ty,tstate3)
+                 -- TODO: finish rules for letloc
+                 AfterConstantC i l1 l2 -> undefined
+                 AfterVariableC v l1 l2 -> undefined
+                 _ -> throwError $ GenericTC "Invalid letloc form" exp
+                 
       Ext (RetE ls v) -> do
                -- skip returned locations for now
                recur tstatein $ VarE v
@@ -200,6 +194,93 @@ tcExps ddfs env funs constrs regs tstatein (exp:exps) =
 tcExps _ _ _ _ _ ts [] = return ([],ts)
 
 tcProg = undefined
+
+--------------------------------------------------------------------------------------------
+
+regionInsert :: Exp -> Region -> RegionSet -> TcM RegionSet
+regionInsert e r (RegionSet regSet) = do
+  if (S.member r regSet)
+  then throwError $ GenericTC "Shadowed regions not allowed" e
+  else return $ RegionSet (S.insert r regSet)
+
+hasRegion :: Region -> RegionSet -> Bool
+hasRegion r (RegionSet regSet) = S.member r regSet
+
+ensureRegion :: Exp -> Region -> RegionSet -> TcM ()
+ensureRegion exp r (RegionSet regSet) =
+    if S.member r regSet then return ()
+    else throwError $ GenericTC ("Region " ++ (show r) ++ " not in scope") exp
+
+getRegion :: Exp -> ConstraintSet -> LocVar -> TcM Region
+getRegion exp (ConstraintSet cs) l = go $ S.toList cs
+    where go ((InRegionC l1 r):cs) = if l1 == l then return r
+                                     else go cs
+          go (_:cs) = go cs
+          go [] = throwError $ GenericTC ("Location " ++ (show l) ++ " has no region") exp
+
+
+lookupVar :: Env2 Ty -> Var -> Exp -> TcM Ty
+lookupVar env var exp =
+    case M.lookup var $ vEnv env of
+      Nothing -> throwError $ VarNotFoundTC var exp
+      Just ty -> return ty
+
+combineTStates :: Exp -> LocationTypeState -> LocationTypeState -> TcM LocationTypeState
+combineTStates exp ts1 ts2 = if ts1 == ts2 then return ts1 -- TODO: is this right?
+                             else throwError $ DivergingEffectsTC exp ts1 ts2
+
+ensureEqual :: Eq a => Exp -> String -> a -> a -> TcM a
+ensureEqual exp str a b = if a == b then return a else throwError $ GenericTC str exp
+
+ensureEqualTy :: Exp -> Ty -> Ty -> TcM Ty
+ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
+                                         ++ (show a) ++ ", " ++ (show b)) a b
+
+extendEnv :: Env2 Ty -> Var -> Ty -> Env2 Ty
+extendEnv (Env2 vEnv fEnv) v ty = Env2 (M.insert v ty vEnv) fEnv
+
+extendTS
+  :: LocVar
+     -> (Modality, Aliased) -> LocationTypeState -> LocationTypeState
+extendTS v d (LocationTypeState ls) = LocationTypeState $ M.insert v d ls
+                                      
+extendConstrs :: LocExp -> ConstraintSet -> ConstraintSet
+extendConstrs c (ConstraintSet cs) = ConstraintSet $ S.insert c cs
+
+switchOutLoc :: Exp -> LocationTypeState -> LocVar -> TcM LocationTypeState
+switchOutLoc exp (LocationTypeState ls) l =
+    case M.lookup l ls of
+      Nothing -> throwError $ GenericTC ("Unknown location " ++ (show l)) exp
+      Just (Output,a) -> return $ LocationTypeState $ M.update (\_ -> Just (Input,a)) l ls
+      Just (Input,_a) -> throwError $ GenericTC ("Expected output location " ++ (show l)) exp
+
+absentAfter :: Exp -> LocationTypeState -> LocVar -> TcM ()
+absentAfter exp (LocationTypeState ls) l =
+    case M.lookup l ls of
+      Nothing -> throwError $ GenericTC ("Unknown location " ++ (show l)) exp
+      Just (_m,False) -> return ()
+      Just (_m,True) -> throwError $ GenericTC ("Alias of location " ++ (show l)) exp
+
+absentStart :: Exp -> ConstraintSet -> LocVar -> TcM ()
+absentStart exp (ConstraintSet cs) l = go $ S.toList cs
+    where go ((StartOfC l1 r):cs) =
+              if l1 == l
+              then throwError $ GenericTC ("Repeated start of " ++ (show r)) exp
+              else go cs
+          go (_:cs) = go cs
+          go [] = return ()
+
+removeLoc :: Exp -> LocationTypeState -> LocVar -> TcM LocationTypeState
+removeLoc exp (LocationTypeState ls) l =
+    if M.member l ls
+    then return $ LocationTypeState $ M.delete l ls
+    else throwError $ GenericTC ("Cannot remove location " ++ (show l)) exp
+
+type NewFuns = M.Map Var L2.FunDef
+
+
+    
+--------------------------------------------------------------------------------------------
 
 tester' =
     let ddfs = M.empty
