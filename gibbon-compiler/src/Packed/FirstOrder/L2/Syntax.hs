@@ -58,37 +58,47 @@ import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
 
+-- | Convenience alias.
+type Ty = Ty2
+{-# DEPRECATED Ty "Moving away from generically named Ty/Exp/Prog" #-}
+
+-- | Convenience alias.
+type Exp = Exp2
+{-# DEPRECATED Exp "Moving away from generically named Ty/Exp/Prog" #-}
+    
 --------------------------------------------------------------------------------
 
--- | Extended, L2 Expressions.
-type Exp2 = E2' LocVar Ty
-type Exp = Exp2
-    
-data E2 loc dec = 
-    LetRegionE Region        (E2' loc dec) -- ^ Not used until later on.
-  | LetLocE    Var    LocExp (E2' loc dec)
+-- | Extended expressions, L2.  Monomorphic.
+type Exp2 = E2 LocVar Ty
+
+-- | The extension that turns L1 into L2.
+data E2Ext loc dec = 
+    LetRegionE Region        (E2 loc dec) -- ^ Not used until later on.
+  | LetLocE    Var    LocExp (E2 loc dec) -- ^ Bind a new location.
   | RetE [LocVar] Var     -- ^ Return a value together with extra loc values.
  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
--- | L1 expressions extended with L2.  Shorthand for recursions above.
-type E2' l d = PreExp l (E2 l d) d
+-- | L1 expressions extended with L2.  This is the polymorphic version. Shorthand for
+-- recursions above.
+type E2 l d = PreExp l (E2Ext l d) d
 
+-- | Define a location in terms of a different location.
 data LocExp = StartOfC LocVar Region
             | AfterConstantC Int LocVar LocVar
             | AfterVariableC Var LocVar LocVar
             | InRegionC LocVar Region
               deriving (Read, Show, Eq, Ord, Generic, NFData)
 
-
---------------------------------------------------
-
 -- | Locations (end-witnesses) returned from functions after RouteEnds.
 data LocRet = EndOf LRM
 
--- Our type for functions grows to include effects.
-data ArrowTy t = ArrowTy { locVars :: [LRM],
-                           arrIn :: t, arrEffs:: (Set Effect), arrOut:: t
-                           -- locRets :: [LocRet]
+-- | Our type for functions grows to include effects, and explicit universal
+-- quantification over location/region variables.
+data ArrowTy t = ArrowTy { locVars :: [LRM]
+                         , arrIn :: t
+                         , arrEffs:: (Set Effect)
+                         , arrOut:: t
+                           -- locRets :: [LocRet] -- ^ L2B feature.
                          }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
@@ -103,11 +113,11 @@ instance Out a => Out (Set a) where
   doc x = doc (S.toList x)
 instance Out FunDef
 instance Out Prog
-instance (Out l, Out d) => Out (E2 l d)
+instance (Out l, Out d) => Out (E2Ext l d)
 instance Out LocExp
 
+
 -- | L1 Types extended with abstract Locations.
-type Ty = Ty2
 type Ty2 = L1.UrTy LocVar
 
     

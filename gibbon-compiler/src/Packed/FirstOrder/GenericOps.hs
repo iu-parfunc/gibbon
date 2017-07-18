@@ -45,13 +45,18 @@ instance FreeVars () where
 ----------------------------------------------------------------------------------------------------
 
 {-
-class Expression e where
+class (Show e, Out e) => Expression e where
 
 -- IRs amenable to flattening
-class Flattenable e where
---  gFlatten :: DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp l e d -> SyM (PreExp l e d)
+class Expression e => Flattenable e where
+  gFlattenExp :: forall e . (Flattenable e) =>
+                 DDefs (TyOf e) -> Env2 (TyOf e) -> e -> SyM e
+
+instance (Flattenable e, Out l, Show l) => Flattenable (PreExp l e (UrTy l)) where
+
+instance (Flattenable e, Out l, Show l) => Flattenable (Exp2 l (UrTy l)) where
     
 -- IRs amenable to simplification/inlineTrivs
-class Simplifiable e where
+class Expression e => Simplifiable e where
   
 -}
