@@ -115,6 +115,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                       
       CaseE e brs -> do
                (ty,tstate) <- recur tstatein e
+               ensureMatchCases ddfs exp ty brs
                (tys,tstate') <- tcCases ddfs env funs constrs regs tstate brs
                foldM_ (ensureEqualTy exp) (tys !! 0) (tail tys)
                return (tys !! 0,tstate')
@@ -132,7 +133,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  -- TODO: ensure correct locations on arguments
                  return (PackedTy dcty l, tstate)
                         
-      TimeIt e ty b -> do
+      TimeIt e _ty _b -> do
                (ty1,tstate1) <- recur tstatein e
                -- ensureEqualTy exp ty ty1
                return (ty1,tstate1)
@@ -155,17 +156,40 @@ tcExp ddfs env funs constrs regs tstatein exp =
       Ext (LetLocE v c e) -> do
                case c of
                  StartOfC l r -> do
-                               ensureRegion exp r regs
-                               absentStart exp constrs l
-                               let tstate1 = extendTS v (Output,False) tstatein
-                               let constrs1 = extendConstrs (StartOfC v r) $
-                                              extendConstrs (InRegionC l r) constrs
-                               (ty,tstate2) <- tcExp ddfs env funs constrs1 regs tstate1 e
-                               tstate3 <- removeLoc exp tstate2 v
-                               return (ty,tstate3)
-                 -- TODO: finish rules for letloc
-                 AfterConstantC i l1 l2 -> undefined
-                 AfterVariableC v l1 l2 -> undefined
+                               if l /= v then throwError $ GenericTC "Invalid location binding" exp
+                               else do 
+                                 ensureRegion exp r regs
+                                 absentStart exp constrs l
+                                 let tstate1 = extendTS v (Output,False) tstatein
+                                 let constrs1 = extendConstrs (StartOfC v r) $
+                                                extendConstrs (InRegionC l r) constrs
+                                 (ty,tstate2) <- tcExp ddfs env funs constrs1 regs tstate1 e
+                                 tstate3 <- removeLoc exp tstate2 v
+                                 return (ty,tstate3)
+                 AfterConstantC i l1 l2 -> do
+                               if l1 /= v then throwError $ GenericTC "Invalid location binding" exp
+                               else do 
+                                 r <- getRegion exp constrs l1
+                                 absentStart exp constrs l1
+                                 let tstate1 = extendTS v (Output,True) tstatein
+                                 let constrs1 = extendConstrs (InRegionC l2 r) $
+                                                extendConstrs (AfterConstantC i l1 l2) constrs
+                                 (ty,tstate2) <- tcExp ddfs env funs constrs1 regs tstate1 e
+                                 tstate3 <- removeLoc exp tstate2 v
+                                 return (ty,tstate3)
+                 AfterVariableC x l1 l2 -> do
+                               if l1 /= v then throwError $ GenericTC "Invalid location binding" exp
+                               else do
+                                 r <- getRegion exp constrs l1
+                                 absentStart exp constrs l1
+                                 (xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ VarE x
+                                 ensurePackedLoc exp xty l1
+                                 let tstate2 = extendTS v (Output,True) tstate1
+                                 let constrs1 = extendConstrs (InRegionC l2 r) $
+                                                extendConstrs (AfterVariableC x l1 l2) constrs
+                                 (ty,tstate3) <- tcExp ddfs env funs constrs1 regs tstate2 e
+                                 tstate4 <- removeLoc exp tstate3 v
+                                 return (ty,tstate4)
                  _ -> throwError $ GenericTC "Invalid letloc form" exp
                  
       Ext (RetE ls v) -> do
@@ -177,7 +201,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
 tcCases :: DDefs Ty -> Env2 Ty -> NewFuns
         -> ConstraintSet -> RegionSet -> LocationTypeState -> [(DataCon, [(Var,LocVar)], Exp)]
         -> TcM ([Ty], LocationTypeState)
-tcCases ddfs env funs constrs regs tstatein ((dc, vs, e):cases) = undefined
+tcCases ddfs env funs constrs regs tstatein ((dc, vs, e):cases) = undefined -- TODO: Typecheck cases
 tcCases _ _ _ _ _ ts [] = return ([],ts)
          
 tcProj :: Exp -> Int -> Ty -> TcM Ty
@@ -236,6 +260,16 @@ ensureEqualTy :: Exp -> Ty -> Ty -> TcM Ty
 ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
                                          ++ (show a) ++ ", " ++ (show b)) a b
 
+ensureMatchCases :: DDefs Ty -> Exp -> Ty -> [(DataCon, [(Var,LocVar)], Exp)] -> TcM ()
+ensureMatchCases ddfs exp ty cs = undefined -- TODO: Check that case clauses match type
+
+ensurePackedLoc :: Exp -> Ty -> LocVar -> TcM ()
+ensurePackedLoc exp ty l =
+    case ty of
+      PackedTy _ l1 -> if l1 == l then return ()
+                       else throwError $ GenericTC ("Wrong location in type " ++ (show ty)) exp
+      _ -> throwError $ GenericTC "Expected a packed type" exp
+
 extendEnv :: Env2 Ty -> Var -> Ty -> Env2 Ty
 extendEnv (Env2 vEnv fEnv) v ty = Env2 (M.insert v ty vEnv) fEnv
 
@@ -282,8 +316,14 @@ type NewFuns = M.Map Var L2.FunDef
     
 --------------------------------------------------------------------------------------------
 
+ddtree :: DDefs Ty
+ddtree = (fromListDD [DDef (toVar "Tree") 
+                              [ ("Leaf",[(False,IntTy)])
+                              , ("Node",[(False,PackedTy "Tree" "l")
+                                        ,(False,PackedTy "Tree" "l")])]])
+
 tester' =
-    let ddfs = M.empty
+    let ddfs = ddtree
         env = Env2 M.empty M.empty
         funs = M.empty
         constrs = ConstraintSet $ S.empty
@@ -293,10 +333,22 @@ tester' =
 
 tester = fst . runSyM 0 . runExceptT . tester'
 
-test1 = case tester $ LitE 1 of
-          Left err -> putStrLn (show err)
-          Right (ty,tstate) -> putStrLn (show ty)
+testerout e = 
+    case tester $ e of
+      Left err -> putStrLn (show err)
+      Right (ty,tstate) -> putStrLn (show ty) >> putStrLn (show tstate)
 
-test2 = case tester $ LetE ("a",[],IntTy,LitE 1) (PrimAppE L1.AddP [VarE "a",VarE "a"]) of
-          Left err -> putStrLn (show err)
-          Right (ty,tstate) -> putStrLn (show ty)
+test1 = testerout $ LitE 1 
+
+test2 = testerout $ LetE ("a",[],IntTy,LitE 1) (PrimAppE L1.AddP [VarE "a",VarE "a"])
+        
+test3 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $ LitE 1
+
+test4 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $
+        LetE ("throwaway", [], PackedTy "Tree" "l", DataConE "l" "Leaf" [LitE 1]) $ LitE 2
+
+test4bad1 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r1")) $
+            LetE ("throwaway", [], PackedTy "Tree" "l", DataConE "l" "Leaf" [LitE 1]) $ LitE 2
+
+test4bad2 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $
+            LetE ("throwaway", [], PackedTy "Tree" "l1", DataConE "l1" "Leaf" [LitE 1]) $ LitE 2
