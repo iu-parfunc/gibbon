@@ -188,7 +188,7 @@ parseSExp ses =
 
      (L (A "data" : _) : _) -> error$ "Badly formed data definition:\n  "++prnt (head xs)
 
-     (L3 "module+" _ bod : rst) -> go (bod:rst) dds fds cds mn
+     (Ls3 "module+" _ bod : rst) -> go (bod:rst) dds fds cds mn
 
      (ex : rst) ->
        let ex' = exp ex
@@ -227,10 +227,10 @@ docasety s =
 pattern A s = RSAtom (HSIdent s)
 
 pattern L  a         = RSList a
-pattern L1 a         = RSList [a]
-pattern L2 a b       = RSList [A a, b]
-pattern L3 a b c     = RSList [A a, b, c]
-pattern L4 a b c d   = RSList [A a, b, c, d]
+pattern Ls1 a         = RSList [a]
+pattern Ls2 a b       = RSList [A a, b]
+pattern Ls3 a b c     = RSList [A a, b, c]
+pattern Ls4 a b c d   = RSList [A a, b, c, d]
 -- pattern L5 a b c d e = RSList [A a, b, c, d, e]
 
 trueE :: Exp
@@ -266,22 +266,22 @@ exp se =
      where go [] = falseE
            go (x:xs) = IfE (exp x) trueE (go xs)
 
-   L4 "if" test conseq altern ->
+   Ls4 "if" test conseq altern ->
      IfE (exp test) (exp conseq) (exp altern)
 
-   L2 "quote" (A v) -> LitSymE (textToVar v)
+   Ls2 "quote" (A v) -> LitSymE (textToVar v)
 
    -- Any other naked symbol is a variable:
    A v               -> VarE (textToVar v)
    RSAtom (HSInt n)  -> LitE (fromIntegral n)
 
    -- | This type gets replaced later in flatten:
-   L2 "time" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) False)
+   Ls2 "time" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) False)
 
    -- | This variant inserts a loop, controlled by the iters argument on the command line.
-   L2 "iterate" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) True)
+   Ls2 "iterate" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) True)
 
-   L3 "let" (L bnds) bod ->
+   Ls3 "let" (L bnds) bod ->
      mkLets (L.map letbind bnds) (exp bod)
 
    L (A "case": scrut: cases) ->
@@ -289,44 +289,44 @@ exp se =
 
    L (A p : ls) | isPrim p -> PrimAppE (prim p) $ L.map exp ls
 
-   L3 "for/list" (L1 (L4 v ":" t e)) bod ->
+   Ls3 "for/list" (Ls1 (Ls4 v ":" t e)) bod ->
      S.MapE (textToVar v, typ t, exp e) (exp bod)
 
    -- I don't see why we need the extra type annotation:
-   L4 "for/fold"
-          (L1 (L4 v1 ":" t1 e1))
-          (L1 (L4 v2 ":" t2 e2))
+   Ls4 "for/fold"
+          (Ls1 (Ls4 v1 ":" t1 e1))
+          (Ls1 (Ls4 v2 ":" t2 e2))
           bod ->
      S.FoldE (textToVar v1, typ t1, exp e1)
              (textToVar v2, typ t2, exp e2)
              (exp bod)
 
-   L3 "vector-ref" evec (RSAtom (HSInt ind)) -> S.ProjE (fromIntegral ind) (exp evec)
+   Ls3 "vector-ref" evec (RSAtom (HSInt ind)) -> S.ProjE (fromIntegral ind) (exp evec)
    L (A "vector" : es) -> S.MkProdE $ L.map exp es
 
    -- Dictionaries require type annotations for now.  No inference!
-   L3 "ann" (L1 "empty-dict") (L2 "SymDict" ty) ->
+   Ls3 "ann" (Ls1 "empty-dict") (Ls2 "SymDict" ty) ->
        PrimAppE (DictEmptyP $ typ ty) []
 
-   L4 "insert" d k (L3 "ann" v ty) ->
+   Ls4 "insert" d k (Ls3 "ann" v ty) ->
        PrimAppE (DictInsertP $ typ ty) [(exp d),(exp k),(exp v)]
 
-   L3 "ann" (L3 "lookup" d k) ty ->
+   Ls3 "ann" (Ls3 "lookup" d k) ty ->
        PrimAppE (DictLookupP $ typ ty) [(exp d),(exp k)]
 
    L (A "gensym" : _) -> PrimAppE Gensym []
 
-   L3 "ann" (L3 "has-key?" d k) ty ->
+   Ls3 "ann" (Ls3 "has-key?" d k) ty ->
      PrimAppE (DictHasKeyP $ typ ty) [(exp d),(exp k)]
 
    -- L [A "error",arg] ->
-   L3 "ann" (L2 "error" arg) ty ->
+   Ls3 "ann" (Ls2 "error" arg) ty ->
       case arg of
         RSAtom (HSString str) -> PrimAppE (ErrorP (T.unpack str) (typ ty)) []
         _ -> error$ "bad argument to 'error' primitive: "++prnt arg
 
    -- Other annotations are dropped:
-   L3 "ann" e _ty -> exp e
+   Ls3 "ann" e _ty -> exp e
 
    L (A kwd : _args) | isKeyword kwd ->
       error $ "Error reading treelang.  Badly formed expression:\n "++prnt se
@@ -389,7 +389,7 @@ main = do
 
 handleRequire :: FilePath -> [Sexp] -> IO [Sexp]
 handleRequire _ [] = return []
-handleRequire baseFile ((L2 "require" arg):ls) = do
+handleRequire baseFile ((Ls2 "require" arg):ls) = do
   ls' <- handleRequire baseFile ls
   let file = case arg of
                RSAtom (HSString str) -> (takeDirectory baseFile) </> (unpack str)
