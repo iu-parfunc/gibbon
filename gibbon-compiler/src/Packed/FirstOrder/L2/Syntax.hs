@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -13,7 +15,7 @@
 -- | An intermediate language with an effect system that captures traversals.
 
 module Packed.FirstOrder.L2.Syntax
-    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..), LocRet(..), LocExp(..), E2Ext(..), getFunTy
+    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..), LocRet(..), LocExp, PreLocExp(..), E2Ext(..), getFunTy
     -- , mapExprs, mapMExprs, progToEnv
 
     -- * Temporary backwards compatibility, plus rexports
@@ -73,9 +75,9 @@ type Exp2 = E2 LocVar Ty
 
 -- | The extension that turns L1 into L2.
 data E2Ext loc dec = 
-    LetRegionE Region        (E2 loc dec) -- ^ Not used until later on.
-  | LetLocE    Var    LocExp (E2 loc dec) -- ^ Bind a new location.
-  | RetE [LocVar] Var     -- ^ Return a value together with extra loc values.
+    LetRegionE Region                 (E2 loc dec) -- ^ Not used until later on.
+  | LetLocE    loc    (PreLocExp loc) (E2 loc dec) -- ^ Bind a new location.
+  | RetE [loc] Var     -- ^ Return a value together with extra loc values.
  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 -- | L1 expressions extended with L2.  This is the polymorphic version. Shorthand for
@@ -83,11 +85,13 @@ data E2Ext loc dec =
 type E2 l d = PreExp l (E2Ext l d) d
 
 -- | Define a location in terms of a different location.
-data LocExp = StartOfC LocVar Region
-            | AfterConstantC Int LocVar LocVar
-            | AfterVariableC Var LocVar LocVar
-            | InRegionC LocVar Region
-              deriving (Read, Show, Eq, Ord, Generic, NFData)
+data PreLocExp loc = StartOfC loc Region
+                   | AfterConstantC Int loc loc
+                   | AfterVariableC Var loc loc
+                   | InRegionC loc Region
+                     deriving (Read, Show, Eq, Ord, Generic, NFData)
+
+type LocExp = PreLocExp LocVar
 
 -- | Locations (end-witnesses) returned from functions after RouteEnds.
 data LocRet = EndOf LRM
@@ -114,7 +118,7 @@ instance Out a => Out (Set a) where
 instance Out FunDef
 instance Out Prog
 instance (Out l, Out d) => Out (E2Ext l d)
-instance Out LocExp
+instance Out l => Out (PreLocExp l)
 
 
 -- | L1 Types extended with abstract Locations.

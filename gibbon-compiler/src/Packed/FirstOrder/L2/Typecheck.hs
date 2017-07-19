@@ -128,9 +128,9 @@ tcExp ddfs env funs constrs regs tstatein exp =
                if length args /= length es
                then throwError $ GenericTC "Invalid argument length" exp
                else do
-                 sequence_ [ ensureEqualTy exp ty1 ty2
+                 sequence_ [ ensureEqualTyNoLoc exp ty1 ty2
                            | (ty1,ty2) <- zip args tys ]
-                 ensureDataCon exp l tys tstate1
+                 ensureDataCon exp l tys constrs 
                  tstate2 <- switchOutLoc exp tstate1 l
                  return (PackedTy dcty l, tstate2)
                         
@@ -170,10 +170,10 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  return (ty,tstate3)
                                         
                  AfterConstantC i l1 l2 -> do
-                               if l1 /= v then throwError $ GenericTC "Invalid location binding" exp
+                               if l2 /= v then throwError $ GenericTC "Invalid location binding" exp
                                else do 
                                  r <- getRegion exp constrs l1
-                                 absentStart exp constrs l1
+                                 absentStart exp constrs v
                                  let tstate1 = extendTS v (Output,True) tstatein
                                  let constrs1 = extendConstrs (InRegionC l2 r) $
                                                 extendConstrs (AfterConstantC i l1 l2) constrs
@@ -182,10 +182,10 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  return (ty,tstate3)
                                         
                  AfterVariableC x l1 l2 -> do
-                               if l1 /= v then throwError $ GenericTC "Invalid location binding" exp
+                               if l2 /= v then throwError $ GenericTC "Invalid location binding" exp
                                else do
                                  r <- getRegion exp constrs l1
-                                 absentStart exp constrs l1
+                                 absentStart exp constrs v
                                  (xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ VarE x
                                  ensurePackedLoc exp xty l1
                                  let tstate2 = extendTS v (Output,True) tstate1
@@ -197,7 +197,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                         
                  _ -> throwError $ GenericTC "Invalid letloc form" exp
                  
-      Ext (RetE ls v) -> do
+      Ext (RetE _ls v) -> do
                -- skip returned locations for now
                recur tstatein $ VarE v
 
@@ -265,6 +265,12 @@ ensureEqualTy :: Exp -> Ty -> Ty -> TcM Ty
 ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
                                          ++ (show a) ++ ", " ++ (show b)) a b
 
+ensureEqualTyNoLoc :: Exp -> Ty -> Ty -> TcM Ty
+ensureEqualTyNoLoc exp (PackedTy dc1 ty1) (PackedTy dc2 ty2) =
+    if dc1 == dc2 then return (PackedTy dc1 ty1)
+    else ensureEqualTy exp (PackedTy dc1 ty1) (PackedTy dc2 ty2)
+ensureEqualTyNoLoc exp ty1 ty2 = ensureEqualTy exp ty1 ty2
+
 ensureMatchCases :: DDefs Ty -> Exp -> Ty -> [(DataCon, [(Var,LocVar)], Exp)] -> TcM ()
 ensureMatchCases ddfs exp ty cs = do
   case ty of
@@ -284,21 +290,33 @@ ensurePackedLoc exp ty l =
                        else throwError $ GenericTC ("Wrong location in type " ++ (show ty)) exp
       _ -> throwError $ GenericTC "Expected a packed type" exp
 
-ensureDataCon :: Exp -> LocVar -> [Ty] -> LocationTypeState -> TcM ()
-ensureDataCon exp linit tys ls = go Nothing linit tys -- TODO: Audit this
+ensureDataCon :: Exp -> LocVar -> [Ty] -> ConstraintSet -> TcM ()
+ensureDataCon exp linit tys cs = go Nothing linit tys
     where go Nothing linit ((PackedTy dc l):tys) = do
-            ensureAfterConstant ls linit l
+            ensureAfterConstant exp cs linit l
             go (Just (PackedTy dc l)) l tys
           go Nothing linit (ty:tys) = go Nothing linit tys
           go (Just (PackedTy dc1 l1)) linit ((PackedTy dc2 l2):tys) = do
-            ensureAfterPacked ls l1 l2 
+            ensureAfterPacked exp cs l1 l2 
             go (Just (PackedTy dc2 l2)) l2 tys
           go (Just (PackedTy dc l1)) linit (ty:tys) =
               go Nothing linit tys
+          go _ _ [] = return ()
             
 
-ensureAfterConstant = undefined
-ensureAfterPacked = undefined
+ensureAfterConstant :: Exp -> ConstraintSet -> LocVar -> LocVar -> TcM ()
+ensureAfterConstant exp (ConstraintSet cs) l1 l2 =
+    if L.any f $ S.toList cs then return ()
+    else throwError $ GenericTC ("Expected " ++ (show l2) ++ " after " ++ (show l1)) exp
+    where f (AfterConstantC _i l1' l2') = l1' == l1 && l2' == l2
+          f _ = False
+
+ensureAfterPacked :: Exp -> ConstraintSet -> LocVar -> LocVar -> TcM ()
+ensureAfterPacked  exp (ConstraintSet cs) l1 l2 =
+    if L.any f $ S.toList cs then return ()
+    else throwError $ GenericTC ("Expected " ++ (show l2) ++ " after " ++ (show l1)) exp
+    where f (AfterVariableC _v l1' l2') = l1' == l1 && l2' == l2
+          f _ = False
                                                
 extendEnv :: Env2 Ty -> Var -> Ty -> Env2 Ty
 extendEnv (Env2 vEnv fEnv) v ty = Env2 (M.insert v ty vEnv) fEnv
@@ -382,3 +400,20 @@ test4bad1 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOf
 
 test4bad2 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $
             LetE ("throwaway", [], PackedTy "Tree" "l1", DataConE "l1" "Leaf" [LitE 1]) $ LitE 2
+
+test5 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $
+        Ext $ LetLocE "l1" (AfterConstantC 1 "l" "l1") $ 
+        LetE ("x", [], PackedTy "Tree" "l1", DataConE "l1" "Leaf" [LitE 1]) $
+        Ext $ LetLocE "l2" (AfterVariableC "x" "l1" "l2") $
+        LetE ("y", [], PackedTy "Tree" "l2", DataConE "l2" "Leaf" [LitE 2]) $
+        LetE ("z", [], PackedTy "Tree" "l", DataConE "l" "Node" [VarE "x", VarE "y"]) $
+        LitE 1
+
+test5bad1 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $
+        Ext $ LetLocE "l1" (AfterConstantC 1 "l" "l1") $ 
+        LetE ("x", [], PackedTy "Tree" "l1", DataConE "l1" "Leaf" [LitE 1]) $
+        Ext $ LetLocE "l2" (AfterVariableC "x" "l1" "l2") $
+        LetE ("y", [], PackedTy "Tree" "l2", DataConE "l2" "Leaf" [LitE 2]) $
+        LetE ("z", [], PackedTy "Tree" "l", DataConE "l" "Node" [VarE "y", VarE "x"]) $
+        LitE 1
+-- GenericTC "Expected Var \"l2\" after Var \"l\"" (DataConE (Var "l") "Node" [VarE (Var "y"),VarE (Var "x")])
