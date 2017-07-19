@@ -7,7 +7,7 @@
 -- | Defines the target language for first-order L1 language with C code
 -- generator for it.
 
-module Packed.FirstOrder.L3_Target
+module Packed.FirstOrder.L4.Syntax
     ( Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..)
     , Alts(..), Prog(..), MainExp(..)
     -- * Utility functions

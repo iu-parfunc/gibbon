@@ -30,7 +30,7 @@ import           System.Directory
 import           System.Environment
 import           Text.PrettyPrint.Mainland
 
-import           Packed.FirstOrder.L3_Target
+import           Packed.FirstOrder.L4.Syntax
 --------------------------------------------------------------------------------
 
 

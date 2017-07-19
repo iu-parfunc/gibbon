@@ -25,7 +25,7 @@ import           Packed.FirstOrder.GenericOps(Interp, interpNoLogs)
 import qualified Packed.FirstOrder.HaskellFrontend as HS
 import qualified Packed.FirstOrder.L1.Syntax   as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
-import qualified Packed.FirstOrder.L3_Target   as L3
+import qualified Packed.FirstOrder.L4.Syntax   as L4
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import qualified Packed.FirstOrder.L1.Interp as SI
 import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
@@ -279,7 +279,7 @@ compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
         L1 l1 -> runL1 l1
         L2 l2 -> runL2 l2
       ------------------------------ TEMPORARY ------------------------------------
-        L3 l3 -> do
+        L4 l3 -> do
          if mode == Interp2
            then do
              l3res <- execProg l3
@@ -373,7 +373,7 @@ interpProg l1 =
 -- | A compile job stopped somewhere in the middle.
 data InProgress = L1 L1.Prog
                 | L2 L2.Prog
-                | L3 L3.Prog
+                | L4 L4.Prog
 
 -- | The main compiler pipeline, which we permit to return programs in
 -- /various/ states of compilation.
