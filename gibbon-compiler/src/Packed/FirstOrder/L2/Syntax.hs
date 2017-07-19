@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -13,7 +15,8 @@
 -- | An intermediate language with an effect system that captures traversals.
 
 module Packed.FirstOrder.L2.Syntax
-    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..), LocRet(..), LocExp(..)
+    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..), LocRet(..)
+    , LocExp(..), PreLocExp(..)
     , getFunTy
     -- , mapExprs
     , mapMExprs
@@ -77,9 +80,9 @@ type Exp2 = E2 LocVar Ty
 
 -- | The extension that turns L1 into L2.
 data E2Ext loc dec = 
-    LetRegionE Region        (E2 loc dec) -- ^ Not used until later on.
-  | LetLocE    Var    LocExp (E2 loc dec) -- ^ Bind a new location.
-  | RetE [LocVar] Var     -- ^ Return a value together with extra loc values.
+    LetRegionE Region                 (E2 loc dec) -- ^ Not used until later on.
+  | LetLocE    loc    (PreLocExp loc) (E2 loc dec) -- ^ Bind a new location.
+  | RetE [loc] Var     -- ^ Return a value together with extra loc values.
  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 -- | L1 expressions extended with L2.  This is the polymorphic version. Shorthand for
@@ -87,14 +90,17 @@ data E2Ext loc dec =
 type E2 l d = PreExp l (E2Ext l d) d
 
 -- | Define a location in terms of a different location.
-data LocExp = StartOfC LocVar Region
-            | AfterConstantC Int LocVar LocVar
-            | AfterVariableC Var LocVar LocVar
-            | InRegionC LocVar Region
-              deriving (Read, Show, Eq, Ord, Generic, NFData)
+data PreLocExp loc = StartOfC loc Region
+                   | AfterConstantC Int loc loc
+                   | AfterVariableC Var loc loc
+                   | InRegionC loc Region
+                     deriving (Read, Show, Eq, Ord, Generic, NFData)
+
+type LocExp = PreLocExp LocVar
 
 -- | Locations (end-witnesses) returned from functions after RouteEnds.
 data LocRet = EndOf LRM
+              deriving (Read, Show, Eq, Ord, Generic, NFData)
 
 instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
 
@@ -106,7 +112,7 @@ data ArrowTy t = ArrowTy { locVars :: [LRM]
                          , arrIn :: t
                          , arrEffs:: (Set Effect)
                          , arrOut:: t
-                           -- locRets :: [LocRet] -- ^ L2B feature.
+                         , locRets :: [LocRet] -- ^ L2B feature.
                          }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
@@ -122,7 +128,8 @@ instance Out a => Out (Set a) where
 instance Out FunDef
 instance Out Prog
 instance (Out l, Out d) => Out (E2Ext l d)
-instance Out LocExp
+instance Out l => Out (PreLocExp l)
+instance Out LocRet
 
 
 -- | L1 Types extended with abstract Locations.
@@ -147,7 +154,7 @@ progToEnv :: Prog -> Env2 (UrTy ())
 progToEnv Prog{fundefs} =
     Env2 M.empty
          (M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
-                     | FunDef n (ArrowTy _ a _ b) _ _ <- M.elems fundefs ])
+                     | FunDef n (ArrowTy _ a _ b _) _ _ <- M.elems fundefs ])
 
 
 -- | A function definition with the function's effects.
