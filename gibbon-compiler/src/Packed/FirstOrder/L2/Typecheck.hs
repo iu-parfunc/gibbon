@@ -23,7 +23,6 @@ import qualified Packed.FirstOrder.L1.Syntax as L1
 import Data.Set as S
 import Data.Map as M
 import Data.List as L
-import Data.Either
 import Text.PrettyPrint.GenericPretty
 import Control.Monad.Except
 
@@ -41,9 +40,10 @@ data TCError = GenericTC String Exp
              | VarNotFoundTC Var Exp
              | UnsupportedExpTC Exp
              | DivergingEffectsTC Exp LocationTypeState LocationTypeState
+             | LocationTC String Exp LocVar LocVar 
                deriving (Read,Show,Eq,Ord, Generic, NFData)
     
-type TcM a = ExceptT TCError SyM a
+type TcM a = Except TCError a
 
 
 tcExp :: DDefs Ty -> Env2 Ty -> NewFuns
@@ -60,7 +60,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
       LitSymE v -> return (IntTy, tstatein) -- SymTy
                    
       AppE v ls e ->
-          do let (ArrowTy locVars arrIn arrEffs arrOut) = getFunTy funs v
+          do let (ArrowTy locVars arrIn arrEffs arrOut locRets) = getFunTy funs v
              (ty,tstate) <- recur tstatein e
              ensureEqualTy exp ty arrIn
              -- TODO: update tstate with traversals
@@ -307,14 +307,14 @@ ensureDataCon exp linit tys cs = go Nothing linit tys
 ensureAfterConstant :: Exp -> ConstraintSet -> LocVar -> LocVar -> TcM ()
 ensureAfterConstant exp (ConstraintSet cs) l1 l2 =
     if L.any f $ S.toList cs then return ()
-    else throwError $ GenericTC ("Expected " ++ (show l2) ++ " after " ++ (show l1)) exp
+    else throwError $ LocationTC "Expected after relationship" exp l1 l2 
     where f (AfterConstantC _i l1' l2') = l1' == l1 && l2' == l2
           f _ = False
 
 ensureAfterPacked :: Exp -> ConstraintSet -> LocVar -> LocVar -> TcM ()
 ensureAfterPacked  exp (ConstraintSet cs) l1 l2 =
     if L.any f $ S.toList cs then return ()
-    else throwError $ GenericTC ("Expected " ++ (show l2) ++ " after " ++ (show l1)) exp
+    else throwError $ LocationTC "Expected after relationship" exp l1 l2 
     where f (AfterVariableC _v l1' l2') = l1' == l1 && l2' == l2
           f _ = False
                                                
@@ -379,7 +379,7 @@ tester' =
         tstate = LocationTypeState $ M.empty
     in tcExp ddfs env funs constrs regs tstate 
 
-tester = fst . runSyM 0 . runExceptT . tester'
+tester = runExcept . tester'
 
 testerout e = 
     case tester $ e of

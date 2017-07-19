@@ -95,6 +95,7 @@ type LocExp = PreLocExp LocVar
 
 -- | Locations (end-witnesses) returned from functions after RouteEnds.
 data LocRet = EndOf LRM
+              deriving (Read, Show, Eq, Ord, Generic, NFData)
 
 -- | Our type for functions grows to include effects, and explicit universal
 -- quantification over location/region variables.
@@ -102,7 +103,7 @@ data ArrowTy t = ArrowTy { locVars :: [LRM]
                          , arrIn :: t
                          , arrEffs:: (Set Effect)
                          , arrOut:: t
-                           -- locRets :: [LocRet] -- ^ L2B feature.
+                         , locRets :: [LocRet] -- ^ L2B feature.
                          }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
@@ -119,6 +120,7 @@ instance Out FunDef
 instance Out Prog
 instance (Out l, Out d) => Out (E2Ext l d)
 instance Out l => Out (PreLocExp l)
+instance Out LocRet
 
 
 -- | L1 Types extended with abstract Locations.
@@ -141,7 +143,7 @@ progToEnv :: Prog -> Env2 (UrTy ())
 progToEnv Prog{fundefs} =
     Env2 M.empty
          (M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
-                     | FunDef n (ArrowTy _ a _ b) _ _ <- M.elems fundefs ])
+                     | FunDef n (ArrowTy _ a _ b _) _ _ <- M.elems fundefs ])
 
 
 -- | A function definition with the function's effects.
