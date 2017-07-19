@@ -139,8 +139,8 @@ data PreExp loc ext dec =
      
   deriving (Read,Show,Eq,Ord, Generic, NFData, Functor)
 
-instance (Out l, Show l, Expression e) => Expression (PreExp l e (UrTy l)) where
-  type (TyOf (PreExp l e (UrTy l))) = UrTy l  
+instance (Out l, Show l, Show d, Out d, Expression e) => Expression (PreExp l e d) where
+  type (TyOf (PreExp l e d)) = d
 
 -- | Apply a function to the extension points only.
 mapExt :: (e1 -> e2) -> PreExp l e1 d -> PreExp l e2 d

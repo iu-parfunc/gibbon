@@ -82,6 +82,11 @@ instance (Out l, Show l, Flattenable e) => Flattenable (PreExp l e (UrTy l)) whe
      in
      case e0 of
        (Ext finishme)   -> error "FINISHME" -- return ([],e0)
+
+       -- WARNING: Need to rearrange this.  We don't want to actually discharge the let bindings
+       -- with this generic/recursive call:
+       -- (Ext ext)   -> gFlattenExp ddefs env2 _ -- (ext :: e)
+                      
        (VarE _)         -> return ([],e0)
        (LitE _)         -> return ([],e0)
        (LitSymE _)      -> return ([],e0)
