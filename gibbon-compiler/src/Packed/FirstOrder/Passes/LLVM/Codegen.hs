@@ -7,7 +7,7 @@ import Control.Monad.State
 import qualified Data.Map as Map
 
 -- | gibbon internals
-import Packed.FirstOrder.L3_Target
+import Packed.FirstOrder.L4.Syntax
 import Packed.FirstOrder.Passes.Codegen (rewriteReturns)
 import Packed.FirstOrder.Common (fromVar,toVar, varAppend)
 import Packed.FirstOrder.Passes.LLVM.Monad

@@ -56,7 +56,11 @@ class (Show e, Out e) => Expression e where
       
 -- | IRs amenable to flattening
 class Expression e => Flattenable e where
+  -- | Process an expression into a fully-flattened expression which typically includes a
+  -- larger number of temporary, local variable bindings.
   gFlattenExp :: DDefs (TyOf e) -> Env2 (TyOf e) -> e -> SyM e
+
+
     
 -- | IRs amenable to simplification/inlineTrivs
 class Expression e => Simplifiable e where

@@ -11,7 +11,7 @@ import Data.Word (Word64)
 import Control.Monad.State
 
 -- | gibbon internals
-import Packed.FirstOrder.L3_Target
+import Packed.FirstOrder.L4.Syntax
 import Packed.FirstOrder.Passes.Codegen (harvestStructTys, makeName)
 import Packed.FirstOrder.Common (fromVar)
 import Packed.FirstOrder.Passes.LLVM.Monad

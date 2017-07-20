@@ -26,7 +26,7 @@ import qualified Packed.FirstOrder.L1.Syntax as L1
 import           Packed.FirstOrder.L1.Syntax (Exp(..))
 import qualified Packed.FirstOrder.L2.Syntax as L2
 import           Packed.FirstOrder.L2.Syntax ( FunDef(..), Prog(..) )
-import qualified Packed.FirstOrder.L3_Target as T
+import qualified Packed.FirstOrder.L4.Syntax as T
 import Data.Maybe
 import qualified Data.List as L
 import Data.List as L hiding (tail)

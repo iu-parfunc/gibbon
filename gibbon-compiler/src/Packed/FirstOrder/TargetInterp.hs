@@ -1,4 +1,4 @@
--- | Interpreter for the target language (L3)
+-- | Interpreter for the target language (L4)
 
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE BangPatterns #-}
@@ -17,7 +17,7 @@ import Data.Maybe (listToMaybe)
 
 import Data.Sequence (Seq, ViewL ((:<)), (|>))
 import qualified Data.Sequence as Seq
-import Packed.FirstOrder.L3_Target
+import Packed.FirstOrder.L4.Syntax
 import Packed.FirstOrder.Common (fromVar)
 import GHC.Generics
 import Control.DeepSeq

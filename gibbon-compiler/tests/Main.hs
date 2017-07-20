@@ -25,8 +25,8 @@ import           Packed.FirstOrder.L2.Syntax as L2
 -- import           Packed.FirstOrder.Passes.CopyInsertion
 -- import           Packed.FirstOrder.Passes.Cursorize
 -- import           Packed.FirstOrder.Passes.Codegen
-import           Packed.FirstOrder.L3_Target hiding (Prog (..), Ty (..))
-import qualified Packed.FirstOrder.L3_Target as T
+import           Packed.FirstOrder.L4.Syntax hiding (Prog (..), Ty (..))
+import qualified Packed.FirstOrder.L4.Syntax as T
 import qualified Packed.FirstOrder.TargetInterp as TI
 
 

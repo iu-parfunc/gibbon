@@ -18,7 +18,8 @@
 module Packed.FirstOrder.L2.Syntax
     ( Prog(..), FunDef(..), Effect(..), ArrowTy(..), LocRet(..), LocExp, PreLocExp(..), E2Ext(..)
     , NewFuns, getFunTy
-    -- , mapExprs, mapMExprs, progToEnv
+    , mapMExprs
+    , progToEnv
 
     -- * Temporary backwards compatibility, plus rexports
     , UrTy(..)
@@ -27,7 +28,7 @@ module Packed.FirstOrder.L2.Syntax
     , primRetTy
 
     -- * Extended language L2.0 with location types.
-    , Exp2, E2(..), Ty2
+    , Exp2, E2Ext(..), Ty2
 
     -- * Convenience aliases
     , Ty, Exp
@@ -52,6 +53,7 @@ module Packed.FirstOrder.L2.Syntax
 
 import Control.DeepSeq
 import Packed.FirstOrder.Common hiding (FunDef)
+import Packed.FirstOrder.GenericOps
 import qualified Packed.FirstOrder.L1.Syntax as L1
 import Packed.FirstOrder.L1.Syntax hiding
     (Ty, FunDef, Prog,
@@ -100,6 +102,10 @@ type LocExp = PreLocExp LocVar
 data LocRet = EndOf LRM
               deriving (Read, Show, Eq, Ord, Generic, NFData)
 
+instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
+
+----------------------------------------------------------------------------------------------------
+            
 -- | Our type for functions grows to include effects, and explicit universal
 -- quantification over location/region variables.
 data ArrowTy t = ArrowTy { locVars :: [LRM]
@@ -139,6 +145,8 @@ data Prog = Prog { ddefs    :: DDefs Ty
                  }
   deriving (Show, Read, Ord, Eq, Generic, NFData)
 
+----------------------------------------------------------------------------------------------------
+           
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.  The
 --   initial environment has types only for functions.
@@ -418,8 +426,9 @@ allLocVars t =
 --   where
 --     funEnv = fEnv $ includeBuiltins $ progToEnv (Prog dd fundefs mainExp)
 
--- -- | Map exprs with an initial type environment:
--- mapMExprs :: Monad m => (Env2 (UrTy ()) -> Exp -> m Exp) -> Prog -> m Prog
+-- | Map exprs with an initial type environment:
+mapMExprs :: Monad m => (Env2 (UrTy LocVar) -> Exp2 -> m Exp2) -> Prog -> m Prog
+mapMExprs = _mapMExprs
 -- mapMExprs fn (Prog dd fundefs mainExp) =
 --     Prog dd <$>
 --          (mapM (\ (FunDef nm arrTy@(ArrowTy inT _ _) arg bod) ->
