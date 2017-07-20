@@ -54,10 +54,15 @@ flatten prg@(L1.Prog defs funs main) = do
 -- go in there too.  Everything would be simpler.  We would simply have to use other means
 -- to remember that L1 programs are first order.
 
-
 type Binds l e = (Var,[l],UrTy l, PreExp l e (UrTy l))
-
+type TEnv l = M.Map Var (UrTy l)
+    
 instance (Out l, Show l, Flattenable e) => Flattenable (PreExp l e (UrTy l)) where
+  gFlattenGatherBinds :: M.Map Var (UrTy l)
+                      -> PreExp l e (UrTy l)
+                      -> SyM ([(Var, [l1], UrTy l, PreExp l e (UrTy l))], PreExp l e (UrTy l))
+  gFlattenGatherBinds = undefined
+                 
   gFlattenExp :: DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp l e (UrTy l) -> SyM (PreExp l e (UrTy l))
   gFlattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
                                   return $ flatLets b e'
@@ -153,8 +158,6 @@ flatLets :: [(Var,[l],d,PreExp l e d)] -> PreExp l e d -> PreExp l e d
 flatLets [] bod = bod
 flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
 
-
-type TEnv l = M.Map Var (UrTy l)
 
 -- FIXME: Why is this not unified with Typecheck.hs?
 

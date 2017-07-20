@@ -8,13 +8,15 @@ module Packed.FirstOrder.GenericOps
      -- * Free Variables, generic interface
      , FreeVars(..)
 
-
      -- * Genereric interface for expressions and select passes
-     , Expression(..), Flattenable(..), Simplifiable(..)
+     , Expression(..)
+     , Flattenable(..)
+     , Simplifiable(..)
     )
     where
 
 import qualified Data.Set as S
+import qualified Data.Map as M
 import Packed.FirstOrder.Common
 import Text.PrettyPrint.GenericPretty (Out)
     
@@ -60,7 +62,12 @@ class Expression e => Flattenable e where
   -- larger number of temporary, local variable bindings.
   gFlattenExp :: DDefs (TyOf e) -> Env2 (TyOf e) -> e -> SyM e
 
+  -- | A private method.  Gather the bindings from a subexpression,
+  -- but do not "discharge" them by creating a let expression.  They
+  -- are in order, so later may depend on earlier.
+  gFlattenGatherBinds :: M.Map Var (TyOf e) -> e -> SyM ([Binds l e],e)
 
+type Binds l e = (Var,[l],TyOf e, e)
     
 -- | IRs amenable to simplification/inlineTrivs
 class Expression e => Simplifiable e where
