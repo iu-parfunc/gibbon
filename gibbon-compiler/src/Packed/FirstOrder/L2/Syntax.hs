@@ -1,3 +1,4 @@
+
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -15,10 +16,8 @@
 -- | An intermediate language with an effect system that captures traversals.
 
 module Packed.FirstOrder.L2.Syntax
-    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..), LocRet(..)
-    , LocExp(..), PreLocExp(..)
-    , getFunTy
-    -- , mapExprs
+    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..), LocRet(..), LocExp, PreLocExp(..), E2Ext(..)
+    , NewFuns, getFunTy
     , mapMExprs
     , progToEnv
 
@@ -83,6 +82,7 @@ data E2Ext loc dec =
     LetRegionE Region                 (E2 loc dec) -- ^ Not used until later on.
   | LetLocE    loc    (PreLocExp loc) (E2 loc dec) -- ^ Bind a new location.
   | RetE [loc] Var     -- ^ Return a value together with extra loc values.
+  | FromEndE loc -- ^ Bind a location from an EndOf location (for RouteEnds and after)
  deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 -- | L1 expressions extended with L2.  This is the polymorphic version. Shorthand for

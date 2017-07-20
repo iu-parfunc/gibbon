@@ -358,8 +358,6 @@ removeLoc exp (LocationTypeState ls) l =
     then return $ LocationTypeState $ M.delete l ls
     else throwError $ GenericTC ("Cannot remove location " ++ (show l)) exp
 
-type NewFuns = M.Map Var L2.FunDef
-
 
     
 --------------------------------------------------------------------------------------------
