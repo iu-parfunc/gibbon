@@ -16,7 +16,7 @@
 -- | An intermediate language with an effect system that captures traversals.
 
 module Packed.FirstOrder.L2.Syntax
-    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..), LocRet(..), LocExp, PreLocExp(..), E2Ext(..)
+    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..), LocRet(..), LocExp, PreLocExp(..)
     , NewFuns, getFunTy
     , mapMExprs
     , progToEnv
@@ -103,7 +103,9 @@ data LocRet = EndOf LRM
               deriving (Read, Show, Eq, Ord, Generic, NFData)
 
 instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
+  type TyOf (E2Ext l d) = UrTy l
 
+    
 ----------------------------------------------------------------------------------------------------
             
 -- | Our type for functions grows to include effects, and explicit universal

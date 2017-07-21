@@ -25,7 +25,9 @@ module Packed.FirstOrder.Common
        , cleanFunName
 
        , LocVar, Region(..), Modality(..), LRM(..), dummyLRM
-       , Env2(..)
+        
+       , Env2(Env2) -- TODO: hide constructor
+       , vEnv, fEnv, extendVEnv, extendsVEnv, extendFEnv
          
          -- * Runtime configuration
        , RunConfig(..), getRunConfig
@@ -138,10 +140,29 @@ varAppend x y = toVar (fromVar x ++ fromVar y)
 --------------------------------------------------------------------------------
 
 -- | A common currency for a two part environment consisting of
--- function bindings and regular value bindings.
+-- function bindings and regular value bindings.  
 data Env2 a = Env2 { vEnv :: M.Map Var a
-                   , fEnv :: M.Map Var (a, a) }
+                   , fEnv :: FunEnv a }
 
+-- | Extend non-function value environment.
+extendVEnv :: Var -> a -> Env2 a -> Env2 a
+extendVEnv v t (Env2 ve fe) = Env2 (M.insert v t ve) fe
+              
+-- | Extend multiple times in one go.
+extendsVEnv :: M.Map Var a -> Env2 a -> Env2 a
+extendsVEnv mp (Env2 ve fe) = Env2 (M.union mp ve) fe
+
+-- | Extend function type environment.
+extendFEnv :: Var -> (a,a) -> Env2 a -> Env2 a
+extendFEnv v t (Env2 ve fe) = Env2 ve (M.insert v t fe) 
+
+                              
+--------------------------------------------------------------------------------
+            
+-- | Type environment for function defs only.  This works with type
+-- representations that do not include arrow types.
+type FunEnv a = M.Map Var (a, a)
+            
 -- Primitive for now:
 type DDefs a = Map Var (DDef a)
 

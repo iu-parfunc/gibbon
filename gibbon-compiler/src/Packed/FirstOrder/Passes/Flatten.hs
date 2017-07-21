@@ -1,5 +1,6 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | Put the program in A-normal form where only varrefs and literals are
 -- allowed in operand position.
@@ -58,30 +59,30 @@ type Binds l e = (Var,[l],UrTy l, PreExp l e (UrTy l))
 type TEnv l = M.Map Var (UrTy l)
     
 instance (Out l, Show l, Flattenable e) => Flattenable (PreExp l e (UrTy l)) where
-  gFlattenGatherBinds :: M.Map Var (UrTy l)
-                      -> PreExp l e (UrTy l)
-                      -> SyM ([(Var, [l1], UrTy l, PreExp l e (UrTy l))], PreExp l e (UrTy l))
-  gFlattenGatherBinds = undefined
+  -- gFlattenGatherBinds :: DDefs (UrTy l) ->
+  --                        Env2 (UrTy l) ->
+  --                        PreExp l e (UrTy l) ->
+  --                        SyM ([Binds l e], PreExp l e (UrTy l))
+  gFlattenGatherBinds = _ -- exp
                  
   gFlattenExp :: DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp l e (UrTy l) -> SyM (PreExp l e (UrTy l))
-  gFlattenExp ddefs env2 ex0 = do (b,e') <- exp (vEnv env2) ex0
+  gFlattenExp ddefs env2 ex0 = do (b,e') <- exp ddefs env2 ex0
                                   return $ flatLets b e'
    where
-   typeIt :: TEnv l -> PreExp l e (UrTy l) -> (UrTy l)
-   typeIt = typeExp (ddefs,env2)
 
-   exp :: TEnv l -> PreExp l e (UrTy l) -> SyM ([Binds l e],PreExp l e (UrTy l))
-   exp tenv e0 =
+exp :: forall l e . (Show l, Show e, Out l, Out e) =>
+       DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp l e (UrTy l) -> SyM ([Binds l e],PreExp l e (UrTy l))
+exp ddefs env2 e0 =
      let triv :: String -> PreExp l e (UrTy l) -> SyM ([Binds l e], PreExp l e (UrTy l))
          triv m e = -- Force something to be trivial
            if isTriv e
            then return ([],e)
            else do tmp <- gensym $ toVar $ "flt" ++ m
-                   let ty = typeIt tenv e
-                   (bnds,e') <- exp tenv e
+                   let ty = typeExp (ddefs, env2) e
+                   (bnds,e') <- exp ddefs env2 e
                    return ( bnds++[(tmp,[],ty,e')]
                           , VarE tmp)
-         go = exp tenv
+         go = exp ddefs env2
          gols f ls m = do (bndss,ls') <- unzip <$> mapM (triv m) ls
                           return (concat bndss, f ls')
      in
@@ -119,7 +120,7 @@ instance (Out l, Show l, Flattenable e) => Flattenable (PreExp l e (UrTy l)) whe
          go $ LetE (v2,lv2,t2,rhs2) $ LetE (v1,lv1,t1,rhs1) bod
 
        (LetE (v,_,t,rhs) bod) -> do (bnd1,rhs') <- go rhs
-                                    (bnd2,bod') <- exp (M.insert v t tenv) bod
+                                    (bnd2,bod') <- exp ddefs (extendVEnv v t env2) bod
                                     return (bnd1++[(v,[],t,rhs')]++bnd2, bod')
        (IfE a b c) -> do (b1,a') <- triv "If" a
                          (b2,b') <- go b
@@ -136,13 +137,13 @@ instance (Out l, Show l, Flattenable e) => Flattenable (PreExp l e (UrTy l)) whe
                           ls' <- forM ls $ \ (k,vrs,rhs) -> do
                                    let tys = lookupDataCon ddefs k
                                        vrs' = map fst vrs
-                                       tenv' = M.union (M.fromList (zip vrs' tys)) tenv
-                                   (b2,rhs') <- exp tenv' rhs
+                                       env2' = extendsVEnv (M.fromList (zip vrs' tys)) env2
+                                   (b2,rhs') <- exp ddefs env2' rhs
                                    return (k,vrs, flatLets b2 rhs')
                           return (b, CaseE e' ls')
        -- TimeIt is treated like a conditional.  Don't lift out of it:
        (TimeIt e _t b) -> do (bnd,e') <- go e
-                             return ([], TimeIt (flatLets bnd e') (typeIt tenv e) b)
+                             return ([], TimeIt (flatLets bnd e') (typeExp (ddefs, env2) e) b)
        (MapE _ _)    -> error "FINISHLISTS"
        (FoldE _ _ _) -> error "FINISHLISTS"
 
@@ -159,19 +160,21 @@ flatLets [] bod = bod
 flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
 
 
--- FIXME: Why is this not unified with Typecheck.hs?
+-- FIXME: Why is this not combined with Typecheck.hs?
+-- FIXME: Why does this take an Env2 PLUS a TEnv?
 
-typeExp :: (Show l, Show e, Out l, Out e) =>
-           (DDefs (UrTy l), Env2 (UrTy l)) -> TEnv l -> PreExp l e (UrTy l) -> (UrTy l)
-typeExp (_dd,_env2) env (L1.VarE v) =
+-- | Recover the type of an expression in a type environment.
+typeExp :: forall l e . (Show l, Show e, Out l, Out e) =>
+           (DDefs (UrTy l), Env2 (UrTy l)) -> PreExp l e (UrTy l) -> (UrTy l)
+typeExp (_dd,env2) (L1.VarE v) =
 --    M.findWithDefault (L1.Packed "CURSOR_TY") v env
-   M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v env
+   M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v (vEnv env2)
 
-typeExp (_dd,_env2) _env (L1.LitE _i) = L1.IntTy
-typeExp _ _ (L1.LitSymE _)          = L1.SymTy
-typeExp (_dd,env2) _env (L1.AppE v _lvs _e) = snd $ fEnv env2 # v
+typeExp (_dd,_env2) (L1.LitE _i)       = L1.IntTy
+typeExp _           (L1.LitSymE _)     = L1.SymTy
+typeExp (_dd,env2) (L1.AppE v _lvs _e) = snd $ fEnv env2 # v
 
-typeExp (_,_) _env (L1.PrimAppE p _es) =
+typeExp (_,_) (L1.PrimAppE p _es) =
     case p of
       L1.AddP -> L1.IntTy
       L1.SubP -> L1.IntTy
@@ -189,27 +192,29 @@ typeExp (_,_) _env (L1.PrimAppE p _es) =
       L1.ReadPackedFile _ _ ty -> (noLocsHere ty)
       _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
 
-typeExp (dd,env2) env (L1.LetE (v,_,t,_) e) = typeExp (dd,env2) (M.insert v t env) e
-typeExp (dd,env2) env (L1.IfE _ e _) = typeExp (dd,env2) env e
-typeExp (dd,env2) env e0@(L1.ProjE i e) =
-    case typeExp (dd,env2) env e of
+typeExp (dd,env2) (L1.LetE (v,_,t,_) e) = typeExp (dd,extendVEnv v t env2) e
+typeExp (dd,env2) (L1.IfE _ e _) = typeExp (dd,env2) e
+typeExp (dd,env2) e0@(L1.ProjE i e) =
+    case typeExp (dd,env2) e of
      (L1.ProdTy tys) -> tys !! i
      oth -> error $ "typeExp: Cannot project fields from this type: "++show oth
                   ++"\nExpression:\n  "++sdoc e0
-                  ++"\nEnvironment:\n  "++sdoc env
-typeExp (dd,env2) env (L1.MkProdE es) =
-    L1.ProdTy $ map (typeExp (dd,env2) env) es
-typeExp (dd,env2) env (L1.CaseE _e mp) =
+                  ++"\nEnvironment:\n  "++sdoc (vEnv env2)
+typeExp (dd,env2) (L1.MkProdE es) =
+    L1.ProdTy $ map (typeExp (dd,env2)) es
+typeExp (dd,env2) (L1.CaseE _e mp) =
     let (c,args,e) = head mp
         args' = map fst args
-    in typeExp (dd,env2) (M.fromList (zip args' (lookupDataCon dd c)) `M.union` env) e
+    in typeExp (dd, extendsVEnv (M.fromList (zip args' (lookupDataCon dd c))) env2) e
 
-typeExp (dd,_) _env (L1.DataConE l c _es) = L1.PackedTy (getTyOfDataCon dd c) l
+typeExp (dd,_) (L1.DataConE l c _es) = L1.PackedTy (getTyOfDataCon dd c) l
 
-typeExp (dd,env2) env (L1.TimeIt e _ _) = typeExp (dd,env2) env e
-typeExp (dd,env2) env (L1.MapE _ e)     = typeExp (dd,env2) env e
-typeExp (dd,env2) env (L1.FoldE _ _ e)  = typeExp (dd,env2) env e
-typeExp (_,_) _ exp = error $ "typeExp: " ++ show exp ++ " not implemented"
+typeExp (dd,env2) (L1.TimeIt e _ _) = typeExp (dd,env2) e
+typeExp (dd,env2) (L1.MapE _ e)     = typeExp (dd,env2) e
+typeExp (dd,env2) (L1.FoldE _ _ e)  = typeExp (dd,env2) e
+
+typeExp (_,_) (Ext ex) = error $ "typeExp: FIXME, internal error.  Cannot type extension: " ++ show ex
+-- typeExp (_,_) ex = error $ "typeExp: " ++ show ex ++ " not implemented"
 
 
 -- This crops up in the types for primitive operations.  Can we remove the need for this?

@@ -69,7 +69,7 @@ inferEffects (L1.Prog dd fds mainE) = do
               fds finalFunTys)
 
       mainE' = fmap addTy mainE
-      addTy e = (e, typeExp (dd,progToEnv (Prog dd funs Nothing)) M.empty e)
+      addTy e = (e, typeExp (dd,progToEnv (Prog dd funs Nothing)) e)
 
   return $ force finalFunTys `seq`
            Prog dd funs mainE'

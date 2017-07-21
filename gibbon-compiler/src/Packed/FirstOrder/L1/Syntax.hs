@@ -107,7 +107,9 @@ data PreExp loc ext dec =
    | LetE (Var,[loc],dec, EXP) -- binding
           EXP                  -- body
     -- ^ One binding at a time.  Allows binding a list of
-    -- implicit location return vales from the RHS, plus a single "real" value.
+    -- implicit *location* return vales from the RHS, plus a single "real" value.
+    -- This list of implicit returnsb
+          
    | IfE EXP EXP EXP
 
    -- TODO: eventually tuples will just be a wired-in datatype.
@@ -140,8 +142,9 @@ data PreExp loc ext dec =
   deriving (Read,Show,Eq,Ord, Generic, NFData, Functor)
 
 instance (Out l, Show l, Show d, Out d, Expression e) => Expression (PreExp l e d) where
-  type (TyOf (PreExp l e d)) = d
-
+  type (TyOf (PreExp l e d))  = d
+  type (LocOf (PreExp l e d)) = l
+      
 -- | Apply a function to the extension points only.
 mapExt :: (e1 -> e2) -> PreExp l e1 d -> PreExp l e2 d
 mapExt fn = visitExp id fn id

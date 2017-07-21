@@ -54,7 +54,8 @@ instance FreeVars () where
 -- | A generic interface to expressions found in different phases of
 -- the compiler.
 class (Show e, Out e) => Expression e where
-  type TyOf e 
+  type TyOf e
+  type LocOf e
       
 -- | IRs amenable to flattening
 class Expression e => Flattenable e where
@@ -65,9 +66,9 @@ class Expression e => Flattenable e where
   -- | A private method.  Gather the bindings from a subexpression,
   -- but do not "discharge" them by creating a let expression.  They
   -- are in order, so later may depend on earlier.
-  gFlattenGatherBinds :: M.Map Var (TyOf e) -> e -> SyM ([Binds l e],e)
+  gFlattenGatherBinds :: DDefs (TyOf e) -> M.Map Var (TyOf e) -> e -> SyM ([Binds e],e)
 
-type Binds l e = (Var,[l],TyOf e, e)
+type Binds e = (Var,[LocOf e],TyOf e, e)
     
 -- | IRs amenable to simplification/inlineTrivs
 class Expression e => Simplifiable e where

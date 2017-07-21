@@ -116,7 +116,7 @@ cursorDirect prg0@L2.Prog{ddefs,fundefs,mainExp} = do
                 }
  where
   env2 = L2.progToEnv prg0
-  recoverType = typeExp (ddefs,env2)
+  recoverType tenv = typeExp (ddefs,extendsVEnv tenv env2)
 
   -- | Create a let binding, but only after type-checking the RHS.
   --   EXPENSIVE: another source of quadratic behavior.
