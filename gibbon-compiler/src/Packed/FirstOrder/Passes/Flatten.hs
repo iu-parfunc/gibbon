@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -9,7 +10,7 @@
 --- restricted form.
 
 module Packed.FirstOrder.Passes.Flatten
-  ( flatten
+    ( flatten
   -- * Some utilities that really should be elsewhere.
   , typeExp, TEnv
   ) where
@@ -58,20 +59,22 @@ flatten prg@(L1.Prog defs funs main) = do
 type Binds l e = (Var,[l],UrTy l, PreExp l e (UrTy l))
 type TEnv l = M.Map Var (UrTy l)
     
-instance (Out l, Show l, Flattenable e) => Flattenable (PreExp l e (UrTy l)) where
-  -- gFlattenGatherBinds :: DDefs (UrTy l) ->
-  --                        Env2 (UrTy l) ->
-  --                        PreExp l e (UrTy l) ->
-  --                        SyM ([Binds l e], PreExp l e (UrTy l))
-  gFlattenGatherBinds = _ -- exp
+instance (Out l, Show l, Flattenable (e l (UrTy l)))
+         => Flattenable (PreExp l e (UrTy l)) where
+  gFlattenGatherBinds :: DDefs (UrTy l) ->
+                         Env2 (UrTy l) ->
+                         PreExp l e (UrTy l) ->
+                         SyM ([Binds l e], PreExp l e (UrTy l))
+  gFlattenGatherBinds = exp
                  
   gFlattenExp :: DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp l e (UrTy l) -> SyM (PreExp l e (UrTy l))
   gFlattenExp ddefs env2 ex0 = do (b,e') <- exp ddefs env2 ex0
                                   return $ flatLets b e'
    where
 
-exp :: forall l e . (Show l, Show e, Out l, Out e) =>
-       DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp l e (UrTy l) -> SyM ([Binds l e],PreExp l e (UrTy l))
+exp :: forall l e . (Show l, Show (e l (UrTy l)), Out l, Out (e l (UrTy l))) =>
+       DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp l e (UrTy l) ->
+       SyM ([Binds l e],PreExp l e (UrTy l))
 exp ddefs env2 e0 =
      let triv :: String -> PreExp l e (UrTy l) -> SyM ([Binds l e], PreExp l e (UrTy l))
          triv m e = -- Force something to be trivial
@@ -87,11 +90,8 @@ exp ddefs env2 e0 =
                           return (concat bndss, f ls')
      in
      case e0 of
-       (Ext finishme)   -> error "FINISHME" -- return ([],e0)
-
-       -- WARNING: Need to rearrange this.  We don't want to actually discharge the let bindings
-       -- with this generic/recursive call:
-       -- (Ext ext)   -> gFlattenExp ddefs env2 _ -- (ext :: e)
+       -- (Ext ext)   -> do (bnds1,e1::e) <- gFlattenGatherBinds ddefs env2 ext
+       --                   return ([],Ext e1)
                       
        (VarE _)         -> return ([],e0)
        (LitE _)         -> return ([],e0)
@@ -164,7 +164,7 @@ flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
 -- FIXME: Why does this take an Env2 PLUS a TEnv?
 
 -- | Recover the type of an expression in a type environment.
-typeExp :: forall l e . (Show l, Show e, Out l, Out e) =>
+typeExp :: forall l e . (Show l, Show (e l (UrTy l)), Out l, Out (e l (UrTy l))) =>
            (DDefs (UrTy l), Env2 (UrTy l)) -> PreExp l e (UrTy l) -> (UrTy l)
 typeExp (_dd,env2) (L1.VarE v) =
 --    M.findWithDefault (L1.Packed "CURSOR_TY") v env

@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass #-}
+
 -- | Generic operations that are supported by the various intermediate
 -- representations inside the compiler.
 
@@ -9,16 +11,18 @@ module Packed.FirstOrder.GenericOps
      , FreeVars(..)
 
      -- * Genereric interface for expressions and select passes
-     , Expression(..)
+     , Expression(..), NoExt
      , Flattenable(..)
      , Simplifiable(..)
     )
     where
 
+import Control.DeepSeq (NFData)
+import GHC.Generics
 import qualified Data.Set as S
 import qualified Data.Map as M
 import Packed.FirstOrder.Common
-import Text.PrettyPrint.GenericPretty (Out)
+import Text.PrettyPrint.GenericPretty 
     
 --------------------------------------------------------------------------------
 -- Things which can be interpreted to yield a final, printed value. 
@@ -43,8 +47,8 @@ class Interp a where
 class FreeVars a where
     gFreeVars :: a -> S.Set Var
 
-instance FreeVars () where
-  gFreeVars () = S.empty 
+instance FreeVars (NoExt l d) where
+  gFreeVars _ = S.empty 
 
 
 ----------------------------------------------------------------------------------------------------
@@ -66,7 +70,7 @@ class Expression e => Flattenable e where
   -- | A private method.  Gather the bindings from a subexpression,
   -- but do not "discharge" them by creating a let expression.  They
   -- are in order, so later may depend on earlier.
-  gFlattenGatherBinds :: DDefs (TyOf e) -> M.Map Var (TyOf e) -> e -> SyM ([Binds e],e)
+  gFlattenGatherBinds :: DDefs (TyOf e) -> Env2 (TyOf e) -> e -> SyM ([Binds e],e)
 
 type Binds e = (Var,[LocOf e],TyOf e, e)
     
@@ -74,14 +78,32 @@ type Binds e = (Var,[LocOf e],TyOf e, e)
 class Expression e => Simplifiable e where
   gInlineTrivExp :: DDefs (TyOf e) -> e -> e
 
+-- | An uninhabidited type indicating that the base grammar is not extended with any
+-- additional constructs.
+data NoExt l d   deriving (Generic, NFData)
+
+instance Show (NoExt l d) where
+  show _ = error "<NoExt: This should be impossible to print>"
+instance Out (NoExt l d) where
+  doc _ = error "<NoExt: This should be impossible to print>"
+  docPrec _ x = doc x
+instance Read (NoExt l d) where
+  readsPrec _ = error "<NoExt: This should be impossible to read>"
+instance Eq (NoExt l d) where
+  _ == _ = True
+instance Ord (NoExt l d) where
+  compare _ _ = EQ
+
+             
 -- | A dummy instance for "no-extension" extension point.
-instance Expression () where
-  type TyOf () = ()
-                    
+instance Expression (NoExt l d) where
+  type TyOf  (NoExt l d) = d
+  type LocOf (NoExt l d) = l
+      
 -- | A dummy instance for "no-extension" extension point.
-instance Flattenable () where
-  gFlattenExp _ _ () = return ()
+instance Flattenable (NoExt l d) where
+  gFlattenExp _ _ impossible = return impossible
 
 -- | A dummy instance for "no-extension" extension point.
-instance Simplifiable () where
-  gInlineTrivExp _ () = ()
+instance Simplifiable (NoExt l d) where
+  gInlineTrivExp _ impossible = impossible

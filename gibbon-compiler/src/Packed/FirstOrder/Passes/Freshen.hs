@@ -5,6 +5,7 @@
 module Packed.FirstOrder.Passes.Freshen (freshNames) where
 
 import Packed.FirstOrder.Common
+import Packed.FirstOrder.GenericOps (NoExt)
 import Control.Exception
 import Packed.FirstOrder.L1.Syntax as L1
 import qualified Data.Map as M
@@ -30,8 +31,8 @@ freshNames (L1.Prog defs funs main) =
                  let nam' = cleanFunName nam
                  return (nam', FunDef nam' (narg',targ) ty bod')
 
-          freshExp :: [(Var,Var)] -> PreExp () () Ty -> SyM L1.Exp
-          freshExp _ (L1.Ext ()) = return (L1.Ext ())
+          freshExp :: [(Var,Var)] -> PreExp () NoExt Ty -> SyM L1.Exp
+          freshExp _ e@(L1.Ext _) = return e
 
           freshExp vs (L1.VarE v) =
               case lookup v vs of

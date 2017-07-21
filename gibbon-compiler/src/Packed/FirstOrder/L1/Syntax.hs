@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE DeriveAnyClass #-}
@@ -26,18 +27,21 @@ module Packed.FirstOrder.L1.Syntax
     , Prim(..), primArgsTy
 
       -- * Types and helpers
-    , Ty, UrTy(..), pattern Packed, pattern SymTy
+    , Ty1, Ty, UrTy(..), pattern Packed, pattern SymTy
     , voidTy, hasPacked, sizeOf
 
     -- * Expression and Prog helpers
-    , freeVars, subst, substE, mapExprs, mapExt, mapLocs, getFunTy
+    , freeVars, subst, substE, getFunTy
+    , mapExprs
+    , mapExt
+--    , mapLocs
 
       -- * Trivial expressions
     , assertTriv, assertTrivs, isTriv, hasTimeIt
     , projNonFirst, mkProj, mkProd, mkProdTy, mkLets
 
       -- * Examples
-    , add1Prog
+    -- , add1Prog
     )
     where
 
@@ -80,7 +84,7 @@ progToEnv Prog{fundefs} =
 
 
 -- | A convenient, default instantiation of the L1 expression type.
-type Exp = PreExp () () Ty
+type Exp = PreExp () NoExt Ty
 
 -- Shorthand to make the below definition more readable.
 -- I.e., this covers all the verbose recursive fields.
@@ -94,7 +98,7 @@ type Exp = PreExp () () Ty
 -- It is also parameterized by an expression type for "knot-tying",
 -- and for enabling a potential extension point.
 -- 
-data PreExp loc ext dec =
+data PreExp loc (ext :: * -> * -> *) dec =
      VarE Var              -- ^ Variable reference
    | LitE Int              -- ^ Numeric literal
    | LitSymE Var           -- ^ A quoted symbol literal.
@@ -137,22 +141,23 @@ data PreExp loc ext dec =
            , body     :: EXP }
            
    ----------------------------------------
-  | Ext ext  -- ^ Extension point for downstream language extensions.
+  | Ext (ext loc dec) -- ^ Extension point for downstream language extensions.
      
   deriving (Read,Show,Eq,Ord, Generic, NFData, Functor)
 
-instance (Out l, Show l, Show d, Out d, Expression e) => Expression (PreExp l e d) where
+instance (Out l, Show l, Show d, Out d, Expression (e l d))
+      => Expression (PreExp l e d) where
   type (TyOf (PreExp l e d))  = d
   type (LocOf (PreExp l e d)) = l
       
 -- | Apply a function to the extension points only.
-mapExt :: (e1 -> e2) -> PreExp l e1 d -> PreExp l e2 d
+mapExt :: (e1 l d -> e2 l d) -> PreExp l e1 d -> PreExp l e2 d
 mapExt fn = visitExp id fn id
 
 -- | Apply a function to the locations, extensions, and
 -- binder-decorations, respectively.
 visitExp :: forall l1 l2 e1 e2 d1 d2 .
-            (l1 -> l2) -> (e1 -> e2) -> (d1 -> d2) ->
+            (l1 -> l2) -> (e1 l1 d1 -> e2 l2 d2) -> (d1 -> d2) ->
             PreExp l1 e1 d1 -> PreExp l2 e2 d2          
 visitExp fl fe fd = go
  where
@@ -178,9 +183,9 @@ visitExp fl fe fd = go
        FoldE (v1,t1,r1) (v2,t2,r2) bod ->
          FoldE (v1,fd t1,go r1) (v2,fd t2,go r2) (go bod)
 
--- | Apply a function to the locations only.
-mapLocs :: (l1 -> l2) -> PreExp l1 e d -> PreExp l2 e d
-mapLocs fn = visitExp fn id id
+-- -- | Apply a function to the locations only.
+-- mapLocs :: (l1 -> l2) -> PreExp l1 e d -> PreExp l2 e d
+-- mapLocs fn = visitExp fn id id
 
                
 -- | Some of these primitives are (temporarily) tagged directly with
@@ -221,7 +226,7 @@ instance Out a => Out (UrTy a)
 -- Do this manually to get prettier formatting:
 -- instance Out Ty where  doc x = __
 
-instance (Out l, Out d, Out e) => Out (PreExp l d e)
+instance (Out l, Out d, Out (e l d)) => Out (PreExp l e d)
 
 instance Out Prog
 
@@ -230,6 +235,7 @@ instance Out Prog
 -- TEMP/FIXME: leaving out these for now.
 pattern SymTy = IntTy
 
+-- | The type rperesentation used in L1.
 type Ty1 = UrTy ()
 
 type Ty = Ty1
@@ -313,7 +319,7 @@ freeVars :: Exp -> S.Set Var
 freeVars = gFreeVars
 {-# DEPRECATED freeVars "Use gFreeVars instead" #-}
 
-instance FreeVars e => FreeVars (PreExp l e d) where
+instance FreeVars (e l d) => FreeVars (PreExp l e d) where
   gFreeVars ex = case ex of
       VarE v    -> S.singleton v
       LitE _    -> S.empty
@@ -368,7 +374,7 @@ subst old new ex =
             r2' = if v2 == old then r2 else go r2
         in FoldE (v1,t1,r1') (v2,t2,r2') (go bod)
 
-    Ext () -> Ext ()
+    Ext _ -> ex
 
 -- | Expensive subst that looks for a whole matching sub-EXPRESSION.
 --   If the old expression is a variable, this still avoids going under binder.
@@ -398,7 +404,7 @@ substE old new ex =
             r2' = if VarE v2 == old then r2 else go r2
         in FoldE (v1,t1,r1') (v2,t2,r2') (go bod)
 
-    Ext () -> Ext ()
+    Ext _ -> ex
 
 primArgsTy :: Prim -> [Ty]
 primArgsTy p =
@@ -436,7 +442,7 @@ assertTrivs [] = id
 assertTrivs (a:b) = assertTriv a . assertTrivs b
 
 -- | Is an expression considered trivial (duplicatable by the compiler)?
-isTriv :: (Show e, Show l, Show d) => PreExp l e d -> Bool
+isTriv :: (Show l, Show d, Show (e l d)) => PreExp l e d -> Bool
 isTriv e =
    case e of
      VarE _ -> True
@@ -481,7 +487,7 @@ hasTimeIt rhs =
       MapE (_,_,e1) e2   -> hasTimeIt e1 || hasTimeIt e2
       FoldE (_,_,e1) (_,_,e2) e3 -> hasTimeIt e1 || hasTimeIt e2 || hasTimeIt e3
 
-      Ext () -> False
+      Ext _ -> False
 
 -- | Project something which had better not be the first thing in a tuple.
 projNonFirst :: Int -> Exp -> Exp
@@ -505,14 +511,14 @@ mkProdTy [t] = t
 mkProdTy ls = ProdTy ls
 
 -- | Make a nested series of lets.
-mkLets :: [(Var,[l],Ty,PreExp l () Ty)] -> PreExp l () Ty -> PreExp l () Ty
+mkLets :: [(Var,[l],Ty,PreExp l NoExt Ty)] -> PreExp l NoExt Ty -> PreExp l NoExt Ty
 mkLets [] bod = bod
 mkLets (b:bs) bod = LetE b (mkLets bs bod)
 
 
 
 --------------------------------------------------------------------------------
-
+{-
 treeTy :: Ty
 treeTy = Packed "Tree"
 
@@ -528,7 +534,7 @@ exadd1 :: FunDef Ty Exp
 exadd1 = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy
             (mapLocs (\_ -> ()) exadd1Bod)
 
-exadd1Bod :: PreExp LocVar () Ty
+exadd1Bod :: PreExp LocVar NoExt Ty
 exadd1Bod = 
     CaseE (VarE (toVar "tr")) $
       [ ("Leaf", [("n","l0")], PrimAppE AddP [VarE (toVar "n"), LitE 1])
@@ -537,5 +543,4 @@ exadd1Bod =
           [ AppE (toVar "add1") [] (VarE $ toVar "x")
           , AppE (toVar "add1") [] (VarE $ toVar "y")])
       ]
-
-
+-}

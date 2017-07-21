@@ -228,7 +228,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
       go :: ValEnv -> L1.Exp -> WriterT Log (StateT Store IO) Value
       go env x0 =
           case x0 of
-            Ext () -> error "L1.Interp: Should not interpret empty extension point."
+            Ext _ -> error "L1.Interp: Should not interpret empty extension point."
                       -- ^ Or... we could give this a void/empty-tuple value.
 
             LitE c         -> return $ VInt c

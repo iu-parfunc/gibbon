@@ -103,7 +103,7 @@ tagDataCons ddefs = go allCons
                         , (con,_tys) <- dataCons ]
    go cons ex = 
      case ex of
-       Ext () -> Ext ()
+       Ext _ -> ex
        AppE v _ (MkProdE ls)
                   -- FIXME: check the type to determine if this is packed/unpacked:
                   | S.member v cons -> DataConE () (fromVar v) (L.map (go cons) ls)
@@ -203,7 +203,7 @@ tuplizeRefs tmp ls  = go (L.zip [0..] ls)
    go []          e = e
    go ((ix,v):vs) e = go vs (subst v (ProjE ix (VarE tmp)) e)
 
-typ :: RichSExpr HaskLikeAtom -> Ty
+typ :: RichSExpr HaskLikeAtom -> S.Ty1
 typ s = case s of
          (A "Int")  -> IntTy
          (A "Sym")  -> SymTy

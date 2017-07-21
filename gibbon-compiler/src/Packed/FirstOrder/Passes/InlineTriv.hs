@@ -5,6 +5,7 @@ module Packed.FirstOrder.Passes.InlineTriv (inlineTriv, inlineTrivExp) where
 
 import           GHC.Stack (errorWithStackTrace)
 import           Packed.FirstOrder.Common
+import           Packed.FirstOrder.GenericOps (NoExt)
 import           Packed.FirstOrder.L1.Syntax as L1 hiding (mkProj)
 import qualified Packed.FirstOrder.L2.Syntax as L2
 import           Prelude hiding (exp)
@@ -22,7 +23,7 @@ inlineTriv (Prog ddefs funs main) =
     inlineTrivFun (FunDef nam (narg,targ) ty bod) =
       FunDef nam (narg,targ) ty (inlineTrivExp ddefs bod)
 
-type MyExp l = PreExp l () (UrTy l)
+type MyExp l = PreExp l NoExt (UrTy l)
 type Env l = [(Var, (UrTy l, MyExp l))]
     
 inlineTrivExp :: forall l a . (Out l, Show l)
@@ -51,10 +52,10 @@ inlineTrivExp _ddefs = go []
       -- fixme, need gensym:
       Just (ty,oth)  -> LetE (v,[],ty,oth) $ fn v
 
-  exp :: Env l -> MyExp l -> PreExp l () (UrTy l)
+  exp :: Env l -> MyExp l -> PreExp l NoExt (UrTy l)
   exp env e0 = 
     case e0 of
-      Ext () -> Ext ()
+      Ext _  -> e0
       VarE v -> case lookup v env of
                     Nothing -> VarE v
                     Just (_,e) -> e
