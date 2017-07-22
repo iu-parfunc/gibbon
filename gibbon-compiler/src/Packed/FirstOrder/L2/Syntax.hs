@@ -94,6 +94,7 @@ data PreLocExp loc = StartOfC loc Region
                    | AfterConstantC Int loc loc
                    | AfterVariableC Var loc loc
                    | InRegionC loc Region
+                   | FromEndC loc
                      deriving (Read, Show, Eq, Ord, Generic, NFData)
 
 type LocExp = PreLocExp LocVar
