@@ -56,27 +56,27 @@ flatten prg@(L1.Prog defs funs main) = do
 -- go in there too.  Everything would be simpler.  We would simply have to use other means
 -- to remember that L1 programs are first order.
 
-type Binds l e = (Var,[l],UrTy l, PreExp l e (UrTy l))
+type Binds l e = (Var,[l],UrTy l, PreExp e l (UrTy l))
 type TEnv l = M.Map Var (UrTy l)
     
 instance (Out l, Show l, Flattenable (e l (UrTy l)))
-         => Flattenable (PreExp l e (UrTy l)) where
+         => Flattenable (PreExp e l (UrTy l)) where
   gFlattenGatherBinds :: DDefs (UrTy l) ->
                          Env2 (UrTy l) ->
-                         PreExp l e (UrTy l) ->
-                         SyM ([Binds l e], PreExp l e (UrTy l))
+                         PreExp e l (UrTy l) ->
+                         SyM ([Binds l e], PreExp e l (UrTy l))
   gFlattenGatherBinds = exp
                  
-  gFlattenExp :: DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp l e (UrTy l) -> SyM (PreExp l e (UrTy l))
+  gFlattenExp :: DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp e l (UrTy l) -> SyM (PreExp e l (UrTy l))
   gFlattenExp ddefs env2 ex0 = do (b,e') <- exp ddefs env2 ex0
                                   return $ flatLets b e'
    where
 
 exp :: forall l e . (Show l, Show (e l (UrTy l)), Out l, Out (e l (UrTy l))) =>
-       DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp l e (UrTy l) ->
-       SyM ([Binds l e],PreExp l e (UrTy l))
+       DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp e l (UrTy l) ->
+       SyM ([Binds l e],PreExp e l (UrTy l))
 exp ddefs env2 e0 =
-     let triv :: String -> PreExp l e (UrTy l) -> SyM ([Binds l e], PreExp l e (UrTy l))
+     let triv :: String -> PreExp e l (UrTy l) -> SyM ([Binds l e], PreExp e l (UrTy l))
          triv m e = -- Force something to be trivial
            if isTriv e
            then return ([],e)
@@ -150,12 +150,12 @@ exp ddefs env2 e0 =
 
 -- | Helper function that lifts out Lets on the RHS of other Lets.
 --   Absolutely requires unique names.
-mkLetE :: (Var, [l], d, PreExp l e d) -> PreExp l e d -> PreExp l e d
+mkLetE :: (Var, [l], d, PreExp e l d) -> PreExp e l d -> PreExp e l d
 mkLetE (vr,lvs,ty,(L1.LetE bnd e)) bod = mkLetE bnd $ mkLetE (vr,lvs,ty,e) bod
 mkLetE bnd bod = L1.LetE bnd bod
 
 -- | Alternative version of L1.mkLets that also flattens
-flatLets :: [(Var,[l],d,PreExp l e d)] -> PreExp l e d -> PreExp l e d
+flatLets :: [(Var,[l],d,PreExp e l d)] -> PreExp e l d -> PreExp e l d
 flatLets [] bod = bod
 flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
 
@@ -165,7 +165,7 @@ flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
 
 -- | Recover the type of an expression in a type environment.
 typeExp :: forall l e . (Show l, Show (e l (UrTy l)), Out l, Out (e l (UrTy l))) =>
-           (DDefs (UrTy l), Env2 (UrTy l)) -> PreExp l e (UrTy l) -> (UrTy l)
+           (DDefs (UrTy l), Env2 (UrTy l)) -> PreExp e l (UrTy l) -> (UrTy l)
 typeExp (_dd,env2) (L1.VarE v) =
 --    M.findWithDefault (L1.Packed "CURSOR_TY") v env
    M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v (vEnv env2)

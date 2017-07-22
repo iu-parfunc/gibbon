@@ -23,7 +23,7 @@ inlineTriv (Prog ddefs funs main) =
     inlineTrivFun (FunDef nam (narg,targ) ty bod) =
       FunDef nam (narg,targ) ty (inlineTrivExp ddefs bod)
 
-type MyExp l = PreExp l NoExt (UrTy l)
+type MyExp l = PreExp NoExt l (UrTy l)
 type Env l = [(Var, (UrTy l, MyExp l))]
     
 inlineTrivExp :: forall l a . (Out l, Show l)
@@ -52,7 +52,7 @@ inlineTrivExp _ddefs = go []
       -- fixme, need gensym:
       Just (ty,oth)  -> LetE (v,[],ty,oth) $ fn v
 
-  exp :: Env l -> MyExp l -> PreExp l NoExt (UrTy l)
+  exp :: Env l -> MyExp l -> PreExp NoExt l (UrTy l)
   exp env e0 = 
     case e0 of
       Ext _  -> e0

@@ -84,11 +84,11 @@ progToEnv Prog{fundefs} =
 
 
 -- | A convenient, default instantiation of the L1 expression type.
-type Exp = PreExp () NoExt Ty
+type Exp = PreExp NoExt () Ty
 
 -- Shorthand to make the below definition more readable.
 -- I.e., this covers all the verbose recursive fields.
-#define EXP (PreExp loc ext dec)
+#define EXP (PreExp ext loc dec)
     
 -- | The source language.  It has pointer based sums and products, as
 -- well as packed algebraic datatypes.
@@ -98,7 +98,7 @@ type Exp = PreExp () NoExt Ty
 -- It is also parameterized by an expression type for "knot-tying",
 -- and for enabling a potential extension point.
 -- 
-data PreExp loc (ext :: * -> * -> *) dec =
+data PreExp (ext :: * -> * -> *) loc dec =
      VarE Var              -- ^ Variable reference
    | LitE Int              -- ^ Numeric literal
    | LitSymE Var           -- ^ A quoted symbol literal.
@@ -146,22 +146,22 @@ data PreExp loc (ext :: * -> * -> *) dec =
   deriving (Read,Show,Eq,Ord, Generic, NFData, Functor)
 
 instance (Out l, Show l, Show d, Out d, Expression (e l d))
-      => Expression (PreExp l e d) where
-  type (TyOf (PreExp l e d))  = d
-  type (LocOf (PreExp l e d)) = l
+      => Expression (PreExp e l d) where
+  type (TyOf (PreExp e l d))  = d
+  type (LocOf (PreExp e l d)) = l
       
 -- | Apply a function to the extension points only.
-mapExt :: (e1 l d -> e2 l d) -> PreExp l e1 d -> PreExp l e2 d
+mapExt :: (e1 l d -> e2 l d) -> PreExp e1 l d -> PreExp e2 l d
 mapExt fn = visitExp id fn id
 
 -- | Apply a function to the locations, extensions, and
 -- binder-decorations, respectively.
 visitExp :: forall l1 l2 e1 e2 d1 d2 .
             (l1 -> l2) -> (e1 l1 d1 -> e2 l2 d2) -> (d1 -> d2) ->
-            PreExp l1 e1 d1 -> PreExp l2 e2 d2          
+            PreExp e1 l1 d1 -> PreExp e2 l2  d2
 visitExp fl fe fd = go
  where
-   go :: PreExp l1 e1 d1 -> PreExp l2 e2 d2
+   go :: PreExp e1 l1  d1 -> PreExp e2 l2 d2
    go ex =
      case ex of
        Ext  x    -> Ext (fe x)
@@ -226,7 +226,7 @@ instance Out a => Out (UrTy a)
 -- Do this manually to get prettier formatting:
 -- instance Out Ty where  doc x = __
 
-instance (Out l, Out d, Out (e l d)) => Out (PreExp l e d)
+instance (Out l, Out d, Out (e l d)) => Out (PreExp e l d)
 
 instance Out Prog
 
@@ -296,6 +296,8 @@ sizeOf t = case t of
              IntTy       -> Just 8
              BoolTy      -> sizeOf IntTy
              ListTy _    -> error "FINISHLISTS"
+             PtrTy{}     -> Just 8 -- Assuming 64 bit
+             CursorTy{}  -> Just 8 
 
 -- | Transform the expressions within a program.
 mapExprs :: (Exp -> Exp) -> Prog -> Prog
@@ -319,7 +321,7 @@ freeVars :: Exp -> S.Set Var
 freeVars = gFreeVars
 {-# DEPRECATED freeVars "Use gFreeVars instead" #-}
 
-instance FreeVars (e l d) => FreeVars (PreExp l e d) where
+instance FreeVars (e l d) => FreeVars (PreExp e l d) where
   gFreeVars ex = case ex of
       VarE v    -> S.singleton v
       LitE _    -> S.empty
@@ -442,7 +444,7 @@ assertTrivs [] = id
 assertTrivs (a:b) = assertTriv a . assertTrivs b
 
 -- | Is an expression considered trivial (duplicatable by the compiler)?
-isTriv :: (Show l, Show d, Show (e l d)) => PreExp l e d -> Bool
+isTriv :: (Show l, Show d, Show (e l d)) => PreExp e l d -> Bool
 isTriv e =
    case e of
      VarE _ -> True
@@ -511,7 +513,7 @@ mkProdTy [t] = t
 mkProdTy ls = ProdTy ls
 
 -- | Make a nested series of lets.
-mkLets :: [(Var,[l],Ty,PreExp l NoExt Ty)] -> PreExp l NoExt Ty -> PreExp l NoExt Ty
+mkLets :: [(Var,[l],Ty,PreExp NoExt l Ty)] -> PreExp NoExt l Ty -> PreExp NoExt l Ty
 mkLets [] bod = bod
 mkLets (b:bs) bod = LetE b (mkLets bs bod)
 

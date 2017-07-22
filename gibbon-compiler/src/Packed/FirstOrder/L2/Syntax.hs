@@ -87,7 +87,7 @@ data E2Ext loc dec =
 
 -- | L1 expressions extended with L2.  This is the polymorphic version. Shorthand for
 -- recursions above.
-type E2 l d = PreExp l E2Ext d
+type E2 l d = PreExp E2Ext l d
 
 -- | Define a location in terms of a different location.
 data PreLocExp loc = StartOfC loc Region

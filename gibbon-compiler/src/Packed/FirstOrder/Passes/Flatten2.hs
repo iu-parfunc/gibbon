@@ -21,7 +21,7 @@ flatten2 prg@(L2.Prog ddefs _ _) = L2.mapMExprs fn prg
    fn :: Env2 (UrTy LocVar) -> L2.Exp2 -> SyM L2.Exp2
    fn env2 ex = gFlattenExp ddefs env2 ex
 
-type Binds l e = (Var,[l],UrTy l, PreExp l e (UrTy l))
+type Binds l e = (Var,[l],UrTy l, PreExp e l (UrTy l))
 
 -- instance Flattenable Exp2 where
 
