@@ -64,8 +64,14 @@ tcExp ddfs env funs constrs regs tstatein exp =
           do let (ArrowTy locVars arrIn arrEffs arrOut locRets) = getFunTy funs v
              (ty,tstate) <- recur tstatein e
              ensureEqualTy exp ty arrIn
-             -- TODO: update tstate with traversals
-             return (arrOut,tstate)
+             let locZip = zip ls $ L.map (\(LRM l _ _) -> l) locVars
+                 handleLocZip (l1,l2) = if S.member (Traverse l2) arrEffs
+                                        then Just l1
+                                        else Nothing
+                 traversed = Maybe.mapMaybe handleLocZip locZip
+                 handleTS ts l = switchOutLoc exp ts l
+             tstate' <- foldM handleTS tstate traversed
+             return (arrOut,tstate')
                     
       PrimAppE pr es -> do
                (tys,tstate) <- tcExps ddfs env funs constrs regs tstatein es
