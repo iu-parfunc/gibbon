@@ -23,6 +23,7 @@ import qualified Packed.FirstOrder.L1.Syntax as L1
 import Data.Set as S
 import Data.Map as M
 import Data.List as L
+import Data.Maybe as Maybe
 import Text.PrettyPrint.GenericPretty
 import Control.Monad.Except
 
@@ -116,8 +117,9 @@ tcExp ddfs env funs constrs regs tstatein exp =
                       
       CaseE e brs -> do
                (ty,tstate) <- recur tstatein e
+               let PackedTy _dc lin = ty
                ensureMatchCases ddfs exp ty brs
-               (tys,tstate') <- tcCases ddfs env funs constrs regs tstate brs
+               (tys,tstate') <- tcCases ddfs env funs constrs regs tstate lin brs
                foldM_ (ensureEqualTy exp) (tys !! 0) (tail tys)
                return (tys !! 0,tstate')
                       
@@ -204,10 +206,38 @@ tcExp ddfs env funs constrs regs tstatein exp =
     where recur ts e = tcExp ddfs env funs constrs regs ts e
 
 tcCases :: DDefs Ty -> Env2 Ty -> NewFuns
-        -> ConstraintSet -> RegionSet -> LocationTypeState -> [(DataCon, [(Var,LocVar)], Exp)]
+        -> ConstraintSet -> RegionSet -> LocationTypeState -> LocVar
+        -> [(DataCon, [(Var,LocVar)], Exp)]
         -> TcM ([Ty], LocationTypeState)
-tcCases ddfs env funs constrs regs tstatein ((dc, vs, e):cases) = undefined -- TODO: Typecheck cases
-tcCases _ _ _ _ _ ts [] = return ([],ts)
+tcCases ddfs env funs constrs regs tstatein lin ((dc, vs, e):cases) = do
+  let argtys = zip vs $ lookupDataCon ddfs dc
+      pairwise = zip argtys $ Nothing : (L.map Just argtys)
+      genConstrs (((v1,l1),PackedTy _ _),Nothing) (lin,lst) =
+          (l1,(AfterConstantC 1 lin l1) : lst)
+      genConstrs (((v1,l1),PackedTy _ _),Just ((v2,l2),PackedTy _ _)) (lin,lst) =
+          (l1,(AfterVariableC v2 l2 l1) : lst)
+      genConstrs (((v1,l1),PackedTy _ _),Just _) (lin,lst) =
+          (l1,(AfterConstantC undefined lin l1) : lst)
+      genConstrs (_,_) (lin,lst) = (lin,lst)
+      genTS ((v,l),PackedTy _ _) ts = extendTS l (Input,False) ts
+      genTS _ ts = ts
+      genEnv ((v,l),ty) env = extendEnv env v ty
+      remTS ((v,l),PackedTy _ _) ts = removeTS l ts
+      remTS _ ts = ts
+                 
+      constrs1 = L.foldr extendConstrs constrs $ snd $ L.foldr genConstrs (lin,[]) pairwise
+      tstate1 = L.foldr genTS tstatein argtys
+      env1 = L.foldr genEnv env argtys
+  (ty1,tstate2) <- tcExp ddfs env1 funs constrs1 regs tstate1 e
+  (tye,tstatee) <- f constrs1 tstate2 ty1
+  let tstatee' = L.foldr remTS tstatee argtys
+  return (tye,tstatee')
+
+    where f constrs1 tstate1 ty1 = do
+               (tys,tstate2) <- tcCases ddfs env funs constrs1 regs tstate1 lin cases
+               return (ty1:tys,tstate2)
+
+tcCases _ _ _ _ _ ts _ [] = return ([],ts)
          
 tcProj :: Exp -> Int -> Ty -> TcM Ty
 tcProj _ i (ProdTy tys) = return $ tys !! i
@@ -325,6 +355,9 @@ extendTS
   :: LocVar
      -> (Modality, Aliased) -> LocationTypeState -> LocationTypeState
 extendTS v d (LocationTypeState ls) = LocationTypeState $ M.insert v d ls
+
+removeTS :: LocVar -> LocationTypeState -> LocationTypeState
+removeTS l (LocationTypeState ls) = LocationTypeState $ M.delete l ls
                                       
 extendConstrs :: LocExp -> ConstraintSet -> ConstraintSet
 extendConstrs c (ConstraintSet cs) = ConstraintSet $ S.insert c cs
@@ -415,3 +448,12 @@ test5bad1 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOf
         LetE ("z", [], PackedTy "Tree" "l", DataConE "l" "Node" [VarE "y", VarE "x"]) $
         LitE 1
 -- GenericTC "Expected Var \"l2\" after Var \"l\"" (DataConE (Var "l") "Node" [VarE (Var "y"),VarE (Var "x")])
+
+test6 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $
+        Ext $ LetLocE "l1" (AfterConstantC 1 "l" "l1") $ 
+        LetE ("x", [], PackedTy "Tree" "l1", DataConE "l1" "Leaf" [LitE 1]) $
+        Ext $ LetLocE "l2" (AfterVariableC "x" "l1" "l2") $
+        LetE ("y", [], PackedTy "Tree" "l2", DataConE "l2" "Leaf" [LitE 2]) $
+        LetE ("z", [], PackedTy "Tree" "l", DataConE "l" "Node" [VarE "x", VarE "y"]) $
+        CaseE (VarE "z") [ ("Leaf",[("num","lnum")], VarE "num")
+                         , ("Node",[("x","lnodex"),("y","lnodey")], LitE 0)]
