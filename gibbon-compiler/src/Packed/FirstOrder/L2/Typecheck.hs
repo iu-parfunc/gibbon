@@ -13,7 +13,7 @@
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
 module Packed.FirstOrder.L2.Typecheck
-    ( tcExp, tcProg )
+    ( tcExp, tcProg, TCError(..), RegionSet(..), LocationTypeState(..), ConstraintSet(..), Aliased, TcM )
     where
 
 import Control.DeepSeq
@@ -26,6 +26,7 @@ import Data.List as L
 import Data.Maybe as Maybe
 import Text.PrettyPrint.GenericPretty
 import Control.Monad.Except
+import Debug.Trace
 
 newtype ConstraintSet = ConstraintSet { constraintSet :: S.Set LocExp }
     
@@ -41,7 +42,8 @@ data TCError = GenericTC String Exp
              | VarNotFoundTC Var Exp
              | UnsupportedExpTC Exp
              | DivergingEffectsTC Exp LocationTypeState LocationTypeState
-             | LocationTC String Exp LocVar LocVar 
+             | LocationTC String Exp LocVar LocVar
+             | ModalityTC String Exp LocVar LocationTypeState
                deriving (Read,Show,Eq,Ord, Generic, NFData)
     
 type TcM a = Except TCError a
@@ -63,14 +65,15 @@ tcExp ddfs env funs constrs regs tstatein exp =
       AppE v ls e ->
           do let (ArrowTy locVars arrIn arrEffs arrOut locRets) = getFunTy funs v
              (ty,tstate) <- recur tstatein e
-             ensureEqualTy exp ty arrIn
-             let locZip = zip ls $ L.map (\(LRM l _ _) -> l) locVars
-                 handleLocZip (l1,l2) = if S.member (Traverse l2) arrEffs
-                                        then Just l1
-                                        else Nothing
-                 traversed = Maybe.mapMaybe handleLocZip locZip
-                 handleTS ts l = switchOutLoc exp ts l
-             tstate' <- foldM handleTS tstate traversed
+             case ty of
+               PackedTy _ tyl -> if S.member tyl $ S.fromList ls
+                                 then return ()
+                                 else throwError $ GenericTC ("Packed argument location expected: " ++ show tyl) exp
+               _ -> return ()
+             ensureEqualTyNoLoc exp ty arrIn
+             let handleTS ts (l,Output) =  switchOutLoc exp ts l
+                 handleTS ts _ = return ts
+             tstate' <- foldM handleTS tstate $ zip ls $ L.map (\(LRM _ _ m) -> m) locVars
              return (arrOut,tstate')
                     
       PrimAppE pr es -> do
@@ -99,7 +102,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                       
       LetE (v,_ls,ty,e1) e2 -> do
                (ty1,tstate1) <- recur tstatein e1
-               ensureEqualTy exp ty1 ty
+               ensureEqualTyNoLoc exp ty1 ty
                let env' = extendEnv env v ty
                tcExp ddfs env' funs constrs regs tstate1 e2
                      
@@ -138,7 +141,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                else do
                  sequence_ [ ensureEqualTyNoLoc exp ty1 ty2
                            | (ty1,ty2) <- zip args tys ]
-                 ensureDataCon exp l tys constrs 
+                 ensureDataCon exp l tys constrs
                  tstate2 <- switchOutLoc exp tstate1 l
                  return (PackedTy dcty l, tstate2)
                         
@@ -182,7 +185,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                else do 
                                  r <- getRegion exp constrs l1
                                  absentStart exp constrs v
-                                 let tstate1 = extendTS v (Output,True) tstatein
+                                 let tstate1 = extendTS v (Output,True) $ setAfter l1 tstatein
                                  let constrs1 = extendConstrs (InRegionC l2 r) $
                                                 extendConstrs (AfterConstantC i l1 l2) constrs
                                  (ty,tstate2) <- tcExp ddfs env funs constrs1 regs tstate1 e
@@ -196,7 +199,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  absentStart exp constrs v
                                  (xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ VarE x
                                  ensurePackedLoc exp xty l1
-                                 let tstate2 = extendTS v (Output,True) tstate1
+                                 let tstate2 = extendTS v (Output,True) $ setAfter l1 tstate1
                                  let constrs1 = extendConstrs (InRegionC l2 r) $
                                                 extendConstrs (AfterVariableC x l1 l2) constrs
                                  (ty,tstate3) <- tcExp ddfs env funs constrs1 regs tstate2 e
@@ -227,6 +230,7 @@ tcCases ddfs env funs constrs regs tstatein lin ((dc, vs, e):cases) = do
       genConstrs (_,_) (lin,lst) = (lin,lst)
       genTS ((v,l),PackedTy _ _) ts = extendTS l (Input,False) ts
       genTS _ ts = ts
+      genEnv ((v,l),PackedTy dc l') env = extendEnv env v $ PackedTy dc l
       genEnv ((v,l),ty) env = extendEnv env v ty
       remTS ((v,l),PackedTy _ _) ts = removeTS l ts
       remTS _ ts = ts
@@ -235,13 +239,14 @@ tcCases ddfs env funs constrs regs tstatein lin ((dc, vs, e):cases) = do
       tstate1 = L.foldr genTS tstatein argtys
       env1 = L.foldr genEnv env argtys
   (ty1,tstate2) <- tcExp ddfs env1 funs constrs1 regs tstate1 e
-  (tye,tstatee) <- f constrs1 tstate2 ty1
-  let tstatee' = L.foldr remTS tstatee argtys
-  return (tye,tstatee')
+  (tyRest,tstateRest) <- recur
+  tstateCombine <- combineTStates e tstate2 tstateRest
+  let tstatee' = L.foldr remTS tstateCombine argtys
+  return (ty1:tyRest,tstatee')
 
-    where f constrs1 tstate1 ty1 = do
-               (tys,tstate2) <- tcCases ddfs env funs constrs1 regs tstate1 lin cases
-               return (ty1:tys,tstate2)
+    where recur = do
+            (tys,tstate2) <- tcCases ddfs env funs constrs regs tstatein lin cases
+            return (tys,tstate2)
 
 tcCases _ _ _ _ _ ts _ [] = return ([],ts)
          
@@ -258,7 +263,37 @@ tcExps ddfs env funs constrs regs tstatein (exp:exps) =
        return (ty:tys,ts')
 tcExps _ _ _ _ _ ts [] = return ([],ts)
 
-tcProg = undefined
+tcProg :: Prog -> SyM Prog
+tcProg Prog{ddefs,fundefs,mainExp} = do
+
+  mapM_ fd $ M.elems fundefs
+  case mainExp of
+    Nothing -> return ()
+    Just (e,t) -> let res = runExcept $ tcExp ddefs (Env2 M.empty M.empty) fundefs
+                            (ConstraintSet $ S.empty) (RegionSet $ S.empty)
+                            (LocationTypeState $ M.empty) e
+                  in case res of
+                       Left err -> error $ show err
+                       Right (t',_ts) -> if t' == t
+                                         then return ()
+                                         else error $ "Expected type " ++ (show t) ++ " and got type " ++ (show t')
+  return $ Prog ddefs fundefs mainExp
+
+  where
+
+    fd :: L2.FunDef -> SyM ()
+    fd L2.FunDef{funty,funarg,funbod} = do
+        let env = extendEnv (Env2 M.empty M.empty) funarg (arrIn funty)
+            constrs = funConstrs (locVars funty)
+            regs = funRegs (locVars funty)
+            tstate = funTState (locVars funty)
+            res = runExcept $ tcExp ddefs env fundefs constrs regs tstate funbod
+        case res of
+          Left err -> error $ show err
+          Right (ty,_) -> if ty == (arrOut funty)
+                          then return ()
+                          else error $ "Expected type " ++ (show (arrOut funty)) ++ " and got type " ++ (show ty)
+
 
 --------------------------------------------------------------------------------------------
 
@@ -283,6 +318,21 @@ getRegion exp (ConstraintSet cs) l = go $ S.toList cs
           go (_:cs) = go cs
           go [] = throwError $ GenericTC ("Location " ++ (show l) ++ " has no region") exp
 
+funRegs :: [LRM] -> RegionSet
+funRegs ((LRM _l r _m):lrms) =
+    let (RegionSet rs) = funRegs lrms
+    in RegionSet $ S.insert r rs
+funRegs [] = RegionSet $ S.empty
+
+funConstrs :: [LRM] -> ConstraintSet
+funConstrs ((LRM l r _m):lrms) =
+    extendConstrs (InRegionC l r) $ funConstrs lrms
+funConstrs [] = ConstraintSet $ S.empty
+
+funTState :: [LRM] -> LocationTypeState
+funTState ((LRM l _r m):lrms) =
+    extendTS l (m,False) $ funTState lrms
+funTState [] = LocationTypeState $ M.empty
 
 lookupVar :: Env2 Ty -> Var -> Exp -> TcM Ty
 lookupVar env var exp =
@@ -291,8 +341,8 @@ lookupVar env var exp =
       Just ty -> return ty
 
 combineTStates :: Exp -> LocationTypeState -> LocationTypeState -> TcM LocationTypeState
-combineTStates exp ts1 ts2 = if ts1 == ts2 then return ts1
-                             else throwError $ DivergingEffectsTC exp ts1 ts2
+combineTStates exp (LocationTypeState ts1) (LocationTypeState ts2) = return $ LocationTypeState $ M.union ts1 ts2
+    -- throwError $ DivergingEffectsTC exp ts1 ts2
 
 ensureEqual :: Eq a => Exp -> String -> a -> a -> TcM a
 ensureEqual exp str a b = if a == b then return a else throwError $ GenericTC str exp
@@ -364,6 +414,15 @@ extendTS v d (LocationTypeState ls) = LocationTypeState $ M.insert v d ls
 
 removeTS :: LocVar -> LocationTypeState -> LocationTypeState
 removeTS l (LocationTypeState ls) = LocationTypeState $ M.delete l ls
+
+setAfter :: LocVar -> LocationTypeState -> LocationTypeState
+setAfter l (LocationTypeState ls) = LocationTypeState $ M.adjust (\(m,_) -> (m,True)) l ls
+
+lookupTS :: Exp -> LocVar -> LocationTypeState -> TcM (Modality,Bool)
+lookupTS exp l (LocationTypeState ls) =
+    case M.lookup l ls of
+      Nothing -> throwError $ GenericTC ("Failed lookup of location " ++ (show l)) exp
+      Just d -> return d
                                       
 extendConstrs :: LocExp -> ConstraintSet -> ConstraintSet
 extendConstrs c (ConstraintSet cs) = ConstraintSet $ S.insert c cs
@@ -373,7 +432,7 @@ switchOutLoc exp (LocationTypeState ls) l =
     case M.lookup l ls of
       Nothing -> throwError $ GenericTC ("Unknown location " ++ (show l)) exp
       Just (Output,a) -> return $ LocationTypeState $ M.update (\_ -> Just (Input,a)) l ls
-      Just (Input,_a) -> throwError $ GenericTC ("Expected output location " ++ (show l)) exp
+      Just (Input,_a) -> throwError $ ModalityTC "Expected output location" exp l $ LocationTypeState ls
 
 absentAfter :: Exp -> LocationTypeState -> LocVar -> TcM ()
 absentAfter exp (LocationTypeState ls) l =
@@ -463,3 +522,49 @@ test6 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l
         LetE ("z", [], PackedTy "Tree" "l", DataConE "l" "Node" [VarE "x", VarE "y"]) $
         CaseE (VarE "z") [ ("Leaf",[("num","lnum")], VarE "num")
                          , ("Node",[("x","lnodex"),("y","lnodey")], LitE 0)]
+
+
+exadd1 :: L2.FunDef
+exadd1 = L2.FunDef "add1" exadd1ty "tr" exadd1bod
+
+exadd1ty :: ArrowTy Ty2
+exadd1ty = (ArrowTy
+            [LRM "lin" (VarR "r1") Input, LRM "lout" (VarR "r1") Output]
+            (PackedTy "Tree" "lin")
+            (S.fromList [Traverse "lin"])
+            (PackedTy "Tree" "lout")
+            [EndOf $ LRM "lin" (VarR "r1") Input])
+
+exadd1bod :: Exp2
+exadd1bod =
+    CaseE (VarE "tr") $
+      [ ("Leaf", [("n","l0")],
+         LetE ("v",[],IntTy,PrimAppE L1.AddP [VarE "n", LitE 1]) $
+         LetE ("lf",[],PackedTy "Tree" "lout", DataConE "lout" "Leaf" [VarE "v"]) $
+         VarE "lf")
+      , ("Node", [("x","l1"),("y","l2")],
+         Ext $ LetLocE "lout1" (AfterConstantC 1 "lout" "lout1") $
+         LetE ("x1",[],PackedTy "Tree" "lout1", AppE "add1" ["l1","lout1"] (VarE "x")) $
+         Ext $ LetLocE "lout2" (AfterVariableC "x1" "lout1" "lout2") $
+         LetE ("y1",[],PackedTy "Tree" "lout2", AppE "add1" ["l2","lout2"] (VarE "y")) $
+         LetE ("z",[],PackedTy "Tree" "lout", 
+                  DataConE "lout" "Node" [ VarE "x1" , VarE "y1"]) $
+         VarE "z")
+      ]
+
+test7main = Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $
+            Ext $ LetLocE "l1" (AfterConstantC 1 "l" "l1") $ 
+            LetE ("x", [], PackedTy "Tree" "l1", DataConE "l1" "Leaf" [LitE 1]) $
+            Ext $ LetLocE "l2" (AfterVariableC "x" "l1" "l2") $
+            LetE ("y", [], PackedTy "Tree" "l2", DataConE "l2" "Leaf" [LitE 1]) $
+            LetE ("z", [], PackedTy "Tree" "l", DataConE "l" "Node" [VarE "x", VarE "y"]) $
+            Ext $ LetRegionE (VarR "rtest") $
+            Ext $ LetLocE "testout" (StartOfC "testout" (VarR "rtest")) $
+            LetE ("a", [], PackedTy "Tree" "testout", AppE "add1" ["l","testout"] (VarE "z")) $
+            CaseE (VarE "a") [ ("Leaf",[("num","lnum")], VarE "num")
+                             , ("Node",[("x","lnodex"),("y","lnodey")], LitE 0)]
+
+test7prog = Prog ddtree (M.singleton "add1" exadd1) (Just (test7main,IntTy))
+
+test7 = fst $ runSyM 0 $ tcProg test7prog
+
