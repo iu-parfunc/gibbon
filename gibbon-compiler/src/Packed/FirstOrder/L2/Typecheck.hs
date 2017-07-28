@@ -28,48 +28,99 @@ import Text.PrettyPrint.GenericPretty
 import Control.Monad.Except
 import Debug.Trace
 
+-- | A set of constraints (which are re-used location expressions)
+-- which encode relationships between locations. These are used by the
+-- type checker to verify that locations are used correctly.
+--
+-- The following are valid constraints:
+--  * StartOfC LocVar Region
+--  * AfterConstantC Int LocVar LocVar
+--  * AfterVariableC Var LocVar LocVar
+--  * InRegionC LocVar Region
+--  * FromEndC
+--
+-- While the first four can appear in syntax before RouteEnds, the fifth
+-- (fromEnd) should only be introduced by the RouteEnds pass.
 newtype ConstraintSet = ConstraintSet { constraintSet :: S.Set LocExp }
-    
+
+-- | A location has been aliased if we have taken an offset of it while introducing a new
+-- location. These show up in the LocationTypeState below.
 type Aliased = Bool
-    
-newtype LocationTypeState = LocationTypeState { tsmap :: M.Map LocVar (Modality,Aliased) }
+
+-- | A map from locations to their type state. This tracks the current state of a location
+-- at a certain point in a program. The type checker threads this through by taking an
+-- input map that represents the location states before checking a particular expression,
+-- and returns an output map that represents the location states after checking that
+-- particular expression.
+-- All we need to know in this map is whether each location is an input or output location,
+-- and whether we've taken an offset of the location in a letloc form.
+newtype LocationTypeState = LocationTypeState
+    {
+      tsmap :: M.Map LocVar (Modality,Aliased) -- ^ Each location has a modality and may have had an offset taken.
+    }
     deriving (Read,Show,Eq,Ord, Generic, NFData)
-    
+
+-- | A region set is (as you would expect) a set of regions. They are the regions that are currently live
+-- while checking a particular expression.
 newtype RegionSet = RegionSet { regSet :: S.Set Region }
 
 
-data TCError = GenericTC String Exp
-             | VarNotFoundTC Var Exp
-             | UnsupportedExpTC Exp
-             | DivergingEffectsTC Exp LocationTypeState LocationTypeState
-             | LocationTC String Exp LocVar LocVar
-             | ModalityTC String Exp LocVar LocationTypeState
+-- | These are the kinds of errors that the type checker may throw.
+-- There are a few named errors that I thought would be common, like variables not being found, locations
+-- being used incorrectly, etc. For other errors, there's a GenericTC form that takes some expression and
+-- string (containing an error message).
+data TCError = GenericTC String Exp2
+             | VarNotFoundTC Var Exp2
+             | UnsupportedExpTC Exp2
+             | DivergingEffectsTC Exp2 LocationTypeState LocationTypeState
+             | LocationTC String Exp2 LocVar LocVar
+             | ModalityTC String Exp2 LocVar LocationTypeState
                deriving (Read,Show,Eq,Ord, Generic, NFData)
-    
+
+-- | The type checking monad. Just for throwing errors, but could in the future be parameterized
+-- by whatever other logging, etc, monad we want the compiler to use.
 type TcM a = Except TCError a
 
 
-tcExp :: DDefs Ty -> Env2 Ty -> NewFuns
-      -> ConstraintSet -> RegionSet -> LocationTypeState -> Exp
-      -> TcM (Ty, LocationTypeState)
+
+-- | Check an expression. Given the data definitions, an general type environment, a function map,
+-- a constraint set, a region set, an (input) location state map, and the expression, this function
+-- will either throw an error, or return a pair of expression type and new location state map. 
+tcExp :: DDefs Ty2 -> Env2 Ty2 -> NewFuns
+      -> ConstraintSet -> RegionSet -> LocationTypeState -> Exp2
+      -> TcM (Ty2, LocationTypeState)
 tcExp ddfs env funs constrs regs tstatein exp =
+    
     case exp of
-      VarE v -> do
-               ty <- lookupVar env v exp
-               return (ty, tstatein)
+
+      VarE v ->
+          -- Look up a variable in the environment
+          do ty <- lookupVar env v exp
+             return (ty, tstatein)
                       
-      LitE i -> return (IntTy, tstatein)
+      LitE _i -> return (IntTy, tstatein)
                 
-      LitSymE v -> return (IntTy, tstatein) -- SymTy
+      LitSymE _v -> return (IntTy, tstatein) -- SymTy
                    
       AppE v ls e ->
+          -- Checking function application involves a few steps:
+          --  * We need to make sure the inputs/ouptuts line up with the expected types for the function.
+          --  * We need to update the location state map with information about what output locations have been written
+          --    to by the called function and must now be input locations.
+          --  * We need to make sure that if we pass a packed structure as an argument, its location is among the
+          --    passed-in locations.
           do let (ArrowTy locVars arrIn arrEffs arrOut locRets) = getFunTy funs v
+
+             -- Check argument
              (ty,tstate) <- recur tstatein e
+
+             -- Check location of argument
              case ty of
                PackedTy _ tyl -> if S.member tyl $ S.fromList ls
                                  then return ()
                                  else throwError $ GenericTC ("Packed argument location expected: " ++ show tyl) exp
-               _ -> return ()
+               _ -> return () -- TODO: handle tuples with some packed data
+
              ensureEqualTyNoLoc exp ty arrIn
              let handleTS ts (l,Output) =  switchOutLoc exp ts l
                  handleTS ts _ = return ts
@@ -77,7 +128,9 @@ tcExp ddfs env funs constrs regs tstatein exp =
              return (arrOut,tstate')
                     
       PrimAppE pr es -> do
+
                (tys,tstate) <- tcExps ddfs env funs constrs regs tstatein es
+
                -- TODO: check argument length
                case pr of
                  L1.AddP -> do ensureEqualTy exp IntTy (tys !! 0)
@@ -101,30 +154,44 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  _ -> throwError $ UnsupportedExpTC exp
                       
       LetE (v,_ls,ty,e1) e2 -> do
+
+               -- We get the type and new location state from e1
                (ty1,tstate1) <- recur tstatein e1
                ensureEqualTyNoLoc exp ty1 ty
                let env' = extendEnv env v ty
+
+               -- Then we check e1 with that location state
                tcExp ddfs env' funs constrs regs tstate1 e2
                      
       IfE e1 e2 e3 -> do
+
+               -- Handle condition
                (ty1,tstate1) <- recur tstatein e1
                ensureEqualTy exp ty1 BoolTy
+
+               -- Check both branches
                (ty2,tstate2) <- recur tstate1 e2
                (ty3,tstate3) <- recur tstate1 e3
+
+               -- Combine the type states somehow (TODO: audit this)
                tstate <- combineTStates exp tstate2 tstate3
+
                ensureEqualTy exp ty2 ty3
                return (ty2,tstate)
                
       MkProdE es -> do
+               
                (tys,tstate) <- tcExps ddfs env funs constrs regs tstatein es
                return (ProdTy tys,tstate)
                       
       ProjE i e -> do
+               
                (ty,tstate) <- recur tstatein e
                tyi <- tcProj exp i ty
                return (tyi, tstate)
                       
       CaseE e brs -> do
+               
                (ty,tstate) <- recur tstatein e
                let PackedTy _dc lin = ty
                ensureMatchCases ddfs exp ty brs
@@ -133,12 +200,15 @@ tcExp ddfs env funs constrs regs tstatein exp =
                return (tys !! 0,tstate')
                       
       DataConE l dc es -> do
+               
                (tys,tstate1) <- tcExps ddfs env funs constrs regs tstatein es
                let dcty = getTyOfDataCon ddfs dc
                let args = lookupDataCon ddfs dc
+                   
                if length args /= length es
                then throwError $ GenericTC "Invalid argument length" exp
                else do
+                 
                  sequence_ [ ensureEqualTyNoLoc exp ty1 ty2
                            | (ty1,ty2) <- zip args tys ]
                  ensureDataCon exp l tys constrs
@@ -146,6 +216,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  return (PackedTy dcty l, tstate2)
                         
       TimeIt e _ty _b -> do
+               
                (ty1,tstate1) <- recur tstatein e
                -- ensureEqualTy exp ty ty1
                return (ty1,tstate1)
@@ -155,8 +226,10 @@ tcExp ddfs env funs constrs regs tstatein exp =
       FoldE _ _ _ -> throwError $ UnsupportedExpTC exp
                      
       Ext (LetRegionE r e) -> do
+               
                regs' <- regionInsert exp r regs
                (ty,tstate) <- tcExp ddfs env funs constrs regs' tstatein e
+               
                case ty of
                  PackedTy _con l -> do
                                 r <- getRegion exp constrs l
@@ -166,11 +239,14 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  _ -> return (ty,tstate)
                       
       Ext (LetLocE v c e) -> do
+               
                case c of
                  
                  StartOfC l r -> do
+                               
                                if l /= v then throwError $ GenericTC "Invalid location binding" exp
-                               else do 
+                               else do
+                                 
                                  ensureRegion exp r regs
                                  absentStart exp constrs l
                                  let tstate1 = extendTS v (Output,False) tstatein
@@ -181,8 +257,10 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  return (ty,tstate3)
                                         
                  AfterConstantC i l1 l2 -> do
+                               
                                if l2 /= v then throwError $ GenericTC "Invalid location binding" exp
-                               else do 
+                               else do
+                                 
                                  r <- getRegion exp constrs l1
                                  absentStart exp constrs v
                                  let tstate1 = extendTS v (Output,True) $ setAfter l1 tstatein
@@ -193,8 +271,10 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  return (ty,tstate3)
                                         
                  AfterVariableC x l1 l2 -> do
+                               
                                if l2 /= v then throwError $ GenericTC "Invalid location binding" exp
                                else do
+                                 
                                  r <- getRegion exp constrs l1
                                  absentStart exp constrs v
                                  (xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ VarE x
@@ -209,18 +289,25 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  _ -> throwError $ GenericTC "Invalid letloc form" exp
                  
       Ext (RetE _ls v) -> do
+               
                -- skip returned locations for now
                recur tstatein $ VarE v
 
     where recur ts e = tcExp ddfs env funs constrs regs ts e
 
-tcCases :: DDefs Ty -> Env2 Ty -> NewFuns
+
+
+-- | Helper function to check case branches.
+tcCases :: DDefs Ty2 -> Env2 Ty2 -> NewFuns
         -> ConstraintSet -> RegionSet -> LocationTypeState -> LocVar
-        -> [(DataCon, [(Var,LocVar)], Exp)]
-        -> TcM ([Ty], LocationTypeState)
+        -> [(DataCon, [(Var,LocVar)], Exp2)]
+        -> TcM ([Ty2], LocationTypeState)
 tcCases ddfs env funs constrs regs tstatein lin ((dc, vs, e):cases) = do
+  
   let argtys = zip vs $ lookupDataCon ddfs dc
       pairwise = zip argtys $ Nothing : (L.map Just argtys)
+
+      -- Generate the new constraints to check this branch
       genConstrs (((v1,l1),PackedTy _ _),Nothing) (lin,lst) =
           (l1,(AfterConstantC 1 lin l1) : lst)
       genConstrs (((v1,l1),PackedTy _ _),Just ((v2,l2),PackedTy _ _)) (lin,lst) =
@@ -228,16 +315,22 @@ tcCases ddfs env funs constrs regs tstatein lin ((dc, vs, e):cases) = do
       genConstrs (((v1,l1),PackedTy _ _),Just _) (lin,lst) =
           (l1,(AfterConstantC undefined lin l1) : lst)
       genConstrs (_,_) (lin,lst) = (lin,lst)
+
+      -- Generate the new location state map to check this branch
       genTS ((v,l),PackedTy _ _) ts = extendTS l (Input,False) ts
       genTS _ ts = ts
       genEnv ((v,l),PackedTy dc l') env = extendEnv env v $ PackedTy dc l
       genEnv ((v,l),ty) env = extendEnv env v ty
+
+      -- Remove the pattern-bound location variables from the location state map
       remTS ((v,l),PackedTy _ _) ts = removeTS l ts
       remTS _ ts = ts
-                 
+
+      -- Use these functions with our old friend foldr
       constrs1 = L.foldr extendConstrs constrs $ snd $ L.foldr genConstrs (lin,[]) pairwise
       tstate1 = L.foldr genTS tstatein argtys
       env1 = L.foldr genEnv env argtys
+
   (ty1,tstate2) <- tcExp ddfs env1 funs constrs1 regs tstate1 e
   (tyRest,tstateRest) <- recur
   tstateCombine <- combineTStates e tstate2 tstateRest
@@ -250,23 +343,33 @@ tcCases ddfs env funs constrs regs tstatein lin ((dc, vs, e):cases) = do
 
 tcCases _ _ _ _ _ ts _ [] = return ([],ts)
          
-tcProj :: Exp -> Int -> Ty -> TcM Ty
+tcProj :: Exp2 -> Int -> Ty2 -> TcM Ty2
 tcProj _ i (ProdTy tys) = return $ tys !! i
-tcProj e i ty = throwError $ GenericTC ("Projection from non-tuple type " ++ (show ty)) e
+tcProj e _i ty = throwError $ GenericTC ("Projection from non-tuple type " ++ (show ty)) e
 
-tcExps :: DDefs Ty -> Env2 Ty -> NewFuns
-      -> ConstraintSet -> RegionSet -> LocationTypeState -> [Exp]
-      -> TcM ([Ty], LocationTypeState)
+-- | A wrapper for tcExp to check a list of exprs, checking them in order:
+-- the order matters because the location state map is threaded through,
+-- so this is assuming the list of expressions would have been evaluated
+-- in first-to-last order.
+tcExps :: DDefs Ty2 -> Env2 Ty2 -> NewFuns
+      -> ConstraintSet -> RegionSet -> LocationTypeState -> [Exp2]
+      -> TcM ([Ty2], LocationTypeState)
 tcExps ddfs env funs constrs regs tstatein (exp:exps) =
     do (ty,ts) <- tcExp ddfs env funs constrs regs tstatein exp
        (tys,ts') <- tcExps ddfs env funs constrs regs ts exps
        return (ty:tys,ts')
 tcExps _ _ _ _ _ ts [] = return ([],ts)
 
+
+
+-- | Main entry point, checks a whole program (functions and main body).
 tcProg :: Prog -> SyM Prog
 tcProg Prog{ddefs,fundefs,mainExp} = do
 
+  -- Handle functions
   mapM_ fd $ M.elems fundefs
+
+  -- Handle main function
   case mainExp of
     Nothing -> return ()
     Just (e,t) -> let res = runExcept $ tcExp ddefs (Env2 M.empty M.empty) fundefs
@@ -277,6 +380,7 @@ tcProg Prog{ddefs,fundefs,mainExp} = do
                        Right (t',_ts) -> if t' == t
                                          then return ()
                                          else error $ "Expected type " ++ (show t) ++ " and got type " ++ (show t')
+
   return $ Prog ddefs fundefs mainExp
 
   where
@@ -295,69 +399,97 @@ tcProg Prog{ddefs,fundefs,mainExp} = do
                           else error $ "Expected type " ++ (show (arrOut funty)) ++ " and got type " ++ (show ty)
 
 
+
+
 --------------------------------------------------------------------------------------------
 
-regionInsert :: Exp -> Region -> RegionSet -> TcM RegionSet
+-- Helper functions
+
+
+-- | Insert a region into a region set.
+-- Includes an expression for error reporting.
+regionInsert :: Exp2 -> Region -> RegionSet -> TcM RegionSet
 regionInsert e r (RegionSet regSet) = do
   if (S.member r regSet)
   then throwError $ GenericTC "Shadowed regions not allowed" e
   else return $ RegionSet (S.insert r regSet)
 
+-- | Ask if a region is in the region set.
 hasRegion :: Region -> RegionSet -> Bool
 hasRegion r (RegionSet regSet) = S.member r regSet
 
-ensureRegion :: Exp -> Region -> RegionSet -> TcM ()
+-- | Ensure that a region is in a region set, reporting an error otherwise.
+-- Includes an expression for error reporting.
+ensureRegion :: Exp2 -> Region -> RegionSet -> TcM ()
 ensureRegion exp r (RegionSet regSet) =
     if S.member r regSet then return ()
     else throwError $ GenericTC ("Region " ++ (show r) ++ " not in scope") exp
 
-getRegion :: Exp -> ConstraintSet -> LocVar -> TcM Region
+-- | Get the region of a location variable.
+-- Includes an expression for error reporting.
+getRegion :: Exp2 -> ConstraintSet -> LocVar -> TcM Region
 getRegion exp (ConstraintSet cs) l = go $ S.toList cs
     where go ((InRegionC l1 r):cs) = if l1 == l then return r
                                      else go cs
           go (_:cs) = go cs
           go [] = throwError $ GenericTC ("Location " ++ (show l) ++ " has no region") exp
 
+-- | Get the regions mentioned in the location bindings in a function type.
 funRegs :: [LRM] -> RegionSet
 funRegs ((LRM _l r _m):lrms) =
     let (RegionSet rs) = funRegs lrms
     in RegionSet $ S.insert r rs
 funRegs [] = RegionSet $ S.empty
 
+-- | Get the constraints from the location bindings in a function type.
 funConstrs :: [LRM] -> ConstraintSet
 funConstrs ((LRM l r _m):lrms) =
     extendConstrs (InRegionC l r) $ funConstrs lrms
 funConstrs [] = ConstraintSet $ S.empty
 
+-- | Get the type state implied by the location bindings in a function type.
 funTState :: [LRM] -> LocationTypeState
 funTState ((LRM l _r m):lrms) =
     extendTS l (m,False) $ funTState lrms
 funTState [] = LocationTypeState $ M.empty
 
-lookupVar :: Env2 Ty -> Var -> Exp -> TcM Ty
+-- | Look up the type of a variable from the environment
+-- Includes an expression for error reporting.
+lookupVar :: Env2 Ty2 -> Var -> Exp2 -> TcM Ty2
 lookupVar env var exp =
     case M.lookup var $ vEnv env of
       Nothing -> throwError $ VarNotFoundTC var exp
       Just ty -> return ty
 
-combineTStates :: Exp -> LocationTypeState -> LocationTypeState -> TcM LocationTypeState
-combineTStates exp (LocationTypeState ts1) (LocationTypeState ts2) = return $ LocationTypeState $ M.union ts1 ts2
+-- | Combine two location state maps.
+-- Currently just uses a naive union, which will not verify that different branches do the same things.
+-- TODO: Fix this!
+combineTStates :: Exp2 -> LocationTypeState -> LocationTypeState -> TcM LocationTypeState
+combineTStates _exp (LocationTypeState ts1) (LocationTypeState ts2) = return $ LocationTypeState $ M.union ts1 ts2
     -- throwError $ DivergingEffectsTC exp ts1 ts2
 
-ensureEqual :: Eq a => Exp -> String -> a -> a -> TcM a
+-- | Ensure that two things are equal.
+-- Includes an expression for error reporting.
+ensureEqual :: Eq a => Exp2 -> String -> a -> a -> TcM a
 ensureEqual exp str a b = if a == b then return a else throwError $ GenericTC str exp
 
-ensureEqualTy :: Exp -> Ty -> Ty -> TcM Ty
+-- | Ensure that two types are equal.
+-- Includes an expression for error reporting.
+ensureEqualTy :: Exp2 -> Ty2 -> Ty2 -> TcM Ty2
 ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
                                          ++ (show a) ++ ", " ++ (show b)) a b
 
-ensureEqualTyNoLoc :: Exp -> Ty -> Ty -> TcM Ty
+-- | Ensure that two types are equal, ignoring the locations if they are packed.
+-- Includes an expression for error reporting.
+ensureEqualTyNoLoc :: Exp2 -> Ty2 -> Ty2 -> TcM Ty2
 ensureEqualTyNoLoc exp (PackedTy dc1 ty1) (PackedTy dc2 ty2) =
     if dc1 == dc2 then return (PackedTy dc1 ty1)
     else ensureEqualTy exp (PackedTy dc1 ty1) (PackedTy dc2 ty2)
 ensureEqualTyNoLoc exp ty1 ty2 = ensureEqualTy exp ty1 ty2
 
-ensureMatchCases :: DDefs Ty -> Exp -> Ty -> [(DataCon, [(Var,LocVar)], Exp)] -> TcM ()
+-- | Ensure that match cases make sense.
+-- Includes an expression for error reporting.
+ensureMatchCases :: DDefs Ty2 -> Exp2 -> Ty2 -> [(DataCon, [(Var,LocVar)], Exp2)] -> TcM ()
 ensureMatchCases ddfs exp ty cs = do
   case ty of
     PackedTy tc _l -> do
@@ -369,14 +501,18 @@ ensureMatchCases ddfs exp ty cs = do
             return ()
     _ -> throwError $ GenericTC "Cannot case on non-packed type" exp
 
-ensurePackedLoc :: Exp -> Ty -> LocVar -> TcM ()
+-- | Ensure a type is at a particular location.
+-- Includes an expression for error reporting.
+ensurePackedLoc :: Exp2 -> Ty2 -> LocVar -> TcM ()
 ensurePackedLoc exp ty l =
     case ty of
       PackedTy _ l1 -> if l1 == l then return ()
                        else throwError $ GenericTC ("Wrong location in type " ++ (show ty)) exp
       _ -> throwError $ GenericTC "Expected a packed type" exp
 
-ensureDataCon :: Exp -> LocVar -> [Ty] -> ConstraintSet -> TcM ()
+-- | Ensure the locations all line up with the constraints in a data constructor application.
+-- Includes an expression for error reporting.
+ensureDataCon :: Exp2 -> LocVar -> [Ty2] -> ConstraintSet -> TcM ()
 ensureDataCon exp linit tys cs = go Nothing linit tys
     where go Nothing linit ((PackedTy dc l):tys) = do
             ensureAfterConstant exp cs linit l
@@ -390,21 +526,26 @@ ensureDataCon exp linit tys cs = go Nothing linit tys
           go _ _ [] = return ()
             
 
-ensureAfterConstant :: Exp -> ConstraintSet -> LocVar -> LocVar -> TcM ()
+-- | Ensure that one location is +c after another location in the constraint set.
+-- Includes an expression for error reporting.
+ensureAfterConstant :: Exp2 -> ConstraintSet -> LocVar -> LocVar -> TcM ()
 ensureAfterConstant exp (ConstraintSet cs) l1 l2 =
     if L.any f $ S.toList cs then return ()
     else throwError $ LocationTC "Expected after relationship" exp l1 l2 
     where f (AfterConstantC _i l1' l2') = l1' == l1 && l2' == l2
           f _ = False
 
-ensureAfterPacked :: Exp -> ConstraintSet -> LocVar -> LocVar -> TcM ()
+-- | Ensure that one location is a variable size after another location in the constraint set.
+-- Includes an expression for error reporting.
+ensureAfterPacked :: Exp2 -> ConstraintSet -> LocVar -> LocVar -> TcM ()
 ensureAfterPacked  exp (ConstraintSet cs) l1 l2 =
     if L.any f $ S.toList cs then return ()
     else throwError $ LocationTC "Expected after relationship" exp l1 l2 
     where f (AfterVariableC _v l1' l2') = l1' == l1 && l2' == l2
           f _ = False
-                                               
-extendEnv :: Env2 Ty -> Var -> Ty -> Env2 Ty
+
+
+extendEnv :: Env2 Ty2 -> Var -> Ty2 -> Env2 Ty2
 extendEnv (Env2 vEnv fEnv) v ty = Env2 (M.insert v ty vEnv) fEnv
 
 extendTS
@@ -457,8 +598,14 @@ removeLoc exp (LocationTypeState ls) l =
     else throwError $ GenericTC ("Cannot remove location " ++ (show l)) exp
 
 
+
     
 --------------------------------------------------------------------------------------------
+
+
+-- TESTS!
+
+-- These should eventually move into the real test suite. Right now I'm just running them from the REPL.
 
 ddtree :: DDefs Ty
 ddtree = (fromListDD [DDef (toVar "Tree") 
