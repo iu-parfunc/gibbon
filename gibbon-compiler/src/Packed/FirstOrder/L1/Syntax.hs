@@ -90,13 +90,14 @@ type Exp = PreExp NoExt () Ty
 -- I.e., this covers all the verbose recursive fields.
 #define EXP (PreExp ext loc dec)
     
--- | The source language.  It has pointer based sums and products, as
+-- | The source language.  It has pointer-based sums and products, as
 -- well as packed algebraic datatypes.
 --
--- It is parameterized by a decoration, d, attached to every binder.
---
--- It is also parameterized by an expression type for "knot-tying",
--- and for enabling a potential extension point.
+-- (1) It is parameterized by an a potential extension point.
+-- 
+-- (2) It is parameterized by 'loc', the type of locations.
+-- 
+-- (3) It is parameterized by a decoration, d, attached to every binder.
 -- 
 data PreExp (ext :: * -> * -> *) loc dec =
      VarE Var              -- ^ Variable reference
