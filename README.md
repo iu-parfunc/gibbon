@@ -2,21 +2,17 @@
 
 [![Build Status](http://tester-lin.soic.indiana.edu:8080/buildStatus/icon?job=tree-velocity)](http://tester-lin.soic.indiana.edu:8080/job/tree-velocity/)
 
-
 A collection of sub-projects related to benchmarking tree traversals and 
-performing tree traversals on packed representations.  Here's what the main 
-subdirectories are for:
+performing tree traversals on packed representations.  Here is a guide to 
+the subdirectories:
 
- * `BintreeBench` - the tiniest binary tree microbenchmark, implemented several different ways.
+ * [gibbon-compiler](gibbon-compiler) - the prototype compiler for the Gibbon language of packed tree traversals.
 
- * `ASTBenchmarks` - benchmark of treewalks (compiler passes) on ASTs.
+ * [ASTBenchmarks](ASTBenchmarks) - benchmark of treewalks (compiler passes) on ASTs written with Gibbon.
    Also includes scripts to fetch input datasets.
 
- * `PackedTreesFormal` - a small core language on which we can
-   formalize the translation between programs on unpacked and packed
-   trees.
+ * `BintreeBench` - a submodule containing the tiniest binary tree microbenchmark, implemented several different languages and compilers.
    
- * `core-harvest` - harvest realistic, large program ASTs from the wild.
+ * [core-harvest](core-harvest) - tools to harvest realistic, large ASTs (mainly Racket) from the wild.
  
- * `./paper` - draft paper
-
+ * [DEVLOG.md](DEVLOG.md) - detailed documentation for those hacking on this repository.
