@@ -43,6 +43,7 @@ library
                   -- Packed.FirstOrder.Passes.CopyInsertion
                   -- Packed.FirstOrder.Passes.FindWitnesses
                   -- Packed.FirstOrder.Passes.RouteEnds
+                  Packed.FirstOrder.Passes.RouteEnds2
                   -- Packed.FirstOrder.Passes.Unariser
                   -- Packed.FirstOrder.Passes.HoistNewBuf
                   -- Packed.FirstOrder.Passes.Typecheck
