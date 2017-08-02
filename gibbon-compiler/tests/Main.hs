@@ -19,7 +19,7 @@ import Test.Tasty.TH
 import Packed.FirstOrder.Common hiding (FunDef)
 -- import qualified Packed.FirstOrder.Common as C
 -- import Packed.FirstOrder.L1_Source (Exp (..))
-import qualified Packed.FirstOrder.L1.Syntax as L1
+-- import qualified Packed.FirstOrder.L1.Syntax as L1
 import           Packed.FirstOrder.L2.Syntax as L2
 -- import           Packed.FirstOrder.Passes.InferEffects  -- UNDER_CONSTRUCTION.
 -- import           Packed.FirstOrder.Passes.CopyInsertion
@@ -366,6 +366,7 @@ t5p = Prog {ddefs = M.fromList [("Expr",
                                                  funty = ArrowTy { locVars = [LRM "a" (VarR "r") Input]
                                                                  , arrIn = PackedTy "Foo" "a"
                                                                  , arrEffs = S.fromList []
+                                                                 , locRets = []
                                                                  , arrOut = PackedTy "Foo" "a"
                                                                  },
                                                  funarg = "x0",

@@ -262,7 +262,7 @@ data UrTy a =
                          -- allowed as the fields of data constructors.
 
         ---------- These are not used initially ----------------
-        -- They could be added in a later IR instead:
+        -- (They could be added by a later IR instead:)
           
         | PtrTy LRM (UrTy a) -- ^ A machine pointer to a complete value in memory.
                              -- This is decorated with the region it points into, which
@@ -278,15 +278,18 @@ voidTy :: Ty
 voidTy = ProdTy []
 
 -- | Do values of this type contain packed data?
-hasPacked :: UrTy a -> Bool
-hasPacked t = case t of
-                PackedTy{} -> True
-                ProdTy ls -> any hasPacked ls
-                SymTy     -> False
-                BoolTy    -> False
-                IntTy     -> False
-                SymDictTy ty -> hasPacked ty
-                ListTy _     -> error "FINISHLISTS"
+hasPacked :: Show a => UrTy a -> Bool
+hasPacked t =
+  case t of
+    PackedTy{} -> True
+    ProdTy ls -> any hasPacked ls
+    SymTy     -> False
+    BoolTy    -> False
+    IntTy     -> False
+    SymDictTy ty -> hasPacked ty
+    ListTy _     -> error "FINISHLISTS"
+    PtrTy _lrm _ty -> error$ "hasPacked: should not be using this when PtrTy is introduced: "++show t
+    CursorTy _lrm -> error$ "hasPacked: should not be using this when CursorTy is introduced: "++show t
 
 -- | Provide a size in bytes, if it is statically known.
 sizeOf :: UrTy a -> Maybe Int

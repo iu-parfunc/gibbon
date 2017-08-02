@@ -38,13 +38,15 @@ module Packed.FirstOrder.L2.Syntax
 
       
     -- The following will be removed:
-      
+
+-- (Maybe) DEPRECATED:
     -- * Extended "L2.1", for inline packed:
     , pattern NamedVal
 
+-- DEPRECATED:      
     -- * Extended "L2.2", for after cursor insertion:
     , pattern WriteInt, pattern ReadInt, pattern NewBuffer
-    , pattern CursorTy, pattern ScopedBuffer, pattern AddCursor
+    , pattern ScopedBuffer, pattern AddCursor
     , isExtendedPattern
     , builtinTEnv
     , includeBuiltins
@@ -104,14 +106,16 @@ data LocRet = EndOf LRM
               deriving (Read, Show, Eq, Ord, Generic, NFData)
 
 instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
-  type TyOf (E2Ext l d) = UrTy l
+  type LocOf (E2Ext l d) = l
+  type TyOf (E2Ext l d)  = UrTy l
 
     
 ----------------------------------------------------------------------------------------------------
             
 -- | Our type for functions grows to include effects, and explicit universal
 -- quantification over location/region variables.
-data ArrowTy t = ArrowTy { locVars :: [LRM]
+data ArrowTy t = ArrowTy { locVars :: [LRM]       -- ^ Universally-quantified location params.
+                                                  -- Only these should be referenced in arrIn/arrOut.
                          , arrIn :: t             -- ^ Input type for the function.
                          , arrEffs:: (Set Effect) -- ^ These are present-but-empty initially,
                                                   -- and the populated by InferEffects.
@@ -176,6 +180,12 @@ getFunTy mp f = case M.lookup f mp of
                   Just (FunDef{funty}) -> funty
 
 
+
+
+-- TODO: beta-branch: REVAMP BELOW HERE
+--------------------------------------------------------------------------------
+
+                                          
 -- | Retrieve all LocVars mentioned in a type
 getTyLocs :: Ty -> Set LocVar
 getTyLocs t =
