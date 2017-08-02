@@ -25,10 +25,10 @@ import qualified Packed.FirstOrder.L1.Syntax as L1
 import Data.Set as S
 import Data.Map as M
 import Data.List as L
-import Data.Maybe as Maybe
+-- import Data.Maybe as Maybe
 import Text.PrettyPrint.GenericPretty
 import Control.Monad.Except
-import Debug.Trace
+-- import Debug.Trace
 
 -- | A set of constraints (which are re-used location expressions)
 -- which encode relationships between locations. These are used by the
@@ -244,7 +244,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                
                case c of
                  
-                 StartOfC l r -> do
+                 StartOfLE l r -> do
                                
                                if l /= v then throwError $ GenericTC "Invalid location binding" exp
                                else do
@@ -252,13 +252,13 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  ensureRegion exp r regs
                                  absentStart exp constrs l
                                  let tstate1 = extendTS v (Output,False) tstatein
-                                 let constrs1 = extendConstrs (StartOfC v r) $
-                                                extendConstrs (InRegionC l r) constrs
+                                 let constrs1 = extendConstrs (StartOfLE v r) $
+                                                extendConstrs (InRegionLE l r) constrs
                                  (ty,tstate2) <- tcExp ddfs env funs constrs1 regs tstate1 e
                                  tstate3 <- removeLoc exp tstate2 v
                                  return (ty,tstate3)
                                         
-                 AfterConstantC i l1 l2 -> do
+                 AfterConstantLE i l1 l2 -> do
                                
                                if l2 /= v then throwError $ GenericTC "Invalid location binding" exp
                                else do
@@ -266,13 +266,13 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  r <- getRegion exp constrs l1
                                  absentStart exp constrs v
                                  let tstate1 = extendTS v (Output,True) $ setAfter l1 tstatein
-                                 let constrs1 = extendConstrs (InRegionC l2 r) $
-                                                extendConstrs (AfterConstantC i l1 l2) constrs
+                                 let constrs1 = extendConstrs (InRegionLE l2 r) $
+                                                extendConstrs (AfterConstantLE i l1 l2) constrs
                                  (ty,tstate2) <- tcExp ddfs env funs constrs1 regs tstate1 e
                                  tstate3 <- removeLoc exp tstate2 v
                                  return (ty,tstate3)
                                         
-                 AfterVariableC x l1 l2 -> do
+                 AfterVariableLE x l1 l2 -> do
                                
                                if l2 /= v then throwError $ GenericTC "Invalid location binding" exp
                                else do
@@ -282,8 +282,8 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  (xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ VarE x
                                  ensurePackedLoc exp xty l1
                                  let tstate2 = extendTS v (Output,True) $ setAfter l1 tstate1
-                                 let constrs1 = extendConstrs (InRegionC l2 r) $
-                                                extendConstrs (AfterVariableC x l1 l2) constrs
+                                 let constrs1 = extendConstrs (InRegionLE l2 r) $
+                                                extendConstrs (AfterVariableLE x l1 l2) constrs
                                  (ty,tstate3) <- tcExp ddfs env funs constrs1 regs tstate2 e
                                  tstate4 <- removeLoc exp tstate3 v
                                  return (ty,tstate4)
@@ -311,11 +311,11 @@ tcCases ddfs env funs constrs regs tstatein lin ((dc, vs, e):cases) = do
 
       -- Generate the new constraints to check this branch
       genConstrs (((v1,l1),PackedTy _ _),Nothing) (lin,lst) =
-          (l1,(AfterConstantC 1 lin l1) : lst)
+          (l1,(AfterConstantLE 1 lin l1) : lst)
       genConstrs (((v1,l1),PackedTy _ _),Just ((v2,l2),PackedTy _ _)) (lin,lst) =
-          (l1,(AfterVariableC v2 l2 l1) : lst)
+          (l1,(AfterVariableLE v2 l2 l1) : lst)
       genConstrs (((v1,l1),PackedTy _ _),Just _) (lin,lst) =
-          (l1,(AfterConstantC undefined lin l1) : lst)
+          (l1,(AfterConstantLE undefined lin l1) : lst)
       genConstrs (_,_) (lin,lst) = (lin,lst)
 
       -- Generate the new location state map to check this branch
@@ -431,7 +431,7 @@ ensureRegion exp r (RegionSet regSet) =
 -- Includes an expression for error reporting.
 getRegion :: Exp2 -> ConstraintSet -> LocVar -> TcM Region
 getRegion exp (ConstraintSet cs) l = go $ S.toList cs
-    where go ((InRegionC l1 r):cs) = if l1 == l then return r
+    where go ((InRegionLE l1 r):cs) = if l1 == l then return r
                                      else go cs
           go (_:cs) = go cs
           go [] = throwError $ GenericTC ("Location " ++ (show l) ++ " has no region") exp
@@ -446,7 +446,7 @@ funRegs [] = RegionSet $ S.empty
 -- | Get the constraints from the location bindings in a function type.
 funConstrs :: [LRM] -> ConstraintSet
 funConstrs ((LRM l r _m):lrms) =
-    extendConstrs (InRegionC l r) $ funConstrs lrms
+    extendConstrs (InRegionLE l r) $ funConstrs lrms
 funConstrs [] = ConstraintSet $ S.empty
 
 -- | Get the type state implied by the location bindings in a function type.
@@ -635,38 +635,38 @@ test1 = testerout $ LitE 1
 
 test2 = testerout $ LetE ("a",[],IntTy,LitE 1) (PrimAppE L1.AddP [VarE "a",VarE "a"])
         
-test3 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $ LitE 1
+test3 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfLE "l" (VarR "r")) $ LitE 1
 
-test4 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $
+test4 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfLE "l" (VarR "r")) $
         LetE ("throwaway", [], PackedTy "Tree" "l", DataConE "l" "Leaf" [LitE 1]) $ LitE 2
 
-test4bad1 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r1")) $
+test4bad1 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfLE "l" (VarR "r1")) $
             LetE ("throwaway", [], PackedTy "Tree" "l", DataConE "l" "Leaf" [LitE 1]) $ LitE 2
 
-test4bad2 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $
+test4bad2 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfLE "l" (VarR "r")) $
             LetE ("throwaway", [], PackedTy "Tree" "l1", DataConE "l1" "Leaf" [LitE 1]) $ LitE 2
 
-test5 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $
-        Ext $ LetLocE "l1" (AfterConstantC 1 "l" "l1") $ 
+test5 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfLE "l" (VarR "r")) $
+        Ext $ LetLocE "l1" (AfterConstantLE 1 "l" "l1") $ 
         LetE ("x", [], PackedTy "Tree" "l1", DataConE "l1" "Leaf" [LitE 1]) $
-        Ext $ LetLocE "l2" (AfterVariableC "x" "l1" "l2") $
+        Ext $ LetLocE "l2" (AfterVariableLE "x" "l1" "l2") $
         LetE ("y", [], PackedTy "Tree" "l2", DataConE "l2" "Leaf" [LitE 2]) $
         LetE ("z", [], PackedTy "Tree" "l", DataConE "l" "Node" [VarE "x", VarE "y"]) $
         LitE 1
 
-test5bad1 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $
-        Ext $ LetLocE "l1" (AfterConstantC 1 "l" "l1") $ 
+test5bad1 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfLE "l" (VarR "r")) $
+        Ext $ LetLocE "l1" (AfterConstantLE 1 "l" "l1") $ 
         LetE ("x", [], PackedTy "Tree" "l1", DataConE "l1" "Leaf" [LitE 1]) $
-        Ext $ LetLocE "l2" (AfterVariableC "x" "l1" "l2") $
+        Ext $ LetLocE "l2" (AfterVariableLE "x" "l1" "l2") $
         LetE ("y", [], PackedTy "Tree" "l2", DataConE "l2" "Leaf" [LitE 2]) $
         LetE ("z", [], PackedTy "Tree" "l", DataConE "l" "Node" [VarE "y", VarE "x"]) $
         LitE 1
 -- GenericTC "Expected Var \"l2\" after Var \"l\"" (DataConE (Var "l") "Node" [VarE (Var "y"),VarE (Var "x")])
 
-test6 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $
-        Ext $ LetLocE "l1" (AfterConstantC 1 "l" "l1") $ 
+test6 = testerout $ Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfLE "l" (VarR "r")) $
+        Ext $ LetLocE "l1" (AfterConstantLE 1 "l" "l1") $ 
         LetE ("x", [], PackedTy "Tree" "l1", DataConE "l1" "Leaf" [LitE 1]) $
-        Ext $ LetLocE "l2" (AfterVariableC "x" "l1" "l2") $
+        Ext $ LetLocE "l2" (AfterVariableLE "x" "l1" "l2") $
         LetE ("y", [], PackedTy "Tree" "l2", DataConE "l2" "Leaf" [LitE 2]) $
         LetE ("z", [], PackedTy "Tree" "l", DataConE "l" "Node" [VarE "x", VarE "y"]) $
         CaseE (VarE "z") [ ("Leaf",[("num","lnum")], VarE "num")
@@ -692,23 +692,23 @@ exadd1bod =
          LetE ("lf",[],PackedTy "Tree" "lout", DataConE "lout" "Leaf" [VarE "v"]) $
          VarE "lf")
       , ("Node", [("x","l1"),("y","l2")],
-         Ext $ LetLocE "lout1" (AfterConstantC 1 "lout" "lout1") $
+         Ext $ LetLocE "lout1" (AfterConstantLE 1 "lout" "lout1") $
          LetE ("x1",[],PackedTy "Tree" "lout1", AppE "add1" ["l1","lout1"] (VarE "x")) $
-         Ext $ LetLocE "lout2" (AfterVariableC "x1" "lout1" "lout2") $
+         Ext $ LetLocE "lout2" (AfterVariableLE "x1" "lout1" "lout2") $
          LetE ("y1",[],PackedTy "Tree" "lout2", AppE "add1" ["l2","lout2"] (VarE "y")) $
          LetE ("z",[],PackedTy "Tree" "lout", 
                   DataConE "lout" "Node" [ VarE "x1" , VarE "y1"]) $
          VarE "z")
       ]
 
-test7main = Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfC "l" (VarR "r")) $
-            Ext $ LetLocE "l1" (AfterConstantC 1 "l" "l1") $ 
+test7main = Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "l" (StartOfLE "l" (VarR "r")) $
+            Ext $ LetLocE "l1" (AfterConstantLE 1 "l" "l1") $ 
             LetE ("x", [], PackedTy "Tree" "l1", DataConE "l1" "Leaf" [LitE 1]) $
-            Ext $ LetLocE "l2" (AfterVariableC "x" "l1" "l2") $
+            Ext $ LetLocE "l2" (AfterVariableLE "x" "l1" "l2") $
             LetE ("y", [], PackedTy "Tree" "l2", DataConE "l2" "Leaf" [LitE 1]) $
             LetE ("z", [], PackedTy "Tree" "l", DataConE "l" "Node" [VarE "x", VarE "y"]) $
             Ext $ LetRegionE (VarR "rtest") $
-            Ext $ LetLocE "testout" (StartOfC "testout" (VarR "rtest")) $
+            Ext $ LetLocE "testout" (StartOfLE "testout" (VarR "rtest")) $
             LetE ("a", [], PackedTy "Tree" "testout", AppE "add1" ["l","testout"] (VarE "z")) $
             CaseE (VarE "a") [ ("Leaf",[("num","lnum")], VarE "num")
                              , ("Node",[("x","lnodex"),("y","lnodey")], LitE 0)]

@@ -16,7 +16,9 @@
 -- | An intermediate language with an effect system that captures traversals.
 
 module Packed.FirstOrder.L2.Syntax
-    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..), LocRet(..), LocExp, PreLocExp(..)
+    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..)
+    , LocRet(..), LocExp, PreLocExp(..)
+--    , LocConstraint(..)
     , NewFuns, getFunTy
     , mapMExprs
     , progToEnv
@@ -95,12 +97,27 @@ data E2Ext loc dec =
 type E2 l d = PreExp E2Ext l d
 
 -- | Define a location in terms of a different location.
-data PreLocExp loc = StartOfC loc Region
-                   | AfterConstantC Int loc loc
-                   | AfterVariableC Var loc loc
-                   | InRegionC loc Region
-                   | FromEndC loc
+data PreLocExp loc = StartOfLE loc Region
+                   | AfterConstantLE Int -- ^ Number of bytes after. 
+                                    loc  -- ^ Location which this location is offset from.
+                                    loc  -- ^ REMOVE ME
+                   | AfterVariableLE Var -- ^ Name of variable v. This loc is size(v) bytes after.
+                                    loc  -- ^ Location which this location is offset from.
+                                    loc  -- ^ REMOVE ME
+                   | InRegionLE loc Region
+                   | FromEndLE  loc
                      deriving (Read, Show, Eq, Ord, Generic, NFData)
+
+-- | Constraints on locations
+data LocConstraint loc = StartOfC loc Region -- ^ Location is equal to start of this region.
+                       | AfterConstantC Int -- ^ Number of bytes after. 
+                                        loc -- ^ Location which is before
+                                        loc -- ^ Location which is after
+                       | AfterVariableC Var -- ^ Name of variable v. This loc is size(v) bytes after.
+                                        loc -- ^ Location which is before
+                                        loc -- ^ Location which is before
+                       | InRegionC loc Region -- ^ Location is somewher within this region.
+--                       | FromEndC  loc        -- ^ ????
 
 type LocExp = PreLocExp LocVar
 
@@ -626,9 +643,9 @@ withAdd1Prog mainExp =
       CaseE (VarE "tr") $
         [ ("Leaf", [("n","l0")], LetE ("v",[],IntTy,PrimAppE L1.AddP [VarE "n", LitE 1]) (VarE "v"))
         , ("Node", [("x","l1"),("y","l2")],
-           Ext $ LetLocE "lout1" (AfterConstantC 1 "lout" "lout1") $
+           Ext $ LetLocE "lout1" (AfterConstantLE 1 "lout" "lout1") $
            LetE ("x1",[],PackedTy "Tree" "lout1", AppE "add1" ["l1","lout1"] (VarE "x")) $
-           Ext $ LetLocE "lout2" (AfterVariableC "x1" "lout1" "lout2") $
+           Ext $ LetLocE "lout2" (AfterVariableLE "x1" "lout1" "lout2") $
            LetE ("y1",[],PackedTy "Tree" "lout2", AppE "add1" ["l2","lout2"] (VarE "y")) $
            LetE ("z",[],PackedTy "Tree" "lout", 
                     DataConE "lout" "Node" [ VarE "x1" , VarE "y1"]) $
