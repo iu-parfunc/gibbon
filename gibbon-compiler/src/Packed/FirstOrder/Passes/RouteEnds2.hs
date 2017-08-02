@@ -91,7 +91,6 @@ findEnd l EndOfRel{endOf,equivTo} =
 routeEnds :: Prog -> SyM Prog
 routeEnds Prog{ddefs,fundefs,mainExp} = do
 
-
   -- Handle functions in two steps (to account for mutual recursion):
   --
   -- First, compute the new types, and build a new fundefs structure:
@@ -113,9 +112,7 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
 
 
   where
-
     -- Helper functions:
-
 
     -- | Process function types (but don't handle bodies)
     fdty :: L2.FunDef -> SyM L2.FunDef 
@@ -276,9 +273,9 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
 
           -- Not worth trying to fix the un-flattened program here, since we would need
           -- to know the types of the exps in es to make a let binding.
-          MkProdE _es -> error $ "Found complex expression in tail: " ++ (show e)
+          MkProdE _es -> internalError $ "Found complex expression in tail: " ++ (show e)
 
-          ProjE _i _e -> error $ "Found complex expression in tail: " ++ (show e)
+          ProjE _i _e -> internalError $ "Found complex expression in tail: " ++ (show e)
 
           -- Could fail here, but try to fix the broken program
           DataConE l dc es -> do
@@ -311,9 +308,7 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                  e' <- exp fns retlocs eor lenv afterenv e
                  return $ Ext (LetLocE v (AfterVariableC x l1 l2) e')
 
-          _ -> error $ "Unsupported expression: " ++ (show e)
-
-
+          _ -> internalError $ "RouteEnds: Unsupported expression: " ++ (show e)
 
 
 
@@ -408,3 +403,4 @@ test1 = Ext $ LetRegionE (VarR "r") $ Ext $ LetLocE "ltest" (StartOfC "l" (VarR 
 --           (LetE (Var "y1",[Var "endof3"],PackedTy "Tree" (Var "lout2"),AppE (Var "add1") [Var "l2",Var "lout2"] (VarE (Var "y")))
 --           (LetE (Var "z",[],PackedTy "Tree" (Var "lout"),DataConE (Var "lout") "Node" [VarE (Var "x1"),VarE (Var "y1")])
 --           (ext (RetE [Var "endof3"] (Var "z"))))))))))))]}
+

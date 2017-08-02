@@ -46,6 +46,7 @@ module Packed.FirstOrder.Common
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
 --       , err
+       , internalError
 
          -- * Establish conventions for the output of #lang gibbon:
        , truePrinted, falsePrinted
@@ -313,10 +314,15 @@ cleanFunName f =
 
 ----------------------------------------
 
+-- NOTE: this will be obsoleted by GHC 8.0.2
 -- | An alias for the error function we want to use throughout this project.
 {-# INLINE err #-}
 err :: String -> a
 err = errorWithStackTrace
+
+-- | An error that is OUR FAULT, i.e. an internal bug in the compiler.
+internalError :: String -> a 
+internalError s = errorWithStackTrace ("internal error: "++s)
 
 
 (#) :: (Ord a, Out a, Out b, Show a)

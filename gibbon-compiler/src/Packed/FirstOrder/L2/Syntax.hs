@@ -112,10 +112,11 @@ instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
 -- | Our type for functions grows to include effects, and explicit universal
 -- quantification over location/region variables.
 data ArrowTy t = ArrowTy { locVars :: [LRM]
-                         , arrIn :: t
-                         , arrEffs:: (Set Effect)
-                         , arrOut:: t
-                         , locRets :: [LocRet] -- ^ L2B feature.
+                         , arrIn :: t             -- ^ Input type for the function.
+                         , arrEffs:: (Set Effect) -- ^ These are present-but-empty initially,
+                                                  -- and the populated by InferEffects.
+                         , arrOut:: t             -- ^ Output type for the function.
+                         , locRets :: [LocRet]    -- ^ L2B feature: multi-valued returns.
                          }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
