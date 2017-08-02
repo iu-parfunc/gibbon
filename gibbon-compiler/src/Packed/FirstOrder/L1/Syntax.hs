@@ -20,7 +20,7 @@ module Packed.FirstOrder.L1.Syntax
     (
      -- * Core types
       Prog(..), DDef(..), FunDefs, FunDef(..),
-      Exp, PreExp(..)
+      Exp1, Exp, PreExp(..)
     , progToEnv
 
       -- * Primitive operations
@@ -41,7 +41,7 @@ module Packed.FirstOrder.L1.Syntax
     , projNonFirst, mkProj, mkProd, mkProdTy, mkLets
 
       -- * Examples
-    -- , add1Prog
+    , add1Prog
     )
     where
 
@@ -84,8 +84,12 @@ progToEnv Prog{fundefs} =
 
 
 -- | A convenient, default instantiation of the L1 expression type.
-type Exp = PreExp NoExt () Ty
+type Exp1 = Exp
 
+-- | Deprecated alias for Exp1
+type Exp = PreExp NoExt () Ty
+{-# DEPRECATED Exp "use Exp1 instead" #-}
+    
 -- Shorthand to make the below definition more readable.
 -- I.e., this covers all the verbose recursive fields.
 #define EXP (PreExp ext loc dec)
@@ -524,7 +528,7 @@ mkLets (b:bs) bod = LetE b (mkLets bs bod)
 
 
 --------------------------------------------------------------------------------
-{-
+
 treeTy :: Ty
 treeTy = Packed "Tree"
 
@@ -537,16 +541,15 @@ add1Prog = Prog (fromListDD [DDef (toVar "Tree")
                 Nothing 
 
 exadd1 :: FunDef Ty Exp
-exadd1 = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy
-            (mapLocs (\_ -> ()) exadd1Bod)
+exadd1 = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy exadd1Bod
 
-exadd1Bod :: PreExp LocVar NoExt Ty
+-- exadd1Bod :: PreExp () NoExt Ty
+exadd1Bod :: Exp1
 exadd1Bod = 
     CaseE (VarE (toVar "tr")) $
-      [ ("Leaf", [("n","l0")], PrimAppE AddP [VarE (toVar "n"), LitE 1])
-      , ("Node", [("x","l1"),("y","l2")],
-         DataConE "l0" "Node" 
+      [ ("Leaf", [("n",())], PrimAppE AddP [VarE (toVar "n"), LitE 1])
+      , ("Node", [("x",()),("y",())],
+         DataConE () "Node" 
           [ AppE (toVar "add1") [] (VarE $ toVar "x")
           , AppE (toVar "add1") [] (VarE $ toVar "y")])
       ]
--}
