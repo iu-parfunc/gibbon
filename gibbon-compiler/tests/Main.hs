@@ -5,34 +5,43 @@
 
 module Main where
 
--- import Control.Exception (bracket, bracket_)
+-- |
 import Data.Map as M
 import Data.Set as S
 import Data.Word (Word8)
--- import System.IO
--- import System.Info
--- import System.Process (readCreateProcess, shell)
 
+import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.TH
 
+
+-- |
 import Packed.FirstOrder.Common hiding (FunDef)
--- import qualified Packed.FirstOrder.Common as C
--- import Packed.FirstOrder.L1_Source (Exp (..))
--- import qualified Packed.FirstOrder.L1.Syntax as L1
-import           Packed.FirstOrder.L2.Syntax as L2
--- import           Packed.FirstOrder.Passes.InferEffects  -- UNDER_CONSTRUCTION.
--- import           Packed.FirstOrder.Passes.CopyInsertion
--- import           Packed.FirstOrder.Passes.Cursorize
--- import           Packed.FirstOrder.Passes.Codegen
-import           Packed.FirstOrder.L4.Syntax hiding (Prog (..), Ty (..))
+import Packed.FirstOrder.L2.Syntax as L2
+import Packed.FirstOrder.L4.Syntax hiding (Prog (..), Ty (..))
+
 import qualified Packed.FirstOrder.L4.Syntax as T
 import qualified Packed.FirstOrder.TargetInterp as TI
 
+-- |
+import RouteEnds2
+import L2.Typecheck
 
 main :: IO ()
-main = $(defaultMainGenerator)
+main = defaultMain allTests
+  where allTests = testGroup "All"
+                   [ tests
+                   , routeEnds2Tests
+                   , l2TypecheckerTests
+                   ]
 
+
+tests :: TestTree
+tests = $(testGroupGenerator)
+
+
+--
+--
 -- Unit test the.L2.Syntax.hs functions:
 --------------------------------------------------------------------------------
 {- -- UNDER_CONSTRUCTION.
@@ -343,7 +352,6 @@ _case_add1 =
                  (readCreateProcess (shell (valgrind++"./add1.exe 10 10")) "")
 
       return ()
--}
 
 -- Tests for copy-insertion
 
@@ -353,13 +361,13 @@ f x = (False,x)
 
 t5p :: Prog
 t5p = Prog {ddefs = M.fromList [("Expr",
-                                   DDef {tyName = "Expr", 
+                                   DDef {tyName = "Expr",
                                          dataCons = [("VARREF", [f IntTy]),("Top", [f IntTy])]}),
                                    ("Bar",
-                                    DDef {tyName = "Bar", 
+                                    DDef {tyName = "Bar",
                                           dataCons = [("C", [f IntTy]),("D", [f$ PackedTy "Foo" fixme])]}),
                                    ("Foo",
-                                    DDef {tyName = "Foo", 
+                                    DDef {tyName = "Foo",
                                           dataCons = [("A", [f IntTy, f IntTy]),("B", [f$ PackedTy "Bar" fixme])]})],
                fundefs = M.fromList [("id",
                                       L2.FunDef {funname = "id",
@@ -380,7 +388,7 @@ t5p = Prog {ddefs = M.fromList [("Expr",
   where
     fixme = ""
 
-{- -- UNDER_CONSTRUCTION.
+-- UNDER_CONSTRUCTION.
 _case_t5p1 :: Assertion
 _case_t5p1 = assertEqual "Generate copy function for a simple DDef"
             ( toVar "copyExpr"
