@@ -390,9 +390,29 @@ passes config@Config{mode,packed} l1 = do
       return (L1 l1)
 
 {- -- UNDER_CONSTRUCTION
+-- TODO: Typecheck L1.
+-- TODO: INFER LOCATIONS -- but allow partially-broken programs (sharing)
+-- TODO: New add-copies.
       l1 <- pass True  config "addCopies"     addCopies                             l1
+
+-- TODO: Typecheck L2. (Really this is an L2B typechecker...)
       l2 <- passE  config "inferEffects"  inferEffects                              l1
+   -- Language: L2B - has traversal effects, uses multi-valued returns.
+
+-- TODO: find missing traversals, insert traversals
+-- TODO: ensure all non-first location bindings are unused, "_"-bindings (L2C)
+
+-- TODO: Typecheck L2.  We could be strict and enforce the L2C invariants, or not.
+-- The L2 typechecker will continue to work for L2C.  
       l2 <- passE' config "typecheck"     (typecheckStrict (TCConfig False))        l2
+
+-- TODO: Run the NEW version of Cursorize, producing L3.
+
+-- TODO: Run flatten, unariser, whatever, then Lower (L4)
+
+
+-- OLD pipeline:
+----------------
       let mmainTyPre = fmap snd $ L2.mainExp l2
       l2  <-
           if packed
@@ -423,6 +443,7 @@ passes config@Config{mode,packed} l1 = do
 
             -- This will issue some warnings, but is useful for debugging:
             -- l2  <- pass' mode  "typecheck" (typecheckPermissive (TCConfig True))   l2
+
 
             l2 <- pass False config "flatten"       (flatten2 l1)                   l2
             l2 <- pass True config "findWitnesses" findWitnesses                    l2

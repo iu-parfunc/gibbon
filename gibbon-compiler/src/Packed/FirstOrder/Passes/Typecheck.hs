@@ -1,3 +1,6 @@
+
+-- DEPRECATED -- remove me.  This is the old, pre-beta-branch typechecker.
+
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 
 {-# LANGUAGE BangPatterns #-}

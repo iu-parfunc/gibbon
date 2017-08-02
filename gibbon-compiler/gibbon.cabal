@@ -34,12 +34,12 @@ library
                   Packed.FirstOrder.Passes.Flatten
                   Packed.FirstOrder.Passes.Flatten2
                   Packed.FirstOrder.Passes.InlineTriv
+--                  Packed.FirstOrder.Passes.InferEffects
                   -- Packed.FirstOrder.Passes.Cursorize
                   -- Packed.FirstOrder.Passes.Cursorize2
                   -- Packed.FirstOrder.Passes.Lower
                   -- Packed.FirstOrder.Passes.InlinePacked
-                  -- Packed.FirstOrder.Passes.ShakeTree
-                  -- Packed.FirstOrder.Passes.InferEffects
+                  -- Packed.FirstOrder.Passes.ShakeTree                  
                   -- Packed.FirstOrder.Passes.CopyInsertion
                   -- Packed.FirstOrder.Passes.FindWitnesses
                   -- Packed.FirstOrder.Passes.RouteEnds

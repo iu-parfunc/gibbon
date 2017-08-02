@@ -12,6 +12,8 @@
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
+-- | 
+
 module Packed.FirstOrder.L2.Typecheck
     ( tcExp, tcProg, TCError(..), RegionSet(..), LocationTypeState(..), ConstraintSet(..), Aliased, TcM )
     where
@@ -364,7 +366,7 @@ tcExps _ _ _ _ _ ts [] = return ([],ts)
 
 -- | Main entry point, checks a whole program (functions and main body).
 tcProg :: Prog -> SyM Prog
-tcProg Prog{ddefs,fundefs,mainExp} = do
+tcProg prg0@Prog{ddefs,fundefs,mainExp} = do
 
   -- Handle functions
   mapM_ fd $ M.elems fundefs
@@ -381,7 +383,7 @@ tcProg Prog{ddefs,fundefs,mainExp} = do
                                          then return ()
                                          else error $ "Expected type " ++ (show t) ++ " and got type " ++ (show t')
 
-  return $ Prog ddefs fundefs mainExp
+  return prg0 -- Identity function for now.
 
   where
 
