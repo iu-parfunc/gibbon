@@ -332,45 +332,9 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
 -------------------------------------------------------------------------------------------------
 
 
-ddtree :: DDefs Ty
-ddtree = (fromListDD [DDef (toVar "Tree") 
-                              [ ("Leaf",[(False,IntTy)])
-                              , ("Node",[(False,PackedTy "Tree" "l")
-                                        ,(False,PackedTy "Tree" "l")])]])
-
-tester' :: Exp -> Prog
-tester' e =
-    let ddfs = ddtree
-        funs = (M.fromList [(toVar "add1",exadd1)])
-    in Prog ddfs funs (Just (e,IntTy))
-
-exadd1 :: L2.FunDef
-exadd1 = L2.FunDef "add1" exadd1ty "tr" exadd1bod
-
-exadd1ty :: ArrowTy Ty2
-exadd1ty = (ArrowTy
-            [LRM "lin" (VarR "r1") Input, LRM "lout" (VarR "r1") Output]
-            (PackedTy "tree" "lin")
-            (S.fromList [Traverse "lin"])
-            (PackedTy "tree" "lout")
-            [EndOf $ LRM "lin" (VarR "r1") Input])
-
-exadd1bod :: Exp2
-exadd1bod =
-    CaseE (VarE "tr") $
-      [ ("Leaf", [("n","l0")], LetE ("v",[],IntTy,PrimAppE L1.AddP [VarE "n", LitE 1]) (VarE "v"))
-      , ("Node", [("x","l1"),("y","l2")],
-         Ext $ LetLocE "lout1" (AfterConstantC 1 "lout" "lout1") $
-         LetE ("x1",[],PackedTy "Tree" "lout1", AppE "add1" ["l1","lout1"] (VarE "x")) $
-         Ext $ LetLocE "lout2" (AfterVariableC "x1" "lout1" "lout2") $
-         LetE ("y1",[],PackedTy "Tree" "lout2", AppE "add1" ["l2","lout2"] (VarE "y")) $
-         LetE ("z",[],PackedTy "Tree" "lout", 
-                  DataConE "lout" "Node" [ VarE "x1" , VarE "y1"]) $
-         VarE "z")
-      ]
-
+tester :: Exp2 -> Prog
 tester e =
-    let p = tester' e
+    let p = L2.withAdd1Prog (Just (e,IntTy))
     in fst $ runSyM 1 $ routeEnds p
 
 test1 :: Exp2

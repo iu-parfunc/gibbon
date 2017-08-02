@@ -11,3 +11,5 @@ import qualified Packed.FirstOrder.L2.Syntax as L2
 inferLocs :: L1.Prog -> SyM L2.Prog
 inferLocs = error "FINISHME"
 
+test :: L2.Prog
+test = fst $ runSyM 0 $ inferLocs L1.add1Prog

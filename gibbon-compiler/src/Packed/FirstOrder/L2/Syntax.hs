@@ -50,6 +50,9 @@ module Packed.FirstOrder.L2.Syntax
     , isExtendedPattern
     , builtinTEnv
     , includeBuiltins
+
+    -- * Example
+    , add1Prog, withAdd1Prog
     )
     where
 
@@ -59,7 +62,7 @@ import Packed.FirstOrder.GenericOps
 import qualified Packed.FirstOrder.L1.Syntax as L1
 import Packed.FirstOrder.L1.Syntax hiding
     (Ty, FunDef, Prog,
-     mapExprs, progToEnv, fundefs, getFunTy, Exp)
+     mapExprs, progToEnv, fundefs, getFunTy, Exp, add1Prog)
 import Data.List as L
 -- import Data.Maybe
 import Data.Set as S
@@ -585,3 +588,50 @@ includeBuiltins (Env2 v f) = undefined
     -- Env2 v (f `M.union` f')
     -- where f' = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
     --                       | (n, ArrowTy a _ b) <- M.assocs builtinTEnv ]
+
+
+-- Example 
+--------------------------------------------------------------------------------
+
+-- | Our canonical simple example, written in this IR.
+add1Prog :: Prog
+add1Prog = withAdd1Prog Nothing
+
+-- | Supply a main expression to run with add1 defined.
+withAdd1Prog :: Maybe (Exp,Ty) -> Prog
+withAdd1Prog mainExp =
+    let ddfs = ddtree
+        funs = (M.fromList [(toVar "add1",exadd1)])
+    in Prog ddfs funs mainExp
+ where
+  ddtree :: DDefs Ty
+  ddtree = (fromListDD [DDef (toVar "Tree") 
+                                [ ("Leaf",[(False,IntTy)])
+                                , ("Node",[(False,PackedTy "Tree" "l")
+                                          ,(False,PackedTy "Tree" "l")])]])
+
+  exadd1 :: FunDef
+  exadd1 = FunDef "add1" exadd1ty "tr" exadd1bod
+
+  exadd1ty :: ArrowTy Ty2
+  exadd1ty = (ArrowTy
+              [LRM "lin" (VarR "r1") Input, LRM "lout" (VarR "r1") Output]
+              (PackedTy "tree" "lin")
+              (S.fromList [Traverse "lin"])
+              (PackedTy "tree" "lout")
+              [EndOf $ LRM "lin" (VarR "r1") Input])
+
+  exadd1bod :: Exp2
+  exadd1bod =
+      CaseE (VarE "tr") $
+        [ ("Leaf", [("n","l0")], LetE ("v",[],IntTy,PrimAppE L1.AddP [VarE "n", LitE 1]) (VarE "v"))
+        , ("Node", [("x","l1"),("y","l2")],
+           Ext $ LetLocE "lout1" (AfterConstantC 1 "lout" "lout1") $
+           LetE ("x1",[],PackedTy "Tree" "lout1", AppE "add1" ["l1","lout1"] (VarE "x")) $
+           Ext $ LetLocE "lout2" (AfterVariableC "x1" "lout1" "lout2") $
+           LetE ("y1",[],PackedTy "Tree" "lout2", AppE "add1" ["l2","lout2"] (VarE "y")) $
+           LetE ("z",[],PackedTy "Tree" "lout", 
+                    DataConE "lout" "Node" [ VarE "x1" , VarE "y1"]) $
+           VarE "z")
+        ]
+
