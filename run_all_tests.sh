@@ -94,7 +94,7 @@ cd $top/gibbon-compiler
 
 if [ "$LLVM_ENABLED" == "1" ]; then
   echo "Building Gibbon with LLVM enabled"
-  $STK test --flag gibbon:llvm_enabled "$STACKARGS" $MKPARARGS
+  $STK test --flag gibbon:llvm_enabled $STACKARGS $MKPARARGS
 else
   $STK test "$STACKARGS" $MKPARARGS
 fi

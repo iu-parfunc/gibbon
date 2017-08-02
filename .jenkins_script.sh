@@ -13,7 +13,7 @@ echo "Git commit depth: "
 top=`pwd`
 
 # This testing mode assumes that nix/docker integration is OFF by default:
-export STACKARGS=" --no-system-ghc "
+export STACKARGS="--no-system-ghc"
 
 if [ "$DOCKER" == "1" ]; then
     # Make bintree-bench image:
