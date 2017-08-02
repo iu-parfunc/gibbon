@@ -40,7 +40,7 @@ import Data.SCargot.Language.HaskLike
 import Data.SCargot.Parse
 import Data.SCargot.Print
 import Data.SCargot.Repr -- (SExpr, RichSExpr, toRich)
-
+    
 --------------------------------------------------------------------------------
 
 -- | Baseline chatter level for this module:
@@ -129,6 +129,7 @@ tagDataCons ddefs = go allCons
        MapE  (v,t,e) bod -> MapE (v,t, go cons e) (go cons bod)
        FoldE (v1,t1,e1) (v2,t2,e2) b -> FoldE (v1,t1,go cons e1) (v2,t2,go cons e2) (go cons b)
 
+-- | Convert from raw, unstructured S-Expression into the program datatype we expect.
 parseSExp :: [Sexp] -> SyM Prog
 parseSExp ses =
   do prog@Prog {ddefs} <- go ses [] [] [] Nothing
