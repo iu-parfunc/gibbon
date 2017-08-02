@@ -534,7 +534,7 @@ ensureAfterConstant :: Exp2 -> ConstraintSet -> LocVar -> LocVar -> TcM ()
 ensureAfterConstant exp (ConstraintSet cs) l1 l2 =
     if L.any f $ S.toList cs then return ()
     else throwError $ LocationTC "Expected after relationship" exp l1 l2 
-    where f (AfterConstantC _i l1' l2') = l1' == l1 && l2' == l2
+    where f (AfterConstantLE _i l1' l2') = l1' == l1 && l2' == l2
           f _ = False
 
 -- | Ensure that one location is a variable size after another location in the constraint set.
@@ -543,7 +543,7 @@ ensureAfterPacked :: Exp2 -> ConstraintSet -> LocVar -> LocVar -> TcM ()
 ensureAfterPacked  exp (ConstraintSet cs) l1 l2 =
     if L.any f $ S.toList cs then return ()
     else throwError $ LocationTC "Expected after relationship" exp l1 l2 
-    where f (AfterVariableC _v l1' l2') = l1' == l1 && l2' == l2
+    where f (AfterVariableLE _v l1' l2') = l1' == l1 && l2' == l2
           f _ = False
 
 
@@ -586,7 +586,7 @@ absentAfter exp (LocationTypeState ls) l =
 
 absentStart :: Exp -> ConstraintSet -> LocVar -> TcM ()
 absentStart exp (ConstraintSet cs) l = go $ S.toList cs
-    where go ((StartOfC l1 r):cs) =
+    where go ((StartOfLE l1 r):cs) =
               if l1 == l
               then throwError $ GenericTC ("Repeated start of " ++ (show r)) exp
               else go cs
