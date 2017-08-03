@@ -30,7 +30,6 @@ library
                   Packed.FirstOrder.L4.Syntax
                   Packed.FirstOrder.L1.Interp
                   Packed.FirstOrder.L2.Interp
-                  Packed.FirstOrder.L2.Typecheck
                   Packed.FirstOrder.SExpFrontend
                   Packed.FirstOrder.Passes.Freshen
                   Packed.FirstOrder.Passes.Flatten

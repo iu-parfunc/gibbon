@@ -8,6 +8,7 @@ import Data.Map as M
 
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L2.Syntax as L2
+import Packed.FirstOrder.L2.Typecheck
 import qualified Packed.FirstOrder.L1.Syntax as L1
 
 
@@ -37,9 +38,9 @@ add1Fun = L2.FunDef "add1" add1FunTy "tr" add1FunBod
           LetE ("lf",[],PackedTy "Tree" "lout", DataConE "lout" "Leaf" [VarE "v"]) $
           VarE "lf")
       , ("Node", [("x","l1"),("y","l2")],
-         Ext $ LetLocE "lout1" (AfterConstantC 1 "lout" "lout1") $
+         Ext $ LetLocE "lout1" (AfterConstantLE 1 "lout" "lout1") $
          LetE ("x1",[],PackedTy "Tree" "lout1", AppE "add1" ["l1","lout1"] (VarE "x")) $
-         Ext $ LetLocE "lout2" (AfterVariableC "x1" "lout1" "lout2") $
+         Ext $ LetLocE "lout2" (AfterVariableLE "x1" "lout1" "lout2") $
          LetE ("y1",[],PackedTy "Tree" "lout2", AppE "add1" ["l2","lout2"] (VarE "y")) $
          LetE ("z",[],PackedTy "Tree" "lout",
                   DataConE "lout" "Node" [ VarE "x1" , VarE "y1"]) $

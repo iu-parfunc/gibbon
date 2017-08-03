@@ -585,7 +585,7 @@ _lookupTS exp l (LocationTypeState ls) =
       Nothing -> throwError $ GenericTC ("Failed lookup of location " ++ (show l)) exp
       Just d -> return d
 
-extendConstrs :: LocExp -> ConstraintSet -> ConstraintSet
+extendConstrs :: LocConstraint -> ConstraintSet -> ConstraintSet
 extendConstrs c (ConstraintSet cs) = ConstraintSet $ S.insert c cs
 
 switchOutLoc :: Exp2 -> LocationTypeState -> LocVar -> TcM LocationTypeState
