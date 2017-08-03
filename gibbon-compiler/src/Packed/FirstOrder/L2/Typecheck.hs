@@ -273,7 +273,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  StartOfLE r -> do
 
                           ensureRegion exp r regs
-                          absentStart exp constrs v
+                          absentStart exp constrs r
                           let tstate1 = extendTS v (Output,False) tstatein
                           let constrs1 = extendConstrs (StartOfC v r) $
                                          extendConstrs (InRegionC v r) constrs
@@ -284,7 +284,6 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  AfterConstantLE i l1 -> do
 
                           r <- getRegion exp constrs l1
-                          absentStart exp constrs v
                           let tstate1 = extendTS v (Output,True) $ setAfter l1 tstatein
                           let constrs1 = extendConstrs (InRegionC v r) $
                                          extendConstrs (AfterConstantC i l1 v) constrs
@@ -295,7 +294,6 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  AfterVariableLE x l1 -> do
 
                           r <- getRegion exp constrs l1
-                          absentStart exp constrs v
                           (xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ VarE x
                           ensurePackedLoc exp xty l1
                           let tstate2 = extendTS v (Output,True) $ setAfter l1 tstate1
@@ -619,10 +617,10 @@ _absentAfter exp (LocationTypeState ls) l =
       Just (_m,False) -> return ()
       Just (_m,True) -> throwError $ GenericTC ("Alias of location " ++ (show l)) exp
 
-absentStart :: Exp2 -> ConstraintSet -> LocVar -> TcM ()
-absentStart exp (ConstraintSet cs) l = go $ S.toList cs
-    where go ((StartOfC l1 r):cs) =
-              if l1 == l
+absentStart :: Exp2 -> ConstraintSet -> Region -> TcM ()
+absentStart exp (ConstraintSet cs) r = go $ S.toList cs
+    where go ((StartOfC _l r'):cs) =
+              if r == r'
               then throwError $ GenericTC ("Repeated start of " ++ (show r)) exp
               else go cs
           go (_:cs) = go cs
