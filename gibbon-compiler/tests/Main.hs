@@ -6,8 +6,6 @@
 module Main where
 
 -- |
-import Data.Map as M
-import Data.Set as S
 import Data.Word (Word8)
 
 import Test.Tasty
@@ -16,8 +14,6 @@ import Test.Tasty.TH
 
 
 -- |
-import Packed.FirstOrder.Common hiding (FunDef)
-import Packed.FirstOrder.L2.Syntax as L2
 import Packed.FirstOrder.L4.Syntax hiding (Prog (..), Ty (..))
 
 import qualified Packed.FirstOrder.L4.Syntax as T

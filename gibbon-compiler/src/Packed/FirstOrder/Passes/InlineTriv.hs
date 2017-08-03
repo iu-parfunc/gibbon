@@ -12,8 +12,8 @@ import           Prelude hiding (exp)
 import           Text.PrettyPrint.GenericPretty
 
 -- import Packed.FirstOrder.Passes.Flatten (typeExp, TEnv)
-    
-    
+
+
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
 inlineTriv :: Prog -> Prog
@@ -25,7 +25,7 @@ inlineTriv (Prog ddefs funs main) =
 
 type MyExp l = PreExp NoExt l (UrTy l)
 type Env l = [(Var, (UrTy l, MyExp l))]
-    
+
 inlineTrivExp :: forall l a . (Out l, Show l)
               => DDefs a -> MyExp l -> MyExp l
 inlineTrivExp _ddefs = go []
@@ -53,7 +53,7 @@ inlineTrivExp _ddefs = go []
       Just (ty,oth)  -> LetE (v,[],ty,oth) $ fn v
 
   exp :: Env l -> MyExp l -> PreExp NoExt l (UrTy l)
-  exp env e0 = 
+  exp env e0 =
     case e0 of
       Ext _  -> e0
       VarE v -> case lookup v env of
@@ -94,7 +94,6 @@ inlineTrivExp _ddefs = go []
        FoldE (v1,t1,go env e1) (v2,t2,go env e2) (go env e3)
 
 -- FIXME: Remove:
-      L2.NewBuffer -> L2.NewBuffer
       L2.NewBuffer -> L2.NewBuffer
       L2.ReadInt v     -> withVar env v $ \v2 -> L2.ReadInt v2
       L2.WriteInt v e  -> withVar env v $ \v2 -> L2.WriteInt v2 (go env e)

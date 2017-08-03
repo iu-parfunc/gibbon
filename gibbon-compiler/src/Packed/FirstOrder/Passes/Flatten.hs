@@ -22,8 +22,8 @@ import Packed.FirstOrder.Common
 import Packed.FirstOrder.L1.Syntax as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
 import Text.PrettyPrint.GenericPretty (Out)
-import Packed.FirstOrder.GenericOps 
-    
+import Packed.FirstOrder.GenericOps
+
 -- import Packed.FirstOrder.L2.Syntax (isCursorTy)
 
 import qualified Data.Map as M
@@ -58,7 +58,7 @@ flatten prg@(L1.Prog defs funs main) = do
 
 type Binds l e = (Var,[l],UrTy l, PreExp e l (UrTy l))
 type TEnv l = M.Map Var (UrTy l)
-    
+
 instance (Out l, Show l, Flattenable (e l (UrTy l)))
          => Flattenable (PreExp e l (UrTy l)) where
   gFlattenGatherBinds :: DDefs (UrTy l) ->
@@ -66,7 +66,7 @@ instance (Out l, Show l, Flattenable (e l (UrTy l)))
                          PreExp e l (UrTy l) ->
                          SyM ([Binds l e], PreExp e l (UrTy l))
   gFlattenGatherBinds = exp
-                 
+
   gFlattenExp :: DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp e l (UrTy l) -> SyM (PreExp e l (UrTy l))
   gFlattenExp ddefs env2 ex0 = do (b,e') <- exp ddefs env2 ex0
                                   return $ flatLets b e'
@@ -92,10 +92,10 @@ exp ddefs env2 e0 =
      case e0 of
        -- (Ext ext)   -> do (bnds1,e1::e) <- gFlattenGatherBinds ddefs env2 ext
        --                   return ([],Ext e1)
-                      
-       (VarE _)         -> return ([],e0)
-       (LitE _)         -> return ([],e0)
-       (LitSymE _)      -> return ([],e0)
+       Ext     _      -> error $ "FINISHME: Flatten:exp Ext"
+       VarE    _      -> return ([],e0)
+       LitE    _      -> return ([],e0)
+       LitSymE _      -> return ([],e0)
 
        -- This pass is run at multiple points in the compiler pipeline.
        -- We COULD just let these patterns be treated as arbitrary AppE forms,

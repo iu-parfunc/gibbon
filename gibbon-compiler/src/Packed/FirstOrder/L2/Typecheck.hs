@@ -25,6 +25,7 @@ import qualified Packed.FirstOrder.L1.Syntax as L1
 import Data.Set as S
 import Data.Map as M
 import Data.List as L
+
 -- import Data.Maybe as Maybe
 import Text.PrettyPrint.GenericPretty
 import Control.Monad.Except
@@ -40,6 +41,7 @@ data LocConstraint = StartOfC LocVar Region -- ^ Location is equal to start of t
                                     LocVar  -- ^ Location which is before
                    | InRegionC LocVar Region -- ^ Location is somewher within this region.
   deriving (Read, Show, Eq, Ord, Generic, NFData)
+
 
 -- | A set of constraints (which are re-used location expressions)
 -- which encode relationships between locations. These are used by the
@@ -122,7 +124,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
           --    to by the called function and must now be input locations.
           --  * We need to make sure that if we pass a packed structure as an argument, its location is among the
           --    passed-in locations.
-          do let (ArrowTy locVars arrIn arrEffs arrOut locRets) = getFunTy funs v
+          do let (ArrowTy locVars arrIn _arrEffs arrOut _locRets) = getFunTy funs v
 
              -- Check argument
              (ty,tstate) <- recur tstatein e
@@ -306,6 +308,8 @@ tcExp ddfs env funs constrs regs tstatein exp =
                -- skip returned locations for now
                recur tstatein $ VarE v
 
+      hole -> error $ "FINISHME: L2.tcExp " ++ show hole
+
     where recur ts e = tcExp ddfs env funs constrs regs ts e
 
 
@@ -321,22 +325,22 @@ tcCases ddfs env funs constrs regs tstatein lin ((dc, vs, e):cases) = do
       pairwise = zip argtys $ Nothing : (L.map Just argtys)
 
       -- Generate the new constraints to check this branch
-      genConstrs (((v1,l1),PackedTy _ _),Nothing) (lin,lst) =
+      genConstrs (((_v1,l1),PackedTy _ _),Nothing) (lin,lst) =
           (l1,(AfterConstantC 1 lin l1) : lst)
-      genConstrs (((v1,l1),PackedTy _ _),Just ((v2,l2),PackedTy _ _)) (lin,lst) =
+      genConstrs (((_v1,l1),PackedTy _ _),Just ((v2,l2),PackedTy _ _)) (_lin,lst) =
           (l1,(AfterVariableC v2 l2 l1) : lst)
-      genConstrs (((v1,l1),PackedTy _ _),Just _) (lin,lst) =
+      genConstrs (((_v1,l1),PackedTy _ _),Just _) (lin,lst) =
           (l1,(AfterConstantC undefined lin l1) : lst)
       genConstrs (_,_) (lin,lst) = (lin,lst)
 
       -- Generate the new location state map to check this branch
-      genTS ((v,l),PackedTy _ _) ts = extendTS l (Input,False) ts
+      genTS ((_v,l),PackedTy _ _) ts = extendTS l (Input,False) ts
       genTS _ ts = ts
-      genEnv ((v,l),PackedTy dc l') env = extendEnv env v $ PackedTy dc l
-      genEnv ((v,l),ty) env = extendEnv env v ty
+      genEnv ((v,l),PackedTy dc _l') env = extendEnv env v $ PackedTy dc l
+      genEnv ((v,_l),ty) env = extendEnv env v ty
 
       -- Remove the pattern-bound location variables from the location state map
-      remTS ((v,l),PackedTy _ _) ts = removeTS l ts
+      remTS ((_v,l),PackedTy _ _) ts = removeTS l ts
       remTS _ ts = ts
 
       -- Use these functions with our old friend foldr
@@ -530,13 +534,16 @@ ensureDataCon exp linit tys cs = go Nothing linit tys
     where go Nothing linit ((PackedTy dc l):tys) = do
             ensureAfterConstant exp cs linit l
             go (Just (PackedTy dc l)) l tys
-          go Nothing linit (ty:tys) = go Nothing linit tys
-          go (Just (PackedTy dc1 l1)) linit ((PackedTy dc2 l2):tys) = do
+
+          go Nothing linit (_ty:tys) = go Nothing linit tys
+          go (Just (PackedTy _dc1 l1)) _linit ((PackedTy dc2 l2):tys) = do
             ensureAfterPacked exp cs l1 l2
             go (Just (PackedTy dc2 l2)) l2 tys
-          go (Just (PackedTy dc l1)) linit (ty:tys) =
+
+          go (Just (PackedTy _dc _l1)) linit (_ty:tys) =
               go Nothing linit tys
           go _ _ [] = return ()
+          go _ _ _  = internalError "Unxpected case reached: L2:ensureDataCon"
 
 
 -- | Ensure that one location is +c after another location in the constraint set.
@@ -572,8 +579,8 @@ removeTS l (LocationTypeState ls) = LocationTypeState $ M.delete l ls
 setAfter :: LocVar -> LocationTypeState -> LocationTypeState
 setAfter l (LocationTypeState ls) = LocationTypeState $ M.adjust (\(m,_) -> (m,True)) l ls
 
-lookupTS :: Exp -> LocVar -> LocationTypeState -> TcM (Modality,Bool)
-lookupTS exp l (LocationTypeState ls) =
+_lookupTS :: Exp2 -> LocVar -> LocationTypeState -> TcM (Modality,Bool)
+_lookupTS exp l (LocationTypeState ls) =
     case M.lookup l ls of
       Nothing -> throwError $ GenericTC ("Failed lookup of location " ++ (show l)) exp
       Just d -> return d
@@ -581,21 +588,21 @@ lookupTS exp l (LocationTypeState ls) =
 extendConstrs :: LocExp -> ConstraintSet -> ConstraintSet
 extendConstrs c (ConstraintSet cs) = ConstraintSet $ S.insert c cs
 
-switchOutLoc :: Exp -> LocationTypeState -> LocVar -> TcM LocationTypeState
+switchOutLoc :: Exp2 -> LocationTypeState -> LocVar -> TcM LocationTypeState
 switchOutLoc exp (LocationTypeState ls) l =
     case M.lookup l ls of
       Nothing -> throwError $ GenericTC ("Unknown location " ++ (show l)) exp
       Just (Output,a) -> return $ LocationTypeState $ M.update (\_ -> Just (Input,a)) l ls
       Just (Input,_a) -> throwError $ ModalityTC "Expected output location" exp l $ LocationTypeState ls
 
-absentAfter :: Exp -> LocationTypeState -> LocVar -> TcM ()
-absentAfter exp (LocationTypeState ls) l =
+_absentAfter :: Exp2 -> LocationTypeState -> LocVar -> TcM ()
+_absentAfter exp (LocationTypeState ls) l =
     case M.lookup l ls of
       Nothing -> throwError $ GenericTC ("Unknown location " ++ (show l)) exp
       Just (_m,False) -> return ()
       Just (_m,True) -> throwError $ GenericTC ("Alias of location " ++ (show l)) exp
 
-absentStart :: Exp -> ConstraintSet -> LocVar -> TcM ()
+absentStart :: Exp2 -> ConstraintSet -> LocVar -> TcM ()
 absentStart exp (ConstraintSet cs) l = go $ S.toList cs
     where go ((StartOfC l1 r):cs) =
               if l1 == l
@@ -604,7 +611,8 @@ absentStart exp (ConstraintSet cs) l = go $ S.toList cs
           go (_:cs) = go cs
           go [] = return ()
 
-removeLoc :: Exp -> LocationTypeState -> LocVar -> TcM LocationTypeState
+
+removeLoc :: Exp2 -> LocationTypeState -> LocVar -> TcM LocationTypeState
 removeLoc exp (LocationTypeState ls) l =
     if M.member l ls
     then return $ LocationTypeState $ M.delete l ls
