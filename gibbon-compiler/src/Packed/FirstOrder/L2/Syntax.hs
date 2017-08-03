@@ -512,7 +512,7 @@ revertToL1 = undefined -- TODO: Fix or remove this function
 
 -- | Used to inline variable bindings while retaining their (former) name and type.
 pattern NamedVal vr ty e <- LetE (vr,[],ty,e) (VarE (Var "NAMED_VAL_PATTERN_SYN"))
-  where NamedVal vr ty e = LetE (vr,[],ty,e) (VarE (toVar "NAMED_VAL_PATTERN_SYN"))
+  where NamedVal vr ty e = LetE (vr,[],ty,e) (VarE "NAMED_VAL_PATTERN_SYN")
 -- pattern NamedVal vr ty e <- LetE (vr,ty,e) (VarE "NAMED_VAL") where
 --   NamedVal vr ty e = LetE (vr,ty,e) (VarE vr)
 
@@ -521,23 +521,23 @@ pattern NamedVal vr ty e <- LetE (vr,[],ty,e) (VarE (Var "NAMED_VAL_PATTERN_SYN"
 --------------------------------------------------------------------------------
 
 pattern NewBuffer <- AppE (Var "NewBuffer") [] (MkProdE [])
-  where NewBuffer = AppE (toVar "NewBuffer") [] (MkProdE [])
+  where NewBuffer = AppE "NewBuffer" [] (MkProdE [])
 
 -- | output buffer space that is known not to escape the current function.
 pattern ScopedBuffer <- AppE (Var "ScopedBuffer") [] (MkProdE [])
-  where ScopedBuffer = AppE (toVar "ScopedBuffer") [] (MkProdE [])
+  where ScopedBuffer = AppE "ScopedBuffer" [] (MkProdE [])
 
 -- | Tag writing is still modeled by DataConE.
 pattern WriteInt v e <- AppE (Var "WriteInt") [] (MkProdE [VarE v, e])
-  where WriteInt v e = AppE (toVar "WriteInt") [] (MkProdE [VarE v, e])
+  where WriteInt v e = AppE "WriteInt" [] (MkProdE [VarE v, e])
 
 -- | One cursor in, (int,cursor') output.
 pattern ReadInt v <- AppE (Var "ReadInt") [] (VarE v)
-  where ReadInt v = AppE (toVar "ReadInt") [] (VarE v)
+  where ReadInt v = AppE "ReadInt" [] (VarE v)
 
 -- | Add a constant offset to a cursor variable.
 pattern AddCursor v i <- AppE (Var "AddCursor") [] (MkProdE [(VarE v), (LitE i)])
-  where AddCursor v i = AppE (toVar "AddCursor") [] (MkProdE [(VarE v), (LitE i)])
+  where AddCursor v i = AppE "AddCursor" [] (MkProdE [(VarE v), (LitE i)])
 
 
 -- | A predicate to check if the form is part of the extended "L2.5" language.
@@ -592,11 +592,11 @@ primRetTy p =
 builtinTEnv :: M.Map Var (ArrowTy L1.Ty1)
 builtinTEnv = undefined
   -- M.fromList
-  -- [ (toVar "NewBuffer",    ArrowTy voidTy S.empty dummyCursorTy)
-  -- , (toVar "ScopedBuffer", ArrowTy voidTy S.empty dummyCursorTy)
-  -- , (toVar "ReadInt",      ArrowTy dummyCursorTy S.empty (ProdTy [IntTy, dummyCursorTy]))
-  -- , (toVar "WriteInt",     ArrowTy (ProdTy [dummyCursorTy, IntTy]) S.empty dummyCursorTy)
-  -- , (toVar "AddCursor",    ArrowTy (ProdTy [dummyCursorTy, IntTy]) S.empty dummyCursorTy)
+  -- [ ("NewBuffer",    ArrowTy voidTy S.empty dummyCursorTy)
+  -- , ("ScopedBuffer", ArrowTy voidTy S.empty dummyCursorTy)
+  -- , ("ReadInt",      ArrowTy dummyCursorTy S.empty (ProdTy [IntTy, dummyCursorTy]))
+  -- , ("WriteInt",     ArrowTy (ProdTy [dummyCursorTy, IntTy]) S.empty dummyCursorTy)
+  -- , ("AddCursor",    ArrowTy (ProdTy [dummyCursorTy, IntTy]) S.empty dummyCursorTy)
   -- -- Note: ReadPackedFile is a builtin/primitive.  It is polymorphic,
   -- -- which currently doesn't allow us to model it as a function like
   -- -- this [2017.01.08].
@@ -620,11 +620,11 @@ add1Prog = withAdd1Prog Nothing
 withAdd1Prog :: Maybe (Exp,Ty) -> Prog
 withAdd1Prog mainExp =
     let ddfs = ddtree
-        funs = (M.fromList [(toVar "add1",exadd1)])
+        funs = (M.fromList [("add1",exadd1)])
     in Prog ddfs funs mainExp
  where
   ddtree :: DDefs Ty
-  ddtree = (fromListDD [DDef (toVar "Tree") 
+  ddtree = (fromListDD [DDef "Tree" 
                                 [ ("Leaf",[(False,IntTy)])
                                 , ("Node",[(False,PackedTy "Tree" "l")
                                           ,(False,PackedTy "Tree" "l")])]])

@@ -333,16 +333,16 @@ interpE fenv env exp =
 --- examples
 
 testProg :: LocProgram
-testProg = LocProgram (fromListDD [DDef (toVar "Tree") True
+testProg = LocProgram (fromListDD [DDef "Tree" True
                               [ ("Leaf",[IntType])
-                              , ("Node",[PackedType "Tree" (toVar "l1"), PackedType "Tree" (toVar "l2")])]])
+                              , ("Node",[PackedType "Tree" "l1", PackedType "Tree" "l2"])]])
            M.empty
            (Just (withTree (caseOnTree "tr")))
 
 add1Prog :: LocProgram
-add1Prog = LocProgram (fromListDD [DDef (toVar "Tree") True
+add1Prog = LocProgram (fromListDD [DDef "Tree" True
                               [ ("Leaf",[IntType])
-                              , ("Node",[PackedType "Tree" (toVar "l1"), PackedType "Tree" (toVar "l2")])]])
+                              , ("Node",[PackedType "Tree" "l1", PackedType "Tree" "l2"])]])
            (M.fromList [("add1",add1Fun),("sum",sumFun)])
            (Just add1Test)
 

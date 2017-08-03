@@ -535,18 +535,19 @@ mkLets (b:bs) bod = LetE b (mkLets bs bod)
 treeTy :: Ty
 treeTy = Packed "Tree"
 
-treeDD = (fromListDD [DDef (toVar "Tree")
+treeDD :: DDefs (UrTy ())
+treeDD = (fromListDD [DDef "Tree"
                       [ ("Leaf",[(False,IntTy)])
                       , ("Node",[(False,Packed "Tree")
                                 ,(False,Packed "Tree")])]])
 
 mkAdd1Prog :: Exp1 -> Maybe Exp -> Prog
 mkAdd1Prog bod mainExp = Prog treeDD
-                              (M.fromList [(toVar "add1",mkAdd1Fun bod)])
+                              (M.fromList [("add1",mkAdd1Fun bod)])
                               mainExp
 
 mkAdd1Fun :: ex -> FunDef Ty ex
-mkAdd1Fun bod = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy bod
+mkAdd1Fun bod = FunDef "add1" ("tr",treeTy) treeTy bod
 
 ----------------
 
@@ -557,21 +558,21 @@ add1Prog = mkAdd1Prog exadd1Bod Nothing
 
 exadd1Bod :: Exp1
 exadd1Bod = 
-    CaseE (VarE (toVar "tr")) $
-      [ ("Leaf", [("n",())], PrimAppE AddP [VarE (toVar "n"), LitE 1])
+    CaseE (VarE "tr") $
+      [ ("Leaf", [("n",())], PrimAppE AddP [VarE "n", LitE 1])
       , ("Node", [("x",()),("y",())],
          DataConE () "Node" 
-          [ AppE (toVar "add1") [] (VarE $ toVar "x")
-          , AppE (toVar "add1") [] (VarE $ toVar "y")])
+          [ AppE "add1" [] (VarE "x")
+          , AppE "add1" [] (VarE "y")])
       ]
 
 exadd1BodLetLeft:: Exp1
 exadd1BodLetLeft = 
-    CaseE (VarE (toVar "tr")) $
-      [ ("Leaf", [("n",())], PrimAppE AddP [VarE (toVar "n"), LitE 1])
+    CaseE (VarE "tr") $
+      [ ("Leaf", [("n",())], PrimAppE AddP [VarE "n", LitE 1])
       , ("Node", [("x",()),("y",())],
-         LetE ("x2",[], Packed "Tree", AppE (toVar "add1") [] (VarE $ toVar "x")) $
-         LetE ("y2",[], Packed "Tree", AppE (toVar "add1") [] (VarE $ toVar "y")) $ 
+         LetE ("x2",[], Packed "Tree", AppE "add1" [] (VarE "x")) $
+         LetE ("y2",[], Packed "Tree", AppE "add1" [] (VarE "y")) $ 
          DataConE () "Node" 
           [ VarE "x2", VarE "y2"])
       ]
@@ -579,11 +580,11 @@ exadd1BodLetLeft =
 -- | A more challenging case where recursions are performed right-to-left
 exadd1BodLetRight:: Exp1
 exadd1BodLetRight = 
-    CaseE (VarE (toVar "tr")) $
-      [ ("Leaf", [("n",())], PrimAppE AddP [VarE (toVar "n"), LitE 1])
+    CaseE (VarE "tr") $
+      [ ("Leaf", [("n",())], PrimAppE AddP [VarE "n", LitE 1])
       , ("Node", [("x",()),("y",())],
-         LetE ("y2",[], Packed "Tree", AppE (toVar "add1") [] (VarE $ toVar "y")) $ 
-         LetE ("x2",[], Packed "Tree", AppE (toVar "add1") [] (VarE $ toVar "x")) $         
+         LetE ("y2",[], Packed "Tree", AppE "add1" [] (VarE "y")) $ 
+         LetE ("x2",[], Packed "Tree", AppE "add1" [] (VarE "x")) $         
          DataConE () "Node" 
           [ VarE "x2", VarE "y2"])
       ]
@@ -593,22 +594,22 @@ exadd1BodLetRight =
 add1ProgChallenge:: Prog
 add1ProgChallenge =
     Prog treeDD
-         (M.fromList [ (toVar "add1",mkAdd1Fun bod)
-                     , (toVar "pred", FunDef (toVar "pred") (toVar "tr", treeTy) BoolTy
-                        (CaseE (VarE (toVar "tr")) $
+         (M.fromList [ ("add1",mkAdd1Fun bod)
+                     , ("pred", FunDef "pred" ("tr", treeTy) BoolTy
+                        (CaseE (VarE "tr") $
                          [ ("Leaf", [("n",())], PrimAppE MkTrue [])
                          , ("Node", [("x",()),("y",())], PrimAppE MkFalse [])]))])
          Nothing
   where
    bod = 
-    CaseE (VarE (toVar "tr")) $
-      [ ("Leaf", [("n",())], PrimAppE AddP [VarE (toVar "n"), LitE 1])
+    CaseE (VarE "tr") $
+      [ ("Leaf", [("n",())], PrimAppE AddP [VarE "n", LitE 1])
       , ("Node", [("x",()),("y",())],
-         LetE ("y2",[], Packed "Tree", AppE (toVar "add1") [] (VarE $ toVar "y")) $ 
+         LetE ("y2",[], Packed "Tree", AppE "add1" [] (VarE "y")) $ 
          LetE ("x2",[], Packed "Tree",
-              (IfE (AppE (toVar "pred") [] (VarE "y2"))
-                   (AppE (toVar "add1") [] (VarE $ toVar "x"))
-                   (AppE (toVar "add1") [] (VarE $ toVar "x")))) $
+              (IfE (AppE "pred" [] (VarE "y2"))
+                   (AppE "add1" [] (VarE "x"))
+                   (AppE "add1" [] (VarE "x")))) $
          DataConE () "Node" [ VarE "x2", VarE "y2"])
       ]
 

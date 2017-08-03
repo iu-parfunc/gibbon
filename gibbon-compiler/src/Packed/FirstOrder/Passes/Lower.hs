@@ -5,6 +5,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
@@ -43,20 +44,20 @@ import Prelude hiding (tail)
 genDcons :: [L1.Ty] -> Var -> [(T.Ty, T.Triv)] -> SyM T.Tail
 genDcons (x:xs) tail fields = case x of
   L1.IntTy             ->  do
-    val  <- gensym $ toVar "val"
-    t    <- gensym $ toVar "tail"
+    val  <- gensym "val"
+    t    <- gensym "tail"
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)]
       <$> genDcons xs t (fields ++ [(T.IntTy, T.VarTriv val)])
 
   L1.PackedTy tyCons _ -> do
-    ptr  <- gensym $ toVar "ptr"
-    t    <- gensym $ toVar "tail"
+    ptr  <- gensym  "ptr"
+    t    <- gensym  "tail"
     T.LetCallT [(ptr, T.PtrTy), (t, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
       <$> genDcons xs t (fields ++ [(T.CursorTy, T.VarTriv ptr)])
   _                    -> error $ "genDcons: FIXME " ++ show x
 
 genDcons [] tail fields     = do
-  ptr <- gensym $ toVar "ptr"
+  ptr <- gensym "ptr"
   return $ T.LetAllocT ptr fields $ T.RetValsT [T.VarTriv ptr, T.VarTriv tail]
 
 genAlts :: [(DataCon,[L1.Ty])] -> Var -> Var -> Int64 -> SyM T.Alts
@@ -74,9 +75,9 @@ genAlts [] _ _ _                  = return $ T.IntAlts []
 
 genUnpacker :: DDef L1.Ty -> SyM T.FunDecl
 genUnpacker DDef{tyName, dataCons} = do
-  p    <- gensym $ toVar "p"
-  tag  <- gensym $ toVar "tag"
-  tail <- gensym $ toVar "tail"
+  p    <- gensym "p"
+  tag  <- gensym "tag"
+  tail <- gensym "tail"
   alts <- genAlts dataCons tail tag 0
   bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
             T.Switch (T.VarTriv tag) alts Nothing
@@ -108,18 +109,18 @@ sandwich mid s end = openParen s $ mid $ closeParen end
 genDconsPrinter :: [L1.Ty] -> Var -> SyM T.Tail
 genDconsPrinter (x:xs) tail = case x of
   L1.IntTy             ->  do
-    val  <- gensym $ toVar "val"
-    t    <- gensym $ toVar "tail"
+    val  <- gensym "val"
+    t    <- gensym "tail"
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$>
       printTy L1.IntTy [T.VarTriv val] <$>
        maybeSpace <$>
         genDconsPrinter xs t
 
   L1.PackedTy tyCons _ -> do
-    val  <- gensym $ toVar "val"
-    t    <- gensym $ toVar "tail"
-    tmp  <- gensym $ toVar "temp"
-    valc <- gensym $ toVar "valcur"
+    val  <- gensym "val"
+    t    <- gensym "tail"
+    tmp  <- gensym "temp"
+    valc <- gensym "valcur"
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$>
       T.LetTrivT (valc, T.CursorTy, T.VarTriv val) <$>
       T.LetCallT [(tmp, T.PtrTy)] (mkPrinterName tyCons) [(T.VarTriv valc)] <$>
@@ -150,9 +151,9 @@ genAltPrinter [] _ _                = return $ T.IntAlts []
 
 genPrinter  :: DDef L1.Ty -> SyM T.FunDecl
 genPrinter DDef{tyName, dataCons} = do
-  p    <- gensym $ toVar "p"
-  tag  <- gensym $ toVar "tag"
-  tail <- gensym $ toVar "tail"
+  p    <- gensym "p"
+  tag  <- gensym "tag"
+  tail <- gensym "tail"
   alts <- genAltPrinter dataCons tail 0
   bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadInt [(T.VarTriv p)] $
             T.Switch (T.VarTriv tag) alts Nothing
@@ -199,8 +200,8 @@ addPrintToTailPacked ty tl0 =
   case ty of
     L1.PackedTy tycon _ ->
        T.withTail (tl0, T.IntTy) $ \ [trv] ->
-          T.LetCallT [(toVar "unpkd", T.PtrTy), (toVar "ignre", T.CursorTy)] (mkUnpackerName tycon) [trv] $
-           printTy ty [T.VarTriv (toVar "unpkd")] $
+          T.LetCallT [("unpkd", T.PtrTy), ("ignre", T.CursorTy)] (mkUnpackerName tycon) [trv] $
+           printTy ty [T.VarTriv "unpkd"] $
              -- Always print a trailing newline at the end of execution:
              T.LetPrimCallT [] (T.PrintString "\n") [] $
                T.RetValsT []  -- Void return after printing.
@@ -519,7 +520,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
                                      return (zip tmps (L.map typ tys), e)
                             -- More than one should not currently be
                             -- possible (no nested tuple returns):
-                            [ix] -> do garbages <- sequence [ gensym (toVar "garbage") | _ <- L.tail tys ]
+                            [ix] -> do garbages <- sequence [ gensym "garbage" | _ <- L.tail tys ]
                                        let (lead,trail) = L.splitAt ix garbages
                                        return ( zip (lead++[vr]++trail)
                                                     (L.map typ tys)
@@ -586,7 +587,7 @@ eliminateProjs vr tys bod =
  dbgTrace 5 (" [lower] eliminating "++show (length tys)++
              " projections on variable "++show vr++" in expr with types "
                                         ++show tys++":\n   "++sdoc bod) $
- do tmps <- mapM (\_ -> gensym (toVar "pvrtmp")) [1.. (length tys)]
+ do tmps <- mapM (\_ -> gensym "pvrtmp") [1.. (length tys)]
     let go _ [] acc =
             -- If there are ANY references left, we are forced to make the products:
             L1.subst vr (MkProdE (L.map VarE tmps)) acc
