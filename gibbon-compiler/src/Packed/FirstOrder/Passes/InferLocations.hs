@@ -11,5 +11,20 @@ import qualified Packed.FirstOrder.L2.Syntax as L2
 inferLocs :: L1.Prog -> SyM L2.Prog
 inferLocs = error "FINISHME"
 
+-- inferExp :: (DDefs L1.Ty, FunEnv) -> LocEnv -> L1.Exp -> SyM (Set Effect, Loc)
+
+-- inferExp :: DDefs Ty2 -> Env2 Ty2 -> NewFuns
+--          -> ConstraintSet -> RegionSet -> LocationTypeState -> Exp2
+--          -> TcM (Ty2, LocationTypeState)
+
+
+-- Compute an L2 type schema from an L1 type.
+
+
+-- Instantiate a polymorphic type schema.
+
+
+
+
 test :: L2.Prog
 test = fst $ runSyM 0 $ inferLocs L1.add1Prog

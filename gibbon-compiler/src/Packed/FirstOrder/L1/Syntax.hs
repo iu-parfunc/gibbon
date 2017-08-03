@@ -42,6 +42,9 @@ module Packed.FirstOrder.L1.Syntax
 
       -- * Examples
     , add1Prog
+    , add1ProgLetLeft
+    , add1ProgLetRight
+    , add1ProgChallenge
     )
     where
 
@@ -532,18 +535,26 @@ mkLets (b:bs) bod = LetE b (mkLets bs bod)
 treeTy :: Ty
 treeTy = Packed "Tree"
 
+treeDD = (fromListDD [DDef (toVar "Tree")
+                      [ ("Leaf",[(False,IntTy)])
+                      , ("Node",[(False,Packed "Tree")
+                                ,(False,Packed "Tree")])]])
+
+mkAdd1Prog :: Exp1 -> Maybe Exp -> Prog
+mkAdd1Prog bod mainExp = Prog treeDD
+                              (M.fromList [(toVar "add1",mkAdd1Fun bod)])
+                              mainExp
+
+mkAdd1Fun :: ex -> FunDef Ty ex
+mkAdd1Fun bod = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy bod
+
+----------------
+
+-- | The basic form of the add1 program where recursions happen
+-- immediately as arguments to the data-constructor.
 add1Prog :: Prog
-add1Prog = Prog (fromListDD [DDef (toVar "Tree") 
-                              [ ("Leaf",[(False,IntTy)])
-                              , ("Node",[(False,Packed "Tree")
-                                        ,(False,Packed "Tree")])]])
-                (M.fromList [(toVar "add1",exadd1)])
-                Nothing 
+add1Prog = mkAdd1Prog exadd1Bod Nothing
 
-exadd1 :: FunDef Ty Exp
-exadd1 = FunDef (toVar "add1") (toVar "tr",treeTy) treeTy exadd1Bod
-
--- exadd1Bod :: PreExp () NoExt Ty
 exadd1Bod :: Exp1
 exadd1Bod = 
     CaseE (VarE (toVar "tr")) $
@@ -553,3 +564,59 @@ exadd1Bod =
           [ AppE (toVar "add1") [] (VarE $ toVar "x")
           , AppE (toVar "add1") [] (VarE $ toVar "y")])
       ]
+
+exadd1BodLetLeft:: Exp1
+exadd1BodLetLeft = 
+    CaseE (VarE (toVar "tr")) $
+      [ ("Leaf", [("n",())], PrimAppE AddP [VarE (toVar "n"), LitE 1])
+      , ("Node", [("x",()),("y",())],
+         LetE ("x2",[], Packed "Tree", AppE (toVar "add1") [] (VarE $ toVar "x")) $
+         LetE ("y2",[], Packed "Tree", AppE (toVar "add1") [] (VarE $ toVar "y")) $ 
+         DataConE () "Node" 
+          [ VarE "x2", VarE "y2"])
+      ]
+
+-- | A more challenging case where recursions are performed right-to-left
+exadd1BodLetRight:: Exp1
+exadd1BodLetRight = 
+    CaseE (VarE (toVar "tr")) $
+      [ ("Leaf", [("n",())], PrimAppE AddP [VarE (toVar "n"), LitE 1])
+      , ("Node", [("x",()),("y",())],
+         LetE ("y2",[], Packed "Tree", AppE (toVar "add1") [] (VarE $ toVar "y")) $ 
+         LetE ("x2",[], Packed "Tree", AppE (toVar "add1") [] (VarE $ toVar "x")) $         
+         DataConE () "Node" 
+          [ VarE "x2", VarE "y2"])
+      ]
+
+-- | An even more challenging case where there is an (apparent) data
+-- dependency where x2 depends on y2.
+add1ProgChallenge:: Prog
+add1ProgChallenge =
+    Prog treeDD
+         (M.fromList [ (toVar "add1",mkAdd1Fun bod)
+                     , (toVar "pred", FunDef (toVar "pred") (toVar "tr", treeTy) BoolTy
+                        (CaseE (VarE (toVar "tr")) $
+                         [ ("Leaf", [("n",())], PrimAppE MkTrue [])
+                         , ("Node", [("x",()),("y",())], PrimAppE MkFalse [])]))])
+         Nothing
+  where
+   bod = 
+    CaseE (VarE (toVar "tr")) $
+      [ ("Leaf", [("n",())], PrimAppE AddP [VarE (toVar "n"), LitE 1])
+      , ("Node", [("x",()),("y",())],
+         LetE ("y2",[], Packed "Tree", AppE (toVar "add1") [] (VarE $ toVar "y")) $ 
+         LetE ("x2",[], Packed "Tree",
+              (IfE (AppE (toVar "pred") [] (VarE "y2"))
+                   (AppE (toVar "add1") [] (VarE $ toVar "x"))
+                   (AppE (toVar "add1") [] (VarE $ toVar "x")))) $
+         DataConE () "Node" [ VarE "x2", VarE "y2"])
+      ]
+
+    
+-- | Add1 program with let bindings, recurring in left-to-right order.
+add1ProgLetLeft :: Prog
+add1ProgLetLeft = mkAdd1Prog exadd1BodLetLeft Nothing
+
+-- | Add1 program with let bindings, recurring in right-to-left order.
+add1ProgLetRight :: Prog
+add1ProgLetRight = mkAdd1Prog exadd1BodLetRight Nothing
