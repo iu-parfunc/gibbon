@@ -30,6 +30,17 @@ import Text.PrettyPrint.GenericPretty
 import Control.Monad.Except
 -- import Debug.Trace
 
+-- | Constraints on locations.  Used during typechecking.  Roughly analogous to LocExp.
+data LocConstraint = StartOfC LocVar Region -- ^ Location is equal to start of this region.
+                   | AfterConstantC Int     -- ^ Number of bytes after. 
+                                    LocVar  -- ^ Location which is before
+                                    LocVar  -- ^ Location which is after
+                   | AfterVariableC Var     -- ^ Name of variable v. This loc is size(v) bytes after.
+                                    LocVar  -- ^ Location which is before
+                                    LocVar  -- ^ Location which is before
+                   | InRegionC LocVar Region -- ^ Location is somewher within this region.
+  deriving (Read, Show, Eq, Ord, Generic, NFData)
+
 -- | A set of constraints (which are re-used location expressions)
 -- which encode relationships between locations. These are used by the
 -- type checker to verify that locations are used correctly.
@@ -43,7 +54,7 @@ import Control.Monad.Except
 --
 -- While the first four can appear in syntax before RouteEnds, the fifth
 -- (fromEnd) should only be introduced by the RouteEnds pass.
-newtype ConstraintSet = ConstraintSet { constraintSet :: S.Set LocExp }
+newtype ConstraintSet = ConstraintSet { constraintSet :: S.Set LocConstraint }
 
 -- | A location has been aliased if we have taken an offset of it while introducing a new
 -- location. These show up in the LocationTypeState below.
@@ -252,8 +263,8 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  ensureRegion exp r regs
                                  absentStart exp constrs l
                                  let tstate1 = extendTS v (Output,False) tstatein
-                                 let constrs1 = extendConstrs (StartOfLE v r) $
-                                                extendConstrs (InRegionLE l r) constrs
+                                 let constrs1 = extendConstrs (StartOfC v r) $
+                                                extendConstrs (InRegionC l r) constrs
                                  (ty,tstate2) <- tcExp ddfs env funs constrs1 regs tstate1 e
                                  tstate3 <- removeLoc exp tstate2 v
                                  return (ty,tstate3)
@@ -266,8 +277,8 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  r <- getRegion exp constrs l1
                                  absentStart exp constrs v
                                  let tstate1 = extendTS v (Output,True) $ setAfter l1 tstatein
-                                 let constrs1 = extendConstrs (InRegionLE l2 r) $
-                                                extendConstrs (AfterConstantLE i l1 l2) constrs
+                                 let constrs1 = extendConstrs (InRegionC l2 r) $
+                                                extendConstrs (AfterConstantC i l1 l2) constrs
                                  (ty,tstate2) <- tcExp ddfs env funs constrs1 regs tstate1 e
                                  tstate3 <- removeLoc exp tstate2 v
                                  return (ty,tstate3)
@@ -282,8 +293,8 @@ tcExp ddfs env funs constrs regs tstatein exp =
                                  (xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ VarE x
                                  ensurePackedLoc exp xty l1
                                  let tstate2 = extendTS v (Output,True) $ setAfter l1 tstate1
-                                 let constrs1 = extendConstrs (InRegionLE l2 r) $
-                                                extendConstrs (AfterVariableLE x l1 l2) constrs
+                                 let constrs1 = extendConstrs (InRegionC l2 r) $
+                                                extendConstrs (AfterVariableC x l1 l2) constrs
                                  (ty,tstate3) <- tcExp ddfs env funs constrs1 regs tstate2 e
                                  tstate4 <- removeLoc exp tstate3 v
                                  return (ty,tstate4)
@@ -311,11 +322,11 @@ tcCases ddfs env funs constrs regs tstatein lin ((dc, vs, e):cases) = do
 
       -- Generate the new constraints to check this branch
       genConstrs (((v1,l1),PackedTy _ _),Nothing) (lin,lst) =
-          (l1,(AfterConstantLE 1 lin l1) : lst)
+          (l1,(AfterConstantC 1 lin l1) : lst)
       genConstrs (((v1,l1),PackedTy _ _),Just ((v2,l2),PackedTy _ _)) (lin,lst) =
-          (l1,(AfterVariableLE v2 l2 l1) : lst)
+          (l1,(AfterVariableC v2 l2 l1) : lst)
       genConstrs (((v1,l1),PackedTy _ _),Just _) (lin,lst) =
-          (l1,(AfterConstantLE undefined lin l1) : lst)
+          (l1,(AfterConstantC undefined lin l1) : lst)
       genConstrs (_,_) (lin,lst) = (lin,lst)
 
       -- Generate the new location state map to check this branch
@@ -431,7 +442,7 @@ ensureRegion exp r (RegionSet regSet) =
 -- Includes an expression for error reporting.
 getRegion :: Exp2 -> ConstraintSet -> LocVar -> TcM Region
 getRegion exp (ConstraintSet cs) l = go $ S.toList cs
-    where go ((InRegionLE l1 r):cs) = if l1 == l then return r
+    where go ((InRegionC l1 r):cs) = if l1 == l then return r
                                      else go cs
           go (_:cs) = go cs
           go [] = throwError $ GenericTC ("Location " ++ (show l) ++ " has no region") exp
@@ -446,7 +457,7 @@ funRegs [] = RegionSet $ S.empty
 -- | Get the constraints from the location bindings in a function type.
 funConstrs :: [LRM] -> ConstraintSet
 funConstrs ((LRM l r _m):lrms) =
-    extendConstrs (InRegionLE l r) $ funConstrs lrms
+    extendConstrs (InRegionC l r) $ funConstrs lrms
 funConstrs [] = ConstraintSet $ S.empty
 
 -- | Get the type state implied by the location bindings in a function type.
@@ -534,7 +545,7 @@ ensureAfterConstant :: Exp2 -> ConstraintSet -> LocVar -> LocVar -> TcM ()
 ensureAfterConstant exp (ConstraintSet cs) l1 l2 =
     if L.any f $ S.toList cs then return ()
     else throwError $ LocationTC "Expected after relationship" exp l1 l2 
-    where f (AfterConstantLE _i l1' l2') = l1' == l1 && l2' == l2
+    where f (AfterConstantC _i l1' l2') = l1' == l1 && l2' == l2
           f _ = False
 
 -- | Ensure that one location is a variable size after another location in the constraint set.
@@ -543,7 +554,7 @@ ensureAfterPacked :: Exp2 -> ConstraintSet -> LocVar -> LocVar -> TcM ()
 ensureAfterPacked  exp (ConstraintSet cs) l1 l2 =
     if L.any f $ S.toList cs then return ()
     else throwError $ LocationTC "Expected after relationship" exp l1 l2 
-    where f (AfterVariableLE _v l1' l2') = l1' == l1 && l2' == l2
+    where f (AfterVariableC _v l1' l2') = l1' == l1 && l2' == l2
           f _ = False
 
 
@@ -567,7 +578,7 @@ lookupTS exp l (LocationTypeState ls) =
       Nothing -> throwError $ GenericTC ("Failed lookup of location " ++ (show l)) exp
       Just d -> return d
                                       
-extendConstrs :: LocExp -> ConstraintSet -> ConstraintSet
+extendConstrs :: LocConstraint -> ConstraintSet -> ConstraintSet
 extendConstrs c (ConstraintSet cs) = ConstraintSet $ S.insert c cs
 
 switchOutLoc :: Exp -> LocationTypeState -> LocVar -> TcM LocationTypeState
@@ -586,7 +597,7 @@ absentAfter exp (LocationTypeState ls) l =
 
 absentStart :: Exp -> ConstraintSet -> LocVar -> TcM ()
 absentStart exp (ConstraintSet cs) l = go $ S.toList cs
-    where go ((StartOfLE l1 r):cs) =
+    where go ((StartOfC l1 r):cs) =
               if l1 == l
               then throwError $ GenericTC ("Repeated start of " ++ (show r)) exp
               else go cs

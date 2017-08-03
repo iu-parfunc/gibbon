@@ -138,7 +138,7 @@ type ValEnv = Map Var Value
 ------------------------------------------------------------
 
 -- | Code to read a final answer back out.
-deserialize :: DDefs Ty -> Seq SerializedVal -> Value
+deserialize :: DDefs Ty1 -> Seq SerializedVal -> Value
 deserialize ddefs seq0 = final
  where
   ([final],_) = readN 1 seq0

@@ -18,7 +18,6 @@
 module Packed.FirstOrder.L2.Syntax
     ( Prog(..), FunDef(..), Effect(..), ArrowTy(..)
     , LocRet(..), LocExp, PreLocExp(..)
---    , LocConstraint(..)
     , NewFuns, getFunTy
     , mapMExprs
     , progToEnv
@@ -107,17 +106,6 @@ data PreLocExp loc = StartOfLE loc Region
                    | InRegionLE loc Region
                    | FromEndLE  loc
                      deriving (Read, Show, Eq, Ord, Generic, NFData)
-
--- | Constraints on locations
-data LocConstraint loc = StartOfC loc Region -- ^ Location is equal to start of this region.
-                       | AfterConstantC Int -- ^ Number of bytes after. 
-                                        loc -- ^ Location which is before
-                                        loc -- ^ Location which is after
-                       | AfterVariableC Var -- ^ Name of variable v. This loc is size(v) bytes after.
-                                        loc -- ^ Location which is before
-                                        loc -- ^ Location which is before
-                       | InRegionC loc Region -- ^ Location is somewher within this region.
---                       | FromEndC  loc        -- ^ ????
 
 type LocExp = PreLocExp LocVar
 
