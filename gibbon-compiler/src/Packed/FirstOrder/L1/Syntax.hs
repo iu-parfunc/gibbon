@@ -50,9 +50,10 @@ import Packed.FirstOrder.GenericOps
 import Data.Map as M
 import Data.Set as S
 import Data.List as L
+import Data.Loc
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
-import Control.DeepSeq (NFData)
+import Control.DeepSeq (NFData, rnf)
 
 --------------------------------------------------------------------------------
 
@@ -67,7 +68,7 @@ data Prog = Prog { ddefs    :: DDefs Ty
                  , mainExp  :: Maybe Exp
 --                 , constraints :: [Constraint]
                  }
-  deriving (Read,Show,Eq,Ord, Generic, NFData)
+  deriving (Show,Eq,Ord, Generic, NFData)
 
 -- FIXME: Finish this and merge with L2.Constraint
 data Constraint = Constraint
@@ -92,7 +93,7 @@ type Exp = PreExp NoExt () Ty
     
 -- Shorthand to make the below definition more readable.
 -- I.e., this covers all the verbose recursive fields.
-#define EXP (PreExp ext loc dec)
+#define EXP (L (PreExp ext loc dec))
     
 -- | The source language.  It has pointer-based sums and products, as
 -- well as packed algebraic datatypes.
@@ -148,8 +149,16 @@ data PreExp (ext :: * -> * -> *) loc dec =
    ----------------------------------------
   | Ext (ext loc dec) -- ^ Extension point for downstream language extensions.
      
-  deriving (Read,Show,Eq,Ord, Generic, NFData, Functor)
+  deriving (Show,Eq,Ord, Generic, NFData, Functor)
 
+instance NFData a => NFData (L a) where
+  rnf (L loc a) = seq loc (rnf a)
+
+instance Out a => Out (L a) where
+  doc (L _ a) = doc a
+  docPrec n (L _ a) = docPrec n a
+
+    
 instance (Out l, Show l, Show d, Out d, Expression (e l d))
       => Expression (PreExp e l d) where
   type (TyOf (PreExp e l d))  = d
@@ -164,10 +173,12 @@ mapExt fn = visitExp id fn id
 visitExp :: forall l1 l2 e1 e2 d1 d2 .
             (l1 -> l2) -> (e1 l1 d1 -> e2 l2 d2) -> (d1 -> d2) ->
             PreExp e1 l1 d1 -> PreExp e2 l2  d2
-visitExp fl fe fd = go
+visitExp fl fe fd ex = fin
  where
-   go :: PreExp e1 l1  d1 -> PreExp e2 l2 d2
-   go ex =
+   L _ fin = go (L NoLoc ex)
+   
+   go :: L (PreExp e1 l1  d1) -> L (PreExp e2 l2 d2)
+   go (L p ex) = L p $ 
      case ex of
        Ext  x    -> Ext (fe x)
        VarE v    -> VarE v
@@ -328,6 +339,9 @@ getFunTy fn Prog{fundefs} =
 freeVars :: Exp -> S.Set Var
 freeVars = gFreeVars
 {-# DEPRECATED freeVars "Use gFreeVars instead" #-}
+
+instance FreeVars a => FreeVars (L a) where
+  gFreeVars (L _ a) = gFreeVars a
 
 instance FreeVars (e l d) => FreeVars (PreExp e l d) where
   gFreeVars ex = case ex of
