@@ -23,7 +23,7 @@ freshNames (L1.Prog defs funs main) =
                   Just m -> do m' <- freshExp [] m
                                return $ Just m'
        funs' <- freshFuns funs
-       return $ L1.Prog defs funs' main' 
+       return $ L1.Prog defs funs' main'
     where freshFuns m = M.fromList <$> mapM freshFun (M.toList m)
           freshFun (nam, FunDef _ (narg,targ) ty bod) =
               do narg' <- gensym narg
@@ -31,7 +31,7 @@ freshNames (L1.Prog defs funs main) =
                  let nam' = cleanFunName nam
                  return (nam', FunDef nam' (narg',targ) ty bod')
 
-          freshExp :: [(Var,Var)] -> PreExp NoExt () Ty1 -> SyM L1.Exp
+          freshExp :: [(Var,Var)] -> PreExp NoExt () Ty1 -> SyM L1.Exp1
           freshExp _ e@(L1.Ext _) = return e
 
           freshExp vs (L1.VarE v) =
@@ -42,7 +42,7 @@ freshNames (L1.Prog defs funs main) =
               return $ L1.LitE i
           freshExp _ (L1.LitSymE v) =
               return $ L1.LitSymE v
-          freshExp vs (L1.AppE v ls e) = assert ([] == ls) $ 
+          freshExp vs (L1.AppE v ls e) = assert ([] == ls) $
               do e' <- freshExp vs e
                  return $ L1.AppE (cleanFunName v) [] e'
           freshExp _ (L1.PrimAppE L1.Gensym []) =
@@ -51,7 +51,7 @@ freshNames (L1.Prog defs funs main) =
           freshExp vs (L1.PrimAppE p es) =
               do es' <- mapM (freshExp vs) es
                  return $ L1.PrimAppE p es'
-          freshExp vs (L1.LetE (v,ls,t, e1) e2) = assert ([]==ls) $ 
+          freshExp vs (L1.LetE (v,ls,t, e1) e2) = assert ([]==ls) $
               do e1' <- freshExp vs e1
                  v' <- gensym v
                  e2' <- freshExp ((v,v'):vs) e2

@@ -63,7 +63,7 @@ collectTopFunTy FunBind{} = return Nothing
 collectTopFunTy DataDecl{} = return Nothing
 collectTopFunTy unsupported = err ("collectTopFunTy: Unsupported top-level thing: " ++ show unsupported)
 
-collectTopLevel :: M.Map Var TopTy -> H.Decl -> Ds (Maybe (Either (DDef Ty) (FunDef Ty L1.Exp)))
+collectTopLevel :: M.Map Var TopTy -> H.Decl -> Ds (Maybe (Either (DDef Ty1) (FunDef Ty1 L1.Exp1)))
 
 collectTopLevel _ TypeSig{} = return Nothing
 
@@ -81,11 +81,11 @@ collectTopLevel fun_tys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) 
     collectArg (PVar n) = return $ (toVar . name_to_str) n
     collectArg arg      = err ("Unsupported function arg: " ++ show arg)
 
-    getArgTy :: TopTy -> Int -> Ds Ty
+    getArgTy :: TopTy -> Int -> Ds Ty1
     getArgTy (Arrow ts) n = return (ts !! n)
     getArgTy ty         _ = err ("getArgTy: " ++ show ty)
 
-    getRetTy :: TopTy -> Ty
+    getRetTy :: TopTy -> Ty1
     getRetTy (Arrow ts) = last ts
     getRetTy (T1 t)     = t
 
@@ -113,8 +113,8 @@ pattern SndVar <- VarE (C.Var "snd")
 
 -- | Convert Haskell src-exts syntax to our syntax.  Handle infix operators, etc.
 -- Disambiguate things that look like applications.
-desugarExp :: H.Exp -> Ds L1.Exp
-desugarExp e = 
+desugarExp :: H.Exp -> Ds L1.Exp1
+desugarExp e =
     case e of
       H.Var qname -> VarE <$> toVar <$> qname_to_str qname
 
@@ -177,7 +177,7 @@ desugarOp op                             = err ("Unsupported binary op: " ++ sho
 
 --------------------------------------------------------------------------------
 
-generateBind :: H.Decl -> L1.Exp -> Ds L1.Exp
+generateBind :: H.Decl -> L1.Exp1 -> Ds L1.Exp1
 
 generateBind (PatBind _ _ _ Just{}) _ =
     err "where clauses not allowed"
@@ -197,7 +197,7 @@ generateBind not_pat_bind _ =
 
 --------------------------------------------------------------------------------
 
-desugarAlt :: l -> H.Alt -> Ds (DataCon, [(Var,l)], L1.Exp)
+desugarAlt :: l -> H.Alt -> Ds (DataCon, [(Var,l)], L1.Exp1)
 
 desugarAlt dummyL (H.Alt _ (PApp qname ps) (UnGuardedRhs rhs) Nothing) = do
     con_name <- qname_to_str qname
@@ -219,8 +219,8 @@ desugarAlt _ (H.Alt _ pat _ _) =
 
 -- | Top-level function definitions can have arrow in the types. Others can't.
 data TopTy
-  = Arrow [Ty]
-  | T1 Ty
+  = Arrow [Ty1]
+  | T1 Ty1
   deriving (Show)
 
 desugarTopType :: H.Type -> Ds TopTy
@@ -235,7 +235,7 @@ desugarTopType (TyFun t1 t2) = do
 desugarTopType ty =
     T1 <$> desugarType ty
 
-desugarType :: H.Type -> Ds Ty
+desugarType :: H.Type -> Ds Ty1
 
 desugarType (TyCon (UnQual (Ident "Int"))) = return IntTy
 

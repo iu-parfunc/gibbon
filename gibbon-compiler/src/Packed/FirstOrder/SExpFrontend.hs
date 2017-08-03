@@ -40,7 +40,7 @@ import Data.SCargot.Language.HaskLike
 import Data.SCargot.Parse
 import Data.SCargot.Print
 import Data.SCargot.Repr -- (SExpr, RichSExpr, toRich)
-    
+
 --------------------------------------------------------------------------------
 
 -- | Baseline chatter level for this module:
@@ -95,13 +95,13 @@ bracketHacks = T.map $ \case '[' -> '('
                              x   -> x
 
 -- | Change regular applications into data constructor syntax.
-tagDataCons :: DDefs Ty -> Exp -> Exp
+tagDataCons :: DDefs Ty1 -> Exp1 -> Exp1
 tagDataCons ddefs = go allCons
   where
    allCons = S.fromList [ (toVar con)
                         | DDef{dataCons} <- M.elems ddefs
                         , (con,_tys) <- dataCons ]
-   go cons ex = 
+   go cons ex =
      case ex of
        Ext _ -> ex
        AppE v _ (MkProdE ls)
@@ -198,7 +198,7 @@ parseSExp ses =
                             Just x  -> error$ "Two main expressions: "++
                                              sdoc x++"\nAnd:\n"++prnt ex)
 
-tuplizeRefs :: Var -> [Var] -> Exp -> Exp
+tuplizeRefs :: Var -> [Var] -> Exp1 -> Exp1
 tuplizeRefs tmp ls  = go (L.zip [0..] ls)
   where
    go []          e = e
@@ -219,7 +219,7 @@ getSym :: RichSExpr HaskLikeAtom -> Var
 getSym (RSAtom (HSIdent id)) = textToVar id
 getSym s = error $ "expected identifier sexpr, got: "++prnt s
 
-docasety :: Sexp -> (DataCon,[(IsBoxed,Ty)])
+docasety :: Sexp -> (DataCon,[(IsBoxed,Ty1)])
 docasety s =
   case s of
     (RSList ((A id) : tys)) -> (textToDataCon id, L.map ((False,) . typ) tys)
@@ -234,10 +234,10 @@ pattern Ls3 a b c     = RSList [A a, b, c]
 pattern Ls4 a b c d   = RSList [A a, b, c, d]
 -- pattern L5 a b c d e = RSList [A a, b, c, d, e]
 
-trueE :: Exp
+trueE :: Exp1
 trueE = PrimAppE MkTrue []
 
-falseE :: Exp
+falseE :: Exp1
 falseE = PrimAppE MkFalse []
 
 -- -- FIXME: we cannot intern strings until runtime.
@@ -254,7 +254,7 @@ keywords = S.fromList $ L.map pack $
 isKeyword :: Text -> Bool
 isKeyword s = s `S.member` keywords
 
-exp :: Sexp -> Exp
+exp :: Sexp -> Exp1
 exp se =
  -- trace ("\n ==> Processing Exp:\n  "++prnt se)  $
  case se of
@@ -346,7 +346,7 @@ exp se =
 
 
 -- | One case of a case expression
-docase :: Sexp -> (DataCon,[(Var,())],Exp)
+docase :: Sexp -> (DataCon,[(Var,())],Exp1)
 docase s =
   case s of
     RSList [ RSList (A con : args)
@@ -356,7 +356,7 @@ docase s =
  where
    f x  = (getSym x, ())
 
-letbind :: Sexp -> (Var,[l],Ty,Exp)
+letbind :: Sexp -> (Var,[l],Ty1,Exp1)
 letbind s =
   case s of
    RSList [A vr, A ":",

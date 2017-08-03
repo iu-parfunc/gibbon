@@ -20,12 +20,11 @@ module Packed.FirstOrder.GenericOps
 import Control.DeepSeq (NFData)
 import GHC.Generics
 import qualified Data.Set as S
-import qualified Data.Map as M
 import Packed.FirstOrder.Common
-import Text.PrettyPrint.GenericPretty 
-    
+import Text.PrettyPrint.GenericPretty
+
 --------------------------------------------------------------------------------
--- Things which can be interpreted to yield a final, printed value. 
+-- Things which can be interpreted to yield a final, printed value.
 --------------------------------------------------------------------------------
 
 -- | Pure Gibbon programs, at any stage of compilation, should always
@@ -40,7 +39,7 @@ class Interp a where
   interpWithStdout :: RunConfig -> a -> IO (String,[String])
 
 ----------------------------------------------------------------------------------------------------
--- Free Variables 
+-- Free Variables
 ----------------------------------------------------------------------------------------------------
 
 -- | Expression and program types which support a notion of free variables.
@@ -48,7 +47,7 @@ class FreeVars a where
     gFreeVars :: a -> S.Set Var
 
 instance FreeVars (NoExt l d) where
-  gFreeVars _ = S.empty 
+  gFreeVars _ = S.empty
 
 
 ----------------------------------------------------------------------------------------------------
@@ -60,7 +59,7 @@ instance FreeVars (NoExt l d) where
 class (Show e, Out e) => Expression e where
   type TyOf e
   type LocOf e
-      
+
 -- | IRs amenable to flattening
 class Expression e => Flattenable e where
   -- | Process an expression into a fully-flattened expression which typically includes a
@@ -73,7 +72,7 @@ class Expression e => Flattenable e where
   gFlattenGatherBinds :: DDefs (TyOf e) -> Env2 (TyOf e) -> e -> SyM ([Binds e],e)
 
 type Binds e = (Var,[LocOf e],TyOf e, e)
-    
+
 -- | IRs amenable to simplification/inlineTrivs
 class Expression e => Simplifiable e where
   gInlineTrivExp :: DDefs (TyOf e) -> e -> e
@@ -94,15 +93,17 @@ instance Eq (NoExt l d) where
 instance Ord (NoExt l d) where
   compare _ _ = EQ
 
-             
+
 -- | A dummy instance for "no-extension" extension point.
 instance Expression (NoExt l d) where
   type TyOf  (NoExt l d) = d
   type LocOf (NoExt l d) = l
-      
+
 -- | A dummy instance for "no-extension" extension point.
 instance Flattenable (NoExt l d) where
   gFlattenExp _ _ impossible = return impossible
+  gFlattenGatherBinds  _ _ impossible = return ([],impossible)
+
 
 -- | A dummy instance for "no-extension" extension point.
 instance Simplifiable (NoExt l d) where

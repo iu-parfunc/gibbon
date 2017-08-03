@@ -219,13 +219,13 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
          error $ "L1.Interp: unfinished, need to read a packed file: "++show (file,ty)
      oth -> error $ "unhandled prim or wrong number of arguments: "++show oth
 
-  interp :: Exp -> WriterT Log (StateT Store IO) Value
+  interp :: Exp1 -> WriterT Log (StateT Store IO) Value
   interp = go M.empty
     where
       {-# NOINLINE goWrapper #-}
       goWrapper !_ix env ex = go env ex
 
-      go :: ValEnv -> L1.Exp -> WriterT Log (StateT Store IO) Value
+      go :: ValEnv -> L1.Exp1 -> WriterT Log (StateT Store IO) Value
       go env x0 =
           case x0 of
             Ext _ -> error "L1.Interp: Should not interpret empty extension point."
@@ -300,7 +300,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
 
             p | L2.isExtendedPattern p ->
                errorWithStackTrace$ "L1.Interp: Unhandled extended L2 pattern: "++ndoc p
-                                  
+
             AppE f _ b ->  do rand <- go env b
                               case M.lookup f fundefs of
                                Just FunDef{funArg=(vr,_),funBody} -> go (M.insert vr rand env) funBody

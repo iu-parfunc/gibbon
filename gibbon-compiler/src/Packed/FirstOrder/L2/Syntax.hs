@@ -33,18 +33,18 @@ module Packed.FirstOrder.L2.Syntax
 
     -- * Convenience aliases
     , Ty, Exp
-      
+
     -- * Conversion back to L1
     , revertToL1
 
-      
+
     -- The following will be removed:
 
 -- (Maybe) DEPRECATED:
     -- * Extended "L2.1", for inline packed:
     , pattern NamedVal
 
--- DEPRECATED:      
+-- DEPRECATED:
     -- * Extended "L2.2", for after cursor insertion:
     , pattern WriteInt, pattern ReadInt, pattern NewBuffer
     , pattern ScopedBuffer, pattern AddCursor
@@ -77,14 +77,14 @@ type Ty = Ty2
 -- | Convenience alias.
 type Exp = Exp2
 {-# DEPRECATED Exp "Moving away from generically named Ty/Exp/Prog" #-}
-    
+
 --------------------------------------------------------------------------------
 
 -- | Extended expressions, L2.  Monomorphic.
 type Exp2 = E2 LocVar Ty
 
 -- | The extension that turns L1 into L2.
-data E2Ext loc dec = 
+data E2Ext loc dec =
     LetRegionE Region                 (E2 loc dec) -- ^ Not used until later on.
   | LetLocE    loc    (PreLocExp loc) (E2 loc dec) -- ^ Bind a new location.
   | RetE [loc] Var     -- ^ Return a value together with extra loc values.
@@ -117,9 +117,9 @@ instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
   type LocOf (E2Ext l d) = l
   type TyOf (E2Ext l d)  = UrTy l
 
-    
+
 ----------------------------------------------------------------------------------------------------
-            
+
 -- | Our type for functions grows to include effects, and explicit universal
 -- quantification over location/region variables.
 data ArrowTy t = ArrowTy { locVars :: [LRM]       -- ^ Universally-quantified location params.
@@ -151,7 +151,7 @@ instance Out LocRet
 -- | L1 Types extended with abstract Locations.
 type Ty2 = L1.UrTy LocVar
 
-    
+
 type NewFuns = M.Map Var FunDef
 
 -- | Here we only change the types of FUNCTIONS:
@@ -162,7 +162,7 @@ data Prog = Prog { ddefs    :: DDefs Ty
   deriving (Show, Read, Ord, Eq, Generic, NFData)
 
 ----------------------------------------------------------------------------------------------------
-           
+
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.  The
 --   initial environment has types only for functions.
@@ -193,36 +193,41 @@ getFunTy mp f = case M.lookup f mp of
 -- TODO: beta-branch: REVAMP BELOW HERE
 --------------------------------------------------------------------------------
 
-                                          
+
 -- | Retrieve all LocVars mentioned in a type
-getTyLocs :: Ty -> Set LocVar
-getTyLocs t =
+_getTyLocs :: Ty -> Set LocVar
+_getTyLocs t =
     case t of
       IntTy  -> S.empty
       SymTy  -> S.empty
       BoolTy -> S.empty
-      ProdTy ls -> S.unions (L.map getTyLocs ls)
-      PackedTy _ lv -> S.singleton lv
-      -- This is a tricky case:
-      SymDictTy elt -> getTyLocs elt
-      ListTy{} -> error "FINISHLISTS"
+      ProdTy ls     -> S.unions (L.map _getTyLocs ls)
+      PackedTy _ lv -> S.singleton lv -- This is a tricky case:
+      SymDictTy elt -> _getTyLocs elt
+      -- TODO(chai):
+      PtrTy (LRM lv _ _) elt -> S.union (S.singleton lv) (_getTyLocs elt)
+      CursorTy (LRM lv _ _)  -> S.singleton lv
+      ListTy{}               -> error "FINISHLISTS"
+
 
 -- | Annotate a naked type with fresh location variables.
-tyWithFreshLocs :: L1.Ty -> SyM Ty
-tyWithFreshLocs t =
+_tyWithFreshLocs :: Ty1 -> SyM Ty
+_tyWithFreshLocs t =
   case t of
     L1.Packed k -> PackedTy k <$> genLetter
     L1.IntTy    -> return IntTy
     L1.SymTy    -> return SymTy
     L1.BoolTy   -> return BoolTy
-    L1.ProdTy l -> ProdTy <$> mapM tyWithFreshLocs l
-    L1.SymDictTy v -> SymDictTy <$> tyWithFreshLocs v
+    L1.ProdTy l -> ProdTy <$> mapM _tyWithFreshLocs l
+    L1.SymDictTy v  -> SymDictTy <$> _tyWithFreshLocs v
     L1.PackedTy _ _ -> error $ "tyWithFreshLocs: unexpected type: " ++ show t
+    L1.PtrTy _ _    -> error $ "FINISHME: _tyWithFreshLocs PtrTy"
+    L1.CursorTy _   -> error $ "FINISHME: _tyWithFreshLocs CursorTy"
     L1.ListTy _ -> error "tyWithFreshLocs: FIXME implement lists"
 
 -- | Remove the extra location annotations.
-stripTyLocs :: Ty -> L1.Ty
-stripTyLocs = fmap (const ())
+_stripTyLocs :: Ty -> L1.Ty1
+_stripTyLocs = fmap (const ())
   -- case t of
   --   PackedTy k _  -> L1.PackedTy k ()
   --   IntTy        -> L1.IntTy
@@ -233,8 +238,8 @@ stripTyLocs = fmap (const ())
 
 
 -- | Apply a variable substitution to a type.
-substTy :: Map LocVar LocVar -> Ty -> Ty
-substTy mp t = go t
+_substTy :: Map LocVar LocVar -> Ty -> Ty
+_substTy mp t = go t
   where
     go t =
      case t of
@@ -249,11 +254,20 @@ substTy mp t = go t
                 Nothing -> PackedTy k l
                 -- errorWithStackTrace $ "substTy: failed to find "++show l++
                 --   "\n  in map: "++show mp++", when processing type "++show t
+      -- TODO(chai):
+      PtrTy (LRM l reg mod) te ->
+        case M.lookup l mp of
+          Just v  -> PtrTy (LRM v reg mod) (go te)
+          Nothing -> PtrTy (LRM l reg mod) (go te)
+      CursorTy (LRM l reg mod) ->
+        case M.lookup l mp of
+          Just v  -> CursorTy (LRM v reg mod)
+          Nothing -> CursorTy (LRM l reg mod)
       ListTy _ -> error "tyWithFreshLocs: FIXME implement lists"
 
 -- | Apply a substitution to an effect set.
-substEffs :: Map LocVar LocVar -> Set Effect -> Set Effect
-substEffs mp ef =
+_substEffs :: Map LocVar LocVar -> Set Effect -> Set Effect
+_substEffs mp ef =
     dbgTrace 5 ("\n  Substituting in effects "++show(mp,ef)) $
     S.map (\(Traverse v) ->
                case M.lookup v mp of
@@ -261,16 +275,18 @@ substEffs mp ef =
                  Nothing -> Traverse v) ef
 
 -- | Collect all the locations mentioned in a type.
-allLocVars :: Ty -> [LocVar]
+_allLocVars :: Ty -> [LocVar]
 -- TODO: could just be a fold
-allLocVars t =
+_allLocVars t =
     case t of
       SymTy     -> []
       BoolTy    -> []
       IntTy     -> []
-      PackedTy _ v -> [v]
-      ProdTy ls  -> L.concatMap allLocVars ls
-      SymDictTy elt -> allLocVars elt
+      PackedTy _ v  -> [v]
+      ProdTy ls     -> L.concatMap _allLocVars ls
+      SymDictTy elt -> _allLocVars elt
+      PtrTy (LRM lv _ _) elt -> [lv] ++ _allLocVars elt
+      CursorTy (LRM lv _ _)  -> [lv]
       ListTy _ -> error "allLocVars: FIXME lists"
 
 
@@ -450,7 +466,7 @@ allLocVars t =
 
 -- | Map exprs with an initial type environment:
 mapMExprs :: Monad m => (Env2 (UrTy LocVar) -> Exp2 -> m Exp2) -> Prog -> m Prog
-mapMExprs = _mapMExprs
+mapMExprs = error $ "FINISHME: L2 mapMExprs"
 -- mapMExprs fn (Prog dd fundefs mainExp) =
 --     Prog dd <$>
 --          (mapM (\ (FunDef nm arrTy@(ArrowTy inT _ _) arg bod) ->
@@ -471,7 +487,7 @@ mapMExprs = _mapMExprs
 -- | Because L2 just adds a bit of metadata and enriched types, it is
 -- possible to strip it back down to L1.
 revertToL1 :: Prog -> L1.Prog
-revertToL1 = undefined -- TODO: Fix or remove this function 
+revertToL1 = undefined -- TODO: Fix or remove this function
 -- revertToL1 Prog{ ..} =
 --   L1.Prog { L1.ddefs   = fmap (fmap (fmap (const ()))) ddefs
 --           , L1.fundefs = M.map go fundefs
@@ -484,9 +500,9 @@ revertToL1 = undefined -- TODO: Fix or remove this function
 --    exp :: E2' () Ty -> L1.Exp
 --    exp ex = mapExt (\(e::E2 () Ty) ->
 --                     error $ "revertToL1: cannot revert, essential L2 construct used:\n  "++show e)
---                    (fmap stripTyLocs ex)                   
+--                    (fmap stripTyLocs ex)
 
-                   
+
 --------------------------------------------------------------------------------
 
 
@@ -541,11 +557,11 @@ isExtendedPattern e =
 -- Initial type environments
 --------------------------------------------------------------------------------
 
-dummyCursorTy :: L1.Ty
+dummyCursorTy :: L1.Ty1
 dummyCursorTy = CursorTy dummyLRM
 
 -- | Return type for a primitive operation.
-primRetTy :: Prim -> L1.Ty
+primRetTy :: Prim -> L1.Ty1
 primRetTy p =
   case p of
     AddP -> IntTy
@@ -566,7 +582,7 @@ primRetTy p =
     ReadPackedFile _ _ ty -> ty
 
 
-                             
+
 -- | A type environment listing the types of built-in functions.
 --
 --   Using this table represents a policy decision.  Specifically,
@@ -575,7 +591,7 @@ primRetTy p =
 --   typechecker to match against these patterns before the AppE
 --   cases.
 --
-builtinTEnv :: M.Map Var (ArrowTy L1.Ty)
+builtinTEnv :: M.Map Var (ArrowTy L1.Ty1)
 builtinTEnv = undefined
   -- M.fromList
   -- [ (toVar "NewBuffer",    ArrowTy voidTy S.empty dummyCursorTy)
@@ -589,7 +605,7 @@ builtinTEnv = undefined
   -- ]
 
 includeBuiltins :: Env2 (UrTy ()) -> Env2 (UrTy ())
-includeBuiltins (Env2 v f) = undefined
+includeBuiltins (Env2 _ _) = undefined
     -- Env2 v (f `M.union` f')
     -- where f' = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
     --                       | (n, ArrowTy a _ b) <- M.assocs builtinTEnv ]

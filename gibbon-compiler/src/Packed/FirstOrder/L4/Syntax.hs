@@ -220,7 +220,7 @@ withTail (tl0,retty) fn =
    genTmps ty          = do t <- gensym (toVar "tctmp"); return [(t,ty)]
 
 
-fromL1Ty :: L1.Ty -> Ty
+fromL1Ty :: L1.Ty1 -> Ty
 fromL1Ty ty =
   case ty of
     L1.IntTy -> IntTy

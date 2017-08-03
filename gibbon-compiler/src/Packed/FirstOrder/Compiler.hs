@@ -1,8 +1,9 @@
 {-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
 {-# LANGUAGE PartialTypeSignatures #-}
-{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE CPP #-}
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
+{-# OPTIONS_GHC -fno-warn-unused-binds #-}
 
 -- | The compiler pipeline, assembled from several passes.
 
@@ -248,7 +249,7 @@ data CompileState =
 -- | Compiler entrypoint, given a full configuration and a list of
 -- files to process, do the thing.
 compile :: Config -> FilePath -> IO ()
-compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
+compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
   -- set the env var DEBUG, to verbosity, when > 1
   setDebugEnvVar verbosity
 
@@ -378,7 +379,7 @@ data InProgress = L1 L1.Prog
 -- | The main compiler pipeline, which we permit to return programs in
 -- /various/ states of compilation.
 passes :: Config -> L1.Prog -> StateT CompileState IO InProgress
-passes config@Config{mode,packed} l1 = do
+passes config@Config{mode} l1 = do
       l1 <- passE config "freshNames" freshNames l1
       -- If we are executing a benchmark, then we
       -- replace the main function with benchmark code:
@@ -403,7 +404,7 @@ passes config@Config{mode,packed} l1 = do
 -- TODO: ensure all non-first location bindings are unused, "_"-bindings (L2C)
 
 -- TODO: Typecheck L2.  We could be strict and enforce the L2C invariants, or not.
--- The L2 typechecker will continue to work for L2C.  
+-- The L2 typechecker will continue to work for L2C.
       l2 <- passE' config "typecheck"     (typecheckStrict (TCConfig False))        l2
 
 -- TODO: Run the NEW version of Cursorize, producing L3.
