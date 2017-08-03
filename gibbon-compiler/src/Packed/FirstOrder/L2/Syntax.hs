@@ -96,14 +96,12 @@ data E2Ext loc dec =
 type E2 l d = PreExp E2Ext l d
 
 -- | Define a location in terms of a different location.
-data PreLocExp loc = StartOfLE loc Region
+data PreLocExp loc = StartOfLE Region
                    | AfterConstantLE Int -- ^ Number of bytes after. 
                                     loc  -- ^ Location which this location is offset from.
-                                    loc  -- ^ REMOVE ME
                    | AfterVariableLE Var -- ^ Name of variable v. This loc is size(v) bytes after.
                                     loc  -- ^ Location which this location is offset from.
-                                    loc  -- ^ REMOVE ME
-                   | InRegionLE loc Region
+                   | InRegionLE Region
                    | FromEndLE  loc
                      deriving (Read, Show, Eq, Ord, Generic, NFData)
 
@@ -647,9 +645,9 @@ withAdd1Prog mainExp =
       CaseE (VarE "tr") $
         [ ("Leaf", [("n","l0")], LetE ("v",[],IntTy,PrimAppE L1.AddP [VarE "n", LitE 1]) (VarE "v"))
         , ("Node", [("x","l1"),("y","l2")],
-           Ext $ LetLocE "lout1" (AfterConstantLE 1 "lout" "lout1") $
+           Ext $ LetLocE "lout1" (AfterConstantLE 1 "lout") $
            LetE ("x1",[],PackedTy "Tree" "lout1", AppE "add1" ["l1","lout1"] (VarE "x")) $
-           Ext $ LetLocE "lout2" (AfterVariableLE "x1" "lout1" "lout2") $
+           Ext $ LetLocE "lout2" (AfterVariableLE "x1" "lout1") $
            LetE ("y1",[],PackedTy "Tree" "lout2", AppE "add1" ["l2","lout2"] (VarE "y")) $
            LetE ("z",[],PackedTy "Tree" "lout", 
                     DataConE "lout" "Node" [ VarE "x1" , VarE "y1"]) $

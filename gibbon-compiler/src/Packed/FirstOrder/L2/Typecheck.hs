@@ -261,46 +261,37 @@ tcExp ddfs env funs constrs regs tstatein exp =
       Ext (LetLocE v c e) -> do
 
                case c of
-                 StartOfLE l r -> do
-
-                        if l /= v then throwError $ GenericTC "Invalid location binding" exp
-                        else do
+                 StartOfLE r -> do
 
                           ensureRegion exp r regs
-                          absentStart exp constrs l
+                          absentStart exp constrs v
                           let tstate1 = extendTS v (Output,False) tstatein
                           let constrs1 = extendConstrs (StartOfC v r) $
-                                         extendConstrs (InRegionC l r) constrs
+                                         extendConstrs (InRegionC v r) constrs
                           (ty,tstate2) <- tcExp ddfs env funs constrs1 regs tstate1 e
                           tstate3 <- removeLoc exp tstate2 v
                           return (ty,tstate3)
 
-                 AfterConstantLE i l1 l2 -> do
-
-                        if l2 /= v then throwError $ GenericTC "Invalid location binding" exp
-                        else do
+                 AfterConstantLE i l1 -> do
 
                           r <- getRegion exp constrs l1
                           absentStart exp constrs v
                           let tstate1 = extendTS v (Output,True) $ setAfter l1 tstatein
-                          let constrs1 = extendConstrs (InRegionC l2 r) $
-                                         extendConstrs (AfterConstantC i l1 l2) constrs
+                          let constrs1 = extendConstrs (InRegionC v r) $
+                                         extendConstrs (AfterConstantC i l1 v) constrs
                           (ty,tstate2) <- tcExp ddfs env funs constrs1 regs tstate1 e
                           tstate3 <- removeLoc exp tstate2 v
                           return (ty,tstate3)
 
-                 AfterVariableLE x l1 l2 -> do
-
-                        if l2 /= v then throwError $ GenericTC "Invalid location binding" exp
-                        else do
+                 AfterVariableLE x l1 -> do
 
                           r <- getRegion exp constrs l1
                           absentStart exp constrs v
                           (xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ VarE x
                           ensurePackedLoc exp xty l1
                           let tstate2 = extendTS v (Output,True) $ setAfter l1 tstate1
-                          let constrs1 = extendConstrs (InRegionC l2 r) $
-                                         extendConstrs (AfterVariableC x l1 l2) constrs
+                          let constrs1 = extendConstrs (InRegionC v r) $
+                                         extendConstrs (AfterVariableC x l1 v) constrs
                           (ty,tstate3) <- tcExp ddfs env funs constrs1 regs tstate2 e
                           tstate4 <- removeLoc exp tstate3 v
                           return (ty,tstate4)
@@ -625,3 +616,5 @@ removeLoc exp (LocationTypeState ls) l =
     if M.member l ls
     then return $ LocationTypeState $ M.delete l ls
     else throwError $ GenericTC ("Cannot remove location " ++ (show l)) exp
+
+

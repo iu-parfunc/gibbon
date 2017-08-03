@@ -197,31 +197,32 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                  -- We will need to gensym while processing the case clauses, so
                  -- it has to be in the SyM monad
                  brs' <- forM brs $ \(dc, vls, e) -> do
-                                          let need = snd $ last vls
-                                              argtys = lookupDataCon ddefs dc
-                                              lx = case M.lookup x lenv of
-                                                     Nothing -> error $ "Failed to find " ++ (show x)
-                                                     Just l -> l
-                                              -- we know lx and need have the same end, since
-                                              -- lx is the whole packed thing and need is its
-                                              -- last field, so when we look up the end of lx
-                                              -- what we really want is the end of need.
-                                              eor' = mkEqual lx need eor
-                                              f (l1,l2) env = M.insert l1 l2 env
-                                              afterenv' = L.foldr f afterenv $ zip (L.map snd vls) (tail $ L.map snd vls)
-                                              -- two cases here for handing bound parameters:
-                                              -- we have a packed type:
-                                              handleLoc (eor,e) (_,(PackedTy _ _)) = return (eor,e)
-                                              -- or we have a non-packed type, and we need to "jump" over it and
-                                              -- bind a location to after it
-                                              handleLoc (eor,e) (l1,_ty) = do l2 <- gensym "jump"
-                                                                              let eor' = mkEnd l1 l2 eor
-                                                                                  e' = Ext $ LetLocE l2 (AfterConstantLE 1 l1 l2) e
-                                                                              return (eor',e')
+                           let need = snd $ last vls
+                               argtys = lookupDataCon ddefs dc
+                               lx = case M.lookup x lenv of
+                                      Nothing -> error $ "Failed to find " ++ (show x)
+                                      Just l -> l
+                               -- we know lx and need have the same end, since
+                               -- lx is the whole packed thing and need is its
+                               -- last field, so when we look up the end of lx
+                               -- what we really want is the end of need.
+                               eor' = mkEqual lx need eor
+                               f (l1,l2) env = M.insert l1 l2 env
+                               afterenv' = L.foldr f afterenv $ zip (L.map snd vls) (tail $ L.map snd vls)
+                               -- two cases here for handing bound parameters:
+                               -- we have a packed type:
+                               handleLoc (eor,e) (_,(PackedTy _ _)) = return (eor,e)
+                               -- or we have a non-packed type, and we need to "jump" over it and
+                               -- bind a location to after it
+                               handleLoc (eor,e) (l1,_ty) = do
+                                    l2 <- gensym "jump"
+                                    let eor' = mkEnd l1 l2 eor
+                                        e' = Ext $ LetLocE l2 (AfterConstantLE 1 l1) e
+                                    return (eor',e')
 
-                                          (eor'',e') <- foldM handleLoc (eor',e) $ zip (L.map snd vls) argtys
-                                          e'' <- exp fns retlocs eor'' lenv afterenv' e'
-                                          return (dc, vls, e'')
+                           (eor'',e') <- foldM handleLoc (eor',e) $ zip (L.map snd vls) argtys
+                           e'' <- exp fns retlocs eor'' lenv afterenv' e'
+                           return (dc, vls, e'')
                  return $ CaseE (VarE x) brs'
 
 
@@ -296,17 +297,17 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                  e' <- exp fns retlocs eor lenv afterenv e
                  return $ Ext (LetRegionE r e')
 
-          Ext (LetLocE v (StartOfLE l r) e) -> do
+          Ext (LetLocE v (StartOfLE r) e) -> do
                  e' <- exp fns retlocs eor lenv afterenv e
-                 return $ Ext (LetLocE v (StartOfLE l r) e')
+                 return $ Ext (LetLocE v (StartOfLE r) e')
 
-          Ext (LetLocE v (AfterConstantLE i l1 l2) e) -> do
+          Ext (LetLocE v (AfterConstantLE i l1) e) -> do
                  e' <- exp fns retlocs eor lenv afterenv e
-                 return $ Ext (LetLocE v (AfterConstantLE i l1 l2) e')
+                 return $ Ext (LetLocE v (AfterConstantLE i l1) e')
 
-          Ext (LetLocE v (AfterVariableLE x l1 l2) e) -> do
+          Ext (LetLocE v (AfterVariableLE x l1) e) -> do
                  e' <- exp fns retlocs eor lenv afterenv e
-                 return $ Ext (LetLocE v (AfterVariableLE x l1 l2) e')
+                 return $ Ext (LetLocE v (AfterVariableLE x l1) e')
 
           _ -> internalError $ "RouteEnds: Unsupported expression: " ++ (show e)
 
@@ -321,3 +322,4 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                funtype v = case M.lookup v fns of
                              Nothing -> error $ "Function " ++ (show v) ++ " not found"
                              Just fundef -> funty fundef
+
