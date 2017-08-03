@@ -151,25 +151,34 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
                (tys,tstate) <- tcExps ddfs env funs constrs regs tstatein es
 
-               -- TODO: check argument length
+               -- Pattern matches would be one way to check length safely, but then the
+               -- error would not go through our monad:
+               let len2 = checkLen exp pr 2 es
+                   len0 = checkLen exp pr 0 es
                case pr of
-                 L1.AddP -> do ensureEqualTy exp IntTy (tys !! 0)
+                 L1.AddP -> do len2
+                               ensureEqualTy exp IntTy (tys !! 0)
                                ensureEqualTy exp IntTy (tys !! 1)
                                return $ (IntTy,tstate)
-                 L1.SubP -> do ensureEqualTy exp IntTy (tys !! 0)
+                 L1.SubP -> do len2
+                               ensureEqualTy exp IntTy (tys !! 0)
                                ensureEqualTy exp IntTy (tys !! 1)
                                return $ (IntTy,tstate)
-                 L1.MulP -> do ensureEqualTy exp IntTy (tys !! 0)
+                 L1.MulP -> do len2
+                               ensureEqualTy exp IntTy (tys !! 0)
                                ensureEqualTy exp IntTy (tys !! 1)
                                return $ (IntTy,tstate)
-                 L1.EqSymP -> do ensureEqualTy exp IntTy (tys !! 0)
+                 L1.EqSymP -> do len2
+                                 ensureEqualTy exp IntTy (tys !! 0)
                                  ensureEqualTy exp IntTy (tys !! 1)
                                  return $ (IntTy,tstate)
-                 L1.EqIntP -> do ensureEqualTy exp IntTy (tys !! 0)
+                 L1.EqIntP -> do len2
+                                 ensureEqualTy exp IntTy (tys !! 0)
                                  ensureEqualTy exp IntTy (tys !! 1)
                                  return $ (IntTy,tstate)
-                 L1.MkTrue -> return $ (BoolTy,tstate)
-                 L1.MkFalse -> return $ (BoolTy,tstate)
+                 L1.MkTrue  -> do len0; return $ (BoolTy,tstate)
+                 L1.MkFalse -> do len0; return $ (BoolTy,tstate)
+
                  -- TODO: add rest of primops
                  _ -> throwError $ UnsupportedExpTC exp
 
@@ -488,6 +497,15 @@ combineTStates _exp (LocationTypeState ts1) (LocationTypeState ts2) =
 ensureEqual :: Eq a => Exp2 -> String -> a -> a -> TcM a
 ensureEqual exp str a b = if a == b then return a else throwError $ GenericTC str exp
 
+-- | Ensure that the number of arguments to an operation is correct.
+checkLen :: (Show op, Show arg) => Exp2 -> op -> Int -> [arg] -> TcM ()
+checkLen expr pr n ls =
+  if length ls == n
+  then return ()
+  else throwError $ GenericTC ("Wrong number of arguments to "++show pr++
+                               ".\nExpected "++show n++", received "
+                                ++show (length ls)++":\n  "++show ls) expr
+                          
 -- | Ensure that two types are equal.
 -- Includes an expression for error reporting.
 ensureEqualTy :: Exp2 -> Ty2 -> Ty2 -> TcM Ty2
