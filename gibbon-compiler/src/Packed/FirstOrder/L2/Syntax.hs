@@ -130,7 +130,10 @@ data ArrowTy t = ArrowTy { locVars :: [LRM]       -- ^ Universally-quantified lo
                          }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
+-- | The side-effect of evaluating a function.
 data Effect = Traverse LocVar
+              -- ^ The function, during its execution, traverses all
+              -- of the value living at this location.
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 -- instance Out Ty

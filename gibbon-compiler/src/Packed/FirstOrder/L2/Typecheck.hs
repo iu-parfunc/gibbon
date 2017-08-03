@@ -15,8 +15,12 @@
 -- |
 
 module Packed.FirstOrder.L2.Typecheck
-    ( tcExp, tcProg, TCError(..), RegionSet(..)
-    , LocationTypeState(..), ConstraintSet(..), Aliased, TcM )
+    ( tcExp, tcProg, TCError(..)
+    , RegionSet(..)
+    , LocationTypeState(..)
+    , ConstraintSet(..)
+    , LocConstraint(..)
+    , Aliased, TcM )
     where
 
 import Control.DeepSeq

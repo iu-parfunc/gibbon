@@ -45,6 +45,7 @@ module Packed.FirstOrder.L1.Syntax
     , add1ProgLetLeft
     , add1ProgLetRight
     , add1ProgChallenge
+    , add1ProgSharing
     )
     where
 
@@ -589,6 +590,15 @@ exadd1BodLetRight =
           [ VarE "x2", VarE "y2"])
       ]
 
+-- | Add1 program with let bindings, recurring in left-to-right order.
+add1ProgLetLeft :: Prog
+add1ProgLetLeft = mkAdd1Prog exadd1BodLetLeft Nothing
+
+-- | Add1 program with let bindings, recurring in right-to-left order.
+add1ProgLetRight :: Prog
+add1ProgLetRight = mkAdd1Prog exadd1BodLetRight Nothing
+
+    
 -- | An even more challenging case where there is an (apparent) data
 -- dependency where x2 depends on y2.
 add1ProgChallenge:: Prog
@@ -613,11 +623,14 @@ add1ProgChallenge =
          DataConE () "Node" [ VarE "x2", VarE "y2"])
       ]
 
-    
--- | Add1 program with let bindings, recurring in left-to-right order.
-add1ProgLetLeft :: Prog
-add1ProgLetLeft = mkAdd1Prog exadd1BodLetLeft Nothing
-
--- | Add1 program with let bindings, recurring in right-to-left order.
-add1ProgLetRight :: Prog
-add1ProgLetRight = mkAdd1Prog exadd1BodLetRight Nothing
+-- | This program is a challenge because a packed value flows to two destinations.
+add1ProgSharing:: Prog
+add1ProgSharing = Prog treeDD (M.fromList [("add1",mkAdd1Fun bod)]) Nothing
+  where
+   bod = 
+    CaseE (VarE "tr") $
+      [ ("Leaf", [("n",())], PrimAppE AddP [VarE "n", LitE 1])
+      , ("Node", [("x",()),("y",())],
+         LetE ("x2",[], Packed "Tree", AppE "add1" [] (VarE "x")) $
+         DataConE () "Node" [ VarE "x2", VarE "x2"])
+      ]
