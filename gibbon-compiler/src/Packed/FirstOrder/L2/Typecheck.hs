@@ -621,6 +621,7 @@ _absentAfter exp (LocationTypeState ls) l =
       Just (_m,False) -> return ()
       Just (_m,True) -> throwError $ GenericTC ("Alias of location " ++ (show l)) exp
 
+-- | Ensure that a location is not already "defined" by a start constraint.
 absentStart :: Exp2 -> ConstraintSet -> Region -> TcM ()
 absentStart exp (ConstraintSet cs) r = go $ S.toList cs
     where go ((StartOfC _l r'):cs) =
@@ -636,5 +637,4 @@ removeLoc exp (LocationTypeState ls) l =
     if M.member l ls
     then return $ LocationTypeState $ M.delete l ls
     else throwError $ GenericTC ("Cannot remove location " ++ (show l)) exp
-
 
