@@ -105,9 +105,11 @@ collectTopLevel _ unsupported = err ("collectTopLevel: Unsupported top-level thi
 
 --------------------------------------------------------------------------------
 
+pattern FstVar :: forall t t1 (t2 :: * -> * -> *). PreExp t2 t1 t
 pattern FstVar <- VarE (C.Var "fst")
   where FstVar = VarE (toVar "fst")
 
+pattern SndVar :: forall t t1 (t2 :: * -> * -> *). PreExp t2 t1 t
 pattern SndVar <- VarE (C.Var "snd")
   where SndVar = VarE (toVar "snd")
 

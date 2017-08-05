@@ -26,7 +26,6 @@ import           Data.IntMap as IM
 import           Data.Word
 import Data.Char
 import           GHC.Generics
-import           GHC.Stack (errorWithStackTrace)
 import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.GenericOps(Interp, interpNoLogs, interpWithStdout)
 import           Packed.FirstOrder.L1.Syntax as L1
@@ -294,17 +293,17 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                                  ++show (VCursor idx off)
               case S.viewl (S.drop off buf) of
                 SerInt n :< _ -> return $ VProd [VInt n, VCursor idx (off+1)]
-                S.EmptyL      -> errorWithStackTrace "L1.Interp: ReadInt on empty cursor/buffer."
+                S.EmptyL      -> internalError "L1.Interp: ReadInt on empty cursor/buffer."
                 oth :< _      ->
-                 error $"L1.Interp: ReadInt expected Int in buffer, found: "++show oth
+                 internalError $"L1.Interp: ReadInt expected Int in buffer, found: "++show oth
 
             p | L2.isExtendedPattern p ->
-               errorWithStackTrace$ "L1.Interp: Unhandled extended L2 pattern: "++ndoc p
+               internalError$ "L1.Interp: Unhandled extended L2 pattern: "++ndoc p
 
             AppE f _ b ->  do rand <- go env b
                               case M.lookup f fundefs of
                                Just FunDef{funArg=(vr,_),funBody} -> go (M.insert vr rand env) funBody
-                               Nothing -> errorWithStackTrace $ "L1.Interp: unbound function in application: "++ndoc x0
+                               Nothing -> error $ "L1.Interp: unbound function in application: "++ndoc x0
 
             (CaseE _ []) -> error$ "L1.Interp: CaseE with empty alternatives list: "++ndoc x0
 

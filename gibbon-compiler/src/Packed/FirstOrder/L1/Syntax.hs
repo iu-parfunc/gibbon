@@ -242,6 +242,7 @@ instance Out Prog
 -- type TEnv = Map Var Ty
 
 -- TEMP/FIXME: leaving out these for now.
+pattern SymTy :: forall a. UrTy a
 pattern SymTy = IntTy
 
 -- | The type rperesentation used in L1.
@@ -250,6 +251,7 @@ type Ty1 = UrTy ()
 type Ty = Ty1
 {-# DEPRECATED Ty "Moving away from generically named Ty/Exp/Prog" #-}
 
+pattern Packed :: TyCon -> UrTy ()
 pattern Packed c = PackedTy c ()
 
 -- | Types include boxed/pointer-based products as well as unpacked

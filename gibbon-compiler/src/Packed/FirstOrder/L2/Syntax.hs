@@ -514,6 +514,8 @@ revertToL1 = undefined -- TODO: Fix or remove this function
 -------------------------------------------------
 
 -- | Used to inline variable bindings while retaining their (former) name and type.
+pattern NamedVal :: forall t t1 (t2 :: * -> * -> *).
+                    Var -> t -> PreExp t2 t1 t -> PreExp t2 t1 t
 pattern NamedVal vr ty e <- LetE (vr,[],ty,e) (VarE (Var "NAMED_VAL_PATTERN_SYN"))
   where NamedVal vr ty e = LetE (vr,[],ty,e) (VarE "NAMED_VAL_PATTERN_SYN")
 -- pattern NamedVal vr ty e <- LetE (vr,ty,e) (VarE "NAMED_VAL") where
@@ -523,22 +525,28 @@ pattern NamedVal vr ty e <- LetE (vr,[],ty,e) (VarE (Var "NAMED_VAL_PATTERN_SYN"
 -- For use after cursorize:
 --------------------------------------------------------------------------------
 
+pattern NewBuffer :: forall t t1 (t2 :: * -> * -> *). PreExp t2 t1 t
 pattern NewBuffer <- AppE (Var "NewBuffer") [] (MkProdE [])
   where NewBuffer = AppE "NewBuffer" [] (MkProdE [])
 
 -- | output buffer space that is known not to escape the current function.
+pattern ScopedBuffer :: forall t t1 (t2 :: * -> * -> *). PreExp t2 t1 t
 pattern ScopedBuffer <- AppE (Var "ScopedBuffer") [] (MkProdE [])
   where ScopedBuffer = AppE "ScopedBuffer" [] (MkProdE [])
 
 -- | Tag writing is still modeled by DataConE.
+pattern WriteInt :: forall t t1 (t2 :: * -> * -> *).
+                    Var -> PreExp t2 t1 t -> PreExp t2 t1 t
 pattern WriteInt v e <- AppE (Var "WriteInt") [] (MkProdE [VarE v, e])
   where WriteInt v e = AppE "WriteInt" [] (MkProdE [VarE v, e])
 
 -- | One cursor in, (int,cursor') output.
+pattern ReadInt :: forall t t1 (t2 :: * -> * -> *). Var -> PreExp t2 t1 t
 pattern ReadInt v <- AppE (Var "ReadInt") [] (VarE v)
   where ReadInt v = AppE "ReadInt" [] (VarE v)
 
 -- | Add a constant offset to a cursor variable.
+pattern AddCursor :: forall t t1 (t2 :: * -> * -> *). Var -> Int -> PreExp t2 t1 t
 pattern AddCursor v i <- AppE (Var "AddCursor") [] (MkProdE [(VarE v), (LitE i)])
   where AddCursor v i = AppE "AddCursor" [] (MkProdE [(VarE v), (LitE i)])
 

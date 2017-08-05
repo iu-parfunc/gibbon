@@ -3,7 +3,6 @@
 module Packed.FirstOrder.Passes.InlineTriv (inlineTriv, inlineTrivExp) where
 
 
-import           GHC.Stack (errorWithStackTrace)
 import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.GenericOps (NoExt)
 import           Packed.FirstOrder.L1.Syntax as L1 hiding (mkProj)
@@ -100,7 +99,7 @@ inlineTrivExp _ddefs = go []
       L2.AddCursor v i -> withVar env v $ \v2 -> L2.AddCursor v2 i
 
       p | L2.isExtendedPattern p ->
-          errorWithStackTrace $ "InlineTriv: failed to handle extended L2 form: "
+          internalError $ "InlineTriv: failed to handle extended L2 form: "
           ++ndoc p++", env: "++ndoc env
 
 

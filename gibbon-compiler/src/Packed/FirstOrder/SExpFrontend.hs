@@ -8,6 +8,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
+{-# OPTIONS_GHC -fno-warn-missing-pattern-synonym-signatures #-}
 
 -- |  Parse an SExp representaton of our tree-walk language.
 
@@ -227,7 +228,7 @@ docasety s =
 
 pattern A s = RSAtom (HSIdent s)
 
-pattern L  a         = RSList a
+pattern L  a          = RSList a
 pattern Ls1 a         = RSList [a]
 pattern Ls2 a b       = RSList [A a, b]
 pattern Ls3 a b c     = RSList [A a, b, c]

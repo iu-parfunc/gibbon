@@ -20,6 +20,7 @@ import           Control.DeepSeq
 import           Control.Exception
 import           Control.Monad.State.Strict
 import           Data.Set as S hiding (map)
+import           Data.Monoid
 import           Options.Applicative
 import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.GenericOps(Interp, interpNoLogs)
@@ -104,6 +105,7 @@ data Config = Config
   , backend   :: Backend -- ^ Compilation backend used
   , stopAfter    :: String  -- ^ Stop the compilation pipeline after this pass
   }
+  deriving (Show,Read,Eq,Ord)
 
 -- | What input format to expect on disk.
 data Input = Haskell
@@ -126,7 +128,7 @@ data Mode = ToParse  -- ^ Parse and then stop
 
 -- | Compilation backend used
 data Backend = C | LLVM
-  deriving (Show)
+  deriving (Show,Read,Eq,Ord)
 
 defaultConfig :: Config
 defaultConfig =

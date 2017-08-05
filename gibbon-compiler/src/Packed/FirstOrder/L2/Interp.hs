@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-unused-imports #-}
+
 -- | Interpreter reducing L2 programs to values.
 
 module Packed.FirstOrder.L2.Interp
