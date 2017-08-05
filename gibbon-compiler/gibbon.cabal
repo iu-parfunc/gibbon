@@ -83,7 +83,9 @@ library
                 clock,
                 -- tslogger,
                 blaze-builder,
-                symbol
+                symbol,
+                srcloc
+
   if flag(LLVM_ENABLED)
     exposed-modules:
                     Packed.FirstOrder.Passes.LLVM.Codegen
