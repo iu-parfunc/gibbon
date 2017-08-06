@@ -19,27 +19,27 @@ import           Control.DeepSeq
 import           Control.Monad
 import           Control.Monad.Writer
 import           Control.Monad.State
-import qualified Data.ByteString.Lazy.Char8 as B
-import           Data.List as L
-import           Data.Map as M
+import           Data.Char
 import           Data.IntMap as IM
+import           Data.List as L
+import           Data.Loc
+import           Data.Map as M
+import           Data.Sequence (Seq, ViewL ((:<)), (|>))
 import           Data.Word
-import Data.Char
 import           GHC.Generics
+import           System.Clock
+import           System.IO.Unsafe (unsafePerformIO)
+import           Text.PrettyPrint.GenericPretty
+import qualified Data.ByteString.Lazy.Char8 as B
+import qualified Data.Sequence as S
+import qualified Data.Foldable as F
+
 import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.GenericOps(Interp, interpNoLogs, interpWithStdout)
 import           Packed.FirstOrder.L1.Syntax as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
-import           System.Clock
-import           System.IO.Unsafe (unsafePerformIO)
-import           Text.PrettyPrint.GenericPretty
-
-
-import           Data.Sequence (Seq, ViewL ((:<)), (|>))
-import qualified Data.Sequence as S
-import qualified Data.Foldable as F
-import           Packed.FirstOrder.L2.Syntax ( pattern WriteInt, pattern ReadInt, pattern NewBuffer
-                                               , pattern ScopedBuffer, pattern AddCursor)
+import Packed.FirstOrder.L2.Syntax ( pattern WriteInt, pattern ReadInt, pattern NewBuffer
+                                   , pattern ScopedBuffer, pattern AddCursor)
 
 -- TODO:
 -- It's a SUPERSET, but use the Value type from TargetInterp anyway:
@@ -218,14 +218,14 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
          error $ "L1.Interp: unfinished, need to read a packed file: "++show (file,ty)
      oth -> error $ "unhandled prim or wrong number of arguments: "++show oth
 
-  interp :: Exp1 -> WriterT Log (StateT Store IO) Value
+  interp :: L Exp1 -> WriterT Log (StateT Store IO) Value
   interp = go M.empty
     where
       {-# NOINLINE goWrapper #-}
       goWrapper !_ix env ex = go env ex
 
-      go :: ValEnv -> L1.Exp1 -> WriterT Log (StateT Store IO) Value
-      go env x0 =
+      go :: ValEnv -> L L1.Exp1 -> WriterT Log (StateT Store IO) Value
+      go env (L _ x0) =
           case x0 of
             Ext _ -> error "L1.Interp: Should not interpret empty extension point."
                       -- ^ Or... we could give this a void/empty-tuple value.
@@ -277,7 +277,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                                    store1 = IM.insert idx (Buffer S.empty) store0
                                put (Store store1)
                                return $ VCursor idx 0
-            ScopedBuffer -> go env NewBuffer -- ^ No operational difference.
+            ScopedBuffer -> go env (L NoLoc NewBuffer) -- ^ No operational difference.
             WriteInt v ex -> do let VCursor idx off = env # v
                                 VInt num <- go env ex
                                 Store store0 <- get
@@ -405,7 +405,7 @@ lookup3 k ls = go ls
 
 p1 :: Prog
 p1 = Prog emptyDD  M.empty
-          (Just (LetE ("x", [], IntTy, LitE 3) (VarE (toVar "x"))))
+          (Just (L NoLoc $ LetE ("x", [], IntTy, L NoLoc $ LitE 3) (L NoLoc $ VarE (toVar "x"))))
          -- IntTy
 
 main :: IO ()
