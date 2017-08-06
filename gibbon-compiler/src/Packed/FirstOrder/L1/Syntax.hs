@@ -162,7 +162,6 @@ instance Out a => Out (L a) where
   doc (L _ a) = doc a
   docPrec n (L _ a) = docPrec n a
 
-
 instance (Out l, Show l, Show d, Out d, Expression (e l d))
          => Expression (PreExp e l d) where
   type (TyOf (PreExp e l d))  = d
@@ -171,46 +170,6 @@ instance (Out l, Show l, Show d, Out d, Expression (e l d))
 instance Expression (PreExp e l d) => Expression (L (PreExp e l d)) where
   type (TyOf (L (PreExp e l d)))  = d
   type (LocOf (L (PreExp e l d))) = l
-
--- | Apply a function to the extension points only.
-mapExt :: (e1 l d -> e2 l d) -> PreExp e1 l d -> PreExp e2 l d
-mapExt fn = visitExp id fn id
-
--- | Apply a function to the locations only.
-mapLocs :: (e l2 d -> e l2 d) -> PreExp e l2 d -> PreExp e l2 d
-mapLocs fn = visitExp id fn id
-
-
--- | Apply a function to the locations, extensions, and
--- binder-decorations, respectively.
-visitExp :: forall l1 l2 e1 e2 d1 d2 .
-            (l1 -> l2) -> (e1 l1 d1 -> e2 l2 d2) -> (d1 -> d2) ->
-            PreExp e1 l1 d1 -> PreExp e2 l2  d2
-visitExp fl fe fd exp = fin
- where
-   L _ fin = go (L NoLoc exp)
-
-   go :: L (PreExp e1 l1  d1) -> L (PreExp e2 l2 d2)
-   go (L p ex) = L p $
-     case ex of
-       Ext  x        -> Ext (fe x)
-       VarE v        -> VarE v
-       LitE n        -> LitE n
-       LitSymE x     -> LitSymE x
-       AppE v l e    -> AppE v (L.map fl l) (go e)
-       PrimAppE p ls -> PrimAppE p $ L.map go ls
-       LetE (v,l,t,rhs) bod -> LetE (v,L.map fl l,fd t,go rhs) (go bod)
-       ProjE i e  -> ProjE i (go e)
-       CaseE e ls -> CaseE (go e)
-                     [ (c, [ (v,fl l) | (v,l) <- vs ],go er)
-                     | (c,vs,er) <- ls ]
-       MkProdE ls         -> MkProdE $ L.map go ls
-       DataConE loc k ls  -> DataConE (fl loc) k $ L.map go ls
-       TimeIt e t b       -> TimeIt (go e) (fd t) b
-       IfE a b c          -> IfE (go a) (go b) (go c)
-       MapE (v,t,rhs) bod -> MapE (v,t, go rhs) (go bod)
-       FoldE (v1,t1,r1) (v2,t2,r2) bod ->
-         FoldE (v1,fd t1,go r1) (v2,fd t2,go r2) (go bod)
 
 
 -- | Some of these primitives are (temporarily) tagged directly with
@@ -257,14 +216,14 @@ instance Out Prog
 pattern SymTy :: forall a. UrTy a
 pattern SymTy = IntTy
 
+pattern Packed :: TyCon -> UrTy ()
+pattern Packed c = PackedTy c ()
+
 -- | The type rperesentation used in L1.
 type Ty1 = UrTy ()
 
 type Ty = Ty1
 {-# DEPRECATED Ty "Moving away from generically named Ty/Exp/Prog" #-}
-
-pattern Packed :: TyCon -> UrTy ()
-pattern Packed c = PackedTy c ()
 
 -- | Types include boxed/pointer-based products as well as unpacked
 -- algebraic datatypes.  This data is parameterized to allow
@@ -294,6 +253,47 @@ data UrTy a =
                        -- It is a machine pointer that can point to any byte.
 
   deriving (Show, Read, Ord, Eq, Generic, NFData, Functor)
+
+
+-- | Apply a function to the extension points only.
+mapExt :: (e1 l d -> e2 l d) -> PreExp e1 l d -> PreExp e2 l d
+mapExt fn = visitExp id fn id
+
+-- | Apply a function to the locations only.
+mapLocs :: (e l2 d -> e l2 d) -> PreExp e l2 d -> PreExp e l2 d
+mapLocs fn = visitExp id fn id
+
+
+-- | Apply a function to the locations, extensions, and
+-- binder-decorations, respectively.
+visitExp :: forall l1 l2 e1 e2 d1 d2 .
+            (l1 -> l2) -> (e1 l1 d1 -> e2 l2 d2) -> (d1 -> d2) ->
+            PreExp e1 l1 d1 -> PreExp e2 l2  d2
+visitExp fl fe fd exp = fin
+ where
+   L _ fin = go (L NoLoc exp)
+
+   go :: L (PreExp e1 l1  d1) -> L (PreExp e2 l2 d2)
+   go (L p ex) = L p $
+     case ex of
+       Ext  x        -> Ext (fe x)
+       VarE v        -> VarE v
+       LitE n        -> LitE n
+       LitSymE x     -> LitSymE x
+       AppE v l e    -> AppE v (L.map fl l) (go e)
+       PrimAppE p ls -> PrimAppE p $ L.map go ls
+       LetE (v,l,t,rhs) bod -> LetE (v,L.map fl l,fd t,go rhs) (go bod)
+       ProjE i e  -> ProjE i (go e)
+       CaseE e ls -> CaseE (go e)
+                     [ (c, [ (v,fl l) | (v,l) <- vs ],go er)
+                     | (c,vs,er) <- ls ]
+       MkProdE ls         -> MkProdE $ L.map go ls
+       DataConE loc k ls  -> DataConE (fl loc) k $ L.map go ls
+       TimeIt e t b       -> TimeIt (go e) (fd t) b
+       IfE a b c          -> IfE (go a) (go b) (go c)
+       MapE (v,t,rhs) bod -> MapE (v,t, go rhs) (go bod)
+       FoldE (v1,t1,r1) (v2,t2,r2) bod ->
+         FoldE (v1,fd t1,go r1) (v2,fd t2,go r2) (go bod)
 
 
 voidTy :: Ty

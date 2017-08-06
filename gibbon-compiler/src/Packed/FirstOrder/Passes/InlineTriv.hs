@@ -2,13 +2,14 @@
 -- | Compiler pass to inline trivials.
 module Packed.FirstOrder.Passes.InlineTriv (inlineTriv, inlineTrivExp) where
 
+import           Data.Loc
+import           Prelude hiding (exp)
+import           Text.PrettyPrint.GenericPretty
 
 import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.GenericOps (NoExt)
 import           Packed.FirstOrder.L1.Syntax as L1 hiding (mkProj)
 import qualified Packed.FirstOrder.L2.Syntax as L2
-import           Prelude hiding (exp)
-import           Text.PrettyPrint.GenericPretty
 
 -- import Packed.FirstOrder.Passes.Flatten (typeExp, TEnv)
 
@@ -22,7 +23,7 @@ inlineTriv (Prog ddefs funs main) =
     inlineTrivFun (FunDef nam (narg,targ) ty bod) =
       FunDef nam (narg,targ) ty (inlineTrivExp ddefs bod)
 
-type MyExp l = PreExp NoExt l (UrTy l)
+type MyExp l = L (PreExp NoExt l (UrTy l))
 type Env l = [(Var, (UrTy l, MyExp l))]
 
 inlineTrivExp :: forall l a . (Out l, Show l)
@@ -32,9 +33,7 @@ inlineTrivExp _ddefs = go []
 
   -- Just a hook for debugging:
   go :: Env l -> MyExp l -> MyExp l
-  go env e  =
-      -- dbgTrace 7 ("Inline, processing with env:\n "++sdoc env++"\n exp: "++sdoc e) $
-      exp env e
+  go env e  = exp env e
 
   -- | Hree we go to some lengths to maintain the syntactic invariants
   -- for the extended L2 forms. The idea is that we can only reference
@@ -47,17 +46,17 @@ inlineTrivExp _ddefs = go []
   withVar env v fn =
     case lookup v env of
       Nothing        -> fn v
-      Just (_, (VarE v2)) -> fn v2
+      Just (_, (L _ (VarE v2))) -> fn v2
       -- fixme, need gensym:
-      Just (ty,oth)  -> LetE (v,[],ty,oth) $ fn v
+      Just (ty,oth)  -> L NoLoc $ LetE (v,[],ty,oth) $ fn v
 
-  exp :: Env l -> MyExp l -> PreExp NoExt l (UrTy l)
-  exp env e0 =
+  exp :: Env l -> MyExp l -> (MyExp l)
+  exp env (L p e0) = L p $
     case e0 of
       Ext _  -> e0
       VarE v -> case lookup v env of
                     Nothing -> VarE v
-                    Just (_,e) -> e
+                    Just (_,e) -> unLoc e
       LitE i -> LitE i
       LitSymE v -> LitSymE v
 
@@ -66,19 +65,20 @@ inlineTrivExp _ddefs = go []
 
       LetE (v,lvs,t,e') e ->
        case e' of
-         VarE v' -> case lookup v' env of
-                      Nothing -> go ((v,(t,e')):env) e
-                      Just pr -> go ((v,pr):env) e
+         L _ (VarE v') ->
+           case lookup v' env of
+             Nothing -> unLoc $ go ((v,(t,e')):env) e
+             Just pr -> unLoc $ go ((v,pr):env) e
          et | L1.isTriv et ->
                 -- Apply existing renames:
                 let et' = go env et in
-                go ((v,(t,et')):env) e
+                unLoc $ go ((v,(t,et')):env) e
          _ -> LetE (v,lvs,t,go env e') (go env e)
 
       IfE e1 e2 e3 -> IfE (go env e1) (go env e2) (go env e3)
 
       -- TODO: Type check here:
-      ProjE i e -> mkProj i $ go env e
+      ProjE i e -> unLoc $ mkProj i $ go env e
 
       MkProdE es -> MkProdE $ map (go env) es
       CaseE e mp ->
@@ -94,9 +94,10 @@ inlineTrivExp _ddefs = go []
 
 -- FIXME: Remove:
       L2.NewBuffer -> L2.NewBuffer
-      L2.ReadInt v     -> withVar env v $ \v2 -> L2.ReadInt v2
-      L2.WriteInt v e  -> withVar env v $ \v2 -> L2.WriteInt v2 (go env e)
-      L2.AddCursor v i -> withVar env v $ \v2 -> L2.AddCursor v2 i
+      L2.ReadInt v     -> unLoc $ withVar env v $ \v2 -> L NoLoc $ L2.ReadInt v2
+      L2.WriteInt v e  -> unLoc $ withVar env v $ \v2 -> L NoLoc $
+                                                         L2.WriteInt v2 (go env e)
+      L2.AddCursor v i -> unLoc $ withVar env v $ \v2 -> L NoLoc $ L2.AddCursor v2 i
 
       p | L2.isExtendedPattern p ->
           internalError $ "InlineTriv: failed to handle extended L2 form: "
@@ -106,5 +107,5 @@ inlineTrivExp _ddefs = go []
 -- Helpers which do opportunistic reduction:
 
 mkProj :: Int -> MyExp l -> MyExp l
-mkProj ix (MkProdE ls) = ls !! ix
-mkProj ix e = ProjE ix e
+mkProj ix (L p (MkProdE ls)) = ls !! ix
+mkProj ix e@(L p _) = L p $ ProjE ix e
