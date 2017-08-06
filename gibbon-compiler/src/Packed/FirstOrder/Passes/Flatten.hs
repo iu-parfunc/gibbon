@@ -18,11 +18,13 @@ module Packed.FirstOrder.Passes.Flatten
 -------------------------------------------------------------------------------
 
 import Control.Monad.State
+import Data.Loc
+import Text.PrettyPrint.GenericPretty (Out)
+
+import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L1.Syntax as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
-import Text.PrettyPrint.GenericPretty (Out)
-import Packed.FirstOrder.GenericOps
 
 -- import Packed.FirstOrder.L2.Syntax (isCursorTy)
 
@@ -56,27 +58,39 @@ flatten prg@(L1.Prog defs funs main) = do
 -- go in there too.  Everything would be simpler.  We would simply have to use other means
 -- to remember that L1 programs are first order.
 
-type Binds l e = (Var,[l],UrTy l, PreExp e l (UrTy l))
+type Binds l e = (Var,[l],UrTy l, L (PreExp e l (UrTy l)))
 type TEnv l = M.Map Var (UrTy l)
 
-instance (Out l, Show l, Flattenable (e l (UrTy l)))
-         => Flattenable (PreExp e l (UrTy l)) where
-  gFlattenGatherBinds :: DDefs (UrTy l) ->
-                         Env2 (UrTy l) ->
-                         PreExp e l (UrTy l) ->
-                         SyM ([Binds l e], PreExp e l (UrTy l))
-  gFlattenGatherBinds = exp
+instance Expression a => Expression (L a) where
 
-  gFlattenExp :: DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp e l (UrTy l) -> SyM (PreExp e l (UrTy l))
-  gFlattenExp ddefs env2 ex0 = do (b,e') <- exp ddefs env2 ex0
-                                  return $ flatLets b e'
-   where
+instance Flattenable a => Flattenable (L a) where
+
+instance (Flattenable (PreExp NoExt () Ty)) where
+
+--   gFlattenExp ddefs env (L p exp) = do
+--     exp' <- gFlattenExp ddefs env exp
+--     return $ L p exp'
+
+-- instance (Out l, Show l, Flattenable (e l (UrTy l)))
+--          => Flattenable (PreExp e l (UrTy l)) where
+
+--   gFlattenGatherBinds :: DDefs (UrTy l) ->
+--                          Env2 (UrTy l) ->
+--                          (PreExp e l (UrTy l)) ->
+--                          SyM ([Binds l e], (PreExp e l (UrTy l)))
+--   gFlattenGatherBinds = exp
+
+--   gFlattenExp :: DDefs (UrTy l) -> Env2 (UrTy l) -> (PreExp e l (UrTy l)) ->
+--                  SyM (PreExp e l (UrTy l))
+--   gFlattenExp ddefs env2 ex0 = do (b,e') <- exp ddefs env2 ex0
+--                                   return $ flatLets b e'
+--    where
 
 exp :: forall l e . (Show l, Show (e l (UrTy l)), Out l, Out (e l (UrTy l))) =>
-       DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp e l (UrTy l) ->
-       SyM ([Binds l e],PreExp e l (UrTy l))
-exp ddefs env2 e0 =
-     let triv :: String -> PreExp e l (UrTy l) -> SyM ([Binds l e], PreExp e l (UrTy l))
+       DDefs (UrTy l) -> Env2 (UrTy l) -> L (PreExp e l (UrTy l)) ->
+       SyM ([Binds l e],L (PreExp e l (UrTy l)))
+exp ddefs env2 (L sloc e0) =
+     let triv :: String -> L (PreExp e l (UrTy l)) -> SyM ([Binds l e], L (PreExp e l (UrTy l)))
          triv m e = -- Force something to be trivial
            if isTriv e
            then return ([],e)
@@ -84,11 +98,15 @@ exp ddefs env2 e0 =
                    let ty = typeExp (ddefs, env2) e
                    (bnds,e') <- exp ddefs env2 e
                    return ( bnds++[(tmp,[],ty,e')]
-                          , VarE tmp)
+                          , L NoLoc $ VarE tmp)
+
+         go :: L (PreExp e l (UrTy l)) -> SyM ([Binds l e], L (PreExp e l (UrTy l)))
          go = exp ddefs env2
+
          gols f ls m = do (bndss,ls') <- unzip <$> mapM (triv m) ls
                           return (concat bndss, f ls')
-     in
+
+     in fmap (\(a,b) -> (a, L sloc b)) $
      case e0 of
        -- (Ext ext)   -> do (bnds1,e1::e) <- gFlattenGatherBinds ddefs env2 ext
        --                   return ([],Ext e1)
@@ -110,52 +128,60 @@ exp ddefs env2 e0 =
        -- A fail-safe:
        _ | L2.isExtendedPattern e0 -> error$ "Unhandled extended L2 pattern: "++ndoc e0
 
-       (AppE f lvs arg)     -> do (b1,arg') <- triv "Ap" arg
-                                  return (b1, AppE f lvs arg')
-       (PrimAppE p ls)  -> gols (PrimAppE p)  ls "Prm"
-       (MkProdE ls)     -> gols  MkProdE      ls "Prd"
-       (DataConE loc k ls) -> gols (DataConE loc k) ls "Pkd"
+       AppE f lvs arg    -> do (b1,arg') <- triv "Ap" arg
+                               return (b1, AppE f lvs arg')
 
-       (LetE (v1,lv1,t1, (LetE (v2,lv2,t2,rhs2) rhs1)) bod) ->
-         go $ LetE (v2,lv2,t2,rhs2) $ LetE (v1,lv1,t1,rhs1) bod
+       PrimAppE p ls     -> gols (PrimAppE p)  ls "Prm"
+       MkProdE ls        -> gols  MkProdE      ls "Prd"
+       DataConE loc k ls -> gols (DataConE loc k) ls "Pkd"
 
-       (LetE (v,_,t,rhs) bod) -> do (bnd1,rhs') <- go rhs
-                                    (bnd2,bod') <- exp ddefs (extendVEnv v t env2) bod
-                                    return (bnd1++[(v,[],t,rhs')]++bnd2, bod')
-       (IfE a b c) -> do (b1,a') <- triv "If" a
-                         (b2,b') <- go b
-                         (b3,c') <- go c
-                         return (b1, IfE a' (flatLets b2 b') (flatLets b3 c'))
+       LetE (v1,lv1,t1, (L sloc' (LetE (v2,lv2,t2,rhs2) rhs1))) bod -> do
+         (bnd, rhs) <- go (L sloc' $
+                           LetE (v2,lv2,t2,rhs2) $
+                           L sloc' $
+                           LetE (v1,lv1,t1,rhs1) bod)
+         return (bnd, unLoc rhs)
+
+       LetE (v,_,t,rhs) bod -> do (bnd1,rhs') <- go rhs
+                                  (bnd2,bod') <- exp ddefs (extendVEnv v t env2) bod
+                                  return (bnd1++[(v,[],t,rhs')]++bnd2, unLoc bod')
+
+       IfE a b c -> do (b1,a') <- triv "If" a
+                       (b2,b') <- go b
+                       (b3,c') <- go c
+                       return (b1, IfE a' (flatLets b2 b') (flatLets b3 c'))
        -- This can happen anywhere, but doing it here prevents
        -- unneccessary bloat where we can ill afford it:
-       (ProjE ix l@(MkProdE ls)) ->
-           dbgTrace 5 (" [flatten] Reducing project-of-tuple, index "++show ix++" expr:  "++take 80 (show l)++"...") $
-           go (ls !! ix)
-       (ProjE ix e) -> do (b,e') <- triv "Prj" e
-                          return (b, ProjE ix e')
-       (CaseE e ls) -> do (b,e') <- triv "Cse" e
-                          ls' <- forM ls $ \ (k,vrs,rhs) -> do
-                                   let tys = lookupDataCon ddefs k
-                                       vrs' = map fst vrs
-                                       env2' = extendsVEnv (M.fromList (zip vrs' tys)) env2
-                                   (b2,rhs') <- exp ddefs env2' rhs
-                                   return (k,vrs, flatLets b2 rhs')
-                          return (b, CaseE e' ls')
+       ProjE ix l@(L sloc' (MkProdE ls)) -> do
+         -- dbgTrace 5 (" [flatten] Reducing project-of-tuple, index "++show ix++
+         --             " expr:  "++take 80 (show l)++"...")
+         (bnd,rhs) <- go (ls !! ix)
+         return (bnd, unLoc rhs)
+       ProjE ix e -> do (b,e') <- triv "Prj" e
+                        return (b, ProjE ix e')
+       CaseE e ls -> do (b,e') <- triv "Cse" e
+                        ls' <- forM ls $ \ (k,vrs,rhs) -> do
+                                 let tys = lookupDataCon ddefs k
+                                     vrs' = map fst vrs
+                                     env2' = extendsVEnv (M.fromList (zip vrs' tys)) env2
+                                 (b2,rhs') <- exp ddefs env2' rhs
+                                 return (k,vrs, flatLets b2 rhs')
+                        return (b, CaseE e' ls')
        -- TimeIt is treated like a conditional.  Don't lift out of it:
-       (TimeIt e _t b) -> do (bnd,e') <- go e
-                             return ([], TimeIt (flatLets bnd e') (typeExp (ddefs, env2) e) b)
-       (MapE _ _)    -> error "FINISHLISTS"
-       (FoldE _ _ _) -> error "FINISHLISTS"
+       TimeIt e _t b -> do (bnd,e') <- go e
+                           return ([], TimeIt (flatLets bnd e') (typeExp (ddefs, env2) e) b)
+       MapE _ _      -> error "FINISHLISTS"
+       FoldE _ _ _   -> error "FINISHLISTS"
 
 
 -- | Helper function that lifts out Lets on the RHS of other Lets.
 --   Absolutely requires unique names.
-mkLetE :: (Var, [l], d, PreExp e l d) -> PreExp e l d -> PreExp e l d
-mkLetE (vr,lvs,ty,(L1.LetE bnd e)) bod = mkLetE bnd $ mkLetE (vr,lvs,ty,e) bod
-mkLetE bnd bod = L1.LetE bnd bod
+mkLetE :: (Var, [l], d, L (PreExp e l d)) -> L (PreExp e l d) -> L (PreExp e l d)
+mkLetE (vr,lvs,ty,(L _ (L1.LetE bnd e))) bod = mkLetE bnd $ mkLetE (vr,lvs,ty,e) bod
+mkLetE bnd bod = L NoLoc $ L1.LetE bnd bod
 
 -- | Alternative version of L1.mkLets that also flattens
-flatLets :: [(Var,[l],d,PreExp e l d)] -> PreExp e l d -> PreExp e l d
+flatLets :: [(Var,[l],d,L (PreExp e l d))] -> L (PreExp e l d) -> L (PreExp e l d)
 flatLets [] bod = bod
 flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
 
@@ -165,56 +191,60 @@ flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
 
 -- | Recover the type of an expression in a type environment.
 typeExp :: forall l e . (Show l, Show (e l (UrTy l)), Out l, Out (e l (UrTy l))) =>
-           (DDefs (UrTy l), Env2 (UrTy l)) -> PreExp e l (UrTy l) -> (UrTy l)
-typeExp (_dd,env2) (L1.VarE v) =
---    M.findWithDefault (L1.Packed "CURSOR_TY") v env
-   M.findWithDefault (error ("Cannot find type of variable " ++ show v)) v (vEnv env2)
+           (DDefs (UrTy l), Env2 (UrTy l)) -> L (PreExp e l (UrTy l)) -> (UrTy l)
+typeExp (dd,env2) (L _ exp) =
+  case exp of
+    L1.LitE _       -> L1.IntTy
+    L1.LitSymE _    -> L1.SymTy
+    L1.AppE v _ _   -> snd $ fEnv env2 # v
+    L1.VarE v       -> M.findWithDefault
+                       (error $ "Cannot find type of variable " ++ show v)
+                       v (vEnv env2)
 
-typeExp (_dd,_env2) (L1.LitE _i)       = L1.IntTy
-typeExp _           (L1.LitSymE _)     = L1.SymTy
-typeExp (_dd,env2) (L1.AppE v _lvs _e) = snd $ fEnv env2 # v
+    L1.PrimAppE p _ ->
+      case p of
+        L1.AddP    -> L1.IntTy
+        L1.SubP    -> L1.IntTy
+        L1.MulP    -> L1.IntTy
+        L1.EqIntP  -> L1.BoolTy
+        L1.EqSymP  -> L1.BoolTy
+        L1.MkTrue  -> L1.BoolTy
+        L1.MkFalse -> L1.BoolTy
+        L1.Gensym  -> L1.SymTy
+        L1.DictInsertP ty -> L1.SymDictTy (noLocsHere ty)
+        L1.DictLookupP ty -> noLocsHere ty
+        L1.DictEmptyP  ty -> L1.SymDictTy (noLocsHere ty)
+        L1.DictHasKeyP ty -> L1.SymDictTy (noLocsHere ty)
+        L1.SizeParam      -> L1.IntTy
+        L1.ReadPackedFile _ _ ty -> (noLocsHere ty)
+        _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
 
-typeExp (_,_) (L1.PrimAppE p _es) =
-    case p of
-      L1.AddP -> L1.IntTy
-      L1.SubP -> L1.IntTy
-      L1.MulP -> L1.IntTy
-      L1.EqIntP -> L1.BoolTy
-      L1.EqSymP -> L1.BoolTy
-      L1.MkTrue -> L1.BoolTy
-      L1.MkFalse -> L1.BoolTy
-      L1.Gensym -> L1.SymTy
-      L1.DictInsertP ty -> L1.SymDictTy (noLocsHere ty)
-      L1.DictLookupP ty -> noLocsHere ty
-      L1.DictEmptyP ty -> L1.SymDictTy (noLocsHere ty)
-      L1.DictHasKeyP ty -> L1.SymDictTy (noLocsHere ty)
-      L1.SizeParam -> L1.IntTy
-      L1.ReadPackedFile _ _ ty -> (noLocsHere ty)
-      _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
+    L1.LetE (v,_,t,_) e -> typeExp (dd,extendVEnv v t env2) e
+    L1.IfE _ e _        -> typeExp (dd,env2) e
+    L1.MkProdE es       -> L1.ProdTy $ map (typeExp (dd,env2)) es
 
-typeExp (dd,env2) (L1.LetE (v,_,t,_) e) = typeExp (dd,extendVEnv v t env2) e
-typeExp (dd,env2) (L1.IfE _ e _) = typeExp (dd,env2) e
-typeExp (dd,env2) e0@(L1.ProjE i e) =
-    case typeExp (dd,env2) e of
-     (L1.ProdTy tys) -> tys !! i
-     oth -> error $ "typeExp: Cannot project fields from this type: "++show oth
-                  ++"\nExpression:\n  "++sdoc e0
-                  ++"\nEnvironment:\n  "++sdoc (vEnv env2)
-typeExp (dd,env2) (L1.MkProdE es) =
-    L1.ProdTy $ map (typeExp (dd,env2)) es
-typeExp (dd,env2) (L1.CaseE _e mp) =
-    let (c,args,e) = head mp
-        args' = map fst args
-    in typeExp (dd, extendsVEnv (M.fromList (zip args' (lookupDataCon dd c))) env2) e
+    L1.DataConE l c _   -> L1.PackedTy (getTyOfDataCon dd c) l
+    L1.TimeIt e _ _     -> typeExp (dd,env2) e
+    L1.MapE _ e         -> typeExp (dd,env2) e
+    L1.FoldE _ _ e      -> typeExp (dd,env2) e
+    Ext ex              -> error $ "typeExp: FIXME, internal error. "
+                           ++ "Cannot type extension" ++ show ex
 
-typeExp (dd,_) (L1.DataConE l c _es) = L1.PackedTy (getTyOfDataCon dd c) l
+    L1.ProjE i e ->
+      case typeExp (dd,env2) e of
+        (L1.ProdTy tys) -> tys !! i
+        oth -> error$ "typeExp: Cannot project fields from this type: "++show oth
+               ++"\nExpression:\n  "++ sdoc exp
+               ++"\nEnvironment:\n  "++sdoc (vEnv env2)
 
-typeExp (dd,env2) (L1.TimeIt e _ _) = typeExp (dd,env2) e
-typeExp (dd,env2) (L1.MapE _ e)     = typeExp (dd,env2) e
-typeExp (dd,env2) (L1.FoldE _ _ e)  = typeExp (dd,env2) e
+    L1.CaseE _ mp ->
+      let (c,args,e) = head mp
+          args' = map fst args
+      in typeExp (dd, extendsVEnv
+                   (M.fromList (zip args' (lookupDataCon dd c))) env2)
+         e
 
-typeExp (_,_) (Ext ex) = error $ "typeExp: FIXME, internal error.  Cannot type extension: " ++ show ex
--- typeExp (_,_) ex = error $ "typeExp: " ++ show ex ++ " not implemented"
+    ex -> error $ "typeExp: " ++ show ex ++ " not implemented"
 
 
 -- This crops up in the types for primitive operations.  Can we remove the need for this?

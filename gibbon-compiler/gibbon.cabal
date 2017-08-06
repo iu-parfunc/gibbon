@@ -33,7 +33,7 @@ library
                   Packed.FirstOrder.SExpFrontend
                   Packed.FirstOrder.Passes.Freshen
                   Packed.FirstOrder.Passes.Flatten
-                  Packed.FirstOrder.Passes.Flatten2
+                  -- Packed.FirstOrder.Passes.Flatten2
                   Packed.FirstOrder.Passes.InlineTriv
                   Packed.FirstOrder.Passes.InferLocations
 --                  Packed.FirstOrder.Passes.InferEffects

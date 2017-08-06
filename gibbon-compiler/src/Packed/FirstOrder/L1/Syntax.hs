@@ -67,8 +67,8 @@ import Packed.FirstOrder.GenericOps
 -- datatype.  For running a pass benchmark, main will be Nothing and
 -- we will expect a "benchmark" function definition which consumes an
 -- appropriate packed AST datatype.
-data Prog = Prog { ddefs    :: DDefs Ty
-                 , fundefs  :: FunDefs Ty (L Exp1)
+data Prog = Prog { ddefs    :: DDefs Ty1
+                 , fundefs  :: FunDefs Ty1 (L Exp1)
                  , mainExp  :: Maybe (L Exp1)
 --                 , constraints :: [Constraint]
                  }
@@ -168,6 +168,9 @@ instance (Out l, Show l, Show d, Out d, Expression (e l d))
   type (TyOf (PreExp e l d))  = d
   type (LocOf (PreExp e l d)) = l
 
+instance Expression (PreExp e l d) => Expression (L (PreExp e l d)) where
+  type (TyOf (L (PreExp e l d)))  = d
+  type (LocOf (L (PreExp e l d))) = l
 
 -- | Apply a function to the extension points only.
 mapExt :: (e1 l d -> e2 l d) -> PreExp e1 l d -> PreExp e2 l d
