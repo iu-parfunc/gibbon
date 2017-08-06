@@ -24,17 +24,16 @@ module Packed.FirstOrder.L2.Typecheck
     where
 
 import Control.DeepSeq
+import Control.Monad.Except
+import Data.Set as S
+import Data.List as L
+import Data.Loc
+import Data.Map as M
+import Text.PrettyPrint.GenericPretty
+
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L2.Syntax as L2
 import qualified Packed.FirstOrder.L1.Syntax as L1
-import Data.Set as S
-import Data.Map as M
-import Data.List as L
-
--- import Data.Maybe as Maybe
-import Text.PrettyPrint.GenericPretty
-import Control.Monad.Except
--- import Debug.Trace
 
 -- | Constraints on locations.  Used during typechecking.  Roughly analogous to LocExp.
 data LocConstraint = StartOfC LocVar Region -- ^ Location is equal to start of this region.
@@ -110,9 +109,9 @@ type TcM a = Except TCError a
 tcExp :: DDefs Ty2 -> Env2 Ty2 -> NewFuns
       -> ConstraintSet -> RegionSet -> LocationTypeState -> Exp2
       -> TcM (Ty2, LocationTypeState)
-tcExp ddfs env funs constrs regs tstatein exp =
+tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
 
-    case exp of
+    case ex of
 
       VarE v ->
           -- Look up a variable in the environment
@@ -142,7 +141,9 @@ tcExp ddfs env funs constrs regs tstatein exp =
                PackedTy _ tyl ->
                  if S.member tyl $ S.fromList ls
                  then return ()
-                 else throwError $ GenericTC ("Packed argument location expected: " ++ show tyl) exp
+                 else throwError $ GenericTC ("Packed argument location expected: "
+                                              ++ show tyl)
+                                   exp
                _ -> return () -- TODO: handle tuples with some packed data
 
              ensureEqualTyNoLoc exp ty arrIn
@@ -298,7 +299,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  AfterVariableLE x l1 -> do
 
                           r <- getRegion exp constrs l1
-                          (xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ VarE x
+                          (xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ L NoLoc $ VarE x
                           ensurePackedLoc exp xty l1
                           let tstate2 = extendTS v (Output,True) $ setAfter l1 tstate1
                           let constrs1 = extendConstrs (InRegionC v r) $
@@ -312,7 +313,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
       Ext (RetE _ls v) -> do
 
                -- skip returned locations for now
-               recur tstatein $ VarE v
+               recur tstatein $ L NoLoc $ VarE v
 
       hole -> error $ "FINISHME: L2.tcExp " ++ show hole
 
@@ -507,7 +508,7 @@ checkLen expr pr n ls =
   else throwError $ GenericTC ("Wrong number of arguments to "++show pr++
                                ".\nExpected "++show n++", received "
                                 ++show (length ls)++":\n  "++show ls) expr
-                          
+
 -- | Ensure that two types are equal.
 -- Includes an expression for error reporting.
 ensureEqualTy :: Exp2 -> Ty2 -> Ty2 -> TcM Ty2
@@ -637,4 +638,3 @@ removeLoc exp (LocationTypeState ls) l =
     if M.member l ls
     then return $ LocationTypeState $ M.delete l ls
     else throwError $ GenericTC ("Cannot remove location " ++ (show l)) exp
-
