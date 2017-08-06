@@ -92,7 +92,7 @@ progToEnv Prog{fundefs} =
 type Exp1 = Exp
 
 -- | Deprecated alias for Exp1
-type Exp = PreExp NoExt () Ty
+type Exp = PreExp NoExt () Ty1
 {-# DEPRECATED Exp "use Exp1 instead" #-}
 
 -- Shorthand to make the below definition more readable.
