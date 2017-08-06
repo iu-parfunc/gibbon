@@ -34,13 +34,15 @@
 module Packed.FirstOrder.Passes.RouteEnds2
     ( routeEnds ) where
 
+import Data.List as L
+import Data.Loc
+import Data.Map as M
+import Data.Set as S
+import Control.Monad
+
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L2.Syntax as L2
 import qualified Packed.FirstOrder.L1.Syntax as L1
-import Data.Set as S
-import Data.Map as M
-import Data.List as L
-import Control.Monad
 
 
 -- | Data structure that accumulates what we know about the relationship
@@ -145,21 +147,23 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
     -- 4. a map of var to location
     -- 5. a map from location to location after it
     -- 6. the expression to process
-    exp :: NewFuns -> [LocVar] -> EndOfRel -> M.Map Var LocVar -> M.Map LocVar LocVar -> Exp2 -> SyM Exp2
-    exp fns retlocs eor lenv afterenv e =
-
+    exp :: NewFuns -> [LocVar] -> EndOfRel -> M.Map Var LocVar ->
+           M.Map LocVar LocVar -> Exp2 -> SyM Exp2
+    exp fns retlocs eor lenv afterenv (L p e) = fmap (L p) $
         case e of
 
           -- Variable case, *should* be the base case assuming our expression was
           -- properly put in ANF.
           -- We generate our RetE form here. By this point we should know the ends
           -- of each of the locactions in relocs.
-          VarE v -> mkRet retlocs $ VarE v
+
+          -- we fmap location at the top-level case expression
+          VarE v -> fmap unLoc $ mkRet retlocs $ L NoLoc $ VarE v
 
           -- This is the most interesting case: a let bound function application.
           -- We need to update the let binding's extra location binding list with
           -- the end witnesses returned from the function.
-          LetE (v,_ls,ty,(AppE f lsin e1)) e2 -> do
+          LetE (v,_ls,ty,(L p' (AppE f lsin e1))) e2 -> do
 
                  let fty = funtype f
                      rets = S.fromList $ locRets fty
@@ -184,16 +188,17 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                  -- an end witness that is equivalent to the after location of something.
                  let wrapBody e ((l1,l2):ls) = case M.lookup l1 afterenv of
                                                  Nothing -> wrapBody e ls
-                                                 Just la -> wrapBody (Ext (LetLocE la (FromEndLE l2) e)) ls
+                                                 Just la -> wrapBody (L p' (Ext (LetLocE la (FromEndLE l2) e))) ls
                      wrapBody e [] = e
 
                  newls <- foldM handleTravList [] travlist
                  let eor' = L.foldr mkEor eor newls
                  let outlocs = L.map snd newls
                  e2' <- exp fns retlocs eor' lenv' afterenv e2
-                 return $ LetE (v,outlocs,ty,AppE f lsin e1) (wrapBody e2' newls)
+                 return $ LetE (v,outlocs,ty,L NoLoc $ AppE f lsin e1)
+                               (wrapBody e2' newls)
 
-          CaseE (VarE x) brs -> do
+          CaseE (L p' (VarE x)) brs -> do
                  -- We will need to gensym while processing the case clauses, so
                  -- it has to be in the SyM monad
                  brs' <- forM brs $ \(dc, vls, e) -> do
@@ -218,12 +223,12 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                                     l2 <- gensym "jump"
                                     let eor' = mkEnd l1 l2 eor
                                         e' = Ext $ LetLocE l2 (AfterConstantLE 1 l1) e
-                                    return (eor',e')
+                                    return (eor', L NoLoc e')
 
                            (eor'',e') <- foldM handleLoc (eor',e) $ zip (L.map snd vls) argtys
                            e'' <- exp fns retlocs eor'' lenv afterenv' e'
                            return (dc, vls, e'')
-                 return $ CaseE (VarE x) brs'
+                 return $ CaseE (L NoLoc $ VarE x) brs'
 
 
 
@@ -240,8 +245,9 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
           AppE v ls e -> do
                  v' <- gensym "tailapp"
                  let ty = arrOut $ funtype v
-                     e' = LetE (v',[],ty,AppE v ls e) (VarE v')
-                 exp fns retlocs eor lenv afterenv e'
+                     e' = LetE (v',[],ty,L NoLoc $ AppE v ls e) (L NoLoc $ VarE v')
+                 -- we fmap location at the top-level case expression
+                 fmap unLoc $ exp fns retlocs eor lenv afterenv (L NoLoc e')
 
           -- Same as above. This could just fail, instead of trying to repair
           -- the program.
@@ -254,8 +260,9 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                             L1.MkTrue -> BoolTy
                             L1.MkFalse -> BoolTy
                             _ -> error "fixme, PrimAppE in tail"
-                     e' = LetE (v',[],ty,PrimAppE pr es) (VarE v')
-                 exp fns retlocs eor lenv afterenv e'
+                     e' = LetE (v',[],ty,L NoLoc $ PrimAppE pr es) (L NoLoc $ VarE v')
+                 -- we fmap location at the top-level case expression
+                 fmap unLoc $ exp fns retlocs eor lenv afterenv (L NoLoc e')
 
           -- Less exciting LetE case, just recur on the body with an updated lenv
           LetE (v,ls,PackedTy n l,e1) e2 -> do
@@ -282,8 +289,9 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
           DataConE l dc es -> do
                  v' <- gensym "taildc"
                  let ty = PackedTy (getTyOfDataCon ddefs dc) l
-                     e' = LetE (v',[],ty,DataConE l dc es) (VarE v')
-                 exp fns retlocs eor lenv afterenv e'
+                     e' = LetE (v',[],ty, L NoLoc $ DataConE l dc es)
+                               (L NoLoc $ VarE v')
+                 fmap unLoc $ exp fns retlocs eor lenv afterenv (L NoLoc e')
 
           LitE i -> return $ LitE i
 
@@ -314,12 +322,13 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
 
 
         where  mkRet :: [LocVar] -> Exp2 -> SyM Exp2
-               mkRet ls (VarE v) = let ends = L.map (\l -> findEnd l eor) ls
-                                   in return $ Ext (RetE ends v)
-               mkRet _ e = error $ "Expected variable reference in tail call, got " ++ (show e)
+               mkRet ls (L p (VarE v)) =
+                 let ends = L.map (\l -> findEnd l eor) ls
+                 in return $ L p $ Ext (RetE ends v)
+               mkRet _ e = error $ "Expected variable reference in tail call, got "
+                           ++ (show e)
 
                funtype :: Var -> ArrowTy Ty2
                funtype v = case M.lookup v fns of
                              Nothing -> error $ "Function " ++ (show v) ++ " not found"
                              Just fundef -> funty fundef
-
