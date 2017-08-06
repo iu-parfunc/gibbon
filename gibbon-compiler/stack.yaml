@@ -1,9 +1,8 @@
-
 # RRN: having problems with my ubuntu 6.10 laptop on LTS 7.  Leaving this
 # at lts 6 for now.  It shouldn't really matter either way.
-resolver: lts-6.23
-# resolver: lts-7.13
-# resolver: lts-8.6
+# resolver: lts-6.23
+resolver: lts-9.0
+
 packages:
 - location:
     git: https://github.com/llvm-hs/llvm-hs
@@ -16,17 +15,19 @@ packages:
 
 extra-deps:
 - s-cargot-0.1.1.1
-# - tslogger-0.1.0.0
-# - async-2.0.2
 - llvm-general-pure-3.9.0.0
 - llvm-general-3.9.0.0
+- GenericPretty-1.2.1
+
+# TODO(cskksc): Update this to >= 1.18.0
+- haskell-src-exts-1.17.1
+- haskell-src-meta-0.7.0.1
+- syb-0.6
+- tasty-th-0.1.4
+
 
 flags: {}
 extra-package-dbs: []
-
-# Temp, for tslogger above:
-# allow-newer: true
-
 
 
 # Run with, e.g.:
@@ -39,6 +40,7 @@ nix:
   # nixos-unstable snapshot:
   # path: ["nixpgs=https://github.com/NixOS/nixpkgs-channels/archive/1e1472ed93e1256dfdac4908ae8edcb90ceff21c.tar.gz"]
   # shell-file: shell.nix
+
 system-ghc: true
 
 docker:

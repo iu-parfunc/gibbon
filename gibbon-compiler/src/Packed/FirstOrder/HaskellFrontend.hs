@@ -4,7 +4,7 @@
 
 module Packed.FirstOrder.HaskellFrontend
   ( parseFile
-  -- * Everething else could remain internal:
+  -- * Everything else could remain internal:
   , desugarModule
   , desugarExp
   , desugarTopType
@@ -16,12 +16,13 @@ module Packed.FirstOrder.HaskellFrontend
 import Control.Monad (forM)
 import Data.Either (partitionEithers)
 import Data.Foldable (foldrM)
+import Data.Loc
+import Data.Maybe (catMaybes)
+import Language.Haskell.Exts.Parser
+import Language.Haskell.Exts.Syntax as H
 import qualified Data.Map as M
 import qualified Data.List as L
-import Data.Maybe (catMaybes)
 
-import Language.Haskell.Exts.Parser -- (parse)
-import Language.Haskell.Exts.Syntax as H
 import Packed.FirstOrder.L1.Syntax as L1
 import Packed.FirstOrder.Common as C
 
@@ -36,41 +37,44 @@ err = Left
 
 desugarModule :: H.Module -> Ds Prog
 desugarModule (H.Module _ _ _ _ _ _ decls) = do
-    -- since top-level function types and their types can't be declared in
-    -- single top-level declaration we first collect types and then collect
-    -- definition
-    fun_tys <- (M.fromList . catMaybes) <$> mapM collectTopFunTy decls
+  -- since top-level function types and their types can't be declared in
+  -- single top-level declaration we first collect types and then collect
+  -- definition
+  funTys <- (M.fromList . catMaybes) <$> mapM collectTopFunTy decls
 
-    (data_decls, fun_decls) <-
-      (partitionEithers . catMaybes) <$> mapM (collectTopLevel fun_tys) decls
+  (dataDecls, fun_decls) <-
+    (partitionEithers . catMaybes) <$> mapM (collectTopLevel funTys) decls
 
-    let
-      data_map = M.fromList (map (\def -> (tyName def, def))  data_decls)
-      fun_map  = M.fromList (map (\def -> (funName def, def)) fun_decls)
+  let
+    dataMap = M.fromList (map (\def -> (tyName def, def))  dataDecls)
+    funMap  = M.fromList (map (\def -> (funName def, def)) fun_decls)
 
-      (main_fn, fun_map_no_main) =
-        -- ugh, no alterF in this 'containers' version
-        ( funBody <$> M.lookup (toVar "main") fun_map
-        , M.delete (toVar "main") fun_map
-        )
+    (mainFn, funMapNoMain) =
+      -- ugh, no alterF in this 'containers' version
+      ( funBody <$> M.lookup (toVar "main") funMap
+      , M.delete (toVar "main") funMap
+      )
 
-    return (Prog data_map fun_map_no_main main_fn)
+  return (Prog dataMap funMapNoMain mainFn)
 
 collectTopFunTy :: H.Decl -> Ds (Maybe (Var, TopTy))
-collectTopFunTy (TypeSig _ [n] ty) = Just <$> ((toVar . name_to_str) n ,) <$> desugarTopType ty
-collectTopFunTy ty@TypeSig{} = err ("Unsupported top-level type declaration: " ++ show ty)
-collectTopFunTy FunBind{} = return Nothing
-collectTopFunTy DataDecl{} = return Nothing
-collectTopFunTy unsupported = err ("collectTopFunTy: Unsupported top-level thing: " ++ show unsupported)
+collectTopFunTy decl =
+  case decl of
+    TypeSig _ [n] ty -> Just <$> ((toVar . nameToStr) n ,) <$> desugarTopType ty
+    ty@TypeSig{}     -> err ("Unsupported top-level type declaration: " ++ show ty)
+    FunBind{}        -> return Nothing
+    DataDecl{}       -> return Nothing
+    unsupported      -> err ("collectTopFunTy: Unsupported top-level thing: " ++ show unsupported)
 
-collectTopLevel :: M.Map Var TopTy -> H.Decl -> Ds (Maybe (Either (DDef Ty1) (FunDef Ty1 L1.Exp1)))
+
+collectTopLevel :: M.Map Var TopTy -> H.Decl -> Ds (Maybe (Either (DDef Ty1) (FunDef Ty1 (L L1.Exp1))))
 
 collectTopLevel _ TypeSig{} = return Nothing
 
-collectTopLevel fun_tys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) Nothing]) = do
-    let fname'      = (toVar . name_to_str) fname
+collectTopLevel funTys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) Nothing]) = do
+    let fname'      = (toVar . nameToStr) fname
         fun_ty      = M.findWithDefault (error ("Can't find function in type env: " ++ (fromVar fname')))
-                      fname' fun_tys
+                      fname' funTys
     [arg']   <- mapM collectArg args
     -- Limiting to one argument for now:
     [arg_ty] <- mapM (getArgTy fun_ty) [ 1 .. length [arg'] ]
@@ -78,7 +82,7 @@ collectTopLevel fun_tys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) 
     return (Just (Right (FunDef fname' (arg',arg_ty) (getRetTy fun_ty) rhs')))
   where
     collectArg :: Pat -> Ds Var
-    collectArg (PVar n) = return $ (toVar . name_to_str) n
+    collectArg (PVar n) = return $ (toVar . nameToStr) n
     collectArg arg      = err ("Unsupported function arg: " ++ show arg)
 
     getArgTy :: TopTy -> Int -> Ds Ty1
@@ -90,12 +94,12 @@ collectTopLevel fun_tys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) 
     getRetTy (T1 t)     = t
 
 collectTopLevel _ (DataDecl _ DataType [] ty_name [] cons []) = do
-    let ty_name' = name_to_str ty_name
+    let ty_name' = nameToStr ty_name
     constrs <- mapM collectConstr cons
     return (Just (Left (DDef (toVar ty_name') constrs)))
   where
-    collectConstr (QualConDecl _ [] [] (ConDecl con_name arg_tys)) =
-      ( name_to_str con_name, ) <$>
+    collectConstr (QualConDecl _ [] [] (ConDecl conName arg_tys)) =
+      ( nameToStr conName, ) <$>
       L.map ( False, ) <$>
       mapM desugarType arg_tys
     collectConstr unsupported =
@@ -105,22 +109,24 @@ collectTopLevel _ unsupported = err ("collectTopLevel: Unsupported top-level thi
 
 --------------------------------------------------------------------------------
 
-pattern FstVar <- VarE (C.Var "fst")
-  where FstVar = VarE (toVar "fst")
+pattern FstVar :: forall t t1 (t2 :: * -> * -> *). L (PreExp t2 t1 t)
+pattern FstVar <- L NoLoc (VarE (C.Var "fst"))
+  where FstVar = L NoLoc (VarE (toVar "fst"))
 
-pattern SndVar <- VarE (C.Var "snd")
-  where SndVar = VarE (toVar "snd")
+pattern SndVar :: forall t t1 (t2 :: * -> * -> *). L (PreExp t2 t1 t)
+pattern SndVar <- L NoLoc (VarE (C.Var "snd"))
+  where SndVar = L NoLoc (VarE (toVar "snd"))
 
 -- | Convert Haskell src-exts syntax to our syntax.  Handle infix operators, etc.
 -- Disambiguate things that look like applications.
-desugarExp :: H.Exp -> Ds L1.Exp1
-desugarExp e =
+desugarExp :: H.Exp -> Ds (L L1.Exp1)
+desugarExp e = L NoLoc <$>
     case e of
-      H.Var qname -> VarE <$> toVar <$> qname_to_str qname
+      H.Var qname -> VarE <$> toVar <$> qnameToStr qname
 
-      Con qname -> DataConE () <$> qname_to_str qname <*> pure []
+      Con qname -> DataConE () <$> qnameToStr qname <*> pure []
 
-      H.Lit l   -> L1.LitE <$> lit_to_int l
+      H.Lit l   -> L1.LitE <$> litToInt l
 
       H.App e1 e2 ->
         desugarExp e1 >>= \case
@@ -128,14 +134,14 @@ desugarExp e =
             L1.ProjE 0 <$> desugarExp e2
           SndVar ->
             L1.ProjE 1 <$> desugarExp e2
-          (VarE f) ->
+          L _ (VarE f) ->
             L1.AppE f [] <$> desugarExp e2
-          (DataConE () c as) -> do
+          L _ (DataConE () c as) -> do
             e2' <- desugarExp e2
             return (L1.DataConE () c (as ++ [e2']))
-          (L1.AppE f [] l) -> do
+          L _ (L1.AppE f [] l) -> do
             e2' <- desugarExp e2
-            return (L1.AppE f [] (MkProdE [l,e2']))
+            return (L1.AppE f [] (L NoLoc $ MkProdE [l,e2']))
           f ->
             err ("Only variables allowed in operator position in function applications. (found: " ++ show f ++ ")")
 
@@ -149,7 +155,7 @@ desugarExp e =
       H.Let (BDecls decls) rhs -> do
         rhs' <- desugarExp rhs
         xs <- foldrM generateBind rhs' decls
-        Right xs
+        Right $ unLoc xs
 
       H.Case scrt alts -> do
         scrt' <- desugarExp scrt
@@ -157,7 +163,7 @@ desugarExp e =
 
       H.Paren e0 -> do
         e' <- desugarExp e0
-        Right e'
+        Right $ unLoc e'
 
       H.InfixApp e1 op e2 -> do
         e1' <- desugarExp e1
@@ -170,107 +176,110 @@ desugarExp e =
 -------------------------------------------------------------------------------
 
 desugarOp :: QOp -> Ds Prim
-desugarOp (QVarOp (UnQual (Symbol "+"))) = return AddP
-desugarOp (QVarOp (UnQual (Symbol "-"))) = return SubP
-desugarOp (QVarOp (UnQual (Symbol "*"))) = return MulP
-desugarOp op                             = err ("Unsupported binary op: " ++ show op)
+desugarOp (QVarOp (UnQual (Symbol op))) =
+  case op of
+    "+" -> return AddP
+    "-" -> return SubP
+    "*" -> return MulP
+    _   -> err $ "Unsupported binary op: " ++ show op
+
+desugarOp op = err $ "Unsupported op: " ++ show op
 
 --------------------------------------------------------------------------------
 
-generateBind :: H.Decl -> L1.Exp1 -> Ds L1.Exp1
+generateBind :: H.Decl -> L (L1.Exp1) -> Ds (L (L1.Exp1))
+generateBind decl exp =
+  case decl of
+    PatBind _ _ _ Just{}        -> err "where clauses not allowed"
+    PatBind _ _ GuardedRhss{} _ -> err "Guarded right hand side not supported."
 
-generateBind (PatBind _ _ _ Just{}) _ =
-    err "where clauses not allowed"
+    PatBind _ (PVar v) (UnGuardedRhs rhs) Nothing -> do
+      rhs' <- desugarExp rhs
+      return $ L NoLoc $ LetE ((toVar . nameToStr) v, [],
+                              error "Haskell front end doesn't know type.  Must infer",
+                              rhs')
+                         exp
 
-generateBind (PatBind _ _ GuardedRhss{} _) _ =
-    err "Guarded right hand side not supported."
+    PatBind _ not_var _ _ -> err $ "Only variable bindings are allowed in let."
+                                   ++ "(found: "++ show not_var ++ ")"
 
-generateBind (PatBind _ (PVar v) (UnGuardedRhs rhs) Nothing) e = do
-    rhs' <- desugarExp rhs
-    return (LetE ((toVar . name_to_str) v, [], error "Haskell front end doesn't know type.  Must infer", rhs') e)
+    oth -> err ("Only variable bindings are allowed in let. (found: " ++ show oth ++ ")")
 
-generateBind (PatBind _ not_var _ _) _ =
-    err ("Only variable bindings are allowed in let. (found: " ++ show not_var ++ ")")
-
-generateBind not_pat_bind _ =
-    err ("Only variable bindings are allowed in let. (found: " ++ show not_pat_bind ++ ")")
 
 --------------------------------------------------------------------------------
 
-desugarAlt :: l -> H.Alt -> Ds (DataCon, [(Var,l)], L1.Exp1)
+desugarAlt :: l -> H.Alt -> Ds (DataCon, [(Var,l)], L (L1.Exp1))
+desugarAlt dummyL alt =
+  case alt of
+    H.Alt _ (PApp qname ps) (UnGuardedRhs rhs) Nothing -> do
+      conName <- qnameToStr qname
+      ps' <- forM ps $ \case PVar v -> return $ (toVar . nameToStr) v
+                             _      -> err "Non-variable pattern in case."
+      rhs' <- desugarExp rhs
+      return (conName, [(v,dummyL) | v <- ps'], rhs')
 
-desugarAlt dummyL (H.Alt _ (PApp qname ps) (UnGuardedRhs rhs) Nothing) = do
-    con_name <- qname_to_str qname
-    ps' <- forM ps $ \case PVar v -> return $ (toVar . name_to_str) v
-                           _      -> err "Non-variable pattern in case."
-    rhs' <- desugarExp rhs
-    return (con_name, [(v,dummyL) | v <- ps'], rhs')
-
-desugarAlt _ (H.Alt _ _ GuardedRhss{} _) =
-    err "Guarded RHS not supported in case."
-
-desugarAlt _ (H.Alt _ _ _ Just{}) =
-    err "Where clauses not allowed in case."
-
-desugarAlt _ (H.Alt _ pat _ _) =
-    err ("Unsupported pattern in case: " ++ show pat)
+    H.Alt _ _ GuardedRhss{} _ -> err "Guarded RHS not supported in case."
+    H.Alt _ _ _ Just{}        -> err "Where clauses not allowed in case."
+    H.Alt _ pat _ _           -> err $ "Unsupported pattern in case: " ++ show pat
 
 -------------------------------------------------------------------------------
 
 -- | Top-level function definitions can have arrow in the types. Others can't.
-data TopTy
-  = Arrow [Ty1]
-  | T1 Ty1
+data TopTy = Arrow [Ty1]
+           | T1 Ty1
   deriving (Show)
 
 desugarTopType :: H.Type -> Ds TopTy
-
-desugarTopType (TyFun t1 t2) = do
-    t1' <- desugarType t1
-    t2' <- desugarTopType t2
-    return . Arrow $ case t2' of
-                       Arrow ts -> t1' : ts
-                       T1 t     -> [t1', t]
-
 desugarTopType ty =
-    T1 <$> desugarType ty
+  case ty of
+    TyFun t1 t2 -> do
+      t1' <- desugarType t1
+      t2' <- desugarTopType t2
+      return $ Arrow $
+        case t2' of
+          Arrow ts -> t1' : ts
+          T1 t     -> [t1', t]
+
+    _ -> T1 <$> desugarType ty
+
 
 desugarType :: H.Type -> Ds Ty1
+desugarType ty =
+  case ty of
+    TyCon (UnQual (Ident "Int")) -> return IntTy
+    TyCon (UnQual (Ident con))   -> return (Packed con)
+    TyTuple Boxed [ty1, ty2]     -> (\a b-> ProdTy [a,b])
+                                    <$> desugarType ty1
+                                    <*> desugarType ty2
 
-desugarType (TyCon (UnQual (Ident "Int"))) = return IntTy
+    TyApp (TyCon (UnQual (Ident "Dict"))) ty' -> SymDictTy <$> desugarType ty'
 
-desugarType (TyCon (UnQual (Ident con))) = return (Packed con)
-
-desugarType (TyTuple Boxed [ty1, ty2]) = (\a b-> ProdTy [a,b]) <$> desugarType ty1 <*> desugarType ty2
-
-desugarType (TyApp (TyCon (UnQual (Ident "Dict"))) ty) = SymDictTy  <$> desugarType ty
-
-desugarType ty@(TyApp ty1 _ty2) =
-    desugarType ty1 >>= \case
-      Packed con -> do
-        -- ty2' <- desugarType ty2
-        return (Packed con)
+    TyApp ty1 _ty2 ->
+      desugarType ty1 >>= \case
+      Packed con -> return (Packed con)
       _ -> err ("Unsupported type: " ++ show ty)
 
-desugarType ty = err ("Unsupported type: " ++ show ty)
+    _ -> err $ "Unsupported type: " ++ show ty
 
 --------------------------------------------------------------------------------
 
-qname_to_str :: QName -> Ds String
-qname_to_str (Qual mname n) = return (mname_str mname ++ "." ++ name_to_str n)
-qname_to_str (UnQual n)     = return (name_to_str n)
-qname_to_str s@Special{}    = err ("Special identifiers not supported: " ++ show s)
+qnameToStr :: QName -> Ds String
+qnameToStr qname =
+  case qname of
+    Qual mname n -> return (mnameToStr mname ++ "." ++ nameToStr n)
+    UnQual n     -> return (nameToStr n)
+    Special{}    -> err $ "Special identifiers not supported: " ++ show qname
 
-mname_str :: ModuleName -> String
-mname_str (ModuleName s) = s
+mnameToStr :: ModuleName -> String
+mnameToStr (ModuleName s) = s
 
-name_to_str :: Name -> String
-name_to_str (Ident s)  = s
-name_to_str (Symbol s) = s
+nameToStr :: Name -> String
+nameToStr (Ident s)  = s
+nameToStr (Symbol s) = s
 
-lit_to_int :: Literal -> Ds Int
-lit_to_int (H.Int i) = return (fromIntegral i) -- lossy conversion here
-lit_to_int l         = err ("Literal not supported: " ++ show l)
+litToInt :: Literal -> Ds Int
+litToInt (H.Int i) = return (fromIntegral i) -- lossy conversion here
+litToInt l         = err ("Literal not supported: " ++ show l)
 
 ----------------------------------------
 

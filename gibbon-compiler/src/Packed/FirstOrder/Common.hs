@@ -25,10 +25,10 @@ module Packed.FirstOrder.Common
        , cleanFunName
 
        , LocVar, Region(..), Modality(..), LRM(..), dummyLRM
-        
+
        , Env2(Env2) -- TODO: hide constructor
        , vEnv, fEnv, extendVEnv, extendsVEnv, extendFEnv
-         
+
          -- * Runtime configuration
        , RunConfig(..), getRunConfig
 
@@ -62,7 +62,6 @@ import Data.String
 import Data.Symbol
 import Data.Word
 import GHC.Generics
-import GHC.Stack (errorWithStackTrace)
 import Text.PrettyPrint.GenericPretty
 import System.IO
 import System.Environment
@@ -132,8 +131,8 @@ instance NFData LRM where
 -- | A designated doesn't-really-exist-anywhere location.
 dummyLRM :: LRM
 dummyLRM = LRM "l_dummy" GlobR Input
-                     
--- | String concatenation on variables.    
+
+-- | String concatenation on variables.
 varAppend :: Var -> Var -> Var
 varAppend x y = toVar (fromVar x ++ fromVar y)
 
@@ -141,36 +140,36 @@ varAppend x y = toVar (fromVar x ++ fromVar y)
 --------------------------------------------------------------------------------
 
 -- | A common currency for a two part environment consisting of
--- function bindings and regular value bindings.  
+-- function bindings and regular value bindings.
 data Env2 a = Env2 { vEnv :: M.Map Var a
                    , fEnv :: FunEnv a }
 
 -- | Extend non-function value environment.
 extendVEnv :: Var -> a -> Env2 a -> Env2 a
 extendVEnv v t (Env2 ve fe) = Env2 (M.insert v t ve) fe
-              
+
 -- | Extend multiple times in one go.
 extendsVEnv :: M.Map Var a -> Env2 a -> Env2 a
 extendsVEnv mp (Env2 ve fe) = Env2 (M.union mp ve) fe
 
 -- | Extend function type environment.
 extendFEnv :: Var -> (a,a) -> Env2 a -> Env2 a
-extendFEnv v t (Env2 ve fe) = Env2 ve (M.insert v t fe) 
+extendFEnv v t (Env2 ve fe) = Env2 ve (M.insert v t fe)
 
-                              
+
 --------------------------------------------------------------------------------
-            
+
 -- | Type environment for function defs only.  This works with type
 -- representations that do not include arrow types.
 type FunEnv a = M.Map Var (a, a)
-            
+
 -- Primitive for now:
 type DDefs a = Map Var (DDef a)
 
 type IsBoxed = Bool
-    
+
 -- | Data type definitions.
--- 
+--
 -- Monomorphism: In the extreme case we can strip packed datatypes of
 -- all type parameters, or we can allow them to retain type params but
 -- require that they always be fully instantiated to monomorphic types
@@ -314,15 +313,14 @@ cleanFunName f =
 
 ----------------------------------------
 
--- NOTE: this will be obsoleted by GHC 8.0.2
 -- | An alias for the error function we want to use throughout this project.
 {-# INLINE err #-}
 err :: String -> a
-err = errorWithStackTrace
+err = error
 
 -- | An error that is OUR FAULT, i.e. an internal bug in the compiler.
-internalError :: String -> a 
-internalError s = errorWithStackTrace ("internal error: "++s)
+internalError :: String -> a
+internalError s = error ("internal error: "++s)
 
 
 (#) :: (Ord a, Out a, Out b, Show a)
@@ -374,8 +372,8 @@ abbrv n x =
         len = length str
     in if len <= n
        then str
-       else take (n-3) str ++ "..."
-                 
+       else L.take (n-3) str ++ "..."
+
 ----------------------------------------------------------------------------------------------------
 -- Global parameters
 ----------------------------------------------------------------------------------------------------

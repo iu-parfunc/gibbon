@@ -44,15 +44,15 @@ tests = $(testGroupGenerator)
 t0 :: Set Effect -> Set Effect
 t0 eff = arrEffs $ fst $ runSyM 0 $
      inferFunDef (M.empty,
-                   M.singleton (toVar "foo") (ArrowTy (PackedTy "K" (toVar "p"))
+                   M.singleton "foo" (ArrowTy (PackedTy "K" "p")
                                               eff
-                                              (PackedTy "K" (toVar "p"))))
-                  (C.FunDef (toVar "foo") (toVar "x", L1.Packed "K") (L1.Packed "K")
-                   (L1.AppE (toVar "foo") (L1.VarE (toVar "x"))))
+                                              (PackedTy "K" "p")))
+                  (C.FunDef "foo" "x", L1.Packed "K" (L1.Packed "K")
+                   (L1.AppE "foo" (L1.VarE "x")))
 
 _case_t0 :: Assertion
 _case_t0 = assertEqual "infinite loop traverses anything"
-                     (S.fromList [Traverse (toVar "p")]) (t0 (S.singleton (Traverse (toVar "p"))))
+                     (S.fromList [Traverse "p"]) (t0 (S.singleton (Traverse "p")))
 
 _case_t0b :: Assertion
 _case_t0b = assertEqual "infinite loop cannot bootstrap with bad initial effect set"
@@ -65,38 +65,38 @@ t1 :: (Set Effect)
 t1 = arrEffs $ fst $ runSyM 0 $
      inferFunDef (M.empty,
                    M.fromList
-                   [(toVar "copy",(ArrowTy (PackedTy "K" (toVar "p"))
-                                                   (S.fromList [Traverse (toVar "p"), Traverse (toVar "o")])
-                                              (PackedTy "K" (toVar "o"))))
-                   ,(toVar "foo", ArrowTy (PackedTy "K" (toVar "a")) S.empty IntTy)])
-                  (C.FunDef (toVar "foo") ((toVar "x"), L1.Packed "K") L1.IntTy $
-                     L1.LetE (toVar "ignr",L1.Packed "K", (L1.AppE (toVar "copy") (L1.VarE (toVar "x")))) $
+                   [("copy",(ArrowTy (PackedTy "K" "p")
+                                                   (S.fromList [Traverse "p", Traverse "o"])
+                                              (PackedTy "K" "o")))
+                   ,("foo", ArrowTy (PackedTy "K" "a")) S.empty IntTy])
+                  (C.FunDef "foo" ("x", L1.Packed "K") L1.IntTy $
+                     L1.LetE ("ignr", L1.Packed "K", (L1.AppE "copy" (L1.VarE "x"))) $
                      L1.LitE 33
                   )
 
 _case_t1 :: Assertion
 _case_t1 = assertEqual "traverse input via another call"
-          (S.fromList [Traverse (toVar "a")]) t1
+          (S.fromList [Traverse "a"]) t1
 
 type FunEnv = M.Map Var (L2.ArrowTy Ty)
 
 t2env :: (DDefs a, FunEnv)
-t2env = ( fromListDD [DDef (toVar "Bool") [("True",[]), ("False",[])]]
-                  , M.fromList [((toVar "foo"), ArrowTy (PackedTy "Bool" (toVar "p")) S.empty IntTy)])
+t2env = ( fromListDD [DDef "Bool" [("True",[]), ("False",[])]]
+                  , M.fromList [("foo", ArrowTy (PackedTy "Bool" "p") S.empty IntTy)])
 fooBoolInt :: a -> L1.FunDef L1.Ty a
-fooBoolInt = C.FunDef (toVar "foo") ((toVar "x"), L1.Packed "Bool") L1.IntTy
+fooBoolInt = C.FunDef "foo" ("x", L1.Packed "Bool") L1.IntTy
 
 t2 :: (Set Effect)
 t2 = arrEffs $ fst $ runSyM 0 $
      inferFunDef t2env
                   (fooBoolInt $
-                    L1.CaseE (VarE (toVar "x")) $
+                    L1.CaseE (VarE "x") $
                       [ ("True",[],LitE 3)
                       , ("False",[],LitE 3) ])
 
 _case_t2 :: Assertion
 _case_t2 = assertEqual "Traverse a Bool with case"
-            (S.fromList [Traverse (toVar "p")]) t2
+            (S.fromList [Traverse "p"]) t2
 
 t2b :: (Set Effect)
 t2b = arrEffs $ fst $ runSyM 0 $
@@ -107,7 +107,7 @@ _case_t2b = assertEqual "No traverse from a lit" S.empty t2b
 
 t2c :: (Set Effect)
 t2c = arrEffs $ fst $ runSyM 0 $
-     inferFunDef t2env (fooBoolInt $ VarE (toVar "x"))
+     inferFunDef t2env (fooBoolInt $ VarE "x")
 
 _case_t2c :: Assertion
 _case_t2c = assertEqual "No traverse from identity function" S.empty t2b
@@ -115,47 +115,47 @@ _case_t2c = assertEqual "No traverse from identity function" S.empty t2b
 
 t3 :: Exp -> Set Effect
 t3 bod0 = arrEffs $ fst $ runSyM 0 $
-     inferFunDef ( fromListDD [DDef (toVar "SillyTree")
+     inferFunDef ( fromListDD [DDef "SillyTree"
                                   [ ("Leaf",[])
                                   , ("Node",[L1.Packed "SillyTree", L1.IntTy])]]
-                  , M.fromList [((toVar "foo"), ArrowTy (PackedTy "SillyTree" (toVar "p")) S.empty IntTy)])
-                  (C.FunDef (toVar "foo") ((toVar "x"), L1.Packed "SillyTree") L1.IntTy
+                  , M.fromList [("foo", ArrowTy (PackedTy "SillyTree" "p") S.empty IntTy)])
+                  (C.FunDef "foo" ("x", L1.Packed "SillyTree") L1.IntTy
                     bod0)
 
 _case_t3a :: Assertion
 _case_t3a = assertEqual "sillytree1" S.empty (t3 (LitE 33))
 
 _case_t3b :: Assertion
-_case_t3b = assertEqual "sillytree2" S.empty $ t3 $ VarE (toVar "x")
+_case_t3b = assertEqual "sillytree2" S.empty $ t3 $ VarE "x"
 
 
 _case_t3c :: Assertion
 _case_t3c = assertEqual "sillytree3: reference rightmost"
-           (S.singleton (Traverse (toVar "p"))) $ t3 $
-           L1.CaseE (VarE (toVar "x"))
+           (S.singleton (Traverse "p")) $ t3 $
+           L1.CaseE (VarE "x")
             [ ("Leaf", [],     LitE 3)
-            , ("Node", [(toVar "l"),(toVar "r")], VarE (toVar "r"))
+            , ("Node", ["l","r"], VarE "r")
             ]
 
 _case_t3d :: Assertion
 _case_t3d = assertEqual "sillytree3: reference leftmost"
            S.empty $ t3 $
-           L1.CaseE (VarE (toVar "x"))
+           L1.CaseE (VarE "x")
             [ ("Leaf", [],     LitE 3)
-            , ("Node", [toVar "l",toVar "r"], VarE (toVar "l"))]
+            , ("Node", ["l","r"], VarE "l")]
 
 t4 :: Exp -> Set Effect
 t4 bod = arrEffs $ fst $ runSyM 0 $
      inferFunDef t4env
-                  (C.FunDef (toVar "foo") ((toVar "x"), L1.Packed "Tree") L1.IntTy
+                  (C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy
                     bod)
 
 t4env :: (DDefs L1.Ty, FunEnv)
-t4env = ( fromListDD [DDef (toVar "Tree")
+t4env = ( fromListDD [DDef "Tree"
                       [ ("Leaf",[L1.IntTy])
                       , ("Node",[L1.Packed "Tree", L1.Packed "Tree"])]]
-        , M.fromList [((toVar "foo"), ArrowTy (PackedTy "Tree" (toVar "p"))
-                       (S.singleton (Traverse (toVar "p")))
+        , M.fromList [("foo", ArrowTy (PackedTy "Tree" "p")
+                       (S.singleton (Traverse "p"))
                        IntTy)])
 
 _case_t4a :: Assertion
@@ -164,39 +164,39 @@ _case_t4a = assertEqual "bintree1" S.empty (t4 (LitE 33))
 _case_t4b :: Assertion
 _case_t4b = assertEqual "bintree2: matching is not enough for traversal"
            S.empty $ t4 $
-           L1.CaseE (VarE (toVar "x"))
-            [ ("Leaf", [toVar "n"],     LitE 3)
-            , ("Node", [toVar "l",toVar "r"], LitE 4)]
+           L1.CaseE (VarE "x")
+            [ ("Leaf", ["n"],     LitE 3)
+            , ("Node", ["l", "r"], LitE 4)]
 
 _case_t4c :: Assertion
 _case_t4c = assertEqual "bintree2: referencing is not enough for traversal"
            S.empty $ t4 $
-           L1.CaseE (VarE (toVar "x"))
-            [ ("Leaf", [toVar "n"],     LitE 3)
-            , ("Node", [toVar "l",toVar "r"], VarE (toVar "r"))]
+           L1.CaseE (VarE "x")
+            [ ("Leaf", ["n"],     LitE 3)
+            , ("Node", ["l","r"], VarE "r")]
 
 _case_t4d :: Assertion
 _case_t4d = assertEqual "bintree2: recurring left is not enough"
            S.empty $ t4 $
-           L1.CaseE (VarE (toVar "x"))
-            [ ("Leaf", [toVar "n"],     LitE 3)
-            , ("Node", [toVar "l",toVar "r"], AppE (toVar "foo") (VarE (toVar "l")))]
+           L1.CaseE (VarE "x")
+            [ ("Leaf", ["n"],     LitE 3)
+            , ("Node", ["l","r"], AppE "foo" (VarE "l"))]
 
 _case_t4e :: Assertion
 _case_t4e = assertEqual "bintree2: recurring on the right IS enough"
-           (S.singleton (Traverse (toVar "p"))) $ t4 $
+           (S.singleton (Traverse "p")) $ t4 $
            trav_right_bod
 
 trav_right_bod :: Exp
-trav_right_bod = L1.CaseE (VarE (toVar "x"))
-                 [ ("Leaf", [toVar "n"],     LitE 3)
-                 , ("Node", [toVar "l",toVar "r"], AppE (toVar "foo") (VarE (toVar "r")))]
+trav_right_bod = L1.CaseE (VarE "x")
+                 [ ("Leaf", ["n"],     LitE 3)
+                 , ("Node", ["l","r"], AppE "foo" (VarE "r"))]
          -- ^ NOTE - this should return a location inside the input.  A
          -- sub-region of the region at p.
 
 t4_prog :: L1.Prog
 t4_prog = L1.Prog (fst t4env)
-          (fromListFD [C.FunDef (toVar "foo") ((toVar "x"), L1.Packed "Tree") L1.IntTy
+          (fromListFD [C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy
                        trav_right_bod])
           Nothing
 
@@ -206,8 +206,8 @@ t4p = fst $ runSyM 0 $ inferEffects t4_prog
 _case_t4p :: Assertion
 _case_t4p =
     assertEqual "Infer the effects for an entire tree-traversal prog:"
-      (S.singleton (Traverse (toVar "a")))
-      (let FunDef _ (ArrowTy _ efs _) _ _ = fundefs t4p M.! (toVar "foo")
+      (S.singleton (Traverse "a"))
+      (let FunDef _ (ArrowTy _ efs _) _ _ = fundefs t4p M.! "foo"
        in efs)
 
 _case_t4p2 :: Assertion
@@ -216,12 +216,12 @@ _case_t4p2 =
       (S.empty)
       (let prg = fst $ runSyM 0 $ inferEffects
                  (L1.Prog (fst t4env)
-                        (fromListFD [C.FunDef (toVar "foo") ((toVar "x"), L1.Packed "Tree") L1.IntTy $
-                          L1.CaseE (VarE (toVar "x"))
-                            [ ("Leaf", [toVar "n"],     LitE 3)
-                            , ("Node", [toVar "l",toVar "r"], AppE (toVar "foo") (VarE (toVar "l")))] ])
+                        (fromListFD [C.FunDef "foo" ("x", L1.Packed "Tree") L1.IntTy $
+                          L1.CaseE (VarE "x")
+                            [ ("Leaf", ["n"],     LitE 3)
+                            , ("Node", ["l","r"], AppE "foo" (VarE "l"))] ])
                   Nothing)
-           FunDef _ (ArrowTy _ efs _) _ _ = fundefs prg M.! (toVar "foo")
+           FunDef _ (ArrowTy _ efs _) _ _ = fundefs prg M.! "foo"
        in efs)
 
 ----------------------------------------
@@ -231,22 +231,22 @@ _case_t4p2 =
 copy :: Prog
 copy = fst $ runSyM 0 $ inferEffects
      (L1.Prog (fst t4env)
-      (fromListFD [C.FunDef (toVar "copy") ((toVar "x"), L1.Packed "Tree") (L1.Packed "Tree") $
-                   L1.CaseE (VarE (toVar "x"))
-                      [ ("Leaf", [toVar "n"],     VarE (toVar "n"))
-                      , ("Node", [toVar "l",toVar "r"],
-                        LetE ((toVar "a"), L1.Packed "Tree", AppE (toVar "copy") (VarE (toVar "l"))) $
-                        LetE ((toVar "b"), L1.Packed "Tree", AppE (toVar "copy") (VarE (toVar "r"))) $
-                        DataConE "Node" [VarE (toVar "a"), VarE (toVar "b")]
+      (fromListFD [C.FunDef "copy" ("x", L1.Packed "Tree") (L1.Packed "Tree") $
+                   L1.CaseE (VarE "x")
+                      [ ("Leaf", ["n"],   VarE "n")
+                      , ("Node", ["l", "r"],
+                        LetE ("a", L1.Packed "Tree", AppE "copy" (VarE "l")) $
+                        LetE ("b", L1.Packed "Tree", AppE "copy" (VarE "r")) $
+                        DataConE "Node" [VarE "a", VarE "b"]
                         )] ])
       Nothing)
 
 _case_copy :: Assertion
 _case_copy =
      assertEqual "A program which needs more than one fix-point iteration."
-      (S.singleton (Traverse (toVar "a")))
+      (S.singleton (Traverse "a"))
       (let prg = copy
-           FunDef _ (ArrowTy _ efs _) _ _ = fundefs prg M.! (toVar "copy")
+           FunDef _ (ArrowTy _ efs _) _ _ = fundefs prg M.! "copy"
        in efs)
 
 -- t5 :: Prog
@@ -387,35 +387,35 @@ t5p = Prog {ddefs = M.fromList [("Expr",
 -- UNDER_CONSTRUCTION.
 _case_t5p1 :: Assertion
 _case_t5p1 = assertEqual "Generate copy function for a simple DDef"
-            ( toVar "copyExpr"
-            , L1.FunDef {L1.funName = toVar "copyExpr",
-                      L1.funArg = (toVar "arg0",PackedTy "Expr" ()),
+            ( "copyExpr"
+            , L1.FunDef {L1.funName = "copyExpr",
+                      L1.funArg = ("arg0",PackedTy "Expr" ()),
                       L1.funRetTy = PackedTy "Expr" (),
-                      L1.funBody = CaseE (VarE (toVar "arg0"))
-                       [("VARREF",[toVar "x1"],
-                         LetE (toVar "y2",IntTy,VarE (toVar "x1"))
-                         (DataConE "VARREF" [VarE (toVar "y2")])),
-                        ("Top",[toVar "x3"],
-                         LetE (toVar "y4",IntTy,VarE (toVar "x3"))
-                         (DataConE "Top" [VarE (toVar "y4")]))]})
+                      L1.funBody = CaseE (VarE "arg0")
+                       [("VARREF",["x1"],
+                         LetE ("y2",IntTy,VarE "x1")
+                         (DataConE "VARREF" [VarE "y2"])),
+                        ("Top",["x3"],
+                         LetE ("y4",IntTy,VarE "x3")
+                         (DataConE "Top" [VarE "y4"]))]})
             (fst $ runSyM 0 $ genCopyFn ddef)
-  where ddef = (ddefs t5p) M.! (toVar "Expr")
+  where ddef = (ddefs t5p) M.! "Expr"
 
 
 _case_t5p2 :: Assertion
 _case_t5p2 = assertEqual "Generate copy function for a DDef containing recursively packed data"
-            ( toVar "copyFoo"
-            , L1.FunDef {L1.funName = toVar "copyFoo",
-                         L1.funArg = (toVar "arg0",PackedTy "Foo" ()),
+            ( "copyFoo"
+            , L1.FunDef {L1.funName = "copyFoo",
+                         L1.funArg = ("arg0",PackedTy "Foo" ()),
                          L1.funRetTy = PackedTy "Foo" (),
-                         L1.funBody = CaseE (VarE (toVar "arg0"))
-                          [("A",[toVar "x1",toVar "x2"],
-                            LetE (toVar "y3",IntTy,VarE (toVar "x1"))
-                            (LetE (toVar "y4",IntTy,VarE (toVar "x2"))
-                             (DataConE "A" [VarE (toVar "y3"),VarE (toVar "y4")]))),
-                           ("B",[toVar "x5"],
-                            LetE (toVar "y6",PackedTy "Bar" (),AppE (toVar "copyBar") (VarE (toVar "x5")))
-                            (DataConE "B" [VarE (toVar "y6")]))]})
+                         L1.funBody = CaseE (VarE "arg0")
+                          [("A",["x1","x2"],
+                            LetE ("y3",IntTy,VarE ("x1"))
+                            (LetE ("y4",IntTy,VarE ("x2"))
+                             (DataConE "A" [VarE "y3",VarE "y4"]))),
+                           ("B",["x5"],
+                            LetE ("y6",PackedTy "Bar" (),AppE "copyBar" (VarE "x5"))
+                            (DataConE "B" [VarE "y6"]))]})
             (fst $ runSyM 0 $ genCopyFn ddef)
-  where ddef = (ddefs t5p) M.! (toVar "Foo")
+  where ddef = (ddefs t5p) M.! "Foo"
 -}

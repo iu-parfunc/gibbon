@@ -58,17 +58,17 @@ module Packed.FirstOrder.L2.Syntax
     where
 
 import Control.DeepSeq
-import Packed.FirstOrder.Common hiding (FunDef)
-import Packed.FirstOrder.GenericOps
-import qualified Packed.FirstOrder.L1.Syntax as L1
-import Packed.FirstOrder.L1.Syntax hiding
-    (Ty, FunDef, Prog,
-     mapExprs, progToEnv, fundefs, getFunTy, Exp, add1Prog)
 import Data.List as L
--- import Data.Maybe
+import Data.Loc
 import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
+
+import Packed.FirstOrder.Common hiding (FunDef)
+import Packed.FirstOrder.GenericOps
+import Packed.FirstOrder.L1.Syntax hiding
+       (Ty, FunDef, Prog, mapExprs, progToEnv, fundefs, getFunTy, Exp, add1Prog)
+import qualified Packed.FirstOrder.L1.Syntax as L1
 
 -- | Convenience alias.
 type Ty = Ty2
@@ -93,11 +93,13 @@ data E2Ext loc dec =
 
 -- | L1 expressions extended with L2.  This is the polymorphic version. Shorthand for
 -- recursions above.
-type E2 l d = PreExp E2Ext l d
+type E2 l d = L (PreExp E2Ext l d)
+
+instance Read (E2 l d) where
 
 -- | Define a location in terms of a different location.
 data PreLocExp loc = StartOfLE Region
-                   | AfterConstantLE Int -- ^ Number of bytes after. 
+                   | AfterConstantLE Int -- ^ Number of bytes after.
                                     loc  -- ^ Location which this location is offset from.
                    | AfterVariableLE Var -- ^ Name of variable v. This loc is size(v) bytes after.
                                     loc  -- ^ Location which this location is offset from.
@@ -130,7 +132,10 @@ data ArrowTy t = ArrowTy { locVars :: [LRM]       -- ^ Universally-quantified lo
                          }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
+-- | The side-effect of evaluating a function.
 data Effect = Traverse LocVar
+              -- ^ The function, during its execution, traverses all
+              -- of the value living at this location.
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 -- instance Out Ty
@@ -511,33 +516,45 @@ revertToL1 = undefined -- TODO: Fix or remove this function
 -------------------------------------------------
 
 -- | Used to inline variable bindings while retaining their (former) name and type.
-pattern NamedVal vr ty e <- LetE (vr,[],ty,e) (VarE (Var "NAMED_VAL_PATTERN_SYN"))
-  where NamedVal vr ty e = LetE (vr,[],ty,e) (VarE (toVar "NAMED_VAL_PATTERN_SYN"))
--- pattern NamedVal vr ty e <- LetE (vr,ty,e) (VarE "NAMED_VAL") where
---   NamedVal vr ty e = LetE (vr,ty,e) (VarE vr)
+pattern NamedVal :: forall t t1 (t2 :: * -> * -> *).
+                    Var -> t -> L (PreExp t2 t1 t) -> PreExp t2 t1 t
+pattern NamedVal vr ty e <- LetE (vr,[],ty,e)
+                                  (L _ (VarE (Var "NAMED_VAL_PATTERN_SYN")))
+  where NamedVal vr ty e = LetE (vr,[],ty,e)
+                                    (L NoLoc (VarE "NAMED_VAL_PATTERN_SYN"))
 
 
 -- For use after cursorize:
 --------------------------------------------------------------------------------
 
-pattern NewBuffer <- AppE (Var "NewBuffer") [] (MkProdE [])
-  where NewBuffer = AppE (toVar "NewBuffer") [] (MkProdE [])
+pattern NewBuffer :: forall t t1 (t2 :: * -> * -> *). PreExp t2 t1 t
+pattern NewBuffer <- AppE (Var "NewBuffer") [] (L _ (MkProdE []))
+  where NewBuffer = AppE "NewBuffer" [] (L NoLoc (MkProdE []))
 
 -- | output buffer space that is known not to escape the current function.
-pattern ScopedBuffer <- AppE (Var "ScopedBuffer") [] (MkProdE [])
-  where ScopedBuffer = AppE (toVar "ScopedBuffer") [] (MkProdE [])
+pattern ScopedBuffer :: forall t t1 (t2 :: * -> * -> *). PreExp t2 t1 t
+pattern ScopedBuffer <- AppE (Var "ScopedBuffer") [] (L _ (MkProdE []))
+  where ScopedBuffer = AppE "ScopedBuffer" [] (L NoLoc (MkProdE []))
 
 -- | Tag writing is still modeled by DataConE.
-pattern WriteInt v e <- AppE (Var "WriteInt") [] (MkProdE [VarE v, e])
-  where WriteInt v e = AppE (toVar "WriteInt") [] (MkProdE [VarE v, e])
+pattern WriteInt :: forall t t1 (t2 :: * -> * -> *).
+                    Var -> L (PreExp t2 t1 t) -> PreExp t2 t1 t
+pattern WriteInt v e <- AppE (Var "WriteInt") [] (L _ (MkProdE [L _ (VarE v), e]))
+  where WriteInt v e = AppE "WriteInt" [] (L NoLoc (MkProdE [L NoLoc (VarE v), e]))
 
 -- | One cursor in, (int,cursor') output.
-pattern ReadInt v <- AppE (Var "ReadInt") [] (VarE v)
-  where ReadInt v = AppE (toVar "ReadInt") [] (VarE v)
+pattern ReadInt :: forall t t1 (t2 :: * -> * -> *). Var -> PreExp t2 t1 t
+pattern ReadInt v <- AppE (Var "ReadInt") [] (L _ (VarE v))
+  where ReadInt v = AppE "ReadInt" [] (L NoLoc (VarE v))
 
 -- | Add a constant offset to a cursor variable.
-pattern AddCursor v i <- AppE (Var "AddCursor") [] (MkProdE [(VarE v), (LitE i)])
-  where AddCursor v i = AppE (toVar "AddCursor") [] (MkProdE [(VarE v), (LitE i)])
+pattern AddCursor :: forall t t1 (t2 :: * -> * -> *).
+                     Var -> Int -> PreExp t2 t1 t
+pattern AddCursor v i <- AppE (Var "AddCursor") []
+                               (L _ (MkProdE [L _ (VarE v), L _ (LitE i)]))
+  where AddCursor v i = AppE "AddCursor" []
+                                 (L NoLoc (MkProdE [L NoLoc (VarE v),
+                                                    L NoLoc (LitE i)]))
 
 
 -- | A predicate to check if the form is part of the extended "L2.5" language.
@@ -592,11 +609,11 @@ primRetTy p =
 builtinTEnv :: M.Map Var (ArrowTy L1.Ty1)
 builtinTEnv = undefined
   -- M.fromList
-  -- [ (toVar "NewBuffer",    ArrowTy voidTy S.empty dummyCursorTy)
-  -- , (toVar "ScopedBuffer", ArrowTy voidTy S.empty dummyCursorTy)
-  -- , (toVar "ReadInt",      ArrowTy dummyCursorTy S.empty (ProdTy [IntTy, dummyCursorTy]))
-  -- , (toVar "WriteInt",     ArrowTy (ProdTy [dummyCursorTy, IntTy]) S.empty dummyCursorTy)
-  -- , (toVar "AddCursor",    ArrowTy (ProdTy [dummyCursorTy, IntTy]) S.empty dummyCursorTy)
+  -- [ ("NewBuffer",    ArrowTy voidTy S.empty dummyCursorTy)
+  -- , ("ScopedBuffer", ArrowTy voidTy S.empty dummyCursorTy)
+  -- , ("ReadInt",      ArrowTy dummyCursorTy S.empty (ProdTy [IntTy, dummyCursorTy]))
+  -- , ("WriteInt",     ArrowTy (ProdTy [dummyCursorTy, IntTy]) S.empty dummyCursorTy)
+  -- , ("AddCursor",    ArrowTy (ProdTy [dummyCursorTy, IntTy]) S.empty dummyCursorTy)
   -- -- Note: ReadPackedFile is a builtin/primitive.  It is polymorphic,
   -- -- which currently doesn't allow us to model it as a function like
   -- -- this [2017.01.08].
@@ -609,7 +626,7 @@ includeBuiltins (Env2 _ _) = undefined
     --                       | (n, ArrowTy a _ b) <- M.assocs builtinTEnv ]
 
 
--- Example 
+-- Example
 --------------------------------------------------------------------------------
 
 -- | Our canonical simple example, written in this IR.
@@ -620,11 +637,11 @@ add1Prog = withAdd1Prog Nothing
 withAdd1Prog :: Maybe (Exp,Ty) -> Prog
 withAdd1Prog mainExp =
     let ddfs = ddtree
-        funs = (M.fromList [(toVar "add1",exadd1)])
+        funs = (M.fromList [("add1",exadd1)])
     in Prog ddfs funs mainExp
  where
   ddtree :: DDefs Ty
-  ddtree = (fromListDD [DDef (toVar "Tree") 
+  ddtree = (fromListDD [DDef "Tree"
                                 [ ("Leaf",[(False,IntTy)])
                                 , ("Node",[(False,PackedTy "Tree" "l")
                                           ,(False,PackedTy "Tree" "l")])]])
@@ -642,15 +659,23 @@ withAdd1Prog mainExp =
 
   exadd1bod :: Exp2
   exadd1bod =
-      CaseE (VarE "tr") $
-        [ ("Leaf", [("n","l0")], LetE ("v",[],IntTy,PrimAppE L1.AddP [VarE "n", LitE 1]) (VarE "v"))
+      L NoLoc $ CaseE (L NoLoc $ VarE "tr") $
+        [ ("Leaf", [("n","l0")], L NoLoc $
+                                 LetE ("v",[],IntTy,L NoLoc $ PrimAppE L1.AddP
+                                                    [L NoLoc $ VarE "n",
+                                                     L NoLoc $ LitE 1])
+                                 (L NoLoc $ VarE "v"))
         , ("Node", [("x","l1"),("y","l2")],
-           Ext $ LetLocE "lout1" (AfterConstantLE 1 "lout") $
-           LetE ("x1",[],PackedTy "Tree" "lout1", AppE "add1" ["l1","lout1"] (VarE "x")) $
-           Ext $ LetLocE "lout2" (AfterVariableLE "x1" "lout1") $
-           LetE ("y1",[],PackedTy "Tree" "lout2", AppE "add1" ["l2","lout2"] (VarE "y")) $
-           LetE ("z",[],PackedTy "Tree" "lout", 
-                    DataConE "lout" "Node" [ VarE "x1" , VarE "y1"]) $
-           VarE "z")
+           L NoLoc $ Ext $ LetLocE "lout1" (AfterConstantLE 1 "lout") $
+           L NoLoc $ LetE ("x1",[],PackedTy "Tree" "lout1",
+                           L NoLoc $ AppE "add1" ["l1","lout1"] $
+                           L NoLoc $ VarE "x") $
+           L NoLoc $ Ext $ LetLocE "lout2" (AfterVariableLE "x1" "lout1") $
+           L NoLoc $ LetE ("y1",[],PackedTy "Tree" "lout2",
+                           L NoLoc $ AppE "add1" ["l2","lout2"] $
+                           L NoLoc $ VarE "y") $
+           L NoLoc $ LetE ("z",[],PackedTy "Tree" "lout",
+                    L NoLoc $ DataConE "lout" "Node"
+                    [ L NoLoc $ VarE "x1" , L NoLoc $ VarE "y1"]) $
+           L NoLoc $ VarE "z")
         ]
-
