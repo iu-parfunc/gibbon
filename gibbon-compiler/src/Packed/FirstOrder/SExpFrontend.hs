@@ -15,18 +15,17 @@
 module Packed.FirstOrder.SExpFrontend
        (parseFile, parseSExp, primMap, main) where
 
-import Data.Text as T hiding (head)
 import Data.List as L
-import Data.Set as S
+import Data.Loc
 import Data.Map as M
+import Data.Set as S
+import Data.Text as T hiding (head)
 import Data.Text.IO (readFile)
 import System.FilePath
 import System.Environment
 import Text.Parsec
 -- import GHC.Generics (Generic)
 import Text.PrettyPrint.GenericPretty
-import Packed.FirstOrder.L1.Syntax as S
-import Packed.FirstOrder.Common
 import Prelude hiding (readFile, exp)
 
 -- There are several options for s-expression parsing, including these
@@ -41,6 +40,10 @@ import Data.SCargot.Language.HaskLike
 import Data.SCargot.Parse
 import Data.SCargot.Print
 import Data.SCargot.Repr -- (SExpr, RichSExpr, toRich)
+
+
+import Packed.FirstOrder.L1.Syntax as S
+import Packed.FirstOrder.Common
 
 --------------------------------------------------------------------------------
 
@@ -96,16 +99,18 @@ bracketHacks = T.map $ \case '[' -> '('
                              x   -> x
 
 -- | Change regular applications into data constructor syntax.
-tagDataCons :: DDefs Ty1 -> Exp1 -> Exp1
+tagDataCons :: DDefs Ty1 -> L Exp1 -> L Exp1
 tagDataCons ddefs = go allCons
   where
    allCons = S.fromList [ (toVar con)
                         | DDef{dataCons} <- M.elems ddefs
                         , (con,_tys) <- dataCons ]
-   go cons ex =
+
+   go :: Set Var -> L Exp1 -> L Exp1
+   go cons (L p ex) = L p $
      case ex of
        Ext _ -> ex
-       AppE v _ (MkProdE ls)
+       AppE v _ (L _ (MkProdE ls))
                   -- FIXME: check the type to determine if this is packed/unpacked:
                   | S.member v cons -> DataConE () (fromVar v) (L.map (go cons) ls)
        AppE v l e | S.member v cons -> DataConE () (fromVar v) [go cons e]
@@ -151,12 +156,12 @@ parseSExp ses =
            Prog (fromListDD dds) (fromListFD fds) mn
 
      -- IGNORED!:
-     (L (A "provide":_) : rst) -> go rst dds fds cds mn
-     (L (A "require":_) : rst) -> go rst dds fds cds mn
+     (Ls0 (A "provide":_) : rst) -> go rst dds fds cds mn
+     (Ls0 (A "require":_) : rst) -> go rst dds fds cds mn
 
-     (L (A "data": A tycon : cs) : rst) ->
+     (Ls0 (A "data": A tycon : cs) : rst) ->
          go rst (DDef (textToVar tycon) (L.map docasety cs) : dds) fds cds mn
-     (L [A "define", funspec, ":", retty, bod] : rst)
+     (Ls0 [A "define", funspec, ":", retty, bod] : rst)
         |  RSList (A name : args) <- funspec
         -> do
          let bod' = exp bod
@@ -182,13 +187,13 @@ parseSExp ses =
             cds mn
 
      -- Top-level definition instead of a function.
-     (L [A "define", A topid, ":", ty, bod] : rst) ->
+     (Ls0 [A "define", A topid, ":", ty, bod] : rst) ->
          go rst dds fds ((textToVar topid,ty,exp bod) : cds) mn
 
-     (L [A "define", _args, _bod] : _) -> error$ "Function is missing return type:\n  "++prnt (head xs)
-     (L (A "define" : _) : _) -> error$ "Badly formed function:\n  "++prnt (head xs)
+     (Ls0 [A "define", _args, _bod] : _) -> error$ "Function is missing return type:\n  "++prnt (head xs)
+     (Ls0 (A "define" : _) : _) -> error$ "Badly formed function:\n  "++prnt (head xs)
 
-     (L (A "data" : _) : _) -> error$ "Badly formed data definition:\n  "++prnt (head xs)
+     (Ls0 (A "data" : _) : _) -> error$ "Badly formed data definition:\n  "++prnt (head xs)
 
      (Ls3 "module+" _ bod : rst) -> go (bod:rst) dds fds cds mn
 
@@ -199,11 +204,11 @@ parseSExp ses =
                             Just x  -> error$ "Two main expressions: "++
                                              sdoc x++"\nAnd:\n"++prnt ex)
 
-tuplizeRefs :: Var -> [Var] -> Exp1 -> Exp1
+tuplizeRefs :: Var -> [Var] -> L Exp1 -> L Exp1
 tuplizeRefs tmp ls  = go (L.zip [0..] ls)
   where
    go []          e = e
-   go ((ix,v):vs) e = go vs (subst v (ProjE ix (VarE tmp)) e)
+   go ((ix,v):vs) e = go vs (subst v (L NoLoc $ ProjE ix (L NoLoc $ VarE tmp)) e)
 
 typ :: RichSExpr HaskLikeAtom -> S.Ty1
 typ s = case s of
@@ -228,18 +233,18 @@ docasety s =
 
 pattern A s = RSAtom (HSIdent s)
 
-pattern L  a          = RSList a
+pattern Ls0 a        = RSList a
 pattern Ls1 a         = RSList [a]
 pattern Ls2 a b       = RSList [A a, b]
 pattern Ls3 a b c     = RSList [A a, b, c]
 pattern Ls4 a b c d   = RSList [A a, b, c, d]
 -- pattern L5 a b c d e = RSList [A a, b, c, d, e]
 
-trueE :: Exp1
-trueE = PrimAppE MkTrue []
+trueE :: L Exp1
+trueE = L NoLoc $ PrimAppE MkTrue []
 
-falseE :: Exp1
-falseE = PrimAppE MkFalse []
+falseE :: L Exp1
+falseE = L NoLoc $ PrimAppE MkFalse []
 
 -- -- FIXME: we cannot intern strings until runtime.
 -- hackySymbol :: String -> Int
@@ -255,18 +260,23 @@ keywords = S.fromList $ L.map pack $
 isKeyword :: Text -> Bool
 isKeyword s = s `S.member` keywords
 
-exp :: Sexp -> Exp1
-exp se =
- -- trace ("\n ==> Processing Exp:\n  "++prnt se)  $
+exp :: Sexp -> L Exp1
+exp se = L NoLoc $
  case se of
-   A "True"          -> trueE
-   A "False"         -> falseE
-   L ("and" : args)  -> go args
-     where go [] = trueE
-           go (x:xs) = IfE (exp x) (go xs) falseE
-   L ("or" : args)  -> go args
-     where go [] = falseE
-           go (x:xs) = IfE (exp x) trueE (go xs)
+   A "True"  -> unLoc trueE
+   A "False" -> unLoc falseE
+
+   Ls0 ("and" : args)  -> go args
+     where
+       go :: [Sexp] -> Exp1
+       go [] = unLoc trueE
+       go (x:xs) = IfE (exp x) (L NoLoc $ go xs) falseE
+
+   Ls0 ("or" : args)  -> go args
+     where
+       go :: [Sexp] -> Exp1
+       go [] = unLoc falseE
+       go (x:xs) = IfE (exp x) trueE (L NoLoc $ go xs)
 
    Ls4 "if" test conseq altern ->
      IfE (exp test) (exp conseq) (exp altern)
@@ -280,16 +290,17 @@ exp se =
    -- | This type gets replaced later in flatten:
    Ls2 "time" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) False)
 
-   -- | This variant inserts a loop, controlled by the iters argument on the command line.
+   -- | This variant inserts a loop, controlled by the iters
+   -- argument on the command line.
    Ls2 "iterate" arg -> (TimeIt (exp arg) (PackedTy "DUMMY_TY" ()) True)
 
-   Ls3 "let" (L bnds) bod ->
-     mkLets (L.map letbind bnds) (exp bod)
+   Ls3 "let" (Ls0 bnds) bod ->
+     unLoc $ mkLets (L.map letbind bnds) (exp bod)
 
-   L (A "case": scrut: cases) ->
+   Ls0 (A "case": scrut: cases) ->
      CaseE (exp scrut) (L.map docase cases)
 
-   L (A p : ls) | isPrim p -> PrimAppE (prim p) $ L.map exp ls
+   Ls0 (A p : ls) | isPrim p -> PrimAppE (prim p) $ L.map exp ls
 
    Ls3 "for/list" (Ls1 (Ls4 v ":" t e)) bod ->
      S.MapE (textToVar v, typ t, exp e) (exp bod)
@@ -304,7 +315,7 @@ exp se =
              (exp bod)
 
    Ls3 "vector-ref" evec (RSAtom (HSInt ind)) -> S.ProjE (fromIntegral ind) (exp evec)
-   L (A "vector" : es) -> S.MkProdE $ L.map exp es
+   Ls0 (A "vector" : es) -> S.MkProdE $ L.map exp es
 
    -- Dictionaries require type annotations for now.  No inference!
    Ls3 "ann" (Ls1 "empty-dict") (Ls2 "SymDict" ty) ->
@@ -316,7 +327,7 @@ exp se =
    Ls3 "ann" (Ls3 "lookup" d k) ty ->
        PrimAppE (DictLookupP $ typ ty) [(exp d),(exp k)]
 
-   L (A "gensym" : _) -> PrimAppE Gensym []
+   Ls0 (A "gensym" : _) -> PrimAppE Gensym []
 
    Ls3 "ann" (Ls3 "has-key?" d k) ty ->
      PrimAppE (DictHasKeyP $ typ ty) [(exp d),(exp k)]
@@ -328,26 +339,26 @@ exp se =
         _ -> error$ "bad argument to 'error' primitive: "++prnt arg
 
    -- Other annotations are dropped:
-   Ls3 "ann" e _ty -> exp e
+   Ls3 "ann" e _ty -> unLoc $ exp e
 
-   L (A kwd : _args) | isKeyword kwd ->
+   Ls0 (A kwd : _args) | isKeyword kwd ->
       error $ "Error reading treelang.  Badly formed expression:\n "++prnt se
 
    ----------------------------------------
    -- If NOTHING else matches, we are an application.  Be careful we didn't miss anything:
-   L (A rator : rands) ->
+   Ls0 (A rator : rands) ->
      let app = AppE (textToVar rator) []
      in case rands of
-         [] -> app (MkProdE [])
+         [] -> app (L NoLoc $ MkProdE [])
          [rand] -> app (exp rand)
-         _ -> app (MkProdE (L.map exp rands))
+         _ -> app (L NoLoc $ MkProdE (L.map exp rands))
 
    _ -> error $ "Expression form not handled (yet):\n  "++
                sdoc se ++ "\nMore concisely:\n  "++ prnt se
 
 
 -- | One case of a case expression
-docase :: Sexp -> (DataCon,[(Var,())],Exp1)
+docase :: Sexp -> (DataCon,[(Var,())], L Exp1)
 docase s =
   case s of
     RSList [ RSList (A con : args)
@@ -357,7 +368,7 @@ docase s =
  where
    f x  = (getSym x, ())
 
-letbind :: Sexp -> (Var,[l],Ty1,Exp1)
+letbind :: Sexp -> (Var,[l],Ty1, L Exp1)
 letbind s =
   case s of
    RSList [A vr, A ":",
