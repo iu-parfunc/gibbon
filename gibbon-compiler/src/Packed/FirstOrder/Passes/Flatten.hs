@@ -55,27 +55,18 @@ flatten prg@(L1.Prog defs funs main) = do
 -- NOTE: / FIXME
 -- If we would just include arrow types in the grammar from the start,
 -- the the typeenv could contain function types too.  Data constructors could
--- go in there too.  Everything would be simpler.  We would simply have to use other means
--- to remember that L1 programs are first order.
+-- go in there too.  Everything would be simpler. We would simply have to
+-- use other means to remember that L1 programs are first order.
 
-type Exp e l = PreExp e l (UrTy l)
+type Exp e l   = PreExp e l (UrTy l)
+
 type Binds e l = (Var,[l],UrTy l, L (Exp e l))
-type TEnv l = M.Map Var (UrTy l)
 
-instance Expression a => Expression (L a) where
+type TEnv l    = M.Map Var (UrTy l)
 
-instance Flattenable a => Flattenable (L a) where
-  gFlattenExp defs env (L p exp) =  fmap (L p) $
-                                    gFlattenExp defs' env' exp
-    where
-      env'  = toUnlocatedEnv2 env
-      defs' = toUnlocatedDDefs defs
-
-      toUnlocatedDDefs :: DDefs (TyOf (L a)) -> DDefs (TyOf a)
-      toUnlocatedDDefs ddefs = __
-
-      toUnlocatedEnv2 :: Env2 (TyOf (L a)) -> Env2 (TyOf a)
-      toUnlocatedEnv2 env2 = __
+instance Flattenable (PreExp e l d) => Flattenable (L (PreExp e l d)) where
+  gFlattenExp defs env (L p ex) = fmap (L p) $ gFlattenExp defs env ex
+  -- TODO(cskksc): gFlattenGatherBinds
 
 
 instance (Out l, Show l, Flattenable (e l (UrTy l)))
