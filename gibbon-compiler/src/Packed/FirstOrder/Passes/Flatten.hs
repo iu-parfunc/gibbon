@@ -23,7 +23,7 @@ import Text.PrettyPrint.GenericPretty (Out)
 
 import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.Common
-import Packed.FirstOrder.L1.Syntax as L1
+import Packed.FirstOrder.L1.Syntax as L1 hiding (Exp)
 import qualified Packed.FirstOrder.L2.Syntax as L2
 
 -- import Packed.FirstOrder.L2.Syntax (isCursorTy)
@@ -58,39 +58,45 @@ flatten prg@(L1.Prog defs funs main) = do
 -- go in there too.  Everything would be simpler.  We would simply have to use other means
 -- to remember that L1 programs are first order.
 
-type Binds l e = (Var,[l],UrTy l, L (PreExp e l (UrTy l)))
+type Exp e l = PreExp e l (UrTy l)
+type Binds e l = (Var,[l],UrTy l, L (Exp e l))
 type TEnv l = M.Map Var (UrTy l)
 
 instance Expression a => Expression (L a) where
 
 instance Flattenable a => Flattenable (L a) where
+  gFlattenExp defs env (L p exp) =  fmap (L p) $
+                                    gFlattenExp defs' env' exp
+    where
+      env'  = toUnlocatedEnv2 env
+      defs' = toUnlocatedDDefs defs
 
-instance (Flattenable (PreExp NoExt () Ty)) where
+      toUnlocatedDDefs :: DDefs (TyOf (L a)) -> DDefs (TyOf a)
+      toUnlocatedDDefs ddefs = __
 
---   gFlattenExp ddefs env (L p exp) = do
---     exp' <- gFlattenExp ddefs env exp
---     return $ L p exp'
+      toUnlocatedEnv2 :: Env2 (TyOf (L a)) -> Env2 (TyOf a)
+      toUnlocatedEnv2 env2 = __
 
--- instance (Out l, Show l, Flattenable (e l (UrTy l)))
---          => Flattenable (PreExp e l (UrTy l)) where
 
---   gFlattenGatherBinds :: DDefs (UrTy l) ->
---                          Env2 (UrTy l) ->
---                          (PreExp e l (UrTy l)) ->
---                          SyM ([Binds l e], (PreExp e l (UrTy l)))
---   gFlattenGatherBinds = exp
+instance (Out l, Show l, Flattenable (e l (UrTy l)))
+         => Flattenable (Exp e l) where
+  -- gFlattenGatherBinds :: DDefs (UrTy l) ->
+  --                        Env2 (UrTy l) ->
+  --                        PreExp e l (UrTy l) ->
+  --                        SyM ([Binds e l], PreExp e l (UrTy l))
+  -- gFlattenGatherBinds = exp
 
---   gFlattenExp :: DDefs (UrTy l) -> Env2 (UrTy l) -> (PreExp e l (UrTy l)) ->
---                  SyM (PreExp e l (UrTy l))
---   gFlattenExp ddefs env2 ex0 = do (b,e') <- exp ddefs env2 ex0
---                                   return $ flatLets b e'
---    where
+  gFlattenExp :: DDefs (UrTy l) -> Env2 (UrTy l) -> PreExp e l (UrTy l) ->
+                 SyM (Exp e l)
+  gFlattenExp ddefs env2 ex0 = do (b,e') <- exp ddefs env2 (L NoLoc ex0)
+                                  return $ unLoc $ flatLets b e'
+
 
 exp :: forall l e . (Show l, Show (e l (UrTy l)), Out l, Out (e l (UrTy l))) =>
-       DDefs (UrTy l) -> Env2 (UrTy l) -> L (PreExp e l (UrTy l)) ->
-       SyM ([Binds l e],L (PreExp e l (UrTy l)))
+       DDefs (UrTy l) -> Env2 (UrTy l) -> L (Exp e l) ->
+       SyM ([Binds e l],L (Exp e l))
 exp ddefs env2 (L sloc e0) =
-     let triv :: String -> L (PreExp e l (UrTy l)) -> SyM ([Binds l e], L (PreExp e l (UrTy l)))
+     let triv :: String -> L (Exp e l) -> SyM ([Binds e l], L (Exp e l))
          triv m e = -- Force something to be trivial
            if isTriv e
            then return ([],e)
@@ -100,7 +106,7 @@ exp ddefs env2 (L sloc e0) =
                    return ( bnds++[(tmp,[],ty,e')]
                           , L NoLoc $ VarE tmp)
 
-         go :: L (PreExp e l (UrTy l)) -> SyM ([Binds l e], L (PreExp e l (UrTy l)))
+         go :: L (Exp e l) -> SyM ([Binds e l], L (Exp e l))
          go = exp ddefs env2
 
          gols f ls m = do (bndss,ls') <- unzip <$> mapM (triv m) ls
@@ -152,7 +158,7 @@ exp ddefs env2 (L sloc e0) =
                        return (b1, IfE a' (flatLets b2 b') (flatLets b3 c'))
        -- This can happen anywhere, but doing it here prevents
        -- unneccessary bloat where we can ill afford it:
-       ProjE ix l@(L sloc' (MkProdE ls)) -> do
+       ProjE ix (L _ (MkProdE ls)) -> do
          -- dbgTrace 5 (" [flatten] Reducing project-of-tuple, index "++show ix++
          --             " expr:  "++take 80 (show l)++"...")
          (bnd,rhs) <- go (ls !! ix)
@@ -191,7 +197,7 @@ flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
 
 -- | Recover the type of an expression in a type environment.
 typeExp :: forall l e . (Show l, Show (e l (UrTy l)), Out l, Out (e l (UrTy l))) =>
-           (DDefs (UrTy l), Env2 (UrTy l)) -> L (PreExp e l (UrTy l)) -> (UrTy l)
+           (DDefs (UrTy l), Env2 (UrTy l)) -> L (Exp e l) -> (UrTy l)
 typeExp (dd,env2) (L _ exp) =
   case exp of
     L1.LitE _       -> L1.IntTy
@@ -243,8 +249,6 @@ typeExp (dd,env2) (L _ exp) =
       in typeExp (dd, extendsVEnv
                    (M.fromList (zip args' (lookupDataCon dd c))) env2)
          e
-
-    ex -> error $ "typeExp: " ++ show ex ++ " not implemented"
 
 
 -- This crops up in the types for primitive operations.  Can we remove the need for this?

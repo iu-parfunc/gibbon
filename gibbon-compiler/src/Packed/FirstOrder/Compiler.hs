@@ -389,8 +389,8 @@ passes config@Config{mode} l1 = do
       l1 <- pure $ case mode of
                      Bench fnname -> benchMainExp config l1 fnname
                      _ -> l1
-      l1 <- passE  config "flatten"       flatten                                   l1
-      l1 <- passE  config "inlineTriv"    (return . inlineTriv)                     l1
+      l1 <- passE  config "flatten"       flatten               l1
+      l1 <- passE  config "inlineTriv"    (return . inlineTriv) l1
       return (L1 l1)
 
 {- -- UNDER_CONSTRUCTION
