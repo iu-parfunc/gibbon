@@ -148,7 +148,7 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
     -- 5. a map from location to location after it
     -- 6. the expression to process
     exp :: NewFuns -> [LocVar] -> EndOfRel -> M.Map Var LocVar ->
-           M.Map LocVar LocVar -> Exp2 -> SyM Exp2
+           M.Map LocVar LocVar -> L Exp2 -> SyM (L Exp2)
     exp fns retlocs eor lenv afterenv (L p e) = fmap (L p) $
         case e of
 
@@ -198,7 +198,7 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                  return $ LetE (v,outlocs,ty,L NoLoc $ AppE f lsin e1)
                                (wrapBody e2' newls)
 
-          CaseE (L p' (VarE x)) brs -> do
+          CaseE (L _ (VarE x)) brs -> do
                  -- We will need to gensym while processing the case clauses, so
                  -- it has to be in the SyM monad
                  brs' <- forM brs $ \(dc, vls, e) -> do
@@ -321,7 +321,7 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
 
 
 
-        where  mkRet :: [LocVar] -> Exp2 -> SyM Exp2
+        where  mkRet :: [LocVar] -> (L Exp2) -> SyM (L Exp2)
                mkRet ls (L p (VarE v)) =
                  let ends = L.map (\l -> findEnd l eor) ls
                  in return $ L p $ Ext (RetE ends v)

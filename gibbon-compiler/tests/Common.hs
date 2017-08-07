@@ -30,7 +30,7 @@ add1Fun = L2.FunDef "add1" add1FunTy "tr" add1FunBod
                 (PackedTy "Tree" "lout")
                 [EndOf $ LRM "lin" (VarR "r1") Input])
 
-    add1FunBod :: Exp2
+    add1FunBod :: L Exp2
     add1FunBod =
       L NoLoc $ CaseE (L NoLoc $ VarE "tr") $
       [ ("Leaf", [("n","l0")],

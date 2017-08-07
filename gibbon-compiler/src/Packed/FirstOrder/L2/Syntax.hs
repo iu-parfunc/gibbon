@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -67,7 +68,7 @@ import Text.PrettyPrint.GenericPretty
 import Packed.FirstOrder.Common hiding (FunDef)
 import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.L1.Syntax hiding
-       (Ty, FunDef, Prog, mapExprs, progToEnv, fundefs, getFunTy, Exp, add1Prog)
+       (FunDef, Prog, mapExprs, progToEnv, fundefs, getFunTy, add1Prog)
 import qualified Packed.FirstOrder.L1.Syntax as L1
 
 --------------------------------------------------------------------------------
@@ -77,17 +78,18 @@ type Exp2 = E2 LocVar Ty2
 
 -- | The extension that turns L1 into L2.
 data E2Ext loc dec =
-    LetRegionE Region                 (E2 loc dec) -- ^ Not used until later on.
-  | LetLocE    loc    (PreLocExp loc) (E2 loc dec) -- ^ Bind a new location.
+    LetRegionE Region                 (L (E2 loc dec)) -- ^ Not used until later on.
+  | LetLocE    loc    (PreLocExp loc) (L (E2 loc dec)) -- ^ Bind a new location.
   | RetE [loc] Var     -- ^ Return a value together with extra loc values.
   | FromEndE loc -- ^ Bind a location from an EndOf location (for RouteEnds and after)
- deriving (Show, Read, Ord, Eq, Generic, NFData)
+ deriving (Show, Ord, Eq, Generic, NFData)
 
--- | L1 expressions extended with L2.  This is the polymorphic version. Shorthand for
--- recursions above.
-type E2 l d = L (PreExp E2Ext l d)
+-- | L1 expressions extended with L2.  This is the polymorphic version.
+-- Shorthand for recursions above.
+type E2 l d = PreExp E2Ext l d
 
 instance Read (E2 l d) where
+instance Read (L (E2 l d)) where
 
 -- | Define a location in terms of a different location.
 data PreLocExp loc = StartOfLE Region
@@ -152,9 +154,9 @@ type NewFuns = M.Map Var FunDef
 -- | Here we only change the types of FUNCTIONS:
 data Prog = Prog { ddefs    :: DDefs Ty2
                  , fundefs  :: NewFuns
-                 , mainExp  :: Maybe (Exp2, Ty2)
+                 , mainExp  :: Maybe (L Exp2, Ty2)
                  }
-  deriving (Show, Read, Ord, Eq, Generic, NFData)
+  deriving (Show, Ord, Eq, Generic, NFData)
 
 ----------------------------------------------------------------------------------------------------
 
@@ -172,8 +174,8 @@ progToEnv Prog{fundefs} =
 data FunDef = FunDef { funname :: Var
                      , funty   :: (ArrowTy Ty2)
                      , funarg  :: Var
-                     , funbod  :: Exp2 }
-  deriving (Show, Read, Ord, Eq, Generic, NFData)
+                     , funbod  :: L Exp2 }
+  deriving (Show, Ord, Eq, Generic, NFData)
 --------------------------------------------------------------------------------
 
 -- | Retrieve the type of a function:
@@ -460,7 +462,8 @@ _allLocVars t =
 --     funEnv = fEnv $ includeBuiltins $ progToEnv (Prog dd fundefs mainExp)
 
 -- | Map exprs with an initial type environment:
-mapMExprs :: Monad m => (Env2 (UrTy LocVar) -> Exp2 -> m Exp2) -> Prog -> m Prog
+mapMExprs :: Monad m => (Env2 (UrTy LocVar) -> L Exp2 -> m (L Exp2)) -> Prog ->
+             m Prog
 mapMExprs = error $ "FINISHME: L2 mapMExprs"
 -- mapMExprs fn (Prog dd fundefs mainExp) =
 --     Prog dd <$>
@@ -626,7 +629,7 @@ add1Prog :: Prog
 add1Prog = withAdd1Prog Nothing
 
 -- | Supply a main expression to run with add1 defined.
-withAdd1Prog :: Maybe (Exp2,Ty2) -> Prog
+withAdd1Prog :: Maybe (L Exp2,Ty2) -> Prog
 withAdd1Prog mainExp =
     let ddfs = ddtree
         funs = (M.fromList [("add1",exadd1)])
@@ -649,7 +652,7 @@ withAdd1Prog mainExp =
               (PackedTy "tree" "lout")
               [EndOf $ LRM "lin" (VarR "r1") Input])
 
-  exadd1bod :: Exp2
+  exadd1bod :: L Exp2
   exadd1bod =
       L NoLoc $ CaseE (L NoLoc $ VarE "tr") $
         [ ("Leaf", [("n","l0")], L NoLoc $

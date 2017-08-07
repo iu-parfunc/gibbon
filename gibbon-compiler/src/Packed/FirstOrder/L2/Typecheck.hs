@@ -80,21 +80,25 @@ newtype LocationTypeState = LocationTypeState
     }
     deriving (Read,Show,Eq,Ord, Generic, NFData)
 
--- | A region set is (as you would expect) a set of regions. They are the regions that are
--- currently live while checking a particular expression.
+-- | A region set is (as you would expect) a set of regions. They are the
+-- regions that are currently live while checking a particular expression.
 newtype RegionSet = RegionSet { regSet :: S.Set Region }
 
 
--- | These are the kinds of errors that the type checker may throw.
--- There are a few named errors that I thought would be common, like variables not being
--- found, locations being used incorrectly, etc. For other errors, there's a GenericTC
--- form that takes some expression and string (containing an error message).
-data TCError = GenericTC String Exp2
-             | VarNotFoundTC Var Exp2
-             | UnsupportedExpTC Exp2
-             | DivergingEffectsTC Exp2 LocationTypeState LocationTypeState
-             | LocationTC String Exp2 LocVar LocVar
-             | ModalityTC String Exp2 LocVar LocationTypeState
+-- | Shorthand for located expressions
+type Exp = L Exp2
+
+-- | These are the kinds of errors that the type checker may throw. There are a
+-- few named errors that I thought would be common, like variables not being
+-- found, locations being used incorrectly, etc. For other errors, there's a
+-- GenericTC form that takes some expression and string
+-- (containing an error message).
+data TCError = GenericTC String Exp
+             | VarNotFoundTC Var Exp
+             | UnsupportedExpTC Exp
+             | DivergingEffectsTC Exp LocationTypeState LocationTypeState
+             | LocationTC String Exp LocVar LocVar
+             | ModalityTC String Exp LocVar LocationTypeState
                deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 -- | The type checking monad. Just for throwing errors, but could in the future be parameterized
@@ -107,7 +111,7 @@ type TcM a = Except TCError a
 -- a constraint set, a region set, an (input) location state map, and the expression, this function
 -- will either throw an error, or return a pair of expression type and new location state map.
 tcExp :: DDefs Ty2 -> Env2 Ty2 -> NewFuns
-      -> ConstraintSet -> RegionSet -> LocationTypeState -> Exp2
+      -> ConstraintSet -> RegionSet -> LocationTypeState -> Exp
       -> TcM (Ty2, LocationTypeState)
 tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
 
@@ -324,7 +328,7 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
 -- | Helper function to check case branches.
 tcCases :: DDefs Ty2 -> Env2 Ty2 -> NewFuns
         -> ConstraintSet -> RegionSet -> LocationTypeState -> LocVar
-        -> [(DataCon, [(Var,LocVar)], Exp2)]
+        -> [(DataCon, [(Var,LocVar)], Exp)]
         -> TcM ([Ty2], LocationTypeState)
 tcCases ddfs env funs constrs regs tstatein lin ((dc, vs, e):cases) = do
 
@@ -367,7 +371,7 @@ tcCases ddfs env funs constrs regs tstatein lin ((dc, vs, e):cases) = do
 
 tcCases _ _ _ _ _ ts _ [] = return ([],ts)
 
-tcProj :: Exp2 -> Int -> Ty2 -> TcM Ty2
+tcProj :: Exp -> Int -> Ty2 -> TcM Ty2
 tcProj _ i (ProdTy tys) = return $ tys !! i
 tcProj e _i ty = throwError $ GenericTC ("Projection from non-tuple type " ++ (show ty)) e
 
@@ -376,7 +380,7 @@ tcProj e _i ty = throwError $ GenericTC ("Projection from non-tuple type " ++ (s
 -- so this is assuming the list of expressions would have been evaluated
 -- in first-to-last order.
 tcExps :: DDefs Ty2 -> Env2 Ty2 -> NewFuns
-      -> ConstraintSet -> RegionSet -> LocationTypeState -> [Exp2]
+      -> ConstraintSet -> RegionSet -> LocationTypeState -> [Exp]
       -> TcM ([Ty2], LocationTypeState)
 tcExps ddfs env funs constrs regs tstatein (exp:exps) =
     do (ty,ts) <- tcExp ddfs env funs constrs regs tstatein exp
@@ -433,7 +437,7 @@ tcProg prg0@Prog{ddefs,fundefs,mainExp} = do
 
 -- | Insert a region into a region set.
 -- Includes an expression for error reporting.
-regionInsert :: Exp2 -> Region -> RegionSet -> TcM RegionSet
+regionInsert :: Exp -> Region -> RegionSet -> TcM RegionSet
 regionInsert e r (RegionSet regSet) = do
   if (S.member r regSet)
   then throwError $ GenericTC "Shadowed regions not allowed" e
@@ -445,14 +449,14 @@ hasRegion r (RegionSet regSet) = S.member r regSet
 
 -- | Ensure that a region is in a region set, reporting an error otherwise.
 -- Includes an expression for error reporting.
-ensureRegion :: Exp2 -> Region -> RegionSet -> TcM ()
+ensureRegion :: Exp -> Region -> RegionSet -> TcM ()
 ensureRegion exp r (RegionSet regSet) =
     if S.member r regSet then return ()
     else throwError $ GenericTC ("Region " ++ (show r) ++ " not in scope") exp
 
 -- | Get the region of a location variable.
 -- Includes an expression for error reporting.
-getRegion :: Exp2 -> ConstraintSet -> LocVar -> TcM Region
+getRegion :: Exp -> ConstraintSet -> LocVar -> TcM Region
 getRegion exp (ConstraintSet cs) l = go $ S.toList cs
     where go ((InRegionC l1 r):cs) = if l1 == l then return r
                                      else go cs
@@ -480,7 +484,7 @@ funTState [] = LocationTypeState $ M.empty
 
 -- | Look up the type of a variable from the environment
 -- Includes an expression for error reporting.
-lookupVar :: Env2 Ty2 -> Var -> Exp2 -> TcM Ty2
+lookupVar :: Env2 Ty2 -> Var -> Exp -> TcM Ty2
 lookupVar env var exp =
     case M.lookup var $ vEnv env of
       Nothing -> throwError $ VarNotFoundTC var exp
@@ -490,18 +494,18 @@ lookupVar env var exp =
 -- Currently just uses a naive union, which will not verify that different branches do the same
 -- things.
 -- TODO: Fix this!
-combineTStates :: Exp2 -> LocationTypeState -> LocationTypeState -> TcM LocationTypeState
+combineTStates :: Exp -> LocationTypeState -> LocationTypeState -> TcM LocationTypeState
 combineTStates _exp (LocationTypeState ts1) (LocationTypeState ts2) =
     return $ LocationTypeState $ M.union ts1 ts2
     -- throwError $ DivergingEffectsTC exp ts1 ts2
 
 -- | Ensure that two things are equal.
 -- Includes an expression for error reporting.
-ensureEqual :: Eq a => Exp2 -> String -> a -> a -> TcM a
+ensureEqual :: Eq a => Exp -> String -> a -> a -> TcM a
 ensureEqual exp str a b = if a == b then return a else throwError $ GenericTC str exp
 
 -- | Ensure that the number of arguments to an operation is correct.
-checkLen :: (Show op, Show arg) => Exp2 -> op -> Int -> [arg] -> TcM ()
+checkLen :: (Show op, Show arg) => Exp -> op -> Int -> [arg] -> TcM ()
 checkLen expr pr n ls =
   if length ls == n
   then return ()
@@ -511,13 +515,13 @@ checkLen expr pr n ls =
 
 -- | Ensure that two types are equal.
 -- Includes an expression for error reporting.
-ensureEqualTy :: Exp2 -> Ty2 -> Ty2 -> TcM Ty2
+ensureEqualTy :: Exp -> Ty2 -> Ty2 -> TcM Ty2
 ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
                                          ++ (show a) ++ ", " ++ (show b)) a b
 
 -- | Ensure that two types are equal, ignoring the locations if they are packed.
 -- Includes an expression for error reporting.
-ensureEqualTyNoLoc :: Exp2 -> Ty2 -> Ty2 -> TcM Ty2
+ensureEqualTyNoLoc :: Exp -> Ty2 -> Ty2 -> TcM Ty2
 ensureEqualTyNoLoc exp (PackedTy dc1 ty1) (PackedTy dc2 ty2) =
     if dc1 == dc2 then return (PackedTy dc1 ty1)
     else ensureEqualTy exp (PackedTy dc1 ty1) (PackedTy dc2 ty2)
@@ -525,7 +529,7 @@ ensureEqualTyNoLoc exp ty1 ty2 = ensureEqualTy exp ty1 ty2
 
 -- | Ensure that match cases make sense.
 -- Includes an expression for error reporting.
-ensureMatchCases :: DDefs Ty2 -> Exp2 -> Ty2 -> [(DataCon, [(Var,LocVar)], Exp2)] -> TcM ()
+ensureMatchCases :: DDefs Ty2 -> Exp -> Ty2 -> [(DataCon, [(Var,LocVar)], Exp)] -> TcM ()
 ensureMatchCases ddfs exp ty cs = do
   case ty of
     PackedTy tc _l -> do
@@ -539,7 +543,7 @@ ensureMatchCases ddfs exp ty cs = do
 
 -- | Ensure a type is at a particular location.
 -- Includes an expression for error reporting.
-ensurePackedLoc :: Exp2 -> Ty2 -> LocVar -> TcM ()
+ensurePackedLoc :: Exp -> Ty2 -> LocVar -> TcM ()
 ensurePackedLoc exp ty l =
     case ty of
       PackedTy _ l1 -> if l1 == l then return ()
@@ -548,7 +552,7 @@ ensurePackedLoc exp ty l =
 
 -- | Ensure the locations all line up with the constraints in a data constructor application.
 -- Includes an expression for error reporting.
-ensureDataCon :: Exp2 -> LocVar -> [Ty2] -> ConstraintSet -> TcM ()
+ensureDataCon :: Exp -> LocVar -> [Ty2] -> ConstraintSet -> TcM ()
 ensureDataCon exp linit tys cs = go Nothing linit tys
     where go Nothing linit ((PackedTy dc l):tys) = do
             ensureAfterConstant exp cs linit l
@@ -567,7 +571,7 @@ ensureDataCon exp linit tys cs = go Nothing linit tys
 
 -- | Ensure that one location is +c after another location in the constraint set.
 -- Includes an expression for error reporting.
-ensureAfterConstant :: Exp2 -> ConstraintSet -> LocVar -> LocVar -> TcM ()
+ensureAfterConstant :: Exp -> ConstraintSet -> LocVar -> LocVar -> TcM ()
 ensureAfterConstant exp (ConstraintSet cs) l1 l2 =
     if L.any f $ S.toList cs then return ()
     else throwError $ LocationTC "Expected after relationship" exp l1 l2
@@ -576,7 +580,7 @@ ensureAfterConstant exp (ConstraintSet cs) l1 l2 =
 
 -- | Ensure that one location is a variable size after another location in the constraint set.
 -- Includes an expression for error reporting.
-ensureAfterPacked :: Exp2 -> ConstraintSet -> LocVar -> LocVar -> TcM ()
+ensureAfterPacked :: Exp -> ConstraintSet -> LocVar -> LocVar -> TcM ()
 ensureAfterPacked  exp (ConstraintSet cs) l1 l2 =
     if L.any f $ S.toList cs then return ()
     else throwError $ LocationTC "Expected after relationship" exp l1 l2
@@ -598,7 +602,7 @@ removeTS l (LocationTypeState ls) = LocationTypeState $ M.delete l ls
 setAfter :: LocVar -> LocationTypeState -> LocationTypeState
 setAfter l (LocationTypeState ls) = LocationTypeState $ M.adjust (\(m,_) -> (m,True)) l ls
 
-_lookupTS :: Exp2 -> LocVar -> LocationTypeState -> TcM (Modality,Bool)
+_lookupTS :: Exp -> LocVar -> LocationTypeState -> TcM (Modality,Bool)
 _lookupTS exp l (LocationTypeState ls) =
     case M.lookup l ls of
       Nothing -> throwError $ GenericTC ("Failed lookup of location " ++ (show l)) exp
@@ -607,7 +611,7 @@ _lookupTS exp l (LocationTypeState ls) =
 extendConstrs :: LocConstraint -> ConstraintSet -> ConstraintSet
 extendConstrs c (ConstraintSet cs) = ConstraintSet $ S.insert c cs
 
-switchOutLoc :: Exp2 -> LocationTypeState -> LocVar -> TcM LocationTypeState
+switchOutLoc :: Exp -> LocationTypeState -> LocVar -> TcM LocationTypeState
 switchOutLoc exp (LocationTypeState ls) l =
     case M.lookup l ls of
       Nothing -> throwError $ GenericTC ("Unknown location " ++ (show l)) exp
@@ -615,7 +619,7 @@ switchOutLoc exp (LocationTypeState ls) l =
       Just (Input,_a) -> throwError $ ModalityTC "Expected output location" exp l $
                                       LocationTypeState ls
 
-_absentAfter :: Exp2 -> LocationTypeState -> LocVar -> TcM ()
+_absentAfter :: Exp -> LocationTypeState -> LocVar -> TcM ()
 _absentAfter exp (LocationTypeState ls) l =
     case M.lookup l ls of
       Nothing -> throwError $ GenericTC ("Unknown location " ++ (show l)) exp
@@ -623,7 +627,7 @@ _absentAfter exp (LocationTypeState ls) l =
       Just (_m,True) -> throwError $ GenericTC ("Alias of location " ++ (show l)) exp
 
 -- | Ensure that a location is not already "defined" by a start constraint.
-absentStart :: Exp2 -> ConstraintSet -> Region -> TcM ()
+absentStart :: Exp -> ConstraintSet -> Region -> TcM ()
 absentStart exp (ConstraintSet cs) r = go $ S.toList cs
     where go ((StartOfC _l r'):cs) =
               if r == r'
@@ -633,7 +637,7 @@ absentStart exp (ConstraintSet cs) r = go $ S.toList cs
           go [] = return ()
 
 
-removeLoc :: Exp2 -> LocationTypeState -> LocVar -> TcM LocationTypeState
+removeLoc :: Exp -> LocationTypeState -> LocVar -> TcM LocationTypeState
 removeLoc exp (LocationTypeState ls) l =
     if M.member l ls
     then return $ LocationTypeState $ M.delete l ls
