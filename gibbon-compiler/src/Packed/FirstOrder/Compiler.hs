@@ -19,18 +19,10 @@ module Packed.FirstOrder.Compiler
 import           Control.DeepSeq
 import           Control.Exception
 import           Control.Monad.State.Strict
+import           Data.Loc
 import           Data.Set as S hiding (map)
 import           Data.Monoid
 import           Options.Applicative
-import           Packed.FirstOrder.Common
-import           Packed.FirstOrder.GenericOps(Interp, interpNoLogs)
-import qualified Packed.FirstOrder.HaskellFrontend as HS
-import qualified Packed.FirstOrder.L1.Syntax   as L1
-import qualified Packed.FirstOrder.L2.Syntax as L2
-import qualified Packed.FirstOrder.L4.Syntax   as L4
-import qualified Packed.FirstOrder.SExpFrontend as SExp
-import qualified Packed.FirstOrder.L1.Interp as SI
-import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
 import           System.Directory
 import           System.Environment
 import           System.Exit
@@ -40,6 +32,15 @@ import           System.IO.Error (isDoesNotExistError)
 import           System.Process
 import           Text.PrettyPrint.GenericPretty
 
+import           Packed.FirstOrder.Common
+import           Packed.FirstOrder.GenericOps(Interp, interpNoLogs)
+import qualified Packed.FirstOrder.HaskellFrontend as HS
+import qualified Packed.FirstOrder.L1.Syntax   as L1
+import qualified Packed.FirstOrder.L2.Syntax as L2
+import qualified Packed.FirstOrder.L4.Syntax   as L4
+import qualified Packed.FirstOrder.SExpFrontend as SExp
+import qualified Packed.FirstOrder.L1.Interp as SI
+import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
 -- compiler passes
 import           Packed.FirstOrder.Passes.Freshen
 import           Packed.FirstOrder.Passes.Flatten (flatten)
@@ -486,19 +487,21 @@ benchMainExp Config{benchInput,benchPrint} l1 fnname = do
       (arg@(L1.PackedTy tyc _),ret) = L1.getFunTy fnname l1
       -- At L1, we assume ReadPackedFile has a single return value:
       newExp = L1.LetE (toVar tmp, [],
-                         arg,
-                         L1.PrimAppE (L1.ReadPackedFile benchInput tyc arg) [])
-                $
-                L1.LetE (toVar "benchres", [],
+                        arg,
+                        L NoLoc $ L1.PrimAppE
+                        (L1.ReadPackedFile benchInput tyc arg) [])
+               $ L NoLoc $ L1.LetE (toVar "benchres", [],
                          ret,
-                         L1.TimeIt (L1.AppE fnname [] (L1.VarE (toVar tmp))) ret True)
-                $
+                         L NoLoc $ L1.TimeIt
+                         (L NoLoc $ L1.AppE fnname []
+                          (L NoLoc $ L1.VarE (toVar tmp))) ret True)
+               $
                 -- FIXME: should actually return the result,
                 -- as soon as we are able to print it.
-                (if benchPrint
-                  then L1.VarE (toVar "benchres")
-                  else L1.PrimAppE L1.MkTrue [])
-  l1{ L1.mainExp = Just newExp }
+               (if benchPrint
+                then L NoLoc $ L1.VarE (toVar "benchres")
+                else L NoLoc $ L1.PrimAppE L1.MkTrue [])
+  l1{ L1.mainExp = Just $ L NoLoc newExp }
 
 
 type PassRunner a b = (Out b, NFData a, NFData b) =>
