@@ -3,8 +3,8 @@
 -- | Mock definitions and other utilities
 module Common where
 
+import Data.Loc
 import Data.Set as S
--- import Data.Map as M
 
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L2.Syntax as L2
@@ -32,17 +32,22 @@ add1Fun = L2.FunDef "add1" add1FunTy "tr" add1FunBod
 
     add1FunBod :: Exp2
     add1FunBod =
-      CaseE (VarE "tr") $
+      L NoLoc $ CaseE (L NoLoc $ VarE "tr") $
       [ ("Leaf", [("n","l0")],
-          LetE ("v",[],IntTy,PrimAppE L1.AddP [VarE "n", LitE 1]) $
-          LetE ("lf",[],PackedTy "Tree" "lout", DataConE "lout" "Leaf" [VarE "v"]) $
-          VarE "lf")
+          L NoLoc $ LetE ("v",[],IntTy, L NoLoc $ PrimAppE L1.AddP
+                                                 [L NoLoc $ VarE "n",
+                                                  L NoLoc $ LitE 1]) $
+          L NoLoc $ LetE ("lf",[],PackedTy "Tree" "lout",
+                          L NoLoc $ DataConE "lout" "Leaf" [L NoLoc $ VarE "v"]) $
+          L NoLoc $ VarE "lf")
       , ("Node", [("x","l1"),("y","l2")],
-         Ext $ LetLocE "lout1" (AfterConstantLE 1 "lout") $
-         LetE ("x1",[],PackedTy "Tree" "lout1", AppE "add1" ["l1","lout1"] (VarE "x")) $
-         Ext $ LetLocE "lout2" (AfterVariableLE "x1" "lout1") $
-         LetE ("y1",[],PackedTy "Tree" "lout2", AppE "add1" ["l2","lout2"] (VarE "y")) $
-         LetE ("z",[],PackedTy "Tree" "lout",
-                  DataConE "lout" "Node" [ VarE "x1" , VarE "y1"]) $
-         VarE "z")
+         L NoLoc $ Ext $ LetLocE "lout1" (AfterConstantLE 1 "lout") $
+         L NoLoc $ LetE ("x1",[],PackedTy "Tree" "lout1",
+                         L NoLoc $ AppE "add1" ["l1","lout1"]
+                                 (L NoLoc $ VarE "x")) $
+         L NoLoc $ Ext $ LetLocE "lout2" (AfterVariableLE "x1" "lout1") $
+         L NoLoc $ LetE ("y1",[],PackedTy "Tree" "lout2", L NoLoc $ AppE "add1" ["l2","lout2"] (L NoLoc $ VarE "y")) $
+         L NoLoc $ LetE ("z",[],PackedTy "Tree" "lout",
+                  L NoLoc $ DataConE "lout" "Node" [ L NoLoc $ VarE "x1" , L NoLoc $ VarE "y1"]) $
+         L NoLoc $ VarE "z")
       ]

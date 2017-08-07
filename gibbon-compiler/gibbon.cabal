@@ -129,6 +129,7 @@ test-suite test-gibbon
                        gibbon, containers,
                        directory, process,
                        mtl,
+                       srcloc,
                        tasty, tasty-hunit, tasty-th
   other-modules:
                 RouteEnds2
