@@ -31,8 +31,8 @@ module Packed.FirstOrder.L2.Syntax
     -- * Extended language L2.0 with location types.
     , Exp2, E2Ext(..), Ty2
 
-    -- * Convenience aliases
-    , Ty, Exp
+    -- -- * Convenience aliases
+    -- , Ty, Exp
 
     -- * Conversion back to L1
     , revertToL1
@@ -70,18 +70,10 @@ import Packed.FirstOrder.L1.Syntax hiding
        (Ty, FunDef, Prog, mapExprs, progToEnv, fundefs, getFunTy, Exp, add1Prog)
 import qualified Packed.FirstOrder.L1.Syntax as L1
 
--- | Convenience alias.
-type Ty = Ty2
-{-# DEPRECATED Ty "Moving away from generically named Ty/Exp/Prog" #-}
-
--- | Convenience alias.
-type Exp = Exp2
-{-# DEPRECATED Exp "Moving away from generically named Ty/Exp/Prog" #-}
-
 --------------------------------------------------------------------------------
 
 -- | Extended expressions, L2.  Monomorphic.
-type Exp2 = E2 LocVar Ty
+type Exp2 = E2 LocVar Ty2
 
 -- | The extension that turns L1 into L2.
 data E2Ext loc dec =
@@ -158,9 +150,9 @@ type Ty2 = L1.UrTy LocVar
 type NewFuns = M.Map Var FunDef
 
 -- | Here we only change the types of FUNCTIONS:
-data Prog = Prog { ddefs    :: DDefs Ty
+data Prog = Prog { ddefs    :: DDefs Ty2
                  , fundefs  :: NewFuns
-                 , mainExp  :: Maybe (Exp, Ty)
+                 , mainExp  :: Maybe (Exp2, Ty2)
                  }
   deriving (Show, Read, Ord, Eq, Generic, NFData)
 
@@ -178,14 +170,14 @@ progToEnv Prog{fundefs} =
 
 -- | A function definition with the function's effects.
 data FunDef = FunDef { funname :: Var
-                     , funty   :: (ArrowTy Ty)
+                     , funty   :: (ArrowTy Ty2)
                      , funarg  :: Var
-                     , funbod  :: Exp }
+                     , funbod  :: Exp2 }
   deriving (Show, Read, Ord, Eq, Generic, NFData)
 --------------------------------------------------------------------------------
 
 -- | Retrieve the type of a function:
-getFunTy :: NewFuns -> Var -> ArrowTy Ty
+getFunTy :: NewFuns -> Var -> ArrowTy Ty2
 getFunTy mp f = case M.lookup f mp of
                   Nothing -> error $ "getFunTy: function was not bound: "++show f
                   Just (FunDef{funty}) -> funty
@@ -198,7 +190,7 @@ getFunTy mp f = case M.lookup f mp of
 
 
 -- | Retrieve all LocVars mentioned in a type
-_getTyLocs :: Ty -> Set LocVar
+_getTyLocs :: Ty2 -> Set LocVar
 _getTyLocs t =
     case t of
       IntTy  -> S.empty
@@ -214,7 +206,7 @@ _getTyLocs t =
 
 
 -- | Annotate a naked type with fresh location variables.
-_tyWithFreshLocs :: Ty1 -> SyM Ty
+_tyWithFreshLocs :: Ty1 -> SyM Ty2
 _tyWithFreshLocs t =
   case t of
     L1.Packed k -> PackedTy k <$> genLetter
@@ -229,7 +221,7 @@ _tyWithFreshLocs t =
     L1.ListTy _ -> error "tyWithFreshLocs: FIXME implement lists"
 
 -- | Remove the extra location annotations.
-_stripTyLocs :: Ty -> L1.Ty1
+_stripTyLocs :: Ty2 -> L1.Ty1
 _stripTyLocs = fmap (const ())
   -- case t of
   --   PackedTy k _  -> L1.PackedTy k ()
@@ -241,7 +233,7 @@ _stripTyLocs = fmap (const ())
 
 
 -- | Apply a variable substitution to a type.
-_substTy :: Map LocVar LocVar -> Ty -> Ty
+_substTy :: Map LocVar LocVar -> Ty2 -> Ty2
 _substTy mp t = go t
   where
     go t =
@@ -278,7 +270,7 @@ _substEffs mp ef =
                  Nothing -> Traverse v) ef
 
 -- | Collect all the locations mentioned in a type.
-_allLocVars :: Ty -> [LocVar]
+_allLocVars :: Ty2 -> [LocVar]
 -- TODO: could just be a fold
 _allLocVars t =
     case t of
@@ -634,13 +626,13 @@ add1Prog :: Prog
 add1Prog = withAdd1Prog Nothing
 
 -- | Supply a main expression to run with add1 defined.
-withAdd1Prog :: Maybe (Exp,Ty) -> Prog
+withAdd1Prog :: Maybe (Exp2,Ty2) -> Prog
 withAdd1Prog mainExp =
     let ddfs = ddtree
         funs = (M.fromList [("add1",exadd1)])
     in Prog ddfs funs mainExp
  where
-  ddtree :: DDefs Ty
+  ddtree :: DDefs Ty2
   ddtree = (fromListDD [DDef "Tree"
                                 [ ("Leaf",[(False,IntTy)])
                                 , ("Node",[(False,PackedTy "Tree" "l")

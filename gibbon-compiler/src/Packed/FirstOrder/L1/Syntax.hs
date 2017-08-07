@@ -19,18 +19,18 @@ module Packed.FirstOrder.L1.Syntax
     (
      -- * Core types
       Prog(..), DDef(..), FunDefs, FunDef(..),
-      Exp1, Exp, PreExp(..)
+      Exp1, PreExp(..)
     , progToEnv
 
       -- * Primitive operations
     , Prim(..), primArgsTy
 
       -- * Types and helpers
-    , Ty1, Ty, UrTy(..), pattern Packed, pattern SymTy
+    , Ty1, UrTy(..), pattern Packed, pattern SymTy
     , voidTy, hasPacked, sizeOf
 
     -- * Expression and Prog helpers
-    , freeVars, subst, substE, getFunTy
+    , subst, substE, getFunTy
     , mapExprs
     , mapExt
    , mapLocs
@@ -74,10 +74,12 @@ data Prog = Prog { ddefs    :: DDefs Ty1
                  }
   deriving (Show,Eq,Ord, Generic, NFData)
 
+
 -- FIXME: Finish this and merge with L2.Constraint
 data Constraint = Constraint
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 instance Out Constraint
+
 
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.
@@ -89,11 +91,8 @@ progToEnv Prog{fundefs} =
 
 
 -- | A convenient, default instantiation of the L1 expression type.
-type Exp1 = Exp
+type Exp1 = PreExp NoExt () Ty1
 
--- | Deprecated alias for Exp1
-type Exp = PreExp NoExt () Ty1
-{-# DEPRECATED Exp "use Exp1 instead" #-}
 
 -- Shorthand to make the below definition more readable.
 -- I.e., this covers all the verbose recursive fields.
@@ -145,7 +144,8 @@ data PreExp (ext :: * -> * -> *) loc dec =
 
    -- Limited list handling:
    -- TODO: RENAME to "Array".
-   | MapE  (Var,Ty, EXP) EXP  -- TODO: Replace with Generate, add array reference.
+   -- TODO: Replace with Generate, add array reference.
+   | MapE  (Var,Ty1, EXP) EXP
    | FoldE { initial  :: (Var,dec,EXP)
            , iterator :: (Var,dec,EXP)
            , body     :: EXP }
@@ -153,13 +153,14 @@ data PreExp (ext :: * -> * -> *) loc dec =
    ----------------------------------------
   | Ext (ext loc dec) -- ^ Extension point for downstream language extensions.
 
-  deriving (Show,Eq,Ord, Generic, NFData, Functor)
+  deriving (Show, Eq, Ord, Generic, NFData, Functor)
 
-instance NFData a => NFData (L a) where
+
+instance NFData (PreExp e l d) => NFData (L (PreExp e l d)) where
   rnf (L loc a) = seq loc (rnf a)
 
-instance Out a => Out (L a) where
-  doc (L _ a) = doc a
+instance Out (PreExp e l d) => Out (L (PreExp e l d)) where
+  doc (L _ a)       = doc a
   docPrec n (L _ a) = docPrec n a
 
 instance (Out l, Show l, Show d, Out d, Expression (e l d))
@@ -172,15 +173,45 @@ instance Expression (PreExp e l d) => Expression (L (PreExp e l d)) where
   type (LocOf (L (PreExp e l d))) = l
 
 
+-- | Free data variables.  Does not include function variables, which
+-- currently occupy a different namespace.  Does not include location/region variables.
+instance FreeVars (PreExp e l d) => FreeVars (L (PreExp e l d)) where
+  gFreeVars (L _ a) = gFreeVars a
+
+instance FreeVars (e l d) => FreeVars (PreExp e l d) where
+  gFreeVars ex = case ex of
+      VarE v    -> S.singleton v
+      LitE _    -> S.empty
+      LitSymE _ -> S.empty
+      ProjE _ e -> gFreeVars e
+      IfE a b c -> gFreeVars a `S.union` gFreeVars b `S.union` gFreeVars c
+      AppE _v _ e          -> gFreeVars e  -- S.insert v (gFreeVars e)
+      PrimAppE _ ls        -> S.unions (L.map gFreeVars ls)
+      LetE (v,_,_,rhs) bod -> gFreeVars rhs `S.union`
+                              S.delete v (gFreeVars bod)
+      CaseE e ls -> S.union (gFreeVars e)
+                    (S.unions $ L.map (\(_, _, ee) -> gFreeVars ee) ls)
+      MkProdE ls          -> S.unions $ L.map gFreeVars ls
+      DataConE _ _ ls     -> S.unions $ L.map gFreeVars ls
+      TimeIt e _ _        -> gFreeVars e
+      MapE (v,_t,rhs) bod -> gFreeVars rhs `S.union`
+                             S.delete v (gFreeVars bod)
+      FoldE (v1,_t1,r1) (v2,_t2,r2) bod ->
+          gFreeVars r1 `S.union` gFreeVars r2 `S.union`
+          (S.delete v1 $ S.delete v2 $ gFreeVars bod)
+
+      Ext q -> gFreeVars q
+
+
 -- | Some of these primitives are (temporarily) tagged directly with
 -- their return types.
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
-          | EqSymP          -- ^ Equality on Sym
-          | EqIntP       -- ^ Equality on Int
-          | DictInsertP Ty1  -- ^ takes dict, k,v; annotated with element type
-          | DictLookupP Ty1  -- ^ takes dict,k errors if absent; annotated with element type
-          | DictEmptyP  Ty1  -- ^ annotated with element type to avoid ambiguity
-          | DictHasKeyP Ty1  -- ^ takes dict,k; returns a Bool, annotated with element type
+          | EqSymP             -- ^ Equality on Sym
+          | EqIntP             -- ^ Equality on Int
+          | DictInsertP Ty1    -- ^ takes dict, k,v; annotated with element type
+          | DictLookupP Ty1    -- ^ takes dict,k errors if absent; annotated with element type
+          | DictEmptyP  Ty1    -- ^ annotated with element type to avoid ambiguity
+          | DictHasKeyP Ty1    -- ^ takes dict,k; returns a Bool, annotated with element type
           | Gensym
           | ErrorP String Ty1
               -- ^ crash and issue a static error message.
@@ -190,11 +221,11 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
 --          | AddLoc Int Var
           | SizeParam
 
-          | MkTrue -- ^ Zero argument constructor.
+          | MkTrue  -- ^ Zero argument constructor.
           | MkFalse -- ^ Zero argument constructor.
 
           | MkNullCursor -- ^ Zero argument constructor.
-          | ReadPackedFile (Maybe FilePath) TyCon Ty
+          | ReadPackedFile (Maybe FilePath) TyCon Ty1
             -- ^ Read (mmap) a binary file containing packed data.  This must be annotated with the
             -- type of the file being read.  The `Ty` tracks the type as the program evolvels
             -- (first PackedTy then CursorTy).  The TyCon tracks the original type name.
@@ -204,15 +235,12 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
 instance Out Prim
 instance Out a => Out (UrTy a)
 -- Do this manually to get prettier formatting:
--- instance Out Ty where  doc x = __
 
 instance (Out l, Out d, Out (e l d)) => Out (PreExp e l d)
 
 instance Out Prog
 
--- type TEnv = Map Var Ty
-
--- TEMP/FIXME: leaving out these for now.
+-- TODO/FIXME: leaving out these for now.
 pattern SymTy :: forall a. UrTy a
 pattern SymTy = IntTy
 
@@ -221,9 +249,6 @@ pattern Packed c = PackedTy c ()
 
 -- | The type rperesentation used in L1.
 type Ty1 = UrTy ()
-
-type Ty = Ty1
-{-# DEPRECATED Ty "Moving away from generically named Ty/Exp/Prog" #-}
 
 -- | Types include boxed/pointer-based products as well as unpacked
 -- algebraic datatypes.  This data is parameterized to allow
@@ -237,10 +262,10 @@ data UrTy a =
         | SymDictTy (UrTy a)  -- ^ A map from SymTy to Ty
           -- ^ We allow built-in dictionaries from symbols to a value type.
 
-        | PackedTy TyCon a    -- ^ No type arguments to TyCons for now.  (No polymorphism.)
+        | PackedTy TyCon a -- ^ No type arguments to TyCons for now.  (No polymorphism.)
 
-        | ListTy (UrTy a) -- ^ These are not fully first class.  They are onlyae
-                         -- allowed as the fields of data constructors.
+        | ListTy (UrTy a)  -- ^ These are not fully first class.  They are onlyae
+                           -- allowed as the fields of data constructors.
 
         ---------- These are not used initially ----------------
         -- (They could be added by a later IR instead:)
@@ -274,7 +299,7 @@ visitExp fl fe fd exp = fin
    L _ fin = go (L NoLoc exp)
 
    go :: L (PreExp e1 l1  d1) -> L (PreExp e2 l2 d2)
-   go (L p ex) = L p $
+   go (L sloc ex) = L sloc $
      case ex of
        Ext  x        -> Ext (fe x)
        VarE v        -> VarE v
@@ -283,10 +308,10 @@ visitExp fl fe fd exp = fin
        AppE v l e    -> AppE v (L.map fl l) (go e)
        PrimAppE p ls -> PrimAppE p $ L.map go ls
        LetE (v,l,t,rhs) bod -> LetE (v,L.map fl l,fd t,go rhs) (go bod)
-       ProjE i e  -> ProjE i (go e)
-       CaseE e ls -> CaseE (go e)
-                     [ (c, [ (v,fl l) | (v,l) <- vs ],go er)
-                     | (c,vs,er) <- ls ]
+       ProjE i e          -> ProjE i (go e)
+       CaseE e ls         -> CaseE (go e)
+                             [ (c, [ (v,fl l) | (v,l) <- vs ],go er)
+                             | (c,vs,er) <- ls ]
        MkProdE ls         -> MkProdE $ L.map go ls
        DataConE loc k ls  -> DataConE (fl loc) k $ L.map go ls
        TimeIt e t b       -> TimeIt (go e) (fd t) b
@@ -296,7 +321,7 @@ visitExp fl fe fd exp = fin
          FoldE (v1,fd t1,go r1) (v2,fd t2,go r2) (go bod)
 
 
-voidTy :: Ty
+voidTy :: Ty1
 voidTy = ProdTy []
 
 -- | Do values of this type contain packed data?
@@ -336,44 +361,11 @@ mapExprs fn prg@Prog{fundefs,mainExp} =
 --------------------------------------------------------------------------------
 
 -- | Look up the input/output type of a top-level function binding.
-getFunTy :: Var -> Prog -> (Ty,Ty)
+getFunTy :: Var -> Prog -> (Ty1,Ty1)
 getFunTy fn Prog{fundefs} =
     case M.lookup fn fundefs of
       Just FunDef{funArg=(_vr,argty), funRetTy} -> (argty,funRetTy)
       Nothing -> error $ "getFunTy: L1 program does not contain binding for function: "++show fn
-
--- | Free data variables.  Does not include function variables, which
--- currently occupy a different namespace.  Does not include location/region variables.
-freeVars :: Exp -> S.Set Var
-freeVars = gFreeVars
-{-# DEPRECATED freeVars "Use gFreeVars instead" #-}
-
-instance FreeVars a => FreeVars (L a) where
-  gFreeVars (L _ a) = gFreeVars a
-
-instance FreeVars (e l d) => FreeVars (PreExp e l d) where
-  gFreeVars ex = case ex of
-      VarE v    -> S.singleton v
-      LitE _    -> S.empty
-      LitSymE _ -> S.empty
-      ProjE _ e -> gFreeVars e
-      IfE a b c -> gFreeVars a `S.union` gFreeVars b `S.union` gFreeVars c
-      AppE _v _ e          -> gFreeVars e  -- S.insert v (gFreeVars e)
-      PrimAppE _ ls        -> S.unions (L.map gFreeVars ls)
-      LetE (v,_,_,rhs) bod -> gFreeVars rhs `S.union`
-                              S.delete v (gFreeVars bod)
-      CaseE e ls -> S.union (gFreeVars e)
-                    (S.unions $ L.map (\(_, _, ee) -> gFreeVars ee) ls)
-      MkProdE ls          -> S.unions $ L.map gFreeVars ls
-      DataConE _ _ ls     -> S.unions $ L.map gFreeVars ls
-      TimeIt e _ _        -> gFreeVars e
-      MapE (v,_t,rhs) bod -> gFreeVars rhs `S.union`
-                             S.delete v (gFreeVars bod)
-      FoldE (v1,_t1,r1) (v2,_t2,r2) bod ->
-          gFreeVars r1 `S.union` gFreeVars r2 `S.union`
-          (S.delete v1 $ S.delete v2 $ gFreeVars bod)
-
-      Ext q -> gFreeVars q
 
 
 subst :: Var -> L Exp1 -> L Exp1 -> L Exp1
@@ -439,7 +431,7 @@ substE old new (L p ex) = L p $
 
     Ext _ -> ex
 
-primArgsTy :: Prim -> [Ty]
+primArgsTy :: Prim -> [Ty1]
 primArgsTy p =
   case p of
     AddP    -> [IntTy, IntTy]
@@ -539,13 +531,13 @@ mkProd [e] = e
 mkProd ls  = L (locOf $ head ls) $ MkProdE ls
 
 -- | Same as mkProd, at the type level
-mkProdTy :: [Ty]-> Ty
+mkProdTy :: [Ty1]-> Ty1
 mkProdTy [t] = t
 mkProdTy ls  = ProdTy ls
 
 -- | Make a nested series of lets.
-mkLets :: [(Var,[l],Ty,L (PreExp NoExt l Ty))] ->
-          L (PreExp NoExt l Ty) -> L (PreExp NoExt l Ty)
+mkLets :: [(Var,[l],Ty1,L (PreExp NoExt l Ty1))] ->
+          L (PreExp NoExt l Ty1) -> L (PreExp NoExt l Ty1)
 mkLets [] bod     = bod
 mkLets (b:bs) bod = L NoLoc $ LetE b (mkLets bs bod)
 
@@ -553,7 +545,7 @@ mkLets (b:bs) bod = L NoLoc $ LetE b (mkLets bs bod)
 
 --------------------------------------------------------------------------------
 
-treeTy :: Ty
+treeTy :: Ty1
 treeTy = Packed "Tree"
 
 treeDD :: DDefs (UrTy ())
@@ -567,13 +559,13 @@ mkAdd1Prog bod mainExp = Prog treeDD
                               (M.fromList [("add1",mkAdd1Fun bod)])
                               mainExp
 
-mkAdd1Fun :: ex -> FunDef Ty ex
+mkAdd1Fun :: ex -> FunDef Ty1 ex
 mkAdd1Fun bod = FunDef "add1" ("tr",treeTy) treeTy bod
 
 ----------------
 
 -- TODO(cskksc): a function from Exp1 to (L Exp1) to avoid writing
--- (L NoLoc exp) everywhere
+-- (L NoLoc exp) everywhere. How to get around #define EXP ?
 
 -- | The basic form of the add1 program where recursions happen
 -- immediately as arguments to the data-constructor.
