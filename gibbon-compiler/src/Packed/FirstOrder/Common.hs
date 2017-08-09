@@ -25,6 +25,7 @@ module Packed.FirstOrder.Common
        , cleanFunName
 
        , LocVar, Region(..), Modality(..), LRM(..), dummyLRM
+       , LocRet(..), Effect(..)
 
        , Env2(Env2) -- TODO: hide constructor
        , vEnv, fEnv, extendVEnv, extendsVEnv, extendFEnv
@@ -33,7 +34,7 @@ module Packed.FirstOrder.Common
        , RunConfig(..), getRunConfig
 
          -- * Top-level function defs
-       , FunDef(..), FunDefs
+       , FunDef(..), FunDefs, ArrowTy(..)
        , insertFD, fromListFD
 
          -- * Data definitions
@@ -58,6 +59,7 @@ import Control.Monad.State.Strict
 import Data.Char
 import Data.List as L
 import Data.Map as M
+import Data.Set as S
 import Data.String
 import Data.Symbol
 import Data.Word
@@ -92,6 +94,13 @@ fromVar (Var v) = unintern v
 toVar :: String -> Var
 toVar s = Var $ intern s
 
+-- | String concatenation on variables.
+varAppend :: Var -> Var -> Var
+varAppend x y = toVar (fromVar x ++ fromVar y)
+
+
+--------------------------------------------------------------------------------
+
 type DataCon = String
 type TyCon   = String
 
@@ -106,7 +115,9 @@ data Region = GlobR    -- ^ A global region with lifetime equal to the whole pro
             | VarR Var -- ^ A region metavariable that can range over
                        -- either global or dynamic regions.
   deriving (Read,Show,Eq,Ord, Generic)
+
 instance Out Region
+
 instance NFData Region where
   rnf GlobR = ()
   rnf (DynR v) = rnf v
@@ -116,26 +127,50 @@ instance NFData Region where
 -- and writing, respectively.
 data Modality = Input | Output
   deriving (Read,Show,Eq,Ord, Generic)
+
 instance Out Modality
+
 instance NFData Modality where
   rnf Input  = ()
   rnf Output = ()
 
+
 -- | A location and region, together with modality.
 data LRM = LRM LocVar Region Modality
   deriving (Read,Show,Eq,Ord, Generic)
+
 instance Out LRM
 instance NFData LRM where
   rnf (LRM a b c)  = rnf a `seq` rnf b `seq` rnf c
 
+
+-- | Locations (end-witnesses) returned from functions after RouteEnds.
+data LocRet = EndOf LRM
+              deriving (Read, Show, Eq, Ord, Generic)
+
+instance NFData LocRet
+
+instance Out LocRet
+
+
+-- | The side-effect of evaluating a function.
+data Effect = Traverse LocVar
+              -- ^ The function, during its execution, traverses all
+              -- of the value living at this location.
+  deriving (Read,Show,Eq,Ord, Generic)
+
+instance NFData Effect
+
+instance Out Effect
+
+instance Out a => Out (S.Set a) where
+  docPrec n x = docPrec n (S.toList x)
+  doc x = doc (S.toList x)
+
+
 -- | A designated doesn't-really-exist-anywhere location.
 dummyLRM :: LRM
 dummyLRM = LRM "l_dummy" GlobR Input
-
--- | String concatenation on variables.
-varAppend :: Var -> Var -> Var
-varAppend x y = toVar (fromVar x ++ fromVar y)
-
 
 --------------------------------------------------------------------------------
 
@@ -188,6 +223,7 @@ instance NFData a => NFData (DDef a) where
   -- rnf DDef
 
 instance Out a => Out (DDef a)
+
 instance (Out k,Out v) => Out (Map k v) where
   doc         = doc . M.toList
   docPrec n v = docPrec n (M.toList v)
@@ -257,15 +293,35 @@ fromListDD = L.foldr insertDD M.empty
 -- Fundefs
 ----------------------------------------
 
+-- | Our type for functions grows to include effects, and explicit universal
+-- quantification over location/region variables.
+data ArrowTy t = ArrowTy { arrIn :: t             -- ^ Input type for the function.
+                         , arrOut:: t             -- ^ Output type for the function.
+
+                           -- used in IR's >= L2
+
+                         , locVars :: [LRM]       -- ^ Universally-quantified location params.
+                                                  --   Only these should be referenced in arrIn/arrOut.
+                         , arrEffs:: (Set Effect) -- ^ These are present-but-empty initially,
+                                                  --   and the populated by InferEffects.
+                         , locRets :: [LocRet]    -- ^ L2B feature: multi-valued returns.
+                         }
+  deriving (Read,Show,Eq,Ord, Generic)
+
+instance NFData t => NFData (ArrowTy t)
+
+instance Out t => Out (ArrowTy t)
+
+
 -- | A set of top-level recursive function definitions
 type FunDefs ty ex = Map Var (FunDef ty ex)
 
 data FunDef ty ex = FunDef { funName  :: Var
-                               -- ^ Return type
-                           , funArg   :: (Var,ty)
-                           , funRetTy :: ty
-                           , funBody  :: ex }
-  deriving (Read,Show,Eq,Ord, Generic, Functor)
+                           , funArg   :: Var
+                           , funTy    :: ArrowTy ty
+                           , funBody  :: ex
+                           }
+  deriving (Read, Show, Eq, Ord, Generic, Functor)
 
 -- deriving
 instance (NFData t, NFData e) => NFData (FunDef t e) where

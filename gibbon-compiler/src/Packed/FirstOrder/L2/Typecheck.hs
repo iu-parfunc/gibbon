@@ -135,7 +135,7 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
           --    locations.
           --  * We need to make sure that if we pass a packed structure as an argument, its
           --    location is among the passed-in locations.
-          do let (ArrowTy locVars arrIn _arrEffs arrOut _locRets) = getFunTy funs v
+          do let (ArrowTy{arrIn,arrOut,locVars}) = getFunTy funs v
 
              -- Check argument
              (ty,tstate) <- recur tstatein e

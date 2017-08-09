@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts #-}
-
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -17,8 +16,7 @@
 -- | An intermediate language with an effect system that captures traversals.
 
 module Packed.FirstOrder.L2.Syntax
-    ( Prog(..), FunDef(..), Effect(..), ArrowTy(..)
-    , LocRet(..), LocExp, PreLocExp(..)
+    ( Prog(..), FunDef(..), LocExp, PreLocExp(..)
     , NewFuns, getFunTy
     , mapMExprs
     , progToEnv
@@ -79,7 +77,14 @@ data E2Ext loc dec =
   | LetLocE    loc    (PreLocExp loc) (L (E2 loc dec)) -- ^ Bind a new location.
   | RetE [loc] Var     -- ^ Return a value together with extra loc values.
   | FromEndE loc -- ^ Bind a location from an EndOf location (for RouteEnds and after)
- deriving (Show, Ord, Eq, Generic, NFData)
+  deriving (Show, Ord, Eq, Generic, NFData)
+
+instance (Out l, Out d) => Out (E2Ext l d)
+
+instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
+  type LocOf (E2Ext l d) = l
+  type TyOf (E2Ext l d)  = UrTy l
+
 
 -- | L1 expressions extended with L2.  This is the polymorphic version.
 -- Shorthand for recursions above.
@@ -96,51 +101,14 @@ data PreLocExp loc = StartOfLE Region
                                     loc  -- ^ Location which this location is offset from.
                    | InRegionLE Region
                    | FromEndLE  loc
-                     deriving (Read, Show, Eq, Ord, Generic, NFData)
+                   deriving (Read, Show, Eq, Ord, Generic, NFData)
+
+instance Out l => Out (PreLocExp l)
 
 type LocExp = PreLocExp LocVar
 
--- | Locations (end-witnesses) returned from functions after RouteEnds.
-data LocRet = EndOf LRM
-              deriving (Read, Show, Eq, Ord, Generic, NFData)
 
-instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
-  type LocOf (E2Ext l d) = l
-  type TyOf (E2Ext l d)  = UrTy l
-
-
-----------------------------------------------------------------------------------------------------
-
--- | Our type for functions grows to include effects, and explicit universal
--- quantification over location/region variables.
-data ArrowTy t = ArrowTy { locVars :: [LRM]       -- ^ Universally-quantified location params.
-                                                  -- Only these should be referenced in arrIn/arrOut.
-                         , arrIn :: t             -- ^ Input type for the function.
-                         , arrEffs:: (Set Effect) -- ^ These are present-but-empty initially,
-                                                  -- and the populated by InferEffects.
-                         , arrOut:: t             -- ^ Output type for the function.
-                         , locRets :: [LocRet]    -- ^ L2B feature: multi-valued returns.
-                         }
-  deriving (Read,Show,Eq,Ord, Generic, NFData)
-
--- | The side-effect of evaluating a function.
-data Effect = Traverse LocVar
-              -- ^ The function, during its execution, traverses all
-              -- of the value living at this location.
-  deriving (Read,Show,Eq,Ord, Generic, NFData)
-
--- instance Out Ty
-instance Out t => Out (ArrowTy t)
-instance Out Effect
-instance Out a => Out (Set a) where
-  docPrec n x = docPrec n (S.toList x)
-  doc x = doc (S.toList x)
-instance Out FunDef
-instance Out Prog
-instance (Out l, Out d) => Out (E2Ext l d)
-instance Out l => Out (PreLocExp l)
-instance Out LocRet
-
+--------------------------------------------------------------------------------
 
 -- | L1 Types extended with abstract Locations.
 type Ty2 = L1.UrTy LocVar
@@ -155,7 +123,9 @@ data Prog = Prog { ddefs    :: DDefs Ty2
                  }
   deriving (Show, Ord, Eq, Generic, NFData)
 
-----------------------------------------------------------------------------------------------------
+instance Out Prog
+
+--------------------------------------------------------------------------------
 
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.  The
@@ -163,8 +133,8 @@ data Prog = Prog { ddefs    :: DDefs Ty2
 progToEnv :: Prog -> Env2 (UrTy ())
 progToEnv Prog{fundefs} =
     Env2 M.empty
-         (M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
-                     | FunDef n (ArrowTy _ a _ b _) _ _ <- M.elems fundefs ])
+         (M.fromList [ (n,(fmap (\_->()) arrIn, fmap (\_->()) arrOut))
+                     | FunDef n (ArrowTy{arrIn,arrOut}) _ _ <- M.elems fundefs ])
 
 
 -- | A function definition with the function's effects.
@@ -173,6 +143,8 @@ data FunDef = FunDef { funname :: Var
                      , funarg  :: Var
                      , funbod  :: L Exp2 }
   deriving (Show, Ord, Eq, Generic, NFData)
+
+instance Out FunDef
 --------------------------------------------------------------------------------
 
 -- | Retrieve the type of a function:
@@ -422,11 +394,11 @@ withAdd1Prog mainExp =
 
   exadd1ty :: ArrowTy Ty2
   exadd1ty = (ArrowTy
-              [LRM "lin" (VarR "r1") Input, LRM "lout" (VarR "r1") Output]
-              (PackedTy "tree" "lin")
-              (S.fromList [Traverse "lin"])
-              (PackedTy "tree" "lout")
-              [EndOf $ LRM "lin" (VarR "r1") Input])
+             (PackedTy "tree" "lin")
+             (PackedTy "tree" "lout")
+             [LRM "lin" (VarR "r1") Input, LRM "lout" (VarR "r1") Output]
+             (S.fromList [Traverse "lin"])
+             [EndOf $ LRM "lin" (VarR "r1") Input])
 
   exadd1bod :: L Exp2
   exadd1bod =

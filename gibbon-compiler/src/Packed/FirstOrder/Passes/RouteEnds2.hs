@@ -119,19 +119,23 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
     -- | Process function types (but don't handle bodies)
     fdty :: L2.FunDef -> SyM L2.FunDef
     fdty L2.FunDef{funname,funty,funarg,funbod} =
-        do let (ArrowTy locin tyin eff tyout _locout) = funty
-               handleLoc (LRM l r m) ls = if S.member (Traverse l) eff then (LRM l r m):ls else ls
-               locout' = L.map EndOf $ L.foldr handleLoc [] locin
-           return L2.FunDef{funname,funty=(ArrowTy locin tyin eff tyout locout'),funarg,funbod}
+        do let ArrowTy{locVars,arrEffs} = funty
+               handleLoc (LRM l r m) ls = if S.member (Traverse l) arrEffs
+                                          then (LRM l r m):ls
+                                          else ls
+               locout' = L.map EndOf $ L.foldr handleLoc [] locVars
+           return L2.FunDef{funname,funty=funty{locRets = locout'},funarg,funbod}
 
 
     -- | Process function bodies
     fd :: NewFuns -> L2.FunDef -> SyM L2.FunDef
     fd fns L2.FunDef{funname,funty,funarg,funbod} =
-        do let (ArrowTy locin tyin eff _tyout _locout) = funty
-               handleLoc (LRM l _r _m) ls = if S.member (Traverse l) eff then l:ls else ls
-               retlocs = L.foldr handleLoc [] locin
-               lenv = case tyin of
+        do let ArrowTy{arrIn,locVars,arrEffs} = funty
+               handleLoc (LRM l _r _m) ls = if S.member (Traverse l) arrEffs
+                                            then l:ls
+                                            else ls
+               retlocs = L.foldr handleLoc [] locVars
+               lenv = case arrIn of
                         PackedTy _n l -> M.insert funarg l $ M.empty
                         ProdTy _tys -> error "Multiple function args not handled yet in RouteEnds2"
                         _ -> M.empty

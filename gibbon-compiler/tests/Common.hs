@@ -24,11 +24,11 @@ add1Fun = L2.FunDef "add1" add1FunTy "tr" add1FunBod
   where
     add1FunTy :: ArrowTy Ty2
     add1FunTy = (ArrowTy
-                [LRM "lin" (VarR "r1") Input, LRM "lout" (VarR "r1") Output]
-                (PackedTy "Tree" "lin")
-                (S.fromList [Traverse "lin"])
-                (PackedTy "Tree" "lout")
-                [EndOf $ LRM "lin" (VarR "r1") Input])
+                  (PackedTy "Tree" "lin")
+                  (PackedTy "Tree" "lout")
+                  [LRM "lin" (VarR "r1") Input, LRM "lout" (VarR "r1") Output]
+                  (S.fromList [Traverse "lin"])
+                  [EndOf $ LRM "lin" (VarR "r1") Input])
 
     add1FunBod :: L Exp2
     add1FunBod =

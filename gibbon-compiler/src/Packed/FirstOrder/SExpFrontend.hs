@@ -161,7 +161,7 @@ parseSExp ses =
 
      (Ls0 (A "data": A tycon : cs) : rst) ->
          go rst (DDef (textToVar tycon) (L.map docasety cs) : dds) fds cds mn
-     (Ls0 [A "define", funspec, ":", retty, bod] : rst)
+     (Ls0 [A "define", funspec, ":", retTy, bod] : rst)
         |  RSList (A name : args) <- funspec
         -> do
          let bod' = exp bod
@@ -180,8 +180,13 @@ parseSExp ses =
          -- Here we directly desugar multiple arguments into a tuple
          -- argument.
          go rst dds (FunDef { funName  = textToVar name
-                            , funArg   = (arg, ty)
-                            , funRetTy = typ retty
+                            , funArg   = arg
+                            , funTy    = ArrowTy { arrIn   = ty
+                                                 , arrOut  = typ retTy
+                                                 , locVars = []
+                                                 , arrEffs = S.empty
+                                                 , locRets = []
+                                                 }
                             , funBody  = bod''
                             } : fds)
             cds mn

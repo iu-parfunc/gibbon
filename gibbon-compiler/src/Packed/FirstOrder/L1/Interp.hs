@@ -302,7 +302,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
 
             AppE f _ b ->  do rand <- go env b
                               case M.lookup f fundefs of
-                               Just FunDef{funArg=(vr,_),funBody} -> go (M.insert vr rand env) funBody
+                               Just FunDef{funArg=vr,funBody} -> go (M.insert vr rand env) funBody
                                Nothing -> error $ "L1.Interp: unbound function in application: "++ndoc x0
 
             (CaseE _ []) -> error$ "L1.Interp: CaseE with empty alternatives list: "++ndoc x0

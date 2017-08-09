@@ -79,7 +79,11 @@ collectTopLevel funTys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) N
     -- Limiting to one argument for now:
     [arg_ty] <- mapM (getArgTy fun_ty) [ 1 .. length [arg'] ]
     rhs'    <- desugarExp rhs
-    return (Just (Right (FunDef fname' (arg',arg_ty) (getRetTy fun_ty) rhs')))
+    return (Just (Right (FunDef { funName = fname'
+                                , funArg  = arg'
+                                , funTy   = ArrowTy{arrIn = arg_ty, arrOut = getRetTy fun_ty}
+                                , funBody = rhs'
+                                })))
   where
     collectArg :: Pat -> Ds Var
     collectArg (PVar n) = return $ (toVar . nameToStr) n
