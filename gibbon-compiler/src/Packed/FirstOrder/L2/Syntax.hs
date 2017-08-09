@@ -16,8 +16,7 @@
 -- | An intermediate language with an effect system that captures traversals.
 
 module Packed.FirstOrder.L2.Syntax
-    ( Prog(..), FunDef(..), LocExp, PreLocExp(..)
-    , NewFuns, getFunTy
+    ( Prog(..), FunDef(..), LocExp, PreLocExp(..), getFunTy
     , mapMExprs
     , progToEnv
 
@@ -60,7 +59,7 @@ import Data.Set as S
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
 
-import Packed.FirstOrder.Common hiding (FunDef)
+import Packed.FirstOrder.Common
 import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.L1.Syntax hiding
        (FunDef, Prog, mapExprs, progToEnv, fundefs, getFunTy, add1Prog)
@@ -114,11 +113,9 @@ type LocExp = PreLocExp LocVar
 type Ty2 = L1.UrTy LocVar
 
 
-type NewFuns = M.Map Var FunDef
-
 -- | Here we only change the types of FUNCTIONS:
 data Prog = Prog { ddefs    :: DDefs Ty2
-                 , fundefs  :: NewFuns
+                 , fundefs  :: FunDefs Ty2 (L Exp2)
                  , mainExp  :: Maybe (L Exp2, Ty2)
                  }
   deriving (Show, Ord, Eq, Generic, NFData)
@@ -133,25 +130,26 @@ instance Out Prog
 progToEnv :: Prog -> Env2 (UrTy ())
 progToEnv Prog{fundefs} =
     Env2 M.empty
-         (M.fromList [ (n,(fmap (\_->()) arrIn, fmap (\_->()) arrOut))
-                     | FunDef n (ArrowTy{arrIn,arrOut}) _ _ <- M.elems fundefs ])
+         (M.fromList [ (funName,(fmap (\_->()) arrIn, fmap (\_->()) arrOut))
+                     | FunDef{funName, funTy=ArrowTy{arrIn,arrOut}}
+                     <- M.elems fundefs ])
 
 
--- | A function definition with the function's effects.
-data FunDef = FunDef { funname :: Var
-                     , funty   :: (ArrowTy Ty2)
-                     , funarg  :: Var
-                     , funbod  :: L Exp2 }
-  deriving (Show, Ord, Eq, Generic, NFData)
+-- -- | A function definition with the function's effects.
+-- data FunDef = FunDef { funname :: Var
+--                      , funty   :: (ArrowTy Ty2)
+--                      , funarg  :: Var
+--                      , funbod  :: L Exp2 }
+--   deriving (Show, Ord, Eq, Generic, NFData)
 
-instance Out FunDef
+-- instance Out FunDef
 --------------------------------------------------------------------------------
 
 -- | Retrieve the type of a function:
-getFunTy :: NewFuns -> Var -> ArrowTy Ty2
+getFunTy :: FunDefs Ty2 (L Exp2) -> Var -> ArrowTy Ty2
 getFunTy mp f = case M.lookup f mp of
                   Nothing -> error $ "getFunTy: function was not bound: "++show f
-                  Just (FunDef{funty}) -> funty
+                  Just (FunDef{funTy}) -> funTy
 
 
 
@@ -389,8 +387,8 @@ withAdd1Prog mainExp =
                                 , ("Node",[(False,PackedTy "Tree" "l")
                                           ,(False,PackedTy "Tree" "l")])]])
 
-  exadd1 :: FunDef
-  exadd1 = FunDef "add1" exadd1ty "tr" exadd1bod
+  exadd1 :: FunDef Ty2 (L Exp2)
+  exadd1 = FunDef "add1" "tr" exadd1ty exadd1bod
 
   exadd1ty :: ArrowTy Ty2
   exadd1ty = (ArrowTy

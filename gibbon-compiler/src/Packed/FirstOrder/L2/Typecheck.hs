@@ -110,7 +110,7 @@ type TcM a = Except TCError a
 -- | Check an expression. Given the data definitions, an general type environment, a function map,
 -- a constraint set, a region set, an (input) location state map, and the expression, this function
 -- will either throw an error, or return a pair of expression type and new location state map.
-tcExp :: DDefs Ty2 -> Env2 Ty2 -> NewFuns
+tcExp :: DDefs Ty2 -> Env2 Ty2 -> FunDefs Ty2 (L Exp2)
       -> ConstraintSet -> RegionSet -> LocationTypeState -> Exp
       -> TcM (Ty2, LocationTypeState)
 tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
@@ -326,7 +326,7 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
 
 
 -- | Helper function to check case branches.
-tcCases :: DDefs Ty2 -> Env2 Ty2 -> NewFuns
+tcCases :: DDefs Ty2 -> Env2 Ty2 -> FunDefs Ty2 (L Exp2)
         -> ConstraintSet -> RegionSet -> LocationTypeState -> LocVar
         -> [(DataCon, [(Var,LocVar)], Exp)]
         -> TcM ([Ty2], LocationTypeState)
@@ -379,7 +379,7 @@ tcProj e _i ty = throwError $ GenericTC ("Projection from non-tuple type " ++ (s
 -- the order matters because the location state map is threaded through,
 -- so this is assuming the list of expressions would have been evaluated
 -- in first-to-last order.
-tcExps :: DDefs Ty2 -> Env2 Ty2 -> NewFuns
+tcExps :: DDefs Ty2 -> Env2 Ty2 -> FunDefs Ty2 (L Exp2)
       -> ConstraintSet -> RegionSet -> LocationTypeState -> [Exp]
       -> TcM ([Ty2], LocationTypeState)
 tcExps ddfs env funs constrs regs tstatein (exp:exps) =
@@ -414,18 +414,18 @@ tcProg prg0@Prog{ddefs,fundefs,mainExp} = do
 
   where
 
-    fd :: L2.FunDef -> SyM ()
-    fd L2.FunDef{funty,funarg,funbod} = do
-        let env = extendEnv (Env2 M.empty M.empty) funarg (arrIn funty)
-            constrs = funConstrs (locVars funty)
-            regs = funRegs (locVars funty)
-            tstate = funTState (locVars funty)
-            res = runExcept $ tcExp ddefs env fundefs constrs regs tstate funbod
+    fd :: L2.FunDef Ty2 (L Exp2) -> SyM ()
+    fd L2.FunDef{funTy,funArg,funBody} = do
+        let env = extendEnv (Env2 M.empty M.empty) funArg (arrIn funTy)
+            constrs = funConstrs (locVars funTy)
+            regs = funRegs (locVars funTy)
+            tstate = funTState (locVars funTy)
+            res = runExcept $ tcExp ddefs env fundefs constrs regs tstate funBody
         case res of
           Left err -> error $ show err
-          Right (ty,_) -> if ty == (arrOut funty)
+          Right (ty,_) -> if ty == (arrOut funTy)
                           then return ()
-                          else error $ "Expected type " ++ (show (arrOut funty))
+                          else error $ "Expected type " ++ (show (arrOut funTy))
                                     ++ " and got type " ++ (show ty)
 
 

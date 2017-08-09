@@ -97,10 +97,10 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
   --
   -- First, compute the new types, and build a new fundefs structure:
   fds' <- mapM fdty $ M.elems fundefs
-  let fundefs' = M.fromList $ L.map (\f -> (funname f,f)) fds'
+  let fundefs' = M.fromList $ L.map (\f -> (funName f,f)) fds'
   -- Then process the actual function bodies using the new fundefs structure:
   fds'' <- mapM (fd fundefs') fds'
-  let fundefs'' = M.fromList $ L.map (\f -> (funname f,f)) fds''
+  let fundefs'' = M.fromList $ L.map (\f -> (funName f,f)) fds''
 
 
   -- Handle the main expression (if it exists):
@@ -117,30 +117,31 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
     -- Helper functions:
 
     -- | Process function types (but don't handle bodies)
-    fdty :: L2.FunDef -> SyM L2.FunDef
-    fdty L2.FunDef{funname,funty,funarg,funbod} =
-        do let ArrowTy{locVars,arrEffs} = funty
+    fdty :: (L2.FunDef Ty2 (L Exp2)) -> SyM (L2.FunDef Ty2 (L Exp2))
+    fdty L2.FunDef{funName,funTy,funArg,funBody} =
+        do let ArrowTy{locVars,arrEffs} = funTy
                handleLoc (LRM l r m) ls = if S.member (Traverse l) arrEffs
                                           then (LRM l r m):ls
                                           else ls
                locout' = L.map EndOf $ L.foldr handleLoc [] locVars
-           return L2.FunDef{funname,funty=funty{locRets = locout'},funarg,funbod}
+           return L2.FunDef{funName,funTy=funTy{locRets = locout'},funArg,funBody}
 
 
     -- | Process function bodies
-    fd :: NewFuns -> L2.FunDef -> SyM L2.FunDef
-    fd fns L2.FunDef{funname,funty,funarg,funbod} =
-        do let ArrowTy{arrIn,locVars,arrEffs} = funty
+    fd :: FunDefs Ty2 (L Exp2) -> (L2.FunDef Ty2 (L Exp2)) ->
+          SyM (L2.FunDef Ty2 (L Exp2))
+    fd fns L2.FunDef{funName,funTy,funArg,funBody} =
+        do let ArrowTy{arrIn,locVars,arrEffs} = funTy
                handleLoc (LRM l _r _m) ls = if S.member (Traverse l) arrEffs
                                             then l:ls
                                             else ls
                retlocs = L.foldr handleLoc [] locVars
                lenv = case arrIn of
-                        PackedTy _n l -> M.insert funarg l $ M.empty
+                        PackedTy _n l -> M.insert funArg l $ M.empty
                         ProdTy _tys -> error "Multiple function args not handled yet in RouteEnds2"
                         _ -> M.empty
-           funbod' <- exp fns retlocs emptyRel lenv M.empty funbod
-           return L2.FunDef{funname,funty,funarg,funbod=funbod'}
+           funBody' <- exp fns retlocs emptyRel lenv M.empty funBody
+           return L2.FunDef{funName,funTy,funArg,funBody=funBody'}
 
 
     -- | Process expressions.
@@ -151,7 +152,7 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
     -- 4. a map of var to location
     -- 5. a map from location to location after it
     -- 6. the expression to process
-    exp :: NewFuns -> [LocVar] -> EndOfRel -> M.Map Var LocVar ->
+    exp :: FunDefs Ty2 (L Exp2) -> [LocVar] -> EndOfRel -> M.Map Var LocVar ->
            M.Map LocVar LocVar -> L Exp2 -> SyM (L Exp2)
     exp fns retlocs eor lenv afterenv (L p e) = fmap (L p) $
         case e of
@@ -335,4 +336,4 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                funtype :: Var -> ArrowTy Ty2
                funtype v = case M.lookup v fns of
                              Nothing -> error $ "Function " ++ (show v) ++ " not found"
-                             Just fundef -> funty fundef
+                             Just fundef -> funTy fundef
