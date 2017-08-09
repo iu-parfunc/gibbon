@@ -361,13 +361,6 @@ mapExprs fn prg@Prog{fundefs,mainExp} =
 
 --------------------------------------------------------------------------------
 
--- | Look up the input/output type of a top-level function binding.
-getFunTy :: Var -> Prog -> (Ty1,Ty1)
-getFunTy fn Prog{fundefs} =
-    case M.lookup fn fundefs of
-      Just FunDef{funTy = ArrowTy{arrIn,arrOut}} -> (arrIn, arrOut)
-      Nothing -> error $ "getFunTy: L1 program does not contain binding for function: "++show fn
-
 
 subst :: Var -> L Exp1 -> L Exp1 -> L Exp1
 subst old new (L p ex) = L p $
@@ -413,7 +406,7 @@ substE old new (L p ex) = L p $
     LitE _          -> ex
     LitSymE _       -> ex
     AppE v l e      -> AppE v l (go e)
-    PrimAppE p ls   -> PrimAppE p $ L.map go ls
+    PrimAppE pr ls   -> PrimAppE pr $ L.map go ls
     LetE (v,l,t,rhs) bod | (VarE v) == unLoc old  -> LetE (v,l,t,go rhs) bod
                          | otherwise -> LetE (v,l,t,go rhs) (go bod)
 
@@ -562,8 +555,11 @@ mkAdd1Prog bod mainExp = Prog treeDD
 
 mkAdd1Fun :: ex -> FunDef Ty1 ex
 mkAdd1Fun bod = FunDef "add1" "tr" funty bod
-  where funty = ArrowTy{ arrIn = treeTy
-                       , arrOut = treeTy
+  where funty = ArrowTy{ arrIn   = treeTy
+                       , arrOut  = treeTy
+                       , locVars = []
+                       , arrEffs = S.empty
+                       , locRets = []
                        }
 
 ----------------
@@ -625,7 +621,7 @@ add1ProgChallenge :: Prog
 add1ProgChallenge =
     Prog treeDD
          (M.fromList [ ("add1",mkAdd1Fun bod)
-                     , ("pred", FunDef "pred" "tr" ArrowTy{arrIn = treeTy,arrOut = BoolTy}
+                     , ("pred", FunDef "pred" "tr" ArrowTy{arrIn = treeTy,arrOut = BoolTy,locVars = [], arrEffs = S.empty, locRets = []}
                         (L NoLoc $ CaseE (L NoLoc $ VarE "tr") $
                          [ ("Leaf", [("n",())], L NoLoc $ PrimAppE MkTrue [])
                          , ("Node", [("x",()),("y",())], L NoLoc $ PrimAppE MkFalse [])]))])

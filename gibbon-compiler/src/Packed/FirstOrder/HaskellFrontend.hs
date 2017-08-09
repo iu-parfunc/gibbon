@@ -20,6 +20,7 @@ import Data.Loc
 import Data.Maybe (catMaybes)
 import Language.Haskell.Exts.Parser
 import Language.Haskell.Exts.Syntax as H
+import qualified Data.Set as S
 import qualified Data.Map as M
 import qualified Data.List as L
 
@@ -81,7 +82,11 @@ collectTopLevel funTys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) N
     rhs'    <- desugarExp rhs
     return (Just (Right (FunDef { funName = fname'
                                 , funArg  = arg'
-                                , funTy   = ArrowTy{arrIn = arg_ty, arrOut = getRetTy fun_ty}
+                                , funTy   = ArrowTy{ arrIn = arg_ty
+                                                   , arrOut = getRetTy fun_ty
+                                                   , locVars = []
+                                                   , arrEffs = S.empty
+                                                   , locRets = []}
                                 , funBody = rhs'
                                 })))
   where

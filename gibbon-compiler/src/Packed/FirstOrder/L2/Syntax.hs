@@ -135,25 +135,6 @@ progToEnv Prog{fundefs} =
                      <- M.elems fundefs ])
 
 
--- -- | A function definition with the function's effects.
--- data FunDef = FunDef { funname :: Var
---                      , funty   :: (ArrowTy Ty2)
---                      , funarg  :: Var
---                      , funbod  :: L Exp2 }
---   deriving (Show, Ord, Eq, Generic, NFData)
-
--- instance Out FunDef
---------------------------------------------------------------------------------
-
--- | Retrieve the type of a function:
-getFunTy :: FunDefs Ty2 (L Exp2) -> Var -> ArrowTy Ty2
-getFunTy mp f = case M.lookup f mp of
-                  Nothing -> error $ "getFunTy: function was not bound: "++show f
-                  Just (FunDef{funTy}) -> funTy
-
-
-
-
 -- TODO: beta-branch: REVAMP BELOW HERE
 --------------------------------------------------------------------------------
 

@@ -484,17 +484,17 @@ inline2 _ p = return (L2.mapExprs (\_ -> inlineTrivExp (L2.ddefs p)) p)
 benchMainExp :: Config -> L1.Prog -> Var -> L1.Prog
 benchMainExp Config{benchInput,benchPrint} l1 fnname = do
   let tmp = "bnch"
-      (arg@(L1.PackedTy tyc _),ret) = L1.getFunTy fnname l1
+      ArrowTy{arrIn = arg@(L1.PackedTy tyc _),arrOut} = getFunTy fnname (L1.fundefs l1)
       -- At L1, we assume ReadPackedFile has a single return value:
       newExp = L1.LetE (toVar tmp, [],
                         arg,
                         L NoLoc $ L1.PrimAppE
                         (L1.ReadPackedFile benchInput tyc arg) [])
                $ L NoLoc $ L1.LetE (toVar "benchres", [],
-                         ret,
+                         arrOut,
                          L NoLoc $ L1.TimeIt
                          (L NoLoc $ L1.AppE fnname []
-                          (L NoLoc $ L1.VarE (toVar tmp))) ret True)
+                          (L NoLoc $ L1.VarE (toVar tmp))) arrOut True)
                $
                 -- FIXME: should actually return the result,
                 -- as soon as we are able to print it.

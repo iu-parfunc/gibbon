@@ -35,7 +35,7 @@ module Packed.FirstOrder.Common
 
          -- * Top-level function defs
        , FunDef(..), FunDefs, ArrowTy(..)
-       , insertFD, fromListFD
+       , insertFD, fromListFD, getFunTy
 
          -- * Data definitions
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
@@ -336,6 +336,14 @@ insertFD d = M.insertWith err' (funName d) d
 fromListFD :: [FunDef t e] -> FunDefs t e
 fromListFD = L.foldr insertFD M.empty
 
+
+-- | Retrieve the type of a function
+--
+getFunTy :: Var -> FunDefs ty ex -> ArrowTy ty
+getFunTy f funs = case M.lookup f funs of
+                    Nothing -> error $ "getFunTy: function was not bound" ++
+                               show f
+                    Just (FunDef{funTy}) -> funTy
 
 -- Gensym monad:
 ----------------------------------------
