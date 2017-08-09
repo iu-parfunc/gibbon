@@ -317,18 +317,18 @@ primRetTy p =
     AddP -> IntTy
     SubP -> IntTy
     MulP -> IntTy
-    Gensym -> SymTy
+    Gensym  -> SymTy
     EqSymP  -> BoolTy
     EqIntP  -> BoolTy
     MkTrue  -> BoolTy
     MkFalse -> BoolTy
-    MkNullCursor -> dummyCursorTy
-    SizeParam -> IntTy
-    DictHasKeyP _ -> BoolTy
-    DictEmptyP ty -> SymDictTy ty
+    MkNullCursor   -> dummyCursorTy
+    SizeParam      -> IntTy
+    DictHasKeyP _  -> BoolTy
+    DictEmptyP ty  -> SymDictTy ty
     DictInsertP ty -> SymDictTy ty
     DictLookupP ty -> ty
-    (ErrorP _ ty) -> ty
+    (ErrorP _ ty)  -> ty
     ReadPackedFile _ _ ty -> ty
 
 
