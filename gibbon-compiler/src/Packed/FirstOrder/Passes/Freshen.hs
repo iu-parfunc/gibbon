@@ -17,20 +17,20 @@ import Packed.FirstOrder.L1.Syntax as L1
 -- lookup.  We should standardize on a fast symbol-map.
 
 -- | Rename all local variables.
-freshNames :: L1.Prog -> SyM L1.Prog
-freshNames (L1.Prog defs funs main) =
+freshNames :: L1.Prog1 -> SyM L1.Prog1
+freshNames (Prog defs funs main) =
     do main' <- case main of
                   Nothing -> return Nothing
-                  Just m -> do m' <- freshExp [] m
-                               return $ Just m'
+                  Just (mty,m) -> do m' <- freshExp [] m
+                                     return $ Just (mty, m')
        funs' <- freshFuns funs
-       return $ L1.Prog defs funs' main'
+       return $ Prog defs funs' main'
     where freshFuns m = M.fromList <$> mapM freshFun (M.toList m)
-          freshFun (nam, FunDef _ (narg,targ) ty bod) =
+          freshFun (nam, FunDef _ narg ty bod) =
               do narg' <- gensym narg
                  bod' <- freshExp [(narg,narg')] bod
                  let nam' = cleanFunName nam
-                 return (nam', FunDef nam' (narg',targ) ty bod')
+                 return (nam', FunDef nam' narg' ty bod')
 
           freshExp :: [(Var,Var)] -> L Exp1 -> SyM (L L1.Exp1)
           freshExp vs (L sloc exp) = fmap (L sloc) $

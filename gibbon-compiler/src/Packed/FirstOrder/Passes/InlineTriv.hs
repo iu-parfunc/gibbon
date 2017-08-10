@@ -16,12 +16,12 @@ import qualified Packed.FirstOrder.L2.Syntax as L2
 
 -- | Inline trivial let bindings (binding a var to a var or int), mainly to clean up
 --   the output of `flatten`.
-inlineTriv :: Prog -> Prog
+inlineTriv :: Prog1 -> Prog1
 inlineTriv (Prog ddefs funs main) =
-    Prog ddefs (fmap inlineTrivFun funs) (fmap (inlineTrivExp ddefs) main)
+    Prog ddefs (fmap inlineTrivFun funs) (fmap (\(ty,ex) -> (ty,inlineTrivExp ddefs ex)) main)
   where
-    inlineTrivFun (FunDef nam (narg,targ) ty bod) =
-      FunDef nam (narg,targ) ty (inlineTrivExp ddefs bod)
+    inlineTrivFun (FunDef nam narg ty@ArrowTy{arrIn, arrOut} bod) =
+      FunDef nam narg ty (inlineTrivExp ddefs bod)
 
 type MyExp l = L (PreExp NoExt l (UrTy l))
 type Env l = [(Var, (UrTy l, MyExp l))]

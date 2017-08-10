@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE BangPatterns #-}
@@ -51,7 +53,7 @@ interpChatter = 7
 
 ------------------------------------------------------------
 
-instance Interp Prog where
+instance Interp Prog1 where
   interpNoLogs rc p = unsafePerformIO $ show . fst <$> interpProg rc p
   interpWithStdout rc p = do
    (v,logs) <- interpProg rc p
@@ -167,7 +169,7 @@ l1FromValue x =
     (VPacked y1 y2) -> __
 -}
 
-execAndPrint :: RunConfig -> Prog -> IO ()
+execAndPrint :: RunConfig -> Prog1 -> IO ()
 execAndPrint rc prg = do
   (val,logs) <- interpProg rc prg
   B.putStr logs
@@ -182,10 +184,10 @@ type Log = Builder
 
 -- | Interpret a program, including printing timings to the screen.
 --   The returned bytestring contains that printed timing info.
-interpProg :: RunConfig -> Prog -> IO (Value, B.ByteString)
+interpProg :: RunConfig -> Prog1 -> IO (Value, B.ByteString)
 -- Print nothing, return "void"              :
 interpProg _ Prog {mainExp=Nothing} = return $ (VProd [], B.empty)
-interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
+interpProg rc Prog {ddefs,fundefs, mainExp=Just (_,e)} =
     do -- logs contains print side effects:
        ((x,logs),Store finstore) <- runStateT (runWriterT (interp e)) (Store IM.empty)
 
@@ -302,7 +304,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
 
             AppE f _ b ->  do rand <- go env b
                               case M.lookup f fundefs of
-                               Just FunDef{funArg=(vr,_),funBody} -> go (M.insert vr rand env) funBody
+                               Just FunDef{funArg=vr,funBody} -> go (M.insert vr rand env) funBody
                                Nothing -> error $ "L1.Interp: unbound function in application: "++ndoc x0
 
             (CaseE _ []) -> error$ "L1.Interp: CaseE with empty alternatives list: "++ndoc x0
@@ -403,10 +405,9 @@ lookup3 k ls = go ls
 
 --------------------------------------------------------------------------------
 
-p1 :: Prog
+p1 :: Prog1
 p1 = Prog emptyDD  M.empty
-          (Just (L NoLoc $ LetE ("x", [], IntTy, L NoLoc $ LitE 3) (L NoLoc $ VarE (toVar "x"))))
-         -- IntTy
+          (Just (IntTy, L NoLoc $ LetE ("x", [], IntTy, L NoLoc $ LitE 3) (L NoLoc $ VarE (toVar "x"))))
 
 main :: IO ()
 main = execAndPrint (RunConfig 1 1 dbgLvl False) p1

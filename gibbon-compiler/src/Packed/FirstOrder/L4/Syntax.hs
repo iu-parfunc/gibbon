@@ -20,7 +20,7 @@ import           Data.Int
 import           Data.Maybe
 import           Data.Word (Word8)
 import           GHC.Generics (Generic)
-import           Packed.FirstOrder.Common hiding (funBody)
+import           Packed.FirstOrder.Common hiding (funBody, Prog)
 
 import qualified Packed.FirstOrder.L1.Syntax as L1
 import           Prelude hiding (init)

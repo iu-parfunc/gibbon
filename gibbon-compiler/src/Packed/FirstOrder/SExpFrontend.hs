@@ -136,7 +136,7 @@ tagDataCons ddefs = go allCons
        FoldE (v1,t1,e1) (v2,t2,e2) b -> FoldE (v1,t1,go cons e1) (v2,t2,go cons e2) (go cons b)
 
 -- | Convert from raw, unstructured S-Expression into the program datatype we expect.
-parseSExp :: [Sexp] -> SyM Prog
+parseSExp :: [Sexp] -> SyM Prog1
 parseSExp ses =
   do prog@Prog {ddefs} <- go ses [] [] [] Nothing
      return $ mapExprs (tagDataCons ddefs) prog
@@ -161,7 +161,7 @@ parseSExp ses =
 
      (Ls0 (A "data": A tycon : cs) : rst) ->
          go rst (DDef (textToVar tycon) (L.map docasety cs) : dds) fds cds mn
-     (Ls0 [A "define", funspec, ":", retty, bod] : rst)
+     (Ls0 [A "define", funspec, ":", retTy, bod] : rst)
         |  RSList (A name : args) <- funspec
         -> do
          let bod' = exp bod
@@ -180,8 +180,13 @@ parseSExp ses =
          -- Here we directly desugar multiple arguments into a tuple
          -- argument.
          go rst dds (FunDef { funName  = textToVar name
-                            , funArg   = (arg, ty)
-                            , funRetTy = typ retty
+                            , funArg   = arg
+                            , funTy    = ArrowTy { arrIn   = ty
+                                                 , arrOut  = typ retTy
+                                                 , locVars = []
+                                                 , arrEffs = S.empty
+                                                 , locRets = []
+                                                 }
                             , funBody  = bod''
                             } : fds)
             cds mn
@@ -200,7 +205,9 @@ parseSExp ses =
      (ex : rst) ->
        let ex' = exp ex
        in go rst dds fds cds (case mn of
-                            Nothing -> Just ex'
+                            -- TODO(cskksc): audit-me
+                            -- This is not necessarily the correct type
+                            Nothing -> Just (voidTy, ex')
                             Just x  -> error$ "Two main expressions: "++
                                              sdoc x++"\nAnd:\n"++prnt ex)
 
@@ -420,7 +427,7 @@ handleRequire baseFile (l:ls) = do
   ls' <- handleRequire baseFile ls
   return $ l:ls'
 
-parseFile :: FilePath -> IO (Prog, Int)
+parseFile :: FilePath -> IO (Prog1, Int)
 parseFile file = do
   txt    <- fmap bracketHacks $
             -- fmap stripHashLang $

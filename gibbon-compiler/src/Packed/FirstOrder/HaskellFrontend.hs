@@ -20,6 +20,7 @@ import Data.Loc
 import Data.Maybe (catMaybes)
 import Language.Haskell.Exts.Parser
 import Language.Haskell.Exts.Syntax as H
+import qualified Data.Set as S
 import qualified Data.Map as M
 import qualified Data.List as L
 
@@ -35,7 +36,7 @@ err = Left
 
 --------------------------------------------------------------------------------
 
-desugarModule :: H.Module -> Ds Prog
+desugarModule :: H.Module -> Ds Prog1
 desugarModule (H.Module _ _ _ _ _ _ decls) = do
   -- since top-level function types and their types can't be declared in
   -- single top-level declaration we first collect types and then collect
@@ -54,8 +55,10 @@ desugarModule (H.Module _ _ _ _ _ _ decls) = do
       ( funBody <$> M.lookup (toVar "main") funMap
       , M.delete (toVar "main") funMap
       )
+    -- TODO(cskksc): See SExpFrontend.hs#L208
+    mainExp = fmap (\ex -> (voidTy,ex)) mainFn
 
-  return (Prog dataMap funMapNoMain mainFn)
+  return (Prog dataMap funMapNoMain mainExp)
 
 collectTopFunTy :: H.Decl -> Ds (Maybe (Var, TopTy))
 collectTopFunTy decl =
@@ -79,7 +82,15 @@ collectTopLevel funTys (FunBind [Match _ fname args Nothing (UnGuardedRhs rhs) N
     -- Limiting to one argument for now:
     [arg_ty] <- mapM (getArgTy fun_ty) [ 1 .. length [arg'] ]
     rhs'    <- desugarExp rhs
-    return (Just (Right (FunDef fname' (arg',arg_ty) (getRetTy fun_ty) rhs')))
+    return (Just (Right (FunDef { funName = fname'
+                                , funArg  = arg'
+                                , funTy   = ArrowTy{ arrIn = arg_ty
+                                                   , arrOut = getRetTy fun_ty
+                                                   , locVars = []
+                                                   , arrEffs = S.empty
+                                                   , locRets = []}
+                                , funBody = rhs'
+                                })))
   where
     collectArg :: Pat -> Ds Var
     collectArg (PVar n) = return $ (toVar . nameToStr) n
@@ -283,7 +294,7 @@ litToInt l         = err ("Literal not supported: " ++ show l)
 
 ----------------------------------------
 
-parseFile :: FilePath -> IO (L1.Prog, Int)
+parseFile :: FilePath -> IO (L1.Prog1, Int)
 parseFile path = do
     fmap parse (readFile path) >>= \case
       ParseOk hs -> do
