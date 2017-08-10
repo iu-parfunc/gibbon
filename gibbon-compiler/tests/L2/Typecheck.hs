@@ -27,7 +27,7 @@ type Exp = L Exp2
 
 -- | Run the typechecker for (Prog {ddefs = Tree, fundefs = [add1], mainExp = exp})
 --
-tester :: Exp -> Either TCError (Ty2, LocationTypeState)
+tester :: Exp -> Either (TCError Exp) (Ty2, LocationTypeState)
 tester = runExcept . (tcExp ddfs env funs constrs regs tstate)
   where
     ddfs    = ddtree
@@ -47,7 +47,7 @@ assertValue exp expected =
 
 
 -- |
-assertError :: Exp -> TCError -> Assertion
+assertError :: Exp -> TCError Exp -> Assertion
 assertError exp expected =
   case tester exp of
     Left actual -> expected @=? actual
