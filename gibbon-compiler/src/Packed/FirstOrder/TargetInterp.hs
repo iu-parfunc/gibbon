@@ -17,12 +17,13 @@ import Data.Maybe (listToMaybe)
 
 import Data.Sequence (Seq, ViewL ((:<)), (|>))
 import qualified Data.Sequence as Seq
-import Packed.FirstOrder.L4.Syntax
-import Packed.FirstOrder.Common (fromVar)
 import GHC.Generics
 import Control.DeepSeq
 import Text.PrettyPrint.GenericPretty
 import Text.PrettyPrint.HughesPJ
+
+import Packed.FirstOrder.L4.Syntax
+import Packed.FirstOrder.Common (fromVar)
 
 -- import Data.Time.Clock
 import System.Clock

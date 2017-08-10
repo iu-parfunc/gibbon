@@ -90,7 +90,7 @@ findEnd l EndOfRel{endOf,equivTo} =
 
 -- | Process an L2 Prog and thread through explicit end-witnesses.
 -- Requires Gensym and runs in SyM. Assumes the Prog has been flattened.
-routeEnds :: Prog -> SyM Prog
+routeEnds :: Prog2 -> SyM Prog2
 routeEnds Prog{ddefs,fundefs,mainExp} = do
 
   -- Handle functions in two steps (to account for mutual recursion):
@@ -106,8 +106,8 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
   -- Handle the main expression (if it exists):
   mainExp' <- case mainExp of
                 Nothing -> return Nothing
-                Just (e,t) -> do e' <- exp fundefs'' [] emptyRel M.empty M.empty e
-                                 return $ Just (e',t)
+                Just (t,e) -> do e' <- exp fundefs'' [] emptyRel M.empty M.empty e
+                                 return $ Just (t, e')
 
   -- Return the updated Prog
   return $ Prog ddefs fundefs'' mainExp'
@@ -117,20 +117,20 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
     -- Helper functions:
 
     -- | Process function types (but don't handle bodies)
-    fdty :: (L2.FunDef Ty2 (L Exp2)) -> SyM (L2.FunDef Ty2 (L Exp2))
-    fdty L2.FunDef{funName,funTy,funArg,funBody} =
+    fdty :: (FunDef Ty2 (L Exp2)) -> SyM (FunDef Ty2 (L Exp2))
+    fdty FunDef{funName,funTy,funArg,funBody} =
         do let ArrowTy{locVars,arrEffs} = funTy
                handleLoc (LRM l r m) ls = if S.member (Traverse l) arrEffs
                                           then (LRM l r m):ls
                                           else ls
                locout' = L.map EndOf $ L.foldr handleLoc [] locVars
-           return L2.FunDef{funName,funTy=funTy{locRets = locout'},funArg,funBody}
+           return FunDef{funName,funTy=funTy{locRets = locout'},funArg,funBody}
 
 
     -- | Process function bodies
-    fd :: FunDefs Ty2 (L Exp2) -> (L2.FunDef Ty2 (L Exp2)) ->
-          SyM (L2.FunDef Ty2 (L Exp2))
-    fd fns L2.FunDef{funName,funTy,funArg,funBody} =
+    fd :: FunDefs Ty2 (L Exp2) -> (FunDef Ty2 (L Exp2)) ->
+          SyM (FunDef Ty2 (L Exp2))
+    fd fns FunDef{funName,funTy,funArg,funBody} =
         do let ArrowTy{arrIn,locVars,arrEffs} = funTy
                handleLoc (LRM l _r _m) ls = if S.member (Traverse l) arrEffs
                                             then l:ls
@@ -141,7 +141,7 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                         ProdTy _tys -> error "Multiple function args not handled yet in RouteEnds2"
                         _ -> M.empty
            funBody' <- exp fns retlocs emptyRel lenv M.empty funBody
-           return L2.FunDef{funName,funTy,funArg,funBody=funBody'}
+           return FunDef{funName,funTy,funArg,funBody=funBody'}
 
 
     -- | Process expressions.

@@ -18,7 +18,7 @@
 module Packed.FirstOrder.L1.Syntax
     (
      -- * Core types
-      Prog(..), DDef(..), FunDefs, FunDef(..),
+      Prog1, DDef(..), FunDefs, fundefs, FunDef(..),
       Exp1, PreExp(..)
     , progToEnv
 
@@ -56,24 +56,12 @@ import Data.Set as S
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
 
-import Packed.FirstOrder.Common as C
+import Packed.FirstOrder.Common
 import Packed.FirstOrder.GenericOps
 
 --------------------------------------------------------------------------------
 
--- | Complete programs include datatype definitions:
---
--- For evaluating a complete program, main's type will be an Int or a
--- datatype.  For running a pass benchmark, main will be Nothing and
--- we will expect a "benchmark" function definition which consumes an
--- appropriate packed AST datatype.
-data Prog = Prog { ddefs    :: DDefs Ty1
-                 , fundefs  :: FunDefs Ty1 (L Exp1)
-                 , mainExp  :: Maybe (L Exp1)
---                 , constraints :: [Constraint]
-                 }
-  deriving (Show,Eq,Ord, Generic, NFData)
-
+type Prog1 = Prog Ty1 (L Exp1)
 
 -- FIXME: Finish this and merge with L2.Constraint
 data Constraint = Constraint
@@ -83,7 +71,7 @@ instance Out Constraint
 
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.
-progToEnv :: Prog -> Env2 (UrTy ())
+progToEnv :: Prog1 -> Env2 (UrTy ())
 progToEnv Prog{fundefs} =
     Env2 M.empty
          (M.fromList [ (funName,(fmap (\_->()) (arrIn funTy),
@@ -239,8 +227,6 @@ instance Out a => Out (UrTy a)
 
 instance (Out l, Out d, Out (e l d)) => Out (PreExp e l d)
 
-instance Out Prog
-
 -- TODO/FIXME: leaving out these for now.
 pattern SymTy :: forall a. UrTy a
 pattern SymTy = IntTy
@@ -353,10 +339,11 @@ sizeOf t =
     CursorTy{}  -> Just 8
 
 -- | Transform the expressions within a program.
-mapExprs :: (L Exp1 -> L Exp1) -> Prog -> Prog
+mapExprs :: (L Exp1 -> L Exp1) -> Prog1 -> Prog1
 mapExprs fn prg@Prog{fundefs,mainExp} =
   prg{ fundefs = fmap (fmap fn) fundefs
-     , mainExp = fmap fn mainExp }
+     , mainExp  = fmap (\(ty, ex) -> (ty, fn ex)) mainExp
+     }
 
 
 --------------------------------------------------------------------------------
@@ -548,7 +535,7 @@ treeDD = (fromListDD [DDef "Tree"
                       , ("Node",[(False,Packed "Tree")
                                 ,(False,Packed "Tree")])]])
 
-mkAdd1Prog :: L Exp1 -> Maybe (L Exp1) -> Prog
+mkAdd1Prog :: L Exp1 -> Maybe (Ty1, L Exp1) -> Prog1
 mkAdd1Prog bod mainExp = Prog treeDD
                               (M.fromList [("add1",mkAdd1Fun bod)])
                               mainExp
@@ -569,7 +556,7 @@ mkAdd1Fun bod = FunDef "add1" "tr" funty bod
 
 -- | The basic form of the add1 program where recursions happen
 -- immediately as arguments to the data-constructor.
-add1Prog :: Prog
+add1Prog :: Prog1
 add1Prog = mkAdd1Prog exadd1Bod Nothing
 
 exadd1Bod :: L Exp1
@@ -607,17 +594,17 @@ exadd1BodLetRight = L NoLoc $
       ]
 
 -- | Add1 program with let bindings, recurring in left-to-right order.
-add1ProgLetLeft :: Prog
+add1ProgLetLeft :: Prog1
 add1ProgLetLeft = mkAdd1Prog exadd1BodLetLeft Nothing
 
 -- | Add1 program with let bindings, recurring in right-to-left order.
-add1ProgLetRight :: Prog
+add1ProgLetRight :: Prog1
 add1ProgLetRight = mkAdd1Prog exadd1BodLetRight Nothing
 
 
 -- | An even more challenging case where there is an (apparent) data
 -- dependency where x2 depends on y2.
-add1ProgChallenge :: Prog
+add1ProgChallenge :: Prog1
 add1ProgChallenge =
     Prog treeDD
          (M.fromList [ ("add1",mkAdd1Fun bod)
@@ -640,7 +627,7 @@ add1ProgChallenge =
       ]
 
 -- | This program is a challenge because a packed value flows to two destinations.
-add1ProgSharing :: Prog
+add1ProgSharing :: Prog1
 add1ProgSharing = Prog treeDD (M.fromList [("add1",mkAdd1Fun bod)]) Nothing
   where
    bod = L NoLoc $

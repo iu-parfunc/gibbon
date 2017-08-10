@@ -19,8 +19,8 @@ ddtree = fromListDD [DDef (toVar "Tree")
                                 , (False,PackedTy "Tree" "l")])]]
 
 
-add1Fun :: L2.FunDef Ty2 (L Exp2)
-add1Fun = L2.FunDef "add1" "tr" add1FunTy add1FunBod
+add1Fun :: FunDef Ty2 (L Exp2)
+add1Fun = FunDef "add1" "tr" add1FunTy add1FunBod
   where
     add1FunTy :: ArrowTy Ty2
     add1FunTy = (ArrowTy

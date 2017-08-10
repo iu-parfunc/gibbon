@@ -391,7 +391,7 @@ tcExps _ _ _ _ _ ts [] = return ([],ts)
 
 
 -- | Main entry point, checks a whole program (functions and main body).
-tcProg :: Prog -> SyM Prog
+tcProg :: Prog2 -> SyM Prog2
 tcProg prg0@Prog{ddefs,fundefs,mainExp} = do
 
   -- Handle functions
@@ -400,7 +400,7 @@ tcProg prg0@Prog{ddefs,fundefs,mainExp} = do
   -- Handle main function
   case mainExp of
     Nothing -> return ()
-    Just (e,t) ->
+    Just (t,e) ->
         let res = runExcept $ tcExp ddefs (Env2 M.empty M.empty) fundefs
                     (ConstraintSet $ S.empty) (RegionSet $ S.empty)
                     (LocationTypeState $ M.empty) e
@@ -414,8 +414,8 @@ tcProg prg0@Prog{ddefs,fundefs,mainExp} = do
 
   where
 
-    fd :: L2.FunDef Ty2 (L Exp2) -> SyM ()
-    fd L2.FunDef{funTy,funArg,funBody} = do
+    fd :: FunDef Ty2 (L Exp2) -> SyM ()
+    fd FunDef{funTy,funArg,funBody} = do
         let env = extendEnv (Env2 M.empty M.empty) funArg (arrIn funTy)
             constrs = funConstrs (locVars funTy)
             regs = funRegs (locVars funTy)

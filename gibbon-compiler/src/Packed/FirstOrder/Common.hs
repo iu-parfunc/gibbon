@@ -37,6 +37,9 @@ module Packed.FirstOrder.Common
        , FunDef(..), FunDefs, ArrowTy(..)
        , insertFD, fromListFD, getFunTy
 
+         -- * Complete program
+       , Prog(..)
+
          -- * Data definitions
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
@@ -344,6 +347,27 @@ getFunTy f funs = case M.lookup f funs of
                     Nothing -> error $ "getFunTy: function was not bound" ++
                                show f
                     Just (FunDef{funTy}) -> funTy
+
+-- Prog
+----------------------------------------
+
+-- | Complete programs include datatype definitions:
+--
+-- For evaluating a complete program, main's type will be an Int or a
+-- datatype.  For running a pass benchmark, main will be Nothing and
+-- we will expect a "benchmark" function definition which consumes an
+-- appropriate packed AST datatype.
+data Prog ty ex = Prog { ddefs    :: DDefs ty
+                       , fundefs  :: FunDefs ty ex
+                       , mainExp  :: Maybe (ty, ex)
+                       -- , constraints :: [Constraint]
+                       }
+  deriving (Show, Eq, Ord, Generic)
+
+instance (Out ty, Out ex) => Out (Prog ty ex)
+
+instance (NFData ty, NFData ex) => NFData (Prog ty ex)
+
 
 -- Gensym monad:
 ----------------------------------------

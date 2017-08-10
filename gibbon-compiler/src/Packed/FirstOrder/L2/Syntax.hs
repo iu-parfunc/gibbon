@@ -16,9 +16,10 @@
 -- | An intermediate language with an effect system that captures traversals.
 
 module Packed.FirstOrder.L2.Syntax
-    ( Prog(..), FunDef(..), LocExp, PreLocExp(..), getFunTy
+    ( LocExp, PreLocExp(..)
     , mapMExprs
     , progToEnv
+    , Prog2
 
     -- * Temporary backwards compatibility, plus rexports
     , UrTy(..)
@@ -61,8 +62,7 @@ import Text.PrettyPrint.GenericPretty
 
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.GenericOps
-import Packed.FirstOrder.L1.Syntax hiding
-       (FunDef, Prog, mapExprs, progToEnv, fundefs, getFunTy, add1Prog)
+import Packed.FirstOrder.L1.Syntax hiding (mapExprs, progToEnv, add1Prog)
 import qualified Packed.FirstOrder.L1.Syntax as L1
 
 --------------------------------------------------------------------------------
@@ -112,22 +112,15 @@ type LocExp = PreLocExp LocVar
 -- | L1 Types extended with abstract Locations.
 type Ty2 = L1.UrTy LocVar
 
-
 -- | Here we only change the types of FUNCTIONS:
-data Prog = Prog { ddefs    :: DDefs Ty2
-                 , fundefs  :: FunDefs Ty2 (L Exp2)
-                 , mainExp  :: Maybe (L Exp2, Ty2)
-                 }
-  deriving (Show, Ord, Eq, Generic, NFData)
-
-instance Out Prog
+type Prog2 = Prog Ty2 (L Exp2)
 
 --------------------------------------------------------------------------------
 
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.  The
 --   initial environment has types only for functions.
-progToEnv :: Prog -> Env2 (UrTy ())
+progToEnv :: Prog2 -> Env2 (UrTy ())
 progToEnv Prog{fundefs} =
     Env2 M.empty
          (M.fromList [ (funName,(fmap (\_->()) arrIn, fmap (\_->()) arrOut))
@@ -229,8 +222,8 @@ _allLocVars t =
 
 
 -- | Map exprs with an initial type environment:
-mapMExprs :: Monad m => (Env2 (UrTy LocVar) -> L Exp2 -> m (L Exp2)) -> Prog ->
-             m Prog
+mapMExprs :: Monad m => (Env2 (UrTy LocVar) -> L Exp2 -> m (L Exp2)) -> Prog2 ->
+             m Prog2
 mapMExprs = error $ "FINISHME: L2 mapMExprs"
 
 
@@ -238,7 +231,7 @@ mapMExprs = error $ "FINISHME: L2 mapMExprs"
 
 -- | Because L2 just adds a bit of metadata and enriched types, it is
 -- possible to strip it back down to L1.
-revertToL1 :: Prog -> L1.Prog
+revertToL1 :: Prog2 -> L1.Prog1
 revertToL1 = undefined -- TODO: Fix or remove this function
 
 --------------------------------------------------------------------------------
@@ -352,11 +345,11 @@ includeBuiltins (Env2 _ _) = undefined
 --------------------------------------------------------------------------------
 
 -- | Our canonical simple example, written in this IR.
-add1Prog :: Prog
+add1Prog :: Prog2
 add1Prog = withAdd1Prog Nothing
 
 -- | Supply a main expression to run with add1 defined.
-withAdd1Prog :: Maybe (L Exp2,Ty2) -> Prog
+withAdd1Prog :: Maybe (Ty2, L Exp2) -> Prog2
 withAdd1Prog mainExp =
     let ddfs = ddtree
         funs = (M.fromList [("add1",exadd1)])

@@ -136,7 +136,7 @@ tagDataCons ddefs = go allCons
        FoldE (v1,t1,e1) (v2,t2,e2) b -> FoldE (v1,t1,go cons e1) (v2,t2,go cons e2) (go cons b)
 
 -- | Convert from raw, unstructured S-Expression into the program datatype we expect.
-parseSExp :: [Sexp] -> SyM Prog
+parseSExp :: [Sexp] -> SyM Prog1
 parseSExp ses =
   do prog@Prog {ddefs} <- go ses [] [] [] Nothing
      return $ mapExprs (tagDataCons ddefs) prog
@@ -205,7 +205,12 @@ parseSExp ses =
      (ex : rst) ->
        let ex' = exp ex
        in go rst dds fds cds (case mn of
-                            Nothing -> Just ex'
+                            -- TODO(cskksc): audit-me
+                            -- This is not necessarily the correct type
+                            -- The correct type will be added by the pass
+                            -- which take L1 -> L2 ?
+                            -- Does L2.mainExp really have to be (ty, ex) ?
+                            Nothing -> Just (voidTy, ex')
                             Just x  -> error$ "Two main expressions: "++
                                              sdoc x++"\nAnd:\n"++prnt ex)
 
@@ -425,7 +430,7 @@ handleRequire baseFile (l:ls) = do
   ls' <- handleRequire baseFile ls
   return $ l:ls'
 
-parseFile :: FilePath -> IO (Prog, Int)
+parseFile :: FilePath -> IO (Prog1, Int)
 parseFile file = do
   txt    <- fmap bracketHacks $
             -- fmap stripHashLang $

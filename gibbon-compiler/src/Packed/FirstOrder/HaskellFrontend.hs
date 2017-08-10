@@ -36,7 +36,7 @@ err = Left
 
 --------------------------------------------------------------------------------
 
-desugarModule :: H.Module -> Ds Prog
+desugarModule :: H.Module -> Ds Prog1
 desugarModule (H.Module _ _ _ _ _ _ decls) = do
   -- since top-level function types and their types can't be declared in
   -- single top-level declaration we first collect types and then collect
@@ -55,8 +55,10 @@ desugarModule (H.Module _ _ _ _ _ _ decls) = do
       ( funBody <$> M.lookup (toVar "main") funMap
       , M.delete (toVar "main") funMap
       )
+    -- TODO(cskksc): See SExpFrontend.hs#L208
+    mainExp = fmap (\ex -> (voidTy,ex)) mainFn
 
-  return (Prog dataMap funMapNoMain mainFn)
+  return (Prog dataMap funMapNoMain mainExp)
 
 collectTopFunTy :: H.Decl -> Ds (Maybe (Var, TopTy))
 collectTopFunTy decl =
@@ -292,7 +294,7 @@ litToInt l         = err ("Literal not supported: " ++ show l)
 
 ----------------------------------------
 
-parseFile :: FilePath -> IO (L1.Prog, Int)
+parseFile :: FilePath -> IO (L1.Prog1, Int)
 parseFile path = do
     fmap parse (readFile path) >>= \case
       ParseOk hs -> do

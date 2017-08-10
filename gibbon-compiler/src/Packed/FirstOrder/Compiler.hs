@@ -72,16 +72,16 @@ import           Packed.FirstOrder.Passes.InlineTriv
 
 -- | Find all local variables bound by case expressions which must be
 -- traversed, but which are not by the current program.
-findMissingTraversals :: L2.Prog -> SyM (Set Var)
+findMissingTraversals :: L2.Prog2 -> SyM (Set Var)
 findMissingTraversals _ = pure S.empty
 
 -- | Add calls to an implicitly-defined, polymorphic "traverse"
 -- function of type `p -> ()` for any packed type p.
-addTraversals :: Set Var -> L2.Prog -> SyM L2.Prog
+addTraversals :: Set Var -> L2.Prog2 -> SyM L2.Prog2
 addTraversals _ p = pure p
 
 -- | Generate code
-lowerCopiesAndTraversals :: L2.Prog -> SyM L2.Prog
+lowerCopiesAndTraversals :: L2.Prog2 -> SyM L2.Prog2
 lowerCopiesAndTraversals p = pure p
 
 
@@ -311,7 +311,7 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
 -}
 
 -- | The compiler's policy for running/printing L1 programs.
-runL1 :: L1.Prog -> IO ()
+runL1 :: L1.Prog1 -> IO ()
 runL1 l1 = do
     -- FIXME: no command line option atm.  Just env vars.
     runConf <- getRunConfig []
@@ -320,7 +320,7 @@ runL1 l1 = do
     exitSuccess
 
 -- | The compiler's policy for running/printing L2 programs.
-runL2 :: L2.Prog -> IO ()
+runL2 :: L2.Prog2 -> IO ()
 runL2 l2 = runL1 (L2.revertToL1 l2)
 
 -- | Set the env var DEBUG, to verbosity, when > 1
@@ -336,7 +336,7 @@ setDebugEnvVar verbosity =
 
 
 -- |
-parseInput :: Input -> FilePath -> IO (IO (L1.Prog, Int), FilePath)
+parseInput :: Input -> FilePath -> IO (IO (L1.Prog1, Int), FilePath)
 parseInput ip fp =
   case ip of
     Haskell -> return (HS.parseFile fp, fp)
@@ -362,7 +362,7 @@ parseInput ip fp =
 
 
 -- |
-interpProg :: L1.Prog -> IO (Maybe SI.Value)
+interpProg :: L1.Prog1 -> IO (Maybe SI.Value)
 interpProg l1 =
   if dbgLvl >= interpDbgLevel
   then do
@@ -375,13 +375,13 @@ interpProg l1 =
     return Nothing
 
 -- | A compile job stopped somewhere in the middle.
-data InProgress = L1 L1.Prog
-                | L2 L2.Prog
+data InProgress = L1 L1.Prog1
+                | L2 L2.Prog2
                 | L4 L4.Prog
 
 -- | The main compiler pipeline, which we permit to return programs in
 -- /various/ states of compilation.
-passes :: Config -> L1.Prog -> StateT CompileState IO InProgress
+passes :: Config -> L1.Prog1 -> StateT CompileState IO InProgress
 passes config@Config{mode} l1 = do
       l1 <- passE config "freshNames" freshNames l1
       -- If we are executing a benchmark, then we
@@ -481,7 +481,7 @@ inline2 _ p = return (L2.mapExprs (\_ -> inlineTrivExp (L2.ddefs p)) p)
 
 -- | Replace the main function with benchmark code
 --
-benchMainExp :: Config -> L1.Prog -> Var -> L1.Prog
+benchMainExp :: Config -> L1.Prog1 -> Var -> L1.Prog1
 benchMainExp Config{benchInput,benchPrint} l1 fnname = do
   let tmp = "bnch"
       ArrowTy{arrIn = arg@(L1.PackedTy tyc _),arrOut} = getFunTy fnname (L1.fundefs l1)
@@ -501,7 +501,8 @@ benchMainExp Config{benchInput,benchPrint} l1 fnname = do
                (if benchPrint
                 then L NoLoc $ L1.VarE (toVar "benchres")
                 else L NoLoc $ L1.PrimAppE L1.MkTrue [])
-  l1{ L1.mainExp = Just $ L NoLoc newExp }
+      (Just (ty,_)) = (mainExp l1)
+  l1{ mainExp = Just $ (ty, L NoLoc newExp) }
 
 
 type PassRunner a b = (Out b, NFData a, NFData b) =>

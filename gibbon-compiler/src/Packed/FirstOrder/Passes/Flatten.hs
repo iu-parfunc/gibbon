@@ -38,11 +38,14 @@ import Prelude hiding (exp)
 --
 --   In the process, it also lifts lets out of case scrutinees, if
 --   conditions, and tuple operands.
-flatten :: L1.Prog -> SyM L1.Prog
-flatten prg@(L1.Prog defs funs main) = do
-    main' <- mapM (gFlattenExp defs env20) main
+flatten :: Prog1 -> SyM Prog1
+flatten prg@(Prog defs funs main) = do
+    main' <- mapM (\(ty,ex) -> do
+                      ex' <- gFlattenExp defs env20 ex
+                      return (ty, ex'))
+             main
     funs' <- flattenFuns funs
-    return $ L1.Prog defs funs' main'
+    return $ Prog defs funs' main'
   where
     flattenFuns = mapM flattenFun
     -- flattenFun (FunDef nam (narg,targ) ty bod) = do
