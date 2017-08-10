@@ -207,9 +207,6 @@ parseSExp ses =
        in go rst dds fds cds (case mn of
                             -- TODO(cskksc): audit-me
                             -- This is not necessarily the correct type
-                            -- The correct type will be added by the pass
-                            -- which take L1 -> L2 ?
-                            -- Does L2.mainExp really have to be (ty, ex) ?
                             Nothing -> Just (voidTy, ex')
                             Just x  -> error$ "Two main expressions: "++
                                              sdoc x++"\nAnd:\n"++prnt ex)
