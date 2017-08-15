@@ -35,7 +35,7 @@ library
                   Packed.FirstOrder.Passes.Flatten
                   -- Packed.FirstOrder.Passes.Flatten2
                   Packed.FirstOrder.Passes.InlineTriv
-                  -- Packed.FirstOrder.Passes.InferLocations
+                  Packed.FirstOrder.Passes.InferLocations
                   -- Packed.FirstOrder.Passes.InferEffects
                   -- Packed.FirstOrder.Passes.Cursorize
                   -- Packed.FirstOrder.Passes.Cursorize2
@@ -84,7 +84,10 @@ library
                 -- tslogger,
                 blaze-builder,
                 symbol,
-                srcloc
+                srcloc,
+                transformers
+-- Brings in lots of ekmett dependencies:
+--              , either
 
   if flag(LLVM_ENABLED)
     exposed-modules:

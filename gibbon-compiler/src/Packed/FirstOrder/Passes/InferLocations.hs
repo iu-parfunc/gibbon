@@ -1,6 +1,8 @@
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 -- | Convert from L1 to L2.
 
-module Packed.FirstOrder.Passes.InferLocations where
+module Packed.FirstOrder.Passes.InferLocations
+    where
 
 {-
   Basic Strategy
@@ -36,16 +38,26 @@ by copy insertion.
 
 -}
 
+import Data.Loc
 import qualified Data.Map as M
+import qualified Data.Set as S
+import qualified Control.Monad.Trans.Writer.Strict as W
+import Control.Monad.Trans.Except
+import Control.Monad.Trans (lift)
+-- import qualified Control.Monad.Trans.Either
+-- import qualified Control.Monad.Trans.Cont as CC
 
+    
 import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common (Var, Env2, DDefs, LocVar, runSyM, SyM, gensym, toVar)
 import qualified Packed.FirstOrder.L1.Syntax as L1
 import Packed.FirstOrder.L2.Syntax as L2
 import Packed.FirstOrder.L2.Typecheck
     (ConstraintSet, LocConstraint(..), RegionSet(..), LocationTypeState(..))
-----------------------------------------------------------------------------------------------------
 
+    
+-- Dependencies
+----------------------------------------------------------------------------------------------------
 
 -- | Edges that create information-flow dependencies, representing both data dependencies
 -- evident in the current program, and ones which will appear later, when locations are
@@ -67,6 +79,7 @@ data Dependence =
 
     -- * Location/location or location/region dependence.   
   | LL LocConstraint
+  deriving (Show, Read, Ord, Eq)
 
 data CommonVar = LVar !LocVar | DatVar !Var
   deriving (Show, Read, Ord, Eq)
@@ -74,13 +87,20 @@ data CommonVar = LVar !LocVar | DatVar !Var
 -- | Map a dependence to a (from,to) edge.
 depToEdge :: Dependence -> (CommonVar,CommonVar)
 depToEdge = undefined
+
+-- | Organize a graph into a map from each variable to the set of edges for which it
+-- serves as the destination.
+type Graph = M.Map CommonVar (S.Set Dependence)
             
-type DepGraph = M.Map CommonVar Dependence
+-- | Map each variable to a set of other variables it depends on.
+type DepGraph = M.Map CommonVar (S.Set CommonVar)
 
 -- | A cycle is represented as an edgelist where the destination of the first edge matches
 -- the source of the final edge.
 type EdgeList = [Dependence]
 
+    
+-- Environments    
 ----------------------------------------------------------------------------------------------------
 
 -- | Combine the different kinds of contextual information in-scope.
@@ -92,38 +112,41 @@ data FullEnv = FullEnv (DDefs Ty2) (Env2 Ty2) DepGraph
 extendVEnv :: Var -> Ty2 -> FullEnv -> FullEnv
 extendVEnv = undefined
 
+lookupVEnv :: Var -> FullEnv -> Ty2
+lookupVEnv = undefined
+             
 extendDepGraph :: Dependence -> FullEnv -> FullEnv
 extendDepGraph = undefined
              
+transitiveClosure :: DepGraph -> DepGraph
+transitiveClosure = undefined                    
 
-
+hasCycle :: DepGraph -> Bool
+hasCycle = undefined
+                    
 ----------------------------------------------------------------------------------------------------
 
--- | The compiler pass that converts from L1 to L2, inferring and
--- inserting location variables into the program.
-inferLocs :: L1.Prog -> SyM L2.Prog
-inferLocs = error "FINISHME"
+-- | Type inference monad.
+type TiM a = ExceptT Failure (W.WriterT EdgeList SyM) a
+
+type Cont = (L Exp2, Ty2) -> TiM (L Exp2,Ty2)
+-- ^ Instead of explicit CPS, we could use ContT..
+
+-- | A hole that represents a paused type-inference process.
+newtype TiHole = TiHole Cont
+-- ^ We could use an explicit datatype or a generic zipper library for
+-- this, but instead we just use functions for holes.
+    
+-- | A selected subexpression that has focus.  A hole filled by a given subexpr.
+data Selection = Selection L1.Exp1 TiHole
+-- TODO: should we know the type of the expression selected at this point?
+               
+instance Show Selection where
+  show (Selection e2 _hole) = 
+    "(Selection of subexpr: "++show e2++")"
+--    "Within: "++show (hole )
 
 
--- | Type ineference monad.
-type TiM a = Either Failure a
--- TODO: move all the junk we keep with us into a reader monad.
--- data Context = Context (DDefs Ty2) (Env2 Ty2) NewFuns ConstraintSet RegionSet LocationTypeState
-
--- TODO: switch to CPS so that we can generate Holes:
-type Cont = Exp2 -> TiM (Exp2,Ty2)
--- ^ Instead of explicit continuations with this type, we could use ContT..
-
-
--- | inferExp, if it succeeds, discharges all fresh locations used with 'LetLoc' forms.
--- If it fails, it returns a failure object containing one or more continuations.
-inferExp :: FullEnv -> Exp2 -> TiM (Ty2, LocationTypeState)
-inferExp env ex0 =
-  case ex0 of
-    VarE v -> undefined
-    LitE n -> return (IntTy, _)
-
-              
 -- | Type inference proceeds and fails sequentially.  It cannot
 -- continue until the problem is resolved.
 data Failure =
@@ -138,21 +161,54 @@ data Failure =
   | CyclicDependence -- ??
     -- ^ A cycle in the graph of value dependence between sizes, locations, and regular
     -- logical values.
+ deriving Show
 
+
+-- The compiler pass
+----------------------------------------------------------------------------------------------------
+
+-- | The compiler pass that converts from L1 to L2, inferring and
+-- inserting location variables into the program.
+inferLocs :: L1.Prog -> SyM L2.Prog
+inferLocs (L1.Prog defs funs main) =
+    error "FINISHME"
+
+
+-- | inferExp, if it succeeds, discharges all fresh locations used with 'LetLoc' forms.
+-- If it fails, it returns a failure object containing a continuation.
+inferExp :: FullEnv -> (L L1.Exp1) -> Cont -> TiM (L Exp2,Ty2)
+inferExp env (L srcloc ex0) k =
+  let l = L srcloc in
+  case ex0 of
+    L1.VarE v -> k (l$ VarE v, lookupVEnv v env)
+    L1.LitE n -> k (l$ LitE n, IntTy)
+    L1.IfE a b (L _ c) ->
+        -- Here we blithely assume success because L1 typechecking has already passed:
+        inferExp env a $ \ (a',BoolTy) ->
+        inferExp env b $ \ (b',tyb) ->
+        let k' (c',tyc) = k (l$ IfE a' b' c', tyc) in
+
+        -- Infer type of second branch and unify locations in tyb/tyc        
+        
+        -- Upon failure, report the error in the second branch:
+        throwE (FailedLocUnify{ expected=_
+                              , received=_
+                              , context=Selection c (TiHole k')})
+
+    L1.LetE (v,locs,ty,rhs) bod | [] <- locs ->
+        inferExp env rhs $ \ (_,_) ->
+         -- Construct a value-dependence to all the free vars in the RHS:
+         do lift (W.tell [VV{}])
+            inferExp _env' bod $ \ (_,_) ->
+             _
+
+     | otherwise -> err "Invariant violated.  LetE had nonempty bound locations."
     
--- | A hole that represents a paused type-inference process.
-newtype TiHole = TiHole Cont
+--    e -> throwE (FailedLocUnify{context=Selection e (TiHole k)}) -- TEST
 
-    
--- | A context within a surrounding expression.  We could use an explicit datatype or a
--- generic zipper library for this, but instead we just use functions for holes.
--- newtype Hole = Hole (Exp2 -> Exp2)
-
-
--- | A selected subexpression that has focus.  A hole filled by a given subexpr.
-data Selection = Selection Exp2 TiHole
-
-               
+err :: String -> a
+err m = error $ "InferLocations: " ++ m
+         
 -- Helpers:               
 --------------------------------------------------------------------------------
 
@@ -164,8 +220,8 @@ data Selection = Selection Exp2 TiHole
 
 
 -- | Fresh locVar
-freshLocVar :: String -> SyM LocVar
-freshLocVar m = gensym (toVar m)
+freshLocVar :: String -> TiM LocVar
+freshLocVar m = lift$ lift$ gensym (toVar m)
 
 
 
@@ -205,3 +261,27 @@ instance Out Loc
 
 test :: L2.Prog
 test = fst $ runSyM 0 $ inferLocs L1.add1Prog
+
+emptyEnv :: FullEnv 
+emptyEnv = FullEnv C.emptyDD (C.Env2 M.empty M.empty) M.empty
+
+l :: a -> L a
+l x = L NoLoc x
+
+idCont :: Cont 
+idCont (e,ty) = return (e,ty)
+
+t1 :: ((Either Failure (L Exp2, Ty2), EdgeList), Int)
+t1 = runSyM 0 $ W.runWriterT $ runExceptT $
+     inferExp emptyEnv (l$ L1.LitE 3) idCont
+
+{-         
+t2_ :: TiM (L Exp2, Ty2)
+t2_ = inferExp emptyEnv (l$ L1.IfE (l$ L1.PrimAppE L1.MkTrue [])
+                           (l$ L1.LitE 3)
+                           (l$ L1.LitE 4))
+              idCont
+
+t2 :: (Either Failure (L Exp2, Ty2), EdgeList)
+t2 = W.runWriter (runExceptT t2_)
+-}
