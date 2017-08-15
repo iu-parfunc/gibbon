@@ -129,7 +129,10 @@ hasCycle = undefined
 -- | Type inference monad.
 type TiM a = ExceptT Failure (W.WriterT EdgeList SyM) a
 
-type Cont = (L Exp2, Ty2) -> TiM (L Exp2,Ty2)
+-- | The result type for this pass.
+type Result = (L Exp2, Ty2)
+
+type Cont = Result -> TiM Result
 -- ^ Instead of explicit CPS, we could use ContT..
 
 -- | A hole that represents a paused type-inference process.
@@ -164,6 +167,13 @@ data Failure =
  deriving Show
 
 
+-- TODO: flip around the control flow and pass the repair agent into
+-- the infer-locations pass:
+
+-- | A program-repair agent that fixes failures as they arise.
+type RepairTactic = Failure -> TiM Result
+
+    
 -- The compiler pass
 ----------------------------------------------------------------------------------------------------
 
@@ -176,7 +186,7 @@ inferLocs (L1.Prog defs funs main) =
 
 -- | inferExp, if it succeeds, discharges all fresh locations used with 'LetLoc' forms.
 -- If it fails, it returns a failure object containing a continuation.
-inferExp :: FullEnv -> (L L1.Exp1) -> Cont -> TiM (L Exp2,Ty2)
+inferExp :: FullEnv -> (L L1.Exp1) -> Cont -> TiM Result
 inferExp env (L srcloc ex0) k =
   let l = L srcloc in
   case ex0 of
@@ -271,17 +281,17 @@ l x = L NoLoc x
 idCont :: Cont 
 idCont (e,ty) = return (e,ty)
 
-t1 :: ((Either Failure (L Exp2, Ty2), EdgeList), Int)
+t1 :: ((Either Failure Result, EdgeList), Int)
 t1 = runSyM 0 $ W.runWriterT $ runExceptT $
      inferExp emptyEnv (l$ L1.LitE 3) idCont
 
 {-         
-t2_ :: TiM (L Exp2, Ty2)
+t2_ :: TiM Result
 t2_ = inferExp emptyEnv (l$ L1.IfE (l$ L1.PrimAppE L1.MkTrue [])
                            (l$ L1.LitE 3)
                            (l$ L1.LitE 4))
               idCont
 
-t2 :: (Either Failure (L Exp2, Ty2), EdgeList)
+t2 :: (Either Failure Result, EdgeList)
 t2 = W.runWriter (runExceptT t2_)
 -}
