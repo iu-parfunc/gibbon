@@ -157,11 +157,11 @@ data Failure =
 -- one or the other of the holes.
     FailedLocUnify { expected :: LocExp
                    , received :: LocExp
-                   , context :: Selection
-                   }
+                   , context :: Selection }
     -- ^ Two locations we need to be equal, to unify, but don't.
                         
-  | CyclicDependence -- ??
+  | CyclicDependence { chain :: EdgeList
+                     , context :: Selection }
     -- ^ A cycle in the graph of value dependence between sizes, locations, and regular
     -- logical values.
  deriving Show
