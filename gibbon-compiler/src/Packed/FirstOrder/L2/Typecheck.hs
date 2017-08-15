@@ -42,7 +42,7 @@ data LocConstraint = StartOfC LocVar Region -- ^ Location is equal to start of t
                                     LocVar  -- ^ Location which is after
                    | AfterVariableC Var     -- ^ Name of variable v. This loc is size(v) bytes after.
                                     LocVar  -- ^ Location which is before
-                                    LocVar  -- ^ Location which is before
+                                    LocVar  -- ^ Location which is after
                    | InRegionC LocVar Region -- ^ Location is somewher within this region.
   deriving (Read, Show, Eq, Ord, Generic, NFData)
 
