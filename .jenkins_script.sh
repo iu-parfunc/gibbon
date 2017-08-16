@@ -26,9 +26,8 @@ if [ "$DOCKER" == "1" ]; then
 
 elif [ "$USE_NIX" == "1" ]; then
 
-    # For stability, pin to a version of the universe:
-    NIX_PATH=nixpkgs=`cat .nix_default_environment.txt` \
-      nix-shell --pure --command  "./run_all_tests.sh $@"
+    # Here by default we use a pinned version of the software ecosystem:
+    nix-shell --pure --command  "./run_all_tests.sh $@"
 
 else
 
