@@ -29,6 +29,11 @@ gibbon-lang: $(SANDBOX)
 $(SANDBOX):
 	mkdir -p $@
 
+# Bring up a shell using a fixed, known-good software image.
+shell: nix-shell
+nix-shell:
+	nix-shell -I `cat .nix_default_environment.txt`
+
 # Aggressive clean of the working copy:
 clean:
 	rm -rf $(SANDBOX) 
@@ -37,4 +42,4 @@ clean:
 	find -name compiled     | xargs rm -rf
 	cd ./gibbon-compiler/examples/; make distclean
 
-.PHONY: subst deps all racket gibbon-lang
+.PHONY: subst deps all racket gibbon-lang shell nix-shell

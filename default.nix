@@ -3,7 +3,7 @@
 
 # Default GHC should match the current LTS in stack.yaml:
 { pkgs ? import <nixpkgs> {}
-, ghc ? pkgs.haskell.compiler.ghc7103 }:
+, ghc ? pkgs.haskell.compiler.ghc802 }:
 
 with pkgs;
 
