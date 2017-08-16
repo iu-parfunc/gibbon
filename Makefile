@@ -30,9 +30,13 @@ $(SANDBOX):
 	mkdir -p $@
 
 # Bring up a shell using a fixed, known-good software image.
+#  - 51a83266d164195698f04468d90d2c6238ed3491 is a snapshot of nixos-17.03 channel on [2017.08.16]
 shell: nix-shell
 nix-shell:
-	nix-shell -I `cat .nix_default_environment.txt`
+	nix-shell --arg pkgs 'import <nixpkgs> {}'
+
+pure:
+	nix-shell --pure -I nixpkgs=`cat .nix_default_environment.txt`
 
 # Aggressive clean of the working copy:
 clean:
@@ -42,4 +46,4 @@ clean:
 	find -name compiled     | xargs rm -rf
 	cd ./gibbon-compiler/examples/; make distclean
 
-.PHONY: subst deps all racket gibbon-lang shell nix-shell
+.PHONY: subst deps all racket gibbon-lang shell nix-shell pure
