@@ -42,6 +42,7 @@ import qualified Packed.FirstOrder.SExpFrontend as SExp
 import qualified Packed.FirstOrder.L1.Interp as SI
 import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
 -- compiler passes
+import           Packed.FirstOrder.L1.Typecheck
 import           Packed.FirstOrder.Passes.Freshen
 import           Packed.FirstOrder.Passes.Flatten (flatten)
 import           Packed.FirstOrder.Passes.InlineTriv
@@ -383,6 +384,7 @@ data InProgress = L1 L1.Prog
 -- /various/ states of compilation.
 passes :: Config -> L1.Prog -> StateT CompileState IO InProgress
 passes config@Config{mode} l1 = do
+      l1 <- passE config "typecheck"  tcProg     l1
       l1 <- passE config "freshNames" freshNames l1
       -- If we are executing a benchmark, then we
       -- replace the main function with benchmark code:
