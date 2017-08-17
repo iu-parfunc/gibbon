@@ -74,7 +74,6 @@ tcExp ddfs env exp@(L p ex) =
         EqIntP -> do
           len2
           _ <- ensureEqualTy exp IntTy (tys !! 0)
-
           _ <- ensureEqualTy exp IntTy (tys !! 1)
           return BoolTy
 
@@ -133,8 +132,12 @@ tcExp ddfs env exp@(L p ex) =
       tyConsq <- go consq
       tyAlt   <- go alt
 
-      _ <- ensureEqualTy exp tyConsq tyAlt
-      return tyConsq
+      -- _ <- ensureEqualTy exp tyConsq tyAlt
+      if tyConsq == tyAlt
+      then return tyConsq
+      else throwError $ GenericTC ("If branches have mismatched types:"
+                                   ++ sdoc tyConsq ++ ", " ++ sdoc tyAlt) exp
+
 
     MkProdE es -> do
       tys <- mapM go es
@@ -262,7 +265,11 @@ tcCases ddfs env cs = do
                targs = lookupDataCon ddfs c
                env'  = extendEnv env (zip args targs)
            tcExp ddfs env' rhs
-  foldM_ (\acc (ex,ty) -> ensureEqualTy ex ty acc >> (return acc))
+  foldM_ (\acc (ex,ty) ->
+            if ty == acc
+            then return acc
+            else throwError $ GenericTC ("Case branches have mismatched types: "
+                                         ++ sdoc acc ++ ", " ++ sdoc ty) ex)
          (head tys) (zipWith (\ty (_,_,ex) -> (ex,ty)) tys cs)
   return $ head tys
 
@@ -315,7 +322,7 @@ t5 :: Prog
 t5 = Prog {ddefs = M.fromList [("Foo",
                 DDef {tyName = "Foo",
                       dataCons = [("A", [(False, IntTy)]),
-                                  ("B", [(False, IntTy),(False, BoolTy)])]}),
+                                  ("B", [(False, IntTy),(False, IntTy)])]}),
                ("Nat",
                 DDef {tyName = "Nat",
                       dataCons = [("Zero", []),("Suc", [(False, PackedTy "Nat" ())])]})],
@@ -323,7 +330,7 @@ t5 = Prog {ddefs = M.fromList [("Foo",
       mainExp = Just $ L NoLoc $ CaseE (L NoLoc $ DataConE () "B" [L NoLoc $ LitE 2,
                                                                    L NoLoc $LitE 4])
                            [("A", [("x", ())], L NoLoc $ VarE "x"),
-                            ("B", [("x", ()),("y", ())], L NoLoc $ VarE "x")]}
+                            ("B", [("x", ()),("y", ())], L NoLoc $ PrimAppE MkFalse [])]}
 
 -- *** Exception: Expected these types to be the same: BoolTy, IntTy in
 -- LitE 4
