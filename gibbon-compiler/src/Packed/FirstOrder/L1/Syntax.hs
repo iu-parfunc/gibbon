@@ -456,18 +456,18 @@ primArgsTy p =
 
 -- Simple invariant assertions:
 
-assertTriv :: L Exp1 -> a -> a
+assertTriv :: (Out l, Out d, Out (e l d)) => L (PreExp e l d) -> a -> a
 assertTriv e =
   if isTriv e
   then id
   else error$ "Expected trivial argument, got: "++sdoc e
 
-assertTrivs :: [L Exp1] -> a -> a
+assertTrivs :: (Out l, Out d, Out (e l d)) => [L (PreExp e l d)] -> a -> a
 assertTrivs [] = id
 assertTrivs (a:b) = assertTriv a . assertTrivs b
 
 -- | Is an expression considered trivial (duplicatable by the compiler)?
-isTriv :: (Show l, Show d, Show (e l d)) => L (PreExp e l d) -> Bool
+isTriv :: (Out l, Out d, Out (e l d)) => L (PreExp e l d) -> Bool
 isTriv (L _ e) =
    case e of
      VarE _    -> True
@@ -483,7 +483,7 @@ isTriv (L _ e) =
                 | otherwise -> False
      MkProdE ls -> all isTriv ls
 
-     Ext _      -> error$ "isTriv, got extension point, cannot handle: "++show e
+     Ext _      -> error$ "isTriv, got extension point, cannot handle: "++sdoc e
      IfE{}      -> False
      CaseE{}    -> False
      LetE {}    -> False

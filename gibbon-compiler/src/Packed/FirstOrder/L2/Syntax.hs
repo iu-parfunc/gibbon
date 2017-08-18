@@ -648,7 +648,8 @@ withAdd1Prog mainExp =
   exadd1ty = (ArrowTy
               [LRM "lin" (VarR "r1") Input, LRM "lout" (VarR "r1") Output]
               (PackedTy "tree" "lin")
-              (S.fromList [Traverse "lin"])
+              -- (S.fromList [Traverse "lin"])
+              (S.fromList [])
               (PackedTy "tree" "lout")
               [EndOf $ LRM "lin" (VarR "r1") Input])
 
