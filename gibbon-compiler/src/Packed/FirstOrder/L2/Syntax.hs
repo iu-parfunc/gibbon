@@ -23,6 +23,9 @@ module Packed.FirstOrder.L2.Syntax
     , mapMExprs
     , progToEnv
 
+    -- *
+    , getArrowTyLocs, substEffs
+
     -- * Temporary backwards compatibility, plus rexports
     , UrTy(..)
     , PreExp(..)
@@ -190,6 +193,9 @@ getFunTy mp f = case M.lookup f mp of
 -- TODO: beta-branch: REVAMP BELOW HERE
 --------------------------------------------------------------------------------
 
+-- | Retrieve all LocVars from a fn type (Arrow)
+getArrowTyLocs :: ArrowTy t -> [LocVar]
+getArrowTyLocs ty = L.map (\(LRM l _ _) -> l) (locVars ty)
 
 -- | Retrieve all LocVars mentioned in a type
 _getTyLocs :: Ty2 -> Set LocVar
@@ -263,8 +269,8 @@ _substTy mp t = go t
       ListTy _ -> error "tyWithFreshLocs: FIXME implement lists"
 
 -- | Apply a substitution to an effect set.
-_substEffs :: Map LocVar LocVar -> Set Effect -> Set Effect
-_substEffs mp ef =
+substEffs :: Map LocVar LocVar -> Set Effect -> Set Effect
+substEffs mp ef =
     dbgTrace 5 ("\n  Substituting in effects "++show(mp,ef)) $
     S.map (\(Traverse v) ->
                case M.lookup v mp of
