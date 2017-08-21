@@ -655,23 +655,23 @@ withAdd1Prog mainExp =
 
   exadd1bod :: L Exp2
   exadd1bod =
-      L NoLoc $ CaseE (L NoLoc $ VarE "tr") $
-        [ ("Leaf", [("n","l0")], L NoLoc $
-                                 LetE ("v",[],IntTy,L NoLoc $ PrimAppE L1.AddP
-                                                    [L NoLoc $ VarE "n",
-                                                     L NoLoc $ LitE 1])
-                                 (L NoLoc $ VarE "v"))
+      l$ CaseE (l$ VarE "tr") $
+        [ ("Leaf", [("n","l0")], l$
+                                 LetE ("v",[],IntTy,l$ PrimAppE L1.AddP
+                                                    [l$ VarE "n",
+                                                     l$ LitE 1])
+                                 (l$ VarE "v"))
         , ("Node", [("x","l1"),("y","l2")],
-           L NoLoc $ Ext $ LetLocE "lout1" (AfterConstantLE 1 "lout") $
-           L NoLoc $ LetE ("x1",[],PackedTy "Tree" "lout1",
-                           L NoLoc $ AppE "add1" ["l1","lout1"] $
-                           L NoLoc $ VarE "x") $
-           L NoLoc $ Ext $ LetLocE "lout2" (AfterVariableLE "x1" "lout1") $
-           L NoLoc $ LetE ("y1",[],PackedTy "Tree" "lout2",
-                           L NoLoc $ AppE "add1" ["l2","lout2"] $
-                           L NoLoc $ VarE "y") $
-           L NoLoc $ LetE ("z",[],PackedTy "Tree" "lout",
-                    L NoLoc $ DataConE "lout" "Node"
-                    [ L NoLoc $ VarE "x1" , L NoLoc $ VarE "y1"]) $
-           L NoLoc $ VarE "z")
+           l$ Ext $ LetLocE "lout1" (AfterConstantLE 1 "lout") $
+           l$ LetE ("x1",[],PackedTy "Tree" "lout1",
+                           l$ AppE "add1" ["l1","lout1"] $
+                           l$ VarE "x") $
+           l$ Ext $ LetLocE "lout2" (AfterVariableLE "x1" "lout1") $
+           l$ LetE ("y1",[],PackedTy "Tree" "lout2",
+                           l$ AppE "add1" ["l2","lout2"] $
+                           l$ VarE "y") $
+           l$ LetE ("z",[],PackedTy "Tree" "lout",
+                    l$ DataConE "lout" "Node"
+                    [ l$ VarE "x1" , l$ VarE "y1"]) $
+           l$ VarE "z")
         ]

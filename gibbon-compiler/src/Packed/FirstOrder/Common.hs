@@ -41,7 +41,7 @@ module Packed.FirstOrder.Common
        , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
 
          -- * Misc helpers
-       , (#), (!!!), fragileZip, fragileZip', sdoc, ndoc, abbrv
+       , (#), (!!!), fragileZip, fragileZip', sdoc, ndoc, abbrv, l
 
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
@@ -60,6 +60,7 @@ import Data.List as L
 import Data.Map as M
 import Data.String
 import Data.Symbol
+import Data.Loc
 import Data.Word
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
@@ -136,6 +137,8 @@ dummyLRM = LRM "l_dummy" GlobR Input
 varAppend :: Var -> Var -> Var
 varAppend x y = toVar (fromVar x ++ fromVar y)
 
+l :: a -> L a
+l x = L NoLoc x
 
 --------------------------------------------------------------------------------
 

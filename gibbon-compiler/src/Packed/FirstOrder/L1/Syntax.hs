@@ -573,37 +573,37 @@ add1Prog :: Prog
 add1Prog = mkAdd1Prog exadd1Bod Nothing
 
 exadd1Bod :: L Exp1
-exadd1Bod = L NoLoc $
-    CaseE (L NoLoc $ VarE "tr") $
+exadd1Bod = l$
+    CaseE (l$ VarE "tr") $
       [ ("Leaf", [("n",())],
-         L NoLoc $ PrimAppE AddP [L NoLoc $ VarE "n", L NoLoc $ LitE 1])
+         l$ PrimAppE AddP [l$ VarE "n", l$ LitE 1])
       , ("Node", [("x",()),("y",())],
-         L NoLoc $ DataConE () "Node"
-          [ L NoLoc $ AppE "add1" [] (L NoLoc $ VarE "x")
-          , L NoLoc $ AppE "add1" [] (L NoLoc $ VarE "y")])
+         l$ DataConE () "Node"
+          [ l$ AppE "add1" [] (l$ VarE "x")
+          , l$ AppE "add1" [] (l$ VarE "y")])
       ]
 
 exadd1BodLetLeft :: L Exp1
-exadd1BodLetLeft = L NoLoc $
-    CaseE (L NoLoc $ VarE "tr") $
-      [ ("Leaf", [("n",())], L NoLoc $ PrimAppE AddP [L NoLoc $ VarE "n", L NoLoc $ LitE 1])
+exadd1BodLetLeft = l$
+    CaseE (l$ VarE "tr") $
+      [ ("Leaf", [("n",())], l$ PrimAppE AddP [l$ VarE "n", l$ LitE 1])
       , ("Node", [("x",()),("y",())],
-         L NoLoc $ LetE ("x2",[], Packed "Tree", L NoLoc $ AppE "add1" [] (L NoLoc $ VarE "x")) $
-         L NoLoc $ LetE ("y2",[], Packed "Tree", L NoLoc $ AppE "add1" [] (L NoLoc $ VarE "y")) $
-         L NoLoc $ DataConE () "Node"
-          [ L NoLoc $ VarE "x2", L NoLoc $ VarE "y2"])
+         l$ LetE ("x2",[], Packed "Tree", l$ AppE "add1" [] (l$ VarE "x")) $
+         l$ LetE ("y2",[], Packed "Tree", l$ AppE "add1" [] (l$ VarE "y")) $
+         l$ DataConE () "Node"
+          [ l$ VarE "x2", l$ VarE "y2"])
       ]
 
 -- | A more challenging case where recursions are performed right-to-left
 exadd1BodLetRight :: L Exp1
-exadd1BodLetRight = L NoLoc $
-    CaseE (L NoLoc $ VarE "tr") $
-      [ ("Leaf", [("n",())], L NoLoc $ PrimAppE AddP [L NoLoc $ VarE "n", L NoLoc $ LitE 1])
+exadd1BodLetRight = l$
+    CaseE (l$ VarE "tr") $
+      [ ("Leaf", [("n",())], l$ PrimAppE AddP [l$ VarE "n", l$ LitE 1])
       , ("Node", [("x",()),("y",())],
-         L NoLoc $ LetE ("y2",[], Packed "Tree", L NoLoc $ AppE "add1" [] (L NoLoc $ VarE "y")) $
-         L NoLoc $ LetE ("x2",[], Packed "Tree", L NoLoc $ AppE "add1" [] (L NoLoc $ VarE "x")) $
-         L NoLoc $ DataConE () "Node"
-          [ L NoLoc $ VarE "x2", L NoLoc $ VarE "y2"])
+         l$ LetE ("y2",[], Packed "Tree", l$ AppE "add1" [] (l$ VarE "y")) $
+         l$ LetE ("x2",[], Packed "Tree", l$ AppE "add1" [] (l$ VarE "x")) $
+         l$ DataConE () "Node"
+          [ l$ VarE "x2", l$ VarE "y2"])
       ]
 
 -- | Add1 program with let bindings, recurring in left-to-right order.
@@ -622,31 +622,31 @@ add1ProgChallenge =
     Prog treeDD
          (M.fromList [ ("add1",mkAdd1Fun bod)
                      , ("pred", FunDef "pred" ("tr", treeTy) BoolTy
-                        (L NoLoc $ CaseE (L NoLoc $ VarE "tr") $
-                         [ ("Leaf", [("n",())], L NoLoc $ PrimAppE MkTrue [])
-                         , ("Node", [("x",()),("y",())], L NoLoc $ PrimAppE MkFalse [])]))])
+                        (l$ CaseE (l$ VarE "tr") $
+                         [ ("Leaf", [("n",())], l$ PrimAppE MkTrue [])
+                         , ("Node", [("x",()),("y",())], l$ PrimAppE MkFalse [])]))])
          Nothing
   where
-   bod = L NoLoc $
-    CaseE (L NoLoc $ VarE "tr") $
-      [ ("Leaf", [("n",())], L NoLoc $ PrimAppE AddP [L NoLoc $ VarE "n", L NoLoc $ LitE 1])
+   bod = l$
+    CaseE (l$ VarE "tr") $
+      [ ("Leaf", [("n",())], l$ PrimAppE AddP [l$ VarE "n", l$ LitE 1])
       , ("Node", [("x",()),("y",())],
-         L NoLoc $ LetE ("y2",[], Packed "Tree", L NoLoc $ AppE "add1" [] (L NoLoc $ VarE "y")) $
-         L NoLoc $ LetE ("x2",[], Packed "Tree",
-              (L NoLoc $ IfE (L NoLoc $ AppE "pred" [] (L NoLoc $ VarE "y2"))
-                   (L NoLoc $ AppE "add1" [] (L NoLoc $ VarE "x"))
-                   (L NoLoc $ AppE "add1" [] (L NoLoc $ VarE "x")))) $
-         L NoLoc $ DataConE () "Node" [ L NoLoc $ VarE "x2", L NoLoc $ VarE "y2"])
+         l$ LetE ("y2",[], Packed "Tree", l$ AppE "add1" [] (l$ VarE "y")) $
+         l$ LetE ("x2",[], Packed "Tree",
+              (l$ IfE (l$ AppE "pred" [] (l$ VarE "y2"))
+                   (l$ AppE "add1" [] (l$ VarE "x"))
+                   (l$ AppE "add1" [] (l$ VarE "x")))) $
+         l$ DataConE () "Node" [ l$ VarE "x2", l$ VarE "y2"])
       ]
 
 -- | This program is a challenge because a packed value flows to two destinations.
 add1ProgSharing :: Prog
 add1ProgSharing = Prog treeDD (M.fromList [("add1",mkAdd1Fun bod)]) Nothing
   where
-   bod = L NoLoc $
-    CaseE (L NoLoc $ VarE "tr") $
-      [ ("Leaf", [("n",())], L NoLoc $ PrimAppE AddP [L NoLoc $ VarE "n", L NoLoc $ LitE 1])
+   bod = l$
+    CaseE (l$ VarE "tr") $
+      [ ("Leaf", [("n",())], l$ PrimAppE AddP [l$ VarE "n", l$ LitE 1])
       , ("Node", [("x",()),("y",())],
-         L NoLoc $ LetE ("x2",[], Packed "Tree", L NoLoc $ AppE "add1" [] (L NoLoc $ VarE "x")) $
-         L NoLoc $ DataConE () "Node" [ L NoLoc $ VarE "x2", L NoLoc $ VarE "x2"])
+         l$ LetE ("x2",[], Packed "Tree", l$ AppE "add1" [] (l$ VarE "x")) $
+         l$ DataConE () "Node" [ l$ VarE "x2", l$ VarE "x2"])
       ]
