@@ -81,6 +81,7 @@ inferFunDef ddfs fenv fn@FunDef{funarg,funbod,funty} =
   in (funty {arrEffs = eff'})
 
 
+-- | TODO: same location variables for the identity function. add missing cases
 inferExp :: DDefs Ty2 -> FunEnv -> LocEnv -> L Exp2 -> (Set Effect, Maybe LocVar)
 inferExp ddfs fenv env (L p exp) =
   case exp of
@@ -175,10 +176,38 @@ test1 = runSyM 0 $ inferEffects add1
 
 add1 :: Prog
 add1 = Prog { ddefs = add1DDefs
-            , fundefs = M.fromList
-                        [("add1", add1FunDef )]
+            , fundefs = M.fromList [("add1", add1FunDef )]
             , mainExp = Nothing
             }
+
+test2 = runSyM 0 $ inferEffects useAdd1
+
+useAdd1 :: Prog
+useAdd1 = Prog { ddefs = add1DDefs
+               , fundefs = M.fromList [("add1", add1FunDef ),
+                                       ("useAdd1", useAdd1FunDef)]
+               , mainExp = Nothing
+               }
+
+useAdd1FunDef :: FunDef
+useAdd1FunDef = FunDef
+                { funname = "useAdd1"
+                , funty = ArrowTy { locVars = [LRM "lin10" (VarR "r10") Input,
+                                                 LRM "lout10" (VarR "r10") Output]
+                                    , arrIn = PackedTy "tree" "lin10"
+                                    , arrEffs = S.fromList []
+                                    , arrOut = PackedTy "tree" "lout10"
+                                    , locRets = [EndOf (LRM "lin10" (VarR "r10") Input)]
+                                    }
+                , funarg = "uatr"
+                , funbod = l$ LetE ("x10",
+                                      [],
+                                      PackedTy "Tree" "lout10",
+                                      l$AppE "add1"
+                                      ["lin10","lout10"]
+                                      (l$VarE "uatr"))
+                            (l$ VarE "x10")
+                }
 
 add1DDefs = M.fromList
             [("Tree",
