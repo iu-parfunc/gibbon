@@ -1,0 +1,24 @@
+#lang gibbon
+
+(data R0 [Program Exp])
+
+(data Exp
+      [LitE Int]
+      [ReadE ]
+      [NegE Exp]
+      [AddE Exp Exp])
+
+(define (interp e)
+  (case e
+    [(LitE n) n]))
+
+(define (id [e : Exp]) : Exp
+  (case e
+    [(LitE n) (LitE n)]
+    [(ReadE)  (ReadE)]
+    [(NegE e) (NegE (id e))]
+    [(AddE e1 e2) (AddE (id e1) (id e2))]
+    ))
+
+(id (NegE (LitE 3)))
+
