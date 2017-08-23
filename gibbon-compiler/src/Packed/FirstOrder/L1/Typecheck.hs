@@ -305,15 +305,15 @@ test6 = runSyM 0 $ tcProg t6
 t6 :: Prog
 t6 = Prog {ddefs = M.fromList [],
       fundefs = M.fromList [],
-      mainExp = Just $ L NoLoc $LetE ("d0",
+      mainExp = Just $ l$ LetE ("d0",
                            [],
                            SymDictTy IntTy,
-                           L NoLoc $PrimAppE (DictEmptyP IntTy) [])
-                          (L NoLoc $LetE ("d21",
+                           l$ PrimAppE (DictEmptyP IntTy) [])
+                          (l$ LetE ("d21",
                                  [],
                                  SymDictTy IntTy,
-                                 L NoLoc $ PrimAppE (DictInsertP IntTy) [L NoLoc $VarE "d0",L NoLoc $LitSymE "hi",L NoLoc $LitE 200])
-                                (L NoLoc $ LitE 44))}
+                                 l$ PrimAppE (DictInsertP IntTy) [l$ VarE "d0",l$ LitSymE "hi",l$ LitE 200])
+                                (l$ LitE 44))}
 
 
 test5 = runSyM 0 $ tcProg t5
@@ -327,10 +327,9 @@ t5 = Prog {ddefs = M.fromList [("Foo",
                 DDef {tyName = "Nat",
                       dataCons = [("Zero", []),("Suc", [(False, PackedTy "Nat" ())])]})],
       fundefs = M.fromList [],
-      mainExp = Just $ L NoLoc $ CaseE (L NoLoc $ DataConE () "B" [L NoLoc $ LitE 2,
-                                                                   L NoLoc $LitE 4])
-                           [("A", [("x", ())], L NoLoc $ VarE "x"),
-                            ("B", [("x", ()),("y", ())], L NoLoc $ PrimAppE MkFalse [])]}
+      mainExp = Just $ l$  CaseE (l$ DataConE () "B" [l$  LitE 2, l$ LitE 4])
+                           [("A", [("x", ())], l$ VarE "x"),
+                            ("B", [("x", ()),("y", ())], l$ PrimAppE MkFalse [])]}
 
 -- *** Exception: Expected these types to be the same: BoolTy, IntTy in
 -- LitE 4
@@ -346,9 +345,9 @@ t4 = Prog {ddefs = M.fromList [("Foo",
                   FunDef {funName = "foo",
                           funArg = ("ev", PackedTy "Foo" ()),
                           funRetTy = IntTy,
-                          funBody = L NoLoc $ CaseE (L NoLoc $ VarE "ev")
-                                          [("A", [], (L NoLoc $ LitE 10)),
-                                           ("B", [("x", ()),("y", ())], L NoLoc $ LitE 200)]})],
+                          funBody = l$  CaseE (l$ VarE "ev")
+                                          [("A", [], (l$ LitE 10)),
+                                           ("B", [("x", ()),("y", ())], l$ LitE 200)]})],
       mainExp = Nothing}
 
 test3 = runSyM 0 $ tcProg t3
@@ -356,15 +355,12 @@ test3 = runSyM 0 $ tcProg t3
 t3 :: Prog
 t3 = Prog {ddefs = M.fromList [],
            fundefs = M.fromList [],
-           mainExp = Just $ L NoLoc $
-                     IfE (L NoLoc $
-                          PrimAppE EqIntP
-                          [L NoLoc $ LitE 1, L NoLoc $ LitE 1])
-                     (L NoLoc $
-                      IfE (L NoLoc $ PrimAppE EqIntP
-                           [L NoLoc $ LitE 2, L NoLoc $ LitE 2])
-                       (L NoLoc $ LitE 100) (L NoLoc $ LitE 1))
-                     (L NoLoc $ LitE 2)}
+           mainExp = Just $ l$
+                     IfE (l$ PrimAppE EqIntP [l$  LitE 1, l$  LitE 1])
+                     (l$ IfE (l$  PrimAppE EqIntP [l$  LitE 2, l$  LitE 2])
+                       (l$  LitE 100)
+                       (l$  LitE 1))
+                     (l$  LitE 2)}
 
 test2 = runSyM 0 $ tcProg t2
 
@@ -373,7 +369,7 @@ t2 = Prog {ddefs = M.fromList
                    [("T",
                       DDef {tyName = "T", dataCons = [("MkA", []),("MkB", [(False, IntTy)])]})],
       fundefs = M.fromList [],
-      mainExp = Just $ L NoLoc $ DataConE () "MkB" [L NoLoc $ LitE 10]}
+      mainExp = Just $ l$  DataConE () "MkB" [l$  LitE 10]}
 
 test1 = runSyM 0 $ tcProg t1
 
@@ -385,16 +381,15 @@ t1 =
                     FunDef {funName = "mul2",
                             funArg = ("x_y1", ProdTy [IntTy,IntTy]),
                             funRetTy = IntTy,
-                            funBody = L NoLoc $ PrimAppE MulP
-                                      [L NoLoc $ ProjE 0 (L NoLoc $ VarE "x_y1"),
-                                       L NoLoc $ ProjE 1 (L NoLoc $ VarE "x_y1")]}),
+                            funBody = l$ PrimAppE MulP
+                                      [l$ ProjE 0 (l$ VarE "x_y1"), l$ ProjE 1 (l$ VarE "x_y1")]}),
                    ("add2",
                     FunDef {funName = "add2",
                             funArg = ("x_y0", ProdTy [IntTy,IntTy]),
                             funRetTy = IntTy,
-                            funBody = L NoLoc $ PrimAppE AddP
-                                      [L NoLoc $  ProjE 0 (L NoLoc $ VarE "x_y0"),
-                                       L NoLoc $ ProjE 1 (L NoLoc $ VarE "x_y0")]})],
-        mainExp = Just $ L NoLoc $ AppE "mul2"
+                            funBody = l$ PrimAppE AddP
+                                      [l$ ProjE 0 (l$ VarE "x_y0"),
+                                       l$ ProjE 1 (l$ VarE "x_y0")]})],
+        mainExp = Just $ l$  AppE "mul2"
                   []
-                  (L NoLoc $ MkProdE [L NoLoc $ LitE 10, L NoLoc $ AppE "add2" [] (L NoLoc $ MkProdE [L NoLoc $ LitE 40, L NoLoc $ LitE 2])])}
+                  (l$ MkProdE [l$ LitE 10, l$ AppE "add2" [] (l$ MkProdE [l$ LitE 40, l$ LitE 2])])}

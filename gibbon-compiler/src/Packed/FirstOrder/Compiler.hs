@@ -490,19 +490,19 @@ benchMainExp Config{benchInput,benchPrint} l1 fnname = do
       -- At L1, we assume ReadPackedFile has a single return value:
       newExp = L1.LetE (toVar tmp, [],
                         arg,
-                        L NoLoc $ L1.PrimAppE
+                        l$ L1.PrimAppE
                         (L1.ReadPackedFile benchInput tyc arg) [])
-               $ L NoLoc $ L1.LetE (toVar "benchres", [],
+               $ l$ L1.LetE (toVar "benchres", [],
                          ret,
-                         L NoLoc $ L1.TimeIt
-                         (L NoLoc $ L1.AppE fnname []
-                          (L NoLoc $ L1.VarE (toVar tmp))) ret True)
+                         l$ L1.TimeIt
+                         (l$ L1.AppE fnname []
+                          (l$ L1.VarE (toVar tmp))) ret True)
                $
                 -- FIXME: should actually return the result,
                 -- as soon as we are able to print it.
                (if benchPrint
-                then L NoLoc $ L1.VarE (toVar "benchres")
-                else L NoLoc $ L1.PrimAppE L1.MkTrue [])
+                then l$ L1.VarE (toVar "benchres")
+                else l$ L1.PrimAppE L1.MkTrue [])
   l1{ L1.mainExp = Just $ L NoLoc newExp }
 
 

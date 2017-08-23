@@ -158,7 +158,7 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
           -- of each of the locactions in relocs.
 
           -- we fmap location at the top-level case expression
-          VarE v -> fmap unLoc $ mkRet retlocs $ L NoLoc $ VarE v
+          VarE v -> fmap unLoc $ mkRet retlocs $ l$ VarE v
 
           -- This is the most interesting case: a let bound function application.
           -- We need to update the let binding's extra location binding list with
@@ -195,7 +195,7 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                  let eor' = L.foldr mkEor eor newls
                  let outlocs = L.map snd newls
                  e2' <- exp fns retlocs eor' lenv' afterenv e2
-                 return $ LetE (v,outlocs,ty,L NoLoc $ AppE f lsin e1)
+                 return $ LetE (v,outlocs,ty, l$ AppE f lsin e1)
                                (wrapBody e2' newls)
 
           CaseE (L _ (VarE x)) brs -> do
@@ -223,12 +223,12 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                                     l2 <- gensym "jump"
                                     let eor' = mkEnd l1 l2 eor
                                         e' = Ext $ LetLocE l2 (AfterConstantLE 1 l1) e
-                                    return (eor', L NoLoc e')
+                                    return (eor', l$ e')
 
                            (eor'',e') <- foldM handleLoc (eor',e) $ zip (L.map snd vls) argtys
                            e'' <- exp fns retlocs eor'' lenv afterenv' e'
                            return (dc, vls, e'')
-                 return $ CaseE (L NoLoc $ VarE x) brs'
+                 return $ CaseE (l$ VarE x) brs'
 
 
 
@@ -242,12 +242,12 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
           -- This shouldn't happen, but as a convenience we can ANF-ify this AppE
           -- by gensyming a new variable, sticking the AppE in a LetE, and recuring.
           -- Question: should this fail instead? I'm not sure.
-          AppE v ls e -> do
+          AppE v args e -> do
                  v' <- gensym "tailapp"
                  let ty = arrOut $ funtype v
-                     e' = LetE (v',[],ty,L NoLoc $ AppE v ls e) (L NoLoc $ VarE v')
+                     e' = LetE (v',[],ty, l$ AppE v args e) (l$ VarE v')
                  -- we fmap location at the top-level case expression
-                 fmap unLoc $ exp fns retlocs eor lenv afterenv (L NoLoc e')
+                 fmap unLoc $ exp fns retlocs eor lenv afterenv (l$ e')
 
           -- Same as above. This could just fail, instead of trying to repair
           -- the program.
@@ -260,9 +260,9 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                             L1.MkTrue -> BoolTy
                             L1.MkFalse -> BoolTy
                             _ -> error "fixme, PrimAppE in tail"
-                     e' = LetE (v',[],ty,L NoLoc $ PrimAppE pr es) (L NoLoc $ VarE v')
+                     e' = LetE (v',[],ty, l$ PrimAppE pr es) (l$ VarE v')
                  -- we fmap location at the top-level case expression
-                 fmap unLoc $ exp fns retlocs eor lenv afterenv (L NoLoc e')
+                 fmap unLoc $ exp fns retlocs eor lenv afterenv (l$ e')
 
           -- Less exciting LetE case, just recur on the body with an updated lenv
           LetE (v,ls,PackedTy n l,e1) e2 -> do
@@ -286,12 +286,12 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
           ProjE _i _e -> internalError $ "Found complex expression in tail: " ++ (show e)
 
           -- Could fail here, but try to fix the broken program
-          DataConE l dc es -> do
+          DataConE loc dc es -> do
                  v' <- gensym "taildc"
-                 let ty = PackedTy (getTyOfDataCon ddefs dc) l
-                     e' = LetE (v',[],ty, L NoLoc $ DataConE l dc es)
-                               (L NoLoc $ VarE v')
-                 fmap unLoc $ exp fns retlocs eor lenv afterenv (L NoLoc e')
+                 let ty = PackedTy (getTyOfDataCon ddefs dc) loc
+                     e' = LetE (v',[],ty, l$ DataConE loc dc es)
+                               (l$ VarE v')
+                 fmap unLoc $ exp fns retlocs eor lenv afterenv (l$ e')
 
           LitE i -> return $ LitE i
 

@@ -16,7 +16,7 @@ function's type transforms as follows:
   id  :: Tree -> Tree
   id' :: forall l1 in r1, l2 in r2 . Tree l1 -> Tree l2
 
-With this type, inferExp will immediately fail on the body of 'id x = x', requiring 
+With this type, inferExp will immediately fail on the body of 'id x = x', requiring
 a copy-insertion tactic to repair the failure and proceed.
 
 To avoid this copying, we will have to have existential types in the
@@ -85,7 +85,8 @@ import Control.Monad.Trans (lift)
 -- import qualified Control.Monad.Trans.Either
 -- import qualified Control.Monad.Trans.Cont as CC
 
-    
+
+import Packed.FirstOrder.Common (l)
 import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common (Var, Env2, DDefs, LocVar, runSyM, SyM, gensym, toVar)
 import qualified Packed.FirstOrder.L1.Syntax as L1
@@ -93,7 +94,7 @@ import Packed.FirstOrder.L2.Syntax as L2
 import Packed.FirstOrder.L2.Typecheck
     (ConstraintSet, LocConstraint(..), RegionSet(..), LocationTypeState(..))
 
-    
+
 -- Dependencies
 ----------------------------------------------------------------------------------------------------
 
@@ -115,7 +116,7 @@ data Dependence =
     --   location in order to begin emiting its output.
   | VL { dstVar :: Var,    srcLoc :: LocVar }
 
-    -- * Location/location or location/region dependence.   
+    -- * Location/location or location/region dependence.
   | LL LocConstraint
   deriving (Show, Read, Ord, Eq)
 
@@ -129,7 +130,7 @@ depToEdge = undefined
 -- | Organize a graph into a map from each variable to the set of edges for which it
 -- serves as the destination.
 type Graph = M.Map CommonVar (S.Set Dependence)
-            
+
 -- | Map each variable to a set of other variables it depends on.
 type DepGraph = M.Map CommonVar (S.Set CommonVar)
 
@@ -137,14 +138,14 @@ type DepGraph = M.Map CommonVar (S.Set CommonVar)
 -- the source of the final edge.
 type EdgeList = Seq.Seq Dependence
 
-    
--- Environments    
+
+-- Environments
 ----------------------------------------------------------------------------------------------------
 
 -- | Combine the different kinds of contextual information in-scope.
 data FullEnv = FullEnv (DDefs Ty2) (Env2 Ty2) DepGraph
 -- TODO: Lenses would probably help a bit here.
-             
+
 --- -> RegionSet -> LocationTypeState
 
 extendVEnv :: Var -> Ty2 -> FullEnv -> FullEnv
@@ -158,13 +159,13 @@ lookupFEnv = undefined
              
 extendDepGraph :: Dependence -> FullEnv -> FullEnv
 extendDepGraph = undefined
-             
+
 transitiveClosure :: DepGraph -> DepGraph
-transitiveClosure = undefined                    
+transitiveClosure = undefined
 
 hasCycle :: DepGraph -> Bool
 hasCycle = undefined
-                    
+
 ----------------------------------------------------------------------------------------------------
 
 -- | As we typecheck ,we track a list of dependencies as well as the
@@ -186,13 +187,13 @@ type Cont = Result -> TiM Result
 newtype TiHole = TiHole Cont
 -- ^ We could use an explicit datatype or a generic zipper library for
 -- this, but instead we just use functions for holes.
-    
+
 -- | A selected subexpression that has focus.  A hole filled by a given subexpr.
 data Selection = Selection L1.Exp1 TiHole
 -- TODO: should we know the type of the expression selected at this point?
-               
+
 instance Show Selection where
-  show (Selection e2 _hole) = 
+  show (Selection e2 _hole) =
     "(Selection of subexpr: "++show e2++")"
 --    "Within: "++show (hole )
 
@@ -206,7 +207,7 @@ data Failure =
                    , received :: LocExp
                    , context :: Selection }
     -- ^ Two locations we need to be equal, to unify, but don't.
-                        
+
   | CyclicDependence { chain :: EdgeList
                      , context :: Selection }
     -- ^ A cycle in the graph of value dependence between sizes, locations, and regular
@@ -220,7 +221,7 @@ data Failure =
 -- | A program-repair agent that fixes failures as they arise.
 type RepairTactic = Failure -> TiM Result
 
-    
+
 -- The compiler pass
 ----------------------------------------------------------------------------------------------------
 
@@ -245,8 +246,8 @@ inferExp env (L srcloc ex0) k =
         inferExp env b $ \ (b',tyb) ->
         let k' (c',tyc) = k (l$ IfE a' b' c', tyc) in
 
-        -- Infer type of second branch and unify locations in tyb/tyc        
-        
+        -- Infer type of second branch and unify locations in tyb/tyc
+
         -- Upon failure, report the error in the second branch:
         throwE (FailedLocUnify{ expected=_
                               , received=_
@@ -270,13 +271,13 @@ inferExp env (L srcloc ex0) k =
               _
 
      | otherwise -> err "Invariant violated.  LetE had nonempty bound locations."
-    
+
 --    e -> throwE (FailedLocUnify{context=Selection e (TiHole k)}) -- TEST
 
 err :: String -> a
 err m = error $ "InferLocations: " ++ m
-         
--- Helpers:               
+
+-- Helpers:
 --------------------------------------------------------------------------------
 
 -- | Record a dedence between a location/value and a location/value.
@@ -322,7 +323,7 @@ unifyLocs :: Ty2 -> Ty2 -> TiM Result -> TiM Result
 unifyLocs = _
 
 -- Our unify function should produce [LocConstraint]
--- 
+--
 -- Here's the old location semi-lattice used for InferEffects:
 {-
 -- | Abstract locations:
@@ -358,20 +359,21 @@ instance Out Loc
 test :: L2.Prog
 test = fst $ runSyM 0 $ inferLocs L1.add1Prog
 
-emptyEnv :: FullEnv 
+emptyEnv :: FullEnv
 emptyEnv = FullEnv C.emptyDD (C.Env2 M.empty M.empty) M.empty
 
-l :: a -> L a
-l x = L NoLoc x
+-- (Moved to Common)
+-- l :: a -> L a
+-- l x = L NoLoc x
 
-idCont :: Cont 
+idCont :: Cont
 idCont (e,ty) = return (e,ty)
 
 t1 :: ((Either Failure Result, TyCheckLog), Int)
 t1 = runSyM 0 $ W.runWriterT $ runExceptT $
      inferExp emptyEnv (l$ L1.LitE 3) idCont
 
-{-         
+{-
 t2_ :: TiM Result
 t2_ = inferExp emptyEnv (l$ L1.IfE (l$ L1.PrimAppE L1.MkTrue [])
                            (l$ L1.LitE 3)

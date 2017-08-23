@@ -21,6 +21,7 @@ import qualified Packed.FirstOrder.TargetInterp as TI
 
 -- |
 import RouteEnds2
+import InferEffects2
 import L2.Typecheck
 
 main :: IO ()
@@ -28,6 +29,7 @@ main = defaultMain allTests
   where allTests = testGroup "All"
                    [ tests
                    , routeEnds2Tests
+                   , inferEffects2Tests
                    , l2TypecheckerTests
                    ]
 

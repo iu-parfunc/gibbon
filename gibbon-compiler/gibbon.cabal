@@ -37,6 +37,7 @@ library
                   -- Packed.FirstOrder.Passes.Flatten2
                   Packed.FirstOrder.Passes.InlineTriv
                   Packed.FirstOrder.Passes.InferLocations
+                  Packed.FirstOrder.Passes.InferEffects2
                   -- Packed.FirstOrder.Passes.InferEffects
                   -- Packed.FirstOrder.Passes.Cursorize
                   -- Packed.FirstOrder.Passes.Cursorize2
@@ -137,6 +138,7 @@ test-suite test-gibbon
                        tasty, tasty-hunit, tasty-th
   other-modules:
                 RouteEnds2
+                InferEffects2
                 L2.Typecheck
                 Common
 
