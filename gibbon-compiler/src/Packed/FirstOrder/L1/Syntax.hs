@@ -264,7 +264,7 @@ data UrTy a =
 
         | PackedTy TyCon a -- ^ No type arguments to TyCons for now.  (No polymorphism.)
 
-        | ListTy (UrTy a)  -- ^ These are not fully first class.  They are onlyae
+        | ListTy (UrTy a)  -- ^ These are not fully first class.  They are only
                            -- allowed as the fields of data constructors.
 
         ---------- These are not used initially ----------------

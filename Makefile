@@ -33,10 +33,13 @@ $(SANDBOX):
 #  - 51a83266d164195698f04468d90d2c6238ed3491 is a snapshot of nixos-17.03 channel on [2017.08.16]
 shell: nix-shell
 nix-shell:
-	nix-shell --arg pkgs 'import <nixpkgs> {}'
+	nix-shell -I nixpkgs=`cat .nix_default_environment.txt`
 
 pure:
 	nix-shell --pure -I nixpkgs=`cat .nix_default_environment.txt`
+
+head:
+	nix-shell --arg pkgs 'import <nixpkgs> {}'
 
 # Aggressive clean of the working copy:
 clean:

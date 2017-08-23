@@ -36,9 +36,47 @@ where), and for wrapping LetRegion forms whenever we would otherwise
 have an unconstrained, ambiguous fresh region variable -- i.e. induced
 by copy insertion.
 
+
+ The three failures
+ ------------------
+
+As type checking proceeds, there are three ways things get stuck:
+
+ * impossible constraint: inequality + equality
+ * cyclic constraint: locations and values form a cycle
+ * scope violation: location depends on something not in scope at 
+   its the point where the location must be defined.
+
+
+ Location variable generation
+ ----------------------------
+
+With type-decorations and implicit location arguments and returns, our
+basic let bindings of interest look like:
+
+  let y [l2*] : ty = f [l*] x in bod
+
+where the RHS (post-flattening) is a single application, or a
+primitive application.
+
+These function applications will be the first point of introduction
+for fresh location variables.  This is the point at which we record
+the environment in scope at the generated location variable.  This
+will ultimately become the scope at which we allocate the location
+variable, which will have follow 'y' and be constrained only via 'y's
+variable references.
+
+The references to the generated location will consist of (1) LocExp's
+relating it to other locations falling "after", and (2) dependence
+constraints created via 'y's variable references.
+
+We COULD examine every use-point of a location variable to check that
+it doesn't involve dependences 
+
 -}
 
 import Data.Loc
+import qualified Data.Sequence as Seq
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Control.Monad.Trans.Writer.Strict as W
@@ -97,7 +135,7 @@ type DepGraph = M.Map CommonVar (S.Set CommonVar)
 
 -- | A cycle is represented as an edgelist where the destination of the first edge matches
 -- the source of the final edge.
-type EdgeList = [Dependence]
+type EdgeList = Seq.Seq Dependence
 
     
 -- Environments    
@@ -114,6 +152,9 @@ extendVEnv = undefined
 
 lookupVEnv :: Var -> FullEnv -> Ty2
 lookupVEnv = undefined
+
+lookupFEnv :: Var -> FullEnv -> (Ty2,Ty2)
+lookupFEnv = undefined
              
 extendDepGraph :: Dependence -> FullEnv -> FullEnv
 extendDepGraph = undefined
@@ -126,10 +167,16 @@ hasCycle = undefined
                     
 ----------------------------------------------------------------------------------------------------
 
--- | Type inference monad.
-type TiM a = ExceptT Failure (W.WriterT EdgeList SyM) a
+-- | As we typecheck ,we track a list of dependencies as well as the
+-- freshly allocated locations, together with a snapshot of the
+-- environment ...............
+type TyCheckLog = (EdgeList, Seq.Seq (LocVar, Env2 Ty2))
 
--- | The result type for this pass.
+-- | Type inference monad.
+type TiM a = ExceptT Failure (W.WriterT TyCheckLog SyM) a
+
+-- | The result type for this pass.  Return a new expression and its
+-- type, which includes/implies its location.
 type Result = (L Exp2, Ty2)
 
 type Cont = Result -> TiM Result
@@ -206,11 +253,21 @@ inferExp env (L srcloc ex0) k =
                               , context=Selection c (TiHole k')})
 
     L1.LetE (v,locs,ty,rhs) bod | [] <- locs ->
-        inferExp env rhs $ \ (_,_) ->
-         -- Construct a value-dependence to all the free vars in the RHS:
-         do lift (W.tell [VV{}])
-            inferExp _env' bod $ \ (_,_) ->
-             _
+      case rhs of
+        L _ (L1.AppE f [] arg) -> 
+            -- assert isTriv arg
+            let (formalTy,resTy) = lookupFEnv f env in
+            inferExp env arg $ \ (arg',argTy) ->
+              unifyLocs formalTy argTy $
+                let env' = _ env in 
+                inferExp env' bod k
+
+        _ -> 
+         inferExp env rhs $ \ (_,_) ->
+          -- Construct a value-dependence to all the free vars in the RHS:
+          do tellConstraint VV{}
+             inferExp _env' bod $ \ (_,_) ->
+              _
 
      | otherwise -> err "Invariant violated.  LetE had nonempty bound locations."
     
@@ -222,9 +279,36 @@ err m = error $ "InferLocations: " ++ m
 -- Helpers:               
 --------------------------------------------------------------------------------
 
+-- | Record a dedence between a location/value and a location/value.
+tellConstraint :: Dependence -> TiM ()
+tellConstraint x = lift (W.tell (Seq.singleton x, Seq.empty))
 
--- TODO: Compute an L2 type schema from an L1 type.
+-- | Snapshot the current environment at the point we allocate a new
+-- location.
+tellNewLocVar :: LocVar -> Env2 Ty2 -> TiM ()
+tellNewLocVar v e = lift (W.tell (Seq.empty, Seq.singleton (v,e)))
 
+
+
+-- | This helper exemplifies the simplicity of our current approach.
+-- If we assume output regions are disjoint from input ones, then we
+-- can instantiate an L1 function type into a polymorphic L2 one,
+-- mechanically.
+instantiateFunTy :: (L1.Ty1,L1.Ty1) -> SyM (ArrowTy Ty2)
+instantiateFunTy (from,to) = do 
+    -- let lvs = allLocVars inT ++ allLocVars outT
+    -- lvs' <- mapM freshenVar lvs
+    -- let subst = M.fromList (zip lvs lvs')
+    -- return $ ArrowTy (substTy subst inT)
+    --                  (substEffs subst effs)
+    --                  (substTy subst outT)
+
+    
+    return $ ArrowTy { locVars = _
+                     , arrIn   = _
+                     , arrEffs = S.empty
+                     , arrOut  = _
+                     , locRets = [] }
 
 -- TODO: Instantiate a polymorphic type schema.
 
@@ -232,8 +316,10 @@ err m = error $ "InferLocations: " ++ m
 -- | Fresh locVar
 freshLocVar :: String -> TiM LocVar
 freshLocVar m = lift$ lift$ gensym (toVar m)
-
-
+                
+-- | Unify two types that differ only in their locations.
+unifyLocs :: Ty2 -> Ty2 -> TiM Result -> TiM Result 
+unifyLocs = _
 
 -- Our unify function should produce [LocConstraint]
 -- 
@@ -281,7 +367,7 @@ l x = L NoLoc x
 idCont :: Cont 
 idCont (e,ty) = return (e,ty)
 
-t1 :: ((Either Failure Result, EdgeList), Int)
+t1 :: ((Either Failure Result, TyCheckLog), Int)
 t1 = runSyM 0 $ W.runWriterT $ runExceptT $
      inferExp emptyEnv (l$ L1.LitE 3) idCont
 
