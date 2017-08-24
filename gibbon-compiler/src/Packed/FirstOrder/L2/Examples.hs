@@ -1,15 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Mock definitions and other utilities
-module Common where
+module Packed.FirstOrder.L2.Examples
+  (ddtree, add1Fun, add1TraversedFun, id1, copyTree) where
 
 import Data.Loc
 import Data.Set as S
--- import Text.PrettyPrint.GenericPretty
+import Text.PrettyPrint.GenericPretty
 
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L2.Syntax as L2
 import qualified Packed.FirstOrder.L1.Syntax as L1
+
 
 ddtree :: DDefs Ty2
 ddtree = fromListDD [DDef (toVar "Tree")

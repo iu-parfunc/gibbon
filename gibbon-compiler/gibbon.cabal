@@ -28,6 +28,7 @@ library
                   Packed.FirstOrder.L1.Typecheck
                   Packed.FirstOrder.L2.Syntax
                   Packed.FirstOrder.L2.Typecheck
+                  Packed.FirstOrder.L2.Examples
                   Packed.FirstOrder.L4.Syntax
                   Packed.FirstOrder.L1.Interp
                   Packed.FirstOrder.L2.Interp
@@ -140,7 +141,6 @@ test-suite test-gibbon
                 RouteEnds2
                 InferEffects2
                 L2.Typecheck
-                Common
 
   default-language:    Haskell2010
   ghc-options:         -Wall -fdefer-typed-holes

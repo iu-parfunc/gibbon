@@ -18,10 +18,10 @@ import Data.Set as S
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L2.Syntax as L2
 import Packed.FirstOrder.L2.Typecheck
+import Packed.FirstOrder.L2.Examples
 import qualified Packed.FirstOrder.L1.Syntax as L1
 
 --
-import Common
 
 type Exp = L Exp2
 

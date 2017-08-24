@@ -15,10 +15,10 @@ import Test.Tasty.TH
 
 import Packed.FirstOrder.Common hiding (FunDef)
 import Packed.FirstOrder.L2.Syntax as L2
+import Packed.FirstOrder.L2.Examples
 import Packed.FirstOrder.Passes.InferEffects2
 import qualified Packed.FirstOrder.L1.Syntax as L1
 
-import Common
 
 assertInferEffects :: FunDef -> Set Effect -> Assertion
 assertInferEffects fn@FunDef{funname} expected = expected @=? eff
