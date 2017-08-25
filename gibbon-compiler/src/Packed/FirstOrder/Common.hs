@@ -123,7 +123,9 @@ instance NFData Modality where
   rnf Output = ()
 
 -- | A location and region, together with modality.
-data LRM = LRM LocVar Region Modality
+data LRM = LRM { lrmLoc :: LocVar
+               , lrmReg :: Region
+               , lrmMode :: Modality }
   deriving (Read,Show,Eq,Ord, Generic)
 instance Out LRM
 instance NFData LRM where

@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveFunctor     #-}
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE PatternSynonyms   #-}
+
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE CPP      #-}
@@ -167,11 +168,39 @@ instance (Out l, Show l, Show d, Out d, Expression (e l d))
          => Expression (PreExp e l d) where
   type (TyOf (PreExp e l d))  = d
   type (LocOf (PreExp e l d)) = l
+  isTrivial = f
+    where
+      f :: (PreExp e l d) -> Bool
+      f e =
+       case e of 
+        VarE _    -> True
+        LitE _    -> True
+        LitSymE _ -> True
+        -- These should really turn to literalS:
+        PrimAppE MkTrue  [] -> True
+        PrimAppE MkFalse [] -> True
+        PrimAppE _ _        -> False
+        ----------------- POLICY DECISION ---------------
+        -- Leave these tuple ops as trivial for now:
+        ProjE _ (L _ et) | f et -> True
+                         | otherwise -> False
+        MkProdE ls -> all (\(L _ x) -> f x) ls
+
+        IfE{}      -> False
+        CaseE{}    -> False
+        LetE {}    -> False
+        MapE {}    -> False
+        FoldE {}   -> False
+        AppE  {}   -> False
+        TimeIt {}  -> False
+        DataConE{} -> False
+        Ext ext -> isTrivial ext
+
 
 instance Expression (PreExp e l d) => Expression (L (PreExp e l d)) where
   type (TyOf (L (PreExp e l d)))  = d
   type (LocOf (L (PreExp e l d))) = l
-
+  isTrivial (L _ e) = isTrivial e 
 
 -- | Free data variables.  Does not include function variables, which
 -- currently occupy a different namespace.  Does not include location/region variables.
@@ -302,23 +331,6 @@ visitExp fl fe fd exp = fin
    go (L sloc ex) = L sloc $
      case ex of
        Ext  x        -> Ext (fe x)
-       VarE v        -> VarE v
-       LitE n        -> LitE n
-       LitSymE x     -> LitSymE x
-       AppE v l e    -> AppE v (L.map fl l) (go e)
-       PrimAppE p ls -> PrimAppE p $ L.map go ls
-       LetE (v,l,t,rhs) bod -> LetE (v,L.map fl l,fd t,go rhs) (go bod)
-       ProjE i e          -> ProjE i (go e)
-       CaseE e ls         -> CaseE (go e)
-                             [ (c, [ (v,fl l) | (v,l) <- vs ],go er)
-                             | (c,vs,er) <- ls ]
-       MkProdE ls         -> MkProdE $ L.map go ls
-       DataConE loc k ls  -> DataConE (fl loc) k $ L.map go ls
-       TimeIt e t b       -> TimeIt (go e) (fd t) b
-       IfE a b c          -> IfE (go a) (go b) (go c)
-       MapE (v,t,rhs) bod -> MapE (v,t, go rhs) (go bod)
-       FoldE (v1,t1,r1) (v2,t2,r2) bod ->
-         FoldE (v1,fd t1,go r1) (v2,fd t2,go r2) (go bod)
 
 
 voidTy :: Ty1
@@ -456,42 +468,21 @@ primArgsTy p =
 
 -- Simple invariant assertions:
 
-assertTriv :: (Out l, Out d, Out (e l d)) => L (PreExp e l d) -> a -> a
-assertTriv e =
-  if isTriv e
+-- assertTriv :: (Out l, Out d, Out (e l d)) => L (PreExp e l d) -> a -> a
+assertTriv :: (Expression e) => L e -> a -> a
+assertTriv (L _ e) =
+  if isTrivial e
   then id
   else error$ "Expected trivial argument, got: "++sdoc e
 
-assertTrivs :: (Out l, Out d, Out (e l d)) => [L (PreExp e l d)] -> a -> a
+assertTrivs :: (Expression e) => [L e] -> a -> a
 assertTrivs [] = id
 assertTrivs (a:b) = assertTriv a . assertTrivs b
 
+{-# DEPRECATED isTriv "replaced by generic operation" #-}
 -- | Is an expression considered trivial (duplicatable by the compiler)?
-isTriv :: (Out l, Out d, Out (e l d)) => L (PreExp e l d) -> Bool
-isTriv (L _ e) =
-   case e of
-     VarE _    -> True
-     LitE _    -> True
-     LitSymE _ -> True
-     -- These should really turn to literalS:
-     PrimAppE MkTrue  [] -> True
-     PrimAppE MkFalse [] -> True
-     PrimAppE _ _        -> False
-     ----------------- POLICY DECISION ---------------
-     -- Leave these tuple ops as trivial for now:
-     ProjE _ et | isTriv et -> True
-                | otherwise -> False
-     MkProdE ls -> all isTriv ls
-
-     Ext _      -> error$ "isTriv, got extension point, cannot handle: "++sdoc e
-     IfE{}      -> False
-     CaseE{}    -> False
-     LetE {}    -> False
-     MapE {}    -> False
-     FoldE {}   -> False
-     AppE  {}   -> False
-     TimeIt {}  -> False
-     DataConE{} -> False
+isTriv :: (Show l, Show d, Out l, Out d, Out (e l d), Expression (e l d)) => L (PreExp e l d) -> Bool
+isTriv = isTrivial
 
 -- | Does the expression contain a TimeIt form?
 hasTimeIt :: L Exp1 -> Bool

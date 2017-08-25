@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 -- | Convert from L1 to L2.
 
@@ -63,15 +64,17 @@ These function applications will be the first point of introduction
 for fresh location variables.  This is the point at which we record
 the environment in scope at the generated location variable.  This
 will ultimately become the scope at which we allocate the location
-variable, which will have follow 'y' and be constrained only via 'y's
+variable, which will follow 'y' and be constrained only via 'y's
 variable references.
 
 The references to the generated location will consist of (1) LocExp's
-relating it to other locations falling "after", and (2) dependence
+relating it to other locations falling "after" it, and (2) dependence
 constraints created via 'y's variable references.
 
 We COULD examine every use-point of a location variable to check that
-it doesn't involve dependences 
+it doesn't involve dependences on out-of-scope values, but it is
+sufficient to check only against the lexical environment at the
+introduction point of the fresh location variable.
 
 -}
 
@@ -86,7 +89,7 @@ import Control.Monad.Trans (lift)
 -- import qualified Control.Monad.Trans.Cont as CC
 
 
-import Packed.FirstOrder.Common (l)
+import Packed.FirstOrder.Common (l, LRM(..))
 import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common (Var, Env2, DDefs, LocVar, runSyM, SyM, gensym, toVar)
 import qualified Packed.FirstOrder.L1.Syntax as L1
@@ -143,7 +146,11 @@ type EdgeList = Seq.Seq Dependence
 ----------------------------------------------------------------------------------------------------
 
 -- | Combine the different kinds of contextual information in-scope.
-data FullEnv = FullEnv (DDefs Ty2) (Env2 Ty2) DepGraph
+data FullEnv = FullEnv
+    { dataDefs :: (DDefs Ty2)
+    , valEnv :: M.Map Var Ty2
+    , funEnv :: M.Map Var (ArrowTy Ty2)
+    , dag    :: DepGraph }
 -- TODO: Lenses would probably help a bit here.
 
 --- -> RegionSet -> LocationTypeState
@@ -156,7 +163,12 @@ lookupVEnv = undefined
 
 lookupFEnv :: Var -> FullEnv -> (Ty2,Ty2)
 lookupFEnv = undefined
-             
+
+-- | Instantiate the type schema for a function.  Return the fresh
+-- location variables that 
+instantiateFun :: Var -> FullEnv -> TiM ([LocVar], Ty2,Ty2)
+instantiateFun = undefined
+                  
 extendDepGraph :: Dependence -> FullEnv -> FullEnv
 extendDepGraph = undefined
 
@@ -232,39 +244,62 @@ inferLocs (L1.Prog defs funs main) =
     error "FINISHME"
 
 
+-- | Trivial expressions never cause failures.
+doTriv :: FullEnv -> L1.Exp1 -> Exp2
+doTriv = _finishme
+
 -- | inferExp, if it succeeds, discharges all fresh locations used with 'LetLoc' forms.
 -- If it fails, it returns a failure object containing a continuation.
 inferExp :: FullEnv -> (L L1.Exp1) -> Cont -> TiM Result
-inferExp env (L srcloc ex0) k =
-  let l = L srcloc in
+inferExp env (L sl1 ex0) k =
+  let l = L sl1 in
   case ex0 of
     L1.VarE v -> k (l$ VarE v, lookupVEnv v env)
     L1.LitE n -> k (l$ LitE n, IntTy)
-    L1.IfE a b (L _ c) ->
+    L1.IfE a b c@(L _ ce) ->
         -- Here we blithely assume success because L1 typechecking has already passed:
         inferExp env a $ \ (a',BoolTy) ->
         inferExp env b $ \ (b',tyb) ->
-        let k' (c',tyc) = k (l$ IfE a' b' c', tyc) in
+        let k' (c',tyc) = k (l$ IfE a' b' c', tyc) 
+            ctxt = Selection ce (TiHole k') in
+        inferExp env c $ \  (c',tyc) ->
+          unifyLocs tyb tyc ctxt $
+            k' (c',tyc)
 
-        -- Infer type of second branch and unify locations in tyb/tyc
+    DataConE () con ls -> do
+      loc <- freshLocVar "lDC"      
+      k ( l$ L2.DataConE loc con (map (fmap (doTriv env)) ls)
+        , _ )
 
-        -- Upon failure, report the error in the second branch:
-        throwE (FailedLocUnify{ expected=_
-                              , received=_
-                              , context=Selection c (TiHole k')})
-
-    L1.LetE (v,locs,ty,rhs) bod | [] <- locs ->
+    -- Lets are where we allocate fresh locations:
+    L1.LetE (vr,locs,_rhsTy,L sl2 rhs) bod | [] <- locs ->
       case rhs of
-        L _ (L1.AppE f [] arg) -> 
-            -- assert isTriv arg
-            let (formalTy,resTy) = lookupFEnv f env in
-            inferExp env arg $ \ (arg',argTy) ->
-              unifyLocs formalTy argTy $
-                let env' = _ env in 
-                inferExp env' bod k
+        L1.AppE f [] arg -> L1.assertTriv arg $ do 
+            (newLocs,formalTy,resTy) <- instantiateFun f env
 
-        _ -> 
-         inferExp env rhs $ \ (_,_) ->
+            let k' (arg',argTy) =
+                      let env' = extendVEnv vr resTy env in                                    
+                      inferExp env' bod $ \ (bod',bodTy) ->
+                        k ( L sl1 (LetE (vr,[],resTy, L sl2 (AppE f (newLocs) arg')) bod')
+                          , bodTy)
+            inferExp env arg $ \ (arg',argTy) ->
+              unifyLocs formalTy argTy (Selection _ (TiHole k')) $
+                k' (arg',argTy)
+
+        L1.LetE{} -> _
+
+        PrimAppE p ls -> _prim
+        DataConE loc k ls  -> _datacon
+        LitSymE x     -> _linsym
+        ProjE i e     -> _proj
+        CaseE e ls    -> _case
+        MkProdE ls    -> _mkprod
+        TimeIt e t b       -> err "finish TimeIt"
+        MapE (v,t,rhs) bod -> err "finish MapE"
+        FoldE (v1,t1,r1) (v2,t2,r2) bod -> err "finish FoldE"
+
+        _oth -> 
+         inferExp env (L sl2 rhs) $ \ (_,_) ->
           -- Construct a value-dependence to all the free vars in the RHS:
           do tellConstraint VV{}
              inferExp _env' bod $ \ (_,_) ->
@@ -272,7 +307,16 @@ inferExp env (L srcloc ex0) k =
 
      | otherwise -> err "Invariant violated.  LetE had nonempty bound locations."
 
---    e -> throwE (FailedLocUnify{context=Selection e (TiHole k)}) -- TEST
+    L1.AppE{} -> err $ "Expected flatten to name all function application results:\n "++show ex0
+    PrimAppE p ls -> err $ "Expected flatten to name all primapp results:\n "++show ex0
+    LitSymE x     -> _linsym
+    ProjE i e     -> _proj
+    CaseE e ls    -> _case
+    MkProdE ls    -> _mkprod
+    TimeIt e t b       -> err "finish TimeIt"
+    MapE (v,t,rhs) bod -> err "finish MapE"
+    FoldE (v1,t1,r1) (v2,t2,r2) bod -> err "finish FoldE"
+
 
 err :: String -> a
 err m = error $ "InferLocations: " ++ m
@@ -295,8 +339,8 @@ tellNewLocVar v e = lift (W.tell (Seq.empty, Seq.singleton (v,e)))
 -- If we assume output regions are disjoint from input ones, then we
 -- can instantiate an L1 function type into a polymorphic L2 one,
 -- mechanically.
-instantiateFunTy :: (L1.Ty1,L1.Ty1) -> SyM (ArrowTy Ty2)
-instantiateFunTy (from,to) = do 
+convertFunTy :: (L1.Ty1,L1.Ty1) -> SyM (ArrowTy Ty2)
+convertFunTy (from,to) = do 
     -- let lvs = allLocVars inT ++ allLocVars outT
     -- lvs' <- mapM freshenVar lvs
     -- let subst = M.fromList (zip lvs lvs')
@@ -319,8 +363,15 @@ freshLocVar :: String -> TiM LocVar
 freshLocVar m = lift$ lift$ gensym (toVar m)
                 
 -- | Unify two types that differ only in their locations.
-unifyLocs :: Ty2 -> Ty2 -> TiM Result -> TiM Result 
-unifyLocs = _
+-- This generates additional constraints.
+unifyLocs :: Ty2 -> Ty2 -> Selection -> TiM Result -> TiM Result 
+unifyLocs t1 t2 sel tail =
+  if _
+  then _
+  else throwE (FailedLocUnify{ expected=_
+                             , received=_
+                             , context= sel })
+
 
 -- Our unify function should produce [LocConstraint]
 --
@@ -360,7 +411,10 @@ test :: L2.Prog
 test = fst $ runSyM 0 $ inferLocs L1.add1Prog
 
 emptyEnv :: FullEnv
-emptyEnv = FullEnv C.emptyDD (C.Env2 M.empty M.empty) M.empty
+emptyEnv = FullEnv { dataDefs = C.emptyDD
+                   , valEnv   = M.empty
+                   , funEnv   = M.empty
+                   , dag      = M.empty }
 
 -- (Moved to Common)
 -- l :: a -> L a
@@ -369,17 +423,29 @@ emptyEnv = FullEnv C.emptyDD (C.Env2 M.empty M.empty) M.empty
 idCont :: Cont
 idCont (e,ty) = return (e,ty)
 
-t1 :: ((Either Failure Result, TyCheckLog), Int)
-t1 = runSyM 0 $ W.runWriterT $ runExceptT $
+go :: TiM Result -> Either Failure Result
+go =  fst . fst . runSyM 0 . W.runWriterT . runExceptT 
+
+t1 :: Either Failure Result
+t1 = fst$ fst$ runSyM 0 $ W.runWriterT $ runExceptT $
      inferExp emptyEnv (l$ L1.LitE 3) idCont
 
-{-
-t2_ :: TiM Result
-t2_ = inferExp emptyEnv (l$ L1.IfE (l$ L1.PrimAppE L1.MkTrue [])
-                           (l$ L1.LitE 3)
-                           (l$ L1.LitE 4))
-              idCont
 
-t2 :: (Either Failure Result, EdgeList)
-t2 = W.runWriter (runExceptT t2_)
--}
+-- t2_ :: TiM Result
+-- t2_ = inferExp emptyEnv (l$ L1.IfE (l$ L1.PrimAppE L1.MkTrue [])
+--                            (l$ L1.LitE 3)
+--                            (l$ L1.LitE 4))
+--                idCont
+
+t2_ :: TiM Result
+t2_ = inferExp emptyEnv (l$ L1.LetE ("v",[], IntTy, l$ L1.LitE 33)
+                           (l$ L1.VarE "v"))
+               idCont
+               
+t2 :: Either Failure Result
+t2 = go t2_
+
+t3_ :: TiM Result
+t3_ = inferExp emptyEnv (l$ L1.LetE ("v",[], BoolTy, l$ L1.PrimAppE L1.MkTrue [])
+                           (l$ L1.VarE "v"))
+               idCont

@@ -59,6 +59,7 @@ instance FreeVars (NoExt l d) where
 class (Show e, Out e) => Expression e where
   type TyOf e
   type LocOf e
+  isTrivial :: e -> Bool
 
 -- | IRs amenable to flattening
 class Expression e => Flattenable e where

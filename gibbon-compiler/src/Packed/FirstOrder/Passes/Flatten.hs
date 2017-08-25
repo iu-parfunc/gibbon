@@ -2,6 +2,7 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 -- | Put the program in A-normal form where only varrefs and literals are
 -- allowed in operand position.
@@ -38,6 +39,10 @@ import Prelude hiding (exp)
 --
 --   In the process, it also lifts lets out of case scrutinees, if
 --   conditions, and tuple operands.
+--
+--   Note that it does not require tail expressions to be trivial.
+--   For example, it allows AppE and PrimAppE in the body of a
+--   let-expression.
 flatten :: L1.Prog -> SyM L1.Prog
 flatten prg@(L1.Prog defs funs main) = do
     main' <- mapM (gFlattenExp defs env20) main
@@ -83,7 +88,8 @@ instance (Out l, Show l, Flattenable (e l (UrTy l)))
                                   return $ unLoc $ flatLets b e'
 
 
-exp :: forall l e . (Show l, Show (e l (UrTy l)), Out l, Out (e l (UrTy l))) =>
+exp :: forall l e . (Show l, Show (e l (UrTy l)), Out l, Out (e l (UrTy l)),
+                     Expression (e l (UrTy l))) =>
        DDefs (UrTy l) -> Env2 (UrTy l) -> L (Exp e l) ->
        SyM ([Binds e l],L (Exp e l))
 exp ddefs env2 (L sloc e0) =

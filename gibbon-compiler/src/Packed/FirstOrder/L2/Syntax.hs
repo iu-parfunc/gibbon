@@ -163,6 +163,11 @@ data Prog = Prog { ddefs    :: DDefs Ty2
 
 ----------------------------------------------------------------------------------------------------
 
+-- | Extension of L1.isTriv.
+isTriv :: L Exp2 -> Bool
+isTriv = undefined
+
+
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.  The
 --   initial environment has types only for functions.
