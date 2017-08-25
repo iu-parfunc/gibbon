@@ -99,6 +99,7 @@ instance Ord (NoExt l d) where
 instance Expression (NoExt l d) where
   type TyOf  (NoExt l d) = d
   type LocOf (NoExt l d) = l
+  isTrivial _ = True
 
 -- | A dummy instance for "no-extension" extension point.
 instance Flattenable (NoExt l d) where

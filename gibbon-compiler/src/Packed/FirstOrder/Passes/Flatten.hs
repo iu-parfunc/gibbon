@@ -24,7 +24,7 @@ import Text.PrettyPrint.GenericPretty (Out)
 
 import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.Common
-import Packed.FirstOrder.L1.Syntax as L1 hiding (Exp)
+import Packed.FirstOrder.L1.Syntax as L1 
 import qualified Packed.FirstOrder.L2.Syntax as L2
 
 -- import Packed.FirstOrder.L2.Syntax (isCursorTy)
@@ -88,8 +88,7 @@ instance (Out l, Show l, Flattenable (e l (UrTy l)))
                                   return $ unLoc $ flatLets b e'
 
 
-exp :: forall l e . (Show l, Show (e l (UrTy l)), Out l, Out (e l (UrTy l)),
-                     Expression (e l (UrTy l))) =>
+exp :: forall l e . (Show l, Out l, Expression (e l (UrTy l))) =>
        DDefs (UrTy l) -> Env2 (UrTy l) -> L (Exp e l) ->
        SyM ([Binds e l],L (Exp e l))
 exp ddefs env2 (L sloc e0) =

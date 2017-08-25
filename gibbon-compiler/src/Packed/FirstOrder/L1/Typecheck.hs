@@ -15,6 +15,7 @@ import Text.PrettyPrint.GenericPretty
 
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L1.Syntax as L1
+import Prelude hiding (exp)
 
 --------------------------------------------------------------------------------
 
@@ -300,6 +301,7 @@ ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
 
 --------------------------------------------------------------------------------
 
+test6 :: (Prog, Int)
 test6 = runSyM 0 $ tcProg t6
 
 t6 :: Prog
@@ -316,6 +318,7 @@ t6 = Prog {ddefs = M.fromList [],
                                 (l$ LitE 44))}
 
 
+test5 :: (Prog, Int)
 test5 = runSyM 0 $ tcProg t5
 
 t5 :: Prog
@@ -334,6 +337,7 @@ t5 = Prog {ddefs = M.fromList [("Foo",
 -- *** Exception: Expected these types to be the same: BoolTy, IntTy in
 -- LitE 4
 
+test4 :: (Prog, Int)
 test4 = runSyM 0 $ tcProg t4
 
 t4 :: Prog
@@ -350,6 +354,7 @@ t4 = Prog {ddefs = M.fromList [("Foo",
                                            ("B", [("x", ()),("y", ())], l$ LitE 200)]})],
       mainExp = Nothing}
 
+test3 :: (Prog, Int)
 test3 = runSyM 0 $ tcProg t3
 
 t3 :: Prog
@@ -362,6 +367,7 @@ t3 = Prog {ddefs = M.fromList [],
                        (l$  LitE 1))
                      (l$  LitE 2)}
 
+test2 :: (Prog, Int)
 test2 = runSyM 0 $ tcProg t2
 
 t2 :: Prog
@@ -371,6 +377,7 @@ t2 = Prog {ddefs = M.fromList
       fundefs = M.fromList [],
       mainExp = Just $ l$  DataConE () "MkB" [l$  LitE 10]}
 
+test1 :: (Prog, Int)
 test1 = runSyM 0 $ tcProg t1
 
 t1 :: Prog

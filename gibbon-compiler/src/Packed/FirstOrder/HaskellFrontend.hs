@@ -24,7 +24,7 @@ import qualified Data.Map as M
 import qualified Data.List as L
 
 import Packed.FirstOrder.L1.Syntax as L1
-import Packed.FirstOrder.Common as C
+import Packed.FirstOrder.Common as C hiding (l) 
 
 --------------------------------------------------------------------------------
 

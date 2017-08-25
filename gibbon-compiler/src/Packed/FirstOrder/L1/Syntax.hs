@@ -8,7 +8,6 @@
 {-# LANGUAGE PatternSynonyms   #-}
 
 {-# LANGUAGE OverloadedStrings #-}
-{-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE CPP      #-}
 
 -- | The source language for recursive tree traversals.
@@ -154,7 +153,7 @@ data PreExp (ext :: * -> * -> *) loc dec =
    ----------------------------------------
   | Ext (ext loc dec) -- ^ Extension point for downstream language extensions.
 
-  deriving (Show, Eq, Ord, Generic, NFData, Functor)
+  deriving (Show, Read, Eq, Ord, Generic, NFData, Functor)
 
 
 instance NFData (PreExp e l d) => NFData (L (PreExp e l d)) where
@@ -323,15 +322,15 @@ mapLocs fn = visitExp id fn id
 visitExp :: forall l1 l2 e1 e2 d1 d2 .
             (l1 -> l2) -> (e1 l1 d1 -> e2 l2 d2) -> (d1 -> d2) ->
             PreExp e1 l1 d1 -> PreExp e2 l2  d2
-visitExp fl fe fd exp = fin
+visitExp _fl fe _fd exp0 = fin
  where
-   L _ fin = go (L NoLoc exp)
+   L _ fin = go (L NoLoc exp0)
 
    go :: L (PreExp e1 l1  d1) -> L (PreExp e2 l2 d2)
    go (L sloc ex) = L sloc $
      case ex of
        Ext  x        -> Ext (fe x)
-
+       _ -> _finishme
 
 voidTy :: Ty1
 voidTy = ProdTy []
@@ -381,17 +380,17 @@ getFunTy fn Prog{fundefs} =
 
 
 subst :: Var -> L Exp1 -> L Exp1 -> L Exp1
-subst old new (L p ex) = L p $
+subst old new (L p0 ex) = L p0 $
   let go = subst old new in
   case ex of
     VarE v | v == old  -> unLoc new
            | otherwise -> VarE v
     LitE _             -> ex
     LitSymE _          -> ex
-    AppE v l e         -> AppE v l (go e)
+    AppE v loc e       -> AppE v loc (go e)
     PrimAppE p ls      -> PrimAppE p $ L.map go ls
-    LetE (v,l,t,rhs) bod | v == old  -> LetE (v,l,t,go rhs) bod
-                         | otherwise -> LetE (v,l,t,go rhs) (go bod)
+    LetE (v,loc,t,rhs) bod | v == old  -> LetE (v,loc,t,go rhs) bod
+                           | otherwise -> LetE (v,loc,t,go rhs) (go bod)
     ProjE i e  -> ProjE i (go e)
     CaseE e ls ->
                   CaseE (go e) (L.map f ls)
@@ -414,7 +413,7 @@ subst old new (L p ex) = L p $
 -- | Expensive subst that looks for a whole matching sub-EXPRESSION.
 --   If the old expression is a variable, this still avoids going under binder.
 substE :: L Exp1 -> L Exp1 -> L Exp1 -> L Exp1
-substE old new (L p ex) = L p $
+substE old new (L p0 ex) = L p0 $
   let go = substE old new in
   case ex of
     -- TODO(cskksc): this would return incorrect Loc
@@ -423,10 +422,10 @@ substE old new (L p ex) = L p $
     VarE v          -> VarE v
     LitE _          -> ex
     LitSymE _       -> ex
-    AppE v l e      -> AppE v l (go e)
+    AppE v loc e    -> AppE v loc (go e)
     PrimAppE p ls   -> PrimAppE p $ L.map go ls
-    LetE (v,l,t,rhs) bod | (VarE v) == unLoc old  -> LetE (v,l,t,go rhs) bod
-                         | otherwise -> LetE (v,l,t,go rhs) (go bod)
+    LetE (v,loc,t,rhs) bod | (VarE v) == unLoc old  -> LetE (v,loc,t,go rhs) bod
+                           | otherwise -> LetE (v,loc,t,go rhs) (go bod)
 
     ProjE i e         -> ProjE i (go e)
     CaseE e ls        -> CaseE (go e) (L.map (\(c,vs,er) -> (c,vs,go er)) ls)
@@ -481,7 +480,7 @@ assertTrivs (a:b) = assertTriv a . assertTrivs b
 
 {-# DEPRECATED isTriv "replaced by generic operation" #-}
 -- | Is an expression considered trivial (duplicatable by the compiler)?
-isTriv :: (Show l, Show d, Out l, Out d, Out (e l d), Expression (e l d)) => L (PreExp e l d) -> Bool
+isTriv :: (Show l, Show d, Out l, Out d, Expression (e l d)) => L (PreExp e l d) -> Bool
 isTriv = isTrivial
 
 -- | Does the expression contain a TimeIt form?

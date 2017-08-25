@@ -108,7 +108,12 @@ library
 
   hs-source-dirs:      src
   default-language:    Haskell2010
-  ghc-options:         -Wall -fdefer-typed-holes -fno-warn-orphans
+  -- TEMP: Turning off typed holes and unused-top-level warnings for now [2017.08.25]:
+--  ghc-options:         -Wno-all
+--  ghc-options:         -Wall -fno-warn-typed-holes -Wno-unused-top-binds -fdefer-typed-holes -fno-warn-orphans
+  ghc-options:        -Wredundant-constraints
+  ghc-options:        -Wall -Wno-typed-holes -Wno-unused-top-binds -Wno-orphans
+  ghc-options:        -fdefer-typed-holes 
   default-extensions: ScopedTypeVariables PatternSynonyms DeriveGeneric DeriveFunctor
                       NamedFieldPuns TupleSections TypeFamilies
                       -- This can break things: DeriveAnyClass
@@ -123,7 +128,8 @@ executable gibbon
                        gibbon
 
   default-language:    Haskell2010
-  ghc-options:         -Wall -rtsopts -fdefer-typed-holes
+--  ghc-options:         -Wall 
+  ghc-options:         -rtsopts -fdefer-typed-holes
 
 
 test-suite test-gibbon
@@ -143,4 +149,5 @@ test-suite test-gibbon
                 L2.Typecheck
 
   default-language:    Haskell2010
-  ghc-options:         -Wall -fdefer-typed-holes
+--   ghc-options:         -Wall   
+  ghc-options:         -fdefer-typed-holes

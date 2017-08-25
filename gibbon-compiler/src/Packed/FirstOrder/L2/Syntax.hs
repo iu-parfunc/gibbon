@@ -85,14 +85,15 @@ data E2Ext loc dec =
   | LetLocE    loc    (PreLocExp loc) (L (E2 loc dec)) -- ^ Bind a new location.
   | RetE [loc] Var     -- ^ Return a value together with extra loc values.
   | FromEndE loc -- ^ Bind a location from an EndOf location (for RouteEnds and after)
- deriving (Show, Ord, Eq, Generic, NFData)
+ deriving (Show, Ord, Eq, Read, Generic, NFData)
 
 -- | L1 expressions extended with L2.  This is the polymorphic version.
 -- Shorthand for recursions above.
 type E2 l d = PreExp E2Ext l d
-
-instance Read (E2 l d) where
-instance Read (L (E2 l d)) where
+ 
+    
+-- instance Read (E2 l d) where
+-- instance Read (L (E2 l d)) where
 
 -- | Define a location in terms of a different location.
 data PreLocExp loc = StartOfLE Region
@@ -113,6 +114,12 @@ data LocRet = EndOf LRM
 instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
   type LocOf (E2Ext l d) = l
   type TyOf (E2Ext l d)  = UrTy l
+  isTrivial e =
+    case e of
+      LetRegionE{} -> False
+      LetLocE{}    -> False
+      RetE{}       -> False -- Umm... this one could be potentially.
+      FromEndE{}   -> True
 
 
 ----------------------------------------------------------------------------------------------------

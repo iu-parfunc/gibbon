@@ -52,8 +52,8 @@ lvl :: Int
 lvl = 5
 
 
-deriving instance Generic a => Generic (SExpr a)
-deriving instance Generic a => Generic (RichSExpr a)
+deriving instance Generic (SExpr a)
+deriving instance Generic (RichSExpr a)
 deriving instance Generic HaskLikeAtom
 instance (Generic a, Out a) => Out (SExpr a)
 instance (Generic a, Out a) => Out (RichSExpr a)

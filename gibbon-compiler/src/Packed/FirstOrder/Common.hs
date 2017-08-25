@@ -70,6 +70,11 @@ import System.IO.Unsafe (unsafePerformIO)
 import Debug.Trace
 import Language.C.Quote.CUDA (ToIdent, toIdent)
 
+
+-- | Orphaned instance: read without source locations.
+instance Read t => Read (L t) where
+  readsPrec n str = [ (L NoLoc a,s) | (a,s) <- readsPrec n str ]
+    
 -- type CursorVar = Var
 newtype Var = Var Symbol
   deriving (Eq, Ord, Read, Show)
@@ -336,7 +341,7 @@ m # k = case M.lookup k m of
                      ++ " in map:\n "++ show (doc m)
 
 
-(!!!) :: (Out a, Show a) => [a] -> Int -> a
+(!!!) :: (Out a) => [a] -> Int -> a
 ls0 !!! ix0 = go ls0 ix0
  where
    go [] _ = err $ "Not enough elements in list to retrieve "++show ix0

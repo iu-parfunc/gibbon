@@ -1,5 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
+-- TEMP:
+{-# OPTIONS_GHC -Wno-all #-}
+
 -- | Convert from L1 to L2.
 
 module Packed.FirstOrder.Passes.InferLocations
