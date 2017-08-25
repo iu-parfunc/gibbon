@@ -3,20 +3,39 @@
 (require "../common.gib")
 (provide uniqify)
 
-(define (uniqify-exp [e : ExpR] [env : (SymDict Sym)]) : ExpR
+;; (Vector ExpR Int)
+
+(define (uniqify-exp [e : ExpR] [env : (SymDict Sym)] [nxt : Int]) : (Vector ExpR Int)
   (case e
-    [(LitER n) (LitER n)]
-    [(VarER v) (VarER (ann (lookup env v) Sym))]
+    [(LitER n) (vector (LitER n) nxt)]
+    [(VarER v) (vector (VarER (lookup env v)) nxt)]
     [(LetER bnd bod)
      (let ([v : Sym (vector-ref bnd 0)])
-       (let ([rhs2 : ExpR (uniqify-exp (vector-ref bnd 1) env)])
-         (let ([v2 : Sym (gensym v)])
-           (let ([env2 : (SymDict Sym) (insert env v v2)])
-             (let ([bod2 : ExpR (uniqify-exp bod env2)])
-               (LetER (vector v2 rhs2) bod2))))))]
-    [(NegER e1) (NegER (uniqify-exp e1 env))]
-    [(AddER e1 e2) (AddER (uniqify-exp e1 env) (uniqify-exp e2 env))]))
+       (let ([rhs : ExpR (vector-ref bnd 1)])
+         (let ([rhs^-nxt^ : (Vector ExpR Int) (uniqify-exp rhs env nxt)])
+           (let ([rhs^ : ExpR (vector-ref rhs^-nxt^ 0)])
+             (let ([nxt^ : Int (vector-ref rhs^-nxt^ 1)])
+               (let ([v^ : Sym (sym-append v nxt^)])
+                 (let ([nxt^^ : Int (+ 1 nxt^)])
+                   (let ([env^ : (SymDict Sym) (insert env v v^)])
+                     (let ([bod^-nxt^^^ : (Vector ExpR Int) (uniqify-exp bod env^ nxt^^)])
+                       (let ([bod^ : ExpR (vector-ref bod^-nxt^^^ 0)])
+                         (let ([nxt^^^ : Int (vector-ref bod^-nxt^^^ 1)])
+                           (vector (LetER (vector v^ rhs^) bod^) nxt^^^))))))))))))]
+    [(NegER e1) (let ([e1^-nxt^ : (Vector ExpR Int) (uniqify-exp e1 env nxt)])
+                  (let ([e1^ : ExpR (vector-ref e1^-nxt^ 0)])
+                    (let ([nxt^ : Int (vector-ref e1^-nxt^ 1)])
+                      (vector (NegER e1^) nxt^))))]
+    [(AddER e1 e2) (let ([e1^-nxt^ : (Vector ExpR Int) (uniqify-exp e1 env nxt)])
+                     (let ([e1^ : ExpR (vector-ref e1^-nxt^ 0)])
+                       (let ([nxt^ : Int (vector-ref e1^-nxt^ 1)])
+                         (let ([e2^-nxt^^ : (Vector ExpR Int) (uniqify-exp e2 env nxt^)])
+                           (let ([e2^ : ExpR (vector-ref e2^-nxt^^ 0)])
+                             (let ([nxt^^ : Int (vector-ref e2^-nxt^^ 1)])
+                               (vector (AddER e1^ e2^) nxt^^)))))))]))
 
 (define (uniqify [prg : R0]) : R0
   (case prg
-    [(ProgramR e) (ProgramR (uniqify-exp e (empty-dict)))]))
+    [(ProgramR e) (let ([exp-nxt : (Vector ExpR Int) (uniqify-exp e (empty-dict) 1)])
+                    (let ([exp : ExpR (vector-ref exp-nxt 0)])
+                      (ProgramR exp)))]))
