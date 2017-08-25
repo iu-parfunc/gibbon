@@ -7,6 +7,7 @@
          Vector vector vector-ref
          list and empty? error 
          eq? = Listof True False
+         sym-append
          ;; temporary. remove after adding (symappend :: Symbol -> Int -> Symbol)
          gensym
 
@@ -161,6 +162,11 @@ lit := int | #t | #f
            (match ls
              [(list x) x]))))
 
+(: sym-append (-> Symbol Integer Symbol))
+(define (sym-append [sym : Symbol] [i : Integer])
+  (string->symbol (string-append (symbol->string sym) (number->string i))))
+
+
 (define-type Int Fixnum)
 (define-type Sym Symbol)
 (define-type Bool Boolean)
@@ -221,6 +227,7 @@ lit := int | #t | #f
 
 (define size-param  : (Parameter Int) (make-parameter 1))
 (define iters-param : (Parameter Integer) (make-parameter 1))
+
 
 #|
 (data Tree
