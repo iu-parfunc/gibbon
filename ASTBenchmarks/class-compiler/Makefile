@@ -1,2 +1,2 @@
 test:
-	@racket tests.rkt
+	@racket tests/tests.rkt

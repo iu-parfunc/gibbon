@@ -75,7 +75,12 @@ raco make -v $RACOPARARG \
 racket $top/typecheck-stlc/examples.gib
 
 # Run class compiler tests
+set +x; echo
+echo "  Class compiler tests"
+echo "----------------------------------------"
 cd $top/ASTBenchmarks/class-compiler; make test
+echo
+set -x
 
 # If we wanted to be really aggressive we could run all racket files
 # in the Repo:
