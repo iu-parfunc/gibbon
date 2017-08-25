@@ -7,6 +7,7 @@
          Vector vector vector-ref
          list and empty? error 
          eq? = Listof True False
+         ;; temporary. remove after adding (symappend :: Symbol -> Int -> Symbol)
          gensym
 
          time + * -
@@ -220,18 +221,6 @@ lit := int | #t | #f
 
 (define size-param  : (Parameter Int) (make-parameter 1))
 (define iters-param : (Parameter Integer) (make-parameter 1))
-
-;; temporary. remove after adding (symappend :: Symbol -> Int -> Symbol)
-;; originally defined here: https://stackoverflow.com/a/5593388/3141850
-(: gensym (-> Symbol Symbol))
-(define gensym
-  (let ([counter : Integer 0])
-    (lambda ([x 'g])
-      (if (integer? x)
-          (set! counter x)
-          (begin0 (string->unreadable-symbol
-                   (format "~a~a" x counter))
-            (set! counter (add1 counter)))))))
 
 #|
 (data Tree
