@@ -57,8 +57,12 @@ instance FreeVars (NoExt l d) where
 -- | A generic interface to expressions found in different phases of
 -- the compiler.
 class (Show e, Out e) => Expression e where
+  -- | The type representation used in this expression.
   type TyOf e
+  -- | The location (variable) representation used in this expression.
   type LocOf e
+
+  -- | Is an expression considered trivial (duplicatable by the compiler)?
   isTrivial :: e -> Bool
 
 -- | IRs amenable to flattening

@@ -94,7 +94,7 @@ exp :: forall l e . (Show l, Out l, Expression (e l (UrTy l))) =>
 exp ddefs env2 (L sloc e0) =
      let triv :: String -> L (Exp e l) -> SyM ([Binds e l], L (Exp e l))
          triv m e = -- Force something to be trivial
-           if isTriv e
+           if isTrivial e
            then return ([],e)
            else do tmp <- gensym $ toVar $ "flt" ++ m
                    let ty = typeExp (ddefs, env2) e

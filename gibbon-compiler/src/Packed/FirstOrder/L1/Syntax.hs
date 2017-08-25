@@ -36,7 +36,7 @@ module Packed.FirstOrder.L1.Syntax
    , mapLocs
 
       -- * Trivial expressions
-    , assertTriv, assertTrivs, isTriv, hasTimeIt
+    , assertTriv, assertTrivs, hasTimeIt
     , projNonFirst, mkProj, mkProd, mkProdTy, mkLets
 
       -- * Examples
@@ -477,11 +477,6 @@ assertTriv (L _ e) =
 assertTrivs :: (Expression e) => [L e] -> a -> a
 assertTrivs [] = id
 assertTrivs (a:b) = assertTriv a . assertTrivs b
-
-{-# DEPRECATED isTriv "replaced by generic operation" #-}
--- | Is an expression considered trivial (duplicatable by the compiler)?
-isTriv :: (Show l, Show d, Out l, Out d, Expression (e l d)) => L (PreExp e l d) -> Bool
-isTriv = isTrivial
 
 -- | Does the expression contain a TimeIt form?
 hasTimeIt :: L Exp1 -> Bool

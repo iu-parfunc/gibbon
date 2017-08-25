@@ -7,6 +7,7 @@ import           Prelude hiding (exp)
 import           Text.PrettyPrint.GenericPretty
 
 import           Packed.FirstOrder.Common
+import           Packed.FirstOrder.GenericOps (isTrivial)
 import           Packed.FirstOrder.GenericOps (NoExt)
 import           Packed.FirstOrder.L1.Syntax as L1 hiding (mkProj)
 import qualified Packed.FirstOrder.L2.Syntax as L2
@@ -51,7 +52,7 @@ inlineTrivExp _ddefs = go []
       Just (ty,oth)  -> L NoLoc $ LetE (v,[],ty,oth) $ fn v
 
   exp :: Env l -> MyExp l -> (MyExp l)
-  exp env (L p e0) = L p $
+  exp env (L p0 e0) = L p0 $
     case e0 of
       Ext _  -> e0
       VarE v -> case lookup v env of
@@ -69,7 +70,7 @@ inlineTrivExp _ddefs = go []
            case lookup v' env of
              Nothing -> unLoc $ go ((v,(t,e')):env) e
              Just pr -> unLoc $ go ((v,pr):env) e
-         et | L1.isTriv et ->
+         et | isTrivial et ->
                 -- Apply existing renames:
                 let et' = go env et in
                 unLoc $ go ((v,(t,et')):env) e
@@ -107,5 +108,5 @@ inlineTrivExp _ddefs = go []
 -- Helpers which do opportunistic reduction:
 
 mkProj :: Int -> MyExp l -> MyExp l
-mkProj ix (L p (MkProdE ls)) = ls !! ix
+mkProj ix (L _ (MkProdE ls)) = ls !! ix
 mkProj ix e@(L p _) = L p $ ProjE ix e
