@@ -1,0 +1,22 @@
+#lang gibbon
+
+(require "../common.gib")
+(provide uniqify)
+
+(define (uniqify-exp [e : ExpR] [env : (SymDict Sym)]) : ExpR
+  (case e
+    [(LitER n) (LitER n)]
+    [(VarER v) (VarER (ann (lookup env v) Sym))]
+    [(LetER bnd bod)
+     (let ([v : Sym (vector-ref bnd 0)])
+       (let ([rhs2 : ExpR (uniqify-exp (vector-ref bnd 1) env)])
+         (let ([v2 : Sym (gensym v)])
+           (let ([env2 : (SymDict Sym) (insert env v v2)])
+             (let ([bod2 : ExpR (uniqify-exp bod env2)])
+               (LetER (vector v2 rhs2) bod2))))))]
+    [(NegER e1) (NegER (uniqify-exp e1 env))]
+    [(AddER e1 e2) (AddER (uniqify-exp e1 env) (uniqify-exp e2 env))]))
+
+(define (uniqify [prg : R0]) : R0
+  (case prg
+    [(ProgramR e) (ProgramR (uniqify-exp e (empty-dict)))]))

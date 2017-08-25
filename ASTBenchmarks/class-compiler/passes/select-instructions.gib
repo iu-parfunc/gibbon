@@ -1,0 +1,31 @@
+#lang gibbon
+
+(require "../common.gib")
+(provide select-instructions)
+
+(define (select-instructions [prg : C0]) : X86
+  (case prg
+    [(ProgramC syms stmts) (ProgramX86 syms 0 (concat-map-go-si stmts (NullInstrs)))]))
+
+(define (concat-map-go-si [stmts : Stmts] [instrs : Instrs]) : Instrs
+  (case stmts
+    [(NullStmts) instrs]
+    [(ConsStmt s rst) (append-instrs (go s instrs) (concat-map-go-si rst instrs))]))
+
+(define (go [stmt : Stmt] [instrs : Instrs]) : Instrs
+  (case stmt
+    [(AssignE v e) (case e
+                     [(AddEC e1 e2) (ConsInstr (MOVQ (go-exp e1) (VarEX86 v))
+                                               (ConsInstr (ADDQ (go-exp e2) (VarEX86 v))
+                                                          instrs))]
+                     [(NegEC e1)    (ConsInstr (MOVQ (go-exp e1) (VarEX86 v))
+                                               (ConsInstr (NEGQ (VarEX86 v))
+                                                          instrs))]
+                     [(LitEC n)     (ConsInstr (MOVQ (go-exp e) (VarEX86 v)) instrs)]
+                     [(VarEC m)     (ConsInstr (MOVQ (go-exp e) (VarEX86 v)) instrs)])]
+    [(RetE e) (ConsInstr (MOVQ (go-exp e) (RegE 'RAX)) instrs)]))
+
+(define (go-exp [e : ExpC]) : ExpX86
+  (case e
+    [(LitEC n) (LitEX86 n)]
+    [(VarEC v) (VarEX86 v)]))

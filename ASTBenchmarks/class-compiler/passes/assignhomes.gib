@@ -1,0 +1,36 @@
+#lang gibbon
+
+(require "../common.gib")
+(provide assign-homes)
+
+(define (assign-homes [prg : X86]) : X86
+  (case prg
+    [(ProgramX86 syms i instrs)
+     (let ([env : (SymDict Int) (compute-env syms (empty-dict) (- 0 8))])
+       (let ([num-vars (length-syms syms)])
+         (ProgramX86 syms (* 8 num-vars) (map-go env instrs))))]))
+
+(define (map-go [env : (SymDict Int)] [instrs : Instrs]) : Instrs
+  (case instrs
+    [(NullInstrs) (NullInstrs)]
+    [(ConsInstr i rst) (ConsInstr (go env i) (map-go env rst))]))
+
+(define (go [env : (SymDict Int)] [instr : Instr]) : Instr
+  (case instr
+    [(ADDQ e1 e2) (ADDQ (go-exp env e1) (go-exp env e2))]
+    [(NEGQ e1)    (NEGQ (go-exp env e1))]
+    [(MOVQ e1 e2) (MOVQ (go-exp env e1) (go-exp env e2))]))
+
+(define (go-exp [env : (SymDict Int)] [exp : ExpX86]) : ExpX86
+  (case exp
+    [(VarEX86 v) (DerefE 'RBP (lookup env v))]
+    [(LitEX86 n) (LitEX86 n)]
+    [(RegE r) (RegE r)]
+    [(DerefE s i) (DerefE s i)]))
+
+;; foldr (\v (i,acc) -> (i-8,M.insert v i acc)) (-8,M.empty) vars
+;;
+(define (compute-env [syms : Syms] [env : (SymDict Int)] [i : Int]) : (SymDict Int)
+  (case syms
+    [(NullSyms) env]
+    [(ConsSym s rst) (compute-env rst (insert env s i) (- i 8))]))

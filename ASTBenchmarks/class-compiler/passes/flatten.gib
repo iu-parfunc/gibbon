@@ -1,0 +1,69 @@
+#lang gibbon
+
+(require "../common.gib")
+(provide flatten)
+
+;; (Vector ExpC Stmts Syms)
+
+(define (flatten [prg : R0]) : C0
+  (case prg
+    [(ProgramR e) (let ([fe-ret (flatten-exp e)])
+                    (let ([flat (vector-ref fe-ret 0)])
+                      (let ([syms (vector-ref fe-ret 2)])
+                        (let ([stmts (vector-ref fe-ret 1)])
+                          (let ([stmts2 (snoc-stmts stmts (RetE flat))])
+                            (ProgramC syms stmts2))))))]))
+
+(define (flatten-exp [e : ExpR]) : (Vector ExpC Stmts Syms)
+  (case e
+    [(LitER n) (vector (LitEC n) (NullStmts) (NullSyms))]
+    [(VarER v) (vector (VarEC v) (NullStmts) (NullSyms))]
+
+    [(NegER e1) (let ([fe-e1 (flatten-exp e1)])
+                  (let ([flat-e1 (vector-ref fe-e1 0)])
+                    (let ([syms-e1 (vector-ref fe-e1 2)])
+                      (let ([stmts-e1 (vector-ref fe-e1 1)])
+                        (let ([tmp (gensym 'tmp)])
+                          (vector (VarEC tmp)
+                                  (snoc-stmts stmts-e1 (AssignE tmp (NegEC flat-e1)))
+                                  (snoc-syms syms-e1 tmp)))))))]
+
+    ([AddER e1 e2] (let ([tmp (gensym 'tmp)])
+                     (let ([fe-e1 (flatten-exp e1)])
+                       (let ([flat-e1 (vector-ref fe-e1 0)])
+                         (let ([syms-e1 (vector-ref fe-e1 2)])
+                           (let ([stmts-e1 (vector-ref fe-e1 1)])
+                             (let ([fe-e2 (flatten-exp e2)])
+                               (let ([flat-e2 (vector-ref fe-e2 0)])
+                                 (let ([syms-e2 (vector-ref fe-e2 2)])
+                                   (let ([stmts-e2 (vector-ref fe-e2 1)])
+                                     (vector (VarEC tmp)
+
+                                             (append-stmts
+                                              stmts-e1
+                                              (ConsStmt (AssignE tmp (AddEC flat-e1 flat-e2))
+                                                        stmts-e2))
+
+                                             (append-syms
+                                              syms-e1
+                                              (ConsSym tmp syms-e2)))))))))))))
+
+    ([LetER bnd bod] (let ([v (vector-ref bnd 0)])
+                       (let ([rhs (vector-ref bnd 1)])
+                         (let ([fe-rhs (flatten-exp rhs)])
+                           (let ([flat-rhs (vector-ref fe-rhs 0)])
+                             (let ([syms-rhs (vector-ref fe-rhs 2)])
+                               (let ([stmts-rhs (vector-ref fe-rhs 1)])
+                                 (let ([fe-bod (flatten-exp bod)])
+                                   (let ([flat-bod (vector-ref fe-bod 0)])
+                                     (let ([syms-bod (vector-ref fe-bod 2)])
+                                       (let ([stmts-bod (vector-ref fe-bod 1)])
+                                         (vector flat-bod
+
+                                                 (append-stmts
+                                                  stmts-rhs
+                                                  (ConsStmt (AssignE v flat-rhs) stmts-bod))
+
+                                                 (append-syms
+                                                  syms-rhs
+                                                  (ConsSym v syms-bod))))))))))))))))

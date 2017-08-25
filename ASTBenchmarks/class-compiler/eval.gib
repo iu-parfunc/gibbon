@@ -1,0 +1,20 @@
+#lang gibbon
+
+(require "common.gib")
+(provide eval)
+
+(define (eval [prg : ProgramR]) : Int
+  (case prg
+    [(ProgramR e) (eval* e (empty-dict))]))
+
+(define (eval* [e : ExpR] [env : (SymDict Int)]) : Int
+  (case e
+    [(LitER n) n]
+    [(VarER v) (ann (lookup env v) Int)]
+    [(LetER bnd bod)
+     (let ([v (vector-ref bnd 0)])
+       (let ([rhs2 (eval* (vector-ref bnd 1) env)])
+         (let ([env2 (insert env v rhs2)])
+           (eval* bod env2))))]
+    [(NegER e1)    (- 0 (eval* e1 env))]
+    [(AddER e1 e2) (+ (eval* e1 env) (eval* e2 env))]))

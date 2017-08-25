@@ -1,0 +1,37 @@
+#lang gibbon
+
+(require "../common.gib")
+(provide patch-instructions)
+
+(define (patch-instructions [prg : X86]) : X86
+  (case prg
+    [(ProgramX86 syms i instrs) (ProgramX86 syms i (concat-map-go-pi instrs (NullInstrs)))]))
+
+(define (concat-map-go-pi [ins : Instrs] [instrs : Instrs]) : Instrs
+  (case ins
+    [(NullInstrs) instrs]
+    [(ConsInstr s rst) (append-instrs (go s instrs) (concat-map-go-pi rst instrs))]))
+
+(define (go [instr : Instr] [instrs : Instrs]) : Instrs
+  (case instr
+    [(ADDQ e1 e2) (case e1
+                    [(DerefE r1 o1) (case e2
+                                      [(DerefE r2 o2) (ConsInstr (MOVQ (DerefE r1 o1) (RegE 'RAX))
+                                                                 (ConsInstr (ADDQ (RegE 'RAX) (DerefE r2 o2)) instrs))]
+                                      [(LitEX86 n) (ConsInstr instr instrs)]
+                                      [(VarEX86 v) (ConsInstr instr instrs)]
+                                      [(RegE r) (ConsInstr instr instrs)])]
+                    [(LitEX86 n) (ConsInstr instr instrs)]
+                    [(VarEX86 v) (ConsInstr instr instrs)]
+                    [(RegE r) (ConsInstr instr instrs)])]
+    [(MOVQ e1 e2) (case e1
+                    [(DerefE r1 o1) (case e2
+                                      [(DerefE r2 o2) (ConsInstr (MOVQ (DerefE r1 o1) (RegE 'RAX))
+                                                                 (ConsInstr (MOVQ (RegE 'RAX) (DerefE r2 o2)) instrs))]
+                                      [(LitEX86 n) (ConsInstr instr instrs)]
+                                      [(VarEX86 v) (ConsInstr instr instrs)]
+                                      [(RegE r) (ConsInstr instr instrs)])]
+                    [(LitEX86 n) (ConsInstr instr instrs)]
+                    [(VarEX86 v) (ConsInstr instr instrs)]
+                    [(RegE r) (ConsInstr instr instrs)])]
+    [(NEGQ e1) (ConsInstr instr instrs)]))

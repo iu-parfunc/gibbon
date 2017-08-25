@@ -1,0 +1,147 @@
+#lang gibbon
+
+(provide
+ ;;R0
+ R0 ProgramR
+ ExpR LitER VarER LetER NegER AddER
+
+ ;; C0
+ C0 ProgramC
+ ExpC LitEC VarEC NegEC AddEC
+ Stmt AssignE RetE
+ Syms NullSyms ConsSym
+ Stmts NullStmts ConsStmt
+
+ ;; X86
+ X86 ProgramX86
+ ExpX86 LitEX86 VarEX86 RegE DerefE
+ Instr ADDQ SUBQ NEGQ MOVQ CALLQ PUSHQ POPQ RETQ
+ Instrs NullInstrs ConsInstr
+
+ ;; functions
+ append-stmts snoc-stmts
+ append-syms  snoc-syms length-syms
+ append-instrs snoc-instrs)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; R0
+
+(data R0 (ProgramR ExpR))
+
+(data Prim
+      [AddE]
+      [NegE])
+
+;; Question: should this be ExpR0, LitER0 ? how would we extend that ?
+(data ExpR
+      [LitER Int]
+      [VarER Sym]
+      [LetER (Vector Sym ExpR) ExpR]
+      [NegER ExpR]
+      [AddER ExpR ExpR])
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; C0
+
+(data ExpC
+      [LitEC Int]
+      [VarEC Sym]
+      [NegEC ExpC]
+      [AddEC ExpC ExpC])
+
+(data Stmt
+      [AssignE Sym ExpC]
+      [RetE ExpC])
+
+(data Syms
+      [NullSyms]
+      [ConsSym Sym Syms])
+
+(data Stmts
+      [NullStmts]
+      [ConsStmt Stmt Stmts])
+
+(data C0 (ProgramC Syms Stmts))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; X86
+
+;; (data Reg
+;;       [RAX]
+;;       [RBX]
+;;       [RCX]
+;;       [RDX]
+;;       [RBP]
+;;       [RSI]
+;;       [RDI]
+;;       [R8]
+;;       [R9]
+;;       [C00]
+;;       [C01]
+;;       [C02]
+;;       [C03]
+;;       [C04]
+;;       [C05])
+
+(data ExpX86
+      [LitEX86 Int]
+      [VarEX86 Sym]
+      [RegE Sym]
+      [DerefE Sym Int])
+
+(data Instr
+      [ADDQ ExpX86 ExpX86]
+      [SUBQ ExpX86 ExpX86]
+      [NEGQ ExpX86]
+      [MOVQ ExpX86 ExpX86]
+      [CALLQ Sym]
+      [PUSHQ ExpX86]
+      [POPQ ExpX86]
+      [RETQ])
+
+(data Instrs
+      [NullInstrs]
+      [ConsInstr Instr Instrs])
+
+(data X86 (ProgramX86 Syms Int Instrs))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; syms
+(define (append-syms [xs : Syms] [ys : Syms]) : Syms
+  (case xs
+    [(NullSyms) ys]
+    [(ConsSym a bs) (ConsSym a (append-syms bs ys))]))
+
+(define (snoc-syms [syms : Syms] [s : Sym]) : Syms
+  (case syms
+    [(NullSyms) (ConsSym s (NullSyms))]
+    [(ConsSym x ys) (ConsSym x (snoc-syms ys s))]))
+
+(define (length-syms [syms : Syms]) : Int
+  (case syms
+    [(NullSyms) 0]
+    [(ConsSym s rst) (+ 1 (length-syms rst))]))
+
+;; stmts
+(define (append-stmts [xs : Stmts] [ys : Stmts]) : Stmts
+  (case xs
+    [(NullStmts) ys]
+    [(ConsStmt a bs) (ConsStmt a (append-stmts bs ys))]))
+
+(define (snoc-stmts [stmts : Stmts] [s : Stmt]) : Stmts
+  (case stmts
+    [(NullStmts) (ConsStmt s (NullStmts))]
+    [(ConsStmt x ys) (ConsStmt x (snoc-stmts ys s))]))
+
+;; instrs
+(define (append-instrs [xs : Instrs] [ys : Instrs]) : Instrs
+  (case xs
+    [(NullInstrs) ys]
+    [(ConsInstr a bs) (ConsInstr a (append-instrs bs ys))]))
+
+(define (snoc-instrs [instrs : Instrs] [s : Instr]) : Instrs
+  (case instrs
+    [(NullInstrs) (ConsInstr s (NullInstrs))]
+    [(ConsInstr x ys) (ConsInstr x (snoc-instrs ys s))]))
