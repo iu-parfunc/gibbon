@@ -50,7 +50,6 @@ export PLTADDONDIR=`pwd`/.racket_sandbox/
 #echo "----------------------------------------"
 # cd $top/; make clean
 
-
 set +x; echo
 echo "  Racket code (1/2)"
 echo "----------------------------------------"
