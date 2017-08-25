@@ -11,8 +11,6 @@ module Packed.FirstOrder.HaskellFrontend
   , desugarType
   ) where
 
---------------------------------------------------------------------------------
-
 import Control.Monad (forM)
 import Data.Either (partitionEithers)
 import Data.Foldable (foldrM)
@@ -25,6 +23,7 @@ import qualified Data.List as L
 
 import Packed.FirstOrder.L1.Syntax as L1
 import Packed.FirstOrder.Common as C hiding (l) 
+import Prelude hiding (exp)
 
 --------------------------------------------------------------------------------
 

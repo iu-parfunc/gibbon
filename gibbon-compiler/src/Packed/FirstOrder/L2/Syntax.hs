@@ -111,6 +111,25 @@ type LocExp = PreLocExp LocVar
 data LocRet = EndOf LRM
               deriving (Read, Show, Eq, Ord, Generic, NFData)
 
+-- instance FreeVars (PreLocExp l) where
+--   gFreeVars e =
+--     case e of
+--       StartOfLE _ -> S.empty
+--       AfterVariableLE
+                       
+instance FreeVars (E2Ext l d) where
+  gFreeVars e =
+    case e of
+     LetRegionE _ bod   -> gFreeVars bod
+     LetLocE _ _rhs bod -> -- gFreeVars rhs `S.union`
+                           gFreeVars bod
+     RetE _ vr          -> S.singleton vr
+     FromEndE _         -> S.empty
+
+freeLocVars :: E2Ext l d -> S.Set l
+freeLocVars = _finishme
+
+    
 instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
   type LocOf (E2Ext l d) = l
   type TyOf (E2Ext l d)  = UrTy l

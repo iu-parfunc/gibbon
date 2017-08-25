@@ -44,6 +44,7 @@ class Interp a where
 
 -- | Expression and program types which support a notion of free variables.
 class FreeVars a where
+    -- | Return a set of free TERM variables.  Does not return location variables.
     gFreeVars :: a -> S.Set Var
 
 instance FreeVars (NoExt l d) where
@@ -56,7 +57,7 @@ instance FreeVars (NoExt l d) where
 
 -- | A generic interface to expressions found in different phases of
 -- the compiler.
-class (Show e, Out e) => Expression e where
+class (Show e, Out e, FreeVars e) => Expression e where
   -- | The type representation used in this expression.
   type TyOf e
   -- | The location (variable) representation used in this expression.
