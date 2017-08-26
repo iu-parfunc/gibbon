@@ -24,7 +24,7 @@ import Text.PrettyPrint.GenericPretty (Out)
 
 import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.Common
-import Packed.FirstOrder.L1.Syntax as L1 
+import Packed.FirstOrder.L1.Syntax as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
 
 -- import Packed.FirstOrder.L2.Syntax (isCursorTy)
@@ -212,7 +212,6 @@ typeExp (dd,env2) (L _ exp) =
         L1.EqSymP  -> L1.BoolTy
         L1.MkTrue  -> L1.BoolTy
         L1.MkFalse -> L1.BoolTy
-        L1.Gensym  -> L1.SymTy
         L1.DictInsertP ty -> L1.SymDictTy (noLocsHere ty)
         L1.DictLookupP ty -> noLocsHere ty
         L1.DictEmptyP  ty -> L1.SymDictTy (noLocsHere ty)

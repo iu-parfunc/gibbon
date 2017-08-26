@@ -237,10 +237,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
             -- values and Cursors... or this won't work.
             VarE v -- | Just v' <- L2.fromWitnessVar v -> return $ env # v'
                    | otherwise                      -> return $ env # v
-            PrimAppE Gensym [] ->
-              -- return current nanosecond from the clock as a gensym'd symbol
-              -- TODO(cskksc): need a VSym ?
-              liftIO (getTime clk) >>= (return . VInt . fromIntegral . nsec)
+
             PrimAppE p ls  -> do args <- mapM (go env) ls
                                  return $ applyPrim p args
             ProjE ix ex -> do VProd ls <- go env ex

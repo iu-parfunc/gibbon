@@ -171,7 +171,7 @@ instance (Out l, Show l, Show d, Out d, Expression (e l d))
     where
       f :: (PreExp e l d) -> Bool
       f e =
-       case e of 
+       case e of
         VarE _    -> True
         LitE _    -> True
         LitSymE _ -> True
@@ -199,7 +199,7 @@ instance (Out l, Show l, Show d, Out d, Expression (e l d))
 instance Expression (PreExp e l d) => Expression (L (PreExp e l d)) where
   type (TyOf (L (PreExp e l d)))  = d
   type (LocOf (L (PreExp e l d))) = l
-  isTrivial (L _ e) = isTrivial e 
+  isTrivial (L _ e) = isTrivial e
 
 -- | Free data variables.  Does not include function variables, which
 -- currently occupy a different namespace.  Does not include location/region variables.
@@ -240,7 +240,6 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | DictLookupP Ty1    -- ^ takes dict,k errors if absent; annotated with element type
           | DictEmptyP  Ty1    -- ^ annotated with element type to avoid ambiguity
           | DictHasKeyP Ty1    -- ^ takes dict,k; returns a Bool, annotated with element type
-          | Gensym
           | ErrorP String Ty1
               -- ^ crash and issue a static error message.
               --   To avoid needing inference, this is labeled with a return type.
@@ -454,7 +453,6 @@ primArgsTy p =
     MkFalse -> []
     MkNullCursor     -> []
     SizeParam        -> []
-    Gensym           -> []
     DictEmptyP _ty   -> []
     DictInsertP _ty  -> error "primArgsTy: dicts not handled yet"
     DictLookupP _ty  -> error "primArgsTy: dicts not handled yet"

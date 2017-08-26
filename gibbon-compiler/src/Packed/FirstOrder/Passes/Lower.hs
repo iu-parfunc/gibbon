@@ -645,7 +645,6 @@ prim p =
     L1.MulP -> T.MulP
     L1.EqSymP -> T.EqP
     L1.EqIntP -> T.EqP
-    L1.Gensym -> error "prim: FIXME gensym"
     L1.SizeParam -> T.SizeParam
     L1.DictInsertP ty -> T.DictInsertP $ typ ty
     L1.DictLookupP ty -> T.DictLookupP $ typ ty

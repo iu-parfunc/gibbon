@@ -179,7 +179,6 @@ typecheck' TCConfig{postCursorize} success prg@(L2.Prog defs _funs _main) = each
                  L1.SizeParam -> return $ Concrete IntTy
                  L1.MkTrue    -> return $ Concrete BoolTy
                  L1.MkFalse   -> return $ Concrete BoolTy
-                 L1.Gensym -> return $ Concrete SymTy
 
                  L1.MkNullCursor -> return $ Concrete (CursorTy ())
                  -- WARNING: tricky convention here.  We DONT update 'ty' to CursorTy, because we need to remember

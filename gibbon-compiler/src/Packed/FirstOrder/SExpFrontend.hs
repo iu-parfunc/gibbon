@@ -327,8 +327,6 @@ exp se = L NoLoc $
    Ls3 "ann" (Ls3 "lookup" d k) ty ->
        PrimAppE (DictLookupP $ typ ty) [(exp d),(exp k)]
 
-   Ls0 (A "gensym" : _) -> PrimAppE Gensym []
-
    Ls3 "ann" (Ls3 "has-key?" d k) ty ->
      PrimAppE (DictHasKeyP $ typ ty) [(exp d),(exp k)]
 

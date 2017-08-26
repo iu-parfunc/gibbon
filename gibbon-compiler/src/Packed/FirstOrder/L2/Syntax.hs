@@ -90,8 +90,7 @@ data E2Ext loc dec =
 -- | L1 expressions extended with L2.  This is the polymorphic version.
 -- Shorthand for recursions above.
 type E2 l d = PreExp E2Ext l d
- 
-    
+
 -- instance Read (E2 l d) where
 -- instance Read (L (E2 l d)) where
 
@@ -614,7 +613,6 @@ primRetTy p =
     AddP -> IntTy
     SubP -> IntTy
     MulP -> IntTy
-    Gensym -> SymTy
     EqSymP  -> BoolTy
     EqIntP  -> BoolTy
     MkTrue  -> BoolTy

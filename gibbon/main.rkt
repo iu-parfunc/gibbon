@@ -8,8 +8,6 @@
          list and empty? error 
          eq? = Listof True False
          sym-append
-         ;; temporary. remove after adding (symappend :: Symbol -> Int -> Symbol)
-         gensym
 
          time + * -
          size-param iterate

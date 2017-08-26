@@ -51,13 +51,13 @@ import Control.DeepSeq (NFData)
 type Loc = LocVar
 
 type Reg = Var
-    
+
 data LocProgram = LocProgram (DDefs Ptype) (Map Var Fdef) (Maybe Exp)
                   deriving (Read,Show,Eq,Ord, Generic, NFData)
-                        
+
 data Fdef = Fdef Var Ftype [Rp] [Var] Exp
             deriving (Read,Show,Eq,Ord, Generic, NFData)
-                     
+
 data Rp = LocIn Loc Reg
         | LocOut Loc Reg
           deriving (Read,Show,Eq,Ord, Generic, NFData)
@@ -103,7 +103,6 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | DictLookupP Ptype  -- ^ takes dict,k errors if absent; annotated with element type
           | DictEmptyP Ptype   -- ^ annotated with element type to avoid ambiguity
           | DictHasKeyP Ptype  -- ^ takes dict,k; returns a Bool, annotated with element type
-          | Gensym
           | ErrorP String Ptype
               -- ^ crash and issue a static error message.
               --   To avoid needing inference, this is labeled with a return type.
@@ -146,7 +145,7 @@ data Constr = StartOfC Loc Reg
             | AfterXC Var Loc Loc
             | InC Loc Reg
               deriving (Read,Show,Eq,Ord, Generic, NFData)
-                       
+
 data LocState = InLS Loc
               | OutLS Loc
               | AfterLS Loc
@@ -174,7 +173,7 @@ typeofE dd g c r ls exp =
                                              ++ " but expected " ++ (show pt) ++ " for exp: "
                                              ++ (show e1))
 
-      LetRegionE r' exp -> typeofE dd g c (S.insert r' r) ls exp  
+      LetRegionE r' exp -> typeofE dd g c (S.insert r' r) ls exp
 
       LetE v pt e1 e2 ->
           if hasPacked pt then error ("Expected unpacked type, found " ++ (show pt))
@@ -194,15 +193,15 @@ typeofE dd g c r ls exp =
                             PlusCL i l -> let r' = findRegion r c l
                                               c' = S.union c $ S.fromList [InC v r', After1C i l v]
                                               ls' = S.union ls $ S.fromList [OutLS v, AfterLS l]
-                                          in noAfter l ls $ typeofE dd g c' r ls' exp 
+                                          in noAfter l ls $ typeofE dd g c' r ls' exp
                             PlusSizeOfL v' l' -> case M.lookup v g of
                                                    Just (PrimType (PackedType v'' l'')) ->
                                                        if l' == l'' -- should be equal!
-                                                       then undefined 
+                                                       then undefined
                                                        else let r' = findRegion r c l'
                                                                 c' = S.union c $ S.fromList [AfterXC v' l' v, InC v r']
                                                                 ls' = S.union ls $ S.fromList [AfterLS l', OutLS v]
-                                                            in noAfter l' ls $ typeofE dd g c' r ls' exp 
+                                                            in noAfter l' ls $ typeofE dd g c' r ls' exp
                                                    _ -> undefined
       MkProdE exps -> f ls exps
           where f ls (e:es) = let (PrimType t,ls') = typeofE dd g c r ls e
@@ -322,8 +321,6 @@ interpE fenv env exp =
                          (LitSymE i1) <- interpE fenv env e1
                          (LitSymE i2) <- interpE fenv env e2
                          return $ if (i1 == i2) then PrimAppE MkTrue [] else PrimAppE MkFalse []
-            Gensym -> do v <- gensym "gensym"
-                         return $ LitSymE v
             MkTrue -> return $ PrimAppE MkTrue []
             MkFalse -> return $ PrimAppE MkFalse []
 
