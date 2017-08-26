@@ -6,8 +6,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# OPTIONS_GHC -fdefer-typed-holes #-}
+{-# OPTIONS_GHC -fno-warn-unused-imports #-}
 
 -- | An intermediate language with an effect system that captures traversals.
 --
@@ -21,12 +20,15 @@ import Data.Loc
 import Data.List as L
 import Data.Set as S
 import Data.Map as M
-import Text.PrettyPrint.GenericPretty
-import Debug.Trace
 
 import Packed.FirstOrder.L2.Syntax
 import Packed.FirstOrder.Common hiding (FunDef)
 import Packed.FirstOrder.L1.Syntax hiding (Prog, FunDef, ddefs, fundefs, mainExp)
+
+import Text.PrettyPrint.GenericPretty
+import Debug.Trace
+import Packed.FirstOrder.L2.Examples
+import Packed.FirstOrder.L2.Typecheck
 
 --------------------------------------------------------------------------------
 
@@ -48,7 +50,7 @@ initialEnv :: NewFuns -> FunEnv
 initialEnv mp = M.map go mp
   where
     go :: FunDef -> ArrowTy Ty2
-    go fn@FunDef{funty} =
+    go FunDef{funty} =
       let locs       = getArrowTyLocs funty
           maxEffects = locsEffect locs
       in funty { arrEffs = maxEffects }
@@ -72,32 +74,44 @@ inferEffects prg@Prog{ddefs,fundefs} = do
 
 
 inferFunDef :: DDefs Ty2 -> FunEnv -> FunDef -> ArrowTy Ty2
-inferFunDef ddfs fenv fn@FunDef{funarg,funbod,funty} =
-  let env0 = M.singleton funarg inLoc
-      inLoc = head $ L.map (\(LRM l _ _) -> l) $
-              L.filter (\(LRM _ _ m) -> m == Input) (locVars funty)
-      (eff,_)  = inferExp ddfs fenv env0 funbod
-      eff'    = S.filter ((==) (Traverse inLoc)) eff
-  in (funty {arrEffs = eff'})
+inferFunDef ddfs fenv FunDef{funarg,funbod,funty} =
+  case outLoc of
+       Nothing -> funty {arrEffs = eff'}
+       Just loc ->
+         -- if the outLoc is same as inLoc, this is an identity fn.
+         -- we change the function signature accordingly
+         if (loc == inLoc)
+         then toIdFunty funty
+         else funty {arrEffs = eff'}
+  where
+    env0  = M.singleton funarg inLoc
+    inLoc = head $ L.map (\(LRM l _ _) -> l) $
+            L.filter (\(LRM _ _ m) -> m == Input) (locVars funty)
+    (eff,outLoc) = inferExp ddfs fenv env0 funbod
+    eff'         = S.filter ((==) (Traverse inLoc)) eff
+
+    isInLRM :: LRM -> Bool
+    isInLRM LRM{lrmMode} = lrmMode == Input
+
+    -- | Change arrOut to be same as arrIn, and remove output LRM from locVars
+    toIdFunty :: ArrowTy Ty2 -> ArrowTy Ty2
+    toIdFunty ty@ArrowTy{locVars,arrIn} = ty { arrOut = arrIn
+                                             , locVars = L.filter isInLRM locVars
+                                             }
 
 
--- | TODO: same location variables for the identity function. add missing cases
 inferExp :: DDefs Ty2 -> FunEnv -> LocEnv -> L Exp2 -> (Set Effect, Maybe LocVar)
-inferExp ddfs fenv env (L p exp) =
+inferExp ddfs fenv env (L _p exp) =
   case exp of
     -- QUESTION: does a variable reference count as traversing to the end?
     -- If so, the identity function has the traverse effect.
     -- I'd prefer that the identity function get type (Tree_p -{}-> Tree_p).
-    VarE v -> (S.empty, Just $ env # v)
+    VarE v -> (S.empty, M.lookup v env)
 
-    LitE _ -> (S.empty, Nothing)
+    LitE _    -> (S.empty, Nothing)
+    LitSymE _ -> (S.empty, Nothing)
 
-    LetE (v,locs,ty,rhs) bod ->
-      let (effRhs,_) = inferExp ddfs fenv env rhs
-          (effBod,_) = inferExp ddfs fenv env bod
-      in (S.union effRhs effBod, Nothing)
-
-    AppE v locs e ->
+    AppE v locs _e ->
       -- Substitue locations used at this particular call-site in the function
       -- effects computed so far
       let orgLocs = getArrowTyLocs (fenv # v)
@@ -108,6 +122,34 @@ inferExp ddfs fenv env (L p exp) =
     -- If rands are already trivial, no traversal effects can occur here.
     -- All primitives operate on non-packed data.
     PrimAppE _ rands -> assertTrivs rands (S.empty, Nothing)
+
+    -- TODO: what would _locs have here ?
+    LetE (_v,_locs,_ty,rhs) bod ->
+      let (effRhs,_rhsLoc) = inferExp ddfs fenv env rhs
+          -- TODO: extend env with rhsLoc ? or _locs ?
+          (effBod,bLoc) = inferExp ddfs fenv env bod
+      in (S.union effRhs effBod, bLoc)
+
+    -- TODO: do we need to join locC and locA
+    IfE tst consq alt ->
+      let (effT,_locT) = inferExp ddfs fenv env tst
+          (effC,locC) = inferExp ddfs fenv env consq
+          (effA,locA) = inferExp ddfs fenv env alt
+          loc = case (locC,locA) of
+                  (Nothing,Nothing)  -> Nothing
+                  (Just l', Nothing) -> Just l'
+                  (Nothing, Just l') -> Just l'
+                  (Just l', Just _m) -> Just l'
+      in (S.union effT (S.intersection effC effA), loc)
+
+    -- ignore locations, won't have any effect on the generated effects. ??
+    MkProdE ls ->
+      let (effs, _locs) = unzip $ L.map (inferExp ddfs fenv env) ls
+      in (S.unions effs, Nothing)
+
+    ProjE _n e ->
+      let (eff, _loc) = inferExp ddfs fenv env e
+      in (eff, Nothing)
 
     CaseE e mp ->
       let (eff,loc1) = inferExp ddfs fenv env e
@@ -128,6 +170,8 @@ inferExp ddfs fenv env (L p exp) =
     -- output values, so they are not interesting for this effect analysis.
     DataConE _loc _dcon es -> assertTrivs es (S.empty, Nothing)
 
+    TimeIt e _ _ -> inferExp ddfs fenv env e
+
     Ext (LetRegionE _ rhs) -> inferExp ddfs fenv env rhs
     Ext (LetLocE _ _ rhs)  -> inferExp ddfs fenv env rhs
     Ext (RetE _ _)         -> (S.empty, Nothing)
@@ -138,7 +182,7 @@ inferExp ddfs fenv env (L p exp) =
   where
     caserhs :: (DataCon, [(Var,LocVar)], L Exp2) -> (Bool, (Set Effect, Maybe LocVar))
     -- We've gotten "to the end" of a nullary constructor just by matching it:
-    caserhs (dcon,[],e) = ( True , inferExp ddfs fenv env e )
+    caserhs (_dcon,[],e) = ( True , inferExp ddfs fenv env e )
     caserhs (dcon,patVs,e) =
       let (vars,locs) = L.unzip patVs
           tys    = lookupDataCon ddfs dcon
@@ -170,96 +214,3 @@ inferExp ddfs fenv env (L p exp) =
           isLocal (Traverse v) = L.elem v locs
           stripped = S.filter isLocal eff
       in ( winner, (stripped,Nothing) )
-
-
-test1 = runSyM 0 $ inferEffects add1
-
-add1 :: Prog
-add1 = Prog { ddefs = add1DDefs
-            , fundefs = M.fromList [("add1", add1FunDef )]
-            , mainExp = Nothing
-            }
-
-test2 = runSyM 0 $ inferEffects useAdd1
-
-useAdd1 :: Prog
-useAdd1 = Prog { ddefs = add1DDefs
-               , fundefs = M.fromList [("add1", add1FunDef ),
-                                       ("useAdd1", useAdd1FunDef)]
-               , mainExp = Nothing
-               }
-
-useAdd1FunDef :: FunDef
-useAdd1FunDef = FunDef
-                { funname = "useAdd1"
-                , funty = ArrowTy { locVars = [LRM "lin10" (VarR "r10") Input,
-                                                 LRM "lout10" (VarR "r10") Output]
-                                    , arrIn = PackedTy "tree" "lin10"
-                                    , arrEffs = S.fromList []
-                                    , arrOut = PackedTy "tree" "lout10"
-                                    , locRets = [EndOf (LRM "lin10" (VarR "r10") Input)]
-                                    }
-                , funarg = "uatr"
-                , funbod = l$ LetE ("x10",
-                                      [],
-                                      PackedTy "Tree" "lout10",
-                                      l$AppE "add1"
-                                      ["lin10","lout10"]
-                                      (l$VarE "uatr"))
-                            (l$ VarE "x10")
-                }
-
-add1DDefs = M.fromList
-            [("Tree",
-              DDef {tyName = "Tree",
-                    dataCons = [ ("Leaf", [(False, IntTy)]),
-                                 ("Node",
-                                  [(False, PackedTy "Tree" "l"),(False, PackedTy "Tree" "l")])
-                               ]})]
-
-
-add1FunDef = FunDef { funname = "add1"
-                    , funty   = ArrowTy {locVars = [LRM "lin" (VarR "r1") Input,
-                                                    LRM "lout" (VarR "r1") Output],
-                                         arrIn = PackedTy "tree" "lin",
-                                         arrEffs = S.fromList [],
-                                         arrOut = PackedTy "tree" "lout",
-                                         locRets = [EndOf (LRM "lin" (VarR "r1") Input)]
-                                        }
-                    , funarg = "tr"
-                    , funbod = l$ CaseE (l$ VarE "tr")
-                               [ ("Leaf",
-                                   [("n", "l0")],
-                                   l$ LetE ("v", [], IntTy, l$PrimAppE AddP [l$VarE "n", l$LitE 1])
-                                   (l$ VarE "v")),
-
-                                 ("Node",
-                                   [("x", "lx"),("y", "ly")],
-                                   l$Ext (LetLocE "lx1"
-                                         (AfterConstantLE 1 "lout")
-                                         (l$LetE ("x1",
-                                                 [],
-                                                 PackedTy "Tree" "lx1",
-                                                 l$AppE "add1"
-                                                 ["lx","lx1"]
-                                                 (l$VarE "x"))
-                                           (l$Ext (LetLocE "ly1"
-                                                  (AfterVariableLE "x1"
-                                                    "lx1")
-                                                  (l$LetE ("y1",
-                                                          [],
-                                                          PackedTy "Tree"
-                                                          "ly1",
-                                                          l$AppE "add1"
-                                                          ["ly", "ly1"]
-                                                          (l$VarE "y"))
-                                                    (l$LetE ("z",
-                                                            [],
-                                                            PackedTy "Tree"
-                                                            "lout",
-                                                            l$DataConE "lout"
-                                                            "Node"
-                                                            [l$VarE "x1", l$VarE "y1"])
-                                                      (l$VarE "z"))))))))
-                               ]
-                    }

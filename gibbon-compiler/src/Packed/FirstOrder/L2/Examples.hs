@@ -72,8 +72,10 @@ FunDef {funname = "id1",
         funbod = VarE "tr"}
 -}
 id1 :: L2.FunDef
-id1 = L2.FunDef "id1" idFunTy "tr18" (l$ VarE "tr18")
+id1 = L2.FunDef "id1" idFunTy "tr18" idFunBod
   where
+    idFunBod = (l$ VarE "tr18")
+
     idFunTy :: ArrowTy Ty2
     idFunTy = (ArrowTy
                [LRM "lin19" (VarR "r20") Input, LRM "lout21" (VarR "r20") Output]
