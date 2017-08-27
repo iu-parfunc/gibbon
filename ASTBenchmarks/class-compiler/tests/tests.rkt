@@ -2,13 +2,15 @@
 
 (require "test-uniqify.rkt")
 (require "test-flatten.rkt")
+(require "test-compiler.rkt")
 (require rackunit)
 
 ;; TODO: write a parser for R0 so that we can re-use all tests from the class
 
 (define tests
   (list uniqify-tests
-        flatten-tests))
+        flatten-tests
+        compiler-tests))
 
 (define (run-tests)
   (let* ([test-results (flatten (map run-test tests))]
