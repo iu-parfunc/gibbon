@@ -660,6 +660,7 @@ includeBuiltins (Env2 _ _) = undefined
 --------------------------------------------------------------------------------
 
 -- | Our canonical simple example, written in this IR.
+--   This version uses let-bound recursive calls.  I.e., it is flattened.
 add1Prog :: Prog
 add1Prog = withAdd1Prog Nothing
 

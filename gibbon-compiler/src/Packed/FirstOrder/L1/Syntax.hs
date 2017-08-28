@@ -271,6 +271,7 @@ instance Out Prog
 pattern SymTy :: forall a. UrTy a
 pattern SymTy = IntTy
 
+{-# DEPRECATED Packed "getting rid of this shorthand" #-}
 pattern Packed :: TyCon -> UrTy ()
 pattern Packed c = PackedTy c ()
 

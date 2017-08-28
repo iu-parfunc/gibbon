@@ -116,6 +116,7 @@ library
   ghc-options:        -fdefer-typed-holes 
   default-extensions: ScopedTypeVariables PatternSynonyms DeriveGeneric DeriveFunctor
                       NamedFieldPuns TupleSections TypeFamilies
+  default-extensions: PartialTypeSignatures
                       -- This can break things: DeriveAnyClass
 
 executable gibbon

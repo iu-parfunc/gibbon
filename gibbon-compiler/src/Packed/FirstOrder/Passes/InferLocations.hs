@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 -- TEMP:
-{-# OPTIONS_GHC -Wno-all #-}
+-- {-# OPTIONS_GHC -Wno-all #-}
 
 -- | Convert from L1 to L2.
 
@@ -92,13 +92,13 @@ import Control.Monad.Trans (lift)
 -- import qualified Control.Monad.Trans.Cont as CC
 
 
-import Packed.FirstOrder.Common (l, LRM(..))
+import Packed.FirstOrder.Common as C hiding (extendVEnv) -- (l, LRM(..)) 
 import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common (Var, Env2, DDefs, LocVar, runSyM, SyM, gensym, toVar)
 import qualified Packed.FirstOrder.L1.Syntax as L1
 import Packed.FirstOrder.L2.Syntax as L2
-import Packed.FirstOrder.L2.Typecheck
-    (ConstraintSet, LocConstraint(..), RegionSet(..), LocationTypeState(..))
+import Packed.FirstOrder.L2.Typecheck as T
+--     (ConstraintSet, LocConstraint(..), RegionSet(..), LocationTypeState(..))
 
 
 -- Dependencies
@@ -161,6 +161,10 @@ data FullEnv = FullEnv
 extendVEnv :: Var -> Ty2 -> FullEnv -> FullEnv
 extendVEnv = undefined
 
+
+lookupVarLoc :: Var -> FullEnv -> LocVar
+lookupVarLoc = undefined
+             
 lookupVEnv :: Var -> FullEnv -> Ty2
 lookupVEnv = undefined
 
@@ -242,14 +246,59 @@ type RepairTactic = Failure -> TiM Result
 
 -- | The compiler pass that converts from L1 to L2, inferring and
 -- inserting location variables into the program.
+--
+-- This complete compiler pass has already been instantiated with a
+-- failure-recover strategy.  Use rawInferProg if you want to apply a
+-- different strategy.
 inferLocs :: L1.Prog -> SyM L2.Prog
 inferLocs (L1.Prog defs funs main) =
     error "FINISHME"
 
 
+withRepairTactic :: RepairTactic -> L1.Prog -> SyM L2.Prog
+withRepairTactic = undefined
+
+inferProg :: L1.Prog -> TiM L2.Prog
+inferProg = undefined
+             
 -- | Trivial expressions never cause failures.
 doTriv :: FullEnv -> L1.Exp1 -> Exp2
 doTriv = _finishme
+
+inferExps :: FullEnv -> [L L1.Exp1] -> Cont -> TiM Result
+inferExps = _fin
+
+
+type LsCont = [L Exp2] -> TiM Result
+
+sizeOrLoc :: Ty2 -> Either Int LocVar
+sizeOrLoc = undefined
+
+addOffset f off = undefined
+    
+-- | Takes the location of the tag and processes all the operands.
+doDataConFields :: FullEnv -> LocVar -> [L L1.Exp1] -> LsCont -> TiM Result
+doDataConFields env lprv0 ls0 k0 =
+    go (T.AfterConstantC 1 lprv0) ls0 []
+  where
+    go :: (LocVar -> LocConstraint) -> _ -> _ -> _
+    go _ [] acc = -- All fields processed.
+       k0 (reverse acc)
+    go lprev (nxt:rst) acc =
+       inferExp env nxt $ \(nxt',nxtTy) -> 
+        case sizeOrLoc nxtTy of
+          Left sz ->
+            go (addOffset lprev sz) rst (nxt' : acc)
+
+            -- do tellConstraint (LL (T.AfterConstantC sz lprev _))
+
+          Right loc ->
+            case nxt' of
+              L _ (VarE vr) ->
+                let lvar = lookupVarLoc vr env in
+                do tellConstraint (LL (lprev lvar))                                  
+                   go (T.AfterVariableC vr lvar) rst (nxt' : acc)
+
 
 -- | inferExp, if it succeeds, discharges all fresh locations used with 'LetLoc' forms.
 -- If it fails, it returns a failure object containing a continuation.
@@ -270,9 +319,14 @@ inferExp env (L sl1 ex0) k =
             k' (c',tyc)
 
     DataConE () con ls -> do
-      loc <- freshLocVar "lDC"      
-      k ( l$ L2.DataConE loc con (map (fmap (doTriv env)) ls)
-        , _ )
+      loc <- freshLocVar "lDC" -- Location of the tag itself.
+      let tyc = getTyOfDataCon (dataDefs env) con 
+             
+      -- TODO, constrain each argument to have a location related to the previous:
+      doDataConFields env loc ls $ \ ls' -> 
+         k ( l$ L2.DataConE loc con ls'
+           , PackedTy tyc loc )
+
 
     -- Lets are where we allocate fresh locations:
     L1.LetE (vr,locs,_rhsTy,L sl2 rhs) bod | [] <- locs ->
@@ -431,7 +485,7 @@ go =  fst . fst . runSyM 0 . W.runWriterT . runExceptT
 
 t1 :: Either Failure Result
 t1 = fst$ fst$ runSyM 0 $ W.runWriterT $ runExceptT $
-     inferExp emptyEnv (l$ L1.LitE 3) idCont
+     inferExp emptyEnv (l$ LitE 3) idCont
 
 
 -- t2_ :: TiM Result
@@ -441,7 +495,7 @@ t1 = fst$ fst$ runSyM 0 $ W.runWriterT $ runExceptT $
 --                idCont
 
 t2_ :: TiM Result
-t2_ = inferExp emptyEnv (l$ L1.LetE ("v",[], IntTy, l$ L1.LitE 33)
+t2_ = inferExp emptyEnv (l$ L1.LetE ("v",[], IntTy, l$ LitE 33)
                            (l$ L1.VarE "v"))
                idCont
                
@@ -452,3 +506,25 @@ t3_ :: TiM Result
 t3_ = inferExp emptyEnv (l$ L1.LetE ("v",[], BoolTy, l$ L1.PrimAppE L1.MkTrue [])
                            (l$ L1.VarE "v"))
                idCont
+
+
+-- | Here is a challenge case where we have a scalar field between two
+-- packed-data fields.
+dd1 :: DDefs (UrTy ())
+dd1 = (fromListDD [DDef "Tree"
+                   [ ("Leaf",[])
+                   , ("Node",[ (False, PackedTy "Tree" ())
+                             , (False, IntTy)
+                             , (False, PackedTy "Tree" ())])]])
+
+-- | Simply construct a small tree value.
+t4_p :: L1.Prog
+t4_p = L1.Prog dd1 M.empty $ Just $
+       l$ LetE ("x",[],PackedTy "Tree" (), l$ DataConE () "Leaf" []) $
+       l$ LetE ("y",[],PackedTy "Tree" (), l$ DataConE () "Leaf" []) $
+       l$ L1.DataConE () "Node"
+          [ l$ VarE "x" , l$ LitE 99, l$ VarE "y"]
+
+
+t4 :: Prog
+t4 = fst $ runSyM 100 (inferLocs t4_p)
