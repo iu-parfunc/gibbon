@@ -180,11 +180,11 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
                  L1.EqSymP -> do len2
                                  ensureEqualTy exp IntTy (tys !! 0)
                                  ensureEqualTy exp IntTy (tys !! 1)
-                                 return $ (IntTy,tstate)
+                                 return $ (BoolTy,tstate)
                  L1.EqIntP -> do len2
                                  ensureEqualTy exp IntTy (tys !! 0)
                                  ensureEqualTy exp IntTy (tys !! 1)
-                                 return $ (IntTy,tstate)
+                                 return $ (BoolTy,tstate)
                  L1.MkTrue  -> do len0; return $ (BoolTy,tstate)
                  L1.MkFalse -> do len0; return $ (BoolTy,tstate)
 
