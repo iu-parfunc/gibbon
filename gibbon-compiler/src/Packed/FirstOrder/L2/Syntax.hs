@@ -55,9 +55,6 @@ module Packed.FirstOrder.L2.Syntax
     , isExtendedPattern
     , builtinTEnv
     , includeBuiltins
-
-    -- * Example
-    , add1Prog, withAdd1Prog
     )
     where
 
@@ -115,7 +112,7 @@ data LocRet = EndOf LRM
 --     case e of
 --       StartOfLE _ -> S.empty
 --       AfterVariableLE
-                       
+
 instance FreeVars (E2Ext l d) where
   gFreeVars e =
     case e of
@@ -128,7 +125,7 @@ instance FreeVars (E2Ext l d) where
 freeLocVars :: E2Ext l d -> S.Set l
 freeLocVars = _finishme
 
-    
+
 instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
   type LocOf (E2Ext l d) = l
   type TyOf (E2Ext l d)  = UrTy l
@@ -654,59 +651,3 @@ includeBuiltins (Env2 _ _) = undefined
     -- Env2 v (f `M.union` f')
     -- where f' = M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
     --                       | (n, ArrowTy a _ b) <- M.assocs builtinTEnv ]
-
-
--- Example
---------------------------------------------------------------------------------
-
--- | Our canonical simple example, written in this IR.
-add1Prog :: Prog
-add1Prog = withAdd1Prog Nothing
-
--- | Supply a main expression to run with add1 defined.
-withAdd1Prog :: Maybe (L Exp2,Ty2) -> Prog
-withAdd1Prog mainExp =
-    let ddfs = ddtree
-        funs = (M.fromList [("add1",exadd1)])
-    in Prog ddfs funs mainExp
- where
-  ddtree :: DDefs Ty2
-  ddtree = (fromListDD [DDef "Tree"
-                                [ ("Leaf",[(False,IntTy)])
-                                , ("Node",[(False,PackedTy "Tree" "l")
-                                          ,(False,PackedTy "Tree" "l")])]])
-
-  exadd1 :: FunDef
-  exadd1 = FunDef "add1" exadd1ty "tr" exadd1bod
-
-  exadd1ty :: ArrowTy Ty2
-  exadd1ty = (ArrowTy
-              [LRM "lin" (VarR "r1") Input, LRM "lout" (VarR "r1") Output]
-              (PackedTy "tree" "lin")
-              -- (S.fromList [Traverse "lin"])
-              (S.fromList [])
-              (PackedTy "tree" "lout")
-              [EndOf $ LRM "lin" (VarR "r1") Input])
-
-  exadd1bod :: L Exp2
-  exadd1bod =
-      l$ CaseE (l$ VarE "tr") $
-        [ ("Leaf", [("n","l0")], l$
-                                 LetE ("v",[],IntTy,l$ PrimAppE L1.AddP
-                                                    [l$ VarE "n",
-                                                     l$ LitE 1])
-                                 (l$ VarE "v"))
-        , ("Node", [("x","l1"),("y","l2")],
-           l$ Ext $ LetLocE "lout1" (AfterConstantLE 1 "lout") $
-           l$ LetE ("x1",[],PackedTy "Tree" "lout1",
-                           l$ AppE "add1" ["l1","lout1"] $
-                           l$ VarE "x") $
-           l$ Ext $ LetLocE "lout2" (AfterVariableLE "x1" "lout1") $
-           l$ LetE ("y1",[],PackedTy "Tree" "lout2",
-                           l$ AppE "add1" ["l2","lout2"] $
-                           l$ VarE "y") $
-           l$ LetE ("z",[],PackedTy "Tree" "lout",
-                    l$ DataConE "lout" "Node"
-                    [ l$ VarE "x1" , l$ VarE "y1"]) $
-           l$ VarE "z")
-        ]
