@@ -211,6 +211,11 @@ newtype TiHole = TiHole Cont
 data Selection = Selection L1.Exp1 TiHole
 -- TODO: should we know the type of the expression selected at this point?
 
+-- TODO: Really we should have two continuationsin a selection: one
+-- for the context of the hole, in case the repair strategy wants to
+-- examine the whole program, and a second one to continue
+-- typechecking.
+
 instance Show Selection where
   show (Selection e2 _hole) =
     "(Selection of subexpr: "++show e2++")"
