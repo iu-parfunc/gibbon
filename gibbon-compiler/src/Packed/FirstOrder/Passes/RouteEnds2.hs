@@ -61,6 +61,7 @@ data EndOfRel = EndOfRel
       endOf :: M.Map LocVar LocVar -- ^ Map a location to it's EndOf witness
     , equivTo :: M.Map LocVar LocVar -- ^ Map of a location to a known equivalent location
     }
+  deriving (Eq, Ord, Read, Show)
 
 -- | Create an empty EndOfRel
 emptyRel :: EndOfRel

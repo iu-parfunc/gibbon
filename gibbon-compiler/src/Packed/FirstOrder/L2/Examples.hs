@@ -4,16 +4,16 @@ module Packed.FirstOrder.L2.Examples
   ( -- * Data definitions
     ddtree
     -- * Functions
-  , add1Fun, add1TraversedFun, id1Fun, copyTreeFun, id2Fun
+  , add1Fun, add1TraversedFun, id1Fun, copyTreeFun, id2Fun, id3Fun
 
     -- * Programs
-  , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog
+  , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog
   ) where
 
 import Data.Loc
 import Data.Set as S
 import Data.Map as M
-import Text.PrettyPrint.GenericPretty
+-- import Text.PrettyPrint.GenericPretty
 
 import Packed.FirstOrder.Common hiding (FunDef)
 import Packed.FirstOrder.L2.Syntax
@@ -153,3 +153,21 @@ id1WithCopyFun = id1Fun { funbod = l$ AppE "copyTree" ["lin19","lout21"]
                                    (l$ VarE "tr18")
                         , funname = "id1WithCopy"
                         }
+
+--------------------------------------------------------------------------------
+
+id3Fun :: FunDef
+id3Fun = FunDef "id3" id3Ty "i42" id3Bod
+  where
+    id3Ty :: ArrowTy Ty2
+    id3Ty = (ArrowTy
+             [LRM "lin43" (VarR "r44") Input, LRM "lout45" (VarR "r44") Output]
+             (IntTy)
+             (S.empty)
+             (IntTy)
+             [])
+    id3Bod = l$ VarE "i42"
+
+
+id3Prog :: Prog
+id3Prog = Prog ddtree (M.fromList [("id3", id3Fun)]) Nothing

@@ -50,6 +50,7 @@ runT prg = fst $ runSyM 0 $ do
   l2 <- tcProg l2
   routeEnds l2
 
+
 assertRouteEnds :: Prog -> Var -> [LocRet] -> Assertion
 assertRouteEnds prg fnName expected = expected @=? lRets
   where -- runT and get LocRet
@@ -71,6 +72,10 @@ case_id2 = assertRouteEnds id2Prog "id2" []
 -- | copyTree does
 case_copyTree :: Assertion
 case_copyTree = assertRouteEnds copyTreeProg "copyTree" [EndOf $ LRM "lin23" (VarR "r24") Input]
+
+case_id3 :: Assertion
+case_id3 = assertRouteEnds id3Prog "id3" []
+
 
 -- |
 routeEnds2Tests :: TestTree
