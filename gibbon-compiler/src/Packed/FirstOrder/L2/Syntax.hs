@@ -24,7 +24,7 @@ module Packed.FirstOrder.L2.Syntax
     , progToEnv
 
     -- *
-    , getArrowTyLocs, substEffs
+    , getArrowTyLocs, substEffs, substTy
 
     -- * Temporary backwards compatibility, plus rexports
     , UrTy(..)
@@ -268,8 +268,8 @@ _stripTyLocs = fmap (const ())
 
 
 -- | Apply a variable substitution to a type.
-_substTy :: Map LocVar LocVar -> Ty2 -> Ty2
-_substTy mp t = go t
+substTy :: Map LocVar LocVar -> Ty2 -> Ty2
+substTy mp t = go t
   where
     go t =
      case t of

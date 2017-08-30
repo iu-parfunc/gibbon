@@ -154,7 +154,12 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
              let handleTS ts (l,Output) =  switchOutLoc exp ts l
                  handleTS ts _ = return ts
              tstate' <- foldM handleTS tstate $ zip ls $ L.map (\(LRM _ _ m) -> m) locVars
-             return (arrOut,tstate')
+
+             -- use locVars used at call-site in the returned type
+             -- TODO: check this
+             let arrOutMp = M.fromList $ zip (L.map (\(LRM l _ _) -> l) locVars) ls
+                 arrOut'  = substTy arrOutMp arrOut
+             return (arrOut',tstate')
 
       PrimAppE pr es -> do
 

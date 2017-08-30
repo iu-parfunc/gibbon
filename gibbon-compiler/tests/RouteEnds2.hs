@@ -37,7 +37,10 @@ expectedTest1 = Prog {ddefs = M.fromList [(Var "Tree",DDef {tyName = Var "Tree",
 
 -- TODO: this doesn't typecheck
 case_add1_test1 :: Assertion
-case_add1_test1 = expectedTest1 @=? actualTest1
+case_add1_test1 =
+  -- expectedTest1  @=? actual
+  -- where actual = runT $ add1Prog { mainExp = Just (test1,IntTy) }
+  expectedTest1 @=? actualTest1
   where
     ddfs  = ddtree
     funs  = (M.fromList [(toVar "add1",add1TraversedFun)])
@@ -76,6 +79,8 @@ case_copyTree = assertRouteEnds copyTreeProg "copyTree" [EndOf $ LRM "lin23" (Va
 case_id3 :: Assertion
 case_id3 = assertRouteEnds id3Prog "id3" []
 
+case_copy_on_id1 :: Assertion
+case_copy_on_id1 = assertRouteEnds copyOnId1Prog "id1WithCopy" [EndOf $ LRM "lin19" (VarR "r20") Input]
 
 -- |
 routeEnds2Tests :: TestTree

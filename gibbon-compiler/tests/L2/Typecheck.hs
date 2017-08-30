@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 
 -- | Tests for L2.Typecheck
@@ -15,7 +16,7 @@ import Data.Loc
 import Data.Map as M
 import Data.Set as S
 
-import Packed.FirstOrder.Common
+import Packed.FirstOrder.Common hiding (FunDef)
 import Packed.FirstOrder.L2.Syntax as L2
 import Packed.FirstOrder.L2.Typecheck
 import Packed.FirstOrder.L2.Examples
@@ -152,6 +153,13 @@ case_test6 =  assertValue exp (IntTy,LocationTypeState {tsmap = M.fromList []})
               [ ("Leaf",[("num","lnum")], l$ VarE "num")
               , ("Node",[("x","lnodex"),("y","lnodey")],
                  l$ LitE 0)]
+
+-- | Return type of a function is updated with locVars at the call-site
+case_copy_on_add1 :: Assertion
+case_copy_on_add1 = PackedTy "Tree" (Var "lout21") @=? (arrOut funty)
+  where Prog{fundefs} = fst $ runSyM 0 $ tcProg copyOnId1Prog
+        FunDef{funty} = fundefs ! "id1WithCopy"
+
 
 -- case_test7 :: Assertion
 -- case_test7 = actualTest7 @=? expextedTest7
