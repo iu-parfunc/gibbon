@@ -58,8 +58,8 @@ tcExp ddfs env exp@(L p ex) =
       case pr of
         _ | pr `elem` [AddP, SubP, MulP]  -> do
           len2
-          _ <- ensureEqualTy exp IntTy (tys !! 0)
-          _ <- ensureEqualTy exp IntTy (tys !! 1)
+          _ <- ensureEqualTy (es !! 0) IntTy (tys !! 0)
+          _ <- ensureEqualTy (es !! 1) IntTy (tys !! 1)
           return IntTy
 
         _ | pr `elem` [MkTrue, MkFalse] -> do
@@ -68,19 +68,25 @@ tcExp ddfs env exp@(L p ex) =
 
         EqSymP -> do
           len2
-          _ <- ensureEqualTy exp SymTy (tys !! 0)
-          _ <- ensureEqualTy exp SymTy (tys !! 1)
+          _ <- ensureEqualTy (es !! 0) SymTy (tys !! 0)
+          _ <- ensureEqualTy (es !! 1) SymTy (tys !! 1)
           return BoolTy
 
         EqIntP -> do
           len2
-          _ <- ensureEqualTy exp IntTy (tys !! 0)
-          _ <- ensureEqualTy exp IntTy (tys !! 1)
+          _ <- ensureEqualTy (es !! 0) IntTy (tys !! 0)
+          _ <- ensureEqualTy (es !! 1) IntTy (tys !! 1)
           return BoolTy
 
         SizeParam -> do
           len0
           return IntTy
+
+        SymAppend -> do
+          len2
+          _ <- ensureEqualTy (es !! 0) SymTy (tys !! 0)
+          _ <- ensureEqualTy (es !! 1) IntTy (tys !! 1)
+          return SymTy
 
         DictEmptyP ty -> do
           len0

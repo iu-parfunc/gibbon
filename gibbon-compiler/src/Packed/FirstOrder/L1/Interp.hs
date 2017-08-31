@@ -206,6 +206,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
      (AddP,[VInt x, VInt y]) -> VInt (x+y)
      (SubP,[VInt x, VInt y]) -> VInt (x-y)
      (MulP,[VInt x, VInt y]) -> VInt (x*y)
+     (SymAppend,[VInt x, VInt y]) -> VInt (x * (strToInt $ show y))
      (EqSymP,[VInt x, VInt y]) -> VBool (x==y)
      (EqIntP,[VInt x, VInt y]) -> VBool (x==y)
      ((DictInsertP _ty),[VDict mp, key, val]) -> VDict (M.insert key val mp)
@@ -231,7 +232,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                       -- ^ Or... we could give this a void/empty-tuple value.
 
             LitE c         -> return $ VInt c
-            LitSymE s      -> return $ VInt $ fromIntegral $ product $ L.map ord $ fromVar s
+            LitSymE s      -> return $ VInt (strToInt $ fromVar s)
             -- In L2.5 witnesses are really justs casts:
             -- FIXME: We need some way to mediate between symbolic
             -- values and Cursors... or this won't work.
@@ -389,8 +390,10 @@ clk = Monotonic
 -- Misc Helpers
 --------------------------------------------------------------------------------
 
-lookup3 :: (Eq k, Show k, Show a, Show b) =>
-           k -> [(k,a,b)] -> (k,a,b)
+strToInt :: String -> Int
+strToInt = product . L.map ord
+
+lookup3 :: (Eq k, Show k, Show a, Show b) => k -> [(k,a,b)] -> (k,a,b)
 lookup3 k ls = go ls
   where
    go [] = error$ "lookup3: key "++show k++" not found in list:\n  "++take 80 (show ls)

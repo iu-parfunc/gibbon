@@ -212,6 +212,7 @@ typeExp (dd,env2) (L _ exp) =
         L1.EqSymP  -> L1.BoolTy
         L1.MkTrue  -> L1.BoolTy
         L1.MkFalse -> L1.BoolTy
+        L1.SymAppend      -> L1.SymTy
         L1.DictInsertP ty -> L1.SymDictTy (noLocsHere ty)
         L1.DictLookupP ty -> noLocsHere ty
         L1.DictEmptyP  ty -> L1.SymDictTy (noLocsHere ty)

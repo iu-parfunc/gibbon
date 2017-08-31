@@ -79,11 +79,13 @@ treelangParser :: SExprParser HaskLikeAtom (SExpr HaskLikeAtom)
 treelangParser =
     let langline = string "#lang " *> eatline
         comment  = string ";"      *> eatline
-        eatline = manyTill anyChar newline *> pure ()
+        eatline  = manyTill anyChar newline *> pure ()
+        quote expr     = SCons (SAtom "quote") (SCons expr SNil)
+        addQuoteReader = addReader '\'' (\ parse -> fmap quote parse)
     in
     -- setCarrier (return . asRich) $
     setComment (comment <|> langline) $
-    haskLikeParser
+    addQuoteReader haskLikeParser
 
 -- Hack:
 _stripHashLang :: Text -> Text
@@ -385,6 +387,7 @@ primMap = M.fromList
   , ("eq?", EqSymP)
   , ("=",   EqIntP)
   , ("size-param", SizeParam)
+  , ("sym-append", SymAppend)
   ]
 
 prim :: Text -> Prim

@@ -236,6 +236,7 @@ instance FreeVars (e l d) => FreeVars (PreExp e l d) where
 data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | EqSymP             -- ^ Equality on Sym
           | EqIntP             -- ^ Equality on Int
+          | SymAppend          -- ^ A quick hack till we have deterministic gensym
           | DictInsertP Ty1    -- ^ takes dict, k,v; annotated with element type
           | DictLookupP Ty1    -- ^ takes dict,k errors if absent; annotated with element type
           | DictEmptyP  Ty1    -- ^ annotated with element type to avoid ambiguity
@@ -452,6 +453,7 @@ primArgsTy p =
     EqIntP  -> [IntTy, IntTy]
     MkTrue  -> []
     MkFalse -> []
+    SymAppend        -> [SymTy, IntTy]
     MkNullCursor     -> []
     SizeParam        -> []
     DictEmptyP _ty   -> []
