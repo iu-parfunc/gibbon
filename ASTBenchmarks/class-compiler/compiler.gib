@@ -2,6 +2,7 @@
 
 (require "common.gib")
 (require "eval.gib")
+(require "interp-x86.gib")
 (require "passes/uniqify.gib")
 (require "passes/flatten.gib")
 (require "passes/select-instructions.gib")
@@ -10,15 +11,10 @@
 
 (provide compile)
 
-(define (compile [prg : R0]) : X86
+(define (compile [prg : R0]) : Int
   (let ([prg0 : R0 (uniqify prg)])
     (let ([prg1 : C0 (flatten prg0)])
       (let ([prg2 : X86 (select-instructions prg1)])
         (let ([prg3 : X86 (assign-homes prg2)])
           (let ([prg4 : X86 (patch-instructions prg3)])
-            prg4))))))
-
-#;
-(compile
- (ProgramR (LetER (vector 'a (LitER 2))
-                  (AddER (LitER 40) (VarER 'a)))))
+            (interp-x86 prg4)))))))

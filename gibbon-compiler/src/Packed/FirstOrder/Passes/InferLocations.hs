@@ -85,7 +85,8 @@ import Data.Loc
 import qualified Data.Sequence as Seq
 import qualified Data.Map as M
 import qualified Data.Set as S
-import qualified Control.Monad.Trans.Writer.Strict as W
+-- import qualified Control.Monad.Trans.Writer.Strict as W
+import qualified Control.Monad.Trans.State.Strict as St
 import Control.Monad.Trans.Except
 import Control.Monad.Trans (lift)
 -- import qualified Control.Monad.Trans.Either
@@ -93,7 +94,7 @@ import Control.Monad.Trans (lift)
 
 
 import Packed.FirstOrder.Common as C hiding (extendVEnv) -- (l, LRM(..)) 
-import qualified Packed.FirstOrder.Common as C
+-- import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common (Var, Env2, DDefs, LocVar, runSyM, SyM, gensym, toVar)
 import qualified Packed.FirstOrder.L1.Syntax as L1
 import Packed.FirstOrder.L2.Syntax as L2
@@ -193,7 +194,7 @@ hasCycle = undefined
 type TyCheckLog = (EdgeList, Seq.Seq (LocVar, Env2 Ty2))
 
 -- | Type inference monad.
-type TiM a = ExceptT Failure (W.WriterT TyCheckLog SyM) a
+type TiM a = ExceptT Failure (St.StateT TyCheckLog SyM) a
 
 -- | The result type for this pass.  Return a new expression and its
 -- type, which includes/implies its location.
@@ -246,6 +247,11 @@ data Failure =
 type RepairTactic = Failure -> TiM Result
 
 
+-- | The naive repair tactic which always inserts a copy.
+copyTactic :: RepairTactic
+copyTactic = undefined
+
+
 -- The compiler pass
 ----------------------------------------------------------------------------------------------------
 
@@ -256,32 +262,65 @@ type RepairTactic = Failure -> TiM Result
 -- failure-recover strategy.  Use rawInferProg if you want to apply a
 -- different strategy.
 inferLocs :: L1.Prog -> SyM L2.Prog
-inferLocs (L1.Prog defs funs main) =
-    error "FINISHME"
-
+inferLocs = withRepairTactic copyTactic
 
 withRepairTactic :: RepairTactic -> L1.Prog -> SyM L2.Prog
-withRepairTactic = undefined
+withRepairTactic tactic p0@(L1.Prog defs funs main) = do
+    fenv' <- mapM convertFunTy fEnv
+    let fullenv = FullEnv { dataDefs = ddefs'
+                            -- ^ HACK/TEMP/FIXME, use empty/unused location vars in these types.
+                          , valEnv   = fmap lame vEnv
+                          , funEnv   = fenv'
+                          , dag      = mempty }
+    -- Each top-level fundef body, and the main expression, are
+    -- completely independent type-checking-and-error-recovery problems:
+    let infer = inferExpWith tactic fullenv
+    main' <- mapM infer main
+    -- fundefs' :: M.Map Var (L1.FunDef Ty2) <- mapM (mapM (fmap fst . infer)) funs
+    -- fundefs' <- mapM (mapM (fmap fst . infer)) funs
+    fundefs' <- mapM doFunDef funs
+    return $ Prog ddefs' fundefs' main'
+ where
+   ddefs' = fmap (fmap lame) defs
+   Env2{vEnv,fEnv} = L1.progToEnv p0
+   lame :: L1.Ty1 -> Ty2
+   lame = fmap (const "")
 
-inferProg :: L1.Prog -> TiM L2.Prog
-inferProg = undefined
+   doFunDef L1.FunDef{funName,funArg,funRetTy,funBody} =
+     return $ L2.FunDef { }
+          
+
+-- | Instantiate inferExp with a specific repair strategy.
+inferExpWith :: RepairTactic -> FullEnv -> (L L1.Exp1) -> SyM Result
+inferExpWith tactic env ex = go (inferExp env ex return)
+  where
+    go act = do
+      x <- St.runStateT (runExceptT act) mempty
+      case x of
+        (Left exn, _log) -> go (tactic exn) -- ^ Repair and retry.
+        (Right res, _) -> return res   
              
 -- | Trivial expressions never cause failures.
 doTriv :: FullEnv -> L1.Exp1 -> Exp2
 doTriv = _finishme
 
+
+-- | Multiple expressions.
 inferExps :: FullEnv -> [L L1.Exp1] -> Cont -> TiM Result
 inferExps = _fin
 
 
 type LsCont = [L Exp2] -> TiM Result
 
+-- | Every type must either be fixed size, or be serialized data with
+-- an abstract location.
 sizeOrLoc :: Ty2 -> Either Int LocVar
 sizeOrLoc = undefined
 
 addOffset f off = undefined
     
 -- | Takes the location of the tag and processes all the operands.
+--   We constrain each argument to have a location related to the previous.
 doDataConFields :: FullEnv -> LocVar -> [L L1.Exp1] -> LsCont -> TiM Result
 doDataConFields env lprv0 ls0 k0 =
     go (T.AfterConstantC 1 lprv0) ls0 []
@@ -301,7 +340,7 @@ doDataConFields env lprv0 ls0 k0 =
             case nxt' of
               L _ (VarE vr) ->
                 let lvar = lookupVarLoc vr env in
-                do tellConstraint (LL (lprev lvar))                                  
+                do tellConstraint nxt (LL (lprev lvar))
                    go (T.AfterVariableC vr lvar) rst (nxt' : acc)
 
 
@@ -327,7 +366,6 @@ inferExp env (L sl1 ex0) k =
       loc <- freshLocVar "lDC" -- Location of the tag itself.
       let tyc = getTyOfDataCon (dataDefs env) con 
              
-      -- TODO, constrain each argument to have a location related to the previous:
       doDataConFields env loc ls $ \ ls' -> 
          k ( l$ L2.DataConE loc con ls'
            , PackedTy tyc loc )
@@ -363,7 +401,7 @@ inferExp env (L sl1 ex0) k =
         _oth -> 
          inferExp env (L sl2 rhs) $ \ (_,_) ->
           -- Construct a value-dependence to all the free vars in the RHS:
-          do tellConstraint VV{}
+          do tellConstraint (L sl2 rhs) VV{}
              inferExp _env' bod $ \ (_,_) ->
               _
 
@@ -387,14 +425,20 @@ err m = error $ "InferLocations: " ++ m
 --------------------------------------------------------------------------------
 
 -- | Record a dedence between a location/value and a location/value.
-tellConstraint :: Dependence -> TiM ()
-tellConstraint x = lift (W.tell (Seq.singleton x, Seq.empty))
+tellConstraint :: L L1.Exp1 -> Dependence -> TiM ()
+tellConstraint target x = lift $ do
+                     log <- St.get
+                     -- TODO: check for cycles here.
+                     -- TODO: Also check that we don't introduce a scope-violation
+                     -- in one of the location variable dependencies.
+                     St.put $ log `mappend` (Seq.singleton x, Seq.empty)
 
 -- | Snapshot the current environment at the point we allocate a new
 -- location.
 tellNewLocVar :: LocVar -> Env2 Ty2 -> TiM ()
-tellNewLocVar v e = lift (W.tell (Seq.empty, Seq.singleton (v,e)))
-
+tellNewLocVar v e = lift $ do
+                      log <- St.get
+                      St.put $ log `mappend` (Seq.empty, Seq.singleton (v,e))
 
 
 -- | This helper exemplifies the simplicity of our current approach.
@@ -469,8 +513,8 @@ instance Out Loc
 -- add1ProgSharing : fails with FailedLocUnify: l_x2 cannot equal 'l_x2 + size(x2)'
 
 
-test :: L2.Prog
-test = fst $ runSyM 0 $ inferLocs L1.add1Prog
+-- test :: L2.Prog
+-- test = fst $ runSyM 0 $ inferLocs L1.add1Prog
 
 emptyEnv :: FullEnv
 emptyEnv = FullEnv { dataDefs = C.emptyDD
@@ -486,10 +530,10 @@ idCont :: Cont
 idCont (e,ty) = return (e,ty)
 
 go :: TiM Result -> Either Failure Result
-go =  fst . fst . runSyM 0 . W.runWriterT . runExceptT 
+go =  fst . fst . runSyM 0 . flip St.runStateT mempty . runExceptT 
 
 t1 :: Either Failure Result
-t1 = fst$ fst$ runSyM 0 $ W.runWriterT $ runExceptT $
+t1 = fst$ fst$ runSyM 0 $ flip St.runStateT mempty $ runExceptT $
      inferExp emptyEnv (l$ LitE 3) idCont
 
 

@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 -- | Tests for RouteEnds2
 --
@@ -13,11 +14,13 @@ import Test.Tasty.HUnit
 import Test.Tasty.TH
 import Test.Tasty
 
-import Packed.FirstOrder.Common
+import Packed.FirstOrder.Common hiding (FunDef)
 import Packed.FirstOrder.L2.Syntax as L2
 import Packed.FirstOrder.L2.Examples
+import Packed.FirstOrder.L2.Typecheck
 import Packed.FirstOrder.Passes.RouteEnds2
-import qualified Packed.FirstOrder.L1.Syntax as L1
+import Packed.FirstOrder.Passes.InferEffects2
+import Packed.FirstOrder.L1.Syntax hiding (Prog, FunDef, ddefs, fundefs, mainExp, add1Prog)
 
 test1 :: L Exp2
 test1 = l$ Ext $ LetRegionE (VarR "r") $ l$ Ext $ LetLocE "ltest" (StartOfLE (VarR "r")) $
@@ -30,8 +33,9 @@ test1 = l$ Ext $ LetRegionE (VarR "r") $ l$ Ext $ LetLocE "ltest" (StartOfLE (Va
         l$ AppE "add1" ["l","lo"] (l$ VarE "z")
 
 expectedTest1 :: Prog
-expectedTest1 = Prog {ddefs = M.fromList [(Var "Tree",DDef {tyName = Var "Tree", dataCons = [("Leaf",[(False,IntTy)]),("Node",[(False,PackedTy "Tree" (Var "l")),(False,PackedTy "Tree" (Var "l"))])]})], fundefs = M.fromList [(Var "add1",L2.FunDef {funname = Var "add1", funty = ArrowTy {locVars = [LRM (Var "lin2") (VarR (Var "r3")) Input,LRM (Var "lout4") (VarR (Var "r3")) Output], arrIn = PackedTy "Tree" (Var "lin2"), arrEffs = S.fromList [Traverse (Var "lin2")], arrOut = PackedTy "Tree" (Var "lout4"), locRets = [EndOf (LRM (Var "lin2") (VarR (Var "r3")) Input)]}, funarg = Var "tr1", funbod = l$ CaseE (l$ VarE (Var "tr1")) [("Leaf",[(Var "n5",Var "l6")],l$ Ext (LetLocE (Var "jump1") (AfterConstantLE 1 (Var "l6")) $ l$ LetE (Var "v7",[],IntTy,l$ PrimAppE L1.AddP [l$ VarE (Var "n5"),l$ LitE 1]) $ l$ LetE (Var "lf8",[],PackedTy "Tree" (Var "lout4"),l$ DataConE (Var "lout4") "Leaf" [l$ VarE (Var "v7")]) $ l$ Ext (RetE [Var "jump1"] (Var "lf8")))),("Node",[(Var "x9",Var "l10"),(Var "y11",Var "l12")],l$ Ext (LetLocE (Var "l13") (AfterConstantLE 1 (Var "lout4")) $ l$ LetE (Var "x14",[Var "endof2"],PackedTy "Tree" (Var "l13"),l$ AppE (Var "add1") [Var "l10",Var "l13"] $ l$ VarE (Var "x9"))$ l$  Ext (LetLocE (Var "l12") (FromEndLE (Var "endof2")) $ l$ Ext (LetLocE (Var "l15") (AfterVariableLE (Var "x14") (Var "l13")) $ l$ LetE (Var "y16",[Var "endof3"],PackedTy "Tree" (Var "l15"), l$ AppE (Var "add1") [Var "l12",Var "l15"] $ l$ VarE (Var "y11")) $ l$ LetE (Var "z17",[],PackedTy "Tree" (Var "lout4"), l$ DataConE (Var "lout4") "Node" [l$ VarE (Var "x14"), l$ VarE (Var "y16")])$ l$ Ext (RetE [Var "endof3"] (Var "z17"))))))]})], mainExp = Just (l$ Ext (LetRegionE (VarR (Var "r")) $ l$ Ext (LetLocE (Var "ltest") (StartOfLE (VarR (Var "r"))) $ l$ Ext (LetLocE (Var "ltest1") (AfterConstantLE 1 (Var "ltest")) $ l$ LetE (Var "x",[],PackedTy "Tree" (Var "ltest1"),l$ DataConE (Var "ltest1") "Leaf" [l$ LitE 1]) $ l$ Ext (LetLocE (Var "ltest2") (AfterVariableLE (Var "x") (Var "ltest1")) $ l$ LetE (Var "y",[],PackedTy "Tree" (Var "ltest2"),l$ DataConE (Var "ltest2") "Leaf" [l$ LitE 2]) $ l$ LetE (Var "z",[],PackedTy "Tree" (Var "ltest"),l$ DataConE (Var "ltest") "Node" [l$ VarE (Var "x"),l$ VarE (Var "y")]) $ l$ Ext (LetRegionE (VarR (Var "o"))$ l$ Ext (LetLocE (Var "lo") (StartOfLE (VarR (Var "o"))) $ l$ LetE (Var "tailapp4",[Var "endof5"],PackedTy "Tree" (Var "lout4"),l$ AppE (Var "add1") [Var "l",Var "lo"]$ l$ VarE (Var "z"))$ l$  Ext (RetE [] (Var "tailapp4")))))))),IntTy)}
+expectedTest1 = Prog {ddefs = M.fromList [(Var "Tree",DDef {tyName = Var "Tree", dataCons = [("Leaf",[(False,IntTy)]),("Node",[(False,PackedTy "Tree" (Var "l")),(False,PackedTy "Tree" (Var "l"))])]})], fundefs = M.fromList [(Var "add1",FunDef {funname = Var "add1", funty = ArrowTy {locVars = [LRM (Var "lin2") (VarR (Var "r3")) Input,LRM (Var "lout4") (VarR (Var "r3")) Output], arrIn = PackedTy "Tree" (Var "lin2"), arrEffs = S.fromList [Traverse (Var "lin2")], arrOut = PackedTy "Tree" (Var "lout4"), locRets = [EndOf (LRM (Var "lin2") (VarR (Var "r3")) Input)]}, funarg = Var "tr1", funbod = l$ CaseE (l$ VarE (Var "tr1")) [("Leaf",[(Var "n5",Var "l6")],l$ Ext (LetLocE (Var "jump1") (AfterConstantLE 1 (Var "l6")) $ l$ LetE (Var "v7",[],IntTy,l$ PrimAppE AddP [l$ VarE (Var "n5"),l$ LitE 1]) $ l$ LetE (Var "lf8",[],PackedTy "Tree" (Var "lout4"),l$ DataConE (Var "lout4") "Leaf" [l$ VarE (Var "v7")]) $ l$ Ext (RetE [Var "jump1"] (Var "lf8")))),("Node",[(Var "x9",Var "l10"),(Var "y11",Var "l12")],l$ Ext (LetLocE (Var "l13") (AfterConstantLE 1 (Var "lout4")) $ l$ LetE (Var "x14",[Var "endof2"],PackedTy "Tree" (Var "l13"),l$ AppE (Var "add1") [Var "l10",Var "l13"] $ l$ VarE (Var "x9"))$ l$  Ext (LetLocE (Var "l12") (FromEndLE (Var "endof2")) $ l$ Ext (LetLocE (Var "l15") (AfterVariableLE (Var "x14") (Var "l13")) $ l$ LetE (Var "y16",[Var "endof3"],PackedTy "Tree" (Var "l15"), l$ AppE (Var "add1") [Var "l12",Var "l15"] $ l$ VarE (Var "y11")) $ l$ LetE (Var "z17",[],PackedTy "Tree" (Var "lout4"), l$ DataConE (Var "lout4") "Node" [l$ VarE (Var "x14"), l$ VarE (Var "y16")])$ l$ Ext (RetE [Var "endof3"] (Var "z17"))))))]})], mainExp = Just (l$ Ext (LetRegionE (VarR (Var "r")) $ l$ Ext (LetLocE (Var "ltest") (StartOfLE (VarR (Var "r"))) $ l$ Ext (LetLocE (Var "ltest1") (AfterConstantLE 1 (Var "ltest")) $ l$ LetE (Var "x",[],PackedTy "Tree" (Var "ltest1"),l$ DataConE (Var "ltest1") "Leaf" [l$ LitE 1]) $ l$ Ext (LetLocE (Var "ltest2") (AfterVariableLE (Var "x") (Var "ltest1")) $ l$ LetE (Var "y",[],PackedTy "Tree" (Var "ltest2"),l$ DataConE (Var "ltest2") "Leaf" [l$ LitE 2]) $ l$ LetE (Var "z",[],PackedTy "Tree" (Var "ltest"),l$ DataConE (Var "ltest") "Node" [l$ VarE (Var "x"),l$ VarE (Var "y")]) $ l$ Ext (LetRegionE (VarR (Var "o"))$ l$ Ext (LetLocE (Var "lo") (StartOfLE (VarR (Var "o"))) $ l$ LetE (Var "tailapp4",[Var "endof5"],PackedTy "Tree" (Var "lout4"),l$ AppE (Var "add1") [Var "l",Var "lo"]$ l$ VarE (Var "z"))$ l$  Ext (RetE [] (Var "tailapp4")))))))),IntTy)}
 
+-- TODO: this doesn't typecheck
 case_add1_test1 :: Assertion
 case_add1_test1 = expectedTest1 @=? actualTest1
   where
@@ -40,6 +44,35 @@ case_add1_test1 = expectedTest1 @=? actualTest1
     prg   = Prog ddfs funs (Just (test1,IntTy))
     actualTest1   = fst $ runSyM 1 $ routeEnds prg
 
+runT :: Prog -> Prog
+runT prg = fst $ runSyM 0 $ do
+  l2 <- inferEffects prg
+  l2 <- tcProg l2
+  routeEnds l2
+
+assertRouteEnds :: Prog -> Var -> [LocRet] -> Assertion
+assertRouteEnds prg fnName expected = expected @=? lRets
+  where -- runT and get LocRet
+        Prog{fundefs} = runT prg
+        lRets = locRets $ funty (fundefs ! fnName)
+
+-- | add1 reaches the end of its input
+case_add1_test2 :: Assertion
+case_add1_test2  = assertRouteEnds add1Prog "add1" [EndOf $ LRM "lin2" (VarR "r3") Input]
+
+-- | id1 doesn't
+case_id1 :: Assertion
+case_id1 = assertRouteEnds id1Prog "id1" []
+
+-- | id2 doesn't either
+case_id2 :: Assertion
+case_id2 = assertRouteEnds id2Prog "id2" []
+
+-- | copyTree does
+case_copyTree :: Assertion
+case_copyTree = assertRouteEnds copyTreeProg "copyTree" [EndOf $ LRM "lin23" (VarR "r24") Input]
+
+-- |
 routeEnds2Tests :: TestTree
 routeEnds2Tests = $(testGroupGenerator)
 

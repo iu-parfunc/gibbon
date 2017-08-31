@@ -36,6 +36,7 @@
 (data ExpR
       [LitER Int]
       [VarER Sym]
+      ;; should this be (VarER Sym)
       [LetER (Vector Sym ExpR) ExpR]
       [NegER ExpR]
       [AddER ExpR ExpR])

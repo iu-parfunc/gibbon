@@ -2,9 +2,7 @@
 
 (require "common.gib")
 
-;; doesn't compile yet. assignhomes builds a stack with integer offsets
-;; but we don't have (int -> a) dictionaries
-;; update this, and assignhomes after we add symappend to the language
+(provide interp-x86)
 
 ;; CC regs stack
 (data CCT
@@ -42,16 +40,16 @@
                   (let ([cc^ : CC (putCC cc v^ e)])
                     cc^)))]))
 
-(define (putCC [cc : CCT] [i : Int] [e : Exp2]) : CCT
+(define (putCC [cc : CCT] [i : Int] [e : ExpX86]) : CCT
   (case e
     [(RegE r) (case cc
                 [(CC regs stack) (let ([regs^ : (SymDict Int) (insert regs r i)])
                                    (CC regs^ stack))])]
     [(DerefE r o) (case cc
-                    [(CC regs stack) (let ([stack^ : (SymDict Int) (insert stack o i)])
+                    [(CC regs stack) (let ([stack^ : (SymDict Int) (insert stack (sym-append r o) i)])
                                        (CC regs stack^))])]))
 
-(define (readCC [cc : CCT] [e : Exp2]) : Int
+(define (readCC [cc : CCT] [e : ExpX86]) : Int
   (case e
     [(VarEX86 v) (error "readCC: unexpected VarEX86")]
     [(LitEX86 n) n]
@@ -59,14 +57,4 @@
                 [(CC regs stack) (lookup regs r)])]
     [(DerefE r o) (case cc
                     ;; check if r is RBP here
-                    [(CC regs stack) (lookup stack o)])]))
-
-
-(interp-x86
- (ProgramX86 (ConsSym 'a6819 (ConsSym 'tmp6820 (NullSyms))) 16
-             (ConsInstr (MOVQ (LitEX86 2) (DerefE 'RBP -8))
-                        (ConsInstr (MOVQ (LitEX86 40) (DerefE 'RBP -16))
-                                   (ConsInstr (MOVQ (DerefE 'RBP -8) (RegE 'RAX))
-                                              (ConsInstr (ADDQ (RegE 'RAX) (DerefE 'RBP -16))
-                                                         (ConsInstr (MOVQ (DerefE 'RBP -16) (RegE 'RAX))
-                                                                    (NullInstrs))))))))
+                    [(CC regs stack) (lookup stack (sym-append r o))])]))

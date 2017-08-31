@@ -1,6 +1,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveTraversable #-}
 -- {-# LANGUAGE DeriveAnyClass #-} -- Actually breaks Applicative SymM deriving!
 -- {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE DeriveFunctor #-}
@@ -275,7 +276,7 @@ data FunDef ty ex = FunDef { funName  :: Var
                            , funArg   :: (Var,ty)
                            , funRetTy :: ty
                            , funBody  :: ex }
-  deriving (Read,Show,Eq,Ord, Generic, Functor)
+  deriving (Read,Show,Eq,Ord, Generic, Functor, Traversable, Foldable)
 
 -- deriving
 instance (NFData t, NFData e) => NFData (FunDef t e) where

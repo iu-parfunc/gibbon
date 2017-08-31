@@ -1,15 +1,23 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Packed.FirstOrder.L2.Examples
-  (ddtree, add1Fun, add1TraversedFun, id1, copyTree) where
+  ( -- * Data definitions
+    ddtree
+    -- * Functions
+  , add1Fun, add1TraversedFun, id1Fun, copyTreeFun, id2Fun
+
+    -- * Programs
+  , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog
+  ) where
 
 import Data.Loc
 import Data.Set as S
+import Data.Map as M
 import Text.PrettyPrint.GenericPretty
 
-import Packed.FirstOrder.Common
-import Packed.FirstOrder.L2.Syntax as L2
-import qualified Packed.FirstOrder.L1.Syntax as L1
+import Packed.FirstOrder.Common hiding (FunDef)
+import Packed.FirstOrder.L2.Syntax
+import Packed.FirstOrder.L1.Syntax hiding (Prog, FunDef, ddefs, fundefs, mainExp, add1Prog)
 
 
 ddtree :: DDefs Ty2
@@ -21,13 +29,13 @@ ddtree = fromListDD [DDef (toVar "Tree")
 --------------------------------------------------------------------------------
 -- Add1
 
-add1TraversedFun :: L2.FunDef
-add1TraversedFun = L2.FunDef "add1" add1TraversedFunTy "tr1" add1FunBod
+add1TraversedFun :: FunDef
+add1TraversedFun = FunDef "add1" add1TraversedFunTy "tr1" add1FunBod
   where add1TraversedFunTy = add1FunTy { arrEffs = S.fromList [Traverse "lin2"] }
 
 
-add1Fun :: L2.FunDef
-add1Fun = L2.FunDef "add1" add1FunTy "tr1" add1FunBod
+add1Fun :: FunDef
+add1Fun = FunDef "add1" add1FunTy "tr1" add1FunBod
 
 
 add1FunTy :: ArrowTy Ty2
@@ -36,14 +44,14 @@ add1FunTy = (ArrowTy
              (PackedTy "Tree" "lin2")
              (S.empty)
              (PackedTy "Tree" "lout4")
-             [EndOf $ LRM "lin2" (VarR "r3") Input])
+             [])
 
 
 add1FunBod :: L Exp2
 add1FunBod = l$ CaseE (l$ VarE "tr1") $
   [ ("Leaf", [("n5","l6")],
       l$ LetE ("v7",[],IntTy,
-               l$ PrimAppE L1.AddP [l$ VarE "n5", l$ LitE 1]) $
+               l$ PrimAppE AddP [l$ VarE "n5", l$ LitE 1]) $
       l$ LetE ("lf8",[],PackedTy "Tree" "lout4",
                l$ DataConE "lout4" "Leaf" [l$ VarE "v7"]) $
       l$ VarE "lf8")
@@ -59,20 +67,13 @@ add1FunBod = l$ CaseE (l$ VarE "tr1") $
      l$ VarE "z17")
   ]
 
+add1Prog :: Prog
+add1Prog = Prog ddtree (M.fromList [("add1", add1Fun)]) Nothing
+
 --------------------------------------------------------------------------------
-{-
-FunDef {funname = "id1",
-        funty = ArrowTy {locVars = [LRM "lin" (VarR "r1") Input,
-                                    LRM "lout" (VarR "r1") Output],
-                         arrIn = PackedTy "Tree" "lin",
-                         arrEffs = [],
-                         arrOut = PackedTy "Tree" "lout",
-                         locRets = [EndOf (LRM "lin" (VarR "r1") Input)]},
-        funarg = "tr",
-        funbod = VarE "tr"}
--}
-id1 :: L2.FunDef
-id1 = L2.FunDef "id1" idFunTy "tr18" idFunBod
+
+id1Fun :: FunDef
+id1Fun = FunDef "id1" idFunTy "tr18" idFunBod
   where
     idFunBod = (l$ VarE "tr18")
 
@@ -82,20 +83,23 @@ id1 = L2.FunDef "id1" idFunTy "tr18" idFunBod
                (PackedTy "Tree" "lin19")
                (S.empty)
                (PackedTy "Tree" "lout21")
-               [EndOf $ LRM "lin19" (VarR "r20") Input])
+               [])
 
+
+id1Prog :: Prog
+id1Prog = Prog ddtree (M.fromList [("id1", id1Fun)]) Nothing
 
 --------------------------------------------------------------------------------
 
-copyTree :: L2.FunDef
-copyTree = L2.FunDef "copyTree" copyFunTy "tr22" copyBod
+copyTreeFun :: FunDef
+copyTreeFun = FunDef "copyTree" copyFunTy "tr22" copyBod
   where
     copyFunTy = (ArrowTy
                  [LRM "lin23" (VarR "r24") Input, LRM "lout25" (VarR "r24") Output]
                  (PackedTy "Tree" "lin23")
-                 (S.singleton (Traverse "lin23"))
+                 S.empty
                  (PackedTy "Tree" "lout25")
-                 [EndOf $ LRM "lin23" (VarR "r24") Input])
+                 [])
 
     copyBod = l$ CaseE (l$ VarE "tr22") $
                  [ ("Leaf", [("n27","lin26")],
@@ -112,3 +116,40 @@ copyTree = L2.FunDef "copyTree" copyFunTy "tr22" copyBod
                             l$ AppE "copyTree" ["ly32","ly35"] (l$ VarE "y31")) $
                     l$ DataConE "lout25" "Node" [l$ VarE "x34", l$ VarE "y36"])
                  ]
+
+copyTreeProg :: Prog
+copyTreeProg = Prog ddtree (M.fromList [("copyTree", copyTreeFun)]) Nothing
+
+--------------------------------------------------------------------------------
+
+id2Fun :: FunDef
+id2Fun = FunDef "id2" id2Ty "tr41" id2Bod
+  where
+    id2Ty :: ArrowTy Ty2
+    id2Ty = (ArrowTy
+             [LRM "lin37" (VarR "r38") Input, LRM "lout39" (VarR "r38") Output]
+             (PackedTy "Tree" "lin37")
+             (S.empty)
+             (PackedTy "Tree" "lout39")
+             [])
+
+    id2Bod = l$ IfE (l$ PrimAppE EqIntP [l$ LitE 20, l$ LitE 20])
+             (l$ (VarE "tr41"))
+             (l$ (VarE "tr41"))
+
+id2Prog :: Prog
+id2Prog = Prog ddtree (M.fromList [("id2", id2Fun)]) Nothing
+
+--------------------------------------------------------------------------------
+
+copyOnId1Prog :: Prog
+copyOnId1Prog = Prog ddtree funs Nothing
+  where
+    funs  = (M.fromList [("copyTree" , copyTreeFun),
+                         ("id1WithCopy", id1WithCopyFun)])
+
+id1WithCopyFun :: FunDef
+id1WithCopyFun = id1Fun { funbod = l$ AppE "copyTree" ["lin19","lout21"]
+                                   (l$ VarE "tr18")
+                        , funname = "id1WithCopy"
+                        }
