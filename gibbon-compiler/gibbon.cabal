@@ -112,7 +112,8 @@ library
 --  ghc-options:         -Wno-all
 --  ghc-options:         -Wall -fno-warn-typed-holes -Wno-unused-top-binds -fdefer-typed-holes -fno-warn-orphans
   ghc-options:        -Wredundant-constraints
-  ghc-options:        -Wall -Wno-typed-holes -Wno-unused-top-binds -Wno-orphans
+  ghc-options:        -Wall -Wno-unused-top-binds -Wno-orphans -Wno-partial-type-signatures
+  ghc-options:        -Wno-typed-holes
   ghc-options:        -fdefer-typed-holes 
   default-extensions: ScopedTypeVariables PatternSynonyms DeriveGeneric DeriveFunctor
                       NamedFieldPuns TupleSections TypeFamilies
