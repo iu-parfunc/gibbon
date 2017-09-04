@@ -13,15 +13,15 @@
 (define (map-go [env : (SymDict Int)] [instrs : Instrs]) : Instrs
   (case instrs
     [(NullInstrs) (NullInstrs)]
-    [(ConsInstr i rst) (ConsInstr (go env i) (map-go env rst))]))
+    [(ConsInstr i rst) (ConsInstr (go-ah env i) (map-go env rst))]))
 
-(define (go [env : (SymDict Int)] [instr : Instr]) : Instr
+(define (go-ah [env : (SymDict Int)] [instr : Instr]) : Instr
   (case instr
-    [(ADDQ e1 e2) (ADDQ (go-exp env e1) (go-exp env e2))]
-    [(NEGQ e1)    (NEGQ (go-exp env e1))]
-    [(MOVQ e1 e2) (MOVQ (go-exp env e1) (go-exp env e2))]))
+    [(ADDQ e1 e2) (ADDQ (go-exp-ah env e1) (go-exp-ah env e2))]
+    [(NEGQ e1)    (NEGQ (go-exp-ah env e1))]
+    [(MOVQ e1 e2) (MOVQ (go-exp-ah env e1) (go-exp-ah env e2))]))
 
-(define (go-exp [env : (SymDict Int)] [exp : ExpX86]) : ExpX86
+(define (go-exp-ah [env : (SymDict Int)] [exp : ExpX86]) : ExpX86
   (case exp
     [(VarEX86 v) (DerefE 'RBP (lookup env v))]
     [(LitEX86 n) (LitEX86 n)]

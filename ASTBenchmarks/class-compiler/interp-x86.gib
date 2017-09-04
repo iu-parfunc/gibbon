@@ -22,10 +22,10 @@
 (define (mapm-go-cc [cc : CCT] [instrs : Instrs]) : CCT
   (case instrs
     [(NullInstrs) cc]
-    [(ConsInstr i rst) (let ([cc^ : CC (go cc i)])
+    [(ConsInstr i rst) (let ([cc^ : CC (go-ix86 cc i)])
                          (mapm-go-cc cc^ rst))]))
 
-(define (go [cc : CCT] [instr : Instr]) : CCT
+(define (go-ix86 [cc : CCT] [instr : Instr]) : CCT
   (case instr
     [(ADDQ src dst) (let ([vsrc : Int (readCC cc src)])
                       (let ([vdst : Int (readCC cc dst)])
