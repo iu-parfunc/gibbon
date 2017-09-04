@@ -6,8 +6,8 @@
 (define (assign-homes [prg : X86]) : X86
   (case prg
     [(ProgramX86 syms i instrs)
-     (let ([env : (SymDict Int) (compute-env syms (empty-dict) (- 0 8))])
-       (let ([num-vars (length-syms syms)])
+     (let ([env : (SymDict Int) (compute-env syms (ann (empty-dict) (SymDict Int)) (- 0 8))])
+       (let ([num-vars : Int (length-syms syms)])
          (ProgramX86 syms (* 8 num-vars) (map-go env instrs))))]))
 
 (define (map-go [env : (SymDict Int)] [instrs : Instrs]) : Instrs
@@ -23,7 +23,7 @@
 
 (define (go-exp-ah [env : (SymDict Int)] [exp : ExpX86]) : ExpX86
   (case exp
-    [(VarEX86 v) (DerefE 'RBP (lookup env v))]
+    [(VarEX86 v) (DerefE 'RBP (ann (lookup env v) Int))]
     [(LitEX86 n) (LitEX86 n)]
     [(RegE r) (RegE r)]
     [(DerefE s i) (DerefE s i)]))
@@ -33,4 +33,4 @@
 (define (compute-env [syms : Syms] [env : (SymDict Int)] [i : Int]) : (SymDict Int)
   (case syms
     [(NullSyms) env]
-    [(ConsSym s rst) (compute-env rst (insert env s i) (- i 8))]))
+    [(ConsSym s rst) (compute-env rst (insert env s (ann i Int)) (- i 8))]))
