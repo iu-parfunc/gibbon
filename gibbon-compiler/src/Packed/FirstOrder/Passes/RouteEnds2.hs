@@ -220,10 +220,11 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                                handleLoc (eor,e) (_,(PackedTy _ _)) = return (eor,e)
                                -- or we have a non-packed type, and we need to "jump" over it and
                                -- bind a location to after it
-                               handleLoc (eor,e) (l1,_ty) = do
+                               handleLoc (eor,e) (l1,ty) = do
                                     l2 <- gensym "jump"
                                     let eor' = mkEnd l1 l2 eor
-                                        e' = Ext $ LetLocE l2 (AfterConstantLE 1 l1) e
+                                        (Just jump) = L1.sizeOf ty
+                                        e' = Ext $ LetLocE l2 (AfterConstantLE jump l1) e
                                     return (eor', l$ e')
 
                            (eor'',e') <- foldM handleLoc (eor',e) $ zip (L.map snd vls) argtys
