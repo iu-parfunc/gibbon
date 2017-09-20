@@ -33,7 +33,7 @@ module Packed.FirstOrder.L1.Syntax
     , subst, substE, getFunTy
     , mapExprs
     , mapExt
-   , mapLocs
+    , mapLocs
 
       -- * Trivial expressions
     , assertTriv, assertTrivs, hasTimeIt
