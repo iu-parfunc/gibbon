@@ -15,9 +15,6 @@ import Packed.FirstOrder.L1.Syntax hiding (Prog(..), FunDef(..), FunDefs)
 import Packed.FirstOrder.L2.Syntax as L2
 import qualified Packed.FirstOrder.L3.Syntax as L3
 
-import qualified Packed.FirstOrder.Chai as Chai
-import Debug.Trace
-
 --------------------------------------------------------------------------------
 
 -- | Stores LRM information about variables which are eventually transformed to
