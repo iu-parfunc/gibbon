@@ -57,8 +57,8 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
               -- becomes
               -- f :: (lout, lin) -> (end_lin, end_lout)
               funty'   = funty { arrIn  = ProdTy [CursorTy inlrm, CursorTy outlrm]
-                               , arrOut = ProdTy [CursorTy (changeLRMLoc (toEndV inloc) inlrm),
-                                                  CursorTy (changeLRMLoc (toEndV outloc) outlrm)]
+                               , arrOut = ProdTy [CursorTy (cursorizeLRM inlrm),
+                                                  CursorTy (cursorizeLRM outlrm)]
                                }
 
           in do
@@ -66,9 +66,9 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
           -- Here, we make the locVars explicit by creating let bindings for them,
           -- so that other expressions in function body can refer to them
           (L3.FunDef funname funty' newFunarg) <$>
-            l<$> (LetE (locToCur outloc,[], CursorTy outlrm,
+            l<$> (LetE (outloc,[], CursorTy outlrm,
                         l$ ProjE 0 (l$ VarE newFunarg)) <$>
-                  (l<$> (LetE (locToCur inloc,[], CursorTy inlrm,
+                  (l<$> (LetE (inloc,[], CursorTy inlrm,
                                l$ ProjE 1 (l$ VarE newFunarg)) <$>
           -- and finally, we cursorize the function body
                          cursorizeExp ddefs initVenv initLenv funbod)))
@@ -92,10 +92,10 @@ cursorizeExp ddfs venv lenv (L p exp) = L p <$>
           cursorAfterTag <- gensym (toVar "cursor_after_tag")
           traceShow lrm (return __)
           maintain all the same properties as the cursor for v
-          let cursorAfterTagLrm = changeLRMLoc "FIXME" lrm
+          let cursorAfterTagLrm = cursorizeLRM "_" lrm
           (LetE (cursorAfterTag,[],
                  CursorTy cursorAfterTagLrm,
-                 l$ Ext $ L3.ReadTag (locToCur loc))) <$>
+                 l$ Ext $ L3.ReadTag loc)) <$>
             (l<$> CaseE (l$ VarE cursorAfterTag)) <$>
                     mapM (unpackDataCon cursorAfterTagLrm) brs
 
@@ -113,29 +113,35 @@ cursorizeExp ddfs venv lenv (L p exp) = L p <$>
           return $ AppE f [] (l$ MkProdE [l$ VarE oploc, l$ VarE iploc])
         _ -> error $ "cursorizing AppE: unexpected number of locations: " ++ show locs
 
-    LetE (v,locs,ty,rhs) bod | not (isPacked ty) -> do
+    LetE (v,locs,ty,rhs) bod | not (isPackedTy ty) -> do
       rhs' <- go rhs
       LetE (v,locs,ty,rhs') <$> go bod
 
-    LetE (v,locs,_ty,rhs) bod -> do
+    LetE (v,locs,ty,rhs) bod -> do
       -- would return a (start,end) cursor tuple
       -- we bind v to the end cursor, and start cursor to the location in locs
       rhs' <- go rhs
       fresh <- gensym "packed_tpl"
 
-      -- FIXME: get rid of this
-      let tmpLRM = LRM {lrmLoc = "FIXME", lrmReg = VarR "FIXME", lrmMode = Input}
+      let (PackedTy _ outLoc) = ty
+          outReg = lrmReg (lenv ! outLoc)
+          outLrm = (LRM "_" outReg Output)
+          inLrm = (LRM "_" outReg Input)
+          venv' = M.insert v outLrm venv
 
       case locs of
         [] -> do
-          (LetE (fresh,[],ProdTy [CursorTy tmpLRM, CursorTy tmpLRM], rhs') <$>
-            (l <$> LetE (v,[],CursorTy tmpLRM, l$ ProjE 1 (l$ VarE fresh)) <$>
-              go bod))
+          (LetE (fresh,[],ProdTy [CursorTy inLrm, CursorTy outLrm], rhs') <$>
+            (l <$> LetE (v,[],CursorTy outLrm, l$ ProjE 1 (l$ VarE fresh)) <$>
+              cursorizeExp ddfs venv' lenv bod))
+
         _ -> do
-          (LetE (fresh,[],ProdTy [CursorTy tmpLRM, CursorTy tmpLRM], rhs') <$>
-            (l <$> LetE (head locs,[],CursorTy tmpLRM, l$ ProjE 0 (l$ VarE fresh)) <$>
-              (l <$> LetE (v,[],CursorTy tmpLRM, l$ ProjE 1 (l$ VarE fresh)) <$>
-               go bod)))
+          let hloc  = head locs
+              lenv' = M.insert hloc inLrm lenv
+          (LetE (fresh,[],ProdTy [CursorTy inLrm, CursorTy outLrm], rhs') <$>
+            (l <$> LetE (head locs,[],CursorTy inLrm, l$ ProjE 0 (l$ VarE fresh)) <$>
+              (l <$> LetE (v,[],CursorTy outLrm, l$ ProjE 1 (l$ VarE fresh)) <$>
+               cursorizeExp ddfs venv' lenv' bod)))
 
     -- this is the write tag operation
     -- returns a tuple of (start,end) cursors
@@ -145,27 +151,27 @@ cursorizeExp ddfs venv lenv (L p exp) = L p <$>
           -- The final return value lives at the position of the out cursoara:
           go2 d [] = return $ MkProdE [l$ VarE sloc, l$ VarE d]
 
-          go2 _d ((rnd, ty):rst) | isPacked ty = do
+          go2 _d ((rnd, ty):rst) | isPackedTy ty = do
             d' <- gensym $ toVar "writepackedcur"
             let (L _ (VarE v)) = rnd
-            LetE (d',[], CursorTy (changeLRMLoc "FIXME" slrm), l$ VarE v) <$>
+            LetE (d',[], CursorTy (cursorizeLRM slrm), l$ VarE v) <$>
               l <$> (go2 d' rst)
 
           -- (_ty == IntTy) : Int fields are currently our only "scalar" fields
           go2 d ((rnd,_ty):rst) = do
             d' <- gensym $ toVar "writeintcur"
             rnd' <- go rnd
-            LetE (d',[], CursorTy (changeLRMLoc "FIXME" slrm), l$ Ext $ L3.WriteInt d rnd') <$>
+            LetE (d',[], CursorTy (cursorizeLRM slrm), l$ Ext $ L3.WriteInt d rnd') <$>
               l <$> (go2 d' rst)
 
       writetag <- gensym "writetag"
-      (LetE (writetag,[], CursorTy (changeLRMLoc "FIXME" slrm),
+      (LetE (writetag,[], CursorTy (cursorizeLRM slrm),
                        l$ Ext $ L3.WriteTag dcon sloc)
         <$> l <$> (go2 writetag (zip args (lookupDataCon ddfs dcon))))
 
     Ext (LetLocE loc rhs bod) -> do
       let (rhs',lrm) = cursorizeLocExp rhs
-          lrm'  = changeLRMLoc loc lrm
+          lrm'  = cursorizeLRM lrm
           nlenv = M.insert loc lrm' lenv
       LetE (loc,[],CursorTy lrm',rhs') <$>
         cursorizeExp ddfs venv nlenv bod
@@ -198,9 +204,9 @@ cursorizeExp ddfs venv lenv (L p exp) = L p <$>
           let scrtLoc = lrmLoc (scrtLrm)          -- location of the scrutinee
               floc    = head locs                 -- location of the first field
 
-              flrm    = changeLRMLoc floc scrtLrm -- retail all the properties (region & mode)
-                                                  -- of the cursor for the scrutinee, but
-                                                  -- change its location appropriately
+              flrm    = cursorizeLRM scrtLrm -- retail all the properties (region & mode)
+                                             -- of the cursor for the scrutinee, but
+                                             -- change its location to _
               lenv'   = M.insert floc flrm lenv
 
           -- TODO: check if we can conditionally add things to the fmap computation
@@ -214,7 +220,7 @@ cursorizeExp ddfs venv lenv (L p exp) = L p <$>
               LetE (floc,[],CursorTy flrm, l$ Ext$ L3.AddCursor 1 scrtLoc) <$>
                 -- the tmp cursor doesn't have a correct type. flrm should be modified
                 -- with the location of the next field, if it has any
-                l<$> (LetE (tmp,[],ProdTy [IntTy, CursorTy (changeLRMLoc "FIXME" flrm)],
+                l<$> (LetE (tmp,[],ProdTy [IntTy, CursorTy (cursorizeLRM flrm)],
                             l$ Ext $ L3.ReadInt scrtLoc) <$>
                        (l<$> LetE (v,[],IntTy, l$ ProjE 0 (l$ VarE tmp)) <$>
                          cursorizeExp ddfs venv lenv' rhs))
@@ -229,22 +235,11 @@ cursorizeExp ddfs venv lenv (L p exp) = L p <$>
     cursorizeLocExp locExp =
       case locExp of
         AfterConstantLE i loc -> (l$ Ext $ L3.AddCursor i loc, lenv ! loc)
-        AfterVariableLE v loc -> (l$ VarE (toVar $ "AfterVariableLE" ++ fromVar v ++ fromVar loc), LRM{lrmLoc = "FIXME",lrmReg = VarR "FIXME", lrmMode = Input})
-        FromEndLE v -> (l$ VarE v, LRM{lrmLoc = "FIXME",lrmReg = VarR "FIXME", lrmMode = Input})
+        AfterVariableLE v loc -> (l$ VarE (toVar $ "AfterVariableLE" ++ fromVar v ++ fromVar loc),
+                                  lenv ! loc)
+        FromEndLE loc -> (l$ VarE loc, lenv! loc)
         oth -> error $ "cursorizeLocExp: todo " ++ sdoc oth
 
--- | Change lrmLoc to the given location
-changeLRMLoc :: LocVar -> LRM -> LRM
-changeLRMLoc v lrm = lrm {lrmLoc = v}
-
--- | Prepend "cur_" to all location variables
-locToCur :: LocVar -> Var
-locToCur = varAppend ""
-
--- | Prepend "cur_" to all location variables
-locToEndCursor :: LocVar -> Var
-locToEndCursor = varAppend "cur_end_"
-
-isPacked :: Ty2 -> Bool
-isPacked PackedTy{} = True
-isPacked _ = False
+-- | Change the location to _
+cursorizeLRM :: LRM -> LRM
+cursorizeLRM lrm = lrm {lrmLoc = "_"}

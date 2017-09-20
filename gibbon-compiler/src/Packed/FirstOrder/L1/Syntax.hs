@@ -27,7 +27,7 @@ module Packed.FirstOrder.L1.Syntax
 
       -- * Types and helpers
     , Ty1, UrTy(..), pattern Packed, pattern SymTy
-    , voidTy, hasPacked, sizeOf
+    , voidTy, hasPacked, sizeOf, isPackedTy
 
     -- * Expression and Prog helpers
     , subst, substE, getFunTy
@@ -463,6 +463,10 @@ primArgsTy p =
     ReadPackedFile{} -> []
     (ErrorP _ _) -> []
 
+
+isPackedTy :: UrTy a -> Bool
+isPackedTy PackedTy{} = True
+isPackedTy _ = False
 
 --------------------------------------------------------------------------------
 
