@@ -30,13 +30,9 @@ module Packed.FirstOrder.L2.Syntax
     , UrTy(..)
     , PreExp(..)
     , pattern SymTy
-    , primRetTy
 
     -- * Extended language L2.0 with location types.
     , Exp2, E2Ext(..), Ty2
-
-    -- -- * Convenience aliases
-    -- , Ty, Exp
 
     -- * Conversion back to L1
     , revertToL1
@@ -598,32 +594,6 @@ isExtendedPattern e =
 
 -- Initial type environments
 --------------------------------------------------------------------------------
-
-dummyCursorTy :: L1.Ty1
-dummyCursorTy = CursorTy dummyLRM
-
--- | Return type for a primitive operation.
-primRetTy :: Prim -> L1.Ty1
-primRetTy p =
-  case p of
-    AddP -> IntTy
-    SubP -> IntTy
-    MulP -> IntTy
-    EqSymP  -> BoolTy
-    EqIntP  -> BoolTy
-    MkTrue  -> BoolTy
-    MkFalse -> BoolTy
-    MkNullCursor -> dummyCursorTy
-    SizeParam -> IntTy
-    DictHasKeyP _ -> BoolTy
-    DictEmptyP ty -> SymDictTy ty
-    DictInsertP ty -> SymDictTy ty
-    DictLookupP ty -> ty
-    (ErrorP _ ty) -> ty
-    ReadPackedFile _ _ ty -> ty
-    SymAppend -> SymTy
-
-
 
 -- | A type environment listing the types of built-in functions.
 --

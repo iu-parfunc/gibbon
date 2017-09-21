@@ -17,7 +17,7 @@
 
 module Packed.FirstOrder.L1.Syntax
     (
-     -- * Core types
+      -- * Core types
       Prog(..), DDef(..), FunDefs, FunDef(..),
       Exp1, PreExp(..)
     , progToEnv
@@ -27,9 +27,9 @@ module Packed.FirstOrder.L1.Syntax
 
       -- * Types and helpers
     , Ty1, UrTy(..), pattern Packed, pattern SymTy
-    , voidTy, hasPacked, sizeOf, isPackedTy
+    , voidTy, hasPacked, sizeOf, isPackedTy, primRetTy
 
-    -- * Expression and Prog helpers
+      -- * Expression and Prog helpers
     , subst, substE, getFunTy
     , mapExprs
     , mapExt
@@ -467,6 +467,31 @@ primArgsTy p =
 isPackedTy :: UrTy a -> Bool
 isPackedTy PackedTy{} = True
 isPackedTy _ = False
+
+
+-- | Return type for a primitive operation.
+primRetTy :: Prim -> Ty1
+primRetTy p =
+  case p of
+    AddP -> IntTy
+    SubP -> IntTy
+    MulP -> IntTy
+    EqSymP  -> BoolTy
+    EqIntP  -> BoolTy
+    MkTrue  -> BoolTy
+    MkFalse -> BoolTy
+    MkNullCursor   -> dummyCursorTy
+    SymAppend      -> SymTy
+    SizeParam      -> IntTy
+    DictHasKeyP _  -> BoolTy
+    DictEmptyP ty  -> SymDictTy ty
+    DictInsertP ty -> SymDictTy ty
+    DictLookupP ty -> ty
+    (ErrorP _ ty)  -> ty
+    ReadPackedFile _ _ ty -> ty
+
+dummyCursorTy :: Ty1
+dummyCursorTy = CursorTy dummyLRM
 
 --------------------------------------------------------------------------------
 
