@@ -74,7 +74,10 @@ cursorize Prog{ddefs,fundefs} = do
 cursorizeExp :: DDefs Ty2 -> VEnv -> LEnv -> L Exp2 -> SyM (L L3.Exp3)
 cursorizeExp ddfs venv lenv (L p exp) = L p <$>
   case exp of
-    VarE v    -> return $ VarE v
+    VarE v    -> case M.lookup v venv of
+                   Just lrm -> return $ VarE (lrmLoc lrm)
+                   _        -> return $ VarE v
+
     LitE n    -> return $ LitE n
     LitSymE v -> return $ LitSymE v
 
