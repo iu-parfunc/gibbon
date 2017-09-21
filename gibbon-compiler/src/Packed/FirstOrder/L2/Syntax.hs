@@ -244,7 +244,6 @@ _getTyLocs t =
 _tyWithFreshLocs :: Ty1 -> SyM Ty2
 _tyWithFreshLocs t =
   case t of
-    L1.Packed k -> PackedTy k <$> genLetter
     L1.IntTy    -> return IntTy
     L1.SymTy    -> return SymTy
     L1.BoolTy   -> return BoolTy
@@ -622,6 +621,7 @@ primRetTy p =
     DictLookupP ty -> ty
     (ErrorP _ ty) -> ty
     ReadPackedFile _ _ ty -> ty
+    SymAppend -> SymTy
 
 
 

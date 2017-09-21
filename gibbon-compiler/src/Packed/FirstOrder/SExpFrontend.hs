@@ -217,7 +217,7 @@ typ s = case s of
          (A "Int")  -> IntTy
          (A "Sym")  -> SymTy
          (A "Bool") -> BoolTy
-         (A other)  -> Packed (textToDataCon other)
+         (A other)  -> PackedTy (textToDataCon other) ()
          (RSList (A "Vector"  : rst)) -> ProdTy $ L.map typ rst
          (RSList [A "SymDict", t]) -> SymDictTy $ typ t
          (RSList [A "Listof", t])  -> ListTy $ typ t

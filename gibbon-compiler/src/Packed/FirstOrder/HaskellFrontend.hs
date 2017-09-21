@@ -246,7 +246,7 @@ desugarType :: H.Type -> Ds Ty1
 desugarType ty =
   case ty of
     TyCon (UnQual (Ident "Int")) -> return IntTy
-    TyCon (UnQual (Ident con))   -> return (Packed con)
+    TyCon (UnQual (Ident con))   -> return (PackedTy con ())
     TyTuple Boxed [ty1, ty2]     -> (\a b-> ProdTy [a,b])
                                     <$> desugarType ty1
                                     <*> desugarType ty2
@@ -255,7 +255,7 @@ desugarType ty =
 
     TyApp ty1 _ty2 ->
       desugarType ty1 >>= \case
-      Packed con -> return (Packed con)
+      PackedTy con dec -> return (PackedTy con dec)
       _ -> err ("Unsupported type: " ++ show ty)
 
     _ -> err $ "Unsupported type: " ++ show ty
