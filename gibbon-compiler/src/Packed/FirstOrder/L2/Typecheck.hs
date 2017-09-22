@@ -61,6 +61,7 @@ data LocConstraint = StartOfC LocVar Region -- ^ Location is equal to start of t
 -- While the first four can appear in syntax before RouteEnds, the fifth
 -- (fromEnd) should only be introduced by the RouteEnds pass.
 newtype ConstraintSet = ConstraintSet { constraintSet :: S.Set LocConstraint }
+  deriving (Read, Show, Eq, Ord, Generic, NFData)
 
 -- | A location has been aliased if we have taken an offset of it while introducing a new
 -- location. These show up in the LocationTypeState below.
@@ -83,6 +84,7 @@ newtype LocationTypeState = LocationTypeState
 -- | A region set is (as you would expect) a set of regions. They are the
 -- regions that are currently live while checking a particular expression.
 newtype RegionSet = RegionSet { regSet :: S.Set Region }
+  deriving (Read, Show, Eq, Ord, Generic, NFData)
 
 
 -- | Shorthand for located expressions
@@ -272,14 +274,7 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
 
                regs' <- regionInsert exp r regs
                (ty,tstate) <- tcExp ddfs env funs constrs regs' tstatein e
-
-               case ty of
-                 PackedTy _con l -> do
-                              r <- getRegion exp constrs l
-                              if hasRegion r regs
-                              then throwError $ GenericTC ("Escaping region " ++ (show r)) exp
-                              else return (ty,tstate)
-                 _ -> return (ty,tstate)
+               return (ty,tstate)
 
       Ext (LetLocE v c e) -> do
 

@@ -67,8 +67,26 @@ add1FunBod = l$ CaseE (l$ VarE "tr1") $
      l$ VarE "z17")
   ]
 
+add1MainExp :: L Exp2
+add1MainExp = l$ Ext $ LetRegionE (VarR "r99") $
+              l$ Ext $ LetLocE "l100" (StartOfLE (VarR "r99")) $
+              l$ Ext $ LetLocE "l101" (AfterConstantLE 1 "l100") $
+              l$ LetE ("x102",[],PackedTy "Tree" "l101",
+                      l$ DataConE "l101" "Leaf" [l$ LitE 1]) $
+              l$ Ext $ LetLocE "l103" (AfterVariableLE "x102" "l101") $
+              l$ LetE ("y104",[],PackedTy "Tree" "l103",
+                      l$ DataConE "l103" "Leaf" [l$ LitE 2]) $
+              l$ LetE ("z105",[],PackedTy "Tree" "l100",
+                      l$ DataConE "l100" "Node" [l$ VarE "x102",
+                                                 l$ VarE "y104"]) $
+              l$ Ext $ LetRegionE (VarR "r106") $
+              l$ Ext $ LetLocE "l107" (StartOfLE (VarR "r106")) $
+              l$ AppE "add1" ["l100", "l107"] (l$ VarE "z105")
+
+
 add1Prog :: Prog
-add1Prog = Prog ddtree (M.fromList [("add1", add1Fun)]) Nothing
+add1Prog = Prog ddtree (M.fromList [("add1", add1Fun)])
+           (Just (add1MainExp, PackedTy "Tree" "l107"))
 
 --------------------------------------------------------------------------------
 
