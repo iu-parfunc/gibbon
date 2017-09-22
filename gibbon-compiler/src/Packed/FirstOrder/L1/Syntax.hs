@@ -299,12 +299,13 @@ data UrTy a =
         ---------- These are not used initially ----------------
         -- (They could be added by a later IR instead:)
 
-        | PtrTy LRM (UrTy a) -- ^ A machine pointer to a complete value in memory.
-                             -- This is decorated with the region it points into, which
-                             -- may affect the memory layout.
-        | CursorTy LRM -- ^ A cursor for reading or writing, which may point
-                       -- to an unkwown type or to a fraction of a complete value.
-                       -- It is a machine pointer that can point to any byte.
+        | PtrTy -- ^ A machine pointer to a complete value in memory.
+                -- This is decorated with the region it points into, which
+                -- may affect the memory layout.
+
+        | CursorTy -- ^ A cursor for reading or writing, which may point
+                   -- to an unkwown type or to a fraction of a complete value.
+                   -- It is a machine pointer that can point to any byte.
 
   deriving (Show, Read, Ord, Eq, Generic, NFData, Functor)
 
@@ -347,8 +348,8 @@ hasPacked t =
     IntTy          -> False
     SymDictTy ty   -> hasPacked ty
     ListTy _       -> error "FINISHLISTS"
-    PtrTy _lrm _ty -> error$ "hasPacked: should not be using this when PtrTy is introduced: "++show t
-    CursorTy _lrm  -> error$ "hasPacked: should not be using this when CursorTy is introduced: "++show t
+    PtrTy          -> error$ "hasPacked: should not be using this when PtrTy is introduced: "++show t
+    CursorTy       -> error$ "hasPacked: should not be using this when CursorTy is introduced: "++show t
 
 -- | Provide a size in bytes, if it is statically known.
 sizeOf :: UrTy a -> Maybe Int
@@ -491,7 +492,7 @@ primRetTy p =
     ReadPackedFile _ _ ty -> ty
 
 dummyCursorTy :: Ty1
-dummyCursorTy = CursorTy dummyLRM
+dummyCursorTy = CursorTy
 
 --------------------------------------------------------------------------------
 

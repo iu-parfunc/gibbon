@@ -111,8 +111,8 @@ stripTyLocs ty =
     SymDictTy ty'    -> SymDictTy $ stripTyLocs ty'
     PackedTy tycon _ -> PackedTy tycon ()
     ListTy ty'       -> ListTy $ stripTyLocs ty'
-    PtrTy lrm ty'    -> PtrTy lrm $ stripTyLocs ty'
-    CursorTy lrm     -> CursorTy lrm
+    PtrTy    -> PtrTy
+    CursorTy -> CursorTy
 
 
 --------------------------------------------------------------------------------

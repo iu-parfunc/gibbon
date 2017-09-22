@@ -231,9 +231,9 @@ _getTyLocs t =
       PackedTy _ lv -> S.singleton lv -- This is a tricky case:
       SymDictTy elt -> _getTyLocs elt
       -- TODO(chai):
-      PtrTy (LRM lv _ _) elt -> S.union (S.singleton lv) (_getTyLocs elt)
-      CursorTy (LRM lv _ _)  -> S.singleton lv
-      ListTy{}               -> error "FINISHLISTS"
+      PtrTy    -> S.empty
+      CursorTy -> S.empty
+      ListTy{} -> error "FINISHLISTS"
 
 
 -- | Annotate a naked type with fresh location variables.
@@ -246,8 +246,8 @@ _tyWithFreshLocs t =
     L1.ProdTy l -> ProdTy <$> mapM _tyWithFreshLocs l
     L1.SymDictTy v  -> SymDictTy <$> _tyWithFreshLocs v
     L1.PackedTy _ _ -> error $ "tyWithFreshLocs: unexpected type: " ++ show t
-    L1.PtrTy _ _    -> error $ "FINISHME: _tyWithFreshLocs PtrTy"
-    L1.CursorTy _   -> error $ "FINISHME: _tyWithFreshLocs CursorTy"
+    L1.PtrTy    -> error $ "FINISHME: _tyWithFreshLocs PtrTy"
+    L1.CursorTy -> error $ "FINISHME: _tyWithFreshLocs CursorTy"
     L1.ListTy _ -> error "tyWithFreshLocs: FIXME implement lists"
 
 -- | Remove the extra location annotations.
@@ -280,14 +280,8 @@ substTy mp t = go t
                 -- errorWithStackTrace $ "substTy: failed to find "++show l++
                 --   "\n  in map: "++show mp++", when processing type "++show t
       -- TODO(chai):
-      PtrTy (LRM l reg mod) te ->
-        case M.lookup l mp of
-          Just v  -> PtrTy (LRM v reg mod) (go te)
-          Nothing -> PtrTy (LRM l reg mod) (go te)
-      CursorTy (LRM l reg mod) ->
-        case M.lookup l mp of
-          Just v  -> CursorTy (LRM v reg mod)
-          Nothing -> CursorTy (LRM l reg mod)
+      PtrTy    -> PtrTy
+      CursorTy -> CursorTy
       ListTy _ -> error "tyWithFreshLocs: FIXME implement lists"
 
 -- | Apply a substitution to an effect set.
@@ -310,8 +304,8 @@ _allLocVars t =
       PackedTy _ v  -> [v]
       ProdTy ls     -> L.concatMap _allLocVars ls
       SymDictTy elt -> _allLocVars elt
-      PtrTy (LRM lv _ _) elt -> [lv] ++ _allLocVars elt
-      CursorTy (LRM lv _ _)  -> [lv]
+      PtrTy    -> []
+      CursorTy -> []
       ListTy _ -> error "allLocVars: FIXME lists"
 
 
