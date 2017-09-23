@@ -4,10 +4,12 @@ module Packed.FirstOrder.L2.Examples
   ( -- * Data definitions
     ddtree
     -- * Functions
-  , add1Fun, add1TraversedFun, id1Fun, copyTreeFun, id2Fun, id3Fun
+  , add1Fun, add1TraversedFun, id1Fun, copyTreeFun, id2Fun, id3Fun, intAddFun
+  , leftmostFun, buildLeafFun
 
     -- * Programs
-  , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog
+  , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
+  , leftmostProg, buildLeafProg
   ) where
 
 import Data.Loc
@@ -191,3 +193,92 @@ id3Fun = FunDef "id3" id3Ty "i42" id3Bod
 
 id3Prog :: Prog
 id3Prog = Prog ddtree (M.fromList [("id3", id3Fun)]) Nothing
+
+
+--------------------------------------------------------------------------------
+
+intAddFun :: FunDef
+intAddFun = FunDef "intAdd" intAddTy "i109" id3Bod
+  where
+    intAddTy :: ArrowTy Ty2
+    intAddTy = (ArrowTy
+                []
+                (ProdTy [IntTy, IntTy])
+                (S.empty)
+                (IntTy)
+                [])
+    id3Bod = l$ PrimAppE AddP [l$ ProjE 0 (l$ VarE "i109"), l$ ProjE 1 (l$ VarE "i109")]
+
+intAddMainExp :: L Exp2
+intAddMainExp = l$ LetE ("sum110", [], IntTy,
+                         l$ AppE "intAdd" []
+                         (l$ MkProdE [l$LitE 40,l$LitE 2])) $
+                l$ (VarE "sum110")
+
+intAddProg :: Prog
+intAddProg = Prog M.empty (M.fromList [("intAdd", intAddFun)]) (Just (intAddMainExp, IntTy))
+
+--------------------------------------------------------------------------------
+
+leftmostFun :: FunDef
+leftmostFun = FunDef "leftmost" leftmostTy "t111" leftmostBod
+  where
+    leftmostTy :: ArrowTy Ty2
+    leftmostTy = (ArrowTy
+                 [LRM "lin112" (VarR "r113") Input]
+                 (PackedTy "Tree" "lin112")
+                 (S.empty)
+                 (IntTy)
+                 [])
+
+leftmostBod :: L Exp2
+leftmostBod = l$ CaseE (l$ VarE "t111")
+              [("Leaf", [("n114","l115")],
+                l$ VarE "n114"),
+               ("Node", [("x117","l118"), ("y119","l120")],
+                l$ LetE ("lm121",[],IntTy, l$ AppE "leftmost" ["l118"] (l$ VarE "x117")) $
+                l$ VarE "lm121")]
+
+leftmostMainExp :: L Exp2
+leftmostMainExp = l$ Ext $ LetRegionE (VarR "r122") $
+                  l$ Ext $ LetLocE "l123" (StartOfLE (VarR "r122")) $
+                  l$ Ext $ LetLocE "l124" (AfterConstantLE 1 "l123") $
+                  l$ LetE ("x125",[],PackedTy "Tree" "l124",
+                          l$ DataConE "l124" "Leaf" [l$ LitE 1]) $
+                  l$ Ext $ LetLocE "l126" (AfterVariableLE "x125" "l124") $
+                  l$ LetE ("y128",[],PackedTy "Tree" "l126",
+                          l$ DataConE "l126" "Leaf" [l$ LitE 2]) $
+                  l$ LetE ("z127",[],PackedTy "Tree" "l123",
+                          l$ DataConE "l123" "Node" [l$ VarE "x125", l$ VarE "y128"]) $
+                  l$ LetE ("a131",[], IntTy,
+                          l$ AppE "leftmost" ["l123"] (l$ VarE "z127")) $
+                  l$ VarE "a131"
+
+leftmostProg :: Prog
+leftmostProg = Prog ddtree (M.fromList [("leftmost", leftmostFun)]) (Just (leftmostMainExp, IntTy))
+
+
+--------------------------------------------------------------------------------
+
+buildLeafFun :: FunDef
+buildLeafFun = FunDef "buildLeaf" buildLeafTy "i125" buildLeafBod
+  where
+    buildLeafTy :: ArrowTy Ty2
+    buildLeafTy = (ArrowTy
+                   [LRM "lout126" (VarR "r127") Output]
+                   (IntTy)
+                   (S.empty)
+                   (PackedTy "Tree" "lout126")
+                   [])
+
+    buildLeafBod :: L Exp2
+    buildLeafBod = l$ DataConE "lout126" "Leaf" [l$ VarE "i125"]
+
+
+buildLeafMainExp :: L Exp2
+buildLeafMainExp = l$ Ext $ LetRegionE (VarR "r128") $
+                   l$ Ext $ LetLocE "l129" (StartOfLE (VarR "r128")) $
+                   l$ AppE "buildLeaf" ["l129"] (l$ LitE 42)
+
+buildLeafProg :: Prog
+buildLeafProg = Prog ddtree (M.fromList [("buildLeaf", buildLeafFun)]) (Just (buildLeafMainExp, PackedTy "Tree" "l129"))
