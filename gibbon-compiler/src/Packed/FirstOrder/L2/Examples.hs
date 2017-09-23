@@ -81,7 +81,9 @@ add1MainExp = l$ Ext $ LetRegionE (VarR "r99") $
                                                  l$ VarE "y104"]) $
               l$ Ext $ LetRegionE (VarR "r106") $
               l$ Ext $ LetLocE "l107" (StartOfLE (VarR "r106")) $
-              l$ AppE "add1" ["l100", "l107"] (l$ VarE "z105")
+              l$ LetE ("a108",[], PackedTy "Tree" "l107",
+                      l$ AppE "add1" ["l100", "l107"] (l$ VarE "z105")) $
+              l$ VarE "a108"
 
 
 add1Prog :: Prog
