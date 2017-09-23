@@ -37,9 +37,10 @@ type Ty3 = UrTy ()
 data E3Ext loc dec =
     ReadInt   Var                  -- ^ One cursor in, (int, cursor') out
   | WriteInt  Var (L (E3 loc dec)) -- ^ Write int at cursor, and return a cursor
-  | AddCursor Var Int                 -- ^ Add a constant offset to a cursor variable
+  | AddCursor Var Int              -- ^ Add a constant offset to a cursor variable
   | ReadTag   Var                  -- ^ One cursor in, (tag,cursor) out
   | WriteTag  DataCon Var          -- ^ Write Tag at Cursor, and return a cursor
+  | NewBuffer                      -- ^ Create a new buffer, and return a cursor
   deriving (Show, Ord, Eq, Read, Generic, NFData)
 
 -- | L1 expressions extended with L3.  This is the polymorphic version.
@@ -54,6 +55,7 @@ instance FreeVars (E3Ext l d) where
       AddCursor v _ -> S.singleton v
       ReadTag v     -> S.singleton v
       WriteTag _ v  -> S.singleton v
+      NewBuffer     -> S.empty
 
 instance (Out l, Out d) => Out (E3Ext l d)
 
@@ -67,6 +69,7 @@ instance (Out l, Out d, Show l, Show d) => Expression (E3Ext l d) where
       AddCursor{} -> False
       ReadTag{}   -> False
       WriteTag{}  -> False
+      NewBuffer   -> False
 
 data ArrowTy t = ArrowTy { arrIn  :: t ,
                            arrOut :: t

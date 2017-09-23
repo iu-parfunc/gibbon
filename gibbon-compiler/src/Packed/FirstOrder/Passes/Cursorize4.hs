@@ -26,12 +26,18 @@ type LEnv = Map LocVar LRM
 
 -- |
 cursorize :: Prog -> SyM L3.Prog
-cursorize Prog{ddefs,fundefs} = do
+cursorize Prog{ddefs,fundefs,mainExp} = do
   fns' <- mapM (fd . snd) (M.toList fundefs)
   let fundefs' = M.fromList $ L.map (\f -> (L3.funname f, f)) fns'
-      ddefs' = M.map L3.eraseLocMarkers ddefs
-  -- TODO: cursorize mainExp
-  return $ L3.Prog ddefs' fundefs' Nothing
+      ddefs'   = M.map L3.eraseLocMarkers ddefs
+
+  mainExp' <- case mainExp of
+                Nothing -> return Nothing
+                Just (e,ty) -> do
+                  e' <- cursorizeExp ddefs M.empty e
+                  return $ Just (e', L3.stripTyLocs ty)
+
+  return $ L3.Prog ddefs' fundefs' mainExp'
 
   where
         -- TODO: This is risky! might result in a runtime error. use something safe here
@@ -72,7 +78,7 @@ cursorizeExp :: DDefs Ty2 -> VEnv -> L Exp2 -> SyM (L L3.Exp3)
 cursorizeExp ddfs venv (L p exp) = L p <$>
   case exp of
     VarE v    -> case M.lookup v venv of
-                   Just lrm -> traceShow (v,lrm) (return $ VarE (lrmLoc lrm))
+                   Just lrm -> return $ VarE (lrmLoc lrm)
                    _        -> return $ VarE v
 
     LitE n    -> return $ LitE n
@@ -161,13 +167,13 @@ cursorizeExp ddfs venv (L p exp) = L p <$>
         [] -> do
           (LetE (fresh,[],ProdTy [CursorTy, CursorTy], rhs') <$>
             (l <$> LetE (v,[],CursorTy, l$ ProjE 1 (l$ VarE fresh)) <$>
-              cursorizeExp ddfs venv bod))
+              go bod))
 
         _ -> do
           (LetE (fresh,[],ProdTy [CursorTy, CursorTy], rhs') <$>
             (l <$> LetE (head locs,[],CursorTy, l$ ProjE 0 (l$ VarE fresh)) <$>
               (l <$> LetE (v,[],CursorTy, l$ ProjE 1 (l$ VarE fresh)) <$>
-               cursorizeExp ddfs venv bod)))
+               go bod)))
 
     -- TODO
     -- IfE EXP EXP EXP
@@ -180,7 +186,7 @@ cursorizeExp ddfs venv (L p exp) = L p <$>
     Ext (LetLocE loc rhs bod) -> do
       let rhs' = cursorizeLocExp rhs
       LetE (loc,[],CursorTy,rhs') <$>
-        cursorizeExp ddfs venv bod
+        go bod
 
     -- Just convert the implicit location return into a ProdE
     Ext (RetE locs v) ->
@@ -189,11 +195,23 @@ cursorizeExp ddfs venv (L p exp) = L p <$>
         [loc] -> return $ MkProdE [l$ VarE loc, l$ VarE v]
         _     -> error $ "cursorize: RetE with more than 1 locs not allowed! " ++ show locs
 
+    Ext (LetRegionE r bod) -> do
+      v <- regionToVar r
+      LetE (v,[],CursorTy, l$ Ext L3.NewBuffer) <$>
+        go bod
+
     -- Some expressions are not handled yet ...
     oth -> trace ("TODO:\n" ++ sdoc oth) $ return (VarE "FIXME")
 
   where
     go = cursorizeExp ddfs venv
+
+    regionToVar :: Region -> SyM Var
+    regionToVar r = case r of
+                      GlobR  -> gensym "glob_region"
+                      VarR v -> return v
+                      DynR v -> return v
+
 
     -- | Take a cursor pointing to the start of the tag, and advance it by 1 byte
     -- If the first bound varaible is a scalar (IntTy), read it using the newly returned cursor.
@@ -225,10 +243,10 @@ cursorizeExp ddfs venv (L p exp) = L p <$>
                 l<$> (LetE (tmp,[],ProdTy [IntTy, CursorTy],
                             l$ Ext $ L3.ReadInt scrtLoc) <$>
                        (l<$> LetE (v,[],IntTy, l$ ProjE 0 (l$ VarE tmp)) <$>
-                         cursorizeExp ddfs venv rhs))
+                         go rhs))
             else do
               LetE (floc,[],CursorTy, l$ Ext$ L3.AddCursor scrtLoc 1) <$>
-                cursorizeExp ddfs venv rhs
+                go rhs
 
           return (dcon,[],l$ bod)
 
@@ -239,6 +257,10 @@ cursorizeExp ddfs venv (L p exp) = L p <$>
         AfterConstantLE i loc -> l$ Ext $ L3.AddCursor loc i
         AfterVariableLE v loc -> l$ VarE (toVar $ "AfterVariableLE" ++ fromVar v ++ fromVar loc)
         FromEndLE loc -> l$ VarE loc
+        StartOfLE r   -> case r of
+                           GlobR  -> error $ "cursorizeLocExp: TODO: GlobR should have a var param"
+                           VarR v -> l$ VarE v
+                           DynR v -> l$ VarE v
         oth -> error $ "cursorizeLocExp: todo " ++ sdoc oth
 
 -- | Change the location to _
