@@ -117,6 +117,7 @@ exp ddefs env2 (L sloc e0) =
        LitE    _      -> return ([],e0)
        LitSymE _      -> return ([],e0)
 
+       {-
        -- This pass is run at multiple points in the compiler pipeline.
        -- We COULD just let these patterns be treated as arbitrary AppE forms,
        -- but it is safer to handle them explicitly.
@@ -129,6 +130,7 @@ exp ddefs env2 (L sloc e0) =
        L2.WriteInt v e  -> do (b1,e') <- triv "WI" e; return (b1, L2.WriteInt v e')
        -- A fail-safe:
        _ | L2.isExtendedPattern e0 -> error$ "Unhandled extended L2 pattern: "++ndoc e0
+       -}
 
        AppE f lvs arg    -> do (b1,arg') <- triv "Ap" arg
                                return (b1, AppE f lvs arg')

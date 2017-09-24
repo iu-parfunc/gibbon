@@ -38,8 +38,12 @@ import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.GenericOps(Interp, interpNoLogs, interpWithStdout)
 import           Packed.FirstOrder.L1.Syntax as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
-import Packed.FirstOrder.L2.Syntax ( pattern WriteInt, pattern ReadInt, pattern NewBuffer
-                                   , pattern ScopedBuffer, pattern AddCursor)
+
+-- We got rid of these pattern variables from L2, and they are now defined as L3 extensions instead
+-- TODO: L3.Interp
+
+-- import Packed.FirstOrder.L2.Syntax ( pattern WriteInt, pattern ReadInt, pattern NewBuffer
+--                                    , pattern ScopedBuffer, pattern AddCursor)
 
 -- TODO:
 -- It's a SUPERSET, but use the Value type from TargetInterp anyway:
@@ -244,6 +248,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
             ProjE ix ex -> do VProd ls <- go env ex
                               return $ ls !! ix
 
+            {-
             AddCursor vr bytesadd -> do
                 Store store <- get
                 -- Note: the added offset is always in BYTES:
@@ -295,8 +300,11 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                 oth :< _      ->
                  internalError $"L1.Interp: ReadInt expected Int in buffer, found: "++show oth
 
+            L2.NamedVal _ _ bd -> go env bd
+
             p | L2.isExtendedPattern p ->
                internalError$ "L1.Interp: Unhandled extended L2 pattern: "++ndoc p
+            -}
 
             AppE f _ b ->  do rand <- go env b
                               case M.lookup f fundefs of
@@ -330,7 +338,6 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                      _ -> error$ "L1.Interp: type error, expected data constructor, got: "++ndoc v++
                                  "\nWhen evaluating scrutinee of case expression: "++ndoc x1
 
-            L2.NamedVal _ _ bd -> go env bd
 
             (LetE (v,_,_ty,rhs) bod) -> do
               rhs' <- go env rhs

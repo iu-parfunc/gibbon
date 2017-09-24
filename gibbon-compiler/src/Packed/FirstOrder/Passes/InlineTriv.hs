@@ -93,7 +93,8 @@ inlineTrivExp _ddefs = go []
       FoldE (v1,t1,e1) (v2,t2,e2) e3 ->
        FoldE (v1,t1,go env e1) (v2,t2,go env e2) (go env e3)
 
--- FIXME: Remove:
+      {-
+      -- FIXME: Remove:
       L2.NewBuffer -> L2.NewBuffer
       L2.ReadInt v     -> unLoc $ withVar env v $ \v2 -> L NoLoc $ L2.ReadInt v2
       L2.WriteInt v e  -> unLoc $ withVar env v $ \v2 -> L NoLoc $
@@ -103,7 +104,7 @@ inlineTrivExp _ddefs = go []
       p | L2.isExtendedPattern p ->
           internalError $ "InlineTriv: failed to handle extended L2 form: "
           ++ndoc p++", env: "++ndoc env
-
+      -}
 
 -- Helpers which do opportunistic reduction:
 
