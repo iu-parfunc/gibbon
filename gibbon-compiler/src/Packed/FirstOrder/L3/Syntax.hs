@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- | An intermediate language which makes cursors explicit
 
@@ -10,7 +11,7 @@ module Packed.FirstOrder.L3.Syntax
   , Prog(..), FunDef(..), FunDefs, ArrowTy(..)
 
     -- * Functions
-  , eraseLocMarkers, stripTyLocs
+  , eraseLocMarkers, stripTyLocs, cursorizeTy
   )
 where
 
@@ -117,5 +118,24 @@ stripTyLocs ty =
     PtrTy    -> PtrTy
     CursorTy -> CursorTy
 
+-- |
+cursorizeTy :: L2.ArrowTy L2.Ty2 -> ArrowTy Ty3
+cursorizeTy L2.ArrowTy{L2.arrIn,L2.arrOut,L2.locVars,L2.locRets} =
+  let
+      -- Adding additional outputs corresponding to end-of-input-value witnesses
+      -- We've already computed additional location return value in RouteEnds
+      rets = L.map (\_ -> CursorTy) locRets
+      outT = L2.prependArgs rets arrOut
 
---------------------------------------------------------------------------------
+      -- Packed types in the output then become end-cursors for those same destinations.
+      newOut = L2.mapPacked (\_ _ -> CursorTy) outT
+
+      -- Adding additional input arguments for the destination cursors to which outputs
+      -- are written.
+      mOutCurs = L.filter (\(LRM _ _ m) -> m == Output) locVars
+      inT      = L2.prependArgs (L.map (\_ -> CursorTy) mOutCurs) arrIn
+
+      -- Packed types in the input now become (read-only) cursors.
+      newIn    = L2.mapPacked (\_ _ -> CursorTy) inT
+
+  in ArrowTy { arrIn = stripTyLocs newIn, arrOut = stripTyLocs newOut }

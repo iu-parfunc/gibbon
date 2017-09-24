@@ -29,46 +29,127 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
   mainExp' <- case mainExp of
                 Nothing -> return Nothing
                 Just (e,ty) -> do
-                  e' <- cursorizeExp ddefs M.empty e
+                  e' <- case ty of
+                          _ | isPackedTy ty  -> cursorizePackedExp ddefs M.empty e
+                          _ | hasPacked ty   -> error $ "TODO: hasPacked mainExp"
+                          _ -> cursorizeExp ddefs M.empty e
                   return $ Just (e', L3.stripTyLocs ty)
 
   return $ L3.Prog ddefs' fundefs' mainExp'
 
   where
-        -- TODO: This is risky! might result in a runtime error. use something safe here
-        getInLrm  = head . L.filter (\(LRM _ _ m) -> m == Input)
-        getOutLrm = head . L.filter (\(LRM _ _ m) -> m == Output)
 
-        -- | Change the input and output types to have explicit cursors, and cursorize the body
-        fd :: FunDef -> SyM L3.FunDef
-        fd FunDef{funname,funty,funarg,funbod} =
-          let inloc    = lrmLoc $ getInLrm (locVars funty)
-              outloc   = lrmLoc $ getOutLrm (locVars funty)
+    fd :: FunDef -> SyM L3.FunDef
+    fd FunDef{funname,funty,funarg,funbod} = do
+      newarg <- gensym (varAppend "tup_arg_" funname)
+
+      let lvars   = locVars funty
+          mInloc  = L.find (\(LRM _ _ m) -> m == Input) lvars
+          mOutLoc = L.find (\(LRM _ _ m) -> m == Output) lvars
+
+          inT  = arrIn funty
+          outT = arrOut funty
+
+          -- FIXME: temporary, need to create a proper type for each case
+          funty' = L3.cursorizeTy funty
+
+      L3.FunDef funname funty' newarg <$>
+
+        case (mInloc,mOutLoc) of
+          -- Eg. add1, copyTree
+          (Just inLoc, Just outLoc) -> do
+
+            l<$> (LetE (lrmLoc outLoc,[], CursorTy, l$ ProjE 0 (l$ VarE newarg)) <$>
+                  (l<$> (LetE (lrmLoc inLoc,[], CursorTy, l$ ProjE 1 (l$ VarE newarg)) <$>
+                         (l<$> (LetE (funarg,[],CursorTy, l$ VarE (lrmLoc inLoc)) <$>
+                                cursorizePackedExp ddefs M.empty funbod)))))
+
+          -- Eg. leftmost
+          (Just inLoc, Nothing) ->
+
+            l<$> (LetE (lrmLoc inLoc,[], CursorTy, l$ ProjE 0 (l$ VarE newarg)) <$>
+                   (l<$> (LetE (funarg,[],CursorTy, l$ VarE (lrmLoc inLoc)) <$>
+                          cursorizeExp ddefs M.empty funbod)))
+
+          -- Eg. buildLeaf
+          (Nothing, Just outLoc) ->
+
+            l<$> (LetE (lrmLoc outLoc,[], CursorTy, l$ ProjE 0 (l$ VarE newarg)) <$>
+                   (l<$> (LetE (funarg,[],CursorTy, l$ VarE (lrmLoc outLoc)) <$>
+                          cursorizePackedExp ddefs M.empty funbod)))
+
+          -- Eg. intAdd
+          (Nothing, Nothing) ->
+            if (hasPacked inT || hasPacked outT)
+            then error $ "Non-packed types expected, but got: " ++ sdoc inT ++ "\n" ++ sdoc outT
+            else cursorizeExp ddefs M.empty funbod
 
 
-              -- | FIXME: This doesn't work for all functions
-              -- Change the function type
-              -- f :: Tree_{lin} -> (end_lin, Tree_{lout})
-              -- becomes
-              -- f :: (lout, lin) -> (end_lin, end_lout)
-              funty'   = L3.ArrowTy { L3.arrIn  = ProdTy [CursorTy, CursorTy]
-                                    , L3.arrOut = ProdTy [CursorTy, CursorTy]
-                                    }
+-- | Cursorize expressions NOT producing `Packed` values
+cursorizeExp :: DDefs Ty2 -> TEnv -> L Exp2 -> SyM (L L3.Exp3)
+cursorizeExp ddfs tenv (L p ex) = L p <$>
+  case ex of
+    VarE v    -> return $ VarE v
+    LitE n    -> return $ LitE n
+    LitSymE n -> return $ LitSymE n
 
-          in do
-          newFunarg <- gensym (varAppend "tup_" $ varAppend outloc inloc)
-          -- Here, we make the locVars explicit by creating let bindings for them,
-          -- so that other expressions in function body can refer to them
-          (L3.FunDef funname funty' newFunarg) <$>
-            l<$> (LetE (outloc,[], CursorTy,
-                        l$ ProjE 0 (l$ VarE newFunarg)) <$>
-                  (l<$> (LetE (inloc,[], CursorTy,
-                               l$ ProjE 1 (l$ VarE newFunarg)) <$>
-                          (l<$> (LetE (funarg,[],CursorTy, l$ VarE inloc))) <$>
-          -- and finally, we cursorize the function body
-                         cursorizeExp ddefs M.empty funbod)))
+    AppE f locs arg ->
+      if locs /= []
+      then error $ "cursorizeExp: AppE expected empty locs for scalar values. Got: " ++ sdoc locs
+      else AppE f [] <$> go arg
+
+    PrimAppE pr args -> PrimAppE pr <$> mapM go args
+
+    LetE (v,locs,ty,rhs) bod
+      | isPackedTy ty -> error $ "cursorizeExp: TOOD isPacked LetE"
+      | hasPacked ty  -> error $ "cursorizeExp: TOOD hasPacked LetE"
+      | otherwise ->
+          if locs /= []
+          then error $ "cursorizeExp: LetE expected empty locs for scalar values. Got " ++ sdoc locs
+          else do
+            rhs' <- go rhs
+            LetE (v,[],L3.stripTyLocs ty,rhs') <$>
+              cursorizeExp ddfs (M.insert v ty tenv) bod
+
+    IfE a b c  -> IfE <$> go a <*> go b <*> go c
+
+    MkProdE ls -> MkProdE <$> mapM go ls
+
+    ProjE i e  -> ProjE i <$> go e
+
+    -- Eg. leftmost
+    CaseE _scrtE _ls -> error $ "TODO: cursorizeExp " ++ sdoc ex
+
+    DataConE _ _ _ -> error $ "cursorizeExp: Should not have encountered DataConE if type is not packed: "++ndoc ex
+
+    TimeIt e ty b -> TimeIt <$> go e <*> pure (L3.stripTyLocs ty) <*> pure b
+
+    -- Eg. leftmost
+    Ext ext ->
+      case ext of
+        -- Since we're returning a scalar value, locs should be empty here...
+        -- Also, we don't have to dilate this return value
+        RetE locs v ->
+          if locs /= []
+          then error $ "cursorizeExp: RetE expected empty locs for scalar values. Got" ++ sdoc locs
+          else return $ VarE v
+
+        _ -> error $ "TODO: cursorizeExp " ++ sdoc ext
+
+    oth -> error $ "TODO: cursorizeExp" ++ sdoc oth
+
+  where
+    go = cursorizeExp ddfs tenv
 
 
+-- Cursorize expressions producing `Packed` values
+cursorizePackedExp :: DDefs Ty2 -> TEnv -> L Exp2 -> SyM (L L3.Exp3)
+cursorizePackedExp _ddfs _tenv (L p ex) = L p <$>
+  case ex of
+    oth -> error $ "TODO: cursorizeExp" ++ sdoc oth
+
+
+{-
 cursorizeExp :: DDefs Ty2 -> TEnv -> L Exp2 -> SyM (L L3.Exp3)
 cursorizeExp ddfs tenv (L p exp) = L p <$>
   case exp of
@@ -274,3 +355,5 @@ cursorizeExp ddfs tenv (L p exp) = L p <$>
 -- | Change the location to _
 cursorizeLRM :: LRM -> LRM
 cursorizeLRM lrm = lrm {lrmLoc = "_"}
+
+-}

@@ -23,7 +23,7 @@ module Packed.FirstOrder.L2.Syntax
     , progToEnv
 
     -- *
-    , getArrowTyLocs, substEffs, substTy
+    , getArrowTyLocs, substEffs, substTy, mapPacked, prependArgs
 
     -- * Temporary backwards compatibility, plus rexports
     , UrTy(..)
@@ -263,6 +263,24 @@ substEffs mp ef =
 revertToL1 :: Prog -> L1.Prog
 revertToL1 = undefined
 
+mapPacked :: (Var -> l -> UrTy l) -> UrTy l -> UrTy l
+mapPacked fn t =
+  case t of
+    IntTy  -> IntTy
+    BoolTy -> BoolTy
+    SymTy  -> SymTy
+    (ProdTy x)    -> ProdTy $ L.map (mapPacked fn) x
+    (SymDictTy x) -> SymDictTy $ mapPacked fn x
+    PackedTy k l  -> fn (toVar k) l
+    PtrTy    -> PtrTy
+    CursorTy -> CursorTy
+    ListTy{} -> error "FINISHLISTS"
+
+-- Injected cursor args go first in input and output:
+prependArgs :: [UrTy l] -> UrTy l -> UrTy l
+prependArgs [] t = t
+prependArgs ls t = ProdTy $ ls ++ [t]
+
 
 {-
 
@@ -409,23 +427,6 @@ cursorizeTy3  = mapPacked (\ _k l -> mkCursorTy l)
 ensureEndVar :: Var -> Var
 ensureEndVar v | isEndVar v = v
                | otherwise  = toEndVar v
-
--- Injected cursor args go first in input and output:
-prependArgs :: [Ty] -> Ty -> Ty
-prependArgs [] t = t
-prependArgs ls t = ProdTy $ ls ++ [t]
-
-
-mapPacked :: (Var -> l -> UrTy l) -> UrTy l -> UrTy l
-mapPacked fn t =
-  case t of
-    IntTy  -> IntTy
-    BoolTy -> BoolTy
-    SymTy  -> SymTy
-    (ProdTy x)    -> ProdTy $ L.map (mapPacked fn) x
-    (SymDictTy x) -> SymDictTy $ mapPacked fn x
-    PackedTy k l  -> fn (toVar k) l
-    ListTy{} -> error "FINISHLISTS"
 
 --------------------------------------------------------------------------------
 
