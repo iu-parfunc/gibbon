@@ -5,11 +5,11 @@ module Packed.FirstOrder.L2.Examples
     ddtree
     -- * Functions
   , add1Fun, add1TraversedFun, id1Fun, copyTreeFun, id2Fun, id3Fun, intAddFun
-  , leftmostFun, buildLeafFun
+  , leftmostFun, buildLeafFun, testProdFun
 
     -- * Programs
   , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
-  , leftmostProg, buildLeafProg
+  , leftmostProg, buildLeafProg, testProdProg
   ) where
 
 import Data.Loc
@@ -26,7 +26,8 @@ ddtree :: DDefs Ty2
 ddtree = fromListDD [DDef (toVar "Tree")
                       [ ("Leaf",[(False,IntTy)])
                       , ("Node",[ (False,PackedTy "Tree" "l")
-                                , (False,PackedTy "Tree" "l")])]]
+                                , (False,PackedTy "Tree" "l")])
+                      ]]
 
 --------------------------------------------------------------------------------
 -- Add1
@@ -282,3 +283,47 @@ buildLeafMainExp = l$ Ext $ LetRegionE (VarR "r128") $
 
 buildLeafProg :: Prog
 buildLeafProg = Prog ddtree (M.fromList [("buildLeaf", buildLeafFun)]) (Just (buildLeafMainExp, PackedTy "Tree" "l129"))
+
+--------------------------------------------------------------------------------
+
+testProdFun :: FunDef
+testProdFun = FunDef "testprod" testprodTy "tup130" testprodBod
+  where
+    testprodTy = (ArrowTy
+                  [LRM "lin131" (VarR "r132") Input, LRM "lout133" (VarR "r132") Output]
+                  (ProdTy [(PackedTy "Tree" "lin131"), IntTy])
+                  (S.empty)
+                  (ProdTy [(PackedTy "Tree" "lout133"), IntTy])
+                  [])
+    testprodBod = l$ LetE ("t134",[], PackedTy "Tree" "lin131", l$ ProjE 0 (l$ VarE "tup130")) $
+                  l$ LetE ("i135",[], IntTy, l$ ProjE 1 (l$ VarE "tup130")) $
+                  l$ CaseE (l$ VarE "t134")
+                  [("Leaf",[("n136","l137")],
+                    l$ LetE ("v138",[],IntTy, l$ PrimAppE AddP [l$ VarE "n136", l$ LitE 1]) $
+                    l$ LetE ("lf139",[],PackedTy "Tree" "lout133",
+                            l$ DataConE "lout133" "Leaf" [l$ VarE "v138"]) $
+                    l$ LetE ("tup148",[], ProdTy [PackedTy "Tree" "lout133", IntTy],
+                       l$ MkProdE [l$ VarE "lf139", l$ VarE "i135"]) $
+                    l$ VarE "tup148"
+                   ),
+                   ("Node",[("x140","l141"), ("y142","l143")],
+                    l$ Ext $ LetLocE "l144" (AfterConstantLE 1 "lout133") $
+                    l$ LetE ("tup145",[], ProdTy [PackedTy "Tree" "l144", IntTy],
+                             l$ AppE "testprod" ["l141","l144"]
+                             (l$ MkProdE [l$ VarE "x140", l$ VarE "i135"])) $
+
+                    l$ LetE ("x149",[], PackedTy "Tree" "l144", l$ ProjE 0 (l$ VarE "tup145")) $
+                    l$ Ext $ LetLocE "l146" (AfterVariableLE "x149" "l144") $
+                    l$ LetE ("tup147",[], ProdTy [PackedTy "Tree" "l146", IntTy],
+                            l$ AppE "testprod" ["l143","l146"]
+                            (l$ MkProdE [l$ VarE "y142", l$ VarE "i135"])) $
+                    l$ LetE ("y150",[], PackedTy "Tree" "l146", l$ ProjE 0 (l$ VarE "tup147")) $
+                    l$ LetE ("node151",[], PackedTy "Tree" "lout133",
+                            l$ DataConE "lout133" "Node" [l$ VarE "x149", l$ VarE "y150"]) $
+                    l$ LetE ("tup152",[],ProdTy [PackedTy "Tree" "lout133", IntTy],
+                            l$ MkProdE [l$ VarE "node151", l$ VarE "i135"]) $
+                    l$ VarE "tup152")
+                  ]
+
+testProdProg :: Prog
+testProdProg = Prog ddtree (M.fromList [("testprod", testProdFun)]) Nothing
