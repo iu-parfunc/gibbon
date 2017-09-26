@@ -6,6 +6,7 @@ module Packed.FirstOrder.Passes.Cursorize4
 import Data.Loc
 import Data.List as L
 import Data.Map as M
+import Text.PrettyPrint.GenericPretty
 
 import Packed.FirstOrder.Common    hiding (FunDefs, FunDef(..))
 import Packed.FirstOrder.L1.Syntax hiding (Prog(..), FunDef(..), FunDefs)
@@ -14,6 +15,31 @@ import qualified Packed.FirstOrder.L3.Syntax as L3
 
 import Debug.Trace
 --------------------------------------------------------------------------------
+
+
+-- | Cursor insertion, strategy one.
+--
+-- Here we go to a "dilated" representation of packed values, where
+-- every `Packed T` is represented by a pair, `(Cursor,Cursor)`,
+-- i.e. start/end.  At least, this is the LOCAL representation of
+-- packed values.  The inter-procedural representation does not
+-- change.  When passing a packed value to another function, it is the
+-- "start" component of the (start,end) pair which is sent.  Likewise
+-- end cursors come back traveling on their own.
+--
+-- REASONING: Why the dilated convention?  In a word: conditionals.  At the
+-- end of each function body we need to return the appropriate end cursors.
+-- But during the computation, we may need to add an arbitrary amount of
+-- extra state to the return type of a conditional.  Thus it's difficult to
+-- do this routing of information without changing the types of intermediate
+-- expressions significantly.  Dilation is the current strategy.
+--
+-- We proceed with two loops, corresponding to packed and unpacked
+-- context.  When the type of the current expression satisfies
+-- `hasPacked`, that's when we're in packed context.  And, when in
+-- packed context, we return dilated values.
+
+
 
 -- keeps a track of all the `Packed Ty loc` variables in L2 IR. Since all packed types go
 -- to the dilated (start,end) form, we refer to this environment when processing var references
@@ -30,9 +56,9 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
                 Nothing -> return Nothing
                 Just (e,ty) -> do
                   e' <- case ty of
-                          _ | isPackedTy ty  -> cursorizePackedExp ddefs M.empty e
+                          _ | isPackedTy ty  -> fromDi <$> cursorizePackedExp ddefs fundefs M.empty e
                           _ | hasPacked ty   -> error $ "TODO: hasPacked mainExp"
-                          _ -> cursorizeExp ddefs M.empty e
+                          _ -> cursorizeExp ddefs fundefs M.empty e
                   return $ Just (e', L3.stripTyLocs ty)
 
   return $ L3.Prog ddefs' fundefs' mainExp'
@@ -41,29 +67,55 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
 
     fd :: FunDef -> SyM L3.FunDef
     fd FunDef{funname,funty,funarg,funbod} = do
-      newarg <- gensym (varAppend "tup_arg_" funname)
-
       let lvars   = locVars funty
-          mInloc  = L.find (\(LRM _ _ m) -> m == Input) lvars
-          mOutLoc = L.find (\(LRM _ _ m) -> m == Output) lvars
+          outCurs = L.filter (\(LRM _ _ m) -> m == Output) lvars
+          inCurs  = L.filter (\(LRM _ _ m) -> m == Input) lvars
 
           inT  = arrIn funty
           outT = arrOut funty
 
-          -- FIXME: temporary, need to create a proper type for each case
           funty' = L3.cursorizeTy funty
 
-      L3.FunDef funname funty' newarg <$>
+      (arg,exp') <-
+        case (outCurs,inCurs) of
 
+          -- Eg. intAdd
+          ([],[]) ->
+            if (hasPacked inT || hasPacked outT)
+            then error $ "Cannot process a packed type without cursors"
+            else (funarg,) <$> cursorizeExp ddefs fundefs M.empty funbod
+
+          (ocurs,icurs) -> do
+            newarg <- gensym (varAppend "tup_arg_" funname)
+            -- 1st: Bind output and input cursors for all locations:
+            b <- mkLets [ (lrmLoc cur,[], CursorTy, l$ ProjE ix (l$ VarE newarg))
+                        | (cur,ix) <- zip (ocurs ++ icurs) [0..]] <$>
+
+                 -- 2nd: Unpack the "real" argument, which is after the prepended output cursors:
+                 (case inT of
+                   PackedTy _k loc ->
+                     -- we'll only have 1 input cursor bound at `l`
+                     l <$> LetE (funarg,[], CursorTy, (l$ VarE loc))
+
+                   _ ->
+                     l <$> LetE (funarg,[], L3.stripTyLocs inT,
+                                 l$ ProjE (1 + length ocurs + length icurs) (l$ VarE newarg))
+
+                 ) <$> do
+
+                 -- 3rd: Bind the result of the function body so we can operate on it:
+                 Di bod <- cursorizePackedExp ddefs fundefs M.empty funbod
+
+                 -- TODO: all the other steps
+
+                 return bod
+
+            return (newarg, b)
+
+      return $ L3.FunDef funname funty' arg exp'
+
+        {-
         case (mInloc,mOutLoc) of
-          -- Eg. add1, copyTree
-          (Just inLoc, Just outLoc) -> do
-
-            l<$> (LetE (lrmLoc outLoc,[], CursorTy, l$ ProjE 0 (l$ VarE newarg)) <$>
-                  (l<$> (LetE (lrmLoc inLoc,[], CursorTy, l$ ProjE 1 (l$ VarE newarg)) <$>
-                         (l<$> (LetE (funarg,[],CursorTy, l$ VarE (lrmLoc inLoc)) <$>
-                                cursorizePackedExp ddefs M.empty funbod)))))
-
           -- Eg. leftmost
           (Just inLoc, Nothing) ->
 
@@ -77,17 +129,11 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
             l<$> (LetE (lrmLoc outLoc,[], CursorTy, l$ ProjE 0 (l$ VarE newarg)) <$>
                    (l<$> (LetE (funarg,[],CursorTy, l$ VarE (lrmLoc outLoc)) <$>
                           cursorizePackedExp ddefs M.empty funbod)))
-
-          -- Eg. intAdd
-          (Nothing, Nothing) ->
-            if (hasPacked inT || hasPacked outT)
-            then error $ "Non-packed types expected, but got: " ++ sdoc inT ++ "\n" ++ sdoc outT
-            else cursorizeExp ddefs M.empty funbod
-
+        -}
 
 -- | Cursorize expressions NOT producing `Packed` values
-cursorizeExp :: DDefs Ty2 -> TEnv -> L Exp2 -> SyM (L L3.Exp3)
-cursorizeExp ddfs tenv (L p ex) = L p <$>
+cursorizeExp :: DDefs Ty2 -> NewFuns -> TEnv -> L Exp2 -> SyM (L L3.Exp3)
+cursorizeExp ddfs fundefs tenv (L p ex) = L p <$>
   case ex of
     VarE v    -> return $ VarE v
     LitE n    -> return $ LitE n
@@ -109,7 +155,7 @@ cursorizeExp ddfs tenv (L p ex) = L p <$>
           else do
             rhs' <- go rhs
             LetE (v,[],L3.stripTyLocs ty,rhs') <$>
-              cursorizeExp ddfs (M.insert v ty tenv) bod
+              cursorizeExp ddfs fundefs (M.insert v ty tenv) bod
 
     IfE a b c  -> IfE <$> go a <*> go b <*> go c
 
@@ -118,7 +164,9 @@ cursorizeExp ddfs tenv (L p ex) = L p <$>
     ProjE i e  -> ProjE i <$> go e
 
     -- Eg. leftmost
-    CaseE _scrtE _ls -> error $ "TODO: cursorizeExp " ++ sdoc ex
+    CaseE (L _ (VarE  v)) brs ->
+      CaseE (l$ VarE $ v) <$>
+        mapM (unpackDataCon ddfs fundefs tenv False v) brs
 
     DataConE _ _ _ -> error $ "cursorizeExp: Should not have encountered DataConE if type is not packed: "++ndoc ex
 
@@ -134,20 +182,248 @@ cursorizeExp ddfs tenv (L p ex) = L p <$>
           then error $ "cursorizeExp: RetE expected empty locs for scalar values. Got" ++ sdoc locs
           else return $ VarE v
 
-        _ -> error $ "TODO: cursorizeExp " ++ sdoc ext
+        -- All locations are transformed into cursors here. All the location expressions
+        -- are expressed in terms of corresponding cursor operations. See `cursorizeLocExp`
+        LetLocE loc rhs bod -> do
+          let rhs' = cursorizeLocExp rhs
+          LetE (loc,[],CursorTy,rhs') <$> go bod
 
-    oth -> error $ "TODO: cursorizeExp" ++ sdoc oth
+        _ -> error $ "TODO: cursorizeExp Ext: " ++ sdoc ext
+
+    oth -> trace ("TODO: cursorizeExp:\n" ++ sdoc oth) (return $ VarE (toVar $ sdoc oth))
 
   where
-    go = cursorizeExp ddfs tenv
+    go = cursorizeExp ddfs fundefs tenv
 
 
 -- Cursorize expressions producing `Packed` values
-cursorizePackedExp :: DDefs Ty2 -> TEnv -> L Exp2 -> SyM (L L3.Exp3)
-cursorizePackedExp _ddfs _tenv (L p ex) = L p <$>
+cursorizePackedExp :: DDefs Ty2 -> NewFuns -> TEnv -> L Exp2 -> SyM (DiExp (L L3.Exp3))
+cursorizePackedExp ddfs fundefs tenv (L p ex) =
   case ex of
-    oth -> error $ "TODO: cursorizeExp" ++ sdoc oth
+    -- Here the allocation has already been performed:
+    -- To follow the calling convention, we are reponsible for tagging on the end here:
+    VarE v -> return $ mkDi (l$ VarE v) [ l$ VarE (toEndV v) ]
 
+    LitE _n    -> error $ "Shouldn't encounter LitE in packed context:" ++ sdoc ex
+    LitSymE _n -> error $ "Shouldn't encounter LitSymE in packed context:" ++ sdoc ex
+
+    -- AppE f locs arg ->
+    --   case locs of
+    --     -- TODO: Is this actually an error ?
+    --     [] -> error $ "cursorizePackedExp AppE: unexpected number of locations: " ++ sdoc locs
+    --     _  -> do
+    --     -- ASSUMPTION: the last location is the output location, and all others are inputs
+    --     -- Since our calling convention expects o/p cursor to be the first input, we
+    --     -- re-order the locations accordingly
+
+    --     -- QUESTION: What happens when there are multiple output cursors ? i.e when
+    --     -- we have a tuple with packed data, this won't work ...
+
+    --       let fty = L2.getFunTy fundefs f
+    --           (inlocs,outlocs) = L.partition (\(LRM _ _ m) -> m == Input) (locVars fty)
+    --       __
+
+    LetE (v,locs,ty,rhs) bod
+      | isPackedTy ty -> do
+          -- Packed values are dilated i.e represented as (start,end) cursors
+          rhs' <- go rhs
+          fresh <- gensym "packed_tpl"
+
+          -- Bind start/end cursors. We should use Di here...
+          prefix <- return $
+                      LetE (fresh,[], ProdTy [CursorTy, CursorTy], fromDi rhs') <$> l <$>
+                        LetE (v,[], CursorTy, l$ ProjE 0 (l$ VarE fresh)) <$> l <$>
+                          LetE (toEndV v,[], CursorTy, l$ ProjE 1 (l $ VarE fresh))
+
+          case locs of
+            [] -> dilprefix <$> prefix <$> fromDi <$> go bod
+            _  ->  dilprefix <$> prefix <$> l <$>
+                     LetE (head locs,[], CursorTy, l$ ProjE 0 (l $ VarE fresh)) <$>
+                       fromDi <$> go bod
+
+
+
+      | hasPacked ty  -> error $ "cursorizePackedExp: TOOD hasPacked LetE"
+
+      | otherwise ->
+          if locs /= []
+          then error $ "cursorizeExp: LetE expected empty locs for scalar values. Got "
+                       ++ sdoc locs
+          else do
+            rhs' <- cursorizeExp ddfs fundefs tenv rhs
+            onDi (l <$> LetE (v,[],L3.stripTyLocs ty,rhs')) <$>
+              cursorizePackedExp ddfs fundefs (M.insert v ty tenv) bod
+
+    -- A case expression is eventually transformed into a ReadTag + switch statement.
+    -- We first retrieve the cursor referred to by the scrutinee, and unpack
+    -- the first bound variable 1 byte after that cursor. Thats all we need to do here,
+    -- because we've already computed other locations in InferLocations and RouteEnds
+    -- ASSUMPTION: scrutinee is always flat
+    CaseE (L _ (VarE v)) brs ->
+      dilprefix <$>
+        CaseE (l$ VarE $ v) <$>
+          mapM (unpackDataCon ddfs fundefs tenv True v) brs
+
+    DataConE sloc dcon args -> do
+      let
+          -- Return (start,end) cursors
+          -- The final return value lives at the position of the out cursors:
+          go2 d [] = return $ MkProdE [l$ VarE sloc, l$ VarE d]
+
+          go2 _d ((rnd, ty):rst) | isPackedTy ty = do
+            d' <- gensym $ toVar "writepackedcur"
+            rnd' <- go rnd
+            LetE (d',[], CursorTy, projEnds rnd') <$>
+              l <$> (go2 d' rst)
+
+          -- (_ty == IntTy) : Int fields are currently our only "scalar" fields
+          go2 d ((rnd,_ty):rst) = do
+            d' <- gensym $ toVar "writeintcur"
+            rnd' <- cursorizeExp ddfs fundefs tenv rnd
+            LetE (d',[], CursorTy, l$ Ext $ L3.WriteInt d rnd') <$>
+              l <$> (go2 d' rst)
+
+      writetag <- gensym "writetag"
+      dilprefix <$>
+        (LetE (writetag,[], CursorTy,
+               l$ Ext $ L3.WriteTag dcon sloc)
+         <$> l <$> (go2 writetag (zip args (lookupDataCon ddfs dcon))))
+
+    Ext ext ->
+      case ext of
+
+        -- All locations are transformed into cursors here. All the location expressions
+        -- are expressed in terms of corresponding cursor operations. See `cursorizeLocExp`
+        LetLocE loc rhs bod -> do
+          let rhs' = cursorizeLocExp rhs
+          onDi (l <$> LetE (loc,[],CursorTy,rhs')) <$>
+            cursorizePackedExp ddfs fundefs (M.insert loc CursorTy tenv) bod
+
+        RetE locs v -> do
+          v' <- go (l$ VarE v)
+          case locs of
+            []    -> return v'
+            [loc] -> return $ mkDi (l$ VarE loc) [ projEnds v' ]
+            _ -> error $ "cursorizePackedExp: unexpected no of locations in RetE " ++ sdoc locs
+
+        _ -> trace ("TODO: cursorizeExp:\n" ++ sdoc ext) (return $ Di $ l$  VarE (toVar $ sdoc ext))
+
+
+    oth -> trace ("TODO: cursorizeExp:\n" ++ sdoc oth) (return $ Di $ l$  VarE (toVar $ sdoc oth))
+  where go = cursorizePackedExp ddfs fundefs tenv
+        dilprefix = Di <$> L p
+        toEndV = varAppend "end_"
+
+
+cursorizeLocExp :: LocExp -> L L3.Exp3
+cursorizeLocExp locExp =
+  case locExp of
+    AfterConstantLE i loc -> l$ Ext $ L3.AddCursor loc i
+    AfterVariableLE v loc -> l$ VarE (toVar $ "AfterVariableLE" ++ fromVar v ++ fromVar loc)
+    FromEndLE loc -> l$ VarE loc
+    StartOfLE r   -> case r of
+                       GlobR  -> error $ "cursorizeLocExp: TODO: GlobR should have a var param"
+                       VarR v -> l$ VarE v
+                       DynR v -> l$ VarE v
+    oth -> error $ "cursorizeLocExp: todo " ++ sdoc oth
+
+
+-- | Take a cursor pointing to the start of the tag, and advance it by 1 byte
+-- If the first bound varaible is a scalar (IntTy), read it using the newly returned cursor.
+-- Otherwise, just process the body. it'll have the correct instructions to process
+-- other bound locations
+unpackDataCon :: DDefs Ty2 -> NewFuns -> TEnv -> Bool -> Var -> (DataCon, [(Var, Var)], L Exp2)
+              -> SyM (DataCon, [t], L L3.Exp3)
+unpackDataCon ddfs fundefs tenv isPacked scrtCur (dcon,vlocs,rhs) =
+  (dcon,[],) <$> go scrtCur vlocs tys
+
+  where (vars,locs) = unzip vlocs
+        tys  = lookupDataCon ddfs dcon
+        toEndV = varAppend "end_"
+        processRhs = if isPacked
+                     then fromDi <$> cursorizePackedExp ddfs fundefs tenv rhs
+                     else cursorizeExp ddfs fundefs tenv rhs
+
+
+        -- Loop over fields.  Issue reads to get out all Ints:
+        -- Otherwise, just bind vars to locations
+        -- Strategy: ALLOW unbound witness variables. A later traversal will reorder.
+        go :: Var -> [(Var, Var)] -> [UrTy t] -> SyM (L L3.Exp3)
+        go _c [] _tys = processRhs
+        go cur ((v,loc):rst) (ty:rtys) =
+          case ty of
+            IntTy -> do
+              tmp <- gensym (toVar "readint_tpl")
+              l <$>
+                LetE (tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt cur) <$> l <$>
+                  LetE (v, [], IntTy, l$ ProjE 0 (l$ VarE tmp)) <$> l <$>
+                    LetE (toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp)) <$>
+                      go (toEndV v) rst rtys
+
+            _ -> do
+              l <$>
+                LetE (v,[], CursorTy, l$ VarE loc) <$>
+                  go (toEndV v) rst tys
+
+
+-- ================================================================================
+--                         Dilation Conventions
+-- ================================================================================
+-- Everything to do with dilation.  It should be possible to change
+-- the dilated format by changing only this section.
+
+
+-- | If an expression `e` returns type `T`, then a dilated version of
+-- `e` returns a tuple (T,Cursors), where cursors contains a flat
+-- record of end-cursors corresponding exactly to all the components
+-- of T which are PackedTy.
+--
+newtype DiExp ex = Di ex
+  deriving (Generic, Show, Read, Eq, Ord)
+--type DiExp = Exp
+
+instance (Out ex) => Out (DiExp ex)
+
+onDi :: (ex -> ex) -> DiExp ex -> DiExp ex
+onDi f (Di x) = Di (f x)
+
+fromDi :: DiExp ex -> ex
+fromDi (Di x) = x
+
+
+-- | Project the cursor package from a dilated expression, contains pointers
+-- to all the ENDs.
+projEnds :: DiExp (L L3.Exp3) -> (L L3.Exp3)
+projEnds (Di e) = mkProjE 1 e
+
+-- | Project the original value from a dilated expression.
+projVal :: DiExp (L L3.Exp3) -> (L L3.Exp3)
+projVal (Di e) = mkProjE 0 e
+
+
+-- | Smart constructor that immediately destroys products if it can:
+--   Does NOT avoid single-element tuples.
+mkProjE :: Int -> (L L3.Exp3) -> (L L3.Exp3)
+mkProjE ix (L _ (MkProdE ls)) = ls !! ix
+mkProjE ix e = l$ (ProjE ix e)
+
+-- | Constructor that combines a regular expression with a list of
+-- corresponding end cursors.
+mkDi :: (L L3.Exp3) -> [(L L3.Exp3)] -> DiExp (L L3.Exp3)
+mkDi x []  = Di $ l$ MkProdE [x, l$ MkProdE []]
+mkDi x [o] = Di $ l$  MkProdE [x, o]
+mkDi x ls  = Di $ l$ MkProdE [x, l$ MkProdE ls]
+
+
+
+{-
+
+-- | For non-cursor types, dilation is very simple:
+dilateTrivial :: ex -> DiExp ex
+dilateTrivial e = Di $ MkProdE [e, MkProdE []]
+
+
+-}
 
 {-
 cursorizeExp :: DDefs Ty2 -> TEnv -> L Exp2 -> SyM (L L3.Exp3)
