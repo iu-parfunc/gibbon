@@ -38,10 +38,12 @@ type Ty3 = UrTy ()
 data E3Ext loc dec =
     ReadInt   Var                  -- ^ One cursor in, (int, cursor') out
   | WriteInt  Var (L (E3 loc dec)) -- ^ Write int at cursor, and return a cursor
-  | AddCursor Var Int              -- ^ Add a constant offset to a cursor variable
+  | AddCursor Var (L (E3 loc dec)) -- ^ Add a constant offset to a cursor variable
   | ReadTag   Var                  -- ^ One cursor in, (tag,cursor) out
   | WriteTag  DataCon Var          -- ^ Write Tag at Cursor, and return a cursor
   | NewBuffer                      -- ^ Create a new buffer, and return a cursor
+  | SizeOf Var Var                 -- ^ Takes in start and end cursors, and returns an
+                                   --   we'll probably represent (sizeof x) as (end_x - start_x) / INT
   deriving (Show, Ord, Eq, Read, Generic, NFData)
 
 -- | L1 expressions extended with L3.  This is the polymorphic version.

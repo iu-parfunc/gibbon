@@ -312,8 +312,12 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
 cursorizeLocExp :: LocExp -> L L3.Exp3
 cursorizeLocExp locExp =
   case locExp of
-    AfterConstantLE i loc -> l$ Ext $ L3.AddCursor loc i
-    AfterVariableLE v loc -> l$ VarE (toVar $ "AfterVariableLE" ++ fromVar v ++ fromVar loc)
+    AfterConstantLE i loc -> l$ Ext $ L3.AddCursor loc (l$ LitE i)
+    AfterVariableLE v loc -> let sizeV = varAppend "sizeof_"
+                                 toEndV = varAppend "sizeof_"
+                             in
+                               l$ LetE (sizeV v ,[], IntTy, l$ Ext $ L3.SizeOf v (toEndV v)) $
+                               l$ Ext $ L3.AddCursor loc (l$ VarE (sizeV v))
     FromEndLE loc -> l$ VarE loc
     StartOfLE r   -> case r of
                        GlobR  -> error $ "cursorizeLocExp: TODO: GlobR should have a var param"
@@ -362,7 +366,7 @@ unpackDataCon ddfs fundefs tenv isPacked scrtCur (dcon,vlocs,rhs) =
                     LetE (toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp)) <$>
                       if isFirst
                       then l <$>
-                             LetE (loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur 1) <$>
+                             LetE (loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1)) <$>
                                go (toEndV v) rst rtys False env'
                       else go (toEndV v) rst rtys False (M.insert loc CursorTy env')
 
@@ -370,7 +374,7 @@ unpackDataCon ddfs fundefs tenv isPacked scrtCur (dcon,vlocs,rhs) =
               let env' = (M.insert v CursorTy env)
               if isFirst
               then l <$>
-                     LetE (loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur 1) <$> l <$>
+                     LetE (loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1)) <$> l <$>
                        LetE (v,[], CursorTy, l$ VarE loc) <$>
                          go (toEndV v) rst rtys False (M.insert loc CursorTy env')
               else
