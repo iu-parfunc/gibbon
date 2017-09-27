@@ -83,10 +83,18 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
           ([],[]) ->
             if (hasPacked inT || hasPacked outT)
             then error $ "Cannot process a packed type without cursors"
-            else (funarg,) <$> cursorizeExp ddefs fundefs M.empty funbod
+            else do
+              let initEnv = M.singleton funarg (arrIn funty)
+              (funarg,) <$> cursorizeExp ddefs fundefs initEnv funbod
 
           (ocurs,icurs) -> do
             newarg <- gensym (varAppend "tup_arg_" funname)
+
+            let initEnv = M.fromList [(lrmLoc cur, CursorTy) | cur <- (ocurs ++ icurs)]
+                initEnv2 = case inT of
+                             PackedTy _ _ -> M.insert funarg CursorTy initEnv
+                             _ -> M.insert funarg inT initEnv
+
             -- 1st: Bind output and input cursors for all locations:
             b <- mkLets [ (lrmLoc cur,[], CursorTy, l$ ProjE ix (l$ VarE newarg))
                         | (cur,ix) <- zip (ocurs ++ icurs) [0..]] <$>
@@ -97,6 +105,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
                      -- we'll only have 1 input cursor bound at `l`
                      l <$> LetE (funarg,[], CursorTy, (l$ VarE loc))
 
+                   -- Packed tuples
                    _ ->
                      l <$> LetE (funarg,[], L3.stripTyLocs inT,
                                  l$ ProjE (1 + length ocurs + length icurs) (l$ VarE newarg))
@@ -104,7 +113,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
                  ) <$> do
 
                  -- 3rd: Bind the result of the function body so we can operate on it:
-                 Di bod <- cursorizePackedExp ddefs fundefs M.empty funbod
+                 Di bod <- cursorizePackedExp ddefs fundefs initEnv2 funbod
 
                  -- TODO: all the other steps
 
@@ -186,7 +195,8 @@ cursorizeExp ddfs fundefs tenv (L p ex) = L p <$>
         -- are expressed in terms of corresponding cursor operations. See `cursorizeLocExp`
         LetLocE loc rhs bod -> do
           let rhs' = cursorizeLocExp rhs
-          LetE (loc,[],CursorTy,rhs') <$> go bod
+          LetE (loc,[],CursorTy,rhs') <$>
+            cursorizeExp ddfs fundefs (M.insert loc CursorTy tenv) bod
 
         _ -> error $ "TODO: cursorizeExp Ext: " ++ sdoc ext
 
@@ -207,27 +217,34 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
     LitE _n    -> error $ "Shouldn't encounter LitE in packed context:" ++ sdoc ex
     LitSymE _n -> error $ "Shouldn't encounter LitSymE in packed context:" ++ sdoc ex
 
-    -- AppE f locs arg ->
-    --   case locs of
-    --     -- TODO: Is this actually an error ?
-    --     [] -> error $ "cursorizePackedExp AppE: unexpected number of locations: " ++ sdoc locs
-    --     _  -> do
-    --     -- ASSUMPTION: the last location is the output location, and all others are inputs
-    --     -- Since our calling convention expects o/p cursor to be the first input, we
-    --     -- re-order the locations accordingly
+    AppE f locs _arg ->
+     case locs of
+        -- TODO: Is this actually an error ?
+        [] -> error $ "cursorizePackedExp AppE: unexpected number of locations: " ++ sdoc locs
+        _  ->
+          let fty = L2.getFunTy fundefs f
+              inT = arrIn fty
+              outT = arrOut fty
+          in
+          case (inT, outT) of
+            (PackedTy _ _, PackedTy _ _) -> do
+              -- ASSUMPTION: locs = (start,end)
+              -- Since our calling convention expects o/p cursor to be the first input, we
+              -- re-order the locations accordingly
+              let (start:end:[]) = locs
+              return $ Di $ l $ AppE f [] (l$ MkProdE [l$ VarE end, l$ VarE start])
 
-    --     -- QUESTION: What happens when there are multiple output cursors ? i.e when
-    --     -- we have a tuple with packed data, this won't work ...
+            _ -> error $ "cursorizePackedExp: TODO functions with packed tuples"
 
-    --       let fty = L2.getFunTy fundefs f
-    --           (inlocs,outlocs) = L.partition (\(LRM _ _ m) -> m == Input) (locVars fty)
-    --       __
 
     LetE (v,locs,ty,rhs) bod
       | isPackedTy ty -> do
           -- Packed values are dilated i.e represented as (start,end) cursors
           rhs' <- go rhs
           fresh <- gensym "packed_tpl"
+
+          let tenv' = M.union (M.fromList [(fresh, ProdTy [CursorTy, CursorTy]), (v, CursorTy), (toEndV v, CursorTy)])
+                              tenv
 
           -- Bind start/end cursors. We should use Di here...
           prefix <- return $
@@ -236,12 +253,11 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
                           LetE (toEndV v,[], CursorTy, l$ ProjE 1 (l $ VarE fresh))
 
           case locs of
-            [] -> dilprefix <$> prefix <$> fromDi <$> go bod
+            [] -> dilprefix <$> prefix <$>
+                    fromDi <$> cursorizePackedExp ddfs fundefs tenv' bod
             _  ->  dilprefix <$> prefix <$> l <$>
                      LetE (head locs,[], CursorTy, l$ ProjE 0 (l $ VarE fresh)) <$>
-                       fromDi <$> go bod
-
-
+                       fromDi <$> cursorizePackedExp ddfs fundefs (M.insert (head locs) CursorTy tenv') bod
 
       | hasPacked ty  -> error $ "cursorizePackedExp: TOOD hasPacked LetE"
 
@@ -285,8 +301,7 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
 
       writetag <- gensym "writetag"
       dilprefix <$>
-        (LetE (writetag,[], CursorTy,
-               l$ Ext $ L3.WriteTag dcon sloc)
+        (LetE (writetag,[], CursorTy, l$ Ext $ L3.WriteTag dcon sloc)
          <$> l <$> (go2 writetag (zip args (lookupDataCon ddfs dcon))))
 
     Ext ext ->
@@ -310,6 +325,7 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
 
 
     oth -> trace ("TODO: cursorizeExp:\n" ++ sdoc oth) (return $ Di $ l$  VarE (toVar $ sdoc oth))
+
   where go = cursorizePackedExp ddfs fundefs tenv
         dilprefix = Di <$> L p
         toEndV = varAppend "end_"
@@ -335,36 +351,56 @@ cursorizeLocExp locExp =
 unpackDataCon :: DDefs Ty2 -> NewFuns -> TEnv -> Bool -> Var -> (DataCon, [(Var, Var)], L Exp2)
               -> SyM (DataCon, [t], L L3.Exp3)
 unpackDataCon ddfs fundefs tenv isPacked scrtCur (dcon,vlocs,rhs) =
-  (dcon,[],) <$> go scrtCur vlocs tys
+  (dcon,[],) <$> go scrtCur vlocs tys True tenv
 
-  where (vars,locs) = unzip vlocs
+  where -- (vars,locs) = unzip vlocs
         tys  = lookupDataCon ddfs dcon
         toEndV = varAppend "end_"
-        processRhs = if isPacked
-                     then fromDi <$> cursorizePackedExp ddfs fundefs tenv rhs
-                     else cursorizeExp ddfs fundefs tenv rhs
-
+        processRhs env = if isPacked
+                         then fromDi <$> cursorizePackedExp ddfs fundefs env rhs
+                         else cursorizeExp ddfs fundefs env rhs
 
         -- Loop over fields.  Issue reads to get out all Ints:
         -- Otherwise, just bind vars to locations
         -- Strategy: ALLOW unbound witness variables. A later traversal will reorder.
-        go :: Var -> [(Var, Var)] -> [UrTy t] -> SyM (L L3.Exp3)
-        go _c [] _tys = processRhs
-        go cur ((v,loc):rst) (ty:rtys) =
+        --
+        -- The first bound location requires special handling. We have to bind it to
+        -- (scrtCur + 1) by hand. All the other locations are bound (calculated) by RouteEnd2
+        -- Ideally we should arrange RE to bind this as well, but this is a quick hack for now
+        --
+        go :: (Show t) => Var -> [(Var, Var)] -> [UrTy t] -> Bool -> TEnv -> SyM (L L3.Exp3)
+        go _c [] [] _isFirst env = processRhs env
+        go cur ((v,loc):rst) (ty:rtys) isFirst env =
           case ty of
             IntTy -> do
               tmp <- gensym (toVar "readint_tpl")
+              let env' = M.union (M.fromList [(tmp,ProdTy [IntTy, CursorTy]),
+                                              (v, CursorTy),
+                                              (toEndV v, CursorTy)])
+                         env
               l <$>
                 LetE (tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt cur) <$> l <$>
                   LetE (v, [], IntTy, l$ ProjE 0 (l$ VarE tmp)) <$> l <$>
                     LetE (toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp)) <$>
-                      go (toEndV v) rst rtys
+                      if isFirst
+                      then l <$>
+                             LetE (loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur 1) <$>
+                               go (toEndV v) rst rtys False env'
+                      else go (toEndV v) rst rtys False (M.insert loc CursorTy env')
 
             _ -> do
-              l <$>
-                LetE (v,[], CursorTy, l$ VarE loc) <$>
-                  go (toEndV v) rst tys
+              let env' = (M.insert v CursorTy env)
+              if isFirst
+              then l <$>
+                     LetE (loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur 1) <$> l <$>
+                       LetE (v,[], CursorTy, l$ VarE loc) <$>
+                         go (toEndV v) rst tys False (M.insert loc CursorTy env')
+              else
+                l <$>
+                  LetE (v,[], CursorTy, l$ VarE loc) <$>
+                    go (toEndV v) rst tys False env'
 
+        go _ vls rtys _ _ = error $ "Unexpected numnber of varible, type pairs: " ++ show (vls,rtys)
 
 -- ================================================================================
 --                         Dilation Conventions

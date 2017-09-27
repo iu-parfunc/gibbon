@@ -547,13 +547,15 @@ mkProd [e] = e
 mkProd ls  = L (locOf $ head ls) $ MkProdE ls
 
 -- | Same as mkProd, at the type level
-mkProdTy :: [Ty1]-> Ty1
+mkProdTy :: [UrTy a]-> UrTy a
 mkProdTy [t] = t
 mkProdTy ls  = ProdTy ls
 
 -- | Make a nested series of lets.
-mkLets :: [(Var,[l],Ty1,L (PreExp NoExt l Ty1))] ->
-          L (PreExp NoExt l Ty1) -> L (PreExp NoExt l Ty1)
+-- mkLets :: [(Var,[l],Ty1,L (PreExp NoExt l Ty1))] ->
+--           L (PreExp NoExt l Ty1) -> L (PreExp NoExt l Ty1)
+mkLets :: [(Var, [loc], dec, L (PreExp ext loc dec))] ->
+          L (PreExp ext loc dec) -> L (PreExp ext loc dec)
 mkLets [] bod     = bod
 mkLets (b:bs) bod = L NoLoc $ LetE b (mkLets bs bod)
 
