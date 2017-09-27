@@ -314,6 +314,8 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
           onDi (l <$> LetE (loc,[],CursorTy,rhs')) <$>
             cursorizePackedExp ddfs fundefs (M.insert loc CursorTy tenv) bod
 
+        -- ASSUMPTION: RetE forms are inserted at the tail position of functions,
+        -- and we safely just return ends-witnesses & ends of the dilated expressions
         RetE locs v -> do
           v' <- go (l$ VarE v)
           case locs of
@@ -394,11 +396,11 @@ unpackDataCon ddfs fundefs tenv isPacked scrtCur (dcon,vlocs,rhs) =
               then l <$>
                      LetE (loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur 1) <$> l <$>
                        LetE (v,[], CursorTy, l$ VarE loc) <$>
-                         go (toEndV v) rst tys False (M.insert loc CursorTy env')
+                         go (toEndV v) rst rtys False (M.insert loc CursorTy env')
               else
                 l <$>
                   LetE (v,[], CursorTy, l$ VarE loc) <$>
-                    go (toEndV v) rst tys False env'
+                    go (toEndV v) rst rtys False env'
 
         go _ vls rtys _ _ = error $ "Unexpected numnber of varible, type pairs: " ++ show (vls,rtys)
 
