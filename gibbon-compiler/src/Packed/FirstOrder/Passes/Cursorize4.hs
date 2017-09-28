@@ -53,7 +53,8 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
                 Nothing -> return Nothing
                 Just (e,ty) -> do
                   e' <- case ty of
-                          _ | isPackedTy ty  -> fromDi <$> cursorizePackedExp ddefs fundefs M.empty e
+                          _ | isPackedTy ty  -> projVal <$>
+                                                  cursorizePackedExp ddefs fundefs M.empty e
                           _ | hasPacked ty   -> error $ "TODO: hasPacked mainExp"
                           _ -> cursorizeExp ddefs fundefs M.empty e
                   return $ Just (e', L3.stripTyLocs ty)
@@ -149,7 +150,9 @@ cursorizeExp ddfs fundefs tenv (L p ex) = L p <$>
     ProjE i e  -> ProjE i <$> go e
 
     -- Eg. leftmost
-    CaseE (L _ (VarE  v)) brs ->
+    CaseE scrt brs -> do
+      -- ASSUMPTION: scrt is flat
+      let (L _ (VarE  v)) = scrt
       CaseE (l$ VarE $ v) <$>
         mapM (unpackDataCon ddfs fundefs tenv False v) brs
 
@@ -176,7 +179,8 @@ cursorizeExp ddfs fundefs tenv (L p ex) = L p <$>
 
         _ -> error $ "TODO: cursorizeExp Ext: " ++ sdoc ext
 
-    oth -> trace ("TODO: cursorizeExp:\n" ++ sdoc oth) (return $ VarE (toVar $ sdoc oth))
+    MapE{} -> error $ "TODO: cursorizeExp MapE"
+    FoldE{} -> error $ "TODO: cursorizeExp FoldE"
 
   where
     go = cursorizeExp ddfs fundefs tenv
@@ -328,6 +332,12 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
             [loc] -> return $ mkDi (l$ VarE loc) [ projEnds v' ]
             _ -> error $ "cursorizePackedExp: unexpected no of locations in RetE " ++ sdoc locs
 
+        LetRegionE r bod -> do
+          v <- regionToVar r
+          dilprefix <$>
+            (LetE (v,[],CursorTy, l$ Ext L3.NewBuffer) <$>
+               fromDi <$> go bod)
+
         _ -> trace ("TODO: cursorizeExp:\n" ++ sdoc ext) (return $ Di $ l$  VarE (toVar $ sdoc ext))
 
 
@@ -337,6 +347,12 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
   where go = cursorizePackedExp ddfs fundefs tenv
         dilprefix = Di <$> L p
         toEndV = varAppend "end_"
+
+        regionToVar :: Region -> SyM Var
+        regionToVar r = case r of
+                      GlobR  -> gensym "glob_region"
+                      VarR v -> return v
+                      DynR v -> return v
 
 
 cursorizeLocExp :: LocExp -> L L3.Exp3
