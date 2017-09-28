@@ -59,6 +59,7 @@ instance FreeVars (E3Ext l d) where
       ReadTag v     -> S.singleton v
       WriteTag _ v  -> S.singleton v
       NewBuffer     -> S.empty
+      SizeOf c1 c2  -> S.fromList [c1, c2]
 
 instance (Out l, Out d) => Out (E3Ext l d)
 
@@ -73,9 +74,10 @@ instance (Out l, Out d, Show l, Show d) => Expression (E3Ext l d) where
       ReadTag{}   -> False
       WriteTag{}  -> False
       NewBuffer   -> False
+      SizeOf{}    -> False
 
-data ArrowTy t = ArrowTy { arrIn  :: t ,
-                           arrOut :: t
+data ArrowTy t = ArrowTy { arrIn  :: t
+                         , arrOut :: t
                          }
   deriving (Show, Ord, Eq, Generic, NFData)
 

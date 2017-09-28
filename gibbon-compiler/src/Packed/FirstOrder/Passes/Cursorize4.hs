@@ -226,6 +226,12 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
       onDi (l <$> LetE (vr, [], CursorTy, l$ PrimAppE (ReadPackedFile path tyc ty2) [])) <$>
         cursorizePackedExp ddfs fundefs (M.insert vr CursorTy tenv) bod
 
+
+    -- Process RHS and create bindings for appropriate cursors.
+    -- `v` is bound to `start_write`, `end_v` is bound to `end_write`
+    -- `locs` have additional `end_read` witnesses, and those are bound as well
+    -- `end_write` cursor is returned by RHS, and possibly a `end_read` (if RHS is AppE)
+    -- `start_write` is extracted from the type
     LetE (v,locs,ty,rhs) bod
       | isPackedTy ty -> do
           -- Packed values are dilated i.e represented as (start,end) cursors
@@ -236,11 +242,12 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
                                            (v, CursorTy),
                                            (toEndV v, CursorTy)])
                               tenv
+              (PackedTy _ outLoc) = ty
 
           -- Bind start/end cursors. We should use Di here...
           prefix <- return $
                       LetE (fresh,[], ProdTy [CursorTy, CursorTy], fromDi rhs') <$> l <$>
-                        LetE (v,[], CursorTy, l$ ProjE 0 (l$ VarE fresh)) <$> l <$>
+                        LetE (v,[], CursorTy, (l$ VarE outLoc)) <$> l <$>
                           LetE (toEndV v,[], CursorTy, l$ ProjE 1 (l $ VarE fresh))
 
           case locs of
@@ -360,7 +367,7 @@ cursorizeLocExp locExp =
   case locExp of
     AfterConstantLE i loc -> l$ Ext $ L3.AddCursor loc (l$ LitE i)
     AfterVariableLE v loc -> let sizeV = varAppend "sizeof_"
-                                 toEndV = varAppend "sizeof_"
+                                 toEndV = varAppend "end_"
                              in
                                l$ LetE (sizeV v ,[], IntTy, l$ Ext $ L3.SizeOf v (toEndV v)) $
                                l$ Ext $ L3.AddCursor loc (l$ VarE (sizeV v))
