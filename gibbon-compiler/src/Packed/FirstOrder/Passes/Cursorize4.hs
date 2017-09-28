@@ -212,6 +212,15 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
 
             _ -> error $ "cursorizePackedExp: TODO functions with packed tuples"
 
+    PrimAppE _ _ -> error $ "cursorizePackedExp: unexpected PrimAppE in packed context" ++ sdoc ex
+
+    -- The only primitive that returns packed data is ReadPackedFile:
+    -- This is simpler than TimeIt below.  While it's out-of-line,
+    -- it doesn't need memory allocation (NewBuffer/ScopedBuffer).
+    -- This is more like the witness case below.
+    LetE (vr,_locs, _ty, L _ (PrimAppE (ReadPackedFile path tyc ty2) [])) bod ->
+      onDi (l <$> LetE (vr, [], CursorTy, l$ PrimAppE (ReadPackedFile path tyc ty2) [])) <$>
+        cursorizePackedExp ddfs fundefs (M.insert vr CursorTy tenv) bod
 
     LetE (v,locs,ty,rhs) bod
       | isPackedTy ty -> do
@@ -219,7 +228,9 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
           rhs' <- go rhs
           fresh <- gensym "packed_tpl"
 
-          let tenv' = M.union (M.fromList [(fresh, ProdTy [CursorTy, CursorTy]), (v, CursorTy), (toEndV v, CursorTy)])
+          let tenv' = M.union (M.fromList [(fresh, ProdTy [CursorTy, CursorTy]),
+                                           (v, CursorTy),
+                                           (toEndV v, CursorTy)])
                               tenv
 
           -- Bind start/end cursors. We should use Di here...
@@ -246,12 +257,26 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
             onDi (l <$> LetE (v,[],L3.stripTyLocs ty,rhs')) <$>
               cursorizePackedExp ddfs fundefs (M.insert v ty tenv) bod
 
+    -- Here we route the dest cursor to both braches.  We switch
+    -- back to the other mode for the (non-packed) test condition.
+    IfE a b c -> do
+      Di b' <- go b
+      Di c' <- go c
+      a'    <- cursorizeExp ddfs fundefs tenv a
+      return $ Di $ l $ IfE a' b' c'
+
+    MkProdE _ls -> error $ "cursorizePackedExp: TODO MkProdE"
+
+    -- Not sure if we need to replicate all the checks from Cursorize1
+    ProjE i e -> dilprefix <$> ProjE i <$> fromDi <$> go e
+
     -- A case expression is eventually transformed into a ReadTag + switch statement.
     -- We first retrieve the cursor referred to by the scrutinee, and unpack
     -- the first bound variable 1 byte after that cursor. Thats all we need to do here,
     -- because we've already computed other locations in InferLocations and RouteEnds
-    -- ASSUMPTION: scrutinee is always flat
-    CaseE (L _ (VarE v)) brs ->
+    CaseE scrt brs -> do
+      -- ASSUMPTION: scrutinee is always flat
+      let (L _ (VarE v)) = scrt
       dilprefix <$>
         CaseE (l$ VarE $ v) <$>
           mapM (unpackDataCon ddfs fundefs tenv True v) brs
@@ -280,6 +305,10 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
         (LetE (writetag,[], CursorTy, l$ Ext $ L3.WriteTag dcon sloc)
          <$> l <$> (go2 writetag (zip args (lookupDataCon ddfs dcon))))
 
+    TimeIt e t b -> do
+      Di e' <- go e
+      return $ Di $ l$ TimeIt e' (L3.stripTyLocs t) b
+
     Ext ext ->
       case ext of
 
@@ -302,7 +331,8 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
         _ -> trace ("TODO: cursorizeExp:\n" ++ sdoc ext) (return $ Di $ l$  VarE (toVar $ sdoc ext))
 
 
-    oth -> trace ("TODO: cursorizeExp:\n" ++ sdoc oth) (return $ Di $ l$  VarE (toVar $ sdoc oth))
+    MapE{}  -> error $ "TODO: cursorizePackedExp MapE"
+    FoldE{} -> error $ "TODO: cursorizePackedExp FoldE"
 
   where go = cursorizePackedExp ddfs fundefs tenv
         dilprefix = Di <$> L p
