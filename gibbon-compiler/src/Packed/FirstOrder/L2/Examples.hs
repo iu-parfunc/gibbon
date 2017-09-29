@@ -20,7 +20,7 @@ import Data.Map as M
 import Packed.FirstOrder.Common hiding (FunDef)
 import Packed.FirstOrder.L2.Syntax
 import Packed.FirstOrder.L1.Syntax hiding (Prog, FunDef, ddefs, fundefs, mainExp, add1Prog)
-
+import Packed.FirstOrder.GenericOps
 
 ddtree :: DDefs Ty2
 ddtree = fromListDD [DDef (toVar "Tree")
@@ -28,6 +28,18 @@ ddtree = fromListDD [DDef (toVar "Tree")
                       , ("Node",[ (False,PackedTy "Tree" "l")
                                 , (False,PackedTy "Tree" "l")])
                       ]]
+
+
+emptyEnv2 :: Env2 (UrTy LocVar)
+emptyEnv2 = Env2 { vEnv = M.empty
+                 , fEnv = M.empty}
+
+testTypeable :: UrTy LocVar
+testTypeable = gTypeExp ddtree emptyEnv2 $ ((l$ Ext $ LetRegionE (VarR "r500") $
+                                             l$ Ext $ LetLocE "l501" (StartOfLE (VarR "r500")) $
+                                             l$ LetE ("v502",[], IntTy, l$ LitE 42) $
+                                             l$ (VarE "v502"))
+                                            :: L (PreExp E2Ext LocVar (UrTy LocVar)))
 
 --------------------------------------------------------------------------------
 -- Add1

@@ -1,3 +1,5 @@
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 {-# LANGUAGE FlexibleInstances #-}
@@ -136,6 +138,20 @@ instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
       LetLocE{}    -> False
       RetE{}       -> False -- Umm... this one could be potentially.
       FromEndE{}   -> True
+
+instance (Out l, Out d, Show l, Show d, Typeable (L (E2 l d)) d) => Typeable (E2Ext l d) d where
+  gTypeExp ddfs env2 ex =
+    case ex of
+      LetRegionE _r bod   -> gTypeExp ddfs env2 bod
+      LetLocE _l _rhs bod -> gTypeExp ddfs env2 bod
+      RetE _loc var       -> case M.lookup var (vEnv env2) of
+                               Just ty -> ty
+                               Nothing -> error $ "gTypeExp: unbound variable " ++ sdoc var
+      FromEndE _loc       -> error $ "Shouldn't enconter this in tail position"
+
+
+instance (Out l, Out d, Show l, Show d, Typeable (L (E2 l d)) d, (Expression (L (E2Ext l d)))) => Typeable (L (E2Ext l d)) d where
+  gTypeExp ddfs env2 (L _ ex) = gTypeExp ddfs env2 ex
 
 
 ----------------------------------------------------------------------------------------------------
