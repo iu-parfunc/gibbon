@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE KindSignatures    #-}
@@ -230,6 +231,65 @@ instance FreeVars (e l d) => FreeVars (PreExp e l d) where
 
       Ext q -> gFreeVars q
 
+-- Recover type of an expression given a type-expression
+instance (Show l, Out l, Expression (e l (UrTy l)), Typeable (e l (UrTy l)) (UrTy l)) =>
+         Typeable (PreExp e l (UrTy l)) (UrTy l) where
+  gTypeExp ddfs env2 ex =
+    case ex of
+      VarE v       -> M.findWithDefault
+                      (error $ "Cannot find type of variable " ++ show v)
+                      v (vEnv env2)
+      LitE _       -> IntTy
+      LitSymE _    -> SymTy
+      AppE v _ _   -> snd $ fEnv env2 # v
+      PrimAppE p _ ->
+        case p of
+          AddP    -> IntTy
+          SubP    -> IntTy
+          MulP    -> IntTy
+          EqIntP  -> BoolTy
+          EqSymP  -> BoolTy
+          MkTrue  -> BoolTy
+          MkFalse -> BoolTy
+          SymAppend      -> SymTy
+          DictInsertP ty -> SymDictTy (noLocsHere ty)
+          DictLookupP ty -> noLocsHere ty
+          DictEmptyP  ty -> SymDictTy (noLocsHere ty)
+          DictHasKeyP ty -> SymDictTy (noLocsHere ty)
+          SizeParam      -> IntTy
+          ReadPackedFile _ _ ty -> (noLocsHere ty)
+          _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
+
+      LetE (v,_,t,_) e -> gTypeExp ddfs (extendVEnv v t env2) e
+      IfE _ e _        -> gTypeExp ddfs env2 e
+      MkProdE es       -> ProdTy $ L.map (gTypeExp ddfs env2) es
+      DataConE loc c _ -> PackedTy (getTyOfDataCon ddfs c) loc
+      TimeIt e _ _     -> gTypeExp ddfs env2 e
+      MapE _ e         -> gTypeExp ddfs env2 e
+      FoldE _ _ e      -> gTypeExp ddfs env2 e
+      Ext ext          -> gTypeExp ddfs env2 ext
+
+      ProjE i e ->
+        case gTypeExp ddfs env2 e of
+          (ProdTy tys) -> tys !! i
+          oth -> error$ "typeExp: Cannot project fields from this type: "++show oth
+                        ++"\nExpression:\n  "++ sdoc ex
+                        ++"\nEnvironment:\n  "++sdoc (vEnv env2)
+
+      CaseE _ mp ->
+        let (c,args,e) = head mp
+            args' = L.map fst args
+        in gTypeExp ddfs (extendsVEnv (M.fromList (zip args' (lookupDataCon ddfs c))) env2) e
+
+    where
+      -- This crops up in the types for primitive operations.  Can we remove the need for this?
+      noLocsHere :: Show a => UrTy a -> UrTy b
+      noLocsHere t = fmap (\_ -> error $ "This type should not contain a location: "++show t) t
+
+
+
+instance Typeable (PreExp e l (UrTy l)) (UrTy l) => Typeable (L (PreExp e l (UrTy l))) (UrTy l) where
+  gTypeExp ddfs env2 (L _ ex) = gTypeExp ddfs env2 ex
 
 -- | Some of these primitives are (temporarily) tagged directly with
 -- their return types.
