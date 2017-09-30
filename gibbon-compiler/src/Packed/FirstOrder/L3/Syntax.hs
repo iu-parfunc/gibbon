@@ -11,7 +11,7 @@ module Packed.FirstOrder.L3.Syntax
   , Prog(..), FunDef(..), FunDefs, ArrowTy(..)
 
     -- * Functions
-  , eraseLocMarkers, stripTyLocs, cursorizeTy, mapMExprs
+  , eraseLocMarkers, stripTyLocs, cursorizeTy, mapMExprs, toL3Prim
   )
 where
 
@@ -23,6 +23,7 @@ import Data.List as L
 import Text.PrettyPrint.GenericPretty
 
 import Packed.FirstOrder.Common hiding (FunDef, FunDefs)
+import Packed.FirstOrder.L1.Syntax hiding (FunDef, FunDefs, Prog)
 import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.L1.Syntax (UrTy(..), PreExp(..))
 import qualified Packed.FirstOrder.L2.Syntax as L2
@@ -161,3 +162,24 @@ mapMExprs fn (Prog ddfs fundefs mainExp) =
   where funEnv = M.map (\f -> let ty = funty f
                               in (arrIn ty, arrOut ty))
                  fundefs
+
+-- Ugh .. this is bad. Can we remove the identity cases here ?
+toL3Prim :: Prim L2.Ty2 -> Prim Ty3
+toL3Prim pr =
+  case pr of
+    AddP      -> AddP
+    SubP      -> SubP
+    MulP      -> MulP
+    EqSymP    -> EqSymP
+    EqIntP    -> EqIntP
+    MkTrue    -> MkTrue
+    MkFalse   -> MkFalse
+    SizeParam -> SizeParam
+    SymAppend -> SymAppend
+    DictInsertP ty -> DictInsertP (stripTyLocs ty)
+    DictLookupP ty -> DictLookupP (stripTyLocs ty)
+    DictEmptyP  ty -> DictEmptyP  (stripTyLocs ty)
+    DictHasKeyP ty -> DictHasKeyP (stripTyLocs ty)
+    ErrorP s ty    -> ErrorP s (stripTyLocs ty)
+    ReadPackedFile fp tycon ty -> ReadPackedFile fp tycon (stripTyLocs ty)
+    MkNullCursor -> MkNullCursor

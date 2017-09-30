@@ -10,7 +10,6 @@ import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.GenericOps (isTrivial)
 import           Packed.FirstOrder.GenericOps (NoExt)
 import           Packed.FirstOrder.L1.Syntax as L1 hiding (mkProj)
-import qualified Packed.FirstOrder.L2.Syntax as L2
 
 -- import Packed.FirstOrder.Passes.Flatten (typeExp, TEnv)
 

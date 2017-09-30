@@ -379,7 +379,7 @@ letbind s =
 isPrim :: Text -> Bool
 isPrim p = S.member p (M.keysSet primMap)
 
-primMap :: Map Text Prim
+primMap :: Map Text (Prim Ty1)
 primMap = M.fromList
   [ ("+", AddP)
   , ("-", SubP)
@@ -390,7 +390,7 @@ primMap = M.fromList
   , ("sym-append", SymAppend)
   ]
 
-prim :: Text -> Prim
+prim :: Text -> Prim Ty1
 prim t = case M.lookup t primMap of
            Just x -> x
            Nothing -> error$ "Internal error, this is not a primitive: "++show t

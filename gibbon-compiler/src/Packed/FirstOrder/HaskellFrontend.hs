@@ -22,7 +22,7 @@ import qualified Data.Map as M
 import qualified Data.List as L
 
 import Packed.FirstOrder.L1.Syntax as L1
-import Packed.FirstOrder.Common as C hiding (l) 
+import Packed.FirstOrder.Common as C hiding (l)
 import Prelude hiding (exp)
 
 --------------------------------------------------------------------------------
@@ -174,7 +174,7 @@ desugarExp e = L NoLoc <$>
 
 -------------------------------------------------------------------------------
 
-desugarOp :: QOp -> Ds Prim
+desugarOp :: QOp -> Ds (Prim Ty1)
 desugarOp (QVarOp (UnQual (Symbol op))) =
   case op of
     "+" -> return AddP
