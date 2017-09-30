@@ -414,7 +414,8 @@ subst old new (L p0 ex) = L p0 $
 
 -- | Expensive subst that looks for a whole matching sub-EXPRESSION.
 --   If the old expression is a variable, this still avoids going under binder.
-substE :: L Exp1 -> L Exp1 -> L Exp1 -> L Exp1
+substE :: (Eq d, Eq l, Eq (e l d)) => L (PreExp e l d) -> L (PreExp e l d) -> L (PreExp e l d)
+       -> L (PreExp e l d)
 substE old new (L p0 ex) = L p0 $
   let go = substE old new in
   case ex of
@@ -541,7 +542,7 @@ mkProj 0 1 e  = e
 mkProj ix _ e = L (locOf e) $ ProjE ix e
 
 -- | Make a product type while avoiding unary products.
-mkProd :: [L Exp1]-> L Exp1
+mkProd :: [L (PreExp e l d)]-> L (PreExp e l d)
 mkProd [e] = e
 -- TODO(cskksc): this or NoLoc ?
 mkProd ls  = L (locOf $ head ls) $ MkProdE ls
@@ -552,10 +553,8 @@ mkProdTy [t] = t
 mkProdTy ls  = ProdTy ls
 
 -- | Make a nested series of lets.
--- mkLets :: [(Var,[l],Ty1,L (PreExp NoExt l Ty1))] ->
---           L (PreExp NoExt l Ty1) -> L (PreExp NoExt l Ty1)
-mkLets :: [(Var, [loc], dec, L (PreExp ext loc dec))] ->
-          L (PreExp ext loc dec) -> L (PreExp ext loc dec)
+mkLets :: [(Var, [loc], dec, L (PreExp ext loc dec))] -> L (PreExp ext loc dec) ->
+          L (PreExp ext loc dec)
 mkLets [] bod     = bod
 mkLets (b:bs) bod = L NoLoc $ LetE b (mkLets bs bod)
 

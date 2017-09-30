@@ -11,7 +11,7 @@ module Packed.FirstOrder.L3.Syntax
   , Prog(..), FunDef(..), FunDefs, ArrowTy(..)
 
     -- * Functions
-  , eraseLocMarkers, stripTyLocs, cursorizeTy
+  , eraseLocMarkers, stripTyLocs, cursorizeTy, mapMExprs
   )
 where
 
@@ -143,3 +143,21 @@ cursorizeTy L2.ArrowTy{L2.arrIn,L2.arrOut,L2.locVars,L2.locRets} =
       newIn    = L2.mapPacked (\_ _ -> CursorTy) inT
 
   in ArrowTy { arrIn = stripTyLocs newIn, arrOut = stripTyLocs newOut }
+
+
+-- | Map exprs with an initial type environment:
+-- Exactly the same function that was in L2 before
+mapMExprs :: Monad m => (Env2 Ty3 -> L Exp3 -> m (L Exp3)) -> Prog -> m Prog
+mapMExprs fn (Prog ddfs fundefs mainExp) =
+  Prog ddfs <$>
+    (mapM (\f@FunDef{funarg,funty,funbod} ->
+              let env = Env2 (M.singleton funarg (arrIn funty)) funEnv
+              in do
+                bod' <- fn env funbod
+                return $ f { funbod =  bod' })
+     fundefs)
+    <*>
+    (mapM (\ (e,t) -> (,t) <$> fn (Env2 M.empty funEnv) e) mainExp)
+  where funEnv = M.map (\f -> let ty = funty f
+                              in (arrIn ty, arrOut ty))
+                 fundefs
