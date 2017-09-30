@@ -3,7 +3,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Packed.FirstOrder.L1.Typecheck
-  ( tcProg, tcExp ) where
+  ( -- * The two main typechecker functions
+    tcProg, tcExp
+
+    -- * Helpers
+  , TCError(..)
+  )
+where
 
 
 import Control.Monad.Except
@@ -315,106 +321,3 @@ ensureEqual exp str a b = if a == b
 ensureEqualTy :: Exp -> Ty1 -> Ty1 -> TcM Ty1
 ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
                                          ++ (sdoc a) ++ ", " ++ (sdoc b)) a b
-
-
---------------------------------------------------------------------------------
-
-test6 :: (Prog, Int)
-test6 = runSyM 0 $ tcProg t6
-
-t6 :: Prog
-t6 = Prog {ddefs = M.fromList [],
-      fundefs = M.fromList [],
-      mainExp = Just $ l$ LetE ("d0",
-                           [],
-                           SymDictTy IntTy,
-                           l$ PrimAppE (DictEmptyP IntTy) [])
-                          (l$ LetE ("d21",
-                                 [],
-                                 SymDictTy IntTy,
-                                 l$ PrimAppE (DictInsertP IntTy) [l$ VarE "d0",l$ LitSymE "hi",l$ LitE 200])
-                                (l$ LitE 44))}
-
-
-test5 :: (Prog, Int)
-test5 = runSyM 0 $ tcProg t5
-
-t5 :: Prog
-t5 = Prog {ddefs = M.fromList [("Foo",
-                DDef {tyName = "Foo",
-                      dataCons = [("A", [(False, IntTy)]),
-                                  ("B", [(False, IntTy),(False, IntTy)])]}),
-               ("Nat",
-                DDef {tyName = "Nat",
-                      dataCons = [("Zero", []),("Suc", [(False, PackedTy "Nat" ())])]})],
-      fundefs = M.fromList [],
-      mainExp = Just $ l$  CaseE (l$ DataConE () "B" [l$  LitE 2, l$ LitE 4])
-                           [("A", [("x", ())], l$ VarE "x"),
-                            ("B", [("x", ()),("y", ())], l$ PrimAppE MkFalse [])]}
-
--- *** Exception: Expected these types to be the same: BoolTy, IntTy in
--- LitE 4
-
-test4 :: (Prog, Int)
-test4 = runSyM 0 $ tcProg t4
-
-t4 :: Prog
-t4 = Prog {ddefs = M.fromList [("Foo",
-                DDef {tyName = "Foo",
-                      dataCons = [("A", []),
-                                  ("B", [(False, IntTy),(False, PackedTy "Foo" ())])]})],
-      fundefs = M.fromList [("foo",
-                  FunDef {funName = "foo",
-                          funArg = ("ev", PackedTy "Foo" ()),
-                          funRetTy = IntTy,
-                          funBody = l$  CaseE (l$ VarE "ev")
-                                          [("A", [], (l$ LitE 10)),
-                                           ("B", [("x", ()),("y", ())], l$ LitE 200)]})],
-      mainExp = Nothing}
-
-test3 :: (Prog, Int)
-test3 = runSyM 0 $ tcProg t3
-
-t3 :: Prog
-t3 = Prog {ddefs = M.fromList [],
-           fundefs = M.fromList [],
-           mainExp = Just $ l$
-                     IfE (l$ PrimAppE EqIntP [l$  LitE 1, l$  LitE 1])
-                     (l$ IfE (l$  PrimAppE EqIntP [l$  LitE 2, l$  LitE 2])
-                       (l$  LitE 100)
-                       (l$  LitE 1))
-                     (l$  LitE 2)}
-
-test2 :: (Prog, Int)
-test2 = runSyM 0 $ tcProg t2
-
-t2 :: Prog
-t2 = Prog {ddefs = M.fromList
-                   [("T",
-                      DDef {tyName = "T", dataCons = [("MkA", []),("MkB", [(False, IntTy)])]})],
-      fundefs = M.fromList [],
-      mainExp = Just $ l$  DataConE () "MkB" [l$  LitE 10]}
-
-test1 :: (Prog, Int)
-test1 = runSyM 0 $ tcProg t1
-
-t1 :: Prog
-t1 =
-  Prog {ddefs = M.fromList [],
-        fundefs = M.fromList
-                  [("mul2",
-                    FunDef {funName = "mul2",
-                            funArg = ("x_y1", ProdTy [IntTy,IntTy]),
-                            funRetTy = IntTy,
-                            funBody = l$ PrimAppE MulP
-                                      [l$ ProjE 0 (l$ VarE "x_y1"), l$ ProjE 1 (l$ VarE "x_y1")]}),
-                   ("add2",
-                    FunDef {funName = "add2",
-                            funArg = ("x_y0", ProdTy [IntTy,IntTy]),
-                            funRetTy = IntTy,
-                            funBody = l$ PrimAppE AddP
-                                      [l$ ProjE 0 (l$ VarE "x_y0"),
-                                       l$ ProjE 1 (l$ VarE "x_y0")]})],
-        mainExp = Just $ l$  AppE "mul2"
-                  []
-                  (l$ MkProdE [l$ LitE 10, l$ AppE "add2" [] (l$ MkProdE [l$ LitE 40, l$ LitE 2])])}
