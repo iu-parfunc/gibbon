@@ -114,6 +114,18 @@ tcExp ddfs env exp@(L p ex) =
           _ <- ensureEqualTy exp SymTy k
           return BoolTy
 
+        ErrorP _str ty -> do
+          len2
+          return ty
+
+        ReadPackedFile _fp _tycon ty -> do
+          len3
+          return ty
+
+        MkNullCursor -> do
+          len0
+          return CursorTy
+
         oth -> error $ "L1.tcExp : PrimAppE : TODO " ++ sdoc oth
 
     LetE (v,locs,ty,rhs) e -> do
