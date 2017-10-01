@@ -24,6 +24,7 @@ import RouteEnds2
 import InferEffects2
 import L2.Typecheck
 import L1.Typecheck
+import L3.Typecheck
 
 main :: IO ()
 main = defaultMain allTests
@@ -33,6 +34,7 @@ main = defaultMain allTests
                    , inferEffects2Tests
                    , l2TypecheckerTests
                    , l1TypecheckerTests
+                   , l3TypecheckerTests
                    ]
 
 

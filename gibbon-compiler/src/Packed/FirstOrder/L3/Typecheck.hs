@@ -224,7 +224,6 @@ tcExp ddfs env exp@(L p ex) =
       let tycons = L.map (getTyOfDataCon ddfs . (\(a,_,_) -> a)) cs
       case L.nub tycons of
         [_one] -> do
-          trace (sdoc tye) (return ())
           -- all packed types are transformed to cursors
           _ <- ensureEqualTy exp CursorTy tye
           tcCases ddfs env cs

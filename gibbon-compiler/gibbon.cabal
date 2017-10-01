@@ -33,6 +33,7 @@ library
                   Packed.FirstOrder.L1.Interp
                   Packed.FirstOrder.L2.Interp
                   Packed.FirstOrder.L3.Syntax
+                  Packed.FirstOrder.L3.Typecheck
                   Packed.FirstOrder.SExpFrontend
 
                   -- compiler passes, roughly in the order they run
@@ -50,7 +51,7 @@ library
                   -- Packed.FirstOrder.Passes.Cursorize
                   -- Packed.FirstOrder.Passes.Cursorize2
                   Packed.FirstOrder.Passes.Cursorize4
-                  -- Packed.FirstOrder.Passes.FindWitnesses
+                  Packed.FirstOrder.Passes.FindWitnesses
                   Packed.FirstOrder.Passes.ShakeTree
                   Packed.FirstOrder.Passes.HoistNewBuf
                   Packed.FirstOrder.Passes.Unariser
@@ -153,6 +154,7 @@ test-suite test-gibbon
                 InferEffects2
                 L2.Typecheck
                 L1.Typecheck
+                L3.Typecheck
 
   default-language:    Haskell2010
 --   ghc-options:         -Wall
