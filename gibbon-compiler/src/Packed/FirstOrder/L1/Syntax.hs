@@ -382,7 +382,8 @@ getFunTy fn Prog{fundefs} =
       Nothing -> error $ "getFunTy: L1 program does not contain binding for function: "++show fn
 
 
-subst :: Var -> L Exp1 -> L Exp1 -> L Exp1
+subst :: (Eq d, Eq l, Eq (e l d)) => Var -> L (PreExp e l d) -> L (PreExp e l d)
+       -> L (PreExp e l d)
 subst old new (L p0 ex) = L p0 $
   let go = subst old new in
   case ex of

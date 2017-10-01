@@ -1,4 +1,3 @@
-
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -22,28 +21,33 @@ module Packed.FirstOrder.Passes.Lower
 
 import Control.Monad
 import Data.Char
-import Packed.FirstOrder.Common hiding (FunDef)
-import qualified Packed.FirstOrder.L1.Syntax as L1
-import           Packed.FirstOrder.L1.Syntax (Exp(..))
-import qualified Packed.FirstOrder.L2.Syntax as L2
-import           Packed.FirstOrder.L2.Syntax ( FunDef(..), Prog(..) )
-import qualified Packed.FirstOrder.L4.Syntax as T
 import Data.Maybe
-import qualified Data.List as L
+import Data.Loc
 import Data.List as L hiding (tail)
 import Data.Map as M hiding (foldl, foldr)
 import Data.Int (Int64)
+import Prelude hiding (tail)
+import qualified Data.List as L
 -- import Data.Word
 
-import Prelude hiding (tail)
+
+import Packed.FirstOrder.GenericOps
+import Packed.FirstOrder.Common hiding (FunDef)
+import Packed.FirstOrder.L1.Syntax hiding (FunDef, Prog(..), progToEnv)
+import Packed.FirstOrder.L3.Syntax
+import qualified Packed.FirstOrder.L1.Syntax as L1
+import qualified Packed.FirstOrder.L4.Syntax as T
+-- import           Packed.FirstOrder.L1.Syntax (Exp(..))
+-- import qualified Packed.FirstOrder.L2.Syntax as L2
+-- import           Packed.FirstOrder.L2.Syntax ( FunDef(..), Prog(..) )
 
 
 -- Generating unpack functions from Packed->Pointer representation:
 -------------------------------------------------------------------------------
 
-genDcons :: [L1.Ty] -> Var -> [(T.Ty, T.Triv)] -> SyM T.Tail
+genDcons :: [Ty3] -> Var -> [(T.Ty, T.Triv)] -> SyM T.Tail
 genDcons (x:xs) tail fields = case x of
-  L1.IntTy             ->  do
+  IntTy             ->  do
     val  <- gensym "val"
     t    <- gensym "tail"
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)]
@@ -60,9 +64,11 @@ genDcons [] tail fields     = do
   ptr <- gensym "ptr"
   return $ T.LetAllocT ptr fields $ T.RetValsT [T.VarTriv ptr, T.VarTriv tail]
 
-genAlts :: [(DataCon,[L1.Ty])] -> Var -> Var -> Int64 -> SyM T.Alts
+genAlts :: [(DataCon,[(IsBoxed,Ty3)])] -> Var -> Var -> Int64 -> SyM T.Alts
 genAlts ((_, typs):xs) tail tag n = do
-  curTail <- genDcons typs tail [(T.TagTyPacked, T.VarTriv tag)]
+  let (_,typs') = unzip typs
+  -- WARNING: IsBoxed ignored here
+  curTail <- genDcons typs' tail [(T.TagTyPacked, T.VarTriv tag)]
   alts    <- genAlts xs tail tag (n+1)
   case alts of
     T.IntAlts []   -> return $ T.IntAlts [(n::Int64, curTail)]
@@ -73,7 +79,7 @@ genAlts ((_, typs):xs) tail tag n = do
 
 genAlts [] _ _ _                  = return $ T.IntAlts []
 
-genUnpacker :: DDef L1.Ty -> SyM T.FunDecl
+genUnpacker :: DDef Ty3 -> SyM T.FunDecl
 genUnpacker DDef{tyName, dataCons} = do
   p    <- gensym "p"
   tag  <- gensym "tag"
@@ -106,7 +112,7 @@ sandwich :: (T.Tail -> T.Tail) -> String -> T.Tail -> T.Tail
 sandwich mid s end = openParen s $ mid $ closeParen end
 
 -- Generate printing functions
-genDconsPrinter :: [L1.Ty] -> Var -> SyM T.Tail
+genDconsPrinter :: [Ty3] -> Var -> SyM T.Tail
 genDconsPrinter (x:xs) tail = case x of
   L1.IntTy             ->  do
     val  <- gensym "val"
@@ -137,9 +143,11 @@ genDconsPrinter (x:xs) tail = case x of
 genDconsPrinter [] tail     = do
   return $ closeParen $ T.RetValsT [(T.VarTriv tail)]
 
-genAltPrinter :: [(DataCon,[L1.Ty])] -> Var -> Int64 -> SyM T.Alts
+genAltPrinter :: [(DataCon,[(IsBoxed, Ty3)])] -> Var -> Int64 -> SyM T.Alts
 genAltPrinter ((dcons, typs):xs) tail n = do
-  curTail <- (openParen dcons) <$> genDconsPrinter typs tail
+  let (_,typs') = unzip typs
+  -- WARNING: IsBoxed ignored here
+  curTail <- (openParen dcons) <$> genDconsPrinter typs' tail
   alts    <- genAltPrinter xs tail (n+1)
   case alts of
     T.IntAlts []   -> return $ T.IntAlts [(n::Int64, curTail)]
@@ -149,7 +157,7 @@ genAltPrinter ((dcons, typs):xs) tail n = do
     _              -> error $ "Invalid case statement type."
 genAltPrinter [] _ _                = return $ T.IntAlts []
 
-genPrinter  :: DDef L1.Ty -> SyM T.FunDecl
+genPrinter  :: DDef Ty3 -> SyM T.FunDecl
 genPrinter DDef{tyName, dataCons} = do
   p    <- gensym "p"
   tag  <- gensym "tag"
@@ -162,7 +170,7 @@ genPrinter DDef{tyName, dataCons} = do
                     T.funRetTy = T.PtrTy,
                     T.funBody  = bod }
 
-printTy :: L1.Ty -> [T.Triv] -> (T.Tail -> T.Tail)
+printTy :: Ty3 -> [T.Triv] -> (T.Tail -> T.Tail)
 printTy L1.IntTy [trv]                = T.LetPrimCallT [] T.PrintInt [trv]
 printTy (L1.SymDictTy (x)) [trv]      = sandwich (printTy x [trv]) "Dict"
 printTy (L1.PackedTy constr _) [trv]  = T.LetCallT [] (mkPrinterName constr) [trv]
@@ -184,7 +192,7 @@ printTy (L1.ProdTy tys) trvs =
 
 printTy ty trvs = error $ "Invalid L1 data type; " ++ show ty ++ " " ++ show trvs
 
-addPrintToTail :: L1.Ty -> T.Tail-> SyM T.Tail
+addPrintToTail :: Ty3 -> T.Tail-> SyM T.Tail
 addPrintToTail ty tl0 =
   let ty' = T.fromL1Ty ty in
     T.withTail (tl0, ty') $ \ trvs ->
@@ -194,7 +202,7 @@ addPrintToTail ty tl0 =
           T.RetValsT []  -- Void return after printing.
 
 -- | In packed mode we print by unpacking first.
-addPrintToTailPacked :: L1.Ty -> T.Tail-> SyM T.Tail
+addPrintToTailPacked :: Ty3 -> T.Tail-> SyM T.Tail
 addPrintToTailPacked ty tl0 =
   -- FIXME: Need to handle products of packed!!
   case ty of
@@ -218,8 +226,8 @@ addPrintToTailPacked ty tl0 =
 --
 -- First argument indicates (1) whether we're inpacked mode, and (2)
 -- the pre-cursorize type of the mainExp, if there is a mainExp.
-lower :: (Bool,Maybe L1.Ty) -> L2.Prog -> SyM T.Prog
-lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
+lower :: (Bool,Maybe Ty3) -> Prog -> SyM T.Prog
+lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
   mn <- case mainExp of
           Nothing    -> return Nothing
           Just (x,mty) -> let Just origMainTy = mMainTy
@@ -237,16 +245,16 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
 --  T.Prog <$> mapM fund (M.elems fundefs) <*> pure mn
 
  where
-  fund :: L2.FunDef -> SyM T.FunDecl
-  fund L2.FunDef{funname,funty=(L2.ArrowTy inty _ outty),funarg,funbod} = do
+  fund :: FunDef -> SyM T.FunDecl
+  fund FunDef{funname,funty=(ArrowTy inty outty),funarg,funbod} = do
       (args,bod) <- case inty of
                       -- ASSUMPTION: no nested tuples after unariser:
-                      L2.ProdTy ls -> do let tys'  = L.map (fmap (const ())) ls
-                                             tys'' = L.map typ ls
-                                         (vs,e') <- eliminateProjs funarg tys' funbod
-                                         return $
-                                          dbgTrace 5 (" [lower] unzipping funarg "++show funarg++" to "++show vs) $
-                                          (zip vs tys'', e')
+                      ProdTy ls -> do let tys'  = L.map (fmap (const ())) ls
+                                          tys'' = L.map typ ls
+                                      (vs,e') <- eliminateProjs funarg tys' funbod
+                                      return $
+                                        dbgTrace 5 (" [lower] unzipping funarg "++show funarg++" to "++show vs) $
+                                        (zip vs tys'', e')
                       _ -> return ([(funarg, typ inty)], funbod)
       tl <- tail bod
       return T.FunDecl{ T.funName = funname
@@ -254,42 +262,43 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
                       , T.funRetTy = typ outty
                       , T.funBody = tl }
 
-  tail :: L1.Exp -> SyM T.Tail
-  tail ex0 =
+  tail :: L Exp3 -> SyM T.Tail
+  tail (L _ ex0) =
    dbgTrace 7 ("\n [lower] processing tail:\n  "++sdoc ex0) $
    case ex0 of
 
     -- HACK! We don't have LetSwitchT yet.  This means potential exponential code duplication:
     -- LetE (_,_, CaseE _ _) _ ->
     --    error "lower: unfinished, we cannot let-bind the result of a switch yet."
-    LetE (vr,ty, CaseE scrt ls) bod -> tail $
+    LetE (vr,_locs,ty, L _ (CaseE scrt ls)) bod -> tail $
                                        dbgTrace 1 ("WARNING: Let-bound CasE, code duplication of this body:\n  "
                                                    ++sdoc bod)$
          -- For now just duplicate code:
-         CaseE scrt [ (k,vs, mkLet (vr,ty,e) bod)
+         l$ CaseE scrt [ (k,vs, mkLet (vr,ty,e) bod)
                     | (k,vs,e) <- ls]
 
     -- Aaand... if we're going to push Let's under Case's, we have to repeat this bit of flattening:
-    LetE (v1, t1, LetE (v2,t2,rhs2) rhs1) bod ->
-       tail $ LetE (v2,t2,rhs2) $ LetE (v1,t1,rhs1) bod
+    LetE (v1, locs, t1, L _ (LetE (v2,locs2,t2,rhs2) rhs1)) bod ->
+       tail $ l$ LetE (v2,locs,t2,rhs2) $ l$ LetE (v1,locs2,t1,rhs1) bod
 
     --------------------------------------------------------------------------------
     -- Packed codegen
     --------------------------------------------------------------------------------
     -- These are in a funny normal form atfer cursor insertion.  They take one cursor arg.
     -- They basically are a WriteTag.
-    LetE (cursOut, _, DataConE k ls) bod | pkd -> do
+    LetE (cursOut, _, _, L _ (DataConE loc k ls)) bod | pkd -> do
       case ls of
        [cursIn] -> T.LetPrimCallT [(cursOut,T.CursorTy)] T.WriteTag
                      [ T.TagTriv (getTagOfDataCon ddefs k)
                      , triv "WriteTag cursor" cursIn ] <$>
                     tail bod
        _ -> error$ "Lower: Expected one argument to data-constructor (which becomes WriteTag): "
-                   ++sdoc (DataConE k ls)
+                   ++sdoc (DataConE loc k ls)
 
     -- Likewise, Case really means ReadTag.  Argument is a cursor.
-    CaseE (VarE scrut) ls | pkd -> do
-        let (last:restrev) = reverse ls; rest = reverse restrev
+    CaseE (L _ (VarE scrut)) ls | pkd -> do
+        let (last:restrev) = reverse ls
+            rest = reverse restrev
         tagtmp <- gensym $ toVar "tmpval"
         ctmp   <- gensym $ toVar "tmpcur"
         -- We only need to thread one value through, the cursor resulting from read.
@@ -297,7 +306,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
              (getTagOfDataCon ddefs k,) <$>
              case ls of
                []  -> tail rhs -- AUDITME -- is this legit, or should it have one cursor param anyway?
-               [c] -> tail (L1.subst c (VarE ctmp) rhs)
+               [(c,_)] -> tail (subst c (l$ VarE ctmp) rhs)
                oth -> error $ "lower.tail.CaseE: unexpected pattern" ++ show oth
         alts <- mapM doalt rest
         (_,last') <- doalt last
@@ -319,6 +328,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
     CaseE e [(c, bndrs, rhs)] | not pkd -> do
       -- a product, directly assign the fields
       let tys = L.map typ (lookupDataCon ddefs c)
+          (bndrs2,_) = unzip bndrs
 
       -- TODO(osa): enable this
       -- ASSERT(length tys == length bndrs)
@@ -326,7 +336,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
       let T.VarTriv e_var = triv "product case scrutinee" e
       tag_bndr  <- gensym $ toVar "tag"
 
-      let bndrs' = tag_bndr : bndrs
+      let bndrs' = tag_bndr : bndrs2
           tys'   = T.IntTy  : tys
       rhs' <- tail rhs
       return (T.LetUnpackT (zip bndrs' tys') e_var rhs')
@@ -338,13 +348,14 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
       let
         e_triv = triv "sum case scrutinee" e
 
-        mk_alt :: (DataCon, [Var], Exp) -> SyM (Int64, T.Tail)
+        mk_alt :: (DataCon, [(Var,())], L Exp3) -> SyM (Int64, T.Tail)
         mk_alt (con, bndrs, rhs) = do
           let
             con_tag = getTagOfDataCon ddefs con
             bndr_tys = L.map typ (lookupDataCon ddefs con)
+            (bndrs',_) = unzip bndrs
           rhs' <- tail rhs
-          return ( fromIntegral con_tag, T.LetUnpackT (zip bndrs bndr_tys) tail_bndr rhs' )
+          return ( fromIntegral con_tag, T.LetUnpackT (zip bndrs' bndr_tys) tail_bndr rhs' )
 
       alts'    <- mapM mk_alt alts
       (_, def) <- mk_alt def_alt
@@ -357,7 +368,7 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
           (T.Switch (T.VarTriv tag_bndr) (T.IntAlts alts') (Just def))
 
     -- Accordingly, constructor allocation becomes an allocation.
-    LetE (v, _, DataConE k ls) bod | not pkd -> L1.assertTrivs ls $ do
+    LetE (v, _, _, L _ (DataConE _ k ls)) bod | not pkd -> L1.assertTrivs ls $ do
       let tycon    = getTyOfDataCon ddefs k
           all_cons = dataCons (lookupDDef ddefs (toVar tycon))
           tag      = fromJust (L.findIndex ((==) k . fst) all_cons)
@@ -377,16 +388,16 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
       return (T.LetAllocT v fields bod')
 
     -- This is legitimately flattened, but we need to move it off the spine:
-    L1.DataConE k _ls -> do
+    L1.DataConE _ k _ls -> do
        tmp <- gensym $ toVar "tailift"
        let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
-       tail $ LetE (tmp, ty, ex0) (VarE tmp)
+       tail $ l$ LetE (tmp, [], ty, l$ ex0) (l$ VarE tmp)
 
     --------------------------------------------------------------------------------
 
 --    L1.LitE n       -> pure$ T.RetValsT [triv "literal in tail" (LitE n)]
     L1.MkProdE ls   -> pure$ T.RetValsT (L.map (triv "returned element of tuple") ls)
-    e | L1.isTriv e -> pure$ T.RetValsT [triv "<internal error1>" e]
+    e | isTrivial e -> pure$ T.RetValsT [triv "<internal error1>" (l$ e)]
 
     -- L1.LetE (v,t, L1.MkProdE ls) bod -> do
     --   let rhss = L.map triv ls
@@ -396,16 +407,16 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
 
     -- We could eliminate these ahead of time (unariser):
     -- FIXME: Remove this when that is done a priori:
-    L1.LetE (v, L2.ProdTy tys, MkProdE ls) bod -> do
+    L1.LetE (v, _, ProdTy tys, L _ (MkProdE ls)) bod -> do
       (tmps,bod') <- eliminateProjs v tys bod
       -- Bind tmps individually:a
       let go [] acc                 = acc
-          go ((pvr,pty,rhs):rs) acc = go rs (LetE (pvr,pty,rhs) acc)
-      -- Finally reprocess teh whole thing:
+          go ((pvr,pty,rhs):rs) acc = go rs (l$ LetE (pvr,[],pty,rhs) acc)
+      -- Finally reprocess teh whole thing
       tail (go (zip3 tmps tys ls) bod')
 
     -- We could eliminate these ahead of time:
-    L1.LetE (v,t,rhs) bod | L1.isTriv rhs ->
+    L1.LetE (v,_,t,rhs) bod | isTrivial rhs ->
       T.LetTrivT (v,typ t, triv "<internal error2>" rhs) <$> tail bod
 
     -- TWO OPTIONS HERE: we could push equality prims into the target lang.
@@ -420,10 +431,10 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
                                       -- And tag "1" is true:
                                       (Just b')
 
-    LetE (vr, ty, L1.TimeIt rhs _ flg) bod ->
+    LetE (vr, _, ty, L _ (L1.TimeIt rhs _ flg)) bod ->
         do rhs' <- tail rhs
            case ty of
-             L2.ProdTy ls ->
+             ProdTy ls ->
                do (tmps,bod') <- eliminateProjs vr ls bod
                   T.LetTimedT flg (zip tmps (L.map typ ls)) rhs' <$> tail bod'
              _ -> T.LetTimedT flg   [(vr, typ ty)]          rhs' <$> tail bod
@@ -433,16 +444,17 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
     -- (1) Primapps that become Tails:
 
     -- FIXME: No reason errors can't stay primitive at Target:
-    L1.PrimAppE (L1.ErrorP str _ty) [] ->
+    PrimAppE (ErrorP str _ty) [] ->
       pure $ T.ErrT str
-    L1.LetE (_,_,L1.PrimAppE (L1.ErrorP str _) []) _ ->
+    LetE (_,_,_, L _ (PrimAppE (L1.ErrorP str _) [])) _ ->
       pure $ T.ErrT str
 
     -- Whatever... a little just-in-time flattening.  Should obsolete this:
-    L1.PrimAppE p ls -> do
+    PrimAppE p ls -> do
       tmp <- gensym $ toVar "flt"
-      tail (L1.LetE (tmp, L2.primRetTy p, L1.PrimAppE p ls) (L1.VarE tmp))
+      tail (l$ LetE (tmp, [], primRetTy p, l$ PrimAppE p ls) (l$ VarE tmp))
 
+{-
     ---------------------
     -- (2) Next FAKE Primapps.  These could be added to L1 if we wanted to pollute it.
     L1.LetE (v,_,L2.WriteInt c e) bod ->
@@ -473,15 +485,17 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
       T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv "addCursor base" (L2.VarE c)
                                              , triv "addCursor offset" (L2.LitE n)] <$>
          tail bod
-
     L1.LetE (_,_, p) _ | L2.isExtendedPattern p ->
      error $ "Lower: missed an extended L2 pattern on rhs of let: "++ndoc p
-    p | L2.isExtendedPattern p ->
-     error $ "Lower: missed an extended L2 pattern: "++ndoc p
 
+    p | L2.isExtendedPattern  ->
+     error $ "Lower: missed an extended L2 pattern: "++ndoc p
+    L1.AppE{} | L2.isExtendedPattern ex0 -> error$ "Lower: Unhandled extended L2 pattern(1): "++ndoc ex0
+
+-}
     ---------------------
     -- (3) Proper primapps.
-    L1.LetE (v,t,L1.PrimAppE p ls) bod ->
+    L1.LetE (v,_,t, L _ (PrimAppE p ls)) bod ->
         -- No tuple-valued prims here:
         T.LetPrimCallT [(v,typ t)]
              (prim p)
@@ -489,28 +503,27 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
              (tail bod)
     --------------------------------End PrimApps----------------------------------
 
-    L1.AppE{} | L2.isExtendedPattern ex0 -> error$ "Lower: Unhandled extended L2 pattern(1): "++ndoc ex0
-    L1.AppE v (MkProdE ls) -> return $ T.TailCall ( v) (L.map (triv "operands") ls)
-    L1.AppE v e            -> return $ T.TailCall ( v) [triv "operand" e]
+    L1.AppE v _ (L _ (MkProdE ls)) -> return $ T.TailCall ( v) (L.map (triv "operands") ls)
+    L1.AppE v _ e            -> return $ T.TailCall ( v) [triv "operand" e]
 
-    -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
-    ProjE ix ap@(AppE f e) | not (L2.isExtendedPattern ap) -> do
-        tmp <- gensym $ toVar "prjapp"
-        let L2.ArrowTy (L2.ProdTy inTs) _ _ = funty (fundefs # f)
-        tail $ LetE ( tmp
-                    , fmap (const ()) (inTs !! ix)
-                    , ProjE ix (AppE f e))
-                 (VarE tmp)
+    -- -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
+    -- ProjE ix ap@(AppE f e) | not (L2.isExtendedPattern ap) -> do
+    --     tmp <- gensym $ toVar "prjapp"
+    --     let L2.ArrowTy (L2.ProdTy inTs) _ _ = funty (fundefs # f)
+    --     tail $ LetE ( tmp
+    --                 , fmap (const ()) (inTs !! ix)
+    --                 , ProjE ix (AppE f e))
+    --              (VarE tmp)
 
-    L1.LetE (_,_, ap@(L1.AppE f _)) _
-        | L2.isExtendedPattern ap -> error$ "Lower: Unhandled extended L2 pattern(2): "++ndoc ap
+    L1.LetE (_,_,_, (L _ (L1.AppE f _ _))) _
+        -- | L2.isExtendedPattern ap -> error$ "Lower: Unhandled extended L2 pattern(2): "++ndoc ap
         | M.notMember f fundefs -> error $ "Application of unbound function: "++show f
 
     -- Non-tail call:
-    L1.LetE (vr,t, projOf -> (stk, ap@(L1.AppE f arg))) bod
-      | L2.isExtendedPattern ap -> error$ "Lower: Unhandled extended L2 pattern(3): "++ndoc ap
+    L1.LetE (vr, _,t, projOf -> (stk, (L _ (L1.AppE f _ arg)))) bod
+      -- | L2.isExtendedPattern ap -> error$ "Lower: Unhandled extended L2 pattern(3): "++ndoc ap
       | otherwise -> do
-        let L2.ArrowTy _ _ outTy = funty (fundefs # f)
+        let ArrowTy _ outTy = funty (fundefs # f)
         let f' = cleanFunName f
         (vsts,bod') <- case outTy of
                         L1.ProdTy [] -> error "lower: FINISHME: unit valued function"
@@ -527,19 +540,19 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
                                               , bod)
                             oth -> error $ "lower.tail.LetE: unexpected pattern" ++ show oth
                         _ -> return ([(vr,typ t)], bod)
-        case arg of
+        case unLoc arg of
           MkProdE es ->
                T.LetCallT vsts f' (L.map (triv "one of app rands") es) <$> (tail bod')
           _ -> T.LetCallT vsts f' [(triv "app rand") arg]       <$> (tail bod')
 
 
-    L1.LetE (v, t, L1.IfE a b c) bod -> do
+    L1.LetE (v, _, t, L _ (IfE a b c)) bod -> do
       let a' = triv "if test" a
       b' <- tail b
       c' <- tail c
       case t of
         -- Finilize unarisation:
-        L2.ProdTy ls -> do
+        ProdTy ls -> do
              (tmps,bod') <- eliminateProjs v ls bod
              T.LetIfT (zip tmps (L.map typ ls)) (a', b', c') <$> tail bod'
         _ -> T.LetIfT [(v, typ t)] (a', b', c') <$> tail bod
@@ -552,9 +565,9 @@ lower (pkd,mMainTy) L2.Prog{fundefs,ddefs,mainExp} = do
 --------------------------------------------------------------------------------
 
 -- | View pattern for matching agaist projections of Foo rather than just Foo.
-projOf :: Exp -> ([Int], Exp)
-projOf (ProjE ix e) = let (stk,e') = projOf e in
-                      (stk++[ix], e')
+projOf :: L Exp3 -> ([Int], L Exp3)
+projOf (L _ (ProjE ix e)) = let (stk,e') = projOf e
+                           in (stk++[ix], e')
 projOf e = ([],e)
 
 
@@ -582,7 +595,7 @@ mkLetTail (vr,ty,rhs) =
 -}
 
 -- | Eliminate projections from a given tuple variable.  INEFFICIENT!
-eliminateProjs :: Var -> [L1.Ty] -> Exp -> SyM ([Var],Exp)
+eliminateProjs :: Var -> [Ty3] -> L Exp3 -> SyM ([Var],L Exp3)
 eliminateProjs vr tys bod =
  dbgTrace 5 (" [lower] eliminating "++show (length tys)++
              " projections on variable "++show vr++" in expr with types "
@@ -590,70 +603,74 @@ eliminateProjs vr tys bod =
  do tmps <- mapM (\_ -> gensym "pvrtmp") [1.. (length tys)]
     let go _ [] acc =
             -- If there are ANY references left, we are forced to make the products:
-            L1.subst vr (MkProdE (L.map VarE tmps)) acc
+            L1.subst vr (l$ MkProdE (L.map (l . VarE) tmps)) acc
         go ix ((pvr,_pty):rs) acc =
            go (ix+1) rs
-             (L1.substE (ProjE ix (VarE vr)) (VarE pvr) acc)
+             (L1.substE (l$ ProjE ix (l$ VarE vr)) (l$ VarE pvr) acc)
     let bod' = go 0 (zip tmps tys) bod
     return (tmps,bod')
 
 
 
-mkLet :: (Var, L1.Ty, Exp) -> Exp -> Exp
-mkLet (v,t,LetE (v2,t2,rhs2) bod1) bod2 = LetE (v2,t2,rhs2) $ LetE (v,t,bod1) bod2
-mkLet (v,t,rhs) bod = LetE (v,t,rhs) bod
+mkLet :: (Var, Ty3, L Exp3) -> L Exp3 -> L Exp3
+mkLet (v,t, L _ (LetE (v2, _,t2,rhs2) bod1)) bod2 = l$ LetE (v2,[],t2,rhs2) $
+                                                    l$ LetE (v,[],t,bod1) bod2
+mkLet (v,t,rhs) bod = l$ LetE (v,[],t,rhs) bod
 
 
 
-triv :: String -> L1.Exp -> T.Triv
-triv msg e0 =
+triv :: String -> L Exp3 -> T.Triv
+triv msg (L _ e0) =
   case e0 of
-    (L1.VarE x) -> T.VarTriv x
-    (L1.LitE x) -> T.IntTriv (fromIntegral x) -- TODO: back propogate Int64 toL1
-    (L1.LitSymE s) -> T.IntTriv $ fromIntegral $ product $ L.map ord $ fromVar s
+    (VarE x) -> T.VarTriv x
+    (LitE x) -> T.IntTriv (fromIntegral x) -- TODO: back propogate Int64 toL1
+    (LitSymE s) -> T.IntTriv $ fromIntegral $ product $ L.map ord $ fromVar s
     -- Bools become ints:
-    (L1.PrimAppE L1.MkTrue [])  -> T.IntTriv 1
-    (L1.PrimAppE L1.MkFalse []) -> T.IntTriv 0
+    (PrimAppE L1.MkTrue [])  -> T.IntTriv 1
+    (PrimAppE L1.MkFalse []) -> T.IntTriv 0
     -- TODO: I think we should allow tuples and projection in trivials:
 
     -- Heck, let's map Unit onto Int too:
-    (L1.MkProdE []) -> T.IntTriv 0
+    (MkProdE []) -> T.IntTriv 0
 --      (ProjE x1 x2) -> __
 --      (MkProdE x) -> __
-    _ | L1.isTriv e0 -> error $ "lower/triv: this function is written wrong.  "++
+    _ | isTrivial e0 -> error $ "lower/triv: this function is written wrong.  "++
                          "It won't handle the following, which satisfies 'isTriv':\n "++sdoc e0++
                          "\nMessage: "++msg
     _ -> error $ "lower/triv, expected trivial in "++msg++", got "++sdoc e0
 
-typ :: L1.UrTy a -> T.Ty
+typ :: UrTy a -> T.Ty
 typ t =
   case t of
-    L1.IntTy  -> T.IntTy
-    L1.SymTy  -> T.SymTy
-    L1.BoolTy -> T.IntTy
-    L1.ListTy{} -> error "lower/typ: FinishMe: List types"
-    L1.ProdTy xs -> T.ProdTy $ L.map typ xs
-    L1.SymDictTy x -> T.SymDictTy $ typ x
+    IntTy  -> T.IntTy
+    SymTy  -> T.SymTy
+    BoolTy -> T.IntTy
+    ListTy{} -> error "lower/typ: FinishMe: List types"
+    ProdTy xs -> T.ProdTy $ L.map typ xs
+    SymDictTy x -> T.SymDictTy $ typ x
     -- t | isCursorTy t -> T.CursorTy
-    L1.PackedTy{} -> T.PtrTy
+    PackedTy{} -> T.PtrTy
+    CursorTy -> T.CursorTy -- Audit me
+    PtrTy -> T.PtrTy
 
-prim :: L1.Prim -> T.Prim
+prim :: Prim Ty3 -> T.Prim
 prim p =
   case p of
-    L1.AddP -> T.AddP
-    L1.SubP -> T.SubP
-    L1.MulP -> T.MulP
-    L1.EqSymP -> T.EqP
-    L1.EqIntP -> T.EqP
-    L1.SizeParam -> T.SizeParam
-    L1.DictInsertP ty -> T.DictInsertP $ typ ty
-    L1.DictLookupP ty -> T.DictLookupP $ typ ty
-    L1.DictEmptyP ty -> T.DictEmptyP $ typ ty
-    L1.DictHasKeyP ty -> T.DictHasKeyP $ typ ty
+    AddP -> T.AddP
+    SubP -> T.SubP
+    MulP -> T.MulP
+    EqSymP -> T.EqP
+    EqIntP -> T.EqP
+    SizeParam -> T.SizeParam
+    DictInsertP ty -> T.DictInsertP $ typ ty
+    DictLookupP ty -> T.DictLookupP $ typ ty
+    DictEmptyP ty -> T.DictEmptyP $ typ ty
+    DictHasKeyP ty -> T.DictHasKeyP $ typ ty
 
-    L1.ReadPackedFile mf tyc _ -> T.ReadPackedFile mf tyc
+    ReadPackedFile mf tyc _ -> T.ReadPackedFile mf tyc
 
-    L1.MkNullCursor -> error$ "lower/prim: internal error, should not have got to here: "++show p
-    L1.ErrorP{}     -> error$ "lower/prim: internal error, should not have got to here: "++show p
-    L1.MkTrue       -> error "lower/prim: internal error. MkTrue should not get here."
-    L1.MkFalse      -> error "lower/prim: internal error. MkFalse should not get here."
+    MkNullCursor -> error$ "lower/prim: internal error, should not have got to here: "++show p
+    ErrorP{}     -> error$ "lower/prim: internal error, should not have got to here: "++show p
+    MkTrue       -> error "lower/prim: internal error. MkTrue should not get here."
+    MkFalse      -> error "lower/prim: internal error. MkFalse should not get here."
+    SymAppend    -> error "lower/prim: internal error. SymAppend should not get here."
