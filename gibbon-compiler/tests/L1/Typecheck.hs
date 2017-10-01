@@ -29,13 +29,13 @@ assertValue exp expected =
 
 
 -- |
-assertError :: Exp -> TCError -> Assertion
+assertError :: Exp -> (TCError Exp) -> Assertion
 assertError exp expected =
   case tester exp of
     Left actual -> expected @=? actual
     Right err -> assertFailure $ show err
 
-tester :: Exp -> Either TCError Ty1
+tester :: Exp -> Either (TCError Exp) Ty1
 tester = runExcept . (tcExp ddfs env)
   where env = Env2 M.empty funEnv
         funEnv = M.fromList [ ("add", (ProdTy [IntTy, IntTy], IntTy))

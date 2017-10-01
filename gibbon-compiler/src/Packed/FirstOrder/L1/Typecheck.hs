@@ -8,6 +8,7 @@ module Packed.FirstOrder.L1.Typecheck
 
     -- * Helpers
   , TCError(..)
+  , extendEnv, lookupVar, tcProj, tcCases, checkLen, ensureEqual, ensureEqualTy
   )
 where
 
@@ -25,11 +26,11 @@ import Prelude hiding (exp)
 
 --------------------------------------------------------------------------------
 
-type Exp = L Exp1
-
 -- | Typecheck a L1 expression
 --
-tcExp :: DDefs Ty1 -> Env2 Ty1 -> Exp -> TcM Ty1
+tcExp :: (Eq l, Out l, Out (e l (UrTy l))) =>
+         DDefs (UrTy l) -> Env2 (UrTy l) -> (L (PreExp e l (UrTy l))) ->
+         TcM (UrTy l) (L (PreExp e l (UrTy l)))
 tcExp ddfs env exp@(L p ex) =
   case ex of
     VarE v    -> lookupVar env v exp
@@ -174,11 +175,15 @@ tcExp ddfs env exp@(L p ex) =
       return tyi
 
     CaseE e cs -> do
-      tye <- go e
+      tye  <- go e
       let tycons = L.map (getTyOfDataCon ddfs . (\(a,_,_) -> a)) cs
       case L.nub tycons of
         [one] -> do
-          _ <- ensureEqualTy exp (PackedTy one ()) tye
+          -- _ <- ensureEqualTy exp (PackedTy one ()) tye
+          let (PackedTy t _l) = tye
+          if one == t
+          then return ()
+          else error$ "Expected these to be the same: " ++ one ++ " & " ++ sdoc one
           tcCases ddfs env cs
         oth   -> throwError $ GenericTC ("Case branches have mismatched types: " ++ sdoc oth
                                          ++" , in " ++ sdoc exp) exp
@@ -245,16 +250,15 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
       return ()
 
 --------------------------------------------------------------------------------
+-- Helpers
 
--- TODO: share this with L2.Typecheck In fact, almost all of tcProg
--- is the same too
-data TCError = GenericTC String  Exp
-             | VarNotFoundTC Var Exp
-             | UnsupportedExpTC  Exp
+data TCError exp = GenericTC String  exp
+                 | VarNotFoundTC Var exp
+                 | UnsupportedExpTC  exp
   deriving (Show, Eq, Ord, Generic)
 
 
-instance Out TCError where
+instance (Out exp, Out (L exp)) => Out (TCError (L exp)) where
   doc tce =
     case tce of
       GenericTC str (L p ex)    -> text str <+> text "in" $$
@@ -264,26 +268,30 @@ instance Out TCError where
       UnsupportedExpTC (L p ex) -> text "Unsupported expression:" $$
                                    (text $ show p) <+> colon <+> doc ex
 
-type TcM a = Except TCError a
+type TcM a exp = Except (TCError exp) a
 
 
-extendEnv :: Env2 Ty1 -> [(Var, Ty1)] -> Env2 Ty1
+extendEnv :: Env2 (UrTy l) -> [(Var, (UrTy l))] -> Env2 (UrTy l)
 extendEnv (Env2 vEnv fEnv) ((v,ty):rest) = extendEnv (Env2 (M.insert v ty vEnv) fEnv) rest
 extendEnv env [] = env
 
 
-lookupVar :: Env2 Ty1 -> Var -> Exp -> TcM Ty1
+lookupVar :: Env2 (UrTy l) -> Var -> L (PreExp e l (UrTy l)) ->
+             TcM (UrTy l) (L (PreExp e l (UrTy l)))
 lookupVar env var exp =
     case M.lookup var $ vEnv env of
       Nothing -> throwError $ VarNotFoundTC var exp
       Just ty -> return ty
 
-tcProj :: Exp -> Int -> Ty1 -> TcM Ty1
+tcProj :: (Out l) => (L (PreExp e l (UrTy l))) -> Int -> (UrTy l) ->
+          TcM (UrTy l) (L (PreExp e l (UrTy l)))
 tcProj _ i (ProdTy tys) = return $ tys !! i
 tcProj e _i ty = throwError $ GenericTC ("Projection from non-tuple type " ++ (sdoc ty)) e
 
 
-tcCases :: DDefs Ty1 -> Env2 Ty1 -> [(DataCon, [(Var, l)], Exp)] -> TcM Ty1
+tcCases :: (Out l, Eq l, Out (e l (UrTy l))) => DDefs (UrTy l) -> Env2 (UrTy l) ->
+           [(DataCon, [(Var, l)], L (PreExp e l (UrTy l)))] ->
+           TcM (UrTy l) (L (PreExp e l (UrTy l)))
 tcCases ddfs env cs = do
   tys <- forM cs $ \(c,args',rhs) -> do
            let args  = L.map fst args'
@@ -299,7 +307,8 @@ tcCases ddfs env cs = do
   return $ head tys
 
 
-checkLen :: (Out op, Out arg) => Exp -> op -> Int -> [arg] -> TcM ()
+checkLen :: (Out op, Out arg) => (L (PreExp e l (UrTy l))) -> op -> Int -> [arg] ->
+            TcM () (L (PreExp e l (UrTy l)))
 checkLen expr pr n ls =
   if length ls == n
   then return ()
@@ -310,7 +319,8 @@ checkLen expr pr n ls =
 
 -- | Ensure that two things are equal.
 -- Includes an expression for error reporting.
-ensureEqual :: Exp -> String -> Ty1 -> Ty1 -> TcM Ty1
+ensureEqual :: (Eq l) => (L (PreExp e l (UrTy l))) -> String -> (UrTy l) ->
+               (UrTy l) -> TcM (UrTy l) (L (PreExp e l (UrTy l)))
 ensureEqual exp str a b = if a == b
                           then return a
                           else throwError $ GenericTC str exp
@@ -318,6 +328,7 @@ ensureEqual exp str a b = if a == b
 
 -- | Ensure that two types are equal.
 -- Includes an expression for error reporting.
-ensureEqualTy :: Exp -> Ty1 -> Ty1 -> TcM Ty1
+ensureEqualTy :: (Eq l, Out l) => (L (PreExp e l (UrTy l))) -> (UrTy l) -> (UrTy l) ->
+                 TcM (UrTy l) (L (PreExp e l (UrTy l)))
 ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
                                          ++ (sdoc a) ++ ", " ++ (sdoc b)) a b
