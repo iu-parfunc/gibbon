@@ -266,15 +266,25 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
   mapM_ fd $ M.elems fundefs
 
   -- Handle main expression
+  -- We don't change the type of mainExp to have cursors. So if it's type was `Packed`,
+  -- it's still Packed, while the expression actually has type CursorTy.
+  -- They're essentially the same.
   case mainExp of
     Nothing -> return ()
     Just (e,ty)  ->
       let res = runExcept $ tcExp ddefs env e
       in case res of
         Left err -> error $ sdoc err
-        Right ty' -> if ty == ty'
-                     then return ()
-                     else error $ "Expected type " ++ sdoc ty ++ "and got type " ++ sdoc ty'
+        Right ty' ->
+          case ty of
+            PackedTy _ _ ->
+              if ty' == CursorTy
+              then return ()
+              else error $ "Expected type " ++ sdoc ty ++ "and got type " ++ sdoc ty'
+
+            _ -> if ty == ty'
+                 then return ()
+                 else error $ "Expected type " ++ sdoc ty ++ "and got type " ++ sdoc ty'
 
   -- Identity function for now.
   return prg

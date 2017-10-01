@@ -53,7 +53,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
                 Nothing -> return Nothing
                 Just (e,ty) -> do
                   case ty of
-                    _ | isPackedTy ty  -> Just . (, CursorTy) <$>
+                    _ | isPackedTy ty  -> Just . (, L3.stripTyLocs ty) <$>
                                           projVal <$> cursorizePackedExp ddefs fundefs M.empty e
                     _ | hasPacked ty   -> error $ "TODO: hasPacked mainExp"
                     _ -> Just . (,L3.stripTyLocs ty) <$> cursorizeExp ddefs fundefs M.empty e
