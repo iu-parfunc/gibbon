@@ -53,7 +53,7 @@ genDcons (x:xs) tail fields = case x of
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)]
       <$> genDcons xs t (fields ++ [(T.IntTy, T.VarTriv val)])
 
-  L1.PackedTy tyCons _ -> do
+  PackedTy tyCons _ -> do
     ptr  <- gensym  "ptr"
     t    <- gensym  "tail"
     T.LetCallT [(ptr, T.PtrTy), (t, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
@@ -171,30 +171,32 @@ genPrinter DDef{tyName, dataCons} = do
                     T.funBody  = bod }
 
 printTy :: Ty3 -> [T.Triv] -> (T.Tail -> T.Tail)
-printTy L1.IntTy [trv]                = T.LetPrimCallT [] T.PrintInt [trv]
-printTy (L1.SymDictTy (x)) [trv]      = sandwich (printTy x [trv]) "Dict"
-printTy (L1.PackedTy constr _) [trv]  = T.LetCallT [] (mkPrinterName constr) [trv]
-printTy (L1.ListTy (x)) [trv]         = sandwich (printTy x [trv]) "List"
+printTy ty trvs =
+  case (ty, trvs) of
+    (IntTy, [_one])             -> T.LetPrimCallT [] T.PrintInt trvs
+    (SymDictTy ty', [_one])     -> sandwich (printTy ty' trvs) "Dict"
+    (PackedTy constr _, [_one]) -> T.LetCallT [] (mkPrinterName constr) trvs
+    (ListTy ty', [_one])        -> sandwich (printTy ty' trvs) "List"
 
-printTy L1.BoolTy [trv] =
-  let prntBool m = T.LetPrimCallT [] (T.PrintString m) [] in
-    \t -> T.IfT trv (prntBool truePrinted $ t) (prntBool falsePrinted $ t)
+    (BoolTy, [trv]) ->
+      let prntBool m = T.LetPrimCallT [] (T.PrintString m) []
+      in \t -> T.IfT trv (prntBool truePrinted $ t) (prntBool falsePrinted $ t)
 
-printTy (L1.ProdTy tys) trvs =
-  let printTupStart = printString "'#("
-      (bltrvs,ltrv) = (init trvs, last trvs)
-      (bltys,lty)   = (init tys, last tys)
-  in \t ->
-       printTupStart $
-       foldr (\(ty,trv) acc -> printTy ty [trv] $ printSpace acc)
-       (printTy lty [ltrv] $ closeParen t)
-       (zip bltys bltrvs)
+    (ProdTy tys, _) ->
+      let printTupStart = printString "'#("
+          (bltrvs,ltrv) = (init trvs, last trvs)
+          (bltys,lty)   = (init tys, last tys)
+      in \t ->
+        printTupStart $
+        foldr (\(ty,trv) acc -> printTy ty [trv] $ printSpace acc)
+        (printTy lty [ltrv] $ closeParen t)
+        (zip bltys bltrvs)
 
-printTy ty trvs = error $ "Invalid L1 data type; " ++ show ty ++ " " ++ show trvs
+-- printTy ty trvs = error $ "Invalid L1 data type; " ++ show ty ++ " " ++ show trvs
 
 addPrintToTail :: Ty3 -> T.Tail-> SyM T.Tail
 addPrintToTail ty tl0 =
-  let ty' = T.fromL1Ty ty in
+  let ty' = T.fromL3Ty ty in
     T.withTail (tl0, ty') $ \ trvs ->
       printTy ty trvs $
         -- Always print a trailing newline at the end of execution:
@@ -206,7 +208,7 @@ addPrintToTailPacked :: Ty3 -> T.Tail-> SyM T.Tail
 addPrintToTailPacked ty tl0 =
   -- FIXME: Need to handle products of packed!!
   case ty of
-    L1.PackedTy tycon _ ->
+    PackedTy tycon _ ->
        T.withTail (tl0, T.IntTy) $ \ [trv] ->
           T.LetCallT [("unpkd", T.PtrTy), ("ignre", T.CursorTy)] (mkUnpackerName tycon) [trv] $
            printTy ty [T.VarTriv "unpkd"] $
@@ -300,6 +302,7 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
                    ++sdoc (DataConE loc k ls)
 
 -}
+
     -- Likewise, Case really means ReadTag.  Argument is a cursor.
     CaseE (L _ (VarE scrut)) ls | pkd -> do
         let (last:restrev) = reverse ls
@@ -530,7 +533,7 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
 
     ---------------------
     -- (3) Proper primapps.
-    L1.LetE (v,_,t, L _ (PrimAppE p ls)) bod ->
+    LetE (v,_,t, L _ (PrimAppE p ls)) bod ->
         -- No tuple-valued prims here:
         T.LetPrimCallT [(v,typ t)]
              (prim p)
@@ -538,8 +541,8 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
              (tail bod)
     --------------------------------End PrimApps----------------------------------
 
-    L1.AppE v _ (L _ (MkProdE ls)) -> return $ T.TailCall ( v) (L.map (triv "operands") ls)
-    L1.AppE v _ e            -> return $ T.TailCall ( v) [triv "operand" e]
+    AppE v _ (L _ (MkProdE ls)) -> return $ T.TailCall ( v) (L.map (triv "operands") ls)
+    AppE v _ e            -> return $ T.TailCall ( v) [triv "operand" e]
 
 
     -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:

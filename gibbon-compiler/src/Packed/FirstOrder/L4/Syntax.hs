@@ -12,7 +12,7 @@ module Packed.FirstOrder.L4.Syntax
     , Alts(..), Prog(..), MainExp(..)
     -- * Utility functions
     , withTail
-    , fromL1Ty
+    , fromL3Ty
     ) where
 
 import           Control.DeepSeq
@@ -25,6 +25,7 @@ import           Text.PrettyPrint.GenericPretty (Out (..))
 
 import           Packed.FirstOrder.Common hiding (funBody)
 import qualified Packed.FirstOrder.L1.Syntax as L1
+import qualified Packed.FirstOrder.L3.Syntax as L3
 
 
 --------------------------------------------------------------------------------
@@ -225,11 +226,11 @@ withTail (tl0,retty) fn =
    genTmps ty          = do t <- gensym (toVar "tctmp"); return [(t,ty)]
 
 
-fromL1Ty :: L1.Ty1 -> Ty
-fromL1Ty ty =
+fromL3Ty :: L3.Ty3 -> Ty
+fromL3Ty ty =
   case ty of
     L1.IntTy -> IntTy
     L1.SymTy -> SymTy
-    L1.ProdTy tys -> ProdTy $ map fromL1Ty tys
-    L1.SymDictTy t -> SymDictTy $ fromL1Ty t
+    L1.ProdTy tys -> ProdTy $ map fromL3Ty tys
+    L1.SymDictTy t -> SymDictTy $ fromL3Ty t
     _ -> IntTy -- FIXME: review this
