@@ -11,7 +11,7 @@ module Packed.FirstOrder.L3.Syntax
   , Prog(..), FunDef(..), FunDefs, ArrowTy(..)
 
     -- * Functions
-  , eraseLocMarkers, stripTyLocs, cursorizeTy, mapMExprs, toL3Prim
+  , eraseLocMarkers, stripTyLocs, cursorizeTy, mapMExprs, toL3Prim, progToEnv
   )
 where
 
@@ -23,7 +23,7 @@ import Data.List as L
 import Text.PrettyPrint.GenericPretty
 
 import Packed.FirstOrder.Common hiding (FunDef, FunDefs)
-import Packed.FirstOrder.L1.Syntax hiding (FunDef, FunDefs, Prog)
+import Packed.FirstOrder.L1.Syntax hiding (FunDef(..), FunDefs, Prog(..), progToEnv)
 import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.L1.Syntax (UrTy(..), PreExp(..))
 import qualified Packed.FirstOrder.L2.Syntax as L2
@@ -43,7 +43,7 @@ data E3Ext loc dec =
   | ReadTag   Var                  -- ^ One cursor in, (tag,cursor) out
   | WriteTag  DataCon Var          -- ^ Write Tag at Cursor, and return a cursor
   | NewBuffer                      -- ^ Create a new buffer, and return a cursor
-  | SizeOf Var Var                 -- ^ Takes in start and end cursors, and returns an
+  | SizeOf Var Var                 -- ^ Takes in start and end cursors, and returns an Int
                                    --   we'll probably represent (sizeof x) as (end_x - start_x) / INT
   deriving (Show, Ord, Eq, Read, Generic, NFData)
 
@@ -183,3 +183,13 @@ toL3Prim pr =
     ErrorP s ty    -> ErrorP s (stripTyLocs ty)
     ReadPackedFile fp tycon ty -> ReadPackedFile fp tycon (stripTyLocs ty)
     MkNullCursor -> MkNullCursor
+
+-- | Abstract some of the differences of top level program types, by
+-- having a common way to extract an initial environment.
+progToEnv :: Prog -> Env2 Ty3
+progToEnv Prog{fundefs} =
+    Env2 M.empty
+         (M.fromList [ (funname ,(inT, outT))
+                     | FunDef{funty,funname} <- M.elems fundefs ,
+                     let inT = arrIn funty
+                         outT = arrOut funty])
