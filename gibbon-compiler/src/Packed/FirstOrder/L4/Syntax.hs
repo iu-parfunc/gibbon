@@ -20,11 +20,12 @@ import           Data.Int
 import           Data.Maybe
 import           Data.Word (Word8)
 import           GHC.Generics (Generic)
-import           Packed.FirstOrder.Common hiding (funBody)
-
-import qualified Packed.FirstOrder.L1.Syntax as L1
 import           Prelude hiding (init)
 import           Text.PrettyPrint.GenericPretty (Out (..))
+
+import           Packed.FirstOrder.Common hiding (funBody)
+import qualified Packed.FirstOrder.L1.Syntax as L1
+
 
 --------------------------------------------------------------------------------
 -- * AST definition
@@ -166,7 +167,11 @@ data Prim
     | ReadTag
     -- ^ Read one byte from the cursor and advance it.
     | ReadInt
-      -- ^ Read an 8 byte Int from the cursor and advance.
+    -- ^ Read an 8 byte Int from the cursor and advance.
+
+    | SizeOf
+    -- ^ Take start and end cursors and return size of data they represent
+    -- This could be represented as (end - start) / (sizeof(Int))
 
     | GetFirstWord -- ^ takes a PtrTy, returns IntTy containing the (first) word pointed to.
 

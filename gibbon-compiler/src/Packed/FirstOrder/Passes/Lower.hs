@@ -284,6 +284,10 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
     --------------------------------------------------------------------------------
     -- Packed codegen
     --------------------------------------------------------------------------------
+
+{-  We're directly generating WriteTag calls in the newer cursorize.
+    But let's keep this around if we ever change that.
+
     -- These are in a funny normal form atfer cursor insertion.  They take one cursor arg.
     -- They basically are a WriteTag.
     LetE (cursOut, _, _, L _ (DataConE loc k ls)) bod | pkd -> do
@@ -295,6 +299,7 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
        _ -> error$ "Lower: Expected one argument to data-constructor (which becomes WriteTag): "
                    ++sdoc (DataConE loc k ls)
 
+-}
     -- Likewise, Case really means ReadTag.  Argument is a cursor.
     CaseE (L _ (VarE scrut)) ls | pkd -> do
         let (last:restrev) = reverse ls
@@ -367,6 +372,9 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
           [e_triv]
           (T.Switch (T.VarTriv tag_bndr) (T.IntAlts alts') (Just def))
 
+{-
+    Cursorize will probably take care of this.
+
     -- Accordingly, constructor allocation becomes an allocation.
     LetE (v, _, _, L _ (DataConE _ k ls)) bod | not pkd -> L1.assertTrivs ls $ do
       let tycon    = getTyOfDataCon ddefs k
@@ -387,18 +395,24 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
 
       return (T.LetAllocT v fields bod')
 
+
     -- This is legitimately flattened, but we need to move it off the spine:
     L1.DataConE _ k _ls -> do
        tmp <- gensym $ toVar "tailift"
        let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
        tail $ l$ LetE (tmp, [], ty, l$ ex0) (l$ VarE tmp)
 
+-}
+
     --------------------------------------------------------------------------------
 
 --    L1.LitE n       -> pure$ T.RetValsT [triv "literal in tail" (LitE n)]
-    L1.MkProdE ls   -> pure$ T.RetValsT (L.map (triv "returned element of tuple") ls)
+    MkProdE ls   -> pure$ T.RetValsT (L.map (triv "returned element of tuple") ls)
     e | isTrivial e -> pure$ T.RetValsT [triv "<internal error1>" (l$ e)]
 
+
+    -- Was already commented out in the old version.
+    --
     -- L1.LetE (v,t, L1.MkProdE ls) bod -> do
     --   let rhss = L.map triv ls
     --   vsts <- unzipTup v t
@@ -407,7 +421,7 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
 
     -- We could eliminate these ahead of time (unariser):
     -- FIXME: Remove this when that is done a priori:
-    L1.LetE (v, _, ProdTy tys, L _ (MkProdE ls)) bod -> do
+    LetE (v, _, ProdTy tys, L _ (MkProdE ls)) bod -> do
       (tmps,bod') <- eliminateProjs v tys bod
       -- Bind tmps individually:a
       let go [] acc                 = acc
@@ -416,16 +430,16 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
       tail (go (zip3 tmps tys ls) bod')
 
     -- We could eliminate these ahead of time:
-    L1.LetE (v,_,t,rhs) bod | isTrivial rhs ->
+    LetE (v,_,t,rhs) bod | isTrivial rhs ->
       T.LetTrivT (v,typ t, triv "<internal error2>" rhs) <$> tail bod
 
     -- TWO OPTIONS HERE: we could push equality prims into the target lang.
     -- Or we could map directly onto the IfEqT form:
     -- L1.IfE (L1.PrimAppE L1.EqP __ ) b c -> __
 
-    L1.IfE a b c       -> do b' <- tail b
-                             c' <- tail c
-                             return $ T.Switch (triv "if test" a)
+    IfE a b c       -> do b' <- tail b
+                          c' <- tail c
+                          return $ T.Switch (triv "if test" a)
                                       -- If we are treating the boolean as a tag, then tag "0" is false
                                       (T.IntAlts [(0, c')])
                                       -- And tag "1" is true:
@@ -446,6 +460,7 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
     -- FIXME: No reason errors can't stay primitive at Target:
     PrimAppE (ErrorP str _ty) [] ->
       pure $ T.ErrT str
+
     LetE (_,_,_, L _ (PrimAppE (L1.ErrorP str _) [])) _ ->
       pure $ T.ErrT str
 
@@ -454,45 +469,65 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
       tmp <- gensym $ toVar "flt"
       tail (l$ LetE (tmp, [], primRetTy p, l$ PrimAppE p ls) (l$ VarE tmp))
 
-{-
     ---------------------
     -- (2) Next FAKE Primapps.  These could be added to L1 if we wanted to pollute it.
-    L1.LetE (v,_,L2.WriteInt c e) bod ->
+
+    LetE (v,_,_, L _ (Ext (ReadInt cur))) bod -> do
+      vtmp <- gensym $ toVar "tmpval"
+      ctmp <- gensym $ toVar "tmpcur"
+
+      -- Here we lamely chase down all the tuple references and make them variables:
+      let bod' = L1.substE (l$ ProjE 0 (l$ VarE v)) (l$ VarE vtmp) $
+                 L1.substE (l$ ProjE 1 (l$ VarE v)) (l$ VarE ctmp)
+                 bod
+
+      dbgTrace 5 (" [lower] ReadInt, after substing references to "
+                  ++(fromVar v)++":\n  "++sdoc bod') <$>
+        T.LetPrimCallT [(vtmp,T.IntTy),(ctmp,T.CursorTy)] T.ReadInt [T.VarTriv cur] <$>
+          tail bod'
+
+    LetE (v, _, _, L _ (Ext (WriteInt c e))) bod ->
       T.LetPrimCallT [(v,T.CursorTy)] T.WriteInt [triv "WriteTag arg" e, T.VarTriv c] <$>
          tail bod
 
-    L1.LetE (pr,_,L2.ReadInt c) bod -> do
-      vtmp <- gensym $ toVar "tmpval"
-      ctmp <- gensym $ toVar "tmpcur"
-      T.LetPrimCallT [(vtmp,T.IntTy),(ctmp,T.CursorTy)] T.ReadInt [T.VarTriv c] <$>
-        -- Here we lamely chase down all the tuple references and make them variablesa:
-        let bod' = L1.substE (L1.ProjE 0 (L1.VarE pr)) (L1.VarE vtmp) $
-                   L1.substE (L1.ProjE 1 (L1.VarE pr)) (L1.VarE ctmp) bod
-        in
-          dbgTrace 5 (" [lower] ReadInt, after substing references to "++(fromVar pr)++":\n  "++sdoc bod')$
-          tail bod'
 
-    L1.LetE (v,_,L2.NewBuffer) bod ->
+    -- In Target, AddP is overloaded still:
+    LetE (v,_, _, L _ (Ext (AddCursor c e))) bod ->
+      T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv "addCursor base" (l$ VarE c)
+                                             , triv "addCursor offset" e] <$>
+         tail bod
+
+
+    LetE (_v,_, _, L _ (Ext (ReadTag _cur))) _bod ->
+      error $ "lower: ReadTag not handled yet."
+
+
+    LetE (cursOut,_, _, L _ (Ext (WriteTag dcon cursIn))) bod -> do
+      T.LetPrimCallT [(cursOut,T.CursorTy)] T.WriteTag
+        [ T.TagTriv (getTagOfDataCon ddefs dcon) , triv "WriteTag cursor" (l$ VarE cursIn) ] <$>
+        tail bod
+
+    LetE (v,_,_, L _ (Ext NewBuffer)) bod -> do
       T.LetPrimCallT [(v,T.CursorTy)] T.NewBuf [] <$>
          tail bod
+
+    LetE (v,_,_, L _ (Ext (SizeOf start end))) bod -> do
+      T.LetPrimCallT [(v,T.IntTy)] T.SizeOf [ T.VarTriv start, T.VarTriv end ] <$>
+        tail bod
+
+
+    -- LetE (_,_,_,L _ (Ext ext)) _ -> error $ "lower: L3 extension not handled. " ++ sdoc ext
+
+    Ext _ -> error $ "lower: unexpected extension" ++ sdoc ex0
+
+{- Leaving this around for when we add scoped buffers to L3
 
     L1.LetE (v,_,L2.ScopedBuffer) bod ->
       T.LetPrimCallT [(v,T.CursorTy)] T.ScopedBuf [] <$>
          tail bod
 
-    -- In Target, AddP is overloaded still:
-    L1.LetE (v,_, L2.AddCursor c n) bod ->
-      T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv "addCursor base" (L2.VarE c)
-                                             , triv "addCursor offset" (L2.LitE n)] <$>
-         tail bod
-    L1.LetE (_,_, p) _ | L2.isExtendedPattern p ->
-     error $ "Lower: missed an extended L2 pattern on rhs of let: "++ndoc p
-
-    p | L2.isExtendedPattern  ->
-     error $ "Lower: missed an extended L2 pattern: "++ndoc p
-    L1.AppE{} | L2.isExtendedPattern ex0 -> error$ "Lower: Unhandled extended L2 pattern(1): "++ndoc ex0
-
 -}
+
     ---------------------
     -- (3) Proper primapps.
     L1.LetE (v,_,t, L _ (PrimAppE p ls)) bod ->
@@ -506,23 +541,22 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
     L1.AppE v _ (L _ (MkProdE ls)) -> return $ T.TailCall ( v) (L.map (triv "operands") ls)
     L1.AppE v _ e            -> return $ T.TailCall ( v) [triv "operand" e]
 
-    -- -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
-    -- ProjE ix ap@(AppE f e) | not (L2.isExtendedPattern ap) -> do
-    --     tmp <- gensym $ toVar "prjapp"
-    --     let L2.ArrowTy (L2.ProdTy inTs) _ _ = funty (fundefs # f)
-    --     tail $ LetE ( tmp
-    --                 , fmap (const ()) (inTs !! ix)
-    --                 , ProjE ix (AppE f e))
-    --              (VarE tmp)
 
-    L1.LetE (_,_,_, (L _ (L1.AppE f _ _))) _
-        -- | L2.isExtendedPattern ap -> error$ "Lower: Unhandled extended L2 pattern(2): "++ndoc ap
+    -- Tail calls are just an optimization, if we have a Proj/App it cannot be tail:
+    ProjE ix (L _ (AppE f _ e)) -> do
+        tmp <- gensym $ toVar "prjapp"
+        let ArrowTy (ProdTy inTs) _ = funty (fundefs # f)
+        tail $ l$ LetE ( tmp
+                       , []
+                       , fmap (const ()) (inTs !! ix)
+                       , l$ ProjE ix (l$ AppE f [] e))
+                 (l$ VarE tmp)
+
+    LetE (_,_,_, (L _ (L1.AppE f _ _))) _
         | M.notMember f fundefs -> error $ "Application of unbound function: "++show f
 
     -- Non-tail call:
-    L1.LetE (vr, _,t, projOf -> (stk, (L _ (L1.AppE f _ arg)))) bod
-      -- | L2.isExtendedPattern ap -> error$ "Lower: Unhandled extended L2 pattern(3): "++ndoc ap
-      | otherwise -> do
+    LetE (vr, _,t, projOf -> (stk, (L _ (L1.AppE f _ arg)))) bod -> do
         let ArrowTy _ outTy = funty (fundefs # f)
         let f' = cleanFunName f
         (vsts,bod') <- case outTy of
@@ -546,7 +580,7 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
           _ -> T.LetCallT vsts f' [(triv "app rand") arg]       <$> (tail bod')
 
 
-    L1.LetE (v, _, t, L _ (IfE a b c)) bod -> do
+    LetE (v, _, t, L _ (IfE a b c)) bod -> do
       let a' = triv "if test" a
       b' <- tail b
       c' <- tail c
@@ -572,7 +606,8 @@ projOf e = ([],e)
 
 
 
-{-
+{- Commented out in the older one too.
+
 -- | Go under bindings and transform the very last return point.
 chainTail :: T.Tail -> (T.Tail -> T.Tail) -> T.Tail
 chainTail tl fn =
