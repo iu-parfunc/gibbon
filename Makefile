@@ -31,6 +31,7 @@ $(SANDBOX):
 
 # Bring up a shell using a fixed, known-good software image.
 #  - 51a83266d164195698f04468d90d2c6238ed3491 is a snapshot of nixos-17.03 channel on [2017.08.16]
+#  - 09b9f7e7c496813f3ecd01c39a976ae3637e41e6 is a snapshot of nixos-17.03 on [2017.10.03]
 shell: nix-shell
 nix-shell:
 	nix-shell -I nixpkgs=`cat .nix_default_environment.txt`
@@ -38,7 +39,12 @@ nix-shell:
 pure:
 	nix-shell --pure -I nixpkgs=`cat .nix_default_environment.txt`
 
-head:
+# Just bring up a quick-and-dirty Nix shell with the user's nixpkgs
+# environment.  This should, in practice, be pretty safe as stack
+# controls all the Haskell versioning, and stack should be pretty darn
+# backwards compatible.
+head: head-shell
+head-shell:
 	nix-shell --arg pkgs 'import <nixpkgs> {}'
 
 # Aggressive clean of the working copy:
@@ -49,4 +55,4 @@ clean:
 	find -name compiled     | xargs rm -rf
 	cd ./gibbon-compiler/examples/; make distclean
 
-.PHONY: subst deps all racket gibbon-lang shell nix-shell pure
+.PHONY: subst deps all racket gibbon-lang shell nix-shell pure head head-shell
