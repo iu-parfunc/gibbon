@@ -64,13 +64,21 @@ collectTopFunTy decl =
     ty@S.TypeSig{}   -> err ("Unsupported top-level type declaration: " ++ show ty)
     S.FunBind{}      -> return Nothing
     S.DataDecl{}     -> return Nothing
+    S.PatBind{}      -> return Nothing
     unsupported      -> err ("collectTopFunTy: Unsupported top-level thing: " ++ show unsupported)
 
 
 collectTopLevel :: M.Map Var TopTy -> S.Decl -> Ds (Maybe (Either (DDef Ty1) (FunDef Ty1 (L L1.Exp1))))
 
-collectTopLevel _ S.TypeSig{} = return Nothing
+-- This is the main expression. We're disguising it as a FunDef just for convenience.
+-- We should probably create a sum type with these 3 things; ddefs, fundefs, and mainExp
+-- and return that
+collectTopLevel _ (S.PatBind (S.PVar name) (S.UnGuardedRhs rhs) _) = do
+  let name' = toVar $ nameToStr name
+  rhs' <- desugarExp rhs
+  return $ Just $ Right $ FunDef name' ("nothing",ProdTy []) (ProdTy []) rhs'
 
+collectTopLevel _ S.TypeSig{} = return Nothing
 collectTopLevel funTys (S.FunBind [S.Match fname args (S.UnGuardedRhs rhs) Nothing]) = do
     let fname'      = (toVar . nameToStr) fname
         fun_ty      = M.findWithDefault (error ("Can't find function in type env: " ++ (fromVar fname')))
