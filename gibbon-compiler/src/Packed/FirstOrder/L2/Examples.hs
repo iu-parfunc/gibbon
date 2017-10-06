@@ -9,7 +9,7 @@ module Packed.FirstOrder.L2.Examples
 
     -- * Programs
   , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
-  , leftmostProg, buildLeafProg, testProdProg
+  , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg
   ) where
 
 import Data.Loc
@@ -92,6 +92,39 @@ add1MainExp = l$ Ext $ LetRegionE (VarR "r99") $
 add1Prog :: Prog
 add1Prog = Prog ddtree (M.fromList [("add1", add1Fun)])
            (Just (add1MainExp, PackedTy "Tree" "l107"))
+
+--------------------------------------------------------------------------------
+
+leafMainExp :: L Exp2
+leafMainExp = l$ Ext $ LetRegionE (VarR "r150") $
+              l$ Ext $ LetLocE "l151" (StartOfLE (VarR "r150")) $
+              l$ LetE ("x152",[],PackedTy "Tree" "l151",
+                       l$ DataConE "l151" "Leaf" [l$ LitE 1]) $
+              l$ VarE "x152"
+
+leafProg :: Prog
+leafProg = Prog ddtree (M.empty) (Just (leafMainExp, PackedTy "Tree" "l151"))
+
+
+--------------------------------------------------------------------------------
+
+-- writes node
+nodeMainExp :: L Exp2
+nodeMainExp = l$ Ext $ LetRegionE (VarR "r155") $
+               l$ Ext $ LetLocE "l156" (StartOfLE (VarR "r155")) $
+               l$ Ext $ LetLocE "l157" (AfterConstantLE 1 "l156") $
+               l$ LetE ("x158",[],PackedTy "Tree" "l157",
+                       l$ DataConE "l157" "Leaf" [l$ LitE 1]) $
+               l$ Ext $ LetLocE "l159" (AfterVariableLE "x158" "l157") $
+               l$ LetE ("y160",[],PackedTy "Tree" "l159",
+                       l$ DataConE "l159" "Leaf" [l$ LitE 2]) $
+               l$ LetE ("z161",[],PackedTy "Tree" "l156",
+                       l$ DataConE "l156" "Node" [l$ VarE "x158", l$ VarE "y160"]) $
+               l$ VarE "z161"
+
+
+nodeProg :: Prog
+nodeProg = Prog ddtree (M.empty) (Just (nodeMainExp, PackedTy "Tree" "l156"))
 
 --------------------------------------------------------------------------------
 

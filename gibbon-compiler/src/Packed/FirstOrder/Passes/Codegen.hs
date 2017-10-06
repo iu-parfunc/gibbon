@@ -29,8 +29,10 @@ import           Prelude hiding (init)
 import           System.Directory
 import           System.Environment
 import           Text.PrettyPrint.Mainland
+import           Text.PrettyPrint.Mainland.Class
 
 import           Packed.FirstOrder.L4.Syntax
+
 --------------------------------------------------------------------------------
 
 
