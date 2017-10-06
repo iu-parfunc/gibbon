@@ -77,6 +77,7 @@ library
                 filepath,
                 GenericPretty, pretty,
                 haskell-src-exts,
+                haskell-src-exts-simple,
                 language-c-quote,
                 mainland-pretty,
                 mtl,
