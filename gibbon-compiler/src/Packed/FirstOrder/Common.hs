@@ -65,6 +65,7 @@ import Data.Loc
 import Data.Word
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
+import Text.PrettyPrint.HughesPJ as PP
 import System.IO
 import System.Environment
 import System.IO.Unsafe (unsafePerformIO)
@@ -145,8 +146,27 @@ dummyLRM = LRM "l_dummy" GlobR Input
 varAppend :: Var -> Var -> Var
 varAppend x y = toVar (fromVar x ++ fromVar y)
 
+--------------------------------------------------------------------------------
+-- Helper methods to integrate the Data.Loc with Gibbon
+
 l :: a -> L a
 l x = L NoLoc x
+
+deriving instance Generic Loc
+deriving instance Generic Pos
+
+instance Out Loc where
+  docPrec _ loc = doc loc
+
+  doc loc =
+    case loc of
+      Loc start _end -> doc start
+      NoLoc -> PP.empty
+
+instance Out Pos where
+  docPrec _ pos = doc pos
+
+  doc (Pos path line col _) = hcat [doc path, colon, doc line, colon, doc col]
 
 --------------------------------------------------------------------------------
 

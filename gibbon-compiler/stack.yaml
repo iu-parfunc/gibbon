@@ -11,10 +11,14 @@ packages:
   subdirs:
     - llvm-general
     - llvm-general-pure
+- location:
+    git: https://github.com/aisamanra/s-cargot
+    commit: eec500106f2c507ba3ffb4e9b025704103fb6dea
+  extra-dep: true
 - '.'
 
 extra-deps:
-- s-cargot-0.1.1.1
+- s-cargot-1.2.0.0
 - llvm-general-pure-3.9.0.0
 - llvm-general-3.9.0.0
 - GenericPretty-1.2.1
