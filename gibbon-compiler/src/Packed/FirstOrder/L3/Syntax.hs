@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -54,13 +55,13 @@ type E3 l d = PreExp E3Ext l d
 instance FreeVars (E3Ext l d) where
   gFreeVars  e =
     case e of
-      ReadInt  v    -> S.singleton v
-      WriteInt v ex -> S.insert v (gFreeVars ex)
-      AddCursor v _ -> S.singleton v
-      ReadTag v     -> S.singleton v
-      WriteTag _ v  -> S.singleton v
-      NewBuffer     -> S.empty
-      SizeOf c1 c2  -> S.fromList [c1, c2]
+      ReadInt  v     -> S.singleton v
+      WriteInt v ex  -> S.insert v (gFreeVars ex)
+      AddCursor v ex -> S.insert v (gFreeVars ex)
+      ReadTag v      -> S.singleton v
+      WriteTag _ v   -> S.singleton v
+      NewBuffer      -> S.empty
+      SizeOf c1 c2   -> S.fromList [c1, c2]
 
 instance (Out l, Out d) => Out (E3Ext l d)
 
@@ -76,6 +77,10 @@ instance (Out l, Out d, Show l, Show d) => Expression (E3Ext l d) where
       WriteTag{}  -> False
       NewBuffer   -> False
       SizeOf{}    -> False
+
+instance (Show l, Out l) => Flattenable (E3Ext l (UrTy l)) where
+    gFlattenGatherBinds _ddfs _env ex = return ([], ex)
+    gFlattenExp _ddfs _env ex = return ex
 
 data ArrowTy t = ArrowTy { arrIn  :: t
                          , arrOut :: t

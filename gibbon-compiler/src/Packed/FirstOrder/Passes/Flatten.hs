@@ -9,7 +9,7 @@
 --- restricted form.
 
 module Packed.FirstOrder.Passes.Flatten
-    ( flattenL1, flattenL2 ) where
+    ( flattenL1, flattenL2, flattenL3 ) where
 
 import Control.Monad.State
 import Data.Loc
@@ -21,6 +21,7 @@ import Packed.FirstOrder.Common
 import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.L1.Syntax as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
+import qualified Packed.FirstOrder.L3.Syntax as L3
 
 
 -- | Flatten ensures that function operands are "trivial".
@@ -61,6 +62,24 @@ flattenL2 prg@(L2.Prog defs funs main) = do
       return $ L2.FunDef nam ty narg bod'
 
     env20 = L2.progToEnv prg
+
+
+flattenL3 :: L3.Prog -> SyM L3.Prog
+flattenL3 prg@(L3.Prog defs funs main) = do
+    main' <-
+      case main of
+        Nothing -> return Nothing
+        Just (ex,ty) -> fmap (Just . (,ty)) (gFlattenExp defs env20 ex)
+    funs' <- flattenFuns funs
+    return $ L3.Prog defs funs' main'
+  where
+    flattenFuns = mapM flattenFun
+    flattenFun (L3.FunDef nam ty narg bod) = do
+      let env2 = Env2 (M.singleton narg (L3.arrIn ty)) (fEnv env20)
+      bod' <- gFlattenExp defs env2 bod
+      return $ L3.FunDef nam ty narg bod'
+
+    env20 = L3.progToEnv prg
 
 
 -- NOTE: / FIXME
