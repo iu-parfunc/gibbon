@@ -44,7 +44,7 @@ import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
 -- compiler passes
 import           Packed.FirstOrder.L1.Typecheck
 import           Packed.FirstOrder.Passes.Freshen
-import           Packed.FirstOrder.Passes.Flatten (flatten)
+import           Packed.FirstOrder.Passes.Flatten (flattenL1)
 import           Packed.FirstOrder.Passes.InlineTriv
 
 -- UNDER_CONSTRUCTION
@@ -391,7 +391,7 @@ passes config@Config{mode} l1 = do
       l1 <- pure $ case mode of
                      Bench fnname -> benchMainExp config l1 fnname
                      _ -> l1
-      l1 <- passE  config "flatten"       flatten               l1
+      l1 <- passE  config "flatten"       flattenL1             l1
       l1 <- passE  config "inlineTriv"    (return . inlineTriv) l1
       return (L1 l1)
 
