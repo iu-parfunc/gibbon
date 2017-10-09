@@ -52,12 +52,11 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
   mainExp' <- case mainExp of
                 Nothing -> return Nothing
                 Just (e,ty) -> do
-                  e' <- case ty of
-                          _ | isPackedTy ty  -> projVal <$>
-                                                  cursorizePackedExp ddefs fundefs M.empty e
-                          _ | hasPacked ty   -> error $ "TODO: hasPacked mainExp"
-                          _ -> cursorizeExp ddefs fundefs M.empty e
-                  return $ Just (e', L3.stripTyLocs ty)
+                  case ty of
+                    _ | isPackedTy ty  -> Just . (, L3.stripTyLocs ty) <$>
+                                          projVal <$> cursorizePackedExp ddefs fundefs M.empty e
+                    _ | hasPacked ty   -> error $ "TODO: hasPacked mainExp"
+                    _ -> Just . (,L3.stripTyLocs ty) <$> cursorizeExp ddefs fundefs M.empty e
 
   return $ L3.Prog ddefs' fundefs' mainExp'
 
@@ -130,7 +129,7 @@ cursorizeExp ddfs fundefs tenv (L p ex) = L p <$>
       then error $ "cursorizeExp: AppE expected empty locs for scalar values. Got: " ++ sdoc locs
       else AppE f [] <$> go arg
 
-    PrimAppE pr args -> PrimAppE pr <$> mapM go args
+    PrimAppE pr args -> PrimAppE (L3.toL3Prim pr) <$> mapM go args
 
     LetE (v,locs,ty,rhs) bod
       | isPackedTy ty -> error $ "cursorizeExp: TOOD isPacked LetE"
@@ -223,7 +222,7 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
     -- it doesn't need memory allocation (NewBuffer/ScopedBuffer).
     -- This is more like the witness case below.
     LetE (vr,_locs, _ty, L _ (PrimAppE (ReadPackedFile path tyc ty2) [])) bod ->
-      onDi (l <$> LetE (vr, [], CursorTy, l$ PrimAppE (ReadPackedFile path tyc ty2) [])) <$>
+      onDi (l <$> LetE (vr, [], CursorTy, l$ PrimAppE (L3.toL3Prim $ ReadPackedFile path tyc ty2) [])) <$>
         cursorizePackedExp ddfs fundefs (M.insert vr CursorTy tenv) bod
 
 

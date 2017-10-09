@@ -1,38 +1,83 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
-module Packed.FirstOrder.L1.Typecheck
-  ( -- * The two main typechecker functions
-    tcProg, tcExp
-
-    -- * Helpers
-  , TCError(..)
-  , extendEnv, lookupVar, tcProj, checkLen, ensureEqual, ensureEqualTy, TcM
-  )
-where
+-- | A simple typechecker for the L3 language
+-- It's very similar to the L1 typechecker
+module Packed.FirstOrder.L3.Typecheck
+  ( tcProg, tcExp ) where
 
 
 import Control.Monad.Except
 import Data.Loc
-import Data.Map as M
-import Data.List as L
-import Text.PrettyPrint
 import Text.PrettyPrint.GenericPretty
-
-import Packed.FirstOrder.Common
-import Packed.FirstOrder.L1.Syntax as L1
+import qualified Data.Map as M
+import qualified Data.List as L
 import Prelude hiding (exp)
 
---------------------------------------------------------------------------------
+import Packed.FirstOrder.Common hiding (FunDef, FunDefs)
+import Packed.FirstOrder.L1.Typecheck hiding (tcProg, tcExp)
+import Packed.FirstOrder.L1.Syntax hiding (FunDef, Prog(..), progToEnv)
+import Packed.FirstOrder.L3.Syntax
+
+import Debug.Trace
 
 -- | Typecheck a L1 expression
 --
-tcExp :: (Eq l, Out l, Out (e l (UrTy l))) =>
-         DDefs (UrTy l) -> Env2 (UrTy l) -> (L (PreExp e l (UrTy l))) ->
-         TcM (UrTy l) (L (PreExp e l (UrTy l)))
+tcExp :: (Out l, Eq l) => DDefs (UrTy l) -> Env2 (UrTy l) -> (L (PreExp E3Ext l (UrTy l))) ->
+         TcM (UrTy l) (L (PreExp E3Ext l (UrTy l)))
 tcExp ddfs env exp@(L p ex) =
   case ex of
+    Ext ext ->
+      case ext of
+        -- ^ One cursor in, (int, cursor') out
+        ReadInt v -> do
+          vty <- lookupVar env v exp
+          ensureEqualTy exp vty CursorTy
+          return $ ProdTy [IntTy, CursorTy]
+
+        -- ^ Write int at cursor, and return a cursor
+        WriteInt v rhs -> do
+          vty  <- lookupVar env v exp
+          ensureEqualTy exp vty CursorTy
+          vrhs <- go rhs
+          ensureEqualTy exp vrhs IntTy
+          return CursorTy
+
+        -- ^ Add a constant offset to a cursor variable
+        AddCursor v rhs -> do
+          vty  <- lookupVar env v exp
+          ensureEqualTy exp vty CursorTy
+          vrhs <- go rhs
+          ensureEqualTy exp vrhs IntTy
+          return CursorTy
+
+        -- ^ One cursor in, (tag,cursor) out
+        -- QUESTION: what should be the type of the tag ?  It's just an Int for now
+        ReadTag v -> do
+          vty  <- lookupVar env v exp
+          ensureEqualTy exp vty CursorTy
+          return $ ProdTy [IntTy, CursorTy]
+
+        -- ^ Write Tag at Cursor, and return a cursor
+        WriteTag _dcon v -> do
+          vty  <- lookupVar env v exp
+          ensureEqualTy exp vty CursorTy
+          return CursorTy
+
+        -- ^ Create a new buffer, and return a cursor
+        NewBuffer -> return CursorTy
+
+        -- ^ Takes in start and end cursors, and returns an Int
+        SizeOf start end -> do
+          sty  <- lookupVar env start exp
+          ensureEqualTy exp sty CursorTy
+          ety  <- lookupVar env end exp
+          ensureEqualTy exp ety CursorTy
+          return IntTy
+
+
+    -- All the other cases are exactly same as L1.Typecheck
+
     VarE v    -> lookupVar env v exp
     LitE _    -> return IntTy
     LitSymE _ -> return IntTy
@@ -178,12 +223,9 @@ tcExp ddfs env exp@(L p ex) =
       tye  <- go e
       let tycons = L.map (getTyOfDataCon ddfs . (\(a,_,_) -> a)) cs
       case L.nub tycons of
-        [one] -> do
-          -- _ <- ensureEqualTy exp (PackedTy one ()) tye
-          let (PackedTy t _l) = tye
-          if one == t
-          then return ()
-          else error$ "Expected these to be the same: " ++ one ++ " & " ++ sdoc one
+        [_one] -> do
+          -- all packed types are transformed to cursors
+          _ <- ensureEqualTy exp CursorTy tye
           tcCases ddfs env cs
         oth   -> throwError $ GenericTC ("Case branches have mismatched types: " ++ sdoc oth
                                          ++" , in " ++ sdoc exp) exp
@@ -206,7 +248,10 @@ tcExp ddfs env exp@(L p ex) =
       ty <- go e
       return ty
 
-    oth -> error $ "L1.tcExp : TODO " ++ sdoc oth
+    MapE{}  -> throwError $ UnsupportedExpTC exp
+    FoldE{} -> throwError $ UnsupportedExpTC exp
+
+    -- oth -> error $ "L1.tcExp : TODO " ++ sdoc oth
 
   where
     go = tcExp ddfs env
@@ -221,77 +266,52 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
   mapM_ fd $ M.elems fundefs
 
   -- Handle main expression
+  -- We don't change the type of mainExp to have cursors. So if it's type was `Packed`,
+  -- it's still Packed, while the expression actually has type CursorTy.
+  -- They're essentially the same.
   case mainExp of
     Nothing -> return ()
-    Just e  ->
+    Just (e,ty)  ->
       let res = runExcept $ tcExp ddefs env e
       in case res of
         Left err -> error $ sdoc err
-        Right _ -> return ()
+        Right ty' ->
+          case ty of
+            PackedTy _ _ ->
+              if ty' == CursorTy
+              then return ()
+              else error $ "Expected type " ++ sdoc ty ++ "and got type " ++ sdoc ty'
+
+            _ -> if ty == ty'
+                 then return ()
+                 else error $ "Expected type " ++ sdoc ty ++ "and got type " ++ sdoc ty'
 
   -- Identity function for now.
   return prg
 
   where
-    env = L1.progToEnv prg
+    -- env = L1.progToEnv prg
+    env = progToEnv prg
 
     -- fd :: forall e l . FunDef Ty1 Exp -> SyM ()
-    fd FunDef{funArg,funRetTy,funBody} = do
-      let (arg,argTy) = funArg
-          env' = Env2 (M.singleton arg argTy) (fEnv env)
-          res = runExcept $ tcExp ddefs env' funBody
+    fd FunDef{funarg,funty,funbod} = do
+      let env' = Env2 (M.singleton funarg inT) (fEnv env)
+          res = runExcept $ tcExp ddefs env' funbod
+          inT = arrIn funty
+          outT = arrOut funty
       case res of
         Left err -> error $ sdoc err
-        Right ty -> if ty == funRetTy
+        Right ty -> if ty == arrOut funty
                     then return ()
-                    else error $ "Expected type " ++ (sdoc funRetTy)
+                    else error $ "Expected type " ++ (sdoc outT)
                          ++ " and got type " ++ (sdoc ty)
 
       return ()
 
---------------------------------------------------------------------------------
--- Helpers
 
-data TCError exp = GenericTC String  exp
-                 | VarNotFoundTC Var exp
-                 | UnsupportedExpTC  exp
-  deriving (Show, Eq, Ord, Generic)
-
-
-instance (Out exp, Out (L exp)) => Out (TCError (L exp)) where
-  doc tce =
-    case tce of
-      GenericTC str (L p ex)    -> text str <+> text "in" $$
-                                   (text $ show p) <+> colon <+> doc ex
-      VarNotFoundTC v (L p ex)  -> text "Var" <+> doc v <+> text "not found. Checking: " $$
-                                   (text $ show p) <+> colon <+> doc ex
-      UnsupportedExpTC (L p ex) -> text "Unsupported expression:" $$
-                                   (text $ show p) <+> colon <+> doc ex
-
-type TcM a exp = Except (TCError exp) a
-
-
-extendEnv :: Env2 (UrTy l) -> [(Var, (UrTy l))] -> Env2 (UrTy l)
-extendEnv (Env2 vEnv fEnv) ((v,ty):rest) = extendEnv (Env2 (M.insert v ty vEnv) fEnv) rest
-extendEnv env [] = env
-
-
-lookupVar :: Env2 (UrTy l) -> Var -> L (PreExp e l (UrTy l)) ->
-             TcM (UrTy l) (L (PreExp e l (UrTy l)))
-lookupVar env var exp =
-    case M.lookup var $ vEnv env of
-      Nothing -> throwError $ VarNotFoundTC var exp
-      Just ty -> return ty
-
-tcProj :: (Out l) => (L (PreExp e l (UrTy l))) -> Int -> (UrTy l) ->
-          TcM (UrTy l) (L (PreExp e l (UrTy l)))
-tcProj _ i (ProdTy tys) = return $ tys !! i
-tcProj e _i ty = throwError $ GenericTC ("Projection from non-tuple type " ++ (sdoc ty)) e
-
-
-tcCases :: (Out l, Eq l, Out (e l (UrTy l))) => DDefs (UrTy l) -> Env2 (UrTy l) ->
-           [(DataCon, [(Var, l)], L (PreExp e l (UrTy l)))] ->
-           TcM (UrTy l) (L (PreExp e l (UrTy l)))
+tcCases :: (Eq l, Out l) => DDefs (UrTy l) -> Env2 (UrTy l) ->
+           [(DataCon, [(Var, l)], L (PreExp E3Ext l (UrTy l)))] ->
+           TcM (UrTy l) (L (PreExp E3Ext l (UrTy l)))
 tcCases ddfs env cs = do
   tys <- forM cs $ \(c,args',rhs) -> do
            let args  = L.map fst args'
@@ -305,30 +325,3 @@ tcCases ddfs env cs = do
                                          ++ sdoc acc ++ ", " ++ sdoc ty) ex)
          (head tys) (zipWith (\ty (_,_,ex) -> (ex,ty)) tys cs)
   return $ head tys
-
-
-checkLen :: (Out op, Out arg) => (L (PreExp e l (UrTy l))) -> op -> Int -> [arg] ->
-            TcM () (L (PreExp e l (UrTy l)))
-checkLen expr pr n ls =
-  if length ls == n
-  then return ()
-  else throwError $ GenericTC ("Wrong number of arguments to "++sdoc pr++
-                               ".\nExpected "++sdoc n++", received "
-                                ++sdoc (length ls)++":\n  "++sdoc ls)
-                    expr
-
--- | Ensure that two things are equal.
--- Includes an expression for error reporting.
-ensureEqual :: (Eq l) => (L (PreExp e l (UrTy l))) -> String -> (UrTy l) ->
-               (UrTy l) -> TcM (UrTy l) (L (PreExp e l (UrTy l)))
-ensureEqual exp str a b = if a == b
-                          then return a
-                          else throwError $ GenericTC str exp
-
-
--- | Ensure that two types are equal.
--- Includes an expression for error reporting.
-ensureEqualTy :: (Eq l, Out l) => (L (PreExp e l (UrTy l))) -> (UrTy l) -> (UrTy l) ->
-                 TcM (UrTy l) (L (PreExp e l (UrTy l)))
-ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
-                                         ++ (sdoc a) ++ ", " ++ (sdoc b)) a b

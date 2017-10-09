@@ -32,27 +32,30 @@ library
                   Packed.FirstOrder.L4.Syntax
                   Packed.FirstOrder.L1.Interp
                   Packed.FirstOrder.L2.Interp
+                  Packed.FirstOrder.L3.Syntax
+                  Packed.FirstOrder.L3.Typecheck
                   Packed.FirstOrder.SExpFrontend
+
+                  -- compiler passes, roughly in the order they're run
                   Packed.FirstOrder.Passes.Freshen
                   Packed.FirstOrder.Passes.Flatten
                   -- Packed.FirstOrder.Passes.Flatten2
                   Packed.FirstOrder.Passes.InlineTriv
                   Packed.FirstOrder.Passes.InferLocations
-                  Packed.FirstOrder.Passes.InferEffects2
                   -- Packed.FirstOrder.Passes.InferEffects
-                  -- Packed.FirstOrder.Passes.Cursorize
-                  -- Packed.FirstOrder.Passes.Cursorize2
-                  -- Packed.FirstOrder.Passes.Lower
+                  Packed.FirstOrder.Passes.InferEffects2
                   -- Packed.FirstOrder.Passes.InlinePacked
-                  -- Packed.FirstOrder.Passes.ShakeTree
                   -- Packed.FirstOrder.Passes.CopyInsertion
-                  -- Packed.FirstOrder.Passes.FindWitnesses
                   -- Packed.FirstOrder.Passes.RouteEnds
                   Packed.FirstOrder.Passes.RouteEnds2
-                  Packed.FirstOrder.L3.Syntax
+                  -- Packed.FirstOrder.Passes.Cursorize
+                  -- Packed.FirstOrder.Passes.Cursorize2
                   Packed.FirstOrder.Passes.Cursorize4
-                  -- Packed.FirstOrder.Passes.Unariser
-                  -- Packed.FirstOrder.Passes.HoistNewBuf
+                  Packed.FirstOrder.Passes.FindWitnesses
+                  Packed.FirstOrder.Passes.ShakeTree
+                  Packed.FirstOrder.Passes.HoistNewBuf
+                  Packed.FirstOrder.Passes.Unariser
+                  Packed.FirstOrder.Passes.Lower
                   -- Packed.FirstOrder.Passes.Typecheck
                   -- Packed.FirstOrder.Passes.Codegen
 
@@ -74,6 +77,7 @@ library
                 filepath,
                 GenericPretty, pretty,
                 haskell-src-exts,
+                haskell-src-exts-simple,
                 language-c-quote,
                 mainland-pretty,
                 mtl,
@@ -150,6 +154,8 @@ test-suite test-gibbon
                 RouteEnds2
                 InferEffects2
                 L2.Typecheck
+                L1.Typecheck
+                L3.Typecheck
 
   default-language:    Haskell2010
 --   ghc-options:         -Wall

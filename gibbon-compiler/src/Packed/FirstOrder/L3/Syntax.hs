@@ -11,7 +11,7 @@ module Packed.FirstOrder.L3.Syntax
   , Prog(..), FunDef(..), FunDefs, ArrowTy(..)
 
     -- * Functions
-  , eraseLocMarkers, stripTyLocs, cursorizeTy
+  , eraseLocMarkers, stripTyLocs, cursorizeTy, mapMExprs, toL3Prim, progToEnv
   )
 where
 
@@ -23,6 +23,7 @@ import Data.List as L
 import Text.PrettyPrint.GenericPretty
 
 import Packed.FirstOrder.Common hiding (FunDef, FunDefs)
+import Packed.FirstOrder.L1.Syntax hiding (FunDef(..), FunDefs, Prog(..), progToEnv)
 import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.L1.Syntax (UrTy(..), PreExp(..))
 import qualified Packed.FirstOrder.L2.Syntax as L2
@@ -42,7 +43,7 @@ data E3Ext loc dec =
   | ReadTag   Var                  -- ^ One cursor in, (tag,cursor) out
   | WriteTag  DataCon Var          -- ^ Write Tag at Cursor, and return a cursor
   | NewBuffer                      -- ^ Create a new buffer, and return a cursor
-  | SizeOf Var Var                 -- ^ Takes in start and end cursors, and returns an
+  | SizeOf Var Var                 -- ^ Takes in start and end cursors, and returns an Int
                                    --   we'll probably represent (sizeof x) as (end_x - start_x) / INT
   deriving (Show, Ord, Eq, Read, Generic, NFData)
 
@@ -143,3 +144,52 @@ cursorizeTy L2.ArrowTy{L2.arrIn,L2.arrOut,L2.locVars,L2.locRets} =
       newIn    = L2.mapPacked (\_ _ -> CursorTy) inT
 
   in ArrowTy { arrIn = stripTyLocs newIn, arrOut = stripTyLocs newOut }
+
+
+-- | Map exprs with an initial type environment:
+-- Exactly the same function that was in L2 before
+mapMExprs :: Monad m => (Env2 Ty3 -> L Exp3 -> m (L Exp3)) -> Prog -> m Prog
+mapMExprs fn (Prog ddfs fundefs mainExp) =
+  Prog ddfs <$>
+    (mapM (\f@FunDef{funarg,funty,funbod} ->
+              let env = Env2 (M.singleton funarg (arrIn funty)) funEnv
+              in do
+                bod' <- fn env funbod
+                return $ f { funbod =  bod' })
+     fundefs)
+    <*>
+    (mapM (\ (e,t) -> (,t) <$> fn (Env2 M.empty funEnv) e) mainExp)
+  where funEnv = M.map (\f -> let ty = funty f
+                              in (arrIn ty, arrOut ty))
+                 fundefs
+
+-- Ugh .. this is bad. Can we remove the identity cases here ?
+toL3Prim :: Prim L2.Ty2 -> Prim Ty3
+toL3Prim pr =
+  case pr of
+    AddP      -> AddP
+    SubP      -> SubP
+    MulP      -> MulP
+    EqSymP    -> EqSymP
+    EqIntP    -> EqIntP
+    MkTrue    -> MkTrue
+    MkFalse   -> MkFalse
+    SizeParam -> SizeParam
+    SymAppend -> SymAppend
+    DictInsertP ty -> DictInsertP (stripTyLocs ty)
+    DictLookupP ty -> DictLookupP (stripTyLocs ty)
+    DictEmptyP  ty -> DictEmptyP  (stripTyLocs ty)
+    DictHasKeyP ty -> DictHasKeyP (stripTyLocs ty)
+    ErrorP s ty    -> ErrorP s (stripTyLocs ty)
+    ReadPackedFile fp tycon ty -> ReadPackedFile fp tycon (stripTyLocs ty)
+    MkNullCursor -> MkNullCursor
+
+-- | Abstract some of the differences of top level program types, by
+-- having a common way to extract an initial environment.
+progToEnv :: Prog -> Env2 Ty3
+progToEnv Prog{fundefs} =
+    Env2 M.empty
+         (M.fromList [ (funname ,(inT, outT))
+                     | FunDef{funty,funname} <- M.elems fundefs ,
+                     let inT = arrIn funty
+                         outT = arrOut funty])

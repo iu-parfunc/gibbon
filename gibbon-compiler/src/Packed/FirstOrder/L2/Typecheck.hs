@@ -171,6 +171,7 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
                -- error would not go through our monad:
                let len2 = checkLen exp pr 2 es
                    len0 = checkLen exp pr 0 es
+                   len3 = checkLen exp pr 3 es
                case pr of
                  L1.AddP -> do len2
                                ensureEqualTy exp IntTy (tys !! 0)
@@ -195,8 +196,54 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
                  L1.MkTrue  -> do len0; return $ (BoolTy,tstate)
                  L1.MkFalse -> do len0; return $ (BoolTy,tstate)
 
-                 -- TODO: add rest of primops
-                 _ -> throwError $ UnsupportedExpTC exp
+                 L1.SymAppend  -> do
+                   len2
+                   _ <- ensureEqualTy (es !! 0) SymTy (tys !! 0)
+                   _ <- ensureEqualTy (es !! 1) IntTy (tys !! 1)
+                   return (SymTy, tstate)
+
+                 L1.DictEmptyP ty -> do
+                   len0
+                   return (SymDictTy ty, tstate)
+
+                 L1.DictInsertP ty -> do
+                   len3
+                   let [d,k,v]  = tys
+                   _ <- ensureEqualTy exp (SymDictTy ty) d
+                   _ <- ensureEqualTy exp SymTy k
+                   _ <- ensureEqualTy exp ty v
+                   return (d, tstate)
+
+
+                 L1.DictLookupP ty -> do
+                   len2
+                   let [d,k]  = tys
+                   _ <- ensureEqualTy exp (SymDictTy ty) d
+                   _ <- ensureEqualTy exp SymTy k
+                   return (ty, tstate)
+
+                 L1.DictHasKeyP ty -> do
+                   len2
+                   let [d,k]  = tys
+                   _ <- ensureEqualTy exp (SymDictTy ty) d
+                   _ <- ensureEqualTy exp SymTy k
+                   return (BoolTy, tstate)
+
+                 L1.SizeParam -> do
+                   len0
+                   return (IntTy, tstate)
+
+                 L1.ErrorP _str ty -> do
+                   len2
+                   return (ty, tstate)
+
+                 L1.ReadPackedFile _fp _tycon ty -> do
+                   len3
+                   return (ty, tstate)
+
+                 L1.MkNullCursor -> do
+                   return (CursorTy, tstate)
+
 
       LetE (v,_ls,ty,e1) e2 -> do
 

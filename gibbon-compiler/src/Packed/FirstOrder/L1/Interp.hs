@@ -37,7 +37,6 @@ import qualified Data.Foldable as F
 import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.GenericOps(Interp, interpNoLogs, interpWithStdout)
 import           Packed.FirstOrder.L1.Syntax as L1
-import qualified Packed.FirstOrder.L2.Syntax as L2
 
 -- We got rid of these pattern variables from L2, and they are now defined as L3 extensions instead
 -- TODO: L3.Interp
@@ -202,7 +201,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
        return (res, toLazyByteString logs)
 
  where
-  applyPrim :: Prim -> [Value] -> Value
+  applyPrim :: Prim Ty1 -> [Value] -> Value
   applyPrim p ls =
    case (p,ls) of
      (MkTrue,[])             -> VBool True

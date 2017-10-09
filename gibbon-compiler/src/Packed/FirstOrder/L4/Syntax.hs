@@ -12,7 +12,7 @@ module Packed.FirstOrder.L4.Syntax
     , Alts(..), Prog(..), MainExp(..)
     -- * Utility functions
     , withTail
-    , fromL1Ty
+    , fromL3Ty
     ) where
 
 import           Control.DeepSeq
@@ -20,11 +20,13 @@ import           Data.Int
 import           Data.Maybe
 import           Data.Word (Word8)
 import           GHC.Generics (Generic)
-import           Packed.FirstOrder.Common hiding (funBody)
-
-import qualified Packed.FirstOrder.L1.Syntax as L1
 import           Prelude hiding (init)
 import           Text.PrettyPrint.GenericPretty (Out (..))
+
+import           Packed.FirstOrder.Common hiding (funBody)
+import qualified Packed.FirstOrder.L1.Syntax as L1
+import qualified Packed.FirstOrder.L3.Syntax as L3
+
 
 --------------------------------------------------------------------------------
 -- * AST definition
@@ -166,7 +168,11 @@ data Prim
     | ReadTag
     -- ^ Read one byte from the cursor and advance it.
     | ReadInt
-      -- ^ Read an 8 byte Int from the cursor and advance.
+    -- ^ Read an 8 byte Int from the cursor and advance.
+
+    | SizeOf
+    -- ^ Take start and end cursors and return size of data they represent
+    -- This could be represented as (end - start) / (sizeof(Int))
 
     | GetFirstWord -- ^ takes a PtrTy, returns IntTy containing the (first) word pointed to.
 
@@ -220,11 +226,11 @@ withTail (tl0,retty) fn =
    genTmps ty          = do t <- gensym (toVar "tctmp"); return [(t,ty)]
 
 
-fromL1Ty :: L1.Ty1 -> Ty
-fromL1Ty ty =
+fromL3Ty :: L3.Ty3 -> Ty
+fromL3Ty ty =
   case ty of
     L1.IntTy -> IntTy
     L1.SymTy -> SymTy
-    L1.ProdTy tys -> ProdTy $ map fromL1Ty tys
-    L1.SymDictTy t -> SymDictTy $ fromL1Ty t
+    L1.ProdTy tys -> ProdTy $ map fromL3Ty tys
+    L1.SymDictTy t -> SymDictTy $ fromL3Ty t
     _ -> IntTy -- FIXME: review this
