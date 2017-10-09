@@ -157,6 +157,28 @@ instance (Out l, Show l, Typeable (L (E2 l (UrTy l))),
   gTypeExp ddfs env2 (L _ ex) = gTypeExp ddfs env2 ex
 
 
+instance (Typeable (E2Ext l (UrTy l)),
+          Expression (E2Ext l (UrTy l)),
+          Flattenable (L (E2 l (UrTy l))))
+      => Flattenable (E2Ext l (UrTy l)) where
+
+  gFlattenGatherBinds ddfs env ex =
+      case ex of
+          LetRegionE r bod -> do (bnds,bod') <- go bod
+                                 return $ ([], LetRegionE r $ flatLets bnds bod')
+
+          LetLocE l rhs bod -> do (bnds,bod') <- go bod
+                                  return $ ([], LetLocE l rhs $ flatLets bnds bod')
+
+          RetE{}     -> return ([],ex)
+          FromEndE{} -> return ([],ex)
+
+    where go = gFlattenGatherBinds ddfs env
+
+  gFlattenExp ddfs env ex = do (_b,e') <- gFlattenGatherBinds ddfs env ex
+                               return e'
+
+
 ----------------------------------------------------------------------------------------------------
 
 -- | Our type for functions grows to include effects, and explicit universal
@@ -213,10 +235,10 @@ isTriv = undefined
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.  The
 --   initial environment has types only for functions.
-progToEnv :: Prog -> Env2 (UrTy ())
+progToEnv :: Prog -> Env2 Ty2
 progToEnv Prog{fundefs} =
     Env2 M.empty
-         (M.fromList [ (n,(fmap (\_->()) a, fmap (\_->()) b))
+         (M.fromList [ (n,(a, b))
                      | FunDef n (ArrowTy _ a _ b _) _ _ <- M.elems fundefs ])
 
 

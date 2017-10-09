@@ -38,7 +38,7 @@ module Packed.FirstOrder.L1.Syntax
 
       -- * Trivial expressions
     , assertTriv, assertTrivs, hasTimeIt
-    , projNonFirst, mkProj, mkProd, mkProdTy, mkLets
+    , projNonFirst, mkProj, mkProd, mkProdTy, mkLets, flatLets
 
       -- * Examples
     , add1Prog
@@ -623,6 +623,17 @@ mkLets :: [(Var, [loc], dec, L (PreExp ext loc dec))] -> L (PreExp ext loc dec) 
 mkLets [] bod     = bod
 mkLets (b:bs) bod = L NoLoc $ LetE b (mkLets bs bod)
 
+
+-- | Helper function that lifts out Lets on the RHS of other Lets.
+--   Absolutely requires unique names.
+mkLetE :: (Var, [l], d, L (PreExp e l d)) -> L (PreExp e l d) -> L (PreExp e l d)
+mkLetE (vr,lvs,ty,(L _ (LetE bnd e))) bod = mkLetE bnd $ mkLetE (vr,lvs,ty,e) bod
+mkLetE bnd bod = L NoLoc $ LetE bnd bod
+
+-- | Alternative version of L1.mkLets that also flattens
+flatLets :: [(Var,[l],d,L (PreExp e l d))] -> L (PreExp e l d) -> L (PreExp e l d)
+flatLets [] bod = bod
+flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
 
 
 --------------------------------------------------------------------------------

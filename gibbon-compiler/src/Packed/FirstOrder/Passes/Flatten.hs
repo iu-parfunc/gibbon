@@ -9,7 +9,7 @@
 --- restricted form.
 
 module Packed.FirstOrder.Passes.Flatten
-  (flattenL1) where
+    ( flattenL1, flattenL2 ) where
 
 import Control.Monad.State
 import Data.Loc
@@ -20,7 +20,7 @@ import qualified Data.Map as M
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.L1.Syntax as L1
--- import Packed.FirstOrder.L2.Syntax as L2
+import qualified Packed.FirstOrder.L2.Syntax as L2
 
 
 -- | Flatten ensures that function operands are "trivial".
@@ -44,6 +44,24 @@ flattenL1 prg@(L1.Prog defs funs main) = do
       return $ FunDef nam (narg,targ) ty bod'
 
     env20 = L1.progToEnv prg
+
+flattenL2 :: Flattenable (L2.E2Ext Var (UrTy LocVar)) => L2.Prog -> SyM L2.Prog
+flattenL2 prg@(L2.Prog defs funs main) = do
+    main' <-
+      case main of
+        Nothing -> return Nothing
+        Just (ex,ty) -> fmap (Just . (,ty)) (gFlattenExp defs env20 ex)
+    funs' <- flattenFuns funs
+    return $ L2.Prog defs funs' main'
+  where
+    flattenFuns = mapM flattenFun
+    flattenFun (L2.FunDef nam ty narg bod) = do
+      let env2 = Env2 (M.singleton narg (L2.arrIn ty)) (fEnv env20)
+      bod' <- gFlattenExp defs env2 bod
+      return $ L2.FunDef nam ty narg bod'
+
+    env20 = L2.progToEnv prg
+
 
 -- NOTE: / FIXME
 -- If we would just include arrow types in the grammar from the start,
@@ -148,17 +166,3 @@ exp ddfs env2 (L sloc e0) =
                         return ([], TimeIt (flatLets bnd e') (gTypeExp ddfs env2 e) b)
     MapE _ _      -> error "FINISHLISTS"
     FoldE _ _ _   -> error "FINISHLISTS"
-
-
--- TODO: how is it different from L1.mkLets ?
-
--- | Helper function that lifts out Lets on the RHS of other Lets.
---   Absolutely requires unique names.
-mkLetE :: (Var, [l], d, L (PreExp e l d)) -> L (PreExp e l d) -> L (PreExp e l d)
-mkLetE (vr,lvs,ty,(L _ (LetE bnd e))) bod = mkLetE bnd $ mkLetE (vr,lvs,ty,e) bod
-mkLetE bnd bod = L NoLoc $ LetE bnd bod
-
--- | Alternative version of L1.mkLets that also flattens
-flatLets :: [(Var,[l],d,L (PreExp e l d))] -> L (PreExp e l d) -> L (PreExp e l d)
-flatLets [] bod = bod
-flatLets (b:bs) bod = mkLetE b (flatLets bs bod)

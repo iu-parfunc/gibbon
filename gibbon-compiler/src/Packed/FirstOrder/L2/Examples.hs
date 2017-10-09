@@ -9,7 +9,7 @@ module Packed.FirstOrder.L2.Examples
 
     -- * Programs
   , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
-  , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg
+  , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
   ) where
 
 import Data.Loc
@@ -374,3 +374,22 @@ testProdFun = FunDef "testprod" testprodTy "tup130" testprodBod
 
 testProdProg :: Prog
 testProdProg = Prog ddtree (M.fromList [("testprod", testProdFun)]) Nothing
+
+--------------------------------------------------------------------------------
+
+-- Meaningless program, just to test flattenL2
+testFlattenProg :: Prog
+testFlattenProg = Prog M.empty (M.fromList [("intAdd",intAddFun)]) $ Just (testFlattenBod, IntTy)
+  where
+    testFlattenBod :: L Exp2
+    testFlattenBod =
+      l$ Ext $ LetRegionE (VarR "_") $
+      l$ Ext $ LetLocE "_" (StartOfLE (VarR "_")) $
+      l$ Ext $ LetLocE "_" (AfterConstantLE 1 "_") $
+      l$ LetE ("v170",[],IntTy,
+               l$ LetE ("v171",[],IntTy,
+                        l$ AppE "intAdd" []
+                        (l$ MkProdE [l$ PrimAppE AddP [l$ LitE 40, l$ LitE 2],
+                                     l$ PrimAppE SubP [l$ LitE 44, l$ LitE 2]])) $
+                l$ VarE "v171") $
+      l$ VarE "v170"
