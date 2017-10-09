@@ -232,8 +232,11 @@ instance FreeVars (e l d) => FreeVars (PreExp e l d) where
       Ext q -> gFreeVars q
 
 -- Recover type of an expression given a type-expression
-instance (Show l, Out l, Expression (e l (UrTy l)), Typeable (e l (UrTy l)) (UrTy l)) =>
-         Typeable (PreExp e l (UrTy l)) (UrTy l) where
+instance (Show l, Out l, Expression (e l (UrTy l)),
+          TyOf (e l (UrTy l)) ~ TyOf (PreExp e l (UrTy l)),
+          Typeable (e l (UrTy l)))
+         =>
+         Typeable (PreExp e l (UrTy l)) where
   gTypeExp ddfs env2 ex =
     case ex of
       VarE v       -> M.findWithDefault
@@ -288,7 +291,7 @@ instance (Show l, Out l, Expression (e l (UrTy l)), Typeable (e l (UrTy l)) (UrT
 
 
 
-instance Typeable (PreExp e l (UrTy l)) (UrTy l) => Typeable (L (PreExp e l (UrTy l))) (UrTy l) where
+instance Typeable (PreExp e l (UrTy l)) => Typeable (L (PreExp e l (UrTy l))) where
   gTypeExp ddfs env2 (L _ ex) = gTypeExp ddfs env2 ex
 
 -- | Some of these primitives are (temporarily) tagged directly with

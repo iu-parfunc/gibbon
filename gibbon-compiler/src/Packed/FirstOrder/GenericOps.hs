@@ -90,9 +90,8 @@ class Expression e => Simplifiable e where
 -- recover the type of an expression in a type-environment
 -- Without this, we cannot have truly generic implementation of the Flattenable class,
 -- since we need to know the type of an expression before we discharge it with a LetE
-class Expression e => Typeable e t where
-  -- gTypeExp :: DDefs (TyOf e) -> Env2 (TyOf e) -> e -> TyOf e
-  gTypeExp :: DDefs t -> Env2 t -> e -> t
+class Expression e => Typeable e where
+  gTypeExp :: DDefs (TyOf e) -> Env2 (TyOf e) -> e -> TyOf e
 
 -- | An uninhabidited type indicating that the base grammar is not extended with any
 -- additional constructs.
@@ -127,5 +126,5 @@ instance Simplifiable (NoExt l d) where
   gInlineTrivExp _ impossible = impossible
 
 -- | A dummy instance for "no-extension" extension point.
-instance Typeable (NoExt l d) d where
+instance Typeable (NoExt l d) where
   gTypeExp _ _ _ = error "<NoExt: It should be impossible to recover type of this>"

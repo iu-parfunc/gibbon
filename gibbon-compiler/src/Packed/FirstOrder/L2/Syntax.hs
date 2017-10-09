@@ -139,7 +139,7 @@ instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
       RetE{}       -> False -- Umm... this one could be potentially.
       FromEndE{}   -> True
 
-instance (Out l, Out d, Show l, Show d, Typeable (L (E2 l d)) d) => Typeable (E2Ext l d) d where
+instance (Out l, Show l, Typeable (L (E2 l (UrTy l)))) => Typeable (E2Ext l (UrTy l)) where
   gTypeExp ddfs env2 ex =
     case ex of
       LetRegionE _r bod   -> gTypeExp ddfs env2 bod
@@ -150,7 +150,10 @@ instance (Out l, Out d, Show l, Show d, Typeable (L (E2 l d)) d) => Typeable (E2
       FromEndE _loc       -> error $ "Shouldn't enconter this in tail position"
 
 
-instance (Out l, Out d, Show l, Show d, Typeable (L (E2 l d)) d, (Expression (L (E2Ext l d)))) => Typeable (L (E2Ext l d)) d where
+instance (Out l, Show l, Typeable (L (E2 l (UrTy l))),
+          TyOf (E2Ext l (UrTy l)) ~ TyOf (L (E2Ext l (UrTy l))),
+          Expression (L (E2Ext l (UrTy l))))
+         => Typeable (L (E2Ext l (UrTy l))) where
   gTypeExp ddfs env2 (L _ ex) = gTypeExp ddfs env2 ex
 
 
