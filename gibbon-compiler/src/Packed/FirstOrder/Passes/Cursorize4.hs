@@ -412,15 +412,18 @@ unpackDataCon ddfs fundefs tenv isPacked scrtCur (dcon,vlocs,rhs) =
                                               (v, CursorTy),
                                               (toEndV v, CursorTy)])
                          env
-              l <$>
-                LetE (tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt cur) <$> l <$>
-                  LetE (v, [], IntTy, l$ ProjE 0 (l$ VarE tmp)) <$> l <$>
-                    LetE (toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp)) <$>
-                      if isFirst
-                      then l <$>
-                             LetE (loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1)) <$>
-                               go (toEndV v) rst rtys False env'
-                      else go (toEndV v) rst rtys False (M.insert loc CursorTy env')
+                  prefix = if isFirst
+                           then
+                               l <$> LetE (loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1))
+                               <$> l <$> LetE (tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt loc)
+                           else
+                               l <$> LetE (tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt cur)
+
+              prefix <$> l <$>
+                LetE (v, [], IntTy, l$ ProjE 0 (l$ VarE tmp)) <$> l <$>
+                  LetE (toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp)) <$>
+                    go (toEndV v) rst rtys False (M.insert loc CursorTy env')
+
 
             _ -> do
               let env' = (M.insert v CursorTy env)
