@@ -78,6 +78,9 @@ instance (Out l, Out d, Show l, Show d) => Expression (E3Ext l d) where
       NewBuffer   -> False
       SizeOf{}    -> False
 
+instance (Out l, Show l) => Typeable (E3Ext l (UrTy l)) where
+    gTypeExp = error "L3.gTypeExp"
+
 instance (Show l, Out l) => Flattenable (E3Ext l (UrTy l)) where
     gFlattenGatherBinds _ddfs _env ex = return ([], ex)
     gFlattenExp _ddfs _env ex = return ex
