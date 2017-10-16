@@ -1,6 +1,23 @@
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
+{-# Language OverloadedStrings #-}
 
- -- |
+-- | With the new location calculus and `inferLocations`, this pass should've been redundant.
+--   But not quite.. We still need it to reorder location variables bound in case expressions.
+--
+--   For example, after running the add1 program through the pipeline till `RouteEnds`,
+--   this is what the `Node` case looks like:
+--
+--   ("Node",
+--    [("x9", "l10"),("y11", "l12")],
+--       ...)
+--
+--   To "unpack" these fields, `Cursorize` just binds `x9` to `l10` and `y11` to `l12`.
+--   But, the cursor `l12` is not bound (or known) until we call `(add1 x9)` and
+--   get the end_of_read cursor it returns. This happens later in the program.
+--   Thus, `y11` refers to an unbound cursor `l12` here.
+--   FindWitnesses fixes this by moving the `let y11 = l12` binding to its proper place.
+--
+--   Another strategy would be to actually handle this properly in Cursorize.
 
 module Packed.FirstOrder.Passes.FindWitnesses
   (findWitnesses) where
@@ -47,6 +64,30 @@ findWitnesses = mapMExprs fn
         LetE (v,locs,t, L p2 (TimeIt e ty b)) bod ->
             handle' $ LetE (v,locs,t, L p2 $ TimeIt (go Map.empty e) ty b)
                       (goE (Set.insert v (bound `Set.union` Map.keysSet mp)) Map.empty bod)
+
+        {- HACK:
+
+           This is just to maintain the ordering of Write* expressions in the AST.
+           Technically, all of the syntax extensions defined in L3 represent side-effects,
+           and shouldn't be re-ordered. But having just (Ext ext) here, also prevents some
+           other expressions from being re-ordered (need to look into this some more).
+
+           But, the return values of all the other extensions are used _somewhere_ in the
+           program. So essentially, when we sort the graph in a topological order,
+           the binding order and the order of side-effects is preserved automatically.
+           On the other hand, when the Write* expressions are executed for their side-effects,
+           the return values may not always be used. So we have to take special care to
+           prevent accidental re-ordering of these expressions.
+
+           The only test case for this is add1 right now.
+        -}
+        LetE (v,locs,t, L _p2 (Ext ext@WriteTag{})) bod ->
+            handle' $ LetE (v,locs,t, (go Map.empty (l$ Ext ext)))
+            (goE (Set.insert v (bound `Set.union` Map.keysSet mp)) Map.empty bod)
+
+        LetE (v,locs,t, L _p2 (Ext ext@WriteInt{})) bod ->
+            handle' $ LetE (v,locs,t, (go Map.empty (l$ Ext ext)))
+            (goE (Set.insert v (bound `Set.union` Map.keysSet mp)) Map.empty bod)
 
         LetE (v,locs,t,rhs) bod
             -- | isWitnessVar v -> error$ " findWitnesses: internal error, did not expect to see BINDING of witness var: "++show v
