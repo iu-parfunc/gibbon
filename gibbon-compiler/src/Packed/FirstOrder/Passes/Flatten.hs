@@ -106,7 +106,7 @@ instance (Show l, Out l, Expression (e l (UrTy l)),
 
 
 exp :: forall l e .
-       (Show l, Out l, Expression (e l (UrTy l)),
+       (Show l, Out l,
        TyOf (e l (UrTy l)) ~ TyOf (Exp e l),
        Typeable (e l (UrTy l)),
        Flattenable (e l (UrTy l)))

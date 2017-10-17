@@ -19,8 +19,6 @@ import Packed.FirstOrder.L1.Typecheck hiding (tcProg, tcExp)
 import Packed.FirstOrder.L1.Syntax hiding (FunDef, Prog(..), progToEnv)
 import Packed.FirstOrder.L3.Syntax
 
-import Debug.Trace
-
 -- | Typecheck a L1 expression
 --
 tcExp :: (Out l, Eq l) => DDefs (UrTy l) -> Env2 (UrTy l) -> (L (PreExp E3Ext l (UrTy l))) ->

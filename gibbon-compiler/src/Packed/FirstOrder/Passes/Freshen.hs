@@ -6,6 +6,7 @@ module Packed.FirstOrder.Passes.Freshen (freshNames) where
 
 import Control.Exception
 import Data.Loc
+import Prelude hiding (exp)
 import qualified Data.Map as M
 import qualified Data.List as L
 
