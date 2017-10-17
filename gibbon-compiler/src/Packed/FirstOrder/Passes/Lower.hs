@@ -191,6 +191,7 @@ printTy ty trvs =
         foldr (\(ty,trv) acc -> printTy ty [trv] $ printSpace acc)
         (printTy lty [ltrv] $ closeParen t)
         (zip bltys bltrvs)
+    _ -> error $ "printTy: unexpected: " ++ show (ty, trvs)
 
 -- printTy ty trvs = error $ "Invalid L1 data type; " ++ show ty ++ " " ++ show trvs
 

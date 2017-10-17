@@ -35,15 +35,15 @@ inlineTrivExp _ddefs = go []
   go :: Env l -> MyExp l -> MyExp l
   go env e  = exp env e
 
-  -- | Hree we go to some lengths to maintain the syntactic invariants
+  -- | Here we go to some lengths to maintain the syntactic invariants
   -- for the extended L2 forms. The idea is that we can only reference
   -- variables within these forms, but we still must apply the
   -- environment because the old bindings have been removed.
   --
   -- An alternative would be to let the extended forms disappear at
   -- this point, and handle them at the level of "AppE" in Lower.hs.
-  withVar :: Env l -> Var -> (Var -> MyExp l) -> MyExp l
-  withVar env v fn =
+  _withVar :: Env l -> Var -> (Var -> MyExp l) -> MyExp l
+  _withVar env v fn =
     case lookup v env of
       Nothing        -> fn v
       Just (_, (L _ (VarE v2))) -> fn v2
