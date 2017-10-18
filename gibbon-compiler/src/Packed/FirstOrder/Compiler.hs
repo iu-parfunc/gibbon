@@ -10,9 +10,11 @@
 module Packed.FirstOrder.Compiler
     ( -- * Compiler entrypoints
       compile, compileCmd
-     -- * Configuration options and parsing
+      -- * Configuration options and parsing
      , Config (..), Mode(..), Input(..)
      , configParser, configWithArgs, defaultConfig
+      -- * Some other helper fns
+     , compileAndRunExe
     )
   where
 
@@ -581,9 +583,10 @@ wrapInterp mode pass who fn x =
 
 -- | Compile and run the generated code if appropriate
 --
-compileAndRunExe :: Config -> FilePath -> IO ()
+compileAndRunExe :: Config -> FilePath -> IO String
 compileAndRunExe cfg@Config{backend,benchInput,mode,cfile,exefile} fp = do
-  clearFile exe
+  exepath <- makeAbsolute exe
+  clearFile exepath
 
   -- (Stage 4) Codegen finished, generate a binary
   dbgPrintLn minChatLvl cmd
@@ -593,17 +596,19 @@ compileAndRunExe cfg@Config{backend,benchInput,mode,cfile,exefile} fp = do
     ExitSuccess -> do
       -- (Stage 5) Binary compiled, run if appropriate
       let runExe extra = do
-            exepath <- makeAbsolute exe
-            c2 <- system (exepath++extra)
-            case c2 of
-              ExitSuccess -> return ()
-              ExitFailure n -> error$ "Treelang program exited with error code "++ show n
+            (_,Just hout,_, phandle) <- createProcess (shell (exepath++extra))
+                                                 { std_out = CreatePipe }
+            exitCode <- waitForProcess phandle
+            case exitCode of
+                ExitSuccess   -> hGetContents hout
+                ExitFailure n -> die$ "Treelang program exited with error code  "++ show n
+
       runConf <- getRunConfig [] -- FIXME: no command line option atm.  Just env vars.
       case benchInput of
         -- CONVENTION: In benchmark mode we expect the generated executable to take 2 extra params:
         Just _ | isBench mode   -> runExe $ " " ++show (rcSize runConf) ++ " " ++ show (rcIters runConf)
         _      | mode == RunExe -> runExe ""
-        _                                -> return ()
+        _                                -> return ""
   where outfile = getOutfile backend fp cfile
         exe = getExeFile backend fp exefile
         cmd = compilationCmd backend cfg ++ outfile ++ " -o " ++ exe
