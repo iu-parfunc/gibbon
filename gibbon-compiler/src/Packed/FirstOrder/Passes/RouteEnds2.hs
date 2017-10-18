@@ -246,8 +246,11 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
           -- Question: should this fail instead? I'm not sure.
           AppE v args e -> do
                  v' <- gensym "tailapp"
-                 let ty = arrOut $ funtype v
-                     e' = LetE (v',[],ty, l$ AppE v args e) (l$ VarE v')
+                 let ty = funtype v
+                     -- use locVars used at call-site in the type
+                     arrOutMp = M.fromList $ zip (getArrowTyLocs ty) args
+                     outT     = substTy arrOutMp (arrOut ty)
+                     e' = LetE (v',[], outT, l$ AppE v args e) (l$ VarE v')
                  -- we fmap location at the top-level case expression
                  fmap unLoc $ exp fns retlocs eor lenv afterenv (l$ e')
 

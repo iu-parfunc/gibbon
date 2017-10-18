@@ -231,10 +231,27 @@ id2Prog = Prog ddtree (M.fromList [("id2", id2Fun)]) Nothing
 --------------------------------------------------------------------------------
 
 copyOnId1Prog :: Prog
-copyOnId1Prog = Prog ddtree funs Nothing
+copyOnId1Prog = Prog ddtree funs $ Just (copyOnId1MainExp, PackedTy "Tree" "l228")
   where
     funs  = (M.fromList [("copyTree" , copyTreeFun),
                          ("id1WithCopy", id1WithCopyFun)])
+
+copyOnId1MainExp :: L Exp2
+copyOnId1MainExp = l$ Ext $ LetRegionE (VarR "r220") $
+                   l$ Ext $ LetLocE "l221" (StartOfLE (VarR "r220")) $
+                   l$ Ext $ LetLocE "l222" (AfterConstantLE 1 "l221") $
+                   l$ LetE ("l223",[],PackedTy "Tree" "l222",
+                           l$ DataConE "l222" "Leaf" [l$ LitE 1]) $
+                   l$ Ext $ LetLocE "l224" (AfterVariableLE "l223" "l222") $
+                   l$ LetE ("l225",[],PackedTy "Tree" "l224",
+                            l$ DataConE "l224" "Leaf" [l$ LitE 2]) $
+                   l$ LetE ("z226",[],PackedTy "Tree" "l221",
+                            l$ DataConE "l221" "Node" [l$ VarE "l223", l$ VarE "l225"]) $
+                   l$ Ext $ LetRegionE (VarR "r227") $
+                   l$ Ext $ LetLocE "l228" (StartOfLE (VarR "r227")) $
+                   l$ LetE ("a229",[], PackedTy "Tree" "l228",
+                            l$ AppE "id1WithCopy" ["l221", "l228"] (l$ VarE "z226")) $
+                   l$ VarE "a229"
 
 id1WithCopyFun :: FunDef
 id1WithCopyFun = id1Fun { funbod = l$ AppE "copyTree" ["lin19","lout21"]
@@ -249,16 +266,18 @@ id3Fun = FunDef "id3" id3Ty "i42" id3Bod
   where
     id3Ty :: ArrowTy Ty2
     id3Ty = (ArrowTy
-             [LRM "lin43" (VarR "r44") Input, LRM "lout45" (VarR "r44") Output]
+             []
              (IntTy)
              (S.empty)
              (IntTy)
              [])
     id3Bod = l$ VarE "i42"
 
+id3MainExp :: L Exp2
+id3MainExp = l$ AppE "id3" [] (l$ LitE 42)
 
 id3Prog :: Prog
-id3Prog = Prog ddtree (M.fromList [("id3", id3Fun)]) Nothing
+id3Prog = Prog ddtree (M.fromList [("id3", id3Fun)]) $ Just (id3MainExp, IntTy)
 
 
 --------------------------------------------------------------------------------
