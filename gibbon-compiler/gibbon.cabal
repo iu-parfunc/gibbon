@@ -58,7 +58,7 @@ library
                   Packed.FirstOrder.Passes.Unariser
                   Packed.FirstOrder.Passes.Lower
                   -- Packed.FirstOrder.Passes.Typecheck
-                  -- Packed.FirstOrder.Passes.Codegen
+                  Packed.FirstOrder.Passes.Codegen
 
 -- First attempt, slated for removal:
                     -- Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate,
