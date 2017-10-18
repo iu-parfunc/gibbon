@@ -187,8 +187,26 @@ copyTreeFun = FunDef "copyTree" copyFunTy "tr22" copyBod
                     l$ DataConE "lout25" "Node" [l$ VarE "x34", l$ VarE "y36"])
                  ]
 
+copyTreeMainExp :: L Exp2
+copyTreeMainExp = l$ Ext $ LetRegionE (VarR "r200") $
+                  l$ Ext $ LetLocE "l201" (StartOfLE (VarR "r200")) $
+                  l$ Ext $ LetLocE "l202" (AfterConstantLE 1 "l201") $
+                  l$ LetE ("x203",[],PackedTy "Tree" "l202",
+                          l$ DataConE "l202" "Leaf" [l$ LitE 1]) $
+                  l$ Ext $ LetLocE "r204" (AfterVariableLE "x203" "l202") $
+                  l$ LetE ("y205",[],PackedTy "Tree" "r204",
+                           l$ DataConE "r204" "Leaf" [l$ LitE 2]) $
+                  l$ LetE ("z206",[],PackedTy "Tree" "l201",
+                           l$ DataConE "l201" "Node" [l$ VarE "x203", l$ VarE "y205"]) $
+                  l$ Ext $ LetRegionE (VarR "r207") $
+                  l$ Ext $ LetLocE "l208" (StartOfLE (VarR "r207")) $
+                  l$ LetE ("a209",[], PackedTy "Tree" "l208",
+                           l$ AppE "copyTree" ["l201", "l208"] (l$ VarE "z206")) $
+                  l$ VarE "a209"
+
 copyTreeProg :: Prog
-copyTreeProg = Prog ddtree (M.fromList [("copyTree", copyTreeFun)]) Nothing
+copyTreeProg = Prog ddtree (M.fromList [("copyTree", copyTreeFun)]) $
+               Just (copyTreeMainExp, PackedTy "Tree" "l208")
 
 --------------------------------------------------------------------------------
 
