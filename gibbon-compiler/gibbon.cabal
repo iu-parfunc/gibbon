@@ -146,13 +146,14 @@ test-suite test-gibbon
 
   build-depends:       base,
                        gibbon, containers,
-                       directory, process,
+                       filepath, directory, process,
                        mtl,
                        srcloc,
                        tasty, tasty-hunit, tasty-th
   other-modules:
                 RouteEnds2
                 InferEffects2
+                Compiler
                 L2.Typecheck
                 L1.Typecheck
                 L3.Typecheck
