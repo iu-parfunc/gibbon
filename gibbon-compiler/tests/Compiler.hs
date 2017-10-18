@@ -91,5 +91,20 @@ case_add1 = runner "add1.c" add1Prog "(Node (Leaf 2) (Leaf 3))"
 case_copy_tree :: Assertion
 case_copy_tree = runner "copytree.c" copyTreeProg "(Node (Leaf 1) (Leaf 2))"
 
+case_copy_on_id1 :: Assertion
+case_copy_on_id1 = runner "copyid1.c" copyOnId1Prog "(Node (Leaf 1) (Leaf 2))"
+
+case_id3 :: Assertion
+case_id3 = runner "id3.c" id3Prog "42"
+
+case_int_add :: Assertion
+case_int_add = runner "intAdd.c" id3Prog "42"
+
+case_build_node :: Assertion
+case_build_node = runner "node.c" nodeProg "(Node (Leaf 1) (Leaf 2))"
+
+case_build_leaf :: Assertion
+case_build_leaf = runner "leaf.c" leafProg "(Leaf 1)"
+
 compilerTests :: TestTree
 compilerTests = $(testGroupGenerator)
