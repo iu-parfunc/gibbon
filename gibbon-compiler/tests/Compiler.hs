@@ -60,8 +60,8 @@ run2T :: L3.Prog -> L4.Prog
 run2T l3 = fst $ runSyM 0 $ do
     l3 <- flattenL3 l3
     l3 <- findWitnesses l3
-    l3 <- L3.tcProg l3
     l3 <- shakeTree l3
+    l3 <- L3.tcProg l3
     l3 <- hoistNewBuf l3
     l3 <- unariser l3
     let mainTyPre = fmap snd $ L3.mainExp l3
@@ -100,11 +100,14 @@ case_id3 = runner "id3.c" id3Prog "42"
 case_int_add :: Assertion
 case_int_add = runner "intAdd.c" id3Prog "42"
 
-case_build_node :: Assertion
-case_build_node = runner "node.c" nodeProg "(Node (Leaf 1) (Leaf 2))"
+case_node :: Assertion
+case_node = runner "node.c" nodeProg "(Node (Leaf 1) (Leaf 2))"
 
-case_build_leaf :: Assertion
-case_build_leaf = runner "leaf.c" leafProg "(Leaf 1)"
+case_leaf :: Assertion
+case_leaf = runner "leaf.c" leafProg "(Leaf 1)"
+
+case_leftmost :: Assertion
+case_leftmost = runner "leftmost.c" leftmostProg "1"
 
 compilerTests :: TestTree
 compilerTests = $(testGroupGenerator)
