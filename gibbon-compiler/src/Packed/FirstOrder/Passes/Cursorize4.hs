@@ -208,8 +208,8 @@ cursorizeExp ddfs fundefs tenv (L p ex) = L p <$>
 
         -- Exactly same as cursorizePackedExp
         LetRegionE reg bod -> do
-            v <- regionToVar reg
-            LetE (v,[],CursorTy, l$ Ext L3.NewBuffer) <$>
+            let (v,buf) = regionToBnd reg
+            LetE (v,[],CursorTy, l$ Ext buf) <$>
                 go bod
 
         _ -> error $ "TODO: cursorizeExp Ext: " ++ sdoc ext
@@ -376,9 +376,9 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
             _ -> error $ "cursorizePackedExp: unexpected no of locations in RetE " ++ sdoc locs
 
         LetRegionE r bod -> do
-          v <- regionToVar r
+          let (v,buf) = regionToBnd r
           dilprefix <$>
-            (LetE (v,[],CursorTy, l$ Ext L3.NewBuffer) <$>
+            (LetE (v,[],CursorTy, l$ Ext buf) <$>
                fromDi <$> go tenv bod)
 
         _ -> trace ("TODO: cursorizeExp:\n" ++ sdoc ext) (return $ Di $ l$  VarE (toVar $ sdoc ext))
@@ -403,9 +403,9 @@ cursorizeLocExp locExp =
                                l$ Ext $ L3.AddCursor loc (l$ VarE (sizeV v))
     FromEndLE loc -> l$ VarE loc
     StartOfLE r   -> case r of
-                       GlobR  -> error $ "cursorizeLocExp: TODO: GlobR should have a var param"
-                       VarR v -> l$ VarE v
-                       DynR v -> l$ VarE v
+                       GlobR v -> l$ VarE v
+                       VarR v  -> l$ VarE v
+                       DynR v  -> l$ VarE v
     oth -> error $ "cursorizeLocExp: todo " ++ sdoc oth
 
 
@@ -478,11 +478,12 @@ mkProjE ix (L _ (MkProdE ls)) = ls !! ix
 mkProjE ix e = l$ (ProjE ix e)
 
 
-regionToVar :: Region -> SyM Var
-regionToVar r = case r of
-                    GlobR  -> gensym "glob_region"
-                    VarR v -> return v
-                    DynR v -> return v
+-- | Return details to create a L3 binding for a region (var name and L3 extension)
+regionToBnd :: Region -> (Var, L3.E3Ext loc dec)
+regionToBnd r = case r of
+                    GlobR v -> (v,L3.NewBuffer)
+                    VarR  v -> (v,L3.NewBuffer)
+                    DynR  v -> (v,L3.ScopedBuffer)
 
 -- ================================================================================
 --                         Dilation Conventions

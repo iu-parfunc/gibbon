@@ -44,6 +44,8 @@ data E3Ext loc dec =
   | ReadTag   Var                  -- ^ One cursor in, (tag,cursor) out
   | WriteTag  DataCon Var          -- ^ Write Tag at Cursor, and return a cursor
   | NewBuffer                      -- ^ Create a new buffer, and return a cursor
+  | ScopedBuffer                   -- ^ Create a temporary scoped buffer, and
+                                   --   return a cursor
   | SizeOf Var Var                 -- ^ Takes in start and end cursors, and returns an Int
                                    --   we'll probably represent (sizeof x) as (end_x - start_x) / INT
   deriving (Show, Ord, Eq, Read, Generic, NFData)
@@ -61,6 +63,7 @@ instance FreeVars (E3Ext l d) where
       ReadTag v      -> S.singleton v
       WriteTag _ v   -> S.singleton v
       NewBuffer      -> S.empty
+      ScopedBuffer   -> S.empty
       SizeOf c1 c2   -> S.fromList [c1, c2]
 
 instance (Out l, Out d) => Out (E3Ext l d)
@@ -76,6 +79,7 @@ instance (Out l, Out d, Show l, Show d) => Expression (E3Ext l d) where
       ReadTag{}   -> False
       WriteTag{}  -> False
       NewBuffer   -> False
+      ScopedBuffer-> False
       SizeOf{}    -> False
 
 instance (Out l, Show l) => Typeable (E3Ext l (UrTy l)) where

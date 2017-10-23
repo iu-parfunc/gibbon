@@ -108,15 +108,15 @@ type LocVar = Var
 -- TODO: add start(r) form.
 
 -- | An abstract region identifier.  This is used inside type signatures and elsewhere.
-data Region = GlobR    -- ^ A global region with lifetime equal to the whole program.
-            | DynR Var -- ^ A dynamic region that may be created or destryed, tagged
-                       --   by an identifier.
-            | VarR Var -- ^ A region metavariable that can range over
-                       -- either global or dynamic regions.
+data Region = GlobR Var    -- ^ A global region with lifetime equal to the whole program.
+            | DynR Var     -- ^ A dynamic region that may be created or destryed, tagged
+                           --   by an identifier.
+            | VarR Var     -- ^ A region metavariable that can range over
+                           --   either global or dynamic regions.
   deriving (Read,Show,Eq,Ord, Generic)
 instance Out Region
 instance NFData Region where
-  rnf GlobR = ()
+  rnf (GlobR v) = rnf v
   rnf (DynR v) = rnf v
   rnf (VarR v) = rnf v
 
@@ -140,7 +140,7 @@ instance NFData LRM where
 
 -- | A designated doesn't-really-exist-anywhere location.
 dummyLRM :: LRM
-dummyLRM = LRM "l_dummy" GlobR Input
+dummyLRM = LRM "l_dummy" (GlobR "r_dummy") Input
 
 -- | String concatenation on variables.
 varAppend :: Var -> Var -> Var

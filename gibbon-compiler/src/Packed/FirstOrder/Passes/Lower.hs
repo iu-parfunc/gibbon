@@ -515,22 +515,15 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
       T.LetPrimCallT [(v,T.CursorTy)] T.NewBuf [] <$>
          tail bod
 
+    LetE (v,_,_, L _ (Ext ScopedBuffer)) bod -> do
+      T.LetPrimCallT [(v,T.CursorTy)] T.ScopedBuf [] <$>
+         tail bod
+
     LetE (v,_,_, L _ (Ext (SizeOf start end))) bod -> do
       T.LetPrimCallT [(v,T.IntTy)] T.SizeOf [ T.VarTriv start, T.VarTriv end ] <$>
         tail bod
 
-
-    -- LetE (_,_,_,L _ (Ext ext)) _ -> error $ "lower: L3 extension not handled. " ++ sdoc ext
-
     Ext _ -> error $ "lower: unexpected extension" ++ sdoc ex0
-
-{- Leaving this around for when we add scoped buffers to L3
-
-    L1.LetE (v,_,L2.ScopedBuffer) bod ->
-      T.LetPrimCallT [(v,T.CursorTy)] T.ScopedBuf [] <$>
-         tail bod
-
--}
 
     ---------------------
     -- (3) Proper primapps.
