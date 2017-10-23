@@ -65,6 +65,9 @@ tcExp ddfs env exp@(L p ex) =
         -- ^ Create a new buffer, and return a cursor
         NewBuffer -> return CursorTy
 
+        -- ^ Create a scoped buffer, and return a cursor
+        ScopedBuffer -> return CursorTy
+
         -- ^ Takes in start and end cursors, and returns an Int
         SizeOf start end -> do
           sty  <- lookupVar env start exp
