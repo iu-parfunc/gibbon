@@ -146,50 +146,8 @@ cursorizeExp ddfs fundefs tenv (L p ex) = L p <$>
 
     PrimAppE pr args -> PrimAppE (L3.toL3Prim pr) <$> mapM go args
 
-    LetE (v,locs,ty,rhs) bod
-      -- Exactly same as cursorizePackedExp
-      | isPackedTy ty -> do
-            -- Packed values are dilated i.e represented as (start,end) cursors
-            rhs' <- cursorizePackedExp ddfs fundefs tenv rhs
-            fresh <- gensym "packed_tpl"
-
-            let tenv' = M.union (M.fromList [(fresh, ProdTy [CursorTy, CursorTy]),
-                                             (v, CursorTy),
-                                             (toEndV v, CursorTy)])
-                              tenv
-                (PackedTy _ outLoc) = ty
-
-            LetE (fresh,[], ProdTy [CursorTy, CursorTy], fromDi rhs') <$> l <$>
-                LetE (v,[], CursorTy, (l$ VarE outLoc)) <$> l <$>
-                    LetE (toEndV v,[], CursorTy, l$ ProjE 1 (l $ VarE fresh)) <$>
-                        (case locs of
-                            [] -> cursorizeExp ddfs fundefs tenv' bod
-                            _  ->  l <$> LetE (head locs,[], CursorTy, l$ ProjE 0 (l $ VarE fresh)) <$>
-                                      cursorizeExp ddfs fundefs (M.insert (head locs) CursorTy tenv') bod)
-
-      | hasPacked ty  -> error $ "cursorizeExp: TOOD hasPacked LetE"
-      | otherwise -> do
-            rhs' <- go rhs
-            case locs of
-                [] -> LetE (v,[],L3.stripTyLocs ty,rhs') <$>
-                          cursorizeExp ddfs fundefs (M.insert v ty tenv) bod
-                -- rightmost
-                [loc] -> do
-                    fresh <- gensym "tup_scalar"
-                    let ty' = ProdTy [CursorTy, L3.stripTyLocs ty]
-                        tenv' = M.union (M.fromList [(fresh, ProdTy [CursorTy, ty]),
-                                                     (v, ty),
-                                                     (loc, CursorTy)])
-                                        tenv
-
-                    LetE (fresh,[],ty',rhs') <$> l <$>
-                        LetE (loc,[],CursorTy,l$ ProjE 0 (l$ VarE fresh)) <$> l <$>
-                            LetE (v,[],L3.stripTyLocs ty,l$ ProjE 1 (l$ VarE fresh)) <$>
-                                cursorizeExp ddfs fundefs tenv' bod
-
-                _ -> error "cursorizeExp: LetE todo"
-
-
+    -- Same as `cursorizePackedExp`
+    LetE bnd bod -> cursorizeLet ddfs fundefs tenv False bnd bod
 
     IfE a b c  -> IfE <$> go a <*> go b <*> go c
 
@@ -238,8 +196,7 @@ cursorizeExp ddfs fundefs tenv (L p ex) = L p <$>
     FoldE{} -> error $ "TODO: cursorizeExp FoldE"
 
   where
-    go = cursorizeExp ddfs fundefs tenv
-    toEndV = varAppend "end_"
+      go = cursorizeExp ddfs fundefs tenv
 
 
 -- Cursorize expressions producing `Packed` values
@@ -283,59 +240,7 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
         go (M.insert vr CursorTy tenv) bod
 
 
-    -- Process RHS and create bindings for appropriate cursors.
-    -- `v` is bound to `start_write`, `end_v` is bound to `end_write`
-    -- `locs` have additional `end_read` witnesses, and those are bound as well
-    -- `end_write` cursor is returned by RHS, and possibly a `end_read` (if RHS is AppE)
-    -- `start_write` is extracted from the type
-    LetE (v,locs,ty,rhs) bod
-      | isPackedTy ty -> do
-          -- Packed values are dilated i.e represented as (start,end) cursors
-          rhs' <- go tenv rhs
-          fresh <- gensym "packed_tpl"
-
-          let tenv' = M.union (M.fromList [(fresh, ProdTy [CursorTy, CursorTy]),
-                                           (v, CursorTy),
-                                           (toEndV v, CursorTy)])
-                              tenv
-              (PackedTy _ outLoc) = ty
-
-          -- Bind start/end cursors. We should use Di here...
-          prefix <- return $
-                      LetE (fresh,[], ProdTy [CursorTy, CursorTy], fromDi rhs') <$> l <$>
-                        LetE (v,[], CursorTy, (l$ VarE outLoc)) <$> l <$>
-                          LetE (toEndV v,[], CursorTy, l$ ProjE 1 (l $ VarE fresh))
-
-          case locs of
-            [] -> dilprefix <$> prefix <$>
-                    fromDi <$> go tenv' bod
-            _  ->  dilprefix <$> prefix <$> l <$>
-                     LetE (head locs,[], CursorTy, l$ ProjE 0 (l $ VarE fresh)) <$>
-                       fromDi <$> go (M.insert (head locs) CursorTy tenv') bod
-
-      | hasPacked ty  -> error $ "cursorizePackedExp: TOOD hasPacked LetE"
-
-      | otherwise -> do
-            rhs' <- cursorizeExp ddfs fundefs tenv rhs
-            case locs of
-                [] -> onDi (l <$> LetE (v,[],L3.stripTyLocs ty,rhs')) <$>
-                          go (M.insert v ty tenv) bod
-
-                -- rightmost
-                [loc] -> do
-                    fresh <- gensym "tup_scalar"
-                    let ty' = ProdTy [CursorTy, L3.stripTyLocs ty]
-                        tenv' = M.union (M.fromList [(fresh, ProdTy [CursorTy, ty]),
-                                                     (v, ty),
-                                                     (loc, CursorTy)])
-                                        tenv
-
-                    onDi (l <$> LetE (fresh,[],ty',rhs') <$> l <$>
-                              LetE (loc,[],CursorTy,l$ ProjE 0 (l$ VarE fresh)) <$> l <$>
-                                  LetE (v,[],L3.stripTyLocs ty,l$ ProjE 1 (l$ VarE fresh))) <$>
-                                    go tenv' bod
-
-                _ -> error "cursorizeExp: LetE todo"
+    LetE bnd bod -> dilprefix <$> cursorizeLet ddfs fundefs tenv True bnd bod
 
     -- Here we route the dest cursor to both braches.  We switch
     -- back to the other mode for the (non-packed) test condition.
@@ -440,6 +345,79 @@ cursorizeLocExp locExp =
                        VarR v  -> l$ VarE v
                        DynR v  -> l$ VarE v
     oth -> error $ "cursorizeLocExp: todo " ++ sdoc oth
+
+cursorizeLet :: DDefs Ty2 -> NewFuns -> TEnv -> Bool
+             -> (Var, [Var], Ty2, L Exp2) -> L Exp2 -> SyM L3.Exp3
+cursorizeLet ddfs fundefs tenv isPackedContext (v,locs,ty,rhs) bod
+    -- Process RHS and bind the following cursors
+    --
+    -- v     -> start_write
+    -- end_v -> end_write
+    -- loc   -> end_read (only if it's available)
+    --
+    -- An expression returning packed value can either be a `DataConE` or a `AppE`.
+    -- DataConE returns a (start_write,end_write) tuple where AppE returns (end_read,end_write)
+    --
+    -- So we cannot always rely on the RHS to return a start_write cursor.
+    -- But since the types of all packed expressions are already annotated with locations,
+    -- we can take a shortcut here and directly bind `v` to the tagged location.
+    --
+    -- Other bindings are straightforward projections of the processed RHS.
+    --
+    | isPackedTy ty = do
+          rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs tenv rhs
+          fresh <- gensym "tup_packed"
+          let tenv' = M.union (M.fromList [(fresh, ProdTy [CursorTy, CursorTy]),
+                                           (v, CursorTy),
+                                           (toEndV v, CursorTy)])
+                              tenv
+              (PackedTy _ outLoc) = ty
+
+          LetE (fresh,[], ProdTy [CursorTy, CursorTy], rhs') <$> l <$>
+              LetE (v,[], CursorTy, (l$ VarE outLoc)) <$> l <$>
+                  LetE (toEndV v,[], CursorTy, l$ ProjE 1 (l $ VarE fresh)) <$>
+                  (case locs of
+                       []    -> go tenv' bod
+                       [loc] -> l <$> LetE (loc,[],CursorTy, l$ ProjE 0 (l $ VarE fresh)) <$>
+                                    go (M.insert loc CursorTy tenv') bod
+                       _     -> error "cursorizeLet: packedty")
+
+    | hasPacked ty = error "cursorizeLet: packed tuples"
+
+    | otherwise = do
+          rhs' <- cursorizeExp ddfs fundefs tenv rhs
+          case locs of
+              [] -> LetE (v,[],L3.stripTyLocs ty, rhs') <$>
+                        go (M.insert v ty tenv) bod
+
+              -- This was a scalar binding before, but now has been transformed to also
+              -- return an end_read cursor. So the type of the binding now becomes:
+              -- ProdTy [CursorTy, old_ty]
+              --
+              -- Also, the binding itself now changes to:
+              -- end_read -> ProjE 0 RHS'
+              -- v        -> ProjE 1 RHS'
+              --
+              -- `rightmost` is an example of a program that does this
+              [loc] -> do
+                  fresh <- gensym "tup_scalar"
+                  let ty' = ProdTy [CursorTy, L3.stripTyLocs ty]
+                      tenv' = M.union (M.fromList [(fresh, ProdTy [CursorTy, ty]),
+                                                 (v, ty),
+                                                 (loc, CursorTy)])
+                                      tenv
+
+                  LetE (fresh,[],ty',rhs') <$> l <$>
+                       LetE (loc,[],CursorTy,l$ ProjE 0 (l$ VarE fresh)) <$> l <$>
+                           LetE (v,[],L3.stripTyLocs ty,l$ ProjE 1 (l$ VarE fresh)) <$>
+                               go tenv' bod
+
+              _ -> error "cursorizeLet: packed tuples"
+
+    where go t x = if isPackedContext
+                 then fromDi <$> cursorizePackedExp ddfs fundefs t x
+                 else cursorizeExp ddfs fundefs t x
+          toEndV = varAppend "end_"
 
 
 -- | Take a cursor pointing to the start of the tag, and advance it by 1 byte
