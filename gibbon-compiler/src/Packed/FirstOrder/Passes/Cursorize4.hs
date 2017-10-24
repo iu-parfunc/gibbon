@@ -90,8 +90,9 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
               case icurs of
                   -- When a function takes in a single packed argument, it's passed directly
                   -- i.e not in a tuple. It's type is (f :: CursorTy -> SCALAR)
-                  [_] -> (funarg,) <$>
-                             cursorizeExp ddefs fundefs (M.singleton funarg CursorTy) funbod
+                  [cur] -> (funarg,) <$>
+                               l <$> LetE (lrmLoc cur,[],CursorTy,l$ VarE funarg) <$>
+                                   cursorizeExp ddefs fundefs (M.singleton funarg CursorTy) funbod
 
                   _ -> error "fd: Read packed tuples"
 
@@ -160,17 +161,35 @@ cursorizeExp ddfs fundefs tenv (L p ex) = L p <$>
 
             LetE (fresh,[], ProdTy [CursorTy, CursorTy], fromDi rhs') <$> l <$>
                 LetE (v,[], CursorTy, (l$ VarE outLoc)) <$> l <$>
-                    LetE (toEndV v,[], CursorTy, l$ ProjE 1 (l $ VarE fresh))
-                        <$> cursorizeExp ddfs fundefs tenv' bod
+                    LetE (toEndV v,[], CursorTy, l$ ProjE 1 (l $ VarE fresh)) <$>
+                        (case locs of
+                            [] -> cursorizeExp ddfs fundefs tenv' bod
+                            _  ->  l <$> LetE (head locs,[], CursorTy, l$ ProjE 0 (l $ VarE fresh)) <$>
+                                      cursorizeExp ddfs fundefs (M.insert (head locs) CursorTy tenv') bod)
 
       | hasPacked ty  -> error $ "cursorizeExp: TOOD hasPacked LetE"
-      | otherwise ->
-          if locs /= []
-          then error $ "cursorizeExp: LetE expected empty locs for scalar values. Got " ++ sdoc locs
-          else do
+      | otherwise -> do
             rhs' <- go rhs
-            LetE (v,[],L3.stripTyLocs ty,rhs') <$>
-              cursorizeExp ddfs fundefs (M.insert v ty tenv) bod
+            case locs of
+                [] -> LetE (v,[],L3.stripTyLocs ty,rhs') <$>
+                          cursorizeExp ddfs fundefs (M.insert v ty tenv) bod
+                -- rightmost
+                [loc] -> do
+                    fresh <- gensym "tup_scalar"
+                    let ty' = ProdTy [CursorTy, L3.stripTyLocs ty]
+                        tenv' = M.union (M.fromList [(fresh, ProdTy [CursorTy, ty]),
+                                                     (v, ty),
+                                                     (loc, CursorTy)])
+                                        tenv
+
+                    LetE (fresh,[],ty',rhs') <$> l <$>
+                        LetE (loc,[],CursorTy,l$ ProjE 0 (l$ VarE fresh)) <$> l <$>
+                            LetE (v,[],L3.stripTyLocs ty,l$ ProjE 1 (l$ VarE fresh)) <$>
+                                cursorizeExp ddfs fundefs tenv' bod
+
+                _ -> error "cursorizeExp: LetE todo"
+
+
 
     IfE a b c  -> IfE <$> go a <*> go b <*> go c
 
@@ -195,9 +214,10 @@ cursorizeExp ddfs fundefs tenv (L p ex) = L p <$>
         -- Since we're returning a scalar value, locs should be empty here...
         -- Also, we don't have to dilate this return value
         RetE locs v ->
-          if locs /= []
-          then error $ "cursorizeExp: RetE expected empty locs for scalar values. Got" ++ sdoc locs
-          else return $ VarE v
+          case locs of
+              []    -> return (VarE v)
+              [loc] -> return $ MkProdE [l$ VarE loc, l$ VarE v]
+              _ -> error $ "cursorizeExp: RetE todo "
 
         -- All locations are transformed into cursors here. All the location expressions
         -- are expressed in terms of corresponding cursor operations. See `cursorizeLocExp`
@@ -295,14 +315,27 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
 
       | hasPacked ty  -> error $ "cursorizePackedExp: TOOD hasPacked LetE"
 
-      | otherwise ->
-          if locs /= []
-          then error $ "cursorizeExp: LetE expected empty locs for scalar values. Got "
-                       ++ sdoc locs
-          else do
+      | otherwise -> do
             rhs' <- cursorizeExp ddfs fundefs tenv rhs
-            onDi (l <$> LetE (v,[],L3.stripTyLocs ty,rhs')) <$>
-              go (M.insert v ty tenv) bod
+            case locs of
+                [] -> onDi (l <$> LetE (v,[],L3.stripTyLocs ty,rhs')) <$>
+                          go (M.insert v ty tenv) bod
+
+                -- rightmost
+                [loc] -> do
+                    fresh <- gensym "tup_scalar"
+                    let ty' = ProdTy [CursorTy, L3.stripTyLocs ty]
+                        tenv' = M.union (M.fromList [(fresh, ProdTy [CursorTy, ty]),
+                                                     (v, ty),
+                                                     (loc, CursorTy)])
+                                        tenv
+
+                    onDi (l <$> LetE (fresh,[],ty',rhs') <$> l <$>
+                              LetE (loc,[],CursorTy,l$ ProjE 0 (l$ VarE fresh)) <$> l <$>
+                                  LetE (v,[],L3.stripTyLocs ty,l$ ProjE 1 (l$ VarE fresh))) <$>
+                                    go tenv' bod
+
+                _ -> error "cursorizeExp: LetE todo"
 
     -- Here we route the dest cursor to both braches.  We switch
     -- back to the other mode for the (non-packed) test condition.
@@ -373,7 +406,7 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
           case locs of
             []    -> return v'
             [loc] -> return $ mkDi (l$ VarE loc) [ projEnds v' ]
-            _ -> error $ "cursorizePackedExp: unexpected no of locations in RetE " ++ sdoc locs
+            _ -> error $ "cursorizePackedExp: RetE todo "
 
         LetRegionE r bod -> do
           let (v,buf) = regionToBnd r
