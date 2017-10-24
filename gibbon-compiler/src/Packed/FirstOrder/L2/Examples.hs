@@ -10,6 +10,7 @@ module Packed.FirstOrder.L2.Examples
     -- * Programs
   , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
+  , rightmostProg
   ) where
 
 import Data.Loc
@@ -341,6 +342,51 @@ leftmostMainExp = l$ Ext $ LetRegionE (VarR "r122") $
 
 leftmostProg :: Prog
 leftmostProg = Prog ddtree (M.fromList [("leftmost", leftmostFun)]) (Just (leftmostMainExp, IntTy))
+
+
+--------------------------------------------------------------------------------
+
+rightmostFun :: FunDef
+rightmostFun = FunDef "rightmost" rightmostTy "t242" rightmostBod
+  where
+    rightmostTy :: ArrowTy Ty2
+    rightmostTy = (ArrowTy
+                   [LRM "lin241" (VarR "r240") Input]
+                   (PackedTy "Tree" "lin241")
+                   (S.empty)
+                   (IntTy)
+                   [])
+
+rightmostBod :: L Exp2
+rightmostBod = l$ CaseE (l$ VarE "t242")
+               [("Leaf", [("n246","l247")],
+                 l$ VarE "n246"),
+                ("Node", [("x248","l249"), ("y250","l251")],
+                 l$ Ext $ LetRegionE (DynR "r252") $
+                 l$ Ext $ LetLocE "l253" (StartOfLE (DynR "r252")) $
+                 l$ LetE ("x254",[],PackedTy "Tree" "l253",
+                        l$ AppE "copyTree" ["l249", "l253"] (l$ VarE "x248")) $
+                 l$ LetE ("lm255",[],IntTy, l$ AppE "rightmost" ["l251"] (l$ VarE "y250")) $
+                 l$ VarE "lm255")]
+
+rightmostMainExp :: L Exp2
+rightmostMainExp = l$ Ext $ LetRegionE (VarR "r253") $
+                   l$ Ext $ LetLocE "l254" (StartOfLE (VarR "r253")) $
+                   l$ Ext $ LetLocE "l255" (AfterConstantLE 1 "l254") $
+                   l$ LetE ("x256",[],PackedTy "Tree" "l255",
+                            l$ DataConE "l255" "Leaf" [l$ LitE 1]) $
+                   l$ Ext $ LetLocE "l257" (AfterVariableLE "x256" "l255") $
+                   l$ LetE ("y258",[],PackedTy "Tree" "l257",
+                            l$ DataConE "l257" "Leaf" [l$ LitE 2]) $
+                   l$ LetE ("z259",[],PackedTy "Tree" "l254",
+                            l$ DataConE "l254" "Node" [l$ VarE "x256", l$ VarE "y258"]) $
+                   l$ LetE ("a260",[], IntTy,
+                            l$ AppE "rightmost" ["l254"] (l$ VarE "z259")) $
+                   l$ VarE "a260"
+
+rightmostProg :: Prog
+rightmostProg = Prog ddtree (M.fromList [("rightmost", rightmostFun), ("copyTree",copyTreeFun)])
+                (Just (rightmostMainExp, IntTy))
 
 
 --------------------------------------------------------------------------------
