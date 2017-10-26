@@ -73,20 +73,18 @@ inferEffects prg@Prog{ddefs,fundefs} = do
 
 inferFunDef :: DDefs Ty2 -> FunEnv -> FunDef -> ArrowTy Ty2
 inferFunDef ddfs fenv FunDef{funarg,funbod,funty} =
-  case outLoc of
-       Nothing -> funty {arrEffs = eff'}
-       Just loc ->
-         -- if the outLoc is same as inLoc, this is an identity fn.
-         -- we change the function signature accordingly
-         if (loc == inLoc)
-         then toIdFunty funty
-         else funty {arrEffs = eff'}
+    case (inLocs,outLoc) of
+      ([],_) -> funty
+      ((inLoc:_), Nothing)  -> funty { arrEffs = S.filter ((==) (Traverse inLoc)) eff }
+      ((inLoc:_), Just loc) -> if loc == inLoc
+                               then toIdFunty funty
+                               else funty { arrEffs = S.filter ((==) (Traverse inLoc)) eff }
+
   where
     env0  = M.singleton funarg (arrIn funty)
-    inLoc = head $ L.map (\(LRM l _ _) -> l) $
-            L.filter (\(LRM _ _ m) -> m == Input) (locVars funty)
     (eff,outLoc) = inferExp ddfs fenv env0 funbod
-    eff'         = S.filter ((==) (Traverse inLoc)) eff
+    inLocs = L.map (\(LRM l _ _) -> l) $
+             L.filter (\(LRM _ _ m) -> m == Input) (locVars funty)
 
     isInLRM :: LRM -> Bool
     isInLRM LRM{lrmMode} = lrmMode == Input

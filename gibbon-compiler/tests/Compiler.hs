@@ -112,6 +112,8 @@ case_leftmost = runner "leftmost.c" leftmostProg "1"
 case_rightmost :: Assertion
 case_rightmost = runner "rightmost.c" rightmostProg "2"
 
+case_buildleaf :: Assertion
+case_buildleaf = runner "buildleaf.c" buildLeafProg "(Leaf 42)"
 
 compilerTests :: TestTree
 compilerTests = $(testGroupGenerator)

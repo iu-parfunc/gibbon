@@ -10,7 +10,7 @@ module Packed.FirstOrder.L2.Examples
     -- * Programs
   , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
-  , rightmostProg
+  , rightmostProg, buildTreeProg
   ) where
 
 import Data.Loc
@@ -413,6 +413,45 @@ buildLeafMainExp = l$ Ext $ LetRegionE (VarR "r128") $
 
 buildLeafProg :: Prog
 buildLeafProg = Prog ddtree (M.fromList [("buildLeaf", buildLeafFun)]) (Just (buildLeafMainExp, PackedTy "Tree" "l129"))
+
+
+
+--------------------------------------------------------------------------------
+
+buildTreeFun :: FunDef
+buildTreeFun = FunDef "buildTree" buildTreeTy "i270" buildTreeBod
+  where
+    buildTreeTy :: ArrowTy Ty2
+    buildTreeTy = (ArrowTy
+                   [LRM "lout272" (VarR "r271") Output]
+                   (IntTy)
+                   (S.empty)
+                   (PackedTy "Tree" "lout272")
+                   [])
+
+    buildTreeBod :: L Exp2
+    buildTreeBod = l$ LetE ("b279",[], BoolTy, l$ PrimAppE EqIntP [l$ VarE "i270", l$ LitE 0]) $
+                   l$ IfE (l$ VarE "b279")
+                   (l$ DataConE "lout272" "Leaf" [l$ LitE 1])
+                   (l$ LetE ("i273",[], IntTy, l$ PrimAppE SubP [l$ VarE "i270", l$ LitE 1]) $
+                    l$ Ext $ LetLocE "l274" (AfterConstantLE 1 "lout272") $
+                    l$ LetE ("x275",[],PackedTy "Tree" "l274",
+                             l$ AppE "buildTree" ["l274"] (l$ VarE "i273")) $
+                    l$ Ext $ LetLocE "l276" (AfterVariableLE "x275" "l274") $
+                    l$ LetE ("y277",[],PackedTy "Tree" "l276",
+                             l$ AppE "buildTree" ["l276"] (l$ VarE "i273")) $
+                    l$ LetE ("a278",[],PackedTy "Tree" "lout272",
+                             l$ DataConE "lout272" "Node" [l$ VarE "x275", l$ VarE "y277"]) $
+                    l$ VarE "a278")
+
+
+buildTreeMainExp :: L Exp2
+buildTreeMainExp = l$ Ext $ LetRegionE (VarR "r279") $
+                   l$ Ext $ LetLocE "l280" (StartOfLE (VarR "r279")) $
+                   l$ AppE "buildTree" ["l280"] (l$ LitE 1)
+
+buildTreeProg :: Prog
+buildTreeProg = Prog ddtree (M.fromList [("buildTree", buildTreeFun)]) (Just (buildTreeMainExp, PackedTy "Tree" "l280"))
 
 --------------------------------------------------------------------------------
 
