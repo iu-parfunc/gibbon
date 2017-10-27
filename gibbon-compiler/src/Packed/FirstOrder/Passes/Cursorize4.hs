@@ -275,25 +275,28 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
       let
           -- Return (start,end) cursors
           -- The final return value lives at the position of the out cursors:
+          go2 :: Var -> [(L Exp2, Ty2)] -> SyM L3.Exp3
           go2 d [] = return $ MkProdE [l$ VarE sloc, l$ VarE d]
 
-          go2 _d ((rnd, ty):rst) | isPackedTy ty = do
-            d' <- gensym $ toVar "writepackedcur"
-            rnd' <- go tenv rnd
-            LetE (d',[], CursorTy, projEnds rnd') <$>
-              l <$> (go2 d' rst)
+          go2 d ((rnd, ty):rst) = do
+            d' <- gensym "writecur"
+            if isPackedTy ty
 
-          -- (_ty == IntTy) : Int fields are currently our only "scalar" fields
-          go2 d ((rnd,_ty):rst) = do
-            d' <- gensym $ toVar "writeintcur"
-            rnd' <- cursorizeExp ddfs fundefs tenv rnd
-            LetE (d',[], CursorTy, l$ Ext $ L3.WriteInt d rnd') <$>
-              l <$> (go2 d' rst)
+            then do
+             rnd' <- go tenv rnd
+             LetE (d',[], CursorTy, projEnds rnd') <$> l <$>
+               go2 d' rst
+
+            -- INT is the only scalar type right now
+            else do
+             rnd' <- cursorizeExp ddfs fundefs tenv rnd
+             LetE (d',[], CursorTy, l$ Ext $ L3.WriteInt d rnd') <$> l <$>
+               go2 d' rst
 
       writetag <- gensym "writetag"
       dl <$>
-        (LetE (writetag,[], CursorTy, l$ Ext $ L3.WriteTag dcon sloc)
-         <$> l <$> (go2 writetag (zip args (lookupDataCon ddfs dcon))))
+        LetE (writetag,[], CursorTy, l$ Ext $ L3.WriteTag dcon sloc) <$> l <$>
+          go2 writetag (zip args (lookupDataCon ddfs dcon))
 
     TimeIt e t b -> do
       Di e' <- go tenv e
@@ -321,8 +324,8 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
         LetRegionE r bod -> do
           let (v,buf) = regionToBnd r
           dl <$>
-            (LetE (v,[],CursorTy, l$ Ext buf) <$>
-              fromDi <$> go tenv bod)
+            LetE (v,[],CursorTy, l$ Ext buf) <$>
+              fromDi <$> go tenv bod
 
         _ -> trace ("TODO: cursorizeExp:\n" ++ sdoc ext) (return $ Di $ l$  VarE (toVar $ sdoc ext))
 
@@ -486,11 +489,12 @@ unpackDataCon ddfs fundefs tenv isPacked scrtCur (dcon,vlocs,rhs) =
 
               (if isFirst
                then
-               l <$>
-                 LetE (loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1)) <$> l <$>
-                   LetE (tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt loc)
+                 l <$>
+                   LetE (loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1)) <$> l <$>
+                     LetE (tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt loc)
                else
-               l <$> LetE (tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt cur)) <$> l <$>
+                 l <$> LetE (tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt cur)
+                ) <$> l <$>
 
                LetE (v, [], IntTy, l$ ProjE 0 (l$ VarE tmp)) <$> l <$>
                  LetE (toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp)) <$>
