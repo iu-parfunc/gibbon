@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveAnyClass #-}
 
 -- | Generic operations that are supported by the various intermediate
@@ -14,6 +16,7 @@ module Packed.FirstOrder.GenericOps
      , Expression(..), NoExt
      , Flattenable(..)
      , Simplifiable(..)
+     , Typeable(..)
     )
     where
 
@@ -83,6 +86,13 @@ type Binds e = (Var,[LocOf e],TyOf e, e)
 class Expression e => Simplifiable e where
   gInlineTrivExp :: DDefs (TyOf e) -> e -> e
 
+-- | This is NOT a replacement for any typechecker. This is supposed to be used just to
+-- recover the type of an expression in a type-environment
+-- Without this, we cannot have truly generic implementation of the Flattenable class,
+-- since we need to know the type of an expression before we discharge it with a LetE
+class Expression e => Typeable e where
+  gTypeExp :: DDefs (TyOf e) -> Env2 (TyOf e) -> e -> TyOf e
+
 -- | An uninhabidited type indicating that the base grammar is not extended with any
 -- additional constructs.
 data NoExt l d   deriving (Generic, NFData)
@@ -111,7 +121,10 @@ instance Flattenable (NoExt l d) where
   gFlattenExp _ _ impossible = return impossible
   gFlattenGatherBinds  _ _ impossible = return ([],impossible)
 
-
 -- | A dummy instance for "no-extension" extension point.
 instance Simplifiable (NoExt l d) where
   gInlineTrivExp _ impossible = impossible
+
+-- | A dummy instance for "no-extension" extension point.
+instance Typeable (NoExt l d) where
+  gTypeExp _ _ _ = error "<NoExt: It should be impossible to recover type of this>"

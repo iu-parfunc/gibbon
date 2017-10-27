@@ -16,5 +16,6 @@ with pkgs;
 haskell.lib.buildStackProject {
   inherit ghc;
   name = "basicGibbonEnv";
-  buildInputs = [ gcc which ];
+  buildInputs = [ gcc which
+                ];
 }

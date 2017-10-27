@@ -16,6 +16,7 @@ compiled/
 
 .racket_sandbox/*
 
+gibbon-compiler/examples/build_tmp/*
 
 ## From the github/gitignore repository
 ## https://github.com/github/gitignore/blob/master/TeX.gitignore

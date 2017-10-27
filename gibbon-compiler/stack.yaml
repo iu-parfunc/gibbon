@@ -11,19 +11,17 @@ packages:
   subdirs:
     - llvm-general
     - llvm-general-pure
+- location:
+    git: https://github.com/aisamanra/s-cargot
+    commit: eec500106f2c507ba3ffb4e9b025704103fb6dea
+  extra-dep: true
 - '.'
 
 extra-deps:
-- s-cargot-0.1.1.1
+- s-cargot-1.2.0.0
 - llvm-general-pure-3.9.0.0
 - llvm-general-3.9.0.0
 - GenericPretty-1.2.1
-
-# TODO(cskksc): Update this to >= 1.18.0
-- haskell-src-exts-1.17.1
-- haskell-src-meta-0.7.0.1
-- syb-0.6
-- tasty-th-0.1.4
 
 
 flags: {}

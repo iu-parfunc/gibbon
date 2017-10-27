@@ -24,13 +24,14 @@ import           Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, 
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import           Packed.FirstOrder.Common hiding (funBody)
-import qualified Packed.FirstOrder.L1.Syntax as L1
 import           Prelude hiding (init)
 import           System.Directory
 import           System.Environment
 import           Text.PrettyPrint.Mainland
+import           Text.PrettyPrint.Mainland.Class
 
 import           Packed.FirstOrder.L4.Syntax
+
 --------------------------------------------------------------------------------
 
 
@@ -387,6 +388,12 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                 [(VarTriv cur)] = rnds in pure
                             [ C.BlockDecl [cdecl| $ty:(codegenTy valTy) $id:valV = *( $ty:(codegenTy valTy) *)($id:cur); |]
                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:curV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
+
+                 SizeOf -> let [(sizeV,IntTy)] = bnds
+                               [(VarTriv startV), (VarTriv endV)] = rnds
+                           in pure
+                             [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizeV = $id:endV - $id:startV; |] ]
+
 
                  GetFirstWord ->
                   let [ptr] = rnds in

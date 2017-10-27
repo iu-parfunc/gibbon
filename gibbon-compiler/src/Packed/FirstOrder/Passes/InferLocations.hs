@@ -1,5 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-unused-matches #-}
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
+
 -- TEMP:
 -- {-# OPTIONS_GHC -Wno-all #-}
 
@@ -23,17 +26,17 @@ function's type transforms as follows:
 With this type, inferExp will immediately fail on the body of 'id x = x', requiring
 a copy-insertion tactic to repair the failure and proceed.
 
-To avoid this copying, we will have to have existential types in the
+To avoid this copying, we will require existential types in the
 future, and a stronger type-inference algorithm.
 
-This type-inference algorithm should be able to apply unification much
-as regular Hindley Milner inference does.  We always have a rigid
-destination type with which to unify the body of a function.  We
-likewise unify branches of a conditional to force them to use the same
-destination (and copy otherwise).
+The initial type-inference prototype should be able to apply
+unification much as regular Hindley Milner inference does.  We always
+have a rigid destination type with which to unify the body of a
+function.  We likewise unify branches of a conditional to force them
+to use the same destination (and copy otherwise).
 
-Wherever unification fails, we pop up and report that, continuing type
-checking only after repair.
+Wherever unification fails, we pop up and report that failure,
+continuing type checking only after repair.
 
 We still need a strategy for discharging LetLoc bindings (when &
 where), and for wrapping LetRegion forms whenever we would otherwise
@@ -49,7 +52,7 @@ As type checking proceeds, there are three ways things get stuck:
  * impossible constraint: inequality + equality
  * cyclic constraint: locations and values form a cycle
  * scope violation: location depends on something not in scope at 
-   its the point where the location must be defined.
+   the point where the location must be defined.
 
 
  Location variable generation
@@ -87,12 +90,14 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 -- import qualified Control.Monad.Trans.Writer.Strict as W
 import qualified Control.Monad.Trans.State.Strict as St
+import Control.Monad
 import Control.Monad.Trans.Except
 import Control.Monad.Trans (lift)
 -- import qualified Control.Monad.Trans.Either
 -- import qualified Control.Monad.Trans.Cont as CC
 
 
+import Packed.FirstOrder.GenericOps (gFreeVars)
 import Packed.FirstOrder.Common as C hiding (extendVEnv) -- (l, LRM(..)) 
 -- import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common (Var, Env2, DDefs, LocVar, runSyM, SyM, gensym, toVar)
@@ -160,14 +165,13 @@ data FullEnv = FullEnv
 --- -> RegionSet -> LocationTypeState
 
 extendVEnv :: Var -> Ty2 -> FullEnv -> FullEnv
-extendVEnv = undefined
-
+extendVEnv v ty fe@FullEnv{valEnv} = fe { valEnv = M.insert v ty valEnv }
 
 lookupVarLoc :: Var -> FullEnv -> LocVar
 lookupVarLoc = undefined
              
 lookupVEnv :: Var -> FullEnv -> Ty2
-lookupVEnv = undefined
+lookupVEnv v FullEnv{valEnv} = valEnv # v
 
 lookupFEnv :: Var -> FullEnv -> (Ty2,Ty2)
 lookupFEnv = undefined
@@ -272,6 +276,15 @@ withRepairTactic tactic p0@(L1.Prog defs funs main) = do
                           , valEnv   = fmap lame vEnv
                           , funEnv   = fenv'
                           , dag      = mempty }
+
+        doFunDef L1.FunDef{funName,funArg=(argV,argT),funRetTy,funBody} = do
+          funty <- convertFunTy (argT,funRetTy)
+          (funbod,_) <- inferExpWith tactic fullenv funBody
+          return $ L2.FunDef { funname = funName
+                             , funarg = argV
+                             , funty, funbod
+                             }
+
     -- Each top-level fundef body, and the main expression, are
     -- completely independent type-checking-and-error-recovery problems:
     let infer = inferExpWith tactic fullenv
@@ -397,7 +410,7 @@ inferExp env lex0@(L sl1 ex0) k =
 
 
     -- Lets are where we allocate fresh locations:
-    L1.LetE (vr,locs,_rhsTy,L sl2 rhs) bod | [] <- locs ->
+    L1.LetE (vr,locs,_,L sl2 rhs) bod | [] <- locs ->
       case rhs of
         L1.AppE f [] arg -> L1.assertTriv arg $ do 
             (newLocs,formalTy,resTy) <- instantiateFun f env
@@ -413,6 +426,9 @@ inferExp env lex0@(L sl1 ex0) k =
 
         L1.LetE{} -> _
 
+        -- Literals have no location, as they are scalars/value types.
+--        L1.LitE n -> _finLit
+                     
         PrimAppE p ls -> _prim
         DataConE loc k ls  -> _datacon
         LitSymE x     -> _linsym
@@ -424,11 +440,17 @@ inferExp env lex0@(L sl1 ex0) k =
         FoldE (v1,t1,r1) (v2,t2,r2) bod -> err "finish FoldE"
 
         _oth -> 
-         inferExp env (L sl2 rhs) $ \ (_,_) ->
-          -- Construct a value-dependence to all the free vars in the RHS:
-          do tellConstraint (L sl2 rhs) VV{}
-             inferExp _env' bod $ \ (_,_) ->
-              _
+         inferExp env (L sl2 rhs) $ \ (rhs',rhsTy) ->
+          -- Construct a value-value dependence to all the free vars in the RHS:
+          do forM_ (gFreeVars rhs) $ \fv ->
+               tellConstraint (L sl2 rhs) (VV vr fv)
+             let env' = extendVEnv vr rhsTy env
+                 locs' = case rhsTy of
+                           IntTy -> []
+                           _ -> error $ "FINISHME: Gather locs from: "++show rhsTy
+             inferExp env' bod $ \ (bod',bodTy) ->
+               return (l$ L2.LetE (vr, locs', rhsTy, rhs') bod', bodTy)
+--               error $ "Finishme: handle RHS: "++show rhs
 
      | otherwise -> err "Invariant violated.  LetE had nonempty bound locations."
 

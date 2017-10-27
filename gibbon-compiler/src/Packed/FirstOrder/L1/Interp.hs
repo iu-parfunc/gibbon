@@ -37,9 +37,12 @@ import qualified Data.Foldable as F
 import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.GenericOps(Interp, interpNoLogs, interpWithStdout)
 import           Packed.FirstOrder.L1.Syntax as L1
-import qualified Packed.FirstOrder.L2.Syntax as L2
-import Packed.FirstOrder.L2.Syntax ( pattern WriteInt, pattern ReadInt, pattern NewBuffer
-                                   , pattern ScopedBuffer, pattern AddCursor)
+
+-- We got rid of these pattern variables from L2, and they are now defined as L3 extensions instead
+-- TODO: L3.Interp
+
+-- import Packed.FirstOrder.L2.Syntax ( pattern WriteInt, pattern ReadInt, pattern NewBuffer
+--                                    , pattern ScopedBuffer, pattern AddCursor)
 
 -- TODO:
 -- It's a SUPERSET, but use the Value type from TargetInterp anyway:
@@ -198,7 +201,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
        return (res, toLazyByteString logs)
 
  where
-  applyPrim :: Prim -> [Value] -> Value
+  applyPrim :: Prim Ty1 -> [Value] -> Value
   applyPrim p ls =
    case (p,ls) of
      (MkTrue,[])             -> VBool True
@@ -206,6 +209,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
      (AddP,[VInt x, VInt y]) -> VInt (x+y)
      (SubP,[VInt x, VInt y]) -> VInt (x-y)
      (MulP,[VInt x, VInt y]) -> VInt (x*y)
+     (SymAppend,[VInt x, VInt y]) -> VInt (x * (strToInt $ show y))
      (EqSymP,[VInt x, VInt y]) -> VBool (x==y)
      (EqIntP,[VInt x, VInt y]) -> VBool (x==y)
      ((DictInsertP _ty),[VDict mp, key, val]) -> VDict (M.insert key val mp)
@@ -231,7 +235,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                       -- ^ Or... we could give this a void/empty-tuple value.
 
             LitE c         -> return $ VInt c
-            LitSymE s      -> return $ VInt $ fromIntegral $ product $ L.map ord $ fromVar s
+            LitSymE s      -> return $ VInt (strToInt $ fromVar s)
             -- In L2.5 witnesses are really justs casts:
             -- FIXME: We need some way to mediate between symbolic
             -- values and Cursors... or this won't work.
@@ -243,6 +247,7 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
             ProjE ix ex -> do VProd ls <- go env ex
                               return $ ls !! ix
 
+            {-
             AddCursor vr bytesadd -> do
                 Store store <- get
                 -- Note: the added offset is always in BYTES:
@@ -294,8 +299,11 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                 oth :< _      ->
                  internalError $"L1.Interp: ReadInt expected Int in buffer, found: "++show oth
 
+            L2.NamedVal _ _ bd -> go env bd
+
             p | L2.isExtendedPattern p ->
                internalError$ "L1.Interp: Unhandled extended L2 pattern: "++ndoc p
+            -}
 
             AppE f _ b ->  do rand <- go env b
                               case M.lookup f fundefs of
@@ -329,7 +337,6 @@ interpProg rc Prog {ddefs,fundefs, mainExp=Just e} =
                      _ -> error$ "L1.Interp: type error, expected data constructor, got: "++ndoc v++
                                  "\nWhen evaluating scrutinee of case expression: "++ndoc x1
 
-            L2.NamedVal _ _ bd -> go env bd
 
             (LetE (v,_,_ty,rhs) bod) -> do
               rhs' <- go env rhs
@@ -389,11 +396,13 @@ clk = Monotonic
 -- Misc Helpers
 --------------------------------------------------------------------------------
 
-lookup3 :: (Eq k, Show k, Show a, Show b) =>
-           k -> [(k,a,b)] -> (k,a,b)
+strToInt :: String -> Int
+strToInt = product . L.map ord
+
+lookup3 :: (Eq k, Show k, Show a, Show b) => k -> [(k,a,b)] -> (k,a,b)
 lookup3 k ls = go ls
   where
-   go [] = error$ "lookup3: key "++show k++" not found in list:\n  "++take 80 (show ls)
+   go [] = error$ "lookup3: key "++show k++" not found in list:\n  "++L.take 80 (show ls)
    go ((k1,a1,b1):r)
       | k1 == k   = (k1,a1,b1)
       | otherwise = go r

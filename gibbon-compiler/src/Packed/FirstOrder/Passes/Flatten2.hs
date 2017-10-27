@@ -1,19 +1,33 @@
 {-# LANGUAGE FlexibleInstances #-}
 
 -- | Flatten ported to L2.
-module Packed.FirstOrder.Passes.Flatten2 (flatten2) where
+
+module Packed.FirstOrder.Passes.Flatten2 where
 
 -- import Control.Monad.State
-import Packed.FirstOrder.Common
-import Packed.FirstOrder.L1.Syntax () -- Instances
-import Packed.FirstOrder.L2.Syntax as L2
 import Text.PrettyPrint.GenericPretty (Out)
-import Packed.FirstOrder.GenericOps (Flattenable, gFlattenExp,gFlattenGatherBinds)
-import Packed.FirstOrder.Passes.Flatten (TEnv)
 -- import qualified Data.Map as M
-
 import Prelude hiding (exp)
 
+import Packed.FirstOrder.Common
+import Packed.FirstOrder.GenericOps
+import Packed.FirstOrder.L1.Syntax () -- Instances
+import Packed.FirstOrder.L2.Syntax as L2
+import Packed.FirstOrder.GenericOps (Flattenable, gFlattenExp,gFlattenGatherBinds)
+-- import Packed.FirstOrder.Passes.Flatten (TEnv)
+
+
+-- ddfs
+-- Expected type: DDefs (TyOf (e l (UrTy l)))
+-- Actual type: DDefs (TyOf (PreExp e l (UrTy l)))
+
+instance (Show l, Out l, Expression (e l (UrTy l))) => Flattenable (PreExp e l (UrTy l)) where
+  gFlattenExp ddfs env2 exp =
+    case exp of
+      LitE _  -> return exp
+      Ext ext -> Ext <$> gFlattenExp ddfs env2 ext
+
+{-
 -- | Just like Flatten.hs, but on L2.
 flatten2 :: L2.Prog -> SyM L2.Prog
 flatten2 prg@(L2.Prog ddefs _ _) = L2.mapMExprs fn prg
@@ -44,3 +58,5 @@ instance (Show l, Show d, Out l, Out d) =>
    _exp _ _ = error $ "FINISHME: Flatten2 gFlattenExp"
 
  gFlattenGatherBinds = error $ "FINISHME: Flatten2 gFlattenGatherBinds"
+
+-}

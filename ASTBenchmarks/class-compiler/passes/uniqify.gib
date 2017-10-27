@@ -8,7 +8,7 @@
 (define (uniqify-exp [e : ExpR] [env : (SymDict Sym)] [nxt : Int]) : (Vector ExpR Int)
   (case e
     [(LitER n) (vector (LitER n) nxt)]
-    [(VarER v) (vector (VarER (lookup env v)) nxt)]
+    [(VarER v) (vector (VarER (ann (lookup env v) Sym)) nxt)]
     [(LetER bnd bod)
      (let ([v : Sym (vector-ref bnd 0)])
        (let ([rhs : ExpR (vector-ref bnd 1)])
@@ -17,7 +17,7 @@
              (let ([nxt^ : Int (vector-ref rhs^-nxt^ 1)])
                (let ([v^ : Sym (sym-append v nxt^)])
                  (let ([nxt^^ : Int (+ 1 nxt^)])
-                   (let ([env^ : (SymDict Sym) (insert env v v^)])
+                   (let ([env^ : (SymDict Sym) (insert env v (ann v^ Sym))])
                      (let ([bod^-nxt^^^ : (Vector ExpR Int) (uniqify-exp bod env^ nxt^^)])
                        (let ([bod^ : ExpR (vector-ref bod^-nxt^^^ 0)])
                          (let ([nxt^^^ : Int (vector-ref bod^-nxt^^^ 1)])
@@ -36,6 +36,6 @@
 
 (define (uniqify [prg : R0]) : R0
   (case prg
-    [(ProgramR e) (let ([exp-nxt : (Vector ExpR Int) (uniqify-exp e (empty-dict) 1)])
+    [(ProgramR e) (let ([exp-nxt : (Vector ExpR Int) (uniqify-exp e (ann (empty-dict) (SymDict Sym)) 1)])
                     (let ([exp : ExpR (vector-ref exp-nxt 0)])
                       (ProgramR exp)))]))

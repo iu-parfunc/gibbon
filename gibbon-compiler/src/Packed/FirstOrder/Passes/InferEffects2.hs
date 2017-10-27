@@ -26,9 +26,6 @@ import Packed.FirstOrder.Common hiding (FunDef)
 import Packed.FirstOrder.L1.Syntax hiding (Prog, FunDef, ddefs, fundefs, mainExp)
 
 import Text.PrettyPrint.GenericPretty
-import Debug.Trace
-import Packed.FirstOrder.L2.Examples
-import Packed.FirstOrder.L2.Typecheck
 
 --------------------------------------------------------------------------------
 
@@ -42,6 +39,7 @@ locsEffect :: [LocVar] -> Set Effect
 locsEffect = S.fromList . L.map Traverse
 
 type LocEnv = M.Map Var LocVar
+type TyEnv  = M.Map Var Ty2
 
 -- | We initially populate all functions with MAXIMUM effect signatures.
 --   Subsequently, these monotonically SHRINK until a fixpoint.
@@ -75,20 +73,18 @@ inferEffects prg@Prog{ddefs,fundefs} = do
 
 inferFunDef :: DDefs Ty2 -> FunEnv -> FunDef -> ArrowTy Ty2
 inferFunDef ddfs fenv FunDef{funarg,funbod,funty} =
-  case outLoc of
-       Nothing -> funty {arrEffs = eff'}
-       Just loc ->
-         -- if the outLoc is same as inLoc, this is an identity fn.
-         -- we change the function signature accordingly
-         if (loc == inLoc)
-         then toIdFunty funty
-         else funty {arrEffs = eff'}
+    case (inLocs,outLoc) of
+      ([],_) -> funty
+      ((inLoc:_), Nothing)  -> funty { arrEffs = S.filter ((==) (Traverse inLoc)) eff }
+      ((inLoc:_), Just loc) -> if loc == inLoc
+                               then toIdFunty funty
+                               else funty { arrEffs = S.filter ((==) (Traverse inLoc)) eff }
+
   where
-    env0  = M.singleton funarg inLoc
-    inLoc = head $ L.map (\(LRM l _ _) -> l) $
-            L.filter (\(LRM _ _ m) -> m == Input) (locVars funty)
+    env0  = M.singleton funarg (arrIn funty)
     (eff,outLoc) = inferExp ddfs fenv env0 funbod
-    eff'         = S.filter ((==) (Traverse inLoc)) eff
+    inLocs = L.map (\(LRM l _ _) -> l) $
+             L.filter (\(LRM _ _ m) -> m == Input) (locVars funty)
 
     isInLRM :: LRM -> Bool
     isInLRM LRM{lrmMode} = lrmMode == Input
@@ -100,13 +96,13 @@ inferFunDef ddfs fenv FunDef{funarg,funbod,funty} =
                                              }
 
 
-inferExp :: DDefs Ty2 -> FunEnv -> LocEnv -> L Exp2 -> (Set Effect, Maybe LocVar)
+inferExp :: DDefs Ty2 -> FunEnv -> TyEnv -> L Exp2 -> (Set Effect, Maybe LocVar)
 inferExp ddfs fenv env (L _p exp) =
   case exp of
     -- QUESTION: does a variable reference count as traversing to the end?
     -- If so, the identity function has the traverse effect.
     -- I'd prefer that the identity function get type (Tree_p -{}-> Tree_p).
-    VarE v -> (S.empty, M.lookup v env)
+    VarE v -> (S.empty, packedLoc (env ! v))
 
     LitE _    -> (S.empty, Nothing)
     LitSymE _ -> (S.empty, Nothing)
@@ -124,10 +120,10 @@ inferExp ddfs fenv env (L _p exp) =
     PrimAppE _ rands -> assertTrivs rands (S.empty, Nothing)
 
     -- TODO: what would _locs have here ?
-    LetE (_v,_locs,_ty,rhs) bod ->
+    LetE (v,_locs,ty,rhs) bod ->
       let (effRhs,_rhsLoc) = inferExp ddfs fenv env rhs
           -- TODO: extend env with rhsLoc ? or _locs ?
-          (effBod,bLoc) = inferExp ddfs fenv env bod
+          (effBod,bLoc) = inferExp ddfs fenv (M.insert v ty env) bod
       in (S.union effRhs effBod, bLoc)
 
     -- TODO: do we need to join locC and locA
@@ -155,6 +151,10 @@ inferExp ddfs fenv env (L _p exp) =
       let (eff,loc1) = inferExp ddfs fenv env e
           (bools,effsLocs) = unzip $ L.map caserhs mp
           (effs,_) = unzip effsLocs
+
+          -- Should we check that we actually _have_ all cases ? Or are incomplete case
+          -- matches enough for traversal ?
+
           -- Critical policy point!  We only get to the end if ALL
           -- branches get to the end.
           end = if all id bools
@@ -180,6 +180,12 @@ inferExp ddfs fenv env (L _p exp) =
     oth -> error $ "FINISHME: inferExp " ++ sdoc oth
 
   where
+
+    packedLoc :: Ty2 -> Maybe LocVar
+    packedLoc ty = case ty of
+                     PackedTy _ l -> Just l
+                     _ -> Nothing
+
     caserhs :: (DataCon, [(Var,LocVar)], L Exp2) -> (Bool, (Set Effect, Maybe LocVar))
     -- We've gotten "to the end" of a nullary constructor just by matching it:
     caserhs (_dcon,[],e) = ( True , inferExp ddfs fenv env e )

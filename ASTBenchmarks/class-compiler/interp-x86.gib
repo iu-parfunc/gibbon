@@ -9,52 +9,52 @@
       [CC (SymDict Int) (SymDict Int)])
 
 (define (defaultCC) : CCT
-  (CC (empty-dict) (empty-dict)))
+  (CC (ann (empty-dict) (SymDict Int)) (ann (empty-dict) (SymDict Int))))
 
 (define (interp-x86 [prg : X86]) : Int
   (case prg
     [(ProgramX86 vars stk-size instrs)
-     (let ([cc : CC (mapm-go-cc (defaultCC) instrs)])
+     (let ([cc : CCT (mapm-go-cc (defaultCC) instrs)])
        (case cc
          [(CC regs stack)
-          (lookup regs 'RAX)]))]))
+          (ann (lookup regs 'RAX) Int)]))]))
 
 (define (mapm-go-cc [cc : CCT] [instrs : Instrs]) : CCT
   (case instrs
     [(NullInstrs) cc]
-    [(ConsInstr i rst) (let ([cc^ : CC (go cc i)])
+    [(ConsInstr i rst) (let ([cc^ : CCT (go-ix86 cc i)])
                          (mapm-go-cc cc^ rst))]))
 
-(define (go [cc : CCT] [instr : Instr]) : CCT
+(define (go-ix86 [cc : CCT] [instr : Instr]) : CCT
   (case instr
     [(ADDQ src dst) (let ([vsrc : Int (readCC cc src)])
                       (let ([vdst : Int (readCC cc dst)])
                         (let ([sum : Int (+ vsrc vdst)])
-                          (let ([cc^ : CC (putCC cc sum dst)])
+                          (let ([cc^ : CCT (putCC cc sum dst)])
                             cc^))))]
     [(MOVQ src dst) (let ([vsrc : Int (readCC cc src)])
-                      (let ([cc^ : CC (putCC cc vsrc dst)])
+                      (let ([cc^ : CCT (putCC cc vsrc dst)])
                         cc^))]
     [(NEGQ e) (let ([v : Int (readCC cc e)])
                 (let ([v^ : Int (- 0 v)])
-                  (let ([cc^ : CC (putCC cc v^ e)])
+                  (let ([cc^ : CCT (putCC cc v^ e)])
                     cc^)))]))
 
 (define (putCC [cc : CCT] [i : Int] [e : ExpX86]) : CCT
   (case e
     [(RegE r) (case cc
-                [(CC regs stack) (let ([regs^ : (SymDict Int) (insert regs r i)])
+                [(CC regs stack) (let ([regs^ : (SymDict Int) (insert regs r (ann i Int))])
                                    (CC regs^ stack))])]
     [(DerefE r o) (case cc
-                    [(CC regs stack) (let ([stack^ : (SymDict Int) (insert stack (sym-append r o) i)])
+                    [(CC regs stack) (let ([stack^ : (SymDict Int) (insert stack (sym-append r o) (ann i Int))])
                                        (CC regs stack^))])]))
 
 (define (readCC [cc : CCT] [e : ExpX86]) : Int
   (case e
-    [(VarEX86 v) (error "readCC: unexpected VarEX86")]
+    ;; [(VarEX86 v) (error "readCC: unexpected VarEX86")]
     [(LitEX86 n) n]
     [(RegE r) (case cc
-                [(CC regs stack) (lookup regs r)])]
+                [(CC regs stack) (ann (lookup regs r) Int)])]
     [(DerefE r o) (case cc
                     ;; check if r is RBP here
-                    [(CC regs stack) (lookup stack (sym-append r o))])]))
+                    [(CC regs stack) (ann (lookup stack (sym-append r o)) Int)])]))

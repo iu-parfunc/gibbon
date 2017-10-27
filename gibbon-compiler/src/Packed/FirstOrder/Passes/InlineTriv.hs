@@ -10,7 +10,6 @@ import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.GenericOps (isTrivial)
 import           Packed.FirstOrder.GenericOps (NoExt)
 import           Packed.FirstOrder.L1.Syntax as L1 hiding (mkProj)
-import qualified Packed.FirstOrder.L2.Syntax as L2
 
 -- import Packed.FirstOrder.Passes.Flatten (typeExp, TEnv)
 
@@ -36,15 +35,15 @@ inlineTrivExp _ddefs = go []
   go :: Env l -> MyExp l -> MyExp l
   go env e  = exp env e
 
-  -- | Hree we go to some lengths to maintain the syntactic invariants
+  -- | Here we go to some lengths to maintain the syntactic invariants
   -- for the extended L2 forms. The idea is that we can only reference
   -- variables within these forms, but we still must apply the
   -- environment because the old bindings have been removed.
   --
   -- An alternative would be to let the extended forms disappear at
   -- this point, and handle them at the level of "AppE" in Lower.hs.
-  withVar :: Env l -> Var -> (Var -> MyExp l) -> MyExp l
-  withVar env v fn =
+  _withVar :: Env l -> Var -> (Var -> MyExp l) -> MyExp l
+  _withVar env v fn =
     case lookup v env of
       Nothing        -> fn v
       Just (_, (L _ (VarE v2))) -> fn v2
@@ -93,7 +92,8 @@ inlineTrivExp _ddefs = go []
       FoldE (v1,t1,e1) (v2,t2,e2) e3 ->
        FoldE (v1,t1,go env e1) (v2,t2,go env e2) (go env e3)
 
--- FIXME: Remove:
+      {-
+      -- FIXME: Remove:
       L2.NewBuffer -> L2.NewBuffer
       L2.ReadInt v     -> unLoc $ withVar env v $ \v2 -> L NoLoc $ L2.ReadInt v2
       L2.WriteInt v e  -> unLoc $ withVar env v $ \v2 -> L NoLoc $
@@ -103,7 +103,7 @@ inlineTrivExp _ddefs = go []
       p | L2.isExtendedPattern p ->
           internalError $ "InlineTriv: failed to handle extended L2 form: "
           ++ndoc p++", env: "++ndoc env
-
+      -}
 
 -- Helpers which do opportunistic reduction:
 

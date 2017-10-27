@@ -44,6 +44,17 @@ case_copyTree =  assertInferEffects copyTreeProg "copyTree" (S.singleton $ Trave
 case_call_copy_on_id1 :: Assertion
 case_call_copy_on_id1 = assertInferEffects copyOnId1Prog "id1WithCopy" (S.singleton $ Traverse "lin19")
 
+case_id2 :: Assertion
+case_id2 = assertInferEffects id2Prog "id2" S.empty
+
+case_id3 :: Assertion
+case_id3 = assertInferEffects id3Prog "id3" S.empty
+
+case_int_add :: Assertion
+case_int_add = assertInferEffects intAddProg "intAdd" S.empty
+
+case_packed_tuple :: Assertion
+case_packed_tuple = assertInferEffects testProdProg "testprod" (S.singleton $ Traverse "lin131")
 
 inferEffects2Tests :: TestTree
 inferEffects2Tests = $(testGroupGenerator)

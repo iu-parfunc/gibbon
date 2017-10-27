@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE KindSignatures    #-}
@@ -17,7 +18,7 @@
 
 module Packed.FirstOrder.L1.Syntax
     (
-     -- * Core types
+      -- * Core types
       Prog(..), DDef(..), FunDefs, FunDef(..),
       Exp1, PreExp(..)
     , progToEnv
@@ -27,17 +28,17 @@ module Packed.FirstOrder.L1.Syntax
 
       -- * Types and helpers
     , Ty1, UrTy(..), pattern Packed, pattern SymTy
-    , voidTy, hasPacked, sizeOf
+    , voidTy, hasPacked, sizeOf, isPackedTy, primRetTy
 
-    -- * Expression and Prog helpers
+      -- * Expression and Prog helpers
     , subst, substE, getFunTy
     , mapExprs
     , mapExt
-   , mapLocs
+    , mapLocs
 
       -- * Trivial expressions
     , assertTriv, assertTrivs, hasTimeIt
-    , projNonFirst, mkProj, mkProd, mkProdTy, mkLets
+    , projNonFirst, mkProj, mkProd, mkProdTy, mkLets, flatLets
 
       -- * Examples
     , add1Prog
@@ -115,7 +116,7 @@ data PreExp (ext :: * -> * -> *) loc dec =
      -- ^ Apply a top-level / first-order function.  Instantiate
      -- its type schema by providing location-variable arguments,
      -- if applicable.
-   | PrimAppE Prim [EXP]
+   | PrimAppE (Prim dec) [EXP]
      -- ^ Primitive applications don't manipulate locations.
    | LetE (Var,[loc],dec, EXP) -- binding
           EXP                  -- body
@@ -230,17 +231,81 @@ instance FreeVars (e l d) => FreeVars (PreExp e l d) where
 
       Ext q -> gFreeVars q
 
+-- Recover type of an expression given a type-expression
+instance (Show l, Out l, Expression (e l (UrTy l)),
+          TyOf (e l (UrTy l)) ~ TyOf (PreExp e l (UrTy l)),
+          Typeable (e l (UrTy l)))
+         =>
+         Typeable (PreExp e l (UrTy l)) where
+  gTypeExp ddfs env2 ex =
+    case ex of
+      VarE v       -> M.findWithDefault
+                      (error $ "Cannot find type of variable " ++ show v)
+                      v (vEnv env2)
+      LitE _       -> IntTy
+      LitSymE _    -> SymTy
+      AppE v _ _   -> snd $ fEnv env2 # v
+      PrimAppE p _ ->
+        case p of
+          AddP    -> IntTy
+          SubP    -> IntTy
+          MulP    -> IntTy
+          EqIntP  -> BoolTy
+          EqSymP  -> BoolTy
+          MkTrue  -> BoolTy
+          MkFalse -> BoolTy
+          SymAppend      -> SymTy
+          DictInsertP ty -> SymDictTy (noLocsHere ty)
+          DictLookupP ty -> noLocsHere ty
+          DictEmptyP  ty -> SymDictTy (noLocsHere ty)
+          DictHasKeyP ty -> SymDictTy (noLocsHere ty)
+          SizeParam      -> IntTy
+          ReadPackedFile _ _ ty -> (noLocsHere ty)
+          _ -> error $ "case " ++ (show p) ++ " not handled in typeExp yet"
+
+      LetE (v,_,t,_) e -> gTypeExp ddfs (extendVEnv v t env2) e
+      IfE _ e _        -> gTypeExp ddfs env2 e
+      MkProdE es       -> ProdTy $ L.map (gTypeExp ddfs env2) es
+      DataConE loc c _ -> PackedTy (getTyOfDataCon ddfs c) loc
+      TimeIt e _ _     -> gTypeExp ddfs env2 e
+      MapE _ e         -> gTypeExp ddfs env2 e
+      FoldE _ _ e      -> gTypeExp ddfs env2 e
+      Ext ext          -> gTypeExp ddfs env2 ext
+
+      ProjE i e ->
+        case gTypeExp ddfs env2 e of
+          (ProdTy tys) -> tys !! i
+          oth -> error$ "typeExp: Cannot project fields from this type: "++show oth
+                        ++"\nExpression:\n  "++ sdoc ex
+                        ++"\nEnvironment:\n  "++sdoc (vEnv env2)
+
+      CaseE _ mp ->
+        let (c,args,e) = head mp
+            args' = L.map fst args
+        in gTypeExp ddfs (extendsVEnv (M.fromList (zip args' (lookupDataCon ddfs c))) env2) e
+
+    where
+      -- This crops up in the types for primitive operations.  Can we remove the need for this?
+      noLocsHere :: Show a => UrTy a -> UrTy b
+      noLocsHere t = fmap (\_ -> error $ "This type should not contain a location: "++show t) t
+
+
+
+instance Typeable (PreExp e l (UrTy l)) => Typeable (L (PreExp e l (UrTy l))) where
+  gTypeExp ddfs env2 (L _ ex) = gTypeExp ddfs env2 ex
 
 -- | Some of these primitives are (temporarily) tagged directly with
 -- their return types.
-data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
+data Prim ty
+          = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | EqSymP             -- ^ Equality on Sym
           | EqIntP             -- ^ Equality on Int
-          | DictInsertP Ty1    -- ^ takes dict, k,v; annotated with element type
-          | DictLookupP Ty1    -- ^ takes dict,k errors if absent; annotated with element type
-          | DictEmptyP  Ty1    -- ^ annotated with element type to avoid ambiguity
-          | DictHasKeyP Ty1    -- ^ takes dict,k; returns a Bool, annotated with element type
-          | ErrorP String Ty1
+          | SymAppend          -- ^ A quick hack till we have deterministic gensym
+          | DictInsertP ty     -- ^ takes dict, k,v; annotated with element type
+          | DictLookupP ty     -- ^ takes dict,k errors if absent; annotated with element type
+          | DictEmptyP  ty     -- ^ annotated with element type to avoid ambiguity
+          | DictHasKeyP ty     -- ^ takes dict,k; returns a Bool, annotated with element type
+          | ErrorP String ty
               -- ^ crash and issue a static error message.
               --   To avoid needing inference, this is labeled with a return type.
 
@@ -252,14 +317,14 @@ data Prim = AddP | SubP | MulP -- ^ May need more numeric primitives...
           | MkFalse -- ^ Zero argument constructor.
 
           | MkNullCursor -- ^ Zero argument constructor.
-          | ReadPackedFile (Maybe FilePath) TyCon Ty1
+          | ReadPackedFile (Maybe FilePath) TyCon ty
             -- ^ Read (mmap) a binary file containing packed data.  This must be annotated with the
             -- type of the file being read.  The `Ty` tracks the type as the program evolvels
             -- (first PackedTy then CursorTy).  The TyCon tracks the original type name.
 
-  deriving (Read,Show,Eq,Ord, Generic, NFData)
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Functor)
 
-instance Out Prim
+instance Out d => Out (Prim d)
 instance Out a => Out (UrTy a)
 -- Do this manually to get prettier formatting:
 
@@ -298,12 +363,13 @@ data UrTy a =
         ---------- These are not used initially ----------------
         -- (They could be added by a later IR instead:)
 
-        | PtrTy LRM (UrTy a) -- ^ A machine pointer to a complete value in memory.
-                             -- This is decorated with the region it points into, which
-                             -- may affect the memory layout.
-        | CursorTy LRM -- ^ A cursor for reading or writing, which may point
-                       -- to an unkwown type or to a fraction of a complete value.
-                       -- It is a machine pointer that can point to any byte.
+        | PtrTy -- ^ A machine pointer to a complete value in memory.
+                -- This is decorated with the region it points into, which
+                -- may affect the memory layout.
+
+        | CursorTy -- ^ A cursor for reading or writing, which may point
+                   -- to an unkwown type or to a fraction of a complete value.
+                   -- It is a machine pointer that can point to any byte.
 
   deriving (Show, Read, Ord, Eq, Generic, NFData, Functor)
 
@@ -346,8 +412,8 @@ hasPacked t =
     IntTy          -> False
     SymDictTy ty   -> hasPacked ty
     ListTy _       -> error "FINISHLISTS"
-    PtrTy _lrm _ty -> error$ "hasPacked: should not be using this when PtrTy is introduced: "++show t
-    CursorTy _lrm  -> error$ "hasPacked: should not be using this when CursorTy is introduced: "++show t
+    PtrTy          -> error$ "hasPacked: should not be using this when PtrTy is introduced: "++show t
+    CursorTy       -> error$ "hasPacked: should not be using this when CursorTy is introduced: "++show t
 
 -- | Provide a size in bytes, if it is statically known.
 sizeOf :: UrTy a -> Maybe Int
@@ -379,7 +445,8 @@ getFunTy fn Prog{fundefs} =
       Nothing -> error $ "getFunTy: L1 program does not contain binding for function: "++show fn
 
 
-subst :: Var -> L Exp1 -> L Exp1 -> L Exp1
+subst :: (Eq d, Eq l, Eq (e l d)) => Var -> L (PreExp e l d) -> L (PreExp e l d)
+       -> L (PreExp e l d)
 subst old new (L p0 ex) = L p0 $
   let go = subst old new in
   case ex of
@@ -412,7 +479,8 @@ subst old new (L p0 ex) = L p0 $
 
 -- | Expensive subst that looks for a whole matching sub-EXPRESSION.
 --   If the old expression is a variable, this still avoids going under binder.
-substE :: L Exp1 -> L Exp1 -> L Exp1 -> L Exp1
+substE :: (Eq d, Eq l, Eq (e l d)) => L (PreExp e l d) -> L (PreExp e l d) -> L (PreExp e l d)
+       -> L (PreExp e l d)
 substE old new (L p0 ex) = L p0 $
   let go = substE old new in
   case ex of
@@ -442,7 +510,7 @@ substE old new (L p0 ex) = L p0 $
 
     Ext _ -> ex
 
-primArgsTy :: Prim -> [Ty1]
+primArgsTy :: Prim Ty1 -> [Ty1]
 primArgsTy p =
   case p of
     AddP    -> [IntTy, IntTy]
@@ -452,6 +520,7 @@ primArgsTy p =
     EqIntP  -> [IntTy, IntTy]
     MkTrue  -> []
     MkFalse -> []
+    SymAppend        -> [SymTy, IntTy]
     MkNullCursor     -> []
     SizeParam        -> []
     DictEmptyP _ty   -> []
@@ -461,6 +530,35 @@ primArgsTy p =
     ReadPackedFile{} -> []
     (ErrorP _ _) -> []
 
+
+isPackedTy :: UrTy a -> Bool
+isPackedTy PackedTy{} = True
+isPackedTy _ = False
+
+
+-- | Return type for a primitive operation.
+primRetTy :: Prim Ty1 -> Ty1
+primRetTy p =
+  case p of
+    AddP -> IntTy
+    SubP -> IntTy
+    MulP -> IntTy
+    EqSymP  -> BoolTy
+    EqIntP  -> BoolTy
+    MkTrue  -> BoolTy
+    MkFalse -> BoolTy
+    MkNullCursor   -> dummyCursorTy
+    SymAppend      -> SymTy
+    SizeParam      -> IntTy
+    DictHasKeyP _  -> BoolTy
+    DictEmptyP ty  -> SymDictTy ty
+    DictInsertP ty -> SymDictTy ty
+    DictLookupP ty -> ty
+    (ErrorP _ ty)  -> ty
+    ReadPackedFile _ _ ty -> ty
+
+dummyCursorTy :: Ty1
+dummyCursorTy = CursorTy
 
 --------------------------------------------------------------------------------
 
@@ -509,22 +607,33 @@ mkProj 0 1 e  = e
 mkProj ix _ e = L (locOf e) $ ProjE ix e
 
 -- | Make a product type while avoiding unary products.
-mkProd :: [L Exp1]-> L Exp1
+mkProd :: [L (PreExp e l d)]-> L (PreExp e l d)
 mkProd [e] = e
 -- TODO(cskksc): this or NoLoc ?
 mkProd ls  = L (locOf $ head ls) $ MkProdE ls
 
 -- | Same as mkProd, at the type level
-mkProdTy :: [Ty1]-> Ty1
+mkProdTy :: [UrTy a]-> UrTy a
 mkProdTy [t] = t
 mkProdTy ls  = ProdTy ls
 
 -- | Make a nested series of lets.
-mkLets :: [(Var,[l],Ty1,L (PreExp NoExt l Ty1))] ->
-          L (PreExp NoExt l Ty1) -> L (PreExp NoExt l Ty1)
+mkLets :: [(Var, [loc], dec, L (PreExp ext loc dec))] -> L (PreExp ext loc dec) ->
+          L (PreExp ext loc dec)
 mkLets [] bod     = bod
 mkLets (b:bs) bod = L NoLoc $ LetE b (mkLets bs bod)
 
+
+-- | Helper function that lifts out Lets on the RHS of other Lets.
+--   Absolutely requires unique names.
+mkLetE :: (Var, [l], d, L (PreExp e l d)) -> L (PreExp e l d) -> L (PreExp e l d)
+mkLetE (vr,lvs,ty,(L _ (LetE bnd e))) bod = mkLetE bnd $ mkLetE (vr,lvs,ty,e) bod
+mkLetE bnd bod = L NoLoc $ LetE bnd bod
+
+-- | Alternative version of L1.mkLets that also flattens
+flatLets :: [(Var,[l],d,L (PreExp e l d))] -> L (PreExp e l d) -> L (PreExp e l d)
+flatLets [] bod = bod
+flatLets (b:bs) bod = mkLetE b (flatLets bs bod)
 
 
 --------------------------------------------------------------------------------

@@ -61,6 +61,7 @@ data LocConstraint = StartOfC LocVar Region -- ^ Location is equal to start of t
 -- While the first four can appear in syntax before RouteEnds, the fifth
 -- (fromEnd) should only be introduced by the RouteEnds pass.
 newtype ConstraintSet = ConstraintSet { constraintSet :: S.Set LocConstraint }
+  deriving (Read, Show, Eq, Ord, Generic, NFData)
 
 -- | A location has been aliased if we have taken an offset of it while introducing a new
 -- location. These show up in the LocationTypeState below.
@@ -83,6 +84,7 @@ newtype LocationTypeState = LocationTypeState
 -- | A region set is (as you would expect) a set of regions. They are the
 -- regions that are currently live while checking a particular expression.
 newtype RegionSet = RegionSet { regSet :: S.Set Region }
+  deriving (Read, Show, Eq, Ord, Generic, NFData)
 
 
 -- | Shorthand for located expressions
@@ -154,7 +156,12 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
              let handleTS ts (l,Output) =  switchOutLoc exp ts l
                  handleTS ts _ = return ts
              tstate' <- foldM handleTS tstate $ zip ls $ L.map (\(LRM _ _ m) -> m) locVars
-             return (arrOut,tstate')
+
+             -- use locVars used at call-site in the returned type
+             -- TODO: check this
+             let arrOutMp = M.fromList $ zip (L.map (\(LRM l _ _) -> l) locVars) ls
+                 arrOut'  = substTy arrOutMp arrOut
+             return (arrOut',tstate')
 
       PrimAppE pr es -> do
 
@@ -164,6 +171,7 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
                -- error would not go through our monad:
                let len2 = checkLen exp pr 2 es
                    len0 = checkLen exp pr 0 es
+                   len3 = checkLen exp pr 3 es
                case pr of
                  L1.AddP -> do len2
                                ensureEqualTy exp IntTy (tys !! 0)
@@ -188,8 +196,54 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
                  L1.MkTrue  -> do len0; return $ (BoolTy,tstate)
                  L1.MkFalse -> do len0; return $ (BoolTy,tstate)
 
-                 -- TODO: add rest of primops
-                 _ -> throwError $ UnsupportedExpTC exp
+                 L1.SymAppend  -> do
+                   len2
+                   _ <- ensureEqualTy (es !! 0) SymTy (tys !! 0)
+                   _ <- ensureEqualTy (es !! 1) IntTy (tys !! 1)
+                   return (SymTy, tstate)
+
+                 L1.DictEmptyP ty -> do
+                   len0
+                   return (SymDictTy ty, tstate)
+
+                 L1.DictInsertP ty -> do
+                   len3
+                   let [d,k,v]  = tys
+                   _ <- ensureEqualTy exp (SymDictTy ty) d
+                   _ <- ensureEqualTy exp SymTy k
+                   _ <- ensureEqualTy exp ty v
+                   return (d, tstate)
+
+
+                 L1.DictLookupP ty -> do
+                   len2
+                   let [d,k]  = tys
+                   _ <- ensureEqualTy exp (SymDictTy ty) d
+                   _ <- ensureEqualTy exp SymTy k
+                   return (ty, tstate)
+
+                 L1.DictHasKeyP ty -> do
+                   len2
+                   let [d,k]  = tys
+                   _ <- ensureEqualTy exp (SymDictTy ty) d
+                   _ <- ensureEqualTy exp SymTy k
+                   return (BoolTy, tstate)
+
+                 L1.SizeParam -> do
+                   len0
+                   return (IntTy, tstate)
+
+                 L1.ErrorP _str ty -> do
+                   len2
+                   return (ty, tstate)
+
+                 L1.ReadPackedFile _fp _tycon ty -> do
+                   len3
+                   return (ty, tstate)
+
+                 L1.MkNullCursor -> do
+                   return (CursorTy, tstate)
+
 
       LetE (v,_ls,ty,e1) e2 -> do
 
@@ -267,14 +321,7 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
 
                regs' <- regionInsert exp r regs
                (ty,tstate) <- tcExp ddfs env funs constrs regs' tstatein e
-
-               case ty of
-                 PackedTy _con l -> do
-                              r <- getRegion exp constrs l
-                              if hasRegion r regs
-                              then throwError $ GenericTC ("Escaping region " ++ (show r)) exp
-                              else return (ty,tstate)
-                 _ -> return (ty,tstate)
+               return (ty,tstate)
 
       Ext (LetLocE v c e) -> do
 

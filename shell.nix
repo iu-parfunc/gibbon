@@ -10,5 +10,7 @@ with pkgs;
 haskell.lib.buildStackProject {
   inherit ghc;
   name = "basicGibbonEnv";
-  buildInputs = [ stdenv ghc stack which ncurses racket ];
+  buildInputs = [ stdenv ghc stack which racket
+                  ncurses
+                ];
 }
