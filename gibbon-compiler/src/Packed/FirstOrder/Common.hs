@@ -28,7 +28,7 @@ module Packed.FirstOrder.Common
        , LocVar, Region(..), Modality(..), LRM(..), dummyLRM
 
        , Env2(Env2) -- TODO: hide constructor
-       , vEnv, fEnv, extendVEnv, extendsVEnv, extendFEnv
+       , vEnv, fEnv, extendVEnv, extendsVEnv, extendFEnv, emptyEnv2
 
          -- * Runtime configuration
        , RunConfig(..), getRunConfig
@@ -76,7 +76,7 @@ import Language.C.Quote.CUDA (ToIdent, toIdent)
 -- | Orphaned instance: read without source locations.
 instance Read t => Read (L t) where
   readsPrec n str = [ (L NoLoc a,s) | (a,s) <- readsPrec n str ]
-    
+
 -- type CursorVar = Var
 newtype Var = Var Symbol
   deriving (Eq, Ord, Read, Show)
@@ -174,6 +174,12 @@ instance Out Pos where
 -- function bindings and regular value bindings.
 data Env2 a = Env2 { vEnv :: M.Map Var a
                    , fEnv :: FunEnv a }
+
+
+-- |
+emptyEnv2 :: Env2 a
+emptyEnv2 = Env2 { vEnv = M.empty
+                 , fEnv = M.empty}
 
 -- | Extend non-function value environment.
 extendVEnv :: Var -> a -> Env2 a -> Env2 a
