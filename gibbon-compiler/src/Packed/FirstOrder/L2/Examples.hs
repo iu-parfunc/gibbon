@@ -448,7 +448,7 @@ buildTreeFun = FunDef "buildTree" buildTreeTy "i270" buildTreeBod
 buildTreeMainExp :: L Exp2
 buildTreeMainExp = l$ Ext $ LetRegionE (VarR "r279") $
                    l$ Ext $ LetLocE "l280" (StartOfLE (VarR "r279")) $
-                   l$ AppE "buildTree" ["l280"] (l$ LitE 1)
+                   l$ AppE "buildTree" ["l280"] (l$ LitE 3)
 
 buildTreeProg :: Prog
 buildTreeProg = Prog ddtree (M.fromList [("buildTree", buildTreeFun)]) (Just (buildTreeMainExp, PackedTy "Tree" "l280"))
