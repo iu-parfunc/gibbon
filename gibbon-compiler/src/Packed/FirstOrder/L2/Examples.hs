@@ -31,10 +31,6 @@ ddtree = fromListDD [DDef (toVar "Tree")
                       ]]
 
 
-emptyEnv2 :: Env2 (UrTy LocVar)
-emptyEnv2 = Env2 { vEnv = M.empty
-                 , fEnv = M.empty}
-
 tTypeable :: L Exp2
 tTypeable =  l$ Ext $ LetRegionE (VarR "r500") $
              l$ Ext $ LetLocE "l501" (StartOfLE (VarR "r500")) $

@@ -123,7 +123,7 @@ eraseLocMarkers (DDef tyname ls) = DDef tyname $ L.map go ls
         go (dcon,ls') = (dcon, L.map (\(b,ty) -> (b,stripTyLocs ty)) ls')
 
 -- | Remove the extra location annotations.
-stripTyLocs :: L2.Ty2 -> Ty3
+stripTyLocs :: UrTy a -> Ty3
 stripTyLocs ty =
   case ty of
     IntTy     -> IntTy
