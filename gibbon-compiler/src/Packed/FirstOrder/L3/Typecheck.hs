@@ -225,8 +225,9 @@ tcExp ddfs env exp@(L p ex) =
       let tycons = L.map (getTyOfDataCon ddfs . (\(a,_,_) -> a)) cs
       case L.nub tycons of
         [_one] -> do
-          -- all packed types are transformed to cursors
-          _ <- ensureEqualTy exp CursorTy tye
+          when (tye /= CursorTy && not (isPackedTy tye)) $
+            throwError $ GenericTC ("Case scrutinee should be packed, or have a cursor type. Got"
+                                    ++ sdoc tye) e
           tcCases ddfs env cs
         oth   -> throwError $ GenericTC ("Case branches have mismatched types: " ++ sdoc oth
                                          ++" , in " ++ sdoc exp) exp
@@ -279,7 +280,7 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
         Right ty' ->
           case ty of
             PackedTy _ _ ->
-              if ty' == CursorTy
+              if ty' == CursorTy || ty == ty'
               then return ()
               else error $ "Expected type " ++ sdoc ty ++ "and got type " ++ sdoc ty'
 
