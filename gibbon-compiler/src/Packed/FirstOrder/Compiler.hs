@@ -47,6 +47,7 @@ import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
 
 -- Compiler passes
 import qualified Packed.FirstOrder.L1.Typecheck as L1
+import qualified Packed.FirstOrder.L2.Typecheck as L2
 import qualified Packed.FirstOrder.L3.Typecheck as L3
 import           Packed.FirstOrder.Passes.Freshen        (freshNames)
 import           Packed.FirstOrder.Passes.Flatten        (flattenL1, flattenL2, flattenL3)
@@ -375,33 +376,53 @@ interpProg l1 =
 -- | The main compiler pipeline
 passes :: Config -> L1.Prog -> StateT CompileState IO L4.Prog
 passes config@Config{mode,packed} l1 = do
-      l1 <- passE config "typecheck"  L1.tcProg l1
-      l1 <- passE config "freshNames" freshNames l1
-      
+      l1 <- goE "typecheck"  L1.tcProg l1
+      l1 <- goE "freshNames" freshNames l1
       -- If we are executing a benchmark, then we
       -- replace the main function with benchmark code:
       l1 <- pure $ case mode of
                      Bench fnname -> benchMainExp config l1 fnname
                      _ -> l1
-      l1 <- passE  config "flatten"       flattenL1             l1
 
-      l1<- passE config "fusion2" fusion2 l1
+      l1 <- goE "flatten"       flattenL1               l1
+      l1 <- goE "inlineTriv"    (return . inlineTriv)   l1
 
-      l1 <- passE  config "inlineTriv"    (return . inlineTriv) l1
-
+      -- TODO: Write interpreters for L2 and L3
       l3 <- if packed
-            then __
+            then do
+              -- Note: L1 -> L2
+              l2 <- go "inferLocations"   inferLocs     l1
+              l2 <- go "L2.flatten"       flattenL2     l2
+              l2 <- go "inferEffects"     inferEffects  l2
+              l2 <- go "L2.typecheck"     L2.tcProg     l2
+              l2 <- go "routeEnds"        routeEnds     l2
+              l2 <- go "L2.typecheck"     L2.tcProg     l2
+              -- Note: L2 -> L3
+              l3 <- go "cursorize"        cursorize     l2
+              l3 <- go "L3.flatten"       flattenL3     l3
+              l3 <- go "findWitnesses"    findWitnesses l3
+              l3 <- go "shakeTree"        shakeTree     l3
+              l3 <- go "L3.typecheck"     L3.tcProg     l3
+              l3 <- go "hoistNewBuf"      hoistNewBuf   l3
+              return l3
             else do
-              l3 <- pass True config "directL3" (return . directL3) l1
+              l3 <- go "directL3" (return . directL3)   l1
               return l3
 
-      l3 <- pass True config "L3.typecheck" L3.tcProg l3
-      l3 <- pass True config "unariser"     unariser  l3
-      l3 <- pass True config "L3.typecheck" L3.tcProg l3
-      l3 <- pass True config "L3.flatten"   flattenL3 l3
-      let mainTy = fmap snd $ L3.mainExp l3
-      l4 <- pass True config "lower" (lower (packed,mainTy)) l3
+      l3 <- go "L3.typecheck"   L3.tcProg               l3
+      l3 <- go "unariser"       unariser                l3
+      l3 <- go "L3.typecheck"   L3.tcProg               l3
+      l3 <- go "L3.flatten"     flattenL3               l3
+      let mainTy = fmap snd $   L3.mainExp              l3
+      -- Note: L3 -> L4
+      l4 <- go "lower" (lower (packed,mainTy))          l3
       return l4
+  where
+      go :: PassRunner a b
+      go = pass True config
+
+      goE :: (Interp b) => PassRunner a b
+      goE = passE config
 
 
 -- | Replace the main function with benchmark code
