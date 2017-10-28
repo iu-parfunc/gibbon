@@ -37,34 +37,35 @@ import           Text.PrettyPrint.GenericPretty
 import           Packed.FirstOrder.Common
 import           Packed.FirstOrder.GenericOps(Interp, interpNoLogs)
 import qualified Packed.FirstOrder.HaskellFrontend as HS
-import qualified Packed.FirstOrder.L1.Syntax   as L1
+import qualified Packed.FirstOrder.L1.Syntax as L1
 import qualified Packed.FirstOrder.L2.Syntax as L2
-import qualified Packed.FirstOrder.L4.Syntax   as L4
+import qualified Packed.FirstOrder.L3.Syntax as L3
+import qualified Packed.FirstOrder.L4.Syntax as L4
 import qualified Packed.FirstOrder.SExpFrontend as SExp
 import qualified Packed.FirstOrder.L1.Interp as SI
 import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
--- compiler passes
-import           Packed.FirstOrder.L1.Typecheck
-import           Packed.FirstOrder.Passes.Freshen
-import           Packed.FirstOrder.Passes.Flatten (flattenL1)
-import           Packed.FirstOrder.Passes.InlineTriv
 
--- UNDER_CONSTRUCTION
--- import           Packed.FirstOrder.Passes.Codegen (codegenProg)
--- #ifdef LLVM_ENABLED
--- import qualified Packed.FirstOrder.Passes.LLVM.Codegen as LLVM
--- #endif
--- import           Packed.FirstOrder.Passes.Cursorize
--- import           Packed.FirstOrder.Passes.FindWitnesses (findWitnesses)
--- import           Packed.FirstOrder.Passes.HoistNewBuf
--- import           Packed.FirstOrder.Passes.InferEffects (inferEffects)
--- import           Packed.FirstOrder.Passes.InlinePacked
--- import           Packed.FirstOrder.Passes.CopyInsertion
--- import           Packed.FirstOrder.Passes.Lower
--- import           Packed.FirstOrder.Passes.RouteEnds (routeEnds)
--- import           Packed.FirstOrder.Passes.ShakeTree
--- import           Packed.FirstOrder.Passes.Typecheck
--- import           Packed.FirstOrder.Passes.Unariser
+-- Compiler passes
+import qualified Packed.FirstOrder.L1.Typecheck as L1
+import qualified Packed.FirstOrder.L3.Typecheck as L3
+import           Packed.FirstOrder.Passes.Freshen        (freshNames)
+import           Packed.FirstOrder.Passes.Flatten        (flattenL1, flattenL2, flattenL3)
+import           Packed.FirstOrder.Passes.InlineTriv     (inlineTriv)
+
+import           Packed.FirstOrder.Passes.DirectL3       (directL3)
+import           Packed.FirstOrder.Passes.InferLocations (inferLocs)
+import           Packed.FirstOrder.Passes.InferEffects2  (inferEffects)
+import           Packed.FirstOrder.Passes.RouteEnds2     (routeEnds)
+import           Packed.FirstOrder.Passes.Cursorize4     (cursorize)
+import           Packed.FirstOrder.Passes.FindWitnesses  (findWitnesses)
+import           Packed.FirstOrder.Passes.ShakeTree      (shakeTree)
+import           Packed.FirstOrder.Passes.HoistNewBuf    (hoistNewBuf)
+import           Packed.FirstOrder.Passes.Unariser       (unariser)
+import           Packed.FirstOrder.Passes.Lower          (lower)
+import           Packed.FirstOrder.Passes.Codegen        (codegenProg)
+#ifdef LLVM_ENABLED
+import qualified Packed.FirstOrder.Passes.LLVM.Codegen as LLVM
+#endif
 
 ----------------------------------------
 -- PASS STUBS
@@ -255,7 +256,7 @@ data CompileState =
 -- | Compiler entrypoint, given a full configuration and a list of
 -- files to process, do the thing.
 compile :: Config -> FilePath -> IO ()
-compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
+compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
   -- set the env var DEBUG, to verbosity, when > 1
   setDebugEnvVar verbosity
 
@@ -278,40 +279,33 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
 
       -- run the initial program through the compiler pipeline
       stM <- return $ passes config l1
-      inprog <- evalStateT stM (CompileState {cnt=cnt0, result=initResult})
-      ------------------------------ TEMPORARY ------------------------------------
-      -- UNDER_CONSTRUCTION
-      hPutStrLn stderr "WARNING: UNDER_CONSTRUCTION.  Compiler mostly disabled atm."
-      case inprog of
-        L1 l1 -> runL1 l1
-        L2 l2 -> runL2 l2
-      ------------------------------ TEMPORARY ------------------------------------
-        L4 l3 -> do
-         if mode == Interp2
-           then do
-             l3res <- execProg l3
-             mapM_ (\(IntVal v) -> liftIO $ print v) l3res
-             exitSuccess
-           else do error "UNDER_CONSTRUCTION"
-{- -- UNDER_CONSTRUCTION
-             str <- case backend of
-               C    -> codegenProg packed l3
+      l4  <- evalStateT stM (CompileState {cnt=cnt0, result=initResult})
+
+      if mode == Interp2
+      then do
+        l4res <- execProg l4
+        mapM_ (\(IntVal v) -> liftIO $ print v) l4res
+        exitSuccess
+      else do
+        str <- case backend of
+                 C    -> codegenProg packed l4
 #ifdef LLVM_ENABLED
-               LLVM -> LLVM.codegenProg packed l3
+                 LLVM -> LLVM.codegenProg packed l4
 #endif
-               LLVM -> error $ "Cannot execute through the LLVM backend. To build Gibbon with LLVM;"
-                       ++ "stack build --flag gibbon:llvm_enabled"
+                 LLVM -> error $ "Cannot execute through the LLVM backend. To build Gibbon with LLVM;"
+                         ++ "stack build --flag gibbon:llvm_enabled"
 
-             -- The C code is long, so put this at a higher verbosity level.
-             dbgPrintLn minChatLvl $ "Final C codegen: " ++show (length str) ++" characters.\n" ++ sepline ++ "\n" ++ str
+        -- The C code is long, so put this at a higher verbosity level.
+        dbgPrintLn minChatLvl $ "Final C codegen: " ++show (length str) ++" characters.\n" ++ sepline ++ "\n" ++ str
 
-             clearFile outfile
-             writeFile outfile str
+        clearFile outfile
+        writeFile outfile str
 
-             -- (Stage 3) Code written, now compile if warranted.
-             when (mode == ToExe || mode == RunExe || isBench mode ) $ do
-               compileAndRunExe config fp
--}
+        -- (Stage 3) Code written, now compile if warranted.
+        when (mode == ToExe || mode == RunExe || isBench mode ) $ do
+          compileAndRunExe config fp >>= putStr
+          return ()
+
 
 -- | The compiler's policy for running/printing L1 programs.
 runL1 :: L1.Prog -> IO ()
@@ -377,16 +371,11 @@ interpProg l1 =
   else
     return Nothing
 
--- | A compile job stopped somewhere in the middle.
-data InProgress = L1 L1.Prog
-                | L2 L2.Prog
-                | L4 L4.Prog
 
--- | The main compiler pipeline, which we permit to return programs in
--- /various/ states of compilation.
-passes :: Config -> L1.Prog -> StateT CompileState IO InProgress
-passes config@Config{mode} l1 = do
-      l1 <- passE config "typecheck"  tcProg     l1
+-- | The main compiler pipeline
+passes :: Config -> L1.Prog -> StateT CompileState IO L4.Prog
+passes config@Config{mode,packed} l1 = do
+      l1 <- passE config "typecheck"  L1.tcProg l1
       l1 <- passE config "freshNames" freshNames l1
       -- If we are executing a benchmark, then we
       -- replace the main function with benchmark code:
@@ -395,93 +384,21 @@ passes config@Config{mode} l1 = do
                      _ -> l1
       l1 <- passE  config "flatten"       flattenL1             l1
       l1 <- passE  config "inlineTriv"    (return . inlineTriv) l1
-      return (L1 l1)
 
-{- -- UNDER_CONSTRUCTION
--- TODO: Typecheck L1.
--- TODO: INFER LOCATIONS -- but allow partially-broken programs (sharing)
--- TODO: New add-copies.
-      l1 <- pass True  config "addCopies"     addCopies                             l1
+      l3 <- if packed
+            then __
+            else do
+              l3 <- pass True config "directL3" (return . directL3) l1
+              return l3
 
--- TODO: Typecheck L2. (Really this is an L2B typechecker...)
-      l2 <- passE  config "inferEffects"  inferEffects                              l1
-   -- Language: L2B - has traversal effects, uses multi-valued returns.
+      l3 <- pass True config "L3.typecheck" L3.tcProg l3
+      l3 <- pass True config "unariser"     unariser  l3
+      l3 <- pass True config "L3.typecheck" L3.tcProg l3
+      l3 <- pass True config "L3.flatten"   flattenL3 l3
+      let mainTy = fmap snd $ L3.mainExp l3
+      l4 <- pass True config "lower" (lower (packed,mainTy)) l3
+      return l4
 
--- TODO: find missing traversals, insert traversals
--- TODO: ensure all non-first location bindings are unused, "_"-bindings (L2C)
-
--- TODO: Typecheck L2.  We could be strict and enforce the L2C invariants, or not.
--- The L2 typechecker will continue to work for L2C.
-      l2 <- passE' config "typecheck"     (typecheckStrict (TCConfig False))        l2
-
--- TODO: Run the NEW version of Cursorize, producing L3.
-
--- TODO: Run flatten, unariser, whatever, then Lower (L4)
-
-
--- OLD pipeline:
-----------------
-      let mmainTyPre = fmap snd $ L2.mainExp l2
-      l2  <-
-          if packed
-          then do
-            ---------------- Stubs currently ------------------
-
-            mt <- pass False config "findMissingTraversals" findMissingTraversals   l2
-            l2 <- passE' config "addTraversals"             (addTraversals mt)      l2
-            l2 <- passE' config "lowerCopiesAndTraversals" lowerCopiesAndTraversals l2
-
-            ------------------- End Stubs ---------------------
-
-            l2 <- pass True  config "routeEnds"     routeEnds                        l2
-            -- l2  <- pass' mode  "typecheck"   (typecheckPermissive (TCConfig False)) l2
-            l2 <- pass False config "flatten"       (flatten2 l1)                    l2
-            l2 <- pass True  config "findWitnesses" findWitnesses                    l2
-
-            -- QUESTION: Should programs typecheck and execute at this point?
-            -- ANSWER: Not yet, PackedTy/CursorTy mismatches remain:
-            -- l2 <- pass' mode "typecheck" (typecheckPermissive (TCConfig False)) l2
-
-            l2 <- pass True config "inlinePacked"  inlinePacked                     l2
-
-            -- l2  <- pass' mode "typecheck"   (typecheckPermissive (TCConfig False)) l2
-            -- [2016.12.31] For now witness vars only work out after cursorDirect then findWitnesses:
-
-            l2 <- passF config "cursorDirect"         cursorDirect                  l2
-
-            -- This will issue some warnings, but is useful for debugging:
-            -- l2  <- pass' mode  "typecheck" (typecheckPermissive (TCConfig True))   l2
-
-
-            l2 <- pass False config "flatten"       (flatten2 l1)                   l2
-            l2 <- pass True config "findWitnesses" findWitnesses                    l2
-            l2 <- pass True config "shakeTree"   shakeTree                          l2
-
-            -- After findwitnesses is when programs should once again typecheck:
-            l2 <- passE' config "typecheck"  (typecheckStrict (TCConfig True))      l2
-            l2 <- pass False config "flatten"    (flatten2 l1)                      l2
-            l2 <- pass True config "inlineTriv"  (inline2 l1)                       l2
-            l2 <- pass True config "shakeTree"   shakeTree                          l2
-            l2 <- pass True config "hoistNewBuf" hoistNewBuf                        l2
-            return l2
-          else return l2
-
-      l2  <- passE' config "typecheck" (typecheckStrict (TCConfig packed))          l2
-      l2  <- pass True config "unariser" unariser                                   l2
-      l2  <- passE' config "typecheck" (typecheckStrict (TCConfig packed))          l2
-      l3  <- pass True config "lower"     (lower (packed,mmainTyPre))               l2
-      return l3
--}
-
-{-
--- | HACKY!! Repurposing L1 passes for L2:
---
-flatten2 :: L1.Prog -> L2.Prog -> SyM L2.Prog
-flatten2 l1 = L2.mapMExprs (flattenExp (L1.ddefs l1))
-
-inline2 :: L1.Prog -> L2.Prog -> SyM L2.Prog
-inline2 _ p = return (L2.mapExprs (\_ -> inlineTrivExp (L2.ddefs p)) p)
--}
 
 -- | Replace the main function with benchmark code
 --

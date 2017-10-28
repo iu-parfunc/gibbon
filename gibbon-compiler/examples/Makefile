@@ -4,10 +4,11 @@
 
 test: temporary
 temporary: prebuild build
-#	$(MAKE) run_tests_packed
 	$(MAKE) run_answers
-	$(MAKE) run_tests_interp2
 	$(MAKE) run_tests_interp1
+#	$(MAKE) run_tests_interp2
+	$(MAKE) run_tests_pointer
+#	$(MAKE) run_tests_packed
 
 default:
 	rm -f *.err $(BLD)/*.err
@@ -216,6 +217,7 @@ all_parsed:  $(ALL_TESTS:.gib=.parsed)
 
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= \
+  test15b_symappend.gib \
   test16_forlist.gib test17_forfold.gib \
   test28_copyprop.gib \
   test25a_withprint.gib \

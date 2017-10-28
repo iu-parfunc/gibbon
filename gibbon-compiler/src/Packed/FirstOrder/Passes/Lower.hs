@@ -376,8 +376,6 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
           [e_triv]
           (T.Switch (T.VarTriv tag_bndr) (T.IntAlts alts') (Just def))
 
-{-
-    Cursorize will probably take care of this.
 
     -- Accordingly, constructor allocation becomes an allocation.
     LetE (v, _, _, L _ (DataConE _ k ls)) bod | not pkd -> L1.assertTrivs ls $ do
@@ -401,12 +399,10 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
 
 
     -- This is legitimately flattened, but we need to move it off the spine:
-    L1.DataConE _ k _ls -> do
+    DataConE _ k _ls -> do
        tmp <- gensym $ toVar "tailift"
        let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
        tail $ l$ LetE (tmp, [], ty, l$ ex0) (l$ VarE tmp)
-
--}
 
     --------------------------------------------------------------------------------
 
