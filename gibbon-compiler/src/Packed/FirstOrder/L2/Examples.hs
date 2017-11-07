@@ -10,7 +10,7 @@ module Packed.FirstOrder.L2.Examples
     -- * Programs
   , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
-  , rightmostProg, buildTreeProg
+  , rightmostProg, buildTreeProg, buildTreeSumProg
   ) where
 
 import Data.Loc
@@ -411,7 +411,6 @@ buildLeafProg :: Prog
 buildLeafProg = Prog ddtree (M.fromList [("buildLeaf", buildLeafFun)]) (Just (buildLeafMainExp, PackedTy "Tree" "l129"))
 
 
-
 --------------------------------------------------------------------------------
 
 buildTreeFun :: FunDef
@@ -448,6 +447,61 @@ buildTreeMainExp = l$ Ext $ LetRegionE (VarR "r279") $
 
 buildTreeProg :: Prog
 buildTreeProg = Prog ddtree (M.fromList [("buildTree", buildTreeFun)]) (Just (buildTreeMainExp, PackedTy "Tree" "l280"))
+
+
+--------------------------------------------------------------------------------
+
+buildTreeSumFun :: FunDef
+buildTreeSumFun = FunDef "buildTreeSum" buildTreeSumTy "i302" buildTreeSumBod
+  where
+    buildTreeSumTy :: ArrowTy Ty2
+    buildTreeSumTy = (ArrowTy
+                      [LRM "lout301" (VarR "r300") Output]
+                      (IntTy)
+                      (S.empty)
+                      (ProdTy [IntTy, PackedTy "Tree" "lout301"])
+                      [])
+
+    buildTreeSumBod :: L Exp2
+    buildTreeSumBod = l$ LetE ("b303",[], BoolTy, l$ PrimAppE EqIntP [l$ VarE "i302", l$ LitE 0]) $
+                      l$ IfE (l$ VarE "b303")
+                      (l$ LetE ("c316",[],PackedTy "Tree" "lout301",
+                                l$ DataConE "lout301" "Leaf" [l$ LitE 1]) $
+                       l$ LetE ("t317",[],ProdTy [IntTy, PackedTy "Tree" "lout301"],
+                               l$ MkProdE [l$ LitE 1, l$ VarE "c316"]) $
+                       l$ VarE "t317")
+                      (l$ LetE ("i303",[], IntTy, l$ PrimAppE SubP [l$ VarE "i302", l$ LitE 1]) $
+                       l$ Ext $ LetLocE "l304" (AfterConstantLE 1 "lout301") $
+                       l$ LetE ("t318",[],ProdTy [IntTy, PackedTy "Tree" "l304"],
+                                l$ AppE "buildTreeSum" ["l304"] (l$ VarE "i303")) $
+                       l$ LetE ("i309",[],IntTy, l$ ProjE 0 (l$ VarE "t318")) $
+                       l$ LetE ("x305",[],PackedTy "Tree" "l304", l$ ProjE 1 (l$ VarE "t318")) $
+                       l$ Ext $ LetLocE "l306" (AfterVariableLE "x305" "l304") $
+                       l$ LetE ("t319",[],ProdTy [IntTy, PackedTy "Tree" "l306"],
+                                l$ AppE "buildTreeSum" ["l306"] (l$ VarE "i303")) $
+                       l$ LetE ("i310",[],IntTy, l$ ProjE 0 (l$ VarE "t319")) $
+                       l$ LetE ("y307",[],PackedTy "Tree" "l306", l$ ProjE 1 (l$ VarE "t319")) $
+                       l$ LetE ("j311",[],IntTy, l$ PrimAppE AddP [l$ VarE "i309", l$ VarE "i310"]) $
+                       l$ LetE ("a308",[],PackedTy "Tree" "lout301",
+                                l$ DataConE "lout301" "Node" [l$ VarE "x305", l$ VarE "y307"]) $
+                       l$ LetE ("b312",[], ProdTy [IntTy, PackedTy "Tree" "lout301"],
+                                l$ MkProdE [l$ VarE "j311", l$ VarE "a308"]) $
+                       l$ VarE "b312")
+
+
+buildTreeSumMainExp :: L Exp2
+buildTreeSumMainExp = l$ Ext $ LetRegionE (VarR "r313") $
+                      l$ Ext $ LetLocE "l314" (StartOfLE (VarR "r313")) $
+                      l$ LetE ("z315",[],ProdTy [IntTy, PackedTy "Tree" "l314"],
+                               l$ AppE "buildTreeSum" ["l314"] (l$ LitE 3)) $
+                      l$ LetE ("a316",[], PackedTy "Tree" "l314",
+                               l$ ProjE 1 (l$ VarE "z315")) $
+                      l$ VarE "a316"
+
+
+buildTreeSumProg :: Prog
+buildTreeSumProg = Prog ddtree (M.fromList [("buildTreeSum", buildTreeSumFun)]) (Just (buildTreeSumMainExp, PackedTy "Tree" "l314"))
+
 
 --------------------------------------------------------------------------------
 

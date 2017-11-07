@@ -12,7 +12,8 @@ module Packed.FirstOrder.L3.Syntax
   , Prog(..), FunDef(..), FunDefs, ArrowTy(..)
 
     -- * Functions
-  , eraseLocMarkers, stripTyLocs, cursorizeTy, mapMExprs, toL3Prim, progToEnv
+  , eraseLocMarkers, stripTyLocs, cursorizeArrowTy, mapMExprs, toL3Prim, progToEnv
+  , cursorizeTy
   )
 where
 
@@ -135,9 +136,22 @@ stripTyLocs ty =
     PtrTy    -> PtrTy
     CursorTy -> CursorTy
 
+cursorizeTy :: UrTy a -> Ty3
+cursorizeTy ty =
+  case ty of
+    IntTy     -> IntTy
+    BoolTy    -> BoolTy
+    ProdTy ls -> ProdTy $ L.map cursorizeTy ls
+    SymDictTy ty' -> SymDictTy $ cursorizeTy ty'
+    PackedTy{}    -> CursorTy
+    ListTy ty'    -> ListTy $ cursorizeTy ty'
+    PtrTy -> error "cursorizeTy: unexpected PtrTy"
+    CursorTy -> error "cursorizeTy: unexpected CursorTy"
+
+
 -- |
-cursorizeTy :: L2.ArrowTy L2.Ty2 -> ArrowTy Ty3
-cursorizeTy L2.ArrowTy{L2.arrIn,L2.arrOut,L2.locVars,L2.locRets} =
+cursorizeArrowTy :: L2.ArrowTy L2.Ty2 -> ArrowTy Ty3
+cursorizeArrowTy L2.ArrowTy{L2.arrIn,L2.arrOut,L2.locVars,L2.locRets} =
   let
       -- Adding additional outputs corresponding to end-of-input-value witnesses
       -- We've already computed additional location return value in RouteEnds

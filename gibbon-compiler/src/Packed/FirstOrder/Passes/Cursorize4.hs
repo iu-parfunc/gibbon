@@ -3,6 +3,7 @@
 module Packed.FirstOrder.Passes.Cursorize4
   (cursorize) where
 
+import Control.Monad (forM)
 import Data.Loc
 import Data.List as L
 import Data.Map as M
@@ -55,7 +56,8 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
                   case ty of
                     _ | isPackedTy ty  -> Just . (, L3.stripTyLocs ty) <$>
                                           projVal <$> cursorizePackedExp ddefs fundefs M.empty e
-                    _ | hasPacked ty   -> error $ "TODO: hasPacked mainExp"
+                    _ | hasPacked ty   ->  Just . (, L3.stripTyLocs ty) <$>
+                                           fromDi <$> cursorizePackedExp ddefs fundefs M.empty e
                     _ -> Just . (,L3.stripTyLocs ty) <$> cursorizeExp ddefs fundefs M.empty e
 
   return $ L3.Prog ddefs' fundefs' mainExp'
@@ -71,7 +73,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
           inT  = arrIn funty
           outT = arrOut funty
 
-          funty' = L3.cursorizeTy funty
+          funty' = L3.cursorizeArrowTy funty
 
       (arg,exp') <-
         case (outCurs,inCurs) of
@@ -92,20 +94,29 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
               -- i.e not in a tuple. It's type is (f :: CursorTy -> SCALAR)
               [_cur] -> (funarg,) <$>
                           cursorizeExp ddefs fundefs (M.singleton funarg CursorTy) funbod
-
               _ -> error "fd: Read packed tuples"
 
-          -- buildLeaf
+          -- Eg. buildLeaf, buildTree, buildTreeSum etc
+          -- Start by creating let bindings for all the output cursors.
+          -- Since all the cursors are passed before old fn argument, all bindings are just projections starting at 0.
+          -- We also have to bind the old fn argument (funarg), which comes after all the output cursors.
+          --
+          -- Then, if the body is of type Packed, we return the end_write cursor of the packed value.
+          -- Otherwise, the return value would be a tuple of (end_write_cur1, end_write_cur2, maybe_scalar) etc
+          -- and we return it as is.
           (ocurs, []) -> do
-            case ocurs of
-              [cur] -> do
-                newarg <- gensym (varAppend "tup_arg_" funname)
-                (newarg,)  <$>
-                  l <$> LetE (lrmLoc cur,[],CursorTy, l$ ProjE 0 (l$ VarE newarg)) <$>
-                    l <$> LetE (funarg,[], L3.stripTyLocs (arrIn funty), l$ ProjE 1 (l$ VarE newarg)) <$>
-                      projEnds <$> cursorizePackedExp ddefs fundefs (M.singleton funarg CursorTy) funbod
-
-              _ -> error ""
+              newarg <- gensym (varAppend "tup_arg_" funname)
+              funbod' <- if isPackedTy outT
+                         then projEnds <$> cursorizePackedExp ddefs fundefs (M.singleton funarg CursorTy) funbod
+                         else fromDi <$> cursorizePackedExp ddefs fundefs (M.singleton funarg CursorTy) funbod
+              bod <- return $
+                     -- output cursor bindings
+                     mkLets [ (lrmLoc cur,[],CursorTy, l$ ProjE i (l$ VarE newarg))
+                            | (cur,i) <- zip ocurs [0..]]
+                     -- old fn argument binding + processed fn body
+                     (LetE (funarg,[], L3.stripTyLocs (arrIn funty), l$ ProjE (length ocurs) (l$ VarE newarg)) <$> l <$>
+                        funbod')
+              return (newarg, bod)
 
           -- Eg. add1
           (ocurs,icurs) -> do
@@ -214,25 +225,32 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
   case ex of
     -- Here the allocation has already been performed:
     -- To follow the calling convention, we are reponsible for tagging on the end here:
-    VarE v -> return $ mkDi (l$ VarE v) [ l$ VarE (toEndV v) ]
+    VarE v -> do
+      let ty = tenv ! v
+      if isPackedTy ty
+      then return $ mkDi (l$ VarE v) [ l$ VarE (toEndV v) ]
+      else return $ dl $ VarE v
 
     LitE _n    -> error $ "Shouldn't encounter LitE in packed context:" ++ sdoc ex
     LitSymE _n -> error $ "Shouldn't encounter LitSymE in packed context:" ++ sdoc ex
 
-    AppE f locs arg ->
-      case locs of
-       []    -> error $ "cursorizePackedExp AppE: empty locations"
+    AppE f locs arg -> do
+      let inT = arrIn $ funty (fundefs ! f)
+      case inT of
+        _ | isPackedTy inT -> do
+              let [start,end] = locs
+              return $ dl $ AppE f [] (l$ MkProdE [l$ VarE end, l$ VarE start])
 
-       -- ASSUMPTION: arg is some scalar value
-       [loc] -> do
-         arg' <- cursorizeExp ddfs fundefs tenv arg
-         return $ dl $ AppE f [] $ l$ MkProdE [(l$ VarE loc), arg']
+        _ | hasPacked inT -> do
+              error "todo appe"
 
-       -- Since our calling convention expects o/p cursor to be the first input, we
-       -- re-order the locations cacordingly
-       [start,end] -> return $ dl $ AppE f [] (l$ MkProdE [l$ VarE end, l$ VarE start])
+        _ -> case locs of
+               [] -> error $ "cursorizePackedExp AppE: empty locations"
+               -- ASSUMPTION: arg is a scalar value
+               _  -> do
+                 arg' <- cursorizeExp ddfs fundefs tenv arg
+                 return $ dl $ AppE f [] $ l$ MkProdE $ [ l$ VarE loc | loc <- locs] ++ [arg']
 
-       _ -> error "cursorizePacked: AppE packed tuples"
 
     PrimAppE _ _ -> error $ "cursorizePackedExp: unexpected PrimAppE in packed context" ++ sdoc ex
 
@@ -245,6 +263,22 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
         go (M.insert vr CursorTy tenv) bod
 
 
+    -- Transforms all packed values in the list to "end_write" cursors
+    LetE (v,_locs,ty2@(ProdTy tys), rhs@(L _ (MkProdE ls))) bod -> do
+      es <- forM (zip tys ls) $ \(ty,e) -> do
+              case ty of
+                  _ | isPackedTy ty -> projEnds <$> cursorizePackedExp ddfs fundefs tenv e
+                  _ | hasPacked ty  -> error $ "cursorizePackedExp: nested tuples" ++ sdoc rhs
+                  _ -> cursorizeExp ddfs fundefs tenv e
+      let rhs' = l$ MkProdE es
+          ty2' = L3.cursorizeTy ty2
+      onDi (l <$> LetE (v,[],ty2', rhs')) <$>
+        go (M.insert v ty2 tenv) bod
+
+
+    MkProdE{} -> error "cursorizePackedExp: unexpected MkProdE"
+
+
     LetE bnd bod -> dl <$> cursorizeLet ddfs fundefs tenv True bnd bod
 
     -- Here we route the dest cursor to both braches.  We switch
@@ -254,8 +288,6 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
       Di c' <- go tenv c
       a'    <- cursorizeExp ddfs fundefs tenv a
       return $ Di $ l $ IfE a' b' c'
-
-    MkProdE _ls -> error $ "cursorizePackedExp: TODO MkProdE"
 
     -- Not sure if we need to replicate all the checks from Cursorize1
     ProjE i e -> dl <$> ProjE i <$> fromDi <$> go tenv e
@@ -375,7 +407,7 @@ cursorizeLet ddfs fundefs tenv isPackedContext (v,locs,ty,rhs) bod
     | isPackedTy ty = do
         rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs tenv rhs
         let PackedTy _ outLoc = ty
-            tenv' = M.insert v CursorTy tenv
+            tenv' = M.insert v ty tenv
         case (unLoc rhs) of
           -- It always returns a (start,end)
           DataConE{} -> do
@@ -412,9 +444,25 @@ cursorizeLet ddfs fundefs tenv isPackedContext (v,locs,ty,rhs) bod
 
               _ -> error "cursorizeLet: AppE packed tuples"
 
+          ProjE{} ->
+            case locs of
+              [] -> LetE (v,[],CursorTy, l$ VarE outLoc) <$> l <$>
+                      LetE (toEndV v,[],L3.cursorizeTy ty, rhs') <$>
+                        go (M.insert v ty tenv) bod
+
+              _  -> error "ProjE todo"
+
+
           oth -> error $ sdoc oth ++ "\ncannot return a packed value"
 
-    | hasPacked ty = error "cursorizeLet: packed tuples"
+    | hasPacked ty = do
+        rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs tenv rhs
+        let ty' = L3.cursorizeTy ty
+            tenv' = M.insert v ty tenv
+        case locs of
+          [] -> LetE (v,[], ty', rhs') <$>
+                  go tenv' bod
+          _  -> error "cursorizeLet: packed tuples"
 
     | otherwise = do
         rhs' <- cursorizeExp ddfs fundefs tenv rhs
