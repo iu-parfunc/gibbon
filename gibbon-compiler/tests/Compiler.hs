@@ -65,6 +65,7 @@ run2T l3 = fst $ runSyM 0 $ do
     l3 <- hoistNewBuf l3
     l3 <- unariser l3
     let mainTyPre = fmap snd $ L3.mainExp l3
+    l3 <- flattenL3 l3
     lower (True, mainTyPre) l3
 
 
@@ -116,7 +117,11 @@ case_buildleaf :: Assertion
 case_buildleaf = runner "buildleaf.c" buildLeafProg "(Leaf 42)"
 
 case_buildtree :: Assertion
-case_buildtree = runner "buildleaf.c" buildTreeProg
+case_buildtree = runner "buildtree.c" buildTreeProg
+                 "(Node (Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))) (Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))))"
+
+case_buildtreesum :: Assertion
+case_buildtreesum = runner "buildtreesum.c" buildTreeSumProg
                  "(Node (Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))) (Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))))"
 
 compilerTests :: TestTree
