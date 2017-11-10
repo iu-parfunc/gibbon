@@ -136,14 +136,14 @@ stripTyLocs ty =
     PtrTy    -> PtrTy
     CursorTy -> CursorTy
 
-cursorizeTy :: UrTy a -> Ty3
+cursorizeTy :: UrTy a -> UrTy b
 cursorizeTy ty =
   case ty of
     IntTy     -> IntTy
     BoolTy    -> BoolTy
     ProdTy ls -> ProdTy $ L.map cursorizeTy ls
     SymDictTy ty' -> SymDictTy $ cursorizeTy ty'
-    PackedTy{}    -> CursorTy
+    PackedTy{}    -> ProdTy [CursorTy, CursorTy]
     ListTy ty'    -> ListTy $ cursorizeTy ty'
     PtrTy -> error "cursorizeTy: unexpected PtrTy"
     CursorTy -> error "cursorizeTy: unexpected CursorTy"
@@ -159,7 +159,7 @@ cursorizeArrowTy L2.ArrowTy{L2.arrIn,L2.arrOut,L2.locVars,L2.locRets} =
       outT = L2.prependArgs rets arrOut
 
       -- Packed types in the output then become end-cursors for those same destinations.
-      newOut = L2.mapPacked (\_ _ -> CursorTy) outT
+      newOut = L2.mapPacked (\_ _ -> ProdTy [CursorTy, CursorTy]) outT
 
       -- Adding additional input arguments for the destination cursors to which outputs
       -- are written.
