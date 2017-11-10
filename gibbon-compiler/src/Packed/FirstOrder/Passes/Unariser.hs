@@ -55,9 +55,10 @@ unariserFun f@FunDef{funty,funarg,funbod} =
     ProdTy _ ->
       let ty  = flattenTy inT
           bod = flattenExp funarg inT funbod
-      in f{funbod = bod, funty = funty{arrIn = ty}}
+      in f{funbod = bod, funty = funty{arrIn = ty, arrOut = flattenTy outT}}
     _ -> f
   where inT = arrIn funty
+        outT = arrOut funty
 
 
 -- | Take an ignored argument to match mapMExprs' conventions.
@@ -290,7 +291,7 @@ flattenExp v ty bod =
           --
           projections :: Ty3 -> ProjStack -> [ProjStack]
           projections (ProdTy tys) acc =
-            concatMap (\(ty',i) -> projections ty' (acc ++ [i])) (zip tys [0..])
+            concatMap (\(ty',i) -> projections ty' (i:acc)) (zip tys [0..])
           projections _ acc = [acc]
 
           projs = projections ty []
