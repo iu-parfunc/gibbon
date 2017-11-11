@@ -99,8 +99,8 @@ unariserExp _ = go [] []
              ndoc stk++", env: "++ndoc env++"\n exp: "++sdoc e0) $
     case e0 of
       (MkProdE es) -> case stk of
-                    (ix:s') -> go s' env (es ! ix)
-                    [] -> L p <$> MkProdE <$> mapM (go stk env) (concatMap flattenProd es)
+                        (ix:s') -> go s' env (es ! ix)
+                        [] -> L p <$> MkProdE <$> mapM (go stk env) (concatMap flattenProd es)
 
       -- (ProjE ix (VarE v)) -> discharge stk <$> -- Danger.
       --                        case lookup v env of
@@ -129,6 +129,11 @@ unariserExp _ = go [] []
       LetE (v1,_locs1,ProdTy _,rhs@(L _ CaseE{})) (L _ (ProjE ix (L _ (VarE v2)))) | v1 == v2 ->
         go (ix:stk) env rhs
 
+      {-
+      This is causing problems with the buildTreeSumProg example. It's not able
+      to properly flatten the packed tuple in the tail position (return value).
+      I couldn't fix this easily. Commenting this works out for now.
+
       LetE (vr,_locs,ProdTy tys, L _ (MkProdE ls)) bod -> do
         vs <- sequence [ gensym (toVar "unzip") | _ <- ls ]
         let -- Here's a little bit of extra complexity to NOT introduce var/var copies:
@@ -142,6 +147,7 @@ unariserExp _ = go [] []
         -- Here we *reprocess* the results in case there is more unzipping to do:
         go stk env' $ mkLets binds bod
 
+      -}
 
       -- Bulk copy prop, WRONG:
       -- (LetE (v1,ProdTy tys, VarE v2) bod) ->
