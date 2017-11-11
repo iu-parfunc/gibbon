@@ -257,17 +257,52 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
         go (M.insert vr CursorTy tenv) bod
 
 
-    -- Transforms all packed values in the list to "end_write" cursors
+    --
     LetE (v,_locs,ty2@(ProdTy tys), rhs@(L _ (MkProdE ls))) bod -> do
       es <- forM (zip tys ls) $ \(ty,e) -> do
               case ty of
-                  _ | isPackedTy ty -> projEnds <$> cursorizePackedExp ddfs fundefs tenv e
+                  _ | isPackedTy ty -> fromDi <$> cursorizePackedExp ddfs fundefs tenv e
                   _ | hasPacked ty  -> error $ "cursorizePackedExp: nested tuples" ++ sdoc rhs
                   _ -> cursorizeExp ddfs fundefs tenv e
       let rhs' = l$ MkProdE es
           ty2' = L3.cursorizeTy ty2
       onDi (l <$> LetE (v,[],ty2', rhs')) <$>
         go (M.insert v ty2 tenv) bod
+
+    -- HACK:
+    -- Two ways in which we can cursorize this:
+    --
+    -- let pakd_tup = projE n something in
+    -- let x        = projE 0 pakd_tup in
+    -- let end_x    = projE 1 pakd_tup
+    --
+    -- OR
+    --
+    -- let x     = projE 0 (projE n something) in
+    -- let end_x = projE 1 (projE n something)
+    --
+    -- `cursorizeLet` creates the former, while our special case here outputs the latter.
+    --
+    -- Reason: unariser can only eliminate direct projections of this form
+    LetE (v,locs,ty, rhs@(L _ ProjE{})) bod | isPackedTy ty ->
+      case locs of
+        [] -> do
+          let ty' = L3.cursorizeTy ty
+              -- We cannot reuse ty' here because TEnv and expressions are tagged with different types
+              ty'' = L3.cursorizeTy ty
+              tenv' = M.union (M.fromList [(v, ty),
+                                           (toEndV v, projEndsTy ty')])
+                      tenv
+          rhs' <- go tenv rhs
+          bod' <- fromDi <$> go tenv' bod
+          return $ Di $
+            mkLets [ (v       ,[], projValTy ty'' , projVal rhs')
+                   , (toEndV v,[], projEndsTy ty'', projEnds rhs')
+                   ]
+            bod'
+
+        -- Not sure when will this be non-empty
+        _  -> error $ "cursorizePackedExp: Got unexpected #locations: " ++ sdoc locs
 
 
     MkProdE{} -> error "cursorizePackedExp: unexpected MkProdE"
@@ -406,8 +441,8 @@ cursorizeLet ddfs fundefs tenv isPackedContext (v,locs,ty,rhs) bod
                     xs -> ProdTy ([CursorTy | _ <- xs] ++ [L3.cursorizeTy ty])
 
             tenv' = M.union (M.fromList [(v, ty),
-                                          (fresh, ty'),
-                                          (toEndV v, projTy 1 ty')])
+                                         (fresh, ty'),
+                                         (toEndV v, projTy 1 ty')])
                     tenv
 
             -- Sigh .. We cannot resuse ty' here because TEnv and expresssions are tagged with different types

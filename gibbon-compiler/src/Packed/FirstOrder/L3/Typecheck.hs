@@ -277,23 +277,21 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
       let res = runExcept $ tcExp ddefs env e
       in case res of
         Left err -> error $ sdoc err
-        Right ty' ->
-          case ty of
-            PackedTy _ _ ->
-              if ty' == CursorTy || ty == ty'
-              then return ()
-              else error $ "Expected type " ++ sdoc ty ++ "and got type " ++ sdoc ty'
-
-            _ -> if ty == ty'
-                 then return ()
-                 else error $ "Expected type " ++ sdoc ty ++ "and got type " ++ sdoc ty'
+        Right ty' -> if tyEq ty ty'
+                     then return ()
+                     else error $ "Expected type " ++ sdoc ty ++ "and got type " ++ sdoc ty'
 
   -- Identity function for now.
   return prg
 
   where
-    -- env = L1.progToEnv prg
     env = progToEnv prg
+    tyEq ty1 ty2 =
+      case ty1 of
+        PackedTy{}  -> ty2 == CursorTy || ty1 == ty2
+        ProdTy tys2 -> let ProdTy tys1 = ty1
+                       in  all (\(a,b) -> tyEq a b) (zip tys1 tys2)
+        _ -> ty1 == ty2
 
     -- fd :: forall e l . FunDef Ty1 Exp -> SyM ()
     fd FunDef{funarg,funty,funbod} = do
