@@ -288,7 +288,7 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
     env = progToEnv prg
     tyEq ty1 ty2 =
       case ty1 of
-        PackedTy{}  -> ty2 == CursorTy || ty1 == ty2
+        PackedTy{}  -> ty2 == ProdTy [CursorTy,CursorTy] || ty1 == ty2
         ProdTy tys2 -> let ProdTy tys1 = ty1
                        in  all (\(a,b) -> tyEq a b) (zip tys1 tys2)
         _ -> ty1 == ty2
