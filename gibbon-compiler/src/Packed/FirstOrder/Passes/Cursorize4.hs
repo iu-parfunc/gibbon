@@ -443,7 +443,7 @@ cursorizeLet ddfs fundefs tenv isPackedContext (v,locs,ty,rhs) bod
                                          (toEndV v, projTy 1 ty')])
                     tenv
 
-            -- Sigh .. We cannot resuse ty' here because TEnv and expresssions are tagged with different types
+            -- Sigh .. We cannot resuse ty' here because TEnv and expresssions are tagged with different
             ty''  = case locs of
                       [] -> L3.cursorizeTy ty
                       xs -> ProdTy ([CursorTy | _ <- xs] ++ [L3.cursorizeTy ty])
@@ -457,21 +457,10 @@ cursorizeLet ddfs fundefs tenv isPackedContext (v,locs,ty,rhs) bod
                                , (loc     , [], CursorTy, projVal rhs'')
                                , (v       , [], projValTy  (projEndsTy ty''), projVal  (Di $ projEnds rhs''))
                                , (toEndV v, [], projEndsTy (projEndsTy ty''), projEnds (Di $ projEnds rhs''))]
-                      __ -> error "cursorizeLet: isPackedTy"
+                      _ -> error "cursorizeLet: packed tuples error1"
 
         bod' <- go tenv' bod
         return $ unLoc $ mkLets bnds bod'
-
-        --   ProjE{} ->
-        --     case locs of
-        --       [] -> LetE (v,[],CursorTy, l$ VarE outLoc) <$> l <$>
-        --               LetE (toEndV v,[],L3.cursorizeTy ty, rhs') <$>
-        --                 go (M.insert v ty tenv) bod
-
-        --       _  -> error "ProjE todo"
-
-
-        --   oth -> error $ sdoc oth ++ "\ncannot return a packed value"
 
     | hasPacked ty = do
         rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs tenv rhs
@@ -499,18 +488,21 @@ cursorizeLet ddfs fundefs tenv isPackedContext (v,locs,ty,rhs) bod
             -- `rightmost` is an example of a program that does this
             [loc] -> do
               fresh <- gensym "tup_scalar"
-              let ty' = ProdTy [CursorTy, L3.stripTyLocs ty]
-                  tenv' = M.union (M.fromList [(fresh, ProdTy [CursorTy, ty]),
-                                               (v, ty),
-                                               (loc, CursorTy)])
-                                  tenv
-
-              LetE (fresh,[],ty',rhs') <$> l <$>
-                LetE (loc,[],CursorTy,l$ ProjE 0 (l$ VarE fresh)) <$> l <$>
-                  LetE (v,[],L3.stripTyLocs ty,l$ ProjE 1 (l$ VarE fresh)) <$>
-                    go tenv' bod
-
-            _ -> error "cursorizeLet: packed tuples"
+              let ty'  = ProdTy ([CursorTy | _ <- locs] ++ [L3.cursorizeTy ty])
+                  -- We cannot resuse ty' here because TEnv and expresssions are tagged with different
+                  ty'' = ProdTy ([CursorTy | _ <- locs] ++ [L3.cursorizeTy ty])
+                  tenv' = M.union (M.fromList [(fresh, ty'),
+                                               (loc, projTy 0 ty'),
+                                               (v, projTy 1 ty')])
+                          tenv
+                  rhs'' = dl$ VarE fresh
+                  bnds  = [ (fresh, [] , ty''          , rhs')
+                          , (loc   ,[] , projTy 0 ty'' , projVal rhs'')
+                          , (v     ,[] , projTy 1 ty'' , projEnds rhs'')
+                          ]
+              bod' <- go tenv' bod
+              return $ unLoc $ mkLets bnds bod'
+            _ -> error "cursorizeLet: packed tuples error2"
 
   where go t x = if isPackedContext
                  then fromDi <$> cursorizePackedExp ddfs fundefs t x
