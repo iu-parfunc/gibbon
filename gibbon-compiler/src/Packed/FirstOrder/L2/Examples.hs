@@ -10,7 +10,7 @@ module Packed.FirstOrder.L2.Examples
     -- * Programs
   , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
-  , rightmostProg, buildTreeProg, buildTreeSumProg
+  , rightmostProg, buildTreeProg, buildTreeSumProg, printTupProg
   ) where
 
 import Data.Loc
@@ -494,14 +494,27 @@ buildTreeSumMainExp = l$ Ext $ LetRegionE (VarR "r313") $
                       l$ Ext $ LetLocE "l314" (StartOfLE (VarR "r313")) $
                       l$ LetE ("z315",[],ProdTy [IntTy, PackedTy "Tree" "l314"],
                                l$ AppE "buildTreeSum" ["l314"] (l$ LitE 3)) $
-                      l$ LetE ("a316",[], PackedTy "Tree" "l314",
-                               l$ ProjE 1 (l$ VarE "z315")) $
-                      l$ VarE "a316"
+                      l$ VarE "z315"
 
 
 buildTreeSumProg :: Prog
-buildTreeSumProg = Prog ddtree (M.fromList [("buildTreeSum", buildTreeSumFun)]) (Just (buildTreeSumMainExp, PackedTy "Tree" "l314"))
+buildTreeSumProg = Prog ddtree (M.fromList [("buildTreeSum", buildTreeSumFun)]) (Just (buildTreeSumMainExp, ProdTy [IntTy, PackedTy "Tree" "l314"]))
 
+
+--------------------------------------------------------------------------------
+
+printTupMainExp :: L Exp2
+printTupMainExp = l$ Ext $ LetRegionE (VarR "r325") $
+                  l$ Ext $ LetLocE "l326" (StartOfLE (VarR "r325")) $
+                  l$ LetE ("i327",[], IntTy, l$ LitE 42) $
+                  l$ LetE ("x328",[], PackedTy "Tree" "l326",
+                           l$ DataConE "l326" "Leaf" [l$ LitE 1]) $
+                  l$ LetE ("t329",[], ProdTy [IntTy, PackedTy "Tree" "l326"],
+                           l$ MkProdE [l$ VarE "i327", l$ VarE "x328"]) $
+                  l$ VarE "t329"
+
+printTupProg :: Prog
+printTupProg = Prog ddtree M.empty (Just (printTupMainExp, ProdTy [IntTy, PackedTy "Tree" "l326"]))
 
 --------------------------------------------------------------------------------
 

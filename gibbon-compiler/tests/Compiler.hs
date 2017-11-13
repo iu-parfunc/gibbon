@@ -122,7 +122,10 @@ case_buildtree = runner "buildtree.c" buildTreeProg
 
 case_buildtreesum :: Assertion
 case_buildtreesum = runner "buildtreesum.c" buildTreeSumProg
-                 "(Node (Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))) (Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))))"
+                 "'#(8 (Node (Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))) (Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1)))))"
+
+case_printtup :: Assertion
+case_printtup = runner "printtup.c" printTupProg "'#(42 (Leaf 1))"
 
 compilerTests :: TestTree
 compilerTests = $(testGroupGenerator)
