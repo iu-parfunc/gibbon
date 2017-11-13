@@ -10,7 +10,7 @@ module Packed.FirstOrder.L2.Examples
     -- * Programs
   , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
-  , rightmostProg, buildTreeProg, buildTreeSumProg, printTupProg
+  , rightmostProg, buildTreeProg, buildTreeSumProg, printTupProg, addTreesProg
   ) where
 
 import Data.Loc
@@ -515,6 +515,69 @@ printTupMainExp = l$ Ext $ LetRegionE (VarR "r325") $
 
 printTupProg :: Prog
 printTupProg = Prog ddtree M.empty (Just (printTupMainExp, ProdTy [IntTy, PackedTy "Tree" "l326"]))
+
+--------------------------------------------------------------------------------
+
+{-
+
+addTrees :: Tree -> Tree -> Tree
+addTrees t1 t2 =
+  case t1 of
+    Leaf n1    -> case t2 of
+                    Leaf n2 -> Leaf (n1 + n2)
+                    Node l2 r2 -> error "expected leaf here"
+    Node l1 r1 -> case t2 of
+                    Leaf n2 -> error "expected node here"
+                    Node l2 r2 -> Node (addTrees l1 l2) (addTrees r1 r2)
+-}
+
+addTreesFun :: FunDef
+addTreesFun = FunDef "addTrees" addTreesTy "trees354" addTreesBod
+  where
+    addTreesTy :: ArrowTy Ty2
+    addTreesTy = (ArrowTy
+                  [LRM "lin351" (VarR "r350") Input,
+                   LRM "lin352" (VarR "r350") Input,
+                   LRM "lout353" (VarR "r350") Output]
+                  (ProdTy [PackedTy "Tree" "lin351", PackedTy "Tree" "lin352"])
+                  (S.empty)
+                  (PackedTy "Tree" "lout353")
+                  [])
+
+    addTreesBod :: L Exp2
+    addTreesBod = l$ LetE ("tree1",[],PackedTy "Tree" "lin351",
+                           l$ ProjE 0 (l$ VarE "trees354")) $
+                  l$ LetE ("tree2",[],PackedTy "Tree" "lin352",
+                           l$ ProjE 1 (l$ VarE "trees354")) $
+                  l$ CaseE (l$ VarE "tree1")
+                  [("Leaf", [("n355","l356")],
+                    l$ CaseE (l$ VarE "tree2")
+                       [("Leaf",[("n357","l358")],
+                         l$ LetE ("n358",[],IntTy,l$ PrimAppE AddP [l$ VarE "n355",l$ VarE "n357"]) $
+                         l$ LetE ("x359",[],PackedTy "Tree" "lout353",
+                                  l$ DataConE "lout353" "Leaf" [l$ VarE "n358"]) $
+                         l$ VarE "x359")
+                       ]
+                   )
+                  ]
+
+addTreesMainExp :: L Exp2
+addTreesMainExp = l$ Ext $ LetRegionE (VarR "r400") $
+                  l$ Ext $ LetLocE "l401" (StartOfLE (VarR "r400")) $
+                  l$ LetE ("x402",[], PackedTy "Tree" "l401",
+                           l$ AppE "buildTree" ["l401"] (l$ LitE 0)) $
+                  l$ Ext $ LetLocE "l403" (AfterVariableLE "x402" "l401") $
+                  l$ LetE ("y404",[], PackedTy "Tree" "l403",
+                           l$ AppE "buildTree" ["l403"] (l$ LitE 0)) $
+                  l$ LetE ("z405",[], ProdTy [PackedTy "Tree" "l401", PackedTy "Tree" "l403"],
+                           l$ MkProdE [l$ VarE "x402", l$ VarE "y404"]) $
+                  l$ VarE "z405"
+
+addTreesProg :: Prog
+addTreesProg = Prog ddtree (M.fromList [("addTrees", addTreesFun)
+                                       ,("buildTree", buildTreeFun)])
+                    (Just (addTreesMainExp,
+                           ProdTy [PackedTy "Tree" "l401", PackedTy "Tree" "l403"]))
 
 --------------------------------------------------------------------------------
 
