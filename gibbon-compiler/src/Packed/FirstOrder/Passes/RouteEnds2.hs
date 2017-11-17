@@ -248,7 +248,7 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                  v' <- gensym "tailapp"
                  let ty = funtype v
                      -- use locVars used at call-site in the type
-                     arrOutMp = M.fromList $ zip (getArrowTyLocs ty) args
+                     arrOutMp = M.fromList $ zip (allLocVars ty) args
                      outT     = substTy arrOutMp (arrOut ty)
                      e' = LetE (v',[], outT, l$ AppE v args e) (l$ VarE v')
                  -- we fmap location at the top-level case expression
