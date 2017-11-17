@@ -25,8 +25,6 @@ import Packed.FirstOrder.L2.Syntax
 import Packed.FirstOrder.Common hiding (FunDef)
 import Packed.FirstOrder.L1.Syntax hiding (Prog, FunDef, ddefs, fundefs, mainExp)
 
-import Text.PrettyPrint.GenericPretty
-
 --------------------------------------------------------------------------------
 
 -- | Chatter level for this module:
@@ -49,7 +47,7 @@ initialEnv mp = M.map go mp
   where
     go :: FunDef -> ArrowTy Ty2
     go FunDef{funty} =
-      let locs       = getArrowTyLocs funty
+      let locs       = allLocVars funty
           maxEffects = locsEffect locs
       in funty { arrEffs = maxEffects }
 
@@ -72,28 +70,11 @@ inferEffects prg@Prog{ddefs,fundefs} = do
 
 
 inferFunDef :: DDefs Ty2 -> FunEnv -> FunDef -> ArrowTy Ty2
-inferFunDef ddfs fenv FunDef{funarg,funbod,funty} =
-    case (inLocs,outLoc) of
-      ([],_) -> funty
-      ((inLoc:_), Nothing)  -> funty { arrEffs = S.filter ((==) (Traverse inLoc)) eff }
-      ((inLoc:_), Just loc) -> if loc == inLoc
-                               then toIdFunty funty
-                               else funty { arrEffs = S.filter ((==) (Traverse inLoc)) eff }
-
+inferFunDef ddfs fenv FunDef{funarg,funbod,funty} = funty { arrEffs = S.intersection travs eff }
   where
     env0  = M.singleton funarg (arrIn funty)
-    (eff,outLoc) = inferExp ddfs fenv env0 funbod
-    inLocs = L.map (\(LRM l _ _) -> l) $
-             L.filter (\(LRM _ _ m) -> m == Input) (locVars funty)
-
-    isInLRM :: LRM -> Bool
-    isInLRM LRM{lrmMode} = lrmMode == Input
-
-    -- | Change arrOut to be same as arrIn, and remove output LRM from locVars
-    toIdFunty :: ArrowTy Ty2 -> ArrowTy Ty2
-    toIdFunty ty@ArrowTy{locVars,arrIn} = ty { arrOut = arrIn
-                                             , locVars = L.filter isInLRM locVars
-                                             }
+    travs = S.fromList $ L.map Traverse $ inLocVars funty
+    (eff,_outLoc) = inferExp ddfs fenv env0 funbod
 
 
 inferExp :: DDefs Ty2 -> FunEnv -> TyEnv -> L Exp2 -> (Set Effect, Maybe LocVar)
@@ -110,7 +91,7 @@ inferExp ddfs fenv env (L _p exp) =
     AppE v locs _e ->
       -- Substitue locations used at this particular call-site in the function
       -- effects computed so far
-      let orgLocs = getArrowTyLocs (fenv # v)
+      let orgLocs = allLocVars (fenv # v)
           locMap  = M.fromList $ zip orgLocs locs
           eff     = arrEffs (fenv # v)
       in (substEffs locMap eff, Nothing)

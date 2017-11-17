@@ -62,6 +62,13 @@ assertRouteEnds prg fnName expected = expected @=? lRets
 case_add1_test2 :: Assertion
 case_add1_test2  = assertRouteEnds add1Prog "add1" [EndOf $ LRM "lin2" (VarR "r3") Input]
 
+{-
+
+Commenting this out because it allows us to simplify some parts of InferEffects. We no longer
+have to write special cases to change the type of identity functions. Without that,
+these programs fail in L2 typechecking pass. But that's fine because these programs cannot
+be compiled. They'll be fixed by inferLocations to *not* be identity functions.
+
 -- | id1 doesn't
 case_id1 :: Assertion
 case_id1 = assertRouteEnds id1Prog "id1" []
@@ -69,6 +76,8 @@ case_id1 = assertRouteEnds id1Prog "id1" []
 -- | id2 doesn't either
 case_id2 :: Assertion
 case_id2 = assertRouteEnds id2Prog "id2" []
+
+-}
 
 -- | copyTree does
 case_copyTree :: Assertion
