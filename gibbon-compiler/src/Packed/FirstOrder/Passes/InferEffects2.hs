@@ -198,6 +198,6 @@ inferExp ddfs fenv env (L _p exp) =
 
           -- Also, in any binding form we are obligated to not return
           -- our local bindings in traversal side effects:
-          isLocal (Traverse v) = L.elem v locs
-          stripped = S.filter isLocal eff
+          isNotLocal (Traverse v) = not $ L.elem v locs
+          stripped = S.filter isNotLocal eff
       in ( winner, (stripped,Nothing) )
