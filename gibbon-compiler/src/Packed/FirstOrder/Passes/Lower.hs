@@ -175,11 +175,21 @@ printTy pkd ty trvs =
   case (ty, trvs) of
     (IntTy, [_one])             -> T.LetPrimCallT [] T.PrintInt trvs
     (SymDictTy ty', [_one])     -> sandwich (printTy pkd ty' trvs) "Dict"
-    (PackedTy constr _, [_one]) -> if pkd
-                                   then (\tl -> T.LetCallT [("unpkd", T.PtrTy), ("ignre", T.CursorTy)]
-                                                (mkUnpackerName constr) trvs $
-                                                T.LetCallT [] (mkPrinterName constr) [T.VarTriv "unpkd"] tl)
-                                   else T.LetCallT [] (mkPrinterName constr) trvs
+    (PackedTy constr _, [one]) -> -- HACK: Using varAppend here was the simplest way to get
+                                  -- unique names without using the SyM monad.
+                                  -- ASSUMPTION: Argument (one) is always a variable reference.
+                                  -- This is reasonable because the AST is always flattened before
+                                  -- we try to lower it.
+                                  -- But we should change this to use gensym anyways..
+                                  let T.VarTriv v = one
+                                      unpkd = varAppend "unpkd_" v
+                                      ignre = varAppend "ignre_" v
+                                  in
+                                    if pkd
+                                    then (\tl -> T.LetCallT [(unpkd, T.PtrTy), (ignre, T.CursorTy)]
+                                                 (mkUnpackerName constr) trvs $
+                                                 T.LetCallT [] (mkPrinterName constr) [T.VarTriv unpkd] tl)
+                                    else T.LetCallT [] (mkPrinterName constr) trvs
     (ListTy ty', [_one])        -> sandwich (printTy pkd ty' trvs) "List"
 
     (BoolTy, [trv]) ->
