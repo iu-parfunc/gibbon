@@ -11,6 +11,7 @@ module Packed.FirstOrder.L2.Examples
   , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
   , rightmostProg, buildTreeProg, buildTreeSumProg, printTupProg, addTreesProg
+  , printTupProg2
   ) where
 
 import Data.Loc
@@ -515,6 +516,25 @@ printTupMainExp = l$ Ext $ LetRegionE (VarR "r325") $
 
 printTupProg :: Prog
 printTupProg = Prog ddtree M.empty (Just (printTupMainExp, ProdTy [IntTy, PackedTy "Tree" "l326"]))
+
+--------------------------------------------------------------------------------
+
+printTupMainExp2 :: L Exp2
+printTupMainExp2 = l$ Ext $ LetRegionE (VarR "r400") $
+                  l$ Ext $ LetLocE "l401" (StartOfLE (VarR "r400")) $
+                  l$ LetE ("x402",[], PackedTy "Tree" "l401",
+                           l$ AppE "buildTree" ["l401"] (l$ LitE 2)) $
+                  l$ Ext $ LetLocE "l403" (AfterVariableLE "x402" "l401") $
+                  l$ LetE ("y404",[], PackedTy "Tree" "l403",
+                           l$ AppE "buildTree" ["l403"] (l$ LitE 1)) $
+                  l$ LetE ("z405",[], ProdTy [PackedTy "Tree" "l401", PackedTy "Tree" "l403"],
+                           l$ MkProdE [l$ VarE "x402", l$ VarE "y404"]) $
+                  l$ VarE "z405"
+
+printTupProg2 :: Prog
+printTupProg2 = Prog ddtree (M.fromList [("buildTree", buildTreeFun)])
+                (Just (printTupMainExp2,
+                       ProdTy [PackedTy "Tree" "l401", PackedTy "Tree" "l403"]))
 
 --------------------------------------------------------------------------------
 
