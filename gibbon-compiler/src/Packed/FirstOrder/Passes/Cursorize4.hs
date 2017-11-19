@@ -57,91 +57,49 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
   return $ L3.Prog ddefs' fundefs' mainExp'
 
   where
-
     fd :: FunDef -> SyM L3.FunDef
-    fd FunDef{funname,funty,funarg,funbod} = do
-      let lvars   = locVars funty
-          outCurs = L.filter (\(LRM _ _ m) -> m == Output) lvars
-          inCurs  = L.filter (\(LRM _ _ m) -> m == Input) lvars
+    fd FunDef{funname,funty,funarg,funbod} =
+      let inLocs  = inLocVars funty
+          outLocs = outLocVars funty
 
-          inT  = arrIn funty
-          outT = arrOut funty
-
+          inT    = arrIn funty
+          outT   = arrOut funty
           funty' = L3.cursorizeArrowTy funty
+      in do
+       newarg <- gensym "newarg"
+       -- Output cursors are always inserted before all other arguments. So we can
+       -- binding all cursors at 0
+       let outCurBinds = mkLets [ (cur,[],CursorTy, l$ ProjE i (l$ VarE newarg))
+                                | (cur,i) <- zip outLocs [0..]]
+           inCurBinds = mkInProjs (length outLocs) inLocs inT (l$ VarE newarg) funarg
+           initEnv = M.singleton funarg inT
 
-      (arg,exp') <-
-        case (outCurs,inCurs) of
+       bod <- if hasPacked outT
+              then fromDi <$> cursorizePackedExp ddefs fundefs initEnv funbod
+              else cursorizeExp ddefs fundefs initEnv funbod
+       ret <- return $ outCurBinds (inCurBinds bod)
 
-          -- Eg. intAdd
-          ([],[]) ->
-            if (hasPacked inT || hasPacked outT)
-            then error $ "Cannot process a packed type without cursors"
-            else do
-              let initEnv = M.singleton funarg (arrIn funty)
-              (funarg,) <$> cursorizeExp ddefs fundefs initEnv funbod
+       return $ L3.FunDef funname funty' newarg ret
 
-          -- Eg. leftmost
-          -- Takes in a packed argument, but returns a scalar value. Only has input/read cursors
-          ([],icurs) -> do
-            case icurs of
-              -- When a function takes in a single packed argument, it's passed directly
-              -- i.e not in a tuple. It's type is (f :: CursorTy -> SCALAR)
-              [_cur] -> (funarg,) <$>
-                          cursorizeExp ddefs fundefs (M.singleton funarg CursorTy) funbod
-              _ -> error "fd: Read packed tuples"
 
-          -- Eg. buildLeaf, buildTree, buildTreeSum etc
-          -- Start by creating let bindings for all the output cursors.
-          -- Since all the cursors are passed before old fn argument, all bindings are just projections starting at 0.
-          -- We also have to bind the old fn argument (funarg), which comes after all the output cursors.
-          --
-          -- Then, if the body is of type Packed, we return the end_write cursor of the packed value.
-          -- Otherwise, the return value would be a tuple of (end_write_cur1, end_write_cur2, maybe_scalar) etc
-          -- and we return it as is.
-          (ocurs, []) -> do
-              newarg <- gensym (varAppend "tup_arg_" funname)
-              funbod' <- fromDi <$> cursorizePackedExp ddefs fundefs (M.singleton funarg CursorTy) funbod
-              bod <- return $
-                     -- output cursor bindings
-                     mkLets [ (lrmLoc cur,[],CursorTy, l$ ProjE i (l$ VarE newarg))
-                            | (cur,i) <- zip ocurs [0..]]
-                     -- old fn argument binding + processed fn body
-                     (LetE (funarg,[], L3.stripTyLocs (arrIn funty), l$ ProjE (length ocurs) (l$ VarE newarg)) <$> l <$>
-                        funbod')
-              return (newarg, bod)
+    -- | Create projections for input cursors. By our current conventions, input cursors are
+    -- passed after output cursors
+    mkInProjs :: Int -> [LocVar] -> Ty2 -> L L3.Exp3 -> Var -> (L L3.Exp3 -> L L3.Exp3)
+    mkInProjs n inLocs inT newarg funarg =
+      case inLocs of
+        [] -> mkLets [(funarg,[],L3.stripTyLocs inT, nProj n newarg)]
 
-          -- Eg. add1
-          (ocurs,icurs) -> do
-            newarg <- gensym (varAppend "tup_arg_" funname)
+        [cur] -> mkLets [(cur   ,[],CursorTy, nProj n newarg)
+                        ,(funarg,[],CursorTy, nProj n newarg)]
 
-            let initEnv = M.fromList [(lrmLoc cur, CursorTy) | cur <- (ocurs ++ icurs)]
-                initEnv2 = case inT of
-                             PackedTy _ _ -> M.insert funarg CursorTy initEnv
-                             _ -> M.insert funarg inT initEnv
+        _ -> error "mkInProjs: todo"
 
-            -- 1st: Bind output and input cursors for all locations:
-            b <- mkLets [ (lrmLoc cur,[], CursorTy, l$ ProjE ix (l$ VarE newarg))
-                        | (cur,ix) <- zip (ocurs ++ icurs) [0..]] <$>
 
-                 -- 2nd: Unpack the "real" argument, which is after the prepended output cursors:
-                 (case inT of
-                   PackedTy _k loc ->
-                     -- we'll only have 1 input cursor bound at `l`
-                     l <$> LetE (funarg,[], CursorTy, (l$ VarE loc))
-
-                   -- Packed tuples
-                   _ ->
-                     l <$> LetE (funarg,[], L3.stripTyLocs inT,
-                                 l$ ProjE (1 + length ocurs + length icurs) (l$ VarE newarg))
-
-                 ) <$>
-                 -- 3rd: Bind the result of the function body so we can operate on it:
-                 fromDi <$> cursorizePackedExp ddefs fundefs initEnv2 funbod
-                 -- TODO: all the other steps
-
-            return (newarg, b)
-
-      return $ L3.FunDef funname funty' arg exp'
+    -- | Helper to avoid duplicate code in mkInProjs
+    nProj :: Int -> L L3.Exp3 -> L L3.Exp3
+    nProj n arg = if n == 0
+                  then arg
+                  else l$ ProjE n arg
 
 -- | Cursorize expressions NOT producing `Packed` values
 cursorizeExp :: DDefs Ty2 -> NewFuns -> TEnv -> L Exp2 -> SyM (L L3.Exp3)
