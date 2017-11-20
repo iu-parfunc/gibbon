@@ -134,7 +134,7 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                retlocs = L.foldr handleLoc [] locin
                lenv = case tyin of
                         PackedTy _n l -> M.insert funarg l $ M.empty
-                        ProdTy _tys -> error "Multiple function args not handled yet in RouteEnds2"
+                        ProdTy _tys -> M.empty
                         _ -> M.empty
            funbod' <- exp fns retlocs emptyRel lenv M.empty funbod
            return L2.FunDef{funname,funty,funarg,funbod=funbod'}
