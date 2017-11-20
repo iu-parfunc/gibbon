@@ -569,10 +569,22 @@ ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
 -- | Ensure that two types are equal, ignoring the locations if they are packed.
 -- Includes an expression for error reporting.
 ensureEqualTyNoLoc :: Exp -> Ty2 -> Ty2 -> TcM Ty2
-ensureEqualTyNoLoc exp (PackedTy dc1 ty1) (PackedTy dc2 ty2) =
-    if dc1 == dc2 then return (PackedTy dc1 ty1)
-    else ensureEqualTy exp (PackedTy dc1 ty1) (PackedTy dc2 ty2)
-ensureEqualTyNoLoc exp ty1 ty2 = ensureEqualTy exp ty1 ty2
+ensureEqualTyNoLoc exp ty1 ty2 =
+  case (ty1,ty2) of
+    (PackedTy dc1 _, PackedTy dc2 _) -> if dc1 == dc2
+                                        then return ty1
+                                        else ensureEqualTy exp ty1 ty2
+    (ProdTy tys1, ProdTy tys2) -> do
+        checks <- return $ L.map (\(ty1,ty2) -> ensureEqualTyNoLoc exp ty1 ty2) (zip tys1 tys2)
+        -- TODO: avoid runExcept here
+        forM_ checks $ \c -> do
+            let c' = runExcept c
+            case c' of
+              Left err -> throwError err
+              Right _  -> return ()
+        return ty1
+    _ -> ensureEqualTy exp ty1 ty2
+
 
 -- | Ensure that match cases make sense.
 -- Includes an expression for error reporting.
