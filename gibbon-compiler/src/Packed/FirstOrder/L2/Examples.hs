@@ -591,13 +591,16 @@ addTreesMainExp = l$ Ext $ LetRegionE (VarR "r400") $
                            l$ AppE "buildTree" ["l403"] (l$ LitE 0)) $
                   l$ LetE ("z405",[], ProdTy [PackedTy "Tree" "l401", PackedTy "Tree" "l403"],
                            l$ MkProdE [l$ VarE "x402", l$ VarE "y404"]) $
-                  l$ VarE "z405"
+                  l$ Ext $ LetRegionE (VarR "r405") $
+                  l$ Ext $ LetLocE "l406" (StartOfLE (VarR "r405")) $
+                  l$ LetE ("a407",[],PackedTy "Tree" "l406",
+                           l$ AppE "addTrees" ["l401","l403","l406"] (l$ VarE "z405")) $
+                  l$ VarE "a407"
 
 addTreesProg :: Prog
 addTreesProg = Prog ddtree (M.fromList [("addTrees", addTreesFun)
                                        ,("buildTree", buildTreeFun)])
-                    (Just (addTreesMainExp,
-                           ProdTy [PackedTy "Tree" "l401", PackedTy "Tree" "l403"]))
+                    (Just (addTreesMainExp, PackedTy "Tree" "l406"))
 
 --------------------------------------------------------------------------------
 
