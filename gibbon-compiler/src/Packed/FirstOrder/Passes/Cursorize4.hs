@@ -504,31 +504,28 @@ unpackDataCon ddfs fundefs tenv isPacked scrtCur (dcon,vlocs,rhs) =
                                               (toEndV v, CursorTy)])
                          env
 
-              (if isFirst
-               then
-                 l <$>
-                   LetE (loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1)) <$> l <$>
-                     LetE (tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt loc)
-               else
-                 l <$> LetE (tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt cur)
-                ) <$> l <$>
+                  bnds = if isFirst
+                         then [(loc, [], CursorTy,l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1))
+                              ,(tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt loc)]
+                         else [(tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt cur)]
 
-               LetE (v, [], IntTy, l$ ProjE 0 (l$ VarE tmp)) <$> l <$>
-                 LetE (toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp)) <$>
-                   go (toEndV v) rst rtys False (M.insert loc CursorTy env')
+                  bnds2 = [(v       , [], IntTy   , l$ ProjE 0 (l$ VarE tmp))
+                          ,(toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp))]
 
+              bod <- go (toEndV v) rst rtys False (M.insert loc CursorTy env')
+              return $ mkLets (bnds ++ bnds2) bod
 
             _ -> do
               let env' = (M.insert v CursorTy env)
               if isFirst
-              then l <$>
-                     LetE (loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1)) <$> l <$>
-                       LetE (v,[], CursorTy, l$ VarE loc) <$>
-                         go (toEndV v) rst rtys False (M.insert loc CursorTy env')
-              else
-                l <$>
-                  LetE (v,[], CursorTy, l$ VarE loc) <$>
-                    go (toEndV v) rst rtys False env'
+              then do
+                bod <- go (toEndV v) rst rtys False (M.insert loc CursorTy env')
+                return $ mkLets [(loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1))
+                                ,(v  , [], CursorTy, l$ VarE loc)]
+                         bod
+              else do
+                bod <- go (toEndV v) rst rtys False env'
+                return $ mkLets [(v,[], CursorTy, l$ VarE loc)] bod
 
         go _ vls rtys _ _ = error $ "Unexpected numnber of varible, type pairs: " ++ show (vls,rtys)
 
