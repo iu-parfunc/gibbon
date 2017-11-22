@@ -72,14 +72,30 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
        let outCurBinds = mkLets [ (cur,[],CursorTy, l$ ProjE i (l$ VarE newarg))
                                 | (cur,i) <- zip outLocs [0..]]
            inCurBinds = mkInProjs (length outLocs) inLocs inT (l$ VarE newarg) funarg
-           initEnv = M.singleton funarg inT
+           initEnv = M.singleton funarg (cursorizeInTy inT)
 
        bod <- if hasPacked outT
               then fromDi <$> cursorizePackedExp ddefs fundefs initEnv funbod
               else cursorizeExp ddefs fundefs initEnv funbod
        ret <- return $ outCurBinds (inCurBinds bod)
-
        return $ L3.FunDef funname funty' newarg ret
+
+
+    -- | The only difference between this and L3.cursorizeTy is that here,
+    --   packed types are replaced by a single CursorTy instead of ProdTy [CursorTy, CursorTy].
+    --   Because packed fn arguments are passed as only 'start' cursors.
+    --   Whereas, everywhere else we think of packed values as a (start,end) tuple
+    cursorizeInTy :: Ty2 -> Ty2
+    cursorizeInTy ty =
+      case ty of
+        IntTy     -> IntTy
+        BoolTy    -> BoolTy
+        ProdTy ls -> ProdTy $ L.map cursorizeInTy ls
+        SymDictTy ty' -> SymDictTy $ cursorizeInTy ty'
+        PackedTy{}    -> CursorTy
+        ListTy ty'    -> ListTy $ cursorizeInTy ty'
+        PtrTy -> error "cursorizeTy: unexpected PtrTy"
+        CursorTy -> error "cursorizeTy: unexpected CursorTy"
 
 
     -- | Create projections for input cursors. By our current conventions, input cursors are
@@ -184,22 +200,29 @@ cursorizePackedExp ddfs fundefs tenv (L p ex) =
     LitE _n    -> error $ "Shouldn't encounter LitE in packed context:" ++ sdoc ex
     LitSymE _n -> error $ "Shouldn't encounter LitSymE in packed context:" ++ sdoc ex
 
+    -- ASSUMPTIONS:
+    -- 1) `locs` has both input and output locations for the function. But at the call-site
+    --    we only have to prepend output locations, as the packed values in arguments
+    --    already represent the input locations.
+    --    So to get call-site output locations, we drop (length inLocs) from `locs`, assuming
+    --    that they are ordered correctly (inputs before outputs)
+    --
+    -- 2) `arg` is trivial (VarE or LitE) after flattening.
+    --    If it's a variable, we lookup it's
+    --    type in the environment, and arrange for it to only have `start` cursors.
     AppE f locs arg -> do
-      let inT = arrIn $ funty (fundefs ! f)
-      case inT of
-        _ | isPackedTy inT -> do
-              let [start,end] = locs
-              return $ dl $ AppE f [] (l$ MkProdE [l$ VarE end, l$ VarE start])
-
-        _ | hasPacked inT -> do
-              error "todo appe"
-
-        _ -> case locs of
-               [] -> error $ "cursorizePackedExp AppE: empty locations"
-               -- ASSUMPTION: arg is a scalar value
-               _  -> do
-                 arg' <- cursorizeExp ddfs fundefs tenv arg
-                 return $ dl $ AppE f [] $ l$ MkProdE $ [ l$ VarE loc | loc <- locs] ++ [arg']
+      let inT    = arrIn $ funty (fundefs ! f)
+          inLocs = inLocVars $ funty (fundefs ! f)
+          outs   = drop (length inLocs) locs
+          argTy  = case (unLoc arg) of
+                     VarE v -> tenv ! v
+                     LitE _ -> IntTy
+                     _      -> error $ "cursorizePackedExp: AppE got unexpected arg: " ++ sdoc arg
+      arg' <- if hasPacked inT
+              then fromDi <$> go tenv arg
+              else cursorizeExp ddfs fundefs tenv arg
+      starts <- return $ giveStarts argTy arg'
+      return $ dl$ AppE f [] $ l$ MkProdE $ [l$ VarE loc | loc <- outs] ++ [starts]
 
 
     PrimAppE _ _ -> error $ "cursorizePackedExp: unexpected PrimAppE in packed context" ++ sdoc ex
@@ -528,6 +551,14 @@ unpackDataCon ddfs fundefs tenv isPacked scrtCur (dcon,vlocs,rhs) =
                 return $ mkLets [(v,[], CursorTy, l$ VarE loc)] bod
 
         go _ vls rtys _ _ = error $ "Unexpected numnber of varible, type pairs: " ++ show (vls,rtys)
+
+
+-- |
+giveStarts :: Ty2 -> L L3.Exp3 -> L L3.Exp3
+giveStarts ty e =
+  case ty of
+    PackedTy{} -> l$ ProjE 0 e
+    _ -> e
 
 
 -- | Smart constructor that immediately destroys products if it can:
