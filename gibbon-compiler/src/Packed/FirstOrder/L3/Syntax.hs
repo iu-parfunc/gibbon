@@ -145,8 +145,8 @@ cursorizeTy ty =
     SymDictTy ty' -> SymDictTy $ cursorizeTy ty'
     PackedTy{}    -> ProdTy [CursorTy, CursorTy]
     ListTy ty'    -> ListTy $ cursorizeTy ty'
-    PtrTy -> error "cursorizeTy: unexpected PtrTy"
-    CursorTy -> error "cursorizeTy: unexpected CursorTy"
+    PtrTy    -> PtrTy
+    CursorTy -> CursorTy
 
 
 -- |
