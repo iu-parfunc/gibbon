@@ -400,8 +400,6 @@ passes config@Config{mode,packed} l1 = do
               -- Note: L2 -> L3
               l3 <- go "cursorize"        cursorize     l2
               l3 <- go "L3.flatten"       flattenL3     l3
-              l3 <- go "findWitnesses"    findWitnesses l3
-              l3 <- go "shakeTree"        shakeTree     l3
               l3 <- go "L3.typecheck"     L3.tcProg     l3
               l3 <- go "hoistNewBuf"      hoistNewBuf   l3
               return l3
