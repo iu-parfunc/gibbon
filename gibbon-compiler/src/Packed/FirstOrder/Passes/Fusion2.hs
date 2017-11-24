@@ -1,7 +1,8 @@
 
 
-module Packed.FirstOrder.Passes.Fusion2 (fusion2) where
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 
+module Packed.FirstOrder.Passes.Fusion2 (fusion2) where
 import Control.Exception
 import Data.Loc
 import qualified Data.Map as M
@@ -9,19 +10,25 @@ import qualified Data.List as L
 import Data.Symbol
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L1.Syntax as L1
+import Debug.Trace
+import Control.DeepSeq
+import GHC.Generics (Generic, Generic1)
 
 
+debug = flip trace
 
 
 toExp1:: L Exp1-> Exp1 
 toExp1  (L  _ exp) = exp
 
 
-data DefTableEntry = DefTableEntry{ def::Exp1, fun_uses :: [(Exp1,Int)], all_use_count:: Int  }
+data DefTableEntry = DefTableEntry{ def::Exp1, fun_uses :: [(Exp1,Int)], all_use_count:: Int  } deriving (Show , Generic, NFData)
 
 -- this def table is inteneded to map variable that corresponds to results of function calls to their defs and fun_uses 
-type DefTable = M.Map Symbol DefTableEntry  
+type DefTable = M.Map Symbol DefTableEntry 
+
 type PotentialPair = (Symbol, Symbol)
+
 
 
 -- rewrite this using foldl or foldr/
@@ -41,20 +48,27 @@ buildDefTable (VarE (Var sym)) table =
   where f (DefTableEntry  def fun_uses c) =Just ( DefTableEntry def fun_uses (c+1))          
 
 
+
+
 buildDefTable callExp@(AppE _ _ (L _  (MkProdE argsList))) table =  
-  buildDefTable_args  callExp argsList table 0
+ (buildDefTable_args  callExp argsList table 0)
+
+buildDefTable callExp@(AppE _ _ (L _  (VarE (Var sym )))) table =  
+     (M.update f sym table) 
+      where f (DefTableEntry  def fun_uses c) = Just ( DefTableEntry def ((callExp,-1):fun_uses) (c+1)) -- -1 means there is no ProdE ( only one argument)
 
 buildDefTable (PrimAppE _ ls) table=
    foldl f table ls
      where f tbl exp = buildDefTable (toExp1 exp) tbl
 
 buildDefTable (LetE ((Var sym),_,_,bind) body) table  = 
-  let table' = buildDefTable (toExp1 bind) table 
-  in let table'' = case (toExp1 bind) of
-                     (AppE _ _ _)   ->   M.insert sym (DefTableEntry {def=(toExp1 bind), fun_uses=[], all_use_count = 0} ) table'
-                     _              -> table'
-      
-      in buildDefTable (toExp1 body) table'' 
+  let table' =  (buildDefTable (toExp1 bind) table) 
+  in let table'' = table'  `seq` (case (toExp1 bind) of
+                                           (AppE _ _ _)   ->  ( M.insert sym (DefTableEntry {def=(toExp1 bind), fun_uses=[], all_use_count = 0} ) table')
+                                           _              ->  table')
+          
+      in let ret = table'' `seq` (buildDefTable (toExp1 body) table'')
+       in  ret
      
 
 buildDefTable (IfE cond thenBody elseBody) table =
@@ -75,7 +89,7 @@ buildDefTable (DataConE _ _ ls) table =
 buildDefTable (TimeIt exp _ _) table = 
   buildDefTable (toExp1 exp) table
 
-buildDefTable _ _ =  M.empty 
+buildDefTable a table =   table `debug` ("Defualt"++ show a) 
 
 
 type PotentialsList = [DefTableEntry] 
@@ -88,11 +102,12 @@ fusion2:: L1.Prog -> SyM L1.Prog
 fusion2 (L1.Prog defs funs main) = do
 
       let defTable  = case main of 
-                       Nothing -> M.empty
-                       Just (L _ main') ->buildDefTable main' M.empty
-      let potentials =findPotentials defTable 
-      
-      return $ L1.Prog defs funs main
+                       Nothing ->  (M.empty) `debug` ("empty main") 
+                       Just (L _ main') -> (buildDefTable main' M.empty) `debug`("building def table for the body of the main") 
+
+      let potentials =findPotentials defTable
+
+      return $ (L1.Prog defs funs main) `debug` ("deftable is : "++ (show defTable) ++ "\n potentials are :" ++ (show potentials))
     
 
 
