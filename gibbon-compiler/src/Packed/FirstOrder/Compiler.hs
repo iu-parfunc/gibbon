@@ -46,7 +46,7 @@ import           Packed.FirstOrder.L1.Typecheck
 import           Packed.FirstOrder.Passes.Freshen
 import           Packed.FirstOrder.Passes.Flatten (flattenL1)
 import           Packed.FirstOrder.Passes.InlineTriv
-
+import           Packed.FirstOrder.Passes.Fusion2
 -- UNDER_CONSTRUCTION
 -- import           Packed.FirstOrder.Passes.Codegen (codegenProg)
 -- #ifdef LLVM_ENABLED
@@ -386,12 +386,16 @@ passes :: Config -> L1.Prog -> StateT CompileState IO InProgress
 passes config@Config{mode} l1 = do
       l1 <- passE config "typecheck"  tcProg     l1
       l1 <- passE config "freshNames" freshNames l1
+      
       -- If we are executing a benchmark, then we
       -- replace the main function with benchmark code:
       l1 <- pure $ case mode of
                      Bench fnname -> benchMainExp config l1 fnname
                      _ -> l1
       l1 <- passE  config "flatten"       flattenL1             l1
+
+      l1<- passE config "fusion2" fusion2 l1
+
       l1 <- passE  config "inlineTriv"    (return . inlineTriv) l1
       return (L1 l1)
 
