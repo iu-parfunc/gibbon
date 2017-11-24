@@ -130,6 +130,8 @@ case_printtup = runner "printtup.c" printTupProg "'#(42 (Leaf 1))"
 case_printtup2 :: Assertion
 case_printtup2 = runner "printtup2.c" printTupProg2 "'#((Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))) (Node (Leaf 1) (Leaf 1)))"
 
+case_addtrees :: Assertion
+case_addtrees = runner "addtrees.c" addTreesProg "(Node (Node (Leaf 2) (Leaf 2)) (Node (Leaf 2) (Leaf 2)))"
 
 compilerTests :: TestTree
 compilerTests = $(testGroupGenerator)

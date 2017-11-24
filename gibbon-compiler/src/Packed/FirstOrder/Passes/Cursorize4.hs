@@ -9,6 +9,7 @@ import Data.List as L
 import Data.Map as M
 import Text.PrettyPrint.GenericPretty
 
+import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.Common    hiding (FunDefs, FunDef(..))
 import Packed.FirstOrder.L1.Syntax hiding (Prog(..), FunDef(..), FunDefs)
 import Packed.FirstOrder.L2.Syntax as L2
@@ -22,7 +23,8 @@ import Debug.Trace
 --
 -- Here we go to a "dilated" representation of packed values, where
 -- every `Packed T` is represented by a pair, `(Cursor,Cursor)`,
--- i.e. start/end.
+-- i.e. start/end. Except function arguments, and variables bound by
+-- by a pattern match. They're just `start` cursors.
 --
 -- REASONING: Why the dilated convention?  In a word: conditionals.  At the
 -- end of each function body we need to return the appropriate end cursors.
@@ -104,7 +106,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
     -- | The only difference between this and L3.cursorizeTy is that here,
     --   packed types are replaced by a single CursorTy instead of ProdTy [CursorTy, CursorTy].
     --   Because packed fn arguments are passed as only 'start' cursors.
-    --   Whereas, everywhere else we think of packed values as a (start,end) tuple
+    --   Whereas, everywhere else, packed values are a (start,end) tuple
     cursorizeInTy :: UrTy a -> UrTy b
     cursorizeInTy ty =
       case ty of
@@ -239,22 +241,17 @@ cursorizePackedExp ddfs fundefs denv tenv (L p ex) =
 
     -- ASSUMPTIONS:
     -- 1) `locs` has both input and output locations for the function. But at the call-site
-    --    we only have to prepend output locations, as the packed values in arguments
-    --    already represent the input locations.
-    --    So to get call-site output locations, we drop (length inLocs) from `locs`, assuming
+    --    we only have to prepend output locations, as the packed values in the argument
+    --    already have the input locations.
+    --    So to get the output locations, we drop (length inLocs) from `locs`, assuming
     --    that they are ordered correctly (inputs before outputs)
     --
-    -- 2) `arg` is trivial (VarE or LitE) after flattening.
-    --    If it's a variable, we lookup it's
-    --    type in the environment, and arrange for it to only have `start` cursors.
+    -- 2) We update `arg` so that all packed values in it only have start cursors.
     AppE f locs arg -> do
       let inT    = arrIn $ funty (fundefs ! f)
           inLocs = inLocVars $ funty (fundefs ! f)
           outs   = drop (length inLocs) locs
-          argTy  = case (unLoc arg) of
-                     VarE v -> tenv ! v
-                     LitE _ -> IntTy
-                     _      -> error $ "cursorizePackedExp: AppE got unexpected arg: " ++ sdoc arg
+          argTy  = gTypeExp ddfs (Env2 tenv M.empty) arg
       arg' <- if hasPacked inT
               then fromDi <$> go tenv arg
               else cursorizeExp ddfs fundefs denv tenv arg
@@ -273,17 +270,26 @@ cursorizePackedExp ddfs fundefs denv tenv (L p ex) =
         go (M.insert vr CursorTy tenv) bod
 
 
-    --
-    LetE (v,_locs,ty2@(ProdTy tys), rhs@(L _ (MkProdE ls))) bod -> do
+
+    -- NOTE: Products and projections:
+    -- As per the dilated representation, all packed values are (start,end) tuples.
+    -- Except fn arguments and pattern matched vars. They're represented by just start cursors.
+    -- So instead of using the type from the AST, which will always be `Packed`, we recover
+    -- type of RHS in the current type environment, using gTypeExp.
+    -- If it's just `CursorTy`, this packed value doesn't have an end cursor.
+    -- Otherwise, the type is `PackedTy{}`, and it has an end cursor.
+    -- TODO: merge this with `cursorizeLet`
+    LetE (v,_locs,ProdTy tys, rhs@(L _ (MkProdE ls))) bod -> do
       es <- forM (zip tys ls) $ \(ty,e) -> do
               case ty of
                   _ | isPackedTy ty -> fromDi <$> cursorizePackedExp ddfs fundefs denv tenv e
                   _ | hasPacked ty  -> error $ "cursorizePackedExp: nested tuples" ++ sdoc rhs
                   _ -> cursorizeExp ddfs fundefs denv tenv e
       let rhs' = l$ MkProdE es
-          ty2' = L3.cursorizeTy ty2
-      onDi (l <$> LetE (v,[],ty2', rhs')) <$>
-        go (M.insert v ty2 tenv) bod
+          ty   = gTypeExp ddfs (Env2 tenv M.empty) rhs
+          ty'  = L3.cursorizeTy ty
+      onDi (l <$> LetE (v,[],ty', rhs')) <$>
+        go (M.insert v ty tenv) bod
 
 
     -- Two ways in which we can cursorize this:
@@ -299,43 +305,24 @@ cursorizePackedExp ddfs fundefs denv tenv (L p ex) =
     --
     -- `cursorizeLet` creates the former, while our special case here outputs the latter.
     -- Reason: unariser can only eliminate direct projections of this form
-    --
-    -- 2nd special handling done here:
-    -- Packed values are (start,end) tuples, except the packed fn arguments.
-    -- They're just start cursors. So in functions that take packed tuples, we have to take care
-    -- that we make this distinction, otherwise the projections are wrong.
     LetE (v,_locs,ty, rhs@(L _ ProjE{})) bod | isPackedTy ty -> do
-      let ProjE n (L _ (VarE w)) = unLoc rhs
-          rhsTy = tenv ! w
-          vty   = projTy n rhsTy
+      rhs' <- fromDi <$> go tenv rhs
+      let ty'  = gTypeExp ddfs (Env2 tenv M.empty) rhs
+          ty'' = L3.cursorizeTy ty'
+          bnds = if isPackedTy ty'
+                 then [ (v       ,[], projValTy ty'' , mkProjE 0 rhs')
+                      , (toEndV v,[], projEndsTy ty'', mkProjE 1 rhs')
+                      ]
+                 else [(v,[], ty'', rhs')]
 
-      if isPackedTy vty
-      then do
-        let ty' = L3.cursorizeTy ty
-           -- We cannot reuse ty' here because TEnv and expressions are tagged with different types
-            ty'' = L3.cursorizeTy ty
-            tenv' = M.union (M.fromList [(v, ty),
-                                        (toEndV v, projEndsTy ty')])
-                   tenv
-        rhs' <- go tenv rhs
-        bod' <- fromDi <$> go tenv' bod
-        return $ Di $
-          mkLets [ (v       ,[], projValTy ty'' , projVal rhs')
-                 , (toEndV v,[], projEndsTy ty'', projEnds rhs')
-                 ]
-          bod'
-      else do
-        -- This is a projection from a fn argument which is a tuple containing packed values.
-        -- Here, we cannot bind the end-write cursor because none will be passed.
-        let tenv' = M.union (M.singleton v vty) tenv
-        bod' <- fromDi <$> go tenv' bod
-        rhs' <- fromDi <$> go tenv rhs
-        return $ Di $
-          mkLets [(v,[], L3.cursorizeTy vty, rhs')] bod'
+          tenv' = if isPackedTy ty'
+                  then M.union (M.fromList [(v,ty'), (toEndV v, projEndsTy ty')]) tenv
+                  else M.insert v ty' tenv
+      bod' <- fromDi <$> go tenv' bod
+      return $ Di $ mkLets bnds bod'
 
 
     MkProdE{} -> error "cursorizePackedExp: unexpected MkProdE"
-
 
     LetE bnd bod -> dl <$> cursorizeLet ddfs fundefs denv tenv True bnd bod
 
