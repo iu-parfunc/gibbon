@@ -8,7 +8,6 @@ module Packed.FirstOrder.Passes.Unariser
   (unariser) where
 
 import Data.Loc
-import Data.Maybe
 import qualified Data.Map as M
 
 import Packed.FirstOrder.Common hiding (FunDef, FunDefs)
@@ -147,8 +146,6 @@ unariserExp _ = go [] []
         -- Here we *reprocess* the results in case there is more unzipping to do:
         go stk env' $ mkLets binds bod
 
-      -}
-
       -- Bulk copy prop, WRONG:
       -- (LetE (v1,ProdTy tys, VarE v2) bod) ->
       --     case lookup v2 env of
@@ -165,6 +162,13 @@ unariserExp _ = go [] []
       --   -- Nothing -> go stk ((v1,[v2]):env) bod -- Copy-prop
       --   Nothing -> LetE <$> ((v1,ProdTy tys) <$> go [] proj) <*>
       --                 go stk ((v1,Nothing):env) bod
+      -}
+
+      -- A stupid copy-prop for a corner case
+      -- TODO: change this
+      LetE (v,_locs,ProdTy{},rhs@(L _ ProjE{})) bod -> do
+        let bod' = substE (l$ VarE v) rhs bod
+        go stk env bod'
 
       -- And this is a HACK.  Need a more general solution:
       LetE (v,locs,ty@ProdTy{}, rhs@(L _ (TimeIt{}))) bod ->
