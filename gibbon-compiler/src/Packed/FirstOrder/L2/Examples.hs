@@ -576,19 +576,38 @@ addTreesFun = FunDef "addTrees" addTreesTy "trees354" addTreesBod
                          l$ LetE ("n358",[],IntTy,l$ PrimAppE AddP [l$ VarE "n355",l$ VarE "n357"]) $
                          l$ LetE ("x359",[],PackedTy "Tree" "lout353",
                                   l$ DataConE "lout353" "Leaf" [l$ VarE "n358"]) $
-                         l$ VarE "x359")
-                       ]
-                   )
-                  ]
+                         l$ VarE "x359"
+                        )]
+                   ),
+                    ("Node", [("x360","l361"), ("y362","l363")],
+                     l$ CaseE (l$ VarE "tree2")
+                        [("Node", [("x364","l365"), ("y366","l367")],
+                          l$ Ext $ LetLocE "l368" (AfterConstantLE 1 "lout353") $
+                          l$ LetE ("tree3",[],ProdTy [PackedTy "Tree" "l361",
+                                                      PackedTy "Tree" "l365"],
+                                   l$ MkProdE [l$ VarE "x360", l$ VarE "x364"]) $
+                          l$ LetE ("x369",[],PackedTy "Tree" "l368",
+                                   l$ AppE "addTrees" ["l361","l365","l368"] (l$ VarE "tree3")) $
+                          l$ Ext $ LetLocE "l370" (AfterVariableLE "x369" "l368") $
+                          l$ LetE ("tree4",[],ProdTy [PackedTy "Tree" "l363",
+                                                      PackedTy "Tree" "l367"],
+                                   l$ MkProdE [l$ VarE "y362", l$ VarE "y366"]) $
+                          l$ LetE ("y371",[],PackedTy "Tree" "l370",
+                                   l$ AppE "addTrees" ["l363","l367","l370"] (l$ VarE "tree4")) $
+                          l$ LetE ("z372",[],PackedTy "Tree" "lout353",
+                                    l$ DataConE "lout353" "Node" [l$ VarE "x369", l$ VarE "y371"]) $
+                          l$ VarE "z372"
+                         )]
+                    )]
 
 addTreesMainExp :: L Exp2
 addTreesMainExp = l$ Ext $ LetRegionE (VarR "r400") $
                   l$ Ext $ LetLocE "l401" (StartOfLE (VarR "r400")) $
                   l$ LetE ("x402",[], PackedTy "Tree" "l401",
-                           l$ AppE "buildTree" ["l401"] (l$ LitE 0)) $
+                           l$ AppE "buildTree" ["l401"] (l$ LitE 1)) $
                   l$ Ext $ LetLocE "l403" (AfterVariableLE "x402" "l401") $
                   l$ LetE ("y404",[], PackedTy "Tree" "l403",
-                           l$ AppE "buildTree" ["l403"] (l$ LitE 0)) $
+                           l$ AppE "buildTree" ["l403"] (l$ LitE 1)) $
                   l$ LetE ("z405",[], ProdTy [PackedTy "Tree" "l401", PackedTy "Tree" "l403"],
                            l$ MkProdE [l$ VarE "x402", l$ VarE "y404"]) $
                   l$ Ext $ LetRegionE (VarR "r405") $
