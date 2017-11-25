@@ -231,7 +231,9 @@ cursorizePackedExp ddfs fundefs denv tenv (L p ex) =
     -- Here the allocation has already been performed:
     -- To follow the calling convention, we are reponsible for tagging on the end here:
     VarE v -> do
-      let ty = tenv ! v
+      let ty = case M.lookup v tenv of
+                 Just t -> t
+                 Nothing -> error $ sdoc v ++ " not found."
       if isPackedTy ty
       then return $ mkDi (l$ VarE v) [ l$ VarE (toEndV v) ]
       else return $ dl $ VarE v
@@ -248,8 +250,11 @@ cursorizePackedExp ddfs fundefs denv tenv (L p ex) =
     --
     -- 2) We update `arg` so that all packed values in it only have start cursors.
     AppE f locs arg -> do
-      let inT    = arrIn $ funty (fundefs ! f)
-          inLocs = inLocVars $ funty (fundefs ! f)
+      let fnTy   = case M.lookup f fundefs of
+                     Just g -> funty g
+                     Nothing -> error $ "Unknown function: " ++ sdoc f
+          inT    = arrIn fnTy
+          inLocs = inLocVars fnTy
           outs   = drop (length inLocs) locs
           argTy  = gTypeExp ddfs (Env2 tenv M.empty) arg
       arg' <- if hasPacked inT
@@ -578,7 +583,7 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) =
                   bnds2 = [(v       , [], IntTy   , l$ ProjE 0 (l$ VarE tmp))
                           ,(toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp))]
 
-              bod <- go (toEndV v) rst rtys False denv (M.insert loc CursorTy env')
+              bod <- go (toEndV v) rst rtys (True && isFirst) denv (M.insert loc CursorTy env')
               return $ mkLets (bnds ++ bnds2) bod
 
             _ -> do
