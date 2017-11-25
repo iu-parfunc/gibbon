@@ -47,8 +47,9 @@ data E3Ext loc dec =
   | NewBuffer                      -- ^ Create a new buffer, and return a cursor
   | ScopedBuffer                   -- ^ Create a temporary scoped buffer, and
                                    --   return a cursor
-  | SizeOf Var Var                 -- ^ Takes in start and end cursors, and returns an Int
+  | SizeOfPacked Var Var           -- ^ Takes in start and end cursors, and returns an Int
                                    --   we'll probably represent (sizeof x) as (end_x - start_x) / INT
+  | SizeOfScalar Var               -- ^ sizeof(var)
   deriving (Show, Ord, Eq, Read, Generic, NFData)
 
 -- | L1 expressions extended with L3.  This is the polymorphic version.
@@ -65,7 +66,8 @@ instance FreeVars (E3Ext l d) where
       WriteTag _ v   -> S.singleton v
       NewBuffer      -> S.empty
       ScopedBuffer   -> S.empty
-      SizeOf c1 c2   -> S.fromList [c1, c2]
+      SizeOfPacked c1 c2 -> S.fromList [c1, c2]
+      SizeOfScalar v     -> S.singleton v
 
 instance (Out l, Out d) => Out (E3Ext l d)
 
@@ -74,14 +76,15 @@ instance (Out l, Out d, Show l, Show d) => Expression (E3Ext l d) where
   type TyOf  (E3Ext l d) = UrTy l
   isTrivial e =
     case e of
-      ReadInt{}   -> False
-      WriteInt{}  -> False
-      AddCursor{} -> False
-      ReadTag{}   -> False
-      WriteTag{}  -> False
-      NewBuffer   -> False
-      ScopedBuffer-> False
-      SizeOf{}    -> False
+      ReadInt{}      -> False
+      WriteInt{}     -> False
+      AddCursor{}    -> False
+      ReadTag{}      -> False
+      WriteTag{}     -> False
+      NewBuffer      -> False
+      ScopedBuffer   -> False
+      SizeOfPacked{} -> False
+      SizeOfScalar{} -> False
 
 instance (Out l, Show l) => Typeable (E3Ext l (UrTy l)) where
     gTypeExp = error "L3.gTypeExp"
