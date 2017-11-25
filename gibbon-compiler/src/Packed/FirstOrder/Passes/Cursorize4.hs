@@ -202,7 +202,7 @@ cursorizeExp ddfs fundefs denv tenv (L p ex) = L p <$>
         -- All locations are transformed into cursors here. All the location expressions
         -- are expressed in terms of corresponding cursor operations. See `cursorizeLocExp`
         LetLocE loc rhs bod -> do
-          let rhs' = cursorizeLocExp rhs
+          let rhs' = cursorizeLocExp tenv rhs
               bnds = case M.lookup loc denv of
                        Nothing -> []
                        Just vs -> [(v,[],CursorTy,l$ VarE loc) | v <- vs]
@@ -390,7 +390,7 @@ cursorizePackedExp ddfs fundefs denv tenv (L p ex) =
         -- All locations are transformed into cursors here. All the location expressions
         -- are expressed in terms of corresponding cursor operations. See `cursorizeLocExp`
         LetLocE loc rhs bod -> do
-          let rhs' = cursorizeLocExp rhs
+          let rhs' = cursorizeLocExp tenv rhs
               bnds = case M.lookup loc denv of
                        Nothing -> []
                        Just vs -> [(v,[],CursorTy,l$ VarE loc) | v <- vs]
@@ -423,15 +423,22 @@ cursorizePackedExp ddfs fundefs denv tenv (L p ex) =
         dl = Di <$> L p
 
 
-cursorizeLocExp :: LocExp -> L L3.Exp3
-cursorizeLocExp locExp =
+cursorizeLocExp :: TEnv -> LocExp -> L L3.Exp3
+cursorizeLocExp tenv locExp =
   case locExp of
     AfterConstantLE i loc -> l$ Ext $ L3.AddCursor loc (l$ LitE i)
-    AfterVariableLE v loc -> let sizeV = varAppend "sizeof_"
-                                 toEndV = varAppend "end_"
-                             in
-                               l$ LetE (sizeV v ,[], IntTy, l$ Ext $ L3.SizeOf v (toEndV v)) $
-                               l$ Ext $ L3.AddCursor loc (l$ VarE (sizeV v))
+    AfterVariableLE v loc ->
+      let vty = case M.lookup v tenv of
+                  Just ty -> ty
+                  Nothing -> error $ "cursorizeLocExp: Var " ++ sdoc v ++ " not found."
+          sizeVar = varAppend "sizeof_" v
+          endVar  = varAppend "end_" v
+          sizeVal = case vty of
+                    PackedTy{} -> l$ Ext $ L3.SizeOfPacked v endVar
+                    _          -> l$ Ext $ L3.SizeOfScalar v
+          bod = l$ Ext $ L3.AddCursor loc (l$ VarE (sizeVar))
+      in mkLets [(sizeVar,[], IntTy, sizeVal)] bod
+
     FromEndLE loc -> l$ VarE loc
     StartOfLE r   -> case r of
                        GlobR v -> l$ VarE v

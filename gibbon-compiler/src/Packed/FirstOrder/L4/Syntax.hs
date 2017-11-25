@@ -170,9 +170,12 @@ data Prim
     | ReadInt
     -- ^ Read an 8 byte Int from the cursor and advance.
 
-    | SizeOf
+    | SizeOfPacked
     -- ^ Take start and end cursors and return size of data they represent
     -- This could be represented as (end - start) / (sizeof(Int))
+
+    | SizeOfScalar
+    -- ^ Takes in a variable, and returns an int, sizeof(var)
 
     | GetFirstWord -- ^ takes a PtrTy, returns IntTy containing the (first) word pointed to.
 

@@ -547,8 +547,12 @@ lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
       T.LetPrimCallT [(v,T.CursorTy)] T.ScopedBuf [] <$>
          tail bod
 
-    LetE (v,_,_, L _ (Ext (SizeOf start end))) bod -> do
-      T.LetPrimCallT [(v,T.IntTy)] T.SizeOf [ T.VarTriv start, T.VarTriv end ] <$>
+    LetE (v,_,_, L _ (Ext (SizeOfPacked start end))) bod -> do
+      T.LetPrimCallT [(v,T.IntTy)] T.SizeOfPacked [ T.VarTriv start, T.VarTriv end ] <$>
+        tail bod
+
+    LetE (v,_,_, L _ (Ext (SizeOfScalar w))) bod -> do
+      T.LetPrimCallT [(v,T.IntTy)] T.SizeOfScalar [ T.VarTriv w ] <$>
         tail bod
 
     Ext _ -> error $ "lower: unexpected extension" ++ sdoc ex0

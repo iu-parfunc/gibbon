@@ -389,10 +389,14 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                             [ C.BlockDecl [cdecl| $ty:(codegenTy valTy) $id:valV = *( $ty:(codegenTy valTy) *)($id:cur); |]
                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:curV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
 
-                 SizeOf -> let [(sizeV,IntTy)] = bnds
-                               [(VarTriv startV), (VarTriv endV)] = rnds
-                           in pure
-                             [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizeV = $id:endV - $id:startV; |] ]
+                 SizeOfPacked -> let [(sizeV,IntTy)] = bnds
+                                     [(VarTriv startV), (VarTriv endV)] = rnds
+                                 in pure
+                                   [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizeV = $id:endV - $id:startV; |] ]
+                 SizeOfScalar -> let [(sizeV,IntTy)] = bnds
+                                     [(VarTriv w)]   = rnds
+                                 in pure
+                                   [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizeV = sizeof($id:w); |] ]
 
 
                  GetFirstWord ->

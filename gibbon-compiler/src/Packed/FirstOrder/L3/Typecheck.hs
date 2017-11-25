@@ -69,11 +69,19 @@ tcExp ddfs env exp@(L p ex) =
         ScopedBuffer -> return CursorTy
 
         -- ^ Takes in start and end cursors, and returns an Int
-        SizeOf start end -> do
+        SizeOfPacked start end -> do
           sty  <- lookupVar env start exp
           ensureEqualTy exp sty CursorTy
           ety  <- lookupVar env end exp
           ensureEqualTy exp ety CursorTy
+          return IntTy
+
+
+        -- ^ Takes in a variable, and returns an Int
+        SizeOfScalar v -> do
+          sty <- lookupVar env v exp
+          -- ASSUMPTION: Int is the only scalar value right now
+          ensureEqualTy exp sty IntTy
           return IntTy
 
 
