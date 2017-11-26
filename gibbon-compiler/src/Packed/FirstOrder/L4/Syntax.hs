@@ -142,12 +142,11 @@ data Ty
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data Prim
-    = AddP
-    | SubP
-    | MulP
-    | EqP
+    = AddP | SubP | MulP
+    | DivP | ModP
+    | EqP | LtP | GtP
     | SizeParam
-    | DictInsertP Ty-- ^ takes k,v,dict
+    | DictInsertP Ty -- ^ takes k,v,dict
     | DictLookupP Ty -- ^ takes k,dict, errors if absent
     | DictEmptyP Ty
     | DictHasKeyP Ty

@@ -723,8 +723,12 @@ prim p =
     AddP -> T.AddP
     SubP -> T.SubP
     MulP -> T.MulP
+    DivP -> T.DivP
+    ModP -> T.ModP
     EqSymP -> T.EqP
     EqIntP -> T.EqP
+    LtP    -> T.LtP
+    GtP    -> T.GtP
     SizeParam -> T.SizeParam
     DictInsertP ty -> T.DictInsertP $ typ ty
     DictLookupP ty -> T.DictLookupP $ typ ty

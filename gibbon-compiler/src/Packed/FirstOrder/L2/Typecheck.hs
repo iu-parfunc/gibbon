@@ -173,28 +173,27 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
                    len0 = checkLen exp pr 0 es
                    len3 = checkLen exp pr 3 es
                case pr of
-                 L1.AddP -> do len2
-                               ensureEqualTy exp IntTy (tys !! 0)
-                               ensureEqualTy exp IntTy (tys !! 1)
-                               return $ (IntTy,tstate)
-                 L1.SubP -> do len2
-                               ensureEqualTy exp IntTy (tys !! 0)
-                               ensureEqualTy exp IntTy (tys !! 1)
-                               return $ (IntTy,tstate)
-                 L1.MulP -> do len2
-                               ensureEqualTy exp IntTy (tys !! 0)
-                               ensureEqualTy exp IntTy (tys !! 1)
-                               return $ (IntTy,tstate)
-                 L1.EqSymP -> do len2
-                                 ensureEqualTy exp IntTy (tys !! 0)
-                                 ensureEqualTy exp IntTy (tys !! 1)
-                                 return $ (BoolTy,tstate)
-                 L1.EqIntP -> do len2
-                                 ensureEqualTy exp IntTy (tys !! 0)
-                                 ensureEqualTy exp IntTy (tys !! 1)
-                                 return $ (BoolTy,tstate)
-                 L1.MkTrue  -> do len0; return $ (BoolTy,tstate)
-                 L1.MkFalse -> do len0; return $ (BoolTy,tstate)
+                 _ | pr `elem` [L1.AddP, L1.SubP, L1.MulP, L1.DivP, L1.ModP] -> do
+                       len2
+                       ensureEqualTy exp IntTy (tys !! 0)
+                       ensureEqualTy exp IntTy (tys !! 1)
+                       return $ (IntTy,tstate)
+
+                 _ | pr `elem` [L1.EqIntP, L1.LtP, L1.GtP] -> do
+                       len2
+                       ensureEqualTy exp IntTy (tys !! 0)
+                       ensureEqualTy exp IntTy (tys !! 1)
+                       return $ (BoolTy,tstate)
+
+                 _ | pr `elem` [L1.MkFalse, L1.MkTrue] -> do
+                       len0
+                       return $ (BoolTy,tstate)
+
+                 L1.EqSymP -> do
+                   len2
+                   ensureEqualTy exp IntTy (tys !! 0)
+                   ensureEqualTy exp IntTy (tys !! 1)
+                   return $ (BoolTy,tstate)
 
                  L1.SymAppend  -> do
                    len2
@@ -243,6 +242,8 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
 
                  L1.MkNullCursor -> do
                    return (CursorTy, tstate)
+
+                 oth -> error $ "L2.tcExp : PrimAppE : TODO " ++ sdoc oth
 
 
       LetE (v,_ls,ty,e1) e2 -> do

@@ -117,7 +117,7 @@ tcExp ddfs env exp@(L p ex) =
 
       tys <- mapM go es
       case pr of
-        _ | pr `elem` [AddP, SubP, MulP]  -> do
+        _ | pr `elem` [AddP, SubP, MulP, DivP, ModP]  -> do
           len2
           _ <- ensureEqualTy (es !! 0) IntTy (tys !! 0)
           _ <- ensureEqualTy (es !! 1) IntTy (tys !! 1)
@@ -133,7 +133,7 @@ tcExp ddfs env exp@(L p ex) =
           _ <- ensureEqualTy (es !! 1) SymTy (tys !! 1)
           return BoolTy
 
-        EqIntP -> do
+        _ | pr `elem` [EqIntP, LtP, GtP] -> do
           len2
           _ <- ensureEqualTy (es !! 0) IntTy (tys !! 0)
           _ <- ensureEqualTy (es !! 1) IntTy (tys !! 1)
@@ -187,7 +187,7 @@ tcExp ddfs env exp@(L p ex) =
           len0
           return CursorTy
 
-        oth -> error $ "L1.tcExp : PrimAppE : TODO " ++ sdoc oth
+        oth -> error $ "L3.tcExp : PrimAppE : TODO " ++ sdoc oth
 
     LetE (v,locs,ty,rhs) e -> do
       -- Check that the expression does not have any locations
