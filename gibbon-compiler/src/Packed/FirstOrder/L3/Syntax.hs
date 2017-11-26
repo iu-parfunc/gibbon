@@ -199,8 +199,12 @@ toL3Prim pr =
     AddP      -> AddP
     SubP      -> SubP
     MulP      -> MulP
+    DivP      -> DivP
+    ModP      -> ModP
     EqSymP    -> EqSymP
     EqIntP    -> EqIntP
+    LtP       -> LtP
+    GtP       -> GtP
     MkTrue    -> MkTrue
     MkFalse   -> MkFalse
     SizeParam -> SizeParam

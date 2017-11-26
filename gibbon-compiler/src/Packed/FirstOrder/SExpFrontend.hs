@@ -402,8 +402,12 @@ primMap = M.fromList
   [ ("+", AddP)
   , ("-", SubP)
   , ("*", MulP)
+  , ("/", DivP)
+  , ("mod", ModP)
   , ("eq?", EqSymP)
-  , ("=",   EqIntP)
+  , ("=", EqIntP)
+  , ("<", LtP)
+  , (">", GtP)
   , ("size-param", SizeParam)
   , ("sym-append", SymAppend)
   ]

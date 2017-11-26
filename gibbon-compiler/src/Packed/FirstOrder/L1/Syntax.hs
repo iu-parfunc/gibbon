@@ -298,8 +298,10 @@ instance Typeable (PreExp e l (UrTy l)) => Typeable (L (PreExp e l (UrTy l))) wh
 -- their return types.
 data Prim ty
           = AddP | SubP | MulP -- ^ May need more numeric primitives...
+          | DivP | ModP        -- ^ Integer division and modulus
           | EqSymP             -- ^ Equality on Sym
           | EqIntP             -- ^ Equality on Int
+          | LtP | GtP          -- ^ (<) and (>) for Int's
           | SymAppend          -- ^ A quick hack till we have deterministic gensym
           | DictInsertP ty     -- ^ takes dict, k,v; annotated with element type
           | DictLookupP ty     -- ^ takes dict,k errors if absent; annotated with element type
@@ -516,8 +518,12 @@ primArgsTy p =
     AddP    -> [IntTy, IntTy]
     SubP    -> [IntTy, IntTy]
     MulP    -> [IntTy, IntTy]
+    DivP    -> [IntTy, IntTy]
+    ModP    -> [IntTy, IntTy]
     EqSymP  -> [SymTy, SymTy]
     EqIntP  -> [IntTy, IntTy]
+    LtP  -> [IntTy, IntTy]
+    GtP  -> [IntTy, IntTy]
     MkTrue  -> []
     MkFalse -> []
     SymAppend        -> [SymTy, IntTy]
@@ -543,8 +549,12 @@ primRetTy p =
     AddP -> IntTy
     SubP -> IntTy
     MulP -> IntTy
+    DivP -> IntTy
+    ModP -> IntTy
     EqSymP  -> BoolTy
     EqIntP  -> BoolTy
+    LtP  -> BoolTy
+    GtP  -> BoolTy
     MkTrue  -> BoolTy
     MkFalse -> BoolTy
     MkNullCursor   -> dummyCursorTy
