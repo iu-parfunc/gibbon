@@ -553,8 +553,15 @@ cursorizeLet ddfs fundefs denv tenv isPackedContext (v,locs,ty,rhs) bod
 -- other bound locations
 unpackDataCon :: DDefs Ty2 -> NewFuns -> DepEnv -> TEnv -> Bool -> Var
               -> (DataCon, [(Var, Var)], L Exp2) -> SyM (DataCon, [t], L L3.Exp3)
-unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) =
-  (dcon,[],) <$> go scrtCur vlocs tys True denv' tenv
+unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
+  -- The first bound location requires special handling. We have to bind it to
+  -- (scrtCur + 1) by hand. All the other locations are bound (calculated) by RouteEnd2
+  -- Ideally we should arrange RE to bind this as well, but this is a quick hack for now
+  --
+  cur <- gensym scrtCur
+  (dcon,[],)
+    <$> mkLets [(cur,[],CursorTy, l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1))]
+    <$> go cur vlocs tys True denv' tenv
 
   where -- (vars,locs) = unzip vlocs
         tys  = lookupDataCon ddfs dcon
@@ -563,17 +570,11 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) =
                               then fromDi <$> cursorizePackedExp ddfs fundefs denv env rhs
                               else cursorizeExp ddfs fundefs denv env rhs
 
-        -- Loop over fields.  Issue reads to get out all Ints:
-        -- Otherwise, just bind vars to locations
-        -- Strategy: ALLOW unbound witness variables. A later traversal will reorder.
-        --
-        -- The first bound location requires special handling. We have to bind it to
-        -- (scrtCur + 1) by hand. All the other locations are bound (calculated) by RouteEnd2
-        -- Ideally we should arrange RE to bind this as well, but this is a quick hack for now
+        -- Loop over fields.  Issue reads to get out all Ints. Otherwise, just bind vars to locations
         --
         go :: (Show t) => Var -> [(Var, Var)] -> [UrTy t] -> Bool -> DepEnv -> TEnv -> SyM (L L3.Exp3)
         go _c [] [] _isFirst denv env = processRhs denv env
-        go cur ((v,loc):rst) (ty:rtys) isFirst denv env =
+        go cur ((v,loc):rst) (ty:rtys) isFirstPacked denv env =
           case ty of
             IntTy -> do
               tmp <- gensym (toVar "readint_tpl")
@@ -582,23 +583,20 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) =
                                               (toEndV v, CursorTy)])
                          env
 
-                  bnds = if isFirst
-                         then [(loc, [], CursorTy,l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1))
-                              ,(tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt loc)]
-                         else [(tmp, [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt cur)]
+                  bnds = [(loc     , [], CursorTy, l$ VarE cur),
+                          (tmp     , [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadInt loc),
+                          (v       , [], IntTy   , l$ ProjE 0 (l$ VarE tmp)),
+                          (toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp))]
 
-                  bnds2 = [(v       , [], IntTy   , l$ ProjE 0 (l$ VarE tmp))
-                          ,(toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp))]
-
-              bod <- go (toEndV v) rst rtys (True && isFirst) denv (M.insert loc CursorTy env')
-              return $ mkLets (bnds ++ bnds2) bod
+              bod <- go (toEndV v) rst rtys True denv (M.insert loc CursorTy env')
+              return $ mkLets bnds bod
 
             _ -> do
-              let env' = (M.insert v CursorTy env)
-              if isFirst
+              let env' = M.insert v CursorTy env
+              if isFirstPacked
               then do
                 bod <- go (toEndV v) rst rtys False denv (M.insert loc CursorTy env')
-                return $ mkLets [(loc, [], CursorTy, l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1))
+                return $ mkLets [(loc, [], CursorTy, l$ VarE cur)
                                 ,(v  , [], CursorTy, l$ VarE loc)]
                          bod
               else

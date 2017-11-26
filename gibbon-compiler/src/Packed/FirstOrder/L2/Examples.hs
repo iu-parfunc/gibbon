@@ -727,8 +727,8 @@ sumUpFun = FunDef "sumUp" sumUpFunTy "tr1" sumUpFunBod
          l$ Ext $ LetLocE "l516" (AfterVariableLE "x515" "l551") $
          l$ LetE ("y517",[],PackedTy "STree" "l516",
                   l$ AppE "sumUp" ["l513","l516"] (l$ VarE "y512")) $
-         l$ LetE ("v518",[],IntTy, l$ AppE "valueSTree" ["l511"] (l$ VarE "x510")) $
-         l$ LetE ("v519",[],IntTy, l$ AppE "valueSTree" ["l513"] (l$ VarE "y512")) $
+         l$ LetE ("v518",[],IntTy, l$ AppE "valueSTree" ["l551"] (l$ VarE "x515")) $
+         l$ LetE ("v519",[],IntTy, l$ AppE "valueSTree" ["l516"] (l$ VarE "y517")) $
          l$ LetE ("v520",[],IntTy, l$ PrimAppE AddP [l$ VarE "v518", l$ VarE "v519"]) $
          l$ LetE ("z521",[],PackedTy "STree" "lout502",
                   l$ DataConE "lout502" "Inner" [l$ VarE "v520", l$ VarE "b508",
@@ -785,37 +785,24 @@ buildSTreeFun = FunDef "buildSTree" buildSTreeTy "i543" buildSTreeBod
                     l$ LetE ("y546",[],PackedTy "STree" "l545",
                              l$ AppE "buildSTree" ["l545"] (l$ VarE "i548")) $
                     l$ LetE ("a547",[],PackedTy "STree" "lout541",
-                             l$ DataConE "lout541" "Inner" [l$ VarE "i548", l$ VarE "b555",
+                             l$ DataConE "lout541" "Inner" [l$ VarE "i554", l$ VarE "b555",
                                                             l$ VarE "x545", l$ VarE "y546"]) $
                     l$ VarE "a547")
 
 sumUpMainExp :: L Exp2
 sumUpMainExp = l$ Ext $ LetRegionE (VarR "r530") $
-                  l$ Ext $ LetLocE "l548" (StartOfLE (VarR "r530")) $
-                  l$ LetE ("i556",[], IntTy, l$ LitE 0) $
-                  l$ LetE ("b557",[], IntTy, l$ LitE 0) $
-                  l$ Ext $ LetLocE "l531" (AfterConstantLE 1 "l548") $
-                  l$ Ext $ LetLocE "l558" (AfterVariableLE "i556" "l531") $
-                  l$ Ext $ LetLocE "l559" (AfterVariableLE "b557" "l558") $
-                  l$ LetE ("x532",[], PackedTy "STree" "l559",
-                           l$ AppE "buildSTree" ["l559"] (l$ LitE 1)) $
-                  -- l$ VarE "x532"
-                  l$ Ext $ LetLocE "l533" (AfterVariableLE "x532" "l559") $
-                  l$ LetE ("y534",[], PackedTy "STree" "l533",
-                           l$ AppE "buildSTree" ["l533"] (l$ LitE 1)) $
-                  l$ LetE ("z535",[], PackedTy "STree" "l559",
-                           l$ DataConE "l548" "Inner" [l$ LitE 0, l$ LitE 0,
-                                                       l$ VarE "x532", l$ VarE "y534"]) $
-                  l$ VarE "z535"
-                  -- l$ Ext $ LetRegionE (VarR "r536") $
-                  -- l$ Ext $ LetLocE "l537" (StartOfLE (VarR "r536")) $
-                  -- l$ LetE ("z538",[],PackedTy "STree" "l537",
-                  --          l$ AppE "sumUp" ["l559","l537"] (l$ VarE "z535")) $
-                  -- l$ VarE "z538"
+                  l$ Ext $ LetLocE "l531" (StartOfLE (VarR "r530")) $
+                  l$ LetE ("x532",[], PackedTy "STree" "l531",
+                           l$ AppE "buildSTree" ["l531"] (l$ LitE 2)) $
+                  l$ Ext $ LetRegionE (VarR "r536") $
+                  l$ Ext $ LetLocE "l537" (StartOfLE (VarR "r536")) $
+                  l$ LetE ("z538",[],PackedTy "STree" "l537",
+                           l$ AppE "sumUp" ["l531","l537"] (l$ VarE "x532")) $
+                  l$ VarE "z538"
 
 sumUpProg :: Prog
 sumUpProg = Prog stree (M.fromList [("sumUp", sumUpFun)
                                    ,("valueSTree", valueSTreeFun)
                                    ,("buildSTree", buildSTreeFun)
                                    ])
-            (Just (sumUpMainExp, PackedTy "STree" "l559"))
+            (Just (sumUpMainExp, PackedTy "STree" "l537"))
