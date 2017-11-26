@@ -2,7 +2,8 @@
 
 module Packed.FirstOrder.L2.Examples
   ( -- * Data definitions
-    ddtree
+    ddtree, stree
+
     -- * Functions
   , add1Fun, add1TraversedFun, id1Fun, copyTreeFun, id2Fun, id3Fun, intAddFun
   , leftmostFun, buildLeafFun, testProdFun
@@ -11,7 +12,7 @@ module Packed.FirstOrder.L2.Examples
   , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
   , rightmostProg, buildTreeProg, buildTreeSumProg, printTupProg, addTreesProg
-  , printTupProg2, sumUpProg
+  , printTupProg2, sumUpProg, setEvenProg
   ) where
 
 import Data.Loc
@@ -699,6 +700,22 @@ stree = fromListDD [DDef (toVar "STree")
                                , (False, PackedTy "STree" "l")])
                     ]]
 
+{-
+
+sumUp :: Tree -> Tree
+sumUp tree =
+  case tree of
+    Leaf x -> Leaf x
+    Inner sum x l r ->
+      let l'   = sum_up l
+          r'   = sum_up r
+          v1   = value l'
+          v2   = value  r'
+          sum' = v1 + v2
+      in Inner sum' x l' r'
+
+-}
+
 sumUpFun :: FunDef
 sumUpFun = FunDef "sumUp" sumUpFunTy "tr1" sumUpFunBod
   where
@@ -806,3 +823,99 @@ sumUpProg = Prog stree (M.fromList [("sumUp", sumUpFun)
                                    ,("buildSTree", buildSTreeFun)
                                    ])
             (Just (sumUpMainExp, PackedTy "STree" "l537"))
+
+--------------------------------------------------------------------------------
+
+evenFun :: FunDef
+evenFun = FunDef "even" evenFunTy "i560" evenFunBod
+  where
+    evenFunTy :: ArrowTy Ty2
+    evenFunTy = (ArrowTy
+                 []
+                 (IntTy)
+                 (S.empty)
+                 (IntTy)
+                 [])
+
+    evenFunBod :: L Exp2
+    evenFunBod = l$ LetE ("i561",[],IntTy, l$ PrimAppE ModP [l$ VarE "i560", l$ LitE 2]) $
+                 l$ LetE ("b562",[],BoolTy,l$ PrimAppE EqIntP [l$ VarE "i561", l$ LitE 0]) $
+                 l$ IfE (l$ VarE "b562")
+                    (l$ LitE 1) -- True
+                    (l$ LitE 0) -- False
+{-
+
+setEven :: Tree -> Tree
+setEven tree =
+  case tree of
+    Leaf x -> Leaf x
+    Inner sum x l r ->
+      let l' = setEven l
+          r' = setEven r
+          v1 = value l'
+          v2 = value r'
+          v3 = v1 + v2
+          x' = even sum
+      in Inner sum x' l' r'
+
+-}
+
+
+setEvenFun :: FunDef
+setEvenFun = FunDef "setEven" setEvenFunTy "tr570" setEvenFunBod
+  where
+    setEvenFunTy :: ArrowTy Ty2
+    setEvenFunTy = (ArrowTy
+                    [LRM "lin571" (VarR "r570") Input, LRM "lout572" (VarR "r570") Output]
+                    (PackedTy "STree" "lin571")
+                    (S.empty)
+                    (PackedTy "STree" "lout572")
+                    [])
+
+
+    setEvenFunBod :: L Exp2
+    setEvenFunBod = l$ CaseE (l$ VarE "tr570") $
+      [ ("Leaf", [("n573","l574")],
+          l$ LetE ("x575",[],PackedTy "STree" "lout572",
+                   l$ DataConE "lout572" "Leaf" [l$ VarE "n573"]) $
+          l$ VarE "x575")
+
+      , ("Inner", [("i576","l577"),("b578","l579"),("x580","l581"),("y582","l583")],
+         l$ Ext $ LetLocE "l584" (AfterConstantLE 1 "lout572") $
+         l$ Ext $ LetLocE "l585" (AfterVariableLE "i576" "l584") $
+         l$ Ext $ LetLocE "l586" (AfterVariableLE "b578" "l585") $
+         l$ LetE ("x587",[],PackedTy "STree" "l586",
+                  l$ AppE "setEven" ["l581","l586"] (l$ VarE "x580")) $
+         l$ Ext $ LetLocE "l588" (AfterVariableLE "x587" "l586") $
+         l$ LetE ("y589",[],PackedTy "STree" "l588",
+                  l$ AppE "setEven" ["l583","l588"] (l$ VarE "y582")) $
+         l$ LetE ("v590",[],IntTy, l$ AppE "valueSTree" ["l586"] (l$ VarE "x587")) $
+         l$ LetE ("v591",[],IntTy, l$ AppE "valueSTree" ["l588"] (l$ VarE "y589")) $
+         l$ LetE ("v592",[],IntTy, l$ PrimAppE AddP [l$ VarE "v590", l$ VarE "v591"]) $
+         l$ LetE ("b593",[],IntTy, l$ AppE "even" [] (l$ VarE "v592")) $
+         l$ LetE ("z594",[],PackedTy "STree" "lout572",
+                  l$ DataConE "lout572" "Inner" [l$ VarE "i576", l$ VarE "b593",
+                                                 l$ VarE "x587", l$ VarE "y589"]) $
+         l$ VarE "z594"
+        )]
+
+
+setEvenMainExp :: L Exp2
+setEvenMainExp = l$ Ext $ LetRegionE (VarR "r592") $
+                 l$ Ext $ LetLocE "l593" (StartOfLE (VarR "r592")) $
+                 l$ LetE ("x594",[], PackedTy "STree" "l593",
+                          l$ AppE "buildSTree" ["l593"] (l$ LitE 2)) $
+                 l$ Ext $ LetRegionE (VarR "r595") $
+                 l$ Ext $ LetLocE "l596" (StartOfLE (VarR "r595")) $
+                 l$ LetE ("z597",[],PackedTy "STree" "l596",
+                          l$ AppE "setEven" ["l593","l596"] (l$ VarE "x594")) $
+                 l$ VarE "z597"
+
+
+setEvenProg :: Prog
+setEvenProg = Prog stree (M.fromList [("setEven"   , setEvenFun)
+                                     ,("even"      , evenFun )
+                                     ,("buildSTree", buildSTreeFun)
+                                     ,("valueSTree", valueSTreeFun)
+                                     ])
+            (Just (setEvenMainExp, PackedTy "STree" "l596"))
