@@ -53,6 +53,7 @@ library
                   Packed.FirstOrder.Passes.Cursorize4
                   Packed.FirstOrder.Passes.FindWitnesses
                   Packed.FirstOrder.Passes.ShakeTree
+                  Packed.FirstOrder.Passes.Fusion2
                   Packed.FirstOrder.Passes.HoistNewBuf
                   Packed.FirstOrder.Passes.Unariser
                   Packed.FirstOrder.Passes.Lower
@@ -94,7 +95,8 @@ library
                 blaze-builder,
                 symbol,
                 srcloc,
-                transformers
+                transformers,
+                tuple
 -- Brings in lots of ekmett dependencies:
 --              , either
 
