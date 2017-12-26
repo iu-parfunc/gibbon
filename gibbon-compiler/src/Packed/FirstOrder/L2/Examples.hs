@@ -12,7 +12,7 @@ module Packed.FirstOrder.L2.Examples
   , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
   , rightmostProg, buildTreeProg, buildTreeSumProg, printTupProg, addTreesProg
-  , printTupProg2, sumUpProg, setEvenProg
+  , printTupProg2, sumUpProg, setEvenProg, sumUpSetEvenProg
   ) where
 
 import Data.Loc
@@ -919,3 +919,90 @@ setEvenProg = Prog stree (M.fromList [("setEven"   , setEvenFun)
                                      ,("valueSTree", valueSTreeFun)
                                      ])
             (Just (setEvenMainExp, PackedTy "STree" "l596"))
+
+--------------------------------------------------------------------------------
+
+{-
+
+merged  :: Tree  -> (Tree, Int)
+merged tr =
+  case (tr) of
+    Leaf x ->
+      let ret1 = Leaf x
+          ret2 = x
+      in (ret1, ret2)
+
+    Inner sum x left right ->
+      let (left' , v1)  = merged left
+          (right', v2)  = merged right
+          sum' = v1 + v2
+          even'= even  sum'
+          ret1 = Inner sum' even' left' right'
+          ret2 = sum
+      in (ret1, ret2)
+
+-}
+
+sumUpSetEvenFun :: FunDef
+sumUpSetEvenFun = FunDef "sumUpSetEven" sumUpSetEvenFunTy "tr600" sumUpSetEvenFunBod
+  where
+    sumUpSetEvenFunTy :: ArrowTy Ty2
+    sumUpSetEvenFunTy = (ArrowTy
+                         [LRM "lin601" (VarR "r600") Input, LRM "lout602" (VarR "r600") Output]
+                         (PackedTy "STree" "lin601")
+                         (S.empty)
+                         (ProdTy [PackedTy "STree" "lout602", IntTy])
+                         [])
+
+
+    sumUpSetEvenFunBod :: L Exp2
+    sumUpSetEvenFunBod = l$ CaseE (l$ VarE "tr600") $
+      [ ("Leaf", [("n603","l604")],
+          l$ LetE ("x605",[],PackedTy "STree" "lout602",
+                   l$ DataConE "lout602" "Leaf" [l$ VarE "n603"]) $
+          l$ LetE ("tx606",[], ProdTy [PackedTy "STree" "lout602", IntTy],
+                   l$ MkProdE [l$ VarE "x605", l$ VarE "n603"]) $
+          l$ VarE "tx606")
+
+      , ("Inner", [("i607","l608"),("b609","l610"),("x611","l612"),("y613","l622")],
+         l$ Ext $ LetLocE "l614" (AfterConstantLE 1 "lout602") $
+         l$ Ext $ LetLocE "l615" (AfterVariableLE "i607" "l614") $
+         l$ Ext $ LetLocE "l616" (AfterVariableLE "b609" "l615") $
+         l$ LetE ("tx617",[], ProdTy [PackedTy "STree" "l616", IntTy],
+                  l$ AppE "sumUpSetEven" ["l612","l616"] (l$ VarE "x611")) $
+         l$ LetE ("x618",[],PackedTy "STree" "l616", l$ ProjE 0 (l$ VarE "tx617")) $
+         l$ LetE ("v619",[],IntTy, l$ ProjE 1 (l$ VarE "tx617")) $
+         l$ Ext $ LetLocE "l620" (AfterVariableLE "x618" "l616") $
+         l$ LetE ("tx621",[],ProdTy [PackedTy "STree" "l620", IntTy],
+                  l$ AppE "sumUpSetEven" ["l622","l620"] (l$ VarE "y613")) $
+         l$ LetE ("y623",[],PackedTy "STree" "l620", l$ ProjE 0 (l$ VarE "tx621")) $
+         l$ LetE ("v624",[],IntTy, l$ ProjE 1 (l$ VarE "tx621")) $
+         l$ LetE ("v625",[],IntTy, l$ PrimAppE AddP [l$ VarE "v619", l$ VarE "v624"]) $
+         l$ LetE ("b626",[],IntTy, l$ AppE "even" [] (l$ VarE "v625")) $
+         l$ LetE ("z627",[],PackedTy "STree" "lout602",
+                  l$ DataConE "lout602" "Inner" [l$ VarE "v625", l$ VarE "b626",
+                                                 l$ VarE "x618", l$ VarE "y623"]) $
+         l$ LetE ("tx638",[], ProdTy [PackedTy "STree" "lout602", IntTy],
+                  l$ MkProdE [l$ VarE "z627", l$ VarE "v625"]) $
+         l$ VarE "tx638")
+      ]
+
+
+sumUpSetEvenExp :: L Exp2
+sumUpSetEvenExp = l$ Ext $ LetRegionE (VarR "r628") $
+                  l$ Ext $ LetLocE "l629" (StartOfLE (VarR "r628")) $
+                  l$ LetE ("z630",[], PackedTy "STree" "l629",
+                           l$ AppE "buildSTree" ["l629"] (l$ LitE 3)) $
+                  l$ Ext $ LetRegionE (VarR "r631") $
+                  l$ Ext $ LetLocE "l632" (StartOfLE (VarR "r631")) $
+                  l$ LetE ("z633",[],ProdTy [PackedTy "STree" "l632", IntTy],
+                           l$ AppE "sumUpSetEven" ["l629","l632"] (l$ VarE "z630")) $
+                  l$ VarE "z633"
+
+
+sumUpSetEvenProg :: Prog
+sumUpSetEvenProg = Prog stree (M.fromList [("sumUpSetEven", sumUpSetEvenFun)
+                                          ,("even"        , evenFun )
+                                          ,("buildSTree"  , buildSTreeFun)
+                                          ])
+            (Just (sumUpSetEvenExp, ProdTy [PackedTy "STree" "l632", IntTy]))

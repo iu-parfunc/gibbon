@@ -28,7 +28,9 @@ module Packed.FirstOrder.L1.Syntax
 
       -- * Types and helpers
     , Ty1, UrTy(..), pattern Packed, pattern SymTy
-    , voidTy, hasPacked, sizeOf, isPackedTy, primRetTy
+    , voidTy, hasPacked, sizeOf, isPackedTy, primRetTy, projTy
+    , isProdTy, isNestedProdTy
+
 
       -- * Expression and Prog helpers
     , subst, substE, getFunTy
@@ -376,6 +378,26 @@ data UrTy a =
   deriving (Show, Read, Ord, Eq, Generic, NFData, Functor)
 
 
+projTy :: (Out a) => Int -> UrTy a -> UrTy a
+projTy 0 (ProdTy (ty:_))  = ty
+projTy n (ProdTy (_:tys)) = projTy (n-1) (ProdTy tys)
+projTy _ ty = error $ "projTy: " ++ sdoc ty ++ " is not a projection!"
+
+
+isNestedProdTy :: UrTy a -> Bool
+isNestedProdTy ty =
+  case ty of
+    ProdTy tys -> if any isProdTy tys
+                  then True
+                  else False
+    _ -> False
+
+
+isProdTy :: UrTy a -> Bool
+isProdTy ProdTy{} = True
+isProdTy _ = False
+
+
 -- | Apply a function to the extension points only.
 mapExt :: (e1 l d -> e2 l d) -> PreExp e1 l d -> PreExp e2 l d
 mapExt fn = visitExp id fn id
@@ -612,7 +634,7 @@ projNonFirst i e = L (locOf e) $ ProjE i e
 
 -- | Project position K of N, unless (K,N) = (0,1) in which case no
 -- projection is necessary.
-mkProj :: (Eq a, Num a) => Int -> a -> L Exp1 -> L Exp1
+mkProj :: (Eq a, Num a) => Int -> a -> L (PreExp e l d) -> L (PreExp e l d)
 mkProj 0 1 e  = e
 mkProj ix _ e = L (locOf e) $ ProjE ix e
 

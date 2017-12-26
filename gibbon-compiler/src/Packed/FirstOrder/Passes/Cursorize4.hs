@@ -427,6 +427,7 @@ cursorizeLocExp :: TEnv -> LocExp -> L L3.Exp3
 cursorizeLocExp tenv locExp =
   case locExp of
     AfterConstantLE i loc -> l$ Ext $ L3.AddCursor loc (l$ LitE i)
+    -- TODO: handle product types here
     AfterVariableLE v loc ->
       let vty = case M.lookup v tenv of
                   Just ty -> ty
@@ -505,7 +506,10 @@ cursorizeLet ddfs fundefs denv tenv isPackedContext (v,locs,ty,rhs) bod
         case locs of
           [] -> LetE (v,[], ty', rhs') <$>
                   go tenv' bod
-          _  -> error "cursorizeLet: packed tuples"
+          _  -> do
+            let bnds  = [(loc,[],CursorTy, l$ ProjE n rhs') | (loc,n) <- (zip locs [0..])]
+                        ++ [(v,[],ty', l$ ProjE (length locs) rhs')]
+            unLoc . mkLets bnds <$> go tenv' bod
 
     | otherwise = do
         rhs' <- cursorizeExp ddfs fundefs denv tenv rhs
@@ -578,8 +582,9 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
           case ty of
             IntTy -> do
               tmp <- gensym (toVar "readint_tpl")
-              let env' = M.union (M.fromList [(tmp,ProdTy [IntTy, CursorTy]),
-                                              (v, CursorTy),
+              let env' = M.union (M.fromList [(tmp     , ProdTy [IntTy, CursorTy]),
+                                              (loc     , CursorTy),
+                                              (v       , IntTy),
                                               (toEndV v, CursorTy)])
                          env
 
@@ -623,12 +628,6 @@ giveStarts ty e =
 mkProjE :: Int -> (L L3.Exp3) -> (L L3.Exp3)
 mkProjE ix (L _ (MkProdE ls)) = ls !! ix
 mkProjE ix e = l$ (ProjE ix e)
-
-
-projTy :: (Out a) => Int -> UrTy a -> UrTy a
-projTy 0 (ProdTy (ty:_))  = ty
-projTy n (ProdTy (_:tys)) = projTy (n-1) (ProdTy tys)
-projTy _ ty = error $ "projTy: " ++ sdoc ty ++ " is not a projection!"
 
 projValTy :: (Out a) => UrTy a -> UrTy a
 projValTy = projTy 0
