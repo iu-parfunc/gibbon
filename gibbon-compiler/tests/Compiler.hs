@@ -133,5 +133,10 @@ case_printtup2 = runner "printtup2.c" printTupProg2 "'#((Node (Node (Leaf 1) (Le
 case_addtrees :: Assertion
 case_addtrees = runner "addtrees.c" addTreesProg "(Node (Node (Leaf 2) (Leaf 2)) (Node (Leaf 2) (Leaf 2)))"
 
+-- Need to fix L2.Typecheck
+--
+-- case_sumupseteven :: Assertion
+-- case_sumupseteven = runner "sumupseteven.c" sumUpSetEvenProg "'#((Inner 8 1 (Inner 4 1 (Inner 2 1 (Leaf 1) (Leaf 1)) (Inner 2 1 (Leaf 1) (Leaf 1))) (Inner 4 1 (Inner 2 1 (Leaf 1) (Leaf 1)) (Inner 2 1 (Leaf 1) (Leaf 1)))) 8)"
+
 compilerTests :: TestTree
 compilerTests = $(testGroupGenerator)
