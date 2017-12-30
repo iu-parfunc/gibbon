@@ -49,6 +49,7 @@ library
                   Packed.FirstOrder.Passes.ShakeTree
                   Packed.FirstOrder.Passes.HoistNewBuf
                   Packed.FirstOrder.Passes.Unariser
+                  Packed.FirstOrder.Passes.Unariser2
                   Packed.FirstOrder.Passes.Lower
                   -- Packed.FirstOrder.Passes.Typecheck
                   Packed.FirstOrder.Passes.Codegen
@@ -114,7 +115,7 @@ library
   ghc-options:        -Wredundant-constraints
   ghc-options:        -Wall -Wno-unused-top-binds -Wno-orphans -Wno-partial-type-signatures
   ghc-options:        -Wno-typed-holes
-  ghc-options:        -fdefer-typed-holes 
+  ghc-options:        -fdefer-typed-holes
   default-extensions: ScopedTypeVariables PatternSynonyms DeriveGeneric DeriveFunctor
                       NamedFieldPuns TupleSections TypeFamilies
   default-extensions: PartialTypeSignatures
@@ -148,6 +149,7 @@ test-suite test-gibbon
   other-modules:
                 RouteEnds2
                 InferEffects2
+                Unariser
                 Compiler
                 L2.Typecheck
                 L1.Typecheck
