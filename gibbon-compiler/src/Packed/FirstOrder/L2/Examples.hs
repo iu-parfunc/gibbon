@@ -12,7 +12,7 @@ module Packed.FirstOrder.L2.Examples
   , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
   , rightmostProg, buildTreeProg, buildTreeSumProg, printTupProg, addTreesProg
-  , printTupProg2, sumUpProg, setEvenProg, sumUpSetEvenProg
+  , printTupProg2, sumUpProg, setEvenProg, sumUpSetEvenProg, substProg
   ) where
 
 import Data.Loc
@@ -1006,3 +1006,140 @@ sumUpSetEvenProg = Prog stree (M.fromList [("sumUpSetEven", sumUpSetEvenFun)
                                           ,("buildSTree"  , buildSTreeFun)
                                           ])
             (Just (sumUpSetEvenExp, ProdTy [PackedTy "STree" "l632", IntTy]))
+
+--------------------------------------------------------------------------------
+
+-- (data Expr
+--       (VARREF Int)
+--       (INTLIT Int)
+--       (LETE Int Expr Expr))
+
+-- type Var = IntTy
+
+-- subst :: Var -> Expr -> Expr
+-- subst old new ex =
+--   case ex of
+--     VarE v | v == old  -> unLoc new
+--            | otherwise -> VarE v
+--     LitE _ -> ex
+--     LetE (v,t,rhs) bod | v == old  -> LetE (v,t,go rhs) bod
+--                        | otherwise -> LetE (v,t,go rhs) (go bod)
+
+
+ddexpr :: DDefs Ty2
+ddexpr = fromListDD [DDef (toVar "Expr")
+                      [ ("VARREF", [(False,IntTy)])
+                      , ("INTLIT", [(False,IntTy)])
+                      , ("LETE"  , [(False,IntTy),
+                                    (False,PackedTy "Expr" "l"),
+                                    (False,PackedTy "Expr" "l")])
+                      ]]
+
+copyExprFun :: FunDef
+copyExprFun = FunDef "copyExpr" copyExprFunTy "e700" copyExprFunBod
+  where
+    copyExprFunTy :: ArrowTy Ty2
+    copyExprFunTy = (ArrowTy
+                     [LRM "lin702" (VarR "r701") Input,
+                      LRM "lout703" (VarR "r701") Output]
+                     (PackedTy "Expr" "lin702")
+                     (S.empty)
+                     (PackedTy "Expr" "lout703")
+                     [])
+
+    copyExprFunBod :: L Exp2
+    copyExprFunBod = l$ CaseE (l$ VarE "e700")
+                     [ ("VARREF", [("v704","l705")],
+                        l$ DataConE "lout703" "VARREF" [l$ VarE "v704"]
+                       )
+                     , ("LETE", [("v706","l707"), ("rhs708", "l709"), ("bod710", "l711")],
+                        l$ Ext $ LetLocE "l712" (AfterConstantLE 1 "lout703") $
+                        l$ Ext $ LetLocE "l713" (AfterVariableLE "v706" "l712") $
+                        l$ LetE ("rhs714",[], PackedTy "Expr" "l713",
+                                 l$ AppE "copyExpr" ["l709","l713"] (l$ VarE "rhs708")) $
+                        l$ Ext $ LetLocE "l715" (AfterVariableLE "rhs714" "l713") $
+                        l$ LetE ("bod716",[],PackedTy "Expr" "l715",
+                                 l$ AppE "copyExpr" ["l711", "l715"] (l$ VarE "bod710")) $
+                        l$ LetE ("z717",[],PackedTy "Expr" "lout703",
+                                 l$ DataConE "lout703" "LETE" [l$ VarE "v706", l$ VarE "rhs714", l$ VarE "bod716"]) $
+                        l$ VarE "z717")
+                     ]
+
+
+substFun :: FunDef
+substFun = FunDef "subst" substFunTy "tr653" substFunBod
+  where
+    substFunTy :: ArrowTy Ty2
+    substFunTy = (ArrowTy
+                  [LRM "lin651" (VarR "r650") Input,
+                   LRM "lin652" (VarR "r650") Input,
+                   LRM "lout653" (VarR "r650") Output]
+                  (ProdTy [IntTy,
+                           PackedTy "Expr" "lin651",
+                           PackedTy "Expr" "lin652"])
+                  (S.empty)
+                  (PackedTy "Expr" "lout653")
+                  [])
+
+    substFunBod :: L Exp2
+    substFunBod = l$ LetE ("old654",[],IntTy, l$ ProjE 0 (l$ VarE "tr653")) $
+                  l$ LetE ("new655",[],PackedTy "Expr" "lin651",
+                           l$ ProjE 1 (l$ VarE "tr653")) $
+                  l$ LetE ("expr656",[],PackedTy "Expr" "lin652",
+                           l$ ProjE 2 (l$ VarE "tr653")) $
+                  l$ CaseE (l$ VarE "expr656")
+                  [ ("VARREF", [("v657","l658")],
+                     l$ LetE ("b659",[], BoolTy,
+                              l$ PrimAppE EqIntP [l$ VarE "v657", l$ VarE "old654"]) $
+                     l$ IfE (l$ VarE "b659")
+                     (l$ AppE "copyExpr" ["lin651", "lout653"] (l$ VarE "new655"))
+                     (l$ DataConE "lout653" "VARREF" [l$ VarE "v657"]))
+                  , ("LETE", [("v656","l657"), ("rhs658","l659"), ("bod660", "l661")],
+                     l$ LetE ("b662",[],BoolTy,
+                              l$ PrimAppE EqIntP [l$ VarE "v656", l$ VarE "old654"]) $
+                     -- l$ IfE (l$ VarE "b662")
+                     (l$ Ext $ LetLocE "l663" (AfterConstantLE 1 "lout653") $
+                      l$ Ext $ LetLocE "l664" (AfterVariableLE "v656" "l663") $
+                      l$ LetE ("p668",[], ProdTy [IntTy, PackedTy "Expr" "lin651", PackedTy "Expr" "l659"],
+                               l$ MkProdE [l$ VarE "old654", l$ VarE "new655", l$ VarE "rhs658"]) $
+                      l$ LetE ("rhs665",[],PackedTy "Expr" "l664",
+                               l$ AppE "subst" ["lin651", "l659", "l664"] (l$ VarE "p668")) $
+                      l$ Ext $ LetLocE "l669" (AfterVariableLE "rhs665" "l664") $
+                      l$ LetE ("bod670",[], PackedTy "Expr" "l669",
+                               l$ AppE "copyExpr" ["l661", "l669"] (l$ VarE "bod660")) $
+                      l$ LetE ("z671",[], PackedTy "Expr" "lout653",
+                               l$ DataConE "lout653" "LETE" [l$ VarE "v656", l$ VarE "rhs665", l$ VarE "bod670"]) $
+                      l$ VarE "z671")
+                    )
+                  ]
+
+
+substMainExp :: L Exp2
+substMainExp = l$ Ext $ LetRegionE (VarR "r720") $
+               l$ Ext $ LetLocE "l721" (StartOfLE (VarR "r720")) $
+               l$ Ext $ LetLocE "l722" (AfterConstantLE 1 "l721") $
+               l$ Ext $ LetLocE "l723" (AfterConstantLE 8 "l722") $
+               l$ LetE ("rhs724",[], PackedTy "Expr" "l723",
+                        l$ DataConE "l723" "VARREF" [l$ LitE 1]) $
+               l$ Ext $ LetLocE "l724" (AfterVariableLE "rhs724" "l723") $
+               l$ LetE ("bod725",[], PackedTy "Expr" "l724",
+                        l$ DataConE "l724" "VARREF" [l$ LitE 10]) $
+               l$ LetE ("old726",[],IntTy,l$ LitE 1) $
+               l$ LetE ("z727",[], PackedTy "Expr" "l721",
+                        l$ DataConE "l721" "LETE" [l$ VarE "old726", l$ VarE "rhs724", l$ VarE "bod725"]) $
+               l$ Ext $ LetRegionE (VarR "r728") $
+               l$ Ext $ LetLocE "l729" (StartOfLE (VarR "r728")) $
+               l$ LetE ("new730",[],PackedTy "Expr" "l729",
+                        l$ DataConE "l729" "VARREF" [l$ LitE 42]) $
+               l$ LetE ("p731",[],ProdTy [IntTy, PackedTy "Expr" "l729", PackedTy "Expr" "l721"],
+                        l$ MkProdE [l$ VarE "old726", l$ VarE "new730", l$ VarE "z727"]) $
+               l$ Ext $ LetLocE "l730" (AfterVariableLE "new730" "l729") $
+               l$ LetE ("z732",[], PackedTy "Expr" "l730",
+                        l$ AppE "subst" ["l729", "l721", "l730"] (l$ VarE "p731")) $
+               l$ VarE "z732"
+
+
+substProg :: Prog
+substProg = Prog ddexpr (M.fromList [("subst", substFun),
+                                     ("copyExpr", copyExprFun)])
+            (Just (substMainExp, PackedTy "Expr" "l730"))
