@@ -24,7 +24,7 @@ import Packed.FirstOrder.L2.Examples
 import Packed.FirstOrder.Passes.InferEffects2
 import Packed.FirstOrder.Passes.RouteEnds2
 import Packed.FirstOrder.Passes.Cursorize4
-import Packed.FirstOrder.Passes.Unariser
+import Packed.FirstOrder.Passes.Unariser2
 import Packed.FirstOrder.Passes.ShakeTree
 import Packed.FirstOrder.Passes.HoistNewBuf
 import Packed.FirstOrder.Passes.FindWitnesses
@@ -52,6 +52,7 @@ runT prg = fst $ runSyM 0 $ do
     l2 <- inferEffects prg
     l2 <- tcProg l2
     l2 <- routeEnds l2
+    l2 <- tcProg l2
     l3 <- cursorize l2
     return l3
 
@@ -59,13 +60,14 @@ runT prg = fst $ runSyM 0 $ do
 run2T :: L3.Prog -> L4.Prog
 run2T l3 = fst $ runSyM 0 $ do
     l3 <- flattenL3 l3
-    l3 <- findWitnesses l3
-    l3 <- shakeTree l3
+    -- l3 <- findWitnesses l3
+    -- l3 <- shakeTree l3
     l3 <- L3.tcProg l3
     l3 <- hoistNewBuf l3
     l3 <- unariser l3
     let mainTyPre = fmap snd $ L3.mainExp l3
     l3 <- flattenL3 l3
+    l3 <- L3.tcProg l3
     lower (True, mainTyPre) l3
 
 
@@ -133,10 +135,11 @@ case_printtup2 = runner "printtup2.c" printTupProg2 "'#((Node (Node (Leaf 1) (Le
 case_addtrees :: Assertion
 case_addtrees = runner "addtrees.c" addTreesProg "(Node (Node (Leaf 2) (Leaf 2)) (Node (Leaf 2) (Leaf 2)))"
 
--- Need to fix L2.Typecheck
---
--- case_sumupseteven :: Assertion
--- case_sumupseteven = runner "sumupseteven.c" sumUpSetEvenProg "'#((Inner 8 1 (Inner 4 1 (Inner 2 1 (Leaf 1) (Leaf 1)) (Inner 2 1 (Leaf 1) (Leaf 1))) (Inner 4 1 (Inner 2 1 (Leaf 1) (Leaf 1)) (Inner 2 1 (Leaf 1) (Leaf 1)))) 8)"
+case_sumupseteven :: Assertion
+case_sumupseteven = runner "sumupseteven.c" sumUpSetEvenProg "'#((Inner 8 1 (Inner 4 1 (Inner 2 1 (Leaf 1) (Leaf 1)) (Inner 2 1 (Leaf 1) (Leaf 1))) (Inner 4 1 (Inner 2 1 (Leaf 1) (Leaf 1)) (Inner 2 1 (Leaf 1) (Leaf 1)))) 8)"
+
+case_subst :: Assertion
+case_subst = runner "subst.c" substProg "(LETE 1 (VARREF 42) (VARREF 10))"
 
 compilerTests :: TestTree
 compilerTests = $(testGroupGenerator)
