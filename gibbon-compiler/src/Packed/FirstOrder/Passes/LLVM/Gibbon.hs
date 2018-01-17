@@ -7,6 +7,7 @@ module Packed.FirstOrder.Passes.LLVM.Gibbon (
 ) where
 
 -- | standard library
+import Data.ByteString.Short
 import Data.Word (Word64)
 import Control.Monad.State
 
@@ -27,11 +28,12 @@ import qualified LLVM.AST.Type as T
 import qualified LLVM.AST.Global as G
 import qualified LLVM.AST.AddrSpace as AS
 
+import Packed.FirstOrder.Passes.LLVM.Utils
 
 -- | Allow results of LLVM operations to be assigned to variables, instead of unnames
 --
 
-gibbonOp :: (Maybe String -> [AST.Operand] -> CodeGen AST.Operand)
+gibbonOp :: (Maybe ShortByteString -> [AST.Operand] -> CodeGen AST.Operand)
             -> [(Var,Ty)] -> [AST.Operand]
             -> CodeGen BlockState
 
@@ -39,7 +41,7 @@ gibbonOp op [] args = op Nothing args >>= retval_
 
 gibbonOp op [(v, _)] args = do
   let nm = fromVar v
-  res   <- op (Just nm) args
+  res   <- op (Just $ toByteString nm) args
   retval_ res
 
 gibbonOp op bnds args = do
@@ -69,10 +71,10 @@ callp fn = gibbonOp (call fn)
 sizeParam :: [(Var,Ty)] -> CodeGen BlockState
 sizeParam [(v,ty)] = do
   let nm = fromVar v
-  _     <- load lty (Just nm) op
+  _     <- load lty (Just $ toByteString nm) op
   return_
   where lty = typeOf ty
-        op  = globalOp lty (AST.Name "global_size_param")
+        op  = globalOp lty (AST.Name $ toByteString "global_size_param")
 
 
 -- | Convert Gibbon types to LLVM types.
@@ -90,11 +92,11 @@ instance TypeOf Ty where
   typeOf CursorTy    = toPtrTy T.i8          -- ^ char*
   typeOf (ProdTy []) = T.VoidType            -- ^ void (pointers to void are invalid in LLVM)
   typeOf (ProdTy ts) = typeOf ts
-  typeOf (SymDictTy _t) = toPtrTy $ T.NamedTypeReference $ AST.Name "struct.dict_item"
+  typeOf (SymDictTy _t) = toPtrTy $ T.NamedTypeReference $ AST.Name $ toByteString "struct.dict_item"
 
 -- | struct types
 instance TypeOf [Ty] where
-  typeOf = T.NamedTypeReference . AST.Name . structName
+  typeOf = T.NamedTypeReference . AST.Name . toByteString . structName
 
 
 -- | Gibbon PrintString
@@ -119,7 +121,7 @@ printString s = do
 --
 stringToChar :: String -> (AST.Operand, Word64)
 stringToChar s = (constop_ $ string_ s', len)
-  where len = (fromIntegral . length) s'
+  where len = (fromIntegral . Prelude.length) s'
         s'  = s ++ ['\NUL']
 
 -- | Generate the correct LLVM predicate
@@ -131,7 +133,7 @@ toIfPred (IntTriv i) = do
   let op0 = (constop_ . int_ . toInteger) i
   notZeroP Nothing op0
 toIfPred (VarTriv v) = do
-  v' <- getvar (fromVar v)
+  v' <- getvar (toByteString $ fromVar v)
   notZeroP Nothing v'
 
 -- | Read one byte from the cursor and advance it
@@ -165,11 +167,11 @@ readCursor [(valV', valTy'), (curV', curTy')] cur' offset =
 
     -- valTy valV = *cur
     valVV <- load valTy Nothing cur >>= convert valTy Nothing
-    _ <- assign valTy (Just valV) valVV
+    _ <- assign valTy (Just $ toByteString valV) valVV
 
     -- curTy curV = cur + offset;
     curVV <- getElemPtr True cur [constop_ $ int_ offset]
-    _ <- assign curTy (Just curV) curVV
+    _ <- assign curTy (Just $ toByteString curV) curVV
     return_
 
 
@@ -178,9 +180,9 @@ readCursor [(valV', valTy'), (curV', curTy')] cur' offset =
 convert :: T.Type -> Maybe String -> AST.Operand -> CodeGen AST.Operand
 convert toTy nm op =
   case (kindOf fromTy, kindOf toTy) of
-    (IntegerK, IntegerK) -> sext toTy nm op
-    (IntegerK, PointerK) -> inttoptr toTy nm op
-    _                    -> bitcast toTy nm op
+    (IntegerK, IntegerK) -> sext toTy (fmap toByteString nm) op
+    (IntegerK, PointerK) -> inttoptr toTy (fmap toByteString nm) op
+    _                    -> bitcast toTy (fmap toByteString nm) op
   where fromTy = typeOf op
 
 -- |
@@ -197,16 +199,17 @@ addStructs prog = mapM_ (uncurry addTypeDef . defineStruct) $
 
 -- | Generate LLVM type definitions (structs)
 --
-defineStruct :: [Ty] -> (String, AST.Definition)
+defineStruct :: [Ty] -> (ShortByteString, AST.Definition)
 defineStruct [] = __
-defineStruct tys = (nm, AST.TypeDefinition (AST.Name nm) (Just $ T.StructureType False elememtTypes))
+defineStruct tys = (nm', AST.TypeDefinition (AST.Name nm') (Just $ T.StructureType False elememtTypes))
   where nm = structName tys
+        nm' = toByteString nm
         elememtTypes = map typeOf tys
 
 
 -- | Return a reference to the struct, with its fields assigned to triv's
 --
-populateStruct :: T.Type -> Maybe String -> [AST.Operand] -> CodeGen AST.Operand
+populateStruct :: T.Type -> Maybe ShortByteString -> [AST.Operand] -> CodeGen AST.Operand
 populateStruct ty nm ts = do
   struct <- allocate ty nm
   forM_ (zip ts [0..]) $ \(triv,i) -> do
@@ -230,7 +233,7 @@ unpackPtrStruct nm struct bnds = do
   forM_ (zip bnds [0..]) $ \((v,vty), i) -> do
     field <- getElemPtr True struct' [constop_ $ int32_ 0, constop_ $ int32_ i]
     field' <- load (typeOf vty) Nothing field
-    assign (typeOf vty) (Just $ fromVar v) field'
+    assign (typeOf vty) (Just $ toByteString $ fromVar v) field'
   return struct'
 
 
@@ -238,13 +241,13 @@ unpackPtrStruct nm struct bnds = do
 --
 -- PtrTy ptr5 = tmp_struct0.field0;
 -- CursorTy tail6 = tmp_struct0.field1;
-unpackValStruct :: Maybe String -> AST.Operand -> [(Var, Ty)] -> CodeGen BlockState
+unpackValStruct :: Maybe ShortByteString -> AST.Operand -> [(Var, Ty)] -> CodeGen BlockState
 unpackValStruct nm struct bnds = do
   structTy <- case bnds of
                 [] -> return $ typeOf struct
                 _  -> return $ typeOf $ map snd bnds
   forM_ (zip bnds [0..]) $ \((v,vty), i) -> do
-    extractValue Nothing struct [i] >>= assign (typeOf vty) (Just $ fromVar v)
+    extractValue Nothing struct [i] >>= assign (typeOf vty) (Just $ toByteString $ fromVar v)
   return_
 
 -- |

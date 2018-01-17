@@ -31,6 +31,7 @@ import Data.Loc
 import Data.Map as M
 import Data.Maybe
 import Text.PrettyPrint.GenericPretty
+import Debug.Trace
 
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L2.Syntax as L2
@@ -624,15 +625,20 @@ ensurePackedLoc exp ty l =
                        else throwError $ GenericTC ("Wrong location in type " ++ (show ty)) exp
       _ -> throwError $ GenericTC "Expected a packed type" exp
 
+-- need to check chain of aliased locations
+-- linit is the location in the type i.e lout653
+-- ensureAfterConstant expects l664 to be after lout653
+
 -- | Ensure the locations all line up with the constraints in a data constructor application.
 -- Includes an expression for error reporting.
 ensureDataCon :: Exp -> LocVar -> [Ty2] -> ConstraintSet -> TcM ()
-ensureDataCon exp linit tys cs = go Nothing linit tys
+ensureDataCon exp linit tys cs = trace (sdoc cs) (go Nothing linit tys)
     where go Nothing linit ((PackedTy dc l):tys) = do
             ensureAfterConstant exp cs linit l
             go (Just (PackedTy dc l)) l tys
 
           go Nothing linit (_ty:tys) = go Nothing linit tys
+
           go (Just (PackedTy _dc1 l1)) _linit ((PackedTy dc2 l2):tys) = do
             ensureAfterPacked exp cs l1 l2
             go (Just (PackedTy dc2 l2)) l2 tys
@@ -649,6 +655,7 @@ ensureAfterConstant :: Exp -> ConstraintSet -> LocVar -> LocVar -> TcM ()
 ensureAfterConstant exp (ConstraintSet cs) l1 l2 =
     if L.any f $ S.toList cs then return ()
     else throwError $ LocationTC "Expected after constant relationship" exp l1 l2
+    -- l1 is before l2
     where f (AfterConstantC _i l1' l2') = l1' == l1 && l2' == l2
           f _ = False
 
