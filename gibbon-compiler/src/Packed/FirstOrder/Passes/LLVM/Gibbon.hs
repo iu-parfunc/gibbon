@@ -21,11 +21,11 @@ import Packed.FirstOrder.Passes.LLVM.Type
 import qualified Packed.FirstOrder.Passes.LLVM.Global as LG
 
 -- | llvm-general
-import qualified LLVM.General.AST as AST
-import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Type as T
-import qualified LLVM.General.AST.Global as G
-import qualified LLVM.General.AST.AddrSpace as AS
+import qualified LLVM.AST as AST
+import qualified LLVM.AST.Constant as C
+import qualified LLVM.AST.Type as T
+import qualified LLVM.AST.Global as G
+import qualified LLVM.AST.AddrSpace as AS
 
 
 -- | Allow results of LLVM operations to be assigned to variables, instead of unnames

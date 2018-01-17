@@ -22,15 +22,15 @@ import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 
 -- | llvm-general
-import qualified LLVM.General.AST as AST
-import qualified LLVM.General.AST.Global as G
-import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Type as T
-import qualified LLVM.General.AST.Instruction as I
-import qualified LLVM.General.AST.CallingConvention as CC
-import qualified LLVM.General.AST.Attribute as A
-import qualified LLVM.General.AST.AddrSpace as AS
-import qualified LLVM.General.AST.IntegerPredicate as IP
+import qualified LLVM.AST as AST
+import qualified LLVM.AST.Global as G
+import qualified LLVM.AST.Constant as C
+import qualified LLVM.AST.Type as T
+import qualified LLVM.AST.Instruction as I
+import qualified LLVM.AST.CallingConvention as CC
+import qualified LLVM.AST.Attribute as A
+import qualified LLVM.AST.AddrSpace as AS
+import qualified LLVM.AST.IntegerPredicate as IP
 
 import Packed.FirstOrder.Passes.LLVM.Monad
 import Packed.FirstOrder.Passes.LLVM.Terminator

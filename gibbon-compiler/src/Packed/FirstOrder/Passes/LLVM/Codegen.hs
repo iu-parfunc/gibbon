@@ -17,12 +17,12 @@ import Packed.FirstOrder.Passes.LLVM.Gibbon
 import Packed.FirstOrder.Passes.LLVM.Global hiding (toPtrTy)
 
 -- | llvm-general
-import qualified LLVM.General.AST as AST
-import qualified LLVM.General.AST.Global as G
-import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Type as T
-import qualified LLVM.General.Context as CTX
-import qualified LLVM.General.Module as M
+import qualified LLVM.AST as AST
+import qualified LLVM.AST.Global as G
+import qualified LLVM.AST.Constant as C
+import qualified LLVM.AST.Type as T
+import qualified LLVM.Context as CTX
+import qualified LLVM.Module as M
 
 
 toLLVM :: AST.Module -> IO String

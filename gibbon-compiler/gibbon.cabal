@@ -103,8 +103,8 @@ library
                     Packed.FirstOrder.Passes.LLVM.Terminator
                     Packed.FirstOrder.Passes.LLVM.Type
     build-depends:
-                  llvm-general-pure,
-                  llvm-general
+                  llvm-hs-pure,
+                  llvm-hs
     cpp-options: -DLLVM_ENABLED
 
   hs-source-dirs:      src

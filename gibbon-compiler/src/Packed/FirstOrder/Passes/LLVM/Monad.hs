@@ -17,10 +17,10 @@ import qualified Data.Sequence as Seq
 import qualified Data.Foldable as F
 
 -- | llvm-general
-import qualified LLVM.General.AST as AST
-import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Type as T
-import qualified LLVM.General.AST.Global as G
+import qualified LLVM.AST as AST
+import qualified LLVM.AST.Constant as C
+import qualified LLVM.AST.Type as T
+import qualified LLVM.AST.Global as G
 
 
 -- | The code generation state for our AST.

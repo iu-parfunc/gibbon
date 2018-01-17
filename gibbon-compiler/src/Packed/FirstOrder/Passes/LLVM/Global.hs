@@ -2,11 +2,11 @@
 
 module Packed.FirstOrder.Passes.LLVM.Global where
 
-import qualified LLVM.General.AST as AST
-import qualified LLVM.General.AST.Global as G
-import qualified LLVM.General.AST.Type as T
-import qualified LLVM.General.AST.AddrSpace as AS
-import qualified LLVM.General.AST.Constant as C
+import qualified LLVM.AST as AST
+import qualified LLVM.AST.Global as G
+import qualified LLVM.AST.Type as T
+import qualified LLVM.AST.AddrSpace as AS
+import qualified LLVM.AST.Constant as C
 
 -- | Must be consistent with function defined in lib.c
 --
