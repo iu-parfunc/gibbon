@@ -104,6 +104,7 @@ library
                     Packed.FirstOrder.Passes.LLVM.Instruction
                     Packed.FirstOrder.Passes.LLVM.Terminator
                     Packed.FirstOrder.Passes.LLVM.Type
+                    Packed.FirstOrder.Passes.LLVM.Utils
     build-depends:
                   llvm-hs-pure,
                   llvm-hs
