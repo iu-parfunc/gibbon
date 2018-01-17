@@ -1,8 +1,8 @@
 module Packed.FirstOrder.Passes.LLVM.Type where
 
-import qualified LLVM.General.AST as AST
-import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Type as T
+import qualified LLVM.AST as AST
+import qualified LLVM.AST.Constant as C
+import qualified LLVM.AST.Type as T
 
 class TypeOf x where
   typeOf :: x -> T.Type

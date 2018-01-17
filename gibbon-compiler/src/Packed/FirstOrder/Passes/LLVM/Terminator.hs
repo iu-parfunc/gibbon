@@ -10,9 +10,9 @@ import Control.Monad.State
 import qualified Data.Sequence as Seq
 
 -- | llvm-general
-import qualified LLVM.General.AST as AST
-import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Instruction as I
+import qualified LLVM.AST as AST
+import qualified LLVM.AST.Constant as C
+import qualified LLVM.AST.Instruction as I
 import Packed.FirstOrder.Passes.LLVM.Monad
 
 
