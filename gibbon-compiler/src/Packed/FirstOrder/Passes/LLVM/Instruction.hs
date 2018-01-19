@@ -7,7 +7,7 @@
 
 module Packed.FirstOrder.Passes.LLVM.Instruction (
     declare, getvar, getLastLocal, getfn, addTypeDef
-  , instr, globalOp, localRef
+  , globalOp, localRef
   , allocate, store, load, getElemPtr, call, add, mul, sub, for, assign, phi
   , eq, neq, ult, notZeroP, ifThenElse, ptrToInt, bitcast, sext, toPtrTy
   , inttoptr, extractValue
@@ -180,7 +180,9 @@ inttoptr ty nm op = instr T.VoidType nm $ I.IntToPtr op ty []
 call :: G.Global -> Maybe ShortByteString -> [AST.Operand] -> CodeGen AST.Operand
 call fn varNm args = instr retTy varNm cmd
   -- TODO(cskksc): declare fn -- ^ this doesn't work
-  where fn'   = globalOp retTy nm
+  where fn'   = globalOp (toPtrTy fnTy) nm
+        fnTy  = T.FunctionType retTy argTys False
+        argTys = map (\(G.Parameter pty _ _) -> pty) (fst $ G.parameters fn)
         args' = toArgs args
         nm    = G.name fn
         retTy = G.returnType fn
