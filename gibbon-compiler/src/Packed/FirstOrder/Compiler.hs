@@ -574,7 +574,7 @@ getExeFile C fp Nothing = replaceExtension fp ".exe"
 -- | Compilation command
 --
 compilationCmd :: Backend -> Config -> String
-compilationCmd LLVM _   = "clang-3.9 lib.o "
+compilationCmd LLVM _   = "clang-5.0 lib.o "
 compilationCmd C config = (cc config) ++" -std=gnu11 "
                           ++(if (bumpAlloc config) then "-DBUMPALLOC " else "")
                           ++(optc config)++"  "
