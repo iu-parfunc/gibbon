@@ -38,11 +38,11 @@ gibbonOp :: (InstrRet -> [AST.Operand] -> CodeGen AST.Operand)
             -> CodeGen BlockState
 gibbonOp op bnds args =
   case bnds of
-    [] -> op FreshVar args >>= retval_
+    [] -> op FreshVar args >>= retval'
     [(v, _)] -> do
       let nm = fromVar v
       res   <- op (NamedVar $ toByteString nm) args
-      retval_ res
+      retval' res
     _ -> do
       struct <- op FreshVar args
       unpackValStruct FreshVar struct bnds
@@ -70,7 +70,7 @@ sizeParam :: [(Var,Ty)] -> CodeGen BlockState
 sizeParam [(v,ty)] = do
   let nm = fromVar v
   _     <- load lty (NamedVar $ toByteString nm) op
-  return_
+  return'
   where lty = typeOf ty
         op  = globalOp lty (AST.Name $ toByteString "global_size_param")
 
@@ -104,21 +104,21 @@ printString s = do
   var <- allocate ty FreshVar
   _   <- store var chars
   nm  <- gets next
-  -- TODO(cskksc): figure out the -2. its probably because store doesn't assign
+  -- TODO(cskksc): figure out the -1. its probably because store doesn't assign
   -- anything to an unname
   _   <- getElemPtr True (localRef (toPtrTy ty) (AST.UnName (nm - 1))) idxs
   _   <- call LG.fputs Void [localRef (toPtrTy T.i8) (AST.UnName nm)]
-  return_
+  return'
     where (chars, len) = stringToChar s
           ty    = T.ArrayType len T.i8
-          idx   = (constop_ . int_) 0
+          idx   = (constop' . int') 0
           idxs  = [idx, idx]
 
 
 -- | Convert string to a char array in LLVM format
 --
 stringToChar :: String -> (AST.Operand, Word64)
-stringToChar s = (constop_ $ string_ s', len)
+stringToChar s = (constop' $ string' s', len)
   where len = (fromIntegral . Prelude.length) s'
         s'  = s ++ ['\NUL']
 
@@ -127,12 +127,14 @@ stringToChar s = (constop_ $ string_ s', len)
 -- We implement the C notion of true/false i.e every value !=0 is truthy
 --
 toIfPred :: Triv -> CodeGen AST.Operand
-toIfPred (IntTriv i) = do
-  let op0 = (constop_ . int_ . toInteger) i
-  notZeroP FreshVar op0
-toIfPred (VarTriv v) = do
-  v' <- getvar (toByteString $ fromVar v)
-  notZeroP FreshVar v'
+toIfPred trv =
+  case trv of
+    (IntTriv i) -> do
+      let op0 = (constop' . int' . toInteger) i
+      notZeroP FreshVar op0
+    (VarTriv v) -> do
+      v' <- getvar (toByteString $ fromVar v)
+      notZeroP FreshVar v'
 
 -- | Read one byte from the cursor and advance it
 --
@@ -168,9 +170,9 @@ readCursor [(valV', valTy'), (curV', curTy')] cur' offset =
     _ <- assign valTy (NamedVar $ toByteString valV) valVV
 
     -- curTy curV = cur + offset;
-    curVV <- getElemPtr True cur [constop_ $ int_ offset]
+    curVV <- getElemPtr True cur [constop' $ int' offset]
     _ <- assign curTy (NamedVar $ toByteString curV) curVV
-    return_
+    return'
 
 
 -- | Generate instructions to convert op from type-of-op -> toTy
@@ -185,7 +187,7 @@ convert toTy nm op =
 
 -- |
 sizeof :: T.Type -> CodeGen AST.Operand
-sizeof ty = getElemPtr True (constop_ $ C.Null ty) [constop_ $ int_ 1] >>= ptrToInt FreshVar
+sizeof ty = getElemPtr True (constop' $ C.Null ty) [constop' $ int' 1] >>= ptrToInt FreshVar
 
 
 -- | Add all required structs
@@ -213,7 +215,7 @@ populateStruct ty nm ts = do
   forM_ (zip ts [0..]) $ \(triv,i) -> do
     -- When indexing into a (optionally packed) structure, only i32 integer
     -- constants are allowed
-    field <- getElemPtr True struct [constop_ $ int32_ 0, constop_ $ int32_ i]
+    field <- getElemPtr True struct [constop' $ int32' 0, constop' $ int32' i]
     store field triv
   return struct
 
@@ -229,7 +231,7 @@ unpackPtrStruct _nm struct bnds = do
                 _  -> return $ typeOf $ map snd bnds
   struct' <- convert (toPtrTy structTy) FreshVar struct
   forM_ (zip bnds [0..]) $ \((v,vty), i) -> do
-    field <- getElemPtr True struct' [constop_ $ int32_ 0, constop_ $ int32_ i]
+    field <- getElemPtr True struct' [constop' $ int32' 0, constop' $ int32' i]
     field' <- load (typeOf vty) FreshVar field
     assign (typeOf vty) (NamedVar $ toByteString $ fromVar v) field'
   return struct'
@@ -246,7 +248,7 @@ unpackValStruct nm struct bnds = do
   --               _  -> return $ typeOf $ map snd bnds
   forM_ (zip bnds [0..]) $ \((v,vty), i) -> do
     extractValue nm struct [i] >>= assign (typeOf vty) (NamedVar $ toByteString $ fromVar v)
-  return_
+  return'
 
 -- |
 structName :: [Ty] -> String
