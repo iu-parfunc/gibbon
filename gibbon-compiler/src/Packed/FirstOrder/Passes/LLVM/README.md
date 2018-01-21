@@ -7,6 +7,6 @@ The file `Monad.hs` implements the `CodeGen` state monad, which tracks the basic
 
 ## Dependencies
 
-* LLVM 3.9
+* LLVM 5.0
 
-* [llvm-hs](https://github.com/llvm-hs/llvm-hs), which is a fork of `llvm-general`
+* [llvm-hs](https://github.com/llvm-hs/llvm-hs)
