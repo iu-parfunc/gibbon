@@ -33,20 +33,20 @@ import Packed.FirstOrder.Passes.LLVM.Utils
 -- | Allow results of LLVM operations to be assigned to variables, instead of unnames
 --
 
-gibbonOp :: (Maybe ShortByteString -> [AST.Operand] -> CodeGen AST.Operand)
+gibbonOp :: (InstrRet -> [AST.Operand] -> CodeGen AST.Operand)
             -> [(Var,Ty)] -> [AST.Operand]
             -> CodeGen BlockState
 
-gibbonOp op [] args = op Nothing args >>= retval_
+gibbonOp op [] args = op FreshVar args >>= retval_
 
 gibbonOp op [(v, _)] args = do
   let nm = fromVar v
-  res   <- op (Just $ toByteString nm) args
+  res   <- op (NamedVar $ toByteString nm) args
   retval_ res
 
 gibbonOp op bnds args = do
-  struct <- op Nothing args
-  unpackValStruct Nothing struct bnds
+  struct <- op FreshVar args
+  unpackValStruct FreshVar struct bnds
 
 gibbonOp op vars args = error $ "gibbonOp: Not implemented " ++ show vars
 
@@ -71,7 +71,7 @@ callp fn = gibbonOp (call fn)
 sizeParam :: [(Var,Ty)] -> CodeGen BlockState
 sizeParam [(v,ty)] = do
   let nm = fromVar v
-  _     <- load lty (Just $ toByteString nm) op
+  _     <- load lty (NamedVar $ toByteString nm) op
   return_
   where lty = typeOf ty
         op  = globalOp lty (AST.Name $ toByteString "global_size_param")
@@ -103,13 +103,13 @@ instance TypeOf [Ty] where
 --
 printString :: String -> CodeGen BlockState
 printString s = do
-  var <- allocate ty Nothing
+  var <- allocate ty FreshVar
   _   <- store var chars
   nm  <- gets next
   -- TODO(cskksc): figure out the -2. its probably because store doesn't assign
   -- anything to an unname
-  _   <- getElemPtr True (localRef (toPtrTy ty) (AST.UnName (nm - 2))) idxs
-  _   <- call LG.fputs Nothing [localRef (toPtrTy ty) (AST.UnName nm)]
+  _   <- getElemPtr True (localRef (toPtrTy ty) (AST.UnName (nm - 1))) idxs
+  _   <- call LG.fputs Void [localRef (toPtrTy T.i8) (AST.UnName nm)]
   return_
     where (chars, len) = stringToChar s
           ty    = T.ArrayType len T.i8
@@ -131,10 +131,10 @@ stringToChar s = (constop_ $ string_ s', len)
 toIfPred :: Triv -> CodeGen AST.Operand
 toIfPred (IntTriv i) = do
   let op0 = (constop_ . int_ . toInteger) i
-  notZeroP Nothing op0
+  notZeroP FreshVar op0
 toIfPred (VarTriv v) = do
   v' <- getvar (toByteString $ fromVar v)
-  notZeroP Nothing v'
+  notZeroP FreshVar v'
 
 -- | Read one byte from the cursor and advance it
 --
@@ -163,31 +163,31 @@ readCursor [(valV', valTy'), (curV', curTy')] cur' offset =
       curTy = typeOf curTy'
       curV = fromVar curV'
   in do
-    cur <- assign curTy Nothing cur'
+    cur <- assign curTy FreshVar cur'
 
     -- valTy valV = *cur
-    valVV <- load valTy Nothing cur >>= convert valTy Nothing
-    _ <- assign valTy (Just $ toByteString valV) valVV
+    valVV <- load valTy FreshVar cur >>= convert valTy  FreshVar
+    _ <- assign valTy (NamedVar $ toByteString valV) valVV
 
     -- curTy curV = cur + offset;
     curVV <- getElemPtr True cur [constop_ $ int_ offset]
-    _ <- assign curTy (Just $ toByteString curV) curVV
+    _ <- assign curTy (NamedVar $ toByteString curV) curVV
     return_
 
 
 -- | Generate instructions to convert op from type-of-op -> toTy
 --
-convert :: T.Type -> Maybe String -> AST.Operand -> CodeGen AST.Operand
+convert :: T.Type -> InstrRet -> AST.Operand -> CodeGen AST.Operand
 convert toTy nm op =
   case (kindOf fromTy, kindOf toTy) of
-    (IntegerK, IntegerK) -> sext toTy (fmap toByteString nm) op
-    (IntegerK, PointerK) -> inttoptr toTy (fmap toByteString nm) op
-    _                    -> bitcast toTy (fmap toByteString nm) op
+    (IntegerK, IntegerK) -> sext toTy nm op
+    (IntegerK, PointerK) -> inttoptr toTy nm op
+    _                    -> bitcast toTy nm op
   where fromTy = typeOf op
 
 -- |
 sizeof :: T.Type -> CodeGen AST.Operand
-sizeof ty = getElemPtr True (constop_ $ C.Null ty) [constop_ $ int_ 1] >>= ptrToInt Nothing
+sizeof ty = getElemPtr True (constop_ $ C.Null ty) [constop_ $ int_ 1] >>= ptrToInt FreshVar
 
 
 -- | Add all required structs
@@ -209,7 +209,7 @@ defineStruct tys = (nm', AST.TypeDefinition (AST.Name nm') (Just $ T.StructureTy
 
 -- | Return a reference to the struct, with its fields assigned to triv's
 --
-populateStruct :: T.Type -> Maybe ShortByteString -> [AST.Operand] -> CodeGen AST.Operand
+populateStruct :: T.Type -> InstrRet -> [AST.Operand] -> CodeGen AST.Operand
 populateStruct ty nm ts = do
   struct <- allocate ty nm
   forM_ (zip ts [0..]) $ \(triv,i) -> do
@@ -224,16 +224,16 @@ populateStruct ty nm ts = do
 --
 -- IntTy tag3 = ((Int64Int64Int64Prod *) fltCse2)->field0;
 -- IntTy x0 = ((Int64Int64Int64Prod *) fltCse2)->field1;
-unpackPtrStruct :: Maybe String -> AST.Operand -> [(Var, Ty)] -> CodeGen AST.Operand
+unpackPtrStruct :: InstrRet -> AST.Operand -> [(Var, Ty)] -> CodeGen AST.Operand
 unpackPtrStruct nm struct bnds = do
   structTy <- case bnds of
                 [] -> return $ typeOf struct
                 _  -> return $ typeOf $ map snd bnds
-  struct' <- convert (toPtrTy structTy) Nothing struct
+  struct' <- convert (toPtrTy structTy) FreshVar struct
   forM_ (zip bnds [0..]) $ \((v,vty), i) -> do
     field <- getElemPtr True struct' [constop_ $ int32_ 0, constop_ $ int32_ i]
-    field' <- load (typeOf vty) Nothing field
-    assign (typeOf vty) (Just $ toByteString $ fromVar v) field'
+    field' <- load (typeOf vty) FreshVar field
+    assign (typeOf vty) (NamedVar $ toByteString $ fromVar v) field'
   return struct'
 
 
@@ -241,13 +241,13 @@ unpackPtrStruct nm struct bnds = do
 --
 -- PtrTy ptr5 = tmp_struct0.field0;
 -- CursorTy tail6 = tmp_struct0.field1;
-unpackValStruct :: Maybe ShortByteString -> AST.Operand -> [(Var, Ty)] -> CodeGen BlockState
+unpackValStruct :: InstrRet -> AST.Operand -> [(Var, Ty)] -> CodeGen BlockState
 unpackValStruct nm struct bnds = do
   structTy <- case bnds of
                 [] -> return $ typeOf struct
                 _  -> return $ typeOf $ map snd bnds
   forM_ (zip bnds [0..]) $ \((v,vty), i) -> do
-    extractValue Nothing struct [i] >>= assign (typeOf vty) (Just $ toByteString $ fromVar v)
+    extractValue nm struct [i] >>= assign (typeOf vty) (NamedVar $ toByteString $ fromVar v)
   return_
 
 -- |

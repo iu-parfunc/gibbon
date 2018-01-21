@@ -4,8 +4,7 @@ module Packed.FirstOrder.Passes.LLVM.Codegen where
 -- | standard library
 import Control.Monad.Except
 import Control.Monad.State
-import Data.ByteString.Short
-import qualified Data.ByteString as B
+import Data.ByteString.Char8
 import qualified Data.Map as Map
 
 -- | gibbon internals
@@ -18,7 +17,7 @@ import Packed.FirstOrder.Passes.LLVM.Terminator
 import Packed.FirstOrder.Passes.LLVM.Gibbon
 import Packed.FirstOrder.Passes.LLVM.Global hiding (toPtrTy)
 
--- | llvm-general
+-- | llvm-hs
 import qualified LLVM.AST as AST
 import qualified LLVM.AST.Global as G
 import qualified LLVM.AST.Constant as C
@@ -31,7 +30,7 @@ import Packed.FirstOrder.Passes.LLVM.Utils
 toLLVM :: AST.Module -> IO String
 toLLVM m = CTX.withContext $ \ctx -> do
     x <- M.withModuleFromAST ctx m M.moduleLLVMAssembly
-    return $ show $ B.unpack x
+    return $ unpack x
 
 
 -- | Generate LLVM instructions for Prog
@@ -118,14 +117,14 @@ codegenTail (RetValsT [t]) _ = do
 codegenTail (RetValsT ts) (ProdTy tys) =
   let structTy = typeOf tys
   in do
-    struct <- mapM codegenTriv ts >>= populateStruct structTy Nothing
-    struct' <- convert (toPtrTy $ typeOf $ ProdTy tys) Nothing struct
-    load (typeOf $ ProdTy tys) Nothing struct' >>= retval_
+    struct <- mapM codegenTriv ts >>= populateStruct structTy FreshVar
+    struct' <- convert (toPtrTy $ typeOf $ ProdTy tys) FreshVar struct
+    load (typeOf $ ProdTy tys) FreshVar struct' >>= retval_
 
 codegenTail (LetPrimCallT bnds prm rnds body) ty = do
   rnds' <- mapM codegenTriv rnds
   _     <- case prm of
-             PrintInt -> call printInt Nothing rnds' >>= \_ -> return_
+             PrintInt -> call printInt FreshVar rnds' >>= \_ -> return_
              PrintString s -> printString s >>= \_ -> return_
              AddP -> addp bnds rnds'
              SubP -> subp bnds rnds'
@@ -136,7 +135,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty = do
              ReadInt -> readInt bnds rnds'
              DictEmptyP _ -> let [(outV,outTy)] = bnds
                              in do
-                               _ <- assign (typeOf outTy) (Just $ toByteString $ fromVar outV) (constop_ $ C.Null $ toPtrTy $ T.NamedTypeReference $ AST.Name "struct.dict_item")
+                               _ <- assign (typeOf outTy) (NamedVar $ toByteString $ fromVar outV) (constop_ $ C.Null $ toPtrTy $ T.NamedTypeReference $ AST.Name "struct.dict_item")
                                return_
              -- Will only work when ty is IntTy or SymTy
              DictInsertP _ -> let [(outV,_)] = bnds
@@ -145,14 +144,14 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty = do
                                  dict' <- getvar (toByteString $ fromVar dict)
                                  key'  <- codegenTriv key
                                  val'  <- codegenTriv val
-                                 _     <- call dictInsertInt (Just $ toByteString $ fromVar outV) [dict', key', val']
+                                 _     <- call dictInsertInt (NamedVar $ toByteString $ fromVar outV) [dict', key', val']
                                  return_
              DictLookupP _ -> let [(outV,_)] = bnds
                                   [(VarTriv dict),key] = rnds
                               in do
                                 dict' <- getvar (toByteString $ fromVar dict)
                                 key'  <- codegenTriv key
-                                _     <- call dictLookupInt (Just $ toByteString $ fromVar outV) [dict', key']
+                                _     <- call dictLookupInt (NamedVar $ toByteString $ fromVar outV) [dict', key']
                                 return_
 
              _ -> error $ "Prim: Not implemented yet: " ++ show prm
@@ -214,19 +213,19 @@ codegenTail (LetAllocT lhs vals body) ty =
   let structTy = typeOf $ map fst vals
       lhsV     = fromVar lhs
   in do
-    struct <- mapM (codegenTriv . snd) vals >>= populateStruct structTy Nothing
-    _ <- convert (typeOf PtrTy) (Just lhsV) struct
+    struct <- mapM (codegenTriv . snd) vals >>= populateStruct structTy FreshVar
+    _ <- convert (typeOf PtrTy) (NamedVar $ toByteString lhsV) struct
     codegenTail body ty
 
 codegenTail (LetUnpackT bnds ptr body) ty = do
   struct <- getvar (toByteString $ fromVar ptr)
-  _ <- unpackPtrStruct Nothing struct bnds
+  _ <- unpackPtrStruct FreshVar struct bnds
   codegenTail body ty
 
 codegenTail (LetTrivT (v,trvTy,trv) bod) ty = do
   trv' <- codegenTriv trv
-  x <- convert (typeOf trvTy) Nothing trv'
-  _ <- assign (typeOf trvTy) (Just $ toByteString $ fromVar v) x
+  x <- convert (typeOf trvTy) FreshVar trv'
+  _ <- assign (typeOf trvTy) (NamedVar $ toByteString $ fromVar v) x
   codegenTail bod ty
 
 codegenTail (LetTimedT isIter bnds timed bod) ty =
@@ -239,20 +238,20 @@ codegenTail (LetTimedT isIter bnds timed bod) ty =
       timespecT = AST.NamedTypeReference $ AST.Name "struct.timespec"
   in do
     -- allocate variables
-    _    <- allocate timespecT (Just $ toByteString begnVar)
-    _    <- allocate timespecT (Just $ toByteString endVar)
+    _    <- allocate timespecT (NamedVar $ toByteString begnVar)
+    _    <- allocate timespecT (NamedVar $ toByteString endVar)
     begn <- getvar (toByteString begnVar)
     end  <- getvar (toByteString endVar)
     if isIter then
       do
-        let savealloc = call saveAllocState Nothing [] >>= \_ -> return_
-            restalloc = call restoreAllocState Nothing [] >>= \_ -> return_
+        let savealloc = call saveAllocState FreshVar [] >>= \_ -> return_
+            restalloc = call restoreAllocState FreshVar [] >>= \_ -> return_
             noop = return_
             loopBody = do
-              _ <- call clockGetTime Nothing [clockMonotonicRaw, begn]
-              i <- load T.i64 Nothing $ globalOp T.i64 (AST.Name "global_iters_param")
-              i_minus_1 <- sub Nothing [i, constop_ $ int_ 1]
-              let notZero = notZeroP Nothing i_minus_1
+              _ <- call clockGetTime FreshVar [clockMonotonicRaw, begn]
+              i <- load T.i64 FreshVar $ globalOp T.i64 (AST.Name "global_iters_param")
+              i_minus_1 <- sub FreshVar [i, constop_ $ int_ 1]
+              let notZero = notZeroP FreshVar i_minus_1
 
               _ <- ifThenElse notZero savealloc noop
               let timed' = rewriteReturns timed bnds
@@ -260,24 +259,24 @@ codegenTail (LetTimedT isIter bnds timed bod) ty =
               _ <- ifThenElse notZero restalloc noop
 
               -- print BATCHTIME
-              call clockGetTime Nothing [clockMonotonicRaw, end]
+              call clockGetTime FreshVar [clockMonotonicRaw, end]
 
-        loopEnd <- load T.i64 Nothing $ globalOp T.i64 (AST.Name "global_iters_param")
+        loopEnd <- load T.i64 FreshVar $ globalOp T.i64 (AST.Name "global_iters_param")
         _ <- for 0 1 loopEnd loopBody
-        diff <- call difftimespecs Nothing [begn, end]
-        _ <- call printIterDiffTime Nothing [diff]
+        diff <- call difftimespecs FreshVar [begn, end]
+        _ <- call printIterDiffTime Void [diff]
         return_
     else
       do
         -- execute and get running time
-        _ <- call clockGetTime Nothing [clockMonotonicRaw, begn]
+        _ <- call clockGetTime FreshVar [clockMonotonicRaw, begn]
         let timed' = rewriteReturns timed bnds
         _ <- codegenTail timed' ty
-        _ <- call clockGetTime Nothing [clockMonotonicRaw, end]
+        _ <- call clockGetTime FreshVar [clockMonotonicRaw, end]
 
         -- print SELFTIMED
-        diff <- call difftimespecs Nothing [begn, end]
-        _ <- call printDiffTime Nothing [diff]
+        diff <- call difftimespecs FreshVar [begn, end]
+        _ <- call printDiffTime FreshVar [diff]
         return_
 
     -- process body
@@ -286,13 +285,13 @@ codegenTail (LetTimedT isIter bnds timed bod) ty =
 codegenTail (AssnValsT ls) _ = do
   forM_ ls $ \(v,ty,triv) -> do
     triv' <- codegenTriv triv
-    assign (typeOf ty) (Just $ toByteString $ fromVar v) triv'
+    assign (typeOf ty) (NamedVar $ toByteString $ fromVar v) triv'
   return_
 
 codegenTail (LetIfT bnds (cond,thn,els) bod) ty = do
   let thn' = rewriteReturns thn bnds
       els' = rewriteReturns els bnds
-      cond' = codegenTriv cond >>= notZeroP Nothing
+      cond' = codegenTriv cond >>= notZeroP FreshVar
   case (thn', els') of
     (AssnValsT thnA, AssnValsT elsA) -> do
       let thnA' = map (\(v,vty,triv) -> (thenVar v,vty,triv)) thnA
@@ -301,8 +300,9 @@ codegenTail (LetIfT bnds (cond,thn,els) bod) ty = do
           els'' = codegenTail (AssnValsT elsA') ty
       (tb, fb) <- ifThenElse cond' thn'' els''
       forM_ thnA $ \(v,vty,_) ->
-        phi (typeOf vty) (Just $ toByteString $ fromVar v) [(varToOp (thenVar v), blockLabel tb),
-                                             (varToOp (elseVar v), blockLabel fb)]
+        phi (typeOf vty) (NamedVar $ toByteString $ fromVar v)
+             [(varToOp (thenVar v), blockLabel tb),
+              (varToOp (elseVar v), blockLabel fb)]
       return_
     _ -> do
       let thn'' = codegenTail thn' ty
@@ -321,7 +321,7 @@ codegenTail (TailCall v ts) _ = do
 
 codegenTail (ErrT msg) ty = do
   _ <- printString msg
-  _ <- call exit Nothing [constop_ $ int_ 1]
+  _ <- call exit Void [constop_ $ int_ 1]
   return_
 
 codegenTail t _ = error $ "Tail: Not implemented yet: " ++ show t
