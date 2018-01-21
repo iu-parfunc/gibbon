@@ -12,7 +12,7 @@ module Packed.FirstOrder.Passes.LLVM.Instruction (
   , allocate, store, load, getElemPtr, call, add, mul, sub, for, assign, phi
   , eq, neq, ult, notZeroP, ifThenElse, ptrToInt, bitcast, sext, toPtrTy
   , inttoptr, extractValue
-  , int_, int32_, char_, constop_, string_
+  , int', int32', char', constop', string'
 ) where
 
 -- | standard library
@@ -96,24 +96,24 @@ instr ty nm ins =
       let ref = AST.LocalReference ty (AST.Name x)
       modify $ \s -> s { localVars = Map.insert x ref (localVars s) }
       name <- return $ AST.Name x
-      instr_ $ name AST.:= ins
+      instr' $ name AST.:= ins
       return $ AST.LocalReference ty name
 
     FreshVar -> do
       name <- freshName
-      instr_ $ name AST.:= ins
+      instr' $ name AST.:= ins
       return $ AST.LocalReference ty name
 
     Void -> do
-      instr_ (AST.Do ins)
+      instr' (AST.Do ins)
       -- Maybe this should a separate fn which returns (CodeGen ())
       return $ AST.ConstantOperand (C.Null T.VoidType)
 
 
 -- | Add raw assembly instructions to the execution stream
 --
-instr_ :: AST.Named AST.Instruction -> CodeGen ()
-instr_ ins =
+instr' :: AST.Named AST.Instruction -> CodeGen ()
+instr' ins =
   modify $ \s ->
     case Seq.viewr (blockChain s) of
       Seq.EmptyR  -> error $ "instr_ empty block chain "  ++ show s
@@ -234,7 +234,7 @@ ult :: InstrRet -> [AST.Operand] -> CodeGen AST.Operand
 ult = icmp IP.ULT
 
 notZeroP :: InstrRet -> AST.Operand -> CodeGen AST.Operand
-notZeroP nm op = neq nm [op, constop_ $ int_ 0]
+notZeroP nm op = neq nm [op, constop' $ int' 0]
 
 
 -- | Add a phi node to the top of the current block
@@ -254,22 +254,22 @@ ifThenElse test yes no = do
 
   -- check condition
   _  <- br ifEntry
-  setBlock ifEntry
+  setBlock_ ifEntry
   p  <- test
   _  <- cbr p ifThen ifElse
 
   -- then block
-  setBlock ifThen
+  setBlock_ ifThen
   _ <- yes
   _ <- br ifExit
 
   -- else block
-  setBlock ifElse
+  setBlock_ ifElse
   _ <- no
   _ <- br ifExit
 
   -- exit
-  setBlock ifExit
+  setBlock_ ifExit
   return (ifThen, ifElse)
 
 
@@ -282,30 +282,30 @@ for start step end body = do
 
   -- allocate the counter
   iterV <- allocate T.i64 FreshVar
-  _ <- store iterV (constop_ $ int_ start)
+  _ <- store iterV (constop' $ int' start)
   _ <- br forCond
 
   -- check the condition
-  setBlock forCond
+  setBlock_ forCond
   iter <- load T.i64 FreshVar iterV
   p <- ult FreshVar [iter, end]
   _ <- cbr p forBody forExit
 
   -- execute body
-  setBlock forBody
+  setBlock_ forBody
   _ <- body
   _ <- br forIncr
 
   -- increment the counter
-  setBlock forIncr
+  setBlock_ forIncr
   iter' <- load T.i64 FreshVar iterV
-  iterAdd <- add FreshVar [iter', constop_ $ int_ step]
+  iterAdd <- add FreshVar [iter', constop' $ int' step]
   _ <- store iterV iterAdd
   _ <- br forCond
 
   -- exit loop
-  setBlock forExit
-  return_
+  setBlock_ forExit
+  return'
 
 
 -- | ty _var_ = val
@@ -320,20 +320,20 @@ assign ty nm val = do
 -- | Constructors for literals
 --
 
-constop_ :: C.Constant -> AST.Operand
-constop_ = AST.ConstantOperand
+constop' :: C.Constant -> AST.Operand
+constop' = AST.ConstantOperand
 
-int_ :: Integer -> C.Constant
-int_ = C.Int 64
+int' :: Integer -> C.Constant
+int' = C.Int 64
 
-int32_ :: Integer -> C.Constant
-int32_ = C.Int 32
+int32' :: Integer -> C.Constant
+int32' = C.Int 32
 
-char_ :: Char -> C.Constant
-char_ = C.Int 8 . toInteger . ord
+char' :: Char -> C.Constant
+char' = C.Int 8 . toInteger . ord
 
-string_ :: String -> C.Constant
-string_ = C.Array T.i8 . map char_
+string' :: String -> C.Constant
+string' = C.Array T.i8 . map char'
 
 
 -- | Convert the type to a pointer type

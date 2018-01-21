@@ -29,13 +29,13 @@ terminate term =
 
 -- | Return a value from a basic block
 --
-retval_ :: AST.Operand -> CodeGen BlockState
-retval_ x = terminate $ AST.Ret (Just x) []
+retval' :: AST.Operand -> CodeGen BlockState
+retval' x = terminate $ AST.Ret (Just x) []
 
 -- | Return void from a basic block
 --
-return_ :: CodeGen BlockState
-return_ = terminate $ AST.Ret Nothing []
+return' :: CodeGen BlockState
+return' = terminate $ AST.Ret Nothing []
 
 
 -- | Unconditional branch. Return the name of the block that was branched from.

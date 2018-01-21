@@ -125,8 +125,8 @@ newBlock nm =
 -- | Add this block to the block stream. Any instructions pushed onto the stream
 -- by 'instr' and friends will now apply to this block.
 --
-setBlock :: BlockState -> CodeGen ()
-setBlock next =
+setBlock_ :: BlockState -> CodeGen ()
+setBlock_ next =
   modify $ \s -> s { blockChain = blockChain s Seq.|> next }
 
 
