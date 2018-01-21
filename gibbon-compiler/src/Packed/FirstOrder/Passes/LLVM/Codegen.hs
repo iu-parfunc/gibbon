@@ -1,10 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-unused-do-bind #-}
+{-# OPTIONS_GHC -fno-warn-type-defaults #-}
+
 module Packed.FirstOrder.Passes.LLVM.Codegen where
 
 -- | standard library
 import Control.Monad.Except
 import Control.Monad.State
-import Data.ByteString.Char8
+import Data.ByteString.Char8 (unpack)
 import qualified Data.Map as Map
 
 -- | gibbon internals
@@ -16,6 +19,7 @@ import Packed.FirstOrder.Passes.LLVM.Instruction
 import Packed.FirstOrder.Passes.LLVM.Terminator
 import Packed.FirstOrder.Passes.LLVM.Gibbon
 import Packed.FirstOrder.Passes.LLVM.Global hiding (toPtrTy)
+import Packed.FirstOrder.Passes.LLVM.Utils
 
 -- | llvm-hs
 import qualified LLVM.AST as AST
@@ -25,7 +29,6 @@ import qualified LLVM.AST.Type as T
 import qualified LLVM.Context as CTX
 import qualified LLVM.Module as M
 
-import Packed.FirstOrder.Passes.LLVM.Utils
 
 toLLVM :: AST.Module -> IO String
 toLLVM m = CTX.withContext $ \ctx -> do
@@ -87,9 +90,9 @@ codegenFunSig (FunDecl fnName args retTy _) =
 -- | Generate LLVM instructions for function definitions
 --
 codegenFun :: FunDecl -> CodeGen ()
-codegenFun (FunDecl fnName args retTy tail) = do
+codegenFun (FunDecl fnName args retTy tl) = do
   let fnName' =  fromVar fnName
-  fns <- gets globalFns
+  _fns <- gets globalFns
   fnsig <- getfn (toByteString fnName')
   fnBody <- do
     entry <- newBlock $ "fn." ++ fnName' ++ ".entry"
@@ -100,7 +103,7 @@ codegenFun (FunDecl fnName args retTy tail) = do
         let nm  = toByteString $ fromVar v
             ty' = typeOf ty
         in s { localVars = Map.insert nm (localRef ty' (AST.Name nm)) (localVars s)}
-    _ <- codegenTail tail retTy
+    _ <- codegenTail tl retTy
     createBlocks
 
   -- Now that we have the fn body, override the fn definition in globalFns
@@ -168,6 +171,7 @@ codegenTail (Switch trv alts def) ty =
                         Just d  -> (alts, d)
       alts'' = case alts' of
                  IntAlts xs -> xs
+                 TagAlts _  -> error "codegenTail: Not yet implemented; TagAlts"
 
       -- | Split alts to return a default case, in case switch was not given one
       splitAlts :: Alts -> (Alts, Alts)
@@ -178,6 +182,7 @@ codegenTail (Switch trv alts def) ty =
       altTail :: Alts -> Tail
       altTail (TagAlts [(_,t)]) = t
       altTail (IntAlts [(_,t)]) = t
+      altTail oth = error $ "Unexpected " ++ show oth
   in
     do
       switchDefault <- newBlock "switch.default"
@@ -319,7 +324,7 @@ codegenTail (TailCall v ts) _ = do
   fn   <- getfn (toByteString $ fromVar v)
   callp fn [] rnds
 
-codegenTail (ErrT msg) ty = do
+codegenTail (ErrT msg) _ty = do
   _ <- printString msg
   _ <- call exit Void [constop_ $ int_ 1]
   return_

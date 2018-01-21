@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 -- |
 -- Copyright   : [2015] Trevor L. McDonell
@@ -22,7 +23,7 @@ import Data.ByteString.Short
 import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 
--- | llvm-general
+-- | llvm-hs
 import qualified LLVM.AST as AST
 import qualified LLVM.AST.Global as G
 import qualified LLVM.AST.Constant as C

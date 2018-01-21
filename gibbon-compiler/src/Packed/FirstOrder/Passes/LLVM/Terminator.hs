@@ -9,7 +9,7 @@ module Packed.FirstOrder.Passes.LLVM.Terminator where
 import Control.Monad.State
 import qualified Data.Sequence as Seq
 
--- | llvm-general
+-- | llvm-hs
 import qualified LLVM.AST as AST
 import qualified LLVM.AST.Constant as C
 import qualified LLVM.AST.Instruction as I

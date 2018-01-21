@@ -1,4 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+
 module Packed.FirstOrder.Passes.LLVM.Gibbon (
     addp, subp, mulp, eqp, callp
   , sizeParam, typeOf, printString, toIfPred
@@ -19,16 +21,14 @@ import Packed.FirstOrder.Passes.LLVM.Monad
 import Packed.FirstOrder.Passes.LLVM.Instruction
 import Packed.FirstOrder.Passes.LLVM.Terminator
 import Packed.FirstOrder.Passes.LLVM.Type
+import Packed.FirstOrder.Passes.LLVM.Utils
 import qualified Packed.FirstOrder.Passes.LLVM.Global as LG
 
--- | llvm-general
+-- | llvm-hs
 import qualified LLVM.AST as AST
 import qualified LLVM.AST.Constant as C
 import qualified LLVM.AST.Type as T
 import qualified LLVM.AST.Global as G
-import qualified LLVM.AST.AddrSpace as AS
-
-import Packed.FirstOrder.Passes.LLVM.Utils
 
 -- | Allow results of LLVM operations to be assigned to variables, instead of unnames
 --
@@ -36,19 +36,17 @@ import Packed.FirstOrder.Passes.LLVM.Utils
 gibbonOp :: (InstrRet -> [AST.Operand] -> CodeGen AST.Operand)
             -> [(Var,Ty)] -> [AST.Operand]
             -> CodeGen BlockState
+gibbonOp op bnds args =
+  case bnds of
+    [] -> op FreshVar args >>= retval_
+    [(v, _)] -> do
+      let nm = fromVar v
+      res   <- op (NamedVar $ toByteString nm) args
+      retval_ res
+    _ -> do
+      struct <- op FreshVar args
+      unpackValStruct FreshVar struct bnds
 
-gibbonOp op [] args = op FreshVar args >>= retval_
-
-gibbonOp op [(v, _)] args = do
-  let nm = fromVar v
-  res   <- op (NamedVar $ toByteString nm) args
-  retval_ res
-
-gibbonOp op bnds args = do
-  struct <- op FreshVar args
-  unpackValStruct FreshVar struct bnds
-
-gibbonOp op vars args = error $ "gibbonOp: Not implemented " ++ show vars
 
 addp :: [(Var, Ty)] -> [AST.Operand] -> CodeGen BlockState
 addp = gibbonOp add
@@ -225,7 +223,7 @@ populateStruct ty nm ts = do
 -- IntTy tag3 = ((Int64Int64Int64Prod *) fltCse2)->field0;
 -- IntTy x0 = ((Int64Int64Int64Prod *) fltCse2)->field1;
 unpackPtrStruct :: InstrRet -> AST.Operand -> [(Var, Ty)] -> CodeGen AST.Operand
-unpackPtrStruct nm struct bnds = do
+unpackPtrStruct _nm struct bnds = do
   structTy <- case bnds of
                 [] -> return $ typeOf struct
                 _  -> return $ typeOf $ map snd bnds
@@ -243,9 +241,9 @@ unpackPtrStruct nm struct bnds = do
 -- CursorTy tail6 = tmp_struct0.field1;
 unpackValStruct :: InstrRet -> AST.Operand -> [(Var, Ty)] -> CodeGen BlockState
 unpackValStruct nm struct bnds = do
-  structTy <- case bnds of
-                [] -> return $ typeOf struct
-                _  -> return $ typeOf $ map snd bnds
+  -- structTy <- case bnds of
+  --               [] -> return $ typeOf struct
+  --               _  -> return $ typeOf $ map snd bnds
   forM_ (zip bnds [0..]) $ \((v,vty), i) -> do
     extractValue nm struct [i] >>= assign (typeOf vty) (NamedVar $ toByteString $ fromVar v)
   return_

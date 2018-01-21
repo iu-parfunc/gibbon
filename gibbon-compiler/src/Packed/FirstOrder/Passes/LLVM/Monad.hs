@@ -17,10 +17,8 @@ import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 import qualified Data.Foldable as F
 
--- | llvm-general
+-- | llvm-hs
 import qualified LLVM.AST as AST
--- import qualified LLVM.AST.Constant as C
--- import qualified LLVM.AST.Type as T
 import qualified LLVM.AST.Global as G
 
 import Packed.FirstOrder.Passes.LLVM.Utils
