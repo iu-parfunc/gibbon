@@ -1,0 +1,44 @@
+## Based on the travis-simple.yml (https://raw.githubusercontent.com/commercialhaskell/stack/stable/doc/travis-simple.yml)
+
+# Use new container infrastructure to enable caching
+sudo: false
+
+# Do not choose a language; we provide our own build tools.
+language: generic
+
+# Caching so the next build will be fast too.
+cache:
+  directories:
+  - $HOME/.stack
+
+# Ensure necessary system libraries are present
+addons:
+  apt:
+    packages:
+      - libgmp-dev
+
+env:
+  global:
+    - RACKET_VERSION=6.10
+    - RACKET_DIR=~/racket
+
+install:
+  # Download and unpack the stack executable
+  - echo "Installing Stack...\n"
+  - mkdir -p ~/.local/bin
+  - export PATH=$HOME/.local/bin:$PATH
+  - travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
+
+  # Install Racket
+  # Maybe we shouldn't depend on a GitHub repo. But I guess it's ok for v1
+  - echo "Installing Racket...\n"
+  - git clone https://github.com/greghendershott/travis-racket.git
+  - cat travis-racket/install-racket.sh | bash
+  - export PATH="${RACKET_DIR}/bin:${PATH}"
+
+# We have a private submodule, and can't clone it without adding proper keys to Travis
+git:
+  submodules: false
+
+script:
+  ./run_all_tests.sh

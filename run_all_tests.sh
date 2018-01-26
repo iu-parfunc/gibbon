@@ -84,7 +84,7 @@ set -x
 
 # If we wanted to be really aggressive we could run all racket files
 # in the Repo:
-racket $top/ASTBenchmarks/tests/*.rkt
+# racket $top/ASTBenchmarks/tests/*.rkt
 
 
 # [2016.11.08] {Having problems with this -RRN}
