@@ -1,7 +1,8 @@
 # The tree-velocity project: Gibbon Language and Compiler
 
  * Travis: [![Build Status](https://travis-ci.org/iu-parfunc/gibbon.svg?branch=master)](https://travis-ci.org/iu-parfunc/gibbon)
- * Jenkins (somewhat unreliable): [![Build Status](http://tester-lin.soic.indiana.edu:8080/buildStatus/icon?job=gibbon)](http://tester-lin.soic.indiana.edu:8080/job/gibbon/)
+ * Jenkins (somewhat unreliable):
+   [![Build Status](http://tester-lin.soic.indiana.edu:8080/buildStatus/icon?job=tree-velocity)](http://tester-lin.soic.indiana.edu:8080/job/tree-velocity/)
 
 Formerly the "tree-velocity" repo, this primarily stores the Gibbon
 compiler, an implementation of a high-performance functional language.
