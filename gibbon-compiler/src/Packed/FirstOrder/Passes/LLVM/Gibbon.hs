@@ -69,10 +69,10 @@ callp fn = gibbonOp (call fn)
 sizeParam :: [(Var,Ty)] -> CodeGen BlockState
 sizeParam [(v,ty)] = do
   let nm = fromVar v
-  _     <- load lty (NamedVar $ toByteString nm) op
+  _     <- load (toPtrTy lty) (NamedVar $ toByteString nm) op
   return'
   where lty = typeOf ty
-        op  = globalOp lty (AST.Name $ toByteString "global_size_param")
+        op  = globalOp (toPtrTy lty) (AST.Name $ toByteString "global_size_param")
 
 
 -- | Convert Gibbon types to LLVM types.

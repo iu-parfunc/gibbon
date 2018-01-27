@@ -356,8 +356,7 @@ answers: $(ANSWERS)
 # Run tests through the LLVM backend
 
 build_gibbon_llvm_lib:
-	clang-3.9 -S -emit-llvm $(TREELANGDIR)/gibbon-compiler/lib.c
-	llc-3.9 -filetype=obj -o lib.o lib.ll
+	clang -std=gnu11 -c -fno-exceptions -fPIC $(TREELANGDIR)/gibbon-compiler/lib.c
 
 LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
   test00c_printBool.gib test00d_printData.gib test00e_func.gib \
