@@ -45,11 +45,32 @@ printInt = G.functionDefaults
 malloc :: G.Global
 malloc = G.functionDefaults
          { G.name        = AST.Name $ toByteString "malloc"
-         , G.parameters  = ([G.Parameter ty arg []], False)
+         , G.parameters  = ([G.Parameter T.i64 (AST.UnName 0) []], False)
          , G.returnType  = T.PointerType T.i8 (AS.AddrSpace 0)
          }
-  where ty  = T.i64
-        arg = AST.UnName 0
+
+gwriteInt :: G.Global
+gwriteInt = G.functionDefaults
+           { G.name        = AST.Name $ toByteString "__write_int"
+           , G.parameters  = ( [G.Parameter (toPtrTy $ T.i8) arg1 [],
+                                G.Parameter T.i64 arg2 []]
+                             , False)
+           , G.returnType  = (toPtrTy $ T.i8)
+           }
+  where arg1 = AST.UnName 0
+        arg2 = AST.UnName 0
+
+
+gwriteTag :: G.Global
+gwriteTag = G.functionDefaults
+           { G.name        = AST.Name $ toByteString "__write_tag"
+           , G.parameters  = ( [G.Parameter (toPtrTy $ T.i8) arg1 [],
+                                G.Parameter T.i8 arg2 []]
+                             , False)
+           , G.returnType  = (toPtrTy $ T.i8)
+           }
+  where arg1 = AST.UnName 0
+        arg2 = AST.UnName 0
 
 
 globalSizeParam :: G.Global
@@ -62,6 +83,13 @@ globalSizeParam = G.globalVariableDefaults
 globalItersParam :: G.Global
 globalItersParam = G.globalVariableDefaults
                    { G.name  = AST.Name $ toByteString "global_iters_param"
+                   , G.type' = T.i64
+                   , G.initializer = Just $ C.Int 64 1
+                   }
+
+globalBufSize :: G.Global
+globalBufSize = G.globalVariableDefaults
+                   { G.name  = AST.Name $ toByteString "global_default_buf_size"
                    , G.type' = T.i64
                    , G.initializer = Just $ C.Int 64 1
                    }
