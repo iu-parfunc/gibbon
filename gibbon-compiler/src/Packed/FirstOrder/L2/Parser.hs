@@ -44,6 +44,7 @@ import qualified Data.SCargot.Common as SC
 import Packed.FirstOrder.L2.Syntax as L2
 import qualified Packed.FirstOrder.L1.Syntax as L1
 import Packed.FirstOrder.Common hiding (insertFD, fromListFD)
+import Packed.FirstOrder.GenericOps
 
 --------------------------------------------------------------------------------
 
@@ -190,6 +191,11 @@ parseFile file = do
        ls' <- handleRequire file ls
        return $ runSyM 0 $ parseSExp ls'
 
+parseString :: String -> Prog
+parseString str =
+    let (Right sexp) = fmap (fmap toRich) $ decode treelangParser $ pack str
+    in fst $ runSyM 0 $ parseSExp sexp
+
 -- | Change regular applications into data constructor syntax.
 tagDataCons :: DDefs Ty2 -> L Exp2 -> L Exp2
 tagDataCons ddefs = go allCons
@@ -241,7 +247,7 @@ fromListFD = L.foldr insertFD M.empty
 parseSExp :: [Sexp] -> SyM Prog
 parseSExp ses = 
   do prog@Prog {ddefs} <- go ses [] [] [] Nothing
-     return $ mapExprs (tagDataCons ddefs) prog
+     return $ annMain $ mapExprs (tagDataCons ddefs) prog
 
   where
 
@@ -306,6 +312,10 @@ parseSExp ses =
                             Nothing -> Just (ex', undefined)
                             Just x  -> error$ "Two main expressions: "++
                                              sdoc x++"\nAnd:\n"++prnt ex)
+
+   annMain prog@Prog{ddefs,mainExp} = case mainExp of
+                                        Nothing -> prog
+                                        Just (e,_) -> prog{mainExp=Just (e, gTypeExp ddefs emptyEnv2 e)}
 
     
 exp :: Sexp -> L Exp2
