@@ -4,7 +4,8 @@
 module Packed.FirstOrder.Passes.LLVM.Gibbon (
     addp, subp, mulp, eqp, callp
   , sizeParam, typeOf, printString, toIfPred
-  , readTag, readInt, sizeof, convert
+  , readTag, readInt, writeTag, writeInt, newBuf
+  , sizeof, convert
   , addStructs, structName, populateStruct, unpackPtrStruct
 ) where
 
@@ -173,6 +174,30 @@ readCursor [(valV', valTy'), (curV', curTy')] cur' offset =
     curVV <- getElemPtr True cur [constop' $ int' offset]
     _ <- assign curTy (NamedVar $ toByteString curV) curVV
     return'
+
+-- | Write a tag to the cursor, and advance it by 1
+--
+-- *cur = tag;
+-- CursorTy outV = cur + 1;
+--
+writeTag :: [(Var,Ty)] -> [AST.Operand] -> CodeGen BlockState
+writeTag [(outV, CursorTy)] [tag, cur] = do
+  _ <- call LG.gwriteTag (NamedVar $ toByteString $ fromVar outV) [cur, tag]
+  return'
+
+writeInt ::  [(Var,Ty)] -> [AST.Operand] -> CodeGen BlockState
+writeInt [(outV, CursorTy)] [val, cur] = do
+  _ <- call LG.gwriteInt (NamedVar $ toByteString $ fromVar outV) [cur, val]
+  return'
+
+
+-- | Call malloc
+newBuf :: [(Var,Ty)] -> [AST.Operand] -> CodeGen BlockState
+newBuf [(outV, CursorTy)] [] = do
+  let op = globalOp (toPtrTy T.i64) (AST.Name $ toByteString "global_size_param")
+  bufSize <- load (toPtrTy T.i64) FreshVar op
+  _ <- call LG.malloc (NamedVar $ toByteString $ fromVar outV) [bufSize]
+  return'
 
 
 -- | Generate instructions to convert op from type-of-op -> toTy

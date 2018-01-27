@@ -63,6 +63,9 @@ codegenModule _ prg@(Prog fns body) = genModule $ do
   declare dictInsertInt
   declare dictLookupInt
   declare exit
+  declare malloc
+  declare gwriteTag
+  declare gwriteInt
 
   -- generate structs and fns
   addStructs prg
@@ -139,8 +142,11 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty = do
              MulP -> mulp bnds rnds'
              EqP  -> eqp bnds rnds'
              SizeParam -> sizeParam bnds
-             ReadTag -> readTag bnds rnds'
-             ReadInt -> readInt bnds rnds'
+             ReadTag   -> readTag bnds rnds'
+             ReadInt   -> readInt bnds rnds'
+             WriteTag  -> writeTag bnds rnds'
+             WriteInt  -> writeInt bnds rnds'
+             NewBuf    -> newBuf bnds rnds'
              DictEmptyP _ -> let [(outV,outTy)] = bnds
                              in do
                                _ <- assign (typeOf outTy) (NamedVar $ toByteString $ fromVar outV) (constop' $ C.Null $ toPtrTy $ T.NamedTypeReference $ AST.Name "struct.dict_item")
@@ -344,4 +350,4 @@ codegenTriv trv =
   case trv of
     (IntTriv i) -> (return . constop' . int' . toInteger) i
     (VarTriv v) -> getvar (toByteString $ fromVar v)
-    t -> error $ "Triv: Not implemented yet: " ++ show t
+    (TagTriv t) -> (return . constop' . (C.Int 8) . toInteger) t
