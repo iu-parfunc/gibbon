@@ -28,6 +28,7 @@ library
                   Packed.FirstOrder.L1.Typecheck
                   Packed.FirstOrder.L2.Syntax
                   Packed.FirstOrder.L2.Typecheck
+                  Packed.FirstOrder.L2.Parser
                   Packed.FirstOrder.L2.Examples
                   Packed.FirstOrder.L4.Syntax
                   Packed.FirstOrder.L1.Interp

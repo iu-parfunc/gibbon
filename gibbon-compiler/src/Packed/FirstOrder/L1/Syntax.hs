@@ -29,7 +29,7 @@ module Packed.FirstOrder.L1.Syntax
       -- * Types and helpers
     , Ty1, UrTy(..), pattern Packed, pattern SymTy
     , voidTy, hasPacked, sizeOf, isPackedTy, primRetTy, projTy
-    , isProdTy, isNestedProdTy
+    , isProdTy, isNestedProdTy, getPackedLoc
 
 
       -- * Expression and Prog helpers
@@ -562,6 +562,10 @@ primArgsTy p =
 isPackedTy :: UrTy a -> Bool
 isPackedTy PackedTy{} = True
 isPackedTy _ = False
+
+getPackedLoc :: UrTy a -> a
+getPackedLoc (PackedTy _ loc) = loc
+getPackedLoc _ = error $ "Expected PackedTy"
 
 
 -- | Return type for a primitive operation.

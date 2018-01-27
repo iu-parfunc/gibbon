@@ -126,6 +126,7 @@ data Mode = ToParse  -- ^ Parse and then stop
           | RunExe   -- ^ Compile to executable then run.
           | Interp2  -- ^ Interp late in the compiler pipeline.
           | Interp1  -- ^ Interp early.  Not implemented.
+          | L2ToExe  -- ^ Compile from L2 to C then build a binary
 
           | Bench Var -- ^ Benchmark a particular function applied to the packed data within an input file.
 
@@ -205,6 +206,7 @@ configParser = Config <$> inputParser
                flag' Interp1 (long "interp1" <> help "run through the interpreter early, right after parsing") <|>
                flag' Interp2 (short 'i' <> long "interp2" <>
                               help "run through the interpreter after cursor insertion") <|>
+               flag' L2ToExe (long "l2" <> help "expect input in L2") <|>
                flag' RunExe  (short 'r' <> long "run"     <> help "compile and then run executable") <|>
                (Bench <$> toVar <$> strOption (short 'b' <> long "bench-fun" <> metavar "FUN" <>
                                      help ("generate code to benchmark a 1-argument FUN against a input packed file."++
@@ -233,9 +235,9 @@ compileCmd :: [String] -> IO ()
 compileCmd args = withArgs args $
     do (cfg,files) <- execParser opts
        case files of
-         [f] -> compile cfg f
+         [f] -> if mode cfg == L2ToExe then compileFromL2 cfg f else compile cfg f
          _ -> do dbgPrintLn 1 $ "Compiling multiple files:  "++show files
-                 mapM_ (compile cfg) files
+                 if mode cfg == L2ToExe then mapM_ (compileFromL2 cfg) files else mapM_ (compile cfg) files
   where
     opts = info (helper <*> configWithArgs)
       ( fullDesc
@@ -253,6 +255,11 @@ data CompileState =
      CompileState { cnt :: Int -- ^ Gensym counter
                   , result :: Maybe SI.Value -- ^ Result of evaluating output of prior pass, if available.
                   }
+
+-- | Hack to parse and compile a program written directly in L2.
+compileFromL2 :: Config -> FilePath -> IO ()
+compileFromL2 config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
+  undefined
 
 -- | Compiler entrypoint, given a full configuration and a list of
 -- files to process, do the thing.
