@@ -254,12 +254,12 @@ codegenTail (LetTimedT isIter bnds timed bod) ty =
     end  <- getvar (toByteString endVar)
     _ <- if isIter then
       do
-        let savealloc = call saveAllocState FreshVar [] >>= \_ -> return'
-            restalloc = call restoreAllocState FreshVar [] >>= \_ -> return'
+        let savealloc = call saveAllocState Void [] >>= \_ -> return'
+            restalloc = call restoreAllocState Void [] >>= \_ -> return'
             noop = return'
             loopBody = do
               _ <- call clockGetTime FreshVar [clockMonotonicRaw, begn]
-              i <- load T.i64 FreshVar $ globalOp T.i64 (AST.Name "global_iters_param")
+              i <- load T.i64 FreshVar $ globalOp (toPtrTy T.i64) (AST.Name "global_iters_param")
               i_minus_1 <- sub FreshVar [i, constop' $ int' 1]
               let notZero = notZeroP FreshVar i_minus_1
 
@@ -271,7 +271,7 @@ codegenTail (LetTimedT isIter bnds timed bod) ty =
               -- print BATCHTIME
               call clockGetTime FreshVar [clockMonotonicRaw, end]
 
-        loopEnd <- load T.i64 FreshVar $ globalOp T.i64 (AST.Name "global_iters_param")
+        loopEnd <- load T.i64 FreshVar $ globalOp (toPtrTy T.i64) (AST.Name "global_iters_param")
         _ <- for 0 1 loopEnd loopBody
         diff <- call difftimespecs FreshVar [begn, end]
         _ <- call printIterDiffTime Void [diff]
