@@ -103,6 +103,7 @@ getSym (A _ id) = textToVar id
 getSym s = error $ "expected identifier sexpr, got: "++prnt s
 
 pattern A loc s = RSAtom (SC.At loc (HSIdent s))
+pattern I loc s = RSAtom (SC.At loc (HSInt s))
 pattern G loc s = RSAtom (SC.At loc s)
 pattern Ls0 a             = RSList a
 pattern Ls1 a             = RSList [a]
@@ -193,8 +194,10 @@ parseFile file = do
 
 parseString :: String -> Prog
 parseString str =
-    let (Right sexp) = fmap (fmap toRich) $ decode treelangParser $ pack str
-    in fst $ runSyM 0 $ parseSExp sexp
+    let parsed = fmap (fmap toRich) $ decode treelangParser $ pack str
+    in case parsed of
+         Right sexp -> fst $ runSyM 0 $ parseSExp sexp
+         Left v -> error $ show v
 
 -- | Change regular applications into data constructor syntax.
 tagDataCons :: DDefs Ty2 -> L Exp2 -> L Exp2
@@ -295,6 +298,15 @@ parseSExp ses =
      --                        } : fds)
      --        cds mn
 
+     (Ls0 [A _ "define", A _ name, fun] : rst)
+         | RSList [A _ "fun", tyspec, A _ arg, bod] <- fun
+         -> case tyspec of
+              Ls0 [A _ "forall", locvars, tyexp] -> let arrty = parseArrowTy locvars tyexp
+                                                        fun = makeFun name arrty arg bod
+                                                    in go rst dds (fun : fds) cds mn
+              _ -> error $ "TODO: handle function type of form " ++ (show tyspec)
+         
+
      -- Top-level definition instead of a function.
      (Ls0 [A _ "define", A _ topid, A _ ":", ty, bod] : rst) ->
          go rst dds fds ((textToVar topid,ty,exp bod) : cds) mn
@@ -313,11 +325,37 @@ parseSExp ses =
                             Just x  -> error$ "Two main expressions: "++
                                              sdoc x++"\nAnd:\n"++prnt ex)
 
-   annMain prog@Prog{ddefs,mainExp} = case mainExp of
+   annMain prog@Prog{ddefs,mainExp} = case mainExp of -- TODO: properly find type of main expression 
                                         Nothing -> prog
                                         Just (e,_) -> prog{mainExp=Just (e, gTypeExp ddefs emptyEnv2 e)}
 
+
+parseArrowTy :: RichSExpr (SC.Located HaskLikeAtom) -> RichSExpr (SC.Located HaskLikeAtom) -> ArrowTy Ty2
+parseArrowTy locs tyexp = L2.ArrowTy { locVars = getLocVars locs
+                                     , arrIn = getInTy tyexp
+                                     , arrEffs = S.empty
+                                     , arrOut = getOutTy tyexp
+                                     , locRets = []
+                                     }
+    where getInTy (Ls0 [A _ "arr", inty, _outty]) = typ inty
+          getInTy _ = wrongType
+          getOutTy (Ls0 [A _ "arr", _inty, outty]) = typ outty
+          getOutTy _ = wrongType
+          wrongType = error $ "Could not parse type expression: " ++ (show tyexp)
+          getLocVars (Ls0 ((Ls0 [A _ "in", A _ l, A _ p]) : rst)) =
+              (LRM (textToVar l) (VarR $ textToVar p) Input) : getLocVars (Ls0 rst)
+          getLocVars (Ls0 ((Ls0 [A _ "out", A _ l, A _ p]) : rst)) =
+              (LRM (textToVar l) (VarR $ textToVar p) Output) : getLocVars (Ls0 rst)
+          getLocVars (Ls0 []) = []
+          getLocVars _ = error $ "Could not parse location list: " ++ (show locs)
     
+makeFun :: Text -> ArrowTy Ty2 -> Text -> Sexp -> L2.FunDef
+makeFun name arrty arg bod = L2.FunDef { funname = textToVar name
+                                       , funty = arrty
+                                       , funarg = textToVar arg
+                                       , funbod = exp bod
+                                       }
+
 exp :: Sexp -> L Exp2
 exp se =
  case se of
@@ -382,7 +420,7 @@ exp se =
        loc l $ PrimAppE (L1.DictLookupP $ typ ty) [(exp d),(exp k)]
 
    Ls3 l "ann" (Ls3  _ "has-key?" d k) ty ->
-     loc l $ PrimAppE (L1.DictHasKeyP $ typ ty) [(exp d),(exp k)]
+       loc l $ PrimAppE (L1.DictHasKeyP $ typ ty) [(exp d),(exp k)]
 
    -- L [A "error",arg] ->
    Ls3 l "ann" (Ls2 _ "error" arg) ty ->
@@ -394,10 +432,18 @@ exp se =
    Ls3 _ "ann" e _ty -> exp e
 
    Ls0 (A _ kwd : _args) | isKeyword kwd ->
-      error $ "Error reading treelang.  Badly formed expression:\n "++prnt se
+       error $ "Error reading treelang.  Badly formed expression:\n "++prnt se
+
+   -- HACK: special call form with explicit location variables
+   Ls0 [A l "call", A _ funname, RSList locvars, arg] ->
+       loc l $ AppE (textToVar funname) (L.map (\(A _ loc) -> textToVar loc) locvars) (exp arg)
+
+   -- HACK: special pack form for calling constructors with location
+   Ls0 (A l "pack" : A _ conname : A _ lvar : args) ->
+       loc l $ DataConE (textToVar lvar) (unpack conname) (L.map exp args)
 
    ----------------------------------------
-   -- If NOTHING else matches, we are an application.  Be careful we didn't miss anything:
+   -- If NOTHING else matches, we are an application.  Be careful we didn't miss anything:         
    Ls0 (A l rator : rands) ->
      let app = (loc l) . AppE (textToVar rator) []
      in case rands of
@@ -424,9 +470,9 @@ dolocexpr :: Sexp -> LocExp
 dolocexpr s =
     case s of
       RSList [A _ "start", A _ r] -> StartOfLE $ VarR $ textToVar r
-      RSList [A _ "+", A _ "1", A _ l] -> AfterConstantLE 1 $ textToVar l
+      RSList [A _ "+", I _ 1, A _ l] -> AfterConstantLE 1 $ textToVar l
       RSList [A _ "+", (RSList [A _ "sizeof", A _ v]), A _ l] -> AfterVariableLE (textToVar v) (textToVar l)
-      _ -> error $ "Malformed locexp:\n" ++ (show s)
+      _ -> error $ "Badly formed locexp:\n" ++ (show s)
 
 letbind :: Sexp -> (Var,[l],Ty2, L Exp2)
 letbind s =
@@ -460,3 +506,7 @@ docasety s =
   case s of
     (RSList ((A _ id) : tys)) -> (textToDataCon id, L.map ((False,) . typ) tys)
     _ -> error$ "Badly formed variant of datatype:\n "++prnt s
+
+testparse1 = parseString "(define a : int 5) (+ a 1)"
+testparse2 = parseString "(define f (fun (forall () (arr Int Int)) a (+ a 2)))"
+testparse3 = parseString "(data Tree (Leaf Int) (Node (Tree l) (Tree l))) (define add1tree (fun (forall ((in l1 p1) (out l2 p2)) (arr (Tree l1) (Tree l2))) tr (case tr ((Leaf (n ln)) (pack Leaf l2 (+ n 1))) ((Node (x lx) (y ly)) (letloc (l3 (+ 1 l2)) (letpacked (x2 (Tree l3) (call add1tree (lx l3) x)) (letloc (l4 (+ (sizeof x2) l3)) (letpacked (y2 (Tree l4) (call add1tree (ly l4) y)) (pack Node l2 x2 y2)))))))))"
