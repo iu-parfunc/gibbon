@@ -42,6 +42,7 @@ import qualified Packed.FirstOrder.L2.Syntax as L2
 import qualified Packed.FirstOrder.L3.Syntax as L3
 import qualified Packed.FirstOrder.L4.Syntax as L4
 import qualified Packed.FirstOrder.SExpFrontend as SExp
+import qualified Packed.FirstOrder.L2.Parser as L2Parser
 import qualified Packed.FirstOrder.L1.Interp as SI
 import           Packed.FirstOrder.TargetInterp (Val (..), execProg)
 
@@ -259,7 +260,65 @@ data CompileState =
 -- | Hack to parse and compile a program written directly in L2.
 compileFromL2 :: Config -> FilePath -> IO ()
 compileFromL2 config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
-  undefined
+-- set the env var DEBUG, to verbosity, when > 1
+  setDebugEnvVar verbosity
+
+  -- parse the input file
+  (l2,cnt0) <- L2Parser.parseFile  fp0
+
+  let outfile = getOutfile backend fp0 cfile
+
+  dbgPrintLn lvl $ "Compiler pipeline starting, parsed L2 program:\n"++sepline ++ "\n" ++ sdoc l2
+
+  stM <- return $ do
+           l2 <- go "L2.flatten"       flattenL2     l2
+           l2 <- go "inferEffects"     inferEffects  l2
+           l2 <- go "L2.typecheck"     L2.tcProg     l2
+           l2 <- go "routeEnds"        routeEnds     l2
+           l2 <- go "L2.typecheck"     L2.tcProg     l2
+           l3 <- go "cursorize"        cursorize     l2
+           l3 <- go "L3.flatten"       flattenL3     l3
+           l3 <- go "L3.typecheck"     L3.tcProg     l3
+           l3 <- go "hoistNewBuf"      hoistNewBuf   l3
+           l3 <- go "L3.typecheck"   L3.tcProg               l3
+           l3 <- go "unariser"       unariser                l3
+           l3 <- go "L3.typecheck"   L3.tcProg               l3
+           l3 <- go "L3.flatten"     flattenL3               l3
+           let mainTy = fmap snd $   L3.mainExp              l3
+           -- Note: L3 -> L4
+           l4 <- go "lower" (lower (packed,mainTy))          l3
+           return l4
+
+  l4 <- evalStateT stM (CompileState {cnt=cnt0, result=Nothing})
+  if mode == Interp2
+      then do
+        l4res <- execProg l4
+        mapM_ (\(IntVal v) -> liftIO $ print v) l4res
+        exitSuccess
+      else do
+        str <- case backend of
+                 C    -> codegenProg packed l4
+#ifdef LLVM_ENABLED
+                 LLVM -> LLVM.codegenProg packed l4
+#endif
+                 LLVM -> error $ "Cannot execute through the LLVM backend. To build Gibbon with LLVM;"
+                         ++ "stack build --flag gibbon:llvm_enabled"
+
+        -- The C code is long, so put this at a higher verbosity level.
+        dbgPrintLn minChatLvl $ "Final C codegen: " ++show (length str) ++" characters.\n" ++ sepline ++ "\n" ++ str
+
+        clearFile outfile
+        writeFile outfile str
+
+        -- (Stage 3) Code written, now compile if warranted.
+        when (mode == ToExe || mode == RunExe || isBench mode ) $ do
+          compileAndRunExe config fp0 >>= putStr
+          return ()  
+
+  where
+    go :: PassRunner a b
+    go = pass True config
+  
 
 -- | Compiler entrypoint, given a full configuration and a list of
 -- files to process, do the thing.
@@ -271,6 +330,8 @@ compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
   -- parse the input file
   (parsed, fp) <- parseInput input fp0
   (l1, cnt0) <- parsed
+
+  let outfile = getOutfile backend fp cfile
 
   case mode of
     Interp1 -> runL1 l1
