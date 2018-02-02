@@ -291,11 +291,12 @@ compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
 #ifdef LLVM_ENABLED
                  LLVM -> LLVM.codegenProg packed l4
 #endif
-                 LLVM -> error $ "Cannot execute through the LLVM backend. To build Gibbon with LLVM;"
+                 LLVM -> error $ "Cannot execute through the LLVM backend. To build Gibbon with LLVM: "
                          ++ "stack build --flag gibbon:llvm_enabled"
 
         -- The C code is long, so put this at a higher verbosity level.
-        dbgPrintLn minChatLvl $ "Final C codegen: " ++show (length str) ++" characters.\n" ++ sepline ++ "\n" ++ str
+        dbgPrint passChatterLvl $ "Final C codegen: " ++show (length str) ++" characters."
+        dbgPrintLn 4 $ sepline ++ "\n" ++ str
 
         clearFile outfile
         writeFile outfile str
@@ -415,7 +416,7 @@ passes config@Config{mode,packed} l1 = do
       return l4
   where
       go :: PassRunner a b
-      go = pass True config
+      go = pass config
 
       goE :: (Interp b) => PassRunner a b
       goE = passE config
@@ -452,26 +453,27 @@ type PassRunner a b = (Out b, NFData a, NFData b) =>
 
 -- | Run a pass and return the result
 --
-pass :: Bool -> Config -> PassRunner a b
-pass quiet Config{stopAfter} who fn x = do
+pass :: Config -> PassRunner a b
+pass Config{stopAfter} who fn x = do
   cs@CompileState{cnt} <- get
-  if quiet
-    then do
-      _ <- lift $ evaluate $ force x
-      lift$ dbgPrintLn passChatterLvl $ "\nPass output, " ++who++":\n"++sepline
-    else
-      lift$ dbgPrintLn passChatterLvl $ "Running pass: " ++who++":\n"++sepline
-  let (y,cnt') = runSyM cnt (fn x)
+  x' <- if dbgLvl >= passChatterLvl
+        then lift $ evaluate $ force x
+        else return x
+  lift$ dbgPrint passChatterLvl $ "Running pass, " ++who
+
+  let (y,cnt') = runSyM cnt (fn x')
   put cs{cnt=cnt'}
-  _ <- lift $ evaluate $ force y
-  if quiet
-    then lift$ dbgPrintLn passChatterLvl $ sdoc y
-     -- Still print if you crank it up.
-    else lift$ dbgPrintLn 6 $ sdoc y
+  y' <- if dbgLvl >= passChatterLvl
+        then lift $ evaluate $ force y
+        else return y
+  if dbgLvl >= passChatterLvl+1
+     then lift$ dbgPrintLn (passChatterLvl+1) $ "Pass output:\n"++sepline++"\n"++sdoc y'
+     -- TODO: Switch to a node-count for size output (add to GenericOps):
+     else lift$ dbgPrintLn passChatterLvl $ " => "++ show (length (sdoc y')) ++ " characters output." 
   when (stopAfter == who) $ do
     dbgTrace 0 ("Compilation stopped; --stop-after=" ++ who) (return ())
     liftIO exitSuccess
-  return y
+  return y'
 
 
 passChatterLvl :: Int
@@ -481,13 +483,7 @@ passChatterLvl = 3
 -- | Like 'pass', but also evaluates and checks the result.
 --
 passE :: Config -> Interp p2 => PassRunner p1 p2
-passE config@Config{mode} = wrapInterp mode (pass True config)
-
-
--- | Version of 'passE' which does not print the output.
---
-passE' :: Config -> Interp p2 => PassRunner p1 p2
-passE' config@Config{mode} = wrapInterp mode (pass False config)
+passE config@Config{mode} = wrapInterp mode (pass config)
 
 
 -- | An alternative version that allows FAILURE while running
@@ -495,7 +491,7 @@ passE' config@Config{mode} = wrapInterp mode (pass False config)
 -- FINISHME! For now not interpreting.
 --
 passF :: Config -> PassRunner p1 p2
-passF config = pass True config
+passF config = pass config
 
 
 -- | Wrapper to enable running a pass AND interpreting the result.
