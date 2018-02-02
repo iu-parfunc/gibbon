@@ -246,8 +246,6 @@ compileCmd args = withArgs args $
 sepline :: String
 sepline = replicate 80 '='
 
-lvl :: Int
-lvl = 3
 
 data CompileState =
      CompileState { cnt :: Int -- ^ Gensym counter
@@ -270,7 +268,7 @@ compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
     ToParse -> dbgPrintLn 0 $ sdoc l1
 
     _ -> do
-      dbgPrintLn lvl $ "Compiler pipeline starting, parsed program:\n"++sepline ++ "\n" ++ sdoc l1
+      dbgPrintLn passChatterLvl $ "Compiler pipeline starting, parsed program:\n"++sepline ++ "\n" ++ sdoc l1
 
       -- (Stage 1) Run the program through the interpreter
       initResult <- interpProg l1
@@ -459,14 +457,14 @@ pass quiet Config{stopAfter} who fn x = do
   if quiet
     then do
       _ <- lift $ evaluate $ force x
-      lift$ dbgPrintLn lvl $ "\nPass output, " ++who++":\n"++sepline
+      lift$ dbgPrintLn passChatterLvl $ "\nPass output, " ++who++":\n"++sepline
     else
-      lift$ dbgPrintLn lvl $ "Running pass: " ++who++":\n"++sepline
+      lift$ dbgPrintLn passChatterLvl $ "Running pass: " ++who++":\n"++sepline
   let (y,cnt') = runSyM cnt (fn x)
   put cs{cnt=cnt'}
   _ <- lift $ evaluate $ force y
   if quiet
-    then lift$ dbgPrintLn lvl $ sdoc y
+    then lift$ dbgPrintLn passChatterLvl $ sdoc y
      -- Still print if you crank it up.
     else lift$ dbgPrintLn 6 $ sdoc y
   when (stopAfter == who) $ do
@@ -475,7 +473,11 @@ pass quiet Config{stopAfter} who fn x = do
   return y
 
 
--- | Like pass, but also evaluates and checks the result.
+passChatterLvl :: Int
+passChatterLvl = 3
+   
+
+-- | Like 'pass', but also evaluates and checks the result.
 --
 passE :: Config -> Interp p2 => PassRunner p1 p2
 passE config@Config{mode} = wrapInterp mode (pass True config)
