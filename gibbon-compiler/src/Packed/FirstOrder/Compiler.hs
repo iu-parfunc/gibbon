@@ -268,7 +268,11 @@ compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
     ToParse -> dbgPrintLn 0 $ sdoc l1
 
     _ -> do
-      dbgPrintLn passChatterLvl $ "Compiler pipeline starting, parsed program:\n"++sepline ++ "\n" ++ sdoc l1
+      dbgPrintLn passChatterLvl $
+          " [compiler] pipeline starting, parsed program: "++
+            if dbgLvl >= passChatterLvl+1
+            then "\n"++sepline ++ "\n" ++ sdoc l1
+            else show (length (sdoc l1)) ++ " characters."
 
       -- (Stage 1) Run the program through the interpreter
       initResult <- interpProg l1
@@ -295,7 +299,7 @@ compile config@Config{mode,input,verbosity,backend,cfile,packed} fp0 = do
                          ++ "stack build --flag gibbon:llvm_enabled"
 
         -- The C code is long, so put this at a higher verbosity level.
-        dbgPrint passChatterLvl $ "Final C codegen: " ++show (length str) ++" characters."
+        dbgPrint passChatterLvl $ " [compiler] Final C codegen: " ++show (length str) ++" characters."
         dbgPrintLn 4 $ sepline ++ "\n" ++ str
 
         clearFile outfile
@@ -458,7 +462,7 @@ pass Config{stopAfter} who fn x = do
   x' <- if dbgLvl >= passChatterLvl
         then lift $ evaluate $ force x
         else return x
-  lift$ dbgPrint passChatterLvl $ "Running pass, " ++who
+  lift$ dbgPrint passChatterLvl $ " [compiler] Running pass, " ++who
 
   let (y,cnt') = runSyM cnt (fn x')
   put cs{cnt=cnt'}
@@ -468,7 +472,7 @@ pass Config{stopAfter} who fn x = do
   if dbgLvl >= passChatterLvl+1
      then lift$ dbgPrintLn (passChatterLvl+1) $ "Pass output:\n"++sepline++"\n"++sdoc y'
      -- TODO: Switch to a node-count for size output (add to GenericOps):
-     else lift$ dbgPrintLn passChatterLvl $ " => "++ show (length (sdoc y')) ++ " characters output." 
+     else lift$ dbgPrintLn passChatterLvl $ "   => "++ show (length (sdoc y')) ++ " characters output." 
   when (stopAfter == who) $ do
     dbgTrace 0 ("Compilation stopped; --stop-after=" ++ who) (return ())
     liftIO exitSuccess
