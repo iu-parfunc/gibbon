@@ -48,7 +48,7 @@ data E3Ext loc dec =
   | ScopedBuffer                   -- ^ Create a temporary scoped buffer, and
                                    --   return a cursor
   | SizeOfPacked Var Var           -- ^ Takes in start and end cursors, and returns an Int
-                                   --   we'll probably represent (sizeof x) as (end_x - start_x) / INT
+                                   --   sizeof(x) = (end_x - start_x) / sizeof(INT)
   | SizeOfScalar Var               -- ^ sizeof(var)
   deriving (Show, Ord, Eq, Read, Generic, NFData)
 

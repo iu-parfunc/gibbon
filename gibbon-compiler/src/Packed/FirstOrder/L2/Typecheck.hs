@@ -171,8 +171,9 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
 
                -- Pattern matches would be one way to check length safely, but then the
                -- error would not go through our monad:
-               let len2 = checkLen exp pr 2 es
-                   len0 = checkLen exp pr 0 es
+               let len0 = checkLen exp pr 0 es
+                   len1 = checkLen exp pr 1 es
+                   len2 = checkLen exp pr 2 es
                    len3 = checkLen exp pr 3 es
                case pr of
                  _ | pr `elem` [L1.AddP, L1.SubP, L1.MulP, L1.DivP, L1.ModP] -> do
@@ -232,6 +233,10 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
 
                  L1.SizeParam -> do
                    len0
+                   return (IntTy, tstate)
+
+                 L1.SizeOf -> do
+                   len1
                    return (IntTy, tstate)
 
                  L1.ErrorP _str ty -> do

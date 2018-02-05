@@ -316,6 +316,7 @@ data Prim ty
 --          | GetLoc Var
 --          | AddLoc Int Var
           | SizeParam
+          | SizeOf
 
           | MkTrue  -- ^ Zero argument constructor.
           | MkFalse -- ^ Zero argument constructor.

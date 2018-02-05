@@ -112,6 +112,7 @@ tcExp ddfs env exp@(L p ex) =
 
     PrimAppE pr es -> do
       let len0 = checkLen exp pr 0 es
+          len1 = checkLen exp pr 1 es
           len2 = checkLen exp pr 2 es
           len3 = checkLen exp pr 3 es
 
@@ -141,6 +142,10 @@ tcExp ddfs env exp@(L p ex) =
 
         SizeParam -> do
           len0
+          return IntTy
+
+        SizeOf -> do
+          len1
           return IntTy
 
         SymAppend -> do

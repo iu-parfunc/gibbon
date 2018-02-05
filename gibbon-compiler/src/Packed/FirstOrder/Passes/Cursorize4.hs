@@ -168,6 +168,12 @@ cursorizeExp ddfs fundefs denv tenv (L p ex) = L p <$>
           [loc] -> return $ AppE f [] (l$ VarE loc)
           _     -> return $ AppE f [] (l$ MkProdE [l$ VarE x | x <- locs ])
 
+    PrimAppE SizeOf [arg@(L _ (VarE v))] -> do
+      let ty = gTypeExp ddfs (Env2 tenv M.empty) arg
+      if isPackedTy ty
+      then return $ Ext $ L3.SizeOfPacked v (toEndV v)
+      else return $ Ext $ L3.SizeOfScalar v
+
     PrimAppE pr args -> PrimAppE (L3.toL3Prim pr) <$> mapM go args
 
     -- Same as `cursorizePackedExp`
@@ -222,6 +228,7 @@ cursorizeExp ddfs fundefs denv tenv (L p ex) = L p <$>
 
   where
     go = cursorizeExp ddfs fundefs denv tenv
+    toEndV = varAppend "end_"
 
 
 -- Cursorize expressions producing `Packed` values
