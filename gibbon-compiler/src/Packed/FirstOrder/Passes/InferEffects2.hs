@@ -83,7 +83,9 @@ inferExp ddfs fenv env (L _p exp) =
     -- QUESTION: does a variable reference count as traversing to the end?
     -- If so, the identity function has the traverse effect.
     -- I'd prefer that the identity function get type (Tree_p -{}-> Tree_p).
-    VarE v -> (S.empty, packedLoc (env ! v))
+    VarE v -> case M.lookup v env of
+                Just ty -> (S.empty, packedLoc ty)
+                Nothing -> error $ "Unknown var: " ++ sdoc v
 
     LitE _    -> (S.empty, Nothing)
     LitSymE _ -> (S.empty, Nothing)
@@ -177,9 +179,12 @@ inferExp ddfs fenv env (L _p exp) =
                                          ++"pattern vars, "++show vars++
                                          ", do not match the number of types "
                                          ++show tys)
+
+          env' = M.union env (M.fromList zipped)
+
           packedOnly = L.filter (\(_,t) -> hasPacked t) zipped
 
-          (eff,_) = inferExp ddfs fenv env e
+          (eff,_) = inferExp ddfs fenv env' e
           winner = dbgTrace lvl ("\nInside caserhs, for "++show (dcon,patVs,tys)
                         -- ++ "\n  freevars "++show freeRHS
                         -- ++",\n  env "++show env'++",\n  eff "++show eff
@@ -191,7 +196,11 @@ inferExp ddfs fenv env (L _p exp) =
                    (case packedOnly of
                          []  -> False
                          _:_ -> let patVMap       = M.fromList patVs
-                                    lastPackedLoc = patVMap ! (fst$last packedOnly)
+                                    lastPackedLoc = case M.lookup (fst$last packedOnly) patVMap of
+                                                      Just loc -> loc
+                                                      Nothing -> error $
+                                                                 sdoc patVMap ++ "does not contain"
+                                                                 ++  sdoc (fst$last packedOnly)
                                 in S.member (Traverse lastPackedLoc) eff)
                    -- Or maybe the last-use rule applies:
                    -- TODO
