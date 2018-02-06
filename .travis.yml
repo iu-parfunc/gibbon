@@ -43,6 +43,11 @@ git:
 script:
   ./run_all_tests.sh
 
+# blocklist
+branches:
+  except:
+    - indirections
+
 notifications:
   email: false
   slack:
