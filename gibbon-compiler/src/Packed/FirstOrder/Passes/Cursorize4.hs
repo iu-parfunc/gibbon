@@ -207,13 +207,18 @@ cursorizeExp ddfs fundefs denv tenv (L p ex) = L p <$>
 
         -- All locations are transformed into cursors here. All the location expressions
         -- are expressed in terms of corresponding cursor operations. See `cursorizeLocExp`
-        LetLocE loc rhs bod -> do
-          let rhs' = cursorizeLocExp tenv rhs
-              bnds = case M.lookup loc denv of
-                       Nothing -> []
-                       Just vs -> [(v,[],CursorTy,l$ VarE loc) | v <- vs]
-          unLoc . mkLets ((loc,[],CursorTy,rhs') : bnds) <$>
-            cursorizeExp ddfs fundefs denv (M.insert loc CursorTy tenv) bod
+        LetLocE loc rhs bod ->
+          -- Location is already bound in the environment. This is most likely a result of
+          -- "sized" constructors. Maybe we should generate a warning here ?
+          case M.lookup loc tenv of
+            Just _  -> unLoc <$> cursorizeExp ddfs fundefs denv (M.insert loc CursorTy tenv) bod
+            Nothing -> do
+              let rhs' = cursorizeLocExp tenv rhs
+                  bnds = case M.lookup loc denv of
+                           Nothing -> []
+                           Just vs -> [(v,[],CursorTy,l$ VarE loc) | v <- vs]
+              unLoc . mkLets ((loc,[],CursorTy,rhs') : bnds) <$>
+                cursorizeExp ddfs fundefs denv (M.insert loc CursorTy tenv) bod
 
         -- Exactly same as cursorizePackedExp
         LetRegionE reg bod -> do
@@ -396,13 +401,18 @@ cursorizePackedExp ddfs fundefs denv tenv (L p ex) =
 
         -- All locations are transformed into cursors here. All the location expressions
         -- are expressed in terms of corresponding cursor operations. See `cursorizeLocExp`
-        LetLocE loc rhs bod -> do
-          let rhs' = cursorizeLocExp tenv rhs
-              bnds = case M.lookup loc denv of
-                       Nothing -> []
-                       Just vs -> [(v,[],CursorTy,l$ VarE loc) | v <- vs]
-          onDi (mkLets ((loc,[],CursorTy,rhs') : bnds)) <$>
-            go (M.insert loc CursorTy tenv) bod
+        LetLocE loc rhs bod ->
+          -- Location is already bound in the environment. This is most likely a result of
+          -- "sized" constructors. Maybe we should generate a warning here ?
+          case M.lookup loc tenv of
+            Just _  -> go (M.insert loc CursorTy tenv) bod
+            Nothing -> do
+              let rhs' = cursorizeLocExp tenv rhs
+                  bnds = case M.lookup loc denv of
+                           Nothing -> []
+                           Just vs -> [(v,[],CursorTy,l$ VarE loc) | v <- vs]
+              onDi (mkLets ((loc,[],CursorTy,rhs') : bnds)) <$>
+                go (M.insert loc CursorTy tenv) bod
 
         -- ASSUMPTION: RetE forms are inserted at the tail position of functions,
         -- and we safely just return ends-witnesses & ends of the dilated expressions
@@ -565,6 +575,12 @@ cursorizeLet ddfs fundefs denv tenv isPackedContext (v,locs,ty,rhs) bod
 unpackDataCon :: DDefs Ty2 -> NewFuns -> DepEnv -> TEnv -> Bool -> Var
               -> (DataCon, [(Var, Var)], L Exp2) -> SyM (DataCon, [t], L L3.Exp3)
 unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
+  let sizeVars = if isSizedDataCon dcon
+                 then (case numPackedDataCon ddfs dcon of
+                         Just numPacked -> L.map fst $ take numPacked vlocs
+                         Nothing -> error $ "unpackDataCon: Sized constructor should have packed fields.")
+                 else []
+
   -- The first bound location requires special handling. We have to bind it to
   -- (scrtCur + 1) by hand. All the other locations are bound (calculated) by RouteEnd2
   -- Ideally we should arrange RE to bind this as well, but this is a quick hack for now
@@ -572,7 +588,7 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
   cur <- gensym scrtCur
   (dcon,[],)
     <$> mkLets [(cur,[],CursorTy, l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1))]
-    <$> go cur vlocs tys True denv' tenv
+    <$> go cur vlocs tys sizeVars True denv' tenv
 
   where -- (vars,locs) = unzip vlocs
         tys  = lookupDataCon ddfs dcon
@@ -583,9 +599,9 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
 
         -- Loop over fields.  Issue reads to get out all Ints. Otherwise, just bind vars to locations
         --
-        go :: (Show t) => Var -> [(Var, Var)] -> [UrTy t] -> Bool -> DepEnv -> TEnv -> SyM (L L3.Exp3)
-        go _c [] [] _isFirst denv env = processRhs denv env
-        go cur ((v,loc):rst) (ty:rtys) isFirstPacked denv env =
+        go :: (Show t) => Var -> [(Var, Var)] -> [UrTy t] -> [Var] -> Bool -> DepEnv -> TEnv -> SyM (L L3.Exp3)
+        go _c [] [] [] _isFirst denv env = processRhs denv env
+        go cur ((v,loc):rst) (ty:rtys) sizeVars isFirstPacked denv env =
           case ty of
             IntTy -> do
               tmp <- gensym (toVar "readint_tpl")
@@ -600,22 +616,49 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
                           (v       , [], IntTy   , l$ ProjE 0 (l$ VarE tmp)),
                           (toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp))]
 
-              bod <- go (toEndV v) rst rtys True denv (M.insert loc CursorTy env')
+              bod <- go (toEndV v) rst rtys sizeVars True denv (M.insert loc CursorTy env')
               return $ mkLets bnds bod
 
-            _ -> do
+            _ ->
               let env' = M.insert v CursorTy env
+                  isSized = isSizedDataCon dcon
+                  nextCur = if isSized then v else (toEndV v)
+              in do
               if isFirstPacked
               then do
-                bod <- go (toEndV v) rst rtys False denv (M.insert loc CursorTy env')
+                bod <- go nextCur rst rtys sizeVars False denv (M.insert loc CursorTy env')
                 return $ mkLets [(loc, [], CursorTy, l$ VarE cur)
+                                ,(v  , [], CursorTy, l$ VarE loc)]
+                         bod
+              else if isSized
+              then do
+                {-
+                  A sized data constructor has n "size" fields (ints) before the original fields.
+                  Since we know the size of all packed elements, we should be able to unpack all fields.
+                  We first issue reads to all scalar fields, (including the size args), and then
+                  bind the subsequent packed fields to `loc + size_packed`.
+
+                  Eg. Sized_Node [ (size_x,l_size_x), (x, lx), (y, ly) ]
+
+                  ==>
+                      let l_size_x = scrtCur + 1
+                          size_x   = readInt l_size_x
+                          lx       = EndOf (size_x)     -- l_size_x + 8
+                          x        = lx
+                          ly       = ly + size_x
+                          y        = ly
+                      in cursorize bod
+                -}
+                let (sz:rszs) = sizeVars
+                bod <- go v rst rtys rszs False denv (M.insert loc CursorTy env')
+                return $ mkLets [(loc, [], CursorTy, l$ Ext $ L3.AddCursor cur (l$ VarE sz))
                                 ,(v  , [], CursorTy, l$ VarE loc)]
                          bod
               else
                 -- Don't create a `let v = loc` binding. Instead, add it to DepEnv
-                go (toEndV v) rst rtys False (M.insertWith (++) loc [v] denv) env'
+                go nextCur rst rtys sizeVars False (M.insertWith (++) loc [v] denv) env'
 
-        go _ vls rtys _ _ _ = error $ "Unexpected numnber of varible, type pairs: " ++ show (vls,rtys)
+        go _ vls rtys _ _ _ _ = error $ "Unexpected numnber of varible, type pairs: " ++ show (vls,rtys)
 
 
 -- |

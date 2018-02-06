@@ -40,6 +40,7 @@ module Packed.FirstOrder.Common
          -- * Data definitions
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
+       , toSizedDataCon, isSizedDataCon
 
          -- * Misc helpers
        , (#), (!!!), fragileZip, fragileZip', sdoc, ndoc, abbrv, l
@@ -290,6 +291,12 @@ emptyDD  = M.empty
 fromListDD :: [DDef a] -> DDefs a
 fromListDD = L.foldr insertDD M.empty
 
+
+toSizedDataCon :: DataCon -> DataCon
+toSizedDataCon dcon = "Sized_" ++ dcon
+
+isSizedDataCon :: DataCon -> Bool
+isSizedDataCon = isPrefixOf "Sized_"
 
 -- Fundefs
 ----------------------------------------

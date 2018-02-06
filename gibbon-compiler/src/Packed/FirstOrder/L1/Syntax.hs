@@ -31,6 +31,9 @@ module Packed.FirstOrder.L1.Syntax
     , voidTy, hasPacked, sizeOf, isPackedTy, primRetTy, projTy
     , isProdTy, isNestedProdTy
 
+      -- * DataCon helpers
+    , toSizedDDefs, numPackedDataCon
+
 
       -- * Expression and Prog helpers
     , subst, substE, getFunTy
@@ -592,6 +595,35 @@ primRetTy p =
 
 dummyCursorTy :: Ty1
 dummyCursorTy = CursorTy
+
+--------------------------------------------------------------------------------
+
+-- | Add "sized" constructors to the data definition
+toSizedDDefs :: Out a => DDefs (UrTy a) -> Map Var (DDef (UrTy a))
+toSizedDDefs ddfs = M.map go ddfs
+  where
+    -- go :: DDef a -> DDef a
+    go dd@DDef{dataCons} =
+      let dcons' = L.foldr (\(dcon,tys) acc ->
+                              case numPackedDataCon ddfs dcon of
+                                Just n -> let tys'  = [(False,IntTy) | _ <- [1..n]] ++ tys
+                                              dcon' = "Sized_" ++ dcon
+                                          in [(dcon,tys), (dcon',tys')] ++ acc
+                                Nothing -> (dcon,tys) : acc
+                              )
+                   [] dataCons
+      in dd {dataCons = dcons'}
+
+
+numPackedDataCon :: Out a => DDefs (UrTy a) -> DataCon -> Maybe Int
+numPackedDataCon ddfs dcon =
+    if numPacked > 1
+    then Just (numPacked - 1)
+    else Nothing
+  where
+    tys = lookupDataCon ddfs dcon
+    numPacked = length $ L.filter isPackedTy tys
+
 
 --------------------------------------------------------------------------------
 
