@@ -192,6 +192,16 @@ inferExp ddfs fenv env (L _p exp) =
                    -- If there is NO packed child data, then our object has static size:
                    (L.all (not . hasPacked) tys) ||
 
+                   -- Or if all the packed items were traversed
+                   (case packedOnly of
+                      []  -> error $ "Unexpected code path. The earlier (L.all ...) should've short-circuitted this."
+                      _:_ -> let patVMap = M.fromList patVs
+                                 bools   = L.map (\x -> S.member (Traverse x) eff) $ L.map (\(x,_) -> patVMap ! x) packedOnly
+                             in L.all id bools
+
+                   )
+
+                   {-
                    -- Or if the last non-static item was in fact traversed:
                    (case packedOnly of
                          []  -> False
@@ -202,6 +212,9 @@ inferExp ddfs fenv env (L _p exp) =
                                                                  sdoc patVMap ++ "does not contain"
                                                                  ++  sdoc (fst$last packedOnly)
                                 in S.member (Traverse lastPackedLoc) eff)
+
+                   -}
+
                    -- Or maybe the last-use rule applies:
                    -- TODO
 
