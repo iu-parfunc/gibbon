@@ -21,7 +21,7 @@
 module Packed.FirstOrder.L2.Syntax
     ( Prog(..), FunDef(..), Effect(..), ArrowTy(..)
     , LocRet(..), LocExp, PreLocExp(..)
-    , NewFuns, getFunTy, mapExprs
+    , NewFuns, getFunTy, fromListNF, mapExprs, subst
     , progToEnv
 
     -- *
@@ -71,8 +71,7 @@ import Text.PrettyPrint.GenericPretty
 import Packed.FirstOrder.Common hiding (FunDef)
 import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.L1.Syntax hiding
-       (FunDef, Prog, mapExprs, progToEnv, fundefs, getFunTy, add1Prog,
-              mainExp)
+       (FunDef, Prog, mapExprs, progToEnv, fundefs, getFunTy, add1Prog, mainExp, subst)
 import qualified Packed.FirstOrder.L1.Syntax as L1
 
 --------------------------------------------------------------------------------
@@ -226,6 +225,26 @@ data Prog = Prog { ddefs    :: DDefs Ty2
                  }
   deriving (Show, Ord, Eq, Generic, NFData)
 
+insertNF :: FunDef -> NewFuns -> NewFuns
+insertNF d = M.insertWith err' (funname d) d
+  where
+   err' = error $ "insertFD: function definition with duplicate name: "++show (funname d)
+
+fromListNF :: [FunDef] -> NewFuns
+fromListNF = L.foldr insertNF M.empty           
+
+-- | Transform the expressions within a program.
+mapExprs :: (L Exp2 -> L Exp2) -> Prog -> Prog
+mapExprs fn prg@Prog{fundefs,mainExp} =
+    prg{ fundefs = let f fd@FunDef{funbod} = fd{funbod = fn funbod}
+                   in M.map f fundefs
+       , mainExp = case mainExp of
+                     Nothing -> Nothing
+                     Just (e,t) -> Just (fn e, t)
+       }
+
+subst :: Var -> L Exp2 -> L Exp2 -> L Exp2
+subst = undefined
 ----------------------------------------------------------------------------------------------------
 
 -- | Extension of L1.isTriv.
@@ -250,11 +269,6 @@ data FunDef = FunDef { funname :: Var
                      , funbod  :: L Exp2 }
   deriving (Show, Ord, Eq, Generic, NFData)
 
--- | Transform the expressions within a program.
-mapExprs :: (L Exp2 -> L Exp2) -> Prog -> Prog
-mapExprs fn prg@Prog{fundefs,mainExp} =
-  prg{ fundefs = fmap (\f@FunDef{funbod} -> f{funbod=fn funbod}) fundefs
-     , mainExp = fmap (\(e,t) -> ((fn e),t)) mainExp }
 --------------------------------------------------------------------------------
 
 -- | Retrieve the type of a function:
