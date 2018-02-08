@@ -456,7 +456,15 @@ inferExp env lex0@(L sl1 ex0) k =
      | otherwise -> err "Invariant violated.  LetE had nonempty bound locations."
 
     L1.AppE{} -> err $ "Expected flatten to name all function application results:\n "++show ex0
-    PrimAppE p ls -> err $ "Expected flatten to name all primapp results:\n "++show ex0
+    PrimAppE p ls ->
+        if all L1.isTrivial ls
+        then case ls of
+               [] -> k (l$ PrimAppE (prim p) [], primToTy p)
+               [x] -> inferExp env x $ \(x',_xty) -> k (l$ PrimAppE (prim p) [x'], primToTy p)
+               [x,y] -> inferExp env x $ \(x',_xty) -> inferExp env y $ \(y',_yty) ->
+                        k (l$ PrimAppE (prim p) [x',y'], primToTy p)
+               _ -> err $ "Unexpected number of arguments in primapp:\n"++show ex0
+        else err $ "Expected flatten to name all primapp results:\n "++show ex0
     LitSymE x     -> _linsym
     ProjE i e     -> _proj
     CaseE e ls    -> _case
@@ -468,6 +476,31 @@ inferExp env lex0@(L sl1 ex0) k =
 
 err :: String -> a
 err m = error $ "InferLocations: " ++ m
+
+prim :: L1.Prim L1.Ty1 -> L1.Prim Ty2
+prim p = case p of
+           L1.AddP -> L1.AddP
+           L1.SubP -> L1.SubP
+           L1.MulP -> L1.MulP
+           L1.DivP -> L1.DivP
+           L1.ModP -> L1.ModP
+           L1.EqSymP -> L1.EqSymP
+           L1.EqIntP -> L1.EqIntP
+           L1.MkTrue -> L1.MkTrue
+           L1.MkFalse -> L1.MkFalse
+           _ -> err $ "Can't handle this primop yet in InferLocations:\n"++show p
+
+primToTy :: L1.Prim L1.Ty1 -> Ty2
+primToTy p = case p of
+               L1.AddP    -> IntTy
+               L1.SubP    -> IntTy
+               L1.MulP    -> IntTy
+               L1.EqIntP  -> BoolTy
+               L1.EqSymP  -> BoolTy
+               L1.MkTrue  -> BoolTy
+               L1.MkFalse -> BoolTy
+               _ -> err $ "Can't handle this primop yet in InferLocations:\n"++show p
+               
 
 -- Helpers:
 --------------------------------------------------------------------------------

@@ -39,7 +39,7 @@ module Packed.FirstOrder.L1.Syntax
     , mapLocs
 
       -- * Trivial expressions
-    , assertTriv, assertTrivs, hasTimeIt
+    , assertTriv, assertTrivs, hasTimeIt, isTrivial
     , projNonFirst, mkProj, mkProd, mkProdTy, mkLets, flatLets
 
       -- * Examples
