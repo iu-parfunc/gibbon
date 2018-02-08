@@ -38,4 +38,4 @@
     [(Inner sum x left right) sum ] ))
 
 
-(sum-up (Leaf 2));
+(set-even (sum-up (Leaf 2)));
