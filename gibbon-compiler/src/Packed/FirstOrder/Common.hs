@@ -22,7 +22,7 @@ module Packed.FirstOrder.Common
          -- * Type and Data DataConuctors
        , DataCon, TyCon, IsBoxed
          -- * Variables and gensyms
-       , Var(..), fromVar, toVar, varAppend, SyM, gensym, genLetter, runSyM
+       , Var(..), fromVar, toVar, varAppend, SyM, gensym, gensym_tag,  genLetter, runSyM
        , cleanFunName
 
        , LocVar, Region(..), Modality(..), LRM(..), dummyLRM
@@ -301,6 +301,11 @@ newtype SyM a = SyM (State Int a)
 -- | Generate a unique symbol by attaching a numeric suffix.
 gensym :: Var -> SyM Var
 gensym v = state (\n -> (cleanFunName v `varAppend` toVar (show n), n + 1))
+
+
+
+gensym_tag :: Var ->String ->  SyM Var
+gensym_tag v str = state (\n -> (cleanFunName v `varAppend` toVar ((show n)++ str) , n + 1))
 
 -- | Generate alphabetic variables 'a','b',...
 genLetter :: SyM Var
