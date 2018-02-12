@@ -24,6 +24,7 @@ library
                   Packed.FirstOrder.Compiler
                   Packed.FirstOrder.HaskellFrontend
                   Packed.FirstOrder.TargetInterp
+                  Packed.FirstOrder.L0.Syntax
                   Packed.FirstOrder.L1.Syntax
                   Packed.FirstOrder.L1.Typecheck
                   Packed.FirstOrder.L2.Syntax
