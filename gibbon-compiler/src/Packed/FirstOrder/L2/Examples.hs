@@ -443,14 +443,15 @@ buildTreeFun = FunDef "buildTree" buildTreeTy "i270" buildTreeBod
                    l$ IfE (l$ VarE "b279")
                    (l$ DataConE "lout272" "Leaf" [l$ LitE 1])
                    (l$ LetE ("i273",[], IntTy, l$ PrimAppE SubP [l$ VarE "i270", l$ LitE 1]) $
-                    l$ Ext $ LetLocE "l274" (AfterConstantLE 1 "lout272") $
+                    l$ Ext $ LetLocE "l274" (AfterConstantLE 9 "lout272") $
                     l$ LetE ("x275",[],PackedTy "Tree" "l274",
                              l$ AppE "buildTree" ["l274"] (l$ VarE "i273")) $
                     l$ Ext $ LetLocE "l276" (AfterVariableLE "x275" "l274") $
                     l$ LetE ("y277",[],PackedTy "Tree" "l276",
                              l$ AppE "buildTree" ["l276"] (l$ VarE "i273")) $
-                    l$ LetE ("a278",[],PackedTy "Tree" "lout272",
-                             l$ DataConE "lout272" "Node" [l$ VarE "x275", l$ VarE "y277"]) $
+                    l$ LetE ("sz_x275",[],IntTy, l$ PrimAppE SizeOf [l$ VarE "x275"]) $
+                    l$ LetE ("a278",[], PackedTy "Tree" "lout272",
+                             l$ DataConE "lout272" "Sized_Node" [l$ VarE "sz_x275", l$ VarE "x275", l$ VarE "y277"]) $
                     l$ VarE "a278")
 
 
@@ -1201,3 +1202,5 @@ indrRightmostMainExp = l$ Ext $ LetRegionE (VarR "r753") $
 indrRightmostProg :: Prog
 indrRightmostProg = Prog ddtree (M.fromList [("indrRightmost", indrRightmostFun)])
                     (Just (indrRightmostMainExp, IntTy))
+
+--------------------------------------------------------------------------------
