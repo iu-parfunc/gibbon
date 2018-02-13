@@ -9,6 +9,7 @@ import Data.Loc
 import qualified Data.Map as M
 import qualified Data.List as L
 import qualified  Data.Set as S
+import qualified Data.Vector as V
 import Data.Symbol
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L1.Syntax as L1
@@ -17,6 +18,8 @@ import Control.DeepSeq
 import GHC.Generics (Generic, Generic1)
 import Packed.FirstOrder.Common
 import Data.Tuple.All
+import Data.Vector as V
+
 
 -- Helper Functions
 debug = flip trace
@@ -53,7 +56,7 @@ buildDefTable ex table =
                        M.update f sym table 
                        where f (DefTableEntry  def fun_uses c) = Just ( DefTableEntry def ((callExp,-1):fun_uses) (c+1)) -- -1 means there is no ProdE ( only one argument)
 
-    PrimAppE _ ls ->  foldl f table ls
+    PrimAppE _ ls ->  L.foldl f table ls
                       where f tbl exp = buildDefTable (getExp exp) tbl
 
     LetE ((Var sym),_,_,bind) body ->
@@ -72,21 +75,21 @@ buildDefTable ex table =
 
 
     CaseE e ls      -> let table' = buildDefTable ( getExp e) table 
-                       in foldl f table' ls
+                       in L.foldl f table' ls
                        where f tbl (_, _, exp ) = buildDefTable (getExp exp) tbl
     
-    DataConE _ _ ls -> foldl f table ls where f tbl exp = buildDefTable (getExp exp) tbl
+    DataConE _ _ ls -> L.foldl f table ls where f tbl exp = buildDefTable (getExp exp) tbl
 
     TimeIt exp _ _  -> buildDefTable (getExp exp) table
 
-    _               -> table --`debug` ("Defualt"++ show a) 
+    _               -> table --`debug` ("Defualt" L.++ show a) 
 
 
 
 findPotentials:: DefTable -> PotentialsList
 findPotentials table =
   M.foldrWithKey f ([]) table 
-  where f sym entry@(DefTableEntry _ fun_uses use_count ) ls = if ((length fun_uses)==1) then entry:ls  else  ls
+  where f sym entry@(DefTableEntry _ fun_uses use_count ) ls = if ((L.length fun_uses)==1) then entry:ls  else  ls
                  
 
 inline :: FunDef Ty1 (L Exp1)-> FunDef Ty1 (L Exp1) -> Int  ->  FunDef Ty1 (L Exp1)
@@ -107,9 +110,9 @@ inline inlined_fun outer_fun arg_pos  =
                           argVar_inlined = fst  (funArg inlined_fun)   
 
                       in case  argType_outer  of 
-                              ProdTy ls -> error "not supported yet" -- (argVar, ProdTy (take arg_pos ls ++ drop (1 + arg_pos) ls) )
+                              ProdTy ls -> error "not supported yet" -- (argVar, ProdTy (take arg_pos ls  L.++ drop (1 + arg_pos) ls) )
                               _         -> case  argType_inlined  of 
-                                                 ProdTy ls -> error "not supported yet" -- (argVar, ProdTy (take arg_pos ls ++ drop (1 + arg_pos) ls) )
+                                                 ProdTy ls -> error "not supported yet" -- (argVar, ProdTy (take arg_pos ls  L.++ drop (1 + arg_pos) ls) )
                                                  _         ->  funArg inlined_fun
 
   in outer_fun { funArg  = newFunArg ,
@@ -124,7 +127,7 @@ simplifyCases function =
                  
 
                   CaseE e1@(L l (CaseE e2 ls2)) ls1          -> -- TODO : USE MAP INSTEAD OF FOLD HERE !!
-                               rec $ L l $ CaseE e2 (map f ls2)
+                               rec $ L l $ CaseE e2 (L.map f ls2)
                                where f oldItem = (upd3 newMember oldItem)  where newMember = L l (CaseE (sel3 oldItem) ls1)
                   
                   CaseE e1@(L l (DataConE loc k ls)) ls1     -> 
@@ -140,7 +143,7 @@ simplifyCases function =
                   CaseE e1@(L l' (LetE bind body )  ) ls1    ->
                                  L l' $ LetE bind (rec $ L l $ CaseE body (ls1) )
 
-                  CaseE e1 ls1             ->  L l $ CaseE e1 (map f ls1) where f item = (upd3 (rec (sel3 item)) item)   
+                  CaseE e1 ls1             ->  L l $ CaseE e1 (L.map f ls1) where f item = (upd3 (rec (sel3 item)) item)   
                   LetE (v,loc,t,rhs) bod   ->  L l $ LetE (v,loc,t, (rec rhs)) (rec bod)  
                   AppE v loc e             ->  L l $ AppE v loc $ rec e
                   IfE e1 e2 e3             ->  L l $ IfE (rec e1) ( rec e2) ( rec e3)
@@ -169,12 +172,12 @@ rewriteSeqCalls rule@(outerName, innerName, argPos, newName)  defTable fun =
                                                                                   Nothing    -> error  "error in rewriteSeqCalls"
                                                                                   Just entry -> case (def  entry) of 
                                                                                                 AppE v _ _   -> v
-                                                                                                _            -> error  ("ops"++ (show(def  entry)))
+                                                                                                _            -> error  ("ops" L.++ (show(def  entry)))
                                                  getArgs x  = case (M.lookup x defTable) of
                                                                                                Nothing    -> error  "error in rewriteSeqCalls"
                                                                                                Just entry -> case (def  entry) of 
                                                                                                                 AppE _ _ args   -> args
-                                                                                                                _               -> error  ("ops"++ (show(def  entry)))
+                                                                                                                _               -> error  ("ops" L.++ (show(def  entry)))
 
                                                      
                                     else
@@ -182,7 +185,7 @@ rewriteSeqCalls rule@(outerName, innerName, argPos, newName)  defTable fun =
 
                           LetE (v,loc,t,rhs) bod   ->  L l $ LetE (v,loc,t, (rec rhs)) (rec bod)  
                           IfE e1 e2 e3             ->  L l $ IfE (rec e1) ( rec e2) ( rec e3)
-                          CaseE e1 ls1             ->  L l $ CaseE e1 (map f ls1) where f (dataCon,x,exp) = (dataCon, x, (rec exp))  
+                          CaseE e1 ls1             ->  L l $ CaseE e1 (L.map f ls1) where f (dataCon,x,exp) = (dataCon, x, (rec exp))  
 
                           otherwise -> L l ex 
 
@@ -193,14 +196,55 @@ removeUnusedDefs f =
       let defTable = buildDefTable (getExp (funBody f )) M.empty 
       in case ex of 
                     LetE (Var s,loc,t,rhs) bod   -> case (M.lookup s defTable ) of
-                                                      Nothing ->L l $ LetE (Var s,loc,t, (rec rhs))  (rec bod)  --error  ("error in removeUnusedDefs"++ show s)
+                                                      Nothing ->L l $ LetE (Var s,loc,t, (rec rhs))  (rec bod)  --error  ("error in removeUnusedDefs" L.++ show s)
                                                       Just ( DefTableEntry _ _ 0) -> (rec bod) 
                                                       Just _  -> L l $ LetE (Var s,loc,t, (rec rhs))  (rec bod) 
                     IfE e1 e2 e3             ->  L l $ IfE (rec e1) ( rec e2) ( rec e3)
-                    CaseE e1 ls1             ->  L l $ CaseE e1 (map f ls1) where f (dataCon,x,exp) = (dataCon, x, (rec exp))  
+                    CaseE e1 ls1             ->  L l $ CaseE e1 (L.map f ls1) where f (dataCon,x,exp) = (dataCon, x, (rec exp))  
                     AppE v loc e             ->  L l $ AppE v loc $ rec e
 
                     otherwise -> L l ex 
+
+mergeListOfFunctions :: DDefs Ty1 -> [FunDef Ty1 ( L Exp1)] ->  FunDef Ty1 ( L Exp1) 
+mergeListOfFunctions  ddefs ls = do
+  let newName = L.foldl  appendName "" ls where appendName tmp function = (tmp  L.++ (fromVar (funName function)))  
+  -- we want to prepare the body of each function seperatly now
+  let lsVector    = V.fromList ls 
+  let retTypes    = V.map (\f ->(funRetTy f)) lsVector
+  let newRetType  = ProdTy (V.toList retTypes)  
+
+  let newArgVar = toVar "input"
+  let traversedType =snd (funArg( L.head ls))
+  let newArgs = (newArgVar,traversedType)
+  let step1 = L.map getBody ls where getBody fun = substE  (l (VarE (fst (funArg( L.head ls)))) ) (l (VarE newArgVar)) (funBody fun)  
+
+  let step2 = L.map mapAndSplit step1  
+                      where mapAndSplit (L _(CaseE e ls)) = L.foldr f M.empty ls 
+                              where f (dataCons, varls, exp) mp = M.insert dataCons (subsVars exp) mp
+                                      where subsVars ex = V.ifoldr subsVar ex (V.fromList varls) 
+  
+                                             where subsVar index v ex   = substE  (l (VarE (fst v) )) (l (VarE (toVar (dataCons L.++ (show index))))) ex  
+ 
+
+  let inputDef = lookupDDef ddefs ( case  traversedType of (PackedTy typeStr _) -> (toVar typeStr))
+  let dataConsList = dataCons inputDef
+  let createOutVar index =  (toVar ("f" L.++(show index)L.++"out" )) 
+
+  let outPart = l ( MkProdE  genL  )
+         where genL = V.toList (  V.imap  (\index _ ->l (VarE ( createOutVar index) ) ) (V.fromList ls))
+
+  let retAllExp = MkProdE (V.toList ( V.imap (\index _ ->l (VarE (createOutVar index))) lsVector ) )
+  let reduceStep = L.foldr reduce (CaseE (l (VarE newArgVar))[]) dataConsList where
+                              reduce (dataCons, varls) (CaseE ex ls ) = CaseE ex ((consBody):ls)
+                                       where consBody = (dataCons, newVarsList, combinedBodies) where 
+                                              newVarsList     =  V.toList( V.imap (\index _ -> ( toVar (dataCons L.++ (show index)) ,() ) ) (V.fromList varls) ) where 
+                                              combinedBodies  =  V.ifoldr (\index body res  -> l (LetE ((createOutVar index),[],(unsafeIndex retTypes index),body) res )) (l retAllExp) (V.fromList partialList)
+                                                                  where partialList =  L.map (\m -> case ( M.lookup dataCons m) of 
+                                                                                                        (Just a ) -> a 
+                                                                                                        (Nothing) ->error "ooopsa1")  step2 
+  --let reduce = L.fold                                                                                             
+  FunDef  (toVar ("merged__" L.++ newName) )newArgs newRetType (l reduceStep) 
+  --let newArgs = ... 
 
 renameFunction:: FunDef Ty1 ( L Exp1) -> Var -> FunDef Ty1 ( L Exp1) 
 renameFunction function newName = 
@@ -209,13 +253,13 @@ renameFunction function newName =
       let oldName = funName function in 
             case ex of 
                   AppE name loc e          ->  L l $ AppE (if name==oldName then newName else name) loc (rec e) 
-                  PrimAppE x ls            ->  L l $ PrimAppE x (map f ls) where f item = (rec item)
+                  PrimAppE x ls            ->  L l $ PrimAppE x (L.map f ls) where f item = (rec item)
                   LetE (v,loc,t,rhs) bod   ->  L l $ LetE (v,loc,t, (rec rhs)) (rec bod)  
                   IfE e1 e2 e3             ->  L l $ IfE (rec e1) ( rec e2) ( rec e3)
-                  MkProdE ls               ->  L l $ MkProdE (map (\x-> rec x) ls) 
+                  MkProdE ls               ->  L l $ MkProdE (L.map (\x-> rec x) ls) 
                   ProjE index exp          ->  L l $ ProjE index (rec exp)
-                  CaseE e1 ls1             ->  L l $ CaseE e1 (map f ls1) where f (dataCon,x,exp) = (dataCon, x, (rec exp))  
-                  DataConE loc datacons ls ->  L l $ DataConE loc datacons (map (\x-> rec x) ls)
+                  CaseE e1 ls1             ->  L l $ CaseE e1 (L.map f ls1) where f (dataCon,x,exp) = (dataCon, x, (rec exp))  
+                  DataConE loc datacons ls ->  L l $ DataConE loc datacons (L.map (\x-> rec x) ls)
                   TimeIt e d b             ->  L l $ TimeIt ( rec e) d b 
                   otherwise                -> L l ex
 
@@ -254,15 +298,15 @@ fusion2 (L1.Prog defs funs main) = do
 
   let potentials = findPotentials defTable
 
-  let firstPot = head potentials
+  let firstPot =  L.head potentials
   let getSymbol exp = case (exp) of 
                        AppE v _ _ -> v
       
   let inner_fun =  funs M.! (getSymbol (def firstPot)) 
-  let outer_fun =  funs M.! (getSymbol ( fst (head (fun_uses firstPot)) ) )
+  let outer_fun =  funs M.! (getSymbol ( fst ( L.head (fun_uses firstPot)) ) )
 
   let old_name = funName outer_fun 
-  let arg_pos = snd (head (fun_uses firstPot) )
+  let arg_pos = snd ( L.head (fun_uses firstPot) )
  
   inline_name <-  gensym_tag old_name "inline" 
   let inlined_fun =  (inline inner_fun outer_fun arg_pos) {funName = inline_name}
@@ -282,16 +326,16 @@ fusion2 (L1.Prog defs funs main) = do
  
   let potentials2 = findPotentials defTable2
 
-  let firstPot2 = head potentials2
+  let firstPot2 =  L.head potentials2
   let getSymbol exp = case (exp) of 
                        AppE v _ _ -> v
 
   let inner_fun2 =  funs M.! (getSymbol (def firstPot2)) 
-  let outer_fun2 =  funs M.! (getSymbol ( fst (head (fun_uses firstPot2)) ) )
+  let outer_fun2 =  funs M.! (getSymbol ( fst ( L.head (fun_uses firstPot2)) ) )
    
 
   let old_name2 = funName outer_fun2 
-  let arg_pos2 = snd (head (fun_uses firstPot2) )
+  let arg_pos2 = snd ( L.head (fun_uses firstPot2) )
  
   inline_name2 <-  gensym_tag old_name2 "inline" 
   let inlined_fun2 =  (inline inner_fun2 outer_fun2 arg_pos2) {funName = inline_name2}
@@ -322,7 +366,7 @@ fusion2 (L1.Prog defs funs main) = do
   let update6         = M.insert  rewriteValName rewriteVal update5
   let useTable        = buildUseTable rewriteVal
   ----- The New Suff ... need to be isolated in fuctions to compose them next 
-  let useTableFiltered = M.filter f useTable where f a = if (length a) <2 then False else True  
+  let useTableFiltered = M.filter f useTable where f a = if (L.length a) =2 then True else False  
 
   --move this to a function
   let pairsToMerge    = M.foldl f S.empty useTableFiltered where
@@ -330,18 +374,22 @@ fusion2 (L1.Prog defs funs main) = do
           where f2 s (_,(AppE fName _ _ )) = S.insert fName s
 
   -- move this as well to a funtion 
-  let functionsToMerge = S.foldl f [] pairsToMerge where
-       f s item = foldl f2 [] item where
+  let functionsToMerge = L.map toList (S.toList pairsToMerge) where
+       toList item = L.foldl f2 [] item where
           f2 ls fname = case ( M.lookup fname update6 ) of 
                           Nothing  ->error "not expected" 
-                          Just a   -> a:ls
-
+                          Just fundef   -> fundef:ls
   -- create a list of merged function 
+  let mergedFunctions = L.map (mergeListOfFunctions defs) functionsToMerge
+  let update7 = L.foldr (\funDef mp -> M.insert (funName funDef) funDef mp ) update6 mergedFunctions
+  
+  -- for now assume that the merged function are of length 2 ( 2 functions are merged at a time)
+  let rewrtieRules = L.foldr mergedFunctions () 
 
-
+  --rewrite in each function with in update 7 
   -- Now we want to look with in the function for multiple traversal that traverse the input tree
   --let update5 =  M.insert  inline_name2 inlined_fun2 update4
 
 
-  return $ L1.Prog defs  update6 main  `debug` ("deftable is : "++ (show functionsToMerge) ++ "\n\n potentials are :" ++ (show potentials2) ++"\n\n the new function is "++ (show simple_case) )
+  return $ L1.Prog defs  update7 main `debug` ("deftable is : " L.++ (show functionsToMerge)  L.++ "\n\n potentials are :"  L.++ (show potentials2)  L.++"\n\n the new function is " L.++ (show simple_case) )
     
