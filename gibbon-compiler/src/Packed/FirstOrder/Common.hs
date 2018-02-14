@@ -291,6 +291,8 @@ emptyDD  = M.empty
 fromListDD :: [DDef a] -> DDefs a
 fromListDD = L.foldr insertDD M.empty
 
+-- Sized data constructors
+----------------------------------------
 
 toSizedDataCon :: DataCon -> DataCon
 toSizedDataCon dcon = "Sized_" ++ dcon

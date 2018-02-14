@@ -590,6 +590,7 @@ dummyCursorTy :: Ty1
 dummyCursorTy = CursorTy
 
 --------------------------------------------------------------------------------
+-- Sized DDefs
 
 -- | Add "sized" constructors to the data definition
 toSizedDDefs :: Out a => DDefs (UrTy a) -> Map Var (DDef (UrTy a))

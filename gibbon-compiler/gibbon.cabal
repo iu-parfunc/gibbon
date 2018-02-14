@@ -40,6 +40,7 @@ library
                   Packed.FirstOrder.Passes.Freshen
                   Packed.FirstOrder.Passes.Flatten
                   Packed.FirstOrder.Passes.InlineTriv
+                  Packed.FirstOrder.Passes.InferLayout
                   Packed.FirstOrder.Passes.DirectL3
                   Packed.FirstOrder.Passes.InferLocations
                   Packed.FirstOrder.Passes.InferEffects2
