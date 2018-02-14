@@ -28,11 +28,10 @@ mkAdd1Fun bod = FunDef "add1" ("tr",treeTy) treeTy bod
 
 --------------------------------------------------------------------------------
 
-
 -- | The basic form of the add1 program where recursions happen
 -- immediately as arguments to the data-constructor.
 add1Prog :: Prog
-add1Prog = mkAdd1Prog exadd1Bod Nothing
+add1Prog = mkAdd1Prog exadd1Bod (Just add1MainExp)
 
 exadd1Bod :: L Exp1
 exadd1Bod = l$
@@ -112,5 +111,12 @@ add1ProgSharing = Prog treeDD (M.fromList [("add1",mkAdd1Fun bod)]) Nothing
          l$ LetE ("x2",[], PackedTy "Tree" (), l$ AppE "add1" [] (l$ VarE "x")) $
          l$ DataConE () "Node" [ l$ VarE "x2", l$ VarE "x2"])
       ]
+
+add1MainExp :: L Exp1
+add1MainExp = l$ LetE ("x",[], PackedTy "Tree" (), l$ DataConE () "Leaf" [l$ LitE 1]) $
+              l$ LetE ("y",[], PackedTy "Tree" (), l$ DataConE () "Leaf" [l$ LitE 2]) $
+              l$ LetE ("z",[], PackedTy "Tree" (), l$ DataConE () "Node" [l$ VarE "x", l$ VarE "y"]) $
+              l$ LetE ("a",[], PackedTy "Tree" (), l$ AppE "add1" [] (l$ VarE "z")) $
+              l$ VarE "a"
 
 --------------------------------------------------------------------------------
