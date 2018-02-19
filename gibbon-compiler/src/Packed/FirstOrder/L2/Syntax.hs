@@ -77,7 +77,14 @@ import qualified Packed.FirstOrder.L1.Syntax as L1
 --------------------------------------------------------------------------------
 
 -- | Extended expressions, L2.  Monomorphic.
+-- 
+--   By adding a `LocVar` decoration, all data constructors,
+--   applications, and bindings gain a location annotation.  
 type Exp2 = E2 LocVar Ty2
+
+-- | L1 expressions extended with L2.  This is the polymorphic version.
+-- Shorthand for recursions above.
+type E2 l d = PreExp E2Ext l d
 
 -- | The extension that turns L1 into L2.
 data E2Ext loc dec =
@@ -86,10 +93,6 @@ data E2Ext loc dec =
   | RetE [loc] Var     -- ^ Return a value together with extra loc values.
   | FromEndE loc -- ^ Bind a location from an EndOf location (for RouteEnds and after)
  deriving (Show, Ord, Eq, Read, Generic, NFData)
-
--- | L1 expressions extended with L2.  This is the polymorphic version.
--- Shorthand for recursions above.
-type E2 l d = PreExp E2Ext l d
 
 -- instance Read (E2 l d) where
 -- instance Read (L (E2 l d)) where

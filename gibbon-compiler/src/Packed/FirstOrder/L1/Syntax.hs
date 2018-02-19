@@ -42,7 +42,7 @@ module Packed.FirstOrder.L1.Syntax
     , assertTriv, assertTrivs, hasTimeIt, isTrivial
     , projNonFirst, mkProj, mkProd, mkProdTy, mkLets, flatLets
 
-      -- * Examples
+      -- * Examples.  TODO: Move to separate examples file.
     , add1Prog
     , add1ProgLetLeft
     , add1ProgLetRight
@@ -188,6 +188,10 @@ instance (Out l, Show l, Show d, Out d, Expression (e l d))
                          | otherwise -> False
         MkProdE ls -> all (\(L _ x) -> f x) ls
 
+        -- DataCon's are a bit tricky.  May want to inline them at
+        -- some point if it avoids region conflicts.
+        DataConE{} -> False
+
         IfE{}      -> False
         CaseE{}    -> False
         LetE {}    -> False
@@ -195,7 +199,6 @@ instance (Out l, Show l, Show d, Out d, Expression (e l d))
         FoldE {}   -> False
         AppE  {}   -> False
         TimeIt {}  -> False
-        DataConE{} -> False
         Ext ext -> isTrivial ext
 
 
@@ -349,7 +352,7 @@ type Ty1 = UrTy ()
 
 -- | Types include boxed/pointer-based products as well as unpacked
 -- algebraic datatypes.  This data is parameterized to allow
--- annotation later on.
+-- annotation on Packed types later on.
 data UrTy a =
           IntTy
 --        | SymTy -- ^ Symbols used in writing compiler passes.
