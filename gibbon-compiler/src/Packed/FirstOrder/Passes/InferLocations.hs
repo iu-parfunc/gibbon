@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
+
+-- TEMP:
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unused-matches #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
@@ -156,10 +158,11 @@ type EdgeList = Seq.Seq Dependence
 
 -- | Combine the different kinds of contextual information in-scope.
 data FullEnv = FullEnv
-    { dataDefs :: (DDefs Ty2)
-    , valEnv :: M.Map Var Ty2
-    , funEnv :: M.Map Var (ArrowTy Ty2)
-    , dag    :: DepGraph }
+    { dataDefs :: (DDefs Ty2)           -- ^ Data type definitions
+    , valEnv :: M.Map Var Ty2           -- ^ Type env for local bindings
+    , funEnv :: M.Map Var (ArrowTy Ty2) -- ^ Top level fundef types
+    , dag    :: DepGraph                -- ^ 
+    }
 -- TODO: Lenses would probably help a bit here.
 
 --- -> RegionSet -> LocationTypeState
@@ -277,14 +280,6 @@ withRepairTactic tactic p0@(L1.Prog defs funs main) = do
                           , funEnv   = fenv'
                           , dag      = mempty }
 
-        doFunDef L1.FunDef{funName,funArg=(argV,argT),funRetTy,funBody} = do
-          funty <- convertFunTy (argT,funRetTy)
-          (funbod,_) <- inferExpWith tactic fullenv funBody
-          return $ L2.FunDef { funname = funName
-                             , funarg = argV
-                             , funty, funbod
-                             }
-
     -- Each top-level fundef body, and the main expression, are
     -- completely independent type-checking-and-error-recovery problems:
     let infer = inferExpWith tactic fullenv
@@ -330,7 +325,7 @@ inferExpWith tactic env ex = go (inferExp env ex return)
 inferExps :: FullEnv -> [L L1.Exp1] -> Cont -> TiM Result
 inferExps = _finish
 
-
+-- | A continuation which is waiting for a list of expressions.
 type LsCont = [L Exp2] -> TiM Result
 
 -- | Every type must either be fixed size, or be serialized data with
@@ -653,7 +648,6 @@ t4_p = L1.Prog dd1 M.empty $ Just $
        l$ LetE ("y",[],PackedTy "Tree" (), l$ DataConE () "Leaf" []) $
        l$ L1.DataConE () "Node"
           [ l$ VarE "x" , l$ LitE 99, l$ VarE "y"]
-
 
 t4 :: Prog
 t4 = fst $ runSyM 100 (inferLocs t4_p)
