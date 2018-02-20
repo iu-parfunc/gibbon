@@ -256,6 +256,12 @@ inferExp env lex0@(L sl1 ex0) dest =
             (copy (e',ty) d)
           
     L1.LitE n -> return (lc$ LitE n, IntTy)
+
+    L1.DataConE k ls -> do
+      let Just d = dest 
+      ls' <- mapM (\ e -> fmap snd (inferExp e dest)) ls
+      return (DataConE d k ls', PackedTy (getTyOfDataCon k) d)
+    
     L1.IfE a b c@(L _ ce) -> do
        -- Here we blithely assume BoolTy because L1 typechecking has already passed:
        (a',BoolTy) <- inferExp env a Nothing
