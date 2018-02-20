@@ -224,14 +224,55 @@ convertFunTy (from,to) = do
 
 -- TODO: the state stores unification constraints, possibly through
 -- mutable references.
-type TiM a = SyM a 
--- | Type inference monad.
--- type TiM a = ExceptT Failure (St.StateT TyCheckLog SyM) a
+type TiM a = ExceptT Failure (St.StateT InferState SyM) a
 
--- | Fresh locVar
+type InferState = M.Map LocVar UnifyLoc
+
+data UnifyLoc = FixedLoc Var
+              | FreshLoc Var
+
+data Failure = FailUnify Ty2 Ty2
+             | FailInfer L1.Exp1
+
+-- | Fresh var
 freshLocVar :: String -> TiM LocVar
-freshLocVar m = -- lift$ lift$               
+freshLocVar m = lift$ lift$
                 gensym (toVar m)
+
+finalLocVar :: LocVar -> TiM UnifyLoc
+finalLocVar v = do
+  m <- lift $ St.get
+  case M.lookup v m of
+    Nothing -> return (FreshLoc v)
+    Just (FixedLoc v') -> return (FixedLoc v')
+    Just (FreshLoc v') -> finalLocVar v'
+
+fresh :: TiM LocVar
+fresh = do
+  freshLocVar "loc"
+
+lookupUnifyLoc :: LocVar -> TiM UnifyLoc
+lookupUnifyLoc l = do
+  m <- lift $ St.get
+  case M.lookup l m of
+    Nothing -> do
+      l' <- fresh
+      lift $ St.put $ M.insert l (FreshLoc l') m
+      return $ FreshLoc l'
+    Just (FreshLoc l') -> finalLocVar l'
+    Just (FixedLoc l') -> return $ FixedLoc l'
+
+fixLoc :: LocVar -> TiM UnifyLoc
+fixLoc l = do
+  l' <- fresh
+  m <- lift $ St.get
+  lift $ St.put $ M.insert l (FixedLoc l') m
+  return $ FixedLoc l'
+
+assocLoc :: LocVar -> UnifyLoc -> TiM ()
+assocLoc l ul = do
+  m <- lift $ St.get
+  lift $ St.put $ M.insert l ul m
 
 ----------------------------------------
 
@@ -266,12 +307,11 @@ inferExp env@FullEnv{dataDefs}
           
     L1.LitE n -> return (lc$ LitE n, IntTy)
 
-    L1.DataConE () k ls -> do
+    L1.DataConE _ k ls -> do
       let Just d = dest 
-      ls' <- mapM (\ e -> (inferExp env e dest)) ls
-      return (lc$ DataConE d k [ e' | (e',_)  <- ls'],
-              PackedTy (getTyOfDataCon dataDefs k) d)
-    
+      ls' <- mapM (\ e -> (inferExp env e dest) >>= (return . fst)) ls
+      return (lc$ DataConE d k ls', PackedTy (getTyOfDataCon (dataDefs env) k) d)
+
     L1.IfE a b c@(L _ ce) -> do
        -- Here we blithely assume BoolTy because L1 typechecking has already passed:
        (a',BoolTy) <- inferExp env a Nothing
@@ -331,7 +371,21 @@ doCase src dst (con,vars,rhs) =
 -- the store.  In the case of success, the new equalities are placed
 -- in the store /before/ executing the success branch.
 unify :: LocVar -> LocVar -> TiM a -> TiM a -> TiM a
-unify = _
+unify v1 v2 success fail = do
+  ut1 <- lookupUnifyLoc v1
+  ut2 <- lookupUnifyLoc v2
+  case (ut1,ut2) of
+    (FixedLoc l1, FixedLoc l2) ->
+        if l1 == l2 then success else fail
+    (FreshLoc l1, FixedLoc l2) ->
+        do assocLoc l1 (FixedLoc l2)
+           success
+    (FixedLoc l2, FreshLoc l1) -> 
+        do assocLoc l1 (FixedLoc l2)
+           success
+    (FreshLoc l1, FreshLoc l2) ->
+        do assocLoc l1 (FreshLoc l2)
+           success  
 
 -- | The copy repair tactic:
 copy :: Result -> LocVar -> TiM Result
@@ -376,9 +430,9 @@ t0 = fst$ runSyM 0 $
      convertFunTy (snd (L1.funArg fd), L1.funRetTy fd)
    where fd = L1.fundefs L1.add1Prog M.! "add1"
            
-t1 :: L Exp2
-t1 = fst$ fst$ runSyM 0 $
-     inferExp emptyEnv (l$ LitE 3) Nothing
+-- t1 :: L Exp2
+-- t1 = fst$ fst$ runSyM 0 $
+--      inferExp emptyEnv (l$ LitE 3) Nothing
 
 --  id  :: Tree -> Tree
 --  id' :: forall l1 in r1, l2 in r2 . Tree l1 -> Tree l2
