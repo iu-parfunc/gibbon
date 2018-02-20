@@ -93,6 +93,7 @@ import qualified Data.Sequence as Seq
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.List as L
+import qualified Data.Foldable as F
 -- import qualified Control.Monad.Trans.Writer.Strict as W
 import qualified Control.Monad.Trans.State.Strict as St
 import Control.Monad
@@ -201,19 +202,22 @@ lookupFEnv = undefined
 -- can instantiate an L1 function type into a polymorphic L2 one,
 -- mechanically.
 convertFunTy :: (L1.Ty1,L1.Ty1) -> SyM (ArrowTy Ty2)
-convertFunTy (from,to) = do 
-    -- let lvs = allLocVars inT ++ allLocVars outT
-    -- lvs' <- mapM freshenVar lvs
-    -- let subst = M.fromList (zip lvs lvs')
-    -- return $ ArrowTy (substTy subst inT)
-    --                  (substEffs subst effs)
-    --                  (substTy subst outT)
-    
-    return $ ArrowTy { locVars = _
-                     , arrIn   = _
+convertFunTy (from,to) = do
+    from' <- traverse (const (freshLocVar "l")) from
+    to'   <- traverse (const (freshLocVar "l")) to
+    -- For this simple version, we assume every location is in a separate region:
+    lrm1 <- toLRM from' Input
+    lrm2 <- toLRM to'   Output
+    return $ ArrowTy { locVars = lrm1 ++ lrm2
+                     , arrIn   = from'
                      , arrEffs = S.empty
-                     , arrOut  = _
+                     , arrOut  = to'
                      , locRets = [] }
+ where
+   toLRM ls md =
+       mapM (\v -> do r <- freshLocVar "r"
+                      return $ LRM v (VarR r) md)
+            (F.toList ls)
 
 -- Inference algorithm
 --------------------------------------------------------------------------------

@@ -186,14 +186,15 @@ instance (Typeable (E2Ext l (UrTy l)),
 
 -- | Our type for functions grows to include effects, and explicit universal
 -- quantification over location/region variables.
-data ArrowTy t = ArrowTy { locVars :: [LRM]       -- ^ Universally-quantified location params.
-                                                  -- Only these should be referenced in arrIn/arrOut.
-                         , arrIn :: t             -- ^ Input type for the function.
-                         , arrEffs:: (Set Effect) -- ^ These are present-but-empty initially,
-                                                  -- and the populated by InferEffects.
-                         , arrOut:: t             -- ^ Output type for the function.
-                         , locRets :: [LocRet]    -- ^ L2B feature: multi-valued returns.
-                         }
+data ArrowTy t = ArrowTy
+    { locVars :: [LRM]       -- ^ Universally-quantified location params.
+                             -- Only these should be referenced in arrIn/arrOut.
+    , arrIn :: t             -- ^ Input type for the function.
+    , arrEffs:: (Set Effect) -- ^ These are present-but-empty initially,
+                             -- and the populated by InferEffects.
+    , arrOut:: t             -- ^ Output type for the function.
+    , locRets :: [LocRet]    -- ^ L2B feature: multi-valued returns.
+    }
   deriving (Read,Show,Eq,Ord, Generic, NFData)
 
 -- | The side-effect of evaluating a function.
