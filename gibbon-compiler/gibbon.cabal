@@ -147,10 +147,12 @@ test-suite test-gibbon
                        filepath, directory, process,
                        mtl,
                        srcloc,
+                       mtl, transformers,
                        tasty, tasty-hunit, tasty-th
   other-modules:
                 RouteEnds2
                 InferEffects2
+                InferLocations2
                 Unariser
                 Compiler
                 L2.Typecheck
