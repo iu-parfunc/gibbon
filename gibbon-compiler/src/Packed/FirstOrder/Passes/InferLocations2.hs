@@ -276,6 +276,16 @@ inferExp env@FullEnv{dataDefs}
                   unify d loc
                             (return (e', _))
                             (copy (e',ty) d)
+
+    L1.MkProdE ls ->
+      case dest of
+        NoDest -> err $ "Expected destination(s) for expression"
+        SingleDest d -> case ls of
+                          [e] -> do (e',ty) <- inferExp env e dest
+                                    return (lc$ MkProdE [e'], ty)
+                          _ -> err $ "Cannot match single destination to tuple"
+        TupleDest ds -> do results <- mapM (\(e,d) -> inferExp env e d) $ zip ls ds
+                           return (lc$ MkProdE (map fst results), ProdTy (map snd results))
           
     L1.LitE n -> return (lc$ LitE n, IntTy)
 
