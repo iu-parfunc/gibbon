@@ -230,9 +230,11 @@ type InferState = M.Map LocVar UnifyLoc
 
 data UnifyLoc = FixedLoc Var
               | FreshLoc Var
+                deriving Show
 
 data Failure = FailUnify Ty2 Ty2
              | FailInfer L1.Exp1
+               deriving Show
 
 -- | Fresh var
 freshLocVar :: String -> TiM LocVar
@@ -250,6 +252,11 @@ finalLocVar v = do
 fresh :: TiM LocVar
 fresh = do
   freshLocVar "loc"
+
+freshUnifyLoc :: TiM UnifyLoc
+freshUnifyLoc = do
+  l <- fresh
+  return $ FreshLoc l
 
 lookupUnifyLoc :: LocVar -> TiM UnifyLoc
 lookupUnifyLoc l = do
@@ -385,7 +392,7 @@ unify v1 v2 success fail = do
            success
     (FreshLoc l1, FreshLoc l2) ->
         do assocLoc l1 (FreshLoc l2)
-           success  
+           success
 
 -- | The copy repair tactic:
 copy :: Result -> LocVar -> TiM Result
@@ -436,4 +443,52 @@ t0 = fst$ runSyM 0 $
 
 --  id  :: Tree -> Tree
 --  id' :: forall l1 in r1, l2 in r2 . Tree l1 -> Tree l2
-              
+
+
+-- some basic tests of unification, some should succeed and others should fail
+utest1 = runSyM 0 $ St.runStateT (runExceptT m) M.empty
+    where m = do
+            u1 <- fixLoc "a"
+            u2 <- fixLoc "b"
+            l1 <- fresh 
+            l2 <- fresh
+            assocLoc l1 u1
+            assocLoc l2 u2 
+            unify l1 l2 (return True) (return False)
+
+utest2 = runSyM 0 $ St.runStateT (runExceptT m) M.empty
+    where m = do
+            u1 <- fixLoc "a"
+            u2 <- fixLoc "b"
+            l1 <- fresh 
+            l2 <- fresh
+            assocLoc l1 u1
+            assocLoc l2 u1 
+            unify l1 l2 (return True) (return False)
+
+utest3 = runSyM 0 $ St.runStateT (runExceptT m) M.empty
+    where m = do
+            u1 <- fixLoc "a"
+            u2 <- fixLoc "b"
+            u3 <- freshUnifyLoc
+            l1 <- fresh 
+            l2 <- fresh
+            l3 <- fresh
+            assocLoc l1 u1
+            assocLoc l2 u2
+            assocLoc l3 u3
+            unify l1 l3 (unify l2 l3 (return True) (return False)) (return False)
+
+utest4 = runSyM 0 $ St.runStateT (runExceptT m) M.empty
+    where m = do
+            u1 <- fixLoc "a"
+            u2 <- fixLoc "b"
+            u3 <- freshUnifyLoc
+            l1 <- fresh 
+            l2 <- fresh
+            l3 <- fresh
+            l4 <- fresh
+            assocLoc l1 u1
+            assocLoc l2 u2
+            assocLoc l3 u3
+            unify l1 l3 (unify l4 l2 (return True) (return False)) (return False)
