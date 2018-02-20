@@ -237,9 +237,8 @@ data Failure = FailUnify Ty2 Ty2
                deriving Show
 
 -- | Fresh var
-freshLocVar :: String -> TiM LocVar
-freshLocVar m = lift$ lift$
-                gensym (toVar m)
+freshLocVar :: String -> SyM LocVar
+freshLocVar m = gensym (toVar m)
 
 finalLocVar :: LocVar -> TiM UnifyLoc
 finalLocVar v = do
@@ -251,7 +250,7 @@ finalLocVar v = do
 
 fresh :: TiM LocVar
 fresh = do
-  freshLocVar "loc"
+  lift $ lift $ freshLocVar "loc"
 
 freshUnifyLoc :: TiM UnifyLoc
 freshUnifyLoc = do
@@ -332,7 +331,7 @@ inferExp env@FullEnv{dataDefs}
 
     L1.CaseE ex ls -> do 
       -- Case expressions introduce fresh destinations for the scrutinee:
-      loc <- freshLocVar "scrut"
+      loc <- lift $ lift $ freshLocVar "scrut"
       (ex',ty2) <- inferExp env ex (Just loc)
       let src = locOfTy ty2
       pairs <- mapM (doCase src dest) ls
