@@ -54,7 +54,7 @@ import           Packed.FirstOrder.Passes.Flatten        (flattenL1, flattenL2, 
 import           Packed.FirstOrder.Passes.InlineTriv     (inlineTriv)
 
 import           Packed.FirstOrder.Passes.DirectL3       (directL3)
-import           Packed.FirstOrder.Passes.InferLocations (inferLocs)
+import           Packed.FirstOrder.Passes.InferLocations2 (inferLocs)
 import           Packed.FirstOrder.Passes.InferEffects2  (inferEffects)
 import           Packed.FirstOrder.Passes.RouteEnds2     (routeEnds)
 import           Packed.FirstOrder.Passes.Cursorize4     (cursorize)

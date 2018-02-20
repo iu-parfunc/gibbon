@@ -235,13 +235,18 @@ freshLocVar m = -- lift$ lift$
 -- type, which includes/implies its location.
 type Result = (L Exp2, Ty2)
 
+inferLocs :: L1.Prog -> SyM L2.Prog
+inferLocs = _
+
+    
 -- | A destination is Nothing for scalar values (Bool, Int...)
 type Dest = (Maybe LocVar)
     
 -- | We proceed in a destination-passing style given the target region
 -- into which we must produce the resulting value.
 inferExp :: FullEnv -> (L L1.Exp1) -> Dest -> TiM Result
-inferExp env lex0@(L sl1 ex0) dest =
+inferExp env@FullEnv{dataDefs}
+         lex0@(L sl1 ex0) dest =
   let lc = L sl1 in -- Tag the same location back on.
   case ex0 of
     L1.VarE v ->
@@ -257,10 +262,11 @@ inferExp env lex0@(L sl1 ex0) dest =
           
     L1.LitE n -> return (lc$ LitE n, IntTy)
 
-    L1.DataConE k ls -> do
+    L1.DataConE () k ls -> do
       let Just d = dest 
-      ls' <- mapM (\ e -> fmap snd (inferExp e dest)) ls
-      return (DataConE d k ls', PackedTy (getTyOfDataCon k) d)
+      ls' <- mapM (\ e -> (inferExp env e dest)) ls
+      return (lc$ DataConE d k [ e' | (e',_)  <- ls'],
+              PackedTy (getTyOfDataCon dataDefs k) d)
     
     L1.IfE a b c@(L _ ce) -> do
        -- Here we blithely assume BoolTy because L1 typechecking has already passed:

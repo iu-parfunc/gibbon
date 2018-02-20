@@ -41,7 +41,7 @@ library
                   Packed.FirstOrder.Passes.Flatten
                   Packed.FirstOrder.Passes.InlineTriv
                   Packed.FirstOrder.Passes.DirectL3
-                  Packed.FirstOrder.Passes.InferLocations
+--                  Packed.FirstOrder.Passes.InferLocations
                   Packed.FirstOrder.Passes.InferLocations2
                   Packed.FirstOrder.Passes.InferEffects2
                   Packed.FirstOrder.Passes.RouteEnds2
