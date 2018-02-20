@@ -242,50 +242,6 @@ data Failure = FailUnify Ty2 Ty2
              | FailInfer L1.Exp1
                deriving (Show, Eq)
 
--- | Fresh var
-freshLocVar :: String -> SyM LocVar
-freshLocVar m = gensym (toVar m)
-
-finalLocVar :: LocVar -> TiM UnifyLoc
-finalLocVar v = do
-  m <- lift $ St.get
-  case M.lookup v m of
-    Nothing -> return (FreshLoc v)
-    Just (FixedLoc v') -> return (FixedLoc v')
-    Just (FreshLoc v') -> finalLocVar v'
-
-fresh :: TiM LocVar
-fresh = do
-  lift $ lift $ freshLocVar "loc"
-
-freshUnifyLoc :: TiM UnifyLoc
-freshUnifyLoc = do
-  l <- fresh
-  return $ FreshLoc l
-
-lookupUnifyLoc :: LocVar -> TiM UnifyLoc
-lookupUnifyLoc l = do
-  m <- lift $ St.get
-  case M.lookup l m of
-    Nothing -> do
-      l' <- fresh
-      lift $ St.put $ M.insert l (FreshLoc l') m
-      return $ FreshLoc l'
-    Just (FreshLoc l') -> finalLocVar l'
-    Just (FixedLoc l') -> return $ FixedLoc l'
-
-fixLoc :: LocVar -> TiM UnifyLoc
-fixLoc l = do
-  l' <- fresh
-  m <- lift $ St.get
-  lift $ St.put $ M.insert l (FixedLoc l') m
-  return $ FixedLoc l'
-
-assocLoc :: LocVar -> UnifyLoc -> TiM ()
-assocLoc l ul = do
-  m <- lift $ St.get
-  lift $ St.put $ M.insert l ul m
-
 ----------------------------------------
 
 -- | The result type for this pass.  Return a new expression and its
@@ -296,8 +252,11 @@ inferLocs :: L1.Prog -> SyM L2.Prog
 inferLocs = _
 
     
--- | A destination is Nothing for scalar values (Bool, Int...)
-type Dest = (Maybe LocVar)
+-- | Destination can be a single location var, a tuple of destinations,
+-- or nothing (for scalar values)
+data Dest = SingleDest LocVar
+          | TupleDest [Dest]
+          | NoDest
     
 -- | We proceed in a destination-passing style given the target region
 -- into which we must produce the resulting value.
@@ -309,25 +268,30 @@ inferExp env@FullEnv{dataDefs}
     L1.VarE v ->
       let e' = lc$ VarE v in
       case dest of
-        Nothing -> return (e', lookupVEnv v env)
-        Just d  -> do 
-          let (ty,loc) = (lookupVEnv   v env,
-                          lookupVarLoc v env)
-          unify d loc
-            (return (e', _))
-            (copy (e',ty) d)
+        NoDest -> return (e', lookupVEnv v env)
+        TupleDest ds -> err $ "TODO: handle tuple of destinations for VarE"
+        SingleDest d  -> do 
+                  let (ty,loc) = (lookupVEnv   v env,
+                                  lookupVarLoc v env)
+                  unify d loc
+                            (return (e', _))
+                            (copy (e',ty) d)
           
     L1.LitE n -> return (lc$ LitE n, IntTy)
 
-    L1.DataConE () k ls -> do
-      let Just d = dest 
-      ls' <- mapM (\ e -> (inferExp env e dest)) ls
-      return (lc$ DataConE d k [ e' | (e',_)  <- ls'],
-              PackedTy (getTyOfDataCon dataDefs k) d)
+    L1.DataConE () k ls ->
+      case dest of
+        NoDest -> err $ "Expected single location destination for DataConE"
+        TupleDest _ds -> err $ "Expected single location destination for DataConE"
+        SingleDest d -> do
+                  ls' <- mapM (\ e -> (inferExp env e dest)) ls
+                  return (lc$ DataConE d k [ e' | (e',_)  <- ls'],
+                            PackedTy (getTyOfDataCon dataDefs k) d)
     
     L1.IfE a b c@(L _ ce) -> do
        -- Here we blithely assume BoolTy because L1 typechecking has already passed:
-       (a',BoolTy) <- inferExp env a Nothing
+       (a',bty) <- inferExp env a NoDest
+       assumeEq bty BoolTy
        -- Here BOTH branches are unified into the destination, so
        -- there is no need to unify with eachother.
        (b',tyb)    <- inferExp env b dest
@@ -339,7 +303,7 @@ inferExp env@FullEnv{dataDefs}
     L1.CaseE ex ls -> do 
       -- Case expressions introduce fresh destinations for the scrutinee:
       loc <- lift $ lift $ freshLocVar "scrut"
-      (ex',ty2) <- inferExp env ex (Just loc)
+      (ex',ty2) <- inferExp env ex (SingleDest loc)
       let src = locOfTy ty2
       pairs <- mapM (doCase src dest) ls
       return (lc$ CaseE ex' (L.map fst pairs), snd (L.head pairs))
@@ -400,6 +364,49 @@ unify v1 v2 success fail = do
         do assocLoc l1 (FreshLoc l2)
            success
 
+freshLocVar :: String -> SyM LocVar
+freshLocVar m = gensym (toVar m)
+
+finalLocVar :: LocVar -> TiM UnifyLoc
+finalLocVar v = do
+  m <- lift $ St.get
+  case M.lookup v m of
+    Nothing -> return (FreshLoc v)
+    Just (FixedLoc v') -> return (FixedLoc v')
+    Just (FreshLoc v') -> finalLocVar v'
+
+fresh :: TiM LocVar
+fresh = do
+  lift $ lift $ freshLocVar "loc"
+
+freshUnifyLoc :: TiM UnifyLoc
+freshUnifyLoc = do
+  l <- fresh
+  return $ FreshLoc l
+
+lookupUnifyLoc :: LocVar -> TiM UnifyLoc
+lookupUnifyLoc l = do
+  m <- lift $ St.get
+  case M.lookup l m of
+    Nothing -> do
+      l' <- fresh
+      lift $ St.put $ M.insert l (FreshLoc l') m
+      return $ FreshLoc l'
+    Just (FreshLoc l') -> finalLocVar l'
+    Just (FixedLoc l') -> return $ FixedLoc l'
+
+fixLoc :: LocVar -> TiM UnifyLoc
+fixLoc l = do
+  l' <- fresh
+  m <- lift $ St.get
+  lift $ St.put $ M.insert l (FixedLoc l') m
+  return $ FixedLoc l'
+
+assocLoc :: LocVar -> UnifyLoc -> TiM ()
+assocLoc l ul = do
+  m <- lift $ St.get
+  lift $ St.put $ M.insert l ul m
+
 -- | The copy repair tactic:
 copy :: Result -> LocVar -> TiM Result
 copy = _
@@ -412,6 +419,12 @@ locOfTy ty2 = err $ "Expected packed type, got "++show ty2
        
 err :: String -> a
 err m = error $ "InferLocations: " ++ m
+
+assumeEq :: (Eq a, Show a) => a -> a -> TiM ()
+assumeEq a1 a2 =
+    if a1 == a2
+    then return ()
+    else err $ "Expected these to be equal: " ++ (show a1) ++ ", " ++ (show a2)
 
        
 -- Notes on program repair:
