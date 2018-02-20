@@ -31,6 +31,7 @@ set -xe
 cd `dirname $0`
 top=`pwd`
 
+# HACK to get Jenkins to use the correct Racket version
 export PATH=/u/crest-team/opt/bin:$PATH
 echo $PATH
 hostname || echo "No hostname command, env says $HOSTNAME"
