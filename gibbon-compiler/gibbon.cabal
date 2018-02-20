@@ -144,6 +144,7 @@ test-suite test-gibbon
                        filepath, directory, process,
                        mtl,
                        srcloc,
+                       mtl, transformers,
                        tasty, tasty-hunit, tasty-th
   other-modules:
                 RouteEnds

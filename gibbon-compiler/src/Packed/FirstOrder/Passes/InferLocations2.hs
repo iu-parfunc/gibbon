@@ -13,6 +13,12 @@
 -- | Convert from L1 to L2, adding region constructs.
 
 module Packed.FirstOrder.Passes.InferLocations2
+    (-- data types
+     FullEnv, TiM, InferState, Result, UnifyLoc, Failure,
+     -- functions for manipulating locations
+     fresh, freshUnifyLoc, fixLoc, freshLocVar, finalLocVar, assocLoc,
+     -- main functions
+     unify, inferLocs, inferExp, convertFunTy)
     where
       
 {-
@@ -234,7 +240,7 @@ data UnifyLoc = FixedLoc Var
 
 data Failure = FailUnify Ty2 Ty2
              | FailInfer L1.Exp1
-               deriving Show
+               deriving (Show, Eq)
 
 -- | Fresh var
 freshLocVar :: String -> SyM LocVar
@@ -442,52 +448,3 @@ t0 = fst$ runSyM 0 $
 
 --  id  :: Tree -> Tree
 --  id' :: forall l1 in r1, l2 in r2 . Tree l1 -> Tree l2
-
-
--- some basic tests of unification, some should succeed and others should fail
-utest1 = runSyM 0 $ St.runStateT (runExceptT m) M.empty
-    where m = do
-            u1 <- fixLoc "a"
-            u2 <- fixLoc "b"
-            l1 <- fresh 
-            l2 <- fresh
-            assocLoc l1 u1
-            assocLoc l2 u2 
-            unify l1 l2 (return True) (return False)
-
-utest2 = runSyM 0 $ St.runStateT (runExceptT m) M.empty
-    where m = do
-            u1 <- fixLoc "a"
-            u2 <- fixLoc "b"
-            l1 <- fresh 
-            l2 <- fresh
-            assocLoc l1 u1
-            assocLoc l2 u1 
-            unify l1 l2 (return True) (return False)
-
-utest3 = runSyM 0 $ St.runStateT (runExceptT m) M.empty
-    where m = do
-            u1 <- fixLoc "a"
-            u2 <- fixLoc "b"
-            u3 <- freshUnifyLoc
-            l1 <- fresh 
-            l2 <- fresh
-            l3 <- fresh
-            assocLoc l1 u1
-            assocLoc l2 u2
-            assocLoc l3 u3
-            unify l1 l3 (unify l2 l3 (return True) (return False)) (return False)
-
-utest4 = runSyM 0 $ St.runStateT (runExceptT m) M.empty
-    where m = do
-            u1 <- fixLoc "a"
-            u2 <- fixLoc "b"
-            u3 <- freshUnifyLoc
-            l1 <- fresh 
-            l2 <- fresh
-            l3 <- fresh
-            l4 <- fresh
-            assocLoc l1 u1
-            assocLoc l2 u2
-            assocLoc l3 u3
-            unify l1 l3 (unify l4 l2 (return True) (return False)) (return False)
