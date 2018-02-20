@@ -11,7 +11,7 @@
 -- | Convert from L1 to L2.
 
 module Packed.FirstOrder.Passes.InferLocations
-    where
+    (inferLocs) where
 
 {-
   Basic Strategy

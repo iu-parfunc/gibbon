@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -157,7 +158,7 @@ data PreExp (ext :: * -> * -> *) loc dec =
   | Ext (ext loc dec) -- ^ Extension point for downstream language extensions.
 
   deriving (Show, Read, Eq, Ord, Generic, NFData, Functor)
-
+  -- Foldable, Traversable - need instances for L in turn
 
 instance NFData (PreExp e l d) => NFData (L (PreExp e l d)) where
   rnf (L loc a) = seq loc (rnf a)
@@ -329,7 +330,7 @@ data Prim ty
             -- type of the file being read.  The `Ty` tracks the type as the program evolvels
             -- (first PackedTy then CursorTy).  The TyCon tracks the original type name.
 
-  deriving (Read, Show, Eq, Ord, Generic, NFData, Functor)
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Functor, Foldable, Traversable)
 
 instance Out d => Out (Prim d)
 instance Out a => Out (UrTy a)
@@ -378,7 +379,7 @@ data UrTy a =
                    -- to an unkwown type or to a fraction of a complete value.
                    -- It is a machine pointer that can point to any byte.
 
-  deriving (Show, Read, Ord, Eq, Generic, NFData, Functor)
+  deriving (Show, Read, Ord, Eq, Generic, NFData, Functor, Foldable, Traversable)
 
 
 projTy :: (Out a) => Int -> UrTy a -> UrTy a

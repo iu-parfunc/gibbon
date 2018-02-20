@@ -93,6 +93,7 @@ import qualified Data.Sequence as Seq
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.List as L
+import qualified Data.Foldable as F
 -- import qualified Control.Monad.Trans.Writer.Strict as W
 import qualified Control.Monad.Trans.State.Strict as St
 import Control.Monad
@@ -201,19 +202,22 @@ lookupFEnv = undefined
 -- can instantiate an L1 function type into a polymorphic L2 one,
 -- mechanically.
 convertFunTy :: (L1.Ty1,L1.Ty1) -> SyM (ArrowTy Ty2)
-convertFunTy (from,to) = do 
-    -- let lvs = allLocVars inT ++ allLocVars outT
-    -- lvs' <- mapM freshenVar lvs
-    -- let subst = M.fromList (zip lvs lvs')
-    -- return $ ArrowTy (substTy subst inT)
-    --                  (substEffs subst effs)
-    --                  (substTy subst outT)
-    
-    return $ ArrowTy { locVars = _
-                     , arrIn   = _
+convertFunTy (from,to) = do
+    from' <- traverse (const (freshLocVar "l")) from
+    to'   <- traverse (const (freshLocVar "l")) to
+    -- For this simple version, we assume every location is in a separate region:
+    lrm1 <- toLRM from' Input
+    lrm2 <- toLRM to'   Output
+    return $ ArrowTy { locVars = lrm1 ++ lrm2
+                     , arrIn   = from'
                      , arrEffs = S.empty
-                     , arrOut  = _
+                     , arrOut  = to'
                      , locRets = [] }
+ where
+   toLRM ls md =
+       mapM (\v -> do r <- freshLocVar "r"
+                      return $ LRM v (VarR r) md)
+            (F.toList ls)
 
 -- Inference algorithm
 --------------------------------------------------------------------------------
@@ -276,13 +280,18 @@ assocLoc l ul = do
 -- type, which includes/implies its location.
 type Result = (L Exp2, Ty2)
 
+inferLocs :: L1.Prog -> SyM L2.Prog
+inferLocs = _
+
+    
 -- | A destination is Nothing for scalar values (Bool, Int...)
 type Dest = (Maybe LocVar)
     
 -- | We proceed in a destination-passing style given the target region
 -- into which we must produce the resulting value.
 inferExp :: FullEnv -> (L L1.Exp1) -> Dest -> TiM Result
-inferExp env lex0@(L sl1 ex0) dest =
+inferExp env@FullEnv{dataDefs}
+         lex0@(L sl1 ex0) dest =
   let lc = L sl1 in -- Tag the same location back on.
   case ex0 of
     L1.VarE v ->
@@ -298,11 +307,12 @@ inferExp env lex0@(L sl1 ex0) dest =
           
     L1.LitE n -> return (lc$ LitE n, IntTy)
 
-    L1.DataConE _ k ls -> do
+    L1.DataConE () k ls -> do
       let Just d = dest 
-      ls' <- mapM (\ e -> (inferExp env e dest) >>= (return . fst)) ls
-      return (lc$ DataConE d k ls', PackedTy (getTyOfDataCon (dataDefs env) k) d)
-
+      ls' <- mapM (\ e -> (inferExp env e dest)) ls
+      return (lc$ DataConE d k [ e' | (e',_)  <- ls'],
+              PackedTy (getTyOfDataCon dataDefs k) d)
+    
     L1.IfE a b c@(L _ ce) -> do
        -- Here we blithely assume BoolTy because L1 typechecking has already passed:
        (a',BoolTy) <- inferExp env a Nothing
