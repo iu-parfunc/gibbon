@@ -37,9 +37,8 @@ type PotentialsList = [DefTableEntry]
 --Rewrite this using a case .. will look nicer i think!
 
 buildDefTable:: Exp1 -> DefTable ->DefTable
-
 buildDefTable ex table = 
-  case ex of
+  case (ex) of
     VarE (Var sym) ->  M.update f sym table 
                        where f (DefTableEntry  def fun_uses c) = Just ( DefTableEntry def fun_uses (c+1))          
  
@@ -86,7 +85,8 @@ buildDefTable ex table =
 
 
 
-findPotentials:: DefTable -> PotentialsList
+
+findPotentials :: DefTable -> PotentialsList
 findPotentials table =
   M.foldrWithKey f ([]) table 
   where f sym entry@(DefTableEntry _ fun_uses use_count ) ls = if ((L.length fun_uses)==1) then entry:ls  else  ls
@@ -119,7 +119,7 @@ inline inlined_fun outer_fun arg_pos  =
                  funBody = substE old_exp (funBody inlined_fun) (funBody outer_fun) }
 
 
--- **** THERE IS AN ASSUMPTION THAT DataConstE takes only list of variable references ( no nested pattern matching) 
+--  THERE IS AN ASSUMPTION THAT DataConstE takes only list of variable references ( no nested pattern matching) 
 simplifyCases :: FunDef Ty1 ( L Exp1) -> FunDef Ty1 (L Exp1)
 simplifyCases function = 
   function {funBody = rec ( funBody function) }
@@ -152,8 +152,9 @@ simplifyCases function =
                   _            -> L l ex
 
 
--- this one as well assumes that one arg functions (outer and inner )
-rewriteSeqCalls:: (Var, Var, Int,Var )-> DefTable ->FunDef Ty1 ( L Exp1)  ->FunDef Ty1 ( L Exp1) 
+-- this one as well assumes that one arg  (outer and inner )
+
+rewriteSeqCalls :: (Var, Var, Int,Var )-> DefTable ->FunDef Ty1 ( L Exp1)  ->FunDef Ty1 ( L Exp1) 
 rewriteSeqCalls rule@(outerName, innerName, argPos, newName)  defTable fun = 
  fun{ funBody=rec (funBody fun)}where
        rec (L l ex ) = case ex of 
@@ -189,6 +190,36 @@ rewriteSeqCalls rule@(outerName, innerName, argPos, newName)  defTable fun =
 
                           otherwise -> L l ex 
 
+rewriteMergedAsRec :: ( FunDef Ty1 ( L Exp1)) ->[Var] ->( FunDef Ty1 ( L Exp1))
+rewriteMergedAsRec funDef ls = funDef{funBody = (rewriteMergedFunctions (funBody funDef ) funDef ls )}
+
+rewriteMergedFunctions ::   L Exp1 -> ( FunDef Ty1 ( L Exp1)) -> [Var] -> L Exp1
+rewriteMergedFunctions body newFun oldCalls = 
+    (rec  body  M.empty)  where
+       rec (L l ex) mp = 
+              case (ex) of 
+                    p@(LetE (Var y, loc, t,rhs@(L _ (AppE f _ (L l (VarE x) )) )) body) ->
+                          case (L.elemIndex f oldCalls ) of 
+                                   Nothing -> L l $ LetE (Var y, loc, t, (rec rhs mp))  (rec body mp) 
+                                   Just i  -> case (M.lookup x mp) of
+                                             Nothing  -> let newVar =toVar ((fromVar x) L.++ "_unq_") in 
+                                                           let newMp = M.insert x newVar mp in
+                                                              L l $ LetE (newVar, [], (funRetTy newFun), (L l  (AppE  (funName newFun) [] ( L l (VarE x) )))) (rec (L l p) newMp) 
+                                             
+                                             Just k   ->  L l $ LetE (Var y, loc, t, (L l (ProjE i  (L l $ VarE k)))) ( rec body mp)
+
+                    AppE name loc e          ->  L l $ AppE name loc (rec e mp)  
+                    PrimAppE x ls            ->  L l $ PrimAppE x (L.map f ls) where f item = (rec item mp)
+                    LetE (v,loc,t,rhs) bod   ->  L l $ LetE (v,loc,t, (rec rhs mp)) (rec bod mp) 
+                    IfE e1 e2 e3             ->  L l $ IfE (rec e1 mp) ( rec e2 mp) ( rec e3 mp)
+                    MkProdE ls               ->  L l $ MkProdE (L.map (\x-> (rec x mp)) ls) 
+                    ProjE index exp          ->  L l $ ProjE index (rec exp mp)
+                    CaseE e1 ls1             ->  L l $ CaseE ( rec e1  mp) (L.map f ls1) where f (dataCon,x,exp) = (dataCon, x, (rec exp mp))  
+                    DataConE loc datacons ls ->  L l $ DataConE loc datacons (L.map (\x-> (rec x mp)) ls)
+                    TimeIt e d b             ->  L l $ TimeIt ( rec e mp) d b 
+                    otherwise                -> L l ex
+
+
 removeUnusedDefs :: FunDef Ty1 ( L Exp1) -> FunDef Ty1 ( L Exp1) 
 removeUnusedDefs f =
  f{funBody= rec (funBody f)} where
@@ -205,7 +236,7 @@ removeUnusedDefs f =
 
                     otherwise -> L l ex 
 
-mergeListOfFunctions :: DDefs Ty1 -> [FunDef Ty1 ( L Exp1)] ->  FunDef Ty1 ( L Exp1) 
+mergeListOfFunctions :: DDefs Ty1 -> [FunDef Ty1 ( L Exp1)] ->  (FunDef Ty1 ( L Exp1), [Var] )
 mergeListOfFunctions  ddefs ls = do
   let newName = L.foldl  appendName "" ls where appendName tmp function = (tmp  L.++ (fromVar (funName function)))  
   -- we want to prepare the body of each function seperatly now
@@ -242,8 +273,10 @@ mergeListOfFunctions  ddefs ls = do
                                                                   where partialList =  L.map (\m -> case ( M.lookup dataCons m) of 
                                                                                                         (Just a ) -> a 
                                                                                                         (Nothing) ->error "ooopsa1")  step2 
-  --let reduce = L.fold                                                                                             
-  FunDef  (toVar ("merged__" L.++ newName) )newArgs newRetType (l reduceStep) 
+  --let reduce = L.fold  
+
+  let funNames = L.map (\f -> funName f ) ls                                                                                          
+  (FunDef  (toVar ("merged__" L.++ newName) )newArgs newRetType (l reduceStep) , funNames)
   --let newArgs = ... 
 
 renameFunction:: FunDef Ty1 ( L Exp1) -> Var -> FunDef Ty1 ( L Exp1) 
@@ -258,7 +291,7 @@ renameFunction function newName =
                   IfE e1 e2 e3             ->  L l $ IfE (rec e1) ( rec e2) ( rec e3)
                   MkProdE ls               ->  L l $ MkProdE (L.map (\x-> rec x) ls) 
                   ProjE index exp          ->  L l $ ProjE index (rec exp)
-                  CaseE e1 ls1             ->  L l $ CaseE e1 (L.map f ls1) where f (dataCon,x,exp) = (dataCon, x, (rec exp))  
+                  CaseE e1 ls1             ->  L l $ CaseE (rec e1)  (L.map f ls1) where f (dataCon,x,exp) = (dataCon, x, (rec exp))  
                   DataConE loc datacons ls ->  L l $ DataConE loc datacons (L.map (\x-> rec x) ls)
                   TimeIt e d b             ->  L l $ TimeIt ( rec e) d b 
                   otherwise                -> L l ex
@@ -366,7 +399,7 @@ fusion2 (L1.Prog defs funs main) = do
   let update6         = M.insert  rewriteValName rewriteVal update5
   let useTable        = buildUseTable rewriteVal
   ----- The New Suff ... need to be isolated in fuctions to compose them next 
-  let useTableFiltered = M.filter f useTable where f a = if (L.length a) =2 then True else False  
+  let useTableFiltered = M.filter f useTable where f a = if ((L.length a) == 2) then True else False  
 
   --move this to a function
   let pairsToMerge    = M.foldl f S.empty useTableFiltered where
@@ -381,10 +414,16 @@ fusion2 (L1.Prog defs funs main) = do
                           Just fundef   -> fundef:ls
   -- create a list of merged function 
   let mergedFunctions = L.map (mergeListOfFunctions defs) functionsToMerge
-  let update7 = L.foldr (\funDef mp -> M.insert (funName funDef) funDef mp ) update6 mergedFunctions
+
+
+  -- for each function in the set of merged function right it in terms of itself!!!
+  let mergedFunctions2 = L.map (\(funDef,ls)-> ( (rewriteMergedAsRec funDef ls) ,ls)) mergedFunctions
+  let update7 = L.foldr (\(funDef,_) mp -> M.insert (funName funDef) funDef mp ) update6 mergedFunctions2
   
-  -- for now assume that the merged function are of length 2 ( 2 functions are merged at a time)
-  let rewrtieRules = L.foldr mergedFunctions () 
+  -- for now assume that the merged function are of length 2 ( 2 functions are merged at a time) only... mggm check line 369 above ..
+  -- for each pair of merged functions we want to construct a rewrite rule 
+
+ -- let rewrtieRules = L.foldr mergedFunctions () 
 
   --rewrite in each function with in update 7 
   -- Now we want to look with in the function for multiple traversal that traverse the input tree
