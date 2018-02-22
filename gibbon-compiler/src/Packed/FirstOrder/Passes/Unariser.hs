@@ -12,7 +12,6 @@ import Packed.FirstOrder.L1.Syntax hiding (FunDef, Prog(..), FunDefs)
 import Packed.FirstOrder.L3.Syntax
 import Packed.FirstOrder.GenericOps
 import Text.PrettyPrint.GenericPretty
-import Debug.Trace
 
 
 -- | This pass gets ready for Lower by converting most uses of
@@ -105,7 +104,6 @@ unariserExp ddfs stk env2 (L p ex) = L p <$>
               ity = projTy i ety
               fty = flattenTy ity
           e' <- go env2 e
-          -- trace (sdoc (j,ity,fty)) (return ())
           case unLoc e' of
             MkProdE xs -> return $ unLoc (xs ! j)
             _ ->
@@ -138,8 +136,10 @@ unariserExp ddfs stk env2 (L p ex) = L p <$>
 
     IfE a b c  -> IfE <$> go env2 a <*> go env2 b <*> go env2 c
 
-    CaseE e ls -> CaseE <$> go env2 e <*>
-                    sequence [ (k,ls',) <$> go env2 x | (k,ls',x) <- ls ]
+    CaseE e ls -> do
+      -- Add pattern matched vars to the environment
+      let f dcon vlocs = extendsVEnv (M.fromList $ zip (map fst vlocs) (lookupDataCon ddfs dcon)) env2
+      CaseE <$> go env2 e <*> sequence [ (k,ls',) <$> go (f k ls') x | (k,ls',x) <- ls ]
 
     DataConE loc dcon args ->
       case stk of
@@ -156,8 +156,6 @@ unariserExp ddfs stk env2 (L p ex) = L p <$>
     MapE{} -> __
     FoldE{} -> __
 
-    oth -> error $ "TODO:\n" ++ sdoc oth
-
   where
     go = unariserExp ddfs stk
 
@@ -167,9 +165,9 @@ unariserExp ddfs stk env2 (L p ex) = L p <$>
     discharge (ix:rst) (L _ (MkProdE ls)) = discharge rst (ls ! ix)
     discharge (ix:rst) e = discharge rst (l$ ProjE ix e)
 
-    l ! i = if i <= length l
-            then l!!i
-            else error$ "unariserExp: attempt to project index "++show i++" of list:\n "++sdoc l
+    ls ! i = if i <= length ls
+             then ls!!i
+             else error$ "unariserExp: attempt to project index "++show i++" of list:\n "++sdoc ls
 
 
 lookupVar :: Env2 Ty3 -> Var -> Ty3
