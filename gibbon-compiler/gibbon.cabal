@@ -91,7 +91,8 @@ library
                 symbol,
                 srcloc,
                 transformers,
-                tuple
+                tuple,
+                vector
 -- Brings in lots of ekmett dependencies:
 --              , either
 
