@@ -139,7 +139,7 @@ instance NFData LRM where
 
 -- | A designated doesn't-really-exist-anywhere location.
 dummyLRM :: LRM
-dummyLRM = LRM "l_dummy" GlobR Input
+dummyLRM = LRM "l_dummy" GlobR Input  
 
 -- | String concatenation on variables.
 varAppend :: Var -> Var -> Var
