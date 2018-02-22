@@ -4,7 +4,7 @@
 
 -- | Tests for RouteEnds2
 --
-module RouteEnds2 where
+module RouteEnds where
 
 import Data.Loc
 import Data.Set as S
@@ -18,8 +18,8 @@ import Packed.FirstOrder.Common hiding (FunDef)
 import Packed.FirstOrder.L2.Syntax as L2
 import Packed.FirstOrder.L2.Examples
 import Packed.FirstOrder.L2.Typecheck
-import Packed.FirstOrder.Passes.RouteEnds2
-import Packed.FirstOrder.Passes.InferEffects2
+import Packed.FirstOrder.Passes.RouteEnds
+import Packed.FirstOrder.Passes.InferEffects
 import Packed.FirstOrder.L1.Syntax hiding (Prog, FunDef, ddefs, fundefs, mainExp, add1Prog)
 
 test1 :: L Exp2
