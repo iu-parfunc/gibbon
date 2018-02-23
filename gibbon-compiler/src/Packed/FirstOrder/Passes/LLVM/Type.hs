@@ -1,8 +1,8 @@
 module Packed.FirstOrder.Passes.LLVM.Type where
 
-import qualified LLVM.General.AST as AST
-import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Type as T
+import qualified LLVM.AST as AST
+import qualified LLVM.AST.Constant as C
+import qualified LLVM.AST.Type as T
 
 class TypeOf x where
   typeOf :: x -> T.Type
@@ -12,17 +12,18 @@ instance TypeOf AST.Operand where
     case op of
       (AST.LocalReference ty _) -> ty
       (AST.ConstantOperand c)   -> typeOf c
-      op -> error $ "typeOf Op: Not implemented " ++ show op
+      _ -> error $ "typeOf Op: Not implemented " ++ show op
 
 instance TypeOf C.Constant where
   typeOf c =
     case c of
       (C.Int bits _) -> T.IntegerType bits
-      c -> error $ "typeOf Constant: Not implemented " ++ show c
+      _ -> error $ "typeOf Constant: Not implemented " ++ show c
 
 data KindOf = IntegerK | PointerK | NamedK
 
 kindOf :: T.Type -> KindOf
-kindOf (T.IntegerType x) = IntegerK
+kindOf (T.IntegerType _) = IntegerK
 kindOf (T.PointerType _ _) = PointerK
 kindOf (T.NamedTypeReference (AST.Name _)) = NamedK
+kindOf oth = error $ "kindOf: Unexpected " ++ show oth

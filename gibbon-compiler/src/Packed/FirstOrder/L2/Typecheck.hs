@@ -29,7 +29,9 @@ import Data.Set as S
 import Data.List as L
 import Data.Loc
 import Data.Map as M
+import Data.Maybe
 import Text.PrettyPrint.GenericPretty
+import Debug.Trace
 
 import Packed.FirstOrder.Common
 import Packed.FirstOrder.L2.Syntax as L2
@@ -44,7 +46,7 @@ data LocConstraint = StartOfC LocVar Region -- ^ Location is equal to start of t
                                     LocVar  -- ^ Location which is before
                                     LocVar  -- ^ Location which is after
                    | InRegionC LocVar Region -- ^ Location is somewher within this region.
-  deriving (Read, Show, Eq, Ord, Generic, NFData)
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
 
 -- | A set of constraints (which are re-used location expressions)
@@ -61,7 +63,7 @@ data LocConstraint = StartOfC LocVar Region -- ^ Location is equal to start of t
 -- While the first four can appear in syntax before RouteEnds, the fifth
 -- (fromEnd) should only be introduced by the RouteEnds pass.
 newtype ConstraintSet = ConstraintSet { constraintSet :: S.Set LocConstraint }
-  deriving (Read, Show, Eq, Ord, Generic, NFData)
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
 -- | A location has been aliased if we have taken an offset of it while introducing a new
 -- location. These show up in the LocationTypeState below.
@@ -79,7 +81,7 @@ newtype LocationTypeState = LocationTypeState
       tsmap :: M.Map LocVar (Modality,Aliased)
       -- ^ Each location has a modality and may have had an offset taken.
     }
-    deriving (Read,Show,Eq,Ord, Generic, NFData)
+    deriving (Read,Show,Eq,Ord, Generic, NFData, Out)
 
 -- | A region set is (as you would expect) a set of regions. They are the
 -- regions that are currently live while checking a particular expression.
@@ -157,7 +159,7 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
                  handleTS ts _ = return ts
              tstate' <- foldM handleTS tstate $ zip ls $ L.map (\(LRM _ _ m) -> m) locVars
 
-             -- use locVars used at call-site in the returned type
+             -- Use locVars used at call-site in the returned type
              -- TODO: check this
              let arrOutMp = M.fromList $ zip (L.map (\(LRM l _ _) -> l) locVars) ls
                  arrOut'  = substTy arrOutMp arrOut
@@ -173,28 +175,27 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
                    len0 = checkLen exp pr 0 es
                    len3 = checkLen exp pr 3 es
                case pr of
-                 L1.AddP -> do len2
-                               ensureEqualTy exp IntTy (tys !! 0)
-                               ensureEqualTy exp IntTy (tys !! 1)
-                               return $ (IntTy,tstate)
-                 L1.SubP -> do len2
-                               ensureEqualTy exp IntTy (tys !! 0)
-                               ensureEqualTy exp IntTy (tys !! 1)
-                               return $ (IntTy,tstate)
-                 L1.MulP -> do len2
-                               ensureEqualTy exp IntTy (tys !! 0)
-                               ensureEqualTy exp IntTy (tys !! 1)
-                               return $ (IntTy,tstate)
-                 L1.EqSymP -> do len2
-                                 ensureEqualTy exp IntTy (tys !! 0)
-                                 ensureEqualTy exp IntTy (tys !! 1)
-                                 return $ (BoolTy,tstate)
-                 L1.EqIntP -> do len2
-                                 ensureEqualTy exp IntTy (tys !! 0)
-                                 ensureEqualTy exp IntTy (tys !! 1)
-                                 return $ (BoolTy,tstate)
-                 L1.MkTrue  -> do len0; return $ (BoolTy,tstate)
-                 L1.MkFalse -> do len0; return $ (BoolTy,tstate)
+                 _ | pr `elem` [L1.AddP, L1.SubP, L1.MulP, L1.DivP, L1.ModP] -> do
+                       len2
+                       ensureEqualTy exp IntTy (tys !! 0)
+                       ensureEqualTy exp IntTy (tys !! 1)
+                       return $ (IntTy,tstate)
+
+                 _ | pr `elem` [L1.EqIntP, L1.LtP, L1.GtP] -> do
+                       len2
+                       ensureEqualTy exp IntTy (tys !! 0)
+                       ensureEqualTy exp IntTy (tys !! 1)
+                       return $ (BoolTy,tstate)
+
+                 _ | pr `elem` [L1.MkFalse, L1.MkTrue] -> do
+                       len0
+                       return $ (BoolTy,tstate)
+
+                 L1.EqSymP -> do
+                   len2
+                   ensureEqualTy exp IntTy (tys !! 0)
+                   ensureEqualTy exp IntTy (tys !! 1)
+                   return $ (BoolTy,tstate)
 
                  L1.SymAppend  -> do
                    len2
@@ -244,6 +245,8 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
                  L1.MkNullCursor -> do
                    return (CursorTy, tstate)
 
+                 oth -> error $ "L2.tcExp : PrimAppE : TODO " ++ sdoc oth
+
 
       LetE (v,_ls,ty,e1) e2 -> do
 
@@ -286,8 +289,11 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
 
                (ty,tstate) <- recur tstatein e
                let PackedTy _dc lin = ty
+               -- We need to know the "region" of all the vars (and locations) pattern matched by this case expresssion.
+               -- The "region" is the same as that of the case scrutinee.
+               reg <- getRegion e constrs lin
                ensureMatchCases ddfs exp ty brs
-               (tys,tstate') <- tcCases ddfs env funs constrs regs tstate lin brs
+               (tys,tstate') <- tcCases ddfs env funs constrs regs tstate lin reg brs
                foldM_ (ensureEqualTy exp) (tys !! 0) (tail tys)
                return (tys !! 0,tstate')
 
@@ -303,7 +309,8 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
 
                  sequence_ [ ensureEqualTyNoLoc exp ty1 ty2
                            | (ty1,ty2) <- zip args tys ]
-                 ensureDataCon exp l tys constrs
+                 -- TODO: need to fix this check
+                 -- ensureDataCon exp l tys constrs
                  tstate2 <- switchOutLoc exp tstate1 l
                  return (PackedTy dcty l, tstate2)
 
@@ -350,14 +357,21 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
                  AfterVariableLE x l1 -> do
 
                           r <- getRegion exp constrs l1
-                          (xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ L NoLoc $ VarE x
-                          ensurePackedLoc exp xty l1
+                          (_xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ L NoLoc $ VarE x
+                          -- NOTE: We now allow aliases (offsets) from scalar vars too. So we can leave out this check
+                          -- ensurePackedLoc exp xty l1
                           let tstate2 = extendTS v (Output,True) $ setAfter l1 tstate1
                           let constrs1 = extendConstrs (InRegionC v r) $
                                          extendConstrs (AfterVariableC x l1 v) constrs
                           (ty,tstate3) <- tcExp ddfs env funs constrs1 regs tstate2 e
                           tstate4 <- removeLoc exp tstate3 v
                           return (ty,tstate4)
+
+                 FromEndLE _l1 -> do
+                   -- TODO: This is the bare minimum which gets the examples typechecking again.
+                   -- Need to figure out if we need to check more things here
+                   (ty,tstate1) <- tcExp ddfs env funs constrs regs tstatein e
+                   return (ty,tstate1)
 
                  _ -> throwError $ GenericTC "Invalid letloc form" exp
 
@@ -375,21 +389,23 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
 -- | Helper function to check case branches.
 tcCases :: DDefs Ty2 -> Env2 Ty2 -> NewFuns
         -> ConstraintSet -> RegionSet -> LocationTypeState -> LocVar
-        -> [(DataCon, [(Var,LocVar)], Exp)]
+        -> Region -> [(DataCon, [(Var,LocVar)], Exp)]
         -> TcM ([Ty2], LocationTypeState)
-tcCases ddfs env funs constrs regs tstatein lin ((dc, vs, e):cases) = do
+tcCases ddfs env funs constrs regs tstatein lin reg ((dc, vs, e):cases) = do
 
   let argtys = zip vs $ lookupDataCon ddfs dc
       pairwise = zip argtys $ Nothing : (L.map Just argtys)
 
       -- Generate the new constraints to check this branch
       genConstrs (((_v1,l1),PackedTy _ _),Nothing) (lin,lst) =
-          (l1,(AfterConstantC 1 lin l1) : lst)
+          (l1,[AfterConstantC 1 lin l1, InRegionC l1 reg] ++ lst)
       genConstrs (((_v1,l1),PackedTy _ _),Just ((v2,l2),PackedTy _ _)) (_lin,lst) =
-          (l1,(AfterVariableC v2 l2 l1) : lst)
-      genConstrs (((_v1,l1),PackedTy _ _),Just _) (lin,lst) =
-          (l1,(AfterConstantC undefined lin l1) : lst)
-      genConstrs (_,_) (lin,lst) = (lin,lst)
+          (l1,[AfterVariableC v2 l2 l1, InRegionC l1 reg] ++ lst)
+      genConstrs (((_v1,l1),PackedTy _ _),Just ((_v2,_l2),IntTy)) (lin,lst) =
+        let sz = fromMaybe 1 (L1.sizeOf IntTy)
+        in (l1, [AfterConstantC sz lin l1, InRegionC l1 reg] ++ lst)
+      genConstrs (((_,l1),_),_) (lin,lst) =
+        (lin, (InRegionC l1 reg : lst))
 
       -- Generate the new location state map to check this branch
       genTS ((_v,l),PackedTy _ _) ts = extendTS l (Input,False) ts
@@ -413,10 +429,10 @@ tcCases ddfs env funs constrs regs tstatein lin ((dc, vs, e):cases) = do
   return (ty1:tyRest,tstatee')
 
     where recur = do
-            (tys,tstate2) <- tcCases ddfs env funs constrs regs tstatein lin cases
+            (tys,tstate2) <- tcCases ddfs env funs constrs regs tstatein lin reg cases
             return (tys,tstate2)
 
-tcCases _ _ _ _ _ ts _ [] = return ([],ts)
+tcCases _ _ _ _ _ ts _ _ [] = return ([],ts)
 
 tcProj :: Exp -> Int -> Ty2 -> TcM Ty2
 tcProj _ i (ProdTy tys) = return $ tys !! i
@@ -569,10 +585,22 @@ ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
 -- | Ensure that two types are equal, ignoring the locations if they are packed.
 -- Includes an expression for error reporting.
 ensureEqualTyNoLoc :: Exp -> Ty2 -> Ty2 -> TcM Ty2
-ensureEqualTyNoLoc exp (PackedTy dc1 ty1) (PackedTy dc2 ty2) =
-    if dc1 == dc2 then return (PackedTy dc1 ty1)
-    else ensureEqualTy exp (PackedTy dc1 ty1) (PackedTy dc2 ty2)
-ensureEqualTyNoLoc exp ty1 ty2 = ensureEqualTy exp ty1 ty2
+ensureEqualTyNoLoc exp ty1 ty2 =
+  case (ty1,ty2) of
+    (PackedTy dc1 _, PackedTy dc2 _) -> if dc1 == dc2
+                                        then return ty1
+                                        else ensureEqualTy exp ty1 ty2
+    (ProdTy tys1, ProdTy tys2) -> do
+        checks <- return $ L.map (\(ty1,ty2) -> ensureEqualTyNoLoc exp ty1 ty2) (zip tys1 tys2)
+        -- TODO: avoid runExcept here
+        forM_ checks $ \c -> do
+            let c' = runExcept c
+            case c' of
+              Left err -> throwError err
+              Right _  -> return ()
+        return ty1
+    _ -> ensureEqualTy exp ty1 ty2
+
 
 -- | Ensure that match cases make sense.
 -- Includes an expression for error reporting.
@@ -597,15 +625,20 @@ ensurePackedLoc exp ty l =
                        else throwError $ GenericTC ("Wrong location in type " ++ (show ty)) exp
       _ -> throwError $ GenericTC "Expected a packed type" exp
 
+-- need to check chain of aliased locations
+-- linit is the location in the type i.e lout653
+-- ensureAfterConstant expects l664 to be after lout653
+
 -- | Ensure the locations all line up with the constraints in a data constructor application.
 -- Includes an expression for error reporting.
 ensureDataCon :: Exp -> LocVar -> [Ty2] -> ConstraintSet -> TcM ()
-ensureDataCon exp linit tys cs = go Nothing linit tys
+ensureDataCon exp linit tys cs = trace (sdoc cs) (go Nothing linit tys)
     where go Nothing linit ((PackedTy dc l):tys) = do
             ensureAfterConstant exp cs linit l
             go (Just (PackedTy dc l)) l tys
 
           go Nothing linit (_ty:tys) = go Nothing linit tys
+
           go (Just (PackedTy _dc1 l1)) _linit ((PackedTy dc2 l2):tys) = do
             ensureAfterPacked exp cs l1 l2
             go (Just (PackedTy dc2 l2)) l2 tys
@@ -621,7 +654,8 @@ ensureDataCon exp linit tys cs = go Nothing linit tys
 ensureAfterConstant :: Exp -> ConstraintSet -> LocVar -> LocVar -> TcM ()
 ensureAfterConstant exp (ConstraintSet cs) l1 l2 =
     if L.any f $ S.toList cs then return ()
-    else throwError $ LocationTC "Expected after relationship" exp l1 l2
+    else throwError $ LocationTC "Expected after constant relationship" exp l1 l2
+    -- l1 is before l2
     where f (AfterConstantC _i l1' l2') = l1' == l1 && l2' == l2
           f _ = False
 
@@ -630,7 +664,7 @@ ensureAfterConstant exp (ConstraintSet cs) l1 l2 =
 ensureAfterPacked :: Exp -> ConstraintSet -> LocVar -> LocVar -> TcM ()
 ensureAfterPacked  exp (ConstraintSet cs) l1 l2 =
     if L.any f $ S.toList cs then return ()
-    else throwError $ LocationTC "Expected after relationship" exp l1 l2
+    else throwError $ LocationTC "Expected after packed relationship" exp l1 l2
     where f (AfterVariableC _v l1' l2') = l1' == l1 && l2' == l2
           f _ = False
 

@@ -42,7 +42,7 @@ tcExp ddfs env exp@(L p ex) =
             case (M.lookup v (fEnv env)) of
               Just ty -> ty
               Nothing -> error $ "Function not found: " ++ sdoc v ++ " while checking " ++
-                                 sdoc exp ++ " at " ++ show p
+                                 sdoc exp ++ "\nat " ++ sdoc p
 
       -- Check that the expression does not have any locations
       case locs of
@@ -63,7 +63,7 @@ tcExp ddfs env exp@(L p ex) =
 
       tys <- mapM go es
       case pr of
-        _ | pr `elem` [AddP, SubP, MulP]  -> do
+        _ | pr `elem` [AddP, SubP, MulP, DivP, ModP]  -> do
           len2
           _ <- ensureEqualTy (es !! 0) IntTy (tys !! 0)
           _ <- ensureEqualTy (es !! 1) IntTy (tys !! 1)
@@ -79,15 +79,11 @@ tcExp ddfs env exp@(L p ex) =
           _ <- ensureEqualTy (es !! 1) SymTy (tys !! 1)
           return BoolTy
 
-        EqIntP -> do
+        _ | pr `elem` [EqIntP, LtP, GtP] -> do
           len2
           _ <- ensureEqualTy (es !! 0) IntTy (tys !! 0)
           _ <- ensureEqualTy (es !! 1) IntTy (tys !! 1)
           return BoolTy
-
-        SizeParam -> do
-          len0
-          return IntTy
 
         SymAppend -> do
           len2
@@ -124,6 +120,10 @@ tcExp ddfs env exp@(L p ex) =
         ErrorP _str ty -> do
           len2
           return ty
+
+        SizeParam -> do
+          len0
+          return IntTy
 
         ReadPackedFile _fp _tycon ty -> do
           len3
@@ -261,12 +261,11 @@ data TCError exp = GenericTC String  exp
 instance (Out exp, Out (L exp)) => Out (TCError (L exp)) where
   doc tce =
     case tce of
-      GenericTC str (L p ex)    -> text str <+> text "in" $$
-                                   (text $ show p) <+> colon <+> doc ex
+      GenericTC str (L p ex)    -> text str $$ doc p <+> colon <+> doc ex
       VarNotFoundTC v (L p ex)  -> text "Var" <+> doc v <+> text "not found. Checking: " $$
-                                   (text $ show p) <+> colon <+> doc ex
+                                   doc p <+> colon <+> doc ex
       UnsupportedExpTC (L p ex) -> text "Unsupported expression:" $$
-                                   (text $ show p) <+> colon <+> doc ex
+                                   doc p <+> colon <+> doc ex
 
 type TcM a exp = Except (TCError exp) a
 

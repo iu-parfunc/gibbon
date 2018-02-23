@@ -288,17 +288,25 @@ withRepairTactic tactic p0@(L1.Prog defs funs main) = do
     -- Each top-level fundef body, and the main expression, are
     -- completely independent type-checking-and-error-recovery problems:
     let infer = inferExpWith tactic fullenv
-    main' <- mapM infer main
-    -- fundefs' :: M.Map Var (L1.FunDef Ty2) <- mapM (mapM (fmap fst . infer)) funs
-    -- fundefs' <- mapM (mapM (fmap fst . infer)) funs
+
+        doFunDef L1.FunDef{funName,funArg,funRetTy,funBody} = do
+          funty <- convertFunTy (snd funArg,funRetTy)
+          (funbod,_) <- infer funBody
+          return $ L2.FunDef { funname = funName
+                             , funty
+                             , funarg = fst funArg
+                             , funbod
+                             }
+    main'    <- mapM infer main
     fundefs' <- mapM doFunDef funs
     return $ Prog ddefs' fundefs' main'
  where
    ddefs' = fmap (fmap lame) defs
    Env2{vEnv,fEnv} = L1.progToEnv p0
-   lame :: L1.Ty1 -> Ty2
-   lame = fmap (const "")
 
+
+lame :: L1.Ty1 -> Ty2 -- TODO: remove the need for this.
+lame = fmap (const "")
           
 
 -- | Instantiate inferExp with a specific repair strategy.
@@ -311,14 +319,17 @@ inferExpWith tactic env ex = go (inferExp env ex return)
         (Left exn, _log) -> go (tactic exn) -- ^ Repair and retry.
         (Right res, _) -> return res   
              
--- | Trivial expressions never cause failures.
-doTriv :: FullEnv -> L1.Exp1 -> Exp2
-doTriv = _finishme
+-- -- | Trivial expressions never cause failures.
+-- doTriv :: FullEnv -> L1.Exp1 -> Result
+-- doTriv env ex =
+--   case ex of
+--     L1.VarE v -> (l$ VarE v, lookupVEnv v env)
+--     L1.LitE n -> (l$ LitE n, IntTy)
 
 
 -- | Multiple expressions.
 inferExps :: FullEnv -> [L L1.Exp1] -> Cont -> TiM Result
-inferExps = _fin
+inferExps = _finish
 
 
 type LsCont = [L Exp2] -> TiM Result
@@ -326,17 +337,32 @@ type LsCont = [L Exp2] -> TiM Result
 -- | Every type must either be fixed size, or be serialized data with
 -- an abstract location.
 sizeOrLoc :: Ty2 -> Either Int LocVar
-sizeOrLoc = undefined
+sizeOrLoc = _finishme
 
-addOffset f off = undefined
-    
+
+type RelativePosition = LocVar -> LocConstraint
+            
+addOffset :: RelativePosition -> Int -> RelativePosition
+addOffset f offset locvar =
+  case f locvar of
+    AfterConstantC n l1 l2 -> AfterConstantC (n+offset) l1 l2
+    AfterVariableC v l1 l2 -> _finish
+    x@StartOfC{}  -> err x
+    x@InRegionC{} -> err x
+  where
+    err x = error $ "addOffset: relaitive location should not be represented with: "++show x
+
+tagBytes :: Int
+tagBytes = 1
+
 -- | Takes the location of the tag and processes all the operands.
 --   We constrain each argument to have a location related to the previous.
 doDataConFields :: FullEnv -> LocVar -> [L L1.Exp1] -> LsCont -> TiM Result
 doDataConFields env lprv0 ls0 k0 =
-    go (T.AfterConstantC 1 lprv0) ls0 []
+    -- We start off just after the tag at the beginning of the data value:
+    go (T.AfterConstantC tagBytes lprv0) ls0 []
   where
-    go :: (LocVar -> LocConstraint) -> _ -> _ -> _
+    go :: RelativePosition -> _ -> _ -> _
     go _ [] acc = -- All fields processed.
        k0 (reverse acc)
     go lprev (nxt:rst) acc =
@@ -358,9 +384,11 @@ doDataConFields env lprv0 ls0 k0 =
 -- | inferExp, if it succeeds, discharges all fresh locations used with 'LetLoc' forms.
 -- If it fails, it returns a failure object containing a continuation.
 inferExp :: FullEnv -> (L L1.Exp1) -> Cont -> TiM Result
-inferExp env (L sl1 ex0) k =
+inferExp env lex0@(L sl1 ex0) k =
   let l = L sl1 in
   case ex0 of
+    -- L1.VarE v -> k (doTriv lex0)
+
     L1.VarE v -> k (l$ VarE v, lookupVEnv v env)
     L1.LitE n -> k (l$ LitE n, IntTy)
     L1.IfE a b c@(L _ ce) ->
@@ -428,7 +456,15 @@ inferExp env (L sl1 ex0) k =
      | otherwise -> err "Invariant violated.  LetE had nonempty bound locations."
 
     L1.AppE{} -> err $ "Expected flatten to name all function application results:\n "++show ex0
-    PrimAppE p ls -> err $ "Expected flatten to name all primapp results:\n "++show ex0
+    PrimAppE p ls ->
+        if all L1.isTrivial ls
+        then case ls of
+               [] -> k (l$ PrimAppE (prim p) [], primToTy p)
+               [x] -> inferExp env x $ \(x',_xty) -> k (l$ PrimAppE (prim p) [x'], primToTy p)
+               [x,y] -> inferExp env x $ \(x',_xty) -> inferExp env y $ \(y',_yty) ->
+                        k (l$ PrimAppE (prim p) [x',y'], primToTy p)
+               _ -> err $ "Unexpected number of arguments in primapp:\n"++show ex0
+        else err $ "Expected flatten to name all primapp results:\n "++show ex0
     LitSymE x     -> _linsym
     ProjE i e     -> _proj
     CaseE e ls    -> _case
@@ -440,6 +476,31 @@ inferExp env (L sl1 ex0) k =
 
 err :: String -> a
 err m = error $ "InferLocations: " ++ m
+
+prim :: L1.Prim L1.Ty1 -> L1.Prim Ty2
+prim p = case p of
+           L1.AddP -> L1.AddP
+           L1.SubP -> L1.SubP
+           L1.MulP -> L1.MulP
+           L1.DivP -> L1.DivP
+           L1.ModP -> L1.ModP
+           L1.EqSymP -> L1.EqSymP
+           L1.EqIntP -> L1.EqIntP
+           L1.MkTrue -> L1.MkTrue
+           L1.MkFalse -> L1.MkFalse
+           _ -> err $ "Can't handle this primop yet in InferLocations:\n"++show p
+
+primToTy :: L1.Prim L1.Ty1 -> Ty2
+primToTy p = case p of
+               L1.AddP    -> IntTy
+               L1.SubP    -> IntTy
+               L1.MulP    -> IntTy
+               L1.EqIntP  -> BoolTy
+               L1.EqSymP  -> BoolTy
+               L1.MkTrue  -> BoolTy
+               L1.MkFalse -> BoolTy
+               _ -> err $ "Can't handle this primop yet in InferLocations:\n"++show p
+               
 
 -- Helpers:
 --------------------------------------------------------------------------------

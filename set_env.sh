@@ -18,7 +18,8 @@ function tc() {
        #   cd $cur;
        #   $CMD $@;
        # Version 2: execute inside the environment:
-         $STK exec -- gibbon $@;
+       $STK exec -- bash -c "cd $cur && gibbon $*";
+       cd $cur  
     else
         cd $cur;
         echo "'stack build' failed";

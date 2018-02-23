@@ -6,7 +6,7 @@ The L2 language deals with locations and regions.  Locations don't
 could.  Well-typed L2 programs bind all the locations that are
 used with LetLoc forms, or bindings inside case expressions.
 
-L2 also supports multi-valued returns with additional location values
-in addition to a single regular value.  This supprots the output of
+L2 also supports multi-valued returns with extra location values
+in addition to a single regular value.  This supports the output of
 the RouteEnds pass.
 

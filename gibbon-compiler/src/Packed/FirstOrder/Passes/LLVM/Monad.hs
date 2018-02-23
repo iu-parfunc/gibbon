@@ -11,17 +11,17 @@ module Packed.FirstOrder.Passes.LLVM.Monad where
 -- | standard library
 import Data.Map (Map)
 import Data.Sequence (Seq)
+import Data.ByteString.Short
 import Control.Monad.State
 import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 import qualified Data.Foldable as F
 
--- | llvm-general
-import qualified LLVM.General.AST as AST
-import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Type as T
-import qualified LLVM.General.AST.Global as G
+-- | llvm-hs
+import qualified LLVM.AST as AST
+import qualified LLVM.AST.Global as G
 
+import Packed.FirstOrder.Passes.LLVM.Utils
 
 -- | The code generation state for our AST.
 --
@@ -30,9 +30,9 @@ import qualified LLVM.General.AST.Global as G
 --
 data CodeGenState = CodeGenState
   { blockChain     :: Seq BlockState            -- ^ blocks for this function
-  , globalFns      :: Map String G.Global       -- ^ external functions symbol table
-  , globalTypeDefs :: Map String AST.Definition -- ^ structs
-  , localVars      :: Map String AST.Operand    -- ^ local vars
+  , globalFns      :: Map ShortByteString G.Global       -- ^ external functions symbol table
+  , globalTypeDefs :: Map ShortByteString AST.Definition -- ^ structs
+  , localVars      :: Map ShortByteString AST.Operand    -- ^ local vars
   , next           :: Word                      -- ^ names supply
   } deriving Show
 
@@ -62,14 +62,14 @@ genModule :: CodeGen a -> AST.Module
 genModule x =
   let (_ , st) = runState (runCodegen x) initialCodeGenState
       globals = map AST.GlobalDefinition (Map.elems $ globalFns st)
-      name  = "first-module"
+      name  = toByteString "first-module"
   in AST.Module
     {
       AST.moduleName = name
-    , AST.moduleSourceFileName = []
+    , AST.moduleSourceFileName = toByteString ""
     , AST.moduleDefinitions = Map.elems (globalTypeDefs st) ++ globals
     , AST.moduleDataLayout = Nothing
-    , AST.moduleTargetTriple = Just "x86_64-unknown-linux-gnu"
+    , AST.moduleTargetTriple = Just (toByteString "x86_64-unknown-linux-gnu")
     }
 
 
@@ -118,15 +118,15 @@ newBlock nm =
   state $ \s ->
     let idx     = Seq.length (blockChain s)
         label   = let (h,t) = break (== '.') nm in (h ++ shows idx t)
-        next    = BlockState (AST.Name label) Seq.empty Nothing
+        next    = BlockState (AST.Name (toByteString label)) Seq.empty Nothing
     in
     ( next, s )
 
 -- | Add this block to the block stream. Any instructions pushed onto the stream
 -- by 'instr' and friends will now apply to this block.
 --
-setBlock :: BlockState -> CodeGen ()
-setBlock next =
+setBlock_ :: BlockState -> CodeGen ()
+setBlock_ next =
   modify $ \s -> s { blockChain = blockChain s Seq.|> next }
 
 

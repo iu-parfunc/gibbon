@@ -28,7 +28,7 @@ module Packed.FirstOrder.Common
        , LocVar, Region(..), Modality(..), LRM(..), dummyLRM
 
        , Env2(Env2) -- TODO: hide constructor
-       , vEnv, fEnv, extendVEnv, extendsVEnv, extendFEnv
+       , vEnv, fEnv, extendVEnv, extendsVEnv, extendFEnv, emptyEnv2
 
          -- * Runtime configuration
        , RunConfig(..), getRunConfig
@@ -65,6 +65,7 @@ import Data.Loc
 import Data.Word
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
+import Text.PrettyPrint.HughesPJ as PP
 import System.IO
 import System.Environment
 import System.IO.Unsafe (unsafePerformIO)
@@ -75,7 +76,7 @@ import Language.C.Quote.CUDA (ToIdent, toIdent)
 -- | Orphaned instance: read without source locations.
 instance Read t => Read (L t) where
   readsPrec n str = [ (L NoLoc a,s) | (a,s) <- readsPrec n str ]
-    
+
 -- type CursorVar = Var
 newtype Var = Var Symbol
   deriving (Eq, Ord, Read, Show)
@@ -107,15 +108,15 @@ type LocVar = Var
 -- TODO: add start(r) form.
 
 -- | An abstract region identifier.  This is used inside type signatures and elsewhere.
-data Region = GlobR    -- ^ A global region with lifetime equal to the whole program.
-            | DynR Var -- ^ A dynamic region that may be created or destryed, tagged
-                       --   by an identifier.
-            | VarR Var -- ^ A region metavariable that can range over
-                       -- either global or dynamic regions.
+data Region = GlobR Var    -- ^ A global region with lifetime equal to the whole program.
+            | DynR Var     -- ^ A dynamic region that may be created or destryed, tagged
+                           --   by an identifier.
+            | VarR Var     -- ^ A region metavariable that can range over
+                           --   either global or dynamic regions.
   deriving (Read,Show,Eq,Ord, Generic)
 instance Out Region
 instance NFData Region where
-  rnf GlobR = ()
+  rnf (GlobR v) = rnf v
   rnf (DynR v) = rnf v
   rnf (VarR v) = rnf v
 
@@ -139,14 +140,32 @@ instance NFData LRM where
 
 -- | A designated doesn't-really-exist-anywhere location.
 dummyLRM :: LRM
-dummyLRM = LRM "l_dummy" GlobR Input  
-
+dummyLRM = LRM "l_dummy" (GlobR "r_dummy") Input
 -- | String concatenation on variables.
 varAppend :: Var -> Var -> Var
 varAppend x y = toVar (fromVar x ++ fromVar y)
 
+--------------------------------------------------------------------------------
+-- Helper methods to integrate the Data.Loc with Gibbon
+
 l :: a -> L a
 l x = L NoLoc x
+
+deriving instance Generic Loc
+deriving instance Generic Pos
+
+instance Out Loc where
+  docPrec _ loc = doc loc
+
+  doc loc =
+    case loc of
+      Loc start _end -> doc start
+      NoLoc -> PP.empty
+
+instance Out Pos where
+  docPrec _ pos = doc pos
+
+  doc (Pos path line col _) = hcat [doc path, colon, doc line, colon, doc col]
 
 --------------------------------------------------------------------------------
 
@@ -154,6 +173,12 @@ l x = L NoLoc x
 -- function bindings and regular value bindings.
 data Env2 a = Env2 { vEnv :: M.Map Var a
                    , fEnv :: FunEnv a }
+
+
+-- |
+emptyEnv2 :: Env2 a
+emptyEnv2 = Env2 { vEnv = M.empty
+                 , fEnv = M.empty}
 
 -- | Extend non-function value environment.
 extendVEnv :: Var -> a -> Env2 a -> Env2 a

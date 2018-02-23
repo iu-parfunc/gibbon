@@ -402,7 +402,7 @@ strToInt = product . L.map ord
 lookup3 :: (Eq k, Show k, Show a, Show b) => k -> [(k,a,b)] -> (k,a,b)
 lookup3 k ls = go ls
   where
-   go [] = error$ "lookup3: key "++show k++" not found in list:\n  "++take 80 (show ls)
+   go [] = error$ "lookup3: key "++show k++" not found in list:\n  "++L.take 80 (show ls)
    go ((k1,a1,b1):r)
       | k1 == k   = (k1,a1,b1)
       | otherwise = go r

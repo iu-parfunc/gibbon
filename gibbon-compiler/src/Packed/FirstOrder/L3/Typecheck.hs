@@ -19,8 +19,6 @@ import Packed.FirstOrder.L1.Typecheck hiding (tcProg, tcExp)
 import Packed.FirstOrder.L1.Syntax hiding (FunDef, Prog(..), progToEnv)
 import Packed.FirstOrder.L3.Syntax
 
-import Debug.Trace
-
 -- | Typecheck a L1 expression
 --
 tcExp :: (Out l, Eq l) => DDefs (UrTy l) -> Env2 (UrTy l) -> (L (PreExp E3Ext l (UrTy l))) ->
@@ -67,12 +65,23 @@ tcExp ddfs env exp@(L p ex) =
         -- ^ Create a new buffer, and return a cursor
         NewBuffer -> return CursorTy
 
+        -- ^ Create a scoped buffer, and return a cursor
+        ScopedBuffer -> return CursorTy
+
         -- ^ Takes in start and end cursors, and returns an Int
-        SizeOf start end -> do
+        SizeOfPacked start end -> do
           sty  <- lookupVar env start exp
           ensureEqualTy exp sty CursorTy
           ety  <- lookupVar env end exp
           ensureEqualTy exp ety CursorTy
+          return IntTy
+
+
+        -- ^ Takes in a variable, and returns an Int
+        SizeOfScalar v -> do
+          sty <- lookupVar env v exp
+          -- ASSUMPTION: Int is the only scalar value right now
+          ensureEqualTy exp sty IntTy
           return IntTy
 
 
@@ -108,7 +117,7 @@ tcExp ddfs env exp@(L p ex) =
 
       tys <- mapM go es
       case pr of
-        _ | pr `elem` [AddP, SubP, MulP]  -> do
+        _ | pr `elem` [AddP, SubP, MulP, DivP, ModP]  -> do
           len2
           _ <- ensureEqualTy (es !! 0) IntTy (tys !! 0)
           _ <- ensureEqualTy (es !! 1) IntTy (tys !! 1)
@@ -124,7 +133,7 @@ tcExp ddfs env exp@(L p ex) =
           _ <- ensureEqualTy (es !! 1) SymTy (tys !! 1)
           return BoolTy
 
-        EqIntP -> do
+        _ | pr `elem` [EqIntP, LtP, GtP] -> do
           len2
           _ <- ensureEqualTy (es !! 0) IntTy (tys !! 0)
           _ <- ensureEqualTy (es !! 1) IntTy (tys !! 1)
@@ -178,7 +187,7 @@ tcExp ddfs env exp@(L p ex) =
           len0
           return CursorTy
 
-        oth -> error $ "L1.tcExp : PrimAppE : TODO " ++ sdoc oth
+        oth -> error $ "L3.tcExp : PrimAppE : TODO " ++ sdoc oth
 
     LetE (v,locs,ty,rhs) e -> do
       -- Check that the expression does not have any locations
@@ -224,8 +233,9 @@ tcExp ddfs env exp@(L p ex) =
       let tycons = L.map (getTyOfDataCon ddfs . (\(a,_,_) -> a)) cs
       case L.nub tycons of
         [_one] -> do
-          -- all packed types are transformed to cursors
-          _ <- ensureEqualTy exp CursorTy tye
+          when (tye /= CursorTy && not (isPackedTy tye)) $
+            throwError $ GenericTC ("Case scrutinee should be packed, or have a cursor type. Got"
+                                    ++ sdoc tye) e
           tcCases ddfs env cs
         oth   -> throwError $ GenericTC ("Case branches have mismatched types: " ++ sdoc oth
                                          ++" , in " ++ sdoc exp) exp
@@ -275,23 +285,21 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
       let res = runExcept $ tcExp ddefs env e
       in case res of
         Left err -> error $ sdoc err
-        Right ty' ->
-          case ty of
-            PackedTy _ _ ->
-              if ty' == CursorTy
-              then return ()
-              else error $ "Expected type " ++ sdoc ty ++ "and got type " ++ sdoc ty'
-
-            _ -> if ty == ty'
-                 then return ()
-                 else error $ "Expected type " ++ sdoc ty ++ "and got type " ++ sdoc ty'
+        Right ty' -> if tyEq ty ty'
+                     then return ()
+                     else error $ "Expected type " ++ sdoc ty ++ "and got type " ++ sdoc ty'
 
   -- Identity function for now.
   return prg
 
   where
-    -- env = L1.progToEnv prg
     env = progToEnv prg
+    tyEq ty1 ty2 =
+      case ty1 of
+        PackedTy{}  -> ty2 == ProdTy [CursorTy,CursorTy] || ty1 == ty2
+        ProdTy tys2 -> let ProdTy tys1 = ty1
+                       in  all (\(a,b) -> tyEq a b) (zip tys1 tys2)
+        _ -> ty1 == ty2
 
     -- fd :: forall e l . FunDef Ty1 Exp -> SyM ()
     fd FunDef{funarg,funty,funbod} = do

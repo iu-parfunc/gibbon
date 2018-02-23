@@ -1,0 +1,57 @@
+## Based on the travis-simple.yml (https://raw.githubusercontent.com/commercialhaskell/stack/stable/doc/travis-simple.yml)
+
+# Use new container infrastructure to enable caching
+sudo: false
+
+# Do not choose a language; we provide our own build tools.
+language: generic
+
+# Caching so the next build will be fast too.
+cache:
+  directories:
+  - $HOME/.stack
+
+# Ensure necessary system libraries are present
+addons:
+  apt:
+    packages:
+      - libgmp-dev
+
+env:
+  global:
+    - RACKET_VERSION=6.10
+    - RACKET_DIR=~/racket
+
+install:
+  # Download and unpack the stack executable
+  - echo "Installing Stack...\n"
+  - mkdir -p ~/.local/bin
+  - export PATH=$HOME/.local/bin:$PATH
+  - travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
+
+  # Install Racket
+  # Maybe we shouldn't depend on a GitHub repo. But I guess it's ok for v1
+  - echo "Installing Racket...\n"
+  - git clone https://github.com/greghendershott/travis-racket.git
+  - cat travis-racket/install-racket.sh | bash
+  - export PATH="${RACKET_DIR}/bin:${PATH}"
+
+# We have a private submodule, and can't clone it without adding proper keys to Travis
+git:
+  submodules: false
+
+# blacklist
+branches:
+  except:
+    - indirections
+    - jenkins
+
+script:
+  ./run_all_tests.sh
+
+notifications:
+  email: false
+  slack:
+    on_success: never
+    on_failure: always
+    secure: W0V/gX0an9TL/I/Sseet9yLcwOvc7ZXA08QmzXDNQtJE/juHKPAI0zzMELWVzQ1W4qeil3vlPfrcA3zLsCJ2Ecco0+KN/XEvgKpE8McQ7h9WLCdk/laaASEx/bMGEKDPfUIgA/1vlI6AX+rr/5DpGW1o1IixqIRrxwE5yHmFUNUuAyMI82gU1Whv1pwxiKs6r9q/+9HnuQSJQa+OO8rEQa91zjFKshfh2tFdD1DhjVK5UUsZnMlV6C3btbVTfltO0sudzUST7kftAq3lRYYMRfRJbtKNtzDCbhiUp4bbAT7bRe34CkkIZcapyaSGcSDhK91XSd1vFDVynJSCF1yql9YP4uuaYEmzKx78iqiT/zhH2Cyu7Laxc5aoBI9TVaupeDpGJH/kcLDvCsBZU8PsHI2TUZiWc94rX4GA3cVpjfwlo+gNQutDfuDUa75WNQCSZzUWzpnFcMTftBuQYztpoeR+Y5+UaTSqZcVpSKaOxeRIknz4umIiUjCGug9CjqWqgbxL2cnFnWWJMxhcr+INBwiickSV+xSuqqE92ZIHA5ildA2Ett10yduN/wMBat9qOO0wlur7Nv6yLDNWfkYkD5IlWEbxgtfCbgbwOn/GtgTG7SfXpct1g2HtDcM1d2MPSczkzMJvFSt86uGOoiltcMwesnoQuyxifQhWWGRppXg=

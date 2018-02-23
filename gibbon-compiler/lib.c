@@ -47,6 +47,18 @@ int __print_iter_difftime(double d) {
   return printf("BATCHTIME: %lf\n", d);
 }
 
+char* __write_tag(char* c, char i) {
+    *c = i;
+    char* d = c + 1;
+    return d;
+}
+
+char* __write_int(char* c, long long i) {
+    *(long long *) c = (long long) i;
+    char* d = c + sizeof(long long);
+    return d;
+}
+
 // Sequential for now:
 static const int num_workers = 1;
 

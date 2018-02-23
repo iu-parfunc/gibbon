@@ -31,6 +31,9 @@ set -xe
 cd `dirname $0`
 top=`pwd`
 
+# HACK to get Jenkins to use the correct Racket version
+export PATH=/u/crest-team/opt/bin:$PATH
+echo $PATH
 hostname || echo "No hostname command, env says $HOSTNAME"
 uname -a
 which -a stack
@@ -84,7 +87,7 @@ set -x
 
 # If we wanted to be really aggressive we could run all racket files
 # in the Repo:
-racket $top/ASTBenchmarks/tests/*.rkt
+# racket $top/ASTBenchmarks/tests/*.rkt
 
 
 # [2016.11.08] {Having problems with this -RRN}

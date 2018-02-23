@@ -39,26 +39,21 @@ library
                   -- compiler passes, roughly in the order they're run
                   Packed.FirstOrder.Passes.Freshen
                   Packed.FirstOrder.Passes.Flatten
-                  -- Packed.FirstOrder.Passes.Flatten2
                   Packed.FirstOrder.Passes.InlineTriv
+                  Packed.FirstOrder.Passes.DirectL3
                   Packed.FirstOrder.Passes.InferLocations
-                  -- Packed.FirstOrder.Passes.InferEffects
                   Packed.FirstOrder.Passes.InferEffects2
-                  -- Packed.FirstOrder.Passes.InlinePacked
-                  -- Packed.FirstOrder.Passes.CopyInsertion
-                  -- Packed.FirstOrder.Passes.RouteEnds
                   Packed.FirstOrder.Passes.RouteEnds2
-                  -- Packed.FirstOrder.Passes.Cursorize
-                  -- Packed.FirstOrder.Passes.Cursorize2
                   Packed.FirstOrder.Passes.Cursorize4
                   Packed.FirstOrder.Passes.FindWitnesses
                   Packed.FirstOrder.Passes.ShakeTree
                   Packed.FirstOrder.Passes.Fusion2
                   Packed.FirstOrder.Passes.HoistNewBuf
                   Packed.FirstOrder.Passes.Unariser
+                  Packed.FirstOrder.Passes.Unariser2
                   Packed.FirstOrder.Passes.Lower
                   -- Packed.FirstOrder.Passes.Typecheck
-                  -- Packed.FirstOrder.Passes.Codegen
+                  Packed.FirstOrder.Passes.Codegen
 
 -- First attempt, slated for removal:
                     -- Packed.HigherOrder.L1_Source, Packed.HigherOrder.L2_Intermediate,
@@ -97,7 +92,8 @@ library
                 symbol,
                 srcloc,
                 transformers,
-                tuple
+                tuple,
+                vector
 -- Brings in lots of ekmett dependencies:
 --              , either
 
@@ -110,9 +106,10 @@ library
                     Packed.FirstOrder.Passes.LLVM.Instruction
                     Packed.FirstOrder.Passes.LLVM.Terminator
                     Packed.FirstOrder.Passes.LLVM.Type
+                    Packed.FirstOrder.Passes.LLVM.Utils
     build-depends:
-                  llvm-general-pure,
-                  llvm-general
+                  llvm-hs-pure,
+                  llvm-hs
     cpp-options: -DLLVM_ENABLED
 
   hs-source-dirs:      src
@@ -121,7 +118,8 @@ library
 --  ghc-options:         -Wno-all
 --  ghc-options:         -Wall -fno-warn-typed-holes -Wno-unused-top-binds -fdefer-typed-holes -fno-warn-orphans
   ghc-options:        -Wredundant-constraints
-  ghc-options:        -Wall -Wno-typed-holes -Wno-unused-top-binds -Wno-orphans
+  ghc-options:        -Wall -Wno-unused-top-binds -Wno-orphans -Wno-partial-type-signatures
+  ghc-options:        -Wno-typed-holes
   ghc-options:        -fdefer-typed-holes
   default-extensions: ScopedTypeVariables PatternSynonyms DeriveGeneric DeriveFunctor
                       NamedFieldPuns TupleSections TypeFamilies
@@ -149,13 +147,15 @@ test-suite test-gibbon
 
   build-depends:       base,
                        gibbon, containers,
-                       directory, process,
+                       filepath, directory, process,
                        mtl,
                        srcloc,
                        tasty, tasty-hunit, tasty-th
   other-modules:
                 RouteEnds2
                 InferEffects2
+                Unariser
+                Compiler
                 L2.Typecheck
                 L1.Typecheck
                 L3.Typecheck

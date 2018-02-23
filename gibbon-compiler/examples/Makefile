@@ -4,10 +4,11 @@
 
 test: temporary
 temporary: prebuild build
-#	$(MAKE) run_tests_packed
 	$(MAKE) run_answers
-	$(MAKE) run_tests_interp2
 	$(MAKE) run_tests_interp1
+#	$(MAKE) run_tests_interp2
+	$(MAKE) run_tests_pointer
+#	$(MAKE) run_tests_packed
 
 default:
 	rm -f *.err $(BLD)/*.err
@@ -216,6 +217,7 @@ all_parsed:  $(ALL_TESTS:.gib=.parsed)
 
 # Failing tests for the pointer-based C backend (default):
 FAILING_TESTS ?= \
+  test15b_symappend.gib \
   test16_forlist.gib test17_forfold.gib \
   test28_copyprop.gib \
   test25a_withprint.gib \
@@ -354,8 +356,7 @@ answers: $(ANSWERS)
 # Run tests through the LLVM backend
 
 build_gibbon_llvm_lib:
-	clang-3.9 -S -emit-llvm $(TREELANGDIR)/gibbon-compiler/lib.c
-	llc-3.9 -filetype=obj -o lib.o lib.ll
+	clang -std=gnu11 -c -fno-exceptions -fPIC $(TREELANGDIR)/gibbon-compiler/lib.c
 
 LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
   test00c_printBool.gib test00d_printData.gib test00e_func.gib \
@@ -377,11 +378,7 @@ LLVM_PASSING_TESTS = test00_add.gib test00a_size.gib test00b_printBool.gib \
   test25e_countnodes.gib
 
 LLVM_FAILING_TESTS = test02e_printNest.gib \
-  test03c_eqs.gib \
-  test09_recur.gib \
   test10b_desugar.gib \
-  test18_badconstraint.gib test18b_tupconstraint.gib \
-  test18c_identity1.gib test18d_identity2.gib test18e_identity3.gib test18f_flip.gib test18g_identity4.gib \
   test20a_withprint.gib test20b_bintree.gib test20e_bintree.gib \
   test25_rackcore.gib test25a_withprint.gib test25b_racketcore.gib test25c_racketcore.gib test25d_racketcore.gib test25f_countnodes.gib \
   test26_treewalk.gib test26a_treewalk.gib \

@@ -118,7 +118,7 @@ genDconsPrinter (x:xs) tail = case x of
     val  <- gensym "val"
     t    <- gensym "tail"
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)] <$>
-      printTy L1.IntTy [T.VarTriv val] <$>
+      printTy False L1.IntTy [T.VarTriv val] <$>
        maybeSpace <$>
         genDconsPrinter xs t
 
@@ -170,13 +170,27 @@ genPrinter DDef{tyName, dataCons} = do
                     T.funRetTy = T.PtrTy,
                     T.funBody  = bod }
 
-printTy :: Ty3 -> [T.Triv] -> (T.Tail -> T.Tail)
-printTy ty trvs =
+printTy :: Bool -> Ty3 -> [T.Triv] -> (T.Tail -> T.Tail)
+printTy pkd ty trvs =
   case (ty, trvs) of
     (IntTy, [_one])             -> T.LetPrimCallT [] T.PrintInt trvs
-    (SymDictTy ty', [_one])     -> sandwich (printTy ty' trvs) "Dict"
-    (PackedTy constr _, [_one]) -> T.LetCallT [] (mkPrinterName constr) trvs
-    (ListTy ty', [_one])        -> sandwich (printTy ty' trvs) "List"
+    (SymDictTy ty', [_one])     -> sandwich (printTy pkd ty' trvs) "Dict"
+    (PackedTy constr _, [one]) -> -- HACK: Using varAppend here was the simplest way to get
+                                  -- unique names without using the SyM monad.
+                                  -- ASSUMPTION: Argument (one) is always a variable reference.
+                                  -- This is reasonable because the AST is always flattened before
+                                  -- we try to lower it.
+                                  -- But we should change this to use gensym anyways..
+                                  let T.VarTriv v = one
+                                      unpkd = varAppend "unpkd_" v
+                                      ignre = varAppend "ignre_" v
+                                  in
+                                    if pkd
+                                    then (\tl -> T.LetCallT [(unpkd, T.PtrTy), (ignre, T.CursorTy)]
+                                                 (mkUnpackerName constr) trvs $
+                                                 T.LetCallT [] (mkPrinterName constr) [T.VarTriv unpkd] tl)
+                                    else T.LetCallT [] (mkPrinterName constr) trvs
+    (ListTy ty', [_one])        -> sandwich (printTy pkd ty' trvs) "List"
 
     (BoolTy, [trv]) ->
       let prntBool m = T.LetPrimCallT [] (T.PrintString m) []
@@ -188,34 +202,58 @@ printTy ty trvs =
           (bltys,lty)   = (init tys, last tys)
       in \t ->
         printTupStart $
-        foldr (\(ty,trv) acc -> printTy ty [trv] $ printSpace acc)
-        (printTy lty [ltrv] $ closeParen t)
+        foldr (\(ty,trv) acc -> printTy pkd ty [trv] $ printSpace acc)
+        (printTy pkd lty [ltrv] $ closeParen t)
         (zip bltys bltrvs)
+    _ -> error $ "printTy: unexpected: " ++ show (ty, trvs)
+
+
+-- | In packed mode, keep only the start cursors for packed values
+--
+-- >>> properTrivs True  (Packedty Tree _) [start,end]
+-- [start]
+--
+-- >>> properTrivs True (ProdTy [IntTy, PackedTy "Tree" _]) [val1, start_cursor_1, end_cursor_1]
+-- [val1, start_cursor_1]
+--
+-- >>> properTrivs True (ProdTy [IntTy,PackedTy "Tree" _, IntTy, PackedTy "Tree _"])
+--                 [val1, sc1, ec1, val2, sc2, ec2]
+-- [val1, sc1, val2, sc2]
+--
+-- >>> properTrivs False (Packedty Tree _) [cur]
+-- [cur]
+--
+-- >>> properTrivs False [IntTy,PackedTy "Tree" _, IntTy, PackedTy "Tree _"] [val1, c1, val2, c2]
+-- [val1, c1, val2, c2]
+properTrivs :: Bool -> Ty3 -> [T.Triv] -> [T.Triv]
+properTrivs pkd ty trvs =
+  if not pkd then trvs
+  else
+  case ty of
+    ProdTy tys -> go [] tys trvs
+    PackedTy{} -> init trvs
+    _ -> trvs
+  where
+    go acc [] _trvs = acc
+    go acc (ty:tys) (x:xs) =
+      if isPackedTy ty
+      then go (acc++[x]) tys (L.tail xs)
+      else go (acc++[x]) tys xs
+    go _ tys xs = error $ "properTrivs: unexpected tys and trvs: " ++ sdoc tys ++ " " ++ sdoc xs
 
 -- printTy ty trvs = error $ "Invalid L1 data type; " ++ show ty ++ " " ++ show trvs
 
-addPrintToTail :: Ty3 -> T.Tail-> SyM T.Tail
-addPrintToTail ty tl0 =
-  let ty' = T.fromL3Ty ty in
+addPrintToTail :: Bool -> Ty3 -> T.Tail-> SyM T.Tail
+addPrintToTail pkd ty tl0 =
+  let ty' = if pkd
+            then T.IntTy
+            else T.fromL3Ty ty
+  in
     T.withTail (tl0, ty') $ \ trvs ->
-      printTy ty trvs $
+      printTy pkd ty (properTrivs pkd ty trvs) $
         -- Always print a trailing newline at the end of execution:
         T.LetPrimCallT [] (T.PrintString "\n") [] $
           T.RetValsT []  -- Void return after printing.
-
--- | In packed mode we print by unpacking first.
-addPrintToTailPacked :: Ty3 -> T.Tail-> SyM T.Tail
-addPrintToTailPacked ty tl0 =
-  -- FIXME: Need to handle products of packed!!
-  case ty of
-    PackedTy tycon _ ->
-       T.withTail (tl0, T.IntTy) $ \ [trv] ->
-          T.LetCallT [("unpkd", T.PtrTy), ("ignre", T.CursorTy)] (mkUnpackerName tycon) [trv] $
-           printTy ty [T.VarTriv "unpkd"] $
-             -- Always print a trailing newline at the end of execution:
-             T.LetPrimCallT [] (T.PrintString "\n") [] $
-               T.RetValsT []  -- Void return after printing.
-    _ -> addPrintToTail ty tl0
 
 -- The compiler pass
 -------------------------------------------------------------------------------a
@@ -229,15 +267,10 @@ addPrintToTailPacked ty tl0 =
 -- First argument indicates (1) whether we're inpacked mode, and (2)
 -- the pre-cursorize type of the mainExp, if there is a mainExp.
 lower :: (Bool,Maybe Ty3) -> Prog -> SyM T.Prog
-lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
+lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
   mn <- case mainExp of
           Nothing    -> return Nothing
-          Just (x,mty) -> let Just origMainTy = mMainTy
-                              addPrint = if pkd
-                                           then addPrintToTailPacked origMainTy
-                                           else addPrintToTail mty
-                          in (Just . T.PrintExp) <$>
-                              (addPrint =<< tail x)
+          Just (x,mty) -> (Just . T.PrintExp) <$> (addPrintToTail pkd mty =<< tail x)
 
   funs       <- mapM fund (M.elems fundefs)
   unpackers  <- mapM genUnpacker (M.elems ddefs)
@@ -375,8 +408,6 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
           [e_triv]
           (T.Switch (T.VarTriv tag_bndr) (T.IntAlts alts') (Just def))
 
-{-
-    Cursorize will probably take care of this.
 
     -- Accordingly, constructor allocation becomes an allocation.
     LetE (v, _, _, L _ (DataConE _ k ls)) bod | not pkd -> L1.assertTrivs ls $ do
@@ -400,12 +431,10 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
 
 
     -- This is legitimately flattened, but we need to move it off the spine:
-    L1.DataConE _ k _ls -> do
+    DataConE _ k _ls -> do
        tmp <- gensym $ toVar "tailift"
        let ty = L1.PackedTy (getTyOfDataCon ddefs k) ()
        tail $ l$ LetE (tmp, [], ty, l$ ex0) (l$ VarE tmp)
-
--}
 
     --------------------------------------------------------------------------------
 
@@ -514,22 +543,19 @@ lower (pkd,mMainTy) Prog{fundefs,ddefs,mainExp} = do
       T.LetPrimCallT [(v,T.CursorTy)] T.NewBuf [] <$>
          tail bod
 
-    LetE (v,_,_, L _ (Ext (SizeOf start end))) bod -> do
-      T.LetPrimCallT [(v,T.IntTy)] T.SizeOf [ T.VarTriv start, T.VarTriv end ] <$>
-        tail bod
-
-
-    -- LetE (_,_,_,L _ (Ext ext)) _ -> error $ "lower: L3 extension not handled. " ++ sdoc ext
-
-    Ext _ -> error $ "lower: unexpected extension" ++ sdoc ex0
-
-{- Leaving this around for when we add scoped buffers to L3
-
-    L1.LetE (v,_,L2.ScopedBuffer) bod ->
+    LetE (v,_,_, L _ (Ext ScopedBuffer)) bod -> do
       T.LetPrimCallT [(v,T.CursorTy)] T.ScopedBuf [] <$>
          tail bod
 
--}
+    LetE (v,_,_, L _ (Ext (SizeOfPacked start end))) bod -> do
+      T.LetPrimCallT [(v,T.IntTy)] T.SizeOfPacked [ T.VarTriv start, T.VarTriv end ] <$>
+        tail bod
+
+    LetE (v,_,_, L _ (Ext (SizeOfScalar w))) bod -> do
+      T.LetPrimCallT [(v,T.IntTy)] T.SizeOfScalar [ T.VarTriv w ] <$>
+        tail bod
+
+    Ext _ -> error $ "lower: unexpected extension" ++ sdoc ex0
 
     ---------------------
     -- (3) Proper primapps.
@@ -697,8 +723,12 @@ prim p =
     AddP -> T.AddP
     SubP -> T.SubP
     MulP -> T.MulP
+    DivP -> T.DivP
+    ModP -> T.ModP
     EqSymP -> T.EqP
     EqIntP -> T.EqP
+    LtP    -> T.LtP
+    GtP    -> T.GtP
     SizeParam -> T.SizeParam
     DictInsertP ty -> T.DictInsertP $ typ ty
     DictLookupP ty -> T.DictLookupP $ typ ty

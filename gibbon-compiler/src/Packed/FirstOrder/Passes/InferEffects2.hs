@@ -25,8 +25,6 @@ import Packed.FirstOrder.L2.Syntax
 import Packed.FirstOrder.Common hiding (FunDef)
 import Packed.FirstOrder.L1.Syntax hiding (Prog, FunDef, ddefs, fundefs, mainExp)
 
-import Text.PrettyPrint.GenericPretty
-
 --------------------------------------------------------------------------------
 
 -- | Chatter level for this module:
@@ -49,7 +47,7 @@ initialEnv mp = M.map go mp
   where
     go :: FunDef -> ArrowTy Ty2
     go FunDef{funty} =
-      let locs       = getArrowTyLocs funty
+      let locs       = allLocVars funty
           maxEffects = locsEffect locs
       in funty { arrEffs = maxEffects }
 
@@ -72,30 +70,11 @@ inferEffects prg@Prog{ddefs,fundefs} = do
 
 
 inferFunDef :: DDefs Ty2 -> FunEnv -> FunDef -> ArrowTy Ty2
-inferFunDef ddfs fenv FunDef{funarg,funbod,funty} =
-  case outLoc of
-       Nothing -> funty {arrEffs = eff'}
-       Just loc ->
-         -- if the outLoc is same as inLoc, this is an identity fn.
-         -- we change the function signature accordingly
-         if (loc == inLoc)
-         then toIdFunty funty
-         else funty {arrEffs = eff'}
+inferFunDef ddfs fenv FunDef{funarg,funbod,funty} = funty { arrEffs = S.intersection travs eff }
   where
     env0  = M.singleton funarg (arrIn funty)
-    inLoc = head $ L.map (\(LRM l _ _) -> l) $
-            L.filter (\(LRM _ _ m) -> m == Input) (locVars funty)
-    (eff,outLoc) = inferExp ddfs fenv env0 funbod
-    eff'         = S.filter ((==) (Traverse inLoc)) eff
-
-    isInLRM :: LRM -> Bool
-    isInLRM LRM{lrmMode} = lrmMode == Input
-
-    -- | Change arrOut to be same as arrIn, and remove output LRM from locVars
-    toIdFunty :: ArrowTy Ty2 -> ArrowTy Ty2
-    toIdFunty ty@ArrowTy{locVars,arrIn} = ty { arrOut = arrIn
-                                             , locVars = L.filter isInLRM locVars
-                                             }
+    travs = S.fromList $ L.map Traverse $ inLocVars funty
+    (eff,_outLoc) = inferExp ddfs fenv env0 funbod
 
 
 inferExp :: DDefs Ty2 -> FunEnv -> TyEnv -> L Exp2 -> (Set Effect, Maybe LocVar)
@@ -104,7 +83,9 @@ inferExp ddfs fenv env (L _p exp) =
     -- QUESTION: does a variable reference count as traversing to the end?
     -- If so, the identity function has the traverse effect.
     -- I'd prefer that the identity function get type (Tree_p -{}-> Tree_p).
-    VarE v -> (S.empty, packedLoc (env ! v))
+    VarE v -> case M.lookup v env of
+                Just ty -> (S.empty, packedLoc ty)
+                Nothing -> error $ "Unknown var: " ++ sdoc v
 
     LitE _    -> (S.empty, Nothing)
     LitSymE _ -> (S.empty, Nothing)
@@ -112,7 +93,7 @@ inferExp ddfs fenv env (L _p exp) =
     AppE v locs _e ->
       -- Substitue locations used at this particular call-site in the function
       -- effects computed so far
-      let orgLocs = getArrowTyLocs (fenv # v)
+      let orgLocs = allLocVars (fenv # v)
           locMap  = M.fromList $ zip orgLocs locs
           eff     = arrEffs (fenv # v)
       in (substEffs locMap eff, Nothing)
@@ -198,9 +179,12 @@ inferExp ddfs fenv env (L _p exp) =
                                          ++"pattern vars, "++show vars++
                                          ", do not match the number of types "
                                          ++show tys)
+
+          env' = M.union env (M.fromList zipped)
+
           packedOnly = L.filter (\(_,t) -> hasPacked t) zipped
 
-          (eff,_) = inferExp ddfs fenv env e
+          (eff,_) = inferExp ddfs fenv env' e
           winner = dbgTrace lvl ("\nInside caserhs, for "++show (dcon,patVs,tys)
                         -- ++ "\n  freevars "++show freeRHS
                         -- ++",\n  env "++show env'++",\n  eff "++show eff
@@ -212,13 +196,17 @@ inferExp ddfs fenv env (L _p exp) =
                    (case packedOnly of
                          []  -> False
                          _:_ -> let patVMap       = M.fromList patVs
-                                    lastPackedLoc = patVMap ! (fst$last packedOnly)
+                                    lastPackedLoc = case M.lookup (fst$last packedOnly) patVMap of
+                                                      Just loc -> loc
+                                                      Nothing -> error $
+                                                                 sdoc patVMap ++ "does not contain"
+                                                                 ++  sdoc (fst$last packedOnly)
                                 in S.member (Traverse lastPackedLoc) eff)
                    -- Or maybe the last-use rule applies:
                    -- TODO
 
           -- Also, in any binding form we are obligated to not return
           -- our local bindings in traversal side effects:
-          isLocal (Traverse v) = L.elem v locs
-          stripped = S.filter isLocal eff
+          isNotLocal (Traverse v) = not $ L.elem v locs
+          stripped = S.filter isNotLocal eff
       in ( winner, (stripped,Nothing) )

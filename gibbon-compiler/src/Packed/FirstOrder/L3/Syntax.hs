@@ -12,7 +12,8 @@ module Packed.FirstOrder.L3.Syntax
   , Prog(..), FunDef(..), FunDefs, ArrowTy(..)
 
     -- * Functions
-  , eraseLocMarkers, stripTyLocs, cursorizeTy, mapMExprs, toL3Prim, progToEnv
+  , eraseLocMarkers, stripTyLocs, cursorizeArrowTy, mapMExprs, toL3Prim, progToEnv
+  , cursorizeTy
   )
 where
 
@@ -44,8 +45,11 @@ data E3Ext loc dec =
   | ReadTag   Var                  -- ^ One cursor in, (tag,cursor) out
   | WriteTag  DataCon Var          -- ^ Write Tag at Cursor, and return a cursor
   | NewBuffer                      -- ^ Create a new buffer, and return a cursor
-  | SizeOf Var Var                 -- ^ Takes in start and end cursors, and returns an Int
+  | ScopedBuffer                   -- ^ Create a temporary scoped buffer, and
+                                   --   return a cursor
+  | SizeOfPacked Var Var           -- ^ Takes in start and end cursors, and returns an Int
                                    --   we'll probably represent (sizeof x) as (end_x - start_x) / INT
+  | SizeOfScalar Var               -- ^ sizeof(var)
   deriving (Show, Ord, Eq, Read, Generic, NFData)
 
 -- | L1 expressions extended with L3.  This is the polymorphic version.
@@ -61,7 +65,9 @@ instance FreeVars (E3Ext l d) where
       ReadTag v      -> S.singleton v
       WriteTag _ v   -> S.singleton v
       NewBuffer      -> S.empty
-      SizeOf c1 c2   -> S.fromList [c1, c2]
+      ScopedBuffer   -> S.empty
+      SizeOfPacked c1 c2 -> S.fromList [c1, c2]
+      SizeOfScalar v     -> S.singleton v
 
 instance (Out l, Out d) => Out (E3Ext l d)
 
@@ -70,13 +76,15 @@ instance (Out l, Out d, Show l, Show d) => Expression (E3Ext l d) where
   type TyOf  (E3Ext l d) = UrTy l
   isTrivial e =
     case e of
-      ReadInt{}   -> False
-      WriteInt{}  -> False
-      AddCursor{} -> False
-      ReadTag{}   -> False
-      WriteTag{}  -> False
-      NewBuffer   -> False
-      SizeOf{}    -> False
+      ReadInt{}      -> False
+      WriteInt{}     -> False
+      AddCursor{}    -> False
+      ReadTag{}      -> False
+      WriteTag{}     -> False
+      NewBuffer      -> False
+      ScopedBuffer   -> False
+      SizeOfPacked{} -> False
+      SizeOfScalar{} -> False
 
 instance (Out l, Show l) => Typeable (E3Ext l (UrTy l)) where
     gTypeExp = error "L3.gTypeExp"
@@ -119,7 +127,7 @@ eraseLocMarkers (DDef tyname ls) = DDef tyname $ L.map go ls
         go (dcon,ls') = (dcon, L.map (\(b,ty) -> (b,stripTyLocs ty)) ls')
 
 -- | Remove the extra location annotations.
-stripTyLocs :: L2.Ty2 -> Ty3
+stripTyLocs :: UrTy a -> Ty3
 stripTyLocs ty =
   case ty of
     IntTy     -> IntTy
@@ -131,9 +139,22 @@ stripTyLocs ty =
     PtrTy    -> PtrTy
     CursorTy -> CursorTy
 
+cursorizeTy :: UrTy a -> UrTy b
+cursorizeTy ty =
+  case ty of
+    IntTy     -> IntTy
+    BoolTy    -> BoolTy
+    ProdTy ls -> ProdTy $ L.map cursorizeTy ls
+    SymDictTy ty' -> SymDictTy $ cursorizeTy ty'
+    PackedTy{}    -> ProdTy [CursorTy, CursorTy]
+    ListTy ty'    -> ListTy $ cursorizeTy ty'
+    PtrTy    -> PtrTy
+    CursorTy -> CursorTy
+
+
 -- |
-cursorizeTy :: L2.ArrowTy L2.Ty2 -> ArrowTy Ty3
-cursorizeTy L2.ArrowTy{L2.arrIn,L2.arrOut,L2.locVars,L2.locRets} =
+cursorizeArrowTy :: L2.ArrowTy L2.Ty2 -> ArrowTy Ty3
+cursorizeArrowTy L2.ArrowTy{L2.arrIn,L2.arrOut,L2.locVars,L2.locRets} =
   let
       -- Adding additional outputs corresponding to end-of-input-value witnesses
       -- We've already computed additional location return value in RouteEnds
@@ -141,7 +162,7 @@ cursorizeTy L2.ArrowTy{L2.arrIn,L2.arrOut,L2.locVars,L2.locRets} =
       outT = L2.prependArgs rets arrOut
 
       -- Packed types in the output then become end-cursors for those same destinations.
-      newOut = L2.mapPacked (\_ _ -> CursorTy) outT
+      newOut = L2.mapPacked (\_ _ -> ProdTy [CursorTy, CursorTy]) outT
 
       -- Adding additional input arguments for the destination cursors to which outputs
       -- are written.
@@ -178,8 +199,12 @@ toL3Prim pr =
     AddP      -> AddP
     SubP      -> SubP
     MulP      -> MulP
+    DivP      -> DivP
+    ModP      -> ModP
     EqSymP    -> EqSymP
     EqIntP    -> EqIntP
+    LtP       -> LtP
+    GtP       -> GtP
     MkTrue    -> MkTrue
     MkFalse   -> MkFalse
     SizeParam -> SizeParam

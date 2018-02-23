@@ -22,6 +22,8 @@ import qualified Packed.FirstOrder.TargetInterp as TI
 -- |
 import RouteEnds2
 import InferEffects2
+import Unariser
+import Compiler
 import L2.Typecheck
 import L1.Typecheck
 import L3.Typecheck
@@ -32,9 +34,11 @@ main = defaultMain allTests
                    [ tests
                    , routeEnds2Tests
                    , inferEffects2Tests
-                   , l2TypecheckerTests
+                   , unariser2Tests
+                   -- , l2TypecheckerTests
                    , l1TypecheckerTests
                    , l3TypecheckerTests
+                   , compilerTests
                    ]
 
 

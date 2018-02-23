@@ -8,7 +8,6 @@ module Packed.FirstOrder.Passes.Unariser
   (unariser) where
 
 import Data.Loc
-import Data.Maybe
 import qualified Data.Map as M
 
 import Packed.FirstOrder.Common hiding (FunDef, FunDefs)
@@ -55,9 +54,10 @@ unariserFun f@FunDef{funty,funarg,funbod} =
     ProdTy _ ->
       let ty  = flattenTy inT
           bod = flattenExp funarg inT funbod
-      in f{funbod = bod, funty = funty{arrIn = ty}}
+      in f{funbod = bod, funty = funty{arrIn = ty, arrOut = flattenTy outT}}
     _ -> f
   where inT = arrIn funty
+        outT = arrOut funty
 
 
 -- | Take an ignored argument to match mapMExprs' conventions.
@@ -98,8 +98,8 @@ unariserExp _ = go [] []
              ndoc stk++", env: "++ndoc env++"\n exp: "++sdoc e0) $
     case e0 of
       (MkProdE es) -> case stk of
-                    (ix:s') -> go s' env (es ! ix)
-                    [] -> L p <$> MkProdE <$> mapM (go stk env) (concatMap flattenProd es)
+                        (ix:s') -> go s' env (es ! ix)
+                        [] -> L p <$> MkProdE <$> mapM (go stk env) (concatMap flattenProd es)
 
       -- (ProjE ix (VarE v)) -> discharge stk <$> -- Danger.
       --                        case lookup v env of
@@ -128,6 +128,11 @@ unariserExp _ = go [] []
       LetE (v1,_locs1,ProdTy _,rhs@(L _ CaseE{})) (L _ (ProjE ix (L _ (VarE v2)))) | v1 == v2 ->
         go (ix:stk) env rhs
 
+      {-
+      This is causing problems with the buildTreeSumProg example. It's not able
+      to properly flatten the packed tuple in the tail position (return value).
+      I couldn't fix this easily. Commenting this works out for now.
+
       LetE (vr,_locs,ProdTy tys, L _ (MkProdE ls)) bod -> do
         vs <- sequence [ gensym (toVar "unzip") | _ <- ls ]
         let -- Here's a little bit of extra complexity to NOT introduce var/var copies:
@@ -140,7 +145,6 @@ unariserExp _ = go [] []
             env' = (vr, substs):env
         -- Here we *reprocess* the results in case there is more unzipping to do:
         go stk env' $ mkLets binds bod
-
 
       -- Bulk copy prop, WRONG:
       -- (LetE (v1,ProdTy tys, VarE v2) bod) ->
@@ -158,6 +162,13 @@ unariserExp _ = go [] []
       --   -- Nothing -> go stk ((v1,[v2]):env) bod -- Copy-prop
       --   Nothing -> LetE <$> ((v1,ProdTy tys) <$> go [] proj) <*>
       --                 go stk ((v1,Nothing):env) bod
+      -}
+
+      -- A stupid copy-prop for a corner case
+      -- TODO: change this
+      LetE (v,_locs,ProdTy{},rhs@(L _ ProjE{})) bod -> do
+        let bod' = substE (l$ VarE v) rhs bod
+        go stk env bod'
 
       -- And this is a HACK.  Need a more general solution:
       LetE (v,locs,ty@ProdTy{}, rhs@(L _ (TimeIt{}))) bod ->
@@ -290,7 +301,7 @@ flattenExp v ty bod =
           --
           projections :: Ty3 -> ProjStack -> [ProjStack]
           projections (ProdTy tys) acc =
-            concatMap (\(ty',i) -> projections ty' (acc ++ [i])) (zip tys [0..])
+            concatMap (\(ty',i) -> projections ty' (i:acc)) (zip tys [0..])
           projections _ acc = [acc]
 
           projs = projections ty []

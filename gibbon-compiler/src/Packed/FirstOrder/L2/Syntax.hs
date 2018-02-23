@@ -25,7 +25,7 @@ module Packed.FirstOrder.L2.Syntax
     , progToEnv
 
     -- *
-    , getArrowTyLocs, substEffs, substTy, mapPacked, prependArgs
+    , allLocVars, inLocVars, outLocVars, substEffs, substTy, mapPacked, prependArgs
 
     -- * Temporary backwards compatibility, plus rexports
     , UrTy(..)
@@ -263,9 +263,17 @@ getFunTy mp f = case M.lookup f mp of
 --------------------------------------------------------------------------------
 
 -- | Retrieve all LocVars from a fn type (Arrow)
-getArrowTyLocs :: ArrowTy t -> [LocVar]
-getArrowTyLocs ty = L.map (\(LRM l _ _) -> l) (locVars ty)
+allLocVars :: ArrowTy t -> [LocVar]
+allLocVars ty = L.map (\(LRM l _ _) -> l) (locVars ty)
 
+
+inLocVars :: ArrowTy t -> [LocVar]
+inLocVars ty = L.map (\(LRM l _ _) -> l) $
+               L.filter (\(LRM _ _ m) -> m == Input) (locVars ty)
+
+outLocVars :: ArrowTy t -> [LocVar]
+outLocVars ty = L.map (\(LRM l _ _) -> l) $
+                L.filter (\(LRM _ _ m) -> m == Output) (locVars ty)
 
 -- | Apply a variable substitution to a type.
 substTy :: Map LocVar LocVar -> Ty2 -> Ty2
