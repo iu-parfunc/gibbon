@@ -100,6 +100,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.List as L
 import qualified Data.Foldable as F
+import Data.Maybe
 -- import qualified Control.Monad.Trans.Writer.Strict as W
 import qualified Control.Monad.Trans.State.Strict as St
 import Control.Monad
@@ -242,11 +243,16 @@ data Failure = FailUnify Ty2 Ty2
              | FailInfer L1.Exp1
                deriving (Show, Eq)
 
-----------------------------------------
+---------------------------------------
+
+data Constraint = AfterConstantL LocVar Int LocVar
+                | AfterVariableL LocVar Var LocVar
+                | StartRegionL LocVar Region
+                  deriving (Show, Eq)
 
 -- | The result type for this pass.  Return a new expression and its
 -- type, which includes/implies its location.
-type Result = (L Exp2, Ty2)
+type Result = (L Exp2, Ty2, [Constraint])
 
 inferLocs :: L1.Prog -> SyM L2.Prog
 inferLocs = _
@@ -257,66 +263,104 @@ inferLocs = _
 data Dest = SingleDest LocVar
           | TupleDest [Dest]
           | NoDest
-    
+                    
 -- | We proceed in a destination-passing style given the target region
 -- into which we must produce the resulting value.
 inferExp :: FullEnv -> (L L1.Exp1) -> Dest -> TiM Result
 inferExp env@FullEnv{dataDefs}
          lex0@(L sl1 ex0) dest =
-  let lc = L sl1 in -- Tag the same location back on.
+  let lc = L sl1
+
+      -- TODO: eventually, we want to incrementally insert location bindings, rather than
+      -- spitting them out all at once... that's why we have a constraint set in Result
+      bindAllLocations :: Result -> TiM Result
+      bindAllLocations (expr,ty,constrs) = return $ (expr',ty,[])
+          where constrs' = L.nub constrs
+                expr' = foldr addLetLoc expr constrs'
+                addLetLoc i a =
+                    case i of
+                      AfterConstantL lv1 v lv2 -> lc$ Ext (LetLocE lv1 (AfterConstantLE v lv2) a)
+                      AfterVariableL lv1 v lv2 -> lc$ Ext (LetLocE lv1 (AfterVariableLE v lv2) a)
+                      StartRegionL lv r -> _
+
+
+  in -- Tag the same location back on.
   case ex0 of
     L1.VarE v ->
       let e' = lc$ VarE v in
       case dest of
-        NoDest -> return (e', lookupVEnv v env)
+        NoDest -> return (e', lookupVEnv v env, [])
         TupleDest ds -> err $ "TODO: handle tuple of destinations for VarE"
         SingleDest d  -> do 
                   let (ty,loc) = (lookupVEnv   v env,
                                   lookupVarLoc v env)
                   unify d loc
-                            (return (e', _))
-                            (copy (e',ty) d)
+                            (return (e', _,[]))
+                            (copy (e',ty,[]) d)
 
     L1.MkProdE ls ->
       case dest of
         NoDest -> err $ "Expected destination(s) for expression"
         SingleDest d -> case ls of
-                          [e] -> do (e',ty) <- inferExp env e dest
-                                    return (lc$ MkProdE [e'], ty)
+                          [e] -> do (e',ty,les) <- inferExp env e dest
+                                    return (lc$ MkProdE [e'], ty, les)
                           _ -> err $ "Cannot match single destination to tuple"
         TupleDest ds -> do results <- mapM (\(e,d) -> inferExp env e d) $ zip ls ds
-                           return (lc$ MkProdE (map fst results), ProdTy (map snd results))
+                           return (lc$ MkProdE ([a | (a,_,_) <- results]),
+                                     ProdTy ([b | (_,b,_) <- results]),
+                                     concat $ [c | (_,_,c) <- results])
           
-    L1.LitE n -> return (lc$ LitE n, IntTy)
+    L1.LitE n -> return (lc$ LitE n, IntTy, [])
 
     L1.DataConE () k ls ->
       case dest of
         NoDest -> err $ "Expected single location destination for DataConE"
         TupleDest _ds -> err $ "Expected single location destination for DataConE"
         SingleDest d -> do
-                  ls' <- mapM (\ e -> (inferExp env e dest)) ls
-                  return (lc$ DataConE d k [ e' | (e',_)  <- ls'],
-                            PackedTy (getTyOfDataCon dataDefs k) d)
+                  locs <- sequence $ replicate (length ls) fresh
+                  ls' <- mapM (\(e,l) -> (inferExp env e $ SingleDest l)) $ zip ls locs
+                  let afterVar :: (Maybe (L Exp2), Maybe LocVar, Maybe LocVar) -> Maybe Constraint
+                      afterVar ((Just (L _ (VarE v))), (Just loc1), (Just loc2)) =
+                          Just $ AfterVariableL loc1 v loc2
+                      afterVar ((Just (L _ (LitE _))), (Just loc1), (Just loc2)) =
+                          Just $ AfterConstantL loc1 4 loc2
+                      afterVar _ = Nothing
+                      constrs = concat $ [c | (_,_,c) <- ls']
+                      constrs' = if null locs
+                                 then constrs
+                                 else [AfterConstantL (L.head locs) 1 d] ++
+                                      (mapMaybe afterVar $ zip3
+                                       ((map Just $ L.tail ([a | (a,_,_) <- ls' ])) ++ [Nothing])
+                                       (map Just locs)
+                                       ((map Just $ L.tail locs) ++ [Nothing])) ++
+                                      constrs
+                  -- TODO: avoid duplicating code by more cleverly inserting location bindings
+                  -- earlier in the program
+                  bindAllLocations (lc$ DataConE d k [ e' | (e',_,_)  <- ls'],
+                            PackedTy (getTyOfDataCon dataDefs k) d,
+                            constrs')
     
     L1.IfE a b c@(L _ ce) -> do
        -- Here we blithely assume BoolTy because L1 typechecking has already passed:
-       (a',bty) <- inferExp env a NoDest
+       (a',bty,acs) <- inferExp env a NoDest
        assumeEq bty BoolTy
        -- Here BOTH branches are unified into the destination, so
        -- there is no need to unify with eachother.
-       (b',tyb)    <- inferExp env b dest
-       (c',tyc)    <- inferExp env c dest
-       return (lc$ IfE a' b' c', tyc)
+       (b',tyb,csb)    <- inferExp env b dest
+       (c',tyc,csc)    <- inferExp env c dest
+       return (lc$ IfE a' b' c', tyc, L.nub $ acs ++ csb ++ csc)
 
 --   | CaseE EXP [(DataCon, [(Var,loc)], EXP)]
 
     L1.CaseE ex ls -> do 
       -- Case expressions introduce fresh destinations for the scrutinee:
       loc <- lift $ lift $ freshLocVar "scrut"
-      (ex',ty2) <- inferExp env ex (SingleDest loc)
+      (ex',ty2,cs) <- inferExp env ex (SingleDest loc)
       let src = locOfTy ty2
       pairs <- mapM (doCase src dest) ls
-      return (lc$ CaseE ex' (L.map fst pairs), snd (L.head pairs))
+      return (lc$ CaseE ex' ([a | (a,_,_) <- pairs]),
+              (\(_,b,_)->b) (L.head pairs),
+              (concat $ [c | (_,_,c) <- pairs]))
 
     -- Lets are where we allocate fresh locations:
     L1.LetE (vr,locs,_,L sl2 rhs) bod | [] <- locs ->
@@ -345,7 +389,7 @@ inferExp env@FullEnv{dataDefs}
 -- appropriately for all the fields.
 doCase :: LocVar -> Dest
        -> (DataCon, [(Var,())],     L L1.Exp1) ->
-     TiM ((DataCon, [(Var,LocVar)], L L2.Exp2), Ty2)
+     TiM ((DataCon, [(Var,LocVar)], L L2.Exp2), Ty2, [Constraint])
 doCase src dst (con,vars,rhs) =
   _
 
