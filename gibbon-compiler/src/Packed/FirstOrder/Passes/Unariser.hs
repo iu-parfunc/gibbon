@@ -71,12 +71,6 @@ unariser Prog{ddefs,fundefs,mainExp} = do
 -- perform, from left to right.
 type ProjStack = [Int]
 
--- | Maps variables onto tuples of (projections of) other variables
-type ProjEnv = [(Var,[(ProjStack,Var)])]
-
-type TEnv = M.Map Var Ty3
-
-
 unariserExp :: DDefs Ty3 -> ProjStack -> Env2 Ty3 -> L Exp3 -> SyM (L Exp3)
 unariserExp ddfs stk env2 (L p ex) = L p <$>
   case ex of
@@ -153,8 +147,8 @@ unariserExp ddfs stk env2 (L p ex) = L p <$>
       return $ LetE (tmp,[],ty, l$ TimeIt e' ty b) (l$ VarE tmp)
 
     Ext{}  -> return ex
-    MapE{} -> __
-    FoldE{} -> __
+    MapE{}  -> error "unariserExp: MapE TODO"
+    FoldE{} -> error "unariserExp: FoldE TODO"
 
   where
     go = unariserExp ddfs stk
@@ -168,13 +162,6 @@ unariserExp ddfs stk env2 (L p ex) = L p <$>
     ls ! i = if i <= length ls
              then ls!!i
              else error$ "unariserExp: attempt to project index "++show i++" of list:\n "++sdoc ls
-
-
-lookupVar :: Env2 Ty3 -> Var -> Ty3
-lookupVar env var =
-  case M.lookup var (vEnv env) of
-    Just ty -> ty
-    Nothing -> error "err"
 
 
 -- | Flatten nested tuples
@@ -277,14 +264,3 @@ flattenExp v ty bod =
           -- FIXME: This is in-efficient because of the substE ?
       in foldr (\(from,to) acc -> substE from to acc) bod substs
     _ -> bod
-
-
-test3 :: L Exp3
-test3 = l$ LetE ("v1",[],ProdTy [IntTy, IntTy], l$ MkProdE [l$ LitE 1, l$ LitE 2]) $
-            l$ LetE ("v2",[],ProdTy [IntTy, ProdTy [IntTy, IntTy]],
-                     l$ MkProdE [l$ LitE 1, l$ MkProdE [l$ ProjE 0 (l$ VarE "v1"), l$ ProjE 1 (l$ VarE "v1")]]) $
-            l$ LetE ("v3",[], ProdTy [IntTy, ProdTy [IntTy, IntTy]],
-                     l$ MkProdE [l$ LitE 1, l$ MkProdE [l$ LitE 2, l$ ProjE 0 $ l$ ProjE 1 (l$ VarE "v2")]]) $
-            l$ VarE "v3"
-
-t3 = doc $ runSyM 0 $ unariserExp undefined [] (Env2 M.empty M.empty) test3
