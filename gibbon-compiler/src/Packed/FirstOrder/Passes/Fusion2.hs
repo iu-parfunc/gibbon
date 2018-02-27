@@ -36,13 +36,15 @@ type PotentialsList = [DefTableEntry]
 
 --Rewrite this using a case .. will look nicer i think!
 
-buildDefTable:: Exp1 -> DefTable ->DefTable
-buildDefTable ex table = 
-  case (ex) of
-    VarE (Var sym) ->  M.update f sym table 
+buildDefTable:: Exp1 -> DefTable
+buildDefTable ex  = 
+  rec ex M.empty where 
+    rec ex table= 
+      case (ex) of
+          VarE (Var sym) ->  M.update f sym table 
                        where f (DefTableEntry  def fun_uses c) = Just ( DefTableEntry def fun_uses (c+1))          
  
-    callExp@(AppE _ _ (L _  (MkProdE argsList))) ->
+          callExp@(AppE _ _ (L _  (MkProdE argsList))) ->
                        buildDefTable_args  callExp argsList table 0
                        where  buildDefTable_args _ [] table _ = table
                               buildDefTable_args callExp (h:tail)  table index=
@@ -51,45 +53,58 @@ buildDefTable ex table =
                                                where f (DefTableEntry  def fun_uses c) = Just ( DefTableEntry def ((callExp,index):fun_uses) (c+1)) 
                                   _                 -> buildDefTable_args callExp tail  table (index+1)
 
-    callExp@(AppE _ _ (L _  (VarE (Var sym ))))  ->
+          callExp@(AppE _ _ (L _  (VarE (Var sym ))))  ->
                        M.update f sym table 
                        where f (DefTableEntry  def fun_uses c) = Just ( DefTableEntry def ((callExp,-1):fun_uses) (c+1)) -- -1 means there is no ProdE ( only one argument)
 
-    PrimAppE _ ls ->  L.foldl f table ls
-                      where f tbl exp = buildDefTable (getExp exp) tbl
+          PrimAppE _ ls ->  L.foldl f table ls
+                      where f tbl exp = rec (getExp exp) tbl
 
-    LetE ((Var sym),_,_,bind) body ->
-                      let table' =  (buildDefTable (getExp bind) table) 
+          LetE ((Var sym),_,_,bind) body ->
+                      let table' =  (rec (getExp bind) table) 
                       in let table'' =  case (getExp bind) of
                                           AppE _ _ _     ->  M.insert sym (DefTableEntry {def=(getExp bind), fun_uses=[], all_use_count = 0} ) table'
                                           _              ->  table' 
           
-                      in buildDefTable (getExp body) table''
+                      in rec (getExp body) table''
      
 
-    IfE cond thenBody elseBody      ->
-                      let table' = buildDefTable (getExp cond) table 
-                      in let table'' = buildDefTable ( getExp thenBody) table'
-                      in   buildDefTable (getExp elseBody) table''
+          IfE cond thenBody elseBody      ->
+                      let table' = rec (getExp cond) table 
+                      in let table'' = rec ( getExp thenBody) table'
+                      in   rec (getExp elseBody) table''
 
 
-    CaseE e ls      -> let table' = buildDefTable ( getExp e) table 
+          CaseE e ls      -> let table' = rec ( getExp e) table 
                        in L.foldl f table' ls
-                       where f tbl (_, _, exp ) = buildDefTable (getExp exp) tbl
+                       where f tbl (_, _, exp ) = rec (getExp exp) tbl
     
-    DataConE _ _ ls -> L.foldl f table ls where f tbl exp = buildDefTable (getExp exp) tbl
+          DataConE _ _ ls -> L.foldl f table ls where f tbl exp = rec (getExp exp) tbl
 
-    TimeIt exp _ _  -> buildDefTable (getExp exp) table
+          TimeIt exp _ _  -> rec (getExp exp) table
 
-    _               -> table ------`debug`  ("Defualt" L.++ show a) 
+          _                -> table ------`debug`  ("Defualt" L.++ show a) 
+
+extractAppEName ::  Exp1 -> Var
+extractAppEName (AppE var _ _ ) = var
 
 
+-- isInList :: (Var, Var) -> [(Var, Var)] ->Bool
+-- isInList (outer, inner ) [] = False;
+-- isInList (outer, inner) ((outer',inner'):xs) = 
+--   ((fromVar outer)==(fromVar outer') &&
+--    (fromVar inner) ==(fromVar inner))||
+--   ( isInList (outer, inner ) xs)`debug` (show (fromVar outer)L.++(fromVar outer')L.++ (fromVar inner)L.++(fromVar inner') )  
 
+findPotential :: DefTable -> [(Var, Var)] -> Maybe (Var, Var)
+findPotential table skipList = 
+  case (L.find predicate (M.toList table) ) of
+    Nothing       -> Nothing `debug`  (show skipList) 
+    Just (_, (DefTableEntry def fun_uses use_count ) ) -> Just ((extractAppEName def),(extractAppEName(fst (L.head fun_uses))) ) --`debug`  (show (isInList  ((extractAppEName def),(extractAppEName(fst (L.head fun_uses))) ) skipList ) ) 
 
-findPotentials :: DefTable -> PotentialsList
-findPotentials table =
-  M.foldrWithKey f ([]) table 
-  where f sym entry@(DefTableEntry _ fun_uses use_count ) ls = if ((L.length fun_uses)==1) then entry:ls  else  ls
+  where  predicate (_,DefTableEntry def fun_uses use_count )  =
+                 (L.length fun_uses==1) && (L.notElem  ((extractAppEName def),(extractAppEName(fst (L.head fun_uses))) ) skipList ) 
+  
                  
 
 inline :: FunDef Ty1 (L Exp1)-> FunDef Ty1 (L Exp1) -> Int  ->  FunDef Ty1 (L Exp1)
@@ -156,9 +171,12 @@ simplifyCases function =
 -- it also assumes that there is no variables shadowing "imprtant!! " --> can be chnaged not to by carrying the deftable around 
 
 -- we have a probelem here and its that 
+rewriteSeqCallsFunBody ::(Var, Var, Int,Var ) -> FunDef Ty1 ( L Exp1)-> FunDef Ty1 ( L Exp1)
+rewriteSeqCallsFunBody rule function = function{funBody= rewriteSeqCalls rule (funBody function)}
+
 rewriteSeqCalls :: (Var, Var, Int,Var ) -> L Exp1  ->(L Exp1) 
 rewriteSeqCalls rule@(outerName, innerName, argPos, newName) body =
- let defTable = buildDefTable (getExp body) M.empty 
+ let defTable = buildDefTable (getExp body)  
  in let rec (L l ex ) = case (ex) of 
                           AppE v loc argList -> 
                               let ignore = L l $ AppE v loc (rec argList) 
@@ -172,7 +190,7 @@ rewriteSeqCalls rule@(outerName, innerName, argPos, newName) body =
                                                          ignore----`debug`  ("here1")   -- the outer has only one argument which is the tree itself so 
                                           
                                            where getDefiningFuntion x = case (M.lookup x defTable) of
-                                                                                  Nothing    ->  (toVar "") `debug`  ("defined by constructor !!!")
+                                                                                  Nothing    ->  (toVar "")--`debug`  ("defined by constructor !!!")
                                                                                   Just entry -> case (def  entry) of 
                                                                                                 AppE v _ _   -> v
                                                                                                 _            -> error  ("ops" L.++ (show(def  entry)))
@@ -189,6 +207,8 @@ rewriteSeqCalls rule@(outerName, innerName, argPos, newName) body =
                           LetE (v,loc,t,rhs) bod   ->  L l $ LetE (v,loc,t, (rec rhs)) (rec bod) ----`debug`   ("here3  ") 
                           IfE e1 e2 e3             ->  L l $ IfE (rec e1) ( rec e2) ( rec e3)      ----`debug`  ("here4  ") 
                           CaseE e1 ls1             ->  L l $ CaseE e1 (L.map f ls1) where f (dataCon,x,exp) = (dataCon, x, (rec exp))  ----`debug`   ("here5  ") 
+                          TimeIt e d b             ->  L l $ TimeIt ( rec e) d b 
+                          DataConE loc datacons ls ->  L l $ DataConE loc datacons (L.map (\x-> rec x) ls)
 
                           otherwise -> L l ex  ----`debug`  ("here6  ") 
   in rec body
@@ -227,7 +247,7 @@ removeUnusedDefs :: FunDef Ty1 ( L Exp1) -> FunDef Ty1 ( L Exp1)
 removeUnusedDefs f =
  f{funBody= rec (funBody f)} where
      rec (L l ex) = 
-      let defTable = buildDefTable (getExp (funBody f )) M.empty 
+      let defTable = buildDefTable (getExp (funBody f ))  
       in case ex of 
                     LetE (Var s,loc,t,rhs) bod   -> case (M.lookup s defTable ) of
                                                       Nothing ->L l $ LetE (Var s,loc,t, (rec rhs))  (rec bod)  --error  ("error in removeUnusedDefs" L.++ show s)
@@ -276,11 +296,9 @@ mergeListOfFunctions  ddefs ls = do
                                                                   where partialList =  L.map (\m -> case ( M.lookup dataCons m) of 
                                                                                                         (Just a ) -> a 
                                                                                                         (Nothing) ->error "ooopsa1")  step2 
-  --let reduce = L.fold  
 
   let funNames = L.map (\f -> funName f ) ls                                                                                          
   (FunDef  (toVar ("merged__" L.++ newName) )newArgs newRetType (l reduceStep) , funNames)
-  --let newArgs = ... 
 
 renameFunction:: FunDef Ty1 ( L Exp1) -> Var -> FunDef Ty1 ( L Exp1) 
 renameFunction function newName = 
@@ -288,16 +306,16 @@ renameFunction function newName =
     rec (L l ex) = 
       let oldName = funName function in 
             case ex of 
-                  AppE name loc e          ->  L l $ AppE (if name==oldName then newName else name) loc (rec e)  ----`debug`  ("so1") 
-                  PrimAppE x ls            ->  L l $ PrimAppE x (L.map f ls) where f item = (rec item)----`debug`  ("so2") 
-                  LetE (v,loc,t,rhs) bod   ->  L l $ LetE (v,loc,t, (rec rhs)) (rec bod)  ----`debug`  ("so3") 
-                  IfE e1 e2 e3             ->  L l $ IfE (rec e1) ( rec e2) ( rec e3)----`debug`  ("so4") 
-                  MkProdE ls               ->  L l $ MkProdE (L.map (\x-> rec x) ls) ----`debug`  ("so5") 
-                  ProjE index exp          ->  L l $ ProjE index (rec exp)----`debug`  ("so6") 
+                  AppE name loc e          ->  L l $ AppE (if name==oldName then newName else name) loc (rec e) --`debug`  ("so1") 
+                  PrimAppE x ls            ->  L l $ PrimAppE x (L.map f ls) where f item = (rec item)--`debug`  ("so2") 
+                  LetE (v,loc,t,rhs) bod   ->  L l $ LetE (v,loc,t, (rec rhs)) (rec bod) --`debug`  ("so3") 
+                  IfE e1 e2 e3             ->  L l $ IfE (rec e1) ( rec e2) ( rec e3)--`debug`  ("so4") 
+                  MkProdE ls               ->  L l $ MkProdE (L.map (\x-> rec x) ls)--`debug`  ("so5") 
+                  ProjE index exp          ->  L l $ ProjE index (rec exp)--`debug`  ("so6") 
                   CaseE e1 ls1             ->  L l $ CaseE (rec e1)  (L.map f ls1) where f (dataCon,x,exp) = (dataCon, x, (rec exp))  ----`debug`  ("so7") 
-                  DataConE loc datacons ls ->  L l $ DataConE loc datacons (L.map (\x-> rec x) ls)----`debug`  ("so8") 
-                  TimeIt e d b             ->  L l $ TimeIt ( rec e) d b ----`debug`  ("so9") 
-                  otherwise                ->  L l ex ----`debug`  ("so10") 
+                  DataConE loc datacons ls ->  L l $ DataConE loc datacons (L.map (\x-> rec x) ls)--`debug`  (("so8") L.++ (show newName))
+                  TimeIt e d b             ->  L l $ TimeIt ( rec e) d b--`debug`  ("so9") 
+                  otherwise                ->  L l ex--`debug`  (("so10") L.++ (show ex))
 
 
 
@@ -325,115 +343,203 @@ buildUseTable ex  = rec (funBody ex) (M.fromList []) where
                   otherwise                -> tb
 
 
---mergeFunctionDefinitons:: 
+
+combine ::  DDefs Ty1-> FunDefs Ty1 (L Exp1)-> Var -> Var-> SyM  (Bool, Var,  FunDefs Ty1 (L Exp1) )
+combine ddefs fdefs  inner outer  = do
+  let inner_fun =  fdefs M.! inner
+  let outer_fun =  fdefs M.! outer
+  
+  inline_name   <-  gensym_tag (toVar ( (fromVar outer) L.++ "_" L.++(fromVar inner ))) "inline" 
+  let inlined_fun1 =  (simplifyCases (inline inner_fun outer_fun (-1)) ){funName = inline_name}
+  let inlined_fun2 =  rewriteSeqCallsFunBody (outer, inner, -1, inline_name)  inlined_fun1
+  let inlined_fun3 =  removeUnusedDefs inlined_fun2
+
+  --apply the transformation to the body of the new function
+  let funDefs0   =M.insert  inline_name inlined_fun3 fdefs
+
+  (body, newDefs)     <- transformFuse ddefs funDefs0 (funBody inlined_fun3) 
+  let inlined_fun4 = inlined_fun3{funBody = body}
+  let funDefs1   = M.union funDefs0 newDefs 
+  let funDefs2   = M.insert  inline_name inlined_fun4 funDefs1
+
+ 
+
+-------------------------------------------------------Merging step
+  let useTable        = buildUseTable inlined_fun4
+  
+  -- need to be extended and checked on a case where length>2 
+  let useTableFiltered = M.filter f useTable where f a = if ((L.length a) == 2) then True else False  
+  let pairsToMerge     = M.foldl f S.empty useTableFiltered where
+                         f set ls = S.insert (L.foldl f2 S.empty ls) set  where 
+                          f2 s (_,(AppE fName _ _ )) = S.insert fName s
+  let functionsToMerge = L.map toList (S.toList pairsToMerge) where
+                            toList item = L.foldl f2 [] item where
+                               f2 ls fname = case ( M.lookup fname funDefs2 ) of 
+                                              Nothing  ->error "not expected" 
+                                              Just fundef   -> fundef:ls
+  -- create a list of merged function 
+  let mergedFunctions1  = L.map (mergeListOfFunctions ddefs) functionsToMerge
+  let mergedFunctions2  = L.map (\(funDef,ls)-> ( (rewriteMergedAsRec funDef ls) ,ls))  mergedFunctions1
+
+  
+  let inlined_fun5      = L.foldr (\(funDef,ls) funDef2 ->funDef2{funBody =( rewriteMergedFunctions (funBody funDef2) funDef ls )})  inlined_fun4 mergedFunctions2
+
+  let funDefs3   = M.insert  inline_name inlined_fun5 funDefs2
+
+  let funDefs4        = L.foldr (\(funDef,_) mp -> M.insert (funName funDef) funDef mp ) funDefs3 mergedFunctions2
+
+
+
+  return $(True, inline_name, funDefs4)
+
+transformFuse :: DDefs Ty1 -> FunDefs Ty1 (L Exp1)-> L Exp1 -> SyM (L Exp1,  FunDefs Ty1 (L Exp1))
+transformFuse  ddefs funDefs body = do
+  rec body [] funDefs
+          where
+            rec (L l exp) selectedItems fdefs = do
+                  let defTable = buildDefTable exp  
+                  let potential = findPotential defTable selectedItems 
+                  case (potential) of
+                    Nothing -> return (L l exp, fdefs)
+                    Just (inner,outer ) -> do
+                        (valid, fNew, newDefs) <-  (combine  ddefs fdefs inner outer )
+                        if ( valid==True )
+                              then
+                                 let body' = rewriteSeqCalls (outer,inner, -1, fNew) body `debug`  ("final rewrite" L.++ (show outer )L.++ (show inner )L.++ (show fNew )) 
+                                 in rec body' ((inner,outer):selectedItems) (M.union fdefs newDefs)
+                              else
+                                 rec body  ((inner,outer):selectedItems) fdefs
+
+                                                
+                    
+              
+                    
+
+
+
+
+
+
+
 fusion2:: L1.Prog -> SyM L1.Prog 
 fusion2 (L1.Prog defs funs main) = do
-  let (defTable,main')  = case main of
-                           Nothing          ->  (M.empty, l(VarE (toVar "") )) ----`debug`  ("empty main") 
-                           Just (L _ main') ->  ((buildDefTable main' M.empty), l main') --`debug` ("building def table for the body of the main") 
-  
-  let potentials = findPotentials defTable
+  (main', funs') <- case main of 
+                         Nothing   -> return $ (Nothing, M.empty)
+                         Just m    -> do 
+                                (m', newDefs) <- (transformFuse defs funs m )
+                                return (Just m', M.union funs newDefs) 
+  return $ L1.Prog defs funs'  main'  
 
-  let firstPot =  L.head potentials
-  let getSymbol exp = case (exp) of 
-                       AppE v _ _ -> v
+
+--mergeFunctionDefinitons:: 
+-- fusion2:: L1.Prog -> SyM L1.Prog 
+-- fusion2 (L1.Prog defs funs main) = do
+--   let (defTable,main')  = case main of
+--                            ç          ->  (M.empty, l(VarE (toVar "") )) ----`debug`  ("empty main") 
+--                            Just (L _ main') ->  ((buildDefTable main' M.empty), l main') --`debug` ("building def table for the body of the main") 
+  
+--   let potentials = findPotentials defTable
+
+--   let firstPot =  L.head potentials
+--   let getSymbol exp = case (exp) of 
+--                        AppE v _ _ -> v
       
-  let inner_fun =  funs M.! (getSymbol (def firstPot)) 
-  let outer_fun =  funs M.! (getSymbol ( fst ( L.head (fun_uses firstPot)) ) )
+--   let inner_fun =  funs M.! (getSymbol (def firstPot)) 
+--   let outer_fun =  funs M.! (getSymbol ( fst ( L.head (fun_uses firstPot)) ) )
 
-  let old_name = funName outer_fun 
-  let arg_pos = snd ( L.head (fun_uses firstPot) )
+--   let old_name = funName outer_fun 
+--   let arg_pos = snd ( L.head (fun_uses firstPot) )
  
-  inline_name <-  gensym_tag old_name "inline" 
-  let inlined_fun =  (inline inner_fun outer_fun arg_pos) {funName = inline_name}
+--   inline_name <-  gensym_tag old_name "inline" 
+--   let inlined_fun =  (inline inner_fun outer_fun arg_pos) {funName = inline_name}
   
-  case_simple_name <-  gensym_tag old_name "simpleCase" 
-  let simple_case = renameFunction (simplifyCases inlined_fun) case_simple_name
+--   case_simple_name <-  gensym_tag old_name "simpleCase" 
+--   let simple_case = renameFunction (simplifyCases inlined_fun) case_simple_name
   
-  rewriteName <- gensym_tag old_name "rewrite1"
-  let rewrite1 = let rule = ((funName outer_fun), (funName inner_fun), arg_pos, rewriteName) 
-                 in  renameFunction simple_case{funBody=(rewriteSeqCalls rule  (funBody simple_case) ) }rewriteName
+--   rewriteName <- gensym_tag old_name "rewrite1"
+--   let rewrite1 = let rule = ((funName outer_fun), (funName inner_fun), arg_pos, rewriteName) 
+--                  in  renameFunction simple_case{funBody=(rewriteSeqCalls rule  (funBody simple_case) ) }rewriteName
  
-  clean1Name    <- gensym_tag old_name "clean1"
-  let clean1 =  renameFunction (removeUnusedDefs  rewrite1) clean1Name 
+--   clean1Name    <- gensym_tag old_name "clean1"
+--   let clean1 =  renameFunction (removeUnusedDefs  rewrite1) clean1Name 
 
-  -- repeat.............................
-  let defTable2 = (buildDefTable (getExp (funBody clean1)) M.empty) --`debug` ("building def table for the body of clean1") 
+--   -- repeat.............................
+--   let defTable2 = (buildDefTable (getExp (funBody clean1)) M.empty) --`debug` ("building def table for the body of clean1") 
  
-  let potentials2 = findPotentials defTable2 
+--   let potentials2 = findPotentials defTable2 
 
-  let firstPot2 =  L.head potentials2 
-  let getSymbol exp = case (exp) of 
-                       AppE v _ _ -> v
+--   let firstPot2 =  L.head potentials2 
+--   let getSymbol exp = case (exp) of 
+--                        AppE v _ _ -> v
 
-  let inner_fun2 =  funs M.! (getSymbol (def firstPot2)) 
-  let outer_fun2 =  funs M.! (getSymbol ( fst ( L.head (fun_uses firstPot2)) ) )
+--   let inner_fun2 =  funs M.! (getSymbol (def firstPot2)) 
+--   let outer_fun2 =  funs M.! (getSymbol ( fst ( L.head (fun_uses firstPot2)) ) )
    
 
-  let old_name2 = funName outer_fun2 
-  let arg_pos2 = snd ( L.head (fun_uses firstPot2) )
+--   let old_name2 = funName outer_fun2 
+--   let arg_pos2 = snd ( L.head (fun_uses firstPot2) )
  
-  inline_name2 <-  gensym_tag old_name2 "inline" 
-  let inlined_fun2 =  (inline inner_fun2 outer_fun2 arg_pos2) {funName = inline_name2}
+--   inline_name2 <-  gensym_tag old_name2 "inline" 
+--   let inlined_fun2 =  (inline inner_fun2 outer_fun2 arg_pos2) {funName = inline_name2}
   
 
-  case_simple_name2 <-  gensym_tag old_name2 "simpleCase" 
-  let simple_case2 = renameFunction (simplifyCases inlined_fun2) case_simple_name2
+--   case_simple_name2 <-  gensym_tag old_name2 "simpleCase" 
+--   let simple_case2 = renameFunction (simplifyCases inlined_fun2) case_simple_name2
   
-  rewriteName2 <- gensym_tag old_name2 "rewrite1"
-  let rewrite1_2 = let rule = ((funName outer_fun2), (funName inner_fun2), arg_pos2, rewriteName2) --`debug` ("done here safely") 
-                   in let seqswritten =  simple_case2{funBody= (rewriteSeqCalls rule (funBody simple_case2))}--`debug` ("done here safely1!!!!") 
-                      in renameFunction seqswritten rewriteName2 --`debug` ("here we dp stuch hmmm ") 
+--   rewriteName2 <- gensym_tag old_name2 "rewrite1"
+--   let rewrite1_2 = let rule = ((funName outer_fun2), (funName inner_fun2), arg_pos2, rewriteName2) --`debug` ("done here safely") 
+--                    in let seqswritten =  simple_case2{funBody= (rewriteSeqCalls rule (funBody simple_case2))}--`debug` ("done here safely1!!!!") 
+--                       in renameFunction seqswritten rewriteName2 --`debug` ("here we dp stuch hmmm ") 
  
-  clean1Name2    <- gensym_tag old_name2 "clean1" --`debug` ("dpne here safely") 
-  let clean1_2 =  renameFunction (removeUnusedDefs  rewrite1_2) clean1Name2 
+--   clean1Name2    <- gensym_tag old_name2 "clean1" --`debug` ("dpne here safely") 
+--   let clean1_2 =  renameFunction (removeUnusedDefs  rewrite1_2) clean1Name2 
 
-  rewriteValName <- gensym_tag old_name "rewriteVal" 
-  let rewriteVal = let rule = ((funName outer_fun2), (funName inner_fun2), arg_pos, clean1Name2) 
-                  in  renameFunction (removeUnusedDefs (clean1{funBody= rewriteSeqCalls rule  (funBody clean1)} ))rewriteValName
+--   rewriteValName <- gensym_tag old_name "rewriteVal" 
+--   let rewriteVal = let rule = ((funName outer_fun2), (funName inner_fun2), arg_pos, clean1Name2) 
+--                   in  renameFunction (removeUnusedDefs (clean1{funBody= rewriteSeqCalls rule  (funBody clean1)} ))rewriteValName
  
 
 
-  let update1 =   M.insert  inline_name inlined_fun funs
-  let update2 =  M.insert  case_simple_name simple_case update1
-  let update3 =  M.insert  rewriteName rewrite1 update2
-  let update4 =  M.insert   clean1Name clean1 update3
-  let update5         = M.insert  clean1Name2 clean1_2 update4
-  let update6         = M.insert  rewriteValName rewriteVal update5
-  let useTable        = buildUseTable rewriteVal
- -- --  ----- The New Suff ... need to be isolated in fuctions to compose them next 
-  let useTableFiltered = M.filter f useTable where f a = if ((L.length a) == 2) then True else False  
+--   let update1 =   M.insert  inline_name inlined_fun funs
+--   let update2 =  M.insert  case_simple_name simple_case update1
+--   let update3 =  M.insert  rewriteName rewrite1 update2
+--   let update4 =  M.insert   clean1Name clean1 update3
+--   let update5         = M.insert  clean1Name2 clean1_2 update4
+--   let update6         = M.insert  rewriteValName rewriteVal update5
+--   let useTable        = buildUseTable rewriteVal
+--  -- --  ----- The New Suff ... need to be isolated in fuctions to compose them next 
+--   let useTableFiltered = M.filter f useTable where f a = if ((L.length a) == 2) then True else False  
 
- -- --  --move this to a function
-  let pairsToMerge    = M.foldl f S.empty useTableFiltered where
-         f set ls = S.insert (L.foldl f2 S.empty ls) set 
-            where f2 s (_,(AppE fName _ _ )) = S.insert fName s
+--  -- --  --move this to a function
+--   let pairsToMerge    = M.foldl f S.empty useTableFiltered where
+--          f set ls = S.insert (L.foldl f2 S.empty ls) set 
+--             where f2 s (_,(AppE fName _ _ )) = S.insert fName s
 
- -- --  -- move this as well to a funtion 
-  let functionsToMerge = L.map toList (S.toList pairsToMerge) where
-         toList item = L.foldl f2 [] item where
-           f2 ls fname = case ( M.lookup fname update6 ) of 
-                           Nothing  ->error "not expected" 
-                           Just fundef   -> fundef:ls
- -- --  -- create a list of merged function 
-  let mergedFunctions = L.map (mergeListOfFunctions defs) functionsToMerge
+--  -- --  -- move this as well to a funtion 
+--   let functionsToMerge = L.map toList (S.toList pairsToMerge) where
+--          toList item = L.foldl f2 [] item where
+--            f2 ls fname = case ( M.lookup fname update6 ) of 
+--                            Nothing  ->error "not expected" 
+--                            Just fundef   -> fundef:ls
+--  -- --  -- create a list of merged function 
+--   let mergedFunctions = L.map (mergeListOfFunctions defs) functionsToMerge
 
 
- --  -- for each function in the set of merged function right it in terms of itself!!!
-  let mergedFunctions2 = L.map (\(funDef,ls)-> ( (rewriteMergedAsRec funDef ls) ,ls))  mergedFunctions
-  let update7 = L.foldr (\(funDef,_) mp -> M.insert (funName funDef) funDef mp ) update6 mergedFunctions2
-  finalName <- gensym_tag (toVar "_") "final"
+--  --  -- for each function in the set of merged function right it in terms of itself!!!
+--   let mergedFunctions2 = L.map (\(funDef,ls)-> ( (rewriteMergedAsRec funDef ls) ,ls))  mergedFunctions
+--   let update7 = L.foldr (\(funDef,_) mp -> M.insert (funName funDef) funDef mp ) update6 mergedFunctions2
+--   finalName <- gensym_tag (toVar "_") "final"
  
-  let final_version1 = renameFunction rewriteVal finalName
- -- let f (funDef,ls) funDef2 = funDef2{funBody =( rewriteMergedFunctions (funBody funDef2) funDef ls )}  --`debug` ("executed") 
-  let final_version2 = L.foldr (\(funDef,ls) funDef2 ->funDef2{funBody =( rewriteMergedFunctions (funBody funDef2) funDef ls )})  final_version1 mergedFunctions2
-  let update8 = M.insert  finalName final_version2 update7
+--   let final_version1 = renameFunction rewriteVal finalName
+--   let final_version2 = L.foldr (\(funDef,ls) funDef2 ->funDef2{funBody =( rewriteMergedFunctions (funBody funDef2) funDef ls )})  final_version1 mergedFunctions2
+--   let update8 = M.insert  finalName final_version2 update7
 
-  let mainFinal = rewriteSeqCalls rule   main' where 
-                       rule = ((funName outer_fun), (funName inner_fun), arg_pos, finalName)
-  -- Now we want to look with in the function for multiple traversal that traverse the input tree
-  --let update5 =  M.insert  inline_name2 inlined_fun2 update4
+--   let mainFinal = (rewriteSeqCalls rule   main' ) where 
+--                        rule = ((funName outer_fun), (funName inner_fun), arg_pos, finalName)
+
+--   -- Now we want to look with in the function for multiple traversal that traverse the input tree
+--   --let update5 =  M.insert  inline_name2 inlined_fun2 update4
 
 
-  return $ L1.Prog defs  update8 (Just mainFinal) ------`debug`  ("deftable is : " L.++ (show functionsToMerge)  L.++ "\n\n potentials are :"  L.++ (show potentials2)  L.++"\n\n the new function is " L.++ (show simple_case) )
-    
+--   return $ L1.Prog defs  update8 (Just mainFinal)--`debug`  ("deftable is : " L.++ (show functionsToMerge)  L.++ "\n\n potentials are :"  L.++ (show potentials2)  L.++"\n\n the new function is " L.++ (show simple_case) )
+--     
