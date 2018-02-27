@@ -64,6 +64,8 @@ import           Packed.FirstOrder.Passes.HoistNewBuf    (hoistNewBuf)
 import           Packed.FirstOrder.Passes.Unariser       (unariser)
 import           Packed.FirstOrder.Passes.Lower          (lower)
 import           Packed.FirstOrder.Passes.Codegen        (codegenProg)
+import           Packed.FirstOrder.Passes.Fusion2
+
 #ifdef LLVM_ENABLED
 import qualified Packed.FirstOrder.Passes.LLVM.Codegen as LLVM
 #endif
@@ -344,7 +346,7 @@ parseInput ip fp =
     SExpr   -> return (SExp.parseFile fp, fp)
     Unspecified ->
       case takeExtension fp of
-        ".hs" -> return (HS.parseFile fp, fp)
+        ".hs"   -> return (HS.parseFile fp, fp)
         ".sexp" -> return (SExp.parseFile fp, fp)
         ".rkt"  -> return (SExp.parseFile fp, fp)
         ".gib"  -> return (SExp.parseFile fp, fp)
@@ -389,6 +391,7 @@ passes config@Config{mode,packed} l1 = do
 
       l1 <- goE "flatten"       flattenL1               l1
       l1 <- goE "inlineTriv"    (return . inlineTriv)   l1
+      l1 <- goE  "fusion2"      fusion2                 l1
 
       -- TODO: Write interpreters for L2 and L3
       l3 <- if packed
