@@ -26,6 +26,7 @@ module Packed.FirstOrder.L2.Syntax
 
     -- *
     , allLocVars, inLocVars, outLocVars, substEffs, substTy, mapPacked, prependArgs
+    , convertTy, convertDDefs
 
     -- * Temporary backwards compatibility, plus rexports
     , UrTy(..)
@@ -333,6 +334,14 @@ mapPacked fn t =
 prependArgs :: [UrTy l] -> UrTy l -> UrTy l
 prependArgs [] t = t
 prependArgs ls t = ProdTy $ ls ++ [t]
+
+-- TODO: convert Ty1 to Ty2 (by inserting dummy locations?)
+
+convertTy :: L1.Ty1 -> Ty2
+convertTy = undefined
+
+convertDDefs :: DDefs L1.Ty1 -> DDefs Ty2
+convertDDefs = undefined
 
 
 {-
