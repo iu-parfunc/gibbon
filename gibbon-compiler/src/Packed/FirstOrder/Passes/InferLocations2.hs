@@ -256,7 +256,22 @@ data Constraint = AfterConstantL LocVar Int LocVar
 type Result = (L Exp2, Ty2, [Constraint])
 
 inferLocs :: L1.Prog -> SyM L2.Prog
-inferLocs prg = undefined
+inferLocs (L1.Prog dfs fds me) = do
+  prg <- St.runStateT (runExceptT m) M.empty
+  case fst prg of
+    Right a -> undefined
+    Left a -> undefined
+  where m = do
+          let fe = FullEnv (convertDDefs dfs) M.empty M.empty M.empty
+          l1 <- fresh
+          u1 <- fixLoc l1
+          -- TODO: implement this
+          me' <- case me of
+            Just me -> do me' <- inferExp fe me $ SingleDest l1
+                          return $ Just me'
+            Nothing -> return Nothing
+          fds' <- forM fds $ undefined
+          return undefined
 
     
 -- | Destination can be a single location var, a tuple of destinations,
@@ -507,11 +522,11 @@ lookupUnifyLoc l = do
     Just (FixedLoc l') -> return $ FixedLoc l'
 
 fixLoc :: LocVar -> TiM UnifyLoc
-fixLoc l = return $ FixedLoc l
+fixLoc l = do 
   -- l' <- fresh
-  -- m <- lift $ St.get
-  -- lift $ St.put $ M.insert l (FixedLoc l') m
-  -- return $ FixedLoc l'
+  m <- lift $ St.get
+  lift $ St.put $ M.insert l (FixedLoc l) m
+  return $ FixedLoc l
 
 assocLoc :: LocVar -> UnifyLoc -> TiM ()
 assocLoc l ul = do
