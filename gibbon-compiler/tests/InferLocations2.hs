@@ -25,6 +25,10 @@ import Control.Monad
 import Control.Monad.Trans.Except
 import Control.Monad.Trans (lift)
 
+import Data.Loc
+
+-- l = L NoLoc
+
 
 -- some basic tests of unification, some should succeed and others should fail
 utest1 = runSyM 0 $ St.runStateT (runExceptT m) M.empty
@@ -85,6 +89,20 @@ case_unify3 = (Right False) @=? (fst $ fst utest3)
 
 case_unify4 :: Assertion
 case_unify4 = (Right True) @=? (fst $ fst utest4)
+
+etest1 = runSyM 0 $ St.runStateT (runExceptT m) M.empty
+    where m = do
+            u1 <- fixLoc "a"
+            u2 <- fixLoc "b"
+            l1 <- fresh 
+            l2 <- fresh
+            assocLoc l1 u1
+            assocLoc l2 u1 
+            unify l1 l2 (return True) (return False)
+            finishExp $ l$ DataConE l1 "Node" [l$ VarE "x",l$ VarE "y"]
+
+case_etest1 :: Assertion
+case_etest1 = (Right (l$ DataConE "a" "Node" [l$ VarE "x", l$ VarE "y"])) @=? (fst $ fst etest1)
 
 inferLocations2Tests :: TestTree
 inferLocations2Tests = $(testGroupGenerator)

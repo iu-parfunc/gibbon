@@ -16,7 +16,7 @@ module Packed.FirstOrder.Passes.InferLocations2
     (-- data types
      FullEnv, TiM, InferState, Result, UnifyLoc, Failure,
      -- functions for manipulating locations
-     fresh, freshUnifyLoc, fixLoc, freshLocVar, finalLocVar, assocLoc,
+     fresh, freshUnifyLoc, finalUnifyLoc, fixLoc, freshLocVar, finalLocVar, assocLoc, finishExp,
      -- main functions
      unify, inferLocs, inferExp, convertFunTy)
     where
@@ -108,6 +108,7 @@ import Control.Monad.Trans.Except
 import Control.Monad.Trans (lift)
 -- import qualified Control.Monad.Trans.Either
 -- import qualified Control.Monad.Trans.Cont as CC
+import Debug.Trace
 
 
 import Packed.FirstOrder.GenericOps (gFreeVars)
@@ -255,7 +256,7 @@ data Constraint = AfterConstantL LocVar Int LocVar
 type Result = (L Exp2, Ty2, [Constraint])
 
 inferLocs :: L1.Prog -> SyM L2.Prog
-inferLocs = _
+inferLocs prg = undefined
 
     
 -- | Destination can be a single location var, a tuple of destinations,
@@ -362,8 +363,8 @@ inferExp env@FullEnv{dataDefs}
               (\(_,b,_)->b) (L.head pairs),
               (concat $ [c | (_,_,c) <- pairs]))
 
-    -- Lets are where we allocate fresh locations:
     L1.LetE (vr,locs,_,L sl2 rhs) bod | [] <- locs ->
+      -- TODO: check if we need to allocate a new region
       case rhs of
         L1.AppE f [] arg -> L1.assertTriv arg $ do
             _
@@ -397,6 +398,55 @@ doCase src dst (con,vars,rhs) =
 -- for in-place updates packed data with linear types.
   
 
+finishExp :: L Exp2 -> TiM (L Exp2)
+finishExp (L i e) =
+    let l e = L i e
+    in
+    case e of
+      VarE v -> return $ l$ VarE v
+      LitE i -> return $ l$ LitE i
+      LitSymE v -> return $ l$ LitSymE v
+      AppE v ls e1 -> do
+             e1' <- finishExp e1
+             ls' <- mapM finalLocVar ls
+             return $ l$ AppE v ls e1'
+      PrimAppE pr es -> do
+             es' <- mapM finishExp es
+             return $ l$ PrimAppE pr es'
+      LetE (v,ls,t,e1) e2 -> do
+             e1' <- finishExp e1
+             e2' <- finishExp e2
+             ls' <- mapM finalLocVar ls
+             return $ l$ LetE (v,ls',t,e1') e2'
+      IfE e1 e2 e3 -> do
+             e1' <- finishExp e1
+             e2' <- finishExp e2
+             e3' <- finishExp e3
+             return $ l$ IfE e1' e2' e3'
+      MkProdE es -> do
+             es' <- mapM finishExp es
+             return $ l$ MkProdE es'
+      ProjE i e1 -> do
+             e1' <- finishExp e1
+             return $ l$ ProjE i e1'
+      CaseE e1 prs -> do
+             e1' <- finishExp e1
+             prs' <- forM prs $ \(dc, lvs, e2) -> do
+                         e2' <- finishExp e2
+                         lvs' <- forM lvs $ \(v,lv) -> do
+                                                    lv' <- finalLocVar lv
+                                                    return (v,lv')
+                         return (dc,lvs',e2')
+             return $ l$ CaseE e1' prs'
+      DataConE lv dc es -> do
+             es' <- mapM finishExp es
+             lv' <- finalLocVar lv
+             return $ l$ DataConE lv' dc es'
+      TimeIt e1 d b -> do
+             e1' <- finishExp e1
+             return $ l$ TimeIt e1' d b
+      _ -> err $ "Unhandled case: " ++ (show e)
+
 -- | Unify is a conditional form that takes a "success branch" and
 -- "failure branch".  In the case of failure, it makes no change to
 -- the store.  In the case of success, the new equalities are placed
@@ -421,13 +471,20 @@ unify v1 v2 success fail = do
 freshLocVar :: String -> SyM LocVar
 freshLocVar m = gensym (toVar m)
 
-finalLocVar :: LocVar -> TiM UnifyLoc
-finalLocVar v = do
+finalUnifyLoc :: LocVar -> TiM UnifyLoc
+finalUnifyLoc v = do
   m <- lift $ St.get
   case M.lookup v m of
     Nothing -> return (FreshLoc v)
     Just (FixedLoc v') -> return (FixedLoc v')
-    Just (FreshLoc v') -> finalLocVar v'
+    Just (FreshLoc v') -> finalUnifyLoc v'
+
+finalLocVar :: LocVar -> TiM LocVar
+finalLocVar v = do
+  u <- finalUnifyLoc v
+  case u of
+    FixedLoc v' -> return v'
+    FreshLoc v' -> return v'
 
 fresh :: TiM LocVar
 fresh = do
@@ -446,15 +503,15 @@ lookupUnifyLoc l = do
       l' <- fresh
       lift $ St.put $ M.insert l (FreshLoc l') m
       return $ FreshLoc l'
-    Just (FreshLoc l') -> finalLocVar l'
+    Just (FreshLoc l') -> finalUnifyLoc l'
     Just (FixedLoc l') -> return $ FixedLoc l'
 
 fixLoc :: LocVar -> TiM UnifyLoc
-fixLoc l = do
-  l' <- fresh
-  m <- lift $ St.get
-  lift $ St.put $ M.insert l (FixedLoc l') m
-  return $ FixedLoc l'
+fixLoc l = return $ FixedLoc l
+  -- l' <- fresh
+  -- m <- lift $ St.get
+  -- lift $ St.put $ M.insert l (FixedLoc l') m
+  -- return $ FixedLoc l'
 
 assocLoc :: LocVar -> UnifyLoc -> TiM ()
 assocLoc l ul = do
