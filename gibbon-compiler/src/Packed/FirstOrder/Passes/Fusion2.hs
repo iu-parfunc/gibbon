@@ -354,7 +354,7 @@ mergeStep ddefs fdefs oldExp = do
   
   -- need to be extended and checked on a case where length>2 
   let useTableFiltered = M.filter predicate useTable where 
-                          predicate entry = (L.length entry) == 2)  
+                          predicate entry =L.length entry == 2
    
   let pairsToMerge     = L.nub (L.map (\(_, ls) ->  L.sort (L.map (\(_,(AppE fName _ _ ))->fName) ls) )
                                       (M.toList useTableFiltered)
