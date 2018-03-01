@@ -76,8 +76,8 @@ CursorCursorCursorCursorProd buildTree(CursorTy reg1, CursorTy end_reg1, CursorT
         CursorTy x275 = (CursorTy) pvrtmp6;
         CursorTy end_x275 = (CursorTy) pvrtmp7;
 
-        IntTy sizeof_x275 = end_x275 - x275;
-        CursorTy l276 = l274 + sizeof_x275;
+        /* IntTy sizeof_x275 = end_x275 - x275; */
+        CursorTy l276 = end_x275;
         CursorCursorCursorCursorProd tmp_struct1 = buildTree(reg2, end_reg2, l276, i273);
         CursorTy pvrtmp22 = tmp_struct1.field0;
         CursorTy pvrtmp23 = tmp_struct1.field1;
@@ -115,31 +115,26 @@ CursorCursorCursorCursorProd buildTree(CursorTy reg1, CursorTy end_reg1, CursorT
         /* BOUNDS CHECK         */
         /* ~~~~~~~~~~~~~~~~~~~~ */
 
-        CursorTy lout273, reg4, end_reg4;
         int size_scalars = 9;
 
-        if ((end_reg1 - lout272) > MAX(size_scalars, REDIRECTION_SIZE)) {
-            reg4 = reg1;
-            end_reg4 = end_reg1;
-            lout273 = lout272;
-        } else {
+        if ((end_reg1 - lout272) <= MAX(size_scalars, REDIRECTION_SIZE)) {
             IntTy newsize = (end_reg1 - reg1) * 2;
-            reg4 = alloc_buf_malloc(newsize);
-            end_reg4 = reg4 + newsize;
+            reg1 = alloc_buf_malloc(newsize);
+            end_reg1 = reg1 + newsize;
 
             // write redirection tag
             *(TagTyPacked *) lout272 =  REDIRECTION_TAG;
             CursorTy redir = lout272 + 1;
-            *(CursorTy *) redir = reg4;
+            *(CursorTy *) redir = reg1;
 
-            lout273 = (CursorTy) reg4;
+            lout272 = (CursorTy) reg1;
         }
 
         /* -------------------- */
 
         // write tag
-        *(TagTyPacked *) lout273 = 0;
-        CursorTy writetag3 = lout273 + 1;
+        *(TagTyPacked *) lout272 = 0;
+        CursorTy writetag3 = lout272 + 1;
 
         // write int
         *(IntTy *) writetag3 = (IntTy) 1;
@@ -150,7 +145,7 @@ CursorCursorCursorCursorProd buildTree(CursorTy reg1, CursorTy end_reg1, CursorT
         CursorTy taildc0 = (CursorTy) pvrtmp4;
         CursorTy end_taildc0 = (CursorTy) pvrtmp5;
 
-        return (CursorCursorCursorCursorProd) {reg4, end_reg4, taildc0, end_taildc0};
+        return (CursorCursorCursorCursorProd) {reg1, end_reg1, taildc0, end_taildc0};
     }
     }
 }
