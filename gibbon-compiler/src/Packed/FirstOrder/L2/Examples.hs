@@ -56,7 +56,7 @@ add1Fun = FunDef "add1" add1FunTy "tr1" add1FunBod
 
 add1FunTy :: ArrowTy Ty2
 add1FunTy = (ArrowTy
-             [LRM "lin2" (VarR "r3") Input, LRM "lout4" (VarR "r3") Output]
+             [LRM "lin2" (VarR "r3") Input, LRM "lout4" (VarR "r750") Output]
              (PackedTy "Tree" "lin2")
              (S.empty)
              (PackedTy "Tree" "lout4")
@@ -148,7 +148,7 @@ id1Fun = FunDef "id1" idFunTy "tr18" idFunBod
 
     idFunTy :: ArrowTy Ty2
     idFunTy = (ArrowTy
-               [LRM "lin19" (VarR "r20") Input, LRM "lout21" (VarR "r20") Output]
+               [LRM "lin19" (VarR "r20") Input, LRM "lout21" (VarR "r751") Output]
                (PackedTy "Tree" "lin19")
                (S.empty)
                (PackedTy "Tree" "lout21")
@@ -164,7 +164,7 @@ copyTreeFun :: FunDef
 copyTreeFun = FunDef "copyTree" copyFunTy "tr22" copyBod
   where
     copyFunTy = (ArrowTy
-                 [LRM "lin23" (VarR "r24") Input, LRM "lout25" (VarR "r24") Output]
+                 [LRM "lin23" (VarR "r24") Input, LRM "lout25" (VarR "r752") Output]
                  (PackedTy "Tree" "lin23")
                  S.empty
                  (PackedTy "Tree" "lout25")
@@ -214,7 +214,7 @@ id2Fun = FunDef "id2" id2Ty "tr41" id2Bod
   where
     id2Ty :: ArrowTy Ty2
     id2Ty = (ArrowTy
-             [LRM "lin37" (VarR "r38") Input, LRM "lout39" (VarR "r38") Output]
+             [LRM "lin37" (VarR "r38") Input, LRM "lout39" (VarR "r753") Output]
              (PackedTy "Tree" "lin37")
              (S.empty)
              (PackedTy "Tree" "lout39")
@@ -559,7 +559,7 @@ addTreesFun = FunDef "addTrees" addTreesTy "trees354" addTreesBod
     addTreesTy = (ArrowTy
                   [LRM "lin351" (VarR "r350") Input,
                    LRM "lin352" (VarR "r350") Input,
-                   LRM "lout353" (VarR "r350") Output]
+                   LRM "lout353" (VarR "r754") Output]
                   (ProdTy [PackedTy "Tree" "lin351", PackedTy "Tree" "lin352"])
                   (S.empty)
                   (PackedTy "Tree" "lout353")
@@ -628,7 +628,7 @@ testProdFun :: FunDef
 testProdFun = FunDef "testprod" testprodTy "tup130" testprodBod
   where
     testprodTy = (ArrowTy
-                  [LRM "lin131" (VarR "r132") Input, LRM "lout133" (VarR "r132") Output]
+                  [LRM "lin131" (VarR "r132") Input, LRM "lout133" (VarR "r755") Output]
                   (ProdTy [(PackedTy "Tree" "lin131"), IntTy])
                   (S.empty)
                   (ProdTy [(PackedTy "Tree" "lout133"), IntTy])
@@ -721,7 +721,7 @@ sumUpFun = FunDef "sumUp" sumUpFunTy "tr1" sumUpFunBod
   where
     sumUpFunTy :: ArrowTy Ty2
     sumUpFunTy = (ArrowTy
-                  [LRM "lin501" (VarR "r500") Input, LRM "lout502" (VarR "r500") Output]
+                  [LRM "lin501" (VarR "r500") Input, LRM "lout502" (VarR "r756") Output]
                   (PackedTy "STree" "lin501")
                   (S.empty)
                   (PackedTy "STree" "lout502")
@@ -866,7 +866,7 @@ setEvenFun = FunDef "setEven" setEvenFunTy "tr570" setEvenFunBod
   where
     setEvenFunTy :: ArrowTy Ty2
     setEvenFunTy = (ArrowTy
-                    [LRM "lin571" (VarR "r570") Input, LRM "lout572" (VarR "r570") Output]
+                    [LRM "lin571" (VarR "r570") Input, LRM "lout572" (VarR "r757") Output]
                     (PackedTy "STree" "lin571")
                     (S.empty)
                     (PackedTy "STree" "lout572")
@@ -948,7 +948,7 @@ sumUpSetEvenFun = FunDef "sumUpSetEven" sumUpSetEvenFunTy "tr600" sumUpSetEvenFu
   where
     sumUpSetEvenFunTy :: ArrowTy Ty2
     sumUpSetEvenFunTy = (ArrowTy
-                         [LRM "lin601" (VarR "r600") Input, LRM "lout602" (VarR "r600") Output]
+                         [LRM "lin601" (VarR "r600") Input, LRM "lout602" (VarR "r758") Output]
                          (PackedTy "STree" "lin601")
                          (S.empty)
                          (ProdTy [PackedTy "STree" "lout602", IntTy])
@@ -1041,7 +1041,7 @@ copyExprFun = FunDef "copyExpr" copyExprFunTy "e700" copyExprFunBod
     copyExprFunTy :: ArrowTy Ty2
     copyExprFunTy = (ArrowTy
                      [LRM "lin702" (VarR "r701") Input,
-                      LRM "lout703" (VarR "r701") Output]
+                      LRM "lout703" (VarR "r759") Output]
                      (PackedTy "Expr" "lin702")
                      (S.empty)
                      (PackedTy "Expr" "lout703")
@@ -1073,7 +1073,7 @@ substFun = FunDef "subst" substFunTy "tr653" substFunBod
     substFunTy = (ArrowTy
                   [LRM "lin651" (VarR "r650") Input,
                    LRM "lin652" (VarR "r650") Input,
-                   LRM "lout653" (VarR "r650") Output]
+                   LRM "lout653" (VarR "r760") Output]
                   (ProdTy [IntTy,
                            PackedTy "Expr" "lin651",
                            PackedTy "Expr" "lin652"])
