@@ -442,9 +442,9 @@ cursorizeLocExp tenv locExp =
 
     FromEndLE loc -> l$ VarE loc
     StartOfLE r   -> case r of
-                       GlobR v -> l$ VarE v
-                       VarR v  -> l$ VarE v
-                       DynR v  -> l$ VarE v
+                       VarR v    -> l$ VarE v
+                       GlobR v _ -> l$ VarE v
+                       DynR  v _ -> l$ VarE v
     oth -> error $ "cursorizeLocExp: todo " ++ sdoc oth
 
 cursorizeLet :: DDefs Ty2 -> NewFuns -> DepEnv -> TEnv -> Bool
@@ -639,9 +639,9 @@ projEndsTy = projTy 1
 -- | Return details to create a L3 binding for a region (var name and L3 extension)
 regionToBnd :: Region -> (Var, L3.E3Ext loc dec)
 regionToBnd r = case r of
-                  GlobR v -> (v,L3.NewBuffer)
-                  VarR  v -> (v,L3.NewBuffer)
-                  DynR  v -> (v,L3.ScopedBuffer)
+                  VarR{}    -> error $ "Unexpected region variable:" ++ sdoc r
+                  GlobR v _ -> (v,L3.NewBuffer)
+                  DynR  v _ -> (v,L3.ScopedBuffer)
 
 
 -- ================================================================================

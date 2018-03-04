@@ -19,14 +19,17 @@ module Packed.FirstOrder.Common
          mkUnpackerName
        , mkPrinterName
 
-         -- * Type and Data DataConuctors
+         -- * Type and Data constructors
        , DataCon, TyCon, IsBoxed
          -- * Variables and gensyms
        , Var(..), fromVar, toVar, varAppend, SyM, gensym, genLetter, runSyM
        , cleanFunName
 
+         -- * Regions and locations
        , LocVar, Region(..), Modality(..), LRM(..), dummyLRM
+       , Multiplicity(..), regionVar
 
+         -- * Environment and helpers
        , Env2(Env2) -- TODO: hide constructor
        , vEnv, fEnv, extendVEnv, extendsVEnv, extendFEnv, emptyEnv2
 
@@ -100,6 +103,10 @@ fromVar (Var v) = unintern v
 toVar :: String -> Var
 toVar s = Var $ intern s
 
+-- | String concatenation on variables.
+varAppend :: Var -> Var -> Var
+varAppend x y = toVar (fromVar x ++ fromVar y)
+
 type DataCon = String
 type TyCon   = String
 
@@ -107,18 +114,44 @@ type TyCon   = String
 type LocVar = Var
 -- TODO: add start(r) form.
 
+
+-- See https://github.com/iu-parfunc/gibbon/issues/79 for more details
+-- | Region variants (multiplicities)
+data Multiplicity
+    = Bounded     -- ^ Contain a finite number of values and can be
+                  --   stack-allocated.
+
+    | Infinite    -- ^ Consist of a linked list of buffers, spread
+                  --   throughout memory (though possible constrained
+                  --   to 4GB regions). Writing into these regions requires
+                  --   bounds-checking. The buffers can start very small
+                  --   at the head of the list, but probably grow
+                  --   geometrically in size, making the cost of traversing
+                  --   all of them logarithmic.
+
+    | BigInfinite -- ^ These regions are infinite, but also have the
+                  --   expectation of containing many values. Thus we give
+                  --   them large initial page sizes. This is also could be
+                  --   the appropriate place to use mmap to grow the region
+                  --   and to establish guard places.
+  deriving (Read,Show,Eq,Ord,Generic)
+
+instance Out Multiplicity where
+  doc = text . show
+
 -- | An abstract region identifier.  This is used inside type signatures and elsewhere.
-data Region = GlobR Var    -- ^ A global region with lifetime equal to the whole program.
-            | DynR Var     -- ^ A dynamic region that may be created or destryed, tagged
-                           --   by an identifier.
-            | VarR Var     -- ^ A region metavariable that can range over
-                           --   either global or dynamic regions.
+data Region = GlobR Var Multiplicity -- ^ A global region with lifetime equal to the
+                                     --   whole program.
+            | DynR Var Multiplicity  -- ^ A dynamic region that may be created or
+                                     --   destroyed, tagged by an identifier.
+            | VarR Var               -- ^ A region metavariable that can range over
+                                     --   either global or dynamic regions.
   deriving (Read,Show,Eq,Ord, Generic)
 instance Out Region
 instance NFData Region where
-  rnf (GlobR v) = rnf v
-  rnf (DynR v) = rnf v
-  rnf (VarR v) = rnf v
+  rnf (GlobR v _) = rnf v
+  rnf (DynR v _)  = rnf v
+  rnf (VarR v)    = rnf v
 
 -- | The modality of locations and cursors: input/output, for reading
 -- and writing, respectively.
@@ -140,11 +173,13 @@ instance NFData LRM where
 
 -- | A designated doesn't-really-exist-anywhere location.
 dummyLRM :: LRM
-dummyLRM = LRM "l_dummy" (GlobR "r_dummy") Input
+dummyLRM = LRM "l_dummy" (VarR "r_dummy") Input
 
--- | String concatenation on variables.
-varAppend :: Var -> Var -> Var
-varAppend x y = toVar (fromVar x ++ fromVar y)
+regionVar :: Region -> Var
+regionVar r = case r of
+                  GlobR v _ -> v
+                  DynR  v _ -> v
+                  VarR  v   -> v
 
 --------------------------------------------------------------------------------
 -- Helper methods to integrate the Data.Loc with Gibbon
