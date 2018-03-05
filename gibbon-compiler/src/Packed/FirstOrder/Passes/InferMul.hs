@@ -35,10 +35,8 @@ inferMul Prog{ddefs,fundefs,mainExp} = do
 inferMulFn :: L2.FunDef -> L2.FunDef
 inferMulFn f@FunDef{funbod} = f {funbod = inferRegScope funbod}
 
-{-
-
-Region scoping rules:
-~~~~~~~~~~~~~~~~~~~~~
+{- Region scoping rules:
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 A region in Gibbon can either be global or dynamic (local). Global regions have a
 lifetime equal to that of the whole program. Whereas, dynamic regions can be created &
