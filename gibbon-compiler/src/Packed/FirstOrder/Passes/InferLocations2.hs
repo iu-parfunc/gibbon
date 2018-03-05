@@ -211,8 +211,8 @@ lookupFEnv = undefined
 -- mechanically.
 convertFunTy :: (L1.Ty1,L1.Ty1) -> SyM (ArrowTy Ty2)
 convertFunTy (from,to) = do
-    from' <- traverse (const (freshLocVar "l")) from
-    to'   <- traverse (const (freshLocVar "l")) to
+    from' <- convertTy from
+    to'   <- convertTy to
     -- For this simple version, we assume every location is in a separate region:
     lrm1 <- toLRM from' Input
     lrm2 <- toLRM to'   Output
@@ -227,11 +227,22 @@ convertFunTy (from,to) = do
                       return $ LRM v (VarR r) md)
             (F.toList ls)
 
+convertTy :: L1.Ty1 -> SyM Ty2
+convertTy ty = traverse (const (freshLocVar "loc")) ty
+
+convertDDefs :: DDefs L1.Ty1 -> SyM (DDefs Ty2)
+convertDDefs ddefs = traverse f ddefs
+    where f (DDef n dcs) = do
+            dcs' <- forM dcs $ \(dc,bnds) -> do
+                             bnds' <- forM bnds $ \(isb,ty) -> do
+                                               ty' <- convertTy ty
+                                               return (isb, ty')
+                             return (dc,bnds')
+            return $ DDef n dcs'
+
 -- Inference algorithm
 --------------------------------------------------------------------------------
 
--- TODO: the state stores unification constraints, possibly through
--- mutable references.
 type TiM a = ExceptT Failure (St.StateT InferState SyM) a
 
 type InferState = M.Map LocVar UnifyLoc
@@ -262,7 +273,8 @@ inferLocs (L1.Prog dfs fds me) = do
     Right a -> undefined
     Left a -> undefined
   where m = do
-          let fe = FullEnv (convertDDefs dfs) M.empty M.empty M.empty
+          dfs' <- lift $ lift $ convertDDefs dfs
+          let fe = FullEnv dfs' M.empty M.empty M.empty
           l1 <- fresh
           u1 <- fixLoc l1
           -- TODO: implement this
