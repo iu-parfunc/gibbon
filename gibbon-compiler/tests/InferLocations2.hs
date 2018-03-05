@@ -104,5 +104,30 @@ etest1 = runSyM 0 $ St.runStateT (runExceptT m) M.empty
 case_etest1 :: Assertion
 case_etest1 = (Right (l$ DataConE "a" "Node" [l$ VarE "x", l$ VarE "y"])) @=? (fst $ fst etest1)
 
+tester1 :: L L1.Exp1 -> L Exp2
+tester1 e = case fst $ fst $ runSyM 0 $ St.runStateT (runExceptT (inferExp emptyEnv e NoDest)) M.empty of
+              Right a -> (\(a,_,_)->a) a
+              Left a -> error $ show a
+
+t1 :: L Exp2
+t1 = tester1 (l$ L1.LitE 3)
+
+t2 :: L Exp2
+t2 = tester1 $
+     l$ L1.LetE ("x",[],IntTy,l$ L1.LitE 1) $
+     l$ L1.LetE ("y",[],IntTy,l$ L1.LitE 2) $
+     l$ L1.LetE ("z",[],IntTy,l$ L1.PrimAppE L1.AddP [l$ L1.VarE "x", l$ L1.VarE "y"]) $
+     l$ L1.VarE "z"
+
+case_t1 :: Assertion
+case_t1 = t1 @=? (l$ LitE 3)
+
+case_t2 :: Assertion
+case_t2 = t2 @=? (l$ LetE ("x",[],IntTy,l$ LitE 1) $
+                  l$ LetE ("y",[],IntTy,l$ LitE 2) $
+                  l$ LetE ("z",[],IntTy,l$ PrimAppE (prim L1.AddP) [l$ VarE "x", l$ VarE "y"]) $
+                  l$ VarE "z")
+
+
 inferLocations2Tests :: TestTree
 inferLocations2Tests = $(testGroupGenerator)
