@@ -184,8 +184,8 @@ lookupVarLoc = undefined
 lookupVEnv :: Var -> FullEnv -> Ty2
 lookupVEnv v FullEnv{valEnv} = valEnv # v
 
-lookupFEnv :: Var -> FullEnv -> (Ty2,Ty2)
-lookupFEnv = undefined
+lookupFEnv :: Var -> FullEnv -> ArrowTy Ty2
+lookupFEnv v FullEnv{funEnv} = funEnv # v
 
 -- -- | Instantiate the type schema for a function.  Return the fresh
 -- -- location variables that 
@@ -270,20 +270,33 @@ inferLocs :: L1.Prog -> SyM L2.Prog
 inferLocs (L1.Prog dfs fds me) = do
   prg <- St.runStateT (runExceptT m) M.empty
   case fst prg of
-    Right a -> undefined
-    Left a -> undefined
+    Right a -> return a
+    Left a -> err $ show a
   where m = do
           dfs' <- lift $ lift $ convertDDefs dfs
-          let fe = FullEnv dfs' M.empty M.empty M.empty
-          l1 <- fresh
-          u1 <- fixLoc l1
-          -- TODO: implement this
+          fenv <- forM fds $ \(L1.FunDef _ (_,inty) outty _) ->
+                  lift $ lift $ convertFunTy (inty,outty)
+          let fe = FullEnv dfs' M.empty fenv M.empty
           me' <- case me of
-            Just me -> do me' <- inferExp fe me $ SingleDest l1
-                          return $ Just me'
+            Just me -> do
+              l1 <- fresh
+              u1 <- fixLoc l1
+              (me',ty',_) <- inferExp fe me $ SingleDest l1
+              me' <- finishExp me'
+              return $ Just (me',ty')
             Nothing -> return Nothing
-          fds' <- forM fds $ undefined
-          return undefined
+          fds' <- forM fds $ \(L1.FunDef fn fa frt fbod) -> do
+                                   frt' <- lift $ lift $ convertTy frt
+                                   case frt' of
+                                     PackedTy tc lv -> do
+                                               -- TODO: finish this
+                                               return undefined
+                                     _ -> do let arrty = lookupFEnv fn fe
+                                                 fe' = extendVEnv (fst fa) (arrIn arrty) fe
+                                             (fbod',_,_) <- inferExp fe' fbod NoDest
+                                             fbod' <- finishExp fbod'
+                                             return $ L2.FunDef fn arrty (fst fa) fbod'
+          return $ L2.Prog dfs' fds' me'
 
     
 -- | Destination can be a single location var, a tuple of destinations,
