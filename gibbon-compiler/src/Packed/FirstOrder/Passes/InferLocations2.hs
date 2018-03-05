@@ -301,9 +301,14 @@ inferLocs (L1.Prog dfs fds me) = do
     
 -- | Destination can be a single location var, a tuple of destinations,
 -- or nothing (for scalar values)
-data Dest = SingleDest LocVar
+data Dest = SingleDest LocVar -- TODO: refactor to just be list of locations, or actually enforce invariants of non-empty list, etc
           | TupleDest [Dest]
           | NoDest
+
+mkDest :: [LocVar] -> Dest
+mkDest [lv] = SingleDest lv
+mkDest [] = NoDest
+mkDest lvs = TupleDest $ L.map (mkDest . (\lv -> [lv])) lvs
                     
 -- | We proceed in a destination-passing style given the target region
 -- into which we must produce the resulting value.
@@ -403,27 +408,59 @@ inferExp env@FullEnv{dataDefs}
               (\(_,b,_)->b) (L.head pairs),
               (concat $ [c | (_,_,c) <- pairs]))
 
-    L1.LetE (vr,locs,_,L sl2 rhs) bod | [] <- locs ->
+    L1.LetE (vr,locs,bty,L sl2 rhs) bod | [] <- locs ->
       -- TODO: check if we need to allocate a new region
       case rhs of
         L1.AppE f [] arg -> L1.assertTriv arg $ do
             _
-        L1.LetE{} -> _
+        L1.LetE{} -> err $ "Expected let spine, encountered nested lets: " ++ (show lex0)
 
         -- Literals have no location, as they are scalars/value types.
 --        L1.LitE n -> _finLit
                      
-        PrimAppE p ls -> _prim
-        DataConE loc k ls  -> _datacon
-        LitSymE x     -> _linsym
-        ProjE i e     -> _proj
+        PrimAppE p ls -> do
+          lsrec <- mapM (\e -> inferExp env e NoDest) ls
+          ty <- lift $ lift $ convertTy bty
+          (bod',ty',cs') <- inferExp (extendVEnv vr ty env) bod dest
+          let ls' = L.map (\(a,_,_)->a) lsrec
+              cs'' = concat $ [c | (_,_,c) <- lsrec]
+          return $ (lc$ L2.LetE (vr,[],ty,L sl2 $ L2.PrimAppE (prim p) ls') bod', ty', L.nub $ cs' ++ cs'')
+        DataConE _loc k ls  -> do
+          -- TODO: decide what to do with this location!
+          -- we know almost nothing about this data constructor *at this point* but after traversing
+          -- the body we should know
+          lsrec <- mapM (\e -> inferExp env e NoDest) ls
+          loc <- lift $ lift $ freshLocVar "datacon"
+          (bod',ty',cs') <- inferExp (extendVEnv vr (PackedTy k loc) env) bod dest
+          -- use cs' to insert letloc?
+          let ls' = L.map (\(a,_,_)->a) lsrec
+              cs'' = concat $ [c | (_,_,c) <- lsrec]
+          return (lc$ L2.LetE (vr,[loc],PackedTy k loc,L sl2 $ L2.DataConE loc k ls') bod', ty', L.nub $ cs' ++ cs'')
+        LitSymE x     -> do
+          (bod',ty',cs') <- inferExp (extendVEnv vr IntTy env) bod dest
+          return (lc$ L2.LetE (vr,[],IntTy,L sl2 $ L2.LitSymE x) bod', ty', cs')
+        ProjE i e     -> do
+          (e,ProdTy tys,cs) <- inferExp env e NoDest
+          (bod',ty',cs') <- inferExp (extendVEnv vr (tys !! i) env) bod dest
+          let locs = case (tys !! i) of
+                       PackedTy _ lv -> [lv]
+                       _ -> []
+          return (lc$ L2.LetE (vr,locs,ProdTy tys,L sl2 $ L2.ProjE i e) bod', ty', L.nub $ cs ++ cs')
         CaseE e ls    -> _case
         MkProdE ls    -> _mkprod
-        TimeIt e t b       -> err "finish TimeIt"
-        MapE (v,t,rhs) bod -> err "finish MapE"
-        FoldE (v1,t1,r1) (v2,t2,r2) bod -> err "finish FoldE"
+        TimeIt e t b       -> do
+          lv <- lift $ lift $ freshLocVar "timeit"
+          let subdest = case bty of
+                          PackedTy _ _ -> SingleDest lv
+                          _ -> NoDest
+          (e',ty,cs) <- inferExp env e subdest
+          (bod',ty',cs') <- inferExp (extendVEnv vr ty env) bod dest
+          let locs = case ty of
+                       PackedTy _ _ -> [lv]
+                       _ -> []
+          return (lc$ L2.LetE (vr,locs,ty,L sl2 $ TimeIt e' ty b) bod', ty', L.nub $ cs ++ cs')
 
---        _oth -> 
+        _oth -> err $ "Unhandled case: " ++ (show lex0)
 
 
 -- | To handle a case expression, we need to bind locations
@@ -576,6 +613,19 @@ assumeEq a1 a2 =
     if a1 == a2
     then return ()
     else err $ "Expected these to be equal: " ++ (show a1) ++ ", " ++ (show a2)
+
+prim :: L1.Prim L1.Ty1 -> L1.Prim Ty2
+prim p = case p of
+           L1.AddP -> L1.AddP
+           L1.SubP -> L1.SubP
+           L1.MulP -> L1.MulP
+           L1.DivP -> L1.DivP
+           L1.ModP -> L1.ModP
+           L1.EqSymP -> L1.EqSymP
+           L1.EqIntP -> L1.EqIntP
+           L1.MkTrue -> L1.MkTrue
+           L1.MkFalse -> L1.MkFalse
+           _ -> err $ "Can't handle this primop yet in InferLocations:\n"++show p
 
        
 -- Notes on program repair:
