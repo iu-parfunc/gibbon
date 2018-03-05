@@ -14,9 +14,10 @@
 
 module Packed.FirstOrder.Passes.InferLocations2
     (-- data types
-     FullEnv, TiM, InferState, Result, UnifyLoc, Failure,
+     FullEnv, TiM, InferState, Result, UnifyLoc, Failure, Dest(..),
      -- functions for manipulating locations
      fresh, freshUnifyLoc, finalUnifyLoc, fixLoc, freshLocVar, finalLocVar, assocLoc, finishExp,
+          prim, emptyEnv,
      -- main functions
      unify, inferLocs, inferExp, convertFunTy)
     where
@@ -403,7 +404,7 @@ inferExp env@FullEnv{dataDefs}
       loc <- lift $ lift $ freshLocVar "scrut"
       (ex',ty2,cs) <- inferExp env ex (SingleDest loc)
       let src = locOfTy ty2
-      pairs <- mapM (doCase src dest) ls
+      pairs <- mapM (doCase dataDefs env src dest) ls
       return (lc$ CaseE ex' ([a | (a,_,_) <- pairs]),
               (\(_,b,_)->b) (L.head pairs),
               (concat $ [c | (_,_,c) <- pairs]))
@@ -414,6 +415,9 @@ inferExp env@FullEnv{dataDefs}
         L1.AppE f [] arg -> L1.assertTriv arg $ do
             _
         L1.LetE{} -> err $ "Expected let spine, encountered nested lets: " ++ (show lex0)
+        L1.LitE i -> do
+          (bod',ty',cs') <- inferExp (extendVEnv vr IntTy env) bod dest
+          return (lc$ L2.LetE (vr,[],IntTy,L sl2 $ L2.LitE i) bod', ty', cs')
 
         -- Literals have no location, as they are scalars/value types.
 --        L1.LitE n -> _finLit
@@ -428,7 +432,7 @@ inferExp env@FullEnv{dataDefs}
         DataConE _loc k ls  -> do
           -- TODO: decide what to do with this location!
           -- we know almost nothing about this data constructor *at this point* but after traversing
-          -- the body we should know
+          -- the body we should know (for example) constraints about its location
           lsrec <- mapM (\e -> inferExp env e NoDest) ls
           loc <- lift $ lift $ freshLocVar "datacon"
           (bod',ty',cs') <- inferExp (extendVEnv vr (PackedTy k loc) env) bod dest
@@ -462,14 +466,23 @@ inferExp env@FullEnv{dataDefs}
 
         _oth -> err $ "Unhandled case: " ++ (show lex0)
 
+    _oth -> err $ "Unhandled case: " ++ (show lex0)
+
 
 -- | To handle a case expression, we need to bind locations
 -- appropriately for all the fields.
-doCase :: LocVar -> Dest
+doCase :: DDefs Ty2 -> FullEnv -> LocVar -> Dest
        -> (DataCon, [(Var,())],     L L1.Exp1) ->
      TiM ((DataCon, [(Var,LocVar)], L L2.Exp2), Ty2, [Constraint])
-doCase src dst (con,vars,rhs) =
-  _
+doCase ddfs env src dst (con,vars,rhs) = do
+  vars' <- forM vars $ \(v,_) -> do lv <- lift $ lift $ freshLocVar "case"
+                                    _ <- fixLoc lv
+                                    return (v,lv)
+  let contys = lookupDataCon ddfs con
+      newtys = L.map (\(ty,(_,lv)) -> fmap (const lv) ty) $ zip contys vars'
+      env' = L.foldr (\(v,ty) a -> extendVEnv v ty a) env $ zip (L.map fst vars') newtys
+  (rhs',ty',cs') <- inferExp env' rhs dst
+  return ((con,vars',rhs'),ty',cs')
 
 -- TODO: Should eventually allow src and dest regions to be the same
 -- for in-place updates packed data with linear types.
@@ -657,9 +670,20 @@ t0 = fst$ runSyM 0 $
      convertFunTy (snd (L1.funArg fd), L1.funRetTy fd)
    where fd = L1.fundefs L1.add1Prog M.! "add1"
            
--- t1 :: L Exp2
--- t1 = fst$ fst$ runSyM 0 $
---      inferExp emptyEnv (l$ LitE 3) Nothing
+tester1 :: L L1.Exp1 -> L Exp2
+tester1 e = case fst $ fst $ runSyM 0 $ St.runStateT (runExceptT (inferExp emptyEnv e NoDest)) M.empty of
+              Right a -> (\(a,_,_)->a) a
+              Left a -> err $ show a
+
+t1 :: L Exp2
+t1 = tester1 (l$ LitE 3)
 
 --  id  :: Tree -> Tree
 --  id' :: forall l1 in r1, l2 in r2 . Tree l1 -> Tree l2
+
+t2 :: L Exp2
+t2 = tester1 $
+     l$ LetE ("x",[],IntTy,l$ LitE 1) $
+     l$ LetE ("y",[],IntTy,l$ LitE 2) $
+     l$ LetE ("z",[],IntTy,l$ PrimAppE L1.AddP [l$ VarE "x", l$ VarE "y"]) $
+     l$ VarE "z"
