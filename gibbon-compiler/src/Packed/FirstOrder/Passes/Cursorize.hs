@@ -36,7 +36,37 @@ context.  When the type of the current expression satisfies
 `hasPacked`, that's when we're in packed context.  And, when in
 packed context, we return dilated values.
 
+
+Consider a function add1:
+
+    add1 :: Tree -> Tree
+    add1 tr =
+      case tr of
+        Leaf n   -> Leaf (n + 1)
+        Node l r -> Node (add1 l) (add1 r)
+
+    becomes
+
+    -- char*
+    type Cursor = Ptr Char
+
+    add1 :: Cursor -> Cursor -> (Cursor, (Cursor, Cursor))
+    add1 lout lin =
+      let tag = readTag lin
+      in case tag of
+           Leaf -> let n  = readInt tag
+                       wt = writeTag lout Leaf
+                       wi = writeInt wt   (n+1)
+                   in (lin + 8, (lout, wi))
+           Node -> ...
+
+Every packed input becomes a read cursor. And it takes additional output cursors
+for every packed type in the return value. Every packed return value becomes a
+(Cursor,Cursor) i.e (start,end). And it returns additional end_of_read cursors
+if the functions "traverses" it's input (more details in the paer).
+
 -}
+
 
 type TEnv = M.Map Var Ty2
 
@@ -67,71 +97,49 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
                          cursorizeExp ddefs fundefs M.empty M.empty e
   return $ L3.Prog ddefs' fundefs' mainExp'
 
-{- Note: Cursor passing style:
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Consider a function add1:
-
-    add1 :: Tree -> Tree
-    add1 tr =
-      case tr of
-        Leaf n   -> Leaf (n + 1)
-        Node l r -> Node (add1 l) (add1 r)
-
-
-    becomes
-
-    -- char*
-    type Cursor = Ptr Char
-
-    add1 :: Cursor -> Cursor -> (Cursor, (Cursor, Cursor))
-    add1 lout lin =
-      let tag = readTag lin
-      in case tag of
-           Leaf -> let n  = readInt tag
-                       wt = writeTag lout Leaf
-                       wi = writeInt wt   (n+1)
-                   in (lin + 8, (out, wi))
-           Node -> ...
-
-Every packed input becomes a read cursor. And it takes additional output cursors
-for every packed type in the return value. Every packed return value becomes a
-(Cursor,Cursor) i.e (start,end). And it returns additional end_of_read cursors
-if the functions "traverses" it's input (more details in the paer).
-
--}
-
 -- |
 cursorizeFunDef :: DDefs Ty2 -> NewFuns ->  FunDef -> SyM L3.FunDef
 cursorizeFunDef ddefs fundefs FunDef{funname,funty,funarg,funbod} =
   let inLocs  = inLocVars funty
       outLocs = outLocVars funty
+      outRegs = outRegVars funty
       inT     = arrIn funty
       outT    = arrOut funty
       funty'  = L3.cursorizeArrowTy funty
   in do
    newarg <- gensym "newarg"
 
-   let -- Output cursors are always inserted before all other arguments.
-       outCurBinds = mkLets [ (cur,[],CursorTy, l$ ProjE i (l$ VarE newarg))
-                            | (cur,i) <- zip outLocs [0..]]
-       -- Create projections for input cursors. By our current conventions,
-       -- input cursors are passed after output cursors
-       newargExp  = nProj (length outLocs) newarg
+   let
+       numOutRegs = 2 * length outRegs
+
+       -- Output regions are always inserted before all other arguments.
+       outRegBinds =  mkLets $ L.concat $
+                      [ [ (reg       , [], CursorTy, l$ ProjE i     (l$ VarE newarg))
+                        , (toEndV reg, [], CursorTy, l$ ProjE (i+1) (l$ VarE newarg)) ]
+                      | (reg, i) <- zip outRegs [0,2..]]
+
+       -- Output cursors after that.
+       outCurBinds = outRegBinds .
+                     mkLets [ (cur,[],CursorTy, l$ ProjE i (l$ VarE newarg))
+                            | (cur,i) <- zip outLocs [numOutRegs..]]
+
+       -- Then the input cursors. Create projections for input cursors here
+       afterOutLocs  = nProj (numOutRegs + length outLocs) newarg
        inCurBinds = case inLocs of
-                      [] -> mkLets [(funarg,[],L3.stripTyLocs inT, newargExp)]
-                      _  -> let projs = mkInProjs newargExp inT
+                      [] -> mkLets [(funarg,[],L3.stripTyLocs inT, afterOutLocs)]
+                      _  -> let projs = mkInProjs afterOutLocs inT
                                 bnds  = [(loc,[],CursorTy,proj) | (loc,proj) <- zip inLocs projs]
-                                        ++ [(funarg,[], cursorizeInTy inT, newargExp)]
+                                        ++ [(funarg,[], cursorizeInTy inT, afterOutLocs)]
                             in mkLets bnds
-       initEnv = M.singleton funarg (cursorizeInTy inT)
+
+       initTyEnv = M.singleton funarg (cursorizeInTy inT)
 
    bod <- if hasPacked outT
-          then fromDi <$> cursorizePackedExp ddefs fundefs M.empty initEnv funbod
-          else cursorizeExp ddefs fundefs M.empty initEnv funbod
+          then fromDi <$> cursorizePackedExp ddefs fundefs M.empty initTyEnv funbod
+          else cursorizeExp ddefs fundefs M.empty initTyEnv funbod
    ret <- return $ outCurBinds (inCurBinds bod)
-
    return $ L3.FunDef funname funty' newarg ret
+
   where
     -- | The only difference between this and L3.cursorizeTy is that here,
     --   packed types are replaced by a single CursorTy instead of
@@ -243,9 +251,11 @@ cursorizeExp ddfs fundefs denv tenv (L p ex) = L p <$>
         -- Exactly same as cursorizePackedExp
         LetRegionE reg bod -> do
           let (v,buf) = regionToBnd reg
-          LetE (v,[],CursorTy, l$ Ext buf) <$>
-            go bod
-
+          -- TEMP: Change the end_reg binding to something more concrete
+          unLoc <$>
+            mkLets [ (v       , [], CursorTy, l$ Ext buf)
+                   , (toEndV v, [], CursorTy, l$ VarE v) ] <$>
+              go bod
         _ -> error $ "TODO: cursorizeExp Ext: " ++ sdoc ext
 
     MapE{} -> error $ "TODO: cursorizeExp MapE"
@@ -275,11 +285,10 @@ cursorizePackedExp ddfs fundefs denv tenv (L p ex) =
     LitSymE _n -> error $ "Shouldn't encounter LitSymE in packed context:" ++ sdoc ex
 
     -- ASSUMPTIONS:
-    -- 1) `locs` has both input and output locations for the function.
-    --    But at the call-site we only have to prepend output locations,
-    --    as `arg` represents the input locations.
-    --    So to get the output locations, we drop (length inLocs) from `locs`,
-    --    assuming that they are ordered correctly (inputs before outputs)
+    -- 1) `locs` has [out_regions, in_locs, out_locs] for the function.
+    --    But after Cursorize, the calling convention changes so that input
+    --    locations appear last. Plus, `arg` would supply those. So we can
+    --    safely drop them from `locs`.
     --
     -- 2) We update `arg` so that all packed values in it only have start cursors.
     AppE f locs arg -> do
@@ -288,7 +297,9 @@ cursorizePackedExp ddfs fundefs denv tenv (L p ex) =
                      Nothing -> error $ "Unknown function: " ++ sdoc f
           inT    = arrIn fnTy
           inLocs = inLocVars fnTy
-          outs   = L.drop (length inLocs) locs
+          numOutRegs = 2 * length (outRegVars fnTy)
+          -- Drop input locations, but keep everything else
+          outs   = (take numOutRegs locs) ++  (drop numOutRegs $ drop (length inLocs) $ locs)
           argTy  = gTypeExp ddfs (Env2 tenv M.empty) arg
       arg' <- if hasPacked inT
               then fromDi <$> go tenv arg
@@ -308,7 +319,7 @@ cursorizePackedExp ddfs fundefs denv tenv (L p ex) =
         go (M.insert vr CursorTy tenv) bod
 
 
-{- Note: Products and projections:
+{- Note [Products and projections]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 As per the dilated representation, all packed values are (start,end) tuples.
@@ -332,7 +343,7 @@ TODO: merge this with `cursorizeLet`
       onDi (l <$> LetE (v,[],ty', rhs')) <$>
         go (M.insert v ty tenv) bod
 
-{- Note: Cursorizing projections:
+{- Note [Cursorizing projections]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 There are two ways in which projections can be cursorized:
@@ -445,13 +456,15 @@ Reason: unariser can only eliminate direct projections of this form.
           case locs of
             []    -> return v'
             [loc] -> return $ mkDi (l$ VarE loc) [ fromDi v' ]
-            _ -> return $ Di $ l$ MkProdE $ L.foldl (\acc loc -> (l$ VarE loc):acc) [fromDi v'] locs
+            _ -> return $ Di $ l$ MkProdE $ L.foldr (\loc acc -> (l$ VarE loc):acc) [fromDi v'] locs
 
         LetRegionE r bod -> do
           let (v,buf) = regionToBnd r
-          dl <$>
-            LetE (v,[],CursorTy, l$ Ext buf) <$>
-              fromDi <$> go tenv bod
+
+          -- TEMP: Change the end_reg binding to something more concrete
+          onDi (mkLets [ (v       , [], CursorTy, l$ Ext buf)
+                       , (toEndV v, [], CursorTy, l$ VarE v) ]) <$>
+            go tenv bod
 
         FromEndE{} -> error $ "cursorizePackedExp: TODO " ++ sdoc ext
 
@@ -459,7 +472,6 @@ Reason: unariser can only eliminate direct projections of this form.
     FoldE{} -> error $ "TODO: cursorizePackedExp FoldE"
 
   where go = cursorizePackedExp ddfs fundefs denv
-        toEndV = varAppend "end_"
         dl = Di <$> L p
 
 
@@ -468,17 +480,30 @@ cursorizeLocExp tenv locExp =
   case locExp of
     AfterConstantLE i loc -> l$ Ext $ L3.AddCursor loc (l$ LitE i)
     -- TODO: handle product types here
-    AfterVariableLE v loc ->
+
+    AfterVariableLE v loc -> do
       let vty = case M.lookup v tenv of
                   Just ty -> ty
                   Nothing -> error $ "cursorizeLocExp: Var " ++ sdoc v ++ " not found."
-          sizeVar = varAppend "sizeof_" v
-          endVar  = varAppend "end_" v
-          sizeVal = case vty of
-                    PackedTy{} -> l$ Ext $ L3.SizeOfPacked v endVar
-                    _          -> l$ Ext $ L3.SizeOfScalar v
-          bod = l$ Ext $ L3.AddCursor loc (l$ VarE (sizeVar))
-      in mkLets [(sizeVar,[], IntTy, sizeVal)] bod
+
+{- [2018.03.07]:
+
+Changing it's meaning to just be "after a variable", but not offset from any
+particular location. Such an offset requires calculating the size of the variable.
+For BigInfinite regions, this is simple:
+
+    size = (endof v) - v
+
+But Infinite regions do not support sizes yet. Re-enable this later.
+
+
+-}
+      case vty of
+        PackedTy{} -> l$ VarE (toEndV v)
+        _ -> let sizeVar = varAppend "sizeof_" v
+                 sizeVal = l$ Ext $ L3.SizeOfScalar v
+                 bod = l$ Ext $ L3.AddCursor loc (l$ VarE (sizeVar))
+             in mkLets [(sizeVar,[], IntTy, sizeVal)] bod
 
     FromEndLE loc -> l$ VarE loc
     StartOfLE r   -> case r of
@@ -490,7 +515,7 @@ cursorizeLocExp tenv locExp =
 cursorizeLet :: DDefs Ty2 -> NewFuns -> DepEnv -> TEnv -> Bool
              -> (Var, [Var], Ty2, L Exp2) -> L Exp2 -> SyM L3.Exp3
 cursorizeLet ddfs fundefs denv tenv isPackedContext (v,locs,ty,rhs) bod
-{- Note: Cursorizing let expressions:
+{- Note [Cursorizing let expressions]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Process RHS and bind the following cursors
@@ -597,7 +622,6 @@ Other bindings are straightforward projections of the processed RHS.
   where go t x = if isPackedContext
                  then fromDi <$> cursorizePackedExp ddfs fundefs denv t x
                  else cursorizeExp ddfs fundefs denv t x
-        toEndV = varAppend "end_"
         dl = Di <$> L NoLoc
 
 
@@ -619,7 +643,6 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
 
   where
         tys  = lookupDataCon ddfs dcon
-        toEndV = varAppend "end_"
         processRhs denv env = if isPacked
                               then fromDi <$> cursorizePackedExp ddfs fundefs denv env rhs
                               else cursorizeExp ddfs fundefs denv env rhs
@@ -693,6 +716,9 @@ regionToBnd r = case r of
                   GlobR v _ -> (v,L3.NewBuffer)
                   DynR  v _ -> (v,L3.ScopedBuffer)
 
+
+toEndV :: Var -> Var
+toEndV = varAppend "end_"
 
 -- ================================================================================
 --                         Dilation Conventions
