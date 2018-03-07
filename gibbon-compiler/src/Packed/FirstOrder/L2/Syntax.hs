@@ -26,6 +26,7 @@ module Packed.FirstOrder.L2.Syntax
 
     -- *
     , allLocVars, inLocVars, outLocVars, substEffs, substTy, mapPacked, prependArgs
+    , outRegVars, getTyLocs
 
     -- * Temporary backwards compatibility, plus rexports
     , UrTy(..)
@@ -275,6 +276,10 @@ outLocVars :: ArrowTy t -> [LocVar]
 outLocVars ty = L.map (\(LRM l _ _) -> l) $
                 L.filter (\(LRM _ _ m) -> m == Output) (locVars ty)
 
+outRegVars :: ArrowTy t -> [LocVar]
+outRegVars ty = L.map (\(LRM _ r _) -> regionVar r) $
+                L.filter (\(LRM _ _ m) -> m == Output) (locVars ty)
+
 -- | Apply a variable substitution to a type.
 substTy :: Map LocVar LocVar -> Ty2 -> Ty2
 substTy mp t = go t
@@ -329,6 +334,21 @@ mapPacked fn t =
 prependArgs :: [UrTy l] -> UrTy l -> UrTy l
 prependArgs [] t = t
 prependArgs ls t = ProdTy $ ls ++ [t]
+
+-- | Collect all the locations mentioned in a type.
+getTyLocs :: Ty2 -> [LocVar]
+-- TODO: could just be a fold
+getTyLocs t =
+    case t of
+      SymTy     -> []
+      BoolTy    -> []
+      IntTy     -> []
+      PackedTy _ v  -> [v]
+      ProdTy ls     -> L.concatMap getTyLocs ls
+      SymDictTy elt -> getTyLocs elt
+      PtrTy    -> []
+      CursorTy -> []
+      ListTy _ -> error "allLocVars: FIXME lists"
 
 
 {-

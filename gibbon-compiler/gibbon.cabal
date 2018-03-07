@@ -43,6 +43,7 @@ library
                        Packed.FirstOrder.Passes.InferMul
                        Packed.FirstOrder.Passes.InferEffects
                        Packed.FirstOrder.Passes.RouteEnds
+                       Packed.FirstOrder.Passes.InfRegions
                        Packed.FirstOrder.Passes.Cursorize
                        Packed.FirstOrder.Passes.FindWitnesses
                        Packed.FirstOrder.Passes.ShakeTree
