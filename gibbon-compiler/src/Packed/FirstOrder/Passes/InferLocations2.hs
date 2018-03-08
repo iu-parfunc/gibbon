@@ -269,10 +269,12 @@ inferExp' env lex0@(L sl1 exp) dest =
                     case i of
                       AfterConstantL lv1 v lv2 -> lc$ Ext (LetLocE lv1 (AfterConstantLE v lv2) a)
                       AfterVariableL lv1 v lv2 -> lc$ Ext (LetLocE lv1 (AfterVariableLE v lv2) a)
-                      StartRegionL lv r -> lc$ Ext (LetLocE lv (InRegionLE r) a)
+                      StartRegionL lv r -> lc$ Ext (LetLocE lv (StartOfLE r) a)
                       AfterTagL lv1 lv2 -> lc$ Ext (LetLocE lv1 (AfterConstantLE 1 lv2) a)
 
-  in inferExp env lex0 dest >>= \(a,b,_) -> return (a,b)
+  in do (e,ty,cs) <- inferExp env lex0 dest
+        e' <- finishExp e
+        return (e',ty)
      -- inferExp env lex0 dest >>= bindAllLocations >>= \(a,b,_) -> return (a,b)
                     
 -- | We proceed in a destination-passing style given the target region
@@ -286,15 +288,45 @@ inferExp env@FullEnv{dataDefs}
       tryBindReg (e,ty,((StartRegionL lv r) : cs)) =
           do lv' <- finalLocVar lv
              (e',ty',cs') <- tryBindReg (e,ty,cs)
-             b <- noAfterLoc lv' cs' cs' -- (traceShowId lv) (traceShowId cs')
-             if b
+             b' <- noAfterLoc lv' cs' cs' -- (traceShowId lv) (traceShowId cs')
+             if b'
              then do (e'',ty'',cs'') <- bindTrivialAfterLoc lv' (e',ty',cs')
-                     return (l$ Ext (LetRegionE r (l$ Ext (LetLocE lv' (InRegionLE r) e''))), ty'', cs'')
+                     return (l$ Ext (LetRegionE r (l$ Ext (LetLocE lv' (StartOfLE r) e''))), ty'', cs'')
              else return (e',ty',(StartRegionL lv r):cs')
       tryBindReg (e,ty,c:cs) =
           do (e',ty',cs') <- tryBindReg (e,ty,cs)
              return (e',ty',c:cs')
       tryBindReg (e,ty,[]) = return (e,ty,[])
+
+      -- tryBindConstraint :: LocVar -> L2.Ty2 -> [Constraint] -> TiM [Constraint]
+      -- tryBindConstraint lv ty cs =
+      --     do b <- containsLoc lv ty cs
+      --        if b
+      --        then return cs
+      --        else do r <- lift $ lift $ freshRegVar
+      --                return $ L.nub $ (StartRegionL lv r) : cs
+
+      tryInRegion' :: [Constraint] -> [Constraint] -> TiM [Constraint]
+      tryInRegion' fcs (c:cs) =
+          case c of
+            AfterTagL lv1 lv2 ->
+                do lv1' <- finalLocVar lv1
+                   lv2' <- finalLocVar lv2
+                   b1 <- noBeforeLoc lv2' fcs
+                   b2 <- noRegionStart lv1' fcs
+                   if b1 && b2
+                   then do cs' <- tryInRegion' fcs cs
+                           r <- lift $ lift $ freshRegVar
+                           let c' = StartRegionL lv2' r
+                           return (c':c:cs')
+                   else do cs' <- tryInRegion' fcs cs
+                           return (c:cs')
+            _ -> do cs' <- tryInRegion' fcs cs
+                    return (c:cs')
+      tryInRegion' _ [] = return []
+
+      tryInRegion :: [Constraint] -> TiM [Constraint]
+      tryInRegion cs = tryInRegion' cs cs
 
       handleTrailingBindLoc :: Var -> Result -> TiM Result
       handleTrailingBindLoc v res =
@@ -330,7 +362,7 @@ inferExp env@FullEnv{dataDefs}
                    then do (e',ty',cs') <- bindTrivialAfterLoc lv1 (e,ty,cs)
                            return (lc$ Ext (LetLocE lv1' (AfterConstantLE 1 lv2') e'), ty', cs')
                    else do (e',ty',cs') <- bindTrivialAfterLoc lv (e,ty,cs)
-                           return (e,ty,c:cs')
+                           return (e',ty',c:cs')
             AfterConstantL lv1 v lv2 ->
                 do lv1' <- finalLocVar lv1
                    lv2' <- finalLocVar lv2
@@ -339,9 +371,9 @@ inferExp env@FullEnv{dataDefs}
                    then do (e',ty',cs') <- bindTrivialAfterLoc lv1 (e,ty,cs)
                            return (lc$ Ext (LetLocE lv1' (AfterConstantLE v lv2') e'), ty', cs')
                    else do (e',ty',cs') <- bindTrivialAfterLoc lv (e,ty,cs)
-                           return (e,ty,c:cs')
+                           return (e',ty',c:cs')
             _ -> do (e',ty',cs') <- bindTrivialAfterLoc lv (e,ty,cs)
-                    return (e,ty,c:cs')
+                    return (e',ty',c:cs')
       bindTrivialAfterLoc _ (e,ty,[]) = return (e,ty,[])
 
       -- | To handle a case expression, we need to bind locations
@@ -376,7 +408,7 @@ inferExp env@FullEnv{dataDefs}
                            -- in a location
                            _ -> lift $ lift $ freshLocVar "imm"
                   let ty' = case ty of
-                              PackedTy k lv -> PackedTy k loc
+                              PackedTy k lv -> PackedTy k d
                               t -> t
                   unify d loc
                             (return (e',ty',[]))
@@ -403,6 +435,7 @@ inferExp env@FullEnv{dataDefs}
         SingleDest d -> do
                   locs <- sequence $ replicate (length ls) fresh
                   ls' <- mapM (\(e,lv) -> (inferExp env e $ SingleDest lv)) $ zip ls locs
+                  newLocs <- mapM finalLocVar locs                  
                   let afterVar :: (Maybe (L Exp2), Maybe LocVar, Maybe LocVar) -> Maybe Constraint
                       afterVar ((Just (L _ (VarE v))), (Just loc1), (Just loc2)) =
                           Just $ AfterVariableL loc1 v loc2
@@ -414,15 +447,14 @@ inferExp env@FullEnv{dataDefs}
                                  then constrs
                                  else let tmpconstrs = [AfterTagL (L.head locs) d] ++
                                                        (mapMaybe afterVar $ zip3
-                                                         (map Just ([a | (a,_,_) <- ls' ]))
                                                          -- ((map Just $ L.tail ([a | (a,_,_) <- ls' ])) ++ [Nothing])
+                                                        (map Just ([a | (a,_,_) <- ls']))
                                                          -- (map Just locs)
-                                                         ((map Just $ L.tail locs) ++ [Nothing])
-                                                         (map Just locs)) ++
+                                                        ((map Just $ L.tail locs) ++ [Nothing])
+                                                        (map Just locs))
                                                          -- ((map Just $ L.tail locs) ++ [Nothing])) ++
-                                                       constrs
-                                          -- firstty = (\(_,b,_) -> b) (head ls')
-                                      in tmpconstrs -- if L2.isPackedTy' firstty then tmpconstrs else tail tmpconstrs
+                                      in tmpconstrs ++ constrs
+                  -- traceShow k $ traceShow locs $
                   return (lc$ DataConE d k [ e' | (e',_,_)  <- ls'],
                             PackedTy (getTyOfDataCon dataDefs k) d,
                             constrs')
@@ -457,7 +489,8 @@ inferExp env@FullEnv{dataDefs}
         L1.LitE i -> do
           (bod',ty',cs') <- inferExp (extendVEnv vr IntTy env) bod dest
           (bod'',ty'',cs'') <- handleTrailingBindLoc vr (bod', ty', cs')
-          tryBindReg (lc$ L2.LetE (vr,[],IntTy,L sl2 $ L2.LitE i) bod'', ty'', cs'')
+          fcs <- tryInRegion cs''
+          tryBindReg (lc$ L2.LetE (vr,[],IntTy,L sl2 $ L2.LitE i) bod'', ty'', fcs)
 
         -- Literals have no location, as they are scalars/value types.
 --        L1.LitE n -> _finLit
@@ -469,30 +502,29 @@ inferExp env@FullEnv{dataDefs}
           let ls' = L.map (\(a,_,_)->a) lsrec
               cs'' = concat $ [c | (_,_,c) <- lsrec]
           (bod'',ty'',cs''') <- handleTrailingBindLoc vr (bod', ty', L.nub $ cs' ++ cs'')
+          fcs <- tryInRegion cs'''
           tryBindReg (lc$ L2.LetE (vr,[],ty,L sl2 $ L2.PrimAppE (prim p) ls') bod'',
-                    ty'', cs''')
+                    ty'', fcs)
         DataConE _loc k ls  -> do
           loc <- lift $ lift $ freshLocVar "datacon"
           (rhs',rty,rcs) <- inferExp env (L sl2 $ DataConE () k ls) $ SingleDest loc
           (bod',ty',cs') <- inferExp (extendVEnv vr (PackedTy (getTyOfDataCon dataDefs k) loc) env) bod dest
-          b <- containsLoc loc ty' cs'
-          cs'' <- if b
-                  then return $ L.nub $ cs' ++ rcs
-                  else do r <- lift $ lift $ freshRegVar
-                          return $ (StartRegionL loc r) : (L.nub $ cs' ++ rcs)
-          (bod'',ty'',cs''') <- handleTrailingBindLoc vr (bod', ty', cs'')
+          (bod'',ty'',cs'') <- handleTrailingBindLoc vr (bod', ty', L.nub $ cs' ++ rcs)
+          fcs <- tryInRegion cs''
           tryBindReg (lc$ L2.LetE (vr,[loc],PackedTy k loc,rhs') bod'',
-                    ty', cs'')
+                    ty', fcs)
         LitSymE x     -> do
           (bod',ty',cs') <- inferExp (extendVEnv vr IntTy env) bod dest
           (bod'',ty'',cs'') <- handleTrailingBindLoc vr (bod', ty', cs')
-          tryBindReg (lc$ L2.LetE (vr,[],IntTy,L sl2 $ L2.LitSymE x) bod'', ty'', cs'')
+          fcs <- tryInRegion cs''
+          tryBindReg (lc$ L2.LetE (vr,[],IntTy,L sl2 $ L2.LitSymE x) bod'', ty'', fcs)
         ProjE i e     -> do
           (e,ProdTy tys,cs) <- inferExp env e NoDest
           (bod',ty',cs') <- inferExp (extendVEnv vr (tys !! i) env) bod dest
           (bod'',ty'',cs'') <- handleTrailingBindLoc vr (bod', ty', L.nub $ cs ++ cs')
+          fcs <- tryInRegion cs''
           tryBindReg (lc$ L2.LetE (vr,[],ProdTy tys,L sl2 $ L2.ProjE i e) bod'',
-                             ty'', cs'')
+                             ty'', fcs)
         CaseE e ls    -> _case
         MkProdE ls    -> _mkprod
         TimeIt e t b       -> do
@@ -503,8 +535,9 @@ inferExp env@FullEnv{dataDefs}
           (e',ty,cs) <- inferExp env e subdest
           (bod',ty',cs') <- inferExp (extendVEnv vr ty env) bod dest
           (bod'',ty'',cs'') <- handleTrailingBindLoc vr (bod', ty', L.nub $ cs ++ cs')
+          fcs <- tryInRegion cs''
           tryBindReg (lc$ L2.LetE (vr,[],ty,L sl2 $ TimeIt e' ty b) bod'',
-                    ty'', cs'')
+                    ty'', fcs)
           
 
         _oth -> err $ "Unhandled case in lhs of let: " ++ (show lex0)
@@ -536,7 +569,12 @@ finishExp (L i e) =
              e1' <- finishExp e1
              e2' <- finishExp e2
              ls' <- mapM finalLocVar ls
-             return $ l$ LetE (v,ls',t,e1') e2'
+             t' <- case t of
+               PackedTy tc lv ->
+                   do lv' <- finalLocVar lv
+                      return $ PackedTy tc lv'
+               _ -> return t
+             return $ l$ LetE (v,ls',t',e1') e2'
       IfE e1 e2 e3 -> do
              e1' <- finishExp e1
              e2' <- finishExp e2
@@ -564,6 +602,21 @@ finishExp (L i e) =
       TimeIt e1 d b -> do
              e1' <- finishExp e1
              return $ l$ TimeIt e1' d b
+      Ext (LetRegionE r e1) -> do
+             e1' <- finishExp e1
+             return $ l$ Ext (LetRegionE r e1')
+      Ext (LetLocE loc lex e1) -> do
+             e1' <- finishExp e1
+             loc' <- finalLocVar loc
+             lex' <- case lex of
+                       AfterConstantLE i lv -> do
+                                    lv' <- finalLocVar lv
+                                    return $ AfterConstantLE i lv'
+                       AfterVariableLE v lv -> do
+                                    lv' <- finalLocVar lv
+                                    return $ AfterVariableLE v lv'
+                       oth -> return oth
+             return $ l$ Ext (LetLocE loc' lex' e1')
       _ -> err $ "Unhandled case: " ++ (show e)
 
 containsLoc :: LocVar -> L2.Ty2 -> [Constraint] -> TiM Bool
@@ -621,6 +674,27 @@ noAfterLoc lv fcs (c:cs) =
              if lv' == lv2' then return False else noAfterLoc lv fcs cs
       _ -> noAfterLoc lv fcs cs
 noAfterLoc _ _ [] = return True
+
+noBeforeLoc :: LocVar -> [Constraint] -> TiM Bool
+noBeforeLoc lv (c:cs) =
+    case c of
+      AfterVariableL lv1 v lv2 ->
+          do lv1' <- finalLocVar lv1
+             lv' <- finalLocVar lv
+             if lv' == lv1' then return False else noBeforeLoc lv cs
+      AfterConstantL lv1 v lv2 ->
+          do lv1' <- finalLocVar lv1
+             lv' <- finalLocVar lv
+             if lv' == lv1' then return False else noBeforeLoc lv cs
+      _ -> noBeforeLoc lv cs
+noBeforeLoc lv [] = return True
+
+noRegionStart :: LocVar -> [Constraint] -> TiM Bool
+noRegionStart lv (c:cs) =
+    case c of
+      StartRegionL lv r -> return False
+      _ -> noRegionStart lv cs
+noRegionStart lv [] = return True
 
 -- | Unify is a conditional form that takes a "success branch" and
 -- "failure branch".  In the case of failure, it makes no change to
@@ -800,4 +874,25 @@ t3 = tester2 $
      l$ LetE ("x",[],IntTy,l$ LitE 1) $
      l$ LetE ("y",[],IntTy,l$ LitE 2) $
      l$ LetE ("z",[],PackedTy "Tree" (), l$ DataConE () "Leaf" [l$ VarE "x", l$ VarE "y"]) $
+     l$ LitE 0
+
+t4 :: L Exp2
+t4 = tester2 $
+     l$ LetE ("x1",[],IntTy,l$ LitE 1) $
+     l$ LetE ("y1",[],IntTy,l$ LitE 2) $
+     l$ LetE ("z1",[],PackedTy "Tree" (), l$ DataConE () "Leaf" [l$ VarE "x1", l$ VarE "y1"]) $
+     l$ LetE ("x2",[],IntTy,l$ LitE 3) $
+     l$ LetE ("y2",[],IntTy,l$ LitE 4) $
+     l$ LetE ("z2",[],PackedTy "Tree" (), l$ DataConE () "Leaf" [l$ VarE "x2", l$ VarE "y2"]) $
+     l$ LitE 0
+
+t5 :: L Exp2
+t5 = tester2 $
+     l$ LetE ("x1",[],IntTy,l$ LitE 1) $
+     l$ LetE ("y1",[],IntTy,l$ LitE 2) $
+     l$ LetE ("z1",[],PackedTy "Tree" (), l$ DataConE () "Leaf" [l$ VarE "x1", l$ VarE "y1"]) $
+     l$ LetE ("x2",[],IntTy,l$ LitE 3) $
+     l$ LetE ("y2",[],IntTy,l$ LitE 4) $
+     l$ LetE ("z2",[],PackedTy "Tree" (), l$ DataConE () "Leaf" [l$ VarE "x2", l$ VarE "y2"]) $
+     l$ LetE ("z3",[],PackedTy "Tree" (), l$ DataConE () "Node" [l$ VarE "z1", l$ VarE "z2"]) $
      l$ LitE 0
