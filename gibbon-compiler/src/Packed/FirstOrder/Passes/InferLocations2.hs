@@ -121,48 +121,6 @@ import Packed.FirstOrder.L2.Syntax as L2
 import Packed.FirstOrder.L2.Typecheck as T
 --     (ConstraintSet, LocConstraint(..), RegionSet(..), LocationTypeState(..))
 
--- Dependencies
-----------------------------------------------------------------------------------------------------
-
--- | Edges that create information-flow dependencies, representing both data dependencies
--- evident in the current program, and ones which will appear later, when locations are
--- given operational meaning.
---
--- These dependencies model the connections between named values, as introduced by LetE.
--- Unnamed values resulting from operand expressions cannot be shared.
---
--- In general there are four kinds of dependence:
--- 
---  (1) Value/value dependence.  Regular dataflow.
--- 
---  (2) Location/value dependence: an end-location depends on the completion of a
---      logical value before its address can be computed.
---
---  (3) Value/location dependence: a serialized (packed) value depends on its destination
---      location in order to begin emiting its output.
--- 
---  (4) Location/location or location/region dependence.
-
-type Dependence = (CommonVar,CommonVar)
-
-data CommonVar = LVar !LocVar | DatVar !Var
-  deriving (Show, Read, Ord, Eq)
-
--- -- | Map a dependence to a (from,to) edge.
--- depToEdge :: Dependence -> (CommonVar,CommonVar)
--- depToEdge = undefined
-
--- | Organize a graph into a map from each variable to the set of edges for which it
--- serves as the destination.
-type Graph = M.Map CommonVar (S.Set Dependence)
-
--- | Map each variable to a set of other variables it depends on.
-type DepGraph = M.Map CommonVar (S.Set CommonVar)
-
--- -- | A cycle is represented as an edgelist where the destination of the first edge matches
--- -- the source of the final edge.
--- type EdgeList = Seq.Seq Dependence
-
 
 -- Environments
 ----------------------------------------------------------------------------------------------------
@@ -172,7 +130,6 @@ data FullEnv = FullEnv
     { dataDefs :: (DDefs Ty2)           -- ^ Data type definitions
     , valEnv :: M.Map Var Ty2           -- ^ Type env for local bindings
     , funEnv :: M.Map Var (ArrowTy Ty2) -- ^ Top level fundef types
-    , dag    :: DepGraph                -- ^ 
     }
 -- TODO: Lenses would probably help a bit here.
 
@@ -180,28 +137,15 @@ extendVEnv :: Var -> Ty2 -> FullEnv -> FullEnv
 extendVEnv v ty fe@FullEnv{valEnv} = fe { valEnv = M.insert v ty valEnv }
 
 lookupVarLoc :: Var -> FullEnv -> LocVar
-lookupVarLoc = undefined
+lookupVarLoc v env = case lookupVEnv v env of
+                       PackedTy _ lv -> lv
+                       _ -> err $ "Variable does not have location: " ++ (show v)
              
 lookupVEnv :: Var -> FullEnv -> Ty2
 lookupVEnv v FullEnv{valEnv} = valEnv # v
 
 lookupFEnv :: Var -> FullEnv -> ArrowTy Ty2
 lookupFEnv v FullEnv{funEnv} = funEnv # v
-
--- -- | Instantiate the type schema for a function.  Return the fresh
--- -- location variables that 
--- instantiateFun :: Var -> FullEnv -> TiM ([LocVar], Ty2,Ty2)
--- instantiateFun = undefined
-                  
--- extendDepGraph :: Dependence -> FullEnv -> FullEnv
--- extendDepGraph = undefined
-
--- transitiveClosure :: DepGraph -> DepGraph
--- transitiveClosure = undefined
-
--- hasCycle :: DepGraph -> Bool
--- hasCycle = undefined
-
 
 -- Types
 --------------------------------------------------------------------------------
@@ -277,7 +221,7 @@ inferLocs (L1.Prog dfs fds me) = do
           dfs' <- lift $ lift $ convertDDefs dfs
           fenv <- forM fds $ \(L1.FunDef _ (_,inty) outty _) ->
                   lift $ lift $ convertFunTy (inty,outty)
-          let fe = FullEnv dfs' M.empty fenv M.empty
+          let fe = FullEnv dfs' M.empty fenv
           me' <- case me of
             Just me -> do
               l1 <- fresh
@@ -464,7 +408,7 @@ inferExp env@FullEnv{dataDefs}
                        _ -> []
           return (lc$ L2.LetE (vr,locs,ty,L sl2 $ TimeIt e' ty b) bod', ty', L.nub $ cs ++ cs')
 
-        _oth -> err $ "Unhandled case: " ++ (show lex0)
+        _oth -> err $ "Unhandled case in lhs of let: " ++ (show lex0)
 
     _oth -> err $ "Unhandled case: " ++ (show lex0)
 
@@ -661,8 +605,7 @@ prim p = case p of
 emptyEnv :: FullEnv
 emptyEnv = FullEnv { dataDefs = C.emptyDD
                    , valEnv   = M.empty
-                   , funEnv   = M.empty
-                   , dag      = M.empty }
+                   , funEnv   = M.empty }
 
 
 t0 :: ArrowTy Ty2
@@ -687,3 +630,21 @@ t2 = tester1 $
      l$ LetE ("y",[],IntTy,l$ LitE 2) $
      l$ LetE ("z",[],IntTy,l$ PrimAppE L1.AddP [l$ VarE "x", l$ VarE "y"]) $
      l$ VarE "z"
+
+ddtree :: DDefs Ty2
+ddtree = fromListDD [DDef (toVar "Tree")
+                      [ ("Leaf",[(False,IntTy)])
+                      , ("Node",[ (False,PackedTy "Tree" "l")
+                                , (False,PackedTy "Tree" "l")])
+                      ]]
+
+treeEnv :: FullEnv
+treeEnv = FullEnv { dataDefs = ddtree
+                  , valEnv   = M.empty
+                  , funEnv   = M.empty }
+
+
+tester2 :: L L1.Exp1 -> L Exp2
+tester2 e = case fst $ fst $ runSyM 0 $ St.runStateT (runExceptT (inferExp treeEnv e NoDest)) M.empty of
+              Right a -> (\(a,_,_)->a) a
+              Left a -> err $ show a
