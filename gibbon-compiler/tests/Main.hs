@@ -20,8 +20,8 @@ import qualified Packed.FirstOrder.L4.Syntax as T
 import qualified Packed.FirstOrder.TargetInterp as TI
 
 -- |
-import RouteEnds2
-import InferEffects2
+import RouteEnds
+import InferEffects
 import Unariser
 import Compiler
 import L2.Typecheck

@@ -21,10 +21,10 @@ import Packed.FirstOrder.L1.Syntax hiding (FunDef, Prog, add1Prog)
 import Packed.FirstOrder.L2.Syntax as L2
 import Packed.FirstOrder.L2.Typecheck
 import Packed.FirstOrder.L2.Examples
-import Packed.FirstOrder.Passes.InferEffects2
-import Packed.FirstOrder.Passes.RouteEnds2
-import Packed.FirstOrder.Passes.Cursorize4
-import Packed.FirstOrder.Passes.Unariser2
+import Packed.FirstOrder.Passes.InferEffects
+import Packed.FirstOrder.Passes.RouteEnds
+import Packed.FirstOrder.Passes.Cursorize
+import Packed.FirstOrder.Passes.Unariser
 import Packed.FirstOrder.Passes.ShakeTree
 import Packed.FirstOrder.Passes.HoistNewBuf
 import Packed.FirstOrder.Passes.FindWitnesses

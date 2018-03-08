@@ -4,9 +4,9 @@
 
 module L3.Typecheck where
 
-import Packed.FirstOrder.Passes.InferEffects2
-import Packed.FirstOrder.Passes.RouteEnds2
-import Packed.FirstOrder.Passes.Cursorize4
+import Packed.FirstOrder.Passes.InferEffects
+import Packed.FirstOrder.Passes.RouteEnds
+import Packed.FirstOrder.Passes.Cursorize
 import Packed.FirstOrder.Passes.Unariser
 import Packed.FirstOrder.Passes.ShakeTree
 import Packed.FirstOrder.Passes.HoistNewBuf
