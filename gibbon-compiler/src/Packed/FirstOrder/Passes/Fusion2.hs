@@ -1,9 +1,10 @@
 
-
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module Packed.FirstOrder.Passes.Fusion2 (fusion2) where
+import Prelude hiding (exp)
+
 import Control.Exception
 import Data.Loc
 import qualified Data.Map as M
@@ -19,6 +20,77 @@ import GHC.Generics (Generic, Generic1)
 import Packed.FirstOrder.Common
 import Data.Tuple.All
 import Data.Vector as V
+
+freshExp :: [(Var,Var)] -> L Exp1 -> SyM (L L1.Exp1)
+freshExp vs (L sloc exp) = fmap (L sloc) $
+            case exp of
+              L1.Ext _     -> return exp
+              L1.LitE i    -> return $ L1.LitE i
+              L1.LitSymE v -> return $ L1.LitSymE v
+
+              L1.VarE v ->
+                case lookup v vs of
+                  Nothing -> return $ L1.VarE v
+                  Just v' -> return $ L1.VarE v'
+
+              L1.AppE v ls e -> assert ([] == ls) $ do
+                e' <- freshExp vs e
+                return $ L1.AppE (cleanFunName v) [] e'
+
+              L1.PrimAppE p es -> do
+                es' <- Prelude.mapM (freshExp vs) es
+                return $ L1.PrimAppE p es'
+
+              L1.LetE (v,ls,t, e1) e2 -> assert ([]==ls) $ do
+                e1' <- freshExp vs e1
+                v'  <- gensym v
+                e2' <- freshExp ((v,v'):vs) e2
+                return $ L1.LetE (v',[],t,e1') e2'
+
+              L1.IfE e1 e2 e3 -> do
+                e1' <- freshExp vs e1
+                e2' <- freshExp vs e2
+                e3' <- freshExp vs e3
+                return $ L1.IfE e1' e2' e3'
+
+              L1.ProjE i e -> do
+                e' <- freshExp vs e
+                return $ L1.ProjE i e'
+
+              L1.MkProdE es -> do
+                es' <- Prelude.mapM (freshExp vs) es
+                return $ L1.MkProdE es'
+
+              L1.CaseE e mp -> do
+                e' <- freshExp vs e
+                -- Here we freshen locations:
+                mp' <- Prelude.mapM (\(c,prs,ae) ->
+                             let (args,_) = Prelude.unzip prs in
+                             do
+                               args' <- Prelude.mapM gensym args
+                               let vs' = (Prelude.zip args args') L.++ vs
+                               ae' <- freshExp vs' ae
+                               return (c, L.map (,( )) args', ae')) mp
+                return $ L1.CaseE e' mp'
+
+              L1.DataConE () c es -> do
+                es' <- Prelude.mapM (freshExp vs) es
+                return $ L1.DataConE () c es'
+
+              L1.TimeIt e t b -> do
+                e' <- freshExp vs e
+                return $ L1.TimeIt e' t b
+
+              L1.MapE (v,t,b) e -> do
+                b' <- freshExp vs b
+                e' <- freshExp vs e
+                return $ L1.MapE (v,t,b') e'
+
+              L1.FoldE (v1,t1,e1) (v2,t2,e2) e3 -> do
+                e1' <- freshExp vs e1
+                e2' <- freshExp vs e2
+                e3' <- freshExp vs e3
+                return $ L1.FoldE (v1,t1,e1') (v2,t2,e2') e3'
 
 
 -- Helper Functions
@@ -347,25 +419,51 @@ buildUseTable ex  = rec  ex (M.fromList []) where
                   otherwise                -> tb
 
 
-mergeStep ::  DDefs Ty1-> FunDefs Ty1 (L Exp1) -> L Exp1-> SyM (L Exp1 ,FunDefs Ty1 (L Exp1))
+
+check2 :: [FunDef Ty1 ( L Exp1)] ->Bool
+check2 []    = False
+check2 (x:[])  = False
+check2 (x:(y:xs)) = (hasCommonIfBody (getInVar x) (getInVar y) (funBody x)(funBody y)  ) || 
+                    (hasCommonCaseBody (getInVar x) (getInVar y)  (funBody x)(funBody y) ) 
+  where
+    getInVar function = case(funArg x) of ((v,_))-> v 
+    hasCommonIfBody in1 in2 (L _ (IfE e1 _ _ )) (L _ (IfE e2 _ _ )) = 
+      if (subst in1 (l (VarE (toVar "input"))) e1 ) == (subst in2 (l (VarE (toVar "input"))) e2 ) then  True  else False
+   
+    hasCommonIfBody _ _ _ _ = False 
+   
+    hasCommonCaseBody in1 in2 (L _ (CaseE (L _ (VarE in1_) ) _ ) ) (L _ (CaseE (L _ (VarE in2_) ) _ ) ) = (in1==in1_) && (in2==in2_)
+    hasCommonCaseBody _ _ _ _ = False
+
+                  
 mergeStep ddefs fdefs oldExp = do
 
   let useTable        = buildUseTable oldExp
   
   -- need to be extended and checked on a case where length>2 
-  let useTableFiltered = M.filter predicate useTable where 
-                          predicate entry =L.length entry == 2
+  let useTableFiltered = M.filter check1 useTable where 
+                          check1 entry =L.length entry == 2
    
+  -- in each set of a functions to be merged we want them to all start with a case on the input tree .
+  --or all start with an If such that e1 is the same for all of them !
+
   let pairsToMerge     = L.nub (L.map (\(_, ls) ->  L.sort (L.map (\(_,(AppE fName _ _ ))->fName) ls) )
                                       (M.toList useTableFiltered)
-                               ) 
+                               ) `debug` ("used table " L.++ show useTable )
 
-  let functionsToMerge = L.map (\ls -> L.map getFunDef ls) pairsToMerge where
+  let functionsToMerge = L.map (\ls -> L.map getFunDef ls) pairsToMerge `debug` ("pairs " L.++ show pairsToMerge ) where
                             getFunDef fName  = case ( M.lookup fName fdefs ) of 
-                                                Nothing        ->error "not expected" 
+                                                Nothing        ->error ("not expected" L.++ (show fName))
                                                 Just funDef    -> funDef
+
+
+  let freshBody f = do 
+                      b' <- freshExp [] (funBody f)
+                      return f{funBody =b'}
   -- create a list of merged function 
-  let mergedFunctions1  = L.map (mergeListOfFunctions ddefs) functionsToMerge
+  functionsToMerge1 <- Prelude.mapM ( \ls->  (Prelude.mapM freshBody  ls))  functionsToMerge   --L.filter check2 functionsToMerge
+                                     
+  let mergedFunctions1  = L.map (mergeListOfFunctions ddefs) functionsToMerge1 `debug` (show functionsToMerge1 )
   let mergedFunctions2  = L.map (\(funDef,ls)-> ( (rewriteMergedAsRec funDef ls) ,ls))  mergedFunctions1
 
   
@@ -387,19 +485,35 @@ combine ddefs fdefs  inner outer  = do
   let fdefs1   =M.insert  inline_name inlined_fun3 fdefs
 
   (body, newDefs)     <- transformFuse ddefs fdefs1 (funBody inlined_fun3) 
-  let inlined_fun4 = inlined_fun3{funBody = body}
-  let fdefs2     = M.union fdefs1 newDefs 
-  let fdefs3     = M.insert  inline_name inlined_fun4 fdefs2
+  let inlined_fun4 = removeUnusedDefs inlined_fun3{funBody = body}
+  let fdefs2       = M.union fdefs1 newDefs 
+  let fdefs3       = M.insert  inline_name inlined_fun4 fdefs2
 
  
 
 -------------------------------------------------------Merging step
   (body2, newDefs2) <- mergeStep ddefs fdefs3 (funBody inlined_fun4)
   let inlined_fun5 = inlined_fun3{funBody = body2}
-  let fdefs4     = M.union fdefs1 newDefs2 
+  let fdefs4     = M.union fdefs3 newDefs2 
   let fdefs5     = M.insert  inline_name inlined_fun5 fdefs4
 
   return $(True, inline_name, fdefs5)
+ 
+
+--right now outer have to take one arg exactly same for inner and must be of an ADT type
+restrictionsViolation :: FunDefs Ty1 (L Exp1) -> Var -> Var -> Bool
+restrictionsViolation fdefs inner outer =
+  do
+    let innerDef = case (M.lookup inner fdefs) of (Just  v) ->v
+    let outerDef = case (M.lookup outer fdefs) of (Just v) ->v
+    let p1 =  case (snd (funArg innerDef) ) of
+                             (PackedTy _ _ ) -> False 
+                             otherwise  -> True
+    let p2 =  case (snd (funArg outerDef) ) of
+                             (PackedTy _ _) -> False 
+                             otherwise  -> True
+    (p1 || p2)
+
 
 transformFuse :: DDefs Ty1 -> FunDefs Ty1 (L Exp1)-> L Exp1 -> SyM (L Exp1,  FunDefs Ty1 (L Exp1))
 transformFuse  ddefs funDefs bodyin = do
@@ -409,14 +523,18 @@ transformFuse  ddefs funDefs bodyin = do
       let potential = findPotential defTable selectedItems 
       case (potential) of
         Nothing -> return (L l body, fdefs)
-        Just (inner,outer ) -> do
-          (valid, fNew, newDefs) <-  (combine  ddefs fdefs inner outer )
-          if ( valid==True )
-             then
-                let body' = rewriteSeqCalls (outer,inner, -1, fNew) (L l body) --`debug`  ("final rewrite" L.++ (show outer )L.++ (show inner )L.++ (show fNew )L.++ (show body)) 
-                in rec body' ((inner,outer):selectedItems) (M.union fdefs newDefs)
-             else
-                rec (L l body)  ((inner,outer):selectedItems) fdefs
+        Just (inner,outer ) -> if( restrictionsViolation fdefs inner outer) 
+          then
+           rec (L l body)  ((inner,outer):selectedItems) fdefs
+          else
+            do
+              (valid, fNew, newDefs) <-  (combine  ddefs fdefs inner outer )
+              if ( valid==True )
+                  then
+                    let body' = rewriteSeqCalls (outer,inner, -1, fNew) (L l body) --`debug`  ("final rewrite" L.++ (show outer )L.++ (show inner )L.++ (show fNew )L.++ (show body)) 
+                    in rec body' ((inner,outer):selectedItems) (M.union fdefs newDefs)
+                  else
+                    rec (L l body)  ((inner,outer):selectedItems) fdefs
 
                                                 
               
