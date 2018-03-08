@@ -38,4 +38,9 @@
     [(Inner sum x left right) sum ] ))
 
 
-(set-even (sum-up (Leaf 2)));
+( define (generateTree [n : Int]) : Tree
+ ( if (= n 0 ) (Leaf 2) (Inner 0 0 (generateTree (- n 1 ) ) (generateTree (- n 1) ) ) ) )
+
+;;(iterate (set-even (sum-up ( Inner 0 0 (Leaf 2)(Leaf 2)))) );
+
+(iterate (set-even ( sum-up (generateTree 10) ) ) );;
