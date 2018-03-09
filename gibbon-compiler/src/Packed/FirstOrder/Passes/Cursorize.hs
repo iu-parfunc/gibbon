@@ -255,7 +255,7 @@ cursorizePackedExp ddfs fundefs denv tenv (L p ex) =
                      Nothing -> error $ "Unknown function: " ++ sdoc f
           inT    = arrIn fnTy
           inLocs = inLocVars fnTy
-          outs   = drop (length inLocs) locs
+          outs   = L.drop (length inLocs) locs
           argTy  = gTypeExp ddfs (Env2 tenv M.empty) arg
       arg' <- if hasPacked inT
               then fromDi <$> go tenv arg

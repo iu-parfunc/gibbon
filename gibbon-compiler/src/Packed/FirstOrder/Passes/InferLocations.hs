@@ -2,6 +2,8 @@
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unused-matches #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
+{-# OPTIONS_GHC -Wno-unused-local-binds #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 -- TEMP:
 -- {-# OPTIONS_GHC -Wno-all #-}
@@ -51,7 +53,7 @@ As type checking proceeds, there are three ways things get stuck:
 
  * impossible constraint: inequality + equality
  * cyclic constraint: locations and values form a cycle
- * scope violation: location depends on something not in scope at 
+ * scope violation: location depends on something not in scope at
    the point where the location must be defined.
 
 
@@ -98,7 +100,7 @@ import Control.Monad.Trans (lift)
 
 
 import Packed.FirstOrder.GenericOps (gFreeVars)
-import Packed.FirstOrder.Common as C hiding (extendVEnv) -- (l, LRM(..)) 
+import Packed.FirstOrder.Common as C hiding (extendVEnv) -- (l, LRM(..))
 -- import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common (Var, Env2, DDefs, LocVar, runSyM, SyM, gensym, toVar)
 import qualified Packed.FirstOrder.L1.Syntax as L1
@@ -169,7 +171,7 @@ extendVEnv v ty fe@FullEnv{valEnv} = fe { valEnv = M.insert v ty valEnv }
 
 lookupVarLoc :: Var -> FullEnv -> LocVar
 lookupVarLoc = undefined
-             
+
 lookupVEnv :: Var -> FullEnv -> Ty2
 lookupVEnv v FullEnv{valEnv} = valEnv # v
 
@@ -177,10 +179,10 @@ lookupFEnv :: Var -> FullEnv -> (Ty2,Ty2)
 lookupFEnv = undefined
 
 -- | Instantiate the type schema for a function.  Return the fresh
--- location variables that 
+-- location variables that
 instantiateFun :: Var -> FullEnv -> TiM ([LocVar], Ty2,Ty2)
 instantiateFun = undefined
-                  
+
 extendDepGraph :: Dependence -> FullEnv -> FullEnv
 extendDepGraph = undefined
 
@@ -306,7 +308,7 @@ withRepairTactic tactic p0@(L1.Prog defs funs main) = do
 
    lame :: L1.Ty1 -> Ty2 -- TODO: remove the need for this.
    lame = fmap (const "")
-          
+
 
 -- | Instantiate inferExp with a specific repair strategy.
 inferExpWith :: RepairTactic -> FullEnv -> (L L1.Exp1) -> SyM Result
@@ -316,8 +318,8 @@ inferExpWith tactic env ex = go (inferExp env ex return)
       x <- St.runStateT (runExceptT act) mempty
       case x of
         (Left exn, _log) -> go (tactic exn) -- ^ Repair and retry.
-        (Right res, _) -> return res   
-             
+        (Right res, _) -> return res
+
 -- -- | Trivial expressions never cause failures.
 -- doTriv :: FullEnv -> L1.Exp1 -> Result
 -- doTriv env ex =
@@ -340,7 +342,7 @@ sizeOrLoc = _finishme
 
 
 type RelativePosition = LocVar -> LocConstraint
-            
+
 addOffset :: RelativePosition -> Int -> RelativePosition
 addOffset f offset locvar =
   case f locvar of
@@ -365,7 +367,7 @@ doDataConFields env lprv0 ls0 k0 =
     go _ [] acc = -- All fields processed.
        k0 (reverse acc)
     go lprev (nxt:rst) acc =
-       inferExp env nxt $ \(nxt',nxtTy) -> 
+       inferExp env nxt $ \(nxt',nxtTy) ->
         case sizeOrLoc nxtTy of
           Left sz ->
             go (addOffset lprev sz) rst (nxt' : acc)
@@ -394,7 +396,7 @@ inferExp env lex0@(L sl1 ex0) k =
         -- Here we blithely assume success because L1 typechecking has already passed:
         inferExp env a $ \ (a',BoolTy) ->
         inferExp env b $ \ (b',tyb) ->
-        let k' (c',tyc) = k (l$ IfE a' b' c', tyc) 
+        let k' (c',tyc) = k (l$ IfE a' b' c', tyc)
             ctxt = Selection ce (TiHole k') in
         inferExp env c $ \  (c',tyc) ->
           unifyLocs tyb tyc ctxt $
@@ -402,9 +404,9 @@ inferExp env lex0@(L sl1 ex0) k =
 
     DataConE () con ls -> do
       loc <- freshLocVar "lDC" -- Location of the tag itself.
-      let tyc = getTyOfDataCon (dataDefs env) con 
-             
-      doDataConFields env loc ls $ \ ls' -> 
+      let tyc = getTyOfDataCon (dataDefs env) con
+
+      doDataConFields env loc ls $ \ ls' ->
          k ( l$ L2.DataConE loc con ls'
            , PackedTy tyc loc )
 
@@ -412,11 +414,11 @@ inferExp env lex0@(L sl1 ex0) k =
     -- Lets are where we allocate fresh locations:
     L1.LetE (vr,locs,_,L sl2 rhs) bod | [] <- locs ->
       case rhs of
-        L1.AppE f [] arg -> L1.assertTriv arg $ do 
+        L1.AppE f [] arg -> L1.assertTriv arg $ do
             (newLocs,formalTy,resTy) <- instantiateFun f env
 
             let k' (arg',argTy) =
-                      let env' = extendVEnv vr resTy env in                                    
+                      let env' = extendVEnv vr resTy env in
                       inferExp env' bod $ \ (bod',bodTy) ->
                         k ( L sl1 (LetE (vr,[],resTy, L sl2 (AppE f (newLocs) arg')) bod')
                           , bodTy)
@@ -428,7 +430,7 @@ inferExp env lex0@(L sl1 ex0) k =
 
         -- Literals have no location, as they are scalars/value types.
 --        L1.LitE n -> _finLit
-                     
+
         PrimAppE p ls -> _prim
         DataConE loc k ls  -> _datacon
         LitSymE x     -> _linsym
@@ -439,7 +441,7 @@ inferExp env lex0@(L sl1 ex0) k =
         MapE (v,t,rhs) bod -> err "finish MapE"
         FoldE (v1,t1,r1) (v2,t2,r2) bod -> err "finish FoldE"
 
-        _oth -> 
+        _oth ->
          inferExp env (L sl2 rhs) $ \ (rhs',rhsTy) ->
           -- Construct a value-value dependence to all the free vars in the RHS:
           do forM_ (gFreeVars rhs) $ \fv ->
@@ -499,7 +501,7 @@ primToTy p = case p of
                L1.MkTrue  -> BoolTy
                L1.MkFalse -> BoolTy
                _ -> err $ "Can't handle this primop yet in InferLocations:\n"++show p
-               
+
 
 -- Helpers:
 --------------------------------------------------------------------------------
@@ -526,7 +528,7 @@ tellNewLocVar v e = lift $ do
 -- can instantiate an L1 function type into a polymorphic L2 one,
 -- mechanically.
 convertFunTy :: (L1.Ty1,L1.Ty1) -> SyM (ArrowTy Ty2)
-convertFunTy (from,to) = do 
+convertFunTy (from,to) = do
     -- let lvs = allLocVars inT ++ allLocVars outT
     -- lvs' <- mapM freshenVar lvs
     -- let subst = M.fromList (zip lvs lvs')
@@ -534,7 +536,7 @@ convertFunTy (from,to) = do
     --                  (substEffs subst effs)
     --                  (substTy subst outT)
 
-    
+
     return $ ArrowTy { locVars = _
                      , arrIn   = _
                      , arrEffs = S.empty
@@ -547,10 +549,10 @@ convertFunTy (from,to) = do
 -- | Fresh locVar
 freshLocVar :: String -> TiM LocVar
 freshLocVar m = lift$ lift$ gensym (toVar m)
-                
+
 -- | Unify two types that differ only in their locations.
 -- This generates additional constraints.
-unifyLocs :: Ty2 -> Ty2 -> Selection -> TiM Result -> TiM Result 
+unifyLocs :: Ty2 -> Ty2 -> Selection -> TiM Result -> TiM Result
 unifyLocs t1 t2 sel tail =
   if _
   then _
@@ -610,7 +612,7 @@ idCont :: Cont
 idCont (e,ty) = return (e,ty)
 
 go :: TiM Result -> Either Failure Result
-go =  fst . fst . runSyM 0 . flip St.runStateT mempty . runExceptT 
+go =  fst . fst . runSyM 0 . flip St.runStateT mempty . runExceptT
 
 t1 :: Either Failure Result
 t1 = fst$ fst$ runSyM 0 $ flip St.runStateT mempty $ runExceptT $
@@ -627,7 +629,7 @@ t2_ :: TiM Result
 t2_ = inferExp emptyEnv (l$ L1.LetE ("v",[], IntTy, l$ LitE 33)
                            (l$ L1.VarE "v"))
                idCont
-               
+
 t2 :: Either Failure Result
 t2 = go t2_
 
