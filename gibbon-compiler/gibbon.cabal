@@ -53,9 +53,8 @@ library
   -- other-modules:
   other-extensions:    DeriveDataTypeable CPP
 
-  build-depends:       base                     >= 4.8
-                     , bytestring
-                     , blaze-builder
+  build-depends:       base                     >= 4.8       &&  < 4.11
+                     , bytestring               >= 0.10.4.1  &&  < 0.11
                      , text
                      , process
                      , filepath
