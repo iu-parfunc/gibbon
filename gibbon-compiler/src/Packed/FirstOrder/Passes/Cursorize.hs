@@ -538,11 +538,8 @@ Other bindings are straightforward projections of the processed RHS.
                                          (toEndV v, projTy 1 ty')])
                     tenv
 
-            -- Sigh .. We cannot resuse ty' here because TEnv and expresssions are
-            -- tagged with different
-            ty''  = case locs of
-                      [] -> L3.cursorizeTy ty
-                      xs -> ProdTy ([CursorTy | _ <- xs] ++ [L3.cursorizeTy ty])
+            -- TEnv and L3 expresssions are tagged with different types
+            ty''  = L3.stripTyLocs ty'
             rhs'' = l$ VarE fresh
 
             bnds = case locs of
@@ -563,15 +560,23 @@ Other bindings are straightforward projections of the processed RHS.
 
     | hasPacked ty = do
         rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs denv tenv rhs
-        let ty' = L3.cursorizeTy ty
+        fresh <- gensym "tup_haspacked"
+        let ty'   = case locs of
+                      [] -> L3.cursorizeTy ty
+                      xs -> ProdTy ([CursorTy | _ <- xs] ++ [L3.cursorizeTy ty])
+            ty''  = L3.stripTyLocs ty'
             tenv' = M.insert v ty tenv
         case locs of
-          [] -> LetE (v,[], ty', rhs') <$>
+          [] -> LetE (v,[], ty'', rhs') <$>
                   go tenv' bod
           _  -> do
-            let bnds  = [(loc,[],CursorTy, l$ ProjE n rhs') | (loc,n) <- (zip locs [0..])]
-                        ++ [(v,[],ty', l$ ProjE (length locs) rhs')]
-            unLoc . mkLets bnds <$> go tenv' bod
+            let tenv'' =  M.union tenv' $
+                          M.fromList [(loc,CursorTy) | loc <- locs]
+
+                bnds  = [(fresh, [], ty'', rhs')] ++
+                        [(loc,[],CursorTy, l$ ProjE n (l$ VarE fresh)) | (loc,n) <- (zip locs [0..])]
+                        ++ [(v,[], projTy (length locs) ty'', l$ ProjE (length locs) (l$ VarE fresh))]
+            unLoc . mkLets bnds <$> go tenv'' bod
 
     | otherwise = do
         rhs' <- cursorizeExp ddfs fundefs denv tenv rhs
@@ -596,7 +601,7 @@ Other bindings are straightforward projections of the processed RHS.
               let ty'  = ProdTy ([CursorTy | _ <- locs] ++ [L3.cursorizeTy ty])
                   -- We cannot resuse ty' here because TEnv and expresssions are
                   -- tagged with different
-                  ty'' = ProdTy ([CursorTy | _ <- locs] ++ [L3.cursorizeTy ty])
+                  ty'' = L3.stripTyLocs ty'
                   tenv' = M.union (M.fromList [(fresh, ty'),
                                                (loc, projTy 0 ty'),
                                                (v, projTy 1 ty')])
