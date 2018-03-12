@@ -18,7 +18,7 @@
 #define GB (MB * 1000lu)
 
 // Initial size of BigInfinite buffers
-static long long global_default_buf_size = (5 * GB);
+static long long global_init_biginf_buf_size = (5 * GB);
 
 // Initial size of Infinite buffers
 static long long global_init_inf_buf_size = (64 * KB);
@@ -65,16 +65,16 @@ static const int num_workers = 1;
     {
       // Use a fixed address in debug mode for easy reading:
       #ifdef DEBUG     
-      // heap_ptr = (char*)mmap(0x010000000000, global_default_buf_size, PROT_READ|PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, -1, 0);
-        heap_ptr = (char*)mmap(0x010000000000, global_default_buf_size, PROT_READ|PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+      // heap_ptr = (char*)mmap(0x010000000000, global_init_biginf_buf_size, PROT_READ|PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+        heap_ptr = (char*)mmap(0x010000000000, global_init_biginf_buf_size, PROT_READ|PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
         if (heap_ptr == MAP_FAILED) {
           fprintf(stderr, "Error: mmap failed: %s\n", strerror(errno));
           abort();
         }
       #else      
-        heap_ptr = (char*)malloc(global_default_buf_size);
+        heap_ptr = (char*)malloc(global_init_biginf_buf_size);
       #endif
-      dbgprintf("Arena size for bump alloc: %lld\n", global_default_buf_size);
+      dbgprintf("Arena size for bump alloc: %lld\n", global_init_biginf_buf_size);
     }
     dbgprintf("BUMPALLOC/INITALLOC DONE: heap_ptr = %p\n", heap_ptr);
   }
@@ -190,7 +190,7 @@ char* read_benchfile_param() {
 
 // Stack allocation is either too small or blows our stack.
 // We need a way to make a giant stack if we want to use alloca.
-// #define ALLOC_SCOPED() ALLOC(global_default_buf_size)
+// #define ALLOC_SCOPED() ALLOC(global_init_biginf_buf_size)
 
 
 // Our global pointer.  No parallelism.
@@ -212,7 +212,7 @@ void show_usage(char** argv)
     
     printf("\n");
     printf("Options:\n");
-    printf(" --buffer-size <bytes>      Set the buffer size (default %lld).\n", global_default_buf_size);
+    printf(" --buffer-size <bytes>      Set the buffer size (default %lld).\n", global_init_biginf_buf_size);
     printf(" --bench-input <path>       Set the input file read for benchmarking. Applies only\n");
     printf("                            IF the program was *compiled* with --bench-fun. \n");
     return;
@@ -285,7 +285,7 @@ int main(int argc, char** argv)
         }
         else if (strcmp(argv[i], "--buffer-size") == 0 && i < argc - 1)
         {
-            global_default_buf_size = atoll(argv[i + 1]);
+            global_init_biginf_buf_size = atoll(argv[i + 1]);
             i++;
         }
         else if ((strcmp(argv[i], "--bench-input") == 0)) {
