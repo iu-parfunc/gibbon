@@ -16,6 +16,7 @@ import Test.Tasty.TH
 -- |
 import Packed.FirstOrder.L4.Syntax hiding (Prog (..), Ty (..))
 
+import Packed.FirstOrder.Common (Multiplicity(..))
 import qualified Packed.FirstOrder.L4.Syntax as T
 import qualified Packed.FirstOrder.TargetInterp as TI
 
@@ -271,8 +272,8 @@ _case_copy =
 add1_prog :: T.Prog
 add1_prog = T.Prog [build_tree, add1]
             (Just $ PrintExp $
-             LetPrimCallT [("buf", T.CursorTy)] T.NewBuf [] $
-             LetPrimCallT [("buf2", T.CursorTy)] T.NewBuf [] $
+             LetPrimCallT [("buf", T.CursorTy)] (T.NewBuffer BigInfinite) [] $
+             LetPrimCallT [("buf2", T.CursorTy)] (T.NewBuffer BigInfinite) [] $
              LetCallT [( "tr", T.PtrTy)] "build_tree" [IntTriv 10, VarTriv "buf"] $
              LetCallT [("ignored1", T.CursorTy), ("ignored2", T.CursorTy)] "add1"  [VarTriv "tr", VarTriv "buf2"] $
              (RetValsT [])

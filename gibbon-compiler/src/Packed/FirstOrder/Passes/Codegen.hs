@@ -380,10 +380,20 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                           [(VarTriv dict)] = rnds in pure
                     [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = dict_has_key_int($id:dict); |] ]
 
-                 NewBuf   -> let [(outV,CursorTy)] = bnds in pure
-                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED(global_default_buf_size); |] ]
-                 ScopedBuf -> let [(outV,CursorTy)] = bnds in pure
-                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_SCOPED(); |] ]
+                 NewBuffer mul   -> let [(outV,CursorTy)] = bnds
+                                        bufsize = codegenMultiplicity mul
+                                    in pure
+                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED($id:bufsize); |] ]
+                 ScopedBuffer mul -> let [(outV,CursorTy)] = bnds
+                                         bufsize = codegenMultiplicity mul
+                                     in pure
+                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_SCOPED($id:bufsize); |] ]
+
+                 InitSizeOfBuffer mul -> let [(sizev,IntTy)] = bnds
+                                             bufsize = codegenMultiplicity mul
+                                         in pure
+                                            [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizev = $id:bufsize; |] ]
+
                  WriteTag -> let [(outV,CursorTy)] = bnds
                                  [(TagTriv tag),(VarTriv cur)] = rnds in pure
                              [ C.BlockStm [cstm| *($id:cur) = $tag; |]
@@ -458,6 +468,15 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                      | otherwise -> error $ "ReadPackedFile, wrong arguments "++show rnds++", or expected bindings "++show bnds
                  oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'
+
+-- | The sizes for all mulitplicities are defined as globals in the RTS.
+-- Note: Must be consistent with the names in RTS!
+codegenMultiplicity :: Multiplicity -> Var
+codegenMultiplicity mul =
+  case mul of
+    BigInfinite -> toVar "global_default_buf_size"
+    Infinite    -> toVar "global_init_inf_buf_size"
+    Bounded     -> error $ "codegenMultiplicity: Bounded buffers not handled yet."
 
 
 splitAlts :: Alts -> (Alts, Alts)

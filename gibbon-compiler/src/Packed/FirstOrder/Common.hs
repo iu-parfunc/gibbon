@@ -139,6 +139,9 @@ data Multiplicity
 instance Out Multiplicity where
   doc = text . show
 
+instance NFData Multiplicity where
+  rnf _ = ()
+
 -- | An abstract region identifier.  This is used inside type signatures and elsewhere.
 data Region = GlobR Var Multiplicity -- ^ A global region with lifetime equal to the
                                      --   whole program.

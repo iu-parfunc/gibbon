@@ -13,9 +13,15 @@
 #include <stdarg.h> // For va_start etc
 #include <errno.h>
 
-// Big default.  Used for --packed and --pointer/bumpalloc
-// static long long global_default_buf_size = (500lu * 1000lu * 1000lu);
-static long long global_default_buf_size = (5 * 1000lu * 1000lu * 1000lu); // 9GB.
+#define KB (1 * 1000lu)
+#define MB (KB * 1000lu)
+#define GB (MB * 1000lu)
+
+// Initial size of BigInfinite buffers
+static long long global_default_buf_size = (5 * GB);
+
+// Initial size of Infinite buffers
+static long long global_init_inf_buf_size = (64 * KB);
 
 static long long global_size_param = 1;
 static long long global_iters_param = 1;
@@ -179,7 +185,7 @@ char* read_benchfile_param() {
 // before any function that (may have) called ALLOC_SCOPED returns.
 
 // #define ALLOC_SCOPED() alloca(1024)
-#define ALLOC_SCOPED() alloca(100LU*1024LU)
+#define ALLOC_SCOPED(n) alloca(n)
 // #define ALLOC_SCOPED() alloc_scoped()
 
 // Stack allocation is either too small or blows our stack.

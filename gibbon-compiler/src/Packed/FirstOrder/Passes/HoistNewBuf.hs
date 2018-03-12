@@ -42,7 +42,7 @@ hoistExp _ ex0 = return $ gocap ex0
     (TimeIt e t b) -> let (lts,e') = go e in
                       (lts, TimeIt e' t b)
 
-    (LetE (v,locs,t, nb@(L _ (Ext NewBuffer))) bod) ->
+    (LetE (v,locs,t, nb@(L _ (Ext NewBuffer{}))) bod) ->
         let (lts1,bod') = go bod in
         ((v,locs,t, nb):lts1, unLoc bod')
 

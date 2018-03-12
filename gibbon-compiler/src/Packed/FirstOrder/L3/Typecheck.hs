@@ -63,10 +63,12 @@ tcExp ddfs env exp@(L p ex) =
           return CursorTy
 
         -- ^ Create a new buffer, and return a cursor
-        NewBuffer -> return CursorTy
+        NewBuffer{} -> return CursorTy
 
         -- ^ Create a scoped buffer, and return a cursor
-        ScopedBuffer -> return CursorTy
+        ScopedBuffer{} -> return CursorTy
+
+        InitSizeOfBuffer{} -> return IntTy
 
         -- ^ Takes in start and end cursors, and returns an Int
         SizeOfPacked start end -> do

@@ -524,11 +524,17 @@ lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
 
 
     -- In Target, AddP is overloaded still:
+    LetE (v,_, _, L _ (Ext (AddCursor c (L _ (Ext (InitSizeOfBuffer mul)))))) bod -> do
+      size <- gensym (varAppend "sizeof_" v)
+      T.LetPrimCallT [(size,T.IntTy)] (T.InitSizeOfBuffer mul) [] <$>
+        T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv "addCursor base" (l$ VarE c)
+                                               , triv "addCursor offset" (l$ VarE size)] <$>
+        tail bod
+
     LetE (v,_, _, L _ (Ext (AddCursor c e))) bod ->
       T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv "addCursor base" (l$ VarE c)
                                              , triv "addCursor offset" e] <$>
          tail bod
-
 
     LetE (_v,_, _, L _ (Ext (ReadTag _cur))) _bod ->
       error $ "lower: ReadTag not handled yet."
@@ -539,12 +545,12 @@ lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
         [ T.TagTriv (getTagOfDataCon ddefs dcon) , triv "WriteTag cursor" (l$ VarE cursIn) ] <$>
         tail bod
 
-    LetE (v,_,_, L _ (Ext NewBuffer)) bod -> do
-      T.LetPrimCallT [(v,T.CursorTy)] T.NewBuf [] <$>
+    LetE (v,_,_, L _ (Ext (NewBuffer mul))) bod -> do
+      T.LetPrimCallT [(v,T.CursorTy)] (T.NewBuffer mul) [] <$>
          tail bod
 
-    LetE (v,_,_, L _ (Ext ScopedBuffer)) bod -> do
-      T.LetPrimCallT [(v,T.CursorTy)] T.ScopedBuf [] <$>
+    LetE (v,_,_, L _ (Ext (ScopedBuffer mul))) bod -> do
+      T.LetPrimCallT [(v,T.CursorTy)] (T.ScopedBuffer mul) [] <$>
          tail bod
 
     LetE (v,_,_, L _ (Ext (SizeOfPacked start end))) bod -> do

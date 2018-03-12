@@ -250,12 +250,8 @@ cursorizeExp ddfs fundefs denv tenv (L p ex) = L p <$>
 
         -- Exactly same as cursorizePackedExp
         LetRegionE reg bod -> do
-          let (v,buf) = regionToBnd reg
-          -- TEMP: Change the end_reg binding to something more concrete
-          unLoc <$>
-            mkLets [ (v       , [], CursorTy, l$ Ext buf)
-                   , (toEndV v, [], CursorTy, l$ VarE v) ] <$>
-              go bod
+          unLoc <$> mkLets (regionToBnds reg) <$> go bod
+
         _ -> error $ "TODO: cursorizeExp Ext: " ++ sdoc ext
 
     MapE{} -> error $ "TODO: cursorizeExp MapE"
@@ -459,12 +455,7 @@ Reason: unariser can only eliminate direct projections of this form.
             _ -> return $ Di $ l$ MkProdE $ L.foldr (\loc acc -> (l$ VarE loc):acc) [fromDi v'] locs
 
         LetRegionE r bod -> do
-          let (v,buf) = regionToBnd r
-
-          -- TEMP: Change the end_reg binding to something more concrete
-          onDi (mkLets [ (v       , [], CursorTy, l$ Ext buf)
-                       , (toEndV v, [], CursorTy, l$ VarE v) ]) <$>
-            go tenv bod
+          onDi (mkLets (regionToBnds r)) <$> go tenv bod
 
         FromEndE{} -> error $ "cursorizePackedExp: TODO " ++ sdoc ext
 
@@ -709,13 +700,15 @@ projEndsTy :: (Out a) => UrTy a -> UrTy a
 projEndsTy = projTy 1
 
 
--- | Return details to create a L3 binding for a region (var name and L3 extension)
-regionToBnd :: Region -> (Var, L3.E3Ext loc dec)
-regionToBnd r = case r of
-                  VarR{}    -> error $ "Unexpected region variable:" ++ sdoc r
-                  GlobR v _ -> (v,L3.NewBuffer)
-                  DynR  v _ -> (v,L3.ScopedBuffer)
-
+-- | Bindings for a letregion
+regionToBnds :: Region -> [(Var, [()], L3.Ty3, L L3.Exp3)]
+regionToBnds r =
+  case r of
+    VarR{} -> error $ "Unexpected VarR in Cursorize." ++ sdoc r
+    GlobR v mul -> [ (v       , [], CursorTy, l$ Ext$ L3.NewBuffer mul)
+                   , (toEndV v, [], CursorTy, l$ Ext$ L3.AddCursor v (l$ Ext $ L3.InitSizeOfBuffer mul))]
+    DynR v mul  -> [ (v       , [], CursorTy, l$ Ext$ L3.ScopedBuffer mul)
+                   , (toEndV v, [], CursorTy, l$ Ext$ L3.AddCursor v (l$ Ext $ L3.InitSizeOfBuffer mul))]
 
 toEndV :: Var -> Var
 toEndV = varAppend "end_"

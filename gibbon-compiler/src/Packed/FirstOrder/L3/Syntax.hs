@@ -44,9 +44,11 @@ data E3Ext loc dec =
   | AddCursor Var (L (E3 loc dec)) -- ^ Add a constant offset to a cursor variable
   | ReadTag   Var                  -- ^ One cursor in, (tag,cursor) out
   | WriteTag  DataCon Var          -- ^ Write Tag at Cursor, and return a cursor
-  | NewBuffer                      -- ^ Create a new buffer, and return a cursor
-  | ScopedBuffer                   -- ^ Create a temporary scoped buffer, and
+  | NewBuffer Multiplicity         -- ^ Create a new buffer, and return a cursor
+  | ScopedBuffer Multiplicity      -- ^ Create a temporary scoped buffer, and
                                    --   return a cursor
+  | InitSizeOfBuffer Multiplicity  -- ^ Returns the initial buffer size for a specific multiplicity
+                                   --
   | SizeOfPacked Var Var           -- ^ Takes in start and end cursors, and returns an Int
                                    --   we'll probably represent (sizeof x) as (end_x - start_x) / INT
   | SizeOfScalar Var               -- ^ sizeof(var)
@@ -64,8 +66,9 @@ instance FreeVars (E3Ext l d) where
       AddCursor v ex -> S.insert v (gFreeVars ex)
       ReadTag v      -> S.singleton v
       WriteTag _ v   -> S.singleton v
-      NewBuffer      -> S.empty
-      ScopedBuffer   -> S.empty
+      NewBuffer{}    -> S.empty
+      ScopedBuffer{} -> S.empty
+      InitSizeOfBuffer{} -> S.empty
       SizeOfPacked c1 c2 -> S.fromList [c1, c2]
       SizeOfScalar v     -> S.singleton v
 
@@ -74,17 +77,8 @@ instance (Out l, Out d) => Out (E3Ext l d)
 instance (Out l, Out d, Show l, Show d) => Expression (E3Ext l d) where
   type LocOf (E3Ext l d) = l
   type TyOf  (E3Ext l d) = UrTy l
-  isTrivial e =
-    case e of
-      ReadInt{}      -> False
-      WriteInt{}     -> False
-      AddCursor{}    -> False
-      ReadTag{}      -> False
-      WriteTag{}     -> False
-      NewBuffer      -> False
-      ScopedBuffer   -> False
-      SizeOfPacked{} -> False
-      SizeOfScalar{} -> False
+  isTrivial _ = False
+
 
 instance (Out l, Show l) => Typeable (E3Ext l (UrTy l)) where
     gTypeExp = error "L3.gTypeExp"

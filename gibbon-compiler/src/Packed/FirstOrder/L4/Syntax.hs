@@ -153,12 +153,15 @@ data Prim
 
     | ReadPackedFile (Maybe FilePath) TyCon
 
-    | NewBuf
+    | NewBuffer Multiplicity
     -- ^ Allocate a new buffer, return a cursor.
-    | ScopedBuf
+    | ScopedBuffer Multiplicity
     -- ^ Returns a pointer to a buffer, with the invariant that data written
     -- to this region is no longer used after the enclosing function returns.
     -- I.e. this can be stack allocated data.
+
+    | InitSizeOfBuffer Multiplicity
+    -- ^ Returns the initial buffer size for a specific multiplicity
 
     | WriteTag
     -- ^ Write a static tag value, takes a cursor to target.
