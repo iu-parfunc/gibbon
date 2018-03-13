@@ -579,9 +579,8 @@ lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
           args = [T.IntTriv (fromIntegral i), T.VarTriv reg, T.VarTriv cur, T.IntTriv (fromIntegral rediralt)]
       T.LetPrimCallT [] T.BoundsCheck args <$> tail bod
 
-    LetE(_,_,_, L _ (Ext (ReadCursor c))) bod -> do
-      cur <- gensym "tmpcur"
-      T.LetPrimCallT [(cur,T.CursorTy)] T.ReadCursor [T.VarTriv c] <$>
+    LetE(v,_,_, L _ (Ext (ReadCursor c))) bod -> do
+      T.LetPrimCallT [(v,T.CursorTy)] T.ReadCursor [T.VarTriv c] <$>
         tail bod
 
     Ext _ -> error $ "lower: unexpected extension" ++ sdoc ex0
