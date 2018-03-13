@@ -333,7 +333,7 @@ TODO: merge this with `cursorizeLet`
       es <- forM (zip tys ls) $ \(ty,e) -> do
               case ty of
                   _ | isPackedTy ty -> fromDi <$> cursorizePackedExp ddfs fundefs denv tenv e
-                  _ | hasPacked ty  -> error $ "cursorizePackedExp: nested tuples" ++ sdoc rhs
+                  _ | forgivingHasPacked ty  -> error $ "cursorizePackedExp: nested tuples" ++ sdoc rhs
                   _ -> cursorizeExp ddfs fundefs denv tenv e
       let rhs' = l$ MkProdE es
           ty   = gTypeExp ddfs (Env2 tenv M.empty) rhs
@@ -562,7 +562,7 @@ Other bindings are straightforward projections of the processed RHS.
         bod' <- go tenv' bod
         return $ unLoc $ mkLets bnds bod'
 
-    | hasPacked ty = do
+    | forgivingHasPacked ty = do
         rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs denv tenv rhs
         fresh <- gensym "tup_haspacked"
         let ty'   = case locs of
@@ -669,6 +669,16 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
               bod <- go (toEndV v) rst rtys True denv (M.insert loc CursorTy env')
               return $ mkLets bnds bod
 
+            -- Unpack redirection nodes
+            CursorTy -> do
+              let bnds = [ (loc, [], CursorTy, l$ VarE cur)
+                         , (v  , [], CursorTy, l$ Ext$ L3.ReadCursor loc) ]
+                  env' = M.union (M.fromList [(loc, CursorTy),
+                                              (v  , CursorTy)])
+                         env
+              bod <- go (toEndV v) rst rtys True denv env'
+              return $ mkLets bnds bod
+
             _ -> do
               let env' = M.insert v CursorTy env
               if isFirstPacked
@@ -721,6 +731,20 @@ regionToBnds r =
 
 toEndV :: Var -> Var
 toEndV = varAppend "end_"
+
+-- | A lenient version of L1.hasPacked which doesn't throw an error if it sees a CursorTy
+forgivingHasPacked :: Show a => UrTy a -> Bool
+forgivingHasPacked t =
+  case t of
+    PackedTy{}     -> True
+    ProdTy ls      -> any forgivingHasPacked ls
+    SymTy          -> False
+    BoolTy         -> False
+    IntTy          -> False
+    SymDictTy ty   -> forgivingHasPacked ty
+    ListTy _       -> error "FINISHLISTS"
+    CursorTy       -> False
+    PtrTy          -> False
 
 -- ================================================================================
 --                         Dilation Conventions
