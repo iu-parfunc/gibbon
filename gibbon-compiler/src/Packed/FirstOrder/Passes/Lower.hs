@@ -45,31 +45,41 @@ import qualified Packed.FirstOrder.L4.Syntax as T
 -- Generating unpack functions from Packed->Pointer representation:
 -------------------------------------------------------------------------------
 
-genDcons :: [Ty3] -> Var -> [(T.Ty, T.Triv)] -> SyM T.Tail
-genDcons (x:xs) tail fields = case x of
+genDcons :: TyCon -> [Ty3] -> Var -> [(T.Ty, T.Triv)] -> SyM T.Tail
+genDcons tyName (x:xs) tail fields = case x of
   IntTy             ->  do
     val  <- gensym "val"
     t    <- gensym "tail"
     T.LetPrimCallT [(val, T.IntTy), (t, T.CursorTy)] T.ReadInt [(T.VarTriv tail)]
-      <$> genDcons xs t (fields ++ [(T.IntTy, T.VarTriv val)])
+      <$> genDcons tyName xs t (fields ++ [(T.IntTy, T.VarTriv val)])
 
   PackedTy tyCons _ -> do
     ptr  <- gensym  "ptr"
     t    <- gensym  "tail"
     T.LetCallT [(ptr, T.PtrTy), (t, T.CursorTy)] (mkUnpackerName tyCons) [(T.VarTriv tail)]
-      <$> genDcons xs t (fields ++ [(T.CursorTy, T.VarTriv ptr)])
-  _                    -> error $ "genDcons: FIXME " ++ show x
+      <$> genDcons tyName xs t (fields ++ [(T.CursorTy, T.VarTriv ptr)])
 
-genDcons [] tail fields     = do
+  -- Redirection nodes have 1 cursor field
+  CursorTy ->
+    case xs of
+      [] -> do
+        next <- gensym "next"
+        T.LetPrimCallT [(next, T.CursorTy)] T.ReadCursor [(T.VarTriv tail)] <$>
+          (return $ T.TailCall (mkUnpackerName tyName) [(T.VarTriv next)])
+      _ -> error "lower/genDcons: Redirections should be last thing here"
+
+  _ -> error $ "genDcons: FIXME " ++ show x
+
+genDcons _ [] tail fields     = do
   ptr <- gensym "ptr"
   return $ T.LetAllocT ptr fields $ T.RetValsT [T.VarTriv ptr, T.VarTriv tail]
 
-genAlts :: [(DataCon,[(IsBoxed,Ty3)])] -> Var -> Var -> Int64 -> SyM T.Alts
-genAlts ((_, typs):xs) tail tag n = do
+genAlts :: TyCon -> [(DataCon,[(IsBoxed,Ty3)])] -> Var -> Var -> Int64 -> SyM T.Alts
+genAlts tyName ((_, typs):xs) tail tag n = do
   let (_,typs') = unzip typs
   -- WARNING: IsBoxed ignored here
-  curTail <- genDcons typs' tail [(T.TagTyPacked, T.VarTriv tag)]
-  alts    <- genAlts xs tail tag (n+1)
+  curTail <- genDcons tyName typs' tail [(T.TagTyPacked, T.VarTriv tag)]
+  alts    <- genAlts tyName xs tail tag (n+1)
   case alts of
     T.IntAlts []   -> return $ T.IntAlts [(n::Int64, curTail)]
     -- T.TagAlts []   -> return $ T.TagAlts [(n::Word8, curTail)]
@@ -77,14 +87,14 @@ genAlts ((_, typs):xs) tail tag n = do
     -- T.TagAlts tags -> return $ T.TagAlts ((n::Word8, curTail) : tags)
     _              -> error $ "Invalid case statement type."
 
-genAlts [] _ _ _                  = return $ T.IntAlts []
+genAlts _ [] _ _ _                  = return $ T.IntAlts []
 
 genUnpacker :: DDef Ty3 -> SyM T.FunDecl
 genUnpacker DDef{tyName, dataCons} = do
   p    <- gensym "p"
   tag  <- gensym "tag"
   tail <- gensym "tail"
-  alts <- genAlts dataCons tail tag 0
+  alts <- genAlts (fromVar tyName) dataCons tail tag 0
   bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
             T.Switch (T.VarTriv tag) alts Nothing
   return T.FunDecl{ T.funName  = mkUnpackerName (fromVar tyName),
@@ -132,6 +142,8 @@ genDconsPrinter (x:xs) tail = case x of
       T.LetCallT [(tmp, T.PtrTy)] (mkPrinterName tyCons) [(T.VarTriv valc)] <$>
        maybeSpace <$>
          genDconsPrinter xs t
+
+  L1.CursorTy -> genDconsPrinter xs tail
 
   _ -> error "FINISHME: genDconsPrinter"
 
