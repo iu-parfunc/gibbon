@@ -43,6 +43,7 @@ module Packed.FirstOrder.Common
          -- * Data definitions
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
+       , sizeRedirection, tagRedirection
 
          -- * Misc helpers
        , (#), (!!!), fragileZip, fragileZip', sdoc, ndoc, abbrv, l
@@ -328,6 +329,11 @@ emptyDD  = M.empty
 fromListDD :: [DDef a] -> DDefs a
 fromListDD = L.foldr insertDD M.empty
 
+sizeRedirection :: Int
+sizeRedirection = 9
+
+tagRedirection :: DataCon
+tagRedirection = "REDIRECTION"
 
 -- Fundefs
 ----------------------------------------
