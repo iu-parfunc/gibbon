@@ -24,7 +24,7 @@ import Packed.FirstOrder.L2.Examples
 import Packed.FirstOrder.Passes.InferMul
 import Packed.FirstOrder.Passes.InferEffects
 import Packed.FirstOrder.Passes.RouteEnds
-import Packed.FirstOrder.Passes.InfRegions
+import Packed.FirstOrder.Passes.ThreadRegions
 import Packed.FirstOrder.Passes.Cursorize
 import Packed.FirstOrder.Passes.Unariser
 import Packed.FirstOrder.Passes.ShakeTree
@@ -56,7 +56,7 @@ runT prg = fst $ runSyM 0 $ do
     l2 <- tcProg l2
     l2 <- routeEnds l2
     l2 <- tcProg l2
-    l2 <- infRegions l2
+    l2 <- threadRegions l2
     l3 <- cursorize l2
     return l3
 
