@@ -52,6 +52,8 @@ data E3Ext loc dec =
   | SizeOfPacked Var Var           -- ^ Takes in start and end cursors, and returns an Int
                                    --   we'll probably represent (sizeof x) as (end_x - start_x) / INT
   | SizeOfScalar Var               -- ^ sizeof(var)
+  | BoundsCheck TyCon Int Var Var  -- ^ Tycon, size of scalars, region, cursor
+  | ReadCursor Var                 -- ^ Reads and returns the cursor at Var
   deriving (Show, Ord, Eq, Read, Generic, NFData)
 
 -- | L1 expressions extended with L3.  This is the polymorphic version.
@@ -71,6 +73,8 @@ instance FreeVars (E3Ext l d) where
       InitSizeOfBuffer{} -> S.empty
       SizeOfPacked c1 c2 -> S.fromList [c1, c2]
       SizeOfScalar v     -> S.singleton v
+      BoundsCheck{}      -> S.empty
+      ReadCursor{}       -> S.empty
 
 instance (Out l, Out d) => Out (E3Ext l d)
 

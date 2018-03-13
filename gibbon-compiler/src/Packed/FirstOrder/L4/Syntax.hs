@@ -171,6 +171,10 @@ data Prim
     -- ^ Read one byte from the cursor and advance it.
     | ReadInt
     -- ^ Read an 8 byte Int from the cursor and advance.
+    | ReadCursor
+    -- ^ Read and return a cursor
+
+    | BoundsCheck
 
     | SizeOfPacked
     -- ^ Take start and end cursors and return size of data they represent

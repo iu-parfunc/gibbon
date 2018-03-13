@@ -86,6 +86,18 @@ tcExp ddfs env exp@(L p ex) =
           ensureEqualTy exp sty IntTy
           return IntTy
 
+        -- The IntTy is just a placeholder. BoundsCheck is a side-effect
+        BoundsCheck _ _ reg cur -> do
+          rty <- lookupVar env reg exp
+          ensureEqualTy exp rty CursorTy
+          cty <- lookupVar env cur exp
+          ensureEqualTy exp cty CursorTy
+          return IntTy
+
+        ReadCursor v -> do
+          vty <- lookupVar env v exp
+          ensureEqualTy exp vty CursorTy
+          return CursorTy
 
     -- All the other cases are exactly same as L1.Typecheck
 

@@ -411,6 +411,23 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                             [ C.BlockDecl [cdecl| $ty:(codegenTy valTy) $id:valV = *( $ty:(codegenTy valTy) *)($id:cur); |]
                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:curV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
 
+                 ReadCursor -> let [(next,CursorTy)] = bnds
+                                   [(VarTriv cur)] = rnds in pure
+                               [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:next = *($ty:(codegenTy CursorTy) *) ($id:cur); |] ]
+
+                 BoundsCheck -> do
+                   let [(IntTriv i),(VarTriv reg), (VarTriv cur), (IntTriv tag)] = rnds
+                       end = varAppend "end_" reg
+                       bck = [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) newsize = ($id:end - $id:reg) * 2; |]
+                             , C.BlockStm  [cstm|  $id:reg = ($ty:(codegenTy CursorTy))ALLOC_PACKED(newsize); |]
+                             , C.BlockStm  [cstm|  $id:end = $id:reg + newsize; |]
+                             , C.BlockStm  [cstm|  *($ty:(codegenTy TagTyPacked) *) ($id:cur) = ($int:tag); |]
+                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) redir =  $id:cur + 1; |]
+                             , C.BlockStm  [cstm|  *($ty:(codegenTy CursorTy) *) redir = $id:reg; |]
+                             , C.BlockStm  [cstm|  $id:cur = $id:reg; |]
+                             ]
+                   return [ C.BlockStm [cstm| if (($id:end - $id:cur) <= MAX($int:i, REDIRECTION_NODE_SIZE)) { $items:bck }  |] ]
+
                  SizeOfPacked -> let [(sizeV,IntTy)] = bnds
                                      [(VarTriv startV), (VarTriv endV)] = rnds
                                  in pure

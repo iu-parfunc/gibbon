@@ -31,6 +31,8 @@ static char*     global_benchfile_param = NULL;
 // Sequential for now:
 static const int num_workers = 1;
 
+#define REDIRECTION_NODE_SIZE 9
+#define MAX(a,b) (((a)>(b))?(a):(b))
 
 // Helpers and debugging:
 //--------------------------------------------------------------------------------

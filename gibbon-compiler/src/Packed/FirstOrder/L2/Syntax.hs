@@ -86,6 +86,7 @@ data E2Ext loc dec =
   | LetLocE    loc    (PreLocExp loc) (L (E2 loc dec)) -- ^ Bind a new location.
   | RetE [loc] Var     -- ^ Return a value together with extra loc values.
   | FromEndE loc -- ^ Bind a location from an EndOf location (for RouteEnds and after)
+  | BoundsCheck TyCon Int loc loc  -- ^ Tycon, size of scalars, region, cursor
  deriving (Show, Ord, Eq, Read, Generic, NFData)
 
 -- | L1 expressions extended with L2.  This is the polymorphic version.
@@ -111,11 +112,6 @@ type LocExp = PreLocExp LocVar
 data LocRet = EndOf LRM
               deriving (Read, Show, Eq, Ord, Generic, NFData)
 
--- instance FreeVars (PreLocExp l) where
---   gFreeVars e =
---     case e of
---       StartOfLE _ -> S.empty
---       AfterVariableLE
 
 instance FreeVars (E2Ext l d) where
   gFreeVars e =
@@ -125,9 +121,7 @@ instance FreeVars (E2Ext l d) where
                            gFreeVars bod
      RetE _ vr          -> S.singleton vr
      FromEndE _         -> S.empty
-
-freeLocVars :: E2Ext l d -> S.Set l
-freeLocVars = _finishme
+     BoundsCheck{}      -> S.empty
 
 
 instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
@@ -139,6 +133,7 @@ instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
       LetLocE{}    -> False
       RetE{}       -> False -- Umm... this one could be potentially.
       FromEndE{}   -> True
+      BoundsCheck{}-> False
 
 instance (Out l, Show l, Typeable (L (E2 l (UrTy l)))) => Typeable (E2Ext l (UrTy l)) where
   gTypeExp ddfs env2 ex =
@@ -148,7 +143,8 @@ instance (Out l, Show l, Typeable (L (E2 l (UrTy l)))) => Typeable (E2Ext l (UrT
       RetE _loc var       -> case M.lookup var (vEnv env2) of
                                Just ty -> ty
                                Nothing -> error $ "gTypeExp: unbound variable " ++ sdoc var
-      FromEndE _loc       -> error $ "Shouldn't enconter this in tail position"
+      FromEndE _loc       -> error $ "Shouldn't enconter FromEndE in tail position"
+      BoundsCheck{}       -> error $ "Shouldn't enconter BoundsCheck in tail position"
 
 
 instance (Out l, Show l, Typeable (L (E2 l (UrTy l))),
@@ -171,8 +167,9 @@ instance (Typeable (E2Ext l (UrTy l)),
           LetLocE l rhs bod -> do (bnds,bod') <- go bod
                                   return $ ([], LetLocE l rhs $ flatLets bnds bod')
 
-          RetE{}     -> return ([],ex)
-          FromEndE{} -> return ([],ex)
+          RetE{}        -> return ([],ex)
+          FromEndE{}    -> return ([],ex)
+          BoundsCheck{} -> return ([],ex)
 
     where go = gFlattenGatherBinds ddfs env
 
@@ -227,11 +224,6 @@ data Prog = Prog { ddefs    :: DDefs Ty2
   deriving (Show, Ord, Eq, Generic, NFData)
 
 ----------------------------------------------------------------------------------------------------
-
--- | Extension of L1.isTriv.
-isTriv :: L Exp2 -> Bool
-isTriv = undefined
-
 
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.  The
