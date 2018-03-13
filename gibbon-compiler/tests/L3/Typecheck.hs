@@ -7,6 +7,7 @@ module L3.Typecheck where
 import Packed.FirstOrder.Passes.InferEffects
 import Packed.FirstOrder.Passes.InferMul
 import Packed.FirstOrder.Passes.RouteEnds
+import Packed.FirstOrder.Passes.BoundsCheck
 import Packed.FirstOrder.Passes.ThreadRegions
 import Packed.FirstOrder.Passes.Cursorize
 import Packed.FirstOrder.Passes.Unariser
@@ -32,6 +33,7 @@ runT prg = fst $ runSyM 0 $ do
   l2 <- L2.tcProg l2
   l2 <- routeEnds l2
   l2 <- threadRegions l2
+  l2 <- boundsCheck l2
   l3 <- cursorize l2
   l3 <- findWitnesses l3
   l3 <- L3.tcProg l3
