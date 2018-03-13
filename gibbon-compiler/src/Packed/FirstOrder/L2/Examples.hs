@@ -12,7 +12,7 @@ module Packed.FirstOrder.L2.Examples
   , add1Prog, id1Prog, copyTreeProg, id2Prog, copyOnId1Prog, id3Prog, intAddProg
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
   , rightmostProg, buildTreeProg, buildTreeSumProg, printTupProg, addTreesProg
-  , printTupProg2, sumUpProg, setEvenProg, sumUpSetEvenProg, substProg
+  , printTupProg2, buildSTreeProg, sumUpProg, setEvenProg, sumUpSetEvenProg, substProg
   ) where
 
 import Data.Loc
@@ -806,6 +806,21 @@ buildSTreeFun = FunDef "buildSTree" buildSTreeTy "i543" buildSTreeBod
                              l$ DataConE "lout541" "Inner" [l$ VarE "i554", l$ VarE "b555",
                                                             l$ VarE "x545", l$ VarE "y546"]) $
                     l$ VarE "a547")
+
+
+buildSTreeMainExp :: L Exp2
+buildSTreeMainExp = l$ Ext $ LetRegionE (VarR "r530") $
+                    l$ Ext $ LetLocE "l531" (StartOfLE (VarR "r530")) $
+                    l$ LetE ("x532",[], PackedTy "STree" "l531",
+                             l$ AppE "buildSTree" ["l531"] (l$ LitE 3)) $
+                    l$ VarE "x532"
+
+
+buildSTreeProg :: Prog
+buildSTreeProg = Prog stree (M.fromList [("buildSTree", buildSTreeFun)])
+                      (Just (buildSTreeMainExp, PackedTy "STree" "l531"))
+
+--------------------------------------------------------------------------------
 
 sumUpMainExp :: L Exp2
 sumUpMainExp = l$ Ext $ LetRegionE (VarR "r530") $
