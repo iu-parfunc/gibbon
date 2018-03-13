@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Packed.FirstOrder.Passes.BoundsCheck where
+module Packed.FirstOrder.Passes.BoundsCheck
+  ( boundsCheck, followRedirects ) where
 
 import Data.Loc
 import Data.Maybe (fromJust)
@@ -35,9 +36,10 @@ scalar value. Eg. `(Leaf 10)` or `(A 10 20 (B ...))`. But not for datatypes like
 writing a tag *before* it's children. So it's OK to assume that this write will
 be safe.
 
--- TODO: This policy of inserting BoundsChecks is not perfect. It needs to be
--- inserted before *any* location arithmetic is performed on the output
--- location. For example, for buildSTreeProg this doesn't always work out.
+TODO:
+This policy of inserting BoundsChecks is not perfect. It needs to be
+inserted before *any* location arithmetic is performed on the output
+location. For example, for buildSTreeProg this doesn't always work out.
 
 
 Bounds-check: How?
@@ -146,8 +148,7 @@ boundsCheckExp ddfs fundefs renv tenv checked (L p ex) = L p <$>
         LetE (v, locs, ty, rhs) <$>
           boundsCheckExp ddfs fundefs renv (M.insert v ty tenv) checked bod
 
-    LetE (v,locs,ty,rhs) bod -> do
-      LetE (v,locs,ty,rhs) <$> go bod
+    LetE (v,locs,ty,rhs) bod -> LetE <$> (v,locs,ty,) <$> go rhs <*> go bod
 
     Ext ext ->
       case ext of
@@ -223,3 +224,154 @@ ddefsWithRedir ddfs = M.map (\d@DDef{dataCons} -> d {dataCons = dataCons ++ [red
   where
     redirCon :: (DataCon,[(IsBoxed,Ty2)])
     redirCon = (tagRedirection,[(False, CursorTy)])
+
+--------------------------------------------------------------------------------
+
+-- Modify functions to use the REDIRECTION tag. For all case expressions,
+-- add an extra case, and recurse.
+followRedirects :: L2.Prog -> SyM L2.Prog
+followRedirects Prog{ddefs,fundefs,mainExp} = do
+  fds' <- mapM (followRedirectsFn ddefs fundefs) $ M.elems fundefs
+  let fundefs' = M.fromList $ map (\f -> (funname f,f)) fds'
+  return $ Prog ddefs fundefs' mainExp
+
+followRedirectsFn :: DDefs Ty2 -> NewFuns -> L2.FunDef -> SyM L2.FunDef
+followRedirectsFn ddefs fundefs f@FunDef{funname,funarg,funty,funbod} = do
+  let initTyEnv  = M.singleton funarg (arrIn funty)
+  bod' <- followRedirectsExp ddefs fundefs funname initTyEnv funbod
+  return $ f {funbod = bod'}
+
+followRedirectsExp :: DDefs Ty2 -> NewFuns -> Var -> TypeEnv -> L L2.Exp2 -> SyM (L L2.Exp2)
+followRedirectsExp ddfs fundefs funname tenv (L p ex) = L p <$>
+  case ex of
+    CaseE scrt mp -> do
+      -- ASSUMPTION: scrutinee is flat.
+      -- Replace tyloc with redirection and recurse
+      -- TODO: Write more documentation about this pass.
+      let L _ (VarE v) = scrt
+          PackedTy _ tyloc = tenv M.! v
+          fundef  = fundefs M.! funname
+          fnarg   = funarg fundef
+          fnty    = funty fundef
+          inT     = arrIn fnty
+          outT    = arrOut fnty
+          inLocs  = inLocVars fnty
+          outLocs = outLocVars fnty
+          lrets   = locRets fnty
+
+      -- Functions that don't take any packed inputs don't need to
+      -- worry about processing the redirection tag.
+      if not (hasPacked inT)
+      then return ex
+      else do
+        rvar   <- gensym "rdr_var"
+        rloc   <- gensym "rdr_loc"
+        bvar   <- gensym "tmp_bind"
+        fltarg <- gensym "fltarg"
+        endofs <- mapM (\_ -> gensym "endof") lrets
+
+        let
+            -- The new function argument and it's type
+            newarg    = replaceInArg inT (l$ VarE fnarg) tyloc (l$ VarE rvar)
+            newargty  = replaceInTy inT tyloc
+
+            -- tyloc is replaced with the location of the redirection
+            newinLocs = map (\x -> if x == tyloc then rloc else x) inLocs
+
+            -- Recursively call the same fn we're processing now
+            recurse   = l$ AppE funname (newinLocs ++ outLocs) (l$ VarE fltarg)
+
+            -- Just return the result of the recursion
+            tail1     = l$ Ext (RetE endofs bvar)
+
+            -- RHS of the new case expression
+            newcaseexp = mkLets [ (fltarg, []    , newargty, newarg),
+                                  (bvar  , endofs, outT    , recurse) ]
+                         tail1
+            -- Final case triple
+            newcase = (tagRedirection,[(rvar,rloc)],newcaseexp)
+
+        mp' <- mapM (docase tenv) mp
+        return $ CaseE scrt (mp' ++ [newcase])
+
+    VarE{}     -> return ex
+    LitE{}     -> return ex
+    LitSymE{}  -> return ex
+    AppE{}     -> return ex
+    PrimAppE{} -> return ex
+    DataConE{} -> return ex
+    LetE (v,locs,ty,rhs) bod ->
+      LetE <$> (v,locs,ty,) <$> go rhs
+        <*> followRedirectsExp ddfs fundefs funname (M.insert v ty tenv) bod
+    ProjE i e  -> ProjE i <$> go e
+    IfE a b c  -> IfE <$> go a <*> go b <*> go c
+    MkProdE ls -> MkProdE <$> mapM go ls
+    TimeIt e ty b -> do
+      e' <- go e
+      return $ TimeIt e' ty b
+    Ext ext -> Ext <$>
+      case ext of
+        LetRegionE reg bod  -> LetRegionE reg <$> go bod
+        LetLocE loc rhs bod -> LetLocE loc rhs <$> go bod
+        RetE{}        -> return ext
+        FromEndE{}    -> return ext
+        BoundsCheck{} -> return ext
+
+    MapE{}  -> error $ "go: TODO MapE"
+    FoldE{} -> error $ "go: TODO FoldE"
+
+  where
+    go = followRedirectsExp ddfs fundefs funname tenv
+    docase tenv1 (dcon,vlocs,bod) = do
+          -- Update the envs with bindings for pattern matched variables and locations.
+          -- The locations point to the same region as the scrutinee.
+          let (vars,_) = unzip vlocs
+              tys = lookupDataCon ddfs dcon
+              tenv1' = foldr (\(x,ty) acc -> M.insert x ty acc) tenv1 (zip vars tys)
+          (dcon,vlocs,) <$> (followRedirectsExp ddfs fundefs funname tenv1' bod)
+
+
+-- | Break apart the argument and reconstruct it with relevant parts replaced.
+--
+-- It replaces the argument having the type `(PackedTy _ fromloc)` with `tovar`.
+-- Looks under arbitrary tuples.
+--
+-- >>> replaceInArg (PackedTy "Tree" "lin2") (l$ VarE "arg") "lin2" (l$ VarE "redir")
+-- VarE (Var "redir")
+--
+-- >>> replaceInArg (ProdTy [PackedTy "Tree" "lin351", PackedTy "Tree" "lin352"]) (l$ VarE "arg") "lin351" (l$ VarE "redir")
+-- MkProdE [VarE (Var "redir"),ProjE 1 VarE (Var "arg")]
+--
+-- >>> replaceInArg (ProdTy [PackedTy "Tree" "lin351", PackedTy "Tree" "lin352"]) (l$ VarE "arg") "lin352" (l$ VarE "redir")
+-- MkProdE [ProjE 0 VarE (Var "arg"),VarE (Var "redir")]
+--
+-- >>> replaceInArg (ProdTy [PackedTy "Tree" "lin1",
+--                           PackedTy "Tree" "lin2",
+--                           ProdTy [PackedTy "Tree" "lin3"]])
+--                  (l$ VarE "arg") "lin3" (l$ VarE "redir")
+-- MkProdE [ProjE 0 VarE (Var "arg"),ProjE 1 VarE (Var "arg"),MkProdE [VarE (Var "redir")]]
+-- >>> replaceInArg (ProdTy [PackedTy "Tree" "lin1",
+--                           PackedTy "Tree" "lin2",
+--                           ProdTy [PackedTy "Tree" "lin3",
+--                                   PackedTy "Tree" "lin4"]])
+--                  (l$ VarE "arg") "lin4" (l$ VarE "redir")
+-- MkProdE [ProjE 0 VarE (Var "arg"),ProjE 1 VarE (Var "arg"),MkProdE [ProjE 0 ProjE 2 VarE (Var "arg"),VarE (Var "redir")]]
+replaceInArg :: L2.Ty2 -> L L2.Exp2 -> LocVar -> L L2.Exp2 -> L L2.Exp2
+replaceInArg ty arg fromloc tovar =
+  case ty of
+    PackedTy _ tyloc -> if tyloc == fromloc
+                        then tovar
+                        else arg
+    ProdTy tys -> l$ MkProdE (map ((\(t,n) -> replaceInArg t (l$ ProjE n arg) fromloc tovar)) $ zip tys [0..])
+    _ -> arg
+
+
+-- | Replace (PackedTy _ fromloc) with a CursorTy
+replaceInTy :: L2.Ty2 -> LocVar -> L2.Ty2
+replaceInTy ty fromloc =
+  case ty of
+    PackedTy _ tyloc -> if tyloc == fromloc
+                        then CursorTy
+                        else ty
+    ProdTy tys -> ProdTy $ map (\x -> replaceInTy x fromloc) tys
+    _ -> ty
