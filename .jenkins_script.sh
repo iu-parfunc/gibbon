@@ -31,6 +31,7 @@ elif [ "$USE_NIX" == "1" ]; then
 
 else
 
+    source $MODULESHOME/init/bash
     module add gcc
     ./run_all_tests.sh $@
 
