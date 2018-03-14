@@ -227,6 +227,49 @@ ddefsWithRedir ddfs = M.map (\d@DDef{dataCons} -> d {dataCons = dataCons ++ [red
 
 --------------------------------------------------------------------------------
 
+{- [Modifying functions to use redirection nodes]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Bounds checking adds redirection nodes at the end of regions, and other functions
+have to be modified so that they can use them i.e fns should know what to do when
+they encounter a redirection. Consider the modifications to the add1 function:
+
+
+    add1 :: Tree -> Tree
+    add1 tr =
+      case tr of
+        Leaf n   -> ...
+        Node l r -> ...
+        Redirection cur ->
+          let tr' = readCursor cur
+          in add1 tr'
+
+
+We just recursively call the parent function with the address stored after the
+redirection tag. If the function takes more arguments, we only modify the argument
+represented by the case scrutinee and then make the recursive call.
+
+
+    addTrees :: Tree -> Tree -> Tree
+    addTrees tr1 tr2 =
+      case tr1 of
+        Leaf n1 ->
+          case tr2 of
+            Leaf n2 -> ...
+            Redirection cur ->
+              let tr2' = readCursor cur
+              in addTrees tr1 tr2'
+         Node l r -> ...
+         Redirection cur ->
+           let tr1' = readCursor cur
+           in addTrees tr1' tr2
+
+
+`followRedirects` implements this idea.
+
+-}
+
+
 -- Modify functions to use the REDIRECTION tag. For all case expressions,
 -- add an extra case, and recurse.
 followRedirects :: L2.Prog -> SyM L2.Prog

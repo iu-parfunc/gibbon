@@ -44,15 +44,15 @@ destroyed on the stack. The scope of the values in the region dictate it's scope
 If the value in the region escapes the context it was created in, it has be global.
 Otherwise, a dynamic region would be sufficient. Consider two functions of the form:
 
-fnA = letregion ra in
-      letloc la in
-      let x = (Leaf 1) at la
-      in x
+    fnA = letregion ra in
+          letloc la in
+          let x = (Leaf 1) at la
+          in x
 
-fnB = letregion rb in
-      letloc lb in
-      let y = (Leaf 1) at lb
-      in 1
+    fnB = letregion rb in
+          letloc lb in
+          let y = (Leaf 1) at lb
+          in 1
 
 The return value of fnA resides in the region `ra`. Therefore `ra` has to be global.
 Whereas, it's safe to mark the region `rb` as dynamic. The fn `inferRegScope` traverses
@@ -102,6 +102,7 @@ inferRegScope (L p ex) = L p $
         LetLocE loc le bod -> Ext $ LetLocE loc le (inferRegScope bod)
         RetE{}     -> Ext ext
         FromEndE{} -> Ext ext
+        BoundsCheck{} -> Ext ext
 
     -- Straightforward recursion ...
     VarE{}     -> ex
@@ -139,6 +140,7 @@ depList = reverse . map (\(a,b) -> (a,a,b)) . M.toList . go M.empty
                 go (M.insertWith (++) loc ((dep phs) ++ (allFreeVars rhs)) acc) rhs
               RetE{}     -> acc
               FromEndE{} -> acc
+              BoundsCheck{} -> acc
           VarE v -> M.insertWith (++) v [v] acc
           -- The "dummy" annotation is a small trick to properly handle AST's with a
           -- trivial expression at the end. The first element of `acc` (after it's
@@ -171,4 +173,5 @@ allFreeVars (L _ ex) = S.toList $
         LetLocE loc _ _ -> S.singleton loc `S.union` gFreeVars ex
         RetE locs _     -> S.fromList locs `S.union` gFreeVars ex
         FromEndE loc    -> S.singleton loc
+        BoundsCheck _ _ reg cur -> S.fromList [reg,cur]
     _ -> gFreeVars ex
