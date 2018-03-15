@@ -196,6 +196,7 @@ data FunDecl = FunDecl
   , funArgs  :: [(Var,Ty)]
   , funRetTy :: Ty
   , funBody  :: Tail
+  , isPure   :: Bool
   } deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 

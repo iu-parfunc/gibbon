@@ -100,7 +100,9 @@ genUnpacker DDef{tyName, dataCons} = do
   return T.FunDecl{ T.funName  = mkUnpackerName (fromVar tyName),
                     T.funArgs  = [(p, T.CursorTy)],
                     T.funRetTy = T.ProdTy [T.PtrTy, T.CursorTy],
-                    T.funBody  = bod }
+                    T.funBody  = bod,
+                    T.isPure   = False
+                  }
 
 
 -- | Modify a Tail to *print* its return value and then
@@ -180,7 +182,9 @@ genPrinter DDef{tyName, dataCons} = do
   return T.FunDecl{ T.funName  = mkPrinterName (fromVar tyName),
                     T.funArgs  = [(p, T.CursorTy)],
                     T.funRetTy = T.PtrTy,
-                    T.funBody  = bod }
+                    T.funBody  = bod,
+                    T.isPure   = False
+                  }
 
 printTy :: Bool -> Ty3 -> [T.Triv] -> (T.Tail -> T.Tail)
 printTy pkd ty trvs =
@@ -307,7 +311,20 @@ lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
       return T.FunDecl{ T.funName = funname
                       , T.funArgs = args
                       , T.funRetTy = typ outty
-                      , T.funBody = tl }
+                      , T.funBody = tl
+                      , T.isPure  = ispure funbod
+                      }
+
+  -- TimeIt forms are impure because they have print statements after codegen
+  ispure :: L Exp3 -> Bool
+  ispure (L _ ex) =
+    case ex of
+      TimeIt{} -> False
+      LetE (_,_,_,rhs) bod -> ispure rhs && ispure bod
+      IfE _ b c   -> ispure b && ispure c
+      CaseE _ brs -> all id $ L.map (\(_,_,rhs) -> ispure rhs) brs
+      _ -> True
+
 
   tail :: L Exp3 -> SyM T.Tail
   tail (L _ ex0) =

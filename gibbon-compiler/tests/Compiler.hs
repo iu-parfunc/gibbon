@@ -157,6 +157,9 @@ case_subst = runner "subst.c" substProg "(LETE 1 (VARREF 42) (VARREF 10))"
 case_buildstree :: Assertion
 case_buildstree = runner "buildstree.c" buildSTreeProg "(Inner 0 0 (Inner 0 0 (Inner 0 0 (Leaf 1) (Leaf 1)) (Inner 0 0 (Leaf 1) (Leaf 1))) (Inner 0 0 (Inner 0 0 (Leaf 1) (Leaf 1)) (Inner 0 0 (Leaf 1) (Leaf 1))))"
 
+case_twotrees :: Assertion
+case_twotrees = runner "buildtwotrees.c" buildTwoTreesProg "'#((Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))) (Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))))"
+
 -}
 
 compilerTests :: TestTree
