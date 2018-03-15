@@ -13,6 +13,7 @@ module Packed.FirstOrder.L2.Examples
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
   , rightmostProg, buildTreeProg, buildTreeSumProg, printTupProg, addTreesProg
   , printTupProg2, sumUpProg, setEvenProg, sumUpSetEvenProg, substProg
+  , buildTwoTreesProg
   ) where
 
 import Data.Loc
@@ -450,6 +451,43 @@ buildTreeMainExp = l$ Ext $ LetRegionE (VarR "r279") $
 buildTreeProg :: Prog
 buildTreeProg = Prog ddtree (M.fromList [("buildTree", buildTreeFun)]) (Just (buildTreeMainExp, PackedTy "Tree" "l280"))
 
+
+--------------------------------------------------------------------------------
+
+
+buildTwoTreesFun :: FunDef
+buildTwoTreesFun = FunDef "buildTwoTrees" buildTreeTy "i750" buildTreeBod
+  where
+    buildTreeTy :: ArrowTy Ty2
+    buildTreeTy = (ArrowTy
+                   [LRM "lout752" (VarR "r751") Output, LRM "lout754" (VarR "r753") Output]
+                   (IntTy)
+                   (S.empty)
+                   (ProdTy [PackedTy "Tree" "lout752", PackedTy "Tree" "lout754"])
+                   [])
+
+    buildTreeBod :: L Exp2
+    buildTreeBod = l$ LetE ("tree1",[],PackedTy "Tree" "lout752",
+                            l$ AppE "buildTree" ["lout752"] (l$ VarE "i750")) $
+                   l$ LetE ("tree2",[],PackedTy "Tree" "lout754",
+                            l$ AppE "buildTree" ["lout754"] (l$ VarE "i750")) $
+                   l$ LetE ("a755",[], ProdTy [PackedTy "Tree" "lout752", PackedTy "Tree" "lout754"],
+                            l$ MkProdE [l$ VarE "tree1", l$ VarE "tree2"]) $
+                   l$ VarE "a755"
+
+buildTwoTreesMainExp :: L Exp2
+buildTwoTreesMainExp = l$ Ext $ LetRegionE (VarR "r756") $
+                       l$ Ext $ LetLocE "l757" (StartOfLE (VarR "r756")) $
+                       l$ Ext $ LetRegionE (VarR "r758") $
+                       l$ Ext $ LetLocE "l759" (StartOfLE (VarR "r758")) $
+                       l$ LetE ("treeprod", [], ProdTy [PackedTy "Tree" "lout757", PackedTy "Tree" "lout759"],
+                                l$ AppE "buildTwoTrees" ["l757", "l759"] (l$ LitE 2)) $
+                       l$ VarE "treeprod"
+
+buildTwoTreesProg :: Prog
+buildTwoTreesProg = Prog ddtree (M.fromList [("buildTree", buildTreeFun),
+                                             ("buildTwoTrees", buildTwoTreesFun)])
+                         (Just (buildTwoTreesMainExp, ProdTy [PackedTy "Tree" "lout757", PackedTy "Tree" "lout759"]))
 
 --------------------------------------------------------------------------------
 

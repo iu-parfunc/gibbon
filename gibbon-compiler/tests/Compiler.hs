@@ -141,5 +141,8 @@ case_sumupseteven = runner "sumupseteven.c" sumUpSetEvenProg "'#((Inner 8 1 (Inn
 case_subst :: Assertion
 case_subst = runner "subst.c" substProg "(LETE 1 (VARREF 42) (VARREF 10))"
 
+case_twotrees :: Assertion
+case_twotrees = runner "buildtwotrees.c" buildTwoTreesProg "'#((Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))) (Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))))"
+
 compilerTests :: TestTree
 compilerTests = $(testGroupGenerator)
