@@ -100,7 +100,7 @@ import Control.Monad.Trans (lift)
 
 
 import Packed.FirstOrder.GenericOps (gFreeVars)
-import Packed.FirstOrder.Common as C hiding (extendVEnv) -- (l, LRM(..))
+import Packed.FirstOrder.Common as C hiding (extendVEnv, lookupVEnv) -- (l, LRM(..))
 -- import qualified Packed.FirstOrder.Common as C
 import Packed.FirstOrder.Common (Var, Env2, DDefs, LocVar, runSyM, SyM, gensym, toVar)
 import qualified Packed.FirstOrder.L1.Syntax as L1

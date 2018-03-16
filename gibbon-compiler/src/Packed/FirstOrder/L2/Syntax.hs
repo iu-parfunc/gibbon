@@ -24,9 +24,9 @@ module Packed.FirstOrder.L2.Syntax
     , NewFuns, getFunTy
     , progToEnv
 
-    -- *
-    , allLocVars, inLocVars, outLocVars, substEffs, substTy, mapPacked, prependArgs
-    , outRegVars, getTyLocs
+    -- * Operations on types
+    , allLocVars, inLocVars, outLocVars, substEffs, substTy, prependArgs
+    , outRegVars, getTyLocs, initFunEnv
 
     -- * Temporary backwards compatibility, plus rexports
     , UrTy(..)
@@ -342,6 +342,10 @@ getTyLocs t =
       CursorTy -> []
       ListTy _ -> error "allLocVars: FIXME lists"
 
+initFunEnv :: NewFuns -> FunEnv Ty2
+initFunEnv fds = M.foldr (\fn acc -> let fnty = (funty fn)
+                                     in M.insert (funname fn) (arrIn fnty, arrOut fnty) acc)
+                 M.empty fds
 
 {-
 

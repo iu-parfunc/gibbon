@@ -31,7 +31,9 @@ module Packed.FirstOrder.Common
 
          -- * Environment and helpers
        , Env2(Env2) -- TODO: hide constructor
+       , FunEnv
        , vEnv, fEnv, extendVEnv, extendsVEnv, extendFEnv, emptyEnv2
+       , lookupVEnv
 
          -- * Runtime configuration
        , RunConfig(..), getRunConfig
@@ -227,6 +229,9 @@ extendVEnv v t (Env2 ve fe) = Env2 (M.insert v t ve) fe
 -- | Extend multiple times in one go.
 extendsVEnv :: M.Map Var a -> Env2 a -> Env2 a
 extendsVEnv mp (Env2 ve fe) = Env2 (M.union mp ve) fe
+
+lookupVEnv :: Out a => Var -> Env2 a -> a
+lookupVEnv v env2 = (vEnv env2) # v
 
 -- | Extend function type environment.
 extendFEnv :: Var -> (a,a) -> Env2 a -> Env2 a

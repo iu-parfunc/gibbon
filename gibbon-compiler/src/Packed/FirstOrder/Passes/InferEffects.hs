@@ -22,7 +22,7 @@ import Data.Set as S
 import Data.Map as M
 
 import Packed.FirstOrder.L2.Syntax
-import Packed.FirstOrder.Common hiding (FunDef)
+import Packed.FirstOrder.Common hiding (FunDef, FunEnv)
 import Packed.FirstOrder.L1.Syntax hiding (Prog, FunDef, ddefs, fundefs, mainExp)
 
 --------------------------------------------------------------------------------
