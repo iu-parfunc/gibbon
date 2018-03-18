@@ -495,7 +495,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
 codegenMultiplicity :: Multiplicity -> Var
 codegenMultiplicity mul =
   case mul of
-    BigInfinite -> toVar "global_default_buf_size"
+    BigInfinite -> toVar "global_init_biginf_buf_size"
     Infinite    -> toVar "global_init_inf_buf_size"
     Bounded     -> error $ "codegenMultiplicity: Bounded buffers not handled yet."
 
