@@ -13,7 +13,7 @@ module Packed.FirstOrder.L2.Examples
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
   , rightmostProg, buildTreeProg, buildTreeSumProg, printTupProg, addTreesProg
   , printTupProg2, buildSTreeProg, sumUpProg, setEvenProg, sumUpSetEvenProg, substProg
-  , buildTwoTreesProg
+  , buildTwoTreesProg, sumTreeProg, sumSTreeProg
   ) where
 
 import Data.Loc
@@ -541,6 +541,47 @@ buildTreeSumMainExp = l$ Ext $ LetRegionE (VarR "r313") $
 buildTreeSumProg :: Prog
 buildTreeSumProg = Prog ddtree (M.fromList [("buildTreeSum", buildTreeSumFun)]) (Just (buildTreeSumMainExp, ProdTy [IntTy, PackedTy "Tree" "l314"]))
 
+--------------------------------------------------------------------------------
+
+sumTreeFun :: FunDef
+sumTreeFun = FunDef "sumTree" sumTreeTy "tr762" sumTreeBod
+  where
+    sumTreeTy :: ArrowTy Ty2
+    sumTreeTy = (ArrowTy
+                      [LRM "lin761" (VarR "r760") Input]
+                      (PackedTy "Tree" "lin761")
+                      (S.empty)
+                      (IntTy)
+                      [])
+
+    sumTreeBod :: L Exp2
+    sumTreeBod = l$ CaseE (l$ VarE "tr762")
+                 [ ("Leaf", [("n763", "l764")],
+                   l$ VarE "n763")
+                 , ("Node", [("x764","l765"), ("y766","l767")],
+                   l$ LetE ("sx768", [], IntTy,
+                            l$ AppE "sumTree" ["l765"] (l$ VarE "x764")) $
+                   l$ LetE ("sy769", [], IntTy,
+                            l$ AppE "sumTree" ["l767"] (l$ VarE "y766")) $
+                   l$ LetE ("total770", [], IntTy ,
+                            l$ PrimAppE AddP [l$ VarE "sx768", l$ VarE "sy769"]) $
+                   l$ VarE "total770"
+                   )]
+
+sumTreeMainExp :: L Exp2
+sumTreeMainExp = l$ Ext $ LetRegionE (VarR "r771") $
+                 l$ Ext $ LetLocE "l772" (StartOfLE (VarR "r771")) $
+                 l$ LetE ("tr773", [], PackedTy "Tree" "l772",
+                          l$ AppE "buildTree" ["l772"] (l$ LitE 3)) $
+                 l$ LetE ("sum774", [], IntTy,
+                          l$ AppE "sumTree" ["l772"] (l$ VarE "tr773")) $
+                 l$ VarE "sum774"
+
+sumTreeProg :: Prog
+sumTreeProg = Prog ddtree (M.fromList [("buildTree", buildTreeFun),
+                                       ("sumTree", sumTreeFun)
+                                      ])
+                   (Just (sumTreeMainExp, IntTy))
 
 --------------------------------------------------------------------------------
 
@@ -857,6 +898,49 @@ buildSTreeMainExp = l$ Ext $ LetRegionE (VarR "r530") $
 buildSTreeProg :: Prog
 buildSTreeProg = Prog stree (M.fromList [("buildSTree", buildSTreeFun)])
                       (Just (buildSTreeMainExp, PackedTy "STree" "l531"))
+
+
+--------------------------------------------------------------------------------
+
+sumSTreeFun :: FunDef
+sumSTreeFun = FunDef "sumSTree" sumSTreeTy "tr762" sumSTreeBod
+  where
+    sumSTreeTy :: ArrowTy Ty2
+    sumSTreeTy = (ArrowTy
+                      [LRM "lin761" (VarR "r760") Input]
+                      (PackedTy "STree" "lin761")
+                      (S.empty)
+                      (IntTy)
+                      [])
+
+    sumSTreeBod :: L Exp2
+    sumSTreeBod = l$ CaseE (l$ VarE "tr762")
+                 [ ("Leaf", [("n763", "l764")],
+                   l$ VarE "n763")
+                 , ("Inner", [("i775","l776"),("b777","l778"),
+                              ("x764","l765"), ("y766","l767")],
+                   l$ LetE ("sx768", [], IntTy,
+                            l$ AppE "sumSTree" ["l765"] (l$ VarE "x764")) $
+                   l$ LetE ("sy769", [], IntTy,
+                            l$ AppE "sumSTree" ["l767"] (l$ VarE "y766")) $
+                   l$ LetE ("total770", [], IntTy ,
+                            l$ PrimAppE AddP [l$ VarE "sx768", l$ VarE "sy769"]) $
+                   l$ VarE "total770"
+                   )]
+
+sumSTreeMainExp :: L Exp2
+sumSTreeMainExp = l$ Ext $ LetRegionE (VarR "r771") $
+                 l$ Ext $ LetLocE "l772" (StartOfLE (VarR "r771")) $
+                 l$ LetE ("tr773", [], PackedTy "STree" "l772",
+                          l$ AppE "buildSTree" ["l772"] (l$ LitE 3)) $
+                 l$ LetE ("sum774", [], IntTy,
+                          l$ AppE "sumSTree" ["l772"] (l$ VarE "tr773")) $
+                 l$ VarE "sum774"
+
+sumSTreeProg :: Prog
+sumSTreeProg = Prog stree (M.fromList [("buildSTree", buildSTreeFun),
+                                       ("sumSTree", sumSTreeFun)])
+                   (Just (sumSTreeMainExp, IntTy))
 
 --------------------------------------------------------------------------------
 

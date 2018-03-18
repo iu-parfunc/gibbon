@@ -142,6 +142,13 @@ case_printtup2 = runner "printtup2.c" printTupProg2 "'#((Node (Node (Leaf 1) (Le
 case_addtrees :: Assertion
 case_addtrees = runner "addtrees.c" addTreesProg "(Node (Node (Leaf 2) (Leaf 2)) (Node (Leaf 2) (Leaf 2)))"
 
+
+case_sumtree :: Assertion
+case_sumtree = runner "sumtree.c" sumTreeProg "8"
+
+case_sumstree :: Assertion
+case_sumstree = runner "sumstree.c" sumSTreeProg "8"
+
 {-
 
 This tests work if the initial region size is big enough. See TODO: in BoundsCheck.hs.
