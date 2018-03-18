@@ -430,7 +430,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                              , C.BlockStm  [cstm|  *($ty:(codegenTy CursorTy) *) redir = $id:reg; |]
                              , C.BlockStm  [cstm|  $id:cur = $id:reg; |]
                              ]
-                   return [ C.BlockStm [cstm| if (($id:end - $id:cur) <= MAX($int:i, REDIRECTION_NODE_SIZE)) { $items:bck }  |] ]
+                   return [ C.BlockStm [cstm| if (($id:end - $id:cur) <= $int:i) { $items:bck }  |] ]
 
                  SizeOfPacked -> let [(sizeV,IntTy)] = bnds
                                      [(VarTriv startV), (VarTriv endV)] = rnds

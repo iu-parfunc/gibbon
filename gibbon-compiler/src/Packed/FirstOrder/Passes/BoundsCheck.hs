@@ -4,14 +4,15 @@ module Packed.FirstOrder.Passes.BoundsCheck
   ( boundsCheck, followRedirects ) where
 
 import Data.Loc
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
+import Data.Graph
 import qualified Data.Map as M
 import qualified Data.Set as S
 
+import Packed.FirstOrder.GenericOps
 import Packed.FirstOrder.Common hiding (FunDef(..))
 import Packed.FirstOrder.L1.Syntax hiding (Prog(..), FunDef(..))
 import Packed.FirstOrder.L2.Syntax as L2
-
 
 {- Note [Infinite regions]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -36,10 +37,25 @@ scalar value. Eg. `(Leaf 10)` or `(A 10 20 (B ...))`. But not for datatypes like
 writing a tag *before* it's children. So it's OK to assume that this write will
 be safe.
 
-TODO:
 This policy of inserting BoundsChecks is not perfect. It needs to be
 inserted before *any* location arithmetic is performed on the output
-location. For example, for buildSTreeProg this doesn't always work out.
+cursor. For example, for buildSTreeProg this doesn't always work out.
+But this comes with it's own problems. It's difficult to reliably infer
+the exact number of bytes needed for a write op when we're just
+performing some location arithmetic on the write cursor. The program
+analysis needs to be modified to return this information. That is,
+when we're looking at a location, we should be able to look-ahead
+and return the `DataConE` (if any) that it's used in. That's a
+TODO for now.
+
+Current policy for adding a bounds check node:
+
+(1) If the return type is "complex" i.e it has some nodes which have both
+    scalar and packed fields, the bounds check is inserted before
+    doing anything with the write cursor. Even before doing any location
+    arithmetic involving such a cursor.
+
+(2) Otherwise, do a bounds check just before the write op i.e DataConE.
 
 
 Bounds-check: How?
@@ -111,44 +127,51 @@ type RegEnv = M.Map LocVar Var
 
 type TypeEnv = M.Map Var Ty2
 
+type Deps = [(Var, Var, [Var])]
+
 boundsCheck :: L2.Prog -> SyM L2.Prog
 boundsCheck Prog{ddefs,fundefs,mainExp} = do
   fds' <- mapM (boundsCheckFn ddefs fundefs) $ M.elems fundefs
   let fundefs' = M.fromList $ map (\f -> (funname f,f)) fds'
-  mainExp' <- case mainExp of
-                Nothing -> return Nothing
-                Just (mn, ty) -> Just . (,ty) <$>
-                  boundsCheckExp ddefs fundefs M.empty M.empty S.empty mn
-  return $ Prog (ddefsWithRedir ddefs) fundefs' mainExp'
+      env2 = Env2 M.empty (initFunEnv fundefs)
+  -- mainExp' <- case mainExp of
+  --               Nothing -> return Nothing
+  --               Just (mn, ty) -> Just . (,ty) <$>
+  --                 boundsCheckExp ddefs fundefs M.empty env2 (depList mn) S.empty mn
+  return $ Prog (ddefsWithRedir ddefs) fundefs' mainExp
 
 boundsCheckFn :: DDefs Ty2 -> NewFuns -> L2.FunDef -> SyM L2.FunDef
 boundsCheckFn ddefs fundefs f@FunDef{funarg,funty,funbod} = do
   let initRegEnv = M.fromList $ map (\(LRM lc r _) -> (lc, regionVar r)) (locVars funty)
       initTyEnv  = M.singleton funarg (arrIn funty)
-  bod' <- boundsCheckExp ddefs fundefs initRegEnv initTyEnv S.empty funbod
+      env2 = Env2 initTyEnv (initFunEnv fundefs)
+      deps = [(lc, lc, []) | lc <- outLocVars funty] ++ depList funbod
+  bod' <- boundsCheckExp ddefs fundefs initRegEnv env2 deps S.empty funbod
   return $ f {funbod = bod'}
 
-boundsCheckExp :: DDefs Ty2 -> NewFuns -> RegEnv -> TypeEnv -> S.Set Var
+boundsCheckExp :: DDefs Ty2 -> NewFuns -> RegEnv -> Env2 Ty2 -> Deps -> S.Set Var
                -> L L2.Exp2 -> SyM (L L2.Exp2)
-boundsCheckExp ddfs fundefs renv tenv checked (L p ex) = L p <$>
+boundsCheckExp ddfs fundefs renv env2 deps checked (L p ex) = L p <$>
   case ex of
     LetE (v, locs, ty, rhs@(L _ (DataConE lc dcon _))) bod -> do
       let PackedTy tycon _ = ty
-      if needsBoundsCheck ddfs dcon
+          reg = renv # lc
+      if needsBoundsCheck ddfs dcon && reg `S.notMember` checked
       then do
-        let sz  = sizeOfScalars ddfs dcon
-            reg = renv M.! lc
+        let sz  = sizeRedirection + sizeOfScalars ddfs dcon
         -- IMPORTANT: Mutates the region/cursor bindings
         -- IntTy is a placeholder. BoundsCheck is a side-effect
         unLoc <$>
           mkLets [ ("_", []  , IntTy, l$ Ext$ BoundsCheck tycon sz reg lc)
                  , (v  , locs, ty   , rhs)] <$>
-          boundsCheckExp ddfs fundefs renv (M.insert v ty tenv) checked bod
+          boundsCheckExp ddfs fundefs renv (extendVEnv v ty env2) deps checked bod
       else
         LetE (v, locs, ty, rhs) <$>
-          boundsCheckExp ddfs fundefs renv (M.insert v ty tenv) checked bod
+          boundsCheckExp ddfs fundefs renv (extendVEnv v ty env2) deps checked bod
 
-    LetE (v,locs,ty,rhs) bod -> LetE <$> (v,locs,ty,) <$> go rhs <*> go bod
+    LetE (v,locs,ty,rhs) bod ->
+      LetE <$> (v,locs,ty,) <$> go rhs <*>
+        boundsCheckExp ddfs fundefs renv (extendVEnv v ty env2) deps checked bod
 
     Ext ext ->
       case ext of
@@ -156,11 +179,48 @@ boundsCheckExp ddfs fundefs renv tenv checked (L p ex) = L p <$>
           let reg = case rhs of
                       StartOfLE r  -> regionVar r
                       InRegionLE r -> regionVar r
-                      AfterConstantLE _ lc -> renv M.! lc
-                      AfterVariableLE _ lc -> renv M.! lc
-                      FromEndLE lc         -> renv M.! lc
-          Ext <$> LetLocE loc rhs <$>
-            boundsCheckExp ddfs fundefs (M.insert loc reg renv) tenv checked bod
+                      AfterConstantLE _ lc -> renv # lc
+                      AfterVariableLE _ lc -> renv # lc
+                      -- HACK: LetE form doesn't extend the RegEnv with the
+                      -- the endof locations returned by the RHS.
+                      FromEndLE _         -> renv # loc
+              (outloc, tycon, needsCheck) =
+                if reg `S.member` checked
+                then ("DUMMY","DUMMY",False)
+                else
+                  case deps of
+                    [] -> ("DUMMY","DUMMY",False)
+                    _  ->
+                      let (g,nodeF,vtxF) = graphFromEdges deps
+                          -- Vertex of the location variable
+                          locVertex = case vtxF loc of
+                                        Just x  -> x
+                                        Nothing -> error $ "No vertex for:" ++ sdoc loc
+                          retType = gTypeExp ddfs env2 bod
+                      in if hasPacked retType
+                          then
+                            let  retLocs = getTyLocs retType
+                                 retVertices = map (fromJust . vtxF) retLocs
+                                 paths = map (\ret -> (ret, path g locVertex ret)) retVertices
+                                 connected = filter snd paths
+                            in case connected of
+                                 [] -> ("DUMMY","DUMMY", False)
+                                 (vert,_):_ ->
+                                   let fst3 (a,_,_) = a
+                                       outloc' = fst3 (nodeF vert)
+                                       tycon'  = fromJust $ getTyconLoc outloc' retType
+                                       iscomplex = hasComplexDataCon ddfs tycon'
+                                   in (outloc', tycon', iscomplex)
+                          else ("DUMMY","DUMMY", False)
+          if needsCheck
+          then
+            unLoc <$>
+              mkLets [ ("_", []  , IntTy, l$ Ext$ BoundsCheck tycon conservativeSizeScalars reg outloc) ] <$> l <$>
+              Ext <$> LetLocE loc rhs <$>
+              boundsCheckExp ddfs fundefs (M.insert loc reg renv) env2 deps (S.insert reg checked) bod
+          else
+            Ext <$> LetLocE loc rhs <$>
+              boundsCheckExp ddfs fundefs (M.insert loc reg renv) env2 deps checked bod
 
         LetRegionE r bod -> Ext <$> LetRegionE r <$> go bod
         FromEndE{} -> return ex
@@ -179,24 +239,36 @@ boundsCheckExp ddfs fundefs renv tenv checked (L p ex) = L p <$>
     MkProdE ls -> MkProdE <$> mapM go ls
     CaseE scrt mp -> do
       let L _ (VarE v) = scrt
-          PackedTy _ tyloc = tenv M.! v
-          reg = renv M.! tyloc
-      CaseE scrt <$> mapM (docase reg renv tenv) mp
+          PackedTy _ tyloc = lookupVEnv v env2
+          reg = renv # tyloc
+      CaseE scrt <$> mapM (docase reg renv env2) mp
     TimeIt e ty b -> do
       e' <- go e
       return $ TimeIt e' ty b
     MapE{}  -> error $ "go: TODO MapE"
     FoldE{} -> error $ "go: TODO FoldE"
 
-  where go = boundsCheckExp ddfs fundefs renv tenv checked
-        docase reg lenv1 tenv1 (dcon,vlocs,bod) = do
+  where go = boundsCheckExp ddfs fundefs renv env2 deps checked
+        docase reg lenv1 env2' (dcon,vlocs,bod) = do
           -- Update the envs with bindings for pattern matched variables and locations.
           -- The locations point to the same region as the scrutinee.
           let (vars,locs) = unzip vlocs
               lenv1' = foldr (\lc acc -> M.insert lc reg acc) lenv1 locs
               tys = lookupDataCon ddfs dcon
-              tenv1' = foldr (\(x,ty) acc -> M.insert x ty acc) tenv1 (zip vars tys)
-          (dcon,vlocs,) <$> (boundsCheckExp ddfs fundefs lenv1' tenv1' checked bod)
+              env2'' = extendsVEnv (M.fromList $ zip vars tys) env2'
+          (dcon,vlocs,) <$> (boundsCheckExp ddfs fundefs lenv1' env2'' deps checked bod)
+
+
+        getTyconLoc :: LocVar -> L2.Ty2 -> Maybe TyCon
+        getTyconLoc lc ty =
+          case ty of
+            PackedTy tycon lc1 -> if lc == lc1
+                                  then Just tycon
+                                  else Nothing
+            ProdTy tys -> case filter isJust $ map (getTyconLoc lc) tys of
+                            [] -> Nothing
+                            ls -> head ls
+            _ -> Nothing
 
 
 -- | Return true if writing a DataCon needs a bounds check
@@ -224,6 +296,22 @@ ddefsWithRedir ddfs = M.map (\d@DDef{dataCons} -> d {dataCons = dataCons ++ [red
   where
     redirCon :: (DataCon,[(IsBoxed,Ty2)])
     redirCon = (tagRedirection,[(False, CursorTy)])
+
+-- |
+hasComplexDataCon :: DDefs Ty2 -> TyCon -> Bool
+hasComplexDataCon ddfs tycon =
+  let dcons = getConOrdering ddfs tycon
+      tys = map (lookupDataCon ddfs) dcons
+  in hasComplex tys
+
+hasComplex :: [[Ty2]] -> Bool
+hasComplex tys = any id $ map (\t -> any hasPacked t && any (not . hasPacked) t) tys
+
+-- The modified program analysis can't figure out the exact #bytes required
+-- for the current write-op (Since it won't always be inserted before a write-op).
+-- This is a reasonable default.
+conservativeSizeScalars :: Int
+conservativeSizeScalars = 64
 
 --------------------------------------------------------------------------------
 
@@ -292,8 +380,8 @@ followRedirectsExp ddfs fundefs funname tenv (L p ex) = L p <$>
       -- Replace tyloc with redirection and recurse
       -- TODO: Write more documentation about this pass.
       let L _ (VarE v) = scrt
-          PackedTy _ tyloc = tenv M.! v
-          fundef  = fundefs M.! funname
+          PackedTy _ tyloc = tenv # v
+          fundef  = fundefs # funname
           fnarg   = funarg fundef
           fnty    = funty fundef
           inT     = arrIn fnty

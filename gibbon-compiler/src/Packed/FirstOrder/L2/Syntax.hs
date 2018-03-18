@@ -36,6 +36,9 @@ module Packed.FirstOrder.L2.Syntax
     -- * Extended language L2.0 with location types.
     , Exp2, E2Ext(..), Ty2
 
+    -- * Other helpers
+    , mapPacked, depList
+
     -- * Conversion back to L1
     , revertToL1
 
@@ -341,6 +344,64 @@ getTyLocs t =
       PtrTy    -> []
       CursorTy -> []
       ListTy _ -> error "allLocVars: FIXME lists"
+
+-- | Build a dependency list which can be later converted to a graph
+depList :: L Exp2 -> [(Var, Var, [Var])]
+-- The `acc` is a map so that all dependencies are properly grouped, without any
+-- duplicate keys. But we later convert it into a form expected by `graphFromEdges`.
+-- The `reverse` makes it easy to peek at the return value of this AST.
+depList = reverse . L.map (\(a,b) -> (a,a,b)) . M.toList . go M.empty
+    where
+      go acc (L _ ex) =
+        case ex of
+          LetE (v,_,_,rhs) bod -> go (M.insertWith (++) v (allFreeVars rhs) acc) bod
+          CaseE _ mp -> L.foldr (\(_,_,e) acc' -> go acc' e) acc mp
+          Ext ext ->
+            case ext of
+              LetRegionE r rhs ->
+                let v = regionVar r
+                in go (M.insertWith (++) v (allFreeVars rhs) acc) rhs
+              LetLocE loc phs rhs  ->
+                go (M.insertWith (++) loc (dep phs ++ allFreeVars rhs) acc) rhs
+              RetE{}     -> acc
+              FromEndE{} -> acc
+              BoundsCheck{} -> acc
+          VarE v -> M.insertWith (++) v [v] acc
+          IfE _ b c -> go (go acc b) c
+          -- The "dummy" annotation is a small trick to properly handle AST's with a
+          -- trivial expression at the end. The first element of `acc` (after it's
+          -- converted to a list and reversed) marks the return value of the AST.
+          -- If we just return `acc` here, the last thing added to `acc` becomes
+          -- the return value, which is incorrect. The "dummy" is just a placeholder
+          -- to mark trivial expressions. There will never be a path from any region
+          -- variable to "dummy".
+          _ -> M.insertWith (++) "dummy" [] acc
+
+      dep :: PreLocExp LocVar -> [Var]
+      dep ex =
+        case ex of
+          StartOfLE r -> [regionVar r]
+          AfterConstantLE _ loc -> [loc]
+          AfterVariableLE v loc -> [v,loc]
+          InRegionLE r  -> [regionVar r]
+          FromEndLE loc -> [loc]
+
+      -- gFreeVars ++ locations ++ region variables
+      allFreeVars :: L Exp2 -> [Var]
+      allFreeVars (L _ ex) = S.toList $
+        case ex of
+          AppE _ locs _       -> S.fromList locs `S.union` gFreeVars ex
+          LetE (_,locs,_,_) _ -> S.fromList locs `S.union` gFreeVars ex
+          DataConE loc _ _    -> S.singleton loc `S.union` gFreeVars ex
+          Ext ext ->
+            case ext of
+              LetRegionE r _  -> S.singleton (regionVar r) `S.union` gFreeVars ex
+              LetLocE loc _ _ -> S.singleton loc `S.union` gFreeVars ex
+              RetE locs _     -> S.fromList locs `S.union` gFreeVars ex
+              FromEndE loc    -> S.singleton loc
+              BoundsCheck _ _ reg cur -> S.fromList [reg,cur]
+          _ -> gFreeVars ex
+
 
 initFunEnv :: NewFuns -> FunEnv Ty2
 initFunEnv fds = M.foldr (\fn acc -> let fnty = (funty fn)
