@@ -161,12 +161,23 @@ cursorizeExp ddfs fundefs denv tenv (L p ex) = L p <$>
     LitE n    -> return $ LitE n
     LitSymE n -> return $ LitSymE n
 
-    AppE f locs arg ->
-      case locs of
-          [] -> AppE f [] <$> go arg
-          -- These are read/input locations
-          [loc] -> return $ AppE f [] (l$ VarE loc)
-          _     -> return $ AppE f [] (l$ MkProdE [l$ VarE x | x <- locs ])
+    AppE f _ arg -> do
+      let fnTy   = case M.lookup f fundefs of
+                     Just g -> funty g
+                     Nothing -> error $ "Unknown function: " ++ sdoc f
+          inT    = arrIn fnTy
+          {-
+          inLocs = inLocVars fnTy
+          numOutRegs = 2 * length (outRegVars fnTy)
+          -- Drop input locations, but keep everything else
+          outs   = (take numOutRegs locs) ++  (drop numOutRegs $ drop (length inLocs) $ locs)
+          -}
+          argTy  = gTypeExp ddfs (Env2 tenv M.empty) arg
+      arg' <- if hasPacked inT
+              then fromDi <$> cursorizePackedExp ddfs fundefs denv tenv arg
+              else cursorizeExp ddfs fundefs denv tenv arg
+      starts <- return $ giveStarts argTy arg'
+      return $ AppE f [] starts
 
     PrimAppE pr args -> PrimAppE (L3.toL3Prim pr) <$> mapM go args
 
