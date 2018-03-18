@@ -415,9 +415,11 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                             [ C.BlockDecl [cdecl| $ty:(codegenTy valTy) $id:valV = *( $ty:(codegenTy valTy) *)($id:cur); |]
                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:curV = ($id:cur) + sizeof( $ty:(codegenTy IntTy) ); |] ]
 
-                 ReadCursor -> let [(next,CursorTy)] = bnds
+                 ReadCursor -> let [(next,CursorTy),(afternext,CursorTy)] = bnds
                                    [(VarTriv cur)] = rnds in pure
-                               [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:next = *($ty:(codegenTy CursorTy) *) ($id:cur); |] ]
+                               [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:next = *($ty:(codegenTy CursorTy) *) ($id:cur); |]
+                               , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:afternext = ($id:cur) + 8; |]
+                               ]
 
                  BoundsCheck -> do
                    let [(IntTriv i),(VarTriv reg), (VarTriv cur), (IntTriv tag)] = rnds

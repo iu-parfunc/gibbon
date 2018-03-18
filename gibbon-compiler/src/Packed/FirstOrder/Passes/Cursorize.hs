@@ -681,8 +681,12 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
 
             -- Unpack redirection nodes
             CursorTy -> do
-              let bnds = [ (loc, [], CursorTy, l$ VarE cur)
-                         , (v  , [], CursorTy, l$ Ext$ L3.ReadCursor loc) ]
+              tmp <- gensym (toVar "readcursor_tpl")
+              let bnds = [(loc     , [], CursorTy, l$ VarE cur),
+                          (tmp     , [], ProdTy [CursorTy, CursorTy], l$ Ext $ L3.ReadCursor loc),
+                          (v       , [], CursorTy, l$ ProjE 0 (l$ VarE tmp)),
+                          (toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp))]
+
                   env' = M.union (M.fromList [(loc, CursorTy),
                                               (v  , CursorTy)])
                          env

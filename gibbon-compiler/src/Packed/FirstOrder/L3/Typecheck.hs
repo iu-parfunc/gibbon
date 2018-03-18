@@ -97,7 +97,7 @@ tcExp ddfs env exp@(L p ex) =
         ReadCursor v -> do
           vty <- lookupVar env v exp
           ensureEqualTy exp vty CursorTy
-          return CursorTy
+          return $ ProdTy [CursorTy, CursorTy]
 
     -- All the other cases are exactly same as L1.Typecheck
 

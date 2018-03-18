@@ -60,13 +60,18 @@ genDcons tyName (x:xs) tail fields = case x of
       <$> genDcons tyName xs t (fields ++ [(T.CursorTy, T.VarTriv ptr)])
 
   -- Redirection nodes have 1 cursor field
-  CursorTy ->
+  CursorTy -> do
+    next <- gensym "next"
+    afternext <- gensym "afternext"
     case xs of
-      [] -> do
-        next <- gensym "next"
-        T.LetPrimCallT [(next, T.CursorTy)] T.ReadCursor [(T.VarTriv tail)] <$>
+      -- Redirection, recurse
+      [] ->
+        T.LetPrimCallT [(next, T.CursorTy),(afternext,T.CursorTy)] T.ReadCursor [(T.VarTriv tail)] <$>
           (return $ T.TailCall (mkUnpackerName tyName) [(T.VarTriv next)])
-      _ -> error "lower/genDcons: Redirections should be last thing here"
+      -- Indirection, don't do anything
+      _ ->
+        T.LetPrimCallT [(next, T.CursorTy),(afternext,T.CursorTy)] T.ReadCursor [(T.VarTriv tail)] <$>
+          genDcons tyName xs afternext fields
 
   _ -> error $ "genDcons: FIXME " ++ show x
 
@@ -597,8 +602,15 @@ lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
       T.LetPrimCallT [] T.BoundsCheck args <$> tail bod
 
     LetE(v,_,_, L _ (Ext (ReadCursor c))) bod -> do
-      T.LetPrimCallT [(v,T.CursorTy)] T.ReadCursor [T.VarTriv c] <$>
-        tail bod
+      vtmp <- gensym $ toVar "tmpcur"
+      ctmp <- gensym $ toVar "tmpaftercur"
+      -- Here we lamely chase down all the tuple references and make them variables:
+      let bod' = L1.substE (l$ ProjE 0 (l$ VarE v)) (l$ VarE vtmp) $
+                 L1.substE (l$ ProjE 1 (l$ VarE v)) (l$ VarE ctmp)
+                 bod
+      T.LetPrimCallT [(vtmp,T.CursorTy),(ctmp,T.CursorTy)] T.ReadCursor [T.VarTriv c] <$>
+        tail bod'
+
 
     Ext _ -> error $ "lower: unexpected extension" ++ sdoc ex0
 
