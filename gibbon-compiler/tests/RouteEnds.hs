@@ -22,6 +22,10 @@ import Packed.FirstOrder.Passes.RouteEnds
 import Packed.FirstOrder.Passes.InferEffects
 import Packed.FirstOrder.L1.Syntax hiding (Prog, FunDef, ddefs, fundefs, mainExp, add1Prog)
 
+{-
+
+This is very brittle, and has to be kept in sync by hand. It's safe to comment this out for now.
+
 test1 :: L Exp2
 test1 = l$ Ext $ LetRegionE (VarR "r") $ l$ Ext $ LetLocE "ltest" (StartOfLE (VarR "r")) $
         l$ Ext $ LetLocE "ltest1" (AfterConstantLE 1 "ltest") $
@@ -44,6 +48,8 @@ case_add1_test1 =
     funs  = (M.fromList [(toVar "add1",add1TraversedFun)])
     prg   = Prog ddfs funs (Just (test1,IntTy))
     actualTest1   = fst $ runSyM 1 $ routeEnds prg
+
+-}
 
 runT :: Prog -> Prog
 runT prg = fst $ runSyM 0 $ do

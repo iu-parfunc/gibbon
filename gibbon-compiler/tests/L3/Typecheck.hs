@@ -32,8 +32,10 @@ runT prg = fst $ runSyM 0 $ do
   l2 <- inferMul l2
   l2 <- L2.tcProg l2
   l2 <- routeEnds l2
-  l2 <- threadRegions l2
+  l2 <- L2.tcProg l2
   l2 <- boundsCheck l2
+  l2 <- followRedirects l2
+  l2 <- threadRegions l2
   l3 <- cursorize l2
   l3 <- findWitnesses l3
   l3 <- L3.tcProg l3
