@@ -13,7 +13,7 @@ module Packed.FirstOrder.L2.Examples
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
   , rightmostProg, buildTreeProg, buildTreeSumProg, printTupProg, addTreesProg
   , printTupProg2, buildSTreeProg, sumUpProg, setEvenProg, sumUpSetEvenProg, substProg
-  , buildTwoTreesProg, sumTreeProg, sumSTreeProg
+  , buildTwoTreesProg, sumTreeProg, sumSTreeProg, indrRightmostProg
   ) where
 
 import Data.Loc
@@ -31,6 +31,9 @@ ddtree = fromListDD [DDef (toVar "Tree")
                       [ ("Leaf",[(False,IntTy)])
                       , ("Node",[ (False,PackedTy "Tree" "l")
                                 , (False,PackedTy "Tree" "l")])
+                      , ("Node^", [(False, CursorTy)
+                                  , (False,PackedTy "Tree" "l")
+                                  , (False,PackedTy "Tree" "l")])
                       ]]
 
 
@@ -1281,3 +1284,70 @@ substProg :: Prog
 substProg = Prog ddexpr (M.fromList [("subst", substFun),
                                      ("copyExpr", copyExprFun)])
             (Just (substMainExp, PackedTy "Expr" "l730"))
+
+--------------------------------------------------------------------------------
+
+-- The rightmost function *without* copy-insertion. Gibbon should add and use
+-- indirection pointers to get to the rightmost node of the tree.
+
+indrBuildTreeFun :: FunDef
+indrBuildTreeFun = FunDef "indrBuildTree" indrBuildTreeTy "i270" indrBuildTreeBod
+  where
+    indrBuildTreeTy :: ArrowTy Ty2
+    indrBuildTreeTy = (ArrowTy
+                   [LRM "lout272" (VarR "r271") Output]
+                   (IntTy)
+                   (S.empty)
+                   (PackedTy "Tree" "lout272")
+                   [])
+
+    indrBuildTreeBod :: L Exp2
+    indrBuildTreeBod = l$ LetE ("b279",[], BoolTy, l$ PrimAppE EqIntP [l$ VarE "i270", l$ LitE 0]) $
+                       l$ IfE (l$ VarE "b279")
+                       (l$ DataConE "lout272" "Leaf" [l$ LitE 1])
+                       (l$ LetE ("i273",[], IntTy, l$ PrimAppE SubP [l$ VarE "i270", l$ LitE 1]) $
+                        l$ Ext $ LetLocE "l274" (AfterConstantLE 9 "lout272") $
+                        l$ LetE ("x275",[],PackedTy "Tree" "l274",
+                                 l$ AppE "indrBuildTree" ["l274"] (l$ VarE "i273")) $
+                        l$ Ext $ LetLocE "l276" (AfterVariableLE "x275" "l274") $
+                        l$ LetE ("y277",[],PackedTy "Tree" "l276",
+                                 l$ AppE "indrBuildTree" ["l276"] (l$ VarE "i273")) $
+                        l$ LetE ("indr_y277",[],CursorTy, l$ PrimAppE PEndOf [l$ VarE "x275"]) $
+                        l$ LetE ("a278",[],PackedTy "Tree" "lout272",
+                                 l$ DataConE "lout272" "Node^" [l$ VarE "indr_y277",
+                                                                l$ VarE "x275",
+                                                                l$ VarE "y277"]) $
+                        l$ VarE "a278")
+
+indrRightmostFun :: FunDef
+indrRightmostFun = FunDef "indrRightmost" indrRightmostTy "t742" indrRightmostBod
+  where
+    indrRightmostTy :: ArrowTy Ty2
+    indrRightmostTy = (ArrowTy
+                       [LRM "lin741" (VarR "r740") Input]
+                       (PackedTy "Tree" "lin741")
+                       (S.empty)
+                       (IntTy)
+                       [])
+
+indrRightmostBod :: L Exp2
+indrRightmostBod = l$ CaseE (l$ VarE "t742")
+               [("Leaf", [("n746","l747")],
+                 l$ VarE "n746"),
+                ("Node^", [("indr_x748","lindr_x748"),("x748","l749"), ("y750","l751")],
+                 l$ LetE ("lm752",[],IntTy, l$ AppE "indrRightmost" ["l751"] (l$ VarE "y750")) $
+                 l$ VarE "lm752")]
+
+indrRightmostMainExp :: L Exp2
+indrRightmostMainExp = l$ Ext $ LetRegionE (VarR "r753") $
+                       l$ Ext $ LetLocE "l754" (StartOfLE (VarR "r753")) $
+                       l$ LetE ("tr1", [], PackedTy "Tree" "l754",
+                                l$ AppE "indrBuildTree" ["l754"] (l$ LitE 3)) $
+                       l$ LetE ("a760",[], IntTy,
+                                l$ AppE "indrRightmost" ["l754"] (l$ VarE "tr1")) $
+                       l$ VarE "a760"
+
+indrRightmostProg :: Prog
+indrRightmostProg = Prog ddtree (M.fromList [("indrRightmost", indrRightmostFun)
+                                            ,("indrBuildTree",indrBuildTreeFun)])
+                    (Just (indrRightmostMainExp, IntTy))
