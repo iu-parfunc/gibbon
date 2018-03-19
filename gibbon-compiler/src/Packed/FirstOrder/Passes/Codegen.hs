@@ -107,8 +107,8 @@ codegenProg :: Bool -> Prog -> IO String
 codegenProg isPacked prg@(Prog funs mtal) = do
       env <- getEnvironment
       let rtsPath = case lookup "TREELANGDIR" env of
-                      Just p -> p ++"/gibbon-compiler/rts.c"
-                      Nothing -> "rts.c" -- Assume we're running from the compiler dir!
+                      Just p -> p ++"/gibbon-compiler/cbits/rts.c"
+                      Nothing -> "cbits/rts.c" -- Assume we're running from the compiler dir!
       e <- doesFileExist rtsPath
       unless e $ error$ "codegen: rts.c file not found at path: "++rtsPath
                        ++"\n Consider setting TREELANGDIR to repo root.\n"
