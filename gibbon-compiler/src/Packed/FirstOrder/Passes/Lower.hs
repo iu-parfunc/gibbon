@@ -100,8 +100,9 @@ genUnpacker DDef{tyName, dataCons} = do
   tag  <- gensym "tag"
   tail <- gensym "tail"
   alts <- genAlts (fromVar tyName) dataCons tail tag 0
+  lbl  <- gensym "switch"
   bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadTag [(T.VarTriv p)] $
-            T.Switch (T.VarTriv tag) alts Nothing
+            T.Switch lbl (T.VarTriv tag) alts Nothing
   return T.FunDecl{ T.funName  = mkUnpackerName (fromVar tyName),
                     T.funArgs  = [(p, T.CursorTy)],
                     T.funRetTy = T.ProdTy [T.PtrTy, T.CursorTy],
@@ -182,8 +183,9 @@ genPrinter DDef{tyName, dataCons} = do
   tag  <- gensym "tag"
   tail <- gensym "tail"
   alts <- genAltPrinter dataCons tail 0
+  lbl  <- gensym "switch"
   bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadInt [(T.VarTriv p)] $
-            T.Switch (T.VarTriv tag) alts Nothing
+            T.Switch lbl (T.VarTriv tag) alts Nothing
   return T.FunDecl{ T.funName  = mkPrinterName (fromVar tyName),
                     T.funArgs  = [(p, T.CursorTy)],
                     T.funRetTy = T.PtrTy,
@@ -385,9 +387,11 @@ lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
                oth -> error $ "lower.tail.CaseE: unexpected pattern" ++ show oth
         alts <- mapM doalt rest
         (_,last') <- doalt last
+        lbl <- gensym "switch"
         return $
          T.LetPrimCallT [(tagtmp,T.TagTyPacked),(ctmp,T.CursorTy)] T.ReadTag [T.VarTriv scrut] $
-          T.Switch (T.VarTriv tagtmp)
+          T.Switch lbl
+                   (T.VarTriv tagtmp)
                    (T.TagAlts alts)
                    (Just last')
 
@@ -434,13 +438,14 @@ lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
 
       alts'    <- mapM mk_alt alts
       (_, def) <- mk_alt def_alt
+      lbl <- gensym "switch"
 
       return $
         T.LetPrimCallT
           [(tag_bndr, T.TagTyPacked), (tail_bndr, T.CursorTy)]
           T.ReadInt
           [e_triv]
-          (T.Switch (T.VarTriv tag_bndr) (T.IntAlts alts') (Just def))
+          (T.Switch lbl (T.VarTriv tag_bndr) (T.IntAlts alts') (Just def))
 
 
     -- Accordingly, constructor allocation becomes an allocation.
@@ -505,7 +510,8 @@ lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
 
     IfE a b c       -> do b' <- tail b
                           c' <- tail c
-                          return $ T.Switch (triv "if test" a)
+                          lbl <- gensym "switch"
+                          return $ T.Switch lbl (triv "if test" a)
                                       -- If we are treating the boolean as a tag, then tag "0" is false
                                       (T.IntAlts [(0, c')])
                                       -- And tag "1" is true:
@@ -802,3 +808,4 @@ prim p =
     MkTrue       -> error "lower/prim: internal error. MkTrue should not get here."
     MkFalse      -> error "lower/prim: internal error. MkFalse should not get here."
     SymAppend    -> error "lower/prim: internal error. SymAppend should not get here."
+    PEndOf       -> error "lower/prim: internal error. PEndOf shouldn't be here."

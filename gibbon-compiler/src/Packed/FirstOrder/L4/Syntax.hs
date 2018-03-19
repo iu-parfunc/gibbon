@@ -9,7 +9,7 @@
 
 module Packed.FirstOrder.L4.Syntax
     ( Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..)
-    , Alts(..), Prog(..), MainExp(..)
+    , Alts(..), Prog(..), MainExp(..), Label
     -- * Utility functions
     , withTail
     , fromL3Ty
@@ -68,6 +68,8 @@ instance Out Word8 where
   doc w = doc (fromIntegral w :: Int)
   docPrec n w = docPrec n (fromIntegral w :: Int)
 
+type Label = Var
+
 data Tail
     = RetValsT [Triv] -- ^ Only in tail position, for returning from a function.
     | AssnValsT [(Var,Ty,Triv)] -- ^ INTERNAL ONLY: used for assigning instead of returning.
@@ -113,7 +115,7 @@ data Tail
                 , timed  :: Tail
                 , bod    :: Tail } -- ^ This is like a one-armed if.  It needs a struct return.
 
-    | Switch Triv Alts (Maybe Tail) -- TODO: remove maybe on default case
+    | Switch Label Triv Alts (Maybe Tail) -- TODO: remove maybe on default case
     -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
   deriving (Show, Ord, Eq, Generic, NFData, Out)
@@ -227,7 +229,7 @@ withTail (tl0,retty) fn =
         -- LetIfT _vr (tst,con,els)  $ fn [VarTriv _vr]
 
     -- Uh oh, here we don't have a LetSwitch form... duplicate code.
-    (Switch trv alts mlast) -> Switch trv <$> mapAltsM go alts <*> sequence (fmap go mlast)
+    (Switch lbl trv alts mlast) -> Switch lbl trv <$> mapAltsM go alts <*> sequence (fmap go mlast)
     (TailCall x1 x2)        -> do bnds <- genTmps retty
                                   return $ LetCallT bnds x1 x2 $ fn (map (VarTriv . fst) bnds)
  where

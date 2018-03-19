@@ -128,7 +128,7 @@ exec env (LetTimedT flg bnds rhs bod) = do
      else putStrLn $ "SELFTIMED: "++show tm
     exec env' bod
 
-exec env (Switch tr alts def) =
+exec env (Switch _ tr alts def) =
     case final_alt of
       Nothing -> error "Switch: No branch to choose."
       Just br -> exec env br

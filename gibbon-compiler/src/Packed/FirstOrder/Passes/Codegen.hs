@@ -92,8 +92,8 @@ harvestStructTys (Prog funs mtal) =
 
        (IfT _ a b) -> go a ++ go b
        ErrT{} -> []
-       (Switch _ (IntAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
-       (Switch _ (TagAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
+       (Switch _ _ (IntAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
+       (Switch _ _ (TagAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
        (TailCall _ _)    -> []
 
 --------------------------------------------------------------------------------
@@ -182,7 +182,7 @@ rewriteReturns tl bnds =
    (LetAllocT lhs vals body) -> LetAllocT lhs vals (go body)
    (IfT a b c) -> IfT a (go b) (go c)
    (ErrT s) -> (ErrT s)
-   (Switch tr alts def) -> Switch tr (mapAlts go alts) (fmap go def)
+   (Switch lbl tr alts def) -> Switch lbl tr (mapAlts go alts) (fmap go def)
    -- Oops, this is not REALLY a tail call.  Hoist it and go under:
    (TailCall f rnds) -> let (vs,ts) = unzip bnds
                             vs' = map (toVar . (++"hack")) (map fromVar vs) -- FIXME: Gensym
@@ -217,12 +217,11 @@ codegenTail (RetValsT ts) ty =
 codegenTail (AssnValsT ls) _ty =
     return $ [ mut (codegenTy ty) vr (codegenTriv triv) | (vr,ty,triv) <- ls ]
 
--- FIXME : This needs to actually generate a SWITCH!
-codegenTail (Switch tr alts def) ty =
+codegenTail (Switch lbl tr alts def) ty =
     case def of
       Nothing  -> let (rest,lastone) = splitAlts alts in
-                  genSwitch tr rest (altTail lastone) ty
-      Just def -> genSwitch tr alts def ty
+                  genSwitch lbl tr rest (altTail lastone) ty
+      Just def -> genSwitch lbl tr alts def ty
 
 codegenTail (TailCall v ts) _ty =
     return $ [ C.BlockStm [cstm| return $( C.FnCall (cid v) (map codegenTriv ts) noLoc ); |] ]
@@ -548,8 +547,8 @@ normalizeAlts alts =
       IntAlts as -> map (first mk_int_lhs) as
 
 -- | Generate a proper switch expression instead.
-genSwitch :: Triv -> Alts -> Tail -> C.Type -> ReaderT Bool SyM [C.BlockItem]
-genSwitch tr alts lastE ty =
+genSwitch :: Label -> Triv -> Alts -> Tail -> C.Type -> ReaderT Bool SyM [C.BlockItem]
+genSwitch lbl tr alts lastE ty =
     do let go :: [(C.Exp,Tail)] -> ReaderT Bool SyM [C.Stm]
            go [] = do tal <- codegenTail lastE ty
                       return [[cstm| default: $stm:(mkBlock tal) |]]
@@ -561,7 +560,8 @@ genSwitch tr alts lastE ty =
                   return (this:rst')
        alts' <- go (normalizeAlts alts)
        let body = mkBlock [ C.BlockStm a | a <- alts' ]
-       return $ [C.BlockStm [cstm| switch ( $exp:(codegenTriv tr) ) $stm:body |]]
+       return $ [ C.BlockStm [cstm| $id:lbl: ; |]
+                , C.BlockStm [cstm| switch ( $exp:(codegenTriv tr) ) $stm:body |]]
 
 -- | The identifier after typename refers to typedefs defined in rts.c
 --

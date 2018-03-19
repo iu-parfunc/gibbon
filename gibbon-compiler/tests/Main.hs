@@ -283,7 +283,7 @@ add1_prog = T.Prog [build_tree, add1]
     add1 = FunDecl "add1" [("t",T.CursorTy),("tout",T.CursorTy)] (T.ProdTy [T.CursorTy,T.CursorTy]) add1_tail True
 
     buildTree_tail =
-        Switch (VarTriv "n") (IntAlts [(0, base_case)]) (Just recursive_case)
+        Switch "switch1" (VarTriv "n") (IntAlts [(0, base_case)]) (Just recursive_case)
       where
         base_case, recursive_case :: Tail
 
@@ -300,7 +300,7 @@ add1_prog = T.Prog [build_tree, add1]
 
     add1_tail =
         LetPrimCallT [("ttag",T.TagTyPacked),("t2",T.CursorTy)] ReadTag [VarTriv "t"] $
-        Switch (VarTriv "ttag")
+        Switch "switch2" (VarTriv "ttag")
                (TagAlts [(leafTag,leafCase),
                          (nodeTag,nodeCase)])
                Nothing
