@@ -219,6 +219,7 @@ toL3Prim pr =
     ErrorP s ty    -> ErrorP s (stripTyLocs ty)
     ReadPackedFile fp tycon ty -> ReadPackedFile fp tycon (stripTyLocs ty)
     MkNullCursor -> MkNullCursor
+    PEndOf -> error "Do not use PEndOf after L2."
 
 -- | Abstract some of the differences of top level program types, by
 -- having a common way to extract an initial environment.

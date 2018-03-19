@@ -216,6 +216,10 @@ cursorizeExp ddfs fundefs denv tenv (L p ex) = L p <$>
       starts <- return $ giveStarts argTy arg'
       return $ AppE f [] starts
 
+    PrimAppE PEndOf [arg] -> do
+      let (L _ (VarE v)) = arg
+      return $ VarE (toEndV v)
+
     PrimAppE pr args -> PrimAppE (L3.toL3Prim pr) <$> mapM go args
 
     -- Same as `cursorizePackedExp`
