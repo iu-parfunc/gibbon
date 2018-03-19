@@ -26,7 +26,7 @@ module Packed.FirstOrder.L2.Syntax
 
     -- *
     , allLocVars, inLocVars, outLocVars, substEffs, substTy, mapPacked, prependArgs
-    , isPackedTy'
+    , isPackedTy', locsInTy
 
     -- * Temporary backwards compatibility, plus rexports
     , UrTy(..)
@@ -338,6 +338,13 @@ prependArgs ls t = ProdTy $ ls ++ [t]
 isPackedTy' :: Ty2 -> Bool
 isPackedTy' (PackedTy _ _) = True
 isPackedTy' _ = False
+
+locsInTy :: Ty2 -> [LocVar]
+locsInTy ty =
+    case ty of
+      PackedTy _ lv -> [lv]
+      ProdTy tys -> concatMap locsInTy tys
+      _ -> []
 
 
 {-
