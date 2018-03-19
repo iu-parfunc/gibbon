@@ -158,7 +158,7 @@ boundsCheckExp ddfs fundefs renv env2 deps checked (L p ex) = L p <$>
           reg = renv # lc
       if needsBoundsCheck ddfs dcon && reg `S.notMember` checked
       then do
-        let sz  = sizeRedirection + sizeOfScalars ddfs dcon
+        let sz  = redirectionSize + sizeOfScalars ddfs dcon
         -- IMPORTANT: Mutates the region/cursor bindings
         -- IntTy is a placeholder. BoundsCheck is a side-effect
         unLoc <$>
@@ -282,7 +282,7 @@ sizeOfScalars ddfs dcon =
   case (scalars,packed) of
     ([], _ ) -> 0
     (_ , []) -> 1 + sizes
-    (_ , _ ) -> 1 + sizes + sizeRedirection
+    (_ , _ ) -> 1 + sizes + redirectionSize
   where
     tys =  lookupDataCon ddfs dcon
     scalars = filter (not . isPackedTy) tys
@@ -295,7 +295,7 @@ ddefsWithRedir :: DDefs Ty2 -> DDefs Ty2
 ddefsWithRedir ddfs = M.map (\d@DDef{dataCons} -> d {dataCons = dataCons ++ [redirCon] } ) ddfs
   where
     redirCon :: (DataCon,[(IsBoxed,Ty2)])
-    redirCon = (tagRedirection,[(False, CursorTy)])
+    redirCon = (redirectionTag,[(False, CursorTy)])
 
 -- |
 hasComplexDataCon :: DDefs Ty2 -> TyCon -> Bool
@@ -420,7 +420,7 @@ followRedirectsExp ddfs fundefs funname tenv (L p ex) = L p <$>
                                   (bvar  , endofs, outT    , recurse) ]
                          tail1
             -- Final case triple
-            newcase = (tagRedirection,[(rvar,rloc)],newcaseexp)
+            newcase = (redirectionTag,[(rvar,rloc)],newcaseexp)
 
         mp' <- mapM (docase tenv) mp
         return $ CaseE scrt (mp' ++ [newcase])
