@@ -228,20 +228,19 @@ inferLocs (L1.Prog dfs fds me) = do
               l1 <- fresh
               u1 <- fixLoc l1
               (me',ty') <- inferExp' fe me $ SingleDest l1
-              me' <- finishExp me'
-              return $ Just (me',ty')
+              me'' <- finishExp me'
+              let (me''',_) = cleanExp me''
+              return $ Just (me''',ty')
             Nothing -> return Nothing
           fds' <- forM fds $ \(L1.FunDef fn fa frt fbod) -> do
-                                   frt' <- lift $ lift $ convertTy frt
-                                   case frt' of
-                                     PackedTy tc lv -> do
-                                               -- TODO: finish this
-                                               return undefined
-                                     _ -> do let arrty = lookupFEnv fn fe
-                                                 fe' = extendVEnv (fst fa) (arrIn arrty) fe
-                                             (fbod',_) <- inferExp' fe' fbod NoDest
-                                             fbod' <- finishExp fbod'
-                                             return $ L2.FunDef fn arrty (fst fa) fbod'
+                                   let arrty = lookupFEnv fn fe
+                                       fe' = extendVEnv (fst fa) (arrIn arrty) fe
+                                   dest <- destFromType (arrOut arrty)
+                                   fixType_ (arrIn arrty)
+                                   (fbod',_) <- inferExp' fe' fbod dest
+                                   fbod'' <- finishExp fbod'
+                                   let (fbod''',_) = cleanExp fbod''
+                                   return $ L2.FunDef fn arrty (fst fa) fbod'''
           return $ L2.Prog dfs' fds' me'
 
     
@@ -255,6 +254,20 @@ mkDest :: [LocVar] -> Dest
 mkDest [lv] = SingleDest lv
 mkDest [] = NoDest
 mkDest lvs = TupleDest $ L.map (mkDest . (\lv -> [lv])) lvs
+
+destFromType :: Ty2 -> TiM Dest
+destFromType frt = 
+  case frt of
+    PackedTy _tc lv -> fixLoc lv >> return (SingleDest lv)
+    ProdTy tys -> mapM destFromType tys >>= return . TupleDest
+    _ -> return NoDest
+
+fixType_ :: Ty2 -> TiM ()
+fixType_ ty =
+    case ty of
+      PackedTy _tc lv -> fixLoc lv >> return ()
+      ProdTy tys -> mapM_ fixType_ tys
+      _ -> return ()
 
 -- | Wrap the inferExp procedure, and consume all remaining constraints
 inferExp' :: FullEnv -> (L L1.Exp1) -> Dest -> TiM (L L2.Exp2, L2.Ty2)
@@ -617,7 +630,55 @@ finishExp (L i e) =
                                     return $ AfterVariableLE v lv'
                        oth -> return oth
              return $ l$ Ext (LetLocE loc' lex' e1')
-      _ -> err $ "Unhandled case: " ++ (show e)
+      _ -> err $ "Unhandled case in finishExp: " ++ (show e)
+
+-- | Remove unused location bindings
+-- Returns pair of (new exp, set of free locations)
+-- TODO: avoid generating location bindings for immediate values
+cleanExp :: L Exp2 -> (L Exp2, S.Set LocVar)
+cleanExp (L i e) =
+    let l e = L i e
+    in
+    case e of
+      VarE v -> (l$ VarE v, S.empty)
+      LitE v -> (l$ LitE v, S.empty)
+      LitSymE v -> (l$ LitSymE v, S.empty)
+      AppE v ls e -> let (e',s') = cleanExp e
+                     in (l$ AppE v ls e', S.union s' (S.fromList ls))
+      PrimAppE pr es -> let (es',ls') = unzip $ L.map cleanExp es
+                        in (l$ PrimAppE pr es', S.unions ls')
+      LetE (v,ls,t,e1) e2 -> undefined
+      IfE e1 e2 e3 -> let (e1',s1') = cleanExp e1
+                          (e2',s2') = cleanExp e2
+                          (e3',s3') = cleanExp e3
+                      in (l$ IfE e1' e2' e3', S.unions [s1',s2',s3'])
+      MkProdE es -> let (es',ls') = unzip $ L.map cleanExp es
+                    in (l$ MkProdE es', S.unions ls')
+      ProjE i e -> let (e',s') = cleanExp e
+                   in (l$ ProjE i e', s')
+      CaseE e1 prs -> let (e1',s1') = cleanExp e1
+                          (prs', ls2') = unzip $ L.map
+                                         (\(dc,lvs,e2) -> let (e2', s2) = cleanExp e2
+                                                          in ((dc,lvs,e2'), s2)) prs
+                      in (l$ CaseE e1' prs', S.union s1' $ S.unions ls2')
+      DataConE lv dc es -> let (es',ls') = unzip $ L.map cleanExp es
+                           in (l$ DataConE lv dc es', S.union (S.singleton lv) $ S.unions ls')
+      TimeIt e d b -> let (e',s') = cleanExp e
+                      in (l$ TimeIt e' d b, s')
+      Ext (LetRegionE r e) -> let (e',s') = cleanExp e
+                              in (l$ Ext (LetRegionE r e'), s')
+      Ext (LetLocE loc lex e) -> let (e',s') = cleanExp e
+                                 in if S.member loc s'
+                                    then let ls = case lex of
+                                                    AfterConstantLE _i lv -> [lv]
+                                                    AfterVariableLE _v lv -> [lv]
+                                                    oth -> []
+                                         in (l$ Ext (LetLocE loc lex e'),
+                                              S.delete loc $ S.union s' $ S.fromList ls)
+                                    else (e',s')
+      _ -> err $ "Unhandled case in cleanExp: " ++ (show e)
+                                      
+                           
 
 containsLoc :: LocVar -> L2.Ty2 -> [Constraint] -> TiM Bool
 containsLoc lv1 ty cs =
