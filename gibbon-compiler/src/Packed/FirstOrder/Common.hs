@@ -45,7 +45,7 @@ module Packed.FirstOrder.Common
          -- * Data definitions
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
-       , sizeRedirection, tagRedirection
+       , sizeRedirection, tagRedirection, toIndrDataCon, isIndrDataCon
 
          -- * Misc helpers
        , (#), (!!!), fragileZip, fragileZip', sdoc, ndoc, abbrv, l
@@ -339,6 +339,12 @@ sizeRedirection = 9
 
 tagRedirection :: DataCon
 tagRedirection = "REDIRECTION"
+
+toIndrDataCon :: DataCon -> DataCon
+toIndrDataCon dcon = dcon ++ "^"
+
+isIndrDataCon :: DataCon -> Bool
+isIndrDataCon = isSuffixOf "^"
 
 -- Fundefs
 ----------------------------------------

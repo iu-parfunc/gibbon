@@ -37,6 +37,7 @@ module Packed.FirstOrder.L1.Syntax
     , mapExprs
     , mapExt
     , mapLocs
+    , numPackedDataCon
 
       -- * Trivial expressions
     , assertTriv, assertTrivs, hasTimeIt, isTrivial
@@ -442,8 +443,8 @@ hasPacked t =
     IntTy          -> False
     SymDictTy ty   -> hasPacked ty
     ListTy _       -> error "FINISHLISTS"
-    PtrTy          -> error$ "hasPacked: should not be using this when PtrTy is introduced: "++show t
-    CursorTy       -> error$ "hasPacked: should not be using this when CursorTy is introduced: "++show t
+    PtrTy          -> False
+    CursorTy       -> False
 
 -- | Provide a size in bytes, if it is statically known.
 sizeOf :: UrTy a -> Maybe Int
@@ -597,6 +598,15 @@ primRetTy p =
 
 dummyCursorTy :: Ty1
 dummyCursorTy = CursorTy
+
+numPackedDataCon :: Out a => DDefs (UrTy a) -> DataCon -> Maybe Int
+numPackedDataCon ddfs dcon =
+    if numPacked > 1
+    then Just (numPacked - 1)
+    else Nothing
+  where
+    tys = lookupDataCon ddfs dcon
+    numPacked = length $ L.filter isPackedTy tys
 
 --------------------------------------------------------------------------------
 

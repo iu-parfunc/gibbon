@@ -425,18 +425,22 @@ Reason: unariser can only eliminate direct projections of this form.
 
           go2 d ((rnd, ty):rst) = do
             d' <- gensym "writecur"
-            if isPackedTy ty
+            case ty of
+              _ | isPackedTy ty -> do
+                 rnd' <- go tenv rnd
+                 LetE (d',[], CursorTy, projEnds rnd') <$> l <$>
+                   go2 d' rst
 
-            then do
-             rnd' <- go tenv rnd
-             LetE (d',[], CursorTy, projEnds rnd') <$> l <$>
-               go2 d' rst
+              IntTy -> do
+                rnd' <- cursorizeExp ddfs fundefs denv tenv rnd
+                LetE (d',[], CursorTy, l$ Ext $ L3.WriteInt d rnd') <$> l <$>
+                  go2 d' rst
 
-            -- INT is the only scalar type right now
-            else do
-             rnd' <- cursorizeExp ddfs fundefs denv tenv rnd
-             LetE (d',[], CursorTy, l$ Ext $ L3.WriteInt d rnd') <$> l <$>
-               go2 d' rst
+              CursorTy -> do
+                rnd' <- cursorizeExp ddfs fundefs denv tenv rnd
+                LetE (d',[], CursorTy, l$ Ext $ L3.WriteCursor d rnd') <$> l <$>
+                  go2 d' rst
+              _ -> error "Unknown type encounterred while cursorizing DataConE."
 
       writetag <- gensym "writetag"
       dl <$>
@@ -646,6 +650,13 @@ Other bindings are straightforward projections of the processed RHS.
 unpackDataCon :: DDefs Ty2 -> NewFuns -> DepEnv -> TEnv -> Bool -> Var
               -> (DataCon, [(Var, Var)], L Exp2) -> SyM (DataCon, [t], L L3.Exp3)
 unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
+
+  let indrVars = if isIndrDataCon dcon
+                 then (case numPackedDataCon ddfs dcon of
+                         Just numPacked -> L.map fst $ take numPacked vlocs
+                         Nothing -> error $ "unpackDataCon: Sized constructor should have packed fields.")
+                 else []
+
 -- The first bound location requires special handling. We have to bind it to
 -- (scrtCur + 1) by hand. All the other locations are bound (calculated) by
 -- RouteEnds. Ideally we should arrange RouteEnds to bind this as well,
@@ -653,7 +664,7 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
   cur <- gensym scrtCur
   (dcon,[],)
     <$> mkLets [(cur,[],CursorTy, l$ Ext $ L3.AddCursor scrtCur (l$ LitE 1))]
-    <$> go cur vlocs tys True denv' tenv
+    <$> go cur vlocs tys indrVars True denv' tenv
 
   where
         tys  = lookupDataCon ddfs dcon
@@ -663,9 +674,9 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
 
         -- Loop over fields.  Issue reads to get out all Ints. Otherwise, just
         -- bind vars to locations
-        go :: (Show t) => Var -> [(Var, Var)] -> [UrTy t] -> Bool -> DepEnv -> TEnv -> SyM (L L3.Exp3)
-        go _c [] [] _isFirst denv env = processRhs denv env
-        go cur ((v,loc):rst) (ty:rtys) isFirstPacked denv env =
+        go :: (Show t) => Var -> [(Var, Var)] -> [UrTy t] -> [Var] -> Bool -> DepEnv -> TEnv -> SyM (L L3.Exp3)
+        go _c [] [] _ _isFirst denv env = processRhs denv env
+        go cur ((v,loc):rst) (ty:rtys) indrVars isFirstPacked denv env =
           case ty of
             IntTy -> do
               tmp <- gensym (toVar "readint_tpl")
@@ -680,7 +691,7 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
                           (v       , [], IntTy   , l$ ProjE 0 (l$ VarE tmp)),
                           (toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp))]
 
-              bod <- go (toEndV v) rst rtys True denv (M.insert loc CursorTy env')
+              bod <- go (toEndV v) rst rtys indrVars True denv (M.insert loc CursorTy env')
               return $ mkLets bnds bod
 
             -- Unpack redirection nodes
@@ -694,22 +705,30 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
                   env' = M.union (M.fromList [(loc, CursorTy),
                                               (v  , CursorTy)])
                          env
-              bod <- go (toEndV v) rst rtys True denv env'
+              bod <- go (toEndV v) rst rtys indrVars True denv env'
               return $ mkLets bnds bod
 
             _ -> do
               let env' = M.insert v CursorTy env
+                  hasIndr = isIndrDataCon dcon
               if isFirstPacked
               then do
-                bod <- go (toEndV v) rst rtys False denv (M.insert loc CursorTy env')
+                bod <- go (toEndV v) rst rtys indrVars False denv (M.insert loc CursorTy env')
                 return $ mkLets [(loc, [], CursorTy, l$ VarE cur)
+                                ,(v  , [], CursorTy, l$ VarE loc)]
+                         bod
+              else if hasIndr
+              then do
+                let (indr:rest_indrs) = indrVars
+                bod <- go v rst rtys rest_indrs False denv (M.insert loc CursorTy env')
+                return $ mkLets [(loc, [], CursorTy, l$ VarE indr)
                                 ,(v  , [], CursorTy, l$ VarE loc)]
                          bod
               else
                 -- Don't create a `let v = loc` binding. Instead, add it to DepEnv
-                go (toEndV v) rst rtys False (M.insertWith (++) loc [v] denv) env'
+                go (toEndV v) rst rtys indrVars False (M.insertWith (++) loc [v] denv) env'
 
-        go _ vls rtys _ _ _ = error $ "Unexpected numnber of varible, type pairs: " ++ show (vls,rtys)
+        go _ vls rtys _ _ _ _ = error $ "Unexpected numnber of varible, type pairs: " ++ show (vls,rtys)
 
 
 -- |
