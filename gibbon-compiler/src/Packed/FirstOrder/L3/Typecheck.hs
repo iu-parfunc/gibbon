@@ -99,6 +99,13 @@ tcExp ddfs env exp@(L p ex) =
           ensureEqualTy exp vty CursorTy
           return $ ProdTy [CursorTy, CursorTy]
 
+        WriteCursor cur val -> do
+          curty  <- lookupVar env cur exp
+          ensureEqualTy exp curty CursorTy
+          valty <- go val
+          ensureEqualTy exp valty CursorTy
+          return CursorTy
+
     -- All the other cases are exactly same as L1.Typecheck
 
     VarE v    -> lookupVar env v exp

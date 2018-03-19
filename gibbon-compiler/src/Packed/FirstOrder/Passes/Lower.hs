@@ -611,6 +611,9 @@ lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
       T.LetPrimCallT [(vtmp,T.CursorTy),(ctmp,T.CursorTy)] T.ReadCursor [T.VarTriv c] <$>
         tail bod'
 
+    LetE (v, _, _, L _ (Ext (WriteCursor cur e))) bod ->
+      T.LetPrimCallT [(v,T.CursorTy)] T.WriteInt [triv "WriteCursor arg" e, T.VarTriv cur] <$>
+         tail bod
 
     Ext _ -> error $ "lower: unexpected extension" ++ sdoc ex0
 
