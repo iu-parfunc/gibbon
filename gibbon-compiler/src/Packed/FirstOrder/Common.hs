@@ -348,7 +348,7 @@ redirectionTag :: DataCon
 redirectionTag = "REDIRECTION"
 
 redirectionAlt :: Num a => a
-redirectionAlt = 254
+redirectionAlt = 100
 
 toIndrDataCon :: DataCon -> DataCon
 toIndrDataCon dcon = dcon ++ "^"

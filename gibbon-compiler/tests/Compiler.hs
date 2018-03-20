@@ -32,6 +32,7 @@ import Packed.FirstOrder.Passes.ShakeTree
 import Packed.FirstOrder.Passes.HoistNewBuf
 import Packed.FirstOrder.Passes.FindWitnesses
 import Packed.FirstOrder.Passes.Lower
+import Packed.FirstOrder.Passes.FollowRedirects
 import Packed.FirstOrder.TargetInterp
 import Packed.FirstOrder.Passes.Codegen
 import Packed.FirstOrder.Passes.Flatten
@@ -58,7 +59,6 @@ runT prg = fst $ runSyM 0 $ do
     l2 <- routeEnds l2
     l2 <- tcProg l2
     l2 <- boundsCheck l2
-    l2 <- followRedirects l2
     l2 <- threadRegions l2
     l2 <- flattenL2 l2
     l3 <- cursorize l2
@@ -76,7 +76,8 @@ run2T l3 = fst $ runSyM 0 $ do
     let mainTyPre = fmap snd $ L3.mainExp l3
     l3 <- flattenL3 l3
     l3 <- L3.tcProg l3
-    lower (True, mainTyPre) l3
+    l4 <- lower (True, mainTyPre) l3
+    followRedirects l4
 
 
 cg :: Prog -> IO String

@@ -216,6 +216,7 @@ withTail :: (Tail,Ty) -> ([Triv] -> Tail) -> SyM Tail
 withTail (tl0,retty) fn =
   let go x = withTail (x,retty) fn in -- ^ Warning: assumes same type.
   case tl0 of
+    Goto{} -> return tl0
     RetValsT ls -> return $ fn ls
     (ErrT x)    -> return $ ErrT x
     (AssnValsT _ _) -> error $ "withTail: expected tail expression returning values, not: "++show tl0

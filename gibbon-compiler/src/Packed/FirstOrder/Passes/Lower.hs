@@ -184,6 +184,7 @@ genPrinter DDef{tyName, dataCons} = do
   tail <- gensym "tail"
   alts <- genAltPrinter dataCons tail 0
   lbl  <- gensym "switch"
+  -- TODO: Why is this ReadInt ?
   bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] T.ReadInt [(T.VarTriv p)] $
             T.Switch lbl (T.VarTriv tag) alts Nothing
   return T.FunDecl{ T.funName  = mkPrinterName (fromVar tyName),
@@ -378,13 +379,17 @@ lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
             rest = reverse restrev
         tagtmp <- gensym $ toVar "tmpval"
         ctmp   <- gensym $ toVar "tmpcur"
-        -- We only need to thread one value through, the cursor resulting from read.
-        let doalt (k,ls,rhs) =
-             (getTagOfDataCon ddefs k,) <$>
-             case ls of
-               []  -> tail rhs -- AUDITME -- is this legit, or should it have one cursor param anyway?
-               [(c,_)] -> tail (subst c (l$ VarE ctmp) rhs)
-               oth -> error $ "lower.tail.CaseE: unexpected pattern" ++ show oth
+        -- Here we lamely chase down all the tuple references and make them variables:
+        -- So that Goto's work properly (See [Modifying switch statements to use redirection nodes]).
+        let doalt (k,ls,rhs) = do
+              let rhs' = L1.substE (l$ Ext (AddCursor scrut (l$ LitE 1))) (l$ VarE ctmp) $
+                         rhs
+              -- We only need to thread one value through, the cursor resulting from read.
+              (getTagOfDataCon ddefs k,) <$>
+                case ls of
+                  []  -> tail rhs' -- AUDITME -- is this legit, or should it have one cursor param anyway?
+                  [(c,_)] -> tail (subst c (l$ VarE ctmp) rhs')
+                  oth -> error $ "lower.tail.CaseE: unexpected pattern" ++ show oth
         alts <- mapM doalt rest
         (_,last') <- doalt last
         lbl <- gensym "switch"

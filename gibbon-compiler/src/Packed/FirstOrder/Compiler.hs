@@ -155,7 +155,7 @@ defaultConfig =
          }
 
 suppress_warnings :: String
-suppress_warnings = " -Wno-incompatible-pointer-types -Wno-int-conversion "
+suppress_warnings = " -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-int-to-pointer-cast "
 
 configParser :: Parser Config
 configParser = Config <$> inputParser
@@ -472,7 +472,7 @@ pass Config{stopAfter} who fn x = do
   if dbgLvl >= passChatterLvl+1
      then lift$ dbgPrintLn (passChatterLvl+1) $ "Pass output:\n"++sepline++"\n"++sdoc y'
      -- TODO: Switch to a node-count for size output (add to GenericOps):
-     else lift$ dbgPrintLn passChatterLvl $ "   => "++ show (length (sdoc y')) ++ " characters output." 
+     else lift$ dbgPrintLn passChatterLvl $ "   => "++ show (length (sdoc y')) ++ " characters output."
   when (stopAfter == who) $ do
     dbgTrace 0 ("Compilation stopped; --stop-after=" ++ who) (return ())
     liftIO exitSuccess

@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-type-defaults #-}
 
 {-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE OverloadedStrings  #-}
@@ -441,7 +442,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                        bck = [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) newsize = ($id:end - $id:reg) * 2; |]
                              , C.BlockStm  [cstm|  $id:reg = ($ty:(codegenTy CursorTy))ALLOC_PACKED(newsize); |]
                              , C.BlockStm  [cstm|  $id:end = $id:reg + newsize; |]
-                             , C.BlockStm  [cstm|  *($ty:(codegenTy TagTyPacked) *) ($id:cur) = ($int:tag); |]
+                             , C.BlockStm  [cstm|  *($ty:(codegenTy TagTyPacked) *) ($id:cur) = ($int:redirectionAlt); |]
                              , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) redir =  $id:cur + 1; |]
                              , C.BlockStm  [cstm|  *($ty:(codegenTy CursorTy) *) redir = $id:reg; |]
                              , C.BlockStm  [cstm|  $id:cur = $id:reg; |]
