@@ -155,15 +155,6 @@ case_sumtree = runner "sumtree.c" sumTreeProg "8"
 case_sumstree :: Assertion
 case_sumstree = runner "sumstree.c" sumSTreeProg "8"
 
-case_indrrightmost :: Assertion
-case_indrrightmost = runner "indrrightmost.c" indrRightmostProg "1"
-
-{-
-
-This tests work if the initial region size is big enough. See TODO: in BoundsCheck.hs.
-But this serves as a reminder to fix the underlying issue.
-
-
 case_sumupseteven :: Assertion
 case_sumupseteven = runner "sumupseteven.c" sumUpSetEvenProg "'#((Inner 8 1 (Inner 4 1 (Inner 2 1 (Leaf 1) (Leaf 1)) (Inner 2 1 (Leaf 1) (Leaf 1))) (Inner 4 1 (Inner 2 1 (Leaf 1) (Leaf 1)) (Inner 2 1 (Leaf 1) (Leaf 1)))) 8)"
 
@@ -173,10 +164,13 @@ case_subst = runner "subst.c" substProg "(LETE 1 (VARREF 42) (VARREF 10))"
 case_buildstree :: Assertion
 case_buildstree = runner "buildstree.c" buildSTreeProg "(Inner 0 0 (Inner 0 0 (Inner 0 0 (Leaf 1) (Leaf 1)) (Inner 0 0 (Leaf 1) (Leaf 1))) (Inner 0 0 (Inner 0 0 (Leaf 1) (Leaf 1)) (Inner 0 0 (Leaf 1) (Leaf 1))))"
 
+{-
 case_twotrees :: Assertion
 case_twotrees = runner "buildtwotrees.c" buildTwoTreesProg "'#((Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))) (Node (Node (Leaf 1) (Leaf 1)) (Node (Leaf 1) (Leaf 1))))"
-
 -}
+
+case_indrrightmost :: Assertion
+case_indrrightmost = runner "indrrightmost.c" indrRightmostProg "1"
 
 compilerTests :: TestTree
 compilerTests = $(testGroupGenerator)

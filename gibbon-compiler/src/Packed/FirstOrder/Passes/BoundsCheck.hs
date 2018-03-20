@@ -310,4 +310,4 @@ hasComplex tys = any id $ map (\t -> any hasPacked t && any (not . hasPacked) t)
 -- for the current write-op (Since it won't always be inserted before a write-op).
 -- This is a reasonable default.
 conservativeSizeScalars :: Int
-conservativeSizeScalars = 64
+conservativeSizeScalars = 32
