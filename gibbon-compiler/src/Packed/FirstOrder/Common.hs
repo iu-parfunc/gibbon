@@ -21,6 +21,7 @@ module Packed.FirstOrder.Common
 
          -- * Type and Data constructors
        , DataCon, TyCon, IsBoxed
+
          -- * Variables and gensyms
        , Var(..), fromVar, toVar, varAppend, SyM, gensym, genLetter, runSyM
        , cleanFunName
@@ -45,7 +46,11 @@ module Packed.FirstOrder.Common
          -- * Data definitions
        , DDef(..), DDefs, fromListDD, emptyDD, insertDD
        , lookupDDef, lookupDataCon, getConOrdering, getTyOfDataCon, getTagOfDataCon
-       , redirectionSize, redirectionTag, toIndrDataCon, isIndrDataCon
+       , Tag
+
+         -- * Redirections and indirections
+       , redirectionSize, redirectionTag, redirectionAlt
+       , toIndrDataCon, isIndrDataCon
 
          -- * Misc helpers
        , (#), (!!!), fragileZip, fragileZip', sdoc, ndoc, abbrv, l
@@ -273,6 +278,8 @@ instance (Out k,Out v) => Out (Map k v) where
   doc         = doc . M.toList
   docPrec n v = docPrec n (M.toList v)
 
+type Tag = Word8
+
 -- DDef utilities:
 
 -- | Lookup a ddef in its entirety
@@ -339,6 +346,9 @@ redirectionSize = 9
 
 redirectionTag :: DataCon
 redirectionTag = "REDIRECTION"
+
+redirectionAlt :: Num a => a
+redirectionAlt = 254
 
 toIndrDataCon :: DataCon -> DataCon
 toIndrDataCon dcon = dcon ++ "^"

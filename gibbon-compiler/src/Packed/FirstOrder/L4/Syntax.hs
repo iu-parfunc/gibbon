@@ -44,8 +44,6 @@ data MainExp
 
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
-type Tag = Word8
-
 data Triv
     = VarTriv Var
     | IntTriv Int64
@@ -72,7 +70,11 @@ type Label = Var
 
 data Tail
     = RetValsT [Triv] -- ^ Only in tail position, for returning from a function.
-    | AssnValsT [(Var,Ty,Triv)] -- ^ INTERNAL ONLY: used for assigning instead of returning.
+    | AssnValsT { upd       :: [(Var,Ty,Triv)]
+                , bod_maybe :: Maybe Tail
+                }
+
+    -- ^ INTERNAL ONLY: used for assigning instead of returning.
 
     | LetCallT { binds :: [(Var,Ty)],
                  rator :: Var,
@@ -118,6 +120,7 @@ data Tail
     | Switch Label Triv Alts (Maybe Tail) -- TODO: remove maybe on default case
     -- ^ For casing on numeric tags or integers.
     | TailCall Var [Triv]
+    | Goto Label
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data Ty
@@ -215,7 +218,7 @@ withTail (tl0,retty) fn =
   case tl0 of
     RetValsT ls -> return $ fn ls
     (ErrT x)    -> return $ ErrT x
-    (AssnValsT _) -> error $ "withTail: expected tail expression returning values, not: "++show tl0
+    (AssnValsT _ _) -> error $ "withTail: expected tail expression returning values, not: "++show tl0
     (LetCallT { binds, rator, rands, bod })    -> LetCallT binds rator rands    <$> go bod
     (LetPrimCallT { binds, prim, rands, bod }) -> LetPrimCallT binds prim rands <$> go bod
     (LetTrivT { bnd, bod })                    -> LetTrivT   bnd                <$> go bod

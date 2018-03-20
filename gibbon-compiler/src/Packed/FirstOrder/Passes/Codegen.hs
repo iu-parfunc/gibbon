@@ -74,7 +74,10 @@ harvestStructTys (Prog funs mtal) =
     go tl =
      case tl of
        (RetValsT _)  -> []
-       (AssnValsT ls)-> [ProdTy (map (\(_,x,_) -> x) ls)]
+       (AssnValsT ls bod_maybe) ->
+         case bod_maybe of
+           Just bod -> ProdTy (map (\(_,x,_) -> x) ls) : go bod
+           Nothing  -> [ProdTy (map (\(_,x,_) -> x) ls)]
        -- This creates a demand for a struct return, but it is covered
        -- by the fun signatures already:
        (LetCallT binds _ _  bod)   -> ProdTy (map snd binds) : go bod
@@ -95,6 +98,7 @@ harvestStructTys (Prog funs mtal) =
        (Switch _ _ (IntAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
        (Switch _ _ (TagAlts ls) b) -> concatMap (go . snd) ls ++ concatMap go (maybeToList b)
        (TailCall _ _)    -> []
+       (Goto _) -> []
 
 --------------------------------------------------------------------------------
 -- * C codegen
@@ -166,11 +170,12 @@ rewriteReturns :: Tail -> [(Var,Ty)] -> Tail
 rewriteReturns tl bnds =
  let go x = rewriteReturns x bnds in
  case tl of
-   (RetValsT ls) -> AssnValsT [ (v,t,e) | (v,t) <- bnds | e <- ls ]
+   (RetValsT ls) -> AssnValsT [ (v,t,e) | (v,t) <- bnds | e <- ls ] Nothing
+   (Goto _) -> tl
 
    -- Here we've already rewritten the tail to assign values
    -- somewhere.. and now we want to REREWRITE it?
-   (AssnValsT _) -> error$ "rewriteReturns: Internal invariant broken:\n "++sdoc tl
+   (AssnValsT _ _) -> error$ "rewriteReturns: Internal invariant broken:\n "++sdoc tl
    (e@LetCallT{bod})     -> e{bod = go bod }
    (e@LetPrimCallT{bod}) -> e{bod = go bod }
    (e@LetTrivT{bod})     -> e{bod = go bod }
@@ -214,8 +219,13 @@ codegenTail (RetValsT ts) ty =
     return $ [ C.BlockStm [cstm| return $(C.CompoundLit ty args noLoc); |] ]
     where args = map (\a -> (Nothing,C.ExpInitializer (codegenTriv a) noLoc)) ts
 
-codegenTail (AssnValsT ls) _ty =
-    return $ [ mut (codegenTy ty) vr (codegenTriv triv) | (vr,ty,triv) <- ls ]
+codegenTail (AssnValsT ls bod_maybe) ty = do
+    case bod_maybe of
+      Just bod -> do
+        bod' <- codegenTail bod ty
+        return $ [ mut (codegenTy ty) vr (codegenTriv triv) | (vr,ty,triv) <- ls ] ++ bod'
+      Nothing  ->
+        return $ [ mut (codegenTy ty) vr (codegenTriv triv) | (vr,ty,triv) <- ls ]
 
 codegenTail (Switch lbl tr alts def) ty =
     case def of
@@ -477,7 +487,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                               Nothing -> [cexp| read_benchfile_param() |] -- Will be set by command line arg.
                                  unpackName = mkUnpackerName tyc
                                  unpackcall = LetCallT [(outV,PtrTy),(toVar "junk",CursorTy)]
-                                                    unpackName [VarTriv (toVar "ptr")] (AssnValsT [])
+                                                    unpackName [VarTriv (toVar "ptr")] (AssnValsT [] Nothing)
                              let mmapCode =
                                   [ C.BlockDecl[cdecl| int fd = open( $filename, O_RDONLY); |]
                                   , C.BlockStm[cstm| { if(fd == -1) { fprintf(stderr,"fopen failed\n"); abort(); }} |]
@@ -495,6 +505,9 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                      | otherwise -> error $ "ReadPackedFile, wrong arguments "++show rnds++", or expected bindings "++show bnds
                  oth -> error$ "FIXME: codegen needs to handle primitive: "++show oth
        return $ pre ++ bod'
+
+codegenTail (Goto lbl) _ty = do
+  return [ C.BlockStm [cstm| goto $id:lbl; |] ]
 
 -- | The sizes for all mulitplicities are defined as globals in the RTS.
 -- Note: Must be consistent with the names in RTS!
