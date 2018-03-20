@@ -136,7 +136,7 @@ boundsCheck Prog{ddefs,fundefs,mainExp} = do
   --               Nothing -> return Nothing
   --               Just (mn, ty) -> Just . (,ty) <$>
   --                 boundsCheckExp ddefs fundefs M.empty env2 (depList mn) S.empty mn
-  return $ Prog (ddefsWithRedir ddefs) fundefs' mainExp
+  return $ Prog ddefs fundefs' mainExp
 
 boundsCheckFn :: DDefs Ty2 -> NewFuns -> L2.FunDef -> SyM L2.FunDef
 boundsCheckFn ddefs fundefs f@FunDef{funarg,funty,funbod} = do
@@ -299,8 +299,9 @@ ddefsWithRedir ddfs = M.map (\d@DDef{dataCons} -> d {dataCons = dataCons ++ [red
 hasComplexDataCon :: DDefs Ty2 -> TyCon -> Bool
 hasComplexDataCon ddfs tycon =
   let dcons = getConOrdering ddfs tycon
+      hasIndrs = any isIndrDataCon dcons
       tys = map (lookupDataCon ddfs) dcons
-  in hasComplex tys
+  in hasIndrs || hasComplex tys
 
 hasComplex :: [[Ty2]] -> Bool
 hasComplex tys = any id $ map (\t -> any hasPacked t && any (not . hasPacked) t) tys

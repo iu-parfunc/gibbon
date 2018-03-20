@@ -574,8 +574,20 @@ lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
                                              , triv "addCursor offset" e] <$>
          tail bod
 
-    LetE (_v,_, _, L _ (Ext (ReadTag _cur))) _bod ->
-      error $ "lower: ReadTag not handled yet."
+    LetE (v,_, _, L _ (Ext (ReadTag cur))) bod -> do
+      vtmp <- gensym $ toVar "tmptag"
+      ctmp <- gensym $ toVar "tmpcur"
+
+      -- Here we lamely chase down all the tuple references and make them variables:
+      let bod' = L1.substE (l$ ProjE 0 (l$ VarE v)) (l$ VarE vtmp) $
+                 L1.substE (l$ ProjE 1 (l$ VarE v)) (l$ VarE ctmp)
+                 bod
+
+      dbgTrace 5 (" [lower] ReadTag, after substing references to "
+                  ++(fromVar v)++":\n  "++sdoc bod') <$>
+        T.LetPrimCallT [(vtmp,T.TagTyPacked),(ctmp,T.CursorTy)] T.ReadTag [T.VarTriv cur] <$>
+          tail bod'
+      -- error $ "lower: ReadTag not handled yet."
 
 
     LetE (cursOut,_, _, L _ (Ext (WriteTag dcon cursIn))) bod -> do

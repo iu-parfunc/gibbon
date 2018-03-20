@@ -53,7 +53,7 @@ addLayoutExp :: Out a => DDefs (UrTy a) -> SEnv -> L Exp1 -> SyM (L Exp1)
 addLayoutExp ddfs senv (L p ex) = L p <$>
   case ex of
     DataConE loc dcon args ->
-      case numPackedDataCon ddfs dcon of
+      case numIndrsDataCon ddfs dcon of
         Just n  -> do
           let needSizeOf = take n args
           szs <- mapM (\arg -> do
@@ -94,7 +94,7 @@ addLayoutExp ddfs senv (L p ex) = L p <$>
 
     docase :: (DataCon, [(Var,())], L Exp1) -> SyM (DataCon, [(Var,())], L Exp1)
     docase (dcon,vs,bod) = do
-      case numPackedDataCon ddfs dcon of
+      case numIndrsDataCon ddfs dcon of
         Just n -> do
           szVars <- mapM (\_ -> (, ()) <$> gensym "sz") [1..n]
           (toIndrDataCon dcon, szVars ++ vs,) <$> go bod
@@ -131,7 +131,7 @@ toIndrDDefs ddfs = M.map go ddfs
     -- go :: DDef a -> DDef a
     go dd@DDef{dataCons} =
       let dcons' = L.foldr (\(dcon,tys) acc ->
-                              case numPackedDataCon ddfs dcon of
+                              case numIndrsDataCon ddfs dcon of
                                 Just n -> let tys'  = [(False,CursorTy) | _ <- [1..n]] ++ tys
                                               dcon' = toIndrDataCon dcon
                                           in [(dcon,tys), (dcon',tys')] ++ acc

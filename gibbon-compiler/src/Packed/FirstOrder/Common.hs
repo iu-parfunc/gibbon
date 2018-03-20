@@ -50,7 +50,7 @@ module Packed.FirstOrder.Common
 
          -- * Redirections and indirections
        , redirectionSize, redirectionTag, redirectionAlt
-       , toIndrDataCon, isIndrDataCon
+       , toIndrDataCon, fromIndrDataCon, isIndrDataCon, indirectionTag
 
          -- * Misc helpers
        , (#), (!!!), fragileZip, fragileZip', sdoc, ndoc, abbrv, l
@@ -350,8 +350,14 @@ redirectionTag = "REDIRECTION"
 redirectionAlt :: Num a => a
 redirectionAlt = 100
 
+indirectionTag :: DataCon
+indirectionTag = "INDIRECTION"
+
 toIndrDataCon :: DataCon -> DataCon
 toIndrDataCon dcon = dcon ++ "^"
+
+fromIndrDataCon :: DataCon -> DataCon
+fromIndrDataCon = init
 
 isIndrDataCon :: DataCon -> Bool
 isIndrDataCon = isSuffixOf "^"

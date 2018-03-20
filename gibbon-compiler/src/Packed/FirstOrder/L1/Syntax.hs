@@ -37,7 +37,7 @@ module Packed.FirstOrder.L1.Syntax
     , mapExprs
     , mapExt
     , mapLocs
-    , numPackedDataCon
+    , numIndrsDataCon
 
       -- * Trivial expressions
     , assertTriv, assertTrivs, hasTimeIt, isTrivial
@@ -599,8 +599,8 @@ primRetTy p =
 dummyCursorTy :: Ty1
 dummyCursorTy = CursorTy
 
-numPackedDataCon :: Out a => DDefs (UrTy a) -> DataCon -> Maybe Int
-numPackedDataCon ddfs dcon =
+numIndrsDataCon :: Out a => DDefs (UrTy a) -> DataCon -> Maybe Int
+numIndrsDataCon ddfs dcon =
     if numPacked > 1
     then Just (numPacked - 1)
     else Nothing

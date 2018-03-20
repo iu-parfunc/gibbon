@@ -652,8 +652,11 @@ unpackDataCon :: DDefs Ty2 -> NewFuns -> DepEnv -> TEnv -> Bool -> Var
 unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
 
   let indrVars = if isIndrDataCon dcon
-                 then (case numPackedDataCon ddfs dcon of
-                         Just numPacked -> L.map fst $ take numPacked vlocs
+                 then (case numIndrsDataCon ddfs (fromIndrDataCon dcon) of
+                         Just n ->
+                           let indrs = L.map fst $ take n vlocs
+                               vars  = L.map fst $ reverse (take n (reverse vlocs))
+                           in zip indrs vars
                          Nothing -> error $ "unpackDataCon: Sized constructor should have packed fields.")
                  else []
 
@@ -674,7 +677,7 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
 
         -- Loop over fields.  Issue reads to get out all Ints. Otherwise, just
         -- bind vars to locations
-        go :: (Show t) => Var -> [(Var, Var)] -> [UrTy t] -> [Var] -> Bool -> DepEnv -> TEnv -> SyM (L L3.Exp3)
+        go :: (Show t) => Var -> [(Var, Var)] -> [UrTy t] -> [(Var,Var)] -> Bool -> DepEnv -> TEnv -> SyM (L L3.Exp3)
         go _c [] [] _ _isFirst denv env = processRhs denv env
         go cur ((v,loc):rst) (ty:rtys) indrVars isFirstPacked denv env =
           case ty of
@@ -694,39 +697,47 @@ unpackDataCon ddfs fundefs denv' tenv isPacked scrtCur (dcon,vlocs,rhs) = do
               bod <- go (toEndV v) rst rtys indrVars True denv (M.insert loc CursorTy env')
               return $ mkLets bnds bod
 
-            -- Unpack redirection nodes
-            CursorTy -> do
-              tmp <- gensym (toVar "readcursor_tpl")
-              let bnds = [(loc     , [], CursorTy, l$ VarE cur),
-                          (tmp     , [], ProdTy [CursorTy, CursorTy], l$ Ext $ L3.ReadCursor loc),
-                          (v       , [], CursorTy, l$ ProjE 0 (l$ VarE tmp)),
-                          (toEndV v, [], CursorTy, l$ ProjE 1 (l$ VarE tmp))]
-
-                  env' = M.union (M.fromList [(loc, CursorTy),
-                                              (v  , CursorTy)])
-                         env
-              bod <- go (toEndV v) rst rtys indrVars True denv env'
-              return $ mkLets bnds bod
-
             _ -> do
               let env' = M.insert v CursorTy env
-                  hasIndr = isIndrDataCon dcon
-              if isFirstPacked
-              then do
-                bod <- go (toEndV v) rst rtys indrVars False denv (M.insert loc CursorTy env')
-                return $ mkLets [(loc, [], CursorTy, l$ VarE cur)
-                                ,(v  , [], CursorTy, l$ VarE loc)]
-                         bod
-              else if hasIndr
-              then do
-                let (indr:rest_indrs) = indrVars
-                bod <- go v rst rtys rest_indrs False denv (M.insert loc CursorTy env')
-                return $ mkLets [(loc, [], CursorTy, l$ VarE indr)
-                                ,(v  , [], CursorTy, l$ VarE loc)]
-                         bod
-              else
-                -- Don't create a `let v = loc` binding. Instead, add it to DepEnv
-                go (toEndV v) rst rtys indrVars False (M.insertWith (++) loc [v] denv) env'
+              case indrVars of
+                [] -> do
+                  if isFirstPacked
+                  then do
+                    bod <- go (toEndV v) rst rtys indrVars False denv (M.insert loc CursorTy env')
+                    return $ mkLets [(loc, [], CursorTy, l$ VarE cur)
+                                    ,(v  , [], CursorTy, l$ VarE loc)]
+                             bod
+                  else
+                    -- Don't create a `let v = loc` binding. Instead, add it to DepEnv
+                    go (toEndV v) rst rtys indrVars False (M.insertWith (++) loc [v] denv) env'
+
+                -- Unpacking indirections
+                ((_,dep):rest_indrs) -> do
+                  tmp1 <- gensym "tmp1"
+                  tmp2 <- gensym "tmp2"
+                  tagindr <- gensym "tag_indr"
+                  ptrindr <- gensym "ptr_indr"
+
+                  let env'' = M.fromList [
+                                          (tmp1     , ProdTy [IntTy, CursorTy])
+                                         ,(tagindr  , IntTy)
+                                         ,(ptrindr  , CursorTy)
+                                         ,(tmp2     , ProdTy [CursorTy, CursorTy])
+                                         ,(v        , CursorTy)
+                                         ,(toEndV v , CursorTy)
+                                         ]
+                  bod <- go v rst rtys rest_indrs True denv (M.union env' env'')
+                  return $
+                    mkLets [(loc      , [], CursorTy, l$ VarE cur),
+                            (tmp1     , [], ProdTy [IntTy, CursorTy], l$ Ext $ L3.ReadTag loc),
+                            (tagindr  , [], IntTy   , l$ ProjE 0 (l$ VarE tmp1)),
+                            (ptrindr  , [], CursorTy, l$ ProjE 1 (l$ VarE tmp1)),
+                            (tmp2     , [], ProdTy [CursorTy, CursorTy], l$ Ext $ L3.ReadCursor ptrindr),
+                            (v        , [], CursorTy, l$ ProjE 0 (l$ VarE tmp2)),
+                            (toEndV v , [], CursorTy, l$ ProjE 1 (l$ VarE tmp2)),
+                            (dep      , [], CursorTy, l$ VarE v)
+                           ]
+                           bod
 
         go _ vls rtys _ _ _ _ = error $ "Unexpected numnber of varible, type pairs: " ++ show (vls,rtys)
 

@@ -31,9 +31,6 @@ ddtree = fromListDD [DDef (toVar "Tree")
                       [ ("Leaf",[(False,IntTy)])
                       , ("Node",[ (False,PackedTy "Tree" "l")
                                 , (False,PackedTy "Tree" "l")])
-                      , ("Node^", [(False, CursorTy)
-                                  , (False,PackedTy "Tree" "l")
-                                  , (False,PackedTy "Tree" "l")])
                       ]]
 
 
@@ -1287,6 +1284,17 @@ substProg = Prog ddexpr (M.fromList [("subst", substFun),
 
 --------------------------------------------------------------------------------
 
+ddtree' :: DDefs Ty2
+ddtree' = fromListDD [DDef (toVar "Tree")
+                       [ ("Leaf",[(False,IntTy)])
+                       , ("Node",[ (False,PackedTy "Tree" "l")
+                                 , (False,PackedTy "Tree" "l")])
+                       , ("Node^", [ (False,PackedTy "Tree" "l")
+                                   , (False,PackedTy "Tree" "l")
+                                   , (False,PackedTy "Tree" "l")])
+                       , (indirectionTag, [(False,CursorTy)])
+                       ]]
+
 -- The rightmost function *without* copy-insertion. Gibbon should add and use
 -- indirection pointers to get to the rightmost node of the tree.
 
@@ -1306,15 +1314,19 @@ indrBuildTreeFun = FunDef "indrBuildTree" indrBuildTreeTy "i270" indrBuildTreeBo
                        l$ IfE (l$ VarE "b279")
                        (l$ DataConE "lout272" "Leaf" [l$ LitE 1])
                        (l$ LetE ("i273",[], IntTy, l$ PrimAppE SubP [l$ VarE "i270", l$ LitE 1]) $
-                        l$ Ext $ LetLocE "l274" (AfterConstantLE 9 "lout272") $
+                        l$ Ext $ LetLocE "loc_indr" (AfterConstantLE 1 "lout272") $
+                        l$ Ext $ LetLocE "l274" (AfterConstantLE 9 "loc_indr") $
                         l$ LetE ("x275",[],PackedTy "Tree" "l274",
                                  l$ AppE "indrBuildTree" ["l274"] (l$ VarE "i273")) $
                         l$ Ext $ LetLocE "l276" (AfterVariableLE "x275" "l274") $
                         l$ LetE ("y277",[],PackedTy "Tree" "l276",
                                  l$ AppE "indrBuildTree" ["l276"] (l$ VarE "i273")) $
-                        l$ LetE ("indr_y277",[],CursorTy, l$ PrimAppE PEndOf [l$ VarE "x275"]) $
+                        l$ LetE ("indr_cur",[],CursorTy,
+                                 l$ PrimAppE PEndOf [l$ VarE "x275"]) $
+                        l$ LetE ("indr_node",[], PackedTy "Tree" "loc_indr",
+                                 l$ DataConE "loc_indr" indirectionTag [l$ VarE "indr_cur"]) $
                         l$ LetE ("a278",[],PackedTy "Tree" "lout272",
-                                 l$ DataConE "lout272" "Node^" [l$ VarE "indr_y277",
+                                 l$ DataConE "lout272" "Node^" [l$ VarE "indr_node",
                                                                 l$ VarE "x275",
                                                                 l$ VarE "y277"]) $
                         l$ VarE "a278")
@@ -1334,7 +1346,7 @@ indrRightmostBod :: L Exp2
 indrRightmostBod = l$ CaseE (l$ VarE "t742")
                [("Leaf", [("n746","l747")],
                  l$ VarE "n746"),
-                ("Node^", [("indr_x748","lindr_x748"),("x748","l749"), ("y750","l751")],
+                ("Node^", [("indr_y750","lindr_y750"),("x748","l749"), ("y750","l751")],
                  l$ LetE ("lm752",[],IntTy, l$ AppE "indrRightmost" ["l751"] (l$ VarE "y750")) $
                  l$ VarE "lm752")]
 
@@ -1348,6 +1360,6 @@ indrRightmostMainExp = l$ Ext $ LetRegionE (VarR "r753") $
                        l$ VarE "a760"
 
 indrRightmostProg :: Prog
-indrRightmostProg = Prog ddtree (M.fromList [("indrRightmost", indrRightmostFun)
-                                            ,("indrBuildTree",indrBuildTreeFun)])
+indrRightmostProg = Prog ddtree' (M.fromList [("indrRightmost", indrRightmostFun)
+                                             ,("indrBuildTree",indrBuildTreeFun)])
                     (Just (indrRightmostMainExp, IntTy))
