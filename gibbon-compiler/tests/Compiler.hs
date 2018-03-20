@@ -172,5 +172,8 @@ case_twotrees = runner "buildtwotrees.c" buildTwoTreesProg "'#((Node (Node (Leaf
 case_indrrightmost :: Assertion
 case_indrrightmost = runner "indrrightmost.c" indrRightmostProg "1"
 
+case_indrbuildtree :: Assertion
+case_indrbuildtree = runner "indrbuildtree.c" indrBuildTreeProg "(Node^ (INDIRECTION ) (Node^ (INDIRECTION ) (Node^ (INDIRECTION ) (Leaf 1) (Leaf 1)) (Node^ (INDIRECTION ) (Leaf 1) (Leaf 1))) (Node^ (INDIRECTION ) (Node^ (INDIRECTION ) (Leaf 1) (Leaf 1)) (Node^ (INDIRECTION ) (Leaf 1) (Leaf 1))))"
+
 compilerTests :: TestTree
 compilerTests = $(testGroupGenerator)

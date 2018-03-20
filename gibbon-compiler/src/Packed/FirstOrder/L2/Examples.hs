@@ -13,7 +13,7 @@ module Packed.FirstOrder.L2.Examples
   , leftmostProg, buildLeafProg, testProdProg, nodeProg, leafProg, testFlattenProg
   , rightmostProg, buildTreeProg, buildTreeSumProg, printTupProg, addTreesProg
   , printTupProg2, buildSTreeProg, sumUpProg, setEvenProg, sumUpSetEvenProg, substProg
-  , buildTwoTreesProg, sumTreeProg, sumSTreeProg, indrRightmostProg
+  , buildTwoTreesProg, sumTreeProg, sumSTreeProg, indrRightmostProg, indrBuildTreeProg
   ) where
 
 import Data.Loc
@@ -1330,6 +1330,18 @@ indrBuildTreeFun = FunDef "indrBuildTree" indrBuildTreeTy "i270" indrBuildTreeBo
                                                                 l$ VarE "x275",
                                                                 l$ VarE "y277"]) $
                         l$ VarE "a278")
+
+indrBuildTreeMainExp :: L Exp2
+indrBuildTreeMainExp = l$ Ext $ LetRegionE (VarR "r800") $
+                       l$ Ext $ LetLocE "l801" (StartOfLE (VarR "r800")) $
+                       l$ LetE ("tr802", [], PackedTy "Tree" "l801",
+                                l$ AppE "indrBuildTree" ["l801"] (l$ LitE 3)) $
+                       l$ VarE "tr802"
+
+indrBuildTreeProg :: Prog
+indrBuildTreeProg = Prog ddtree' (M.fromList [("indrBuildtree", indrBuildTreeFun)])
+                         (Just (indrBuildTreeMainExp, PackedTy "Tree" "l801"))
+
 
 indrRightmostFun :: FunDef
 indrRightmostFun = FunDef "indrRightmost" indrRightmostTy "t742" indrRightmostBod
