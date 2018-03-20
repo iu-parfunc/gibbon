@@ -437,7 +437,7 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                  , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ($id:cur) + 8; |] ]
 
                  BoundsCheck -> do
-                   let [(IntTriv i),(VarTriv reg), (VarTriv cur), (IntTriv tag)] = rnds
+                   let [(IntTriv i),(VarTriv reg), (VarTriv cur)] = rnds
                        end = varAppend "end_" reg
                        bck = [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) newsize = ($id:end - $id:reg) * 2; |]
                              , C.BlockStm  [cstm|  $id:reg = ($ty:(codegenTy CursorTy))ALLOC_PACKED(newsize); |]

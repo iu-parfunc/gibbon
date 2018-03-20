@@ -52,7 +52,7 @@ data E3Ext loc dec =
   | SizeOfPacked Var Var           -- ^ Takes in start and end cursors, and returns an Int
                                    --   we'll probably represent (sizeof x) as (end_x - start_x) / INT
   | SizeOfScalar Var               -- ^ sizeof(var)
-  | BoundsCheck TyCon Int Var Var  -- ^ Tycon, size of scalars, region, cursor
+  | BoundsCheck Int Var Var        -- ^ Bytes required, region, write cursor
   | ReadCursor Var                 -- ^ Reads and returns the cursor at Var
   | WriteCursor Var (L (E3 loc dec)) -- ^ Write a cursor, and return a cursort
   deriving (Show, Ord, Eq, Read, Generic, NFData)

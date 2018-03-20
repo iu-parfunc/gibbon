@@ -125,8 +125,6 @@ To thread through the region arguments:
 -- Maps a location to a region
 type RegEnv = M.Map LocVar Var
 
-type TypeEnv = M.Map Var Ty2
-
 type Deps = [(Var, Var, [Var])]
 
 boundsCheck :: L2.Prog -> SyM L2.Prog
@@ -154,15 +152,14 @@ boundsCheckExp :: DDefs Ty2 -> NewFuns -> RegEnv -> Env2 Ty2 -> Deps -> S.Set Va
 boundsCheckExp ddfs fundefs renv env2 deps checked (L p ex) = L p <$>
   case ex of
     LetE (v, locs, ty, rhs@(L _ (DataConE lc dcon _))) bod -> do
-      let PackedTy tycon _ = ty
-          reg = renv # lc
+      let reg = renv # lc
       if needsBoundsCheck ddfs dcon && reg `S.notMember` checked
       then do
         let sz  = redirectionSize + sizeOfScalars ddfs dcon
         -- IMPORTANT: Mutates the region/cursor bindings
         -- IntTy is a placeholder. BoundsCheck is a side-effect
         unLoc <$>
-          mkLets [ ("_", []  , IntTy, l$ Ext$ BoundsCheck tycon sz reg lc)
+          mkLets [ ("_", []  , IntTy, l$ Ext$ BoundsCheck sz reg lc)
                  , (v  , locs, ty   , rhs)] <$>
           boundsCheckExp ddfs fundefs renv (extendVEnv v ty env2) deps checked bod
       else
@@ -184,12 +181,13 @@ boundsCheckExp ddfs fundefs renv env2 deps checked (L p ex) = L p <$>
                       -- HACK: LetE form doesn't extend the RegEnv with the
                       -- the endof locations returned by the RHS.
                       FromEndLE _         -> renv # loc
-              (outloc, tycon, needsCheck) =
+              dontcheck = ("DUMMY",False)
+              (outloc, needsCheck) =
                 if reg `S.member` checked
-                then ("DUMMY","DUMMY",False)
+                then dontcheck
                 else
                   case deps of
-                    [] -> ("DUMMY","DUMMY",False)
+                    [] -> dontcheck
                     _  ->
                       let (g,nodeF,vtxF) = graphFromEdges deps
                           -- Vertex of the location variable
@@ -204,18 +202,18 @@ boundsCheckExp ddfs fundefs renv env2 deps checked (L p ex) = L p <$>
                                  paths = map (\ret -> (ret, path g locVertex ret)) retVertices
                                  connected = filter snd paths
                             in case connected of
-                                 [] -> ("DUMMY","DUMMY", False)
+                                 [] -> dontcheck
                                  (vert,_):_ ->
                                    let fst3 (a,_,_) = a
                                        outloc' = fst3 (nodeF vert)
                                        tycon'  = fromJust $ getTyconLoc outloc' retType
                                        iscomplex = hasComplexDataCon ddfs tycon'
-                                   in (outloc', tycon', iscomplex)
-                          else ("DUMMY","DUMMY", False)
+                                   in (outloc', iscomplex)
+                          else dontcheck
           if needsCheck
           then
             unLoc <$>
-              mkLets [ ("_", []  , IntTy, l$ Ext$ BoundsCheck tycon conservativeSizeScalars reg outloc) ] <$> l <$>
+              mkLets [ ("_", []  , IntTy, l$ Ext$ BoundsCheck conservativeSizeScalars reg outloc) ] <$> l <$>
               Ext <$> LetLocE loc rhs <$>
               boundsCheckExp ddfs fundefs (M.insert loc reg renv) env2 deps (S.insert reg checked) bod
           else

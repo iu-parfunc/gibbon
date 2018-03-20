@@ -87,7 +87,7 @@ tcExp ddfs env exp@(L p ex) =
           return IntTy
 
         -- The IntTy is just a placeholder. BoundsCheck is a side-effect
-        BoundsCheck _ _ reg cur -> do
+        BoundsCheck _ reg cur -> do
           rty <- lookupVar env reg exp
           ensureEqualTy exp rty CursorTy
           cty <- lookupVar env cur exp

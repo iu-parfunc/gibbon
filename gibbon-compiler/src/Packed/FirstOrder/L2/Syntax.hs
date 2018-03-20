@@ -89,7 +89,7 @@ data E2Ext loc dec =
   | LetLocE    loc    (PreLocExp loc) (L (E2 loc dec)) -- ^ Bind a new location.
   | RetE [loc] Var     -- ^ Return a value together with extra loc values.
   | FromEndE loc -- ^ Bind a location from an EndOf location (for RouteEnds and after)
-  | BoundsCheck TyCon Int loc loc  -- ^ Tycon, size of scalars, region, cursor
+  | BoundsCheck Int loc loc  -- ^ Bytes required, region, write cursor
  deriving (Show, Ord, Eq, Read, Generic, NFData)
 
 -- | L1 expressions extended with L2.  This is the polymorphic version.
@@ -399,7 +399,7 @@ depList = reverse . L.map (\(a,b) -> (a,a,b)) . M.toList . go M.empty
               LetLocE loc _ _ -> S.singleton loc `S.union` gFreeVars ex
               RetE locs _     -> S.fromList locs `S.union` gFreeVars ex
               FromEndE loc    -> S.singleton loc
-              BoundsCheck _ _ reg cur -> S.fromList [reg,cur]
+              BoundsCheck _ reg cur -> S.fromList [reg,cur]
           _ -> gFreeVars ex
 
 

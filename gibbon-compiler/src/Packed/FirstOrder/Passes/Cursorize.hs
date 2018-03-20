@@ -266,7 +266,7 @@ cursorizeExp ddfs fundefs denv tenv (L p ex) = L p <$>
         LetRegionE reg bod -> do
           unLoc <$> mkLets (regionToBnds reg) <$> go bod
 
-        BoundsCheck tycon i reg cur -> return $ Ext $ L3.BoundsCheck tycon i reg cur
+        BoundsCheck i reg cur -> return $ Ext $ L3.BoundsCheck i reg cur
 
         _ -> error $ "TODO: cursorizeExp Ext: " ++ sdoc ext
 
@@ -479,7 +479,7 @@ Reason: unariser can only eliminate direct projections of this form.
 
         FromEndE{} -> error $ "cursorizePackedExp: TODO " ++ sdoc ext
 
-        BoundsCheck tycon i reg cur -> return <$> dl <$> Ext $ L3.BoundsCheck tycon i reg cur
+        BoundsCheck i reg cur -> return <$> dl <$> Ext $ L3.BoundsCheck i reg cur
 
     MapE{}  -> error $ "TODO: cursorizePackedExp MapE"
     FoldE{} -> error $ "TODO: cursorizePackedExp FoldE"
