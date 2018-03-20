@@ -477,6 +477,20 @@ inferExp env@FullEnv{dataDefs}
           
     L1.LitE n -> return (lc$ LitE n, IntTy, [])
 
+    L1.LitSymE s -> return (lc$ LitSymE s, SymTy, [])
+
+    L1.AppE f ls arg ->
+        do let arrty = lookupFEnv f env
+           valTy <- freshTyLocs $ arrOut arrty
+           argTy <- freshTyLocs $ arrIn arrty
+           argDest <- destFromType' argTy
+           (arg',aty,acs) <- inferExp env arg argDest
+           return (lc$ L2.AppE f (locsInTy aty) arg', valTy, acs)
+
+    L1.TimeIt e t b ->
+        do (e',ty',cs') <- inferExp env e dest
+           return (lc$ TimeIt e' ty' b, ty', cs')
+
     L1.DataConE () k ls ->
       case dest of
         NoDest -> err $ "Expected single location destination for DataConE"
@@ -592,7 +606,18 @@ inferExp env@FullEnv{dataDefs}
           fcs <- tryInRegion cs''
           tryBindReg (lc$ L2.LetE (vr,[],ProdTy tys,L sl2 $ L2.ProjE i e) bod'',
                              ty'', fcs)
-        CaseE e ls    -> _case
+        CaseE ex ls    -> do
+          loc <- lift $ lift $ freshLocVar "scrut"
+          (ex',ty2,cs) <- inferExp env ex (SingleDest loc)
+          let src = locOfTy ty2
+          rhsTy <- lift $ lift $ convertTy bty
+          caseDest <- destFromType' rhsTy
+          pairs <- mapM (doCase dataDefs env src caseDest) ls
+          (bod',ty',cs') <- inferExp (extendVEnv vr rhsTy env) bod dest
+          (bod'',ty'',cs'') <- handleTrailingBindLoc vr (bod', ty', cs')
+          fcs <- tryInRegion cs''
+          tryBindReg (lc$ L2.LetE (vr,locsInTy rhsTy,rhsTy, L sl2 $ L2.CaseE ex' ([a | (a,_,_) <- pairs])) bod'',
+                        ty'', L.nub $ cs ++ fcs)
         MkProdE ls    -> _mkprod
         TimeIt e t b       -> do
           lv <- lift $ lift $ freshLocVar "timeit"
@@ -942,6 +967,7 @@ prim p = case p of
            L1.EqIntP -> L1.EqIntP
            L1.MkTrue -> L1.MkTrue
            L1.MkFalse -> L1.MkFalse
+           L1.SizeParam -> L1.SizeParam
            _ -> err $ "Can't handle this primop yet in InferLocations:\n"++show p
 
        
