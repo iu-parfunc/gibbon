@@ -329,8 +329,7 @@ inferExp env@FullEnv{dataDefs}
           do lv' <- finalLocVar lv
              (e',ty',cs') <- tryBindReg (e,ty,cs)
              b1 <- noAfterLoc lv' cs' cs' -- (traceShowId lv) (traceShowId cs')
-             b2 <- regionNotInType r ty ((StartRegionL lv r) : cs)
-             if b1 && b2
+             if b1 
              then do (e'',ty'',cs'') <- bindTrivialAfterLoc lv' (e',ty',cs')
                      return (l$ Ext (LetRegionE r (l$ Ext (LetLocE lv' (StartOfLE r) e''))), ty'', cs'')
              else return (e',ty',(StartRegionL lv r):cs')
@@ -485,7 +484,7 @@ inferExp env@FullEnv{dataDefs}
            argTy <- freshTyLocs $ arrIn arrty
            argDest <- destFromType' argTy
            (arg',aty,acs) <- inferExp env arg argDest
-           return (lc$ L2.AppE f (locsInTy aty) arg', valTy, acs)
+           return (lc$ L2.AppE f (locsInTy aty ++ locsInTy valTy) arg', valTy, acs)
 
     L1.TimeIt e t b ->
         do (e',ty',cs') <- inferExp env e dest
@@ -563,7 +562,7 @@ inferExp env@FullEnv{dataDefs}
           (bod',ty',cs') <- inferExp (extendVEnv vr valTy env) bod dest
           (bod'',ty'',cs'') <- handleTrailingBindLoc vr (bod', ty', cs')
           fcs <- tryInRegion $ acs ++ cs''
-          tryBindReg (lc$ L2.LetE (vr,locsInTy valTy, valTy, L sl2 $ L2.AppE f (locsInTy aty) arg') bod'', ty'', fcs)
+          tryBindReg (lc$ L2.LetE (vr,locsInTy valTy, valTy, L sl2 $ L2.AppE f (locsInTy aty ++ locsInTy valTy) arg') bod'', ty'', fcs)
             -- err $ "TODO: Support recursive functions: "++show rhs
 
         L1.LetE{} -> err $ "Expected let spine, encountered nested lets: " ++ (show lex0)
