@@ -47,8 +47,8 @@ threadRegionsExp ddefs fundefs isMain lenv tenv (L p ex) = L p <$>
                                M.map (\tyl -> if tyl == r then r' else tyl) acc)
                       lenv
                       (L.zip3 tylocs regs regs')
-              newlocs    = (concat $ map (\r -> [r, toEndV r]) regs') ++ locs
-              newapplocs = (concat $ map (\r -> [r, toEndV r]) regs)  ++ applocs
+              newlocs    = (map toEndV regs') ++ locs
+              newapplocs = (map toEndV regs)  ++ applocs
           LetE (v, newlocs, ty, l$ AppE f newapplocs arg) <$>
             threadRegionsExp ddefs fundefs isMain lenv' (M.insert v ty tenv) bod
 
@@ -80,14 +80,14 @@ threadRegionsExp ddefs fundefs isMain lenv tenv (L p ex) = L p <$>
           then do
             let tylocs  = getTyLocs ty
                 regs    = map (lenv M.!) tylocs
-                newlocs = concat $ map (\r -> [r, toEndV r]) regs
+                newlocs = map toEndV regs
             return $ Ext $ RetE (newlocs ++ locs) v
           else return $ Ext ext
 
         LetRegionE r bod -> Ext <$> LetRegionE r <$> go bod
         FromEndE{}    -> return ex
         BoundsCheck sz _reg cur -> do
-          return $ Ext $ BoundsCheck sz (lenv M.! cur) cur
+          return $ Ext $ BoundsCheck sz (toEndV (lenv M.! cur)) cur
 
     -- Straightforward recursion
 

@@ -104,18 +104,16 @@ cursorizeFunDef ddefs fundefs FunDef{funname,funty,funarg,funbod} =
       outRegs = outRegVars funty
       inT     = arrIn funty
       outT    = arrOut funty
-      funty'  = L3.cursorizeArrowTy funty
+      funty'  = cursorizeArrowTy funty
   in do
    newarg <- gensym "newarg"
 
    let
-       numOutRegs = 2 * length outRegs
+       numOutRegs = length outRegs
 
        -- Output regions are always inserted before all other arguments.
-       outRegBinds =  mkLets $ L.concat $
-                      [ [ (reg       , [], CursorTy, l$ ProjE i     (l$ VarE newarg))
-                        , (toEndV reg, [], CursorTy, l$ ProjE (i+1) (l$ VarE newarg)) ]
-                      | (reg, i) <- zip outRegs [0,2..]]
+       outRegBinds =  mkLets [ (toEndV reg, [], CursorTy, l$ ProjE i (l$ VarE newarg))
+                             | (reg, i) <- zip outRegs [0..]]
 
        -- Output cursors after that.
        outCurBinds = outRegBinds .
@@ -190,11 +188,11 @@ cursorizeFunDef ddefs fundefs FunDef{funname,funty,funarg,funbod} =
                                  acc (zip tys [0..])
            _ -> acc
 
-    cursorizeArrowTy :: L2.ArrowTy L2.Ty2 -> ArrowTy L3.Ty3
+    cursorizeArrowTy :: L2.ArrowTy L2.Ty2 -> L3.ArrowTy L3.Ty3
     cursorizeArrowTy ty@L2.ArrowTy{L2.arrIn,L2.arrOut,L2.locVars,L2.locRets} =
       let
           -- Regions corresponding to ouput cursors. (See Note [Infinite regions])
-          numRegs = 2 * length (L2.outRegVars ty)
+          numRegs = length (L2.outRegVars ty)
           regs = L.map (\_ -> CursorTy) [1..numRegs]
 
           -- Adding additional outputs corresponding to end-of-input-value witnesses
@@ -214,7 +212,7 @@ cursorizeFunDef ddefs fundefs FunDef{funname,funty,funarg,funbod} =
           -- Packed types in the input now become (read-only) cursors.
           newIn    = L2.mapPacked (\_ _ -> CursorTy) inT
 
-      in ArrowTy { arrIn = stripTyLocs newIn, arrOut = stripTyLocs newOut }
+      in L3.ArrowTy { L3.arrIn = L3.stripTyLocs newIn, L3.arrOut = L3.stripTyLocs newOut }
 
 
 -- | Cursorize expressions NOT producing `Packed` values
@@ -336,7 +334,7 @@ cursorizePackedExp ddfs fundefs denv tenv (L p ex) =
                      Nothing -> error $ "Unknown function: " ++ sdoc f
           inT    = arrIn fnTy
           inLocs = inLocVars fnTy
-          numOutRegs = 2 * length (outRegVars fnTy)
+          numOutRegs = length (outRegVars fnTy)
           -- Drop input locations, but keep everything else
           outs   = (take numOutRegs locs) ++  (drop numOutRegs $ drop (length inLocs) $ locs)
           argTy  = gTypeExp ddfs (Env2 tenv M.empty) arg

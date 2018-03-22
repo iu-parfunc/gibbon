@@ -437,15 +437,15 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                  , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ($id:cur) + 8; |] ]
 
                  BoundsCheck -> do
-                   let [(IntTriv i),(VarTriv reg), (VarTriv cur)] = rnds
-                       end = varAppend "end_" reg
-                       bck = [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) newsize = ($id:end - $id:reg) * 2; |]
-                             , C.BlockStm  [cstm|  $id:reg = ($ty:(codegenTy CursorTy))ALLOC_PACKED(newsize); |]
-                             , C.BlockStm  [cstm|  $id:end = $id:reg + newsize; |]
+                   new_chunk <- lift $ gensym "new_chunk"
+                   let [(IntTriv i),(VarTriv end), (VarTriv cur)] = rnds
+                       bck = [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) newsize = 128; |]
+                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:new_chunk = ($ty:(codegenTy CursorTy))ALLOC_PACKED(newsize); |]
+                             , C.BlockStm  [cstm|  $id:end = $id:new_chunk + newsize; |]
                              , C.BlockStm  [cstm|  *($ty:(codegenTy TagTyPacked) *) ($id:cur) = ($int:redirectionAlt); |]
                              , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) redir =  $id:cur + 1; |]
-                             , C.BlockStm  [cstm|  *($ty:(codegenTy CursorTy) *) redir = $id:reg; |]
-                             , C.BlockStm  [cstm|  $id:cur = $id:reg; |]
+                             , C.BlockStm  [cstm|  *($ty:(codegenTy CursorTy) *) redir = $id:new_chunk; |]
+                             , C.BlockStm  [cstm|  $id:cur = $id:new_chunk; |]
                              ]
                    return [ C.BlockStm [cstm| if (($id:end - $id:cur) <= $int:i) { $items:bck }  |] ]
 

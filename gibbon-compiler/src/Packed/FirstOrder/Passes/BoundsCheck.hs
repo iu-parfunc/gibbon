@@ -159,7 +159,7 @@ boundsCheckExp ddfs fundefs renv env2 deps checked (L p ex) = L p <$>
         -- IMPORTANT: Mutates the region/cursor bindings
         -- IntTy is a placeholder. BoundsCheck is a side-effect
         unLoc <$>
-          mkLets [ ("_", []  , IntTy, l$ Ext$ BoundsCheck sz reg lc)
+          mkLets [ ("_", []  , IntTy, l$ Ext$ BoundsCheck sz (toEndV reg) lc)
                  , (v  , locs, ty   , rhs)] <$>
           boundsCheckExp ddfs fundefs renv (extendVEnv v ty env2) deps checked bod
       else
@@ -213,7 +213,7 @@ boundsCheckExp ddfs fundefs renv env2 deps checked (L p ex) = L p <$>
           if needsCheck
           then
             unLoc <$>
-              mkLets [ ("_", []  , IntTy, l$ Ext$ BoundsCheck conservativeSizeScalars reg outloc) ] <$> l <$>
+              mkLets [ ("_", []  , IntTy, l$ Ext$ BoundsCheck conservativeSizeScalars (toEndV reg) outloc) ] <$> l <$>
               Ext <$> LetLocE loc rhs <$>
               boundsCheckExp ddfs fundefs (M.insert loc reg renv) env2 deps (S.insert reg checked) bod
           else
@@ -247,6 +247,7 @@ boundsCheckExp ddfs fundefs renv env2 deps checked (L p ex) = L p <$>
     FoldE{} -> error $ "go: TODO FoldE"
 
   where go = boundsCheckExp ddfs fundefs renv env2 deps checked
+        toEndV = varAppend "end_"
         docase reg lenv1 env2' (dcon,vlocs,bod) = do
           -- Update the envs with bindings for pattern matched variables and locations.
           -- The locations point to the same region as the scrutinee.
