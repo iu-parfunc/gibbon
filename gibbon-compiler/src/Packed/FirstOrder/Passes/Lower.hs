@@ -612,8 +612,8 @@ lower (pkd,_mMainTy) Prog{fundefs,ddefs,mainExp} = do
         tail bod
 
     -- Just a side effect
-    LetE(_,_,_, L _ (Ext (BoundsCheck i reg cur))) bod -> do
-      let args = [T.IntTriv (fromIntegral i), T.VarTriv reg, T.VarTriv cur]
+    LetE(_,_,_, L _ (Ext (BoundsCheck i bound cur))) bod -> do
+      let args = [T.IntTriv (fromIntegral i), T.VarTriv bound, T.VarTriv cur]
       T.LetPrimCallT [] T.BoundsCheck args <$> tail bod
 
     LetE(v,_,_, L _ (Ext (ReadCursor c))) bod -> do

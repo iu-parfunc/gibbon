@@ -438,16 +438,16 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
 
                  BoundsCheck -> do
                    new_chunk <- lift $ gensym "new_chunk"
-                   let [(IntTriv i),(VarTriv end), (VarTriv cur)] = rnds
+                   let [(IntTriv i),(VarTriv bound), (VarTriv cur)] = rnds
                        bck = [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) newsize = 128; |]
                              , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:new_chunk = ($ty:(codegenTy CursorTy))ALLOC_PACKED(newsize); |]
-                             , C.BlockStm  [cstm|  $id:end = $id:new_chunk + newsize; |]
+                             , C.BlockStm  [cstm|  $id:bound = $id:new_chunk + newsize; |]
                              , C.BlockStm  [cstm|  *($ty:(codegenTy TagTyPacked) *) ($id:cur) = ($int:redirectionAlt); |]
                              , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) redir =  $id:cur + 1; |]
                              , C.BlockStm  [cstm|  *($ty:(codegenTy CursorTy) *) redir = $id:new_chunk; |]
                              , C.BlockStm  [cstm|  $id:cur = $id:new_chunk; |]
                              ]
-                   return [ C.BlockStm [cstm| if (($id:end - $id:cur) <= $int:i) { $items:bck }  |] ]
+                   return [ C.BlockStm [cstm| if (($id:cur + $int:i) > $id:bound) { $items:bck }  |] ]
 
                  SizeOfPacked -> let [(sizeV,IntTy)] = bnds
                                      [(VarTriv startV), (VarTriv endV)] = rnds

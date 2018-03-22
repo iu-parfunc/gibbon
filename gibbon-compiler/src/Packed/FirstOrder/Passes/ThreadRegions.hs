@@ -86,7 +86,7 @@ threadRegionsExp ddefs fundefs isMain lenv tenv (L p ex) = L p <$>
 
         LetRegionE r bod -> Ext <$> LetRegionE r <$> go bod
         FromEndE{}    -> return ex
-        BoundsCheck sz _reg cur -> do
+        BoundsCheck sz _bound cur -> do
           return $ Ext $ BoundsCheck sz (toEndV (lenv M.! cur)) cur
 
     -- Straightforward recursion
