@@ -27,6 +27,7 @@ import Compiler
 import L2.Typecheck
 import L1.Typecheck
 import L3.Typecheck
+import L0.Mono
 
 main :: IO ()
 main = defaultMain allTests
@@ -38,6 +39,7 @@ main = defaultMain allTests
                    -- , l2TypecheckerTests
                    , l1TypecheckerTests
                    , l3TypecheckerTests
+                   , specializeTests
                    , compilerTests
                    ]
 
