@@ -192,7 +192,7 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                                                  Just la -> wrapBody (L p' (Ext (LetLocE la (FromEndLE l2) e))) ls
                      wrapBody e [] = e
 
-                 newls <- foldM handleTravList [] travlist
+                 newls <- reverse <$> foldM handleTravList [] travlist
                  let eor' = L.foldr mkEor eor newls
                  let outlocs = L.map snd newls
                  e2' <- exp fns retlocs eor' lenv' afterenv e2

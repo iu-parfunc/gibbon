@@ -686,7 +686,9 @@ addTreesMainExp = l$ Ext $ LetRegionE (VarR "r400") $
                   l$ Ext $ LetLocE "l401" (StartOfLE (VarR "r400")) $
                   l$ LetE ("x402",[], PackedTy "Tree" "l401",
                            l$ AppE "buildTree" ["l401"] (l$ LitE 2)) $
-                  l$ Ext $ LetLocE "l403" (AfterVariableLE "x402" "l401") $
+                  -- l$ Ext $ LetLocE "l403" (AfterVariableLE "x402" "l401") $
+                  l$ Ext $ LetRegionE (VarR "r403") $
+                  l$ Ext $ LetLocE "l403" (StartOfLE (VarR "r403")) $
                   l$ LetE ("y404",[], PackedTy "Tree" "l403",
                            l$ AppE "buildTree" ["l403"] (l$ LitE 2)) $
                   l$ LetE ("z405",[], ProdTy [PackedTy "Tree" "l401", PackedTy "Tree" "l403"],

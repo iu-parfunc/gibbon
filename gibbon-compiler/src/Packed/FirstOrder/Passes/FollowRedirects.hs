@@ -92,9 +92,13 @@ followRedirectsExp ttailenv tenv tail =
                           (AssnValsT [(tagv , TagTyPacked, VarTriv tagtmp),
                                      (tailv, CursorTy   , VarTriv tailtmp)]
                           (Just (Goto lbl))))
-              alts' = case alts of
-                        TagAlts ls -> TagAlts $ ls ++ [(redirectionAlt, alttail)]
-                        IntAlts ls -> IntAlts $ ls ++ [(redirectionAlt, alttail)]
+          alts' <- case alts of
+                    TagAlts ls -> do
+                      ls' <- mapM (\(x,tl) -> (x,) <$> followRedirectsExp ttailenv tenv tl) ls
+                      return $ TagAlts $ ls' ++ [(redirectionAlt, alttail)]
+                    IntAlts ls -> do
+                      ls' <- mapM (\(x,tl) -> (x,) <$> followRedirectsExp ttailenv tenv tl) ls
+                      return $ IntAlts $ ls' ++ [(redirectionAlt, alttail)]
           return $ Switch lbl trv alts' bod_maybe
         _ -> error "followRedirectsExp: Shouldn't switch on any other type."
 
