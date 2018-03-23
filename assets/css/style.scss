@@ -4,5 +4,18 @@
 @import "{{ site.theme }}";
 
 p {
-  text-align:justify
+    text-align:justify
+}
+
+.centered {
+    display: block;
+    margin: 1rem auto 3rem auto;
+}
+
+.page-header {
+    padding: 2rem 6rem;
+}
+
+.img-70 {
+    width: 70%;
 }
