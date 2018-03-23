@@ -394,10 +394,14 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                           [(VarTriv dict)] = rnds in pure
                     [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = dict_has_key_int($id:dict); |] ]
 
-                 NewBuffer mul   -> let [(outV,CursorTy)] = bnds
-                                        bufsize = codegenMultiplicity mul
-                                    in pure
-                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_PACKED($id:bufsize); |] ]
+                 NewBuffer mul -> do
+                   reg <- lift $ gensym "region"
+                   let [(outV,CursorTy)] = bnds
+                       bufsize = codegenMultiplicity mul
+                   pure
+                     [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy) $id:reg = alloc_region($id:bufsize); |]
+                     , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:reg.start_ptr; |]
+                     ]
                  ScopedBuffer mul -> let [(outV,CursorTy)] = bnds
                                          bufsize = codegenMultiplicity mul
                                      in pure
@@ -437,15 +441,18 @@ codegenTail (LetPrimCallT bnds prm rnds body) ty =
                                  , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ($id:cur) + 8; |] ]
 
                  BoundsCheck -> do
-                   new_chunk <- lift $ gensym "new_chunk"
+                   new_chunk   <- lift $ gensym "new_chunk"
+                   chunk_start <- lift $ gensym "chunk_start"
+                   chunk_end   <- lift $ gensym "chunk_end"
                    let [(IntTriv i),(VarTriv bound), (VarTriv cur)] = rnds
-                       bck = [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) newsize = 128; |]
-                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:new_chunk = ($ty:(codegenTy CursorTy))ALLOC_PACKED(newsize); |]
-                             , C.BlockStm  [cstm|  $id:bound = $id:new_chunk + newsize; |]
+                       bck = [ C.BlockDecl [cdecl| $ty:(codegenTy ChunkTy) $id:new_chunk = alloc_chunk($id:bound); |]
+                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:chunk_start = $id:new_chunk.start_ptr; |]
+                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:chunk_end = $id:new_chunk.end_ptr; |]
+                             , C.BlockStm  [cstm|  $id:bound = $id:chunk_end; |]
                              , C.BlockStm  [cstm|  *($ty:(codegenTy TagTyPacked) *) ($id:cur) = ($int:redirectionAlt); |]
                              , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) redir =  $id:cur + 1; |]
-                             , C.BlockStm  [cstm|  *($ty:(codegenTy CursorTy) *) redir = $id:new_chunk; |]
-                             , C.BlockStm  [cstm|  $id:cur = $id:new_chunk; |]
+                             , C.BlockStm  [cstm|  *($ty:(codegenTy CursorTy) *) redir = $id:chunk_start; |]
+                             , C.BlockStm  [cstm|  $id:cur = $id:chunk_start; |]
                              ]
                    return [ C.BlockStm [cstm| if (($id:cur + $int:i) > $id:bound) { $items:bck }  |] ]
 
@@ -586,6 +593,8 @@ codegenTy TagTyBoxed  = [cty|typename TagTyBoxed|]
 codegenTy SymTy = [cty|typename SymTy|]
 codegenTy PtrTy = [cty|typename PtrTy|] -- char* - Hack, this could be void* if we have enough casts. [2016.11.06]
 codegenTy CursorTy = [cty|typename CursorTy|]
+codegenTy RegionTy = [cty|typename RegionTy|]
+codegenTy ChunkTy = [cty|typename ChunkTy|]
 codegenTy (ProdTy []) = [cty|void*|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts
@@ -602,6 +611,8 @@ makeName' TagTyPacked = "Tag"
 makeName' TagTyBoxed  = makeName' IntTy
 makeName' PtrTy = "Ptr"
 makeName' (SymDictTy _ty) = "Dict"
+makeName' RegionTy = "Region"
+makeName' ChunkTy = "Chunk"
 makeName' x = error $ "makeName', not handled: " ++ show x
 
 mkBlock :: [C.BlockItem] -> C.Stm

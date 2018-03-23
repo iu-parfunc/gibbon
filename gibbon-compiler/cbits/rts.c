@@ -240,6 +240,63 @@ int compare_doubles(const void *a, const void *b)
     return (*da > *db) - (*da < *db);
 }
 
+/* Representation of regions at runtime:
+
+   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   | serialized data ...... | size (int) | refcount (int/ptr) | outset (ptr) |
+   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   The metadata after the serialized data serves various purposes:
+
+   - size: Used during bounds checking to calculate the size of the next region in the linked list.
+
+   - refcount and outset: Whenever an inter-region indirection is created, we record that information
+     using these two fields. Consier an example where we create an indirection from region A that points to
+     something in region B. Then A's outset will have that pointer in it, and B's refcount will be bumped
+     by 1. Note that the refcount doesn't necessarily have to be an `int` for every chunk of the region
+     (when using "infinite-regions"). The first chunk in the chain has the actual refcount, and every other
+     chunk has a reference to it.
+
+ */
+
+typedef struct RegionTy_struct {
+    int refcount;
+    CursorTy start_ptr;
+} RegionTy;
+
+typedef struct RegionFooter_struct {
+    IntTy size;
+    CursorTy refcount_ptr;
+    CursorTy outset_ptr;
+} RegionFooter;
+
+RegionTy alloc_region(IntTy size) {
+    IntTy total_size = size + sizeof(RegionFooter);
+    CursorTy start = ALLOC_PACKED(total_size);
+    CursorTy end = start + size;
+    RegionTy reg = (RegionTy) {0,start};
+
+    RegionFooter footer = {size, &reg.refcount, NULL};
+    *(RegionFooter *) end = footer;
+
+    return reg;
+}
+
+typedef struct ChunkTy_struct {
+    CursorTy start_ptr;
+    CursorTy end_ptr;
+} ChunkTy;
+
+ChunkTy alloc_chunk(CursorTy end_ptr) {
+    RegionFooter footer = *(RegionFooter *) end_ptr;
+    IntTy newsize = footer.size * 2;
+    IntTy total_size = newsize + sizeof(RegionFooter);
+    CursorTy start = ALLOC_PACKED(total_size);
+    CursorTy end = start + newsize;
+    return (ChunkTy) {start , end};
+}
+
+/* -------------------------------------------------------------------------------- */
 
 int main(int argc, char** argv)
 {

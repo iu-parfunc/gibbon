@@ -137,6 +137,8 @@ data Ty
 
     | PtrTy   -- ^ A machine word.  Same width as IntTy.  Untyped.
               -- This is a pointer to a struct value which may contain other pointers.
+    | RegionTy -- ^ Region start and a refcount
+    | ChunkTy  -- ^ Start and end pointers
 
 -- TODO: Make Ptrs more type safe like this:
 --    | StructPtrTy { fields :: [Ty] } -- ^ A pointer to a struct containing the given fields.
