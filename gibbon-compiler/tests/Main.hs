@@ -27,7 +27,7 @@ import Compiler
 import L2.Typecheck
 import L1.Typecheck
 import L3.Typecheck
-import InferLocations2
+import InferLocations
 
 main :: IO ()
 main = defaultMain allTests

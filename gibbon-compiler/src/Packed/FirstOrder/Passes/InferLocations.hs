@@ -12,7 +12,7 @@
 
 -- | Convert from L1 to L2, adding region constructs.
 
-module Packed.FirstOrder.Passes.InferLocations2
+module Packed.FirstOrder.Passes.InferLocations
     (-- data types
      FullEnv, TiM, InferState, Result, UnifyLoc, Failure, Dest(..),
      -- functions for manipulating locations

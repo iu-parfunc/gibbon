@@ -149,6 +149,7 @@ test-suite test-gibbon
   other-modules:
                 RouteEnds
                 InferEffects
+                InferLocations
                 Unariser
                 Compiler
                 L2.Typecheck
