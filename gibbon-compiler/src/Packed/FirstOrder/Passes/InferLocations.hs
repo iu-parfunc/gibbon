@@ -26,72 +26,65 @@ module Packed.FirstOrder.Passes.InferLocations
   Basic Strategy
   --------------
 
-The idea here is to compute a location-annotated type signature
-directly from the L1 type signature.  This implies extra copying to
-support a destination-passing style.  For exmaple, the identity
+The basic strategy here is to use a simple, type-directed pass to translate
+programs from L1 to L2. First, we start with a function type, with the 
+basic starting assumption that all packed values will have distinct locations:
+
+```
+  f  :: Int -> Tree -> Tree
+  f' :: forall l_1 in r_1, l_2 in r_2 . Int -> Tree l_1 -> Tree l_2
+```
+
+After this, the locations from the function type are treated as *fixed*, and
+the inference procedure proceeds to walk through the body of the function.
+
+To infer location bindings in an expression, we build up a set of *constraints*
+and propogate them up the expression (ie, recurring on a sub-expression will
+yield the constraints induced by that sub-expression). After recurring on 
+all sub-expressions, we use these constraints to determine whether to
+emit a binding for a new location or a new region.
+
+Constraints in location inference are very similar to constraints used
+in type checking L2. When the expression in consideration is a data type
+constructor, a series of constraints are generated: the locations for
+each field in the constructor are constrained to occur after the previous one
+(enforcing that they occur in the right order), and the first field must
+occur after the tag of the data constructor itself. 
+
+Knowing all this *isn't enough* to generate the location bindings, however,
+since the values that we use in the constructor may have been produced
+by multiple different function calls (for example), so the locations 
+must carefully be bound earlier in the expression at the right locations.
+Ideally, we also want them to be bound as tightly as possible, to avoid
+binding locations that aren't used (eg, in some branches of a conditional).
+So the constraints are *discharged* as the recursion unwinds.
+
+For example, a constraint that location `loc1` occurs after the value `x2`
+can safely be discharged after the value `x2` is bound, so in the handling
+of a let binding for a packed value, we search through the constraints 
+returned by recurring on the body of the let and discharge any constraint
+that invloves a location occurring after that newly-bound variable. 
+
+ Program repair
+ --------------
+
+During the inference procedure, unification will occur between locations,
+and if two *fixed* locations are unified there will be an error thrown.
+To recover, the procedure will have to transform (repair) the expression. 
+The simplest way to do this is to insert a copy.
+
+Naively, this simple strategy will require lots of copies. For exmaple, the identity
 function's type transforms as follows:
 
+```
   id  :: Tree -> Tree
   id' :: forall l1 in r1, l2 in r2 . Tree l1 -> Tree l2
+```
 
 With this type, inferExp will immediately fail on the body of 'id x = x', requiring
 a copy-insertion tactic to repair the failure and proceed.
 
-To avoid this copying, we will require existential types in the
-future, and a stronger type-inference algorithm.
-
-The initial type-inference prototype should be able to apply
-unification much as regular Hindley Milner inference does.  We always
-have a rigid destination type with which to unify the body of a
-function.  We likewise unify branches of a conditional to force them
-to use the same destination (and copy otherwise).
-
-Wherever unification fails, we pop up and report that failure,
-continuing type checking only after repair.
-
-We still need a strategy for discharging LetLoc bindings (when &
-where), and for wrapping LetRegion forms whenever we would otherwise
-have an unconstrained, ambiguous fresh region variable -- i.e. induced
-by copy insertion.
-
-
- The three failures
- ------------------
-
-As type checking proceeds, there are three ways things get stuck:
-
- * impossible constraint: inequality + equality
- * cyclic constraint: locations and values form a cycle
- * scope violation: location depends on something not in scope at 
-   the point where the location must be defined.
-
-
- Location variable generation
- ----------------------------
-
-With type-decorations and implicit location arguments and returns, our
-basic let bindings of interest look like:
-
-  let y [l2*] : ty = f [l*] x in bod
-
-where the RHS (post-flattening) is a single application, or a
-primitive application.
-
-These function applications will be the first point of introduction
-for fresh location variables.  This is the point at which we record
-the environment in scope at the generated location variable.  This
-will ultimately become the scope at which we allocate the location
-variable, which will follow 'y' and be constrained only via 'y's
-variable references.
-
-The references to the generated location will consist of (1) LocExp's
-relating it to other locations falling "after" it, and (2) dependence
-constraints created via 'y's variable references.
-
-We COULD examine every use-point of a location variable to check that
-it doesn't involve dependences on out-of-scope values, but it is
-sufficient to check only against the lexical environment at the
-introduction point of the fresh location variable.
+TODO: Actually implement this!
 
 -}
 
@@ -102,24 +95,19 @@ import qualified Data.Set as S
 import qualified Data.List as L
 import qualified Data.Foldable as F
 import Data.Maybe
--- import qualified Control.Monad.Trans.Writer.Strict as W
 import qualified Control.Monad.Trans.State.Strict as St
 import Control.Monad
 import Control.Monad.Trans.Except
 import Control.Monad.Trans (lift)
--- import qualified Control.Monad.Trans.Either
--- import qualified Control.Monad.Trans.Cont as CC
 import Debug.Trace
 
 
 import Packed.FirstOrder.GenericOps (gFreeVars)
-import Packed.FirstOrder.Common as C hiding (extendVEnv) -- (l, LRM(..)) 
--- import qualified Packed.FirstOrder.Common as C
+import Packed.FirstOrder.Common as C hiding (extendVEnv)
 import Packed.FirstOrder.Common (Var, Env2, DDefs, LocVar, runSyM, SyM, gensym, toVar)
 import qualified Packed.FirstOrder.L1.Syntax as L1
 import Packed.FirstOrder.L2.Syntax as L2
 import Packed.FirstOrder.L2.Typecheck as T
---     (ConstraintSet, LocConstraint(..), RegionSet(..), LocationTypeState(..))
 
 
 -- Environments
@@ -187,10 +175,20 @@ convertDDefs ddefs = traverse f ddefs
 -- Inference algorithm
 --------------------------------------------------------------------------------
 
+-- | The location inference monad is a stack of ExceptT and StateT.
 type TiM a = ExceptT Failure (St.StateT InferState SyM) a
 
+-- | The state of the inference procedure is a map from location variable
+-- to `UnifyLoc`, which is explained below.
+-- This is a bit awkward, since after inference is done we have to make another
+-- pass over the AST to update all the `LocVar`s. One refactoring that would
+-- make this less awkward would be to make a type-level distinction between
+-- `LocVar`s that occur before and after this pass.
+-- Also, it would be more efficient to use mutable state directly for this,
+-- or possibly some more sophisticated union find thing.
 type InferState = M.Map LocVar UnifyLoc
 
+-- | A location is either fixed or fresh. Two fixed locations cannot unify.
 data UnifyLoc = FixedLoc Var
               | FreshLoc Var
                 deriving (Show, Eq)
@@ -201,6 +199,9 @@ data Failure = FailUnify Ty2 Ty2
 
 ---------------------------------------
 
+-- | Constraints here mean almost the same thing as they do in the L2 type checker.
+-- One difference is the presence of an AfterTag constraint, though I'm not opposed to
+-- adding one to the L2 language for symmetry.
 data Constraint = AfterConstantL LocVar Int LocVar
                 | AfterVariableL LocVar Var LocVar
                 | AfterTagL LocVar LocVar
@@ -330,11 +331,15 @@ inferExp env@FullEnv{dataDefs}
          lex0@(L sl1 ex0) dest =
   let lc = L sl1
 
+      -- | Check if there are any StartRegion constraints that can be dischaged here.
+      -- The basic logic is that if we know a location `loc` is the start of a region `r`,
+      -- and we know that there are no constraints for anything after `loc` left
+      -- to be discharged, then we can insert the region binding for `r`.
       tryBindReg :: Result -> TiM Result
       tryBindReg (e,ty,((StartRegionL lv r) : cs)) =
           do lv' <- finalLocVar lv
              (e',ty',cs') <- tryBindReg (e,ty,cs)
-             b1 <- noAfterLoc lv' cs' cs' -- (traceShowId lv) (traceShowId cs')
+             b1 <- noAfterLoc lv' cs' cs'
              if b1 
              then do (e'',ty'',cs'') <- bindTrivialAfterLoc lv' (e',ty',cs')
                      return (l$ Ext (LetRegionE r (l$ Ext (LetLocE lv' (StartOfLE r) e''))), ty'', cs'')
@@ -344,6 +349,18 @@ inferExp env@FullEnv{dataDefs}
              return (e',ty',c:cs')
       tryBindReg (e,ty,[]) = return (e,ty,[])
 
+      -- | Check the existing list of constraints to determine if we need to introduce a new
+      -- StartRegion constraint based on an existing AfterTag constraint.
+      -- The logic here is that if we have an AfterTag constraint on two locations loc1 and loc2,
+      -- (ie, loc2 is a data structure and loc1 is its first field), and we know that nothing is
+      -- before loc2 and it isn't a fixed location, then it might be the start of a new region.
+      -- We can't just bind the region immediately, though, so this function just adds a new
+      -- constraint when appropriate, which will be discharged later.
+      -- TODO: refactor and merge this function with other logic for region insertion
+      tryInRegion :: [Constraint] -> TiM [Constraint]
+      tryInRegion cs = tryInRegion' cs cs
+
+      -- Hack, need a full copy of the constraint set in addition to the one being iterated over.
       tryInRegion' :: [Constraint] -> [Constraint] -> TiM [Constraint]
       tryInRegion' fcs (c:cs) =
           case c of
@@ -351,7 +368,7 @@ inferExp env@FullEnv{dataDefs}
                 do lv1' <- finalLocVar lv1
                    lv2' <- finalLocVar lv2
                    b1 <- noBeforeLoc lv2' fcs
-                   b2 <- noRegionStart lv1' fcs
+                   b2 <- noRegionStart lv2' fcs
                    b3 <- notFixedLoc lv2'
                    if b1 && b2 && b3
                    then do cs' <- tryInRegion' fcs cs
@@ -364,9 +381,10 @@ inferExp env@FullEnv{dataDefs}
                     return (c:cs')
       tryInRegion' _ [] = return []
 
-      tryInRegion :: [Constraint] -> TiM [Constraint]
-      tryInRegion cs = tryInRegion' cs cs
-
+      -- | This function looks at a series of locations and a type, and determines if
+      -- any of those locations could be the start of a region. Similar to `tryInRegion`.
+      -- A location might be the start of a region if there's nothing before it and
+      -- it isn't fixed.
       tryNeedRegion :: [LocVar] -> Ty2 -> [Constraint] -> TiM [Constraint]
       tryNeedRegion (l:ls) ty cs =
           do lv <- finalLocVar l
@@ -384,12 +402,18 @@ inferExp env@FullEnv{dataDefs}
              else tryNeedRegion ls ty cs
       tryNeedRegion [] _ cs = return cs
 
+      -- | This function will transform a result to wrap the sub-expression with any
+      -- simple location bindings for locations from the provided list.
+      -- For example, if a location `loc1` is known from an AfterTag constraint,
+      -- and `[loc1]` is passed in, the `letloc` binding for `loc1` will be wrapped
+      -- around the expression in the result.
       bindImmediateDependentLocs :: [LocVar] -> Result -> TiM Result
       bindImmediateDependentLocs (lv:lvs) (bod,ty,cs) =
           do (bod',ty',cs') <- bindImmediateDependentLocs lvs (bod,ty,cs)
              bindImmediateDependentLoc lv (bod',ty',cs')
       bindImmediateDependentLocs [] res = return res
 
+      -- single location variant of above function
       bindImmediateDependentLoc :: LocVar -> Result -> TiM Result
       bindImmediateDependentLoc lv (bod,ty,((AfterTagL lv1 lv2) : cs)) =
           do lv' <- finalLocVar lv
@@ -406,6 +430,9 @@ inferExp env@FullEnv{dataDefs}
              return (bod',ty',c:cs')
       bindImmediateDependentLoc lv (bod,ty,[]) = return (bod,ty,[])
 
+      -- | This transforms a result to add location bindings that can be inserted safely
+      -- once the variable passed in is in scope.
+      -- This is expected to be called on the *whole let expression*, not its body.
       handleTrailingBindLoc :: Var -> Result -> TiM Result
       handleTrailingBindLoc v res =
           do (e,ty,cs) <- bindAfterLoc v res
@@ -413,12 +440,14 @@ inferExp env@FullEnv{dataDefs}
                (L _ (Ext (LetLocE lv1 (AfterVariableLE v lv2) e))) ->
                    do (e',ty',cs') <- bindTrivialAfterLoc lv1 (e,ty,cs)
                       return (l$ Ext (LetLocE lv1 (AfterVariableLE v lv2) e'), ty', cs')
-               _ -> return (e,ty,cs)
+               _ -> return (e,ty,cs) -- Should this signal an error instead of silently returning?
 
       handleTrailingBindLocs :: [Var] -> Result -> TiM Result
       handleTrailingBindLocs (v:vs) res = handleTrailingBindLoc v res >>= handleTrailingBindLocs vs
       handleTrailingBindLocs _ res = return res
 
+      -- | Transforms a result by adding a location binding derived from an AfterVariable constraint
+      -- associated with the passed-in variable.
       bindAfterLoc :: Var -> Result -> TiM Result
       bindAfterLoc v (e,ty,c:cs) =
           case c of
@@ -433,6 +462,9 @@ inferExp env@FullEnv{dataDefs}
                     return (e',ty',c:cs')
       bindAfterLoc _ (e,ty,[]) = return (e,ty,[])
 
+      -- | Transforms a result by binding any additional locations that are safe to be bound
+      -- once the location passed in has been bound. For example, if we know `loc1` is `n`
+      -- bytes after `loc2`, and `loc2` has been passed in, we can bind `loc1`. 
       bindTrivialAfterLoc :: LocVar -> Result -> TiM Result
       bindTrivialAfterLoc lv (e,ty,c:cs) =
           case c of
@@ -458,6 +490,7 @@ inferExp env@FullEnv{dataDefs}
                     return (e',ty',c:cs')
       bindTrivialAfterLoc _ (e,ty,[]) = return (e,ty,[])
 
+      -- | Remove all constraints associated with a list of locations
       removeLocs :: [LocVar] -> [Constraint] -> [Constraint]
       removeLocs ls (c:cs) =
           let lv = case c of
@@ -685,7 +718,8 @@ inferExp env@FullEnv{dataDefs}
 -- TODO: Should eventually allow src and dest regions to be the same
 -- for in-place updates packed data with linear types.
   
-
+-- | Transforms an expression by updating all locations to their final mapping
+-- as a result of unification.
 finishExp :: L Exp2 -> TiM (L Exp2)
 finishExp (L i e) =
     let l e = L i e
@@ -809,7 +843,8 @@ cleanExp (L i e) =
       _ -> err $ "Unhandled case in cleanExp: " ++ (show e)
                                       
                            
-
+-- | Check if a location is contained in a type.
+-- This includes locations afterward in a data structure.
 containsLoc :: LocVar -> L2.Ty2 -> [Constraint] -> TiM Bool
 containsLoc lv1 ty cs =
     case ty of
@@ -822,6 +857,8 @@ containsLoc lv1 ty cs =
                      return $ elem lv1' lvs
       _ -> return False
 
+-- | Return a list of all locations known to be after a particular
+-- location.
 associatedLocs :: LocVar -> [Constraint] -> TiM [LocVar]
 associatedLocs lv (c:cs) =
     do lv' <- finalLocVar lv
@@ -844,6 +881,9 @@ associatedLocs lv (c:cs) =
          _ -> return lvs
 associatedLocs lv [] = return []
 
+-- | Checks that there are no constraints specifying a location
+-- after the location passed in.
+-- TODO: refactor to only take one list of constraints.
 noAfterLoc :: LocVar -> [Constraint] -> [Constraint] -> TiM Bool
 noAfterLoc lv fcs (c:cs) =
     case c of
