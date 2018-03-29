@@ -86,8 +86,8 @@
 (define (lookup-syms [syms : ListSym] [env : (SymDict Sym)]) : ListSym
   (case syms
     [(CONSSYM s rest)
-     (CONSSYM (if (ann (has-key? env s) Bool)
-                  (ann (lookup env s) Sym)
+     (CONSSYM (if (has-key? (ann env Sym) s)
+                  (lookup (ann env Sym) s)
                   s)
               (lookup-syms rest env))]
     [(NULLSYM)
@@ -103,7 +103,7 @@
 (define (loop7 [ls : ListSym] [env : (SymDict Sym)]) : ListSym
   (case ls
     [(CONSSYM s ls0)
-     (CONSSYM (ann (lookup env s) Sym) (loop7 ls0 env))]
+     (CONSSYM (lookup (ann env Sym) s) (loop7 ls0 env))]
     [(NULLSYM)
      ls]))
 
@@ -144,8 +144,8 @@
 (define (pass1 [e : Expr] [env : (SymDict Sym)]) : Expr
   (case e
     [(VARREF s)
-     (VARREF (if (ann (has-key? env s) Bool)
-                 (ann (lookup env s) Sym)
+     (VARREF (if (has-key? (ann env Sym) s)
+                 (lookup (ann env Sym) s)
                  s))]
     [(Top s)
      e]
@@ -190,8 +190,8 @@
     [(App e1 exprs)  ;; (#%plain-app expr ...+)
      (App (pass1 e1 env) (loop2 exprs env))]
     [(SetBang s e0)
-     (SetBang (if (ann (has-key? env s) Bool)
-                  (ann (lookup env s) Sym)
+     (SetBang (if (has-key? (ann env Sym) s)
+                  (lookup (ann env Sym) s)
                   s)
               (pass1 e0 env))]
     [(WithContinuationMark e1 e2 e3)
@@ -254,10 +254,10 @@
 (define (pass3 [e : Expr] [env : (SymDict Sym)] [mut : (SymDict Bool)]) : Expr
   (case e
     [(VARREF s)
-     (VARREF (if (ann (has-key? mut s) Bool)
+     (VARREF (if (has-key? (ann mut Bool) s)
                  s
-                 (if (ann (has-key? env s) Bool)
-                     (ann (lookup env s) Sym)
+                 (if (has-key? (ann env Sym) s)
+                     (lookup (ann env Sym) s)
                      s)))]
     [(Top s)
      e]
@@ -330,7 +330,7 @@
     [(CONSLVBIND syms e lv0)
      (letrecvalues-extend-env lv0 lhs (case e
                                         [(VARREF s)
-                                         (if (ann (has-key? env s) Bool)
+                                         (if (has-key? (ann env Sym) s)
                                              env
                                              (listsym-extend-env syms s env))]
                                         [(Lambda formals list-expr) env]
@@ -403,9 +403,9 @@
     [(F1 ls)
      (F1 (loop7 ls env))]
     [(F2 ls s)
-     (F2 (loop7 ls env) (ann (lookup env s) Sym))]
+     (F2 (loop7 ls env) (lookup (ann env Sym) s))]
     [(F3 s)
-     (F3 (ann (lookup env s) Sym))]))
+     (F3 (lookup (ann env Sym) s))]))
 
 ;; gensym for a list of syms and insert mappings into environment
 (define (rename-syms [ls : ListSym] [env : (SymDict Sym)]) : (SymDict Sym)

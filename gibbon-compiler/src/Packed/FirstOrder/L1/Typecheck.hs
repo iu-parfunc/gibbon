@@ -37,6 +37,8 @@ tcExp ddfs env exp@(L p ex) =
     LitE _    -> return IntTy
     LitSymE _ -> return IntTy
 
+    AppE "gensym" _locs _e -> return IntTy
+
     AppE v locs e -> do
       let (inTy, outTy) =
             case (M.lookup v (fEnv env)) of

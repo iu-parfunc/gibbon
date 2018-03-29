@@ -344,10 +344,11 @@ exp se =
    Ls4 l "insert" d k (Ls3 _ "ann" v ty) ->
        loc l $ PrimAppE (DictInsertP $ typ ty) [(exp d),(exp k),(exp v)]
 
-   Ls3 l "ann" (Ls3 _ "lookup" d k) ty ->
+   Ls3 l "lookup" (Ls3 _ "ann" d ty) k ->
        loc l $ PrimAppE (DictLookupP $ typ ty) [(exp d),(exp k)]
 
-   Ls3 l "ann" (Ls3  _ "has-key?" d k) ty ->
+--    Ls3 l "ann" (Ls3  _ "has-key?" d k) ty ->
+   Ls3 l "has-key?" (Ls3 _ "ann" d ty) k ->
      loc l $ PrimAppE (DictHasKeyP $ typ ty) [(exp d),(exp k)]
 
    -- L [A "error",arg] ->

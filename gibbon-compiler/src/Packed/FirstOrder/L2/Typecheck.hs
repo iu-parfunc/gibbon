@@ -130,6 +130,8 @@ tcExp ddfs env funs constrs regs tstatein exp@(L _ ex) =
 
       LitSymE _v -> return (IntTy, tstatein) -- SymTy
 
+      -- AppE "gensym" _ls _e -> return (IntTy, tstatein) -- SymTy
+
       AppE v ls e ->
           -- Checking function application involves a few steps:
           --  * We need to make sure the inputs/ouptuts line up with the expected
