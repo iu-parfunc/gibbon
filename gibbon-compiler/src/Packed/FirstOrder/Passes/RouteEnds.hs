@@ -241,7 +241,9 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
 
                            (eor'',e') <- foldM handleLoc (eor',e) $ zip (L.map snd vls) argtys
                            e'' <- exp fns retlocs eor'' lenv afterenv' e'
-                           return (dc, vls, e'')
+                           let lvs = S.fromList $ L.map fst $ L.filter (\(_v,ty) -> not (L2.isPackedTy' ty)) $ zip (L.map snd vls) argtys
+                               e''' = reorderLetlocs lvs M.empty e''                                  
+                           return (dc, vls, e''')
                  return $ CaseE (l$ VarE x) brs'
 
 
@@ -349,3 +351,49 @@ routeEnds Prog{ddefs,fundefs,mainExp} = do
                funtype v = case M.lookup v fns of
                              Nothing -> error $ "Function " ++ (show v) ++ " not found"
                              Just fundef -> funty fundef
+
+reorderLetlocs :: S.Set LocVar -> M.Map LocVar (LocVar,LocExp) -> L Exp2 -> L Exp2
+reorderLetlocs slv mlv (L p e) =
+    let lc = L p in
+    case e of
+      VarE v -> lc$ VarE v
+      LetE (v,ls,ty,L p' e1) e2 -> lc$ LetE (v,ls,ty,L p' e1) $ reorderLetlocs slv mlv e2
+      CaseE e1 brs -> lc$ CaseE e1 (L.map (\(dc,vls,e) -> (dc,vls,reorderLetlocs slv mlv e)) brs)
+      AppE v args e -> lc$ AppE v args e
+      PrimAppE pr es -> lc$ PrimAppE pr es
+      IfE e1 e2 e3 -> lc$ IfE e1 (reorderLetlocs slv mlv e2) (reorderLetlocs slv mlv e3)
+      MkProdE es -> lc$ MkProdE es
+      ProjE i e -> lc$ ProjE i e
+      DataConE loc dc es -> lc$ DataConE loc dc es
+      LitE i -> lc$ LitE i
+      LitSymE v -> lc$ LitSymE v
+      TimeIt e ty b -> lc$ TimeIt (reorderLetlocs slv mlv e) ty b
+      Ext (LetRegionE r e) -> lc$ Ext (LetRegionE r (reorderLetlocs slv mlv e))
+      Ext (LetLocE v (StartOfLE r) e) ->
+          case M.lookup v mlv of
+            Just (v',le) -> let mlv' = M.delete v mlv
+                            in lc$ Ext (LetLocE v (StartOfLE r) (l$ Ext (LetLocE v' le (reorderLetlocs slv mlv' e))))
+            Nothing -> lc$ Ext (LetLocE v (StartOfLE r) (reorderLetlocs slv mlv e))
+      Ext (LetLocE v (AfterVariableLE x l1) e) ->
+          if l1 `S.member` slv
+          then let mlv' = M.insert l1 (v,AfterVariableLE x l1) mlv
+               in reorderLetlocs (S.delete l1 slv) mlv' e
+          else case M.lookup v mlv of
+                 Just (v',le) -> let mlv' = M.delete v mlv
+                                 in lc$ Ext (LetLocE v (AfterVariableLE x l1) (l$ Ext (LetLocE v' le (reorderLetlocs slv mlv' e))))
+                 Nothing -> lc$ Ext (LetLocE v (AfterVariableLE x l1) (reorderLetlocs slv mlv e))
+      Ext (LetLocE v (AfterConstantLE i l1) e) ->
+          if l1 `S.member` slv
+          then let mlv' = M.insert l1 (v,AfterConstantLE i l1) mlv
+               in reorderLetlocs (S.delete l1 slv) mlv' e
+          else case M.lookup v mlv of
+                 Just (v',le) -> let mlv' = M.delete v mlv
+                                 in lc$ Ext (LetLocE v (AfterConstantLE i l1) (l$ Ext (LetLocE v' le (reorderLetlocs slv mlv' e))))
+                 Nothing -> lc$ Ext (LetLocE v (AfterConstantLE i l1) (reorderLetlocs slv mlv e))
+      Ext (LetLocE v le e) ->
+          case M.lookup v mlv of
+            Just (v',le') -> let mlv' = M.delete v mlv
+                             in lc $ Ext (LetLocE v le (l$ Ext (LetLocE v' le' (reorderLetlocs slv mlv' e))))
+            Nothing -> lc$ Ext (LetLocE v le (reorderLetlocs slv mlv e))
+      Ext (RetE l1 v) -> lc$ Ext (RetE l1 v)
+      _ -> internalError $ "reorderLetlocs: unsupported expression: " ++ (show e)
