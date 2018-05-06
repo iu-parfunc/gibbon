@@ -16,37 +16,52 @@ import Packed.FirstOrder.L1.Syntax as L1
 -- | specializing functions on types 
 type Exp = (L Exp0)
 
-data Defn = VDef (VarDef Ty0 Exp)
-          | FDef (FunDef Ty0 Exp)
-          | Def  (DDef Ty0)
+-- | polymorphic/monomorphic functions
+type PolyFD = PFDef Ty0 Exp
+type MonoFD = FunDef Ty0 Exp
+
+-- | polymorphic/monomorphic variable defns
+type PolyVD = PVDef Ty0 Exp
+type MonoVD = VarDef Ty0 Exp
+
+-- | polymorphic/monomorphic data defns
+type PolyDD = PDDef Ty0 
+type MonoDD = DDef Ty0 
+
+  
+data Defn = VDef MonoVD
+          | FDef MonoFD
+          | Def  MonoDD
 
 type Defns = Map Var Defn
 
-isPolyFun :: PFDef Ty0 Exp -> Either (PFDef Ty0 Exp) (FunDef Ty0 Exp)
+isPolyFun :: PolyFD -> Either PolyFD MonoFD
 isPolyFun (PFDef name arg (ForAll [] (ArrowTy t0 t1)) b) =
   Right $ FunDef name (arg,t0) t1 b 
 isPolyFun pf = Left pf
 
 
-isPolyVar :: PVDef Ty0 Exp -> Either (PVDef Ty0 Exp) (VarDef Ty0 Exp)
+isPolyVar :: PolyVD -> Either PolyVD MonoVD
 isPolyVar (PVDef n (ForAll [] t) b) =
   Right $ VarDef n t b 
 isPolyVar pf = Left pf
 
-isPolyDef :: PDDef Ty0 -> Either (PDDef Ty0) (DDef Ty0)
+isPolyDef :: PolyDD -> Either PolyDD MonoDD
 isPolyDef pd@(PDDef n ds) =
   if allMono then Right $ DDef n mds else Left pd
-   where mds = L.foldr (\ d acc ->
-                          case d of
-                            (c,s) -> ((c,s'):acc)
-                             where s' = L.map (\(i, ForAll _ t) -> (i,t)) s)
-               []
-               (L.filter
-                (\ d -> case d of
-                          (_, s) -> L.foldr (\ (_, ForAll vs _) acc -> if vs == [] then acc else False) True s
-                )
-               ds) 
+   where mds = filterAndMono ds
          allMono = L.length ds == L.length mds
+
+filterAndMono :: [(DataCon,[(IsBoxed,Scheme Ty0)])] -> [(DataCon,[(IsBoxed,Ty0)])]
+filterAndMono ds =
+  L.foldr mono [] $ L.filter isMono ds
+  where mono = (\ d acc ->
+                  case d of
+                    (c,s) -> ((c,s'):acc)
+                      where s' = L.map (\(i, ForAll _ t) -> (i,t)) s)
+        isMono = (\ d -> case d of
+                          (_, s) -> L.foldr emptyTyScheme True s)
+        emptyTyScheme = (\ (_, ForAll vs _) acc -> if vs == [] then acc else False)
 
 filterPDefs :: PDDefs Ty0 -> (PDDefs Ty0, DDefs Ty0)
 filterPDefs pds = M.foldr (\ pd (acc1,acc2) ->
@@ -72,17 +87,17 @@ filterPVDefs pfds = M.foldr (\ pv (acc1,acc2) ->
                   (M.empty, M.empty)
                   pfds
 
-updatePF :: PFDef Ty0 Exp -> (Ty0 , Ty0) -> FunDef Ty0 Exp
+updatePF :: PolyFD -> (Ty0 , Ty0) -> MonoFD
 updatePF (PFDef name arg _ b)  (t0, t1) =
   let newName = addToName name t0 in
   FunDef newName (arg,t0) t1 $ replaceName name newName b
 
-updatePV :: PVDef Ty0 Exp -> Ty0 -> VarDef Ty0 Exp
+updatePV :: PolyVD -> Ty0 -> MonoVD
 updatePV (PVDef name _ b) t =
   let newName = addToName name t in
   VarDef newName t $ replaceName name newName b 
 
-updatePD :: PDDef Ty0 -> [(DataCon, [(IsBoxed,Ty0)])] -> DDef Ty0 
+updatePD :: PolyDD -> [(DataCon, [(IsBoxed,Ty0)])] -> MonoDD 
 updatePD (PDDef name _) ts =
   DDef (addToName name $ L.map snd ts) ts
    
@@ -108,11 +123,11 @@ traverseAndCopy (PProg ds fs vs main) =
         (ddefs, fdefs, vdefs) = mergeDefns defns mds mfs mvs
 
 
-tACFunDef :: PFDefs Ty0 Exp -> PVDefs Ty0 Exp -> PDDefs Ty0 -> PFDef Ty0 Exp -> State Defns (PFDef Ty0 Exp)
+tACFunDef :: PFDefs Ty0 Exp -> PVDefs Ty0 Exp -> PDDefs Ty0 -> PolyFD -> State Defns PolyFD
 tACFunDef pfs pvs pds PFDef{fName,fArg,fTy,fBody} =
  PFDef fName fArg fTy <$> tACExp pfs pvs pds fBody
 
-tACVarDef :: PFDefs Ty0 Exp -> PVDefs Ty0 Exp -> PDDefs Ty0 -> PVDef Ty0 Exp -> State Defns (PVDef Ty0 Exp)
+tACVarDef :: PFDefs Ty0 Exp -> PVDefs Ty0 Exp -> PDDefs Ty0 -> PolyVD -> State Defns PolyVD
 tACVarDef pfs pvs pds PVDef{vName,vTy,vBody} =
  PVDef vName vTy <$> tACExp pfs pvs pds vBody
 
