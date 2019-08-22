@@ -6,7 +6,29 @@ layout: default
 <!-- <img class="centered img-70" src="static/gibbon.png"> -->
 <!-- </div> -->
 
-[Gibbon](https://github.com/iu-parfunc/gibbon/tree/master/gibbon-compiler) is a full program compiler that optimizes traversals over algebraic data types by compiling them to operate directly on a pointer-free serialized representation of the data. Programs using such "packed" representations run significantly faster than the ones using pointers. Since the ECOOP'17 publication, we've developed a "location calculus", which formalizes the memory model, and would allow us to prove some interesting properties about it. We're now taking the first steps toward adding support for efficient parallel computations.
+[Gibbon](https://github.com/iu-parfunc/gibbon/tree/master/gibbon-compiler) 
+is an experimental compiler that transforms high-level functional programs
+to operate on _serialized data._
+
+Typically, programs that process tree-like data represent trees using pointer-based
+data structures in memory (one heap object per-leaf and per-node) because such a 
+layout is convenient to manipulate in a high-level programming language. 
+This is also generally distinct from the representation of the data in 
+serialized form on disk,
+which means that a program must perform some sort or marshaling when working with serialized data.
+Gibbon _unifies_ the in-memory and serialized formats, transforming recursive
+functions to operate _directly_ on serialized data.
+
+Additionally, while the pointer-based structure is efficient
+for random access and shape-changing modifications, it can be inefficient 
+for traversals that process most or all of a tree in bulk. 
+The Gibbon project aims to explore optimizations of recursive tree transforms 
+by changing how trees are stored in memory. 
+
+Currently, the Gibbon compiler has multiple front-ends: an s-expression synax
+similar to Typed Racket, and a small subset of Haskell.
+
+
 
 ## Usage
 
@@ -17,7 +39,7 @@ Build the compiler with:
 
 Run a sample program from the [examples](https://github.com/iu-parfunc/gibbon/tree/master/gibbon-compiler/examples) directory:
 
-    $ stack exec -- gibbon -r examples/test02d_printPair.gib
+    $ stack exec -- gibbon -r ./demo/Add1.hs
 
 
 For more options:
