@@ -112,6 +112,9 @@ closeParen   = printString ")"
 printSpace :: T.Tail -> T.Tail
 printSpace = printString " "
 
+printComma :: T.Tail -> T.Tail
+printComma = printString ","
+
 sandwich :: (T.Tail -> T.Tail) -> String -> T.Tail -> T.Tail
 sandwich mid s end = openParen s $ mid $ closeParen end
 
@@ -212,12 +215,12 @@ printTy pkd ty trvs =
       in \t -> T.IfT trv (prntBool truePrinted $ t) (prntBool falsePrinted $ t)
 
     (ProdTy tys, _) ->
-      let printTupStart = printString "'#("
+      let printTupStart = printString "("
           (bltrvs,ltrv) = (init trvs, last trvs)
           (bltys,lty)   = (init tys, last tys)
       in \t ->
         printTupStart $
-        foldr (\(ty,trv) acc -> printTy pkd ty [trv] $ printSpace acc)
+        foldr (\(ty,trv) acc -> printTy pkd ty [trv] $ printComma acc)
         (printTy pkd lty [ltrv] $ closeParen t)
         (zip bltys bltrvs)
     _ -> error $ "printTy: unexpected: " ++ show (ty, trvs)

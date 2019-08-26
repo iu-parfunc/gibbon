@@ -447,7 +447,7 @@ debugFlagSuffix f =
 -- gibbon" which itself should change once we implement a custom
 -- printer.
 truePrinted :: String
-truePrinted = "#t"
+truePrinted = "True"
 
 falsePrinted :: String
-falsePrinted = "#f"
+falsePrinted = "False"
