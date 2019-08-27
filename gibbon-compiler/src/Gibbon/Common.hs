@@ -441,7 +441,7 @@ debugFlagSuffix f =
     Opt_D_DumpToFile  -> "dump-to-file" -- This would never be used.
     Opt_D_Dump_Hs     -> "gibbon_hs.hs"
 
-----------
+--------------------------------------------------------------------------------
 
 data SourceLanguage = Hskl | Gibbon deriving (Show, Eq)
 
