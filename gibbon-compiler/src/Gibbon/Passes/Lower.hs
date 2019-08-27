@@ -215,12 +215,14 @@ printTy pkd ty trvs =
       in \t -> T.IfT trv (prntBool (truePrinted Hskl) $ t) (prntBool (falsePrinted Hskl) $ t)
 
     (ProdTy tys, _) ->
-      let printTupStart = printString "("
+      let printTupStart src = case src of
+            Hskl -> printString "("
+            Gibbon -> printString "'#("
           (bltrvs,ltrv) = (init trvs, last trvs)
           (bltys,lty)   = (init tys, last tys)
       in \t ->
-        printTupStart $
-        foldr (\(ty,trv) acc -> printTy pkd ty [trv] $ printComma acc)
+        printTupStart Hskl $
+        foldr (\(ty,trv) acc -> printTy pkd ty [trv] $ printComma $ printSpace acc)
         (printTy pkd lty [ltrv] $ closeParen t)
         (zip bltys bltrvs)
     _ -> error $ "printTy: unexpected: " ++ show (ty, trvs)
