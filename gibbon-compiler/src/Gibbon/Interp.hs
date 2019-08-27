@@ -128,11 +128,11 @@ instance Show Value where
   case v of
    VInt n   -> show n
    VSym s   -> "'" ++ s
-   VBool b  -> if b then truePrinted else falsePrinted
+   VBool b  -> if b then truePrinted Hskl else falsePrinted Hskl
 -- TODO: eventually want Haskell style tuple-printing:
 --    VProd ls -> "("++ concat(intersperse ", " (L.map show ls)) ++")"
 -- For now match Gibbon's Racket backend
-   VProd ls -> "'#("++ concat(intersperse " " (L.map show ls)) ++")"
+   VProd ls -> "'#("++ concat(intersperse " " (L.map show ls)) ++")" -- Todo : fix this
    VDict m      -> show (M.toList m)
 
    -- F(x) style.  Maybe we'll switch to sweet-exps to keep everything in sync:
