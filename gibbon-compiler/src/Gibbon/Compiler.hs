@@ -225,7 +225,7 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
       let outfile = getOutfile backend fp cfile
 
       -- run the initial program through the compiler pipeline
-      stM <- return $ passes config' l1
+      stM <- return $ passes Gibbon config' l1
       l4  <- evalStateT stM (CompileState {cnt=cnt0, result=initResult})
 
       if mode == Interp2
@@ -456,8 +456,8 @@ benchMainExp l1 = do
     _ -> return l1
 
 -- | The main compiler pipeline
-passes :: Config -> L1.Prog1 -> StateT CompileState IO L4.Prog
-passes config@Config{dynflags} l1 = do
+passes :: SourceLanguage -> Config -> L1.Prog1 -> StateT CompileState IO L4.Prog
+passes src config@Config{dynflags} l1 = do
       let isPacked   = gopt Opt_Packed dynflags
           biginf     = gopt Opt_BigInfiniteRegions dynflags
           gibbon1    = gopt Opt_Gibbon1 dynflags
@@ -542,7 +542,7 @@ passes config@Config{dynflags} l1 = do
       l3 <- go "L3.typecheck"   (L3.tcProg isPacked)    l3
 
       -- Note: L3 -> L4
-      l4 <- go "lower"          lower                   l3
+      l4 <- go "lower"          (lower src)             l3
 
       l4 <- if gibbon1 || not isPacked
             then return l4

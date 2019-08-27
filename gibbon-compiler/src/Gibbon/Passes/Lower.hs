@@ -119,16 +119,16 @@ sandwich :: (T.Tail -> T.Tail) -> String -> T.Tail -> T.Tail
 sandwich mid s end = openParen s $ mid $ closeParen end
 
 -- Generate printing functions
-genDconsPrinter :: [Ty3] -> Var -> PassM T.Tail
-genDconsPrinter (x:xs) tail = case x of
+genDconsPrinter :: [Ty3] -> Var -> SourceLanguage -> PassM T.Tail
+genDconsPrinter (x:xs) tail src = case x of
   _ | isScalarTy x ->  do
     val  <- gensym "val"
     t    <- gensym "tail"
     let l4_ty = T.fromL3Ty x
     T.LetPrimCallT [(val, l4_ty), (t, T.CursorTy)] (T.ReadScalar (mkScalar x)) [(T.VarTriv tail)] <$>
-      printTy False x [T.VarTriv val] <$>
+      printTy src False x [T.VarTriv val] <$>
        maybeSpace <$>
-        genDconsPrinter xs t
+        genDconsPrinter xs t src
 
   L3.PackedTy tyCons _ -> do
     val  <- gensym "val"
@@ -139,9 +139,9 @@ genDconsPrinter (x:xs) tail = case x of
       T.LetTrivT (valc, T.CursorTy, T.VarTriv val) <$>
       T.LetCallT False [(tmp, T.PtrTy)] (mkPrinterName tyCons) [(T.VarTriv valc)] <$>
        maybeSpace <$>
-         genDconsPrinter xs t
+         genDconsPrinter xs t src
 
-  L3.CursorTy -> genDconsPrinter xs tail
+  L3.CursorTy -> genDconsPrinter xs tail src
 
   _ -> error "FINISHME: genDconsPrinter"
 
@@ -150,15 +150,15 @@ genDconsPrinter (x:xs) tail = case x of
                then id
                else printSpace
 
-genDconsPrinter [] tail     = do
+genDconsPrinter [] tail _   = do
   return $ closeParen $ T.RetValsT [(T.VarTriv tail)]
 
-genAltPrinter :: [(DataCon,[(IsBoxed, Ty3)])] -> Var -> Int64 -> PassM T.Alts
-genAltPrinter ((dcons, typs):xs) tail n = do
+genAltPrinter :: SourceLanguage -> [(DataCon,[(IsBoxed, Ty3)])] -> Var -> Int64 -> PassM T.Alts
+genAltPrinter src ((dcons, typs):xs) tail n = do
   let (_,typs') = unzip typs
   -- WARNING: IsBoxed ignored here
-  curTail <- (openParen dcons) <$> genDconsPrinter typs' tail
-  alts    <- genAltPrinter xs tail (n+1)
+  curTail <- (openParen dcons) <$> genDconsPrinter typs' tail src
+  alts    <- genAltPrinter src xs tail (n+1)
   let alt = if isIndirectionTag dcons
             then indirectionAlt
             else n
@@ -168,14 +168,14 @@ genAltPrinter ((dcons, typs):xs) tail n = do
     T.IntAlts tags -> return $ T.IntAlts ((alt::Int64, curTail) : tags)
     -- T.TagAlts tags -> return $ T.TagAlts ((n::Word8, curTail) : tags)
     _              -> error $ "Invalid case statement type."
-genAltPrinter [] _ _                = return $ T.IntAlts []
+genAltPrinter _ [] _ _                = return $ T.IntAlts []
 
-genPrinter  :: DDef Ty3 -> PassM T.FunDecl
-genPrinter DDef{tyName, dataCons} = do
+genPrinter  :: SourceLanguage -> DDef Ty3 -> PassM T.FunDecl
+genPrinter src DDef{tyName, dataCons} = do
   p    <- gensym "p"
   tag  <- gensym "tag"
   tail <- gensym "tail"
-  alts <- genAltPrinter dataCons tail 0
+  alts <- genAltPrinter src dataCons tail 0
   lbl  <- gensym "switch"
   -- CSK: Why is this ReadInt ?
   bod  <- return $ T.LetPrimCallT [(tag, T.TagTyPacked), (tail, T.CursorTy)] (T.ReadScalar IntS) [(T.VarTriv p)] $
@@ -187,12 +187,12 @@ genPrinter DDef{tyName, dataCons} = do
                     T.isPure   = False
                   }
 
-printTy :: Bool -> Ty3 -> [T.Triv] -> (T.Tail -> T.Tail)
-printTy pkd ty trvs =
+printTy :: SourceLanguage -> Bool -> Ty3 -> [T.Triv] -> (T.Tail -> T.Tail)
+printTy src pkd ty trvs =
   case (ty, trvs) of
     (IntTy, [_one])             -> T.LetPrimCallT [] T.PrintInt trvs
     (SymTy, [_one])             -> T.LetPrimCallT [] T.PrintSym trvs
-    (SymDictTy _ ty', [_one])     -> sandwich (printTy pkd ty' trvs) "Dict"
+    (SymDictTy _ ty', [_one])     -> sandwich (printTy src pkd ty' trvs) "Dict"
     (PackedTy constr _, [one]) -> -- HACK: Using varAppend here was the simplest way to get
                                   -- unique names without using the PassM monad.
                                   -- ASSUMPTION: Argument (one) is always a variable reference.
@@ -208,22 +208,22 @@ printTy pkd ty trvs =
                                                  (mkUnpackerName constr) trvs $
                                                  T.LetCallT False [] (mkPrinterName constr) [T.VarTriv unpkd] tl)
                                     else T.LetCallT False [] (mkPrinterName constr) trvs
-    (ListTy ty', [_one])        -> sandwich (printTy pkd ty' trvs) "List"
+    (ListTy ty', [_one])        -> sandwich (printTy src pkd ty' trvs) "List"
 
     (BoolTy, [trv]) ->
       let prntBool m = T.LetPrimCallT [] (T.PrintString m) []
-      in \t -> T.IfT trv (prntBool (truePrinted Hskl) $ t) (prntBool (falsePrinted Hskl) $ t)
+      in \t -> T.IfT trv (prntBool (truePrinted src) $ t) (prntBool (falsePrinted src) $ t)
 
     (ProdTy tys, _) ->
-      let printTupStart src = case src of
+      let printTupStart s = case s of
             Hskl -> printString "("
             Gibbon -> printString "'#("
           (bltrvs,ltrv) = (init trvs, last trvs)
           (bltys,lty)   = (init tys, last tys)
       in \t ->
-        printTupStart Hskl $
-        foldr (\(ty,trv) acc -> printTy pkd ty [trv] $ printComma $ printSpace acc)
-        (printTy pkd lty [ltrv] $ closeParen t)
+        printTupStart src $
+        foldr (\(ty,trv) acc -> printTy src pkd ty [trv] $ printComma $ printSpace acc)
+        (printTy src pkd lty [ltrv] $ closeParen t)
         (zip bltys bltrvs)
     _ -> error $ "printTy: unexpected: " ++ show (ty, trvs)
 
@@ -263,15 +263,15 @@ properTrivs pkd ty trvs =
 
 -- printTy ty trvs = error $ "Invalid L3 data type; " ++ show ty ++ " " ++ show trvs
 
-addPrintToTail :: Ty3 -> T.Tail-> PassM T.Tail
-addPrintToTail ty tl0 = do
+addPrintToTail :: SourceLanguage -> Ty3 -> T.Tail-> PassM T.Tail
+addPrintToTail src ty tl0 = do
     dflags <- getDynFlags
     let pkd = gopt Opt_Packed dflags
         ty' = if pkd
               then T.IntTy
               else T.fromL3Ty ty
     T.withTail (tl0, ty') $ \ trvs ->
-      printTy pkd ty (properTrivs pkd ty trvs) $
+      printTy src pkd ty (properTrivs pkd ty trvs) $
         -- Always print a trailing newline at the end of execution:
         T.LetPrimCallT [] (T.PrintString "\n") [] $
           T.LetPrimCallT [] T.FreeSymTable [] $
@@ -298,8 +298,8 @@ getTagOfDataCon dds dcon =
 --
 -- First argument indicates (1) whether we're inpacked mode, and (2)
 -- the pre-cursorize type of the mainExp, if there is a mainExp.
-lower :: Prog3 -> PassM T.Prog
-lower Prog{fundefs,ddefs,mainExp} = do
+lower :: SourceLanguage -> Prog3 -> PassM T.Prog
+lower src Prog{fundefs,ddefs,mainExp} = do
   -- In Lower, we want to replace LitSymE's with the corresponding index into
   -- the symbol table. That's why we build a map from String's to Int64's.
   -- However, all the subsequent lookup's will be on the index, to get to the
@@ -314,10 +314,10 @@ lower Prog{fundefs,ddefs,mainExp} = do
   mn <- case mainExp of
           Nothing    -> return Nothing
           Just (x,mty) -> (Just . T.PrintExp) <$>
-                            (addPrintToTail mty =<< tail inv_sym_tbl x)
+                            (addPrintToTail src mty =<< tail inv_sym_tbl x)
   funs       <- mapM (fund inv_sym_tbl) (M.elems fundefs)
   unpackers  <- mapM genUnpacker (L.filter (not . isVoidDDef) (M.elems ddefs))
-  printers   <- mapM genPrinter (L.filter (not . isVoidDDef) (M.elems ddefs))
+  printers   <- mapM (genPrinter src) (L.filter (not . isVoidDDef) (M.elems ddefs))
   (T.Prog sym_tbl) <$> pure (funs ++ unpackers ++ printers) <*> pure mn
  where
   fund :: M.Map String Word16 -> FunDef3 -> PassM T.FunDecl
