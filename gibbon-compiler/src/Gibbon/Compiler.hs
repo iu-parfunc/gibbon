@@ -177,15 +177,20 @@ compileCmd :: [String] -> IO ()
 compileCmd args = withArgs args $
     do (cfg,files) <- execParser opts
        case files of
-         [f] -> compile cfg f
+         [f] -> compile (sourceLangFromFile f) cfg f
          _ -> do dbgPrintLn 1 $ "Compiling multiple files:  "++show files
-                 mapM_ (compile cfg) files
+                 mapM_ (compile Hskl cfg) files
   where
     opts = info (helper <*> configWithArgs)
       ( fullDesc
      <> progDesc "Compile FILES according to the below options."
      <> header "A compiler for a minature tree traversal language" )
 
+
+sourceLangFromFile :: FilePath -> SourceLanguage
+sourceLangFromFile fp = case takeExtension fp of
+  ".hs" -> Hskl
+  ".gib" -> Gibbon
 
 sepline :: String
 sepline = replicate 80 '='
@@ -198,8 +203,8 @@ data CompileState = CompileState
 
 -- | Compiler entrypoint, given a full configuration and a list of
 -- files to process, do the thing.
-compile :: Config -> FilePath -> IO ()
-compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
+compile :: SourceLanguage -> Config -> FilePath -> IO ()
+compile src config@Config{mode,input,verbosity,backend,cfile} fp0 = do
   -- set the env var DEBUG, to verbosity, when > 1
   setDebugEnvVar verbosity
 
@@ -225,7 +230,7 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
       let outfile = getOutfile backend fp cfile
 
       -- run the initial program through the compiler pipeline
-      stM <- return $ passes Gibbon config' l1
+      stM <- return $ passes src config' l1
       l4  <- evalStateT stM (CompileState {cnt=cnt0, result=initResult})
 
       if mode == Interp2
