@@ -179,7 +179,7 @@ compileCmd args = withArgs args $
        case files of
          [f] -> compile (sourceLangFromFile f) cfg f
          _ -> do dbgPrintLn 1 $ "Compiling multiple files:  "++show files
-                 mapM_ (compile Hskl cfg) files
+                 mapM_ (compile Gibbon cfg) files -- TODO: fix pretty print syntax for multiple files
   where
     opts = info (helper <*> configWithArgs)
       ( fullDesc
