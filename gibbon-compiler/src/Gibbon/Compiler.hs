@@ -12,7 +12,7 @@ module Gibbon.Compiler
      , Config (..), Mode(..), Input(..)
      , configParser, configWithArgs, defaultConfig
       -- * Some other helper fns
-     , compileAndRunExe
+     , compileAndRunExe, sourceLangFromFile
     )
   where
 
@@ -191,6 +191,7 @@ sourceLangFromFile :: FilePath -> SourceLanguage
 sourceLangFromFile fp = case takeExtension fp of
   ".hs" -> Hskl
   ".gib" -> Gibbon
+  _ -> Gibbon -- Todo: Support other syntaxes in future maybe.
 
 sepline :: String
 sepline = replicate 80 '='

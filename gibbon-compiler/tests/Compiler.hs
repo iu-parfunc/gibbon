@@ -65,8 +65,8 @@ runT prg = fst $ defaultPackedRunPassM $ do
     return l3
 
 
-run2T :: L3.Prog3 -> L4.Prog
-run2T l3 = fst $ defaultPackedRunPassM $ do
+run2T :: SourceLanguage -> L3.Prog3 -> L4.Prog
+run2T src l3 = fst $ defaultPackedRunPassM $ do
     l3 <- flattenL3 l3
     -- l3 <- findWitnesses l3
     -- l3 <- shakeTree l3
@@ -75,13 +75,13 @@ run2T l3 = fst $ defaultPackedRunPassM $ do
     l3 <- unariser l3
     l3 <- flattenL3 l3
     l3 <- L3.tcProg True l3
-    l4 <- lower l3
+    l4 <- lower src l3
     l4 <- followRedirects l4
     rearrangeFree l4
 
 
-cg :: Prog2 -> IO String
-cg = codegenProg defaultConfig . run2T . runT
+cg :: SourceLanguage -> Prog2 -> IO String
+cg src = codegenProg defaultConfig . (run2T src) . runT
 
 
 type Expected = String
@@ -90,7 +90,7 @@ runner :: FilePath -> Prog2 -> Expected -> Assertion
 runner fp prg exp = do
     _ <- createDirectoryIfMissing True testDir
     fp <- makeAbsolute $ testDir </> fp
-    op <- cg prg
+    op <- cg (sourceLangFromFile fp) prg
     writeFile fp op
     res <- compileAndRunExe (defaultConfig { mode = RunExe }) fp
     let res' = init res -- strip trailing newline

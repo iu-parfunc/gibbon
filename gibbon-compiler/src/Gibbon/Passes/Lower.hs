@@ -115,6 +115,11 @@ printSpace = printString " "
 printComma :: T.Tail -> T.Tail
 printComma = printString ","
 
+printSeparator :: SourceLanguage -> T.Tail -> T.Tail
+printSeparator src = case src of
+  Hskl -> printComma . printSpace
+  Gibbon -> printSpace
+
 sandwich :: (T.Tail -> T.Tail) -> String -> T.Tail -> T.Tail
 sandwich mid s end = openParen s $ mid $ closeParen end
 
@@ -222,7 +227,7 @@ printTy src pkd ty trvs =
           (bltys,lty)   = (init tys, last tys)
       in \t ->
         printTupStart src $
-        foldr (\(ty,trv) acc -> printTy src pkd ty [trv] $ printComma $ printSpace acc)
+        foldr (\(ty,trv) acc -> printTy src pkd ty [trv] $ (printSeparator src) acc)
         (printTy src pkd lty [ltrv] $ closeParen t)
         (zip bltys bltrvs)
     _ -> error $ "printTy: unexpected: " ++ show (ty, trvs)
