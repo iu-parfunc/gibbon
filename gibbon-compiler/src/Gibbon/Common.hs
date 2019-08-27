@@ -28,6 +28,7 @@ module Gibbon.Common
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
        , internalError, dumpIfSet
+       , SourceLanguage(..)
 
          -- * Establish conventions for the output of #lang gibbon:
        , truePrinted, falsePrinted
@@ -440,14 +441,26 @@ debugFlagSuffix f =
     Opt_D_DumpToFile  -> "dump-to-file" -- This would never be used.
     Opt_D_Dump_Hs     -> "gibbon_hs.hs"
 
+----------
+
+data SourceLanguage = Hskl | Gibbon deriving (Show, Eq)
+
 --------------------------------------------------------------------------------
 -- Some global constants
 
 -- | For now this is designed to match the Racket output of "#lang
 -- gibbon" which itself should change once we implement a custom
 -- printer.
-truePrinted :: String
-truePrinted = "True"
+truePrinted :: SourceLanguage -> String
+truePrinted src = 
+  case src of
+    Hskl -> "True"
+    Gibbon -> "#t"
 
-falsePrinted :: String
-falsePrinted = "False"
+falsePrinted :: SourceLanguage -> String
+falsePrinted src = 
+  case src of
+    Hskl -> "False"
+    Gibbon -> "#f"
+
+

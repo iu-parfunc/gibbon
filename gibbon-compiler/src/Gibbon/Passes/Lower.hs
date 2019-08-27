@@ -212,7 +212,7 @@ printTy pkd ty trvs =
 
     (BoolTy, [trv]) ->
       let prntBool m = T.LetPrimCallT [] (T.PrintString m) []
-      in \t -> T.IfT trv (prntBool truePrinted $ t) (prntBool falsePrinted $ t)
+      in \t -> T.IfT trv (prntBool (truePrinted Hskl) $ t) (prntBool (falsePrinted Hskl) $ t)
 
     (ProdTy tys, _) ->
       let printTupStart = printString "("
