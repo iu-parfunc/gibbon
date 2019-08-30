@@ -48,17 +48,17 @@ instance Interp Prog1 where
 
 -- | Interpret a program, including printing timings to the screen.
 --   The returned bytestring contains that printed timing info.
-interpProg1 :: RunConfig -> Prog1 -> IO (Value, B.ByteString)
-interpProg1 rc Prog{ddefs,fundefs,mainExp} =
+interpProg1 :: SourceLanguage -> RunConfig -> Prog1 -> IO (LanguageValue, B.ByteString)
+interpProg1 src rc Prog{ddefs,fundefs,mainExp} =
   case mainExp of
     -- Print nothing, return "void"
-    Nothing -> return (VProd [], B.empty)
+    Nothing -> return ( LanguageValue (src, VProd []), B.empty)
     Just (e,_) -> do
       let fenv = M.fromList [ (funName f , f) | f <- M.elems fundefs]
       -- logs contains print side effects
       ((res,logs),Store _finstore) <-
          runStateT (runWriterT (interp rc ddefs fenv e)) (Store M.empty)
-      return (res, toLazyByteString logs)
+      return ( LanguageValue (src, res), toLazyByteString logs)
 
 
 interp :: forall l e. ( Out l, Show l, Expression (e l (UrTy l)) )
@@ -174,7 +174,7 @@ interp rc _ddefs fenv = go M.empty
                            VBool flg -> if flg
                                         then go env b
                                         else go env c
-                           oth -> error$ "interp: expected bool, got: "++show oth
+                           oth -> error$ "interp: expected bool, got: "++show (LanguageValue (Gibbon, oth))
 
           MapE _ _bod    -> error "L1.Interp: finish MapE"
           FoldE _ _ _bod -> error "L1.Interp: finish FoldE"
@@ -204,14 +204,15 @@ applyPrim rc p ls =
    (AndP, [VBool x, VBool y]) -> VBool (x && y)
    (OrP, [VBool x, VBool y])  -> VBool (x || y)
    ((DictInsertP _ty),[_, VDict mp, key, val]) -> VDict (M.insert key val mp)
-   ((DictLookupP _),[VDict mp, key])        -> mp # key
+   ((DictLookupP _),[VDict mp, key])        -> VDict M.empty -- Todo: fix this
    ((DictHasKeyP _),[VDict mp, key])        -> VBool (M.member key mp)
    ((DictEmptyP _),[_])                      -> VDict M.empty
    ((ErrorP msg _ty),[]) -> error msg
    (SizeParam,[]) -> VInt (rcSize rc)
    (ReadPackedFile file _ _ ty,[]) ->
        error $ "L1.Interp: unfinished, need to read a packed file: "++show (file,ty)
-   oth -> error $ "unhandled prim or wrong number of arguments: "++show oth
+   oth -> error $ "unhandled prim or wrong number of arguments: "++show loth
+     where loth = (fst oth, fmap (\vl -> LanguageValue (Hskl, vl)) (snd oth))
 
 
 clk :: Clock

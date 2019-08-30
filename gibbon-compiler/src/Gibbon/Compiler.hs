@@ -214,7 +214,7 @@ compile src config@Config{mode,input,verbosity,backend,cfile} fp0 = do
   let config' = config { srcFile = Just fp }
 
   case mode of
-    Interp1 -> runL1 l1
+    Interp1 -> runL1 src l1
     ToParse -> dbgPrintLn 0 $ sdoc l1
 
     _ -> do
@@ -225,14 +225,14 @@ compile src config@Config{mode,input,verbosity,backend,cfile} fp0 = do
             else show (length (sdoc l1)) ++ " characters."
 
       -- (Stage 1) Run the program through the interpreter
-      initResult <- withPrintInterpProg l1
+      initResult <- withPrintInterpProg src l1
 
       -- (Stage 2) C/LLVM codegen
       let outfile = getOutfile backend fp cfile
 
       -- run the initial program through the compiler pipeline
       stM <- return $ passes src config' l1
-      l4  <- evalStateT stM (CompileState {cnt=cnt0, result=initResult})
+      l4  <- evalStateT stM (CompileState {cnt=cnt0, result= fmap valueFromLanguageValue initResult})
 
       if mode == Interp2
       then do
@@ -262,17 +262,17 @@ compile src config@Config{mode,input,verbosity,backend,cfile} fp0 = do
 
 
 -- | The compiler's policy for running/printing L1 programs.
-runL1 :: L1.Prog1 -> IO ()
-runL1 l1 = do
+runL1 :: SourceLanguage -> L1.Prog1 -> IO ()
+runL1 src l1 = do
     -- FIXME: no command line option atm.  Just env vars.
     runConf <- getRunConfig []
     dbgPrintLn 2 $ "Running the following through L1.Interp:\n "++sepline ++ "\n" ++ sdoc l1
-    SI.execAndPrint runConf l1
+    SI.execAndPrint src runConf l1
     exitSuccess
 
 -- | The compiler's policy for running/printing L2 programs.
-runL2 :: L2.Prog2 -> IO ()
-runL2 l2 = runL1 (L2.revertToL1 l2)
+runL2 :: SourceLanguage -> L2.Prog2 -> IO ()
+runL2 src l2 = runL1 src (L2.revertToL1 l2)
 
 -- | Set the env var DEBUG, to verbosity, when > 1
 -- TERRIBLE HACK!!
@@ -327,13 +327,13 @@ parseInput ip fp = do
                               in pure passes
 
 -- |
-withPrintInterpProg :: L1.Prog1 -> IO (Maybe Value)
-withPrintInterpProg l1 =
+withPrintInterpProg :: SourceLanguage -> L1.Prog1 -> IO (Maybe LanguageValue)
+withPrintInterpProg src l1 =
   if dbgLvl >= interpDbgLevel
   then do
     -- FIXME: no command line option atm.  Just env vars.
     runConf <- getRunConfig []
-    (val,_stdout) <- interpProg runConf l1
+    (val,_stdout) <- interpProg src runConf l1
     dbgPrintLn 2 $ " [eval] Init prog evaluated to: "++show val
     return $ Just val
   else
@@ -564,7 +564,7 @@ passes src config@Config{dynflags} l1 = do
       go = pass config
 
       goE :: (Interp b) => PassRunner a b
-      goE = passE config
+      goE = passE src config
 
 type PassRunner a b = (Pretty b, Out b, NFData a, NFData b) =>
                        String -> (a -> PassM b) -> a -> StateT CompileState IO b
@@ -598,8 +598,8 @@ passChatterLvl = 3
 
 -- | Like 'pass', but also evaluates and checks the result.
 --
-passE :: Config -> Interp p2 => PassRunner p1 p2
-passE config@Config{mode} = wrapInterp mode (pass config)
+passE :: SourceLanguage -> Config -> Interp p2 => PassRunner p1 p2
+passE src config@Config{mode} = wrapInterp src mode (pass config)
 
 
 -- | An alternative version that allows FAILURE while running
@@ -613,9 +613,9 @@ passF config = pass config
 -- | Wrapper to enable running a pass AND interpreting the result.
 --
 wrapInterp :: (NFData p1, NFData p2, Interp p2, Out p2, Pretty p2) =>
-              Mode -> PassRunner p1 p2 -> String -> (p1 -> PassM p2) -> p1 ->
+              SourceLanguage -> Mode -> PassRunner p1 p2 -> String -> (p1 -> PassM p2) -> p1 ->
               StateT CompileState IO p2
-wrapInterp mode pass who fn x =
+wrapInterp src mode pass who fn x =
   do CompileState{result} <- get
      p2 <- pass who fn x
      -- In benchmark mode we simply turn OFF the interpreter.
@@ -624,12 +624,12 @@ wrapInterp mode pass who fn x =
        let Just res1 = result
        -- FIXME: no command line option atm.  Just env vars.
        runConf <- getRunConfig []
-       let res2 = interpNoLogs runConf p2
+       let res2 = interpNoLogs src runConf p2
        res2' <- catch (evaluate (force res2))
                 (\exn -> error $ "Exception while running interpreter on pass result:\n"++sepline++"\n"
                          ++ show (exn::SomeException) ++ "\n"++sepline++"\nProgram was: "++abbrv 300 p2)
-       unless (show res1 == res2') $
+       unless (show (LanguageValue (src, res1)) == res2') $
          error $ "After pass "++who++", evaluating the program yielded the wrong answer.\nReceived:  "
-         ++show res2'++"\nExpected:  "++show res1
+         ++show res2'++"\nExpected:  "++show (LanguageValue (src, res1)) 
        dbgPrintLn 5 $ " [interp] answer was: "++ res2'
      return p2

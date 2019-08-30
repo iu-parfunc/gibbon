@@ -25,7 +25,7 @@ p1 = Prog emptyDD M.empty
                 , IntTy ))
 
 case_test1 :: Assertion
-case_test1 = "3" @=? interpNoLogs (RunConfig 1 1 dbgLvl False) p1
+case_test1 = "3" @=? interpNoLogs Gibbon (RunConfig 1 1 dbgLvl False) p1
 
 --------------------------------------------------------------------------------
 

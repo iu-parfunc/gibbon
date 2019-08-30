@@ -34,11 +34,11 @@ instance Interp Prog2 where
 
 -- | Interpret a program, including printing timings to the screen.
 --   The returned bytestring contains that printed timing info.
-interpProg2 :: RunConfig -> Prog2 -> IO (Value, B.ByteString)
-interpProg2 rc Prog{ddefs,fundefs,mainExp} =
+interpProg2 :: SourceLanguage -> RunConfig -> Prog2 -> IO (LanguageValue, B.ByteString)
+interpProg2 src rc Prog{ddefs,fundefs,mainExp} =
   case mainExp of
     -- Print nothing, return "void"
-    Nothing -> return (VProd [], B.empty)
+    Nothing -> return (LanguageValue (src, VProd []), B.empty)
     Just (e,_) -> do
       let fenv = M.fromList [ (funName f , f) | f <- M.elems fundefs]
       -- logs contains print side effects
@@ -48,8 +48,8 @@ interpProg2 rc Prog{ddefs,fundefs,mainExp} =
       let res = case x of
                  VLoc reg off ->
                      let Buffer b = finstore M.! reg
-                     in deserialize ddefs (S.drop off b)
-                 _ -> x
+                     in deserialize src ddefs (S.drop off b)
+                 _ -> LanguageValue (src, x)
       return (res, toLazyByteString logs)
 
 interp :: RunConfig -> DDefs Ty2 -> M.Map Var (FunDef (L Exp2)) -> L Exp2
@@ -191,7 +191,7 @@ interp rc ddefs fenv e = fst <$> go M.empty M.empty e
                          VBool flg -> if flg
                                       then go env sizeEnv b
                                       else go env sizeEnv c
-                         oth -> error$ "interp: expected bool, got: "++show oth
+                         oth -> error$ "interp: expected bool, got: "++show (LanguageValue(Gibbon, oth))
 
         MkProdE ls -> do
             (args, szs) <- unzip <$> mapM (go env sizeEnv) ls

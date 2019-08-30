@@ -11,6 +11,7 @@ module Gibbon.Interp
   , Store(..), insertIntoStore, lookupInStore
   , Buffer(..), emptyBuffer, insertAtBuffer
   , SerializedVal(..), Value(..), Log, ValEnv
+  , LanguageValue (..), valueFromLanguageValue
 
   , execAndPrint, deserialize, strToInt, lookup3
   ) where
@@ -41,18 +42,18 @@ import Gibbon.Common
 class Interp a where
   {-# MINIMAL interpProg #-}
 
-  interpProg :: RunConfig -> a -> IO (Value, B.ByteString)
+  interpProg :: SourceLanguage -> RunConfig -> a -> IO (LanguageValue, B.ByteString)
 
   -- | Interpret while ignoring timing constructs, and dropping the
   -- corresponding output to stdout.
-  interpNoLogs :: RunConfig -> a -> String
-  interpNoLogs rc p = unsafePerformIO $ show . fst <$> interpProg rc p
+  interpNoLogs :: SourceLanguage -> RunConfig -> a -> String
+  interpNoLogs src rc p = unsafePerformIO $ show . fst <$> interpProg  src rc p
 
   -- | Interpret and produce a "log" of output lines, as well as a
   -- final, printed result.  The output lines include timing information.
-  interpWithStdout :: RunConfig -> a -> IO (String,[String])
-  interpWithStdout rc p = do
-   (v,logs) <- interpProg rc p
+  interpWithStdout :: SourceLanguage -> RunConfig -> a -> IO (String,[String])
+  interpWithStdout src rc p = do
+   (v,logs) <- interpProg src rc p
    return (show v, lines (B.unpack logs))
 
 
@@ -117,33 +118,41 @@ data Value = VInt Int
            | VLoc { bufID :: Var, offset :: Int }
            | VCursor { bufID :: Var, offset :: Int }
              -- ^ Cursor are a pointer into the Store plus an offset into the Buffer.
-
   deriving (Read,Eq,Ord,Generic)
+
+newtype LanguageValue =  LanguageValue (SourceLanguage, Value)
 
 instance Out Value
 instance NFData Value
 
-instance Show Value where
- show v =
-  case v of
-   VInt n   -> show n
-   VSym s   -> "'" ++ s
-   VBool b  -> if b then truePrinted Gibbon else falsePrinted Gibbon
--- TODO: eventually want Haskell style tuple-printing:
---    VProd ls -> "("++ concat(intersperse ", " (L.map show ls)) ++")"
--- For now match Gibbon's Racket backend
-   VProd ls -> "'#("++ concat(intersperse " " (L.map show ls)) ++")" -- Todo : fix this
-   VDict m      -> show (M.toList m)
-
-   -- F(x) style.  Maybe we'll switch to sweet-exps to keep everything in sync:
-   -- VPacked k ls -> k ++ show (VProd ls)
-
-   -- For now, Racket style:
-   VPacked k ls -> "(" ++ k ++ concat (L.map ((" "++) . show) ls) ++ ")"
-
-   VLoc buf off -> "<location "++show buf++", "++show off++">"
-
-   VCursor idx off -> "<cursor "++show idx++", "++show off++">"
+instance Show LanguageValue where
+  show (LanguageValue (src, v)) =
+    case src of 
+      Hskl ->
+        case v of
+          VInt n   -> show n
+          VSym s   -> s
+          VBool b  -> if b then truePrinted Hskl else falsePrinted Hskl
+          VProd ls -> "("++ concat(intersperse ", " (L.map show (lls))) ++")"
+            where lls = fmap (\vl -> LanguageValue (Hskl, vl)) ls
+          VDict m      -> show tupv
+            where tupv = fmap (\vl -> case vl of (v1, v2) -> (LanguageValue(Hskl, v1), LanguageValue(Hskl, v2))) (M.toList m)
+          VPacked k ls -> k ++ show (LanguageValue(Hskl, VProd ls)) 
+          VLoc buf off -> "<location "++show buf++", "++show off++">"
+          VCursor idx off -> "<cursor "++show idx++", "++show off++">" 
+      Gibbon ->
+        case v of
+          VInt n   -> show n
+          VSym s   -> "'" ++ s
+          VBool b  -> if b then truePrinted Gibbon else falsePrinted Gibbon
+          VProd ls -> "'#("++ concat(intersperse " " (L.map show lls)) ++")"
+            where lls = fmap (\vl -> LanguageValue (Gibbon, vl)) ls
+          VDict m      -> show tupv
+            where tupv = fmap (\vl -> case vl of (v1, v2) -> (LanguageValue(Gibbon, v1), LanguageValue(Gibbon, v2))) (M.toList m)
+          VPacked k ls -> "(" ++ k ++ concat (L.map ((" "++) . show) lls) ++ ")"  
+            where lls = fmap (\vl -> LanguageValue (Gibbon, vl)) ls
+          VLoc buf off -> "<location "++show buf++", "++show off++">"
+          VCursor idx off -> "<cursor "++show idx++", "++show off++">"
 
 type Log = Builder
 type ValEnv = M.Map Var Value
@@ -151,8 +160,8 @@ type ValEnv = M.Map Var Value
 --------------------------------------------------------------------------------
 
 -- | Code to read a final answer back out.
-deserialize :: (Out ty) => DDefs ty -> Seq SerializedVal -> Value
-deserialize ddefs seq0 = final
+deserialize :: (Out ty) => SourceLanguage -> DDefs ty -> Seq SerializedVal -> LanguageValue
+deserialize src ddefs seq0 = final
  where
   ([final],_) = readN 1 seq0
 
@@ -162,27 +171,27 @@ deserialize ddefs seq0 = final
        S.EmptyL -> error $ "deserialize: unexpected end of sequence: "++ndoc seq0
        SerInt i :< rst ->
          let (more,rst') = readN (n-1) rst
-         in (VInt i : more, rst')
+         in ( LanguageValue(src, (VInt i)) : more, rst')
 
        SerBool i :< rst ->
          let (more,rst') = readN (n-1) rst
              -- 1 is True
              b = i /= 0
-         in (VBool b : more, rst')
+         in ( LanguageValue(src, (VBool b)) : more, rst')
 
        SerTag _ k :< rst ->
          let (args,rst')  = readN (length (lookupDataCon ddefs k)) rst
              (more,rst'') = readN (n-1) rst'
-         in (VPacked k args : more, rst'')
+         in ( LanguageValue(src, (VPacked k (fmap valueFromLanguageValue args))) : more, rst'')
 
 
-execAndPrint :: (Interp (Prog ex)) => RunConfig -> Prog ex -> IO ()
-execAndPrint rc prg = do
-  (val,logs) <- interpProg rc prg
+execAndPrint :: (Interp (Prog ex)) => SourceLanguage -> RunConfig -> Prog ex -> IO ()
+execAndPrint src rc prg = do
+  (val,logs) <- interpProg src rc prg
   B.putStr logs
   case val of
     -- Special case: don't print void return:
-    VProd [] -> return () -- FIXME: remove this.
+    LanguageValue (_, VProd []) -> return () -- FIXME: remove this.
     _ -> print val
 
 strToInt :: String -> Int
@@ -195,3 +204,11 @@ lookup3 k ls = go ls
    go ((k1,a1,b1):r)
       | k1 == k   = (k1,a1,b1)
       | otherwise = go r
+
+valueFromLanguageValue :: LanguageValue -> Value 
+valueFromLanguageValue lv = case lv of 
+ LanguageValue (_, v) -> v
+
+
+languageValueFromValue :: SourceLanguage -> Value -> LanguageValue
+languageValueFromValue src v = LanguageValue (src, v)
