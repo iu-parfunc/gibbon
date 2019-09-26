@@ -1,0 +1,51 @@
+#lang gibbon
+
+(require "A1.gib")
+
+(provide uniquify)
+
+(data SymEnv
+      [SymCons Sym Sym SymEnv]
+      [SymNil])
+
+(data MaybeSym
+      [SymJust Sym]
+      [SymNothing])
+
+(define (sym-lookup [env : SymEnv] [s : Sym]) : MaybeSym
+  (case env
+    [(SymCons s1 s2) (if (eqsym s s1) (SymJust s2) (sym-lookup env s2))]
+    [(SymNil) (SymNothing)]))
+
+(define (uniquify-exp [e : ExpR] [env : SymEnv] [i : Int]) : (Vector ExpR Int)
+  (case e
+    [(LitR n) (vector (LitR n) i)]
+    [(VarR v) (case (sym-lookup env v)
+    	        [(SymJust v1) (vector (VarR v1) i)]
+		[(SymNothing) (vector (VarR v) i)])]
+    [(LetR v bnd bod)
+      (let ([rhs1-vec : (Vector ExpR Int) (uniquify-exp rhs env i)])
+        (let ([rhs1 : ExpR (vector-ref rhs1-vec 0)])
+	  (let ([i : Int (vector-ref rhs1-vec 1)])
+	    (let ([v1 : Sym (sym-append v i)])
+	      (let ([bod2-vec : (Vector ExpR Int) (uniquify bod (SymCons v v1 env) (+ i1 1))])
+	        (let ([bod2 : ExpR (vector-ref bod2-vec 0)])
+		  (let ([i2 : Int (vector-ref bod2-vec 1)])
+		    (vector (LetR v1 bnd1 bod2) i2))))))))]
+    [(NegR e1) (let ([e2-vec : (Vector ExpR Int) (uniquify-exp e1 env i)])
+    	         (let ([e2 : ExpR (vector-ref e2-vec 0)])
+	 	   (let ([i2 : Int (vector-ref e2-vec 1)]))
+		     (vector (NegR e2) i2)))]
+    [(AddR e1 e2) (let ([e3-vec : (Vector ExpR Int) (uniquify-exp e1 env i)])
+    	            (let ([e3 : ExpR (vector-ref e2-vec 0)])
+	 	      (let ([i3 : Int (vector-ref e2-vec 1)]))
+		        (let ([e4-vec : (Vector ExpR Int) (uniquify e2 env i3)])
+			  (let ([e4 : ExpR (vector-ref e4-vec 0)])
+			    (let ([i4 : Int (vector-ref e4-vec 2)])
+			      (vector (AddR e3 e4) i4))))))]
+    [(ReadR) (ReadR)]))
+
+(define (uniquify [p : R1]) : R1
+  (case p
+    [(ProgramR e) (let ([e-vec : (Vector ExpR Int) (uniquify-exp e (SymNil) 0)])
+    	            (ProgramR (vector-ref e-vec 0)))]))

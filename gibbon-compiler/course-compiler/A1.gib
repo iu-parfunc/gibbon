@@ -1,0 +1,74 @@
+#lang gibbon
+
+(provide Syms R1 ExpR C0 BlockListC ExpC StmtC TailC Arg X86 BlockListX86 BlockX86 InstrX86)
+
+;; Misc
+
+(data Syms
+      [NullSyms]
+      [ConsSym Sym Syms])
+
+;; R1
+
+(data R1 (ProgramR ExpR))
+
+(data ExpR
+      [LitR Int]
+      [VarR Sym]
+      [NegR ExpR]
+      [AddR ExpR ExpR]
+      [LetR Sym ExpR ExpR]
+      [ReadR])
+
+;; C0
+
+(data C0 (ProgramC BlockListC))
+
+(data BlockListC
+      [BlockConsC Sym TailC BlockListC]
+      [BlockNilC])
+
+(data ExpC
+      [ArgC Arg]
+      [ReadC]
+      [NegC Arg]
+      [AddC Arg Arg])
+
+(data StmtC
+      [AssignC Sym ExpC])
+
+(data TailC
+      [ReturnC ExpC]
+      [SeqC StmtC TailC])
+
+(data Arg
+      [IntC Int]
+      [VarC Sym])
+
+;; X86
+
+(define X86
+	[ProgramX86 BlockListX86])
+
+(define BlockListX86
+	[BlockListConsX86 Sym Int BlockX86 BlockListX86]
+	[BlockListNilX86])
+
+(define BlockX86
+	[BlockConsX86 InstrX86]
+	[BlockNilX86])
+
+(define InstrX86
+	[AddqX86 Arg Arg]
+	[SubqX86 Arg Arg]
+	[MovqX86 Arg Arg]
+	[RetqX86]
+	[NegqX86 Arg]
+	[CallqX86 Sym]
+	[Pushq Arg]
+	[Popq Arg])
+
+(define Arg
+	[IntX86 Int]
+	[RegX86 Sym]
+	[DerefX86 Sym Int])

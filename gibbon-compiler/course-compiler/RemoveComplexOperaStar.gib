@@ -1,0 +1,31 @@
+#lang gibbon
+
+(require "A1.gib")
+
+(provide rco)
+
+(data BndList
+      [BndCons Sym ExpR BndList]
+      [BndNil])
+
+(define (rco-arg [e : ExpR]) : (Vector ExpR BndList)
+  (case e
+    [(LitR n) (vector (LitR n) (BndNil))]
+    [(VarR v) (vector (VarR v) (BndNil))]
+    [(LetR v bnd bod) ...]
+    [(NegR e) ...]
+    [(AddR e1 e2) ...]
+    [(ReadR) ...]))
+
+(define (rco-exp [e : ExpR]) : ExpR
+  (case e
+    [(LitR n) (LitR n)]
+    [(VarR v) (VarR v)]
+    [(LetR v bnd bod) ...]
+    [(NegR e) ...]
+    [(AddR e1 e2) ...]
+    [(ReadR) (ReadR)]))
+
+(define (rco [p : R1]) : R1
+  (case p
+    [(ProgramR e) (ProgramR (rco-exp e))]))

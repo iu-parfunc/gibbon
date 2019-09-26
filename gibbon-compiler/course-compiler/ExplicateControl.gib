@@ -1,0 +1,40 @@
+#lang gibbon
+
+(require "A1.gib")
+
+(provide explicate-control)
+
+(define (exp-to-exp [e : ExpR]) : ExpC
+  (case e
+    [(LitR i) (ArgC (IntC i))]
+    [(VarR v) (ArgC (VarC v))]
+    [(NegR e) (NegC (exp-to-exp e))]
+    [(AddR e1 e2) (AddC (exp-to-exp e1) (exp-to-exp e2))]
+    [(ReadR) (ReadC)]
+    [(LetR v bnd bod) (ann (error "exp-to-exp") ExpC)]))
+
+(define (explicate-control-tail [e : ExpR]) : TailC
+  (case e
+    [(LitR i) (ReturnC (ArgC (IntC i)))]
+    [(VarR v) (ReturnC (ArgC (VarC v)))]
+    [(NegR e) (ReturnC (NegC (exp-to-exp e)))]
+    [(AddR e1 e2) (ReturnC (AddC (exp-to-exp e1) (exp-to-exp e2)))]
+    [(ReadR) (ReturnC (ReadC))]
+    [(LetR v bnd bod)
+     (let ([new-bod : TailC (explicate-control-tail bod)])
+       (explicate-control-assign bnd v new-bod))]))
+
+(define (explicate-control-assign [e : ExpR] [x : Sym] [k : TailC]) : TailC
+  (case e
+    [(LitR i) (SeqC (AssignC x (ArgC (IntC i))) k)]
+    [(VarR v) (SeqC (AssignC x (ArgC (VarC v))) k)]
+    [(NegR e) (SeqC (AssignC x (NegC (exp-to-exp e))) k)]
+    [(AddR e1 e2) (SeqC (AssignC x (AddC (exp-to-exp e1) (exp-to-exp e2))) k)]
+    [(ReadR) (SeqC (AssignC x (ReadC)) k)]
+    [(LetR v bnd bod)
+     (let ([new-bod : TailC (explicate-control-assign bod x k)])
+       (explicate-control-assign bnd v new-bod))]))
+
+(define (explicate-control [p : R1]) : C0
+  (case p
+    [(ProgramR e) (ProgramC (BlockConsC "start" (explicate-control-tail e) (BlockNilC)))]))
