@@ -9,10 +9,10 @@ module Gibbon.Compiler
     ( -- * Compiler entrypoints
       compile, compileCmd
       -- * Configuration options and parsing
-     , Config (..), Mode(..), Input(..)
+     , Config (..), Mode(..), Input(..), CompileState (..)
      , configParser, configWithArgs, defaultConfig
       -- * Some other helper fns
-     , compileAndRunExe
+     , compileAndRunExe, passes
     )
   where
 

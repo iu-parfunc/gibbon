@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module Gibbon.HaskellFrontend
-  ( parseFile, primMap, multiArgsToOne ) where
+  ( parseFile, primMap, multiArgsToOne, desugarModule ) where
 
 import           Data.Foldable ( foldrM )
 import           Data.Maybe (catMaybes)
