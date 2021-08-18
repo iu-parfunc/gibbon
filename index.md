@@ -6,24 +6,24 @@ layout: default
 <!-- <img class="centered img-70" src="static/gibbon.png"> -->
 <!-- </div> -->
 
-[Gibbon](https://github.com/iu-parfunc/gibbon/tree/master/gibbon-compiler) 
+[Gibbon](https://github.com/iu-parfunc/gibbon/tree/master/gibbon-compiler)
 is an experimental compiler that transforms high-level functional programs
 to operate on _serialized data._
 
 Typically, programs that process tree-like data represent trees using pointer-based
-data structures in memory (one heap object per-leaf and per-node) because such a 
-layout is convenient to manipulate in a high-level programming language. 
-This is also generally distinct from the representation of the data in 
+data structures in memory (one heap object per-leaf and per-node) because such a
+layout is convenient to manipulate in a high-level programming language.
+This is also generally distinct from the representation of the data in
 serialized form on disk,
 which means that a program must perform some sort or marshaling when working with serialized data.
 Gibbon _unifies_ the in-memory and serialized formats, transforming recursive
 functions to operate _directly_ on serialized data.
 
 Additionally, while the pointer-based structure is efficient
-for random access and shape-changing modifications, it can be inefficient 
-for traversals that process most or all of a tree in bulk. 
-The Gibbon project aims to explore optimizations of recursive tree transforms 
-by changing how trees are stored in memory. 
+for random access and shape-changing modifications, it can be inefficient
+for traversals that process most or all of a tree in bulk.
+The Gibbon project aims to explore optimizations of recursive tree transforms
+by changing how trees are stored in memory.
 
 Currently, the Gibbon compiler has multiple front-ends: an s-expression synax
 similar to Typed Racket, and a small subset of Haskell.
@@ -60,6 +60,10 @@ Spall, Buddhika Chamith, Laith Sakka, Chaitanya Koparkar, Milind Kulkarni, Sam T
 <tr>
 <td>PLDI'19</td>
 <td><b> LoCal: A Language for Programs Operating on Serialized Data:<br/></b> Michael Vollmer, Chaitanya Koparkar, Mike Rainey, Laith Sakka, Milind Kulkarni, Ryan R. Newton [<a href="http://recurial.com/pldi19main.pdf" target="_blank">PDF</a>]</td>
+</tr>
+<tr>
+<td>ICFP'21</td>
+<td><b> Efficient Tree-Traversals: Reconciling Parallelism and Dense Data Representations:<br/></b> Chaitanya Koparkar, Mike Rainey, Michael Vollmer, Milind Kulkarni, Ryan R. Newton [<a href="./public/icfp21.pdf" target="_blank">PDF</a>]</td>
 </tr>
 </table>
 
