@@ -250,6 +250,10 @@ tests:
     dir: examples/poly
     answer-file: examples/poly/TupleTest.ans
 
+  - name: NestedTuples.hs
+    dir: examples/poly
+    answer-file: example/poly/NestedTuples.ans
+
   - name: AnonLambdas.hs
     dir: examples/poly
     answer-file: examples/poly/AnonLambdas.ans
