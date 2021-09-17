@@ -84,7 +84,7 @@ tcExps ddefs sbst venv fenv bound_tyvars ls = do
 --
 tcExp :: DDefs0 -> Subst -> Gamma -> Gamma -> [TyVar]
       -> Bool -> Exp0 -> TcM (Subst, Ty0, Exp0)
-tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
+tcExp ddefs sbst venv fenv bound_tyvars is_main ex = 
   case ex of
     VarE x -> do
       (metas, ty) <-
