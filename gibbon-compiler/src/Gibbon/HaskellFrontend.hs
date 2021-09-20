@@ -871,12 +871,11 @@ desugarFun type_syns toplevel env decl =
     FunBind _ [Match _ fname pats (UnGuardedRhs _ bod) _where] -> do
       let fname_str = nameToStr fname
           fname_var = toVar (fname_str)
-      (vars,_tys,bindss) <- unzip3 <$> mapM (desugarPatWithTy type_syns) pats
+      (vars, arg_tys,bindss) <- unzip3 <$> mapM (desugarPatWithTy type_syns) pats 
       let binds = concat bindss
           args = vars
       fun_ty <- case M.lookup fname_var env of
                   Nothing -> do
-                     arg_tys <- mapM (\_ -> newMetaTy) args
                      ret_ty  <- newMetaTy
                      let funty = ArrowTy arg_tys ret_ty
                      pure $ (ForAll [] funty)
