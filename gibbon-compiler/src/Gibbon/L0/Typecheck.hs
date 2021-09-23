@@ -6,9 +6,9 @@ module Gibbon.L0.Typecheck where
 
 import           Control.Monad.State ( MonadState )
 import           Control.Monad.Except
-#if !MIN_VERSION_base(4,15,0)
-import           Control.Monad.Fail
-#endif
+
+
+
 import           Data.Foldable ( foldlM )
 import           Data.List
 import qualified Data.Map as M
@@ -16,12 +16,13 @@ import qualified Data.Set as S
 import           Text.PrettyPrint hiding ( (<>) )
 import           Text.PrettyPrint.GenericPretty
 
-#if !MIN_VERSION_base(4,11,0)
-import           Data.Semigroup
-#endif
+
+
+
 
 import           Gibbon.L0.Syntax as L0
 import           Gibbon.Common
+
 
 --------------------------------------------------------------------------------
 
@@ -55,7 +56,10 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
                   case res of
                     Left er -> error (render er)
                     Right (_s, ty, e_tc) -> pure $ Just (e_tc, ty)
-  pure prg { fundefs = fundefs_tc
+  fun_tc' <- mapM (\fndef -> do
+              runTcM (snd <$> generalize M.empty emptySubst (tyVarsFromScheme (funTy fndef)) (tyFromScheme (funTy fndef))) >>= (\fnty' -> pure $ fndef {funTy = fnty'}) . either (error . render) id
+            ) fundefs_tc
+  pure prg { fundefs = fun_tc'
            , mainExp = mainExp' }
 
 tcFun :: DDefs0 -> Gamma -> FunDef0 -> PassM FunDef0

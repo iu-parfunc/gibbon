@@ -9,8 +9,8 @@ import           Data.Maybe ( catMaybes )
 import           Data.Foldable
 import           Data.List
 import           Data.Scientific
-import           Data.Text.Prettyprint.Doc
-import           Data.Text.Prettyprint.Doc.Render.Terminal
+import           Prettyprinter
+import           Prettyprinter.Render.Terminal
 import           Data.Time.LocalTime
 import           Data.Yaml as Y
 import           Options.Applicative as OA hiding (empty, str)

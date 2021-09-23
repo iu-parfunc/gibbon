@@ -22,7 +22,7 @@ import           Data.Foldable ( foldlM )
 import qualified Data.Map as M
 import qualified Data.Set as S
 import           GHC.Stack (HasCallStack)
-import           Data.List (zip3)
+-- import           Data.List (zip3)
 import           Text.PrettyPrint.GenericPretty
 
 import           Gibbon.Common
