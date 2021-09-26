@@ -6,9 +6,9 @@ module Gibbon.L0.Typecheck where
 
 import           Control.Monad.State ( MonadState )
 import           Control.Monad.Except
-
-
-
+#if !MIN_VERSION_base(4,15,0)
+import           Control.Monad.Fail
+#endif
 import           Data.Foldable ( foldlM )
 import           Data.List
 import qualified Data.Map as M
@@ -42,23 +42,31 @@ tcProg :: Prog0 -> PassM Prog0
 tcProg prg@Prog{ddefs,fundefs,mainExp} = do
   let init_fenv = M.map funTy fundefs
   fundefs_tc <- mapM (tcFun ddefs init_fenv) fundefs
+  -- generalize top level functions, e.g. `foo x = x :: $0 -> $0` to `foo x = x :: forall x. x -> x`
+  fun_tc' <- mapM (\fndef -> do
+                              let fnty = funTy fndef 
+                                  tyvars = tyVarsFromScheme  fnty
+                                  ty = tyFromScheme fnty
+                                  gen = snd <$> generalize M.empty emptySubst tyvars ty 
+                                  fnty' = either (error . render) id <$> runTcM gen
+                              fnty'' <- fnty'
+                              pure $ fndef {funTy = fnty''}
+                            ) fundefs_tc
+  let fenv' = M.map funTy fun_tc'                            
   -- Run the typechecker on the expression, and update it's type in the program
   -- (the parser initializes the main expression with the void type).
   mainExp' <- case mainExp of
                 Nothing -> pure Nothing
                 Just (e,gvn_main_ty) -> do
                   let tc = do (s1, drvd_main_ty, e_tc) <-
-                                tcExp ddefs emptySubst M.empty init_fenv [] True e
+                                tcExp ddefs emptySubst M.empty fenv' [] True e
                               s2 <- unify e gvn_main_ty drvd_main_ty
                               -- let e_tc' = fixTyApps s1 e_tc
                               pure (s1 <> s2, zonkTy s2 drvd_main_ty, e_tc)
                   res <- runTcM tc
                   case res of
                     Left er -> error (render er)
-                    Right (_s, ty, e_tc) -> pure $ Just (e_tc, ty)
-  fun_tc' <- mapM (\fndef -> do
-              runTcM (snd <$> generalize M.empty emptySubst (tyVarsFromScheme (funTy fndef)) (tyFromScheme (funTy fndef))) >>= (\fnty' -> pure $ fndef {funTy = fnty'}) . either (error . render) id
-            ) fundefs_tc
+                    Right (_s, ty, e_tc) -> pure $ Just (e_tc, ty)  
   pure prg { fundefs = fun_tc'
            , mainExp = mainExp' }
 
@@ -769,7 +777,7 @@ generalize env s bound_tyvars ty = do
       -- Generalize over BoundTv's too.
       free_tvs = (tyVarsInTy ty) \\ bound_tyvars
 
-  pure (s <> s2, ForAll (new_bndrs ++ free_tvs) ty')
+  pure (s <> s2, ForAll (new_bndrs ++ free_tvs ++ bound_tyvars) ty')
   where
     env_tvs = metaTvsInTySchemes (M.elems env)
     res_tvs = metaTvsInTy ty

@@ -38,9 +38,9 @@ where
 
 import Control.DeepSeq (NFData(..), force)
 import Control.Exception (evaluate)
--- #if !MIN_VERSION_base(4,15,0)
--- import Control.Monad.Fail
--- #endif
+#if !MIN_VERSION_base(4,15,0)
+import Control.Monad.Fail
+#endif
 import Control.Monad.State.Strict
 import Control.Monad.Reader
 import Data.Functor.Foldable
