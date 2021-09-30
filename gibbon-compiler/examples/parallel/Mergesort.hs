@@ -1,5 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 
+-- | Taken from MaPLe.
 module Mergesort where
 
 import Gibbon.Prelude
