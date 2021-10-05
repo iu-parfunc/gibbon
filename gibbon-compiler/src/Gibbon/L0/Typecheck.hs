@@ -6,20 +6,12 @@ module Gibbon.L0.Typecheck where
 
 import           Control.Monad.State ( MonadState )
 import           Control.Monad.Except
-#if !MIN_VERSION_base(4,15,0)
-import           Control.Monad.Fail
-#endif
 import           Data.Foldable ( foldlM )
 import           Data.List
 import qualified Data.Map as M
 import qualified Data.Set as S
 import           Text.PrettyPrint hiding ( (<>) )
 import           Text.PrettyPrint.GenericPretty
-
-
-
-
-
 import           Gibbon.L0.Syntax as L0
 import           Gibbon.Common
 
@@ -44,15 +36,15 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
   fundefs_tc <- mapM (tcFun ddefs init_fenv) fundefs
   -- generalize top level functions, e.g. `foo x = x :: $0 -> $0` to `foo x = x :: forall x. x -> x`
   fun_tc' <- mapM (\fndef -> do
-                              let fnty = funTy fndef 
+                              let fnty = funTy fndef
                                   tyvars = tyVarsFromScheme  fnty
                                   ty = tyFromScheme fnty
-                                  gen = snd <$> generalize M.empty emptySubst tyvars ty 
+                                  gen = snd <$> generalize M.empty emptySubst tyvars ty
                                   fnty' = either (error . render) id <$> runTcM gen
                               fnty'' <- fnty'
                               pure $ fndef {funTy = fnty''}
                             ) fundefs_tc
-  let fenv' = M.map funTy fun_tc'                            
+  let fenv' = M.map funTy fun_tc'
   -- Run the typechecker on the expression, and update it's type in the program
   -- (the parser initializes the main expression with the void type).
   mainExp' <- case mainExp of
@@ -66,7 +58,7 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
                   res <- runTcM tc
                   case res of
                     Left er -> error (render er)
-                    Right (_s, ty, e_tc) -> pure $ Just (e_tc, ty)  
+                    Right (_s, ty, e_tc) -> pure $ Just (e_tc, ty)
   pure prg { fundefs = fun_tc'
            , mainExp = mainExp' }
 
@@ -834,8 +826,18 @@ newtype Subst = Subst (M.Map MetaTv Ty0)
 instance Semigroup Subst where
   -- s1 <> s2 == zonkTy s1 . zonkTy s2
   (Subst s1) <> (Subst s2) =
-    let mp = M.map (zonkTy (Subst s1)) s2 `M.union` s1
+    let s2' = M.map (zonkTy (Subst s1)) s2
+        mp =  M.unionWith combine s2' s1
     in Subst mp
+
+combine :: Ty0 -> Ty0 -> Ty0
+combine v1 v2 | v1 == v2 = v1
+              | otherwise = case (v1, v2) of
+                (MetaTv _, _) -> v2
+                (_, MetaTv _) -> v1
+                (ArrowTy xs y, ArrowTy xs' y') -> ArrowTy (zipWith combine xs xs') (combine y y')
+                (VectorTy v1', VectorTy v2') -> VectorTy $ combine v1' v2'
+                _ -> error $ "Failed to combine v1 = " ++ sdoc v1 ++ " with v2 = " ++ sdoc v2
 
 emptySubst :: Subst
 emptySubst = Subst (M.empty)
