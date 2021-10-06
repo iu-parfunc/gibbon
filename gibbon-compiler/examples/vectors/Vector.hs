@@ -25,6 +25,11 @@ fib_seq n =
 generate_2d :: Int -> Int -> (Int -> Int -> a) -> Vector a
 generate_2d m n f =
   -- vconcat (generate m (\j -> generate n (\i -> f j i)))
+  -- generate :: Int -> (Int -> a) -> Vector a
+  -- lam3 :: Int -> Int -> a
+  -- lam2 :: Int -> a
+  -- lam1 :: Int -> Vector a
+  -- lam0 :: Int -> Vector a
   let lam3 = (\i j -> f j i)
       lam1 = (\j ->
                 let lam2 = (\i -> lam3 i j)

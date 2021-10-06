@@ -30,28 +30,24 @@ runTcM (TcM tc) = runExceptT tc
 err :: Doc -> TcM a
 err d = throwError ("L0.Typecheck: " $$ nest 4 d)
 
-tcProg :: Prog0 -> PassM Prog0
-tcProg prg@Prog{ddefs,fundefs,mainExp} = do
-  let init_fenv = M.map funTy fundefs
-  fundefs_tc <- mapM (tcFun ddefs init_fenv) fundefs
+generalizeTopLvlFns :: Prog0 -> PassM Prog0
+generalizeTopLvlFns prg@Prog{ddefs, fundefs, mainExp} = do
   -- generalize top level functions, e.g. `foo x = x :: $0 -> $0` to `foo x = x :: forall x. x -> x`
-  fun_tc' <- mapM (\fndef -> do
-                              let fnty = funTy fndef
-                                  tyvars = tyVarsFromScheme  fnty
-                                  ty = tyFromScheme fnty
-                                  gen = snd <$> generalize M.empty emptySubst tyvars ty
-                                  fnty' = either (error . render) id <$> runTcM gen
-                              fnty'' <- fnty'
-                              pure $ fndef {funTy = fnty''}
-                            ) fundefs_tc
-  let fenv' = M.map funTy fun_tc'
-  -- Run the typechecker on the expression, and update it's type in the program
-  -- (the parser initializes the main expression with the void type).
+  fundefs' <- mapM (\fndef -> do
+                             let fnty = funTy fndef
+                                 tyvars = tyVarsFromScheme  fnty
+                                 ty = tyFromScheme fnty
+                                 gen = snd <$> generalize M.empty emptySubst tyvars ty
+                                 fnty' = either (error . render) id <$> runTcM gen
+                             fnty'' <- fnty'
+                             pure $ fndef {funTy = fnty''}
+                           ) fundefs
+  let fenv = M.map funTy fundefs'
   mainExp' <- case mainExp of
                 Nothing -> pure Nothing
                 Just (e,gvn_main_ty) -> do
                   let tc = do (s1, drvd_main_ty, e_tc) <-
-                                tcExp ddefs emptySubst M.empty fenv' [] True e
+                                tcExp ddefs emptySubst M.empty fenv [] True e
                               s2 <- unify e gvn_main_ty drvd_main_ty
                               -- let e_tc' = fixTyApps s1 e_tc
                               pure (s1 <> s2, zonkTy s2 drvd_main_ty, e_tc)
@@ -59,7 +55,28 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
                   case res of
                     Left er -> error (render er)
                     Right (_s, ty, e_tc) -> pure $ Just (e_tc, ty)
-  pure prg { fundefs = fun_tc'
+  pure prg { fundefs = fundefs'
+           , mainExp = mainExp' }                           
+
+tcProg :: Prog0 -> PassM Prog0
+tcProg prg@Prog{ddefs,fundefs,mainExp} = do
+  let init_fenv = M.map funTy fundefs
+  fundefs_tc <- mapM (tcFun ddefs init_fenv) fundefs
+  -- Run the typechecker on the expression, and update it's type in the program
+  -- (the parser initializes the main expression with the void type).
+  mainExp' <- case mainExp of
+                Nothing -> pure Nothing
+                Just (e,gvn_main_ty) -> do
+                  let tc = do (s1, drvd_main_ty, e_tc) <-
+                                tcExp ddefs emptySubst M.empty init_fenv [] True e
+                              s2 <- unify e gvn_main_ty drvd_main_ty
+                              -- let e_tc' = fixTyApps s1 e_tc
+                              pure (s1 <> s2, zonkTy s2 drvd_main_ty, e_tc)
+                  res <- runTcM tc
+                  case res of
+                    Left er -> error (render er)
+                    Right (_s, ty, e_tc) -> pure $ Just (e_tc, ty)
+  pure prg { fundefs = fundefs_tc
            , mainExp = mainExp' }
 
 tcFun :: DDefs0 -> Gamma -> FunDef0 -> PassM FunDef0

@@ -483,6 +483,7 @@ passes config@Config{dynflags} l0 = do
       l0 <- go  "freshen"         freshNames            l0
       l0 <- goE0 "typecheck"       L0.tcProg             l0
       l0 <- goE0 "bindLambdas"     L0.bindLambdas       l0
+      l0 <- goE0 "generalizeTopLvlFns"     L0.generalizeTopLvlFns       l0
       l0 <- goE0 "monomorphize"    L0.monomorphize      l0
       -- l0 <- goE0 "closureConvert"  L0.closureConvert    l0
       l0 <- goE0 "specLambdas"     L0.specLambdas       l0
