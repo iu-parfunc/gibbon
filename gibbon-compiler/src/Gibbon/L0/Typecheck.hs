@@ -14,7 +14,7 @@ import           Text.PrettyPrint hiding ( (<>) )
 import           Text.PrettyPrint.GenericPretty
 import           Gibbon.L0.Syntax as L0
 import           Gibbon.Common
-
+import Debug.Trace
 
 --------------------------------------------------------------------------------
 
@@ -31,30 +31,20 @@ err :: Doc -> TcM a
 err d = throwError ("L0.Typecheck: " $$ nest 4 d)
 
 generalizeTopLvlFns :: Prog0 -> PassM Prog0
-generalizeTopLvlFns prg@Prog{ddefs, fundefs, mainExp} = do
+generalizeTopLvlFns prg@Prog{fundefs, mainExp} = do
   -- generalize top level functions, e.g. `foo x = x :: $0 -> $0` to `foo x = x :: forall x. x -> x`
-  fundefs' <- mapM (\fndef -> do
-                             let fnty = funTy fndef
-                                 tyvars = tyVarsFromScheme  fnty
-                                 ty = tyFromScheme fnty
-                                 gen = snd <$> generalize M.empty emptySubst tyvars ty
-                                 fnty' = either (error . render) id <$> runTcM gen
-                             fnty'' <- fnty'
-                             pure $ fndef {funTy = fnty''}
-                           ) fundefs
-  let fenv = M.map funTy fundefs'
+  (sbst, fundefs') <- M.mapAccum (\sbst1 (sbst2, fndef) -> (sbst1<>sbst2, fndef)) emptySubst 
+                    <$> mapM (\fndef -> do
+                              let fnty = funTy fndef
+                                  tyvars = tyVarsFromScheme  fnty
+                                  ty = tyFromScheme fnty
+                                  fnty' = either (error . render) id <$> runTcM (generalize M.empty emptySubst tyvars ty)
+                              (sbst, fnty'') <- fnty'
+                              pure (sbst, fndef {funTy = fnty''})
+                           ) fundefs           
   mainExp' <- case mainExp of
                 Nothing -> pure Nothing
-                Just (e,gvn_main_ty) -> do
-                  let tc = do (s1, drvd_main_ty, e_tc) <-
-                                tcExp ddefs emptySubst M.empty fenv [] True e
-                              s2 <- unify e gvn_main_ty drvd_main_ty
-                              -- let e_tc' = fixTyApps s1 e_tc
-                              pure (s1 <> s2, zonkTy s2 drvd_main_ty, e_tc)
-                  res <- runTcM tc
-                  case res of
-                    Left er -> error (render er)
-                    Right (_s, ty, e_tc) -> pure $ Just (e_tc, ty)
+                Just (e,gvn_main_ty) -> pure $ Just (zonkExp sbst e, gvn_main_ty)
   pure prg { fundefs = fundefs'
            , mainExp = mainExp' }                           
 
@@ -786,7 +776,7 @@ generalize env s bound_tyvars ty = do
       -- Generalize over BoundTv's too.
       free_tvs = (tyVarsInTy ty) \\ bound_tyvars
 
-  pure (s <> s2, ForAll (new_bndrs ++ free_tvs ++ bound_tyvars) ty')
+  pure (s <> s2, ForAll (new_bndrs ++ free_tvs) ty')
   where
     env_tvs = metaTvsInTySchemes (M.elems env)
     res_tvs = metaTvsInTy ty
