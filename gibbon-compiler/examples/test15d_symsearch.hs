@@ -13,5 +13,5 @@ elem x xs = elem_go 0 x xs
 
 
 gibbon_main = let a  = quote "abc"
-                  as = Cons (quote "a") (Cons (quote "b") (Cons (quote "abc") Nil))
+                  as = Cons (quote "a") (Cons (quote "b") Nil)
               in elem a as

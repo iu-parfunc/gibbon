@@ -92,8 +92,6 @@ tests:
     answer-file: examples/test15d_symsearch.ans
   - name: test15e_gensym.hs
     answer-file: examples/test15e_gensym.ans
-    # Gensym is broken in the interpreter.
-    failing: [interp1]
 
   - name: test18_badconstraint.gib
     # This only fails on GCC >= 7 (which we're using to run some other tests that use Cilk)
@@ -227,13 +225,12 @@ tests:
   - name: FloatTree.hs
     dir: examples
     answer-file: examples/FloatTree.hs.ans
-    failing: [interp1]
 
   ## Polymorphic frontend tests
   - name: Poly1.hs
     dir: examples/poly
     answer-file: examples/poly/Poly1.ans
-    failing: [gibbon1, gibbon2, interp1]
+    failing: [gibbon1, gibbon2]
 
   # - name: measure_mode.hs
   #   answer-file: examples/measure_mode.ans
@@ -262,7 +259,7 @@ tests:
     dir: examples/poly
     answer-file: examples/poly/CurriedFns.ans
     skip: true
-    failing: [gibbon1, gibbon2, interp1]
+    failing: [gibbon1, gibbon2]
 
   - name: T127.hs
     dir: examples/poly
@@ -323,31 +320,29 @@ tests:
   - name: HSSetTest.hs
     dir: examples
     answer-file: examples/HSSetTest.ans
-    failing: [interp1]
 
   - name: HSHashTest.hs
     dir: examples
     answer-file: examples/HSHashTest.ans
-    failing: [interp1]
 
   - name: test_printpacked.hs
     dir: examples
     answer-file: examples/test_printpacked.ans
-    failing: [interp1,gibbon1,pointer]
+    failing: [gibbon1,pointer]
 
 
     ## Shouldn't typecheck
   - name: Fail1.hs
     dir: examples/should_fail
-    failing: [gibbon1, gibbon2, pointer, interp1]
+    failing: [gibbon1, gibbon2, pointer]
 
   - name: Fail2.hs
     dir: examples/should_fail
-    failing: [gibbon1, gibbon2, pointer, interp1]
+    failing: [gibbon1, gibbon2, pointer]
 
   - name: Fail3.hs
     dir: examples/should_fail
-    failing: [gibbon1, gibbon2, pointer, interp1]
+    failing: [gibbon1, gibbon2, pointer]
 
   ## Fusion2 tests
   - name: test_sumup_seteven.gib
@@ -397,13 +392,11 @@ tests:
   - name: Vector.hs
     dir: examples/vectors
     test-flags: ["--parallel"]
-    failing: ["interp1"]
     answer-file: examples/vectors/Vector.hs.ans
 
   - name: SortPrim.hs
     dir: examples/vectors
     test-flags: ["--parallel"]
-    failing: [interp1]
     answer-file: examples/vectors/SortPrim.ans
 
   - name: Sort.hs
