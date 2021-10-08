@@ -42,12 +42,7 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
   fundefs_tc <- mapM (tcFun ddefs init_fenv) fundefs
   -- generalize top level functions, e.g. `foo x = x :: $0 -> $0` to `foo x = x :: forall x. x -> x`
   fundefs' <-  mapM (\fndef -> do
-                              let fnty = funTy fndef
-                                  tyvars = tyVarsFromScheme  fnty
-                                  ty = tyFromScheme fnty
-                                  gen = snd <$> generalize M.empty emptySubst tyvars ty
-                                  fnty' = either (error . render) id <$> runTcM gen
-                              fnty'' <- fnty'
+                              fnty'' <- either (error . render) id <$> runTcM (snd <$> generalize M.empty emptySubst [] (tyFromScheme (funTy fndef)))
                               pure $ fndef {funTy = fnty''}
                            ) fundefs_tc
   let fenv = M.map funTy fundefs'
@@ -775,8 +770,7 @@ generalize env s bound_tyvars ty = do
 
       -- Generalize over BoundTv's too.
       free_tvs = (tyVarsInTy ty) \\ bound_tyvars
-
-  pure (s <> s2, ForAll (new_bndrs ++ free_tvs ++ bound_tyvars) ty')
+  pure (s <> s2, ForAll (new_bndrs ++ free_tvs) ty')
   where
     env_tvs = metaTvsInTySchemes (M.elems env)
     res_tvs = metaTvsInTy ty
@@ -845,6 +839,8 @@ combine v1 v2 | v1 == v2 = v1
                 (ArrowTy xs y, ArrowTy xs' y') -> ArrowTy (zipWith combine xs xs') (combine y y')
                 (VectorTy v1', VectorTy v2') -> VectorTy $ combine v1' v2'
                 _ -> error $ "Failed to combine v1 = " ++ sdoc v1 ++ " with v2 = " ++ sdoc v2
+
+
 emptySubst :: Subst
 emptySubst = Subst (M.empty)
 
