@@ -253,6 +253,7 @@ tests:
   - name: NestedTuples.hs
     dir: examples/poly
     answer-file: examples/poly/NestedTuples.ans
+    failing: [interp1, gibbon1, gibbon2]
 
   - name: AnonLambdas.hs
     dir: examples/poly
