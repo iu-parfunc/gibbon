@@ -1,24 +1,26 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE InstanceSigs #-}
 
 module Gibbon.L0.Typecheck where
 
 import           Control.Monad.State ( MonadState )
 import           Control.Monad.Except
-
-
-
+#if !MIN_VERSION_base(4,15,0)
+import           Control.Monad.Fail
+#endif
 import           Data.Foldable ( foldlM )
 import           Data.List
 import qualified Data.Map as M
 import qualified Data.Set as S
 import           Text.PrettyPrint hiding ( (<>) )
 import           Text.PrettyPrint.GenericPretty
+#if !MIN_VERSION_base(4,11,0)
+import           Data.Semigroup
+#endif
+
 import           Gibbon.L0.Syntax as L0
 import           Gibbon.Common
--- import Debug.Trace
 
 --------------------------------------------------------------------------------
 
@@ -34,11 +36,11 @@ runTcM (TcM tc) = runExceptT tc
 err :: Doc -> TcM a
 err d = throwError ("L0.Typecheck: " $$ nest 4 d)
 
--- | generalize top level functions, e.g. `foo x = x :: $0 -> $0` to `foo x = x :: forall x. x -> x`
-generalizeTopLvlFns :: Prog0 -> PassM Prog0
-generalizeTopLvlFns prg@Prog{ddefs, fundefs, mainExp} = do
+tcProg :: Prog0 -> PassM Prog0
+tcProg prg@Prog{ddefs,fundefs,mainExp} = do
   let init_fenv = M.map funTy fundefs
   fundefs_tc <- mapM (tcFun ddefs init_fenv) fundefs
+  -- generalize top level functions, e.g. `foo x = x :: $0 -> $0` to `foo x = x :: forall x. x -> x`
   fundefs' <-  mapM (\fndef -> do
                               let fnty = funTy fndef
                                   tyvars = tyVarsFromScheme  fnty
@@ -49,52 +51,22 @@ generalizeTopLvlFns prg@Prog{ddefs, fundefs, mainExp} = do
                               pure $ fndef {funTy = fnty''}
                            ) fundefs_tc
   let fenv = M.map funTy fundefs'
-  mainExp' <- case mainExp of
-    Nothing -> pure Nothing
-    Just (e,gvn_main_ty) -> do
-      let tc = do (s1, drvd_main_ty, e_tc) <-
-                    tcExp ddefs emptySubst M.empty fenv [] True e
-                  s2 <- unify e gvn_main_ty drvd_main_ty
-                  -- let e_tc' = fixTyApps s1 e_tc
-                  pure (s1 <> s2, zonkTy s2 drvd_main_ty, e_tc)
-      res <- runTcM tc
-      case res of
-        Left er -> error (render er)
-        Right (_s, ty, e_tc) -> pure $ Just (e_tc, ty)
-  pure prg { fundefs = fundefs' , mainExp = mainExp'}
-
-tcProg :: Prog0 -> PassM Prog0
-tcProg prg@Prog{ddefs,fundefs,mainExp} = do
-  let init_fenv = M.map funTy fundefs
-  fundefs_tc <- mapM (tcFun ddefs init_fenv) fundefs
-  -- st <- get 
-  -- traceM $ "tcProg.st = " ++ sdoc st
   -- Run the typechecker on the expression, and update it's type in the program
   -- (the parser initializes the main expression with the void type).
   mainExp' <- case mainExp of
                 Nothing -> pure Nothing
                 Just (e,gvn_main_ty) -> do
-                  -- st <- get 
-                  -- traceM $ "tcProg.st0 = " ++ sdoc st
                   let tc = do 
-                              -- st <- get 
-                              -- traceM $ "tcProg.st1 = " ++ sdoc st
                               (s1, drvd_main_ty, e_tc) <-
-                                tcExp ddefs emptySubst M.empty init_fenv [] True e
-                              -- st <- get 
-                              -- traceM $ "tcProg.st2 = " ++ sdoc st
+                                tcExp ddefs emptySubst M.empty fenv [] True e
                               s2 <- unify e gvn_main_ty drvd_main_ty
-                              -- st <- get 
-                              -- traceM $ "tcProg.st3 = " ++ sdoc st
                               -- let e_tc' = fixTyApps s1 e_tc
                               pure (s1 <> s2, zonkTy s2 drvd_main_ty, e_tc)
                   res <- runTcM tc
-                  -- st <- get 
-                  -- traceM $ "tcProg.st4 = " ++ sdoc st
                   case res of
                     Left er -> error (render er)
                     Right (_s, ty, e_tc) -> pure $ Just (e_tc, ty)
-  pure prg { fundefs = fundefs_tc
+  pure prg { fundefs = fundefs'
            , mainExp = mainExp' }
 
 tcFun :: DDefs0 -> Gamma -> FunDef0 -> PassM FunDef0
@@ -124,7 +96,7 @@ tcExps ddefs sbst venv fenv bound_tyvars ls = do
 tcExp :: DDefs0 -> Subst -> Gamma -> Gamma -> [TyVar]
       -> Bool -> Exp0 -> TcM (Subst, Ty0, Exp0)
 tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
-  case {- trace ("\n\n>>> tcExp.ex = " ++ sdoc ex ++ " ===============\nsbst = " ++ sdoc sbst ++ ", bound_tyvars = " ++ sdoc bound_tyvars) -} ex of
+  case ex of
     VarE x -> do
       (metas, ty) <-
         case (M.lookup x venv, M.lookup x fenv) of
@@ -156,18 +128,10 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
         -- let fn_ty_inst' = zonkTy s2 fn_ty_inst
         let fn_ty_inst' = fn_ty_inst
         s3 <- unifyl ex (arrIns' fn_ty_inst') arg_tys
-        -- st <- get
-        -- traceM $ "Current state is " ++ sdoc st
         fresh <- newMetaTy
-        -- traceM $ "Our new meta variable is " ++ sdoc fresh
         s4 <- unify ex (ArrowTy arg_tys fresh) fn_ty_inst'
         -- Fill in type applications for specialization...
         --     id 10 ===> id [Int] 10
-        -- traceM $ "env[f] = " ++ sdoc (M.lookup f venv) ++ ", fenv[f] = " ++ sdoc (M.lookup f fenv)
-        -- traceM $ "argtys = " ++ sdoc arg_tys ++ ", fn_ty_inst' = " ++ sdoc fn_ty_inst'
-        -- traceM $ "s2 = " ++ sdoc s2 ++ ", s3 = " ++ sdoc s3 ++ ", s4 = " ++ sdoc s4
-        -- traceM $ "s3 LHS = " ++ sdoc (arrIns' fn_ty_inst') ++ ", RHS = " ++ sdoc arg_tys ++ " -> " ++ sdoc s3
-        -- traceM $ "s4 RHS = " ++ sdoc (ArrowTy arg_tys fresh) ++ ", RHS = " ++ sdoc fn_ty_inst' ++ " -> " ++ sdoc s4
         let tyapps = map (zonkTy s3) metas
             s5 = s2 <> s3 <> s4
         pure (s5, zonkTy s5 fresh, AppE f tyapps (map (zonkExp s5) args_tc))
@@ -611,8 +575,6 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
 
 
     LetE (v, [], gvn_rhs_ty, rhs) bod -> do
-      -- st <- get 
-      -- traceM $ "LetE, st1 = " ++ sdoc st ++ ", v = " ++ sdoc v 
       (s1, drvd_rhs_ty, rhs_tc) <- go rhs
       s2 <- unify rhs gvn_rhs_ty drvd_rhs_ty
       let s3         = s1 <> s2
@@ -622,8 +584,6 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
       (s4, rhs_ty_gen) <- generalize venv' s3 bound_tyvars drvd_rhs_ty'
       let venv''     = M.insert v rhs_ty_gen venv'
       (s5, bod_ty, bod_tc) <- tcExp ddefs s4 venv'' fenv bound_tyvars is_main bod
-      -- st <- get 
-      -- traceM $ "LetE, st2 = " ++ sdoc st ++ ", v = " ++ sdoc v
       pure (s5, bod_ty,
             LetE (v, [], zonkTy s4 gvn_rhs_ty, zonkExp s4 rhs_tc) (zonkExp s5 bod_tc))
 
@@ -872,7 +832,7 @@ newtype Subst = Subst (M.Map MetaTv Ty0)
 
 instance Semigroup Subst where
   -- s1 <> s2 == zonkTy s1 . zonkTy s2
-  (Subst s1) <> (Subst s2) =
+  (Subst s1) <> (Subst s2) = 
     let s2' = M.map (zonkTy (Subst s1)) s2
         mp =  M.unionWith combine s2' s1
     in Subst mp
@@ -885,7 +845,6 @@ combine v1 v2 | v1 == v2 = v1
                 (ArrowTy xs y, ArrowTy xs' y') -> ArrowTy (zipWith combine xs xs') (combine y y')
                 (VectorTy v1', VectorTy v2') -> VectorTy $ combine v1' v2'
                 _ -> error $ "Failed to combine v1 = " ++ sdoc v1 ++ " with v2 = " ++ sdoc v2
-
 emptySubst :: Subst
 emptySubst = Subst (M.empty)
 

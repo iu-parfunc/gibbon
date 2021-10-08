@@ -14,7 +14,6 @@ import qualified Data.Map as M
 import           Gibbon.Common
 import           Gibbon.L0.Syntax
 import qualified Gibbon.L1.Syntax as L1
-import Debug.Trace
 
 --------------------------------------------------------------------------------
 
@@ -190,7 +189,6 @@ freshExp venv tvenv exp =
           tvenv' = env <> tvenv
 
       (_tvenv'', ty') <- freshTy tvenv' ty
-      traceM $ "freshExp.LetE.v = " ++ sdoc v ++ ", ty' = " ++ sdoc ty'
       e1' <- freshExp venv tvenv' e1
       v'  <- gensym (cleanFunName v)
       e2' <- freshExp (M.insert v v' venv) tvenv e2
@@ -199,7 +197,6 @@ freshExp venv tvenv exp =
                                             Nothing -> return ty'
                                             Just w' -> return $ SymDictTy (Just w') ty2
                 _ -> return ty'
-      traceM $ "freshExp.LetE.v = " ++ sdoc v ++ ", ty'' = " ++ sdoc ty''
       return $ LetE (v',[],ty'',e1') e2'
 
     IfE e1 e2 e3 -> do
