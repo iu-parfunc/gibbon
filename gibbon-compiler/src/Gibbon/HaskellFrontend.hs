@@ -1137,6 +1137,7 @@ desugarPatWithTy type_syns pat =
                                 let binds0 = concat bindss
                                     binds1 = map (\(v,ty,i) -> (v,[],ty,ProjE i (VarE tup))) (zip3 vars tys [0..])
                                     tupty = ProdTy tys
+                                    -- current bindings: binds1, recursive bindings: binds0
                                 pure (tup,tupty,binds1 ++ binds0)
 
     (PApp _ (UnQual _ (Ident _ "Ur")) [one]) -> desugarPatWithTy type_syns one

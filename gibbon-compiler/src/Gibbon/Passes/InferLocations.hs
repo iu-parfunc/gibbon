@@ -563,14 +563,14 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
         case dest of
             NoDest -> return (e', ty, [])
             TupleDest ds -> err "TODO: handle tuple of destinations for ProjE"
-            SingleDest d -> join $ do
+            SingleDest d -> do
                 loc <- case ty of
                           PackedTy _ lv -> return lv
                           _ -> lift $ lift $ freshLocVar "imm"
                 let ty' = case ty of
                             PackedTy k lv -> PackedTy k d
                             t -> t
-                return $ unify d loc
+                unify d loc
                           (return (e',ty',[]))
                           (copy (e',ty,[]) d)
 

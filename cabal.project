@@ -1,4 +1,4 @@
-packages: gibbon-compiler, gibbon-stdlib
+packages: gibbon-compiler
 
 -- -- We need to put linear types in gibbon-stdlib
 -- -- behind CPP to make it build with GHC < 9.

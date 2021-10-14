@@ -831,6 +831,9 @@ instance Semigroup Subst where
         mp =  M.unionWith combine s2' s1
     in Subst mp
 
+-- | Combine substitutions. In case of substitutions with intersecting keys, 
+-- we will take the narrower type of the two. e.g. combine [($1, $2)] [($1, IntTy)] 
+-- should be [($1, IntTy)]. Map.union does a left biased union so it will result in [($1, $2)]
 combine :: Ty0 -> Ty0 -> Ty0
 combine v1 v2 | v1 == v2 = v1
               | otherwise = case (v1, v2) of
