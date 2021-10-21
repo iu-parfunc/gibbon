@@ -253,7 +253,6 @@ tests:
   - name: NestedTuples.hs
     dir: examples/poly
     answer-file: examples/poly/NestedTuples.ans
-    interp-answer-file: examples/poly/NestedTuples_interp.ans 
 
   - name: AnonLambdas.hs
     dir: examples/poly

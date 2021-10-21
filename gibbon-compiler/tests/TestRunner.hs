@@ -103,7 +103,6 @@ data Test = Test
     -- Temporary hack until we can generate output in both Racket and Haskell
     -- syntax. #t => True etc.
     , mb_anspath :: Maybe String -- ^ Override the default answer file.
-    , mb_interp_anspath :: Maybe String -- ^ Override the default answer file for interpreter.
 
     -- Used in BenchWithDataset mode
     , isMegaBench :: Bool
@@ -125,7 +124,6 @@ defaultTest = Test
     , moreIters = []
     , test_flags = []
     , mb_anspath = Nothing
-    , mb_interp_anspath = Nothing
     , isMegaBench = False
     , benchFun   = "bench"
     , benchInput = ""
@@ -147,14 +145,13 @@ instance FromJSON Test where
         moreiters   <- o .:? "more-iters" .!= (moreIters defaultTest)
         test_flags  <- o .:? "test-flags" .!= (test_flags defaultTest)
         mbanspath   <- o .:? "answer-file" .!= (mb_anspath defaultTest)
-        mbinterpanspath   <- o .:? "interp-answer-file" .!= (mb_interp_anspath defaultTest)
         megabench   <- o .:? "mega-bench" .!= (isMegaBench defaultTest)
         benchfun    <- o .:? "bench-fun" .!= (benchFun defaultTest)
         benchinput  <- o .:? "bench-input" .!= (benchInput defaultTest)
         let expectedFailures = M.fromList [(mode, Fail) | mode <- failing]
             -- Overlay the expected failures on top of the defaults.
             expected = M.union expectedFailures (expectedResults defaultTest)
-        return $ Test name dir expected skip runmodes isbenchmark trials sizeparam moreiters test_flags mbanspath mbinterpanspath megabench benchfun benchinput
+        return $ Test name dir expected skip runmodes isbenchmark trials sizeparam moreiters test_flags mbanspath megabench benchfun benchinput
     parseJSON oth = error $ "Cannot parse Test: " ++ show oth
 
 data Result = Pass | Fail
@@ -473,7 +470,7 @@ runTests tc tr = do
                 acc results
 
 runTest :: TestConfig -> Test -> IO [(Mode,TestVerdict)]
-runTest tc Test{name,dir,expectedResults,runModes,mb_anspath,mb_interp_anspath,test_flags} = do
+runTest tc Test{name,dir,expectedResults,runModes,mb_anspath,test_flags} = do
     dbgFlushIt' tc 2 (name ++ "...") (".")
     ls <- mapM (\(m,e) -> go m e) (M.toList $ M.restrictKeys expectedResults (S.fromList runModes))
     let msgs = catMaybes $ map error_msg ls
@@ -496,7 +493,7 @@ runTest tc Test{name,dir,expectedResults,runModes,mb_anspath,mb_interp_anspath,t
         let tmppath  = compiler_dir </> tempdir tc </> name
             basename = compiler_dir </> replaceBaseName tmppath (takeBaseName tmppath ++ modeFileSuffix mode)
             outpath  = replaceExtension basename ".out"
-            anspath  = case if mode == Interp1 then mb_interp_anspath <|> mb_anspath else mb_anspath of
+            anspath  = case mb_anspath of
                          Nothing -> tmppath ++ ".ans"
                          Just p  -> compiler_dir </> p
             cpath    = replaceExtension basename ".c"

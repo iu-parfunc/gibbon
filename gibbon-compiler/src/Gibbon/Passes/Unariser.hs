@@ -93,7 +93,7 @@ unariserExp isTerminal ddfs stk env2 ex =
 
     MkProdE es ->
       -- if terminal, don't flatten product
-      if isTerminal then pure ex else
+      if isTerminal then pure $ ariseIfTerminal ex else
         case stk of
           [] -> flattenProd ddfs stk env2 ex
           (ix:s') -> unariserExp False ddfs s' env2 (es ! ix)
@@ -215,6 +215,9 @@ unariserExp isTerminal ddfs stk env2 ex =
     arise ex0 _ = ex0
     arise' :: Int -> Exp3 -> [Ty3] -> ([Exp3], Int)
     arise' idx _ [] = ([], idx)
+    arise' _ ex0@(MkProdE xs) tys =
+      if length xs == length tys then (zipWith arise xs tys, undefined)
+      else error $ "arise': unmatched expression " ++ sdoc ex0 ++ " for type " ++ sdoc tys
     arise' idx ex0 (ty:tys)=
       case ty of
         ProdTy tys' ->
