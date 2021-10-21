@@ -7,7 +7,7 @@ import qualified Data.List as L
 import Gibbon.Common
 import Gibbon.L1.Syntax
 import Gibbon.L3.Syntax
-import Debug.Trace
+import Gibbon.Passes.Flatten()
 
 
 -- | This pass gets ready for Lower by converting most uses of
@@ -76,7 +76,7 @@ unariser Prog{ddefs,fundefs,mainExp} = do
 type ProjStack = [Int]
 
 isLet :: Exp3 -> Bool
-isLet LetE{} = True 
+isLet LetE{} = True
 isLet _ = False
 
 unariserExp :: Bool -> DDefs Ty3 -> ProjStack -> Env2 Ty3 -> Exp3 -> PassM Exp3
@@ -87,8 +87,8 @@ unariserExp isTerminal ddfs stk env2 ex =
       -- So terminal token is rhs.
       -- Otherwise if exp is of form `let a = b in let ... in ...` then 
       -- we propagate terminality to body
-      LetE . (v,locs,if not (isLet bod) && isTerminal then ty else flattenTy ty,) 
-        <$> go (not (isLet bod) && isTerminal) env2 rhs 
+      LetE . (v,locs,if not (isLet bod) && isTerminal then ty else flattenTy ty,)
+        <$> go (not (isLet bod) && isTerminal) env2 rhs
         <*> go (isLet bod && isTerminal) (extendVEnv v ty env2) bod
 
     MkProdE es ->
@@ -107,7 +107,7 @@ unariserExp isTerminal ddfs stk env2 ex =
     -- we can reuse reconstruciton logic.
     ProjE i e ->
       case e of
-        MkProdE ls -> go isTerminal env2 (ls ! i) 
+        MkProdE ls -> go isTerminal env2 (ls ! i)
         _ -> do
           let ety = gRecoverType ddfs env2 e -- type before flattening
               j   = flatProjIdx i ety -- index in flattened type
@@ -146,12 +146,12 @@ unariserExp isTerminal ddfs stk env2 ex =
         [] -> return ex
         _  -> error $ "Impossible. Non-empty projection stack on LitSymE "++show stk
 
-    -- For function output, we need to unflatten them at the end, if terminal
+    -- For function output, we need to arise them at the end, if terminal
     -- function inputs will still be intermediate values.
-    AppE v locs args -> unflattenIfTerminal . discharge stk <$>
+    AppE v locs args -> ariseIfTerminal . discharge stk <$>
                         (AppE v locs <$> mapM (go False env2) args)
 
-    PrimAppE pr args -> unflattenIfTerminal . discharge stk <$>
+    PrimAppE pr args -> ariseIfTerminal . discharge stk <$>
                         (PrimAppE pr <$> mapM (go False env2) args)
 
     -- condition is intermediate value, we only care about then and else branches as terminal
@@ -202,26 +202,27 @@ unariserExp isTerminal ddfs stk env2 ex =
     discharge (ix:rst) ((MkProdE ls)) = discharge rst (ls ! ix)
     discharge (ix:rst) e = discharge rst (ProjE ix e)
 
-    unflattenIfTerminal ex0 = 
-      if not isTerminal 
-        then ex0 
-        else 
-          let exty = gRecoverType ddfs env2 ex  
-          in unflatten ex0 exty 
-    unflatten :: Exp3 -> Ty3 -> Exp3
-    unflatten ex0 exty@(ProdTy tys) = trace ("unflatten: ex0="++sdoc ex0++", exty="++sdoc exty) $
-      mkProd . fst $ unflatten' 0 ex0 tys
-    unflatten ex0 _ = ex0
-    unflatten' :: Int -> Exp3 -> [Ty3] -> ([Exp3], Int)
-    unflatten' idx _ [] = ([], idx)
-    unflatten' idx ex0 (ty:tys)= 
-      case ty of 
-        ProdTy tys' -> 
-          let (res, idx') = unflatten' idx ex0 tys' 
-              (res', idx'') = unflatten' idx' ex0 tys 
+    ariseIfTerminal :: Exp3 -> Exp3
+    ariseIfTerminal ex0 =
+      if not isTerminal
+        then ex0
+        else
+          let exty = gRecoverType ddfs env2 ex
+          in arise ex0 exty
+    arise :: Exp3 -> Ty3 -> Exp3
+    arise ex0 (ProdTy tys) =
+      mkProd . fst $ arise' 0 ex0 tys
+    arise ex0 _ = ex0
+    arise' :: Int -> Exp3 -> [Ty3] -> ([Exp3], Int)
+    arise' idx _ [] = ([], idx)
+    arise' idx ex0 (ty:tys)=
+      case ty of
+        ProdTy tys' ->
+          let (res, idx') = arise' idx ex0 tys'
+              (res', idx'') = arise' idx' ex0 tys
           in  (mkProd res:res', idx'')
-        _ -> 
-          let (res, idx') = unflatten' (idx+1) ex0 tys
+        _ ->
+          let (res, idx') = arise' (idx+1) ex0 tys
           in  (mkProj idx ex0:res, idx')
 
 
