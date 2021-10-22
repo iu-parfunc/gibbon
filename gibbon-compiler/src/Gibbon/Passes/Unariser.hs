@@ -27,13 +27,15 @@ import Gibbon.Passes.Flatten()
 -- are all of the form `ProjE i (VarE v)` and they are then
 -- transformed to varrefs in lower.
 --
--- NOTE: I am limiting flattening to only intermediate expression. i.e. the tail value
+-- [Aditya Gupta, Oct 2021]
+-- NOTE: I am limiting flattening to only intermediate expressions. i.e. the tail value
 -- of main expression is a terminal expression and shouldn't be flattened.
 -- We can recursively propagate terminality based on expression type. This way all intermediate
--- expressions will enjoy benefit from flattening, but we still retain same output for terminal expression.
--- We can have a separate function:
--- Pros: Won't miss cases
--- Cons: We won't have ddefs, env2 at the current recursion level; Won't be able to fuse with unariseExp
+-- expressions will enjoy benefit from flattening, but we still retain same output for terminal expressions.
+-- We can have a separate function to recover after unarising but that won't have the env2/ddefs values
+-- and we won't be able to fuse it into unariser cases. But on the other hands, defining a separate function 
+-- can eliminate missed cases, but there are only few, so combining recovering terminal expressions in unariser
+-- seems best.
 
 unariser :: Prog3 -> PassM Prog3
 unariser Prog{ddefs,fundefs,mainExp} = do
@@ -75,25 +77,17 @@ unariser Prog{ddefs,fundefs,mainExp} = do
 -- perform, from left to right.
 type ProjStack = [Int]
 
-isLet :: Exp3 -> Bool
-isLet LetE{} = True
-isLet _ = False
-
 unariserExp :: Bool -> DDefs Ty3 -> ProjStack -> Env2 Ty3 -> Exp3 -> PassM Exp3
 unariserExp isTerminal ddfs stk env2 ex =
   case ex of
     LetE (v,locs,ty,rhs) bod ->
-      -- since program is in A-normal form, last let would be `let a = b in a`. 
-      -- So terminal token is rhs.
-      -- Otherwise if exp is of form `let a = b in let ... in ...` then 
-      -- we propagate terminality to body
-      LetE . (v,locs,if not (isLet bod) && isTerminal then ty else flattenTy ty,)
-        <$> go (not (isLet bod) && isTerminal) env2 rhs
-        <*> go (isLet bod && isTerminal) (extendVEnv v ty env2) bod
+      LetE . (v,locs, flattenTy ty,)
+        <$> go False env2 rhs
+        <*> go isTerminal (extendVEnv v ty env2) bod
 
     MkProdE es ->
       -- if terminal, don't flatten product
-      if isTerminal then pure $ ariseIfTerminal ex else
+      if isTerminal then pure $ recover0 ex else
         case stk of
           [] -> flattenProd ddfs stk env2 ex
           (ix:s') -> unariserExp False ddfs s' env2 (es ! ix)
@@ -116,20 +110,19 @@ unariserExp isTerminal ddfs stk env2 ex =
           e' <- go False env2 e -- recusrively unarise, but since this is an intermediate value, we can flatten it
           case e' of
             -- if we get a product after flattening, get jth element of flattened element
-            MkProdE xs -> return $ (xs ! j)
+            MkProdE xs -> return (xs ! j)
             _ ->
               -- otherwise, check jth element
              case fty of
                -- reconstruct, in case of nested tuple (whether terminal or not)
                ProdTy tys -> do
-                 return $ MkProdE (map (\k -> ProjE k e') [j..(j+(length tys)-1)])
+                 return $ MkProdE (map (\k -> ProjE k e') [j..(j+length tys-1)])  
                -- if not a tuple, take projection
                _ -> return $ ProjE j e'
 
 
     -- Straightforward recursion
-    -- No need to check for terminality.
-    VarE{} -> return $ discharge stk ex
+    VarE{} -> return . (if isTerminal then recover0 else id) $ discharge stk ex
 
     LitE{} ->
       case stk of
@@ -146,15 +139,20 @@ unariserExp isTerminal ddfs stk env2 ex =
         [] -> return ex
         _  -> error $ "Impossible. Non-empty projection stack on LitSymE "++show stk
 
-    -- For function output, we need to arise them at the end, if terminal
-    -- function inputs will still be intermediate values.
-    AppE v locs args -> ariseIfTerminal . discharge stk <$>
-                        (AppE v locs <$> mapM (go False env2) args)
+    -- For function output, we need to recover the application nto the arguments
+    AppE v locs args -> do
+      exp0 <- discharge stk <$> (AppE v locs <$> mapM (go False env2) args)
+      if isTerminal
+        then do
+          tmp <- gensym "tmp_app"
+          let ty' = gRecoverType ddfs env2 exp0
+          return $ LetE (tmp, [], flattenTy ty', exp0) (recover (VarE tmp) ty')
+        else
+          pure exp0
 
-    PrimAppE pr args -> ariseIfTerminal . discharge stk <$>
-                        (PrimAppE pr <$> mapM (go False env2) args)
+    PrimAppE pr args -> discharge stk <$> (PrimAppE pr <$> mapM (go False env2) args)
 
-    -- condition is intermediate value, we only care about then and else branches as terminal
+    -- condition is an intermediate expression, we only care about then and else branches as terminal expressions
     IfE a b c  -> IfE <$> go False env2 a <*> go isTerminal env2 b <*> go isTerminal env2 c
 
     CaseE e ls -> do
@@ -202,30 +200,24 @@ unariserExp isTerminal ddfs stk env2 ex =
     discharge (ix:rst) ((MkProdE ls)) = discharge rst (ls ! ix)
     discharge (ix:rst) e = discharge rst (ProjE ix e)
 
-    ariseIfTerminal :: Exp3 -> Exp3
-    ariseIfTerminal ex0 =
-      if not isTerminal
-        then ex0
-        else
-          let exty = gRecoverType ddfs env2 ex
-          in arise ex0 exty
-    arise :: Exp3 -> Ty3 -> Exp3
-    arise ex0 (ProdTy tys) =
-      mkProd . fst $ arise' 0 ex0 tys
-    arise ex0 _ = ex0
-    arise' :: Int -> Exp3 -> [Ty3] -> ([Exp3], Int)
-    arise' idx _ [] = ([], idx)
-    arise' _ ex0@(MkProdE xs) tys =
-      if length xs == length tys then (zipWith arise xs tys, undefined)
-      else error $ "arise': unmatched expression " ++ sdoc ex0 ++ " for type " ++ sdoc tys
-    arise' idx ex0 (ty:tys)=
+    recover0 ex0 = let ty = gRecoverType ddfs env2 ex0 in recover ex0 ty
+    recover :: Exp3 -> Ty3 -> Exp3
+    recover ex0 (ProdTy tys) =
+      mkProd . fst $ recover' 0 ex0 tys
+    recover ex0 _ = ex0
+    recover' :: Int -> Exp3 -> [Ty3] -> ([Exp3], Int)
+    recover' idx _ [] = ([], idx)
+    recover' _ ex0@(MkProdE xs) tys =
+      if length xs == length tys then (zipWith recover xs tys, undefined)
+      else error $ "recover': unmatched expression " ++ sdoc ex0 ++ " for type " ++ sdoc tys
+    recover' idx ex0 (ty:tys)=
       case ty of
         ProdTy tys' ->
-          let (res, idx') = arise' idx ex0 tys'
-              (res', idx'') = arise' idx' ex0 tys
+          let (res, idx') = recover' idx ex0 tys'
+              (res', idx'') = recover' idx' ex0 tys
           in  (mkProd res:res', idx'')
         _ ->
-          let (res, idx') = arise' (idx+1) ex0 tys
+          let (res, idx') = recover' (idx+1) ex0 tys
           in  (mkProj idx ex0:res, idx')
 
 
@@ -235,7 +227,7 @@ unariserExp isTerminal ddfs stk env2 ex =
 
 
 -- | Flatten nested tuples
-flattenProd :: DDefs Ty3 -> ProjStack -> Env2 Ty3 -> Exp3 -> PassM (Exp3)
+flattenProd :: DDefs Ty3 -> ProjStack -> Env2 Ty3 -> Exp3 -> PassM Exp3
 flattenProd ddfs stk env2 ex =
   case ex of
     MkProdE{} -> do
