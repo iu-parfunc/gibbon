@@ -48,7 +48,7 @@ import Control.DeepSeq (NFData)
 
 type Loc = LocVar
 
-type Reg = Var
+type Reg = Var (Maybe Int)
 
 data LocProgram = LocProgram (DDefs Ptype) (Map Var Fdef) (Maybe Exp)
                   deriving (Read,Show,Eq,Ord, Generic, NFData)
