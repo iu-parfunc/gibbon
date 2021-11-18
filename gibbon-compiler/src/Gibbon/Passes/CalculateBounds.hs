@@ -1,82 +1,63 @@
-module Gibbon.Passes.BoundCheck where
-import           Gibbon.L2.Syntax
+module Gibbon.Passes.CalculateBounds where
+
 import           Gibbon.Common
+import qualified Data.Map                      as M
+import           Gibbon.L2.Syntax
+
+
 
 calculateBounds :: Prog2 -> PassM Prog2
 calculateBounds Prog { ddefs, fundefs, mainExp } = do
-  fundefs' <- mapM calculateBoundsFun fundefs
+  let env2 = Env2 M.empty (initFunEnv fundefs)
+  fundefs' <- mapM (calculateBoundsFun ddefs env2) fundefs
   mainExp' <- case mainExp of
     Nothing       -> return Nothing
-    Just (mn, ty) -> Just . (, ty) <$> calculateBoundsExp mn
+    Just (mn, ty) -> Just . (, ty) . fst <$> calculateBoundsExp ddefs env2 mn
   return $ Prog ddefs fundefs' mainExp'
 
-calculateBoundsFun :: FunDef2 -> PassM FunDef2
-calculateBoundsFun f@FunDef { funBody } = do
-  funBody' <- calculateBoundsExp funBody
+calculateBoundsFun
+  :: DDefs Ty2 -> Env2 Ty2 -> FunDef2 -> PassM FunDef2
+calculateBoundsFun ddefs env2 f@FunDef { funBody } = do
+  funBody' <- fst <$> calculateBoundsExp ddefs env2 funBody
   return $ f { funBody = funBody' }
 
-calculateBoundsExp :: Exp2 -> PassM Exp2
--- ? need type info too here? int 4 bytes, char 1 bytes, something like that?
-calculateBoundsExp ex = case ex of
-  VarE{}       -> return ex
-  LitE{}       -> return ex
-  FloatE{}     -> return ex
-  LitSymE{}    -> return ex
-  AppE{}       -> return ex
-  PrimAppE{}   -> return ex
-  DataConE{}   -> return ex
-  ProjE{}      -> return ex
-  IfE{}        -> return ex
-  MkProdE{}    -> return ex
-  LetE{}       -> return ex
-  CaseE{}      -> return ex
-  TimeIt{}     -> return ex
-  SpawnE{}     -> pure ex
-  SyncE{}      -> pure ex
-  WithArenaE{} -> return ex
-  MapE{}       -> return ex
-  FoldE{}      -> return ex
-  Ext ext      -> calculateBoundsExt ext
+calculateBoundsExp
+  :: DDefs Ty2 -> Env2 Ty2 -> Exp2 -> PassM (Exp2, RegionSize)
+calculateBoundsExp ddefs env2 ex =
+  let ty = gRecoverType ddefs env2 ex
+      go = calculateBoundsExp ddefs env2
+  in  case sizeOfTy ty of
+        Just v -> return (ex, BoundedSize v)
+        _      -> case ex of
+          AppE{}                 -> return (ex, Unbounded)
+          PrimAppE{}             -> return (ex, Unbounded)
+          DataConE loc dcon args -> do
+            szs <- map snd <$> mapM go args
+            return (DataConE loc dcon args, 1 + sum szs)
+          -- ProjE i exp   -> return (ex, go (exp !!i)) -- TODO what if exp is not a list?
+          IfE cond bod1 bod2 -> do
+            (bod1', sz1) <- go bod1
+            (bod2', sz2) <- go bod2
+            let sz' = max sz1 sz2
+            return (IfE cond bod1' bod2', sz')
+          MkProdE ls -> do
+            (ls', szs') <- unzip <$> mapM go ls
+            let sz = sum szs'
+            return (MkProdE ls', sz)
+          LetE (v, locs, dec, bind) bod -> do
+            bind' <- fst <$> go bind
+            (bod', sz)  <- go bod
+            return (LetE (v, locs, dec, bind') bod', sz)
+          CaseE ex2 cases -> do
+            (cases', sizes) <- unzip <$> mapM (\(dcon, vlocs, bod) -> do 
+              (bod', sz) <- go bod 
+              return ((dcon, vlocs, bod'), sz)) cases
+            let sz' = maximum sizes
+            return (CaseE ex2 cases', sz')
+          Ext ext -> case ext of
+            LetRegionE reg bod -> do
+              (bod', sz) <- go bod
+              return (Ext $ LetRegionE (AnalyzedRegion reg sz) bod', Unbounded) -- no escape?
+            IndirectionE{} -> return (ex, BoundedSize 8)
 
-calculateBoundsExt :: Exp2 -> PassM Exp2
-calculateBoundsExt ext = case ext of
-  BenchE{}            -> return ext
-  AddFixed{}          -> return ext
-  LetRegionE{}        -> return ext
-  LetParRegionE{}     -> return ext
-  LetLocE{}           -> return ext
-  RetE{}              -> return ext
-  FromEndE{}          -> return ext
-  BoundsCheck{}       -> return ext
-  AddFixed{}          -> return ext
-  IndirectionE{}      -> return ext
-  GetCilkWorkerNum{}  -> return ext
-  LetAvail{}          -> return ext
-  ReadScalar{}        -> return ext
-  WriteScalar{}       -> return ext
-  ReadTag{}           -> return ext
-  WriteTag{}          -> return ext
-  ReadCursor{}        -> return ext
-  WriteCursor{}       -> return ext
-  ReadList{}          -> return ext
-  WriteList{}         -> return ext
-  ReadVector{}        -> return ext
-  WriteVector{}       -> return ext
-  AddCursor{}         -> return ext
-  SubPtr{}            -> return ext
-  NewBuffer{}         -> return ext
-  ScopedBuffer{}      -> return ext
-  NewParBuffer{}      -> return ext
-  ScopedParBuffer{}   -> return ext
-  InitSizeOfBuffer{}  -> return ext
-  MMapFileSize{}      -> return ext
-  SizeOfPacked{}      -> return ext
-  SizeOfScalar{}      -> return ext
-  BoundsCheck{}       -> return ext
-  BumpRefCount{}      -> return ext
-  BumpArenaRefCount{} -> return ext
-  NullCursor{}        -> return ext
-  RetE{}              -> return ext
-  GetCilkWorkerNum{}  -> return ext
-  LetAvail{}          -> return ext
 

@@ -20,7 +20,7 @@ module Gibbon.L2.Syntax
 
     -- * Regions and locations
     , LocVar, Region(..), Modality(..), LRM(..), dummyLRM
-    , Multiplicity(..), regionToVar
+    , Multiplicity(..), RegionSize(..), regionToVar
 
     -- * Operations on types
     , allLocVars, inLocVars, outLocVars, outRegVars, inRegVars, allRegVars, substLoc
@@ -73,6 +73,21 @@ type Ty2 = UrTy LocVar
 
 -- | Shorthand for recursions.
 type E2 l d = PreExp E2Ext l d
+
+data RegionSize = BoundedSize Int | Unbounded deriving (Eq, Read, Show, Generic, NFData, Out)
+
+instance Ord RegionSize where
+  (<=) (BoundedSize sz1) (BoundedSize sz2) = sz1 <= sz2
+  (<=) Unbounded         (BoundedSize _  ) = False
+  (<=) _                 Unbounded         = True
+
+instance Num RegionSize where 
+  (+) (BoundedSize sz1) (BoundedSize sz2) = BoundedSize (sz1 + sz2)
+  (+) Unbounded _ = Unbounded
+  (+) _ Unbounded = Unbounded
+
+data Reg = Reg Var (Maybe Int)
+
 
 -- | The extension that turns L1 into L2.
 data E2Ext loc dec
@@ -324,6 +339,7 @@ data Region = GlobR Var Multiplicity -- ^ A global region with lifetime equal to
             | MMapR Var              -- ^ A region that doesn't result in an (explicit)
                                      --   memory allocation. It merely ensures that there
                                      --   are no free locations in the program.
+            | AnalyzedRegion Region RegionSize
   deriving (Read,Show,Eq,Ord, Generic)
 
 instance Out Region
@@ -333,6 +349,7 @@ instance NFData Region where
   rnf (DynR v _)  = rnf v
   rnf (VarR v)    = rnf v
   rnf (MMapR v)   = rnf v
+  rnf r@AnalyzedRegion{} = rnf r
 
 -- | The modality of locations and cursors: input/output, for reading
 -- and writing, respectively.
@@ -364,6 +381,7 @@ regionToVar r = case r of
                   DynR  v _ -> v
                   VarR  v   -> v
                   MMapR v   -> v
+                  AnalyzedRegion r _ -> regionToVar r
 
 
 -- | The 'gRecoverType' instance defined in Language.Syntax is incorrect for L2.

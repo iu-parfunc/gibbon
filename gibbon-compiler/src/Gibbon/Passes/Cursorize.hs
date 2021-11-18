@@ -683,6 +683,8 @@ But Infinite regions do not support sizes yet. Re-enable this later.
                        DynR v _  -> Right (VarE v, [], tenv, senv)
                        -- TODO: docs
                        MMapR _v   -> Left denv
+                       AnalyzedRegion r2 _ -> cursorizeLocExp denv tenv senv lvar (StartOfLE r2)
+
 
     FreeLE -> Left denv -- AUDIT: should we just throw away this information?
 
@@ -1424,6 +1426,7 @@ regionToBinds for_parallel_allocs r =
                         , (toEndV v, [], CursorTy, Ext$ AddCursor v (Ext $ InitSizeOfBuffer mul))]
     -- TODO: docs
     MMapR _v    -> []
+    AnalyzedRegion r2 _ -> regionToBinds for_parallel_allocs r2
 
 isBound :: LocVar -> TyEnv Ty2 -> Bool
 isBound = M.member
