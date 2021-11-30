@@ -605,7 +605,7 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
               -- Note: L2 -> L3
               -- TODO: Compose L3.TcM with (ReaderT Config)
               l3 <- go "calculateBounds "        calculateBounds l2
-              l3 <- go "cursorize"        cursorize     l2
+              l3 <- go "cursorize"        cursorize     l3
               -- _ <- lift $ putStrLn (pprender l3)
               l3 <- go "L3.flatten"       flattenL3     l3
               l3 <- go "L3.typecheck" (L3.tcProg isPacked) l3

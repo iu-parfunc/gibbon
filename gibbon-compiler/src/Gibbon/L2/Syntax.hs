@@ -74,17 +74,29 @@ type Ty2 = UrTy LocVar
 -- | Shorthand for recursions.
 type E2 l d = PreExp E2Ext l d
 
-data RegionSize = BoundedSize Int | Unbounded deriving (Eq, Read, Show, Generic, NFData, Out)
+data RegionSize = BoundedSize Int | Unbounded | Undefined deriving (Eq, Read, Show, Generic, NFData, Out)
+
 
 instance Ord RegionSize where
   (<=) (BoundedSize sz1) (BoundedSize sz2) = sz1 <= sz2
   (<=) Unbounded         (BoundedSize _  ) = False
   (<=) _                 Unbounded         = True
+  (<=) Undefined _         = error "Invalid comparison"
+  (<=) _         Undefined = error "Invalid comparison"
+
 
 instance Num RegionSize where 
   (+) (BoundedSize sz1) (BoundedSize sz2) = BoundedSize (sz1 + sz2)
   (+) Unbounded _ = Unbounded
   (+) _ Unbounded = Unbounded
+  (+) Undefined _         = Undefined
+  (+) _         Undefined = Undefined
+  fromInteger i = BoundedSize (fromInteger i) -- required for sum (fromInteger 0 = BoundedSize 0)
+  (*) = undefined 
+  abs = undefined 
+  signum = undefined 
+  negate = undefined
+
 
 data Reg = Reg Var (Maybe Int)
 
@@ -349,7 +361,8 @@ instance NFData Region where
   rnf (DynR v _)  = rnf v
   rnf (VarR v)    = rnf v
   rnf (MMapR v)   = rnf v
-  rnf r@AnalyzedRegion{} = rnf r
+  rnf (AnalyzedRegion r _) = rnf r
+
 
 -- | The modality of locations and cursors: input/output, for reading
 -- and writing, respectively.
