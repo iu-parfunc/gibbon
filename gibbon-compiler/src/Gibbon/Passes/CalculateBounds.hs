@@ -64,7 +64,8 @@ calculateBoundsExp ddefs env2 szEnv locEnv ex = case ex of
             SyncE{}                -> todo
             MapE{}                 -> todo
             FoldE{}                -> todo
-            AppE{}                 -> return (ex, Unbounded, locEnv)
+            -- TODO use input/output loc 
+            AppE v locs args       -> return (ex, Unbounded, locEnv)
             PrimAppE{}             -> return (ex, Unbounded, locEnv)
             DataConE loc dcon args -> do
               (_, szs, les) <- unzip3 <$> mapM go args
@@ -107,9 +108,11 @@ calculateBoundsExp ddefs env2 szEnv locEnv ex = case ex of
               LetParRegionE{}        -> todo
               LetLocE loc locExp ex1 -> do
                 (ex1', sz, le) <- go ex1
+                -- TODO also update region size here and make it 4-tuple and return updated region size. That means expression size gets invalidated - so do I remove it from the 3-tuple and add region size instead, making it a 3-tuple again?
                 let le' = M.insert loc (getRegion le locExp) le
                 return (Ext $ LetLocE loc locExp ex1', sz, le')
-              RetE _ v -> do
+              -- TODO use locs
+              RetE locs v -> do
                 (_, sz, le) <- go (VarE v)
                 return (ex, sz, le)
               FromEndE{}         -> todo
