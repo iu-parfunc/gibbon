@@ -19,8 +19,9 @@ calculateBounds Prog { ddefs, fundefs, mainExp } = do
 
 
 calculateBoundsFun :: DDefs Ty2 -> Env2 Ty2 -> M.Map Var RegionSize -> FunDef2 -> PassM FunDef2
-calculateBoundsFun ddefs env2 szEnv f@FunDef { funBody } = do
-  funBody' <- fst3 <$> calculateBoundsExp2 ddefs env2 szEnv M.empty funBody
+calculateBoundsFun ddefs env2 szEnv f@FunDef { funBody, funTy } = do
+  let locEnv = M.fromList $ map (\lv -> (lrmLoc lv, lrmReg lv)) (locVars funTy)
+  funBody' <- fst3 <$> calculateBoundsExp2 ddefs env2 szEnv locEnv funBody
   return $ f { funBody = funBody' }
 
 calculateBoundsExp2 ddefs env2 szEnv locEnv ex = do
@@ -54,18 +55,22 @@ calculateBoundsExp ddefs env2 szEnv locEnv ex = case ex of
     in  case sizeOfTy ty of
           Just v -> return (ex, BoundedSize v, locEnv)
           _      -> case ex of
-            LitE    _              -> err
-            FloatE  _              -> err
-            LitSymE _              -> err
-            ProjE{}                -> todo
-            TimeIt{}               -> todo
-            WithArenaE{}           -> todo
-            SpawnE{}               -> todo
-            SyncE{}                -> todo
-            MapE{}                 -> todo
-            FoldE{}                -> todo
+            LitE    _        -> err
+            FloatE  _        -> err
+            LitSymE _        -> err
+            ProjE{}          -> todo
+            TimeIt{}         -> todo
+            WithArenaE{}     -> todo
+            SpawnE{}         -> todo
+            SyncE{}          -> todo
+            MapE{}           -> todo
+            FoldE{}          -> todo
             -- TODO use input/output loc 
-            AppE v locs args       -> return (ex, Unbounded, locEnv)
+            AppE v locs args -> do
+              traceM $ "env2 = " ++ sdoc env2
+              traceM $ "v = " ++ sdoc env2
+              traceM $ "func = " ++ sdoc (M.lookup v (fEnv env2))
+              return (ex, Unbounded, locEnv)
             PrimAppE{}             -> return (ex, Unbounded, locEnv)
             DataConE loc dcon args -> do
               (_, szs, les) <- unzip3 <$> mapM go args
@@ -90,11 +95,10 @@ calculateBoundsExp ddefs env2 szEnv locEnv ex = case ex of
                 unzip3
                   <$> mapM
                         (\(dcon, vlocs, bod) -> do
-                          -- (dcon', sz1) <- go dcon
-                          -- TODO insert datacon types
-                          traceM $ "ddefs: " ++ sdoc ddefs
-                          traceM $ "dcon: " ++ sdoc dcon ++ ", vlocs = " ++ sdoc vlocs ++ ", bod = " ++ sdoc bod
+                          -- (dcon', sz1) <- go dcon 
+                          -- TODO insert datacon argument sizes and locations for case arguments
                           -- let szEnv' = M.insert dcon sz1 
+                          -- let locEnv' = M.union locEnv $ M.fromList $ map (\(v, l)) vlocs
                           (bod', sz2, le) <- calculateBoundsExp2 ddefs env2 szEnv locEnv bod
                           return ((dcon, vlocs, bod'), sz2, le)
                         )
@@ -107,10 +111,12 @@ calculateBoundsExp ddefs env2 szEnv locEnv ex = case ex of
                 return (Ext $ LetRegionE (AnalyzedRegion reg sz) bod', sz, le)
               LetParRegionE{}        -> todo
               LetLocE loc locExp ex1 -> do
-                (ex1', sz, le) <- go ex1
+                traceM $ "locEnv = " ++ sdoc locEnv
+                traceM $ "locExp = " ++ sdoc locExp
                 -- TODO also update region size here and make it 4-tuple and return updated region size. That means expression size gets invalidated - so do I remove it from the 3-tuple and add region size instead, making it a 3-tuple again?
-                let le' = M.insert loc (getRegion le locExp) le
-                return (Ext $ LetLocE loc locExp ex1', sz, le')
+                let le' = M.insert loc (getRegion locEnv locExp) locEnv
+                (ex1', sz, le'') <- calculateBoundsExp2 ddefs env2 szEnv le' ex1
+                return (Ext $ LetLocE loc locExp ex1', sz, le'')
               -- TODO use locs
               RetE locs v -> do
                 (_, sz, le) <- go (VarE v)
