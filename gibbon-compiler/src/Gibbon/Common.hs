@@ -25,7 +25,7 @@ module Gibbon.Common
 
          -- * Misc helpers
        , (#), (!!!), fragileZip, fragileZip', sdoc, ndoc, abbrv
-       , lookup3, fst3, snd3, thd3, cataM
+       , lookup3, fst3, snd3, thd3, fst4, cataM
 
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
@@ -362,6 +362,9 @@ snd3 (_,b,_) = b
 
 thd3 :: (a,b,c) -> c
 thd3 (_,_,c) = c
+
+fst4 :: (a, b, c, d) -> a
+fst4 (a,_,_,_) = a
 
 cataM
   :: (Monad m, Traversable (Base t), Recursive t)
