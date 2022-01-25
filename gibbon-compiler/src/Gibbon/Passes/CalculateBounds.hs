@@ -5,11 +5,12 @@ import           Gibbon.Common
 import qualified Data.Map                      as M
 import           Gibbon.L2.Syntax
 import           Debug.Trace
+import Data.List
 
-type LocationMapping = M.Map LocVar Region
+type LocationMapping = M.Map LocVar Var
 type VarSizeMapping = M.Map Var RegionSize
-type RegionSizeMapping = M.Map Region RegionSize
-type RegionTypeMapping = M.Map Region Modality
+type RegionSizeMapping = M.Map Var RegionSize
+type RegionTypeMapping = M.Map Var Modality
 
 calculateBounds :: Prog2 -> PassM Prog2
 calculateBounds Prog { ddefs, fundefs, mainExp } = do
@@ -17,30 +18,17 @@ calculateBounds Prog { ddefs, fundefs, mainExp } = do
   fundefs' <- mapM (calculateBoundsFun ddefs env2 M.empty) fundefs
   mainExp' <- case mainExp of
     Nothing       -> return Nothing
-    Just (mn, ty) -> Just . (, ty) . fst <$> calculateBoundsExp2 ddefs env2 M.empty M.empty M.empty mn
+    Just (mn, ty) -> Just . (, ty) . fst <$> calculateBoundsExp ddefs env2 M.empty M.empty M.empty mn
   return $ Prog ddefs fundefs' mainExp'
 
 
 calculateBoundsFun :: DDefs Ty2 -> Env2 Ty2 -> VarSizeMapping -> FunDef2 -> PassM FunDef2
 calculateBoundsFun ddefs env2 szEnv f@FunDef { funBody, funTy, funArgs } = do
-  let locEnv = M.fromList $ map (\lv -> (lrmLoc lv, lrmReg lv)) (locVars funTy)
+  let locEnv = M.fromList $ map (\lv -> (lrmLoc lv, regionToVar $ lrmReg lv)) (locVars funTy)
   let argTys = M.fromList $ zip funArgs (arrIns funTy)
   let env2'  = env2 { vEnv = argTys }
-  funBody' <- fst <$> calculateBoundsExp2 ddefs env2' szEnv locEnv M.empty funBody
+  funBody' <- fst <$> calculateBoundsExp ddefs env2' szEnv locEnv M.empty funBody
   return $ f { funBody = funBody' }
-
-calculateBoundsExp2
-  :: DDefs Ty2
-  -> Env2 Ty2
-  -> VarSizeMapping
-  -> LocationMapping
-  -> RegionSizeMapping
-  -> Exp2
-  -> PassM (Exp2, RegionSizeMapping)
-calculateBoundsExp2 ddefs env2 szEnv locEnv regEnv ex = do
-  res <- calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex
-  traceM $ "res = " ++ sdoc res
-  return res
 
 {- 
   * We recurse using three mappings (variable => size, location => region and region => size)
@@ -67,20 +55,19 @@ calculateBoundsExp
   -> RegionSizeMapping -- ^ region => size 
   -> Exp2 -- ^ expression 
   -> PassM (Exp2, RegionSizeMapping)
-  -- TODO do we really need to return regionsize mapiing or location mapping?
--- TODO: track allocations to locations and update the bound for region
--- TODO: know which regions are input (0 allocations)
 calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
   Ext  (BoundsCheck{}                ) -> return (ex, regEnv)
-  Ext  (IndirectionE _ _ (loc, _) _ _) -> return (ex, M.insertWith (+) (locEnv M.! loc) 9 regEnv)
+  Ext  (IndirectionE _ _ (loc, _) _ _) -> do
+    let res = (ex, M.insertWith (+) (locEnv M.! loc) 9 regEnv)
+    return res
   VarE v                               -> case M.lookup v szEnv of
     Just _ -> return (ex, regEnv)
     _      -> do
-      traceM $ "No size in env for " ++ sdoc v ++ " (" ++ sdoc szEnv ++ ")"
+      -- TODO: handle this case?
       return (ex, regEnv)
   _ ->
     let ty   = gRecoverType ddefs env2 ex
-        go   = calculateBoundsExp2 ddefs env2 szEnv locEnv regEnv
+        go   = calculateBoundsExp ddefs env2 szEnv locEnv regEnv
         err  = error "Should have been covered by sizeOfTy"
         todo = return (ex, regEnv)
     in  case sizeOfTy ty of
@@ -96,14 +83,8 @@ calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
             SyncE{}            -> todo
             MapE{}             -> todo
             FoldE{}            -> todo
-            -- TODO use input/output loc 
-            AppE v _locs _args -> do
-              traceM $ "env2 = " ++ sdoc env2
-              traceM $ "v = " ++ sdoc env2
-              traceM $ "func = " ++ sdoc (M.lookup v (fEnv env2))
-              -- TODO locs are input region for 'v'. No change done by v. Pick up from regEnv?
+            AppE _ _locs _args -> do
               return (ex, regEnv)
-              -- TODO no change to regions by primapp so pick up from regEnv?
             PrimAppE{}             -> return (ex, regEnv)
             DataConE loc dcon args -> do
               (_, res) <- unzip <$> mapM go args
@@ -118,22 +99,23 @@ calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
             LetE (v, locs, ty0, bind) bod -> do
               (bind', regEnv') <- go bind
               let venv' = M.insert v ty0 (vEnv env2)
-              (bod', regEnv'') <- calculateBoundsExp2 ddefs env2 { vEnv = venv' } szEnv locEnv regEnv bod
+              (bod', regEnv'') <- calculateBoundsExp ddefs env2 { vEnv = venv' } szEnv locEnv regEnv bod
               return (LetE (v, locs, ty0, bind') bod', M.unionWith max regEnv' regEnv'')
             CaseE ex2 cases -> do
               (cases', res) <-
                 unzip
                   <$> mapM
-                        (\(dcon, vlocs, bod) -> do
-                          traceM $ "ex2: " ++ sdoc ex2
-                          traceM $ "Case: " ++ sdoc (dcon, vlocs, bod)
-                          -- (dcon', sz1) <- go dcon 
-                          -- TODO insert datacon argument sizes and locations for case arguments
-                          -- For now, I'm just putting them at offset 1 from the start, but ideally 
-                          -- we have to add up the size of the types and set appropriate offset.
-                          -- let szEnv' = M.insert dcon sz1 
-                          -- let locEnv' = M.union locEnv $ M.fromList $ map (\(v, l)) vlocs
-                          (bod', re) <- calculateBoundsExp2 ddefs env2 szEnv locEnv regEnv bod
+                        (\(dcon :: DataCon, vlocs :: [(Var, LocVar)], bod :: Exp2) -> do
+                          -- let offsets = M.fromList 
+                          --       . tail -- remove tag
+                          --       . scanl1 (\(_, s1) (v2, s2) -> (v2, s1+s2)) -- accumulate offsets
+                          --       . ((undefined, BoundedSize 1):)  -- add size for tag
+                          --       . zip (map snd vlocs) -- take locations
+                          --       . map (maybe Undefined BoundedSize . sizeOfTy) -- map to our region size type
+                          --       $ lookupDataCon ddefs dcon -- find ddef)
+                          -- * NOTE: After thinking, no location can be allocated from offset to an internal argument
+                          -- of a data constructor, except jumps so we can skip this analysis.
+                          (bod', re) <- go bod
                           return ((dcon, vlocs, bod'), re)
                         )
                         cases
@@ -141,17 +123,22 @@ calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
             Ext ext -> case ext of
               LetRegionE reg bod -> do
                 (bod', re) <- go bod
-                -- TODO now the recursive ADT has been analyzed, we can update the size from regEnv?
-                return (Ext $ LetRegionE (AnalyzedRegion reg (regEnv M.! reg)) bod', re)
+                traceM $ ">> RegionSize: " ++ show reg ++ " -> " ++ show (re M.! regionToVar reg)
+                return (Ext $ LetRegionE (AnalyzedRegion reg (re M.! regionToVar reg)) bod', re)
               LetParRegionE{}        -> todo
               LetLocE loc locExp ex1 -> do
-                let (re, rs) = getRegionSize locExp
-                let regEnv'  = M.insertWith max re rs regEnv
-                let le'      = M.insert loc re locEnv
-                (ex1', re') <- calculateBoundsExp2 ddefs env2 szEnv le' regEnv' ex1
-                return (Ext $ LetLocE loc locExp ex1', re')
+                -- * NOTE: jumps are only necessary for route ends, skipping them.
+                if "jump_" `isPrefixOf` fromVar loc
+                  then do
+                    (ex1', re') <- go ex1
+                    return (Ext $ LetLocE loc locExp ex1', re')
+                  else do
+                    let (re, rs) = getRegionSize locExp
+                    let regEnv'  = M.insertWith (+) re rs regEnv
+                    let le'      = M.insert loc re locEnv
+                    (ex1', re') <- calculateBoundsExp ddefs env2 szEnv le' regEnv' ex1
+                    return (Ext $ LetLocE loc locExp ex1', re')
               RetE _locs v -> do
-                -- TODO use locs?
                 (_, re) <- go (VarE v)
                 return (ex, re)
               FromEndE{}         -> todo
@@ -159,12 +146,12 @@ calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
               GetCilkWorkerNum{} -> todo
               LetAvail{}         -> todo
  where
-  getRegionSize :: PreLocExp LocVar -> (Region, RegionSize)
-  getRegionSize (StartOfLE r          ) = (r, 0)
+  getRegionSize :: PreLocExp LocVar -> (Var, RegionSize)
+  getRegionSize (StartOfLE r          ) = (regionToVar r, 0)
   getRegionSize (AfterConstantLE n l  ) = (locEnv M.! l, BoundedSize n)
   getRegionSize (AfterVariableLE v l _) = (locEnv M.! l, szEnv M.! v)
-  getRegionSize (InRegionLE r         ) = (r, Undefined)
-  getRegionSize (FromEndLE  l         ) = (locEnv M.! l, Unbounded)
+  getRegionSize (InRegionLE r         ) = (regionToVar r, Undefined)
+  getRegionSize (FromEndLE  l         ) = (locEnv M.! l, Undefined)
   getRegionSize FreeLE                  = error "Not bound to any region"
 
 
