@@ -58,7 +58,7 @@ calculateBoundsExp
 calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
   Ext  (BoundsCheck{}                ) -> return (ex, regEnv)
   Ext  (IndirectionE _ _ (loc, _) _ _) -> do
-    let res = (ex, M.insertWith (+) (locEnv M.! loc) 9 regEnv)
+    let res = (ex, M.insertWith (<>) (locEnv M.! loc) (BoundedSize 9) regEnv)
     return res
   VarE v                               -> case M.lookup v szEnv of
     Just _ -> return (ex, regEnv)
@@ -134,7 +134,7 @@ calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
                     return (Ext $ LetLocE loc locExp ex1', re')
                   else do
                     let (re, rs) = getRegionSize locExp
-                    let regEnv'  = M.insertWith (+) re rs regEnv
+                    let regEnv'  = M.insertWith (<>) re rs regEnv
                     let le'      = M.insert loc re locEnv
                     (ex1', re') <- calculateBoundsExp ddefs env2 szEnv le' regEnv' ex1
                     return (Ext $ LetLocE loc locExp ex1', re')
@@ -147,7 +147,7 @@ calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
               LetAvail{}         -> todo
  where
   getRegionSize :: PreLocExp LocVar -> (Var, RegionSize)
-  getRegionSize (StartOfLE r          ) = (regionToVar r, 0)
+  getRegionSize (StartOfLE r          ) = (regionToVar r, BoundedSize 0)
   getRegionSize (AfterConstantLE n l  ) = (locEnv M.! l, BoundedSize n)
   getRegionSize (AfterVariableLE v l _) = (locEnv M.! l, szEnv M.! v)
   getRegionSize (InRegionLE r         ) = (regionToVar r, Undefined)

@@ -83,18 +83,13 @@ instance Ord RegionSize where
   (<=) _         Undefined = error "Invalid comparison"
 
 
-instance Num RegionSize where 
-  (+) (BoundedSize sz1) (BoundedSize sz2) = BoundedSize (sz1 + sz2)
-  (+) Undefined _         = Undefined
-  (+) _         Undefined = Undefined
-  fromInteger i = BoundedSize (fromInteger i) -- required for sum (fromInteger 0 = BoundedSize 0)
-  (*) = undefined 
-  abs = undefined 
-  signum = undefined 
-  negate = undefined
+instance Semigroup RegionSize where 
+  (<>) (BoundedSize sz1) (BoundedSize sz2) = BoundedSize (sz1 + sz2)
+  (<>) Undefined _         = Undefined
+  (<>) _         Undefined = Undefined
 
-
-data Reg = Reg Var (Maybe Int)
+instance Monoid RegionSize where
+  mempty = BoundedSize 0
 
 
 -- | The extension that turns L1 into L2.
