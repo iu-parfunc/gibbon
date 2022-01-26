@@ -86,8 +86,8 @@ addTraversalsExp ddefs fundefs env2 renv context ex =
     SyncE    -> pure ex -- error "addTraversalsExp: Cannot compile SyncE"
     Ext ext ->
       case ext of
-        LetRegionE reg bod -> Ext <$> LetRegionE reg <$> go bod
-        LetParRegionE reg bod -> Ext <$> LetParRegionE reg <$> go bod
+        LetRegionE reg sz bod -> Ext . LetRegionE reg sz <$> go bod
+        LetParRegionE reg sz bod -> Ext . LetParRegionE reg sz <$> go bod
         LetLocE loc locexp bod ->
           let reg = case locexp of
                       StartOfLE r  -> regionToVar r

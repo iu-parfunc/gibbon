@@ -69,20 +69,20 @@ calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
     let ty   = gRecoverType ddefs env2 ex
         go   = calculateBoundsExp ddefs env2 szEnv locEnv regEnv
         err  = error "Should have been covered by sizeOfTy"
-        todo = return (ex, regEnv)
+        pass = return (ex, regEnv)
     in  case sizeOfTy ty of
           Just _ -> return (ex, regEnv)
           _      -> case ex of
             LitE    _          -> err
             FloatE  _          -> err
             LitSymE _          -> err
-            ProjE{}            -> todo
-            TimeIt{}           -> todo
-            WithArenaE{}       -> todo
-            SpawnE{}           -> todo
-            SyncE{}            -> todo
-            MapE{}             -> todo
-            FoldE{}            -> todo
+            ProjE{}            -> pass
+            TimeIt{}           -> pass
+            WithArenaE{}       -> pass
+            SpawnE{}           -> pass
+            SyncE{}            -> pass
+            MapE{}             -> pass
+            FoldE{}            -> pass
             AppE _ _locs _args -> do
               return (ex, regEnv)
             PrimAppE{}             -> return (ex, regEnv)
@@ -121,11 +121,14 @@ calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
                         cases
               return (CaseE ex2 cases', M.unionsWith max res)
             Ext ext -> case ext of
-              LetRegionE reg bod -> do
+              LetRegionE reg _ bod -> do
                 (bod', re) <- go bod
                 traceM $ ">> RegionSize: " ++ show reg ++ " -> " ++ show (re M.! regionToVar reg)
-                return (Ext $ LetRegionE (AnalyzedRegion reg (re M.! regionToVar reg)) bod', re)
-              LetParRegionE{}        -> todo
+                return (Ext $ LetRegionE reg (re M.! regionToVar reg) bod', re)
+              LetParRegionE reg _ bod -> do
+                (bod', re) <- go bod
+                traceM $ ">> RegionSize: " ++ show reg ++ " -> " ++ show (re M.! regionToVar reg)
+                return (Ext $ LetParRegionE reg (re M.! regionToVar reg) bod', re)
               LetLocE loc locExp ex1 -> do
                 -- * NOTE: jumps are only necessary for route ends, skipping them.
                 if "jump_" `isPrefixOf` fromVar loc
@@ -141,10 +144,10 @@ calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
               RetE _locs v -> do
                 (_, re) <- go (VarE v)
                 return (ex, re)
-              FromEndE{}         -> todo
-              AddFixed{}         -> todo
-              GetCilkWorkerNum{} -> todo
-              LetAvail{}         -> todo
+              FromEndE{}         -> pass
+              AddFixed{}         -> pass
+              GetCilkWorkerNum{} -> pass
+              LetAvail{}         -> pass
  where
   getRegionSize :: PreLocExp LocVar -> (Var, RegionSize)
   getRegionSize (StartOfLE r          ) = (regionToVar r, BoundedSize 0)
