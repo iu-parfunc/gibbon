@@ -67,7 +67,7 @@ In fnB, there's no path from `rb` to 1.
 --
 --  Dynamic regions are stack allocated and automatically freed
 inferRegScopeExp :: Exp2 -> PassM Exp2
-inferRegScopeExp ex =
+inferRegScopeExp ex =  
   case ex of
     Ext ext ->
       case ext of

@@ -414,7 +414,7 @@ compilationCmd LLVM _   = "clang-5.0 lib.o "
 compilationCmd C config = (cc config) ++" -std=gnu11 "
                           ++(if bumpAlloc then "-D_BUMPALLOC " else " ")
                           ++(if pointer then "-D_POINTER " else " ")
-                          ++(if parallel then "-fcilkplus -D_PARALLEL " else " ")
+                          ++(if parallel then "-fopencilk -D_PARALLEL " else " ")
                           ++(optc config)++"  "
                           ++(if warnc then "-Wno-unused-variable -Wall " else suppress_warnings)
   where dflags = dynflags config
