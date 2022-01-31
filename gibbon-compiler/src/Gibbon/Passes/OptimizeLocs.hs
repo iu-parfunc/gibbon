@@ -42,13 +42,34 @@ optimizeExp dictionary ex =
     case ex of
     Ext ext ->
       case ext of
-          LetRegionE r rhs -> let dictionary' = M.insert r ext dictionary
-                                  (rhs', cannotRemove) = optimizeExp dictionary' rhs
-                                  in if cannotRemove then (LetRegionE r rhs', True) else (rhs', False) {- Store this let region with corresponding r in a dictionary? Return Null for this match?What to do about rhs? -} 
-          LetLocE loc phs rhs -> return ex  {- Store this let location with the corresponding location in a
-                                               Return a null for this match?   
-                                               What to do about phs and rhs?-}
-          _ -> return ex                    {- Are there any other expressions that I need to take care of?-} 
+        LetRegionE r rhs -> let dictionary' = M.insert regionToVar r ext dictionary
+                            (rhs', cannotRemove) = optimizeExp dictionary' rhs
+                            in if cannotRemove then (LetRegionE r rhs', True) else (rhs', False)
+                            {- Store this let region with corresponding r in a dictionary?
+                               Return Null for this match?What to do about rhs? -} 
+        LetLocE loc phs rhs -> let dictionary' = M.insert loc ext dictionary
+                               (rhs', cannotRemove) = optimizeExp dictionary' rhs
+                               in if cannotRemove then (LetLocE loc phs rhs', True) else (rhs', False)
+                               {- Store this let location with the corresponding location in a Return a null for this match?   
+                                  What to do about phs and rhs?-}
+        LetParRegionE r rhs -> let dictionary' = M.insert regionToVar r ext dictionary
+                                (rhs', cannotRemove) = optimizeExp dictionary' rhs
+                                in if cannotRemove then (LetParRegion r rhs') else (rhs', False)
+
+        RetE{}                                   -> return ex
+        
+        FromEndE{}                               -> return ex
+        
+        BoundsCheck{}                            -> return ex
+
+        IndirectionE tc dc (l1,v1) (l2,v2) rhs   -> (rhs', cannotRemove) = optimize dictionary rhs
+                                                    -- I think the variable cannotRemove doesn't matter here
+                                                    (IndirectonE tc dc (l1,v1) (l2,v2) rhs')
+
+        GetCilkWorkerNum    -> return ex
+
+        
+
     _ -> return ex
 
 

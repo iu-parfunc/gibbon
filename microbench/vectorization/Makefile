@@ -1,6 +1,6 @@
 CLANG_BIN=/local/scratch/a/singhav/Applications/env/bin/
 CC= $(CLANG_BIN)clang++
-OPTIONS=-O3 -march=native -fopenmp=libiomp5
+OPTIONS=-O3 -march=native #-fopenmp=libiomp5
 FILES=implementations.cpp
 
 GCC=g++

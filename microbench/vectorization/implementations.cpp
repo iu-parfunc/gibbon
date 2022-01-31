@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <emmintrin.h>
+#include <fstream>
 #include <smmintrin.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,7 +17,7 @@
 #include <immintrin.h>
 #include <mmintrin.h>
 
-typedef float IntTy;
+typedef float DataType;
 typedef char* CursorTy;
 typedef char TagTyPacked;
 
@@ -26,47 +27,49 @@ std::mutex mylock;
 #define LANE_LEN  8
 #define MAX_BLOCK_SIZE 100
 
-IntTy CONSTANT = 1.0001;
+int loopLength;
+
+DataType CONSTANT = 1.0001;
 
 typedef struct CursorIntProd_struct {
     CursorTy field0;
-    IntTy    field1;
+    DataType    field1;
 } CursorIntProd;
 
 unsigned isA(CursorTy node);
 bool isB(CursorTy node);
-IntTy fib_recursive(IntTy n);
+DataType fib_recursive(DataType n);
 CursorTy PrintTree(CursorTy cur);
 CursorTy _cilk(CursorTy packedData);
 CursorTy dfs_recurse(CursorTy packedData);
-IntTy doMath(IntTy number, IntTy constantVal);
-CursorIntProd createBalancedTree(CursorTy out, IntTy n);
-CursorIntProd createFibonacciTree(CursorTy out, IntTy n);
+DataType doMath(DataType number, DataType constantVal);
+CursorIntProd createBalancedTree(CursorTy out, DataType n);
+CursorIntProd createFibonacciTree(CursorTy out, DataType n);
 void bfs_parallel(std::vector<CursorTy> Blocks);
 void bfs_vectorized(std::vector<CursorTy> Blocks);
 double difftimespecs(struct timespec* t0, struct timespec* t1);
-void forloopVectorized(CursorTy bufferIn, IntTy size);
+void forloopVectorized(CursorTy bufferIn, DataType size);
 
-IntTy doMath(IntTy number, IntTy constantVal){
+// DataType doMath(DataType number, DataType constantVal){
 
-    //multiply for 100,000 times
-    for (int i=0; i<=100000; i+=10){
+//     //multiply for 100,000 times
+//     for (int i=0; i<=loopLength; i+=1){
 
-        number *= constantVal;
-        number *= constantVal;
-        number *= constantVal;        
-        number *= constantVal;        
-        number *= constantVal;        
-        number *= constantVal;        
-        number *= constantVal;        
-        number *= constantVal;        
-        number *= constantVal; 
-        number *= constantVal;
+//         number *= constantVal;
+//         //number *= constantVal;
+//         //number *= constantVal;        
+//         //number *= constantVal;        
+//         //number *= constantVal;        
+//         //number *= constantVal;        
+//         //number *= constantVal;        
+//         //number *= constantVal;        
+//         //number *= constantVal; 
+//         //number *= constantVal;
 
-    }
+//     }
 
-    return number;
-}
+//     return number;
+// }
 
 double difftimespecs(struct timespec* t0, struct timespec* t1)
 {
@@ -74,7 +77,7 @@ double difftimespecs(struct timespec* t0, struct timespec* t1)
       + ((double)(t1->tv_nsec - t0->tv_nsec));
 }
 
-CursorIntProd createFibonacciTree(CursorTy out, IntTy n){
+CursorIntProd createFibonacciTree(CursorTy out, DataType n){
     
     CursorIntProd tmp;
 
@@ -83,7 +86,7 @@ CursorIntProd createFibonacciTree(CursorTy out, IntTy n){
 
         *out  ='A';             
         out += NODE_SIZE;          
-        *(IntTy *) out = 1;  
+        *(DataType *) out = 1;  
         out += NODE_SIZE;             
         return (CursorIntProd) {out, 2*NODE_SIZE };
     }
@@ -92,7 +95,7 @@ CursorIntProd createFibonacciTree(CursorTy out, IntTy n){
         
         *out = 'B';
         CursorTy out0 = out + NODE_SIZE;  
-        *(IntTy *) out0 = n;     
+        *(DataType *) out0 = n;     
         out0 += NODE_SIZE;
 
         //write an indirection pointer to the right subtree
@@ -104,12 +107,12 @@ CursorIntProd createFibonacciTree(CursorTy out, IntTy n){
         //rec 1
         tmp = createFibonacciTree(out0, (n - 1));
         CursorTy out1 = tmp.field0;
-        IntTy size1   = tmp.field1;
+        DataType size1   = tmp.field1;
 
         //rec 2
         tmp = createFibonacciTree(out1, (n - 2));
         CursorTy out2 = tmp.field0;
-        IntTy size2   = tmp.field1;
+        DataType size2   = tmp.field1;
         
         //write address to the right subtree 
         //(out 1) points to the right subtree
@@ -120,7 +123,7 @@ CursorIntProd createFibonacciTree(CursorTy out, IntTy n){
     }
 }
 
-CursorIntProd createBalancedTree(CursorTy out, IntTy n){
+CursorIntProd createBalancedTree(CursorTy out, DataType n){
 
     CursorIntProd tmp;    
     
@@ -129,7 +132,7 @@ CursorIntProd createBalancedTree(CursorTy out, IntTy n){
 
         *out  ='A';             
         out += NODE_SIZE;          
-        *(IntTy *) out = 1;  
+        *(DataType *) out = 1;  
         out += NODE_SIZE;             
         return (CursorIntProd) {out, 2*NODE_SIZE };
     }
@@ -138,7 +141,7 @@ CursorIntProd createBalancedTree(CursorTy out, IntTy n){
         
         *out = 'B';
         CursorTy out0 = out + NODE_SIZE;  
-        *(IntTy *) out0 = n;     
+        *(DataType *) out0 = n;     
         out0 += NODE_SIZE;
 
         //write an indirection pointer
@@ -150,12 +153,12 @@ CursorIntProd createBalancedTree(CursorTy out, IntTy n){
         //rec 1
         tmp = createBalancedTree(out0, (n - 1));
         CursorTy out1 = tmp.field0;
-        IntTy size1   = tmp.field1;
+        DataType size1   = tmp.field1;
 
         //rec 2
         tmp = createBalancedTree(out1, (n - 1));
         CursorTy out2 = tmp.field0;
-        IntTy size2   = tmp.field1;
+        DataType size2   = tmp.field1;
         
         //write address to the right subtree
         //*(CursorTy*) indirectionPointer = out1;
@@ -166,7 +169,7 @@ CursorIntProd createBalancedTree(CursorTy out, IntTy n){
 }
 
 // a recursive implementation of the Fibonacci series
-// IntTy fib_recursive(IntTy n)
+// DataType fib_recursive(DataType n)
 // {
 //     if (n <= 1)
 //         return n;
@@ -182,9 +185,15 @@ CursorTy dfs_recurse(CursorTy packedData){
     //encountered a leaf node
     if(isA(packedData)){
 
-        IntTy data = *((IntTy*) dataCursor);
-        IntTy modifiedData = doMath(data, CONSTANT);
-        *((IntTy*) dataCursor) = modifiedData;
+        DataType data = *((DataType*) dataCursor);
+
+        //DataType modifiedData = doMath(data, CONSTANT);
+        
+        for (int i=0; i<=loopLength; i+=1){
+            data *= CONSTANT;
+        }
+
+        *((DataType*) dataCursor) = data;
 
         CursorTy newCursor = dataCursor + NODE_SIZE;
 
@@ -213,9 +222,9 @@ CursorTy dfs_recurse(CursorTy packedData){
 //     //encountered a leaf node
 //     if( isA(packedData) ){
         
-//         IntTy data = *((IntTy*) dataCursor);
-//         IntTy modifiedData = doMath(data, CONSTANT);
-//         *((IntTy*) dataCursor) = modifiedData;
+//         DataType data = *((DataType*) dataCursor);
+//         DataType modifiedData = doMath(data, CONSTANT);
+//         *((DataType*) dataCursor) = modifiedData;
 
 //         CursorTy newCursor = dataCursor + NODE_SIZE;
 //         return newCursor;
@@ -235,21 +244,26 @@ CursorTy dfs_recurse(CursorTy packedData){
 
 // }
 
-// void bfs_parallel(std::vector<CursorTy> Blocks){
+// void bfs_parallel(CursorTy* Blocks, int length){
 
-//     std::vector<CursorTy> newBlocks;
+//     CursorTy newBlocks[100];
 
-//     //std::cout << Blocks.size() << std::endl;
+//     //To compare with Label A
+//     __m256i label_compareA = _mm256_set_epi32(65, 65, 65, 65, 65, 65, 65, 65);
 
-//     #pragma omp parallel for
-//     for(int i=0; i<Blocks.size(); i++){
+//     //To compare with Label B
+//     __m256i label_compareB = _mm256_set_epi32(66, 66, 66, 66, 66, 66, 66, 66);
+
+
+//     //#pragma omp parallel for
+//     for(int i=0; i<length; i++){
     
 //         //encountered a leaf node
 //         if( isA(Blocks[i]) ){
             
-//             IntTy data = *((IntTy*) (Blocks[i] + NODE_SIZE) );
-//             IntTy modifiedData = doMath(data, CONSTANT);
-//             *((IntTy*) (Blocks[i] + NODE_SIZE) ) = modifiedData;
+//             DataType data = *((DataType*) (Blocks[i] + NODE_SIZE) );
+//             DataType modifiedData = doMath(data, CONSTANT);
+//             *((DataType*) (Blocks[i] + NODE_SIZE) ) = modifiedData;
 
 //         }
 //         //non leaf node
@@ -289,59 +303,65 @@ bool isB(CursorTy node){
 
 
 
-void forLoopNoVec(CursorTy bufferIn, IntTy size){
+// void forLoopNoVec(CursorTy bufferIn, DataType size){
     
-    //#pragma omp parallel for
-    for(int i=0; i < size; i++){
-        if (isA(bufferIn + i*NODE_SIZE)){
-            //grab next node
-            IntTy * nextNode = (IntTy*)(bufferIn + (i+1)*NODE_SIZE);
-            IntTy modifiedData = doMath(*nextNode, CONSTANT);
-            *nextNode = modifiedData;
-        }
-    }
+//     //#pragma omp parallel for
+//     for(int i=0; i < size; i++){
+//         if (isA(bufferIn + i*NODE_SIZE)){
+//             //grab next node
+//             DataType * nextNode = (DataType*)(bufferIn + (i+1)*NODE_SIZE);
+//             DataType modifiedData = doMath(*nextNode, CONSTANT);
+//             *nextNode = modifiedData;
+//         }
+//     }
 
-}
+// }
 
-void forloopVectorized(CursorTy bufferIn,IntTy size){
-
-    //vector of length 8 with constant values for vector addition, adding 100 to the vectors
-    //__m256i constantVec = _mm256_set_epi32 (100, 100, 100, 100, 100, 100, 100, 100);
-
+void forloopVectorized(CursorTy bufferIn,DataType size){
+    
+    //All these intructions in the beginning before the for loop contribure to the extra overhead for the vectorized implementation
     //const mask for blending instruction
-    __m256i constMask = _mm256_set_epi32 (0, 1, 2, 3, 4, 5, 6, 7);    
+    __m256i constMask = _mm256_set_epi32 (0, 1, 2, 3, 4, 5, 6, 7);
+
     //const index into the main buffer where the integer values reside  
     __m256i vindex = _mm256_set_epi32(1, 3, 5, 7, 9, 11, 13, 15);
-    //const index of the labels
+
+    //const index into the main buffer where the labels reside
     __m256i vindex_labels = _mm256_set_epi32(0, 2, 4, 6, 8, 10, 12, 14);
-    //label compare, to compare with A, we need to set value as 65
+
+    //label compare, to compare with A, we need to set value as 65 (Ascii A = 65)
     __m256i label_compare = _mm256_set_epi32(65, 65, 65, 65, 65, 65, 65, 65);
 
-    //floating constant for multiplication
+    //floating constant for exponentiation
     __m256 mulConst = _mm256_set_ps(CONSTANT, CONSTANT, CONSTANT, CONSTANT, CONSTANT, CONSTANT, CONSTANT, CONSTANT);
-    
-    //#pragma omp parallel for 
+
     for (int i=NODE_SIZE; i<(size * NODE_SIZE); i += 2*LANE_LEN*NODE_SIZE){
         
-        //scale factor is node size, loading 32 bit integers in a 256 bit vector 
+        //scale factor is node size, loading 32 bit integers in a 256 bit vector
+        //Load the values of the leaves into a 256 bit vector array 
         __m256 leafValuesVec = _mm256_i32gather_ps(&bufferIn[(i - NODE_SIZE)], vindex, NODE_SIZE);
 
+        
+        //scale factor is node size, loading 32 bit integers into a 256 bit vector array
+        //Load the values of the labels into a 256 bit vector array
         __m256i labelValuesVec = _mm256_i32gather_epi32(&bufferIn[(i - NODE_SIZE)], vindex_labels, NODE_SIZE);
         
-        // //DEBUG: Print the leaf values extracted from the in buffer
+        // //DEBUG: Print the leaf values extracted from the buffer
         // std::cout << std::endl;
         // std::cout << "*****************************************************" << std::endl;
         // std::cout << "The values extracted from the leaves are" << std::endl;
-        // IntTy *res = (IntTy*) &leafValuesVec; 
+        // DataType *res = (DataType*) &leafValuesVec; 
         // for (int j=0; j < LANE_LEN; j++){
         //     std::cout << res[LANE_LEN - j - 1] << " ";
         // }
         // std::cout << std::endl;
         // //////////////////////////////////////////////////////////////////////////////////////////
-
+    
+        
+        //Calculate the masked bits in a vector, using vector compare
         __m256i maskBits = _mm256_cmpeq_epi32 (labelValuesVec, label_compare);
 
-        //DEBUG: Print the mask vector
+        // //DEBUG: Print the mask vector
         // std::cout << "Print the masked bit vector" << std::endl;
         // unsigned int *res2 = (unsigned int*) &maskBits; 
         // for (int j=0; j < LANE_LEN; j++){
@@ -349,86 +369,35 @@ void forloopVectorized(CursorTy bufferIn,IntTy size){
         // }
         // std::cout << std::endl;
         ////////////////////////////////////////////////////////////////////////////////////////
-
-        // for(int j=0; j<LANE_LEN; j++){
-        //     unsigned int flag = isA(bufferIn + (i - NODE_SIZE) +  (2*NODE_SIZE)*j);
-        //     booleanFlags[j] = flag;       
-        // }
-
-        // //DEBUG: Print the mask array 
-        // std::cout << "Print the mask array " << std::endl;
-        // for (int j=0; j < LANE_LEN; j++){
-        //     std::cout << booleanFlags[j] << " ";
-        // }
-        // std::cout << std::endl;
-        // ///////////////////////////////////////////////////////////////////////////////////////////
         
-        //load the mask from the array to a mask vector
-        // __m256i mask = _mm256_i32gather_epi32 (booleanFlags, constMask, 4);
-
-        // //DEBUG: Print the mask vector
-        // std::cout << "Print the masked bit vector" << std::endl;
-        // unsigned int *res2 = (unsigned int*) &mask; 
-        // for (int j=0; j < LANE_LEN; j++){
-        //     std::cout << res2[LANE_LEN - j - 1] << " ";
-        // }
-        // std::cout << std::endl;
-        // ////////////////////////////////////////////////////////////////////////////////////////
-
-        // //add the leaf values with the constant 10 times
-        // __m256i additionResults = _mm256_add_epi32 (leafValuesVec, constantVec);
-        // __m256i additionResults1 = _mm256_add_epi32 (additionResults, constantVec);
-        // __m256i additionResults2 = _mm256_add_epi32 (additionResults1, constantVec);
-        // __m256i additionResults3 = _mm256_add_epi32 (additionResults2, constantVec);
-        // __m256i additionResults4 = _mm256_add_epi32 (additionResults3, constantVec);
-        // __m256i additionResults5 = _mm256_add_epi32 (additionResults4, constantVec);
-        // __m256i additionResults6 = _mm256_add_epi32 (additionResults5, constantVec);
-        // __m256i additionResults7 = _mm256_add_epi32 (additionResults6, constantVec);
-        // __m256i additionResults8 = _mm256_add_epi32 (additionResults7, constantVec);
-        // __m256i additionResults9 = _mm256_add_epi32 (additionResults8, constantVec);
-        // __m256i additionResults10 = _mm256_add_epi32 (additionResults9, constantVec);
         
-        __m256 mulResults = _mm256_loadu_ps ((IntTy*)&leafValuesVec);
-        //DEBUG: Print the final blended results
-        // std::cout << "Print the values for just addition results" << std::endl;
-        // IntTy *res1 = (IntTy*) &mulResults; 
-        // for (int j=0; j < LANE_LEN; j++){
-        //     std::cout << res1[LANE_LEN - j - 1] << " ";
-        // }
-        // std::cout << std::endl;
-        // std::cout << "*****************************************************" << std::endl;
-        //////////////////////////////////////////////////////////////////////////////////////////
-        for(int k=0; k<=100000; k+=10){
+        //Load the value of the leaves again, as temp for the exponentiation
+        //This load intruction is extra compared to the DFS implementation, I need to load the values again so that I don't modify the original buffer,
+        //This is needed because i need to do a blend. In AVX 512, this can be optimized since it has a masked multiplication...
+        __m256 mulResults = _mm256_loadu_ps ((DataType*)&leafValuesVec);
+
+        for(int k=0; k<=loopLength; k+=1){
             //multiply 10 times
             mulResults = _mm256_mul_ps (mulResults,mulConst);
-            mulResults = _mm256_mul_ps (mulResults,mulConst);
-            mulResults = _mm256_mul_ps (mulResults,mulConst);
-            mulResults = _mm256_mul_ps (mulResults,mulConst);
-            mulResults = _mm256_mul_ps (mulResults,mulConst);
-            mulResults = _mm256_mul_ps (mulResults,mulConst);
-            mulResults = _mm256_mul_ps (mulResults,mulConst);
-            mulResults = _mm256_mul_ps (mulResults,mulConst);
-            mulResults = _mm256_mul_ps (mulResults,mulConst);
-            mulResults = _mm256_mul_ps (mulResults,mulConst);
+            //mulResults = _mm256_mul_ps (mulResults,mulConst);
+            //mulResults = _mm256_mul_ps (mulResults,mulConst);
+            //mulResults = _mm256_mul_ps (mulResults,mulConst);
+            //mulResults = _mm256_mul_ps (mulResults,mulConst);
+            //mulResults = _mm256_mul_ps (mulResults,mulConst);
+            //mulResults = _mm256_mul_ps (mulResults,mulConst);
+            //mulResults = _mm256_mul_ps (mulResults,mulConst);
+            //mulResults = _mm256_mul_ps (mulResults,mulConst);
+            //mulResults = _mm256_mul_ps (mulResults,mulConst);
         }
-
-        //DEBUG: Print the final blended results
-        // std::cout << "Print the values for just addition results" << std::endl;
-        // IntTy *res1 = (IntTy*) &additionResults10; 
-        // for (int j=0; j < LANE_LEN; j++){
-        //     std::cout << res1[LANE_LEN - j - 1] << " ";
-        // }
-        // std::cout << std::endl;
-        // std::cout << "*****************************************************" << std::endl;
-        //////////////////////////////////////////////////////////////////////////////////////////
 
 
         //blend the addition values with the non-leaf values
+        //This blend instruction is extra compared to the DFS implementation. Contributes to the increased overhead
         __m256 blendedResults  = _mm256_blendv_ps (leafValuesVec, mulResults,maskBits);
 
         //DEBUG: Print the final blended results
         // std::cout << "Print the values for addition results" << std::endl;
-        // IntTy *res3 = (IntTy*) &blendedResults; 
+        // DataType *res3 = (DataType*) &blendedResults; 
         // for (int j=0; j < LANE_LEN; j++){
         //     std::cout << res3[LANE_LEN - j - 1] << " ";
         // }
@@ -436,11 +405,11 @@ void forloopVectorized(CursorTy bufferIn,IntTy size){
         // std::cout << "*****************************************************" << std::endl;
         //////////////////////////////////////////////////////////////////////////////////////////
 
-         //cast vector to Intty memory address 
-         IntTy *result = (IntTy*) &blendedResults; 
+         //cast vector to DataType memory address 
+         DataType *result = (DataType*) &blendedResults; 
          //write the results back to memory
          for(int j=0; j < LANE_LEN; j++){
-             *((IntTy*) (bufferIn + i + j*(2*NODE_SIZE)) ) = result[LANE_LEN - j - 1];
+             *((DataType*) (bufferIn + i + j*(2*NODE_SIZE)) ) = result[LANE_LEN - j - 1];
          }         
     }
 
@@ -449,7 +418,7 @@ void forloopVectorized(CursorTy bufferIn,IntTy size){
 // void bfs_vectorized(std::vector<CursorTy> Blocks){
 
 //     std::vector<CursorTy> newBlocks;
-//     //std::vector<IntTy*> leafNodes;
+//     //std::vector<DataType*> leafNodes;
 //     //std::vector<CursorTy> nonLeafNodes;
 //     //std::vector<bool> booleanFlags(Blocks.size());
 //     u_int8_t * booleanFlags = new unsigned char [Blocks.size()];
@@ -460,7 +429,7 @@ void forloopVectorized(CursorTy bufferIn,IntTy size){
 //     }
 
 //     //for(int i=0; i<Blocks.size(); i++){
-//     //    if(booleanFlags[i]){leafNodes.push_back( (IntTy*)(Blocks[i] + NODE_SIZE) );}
+//     //    if(booleanFlags[i]){leafNodes.push_back( (DataType*)(Blocks[i] + NODE_SIZE) );}
 //     //    else{nonLeafNodes.push_back(Blocks[i]);}
 //     //}
 
@@ -555,9 +524,9 @@ void forloopVectorized(CursorTy bufferIn,IntTy size){
 //     //#pragma omp parallel for 
 //     for(int i=factorOfLane; i< Blocks.size(); i++){
 
-//         IntTy data = *((IntTy*) (Blocks[i] + NODE_SIZE) );
-//         IntTy modifiedData = doMath(data, CONSTANT);
-//         *((IntTy*) (Blocks[i] + NODE_SIZE) ) = modifiedData;      
+//         DataType data = *((DataType*) (Blocks[i] + NODE_SIZE) );
+//         DataType modifiedData = doMath(data, CONSTANT);
+//         *((DataType*) (Blocks[i] + NODE_SIZE) ) = modifiedData;      
 
 //     }
 
@@ -579,7 +548,7 @@ CursorTy PrintTree(CursorTy cur) {
     if (*cur == 'A') {
         printf("(A ");
         cur += NODE_SIZE;
-        IntTy val = *(IntTy *) cur;
+        DataType val = *(DataType *) cur;
         cur += NODE_SIZE;
         printf("%.3f",val);
         printf(") ");
@@ -588,7 +557,7 @@ CursorTy PrintTree(CursorTy cur) {
     } else if (*cur  == 'B') {
         printf("(B ");
         cur += NODE_SIZE;     //int value
-        IntTy val = *(IntTy *) cur;
+        DataType val = *(DataType *) cur;
         cur += NODE_SIZE;
         printf("%.3f ", val);
         cur = PrintTree(cur);
@@ -602,16 +571,19 @@ CursorTy PrintTree(CursorTy cur) {
 
 int main (int argc, char** argv){
 
-    if (argc < 2){
-        printf("USAGE: executable SIZE\n");
+    if (argc < 3){
+        printf("USAGE: executable SIZE loopLength\n");
         exit(1);
     }
+    
+    //get the loop length from user input
+    loopLength = std::atoi(argv[2]);
     
     double time = 0;
     struct timespec beginTime;
     struct timespec endTime;
 
-    IntTy tree_depth = std::atoi(argv[1]); //depth of the tree
+    DataType tree_depth = std::atoi(argv[1]); //depth of the tree
    
     //allocate a huge data array for now
     CursorTy dataArray = (CursorTy) malloc(UINT_MAX);
@@ -625,11 +597,11 @@ int main (int argc, char** argv){
     //tree structure
     CursorIntProd myTree;
     myTree = createBalancedTree(dataArray, tree_depth);
-    IntTy size;     
+    DataType size;     
     size = myTree.field1 / NODE_SIZE;
     
     //to print the number of nodes in the buffer
-    //printf("The length of the data buffer is: %d\n", size);
+    printf("The length of the data buffer is: %.2f\n", size);
 
     //print the original tree
     std::cout << "Print the original tree that was created" << std::endl; 
@@ -660,10 +632,10 @@ int main (int argc, char** argv){
     struct timespec beginTimefnv;
     struct timespec endTimedfnv;
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &beginTimefnv);
-    forLoopNoVec(dataArrayOutforNV,size);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &endTimedfnv);
-    timefnv = difftimespecs(&beginTimefnv, &endTimedfnv); 
+    //clock_gettime(CLOCK_MONOTONIC_RAW, &beginTimefnv);
+    //forLoopNoVec(dataArrayOutforNV,size);
+    //clock_gettime(CLOCK_MONOTONIC_RAW, &endTimedfnv);
+    //timefnv = difftimespecs(&beginTimefnv, &endTimedfnv); 
 
 
     // std::vector<CursorTy> startBlock;
@@ -713,6 +685,16 @@ int main (int argc, char** argv){
     //std::cout << dataArrayOut[0] << std::endl;
     PrintTree(dataArrayOutforNV);
     std::cout << std::endl;
+
+
+    std::ofstream forVecFile;
+    std::ofstream dfsFile;
+
+    forVecFile.open("forVecFile.txt");
+    dfsFile.open("dfsFile.txt");
+
+    forVecFile << time;
+    dfsFile << timedfs;
 
     printf("\n");
     printf("========================================================================================\n");
