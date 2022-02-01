@@ -5,7 +5,7 @@ import           Gibbon.Common
 import qualified Data.Map                      as M
 import           Gibbon.L2.Syntax
 import           Debug.Trace
-import Data.List
+import           Data.List
 
 type LocationMapping = M.Map LocVar Var
 type VarSizeMapping = M.Map Var RegionSize
@@ -56,15 +56,11 @@ calculateBoundsExp
   -> Exp2 -- ^ expression 
   -> PassM (Exp2, RegionSizeMapping)
 calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
-  Ext  (BoundsCheck{}                ) -> return (ex, regEnv)
-  Ext  (IndirectionE _ _ (loc, _) _ _) -> do
-    let res = (ex, M.insertWith (<>) (locEnv M.! loc) (BoundedSize 9) regEnv)
+  Ext (BoundsCheck{}                ) -> return (ex, regEnv)
+  Ext (IndirectionE _ _ (loc, _) _ _) -> do
+    let res = (ex, M.insertWith (<>) (locEnv # loc) (BoundedSize 9) regEnv)
     return res
-  VarE v                               -> case M.lookup v szEnv of
-    Just _ -> return (ex, regEnv)
-    _      -> do
-      -- TODO: handle this case?
-      return (ex, regEnv)
+  VarE _ -> return (ex, regEnv)
   _ ->
     let ty   = gRecoverType ddefs env2 ex
         go   = calculateBoundsExp ddefs env2 szEnv locEnv regEnv
@@ -97,6 +93,7 @@ calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
               (ls', regEnvs) <- unzip <$> mapM go ls
               return (MkProdE ls', M.unionsWith max regEnvs)
             LetE (v, locs, ty0, bind) bod -> do
+              -- TODO: update region size when variable bound to a location in that region
               (bind', regEnv') <- go bind
               let venv' = M.insert v ty0 (vEnv env2)
               (bod', regEnv'') <- calculateBoundsExp ddefs env2 { vEnv = venv' } szEnv locEnv regEnv bod
@@ -123,12 +120,12 @@ calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
             Ext ext -> case ext of
               LetRegionE reg _ bod -> do
                 (bod', re) <- go bod
-                traceM $ ">> RegionSize: " ++ show reg ++ " -> " ++ show (re M.! regionToVar reg)
-                return (Ext $ LetRegionE reg (re M.! regionToVar reg) bod', re)
+                traceM $ ">> RegionSize: " ++ show reg ++ " -> " ++ show (re # regionToVar reg)
+                return (Ext $ LetRegionE reg (re # regionToVar reg) bod', re)
               LetParRegionE reg _ bod -> do
                 (bod', re) <- go bod
-                traceM $ ">> RegionSize: " ++ show reg ++ " -> " ++ show (re M.! regionToVar reg)
-                return (Ext $ LetParRegionE reg (re M.! regionToVar reg) bod', re)
+                traceM $ ">> RegionSize: " ++ show reg ++ " -> " ++ show (re # regionToVar reg)
+                return (Ext $ LetParRegionE reg (re # regionToVar reg) bod', re)
               LetLocE loc locExp ex1 -> do
                 -- * NOTE: jumps are only necessary for route ends, skipping them.
                 if "jump_" `isPrefixOf` fromVar loc
@@ -147,15 +144,18 @@ calculateBoundsExp ddefs env2 szEnv locEnv regEnv ex = case ex of
               FromEndE{}         -> pass
               AddFixed{}         -> pass
               GetCilkWorkerNum{} -> pass
-              LetAvail{}         -> pass
+              LetAvail vs e      -> do
+                (e', re') <- go e
+                return $ (Ext $ LetAvail vs e', re')
  where
   getRegionSize :: PreLocExp LocVar -> (Var, RegionSize)
   getRegionSize (StartOfLE r          ) = (regionToVar r, BoundedSize 0)
-  getRegionSize (AfterConstantLE n l  ) = (locEnv M.! l, BoundedSize n)
-  getRegionSize (AfterVariableLE v l _) = (locEnv M.! l, szEnv M.! v)
+  getRegionSize (AfterConstantLE n l  ) = (locEnv # l, BoundedSize n)
+  getRegionSize (AfterVariableLE v l _) = (locEnv # l, szEnv # v)
   getRegionSize (InRegionLE r         ) = (regionToVar r, Undefined)
-  getRegionSize (FromEndLE  l         ) = (locEnv M.! l, Undefined)
+  getRegionSize (FromEndLE  l         ) = (locEnv # l, Undefined)
   getRegionSize FreeLE                  = error "Not bound to any region"
+
 
 
 
