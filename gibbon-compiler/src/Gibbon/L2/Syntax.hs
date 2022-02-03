@@ -76,16 +76,24 @@ type E2 l d = PreExp E2Ext l d
 
 data RegionSize = BoundedSize Int | Undefined 
   deriving (Eq, Read, Show, Generic, NFData, Out)
-data RegionType = IndirectionFree | IndirectionFull
--- TODO incorporate these: RightwardLocalIndirections | LocalIndirections | NoSharing
+data RegionType = IndirectionFree | RightwardLocalIndirections | LocalIndirections | NoSharing
   deriving (Eq, Ord, Read, Show, Generic, NFData, Out)
 
 
 instance Ord RegionSize where
   (<=) (BoundedSize sz1) (BoundedSize sz2) = sz1 <= sz2
-  (<=) Undefined _         = error "Invalid comparison"
-  (<=) _         Undefined = error "Invalid comparison"
+  (<=) Undefined         v                 = error $ "Invalid comparison " ++ show v
+  (<=) v                 Undefined         = error $ "Invalid comparison " ++ show v
 
+instance Semigroup RegionType where
+  -- IndirectionFree < RightwardLocalIndirections < LocalIndirections < NoSharing
+  (<>) IndirectionFree            v                          = v
+  (<>) v                          IndirectionFree            = v
+  (<>) RightwardLocalIndirections v                          = v
+  (<>) v                          RightwardLocalIndirections = v
+  (<>) LocalIndirections          v                          = v
+  (<>) v                          LocalIndirections          = v
+  (<>) NoSharing                  v                          = v
 
 instance Semigroup RegionSize where
   (<>) (BoundedSize sz1) (BoundedSize sz2) = BoundedSize (sz1 + sz2)
