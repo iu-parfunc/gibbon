@@ -341,10 +341,10 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
             Left denv' -> cursorizeExp ddfs fundefs denv' tenv' senv bod
 
         -- Exactly same as cursorizePackedExp
-        LetRegionE reg _ bod -> do
+        LetRegionE reg _ _ bod -> do
           mkLets (regionToBinds False reg) <$> go bod
 
-        LetParRegionE reg _ bod -> do
+        LetParRegionE reg _ _ bod -> do
           mkLets (regionToBinds True reg) <$> go bod
 
         BoundsCheck i bound cur -> return $ Ext $ L3.BoundsCheck i bound cur
@@ -545,10 +545,10 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
             [loc] ->  pure $ mkDi (VarE loc) [ fromDi v' ]
             _ -> return $ Di $ L3.MkProdE $ L.foldr (\loc acc -> (VarE loc):acc) [fromDi v'] locs
 
-        LetRegionE r _ bod -> do
+        LetRegionE r _ _ bod -> do
           onDi (mkLets (regionToBinds False r)) <$> go tenv senv bod
 
-        LetParRegionE r _ bod -> do
+        LetParRegionE r _ _ bod -> do
           onDi (mkLets (regionToBinds True r)) <$> go tenv senv bod
 
         FromEndE{} -> error $ "cursorizePackedExp: TODO " ++ sdoc ext
