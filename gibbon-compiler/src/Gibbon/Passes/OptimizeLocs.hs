@@ -1,3 +1,4 @@
+{-# LANGUAGE BlockArguments #-}
 
 module Gibbon.Passes.OptimizeLocs where
 
@@ -42,45 +43,44 @@ optimizeExp dictionary ex =
     case ex of
     Ext ext ->
       case ext of
-        LetRegionE r rhs -> let dictionary' = M.insert regionToVar r ext dictionary
-                            (rhs', cannotRemove) = optimizeExp dictionary' rhs
-                            in if cannotRemove then (LetRegionE r rhs', True) else (rhs', False)
-                            {- Store this let region with corresponding r in a dictionary?
-                               Return Null for this match?What to do about rhs? -} 
-        LetLocE loc phs rhs -> let dictionary' = M.insert loc ext dictionary
-                               (rhs', cannotRemove) = optimizeExp dictionary' rhs
-                               in if cannotRemove then (LetLocE loc phs rhs', True) else (rhs', False)
-                               {- Store this let location with the corresponding location in a Return a null for this match?   
-                                  What to do about phs and rhs?-}
-        LetParRegionE r rhs -> let dictionary' = M.insert regionToVar r ext dictionary
-                                (rhs', cannotRemove) = optimizeExp dictionary' rhs
-                                in if cannotRemove then (LetParRegion r rhs') else (rhs', False)
+        LetRegionE r rhs -> do
+                                let dictionary' = M.insert (regionToVar r) (LetRegionE r) dictionary
+                                let (rhs', cannotRemove) = optimizeExp dictionary' rhs
+                                if cannotRemove then return (LetRegionE r rhs', True) else return (rhs', False)
+                                {- Store this let region with corresponding r in a dictionary?
+                                Return Null for this match?What to do about rhs? -} 
+        LetLocE loc phs rhs -> do
+                                let dictionary' = M.insert loc (LetLocE loc phs) dictionary
+                                let (rhs', cannotRemove) = optimizeExp dictionary' rhs
+                                if cannotRemove then return (LetLocE loc phs rhs', True) else return (rhs', False)
+                                {- Store this let location with the corresponding location in a Return a null for this match?   
+                                 What to do about phs and rhs?-}
+        LetParRegionE r rhs -> do
+                                let dictionary' = M.insert (regionToVar r) (LetParRegionE r) dictionary
+                                let (rhs', cannotRemove) = optimizeExp dictionary' rhs
+                                if cannotRemove then return (LetParRegion r rhs') else return (rhs', False)
 
-        RetE{}                                   -> return ex
+        RetE{}                                   -> return (ex, False)
         
         FromEndE{}                               -> return ex
         
         BoundsCheck{}                            -> return ex
 
-        IndirectionE tc dc (l1,v1) (l2,v2) rhs   -> (rhs', cannotRemove) = optimize dictionary rhs
+        IndirectionE tc dc (l1,v1) (l2,v2) rhs   -> do
+                                                    (rhs', cannotRemove) <- optimizeExp dictionary rhs
+                                                    let newExpression' = IndirectionE tc dc (l1,v1) (l2,v2) rhs'
+                                                    return (newExpression', cannotRemove)
                                                     -- I think the variable cannotRemove doesn't matter here
-                                                    (IndirectonE tc dc (l1,v1) (l2,v2) rhs')
+        
+        --if there is an instance of the case expression
+        CaseE e mp -> do
+                       variablesFree <- freeVars ext
+                       let variablesFreeList = toList variablesFree 
+
+        _ -> return ex
 
         GetCilkWorkerNum    -> return ex
 
         
 
     _ -> return ex
-
-
-storeLocation :: Exp2 -> DelayedBindEnv -> DelayedBindEnv
-storeLocation l2expression dictionary = 
-    case l2expression of
-        Ext ext -> 
-            case ext of 
-                LetRegionE r rhs -> dictionary.insert r l2expression dictionary
-
-                LetLocE loc phs rhs -> dictionary.insert loc l2expression dictionary
-
-                _ -> dictionary
-        _ -> dictionary
