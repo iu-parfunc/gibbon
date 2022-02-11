@@ -15,7 +15,7 @@ import qualified Data.Vector.Internal.Check as M.Map
 
 --define data type that can be Region, Loc, LocExp
 data DelayedBind = DelayRegion Region
-                 | DelayLoc LocVar LocExp
+                 | DelayLoc LocVar LocExp | DelayParRegion Region
 
 --define a Map from set to the DelayedBind data type
 type DelayedBindEnv = M.Map (S.Set LocVar) [DelayedBind]
@@ -46,13 +46,7 @@ placeRegionsInwardsFunBody f@FunDef{funBody} = do
   funBody' <- placeRegionInwards dict funBody
   return $ f {funBody = funBody'}
 
--- getListfromTupleList :: [(a, b)] -> [a]
--- getListfromTupleList list1 = case list1 of 
---   [] -> []
---   ((a,b):xs) -> a : getListfromTupleList xs
-
-{-This function should be recursive, it should eat the expression given to it and recurse on the next somehow?
-  It should also store the letregion and letlocation in the dictionary.-}
+-- Recursive funtion that will move the regions inwards
 placeRegionInwards :: DelayedBindEnv-> Exp2 -> PassM Exp2
 placeRegionInwards dictionary ex =
     case ex of
@@ -82,45 +76,93 @@ placeRegionInwards dictionary ex =
                           --Recurse on rhs using the newDictionary
                           in placeRegionInwards newDict rhs
             
-            AfterConstantLE integerVal loc' -> error "Not implemented yet!" 
-            _ -> error "Not implemented yet!"
+            AfterConstantLE integerVal loc' -> do
+              let keyList' = M.keys dictionary
+                  key'     = F.find (\a-> (S.member loc' a)) keyList'
+                  in case key' of
+                    Nothing -> error "No existing variable found for this Location"
+                    Just myKey -> do
+                      let valList  = M.findWithDefault [] myKey dictionary
+                          myKey'   = S.insert loc myKey
+                          valList' = valList ++ [DelayLoc loc phs]
+                          tempDict = M.delete myKey dictionary
+                          newDict  = M.insert myKey' valList' tempDict
+                          in placeRegionInwards newDict rhs
+                          
+            AfterVariableLE variable loc' boolVal -> do
+              let keyList' = M.keys dictionary
+                  key'     = F.find (\a-> (S.member loc' a)) keyList'
+                  in case key' of
+                    Nothing -> error "No existing variable found for this Location"
+                    Just myKey -> do
+                      let valList  = M.findWithDefault [] myKey dictionary
+                          myKey'   = S.insert loc myKey
+                          valList' = valList ++ [DelayLoc loc phs]
+                          tempDict = M.delete myKey dictionary
+                          newDict  = M.insert myKey' valList' tempDict
+                          in placeRegionInwards newDict rhs
 
-            -- AfterVariableLE variable loc' boolVal -> error "Not implemented yet!" 
-            -- InRegionLE r -> error "Not implemented yet!" 
-            -- FreeLE -> error "Not implemented yet!" 
-            -- FromEndE loc -> error "Not implemented yet!" 
+            InRegionLE r -> do
+              let keyList' = M.keys dictionary
+                  key'     = F.find (\a-> (S.member (regionToVar r) a)) keyList'
+                  in case key' of
+                    Nothing -> error "No region found for this Location"
+                    Just myKey -> do 
+                      let valList  = M.findWithDefault [] myKey dictionary 
+                          myKey'   = S.insert loc myKey
+                          valList' = valList ++ [DelayLoc loc phs]
+                          tempDict = M.delete myKey dictionary
+                          newDict  = M.insert myKey' valList' tempDict
+                          --Recurse on rhs using the newDictionary
+                          in placeRegionInwards newDict rhs
 
-          -- let dictionary' = M.insert loc (LetLocE loc phs) dictionary
-          --                       let (rhs', cannotRemove) = optimizeExp dictionary' rhs
-          --                       if cannotRemove then return (LetLocE loc phs rhs', True) else return (rhs', False)
-                                {- Store this let location with the corresponding location in a Return a null for this match?   
-                                 What to do about phs and rhs?-}
-        -- LetParRegionE r rhs -> do
-        --                         let dictionary' = M.insert (regionToVar r) (LetParRegionE r) dictionary
-        --                         let (rhs', cannotRemove) = placeRegionInwards dictionary' rhs
-        --                         if cannotRemove then return (LetParRegion r rhs') else return (rhs', False)
+            FreeLE -> error "How do we handle a Free LE" 
 
-        -- RetE{}                                   -> return (ex, False)
+            FromEndLE loc' -> do
+              let keyList' = M.keys dictionary
+                  key'     = F.find (\a -> (S.member loc' a)) keyList'
+                  in case key' of
+                    Nothing -> error "No existing variable found for this Location"
+                    Just myKey -> do
+                      let valList  = M.findWithDefault [] myKey dictionary
+                          myKey'   = S.insert loc myKey
+                          valList' = valList ++ [DelayLoc loc phs]
+                          tempDict = M.delete myKey dictionary
+                          newDict  = M.insert myKey' valList' tempDict
+                          in placeRegionInwards newDict rhs
+
+        LetParRegionE r rhs -> do
+          let key' = S.singleton (regionToVar r)
+              val' = [DelayParRegion r]
+              dictionary' = M.insert key' val' dictionary
+              in placeRegionInwards dictionary' rhs
+
+
+        RetE locList variable                          -> error "Haven't implemented this yet"
+        FromEndE loc                                   -> error "Right now this is unimplemented, I guess we don't need this case afterall?"
+        BoundsCheck integer l1 l2                      -> error "Did not implement this yet"
+        AddFixed variable integer                      -> error "Did not implement this yet"
+        IndirectionE tyCon dataCon (l1,v1) (l2,v2) rhs -> error "Did not implement this yet" 
+        GetCilkWorkerNum                               -> error "Did not implement this yet"
+        LetAvail varList rhs                           -> error "Did not implement this yet" 
         
-        -- FromEndE{}                               -> return ex
-        
-        -- BoundsCheck{}                            -> return ex
 
-        -- IndirectionE tc dc (l1,v1) (l2,v2) rhs   -> do
-        --                                             (rhs', cannotRemove) <- placeRegionInwards dictionary rhs
-        --                                             let newExpression' = IndirectionE tc dc (l1,v1) (l2,v2) rhs'
-        --                                             return (newExpression', cannotRemove)
-        --                                             -- I think the variable cannotRemove doesn't matter here
-        
-        --if there is an instance of the case expression
-        -- CaseE e mp -> do
-        --                variablesFree <- freeVars ext
-        --                let variablesFreeList = toList variablesFree 
-
-        _ -> return ex
-
-        -- GetCilkWorkerNum    -> return ex
-
-        
-
-    _ -> return ex
+     -- Straightforward recursion ...
+    VarE{}                        -> error "Did not implement this yet"
+    LitE{}                        -> error "Did not implement this yet"
+    FloatE{}                      -> error "Did not implement this yet"
+    LitSymE{}                     -> error "Did not implement this yet"
+    AppE{}                        -> error "Did not implement this yet"
+    PrimAppE{}                    -> error "Did not implement this yet"
+    DataConE{}                    -> error "Did not implement this yet"
+    ProjE i e                     -> error "Did not implement this yet"
+    IfE a b c                     -> error "Did not implement this yet"
+    MkProdE ls                    -> error "Did not implement this yet"
+    LetE (v,locs,ty,rhs) bod      -> error "Did not implement this yet"
+    CaseE scrt mp                 -> error "Did not implement this yet"
+    TimeIt e ty b                 -> error "Did not implement this yet"
+    SpawnE{}                      -> error "Did not implement this yet"
+    SyncE{}                       -> error "Did not implement this yet"
+    WithArenaE v e                -> error "Did not implement this yet"
+    MapE{}                        -> error "Did not implement this yet"
+    FoldE{}                       -> error "Did not implement this yet"
