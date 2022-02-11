@@ -1,6 +1,6 @@
 {-# LANGUAGE BlockArguments #-}
 
-module Gibbon.Passes.RegionsInwards where
+module Gibbon.Passes.RegionsInwards (regionsInwards) where
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -8,10 +8,6 @@ import Data.Foldable as F
 
 import Gibbon.Common
 import Gibbon.L2.Syntax
-import Data.SCargot.Repr.Basic (_car)
-import Data.IntMap (insertWith)
-import qualified Data.IntMap as M.Lazy
-import qualified Data.Vector.Internal.Check as M.Map
 
 --define data type that can be Region, Loc, LocExp
 data DelayedBind = DelayRegion Region
@@ -43,11 +39,11 @@ placeRegionsInwardsFunBody f@FunDef{funBody} = do
   let keySet   = S.empty 
       bindings = []
       dict     = M.singleton keySet bindings
-  funBody' <- placeRegionInwards dict funBody
+  (funBody', varList) <- placeRegionInwards dict funBody
   return $ f {funBody = funBody'}
 
 -- Recursive funtion that will move the regions inwards
-placeRegionInwards :: DelayedBindEnv-> Exp2 -> PassM Exp2
+placeRegionInwards :: DelayedBindEnv-> Exp2 -> (PassM Exp2, [LocVar])
 placeRegionInwards dictionary ex =
     case ex of
     Ext ext ->
