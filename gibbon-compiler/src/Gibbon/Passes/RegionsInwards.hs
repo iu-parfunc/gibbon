@@ -116,8 +116,6 @@ placeRegionInwards dictionary ex =
                           --Recurse on rhs using the newDictionary
                           in placeRegionInwards newDict rhs
 
-            FreeLE -> error "How do we handle a Free LE" 
-
             FromEndLE loc' -> do
               let keyList' = M.keys dictionary
                   key'     = F.find (\a -> (S.member loc' a)) keyList'
@@ -131,6 +129,9 @@ placeRegionInwards dictionary ex =
                           newDict  = M.insert myKey' valList' tempDict
                           in placeRegionInwards newDict rhs
 
+            FreeLE -> error "How do we handle a Free LE" 
+        
+        --Handle a parallel LetRegion ? 
         LetParRegionE r rhs -> do
           let key' = S.singleton (regionToVar r)
               val' = [DelayParRegion r]
@@ -138,31 +139,31 @@ placeRegionInwards dictionary ex =
               in placeRegionInwards dictionary' rhs
 
 
-        RetE locList variable                          -> error "Haven't implemented this yet"
-        FromEndE loc                                   -> error "Right now this is unimplemented, I guess we don't need this case afterall?"
-        BoundsCheck integer l1 l2                      -> error "Did not implement this yet"
-        AddFixed variable integer                      -> error "Did not implement this yet"
-        IndirectionE tyCon dataCon (l1,v1) (l2,v2) rhs -> error "Did not implement this yet" 
-        GetCilkWorkerNum                               -> error "Did not implement this yet"
-        LetAvail varList rhs                           -> error "Did not implement this yet" 
+        RetE locList variable                          -> return ex --Does this need to handle anything special?
+        FromEndE loc                                   -> return ex --What do we do about this case, what is FromEndE loc?
+        BoundsCheck integer l1 l2                      -> return ex --Does this need to handle anything special?
+        AddFixed variable integer                      -> return ex --Does this need to handle anything special?
+        IndirectionE tyCon dataCon (l1,v1) (l2,v2) rhs -> placeRegionInwards dictionary rhs --This will Recurse on the rhs directly, any special handling here?
+        GetCilkWorkerNum                               -> return ex --Nothing special to handle here
+        LetAvail varList rhs                           -> placeRegionInwards dictionary rhs --This will Recurse on the rhs directly, any special handling here?
         
 
      -- Straightforward recursion ...
-    VarE{}                        -> error "Did not implement this yet"
-    LitE{}                        -> error "Did not implement this yet"
-    FloatE{}                      -> error "Did not implement this yet"
-    LitSymE{}                     -> error "Did not implement this yet"
-    AppE{}                        -> error "Did not implement this yet"
-    PrimAppE{}                    -> error "Did not implement this yet"
-    DataConE{}                    -> error "Did not implement this yet"
-    ProjE i e                     -> error "Did not implement this yet"
-    IfE a b c                     -> error "Did not implement this yet"
-    MkProdE ls                    -> error "Did not implement this yet"
-    LetE (v,locs,ty,rhs) bod      -> error "Did not implement this yet"
-    CaseE scrt mp                 -> error "Did not implement this yet"
-    TimeIt e ty b                 -> error "Did not implement this yet"
-    SpawnE{}                      -> error "Did not implement this yet"
-    SyncE{}                       -> error "Did not implement this yet"
-    WithArenaE v e                -> error "Did not implement this yet"
-    MapE{}                        -> error "Did not implement this yet"
-    FoldE{}                       -> error "Did not implement this yet"
+    VarE{}                        -> return ex --Just return Nothing special here? 
+    LitE{}                        -> return ex --Just return Nothing special here? 
+    FloatE{}                      -> return ex --Just return Nothing special here? 
+    LitSymE{}                     -> return ex --Just return Nothing special here? 
+    AppE{}                        -> return ex --Just return Nothing special here? 
+    PrimAppE{}                    -> return ex --Just return Nothing special here? 
+    DataConE{}                    -> error "I am not sure that this means here, what is DataConE?"
+    ProjE i e                     -> error "What is ProjE?"
+    IfE a b c                     -> error "This needs to be implemented, here we would move the regions inwards or not"
+    MkProdE ls                    -> error "What is MkProdE"
+    LetE (v,locs,ty,rhs) bod      -> error "Don't really know what this is?"
+    CaseE scrt mp                 -> error "For CaseE statements we would need to check for the free variable and decide to move the regions inwards or not"
+    TimeIt e ty b                 -> error "What is TimeIt"
+    SpawnE{}                      -> return ex --I think we can just return the expression for this
+    SyncE{}                       -> return ex --I think we can just return the expression for this
+    WithArenaE v e                -> error "Not sure what WithArena is"
+    MapE{}                        -> return ex --Is there a recursion element to this?
+    FoldE{}                       -> return ex --Is there a recursion element to this?
