@@ -87,6 +87,9 @@ import           Gibbon.Passes.Codegen        (codegenProg)
 import           Gibbon.Passes.Fusion2        (fusion2)
 import           Gibbon.Pretty
 
+-- This is the custom pass reference to issue #133 that moves regionsInwards
+import           Gibbon.Passes.RegionsInwards (regionsInwards)
+
 #ifdef LLVM_ENABLED
 import qualified Gibbon.Passes.LLVM.Codegen as LLVM
 #endif
@@ -601,9 +604,8 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
               -- typechecker doesn't know how to handle.
               l2 <- go "threadRegions"    threadRegions l2
               
-              --try to call your new pass in here
-              
-              l2 <- go "optimizeInferlocs" 
+              -- call the RegionsInwards optimization pass here              
+              l2 <- go "regionsInwards"    regionsInwards l2 
 
               -- Note: L2 -> L3
               -- TODO: Compose L3.TcM with (ReaderT Config)
