@@ -39,11 +39,11 @@ placeRegionsInwardsFunBody f@FunDef{funBody} = do
   let keySet   = S.empty 
       bindings = []
       dict     = M.singleton keySet bindings
-  (funBody', varList) <- placeRegionInwards dict funBody
+  funBody' <- placeRegionInwards dict funBody
   return $ f {funBody = funBody'}
 
 -- Recursive funtion that will move the regions inwards
-placeRegionInwards :: DelayedBindEnv-> Exp2 -> (PassM Exp2, [LocVar])
+placeRegionInwards :: DelayedBindEnv-> Exp2 -> PassM Exp2
 placeRegionInwards dictionary ex =
     case ex of
     Ext ext ->
