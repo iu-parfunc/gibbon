@@ -25,7 +25,7 @@ regionsInwards Prog{ddefs,fundefs,mainExp} = do
         Nothing -> return Nothing
         Just (mn, ty)-> do 
           let keySet   = S.empty
-              bindings = []
+              bindings = []           --Use M.empty for creating the empty dictionary
               dict     = M.singleton keySet bindings
               in Just <$> (,ty) <$> placeRegionInwards dict mn
 
@@ -125,7 +125,7 @@ placeRegionInwards dictionary ex =
                           newDict  = M.insert myKey' valList' tempDict
                           in placeRegionInwards newDict rhs
 
-            FreeLE -> error "How do we handle a Free LE" 
+            FreeLE -> error "How do we handle a Free LE" --Recurse on the rhs of this
         
         --Handle a parallel LetRegion ? 
         LetParRegionE r rhs -> do
@@ -136,11 +136,11 @@ placeRegionInwards dictionary ex =
 
 
         RetE locList variable                          -> return ex --Does this need to handle anything special?
-        FromEndE loc                                   -> return ex --What do we do about this case, what is FromEndE loc?
-        BoundsCheck integer l1 l2                      -> return ex --Does this need to handle anything special?
-        AddFixed variable integer                      -> return ex --Does this need to handle anything special?
-        IndirectionE tyCon dataCon (l1,v1) (l2,v2) rhs -> placeRegionInwards dictionary rhs --This will Recurse on the rhs directly, any special handling here?
-        GetCilkWorkerNum                               -> return ex --Nothing special to handle here
+        FromEndE loc                                   -> return ex --don't need to worry about it will appear later in the pipeline
+        BoundsCheck integer l1 l2                      -> return ex --dont't need to worry about it
+        AddFixed variable integer                      -> return ex --Return
+        IndirectionE tyCon dataCon (l1,v1) (l2,v2) rhs -> placeRegionInwards dictionary rhs -- Skip the recursion and won't appear here
+        GetCilkWorkerNum                               -> return ex --Just Return
         LetAvail varList rhs                           -> placeRegionInwards dictionary rhs --This will Recurse on the rhs directly, any special handling here?
         
 
@@ -151,15 +151,23 @@ placeRegionInwards dictionary ex =
     LitSymE{}                     -> return ex --Just return Nothing special here? 
     AppE{}                        -> return ex --Just return Nothing special here? 
     PrimAppE{}                    -> return ex --Just return Nothing special here? 
-    DataConE{}                    -> error "I am not sure that this means here, what is DataConE?"
-    ProjE i e                     -> error "What is ProjE?"
+    DataConE{}                    -> error "I am not sure that this means here, what is DataConE?" --might need to codegen before
+    ProjE i e                     -> error "What is ProjE?" --Tuple (i, e), recurse
     IfE a b c                     -> error "This needs to be implemented, here we would move the regions inwards or not"
-    MkProdE ls                    -> error "What is MkProdE"
-    LetE (v,locs,ty,rhs) bod      -> error "Don't really know what this is?"
+    MkProdE ls                    -> error "What is MkProdE" --Tuple (), recurse
+    LetE (v,locs,ty,rhs) bod      -> error "Don't really know what this is?" -- will need to check rhs
     CaseE scrt mp                 -> error "For CaseE statements we would need to check for the free variable and decide to move the regions inwards or not"
-    TimeIt e ty b                 -> error "What is TimeIt"
+    TimeIt e ty b                 -> error "What is TimeIt" --Benchmarking function, recuse e
     SpawnE{}                      -> return ex --I think we can just return the expression for this
     SyncE{}                       -> return ex --I think we can just return the expression for this
     WithArenaE v e                -> error "Not sure what WithArena is"
     MapE{}                        -> return ex --Is there a recursion element to this?
     FoldE{}                       -> return ex --Is there a recursion element to this?
+
+
+    --AppE
+    --DataConE
+    --IfE
+    --LetE
+    --CaseE
+    --SpawnE
