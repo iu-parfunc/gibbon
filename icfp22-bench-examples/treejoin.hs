@@ -1,3 +1,4 @@
+-- source: https://github.com/ghc/nofib/blob/f34b90b5a6ce46284693119a06d1133908b11856/gc/treejoin/Main.hs
 type Key = Int
 data Tree e =
     Node Key (Tree e) (Tree e)
