@@ -66,6 +66,8 @@ import           Gibbon.Passes.Simplifier     (simplify)
 
 import           Gibbon.Passes.DirectL3       (directL3)
 import           Gibbon.Passes.InferLocations (inferLocs)
+-- This is the custom pass reference to issue #133 that moves regionsInwards
+import           Gibbon.Passes.RegionsInwards (regionsInwards)
 -- import           Gibbon.Passes.RepairProgram  (repairProgram)
 import           Gibbon.Passes.AddRAN         (addRAN,needsRAN)
 import           Gibbon.Passes.AddTraversals  (addTraversals)
@@ -87,8 +89,6 @@ import           Gibbon.Passes.Codegen        (codegenProg)
 import           Gibbon.Passes.Fusion2        (fusion2)
 import           Gibbon.Pretty
 
--- This is the custom pass reference to issue #133 that moves regionsInwards
-import           Gibbon.Passes.RegionsInwards (regionsInwards)
 
 #ifdef LLVM_ENABLED
 import qualified Gibbon.Passes.LLVM.Codegen as LLVM
@@ -455,7 +455,7 @@ benchMainExp l1 = do
           ([arg@(L1.PackedTy tyc _)], ret) = L1.getFunTy fnname l1
           -- At L1, we assume ReadPackedFile has a single return value:
           newExp = L1.TimeIt (
-                        (L1.LetE (toVar tmp, [],
+                        (L1.LetE (toVar tmp, [],  
                                  arg,
                                  L1.PrimAppE
                                  (L1.ReadPackedFile benchInput tyc Nothing arg) [])
@@ -522,6 +522,9 @@ passes config@Config{dynflags} l0 = do
 
               -- Note: L1 -> L2
               l2 <- goE2 "inferLocations"  inferLocs    l1
+              l2 <- go   "L2.typecheck"    L2.tcProg    l2
+              -- call the RegionsInwards optimization pass here              
+              l2 <- go "regionsInwards"    regionsInwards l2
               l2 <- go   "L2.typecheck"    L2.tcProg    l2
               l2 <- goE2 "L2.flatten"      flattenL2    l2
               l2 <- go   "L2.typecheck"    L2.tcProg    l2
@@ -603,9 +606,6 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
               -- it adds regions to 'locs' in AppE and LetE which the
               -- typechecker doesn't know how to handle.
               l2 <- go "threadRegions"    threadRegions l2
-              
-              -- call the RegionsInwards optimization pass here              
-              l2 <- go "regionsInwards"    regionsInwards l2 
 
               -- Note: L2 -> L3
               -- TODO: Compose L3.TcM with (ReaderT Config)
