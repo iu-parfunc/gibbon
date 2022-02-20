@@ -23,25 +23,13 @@ lookupT k n = case n of
 
   Empty       -> Nothing
 
--- readTree :: (Entity -> Key) -> String -> Tree Entity -> Tree Entity
--- readTree fk [] t = t
--- readTree fk s t =
---   let (f, s'  ) = readInt s
---       (g, s'' ) = readInt s'
---       (h, s''') = readInt s''
---       e         = (f, g, h)
---       k         = fk e
---   in  readTree fk s''' (insertT k e t)
-
--- readInt :: String -> (Int, String)
--- readInt s = readInt' 0 s where
---   readInt' n s@(c : cs) | isDigit c = readInt' (n * 10 + fromEnum c - fromEnum '0') cs
---   readInt' n s                      = let s' = dropWhile isSpace s in (n, s')
+mkTree :: (Entity -> Key) -> Vector (Int, Int, Int) -> Tree Entity -> Tree Entity
+mkTree fk [] t = t
+mkTree fk (pt@(f, g, h):pts) t =
+  let k         = fk pt
+  in  readTree fk pts (insertT k e t)
 
 join :: Tree Entity -> Tree Entity -> Tree Join -> Tree Join
--- n | l | e
--- ne, le, en, el, ee
--- nn, nl, ln, ll
 join t1 t2 j = case t1 of
   Empty            -> j
   Leaf k (a, b, c) -> case t2 of
@@ -52,6 +40,3 @@ join t1 t2 j = case t1 of
   Node k l r -> case t2 of
     Empty -> j
     _     -> join l t2 (join r t2 j)
-
-gibbon_main = print 0
-main = print 0
