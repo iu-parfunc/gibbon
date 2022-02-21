@@ -1,5 +1,3 @@
-{-# LANGUAGE BlockArguments #-}
-
 module Gibbon.Passes.RegionsInwards (regionsInwards) where
 
 import GHC.Generics (Generic)
@@ -11,36 +9,32 @@ import Text.PrettyPrint.GenericPretty
 
 import Gibbon.Common
 import Gibbon.L2.Syntax
-
--- import qualified Gibbon.LocExp as LL
-
--- import Gibbon.LocExp
 import Data.Maybe ()
 import qualified Data.Maybe as S
 
---define data type that can be Region, Loc, LocExp
-data DelayedBind = DelayRegion Region                                              --Data type to store the delayed bindings
+
+data DelayedBind = DelayRegion Region                                            --define data type that can be Region, Loc, LocExp to store the delayed bindings
                  | DelayLoc LocVar LocExp | DelayParRegion Region
   deriving (Show, Generic)
 
 instance Out DelayedBind
 
-type DelayedBindEnv = M.Map (S.Set LocVar) [DelayedBind]                          --define a Map from set to the DelayedBind data type  
+type DelayedBindEnv = M.Map (S.Set LocVar) [DelayedBind]                         --define a Map from set to the DelayedBind data type  
 
 regionsInwards :: Prog2 -> PassM Prog2
 regionsInwards Prog{ddefs,fundefs,mainExp} = do
     let scopeSetMain = S.fromList $ map funName (M.elems fundefs)                --Init scopeSet with all the function names
-        functionArgs = S.fromList $ concatMap funArgs (M.elems fundefs)          --Init functionArgs with all the function arguments, but contenating into one list 
+        functionArgs = S.fromList $ concatMap funArgs (M.elems fundefs)          --Init functionArgs with all the function arguments, concatenate into one list 
         scopeSetFun  = scopeSetMain `S.union` functionArgs                       --scope set for function body is the union of function args and the function names   
     fds' <- mapM (placeRegionsInwardsFunBody scopeSetFun) (M.elems fundefs)      --Delay Regions for the function body 
     let fundefs' = M.fromList $ map (\f -> (funName f,f)) fds'
     mainExp' <- case mainExp of
         Nothing -> return Nothing
         Just (mn, ty)-> do 
-          let env = M.empty                                                   --Use M.empty for creating the empty env 
-              in Just . (,ty) <$> placeRegionInwards env scopeSetMain mn      --Delay Regions for the main function
+          let env = M.empty                                                      --Use M.empty for creating the empty env 
+              in Just . (,ty) <$> placeRegionInwards env scopeSetMain mn         --Delay Regions for the main function
 
-    return $ Prog ddefs fundefs' mainExp'                                     --return new ddefs, fundefs and mainExpressions
+    return $ Prog ddefs fundefs' mainExp'                                        --return new ddefs, fundefs and mainExpressions
 
 
 
