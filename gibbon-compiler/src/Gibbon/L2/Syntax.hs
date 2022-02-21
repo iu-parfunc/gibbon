@@ -753,7 +753,7 @@ allFreeVars ex = S.toList $
       case ext of
         LetRegionE r _  -> S.singleton (regionToVar r) `S.union` gFreeVars ex
         LetParRegionE r _ -> S.singleton (regionToVar r) `S.union` gFreeVars ex
-        LetLocE loc _ _ -> S.singleton loc `S.union` gFreeVars ex
+        LetLocE loc rhs _ -> S.singleton loc `S.union` gFreeVars ex `S.union` gFreeVars rhs
         RetE locs _     -> S.fromList locs `S.union` gFreeVars ex
         FromEndE loc    -> S.singleton loc
         BoundsCheck _ reg cur -> S.fromList [reg,cur]

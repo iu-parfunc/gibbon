@@ -206,13 +206,16 @@ placeRegionInwards env scopeSet ex  =
                                         allKeys  =  M.keys env
                                         free_vars =   locsInTy ty                                                                  -- List of all keys from env
                                         keyList  = map (\variable -> F.find (S.member variable) allKeys) free_vars  -- For each var in the input set find its corresponding key
-                                        keyList' = S.catMaybes keyList                                                            -- Filter all the Nothing values from the list and let only Just values in the list
+                                        keyList' = S.catMaybes keyList 
+                                        -- keyList' = [{r1,l1,l2}, {r3,l3,l4}]
+                                        -- scanr = foldr but stores intermediate results
+                                        -- newEnv' = foldr M.delete env keyList'                                                       -- Filter all the Nothing values from the list and let only Just values in the list
                                         newEnv   = fmap (`M.delete` env) keyList'                                                 -- Delete all the keys for which we are about to codegen from the env
                                         newEnv' = case newEnv of
                                           [] -> env
                                           _  -> L.last newEnv
                                         in do ex' <- LetE . (v,locs,ty,) <$> placeRegionInwards newEnv' newScope rhs <*> placeRegionInwards newEnv' newScope bod
-                                              let (_, ex'') = dischargeBinds env scopeSet ex'
+                                              let (_, ex'') = dischargeBinds' env (S.fromList free_vars) ex'
                                                in {-dbgTraceIt "\nPrint info in LetE: (v, locs, ty rhs)\n" dbgTraceIt (sdoc (v, locs, ty, rhs, env, newEnv',ex'')) dbgTraceIt (sdoc (keyList, ex', free_vars)) dbgTraceIt "End of LetE\n"-} return ex''
                                           
                                       -- in dbgTraceIt "\nPrint info in LetE: (v, locs, ty rhs)\n" dbgTraceIt (sdoc (v, locs, ty, rhs)) dbgTraceIt "End of LetE\n"  {-dbgTraceIt "\nThis is what the LetE expression look like in L2 at this point\n" dbgTraceIt (sdoc ex) dbgTraceIt "\nEnd of LetE\n"-}   
@@ -351,7 +354,7 @@ freeVars ex = case ex of
         _                           -> S.empty
       _                             -> S.empty
   
-  LetE (v,locs, ty,rhs) bod          -> (S.singleton v) `S.union` (S.fromList locs)  `S.union` (S.fromList (locsInTy ty)) `S.union` (freeVars rhs) `S.union` (freeVars bod)
+  LetE (_,locs, ty,rhs) bod         -> (S.fromList locs)  `S.union` (S.fromList (locsInTy ty)) `S.union` (freeVars rhs) `S.union` (freeVars bod)
   LitE _                            -> S.empty
   LitSymE _                         -> S.empty
   VarE v                            -> S.singleton v
@@ -365,6 +368,97 @@ freeVars ex = case ex of
                                         S.unions (L.map (\(_, vlocs, ee) ->
                                            let (vars, locVars) = unzip vlocs
                                            in freeVars ee `S.union` S.fromList vars `S.union` S.fromList locVars) ls)
-  _                                 -> S.empty                                         
+  _                                 -> S.empty
 
-                                                
+
+{-
+
+free variables
+----------------------
+
+let x = 1 in
+let y = 2 in
+(x,y)
+
+freeVars (x,y) = {x,y}
+freeVars (let y = 2 in (x,y)) = {x}
+
+LetE (v,locs,ty,rhs) bod -> freeVars rhs `S.difference` (S.singleton v)
+
+(if loc is free ty then loc is always free rhs.)
+
+duplicating bindings
+------------------------
+
+letregion r1 in
+letloc l1 = startof r1 in
+if X
+  then ....allocate to l1....
+  else ....allocate to l1....
+
+==> 
+
+if X
+then letregion r1 in
+     letloc l1 = startof r1 in
+     ... allocate to l1 ...
+else letregion r1 in
+     letloc l1 = startof r1 in
+     ... allocate to l1 ...
+
+=== implementation ===
+
+IfE a b c -> do 
+             let free_b = allFreeVars b
+             let free_c = allFreeVars c
+             let common = free_b `S.intersect` free_c -- all regions and locations 
+                                                      -- used in both branches
+             let keys_to_delete = blah common
+             b' <- placeRegionsInwards (env - keys_to_delete) scopeSet b
+             c' <- placeRegionsInwards (env - keys_to_delete) scopeSet c
+             dischargeBinds' env common ex'
+
+
+old version
+-------------------------
+
+letregion r1 in
+letloc l1 = startof r1 in
+(if X
+  then ....allocate to l1....
+  else ....allocate to l1....)
+
+when we process the if expression, it returns the regions and locations it generated
+bindings for. 
+
+LetLocE loc locexp bod -> do (bod',X) recurse env in_scope bod
+                             -- X tells us if loc is bound in bod
+                             if (loc is bound in bod)
+                               then bod
+                               else LetLocE loc locexp bod
+
+=====>
+ 
+
+
+State monad:
+----------------------------
+
+C:
+
+map_t my_map = XX;
+
+int foo(expr_t ex) {
+  // update + use my_map
+}
+
+Hs:
+
+foo :: Map x y -> a
+foo env = ...
+
+typedef PassM x y a = State (Map x y) a
+
+return, bind;
+
+-}
