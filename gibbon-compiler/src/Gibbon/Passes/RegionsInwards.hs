@@ -40,24 +40,24 @@ regionsInwards Prog{ddefs,fundefs,mainExp} = do
 
 placeRegionsInwardsFunBody :: S.Set Var -> FunDef2  -> PassM FunDef2
 placeRegionsInwardsFunBody scopeSet f@FunDef{funBody}  = do
-  let env     = M.empty                                                       --Create empty environment
-  funBody' <- placeRegionInwards env scopeSet funBody                         --Recursively delay regions for function body
+  let env     = M.empty                                                          --Create empty environment
+  funBody' <- placeRegionInwards env scopeSet funBody                            --Recursively delay regions for function body
   return $ f {funBody = funBody'}
 
 
-placeRegionInwards :: DelayedBindEnv -> S.Set Var -> Exp2 -> PassM Exp2       --Recursive funtion that will move the regions inwards
+placeRegionInwards :: DelayedBindEnv -> S.Set Var -> Exp2 -> PassM Exp2          --Recursive funtion that will move the regions inwards
 placeRegionInwards env scopeSet ex  =
   case ex of
     Ext ext ->
       case ext of
 
-        LetRegionE r rhs -> do                                                --take care of regions
+        LetRegionE r rhs -> do                                                   --take care of regions
           let key' = S.singleton (regionToVar r)
               val' = [DelayRegion r]
               env' = M.insert key' val' env
               in placeRegionInwards env' scopeSet rhs 
   
-        LetLocE loc phs rhs -> do                                             --take care of locations    
+        LetLocE loc phs rhs -> do                                                --take care of locations    
           case phs of
 
             StartOfLE r -> do                                                 
@@ -150,7 +150,7 @@ placeRegionInwards env scopeSet ex  =
                                                             let (_, ex') = dischargeBinds' env (S.fromList locList) ex
                                                               in return ex'
 
-        FromEndE _                                     -> return ex   {-Actual type is FromEndE loc, Don't need to worry about it will appear later in the pipeline, Just return the expression-}
+        FromEndE _                                     -> return ex {-Actual type is FromEndE loc, Don't need to worry about it will appear later in the pipeline, Just return the expression-}
         BoundsCheck{}                                  -> return ex {-Actual type is BoundsCheck integer l1 l2, Don't need to worry about it will appear later in the pipeline, Just return the expression-}
         AddFixed{}                                     -> return ex {-Actual type is AddFixed variable integer, Return the expression-}
         IndirectionE{}                                 -> return ex {-Actual type: IndirectionE tyCon dataCon (l1,v1) (l2,v2) rhs, skip the recursion, IndirectionE doesn't appear until later in the IR language, return the expression-}
@@ -193,29 +193,29 @@ placeRegionInwards env scopeSet ex  =
     ProjE i e              -> ProjE i <$> go e {-Simple recursion on e-}
 
     IfE a b c              -> do  {-Check if there are freeVariables in the condition a, if the set has any freeVars from "a" then codegen all the locations and regions before the IfE-}
-                                     let (d, a') =  dbgTraceIt "Starting binding from IfE" (dischargeBinds env scopeSet a) --If there are freeVariables in a then codgen bindings for those in a
+                                     let (d, a') =  {-dbgTraceIt "Starting binding from IfE"-} (dischargeBinds env scopeSet a) --If there are freeVariables in a then codgen bindings for those in a
                                      b' <- placeRegionInwards d scopeSet b        --Recurse on b (Then part) 
                                      c' <- placeRegionInwards d scopeSet c        --Recurse on c (Else part)
-                                     dbgTraceIt "End IfE" return $ IfE a' b' c'                        --Return the new IfE expression
+                                     return $ IfE a' b' c'   {-dbgTraceIt "End IfE"-}                        --Return the new IfE expression
 
     MkProdE ls                    -> MkProdE <$> mapM go ls {-Recurse over all expression in the tuple in the expression ls-}
     LetE (v,locs,ty,rhs) bod      -> do {-The locs will be empty at this point, so just update scope set and recurse-}
                                      let newScope = S.insert v scopeSet
-                                      in dbgTraceIt "\nPrint info in LetE: (v, rhs)\n" dbgTraceIt (sdoc (v, rhs)) dbgTraceIt "End of LetE\n"  {-dbgTraceIt "\nThis is what the LetE expression look like in L2 at this point\n" dbgTraceIt (sdoc ex) dbgTraceIt "\nEnd of LetE\n"-} LetE . (v,locs,ty,) <$> placeRegionInwards env newScope rhs <*> placeRegionInwards env newScope bod  
+                                      in {-dbgTraceIt "\nPrint info in LetE: (v, rhs)\n" dbgTraceIt (sdoc (v, rhs)) dbgTraceIt "End of LetE\n" -} {-dbgTraceIt "\nThis is what the LetE expression look like in L2 at this point\n" dbgTraceIt (sdoc ex) dbgTraceIt "\nEnd of LetE\n"-} LetE . (v,locs,ty,) <$> placeRegionInwards env newScope rhs <*> placeRegionInwards env newScope bod  
     CaseE scrt brs                -> do      
       brs' <- mapM 
-        (\(a,b,c) -> do let varList = fmap fst b                             --Get all the variables from the tuple list
-                            newScope = scopeSet `S.union` S.fromList varList -- Make the newScope set by unioning the old one with the varList
-                            allKeys  =  M.keys env                                                    -- List of all keys from env
-                            keyList  = map (\variable -> F.find (S.member variable) allKeys) (S.toList $ freeVars c) -- For each var in the input set find its corresponding key
-                            keyList' = S.catMaybes keyList                                            -- Filter all the Nothing values from the list and let only Just values in the list
-                            newEnv   = fmap (`M.delete` env) keyList'                                 -- Delete all the keys for which we are about to codegen from the env
+        (\(a,b,c) -> do let varList = fmap fst b                                                                      --Get all the variables from the tuple list
+                            newScope = scopeSet `S.union` S.fromList varList                                          -- Make the newScope set by unioning the old one with the varList
+                            allKeys  =  M.keys env                                                                    -- List of all keys from env
+                            keyList  = map (\variable -> F.find (S.member variable) allKeys) (S.toList $ freeVars c)  -- For each var in the input set find its corresponding key
+                            keyList' = S.catMaybes keyList                                                            -- Filter all the Nothing values from the list and let only Just values in the list
+                            newEnv   = fmap (`M.delete` env) keyList'                                                 -- Delete all the keys for which we are about to codegen from the env
                             newEnv' = case newEnv of 
                               [] -> env
                               _  -> L.last newEnv
                         c' <- placeRegionInwards newEnv' newScope c
-                        let (_, c'') = dbgTraceIt "Starting binding from CaseE" dischargeBinds env newScope c'          -- Discharge the binds using the newScope and the dictionary
-                         in dbgTraceIt "Print (c, c' c'') in CaseE\n" dbgTraceIt (sdoc c) dbgTraceIt "1\n" dbgTraceIt (sdoc c') dbgTraceIt "2\n" dbgTraceIt (sdoc c'') dbgTraceIt "3\n" dbgTraceIt "End CaseE\n"  (return (a,b,c'')) ) brs
+                        let (_, c'') = {-dbgTraceIt "Starting binding from CaseE"-} dischargeBinds env newScope c'          -- Discharge the binds using the newScope and the dictionary
+                         in {-dbgTraceIt "Print (c, c' c'') in CaseE\n" dbgTraceIt (sdoc c) dbgTraceIt "1\n" dbgTraceIt (sdoc c') dbgTraceIt "2\n" dbgTraceIt (sdoc c'') dbgTraceIt "3\n" dbgTraceIt "End CaseE\n"-}  (return (a,b,c'')) ) brs
                         {-dbgTraceIt "Print the env that is passed Initially\n" dbgTraceIt (sdoc env) dbgTraceIt "\nPrint Parts of the CaseE statement\n" dbgTraceIt (sdoc (a, b, c)) dbgTraceIt "\nEnd of CaseE a, b, c\n" -}                              --dbgTraceIt (sdoc (c,c'))
       return $ CaseE scrt brs'
     TimeIt e ty b                 -> do
@@ -268,7 +268,7 @@ dischargeBinds :: DelayedBindEnv -> S.Set Var -> Exp2 -> (DelayedBindEnv, Exp2)
 dischargeBinds env scopeSet exp2 =
   let free_vars        = S.difference (freeVars exp2) scopeSet   --Take the difference of the scopeSet with the set that freeVar gives.
       (newEnv, newExp) = codeGen free_vars env exp2
-  in dbgTraceIt "\nPrint info in discharge binds (env, freevars, newEnv, newExp)\n" dbgTraceIt (sdoc (env, free_vars, newEnv, newExp)) dbgTraceIt "\nEnd\n" (newEnv, newExp)
+  in {-dbgTraceIt "\nPrint info in discharge binds (env, freevars, newEnv, newExp)\n" dbgTraceIt (sdoc (env, free_vars, newEnv, newExp)) dbgTraceIt "\nEnd\n"-} (newEnv, newExp)
 
 --This is a duplicate function to the one above but instead it takes a Set of LocVar to codeGen directly instead of the expression and scopeSet.
 dischargeBinds' :: DelayedBindEnv -> S.Set LocVar -> Exp2 -> (DelayedBindEnv, Exp2)
@@ -306,7 +306,7 @@ codeGen set env body =
         [] -> env 
         _  -> L.last newEnv 
       exps     = foldr bindDelayedBind body valList                                   -- Get all the bindings for all the expressions in the key  
-   in dbgTraceIt "Print info codeGen (keys, vals, delete, newEnv)\n" dbgTraceIt ( sdoc (keyList', valList, newEnv, newEnv') ) dbgTraceIt "End: codegen\n" (newEnv', exps)                                                                 -- dbgTraceIt (sdoc (set,env,body)) -- This was for printing : dbgTraceIt (sdoc (set,env,body))
+   in {-dbgTraceIt "Print info codeGen (keys, vals, delete, newEnv)\n" dbgTraceIt ( sdoc (keyList', valList, newEnv, newEnv') ) dbgTraceIt "End: codegen\n"-} (newEnv', exps)       -- dbgTraceIt (sdoc (set,env,body)) -- This was for printing : dbgTraceIt (sdoc (set,env,body))
 
 bindDelayedBind :: DelayedBind -> Exp2 -> Exp2
 bindDelayedBind delayed body =
@@ -319,8 +319,9 @@ bindDelayedBind delayed body =
 -- convertFromMaybe maybeA = case maybeA of
 --   Nothing -> null
 --   Just a  -> a 
-    
 
+
+--A function for use specific to this pass which gives all the possible variables and local variables that are used in a particular expression
 freeVars :: Exp2 -> S.Set Var
 freeVars ex = case ex of
   Ext ext                           ->
