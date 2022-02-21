@@ -12,25 +12,27 @@ import Text.PrettyPrint.GenericPretty
 import Gibbon.Common
 import Gibbon.L2.Syntax
 
+-- import qualified Gibbon.LocExp as LL
+
 -- import Gibbon.LocExp
 import Data.Maybe ()
 import qualified Data.Maybe as S
 
 --define data type that can be Region, Loc, LocExp
-data DelayedBind = DelayRegion Region                                         --Data type to store the delayed bindings
+data DelayedBind = DelayRegion Region                                              --Data type to store the delayed bindings
                  | DelayLoc LocVar LocExp | DelayParRegion Region
   deriving (Show, Generic)
 
 instance Out DelayedBind
 
-type DelayedBindEnv = M.Map (S.Set LocVar) [DelayedBind]                      --define a Map from set to the DelayedBind data type  
+type DelayedBindEnv = M.Map (S.Set LocVar) [DelayedBind]                          --define a Map from set to the DelayedBind data type  
 
 regionsInwards :: Prog2 -> PassM Prog2
 regionsInwards Prog{ddefs,fundefs,mainExp} = do
-    let scopeSetMain = S.fromList $ map funName (M.elems fundefs)             --Init scopeSet with all the function names
-        functionArgs = S.fromList $ concatMap funArgs (M.elems fundefs)       --Init functionArgs with all the function arguments, but contenating into one list 
-        scopeSetFun  = scopeSetMain `S.union` functionArgs                    --scope set for function body is the union of function args and the function names   
-    fds' <- mapM (placeRegionsInwardsFunBody scopeSetFun) (M.elems fundefs)   --Delay Regions for the function body 
+    let scopeSetMain = S.fromList $ map funName (M.elems fundefs)                --Init scopeSet with all the function names
+        functionArgs = S.fromList $ concatMap funArgs (M.elems fundefs)          --Init functionArgs with all the function arguments, but contenating into one list 
+        scopeSetFun  = scopeSetMain `S.union` functionArgs                       --scope set for function body is the union of function args and the function names   
+    fds' <- mapM (placeRegionsInwardsFunBody scopeSetFun) (M.elems fundefs)      --Delay Regions for the function body 
     let fundefs' = M.fromList $ map (\f -> (funName f,f)) fds'
     mainExp' <- case mainExp of
         Nothing -> return Nothing
@@ -167,35 +169,60 @@ placeRegionInwards env scopeSet ex  =
     LitE{}                 -> return ex --Just return Nothing special here 
     FloatE{}               -> return ex --Just return Nothing special here 
     LitSymE{}              -> return ex --Just return Nothing special here 
-    AppE{}                 -> return ex --Just return Nothing special here 
+    AppE f locVars ls      -> do
+                              let allKeys  =  M.keys env                                                            -- List of all keys from env
+                                  keyList  = map (\variable -> F.find (S.member variable) allKeys) locVars          -- For each var in the input set find its corresponding key
+                                  keyList' = S.catMaybes keyList                                                    -- Filter all the Nothing values from the list and let only Just values in the list
+                                  newEnv   = fmap (`M.delete` env) keyList'                                         -- Delete all the keys for which we are about to codegen from the env
+                                  newEnv' = case newEnv of 
+                                    [] -> env
+                                    _  -> L.last newEnv
+                               in do ls' <- mapM (placeRegionInwards newEnv' scopeSet) ls
+                                     let (_, ex') = dischargeBinds' env (S.fromList locVars) (AppE f locVars ls')
+                                      in return ex'
+
+      --Just return Nothing special here 
     PrimAppE{}             -> return ex --Just return Nothing special here 
 
-    DataConE loc _ _       -> let (d, ex') = dischargeBinds' env (S.singleton loc) ex {-DataConE loc dataCons args, Check if loc is there in env key.If its there then codegen before recursing on the args-}
-                                in case ex' of
-                                  DataConE loc' dataCons' args' -> do 
-                                    args'' <- mapM (placeRegionInwards d scopeSet) args'
-                                    return $ DataConE loc' dataCons' args''
-                                  _ ->  do placeRegionInwards d scopeSet ex' {-I think it would be best to just recurse on this "new" expression again, how to prevent an infinite loop?-}
-
+    DataConE loc dataCons args      -> do
+                                       let allKeys  =  M.keys env                                                   -- List of all keys from env
+                                           keyList  = map (\variable -> F.find (S.member variable) allKeys) [loc]   -- For each var in the input set find its corresponding key
+                                           keyList' = S.catMaybes keyList                                           -- Filter all the Nothing values from the list and let only Just values in the list
+                                           newEnv   = fmap (`M.delete` env) keyList'                                -- Delete all the keys for which we are about to codegen from the env
+                                           newEnv' = case newEnv of 
+                                             [] -> env
+                                             _  -> L.last newEnv
+                                           in do args' <- mapM (placeRegionInwards newEnv' scopeSet) args
+                                                 let (_, ex') = dischargeBinds' env (S.singleton loc) (DataConE loc dataCons args')
+                                                  in return ex'                        
+                                                  
     ProjE i e              -> ProjE i <$> go e {-Simple recursion on e-}
 
     IfE a b c              -> do  {-Check if there are freeVariables in the condition a, if the set has any freeVars from "a" then codegen all the locations and regions before the IfE-}
-                                     let (d, a') = dischargeBinds env scopeSet a  --If there are freeVariables in a then codgen bindings for those in a
+                                     let (d, a') =  dbgTraceIt "Starting binding from IfE" (dischargeBinds env scopeSet a) --If there are freeVariables in a then codgen bindings for those in a
                                      b' <- placeRegionInwards d scopeSet b        --Recurse on b (Then part) 
                                      c' <- placeRegionInwards d scopeSet c        --Recurse on c (Else part)
-                                     return $ IfE a' b' c'                        --Return the new IfE expression
+                                     dbgTraceIt "End IfE" return $ IfE a' b' c'                        --Return the new IfE expression
 
     MkProdE ls                    -> MkProdE <$> mapM go ls {-Recurse over all expression in the tuple in the expression ls-}
     LetE (v,locs,ty,rhs) bod      -> do {-The locs will be empty at this point, so just update scope set and recurse-}
                                      let newScope = S.insert v scopeSet
-                                      in LetE . (v,locs,ty,) <$> placeRegionInwards env newScope rhs <*> placeRegionInwards env newScope bod  
+                                      in dbgTraceIt "\nPrint info in LetE: (v, rhs)\n" dbgTraceIt (sdoc (v, rhs)) dbgTraceIt "End of LetE\n"  {-dbgTraceIt "\nThis is what the LetE expression look like in L2 at this point\n" dbgTraceIt (sdoc ex) dbgTraceIt "\nEnd of LetE\n"-} LetE . (v,locs,ty,) <$> placeRegionInwards env newScope rhs <*> placeRegionInwards env newScope bod  
     CaseE scrt brs                -> do      
       brs' <- mapM 
         (\(a,b,c) -> do let varList = fmap fst b                             --Get all the variables from the tuple list
                             newScope = scopeSet `S.union` S.fromList varList -- Make the newScope set by unioning the old one with the varList
-                        let (d, c') = dischargeBinds env newScope c          -- Discharge the binds using the newScope and the dictionary
-                        c'' <- placeRegionInwards d scopeSet c'
-                        dbgTraceIt (sdoc (c,c')) (return (a,b,c''))) brs
+                            allKeys  =  M.keys env                                                    -- List of all keys from env
+                            keyList  = map (\variable -> F.find (S.member variable) allKeys) (S.toList $ freeVars c) -- For each var in the input set find its corresponding key
+                            keyList' = S.catMaybes keyList                                            -- Filter all the Nothing values from the list and let only Just values in the list
+                            newEnv   = fmap (`M.delete` env) keyList'                                 -- Delete all the keys for which we are about to codegen from the env
+                            newEnv' = case newEnv of 
+                              [] -> env
+                              _  -> L.last newEnv
+                        c' <- placeRegionInwards newEnv' newScope c
+                        let (_, c'') = dbgTraceIt "Starting binding from CaseE" dischargeBinds env newScope c'          -- Discharge the binds using the newScope and the dictionary
+                         in dbgTraceIt "Print (c, c' c'') in CaseE\n" dbgTraceIt (sdoc c) dbgTraceIt "1\n" dbgTraceIt (sdoc c') dbgTraceIt "2\n" dbgTraceIt (sdoc c'') dbgTraceIt "3\n" dbgTraceIt "End CaseE\n"  (return (a,b,c'')) ) brs
+                        {-dbgTraceIt "Print the env that is passed Initially\n" dbgTraceIt (sdoc env) dbgTraceIt "\nPrint Parts of the CaseE statement\n" dbgTraceIt (sdoc (a, b, c)) dbgTraceIt "\nEnd of CaseE a, b, c\n" -}                              --dbgTraceIt (sdoc (c,c'))
       return $ CaseE scrt brs'
     TimeIt e ty b                 -> do
       e' <- go e
@@ -245,8 +272,9 @@ grow for:
 --This is a function to discharge binds given a dictionary, scopeSet and expression where free variables might exist
 dischargeBinds :: DelayedBindEnv -> S.Set Var -> Exp2 -> (DelayedBindEnv, Exp2)
 dischargeBinds env scopeSet exp2 =
-  let free_vars = S.difference (S.fromList $ allFreeVars exp2) scopeSet   --Take the difference of the scopeSet with the set that freeVar gives.
-  in codeGen free_vars env exp2
+  let free_vars        = S.difference (freeVars exp2) scopeSet   --Take the difference of the scopeSet with the set that freeVar gives.
+      (newEnv, newExp) = codeGen free_vars env exp2
+  in dbgTraceIt "\nPrint info in discharge binds (env, freevars, newEnv, newExp)\n" dbgTraceIt (sdoc (env, free_vars, newEnv, newExp)) dbgTraceIt "\nEnd\n" (newEnv, newExp)
 
 --This is a duplicate function to the one above but instead it takes a Set of LocVar to codeGen directly instead of the expression and scopeSet.
 dischargeBinds' :: DelayedBindEnv -> S.Set LocVar -> Exp2 -> (DelayedBindEnv, Exp2)
@@ -275,16 +303,16 @@ buildExp2 valList var terminate = case (valList, var, terminate) of
 -- Use this function to codegen from the env by giving a set of variables you want to codegen from
 codeGen :: S.Set LocVar -> DelayedBindEnv -> Exp2 -> (DelayedBindEnv, Exp2)
 codeGen set env body =
-  let allKeys  =  M.keys env --List of all keys from env
+  let allKeys  =  M.keys env                                                          --List of all keys from env
       keyList  = map (\variable -> F.find (S.member variable) allKeys ) (toList set)  -- For each var in the input set find its corresponding key
-      keyList' = S.catMaybes keyList                                                  -- Filter out all the Nothing values from the list and let only Just values in the list
+      keyList' = S.toList $ S.fromList $ S.catMaybes keyList                          -- Filter out all the Nothing values from the list and let only Just values in the list
       valList  = concatMap (\key -> M.findWithDefault [] key env) keyList'            -- For each key in the keyList from before find the value associated with the key
       newEnv   = fmap (`M.delete` env) keyList'                                       -- Delete all the keys for which we are about to codegen from the env
       newEnv' = case newEnv of 
-        [] -> M.empty 
+        [] -> env 
         _  -> L.last newEnv 
       exps     = foldr bindDelayedBind body valList                                   -- Get all the bindings for all the expressions in the key  
-   in dbgTraceIt (sdoc (set,env,body)) (newEnv', exps)                                -- This was for printing : dbgTraceIt (sdoc (set,env,body))
+   in dbgTraceIt "Print info codeGen (keys, vals, delete, newEnv)\n" dbgTraceIt ( sdoc (keyList', valList, newEnv, newEnv') ) dbgTraceIt "End: codegen\n" (newEnv', exps)                                                                 -- dbgTraceIt (sdoc (set,env,body)) -- This was for printing : dbgTraceIt (sdoc (set,env,body))
 
 bindDelayedBind :: DelayedBind -> Exp2 -> Exp2
 bindDelayedBind delayed body =
@@ -298,3 +326,36 @@ bindDelayedBind delayed body =
 --   Nothing -> null
 --   Just a  -> a 
     
+
+freeVars :: Exp2 -> S.Set Var
+freeVars ex = case ex of
+  Ext ext                           ->
+    case ext of
+      LetRegionE r rhs              -> S.singleton (regionToVar r) `S.union` freeVars rhs
+      LetLocE loc phs rhs           -> 
+        case phs of
+        StartOfLE r                 -> S.singleton loc `S.union` S.singleton (regionToVar r) `S.union` freeVars rhs 
+        AfterConstantLE _ loc'      -> S.singleton loc `S.union` S.singleton loc' `S.union` freeVars rhs
+        AfterVariableLE var loc' _  -> S.singleton var `S.union` S.singleton loc `S.union` S.singleton loc' `S.union` freeVars rhs
+        InRegionLE r                -> S.singleton loc `S.union` S.singleton (regionToVar r) `S.union` freeVars rhs
+        FromEndLE loc'              -> S.singleton loc `S.union` S.singleton loc' `S.union` freeVars rhs
+        _                           -> S.empty
+      _                             -> S.empty
+  
+  LetE (v,locs,_,rhs) bod           -> (S.singleton v) `S.union` (S.fromList locs) `S.union` (freeVars rhs) `S.union` (freeVars bod)
+  LitE _                            -> S.empty
+  LitSymE _                         -> S.empty
+  VarE v                            -> S.singleton v
+  AppE v locvarList ls              -> S.unions (L.map freeVars ls) `S.union` (S.singleton v) `S.union` (S.fromList locvarList)
+  PrimAppE _ ls                     -> S.unions (L.map freeVars ls)
+  MkProdE ls                        -> S.unions (L.map freeVars ls)
+  DataConE locVar _ ls              -> S.singleton locVar  `S.union`  S.unions (L.map freeVars ls)
+  ProjE _ e                         -> freeVars e
+  IfE e1 e2 e3                      -> S.unions [freeVars e1, freeVars e2, freeVars e3]
+  CaseE e ls                        -> freeVars e `S.union`
+                                        S.unions (L.map (\(_, vlocs, ee) ->
+                                           let (vars, locVars) = unzip vlocs
+                                           in freeVars ee `S.union` S.fromList vars `S.union` S.fromList locVars) ls)
+  _                                 -> S.empty                                         
+
+                                                
