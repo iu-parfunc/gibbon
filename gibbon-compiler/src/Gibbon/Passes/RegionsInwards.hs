@@ -11,6 +11,7 @@ import Gibbon.Common
 import Gibbon.L2.Syntax
 import Data.Maybe ()
 import qualified Data.Maybe as S
+import Gibbon.Passes.InferLocations (inferExp')
 
 
 data DelayedBind = DelayRegion Region                                            --define data type that can be Region, Loc, LocExp to store the delayed bindings
@@ -196,12 +197,25 @@ placeRegionInwards env scopeSet ex  =
                                      let (d, a') =  {-dbgTraceIt "Starting binding from IfE"-} (dischargeBinds env scopeSet a) --If there are freeVariables in a then codgen bindings for those in a
                                      b' <- placeRegionInwards d scopeSet b        --Recurse on b (Then part) 
                                      c' <- placeRegionInwards d scopeSet c        --Recurse on c (Else part)
-                                     return $ IfE a' b' c'   {-dbgTraceIt "End IfE"-}                        --Return the new IfE expression
+                                     return $ IfE a' b' c' --dbgTraceIt "End IfE"                        --Return the new IfE expression
 
     MkProdE ls                    -> MkProdE <$> mapM go ls {-Recurse over all expression in the tuple in the expression ls-}
-    LetE (v,locs,ty,rhs) bod      -> do {-The locs will be empty at this point, so just update scope set and recurse-}
-                                     let newScope = S.insert v scopeSet
-                                      in {-dbgTraceIt "\nPrint info in LetE: (v, rhs)\n" dbgTraceIt (sdoc (v, rhs)) dbgTraceIt "End of LetE\n" -} {-dbgTraceIt "\nThis is what the LetE expression look like in L2 at this point\n" dbgTraceIt (sdoc ex) dbgTraceIt "\nEnd of LetE\n"-} LetE . (v,locs,ty,) <$> placeRegionInwards env newScope rhs <*> placeRegionInwards env newScope bod  
+
+    LetE (v,locs,ty,rhs) bod      -> do
+                                    let newScope = S.insert v scopeSet                                                              {-The locs will be empty at this point, so just update scope set and recurse-}
+                                        allKeys  =  M.keys env
+                                        free_vars =   locsInTy ty                                                                  -- List of all keys from env
+                                        keyList  = map (\variable -> F.find (S.member variable) allKeys) free_vars  -- For each var in the input set find its corresponding key
+                                        keyList' = S.catMaybes keyList                                                            -- Filter all the Nothing values from the list and let only Just values in the list
+                                        newEnv   = fmap (`M.delete` env) keyList'                                                 -- Delete all the keys for which we are about to codegen from the env
+                                        newEnv' = case newEnv of
+                                          [] -> env
+                                          _  -> L.last newEnv
+                                        in do ex' <- LetE . (v,locs,ty,) <$> placeRegionInwards newEnv' newScope rhs <*> placeRegionInwards newEnv' newScope bod
+                                              let (_, ex'') = dischargeBinds env scopeSet ex'
+                                               in {-dbgTraceIt "\nPrint info in LetE: (v, locs, ty rhs)\n" dbgTraceIt (sdoc (v, locs, ty, rhs, env, newEnv',ex'')) dbgTraceIt (sdoc (keyList, ex', free_vars)) dbgTraceIt "End of LetE\n"-} return ex''
+                                          
+                                      -- in dbgTraceIt "\nPrint info in LetE: (v, locs, ty rhs)\n" dbgTraceIt (sdoc (v, locs, ty, rhs)) dbgTraceIt "End of LetE\n"  {-dbgTraceIt "\nThis is what the LetE expression look like in L2 at this point\n" dbgTraceIt (sdoc ex) dbgTraceIt "\nEnd of LetE\n"-}   
     CaseE scrt brs                -> do      
       brs' <- mapM 
         (\(a,b,c) -> do let varList = fmap fst b                                                                      --Get all the variables from the tuple list
@@ -215,7 +229,7 @@ placeRegionInwards env scopeSet ex  =
                               _  -> L.last newEnv
                         c' <- placeRegionInwards newEnv' newScope c
                         let (_, c'') = {-dbgTraceIt "Starting binding from CaseE"-} dischargeBinds env newScope c'          -- Discharge the binds using the newScope and the dictionary
-                         in {-dbgTraceIt "Print (c, c' c'') in CaseE\n" dbgTraceIt (sdoc c) dbgTraceIt "1\n" dbgTraceIt (sdoc c') dbgTraceIt "2\n" dbgTraceIt (sdoc c'') dbgTraceIt "3\n" dbgTraceIt "End CaseE\n"-}  (return (a,b,c'')) ) brs
+                         in {-dbgTraceIt "Print (c, c' c'') in CaseE\n" dbgTraceIt (sdoc c) dbgTraceIt "1\n" dbgTraceIt (sdoc c') dbgTraceIt "2\n" dbgTraceIt (sdoc c'') dbgTraceIt "3\n" dbgTraceIt "End CaseE\n" -} (return (a,b,c'')) ) brs
                         {-dbgTraceIt "Print the env that is passed Initially\n" dbgTraceIt (sdoc env) dbgTraceIt "\nPrint Parts of the CaseE statement\n" dbgTraceIt (sdoc (a, b, c)) dbgTraceIt "\nEnd of CaseE a, b, c\n" -}                              --dbgTraceIt (sdoc (c,c'))
       return $ CaseE scrt brs'
     TimeIt e ty b                 -> do
@@ -268,7 +282,7 @@ dischargeBinds :: DelayedBindEnv -> S.Set Var -> Exp2 -> (DelayedBindEnv, Exp2)
 dischargeBinds env scopeSet exp2 =
   let free_vars        = S.difference (freeVars exp2) scopeSet   --Take the difference of the scopeSet with the set that freeVar gives.
       (newEnv, newExp) = codeGen free_vars env exp2
-  in {-dbgTraceIt "\nPrint info in discharge binds (env, freevars, newEnv, newExp)\n" dbgTraceIt (sdoc (env, free_vars, newEnv, newExp)) dbgTraceIt "\nEnd\n"-} (newEnv, newExp)
+  in {-dbgTraceIt "\nPrint info in discharge binds (env, freevars, newEnv, newExp)\n" dbgTraceIt (sdoc (env, free_vars, newEnv, newExp, scopeSet)) dbgTraceIt "\nEnd\n"-} (newEnv, newExp)
 
 --This is a duplicate function to the one above but instead it takes a Set of LocVar to codeGen directly instead of the expression and scopeSet.
 dischargeBinds' :: DelayedBindEnv -> S.Set LocVar -> Exp2 -> (DelayedBindEnv, Exp2)
@@ -306,7 +320,7 @@ codeGen set env body =
         [] -> env 
         _  -> L.last newEnv 
       exps     = foldr bindDelayedBind body valList                                   -- Get all the bindings for all the expressions in the key  
-   in {-dbgTraceIt "Print info codeGen (keys, vals, delete, newEnv)\n" dbgTraceIt ( sdoc (keyList', valList, newEnv, newEnv') ) dbgTraceIt "End: codegen\n"-} (newEnv', exps)       -- dbgTraceIt (sdoc (set,env,body)) -- This was for printing : dbgTraceIt (sdoc (set,env,body))
+   in {-dbgTraceIt "Print info codeGen (keys, vals, delete, newEnv)\n" dbgTraceIt ( sdoc (keyList', valList, newEnv, newEnv') ) dbgTraceIt "End: codegen\n"-} (newEnv', exps) -- dbgTraceIt (sdoc (set,env,body)) -- This was for printing : dbgTraceIt (sdoc (set,env,body))
 
 bindDelayedBind :: DelayedBind -> Exp2 -> Exp2
 bindDelayedBind delayed body =
@@ -337,12 +351,12 @@ freeVars ex = case ex of
         _                           -> S.empty
       _                             -> S.empty
   
-  LetE (v,locs,_,rhs) bod           -> (S.singleton v) `S.union` (S.fromList locs) `S.union` (freeVars rhs) `S.union` (freeVars bod)
+  LetE (v,locs, ty,rhs) bod          -> (S.singleton v) `S.union` (S.fromList locs)  `S.union` (S.fromList (locsInTy ty)) `S.union` (freeVars rhs) `S.union` (freeVars bod)
   LitE _                            -> S.empty
   LitSymE _                         -> S.empty
   VarE v                            -> S.singleton v
   AppE v locvarList ls              -> S.unions (L.map freeVars ls) `S.union` (S.singleton v) `S.union` (S.fromList locvarList)
-  PrimAppE _ ls                     -> S.unions (L.map freeVars ls)
+  PrimAppE _ ls                     -> S.unions (L.map freeVars ls) 
   MkProdE ls                        -> S.unions (L.map freeVars ls)
   DataConE locVar _ ls              -> S.singleton locVar  `S.union`  S.unions (L.map freeVars ls)
   ProjE _ e                         -> freeVars e
