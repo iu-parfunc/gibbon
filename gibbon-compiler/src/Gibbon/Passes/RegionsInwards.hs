@@ -170,7 +170,7 @@ placeRegionInwards env scopeSet ex  =
                                   keyList' = S.catMaybes keyList                                                    -- Filter all the Nothing values from the list and let only Just values in the list
                                   newKeys   = S.toList $ S.fromList allKeys `S.difference` S.fromList keyList'       -- Filter all the Nothing values from the list and let only Just values in the list
                                   newVals   = map (\key -> M.findWithDefault [] key env) newKeys
-                                  tupleList = [(k, vals) | k <- newKeys, vals <- newVals]
+                                  tupleList = zipWith (\x y -> (x, y)) newKeys newVals
                                   newEnv'   = M.fromList tupleList
                                in do ls' <- mapM (placeRegionInwards newEnv' scopeSet) ls
                                      let (_, ex') = dischargeBinds' env (S.fromList locVars) (AppE f locVars ls')
@@ -185,7 +185,7 @@ placeRegionInwards env scopeSet ex  =
                                            keyList' = S.catMaybes keyList                                                -- Filter all the Nothing values from the list and let only Just values in the list
                                            newKeys   = S.toList $ S.fromList allKeys `S.difference` S.fromList keyList'  -- Filter all the Nothing values from the list and let only Just values in the list
                                            newVals   = map (\key -> M.findWithDefault [] key env) newKeys
-                                           tupleList = [(k, vals) | k <- newKeys, vals <- newVals]
+                                           tupleList = zipWith (\x y -> (x, y)) newKeys newVals
                                            newEnv'   = M.fromList tupleList
                                            in do args' <- mapM (placeRegionInwards newEnv' scopeSet) args
                                                  let (_, ex') = dischargeBinds' env (S.singleton loc) (DataConE loc dataCons args')
@@ -209,11 +209,11 @@ placeRegionInwards env scopeSet ex  =
                                         keyList' = S.catMaybes keyList 
                                         newKeys   = S.toList $ S.fromList allKeys `S.difference` S.fromList keyList'       -- Filter all the Nothing values from the list and let only Just values in the list
                                         newVals   = map (\key -> M.findWithDefault [] key env) newKeys
-                                        tupleList = [(k, vals) | k <- newKeys, vals <- newVals]
+                                        tupleList = zipWith (\x y -> (x, y)) newKeys newVals
                                         newEnv'   = M.fromList tupleList
                                         in do ex' <- LetE . (v,locs,ty,) <$> placeRegionInwards newEnv' newScope rhs <*> placeRegionInwards newEnv' newScope bod
                                               let (_, ex'') = dischargeBinds' env (S.fromList free_vars) ex'
-                                               in {-dbgTraceIt "\nPrint info in LetE: (v, locs, ty rhs)\n" dbgTraceIt (sdoc (v, locs, ty, rhs, env, newEnv',ex'')) dbgTraceIt (sdoc (keyList, ex', free_vars)) dbgTraceIt "End of LetE\n"-} return ex''
+                                               in dbgTraceIt "\nPrint info in LetE: (v, locs, ty rhs)\n" dbgTraceIt (sdoc (v, locs, ty, rhs, env, newEnv',ex'')) dbgTraceIt (sdoc (keyList, ex', free_vars, newVals, tupleList)) dbgTraceIt "End of LetE\n" return ex''
                                           
                                       -- in dbgTraceIt "\nPrint info in LetE: (v, locs, ty rhs)\n" dbgTraceIt (sdoc (v, locs, ty, rhs)) dbgTraceIt "End of LetE\n"  {-dbgTraceIt "\nThis is what the LetE expression look like in L2 at this point\n" dbgTraceIt (sdoc ex) dbgTraceIt "\nEnd of LetE\n"-}   
     CaseE scrt brs                -> do      
@@ -226,11 +226,11 @@ placeRegionInwards env scopeSet ex  =
                             keyList'  = S.catMaybes keyList
                             newKeys   = S.toList $ S.fromList allKeys `S.difference` S.fromList keyList'       -- Filter all the Nothing values from the list and let only Just values in the list
                             newVals   = map (\key -> M.findWithDefault [] key env) newKeys
-                            tupleList = [(k, vals) | k <- newKeys, vals <- newVals]
+                            tupleList = zipWith (\x y -> (x, y)) newKeys newVals
                             newEnv'   = M.fromList tupleList
                         c' <- placeRegionInwards newEnv' newScope c
                         let (_, c'') = {-dbgTraceIt "Starting binding from CaseE"-} dischargeBinds' env free_vars c'          -- Discharge the binds using the newScope and the dictionary
-                         in {-dbgTraceIt "Print (c, c' c'') in CaseE\n" dbgTraceIt (sdoc c) dbgTraceIt "1\n" dbgTraceIt (sdoc c') dbgTraceIt "2\n" dbgTraceIt (sdoc c'') dbgTraceIt "3\n" dbgTraceIt (sdoc (env,free_vars, newEnv', keyList, keyList')) dbgTraceIt "End CaseE\n"-} (return (a,b,c''))) brs
+                         in dbgTraceIt "Print (c, c' c'') in CaseE\n" dbgTraceIt (sdoc c) dbgTraceIt "1\n" dbgTraceIt (sdoc c') dbgTraceIt "2\n" dbgTraceIt (sdoc c'') dbgTraceIt "3\n" dbgTraceIt (sdoc (env,free_vars, newEnv', keyList, keyList')) dbgTraceIt "End CaseE\n" (return (a,b,c''))) brs
                         {-dbgTraceIt "Print the env that is passed Initially\n" dbgTraceIt (sdoc env) dbgTraceIt "\nPrint Parts of the CaseE statement\n" dbgTraceIt (sdoc (a, b, c)) dbgTraceIt "\nEnd of CaseE a, b, c\n" -}                              --dbgTraceIt (sdoc (c,c'))
       return $ CaseE scrt brs'
     TimeIt e ty b                 -> do
@@ -314,11 +314,11 @@ codeGen :: S.Set LocVar -> DelayedBindEnv -> Exp2 -> (DelayedBindEnv, Exp2)
 codeGen set env body =
   let allKeys   =  M.keys env                                                          --List of all keys from env
       keyList   = map (\variable -> F.find (S.member variable) allKeys ) (toList set)  -- For each var in the input set find its corresponding key
-      keyList'  = S.toList $ S.fromList $ S.catMaybes keyList                          -- Filter out all the Nothing values from the list and let only Just values in the list
+      keyList'  = S.catMaybes keyList                          -- Filter out all the Nothing values from the list and let only Just values in the list
       valList   = concatMap (\key -> M.findWithDefault [] key env) keyList'            -- For each key in the keyList from before find the value associated with the key
       newKeys   = S.toList $ S.fromList allKeys `S.difference` S.fromList keyList'       -- Filter all the Nothing values from the list and let only Just values in the list
       newVals   = map (\key -> M.findWithDefault [] key env) newKeys
-      tupleList = [(k, vals) | k <- newKeys, vals <- newVals]
+      tupleList = zipWith (\x y -> (x, y)) newKeys newVals
       newEnv'   = M.fromList tupleList
       exps      = foldr bindDelayedBind body valList                                   -- Get all the bindings for all the expressions in the key  
    in {-dbgTraceIt "Print info codeGen (keys, vals, delete, newEnv)\n" dbgTraceIt ( sdoc (keyList', valList, newEnv, newEnv') ) dbgTraceIt "End: codegen\n"-} (newEnv', exps) -- dbgTraceIt (sdoc (set,env,body)) -- This was for printing : dbgTraceIt (sdoc (set,env,body))
