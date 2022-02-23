@@ -24,8 +24,8 @@ bench_main =
   let n     = sizeParam
       vec   = create_vec n
       revec = reverse vec Nil
-      _     = printlist vec
-      _     = printlist revec
+    --   _     = printlist vec
+    --   _     = printlist revec
   in  ()
 
 gibbon_main = bench_main
