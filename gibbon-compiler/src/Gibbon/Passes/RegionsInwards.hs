@@ -314,7 +314,7 @@ codeGen :: S.Set LocVar -> DelayedBindEnv -> Exp2 -> (DelayedBindEnv, Exp2)
 codeGen set env body =
   let allKeys   =  M.keys env                                                          --List of all keys from env
       keyList   = map (\variable -> F.find (S.member variable) allKeys ) (toList set)  -- For each var in the input set find its corresponding key
-      keyList'  = S.catMaybes keyList                          -- Filter out all the Nothing values from the list and let only Just values in the list
+      keyList'  = S.toList $ S.fromList $ S.catMaybes keyList                          -- Filter out all the Nothing values from the list and let only Just values in the list
       valList   = concatMap (\key -> M.findWithDefault [] key env) keyList'            -- For each key in the keyList from before find the value associated with the key
       newKeys   = S.toList $ S.fromList allKeys `S.difference` S.fromList keyList'       -- Filter all the Nothing values from the list and let only Just values in the list
       newVals   = map (\key -> M.findWithDefault [] key env) newKeys
