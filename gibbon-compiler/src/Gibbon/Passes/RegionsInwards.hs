@@ -12,6 +12,7 @@ import Gibbon.L2.Syntax
 import Data.Maybe ()
 import qualified Data.Maybe as S
 import Gibbon.Passes.InferLocations (inferExp')
+import qualified Data.IntMap as L
 
 
 data DelayedBind = DelayRegion Region                                            --define data type that can be Region, Loc, LocExp to store the delayed bindings
@@ -193,11 +194,20 @@ placeRegionInwards env scopeSet ex  =
                                                   
     ProjE i e              -> ProjE i <$> go e {-Simple recursion on e-}
 
-    IfE a b c              -> do  {-Check if there are freeVariables in the condition a, if the set has any freeVars from "a" then codegen all the locations and regions before the IfE-}
-                                     let (d, a') =  {-dbgTraceIt "Starting binding from IfE"-} (dischargeBinds env scopeSet a) --If there are freeVariables in a then codgen bindings for those in a
-                                     b' <- placeRegionInwards d scopeSet b        --Recurse on b (Then part) 
-                                     c' <- placeRegionInwards d scopeSet c        --Recurse on c (Else part)
-                                     return $ IfE a' b' c' --dbgTraceIt "End IfE"                        --Return the new IfE expression
+    IfE a b c              -> do  
+                                     let freeVarsB  = freeVars b  
+                                         freeVarsC  = freeVars c
+                                         commonVars = freeVarsB `S.intersection` freeVarsC
+                                         allKeys    = M.keys env
+                                         keyList    = map (\variable -> F.find (S.member variable) allKeys) L.fromSet commonVars
+                                         keyList'   = S.catMaybes keyList
+                                         newKeys    = map (\key -> M.findWithDefault [] key env) newKeys
+                                         tupleList  = zipWith (\x y -> (x, y)) newKeys newVals
+                                         newEnv'    = M.fromList tupleList
+                                     b' <- placeRegionInwards newEnv' scopeSet b        --Recurse on b (Then part) 
+                                     c' <- placeRegionInwards newEnv' scopeSet c        --Recurse on c (Else part)
+                                     let (_, a') = dischargeBinds env scopeSet a
+                                     return $ IfE a' b' c'                              --Return the new IfE expression
 
     MkProdE ls                    -> MkProdE <$> mapM go ls {-Recurse over all expression in the tuple in the expression ls-}
 
