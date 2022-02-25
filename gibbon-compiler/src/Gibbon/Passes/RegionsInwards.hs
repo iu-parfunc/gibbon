@@ -12,7 +12,7 @@ import Gibbon.L2.Syntax
 import Data.Maybe ()
 import qualified Data.Maybe as S
 import Gibbon.Passes.InferLocations (inferExp')
-import qualified Data.IntMap as L
+import qualified Data.IntMap as LL
 
 
 data DelayedBind = DelayRegion Region                                            --define data type that can be Region, Loc, LocExp to store the delayed bindings
@@ -152,24 +152,24 @@ placeRegionInwards env scopeSet ex  =
                                                             let (_, ex') = dischargeBinds' env (S.fromList locList) ex
                                                               in return ex'
 
-        FromEndE _                                     -> return ex {-Actual type is FromEndE loc, Don't need to worry about it will appear later in the pipeline, Just return the expression-}
-        BoundsCheck{}                                  -> return ex {-Actual type is BoundsCheck integer l1 l2, Don't need to worry about it will appear later in the pipeline, Just return the expression-}
-        AddFixed{}                                     -> return ex {-Actual type is AddFixed variable integer, Return the expression-}
-        IndirectionE{}                                 -> return ex {-Actual type: IndirectionE tyCon dataCon (l1,v1) (l2,v2) rhs, skip the recursion, IndirectionE doesn't appear until later in the IR language, return the expression-}
-        GetCilkWorkerNum                               -> return ex {-Just return the expression, there is no recusrion to do here-}
+        FromEndE _                                     -> return ex        {-Actual type is FromEndE loc, Don't need to worry about it will appear later in the pipeline, Just return the expression-}
+        BoundsCheck{}                                  -> return ex        {-Actual type is BoundsCheck integer l1 l2, Don't need to worry about it will appear later in the pipeline, Just return the expression-}
+        AddFixed{}                                     -> return ex        {-Actual type is AddFixed variable integer, Return the expression-}
+        IndirectionE{}                                 -> return ex        {-Actual type: IndirectionE tyCon dataCon (l1,v1) (l2,v2) rhs, skip the recursion, IndirectionE doesn't appear until later in the IR language, return the expression-}
+        GetCilkWorkerNum                               -> return ex                   {-Just return the expression, there is no recusrion to do here-}
         LetAvail vs e                                  -> Ext . LetAvail vs <$> go e  {-Recurse on the rhs directly-}
         
 
      -- Straightforward recursion ...
-    VarE{}                 -> return ex --Just return Nothing special here 
-    LitE{}                 -> return ex --Just return Nothing special here 
-    FloatE{}               -> return ex --Just return Nothing special here 
-    LitSymE{}              -> return ex --Just return Nothing special here 
+    VarE{}                 -> return ex        -- Just return Nothing special here 
+    LitE{}                 -> return ex        -- Just return Nothing special here 
+    FloatE{}               -> return ex        -- Just return Nothing special here 
+    LitSymE{}              -> return ex        -- Just return Nothing special here 
     AppE f locVars ls      -> do
-                              let allKeys  =  M.keys env                                                            -- List of all keys from env
-                                  keyList  = map (\variable -> F.find (S.member variable) allKeys) locVars          -- For each var in the input set find its corresponding key
-                                  keyList' = S.catMaybes keyList                                                    -- Filter all the Nothing values from the list and let only Just values in the list
-                                  newKeys   = S.toList $ S.fromList allKeys `S.difference` S.fromList keyList'       -- Filter all the Nothing values from the list and let only Just values in the list
+                              let allKeys  =  M.keys env                                                              -- List of all keys from env
+                                  keyList  = map (\variable -> F.find (S.member variable) allKeys) locVars            -- For each var in the input set find its corresponding key
+                                  keyList' = S.catMaybes keyList                                                      -- Filter all the Nothing values from the list and let only Just values in the list
+                                  newKeys   = S.toList $ S.fromList allKeys `S.difference` S.fromList keyList'        -- Filter all the Nothing values from the list and let only Just values in the list
                                   newVals   = map (\key -> M.findWithDefault [] key env) newKeys
                                   tupleList = zipWith (\x y -> (x, y)) newKeys newVals
                                   newEnv'   = M.fromList tupleList
@@ -181,10 +181,10 @@ placeRegionInwards env scopeSet ex  =
     PrimAppE{}             -> return ex --Just return Nothing special here 
 
     DataConE loc dataCons args      -> do
-                                       let allKeys  =  M.keys env                                                        -- List of all keys from env
-                                           keyList  = map (\variable -> F.find (S.member variable) allKeys) [loc]        -- For each var in the input set find its corresponding key
-                                           keyList' = S.catMaybes keyList                                                -- Filter all the Nothing values from the list and let only Just values in the list
-                                           newKeys   = S.toList $ S.fromList allKeys `S.difference` S.fromList keyList'  -- Filter all the Nothing values from the list and let only Just values in the list
+                                       let allKeys  =  M.keys env                                                         -- List of all keys from env
+                                           keyList  = map (\variable -> F.find (S.member variable) allKeys) [loc]         -- For each var in the input set find its corresponding key
+                                           keyList' = S.catMaybes keyList                                                 -- Filter all the Nothing values from the list and let only Just values in the list
+                                           newKeys   = S.toList $ S.fromList allKeys `S.difference` S.fromList keyList'   -- Filter all the Nothing values from the list and let only Just values in the list
                                            newVals   = map (\key -> M.findWithDefault [] key env) newKeys
                                            tupleList = zipWith (\x y -> (x, y)) newKeys newVals
                                            newEnv'   = M.fromList tupleList
@@ -192,24 +192,25 @@ placeRegionInwards env scopeSet ex  =
                                                  let (_, ex') = dischargeBinds' env (S.singleton loc) (DataConE loc dataCons args')
                                                   in return ex'                        
                                                   
-    ProjE i e              -> ProjE i <$> go e {-Simple recursion on e-}
+    ProjE i e              -> ProjE i <$> go e                                         {-Simple recursion on e-}
 
     IfE a b c              -> do  
                                      let freeVarsB  = freeVars b  
                                          freeVarsC  = freeVars c
                                          commonVars = freeVarsB `S.intersection` freeVarsC
                                          allKeys    = M.keys env
-                                         keyList    = map (\variable -> F.find (S.member variable) allKeys) L.fromSet commonVars
+                                         keyList    = map (\variable -> F.find (S.member variable) allKeys) (S.toList commonVars)
                                          keyList'   = S.catMaybes keyList
-                                         newKeys    = map (\key -> M.findWithDefault [] key env) newKeys
+                                         newKeys   = S.toList $ S.fromList allKeys `S.difference` S.fromList keyList'
+                                         newVals    = map (\key -> M.findWithDefault [] key env) newKeys
                                          tupleList  = zipWith (\x y -> (x, y)) newKeys newVals
                                          newEnv'    = M.fromList tupleList
-                                     b' <- placeRegionInwards newEnv' scopeSet b        --Recurse on b (Then part) 
-                                     c' <- placeRegionInwards newEnv' scopeSet c        --Recurse on c (Else part)
+                                     b' <- placeRegionInwards newEnv' scopeSet b       --Recurse on b (Then part) 
+                                     c' <- placeRegionInwards newEnv' scopeSet c       --Recurse on c (Else part)
                                      let (_, a') = dischargeBinds env scopeSet a
-                                     return $ IfE a' b' c'                              --Return the new IfE expression
+                                     return $ IfE a' b' c'                             --Return the new IfE expression
 
-    MkProdE ls                    -> MkProdE <$> mapM go ls {-Recurse over all expression in the tuple in the expression ls-}
+    MkProdE ls                    -> MkProdE <$> mapM go ls                            {-Recurse over all expression in the tuple in the expression ls-}
 
     LetE (v,locs,ty,rhs) bod      -> do
                                     let newScope = S.insert v scopeSet                                                              {-The locs will be empty at this point, so just update scope set and recurse-}
