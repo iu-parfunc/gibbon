@@ -1065,7 +1065,7 @@ generateBind type_syns toplevel env decl exp2 =
       w <- case pat of
              PVar _ v    -> pure $ toVar (nameToStr v)
              PWildCard _ -> gensym "wildcard_"
-             _           -> error "generateBind: "
+             _           -> error $ "generateBind: " ++ show pat
       ty' <- case M.lookup w env of
                Nothing -> newMetaTy
                Just (ForAll _ ty) -> pure ty
