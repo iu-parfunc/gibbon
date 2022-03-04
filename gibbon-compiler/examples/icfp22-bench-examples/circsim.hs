@@ -326,9 +326,9 @@ regs bits = (size, is, os, states)
 
 reg :: Pid -> Pid -> List (State a)
 reg sto n =
-  let reg0, reg1, reg2, reg3, reg4, reg5, reg6, reg7 :: List (State a)
-      in1, in2, in3, in4, in5, in6, in7 :: List (Inport a)
-      out1, out2, out3, out4, out5, out6, out7 :: List (Outport a)
+  let reg0, reg1, reg2, reg3, reg4, reg5, reg6, reg7 :: List (State Boolean)
+      in1, in2, in3, in4, in5, in6, in7 :: List (InPort Boolean)
+      out1, out2, out3, out4, out5, out6, out7 :: List (OutPort Boolean)
       reg0 = alloc_ll
       in1  = alloc_ll
       out1 = cons_ll (0, F, False, 0, True, 4) alloc_ll
