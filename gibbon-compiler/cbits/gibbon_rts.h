@@ -348,17 +348,63 @@ typedef struct gib_shadowstack_frame {
     uint32_t datatype;
 } GibShadowstackFrame;
 
-// Type snonyms for convenience.
+// Remembered set is identical to the shadow-stack.
 typedef GibShadowstackFrame GibRememberedSetElt;
 typedef GibShadowstack GibRememberedSet;
 
-// Abstract definitions are sufficient.
-typedef struct gib_nursery GibNursery;
-typedef struct gib_generation GibGeneration;
+typedef struct gib_nursery {
+    // Step.
+    uint64_t num_collections;
+
+    // Allocation area.
+    size_t heap_size;
+    char *heap_start;
+    char *heap_end;
+    char *alloc;
+
+    // A place to store starting addresses of chunks.
+    char *chunk_starts;
+    uint64_t num_chunk_starts;
+
+} GibNursery;
+
+typedef struct gib_generation {
+    // Generation number.
+    uint8_t no;
+
+    // Destination generation for live objects.
+    struct gib_generation *dest;
+
+    // Is this the oldest generation?
+    bool oldest;
+
+    // Amount of memory allocated in this generation.
+    size_t mem_allocated;
+
+    // Allocation area; uninitialized in the oldest gen which uses malloc.
+    size_t heap_size;
+    char *heap_start;
+    char *heap_end;
+    char *alloc;
+
+    // Remembered set to store old to young pointers.
+    GibRememberedSet *rem_set;
+
+    // Zero count tables; pointers to structures that are initialized and
+    // tracked on the Rust Heap.
+    void *old_zct;
+    void *new_zct;
+
+} GibGeneration;
+
+// Abstract definition is sufficient.
 typedef struct gib_region_info GibRegionInfo;
 
 // Array of nurseries, indexed by thread_id.
 extern GibNursery *gib_global_nurseries;
+
+// Array of all generations.
+extern GibGeneration *gib_global_generations;
 
 // Shadow stacks for readable and writeable locations respectively,
 // indexed by thread_id.
@@ -370,6 +416,10 @@ extern GibShadowstack *gib_global_write_shadowstacks;
 
 // Convenience macros since we don't really need the arrays of nurseries and
 // shadowstacks since mutators are still sequential.
+
+// #define DEFAULT_NURSERY gib_global_nurseries
+#define DEFAULT_NURSERY (&(gib_global_nurseries[0]))
+#define DEFAULT_GENERATION (&(gib_global_generations[0]))
 #define DEFAULT_READ_SHADOWSTACK (&(gib_global_read_shadowstacks[0]))
 #define DEFAULT_WRITE_SHADOWSTACK (&(gib_global_write_shadowstacks[0]))
 
@@ -390,6 +440,7 @@ void gib_check_rust_struct_sizes(void);
 // Region allocation.
 GibChunk gib_alloc_region(size_t size);
 void gib_grow_region(char **writeloc_addr, char **footer_addr);
+GibChunk gib_alloc_region_on_heap(size_t size);
 
 // Functions related to counting the number of allocated regions.
 GibChunk gib_alloc_counted_region(size_t size);
@@ -562,6 +613,14 @@ int gib_gc_cleanup(
     GibShadowstack *wstack,
     GibNursery *nursery,
     GibGeneration *generations
+);
+char *gib_run_evacuate(
+    GibNursery *nursery_ptr,
+    GibGeneration *generations_ptr,
+    uint32_t datatype,
+    char *src,
+    char *dst,
+    char *dst_end
 );
 void gib_get_rust_struct_sizes(
     size_t *stack,

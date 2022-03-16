@@ -638,6 +638,52 @@ unsafe fn evacuate_shadowstack(
     Ok(())
 }
 
+/// Used to benchmark evacuation.
+pub fn run_evacuate(
+    nursery_ptr: *mut C_GibNursery,
+    generations_ptr: *mut C_GibGeneration,
+    datatype: C_GibDatatype,
+    src: *mut i8,
+    dst: *mut i8,
+    dst_end: *mut i8,
+) -> (*mut i8, *mut i8, *mut i8, C_GibPackedTag) {
+    let mut benv = HashMap::new();
+    let mut cenv = HashMap::new();
+    let chunk_starts = HashSet::new();
+    let mut zct = HashSet::new();
+    let nursery = Nursery(nursery_ptr);
+    let mut oldest_gen = OldestGeneration(generations_ptr);
+    let prov = GcRootProv::Stk;
+    let mut st = EvacState {
+        benv: &mut benv,
+        cenv: &mut cenv,
+        chunk_starts: &chunk_starts,
+        zct: &mut zct,
+        nursery: &nursery,
+        prov: &prov,
+    };
+    unsafe {
+        match INFO_TABLE.get().unwrap().get(&datatype) {
+            None => {
+                panic!("evacuate: Unknown datatype, {:?}", datatype);
+            }
+            Some(DatatypeInfo::Scalar(size)) => {
+                copy_nonoverlapping(src, dst, *size);
+                (src.add(*size), dst.add(*size), dst_end, C_SCALAR_TAG)
+            }
+            Some(DatatypeInfo::Packed(packed_info)) => evacuate_packed(
+                &mut st,
+                &mut oldest_gen,
+                packed_info,
+                src,
+                dst,
+                dst_end,
+                true,
+            ),
+        }
+    }
+}
+
 /**
 
 Evacuate a packed value by referring to the info table.

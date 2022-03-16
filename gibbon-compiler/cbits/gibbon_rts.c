@@ -898,50 +898,6 @@ typedef struct gib_chunk_footer {
     struct gib_chunk_footer *next;
 } GibChunkFooter;
 
-typedef struct gib_nursery {
-    // Step.
-    uint64_t num_collections;
-
-    // Allocation area.
-    size_t heap_size;
-    char *heap_start;
-    char *heap_end;
-    char *alloc;
-
-    // A place to store starting addresses of chunks.
-    char *chunk_starts;
-    uint64_t num_chunk_starts;
-
-} GibNursery;
-
-typedef struct gib_generation {
-    // Generation number.
-    uint8_t no;
-
-    // Destination generation for live objects.
-    struct gib_generation *dest;
-
-    // Is this the oldest generation?
-    bool oldest;
-
-    // Amount of memory allocated in this generation.
-    size_t mem_allocated;
-
-    // Allocation area; uninitialized in the oldest gen which uses malloc.
-    size_t heap_size;
-    char *heap_start;
-    char *heap_end;
-    char *alloc;
-
-    // Remembered set to store old to young pointers.
-    GibRememberedSet *rem_set;
-
-    // Zero count tables; pointers to structures that are initialized and
-    // tracked on the Rust Heap.
-    void *old_zct;
-    void *new_zct;
-
-} GibGeneration;
 
 // Array of nurseries, indexed by thread_id.
 GibNursery *gib_global_nurseries = (GibNursery *) NULL;
@@ -959,14 +915,6 @@ GibGeneration *gib_global_oldest_gen = (GibGeneration *) NULL;
 // parallel mutators.. These arrays are abstract enough for now.
 GibShadowstack *gib_global_read_shadowstacks = (GibShadowstack *) NULL;
 GibShadowstack *gib_global_write_shadowstacks = (GibShadowstack *) NULL;
-
-// Convenience macros since we don't really need the arrays of nurseries and
-// shadowstacks since mutators are still sequential.
-// #define DEFAULT_NURSERY gib_global_nurseries
-#define DEFAULT_NURSERY gib_global_nurseries
-#define DEFAULT_GENERATION gib_global_oldest_gen
-#define DEFAULT_READ_SHADOWSTACK (&(gib_global_read_shadowstacks[0]))
-#define DEFAULT_WRITE_SHADOWSTACK (&(gib_global_write_shadowstacks[0]))
 
 
 /*
@@ -1008,7 +956,6 @@ void gib_check_rust_struct_sizes(void)
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 
-static GibChunk gib_alloc_region_on_heap(size_t size);
 STATIC_INLINE GibChunk gib_alloc_region_in_nursery(size_t size);
 STATIC_INLINE GibChunk gib_alloc_region_in_nursery_fast(size_t size, bool collected);
 static GibChunk gib_alloc_region_in_nursery_slow(size_t size, bool collected);
@@ -1023,7 +970,7 @@ GibChunk gib_alloc_region(size_t size)
     }
 }
 
-static GibChunk gib_alloc_region_on_heap(size_t size)
+GibChunk gib_alloc_region_on_heap(size_t size)
 {
     char *heap_start = gib_alloc(size);
     if (heap_start == NULL) {

@@ -292,6 +292,26 @@ pub extern "C" fn gib_gc_cleanup(
 }
 
 #[no_mangle]
+pub extern "C" fn gib_run_evacuate(
+    nursery_ptr: *mut C_GibNursery,
+    generations_ptr: *mut C_GibGeneration,
+    datatype: C_GibDatatype,
+    src: *mut i8,
+    dst: *mut i8,
+    dst_end: *mut i8,
+) -> *mut i8 {
+    let (_, dst, _, _) = gc::run_evacuate(
+        nursery_ptr,
+        generations_ptr,
+        datatype,
+        src,
+        dst,
+        dst_end,
+    );
+    dst
+}
+
+#[no_mangle]
 pub extern "C" fn gib_get_rust_struct_sizes(
     stack: *mut usize,
     frame: *mut usize,

@@ -34,13 +34,6 @@
 #include <cilk/cilk_api.h>
 #endif
 
-// Convenience macros since we don't really need the arrays of nurseries and
-// shadowstacks since mutators are still sequential.
-// #define DEFAULT_NURSERY gib_global_nurseries
-#define DEFAULT_NURSERY (&(gib_global_nurseries[0]))
-#define DEFAULT_READ_SHADOWSTACK (&(gib_global_read_shadowstacks[0]))
-#define DEFAULT_WRITE_SHADOWSTACK (&(gib_global_write_shadowstacks[0]))
-
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  * Program starts here
@@ -971,6 +964,61 @@ GibCursorGibCursorGibCursorProd buildtree(GibCursor end_r_652,
                                                   pvrtmp_1442};
     }
 }
+GibCursorGibCursorGibCursorProd buildtree_noss(GibCursor end_r_527,
+                                          GibCursor loc_526,
+                                          GibInt n_36_176_269)
+{
+    GibShadowstack *rstack = DEFAULT_READ_SHADOWSTACK;
+    GibShadowstack *wstack = DEFAULT_WRITE_SHADOWSTACK;
+    GibShadowstackFrame *frame;
+
+    if (loc_526 + 41 > end_r_527) {
+        gib_grow_region(&loc_526, &end_r_527);
+    }
+
+    GibBool fltIf_250_270 = n_36_176_269 == 0;
+
+    if (fltIf_250_270) {
+        *(GibPackedTag *) loc_526 = 0;
+
+        GibCursor writetag_966 = loc_526 + 1;
+        GibCursor after_tag_967 = loc_526 + 1;
+
+        *(GibInt *) after_tag_967 = 1;
+
+        GibCursor writecur_971 = after_tag_967 + sizeof(GibInt);
+
+        return (GibCursorGibCursorGibCursorProd) {end_r_527, loc_526,
+                                                  writecur_971};
+    } else {
+        GibInt fltAppE_252_271 = n_36_176_269 - 1;
+        GibCursor loc_590 = loc_526 + 1;
+
+        *(GibPackedTag *) loc_526 = 1;
+
+        GibCursor writetag_976 = loc_526 + 1;
+
+        GibCursorGibCursorGibCursorProd tmp_struct_15 =
+                                         buildtree_noss(end_r_527, loc_590, fltAppE_252_271);
+        GibCursor pvrtmp_1541 = tmp_struct_15.field0;
+        GibCursor pvrtmp_1542 = tmp_struct_15.field1;
+        GibCursor pvrtmp_1543 = tmp_struct_15.field2;
+
+
+        GibInt fltAppE_254_273 = n_36_176_269 - 1;
+
+        GibCursorGibCursorGibCursorProd tmp_struct_16 =
+                                         buildtree_noss(pvrtmp_1541, pvrtmp_1543, fltAppE_254_273);
+        GibCursor pvrtmp_1548 = tmp_struct_16.field0;
+        GibCursor pvrtmp_1549 = tmp_struct_16.field1;
+        GibCursor pvrtmp_1550 = tmp_struct_16.field2;
+
+        GibCursor after_tag_977 = loc_526 + 1;
+
+        return (GibCursorGibCursorGibCursorProd) {pvrtmp_1548, loc_526,
+                                                  pvrtmp_1550};
+    }
+}
 GibCursorGibCursorGibCursorGibCursorProd _copy_Tree(GibCursor end_r_624,
                                                     GibCursor end_r_625,
                                                     GibCursor loc_623,
@@ -1649,19 +1697,138 @@ void test_gc_save_state(void)
     gib_gc_free_state(snapshot);
 }
 
+static void escape(void *p)
+{
+    asm volatile("" : : "g"(p) : "memory");
+}
+
+/*
+
+static void clobber(void)
+{
+    asm volatile("" : : : "memory");
+}
+
+*/
+
+/*
+ *  tree depth | evac/copy
+ * ------------|-------------
+ *  15         | 1.46
+ *  16         | 1.21
+ *  17         | 1.13
+ *  18         | 0.46
+ *  19         | 0.28
+ *  20         | 0.15
+ *  21         | 0.059
+ *  22         | 0.035
+ *
+ */
+void bench_evac_packed(void)
+{
+    GibChunk region1 = gib_alloc_region(2 * GB);
+    GibCursor start1 = region1.start;
+    GibCursor end1 = region1.end;
+
+    GibCursorGibCursorGibCursorProd in_tmp_struct = buildtree_noss(end1, start1, gib_get_size_param());
+    GibCursor tr_reg_end = in_tmp_struct.field0;
+    GibCursor tr_start = in_tmp_struct.field1;
+    GibCursor tr_end = in_tmp_struct.field2;
+
+    GibChunk region2 = gib_alloc_region(65500);
+    GibCursor start2 = region2.start;
+    GibCursor end2 = region2.end;
+
+    GibVector *timings = gib_vector_alloc(gib_get_iters_param(), sizeof(double));
+    double itertime;
+    struct timespec begin;
+    struct timespec end;
+
+    GibCursorGibCursorGibCursorGibCursorProd out_tmp_struct;
+
+    printf("_copy_Tree:\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
+    for (int i = 0; i < gib_get_iters_param(); i++) {
+        clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
+        out_tmp_struct = _copy_Tree(tr_reg_end, end2, start2, tr_start);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        escape(&out_tmp_struct);
+        itertime = gib_difftimespecs(&begin, &end);
+        printf("itertime: %lf\n", itertime);
+        gib_vector_inplace_update(timings, i, &itertime);
+    }
+    gib_vector_inplace_sort(timings, gib_compare_doubles);
+    double *tmp_34 = (double *) gib_vector_nth(timings, gib_get_iters_param() / 2);
+    double selftimed1 = *tmp_34;
+    double batchtime = gib_sum_timing_array(timings);
+    gib_print_timing_array(timings);
+    printf("ITERS: %ld\n", gib_get_iters_param());
+    printf("SIZE: %ld\n", gib_get_size_param());
+    printf("BATCHTIME: %e\n", batchtime);
+    printf("SELFTIMED: %e\n", selftimed1);
+
+    GibCursorGibIntProd tmp_struct_5 =  sumtree(out_tmp_struct.field0, out_tmp_struct.field2);
+    printf("sum copied tree: %ld\n\n", tmp_struct_5.field1);
+
+    GibChunk region3 = gib_alloc_region_on_heap(65500);
+    GibCursor start3 = region3.start;
+    GibCursor end3 = region3.end;
+
+    printf("evacd:\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
+    GibCursor evacd = NULL;
+    for (int i = 0; i < gib_get_iters_param(); i++) {
+        _copy_Tree(tr_reg_end, end2, start2, tr_start);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
+        evacd = gib_run_evacuate(
+                    DEFAULT_NURSERY,
+                    DEFAULT_GENERATION,
+                    Tree_T,
+                    start2,
+                    start3,
+                    end3);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        escape(&evacd);
+        itertime = gib_difftimespecs(&begin, &end);
+        printf("itertime: %lf\n", itertime);
+        gib_vector_inplace_update(timings, i, &itertime);
+    }
+    gib_vector_inplace_sort(timings, gib_compare_doubles);
+    tmp_34 = (double *) gib_vector_nth(timings, gib_get_iters_param() / 2);
+    double selftimed2 = *tmp_34;
+    batchtime = gib_sum_timing_array(timings);
+    gib_print_timing_array(timings);
+    printf("ITERS: %ld\n", gib_get_iters_param());
+    printf("SIZE: %ld\n", gib_get_size_param());
+    printf("BATCHTIME: %e\n", batchtime);
+    printf("SELFTIMED: %e\n", selftimed2);
+
+    tmp_struct_5 =  sumtree(NULL, start3);
+    printf("sum evacd tree: %ld\n", tmp_struct_5.field1);
+
+
+    printf("\n\nevac/copy=%lf", selftimed2/selftimed1);
+}
+
+
 int gib_main_expr(void)
 {
     info_table_initialize();
     symbol_table_initialize();
 
-    GibInt fltPrd_235_251 =  do_reverse(gib_get_size_param());
-    printf("reverse: %" PRIu64 "\n", fltPrd_235_251);
-    // GibInt fltPrd_236_252 =  do_tree(gib_get_size_param());
-    // printf("sum tree: %" PRIu64 "\n", fltPrd_236_252);
+    char *bench_prog = gib_read_bench_prog_param();
+    if (strcmp("reverse", bench_prog) == 0) {
+        GibInt fltPrd_235_251 =  do_reverse(gib_get_size_param());
+        printf("reverse: %" PRIu64 "\n", fltPrd_235_251);
+    } else if (strcmp("add1", bench_prog) == 0) {
+        GibInt fltPrd_236_252 =  do_tree(gib_get_size_param());
+        printf("sum tree: %" PRIu64 "\n", fltPrd_236_252);
+    } else if (strcmp("evac_packed", bench_prog) == 0) {
+        bench_evac_packed();
+    } else if (strcmp("ptr_tagging", bench_prog) == 0) {
+        test_ptr_tagging();
+    } else {
+        fprintf(stderr, "select benchmark to run with --bench-prog\n");
+        exit(1);
+    }
 
-    // test_ptr_tagging();
-    // test_gc_save_state();
-
-
-    return 0;
+   return 0;
 }
