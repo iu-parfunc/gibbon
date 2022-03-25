@@ -300,7 +300,7 @@ pub extern "C" fn gib_run_evacuate(
     dst: *mut i8,
     dst_end: *mut i8,
 ) -> *mut i8 {
-    let (_, dst, _, _) = gc::run_evacuate(
+    let (_, dst1, _, _) = gc::run_evacuate(
         nursery_ptr,
         generations_ptr,
         datatype,
@@ -308,7 +308,8 @@ pub extern "C" fn gib_run_evacuate(
         dst,
         dst_end,
     );
-    dst
+    // let dst1 = gc::run_copy_tree(generations_ptr, src, dst, dst_end);
+    dst1
 }
 
 #[no_mangle]

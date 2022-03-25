@@ -638,52 +638,6 @@ unsafe fn evacuate_shadowstack(
     Ok(())
 }
 
-/// Used to benchmark evacuation.
-pub fn run_evacuate(
-    nursery_ptr: *mut C_GibNursery,
-    generations_ptr: *mut C_GibGeneration,
-    datatype: C_GibDatatype,
-    src: *mut i8,
-    dst: *mut i8,
-    dst_end: *mut i8,
-) -> (*mut i8, *mut i8, *mut i8, C_GibPackedTag) {
-    let mut benv = HashMap::new();
-    let mut cenv = HashMap::new();
-    let chunk_starts = HashSet::new();
-    let mut zct = HashSet::new();
-    let nursery = Nursery(nursery_ptr);
-    let mut oldest_gen = OldestGeneration(generations_ptr);
-    let prov = GcRootProv::Stk;
-    let mut st = EvacState {
-        benv: &mut benv,
-        cenv: &mut cenv,
-        chunk_starts: &chunk_starts,
-        zct: &mut zct,
-        nursery: &nursery,
-        prov: &prov,
-    };
-    unsafe {
-        match INFO_TABLE.get().unwrap().get(&datatype) {
-            None => {
-                panic!("evacuate: Unknown datatype, {:?}", datatype);
-            }
-            Some(DatatypeInfo::Scalar(size)) => {
-                copy_nonoverlapping(src, dst, *size);
-                (src.add(*size), dst.add(*size), dst_end, C_SCALAR_TAG)
-            }
-            Some(DatatypeInfo::Packed(packed_info)) => evacuate_packed(
-                &mut st,
-                &mut oldest_gen,
-                packed_info,
-                src,
-                dst,
-                dst_end,
-                true,
-            ),
-        }
-    }
-}
-
 /**
 
 Evacuate a packed value by referring to the info table.
@@ -1818,3 +1772,112 @@ impl std::fmt::Display for RtsError {
 }
 
 pub type Result<T> = std::result::Result<T, RtsError>;
+
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ * Measure time required to evacuate
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ */
+
+/// Used to benchmark evacuation.
+pub fn run_evacuate(
+    nursery_ptr: *mut C_GibNursery,
+    generations_ptr: *mut C_GibGeneration,
+    datatype: C_GibDatatype,
+    src: *mut i8,
+    dst: *mut i8,
+    dst_end: *mut i8,
+) -> (*mut i8, *mut i8, *mut i8, C_GibPackedTag) {
+    let mut benv = HashMap::new();
+    let mut cenv = HashMap::new();
+    let chunk_starts = HashSet::new();
+    let mut zct = HashSet::new();
+    let nursery = Nursery(nursery_ptr);
+    let mut oldest_gen = OldestGeneration(generations_ptr);
+    let prov = GcRootProv::Stk;
+    let mut st = EvacState {
+        benv: &mut benv,
+        cenv: &mut cenv,
+        chunk_starts: &chunk_starts,
+        zct: &mut zct,
+        nursery: &nursery,
+        prov: &prov,
+    };
+    unsafe {
+        match INFO_TABLE.get().unwrap().get(&datatype) {
+            None => {
+                panic!("evacuate: Unknown datatype, {:?}", datatype);
+            }
+            Some(DatatypeInfo::Scalar(size)) => {
+                copy_nonoverlapping(src, dst, *size);
+                (src.add(*size), dst.add(*size), dst_end, C_SCALAR_TAG)
+            }
+            Some(DatatypeInfo::Packed(packed_info)) => evacuate_packed(
+                &mut st,
+                &mut oldest_gen,
+                packed_info,
+                src,
+                dst,
+                dst_end,
+                true,
+            ),
+        }
+    }
+}
+
+pub fn run_copy_tree(
+    generations_ptr: *mut C_GibGeneration,
+    src: *mut i8,
+    dst: *mut i8,
+    dst_end: *mut i8,
+) -> *mut i8 {
+    let mut oldest_gen = OldestGeneration(generations_ptr);
+    unsafe {
+        copy_tree(&mut oldest_gen, dst, dst_end, src);
+    }
+    dst
+}
+
+unsafe fn copy_tree(
+    heap: &mut impl Heap,
+    dst0: *mut i8,
+    dst_end0: *mut i8,
+    src: *mut i8,
+) -> (*mut i8, *mut i8, *mut i8) {
+    let (dst, dst_end) = Heap::check_bounds(heap, 32, dst0, dst_end0);
+    let (tag, src_after_tag): (C_GibPackedTag, *mut i8) = read_mut(src);
+    match tag {
+        0 => {
+            let (num, src_after_num): (C_GibInt, *mut i8) =
+                read_mut(src_after_tag);
+            let dst_after_tag = write(dst, tag);
+            let dst_after_num = write(dst_after_tag, num);
+            (dst_end, dst_after_num, src_after_num as *mut i8)
+        }
+        1 => {
+            let dst_after_tag = write(dst, tag);
+            let (dst_end1, dst_after1, src_after1) =
+                copy_tree(heap, dst_after_tag, dst_end, src_after_tag);
+            let (dst_end2, dst_after2, src_after2) =
+                copy_tree(heap, dst_after1, dst_end1, src_after1);
+            (dst_end2, dst_after2, src_after2)
+        }
+        C_REDIRECTION_TAG => {
+            let (tagged_next_chunk, src_after_next_chunk): (u64, _) =
+                read(src_after_tag);
+            let tagged = TaggedPointer::from_u64(tagged_next_chunk);
+            let next_chunk = tagged.untag();
+            copy_tree(heap, dst, dst_end, next_chunk)
+        }
+        C_INDIRECTION_TAG => {
+            let (tagged_pointee, src_after_pointee): (u64, _) =
+                read(src_after_tag);
+            let tagged = TaggedPointer::from_u64(tagged_pointee);
+            let pointee = tagged.untag();
+            let (a, b, _c) = copy_tree(heap, dst, dst_end, pointee);
+            (a, b, src_after_pointee as *mut i8)
+        }
+        _ => {
+            panic!("unknown tag {}", tag);
+        }
+    }
+}
