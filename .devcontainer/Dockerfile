@@ -15,4 +15,3 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 RUN curl -sSL https://get.haskellstack.org/ | sh
 RUN echo "export PATH=/opt/ghc/bin:\$PATH" >> /home/vscode/.bashrc 
 RUN sudo ln -sf /usr/bin/gcc-7 /usr/bin/gcc
-RUN cabal update

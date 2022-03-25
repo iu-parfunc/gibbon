@@ -1,19 +1,58 @@
 -- https://github.com/ghc/nofib/blob/f34b90b5a6ce46284693119a06d1133908b11856/gc/circsim/Main.lhs
-import           Gibbon.List
-
 data BinTree a b = Cell a | Node b (BinTree a b) (BinTree a b)
 data Maybe a = Just a | Nothing | Error
+data List a = Nil | Cons a List
+
+
+length :: List a -> Int
+length a = case a of
+  Nil       -> 0
+  Cons x xs -> 1 + length xs
+
+head :: List a -> a
+head a = case a of
+  Nil       -> error
+  Cons x xs -> x
+
+(++) :: List a -> List a -> List a
+(++) a b = case a of
+  Nil       -> b
+  Cons x xs -> Cons x ((++) xs b)
+
+splitAt :: Int -> List a -> (List a, List a)
+splitAt n a = if n == 0
+  then (Nil, a)
+  else case a of
+    Nil       -> error
+    Cons x xs -> let (c, d) = splitAt (n - 1) xs in (Cons x c, d)
+
+map :: (a -> b) -> List a -> List b
+map f a = case a of
+  Nil       -> Nil
+  Cons x xs -> Cons (f x) (map f xs)
+
+concat :: List (List a) -> List a
+concat as = case as of
+  Nil       -> Nil
+  Cons x xs -> let y = concat xs in x ++ y
+
+zipWith :: List a -> List b -> (a, b)
+zipWith as bs = case as of
+  Nil       -> Nil
+  Cons x xs -> case bs of
+    Nil       -> Nil
+    Cons y ys -> Cons (x, y) (zipWith xs ys)
 
 put :: List a -> BinTree a ()
-put xs = if length_ll xs == 1
-  then Cell (head_ll xs)
+put xs = if length xs == 1
+  then Cell (head xs)
   else
-    let (fstHalf, sndHalf) = splitAt_ll (div (length_ll xs) 2) xs
+    let (fstHalf, sndHalf) = splitAt (div (length xs) 2) xs
     in  Node () (put fstHalf) (put sndHalf)
 
 get :: BinTree a b -> List a
 get tree = case tree of
-  Cell x     -> cons_ll x aloc_ll
+  Cell x     -> Cons x Nil
   Node x l r -> get l ++ get r
 
 upsweep :: (a -> a -> a) -> BinTree a b -> (a, BinTree a (a, a))
@@ -56,12 +95,7 @@ scanR f u xs = (up_ans, get t')
   down l r x = (f r x, x)
 
 scanlr
-  :: (a -> a -> a)
-  -> (a -> a -> a)
-  -> a
-  -> a
-  -> List a
-  -> ((a, a), List (a, a))
+  :: (a -> a -> a) -> (a -> a -> a) -> a -> a -> List a -> ((a, a), List (a, a))
 scanlr f g lu ru xs = (ans, get t)
  where
   ((l_ans, r_ans), t) = sweep_ud up down (lu, ru) (put xs')
@@ -115,7 +149,7 @@ pad_circuit (size, ins, outs, states) =
   where p2 = nearest_power_of_two size
 
 emptyState :: State a
-emptyState = PS (-1) None (-1) aloc_ll aloc_ll
+emptyState = PS (-1) None (-1) Nil Nil
 
 data Boolean = F | T
 inv s = case s of
@@ -142,8 +176,7 @@ send_left (ia, sa, ma, qla, dla, qra, dra, ea) (ib, sb, mb, qlb, dlb, qrb, drb, 
     then (ib, sb, mb, qlb, dlb - ea, qrb, drb, ea + eb)
     else (ia, sa, ma, qla, dla, qra, dra, ea + eb)
 
-send
-  :: List (Packet a) -> ((Packet a, Packet a), List (Packet a, Packet a))
+send :: List (Packet a) -> ((Packet a, Packet a), List (Packet a, Packet a))
 send xs = scanlr send_right send_left emptyPacket emptyPacket xs
 
 circuit_simulate :: List (List a) -> Circuit a -> List (List a)
@@ -154,8 +187,8 @@ collect_outputs :: Circuit a -> List a
 collect_outputs (size, ins, outs, states) = map get_output outs
  where
   temp0 = filter (\s -> pid s == p) state
-  temp1 = map (\s -> head_ll (inports s)) temp0
-  get_output (label, p) = third (head_ll temp1)
+  temp1 = map (\s -> head (inports s)) temp0
+  get_output (label, p) = third (head temp1)
   third (_, _, v) = v
 
 simulate :: List (List a) -> Circuit a -> List (Circuit a)
@@ -236,7 +269,7 @@ pad_packets :: List (List (Packet a)) -> List (List (Packet a))
 pad_packets pss = map pad pss
  where
   pad xs = take max_ps (xs ++ repeat emptyPacket)
-  max_ps = maximum (map length_ll pss)
+  max_ps = maximum (map length pss)
 
 check_depth :: Int -> State a -> State a
 check_depth d state =
@@ -274,7 +307,7 @@ apply_component comp inp = case comp of
 
 store_inputs :: List (Label, a) -> State a -> State a
 store_inputs label_inputs state = if compType state == Inp
-  then head_ll
+  then head
     (map
       (\((label, input_pid), value) -> update_outports state value)
       (filter (\((label, input_pid), value) -> pid state == input_pid)
@@ -313,44 +346,42 @@ regs :: Int -> Circuit a
 regs bits = (size, is, os, states)
  where
   size = 1 + 7 * bits
-  is   = ("sto", 0) : zipWith ilabel [0 ..] [ 7 * x + 1 | x <- [0 .. bits - 1] ]
+  is =
+    Cons ("sto", 0) (zipWith ilabel [0 ..] [ 7 * x + 1 | x <- [0 .. bits - 1] ])
   ilabel n pid = ("x" ++ show n, pid)
   os = zipWith olabel [0 ..] [ 7 * x + 7 | x <- [0 .. bits - 1] ]
   olabel n pid = ("y" ++ show n, pid)
-  states = sto : concat (map (reg 0) [ 7 * x + 1 | x <- [0 .. bits - 1] ])
-  sto    = PS 0
-              Inp
-              0
-              alloc_ll
-              (cons_ll (0, F, False, 0, True, 8 * (bits - 1) + 5) alloc_ll)
+  states =
+    Const sto (concat (map (reg 0) [ 7 * x + 1 | x <- [0 .. bits - 1] ]))
+  sto = PS 0 Inp 0 Nil (Cons (0, F, False, 0, True, 8 * (bits - 1) + 5) Nil)
 
 reg :: Pid -> Pid -> List (State a)
 reg sto n =
   let reg0, reg1, reg2, reg3, reg4, reg5, reg6, reg7 :: List (State Boolean)
       in1, in2, in3, in4, in5, in6, in7 :: List (InPort Boolean)
       out1, out2, out3, out4, out5, out6, out7 :: List (OutPort Boolean)
-      reg0 = alloc_ll
-      in1  = alloc_ll
-      out1 = cons_ll (0, F, False, 0, True, 4) alloc_ll
-      reg1 = cons_ll (PS n Inp 0 in1 out1) reg0
-      in2  = cons_ll (n + 5, 0, F) alloc_ll
-      out2 = cons_ll (0, F, False, 0, True, 5) alloc_ll
-      reg2 = cons_ll (PS (n + 1) Dff 1 in2 out2) reg1
-      in3  = cons_ll (sto, 0, F) alloc_ll
-      out3 = cons_ll (0, F, False, 0, True, 1) alloc_ll
-      reg3 = cons_ll (PS (n + 2) Inv 1 in3 out3) reg2
-      in4  = cons_ll (n + 1, 0, F) (cons_ll (n + 2, 0, F) alloc_ll)
-      out4 = cons_ll (0, F, False, 0, True, 2) alloc_ll
-      reg4 = cons_ll (PS (n + 3) And2 in4 out4) reg3
-      in5  = cons_ll (sto, 0, F) (cons_ll (n, 0, F) alloc_ll)
-      out5 = cons_ll (0, F, False, 0, True, 1) alloc_ll
-      reg5 = cons_ll (PS (n + 4) And 2 1 out5 reg5) reg4
-      in6  = cons_ll (n + 3, 0, F) (cons_ll (n + 4, 0, F) alloc_ll)
-      out6 = cons_ll (0, F, True, 4, False, 0) alloc_ll
-      reg6 = cons_ll (PS (n + 5) Or2 3 in6 out6) reg5
-      in7  = cons_ll (n + 1, 0, F) alloc_ll
-      out7 = alloc_ll
-      reg7 = cons_ll (PS (n + 6) Outp 4 in7 out7) reg6
+      reg0 = Nil
+      in1  = Nil
+      out1 = Cons (0, F, False, 0, True, 4) Nil
+      reg1 = Cons (PS n Inp 0 in1 out1) reg0
+      in2  = Cons (n + 5, 0, F) Nil
+      out2 = Cons (0, F, False, 0, True, 5) Nil
+      reg2 = Cons (PS (n + 1) Dff 1 in2 out2) reg1
+      in3  = Cons (sto, 0, F) Nil
+      out3 = Cons (0, F, False, 0, True, 1) Nil
+      reg3 = Cons (PS (n + 2) Inv 1 in3 out3) reg2
+      in4  = Cons (n + 1, 0, F) (Cons (n + 2, 0, F) Nil)
+      out4 = Cons (0, F, False, 0, True, 2) Nil
+      reg4 = Cons (PS (n + 3) And2 in4 out4) reg3
+      in5  = Cons (sto, 0, F) (Cons (n, 0, F) Nil)
+      out5 = Cons (0, F, False, 0, True, 1) Nil
+      reg5 = Cons (PS (n + 4) And 2 1 out5 reg5) reg4
+      in6  = Cons (n + 3, 0, F) (Cons (n + 4, 0, F) Nil)
+      out6 = Cons (0, F, True, 4, False, 0) Nil
+      reg6 = Cons (PS (n + 5) Or2 3 in6 out6) reg5
+      in7  = Cons (n + 1, 0, F) Nil
+      out7 = Nil
+      reg7 = Cons (PS (n + 6) Outp 4 in7 out7) reg6
   in  reg7
 
 run num_bits num_cycles =
