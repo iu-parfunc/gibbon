@@ -699,7 +699,7 @@ unsafe fn evacuate_packed(
             let fwd_ptr = tagged.untag();
             let space_reqd = 32;
             let (dst1, dst_end1) =
-                Heap::check_bounds(heap, space_reqd, dst, dst_end);
+                Heap::check_bounds(heap, space_reqd, dst, dst_end).unwrap();
             let dst_after_tag = write(dst1, C_INDIRECTION_TAG);
             let dst_after_indr = write(dst_after_tag, tagged_fwd_ptr);
             // TODO(ckoparkar): check that no code path will try to read/write
@@ -758,7 +758,7 @@ unsafe fn evacuate_packed(
             .as_u64();
             let space_reqd = 32;
             let (dst1, dst_end1) =
-                Heap::check_bounds(heap, space_reqd, dst, dst_end);
+                Heap::check_bounds(heap, space_reqd, dst, dst_end).unwrap();
             let dst_after_tag = write(dst1, C_INDIRECTION_TAG);
             let dst_after_indr = write(dst_after_tag, tagged_want);
             // TODO(ckoparkar): check that no code path will try to read/write
@@ -913,7 +913,8 @@ unsafe fn evacuate_packed(
             } else {
                 let space_reqd = 32;
                 let (dst1, dst_end1) =
-                    Heap::check_bounds(heap, space_reqd, dst, dst_end);
+                    Heap::check_bounds(heap, space_reqd, dst, dst_end)
+                        .unwrap();
                 let dst_after_tag = write(dst1, C_INDIRECTION_TAG);
                 let dst_after_indr = write(dst_after_tag, tagged_pointee);
                 let pointee_footer_offset = tagged.get_tag();
@@ -929,26 +930,8 @@ unsafe fn evacuate_packed(
         }
         // Regular datatype, copy.
         _ => {
-            // let DataconInfo { scalar_bytes, field_tys, num_scalars, .. } =
-            //     packed_info.get(&tag).unwrap();
-
-            let datacon_info = if tag == 1 {
-                DataconInfo {
-                    scalar_bytes: 0,
-                    num_scalars: 0,
-                    num_packed: 2,
-                    field_tys: vec![8, 8],
-                }
-            } else {
-                DataconInfo {
-                    scalar_bytes: 8,
-                    num_scalars: 1,
-                    num_packed: 0,
-                    field_tys: vec![0],
-                }
-            };
             let DataconInfo { scalar_bytes, field_tys, num_scalars, .. } =
-                &datacon_info;
+                packed_info.get(&tag).unwrap();
 
             // Check bound of the destination buffer before copying.
             // Reserve additional space for a redirection node or a
@@ -960,7 +943,8 @@ unsafe fn evacuate_packed(
                 // and destination buffer respectively.
 
                 let (mut dst_mut, mut dst_end_mut) =
-                    Heap::check_bounds(heap, space_reqd, dst, dst_end);
+                    Heap::check_bounds(heap, space_reqd, dst, dst_end)
+                        .unwrap();
                 // Copy the tag and the fields.
                 dst_mut = write(dst_mut, tag);
                 dst_mut.copy_from_nonoverlapping(src_after_tag, *scalar_bytes);
@@ -989,40 +973,32 @@ unsafe fn evacuate_packed(
                 // (1) instead of recursion, use a worklist
                 // (2) handle redirection nodes properly
                 for ty in field_tys.iter().skip((*num_scalars) as usize) {
-                    let (src1, dst1, dst_end1, field_tag) = evacuate_packed(
-                        st,
-                        heap,
-                        packed_info,
-                        src_mut,
-                        dst_mut,
-                        dst_end_mut,
-                        evac_major,
-                    );
-                    // match INFO_TABLE.get().unwrap().get(ty) {
-                    //     Some(DatatypeInfo::Packed(packed_info)) => {
-                    //         evacuate_packed(
-                    //             st,
-                    //             heap,
-                    //             packed_info,
-                    //             src_mut,
-                    //             dst_mut,
-                    //             dst_end_mut,
-                    //             evac_major,
-                    //         )
-                    //     }
-                    //     Some(DatatypeInfo::Scalar(size)) => {
-                    //         copy_nonoverlapping(src_mut, dst_mut, *size);
-                    //         (
-                    //             src_mut.add(*size),
-                    //             dst_mut.add(*size),
-                    //             dst_end_mut,
-                    //             C_SCALAR_TAG,
-                    //         )
-                    //     }
-                    //     None => {
-                    //         panic!("evacuate: Unknown datatype, {:?}", ty);
-                    //     }
-                    // }
+                    let (src1, dst1, dst_end1, field_tag) =
+                        match INFO_TABLE.get().unwrap().get(ty) {
+                            Some(DatatypeInfo::Packed(packed_info)) => {
+                                evacuate_packed(
+                                    st,
+                                    heap,
+                                    packed_info,
+                                    src_mut,
+                                    dst_mut,
+                                    dst_end_mut,
+                                    evac_major,
+                                )
+                            }
+                            Some(DatatypeInfo::Scalar(size)) => {
+                                copy_nonoverlapping(src_mut, dst_mut, *size);
+                                (
+                                    src_mut.add(*size),
+                                    dst_mut.add(*size),
+                                    dst_end_mut,
+                                    C_SCALAR_TAG,
+                                )
+                            }
+                            None => {
+                                panic!("evacuate: Unknown datatype, {:?}", ty);
+                            }
+                        };
                     match field_tag {
                         // Immediately stop copying upon reaching the
                         // cauterized tag.
@@ -1256,15 +1232,14 @@ trait Heap {
         &mut self,
         dst: *mut i8,
         dst_end: *mut i8,
-    ) -> (*mut i8, *mut i8) {
+    ) -> Result<(*mut i8, *mut i8)> {
         unsafe {
             if !self.is_oldest() {
-                let (new_dst, new_dst_end) =
-                    Heap::allocate(self, CHUNK_SIZE).unwrap();
+                let (new_dst, new_dst_end) = Heap::allocate(self, CHUNK_SIZE)?;
                 // Write a redirection tag in the old chunk.
                 let dst_after_tag = write(dst, C_REDIRECTION_TAG);
                 write(dst_after_tag, new_dst);
-                (new_dst, new_dst_end)
+                Ok((new_dst, new_dst_end))
             } else {
                 // Access the old footer to get the region metadata.
                 let old_footer = dst_end as *mut C_GibChunkFooter;
@@ -1273,8 +1248,7 @@ trait Heap {
                 if chunk_size > MAX_CHUNK_SIZE {
                     chunk_size = MAX_CHUNK_SIZE;
                 }
-                let (new_dst, new_dst_end) =
-                    Heap::allocate(self, chunk_size).unwrap();
+                let (new_dst, new_dst_end) = Heap::allocate(self, chunk_size)?;
                 // Initialize a footer at the end of the new chunk.
                 let reg_info: *mut C_GibRegionInfo = (*old_footer).reg_info;
                 let new_footer_start = init_footer_at(
@@ -1294,24 +1268,22 @@ trait Heap {
                 let new_footer: *mut C_GibChunkFooter =
                     new_footer_start as *mut C_GibChunkFooter;
                 (*old_footer).next = new_footer;
-                (new_dst, new_footer_start)
+                Ok((new_dst, new_footer_start))
             }
         }
     }
 
-    #[inline(always)]
     fn check_bounds(
         &mut self,
         space_reqd: usize,
         dst: *mut i8,
         dst_end: *mut i8,
-    ) -> (*mut i8, *mut i8) {
-        // assert!(dst < dst_end);
+    ) -> Result<(*mut i8, *mut i8)> {
+        assert!(dst < dst_end);
         let space_avail = unsafe { dst_end.offset_from(dst) as usize };
         if space_avail >= space_reqd {
-            (dst, dst_end)
+            Ok((dst, dst_end))
         } else {
-            cold();
             self.allocate_next_chunk(dst, dst_end)
         }
     }
