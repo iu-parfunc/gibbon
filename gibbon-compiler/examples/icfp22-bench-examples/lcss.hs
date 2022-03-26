@@ -10,7 +10,7 @@ sndList :: MList -> MList
 sndList tupleList = case tupleList of
                          ENil          -> ENil -- return ENil if the list is ENil
                          Cons aVal rst -> case aVal of 
-                                               --Val intVal -> tupleList               -- this should error out since this function cannot be called on just a list of intVals
+                                               Val intVal -> tupleList               -- this should error out since this function cannot be called on just a list of intVals
                                                Tup a b    -> case b of 
                                                                  Val i   -> Cons (Val i) (sndList rst)
                                                                  Tup a' b' -> Cons (Tup a' b') (sndList rst)  
@@ -18,8 +18,8 @@ max_A :: A -> A -> A
 max_A a b = case a of 
                Val a' -> case b of 
                             Val b' -> if (a' >= b') then (Val a') else (Val b')
-                            --Tup l m -> b -- error out not support max on tuple case
-               --Tup l m -> a -- error out not supporting max on tuple case
+                            Tup l m -> b -- error out not support max on tuple case
+               Tup l m -> a -- error out not supporting max on tuple case
 
 
 
@@ -42,7 +42,7 @@ algb2 :: A -> A -> A -> MList -> MList
 algb2 x k0j1 k1j1 mList = case mList of 
                             ENil      -> ENil
                             Cons aVal ys -> case aVal of 
-                                               --Val intVal -> ENil                                     -- error out since this case should not happen
+                                               Val intVal -> ENil                                     -- error out since this case should not happen
                                                Tup y k0j  -> let kjcurr, addVal, maxVal, newTup :: A
                                                                  tell   :: Bool 
                                                                  tell   = comp_A x y
@@ -78,40 +78,25 @@ algb2 x k0j1 k1j1 mList = case mList of
                                                                  --_ = printsym (quote "\n")
                                                                  in Cons newTup (algb2 x k0j kjcurr ys)  --  newList
 
---  case y of 
---                                                                  Val intVal -> let kjcurr, addVal, maxVal, newTup :: A
---                                                                                    tell                           :: Bool
---                                                                                    tell = comp_A x (Val intVal)
---                                                                                    addVal = add_A k0j1 (Val 1)
---                                                                                    maxVal = max_A k1j1 k0j
---                                                                                    kjcurr = ifalgb tell addVal maxVal
---                                                                                    newTup = case kjcurr of 
---                                                                                                  Val intVal' -> Tup (Val intVal) (Val intVal')
---                                                                                                  Tup a'' b'' -> Tup a'' b''
---                                                                                    in (Cons newTup (algb2 x k0j kjcurr ys)) 
-
---                                                                  Tup a'' b'' -> ENil    
-
 
 algb1 :: MList -> MList -> MList
 algb1 list1 ys' = case list1 of 
                        ENil -> sndList ys'
                        Cons aVal xs -> case aVal of             
-                                             Val x -> let --algb2Part = (algb2 (Val x) (Val 0) (Val 0) ys')
-                                                          recurse   = algb1 xs (algb2 (Val x) (Val 0) (Val 0) ys')
+                                             Val x -> let recurse   = algb1 xs (algb2 (Val x) (Val 0) (Val 0) ys')
                                                           --_ = printsym (quote "Print the algb2Part in algb1 here!\n")
                                                           --_         = printList algb2Part
                                                           --_ = printsym (quote "\n")
-                                                          in recurse                                 --aVal is the same as the value of the integer x but wrapped around type A  
+                                                          in recurse                             
                                                               
-                                             --Tup a' b' -> ENil -- I think its safe to error out on this  
+                                             Tup a' b' -> ENil -- I think its safe to error out on this  
 
 zeroTupleList :: MList -> MList
 zeroTupleList list = case list of 
                          ENil -> ENil
                          Cons aVal rst -> case aVal of 
                                               Val y -> Cons (makeTuple aVal (Val 0)) (zeroTupleList rst) --aVal is the value of y wrapped around the type A
-                                              --Tup a b -> ENil -- technically i think i should error out on this
+                                              Tup a b -> ENil                                            --technically i think i should error out on this
 
 
 algb :: MList -> MList -> MList
@@ -226,12 +211,12 @@ findk :: A -> A -> A -> MList -> A
 findk k km m list = case list of 
                        ENil -> km                 
                        Cons aVal rst -> case aVal of 
-                                          --Val dontCare -> k        --Find out how to error out on this
+                                          Val dontCare -> k        --Find out how to error out on this
                                           Tup x y      -> case k of        {-if condition checks to see x + y >= m-} 
                                                             Val intVal -> if ((gr_A (add_A x y) m) || (comp_A (add_A x y) m)) then (findk (Val (intVal + 1)) k (add_A x y) rst) else (findk (Val (intVal + 1)) km m rst)
 
 
-                                                            --Tup a' b' -> k --find out how to error out on this
+                                                            Tup a' b' -> k --find out how to error out on this
 
 -- The division function works                                                        
 div_A :: A -> A -> A 
@@ -245,12 +230,37 @@ div_A a b = case a of
 
 
 
+ifalgc :: Bool -> MList -> MList -> MList
+ifalgc check list1 list2 = if (check) then list1 else list2
+
+
+appendCons :: A -> MList -> MList
+appendCons val tail = case val of 
+                         Val int -> Cons (Val int) tail
+                         Tup a b -> Cons (makeTuple a b) tail
+
 algc :: A -> A -> MList -> MList -> MList -> MList
 algc m n xs ys ys' = case ys of 
                           ENil       -> m_id ys'
                           Cons x rst -> case xs of 
-                                          --ENil -> ENil  --commented out this for now, as don't think would change anything
-                                          Cons x' rst' -> if (comp_MList rst' ENil) then (if  (elem x' ys) then (Cons x' ys') else m_id ys')
+                                          ENil -> ENil
+                                          Cons x' rst' -> if (comp_MList rst' ENil) then let isElem :: Bool
+                                                                                             headList, idList :: MList
+                                                                                             isElem = elem x' ys 
+                                                                                             headList = appendCons x' ys' 
+                                                                                             idList   = m_id ys'
+                                                                                             --_  = printsym  (quote "\n")
+                                                                                             --_  = printbool isElem 
+                                                                                             --_  = printsym  (quote "\n")
+                                                                                             --_  = printsym  (quote "\n")
+                                                                                             --_  = printsym  (quote "ys'")
+                                                                                             --_  = printList ys' 
+                                                                                             --_  = printsym  (quote " || Cons x ys'")
+                                                                                             --_  = printList headList
+                                                                                             --_  = printsym  (quote " || x ")
+                                                                                             --_  = printA x'
+                                                                                             --_  = printsym  (quote "\n")
+                                                                                             in (ifalgc isElem headList idList)    
                                                                                     else let m2  = div_A  m  (Val 2)                                    
                                                                                              xs1 = take m2 xs
                                                                                              xs2 = drop m2 xs
@@ -290,35 +300,35 @@ algc m n xs ys ys' = case ys of
                                                                                             --  _ = printsym (quote "List algc''!\n")
                                                                                             --  _ = printList algc''
                                                                                             --  _ = printsym (quote "\n")
-                                                                                             _  = printsym (quote "\nPrint the variables in algc function\n")
-                                                                                             _  = printsym (quote "Print m2 value:\n")
-                                                                                             _   = printA m2
-                                                                                             _   = printsym (quote "\nPrint the List xs1\n")
-                                                                                             _   = printList xs1
-                                                                                             _   = printsym (quote "\nPrint the List xs2\n")
-                                                                                             _   = printList xs2
-                                                                                             _   = printsym (quote "\nPrint the List l1\n")
-                                                                                             _   = printList l1
-                                                                                             _   = printsym (quote "\nPrint the List l2\n")
-                                                                                             _   = printList l2
-                                                                                             _   = printsym (quote "\nPrint the value k\n")
-                                                                                             _   = printA k
-                                                                                             _   = printsym (quote "\nPrint the List algc'\n")
-                                                                                             _   = printList algc'
-                                                                                             _   = printsym (quote "\nPrint the List algc''\n")
-                                                                                             _    = printList algc''
+                                                                                            -- _  = printsym (quote "\nPrint the variables in algc function\n")
+                                                                                            -- _  = printsym (quote "Print m2 value:\n")
+                                                                                            -- _   = printA m2
+                                                                                            -- _   = printsym (quote "\nPrint the List xs1\n")
+                                                                                            -- _   = printList xs1
+                                                                                            -- _   = printsym (quote "\nPrint the List xs2\n")
+                                                                                            -- _   = printList xs2
+                                                                                            -- _   = printsym (quote "\nPrint the List l1\n")
+                                                                                            -- _   = printList l1
+                                                                                            -- _   = printsym (quote "\nPrint the List l2\n")
+                                                                                            -- _   = printList l2
+                                                                                            -- _   = printsym (quote "\nPrint the value k\n")
+                                                                                            -- _   = printA k
+                                                                                            -- _   = printsym (quote "\nPrint the List algc'\n")
+                                                                                            -- _   = printList algc'
+                                                                                            -- _   = printsym (quote "\nPrint the List algc''\n")
+                                                                                            -- _    = printList algc''
                                                                                              in algc'' 
 
 
 length' :: MList -> A 
 length' list = case list of 
                    ENil          -> (Val 0) 
-                   Cons aVal rst -> add_A (Val 1) (length' rst)        --This function prints the correct length.    
+                   Cons aVal rst -> add_A (Val 1) (length' rst)   
 
 
 
 lcss :: MList -> MList -> MList
-lcss xs ys = algc (length' xs) (length' ys) xs ys ENil                  --This call looks correct
+lcss xs ys = algc (length' xs) (length' ys) xs ys ENil              
 
 
 --Make a MList from start index to an end index
@@ -349,11 +359,12 @@ printList list = case list of
                         in ()
                       Cons x rst -> 
                         let _ = printsym (quote " Cons " )
-                            _ = printA x                              -- Something is wrong with the type of list that is being formed by algb2, investigate tom...
+                            _ = printA x                             
                             _ = printsym (quote " ->" )
                             _ = printList rst
                         in ()
 
+-- Main program to run longest common subsequence
 bench_main :: ()
 bench_main = 
   let f :: Vector Int
@@ -443,8 +454,8 @@ bench_main =
       --_   = printA chelem
       --_   = printsym (quote "\n")
       l3  = lcss l1 l2
-      --_   = printsym (quote "\n")
-      _   = printsym (quote "Print Final output!!\n")
+      _   = printsym (quote "\n")
+      _   = printsym (quote "The final output produced is:\n")
       _   = printList l3
       _   = printsym (quote "\n")
 
@@ -453,6 +464,29 @@ bench_main =
 gibbon_main = bench_main
 
 
+-- Instructions to run
 
 -- Command use to run 
--- gibbon --packed --to-exe lcss.hs; ./lcss.exe --array-input-length 6 --array-input lcss.txt
+-- gibbon --packed --to-exe lcss.hs; ./lcss.exe --array-input-length 6 --array-input lcss.txt 
+-- Modify lcss.txt file for 3 cases like so: 
+
+-- 1.) Fast   Case  -> 1 
+--                     2
+--                     2000
+--                     1000
+--                     1001
+--                     2000
+
+-- 2.) Slow   Case  -> 1
+--                     2
+--                     2000
+--                     1000
+--                     1001
+--                     4000 
+
+-- 3.) Normal Case  -> 1
+--                     2 
+--                     4000
+--                     1000
+--                     1001
+--                     4000
