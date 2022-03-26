@@ -1803,15 +1803,12 @@ pub fn run_evacuate(
         prov: &prov,
     };
     unsafe {
-        match INFO_TABLE.get().unwrap().get(&datatype) {
-            None => {
-                panic!("evacuate: Unknown datatype, {:?}", datatype);
-            }
-            Some(DatatypeInfo::Scalar(size)) => {
+        match INFO_TABLE.get_unchecked(datatype as usize) {
+            DatatypeInfo::Scalar(size) => {
                 copy_nonoverlapping(src, dst, *size);
                 (src.add(*size), dst.add(*size), dst_end, C_SCALAR_TAG)
             }
-            Some(DatatypeInfo::Packed(packed_info)) => evacuate_packed(
+            DatatypeInfo::Packed(packed_info) => evacuate_packed(
                 &mut st,
                 &mut oldest_gen,
                 packed_info,
@@ -1843,7 +1840,7 @@ unsafe fn copy_tree(
     dst_end0: *mut i8,
     src: *mut i8,
 ) -> (*mut i8, *mut i8, *mut i8) {
-    let (dst, dst_end) = Heap::check_bounds(heap, 32, dst0, dst_end0);
+    let (dst, dst_end) = Heap::check_bounds(heap, 32, dst0, dst_end0).unwrap();
     let (tag, src_after_tag): (C_GibPackedTag, *mut i8) = read_mut(src);
     match tag {
         0 => {
