@@ -1725,21 +1725,16 @@ pub fn run_evacuate(
         prov: &prov,
     };
     unsafe {
-        match INFO_TABLE.get_unchecked(datatype as usize) {
-            DatatypeInfo::Scalar(size) => {
-                copy_nonoverlapping(src, dst, *size);
-                (src.add(*size), dst.add(*size), dst_end, C_SCALAR_TAG)
-            }
-            DatatypeInfo::Packed(packed_info) => evacuate_packed(
-                &mut st,
-                &mut oldest_gen,
-                packed_info,
-                src,
-                dst,
-                dst_end,
-                true,
-            ),
-        }
+        let packed_info = INFO_TABLE.get_unchecked(datatype as usize);
+        evacuate_packed(
+            &mut st,
+            &mut oldest_gen,
+            packed_info,
+            src,
+            dst,
+            dst_end,
+            true,
+        )
     }
 }
 
