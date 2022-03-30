@@ -4,7 +4,7 @@
 #include "gibbon_rts.h"
 
 #include <assert.h>
-#include <stdio.h>
+#include <stdio.h>   
 #include <stdlib.h>
 #include <stdint.h>
 #include <inttypes.h>
@@ -1037,7 +1037,7 @@ void gib_grow_region(char **writeloc_addr, char **footer_addr)
         old_chunk_in_nursery = false;
         // Get size from current footer.
         footer = (GibChunkFooter *) footer_ptr;
-        newsize = footer->size * 2;
+        newsize = (footer->size) << 1;                //changed * 2 to << 1, make time a bit faster
         // See #110.
         if (newsize > MAX_CHUNK_SIZE) {
             newsize = MAX_CHUNK_SIZE;
@@ -1798,3 +1798,13 @@ int main(int argc, char **argv)
 
     return 0;
 }
+
+
+
+//gcc -pg -g -std=gnu11 -m64 -Wno-unused-variable -Wno-unused-label -Wall -Wextra -Wpedantic  -O3  
+//-flto -I $GIBBONDIR/gibbon-compiler/cbits  -L$GIBBONDIR/gibbon-rts/target/release -Wl,-rpath=$GIBBONDIR/gibbon-rts/target/release
+// -c $GIBBONDIR/gibbon-compiler/cbits/gibbon_rts.c -o $GIBBONDIR/gibbon-compiler/cbits/gibbon_rts.o  -lm -lgibbon_rts && gcc -pg -g 
+//-std=gnu11 -m64 -Wno-unused-variable -Wno-unused-label -Wall -Wextra -Wpedantic  -O3 -flto $GIBBONDIR/gibbon-compiler/cbits/gibbon_rts.o
+// -I$GIBBONDIR/gibbon-compiler/cbits  -L$GIBBONDIR/gibbon-rts/target/release -Wl,-rpath=$GIBBONDIR/gibbon-rts/target/release 
+//$GIBBONDIR/gibbon-compiler/examples/bench_new_rts.c -o $GIBBONDIR/gibbon-compiler/examples/bench_new_rts.exe -lm -lgibbon_rts
+
