@@ -1,7 +1,7 @@
 -- source: https://github.com/ghc/nofib/blob/f34b90b5a6ce46284693119a06d1133908b11856/gc/power/Main.hs
 
 data Ps a = Pz | OpP a (Ps a)
-data List a = Nil | Cons a List 
+data PList a = Nil | Cons a (PList a) 
 
 tree :: Ps Int
 forest :: Ps Int
@@ -53,7 +53,7 @@ forest = compose list tree
 list   = OpP 1 list
 ts = OpP 1 (psMult ts ts)
 
-extract :: Int -> Ps a -> List a
+extract :: Int -> Ps a -> PList a
 extract n ps = 
     if n == 0 
         then Nil 
@@ -66,7 +66,7 @@ deriv:: Ps a -> Ps a
 integral:: Ps a -> Ps a
 compose:: Ps a -> Ps a -> Ps a
 revert:: Ps a -> Ps a
-takePs:: Int -> Ps a -> List a
+takePs:: Int -> Ps a -> PList a
 expx, sinx, cosx:: Ps a
 
 takePs n fs = if n == 0 then Pz else case fs of 
@@ -122,3 +122,5 @@ gibbon_main =
         _ = extract p ts 
         _ = extract p tree
     in ()  
+
+-- TODO fix and test

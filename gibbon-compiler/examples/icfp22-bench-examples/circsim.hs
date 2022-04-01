@@ -1,56 +1,56 @@
 -- https://github.com/ghc/nofib/blob/f34b90b5a6ce46284693119a06d1133908b11856/gc/circsim/Main.lhs
-data BinTree a b = Cell a | Node b (BinTree a b) (BinTree a b)
-data Maybe a = Just a | Nothing | Error
-data List a = Nil | Cons a List
+-- data BinTree a b = Cell a | Node b (BinTree a b) (BinTree a b)
+-- data Maybe a = Just a | Nothing | Error
+data PList a = Nil | Cons a (PList a)
 
 
-length :: List a -> Int
+length :: PList a -> Int
 length a = case a of
   Nil       -> 0
   Cons x xs -> 1 + length xs
 
-head :: List a -> a
+head :: PList a -> a
 head a = case a of
   Nil       -> error
   Cons x xs -> x
 
-(++) :: List a -> List a -> List a
+(++) :: PList a -> PList a -> PList a
 (++) a b = case a of
   Nil       -> b
   Cons x xs -> Cons x ((++) xs b)
 
-splitAt :: Int -> List a -> (List a, List a)
+splitAt :: Int -> PList a -> (PList a, PList a)
 splitAt n a = if n == 0
   then (Nil, a)
   else case a of
     Nil       -> error
     Cons x xs -> let (c, d) = splitAt (n - 1) xs in (Cons x c, d)
 
-map :: (a -> b) -> List a -> List b
+map :: (a -> b) -> PList a -> PList b
 map f a = case a of
   Nil       -> Nil
   Cons x xs -> Cons (f x) (map f xs)
 
-concat :: List (List a) -> List a
+concat :: PList (PList a) -> PList a
 concat as = case as of
   Nil       -> Nil
   Cons x xs -> let y = concat xs in x ++ y
 
-zipWith :: List a -> List b -> (a, b)
+zipWith :: PList a -> PList b -> (a, b)
 zipWith as bs = case as of
   Nil       -> Nil
   Cons x xs -> case bs of
     Nil       -> Nil
     Cons y ys -> Cons (x, y) (zipWith xs ys)
 
-put :: List a -> BinTree a ()
+put :: PList a -> BinTree a ()
 put xs = if length xs == 1
   then Cell (head xs)
   else
     let (fstHalf, sndHalf) = splitAt (div (length xs) 2) xs
     in  Node () (put fstHalf) (put sndHalf)
 
-get :: BinTree a b -> List a
+get :: BinTree a b -> PList a
 get tree = case tree of
   Cell x     -> Cons x Nil
   Node x l r -> get l ++ get r
@@ -82,20 +82,20 @@ sweep_ud
 sweep_ud up down u t = (ans, downsweep down u t')
   where (ans, t') = upsweep up t
 
-scanL :: (a -> a -> a) -> a -> List a -> (a, List a)
+scanL :: (a -> a -> a) -> a -> PList a -> (a, PList a)
 scanL f u xs = (up_ans, get t')
  where
   (up_ans, t') = sweep_ud f down u (put xs)
   down l r x = (x, f x l)
 
-scanR :: (a -> a -> a) -> a -> List a -> (a, List a)
+scanR :: (a -> a -> a) -> a -> PList a -> (a, PList a)
 scanR f u xs = (up_ans, get t')
  where
   (up_ans, t') = sweep_ud f down u (put xs)
   down l r x = (f r x, x)
 
 scanlr
-  :: (a -> a -> a) -> (a -> a -> a) -> a -> a -> List a -> ((a, a), List (a, a))
+  :: (a -> a -> a) -> (a -> a -> a) -> a -> a -> PList a -> ((a, a), PList (a, a))
 scanlr f g lu ru xs = (ans, get t)
  where
   ((l_ans, r_ans), t) = sweep_ud up down (lu, ru) (put xs')
@@ -104,7 +104,7 @@ scanlr f g lu ru xs = (ans, get t)
   up (lx, ly) (rx, ry) = (f lx rx, g ly ry)
   down (lx, ly) (rx, ry) (a, b) = ((a, g ry b), (f a lx, b))
 
-type Circuit a = (Int, List Label, List Label, List (State a))
+type Circuit a = (Int, PList Label, PList Label, PList (State a))
 
 type Label = (String, Pid)
 
@@ -121,7 +121,7 @@ data Component
       | Xor   -- exclusive or gate
       deriving (Eq, Show)
 
-data State a = PS Int Component Int (List (InPort a)) (List (OutPort a))
+data State a = PS Int Component Int (PList (InPort a)) (PList (OutPort a))
 pid st = case st of
   PS pid _ _ _ _ -> pid
 compType st = case st of
@@ -176,14 +176,14 @@ send_left (ia, sa, ma, qla, dla, qra, dra, ea) (ib, sb, mb, qlb, dlb, qrb, drb, 
     then (ib, sb, mb, qlb, dlb - ea, qrb, drb, ea + eb)
     else (ia, sa, ma, qla, dla, qra, dra, ea + eb)
 
-send :: List (Packet a) -> ((Packet a, Packet a), List (Packet a, Packet a))
+send :: PList (Packet a) -> ((Packet a, Packet a), PList (Packet a, Packet a))
 send xs = scanlr send_right send_left emptyPacket emptyPacket xs
 
-circuit_simulate :: List (List a) -> Circuit a -> List (List a)
+circuit_simulate :: PList (PList a) -> Circuit a -> PList (PList a)
 circuit_simulate inputs_list circuit =
   map collect_outputs (simulate inputs_list circuit)
 
-collect_outputs :: Circuit a -> List a
+collect_outputs :: Circuit a -> PList a
 collect_outputs (size, ins, outs, states) = map get_output outs
  where
   temp0 = filter (\s -> pid s == p) state
@@ -191,7 +191,7 @@ collect_outputs (size, ins, outs, states) = map get_output outs
   get_output (label, p) = third (head temp1)
   third (_, _, v) = v
 
-simulate :: List (List a) -> Circuit a -> List (Circuit a)
+simulate :: PList (PList a) -> Circuit a -> PList (Circuit a)
 simulate inputs_list (size, ins, outs, states) = tail
   (scanl (do_cycle cpd) circuit' inputs_list)
  where
@@ -199,7 +199,7 @@ simulate inputs_list (size, ins, outs, states) = tail
   circuit' = (size, ins, outs, map init_dffs states)
   cpd      = critical_path_depth circuit
 
-do_cycle :: Int -> Circuit a -> List a -> Circuit a
+do_cycle :: Int -> Circuit a -> PList a -> Circuit a
 do_cycle cpd (size, ins, outs, states) inputs = (size, ins, outs, states4)
  where
   states1 = map (store_inputs (zip ins inputs)) states
@@ -208,7 +208,7 @@ do_cycle cpd (size, ins, outs, states) inputs = (size, ins, outs, states4)
   sim_then_send state d = do_sends d (simulate_components d state)
   states4 = restore_requests states states3
 
-restore_requests :: List (State a) -> List (State a) -> List (State a)
+restore_requests :: PList (State a) -> PList (State a) -> PList (State a)
 restore_requests old_states new_states = zipWith restore old_states new_states
  where
   restore os ns =
@@ -216,17 +216,17 @@ restore_requests old_states new_states = zipWith restore old_states new_states
   restore_outport (p, _, ql, dl, qr, dq) (_, m, _, _, _, _) =
     (p, m, ql, dl, qr, dq)
 
-do_sends :: Int -> List (State a) -> List (State a)
+do_sends :: Int -> PList (State a) -> PList (State a)
 do_sends d states = until (acknowledge d) (do_send d) states
 
-acknowledge :: Int -> List (State a) -> Bool
+acknowledge :: Int -> PList (State a) -> Bool
 acknowledge d states = not (or (map (check_requests . outports) states1))
  where
   check_requests xs = or (map check_lr_requests xs)
   check_lr_requests (p, m, ql, dl, qr, dr) = ql || qr
   states1 = map (check_depth d) states
 
-do_send :: Int -> List (State a) -> List (State a)
+do_send :: Int -> PList (State a) -> PList (State a)
 do_send d states = zipWith (update_io d) pss' states
  where
   states1      = map (check_depth d) states
@@ -234,7 +234,7 @@ do_send d states = zipWith (update_io d) pss' states
   send_results = map (snd . send) pss
   pss'         = transpose send_results
 
-update_io :: Int -> List (Packet a, Packet a) -> State a -> State a
+update_io :: Int -> PList (Packet a, Packet a) -> State a -> State a
 update_io d lrps state = update_os (update_is state)
  where
   update_is state = state { inports = foldr update_i (inports state) lrps }
@@ -250,22 +250,22 @@ check_left (pid, port, pm, pql, pdl, pqr, pdr, e) (p, m, ql, dl, qr, dr) =
 check_right (pid, port, pm, pql, pdl, pqr, pdr, e) (p, m, ql, dl, qr, dr) =
   if pql && pdl > 0 then (p, m, ql, dl, qr, dr) else (p, m, False, dl, qr, dr)
 
-update_i :: (Packet a, Packet a) -> List (InPort a) -> List (InPort a)
+update_i :: (Packet a, Packet a) -> PList (InPort a) -> PList (InPort a)
 update_i (l, r) ins = up_i l (up_i r ins)
 
-up_i :: Packet a -> List (InPort a) -> List (InPort a)
+up_i :: Packet a -> PList (InPort a) -> PList (InPort a)
 up_i (i, p, m', _, _, _, _, _) ins = map (compare_and_update (i, p, m')) ins
 
 compare_and_update :: InPort a -> InPort a -> InPort a
 compare_and_update (i, p, m') (pid, port, m) =
   if (i, p) == (pid, port) then (pid, port, m') else (pid, port, m)
 
-make_packet :: State a -> List (Packet a)
+make_packet :: State a -> PList (Packet a)
 make_packet state = map
   (\(p, m, ql, dl, qr, dr) -> (pid state, p, m, ql, dl, qr, dr, 1))
   (outports state)
 
-pad_packets :: List (List (Packet a)) -> List (List (Packet a))
+pad_packets :: PList (PList (Packet a)) -> PList (PList (Packet a))
 pad_packets pss = map pad pss
  where
   pad xs = take max_ps (xs ++ repeat emptyPacket)
@@ -281,7 +281,7 @@ update_requests b state =
         map (\(p, m, ql, dl, qr, dr) -> (p, m, b, dl, b, dr)) (outports state)
   in  setOutports state outports'
 
-simulate_components :: Int -> List (State a) -> List (State a)
+simulate_components :: Int -> PList (State a) -> PList (State a)
 simulate_components depth states = map (simulate_component depth) states
 
 simulate_component :: Int -> State a -> State a
@@ -292,7 +292,7 @@ simulate_component d state = case new_value of
   out_signals = [ sig | (_, _, sig) <- inports state ]
   new_value   = apply_component (compType state) out_signals
 
-apply_component :: Component -> List a -> Maybe a
+apply_component :: Component -> PList a -> Maybe a
 apply_component comp inp = case comp of
   Inp  -> Nothing
   Outp -> Just x
@@ -305,7 +305,7 @@ apply_component comp inp = case comp of
   x = vnth inp 1
   y = vnth inp 2
 
-store_inputs :: List (Label, a) -> State a -> State a
+store_inputs :: PList (Label, a) -> State a -> State a
 store_inputs label_inputs state = if compType state == Inp
   then head
     (map
@@ -326,7 +326,7 @@ critical_path_depth :: Circuit a -> Int
 critical_path_depth (size, ins, outs, states) = maximum (map pathDepth states)
 
 
-input_values :: Int -> List (List a)
+input_values :: Int -> PList (PList a)
 input_values nbits = map binary (generate (2 ^ nbits - 1) (\x -> x))
  where
   binary n = map int2sig (reverse (take nbits (bin n ++ repeat 0)))
@@ -355,11 +355,11 @@ regs bits = (size, is, os, states)
     Const sto (concat (map (reg 0) [ 7 * x + 1 | x <- [0 .. bits - 1] ]))
   sto = PS 0 Inp 0 Nil (Cons (0, F, False, 0, True, 8 * (bits - 1) + 5) Nil)
 
-reg :: Pid -> Pid -> List (State a)
+reg :: Pid -> Pid -> PList (State a)
 reg sto n =
-  let reg0, reg1, reg2, reg3, reg4, reg5, reg6, reg7 :: List (State Boolean)
-      in1, in2, in3, in4, in5, in6, in7 :: List (InPort Boolean)
-      out1, out2, out3, out4, out5, out6, out7 :: List (OutPort Boolean)
+  let reg0, reg1, reg2, reg3, reg4, reg5, reg6, reg7 :: PList (State Boolean)
+      in1, in2, in3, in4, in5, in6, in7 :: PList (InPort Boolean)
+      out1, out2, out3, out4, out5, out6, out7 :: PList (OutPort Boolean)
       reg0 = Nil
       in1  = Nil
       out1 = Cons (0, F, False, 0, True, 4) Nil
