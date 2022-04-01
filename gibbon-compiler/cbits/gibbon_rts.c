@@ -16,7 +16,7 @@
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
-#include <unistd.h>
+#include <unistd.h>  
 #include <fcntl.h>
 #include <stdarg.h>
 #include <errno.h>
@@ -151,7 +151,20 @@ void *gib_alloc(size_t n) { return GC_MALLOC(n); }
 void *gib_alloc(size_t n) { return malloc(n); }
 #endif // ifndef _GIBBON_PARALLEL
 #else
-void *gib_alloc(size_t n) { return malloc(n); }
+void *gib_alloc(size_t n) { 
+
+    GibNursery *nursery = DEFAULT_NURSERY;
+    if (nursery != NULL){
+        void *address = malloc(n);
+        //if (address < (void*)nursery->heap_start){
+            printf("The address that was malloced was %p | The heap start address is %p\n", address, nursery->heap_start);
+        //}
+        return address;
+    }
+    else {return malloc(n);}
+    
+    
+    /*return malloc(n);*/ }
 #endif // ifdef _GIBBON_POINTER
 
 static void gib_bump_global_region_count(void);
@@ -970,6 +983,7 @@ GibChunk gib_alloc_region(size_t size)
     }
 }
 
+//In this function its not possible for malloc to return an address that's less than heap start since heap start is what is malloced in the function
 GibChunk gib_alloc_region_on_heap(size_t size)
 {
     char *heap_start = gib_alloc(size);
