@@ -71,8 +71,8 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
     let fromReg = locRegEnv # fromLoc
     let fromOff = locOffEnv # fromLoc
     let toOff   = locOffEnv # toLoc
-    let regTy = (M.findWithDefault IndirectionFree fromReg regTyEnv) <> if toOff >= fromOff then RightwardLocalIndirections else LocalIndirections
-    let regSz   = fromOff <> BoundedSize 9 
+    let regTy = M.findWithDefault IndirectionFree fromReg regTyEnv <> if toOff >= fromOff then RightwardLocalIndirections else LocalIndirections
+    let regSz   = fromOff <> BoundedSize 9
     return (ex, M.insert fromReg regSz regSzEnv, M.insert fromReg regTy regTyEnv)
   VarE _ -> return (ex, regSzEnv, regTyEnv)
   _ ->
@@ -125,6 +125,7 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
                 unzip3
                   <$> mapM
                         (\(dcon :: DataCon, vlocs :: [(Var, LocVar)], bod :: Exp2) -> do
+                          -- TODO use for traversal somewhere down the line?
                           -- let offsets =
                           --       M.fromList
                           --         . tail -- remove tag
@@ -133,9 +134,8 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
                           --         . zip (map snd vlocs) -- take locations
                           --         . map (maybe Undefined BoundedSize . sizeOfTy) -- map to our region size type
                           --         $ lookupDataCon ddefs dcon -- find ddef)
-                          -- traceM $ "offsets = " ++ show offsets ++ " for " ++ show dcon
-                          -- TODO 
-                          (bod', re, rt) <- go bod
+                          let venv' = M.union (M.fromList $ zip (map fst vlocs) (lookupDataCon ddefs dcon)) (vEnv env2)
+                          (bod', re, rt) <- calculateBoundsExp ddefs env2 { vEnv = venv'} varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv regTyEnv bod
                           return ((dcon, vlocs, bod'), re, rt)
                         )
                         cases
