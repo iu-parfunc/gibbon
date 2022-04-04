@@ -22,6 +22,10 @@
 #include <errno.h>
 #include <uthash.h>
 
+// #include <sys/time.h>
+// #include <linux/kernel.h>
+// #include <sys/sysinfo.h>
+
 #ifdef _WIN64
 #include <windows.h>
 #endif
@@ -883,8 +887,8 @@ void gib_write_ppm_loop(FILE *fp, GibInt idx, GibInt end, GibVector *pixels)
 // Same as SHADOWSTACK_SIZE, overflows are not checked.
 #define REMEMBERED_SET_SIZE (sizeof(GibRememberedSetElt) * 1024)
 
-#define MAX_VIRTUAL_MEMORY 281474976710656
-//#define PG_SIZE sysconf(_SC_PAGESIZE) 
+#define MAX_VIRTUAL_MEMORY 0x1000000000000
+#define PG_SIZE sysconf(_SC_PAGESIZE) 
 #define DEFAULT_NURSERY_TRY (MAX_VIRTUAL_MEMORY - NURSERY_SIZE)
 
 
@@ -1265,12 +1269,19 @@ static void gib_nursery_initialize_mmap(GibNursery *nursery)
     nursery->num_collections = 0;
     nursery->heap_size = NURSERY_SIZE;
 
-    nursery->heap_start = (char*) mmap(DEFAULT_NURSERY_TRY, NURSERY_SIZE, (PROT_READ | PROT_WRITE), (MAP_PRIVATE | MAP_ANONYMOUS), -1, 0);
+    nursery->heap_start = (char*) mmap(DEFAULT_NURSERY_TRY, NURSERY_SIZE, (PROT_READ | PROT_WRITE), (MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED), -1, 0);
 
-    //fprintf(stderr, "The address chosen by mmap was: %p\n", (void*)nursery->heap_start);
+    // struct rlimit m;
+    // struct sysinfo s;
+    // getrlimit(RLIMIT_AS, &m);
+    // printf("getrlimit rlim_cur:%ld, rlim_max:%ld\n", m.rlim_cur, m.rlim_max);
+    // sysinfo(&s);
+    // printf("sysinfo totalram:%ld, freeram:%ld, totalswap:%ld, freeswap:%ld\n", s.totalram, s.freeram, s.totalswap, s.freeswap);
+
+    // fprintf(stderr, "The address chosen by mmap was: %p\n", (void*)nursery->heap_start);
 
     if (nursery->heap_start == MAP_FAILED){
-        fprintf(stderr, "gib_nursery_initialize_mmap: mmap failed, asked mmap for address: %p\n", DEFAULT_NURSERY);
+        fprintf(stderr, "gib_nursery_initialize_mmap: mmap failed, asked mmap for address: %p\n", DEFAULT_NURSERY_TRY);
         fprintf(stderr, "gib_nursery_initialize_mmap: failed with mmap errno %d, mmap failed for heap start: %zu\n", errno, NURSERY_SIZE);
         exit(1);
     }
