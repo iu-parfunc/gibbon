@@ -21,7 +21,7 @@
  *
  * Current convention regarding typedef usage:
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- *
+ *   
  * RTS variables/functions that leak their types into Gibbon (e.g. the Gibbon
  * primitive SizeParam is translated to gib_global_size_param, VSliceP to
  * gib_vector_slice etc.) are defined using a typedef'd type. This allows us to

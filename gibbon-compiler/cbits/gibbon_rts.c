@@ -152,13 +152,11 @@ void *gib_alloc(size_t n) { return malloc(n); }
 #endif // ifndef _GIBBON_PARALLEL
 #else
 void *gib_alloc(size_t n) { 
-
+   
     GibNursery *nursery = DEFAULT_NURSERY;
     if (nursery != NULL){
         void *address = malloc(n);
-        //if (address < (void*)nursery->heap_start){
-            printf("The address that was malloced was %p | The heap start address is %p\n", address, nursery->heap_start);
-        //}
+        printf("The address that was malloced was %p | The heap start address is %p\n", address, nursery->heap_start);
         return address;
     }
     else {return malloc(n);}
@@ -896,6 +894,10 @@ void gib_write_ppm_loop(FILE *fp, GibInt idx, GibInt end, GibVector *pixels)
 // Same as SHADOWSTACK_SIZE, overflows are not checked.
 #define REMEMBERED_SET_SIZE (sizeof(GibRememberedSetElt) * 1024)
 
+#define MAX_VIRTUAL_MEMORY 281474976710656
+
+#define PG_SIZE sysconf(_SC_PAGESIZE)    
+
 
 typedef struct gib_region_info {
     GibSym id;
@@ -1143,7 +1145,9 @@ void gib_print_global_region_count(void)
 static void gib_storage_initialize(void);
 static void gib_storage_free(void);
 static void gib_nursery_initialize(GibNursery *nursery);
+static size_t gib_nursery_initialize_mmap(GibNursery *nursery, size_t prev_address_start);
 static void gib_nursery_free(GibNursery *nursery);
+static void gib_nursery_unmap(GibNursery *nursery);
 static void gib_generation_initialize(GibGeneration *gen, uint8_t gen_no);
 static void gib_generation_free(GibGeneration *gen, uint8_t gen_no);
 static void gib_shadowstack_initialize(GibShadowstack *stack, size_t stack_size);
@@ -1160,6 +1164,12 @@ static void gib_storage_initialize(void)
     int n;
     gib_global_nurseries = (GibNursery *) gib_alloc(gib_global_num_threads *
                                                     sizeof(GibNursery));
+    
+    // size_t offset_address = 0;
+    // for (n = 0; n < gib_global_num_threads; n++) {
+    //     offset_address = gib_nursery_initialize_mmap(&(gib_global_nurseries[n]), offset_address);
+    // }
+
     for (n = 0; n < gib_global_num_threads; n++) {
         gib_nursery_initialize(&(gib_global_nurseries[n]));
      }
@@ -1206,7 +1216,7 @@ static void gib_storage_free(void)
     // Free nurseries.
     int n;
     for (n = 0; n < gib_global_num_threads; n++) {
-        gib_nursery_free(&(gib_global_nurseries[n]));
+        gib_nursery_unmap(&(gib_global_nurseries[n]));
      }
     free(gib_global_nurseries);
 
@@ -1257,11 +1267,56 @@ static void gib_nursery_initialize(GibNursery *nursery)
     return;
 }
 
+static size_t gib_nursery_initialize_mmap(GibNursery *nursery, size_t prev_address_start)
+{
+    //Nursery Map size
+    size_t NURSERY_MMAP_SIZE = ((NURSERY_SIZE / PG_SIZE) + 1) * PG_SIZE;
+
+    nursery->num_collections = 0;
+    nursery->heap_size = NURSERY_SIZE;
+
+    nursery->heap_start = (char*) mmap((void*)(MAX_VIRTUAL_MEMORY - prev_address_start), NURSERY_MMAP_SIZE, (PROT_READ | PROT_WRITE), (MAP_PRIVATE | MAP_ANONYMOUS), -1, 0);
+
+    fprintf(stderr, "The address chosen by mmap was: %p\n", (void*)nursery->heap_start);
+
+    if (nursery->heap_start == MAP_FAILED){
+        fprintf(stderr, "gib_nursery_initialize_mmap: mmap failed, asked mmap for address: %p\n", (void*)(MAX_VIRTUAL_MEMORY - prev_address_start));
+        fprintf(stderr, "gib_nursery_initialize_mmap: failed with mmap errno %d, mmap failed for heap start: %zu\n", errno, NURSERY_MMAP_SIZE);
+        exit(1);
+    }
+
+    nursery->heap_end = nursery->heap_start + NURSERY_MMAP_SIZE;
+    nursery->alloc = nursery->heap_end;
+                          
+    nursery->chunk_starts = mmap((void*)nursery->heap_end, NURSERY_MMAP_SIZE, (PROT_READ | PROT_WRITE | PROT_EXEC), (MAP_PRIVATE | MAP_ANONYMOUS), -1, 0);
+
+    if (nursery->chunk_starts == MAP_FAILED){
+        fprintf(stderr, "gib_nursery_initialize_mmap: mmap failed, asked mmap for address: %p\n", (void*)(nursery->heap_end));
+        fprintf(stderr, "gib_nursery_initialize_mmap: failed with mmap errno %d, mmap failed for chunk start: %zu\n", errno, NURSERY_MMAP_SIZE);
+        exit(1);
+    }
+    
+    nursery->num_chunk_starts = 0;
+
+    return (size_t) (nursery->chunk_starts + NURSERY_MMAP_SIZE);
+}
+
+
+
 // Free data associated with a nursery.
 static void gib_nursery_free(GibNursery *nursery)
 {
     free(nursery->heap_start);
     free(nursery->chunk_starts);
+    return;
+}
+
+static void gib_nursery_unmap(GibNursery *nursery)
+{   
+    size_t NURSERY_MMAP_SIZE = ((NURSERY_SIZE / PG_SIZE) + 1) * PG_SIZE;
+
+    munmap(nursery->heap_start, NURSERY_MMAP_SIZE);
+    munmap(nursery->chunk_starts, NURSERY_MMAP_SIZE);
     return;
 }
 
@@ -1272,6 +1327,7 @@ static void gib_nursery_free(GibNursery *nursery)
 STATIC_INLINE bool gib_addr_in_nursery(char *ptr)
 {
     GibNursery *nursery = DEFAULT_NURSERY;
+    fprintf(stderr, "ptr >= nursery->heap_start: %d | ptr <= nursery->heap_end: %d\n", (ptr >= nursery->heap_start), (ptr <= nursery->heap_end));
     return ((ptr >= nursery->heap_start) && (ptr <= nursery->heap_end));
 }
 
