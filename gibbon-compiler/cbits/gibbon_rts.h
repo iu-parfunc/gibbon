@@ -417,6 +417,7 @@ extern GibShadowstack *gib_global_write_shadowstacks;
 // Convenience macros since we don't really need the arrays of nurseries and
 // shadowstacks since mutators are still sequential.
 
+
 // #define DEFAULT_NURSERY gib_global_nurseries
 #define DEFAULT_NURSERY (&(gib_global_nurseries[0]))
 #define DEFAULT_GENERATION (&(gib_global_generations[0]))
