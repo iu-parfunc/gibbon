@@ -153,16 +153,16 @@ void *gib_alloc(size_t n) { return malloc(n); }
 #else
 void *gib_alloc(size_t n) { 
    
-    GibNursery *nursery = DEFAULT_NURSERY;
-    if (nursery != NULL){
-        void *address = malloc(n);
-        printf("The address that was malloced was %p | The heap start address is %p\n", address, nursery->heap_start);
-        return address;
-    }
-    else {return malloc(n);}
+    // GibNursery *nursery = DEFAULT_NURSERY;
+    // if (nursery != NULL){
+    //     void *address = malloc(n);
+    //     printf("The address that was malloced was %p | The heap start address is %p\n", address, nursery->heap_start);
+    //     return address;
+    // }
+    // else {return malloc(n);}
     
     
-    /*return malloc(n);*/ }
+    return malloc(n); }
 #endif // ifdef _GIBBON_POINTER
 
 static void gib_bump_global_region_count(void);
@@ -1165,14 +1165,14 @@ static void gib_storage_initialize(void)
     gib_global_nurseries = (GibNursery *) gib_alloc(gib_global_num_threads *
                                                     sizeof(GibNursery));
     
-    // size_t offset_address = 0;
-    // for (n = 0; n < gib_global_num_threads; n++) {
-    //     offset_address = gib_nursery_initialize_mmap(&(gib_global_nurseries[n]), offset_address);
-    // }
-
+    size_t offset_address = 0;
     for (n = 0; n < gib_global_num_threads; n++) {
-        gib_nursery_initialize(&(gib_global_nurseries[n]));
-     }
+        offset_address = gib_nursery_initialize_mmap(&(gib_global_nurseries[n]), offset_address);
+    }
+
+    // for (n = 0; n < gib_global_num_threads; n++) {
+    //     gib_nursery_initialize(&(gib_global_nurseries[n]));
+    //  }
 
     // Initialize generations.
     int g;
@@ -1277,7 +1277,7 @@ static size_t gib_nursery_initialize_mmap(GibNursery *nursery, size_t prev_addre
 
     nursery->heap_start = (char*) mmap((void*)(MAX_VIRTUAL_MEMORY - prev_address_start), NURSERY_MMAP_SIZE, (PROT_READ | PROT_WRITE), (MAP_PRIVATE | MAP_ANONYMOUS), -1, 0);
 
-    fprintf(stderr, "The address chosen by mmap was: %p\n", (void*)nursery->heap_start);
+    //fprintf(stderr, "The address chosen by mmap was: %p\n", (void*)nursery->heap_start);
 
     if (nursery->heap_start == MAP_FAILED){
         fprintf(stderr, "gib_nursery_initialize_mmap: mmap failed, asked mmap for address: %p\n", (void*)(MAX_VIRTUAL_MEMORY - prev_address_start));
@@ -1327,8 +1327,13 @@ static void gib_nursery_unmap(GibNursery *nursery)
 STATIC_INLINE bool gib_addr_in_nursery(char *ptr)
 {
     GibNursery *nursery = DEFAULT_NURSERY;
-    fprintf(stderr, "ptr >= nursery->heap_start: %d | ptr <= nursery->heap_end: %d\n", (ptr >= nursery->heap_start), (ptr <= nursery->heap_end));
-    return ((ptr >= nursery->heap_start) && (ptr <= nursery->heap_end));
+    //uncomment for printing
+    //fprintf(stdout, "ptr >= nursery->heap_start: %d | ptr <= nursery->heap_end: %d\n", (ptr >= nursery->heap_start), (ptr <= nursery->heap_end));
+    //fprintf(stdout, "ptr: %p | nursery->heap_start: %p\n", ptr, nursery->heap_end);
+    //previously this function returned ((ptr >= nursery->heap_start) && (ptr <= nursery->heap_end));
+    //But since we are mmapping the nursery at the highest possible address we can just return the following?
+
+    return (ptr >= nursery->heap_start) ;
 }
 
 
