@@ -43,6 +43,9 @@ zipWith as bs = case as of
     Nil       -> Nil
     Cons y ys -> Cons (x, y) (zipWith xs ys)
 
+fromto :: Int -> Int -> PList Int 
+fromto a b = if  a > b then  Nil else  Cons a (fromto (a+1) b)
+
 put :: PList a -> BinTree a ()
 put xs = if length xs == 1
   then Cell (head xs)
@@ -343,23 +346,18 @@ update_outports state value = setOutports
 
 
 regs :: Int -> Circuit a
-regs bits = (size, is, os, states)
- where
-  size = 1 + 7 * bits
-  is =
-    Cons ("sto", 0) (zipWith ilabel [0 ..] [ 7 * x + 1 | x <- [0 .. bits - 1] ])
-  ilabel n pid = ("x" ++ show n, pid)
-  os = zipWith olabel [0 ..] [ 7 * x + 7 | x <- [0 .. bits - 1] ]
-  olabel n pid = ("y" ++ show n, pid)
-  states =
-    Const sto (concat (map (reg 0) [ 7 * x + 1 | x <- [0 .. bits - 1] ]))
-  sto = PS 0 Inp 0 Nil (Cons (0, F, False, 0, True, 8 * (bits - 1) + 5) Nil)
+regs bits = let 
+    size = 1 + 7 * bits
+    states =
+      Cons sto (concat (map (reg 0) (map (\x -> 7*x+1) (fromto 0 (bits-1)))))
+    sto = PS 0 Inp 0 Nil (Cons (0, F, False, 0, True, 8 * (bits - 1) + 5) Nil)
+  in   (size, states)
 
-reg :: Pid -> Pid -> PList (State a)
+reg :: Pid -> Pid -> PList (State Boolean)
 reg sto n =
   let reg0, reg1, reg2, reg3, reg4, reg5, reg6, reg7 :: PList (State Boolean)
-      in1, in2, in3, in4, in5, in6, in7 :: PList (InPort Boolean)
-      out1, out2, out3, out4, out5, out6, out7 :: PList (OutPort Boolean)
+      in1, in2, in3, in4, in5, in6, in7 :: PList (Pid, Int, Boolean)
+      out1, out2, out3, out4, out5, out6, out7 :: PList (Int, Boolean, Bool, Int, Bool, Int)
       reg0 = Nil
       in1  = Nil
       out1 = Cons (0, F, False, 0, True, 4) Nil
@@ -372,10 +370,10 @@ reg sto n =
       reg3 = Cons (PS (n + 2) Inv 1 in3 out3) reg2
       in4  = Cons (n + 1, 0, F) (Cons (n + 2, 0, F) Nil)
       out4 = Cons (0, F, False, 0, True, 2) Nil
-      reg4 = Cons (PS (n + 3) And2 in4 out4) reg3
+      reg4 = Cons (PS (n + 3) And2 2 in4 out4) reg3
       in5  = Cons (sto, 0, F) (Cons (n, 0, F) Nil)
       out5 = Cons (0, F, False, 0, True, 1) Nil
-      reg5 = Cons (PS (n + 4) And 2 1 out5 reg5) reg4
+      reg5 = Cons (PS (n + 4) And2 1 in5 out5) reg4
       in6  = Cons (n + 3, 0, F) (Cons (n + 4, 0, F) Nil)
       out6 = Cons (0, F, True, 4, False, 0) Nil
       reg6 = Cons (PS (n + 5) Or2 3 in6 out6) reg5

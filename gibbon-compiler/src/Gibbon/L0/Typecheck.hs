@@ -65,7 +65,7 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
            , mainExp = mainExp' }
 
 tcFun :: DDefs0 -> Gamma -> FunDef0 -> PassM FunDef0
-tcFun ddefs fenv fn@FunDef{funArgs,funTy,funBody} = do
+tcFun ddefs fenv fn@FunDef{funArgs,funTy,funBody, funName} = do
   res <- runTcM $ do
     let (ForAll tyvars (ArrowTy gvn_arg_tys gvn_retty)) = funTy
         init_venv = M.fromList $ zip funArgs $ map (ForAll []) gvn_arg_tys
@@ -76,7 +76,7 @@ tcFun ddefs fenv fn@FunDef{funArgs,funTy,funBody} = do
     pure $ fn { funTy   = zonkTyScheme (s1 <> s2) funTy
               , funBody = zonkExp (s1 <> s2) funBody_tc }
   case res of
-    Left er   -> error $ render er
+    Left er   -> error $ render er ++ " in " ++ show funName
     Right fn1 -> pure fn1
 
 tcExps :: DDefs0 -> Subst -> Gamma -> Gamma -> [TyVar]
