@@ -216,103 +216,118 @@ data Component
       | And2  -- 2-input and gate
       | Or2   -- 2-input or gate
       | Xor   -- exclusive or gate
-eqC a b = 
-  case a of 
-    None ->
-        case b of
-            None -> True
-            Inp -> False
-            Outp -> False
-            Dff -> False
-            Inv -> False
-            And2 -> False
-            Or2 -> False
-            Xor -> False
-    Inp ->
-        case b of
-            None -> False
-            Inp -> True
-            Outp -> False
-            Dff -> False
-            Inv -> False
-            And2 -> False
-            Or2 -> False
-            Xor -> False
-    Outp ->
-        case b of
-            None -> False
-            Inp -> False
-            Outp -> True
-            Dff -> False
-            Inv -> False
-            And2 -> False
-            Or2 -> False
-            Xor -> False
-    Dff ->
-        case b of
-            None -> False
-            Inp -> False
-            Outp -> False
-            Dff -> True
-            Inv -> False
-            And2 -> False
-            Or2 -> False
-            Xor -> False
-    Inv ->
-        case b of
-            None -> False
-            Inp -> False
-            Outp -> False
-            Dff -> False
-            Inv -> True
-            And2 -> False
-            Or2 -> False
-            Xor -> False
-    And2 ->
-        case b of
-            None -> False
-            Inp -> False
-            Outp -> False
-            Dff -> False
-            Inv -> False
-            And2 -> True
-            Or2 -> False
-            Xor -> False
-    Or2 ->
-        case b of
-            None -> False
-            Inp -> False
-            Outp -> False
-            Dff -> False
-            Inv -> False
-            And2 -> False
-            Or2 -> True
-            Xor -> False
-    Xor ->
-        case b of
-            None -> False
-            Inp -> False
-            Outp -> False
-            Dff -> False
-            Inv -> False
-            And2 -> False
-            Or2 -> False
-            Xor -> True
+compare_None :: Component -> Bool
+compare_None b = case b of
+        None -> True
+        Inp -> False
+        Outp -> False
+        Dff -> False
+        Inv -> False
+        And2 -> False
+        Or2 -> False
+        Xor -> False
+compare_Inp :: Component -> Bool
+compare_Inp b = case b of
+        None -> False
+        Inp -> True
+        Outp -> False
+        Dff -> False
+        Inv -> False
+        And2 -> False
+        Or2 -> False
+        Xor -> False
+compare_Outp :: Component -> Bool
+compare_Outp b = case b of
+        None -> False
+        Inp -> False
+        Outp -> True
+        Dff -> False
+        Inv -> False
+        And2 -> False
+        Or2 -> False
+        Xor -> False
+compare_Dff :: Component -> Bool
+compare_Dff b = case b of
+        None -> False
+        Inp -> False
+        Outp -> False
+        Dff -> True
+        Inv -> False
+        And2 -> False
+        Or2 -> False
+        Xor -> False
+compare_Inv :: Component -> Bool
+compare_Inv b = case b of
+        None -> False
+        Inp -> False
+        Outp -> False
+        Dff -> False
+        Inv -> True
+        And2 -> False
+        Or2 -> False
+        Xor -> False
+compare_And2 :: Component -> Bool
+compare_And2 b = case b of
+        None -> False
+        Inp -> False
+        Outp -> False
+        Dff -> False
+        Inv -> False
+        And2 -> True
+        Or2 -> False
+        Xor -> False
+compare_Or2 :: Component -> Bool
+compare_Or2 b = case b of
+        None -> False
+        Inp -> False
+        Outp -> False
+        Dff -> False
+        Inv -> False
+        And2 -> False
+        Or2 -> True
+        Xor -> False
+compare_Xor :: Component -> Bool
+compare_Xor b = case b of
+        None -> False
+        Inp -> False
+        Outp -> False
+        Dff -> False
+        Inv -> False
+        And2 -> False
+        Or2 -> False
+        Xor -> True
+eqC :: Component -> Component -> Bool
+eqC a b = case a of 
+    None -> compare_None b
+    Inp -> compare_Inp b
+    Outp -> compare_Outp b
+    Dff -> compare_Dff b
+    Inv -> compare_Inv b
+    And2 -> compare_And2 b
+    Or2 -> compare_Or2 b
+    Xor -> compare_Xor b
 
 -- data State = PS Int Component Int (PList (InPort a)) (PList (OutPort a))
 data State = PS Int Component Int (PList (Int, Int, Boolean)) (PList (Int, Boolean, Bool, Int, Bool, Int))
+pid :: State -> Int
 pid st = case st of
   PS pid _ _ _ _ -> pid
+compType :: State -> Component
 compType st = case st of
   PS _ compType _ _ _ -> compType
+pathDepth :: State -> Int
 pathDepth st = case st of
   PS _ _ pathDepth _ _ -> pathDepth
+inports :: State -> PList (Int, Int, Boolean)
 inports st = case st of
   PS _ _ _ inports _ -> inports
+outports :: State -> PList (Int, Boolean, Bool, Int, Bool, Int)
 outports st = case st of
   PS _ _ _ _ outports -> outports
+setInports :: State -> PList (Int, Int, Boolean) -> State
 setInports st i = case st of
   PS pid ct pd _ o -> PS pid ct pd i o
+setOutports :: State -> PList (Int, Boolean, Bool, Int, Bool, Int) -> State
 setOutports st o = case st of
   PS pid ct pd i _ -> PS pid ct pd i o
 
@@ -335,18 +350,26 @@ emptyState :: State
 emptyState = PS (-1) None (-1) Nil Nil
 
 data Boolean = F | T 
-eq x y = case x of 
-  F -> case y of 
-    F -> True
-    T -> False
-  T -> case y of 
-    F -> False 
-    T -> True
+eq :: Boolean -> Boolean -> Bool
+eq x y = 
+  case x of 
+    F -> 
+      case y of 
+        F -> True
+        T -> False
+    T -> 
+      case y of 
+        F -> False 
+        T -> True
+inv :: Boolean -> Boolean
 inv s = case s of
   T -> F
   F -> T
+and2 :: Boolean -> Boolean -> Boolean
 and2 x y = if (eq x T) && (eq y T) then T else F
+or2 :: Boolean -> Boolean -> Boolean
 or2 x y = if (eq x T) || (eq y T) then T else F
+xor :: Boolean -> Boolean -> Boolean
 xor x y = if eq x y then T else F
 
 -- type Packet a = (Int, Int, Boolean, Bool, Int, Bool, Int, Int)

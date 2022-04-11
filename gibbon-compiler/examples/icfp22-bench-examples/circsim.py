@@ -1,13 +1,10 @@
 cs = ["None","Inp","Outp","Dff","Inv","And2","Or2","Xor"]
-print("case a of ")
 for x in cs:
-    print(f"    {x} ->")
-    print(f"        case b of")
+    print(f"compare_{x} :: Component -> Bool")
+    print(f"compare_{x} b = case b of")
     for y in cs:
-        print(f"            {y} ->", "True" if x == y else "False")
-
-""" 
-case a of 
-  v -> 
-
- """
+        print(f"        {y} ->", "True" if x == y else "False")
+print(f"eqC :: Component -> Component -> Bool")
+print("eqC a b = case a of ")
+for x in cs:
+    print(f"    {x} -> compare_{x} b")
