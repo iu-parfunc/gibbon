@@ -841,6 +841,10 @@ combine v1 v2 | v1 == v2 = v1
                 (_, MetaTv _) -> v1
                 (ArrowTy xs y, ArrowTy xs' y') -> ArrowTy (zipWith combine xs xs') (combine y y')
                 (VectorTy v1', VectorTy v2') -> VectorTy $ combine v1' v2'
+                (ProdTy v1s, ProdTy v2s) -> ProdTy (zipWith combine v1s v2s)
+                (PackedTy a1 v1s, PackedTy a2 v2s) -> 
+                  if a1 == a2 then PackedTy a1 (zipWith combine v1s v2s)
+                  else error $ "PackedTy doesn't match "++ sdoc a1 ++ " with v2 = " ++ sdoc a2
                 _ -> error $ "Failed to combine v1 = " ++ sdoc v1 ++ " with v2 = " ++ sdoc v2
 
 

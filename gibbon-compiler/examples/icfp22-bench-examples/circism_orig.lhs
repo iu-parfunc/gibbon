@@ -34,7 +34,7 @@ January, 1998
 
 > import System.Environment
 > import Data.List
->
+
 > data BinTree a b = Cell a
 >		   | Node b (BinTree a b) (BinTree a b)
 >		   deriving Show
