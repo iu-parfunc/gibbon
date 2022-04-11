@@ -405,8 +405,10 @@ circuit_simulate inputs_list circuit =
 collect_outputs :: (Int, PList Label, PList Label, PList (State)) -> PList Boolean
 collect_outputs (size, ins, outs, states) = 
   let 
-    temp0 p = filter (\s -> pid s == p) states
-    temp1 p = map (\s -> head (inports s)) (temp0 p)
+    l1 p s = pid s == p
+    temp0 p = filter (l1 p) states
+    l2 s = head (inports s)
+    temp1 p = map l2 (temp0 p)
     third (_, _, v) = v
     get_output (label, p) = third (head (temp1 p))
   in map get_output outs
