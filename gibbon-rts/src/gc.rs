@@ -495,6 +495,7 @@ unsafe fn evacuate_remembered_set(
         };
         let (src_after, _dst_after, _dst_after_end, _tag) =
             evacuate_packed(&mut st, heap, packed_info, src, dst, dst_end);
+        assert!(src_after != null_mut());
         // Update the indirection pointer in oldgen region.
         write((*frame).ptr, dst);
         // Update the outset in oldgen region.
@@ -561,6 +562,8 @@ unsafe fn evacuate_shadowstack(
 
         let (src_after, dst_after, dst_after_end, tag) =
             evacuate_packed(&mut st, heap, packed_info, src, dst, dst_end);
+        assert!(src_after != null_mut());
+	
         // Update the pointers in shadow-stack.
         (*frame).ptr = dst;
         // TODO(ckoparkar): AUDITME.
@@ -623,6 +626,8 @@ unsafe fn evacuate_packed(
     dst: *mut i8,
     dst_end: *mut i8,
 ) -> (*mut i8, *mut i8, *mut i8, C_GibPackedTag) {
+    assert!(src != null_mut());
+    
     let (tag, src_after_tag): (C_GibPackedTag, *mut i8) = read_mut(src);
     match tag {
         // Nothing to copy. Just update the write cursor's new
@@ -854,6 +859,8 @@ unsafe fn evacuate_packed(
                     dst,
                     dst_end,
                 );
+		assert!(src_after_pointee != null_mut());
+
                 // Update the burned environment if we're evacuating a root
                 // from the remembered set.
                 match st.prov {
@@ -949,6 +956,7 @@ unsafe fn evacuate_packed(
                         dst_mut,
                         dst_end_mut,
                     );
+		    assert!(src1 != null_mut());
                     match field_tag {
                         // Immediately stop copying upon reaching the
                         // cauterized tag.
