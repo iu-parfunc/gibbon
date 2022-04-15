@@ -500,6 +500,7 @@ unsafe fn evacuate_remembered_set(
         // Update the outset in oldgen region.
         add_to_outset((*frame).endptr, dst_end);
         // Update the burned address table.
+        eprintln!("[evac remembered set] benv insert on {:?}", src);     
         benv.insert(src, src_after);
     }
     Ok(benv)
@@ -654,6 +655,8 @@ unsafe fn evacuate_packed(
                 None => null_mut(),
                 Some(end) => *end,
             };
+            eprintln!("[fwding tag] benv lookup on {:?}, result {:?}", src, src_after_burned);
+
             // Update outsets and refcounts if evacuating to the oldest
             // generation.
             if heap.is_oldest() {
@@ -712,11 +715,12 @@ unsafe fn evacuate_packed(
             let dst_after_indr = write(dst_after_tag, tagged_want);
             stats_bump_mem_copied(9);
             // TODO(ckoparkar): check that no code path will try to read/write
-            // at this null pointer.
+            // at this null pointer.            
             let src_after_burned = match st.benv.get(&src) {
                 None => null_mut(),
                 Some(end) => *end,
             };
+            eprintln!("[burned tag] benv lookup on {:?}, result {:?}", src, src_after_burned);
             // Update outsets and refcounts if evacuating to the oldest
             // generation.
             if heap.is_oldest() {
@@ -854,6 +858,7 @@ unsafe fn evacuate_packed(
                 // from the remembered set.
                 match st.prov {
                     GcRootProv::RemSet => {
+                        eprintln!("benv insert on {:?}", src);
                         st.benv.insert(pointee, src_after_pointee);
                         ()
                     }
