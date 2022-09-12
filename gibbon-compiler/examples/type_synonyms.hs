@@ -14,7 +14,7 @@ ff :: Int -> A
 ff x = x + 4 
 
 -- With data arguments
-data B a b = B (a, b) 
+data B a b = B a b 
 type C b = B Int b
 
 foo :: C Float -> C Float
