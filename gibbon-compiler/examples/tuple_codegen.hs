@@ -1,3 +1,4 @@
+
 data Foo = A Int Int | B Int | C
 
 -- TODO : process without top level signature
@@ -46,5 +47,5 @@ gibbon_main =
         y4 =  eq (C) (C)
         y5 =  not (eq (C) (A 2 4))
     in 
-        x1 && x2 && x3 && x4 && x5 && x6 && x7 && x8 && x9 && y1 && y2 && y3 && y4 && y5
+        (x1, x2, x3, x4, x5, x6, x7, x8, x9, y1, y2, y3, y4, y5)
     
