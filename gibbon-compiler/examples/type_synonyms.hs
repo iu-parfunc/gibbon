@@ -14,10 +14,12 @@ ff :: Int -> A
 ff x = x + 4 
 
 -- With data arguments
-data B a b = B a b 
-type C b = B Int b
+data B a b c d = B a b c d deriving Show
+type C b d = B Int b Int d
 
-foo :: C Float -> C Float
-foo (B (x, y)) = B (x-1, y+1)
+foo :: Int -> Int -> Int -> Int -> C Int Int 
+foo x y z w = B (x-1) (y+1) (z+2) (w-2)
 
-gibbon_main = (f 1, g 2, h 3, ff 4, foo (B (1, 2.2)))
+gibbon_main = (f 1, g 2, h 3, ff 4, foo 1 2 3 4)
+
+main = print gibbon_main

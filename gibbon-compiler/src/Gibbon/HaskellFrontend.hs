@@ -27,7 +27,6 @@ import           System.IO
 import           Gibbon.L0.Syntax as L0
 import           Gibbon.Common
 import           Gibbon.DynFlags
-import Debug.Trace 
 
 --------------------------------------------------------------------------------
 
@@ -158,6 +157,17 @@ data TopLevel
 type TopTyEnv = TyEnv TyScheme
 type TypeSynEnv = M.Map TyCon Ty0
 
+-- TODO: handle cross-referenced function names or definitions inside body and so on?
+processQualifiedDefs qualified modName defs = 
+  if not qualified then defs 
+  else defs -- TODO
+
+processQualifiedFuns qualified modName funs = 
+  if not qualified then funs 
+  else (M.map (\f@FunDef{funName} -> f{funName=prepend funName}) $ M.mapKeys prepend funs)  
+  where 
+    prepend x = toVar $ modName ++ "_" ++ fromVar x
+
 desugarModule :: (Show a,  Pretty a)
               => Config -> IORef ParseState -> [String] -> FilePath -> Module a -> IO (PassM Prog0)
 desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports decls) = do
@@ -166,37 +176,39 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
       -- single top-level declaration we first collect types and then collect
       -- definitions.
       funtys = foldr (collectTopTy type_syns) M.empty decls
-  imported_progs :: [PassM Prog0] <- mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
+  imported_progs <- mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
   let prog = do
         toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
         let (defs,_vars,funs,inlines,main) = foldr classify init_acc toplevels
-            funs' = foldr (\v acc -> M.update (\fn -> Just (fn {funInline = Inline})) v acc) funs inlines
-        imported_progs' <- mapM id imported_progs
+            funs' = foldr (M.update (\fn -> Just (fn {funInline = Inline}))) funs inlines
+        imported_progs' <- sequence imported_progs
         let (defs0,funs0) =
               foldr
-                (\Prog{ddefs,fundefs} (defs1,funs1) ->
-                     let ddef_names1 = M.keysSet defs1
-                         ddef_names2 = M.keysSet ddefs
+                (\(Prog{ddefs,fundefs}, qualified, modName) (defs1,funs1) ->
+                     let ddefs' = processQualifiedDefs qualified modName ddefs
+                         fundefs' = processQualifiedFuns qualified modName fundefs
+                         ddef_names1 = M.keysSet defs1
+                         ddef_names2 = M.keysSet ddefs'
                          fn_names1 = M.keysSet funs1
-                         fn_names2 = M.keysSet fundefs
+                         fn_names2 = M.keysSet fundefs'
                          em1 = S.intersection ddef_names1 ddef_names2
                          em2 = S.intersection fn_names1 fn_names2
                          conflicts1 = foldr
                                         (\d acc ->
-                                             if (ddefs M.! d) /= (defs1 M.! d)
+                                             if (ddefs' M.! d) /= (defs1 M.! d)
                                              then d : acc
                                              else acc)
                                         []
                                         em1
                          conflicts2 = foldr
                                         (\f acc ->
-                                             if (fundefs M.! f) /= (funs1 M.! f)
-                                             then dbgTraceIt (sdoc ((fundefs M.! f), (funs1 M.! f))) (f : acc)
+                                             if (fundefs' M.! f) /= (funs1 M.! f)
+                                             then dbgTraceIt (sdoc (fundefs' M.! f, funs1 M.! f)) (f : acc)
                                              else acc)
                                         []
                                         em2
                      in case (conflicts1, conflicts2) of
-                            ([], []) -> (M.union ddefs defs1,  M.union fundefs funs1)
+                            ([], []) -> (M.union ddefs' defs1,  M.union fundefs' funs1)
                             (_x:_xs,_) -> error $ "Conflicting definitions of " ++ show conflicts1 ++ " found in " ++ mod_name
                             (_,_x:_xs) -> error $ "Conflicting definitions of " ++ show (S.toList em2) ++ " found in " ++ mod_name)
                 (defs, funs')
@@ -228,15 +240,13 @@ stdlibModules :: [String]
 stdlibModules = ["Gibbon.Prim", "Gibbon.Prelude", "Gibbon.Vector", "Gibbon.Vector.Parallel",
                  "Gibbon.List", "Gibbon.PList", "Gibbon.ByteString"]
 
-processImport :: Config -> IORef ParseState -> [String] -> FilePath -> ImportDecl a -> IO (PassM Prog0)
+processImport :: Config -> IORef ParseState -> [String] -> FilePath -> ImportDecl a -> IO (PassM (Prog0, Bool, String))
 processImport cfg pstate_ref import_route dir decl@ImportDecl{..}
     -- When compiling with Gibbon, we should *NOT* inline things defined in Gibbon.Prim.
-    | mod_name == "Gibbon.Prim" = pure (pure (Prog M.empty M.empty Nothing))
+    | mod_name == "Gibbon.Prim" = pure (pure (Prog M.empty M.empty Nothing, False, "Main"))
     | otherwise = do
     when (mod_name `elem` import_route) $
       error $ "Circular dependency detected. Import path: "++ show (mod_name : import_route)
-    when (importQualified) $ error $ "Qualified imports not supported yet. Offending import: " ++  prettyPrint decl
-    when (isJust importAs) $ error $ "Module aliases not supported yet. Offending import: " ++  prettyPrint decl
     when (isJust importSpecs) $ error $ "Selective imports not supported yet. Offending import: " ++  prettyPrint decl
     (ParseState imported) <- readIORef pstate_ref
     mod_fp <- if mod_name `elem` stdlibModules
@@ -257,8 +267,8 @@ processImport cfg pstate_ref import_route dir decl@ImportDecl{..}
                     let pstate' = ParseState { imported = imported'' }
                     writeIORef pstate_ref pstate'
                     pure prog0'
-
-    pure (pure prog)
+    let modName = case importAs of Just (ModuleName _ n) -> n; _ -> mod_name
+    pure (pure (prog, importQualified, modName))
   where
     mod_name = mnameToStr importModule
 
@@ -1047,14 +1057,14 @@ desugarAlt :: (Show a,  Pretty a) => TypeSynEnv -> TopTyEnv -> Alt a -> PassM (D
 desugarAlt type_syns toplevel alt =
   case alt of
     Alt _ (PApp _ qname ps) (UnGuardedRhs _ rhs) Nothing -> do
-      let conName = qnameToStr qname 
+      let conName = qnameToStr qname
       desugarCase ps conName rhs
-    Alt _ (PWildCard _) (UnGuardedRhs _ rhs) b -> 
-      desugarCase [] "_default" rhs 
+    Alt _ (PWildCard _) (UnGuardedRhs _ rhs) _ ->
+      desugarCase [] "_default" rhs
     Alt _ _ GuardedRhss{} _ -> error "desugarExp: Guarded RHS not supported in case."
     Alt _ _ _ Just{}        -> error "desugarExp: Where clauses not allowed in case."
     Alt _ pat _ _           -> error $ "desugarExp: Unsupported pattern in case: " ++ prettyPrint pat
-  where 
+  where
     desugarCase ps conName rhs = do
       ps' <- mapM (\x -> case x of
                             PVar _ v -> (pure . toVar . nameToStr) v

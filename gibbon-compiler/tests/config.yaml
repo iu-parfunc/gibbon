@@ -315,6 +315,10 @@ tests:
   - name: Foo.hs
     dir: examples/imports/
     answer-file: examples/imports/Foo.ans
+  
+  - name: Foo.hs
+    dir: examples/qualified_imports/
+    answer-file: examples/qualified_imports/Foo.ans
 
   - name: NeedsClosure.hs
     dir: examples/poly
