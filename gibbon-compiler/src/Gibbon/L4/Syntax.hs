@@ -359,6 +359,7 @@ scalarToTy L3.IntS  = IntTy
 scalarToTy L3.SymS  = SymTy
 scalarToTy L3.BoolS = BoolTy
 scalarToTy L3.FloatS = FloatTy
+scalarToTy L3.CharS = CharTy
 
 -- | Extend the tail of a Tail.  Take the return values from a Tail
 -- expression and do some more computation.

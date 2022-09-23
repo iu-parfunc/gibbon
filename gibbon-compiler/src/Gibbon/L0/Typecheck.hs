@@ -1149,7 +1149,6 @@ unify ex ty1 ty2
         (IntTy, IntTy)     -> pure emptySubst
         (FloatTy,FloatTy)  -> pure emptySubst
         (BoolTy, BoolTy)   -> pure emptySubst
-        (TyVar _, TyVar _) -> fail_
         -- -- CHECKME
         -- (MetaTv a, MetaTv b) -> unifyVar ex a (MetaTv b)
         (MetaTv a, _) -> unifyVar ex a ty2

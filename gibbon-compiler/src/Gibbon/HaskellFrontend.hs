@@ -27,7 +27,8 @@ import           System.IO
 import           Gibbon.L0.Syntax as L0
 import           Gibbon.Common
 import           Gibbon.DynFlags
-import Debug.Trace 
+import Debug.Trace
+import Gibbon.L0.Typecheck
 
 --------------------------------------------------------------------------------
 
@@ -156,18 +157,18 @@ data TopLevel
   deriving (Show, Eq)
 
 type TopTyEnv = TyEnv TyScheme
-type TypeSynEnv = M.Map TyCon Ty0
+type TypeSynEnv = TyEnv TyScheme 
 
 desugarModule :: (Show a,  Pretty a)
               => Config -> IORef ParseState -> [String] -> FilePath -> Module a -> IO (PassM Prog0)
 desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports decls) = do
-  let type_syns = foldl collectTypeSynonyms M.empty decls
-      -- Since top-level functions and their types can't be declared in
-      -- single top-level declaration we first collect types and then collect
-      -- definitions.
-      funtys = foldr (collectTopTy type_syns) M.empty decls
   imported_progs :: [PassM Prog0] <- mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
   let prog = do
+        let type_syns = foldl collectTypeSynonyms M.empty decls
+        -- Since top-level functions and their types can't be declared in
+        -- single top-level declaration we first collect types and then collect
+        -- definitions.
+        let funtys = foldr (collectTopTy type_syns) M.empty decls
         toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
         let (defs,_vars,funs,inlines,main) = foldr classify init_acc toplevels
             funs' = foldr (\v acc -> M.update (\fn -> Just (fn {funInline = Inline})) v acc) funs inlines
@@ -334,15 +335,25 @@ desugarTopType type_syns ty =
       let tyvars = case mb_tvbind of
                      Just bnds -> map desugarTyVarBind bnds
                      Nothing   -> []
-      in ForAll tyvars (desugarType type_syns ty1)
+      in ForAll tyvars (desugarType'' type_syns ty1)
     -- quantify over all tyvars.
     _ -> let ty' = desugarType type_syns ty
              tyvars = tyVarsInTy ty'
         in ForAll tyvars ty'
 
-desugarType :: (Show a,  Pretty a) => TypeSynEnv -> Type a -> Ty0
-desugarType type_syns ty =
-  case ty of
+
+desugarType'' type_syns ty = case desugarType type_syns ty of 
+  Left (ForAll [] ty) -> ty 
+  Left v -> error $ "Invalid Ty0: " ++ sdoc v
+  Right ty -> ty
+
+desugarType :: (Show a,  Pretty a) => TypeSynEnv -> Type a -> Either TyScheme Ty0
+desugarType type_syns ty = 
+  let res = desugarType''' type_syns ty 
+  in traceShow (ty, res) res
+
+
+desugarType''' type_syns ty = case ty of
     H.TyVar _ (Ident _ t) -> L0.TyVar $ UserTv (toVar t)
     TyTuple _ Boxed tys   -> ProdTy (map (desugarType type_syns) tys)
     TyCon _ (Special _ (UnitCon _))     -> ProdTy []
@@ -354,10 +365,7 @@ desugarType type_syns ty =
     TyCon _ (UnQual _ (Ident _ "SymSet"))  -> SymSetTy
     TyCon _ (UnQual _ (Ident _ "SymHash"))  -> SymHashTy
     TyCon _ (UnQual _ (Ident _ "IntHash"))  -> IntHashTy
-    TyCon _ (UnQual _ (Ident _ con)) ->
-      case M.lookup con type_syns of
-        Nothing -> PackedTy con []
-        Just ty' -> ty'
+    TyCon _ (UnQual _ (Ident _ con)) -> PackedTy con []
     TyFun _ t1 t2 -> let t1' = desugarType type_syns t1
                          t2' = desugarType type_syns t2
                      in ArrowTy [t1'] t2'
@@ -365,7 +373,7 @@ desugarType type_syns ty =
     TyApp _ tycon arg ->
       let ty' = desugarType type_syns tycon in
       case ty' of
-        PackedTy con tyargs ->
+        Right (PackedTy con tyargs) ->
             case (con,tyargs) of
                 ("Vector",[]) -> VectorTy (desugarType type_syns arg)
                 ("List",[]) -> ListTy (desugarType type_syns arg)
@@ -375,9 +383,9 @@ desugarType type_syns ty =
                     ProdTy [k, v] -> PDictTy k v
                     _ -> error $ "desugarType: Unexpected PDictTy argument: " ++ show arg'
                 _ ->
-                  case M.lookup con type_syns of
-                    Nothing -> PackedTy con (tyargs ++ [desugarType type_syns arg])
-                    Just ty'' -> ty''
+                  case traceShow (">> packed type synonym, ty = ", ty, "ty'=",ty',"tovar = ",toVar con ,"type_syn = ", M.lookup (toVar con) type_syns, "type_syns=", type_syns) M.lookup (toVar con) type_syns of
+                    Nothing -> PackedTy con [desugarType'' type_syns arg]
+                    Just (ForAll tvs ty) -> PackedTy con (map (\ty'' -> if ty'' == head tvs then desugarType type_syns arg else ty'') tyargs)
         _ -> error $ "desugarType: Unexpected type arguments: " ++ show ty'
     _ -> error $ "desugarType: Unsupported type: " ++ show ty
 
@@ -402,8 +410,8 @@ desugarTopType' type_syns ty =
 desugarType' :: (Show a,  Pretty a) => TypeSynEnv -> Type a -> (IsBoxed, Ty0)
 desugarType' type_syns ty =
   case ty of
-    TyBang _ _ (NoUnpack _) ty1 -> (True, desugarType type_syns ty1)
-    _ -> (False, desugarType type_syns ty)
+    TyBang _ _ (NoUnpack _) ty1 -> (True, desugarType'' type_syns ty1)
+    _ -> (False, desugarType'' type_syns ty)
 
 -- | Transform a multi-argument function type to one where all inputs are a
 -- single tuple argument. E.g. (a -> b -> c -> d) => ((a,b,c) -> d).
@@ -488,7 +496,7 @@ desugarExp :: (Show a, Pretty a) => TypeSynEnv -> TopTyEnv -> Exp a -> PassM Exp
 desugarExp type_syns toplevel e =
   case e of
     Paren _ (ExpTypeSig _ (App _ (H.Var _ f) (Lit _ lit)) tyc)
-        | (qnameToStr f) == "error" -> pure $ PrimAppE (ErrorP (litToString lit) (desugarType type_syns tyc)) []
+        | (qnameToStr f) == "error" -> pure $ PrimAppE (ErrorP (litToString lit) (desugarType'' type_syns tyc)) []
     -- Paren _ (App _ (H.Var _ f) (Lit _ lit))
     --     | (qnameToStr f) == "error" -> pure $ PrimAppE (ErrorP (litToString lit
     Paren _ e2 -> desugarExp type_syns toplevel e2
@@ -912,11 +920,10 @@ collectTopTy type_syns d env =
 collectTypeSynonyms :: (Show a,  Pretty a) => TypeSynEnv -> Decl a -> TypeSynEnv
 collectTypeSynonyms env d =
   case d of
-    TypeDecl _ (DHead _ name) ty ->
-      let ty' = desugarType env ty
-          tycon = nameToStr name
+    TypeDecl _ decl ty ->
+      let (tycon, args) = desugarDeclHead decl
       in case M.lookup tycon env of
-           Nothing -> M.insert tycon ty' env
+           Nothing -> M.insert tycon (ForAll args (desugarType'' env ty)) env
            Just{} -> error $ "collectTypeSynonyms: Multiple type synonym declarations: " ++ show tycon
     _ -> env
 
@@ -1049,14 +1056,14 @@ desugarAlt :: (Show a,  Pretty a) => TypeSynEnv -> TopTyEnv -> Alt a -> PassM (D
 desugarAlt type_syns toplevel alt =
   case alt of
     Alt _ (PApp _ qname ps) (UnGuardedRhs _ rhs) Nothing -> do
-      let conName = qnameToStr qname 
+      let conName = qnameToStr qname
       desugarCase ps conName rhs
-    Alt _ (PWildCard _) (UnGuardedRhs _ rhs) b -> 
-      desugarCase [] "_default" rhs 
+    Alt _ (PWildCard _) (UnGuardedRhs _ rhs) b ->
+      desugarCase [] "_default" rhs
     Alt _ _ GuardedRhss{} _ -> error "desugarExp: Guarded RHS not supported in case."
     Alt _ _ _ Just{}        -> error "desugarExp: Where clauses not allowed in case."
     Alt _ pat _ _           -> error $ "desugarExp: Unsupported pattern in case: " ++ prettyPrint pat
-  where 
+  where
     desugarCase ps conName rhs = do
       ps' <- mapM (\x -> case x of
                             PVar _ v -> (pure . toVar . nameToStr) v
@@ -1148,7 +1155,7 @@ desugarTyVarBind v@KindedVar{} = error $ "desugarTyVarBind: Vars with kinds not 
 desugarPatWithTy :: (Show a, Pretty a) => TypeSynEnv -> Pat a -> PassM (Var, Ty0, [L0.Binds Exp0])
 desugarPatWithTy type_syns pat =
   case pat of
-    (PParen _ p)        -> desugarPatWithTy type_syns p
+    (PParen _ p)        -> desugarPatWithTy'' type_syns p
     (PatTypeSig _ p ty) -> do (v,_ty,binds) <- desugarPatWithTy type_syns p
                               pure (v, desugarType type_syns ty, binds)
     (PVar _ n)          -> do ty <- newMetaTy

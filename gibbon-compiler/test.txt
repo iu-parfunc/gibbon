@@ -1,0 +1,57 @@
+(TyCon () (UnQual () (Ident () "Int")),IntTy)
+(TyCon () (UnQual () (Ident () "Int")),IntTy)
+(TyFun () (TyCon () (UnQual () (Ident () "Int"))) (TyCon () (UnQual () (Ident () "Int"))),ArrowTy [IntTy] IntTy)
+(TyCon () (UnQual () (Ident () "A")),PackedTy "A" [])
+(TyCon () (UnQual () (Ident () "A")),PackedTy "A" [])
+(TyFun () (TyCon () (UnQual () (Ident () "A"))) (TyCon () (UnQual () (Ident () "A"))),ArrowTy [PackedTy "A" []] (PackedTy "A" []))
+(TyCon () (UnQual () (Ident () "A")),PackedTy "A" [])
+(TyCon () (UnQual () (Ident () "Int")),IntTy)
+(TyFun () (TyCon () (UnQual () (Ident () "A"))) (TyCon () (UnQual () (Ident () "Int"))),ArrowTy [PackedTy "A" []] IntTy)
+(TyCon () (UnQual () (Ident () "Int")),IntTy)
+(TyCon () (UnQual () (Ident () "A")),PackedTy "A" [])
+(TyFun () (TyCon () (UnQual () (Ident () "Int"))) (TyCon () (UnQual () (Ident () "A"))),ArrowTy [IntTy] (PackedTy "A" []))
+(TyCon () (UnQual () (Ident () "Int")),IntTy)
+(TyCon () (UnQual () (Ident () "Int")),IntTy)
+(TyCon () (UnQual () (Ident () "Int")),IntTy)
+(TyCon () (UnQual () (Ident () "Int")),IntTy)
+(TyCon () (UnQual () (Ident () "C")),PackedTy "C" [])
+(TyCon () (UnQual () (Ident () "B")),PackedTy "B" [])
+(TyCon () (UnQual () (Ident () "Int")),IntTy)
+(">> packed type synonym, ty = ",TyApp () (TyCon () (UnQual () (Ident () "B"))) (TyVar () (Ident () "b")),"ty'=",PackedTy "B" [],"tovar = ",Var "B","type_syn = ",Nothing,"type_syns=",fromList [(Var "A",ForAll [] IntTy)])
+(TyVar () (Ident () "b"),TyVar (UserTv (Var "b")))
+(TyApp () (TyCon () (UnQual () (Ident () "B"))) (TyVar () (Ident () "b")),PackedTy "B" [TyVar (UserTv (Var "b"))])
+(">> packed type synonym, ty = ",TyApp () (TyApp () (TyCon () (UnQual () (Ident () "B"))) (TyVar () (Ident () "b"))) (TyVar () (Ident () "d")),"ty'=",PackedTy "B" [TyVar (UserTv (Var "b"))],"tovar = ",Var "B","type_syn = ",Nothing,"type_syns=",fromList [(Var "A",ForAll [] IntTy)])
+(TyVar () (Ident () "d"),TyVar (UserTv (Var "d")))
+(TyApp () (TyApp () (TyCon () (UnQual () (Ident () "B"))) (TyVar () (Ident () "b"))) (TyVar () (Ident () "d")),PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d"))])
+(">> packed type synonym, ty = ",TyApp () (TyApp () (TyApp () (TyCon () (UnQual () (Ident () "B"))) (TyVar () (Ident () "b"))) (TyVar () (Ident () "d"))) (TyVar () (Ident () "b")),"ty'=",PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d"))],"tovar = ",Var "B","type_syn = ",Nothing,"type_syns=",fromList [(Var "A",ForAll [] IntTy)])
+(TyVar () (Ident () "b"),TyVar (UserTv (Var "b")))
+(TyApp () (TyApp () (TyApp () (TyCon () (UnQual () (Ident () "B"))) (TyVar () (Ident () "b"))) (TyVar () (Ident () "d"))) (TyVar () (Ident () "b")),PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),TyVar (UserTv (Var "b"))])
+(">> packed type synonym, ty = ",TyApp () (TyApp () (TyApp () (TyApp () (TyCon () (UnQual () (Ident () "B"))) (TyVar () (Ident () "b"))) (TyVar () (Ident () "d"))) (TyVar () (Ident () "b"))) (TyVar () (Ident () "d")),"ty'=",PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),TyVar (UserTv (Var "b"))],"tovar = ",Var "B","type_syn = ",Nothing,"type_syns=",fromList [(Var "A",ForAll [] IntTy)])
+(TyVar () (Ident () "d"),TyVar (UserTv (Var "d")))
+(TyApp () (TyApp () (TyApp () (TyApp () (TyCon () (UnQual () (Ident () "B"))) (TyVar () (Ident () "b"))) (TyVar () (Ident () "d"))) (TyVar () (Ident () "b"))) (TyVar () (Ident () "d")),PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d"))])
+(">> packed type synonym, ty = ",TyApp () (TyCon () (UnQual () (Ident () "C"))) (TyCon () (UnQual () (Ident () "Int"))),"ty'=",PackedTy "C" [],"tovar = ",Var "C","type_syn = ",Just (ForAll [UserTv (Var "b"),UserTv (Var "d")] (PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d"))])),"type_syns=",fromList [(Var "C",ForAll [UserTv (Var "b"),UserTv (Var "d")] (PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d"))])),(Var "A",ForAll [] IntTy)])
+(TyApp () (TyCon () (UnQual () (Ident () "C"))) (TyCon () (UnQual () (Ident () "Int"))),PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d"))])
+(">> packed type synonym, ty = ",TyApp () (TyApp () (TyCon () (UnQual () (Ident () "C"))) (TyCon () (UnQual () (Ident () "Int")))) (TyCon () (UnQual () (Ident () "Float"))),"ty'=",PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d"))],"tovar = ",Var "B","type_syn = ",Nothing,"type_syns=",fromList [(Var "C",ForAll [UserTv (Var "b"),UserTv (Var "d")] (PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d"))])),(Var "A",ForAll [] IntTy)])
+(TyCon () (UnQual () (Ident () "Float")),FloatTy)
+(TyApp () (TyApp () (TyCon () (UnQual () (Ident () "C"))) (TyCon () (UnQual () (Ident () "Int")))) (TyCon () (UnQual () (Ident () "Float"))),PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),FloatTy])
+(TyFun () (TyCon () (UnQual () (Ident () "Int"))) (TyApp () (TyApp () (TyCon () (UnQual () (Ident () "C"))) (TyCon () (UnQual () (Ident () "Int")))) (TyCon () (UnQual () (Ident () "Float")))),ArrowTy [IntTy] (PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),FloatTy]))
+(TyFun () (TyCon () (UnQual () (Ident () "Int"))) (TyFun () (TyCon () (UnQual () (Ident () "Int"))) (TyApp () (TyApp () (TyCon () (UnQual () (Ident () "C"))) (TyCon () (UnQual () (Ident () "Int")))) (TyCon () (UnQual () (Ident () "Float"))))),ArrowTy [IntTy] (ArrowTy [IntTy] (PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),FloatTy])))
+(TyFun () (TyCon () (UnQual () (Ident () "Int"))) (TyFun () (TyCon () (UnQual () (Ident () "Int"))) (TyFun () (TyCon () (UnQual () (Ident () "Int"))) (TyApp () (TyApp () (TyCon () (UnQual () (Ident () "C"))) (TyCon () (UnQual () (Ident () "Int")))) (TyCon () (UnQual () (Ident () "Float")))))),ArrowTy [IntTy] (ArrowTy [IntTy] (ArrowTy [IntTy] (PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),FloatTy]))))
+(TyFun () (TyCon () (UnQual () (Ident () "Int"))) (TyFun () (TyCon () (UnQual () (Ident () "Int"))) (TyFun () (TyCon () (UnQual () (Ident () "Int"))) (TyFun () (TyCon () (UnQual () (Ident () "Int"))) (TyApp () (TyApp () (TyCon () (UnQual () (Ident () "C"))) (TyCon () (UnQual () (Ident () "Int")))) (TyCon () (UnQual () (Ident () "Float"))))))),ArrowTy [IntTy] (ArrowTy [IntTy] (ArrowTy [IntTy] (ArrowTy [IntTy] (PackedTy "B" [TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),TyVar (UserTv (Var "b")),TyVar (UserTv (Var "d")),FloatTy])))))
+(TyVar () (Ident () "a"),TyVar (UserTv (Var "a")))
+(TyVar () (Ident () "b"),TyVar (UserTv (Var "b")))
+(TyVar () (Ident () "c"),TyVar (UserTv (Var "c")))
+(TyVar () (Ident () "d"),TyVar (UserTv (Var "d")))
+gibbon: L0.Typecheck: 
+    Couldn't match type 'TyVar b:b_19' with 'IntTy'
+    Expected type: IntTy
+    Actual type: TyVar b:b_19
+    In the expression: 
+      DataConE (MetaTv $8)
+               "B"
+               [PrimAppE SubP [VarE "x_15",LitE 1],
+                PrimAppE AddP [VarE "y_16",LitE 1],
+                PrimAppE AddP [VarE "z_17",LitE 2],
+                PrimAppE SubP [VarE "w_18",LitE 2]] in Var "foo"
+CallStack (from HasCallStack):
+  error, called at src/Gibbon/L0/Typecheck.hs:81:18 in gibbon-0.2-inplace:Gibbon.L0.Typecheck
