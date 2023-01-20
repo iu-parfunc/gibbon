@@ -69,6 +69,7 @@ import           Gibbon.Passes.InferLocations (inferLocs)
 -- This is the custom pass reference to issue #133 that moves regionsInwards
 -- import           Gibbon.Passes.RegionsInwards (regionsInwards)
 -- import           Gibbon.Passes.RepairProgram  (repairProgram)
+import           Gibbon.Passes.ShuffleFieldOrdering (shuffleDataCon)
 import           Gibbon.Passes.AddRAN         (addRAN,needsRAN)
 import           Gibbon.Passes.AddTraversals  (addTraversals)
 import           Gibbon.Passes.RemoveCopies   (removeCopies)
@@ -504,6 +505,9 @@ passes config@Config{dynflags} l0 = do
       l1 <- goE0 "toL1"            (pure . L0.toL1)     l0
 
       l1 <- goE1 "typecheck"     L1.tcProg              l1
+
+      l1 <- go "shuffleFieldOrdering" shuffleDataCon l1
+
       -- If we are executing a benchmark, then we
       -- replace the main function with benchmark code:
       l1 <- goE1 "benchMainExp"  benchMainExp           l1
@@ -517,6 +521,9 @@ passes config@Config{dynflags} l0 = do
       l1 <- goE1 "simplify"      simplifyL1             l1
       l1 <- goE1 "inlineTriv"    inlineTriv             l1
       l1 <- goE1 "typecheck"     L1.tcProg              l1
+      
+      
+
       l1 <- if should_fuse
           then goE1  "fusion2"   fusion2                l1
           else return l1

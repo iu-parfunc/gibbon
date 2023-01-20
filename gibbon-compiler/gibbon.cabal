@@ -63,6 +63,7 @@ library
                        Gibbon.Passes.AddTraversals
                        Gibbon.Passes.InferLocations
                        Gibbon.Passes.RegionsInwards
+                       Gibbon.Passes.ShuffleFieldOrdering
                        Gibbon.Passes.RemoveCopies
                        Gibbon.Passes.InferEffects
                        Gibbon.Passes.ParAlloc
