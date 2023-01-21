@@ -66,10 +66,12 @@ import           Gibbon.Passes.Simplifier     (simplifyL1, lateInlineTriv)
 
 import           Gibbon.Passes.DirectL3       (directL3)
 import           Gibbon.Passes.InferLocations (inferLocs)
--- This is the custom pass reference to issue #133 that moves regionsInwards
--- import           Gibbon.Passes.RegionsInwards (regionsInwards)
--- import           Gibbon.Passes.RepairProgram  (repairProgram)
+
 import           Gibbon.Passes.ShuffleFieldOrdering (shuffleDataCon)
+
+-- This is the custom pass reference to issue #133 that moves regionsInwards
+import           Gibbon.Passes.RegionsInwards (regionsInwards)
+-- import           Gibbon.Passes.RepairProgram  (repairProgram)
 import           Gibbon.Passes.AddRAN         (addRAN,needsRAN)
 import           Gibbon.Passes.AddTraversals  (addTraversals)
 import           Gibbon.Passes.RemoveCopies   (removeCopies)
@@ -506,8 +508,6 @@ passes config@Config{dynflags} l0 = do
 
       l1 <- goE1 "typecheck"     L1.tcProg              l1
 
-      l1 <- go "shuffleFieldOrdering" shuffleDataCon l1
-
       -- If we are executing a benchmark, then we
       -- replace the main function with benchmark code:
       l1 <- goE1 "benchMainExp"  benchMainExp           l1
@@ -521,13 +521,12 @@ passes config@Config{dynflags} l0 = do
       l1 <- goE1 "simplify"      simplifyL1             l1
       l1 <- goE1 "inlineTriv"    inlineTriv             l1
       l1 <- goE1 "typecheck"     L1.tcProg              l1
-      
-      
-
       l1 <- if should_fuse
           then goE1  "fusion2"   fusion2                l1
           else return l1
       l1 <- goE0 "typecheck"     L1.tcProg              l1
+
+       
 
       -- Minimal haskell "backend".
       lift $ dumpIfSet config Opt_D_Dump_Hs (render $ pprintHsWithEnv l1)
@@ -588,6 +587,10 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
                   l2 <- goE2 "repairProgram"  (pure . id)  l2
                   pure l2
                 else do
+
+                  l1 <- goE1 "shuffleDataConstructor" shuffleDataCon l1
+                  l1 <- go "L1.typecheck" L1.tcProg     l1                
+
                   let need = needsRAN l2
                   l1 <- goE1 "addRAN"        (addRAN need) l1
                   l1 <- go "L1.typecheck"    L1.tcProg     l1

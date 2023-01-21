@@ -26,7 +26,7 @@ regionsInwards Prog{ddefs,fundefs,mainExp} = do
         functionArgs = S.fromList $ concatMap funArgs (M.elems fundefs)          --Init functionArgs with all the function arguments, concatenate into one list
         scopeSetFun  = scopeSetMain `S.union` functionArgs                       --scope set for function body is the union of function args and the function names
     fds' <- mapM (placeRegionsInwardsFunBody scopeSetFun) (M.elems fundefs)      --Delay Regions for the function body
-    let fundefs' = M.fromList $ map (\f -> (funName f,f)) fds'
+    let fundefs' = M.fromList $ L.map (\f -> (funName f,f)) fds'
     mainExp' <- case mainExp of
         Nothing -> return Nothing
         Just (mn, ty)-> do
