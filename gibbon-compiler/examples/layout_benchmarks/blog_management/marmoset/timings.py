@@ -2,15 +2,22 @@ import os
 import subprocess
 import re
 
-iterations = 9
+iterations = 12
 
-rootdir = "/local/scratch/a/singhav/Applications/src/gibbon/gibbon-compiler/examples/layout_benchmarks/blog_management/marmoset/"
+#rootdir = "/local/scratch/a/singhav/Applications/src/gibbon/gibbon-compiler/examples/layout_benchmarks/blog_management/marmoset/"
 
-ut_hash_include = "/local/scratch/a/singhav/Applications/src/uthash-2.3.0/include"
+rootdir = "/home/vidush/workdisk/git/gibbon-main/gibbon-compiler/examples/layout_benchmarks/blog_management/marmoset/"
+
+#ut_hash_include = "/local/scratch/a/singhav/Applications/src/uthash-2.3.0/include"
+
+ut_hash_include = ""
 
 Passes = ["ContentSearch", "DeleteTag", "InsertTag", "TagSearch"]
 
-layouts = ["layout1", "layout2", "layout3", "layout4", "layout5", "layout6", "layout7", "layout8"]
+#layouts = ["layout1", "layout2", "layout3", "layout4", "layout5", "layout6", "layout7", "layout8"]
+
+layouts = ["layout1", "layout3", "layout4", "layout5", "layout6", "layout7", "layout8"]
+
 
 #Compilation phase
 for myPass in Passes:
@@ -24,31 +31,31 @@ for myPass in Passes:
 
         filename_haskell = gibbon_file_name + ".hs" 
 
-        haskell_cmd = "gibbon --packed --no-gc --toC " + filename_haskell
+        haskell_cmd = "gibbon-rts --packed --to-exe --no-gc " + filename_haskell
 
         print("The haskell command was: ")
         print()
         print(haskell_cmd)
         print()
 
-        gibbon_cmd_haskell = subprocess.run(["gibbon", "--packed", "--no-gc", "--toC", filename_haskell]) 
+        gibbon_cmd_haskell = subprocess.run(["gibbon-rts", "--packed", "--to-exe", "--no-gc", filename_haskell]) 
 
         print("The exit code for the haskell command was %d" % gibbon_cmd_haskell.returncode)
         print() 
 
-        filename_c = gibbon_file_name + ".c"
+        #filename_c = gibbon_file_name + ".c"
 
-        gibbon_cmd = "gcc" + " -O3 " + "-I" + ut_hash_include + " " + filename_c + " -o " + gibbon_file_name
+        #gibbon_cmd = "gcc" + " -O3 " + "-I" + ut_hash_include + " " + filename_c + " -o " + gibbon_file_name
         
-        print("The gcc command was: ")
-        print()
-        print(gibbon_cmd)
-        print()
+        #print("The gcc command was: ")
+        #print()
+        #print(gibbon_cmd)
+        #print()
 
-        gibbon_cmd_c = subprocess.run(["gcc", "-O3", "-I" + ut_hash_include , filename_c,  "-o", gibbon_file_name])
-        print()
+        #gibbon_cmd_c = subprocess.run(["gcc", "-O3", "-I" + ut_hash_include , filename_c,  "-o", gibbon_file_name])
+        #print()
 
-        print("The exit code for the gcc compilation was %d" % gibbon_cmd_c.returncode)
+        #print("The exit code for the gcc compilation was %d" % gibbon_cmd_c.returncode)
 
 
 
@@ -59,7 +66,7 @@ Timings = {}
 for myPass in Passes:
     for layout in layouts: 
 
-        gibbon_binary = layout + myPass
+        gibbon_binary = layout + myPass + ".exe"
         
         print()
         print("Running the binary " + str(gibbon_binary))

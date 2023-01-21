@@ -58,7 +58,7 @@ instance (Out l, Show l, Show d, Out d, Expression (e l d))
         -- some point if it avoids region conflicts.
         DataConE{} -> False
 
-        IfE{}      -> False
+        IfE{}      -> False 
         CaseE{}    -> False
         LetE {}    -> False
         MapE {}    -> False

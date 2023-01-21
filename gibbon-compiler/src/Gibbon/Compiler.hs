@@ -70,7 +70,7 @@ import           Gibbon.Passes.InferLocations (inferLocs)
 import           Gibbon.Passes.ShuffleFieldOrdering (shuffleDataCon)
 
 -- This is the custom pass reference to issue #133 that moves regionsInwards
-import           Gibbon.Passes.RegionsInwards (regionsInwards)
+-- import           Gibbon.Passes.RegionsInwards (regionsInwards)
 -- import           Gibbon.Passes.RepairProgram  (repairProgram)
 import           Gibbon.Passes.AddRAN         (addRAN,needsRAN)
 import           Gibbon.Passes.AddTraversals  (addTraversals)

@@ -121,7 +121,7 @@ type RANEnv = M.Map Var Var
 -- | Operates on an L1 program, and updates it to have random access nodes.
 --
 -- Previous analysis determines which data types require it (needsLRAN).
-addRAN :: S.Set TyCon -> Prog1 -> PassM Prog1
+addRAN :: S.Set TyCon -> Prog1 -> PassM Prog1 
 addRAN needRANsTyCons prg@Prog{ddefs,fundefs,mainExp} = do
   dump_op <- dopt Opt_D_Dump_Repair <$> getDynFlags
   when dump_op $

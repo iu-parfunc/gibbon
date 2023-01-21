@@ -3,26 +3,16 @@
 module Gibbon.Passes.ShuffleFieldOrdering
     (shuffleDataCon) where  
 
-
-import Control.Monad ( when, forM )
-import Data.Foldable as F
-import Data.List as L
 import Data.Map as M
-import Data.Maybe ( fromJust )
-import qualified Data.Set as Set
-
-import Text.PrettyPrint.GenericPretty
 
 import Gibbon.Common
-import Gibbon.DynFlags
-import Gibbon.Passes.AddTraversals ( needsTraversalCase )
 import Gibbon.L1.Syntax as L1 
-import Gibbon.L2.Syntax as L2
-
 import Prelude as P
 
 
--- Make data structure to store output from Z3. 
+--Data structure to store output from ILP solver.
+--Maps DataCon to new indices of fields 
+type FieldOrder = M.Map DataCon [Int]
 
 
 shuffleDataCon :: Prog1 -> PassM Prog1
