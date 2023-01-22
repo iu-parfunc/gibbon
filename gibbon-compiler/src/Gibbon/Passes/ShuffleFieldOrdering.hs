@@ -19,66 +19,69 @@ shuffleDataCon :: Prog1 -> PassM Prog1
 shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
     let fieldmap = M.fromList [("Layout1", [0, 2, 1])]  
     let shuffled_ddefs = findDataCon fieldmap ddefs
-    fds' <- mapM (shuffleDataConFunBody) (M.elems fundefs)
+    fds' <- mapM (shuffleDataConFunBody fieldmap) (M.elems fundefs)
     let fundefs' = M.fromList $ P.map (\f -> (funName f,f)) fds'
     mainExp' <- case mainExp of
         Nothing -> return Nothing
-        Just (mn, ty)-> Just . (,ty) <$> shuffleDataConExp mn 
+        Just (mn, ty)-> Just . (,ty) <$> shuffleDataConExp fieldmap mn 
     let l1 = prg { ddefs = shuffled_ddefs
                , fundefs = fundefs' 
                , mainExp = mainExp'
                }
     pure l1
 
-shuffleDataConFunBody :: FunDef1  -> PassM FunDef1
-shuffleDataConFunBody f@FunDef{funBody}  = do                                   
-  funBody' <- shuffleDataConExp funBody                        
+shuffleDataConFunBody :: FieldOrder -> FunDef1  -> PassM FunDef1
+shuffleDataConFunBody fieldorder f@FunDef{funBody}  = do                                   
+  funBody' <- shuffleDataConExp fieldorder funBody                        
   return $ f {funBody = funBody'}
 
-shuffleDataConExp ::  Exp1 -> PassM Exp1
-shuffleDataConExp ex = case ex of 
+shuffleDataConExp :: FieldOrder -> Exp1 -> PassM Exp1
+shuffleDataConExp fieldorder ex = case ex of 
     DataConE loc dcon args -> do
-            args' <- shuffleDataConArgs dcon args 
+            args' <- shuffleDataConArgs fieldorder dcon args 
             return $ DataConE loc dcon args'
     VarE{}    -> return ex
     LitE{}    -> return ex
     CharE{}   -> return ex
     FloatE{}  -> return ex
     LitSymE{} -> return ex
-    AppE f locs args -> AppE f locs <$> mapM shuffleDataConExp args
-    PrimAppE f args  -> PrimAppE f <$> mapM shuffleDataConExp args
+    AppE f locs args -> AppE f locs <$> mapM (shuffleDataConExp fieldorder) args
+    PrimAppE f args  -> PrimAppE f <$> mapM (shuffleDataConExp fieldorder) args
     LetE (v,loc,ty,rhs) bod -> do 
-         LetE <$> (v,loc,ty,) <$> shuffleDataConExp rhs <*> shuffleDataConExp bod
-    IfE a b c  -> IfE <$> shuffleDataConExp a <*> shuffleDataConExp b <*> shuffleDataConExp c
-    MkProdE xs -> MkProdE <$> mapM shuffleDataConExp xs
-    ProjE i e  -> ProjE i <$> shuffleDataConExp e
+         LetE <$> (v,loc,ty,) <$> (shuffleDataConExp fieldorder) rhs <*> (shuffleDataConExp fieldorder) bod
+    IfE a b c  -> IfE <$> (shuffleDataConExp fieldorder) a <*> (shuffleDataConExp fieldorder) b <*> (shuffleDataConExp fieldorder) c
+    MkProdE xs -> MkProdE <$> mapM (shuffleDataConExp fieldorder) xs
+    ProjE i e  -> ProjE i <$> (shuffleDataConExp fieldorder) e
     CaseE scrt mp -> do 
                     mp' <- mapM (\(a,b,c) -> do
-                                              b' <- shuffleDataConCase a b
-                                              c' <- shuffleDataConExp c
+                                              b' <- shuffleDataConCase fieldorder a b
+                                              c' <- (shuffleDataConExp fieldorder) c
                                               return $ (a,b',c')) mp 
                     return $ CaseE scrt mp'
     TimeIt e ty b -> do
-      e' <- shuffleDataConExp e
+      e' <- (shuffleDataConExp fieldorder) e
       return $ TimeIt e' ty b
     WithArenaE v e -> do
-      e' <- shuffleDataConExp e
+      e' <- (shuffleDataConExp fieldorder) e
       return $ WithArenaE v e'
-    SpawnE f locs args -> SpawnE f locs <$> mapM shuffleDataConExp args
+    SpawnE f locs args -> SpawnE f locs <$> mapM (shuffleDataConExp fieldorder) args
     SyncE   -> pure SyncE
     Ext _   -> return ex
     MapE{}  -> error "shuffleFieldOrdering: TODO MapE"
     FoldE{} -> error "shuffleFieldOrdering: TODO FoldE"
 
-shuffleDataConArgs :: DataCon -> [Exp1] -> PassM [Exp1]
-shuffleDataConArgs dcon exps = case dcon of 
-                                    "Layout1" -> pure $ P.reverse exps
-                                    _         -> pure exps  
+shuffleDataConArgs :: FieldOrder -> DataCon -> [Exp1] -> PassM [Exp1]
+shuffleDataConArgs fieldorder dcon exps = if (M.member dcon fieldorder) then 
+                                            pure $ permute (findWithDefault [] dcon fieldorder) exps
+                                          else 
+                                            pure exps
 
-shuffleDataConCase :: DataCon -> [(Var, ())] -> PassM [(Var, ())]
-shuffleDataConCase dcon vs = case dcon of 
-                                  "Layout1" -> pure $ P.reverse vs 
-                                  _         -> pure vs
+
+shuffleDataConCase :: FieldOrder -> DataCon -> [(Var, ())] -> PassM [(Var, ())]
+shuffleDataConCase fieldorder dcon vs = if (M.member dcon fieldorder) then
+                                          pure $ permute (findWithDefault [] dcon fieldorder) vs 
+                                        else 
+                                          pure vs
 
 
 findDataCon :: FieldOrder -> DDefs (UrTy a) -> DDefs (UrTy a)
@@ -102,7 +105,13 @@ reverse_dataCons :: FieldOrder -> [(DataCon, [(IsBoxed, UrTy a)])] -> [(DataCon,
 reverse_dataCons fieldorder list = case list of 
     [] -> []
     (layout_name, fields):xs -> if (M.member layout_name fieldorder)
-                                    then let rev_fields = P.reverse fields
+                                    then let rev_fields = permute (findWithDefault [] layout_name fieldorder)  fields
                                            in [(layout_name, rev_fields)] ++ (reverse_dataCons fieldorder xs)
                                 else 
                                     [(layout_name, fields)] ++ (reverse_dataCons fieldorder xs)
+
+
+permute :: [Int] -> [a] -> [a]
+permute indices list = case indices of 
+    [] -> []
+    x:xs -> [list !! x] ++ permute xs list

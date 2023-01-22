@@ -1,4 +1,4 @@
-data Foo = Layout1 Foo Int Int | Nil
+data Foo = Layout1  Int Foo Int  | Nil
 
 --foo :: Recursive -> Recursive 
 --foo rec = case rec of 
