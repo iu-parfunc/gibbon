@@ -15,15 +15,16 @@ import Prelude as P
 type FieldOrder = M.Map DataCon [Int]
 
 
+-- TODO: Make FieldOrder an argument passed to shuffleDataCon function.
 shuffleDataCon :: Prog1 -> PassM Prog1
 shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
-    let fieldmap = M.fromList [("Layout1", [0, 2, 1])]  
-    let shuffled_ddefs = findDataCon fieldmap ddefs
-    fds' <- mapM (shuffleDataConFunBody fieldmap) (M.elems fundefs)
+    let fieldorder = M.fromList [("Layout1", [0, 2, 1])]  
+    let shuffled_ddefs = findDataCon fieldorder ddefs
+    fds' <- mapM (shuffleDataConFunBody fieldorder) (M.elems fundefs)
     let fundefs' = M.fromList $ P.map (\f -> (funName f,f)) fds'
     mainExp' <- case mainExp of
         Nothing -> return Nothing
-        Just (mn, ty)-> Just . (,ty) <$> shuffleDataConExp fieldmap mn 
+        Just (mn, ty)-> Just . (,ty) <$> shuffleDataConExp fieldorder mn 
     let l1 = prg { ddefs = shuffled_ddefs
                , fundefs = fundefs' 
                , mainExp = mainExp'
@@ -99,7 +100,6 @@ reverse_ddef :: FieldOrder -> DDef (UrTy a) -> DDef (UrTy a)
 reverse_ddef fieldorder DDef{tyName, tyArgs, dataCons} =  case tyName of 
     _ -> let newDataCons = reverse_dataCons fieldorder dataCons 
            in DDef{tyName, tyArgs, dataCons=newDataCons}
-    -- _      -> DDef{tyName, tyArgs, dataCons}
 
 reverse_dataCons :: FieldOrder -> [(DataCon, [(IsBoxed, UrTy a)])] -> [(DataCon, [(IsBoxed, UrTy a)])]
 reverse_dataCons fieldorder list = case list of 
