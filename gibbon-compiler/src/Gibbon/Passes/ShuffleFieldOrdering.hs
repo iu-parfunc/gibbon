@@ -17,7 +17,8 @@ type FieldOrder = M.Map DataCon [Int]
 
 shuffleDataCon :: Prog1 -> PassM Prog1
 shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
-    let shuffled_ddefs = findDataCon ddefs
+    let fieldmap = M.fromList [("Layout1", [0, 2, 1])]  
+    let shuffled_ddefs = findDataCon fieldmap ddefs
     fds' <- mapM (shuffleDataConFunBody) (M.elems fundefs)
     let fundefs' = M.fromList $ P.map (\f -> (funName f,f)) fds'
     mainExp' <- case mainExp of
@@ -71,37 +72,37 @@ shuffleDataConExp ex = case ex of
 
 shuffleDataConArgs :: DataCon -> [Exp1] -> PassM [Exp1]
 shuffleDataConArgs dcon exps = case dcon of 
-                                    "Layout2" -> pure $ P.reverse exps
+                                    "Layout1" -> pure $ P.reverse exps
                                     _         -> pure exps  
 
 shuffleDataConCase :: DataCon -> [(Var, ())] -> PassM [(Var, ())]
 shuffleDataConCase dcon vs = case dcon of 
-                                  "Layout2" -> pure $ P.reverse vs 
+                                  "Layout1" -> pure $ P.reverse vs 
                                   _         -> pure vs
 
 
-findDataCon :: DDefs (UrTy a) -> DDefs (UrTy a)
-findDataCon ddefs = M.fromList (go (M.toList ddefs))
+findDataCon :: FieldOrder -> DDefs (UrTy a) -> DDefs (UrTy a)
+findDataCon fieldorder ddefs = M.fromList (go (M.toList ddefs))
     where
         go list = case list of 
                     [] -> [] 
                     x:xs -> case x of 
-                                (var, ddef) -> let new_ddef = reverse_ddef ddef
+                                (var, ddef) -> let new_ddef = reverse_ddef fieldorder ddef
                                                    in [(var, new_ddef)] ++ (go xs)
 
 
 
-reverse_ddef :: DDef (UrTy a) -> DDef (UrTy a)
-reverse_ddef DDef{tyName, tyArgs, dataCons} =  case tyName of 
-    "Blog" -> let newDataCons = reverse_dataCons dataCons 
-                in DDef{tyName, tyArgs, dataCons=newDataCons}
-    _      -> DDef{tyName, tyArgs, dataCons}
+reverse_ddef :: FieldOrder -> DDef (UrTy a) -> DDef (UrTy a)
+reverse_ddef fieldorder DDef{tyName, tyArgs, dataCons} =  case tyName of 
+    _ -> let newDataCons = reverse_dataCons fieldorder dataCons 
+           in DDef{tyName, tyArgs, dataCons=newDataCons}
+    -- _      -> DDef{tyName, tyArgs, dataCons}
 
-reverse_dataCons :: [(DataCon, [(IsBoxed, UrTy a)])] -> [(DataCon, [(IsBoxed, UrTy a)])]
-reverse_dataCons list = case list of 
+reverse_dataCons :: FieldOrder -> [(DataCon, [(IsBoxed, UrTy a)])] -> [(DataCon, [(IsBoxed, UrTy a)])]
+reverse_dataCons fieldorder list = case list of 
     [] -> []
-    (layout_name, fields):xs -> 
-        case layout_name of 
-            "Layout2" -> let rev_fields = P.reverse fields
-                            in [(layout_name, rev_fields)] ++ (reverse_dataCons xs)
-            _         -> [(layout_name, fields)] ++ (reverse_dataCons xs)
+    (layout_name, fields):xs -> if (M.member layout_name fieldorder)
+                                    then let rev_fields = P.reverse fields
+                                           in [(layout_name, rev_fields)] ++ (reverse_dataCons fieldorder xs)
+                                else 
+                                    [(layout_name, fields)] ++ (reverse_dataCons fieldorder xs)
