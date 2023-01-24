@@ -11,14 +11,14 @@ import Prelude as P
 
 
 --Data structure to store output from ILP solver.
---Maps DataCon to new indices of fields 
+--Maps DataCon to bijection of new indices -> fields of datacon 
 type FieldOrder = M.Map DataCon [Int]
 
 
 -- TODO: Make FieldOrder an argument passed to shuffleDataCon function.
 shuffleDataCon :: Prog1 -> PassM Prog1
 shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
-    let fieldorder = M.fromList [("Layout1", [0, 2, 1])]  
+    let fieldorder = M.fromList [("Node", [1, 0])]  
     let shuffled_ddefs = findDataCon fieldorder ddefs
     fds' <- mapM (shuffleDataConFunBody fieldorder) (M.elems fundefs)
     let fundefs' = M.fromList $ P.map (\f -> (funName f,f)) fds'
