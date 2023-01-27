@@ -59,6 +59,7 @@ library
                        Gibbon.Passes.Simplifier
                        Gibbon.Passes.DirectL3
                        Gibbon.Passes.Fusion2
+                       Gibbon.Passes.ControlFlowGraph
                        Gibbon.Passes.AddRAN
                        Gibbon.Passes.AddTraversals
                        Gibbon.Passes.InferLocations
