@@ -90,6 +90,8 @@ import           Gibbon.Passes.Fusion2        (fusion2)
 -- import Gibbon.Passes.CalculateBounds          (inferRegSize)
 import           Gibbon.Pretty
 
+import           Gibbon.Passes.ControlFlowGraph (generateCfg)
+
 
 #ifdef LLVM_ENABLED
 import qualified Gibbon.Passes.LLVM.Codegen as LLVM
@@ -502,8 +504,8 @@ passes config@Config{dynflags} l0 = do
       l0 <- goE0 "floatOutCase"    L0.floatOutCase      l0
       -- Note: L0 -> L1
       l1 <- goE0 "toL1"            (pure . L0.toL1)     l0
-
       l1 <- goE1 "typecheck"     L1.tcProg              l1
+
       -- If we are executing a benchmark, then we
       -- replace the main function with benchmark code:
       l1 <- goE1 "benchMainExp"  benchMainExp           l1
@@ -521,6 +523,8 @@ passes config@Config{dynflags} l0 = do
           then goE1  "fusion2"   fusion2                l1
           else return l1
       l1 <- goE0 "typecheck"     L1.tcProg              l1
+
+      l1 <- goE1 "cfg" generateCfg  l1
 
       -- Minimal haskell "backend".
       lift $ dumpIfSet config Opt_D_Dump_Hs (render $ pprintHsWithEnv l1)
