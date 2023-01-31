@@ -12,9 +12,13 @@ emphKeywordInTag keyword blogs = case blogs of
                                                                                           --_ = printsym (quote " ")
                                                                                           --_           = printbool present
                                                                                           --_ = printsym (quote "NEWLINE")
-                                                                                          newContent  = emphasizeBlogContent keyword content present -- get the new content, this should be inlined 
-                                                                                          newRst      = emphKeywordInTag keyword rst 
-                                                                                        in Layout1 header id author (copyPacked date) (copyPacked newContent) (copyPacked tags) (copyPacked newRst)
+                                                                                          in if (present) 
+                                                                                             then let newContent  = emphasizeBlogContent keyword content present -- get the new content, this should be inlined 
+                                                                                                      newRst      = emphKeywordInTag keyword rst
+                                                                                                    in Layout1 header id author (copyPacked date) (copyPacked newContent) (copyPacked tags) (copyPacked newRst)
+                                                                                             else
+                                                                                               let newRst = emphKeywordInTag keyword rst
+                                                                                                 in Layout1 header id author (copyPacked date) (copyPacked content) (copyPacked tags) (copyPacked newRst)
 
 
 

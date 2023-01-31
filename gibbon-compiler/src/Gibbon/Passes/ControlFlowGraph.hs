@@ -44,26 +44,33 @@ generateCfgFunction :: CFGfunctionMap -> FunDef1 -> PassM (CFGfunctionMap, [(Exp
 generateCfgFunction cfgMap f@FunDef { funName, funBody, funTy, funArgs } = do  
     (edgeList, succ, maxDepth) <- generateCFGExp 0 funBody
     let (graph, nodeFromVertex, vertexFromKey) = G.graphFromEdges edgeList
-    let x = P.map ((\ (vid, _, _) -> vid) . nodeFromVertex) (vertices graph)
+    let x  = topSort graph --P.map ((\ (vid, _, _) -> vid) . nodeFromVertex) (vertices graph)
+    let x' = P.map nodeFromVertex x 
 
-    dbgTraceIt (sdoc x) pure (cfgMap, edgeList)
+    dbgTraceIt (sdoc x') pure (cfgMap, edgeList)
 
 
 generateCFGExp :: Int -> Exp1 -> PassM ( [(Exp1, Int, [Int])] , Int, Int)
 generateCFGExp vertexCounter exp1 = case exp1 of 
     --Recursively do for args, for now assuming this is a leaf node (base case)
     DataConE loc dcon args -> do 
-        pure ([], vertexCounter, vertexCounter)
-    VarE{} -> do 
-        pure ([], vertexCounter, vertexCounter)
+        let edge = (exp1, vertexCounter, [])
+        pure ([edge], vertexCounter, vertexCounter)
+    VarE{} -> do
+        let edge = (exp1, vertexCounter, []) 
+        pure ([edge], vertexCounter, vertexCounter)
     LitE{} -> do 
-        pure ([], vertexCounter, vertexCounter)
+        let edge = (exp1, vertexCounter, [])
+        pure ([edge], vertexCounter, vertexCounter)
     CharE{} -> do 
-        pure ([], vertexCounter, vertexCounter)
+        let edge = (exp1, vertexCounter, [])
+        pure ([edge], vertexCounter, vertexCounter)
     FloatE{} -> do 
-        pure ([], vertexCounter, vertexCounter)
+        let edge = (exp1, vertexCounter, [])
+        pure ([edge], vertexCounter, vertexCounter)
     LitSymE{} -> do 
-        pure ([], vertexCounter, vertexCounter)
+        let edge = (exp1, vertexCounter, [])
+        pure ([edge], vertexCounter, vertexCounter)
     AppE f locs args -> do
         (edgeList, succList, maxDepth) <- processExpSeqAppE (vertexCounter+1) args
         let edge     = ( (VarE f), vertexCounter, succList)
@@ -87,7 +94,7 @@ generateCFGExp vertexCounter exp1 = case exp1 of
         pure (newEdges, vertexCounter, maxDepth)
     IfE a b c -> do 
         (edgeListB, succB, d1) <- generateCFGExp (vertexCounter+1) b 
-        (edgeListC, succC, d2) <- generateCFGExp (vertexCounter+2) c 
+        (edgeListC, succC, d2) <- generateCFGExp (d1+1) c 
         let succList = [succB, succC]
         let edge     = (a, vertexCounter, succList)
         let newEdges = edgeListB ++ edgeListC ++ [edge]
@@ -122,7 +129,7 @@ processExpSeqCase currVertex lst = case lst of
     [] -> pure ([], [], currVertex)
     x:xs -> do 
         (edgeList, succ, maxDepth) <- generateVerticesCase currVertex x 
-        (edgeList', succList, maxDepth') <- processExpSeqCase (maxDepth) xs
+        (edgeList', succList, maxDepth') <- processExpSeqCase (maxDepth+1) xs
         let newEdgeList = edgeList ++ edgeList' 
         let succList'    = [succ] ++ succList
         pure (newEdgeList, succList', maxDepth')
