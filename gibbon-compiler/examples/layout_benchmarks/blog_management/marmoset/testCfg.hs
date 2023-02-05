@@ -60,4 +60,52 @@ testCFG1 tree = case tree of
 --                             struct 
 
 
-gibbon_main = testCFG1 (mkTree 10)
+type Id      = Int  
+type Date    = Int 
+type Author  = Int 
+type Header  = Int 
+type Tags    = Int 
+type Content = Int
+type String = Int
+
+
+data BlogList = Blog Id Date Author Header Tags Content BlogList | End 
+
+
+search :: Tags -> Bool 
+search tags = True
+
+editContent :: Content -> Content 
+editContent cont = cont + 1
+
+emphasizeKeyword :: String -> BlogList -> BlogList
+emphasizeKeyword keyword bloglist =
+	case bloglist of
+		Blog _id date author header tags content rst ->
+			let present = search tags 
+			  in if ( present ) then
+					    let newcontent = editContent content 
+						newNext = emphasizeKeyword keyword rst
+					     in Blog _id date author header tags newcontent newNext
+					    else
+					     let newNext = emphasizeKeyword keyword rst
+						in Blog _id date author header tags content newNext
+                End -> End
+
+
+
+
+
+
+
+gibbon_main = let 
+                 val   = testCFG1 (mkTree 10)
+                 blog' = emphasizeKeyword 1 End 
+                 _     = printPacked blog'
+               in ()
+
+
+
+
+
+

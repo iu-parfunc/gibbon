@@ -10,16 +10,16 @@ import Gibbon.L1.Syntax as L1
 import Prelude as P
 import Control.Monad as Mo
 
-
-import           Data.Set.Ordered ((|>), (|<), (|<>), OSet)
-import qualified Data.Set.Ordered as OSet
-import           Data.Sequence (Seq(..))
+import Data.Maybe as Mb
 
 
 -- Type to store the CFG's for each function that apprears in code.
 -- We should use annotations form the front end to onlt contruct CFG's 
 -- for functions that are annotated. 
-type CFGfunctionMap = M.Map FunDef1 (G.Graph, G.Vertex -> (Exp1, Int, [Int]), Int -> Maybe G.Vertex)
+
+-- Need to store additional parameter of likelihood in the CFGMap
+-- Should Thread an additional Float parameter that is the likelihood of hitting that vertex while making the CFG
+type CFGfunctionMap = M.Map FunDef1 (G.Graph, G.Vertex -> ( Exp1, Int, [Int]), Int -> Maybe G.Vertex)
 
 type VariableMap = M.Map Var (Maybe (DataCon, Int))
 
@@ -49,6 +49,11 @@ generateCfgFunctions cfgMap defs =
             {-dbgTraceIt (sdoc edgeList) dbgTraceIt ("\n") dbgTraceIt ("\n") dbgTraceIt ("\n")-}
             pure newMap
 
+
+removeDuplicates :: [Var] -> [Var]
+removeDuplicates l = case l of 
+    [] -> []
+    x:xs -> x:removeDuplicates (L.filter (/=x) xs)
         
         
 generateCfgFunction :: CFGfunctionMap -> FunDef1 -> PassM (CFGfunctionMap, [(Exp1, Int, [Int])])
@@ -57,10 +62,17 @@ generateCfgFunction cfgMap f@FunDef { funName, funBody, funTy, funArgs } = do
     let (graph, nodeFromVertex, vertexFromKey) = G.graphFromEdges edgeList
     let x  = topSort graph
     let x' = P.map nodeFromVertex x
+    let datacon :: String = "Leaf"
     let map = generateVariableToDataCon x'
-     
+    --let varList = generateFieldGraph x'
+    --let varList' = removeDuplicates varList
+    let edges = constructFieldGraph Nothing nodeFromVertex vertexFromKey x' x' map datacon   
 
-    dbgTraceIt (sdoc map) pure (cfgMap, edgeList)
+    -- dbgTraceIt (sdoc varList) dbgTraceIt ("\n") dbgTraceIt (sdoc varList') dbgTraceIt ("\n") 
+    
+    -- dbgTraceIt (sdoc x') dbgTraceIt ("\n") dbgTraceIt (sdoc map) dbgTraceIt ("\n") 
+    -- pure (cfgMap, edgeList)
+    dbgTraceIt (sdoc x') dbgTraceIt ("\n") dbgTraceIt (sdoc edges) dbgTraceIt ("\n") pure (cfgMap, edgeList)
 
 
 generateCFGExp :: Int -> Exp1 -> PassM ( [(Exp1, Int, [Int])] , Int, Int)
@@ -187,41 +199,6 @@ processExpVertex graph exp map = case exp of
 
     _                     -> map
 
-        -- VarE var -> let status = getIndexFromVariableDataCon graph var
-        --               in case status of 
-        --                   Nothing -> map
-        --                   Just position -> let newMap = M.insert var status
-        -- LitE val -> map
-        -- CharE ch -> map
-        -- FloatE val -> map
-        -- LitSymE var -> let status = getIndexFromVariableDataCon graph var
-        --                  in case status of 
-        --                      Nothing -> map 
-        --                      Maybe position -> --update the map
-        -- AppE f locs args -> let freeVariables =  S.toList (gFreeVars args)
-        --                         indexes       = P.map (getIndexFromVariableDataCon graph) freeVariables
-        --                       in -- update the map with the mapping of the new variables. 
-        -- PrimAppE f args -> let freeVariables = S.toList (gFreeVars args)
-        --                        indexes       = P.map (getIndexFromVariableDataCon graph) freeVariables 
-
-        --                        -- The body is just the variable that's written to. 
-        -- LetE (v,loc,ty,rhs) bod -> let read_variables = S.toList (gFreeVars rhs)
-        --                                indexes = P.map (getIndexFromVariableDataCon graph) read_variables
-                                       
-        -- CaseE scrt mp -> map -- this case shouldn't happen in the IR 
-        
-        -- IfE a b c -> map  -- This case also should no happen in the IR
-        -- MkProdE xs -> let freeVariables = S.toList (gFreeVars xs)
-        --                   indexes       = P.map (getIndexFromVariableDataCon graph) freeVariables
-        -- ProjE i e -> error "processVertex: TODO ProjE"
-        -- TimeIt e ty b -> error "processVertex: TODO TimeIt"
-        -- WithArenaE v e -> error "processVertex: TODO WithArenaE"
-        -- SpawnE f locs args -> error "processVertex: TODO SpawnE"
-        -- SyncE   -> error "processVertex: TODO SyncE"
-        -- Ext _   -> error "processVertex: TODO Ext"
-        -- MapE{}  -> error "processVertex: TODO MapE"
-        -- FoldE{} -> error "processVertex: TODO FoldE"
-
 
 getIndexFromVariableDataCon :: [(Exp1, Int, [Int])] -> Var -> Maybe (DataCon, Int)
 getIndexFromVariableDataCon graph variable = case graph of 
@@ -243,94 +220,302 @@ checkIndexVertex node variable = case node of
         _ -> Nothing
 
 
-generateFieldGraph :: Int -> [(Exp1, Int, [Int])] -> VariableMap -> ([((DataCon, Int), Int, [Int])], Int, Int)
-generateFieldGraph id graph map = case graph of 
-    [] -> ([], id, id)
-    x:xs -> case x of 
-        (exp, id, succ) -> case exp of
-            DataConE loc dcon args -> let edges  = generateFieldGraphExpList xs args map  
-                                          edges' = generateFieldGraph xs map
-                                        in (edges ++ edges')
-            VarE var -> let edges  = generateFieldGraphVar xs var map
-                            edges' = generateFieldGraph xs map
-                          in edges ++ edges'  
+freeVarsCFG :: Exp1 -> [Var]
+freeVarsCFG exp = case exp of
+    DataConE loc dcon args -> let var_list_list = P.map (freeVarsCFG) args
+                                  var_list      = L.concat var_list_list
+                                in var_list  
+    VarE var -> [var]
+    LitE val -> []
+    CharE char -> []
+    FloatE val -> []
+    LitSymE var -> [var]
+    AppE f locs args -> let var_list_list = P.map (freeVarsCFG) args
+                            var_list      = L.concat var_list_list
+                         in var_list
+                              
+    PrimAppE f args -> let var_list_list = P.map (freeVarsCFG) args
+                           var_list      = L.concat var_list_list
+                         in var_list
 
-            LitE{}      -> generateFieldGraph xs map 
-            CharE{}     -> generateFieldGraph xs map
-            FloatE{}    -> generateFieldGraph xs map
-            LitSymE var -> let edges  = generateFieldGraphVar xs var map
-                               edges' = generateFieldGraph xs map  
-                             in edges ++ edges'
+    LetE (v,loc,ty,rhs) bod -> freeVarsCFG rhs 
+    -- CaseE scrt mp -> not there in cfg node
+    -- IfE a b c -> not there in cfg node
+    MkProdE xs -> let var_list_list = P.map (freeVarsCFG) xs
+                      var_list      = L.concat var_list_list
+                    in var_list
 
-            AppE f locs args -> let edges  = generateFieldGraphExpList xs args map
-                                    edges' = generateFieldGraph xs map
-                                  in edges ++ edges' 
-
-            PrimAppE f args -> let edges  = generateFieldGraphExpList xs args map 
-                                   edges' = generateFieldGraph xs map
-                                 in edges ++ edges' 
-
-            LetE (v,loc,ty,rhs) bod -> let freeVars = S.toList () 
-
-            CaseE scrt mp -> 
-            IfE a b c -> 
-            MkProdE xs -> 
-            ProjE i e -> error "ControlFlowGraph: TODO ProjE"
-            TimeIt e ty b -> error "ControlFlowGraph: TODO TimeIt"
-            WithArenaE v e -> error "ControlFlowGraph: TODO WithArenaE"
-            SpawnE f locs args -> error "ControlFlowGraph: TODO SpawnE"
-            SyncE   -> error "ControlFlowGraph: TODO SyncE"
-            Ext _   -> error "ControlFlowGraph: TODO Ext"
-            MapE{}  -> error "ControlFlowGraph: TODO MapE"
-            FoldE{} -> error "ControlFlowGraph: TODO FoldE"
-
-generateFieldGraphExpList :: Int -> [Exp1] -> (  [((DataCon, Int), Int, [Int])]  , [Int], Int)
-generateFieldGraphExpList id expList = case expList of 
-    [] -> ([], [], id)
-    x:xs -> let (edgeList, succList, d1)   = generateFieldGraphExpression (id+1) x
-                (edgeList', succList', d2) = generateFieldGraphExpList (d1+1) xs
-                newEdgeList = edgeList ++ edgeList' 
-                newSuccList = succList = succList' 
-              in (newEdgeList, newSuccList, d2)
+    ProjE i e -> error "ControlFlowGraph: TODO ProjE"
+    TimeIt e ty b -> error "ControlFlowGraph: TODO TimeIt"
+    WithArenaE v e -> error "ControlFlowGraph: TODO WithArenaE"
+    SpawnE f locs args -> error "ControlFlowGraph: TODO SpawnE"
+    SyncE   -> error "ControlFlowGraph: TODO SyncE"
+    Ext _   -> error "ControlFlowGraph: TODO Ext"
+    MapE{}  -> error "ControlFlowGraph: TODO MapE"
+    FoldE{} -> error "ControlFlowGraph: TODO FoldE" 
 
 
-generateFieldGraphExpression :: Int -> Exp1 -> VariableMap -> ([((DataCon, Int), Int, [Int])], [Int], Int) 
-generateFieldGraphExpression vertexCounter exp map = case exp of
-        DataConE loc dcon args -> 
-        VarE{} -> 
-        LitE{} -> 
-        CharE{} -> 
-        FloatE{} -> 
-        LitSymE{} -> 
-        AppE f locs args -> 
-        PrimAppE f args -> 
-        LetE (v,loc,ty,rhs) bod -> 
-        CaseE scrt mp -> 
-        IfE a b c -> 
-        MkProdE xs -> 
-        ProjE i e -> error "ControlFlowGraph: TODO ProjE"
-        TimeIt e ty b -> error "ControlFlowGraph: TODO TimeIt"
-        WithArenaE v e -> error "ControlFlowGraph: TODO WithArenaE"
-        SpawnE f locs args -> error "ControlFlowGraph: TODO SpawnE"
-        SyncE   -> error "ControlFlowGraph: TODO SyncE"
-        Ext _   -> error "ControlFlowGraph: TODO Ext"
-        MapE{}  -> error "ControlFlowGraph: TODO MapE"
-        FoldE{} -> error "ControlFlowGraph: TODO FoldE" 
+constructFieldGraph :: Maybe Int -> (G.Vertex -> ( Exp1, Int, [Int])) -> (Int -> Maybe G.Vertex) -> [(Exp1, Int, [Int])] -> [(Exp1, Int, [Int])] -> VariableMap -> DataCon -> [(Int, Int)]
+constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map datacon = case progress of 
+               [] -> [] 
+               x:xs -> let (exp, id, successors) = x
+                         in case exp of 
 
-generateFieldGraphVariable :: Int -> [Var] -> VariableMap -> ( [((DataCon, Int), Int, [Int])], [Int], Int )
-generateFieldGraphVariable id varList map = case varList of 
-         [] -> ( [], [], id )
-         x:xs -> let mapping = M.findWithDefault Nothing x map 
-                   in case mapping of 
-                         Nothing -> ( [], [], id )
-                         Just (dcon, index) -> let ( edgeList, succList, maxDepth ) = generateFieldGraphVariable (id+1) map 
-                                                   edge = [ ((dcon, index), id, succList ]
-                                                   newEdges = edgeList ++ [edge]
-                                                 in (newEdges, [id], maxDepth)
-                                                    
+                            LitE val -> []   ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
+
+                            CharE char -> []  ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
+                            
+                            FloatE val -> []  ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
+
+                            DataConE loc dcon args -> [] ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
+
+                            VarE var -> case currField of 
+                                               Nothing -> let fromDataCon  = M.findWithDefault Nothing var map
+                                                             in case fromDataCon of 
+                                                                       Nothing -> [] ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
+                                                                       Just field -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
+                                                                                         succVertices  = P.map nodeFromVertex succ'
+                                                                                         succExp       = P.map (\x -> fst3 x) succVertices
+                                                                                         succDataCon   = P.concat $ P.map (\x -> succDataCons x graph map datacon) succExp 
+                                                                                         successorsIds = P.map (\x -> snd x) succDataCon
+                                                                                         (datacon, id) = field 
+                                                                                         newEdges      = P.map (\x -> (id, x)) successorsIds    
+                                                                                       in case newEdges of 
+                                                                                                [] -> [] ++ constructFieldGraph (Just id) nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                                _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
+                                                
+                                               Just pred -> let fromDataCon = M.findWithDefault Nothing var map
+                                                               in case fromDataCon of 
+                                                                         Nothing -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
+                                                                                        succVertices  = P.map nodeFromVertex succ'
+                                                                                        succExp       = P.map (\x -> fst3 x) succVertices
+                                                                                        succDataCon   = P.concat $ P.map (\x -> succDataCons x graph map datacon) succExp 
+                                                                                        successorsIds = P.map (\x -> snd x) succDataCon 
+                                                                                        newEdges      = P.map (\x -> (pred, x)) successorsIds    
+                                                                                      in case newEdges of 
+                                                                                                  [] -> [] ++ constructFieldGraph (Just pred) nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                                  _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon 
+                                                                         Just field -> let (datacon, id) = field 
+                                                                                           edges = [(pred, id)]
+                                                                                         in edges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
+
+                            LitSymE var -> case currField of 
+                                               Nothing -> let fromDataCon  = M.findWithDefault Nothing var map
+                                                             in case fromDataCon of 
+                                                                       Nothing -> [] ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
+                                                                       Just field -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
+                                                                                         succVertices  = P.map nodeFromVertex succ'
+                                                                                         succExp       = P.map (\x -> fst3 x) succVertices
+                                                                                         succDataCon   = P.concat $ P.map (\x -> succDataCons x graph map datacon) succExp 
+                                                                                         successorsIds = P.map (\x -> snd x) succDataCon
+                                                                                         (datacon, id) = field 
+                                                                                         newEdges      = P.map (\x -> (id, x)) successorsIds    
+                                                                                       in case newEdges of 
+                                                                                                [] -> [] ++ constructFieldGraph (Just id) nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                                _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
+                                                
+                                               Just pred -> let fromDataCon = M.findWithDefault Nothing var map
+                                                               in case fromDataCon of 
+                                                                         Nothing -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
+                                                                                        succVertices  = P.map nodeFromVertex succ'
+                                                                                        succExp       = P.map (\x -> fst3 x) succVertices
+                                                                                        succDataCon   = P.concat $ P.map (\x -> succDataCons x graph map datacon) succExp 
+                                                                                        successorsIds = P.map (\x -> snd x) succDataCon 
+                                                                                        newEdges      = P.map (\x -> (pred, x)) successorsIds    
+                                                                                      in case newEdges of 
+                                                                                                  [] -> [] ++ constructFieldGraph (Just pred) nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                                  _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon 
+                                                                         Just field -> let (datacon, id) = field 
+                                                                                           edges = [(pred, id)]
+                                                                                         in edges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon                                        
+
+                            LetE (v,loc,ty,rhs) bod -> case currField of 
+                                                            Nothing ->  let freeVars       =  freeVarsCFG rhs 
+                                                                            fromDataCon'   = P.map (\v -> M.findWithDefault Nothing v map) freeVars
+                                                                            fromDataCon''  = if P.null fromDataCon' then [Nothing] else fromDataCon'
+                                                                            fromDataCon    = P.head fromDataCon''                          -- FIXME: This only takes the head, but what if there are more free variables bound that belong to more than one field ? 
+                                                                         in case fromDataCon of 
+                                                                                  Nothing -> [] ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                  Just field -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
+                                                                                                    succVertices  = P.map nodeFromVertex succ'
+                                                                                                    succExp       = P.map (\x -> fst3 x) succVertices
+                                                                                                    succDataCon   = P.concat $ P.map (\x -> succDataCons x graph map datacon) succExp 
+                                                                                                    successorsIds = P.map (\x -> snd x) succDataCon
+                                                                                                    (datacon, id) = field 
+                                                                                                    newEdges      = P.map (\x -> (id, x)) successorsIds    
+                                                                                                 in case newEdges of 
+                                                                                                        [] -> [] ++ constructFieldGraph (Just (snd field)) nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                                        _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
+
+                                                            Just pred -> let freeVars       = freeVarsCFG rhs 
+                                                                             fromDataCon'   = P.map (\v -> M.findWithDefault Nothing v map) freeVars
+                                                                             fromDataCon''  = if P.null fromDataCon' then [Nothing] else fromDataCon'
+                                                                             fromDataCon    = P.head fromDataCon''
+                                                                          in case fromDataCon of 
+                                                                                    Nothing    -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
+                                                                                                      succVertices  = P.map nodeFromVertex succ'
+                                                                                                      succExp       = P.map (\x -> fst3 x) succVertices
+                                                                                                      succDataCon   = P.concat $ P.map (\x -> succDataCons x graph map datacon) succExp 
+                                                                                                      successorsIds = P.map (\x -> snd x) succDataCon 
+                                                                                                      newEdges      = P.map (\x -> (pred, x)) successorsIds    
+                                                                                                    in case newEdges of 
+                                                                                                            [] -> [] ++ constructFieldGraph (Just pred) nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                                            _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon 
+
+                                                                                    Just field -> let (datacon, id) = field 
+                                                                                                      edges = [(pred, id)]
+                                                                                                    in edges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon 
 
 
--- new idea
--- Create a custom freeVarible (Read Only) function using an ordered set: https://hackage.haskell.org/package/oset-0.4.0.1/docs/Data-Set-Ordered.html from the CFG 
--- This should preseve the order in which variables are read in the CFG of the function. 
--- Once this is done, we can use the variable map created before to draw edges from head of the set to the rest of the elements of the set. 
+
+
+
+                            AppE f locs args  ->  case currField of 
+                                                            Nothing ->  let freeVars       =  freeVarsCFG exp 
+                                                                            fromDataCon'   = P.map (\v -> M.findWithDefault Nothing v map) freeVars
+                                                                            fromDataCon''  = if P.null fromDataCon' then [Nothing] else fromDataCon'
+                                                                            fromDataCon    = P.head fromDataCon''                          -- FIXME: This only takes the head, but what if there are more free variables bound that belong to more than one field ? 
+                                                                         in case fromDataCon of 
+                                                                                  Nothing -> [] ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                  Just field -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
+                                                                                                    succVertices  = P.map nodeFromVertex succ'
+                                                                                                    succExp       = P.map (\x -> fst3 x) succVertices
+                                                                                                    succDataCon   = P.concat $ P.map (\x -> succDataCons x graph map datacon) succExp 
+                                                                                                    successorsIds = P.map (\x -> snd x) succDataCon
+                                                                                                    (datacon, id) = field 
+                                                                                                    newEdges      = P.map (\x -> (id, x)) successorsIds    
+                                                                                                 in case newEdges of 
+                                                                                                        [] -> [] ++ constructFieldGraph (Just (snd field)) nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                                        _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
+
+                                                            Just pred -> let freeVars       = freeVarsCFG exp 
+                                                                             fromDataCon'   = P.map (\v -> M.findWithDefault Nothing v map) freeVars
+                                                                             fromDataCon''  = if P.null fromDataCon' then [Nothing] else fromDataCon'
+                                                                             fromDataCon    = P.head fromDataCon''
+                                                                          in case fromDataCon of 
+                                                                                    Nothing    -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
+                                                                                                      succVertices  = P.map nodeFromVertex succ'
+                                                                                                      succExp       = P.map (\x -> fst3 x) succVertices
+                                                                                                      succDataCon   = P.concat $ P.map (\x -> succDataCons x graph map datacon) succExp 
+                                                                                                      successorsIds = P.map (\x -> snd x) succDataCon 
+                                                                                                      newEdges      = P.map (\x -> (pred, x)) successorsIds    
+                                                                                                    in case newEdges of 
+                                                                                                            [] -> [] ++ constructFieldGraph (Just pred) nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                                            _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon 
+
+                                                                                    Just field -> let (datacon, id) = field 
+                                                                                                      edges = [(pred, id)]
+                                                                                                    in edges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
+
+
+                            
+                            PrimAppE f args  -> case currField of 
+                                                            Nothing ->  let freeVars       =  freeVarsCFG exp 
+                                                                            fromDataCon'   = P.map (\v -> M.findWithDefault Nothing v map) freeVars
+                                                                            fromDataCon''  = if P.null fromDataCon' then [Nothing] else fromDataCon'
+                                                                            fromDataCon    = P.head fromDataCon''                          -- FIXME: This only takes the head, but what if there are more free variables bound that belong to more than one field ? 
+                                                                         in case fromDataCon of 
+                                                                                  Nothing -> [] ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                  Just field -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
+                                                                                                    succVertices  = P.map nodeFromVertex succ'
+                                                                                                    succExp       = P.map (\x -> fst3 x) succVertices
+                                                                                                    succDataCon   = P.concat $ P.map (\x -> succDataCons x graph map datacon) succExp 
+                                                                                                    successorsIds = P.map (\x -> snd x) succDataCon
+                                                                                                    (datacon, id) = field 
+                                                                                                    newEdges      = P.map (\x -> (id, x)) successorsIds    
+                                                                                                 in case newEdges of 
+                                                                                                        [] -> [] ++ constructFieldGraph (Just (snd field)) nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                                        _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
+
+                                                            Just pred -> let freeVars       = freeVarsCFG exp 
+                                                                             fromDataCon'   = P.map (\v -> M.findWithDefault Nothing v map) freeVars
+                                                                             fromDataCon''  = if P.null fromDataCon' then [Nothing] else fromDataCon'
+                                                                             fromDataCon    = P.head fromDataCon''
+                                                                          in case fromDataCon of 
+                                                                                    Nothing    -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
+                                                                                                      succVertices  = P.map nodeFromVertex succ'
+                                                                                                      succExp       = P.map (\x -> fst3 x) succVertices
+                                                                                                      succDataCon   = P.concat $ P.map (\x -> succDataCons x graph map datacon) succExp 
+                                                                                                      successorsIds = P.map (\x -> snd x) succDataCon 
+                                                                                                      newEdges      = P.map (\x -> (pred, x)) successorsIds    
+                                                                                                    in case newEdges of 
+                                                                                                            [] -> [] ++ constructFieldGraph (Just pred) nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                                            _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon 
+
+                                                                                    Just field -> let (datacon, id) = field 
+                                                                                                      edges = [(pred, id)]
+                                                                                                    in edges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
+
+                            MkProdE xss -> case currField of 
+                                                            Nothing ->  let freeVars       =  freeVarsCFG exp 
+                                                                            fromDataCon'   = P.map (\v -> M.findWithDefault Nothing v map) freeVars
+                                                                            fromDataCon''  = if P.null fromDataCon' then [Nothing] else fromDataCon'
+                                                                            fromDataCon    = P.head fromDataCon''                          -- FIXME: This only takes the head, but what if there are more free variables bound that belong to more than one field ? 
+                                                                         in case fromDataCon of 
+                                                                                  Nothing -> [] ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                  Just field -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
+                                                                                                    succVertices  = P.map nodeFromVertex succ'
+                                                                                                    succExp       = P.map (\x -> fst3 x) succVertices
+                                                                                                    succDataCon   = P.concat $ P.map (\x -> succDataCons x graph map datacon) succExp 
+                                                                                                    successorsIds = P.map (\x -> snd x) succDataCon
+                                                                                                    (datacon, id) = field 
+                                                                                                    newEdges      = P.map (\x -> (id, x)) successorsIds    
+                                                                                                 in case newEdges of 
+                                                                                                        [] -> [] ++ constructFieldGraph (Just (snd field)) nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                                        _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
+
+                                                            Just pred -> let freeVars       = freeVarsCFG exp 
+                                                                             fromDataCon'   = P.map (\v -> M.findWithDefault Nothing v map) freeVars
+                                                                             fromDataCon''  = if P.null fromDataCon' then [Nothing] else fromDataCon'
+                                                                             fromDataCon    = P.head fromDataCon''
+                                                                          in case fromDataCon of 
+                                                                                    Nothing    -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
+                                                                                                      succVertices  = P.map nodeFromVertex succ'
+                                                                                                      succExp       = P.map (\x -> fst3 x) succVertices
+                                                                                                      succDataCon   = P.concat $ P.map (\x -> succDataCons x graph map datacon) succExp 
+                                                                                                      successorsIds = P.map (\x -> snd x) succDataCon 
+                                                                                                      newEdges      = P.map (\x -> (pred, x)) successorsIds    
+                                                                                                    in case newEdges of 
+                                                                                                            [] -> [] ++ constructFieldGraph (Just pred) nodeFromVertex vertexFromNode graph xs map datacon
+                                                                                                            _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon 
+
+                                                                                    Just field -> let (datacon, id) = field 
+                                                                                                      edges = [(pred, id)]
+                                                                                                    in edges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
+
+
+
+succDataCons :: Exp1 -> [(Exp1, Int, [Int])] -> VariableMap -> DataCon -> [(DataCon, Int)]
+succDataCons exp graph map datacon = case exp of
+    VarE var -> let fromDataCon  = M.findWithDefault Nothing var map
+                  in case fromDataCon of 
+                       Nothing -> [] 
+                       Just x  -> [x]
+
+    LitSymE var -> let fromDataCon = M.findWithDefault Nothing var map
+                    in case fromDataCon of 
+                       Nothing -> [] 
+                       Just x  -> [x]
+                                            
+
+    LetE (v,loc,ty,rhs) bod -> let freeVars = freeVarsCFG rhs 
+                                   fromDataCon = P.map (\v -> M.findWithDefault Nothing v map) freeVars 
+                                 in Mb.catMaybes fromDataCon 
+
+    AppE f locs args  ->  let freeVars = freeVarsCFG exp 
+                              fromDataCon = P.map (\v -> M.findWithDefault Nothing v map) freeVars
+                            in Mb.catMaybes fromDataCon 
+                            
+    PrimAppE f args  ->  let freeVars =  freeVarsCFG exp 
+                             fromDataCon = P.map (\v -> M.findWithDefault Nothing v map) freeVars
+                            in Mb.catMaybes fromDataCon 
+
+    LitE val -> []   
+    CharE char -> [] 
+    FloatE val -> []  
+
+    DataConE loc dcon args -> [] 
+
+    MkProdE xss -> let freeVars =  freeVarsCFG exp 
+                       fromDataCon = P.map (\v -> M.findWithDefault Nothing v map) freeVars
+                      in Mb.catMaybes fromDataCon 
