@@ -266,15 +266,14 @@ Edge: a tuple from vertex to vertex, left dominates right.
 
 TODO: any FIXMEs in the function. 
 
-a.) Add edge weight, will have to modify return type.  
 c.) Multiple datacon fields read in the same expression, see FIXME below. 
     Since this will be run after flatten, it is safe to assume that only a maximum of two variables can be read in one let binding.  
 -}
 
-constructFieldGraph :: Maybe (DataCon, Int) -> (G.Vertex -> ( (Exp1, Int) , Int, [Int])) -> (Int -> Maybe G.Vertex) -> [((Exp1, Int) , Int, [Int])] -> [((Exp1, Int) , Int, [Int])] -> VariableMap -> DataCon -> [(Int, Int)]
+constructFieldGraph :: Maybe (DataCon, Int) -> (G.Vertex -> ( (Exp1, Int) , Int, [Int])) -> (Int -> Maybe G.Vertex) -> [((Exp1, Int) , Int, [Int])] -> [((Exp1, Int) , Int, [Int])] -> VariableMap -> DataCon -> [ ( (Int, Int) , Int ) ]
 constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map datacon = case progress of 
                [] -> [] 
-               x:xs -> let ((exp, likelihood) , id, successors) = x
+               x:xs -> let ((exp, likelihood) , id'', successors) = x
                          in case exp of 
                             LitE val               -> []  ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
                             CharE char             -> []  ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
@@ -296,9 +295,14 @@ constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map d
                                                                                            True  ->   let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
                                                                                                           succVertices  = P.map nodeFromVertex succ'
                                                                                                           succExp       = P.map (\x -> (fst . fst3) x) succVertices
-                                                                                                          succDataCon   = P.concat $ P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
-                                                                                                          successorsIds = P.map (\x -> snd x) succDataCon
-                                                                                                          newEdges      = P.map (\x -> (id, x)) successorsIds    
+                                                                                                          succprob      = P.map (\x -> (snd . fst3) x) succVertices
+                                                                                                          {- list of list, where each list stores variables -}
+                                                                                                          succDataCon   = P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
+                                                                                                          {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
+                                                                                                          succDataCon'  = P.zipWith (\x y -> (x, y)) succDataCon succprob 
+                                                                                                          newEdges      = P.concat $ P.map (\x -> case x of 
+                                                                                                                                             (varsl, prob) -> P.map (\y -> ( (id, snd y) , prob ) ) varsl       
+                                                                                                                                    ) succDataCon'  
                                                                                                         in case newEdges of 
                                                                                                             {- No new edges, so recurse onto next expression -}
                                                                                                             [] -> [] ++ constructFieldGraph (Just field) nodeFromVertex vertexFromNode graph xs map datacon
@@ -314,15 +318,20 @@ constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map d
                                                                                                     Nothing -> let  succ'         = Mb.catMaybes $ P.map vertexFromNode successors
                                                                                                                     succVertices  = P.map nodeFromVertex succ'
                                                                                                                     succExp       = P.map (\x -> (fst . fst3) x) succVertices
-                                                                                                                    succDataCon   = P.concat $ P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
-                                                                                                                    successorsIds = P.map (\x -> snd x) succDataCon 
-                                                                                                                    newEdges      = P.map (\x -> (pred, x)) successorsIds    
+                                                                                                                    succprob      = P.map (\x -> (snd . fst3) x) succVertices
+                                                                                                                    {- list of list, where each list stores variables -}
+                                                                                                                    succDataCon   = P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
+                                                                                                                    {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
+                                                                                                                    succDataCon'  = P.zipWith (\x y -> (x, y)) succDataCon succprob 
+                                                                                                                    newEdges      = P.concat $ P.map (\x -> case x of 
+                                                                                                                        (varsl, prob) -> P.map (\y -> ( (pred, snd y) , prob ) ) varsl       
+                                                                                                                        ) succDataCon'  
                                                                                                                  in case newEdges of 
                                                                                                                           [] -> [] ++ constructFieldGraph (Just (dcon, pred)) nodeFromVertex vertexFromNode graph xs map datacon
                                                                                                                           _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon 
-                                                                                     
-                                                                                                    Just field -> let (datacon, id) = field 
-                                                                                                                      edges = [(pred, id)]
+                                                                                                    {- Do I need to account for the successors here? -}
+                                                                                                    Just field -> let (datacon, id') = field 
+                                                                                                                      edges = [((pred, id'), likelihood)]
                                                                                                                     in edges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
                                                                             {- This shouldn't technically arise the way we are desigining this pass -}
                                                                             _ -> error "ControlFlowGraph: This case shouldn't arise while making field dependence graph!"
@@ -349,9 +358,14 @@ constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map d
                                                                             True    -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
                                                                                            succVertices  = P.map nodeFromVertex succ'
                                                                                            succExp       = P.map (\x -> (fst . fst3) x) succVertices
-                                                                                           succDataCon   = P.concat $ P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
-                                                                                           successorsIds = P.map (\x -> snd x) succDataCon
-                                                                                           newEdges      = P.map (\x -> (id, x)) successorsIds    
+                                                                                           succprob      = P.map (\x -> (snd . fst3) x) succVertices
+                                                                                           {- list of list, where each list stores variables -}
+                                                                                           succDataCon   = P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
+                                                                                           {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
+                                                                                           succDataCon'  = P.zipWith (\x y -> (x, y)) succDataCon succprob 
+                                                                                           newEdges      = P.concat $ P.map (\x -> case x of 
+                                                                                            (varsl, prob) -> P.map (\y -> ( (id, snd y) , prob ) ) varsl       
+                                                                                            ) succDataCon'   
                                                                                          in case newEdges of 
                                                                                              {- No new edges, so recurse onto next expression -}
                                                                                              [] -> [] ++ constructFieldGraph (Just field) nodeFromVertex vertexFromNode graph xs map datacon
@@ -367,15 +381,20 @@ constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map d
                                                                                      Nothing -> let  succ'         = Mb.catMaybes $ P.map vertexFromNode successors
                                                                                                      succVertices  = P.map nodeFromVertex succ'
                                                                                                      succExp       = P.map (\x -> (fst . fst3) x) succVertices
-                                                                                                     succDataCon   = P.concat $ P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
-                                                                                                     successorsIds = P.map (\x -> snd x) succDataCon 
-                                                                                                     newEdges      = P.map (\x -> (pred, x)) successorsIds    
+                                                                                                     succprob      = P.map (\x -> (snd . fst3) x) succVertices
+                                                                                                     {- list of list, where each list stores variables -}
+                                                                                                     succDataCon   = P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
+                                                                                                     {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
+                                                                                                     succDataCon'  = P.zipWith (\x y -> (x, y)) succDataCon succprob 
+                                                                                                     newEdges      = P.concat $ P.map (\x -> case x of 
+                                                                                                        (varsl, prob) -> P.map (\y -> ( (pred, snd y) , prob ) ) varsl       
+                                                                                                      ) succDataCon'  
                                                                                                   in case newEdges of 
                                                                                                            [] -> [] ++ constructFieldGraph (Just (dcon, pred)) nodeFromVertex vertexFromNode graph xs map datacon
                                                                                                            _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon 
                                                                       
                                                                                      Just field -> let (datacon, id) = field 
-                                                                                                       edges = [(pred, id)]
+                                                                                                       edges = [((pred, id), likelihood) ]
                                                                                                      in edges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
                                                              {- This shouldn't technically arise the way we are desigining this pass -}
                                                              _ -> error "ControlFlowGraph: This case shouldn't arise while making field dependence graph!"                                        
@@ -401,9 +420,14 @@ constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map d
                                                                                                           True ->    let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
                                                                                                                          succVertices  = P.map nodeFromVertex succ'
                                                                                                                          succExp       = P.map (\x -> (fst . fst3) x) succVertices
-                                                                                                                         succDataCon   = P.concat $ P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
-                                                                                                                         successorsIds = P.map (\x -> snd x) succDataCon
-                                                                                                                         newEdges      = P.map (\x -> (id, x)) successorsIds    
+                                                                                                                         succprob      = P.map (\x -> (snd . fst3) x) succVertices
+                                                                                                                         {- list of list, where each list stores variables -}
+                                                                                                                         succDataCon   = P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
+                                                                                                                         {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
+                                                                                                                         succDataCon'  = P.zipWith (\x y -> (x, y)) succDataCon succprob 
+                                                                                                                         newEdges      = P.concat $ P.map (\x -> case x of 
+                                                                                                                            (varsl, prob) -> P.map (\y -> ( (id, snd y) , prob ) ) varsl       
+                                                                                                                          ) succDataCon'  
                                                                                                                       in case newEdges of 
                                                                                                                               [] -> [] ++ constructFieldGraph (Just field) nodeFromVertex vertexFromNode graph xs map datacon
                                                                                                                               _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
@@ -418,15 +442,20 @@ constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map d
                                                                                                             Nothing    -> let  succ'         = Mb.catMaybes $ P.map vertexFromNode successors
                                                                                                                                succVertices  = P.map nodeFromVertex succ'
                                                                                                                                succExp       = P.map (\x -> (fst . fst3) x) succVertices
-                                                                                                                               succDataCon   = P.concat $ P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
-                                                                                                                               successorsIds = P.map (\x -> snd x) succDataCon 
-                                                                                                                               newEdges      = P.map (\x -> (idd, x)) successorsIds    
+                                                                                                                               succprob      = P.map (\x -> (snd . fst3) x) succVertices
+                                                                                                                               {- list of list, where each list stores variables -}
+                                                                                                                               succDataCon   = P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
+                                                                                                                               {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
+                                                                                                                               succDataCon'  = P.zipWith (\x y -> (x, y)) succDataCon succprob 
+                                                                                                                               newEdges      = P.concat $ P.map (\x -> case x of 
+                                                                                                                                (varsl, prob) -> P.map (\y -> ( (idd, snd y) , prob ) ) varsl       
+                                                                                                                                ) succDataCon'   
                                                                                                                             in case newEdges of 
                                                                                                                                       [] -> [] ++ constructFieldGraph (Just (dcon, idd)) nodeFromVertex vertexFromNode graph xs map datacon
                                                                                                                                       _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon 
          
                                                                                                             Just field -> let (dcon', id) = field 
-                                                                                                                              edges = [(idd, id)]
+                                                                                                                              edges = [((idd, id), likelihood)]
                                                                                                                             in edges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
                                                                                       _       -> error "ControlFlowGraph: This case shouldn't arise while making field dependence graph!"
 
@@ -452,9 +481,14 @@ constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map d
                                                                               True    -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
                                                                                              succVertices  = P.map nodeFromVertex succ'
                                                                                              succExp       = P.map (\x -> (fst . fst3) x) succVertices
-                                                                                             succDataCon   = P.concat $ P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
-                                                                                             successorsIds = P.map (\x -> snd x) succDataCon
-                                                                                             newEdges      = P.map (\x -> (id, x)) successorsIds    
+                                                                                             succprob      = P.map (\x -> (snd . fst3) x) succVertices
+                                                                                             {- list of list, where each list stores variables -}
+                                                                                             succDataCon   = P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
+                                                                                             {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
+                                                                                             succDataCon'  = P.zipWith (\x y -> (x, y)) succDataCon succprob 
+                                                                                             newEdges      = P.concat $ P.map (\x -> case x of 
+                                                                                                                                      (varsl, prob) -> P.map (\y -> ( (id, snd y) , prob ) ) varsl       
+                                                                                                                              ) succDataCon'    
                                                                                           in case newEdges of 
                                                                                                   [] -> [] ++ constructFieldGraph (Just field) nodeFromVertex vertexFromNode graph xs map datacon
                                                                                                   _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
@@ -469,15 +503,20 @@ constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map d
                                                                                 Nothing    ->  let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
                                                                                                    succVertices  = P.map nodeFromVertex succ'
                                                                                                    succExp       = P.map (\x -> (fst . fst3) x) succVertices
-                                                                                                   succDataCon   = P.concat $ P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
-                                                                                                   successorsIds = P.map (\x -> snd x) succDataCon 
-                                                                                                   newEdges      = P.map (\x -> (idd, x)) successorsIds    
+                                                                                                   succprob      = P.map (\x -> (snd . fst3) x) succVertices
+                                                                                                   {- list of list, where each list stores variables -}
+                                                                                                   succDataCon   = P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
+                                                                                                   {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
+                                                                                                   succDataCon'  = P.zipWith (\x y -> (x, y)) succDataCon succprob 
+                                                                                                   newEdges      = P.concat $ P.map (\x -> case x of 
+                                                                                                                                              (varsl, prob) -> P.map (\y -> ( (idd, snd y) , prob ) ) varsl       
+                                                                                                                                    ) succDataCon'   
                                                                                                 in case newEdges of 
                                                                                                           [] -> [] ++ constructFieldGraph (Just (dcon, idd)) nodeFromVertex vertexFromNode graph xs map datacon
                                                                                                           _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon 
 
                                                                                 Just field -> let (dcon', id) = field 
-                                                                                                  edges = [(idd, id)]
+                                                                                                  edges = [((idd, id), likelihood)]
                                                                                                 in edges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
                                                           _       -> error "ControlFlowGraph: This case shouldn't arise while making field dependence graph!"
 
@@ -504,9 +543,14 @@ constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map d
                                                                               True ->    let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
                                                                                              succVertices  = P.map nodeFromVertex succ'
                                                                                              succExp       = P.map (\x -> (fst . fst3) x) succVertices
-                                                                                             succDataCon   = P.concat $ P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
-                                                                                             successorsIds = P.map (\x -> snd x) succDataCon
-                                                                                             newEdges      = P.map (\x -> (id, x)) successorsIds    
+                                                                                             succprob      = P.map (\x -> (snd . fst3) x) succVertices
+                                                                                             {- list of list, where each list stores variables -}
+                                                                                             succDataCon   = P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
+                                                                                             {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
+                                                                                             succDataCon'  = P.zipWith (\x y -> (x, y)) succDataCon succprob 
+                                                                                             newEdges      = P.concat $ P.map (\x -> case x of 
+                                                                                                                                       (varsl, prob) -> P.map (\y -> ( (id, snd y) , prob ) ) varsl       
+                                                                                                                              ) succDataCon'  
                                                                                           in case newEdges of 
                                                                                                   [] -> [] ++ constructFieldGraph (Just field) nodeFromVertex vertexFromNode graph xs map datacon
                                                                                                   _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
@@ -521,15 +565,20 @@ constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map d
                                                                                 Nothing    ->  let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
                                                                                                    succVertices  = P.map nodeFromVertex succ'
                                                                                                    succExp       = P.map (\x -> (fst . fst3) x) succVertices
-                                                                                                   succDataCon   = P.concat $ P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
-                                                                                                   successorsIds = P.map (\x -> snd x) succDataCon 
-                                                                                                   newEdges      = P.map (\x -> (idd, x)) successorsIds    
+                                                                                                   succprob      = P.map (\x -> (snd . fst3) x) succVertices
+                                                                                                   {- list of list, where each list stores variables -}
+                                                                                                   succDataCon   = P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
+                                                                                                   {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
+                                                                                                   succDataCon'  = P.zipWith (\x y -> (x, y)) succDataCon succprob 
+                                                                                                   newEdges      = P.concat $ P.map (\x -> case x of 
+                                                                                                                                            (varsl, prob) -> P.map (\y -> ( (idd, snd y) , prob ) ) varsl       
+                                                                                                                                    ) succDataCon'
                                                                                                 in case newEdges of 
                                                                                                           [] -> [] ++ constructFieldGraph (Just (dcon, idd)) nodeFromVertex vertexFromNode graph xs map datacon
                                                                                                           _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon 
 
                                                                                 Just field -> let (dcon', id) = field 
-                                                                                                  edges = [(idd, id)]
+                                                                                                  edges = [((idd, id), likelihood)]
                                                                                                 in edges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
                                                           _       -> error "ControlFlowGraph: This case shouldn't arise while making field dependence graph!"
 
@@ -554,9 +603,14 @@ constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map d
                                                                               True    -> let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
                                                                                              succVertices  = P.map nodeFromVertex succ'
                                                                                              succExp       = P.map (\x -> (fst . fst3) x) succVertices
-                                                                                             succDataCon   = P.concat $ P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
-                                                                                             successorsIds = P.map (\x -> snd x) succDataCon
-                                                                                             newEdges      = P.map (\x -> (id, x)) successorsIds    
+                                                                                             succprob      = P.map (\x -> (snd . fst3) x) succVertices
+                                                                                             {- list of list, where each list stores variables -}
+                                                                                             succDataCon   = P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
+                                                                                             {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
+                                                                                             succDataCon'  = P.zipWith (\x y -> (x, y)) succDataCon succprob 
+                                                                                             newEdges      = P.concat $ P.map (\x -> case x of 
+                                                                                                                                       (varsl, prob) -> P.map (\y -> ( (id, snd y) , prob ) ) varsl       
+                                                                                                                              ) succDataCon'  
                                                                                           in case newEdges of 
                                                                                                   [] -> [] ++ constructFieldGraph (Just field) nodeFromVertex vertexFromNode graph xs map datacon
                                                                                                   _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
@@ -571,15 +625,20 @@ constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map d
                                                                                 Nothing    ->  let succ'         = Mb.catMaybes $ P.map vertexFromNode successors
                                                                                                    succVertices  = P.map nodeFromVertex succ'
                                                                                                    succExp       = P.map (\x -> (fst . fst3) x) succVertices
-                                                                                                   succDataCon   = P.concat $ P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
-                                                                                                   successorsIds = P.map (\x -> snd x) succDataCon 
-                                                                                                   newEdges      = P.map (\x -> (idd, x)) successorsIds    
+                                                                                                   succprob      = P.map (\x -> (snd . fst3) x) succVertices
+                                                                                                   {- list of list, where each list stores variables -}
+                                                                                                   succDataCon   = P.map (\x -> findFieldInDataConFromVariableInExpression x graph map datacon) succExp 
+                                                                                                   {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
+                                                                                                   succDataCon'  = P.zipWith (\x y -> (x, y)) succDataCon succprob 
+                                                                                                   newEdges      = P.concat $ P.map (\x -> case x of 
+                                                                                                                                            (varsl, prob) -> P.map (\y -> ( (idd, snd y) , prob ) ) varsl       
+                                                                                                                                    ) succDataCon'  
                                                                                                 in case newEdges of 
                                                                                                           [] -> [] ++ constructFieldGraph (Just (dcon, idd)) nodeFromVertex vertexFromNode graph xs map datacon
                                                                                                           _  -> newEdges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon 
 
                                                                                 Just field -> let (dcon', id) = field 
-                                                                                                  edges = [(idd, id)]
+                                                                                                  edges = [((idd, id), likelihood)]
                                                                                                 in edges ++ constructFieldGraph Nothing nodeFromVertex vertexFromNode graph xs map datacon
                                                           _       -> error "ControlFlowGraph: This case shouldn't arise while making field dependence graph!"
 
