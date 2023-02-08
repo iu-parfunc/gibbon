@@ -310,7 +310,9 @@ evaluateExpressionFieldGraph currField nodeFromVertex vertexFromNode graph xs ma
 
 
 
-                                    _     -> error "ControlFlowGraph: More than one variable from DataCon in a let binding not modelled into Field dependence graph yet!" 
+                                    [a, b]     -> error "evaluateExpressionFieldGraph: two variables from DataCon in a let binding not modelled into Field dependence graph yet!" 
+                                    
+                                    _          -> error "evaluateExpressionFieldGraph: unexpected case!"
 
 
 
@@ -359,7 +361,9 @@ evaluateExpressionFieldGraph currField nodeFromVertex vertexFromNode graph xs ma
                                                                                        
                                                                              _    -> [] ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
 
-                                    _     -> error "ControlFlowGraph: More than one variable from DataCon in a let binding not modelled into Field dependence graph yet!"
+                                    [a, b]     -> error "ControlFlowGraph: two variables from DataCon in a let binding not modelled into Field dependence graph yet!"
+
+                                    _          -> error "evaluateExpressionFieldGraph: unexpected case!"
 
 
 
