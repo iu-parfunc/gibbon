@@ -276,7 +276,7 @@ Edge: a tuple from vertex to vertex, left dominates right.
 TODO: any FIXMEs in the function. 
 
 a.) Multiple datacon fields read in the same expression. 
-    Since this will be run after flatten, it is safe to assume that only possibly a maximum of two variables can be read in one let binding.  
+    Since this will be run after flatten, it is safe to assume that only possibly a maximum of two variables can be read in one let binding. Except function calls! where more than two fields can be passed as arguments. 
 -}
 
 evaluateExpressionFieldGraph :: Maybe (DataCon, Int) -> (G.Vertex -> ( (Exp1, Int) , Int, [Int])) -> (Int -> Maybe G.Vertex) -> [((Exp1, Int) , Int, [Int])] -> [((Exp1, Int) , Int, [Int])] -> VariableMap -> DataCon -> [ Var ] -> [Int] -> Int -> [ ( (Int, Int) , Int ) ]
@@ -310,9 +310,7 @@ evaluateExpressionFieldGraph currField nodeFromVertex vertexFromNode graph xs ma
 
 
 
-                                    [a, b]     -> error "evaluateExpressionFieldGraph: two variables from DataCon in a let binding not modelled into Field dependence graph yet!" 
-                                    
-                                    _          -> error "evaluateExpressionFieldGraph: unexpected case!"
+                                    _     -> error "evaluateExpressionFieldGraph: More than one variable from DataCon in a let binding not modelled into Field dependence graph yet!" 
 
 
 
@@ -361,9 +359,7 @@ evaluateExpressionFieldGraph currField nodeFromVertex vertexFromNode graph xs ma
                                                                                        
                                                                              _    -> [] ++ constructFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon
 
-                                    [a, b]     -> error "ControlFlowGraph: two variables from DataCon in a let binding not modelled into Field dependence graph yet!"
-
-                                    _          -> error "evaluateExpressionFieldGraph: unexpected case!"
+                                    _     -> error "evaluateExpressionFieldGraph: More than one variable from DataCon in a let binding not modelled into Field dependence graph yet!"
 
 
 
