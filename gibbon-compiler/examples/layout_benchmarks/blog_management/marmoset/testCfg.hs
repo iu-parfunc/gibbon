@@ -1,20 +1,16 @@
-data Tree = Leaf Int | Node Int Tree Tree
+type Left  = Tree
+type Right = Tree
 
---type A = Float 
---type B = Float
---type C = Float
+data Tree = Leaf Int | Node Int Left Right 
 
---data Struct = Nil | Cons A B C (Struct)   
-
---testCFG :: Tree -> Int 
---testCFG tree = case tree of 
---	Leaf val -> val
---        Node val left right -> 
---	    let 
--- 		newVal = val 
---                leftVal = testCFG left 
---                rightVal = testCFG right
---              in newVal + leftVal + rightVal
+testCFG :: Tree -> Int 
+testCFG tree = case tree of 
+  Leaf val -> val
+  Node val left right -> 
+    let newVal = val 
+        leftVal = testCFG left 
+        rightVal = testCFG right
+      in newVal + leftVal + rightVal
 
 mkTree :: Int -> Tree
 mkTree i =
@@ -27,38 +23,37 @@ mkTree i =
 
 testCFG1 :: Tree -> Int 
 testCFG1 tree = case tree of 
-	Leaf val            -> 2*val + 3*val + 5*val 
-        Node val left right -> 
-	    let 
-	       newVal = val 
-               leftVal = testCFG1 left 
-               rightVal = testCFG1 right 
-             in newVal + leftVal + rightVal   
+  Leaf val            -> 2*val + 3*val + 5*val 
+  Node val left right -> 
+    let newVal   = val + 1
+        leftVal  = testCFG1 left 
+        rightVal = testCFG1 right 
+      in newVal + leftVal + rightVal 
+
+
+testCFG2 :: Tree -> Int 
+testCFG2 tree = case tree of 
+  Leaf val -> 2*val 
+  Node val left right -> if (val == 10) 
+                          then 
+                            let x = testCFG2 left 
+                                y = testCFG2 right 
+                              in x + y 
+                          else 
+                            let x = testCFG2 right 
+                                y = testCFG2 left 
+                              in y + x 
+                                        
               
 
---foo :: Bool ->  -> Int -> Int 
---foo a b c = if (a) then 
---                   let b' = b 
---                       c' = c
---                     in b' + c' 
---                   else 
---                   let c' = c 
---                    in c' 
---
---testCFG2 :: Int -> Int 
---testCFG2 val = 2*val + 3*val + 5*val 
---
---
---
-
-
---foo :: Bool -> Struct -> Int 
---foo bool struct = if (bool) then 
---			    let newStruct = Struct 1.0 2.0 3.0 Nil 
---                             in  
---                            else 
---                             struct 
-
+foo :: Bool -> Int -> Int -> Int 
+foo a b c = if (a) then 
+                  let b' = b 
+                      c' = c
+                    in b' + c' 
+                  else 
+                  let c' = c 
+                   in c' 
 
 type Id      = Int  
 type Date    = Int 
@@ -66,7 +61,7 @@ type Author  = Int
 type Header  = Int 
 type Tags    = Int 
 type Content = Int
-type String = Int
+type String  = Int
 
 
 data BlogList = Blog Id Date Author Header Tags Content BlogList | End 
@@ -93,13 +88,10 @@ emphasizeKeyword keyword bloglist =
                 End -> End
 
 
-
-
-
-
-
 gibbon_main = let 
                  val   = testCFG1 (mkTree 10)
+                 val2  = testCFG2 (mkTree 11)
+                 val3  = foo True 1 2 
                  blog' = emphasizeKeyword 1 End 
                  _     = printPacked blog'
                in ()

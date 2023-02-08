@@ -60,14 +60,13 @@ generateCfgFunction cfgMap f@FunDef { funName, funBody, funTy, funArgs } = do
     let (graph, nodeFromVertex, vertexFromKey) = G.graphFromEdges edgeList
     let x  = topSort graph
     let x' = P.map nodeFromVertex x
-    let datacon :: String = "Blog"
+    let datacon :: String = "Node"
     let map = backtrackVariablesToDataConFields x'
     let edges = constructFieldGraph Nothing nodeFromVertex vertexFromKey x' x' map datacon   
     -- dbgTraceIt (sdoc varList) dbgTraceIt ("\n") dbgTraceIt (sdoc varList') dbgTraceIt ("\n") 
     -- dbgTraceIt (sdoc x') dbgTraceIt ("\n") dbgTraceIt (sdoc map) dbgTraceIt ("\n") 
     -- pure (cfgMap, edgeList)
-    -- dbgTraceIt (sdoc x) dbgTraceIt (sdoc x') dbgTraceIt ("\n") 
-    dbgTraceIt (sdoc edges) dbgTraceIt ("\n") pure (cfgMap, edgeList)
+    dbgTraceIt (sdoc x) dbgTraceIt (sdoc x') dbgTraceIt ("\n") dbgTraceIt (sdoc edges) dbgTraceIt ("\n") pure (cfgMap, edgeList)
 
 
 generateCFGExp :: Int -> Int -> Exp1 -> PassM ( [ ((Exp1, Int) , Int, [Int]) ] , Int, Int)
