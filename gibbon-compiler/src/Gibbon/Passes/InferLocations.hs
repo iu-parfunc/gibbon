@@ -324,8 +324,8 @@ inferExp' env exp bound dest=
                            Ext (LetLocE lv1 (AfterVariableLE v' lv2 True) a')
 
   in do res <- inferExp env exp dest
-        (e,ty,cs) <- bindAllLocations res
-        e' <- finishExp e
+        (e,ty,cs) <- (dbgTraceIt "Print res: ") (dbgTraceIt "\n") (dbgTraceIt (sdoc res)) (dbgTraceIt "\n") bindAllLocations res
+        e' <-  (dbgTraceIt "Print e: ") (dbgTraceIt "\n") (dbgTraceIt (sdoc e)) (dbgTraceIt "\n") finishExp e
         let (e'',s) = cleanExp e'
             unbound = (s S.\\ S.fromList bound)
         e''' <- bindAllUnbound e'' (S.toList unbound)
@@ -457,7 +457,10 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
                 if v == v'
                 then do lv1' <- finalLocVar lv1
                         lv2' <- finalLocVar lv2
-                        return (Ext (LetLocE lv1' (AfterVariableLE v lv2 True) e), ty, cs)
+                        let res' = (Ext (LetLocE lv1' (AfterVariableLE v lv2 True) e), ty, cs)
+                        res'' <- bindAfterLoc v res'
+                        return res''
+                        --return (Ext (LetLocE lv1' (AfterVariableLE v lv2 True) e), ty, cs)
                 else do (e',ty',cs') <- bindAfterLoc v (e,ty,cs)
                         return (e',ty',c:cs')
             AfterCopyL lv1 v1 v' lv2 f lvs ->
@@ -470,13 +473,45 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
                             copyRetTy = case arrOut arrty of
                                           PackedTy _ loc -> substLoc (M.singleton loc lv2) (arrOut arrty)
                                           _ -> error "bindAfterLoc: Not a packed type"
-                        return (LetE (v',[],copyRetTy,AppE f lvs [VarE v1]) $
-                                Ext (LetLocE lv1' (AfterVariableLE v' lv2' True) e), ty, cs)
+                        let res'  = (LetE (v',[],copyRetTy,AppE f lvs [VarE v1]) $ Ext (LetLocE lv1' (AfterVariableLE v' lv2' True) e), ty, cs)
+                        res'' <- bindAfterLoc v res'
+                        return res''
+                        --return (LetE (v',[],copyRetTy,AppE f lvs [VarE v1]) $
+                        --         Ext (LetLocE lv1' (AfterVariableLE v' lv2' True) e), ty, cs)
                 else do (e',ty',cs') <- bindAfterLoc v (e,ty,cs)
                         return (e',ty',c:cs')
             _ -> do (e',ty',cs') <- bindAfterLoc v (e,ty,cs)
                     return (e',ty',c:cs')
       bindAfterLoc _ (e,ty,[]) = return (e,ty,[])
+
+      -- bindAfterLoc :: Var -> [Constraint] -> Exp2
+      -- bindAfterLoc v c:cs =
+      --     case c of
+      --       AfterVariableL lv1 v' lv2 ->
+      --           if v == v'
+      --           then do lv1' <- finalLocVar lv1
+      --                   lv2' <- finalLocVar lv2
+      --                   return (Ext (LetLocE lv1' (AfterVariableLE v lv2 True) e), ty, cs)
+      --           else do (e',ty',cs') <- bindAfterLoc v (e,ty,cs)
+      --                   return (e',ty',c:cs')
+      --       AfterCopyL lv1 v1 v' lv2 f lvs ->
+      --           if v == v1
+      --           then do lv1' <- finalLocVar lv1
+      --                   lv2' <- finalLocVar lv2
+      --                   let arrty = lookupFEnv f env
+      --                       -- Substitute the location occurring at the call site
+      --                       -- in place of the one in the function's return type
+      --                       copyRetTy = case arrOut arrty of
+      --                                     PackedTy _ loc -> substLoc (M.singleton loc lv2) (arrOut arrty)
+      --                                     _ -> error "bindAfterLoc: Not a packed type"
+      --                   let exp' = LetE (v',[],copyRetTy,AppE f lvs [VarE v1]) $ Ext (LetLocE lv1' (AfterVariableLE v' lv2' True) e)
+      --                   return (LetE (v',[],copyRetTy,AppE f lvs [VarE v1]) $
+      --                           Ext (LetLocE lv1' (AfterVariableLE v' lv2' True) e), ty, cs)
+      --           else do (e',ty',cs') <- bindAfterLoc v (e,ty,cs)
+      --                   return (e',ty',c:cs')
+      --       _ -> do (e',ty',cs') <- bindAfterLoc v (e,ty,cs)
+      --               return (e',ty',c:cs')
+      -- bindAfterLoc _ (e,ty,[]) = return (e,ty,[])
 
       -- | Transform a result by discharging AfterVariable constraints corresponding to
       -- a list of newly bound variables.
@@ -527,7 +562,7 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
             newtys = L.map (\(ty,(_,lv)) -> fmap (const lv) ty) $ zip contys vars'
             env' = L.foldr (\(v,ty) a -> extendVEnv v ty a) env $ zip (L.map fst vars') newtys
         res <- inferExp env' rhs dst
-        (rhs',ty',cs') <- bindAfterLocs (L.map fst vars') res
+        (rhs',ty',cs') <- dbgTraceIt (sdoc res) (dbgTraceIt "\n") (dbgTraceIt (sdoc (L.map fst vars')))  bindAfterLocs (L.map fst vars') res
         -- let cs'' = removeLocs (L.map snd vars') cs'
         -- TODO: check constraints are correct and fail/repair if they're not!!!
         return ((con,vars',rhs'),ty',cs')
@@ -744,7 +779,7 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
        -- there is no need to unify with eachother.
        (b',tyb,csb)    <- inferExp env b dest
        (c',tyc,csc)    <- inferExp env c dest
-       return (IfE a' b' c', tyc, L.nub $ acs ++ csb ++ csc)
+       dbgTraceIt (sdoc (tyb, csb)) dbgTraceIt ("\n") dbgTraceIt (sdoc (tyc, csc)) dbgTraceIt ("\n") return (IfE a' b' c', tyc, L.nub $ acs ++ csb ++ csc)  -- dbgTraceIt (sdoc (tyb, csb)) dbgTraceIt ("\n") dbgTraceIt (sdoc (tyc, csc)) dbgTraceIt ("\n")
 
     PrimAppE (DictInsertP dty) [(VarE var),d,k,v] ->
       case dest of
@@ -1110,7 +1145,7 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
 -- | Transforms an expression by updating all locations to their final mapping
 -- as a result of unification.
 finishExp :: Exp2 -> TiM (Exp2)
-finishExp e =
+finishExp e = 
     case e of
       VarE v -> return $ VarE v
       LitE i -> return $ LitE i
@@ -1499,7 +1534,11 @@ isCpyVar v = (take 3 (fromVar v)) == "cpy"
 
 isCpyCall :: Exp2 -> Bool
 isCpyCall (AppE f _ _) = True -- TODO: check if it's a real copy call, to be safe
-isCpyCall _ = False
+isCpyCall _ = False 
+
+-- isCpyCall :: Exp2 -> Bool
+-- isCpyCall (AppE f _ _) = isCpyVar f
+-- isCpyCall _ = False
 
 freshLocVar :: String -> PassM LocVar
 freshLocVar m = gensym (toVar m)
