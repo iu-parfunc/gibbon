@@ -779,7 +779,7 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
        -- there is no need to unify with eachother.
        (b',tyb,csb)    <- inferExp env b dest
        (c',tyc,csc)    <- inferExp env c dest
-       dbgTraceIt (sdoc (tyb, csb)) dbgTraceIt ("\n") dbgTraceIt (sdoc (tyc, csc)) dbgTraceIt ("\n") return (IfE a' b' c', tyc, L.nub $ acs ++ csb ++ csc)  -- dbgTraceIt (sdoc (tyb, csb)) dbgTraceIt ("\n") dbgTraceIt (sdoc (tyc, csc)) dbgTraceIt ("\n")
+       return (IfE a' b' c', tyc, L.nub $ acs ++ csb ++ csc)  -- dbgTraceIt (sdoc (tyb, csb)) dbgTraceIt ("\n") dbgTraceIt (sdoc (tyc, csc)) dbgTraceIt ("\n")
 
     PrimAppE (DictInsertP dty) [(VarE var),d,k,v] ->
       case dest of
