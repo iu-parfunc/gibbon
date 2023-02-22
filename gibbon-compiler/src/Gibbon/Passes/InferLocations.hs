@@ -1049,19 +1049,19 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
            -- unify projection locations with variable type locations: this kind of does what copyTuple should be doing 
           adests <- mapM destFromType' tys
           let e' = L2.LetE (vr,[], ty, L2.MkProdE als) bod'
-          let go (e'', tys) r@(l, t, dt) 
+          let go e'' r@(l, t, dt) 
                 = case t of 
                       PackedTy _ loc -> case dt of 
                         SingleDest lv -> do 
                           v <- lift $ lift $ gensym "copyProj"
                           (l', t', []) <- copy (l, t, []) lv
-                          pure (L2.LetE (v,[],t',l') e'', t:tys)
+                          pure (L2.LetE (v,[],t',l') e'')
                         TupleDest ds -> do 
                           error $ "tupledest: " ++ show r ++ " for " ++ sdoc e''  
-                        NoDest -> pure (e'', tys)                       
-                      _ -> pure (e'', tys)
-          (L2.LetE bind@(vr',_,_,_) bod1, ty1) <- foldM go (e', aty) $ zip3 als aty adests
-          (bod'',ty'',cs''') <- handleTrailingBindLoc vr' (bod1, ProdTy ty1, L.nub $ cs' ++ acs)
+                        NoDest -> pure e''                       
+                      _ -> pure e''
+          L2.LetE bind@(vr',_,_,_) bod1 <- foldM go e' $ zip3 als aty adests
+          (bod'',ty'',cs''') <- handleTrailingBindLoc vr' (bod1, ty', L.nub $ cs' ++ acs)
           fcs <- tryInRegion cs'''
           tryBindReg (L2.LetE bind bod'', ty'', fcs)
 
