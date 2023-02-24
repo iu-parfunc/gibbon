@@ -81,6 +81,9 @@ library
                        Gibbon.Passes.RearrangeFree
                        Gibbon.Passes.Codegen
                        Gibbon.Passes.CalculateBounds
+                       --Fix the order of this based on actual order in pipeline
+                       Gibbon.Passes.OptimizeFieldOrder
+                       Gibbon.Passes.AccessPatternsAnalysis
 
   other-extensions:    DeriveDataTypeable CPP
 
