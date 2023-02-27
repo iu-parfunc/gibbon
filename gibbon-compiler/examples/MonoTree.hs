@@ -15,7 +15,7 @@ add1Tree :: Tree -> Tree
 add1Tree t =
   case t of
     Leaf x     -> Leaf (x + 1)
-    Node x1 x2 -> Node (add1Tree x1) (add1Tree x2)
+    Node x1 x2 -> Node (add1Tree x2) (add1Tree x1)
 
 sumTree :: Tree -> Int
 sumTree tr =

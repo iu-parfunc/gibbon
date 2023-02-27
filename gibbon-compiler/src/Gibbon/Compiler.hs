@@ -534,6 +534,7 @@ passes config@Config{dynflags} l0 = do
               -- branches before InferLocations.
 
               -- Note: L1 -> L2
+              l1 <- goE1 "optimizeFieldOrder" shuffleDataCon l1
               l1 <- goE1 "copyOutOfOrderPacked" copyOutOfOrderPacked l1
               l1 <- go "L1.typecheck"    L1.tcProg     l1
               l2 <- goE2 "inferLocations"  inferLocs    l1

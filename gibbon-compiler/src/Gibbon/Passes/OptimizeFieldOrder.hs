@@ -23,8 +23,9 @@ type FieldOrder = M.Map DataCon [Integer]
 shuffleDataCon :: Prog1 -> PassM Prog1
 shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
     let (cfgs, fieldMap) = generateCfgFunctions (M.empty) (M.empty) (M.elems fundefs) "Layout2"
+    let field_len = P.length $ snd . snd $ lkp ddefs "Layout2"
     -- Instead of explicitly passing the function name, this should come from a annotation at the front end or something like that. 
-    let fieldorder = locallyOptimizeFieldOrdering fieldMap ["Layout2"] (M.elems fundefs) "emphKeywordInContent" (M.empty) 
+    let fieldorder = locallyOptimizeFieldOrdering fieldMap ["Layout2"] (M.elems fundefs) "emphKeywordInContent" field_len (M.empty) 
     let functions  = M.elems fundefs
     -- NOTE : shuffling ddefs makes a lot of assumptions right now. 
     -- Mainly that we are just doing it for one function
@@ -39,22 +40,22 @@ shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
                , fundefs = fundefs' 
                , mainExp = mainExp'
                }
-    pure l1 --dbgTraceIt (sdoc fieldorder) dbgTraceIt ("\n")
+    dbgTraceIt (sdoc fieldorder) dbgTraceIt ("\n") pure l1 --dbgTraceIt (sdoc fieldorder) dbgTraceIt ("\n")
 
 -- This is pointless and just goes through the function we are locally optimizing for maybe a cleverer way to do in haskell
 -- Since this problem is to locally optimize for a particular function right now we are not concerned with finding the best 
 -- optimal layout for the complete program. 
-locallyOptimizeFieldOrdering :: FieldMap -> [DataCon] -> [FunDef1] -> String -> FieldOrder -> FieldOrder 
-locallyOptimizeFieldOrdering fieldMap dcons fundefs funcName orderIn = case fundefs of
+locallyOptimizeFieldOrdering :: FieldMap -> [DataCon] -> [FunDef1] -> String -> Int -> FieldOrder -> FieldOrder 
+locallyOptimizeFieldOrdering fieldMap dcons fundefs funcName field_len orderIn = case fundefs of
     [] -> orderIn
-    x:xs -> let map' = generateLocallyOptimalOrderings fieldMap dcons x funcName orderIn
-                map'' = locallyOptimizeFieldOrdering fieldMap dcons xs funcName map' 
+    x:xs -> let map' = generateLocallyOptimalOrderings fieldMap dcons x funcName field_len orderIn
+                map'' = locallyOptimizeFieldOrdering fieldMap dcons xs funcName field_len map' 
               in map'
 
 -- for the function for which we are locally optimizing for, find the optimal layout of the data constructors that we care about. 
 -- "Locally optimizing for the function"
-generateLocallyOptimalOrderings :: FieldMap -> [DataCon] -> FunDef1 -> String -> FieldOrder -> FieldOrder
-generateLocallyOptimalOrderings fieldMap datacons fundef@FunDef{funName,funBody,funTy,funArgs} funcName orderIn =
+generateLocallyOptimalOrderings :: FieldMap -> [DataCon] -> FunDef1 -> String -> Int -> FieldOrder -> FieldOrder
+generateLocallyOptimalOrderings fieldMap datacons fundef@FunDef{funName,funBody,funTy,funArgs} funcName field_len orderIn =
     if (fromVar funName) == funcName then
        let lstDconEdges = M.findWithDefault M.empty fundef fieldMap
         in case datacons of 
@@ -62,12 +63,22 @@ generateLocallyOptimalOrderings fieldMap datacons fundef@FunDef{funName,funBody,
                 x:xs -> let dconEdges = M.findWithDefault [] x lstDconEdges
                           in case dconEdges of 
                                   [] -> orderIn
-                                  _  ->  let layout =  U.unsafePerformIO $ (solveConstrs dconEdges)
-                                             layout' = L.sort layout
+                                  _  ->  let layout      =  U.unsafePerformIO $ (solveConstrs dconEdges)
+                                             -- In case we don't get orderings for some of the fields in the data con 
+                                             -- to be safe we should complete the layout orderings of the missing fields. 
+                                             fix_missing = if (P.length layout) < field_len then 
+                                                              let indices = [0 .. (field_len - 1)]
+                                                                  complete = P.concat $ P.map (\i -> case (P.lookup i layout) of 
+                                                                                       Nothing -> [(i, i)]
+                                                                                       Just _ -> []) indices
+                                                               in layout ++ complete
+                                                           else
+                                                             layout                  
+                                             layout' = L.sort fix_missing
                                              indices = P.map (\(a, b) -> P.toInteger b) layout'
                                              fieldorder = M.insert x indices orderIn
-                                             fieldorder' = generateLocallyOptimalOrderings fieldMap xs fundef funcName fieldorder
-                                          in fieldorder' -- dbgTraceIt (sdoc dconEdges) dbgTraceIt ("\n") dbgTraceIt (sdoc fieldorder') dbgTraceIt ("\n")
+                                             fieldorder' = generateLocallyOptimalOrderings fieldMap xs fundef funcName field_len fieldorder
+                                          in dbgTraceIt (sdoc dconEdges) dbgTraceIt ("\n") dbgTraceIt (sdoc fieldorder') dbgTraceIt ("\n") fieldorder' -- dbgTraceIt (sdoc dconEdges) dbgTraceIt ("\n") dbgTraceIt (sdoc fieldorder') dbgTraceIt ("\n")
     else 
       orderIn
                         

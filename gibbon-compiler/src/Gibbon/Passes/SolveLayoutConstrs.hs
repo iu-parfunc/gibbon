@@ -57,11 +57,11 @@ solveConstrs constrs = do
 pythonCodegen :: [Constr] -> PassM String
 pythonCodegen constrs = do
   let idxs = (L.nub $ concatMap ((\(a,b) -> [a,b]) . fst) constrs)
-  let num_edges = P.length $ P.map fst constrs
+  let num_edges = P.length constrs
   let (lb,ub) = (fromIntegral $ minimum idxs, fromIntegral $ maximum idxs) :: (Integer, Integer)
   node_map <- mapM (\i -> (i,) <$> fromVar <$> gensym (toVar ("x_" ++ show i))) idxs
   let node_vars = map snd node_map
-  cost_map <- mapM (\i -> (i,) <$> fromVar <$> gensym (toVar "cost")) idxs
+  cost_map <- mapM (\i -> (i,) <$> fromVar <$> gensym (toVar "cost")) [1 .. num_edges]
   let cost_vars = map snd cost_map
   let import_doplex = Py.FromImport (Py.ImportRelative 0 (Just [pyident "docplex", pyident "mp", pyident "model"]) ())
                                     (Py.FromItems [Py.FromItem (pyident "Model") Nothing ()] ()) ()
@@ -80,7 +80,7 @@ pythonCodegen constrs = do
                                                  [Py.ArgKeyword (pyident "name") (Py.Strings [show x] ()) ()]
                                                  ()))
                        cost_vars
-  minimize_parts <- mapM (\_ -> fromVar <$> gensym (toVar "min")) [num_edges]
+  minimize_parts <- mapM (\_ -> fromVar <$> gensym (toVar "min")) [1 .. num_edges]
   let constrs_for_edge = (\(((from,to), wt), cost, minimize_part) -> do
                             let x = fromJust $ lookup from node_map
                             let y = fromJust $ lookup to node_map
