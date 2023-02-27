@@ -3,24 +3,33 @@ module Gibbon.Passes.OptimizeFieldOrder
 
 import Data.Map as M
 import Prelude as P
+import Data.List as L
 
 import Gibbon.Common
 import Gibbon.L1.Syntax as L1
 
 import Gibbon.Passes.AccessPatternsAnalysis (generateCfgFunctions)
+import Gibbon.Passes.SolveLayoutConstrs (solveConstrs)
+
+import System.IO.Unsafe as U
 
 
 --Data structure to store output from ILP solver.
 --Maps DataCon to bijection of new indices -> fields of datacon 
-type FieldOrder = M.Map DataCon [Int]
+type FieldOrder = M.Map DataCon [Integer]
 
 
 -- TODO: Make FieldOrder an argument passed to shuffleDataCon function.
 shuffleDataCon :: Prog1 -> PassM Prog1
 shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
-    let cfgs       = generateCfgFunctions (M.empty) (M.elems fundefs)
-    let fieldorder = M.fromList [("Node", [1, 0])]  
-    let shuffled_ddefs = findDataCon fieldorder ddefs
+    let (cfgs, fieldMap) = generateCfgFunctions (M.empty) (M.empty) (M.elems fundefs) "Layout2"
+    -- Instead of explicitly passing the function name, this should come from a annotation at the front end or something like that. 
+    let fieldorder = locallyOptimizeFieldOrdering fieldMap ["Layout2"] (M.elems fundefs) "emphKeywordInContent" (M.empty) 
+    let functions  = M.elems fundefs
+    -- NOTE : shuffling ddefs makes a lot of assumptions right now. 
+    -- Mainly that we are just doing it for one function
+    -- So we do not care out the globally optimal layout of the data constructor
+    let shuffled_ddefs = findDataCon fieldorder ddefs 
     fds' <- mapM (shuffleDataConFunBody fieldorder) (M.elems fundefs)
     let fundefs' = M.fromList $ P.map (\f -> (funName f,f)) fds'
     mainExp' <- case mainExp of
@@ -30,8 +39,39 @@ shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
                , fundefs = fundefs' 
                , mainExp = mainExp'
                }
-    pure l1
+    pure l1 --dbgTraceIt (sdoc fieldorder) dbgTraceIt ("\n")
 
+-- This is pointless and just goes through the function we are locally optimizing for maybe a cleverer way to do in haskell
+-- Since this problem is to locally optimize for a particular function right now we are not concerned with finding the best 
+-- optimal layout for the complete program. 
+locallyOptimizeFieldOrdering :: FieldMap -> [DataCon] -> [FunDef1] -> String -> FieldOrder -> FieldOrder 
+locallyOptimizeFieldOrdering fieldMap dcons fundefs funcName orderIn = case fundefs of
+    [] -> orderIn
+    x:xs -> let map' = generateLocallyOptimalOrderings fieldMap dcons x funcName orderIn
+                map'' = locallyOptimizeFieldOrdering fieldMap dcons xs funcName map' 
+              in map'
+
+-- for the function for which we are locally optimizing for, find the optimal layout of the data constructors that we care about. 
+-- "Locally optimizing for the function"
+generateLocallyOptimalOrderings :: FieldMap -> [DataCon] -> FunDef1 -> String -> FieldOrder -> FieldOrder
+generateLocallyOptimalOrderings fieldMap datacons fundef@FunDef{funName,funBody,funTy,funArgs} funcName orderIn =
+    if (fromVar funName) == funcName then
+       let lstDconEdges = M.findWithDefault M.empty fundef fieldMap
+        in case datacons of 
+                []   -> orderIn
+                x:xs -> let dconEdges = M.findWithDefault [] x lstDconEdges
+                          in case dconEdges of 
+                                  [] -> orderIn
+                                  _  ->  let layout =  U.unsafePerformIO $ (solveConstrs dconEdges)
+                                             layout' = L.sort layout
+                                             indices = P.map (\(a, b) -> P.toInteger b) layout'
+                                             fieldorder = M.insert x indices orderIn
+                                             fieldorder' = generateLocallyOptimalOrderings fieldMap xs fundef funcName fieldorder
+                                          in fieldorder' -- dbgTraceIt (sdoc dconEdges) dbgTraceIt ("\n") dbgTraceIt (sdoc fieldorder') dbgTraceIt ("\n")
+    else 
+      orderIn
+                        
+                  
 shuffleDataConFunBody :: FieldOrder -> FunDef1  -> PassM FunDef1
 shuffleDataConFunBody fieldorder f@FunDef{funBody}  = do                                   
   funBody' <- shuffleDataConExp fieldorder funBody                        
@@ -112,7 +152,7 @@ reverse_dataCons fieldorder list = case list of
                                     [(layout_name, fields)] ++ (reverse_dataCons fieldorder xs)
 
 
-permute :: [Int] -> [a] -> [a]
+permute :: [Integer] -> [a] -> [a]
 permute indices list = case indices of 
     [] -> []
-    x:xs -> [list !! x] ++ permute xs list
+    x:xs -> [list !! (P.fromInteger x)] ++ permute xs list

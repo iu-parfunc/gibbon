@@ -84,6 +84,7 @@ library
                        --Fix the order of this based on actual order in pipeline
                        Gibbon.Passes.OptimizeFieldOrder
                        Gibbon.Passes.AccessPatternsAnalysis
+                       Gibbon.Passes.SolveLayoutConstrs
 
   other-extensions:    DeriveDataTypeable CPP
 
@@ -115,6 +116,7 @@ library
                      , GenericPretty            >= 1.2.1     &&  < 1.3
                      , language-c-quote         >= 0.12.1    &&  < 0.13
                      , mainland-pretty          >= 0.6.1     &&  < 0.8
+                     , language-python
 -- Brings in lots of ekmett dependencies:
 --                     , either
 

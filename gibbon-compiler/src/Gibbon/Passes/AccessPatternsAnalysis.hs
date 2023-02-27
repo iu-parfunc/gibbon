@@ -1,4 +1,4 @@
-module Gibbon.Passes.AccessPatternsAnalysis (generateCfg, generateCfgFunctions) where
+module Gibbon.Passes.AccessPatternsAnalysis (generateCfgFunctions) where
 
 import Prelude as P
 import Data.Graph as G
@@ -12,46 +12,48 @@ import Gibbon.Common
 import Gibbon.L1.Syntax as L1
 
 {- Type VariableMap: Stores mapping from Variable to wheather it comes from a particular datacon. -}
-type VariableMap = M.Map Var (Maybe (DataCon, Int))
+type VariableMap = M.Map Var (Maybe (DataCon, Integer))
 
 -- This is a PassM Prog1 just for testing purposes. So that is can be called in the pass pipeline. 
 -- This should just be exportable as a function. ShuffleDataCon pass should call this pass eventually; Togehter with the constraint solver. 
-generateCfg :: Prog1 -> CFGfunctionMap
-generateCfg prg@Prog{ddefs, fundefs, mainExp} =
-    let cfgFunctionMap    = M.empty 
-        newCfgFunctionMap = generateCfgFunctions cfgFunctionMap (M.elems fundefs)
-      in newCfgFunctionMap
+-- generateCfg :: Prog1 -> CFGfunctionMap
+-- generateCfg prg@Prog{ddefs, fundefs, mainExp} =
+--     let cfgFunctionMap    = M.empty 
+--         fieldMap          = M.empty
+--         (newCfgFunctionMap, newfieldMap) = generateCfgFunctions cfgFunctionMap fieldMap (M.elems fundefs) "Node"
+--       in newCfgFunctionMap
 
 
 {- Takes a map, list of function definitions, return update map with CFG for each funciton in the list -}
-generateCfgFunctions :: CFGfunctionMap -> [FunDef1] -> CFGfunctionMap
-generateCfgFunctions cfgMap defs = 
+generateCfgFunctions :: CFGfunctionMap -> FieldMap -> [FunDef1] -> DataCon -> (CFGfunctionMap, FieldMap)
+generateCfgFunctions cfgMap fieldMap defs datacon = 
     case defs of 
-        [] -> cfgMap 
+        [] -> (cfgMap, fieldMap) 
         x:xs -> let 
-                    (cfgMapNew, edgeList) = generateCfgFunction cfgMap x
-                    newMap                = generateCfgFunctions cfgMapNew xs
-                  in newMap
+                    (cfgMapNew, edgeList, fieldGraphEdges) = generateCfgFunction cfgMap x datacon
+                    dconAccessMap   = M.insert datacon fieldGraphEdges (M.empty)
+                    updatedFieldMap = M.insert x dconAccessMap fieldMap
+                  in generateCfgFunctions cfgMapNew updatedFieldMap xs datacon
         
         
 {- Generate a CFG for the corresponsing function -}            
-generateCfgFunction :: CFGfunctionMap -> FunDef1 -> (CFGfunctionMap, [((Exp1, Int) , Int, [Int])])
-generateCfgFunction cfgMap f@FunDef { funName, funBody, funTy, funArgs } =
+generateCfgFunction :: CFGfunctionMap -> FunDef1 -> DataCon -> (CFGfunctionMap, [((Exp1, Integer) , Integer, [Integer])], [((Integer, Integer), Integer)])
+generateCfgFunction cfgMap f@FunDef { funName, funBody, funTy, funArgs } datacon =
     let (edgeList, succ, maxDepth) = generateCFGExp 0 100 funBody
         (graph, nodeFromVertex, vertexFromKey) = G.graphFromEdges edgeList
-        x  = topSort graph
-        x' = P.map nodeFromVertex x
-        datacon :: String = "Node"
-        map = backtrackVariablesToDataConFields x'
-        edges = constructFieldGraph Nothing nodeFromVertex vertexFromKey x' x' map datacon   
-     in (cfgMap, edgeList)
+        newCFGMap = M.insert f (graph, nodeFromVertex, vertexFromKey) cfgMap
+        topSortedVertices  = topSort graph
+        topSortedNodes = P.map nodeFromVertex topSortedVertices
+        map = backtrackVariablesToDataConFields topSortedNodes
+        edges = constructFieldGraph Nothing nodeFromVertex vertexFromKey topSortedNodes topSortedNodes map datacon   
+     in (newCFGMap, edgeList, edges)
     -- dbgTraceIt (sdoc varList) dbgTraceIt ("\n") dbgTraceIt (sdoc varList') dbgTraceIt ("\n") 
     -- dbgTraceIt (sdoc x') dbgTraceIt ("\n") dbgTraceIt (sdoc map) dbgTraceIt ("\n") 
     -- pure (cfgMap, edgeList)
     -- dbgTraceIt (sdoc x) dbgTraceIt (sdoc x') dbgTraceIt ("\n") dbgTraceIt (sdoc edges) dbgTraceIt ("\n") pure (cfgMap, edgeList)
 
 
-generateCFGExp :: Int -> Int -> Exp1 -> ( [ ((Exp1, Int) , Int, [Int]) ] , Int, Int)
+generateCFGExp :: Integer -> Integer -> Exp1 -> ( [ ((Exp1, Integer) , Integer, [Integer]) ] , Integer, Integer)
 generateCFGExp vertexCounter edgeWeight exp1 = case exp1 of 
     -- Recursively do for args? for now assuming this is a leaf node (base case)
     -- In the future we should have a clear differentiation between a case binding that introduces variables that can be read.
@@ -91,7 +93,7 @@ generateCFGExp vertexCounter edgeWeight exp1 = case exp1 of
             edgeList' = edgeList ++ [edge]
          in (edgeList', vertexCounter, maxDepth)
     CaseE scrt mp ->
-        let (edgeList, succList, maxDepth) = processExpSeqCase (vertexCounter+1) (edgeWeight `div` (P.length mp)) mp
+        let (edgeList, succList, maxDepth) = processExpSeqCase (vertexCounter+1) (edgeWeight `div` ( P.toInteger (P.length mp))) mp
             edge     = ( (scrt, edgeWeight) , vertexCounter, succList )
             newEdges  = edgeList ++ [edge]
          in (newEdges, vertexCounter, maxDepth)
@@ -120,7 +122,7 @@ generateCFGExp vertexCounter edgeWeight exp1 = case exp1 of
 Process a list of expressions sequentially rather than in parallel as it would be though a Map 
 Makes it much easier to thread, vertex id's and likelihoods. 
 -}
-processExpListSeq :: Int -> Int -> [Exp1] -> ([((Exp1, Int), Int, [Int])] , [Int], Int)
+processExpListSeq :: Integer -> Integer -> [Exp1] -> ([((Exp1, Integer), Integer, [Integer])] , [Integer], Integer)
 processExpListSeq currVertex edgeWeight exp = case exp of 
     []   -> ([], [], currVertex)
     x:xs -> 
@@ -133,7 +135,7 @@ processExpListSeq currVertex edgeWeight exp = case exp of
 {-
 Process list of case expressions sequentially. 
 -}
-processExpSeqCase :: Int -> Int -> [(DataCon, [(Var, loc)] , Exp1)] -> ( [((Exp1, Int), Int, [Int])] , [Int], Int )
+processExpSeqCase :: Integer -> Integer -> [(DataCon, [(Var, loc)] , Exp1)] -> ( [((Exp1, Integer), Integer, [Integer])] , [Integer], Integer )
 processExpSeqCase currVertex edgeWeight lst = case lst of 
     [] -> ([], [], currVertex)
     x:xs -> 
@@ -146,7 +148,7 @@ processExpSeqCase currVertex edgeWeight lst = case lst of
 {-
 Helper function to generate a Vertex for each case binding. 
 -}
-generateVerticesCase :: Int -> Int -> (DataCon, [(Var, loc)] , Exp1) -> ( [((Exp1, Int) , Int, [Int])] , Int, Int )
+generateVerticesCase :: Integer -> Integer -> (DataCon, [(Var, loc)] , Exp1) -> ( [((Exp1, Integer) , Integer, [Integer])] , Integer, Integer )
 generateVerticesCase currVertex edgeWeight branch =
     let datacon      = fst3 branch 
         fields_locs  = snd3 branch
@@ -158,7 +160,7 @@ generateVerticesCase currVertex edgeWeight branch =
       in (newEdges, currVertex, maxDepth) 
     
 
-backtrackVariablesToDataConFields :: [((Exp1, Int) , Int, [Int])] -> VariableMap
+backtrackVariablesToDataConFields :: [((Exp1, Integer) , Integer, [Integer])] -> VariableMap
 backtrackVariablesToDataConFields graph = case graph of 
     [] -> M.empty -- No variable to process. 
     x:xs -> let newMap  = processVertex graph x M.empty
@@ -169,7 +171,7 @@ backtrackVariablesToDataConFields graph = case graph of
              in newMap'
 
 
-processVertex :: [((Exp1, Int) , Int, [Int])] -> ((Exp1, Int) , Int, [Int]) -> VariableMap -> VariableMap
+processVertex :: [((Exp1, Integer) , Integer, [Integer])] -> ((Exp1, Integer) , Integer, [Integer]) -> VariableMap -> VariableMap
 processVertex graph node map = case node of 
     ((expression, likelihood) , id, succ) -> case expression of
                                                     DataConE loc dcon args -> let freeVariables = L.concat (P.map (\x -> S.toList (gFreeVars x)) args)
@@ -181,7 +183,7 @@ processVertex graph node map = case node of
                                                     _                      -> map
 
 
-getDataConIndexFromVariable :: [((Exp1, Int) , Int, [Int])] -> Var -> Maybe (DataCon, Int)
+getDataConIndexFromVariable :: [((Exp1, Integer) , Integer, [Integer])] -> Var -> Maybe (DataCon, Integer)
 getDataConIndexFromVariable graph variable = case graph of 
          [] -> Nothing 
          x:xs -> let status = compareVariableWithDataConFields x variable
@@ -189,7 +191,7 @@ getDataConIndexFromVariable graph variable = case graph of
                        Nothing -> getDataConIndexFromVariable xs variable
                        Just val -> Just val 
 
-compareVariableWithDataConFields :: ((Exp1, Int), Int, [Int]) -> Var -> Maybe (DataCon, Int)
+compareVariableWithDataConFields :: ((Exp1, Integer), Integer, [Integer]) -> Var -> Maybe (DataCon, Integer)
 compareVariableWithDataConFields node variable = case node of 
     ((exp, likelihood) , id, _) -> case exp of 
         DataConE loc dcon args -> let variables = [var | VarE var <- args]
@@ -197,7 +199,7 @@ compareVariableWithDataConFields node variable = case node of
                                       maybeIndex = L.elemIndex True results
                                     in case maybeIndex of 
                                             Nothing  -> Nothing 
-                                            Just val -> Just (dcon, val) 
+                                            Just val -> Just (dcon, P.toInteger val) 
         _ -> Nothing
 
 
@@ -221,8 +223,12 @@ freeVarsCFG2 exp = case exp of
                          in var_list
 
     LetE (v,loc,ty,rhs) bod -> freeVarsCFG2 rhs 
-    -- CaseE scrt mp -> not there in cfg node
-    -- IfE a b c -> not there in cfg node
+    CaseE scrt mp -> (freeVarsCFG2 scrt) ++ 
+                     (L.concat (L.map (\(_, vlocs, expr) -> let (vars, _) = P.unzip vlocs
+                                                                freeVarsExp     = freeVarsCFG2 expr 
+                                                                newVars         = freeVarsExp ++ vars
+                                                             in newVars) mp))
+    IfE a b c -> (freeVarsCFG2 a) ++ (freeVarsCFG2 b) ++ (freeVarsCFG2 c) 
     MkProdE xs -> let var_list_list = P.map (freeVarsCFG2) xs
                       var_list      = L.concat var_list_list
                     in var_list
@@ -260,7 +266,7 @@ a.) Multiple datacon fields read in the same expression.
     Since this will be run after flatten, it is safe to assume that only possibly a maximum of two variables can be read in one let binding. Except function calls! where more than two fields can be passed as arguments. 
 -}
 
-evaluateExpressionFieldGraph :: Maybe (DataCon, Int) -> (G.Vertex -> ( (Exp1, Int) , Int, [Int])) -> (Int -> Maybe G.Vertex) -> [((Exp1, Int) , Int, [Int])] -> [((Exp1, Int) , Int, [Int])] -> VariableMap -> DataCon -> [ Var ] -> [Int] -> Int -> [ ( (Int, Int) , Int ) ]
+evaluateExpressionFieldGraph :: Maybe (DataCon, Integer) -> (G.Vertex -> ( (Exp1, Integer) , Integer, [Integer])) -> (Integer -> Maybe G.Vertex) -> [((Exp1, Integer) , Integer, [Integer])] -> [((Exp1, Integer) , Integer, [Integer])] -> VariableMap -> DataCon -> [ Var ] -> [Integer] -> Integer -> [ ( (Integer, Integer) , Integer ) ]
 evaluateExpressionFieldGraph currField nodeFromVertex vertexFromNode graph xs map datacon freeVars successors likelihood = case currField of 
     Nothing         -> let fromDataCon'   = P.map (\v -> M.findWithDefault Nothing v map) (removeDuplicates freeVars)
                            justDcons      = [Just x | Just x <- fromDataCon']
@@ -344,7 +350,7 @@ evaluateExpressionFieldGraph currField nodeFromVertex vertexFromNode graph xs ma
 
 
 
-constructFieldGraph :: Maybe (DataCon, Int) -> (G.Vertex -> ( (Exp1, Int) , Int, [Int])) -> (Int -> Maybe G.Vertex) -> [((Exp1, Int) , Int, [Int])] -> [((Exp1, Int) , Int, [Int])] -> VariableMap -> DataCon -> [ ( (Int, Int) , Int ) ]
+constructFieldGraph :: Maybe (DataCon, Integer) -> (G.Vertex -> ( (Exp1, Integer) , Integer, [Integer])) -> (Integer -> Maybe G.Vertex) -> [((Exp1, Integer) , Integer, [Integer])] -> [((Exp1, Integer) , Integer, [Integer])] -> VariableMap -> DataCon -> [ ( (Integer, Integer) , Integer ) ]
 constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map datacon = case progress of 
                [] -> [] 
                x:xs -> let ((exp, likelihood) , id'', successors) = x
@@ -386,7 +392,7 @@ constructFieldGraph currField nodeFromVertex vertexFromNode graph progress map d
 {- 
 From an expression provided, Recursively find all the variables that come from a DataCon expression, that is, are fields in a DataConE.  
 -}
-findFieldInDataConFromVariableInExpression :: Exp1 -> [((Exp1, Int) , Int, [Int])] -> VariableMap -> DataCon -> [(DataCon, Int)]
+findFieldInDataConFromVariableInExpression :: Exp1 -> [((Exp1, Integer) , Integer, [Integer])] -> VariableMap -> DataCon -> [(DataCon, Integer)]
 findFieldInDataConFromVariableInExpression exp graph map datacon = case exp of
     VarE var -> let fromDataCon  = M.findWithDefault Nothing var map
                   in case fromDataCon of 

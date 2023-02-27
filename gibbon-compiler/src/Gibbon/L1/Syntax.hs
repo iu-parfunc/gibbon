@@ -61,10 +61,13 @@ See Data.Graph in containers for more definitions.
 TODO: The functions for which the CFG should be annoted at the front-end level and they should be passable to this pass. 
 Only generate CFG for functions which are annotated. 
 -}
-type CFGfunctionMap = M.Map FunDef1 (G.Graph, G.Vertex -> ( (Exp1, Int), Int, [Int]), Int -> Maybe G.Vertex)
+type CFGfunctionMap = M.Map FunDef1 (G.Graph, G.Vertex -> ( (Exp1, Integer), Integer, [Integer]), Integer -> Maybe G.Vertex)
 
 {- Store the field graphs for each function-}
-type FieldMap = M.Map FunDef1 (G.Graph, G.Vertex -> ((DataCon, Int), Int, [Int]), Int -> Maybe G.Vertex)
+
+type DataConAccessMap = M.Map DataCon [ ((Integer, Integer) , Integer ) ]
+
+type FieldMap = M.Map FunDef1 DataConAccessMap
 
 
 --------------------------------------------------------------------------------

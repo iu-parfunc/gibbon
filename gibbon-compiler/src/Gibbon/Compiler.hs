@@ -88,6 +88,7 @@ import           Gibbon.Passes.Lower          (lower)
 import           Gibbon.Passes.RearrangeFree  (rearrangeFree)
 import           Gibbon.Passes.Codegen        (codegenProg)
 import           Gibbon.Passes.Fusion2        (fusion2)
+import           Gibbon.Passes.OptimizeFieldOrder (shuffleDataCon)
 -- import Gibbon.Passes.CalculateBounds          (inferRegSize)
 import           Gibbon.Pretty
 
@@ -587,6 +588,7 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
                   pure l2
                 else do
                   let need = needsRAN l2
+                  l1 <- goE1 "optimizeFieldOrder" shuffleDataCon l1
                   l1 <- goE1 "addRAN"        (addRAN need) l1
                   l1 <- go "L1.typecheck"    L1.tcProg     l1
                   l1 <- goE1 "copyOutOfOrderPacked" copyOutOfOrderPacked l1
