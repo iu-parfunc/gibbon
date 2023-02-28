@@ -324,8 +324,8 @@ inferExp' env exp bound dest=
                            Ext (LetLocE lv1 (AfterVariableLE v' lv2 True) a')
 
   in do res <- inferExp env exp dest
-        (e,ty,cs) <- (dbgTraceIt "Print res: ") (dbgTraceIt "\n") (dbgTraceIt (sdoc res)) (dbgTraceIt "\n") bindAllLocations res
-        e' <-  (dbgTraceIt "Print e: ") (dbgTraceIt "\n") (dbgTraceIt (sdoc e)) (dbgTraceIt "\n") finishExp e
+        (e,ty,cs) <-  bindAllLocations res --(dbgTraceIt "Print res: ") (dbgTraceIt "\n") (dbgTraceIt (sdoc res)) (dbgTraceIt "\n")
+        e' <-   finishExp e --(dbgTraceIt "Print e: ") (dbgTraceIt "\n") (dbgTraceIt (sdoc e)) (dbgTraceIt "\n")
         let (e'',s) = cleanExp e'
             unbound = (s S.\\ S.fromList bound)
         e''' <- bindAllUnbound e'' (S.toList unbound)
@@ -515,10 +515,13 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
 
       -- | Transform a result by discharging AfterVariable constraints corresponding to
       -- a list of newly bound variables.
+      -- NOTE : Reversing the order in which bindings are discharged seems to fix the location type check error. 
       bindAfterLocs :: [Var] -> Result -> TiM Result
       bindAfterLocs (v:vs) res =
-          do res' <- bindAfterLoc v res
-             bindAfterLocs vs res'
+          do res'' <- bindAfterLocs vs res
+             bindAfterLoc v res''
+             --res' <- bindAfterLoc v res
+             --bindAfterLocs vs res'
       bindAfterLocs [] res = return res
 
       -- | Transforms a result by binding any additional locations that are safe to be bound
@@ -562,7 +565,7 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
             newtys = L.map (\(ty,(_,lv)) -> fmap (const lv) ty) $ zip contys vars'
             env' = L.foldr (\(v,ty) a -> extendVEnv v ty a) env $ zip (L.map fst vars') newtys
         res <- inferExp env' rhs dst
-        (rhs',ty',cs') <- dbgTraceIt (sdoc res) (dbgTraceIt "\n") (dbgTraceIt (sdoc (L.map fst vars')))  bindAfterLocs (L.map fst vars') res
+        (rhs',ty',cs') <-   bindAfterLocs (L.map fst vars') res  --dbgTraceIt (sdoc res) (dbgTraceIt "\n") (dbgTraceIt (sdoc (L.map fst vars')))
         -- let cs'' = removeLocs (L.map snd vars') cs'
         -- TODO: check constraints are correct and fail/repair if they're not!!!
         return ((con,vars',rhs'),ty',cs')
@@ -777,8 +780,17 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
        assumeEq bty BoolTy
        -- Here BOTH branches are unified into the destination, so
        -- there is no need to unify with eachother.
-       (b',tyb,csb)    <- inferExp env b dest
-       (c',tyc,csc)    <- inferExp env c dest
+       res    <- inferExp env b dest
+       -- bind variables after if branch
+       -- This ensures that the location bindings are not freely floated up to the upper level expressions
+       (b',tyb,csb) <-   bindAfterLocs (S.toList $ gFreeVars b) res --(b',tyb,csb)
+
+       -- Else branch
+       res'    <- inferExp env c dest
+       -- bind variables after else branch
+       -- This ensures that the location bindings are not freely floated up to the upper level expressions
+       (c',tyc,csc) <-   bindAfterLocs (S.toList $ gFreeVars c) res' --(c',tyc,csc) 
+
        return (IfE a' b' c', tyc, L.nub $ acs ++ csb ++ csc)  -- dbgTraceIt (sdoc (tyb, csb)) dbgTraceIt ("\n") dbgTraceIt (sdoc (tyc, csc)) dbgTraceIt ("\n")
 
     PrimAppE (DictInsertP dty) [(VarE var),d,k,v] ->
@@ -1879,8 +1891,10 @@ copyOutOfOrderPacked prg@(Prog ddfs fndefs mnExp) = do
           pure $ (cpy_env1, PrimAppE pr ls1)
         IfE a b c  -> do
           (cpy_env1, a1) <- go env2 cpy_env order a
+          -- Here each branch should be given its the same env since we are assuming that the branchches unify with the destination and not with each other. 
+          -- TODO : Confirm 
           (cpy_env2, b1) <- go env2 cpy_env1 order b
-          (cpy_env3, c1) <- go env2 cpy_env2 order c
+          (cpy_env3, c1) <- go env2 cpy_env1 order c
           pure $ (cpy_env3, IfE a1 b1 c1)
         MkProdE ls -> do
           (cpy_env1, ls1) <- F.foldrM

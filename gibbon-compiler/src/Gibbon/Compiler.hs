@@ -537,14 +537,11 @@ passes config@Config{dynflags} l0 = do
               l1 <- goE1 "copyOutOfOrderPacked" copyOutOfOrderPacked l1
               l1 <- go "L1.typecheck"    L1.tcProg     l1
               l2 <- goE2 "inferLocations"  inferLocs    l1
-              -- l2 <- go "regionsInwards"    regionsInwards l2
-              -- l2 <- go "regionsInwards1"    regionsInwards l2
-              -- type check wasn't happening here ?
+              l2 <- go   "L2.typecheck"    L2.tcProg    l2
+              l2 <- go "regionsInwards"    regionsInwards l2
               l2 <- go   "L2.typecheck"    L2.tcProg    l2
               l2 <- goE2 "simplifyLocBinds" simplifyLocBinds l2
               l2 <- go   "L2.typecheck"    L2.tcProg    l2
-              --l2 <- go "regionsInwards"    regionsInwards l2
-              --l2 <- go   "L2.typecheck"    L2.tcProg    l2
               l2 <- goE2 "L2.flatten"      flattenL2    l2
               l2 <- go   "L2.typecheck"    L2.tcProg    l2
               l2 <- if gibbon1 || no_rcopies
@@ -593,8 +590,11 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
                   let need = needsRAN l2
                   l1 <- goE1 "addRAN"        (addRAN need) l1
                   l1 <- go "L1.typecheck"    L1.tcProg     l1
+                  -- NOTE: Calling copyOut of order here seems redundant since all the copy calls seem to be alreay there. 
+                  -- Also calling it here gives a compiler error 
+                  -- Chai to see if this is necessary.
                   -- l1 <- goE1 "copyOutOfOrderPacked" copyOutOfOrderPacked l1
-                  l1 <- go "L1.typecheck"    L1.tcProg     l1
+                  -- l1 <- go "L1.typecheck"    L1.tcProg     l1
                   l2 <- go "inferLocations2" inferLocs     l1
                   l2 <- go "simplifyLocBinds" simplifyLocBinds l2
                   l2 <- go "L2.flatten"      flattenL2     l2
