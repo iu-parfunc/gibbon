@@ -16,7 +16,7 @@ emphKeywordInContent keyword blogs =
                                                             --_          = printPacked newContent
                                                             --_ = printsym (quote "NEWLINE") 
                                                             newRst     = emphKeywordInContent keyword rst 
-                                                         in Layout1 (header) (id) (author) (copyPacked date) (copyPacked newContent) (copyPacked tags)  (copyPacked newRst)
+                                                        in Layout1 header id author date newContent tags newRst
 
 -- main function 
 gibbon_main = 

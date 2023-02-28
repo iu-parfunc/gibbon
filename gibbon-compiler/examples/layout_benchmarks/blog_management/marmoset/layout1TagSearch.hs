@@ -24,10 +24,10 @@ emphKeywordInTag keyword blogs = case blogs of
                                                                                           in if (present) 
                                                                                              then let newContent  = emphasizeBlogContent keyword content present
                                                                                                       newRst      = emphKeywordInTag keyword rst
-                                                                                                    in Layout1 (header) (copyPacked id) (copyPacked author) (copyPacked date) (copyPacked newContent) (copyPacked tags) (copyPacked newRst)
+                                                                                                    in Layout1 header id author date newContent tags newRst
                                                                                              else
                                                                                                let newRst = emphKeywordInTag keyword rst
-                                                                                                 in Layout1 (header) (copyPacked id) (copyPacked author) (copyPacked date) (copyPacked content) (copyPacked tags) (copyPacked newRst)
+                                                                                                 in Layout1 header id author date content tags newRst
 
 
 

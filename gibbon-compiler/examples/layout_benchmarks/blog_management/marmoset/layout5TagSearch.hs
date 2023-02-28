@@ -12,7 +12,7 @@ emphKeywordInTag keyword blogs = case blogs of
                                                                                        in if present then 
                                                                                               let newContent  = emphasizeBlogContent keyword content present -- get the new content, this should be inlined 
                                                                                                   newRst      = emphKeywordInTag keyword rst 
-                                                                                                in Layout5 (newRst) (tags) (newContent) (header) id author date
+                                                                                                in Layout5 newRst tags newContent header id author date
                                                                                           else 
                                                                                             let newRst = emphKeywordInTag keyword rst 
                                                                                               in Layout5 newRst tags content header id author date
