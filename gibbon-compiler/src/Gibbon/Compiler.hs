@@ -591,7 +591,7 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
                   pure l2
                 else do
                   let need = needsRAN l2
-                  l1 <- goE1 "optimizeFieldOrder" shuffleDataCon l1
+                  --l1 <- goE1 "optimizeFieldOrder" shuffleDataCon l1
                   l1 <- goE1 "addRAN"        (addRAN need) l1
                   l1 <- go "L1.typecheck"    L1.tcProg     l1
                   -- NOTE: Calling copyOut of order here seems redundant since all the copy calls seem to be alreay there. 

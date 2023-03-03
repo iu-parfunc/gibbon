@@ -87,6 +87,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.List as L
 import qualified Data.Foldable as F
+import Prelude as P
 import Data.Maybe
 import qualified Control.Monad.Trans.State.Strict as St
 import Control.Monad
@@ -783,15 +784,15 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
        res    <- inferExp env b dest
        -- bind variables after if branch
        -- This ensures that the location bindings are not freely floated up to the upper level expressions
-       (b',tyb,csb) <-   bindAfterLocs (S.toList $ gFreeVars b) res --(b',tyb,csb)
+       (b',tyb,csb) <-   bindAfterLocs (removeDuplicates (freeVarsInOrder b)) res --(b',tyb,csb)
 
        -- Else branch
        res'    <- inferExp env c dest
        -- bind variables after else branch
        -- This ensures that the location bindings are not freely floated up to the upper level expressions
-       (c',tyc,csc) <-   bindAfterLocs (S.toList $ gFreeVars c) res' --(c',tyc,csc) 
+       (c',tyc,csc) <-   bindAfterLocs (removeDuplicates (freeVarsInOrder c)) res' --(c',tyc,csc) 
 
-       return (IfE a' b' c', tyc, L.nub $ acs ++ csb ++ csc)  -- dbgTraceIt (sdoc (tyb, csb)) dbgTraceIt ("\n") dbgTraceIt (sdoc (tyc, csc)) dbgTraceIt ("\n")
+       return (IfE a' b' c', tyc, L.nub $ acs ++ csb ++ csc)  -- dbgTraceIt (sdoc (removeDuplicates (freeVarsInOrder c)))
 
     PrimAppE (DictInsertP dty) [(VarE var),d,k,v] ->
       case dest of
@@ -2200,3 +2201,46 @@ idFun :: L1.FunDef Ty1 (L L1.Exp1)
 idFun = L1.FunDef "id" ("tr",treeTy) treeTy (VarE "tr")
 
 --}
+
+removeDuplicates :: Eq a => [a] -> [a]
+removeDuplicates list = case list of 
+                                []   -> []
+                                a:as -> a:removeDuplicates (P.filter (/=a) as)
+
+-- https://www.reddit.com/r/haskell/comments/u841av/trying_to_remove_all_the_elements_that_occur_in/                                
+deleteOne :: Eq a => a -> [a] -> [a]
+deleteOne _ [] = [] -- Nothing to delete
+deleteOne x (y:ys) | x == y = ys -- Drop exactly one matching item
+deleteOne x (y:ys) = y : deleteOne x ys -- Drop one, but not this one (doesn't match).
+                                
+deleteMany :: Eq a => [a] -> [a] -> [a]
+deleteMany [] = id -- Nothing to delete
+deleteMany (x:xs) = deleteMany xs . deleteOne x -- Delete one, then the rest.
+
+freeVarsInOrder :: Exp1 -> [Var]
+freeVarsInOrder exp = case exp of
+  VarE v    -> [v]
+  LitE _    -> []
+  CharE _   -> []
+  FloatE{}  -> []
+  LitSymE _ -> []
+  ProjE _ e -> freeVarsInOrder e
+  IfE a b c -> (freeVarsInOrder a) ++ (freeVarsInOrder b) ++ (freeVarsInOrder c)
+  AppE v _ ls         -> [v] ++ (L.concat $ (L.map freeVarsInOrder ls))
+  PrimAppE _ ls        -> L.concat $ (L.map freeVarsInOrder ls)
+  LetE (v,_,_,rhs) bod -> (freeVarsInOrder rhs) ++ (deleteOne v (freeVarsInOrder bod))
+  CaseE e ls -> (freeVarsInOrder e) ++ (L.concat $
+                (L.map (\(_, vlocs, ee) ->
+                                       let (vars,_) = unzip vlocs
+                                       in deleteMany (freeVarsInOrder ee) vars) ls) )
+  MkProdE ls          -> L.concat $ L.map freeVarsInOrder ls
+  DataConE _ _ ls     -> L.concat $ L.map freeVarsInOrder ls
+  TimeIt e _ _        -> freeVarsInOrder e
+  MapE (v,_t,rhs) bod -> (freeVarsInOrder rhs) ++ (deleteOne v (freeVarsInOrder bod))
+  FoldE (v1,_t1,r1) (v2,_t2,r2) bod ->
+      (freeVarsInOrder r1) ++ (freeVarsInOrder r2) ++ (deleteOne v1 $ deleteOne v2 $ freeVarsInOrder bod)
+
+  WithArenaE v e -> deleteOne v $ freeVarsInOrder e
+
+  SpawnE v _ ls -> [v] ++ (L.concat $ L.map freeVarsInOrder ls)
+  SyncE -> []

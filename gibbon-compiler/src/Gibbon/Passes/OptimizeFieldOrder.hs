@@ -26,7 +26,7 @@ shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
     -- TODO: probably better to make this a map from dcon to its num fields. 
     let field_len = P.length $ snd . snd $ lkp ddefs "Layout2"
     -- Instead of explicitly passing the function name, this should come from a annotation at the front end or something like that. 
-    let fieldorder = locallyOptimizeFieldOrdering fieldMap ["Layout2"] (M.elems fundefs) "emphKeywordInContent" field_len (M.empty) 
+    let fieldorder = locallyOptimizeFieldOrdering fieldMap ["Layout2"] (M.elems fundefs) "emphKeywordInTag" field_len (M.empty) 
     let functions  = M.elems fundefs
     -- NOTE : shuffling ddefs makes a lot of assumptions right now. 
     -- Mainly that we are just doing it for one function
@@ -41,7 +41,7 @@ shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
                , fundefs = fundefs' 
                , mainExp = mainExp'
                }
-    pure l1 --dbgTraceIt (sdoc fieldorder) dbgTraceIt ("\n")
+    dbgTraceIt (sdoc fieldorder) dbgTraceIt ("\n") pure l1 --dbgTraceIt (sdoc fieldorder) dbgTraceIt ("\n")
 
 -- This is pointless and just goes through the function we are locally optimizing for maybe a cleverer way to do in haskell
 -- Since this problem is to locally optimize for a particular function right now we are not concerned with finding the best 
