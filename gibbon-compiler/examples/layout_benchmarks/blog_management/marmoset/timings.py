@@ -2,15 +2,19 @@ import os
 import subprocess
 import re
 
-iterations = 9
+iterations = 12
 
 rootdir = "/local/scratch/a/singhav/Applications/src/gibbon/gibbon-compiler/examples/layout_benchmarks/blog_management/marmoset/"
 
 ut_hash_include = "/local/scratch/a/singhav/Applications/src/uthash-2.3.0/include"
 
-Passes = ["ContentSearch", "DeleteTag", "InsertTag", "TagSearch"]
+#Passes = ["ContentSearch", "DeleteTag", "InsertTag", "TagSearch"]
 
-layouts = ["layout1", "layout2", "layout3", "layout4", "layout5", "layout6", "layout7", "layout8"]
+#layouts = ["layout1", "layout2", "layout3", "layout4", "layout5", "layout6", "layout7", "layout8"]
+
+Passes = ["ContentSearch"]
+
+layouts = ["layout2"]
 
 #Compilation phase
 for myPass in Passes:
@@ -100,7 +104,7 @@ for myPass in Passes:
 
 print(Timings)
 
-f = open("experiment_timings_marmoset.txt", "w")
+f = open("experiment_timings_marmoset_layout2_contentSearch.txt", "w")
 
 for key, value in Timings.items():
     f.write('%s:(average:%s, median:%s)\n' % (key, value[0], value[1]))

@@ -26,7 +26,7 @@ shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
     -- TODO: probably better to make this a map from dcon to its num fields. 
     let field_len = P.length $ snd . snd $ lkp ddefs "Layout2"
     -- Instead of explicitly passing the function name, this should come from a annotation at the front end or something like that. 
-    let fieldorder = locallyOptimizeFieldOrdering fieldMap ["Layout2"] (M.elems fundefs) "emphKeywordInTag" field_len (M.empty) 
+    let fieldorder = locallyOptimizeFieldOrdering fieldMap ["Layout2"] (M.elems fundefs) "emphKeywordInContent" field_len (M.empty) 
     let functions  = M.elems fundefs
     -- NOTE : shuffling ddefs makes a lot of assumptions right now. 
     -- Mainly that we are just doing it for one function
@@ -69,10 +69,13 @@ generateLocallyOptimalOrderings fieldMap datacons fundef@FunDef{funName,funBody,
                                              -- to be safe we should complete the layout orderings of the missing fields. 
                                              fix_missing = if (P.length layout) < field_len then 
                                                               let indices = [0 .. (field_len - 1)]
-                                                                  complete = P.concat $ P.map (\i -> case (P.lookup i layout) of 
+                                                                  complete' = P.concat $ P.map (\i -> case i of 
+                                                                                          (a, b) -> [(b, a)]) layout
+                                                                  complete'' = layout ++ complete'
+                                                                  complete = P.concat $ P.map (\i -> case (P.lookup i complete'') of 
                                                                                        Nothing -> [(i, i)]
                                                                                        Just _ -> []) indices
-                                                               in layout ++ complete
+                                                               in L.nub $ complete'' ++ complete
                                                            else
                                                              layout                  
                                              layout' = L.sort fix_missing

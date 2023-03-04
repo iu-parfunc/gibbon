@@ -9,10 +9,10 @@ mkBlogs_layout2 contentfiles tagfiles length =
    else 
       let select  = (mod length 10)
           def     = "default file"
-          fc      = fromMaybe def (nth_plist contentfiles Nothing select)
-          content = mkContentFromText fc
           ft      = fromMaybe def (nth_plist tagfiles Nothing select)
           tags    = mkTagsFromText ft
+          fc      = fromMaybe def (nth_plist contentfiles Nothing select)
+          content = mkContentFromText fc
           rst     = mkBlogs_layout2 contentfiles tagfiles (length - 1)
           header  = Header (getRandomString 5)
           blogID  = ID (10 - (mod length 10))
