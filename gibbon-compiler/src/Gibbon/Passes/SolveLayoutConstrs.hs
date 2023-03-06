@@ -58,7 +58,7 @@ pythonCodegen :: [Constr] -> PassM String
 pythonCodegen constrs = do
   let idxs = (L.nub $ concatMap ((\(a,b) -> [a,b]) . fst) constrs)
   let num_edges = P.length constrs
-  let (lb,ub) = (fromIntegral $ minimum idxs, fromIntegral $ maximum idxs) :: (Integer, Integer)
+  let (lb,ub) = (fromIntegral $ 0, fromIntegral $ (P.length idxs) - 1 )  --(fromIntegral $ minimum idxs, fromIntegral $ maximum idxs) :: (Integer, Integer)
   node_map <- mapM (\i -> (i,) <$> fromVar <$> gensym (toVar ("x_" ++ show i))) idxs
   let node_vars = map snd node_map
   cost_map <- mapM (\i -> (i,) <$> fromVar <$> gensym (toVar "cost")) [1 .. num_edges]

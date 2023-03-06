@@ -1561,13 +1561,13 @@ unifyAll [] [] successA _ = successA
 isCpyVar :: Var -> Bool
 isCpyVar v = (take 3 (fromVar v)) == "cpy"
 
---isCpyCall :: Exp2 -> Bool
---isCpyCall (AppE f _ _) = True -- TODO: check if it's a real copy call, to be safe
---isCpyCall _ = False 
-
 isCpyCall :: Exp2 -> Bool
-isCpyCall (AppE f _ _) = isCpyVar f
-isCpyCall _ = False
+isCpyCall (AppE f _ _) = True -- TODO: check if it's a real copy call, to be safe
+isCpyCall _ = False 
+
+-- isCpyCall :: Exp2 -> Bool
+-- isCpyCall (AppE f _ _) = isCpyVar f
+-- isCpyCall _ = False
 
 freshLocVar :: String -> PassM LocVar
 freshLocVar m = gensym (toVar m)

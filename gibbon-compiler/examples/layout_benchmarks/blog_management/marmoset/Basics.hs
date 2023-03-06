@@ -378,9 +378,9 @@ emphasizeBlogContent' keyword oldContent = case oldContent of
 {- # INLINE # -}
 emphasizeBlogContent :: Text -> BlogContent -> Bool -> BlogContent
 emphasizeBlogContent keyword oldContent present = case oldContent of 
-                                                            Content block -> if (present)
-                                                                             then Content (emphasizeKeywordInBlock keyword block)
-                                                                             else Content block
+                                                            Content block -> Content (emphasizeKeywordInBlock keyword block) --if (present)
+                                                                             --then Content (emphasizeKeywordInBlock keyword block)
+                                                                             --else Content block
 
 searchBlogContent :: Text -> BlogContent -> Bool 
 searchBlogContent keyword content = case content of 

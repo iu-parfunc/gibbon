@@ -22,11 +22,11 @@ type FieldOrder = M.Map DataCon [Integer]
 -- TODO: Make FieldOrder an argument passed to shuffleDataCon function.
 shuffleDataCon :: Prog1 -> PassM Prog1
 shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
-    let (cfgs, fieldMap) = generateCfgFunctions (M.empty) (M.empty) (M.elems fundefs) "Layout2"
+    let (cfgs, fieldMap) = generateCfgFunctions (M.empty) (M.empty) (M.elems fundefs) "Layout1"
     -- TODO: probably better to make this a map from dcon to its num fields. 
-    let field_len = P.length $ snd . snd $ lkp ddefs "Layout2"
+    let field_len = P.length $ snd . snd $ lkp ddefs "Layout1"
     -- Instead of explicitly passing the function name, this should come from a annotation at the front end or something like that. 
-    let fieldorder = locallyOptimizeFieldOrdering fieldMap ["Layout2"] (M.elems fundefs) "emphKeywordInContent" field_len (M.empty) 
+    let fieldorder = locallyOptimizeFieldOrdering fieldMap ["Layout1"] (M.elems fundefs) "emphKeywordInContent" field_len (M.empty) 
     let functions  = M.elems fundefs
     -- NOTE : shuffling ddefs makes a lot of assumptions right now. 
     -- Mainly that we are just doing it for one function
@@ -68,25 +68,56 @@ generateLocallyOptimalOrderings fieldMap datacons fundef@FunDef{funName,funBody,
                                              -- In case we don't get orderings for some of the fields in the data con 
                                              -- to be safe we should complete the layout orderings of the missing fields. 
                                              fix_missing = if (P.length layout) < field_len then 
-                                                              let indices = [0 .. (field_len - 1)]
-                                                                  complete' = P.concat $ P.map (\i -> case i of 
-                                                                                          (a, b) -> [(b, a)]) layout
-                                                                  complete'' = layout ++ complete'
-                                                                  complete = P.concat $ P.map (\i -> case (P.lookup i complete'') of 
-                                                                                       Nothing -> [(i, i)]
-                                                                                       Just _ -> []) indices
-                                                               in L.nub $ complete'' ++ complete
+                                                              let indices  = [0 .. (field_len - 1)]
+                                                                  minuslist  = makeneg field_len 
+                                                                  partial    = fillList minuslist layout
+                                                                  avail      = P.map (\(a, b) -> a) layout
+                                                                  navail     = deleteMany avail indices
+                                                                  new        = fillminus1 partial navail
+                                                               in new
                                                            else
-                                                             layout                  
-                                             layout' = L.sort fix_missing
-                                             indices = P.map (\(a, b) -> P.toInteger b) layout'
-                                             fieldorder = M.insert x indices orderIn
+                                                            P.map (\(a, b) ->  b) layout
+                                             fieldorder = M.insert x (integerList fix_missing) orderIn
                                              fieldorder' = generateLocallyOptimalOrderings fieldMap xs fundef funcName field_len fieldorder
                                           in fieldorder' -- dbgTraceIt (sdoc dconEdges) dbgTraceIt ("\n") dbgTraceIt (sdoc fieldorder') dbgTraceIt ("\n")
     else 
       orderIn
                         
-                  
+makeneg :: Int -> [Int]
+makeneg len = if len <=0 then [] 
+              else (makeneg (len -1)) ++ [-1]    
+              
+integerList :: [Int] -> [Integer]
+integerList lst = case lst of 
+                       [] -> [] 
+                       x:xs -> [P.toInteger x] ++ (integerList xs)
+
+fillList :: [Int] -> [(Int, Int)] -> [Int]
+fillList old vals = case vals of 
+                          [] -> old 
+                          x:xs -> let (a, b)   = x
+                                      edited   = (L.take b old) ++ [a] ++ (L.drop (b + 1) old)
+                                    in fillList edited xs
+
+-- https://www.reddit.com/r/haskell/comments/u841av/trying_to_remove_all_the_elements_that_occur_in/                                
+deleteOne :: Eq a => a -> [a] -> [a]
+deleteOne _ [] = [] -- Nothing to delete
+deleteOne x (y:ys) | x == y = ys -- Drop exactly one matching item
+deleteOne x (y:ys) = y : deleteOne x ys -- Drop one, but not this one (doesn't match).
+                                
+deleteMany :: Eq a => [a] -> [a] -> [a]
+deleteMany [] = id -- Nothing to delete
+deleteMany (x:xs) = deleteMany xs . deleteOne x -- Delete one, then the rest.
+
+
+fillminus1 :: [Int] -> [Int] -> [Int]
+fillminus1 lst indices = case lst of 
+                               [] -> [] 
+                               x:xs -> case indices of 
+                                              [] -> lst                                 
+                                              y:ys -> if x == -1 then [y] ++ fillminus1 xs ys
+                                                      else [x] ++ fillminus1 xs indices       
+
 shuffleDataConFunBody :: FieldOrder -> FunDef1  -> PassM FunDef1
 shuffleDataConFunBody fieldorder f@FunDef{funBody}  = do                                   
   funBody' <- shuffleDataConExp fieldorder funBody                        

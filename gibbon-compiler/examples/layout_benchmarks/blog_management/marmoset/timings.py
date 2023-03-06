@@ -1,6 +1,7 @@
 import os 
 import subprocess
 import re
+import statistics as stat
 
 iterations = 12
 
@@ -12,9 +13,11 @@ ut_hash_include = "/local/scratch/a/singhav/Applications/src/uthash-2.3.0/includ
 
 #layouts = ["layout1", "layout2", "layout3", "layout4", "layout5", "layout6", "layout7", "layout8"]
 
-Passes = ["ContentSearch"]
+Passes = ["InsertTag", "ContentSearch", "TagSearch"]
+#Passes = ["ContentSearch"]
 
-layouts = ["layout2"]
+layouts = ["layout1", "layout2", "layout3", "layout4" , "layout5" , "layout6" , "layout7" , "layout8"]
+#layouts = ["layout1"]
 
 #Compilation phase
 for myPass in Passes:
@@ -70,41 +73,75 @@ for myPass in Passes:
         print()
 
         file_stats = gibbon_binary + ".txt"
-        
-        cmd =  "(" + "cd " + rootdir + " && " + "(" + "./" + gibbon_binary + " --RUN " + str(iterations) + " > " + file_stats + ")" + ")"
-
-        print(cmd)
-
-        gibbon_binary_cmd = subprocess.call(cmd, shell=True)
-
-        data = open(file_stats, 'r').read()  
-
-        batch_time  = re.findall("BATCHTIME: (.*)", data) 
-        median_time = re.findall("SELFTIMED: (.*)", data)
-        
-        print()
-        print(batch_time)
-        print(median_time)
        
-        print(float(batch_time[0]))
-        print(float(median_time[0]))
+        #try:
+        #    cmd =  "(" + "cd " + rootdir + " && " + "(" + "./" + gibbon_binary + " --RUN " + str(iterations) + " > " + file_stats + ")" + ")"
+
+        #    print(cmd)
+
+        #   gibbon_binary_cmd = subprocess.call(cmd, shell=True)
+
+        #    data = open(file_stats, 'r').read()  
+
+        #    batch_time  = re.findall("BATCHTIME: (.*)", data) 
+        #    median_time = re.findall("SELFTIMED: (.*)", data)
         
-        batchTimes = float(batch_time[0])
-        medianTimes = float(median_time[0])
-
-        averageTimes = float (batchTimes / iterations)
+        #    print()
+        #    print(batch_time)
+        #    print(median_time)
+       
+        #    print(float(batch_time[0]))
+        #    print(float(median_time[0]))
         
-        tupleTimes = (averageTimes, medianTimes)
+        #    batchTimes = float(batch_time[0])
+        #    medianTimes = float(median_time[0])
 
-        print(tupleTimes)
+        #    averageTimes = float (batchTimes / iterations)
+        
+        #    tupleTimes = (averageTimes, medianTimes)
 
-        Timings[gibbon_binary] = tupleTimes
+        #    Timings[gibbon_binary] = tupleTimes
 
+        #    print(tupleTimes)
+
+        #except: 
+        #    print("Failed to run " + str(gibbon_binary))
+        #    print("Trying this another way....")
+
+        try:
+                run_times_except = []
+                for k in range(iterations):
+                    cmd =  "(" + "cd " + rootdir + " && " + "(" + "./" + gibbon_binary  + " > " + file_stats + ")" + ")"
+
+                    print(cmd)
+
+                    gibbon_binary_cmd = subprocess.call(cmd, shell=True)
+
+                    data = open(file_stats, 'r').read()
+
+                    #batch_time  = re.findall("BATCHTIME: (.*)", data)
+                    self_time = re.findall("SELFTIMED: (.*)", data)
+
+                    print()
+                    #print(batch_time)
+                    print(self_time)
+                    run_times_except.append(float(self_time[0]))
+                    
+                average_except = stat.mean(run_times_except) 
+                median_except  = stat.median(run_times_except)
+                tupleTimes = (average_except, median_except)
+                Timings[gibbon_binary] = tupleTimes 
+        except:
+                
+                tupleTimes = (-1, -1)
+                
+                Timings[gibbon_binary] = tupleTimes
+                
         print()
 
 print(Timings)
 
-f = open("experiment_timings_marmoset_layout2_contentSearch.txt", "w")
+f = open("eval_OOPSLA_run4.txt", "w")
 
 for key, value in Timings.items():
     f.write('%s:(average:%s, median:%s)\n' % (key, value[0], value[1]))
