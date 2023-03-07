@@ -9,13 +9,9 @@ mkBlogs_layout3 contentfiles tagfiles length =
    else 
       let select  = (mod length 10)
           def     = "default file"
-          ft      = fromMaybe def (nth_plist tagfiles Nothing select)
-          tags    = mkTagsFromText ft
-          rst     = mkBlogs_layout3 contentfiles tagfiles (length - 1)
           fc      = fromMaybe def (nth_plist contentfiles Nothing select)
-          content = mkContentFromText fc
-          header  = Header (getRandomString 5)
-          blogID  = ID (10 - (mod length 10))
-          author  = Author (getRandomString 5)
-          date    = Date (getRandomString 5)           
-         in Layout3 tags rst content header blogID author date
+          vvv :: Vector (Vector Char) 
+          vvv = valloc 0
+          content_words = fileToContent' fc  (singleton (nth fc  0)) vvv 1 (vlength fc)
+          ft      = fromMaybe def (nth_plist tagfiles Nothing select)         
+         in Layout3 (mkTagsFromText ft) (mkBlogs_layout3 contentfiles tagfiles (length - 1)) (Content (Plain (mkInlineList' (vlength content_words) 0 content_words ))) (Header (getRandomString (mod rand 9))) (ID (10 - (mod length 10))) (Author (getRandomString (mod rand 9))) (Date (getRandomString (mod rand 9)))

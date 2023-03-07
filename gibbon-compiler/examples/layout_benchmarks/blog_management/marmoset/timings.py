@@ -5,9 +5,9 @@ import statistics as stat
 
 iterations = 12
 
-rootdir = "/local/scratch/a/singhav/Applications/src/gibbon/gibbon-compiler/examples/layout_benchmarks/blog_management/marmoset/"
+rootdir = "/local/scratch/a/singhav/GIBBON/gibbon/gibbon-compiler/examples/layout_benchmarks/blog_management/marmoset"
 
-ut_hash_include = "/local/scratch/a/singhav/Applications/src/uthash-2.3.0/include"
+ut_hash_include = "/local/scratch/a/singhav/GIBBON/uthash-2.3.0/include"
 
 #Passes = ["ContentSearch", "DeleteTag", "InsertTag", "TagSearch"]
 

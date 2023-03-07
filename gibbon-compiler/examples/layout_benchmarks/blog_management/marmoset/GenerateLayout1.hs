@@ -10,15 +10,11 @@ mkBlogs_layout1 :: PList Text -> PList Text -> Int -> Blog
 mkBlogs_layout1 contentfiles tagfiles length =
    if length < 0 then End
    else 
-      let header  = Header (getRandomString 5)
-          blogID  = ID (10 - (mod length 10))
-          author  = Author (getRandomString 5)
-          date    = Date (getRandomString 5)
-          select  = (mod length 10)
-          def     = "default file"  -- this is un-necessary and just used for a default value
+      let select  = (mod length 10)
+          def     = "default file"
           fc      = fromMaybe def (nth_plist contentfiles Nothing select)
-          content = mkContentFromText fc
+          vvv :: Vector (Vector Char) 
+          vvv = valloc 0
+          content_words = fileToContent' fc  (singleton (nth fc  0)) vvv 1 (vlength fc)
           ft      = fromMaybe def (nth_plist tagfiles Nothing select)
-          tags    = mkTagsFromText ft
-          rst     = mkBlogs_layout1 contentfiles tagfiles (length - 1)
-         in Layout1 header blogID author date content tags rst
+         in Layout1 (Header (getRandomString (mod rand 9))) (ID (10 - (mod length 10))) (Author (getRandomString (mod rand 9))) (Date (getRandomString (mod rand 9))) (Content (Plain (mkInlineList' (vlength content_words) 0 content_words ))) (mkTagsFromText ft) (mkBlogs_layout1 contentfiles tagfiles (length - 1))

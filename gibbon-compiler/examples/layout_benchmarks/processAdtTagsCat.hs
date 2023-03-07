@@ -18,7 +18,7 @@ addValTagsAdt adt = case adt of
                              Nil -> Nil
                              CAT content rst tags -> let newTags = addValTag tags 10
                                                          newRst  = addValTagsAdt rst 
-                                                     in CAT content newRst ( copyPacked newTags)
+                                                     in CAT content newRst newTags
 
 -- mk for 3 parameter Adt take, len, tagLen, strLen
 gibbon_main =

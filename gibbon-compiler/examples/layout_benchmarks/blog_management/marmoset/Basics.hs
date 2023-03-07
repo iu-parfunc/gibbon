@@ -7,6 +7,8 @@ import Gibbon.Maybe
 
 type Text   = Vector Char
 
+type TextList = Vector Text
+
 --type Target = (Text, Text)
 --type Attr   = (Text, (PList Text), (PList (Text, Text)))
 --type Format = Format Text
@@ -375,7 +377,7 @@ emphasizeBlogContent' keyword oldContent = case oldContent of
                                                 Content block -> Content (emphasizeKeywordInBlock keyword block)
 
 
-{- # INLINE # -}
+
 emphasizeBlogContent :: Text -> BlogContent -> Bool -> BlogContent
 emphasizeBlogContent keyword oldContent present = case oldContent of 
                                                             Content block -> Content (emphasizeKeywordInBlock keyword block) --if (present)
@@ -388,6 +390,7 @@ searchBlogContent keyword content = case content of
                     
 
 fileToContent :: Vector Char -> Vector Char -> PList Inline -> Int -> Int -> Block
+{-# INLINE fileToContent #-}
 fileToContent file word plist_inline index max_len = 
       if index >= max_len then (Plain plist_inline)                                                                     
                            else let 
@@ -395,10 +398,31 @@ fileToContent file word plist_inline index max_len =
                                  character    = nth file index
                                  isSpace      = if ( character *==* (head " ") ) then True else False
                                  char_vec     = (singleton character)
-                                 plist_space :: PList Inline
-                                 plist_space = (Cons (Space) plist_inline) 
+                                 --plist_space :: PList Inline
+                                 --plist_space = (Cons (Space) plist_inline) 
                                 in if (isSpace) then (fileToContent file (singleton (nth file (index+1))) (Cons (Str word) plist_inline) (index+2) max_len)  
                                                 else (fileToContent file (append word char_vec) (plist_inline) (index+1) max_len)
+
+
+fileToContent' :: Vector Char -> Vector Char -> TextList -> Int -> Int -> TextList
+fileToContent' file word running_list index max_len = 
+      if index >= max_len then (append running_list (valloc 0) )    --(generate 1 (\i -> ""))                                                                 
+                           else let 
+                                 character :: Char
+                                 character    = nth file index
+                                 isSpace      = if ( character *==* (head " ") ) then True else False
+                                 char_vec     = (singleton character)
+                                in if (isSpace) then (fileToContent' file (singleton (nth file (index+1))) (append running_list (generate 1 (\i -> word))) (index+2) max_len)  
+                                                else (fileToContent' file (append word char_vec) (running_list) (index+1) max_len)
+
+printWordList :: TextList -> Int -> Int -> ()
+printWordList vec start end = if start < end then
+                                 let 
+                                    element = nth vec start
+                                    _   = printVec (\i -> printchar i) element
+                                  in printWordList vec (start+1) end
+                              else ()  
+
 
 fileToTags :: Vector Char -> Vector Char -> Int -> Int -> PList Text 
 fileToTags file word index max_len = 
@@ -419,8 +443,77 @@ mkTagsFromText f' =
          in tags' 
 
 
+{- # INLINE # -}
 mkContentFromText :: Text -> BlogContent
 mkContentFromText f = 
          let block   = fileToContent f  (singleton (nth f  0)) Nil 1 (vlength f)
              content = mkBlogContent block 
            in content
+
+-- Make an Inline type, option chooses what kind of Inline data type we are creating
+-- This creates all the base cases for the inline type 
+mkInlineBaseCase :: Int -> Inline
+mkInlineBaseCase option = 
+   if option == 0 then (Str (getRandomString (mod rand 9)))   -- get a random word
+   else Space 
+
+-- Make a list of Inline data Type.
+mkInlineList :: Int -> Int -> (PList Inline)
+mkInlineList length base = 
+   if length <= 0 then Nil 
+   -- If its not base case, then don't stop recursion. 
+   else if (base == 0) then 
+      let item = Emph (mkInlineList 100 1)
+          rst  = (mkInlineList (length - 1) base)
+          in Cons item rst
+   -- If its  base case, then stop recursion in Inline data type and only add base cases. 
+   else let item = (mkInlineBaseCase (mod rand 4))
+            rst  = mkInlineList (length - 1) base 
+         in Cons item rst
+
+-- Make a list of Inline data Type.
+mkInlineList' :: Int -> Int -> TextList -> (PList Inline)
+mkInlineList' length index words = 
+   if index >= length then Nil  
+   else let item = Str (nth words index)
+            rst  = mkInlineList' length (index+1) words 
+         in Cons item rst
+
+-- Make a list of blocks
+mkBlockList :: Int -> Int -> (PList Block)
+mkBlockList length base = 
+   if length <= 0 then Nil
+   else if (base == 0) then
+      let item = (Plain (mkInlineList 1000 1))
+          rst  = (mkBlockList (length - 1) base)
+      in Cons item rst
+   else let item = Null
+            rst  = (mkBlockList (length - 1) base) 
+      in Cons item rst
+
+-- Make a Block data type with random data, make depth of recursion to 1 for now
+-- mkBlock :: Int -> Block
+-- mkBlock option = 
+--    if option == 0 then (Plain (mkInlineList 1000 1))
+--    else if option == 1 then (Para (mkInlineList 1000 1))
+--    else (BlockQuote (mkBlockList 1000 1))
+
+-- -- Base case for make Block
+-- mkBlockBaseCase :: Int -> Block 
+-- mkBlockBaseCase option = 
+--    if option == 0 then HorizontalRule
+--    else Null
+
+-- Make an Inline type, option chooses what kind of Inline data type we are creating
+-- This will Purposefully make Inline lists at a depth of recursion 1, this can be modified to increase the depth of recursion.
+-- This function crates the recursive fields. 
+-- mkInline :: Int -> Inline
+-- mkInline option = 
+--    if option == 0 then (Emph (mkInlineList 100 1))
+--    else if option == 1 then (Underline (mkInlineList 100 1))
+--    else if option == 2 then (Strong (mkInlineList 100 1))
+--    else if option == 3 then (Strikeout (mkInlineList 100 1))
+--    else if option == 4 then (Superscript (mkInlineList 100 1))
+--    else if option == 5 then (Subscript (mkInlineList 100 1))
+--    else if option == 6 then (SmallCaps (mkInlineList 100 1))
+--    else (Note (mkBlockList 100 1)) 
