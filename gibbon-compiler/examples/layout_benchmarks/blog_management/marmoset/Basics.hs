@@ -70,7 +70,7 @@ data Blog =   End
             | Layout5 (Blog) (BlogTags) (BlogContent) (BlogHeader) (BlogId) (BlogAuthor) (BlogDate)
             | Layout6 (BlogHeader) (BlogId) (BlogAuthor) (BlogDate) (BlogContent) (Blog) (BlogTags)
             | Layout7 (Blog) (BlogContent) (BlogHeader) (BlogId) (BlogAuthor) (BlogDate) (BlogTags)
-            | Layout8 (BlogContent) (Blog) (BlogId) (BlogAuthor) (BlogDate) (BlogHeader) (BlogTags)
+            | Layout8 (BlogContent) (Blog) (BlogId) (BlogAuthor) (BlogDate) (BlogHeader) (BlogTags)ssss
             deriving (Show)
 
 
@@ -379,6 +379,7 @@ emphasizeBlogContent' keyword oldContent = case oldContent of
 
 
 emphasizeBlogContent :: Text -> BlogContent -> Bool -> BlogContent
+{-# INLINE emphasizeBlogContent #-}
 emphasizeBlogContent keyword oldContent present = case oldContent of 
                                                             Content block -> Content (emphasizeKeywordInBlock keyword block) --if (present)
                                                                              --then Content (emphasizeKeywordInBlock keyword block)
@@ -478,6 +479,19 @@ mkInlineList' length index words =
    else let item = Str (nth words index)
             rst  = mkInlineList' length (index+1) words 
          in Cons item rst
+
+mkRandomInlineList :: Int -> (PList Inline)
+mkRandomInlineList len = if len <= 0 then Nil 
+                         else let word = Str (getRandomString 1)
+                                  rst  = mkRandomInlineList (len - 1) 
+                                in Cons word rst
+
+mkSomeTags :: Int -> PList Text
+mkSomeTags len = if len <= 0 then Nil 
+                 else let word = singleton 'a'
+                          rst  = mkSomeTags (len - 1)
+                       in Cons word rst
+
 
 -- Make a list of blocks
 mkBlockList :: Int -> Int -> (PList Block)
