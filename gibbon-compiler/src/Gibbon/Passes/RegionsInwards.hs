@@ -181,14 +181,22 @@ placeRegionInwards env scopeSet ex  =
                                        let allKeys  =  M.keys env                                                         -- List of all keys from env
                                            freelist = map freeVars args 
                                            freevars = foldl (\s1 s2 -> s1 `S.union` s2) (S.empty) freelist  
+<<<<<<< HEAD
                                            keyList  = map (\variable -> F.find (S.member variable) allKeys) ((S.toList freevars) ++ [loc])  -- [loc]         -- For each var in the input set find its corresponding key
+=======
+                                           keyList  = map (\variable -> F.find (S.member variable) allKeys) ((S.toList freevars) ++ [loc])       -- For each var in the input set find its corresponding key
+>>>>>>> master
                                            keyList' = S.catMaybes keyList                                                 -- Filter all the Nothing values from the list and let only Just values in the list
                                            newKeys   = S.toList $ S.fromList allKeys `S.difference` S.fromList keyList'   -- Filter all the Nothing values from the list and let only Just values in the list
                                            newVals   = map (\key -> M.findWithDefault [] key env) newKeys
                                            tupleList = zip newKeys newVals
                                            newEnv'   = M.fromList tupleList
                                            in do args' <- mapM (placeRegionInwards newEnv' scopeSet) args
+<<<<<<< HEAD
                                                  let (_, ex') = dischargeBinds' env (freevars `S.union` (S.singleton loc)) (DataConE loc dataCons args') --(S.singleton loc)
+=======
+                                                 let (_, ex') = dischargeBinds' env (freevars `S.union` (S.singleton loc)) (DataConE loc dataCons args')
+>>>>>>> master
                                                   in return ex'
 
     ProjE i e              -> ProjE i <$> go e    {- Simple recursion on e -}

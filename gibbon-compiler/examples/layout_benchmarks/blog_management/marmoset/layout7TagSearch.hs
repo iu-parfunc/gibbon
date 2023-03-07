@@ -50,7 +50,7 @@ gibbon_main =
         keyword :: Vector Char  
         keyword = "a"
         newblgs = iterate (emphKeywordInTag keyword blogs)
-        --_ = printPacked newblgs
-        --_ = printsym (quote "NEWLINE")
-        --_ = printsym (quote "NEWLINE")
+        _ = printPacked newblgs
+        _ = printsym (quote "NEWLINE")
+        _ = printsym (quote "NEWLINE")
     in ()

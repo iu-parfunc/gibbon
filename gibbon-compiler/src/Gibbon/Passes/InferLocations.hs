@@ -325,8 +325,13 @@ inferExp' env exp bound dest=
                            Ext (LetLocE lv1 (AfterVariableLE v' lv2 True) a')
 
   in do res <- inferExp env exp dest
+<<<<<<< HEAD
         (e,ty,cs) <-  bindAllLocations res --(dbgTraceIt "Print res: ") (dbgTraceIt "\n") (dbgTraceIt (sdoc res)) (dbgTraceIt "\n")
         e' <-   finishExp e --(dbgTraceIt "Print e: ") (dbgTraceIt "\n") (dbgTraceIt (sdoc e)) (dbgTraceIt "\n")
+=======
+        (e,ty,cs) <-  bindAllLocations res
+        e' <-   finishExp e
+>>>>>>> master
         let (e'',s) = cleanExp e'
             unbound = (s S.\\ S.fromList bound)
         e''' <- bindAllUnbound e'' (S.toList unbound)
@@ -461,7 +466,10 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
                         let res' = (Ext (LetLocE lv1' (AfterVariableLE v lv2 True) e), ty, cs)
                         res'' <- bindAfterLoc v res'
                         return res''
+<<<<<<< HEAD
                         --return (Ext (LetLocE lv1' (AfterVariableLE v lv2 True) e), ty, cs)
+=======
+>>>>>>> master
                 else do (e',ty',cs') <- bindAfterLoc v (e,ty,cs)
                         return (e',ty',c:cs')
             AfterCopyL lv1 v1 v' lv2 f lvs ->
@@ -477,8 +485,11 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
                         let res'  = (LetE (v',[],copyRetTy,AppE f lvs [VarE v1]) $ Ext (LetLocE lv1' (AfterVariableLE v' lv2' True) e), ty, cs)
                         res'' <- bindAfterLoc v res'
                         return res''
+<<<<<<< HEAD
                         --return (LetE (v',[],copyRetTy,AppE f lvs [VarE v1]) $
                         --         Ext (LetLocE lv1' (AfterVariableLE v' lv2' True) e), ty, cs)
+=======
+>>>>>>> master
                 else do (e',ty',cs') <- bindAfterLoc v (e,ty,cs)
                         return (e',ty',c:cs')
             _ -> do (e',ty',cs') <- bindAfterLoc v (e,ty,cs)
@@ -521,8 +532,11 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
       bindAfterLocs (v:vs) res =
           do res'' <- bindAfterLocs vs res
              bindAfterLoc v res''
+<<<<<<< HEAD
              --res' <- bindAfterLoc v res
              --bindAfterLocs vs res'
+=======
+>>>>>>> master
       bindAfterLocs [] res = return res
 
       -- | Transforms a result by binding any additional locations that are safe to be bound
@@ -566,7 +580,11 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
             newtys = L.map (\(ty,(_,lv)) -> fmap (const lv) ty) $ zip contys vars'
             env' = L.foldr (\(v,ty) a -> extendVEnv v ty a) env $ zip (L.map fst vars') newtys
         res <- inferExp env' rhs dst
+<<<<<<< HEAD
         (rhs',ty',cs') <-   bindAfterLocs (L.map fst vars') res  --dbgTraceIt (sdoc res) (dbgTraceIt "\n") (dbgTraceIt (sdoc (L.map fst vars')))
+=======
+        (rhs',ty',cs') <-   bindAfterLocs (L.map fst vars') res
+>>>>>>> master
         -- let cs'' = removeLocs (L.map snd vars') cs'
         -- TODO: check constraints are correct and fail/repair if they're not!!!
         return ((con,vars',rhs'),ty',cs')
@@ -784,15 +802,25 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
        res    <- inferExp env b dest
        -- bind variables after if branch
        -- This ensures that the location bindings are not freely floated up to the upper level expressions
+<<<<<<< HEAD
        (b',tyb,csb) <-   bindAfterLocs (removeDuplicates (freeVarsInOrder b)) res --(b',tyb,csb)
+=======
+       (b',tyb,csb) <-   bindAfterLocs (removeDuplicates (freeVarsInOrder b)) res
+>>>>>>> master
 
        -- Else branch
        res'    <- inferExp env c dest
        -- bind variables after else branch
        -- This ensures that the location bindings are not freely floated up to the upper level expressions
+<<<<<<< HEAD
        (c',tyc,csc) <-   bindAfterLocs (removeDuplicates (freeVarsInOrder c)) res' --(c',tyc,csc) 
 
        return (IfE a' b' c', tyc, L.nub $ acs ++ csb ++ csc)  -- dbgTraceIt (sdoc (removeDuplicates (freeVarsInOrder c)))
+=======
+       (c',tyc,csc) <-   bindAfterLocs (removeDuplicates (freeVarsInOrder c)) res'
+
+       return (IfE a' b' c', tyc, L.nub $ acs ++ csb ++ csc)
+>>>>>>> master
 
     PrimAppE (DictInsertP dty) [(VarE var),d,k,v] ->
       case dest of
@@ -931,9 +959,11 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
         IfE a b c -> do
           (boda,tya,csa) <- inferExp env a NoDest
            -- just assuming tyb == tyc
-          (bodb,tyb,csb) <- inferExp env b NoDest
-          (bodc,tyc,csc) <- inferExp env c NoDest
-          (bod',ty',cs') <- inferExp (extendVEnv vr tyc env) bod dest
+          res <- inferExp env b NoDest 
+          (bodb,tyb,csb) <-   bindAfterLocs (removeDuplicates (freeVarsInOrder b)) res
+          res' <- inferExp env c NoDest
+          (bodc,tyc,csc) <-   bindAfterLocs (removeDuplicates (freeVarsInOrder c)) res'
+          (bod',ty',cs') <- inferExp (extendVEnv vr tyc env) bod dest 
           let cs = L.nub $ csa ++ csb ++ csc ++ cs'
           return (L2.LetE (vr,[],tyc,L2.IfE boda bodb bodc) bod', ty', cs)
 
@@ -1564,10 +1594,13 @@ isCpyVar v = (take 3 (fromVar v)) == "cpy"
 isCpyCall :: Exp2 -> Bool
 isCpyCall (AppE f _ _) = True -- TODO: check if it's a real copy call, to be safe
 isCpyCall _ = False 
+<<<<<<< HEAD
 
 -- isCpyCall :: Exp2 -> Bool
 -- isCpyCall (AppE f _ _) = isCpyVar f
 -- isCpyCall _ = False
+=======
+>>>>>>> master
 
 freshLocVar :: String -> PassM LocVar
 freshLocVar m = gensym (toVar m)
