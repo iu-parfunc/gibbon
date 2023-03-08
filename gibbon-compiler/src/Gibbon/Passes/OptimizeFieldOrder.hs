@@ -61,7 +61,7 @@ locallyOptimizeFieldOrdering fieldMap dcons fundefs funcName field_len orderIn =
     [] -> orderIn
     x:xs -> let map' = generateLocallyOptimalOrderings fieldMap dcons x funcName field_len orderIn
                 map'' = locallyOptimizeFieldOrdering fieldMap dcons xs funcName field_len map' 
-              in map'
+              in map''
 
 -- for the function for which we are locally optimizing for, find the optimal layout of the data constructors that we care about. 
 -- "Locally optimizing for the function"
@@ -86,12 +86,14 @@ generateLocallyOptimalOrderings fieldMap datacons fundef@FunDef{funName,funBody,
                                                                   new        = fillminus1 partial navail
                                                                in new
                                                            else
-                                                            P.map (\(a, b) ->  b) layout
+                                                            let layout' = L.sort layout
+                                                              in P.map (\(a, b) ->  b) layout'
+                                                               
                                              fieldorder = M.insert x (integerList fix_missing) orderIn
                                              fieldorder' = generateLocallyOptimalOrderings fieldMap xs fundef funcName field_len fieldorder
                                           in fieldorder' -- dbgTraceIt (sdoc dconEdges) dbgTraceIt ("\n") dbgTraceIt (sdoc fieldorder') dbgTraceIt ("\n")
     else 
-      orderIn
+      orderIn   --dbgTraceIt (sdoc funName) 
                         
 makeneg :: Int -> [Int]
 makeneg len = if len <=0 then [] 

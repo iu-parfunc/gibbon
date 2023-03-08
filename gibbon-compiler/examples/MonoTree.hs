@@ -12,6 +12,7 @@ mkTree d =
   else Node (mkTree (d-1)) (mkTree (d-1))
 
 add1Tree :: Tree -> Tree
+-- {-# ANN add1Tree Node #-}
 add1Tree t =
   case t of
     Leaf x     -> Leaf (x + 1)
