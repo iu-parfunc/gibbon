@@ -18,6 +18,7 @@ add1Tree t =
     Node x1 x2 -> Node (add1Tree x2) (add1Tree x1)
 
 sumTree :: Tree -> Int
+{-# ANN sumTree Node #-}
 sumTree tr =
   case tr of
     Leaf n   -> n
