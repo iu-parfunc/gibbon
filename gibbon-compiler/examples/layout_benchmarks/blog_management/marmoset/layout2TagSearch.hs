@@ -10,7 +10,7 @@ emphKeywordInTag keyword blogs = case blogs of
                                     Layout2 content tags rst header id author date -> let present = searchBlogTags keyword tags -- search the tags for the keyword 
                                                                                           -- _       = printbool present
                                                                                           in if (present) 
-                                                                                             then let newContent  = emphasizeBlogContent keyword content present
+                                                                                             then let newContent  = emphasizeBlogContent keyword content
                                                                                                       newRst      = emphKeywordInTag keyword rst
                                                                                                     in Layout2 newContent tags newRst header id author date
                                                                                              else
@@ -44,7 +44,7 @@ gibbon_main =
         ft10      = readArrayFile (Just ("blog10/blog10Tag.txt", 485))
         lfc       = mkListFiles fc1 fc2 fc3 fc4 fc5 fc6 fc7 fc8 fc9 fc10 9
         ltc       = mkListFiles ft1 ft2 ft3 ft4 ft5 ft6 ft7 ft8 ft9 ft10 9
-        blogs     = mkBlogs_layout2 lfc ltc 200000
+        blogs     = mkBlogs_layout2 lfc ltc 1000000
         --_ = printPacked blogs
         --_ = printsym (quote "NEWLINE")
         --_ = printsym (quote "NEWLINE")

@@ -70,7 +70,7 @@ data Blog =   End
             | Layout5 (Blog) (BlogTags) (BlogContent) (BlogHeader) (BlogId) (BlogAuthor) (BlogDate)
             | Layout6 (BlogHeader) (BlogId) (BlogAuthor) (BlogDate) (BlogContent) (Blog) (BlogTags)
             | Layout7 (Blog) (BlogContent) (BlogHeader) (BlogId) (BlogAuthor) (BlogDate) (BlogTags)
-            | Layout8 (BlogContent) (Blog) (BlogId) (BlogAuthor) (BlogDate) (BlogHeader) (BlogTags)ssss
+            | Layout8 (BlogContent) (Blog) (BlogId) (BlogAuthor) (BlogDate) (BlogHeader) (BlogTags)
             deriving (Show)
 
 
@@ -378,12 +378,9 @@ emphasizeBlogContent' keyword oldContent = case oldContent of
 
 
 
-emphasizeBlogContent :: Text -> BlogContent -> Bool -> BlogContent
-{-# INLINE emphasizeBlogContent #-}
-emphasizeBlogContent keyword oldContent present = case oldContent of 
-                                                            Content block -> Content (emphasizeKeywordInBlock keyword block) --if (present)
-                                                                             --then Content (emphasizeKeywordInBlock keyword block)
-                                                                             --else Content block
+emphasizeBlogContent :: Text -> BlogContent -> BlogContent
+emphasizeBlogContent keyword oldContent = case oldContent of 
+                                             Content block -> Content (emphasizeKeywordInBlock keyword block)
 
 searchBlogContent :: Text -> BlogContent -> Bool 
 searchBlogContent keyword content = case content of 
@@ -391,7 +388,6 @@ searchBlogContent keyword content = case content of
                     
 
 fileToContent :: Vector Char -> Vector Char -> PList Inline -> Int -> Int -> Block
-{-# INLINE fileToContent #-}
 fileToContent file word plist_inline index max_len = 
       if index >= max_len then (Plain plist_inline)                                                                     
                            else let 
@@ -488,7 +484,7 @@ mkRandomInlineList len = if len <= 0 then Nil
 
 mkSomeTags :: Int -> PList Text
 mkSomeTags len = if len <= 0 then Nil 
-                 else let word = singleton 'a'
+                 else let word = "a"
                           rst  = mkSomeTags (len - 1)
                        in Cons word rst
 

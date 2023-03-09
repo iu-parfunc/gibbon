@@ -3,7 +3,7 @@ import subprocess
 import re
 import statistics as stat
 
-iterations = 12
+iterations = 2
 
 rootdir = "/local/scratch/a/singhav/Applications/src/gibbon/gibbon-compiler/examples/layout_benchmarks/blog_management/marmoset"
 
@@ -13,11 +13,11 @@ ut_hash_include = "/local/scratch/a/singhav/Applications/src/uthash-2.3.0/includ
 
 #layouts = ["layout1", "layout2", "layout3", "layout4", "layout5", "layout6", "layout7", "layout8"]
 
-#Passes = [ "TagSearch", "ContentSearch", "InsertTag"]
-Passes = ["TagSearch"]
+#Passes = [ "TagSearch", "ContentSearch", "FindBlog"]
+Passes = ["ContentSearch"]
 
-#layouts = ["layout1", "layout2", "layout3", "layout4" , "layout5" , "layout6" , "layout7" , "layout8"]
-layouts = ["layout5"]
+layouts = ["layout4", "layout2", "layout3", "layout1" , "layout5"  , "layout7" , "layout8"]
+#layouts = ["layout5"]
 
 #Compilation phase
 for myPass in Passes:
@@ -141,7 +141,7 @@ for myPass in Passes:
 
 print(Timings)
 
-f = open("eval_OOPSLA_run4_layout5TagSearch.txt", "w")
+f = open("eval_OOPSLA_run6_contentSearch.txt", "w")
 
 for key, value in Timings.items():
     f.write('%s:(average:%s, median:%s)\n' % (key, value[0], value[1]))

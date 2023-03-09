@@ -594,14 +594,8 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
                   --l1 <- goE1 "optimizeFieldOrder" shuffleDataCon l1
                   l1 <- goE1 "addRAN"        (addRAN need) l1
                   l1 <- go "L1.typecheck"    L1.tcProg     l1
-<<<<<<< HEAD
-                  -- NOTE: Calling copyOut of order here seems redundant since all the copy calls seem to be alreay there. 
-                  -- Also calling it here gives a compiler error 
-                  -- Chai to see if this is necessary.
-=======
                   -- NOTE: Calling copyOutOfOrderPacked here seems redundant since all the copy calls seem be exists in the correct place.  
                   -- In addititon, calling it here gives a compile time error. 
->>>>>>> master
                   -- l1 <- goE1 "copyOutOfOrderPacked" copyOutOfOrderPacked l1
                   -- l1 <- go "L1.typecheck"    L1.tcProg     l1
                   l2 <- go "inferLocations2" inferLocs     l1

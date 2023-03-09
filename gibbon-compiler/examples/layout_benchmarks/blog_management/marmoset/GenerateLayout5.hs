@@ -15,4 +15,4 @@ mkBlogs_layout5 contentfiles tagfiles length =
           vvv = valloc 0
           --content_words = fileToContent' fc  (singleton (nth fc  0)) vvv 1 (vlength fc)
           ft      = fromMaybe def (nth_plist tagfiles Nothing select)         
-         in Layout5 (mkBlogs_layout5 contentfiles tagfiles (length - 1)) (TagList (mkSomeTags 2)) (Content (Plain (mkRandomInlineList 1000))) (Header (getRandomString (mod rand 9))) (ID (10 - (mod length 10))) (Author (getRandomString (mod rand 9))) (Date (getRandomString (mod rand 9)))
+         in Layout5 (mkBlogs_layout5 contentfiles tagfiles (length - 1)) (TagList (mkSomeTags 10)) (Content (Plain (mkRandomInlineList 100))) (Header (getRandomString (mod rand 9))) (ID (10 - (mod length 10))) (Author (getRandomString (mod rand 9))) (Date (getRandomString (mod rand 9)))
