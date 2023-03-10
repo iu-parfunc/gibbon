@@ -3,7 +3,7 @@ import subprocess
 import re
 import statistics as stat
 
-iterations = 12
+iterations = 9
 
 rootdir = "/local/scratch/a/singhav/Applications/src/gibbon/gibbon-compiler/examples/layout_benchmarks/blog_management/marmoset"
 
@@ -126,7 +126,11 @@ for myPass in Passes:
                     #print(batch_time)
                     print(self_time)
                     run_times_except.append(float(self_time[0]))
-                    
+                
+                print("The timings for the binary " + str(gibbon_binary) + "are: ")
+                print(run_times_except)
+                print()
+
                 average_except = stat.mean(run_times_except) 
                 median_except  = stat.median(run_times_except)
                 tupleTimes = (average_except, median_except)
