@@ -22,11 +22,21 @@ type FieldOrder = M.Map DataCon [Integer]
 -- TODO: Make FieldOrder an argument passed to shuffleDataCon function.
 shuffleDataCon :: Prog1 -> PassM Prog1
 shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
-    let (cfgs, fieldMap) = generateCfgFunctions (M.empty) (M.empty) (M.elems fundefs) "Layout1"
+    -- Get the DataCons  (con for now) from the fundefs
+    -- Get the functions (function for now) from the fundefs   
+    let dcons = P.concat $ P.map (\fn@(FunDef{funMeta = FunMeta { funOptLayout = layout }  }) -> case layout of 
+                                                                                  Single dcon -> [dcon]
+                                                                                  _           -> []
+                                                                                  ) (M.elems fundefs) 
+    let funcs = P.concat $ P.map (\fn@(FunDef{funName, funMeta = FunMeta { funOptLayout = layout }  }) -> case layout of 
+                                                                                                     Single dcon -> [(fromVar funName)]
+                                                                                                     _           -> []
+                                                                                                     ) (M.elems fundefs)
+    let (cfgs, fieldMap) = generateCfgFunctions (M.empty) (M.empty) (M.elems fundefs) (L.head dcons)
     -- TODO: probably better to make this a map from dcon to its num fields. 
-    let field_len = P.length $ snd . snd $ lkp ddefs "Layout1"
+    let field_len = P.length $ snd . snd $ lkp ddefs (L.head dcons)
     -- Instead of explicitly passing the function name, this should come from a annotation at the front end or something like that. 
-    let fieldorder = locallyOptimizeFieldOrdering fieldMap ["Layout1"] (M.elems fundefs) "emphKeywordInContent" field_len (M.empty) 
+    let fieldorder = locallyOptimizeFieldOrdering fieldMap dcons (M.elems fundefs) (L.head funcs) field_len (M.empty) 
     let functions  = M.elems fundefs
     -- NOTE : shuffling ddefs makes a lot of assumptions right now. 
     -- Mainly that we are just doing it for one function
@@ -41,7 +51,7 @@ shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
                , fundefs = fundefs' 
                , mainExp = mainExp'
                }
-    dbgTraceIt (sdoc fieldorder) dbgTraceIt ("\n") pure l1 --dbgTraceIt (sdoc fieldorder) dbgTraceIt ("\n")
+    dbgTraceIt (sdoc fieldorder) dbgTraceIt ("\n") dbgTraceIt (sdoc funcs) dbgTraceIt ("\n") dbgTraceIt (sdoc dcons) pure l1 --dbgTraceIt (sdoc fieldorder) dbgTraceIt ("\n")
 
 -- This is pointless and just goes through the function we are locally optimizing for maybe a cleverer way to do in haskell
 -- Since this problem is to locally optimize for a particular function right now we are not concerned with finding the best 
@@ -51,7 +61,7 @@ locallyOptimizeFieldOrdering fieldMap dcons fundefs funcName field_len orderIn =
     [] -> orderIn
     x:xs -> let map' = generateLocallyOptimalOrderings fieldMap dcons x funcName field_len orderIn
                 map'' = locallyOptimizeFieldOrdering fieldMap dcons xs funcName field_len map' 
-              in map'
+              in map''
 
 -- for the function for which we are locally optimizing for, find the optimal layout of the data constructors that we care about. 
 -- "Locally optimizing for the function"
@@ -76,12 +86,14 @@ generateLocallyOptimalOrderings fieldMap datacons fundef@FunDef{funName,funBody,
                                                                   new        = fillminus1 partial navail
                                                                in new
                                                            else
-                                                            P.map (\(a, b) ->  b) layout
+                                                            let layout' = L.sort layout
+                                                              in P.map (\(a, b) ->  b) layout'
+                                                               
                                              fieldorder = M.insert x (integerList fix_missing) orderIn
                                              fieldorder' = generateLocallyOptimalOrderings fieldMap xs fundef funcName field_len fieldorder
                                           in fieldorder' -- dbgTraceIt (sdoc dconEdges) dbgTraceIt ("\n") dbgTraceIt (sdoc fieldorder') dbgTraceIt ("\n")
     else 
-      orderIn
+      orderIn   --dbgTraceIt (sdoc funName) 
                         
 makeneg :: Int -> [Int]
 makeneg len = if len <=0 then [] 

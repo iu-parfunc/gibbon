@@ -19,7 +19,7 @@ module Gibbon.Language.Syntax
   , lookupDataCon', insertDD, emptyDD, fromListDD, isVoidDDef
 
     -- * Function definitions
-  , FunctionTy(..), FunDefs, FunDef(..), FunMeta(..), FunRec(..), FunInline(..)
+  , FunctionTy(..), FunDefs, FunDef(..), FunMeta(..), FunRec(..), FunInline(..), FunOptimizeLayout(..)
   , insertFD, fromListFD, initFunEnv
 
     -- * Programs
@@ -187,11 +187,15 @@ data FunRec = Rec | NotRec | TailRec
 data FunInline = Inline | NoInline | Inlineable
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
+data FunOptimizeLayout = Single DataCon | LayoutOptAll | NoLayoutOpt
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
+
 data FunMeta = FunMeta
   { funRec    :: FunRec
   , funInline :: FunInline
     -- Whether the transitive closure of this function can trigger GC.
   , funCanTriggerGC :: Bool
+  , funOptLayout :: FunOptimizeLayout
   }
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 

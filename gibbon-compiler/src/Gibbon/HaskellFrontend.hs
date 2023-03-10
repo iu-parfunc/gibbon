@@ -28,6 +28,9 @@ import           Gibbon.L0.Syntax as L0
 import           Gibbon.Common
 import           Gibbon.DynFlags
 
+import Data.List as L
+import Prelude as P
+
 --------------------------------------------------------------------------------
 
 {-
@@ -152,6 +155,7 @@ data TopLevel
   | HFunDef (FunDef Exp0)
   | HMain (Maybe (Exp0, Ty0))
   | HInline Var
+  | OptimizeDcon (Var, DataCon)
   deriving (Show, Eq)
 
 type TopTyEnv = TyEnv TyScheme
@@ -168,8 +172,9 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
   imported_progs :: [PassM Prog0] <- mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
   let prog = do
         toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
-        let (defs,_vars,funs,inlines,main) = foldr classify init_acc toplevels
-            funs' = foldr (\v acc -> M.update (\fn@(FunDef{funMeta}) -> Just (fn { funMeta = funMeta { funInline = Inline }})) v acc) funs inlines
+        let (defs,_vars,funs,inlines,main,optimizeDcons) = foldr classify init_acc toplevels
+            funs'  = foldr (\v acc -> M.update (\fn@(FunDef{funMeta}) -> Just (fn { funMeta = funMeta { funInline = Inline }})) v acc) funs inlines
+            funs'' = foldr (\v acc -> M.update (\fn -> Just (addLayoutMetaData fn optimizeDcons)) v acc) funs' (P.map fst (S.toList optimizeDcons))
         imported_progs' <- mapM id imported_progs
         let (defs0,funs0) =
               foldr
@@ -198,12 +203,12 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                             ([], []) -> (M.union ddefs defs1,  M.union fundefs funs1)
                             (_x:_xs,_) -> error $ "Conflicting definitions of " ++ show conflicts1 ++ " found in " ++ mod_name
                             (_,_x:_xs) -> error $ "Conflicting definitions of " ++ show (S.toList em2) ++ " found in " ++ mod_name)
-                (defs, funs')
+                (defs, funs'')
                 imported_progs'
-        pure (Prog defs0 funs0 main)
+        pure (Prog defs0 funs0 main)  --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs'') 
   pure prog
   where
-    init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing)
+    init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing, S.empty)
     mod_name = moduleName head_mb
 
     moduleName :: Maybe (ModuleHead a) -> String
@@ -211,16 +216,27 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
     moduleName (Just (ModuleHead _ mod_name1 _warnings _exports)) =
       mnameToStr mod_name1
 
-    classify thing (defs,vars,funs,inlines,main) =
+    classify thing (defs,vars,funs,inlines,main,optimizeDcons) =
       case thing of
-        HDDef d   -> (M.insert (tyName d) d defs, vars, funs, inlines, main)
-        HFunDef f -> (defs, vars, M.insert (funName f) f funs, inlines, main)
+        HDDef d   -> (M.insert (tyName d) d defs, vars, funs, inlines, main,optimizeDcons)
+        HFunDef f -> (defs, vars, M.insert (funName f) f funs, inlines, main,optimizeDcons)
         HMain m ->
           case main of
-            Nothing -> (defs, vars, funs, inlines, m)
+            Nothing -> (defs, vars, funs, inlines, m,optimizeDcons)
             Just _  -> error $ "A module cannot have two main expressions."
                                ++ show mod_name
-        HInline v   -> (defs,vars,funs,S.insert v inlines,main)
+        HInline v   -> (defs,vars,funs,S.insert v inlines,main,optimizeDcons)
+        OptimizeDcon layoutOptimizationPair -> (defs,vars,funs,inlines,main, S.insert layoutOptimizationPair optimizeDcons)
+    
+    search :: Eq a => a -> [(a,b)] -> Maybe b
+    search a = fmap snd . L.find ((== a) . fst)
+
+    addLayoutMetaData :: FunDef0 -> S.Set (Var, DataCon) -> FunDef0  
+    addLayoutMetaData fn@(FunDef{funName, funMeta}) annotations = let element = search funName (S.toList annotations)
+                                                                    in case element of 
+                                                                          Nothing   -> fn
+                                                                          Just dcon -> fn {funMeta = funMeta { funOptLayout = Single dcon}}
+
 desugarModule _ _ _ _ m = error $ "desugarModule: " ++ prettyPrint m
 
 stdlibModules :: [String]
@@ -968,6 +984,7 @@ collectTopLevel type_syns env decl =
                                                    , funMeta = FunMeta { funRec = NotRec
                                                                        , funInline = NoInline
                                                                        , funCanTriggerGC = False
+                                                                       , funOptLayout = NoLayoutOpt
                                                                        }
                                                    })
 
@@ -983,6 +1000,7 @@ collectTopLevel type_syns env decl =
                                                , funMeta = FunMeta { funRec = NotRec
                                                                    , funInline = NoInline
                                                                    , funCanTriggerGC = False
+                                                                   , funOptLayout = NoLayoutOpt
                                                                    }
                                                })
 
@@ -995,11 +1013,18 @@ collectTopLevel type_syns env decl =
                                                   , funMeta = FunMeta { funRec = NotRec
                                                                       , funInline = NoInline
                                                                       , funCanTriggerGC = False
+                                                                      , funOptLayout = NoLayoutOpt
                                                                       }
                                                   })
 
     InlineSig _ _ _ qname -> pure $ Just $ HInline (toVar $ qnameToStr qname)
 
+    AnnPragma _ annotation -> case annotation of 
+                                      Ann _ name expr -> case (name, expr) of 
+                                                               ( Ident _ f , Con _ qname ) ->   pure $ Just $ OptimizeDcon ( (toVar $ f), (qnameToStr qname)  )      --error $  show (f) ++ "\n" ++ show (qnameToStr qname) ++ "\n"
+                                                               _  -> error $ "collectTopLevel: Unsupported expression in AnnPragma: " ++ show decl 
+                                      _  -> error $ "collectTopLevel: Unsupported AnnProgma annotation: " ++ show decl                                                        
+                                                            
     _ -> error $ "collectTopLevel: Unsupported top-level expression: " ++ show decl
 
 

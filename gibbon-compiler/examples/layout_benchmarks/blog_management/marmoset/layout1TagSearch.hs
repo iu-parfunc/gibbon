@@ -17,7 +17,8 @@ type Text = Vector Char
 --                                                                                         in Layout1 header id author (copyPacked date) (copyPacked newContent) (copyPacked tags) (copyPacked newRst)
 
 
-emphKeywordInTag :: Text -> Blog -> Blog 
+emphKeywordInTag :: Text -> Blog -> Blog
+{-# ANN emphKeywordInTag Layout1 #-} 
 emphKeywordInTag keyword blogs = case blogs of 
                                     End -> End
                                     Layout1 header id author date content tags rst -> let present = searchBlogTags keyword tags -- search the tags for the keyword 
