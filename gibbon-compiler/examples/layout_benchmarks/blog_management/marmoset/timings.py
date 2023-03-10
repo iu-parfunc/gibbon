@@ -3,7 +3,7 @@ import subprocess
 import re
 import statistics as stat
 
-iterations = 2
+iterations = 12
 
 rootdir = "/local/scratch/a/singhav/Applications/src/gibbon/gibbon-compiler/examples/layout_benchmarks/blog_management/marmoset"
 
@@ -141,7 +141,7 @@ for myPass in Passes:
 
 print(Timings)
 
-f = open("eval_OOPSLA_run6_contentSearch.txt", "w")
+f = open("eval_OOPSLA_run7_contentSearch.txt", "w")
 
 for key, value in Timings.items():
     f.write('%s:(average:%s, median:%s)\n' % (key, value[0], value[1]))
