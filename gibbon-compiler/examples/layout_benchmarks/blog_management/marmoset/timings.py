@@ -14,7 +14,7 @@ ut_hash_include = "/local/scratch/a/singhav/Applications/src/uthash-2.3.0/includ
 #layouts = ["layout1", "layout2", "layout3", "layout4", "layout5", "layout6", "layout7", "layout8"]
 
 #Passes = [ "TagSearch", "ContentSearch", "FindBlog"]
-Passes = ["ContentSearch"]
+Passes = ["FindBlog"]
 
 layouts = ["layout4", "layout2", "layout3", "layout1" , "layout5"  , "layout7" , "layout8"]
 #layouts = ["layout5"]
@@ -145,7 +145,7 @@ for myPass in Passes:
 
 print(Timings)
 
-f = open("eval_OOPSLA_run7_contentSearch.txt", "w")
+f = open("eval_OOPSLA_run9_findblog.txt", "w")
 
 for key, value in Timings.items():
     f.write('%s:(average:%s, median:%s)\n' % (key, value[0], value[1]))
