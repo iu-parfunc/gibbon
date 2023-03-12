@@ -64,7 +64,7 @@ import           Gibbon.Passes.Simplifier     (simplifyL1, lateInlineTriv)
 -- import           Gibbon.Passes.Sequentialize  (sequentialize)
 
 import           Gibbon.Passes.DirectL3       (directL3)
-import           Gibbon.Passes.InferLocations (inferLocs, copyOutOfOrderPacked, fixRANs)
+import           Gibbon.Passes.InferLocations (inferLocs, copyOutOfOrderPacked, fixRANs, removeAliasesForCopyCalls)
 import           Gibbon.Passes.Simplifier     (simplifyLocBinds)
 -- This is the custom pass reference to issue #133 that moves regionsInwards
 import           Gibbon.Passes.RegionsInwards (regionsInwards)
@@ -520,9 +520,9 @@ passes config@Config{dynflags} l0 = do
       l1 <- goE1 "inlineTriv"    inlineTriv             l1
       l1 <- goE1 "typecheck"     L1.tcProg              l1
       l1 <- if should_fuse
-          then goE1  "fusion2"   fusion2                l1
+          then do l1 <- goE1  "fusion2"   fusion2       l1
+                  goE1 "typecheck"  L1.tcProg     l1
           else return l1
-      l1 <- goE0 "typecheck"     L1.tcProg              l1
 
       -- Minimal haskell "backend".
       lift $ dumpIfSet config Opt_D_Dump_Hs (render $ pprintHsWithEnv l1)
@@ -536,9 +536,12 @@ passes config@Config{dynflags} l0 = do
               -- Note: L1 -> L2
               --l1 <- goE1 "optimizeFieldOrder" shuffleDataCon l1
               l1 <- goE1 "copyOutOfOrderPacked" copyOutOfOrderPacked l1
+              l1 <- goE1 "removeCopyAliases" removeAliasesForCopyCalls l1
+              l1 <- goE1 "simplify_2"      simplifyL1             l1
               l1 <- go "L1.typecheck"    L1.tcProg     l1
               l2 <- goE2 "inferLocations"  inferLocs    l1
               l2 <- goE2 "simplifyLocBinds_a" simplifyLocBinds l2
+              --l2 <- go "regionsInwards"    regionsInwards l2
               l2 <- go   "L2.typecheck"    L2.tcProg    l2
               l2 <- go "regionsInwards"    regionsInwards l2
               l2 <- go   "L2.typecheck"    L2.tcProg    l2

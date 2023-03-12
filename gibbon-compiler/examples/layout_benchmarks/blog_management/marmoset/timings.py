@@ -13,8 +13,8 @@ ut_hash_include = "/local/scratch/a/singhav/Applications/src/uthash-2.3.0/includ
 
 #layouts = ["layout1", "layout2", "layout3", "layout4", "layout5", "layout6", "layout7", "layout8"]
 
-#Passes = [ "TagSearch", "ContentSearch", "FindBlog"]
-Passes = ["FindBlog"]
+Passes = [ "TagSearch", "ContentSearch", "FindBlog"]
+#Passes = ["FindBlog"]
 
 layouts = ["layout4", "layout2", "layout3", "layout1" , "layout5"  , "layout7" , "layout8"]
 #layouts = ["layout5"]
