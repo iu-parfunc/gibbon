@@ -2109,7 +2109,7 @@ removeAliasesForCopyCalls prg@(Prog ddfs fndefs mnExp) = do
       fd fn@FunDef{funArgs,funBody,funTy} = do
           let aliasEnv = storeAliases funBody (M.empty) 
           funBody' <- removeAliases funBody aliasEnv
-          dbgTraceIt (sdoc aliasEnv) pure $ fn { funBody = funBody' }  --dbgTraceIt (sdoc aliasEnv)
+          pure $ fn { funBody = funBody' }  --dbgTraceIt (sdoc aliasEnv)
   
       storeAliases :: Exp1 -> AliasEnv -> AliasEnv
       storeAliases exp oldEnv = case exp of 
@@ -2132,7 +2132,7 @@ removeAliasesForCopyCalls prg@(Prog ddfs fndefs mnExp) = do
                                                   Just (v', e') -> 
                                                     let e'' = S.insert v e' 
                                                       in storeAliases bod (M.insert rhs (v', e'') oldEnv)
-                                           else dbgTraceIt (sdoc isCpy) storeAliases bod oldEnv                              
+                                           else storeAliases bod oldEnv                              
         CaseE scrt mp -> let envs = P.map (\(a, b, c) -> storeAliases c oldEnv) mp
                           in unifyEnvs envs                       
         IfE a b c -> let env1 = storeAliases a oldEnv 
@@ -2168,13 +2168,13 @@ removeAliasesForCopyCalls prg@(Prog ddfs fndefs mnExp) = do
                   let newVar = P.map (\(a, b) -> if (S.member v b) then a
                                                  else v ) vals
                   case (removeDuplicates newVar) of 
-                    []   -> dbgTraceIt (sdoc (exp, vals, v)) return $ VarE v
-                    [v'] -> dbgTraceIt (sdoc (exp, vals, v')) return $ VarE v'
-                    _    -> dbgTraceIt (sdoc (exp, vals)) error "removeAliases: Did not expect more than one variable!"
-        LitE{} -> dbgTraceIt (sdoc exp) pure exp
+                    []   -> return $ VarE v
+                    [v'] -> return $ VarE v'
+                    _    -> error "removeAliases: Did not expect more than one variable!"
+        LitE{} -> pure exp
         CharE{} -> pure exp
         FloatE{} -> pure exp
-        LitSymE{} -> dbgTraceIt (sdoc exp) pure exp
+        LitSymE{} -> pure exp
         AppE f locs args -> do 
                             args' <- mapM (\expr -> removeAliases expr env) args
                             pure $ AppE f locs args'
