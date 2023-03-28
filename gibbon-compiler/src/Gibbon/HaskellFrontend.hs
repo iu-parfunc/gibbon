@@ -150,12 +150,15 @@ removeLinearArrows str =
      - lines
      -}
 
+--data Constraints = Strong Integer Integer deriving (Show, Eq)
+
 data TopLevel
   = HDDef (DDef Ty0)
   | HFunDef (FunDef Exp0)
   | HMain (Maybe (Exp0, Ty0))
   | HInline Var
   | OptimizeDcon (Var, DataCon)
+  | UserConstraints (M.Map Var (M.Map DataCon [UserOrdering]))
   deriving (Show, Eq)
 
 type TopTyEnv = TyEnv TyScheme
@@ -172,9 +175,11 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
   imported_progs :: [PassM Prog0] <- mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
   let prog = do
         toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
-        let (defs,_vars,funs,inlines,main,optimizeDcons) = foldr classify init_acc toplevels
+        let (defs,_vars,funs,inlines,main,optimizeDcons, userOrderings) = foldr classify init_acc toplevels
             funs'  = foldr (\v acc -> M.update (\fn@(FunDef{funMeta}) -> Just (fn { funMeta = funMeta { funInline = Inline }})) v acc) funs inlines
             funs'' = foldr (\v acc -> M.update (\fn -> Just (addLayoutMetaData fn optimizeDcons)) v acc) funs' (P.map fst (S.toList optimizeDcons))
+            funs''' = foldr (\k acc -> M.update (\fn@(FunDef{funName, funMeta}) -> Just (fn { funMeta = funMeta { userConstraintsDataCon = M.lookup funName userOrderings }})) k acc) funs'' (M.keys userOrderings)
+
         imported_progs' <- mapM id imported_progs
         let (defs0,funs0) =
               foldr
@@ -203,12 +208,12 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                             ([], []) -> (M.union ddefs defs1,  M.union fundefs funs1)
                             (_x:_xs,_) -> error $ "Conflicting definitions of " ++ show conflicts1 ++ " found in " ++ mod_name
                             (_,_x:_xs) -> error $ "Conflicting definitions of " ++ show (S.toList em2) ++ " found in " ++ mod_name)
-                (defs, funs'')
+                (defs, funs''')
                 imported_progs'
         pure (Prog defs0 funs0 main)  --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs'') 
   pure prog
   where
-    init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing, S.empty)
+    init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing, S.empty, M.empty)
     mod_name = moduleName head_mb
 
     moduleName :: Maybe (ModuleHead a) -> String
@@ -216,17 +221,18 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
     moduleName (Just (ModuleHead _ mod_name1 _warnings _exports)) =
       mnameToStr mod_name1
 
-    classify thing (defs,vars,funs,inlines,main,optimizeDcons) =
+    classify thing (defs,vars,funs,inlines,main,optimizeDcons, userOrderings) =
       case thing of
-        HDDef d   -> (M.insert (tyName d) d defs, vars, funs, inlines, main,optimizeDcons)
-        HFunDef f -> (defs, vars, M.insert (funName f) f funs, inlines, main,optimizeDcons)
+        HDDef d   -> (M.insert (tyName d) d defs, vars, funs, inlines, main,optimizeDcons,userOrderings)
+        HFunDef f -> (defs, vars, M.insert (funName f) f funs, inlines, main,optimizeDcons,userOrderings)
         HMain m ->
           case main of
-            Nothing -> (defs, vars, funs, inlines, m,optimizeDcons)
+            Nothing -> (defs, vars, funs, inlines, m,optimizeDcons,userOrderings)
             Just _  -> error $ "A module cannot have two main expressions."
                                ++ show mod_name
-        HInline v   -> (defs,vars,funs,S.insert v inlines,main,optimizeDcons)
-        OptimizeDcon layoutOptimizationPair -> (defs,vars,funs,inlines,main, S.insert layoutOptimizationPair optimizeDcons)
+        HInline v   -> (defs,vars,funs,S.insert v inlines,main,optimizeDcons,userOrderings)
+        OptimizeDcon layoutOptimizationPair -> (defs,vars,funs,inlines,main, S.insert layoutOptimizationPair optimizeDcons,userOrderings)
+        UserConstraints map -> (defs,vars,funs,inlines,main, optimizeDcons, M.union userOrderings map)   --error $ show thing
     
     search :: Eq a => a -> [(a,b)] -> Maybe b
     search a = fmap snd . L.find ((== a) . fst)
@@ -985,6 +991,7 @@ collectTopLevel type_syns env decl =
                                                                        , funInline = NoInline
                                                                        , funCanTriggerGC = False
                                                                        , funOptLayout = NoLayoutOpt
+                                                                       , userConstraintsDataCon = Nothing
                                                                        }
                                                    })
 
@@ -1001,6 +1008,7 @@ collectTopLevel type_syns env decl =
                                                                    , funInline = NoInline
                                                                    , funCanTriggerGC = False
                                                                    , funOptLayout = NoLayoutOpt
+                                                                   , userConstraintsDataCon = Nothing
                                                                    }
                                                })
 
@@ -1014,6 +1022,7 @@ collectTopLevel type_syns env decl =
                                                                       , funInline = NoInline
                                                                       , funCanTriggerGC = False
                                                                       , funOptLayout = NoLayoutOpt
+                                                                      , userConstraintsDataCon = Nothing
                                                                       }
                                                   })
 
@@ -1022,10 +1031,37 @@ collectTopLevel type_syns env decl =
     AnnPragma _ annotation -> case annotation of 
                                       Ann _ name expr -> case (name, expr) of 
                                                                ( Ident _ f , Con _ qname ) ->   pure $ Just $ OptimizeDcon ( (toVar $ f), (qnameToStr qname)  )      --error $  show (f) ++ "\n" ++ show (qnameToStr qname) ++ "\n"
-                                                               _  -> error $ "collectTopLevel: Unsupported expression in AnnPragma: " ++ show decl 
+                                                               ( Ident _ conName, Tuple _ _ exprs)  -> case exprs of
+                                                                                                     []   -> error $ "collectTopLevel: Unsupported AnnProgma annotation: " ++ show decl 
+                                                                                                     ls   -> let funcName = parseFuncTotalOrdering (P.head ls)
+                                                                                                              in case (P.tail ls) of 
+                                                                                                                 [Tuple _ _ ls'] -> let contrs = P.map (\e -> case e of 
+                                                                                                                                             InfixApp _ from operator to -> Strong (parseIntLit from) (parseIntLit to)
+                                                                                                                                             _  -> error $ "collectTopLevel: Unsupported AnnProgma annotation: " ++ show decl 
+                                                                                                                                            ) ls'
+                                                                                                                                        userConstrs = UserConstraints (M.singleton (toVar funcName)  (M.singleton conName contrs))
+                                                                                                                                      in (dbgTraceIt (show userConstrs) )  pure $ Just $ UserConstraints (M.singleton (toVar funcName)  (M.singleton conName contrs))
+                                                                                                                 _ -> error $ "collectTopLevel: Unsupported AnnProgma annotation: " ++ show decl 
+                                                               _ -> error $ "collectTopLevel: Unsupported AnnProgma annotation: " ++ show decl 
+                                                                                                                 
+                                                                                                    
                                       _  -> error $ "collectTopLevel: Unsupported AnnProgma annotation: " ++ show decl                                                        
                                                             
     _ -> error $ "collectTopLevel: Unsupported top-level expression: " ++ show decl
+
+
+-- Parse Int Literal 
+parseIntLit :: Exp a -> Integer 
+parseIntLit (Lit _ (Int _ val _)) = val 
+parseIntLit _  = error $ "parseIntLiteral: can only take integer literals"
+
+
+parseFuncTotalOrdering :: Exp a -> String 
+parseFuncTotalOrdering (H.Var _ name) = (qnameToStr name) 
+parseFuncTotalOrdering _  = error $ "parseFuncTotalOrdering: unexpected patterns"
+
+
+
 
 
 -- pure $ LitE (litToInt lit)

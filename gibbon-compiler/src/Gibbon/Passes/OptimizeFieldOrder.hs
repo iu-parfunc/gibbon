@@ -41,6 +41,13 @@ shuffleDataCon prg@Prog{ddefs,fundefs,mainExp} = do
     -- NOTE : shuffling ddefs makes a lot of assumptions right now. 
     -- Mainly that we are just doing it for one function
     -- So we do not care out the globally optimal layout of the data constructor
+    
+    -- TODO: Use the strong user constraints that were parsed and make the correct field order for it. 
+    -- Check if all fields are specified, if yes then bypass the solver. 
+    -- If no, then insert constraints in the solver that cannot be over-ruled and check first if the constraints are satisfiable or not. 
+    -- Have user constraints as edges with MaxInt weight. 
+
+    
     let shuffled_ddefs = findDataCon fieldorder ddefs 
     fds' <- mapM (shuffleDataConFunBody fieldorder) (M.elems fundefs)
     let fundefs' = M.fromList $ P.map (\f -> (funName f,f)) fds'

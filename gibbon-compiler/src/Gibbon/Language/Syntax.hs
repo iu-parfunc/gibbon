@@ -19,7 +19,7 @@ module Gibbon.Language.Syntax
   , lookupDataCon', insertDD, emptyDD, fromListDD, isVoidDDef
 
     -- * Function definitions
-  , FunctionTy(..), FunDefs, FunDef(..), FunMeta(..), FunRec(..), FunInline(..), FunOptimizeLayout(..)
+  , FunctionTy(..), FunDefs, FunDef(..), FunMeta(..), FunRec(..), FunInline(..), FunOptimizeLayout(..), UserOrdering(..)
   , insertFD, fromListFD, initFunEnv
 
     -- * Programs
@@ -190,12 +190,19 @@ data FunInline = Inline | NoInline | Inlineable
 data FunOptimizeLayout = Single DataCon | LayoutOptAll | NoLayoutOpt
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
+-- StrongMap, first integer is old position, second is new. 
+data UserOrdering = Strong Integer Integer
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
+
+type DataConMap = M.Map DataCon [UserOrdering]
+
 data FunMeta = FunMeta
   { funRec    :: FunRec
   , funInline :: FunInline
     -- Whether the transitive closure of this function can trigger GC.
   , funCanTriggerGC :: Bool
   , funOptLayout :: FunOptimizeLayout
+  , userConstraintsDataCon :: Maybe DataConMap
   }
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 

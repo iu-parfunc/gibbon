@@ -1729,7 +1729,7 @@ floatOutCase (Prog ddefs fundefs mainExp) = do
       fn_name <- lift $ gensym "caseFn"
       args <- mapM (\x -> lift $ gensym x) free
       let ex' = foldr (\(from,to) acc -> gSubst from (VarE to) acc) ex (zip free args)
-      let fn = FunDef fn_name args fn_ty ex' (FunMeta NotRec NoInline False NoLayoutOpt)
+      let fn = FunDef fn_name args fn_ty ex' (FunMeta NotRec NoInline False NoLayoutOpt Nothing)
       state (\s -> ((AppE fn_name [] (map VarE free)), M.insert fn_name fn s))
 
     go :: Bool -> Env2 Ty0 -> Exp0 -> FloatM Exp0
