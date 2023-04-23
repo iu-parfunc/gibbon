@@ -1086,6 +1086,7 @@ prim p =
     LLFreeP elty -> T.LLFreeP (typ elty)
     LLFree2P elty -> T.LLFree2P (typ elty)
     LLCopyP elty -> T.LLCopyP (typ elty)
+    CurlPost elty -> T.CurlPost (typ elty)
     GetNumProcessors -> T.GetNumProcessors
     SymSetEmpty   -> T.SymSetEmpty
     SymSetInsert  -> T.SymSetInsert

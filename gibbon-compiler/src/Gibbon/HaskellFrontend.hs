@@ -225,7 +225,7 @@ desugarModule _ _ _ _ m = error $ "desugarModule: " ++ prettyPrint m
 
 stdlibModules :: [String]
 stdlibModules = ["Gibbon.Prim", "Gibbon.Prelude", "Gibbon.Vector", "Gibbon.Vector.Parallel",
-                 "Gibbon.List", "Gibbon.PList", "Gibbon.ByteString", "Gibbon.Maybe"]
+                 "Gibbon.List", "Gibbon.PList", "Gibbon.ByteString", "Gibbon.Maybe", "Gibbon.Curl"]
 
 processImport :: Config -> IORef ParseState -> [String] -> FilePath -> ImportDecl a -> IO (PassM Prog0)
 processImport cfg pstate_ref import_route dir decl@ImportDecl{..}
@@ -281,6 +281,7 @@ stdlibImportPath mod_name = do
     modNameToFilename "Gibbon.PList" = "Gibbon" </> "PList.hs"
     modNameToFilename "Gibbon.ByteString" = "Gibbon" </> "ByteString.hs"
     modNameToFilename "Gibbon.Maybe" = "Gibbon" </> "Maybe.hs"
+    modNameToFilename "Gibbon.Curl" = "Gibbon" </> "Curl.hs"
     modNameToFilename oth = error $ "Unknown module: " ++ oth
 
 modImportPath :: ModuleName a -> String -> IO FilePath
@@ -324,6 +325,8 @@ keywords = S.fromList $ map toVar $
     , "alloc_pdict", "insert_pdict", "lookup_pdict", "member_pdict", "fork_pdict", "join_pdict"
     -- linked lists
     , "alloc_ll", "is_empty_ll", "cons_ll", "head_ll", "tail_ll", "free_ll", "free2_ll", "copy_ll"
+    -- libcurl operations 
+    , "post"
     ] ++ M.keys primMap
 
 desugarTopType :: (Show a,  Pretty a) => TypeSynEnv -> Type a -> TyScheme
@@ -717,6 +720,11 @@ desugarExp type_syns toplevel e =
                     e2' <- desugarExp type_syns toplevel e2
                     ty  <- newMetaTy
                     pure $ PrimAppE (LLCopyP ty) [e2']
+                  else if f == "post"
+                  then do
+                    e2' <- desugarExp type_syns toplevel e2
+                    ty  <- newMetaTy --pure $ VectorTy CharTy -- hardcoding the type of the url for now. 
+                    pure $ PrimAppE (CurlPost ty) [e2']
                   else if f == "fst"
                   then do
                     e2' <- desugarExp type_syns toplevel e2

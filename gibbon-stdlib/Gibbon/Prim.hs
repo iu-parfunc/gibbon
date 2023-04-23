@@ -42,6 +42,9 @@ module Gibbon.Prim
 
       -- * Parallelism
     , spawn, sync, lsync, par, getNumProcessors, is_big
+    
+      -- libcurl
+    , post
 
       -- * Tuples
     , fst, snd, Maybe(..)
@@ -290,6 +293,14 @@ getNumProcessors = undefined
 
 is_big :: a -> Bool
 is_big = undefined
+
+----------------------------------------------------------------------------------
+-- LibCurl 
+----------------------------------------------------------------------------------
+
+post :: Vector Char -> Int 
+post = undefined
+
 
 --------------------------------------------------------------------------------
 -- Linear types (taken from linear-base)

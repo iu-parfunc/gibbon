@@ -611,6 +611,7 @@ primArgsTy p =
     LLFreeP elty   -> [ListTy elty]
     LLFree2P elty  -> [ListTy elty]
     LLCopyP elty  -> [ListTy elty]
+    CurlPost elty -> [VectorTy CharTy]
     GetNumProcessors -> []
     PrintInt -> [IntTy]
     PrintChar -> [CharTy]
@@ -706,6 +707,7 @@ primRetTy p =
     LLFreeP _elty  -> ProdTy []
     LLFree2P _elty -> ProdTy []
     LLCopyP elty  -> ListTy elty
+    CurlPost elty -> IntTy
     GetNumProcessors -> IntTy
     PrintInt   -> ProdTy []
     PrintChar  -> ProdTy []

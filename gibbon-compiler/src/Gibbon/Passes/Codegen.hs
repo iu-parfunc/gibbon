@@ -93,6 +93,7 @@ harvestStructTys (Prog _ funs mtal) =
          let rst = go bod in
          case prm of
            VAllocP elty  -> VectorTy elty : rst
+           CurlPost elty -> elty : rst
            VFreeP elty   -> VectorTy elty : rst
            VFree2P elty  -> VectorTy elty : rst
            VLengthP elty -> VectorTy elty : rst
@@ -1137,6 +1138,14 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                           , C.BlockDecl [cdecl| $ty:ty1 $id:outV = vector_alloc($exp:i', $id:tmp); |]
                           ]
 
+                 CurlPost elty -> do 
+                   let ty1 = codegenTy elty
+                       [(outV, _)] = bnds -- resonse variable
+                       [i] = rnds 
+                       i' = codegenTriv venv i --url 
+                   return [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = curl_post($exp:i'); |]
+                          ]
+
                  VFreeP _elty -> do
                    let [vec] = rnds
                    return [ C.BlockStm [cstm| vector_free($(codegenTriv venv vec)); |] ]
@@ -1397,6 +1406,7 @@ codegenTy IntTy = [cty|typename IntTy|]
 codegenTy CharTy = [cty|typename CharTy|]
 codegenTy FloatTy= [cty|typename FloatTy|]
 codegenTy BoolTy = [cty|typename BoolTy|]
+codegenTy CurlTy = [cty|typename CURL*|]
 codegenTy TagTyPacked = [cty|typename TagTyPacked|]
 codegenTy TagTyBoxed  = [cty|typename TagTyBoxed|]
 codegenTy SymTy = [cty|typename SymTy|]

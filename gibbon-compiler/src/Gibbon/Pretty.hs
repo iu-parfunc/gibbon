@@ -204,6 +204,7 @@ instance (Show d, Pretty d, Ord d) => Pretty (Prim d) where
                                       RequestSizeOf  -> text "RequestSizeOf"
                                       ErrorP str ty  -> text "ErrorP" <> wty ty <+> doubleQuotes (text str) <> space
                                       VAllocP ty -> parens $ text "valloc" <+> doublecolon <+> brackets (pprintWithStyle sty ty)
+                                      CurlPost ty -> parens $ text "post" <+> doublecolon <+> brackets (pprintWithStyle sty ty)
                                       VFreeP _ty -> parens $ text "vfree"
                                       VFree2P _ty-> parens $ text "vfree2"
                                       VLengthP{} -> text "vlength"

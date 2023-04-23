@@ -182,6 +182,7 @@ data Ty
               -- This is a pointer to a struct value which may contain other pointers.
     | RegionTy -- ^ Region start and a refcount
     | ChunkTy  -- ^ Start and end pointers
+    | CurlTy   -- ^ Type for the Curl Struct. 
 
 -- TODO: Make Ptrs more type safe like this:
 --    | StructPtrTy { fields :: [Ty] } -- ^ A pointer to a struct containing the given fields.
@@ -255,6 +256,8 @@ data Prim
     | LLFreeP Ty
     | LLFree2P Ty
     | LLCopyP Ty
+    -- LibCurl operations 
+    | CurlPost Ty
 
     | GetNumProcessors
     | ReadPackedFile (Maybe FilePath) TyCon

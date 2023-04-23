@@ -480,7 +480,10 @@ data Prim ty
                                --   at the type level with a Rank-2 type variable. But this
                                --   evidence is erased (by the desugarer) by the time we get
                                --   to L0.
-
+          
+          -- LibCurl operations
+          | CurlPost ty -- ^ Post data to the specified url, passed as arguments. 
+          
           | Write3dPpmFile FilePath
 
           | ReadPackedFile (Maybe FilePath) TyCon (Maybe Var) ty

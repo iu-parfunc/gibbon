@@ -629,6 +629,7 @@ recoverType ddfs env2 ex =
         LLFreeP _elty   -> ProdTy []
         LLFree2P _elty  -> ProdTy []
         LLCopyP elty -> ListTy elty
+        CurlPost elty -> IntTy
         GetNumProcessors -> IntTy
         (ErrorP _ ty)  -> ty
         ReadPackedFile _ _ _ ty -> ty

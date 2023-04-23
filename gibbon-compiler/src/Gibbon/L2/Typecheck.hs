@@ -412,6 +412,14 @@ tcExp ddfs env funs constrs regs tstatein exp =
                    _ <- ensureEqualTy (es !! 0) IntTy i
                    pure (VectorTy elty, tstate)
 
+                 CurlPost elty -> do 
+                  len1 
+                  checkListElemTy elty 
+                  let [i] = tys 
+                  _ <- ensureEqualTy (es !! 0) (VectorTy CharTy) i 
+                  pure (elty, tstate)
+
+
                  VFreeP elty -> do
                    len1
                    checkListElemTy elty

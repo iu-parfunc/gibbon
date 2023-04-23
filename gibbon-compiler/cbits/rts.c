@@ -29,6 +29,8 @@
 #include <cilk/cilk_api.h>
 #endif
 
+#include <curl/curl.h>
+
 #define KB 1024lu
 #define MB (KB * 1000lu)
 #define GB (MB * 1000lu)
@@ -1380,6 +1382,35 @@ int main(int argc, char** argv)
     __main_expr();
 
     return 0;
+}
+
+//------------------------------------------------------------------------------
+// LibCurl functions
+//------------------------------------------------------------------------------
+
+IntTy curl_post(VectorTy *url){
+   
+   CURL *curl;
+   CURLcode res;
+   
+   curl = curl_easy_init();
+   
+   if(curl) {
+    curl_easy_setopt(curl, CURLOPT_URL, url->vec_data);
+
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    res = curl_easy_perform(curl);
+
+    if(res != CURLE_OK)
+      fprintf(stderr, "curl_easy_perform() failed: %s\n",
+              curl_easy_strerror(res));
+              
+    curl_easy_cleanup(curl);
+  }
+
+  return res; 
+
 }
 
 // -----------------------------------------------------------------------------

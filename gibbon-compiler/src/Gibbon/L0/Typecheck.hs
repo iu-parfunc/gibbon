@@ -548,6 +548,13 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
           s2 <- unify (args !! 0) (ListTy elty) i
           pure (s1 <> s2, ListTy elty, PrimAppE pr args_tc)
 
+        --typecheck for curl sending data
+        CurlPost elty -> do
+          len1
+          let [i] = arg_tys'
+          s2 <- unify (args !! 0) (VectorTy CharTy) i
+          pure (s1 <> s2, elty, PrimAppE pr args_tc)
+
         GetNumProcessors -> do
           len0
           pure (s1, IntTy, PrimAppE pr args_tc)
@@ -949,6 +956,7 @@ zonkExp s ex =
                   LLFreeP ty -> LLFreeP (zonkTy s ty)
                   LLFree2P ty -> LLFree2P (zonkTy s ty)
                   LLCopyP ty -> LLCopyP (zonkTy s ty)
+                  CurlPost ty -> CurlPost (zonkTy s ty)
                   InplaceVSortP ty -> InplaceVSortP (zonkTy s ty)
                   ReadArrayFile fp ty -> ReadArrayFile fp (zonkTy s ty)
                   _ -> pr
@@ -1083,6 +1091,7 @@ substTyVarPrim mp pr =
         LLFreeP elty -> LLFreeP (substTyVar mp elty)
         LLFree2P elty -> LLFree2P (substTyVar mp elty)
         LLCopyP elty -> LLCopyP (substTyVar mp elty)
+        CurlPost elty -> CurlPost (substTyVar mp elty)
         _ -> pr
 
 
