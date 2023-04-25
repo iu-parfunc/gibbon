@@ -8,8 +8,14 @@ import qualified GHC.Utils.Trace as GHC
 import qualified GHC.Plugins as GHC
 import qualified GHC.Utils.Outputable as Ppr
 import qualified GHC.Types.Var.Set as GHC
+import qualified GHC.Plugins as GHC
+import qualified GHC.Core.Multiplicity as GHC
+import qualified GHC.Core.TyCo.Rep as GHC
+
+
 import           Data.Data ( Data )
 import qualified Data.Set as Set
+import qualified Data.Map as M
 
 import           Gibbon.CoreToL0 ( coreToL0 )
 import           Gibbon.Utils

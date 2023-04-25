@@ -8,34 +8,48 @@ library
   hs-source-dirs:      src
   exposed-modules:     BinTree
   build-depends:       base == 4.17.*
-                     , plugin0
-                     , plugin1
+                     -- , plugin0
+                     -- , plugin1
                      , inline-c
                      , binary
+                     , gibbon-plugin
   ghc-options: -Wall -Wcompat -fdefer-typed-holes
   default-language:    Haskell2010
   ghc-options:         -Wall -Wcompat
-                       -fplugin=Gibbon.Plugin0
-                       -fplugin=Gibbon.Plugin1
+                       -O2
+                       -- -fplugin=Gibbon.Plugin0
+                       -- -fplugin=Gibbon.Plugin1
+                       -fplugin=Gibbon.Plugin
 
-                       "-optl-Wl,--allow-multiple-definition"
+                       -- "-optl-Wl,--allow-multiple-definition"
                        -- "-optl-Wl,--whole-archive"
-                       -- "-optl-Wl,-Bstatic"
-                       -- "-optl-Wl,-L/home/ckoparka/chai/tree-velocity/gibbon-ghc-integration/plugin1/cbits/"
-                       -- "-optl-Wl,-ltest2"
-                       -- "-optl-Wl,-Bdynamic"
+                       -- -- "-optl-Wl,-Bstatic"
+                       -- -- "-optl-Wl,-L/home/ckoparka/chai/tree-velocity/gibbon-ghc-integration/plugin1/cbits/"
+                       -- -- "-optl-Wl,-ltest2"
+                       -- "-optl-Wl,-I/home/ckoparka/chai/tree-velocity/gibbon-rts/build"
+                       -- "-optl-Wl,-L/home/ckoparka/chai/tree-velocity/gibbon-rts/build"
+                       -- "-optl-Wl,-lgibbon_rts_ng"
+                       -- -- "-optl-Wl,-Bdynamic"
+                       -- -- "-optl-Wl,-L/home/ckoparka/chai/tree-velocity/gibbon-rts/build"
                        -- "-optl-Wl,--no-whole-archive"
 
                        -dcore-lint
                        -ddump-simpl -dsuppress-all -ddump-to-file
+
+  include-dirs: "/home/ckoparka/chai/tree-velocity/gibbon-rts/build"
+  extra-lib-dirs: "/home/ckoparka/chai/tree-velocity/gibbon-rts/build"
+  extra-libraries: gibbon_rts_ng
 
 
 executable run-gibbon-examples
   hs-source-dirs:      app
   default-language:    Haskell2010
   main-is:             Main.hs
-  build-depends:       base, gibbon-examples, binary, bytestring
-  ghc-options:
-                       -- "-with-rtsopts=-T"
-                       -- "-with-rtsopts=-s"
+  build-depends:       base, gibbon-examples, binary, bytestring, deepseq, time
+  ghc-options:         -O2
                        -dcore-lint
+  include-dirs:        "/home/ckoparka/chai/tree-velocity/gibbon-rts/build"
+  extra-lib-dirs:      "/home/ckoparka/chai/tree-velocity/gibbon-rts/build"
+  extra-libraries:     gibbon_rts_ng
+  -- ghc-options:         "-optl-Wl,-I/home/ckoparka/chai/tree-velocity/gibbon-rts/build"
+  --                      "-optl-Wl,-L/home/ckoparka/chai/tree-velocity/gibbon-rts/build"

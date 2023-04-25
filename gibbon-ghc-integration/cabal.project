@@ -1,6 +1,7 @@
 packages: ../gibbon-compiler
           plugin0
           plugin1
+          gibbon-plugin
           examples
 
 with-compiler: ghc-9.4.3

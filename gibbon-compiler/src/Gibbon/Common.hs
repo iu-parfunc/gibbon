@@ -252,6 +252,7 @@ data Mode = ToParse  -- ^ Parse and then stop
           | RunMPL   -- ^ Compile to SML & compile with MPL & run
           | Bench Var -- ^ Benchmark a particular function applied to the packed data within an input file.
           | BenchInput FilePath -- ^ Hardcode the input file to the benchmark in the C code.
+          | Library Var -- ^ Compile as a library, with its main entry point given.
   deriving (Show, Read, Eq, Ord)
 
 -- | Compilation backend used
