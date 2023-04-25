@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module Gibbon.Plugin ( plugin, PackedAnn(..) ) where
+module Gibbon.Plugin0 ( plugin, PackedAnn(..) ) where
 
 import qualified GHC.Types.TyThing as GHC
 import qualified GHC.Unit.External as GHC
@@ -31,7 +31,7 @@ gibbonCoreTodo = GHC.CoreDoPluginPass "GibbonLiftPacked" test
   where
     test :: GHC.ModGuts -> GHC.CoreM GHC.ModGuts
     test mod_guts = do
-        GHC.liftIO $ print "[Gibbon Core Plugin] Starting..."
+        GHC.liftIO $ print "[Gibbon Core Plugin (0)] Starting..."
 
         -- Things defined in other modules and libraries.
         hsc_env <- GHC.getHscEnv
