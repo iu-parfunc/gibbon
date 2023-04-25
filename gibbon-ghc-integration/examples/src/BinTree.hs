@@ -4,7 +4,7 @@
 
 module BinTree where
 
-import Gibbon.Plugin ( PackedAnn(..) )
+import Gibbon.Plugin0 ( PackedAnn(..) )
 import Foreign
 import Foreign.C.Types
 import GHC.Generics
