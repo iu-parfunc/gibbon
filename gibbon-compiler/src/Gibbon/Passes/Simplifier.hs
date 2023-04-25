@@ -93,8 +93,8 @@ simplifyL1 p0 = do
     p0' <- freshNames1 p0
     p1 <- markRecFns p0'
     p2 <- inlineFuns p1
-    p3 <- deadFunElim p2
-    pure p3
+    -- p3 <- deadFunElim p2
+    pure p2
 
 --------------------------------------------------------------------------------
 

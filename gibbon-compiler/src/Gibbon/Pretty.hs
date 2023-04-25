@@ -4,7 +4,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 
 module Gibbon.Pretty
-  ( Pretty(..), PPStyle(..), HasPretty, render, pprintHsWithEnv, pprender ) where
+  ( Pretty(..), PPStyle(..), HasPretty, render, pprintHsWithEnv, pprender, pprenderWithStyle ) where
 
 import           Prelude hiding ((<>))
 import           Text.PrettyPrint
@@ -39,6 +39,9 @@ class Pretty e where
 
 pprender :: Pretty e => e -> String
 pprender = render . pprint
+
+pprenderWithStyle :: Pretty e => PPStyle -> e -> String
+pprenderWithStyle sty e = render $ pprintWithStyle sty e
 
 doublecolon :: Doc
 doublecolon = colon <> colon

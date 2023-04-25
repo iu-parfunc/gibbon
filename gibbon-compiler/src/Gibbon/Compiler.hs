@@ -9,7 +9,7 @@
 
 module Gibbon.Compiler
     ( -- * Compiler entrypoints
-      compile, compileCmd
+      compile, compileFromL0, compileCmd
       -- * Configuration options and parsing
      , Config (..), Mode(..), Input(..)
      , configParser, configWithArgs, defaultConfig
@@ -152,7 +152,8 @@ configParser = Config <$> inputParser
                flag' RunExe  (short 'r' <> long "run"     <> help "Compile and then run executable") <|>
                (Bench <$> toVar <$> strOption (short 'b' <> long "bench-fun" <> metavar "FUN" <>
                                      help ("Generate code to benchmark a 1-argument FUN against a input packed file."++
-                                           "  If --bench-input is provided, then the benchmark is run as well.")))
+                                           "  If --bench-input is provided, then the benchmark is run as well."))) <|>
+               (Library <$> toVar <$> strOption (long "lib" <> metavar "FUN" <> help ("Compile as a library with its entry point given.")))
 
   -- use C as the default backend
   backendParser :: Parser Backend
@@ -199,7 +200,7 @@ data CompileState a = CompileState
 -- | Compiler entrypoint, given a full configuration and a list of
 -- files to process, do the thing.
 compile :: Config -> FilePath -> IO ()
-compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
+compile config@Config{input,verbosity} fp0 = do
   -- set the env var DEBUG, to verbosity, when > 1
   setDebugEnvVar verbosity
 
@@ -208,6 +209,11 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
   let fp1 = dir </> fp0
   -- Parse the input file
   ((l0, cnt0), fp) <- parseInput config input fp1
+  compileFromL0 config cnt0 fp l0
+
+
+compileFromL0 :: Config -> Int -> FilePath -> L0.Prog0 -> IO ()
+compileFromL0 config@Config{mode,backend,cfile} cnt0 fp l0 = do
   let config' = config { srcFile = Just fp }
 
   let initTypeChecked :: L0.Prog0
@@ -268,7 +274,7 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
         writeFile outfile str
 
         -- (Stage 3) Code written, now compile if warranted.
-        when (mode == ToExe || mode == RunExe || isBench mode ) $ do
+        when (mode == ToExe || mode == RunExe || isBench mode || isLibrary mode) $ do
           compileAndRunExe config fp >>= putStr
           return ()
 
@@ -406,6 +412,7 @@ compileAndRunExe cfg@Config{backend,arrayInput,benchInput,mode,cfile,exefile} fp
     _                                -> return ""
   where outfile = getOutfile backend fp cfile
         exe = getExeFile backend fp exefile
+        doto = replaceExtension fp ".o"
         pointer = gopt Opt_Pointer (dynflags cfg)
         links = if pointer
                 then " -lgc -lm "
@@ -415,13 +422,14 @@ compileAndRunExe cfg@Config{backend,arrayInput,benchInput,mode,cfile,exefile} fp
             lib_dir <- getRTSBuildDir
             let rts_o_path = lib_dir </> "gibbon_rts.o"
             let compile_prog_cmd = compilationCmd backend cfg
-                                   ++ " -o " ++ exe
+                                   ++ (if isLibrary mode then (" -c -o " ++ doto) else (" -o " ++ exe))
                                    ++" -I" ++ lib_dir
                                    ++" -L" ++ lib_dir
                                    ++ " -Wl,-rpath=" ++ lib_dir ++ " "
                                    ++ outfile ++ " " ++ rts_o_path
                                    ++ links ++ " -lgibbon_rts_ng"
 
+            putStrLn compile_prog_cmd
             execCmd
               Nothing
               compile_prog_cmd
@@ -523,6 +531,10 @@ compilationCmd C config = (cc config) ++" -std=gnu11 "
 isBench :: Mode -> Bool
 isBench (Bench _) = True
 isBench _ = False
+
+isLibrary :: Mode -> Bool
+isLibrary (Library _) = True
+isLibrary _ = False
 
 -- | The debug level at which we start to call the interpreter on the program during compilation.
 interpDbgLevel :: Int

@@ -202,7 +202,8 @@ codegenProg cfg prg@(Prog info_tbl sym_tbl funs mtal) =
         let struct_tys = uniqueDicts $ S.toList $ harvestStructTys prg
         return ((L.nub $ makeStructs struct_tys) ++ prots ++
                 [gibTypesEnum, initInfoTable info_tbl, initSymTable sym_tbl] ++
-                funs' ++ [main_expr'])
+                funs' -- ++ [main_expr']
+               )
 
       main_expr :: PassM C.Definition
       main_expr = do
