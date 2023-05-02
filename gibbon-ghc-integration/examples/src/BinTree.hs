@@ -50,12 +50,12 @@ liftbench1 n = sumTree_seq (mkTree_seq n)
 
 
 foreign import ccall unsafe "c_liftbench1"
-  cfastbench1 :: CInt -> CInt
+  cfastbench1 :: CInt -> IO CInt
 
-fastbench1 :: Int -> Int
-fastbench1 x =
-  let y = cfastbench1 (fromIntegral x)
-  in fromIntegral y
+fastbench1 :: Int -> IO Int
+fastbench1 x = do
+  y <- cfastbench1 (fromIntegral x)
+  pure $ fromIntegral y
 
 --------------------------------------------------------------------------------
 
