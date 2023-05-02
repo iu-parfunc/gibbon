@@ -53,11 +53,12 @@ main = do
   -- !fastn <- fastbench1 10
   -- print fastn
 
-  let size = 22
+  let size = 25
   let iters = 9
-  (res0, t0, t_all) <- bench bench1 size iters
-  return (show res0, show t0, show t_all)
+  (res0, t0, t_all_0) <- bench bench1 size iters
 
-  (res0, t0, t_all) <- bench fastbench1 size iters
-  return (show res0, show t0, show t_all)
+  (res1, t1, t_all_1) <- benchIO fastbench1 size iters
+
+  print (res0,t0)
+  print (res1,t1)
   pure ()
