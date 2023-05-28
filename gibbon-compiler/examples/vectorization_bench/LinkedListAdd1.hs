@@ -20,10 +20,10 @@ mkList len = if len <=0 then Nil
 
 gibbon_main = 
     let 
-        lst  = mkList 10
-        _ = printPacked lst
-        _ = printsym (quote "\n")
-        lst' = add1 lst
-        _ = printPacked lst'
-        _ = printsym (quote "\n")
+        lst  = mkList 1000000
+        --_ = printPacked lst
+        --_ = printsym (quote "\n")
+        lst' = iterate (add1 lst)
+        --_ = printPacked lst'
+        --_ = printsym (quote "\n")
      in () 
