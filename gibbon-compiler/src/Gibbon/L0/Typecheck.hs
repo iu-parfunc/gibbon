@@ -511,6 +511,13 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
           s2 <- unify (args !! 0) ll (ListTy elty)
           pure (s1 <> s2, BoolTy, PrimAppE pr args_tc)
 
+        SendBytes -> do
+          len3
+          let [_, bytes, port] = arg_tys'
+          s3 <- unify (args !! 1) bytes IntTy
+          s4 <- unify (args !! 2) port IntTy
+          pure (s1 <> s3 <> s4, IntTy, PrimAppE pr args_tc)
+
         LLConsP elty -> do
           len2
           let [elt, ll] = arg_tys

@@ -29,6 +29,9 @@
 #include <cilk/cilk_api.h>
 #endif
 
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
 #define KB 1024lu
 #define MB (KB * 1000lu)
 #define GB (MB * 1000lu)
@@ -1380,6 +1383,46 @@ int main(int argc, char** argv)
     __main_expr();
 
     return 0;
+}
+
+//------------------------------------------------------------------------------
+// Post functions
+//------------------------------------------------------------------------------
+
+IntTy send_bytes(CursorTy buffer, IntTy bytes, IntTy port){
+
+    int status; 
+    int client_fd;
+    struct sockaddr_in serv_addr;
+
+    if ((client_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        printf("Error: failed to create socket in function post \n");
+        return -1;
+    }
+  
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
+        printf("Error: Invalid address. Address not supported \n");
+        return -1;
+    }
+  
+    if ((status = connect(client_fd, (struct sockaddr*)&serv_addr, sizeof(serv_addr))) < 0) {
+        printf("Error: Connection Failed!\n");
+        return -1;
+    }
+    
+    //number of bytes expected to be sent.
+    send(client_fd, &bytes, sizeof(IntTy), 0);
+
+    //send the buffer
+    send(client_fd, buffer, bytes, 0);
+  
+    //close connection
+    close(client_fd);
+    return 0;
+
 }
 
 // -----------------------------------------------------------------------------

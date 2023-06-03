@@ -553,6 +553,15 @@ tcExp ddfs env funs constrs regs tstatein exp =
                    _ <- ensureEqualTy (es !! 0) ll (ListTy elty)
                    pure (BoolTy, tstate)
 
+                 SendBytes -> do 
+                  len3 
+                  let [buf, bytes, port] = tys
+                  _ <- ensureEqualTy (es !! 1) bytes IntTy
+                  _ <- ensureEqualTy (es !! 2) port IntTy
+                  if isPackedTy buf
+                  then pure (IntTy, tstate)
+                  else error $ "L2.Typecheck: SendBytes expects a Packed value. Got: " ++ sdoc buf
+
                  LLConsP elty -> do
                    len2
                    checkListElemTy elty

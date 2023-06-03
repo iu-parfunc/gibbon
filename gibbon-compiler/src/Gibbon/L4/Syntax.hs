@@ -255,6 +255,8 @@ data Prim
     | LLFreeP Ty
     | LLFree2P Ty
     | LLCopyP Ty
+    -- Send Bytes over Network 
+    | SendBytes
 
     | GetNumProcessors
     | ReadPackedFile (Maybe FilePath) TyCon

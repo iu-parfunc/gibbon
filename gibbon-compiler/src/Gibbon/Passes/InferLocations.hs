@@ -1723,6 +1723,7 @@ prim p = case p of
            LLFreeP elty   -> convertTy elty >>= return . LLFreeP
            LLFree2P elty   -> convertTy elty >>= return . LLFree2P
            LLCopyP elty   -> convertTy elty >>= return . LLCopyP
+           SendBytes  -> return SendBytes
            InplaceVSortP elty -> convertTy elty >>= return . InplaceVSortP
            GetNumProcessors -> pure GetNumProcessors
            ReadPackedFile{} -> err $ "Can't handle this primop yet in InferLocations:\n"++show p

@@ -1137,6 +1137,14 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                           , C.BlockDecl [cdecl| $ty:ty1 $id:outV = vector_alloc($exp:i', $id:tmp); |]
                           ]
 
+                 SendBytes -> do 
+                  let  [(outV, ty)] = bnds
+                       [buf, bytes, port] = rnds 
+                       buf'   = codegenTriv venv buf    --packed type 
+                       bytes' = codegenTriv venv bytes  --bytes 
+                       port'  = codegenTriv venv port   --port number
+                  return [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = send_bytes($exp:buf', $exp:bytes', $exp:port'); |]]
+
                  VFreeP _elty -> do
                    let [vec] = rnds
                    return [ C.BlockStm [cstm| vector_free($(codegenTriv venv vec)); |] ]

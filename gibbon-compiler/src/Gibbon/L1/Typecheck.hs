@@ -366,6 +366,15 @@ tcExp ddfs env exp =
           let [i] = tys
           _ <- ensureEqualTy (es !! 0) IntTy i
           pure (VectorTy elty)
+        
+        SendBytes -> do 
+          len3
+          let [buf, bytes, port] = tys
+          _ <- ensureEqualTy (es !! 1) bytes IntTy
+          _ <- ensureEqualTy (es !! 2) port IntTy
+          if isPackedTy buf
+          then pure IntTy
+          else error $ "L1.Typecheck: SendBytes expects a Packed buffer. Got: " ++ sdoc buf
 
         VFreeP elty -> do
           len1

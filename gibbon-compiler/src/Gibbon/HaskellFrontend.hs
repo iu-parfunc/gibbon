@@ -324,6 +324,8 @@ keywords = S.fromList $ map toVar $
     , "alloc_pdict", "insert_pdict", "lookup_pdict", "member_pdict", "fork_pdict", "join_pdict"
     -- linked lists
     , "alloc_ll", "is_empty_ll", "cons_ll", "head_ll", "tail_ll", "free_ll", "free2_ll", "copy_ll"
+    -- client operations over network
+    , "send_bytes"
     ] ++ M.keys primMap
 
 desugarTopType :: (Show a,  Pretty a) => TypeSynEnv -> Type a -> TyScheme
@@ -717,6 +719,10 @@ desugarExp type_syns toplevel e =
                     e2' <- desugarExp type_syns toplevel e2
                     ty  <- newMetaTy
                     pure $ PrimAppE (LLCopyP ty) [e2']
+                  else if f == "send_bytes"
+                  then do
+                    e2'  <- desugarExp type_syns toplevel e2
+                    pure $ PrimAppE (SendBytes) [e2']
                   else if f == "fst"
                   then do
                     e2' <- desugarExp type_syns toplevel e2

@@ -481,6 +481,8 @@ data Prim ty
                                --   evidence is erased (by the desugarer) by the time we get
                                --   to L0.
 
+          | SendBytes -- ^ Send Bytes over network
+          
           | Write3dPpmFile FilePath
 
           | ReadPackedFile (Maybe FilePath) TyCon (Maybe Var) ty

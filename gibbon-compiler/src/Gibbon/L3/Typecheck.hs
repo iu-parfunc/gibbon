@@ -609,6 +609,14 @@ tcExp isPacked ddfs env exp =
           let [ll] = tys
           _ <- ensureEqualTy (es !! 0) ll (ListTy elty)
           pure (BoolTy)
+        
+        SendBytes -> do 
+          len3
+          let [buf, bytes, port] = tys
+          _ <- ensureEqualTy (es !! 0) buf CursorTy
+          _ <- ensureEqualTy (es !! 1) bytes IntTy
+          _ <- ensureEqualTy (es !! 2) port IntTy 
+          pure IntTy
 
         LLConsP elty -> do
           len2

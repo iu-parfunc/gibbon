@@ -42,6 +42,9 @@ module Gibbon.Prim
 
       -- * Parallelism
     , spawn, sync, lsync, par, getNumProcessors, is_big
+    
+      -- send buffer of specified bytes to a port
+    , send_bytes
 
       -- * Tuples
     , fst, snd, Maybe(..)
@@ -290,6 +293,19 @@ getNumProcessors = undefined
 
 is_big :: a -> Bool
 is_big = undefined
+
+----------------------------------------------------------------------------------
+-- send_bytes method
+-- Args: 
+-- a -> Packed data to send
+-- Int -> bytes to send
+-- Int -> Port number   
+-- Return type 
+-- Int -> success/fail
+----------------------------------------------------------------------------------
+
+send_bytes :: Packed a => a -> Int -> Int -> Int  
+send_bytes = undefined
 
 --------------------------------------------------------------------------------
 -- Linear types (taken from linear-base)
