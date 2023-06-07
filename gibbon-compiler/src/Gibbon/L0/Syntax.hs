@@ -653,6 +653,7 @@ recoverType ddfs env2 ex =
         IntHashInsert-> error "primRetTy1: IntHashInsert not handled yet"
         IntHashLookup-> error "primRetTy1: IntHashLookup not handled yet"
         Write3dPpmFile{}-> error "primRetTy1: Write3dPpmFile not handled yet"
+        SpawnServer -> ProdTy []
 
 
 {-

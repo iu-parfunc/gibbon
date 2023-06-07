@@ -563,6 +563,10 @@ tcExp ddfs env exp =
           len0
           pure IntTy
 
+        SpawnServer -> do 
+          len0 
+          pure (ProdTy [])
+
         IntHashEmpty -> do
           len0
           return IntHashTy

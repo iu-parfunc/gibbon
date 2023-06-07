@@ -599,6 +599,10 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  GetNumProcessors -> do
                    len0
                    pure (IntTy, tstate)
+                  
+                 SpawnServer -> do 
+                   len0 
+                   pure (ProdTy [], tstate)  
 
                  PrintInt -> do
                    len1

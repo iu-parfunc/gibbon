@@ -335,6 +335,8 @@ data Prim
 
     | FreeSymTable
 
+    | SpawnServer  -- ^ Spawn a C server
+
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
 data FunDecl = FunDecl

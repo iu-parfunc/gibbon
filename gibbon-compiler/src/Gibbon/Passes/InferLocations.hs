@@ -1739,6 +1739,7 @@ prim p = case p of
            IntHashInsert{} -> return IntHashInsert
            IntHashLookup{} -> return IntHashLookup
            Write3dPpmFile{} -> err $ "Write3dPpmFile not handled yet."
+           SpawnServer -> pure SpawnServer
 
 emptyEnv :: FullEnv
 emptyEnv = FullEnv { dataDefs = emptyDD

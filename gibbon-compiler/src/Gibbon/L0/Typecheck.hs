@@ -552,6 +552,11 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
           len0
           pure (s1, IntTy, PrimAppE pr args_tc)
 
+        SpawnServer -> do 
+          len0 
+          pure (s1, ProdTy [], PrimAppE pr args_tc)
+
+
         ErrorP _str ty -> do
           len0
           pure (s1, ty, PrimAppE pr args_tc)

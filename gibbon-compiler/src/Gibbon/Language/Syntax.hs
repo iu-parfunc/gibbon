@@ -516,6 +516,9 @@ data Prim ty
 
           | Gensym
 
+          -- Primitive to spawn a server 
+          | SpawnServer
+
   deriving (Read, Show, Eq, Ord, Generic, NFData, Functor, Foldable, Traversable, Out)
 
 

@@ -482,6 +482,7 @@ primMap = M.fromList
   , ("empty_int_hash", IntHashEmpty)
   , ("insert_int_hash", IntHashInsert)
   , ("lookup_int_hash", IntHashLookup)
+  , ("spawn_server", SpawnServer)
   ]
 
 desugarExp :: (Show a, Pretty a) => TypeSynEnv -> TopTyEnv -> Exp a -> PassM Exp0
