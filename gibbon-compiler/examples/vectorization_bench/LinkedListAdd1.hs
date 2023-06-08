@@ -17,6 +17,11 @@ mkList len = if len <=0 then Nil
              else if (mod len 4) == 0 then Cons4 len (len-1) (len-2) (len-3) (mkList (len-4))
              else Cons len (mkList (len-1) )
 
+pSum :: List -> List
+pSum lst = case lst of
+            Cons4 a b c d rst -> let h = (head l) in let l = (pSum rst) in Cons4 (a+b+c+d+h) (b+c+d+h) (c+d+h) (d+h) l
+            Cons a rst -> let h = (head l) in let l = (pSum rst) in Cons (a + h) l
+            Nil -> Nil
 
 gibbon_main = 
     let 
