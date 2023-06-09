@@ -18,6 +18,12 @@ mkList len = if len <=0 then Nil
              else Cons len (mkList (len-1) )
 
 
+pSum :: List -> List
+pSum lst = case lst of
+        Cons4 a b c d rst -> let h = (sum rst) in Cons4 (a+b+c+d+h) (b+c+d+h) (c+d+h) (d+h) (pSum rst)
+        Cons a rst -> let h = (sum rst) in Cons (a+h) (pSum rst)
+        Nil -> Nil
+        
 gibbon_main = 
     let 
         lst  = mkList 1000000
