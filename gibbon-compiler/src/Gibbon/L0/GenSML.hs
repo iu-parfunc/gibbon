@@ -5,25 +5,24 @@ import Gibbon.Common
 
 import Text.PrettyPrint hiding ((<>))
 
--- not quite sure what to do for these
 ppExt :: E0Ext Ty0 Ty0 -> Doc
 ppExt ex = case ex of
-  LambdaE x0 pe -> 
+  LambdaE x0 pe ->
     parens $ hsep
       [ hsep $ ppVar . fst <$> x0
       , text "=>"
       , ppPreExp pe
       ]
-  PolyAppE pe pe' -> 
+  PolyAppE pe pe' ->
     hsep $ parens . ppPreExp <$> [pe, pe']
-  FunRefE ty0s var -> _
-  BenchE var ty0s pes b -> _
-  ParE0 pes -> _
-  PrintPacked ty0 pe -> _
-  CopyPacked ty0 pe -> _
-  TravPacked ty0 pe -> _
-  L loc pe -> _
-  LinearExt le -> _
+  FunRefE _ty0s _var -> error "FunRefE"
+  BenchE _var _ty0s _pes _b -> error "BenchE"
+  ParE0 _pes -> error "ParE0"
+  PrintPacked _ty0 _pe -> error "PrintPacked"  -- Todo
+  CopyPacked _ty0 _pe -> error "CopyPacked"
+  TravPacked _ty0 _pe -> error "TravPacked"
+  L _loc _pe -> error "L"
+  LinearExt _le -> error "LinearExt"
 
 ppPreExp :: PreExp E0Ext Ty0 Ty0 -> Doc
 ppPreExp pe = case pe of
@@ -34,19 +33,43 @@ ppPreExp pe = case pe of
   LitSymE (Var s) -> quotes $ text $ show s
   AppE var _ pes -> ppApp (ppVar var) pes
   PrimAppE pr pes -> ppPrim pr pes
-  LetE x0 pe' -> _
-  IfE pe' pe2 pe3 -> _
-  MkProdE pes -> _
-  ProjE n pe' -> _
-  CaseE pe' x0 -> _
-  DataConE ty0 s pes -> _
-  TimeIt pe' ty0 b -> _
-  WithArenaE var pe' -> _
-  SpawnE var ty0s pes -> _
-  SyncE -> _
-  MapE x0 pe' -> _
-  FoldE x0 x1 pe' -> _
-  Ext ee -> _
+  LetE (v, _, _, e) pe' ->
+    hsep
+      [ "let val", ppVar v, "="
+      , ppPreExp e, "in"
+      , ppPreExp pe'
+      ]
+  IfE pe' pe2 pe3 ->
+    parens $ hsep
+      [ "if", ppPreExp pe'
+      , "then", ppPreExp pe2
+      , "else", ppPreExp pe3
+      ]
+  MkProdE pes ->
+    parens $ interleave (text ", ") $ ppPreExp <$> pes
+  ProjE n pe' ->
+    parens $ hsep [hcat [text "#", int n], ppPreExp pe']
+  CaseE pe' x0 ->
+    parens $ hsep
+      [ hsep [text "case", ppPreExp pe', text "of"]
+      , interleave (text "|") ((\(dc, vs, e) -> hsep
+        [ text dc
+        , parens $ hsep $ ppVar . fst <$> vs
+        , "=>", ppPreExp e
+        ]) <$> x0)
+      ]
+  DataConE _ty0 s pes -> 
+    hsep [text s, parens $ hsep $ ppPreExp <$> pes]
+
+  TimeIt _pe' _ty0 _b -> _
+
+  WithArenaE _var _pe' -> error "WithArenaE"
+  SpawnE _var _ty0s _pes -> error "SpawnE"
+  SyncE -> error "SyncE"
+  MapE _x0 _pe' -> error "MapE"
+  FoldE _x0 _x1 _pe' -> error "FoldE"
+
+  Ext ee -> ppExt ee
 
 ppApp :: Doc -> [PreExp E0Ext Ty0 Ty0] -> Doc
 ppApp var pes = hsep $ var : (ppPreExp <$> pes)
@@ -69,7 +92,7 @@ ppPrim pr pes = case pr of
   FSubP -> binary "-" pes
   FMulP -> binary "*" pes
   FDivP -> binary "/" pes
-  FExpP -> 
+  FExpP ->
     let
       (l, r) = extractBinary "pow" pes
     in
@@ -101,74 +124,67 @@ ppPrim pr pes = case pr of
   PrintInt -> ppApp (text "print") pes <> semi
   PrintChar -> ppApp (text "print") pes <> semi
   PrintFloat -> ppApp (text "print") pes <> semi
-  PrintBool -> 
+  PrintBool ->
     ppApp (text "(fn true => \"True\" | false => \"False\")") pes <> semi
   PrintSym -> ppApp (text "print") pes <> semi
   ReadInt -> error "ReadInt"  -- Have every program read from stdin?
-  DictInsertP _ -> empty  -- Simulate all this?
-  DictLookupP _ -> empty
-  DictEmptyP _ -> empty
-  DictHasKeyP _ -> empty
-  SymSetEmpty -> empty
-  SymSetInsert -> empty
-  SymSetContains -> empty
-  SymHashEmpty -> empty
-  SymHashInsert -> empty
-  SymHashLookup -> empty
-  SymHashContains -> empty
-  IntHashEmpty -> empty
-  IntHashInsert -> empty
-  IntHashLookup -> empty
-  PDictAllocP ty0 ty0' -> _
-  PDictInsertP ty0 ty0' -> _
-  PDictLookupP ty0 ty0' -> _
-  PDictHasKeyP ty0 ty0' -> _
-  PDictForkP ty0 ty0' -> _
-  PDictJoinP ty0 ty0' -> _
-  LLAllocP ty0 -> _
-  LLIsEmptyP ty0 -> _
-  LLConsP ty0 -> _
-  LLHeadP ty0 -> _
-  LLTailP ty0 -> _
-  LLFreeP ty0 -> _
-  LLFree2P ty0 -> _
-  LLCopyP ty0 -> _
-  VAllocP ty0 -> _
-  VFreeP ty0 -> _
-  VFree2P ty0 -> _
-  VLengthP ty0 -> _
-  VNthP ty0 -> _
-  VSliceP ty0 -> _
-  InplaceVUpdateP ty0 -> _
-  VConcatP ty0 -> _
-  VSortP ty0 -> _
-  InplaceVSortP ty0 -> _
-  VMergeP ty0 -> _
-  Write3dPpmFile s -> _
-  ReadPackedFile m_s s m_var ty0 -> _
-  WritePackedFile s ty0 -> _
-  ReadArrayFile ma ty0 -> _
-  RequestEndOf -> _
-  RequestSizeOf -> _
-  Gensym -> _
+  DictInsertP _ -> error "DictInsertP"
+  DictLookupP _ -> error "DictLookupP"
+  DictEmptyP _ -> error "DictEmptyP"
+  DictHasKeyP _ -> error "DictHasKeyP"
+  SymSetEmpty -> error "SymSetEmpty"
+  SymSetInsert -> error "SymSetInsert"
+  SymSetContains -> error "SymSetContains"
+  SymHashEmpty -> error "SymHashEmpty"
+  SymHashInsert -> error "SymHashInsert"
+  SymHashLookup -> error "SymHashLookup"
+  SymHashContains -> error "SymHashContains"
+  IntHashEmpty -> error "IntHashEmpty"
+  IntHashInsert -> error "IntHashInsert"
+  IntHashLookup -> error "IntHashLookup"
+  PDictAllocP _ty0 _ty0' -> error "PDictAllocP"
+  PDictInsertP _ty0 _ty0' -> error "PDictInsertP"
+  PDictLookupP _ty0 _ty0' -> error "PDictLookupP"
+  PDictHasKeyP _ty0 _ty0' -> error "PDictHasKeyP"
+  PDictForkP _ty0 _ty0' -> error "PDictForkP"
+  PDictJoinP _ty0 _ty0' -> error "PDictJoinP"
+  LLAllocP _ty0 -> error "LLAllocP"
+  LLIsEmptyP _ty0 -> error "LLIsEmptyP"  -- Implement these? 
+  LLConsP _ty0 -> error "LLConsP"
+  LLHeadP _ty0 -> error "LLHeadP"
+  LLTailP _ty0 -> error "LLTailP"
+  LLFreeP _ty0 -> error "LLFreeP"
+  LLFree2P _ty0 -> error "LLFree2P"
+  LLCopyP _ty0 -> error "LLCopyP"
+  VAllocP _ty0 -> error "VAllocP"
+  VFreeP _ty0 -> error "VFreeP"
+  VFree2P _ty0 -> error "VFree2P"
+  VLengthP _ty0 -> error "VLengthP"
+  VNthP _ty0 -> error "VNthP"
+  VSliceP _ty0 -> error "VSliceP"
+  InplaceVUpdateP _ty0 -> error "InplaceVUpdateP"
+  VConcatP _ty0 -> error "VConcatP"
+  VSortP _ty0 -> error "VSortP"
+  InplaceVSortP _ty0 -> error "InplaceVSortP"
+  VMergeP _ty0 -> error "VMergeP"
+  Write3dPpmFile _s -> error "Write3dPpmFile"
+  ReadPackedFile _m_s _s _m_var _ty0 -> error "ReadPackedFile"
+  WritePackedFile _s _ty0 -> error "WritePackedFile"
+  ReadArrayFile _ma _ty0 -> error "ReadArrayFile"
+  RequestEndOf -> error "RequestEndOf"
+  RequestSizeOf -> error "RequestSizeOf"
+  Gensym -> error "Gensym"
 
 ppVar :: Var -> Doc
 ppVar (Var s) = text $ show s
 
--- interleave :: Doc -> [Doc] -> Doc
--- interleave sepr lst = case lst of
---   [] -> empty
---   d : ds -> d <+> foldr (\x -> (sepr <+> x <>)) empty ds
-
-    -- es@[_, _] -> parens $ interleave (text "+") $ ppPreExp <$> es
-    -- es -> error $ mconcat 
-    --   [ "L0 error: AddP is provided "
-    --   , show $ length es
-    --   , " arguments"
-    --   ]
+interleave :: Doc -> [Doc] -> Doc
+interleave sepr lst = case lst of
+  [] -> empty
+  d : ds -> d <+> foldr (\x -> (sepr <+> x <>)) empty ds
 
 binary :: String -> [PreExp E0Ext Ty0 Ty0] -> Doc
-binary opSym pes = 
+binary opSym pes =
   parens $ hsep [l, text opSym, r]
   where
     (l, r) = extractBinary opSym pes
