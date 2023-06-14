@@ -18,7 +18,8 @@ ppExt ex = case ex of
   FunRefE _ty0s _var -> error "FunRefE"
   BenchE _var _ty0s _pes _b -> error "BenchE"
   ParE0 _pes -> error "ParE0"
-  PrintPacked _ty0 _pe -> error "PrintPacked"  -- Todo
+  PrintPacked _ty0 pe -> 
+    hsep [text "print", parens $ ppPreExp pe]
   CopyPacked _ty0 _pe -> error "CopyPacked"
   TravPacked _ty0 _pe -> error "TravPacked"
   L _loc _pe -> error "L"
