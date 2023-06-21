@@ -358,6 +358,7 @@ rewriteReturns tl bnds =
 codegenTriv :: VEnv -> Triv -> C.Exp
 codegenTriv _ (VarTriv v) = C.Var (C.toIdent v noLoc) noLoc
 codegenTriv _ (IntTriv i) = [cexp| $int:i |]
+codegenTriv _ (CharTriv i) = [cexp| $char:i |]
 codegenTriv _ (FloatTriv i) = [cexp| $double:i |]
 codegenTriv _ (BoolTriv b) = case b of
                                True -> [cexp| true |]
@@ -375,6 +376,7 @@ codegenTriv venv (ProdTriv ls) =
 codegenTriv venv (ProjTriv i trv) =
   let field = "field" ++ show i
   in [cexp| $(codegenTriv venv trv).$id:field |]
+
 
 -- Type environment
 type FEnv = M.Map Var ([Ty], Ty)
@@ -771,12 +773,12 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                    if countRegions
                    then
                      pure
-                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = alloc_counted_region($id:bufsize); |]
+                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = alloc_counted_region($bufsize); |]
                        , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:reg->reg_heap; |]
                        ]
                    else
                      pure
-                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = alloc_region($id:bufsize); |]
+                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = alloc_region($bufsize); |]
                        , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:reg->reg_heap; |]
                        ]
 
@@ -788,28 +790,28 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                    if countRegions
                    then
                      pure
-                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = alloc_counted_region($id:bufsize); |]
+                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = alloc_counted_region($bufsize); |]
                        , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:reg->reg_heap; |]
                        ]
                    else
                      pure
-                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = alloc_region($id:bufsize); |]
+                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = alloc_region($bufsize); |]
                        , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:reg->reg_heap; |]
                        ]
                  ScopedBuffer mul -> let [(outV,CursorTy)] = bnds
                                          bufsize = codegenMultiplicity mul
                                      in pure
-                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_SCOPED($id:bufsize); |] ]
+                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_SCOPED($bufsize); |] ]
 
                  ScopedParBuffer mul -> let [(outV,CursorTy)] = bnds
                                             bufsize = codegenMultiplicity mul
                                         in pure
-                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_SCOPED($id:bufsize); |] ]
+                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_SCOPED($bufsize); |] ]
 
                  InitSizeOfBuffer mul -> let [(sizev,IntTy)] = bnds
                                              bufsize = codegenMultiplicity mul
                                          in pure
-                                            [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizev = $id:bufsize; |] ]
+                                            [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizev = $bufsize; |] ]
 
                  FreeBuffer -> if noGC
                                then pure []
@@ -920,6 +922,13 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                        [] -> pure [ C.BlockStm [cstm| printf("%lld", $(codegenTriv venv arg)); |] ]
                        _ -> error $ "wrong number of return bindings from PrintInt: "++show bnds
 
+                 PrintChar ->
+                     let [arg] = rnds in
+                     case bnds of
+                       [(outV,ty)] -> pure [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = printf("%c", $(codegenTriv venv arg)); |] ]
+                       [] -> pure [ C.BlockStm [cstm| printf("%c", $(codegenTriv venv arg)); |] ]
+                       _ -> error $ "wrong number of return bindings from PrintInt: "++show bnds
+
                  PrintFloat ->
                      let [arg] = rnds in
                      case bnds of
@@ -1022,6 +1031,7 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                            let parse_in_c t = case t of
                                                 IntTy   -> "%lld"
                                                 FloatTy -> "%f"
+                                                CharTy  -> "%c"
                                                 _ -> error $ "ReadArrayFile: Lists of type " ++ sdoc ty ++ " not allowed."
 
                            elem <- gensym "arr_elem"
@@ -1041,6 +1051,10 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                                        one <- gensym "tmp"
                                        let assn = C.BlockStm [cstm| $id:elem = $id:one ; |]
                                        pure ([one], [parse_in_c ty], [ assn ], [ C.BlockDecl [cdecl| $ty:(codegenTy FloatTy) $id:one; |] ])
+                                     CharTy -> do 
+                                       one <- gensym "tmp"
+                                       let assn = C.BlockStm [cstm| $id:elem = $id:one ; |]
+                                       pure ([one], [parse_in_c ty], [ assn ], [ C.BlockDecl [cdecl| $ty:(codegenTy CharTy) $id:one; |] ])
                                      ProdTy tys -> do
                                        vs <- mapM (\_ -> gensym "tmp") tys
                                        let decls = map (\(name, t) -> C.BlockDecl [cdecl| $ty:(codegenTy t) $id:name; |] ) (zip vs tys)
@@ -1160,6 +1174,10 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                      IntTriv{} -> do
                         tmp <- gensym "tmp"
                         return [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:tmp = $exp:xexp; |]
+                               , C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = vector_inplace_update($id:old_ls, $exp:i', &$id:tmp); |] ]
+                     CharTriv{} -> do
+                        tmp <- gensym "tmp"
+                        return [ C.BlockDecl [cdecl| $ty:(codegenTy CharTy) $id:tmp = $exp:xexp; |]
                                , C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = vector_inplace_update($id:old_ls, $exp:i', &$id:tmp); |] ]
                      FloatTriv{} -> do
                         tmp <- gensym "tmp"
@@ -1311,13 +1329,21 @@ codegenTail _ _ _ (Goto lbl) _ty _ = do
 
 -- | The sizes for all mulitplicities are defined as globals in the RTS.
 -- Note: Must be consistent with the names in RTS!
-codegenMultiplicity :: Multiplicity -> Var
+codegenMultiplicity :: Multiplicity -> C.Exp
 codegenMultiplicity mul =
   case mul of
-    BigInfinite -> toVar "global_init_biginf_buf_size"
-    Infinite    -> toVar "global_init_inf_buf_size"
-    Bounded     -> error $ "codegenMultiplicity: Bounded buffers not handled yet."
+    BigInfinite -> C.Var (C.toIdent (toVar "global_init_biginf_buf_size") noLoc) noLoc
+    Infinite    -> C.Var (C.toIdent (toVar "global_init_inf_buf_size") noLoc) noLoc
+    -- reserve 32 bytes at the end.
+    Bounded i   ->
+      let rounded = i+18
+      in [cexp| $int:rounded |]
 
+-- | Round up a number to a power of 2.
+--
+-- Copied from https://stackoverflow.com/a/466256.
+roundUp :: Int -> Int
+roundUp n = ceiling (2 ^ (ceiling (log (fromIntegral n) / log 2)))
 
 splitAlts :: Alts -> (Alts, Alts)
 splitAlts (TagAlts ls) = (TagAlts (L.init ls), TagAlts [last ls])
@@ -1368,6 +1394,7 @@ genSwitch venv fenv sort_fns lbl tr alts lastE ty sync_deps =
 --
 codegenTy :: Ty -> C.Type
 codegenTy IntTy = [cty|typename IntTy|]
+codegenTy CharTy = [cty|typename CharTy|]
 codegenTy FloatTy= [cty|typename FloatTy|]
 codegenTy BoolTy = [cty|typename BoolTy|]
 codegenTy TagTyPacked = [cty|typename TagTyPacked|]
@@ -1394,6 +1421,7 @@ makeName tys = concatMap makeName' tys ++ "Prod"
 
 makeName' :: Ty -> String
 makeName' IntTy       = "Int64"
+makeName' CharTy      = "Char"
 makeName' FloatTy     = "Float32"
 makeName' SymTy       = "Sym"
 makeName' BoolTy      = "Bool"

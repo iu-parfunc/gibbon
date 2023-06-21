@@ -159,10 +159,13 @@ instance Pretty FunRec where
 instance Pretty FunInline where
     pprintWithStyle _sty = text . show
 
+instance Pretty FunMeta where
+    pprintWithStyle _sty = text . show
+
 -- Functions:
 instance HasPretty ex => Pretty (FunDef ex) where
-    pprintWithStyle sty FunDef{funName,funArgs,funTy,funBody,funRec,funInline} =
-        braces (text "rec:" <+> pprintWithStyle sty funRec <> text ", inline:" <+> pprintWithStyle sty funInline) $$
+    pprintWithStyle sty FunDef{funName,funArgs,funTy,funBody,funMeta} =
+        braces (text "meta:" <+> pprintWithStyle sty funMeta) $$
           text (fromVar funName) <+> doublecolon <+> pprintWithStyle sty funTy
             $$ renderBod <> text "\n"
       where
@@ -277,6 +280,7 @@ instance (Pretty l) => Pretty (UrTy l) where
     pprintWithStyle sty ty =
         case ty of
           IntTy  -> text "Int"
+          CharTy -> text "Char"
           FloatTy-> text "Float"
           SymTy  -> text "Sym"
           BoolTy -> text "Bool"
@@ -335,6 +339,7 @@ instance HasPrettyToo e l d => Pretty (PreExp e l d) where
         case ex0 of
           VarE v -> pprintWithStyle sty v
           LitE i -> int i
+          CharE i -> quotes (char i)
           FloatE i  -> double i
           LitSymE v -> text "\"" <> pprintWithStyle sty v <> text "\""
           AppE v locs ls -> parens $
@@ -437,13 +442,17 @@ instance Pretty l => Pretty (L2.PreLocExp l) where
           FromEndLE loc -> lparen <> text "fromendle" <+> pprint loc <> rparen
           FreeLE -> lparen <> text "free" <> rparen
 
+instance Pretty RegionSize where
+    pprintWithStyle _ (BoundedSize x) = parens $ text "Bounded" <+> int x
+    pprintWithStyle _ Undefined       = text "Unbounded"
+
 instance HasPrettyToo E2Ext l (UrTy l) => Pretty (L2.E2Ext l (UrTy l)) where
     pprintWithStyle _ ex0 =
         case ex0 of
           L2.AddFixed v i -> text "addfixed" <+>
                                doc v <+> doc i
-          LetRegionE r _ _ e -> text "letregion" <+>
-                               doc r <+> text "in" $+$ pprint e
+          LetRegionE r sz _ e -> text "letregion" <+> pprint sz <+>
+                                 doc r <+> text "in" $+$ pprint e
           LetParRegionE r _ _ e -> text "letparregion" <+>
                                  doc r <+> text "in" $+$ pprint e
           LetLocE loc le e -> text "letloc" <+>
@@ -484,6 +493,7 @@ instance Pretty L0.Ty0 where
   pprintWithStyle sty ty =
       case ty of
         L0.IntTy      -> text "Int"
+        L0.CharTy     -> text "Char"
         L0.FloatTy    -> text "Float"
         L0.SymTy0     -> text "Sym"
         L0.BoolTy     -> text "Bool"
@@ -577,6 +587,7 @@ pprintHsWithEnv p@Prog{ddefs,fundefs,mainExp} =
         -- Straightforward recursion ...
         VarE{}     -> False
         LitE{}     -> False
+        CharE{}    -> False
         FloatE{}   -> False
         LitSymE{}  -> False
         AppE{}     -> False
@@ -612,6 +623,7 @@ pprintHsWithEnv p@Prog{ddefs,fundefs,mainExp} =
       case ex0 of
           VarE v -> pprintWithStyle sty v
           LitE i -> int i
+          CharE i -> char i
           FloatE i -> double i
           LitSymE v -> text "\"" <> pprintWithStyle sty v <> text "\""
           AppE v _locs ls -> pprintWithStyle sty v <+>

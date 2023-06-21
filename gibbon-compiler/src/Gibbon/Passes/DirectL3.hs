@@ -28,14 +28,13 @@ directL3 prg@(Prog ddfs fndefs mnExp) = do
       ddf{dataCons  = map(second (map(second goTy))) dataCons}
 
     fd :: FunDef1 -> FunDef3
-    fd FunDef{funName,funArgs,funTy,funBody,funRec,funInline} =
+    fd FunDef{funName,funArgs,funTy,funBody,funMeta} =
         let env2 = extendsVEnv (M.fromList $ zip funArgs (fst funTy)) init_fun_env in
         FunDef { funName = funName
                , funTy   = (map goTy $ fst funTy, goTy $ snd funTy)
                , funArgs = funArgs
                , funBody = go env2 funBody
-               , funRec  = funRec
-               , funInline = funInline
+               , funMeta = funMeta
                }
 
     go :: Env2 Ty1 -> Exp1 -> Exp3
@@ -43,6 +42,7 @@ directL3 prg@(Prog ddfs fndefs mnExp) = do
       case ex of
         VarE v    -> VarE v
         LitE n    -> LitE n
+        CharE c   -> CharE c
         FloatE n  -> FloatE n
         LitSymE v -> LitSymE v
         AppE v locs ls   -> AppE v locs $ map (go env2) ls
@@ -77,7 +77,8 @@ directL3 prg@(Prog ddfs fndefs mnExp) = do
     goTy :: Ty1 -> Ty3
     goTy ty =
       case ty of
-        IntTy -> IntTy
+        IntTy  -> IntTy
+        CharTy -> CharTy
         FloatTy-> FloatTy
         SymTy -> SymTy
         BoolTy -> BoolTy

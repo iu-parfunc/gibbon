@@ -64,9 +64,10 @@ import           Gibbon.Passes.Simplifier     (simplifyL1, lateInlineTriv)
 -- import           Gibbon.Passes.Sequentialize  (sequentialize)
 
 import           Gibbon.Passes.DirectL3       (directL3)
-import           Gibbon.Passes.InferLocations (inferLocs)
+import           Gibbon.Passes.InferLocations (inferLocs, copyOutOfOrderPacked, fixRANs)
+import           Gibbon.Passes.Simplifier     (simplifyLocBinds)
 -- This is the custom pass reference to issue #133 that moves regionsInwards
-import           Gibbon.Passes.RegionsInwards (regionsInwards)
+-- import           Gibbon.Passes.RegionsInwards (regionsInwards)
 -- import           Gibbon.Passes.RepairProgram  (repairProgram)
 import           Gibbon.Passes.AddRAN         (addRAN,needsRAN)
 import           Gibbon.Passes.AddTraversals  (addTraversals)
@@ -77,6 +78,7 @@ import           Gibbon.Passes.InferRegionScope (inferRegScope)
 import           Gibbon.Passes.RouteEnds      (routeEnds)
 import           Gibbon.Passes.FollowIndirections (followIndirections)
 import           Gibbon.Passes.ThreadRegions  (threadRegions)
+import           Gibbon.Passes.InferFunAllocs (inferFunAllocs)
 import           Gibbon.Passes.Cursorize      (cursorize)
 import           Gibbon.Passes.FindWitnesses  (findWitnesses)
 -- -- import           Gibbon.Passes.ShakeTree      (shakeTree)
@@ -86,7 +88,7 @@ import           Gibbon.Passes.Lower          (lower)
 import           Gibbon.Passes.RearrangeFree  (rearrangeFree)
 import           Gibbon.Passes.Codegen        (codegenProg)
 import           Gibbon.Passes.Fusion2        (fusion2)
-import Gibbon.Passes.CalculateBounds (calculateBounds)
+-- import Gibbon.Passes.CalculateBounds          (inferRegSize)
 import           Gibbon.Pretty
 
 
@@ -531,10 +533,14 @@ passes config@Config{dynflags} l0 = do
               -- branches before InferLocations.
 
               -- Note: L1 -> L2
+              l1 <- goE1 "copyOutOfOrderPacked" copyOutOfOrderPacked l1
+              l1 <- go "L1.typecheck"    L1.tcProg     l1
               l2 <- goE2 "inferLocations"  inferLocs    l1
+              l2 <- goE2 "simplifyLocBinds" simplifyLocBinds l2
+              l2 <- go   "fixRANs"         fixRANs      l2
               l2 <- go   "L2.typecheck"    L2.tcProg    l2
-              l2 <- go "regionsInwards"    regionsInwards l2
-              l2 <- go   "L2.typecheck"    L2.tcProg    l2
+              --l2 <- go "regionsInwards"    regionsInwards l2
+              --l2 <- go   "L2.typecheck"    L2.tcProg    l2
               l2 <- goE2 "L2.flatten"      flattenL2    l2
               l2 <- go   "L2.typecheck"    L2.tcProg    l2
               l2 <- if gibbon1 || no_rcopies
@@ -583,7 +589,11 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
                   let need = needsRAN l2
                   l1 <- goE1 "addRAN"        (addRAN need) l1
                   l1 <- go "L1.typecheck"    L1.tcProg     l1
+                  l1 <- goE1 "copyOutOfOrderPacked" copyOutOfOrderPacked l1
+                  l1 <- go "L1.typecheck"    L1.tcProg     l1
                   l2 <- go "inferLocations2" inferLocs     l1
+                  l2 <- go "simplifyLocBinds" simplifyLocBinds l2
+                  l2 <- go "fixRANs"         fixRANs       l2
                   l2 <- go "L2.flatten"      flattenL2     l2
                   l2 <- go "findWitnesses" findWitnesses   l2
                   l2 <- go "L2.typecheck"    L2.tcProg     l2
@@ -618,12 +628,16 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
               -- N.B ThreadRegions doesn't produce a type-correct L2 program --
               -- it adds regions to 'locs' in AppE and LetE which the
               -- typechecker doesn't know how to handle.
-              l2 <- go "threadRegions"    threadRegions l2
+              l2 <- go "inferFunAllocs"   inferFunAllocs l2
+              l2 <- go "threadRegions"    threadRegions  l2
 
               -- Note: L2 -> L3
               -- TODO: Compose L3.TcM with (ReaderT Config)
-              l3 <- go "calculateBounds "        calculateBounds l2
-              l3 <- go "cursorize"        cursorize     l3
+              l2 <- if gibbon1
+                    then pure l2
+                    else pure l2
+                    --else go "inferRegSize" inferRegSize l2
+              l3 <- go "cursorize"        cursorize     l2
               -- _ <- lift $ putStrLn (pprender l3)
               l3 <- go "L3.flatten"       flattenL3     l3
               l3 <- go "L3.typecheck" (L3.tcProg isPacked) l3

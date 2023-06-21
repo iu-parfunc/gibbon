@@ -45,6 +45,7 @@ instance (Out l, Show l, Show d, Out d, Expression (e l d))
        case e of
         VarE _     -> True
         LitE _     -> True
+        CharE _    -> True
         FloatE{}   -> True
         LitSymE _  -> True
         PrimAppE{} -> False
@@ -76,6 +77,7 @@ instance FreeVars (e l d) => FreeVars (PreExp e l d) where
   gFreeVars ex = case ex of
       VarE v    -> S.singleton v
       LitE _    -> S.empty
+      CharE _   -> S.empty
       FloatE{}  -> S.empty
       LitSymE _ -> S.empty
       ProjE _ e -> gFreeVars e
@@ -115,6 +117,7 @@ instance (Show (), Out (), Expression (e () (UrTy ())),
     case ex of
       VarE v       -> M.findWithDefault (error $ "Cannot find type of variable " ++ show v ++ " in " ++ show (vEnv env2)) v (vEnv env2)
       LitE _       -> IntTy
+      CharE _      -> CharTy
       FloatE{}     -> FloatTy
       LitSymE _    -> SymTy
       AppE v _ _   -> outTy $ fEnv env2 # v
@@ -157,6 +160,7 @@ instance HasRenamable e l d => Renamable (PreExp e l d) where
     case ex of
       VarE v -> VarE (go v)
       LitE{}    -> ex
+      CharE{}   -> ex
       FloatE{}  -> ex
       LitSymE{} -> ex
       AppE f locs args -> AppE (go f) (gol locs) (gol args)
@@ -244,6 +248,7 @@ subst old new ex =
     VarE v | v == old  -> new
            | otherwise -> VarE v
     LitE _             -> ex
+    CharE{}            -> ex
     FloatE{}           -> ex
     LitSymE _          -> ex
     AppE v loc ls      -> AppE v loc (map go ls)
@@ -288,6 +293,7 @@ substE old new ex =
 
     VarE v          -> VarE v
     LitE _          -> ex
+    CharE _         -> ex
     FloatE{}        -> ex
     LitSymE _       -> ex
     AppE v loc ls   -> AppE v loc (map go ls)
@@ -324,6 +330,7 @@ hasTimeIt rhs =
       DataConE{}   -> False
       VarE _       -> False
       LitE _       -> False
+      CharE _      -> False
       FloatE{}     -> False
       LitSymE _    -> False
       AppE _ _ _   -> False
@@ -354,6 +361,7 @@ hasSpawns rhs =
       DataConE{}   -> False
       VarE{}       -> False
       LitE{}       -> False
+      CharE{}      -> False
       FloatE{}     -> False
       LitSymE{}    -> False
       AppE{}       -> False
@@ -448,6 +456,7 @@ isPackedTy _ = False
 
 isScalarTy :: UrTy a -> Bool
 isScalarTy IntTy  = True
+isScalarTy CharTy = True
 isScalarTy SymTy  = True
 isScalarTy BoolTy = True
 isScalarTy FloatTy= True
@@ -472,6 +481,7 @@ hasPacked t =
     SymTy          -> False
     BoolTy         -> False
     IntTy          -> False
+    CharTy         -> False
     FloatTy        -> False
     SymDictTy _ _  -> False -- hasPacked ty
     PDictTy k v    -> hasPacked k || hasPacked v
@@ -494,6 +504,7 @@ getPackedTys t =
     SymTy          -> []
     BoolTy         -> []
     IntTy          -> []
+    CharTy         -> []
     FloatTy        -> []
     SymDictTy _ _  -> [] -- getPackedTys ty
     PDictTy k v    -> getPackedTys k ++ getPackedTys v
@@ -515,6 +526,7 @@ sizeOfTy t =
     SymDictTy _ _ -> Just 8 -- Always a pointer.
     PDictTy _ _   -> Just 8 -- Always a pointer.
     IntTy         -> Just 8
+    CharTy        -> Just 1
     FloatTy       -> Just 4
     SymTy         -> Just 8
     BoolTy        -> Just 1
@@ -552,6 +564,7 @@ primArgsTy p =
     EqBenchProgP _ -> []
     EqIntP  -> [IntTy, IntTy]
     EqFloatP-> [FloatTy, FloatTy]
+    EqCharP -> [CharTy, CharTy]
     LtP  -> [IntTy, IntTy]
     GtP  -> [IntTy, IntTy]
     LtEqP-> [IntTy, IntTy]
@@ -600,6 +613,7 @@ primArgsTy p =
     LLCopyP elty  -> [ListTy elty]
     GetNumProcessors -> []
     PrintInt -> [IntTy]
+    PrintChar -> [CharTy]
     PrintFloat -> [FloatTy]
     PrintBool -> [BoolTy]
     PrintSym -> [SymTy]
@@ -648,6 +662,7 @@ primRetTy p =
     EqBenchProgP _ -> BoolTy
     EqIntP  -> BoolTy
     EqFloatP-> BoolTy
+    EqCharP -> BoolTy
     LtP  -> BoolTy
     GtP  -> BoolTy
     LtEqP-> BoolTy
@@ -693,6 +708,7 @@ primRetTy p =
     LLCopyP elty  -> ListTy elty
     GetNumProcessors -> IntTy
     PrintInt   -> ProdTy []
+    PrintChar  -> ProdTy []
     PrintFloat -> ProdTy []
     PrintBool  -> ProdTy []
     PrintSym   -> ProdTy []
@@ -719,6 +735,7 @@ stripTyLocs :: UrTy a -> UrTy ()
 stripTyLocs ty =
   case ty of
     IntTy     -> IntTy
+    CharTy    -> CharTy
     FloatTy   -> FloatTy
     SymTy     -> SymTy
     BoolTy    -> BoolTy

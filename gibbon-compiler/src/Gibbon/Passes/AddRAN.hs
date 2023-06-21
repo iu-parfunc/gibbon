@@ -178,6 +178,7 @@ addRANExp dont_change_datacons needRANsTyCons ddfs ienv ex =
     -- standard recursion here
     VarE{}    -> return ex
     LitE{}    -> return ex
+    CharE{}   -> return ex
     FloatE{}  -> return ex
     LitSymE{} -> return ex
     AppE f locs args -> AppE f locs <$> mapM go args
@@ -208,6 +209,7 @@ addRANExp dont_change_datacons needRANsTyCons ddfs ienv ex =
       case ex1 of
         VarE{}    -> ex1
         LitE{}    -> ex1
+        CharE{}   -> ex1
         FloatE{}  -> ex1
         LitSymE{} -> ex1
         AppE f locs args -> AppE f locs $ map changeSpawnToApp args
@@ -325,9 +327,10 @@ mkRANs ienv needRANsExp =
           i <- gensym "ran"
           -- See Note [Reusing RAN's in case expressions]
           let rhs = case arg of
-                      VarE x -> case M.lookup x ienv of
-                                  Just v  -> VarE v
-                                  Nothing -> PrimAppE RequestEndOf [arg]
+                      VarE x -> PrimAppE RequestEndOf [arg]
+                                -- case M.lookup x ienv of
+                                --   Just v  -> VarE v
+                                --   Nothing -> PrimAppE RequestEndOf [arg]
                       -- It's safe to use 'fromJust' here b/c we would only
                       -- request a RAN for a literal iff it occurs after a
                       -- packed datatype. So there has to be random access
@@ -381,6 +384,7 @@ needsRANExp ddefs fundefs env2 renv tcenv parlocss ex =
     -- Standard recursion here (ASSUMPTION: everything is flat)
     VarE{}     -> S.empty
     LitE{}     -> S.empty
+    CharE{}    -> S.empty
     FloatE{}   -> S.empty
     LitSymE{}  -> S.empty
     -- We do not process the function body here, assuming that the main analysis does it.
@@ -575,6 +579,8 @@ genRelOffsetsFunNameFn needRANsTyCons ddfs DDef{tyName, dataCons} = do
                   , funArgs = [arg]
                   , funTy   = ( [PackedTy (fromVar tyName) ()], PackedTy (fromVar tyName) () )
                   , funBody = CaseE (VarE arg) casebod
-                  , funRec = Rec
-                  , funInline = NoInline
+                  , funMeta = FunMeta { funRec = Rec
+                                      , funInline = NoInline
+                                      , funCanTriggerGC = False
+                                      }
                   }

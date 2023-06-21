@@ -145,6 +145,7 @@ toL1 Prog{ddefs, fundefs, mainExp} =
       case ex of
         VarE v    -> L1.VarE v
         LitE n    -> L1.LitE n
+        CharE n   -> L1.CharE n
         FloatE n  -> L1.FloatE n
         LitSymE v -> L1.LitSymE v
         AppE f [] args   -> AppE f [] (map toL1Exp args)
@@ -202,6 +203,7 @@ toL1 Prog{ddefs, fundefs, mainExp} =
     toL1Ty :: Ty0 -> L1.Ty1
     toL1Ty ty =
       case ty of
+        CharTy  -> L1.CharTy
         IntTy   -> L1.IntTy
         FloatTy -> L1.FloatTy
         SymTy0  -> L1.SymTy
@@ -413,6 +415,7 @@ assertSameLength msg as bs =
 monoOblsTy :: DDefs0 -> Ty0 -> MonoM Ty0
 monoOblsTy ddefs1 t = do
   case t of
+    CharTy    -> pure t
     IntTy     -> pure t
     FloatTy   -> pure t
     SymTy0    -> pure t
@@ -558,6 +561,7 @@ collectMonoObls ddefs env2 toplevel ex =
     -- Straightforward recursion
     VarE{}    -> pure ex
     LitE{}    -> pure ex
+    CharE{}   -> pure ex
     FloatE{}  -> pure ex
     LitSymE{} -> pure ex
     IfE a b c -> do
@@ -680,6 +684,7 @@ monoLambdas ex =
     -- Straightforward recursion
     VarE{}    -> pure ex
     LitE{}    -> pure ex
+    CharE{}   -> pure ex
     FloatE{}  -> pure ex
     LitSymE{} -> pure ex
     AppE f tyapps args ->
@@ -771,6 +776,7 @@ updateTyConsExp ddefs mono_st ex =
   case ex of
     VarE{}    -> ex
     LitE{}    -> ex
+    CharE{}   -> ex
     FloatE{}  -> ex
     LitSymE{} -> ex
     AppE f tyapps args    -> AppE f tyapps (map go args)
@@ -816,6 +822,7 @@ updateTyConsExp ddefs mono_st ex =
 updateTyConsTy :: DDefs0 -> MonoState -> Ty0 -> Ty0
 updateTyConsTy ddefs mono_st ty =
   case ty of
+    CharTy  -> ty
     IntTy   -> ty
     FloatTy -> ty
     SymTy0  -> ty
@@ -1051,8 +1058,10 @@ specLambdasExp ddefs env2 ex =
                         , funArgs = arg_vars ++ vars1
                         , funTy   = ty'
                         , funBody = lam_bod'
-                        , funRec = NotRec
-                        , funInline = Inline
+                        , funMeta = FunMeta { funRec = NotRec
+                                            , funInline = Inline
+                                            , funCanTriggerGC = False
+                                            }
                         }
             env2' = extendFEnv v' ty' env2
         state (\st -> ((), st { sp_fundefs = M.insert v' fn (sp_fundefs st)
@@ -1071,8 +1080,10 @@ specLambdasExp ddefs env2 ex =
                         , funArgs = arg_vars ++ vars
                         , funTy   = ty'
                         , funBody = lam_bod'
-                        , funRec = NotRec
-                        , funInline = Inline
+                        , funMeta = FunMeta { funRec = NotRec
+                                            , funInline = Inline
+                                            , funCanTriggerGC = False
+                                            }
                         }
             env2' = extendFEnv v' (ForAll [] ty) env2
         state (\st -> ((), st { sp_fundefs = M.insert v' fn (sp_fundefs st)
@@ -1091,6 +1102,7 @@ specLambdasExp ddefs env2 ex =
     -- Straightforward recursion
     VarE{}    -> pure ex
     LitE{}    -> pure ex
+    CharE{}   -> pure ex
     FloatE{}  -> pure ex
     LitSymE{} -> pure ex
     PrimAppE pr args -> do
@@ -1146,8 +1158,10 @@ specLambdasExp ddefs env2 ex =
                                 , funArgs = args
                                 , funTy   = ForAll [] (ArrowTy argtys retty)
                                 , funBody = e0'
-                                , funRec = NotRec
-                                , funInline = NoInline
+                                , funMeta = FunMeta { funRec = NotRec
+                                                    , funInline = NoInline
+                                                    , funCanTriggerGC = False
+                                                    }
                                 }
                 pure (Just fn, binds, AppE fnname [] (map VarE args))
           let mb_insert mb_fn mp = case mb_fn of
@@ -1184,6 +1198,7 @@ specLambdasExp ddefs env2 ex =
       case e of
         VarE{}    -> acc
         LitE{}    -> acc
+        CharE{}   -> acc
         FloatE{}  -> acc
         LitSymE{} -> acc
         AppE _ _ args   -> foldr collectFunRefs acc args
@@ -1222,6 +1237,7 @@ specLambdasExp ddefs env2 ex =
       case e of
         VarE{}    -> acc
         LitE{}    -> acc
+        CharE{}   -> acc
         FloatE{}  -> acc
         LitSymE{} -> acc
         AppE f _ args   -> f : foldr collectAllFuns acc args
@@ -1325,6 +1341,7 @@ bindLambdas prg@Prog{fundefs,mainExp} = do
           pure (ls, Ext $ L p e1')
         (Ext (LinearExt{})) -> error $ "bindLambdas: a linear types extension wasn't desugared: " ++ sdoc e0
         (LitE _)      -> pure ([], e0)
+        (CharE _)     -> pure ([], e0)
         (FloatE{})    -> pure ([], e0)
         (LitSymE _)   -> pure ([], e0)
         (VarE _)      -> pure ([], e0)
@@ -1393,6 +1410,7 @@ desugarL0 (Prog ddefs fundefs' mainExp') = do
       case ex of
         VarE{}    -> pure ex
         LitE{}    -> pure ex
+        CharE{}   -> pure ex
         FloatE{}  -> pure ex
         LitSymE{} -> pure ex
         AppE f tyapps args-> AppE f tyapps <$> mapM go args
@@ -1554,8 +1572,10 @@ genCopyFn DDef{tyName, dataCons} = do
                   , funArgs = [arg]
                   , funTy   = (ForAll [] (ArrowTy [PackedTy (fromVar tyName) []] (PackedTy (fromVar tyName) [])))
                   , funBody = CaseE (VarE arg) casebod
-                  , funRec = Rec
-                  , funInline = NoInline
+                  , funMeta = FunMeta { funRec = Rec
+                                      , funInline = NoInline
+                                      , funCanTriggerGC = False
+                                      }
                   }
 
 genCopySansPtrsFn :: DDef0 -> PassM FunDef0
@@ -1576,8 +1596,10 @@ genCopySansPtrsFn DDef{tyName,dataCons} = do
                   , funArgs = [arg]
                   , funTy   = (ForAll [] (ArrowTy [PackedTy (fromVar tyName) []] (PackedTy (fromVar tyName) [])))
                   , funBody = CaseE (VarE arg) casebod
-                  , funRec = Rec
-                  , funInline = NoInline
+                  , funMeta = FunMeta  { funRec = Rec
+                                       , funInline = NoInline
+                                       , funCanTriggerGC = False
+                                       }
                   }
 
 
@@ -1601,8 +1623,10 @@ genTravFn DDef{tyName, dataCons} = do
                   , funArgs = [arg]
                   , funTy   = (ForAll [] (ArrowTy [PackedTy (fromVar tyName) []] (ProdTy [])))
                   , funBody = CaseE (VarE arg) casebod
-                  , funRec = Rec
-                  , funInline = NoInline
+                  , funMeta = FunMeta  { funRec = Rec
+                                       , funInline = NoInline
+                                       , funCanTriggerGC = False
+                                       }
                   }
 
 
@@ -1649,8 +1673,10 @@ genPrintFn DDef{tyName, dataCons} = do
                   , funArgs = [arg]
                   , funTy   = (ForAll [] (ArrowTy [PackedTy (fromVar tyName) []] (ProdTy [])))
                   , funBody = CaseE (VarE arg) casebod
-                  , funRec = Rec
-                  , funInline = NoInline
+                  , funMeta = FunMeta  { funRec = Rec
+                                       , funInline = NoInline
+                                       , funCanTriggerGC = False
+                                       }
                   }
 
 
@@ -1696,7 +1722,7 @@ floatOutCase (Prog ddefs fundefs mainExp) = do
       fn_name <- lift $ gensym "caseFn"
       args <- mapM (\x -> lift $ gensym x) free
       let ex' = foldr (\(from,to) acc -> gSubst from (VarE to) acc) ex (zip free args)
-      let fn = FunDef fn_name args fn_ty ex' NotRec NoInline
+      let fn = FunDef fn_name args fn_ty ex' (FunMeta NotRec NoInline False)
       state (\s -> ((AppE fn_name [] (map VarE free)), M.insert fn_name fn s))
 
     go :: Bool -> Env2 Ty0 -> Exp0 -> FloatM Exp0
@@ -1704,6 +1730,7 @@ floatOutCase (Prog ddefs fundefs mainExp) = do
       case ex of
         VarE{}    -> pure ex
         LitE{}    -> pure ex
+        CharE{}   -> pure ex
         FloatE{}  -> pure ex
         LitSymE{} -> pure ex
         AppE f tyapps args-> AppE f tyapps <$> mapM recur args

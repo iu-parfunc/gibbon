@@ -98,7 +98,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
 
 -- |
 cursorizeFunDef :: DDefs Ty2 -> FunDefs2 -> FunDef2 -> PassM FunDef3
-cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funRec,funInline} = do
+cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funMeta} = do
   let inLocs  = inLocVars funTy
       outLocs = outLocVars funTy
       outRegs = outRegVars funTy
@@ -133,7 +133,7 @@ cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funRec,funInl
          then fromDi <$> cursorizePackedExp ddefs fundefs M.empty initTyEnv M.empty funBody
          else cursorizeExp ddefs fundefs M.empty initTyEnv M.empty funBody
   let bod' = inCurBinds bod
-      fn = FunDef funName funargs funTy' bod' funRec funInline
+      fn = FunDef funName funargs funTy' bod' funMeta
   return fn
 
   where
@@ -145,6 +145,7 @@ cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funRec,funInl
     cursorizeInTy ty =
       case ty of
         IntTy     -> IntTy
+        CharTy    -> CharTy
         FloatTy   -> FloatTy
         SymTy     -> SymTy
         BoolTy    -> BoolTy
@@ -234,6 +235,7 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
   case ex of
     VarE v    -> return $ VarE v
     LitE n    -> return $ LitE n
+    CharE c   -> return $ CharE c
     FloatE n  -> return $ FloatE n
     LitSymE n -> return $ LitSymE n
 
@@ -341,11 +343,11 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
             Left denv' -> cursorizeExp ddfs fundefs denv' tenv' senv bod
 
         -- Exactly same as cursorizePackedExp
-        LetRegionE reg _ _ bod -> do
-          mkLets (regionToBinds False reg) <$> go bod
+        LetRegionE reg sz _ bod -> do
+          mkLets (regionToBinds False reg sz) <$> go bod
 
-        LetParRegionE reg _ _ bod -> do
-          mkLets (regionToBinds True reg) <$> go bod
+        LetParRegionE reg sz _ bod -> do
+          mkLets (regionToBinds True reg sz) <$> go bod
 
         BoundsCheck i bound cur -> return $ Ext $ L3.BoundsCheck i bound cur
 
@@ -381,6 +383,7 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
       else return $ dl $ VarE v
 
     LitE _n    -> error $ "Shouldn't encounter LitE in packed context:" ++ sdoc ex
+    CharE _n   -> error $ "Shouldn't encounter CharE in packed context:" ++ sdoc ex
     FloatE{}   -> error $ "Shouldn't encounter FloatE in packed context:" ++ sdoc ex
     LitSymE _n -> error $ "Shouldn't encounter LitSymE in packed context:" ++ sdoc ex
 
@@ -545,11 +548,11 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
             [loc] ->  pure $ mkDi (VarE loc) [ fromDi v' ]
             _ -> return $ Di $ L3.MkProdE $ L.foldr (\loc acc -> (VarE loc):acc) [fromDi v'] locs
 
-        LetRegionE r _ _ bod -> do
-          onDi (mkLets (regionToBinds False r)) <$> go tenv senv bod
+        LetRegionE r sz _ bod -> do
+          onDi (mkLets (regionToBinds False r sz)) <$> go tenv senv bod
 
-        LetParRegionE r _ _ bod -> do
-          onDi (mkLets (regionToBinds True r)) <$> go tenv senv bod
+        LetParRegionE r sz _ bod -> do
+          onDi (mkLets (regionToBinds True r sz)) <$> go tenv senv bod
 
         FromEndE{} -> error $ "cursorizePackedExp: TODO " ++ sdoc ext
 
@@ -633,6 +636,7 @@ But Infinite regions do not support sizes yet. Re-enable this later.
           bod = case vty of
                   PackedTy{} -> VarE (toEndV v)
                   CursorTy   -> VarE (toEndV v)
+{-
                   IntTy -> let sizeVal = LitE (fromJust $ sizeOfTy IntTy)
                                rhs = Ext $ AddCursor loc sizeVal
                            in rhs
@@ -640,6 +644,9 @@ But Infinite regions do not support sizes yet. Re-enable this later.
                                  rhs = Ext $ AddCursor loc sizeVal
                              in rhs
                   BoolTy -> let sizeVal = LitE (fromJust $ sizeOfTy BoolTy)
+                                rhs = Ext $ AddCursor loc sizeVal
+                            in rhs
+                  CharTy -> let sizeVal = LitE (fromJust $ sizeOfTy CharTy)
                                 rhs = Ext $ AddCursor loc sizeVal
                             in rhs
                   SymTy -> let sizeVal = LitE (fromJust $ sizeOfTy SymTy)
@@ -651,14 +658,7 @@ But Infinite regions do not support sizes yet. Re-enable this later.
                   ListTy elty -> let sizeVal = LitE (fromJust $ sizeOfTy (ListTy elty))
                                      rhs = Ext $ AddCursor loc sizeVal
                                  in rhs
-                  -- IntTy -> let sizeVar = varAppend "sizeof_" v
-                  --              sizeVal = Ext $ SizeOfScalar v
-                  --              rhs = Ext $ AddCursor loc (VarE (sizeVar))
-                  --          in mkLets [(sizeVar,[], IntTy, sizeVal)] rhs
-                  -- FloatTy -> let sizeVar = varAppend "sizeof_" v
-                  --                sizeVal = Ext $ SizeOfScalar v
-                  --                rhs = Ext $ AddCursor loc (VarE (sizeVar))
-                  --            in mkLets [(sizeVar,[], IntTy, sizeVal)] rhs
+-}
                   oth -> error $ "cursorizeLocExp: AfterVariable TODO " ++ sdoc oth
       if isBound loc tenv
       then if was_stolen
@@ -1431,22 +1431,32 @@ projEndsTy = projTy 1
 
 
 -- | Bindings for a letregion
-regionToBinds :: Bool -> Region -> [(Var, [()], Ty3, Exp3)]
-regionToBinds for_parallel_allocs r =
+regionToBinds :: Bool -> Region -> RegionSize -> [(Var, [()], Ty3, Exp3)]
+regionToBinds for_parallel_allocs r sz =
   case r of
     VarR{} -> error $ "Unexpected VarR in Cursorize." ++ sdoc r
-    GlobR v mul -> if for_parallel_allocs
-                   then [ (v       , [], CursorTy, Ext$ NewParBuffer mul)
-                        , (toEndV v, [], CursorTy, Ext$ AddCursor v (Ext $ InitSizeOfBuffer mul))]
-                   else [ (v       , [], CursorTy, Ext$ NewBuffer mul)
-                        , (toEndV v, [], CursorTy, Ext$ AddCursor v (Ext $ InitSizeOfBuffer mul))]
-    DynR v mul  -> if for_parallel_allocs
-                   then [ (v       , [], CursorTy, Ext$ ScopedParBuffer mul)
-                        , (toEndV v, [], CursorTy, Ext$ AddCursor v (Ext $ InitSizeOfBuffer mul))]
-                   else [ (v       , [], CursorTy, Ext$ ScopedBuffer mul)
-                        , (toEndV v, [], CursorTy, Ext$ AddCursor v (Ext $ InitSizeOfBuffer mul))]
+    GlobR v mul -> let mul' = go mul in
+                   if for_parallel_allocs
+                   then [ (v       , [], CursorTy, Ext$ NewParBuffer mul')
+                        , (toEndV v, [], CursorTy, Ext$ AddCursor v (Ext $ InitSizeOfBuffer mul'))]
+                   else [ (v       , [], CursorTy, Ext$ NewBuffer mul')
+                        , (toEndV v, [], CursorTy, Ext$ AddCursor v (Ext $ InitSizeOfBuffer mul'))]
+    DynR v mul  -> let mul' = go mul in
+                   if for_parallel_allocs
+                   then [ (v       , [], CursorTy, Ext$ ScopedParBuffer mul')
+                        , (toEndV v, [], CursorTy, Ext$ AddCursor v (Ext $ InitSizeOfBuffer mul'))]
+                   else [ (v       , [], CursorTy, Ext$ ScopedBuffer mul')
+                        , (toEndV v, [], CursorTy, Ext$ AddCursor v (Ext $ InitSizeOfBuffer mul'))]
     -- TODO: docs
     MMapR _v    -> []
+
+ where
+  go mul =
+    case sz of
+      BoundedSize 0 -> mul
+      BoundedSize x -> Bounded x
+      Undefined     -> mul
+
 
 isBound :: LocVar -> TyEnv Ty2 -> Bool
 isBound = M.member

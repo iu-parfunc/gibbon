@@ -1,10 +1,10 @@
 {-# LANGUAGE FlexibleInstances #-}
-module Gibbon.Passes.CalculateBounds where
+module Gibbon.Passes.CalculateBounds ( inferRegSize ) where
 
 import           Gibbon.Common
 import qualified Data.Map                      as M
 import           Gibbon.L2.Syntax
-import           Data.List
+import           Data.List as L
 import           Debug.Trace
 import           Control.Monad
 
@@ -14,6 +14,9 @@ type VarSizeMapping = M.Map Var RegionSize
 type VarLocMapping = M.Map Var LocVar
 type RegionSizeMapping = M.Map Var RegionSize
 type RegionTypeMapping = M.Map Var RegionType
+
+inferRegSize :: Prog2 -> PassM Prog2
+inferRegSize = calculateBounds
 
 calculateBounds :: Prog2 -> PassM Prog2
 calculateBounds Prog { ddefs, fundefs, mainExp } = do
@@ -27,7 +30,7 @@ calculateBounds Prog { ddefs, fundefs, mainExp } = do
 
 calculateBoundsFun :: DDefs Ty2 -> Env2 Ty2 -> VarSizeMapping -> FunDef2 -> PassM FunDef2
 calculateBoundsFun ddefs env2 varSzEnv f@FunDef { funName, funBody, funTy, funArgs } = do
-  if "_" `isPrefixOf` fromVar funName
+  if "_" `L.isPrefixOf` fromVar funName
     then return f
     else do
       let locRegEnv = M.fromList $ map (\lv -> (lrmLoc lv, regionToVar $ lrmReg lv)) (locVars funTy)
@@ -37,22 +40,22 @@ calculateBoundsFun ddefs env2 varSzEnv f@FunDef { funName, funBody, funTy, funAr
       funBody' <- fst3 <$> calculateBoundsExp ddefs env2' varSzEnv M.empty locRegEnv locTyEnv M.empty M.empty funBody
       return $ f { funBody = funBody' }
 
-{- 
+{-
   * We recurse using three mappings (variable => size, location => region and region => size)
   * 1. the variable => size mapping is inferred using type of the variable
-  * 2. the location => region mapping is inferred using threading location initializations 
+  * 2. the location => region mapping is inferred using threading location initializations
   *     using LocVars
-  * 3. the region => size mapping is calculated by adding up the incremental offsets from 
-  *     previous location in the same reigon and then adding the size of the last location/variable 
+  * 3. the region => size mapping is calculated by adding up the incremental offsets from
+  *     previous location in the same reigon and then adding the size of the last location/variable
   *     size in the region
-  * 
-  * While recursing we return the 
+  *
+  * While recursing we return the
   * 1. the updated expression (i.e. possibly attaching the size of the regions in the expression)
-  * 2. the region to size mapping in the expression (which can be used to find maximum size 
+  * 2. the region to size mapping in the expression (which can be used to find maximum size
   *     from all the branches)
   * 3. the region to type mapping in the expression -> based on indirections
-  * 
-  * NOTE: since input and output regions are not created inside the function, 
+  *
+  * NOTE: since input and output regions are not created inside the function,
   * we will not update the region size inside that function .
 -}
 calculateBoundsExp
@@ -62,9 +65,9 @@ calculateBoundsExp
   -> VarLocMapping -- ^ var => location
   -> LocationRegionMapping -- ^ location => region
   -> LocationOffsetMapping -- ^ location => offset
-  -> RegionSizeMapping -- ^ region => size 
+  -> RegionSizeMapping -- ^ region => size
   -> RegionTypeMapping -- ^ region => type
-  -> Exp2 -- ^ expression 
+  -> Exp2 -- ^ expression
   -> PassM (Exp2, RegionSizeMapping, RegionTypeMapping)
 calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv regTyEnv ex = case ex of
   Ext (BoundsCheck{}) -> return (ex, regSzEnv, regTyEnv)
@@ -85,6 +88,7 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
           Just _ -> return (ex, regSzEnv, regTyEnv)
           _      -> case ex of
             LitE    _           -> err
+            CharE   _           -> err
             FloatE  _           -> err
             LitSymE _           -> err
             ProjE{}             -> pass
@@ -161,7 +165,7 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
                 return (Ext $ LetParRegionE reg regSz regTy bod', re, rt)
               LetLocE loc locExp ex1 -> do
                 -- * NOTE: jumps are only necessary for route ends, skipping them.
-                if "jump_" `isPrefixOf` fromVar loc
+                if "jump_" `L.isPrefixOf` fromVar loc
                   then do
                     (ex1', re', rt') <- go ex1
                     return (Ext $ LetLocE loc locExp ex1', re', rt')

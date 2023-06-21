@@ -29,6 +29,7 @@ module Gibbon.Passes.RouteEnds
     ( routeEnds ) where
 
 import qualified Data.List as L
+import Data.Maybe ( fromJust )
 import Data.Map as M
 import Data.Set as S
 import Control.Monad
@@ -101,6 +102,7 @@ bindReturns ex =
   case ex of
     VarE v -> pure (VarE v)
     LitE{} -> handleScalarRet ex id
+    CharE{} -> handleScalarRet ex id
     FloatE{} -> handleScalarRet ex id
     LitSymE{} -> handleScalarRet ex id
     AppE{} -> pure ex
@@ -165,6 +167,7 @@ handleScalarRet bod fn = do
         pure $ fn e1
   case bod of
     LitE n -> bind_and_recur (LitE n) IntTy
+    CharE n -> bind_and_recur (CharE n) CharTy
     FloatE n -> bind_and_recur (FloatE n) FloatTy
     LitSymE n -> bind_and_recur (LitSymE n) SymTy
     PrimAppE MkTrue [] -> bind_and_recur (PrimAppE MkTrue []) BoolTy
@@ -176,6 +179,7 @@ isScalar :: Exp2 -> Bool
 isScalar e1 =
   case e1 of
     LitE{} -> True
+    CharE{} -> True
     FloatE{} -> True
     LitSymE{} -> True
     PrimAppE MkTrue [] -> True
@@ -212,16 +216,16 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
 
     -- | Process function types (but don't handle bodies)
     fdty :: L2.FunDef2 -> PassM L2.FunDef2
-    fdty FunDef{funName,funTy,funArgs,funBody,funRec,funInline} =
+    fdty FunDef{funName,funTy,funArgs,funBody,funMeta} =
         do let (ArrowTy2 locin tyin eff tyout _locout isPar) = funTy
                handleLoc (LRM l r m) ls = if S.member (Traverse l) eff then (LRM l r m):ls else ls
                locout' = L.map EndOf $ L.foldr handleLoc [] locin
-           return FunDef{funName,funTy=(ArrowTy2 locin tyin eff tyout locout' isPar),funArgs,funBody,funRec,funInline}
+           return FunDef{funName,funTy=(ArrowTy2 locin tyin eff tyout locout' isPar),funArgs,funBody,funMeta}
 
 
     -- | Process function bodies
     fd :: FunDefs2 -> L2.FunDef2 -> PassM L2.FunDef2
-    fd fns FunDef{funName,funTy,funArgs,funBody,funRec,funInline} =
+    fd fns FunDef{funName,funTy,funArgs,funBody,funMeta} =
         do let (ArrowTy2 locin tyins eff _tyout _locout _isPar) = funTy
                handleLoc (LRM l _r _m) ls = if S.member (Traverse l) eff then l:ls else ls
                retlocs = L.foldr handleLoc [] locin
@@ -230,11 +234,16 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
                                          PackedTy _ loc -> M.insert a loc acc
                                          _ -> acc)
                         M.empty (zip funArgs tyins)
-               initVEnv = M.fromList $ zip funArgs tyins
+               pakdLocs = concatMap
+                            (\t -> case t of
+                                     PackedTy _ loc -> [(loc, t)]
+                                     ProdTy ys -> pakdLocs ys
+                                     _ -> [])
+               initVEnv = M.fromList $ pakdLocs tyins ++ zip funArgs tyins
                env2 = Env2 initVEnv (initFunEnv fundefs)
            funBody' <- bindReturns funBody
            funBody'' <- exp fns retlocs emptyRel lenv M.empty env2 funBody'
-           return FunDef{funName,funTy,funArgs,funBody=funBody'',funRec,funInline}
+           return FunDef{funName,funTy,funArgs,funBody=funBody'',funMeta}
 
 
     -- | Process expressions.
@@ -336,11 +345,10 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
                                         (Just jump) = L1.sizeOfTy ty
                                         e' = Ext $ LetLocE l2 (AfterConstantLE jump l1) e
                                     return (eor', e')
-
                                vars = L.map fst vls
-                               env2' = extendsVEnv (M.fromList (zip vars argtys)) env2
+                               locs = L.map snd vls
+                               env2' = extendsVEnv (M.fromList (zip locs argtys ++ zip vars argtys)) env2
                                lenv' = M.union lenv $ M.fromList vls
-
                            (eor'',e') <- foldM handleLoc (eor',e) $ zip (L.map snd vls) argtys
                            e'' <- exp fns retlocs eor'' lenv' afterenv' env2' e'
                            return (dc, vls, e'')
@@ -450,6 +458,7 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
                  exp fns retlocs eor (M.insert v' loc lenv) afterenv (extendVEnv v' ty env2) (e')
 
           LitE i -> return (LitE i)
+          CharE i -> return (CharE i)
           FloatE i -> return (FloatE i)
 
           LitSymE v -> return $ LitSymE v
@@ -509,7 +518,24 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
                wrapBody e ((l1,l2):ls) =
                  case M.lookup l1 afterenv of
                    Nothing -> wrapBody e ls
-                   Just la -> wrapBody ((Ext (LetLocE la (FromEndLE l2) e))) ls
+                   Just la ->
+                     let go loc acc =
+                           case M.lookup loc (vEnv env2) of
+                             Just ty
+                               | isScalarTy ty ->
+                                 case M.lookup loc afterenv of
+                                   Nothing -> acc
+                                   Just lb -> go lb (acc ++ [(lb,loc,fromJust $ sizeOfTy ty)])
+                               | otherwise -> acc
+                             Nothing -> acc
+                         scalar_witnesses = go la []
+                         bind_witnesses bod ls =
+                           L.foldr (\(v,w,sz) acc ->
+                                     Ext $ LetLocE v (AfterConstantLE sz w) acc)
+                           bod ls
+                         bod' = bind_witnesses e scalar_witnesses
+                         bod'' =  Ext (LetLocE la (FromEndLE l2) bod')
+                     in wrapBody bod'' ls
                wrapBody e [] = e
 
                -- Process a let bound fn app.

@@ -10,7 +10,7 @@ module Gibbon.Passes.InferLocations
      fresh, freshUnifyLoc, finalUnifyLoc, fixLoc, freshLocVar, finalLocVar, assocLoc, finishExp,
           prim, emptyEnv,
      -- main functions
-     unify, inferLocs, inferExp, inferExp', convertFunTy)
+     unify, inferLocs, inferExp, inferExp', convertFunTy, copyOutOfOrderPacked, fixRANs)
     where
 
 {-
@@ -96,6 +96,7 @@ import Text.PrettyPrint.GenericPretty
 
 import Gibbon.Common
 import Gibbon.L1.Syntax as L1 hiding (extendVEnv, extendsVEnv, lookupVEnv, lookupFEnv)
+import qualified Gibbon.L1.Syntax as L1
 import Gibbon.L2.Syntax as L2 hiding (extendVEnv, extendsVEnv, lookupVEnv, lookupFEnv)
 import Gibbon.Passes.InlineTriv (inlineTriv)
 import Gibbon.Passes.Flatten (flattenL1)
@@ -209,6 +210,7 @@ type Result = (Exp2, Ty2, [Constraint])
 data DCArg = ArgFixed Int
            | ArgVar Var
            | ArgCopy Var Var Var [LocVar]
+  deriving Show
 
 inferLocs :: Prog1 -> PassM L2.Prog2
 inferLocs initPrg = do
@@ -217,7 +219,7 @@ inferLocs initPrg = do
                           inlineTriv p0
   let m = do
           dfs' <- lift $ lift $ convertDDefs dfs
-          fenv <- forM fds $ \(FunDef _ _ (intys, outty) bod _isrec _inline) -> do
+          fenv <- forM fds $ \(FunDef _ _ (intys, outty) bod _meta) -> do
                   let has_par = hasSpawns bod
                   lift $ lift $ convertFunTy (intys,outty,has_par)
           let fe = FullEnv dfs' M.empty fenv
@@ -228,14 +230,14 @@ inferLocs initPrg = do
               (me',ty') <- inferExp' fe me [] NoDest
               return $ Just (me',ty')
             Nothing -> return Nothing
-          fds' <- forM fds $ \(FunDef fn fa (intty,outty) fbod isrec inline) -> do
+          fds' <- forM fds $ \(FunDef fn fa (intty,outty) fbod meta) -> do
                                    let arrty = lookupFEnv fn fe
                                        fe' = extendsVEnv (M.fromList $ fragileZip fa (arrIns arrty)) fe
                                        boundLocs = concat $ map locsInTy (arrIns arrty ++ [arrOut arrty])
                                    dest <- destFromType (arrOut arrty)
                                    mapM_ fixType_ (arrIns arrty)
                                    (fbod',_) <- inferExp' fe' fbod boundLocs dest
-                                   return $ FunDef fn fa arrty fbod' isrec inline
+                                   return $ FunDef fn fa arrty fbod' meta
           return $ Prog dfs' fds' me'
   prg <- St.runStateT (runExceptT m) M.empty
   case fst prg of
@@ -601,6 +603,7 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
     SyncE -> pure (SyncE, ProdTy [], [])
 
     LitE n  -> return (LitE n, IntTy, [])
+    CharE n -> return (CharE n, CharTy, [])
     FloatE n-> return (FloatE n, FloatTy, [])
 
     LitSymE s -> return (LitSymE s, SymTy, [])
@@ -674,6 +677,9 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
                                                FloatTy -> return $ ArgFixed (fromJust $ sizeOfTy FloatTy)
                                                SymTy -> return $ ArgFixed (fromJust $ sizeOfTy SymTy)
                                                BoolTy -> return $ ArgFixed (fromJust $ sizeOfTy BoolTy)
+                                               CharTy -> return $ ArgFixed (fromJust $ sizeOfTy CharTy)
+                                               VectorTy elt -> return $ ArgFixed (fromJust $ sizeOfTy (VectorTy elt))
+                                               ListTy elt -> return $ ArgFixed (fromJust $ sizeOfTy (ListTy elt))
                                                _ -> return $ ArgVar v
                              (LitE _) -> return $ ArgFixed (fromJust $ sizeOfTy IntTy)
                              (FloatE _) -> return $ ArgFixed (fromJust $ sizeOfTy FloatTy)
@@ -891,6 +897,12 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
           fcs <- tryInRegion cs''
           tryBindReg (L2.LetE (vr,[],IntTy,L2.LitE i) bod'', ty'', fcs)
 
+        CharE i -> do
+          (bod',ty',cs') <- inferExp (extendVEnv vr CharTy env) bod dest
+          (bod'',ty'',cs'') <- handleTrailingBindLoc vr (bod', ty', cs')
+          fcs <- tryInRegion cs''
+          tryBindReg (L2.LetE (vr,[],CharTy,L2.CharE i) bod'', ty'', fcs)
+
         FloatE i -> do
           (bod',ty',cs') <- inferExp (extendVEnv vr FloatTy env) bod dest
           (bod'',ty'',cs'') <- handleTrailingBindLoc vr (bod', ty', cs')
@@ -1041,12 +1053,12 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
           -- above will do the right thing.
           lsrec <- mapM (\e -> inferExp env e NoDest) ls
           ty@(ProdTy tys) <- lift $ lift $ convertTy bty
-          let env' = extendVEnv vr ty env 
+          let env' = extendVEnv vr ty env
           (bod',ty',cs') <- inferExp env' bod dest
           let als = [a | (a,_,_) <- lsrec]
               acs = concat $ [c | (_,_,c) <- lsrec]
               aty = [b | (_,b,_) <- lsrec]
-           -- unify projection locations with variable type locations: this kind of does what copyTuple should be doing 
+           -- unify projection locations with variable type locations: this kind of does what copyTuple should be doing
           adests <- mapM destFromType' tys
           let e' = L2.LetE (vr,[], ty, L2.MkProdE als) bod'
           let go e'' r@(l, t, dt) 
@@ -1118,6 +1130,7 @@ finishExp e =
     case e of
       VarE v -> return $ VarE v
       LitE i -> return $ LitE i
+      CharE i -> return $ CharE i
       FloatE i  -> return $ FloatE i
       LitSymE v -> return $ LitSymE v
       AppE v ls es -> do
@@ -1226,6 +1239,7 @@ cleanExp e =
     case e of
       VarE v -> (VarE v, S.empty)
       LitE v -> (LitE v, S.empty)
+      CharE v -> (CharE v, S.empty)
       FloatE v -> (FloatE v, S.empty)
       LitSymE v -> (LitSymE v, S.empty)
       AppE v ls e -> let (e',s') = unzip $ map cleanExp e
@@ -1244,6 +1258,15 @@ cleanExp e =
                              S.union (S.unions ls') (S.fromList $ locsInTy ty))
       PrimAppE pr es -> let (es',ls') = unzip $ L.map cleanExp es
                         in (PrimAppE pr es', S.unions ls')
+      -- RequestEndOf and AddFixed actually bind locations outside LetLoc forms,
+      -- these should be removed from the set of free locations.
+      LetE (v,ls,t,e1@(PrimAppE RequestEndOf _)) e2 ->
+                        let (e1', s1') = cleanExp e1
+                            (e2', s2') = cleanExp e2
+                        in (LetE (v,ls,t,e1') e2', S.delete v (S.unions [s1',s2',S.fromList ls]))
+      LetE (v,ls,t,e1@(Ext (L2.AddFixed _cur _i))) e2 ->
+                        let (e2', s2') = cleanExp e2
+                        in (LetE (v,ls,t,e1) e2', S.delete v (S.unions [s2',S.fromList ls]))
       LetE (v,ls,t,e1) e2 -> let (e1', s1') = cleanExp e1
                                  (e2', s2') = cleanExp e2
                              in (LetE (v,ls,t,e1') e2', S.unions [s1',s2',S.fromList ls])
@@ -1290,7 +1313,6 @@ cleanExp e =
                                          in (Ext (LetLocE loc lex e'),
                                               S.delete loc $ S.union s' $ S.fromList ls)
                                     else (e',s')
-      Ext (L2.AddFixed cur i) -> (Ext (L2.AddFixed cur i), S.singleton cur)
       Ext{} -> err$ "Unexpected Ext: " ++ (show e)
       MapE{} -> err$ "MapE not supported"
       FoldE{} -> err$ "FoldE not supported"
@@ -1321,6 +1343,7 @@ fixProj renam pvar proj e =
                   Nothing -> VarE v
                   Just v' -> VarE v'
       LitE v -> LitE v
+      CharE v -> CharE v
       FloatE v -> FloatE v
       LitSymE v -> LitSymE v
       AppE v ls es -> let es' = map (fixProj renam pvar proj) es
@@ -1368,6 +1391,7 @@ moveProjsAfterSync sv ex = go [] (S.singleton sv) ex
       case ex of
         VarE{}    -> ex
         LitE{}    -> ex
+        CharE{}    -> ex
         FloatE{}  -> ex
         LitSymE{} -> ex
         AppE v locs ls   -> ex
@@ -1635,12 +1659,14 @@ prim p = case p of
            EqBenchProgP str -> return (EqBenchProgP str)
            EqIntP -> return EqIntP
            EqFloatP -> return EqFloatP
+           EqCharP  -> return EqCharP
            MkTrue -> return MkTrue
            MkFalse -> return MkFalse
            Gensym  -> return Gensym
            SizeParam -> return SizeParam
            IsBig    -> return IsBig
            PrintInt -> return PrintInt
+           PrintChar -> return PrintChar
            PrintFloat -> return PrintFloat
            PrintBool -> return PrintBool
            PrintSym -> return PrintSym
@@ -1697,6 +1723,300 @@ emptyEnv :: FullEnv
 emptyEnv = FullEnv { dataDefs = emptyDD
                    , valEnv   = M.empty
                    , funEnv   = M.empty }
+
+
+--------------------------------------------------------------------------------
+
+fixRANs :: Prog2 -> PassM Prog2
+fixRANs prg@(Prog defs funs main) = do
+    main' <-
+      case main of
+        Nothing -> return Nothing
+        Just (ex,ty) -> do
+          (_,ex') <- exp defs env20 ex
+          pure $ Just (ex', ty)
+    funs' <- flattenFuns funs
+    return $ Prog defs funs' main'
+  where
+    flattenFuns = mapM flattenFun
+    flattenFun (FunDef nam narg ty bod meta) = do
+      let env2 = Env2 (M.fromList $ zip narg (arrIns ty)) (fEnv env20)
+      (_, bod') <- exp defs env2 bod
+      return $ FunDef nam narg ty bod' meta
+
+    env20 = progToEnv prg
+
+    exp :: DDefs2 -> Env2 Ty2 -> Exp2 -> PassM ([(DataCon, [Exp2])], Exp2)
+    exp ddfs env2 e0 =
+      let go :: Exp2 -> PassM ([(DataCon, [Exp2])], Exp2)
+          go = exp ddfs env2
+
+          gols f ls = do (bndss,ls') <- unzip <$> mapM go ls
+                         return (concat bndss, f ls')
+
+      in
+      case e0 of
+
+        DataConE loc k ls -> pure $ ([(k, ls)], DataConE loc k ls)
+
+        LetE (v,locs,t,PrimAppE RequestEndOf [VarE w]) bod ->
+          do (bnd2,bod') <- exp ddfs (L1.extendVEnv v t env2) bod
+             case L.find (\(dcon, ls) -> L.elem (VarE v) ls) bnd2 of
+               Nothing -> error $ show v ++ " not found in any datacon args, " ++ show bnd2
+               Just (dcon, ls) -> do
+                 let tys = lookupDataCon ddfs dcon
+                     n = length [ ty | ty <- tys, ty == CursorTy ]
+                     tys' = L.drop n tys
+                     (rans, ls') = (L.take n ls, L.drop n ls)
+                     firstPacked = fromJust $ L.findIndex isPackedTy tys'
+                     needRANsExp = L.take n $ L.drop firstPacked ls'
+                     ran_pairs = M.fromList $ fragileZip rans needRANsExp
+                     w' = ran_pairs M.! VarE v
+                 return (bnd2, LetE (v,locs,t,PrimAppE RequestEndOf [w']) bod')
+
+        LetE (v,locs,t,rhs) bod -> do (bnd1,rhs') <- go rhs
+                                      (bnd2,bod') <- exp ddfs (L1.extendVEnv v t env2) bod
+                                      return (bnd1++bnd2, LetE (v,locs,t,rhs') bod')
+
+        ----------------------------------------
+
+        Ext ext -> case ext of
+                     LetRegionE r sz ty bod -> do
+                       (bnds,bod') <- go bod
+                       return (bnds, Ext $ LetRegionE r sz ty bod')
+
+                     LetParRegionE r sz ty bod -> do
+                       (bnds,bod') <- go bod
+                       return (bnds, Ext $ LetParRegionE r sz ty bod')
+
+                     LetLocE l rhs bod -> do
+                       (bnds,bod') <- go bod
+                       return (bnds, Ext $ LetLocE l rhs bod')
+
+                     LetAvail vs bod -> do
+                       (bnds,bod') <- go bod
+                       return (bnds, Ext $ LetAvail vs bod')
+
+                     RetE{}        -> return ([],e0)
+                     FromEndE{}    -> return ([],e0)
+                     L2.AddFixed{} -> return ([],e0)
+                     BoundsCheck{} -> return ([],e0)
+                     IndirectionE{}-> return ([],e0)
+                     GetCilkWorkerNum-> return ([],e0)
+
+        LitE{}    -> return ([],e0)
+        CharE{}   -> return ([],e0)
+        FloatE{}  -> return ([],e0)
+        VarE{}    -> return ([],e0)
+        LitSymE{} -> return ([],e0)
+
+        AppE f lvs ls     -> gols (AppE f lvs)  ls
+        PrimAppE p ls     -> gols (PrimAppE p)  ls
+        MkProdE ls        -> gols  MkProdE      ls
+
+        IfE a b c -> do (b1,a') <- go a
+                        (b2,b') <- go b
+                        (b3,c') <- go c
+                        return (b1 ++ b2 ++ b3, IfE a' b' c')
+
+        ProjE ix e -> do (b,e') <- go e
+                         return (b, ProjE ix e')
+
+        CaseE e ls -> do (b,e') <- go e
+                         ls' <- forM ls $ \ (k,vrs,rhs) -> do
+                                  let tys = lookupDataCon ddfs k
+                                      vrs' = map fst vrs
+                                      env2' = L1.extendsVEnv (M.fromList (zip vrs' tys)) env2
+                                  (b2,rhs') <- exp ddfs env2' rhs
+                                  return (b2, (k,vrs,rhs'))
+                         let (bndss,ls'') = unzip ls'
+                         return (b ++ concat bndss, CaseE e' ls'')
+
+        TimeIt e t b -> do
+          (bnd,e') <- go e
+          return (bnd, TimeIt e' t b)
+
+        SpawnE f lvs ls -> gols (SpawnE f lvs)  ls
+        SyncE -> pure ([], SyncE)
+
+        WithArenaE v e -> do
+          (bnd, e') <- go e
+          return (bnd, WithArenaE v e')
+
+        MapE _ _      -> error "FINISHLISTS"
+        FoldE _ _ _   -> error "FINISHLISTS"
+
+
+--------------------------------------------------------------------------------
+
+-- | Adds 'copyPacked' calls in certain places that inferLocs is not able to.
+copyOutOfOrderPacked :: Prog1 -> PassM Prog1
+copyOutOfOrderPacked prg@(Prog ddfs fndefs mnExp) = do
+    mnExp' <- case mnExp of
+                   Nothing -> pure Nothing
+                   Just (ex,ty) -> do (_, ex') <- go init_fun_env M.empty [] ex
+                                      pure $ Just (ex', ty)
+    fndefs' <- mapM fd fndefs
+    let prg' = Prog ddfs fndefs' mnExp'
+    p0 <- flattenL1 prg'
+    inlineTriv p0
+  where
+    init_fun_env = progToEnv prg
+
+    fd :: FunDef1 -> PassM FunDef1
+    fd fn@FunDef{funArgs,funBody,funTy} = do
+        let env2 = L1.extendsVEnv (M.fromList $ zip funArgs (fst funTy)) init_fun_env
+        (_, funBody') <- go env2 M.empty funArgs funBody
+        pure $ fn { funBody = funBody' }
+
+    go :: Env2 Ty1 -> M.Map Var [(Var,Var)] -> [Var] -> Exp1
+       -> PassM (M.Map Var [(Var,Var)], Exp1)
+    go env2 cpy_env order ex =
+      case ex of
+
+        DataConE loc dcon args -> do
+          -- assumption: program is in ANF
+          let idxs = [ (v, want, have)
+                     | (VarE v, want) <- zip args ([0..] :: [Int])
+                     , let ty = L1.lookupVEnv v env2
+                     , let have = fromJust $ L.findIndex (== v) order
+                     , L1.isPackedTy ty
+                     ]
+          case idxs of
+            [] -> pure $ (cpy_env, DataConE loc dcon args)
+            ((hv,_hw,hh):rst_idxs) -> do
+              -- let (vars,want,have) = unzip3 idxs
+              let (hv,_hw,hh) = head idxs
+              let copies =
+                        L.groupBy (\x y -> fst x == fst y) $
+                        snd $
+                        F.foldl' (\(prev, acc) (v,_w,h) ->
+                                     if h >= prev
+                                     then (h, acc ++ [(h,v)])
+                                     else (prev, acc ++ [(prev,v)]))
+                               (hh, [(hh, hv)])
+                               rst_idxs
+              (args1, cpy_env1) <- F.foldrM
+                       (\groups (acc1, acc2) ->
+                           case groups of
+                             [(_,one)] -> pure (one:acc1, acc2)
+                             ((_,x):xs) -> do
+                               let vars = map snd xs
+                               vars' <- mapM gensym vars
+                               pure $ ([x] ++ vars' ++ acc1, M.insert x (zip vars vars') acc2))
+                       ([], M.empty)
+                       copies
+              let args2 = snd $ foldl
+                            (\(args1', acc) x ->
+                               case x of
+                                 VarE v | isPackedTy (L1.lookupVEnv v env2) ->
+                                      (tail args1', acc ++ [VarE (head args1')])
+                                 _ -> (args1', acc ++ [x]))
+                            (args1, [])
+                            args
+              pure $ (cpy_env1 `M.union` cpy_env, DataConE loc dcon args2)
+
+        LetE (v,locs,ty,rhs) bod -> do
+          (cpy_env1, rhs1) <- go env2 cpy_env order rhs
+          (cpy_env2, bod1) <- go (L1.extendVEnv v ty env2) cpy_env1 (order ++ [v]) bod
+          case M.lookup v cpy_env2 of
+            Just ls -> do let binds = map (\(old,new) -> let PackedTy tycon _ = L1.lookupVEnv old env2
+                                                             f = mkCopyFunName tycon
+                                                         in (new,[],PackedTy tycon (),AppE f [] [VarE old]))
+                                          ls
+                              binds1 = (v,locs,ty,rhs1) : binds
+                          pure $ (cpy_env2, mkLets binds1 bod1)
+            Nothing -> pure $ (cpy_env2, LetE (v,locs,ty,rhs1) bod1)
+
+        CaseE scrt ls -> do
+          (cpy_env1, scrt1) <- go env2 cpy_env order scrt
+          let doPat (dcon,vs,rhs) (acc1, acc2) = do
+                let vars = map fst vs
+                let tys = lookupDataCon ddfs dcon
+                let env2' = L1.extendsVEnv (M.fromList (zip vars tys)) env2
+                (acc1', rhs1) <- go env2' acc1 (order ++ vars) rhs
+                -- FIXME check
+                let rhs2 = foldr (\x acc3 -> case M.lookup x acc1' of
+                                               Nothing -> acc3
+                                               Just ls ->
+                                                 let binds = map (\(old,new) ->
+                                                                    let PackedTy tycon _ = L1.lookupVEnv old env2
+                                                                        f = mkCopyFunName tycon
+                                                                    in (new,[],PackedTy tycon (),AppE f [] [VarE old]))
+                                                             ls
+                                                 in mkLets binds rhs1)
+                                 rhs1 vars
+                pure (acc1' `M.union` cpy_env1, (dcon,vs,rhs2) : acc2)
+          (cpy_env2, ls1) <- F.foldrM doPat (cpy_env1, []) ls
+          pure $ (cpy_env2, CaseE scrt1 ls1)
+
+
+        ----------------------------------------
+
+        VarE{}    -> pure (cpy_env, ex)
+        LitE{}    -> pure (cpy_env, ex)
+        CharE{}   -> pure (cpy_env, ex)
+        FloatE{}  -> pure (cpy_env, ex)
+        LitSymE{} -> pure (cpy_env, ex)
+        AppE v locs ls -> do
+          (cpy_env1, ls1) <- F.foldrM
+                               (\e (acc1,acc2) -> do
+                                  (a,b) <- go env2 acc1 order e
+                                  pure (a `M.union` acc1, b : acc2))
+                               (cpy_env, [])
+                               ls
+          pure $ (cpy_env1, AppE v locs ls1)
+        PrimAppE pr ls -> do
+          (cpy_env1, ls1) <- F.foldrM
+                               (\e (acc1,acc2) -> do
+                                  (a,b) <- go env2 acc1 order e
+                                  pure (a `M.union` acc1, b : acc2))
+                               (cpy_env, [])
+                               ls
+          pure $ (cpy_env1, PrimAppE pr ls1)
+        IfE a b c  -> do
+          (cpy_env1, a1) <- go env2 cpy_env order a
+          (cpy_env2, b1) <- go env2 cpy_env1 order b
+          (cpy_env3, c1) <- go env2 cpy_env2 order c
+          pure $ (cpy_env3, IfE a1 b1 c1)
+        MkProdE ls -> do
+          (cpy_env1, ls1) <- F.foldrM
+                               (\e (acc1,acc2) -> do
+                                  (a,b) <- go env2 acc1 order e
+                                  pure (a `M.union` acc1, b : acc2))
+                               (cpy_env, [])
+                               ls
+          pure $ (cpy_env1, MkProdE ls1)
+        ProjE i arg -> do
+          (cpy_env1, arg1) <- go env2 cpy_env order arg
+          pure (cpy_env1, ProjE i arg1)
+        TimeIt arg ty b -> do
+          (cpy_env1, arg1) <- go env2 cpy_env order arg
+          pure $ (cpy_env1, TimeIt arg1 ty b)
+        WithArenaE a e -> do
+          (cpy_env1, e1) <- go env2 cpy_env order e
+          pure $ (cpy_env1, WithArenaE a e1)
+        SpawnE v locs ls -> do
+          (cpy_env1, ls1) <- F.foldrM
+                               (\e (acc1,acc2) -> do
+                                  (a,b) <- go env2 acc1 order e
+                                  pure (a `M.union` acc1, b : acc2))
+                               (cpy_env, [])
+                               ls
+          pure $ (cpy_env1, SpawnE v locs ls1)
+        SyncE -> pure (cpy_env, SyncE)
+        Ext (BenchE fn locs ls b) -> do
+          (cpy_env1, ls1) <- F.foldrM
+                               (\e (acc1,acc2) -> do
+                                  (a,b) <- go env2 acc1 order e
+                                  pure (a `M.union` acc1, b : acc2))
+                               (cpy_env, [])
+                               ls
+          pure $ (cpy_env1, Ext (BenchE fn locs ls1 b))
+        Ext (L1.AddFixed{}) -> pure (cpy_env, ex)
+        MapE{}  -> error "copyOutOfOrderPacked: todo MapE"
+        FoldE{} -> error "copyOutOfOrderPacked: todo FoldE"
+
 
 
 {--

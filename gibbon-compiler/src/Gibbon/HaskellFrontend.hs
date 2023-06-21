@@ -169,7 +169,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
   let prog = do
         toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
         let (defs,_vars,funs,inlines,main) = foldr classify init_acc toplevels
-            funs' = foldr (\v acc -> M.update (\fn -> Just (fn {funInline = Inline})) v acc) funs inlines
+            funs' = foldr (\v acc -> M.update (\fn@(FunDef{funMeta}) -> Just (fn { funMeta = funMeta { funInline = Inline }})) v acc) funs inlines
         imported_progs' <- mapM id imported_progs
         let (defs0,funs0) =
               foldr
@@ -224,7 +224,8 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
 desugarModule _ _ _ _ m = error $ "desugarModule: " ++ prettyPrint m
 
 stdlibModules :: [String]
-stdlibModules = ["Gibbon.Prim", "Gibbon.Prelude", "Gibbon.Vector", "Gibbon.Vector.Parallel", "Gibbon.List"]
+stdlibModules = ["Gibbon.Prim", "Gibbon.Prelude", "Gibbon.Vector", "Gibbon.Vector.Parallel",
+                 "Gibbon.List", "Gibbon.PList", "Gibbon.ByteString", "Gibbon.Maybe"]
 
 processImport :: Config -> IORef ParseState -> [String] -> FilePath -> ImportDecl a -> IO (PassM Prog0)
 processImport cfg pstate_ref import_route dir decl@ImportDecl{..}
@@ -277,6 +278,9 @@ stdlibImportPath mod_name = do
     modNameToFilename "Gibbon.Vector" = "Gibbon" </> "Vector.hs"
     modNameToFilename "Gibbon.Vector.Parallel" = "Gibbon" </> "Vector" </> "Parallel.hs"
     modNameToFilename "Gibbon.List" = "Gibbon" </> "List.hs"
+    modNameToFilename "Gibbon.PList" = "Gibbon" </> "PList.hs"
+    modNameToFilename "Gibbon.ByteString" = "Gibbon" </> "ByteString.hs"
+    modNameToFilename "Gibbon.Maybe" = "Gibbon" </> "Maybe.hs"
     modNameToFilename oth = error $ "Unknown module: " ++ oth
 
 modImportPath :: ModuleName a -> String -> IO FilePath
@@ -343,6 +347,7 @@ desugarType type_syns ty =
     TyTuple _ Boxed tys   -> ProdTy (map (desugarType type_syns) tys)
     TyCon _ (Special _ (UnitCon _))     -> ProdTy []
     TyCon _ (UnQual _ (Ident _ "Int"))  -> IntTy
+    TyCon _ (UnQual _ (Ident _ "Char")) -> CharTy
     TyCon _ (UnQual _ (Ident _ "Float"))-> FloatTy
     TyCon _ (UnQual _ (Ident _ "Bool")) -> BoolTy
     TyCon _ (UnQual _ (Ident _ "Sym"))  -> SymTy0
@@ -437,6 +442,7 @@ primMap = M.fromList
   , ("sqrt", FSqrtP)
   , ("==", EqIntP)
   , (".==.", EqFloatP)
+  , ("*==*", EqCharP)
   , ("<", LtP)
   , (">", GtP)
   , ("<=", LtEqP)
@@ -460,6 +466,7 @@ primMap = M.fromList
   , ("False", MkFalse)
   , ("gensym", Gensym)
   , ("printint", PrintInt)
+  , ("printchar", PrintChar)
   , ("printfloat", PrintFloat)
   , ("printbool", PrintBool)
   , ("printsym", PrintSym)
@@ -871,7 +878,7 @@ desugarFun type_syns toplevel env decl =
     FunBind _ [Match _ fname pats (UnGuardedRhs _ bod) _where] -> do
       let fname_str = nameToStr fname
           fname_var = toVar (fname_str)
-      (vars, arg_tys,bindss) <- unzip3 <$> mapM (desugarPatWithTy type_syns) pats 
+      (vars, arg_tys,bindss) <- unzip3 <$> mapM (desugarPatWithTy type_syns) pats
       let binds = concat bindss
           args = vars
       fun_ty <- case M.lookup fname_var env of
@@ -958,8 +965,10 @@ collectTopLevel type_syns env decl =
                                                    , funArgs = args
                                                    , funTy   = fun_ty
                                                    , funBody = fixupSpawn (mkLets binds bod')
-                                                   , funRec  = NotRec
-                                                   , funInline = NoInline
+                                                   , funMeta = FunMeta { funRec = NotRec
+                                                                       , funInline = NoInline
+                                                                       , funCanTriggerGC = False
+                                                                       }
                                                    })
 
                -- This is a top-level function that doesn't take any arguments.
@@ -971,8 +980,10 @@ collectTopLevel type_syns env decl =
                                                , funArgs = []
                                                , funTy   = fun_ty''
                                                , funBody = fixupSpawn rhs'
-                                               , funRec  = NotRec
-                                               , funInline = NoInline
+                                               , funMeta = FunMeta { funRec = NotRec
+                                                                   , funInline = NoInline
+                                                                   , funCanTriggerGC = False
+                                                                   }
                                                })
 
 
@@ -981,8 +992,10 @@ collectTopLevel type_syns env decl =
                                                   , funArgs = args
                                                   , funTy   = ty
                                                   , funBody = fixupSpawn bod
-                                                  , funRec  = NotRec
-                                                  , funInline = NoInline
+                                                  , funMeta = FunMeta { funRec = NotRec
+                                                                      , funInline = NoInline
+                                                                      , funCanTriggerGC = False
+                                                                      }
                                                   })
 
     InlineSig _ _ _ qname -> pure $ Just $ HInline (toVar $ qnameToStr qname)
@@ -995,7 +1008,19 @@ desugarLiteral :: Literal a -> PassM Exp0
 desugarLiteral lit =
   case lit of
     (Int _ i _)  -> pure $ LitE (fromIntegral i)
+    (Char _ chr _) -> pure $ CharE chr
     (Frac _ i _) -> pure $ FloatE (fromRational i)
+    (String _ str _) -> do
+      vec <- gensym (toVar "vec")
+      let n = length str
+          init_vec = LetE (vec,[],VectorTy CharTy, PrimAppE (VAllocP CharTy) [LitE n])
+          fn i c b = LetE ("_",[],VectorTy CharTy,
+                           PrimAppE (InplaceVUpdateP CharTy) [VarE vec, LitE i, CharE c])
+                     b
+          add_chars = foldr (\(i,chr) acc -> fn i chr acc) (VarE vec)
+                        (reverse $ zip [0..n-1] str)
+      pure $ init_vec add_chars
+
     _ -> error ("desugarLiteral: Only integer litrals are allowed: " ++ prettyPrint lit)
 
 
@@ -1031,6 +1056,14 @@ desugarAlt type_syns toplevel alt =
   case alt of
     Alt _ (PApp _ qname ps) (UnGuardedRhs _ rhs) Nothing -> do
       let conName = qnameToStr qname
+      desugarCase ps conName rhs
+    Alt _ (PWildCard _) (UnGuardedRhs _ rhs) _b ->
+      desugarCase [] "_default" rhs
+    Alt _ _ GuardedRhss{} _ -> error "desugarExp: Guarded RHS not supported in case."
+    Alt _ _ _ Just{}        -> error "desugarExp: Where clauses not allowed in case."
+    Alt _ pat _ _           -> error $ "desugarExp: Unsupported pattern in case: " ++ prettyPrint pat
+  where
+    desugarCase ps conName rhs = do
       ps' <- mapM (\x -> case x of
                             PVar _ v -> (pure . toVar . nameToStr) v
                             PWildCard _ -> gensym "wildcard_"
@@ -1039,9 +1072,6 @@ desugarAlt type_syns toplevel alt =
       rhs' <- desugarExp type_syns toplevel rhs
       ps'' <- mapM (\v -> (v,) <$> newMetaTy) ps'
       pure (conName, ps'', rhs')
-    Alt _ _ GuardedRhss{} _ -> error "desugarExp: Guarded RHS not supported in case."
-    Alt _ _ _ Just{}        -> error "desugarExp: Where clauses not allowed in case."
-    Alt _ pat _ _           -> error $ "desugarExp: Unsupported pattern in case: " ++ prettyPrint pat ++ " in " ++ prettyPrint alt
 
 generateBind :: (Show a,  Pretty a) => TypeSynEnv -> TopTyEnv -> TopTyEnv -> Decl a -> Exp0 -> PassM (Exp0)
 generateBind type_syns toplevel env decl exp2 =
@@ -1174,6 +1204,7 @@ fixupSpawn ex =
     -- Straightforward recursion ...
     VarE{}     -> ex
     LitE{}     -> ex
+    CharE{}    -> ex
     FloatE{}   -> ex
     LitSymE{}  -> ex
     AppE fn tyapps args -> AppE fn tyapps (map go args)
@@ -1218,6 +1249,7 @@ verifyBenchEAssumptions bench_allowed ex =
     -- Straightforward recursion ...
     VarE{}     -> ex
     LitE{}     -> ex
+    CharE{}    -> ex
     FloatE{}   -> ex
     LitSymE{}  -> ex
     AppE fn tyapps args -> AppE fn tyapps (map not_allowed args)
@@ -1275,6 +1307,7 @@ desugarLinearExts (Prog ddefs fundefs main) = do
       case ex of
         VarE{}    -> pure ex
         LitE{}    -> pure ex
+        CharE{}   -> pure ex
         FloatE{}  -> pure ex
         LitSymE{} -> pure ex
         AppE f tyapps args -> do args' <- mapM go args

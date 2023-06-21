@@ -23,6 +23,8 @@ import           Data.Semigroup
 
 import           Gibbon.L0.Syntax as L0
 import           Gibbon.Common
+import           Data.Function
+import           Data.Bitraversable
 
 --------------------------------------------------------------------------------
 
@@ -105,6 +107,7 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
       else pure (sbst, ty, VarE x)
 
     LitE{}    -> pure (sbst, IntTy, ex)
+    CharE{}   -> pure (sbst, CharTy, ex)
     FloatE{}  -> pure (sbst, FloatTy, ex)
     LitSymE{} -> pure (sbst, SymTy0, ex)
 
@@ -183,6 +186,12 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
             s2 <- unify (args !! 0) FloatTy (arg_tys' !! 0)
             s3 <- unify (args !! 1) FloatTy (arg_tys' !! 1)
             pure (s1 <> s2 <> s3, BoolTy, PrimAppE pr args_tc)
+          
+          char_cmps = do
+            len2
+            s2 <- unify (args !! 0) CharTy (arg_tys' !! 0)
+            s3 <- unify (args !! 1) CharTy (arg_tys' !! 1)
+            pure (s1 <> s2 <> s3, BoolTy, PrimAppE pr args_tc)
 
       case pr of
         MkTrue  -> mk_bools
@@ -204,6 +213,7 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
         LtEqP   -> int_cmps
         GtEqP   -> int_cmps
         EqFloatP -> float_cmps
+        EqCharP  -> char_cmps
         FLtP     -> float_cmps
         FGtP     -> float_cmps
         FLtEqP   -> float_cmps
@@ -248,6 +258,11 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
         PrintInt -> do
           len1
           s2 <- unify (args !! 0) IntTy (arg_tys' !! 0)
+          pure (s1 <> s2, ProdTy [], PrimAppE pr args_tc)
+
+        PrintChar -> do
+          len1
+          s2 <- unify (args !! 0) CharTy (arg_tys' !! 0)
           pure (s1 <> s2, ProdTy [], PrimAppE pr args_tc)
 
         PrintFloat -> do
@@ -613,13 +628,21 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
       let scrt_ty' = zonkTy s1 scrt_ty
       case scrt_ty' of
         (PackedTy tycon drvd_tyargs) -> do
-          let tycons_brs = map (getTyOfDataCon ddefs . (\(a,_,_) -> a)) brs
+          let ddf = lookupDDef ddefs tycon
+          ddf' <- substTyVarDDef ddf drvd_tyargs
+          brs' <- L.nubBy ((==) `on` fst3) . concat <$> traverse (\x@(a,_,c) -> 
+              if a == "_default" 
+                then traverse (\(a', args) -> do
+                        args' <- traverse (bitraverse (\_ -> gensym "wildcard") pure) args
+                        pure (a', args', c) 
+                      ) (dataCons ddf)
+                else pure [x]
+            ) brs :: TcM [(DataCon, [(Var, Ty0)], Exp0)]
+          let tycons_brs = map (getTyOfDataCon ddefs . fst3) brs'
           case L.nub tycons_brs of
             [one] -> if one == tycon
                      then do
-                       let ddf = lookupDDef ddefs tycon
-                       ddf' <- substTyVarDDef ddf drvd_tyargs
-                       (s2,t2,brs_tc) <- tcCases ddefs s1 venv fenv bound_tyvars ddf' brs is_main ex
+                       (s2,t2,brs_tc) <- tcCases ddefs s1 venv fenv bound_tyvars ddf' brs' is_main ex
                        pure (s2, t2, CaseE scrt_tc brs_tc)
                      else err $ text "Couldn't match" <+> doc one
                                 <+> "with:" <+> doc scrt_ty'
@@ -846,7 +869,7 @@ combine v1 v2 | v1 == v2 = v1
                 (ArrowTy xs y, ArrowTy xs' y') -> ArrowTy (zipWith combine xs xs') (combine y y')
                 (VectorTy v1', VectorTy v2') -> VectorTy $ combine v1' v2'
                 (ProdTy v1s, ProdTy v2s) -> ProdTy (zipWith combine v1s v2s)
-                (PackedTy a1 v1s, PackedTy a2 v2s) -> 
+                (PackedTy a1 v1s, PackedTy a2 v2s) ->
                   if a1 == a2 then PackedTy a1 (zipWith combine v1s v2s)
                   else error $ "PackedTy doesn't match "++ sdoc v1 ++ " with " ++ sdoc v2
                 _ -> error $ "Failed to combine = " ++ sdoc v1 ++ " with " ++ sdoc v2
@@ -860,6 +883,7 @@ zonkTy :: Subst -> Ty0 -> Ty0
 zonkTy s@(Subst mp) ty =
   case ty of
     IntTy   -> ty
+    CharTy  -> ty
     FloatTy -> ty
     SymTy0  -> ty
     BoolTy  -> ty
@@ -894,6 +918,7 @@ zonkExp s ex =
   case ex of
     VarE{}    -> ex
     LitE{}    -> ex
+    CharE{}   -> ex
     FloatE{}  -> ex
     LitSymE{} -> ex
     AppE f tyapps args -> let tyapps1 = map (zonkTy s) tyapps
@@ -988,6 +1013,7 @@ substTyVarExp s ex =
   case ex of
     VarE{}    -> ex
     LitE{}    -> ex
+    CharE{}   -> ex
     FloatE{}  -> ex
     LitSymE{} -> ex
     AppE f tyapps arg -> let tyapps1 = map (substTyVar s) tyapps
@@ -1078,6 +1104,7 @@ tyVarToMetaTy = go M.empty
     go env ty =
      case ty of
        IntTy    -> pure (env, ty)
+       CharTy   -> pure (env, ty)
        FloatTy  -> pure (env, ty)
        SymTy0   -> pure (env, ty)
        BoolTy   -> pure (env, ty)

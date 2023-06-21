@@ -22,8 +22,8 @@ inlineTriv :: (HasSimplifiable e l d)
 inlineTriv (Prog ddefs funs main) =
     return (Prog ddefs (fmap (inlineTrivFun . inlineTrivFun) funs) main')
   where
-    inlineTrivFun (FunDef nam narg ty bod isrec inline) =
-      FunDef nam narg ty (inlineTrivExp M.empty bod) isrec inline
+    inlineTrivFun (FunDef nam narg ty bod meta) =
+      FunDef nam narg ty (inlineTrivExp M.empty bod) meta
 
     main' = case main of
               Nothing -> Nothing
@@ -43,6 +43,7 @@ inlineTrivExp = go
                      Just e  -> e
       Ext ext   -> Ext $ gInlineTrivExt env ext
       LitE{}    -> e0
+      CharE{}   -> e0
       FloatE{}  -> e0
       LitSymE{} -> e0
 

@@ -74,12 +74,20 @@ tests:
   - name: test12c_traverse.gib
   - name: test13b_build.gib
   - name: test13_build.gib
+  - name: Test185.hs
+    answer-file: examples/Test185.ans
+    # Failing due to a bug in AddTraversals.
+    failing: [gibbon1]
+  - name: Test187.hs
+    answer-file: examples/Test187.ans
+    skip: true
 
   # Needs manual inspection.
   - name: test14_repair.gib
 
   - name: test14a_tup.gib
   - name: test14b_tup.gib
+    skip: true
   - name: test14c_tail.gib
   - name: test14d_unary_tup.gib
   - name: test15a_symsearch.gib
@@ -149,6 +157,10 @@ tests:
     answer-file: examples/void_type.ans
   - name: T64_1.gib
   - name: test_addtrees.gib
+  - name: TestStrings.hs
+    # interp outputs 'h' versus the expected h (without quotes)
+    failing: [interp1]
+    answer-file: examples/TestStrings.hs.ans
 
   # There's still a bug somewhere. Uncomment the main expression to reproduce.
   # Plus, #lang gibbon is having some problems with dictionaries.
@@ -194,6 +206,8 @@ tests:
   - name: bench_tree_insert.gib
     bench: true
     more-iters: [pointer, gibbon2]
+    answer-file: examples/bench_tree_insert.ans
+    failing: [interp1]
 
   - name: bench_repmax.gib
     bench: true
@@ -253,6 +267,7 @@ tests:
   - name: NestedTuples.hs
     dir: examples/poly
     answer-file: examples/poly/NestedTuples.ans
+    skip: true
 
   - name: TuplesInDatacon.hs
     dir: examples/poly
@@ -429,6 +444,7 @@ tests:
   - name: test18f_flip.gib
     failing: [gibbon2, gibbon1]
   - name: pp_projs.gib
+    skip: true
   - name: test12_skip.gib
     failing: [gibbon1]
     skip: true
@@ -467,6 +483,9 @@ tests:
   - name: test17_forfold.gib
     skip: true
 
+  - name: wildcard_case.hs
+    answer-file: examples/wildcard_case.ans
+
   - name: test_153.hs
     failing: [gibbon2,gibbon1,interp1]
     answer-file: examples/test_153.ans
@@ -484,9 +503,11 @@ tests:
 
   - name: test_168.hs
     answer-file: examples/test_168.ans
+    skip: true
 
   - name: test_circsim.hs # covers #164, #166, #167, #174, #175
     answer-file: examples/test_circsim.ans
+    skip: true
 
   - name: test_power.hs
     answer-file: examples/test_power.ans

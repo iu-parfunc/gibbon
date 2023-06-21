@@ -132,6 +132,8 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
       LitE _i -> return (IntTy, tstatein)
 
+      CharE _i -> return (CharTy, tstatein)
+
       FloatE _i -> return (FloatTy, tstatein)
 
       LitSymE _v -> return (SymTy, tstatein)
@@ -229,6 +231,12 @@ tcExp ddfs env funs constrs regs tstatein exp =
                      _ <- ensureEqualTy (es !! 0) FloatTy (tys !! 0)
                      _ <- ensureEqualTy (es !! 1) FloatTy (tys !! 1)
                      pure (BoolTy, tstate)
+                   
+                   char_cmps = do 
+                     len2
+                     _ <- ensureEqualTy (es !! 0) CharTy (tys !! 0)
+                     _ <- ensureEqualTy (es !! 1) CharTy (tys !! 1)
+                     pure (BoolTy, tstate)
 
                case pr of
                  MkTrue  -> mk_bools
@@ -250,6 +258,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  LtEqP   -> int_cmps
                  GtEqP   -> int_cmps
                  EqFloatP -> float_cmps
+                 EqCharP  -> char_cmps
                  FLtP     -> float_cmps
                  FGtP     -> float_cmps
                  FLtEqP   -> float_cmps
@@ -596,6 +605,11 @@ tcExp ddfs env funs constrs regs tstatein exp =
                    _ <- ensureEqualTy (es !!! 0) IntTy (tys !!! 0)
                    pure (ProdTy [], tstate)
 
+                 PrintChar -> do
+                   len1
+                   _ <- ensureEqualTy (es !!! 0) CharTy (tys !!! 0)
+                   pure (ProdTy [], tstate)
+
                  PrintFloat -> do
                    len1
                    _ <- ensureEqualTy (es !!! 0) FloatTy (tys !!! 0)
@@ -733,7 +747,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  sequence_ [ ensureEqualTyNoLoc exp ty1 ty2
                            | (ty1,ty2) <- zip args tys ]
                  -- TODO: need to fix this check
-                 -- ensureDataCon exp l tys constrs
+                 ensureDataCon exp l tys constrs
                  tstate2 <- switchOutLoc exp tstate1 l
                  return (PackedTy dcty l, tstate2)
 
@@ -1093,12 +1107,15 @@ ensurePackedLoc exp ty l =
 -- | Ensure the locations all line up with the constraints in a data constructor application.
 -- Includes an expression for error reporting.
 ensureDataCon :: Exp -> LocVar -> [Ty2] -> ConstraintSet -> TcM ()
-ensureDataCon exp linit tys cs = trace (sdoc cs) (go Nothing linit tys)
+ensureDataCon exp linit0 tys cs = (go Nothing linit0 tys)
     where go Nothing linit ((PackedTy dc l):tys) = do
             ensureAfterConstant exp cs linit l
             go (Just (PackedTy dc l)) l tys
 
-          go Nothing linit (_ty:tys) = go Nothing linit tys
+          go Nothing linit (_ty:tys) = do
+            case getAfterConstant cs linit of
+              Nothing     -> go Nothing linit tys
+              Just linit' -> go Nothing linit' tys
 
           go (Just (PackedTy _dc1 l1)) _linit ((PackedTy dc2 l2):tys) = do
             ensureAfterPacked exp cs l1 l2
@@ -1128,6 +1145,16 @@ ensureAfterPacked  exp (ConstraintSet cs) l1 l2 =
     else throwError $ LocationTC "Expected after packed relationship" exp l1 l2
     where f (AfterVariableC _v l1' l2') = l1' == l1 && l2' == l2
           f _ = False
+
+getAfterConstant :: ConstraintSet -> LocVar -> Maybe LocVar
+getAfterConstant (ConstraintSet cs) l0 =
+  let mb_cs = L.find (\c -> case c of
+                         AfterConstantC _i l1 _l2 | l1 == l0 -> True
+                         _ -> False)
+              cs
+  in case mb_cs of
+       Just (AfterConstantC _i _l1 l2) -> Just l2
+       _ -> Nothing
 
 
 extendTS
