@@ -153,7 +153,7 @@ placeRegionInwards env scopeSet ex  =
         BoundsCheck{}                                  -> return ex        {- Actual type is BoundsCheck integer l1 l2, Don't need to worry about it will appear later in the pipeline, Just return the expression -}
         AddFixed{}                                     -> return ex        {- Actual type is AddFixed variable integer, Return the expression -}
         IndirectionE{}                                 -> return ex        {- Actual type: IndirectionE tyCon dataCon (l1,v1) (l2,v2) rhs, skip the recursion, IndirectionE doesn't appear until later in the IR language, return the expression -}
-        GetCilkWorkerNum                               -> return ex                   {- Just return the expression, there is no recusrion to do here -}
+        GetOmpWorkerNum                               -> return ex                   {- Just return the expression, there is no recusrion to do here -}
         LetAvail vs e                                  -> Ext . LetAvail vs <$> go e  {- Recurse on the rhs directly -}
 
 

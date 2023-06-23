@@ -108,7 +108,7 @@ data Tail
 
     -- ^ INTERNAL ONLY: used for assigning instead of returning.
 
-    | LetCallT { async :: Bool, -- ^ Whether this call should be executed asynchronously (cilk_spawn).
+    | LetCallT { async :: Bool, -- ^ Whether this call should be executed asynchronously (#pragma omp task).
                  binds :: [(Var,Ty)],
                  rator :: Var,
                  rands :: [Triv],
@@ -327,8 +327,8 @@ data Prim
 
     | ReadInt
 
-    | ParSync          -- ^ cilk_sync
-    | GetCilkWorkerNum -- ^ Runs  __cilkrts_get_worker_number()
+    | ParSync          -- ^ #pragma omp taskwait
+    | GetOmpWorkerNum -- ^ Runs  omp_get_thread_num()
     | IsBig
 
     | Gensym

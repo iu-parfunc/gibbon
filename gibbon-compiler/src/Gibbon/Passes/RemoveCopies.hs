@@ -92,7 +92,7 @@ removeCopiesExp ddefs fundefs lenv env2 ex =
         FromEndE{}       -> return ex
         BoundsCheck{}    -> return ex
         IndirectionE{}   -> return ex
-        GetCilkWorkerNum -> return ex
+        GetOmpWorkerNum -> return ex
         LetAvail vs bod -> Ext <$> LetAvail vs <$> go bod
 
     -- Straightforward recursion

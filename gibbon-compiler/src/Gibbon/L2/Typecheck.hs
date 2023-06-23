@@ -832,7 +832,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
       Ext (IndirectionE tycon _ (a,_) _ _) -> return (PackedTy tycon a, tstatein)
 
-      Ext GetCilkWorkerNum -> return (IntTy, tstatein)
+      Ext GetOmpWorkerNum -> return (IntTy, tstatein)
 
       Ext (LetAvail _ e) -> recur tstatein e
 

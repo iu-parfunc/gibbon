@@ -186,7 +186,7 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
                 return (ex, re, rt)
               FromEndE{}         -> pass
               AddFixed{}         -> pass
-              GetCilkWorkerNum{} -> pass
+              GetOmpWorkerNum{} -> pass
               LetAvail vs e      -> do
                 (e', re', rt') <- go e
                 return (Ext $ LetAvail vs e', re', rt')

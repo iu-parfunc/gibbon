@@ -29,7 +29,7 @@ Gibbon is implemented in Haskell, and is set up to be built with
 [Cabal](https://cabal.readthedocs.io/en/3.4/).
 After you install Cabal, proceed to installing Gibbon's dependencies:
 
-- Ubuntu (works on 18.04, fails on 20.04<sup><a name="footnote1">1</a></sup>]):
+- Ubuntu:
 
 ```
  $ sudo apt-get install libgc-dev libgmp-dev gcc-7 uthash-dev software-properties-common
@@ -37,11 +37,7 @@ After you install Cabal, proceed to installing Gibbon's dependencies:
  $ sudo add-apt-repository ppa:hvr/ghc && sudo apt update && sudo apt install ghc-9.0.1 cabal-install-3.4
 ```
 - Add `/opt/ghc/bin` to path for `cabal` and `ghc` to work.
-- Install haskell stack using steps at `https://docs.haskellstack.org/en/stable/install_and_upgrade/` (works with stack `2.7.3`, the version in `18.04`, i.e. stack `1.5.1-1` gives `AesonException "Error in $['system-info']: key \"os\" not present"`)
-- Make gcc-7.5 the default gcc with `sudo ln -sf /usr/bin/gcc-7 /usr/bin/gcc`
-
-<sup>[1](#footnote1)</sup>  Header files `cilk/cilk.h` and `cilk/cilk_api.h` are not present in `libgcc-7-dev` which comes with `20.04`
-
+- Install haskell stack using steps at `https://docs.haskellstack.org/en/stable/install_and_upgrade/` 
 
 - OSX:
 

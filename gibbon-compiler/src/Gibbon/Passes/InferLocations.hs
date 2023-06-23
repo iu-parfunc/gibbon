@@ -1823,7 +1823,7 @@ fixRANs prg@(Prog defs funs main) = do
                      L2.AddFixed{} -> return ([],e0)
                      BoundsCheck{} -> return ([],e0)
                      IndirectionE{}-> return ([],e0)
-                     GetCilkWorkerNum-> return ([],e0)
+                     GetOmpWorkerNum-> return ([],e0)
 
         LitE{}    -> return ([],e0)
         CharE{}   -> return ([],e0)

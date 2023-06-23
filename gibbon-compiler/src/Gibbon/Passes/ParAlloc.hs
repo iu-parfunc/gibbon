@@ -106,7 +106,7 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
       parent_id <- gensym "parent_id"
       args' <- mapM go args
       bod'  <- parAllocExp ddefs fundefs env2' reg_env' after_env (Just parent_id) pending_binds' spawned' boundlocs region_on_spawn bod
-      pure $ LetE (parent_id, [], IntTy, Ext GetCilkWorkerNum) $
+      pure $ LetE (parent_id, [], IntTy, Ext GetOmpWorkerNum) $
              LetE (v, endlocs, ty', (SpawnE f newlocs args')) bod'
 
     LetE (v, endlocs, ty, SyncE) bod -> do
@@ -240,7 +240,7 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
               -- If we are given the --region_on_spawn flag, we disable the region-on-steal optimization.
               if S.member loc2 boundlocs && not region_on_spawn
               then
-                pure $ LetE (cont_id, [], IntTy, Ext GetCilkWorkerNum) $
+                pure $ LetE (cont_id, [], IntTy, Ext GetOmpWorkerNum) $
                        LetE (not_stolen, [], BoolTy, PrimAppE EqIntP [VarE cont_id, VarE parent_id]) $
                        IfE (VarE not_stolen)
                            (Ext $ LetAvail [v] $
@@ -273,7 +273,7 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
         BoundsCheck{}  -> pure ex
         IndirectionE{} -> pure ex
         AddFixed{}     -> pure ex
-        GetCilkWorkerNum->pure ex
+        GetOmpWorkerNum->pure ex
         LetAvail vs bod -> Ext <$> LetAvail vs <$> go bod
     MapE{}  -> error $ "parAllocExp: TODO MapE"
     FoldE{} -> error $ "parAllocExp: TODO FoldE"
@@ -322,7 +322,7 @@ substLocInExp mp ex1 =
         BoundsCheck i l1 l2 -> Ext $ BoundsCheck i (sub l1) (sub l2)
         IndirectionE tc dc (l1,v1) (l2,v2) e -> Ext $ IndirectionE tc dc (sub l1, v1) (sub l2, v2) (go e)
         AddFixed{}        -> ex1
-        GetCilkWorkerNum  -> ex1
+        GetOmpWorkerNum  -> ex1
         LetAvail vs bod   -> Ext $ LetAvail vs (go bod)
     MapE{}  -> error "substLocInExpExp: TODO MapE"
     FoldE{}  -> error "substLocInExpExp: TODO FoldE"

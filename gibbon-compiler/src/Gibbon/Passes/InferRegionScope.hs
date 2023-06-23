@@ -146,7 +146,7 @@ inferRegScopeExp ex =
         FromEndE{} -> return ex
         BoundsCheck{} -> return ex
         IndirectionE{}-> return ex
-        GetCilkWorkerNum -> return ex
+        GetOmpWorkerNum -> return ex
         LetAvail vs e    -> Ext <$> LetAvail vs <$> go e
 
     -- Straightforward recursion ...

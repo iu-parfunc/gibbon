@@ -606,7 +606,7 @@ codegenTail venv fenv sort_fns (LetCallT False bnds ratr rnds body) ty sync_deps
 
 codegenTail venv fenv sort_fns (LetCallT True bnds ratr rnds body) ty sync_deps
     | [] <- bnds = do tal <- codegenTail venv fenv sort_fns body ty sync_deps
-                      return $ [toStmt spawnexp] ++ tal
+                      return $ spawnStms Nothing ++ tal
     | [bnd] <- bnds  = let fn_ret_ty = snd (fenv M.! ratr)
                            venv' = (M.fromList bnds) `M.union` venv in
                        case fn_ret_ty of
@@ -616,21 +616,21 @@ codegenTail venv fenv sort_fns (LetCallT True bnds ratr rnds body) ty sync_deps
                            let bind (v,t) f = (v, assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc))
                                fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
                                ty0 = ProdTy $ map snd bnds
-                               init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(spawnexp); |] ]
+                               init = C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam; |]: spawnStms (Just nam)
                                bind_after_sync = zipWith bind bnds fields
                            tal <- codegenTail venv' fenv sort_fns body ty (sync_deps ++ bind_after_sync)
                            return $ init ++ tal
                          ProdTy _ -> error $ "codegenTail: LetCallT" ++ fromVar ratr
                          _ -> do
                            tal <- codegenTail venv' fenv sort_fns body ty sync_deps
-                           let call = assn (codegenTy (snd bnd)) (fst bnd) (spawnexp)
-                           return $ [call] ++ tal
+                           let call = C.BlockDecl [cdecl| $ty:(codegenTy (snd bnd)) $id:(fst bnd);|]: spawnStms (Just $ fst bnd)
+                           return $ call ++ tal
     | otherwise = do
        nam <- gensym $ toVar "tmp_struct"
        let bind (v,t) f = (v, assn (codegenTy t) v (C.Member (cid nam) (C.toIdent f noLoc) noLoc))
            fields = map (\i -> "field" ++ show i) [0 :: Int .. length bnds - 1]
            ty0 = ProdTy $ map snd bnds
-           init = [ C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam = $(spawnexp); |] ]
+           init = C.BlockDecl [cdecl| $ty:(codegenTy ty0) $id:nam;|] : spawnStms (Just nam)
 
        let bind_after_sync = zipWith bind bnds fields
            venv' = (M.fromList bnds) `M.union` venv
@@ -638,7 +638,13 @@ codegenTail venv fenv sort_fns (LetCallT True bnds ratr rnds body) ty sync_deps
        return $ init ++  tal
   where
     fncall = C.FnCall (cid ratr) (map (codegenTriv venv) rnds) noLoc
-    spawnexp = C.EscExp (prettyCompact (text "cilk_spawn" <> space <> ppr fncall)) noLoc
+    spawnStms :: Maybe Var -> [C.BlockItem]
+    spawnStms v = [
+        C.BlockStm [cstm|$pragma:("omp task")|],
+        case v of
+           Just w -> C.BlockStm [cstm| $id:w = $exp:fncall; |]
+           _ -> C.BlockStm (C.Exp (Just fncall) noLoc)
+      ]
     _seqexp = C.EscExp (prettyCompact (ppr fncall)) noLoc
 
 codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
@@ -1051,7 +1057,7 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                                        one <- gensym "tmp"
                                        let assn = C.BlockStm [cstm| $id:elem = $id:one ; |]
                                        pure ([one], [parse_in_c ty], [ assn ], [ C.BlockDecl [cdecl| $ty:(codegenTy FloatTy) $id:one; |] ])
-                                     CharTy -> do 
+                                     CharTy -> do
                                        one <- gensym "tmp"
                                        let assn = C.BlockStm [cstm| $id:elem = $id:one ; |]
                                        pure ([one], [parse_in_c ty], [ assn ], [ C.BlockDecl [cdecl| $ty:(codegenTy CharTy) $id:one; |] ])
@@ -1107,12 +1113,11 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                        return [ C.BlockDecl[cdecl| $ty:(codegenTy IntTy) $id:outV = $id:mmap_size; |] ]
 
                  ParSync -> do
-                    let e = [cexp| cilk_sync |]
-                    return $ [ C.BlockStm [cstm| $exp:e; |] ] ++ (map snd sync_deps)
+                    return $ C.BlockStm [cstm| $pragma:("omp taskwait") |] : map snd sync_deps
 
-                 GetCilkWorkerNum -> do
+                 GetOmpWorkerNum -> do
                    let [(outV, IntTy)] = bnds
-                       e = [cexp| __cilkrts_get_worker_number() |]
+                       e = [cexp| omp_get_thread_num() |]
                    return $ [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = $exp:e; |] ]
 
                  IsBig -> do

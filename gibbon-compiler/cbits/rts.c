@@ -25,8 +25,6 @@
 #include <gc.h>
 #endif
 #ifdef _PARALLEL
-#include <cilk/cilk.h>
-#include <cilk/cilk_api.h>
 #endif
 
 #define KB 1024lu

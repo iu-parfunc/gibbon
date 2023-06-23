@@ -10,7 +10,7 @@ import           Text.PrettyPrint.GenericPretty
 import           Gibbon.DynFlags
 import           Gibbon.Common
 import           Gibbon.L2.Syntax
-import           Gibbon.L3.Syntax hiding ( BoundsCheck, RetE, GetCilkWorkerNum, LetAvail )
+import           Gibbon.L3.Syntax hiding ( BoundsCheck, RetE, GetOmpWorkerNum, LetAvail )
 import qualified Gibbon.L3.Syntax as L3
 import           Gibbon.Passes.AddRAN ( numRANsDataCon )
 
@@ -355,7 +355,7 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
 
         IndirectionE{} -> error $ "cursorizeExp: Unexpected IndirectionE"
 
-        GetCilkWorkerNum -> return $ Ext $ L3.GetCilkWorkerNum
+        GetOmpWorkerNum -> return $ Ext $ L3.GetOmpWorkerNum
 
         LetAvail vs bod  -> Ext <$> L3.LetAvail vs <$> go bod
 
@@ -568,7 +568,7 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
 
         AddFixed{} -> error "cursorizePackedExp: AddFixed not handled."
 
-        GetCilkWorkerNum -> pure $ Di (Ext L3.GetCilkWorkerNum)
+        GetOmpWorkerNum -> pure $ Di (Ext L3.GetOmpWorkerNum)
 
         LetAvail vs bod  -> do
           onDi (Ext . L3.LetAvail vs) <$> go tenv senv bod
