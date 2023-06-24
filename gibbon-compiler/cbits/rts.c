@@ -24,8 +24,6 @@
 #ifdef _POINTER
 #include <gc.h>
 #endif
-#ifdef _PARALLEL
-#endif
 
 #define KB 1024lu
 #define MB (KB * 1000lu)

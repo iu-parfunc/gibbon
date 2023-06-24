@@ -26,3 +26,23 @@ fib_par cutoff n =
             y = fib_par cutoff (n - 2)
             _ = sync
         in x + y
+
+-- go :: Int -> ()
+-- go n = 
+--     if n == 0 
+--         then 
+--             let _ = printint 0 
+--                 _ = printsym (quote "SPACE")
+--             in ()
+--         else 
+--             let _ = go (n-1)
+--                 v = fib_par 5 n 
+--                 _ = printint v
+--                 _ = printsym (quote "SPACE")
+--             in ()
+
+-- gibbon_main = 
+--     let n = sizeParam
+--         v = fib_par 5 n
+--         _ = printint v
+--     in ()

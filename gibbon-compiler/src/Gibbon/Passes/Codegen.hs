@@ -17,7 +17,7 @@ import qualified Data.Map as M
 import           Data.Maybe
 import qualified Data.List as L
 import qualified Data.Set as S
-import           Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, cstm, cty)
+import           Language.C.Quote.C (cdecl, cedecl, cexp, cfun, citem, citems, cparam, csdecl, cstm, cty)
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import           Prelude hiding (init)
@@ -213,11 +213,16 @@ codegenProg cfg prg@(Prog sym_tbl funs mtal) = do
 
       main_expr :: PassM C.Definition
       main_expr = do
+        dflags <- getDynFlags
         e <- case mtal of
                -- [2019.06.13]: CSK, Why is codegenTail always called with IntTy?
                Just (PrintExp t) -> codegenTail M.empty init_fun_env sort_fns t IntTy []
                _ -> pure []
-        let bod = mkSymTable ++ e
+        -- NOTE: need to extract out `return 0` from OMP block
+        let bod' = mkSymTable ++ e
+        let bod = if gopt Opt_Parallel dflags 
+                                  then [citems| $pragma:("omp parallel") $pragma:("omp single") { $items:bod' } return 0; |] 
+                                  else bod' ++ [[citem| return 0; |]]
         pure $ C.FuncDef [cfun| int __main_expr() { $items:bod } |] noLoc
 
       codegenFun' :: FunDecl -> PassM C.Func
@@ -387,7 +392,7 @@ type SyncDeps = [(Var, C.BlockItem)]
 codegenTail :: VEnv -> FEnv -> S.Set Var -> Tail -> Ty -> SyncDeps -> PassM [C.BlockItem]
 
 -- Void type:
-codegenTail _ _ _ (RetValsT []) _ty _   = return [ C.BlockStm [cstm| return 0; |] ]
+codegenTail _ _ _ (RetValsT []) _ty _   = return []
 -- Single return:
 codegenTail venv _ _ (RetValsT [tr]) ty _ =
     case ty of
@@ -639,12 +644,10 @@ codegenTail venv fenv sort_fns (LetCallT True bnds ratr rnds body) ty sync_deps
   where
     fncall = C.FnCall (cid ratr) (map (codegenTriv venv) rnds) noLoc
     spawnStms :: Maybe Var -> [C.BlockItem]
-    spawnStms v = [
-        C.BlockStm [cstm|$pragma:("omp task")|],
-        case v of
-           Just w -> C.BlockStm [cstm| $id:w = $exp:fncall; |]
-           _ -> C.BlockStm (C.Exp (Just fncall) noLoc)
-      ]
+    spawnStms v = case v of 
+        Just w -> let stm = [citem| $id:w = $exp:fncall; |]
+                  in [citems| $pragma:("omp task shared(" ++ fromVar w ++ ")") { $item:stm } |]
+        _ -> [citems| $pragma:("omp task") { $exp:fncall; } |]
     _seqexp = C.EscExp (prettyCompact (ppr fncall)) noLoc
 
 codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
