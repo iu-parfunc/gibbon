@@ -90,6 +90,7 @@ import           Gibbon.Passes.Codegen        (codegenProg)
 import           Gibbon.Passes.Fusion2        (fusion2)
 -- import Gibbon.Passes.CalculateBounds          (inferRegSize)
 import           Gibbon.Pretty
+import qualified Gibbon.Pretty as Text.PrettyPrint
 
 
 #ifdef LLVM_ENABLED
@@ -493,7 +494,10 @@ passes config@Config{dynflags} l0 = do
           no_rcopies = gopt Opt_No_RemoveCopies dynflags
           parallel   = gopt Opt_Parallel dynflags
           should_fuse = gopt Opt_Fusion dynflags
-      l0 <- go  "freshen"         freshNames            l0
+      l0 <- if gopt Opt_EmitSML dynflags
+            then genSML l0
+            else return l0
+      l0 <- go   "freshen"         freshNames            l0
       l0 <- goE0 "typecheck"       L0.tcProg             l0
       l0 <- goE0 "bindLambdas"     L0.bindLambdas       l0
       l0 <- goE0 "monomorphize"    L0.monomorphize      l0
@@ -755,3 +759,11 @@ wrapInterp s mode pass who fn x =
          ++show res2'++"\nExpected:  "++show res1
        dbgPrintLn interpDbgLevel $ " [interp] answer after " ++ who ++ " was: "++ res2'
      return p2
+
+genSML :: L0.Prog0 -> StateT (CompileState v) IO L0.Prog0
+genSML = _
+-- genSML p = 
+--   let
+--     Text.PrettyPrint.render $ GenSML.pp
+--   in
+--   return p
