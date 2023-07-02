@@ -193,6 +193,11 @@ tcExp ddfs env exp =
           _ <- ensureEqualTy exp IntTy (tys !! 0)
           return FloatTy
 
+        SpawnServer -> do 
+          len1
+          _ <- ensureEqualTy (es !! 0) IntTy (tys !!! 0) 
+          return (ProdTy [])
+
         PrintInt -> do
           len1
           _ <- ensureEqualTy (es !!! 0) IntTy (tys !!! 0)
@@ -562,10 +567,6 @@ tcExp ddfs env exp =
         GetNumProcessors -> do
           len0
           pure IntTy
-
-        SpawnServer -> do 
-          len0 
-          pure (ProdTy [])
 
         IntHashEmpty -> do
           len0

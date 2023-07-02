@@ -48,6 +48,8 @@
 //definition for hello world server. 
 #define BACKLOG 10
 
+#define MAXMSG  512
+
 // Initial size of BigInfinite buffers
 static long long global_init_biginf_buf_size = (4 * GB);
 
@@ -1399,25 +1401,67 @@ int main(int argc, char** argv)
 // Based on: https://github.com/RedAndBlueEraser/c-multithreaded-client-server/blob/master/server.c
 //------------------------------------------------------------------------------
 
-typedef struct pthread_arg_t {
-    int new_socket_fd;
-    struct sockaddr_in client_address;
-    /* TODO: Put arguments passed to threads here. See lines 116 and 139. */
-} pthread_arg_t;
+int read_buffer(int sock)
+{   
+    int buffer_size;
+    int read_size = read(sock,&buffer_size,sizeof(int));
+    if(read_size==0)
+    {
+        printf("error reading size of the buffer\n");
+        exit(1);
+    } 
 
-/* Thread routine to serve connection to client. */
-void *pthread_routine(void *arg);
+    //Memory to store the buffer
+    char* data_ptr = (char*)malloc(buffer_size*sizeof(char)); 
+    if(data_ptr==NULL)
+    {
+        printf("FAILURE: memory failed to allocate.\n");
+        exit(0);
+    }
+    
+    read_size = 0;
+    int total_bytes = 0;
+    
+    while ((read_size = recv(sock, (void *)data_ptr, buffer_size*sizeof(char), 0)) > 0) 
+    { 
+        total_bytes += read_size;
+    }
+    
+    printf("Printing buffer\n");
+    printf("\n");
+    
+    for(int i=0; i < buffer_size; i++){
+        printf("%c", data_ptr[i]);
+    }
+    
+    printf("\n");
+    printf("\ndone printing buffer!\n");
+
+    return total_bytes;
+
+}
+
+// typedef struct pthread_arg_t {
+//     int new_socket_fd;
+//     struct sockaddr_in client_address;
+//     /* TODO: Put arguments passed to threads here. See lines 116 and 139. */
+// } pthread_arg_t;
+// 
+// /* Thread routine to serve connection to client. */
+// void *pthread_routine(void *arg);
 
 /* Signal handler to handle SIGTERM and SIGINT signals. */
 void signal_handler(int signal_number);
 
-void run_server() {
+void run_server(IntTy port_number) {
     int port, socket_fd, new_socket_fd;
     struct sockaddr_in address;
-    pthread_attr_t pthread_attr;
-    pthread_arg_t *pthread_arg;
-    pthread_t pthread;
+    //pthread_attr_t pthread_attr;
+    //pthread_arg_t *pthread_arg;
+    //pthread_t pthread;
     socklen_t client_address_len;
+    struct sockaddr_in clientname;
+    socklen_t size = sizeof(clientname);
 
     // /* Get port from command line arguments or stdin. */
     // port = argc > 1 ? atoi(argv[1]) : 0;
@@ -1429,7 +1473,7 @@ void run_server() {
     /* Initialise IPv4 address. */
     memset(&address, 0, sizeof address);
     address.sin_family = AF_INET;
-    address.sin_port =  htons(9001);
+    address.sin_port =  htons(port_number);
     address.sin_addr.s_addr = INADDR_ANY;
 
     /* Create TCP socket. */
@@ -1465,47 +1509,58 @@ void run_server() {
     }
 
     /* Initialise pthread attribute to create detached threads. */
-    if (pthread_attr_init(&pthread_attr) != 0) {
-        perror("pthread_attr_init");
-        exit(1);
-    }
-    if (pthread_attr_setdetachstate(&pthread_attr, PTHREAD_CREATE_DETACHED) != 0) {
-        perror("pthread_attr_setdetachstate");
-        exit(1);
-    }
+//     if (pthread_attr_init(&pthread_attr) != 0) {
+//         perror("pthread_attr_init");
+//         exit(1);
+//     }
+//     if (pthread_attr_setdetachstate(&pthread_attr, PTHREAD_CREATE_DETACHED) != 0) {
+//         perror("pthread_attr_setdetachstate");
+//         exit(1);
+//     }
 
     while (1) {
         /* Create pthread argument for each connection to client. */
         /* TODO: malloc'ing before accepting a connection causes only one small
          * memory when the program exits. It can be safely ignored.
          */
-        pthread_arg = (pthread_arg_t *)malloc(sizeof *pthread_arg);
-        if (!pthread_arg) {
-            perror("malloc");
-            continue;
-        }
+//         pthread_arg = (pthread_arg_t *)malloc(sizeof *pthread_arg);
+//         if (!pthread_arg) {
+//             perror("malloc");
+//             continue;
+//         }
 
         /* Accept connection to client. */
-        client_address_len = sizeof pthread_arg->client_address;
-        new_socket_fd = accept(socket_fd, (struct sockaddr *)&pthread_arg->client_address, &client_address_len);
+        //client_address_len = sizeof pthread_arg->client_address;
+        //new_socket_fd = accept(socket_fd, (struct sockaddr *)&pthread_arg->client_address, &client_address_len);
+        
+        new_socket_fd = accept(socket_fd, (struct sockaddr*) &clientname, &size);
         if (new_socket_fd == -1) {
             perror("accept");
-            free(pthread_arg);
+            //free(pthread_arg);
             continue;
         }
+        
+        //------------------------------------------------------------------------------
+        //Call the server client communication without the pthread routine 
+        
+        int bytes_read = read_buffer(new_socket_fd);
+        printf("Server: read %d bytes from client.\n", bytes_read);
+        printf("\n");
+        
+        //------------------------------------------------------------------------------
 
         /* Initialise pthread argument. */
-        pthread_arg->new_socket_fd = new_socket_fd;
+        //pthread_arg->new_socket_fd = new_socket_fd;
         /* TODO: Initialise arguments passed to threads here. See lines 22 and
          * 139.
          */
 
         /* Create thread to serve connection to client. */
-        if (pthread_create(&pthread, &pthread_attr, pthread_routine, (void *)pthread_arg) != 0) {
-            perror("pthread_create");
-            free(pthread_arg);
-            continue;
-        }
+        //if (pthread_create(&pthread, &pthread_attr, pthread_routine, (void *)pthread_arg) != 0) {
+        //    perror("pthread_create");
+        //    free(pthread_arg);
+        //    continue;
+        //}
     }
 
     /* close(socket_fd);
@@ -1514,25 +1569,28 @@ void run_server() {
      */
 }
 
-void *pthread_routine(void *arg) {
-    pthread_arg_t *pthread_arg = (pthread_arg_t *)arg;
-    int new_socket_fd = pthread_arg->new_socket_fd;
-    struct sockaddr_in client_address = pthread_arg->client_address;
+// void *pthread_routine(void *arg) {
+//     pthread_arg_t *pthread_arg = (pthread_arg_t *)arg;
+//     int new_socket_fd = pthread_arg->new_socket_fd;
+//     struct sockaddr_in client_address = pthread_arg->client_address;
 
-    //prepare a Hello World string to send to the Client. 
-    char sendMsg[255] = "Hello World!"; 
-    send(new_socket_fd, sendMsg, sizeof(sendMsg), 0);
+//     //prepare a Hello World string to send to the Client. 
+//     //char sendMsg[255] = "Hello World!"; 
+//     //send(new_socket_fd, sendMsg, sizeof(sendMsg), 0);
 
-    free(arg);
+//     int bytes_read = read_buffer(new_socket_fd);
+//     printf("Server: read %d bytes from client.\n", bytes_read);
 
-    /* TODO: Put client interaction code here. For example, use
-     * write(new_socket_fd,,) and read(new_socket_fd,,) to send and receive
-     * messages with the client.
-     */
+//     free(arg);
 
-    close(new_socket_fd);
-    return NULL;
-}
+//     /* TODO: Put client interaction code here. For example, use
+//      * write(new_socket_fd,,) and read(new_socket_fd,,) to send and receive
+//      * messages with the client.
+//      */
+
+//     close(new_socket_fd);
+//     return NULL;
+// }
 
 void signal_handler(int signal_number) {
     /* TODO: Put exit cleanup code here. */

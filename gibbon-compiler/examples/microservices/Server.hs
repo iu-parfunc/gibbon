@@ -1,4 +1,4 @@
 import Gibbon.Prim 
 
 
-gibbon_main = spawn_server 
+gibbon_main = spawn_server 8080 

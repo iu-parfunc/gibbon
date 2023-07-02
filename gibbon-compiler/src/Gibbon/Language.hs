@@ -635,7 +635,7 @@ primArgsTy p =
     RequestEndOf  -> error "primArgsTy: RequestEndOf not handled yet"
     RequestSizeOf -> error "primArgsTy: RequestSizeOf not handled yet"
     Write3dPpmFile{} -> error "primArgsTy: Write3dPpmFile not handled yet"
-    SpawnServer -> []
+    SpawnServer -> [IntTy]
 
 -- | Return type for a primitive operation.
 primRetTy :: Prim (UrTy a) -> (UrTy a)

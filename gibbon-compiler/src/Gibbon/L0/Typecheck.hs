@@ -254,6 +254,11 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
           len1
           s2 <- unify (args !! 0) IntTy (arg_tys' !! 0)
           pure (s1 <> s2, FloatTy, PrimAppE pr args_tc)
+        
+        SpawnServer -> do 
+          len1
+          s2 <- unify (args !! 0) IntTy (arg_tys' !! 0)
+          pure (s1 <> s2, ProdTy [], PrimAppE pr args_tc)
 
         PrintInt -> do
           len1
@@ -551,11 +556,6 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
         GetNumProcessors -> do
           len0
           pure (s1, IntTy, PrimAppE pr args_tc)
-
-        SpawnServer -> do 
-          len0 
-          pure (s1, ProdTy [], PrimAppE pr args_tc)
-
 
         ErrorP _str ty -> do
           len0

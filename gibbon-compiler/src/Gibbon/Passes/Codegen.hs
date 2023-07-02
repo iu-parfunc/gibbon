@@ -915,6 +915,10 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                  SizeParam -> let [(outV,IntTy)] = bnds in pure
                       [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = global_size_param; |] ]
 
+                 SpawnServer -> do
+                  let [arg] = rnds in
+                    pure [ C.BlockStm [cstm| run_server($(codegenTriv venv arg)); |] ]
+
                  PrintInt ->
                      let [arg] = rnds in
                      case bnds of
@@ -1316,9 +1320,6 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                  GetNumProcessors -> do
                    let [(outV,outTy)] = bnds
                    return [ C.BlockDecl [cdecl| $ty:(codegenTy outTy) $id:outV = get_num_processors(); |] ]
-                
-                 SpawnServer -> do
-                   return [ C.BlockStm [cstm| run_server(); |] ] 
 
                  PrintRegionCount -> return [ C.BlockStm [cstm| print_global_region_count(); |] ]
 

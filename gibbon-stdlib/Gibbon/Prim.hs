@@ -3,7 +3,7 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LinearTypes         #-}
 
-module Gibbon.Prim
+module Gibbon.Prim  
     (
       -- * Numerals
       Int, Float
@@ -13,7 +13,7 @@ module Gibbon.Prim
     , intToFloat, floatToInt
 
       -- * Booleans
-    , Bool(..) , (||), (&&)
+    , Bool(..) , (||), (&&)  
 
       -- * Symbols
     , Sym, quote, eqsym, gensym
@@ -296,7 +296,7 @@ is_big = undefined
 -- Server Primitives
 ----------------------------------------------------------------------------------
 
-spawn_server :: () 
+spawn_server :: Int -> ()
 spawn_server = undefined
 
 

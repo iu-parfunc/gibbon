@@ -601,7 +601,8 @@ tcExp ddfs env funs constrs regs tstatein exp =
                    pure (IntTy, tstate)
                   
                  SpawnServer -> do 
-                   len0 
+                   len1
+                   _ <- ensureEqualTy (es !!! 0) IntTy (tys !!! 0) 
                    pure (ProdTy [], tstate)  
 
                  PrintInt -> do

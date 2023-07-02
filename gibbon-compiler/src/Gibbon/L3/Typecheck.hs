@@ -332,6 +332,11 @@ tcExp isPacked ddfs env exp =
           ensureEqualTy exp ety CursorTy
           pure BoolTy
 
+        SpawnServer -> do 
+          len1
+          _ <- ensureEqualTy (es !! 0) IntTy (tys !! 0) 
+          return (ProdTy [])
+
         PrintInt -> do
           len1
           _ <- ensureEqualTy (es !! 0) IntTy (tys !! 0)
@@ -656,10 +661,6 @@ tcExp isPacked ddfs env exp =
         GetNumProcessors -> do
           len0
           pure IntTy
-
-        SpawnServer -> do 
-          len0 
-          return (ProdTy [])
 
         IntHashEmpty -> do
           len0
