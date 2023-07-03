@@ -1397,14 +1397,14 @@ int main(int argc, char** argv)
 }
 
 //------------------------------------------------------------------------------
-// Hello-World Server, Multi-threadded 
+// A simple server using Sockets
 // Based on: https://github.com/RedAndBlueEraser/c-multithreaded-client-server/blob/master/server.c
 //------------------------------------------------------------------------------
 
 int read_buffer(int sock)
 {   
-    int buffer_size;
-    int read_size = read(sock,&buffer_size,sizeof(int));
+    IntTy buffer_size;
+    int read_size = read(sock,&buffer_size,sizeof(IntTy));
     if(read_size==0)
     {
         printf("error reading size of the buffer\n");
