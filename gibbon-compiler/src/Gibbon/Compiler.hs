@@ -20,13 +20,13 @@ module Gibbon.Compiler
 
 import           Control.DeepSeq
 import           Control.Exception
-
-
+#if !MIN_VERSION_base(4,15,0)
+#endif
 import           Control.Monad.State.Strict
 import           Control.Monad.Reader (ask)
-
-
-
+#if !MIN_VERSION_base(4,11,0)
+import           Data.Monoid
+#endif
 import           Options.Applicative
 import           System.Directory
 import           System.Environment
@@ -259,9 +259,9 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
       else do
         str <- case backend of
                  C    -> codegenProg config' l4
-
-
-
+#ifdef LLVM_ENABLED
+                 LLVM -> LLVM.codegenProg True l4
+#endif
                  LLVM -> error $ "Cannot execute through the LLVM backend. To build Gibbon with LLVM: "
                          ++ "stack build --flag gibbon:llvm_enabled"
 
