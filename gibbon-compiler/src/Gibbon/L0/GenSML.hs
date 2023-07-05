@@ -4,6 +4,8 @@ import Gibbon.L0.Syntax
 import Gibbon.Common
 
 import Text.PrettyPrint hiding ((<>))
+import qualified Gibbon.L0.Syntax as L0
+import Data.Map hiding (foldr)
 
 ppExt :: E0Ext Ty0 Ty0 -> Doc
 ppExt ex = case ex of
@@ -181,8 +183,8 @@ ppVar (Var s) = text $ show s
 
 interleave :: Doc -> [Doc] -> Doc
 interleave sepr lst = case lst of
-  [] -> empty
-  d : ds -> d <+> foldr (\x -> (sepr <+> x <>)) empty ds
+  [] -> mempty
+  d : ds -> d <+> foldr (\x -> (sepr <+> x <>)) mempty ds
 
 binary :: String -> [PreExp E0Ext Ty0 Ty0] -> Doc
 binary opSym pes =
@@ -205,3 +207,28 @@ extractUnary opSym pes = case ppPreExp <$> pes of
     [ "L0 error: (", opSym, ") is provided "
     , show $ length es, " arguments"
     ]
+
+ppProgram :: L0.Prog0 -> Doc
+ppProgram prog =
+  ppFunDefs (fundefs prog) <> ppMainExpr (mainExp prog)
+
+ppFunDefs :: Map Var (FunDef L0.Exp0) -> Doc
+ppFunDefs funDefs = case elems funDefs of
+  [] -> mempty
+  x : xs -> reduceFunDefs "fun" x $ foldr (reduceFunDefs "and") (text ";\n") xs
+
+reduceFunDefs :: String -> FunDef L0.Exp0 -> Doc -> Doc
+reduceFunDefs keyword funDef doc = 
+  doc <> text "\n" <> hsep
+    [ text keyword
+    , ppVar $ funName funDef
+    , hsep $ ppVar <$> funArgs funDef
+    , text "="
+    , ppPreExp $ funBody funDef
+    ]
+
+ppMainExpr :: Maybe (L0.Exp0, L0.Ty0) -> Doc
+ppMainExpr opt = case opt of
+  Nothing -> mempty
+  Just (exp0, _) -> 
+    text "val () = " <> ppPreExp exp0 <> semi

@@ -766,31 +766,6 @@ wrapInterp s mode pass who fn x =
 genSML :: L0.Prog0 -> StateT (CompileState v) IO L0.Prog0
 genSML program =
   let
-    prog_string = PP.render $ ppProgram program
+    prog_string = PP.render $ GenSML.ppProgram program
     written = writeFile "out.sml" prog_string
   in StateT $ \x -> written $> (program, x)
-
-ppProgram :: L0.Prog0 -> PP.Doc
-ppProgram prog =
-  ppFunDefs (fundefs prog) PP.<> ppMainExpr (mainExp prog)
-
-ppFunDefs :: M.Map Var (FunDef L0.Exp0) -> PP.Doc
-ppFunDefs funDefs = case M.elems funDefs of
-  [] -> PP.empty
-  x : xs -> reduceFunDefs "fun" x $ foldr (reduceFunDefs "and") (PP.text ";\n") xs
-
-reduceFunDefs :: String -> FunDef L0.Exp0 -> PP.Doc -> PP.Doc
-reduceFunDefs keyword funDef doc = 
-  doc <> PP.text "\n" <> PP.hsep
-    [ PP.text keyword
-    , GenSML.ppVar $ funName funDef
-    , PP.hsep $ GenSML.ppVar <$> funArgs funDef
-    , PP.text "="
-    , GenSML.ppPreExp $ funBody funDef
-    ]
-
-ppMainExpr :: Maybe (L0.Exp0, L0.Ty0) -> PP.Doc
-ppMainExpr opt = case opt of
-  Nothing -> PP.empty
-  Just (exp0, _) -> 
-    PP.text "val () = " <> GenSML.ppPreExp exp0 <> PP.semi
