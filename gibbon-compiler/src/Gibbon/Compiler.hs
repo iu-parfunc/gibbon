@@ -20,13 +20,13 @@ module Gibbon.Compiler
 
 import           Control.DeepSeq
 import           Control.Exception
-#if !MIN_VERSION_base(4,15,0)
-#endif
+
+
 import           Control.Monad.State.Strict
 import           Control.Monad.Reader (ask)
-#if !MIN_VERSION_base(4,11,0)
-import           Data.Monoid
-#endif
+
+
+
 import           Options.Applicative
 import           System.Directory
 import           System.Environment
@@ -90,12 +90,15 @@ import           Gibbon.Passes.Codegen        (codegenProg)
 import           Gibbon.Passes.Fusion2        (fusion2)
 -- import Gibbon.Passes.CalculateBounds          (inferRegSize)
 import           Gibbon.Pretty
-import qualified Gibbon.Pretty as Text.PrettyPrint
+import qualified Text.PrettyPrint as PP
+import           Data.Functor
+import qualified Data.Map as M
+import qualified Gibbon.L0.GenSML as GenSML
 
 
-#ifdef LLVM_ENABLED
-import qualified Gibbon.Passes.LLVM.Codegen as LLVM
-#endif
+
+
+
 
 
 
@@ -256,9 +259,9 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
       else do
         str <- case backend of
                  C    -> codegenProg config' l4
-#ifdef LLVM_ENABLED
-                 LLVM -> LLVM.codegenProg True l4
-#endif
+
+
+
                  LLVM -> error $ "Cannot execute through the LLVM backend. To build Gibbon with LLVM: "
                          ++ "stack build --flag gibbon:llvm_enabled"
 
@@ -539,7 +542,7 @@ passes config@Config{dynflags} l0 = do
               -- Note: L1 -> L2
               l1 <- goE1 "copyOutOfOrderPacked" copyOutOfOrderPacked l1
               l1 <- go "L1.typecheck"    L1.tcProg     l1
-              l1 <- goE1 "removeCopyAliases" removeAliasesForCopyCalls l1 
+              l1 <- goE1 "removeCopyAliases" removeAliasesForCopyCalls l1
               l2 <- goE2 "inferLocations"  inferLocs    l1
               l2 <- goE2 "simplifyLocBinds_a" simplifyLocBinds l2
               l2 <- go   "L2.typecheck"    L2.tcProg    l2
@@ -761,9 +764,33 @@ wrapInterp s mode pass who fn x =
      return p2
 
 genSML :: L0.Prog0 -> StateT (CompileState v) IO L0.Prog0
-genSML = _
--- genSML p = 
---   let
---     Text.PrettyPrint.render $ GenSML.pp
---   in
---   return p
+genSML program =
+  let
+    prog_string = PP.render $ ppProgram program
+    written = writeFile "out.sml" prog_string
+  in StateT $ \x -> written $> (program, x)
+
+ppProgram :: L0.Prog0 -> PP.Doc
+ppProgram prog =
+  ppFunDefs (fundefs prog) PP.<> ppMainExpr (mainExp prog)
+
+ppFunDefs :: M.Map Var (FunDef L0.Exp0) -> PP.Doc
+ppFunDefs funDefs = case M.elems funDefs of
+  [] -> PP.empty
+  x : xs -> reduceFunDefs "fun" x $ foldr (reduceFunDefs "and") (PP.text ";\n") xs
+
+reduceFunDefs :: String -> FunDef L0.Exp0 -> PP.Doc -> PP.Doc
+reduceFunDefs keyword funDef doc = 
+  doc <> PP.text "\n" <> PP.hsep
+    [ PP.text keyword
+    , GenSML.ppVar $ funName funDef
+    , PP.hsep $ GenSML.ppVar <$> funArgs funDef
+    , PP.text "="
+    , GenSML.ppPreExp $ funBody funDef
+    ]
+
+ppMainExpr :: Maybe (L0.Exp0, L0.Ty0) -> PP.Doc
+ppMainExpr opt = case opt of
+  Nothing -> PP.empty
+  Just (exp0, _) -> 
+    PP.text "val () = " <> GenSML.ppPreExp exp0 <> PP.semi
