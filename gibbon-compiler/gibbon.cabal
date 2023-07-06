@@ -39,6 +39,7 @@ library
                        Gibbon.L0.Typecheck
                        Gibbon.L0.Specialize2
                        Gibbon.L0.Interp
+                       Gibbon.L0.GenSML
                        Gibbon.L1.Syntax
                        Gibbon.L1.Typecheck
                        Gibbon.L1.Interp
