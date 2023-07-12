@@ -6,6 +6,7 @@ import Gibbon.Common
 import Text.PrettyPrint hiding ((<>))
 import qualified Gibbon.L0.Syntax as L0
 import Data.Map hiding (foldr)
+import Data.Symbol
 
 ppExt :: E0Ext Ty0 Ty0 -> Doc
 ppExt ex = case ex of
@@ -29,11 +30,11 @@ ppExt ex = case ex of
 
 ppPreExp :: PreExp E0Ext Ty0 Ty0 -> Doc
 ppPreExp pe = case pe of
-  VarE (Var s) -> text $ show s
+  VarE v -> ppVar v
   LitE n -> text $ show n
   CharE c -> char c
   FloatE x -> text $ show x
-  LitSymE (Var s) -> quotes $ text $ show s
+  LitSymE v -> ppVar v
   AppE var _ pes -> ppApp (ppVar var) pes
   PrimAppE pr pes -> ppPrim pr pes
   LetE (v, _, _, e) pe' ->
@@ -179,7 +180,7 @@ ppPrim pr pes = case pr of
   Gensym -> error "Gensym"
 
 ppVar :: Var -> Doc
-ppVar (Var s) = text $ show s
+ppVar (Var s) = text $ unintern s
 
 interleave :: Doc -> [Doc] -> Doc
 interleave sepr lst = case lst of
@@ -219,13 +220,13 @@ ppFunDefs funDefs = case elems funDefs of
 
 reduceFunDefs :: String -> FunDef L0.Exp0 -> Doc -> Doc
 reduceFunDefs keyword funDef doc = 
-  doc <> text "\n" <> hsep
+  text "\n" <> hsep
     [ text keyword
     , ppVar $ funName funDef
     , hsep $ ppVar <$> funArgs funDef
     , text "="
     , ppPreExp $ funBody funDef
-    ]
+    ] <> doc
 
 ppMainExpr :: Maybe (L0.Exp0, L0.Ty0) -> Doc
 ppMainExpr opt = case opt of

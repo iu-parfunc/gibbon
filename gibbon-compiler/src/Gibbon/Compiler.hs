@@ -20,13 +20,13 @@ module Gibbon.Compiler
 
 import           Control.DeepSeq
 import           Control.Exception
-#if !MIN_VERSION_base(4,15,0)
-#endif
+
+
 import           Control.Monad.State.Strict
 import           Control.Monad.Reader (ask)
-#if !MIN_VERSION_base(4,11,0)
-import           Data.Monoid
-#endif
+
+
+
 import           Options.Applicative
 import           System.Directory
 import           System.Environment
@@ -259,9 +259,9 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
       else do
         str <- case backend of
                  C    -> codegenProg config' l4
-#ifdef LLVM_ENABLED
-                 LLVM -> LLVM.codegenProg True l4
-#endif
+
+
+
                  LLVM -> error $ "Cannot execute through the LLVM backend. To build Gibbon with LLVM: "
                          ++ "stack build --flag gibbon:llvm_enabled"
 
@@ -498,7 +498,7 @@ passes config@Config{dynflags} l0 = do
           parallel   = gopt Opt_Parallel dynflags
           should_fuse = gopt Opt_Fusion dynflags
       l0 <- if gopt Opt_EmitSML dynflags
-            then genSML l0
+            then genSML (srcFile config) l0
             else return l0
       l0 <- go   "freshen"         freshNames            l0
       l0 <- goE0 "typecheck"       L0.tcProg             l0
@@ -763,9 +763,10 @@ wrapInterp s mode pass who fn x =
        dbgPrintLn interpDbgLevel $ " [interp] answer after " ++ who ++ " was: "++ res2'
      return p2
 
-genSML :: L0.Prog0 -> StateT (CompileState v) IO L0.Prog0
-genSML program =
+genSML :: Maybe FilePath -> L0.Prog0 -> StateT (CompileState v) IO L0.Prog0
+genSML fpOpt program =
   let
     prog_string = PP.render $ GenSML.ppProgram program
-    written = writeFile "out.sml" prog_string
+    fname = maybe "out" dropExtension fpOpt <> ".sml"
+    written = writeFile fname prog_string
   in StateT $ \x -> written $> (program, x)
