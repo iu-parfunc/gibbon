@@ -81,7 +81,7 @@ data E3Ext loc dec =
                                    --   Used for dict lookup, which returns a packed value but
                                    --   no end witness.
   | RetE [(PreExp E3Ext loc dec)]  -- ^ Analogous to L2's RetE
-  | GetOmpWorkerNum               -- ^ Runs  omp_get_thread_num()
+  | GetThreadNum               -- ^ Runs  omp_get_thread_num()
   | LetAvail [Var] (PreExp E3Ext loc dec) -- ^ These variables are available to use before the join point
   deriving (Show, Ord, Eq, Read, Generic, NFData)
 
@@ -111,7 +111,7 @@ instance FreeVars (E3Ext l d) where
       NullCursor         -> S.empty
       BumpArenaRefCount v w -> S.fromList [v, w]
       RetE ls -> S.unions (L.map gFreeVars ls)
-      GetOmpWorkerNum   -> S.empty
+      GetThreadNum   -> S.empty
       LetAvail ls b      -> (S.fromList ls) `S.union` gFreeVars b
       ReadVector{}  -> error "gFreeVars: ReadVector"
       WriteVector{} -> error "gFreeVars: WriteVector"
@@ -186,7 +186,7 @@ instance HasRenamable E3Ext l d => Renamable (E3Ext l d) where
       BumpArenaRefCount v w       -> BumpArenaRefCount (go v) (go w)
       NullCursor                  -> ext
       RetE ls                     -> RetE (L.map go ls)
-      GetOmpWorkerNum            -> GetOmpWorkerNum
+      GetThreadNum            -> GetThreadNum
       LetAvail ls b               -> LetAvail (L.map go ls) (go b)
     where
       go :: forall a. Renamable a => a -> a

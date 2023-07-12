@@ -328,7 +328,7 @@ data Prim
     | ReadInt
 
     | ParSync          -- ^ #pragma omp taskwait
-    | GetOmpWorkerNum -- ^ Runs  omp_get_thread_num()
+    | GetThreadNum -- ^ Runs  omp_get_thread_num()
     | IsBig
 
     | Gensym

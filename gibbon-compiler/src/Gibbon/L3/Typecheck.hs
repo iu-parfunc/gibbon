@@ -154,7 +154,7 @@ tcExp isPacked ddfs env exp =
 
         NullCursor -> return CursorTy
 
-        GetOmpWorkerNum -> return IntTy
+        GetThreadNum -> return IntTy
 
         LetAvail _ bod -> go bod
 

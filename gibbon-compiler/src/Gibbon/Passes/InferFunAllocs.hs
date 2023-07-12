@@ -64,7 +64,7 @@ inferExp fenv expr =
     Ext (IndirectionE{})   -> False
     Ext (BoundsCheck{})    -> _todo -- (S.empty, Nothing)
     Ext (AddFixed{})       -> False
-    Ext (GetOmpWorkerNum) -> False
+    Ext (GetThreadNum) -> False
     Ext (LetAvail _ e)     -> go e
   where
     go = inferExp fenv

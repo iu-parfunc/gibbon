@@ -256,7 +256,7 @@ threadRegionsExp ddefs fundefs isMain renv env2 lfenv ex =
         BoundsCheck sz _bound cur -> do
           return $ Ext $ BoundsCheck sz (toEndV (renv # cur)) cur
         IndirectionE{}   -> return ex
-        GetOmpWorkerNum -> return ex
+        GetThreadNum -> return ex
         LetAvail vs bod -> Ext <$> LetAvail vs <$> go bod
 
     -- Straightforward recursion
@@ -335,7 +335,7 @@ findRetLocs e0 = go e0 []
             BoundsCheck{}     -> acc
             IndirectionE{}    -> acc
             AddFixed{}        -> acc
-            GetOmpWorkerNum  -> acc
+            GetThreadNum  -> acc
             LetAvail _ bod    -> go bod acc
         MapE{}  -> error "findRetLocs: TODO MapE"
         FoldE{}  -> error "findRetLocs: TODO FoldE"

@@ -471,7 +471,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
               NullCursor         -> syms
               BumpArenaRefCount{}-> error "collect_syms: BumpArenaRefCount not handled."
               RetE ls -> gol ls
-              GetOmpWorkerNum -> syms
+              GetThreadNum -> syms
               LetAvail _ bod   -> collect_syms syms bod
           MapE{}         -> syms
           FoldE{}        -> syms
@@ -837,8 +837,8 @@ lower Prog{fundefs,ddefs,mainExp} = do
     LetE (v, _, _,  (Ext NullCursor)) bod ->
       T.LetTrivT (v,T.CursorTy,T.IntTriv 0) <$> tail free_reg sym_tbl bod
 
-    LetE (v, _, ty, (Ext GetOmpWorkerNum)) bod ->
-      T.LetPrimCallT [(v,typ ty)] T.GetOmpWorkerNum [] <$> tail free_reg sym_tbl bod
+    LetE (v, _, ty, (Ext GetThreadNum)) bod ->
+      T.LetPrimCallT [(v,typ ty)] T.GetThreadNum [] <$> tail free_reg sym_tbl bod
 
     Ext (LetAvail vs bod) ->
       T.LetAvailT vs <$> tail free_reg sym_tbl bod

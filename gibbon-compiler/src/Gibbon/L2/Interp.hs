@@ -342,7 +342,7 @@ interpExt sizeEnv rc env ddefs fenv ext =
     BoundsCheck{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
     AddFixed{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
     IndirectionE{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
-    GetOmpWorkerNum{} -> pure $ (VInt 1, SOne (fromJust $ byteSizeOfTy IntTy))
+    GetThreadNum{} -> pure $ (VInt 1, SOne (fromJust $ byteSizeOfTy IntTy))
     LetAvail{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
 
   where

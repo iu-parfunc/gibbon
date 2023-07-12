@@ -472,7 +472,7 @@ instance HasPrettyToo E2Ext l (UrTy l) => Pretty (L2.E2Ext l (UrTy l)) where
                                                      hcat (punctuate (text ",") [pprint l2,text (fromVar v2)]) <>
                                                      rparen <+>
                                                      pprint e
-          L2.GetOmpWorkerNum -> text "omp_get_thread_num()"
+          L2.GetThreadNum -> text "omp_get_thread_num()"
           L2.LetAvail vs e    -> text "letavail " <+> pprint vs $+$ pprint e
 
 -- L3

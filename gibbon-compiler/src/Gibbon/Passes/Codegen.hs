@@ -1118,7 +1118,7 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                  ParSync -> do
                     return $ C.BlockStm [cstm| $pragma:("omp taskwait") |] : map snd sync_deps
 
-                 GetOmpWorkerNum -> do
+                 GetThreadNum -> do
                    let [(outV, IntTy)] = bnds
                        e = [cexp| omp_get_thread_num() |]
                    return $ [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = $exp:e; |] ]

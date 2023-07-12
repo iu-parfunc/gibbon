@@ -126,7 +126,7 @@ data E2Ext loc dec
                               -- around in case we want to go back to it.
                               -- E.g. reverting from L2 to L1.
     -- ^ A tagged indirection node.
-  | GetOmpWorkerNum
+  | GetThreadNum
   -- ^ Runs  omp_get_thread_num()
   | LetAvail [Var] (E2 loc dec) -- ^ These variables are available to use before the join point
   deriving (Show, Ord, Eq, Read, Generic, NFData)
@@ -167,7 +167,7 @@ instance FreeVars (E2Ext l d) where
      AddFixed vr _      -> S.singleton vr
      BoundsCheck{}      -> S.empty
      IndirectionE{}     -> S.empty
-     GetOmpWorkerNum   -> S.empty
+     GetThreadNum   -> S.empty
      LetAvail vs bod    -> S.fromList vs `S.union` gFreeVars bod
 
 
@@ -191,7 +191,7 @@ instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
       AddFixed{}     -> True
       BoundsCheck{}  -> False
       IndirectionE{} -> False
-      GetOmpWorkerNum-> False
+      GetThreadNum-> False
       LetAvail{}      -> False
 
 instance (Out l, Show l, Typeable (E2 l (UrTy l))) => Typeable (E2Ext l (UrTy l)) where
@@ -207,7 +207,7 @@ instance (Out l, Show l, Typeable (E2 l (UrTy l))) => Typeable (E2Ext l (UrTy l)
       BoundsCheck{}       -> error "Shouldn't enconter BoundsCheck in tail position"
       IndirectionE tycon _ _ (to,_) _ -> PackedTy tycon to
       AddFixed{}          -> error "Shouldn't enconter AddFixed in tail position"
-      GetOmpWorkerNum    -> IntTy
+      GetThreadNum    -> IntTy
       LetAvail _ bod -> gRecoverType ddfs env2 bod
 
 
@@ -234,7 +234,7 @@ instance (Typeable (E2Ext l (UrTy l)),
           AddFixed{}    -> return ([],ex)
           BoundsCheck{} -> return ([],ex)
           IndirectionE{}-> return ([],ex)
-          GetOmpWorkerNum-> return ([],ex)
+          GetThreadNum-> return ([],ex)
           LetAvail vs bod -> do (bnds,bod') <- go bod
                                 return ([], LetAvail vs $ flatLets bnds bod')
 
@@ -254,7 +254,7 @@ instance HasSimplifiableExt E2Ext l d => SimplifiableExt (PreExp E2Ext l d) (E2E
       BoundsCheck{}  -> ext
       IndirectionE{} -> ext
       AddFixed{}     -> ext
-      GetOmpWorkerNum-> ext
+      GetThreadNum-> ext
       LetAvail vs bod -> LetAvail vs (gInlineTrivExp env bod)
 
 
@@ -269,7 +269,7 @@ instance HasSubstitutableExt E2Ext l d => SubstitutableExt (PreExp E2Ext l d) (E
       BoundsCheck{}    -> ext
       IndirectionE{}   -> ext
       AddFixed{}       -> ext
-      GetOmpWorkerNum -> ext
+      GetThreadNum -> ext
       LetAvail vs bod  -> LetAvail vs (gSubst old new bod)
 
   gSubstEExt old new ext =
@@ -282,7 +282,7 @@ instance HasSubstitutableExt E2Ext l d => SubstitutableExt (PreExp E2Ext l d) (E
       BoundsCheck{}    -> ext
       IndirectionE{}   -> ext
       AddFixed{}       -> ext
-      GetOmpWorkerNum -> ext
+      GetThreadNum -> ext
       LetAvail vs bod  -> LetAvail vs (gSubstE old new bod)
 
 instance HasRenamable E2Ext l d => Renamable (E2Ext l d) where
@@ -296,7 +296,7 @@ instance HasRenamable E2Ext l d => Renamable (E2Ext l d) where
       BoundsCheck{}    -> ext
       IndirectionE{}   -> ext
       AddFixed{}       -> ext
-      GetOmpWorkerNum -> ext
+      GetThreadNum -> ext
       LetAvail vs bod  -> LetAvail vs (gRename env bod)
 
 -- | Our type for functions grows to include effects, and explicit universal
@@ -617,7 +617,7 @@ revertExp ex =
         FromEndE{} -> error "revertExp: TODO FromEndLE"
         BoundsCheck{}   -> error "revertExp: TODO BoundsCheck"
         IndirectionE{}  -> error "revertExp: TODO IndirectionE"
-        GetOmpWorkerNum-> LitE 0
+        GetThreadNum-> LitE 0
         LetAvail _ bod  -> revertExp bod
     MapE{}  -> error $ "revertExp: TODO MapE"
     FoldE{} -> error $ "revertExp: TODO FoldE"
@@ -674,7 +674,7 @@ occurs w ex =
         AddFixed v _  -> v `S.member` w
         IndirectionE _ _ (_,v1) (_,v2) ib ->
           v1 `S.member` w  || v2 `S.member` w || go ib
-        GetOmpWorkerNum -> False
+        GetThreadNum -> False
         LetAvail _ bod -> go bod
     MapE{}  -> error "occurs: TODO MapE"
     FoldE{} -> error "occurs: TODO FoldE"
@@ -769,7 +769,7 @@ depList = L.map (\(a,b) -> (a,a,b)) . M.toList . go M.empty
               BoundsCheck{}  -> acc
               IndirectionE{} -> acc
               AddFixed v _   -> M.insertWith (++) v [v] acc
-              GetOmpWorkerNum -> acc
+              GetThreadNum -> acc
               LetAvail _ bod -> go acc bod
 
       dep :: PreLocExp LocVar -> [Var]
@@ -808,7 +808,7 @@ allFreeVars ex =
         BoundsCheck _ reg cur -> S.fromList [reg,cur]
         IndirectionE _ _ (a,b) (c,d) _ -> S.fromList $ [a,b,c,d]
         AddFixed v _    -> S.singleton v
-        GetOmpWorkerNum-> S.empty
+        GetThreadNum-> S.empty
         LetAvail vs bod -> S.fromList vs `S.union` gFreeVars bod
     _ -> gFreeVars ex
 
@@ -844,7 +844,7 @@ changeAppToSpawn v args2 ex1 =
         BoundsCheck{}     -> ex1
         IndirectionE{}    -> ex1
         AddFixed{}        -> ex1
-        GetOmpWorkerNum  -> ex1
+        GetThreadNum  -> ex1
         LetAvail vs bod   -> Ext $ LetAvail vs (go bod)
     MapE{}  -> error "addRANExp: TODO MapE"
     FoldE{}  -> error "addRANExp: TODO FoldE"

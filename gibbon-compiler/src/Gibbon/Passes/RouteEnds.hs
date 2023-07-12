@@ -152,7 +152,7 @@ bindReturns ex =
         FromEndE{} -> pure ex
         BoundsCheck{}  -> pure ex
         IndirectionE{} -> pure ex
-        GetOmpWorkerNum-> pure ex
+        GetThreadNum-> pure ex
         LetAvail a bod  -> do
           bod' <- bindReturns bod
           pure $ Ext $ LetAvail a bod'
