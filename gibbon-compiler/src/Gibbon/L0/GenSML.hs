@@ -8,6 +8,8 @@ import qualified Gibbon.L0.Syntax as L0
 import Data.Map hiding (foldr)
 import Data.Symbol
 import qualified Data.Map as Map
+import qualified Data.Set as Set
+import Data.Maybe
 
 ppExt :: E0Ext Ty0 Ty0 -> Doc
 ppExt ex = case ex of
@@ -186,7 +188,10 @@ ppPrim pr pes = case pr of
   Gensym -> error "Gensym"
 
 ppVar :: Var -> Doc
-ppVar (Var s) = text $ case unintern s of
+ppVar = text . getVar
+
+getVar :: Var -> String
+getVar (Var s) = case unintern s of
   "val" -> "val_"
   z -> z
 
@@ -226,7 +231,7 @@ ppProgram prog =
     ]
 
 ppFunDefs :: Map Var (FunDef L0.Exp0) -> Doc
-ppFunDefs funDefs = 
+ppFunDefs funDefs =
   foldMap (either ppValDef ppFunRec) (separateDefs $ reverse $ elems funDefs)
 
 separateDefs :: [FunDef L0.Exp0] -> [Either (FunDef L0.Exp0) [FunDef L0.Exp0]]
@@ -240,7 +245,7 @@ separateDefs funDefs = case funDefs of
       Right fds' : fds'' ->  Right (fd : fds') : fds''
 
 ppValDef :: FunDef L0.Exp0 -> Doc
-ppValDef funDef = 
+ppValDef funDef =
   hsep
     [ text "val"
     , ppVar $ funName funDef
@@ -249,7 +254,7 @@ ppValDef funDef =
     ] <> semi
 
 ppFunRec :: [FunDef L0.Exp0] -> Doc
-ppFunRec fdefs = 
+ppFunRec fdefs =
   reduceFunDefs "fun" (head fdefs) $
     foldr (reduceFunDefs "and") (text ";\n") (tail fdefs)
 
@@ -271,11 +276,14 @@ reduceFunDefs keyword funDef doc =
       ] <> doc
 
 
+addFunBinding :: FunDef ex -> Map String (FunDef ex) -> Map String (FunDef ex)
+addFunBinding funDef = Map.insert (getVar $ funName funDef) funDef
 
+allFunEntries :: [FunDef L0.Exp0] -> Map String (FunDef L0.Exp0)
+allFunEntries = foldr addFunBinding Map.empty
 
-
-
-
+allFunNames :: [FunDef ex] -> Set.Set String
+allFunNames = Set.fromList . fmap (getVar . funName)
 
 ppMainExpr :: Maybe (L0.Exp0, L0.Ty0) -> Doc
 ppMainExpr opt = case opt of
@@ -332,3 +340,52 @@ ppTy0 ty0 = case ty0 of
   VectorTy _ty0' -> _
   ListTy ty0' -> ppTy0 ty0' <+> text "list"
   ArenaTy -> _
+
+varsExt :: Set.Set String -> E0Ext Ty0 Ty0 -> Set.Set String
+varsExt m ext0 = case ext0 of
+  LambdaE _ pe -> varsPreExp m pe
+  PolyAppE pe pe' -> Set.union (varsPreExp m pe) (varsPreExp m pe')
+  PrintPacked _ pe -> varsPreExp m pe
+  _ -> mempty
+
+varsPreExps :: Set.Set String -> [PreExp E0Ext Ty0 Ty0] -> Set.Set String
+varsPreExps = foldMap . varsPreExp
+
+varsPreExp :: Set.Set String -> PreExp E0Ext Ty0 Ty0 -> Set.Set String
+varsPreExp vs pe0 = case pe0 of
+  VarE var ->
+    if Set.member s vs then Set.insert s vs
+    else Set.empty
+    where s = getVar var
+  AppE _ _ pes -> vpes pes
+  PrimAppE _ pes -> vpes pes
+  LetE _ pe -> vpe pe
+  IfE pe pe' pe3 -> vpes [pe, pe', pe3]
+  MkProdE pes -> vpes pes
+  ProjE _ pe -> vpe pe
+  CaseE pe x0 -> vpe pe <> foldMap (\(_, _, pe') -> vpe pe') x0
+  DataConE _ _ pes -> vpes pes
+  TimeIt pe _ _ -> vpe pe
+  WithArenaE _ pe -> vpe pe
+  SpawnE _ _ pes -> vpes pes
+  SyncE -> _
+  MapE _ _ -> _
+  FoldE {} -> _
+  Ext ee -> varsExt vs ee
+  _ -> mempty
+  where
+    vpe = varsPreExp vs
+    vpes = varsPreExps vs
+
+getDependencies :: [FunDef L0.Exp0] -> Map String [FunDef L0.Exp0]
+getDependencies funDefs =
+  let
+    funMap = allFunEntries funDefs
+    funSet = allFunNames funDefs
+    toNode = fromMaybe _ . flip Map.lookup funMap
+  in
+  foldr (\s ->
+    Map.insert
+      (getVar $ funName s)
+      (fmap toNode $ Set.toList $ varsPreExp funSet $ funBody s)
+  ) Map.empty funDefs
