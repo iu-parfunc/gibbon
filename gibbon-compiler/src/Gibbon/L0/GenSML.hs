@@ -226,9 +226,32 @@ ppProgram prog =
     ]
 
 ppFunDefs :: Map Var (FunDef L0.Exp0) -> Doc
-ppFunDefs funDefs = case elems funDefs of
-  [] -> mempty
-  x : xs -> reduceFunDefs "val" x $ foldr (reduceFunDefs "and") (text ";\n") xs
+ppFunDefs funDefs = 
+  foldMap (either ppValDef ppFunRec) (separateDefs $ reverse $ elems funDefs)
+
+separateDefs :: [FunDef L0.Exp0] -> [Either (FunDef L0.Exp0) [FunDef L0.Exp0]]
+separateDefs funDefs = case funDefs of
+  [] -> []
+  fd : fds -> case funArgs fd of
+    [] -> Left fd : separateDefs fds
+    _ -> case separateDefs fds of
+      [] -> [Right [fd]]
+      fds'@(Left _ : _) -> Right [fd] : fds'
+      Right fds' : fds'' ->  Right (fd : fds') : fds''
+
+ppValDef :: FunDef L0.Exp0 -> Doc
+ppValDef funDef = 
+  hsep
+    [ text "val"
+    , ppVar $ funName funDef
+    , text "="
+    , ppPreExp $ funBody funDef
+    ] <> semi
+
+ppFunRec :: [FunDef L0.Exp0] -> Doc
+ppFunRec fdefs = 
+  reduceFunDefs "fun" (head fdefs) $
+    foldr (reduceFunDefs "and") (text ";\n") (tail fdefs)
 
 reduceFunDefs :: String -> FunDef L0.Exp0 -> Doc -> Doc
 reduceFunDefs keyword funDef doc =
@@ -240,12 +263,19 @@ reduceFunDefs keyword funDef doc =
       , ppPreExp $ funBody funDef
       ] <> doc
     fargs -> hsep
-      [ text $ keyword <> " rec"
+      [ text keyword
       , ppVar $ funName funDef
+      , hsep $ ppVar <$> fargs
       , text "="
-      , hsep $ (\x -> text "fn" <+> ppVar x <+> "=>") <$> fargs
       , ppPreExp $ funBody funDef
       ] <> doc
+
+
+
+
+
+
+
 
 ppMainExpr :: Maybe (L0.Exp0, L0.Ty0) -> Doc
 ppMainExpr opt = case opt of
