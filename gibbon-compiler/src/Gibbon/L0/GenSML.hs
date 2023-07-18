@@ -10,6 +10,8 @@ import Data.Symbol
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Maybe
+import Data.Graph
+import Data.Tuple
 
 ppExt :: E0Ext Ty0 Ty0 -> Doc
 ppExt ex = case ex of
@@ -232,7 +234,7 @@ ppProgram prog =
 
 ppFunDefs :: Map Var (FunDef L0.Exp0) -> Doc
 ppFunDefs funDefs =
-  foldMap (either ppValDef ppFunRec) (separateDefs $ reverse $ elems funDefs)
+  foldMap (either ppValDef ppFunRec) (separateDefs $ sortDefs $ elems funDefs)
 
 separateDefs :: [FunDef L0.Exp0] -> [Either (FunDef L0.Exp0) [FunDef L0.Exp0]]
 separateDefs funDefs = case funDefs of
@@ -378,14 +380,27 @@ varsPreExp vs pe0 = case pe0 of
     vpes = varsPreExps vs
 
 getDependencies :: [FunDef L0.Exp0] -> Map String [FunDef L0.Exp0]
-getDependencies funDefs =
-  let
-    funMap = allFunEntries funDefs
-    funSet = allFunNames funDefs
-    toNode = fromMaybe _ . flip Map.lookup funMap
-  in
+getDependencies funDefs = 
   foldr (\s ->
     Map.insert
       (getVar $ funName s)
       (fmap toNode $ Set.toList $ varsPreExp funSet $ funBody s)
   ) Map.empty funDefs
+  where
+    funMap = allFunEntries funDefs
+    funSet = allFunNames funDefs
+    toNode = fromMaybe _ . flip Map.lookup funMap
+
+definitionSort :: Map String (FunDef L0.Exp0) -> Map String [FunDef L0.Exp0] -> [FunDef L0.Exp0]
+definitionSort m1 m2 =
+  (\(_, n, _) -> n) . back <$> topSort gr
+  where
+    (gr, back, _) = graphFromEdges $ (\(s, lst) -> 
+      (s, fromMaybe _ (Map.lookup s m1), lst)) <$> toList m2
+
+sortDefs :: [FunDef L0.Exp0] -> [FunDef L0.Exp0]
+sortDefs defs = 
+  definitionSort nameMap depMap
+  where
+    depMap = getDependencies defs
+    nameMap = fromList ((\d -> (getVar (funName d), d)) <$> defs)
