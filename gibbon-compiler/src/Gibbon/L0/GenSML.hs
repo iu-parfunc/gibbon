@@ -12,6 +12,8 @@ import qualified Data.Set as Set
 import Data.Maybe
 import Data.Graph
 import Data.Tuple
+import qualified Debug.Trace
+import qualified Debug.Trace as Trace.Debug
 
 ppExt :: E0Ext Ty0 Ty0 -> Doc
 ppExt ex = case ex of
@@ -355,13 +357,13 @@ varsPreExps = foldMap . varsPreExp
 
 varsPreExp :: Set.Set String -> PreExp E0Ext Ty0 Ty0 -> Set.Set String
 varsPreExp vs pe0 = case pe0 of
-  VarE var ->
-    if Set.member s vs then Set.insert s vs
-    else Set.empty
+  VarE _ -> mempty
+  AppE var _ pes -> vpes pes <>
+    if Set.member s vs then Set.singleton s
+    else mempty
     where s = getVar var
-  AppE _ _ pes -> vpes pes
   PrimAppE _ pes -> vpes pes
-  LetE _ pe -> vpe pe
+  LetE (_, _, _, pe') pe -> vpe pe <> vpe pe'
   IfE pe pe' pe3 -> vpes [pe, pe', pe3]
   MkProdE pes -> vpes pes
   ProjE _ pe -> vpe pe
@@ -381,19 +383,17 @@ varsPreExp vs pe0 = case pe0 of
 
 getDependencies :: [FunDef L0.Exp0] -> Map String [FunDef L0.Exp0]
 getDependencies funDefs = 
-  foldr (\s ->
-    Map.insert
-      (getVar $ funName s)
-      (fmap toNode $ Set.toList $ varsPreExp funSet $ funBody s)
-  ) Map.empty funDefs
+  foldr reduceDeps Map.empty funDefs
   where
     funMap = allFunEntries funDefs
     funSet = allFunNames funDefs
     toNode = fromMaybe _ . flip Map.lookup funMap
+    toDep = fmap toNode . Set.toList . varsPreExp funSet . funBody
+    reduceDeps = Map.insert . getVar . funName <*> toDep
 
 definitionSort :: Map String (FunDef L0.Exp0) -> Map String [FunDef L0.Exp0] -> [FunDef L0.Exp0]
 definitionSort m1 m2 =
-  (\(_, n, _) -> n) . back <$> topSort gr
+  reverse $ (\(_, n, _) -> n) . back <$> topSort gr
   where
     (gr, back, _) = graphFromEdges $ (\(s, lst) -> 
       (s, fromMaybe _ (Map.lookup s m1), lst)) <$> toList m2
