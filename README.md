@@ -67,9 +67,17 @@ At this point you can run the Gibbon executable:
 
     $ cabal v2-exec -w ghc-9.0.1 gibbon -- -h
 
-If you'd like to run the testsuite, you can do so with:
+And add gibbon to PATH
+```
+$ export PATH = "{ ... }/gibbon/dist-newstyle/build/{architecture}/ghc-{version}/gibbon-0.2/x/gibbon/build/gibbon/gibbon:$PATH"
+```
 
-    $ cd $GIBBONDIR && ./run_all_tests.sh
+If you'd like to run the testsuite, you can do so with:
+```
+$ cd gibbon-compiler
+$ cabal v2-exec -w ghc test-gibbon-examples -- -v2
+```
+    
 
 ## Using Gibbon
 
@@ -80,6 +88,9 @@ One thing to note is that the main point of entry for a Gibbon program is a
 function named `gibbon_main`, as opposed to the usual `main`.
 Here's a simple Gibbon program that builds a binary tree and sums up its leaves in parallel
 using a parallel tuple (`par`):
+
+
+
 
 
 ```haskell
