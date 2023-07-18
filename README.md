@@ -90,9 +90,8 @@ Gibbon from source:
 
 At this point you can run the Gibbon executable:
 ```
-$ cabal v2-run gibbon -- -h
+    $ cabal v2-exec -w ghc-9.0.1 gibbon -- -h
 ```
-
 And add gibbon to PATH
 ```
 $ export PATH = "{ ... }/gibbon/dist-newstyle/build/{architecture}/ghc-{version}/gibbon-0.2/x/gibbon/build/gibbon/gibbon:$PATH"
