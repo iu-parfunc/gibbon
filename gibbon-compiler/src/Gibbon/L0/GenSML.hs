@@ -42,7 +42,7 @@ ppPreExp pe = case pe of
   CharE c -> char c
   FloatE x -> text $ show x
   LitSymE v -> ppVar v
-  AppE var _ pes -> ppApp (ppVar var) pes
+  AppE var _ pes -> parens $ ppApp (ppVar var) pes
   PrimAppE pr pes -> ppPrim pr pes
   LetE (v, _, _, e) pe' ->
     hsep
@@ -64,7 +64,10 @@ ppPreExp pe = case pe of
     parens $ hsep
       [ hsep [text "case", ppPreExp pe', text "of"]
       , interleave (text "\n  |") ((\(dc, vs, e) -> hsep
-        [ text dc
+        [ text $ case dc of
+          "Nothing" -> "NONE"
+          "Just" -> "SOME"
+          x -> x
         , case vs of
           [] -> mempty
           _ -> parens $ interleave comma $ ppVar . fst <$> vs
@@ -72,10 +75,10 @@ ppPreExp pe = case pe of
         ]) <$> x0)
       ]
   DataConE _ty0 "Nothing" [] -> text "NONE"
-  DataConE _ty0 "Just" [t] -> text "SOME" <> parens (ppPreExp t)
+  DataConE _ty0 "Just" [t] -> parens $ text "SOME" <> parens (ppPreExp t)
   DataConE _ty0 s [] -> text s
   DataConE _ty0 s pes ->
-    hsep [text s, parens $ interleave comma (ppPreExp <$> pes)]
+    parens $ hsep [text s, parens $ interleave comma (ppPreExp <$> pes)]
 
   TimeIt _pe' _ty0 _b -> _
 
@@ -133,7 +136,10 @@ ppPrim pr pes = case pr of
   AndP -> binary "andalso" pes
   MkTrue -> text "true"
   MkFalse -> text "false"
-  ErrorP s _ -> hsep [text "raise", doubleQuotes $ text s]
+  ErrorP s _ -> hsep
+    [ text "raise"
+    , parens $ hsep ["Fail", doubleQuotes $ text s]
+    ]
   SizeParam -> error "SizeParam"
   IsBig -> error "IsBig"
   GetNumProcessors -> error "GetNumProcessors"
@@ -274,11 +280,16 @@ reduceFunDefs keyword funDef doc =
       ] <> doc
     fargs -> hsep
       [ text keyword
-      , ppVar $ funName funDef
+      , ppVar name
       , hsep $ ppVar <$> fargs
       , text "="
-      , ppPreExp $ funBody funDef
+      , case name of
+        "print_check" -> parens mempty
+        "print_space" -> text "print \" \""
+        "print_newline" -> text "print \"\\n\""
+        _ -> ppPreExp $ funBody funDef
       ] <> doc
+      where name = funName funDef
 
 
 addFunBinding :: FunDef ex -> Map String (FunDef ex) -> Map String (FunDef ex)
@@ -293,7 +304,7 @@ allFunNames = Set.fromList . fmap (getVar . funName)
 ppMainExpr :: Maybe (L0.Exp0, L0.Ty0) -> Doc
 ppMainExpr opt = case opt of
   Nothing -> mempty
-  Just (exp0, _) -> text "val () = " <> ppPreExp exp0 <> semi
+  Just (exp0, _) -> text "val _ = " <> ppPreExp exp0 <> semi
 
 ppDDefs :: DDefs0 -> Doc
 ppDDefs ddefs = case Map.elems ddefs of
