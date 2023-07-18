@@ -46,15 +46,15 @@ ppPreExp pe = case pe of
   PrimAppE pr pes -> ppPrim pr pes
   LetE (v, _, _, e) pe' ->
     hsep
-      [ text "let val", ppVar v, "="
+      [ text "\n  let val", ppVar v, "="
       , ppPreExp e, text "in"
       , ppPreExp pe', text "end"
       ]
   IfE pe' pe2 pe3 ->
-    parens $ hsep
+    (text "\n  " <>) $ parens $ hsep
       [ "if", ppPreExp pe'
       , "then", ppPreExp pe2
-      , "else", ppPreExp pe3
+      , "\n   else", ppPreExp pe3
       ]
   MkProdE pes ->
     parens $ interleave (text ", ") $ ppPreExp <$> pes
@@ -63,7 +63,7 @@ ppPreExp pe = case pe of
   CaseE pe' x0 ->
     parens $ hsep
       [ hsep [text "case", ppPreExp pe', text "of"]
-      , interleave (text "|") ((\(dc, vs, e) -> hsep
+      , interleave (text "\n  |") ((\(dc, vs, e) -> hsep
         [ text dc
         , case vs of
           [] -> mempty
@@ -232,6 +232,7 @@ ppProgram prog =
     [ ppDDefs $ ddefs prog
     , ppFunDefs $ fundefs prog
     , ppMainExpr $ mainExp prog
+    , text "\n"
     ]
 
 ppFunDefs :: Map Var (FunDef L0.Exp0) -> Doc
@@ -300,8 +301,8 @@ ppDDefs ddefs = case Map.elems ddefs of
   h : t -> hsep
     [ "datatype"
     , ppDDef h
-    , hsep $ ("and" <+>) . ppDDef <$> t
-    , semi
+    , hcat $ ("\nand" <+>) . ppDDef <$> t
+    , text ";\n"
     ]
 
 ppDDef :: DDef0 -> Doc
@@ -310,10 +311,10 @@ ppDDef ddef = hsep
   , (text "dat_" <>) $ ppVar $ tyName ddef
   , text "="
   , interleave
-      (text " | ")
+      (text "|")
       ((\(s, lst) -> text s <+> case lst of
         [] -> mempty
-        _ -> text "of" <+> parens (interleave (text " * ") (ppTy0 . snd <$> lst))) <$> dataCons ddef)
+        _ -> text "of" <+> parens (interleave (text " *") (ppTy0 . snd <$> lst))) <$> dataCons ddef)
   ]
 
 ppTyVar :: TyVar -> Doc
