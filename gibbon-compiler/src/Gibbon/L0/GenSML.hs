@@ -11,6 +11,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Maybe
 import Data.Graph
+import Control.Monad
 
 ppExt :: E0Ext Ty0 Ty0 -> Doc
 ppExt ex = case ex of
@@ -422,4 +423,4 @@ sortDefs defs =
   definitionSort nameMap depMap
   where
     depMap = getDependencies defs
-    nameMap = fromList $ (,) . getVar . funName <*> id <$> defs
+    nameMap = fromList $ join ((,) . getVar . funName) <$> defs
