@@ -56,11 +56,11 @@ ppPreExp pe = case pe of
       ]
   MkProdE pes ->
     parens $ interleave (text ", ") $ ppPreExp <$> pes
-  ProjE 0 pe' -> parens $ hsep 
+  ProjE 0 pe' -> parens $ hsep
     [ text "case", ppPreExp pe', text "of"
     , text "(x__, _) => x__"
     ]
-  ProjE 1 pe' -> parens $ hsep 
+  ProjE 1 pe' -> parens $ hsep
     [ text "case", ppPreExp pe', text "of"
     , text "(_, x__) => x__"
     ]
@@ -79,7 +79,7 @@ ppPreExp pe = case pe of
       ]
   DataConE _ty0 s [] -> text s
   DataConE _ty0 s pes ->
-    parens $ hsep [text s, parens $ interleave comma (ppPreExp <$> pes)]
+    parens $ hsep [text s, parens $ interleave comma $ ppPreExp <$> pes]
 
   TimeIt _pe' _ty0 _b -> _
 
@@ -213,7 +213,7 @@ getVar (Var s) = case unintern s of
 interleave :: Doc -> [Doc] -> Doc
 interleave sepr lst = case lst of
   [] -> mempty
-  d : ds -> d <+> foldr (\x -> (sepr <+> x <>)) mempty ds
+  d : ds -> d <+> foldr ((<>) . (sepr <+>)) mempty ds
 
 binary :: String -> [PreExp E0Ext Ty0 Ty0] -> Doc
 binary opSym pes =
@@ -328,10 +328,12 @@ ppDDef ddef = hsep
   , text "="
   , interleave
       (text "|")
-      ((\(s, lst) -> text s <+> case lst of
-        [] -> mempty
-        _ -> text "of" <+> parens (interleave (text " *") (ppTy0 . snd <$> lst))) <$> dataCons ddef)
+      (ppBody <$> dataCons ddef)
   ]
+  where
+    ppBody (s, lst) = text s <+> case lst of
+      [] -> mempty
+      _ -> text "of" <+> parens (interleave (text " *") (ppTy0 . snd <$> lst))
 
 ppTyVar :: TyVar -> Doc
 ppTyVar tyVar = case tyVar of
@@ -354,7 +356,7 @@ ppTy0 ty0 = case ty0 of
   SymSetTy -> _
   SymHashTy -> _
   IntHashTy -> _
-  ArrowTy ty0s ty0' -> hsep ((\x -> ppTy0 x <+> text "->") <$> ty0s) <+> ppTy0 ty0'
+  ArrowTy ty0s ty0' -> hsep ((<+> text "->") . ppTy0 <$> ty0s) <+> ppTy0 ty0'
   PackedTy "Maybe" [ty0'] -> ppTy0 ty0' <+> text "option"
   PackedTy s [] -> text " dat_" <> text s
   PackedTy s ty0s -> interleave comma (ppTy0 <$> ty0s) <> text " dat_" <> text s
@@ -399,7 +401,7 @@ varsPreExp vs pe0 = case pe0 of
     vpes = varsPreExps vs
 
 getDependencies :: [FunDef L0.Exp0] -> Map String [FunDef L0.Exp0]
-getDependencies funDefs = 
+getDependencies funDefs =
   foldr reduceDeps Map.empty funDefs
   where
     funMap = allFunEntries funDefs
@@ -412,12 +414,12 @@ definitionSort :: Map String (FunDef L0.Exp0) -> Map String [FunDef L0.Exp0] -> 
 definitionSort m1 m2 =
   reverse $ (\(_, n, _) -> n) . back <$> topSort gr
   where
-    (gr, back, _) = graphFromEdges $ (\(s, lst) -> 
-      (s, fromMaybe _ (Map.lookup s m1), lst)) <$> toList m2
+    (gr, back, _) = graphFromEdges $ mkNode <$> toList m2
+    mkNode (s, lst) = (s, fromMaybe _ (Map.lookup s m1), lst)
 
 sortDefs :: [FunDef L0.Exp0] -> [FunDef L0.Exp0]
-sortDefs defs = 
+sortDefs defs =
   definitionSort nameMap depMap
   where
     depMap = getDependencies defs
-    nameMap = fromList ((\d -> (getVar (funName d), d)) <$> defs)
+    nameMap = fromList $ (,) . getVar . funName <*> id <$> defs
