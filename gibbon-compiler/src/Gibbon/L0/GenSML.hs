@@ -5,21 +5,22 @@ import Gibbon.Common
 
 import Text.PrettyPrint hiding ((<>))
 import qualified Gibbon.L0.Syntax as L0
-import Data.Map hiding (foldr)
+import Data.Map hiding (foldr, fold)
 import Data.Symbol
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Maybe
 import Data.Graph
 import Control.Monad
+import Data.Foldable hiding ( toList )
 
 ppExt :: E0Ext Ty0 Ty0 -> Doc
 ppExt ex = case ex of
   LambdaE x0 pe ->
     parens $ hsep
-      [ text "fn"
+      [ "fn"
       , hsep $ ppVar . fst <$> x0
-      , text "=>"
+      , "=>"
       , ppPreExp pe
       ]
   PolyAppE pe pe' ->
@@ -28,7 +29,7 @@ ppExt ex = case ex of
   BenchE _var _ty0s _pes _b -> error "BenchE"
   ParE0 _pes -> error "ParE0"
   PrintPacked _ty0 pe ->
-    hsep [text "print", parens $ ppPreExp pe]
+    hsep ["print", parens $ ppPreExp pe]
   CopyPacked _ty0 _pe -> error "CopyPacked"
   TravPacked _ty0 _pe -> error "TravPacked"
   L _loc _pe -> error "L"
@@ -45,32 +46,32 @@ ppPreExp pe = case pe of
   PrimAppE pr pes -> ppPrim pr pes
   LetE (v, _, _, e) pe' ->
     hsep
-      [ text "\n  let val", ppVar v, "="
-      , ppPreExp e, text "in"
-      , ppPreExp pe', text "end"
+      [ "\n  let val", ppVar v, "="
+      , ppPreExp e, "in"
+      , ppPreExp pe', "end"
       ]
   IfE pe' pe2 pe3 ->
-    (text "\n  " <>) $ parens $ hsep
+    ("\n  " <>) $ parens $ hsep
       [ "if", ppPreExp pe'
       , "then", ppPreExp pe2
       , "\n   else", ppPreExp pe3
       ]
   MkProdE pes ->
-    parens $ interleave (text ", ") $ ppPreExp <$> pes
+    parens $ interleave ", " $ ppPreExp <$> pes
   ProjE 0 pe' -> parens $ hsep
-    [ text "case", ppPreExp pe', text "of"
-    , text "(x__, _) => x__"
+    [ "case", ppPreExp pe', "of"
+    , "(x__, _) => x__"
     ]
   ProjE 1 pe' -> parens $ hsep
-    [ text "case", ppPreExp pe', text "of"
-    , text "(_, x__) => x__"
+    [ "case", ppPreExp pe', "of"
+    , "(_, x__) => x__"
     ]
   ProjE n pe' ->
-    parens $ hsep [hcat [text "#", int $ succ n], ppPreExp pe']
+    parens $ hsep [hcat ["#", int $ succ n], ppPreExp pe']
   CaseE pe' x0 ->
     parens $ hsep
-      [ hsep [text "case", ppPreExp pe', text "of"]
-      , interleave (text "\n  |") ((\(dc, vs, e) -> hsep
+      [ hsep ["case", ppPreExp pe', "of"]
+      , interleave "\n  |" ((\(dc, vs, e) -> hsep
         [ text dc
         , case vs of
           [] -> mempty
@@ -103,7 +104,7 @@ ppPrim pr pes = case pr of
   DivP -> binary "div" pes
   ModP -> binary "mod" pes
   ExpP -> binary "**" pes
-  RandP -> ppApp (text "MltonRandom.rand()") pes
+  RandP -> ppApp "MltonRandom.rand()" pes
   EqIntP -> binary "=" pes
   LtP -> binary "<" pes
   GtP -> binary ">" pes
@@ -121,36 +122,36 @@ ppPrim pr pes = case pr of
       [ "Math.pow"
       , parens $ hcat [l, comma, r]
       ]
-  FRandP -> ppApp (text "Random.randFloat") pes
+  FRandP -> ppApp "Random.randFloat" pes
   EqFloatP -> binary "=" pes
   EqCharP -> binary "=" pes
   FLtP -> binary "<" pes
   FGtP -> binary ">" pes
   FLtEqP -> binary "<=" pes
   FGtEqP -> binary ">=" pes
-  FSqrtP -> ppApp (text "Math.sqrt") pes
-  IntToFloatP -> ppApp (text "Real.fromInt") pes
-  FloatToIntP -> ppApp (text "Int.fromReal") pes
-  FTanP -> ppApp (text "Math.tan") pes
+  FSqrtP -> ppApp "Math.sqrt" pes
+  IntToFloatP -> ppApp "Real.fromInt" pes
+  FloatToIntP -> ppApp "Int.fromReal" pes
+  FTanP -> ppApp "Math.tan" pes
   EqSymP -> binary "=" pes
   EqBenchProgP _ -> error "GenSML: EqBenchProgP"
   OrP -> binary "orelse" pes
   AndP -> binary "andalso" pes
-  MkTrue -> text "true"
-  MkFalse -> text "false"
+  MkTrue -> "true"
+  MkFalse -> "false"
   ErrorP s _ -> hsep
-    [ text "raise"
+    [ "raise"
     , parens $ hsep ["Fail", doubleQuotes $ text s]
     ]
   SizeParam -> error "SizeParam"
   IsBig -> error "IsBig"
   GetNumProcessors -> error "GetNumProcessors"
-  PrintInt -> ppApp (text "print") pes
-  PrintChar -> ppApp (text "print") pes
-  PrintFloat -> ppApp (text "print") pes
+  PrintInt -> ppApp "print" pes
+  PrintChar -> ppApp "print" pes
+  PrintFloat -> ppApp "print" pes
   PrintBool ->
-    ppApp (text "(fn true => \"True\" | false => \"False\")") pes
-  PrintSym -> ppApp (text "print") pes
+    ppApp "(fn true => \"True\" | false => \"False\")" pes
+  PrintSym -> ppApp "print" pes
   ReadInt -> error "ReadInt"  -- Have every program read from stdin?
   DictInsertP _ -> error "DictInsertP"
   DictLookupP _ -> error "DictLookupP"
@@ -214,7 +215,7 @@ getVar (Var s) = case unintern s of
 interleave :: Doc -> [Doc] -> Doc
 interleave sepr lst = case lst of
   [] -> mempty
-  d : ds -> d <+> foldr ((<>) . (sepr <+>)) mempty ds
+  d : ds -> (d <+>) $ fold $ (sepr <+>) <$> ds
 
 binary :: String -> [PreExp E0Ext Ty0 Ty0] -> Doc
 binary opSym pes =
@@ -225,7 +226,7 @@ binary opSym pes =
 extractBinary :: String -> [PreExp E0Ext Ty0 Ty0] -> (Doc, Doc)
 extractBinary opSym pes = case ppPreExp <$> pes of
   [l, r] -> (l, r)
-  es -> error $ mconcat
+  es -> error $ fold
     [ "L0 error: (", opSym, ") is provided "
     , show $ length es, " arguments"
     ]
@@ -233,7 +234,7 @@ extractBinary opSym pes = case ppPreExp <$> pes of
 extractUnary :: String -> [PreExp E0Ext Ty0 Ty0] -> Doc
 extractUnary opSym pes = case ppPreExp <$> pes of
   [x] -> x
-  es -> error $ mconcat
+  es -> error $ fold
     [ "L0 error: (", opSym, ") is provided "
     , show $ length es, " arguments"
     ]
@@ -244,7 +245,7 @@ ppProgram prog =
     [ ppDDefs $ ddefs prog
     , ppFunDefs $ fundefs prog
     , ppMainExpr $ mainExp prog
-    , text "\n"
+    , "\n"
     ]
 
 ppFunDefs :: Map Var (FunDef L0.Exp0) -> Doc
@@ -264,35 +265,35 @@ separateDefs funDefs = case funDefs of
 ppValDef :: FunDef L0.Exp0 -> Doc
 ppValDef funDef =
   hsep
-    [ text "val"
+    [ "val"
     , ppVar $ funName funDef
-    , text "="
+    , "="
     , ppPreExp $ funBody funDef
     ] <> semi
 
 ppFunRec :: [FunDef L0.Exp0] -> Doc
 ppFunRec fdefs =
   reduceFunDefs "fun" (head fdefs) $
-    foldr (reduceFunDefs "and") (text ";\n") (tail fdefs)
+    foldr (reduceFunDefs "and") ";\n" (tail fdefs)
 
-reduceFunDefs :: String -> FunDef L0.Exp0 -> Doc -> Doc
+reduceFunDefs :: Doc -> FunDef L0.Exp0 -> Doc -> Doc
 reduceFunDefs keyword funDef doc =
-  text "\n" <> case funArgs funDef of
+  "\n" <> case funArgs funDef of
     [] -> hsep
-      [ text keyword
+      [ keyword
       , ppVar $ funName funDef
-      , text "="
+      , "="
       , ppPreExp $ funBody funDef
       ] <> doc
     fargs -> hsep
-      [ text keyword
+      [ keyword
       , ppVar name
       , hsep $ ppVar <$> fargs
-      , text "="
+      , "="
       , case name of
         "print_check" -> parens mempty
-        "print_space" -> text "print \" \""
-        "print_newline" -> text "print \"\\n\""
+        "print_space" -> "print \" \""
+        "print_newline" -> "print \"\\n\""
         _ -> ppPreExp $ funBody funDef
       ] <> doc
       where name = funName funDef
@@ -310,7 +311,7 @@ allFunNames = Set.fromList . fmap (getVar . funName)
 ppMainExpr :: Maybe (L0.Exp0, L0.Ty0) -> Doc
 ppMainExpr opt = case opt of
   Nothing -> mempty
-  Just (exp0, _) -> text "val _ = " <> ppPreExp exp0 <> semi
+  Just (exp0, _) -> "val _ = " <> ppPreExp exp0 <> semi
 
 ppDDefs :: DDefs0 -> Doc
 ppDDefs ddefs = case Map.elems ddefs of
@@ -319,50 +320,50 @@ ppDDefs ddefs = case Map.elems ddefs of
     [ "datatype"
     , ppDDef h
     , hcat $ ("\nand" <+>) . ppDDef <$> t
-    , text ";\n"
+    , ";\n"
     ]
 
 ppDDef :: DDef0 -> Doc
 ppDDef ddef = hsep
   [ hsep $ ppTyVar <$> tyArgs ddef
-  , (text "dat_" <>) $ ppVar $ tyName ddef
-  , text "="
+  , ("dat_" <>) $ ppVar $ tyName ddef
+  , "="
   , interleave
-      (text "|")
+      "|"
       (ppBody <$> dataCons ddef)
   ]
   where
     ppBody (s, lst) = text s <+> case lst of
       [] -> mempty
-      _ -> text "of" <+> parens (interleave (text " *") (ppTy0 . snd <$> lst))
+      _ -> "of" <+> parens (interleave " *" $ ppTy0 . snd <$> lst)
 
 ppTyVar :: TyVar -> Doc
 ppTyVar tyVar = case tyVar of
-  BoundTv var -> text "'" <> ppVar var
+  BoundTv var -> "'" <> ppVar var
   SkolemTv _s _n -> _
-  UserTv var -> text "'" <> ppVar var
+  UserTv var -> "'" <> ppVar var
 
 ppTy0 :: Ty0 -> Doc
 ppTy0 ty0 = case ty0 of
-  IntTy -> text "int"
-  CharTy -> text "char"
-  FloatTy -> text "real"
-  SymTy0 -> text "string"
-  BoolTy -> text "bool"
+  IntTy -> "int"
+  CharTy -> "char"
+  FloatTy -> "real"
+  SymTy0 -> "string"
+  BoolTy -> "bool"
   TyVar tv -> ppTyVar tv
   MetaTv _mt -> _
-  ProdTy ty0s -> interleave (text " * ") (ppTy0 <$> ty0s)
+  ProdTy ty0s -> interleave " * " $ ppTy0 <$> ty0s
   SymDictTy _m_var _ty0' -> _
   PDictTy _ty0' _ty02 -> _
   SymSetTy -> _
   SymHashTy -> _
   IntHashTy -> _
-  ArrowTy ty0s ty0' -> hsep ((<+> text "->") . ppTy0 <$> ty0s) <+> ppTy0 ty0'
-  PackedTy "Maybe" [ty0'] -> ppTy0 ty0' <+> text "option"
-  PackedTy s [] -> text " dat_" <> text s
-  PackedTy s ty0s -> interleave comma (ppTy0 <$> ty0s) <> text " dat_" <> text s
+  ArrowTy ty0s ty0' -> hsep ((<+> "->") . ppTy0 <$> ty0s) <+> ppTy0 ty0'
+  PackedTy "Maybe" [ty0'] -> ppTy0 ty0' <+> "option"
+  PackedTy s [] -> " dat_" <> text s
+  PackedTy s ty0s -> fold [interleave comma $ ppTy0 <$> ty0s, " dat_", text s]
   VectorTy _ty0' -> _
-  ListTy ty0' -> ppTy0 ty0' <+> text "list"
+  ListTy ty0' -> ppTy0 ty0' <+> "list"
   ArenaTy -> _
 
 varsExt :: Set.Set String -> E0Ext Ty0 Ty0 -> Set.Set String
