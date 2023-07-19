@@ -11,15 +11,13 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Maybe
 import Data.Graph
-import Data.Tuple
-import qualified Debug.Trace
-import qualified Debug.Trace as Trace.Debug
 
 ppExt :: E0Ext Ty0 Ty0 -> Doc
 ppExt ex = case ex of
   LambdaE x0 pe ->
     parens $ hsep
-      [ hsep $ ppVar . fst <$> x0
+      [ text "fn"
+      , hsep $ ppVar . fst <$> x0
       , text "=>"
       , ppPreExp pe
       ]
@@ -58,24 +56,27 @@ ppPreExp pe = case pe of
       ]
   MkProdE pes ->
     parens $ interleave (text ", ") $ ppPreExp <$> pes
+  ProjE 0 pe' -> parens $ hsep 
+    [ text "case", ppPreExp pe', text "of"
+    , text "(x__, _) => x__"
+    ]
+  ProjE 1 pe' -> parens $ hsep 
+    [ text "case", ppPreExp pe', text "of"
+    , text "(_, x__) => x__"
+    ]
   ProjE n pe' ->
-    parens $ hsep [hcat [text "#", int n], ppPreExp pe']
+    parens $ hsep [hcat [text "#", int $ succ n], ppPreExp pe']
   CaseE pe' x0 ->
     parens $ hsep
       [ hsep [text "case", ppPreExp pe', text "of"]
       , interleave (text "\n  |") ((\(dc, vs, e) -> hsep
-        [ text $ case dc of
-          "Nothing" -> "NONE"
-          "Just" -> "SOME"
-          x -> x
+        [ text dc
         , case vs of
           [] -> mempty
           _ -> parens $ interleave comma $ ppVar . fst <$> vs
         , "=>", ppPreExp e
         ]) <$> x0)
       ]
-  DataConE _ty0 "Nothing" [] -> text "NONE"
-  DataConE _ty0 "Just" [t] -> parens $ text "SOME" <> parens (ppPreExp t)
   DataConE _ty0 s [] -> text s
   DataConE _ty0 s pes ->
     parens $ hsep [text s, parens $ interleave comma (ppPreExp <$> pes)]
@@ -101,7 +102,7 @@ ppPrim pr pes = case pr of
   DivP -> binary "div" pes
   ModP -> binary "mod" pes
   ExpP -> binary "**" pes
-  RandP -> ppApp (text "Random.randInt") pes
+  RandP -> ppApp (text "MltonRandom.rand()") pes
   EqIntP -> binary "=" pes
   LtP -> binary "<" pes
   GtP -> binary ">" pes
@@ -203,6 +204,10 @@ ppVar = text . getVar
 getVar :: Var -> String
 getVar (Var s) = case unintern s of
   "val" -> "val_"
+  "as" -> "as_"
+  "open" -> "open_"
+  "rec" -> "rec_"
+  "fun" -> "fun_"
   z -> z
 
 interleave :: Doc -> [Doc] -> Doc
