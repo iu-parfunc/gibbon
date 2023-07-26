@@ -93,8 +93,6 @@ import           Gibbon.Passes.Fusion2        (fusion2)
 -- import Gibbon.Passes.CalculateBounds          (inferRegSize)
 import           Gibbon.Pretty
 import qualified Text.PrettyPrint as PP
-import           Data.Functor
-import qualified Data.Map as M
 import qualified Gibbon.L0.GenSML as GenSML
 
 
@@ -158,7 +156,8 @@ configParser = Config <$> inputParser
                flag' RunExe  (short 'r' <> long "run"     <> help "Compile and then run executable") <|>
                (Bench <$> toVar <$> strOption (short 'b' <> long "bench-fun" <> metavar "FUN" <>
                                      help ("Generate code to benchmark a 1-argument FUN against a input packed file."++
-                                           "  If --bench-input is provided, then the benchmark is run as well.")))
+                                           "  If --bench-input is provided, then the benchmark is run as well."))) <|>
+               flag' ToSML (long "mlton" <> help "Emit MLton sources")
 
   -- use C as the default backend
   backendParser :: Parser Backend
@@ -231,7 +230,8 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
         runConf <- getRunConfig []
         (_s1,val,_stdout) <- gInterpProg () runConf initTypeChecked
         print val
-
+    
+    ToSML -> writeFile (dropExtension fp0 <.> "sml") (PP.render $ GenSML.ppProgram l0)
 
     ToParse -> dbgPrintLn 0 $ pprender l0
 
@@ -501,9 +501,6 @@ passes config@Config{dynflags} l0 = do
           no_rcopies = gopt Opt_No_RemoveCopies dynflags
           parallel   = gopt Opt_Parallel dynflags
           should_fuse = gopt Opt_Fusion dynflags
-      l0 <- if gopt Opt_EmitSML dynflags
-            then genSML (srcFile config) l0
-            else return l0
       l0 <- go   "freshen"         freshNames            l0
       l0 <- goE0 "typecheck"       L0.tcProg             l0
       l0 <- goE0 "bindLambdas"     L0.bindLambdas       l0
@@ -766,11 +763,3 @@ wrapInterp s mode pass who fn x =
          ++show res2'++"\nExpected:  "++show res1
        dbgPrintLn interpDbgLevel $ " [interp] answer after " ++ who ++ " was: "++ res2'
      return p2
-
-genSML :: Maybe FilePath -> L0.Prog0 -> StateT (CompileState v) IO L0.Prog0
-genSML fpOpt program =
-  let
-    prog_string = PP.render $ GenSML.ppProgram program
-    fname = maybe "out" dropExtension fpOpt <> ".sml"
-    written = writeFile fname prog_string
-  in StateT $ \x -> written $> (program, x)
