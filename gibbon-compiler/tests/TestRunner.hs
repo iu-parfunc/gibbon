@@ -160,6 +160,7 @@ data Result = Pass | Fail
 -- Not used atm.
 -- | Gibbon mode to run programs in
 data Mode = Gibbon2 | Pointer | Interp1 | Gibbon1
+    -- | SML
   deriving (Show, Eq, Read, Ord, Bounded, Enum)
 
 instance FromJSON Mode where
@@ -176,6 +177,7 @@ readMode s =
         "pointer" -> Pointer
         "interp1" -> Interp1
         "gibbon1" -> Gibbon1
+        -- "sml" -> SML
         _ -> error $ "readMode: " ++ show s
 
 -- Must match the flag expected by Gibbon.
@@ -184,6 +186,7 @@ modeRunFlags Gibbon2  = ["--run", "--packed"]
 modeRunFlags Pointer = ["--run", "--pointer"]
 modeRunFlags Interp1 = ["--interp1"]
 modeRunFlags Gibbon1 = ["--run", "--packed", "--gibbon1"]
+-- modeRunFlags SML = ["--mlton-run"]
 
 -- Must match the flag expected by Gibbon.
 modeExeFlags :: Mode -> [String]

@@ -157,7 +157,9 @@ configParser = Config <$> inputParser
                (Bench <$> toVar <$> strOption (short 'b' <> long "bench-fun" <> metavar "FUN" <>
                                      help ("Generate code to benchmark a 1-argument FUN against a input packed file."++
                                            "  If --bench-input is provided, then the benchmark is run as well."))) <|>
-               flag' ToSML (long "mlton" <> help "Emit MLton sources")
+               flag' ToSML (long "mlton" <> help "Emit MLton sources") <|>
+               flag' MltonExe (long "mlton-exe" <> help "Emit SML and compile with MLton") <|>
+               flag' MltonRun (long "mlton-run" <> help "Emit SML, compile with MLton, and run")
 
   -- use C as the default backend
   backendParser :: Parser Backend
@@ -232,6 +234,8 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
         print val
     
     ToSML -> writeFile (dropExtension fp0 <.> "sml") (PP.render $ GenSML.ppProgram l0)
+    MltonExe -> error "todo: mlton-exe"
+    MltonRun -> error "todo: mlton-run"
 
     ToParse -> dbgPrintLn 0 $ pprender l0
 
