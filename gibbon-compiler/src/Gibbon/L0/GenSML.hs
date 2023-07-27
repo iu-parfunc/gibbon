@@ -13,15 +13,12 @@ import Data.Maybe
 import Data.Graph
 import Control.Monad
 import Data.Foldable hiding ( toList )
-import Options.Applicative.Help (dquote)
 
 ppExt :: E0Ext Ty0 Ty0 -> Doc
 ppExt ex = case ex of
   LambdaE x0 pe ->
     parens $ hsep
-      [ "fn"
-      , hsep $ ppVar . fst <$> x0
-      , "=>"
+      [ hsep $ ("fn " <>) . (<> " =>") . ppVar . fst <$> x0
       , ppPreExp pe
       ]
   PolyAppE pe pe' ->
@@ -148,7 +145,7 @@ ppPrim pr pes = case pr of
   SizeParam -> int 1  -- ?
   IsBig -> error "IsBig"
   GetNumProcessors -> error "GetNumProcessors"
-  PrintInt -> ppApp "print" pes
+  PrintInt -> "print(Int.toString(" <> ppPreExp (head pes) <> "))"
   PrintChar -> ppApp "print" pes
   PrintFloat -> ppApp "print" pes
   PrintBool ->
