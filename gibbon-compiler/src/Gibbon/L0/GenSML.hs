@@ -13,6 +13,7 @@ import Data.Maybe
 import Data.Graph
 import Control.Monad
 import Data.Foldable hiding ( toList )
+import Options.Applicative.Help (dquote)
 
 ppExt :: E0Ext Ty0 Ty0 -> Doc
 ppExt ex = case ex of
@@ -41,8 +42,8 @@ ppPreExp pe = case pe of
   LitE n -> text $ show n
   CharE c -> char c
   FloatE x -> text $ show x
-  LitSymE v -> ppVar v
-  AppE var _ pes -> parens $ ppApp (ppVar var) pes
+  LitSymE v -> doubleQuotes $ ppVar v
+  AppE var _ pes -> ppApp (ppVar var) pes
   PrimAppE pr pes -> ppPrim pr pes
   LetE (v, _, _, e) pe' ->
     hsep
@@ -94,7 +95,11 @@ ppPreExp pe = case pe of
   Ext ee -> ppExt ee
 
 ppApp :: Doc -> [PreExp E0Ext Ty0 Ty0] -> Doc
-ppApp var pes = hsep $ var : (ppPreExp <$> pes)
+ppApp var pes = parens $ hsep $ var : (ppPreExp <$> pes)
+
+ppAppUncurried :: Doc -> [PreExp E0Ext Ty0 Ty0] -> Doc
+ppAppUncurried var pes = 
+  parens $ var <> parens (interleave "," $ ppPreExp <$> pes)
 
 ppPrim :: Prim Ty0 -> [PreExp E0Ext Ty0 Ty0] -> Doc
 ppPrim pr pes = case pr of
@@ -139,11 +144,8 @@ ppPrim pr pes = case pr of
   AndP -> binary "andalso" pes
   MkTrue -> "true"
   MkFalse -> "false"
-  ErrorP s _ -> hsep
-    [ "raise"
-    , parens $ hsep ["Fail", doubleQuotes $ text s]
-    ]
-  SizeParam -> error "SizeParam"
+  ErrorP s _ -> ppFail s
+  SizeParam -> int 1  -- ?
   IsBig -> error "IsBig"
   GetNumProcessors -> error "GetNumProcessors"
   PrintInt -> ppApp "print" pes
@@ -181,17 +183,22 @@ ppPrim pr pes = case pr of
   LLFreeP _ty0 -> error "LLFreeP"
   LLFree2P _ty0 -> error "LLFree2P"
   LLCopyP _ty0 -> error "LLCopyP"
-  VAllocP _ty0 -> error "VAllocP"
+  VAllocP _ty0 -> ppApp "(fn internal__ => Array.array(internal__, 0))" pes
   VFreeP _ty0 -> error "VFreeP"
   VFree2P _ty0 -> error "VFree2P"
-  VLengthP _ty0 -> error "VLengthP"
-  VNthP _ty0 -> error "VNthP"
-  VSliceP _ty0 -> error "VSliceP"
-  InplaceVUpdateP _ty0 -> error "InplaceVUpdateP"
-  VConcatP _ty0 -> error "VConcatP"
-  VSortP _ty0 -> error "VSortP"
-  InplaceVSortP _ty0 -> error "InplaceVSortP"
-  VMergeP _ty0 -> error "VMergeP"
+  VLengthP _ty0 -> ppApp "Array.length" pes
+  VNthP _ty0 -> ppAppUncurried "Array.sub" pes
+  VSliceP _ty0 -> ppFail "VSliceP"
+  InplaceVUpdateP _ty0 -> hsep
+      [ "let val _ ="
+      , ppAppUncurried "Array.update" pes
+      , "in", ppPreExp $ head pes
+      , "end"
+      ]
+  VConcatP _ty0 -> ppFail "VConcatP"
+  VSortP _ty0 -> ppFail "VSortP"
+  InplaceVSortP _ty0 -> ppFail "InplaceVSortP"
+  VMergeP _ty0 -> ppFail "VMergeP"
   Write3dPpmFile _s -> error "Write3dPpmFile"
   ReadPackedFile _m_s _s _m_var _ty0 -> error "ReadPackedFile"
   WritePackedFile _s _ty0 -> error "WritePackedFile"
@@ -210,6 +217,7 @@ getVar (Var s) = case unintern s of
   "open" -> "open_"
   "rec" -> "rec_"
   "fun" -> "fun_"
+  "end" -> "end_"
   z -> z
 
 interleave :: Doc -> [Doc] -> Doc
@@ -238,6 +246,12 @@ extractUnary opSym pes = case ppPreExp <$> pes of
     [ "L0 error: (", opSym, ") is provided "
     , show $ length es, " arguments"
     ]
+
+ppFail :: String -> Doc
+ppFail s = hsep
+  [ "raise"
+  , parens $ hsep ["Fail", doubleQuotes $ text s]
+  ]
 
 ppProgram :: L0.Prog0 -> Doc
 ppProgram prog =
