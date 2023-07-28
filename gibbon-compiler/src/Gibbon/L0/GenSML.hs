@@ -180,15 +180,25 @@ ppPrim pr pes = case pr of
   LLFreeP _ty0 -> error "LLFreeP"
   LLFree2P _ty0 -> error "LLFree2P"
   LLCopyP _ty0 -> error "LLCopyP"
-  VAllocP _ty0 -> ppApp "(fn internal__ => Array.array(internal__, 0))" pes
+  VAllocP _ty0 -> 
+    ppApp "(fn internal__ => ArraySlice.full(Array.array(internal__, 0)))" pes
   VFreeP _ty0 -> error "VFreeP"
   VFree2P _ty0 -> error "VFree2P"
-  VLengthP _ty0 -> ppApp "Array.length" pes
-  VNthP _ty0 -> ppAppUncurried "Array.sub" pes
-  VSliceP _ty0 -> ppFail "VSliceP"
+  VLengthP _ty0 -> ppApp "ArraySlice.length" pes
+  VNthP _ty0 -> ppAppUncurried "ArraySlice.sub" pes
+  VSliceP _ty0 -> case pes of
+    [pe1, pe2, pe3] -> hcat
+      [ "ArraySlice.slice"
+      , parens $ interleave comma
+        [ ppPreExp pe1
+        , ppPreExp pe2
+        , parens $ "SOME" <+> ppPreExp pe3
+        ]
+      ]
+    _ -> _
   InplaceVUpdateP _ty0 -> hsep
       [ "let val _ ="
-      , ppAppUncurried "Array.update" pes
+      , ppAppUncurried "ArraySlice.update" pes
       , "in", ppPreExp $ head pes
       , "end"
       ]
