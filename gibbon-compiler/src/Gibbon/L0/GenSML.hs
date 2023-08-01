@@ -188,11 +188,11 @@ ppPrim pr pes = case pr of
   VNthP _ty0 -> ppAppUncurried "ArraySlice.sub" pes
   VSliceP _ty0 -> case pes of
     [pe1, pe2, pe3] -> hcat
-      [ "ArraySlice.slice"
+      [ "ArraySlice.subslice"
       , parens $ interleave comma
-        [ ppPreExp pe1
-        , ppPreExp pe2
-        , parens $ "SOME" <+> ppPreExp pe3
+        [ ppPreExp pe3
+        , ppPreExp pe1
+        , parens $ "SOME" <+> ppPreExp pe2
         ]
       ]
     _ -> _
