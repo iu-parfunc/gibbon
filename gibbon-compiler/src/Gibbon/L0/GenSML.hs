@@ -466,7 +466,7 @@ qsort = text
   \            while cmp (!j) (hi - 1) < 1 do\n\
   \              let\n\
   \                val _ = \n\
-  \                  if ArraySlice.sub(arr, !j) < pivot then\n\
+  \                  if cmp (ArraySlice.sub(arr, !j)) pivot < 0 then\n\
   \                    let\n\
   \                      val _ = i := !i + 1\n\
   \                      val tmp = ArraySlice.sub(arr, !i)\n\
