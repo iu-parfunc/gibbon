@@ -42,6 +42,13 @@ ppPreExp pe = case pe of
   LitSymE v -> doubleQuotes $ ppVar v
   AppE var _ pes -> ppApp (ppVar var) pes
   PrimAppE pr pes -> ppPrim pr pes
+  LetE (v, _, _, Ext (LambdaE x0 pe0)) pe' ->
+    hsep
+      [ "\n  let fun", ppVar v
+      , hsep $ ppVar . fst <$> x0, "="
+      , ppPreExp pe0, "in"
+      , ppPreExp pe', "end"
+      ]
   LetE (v, _, _, e) pe' ->
     hsep
       [ "\n  let val", ppVar v, "="
@@ -204,7 +211,7 @@ ppPrim pr pes = case pr of
       ]
   VConcatP _ty0 -> ppFail "VConcatP"
   VSortP _ty0 -> ppFail "VSortP"
-  InplaceVSortP _ty0 -> ppApp "qsortInternal" pes
+  InplaceVSortP _ty0 -> ppApp "quickSort" pes
   VMergeP _ty0 -> ppFail "VMergeP"
   Write3dPpmFile _s -> error "Write3dPpmFile"
   ReadPackedFile _m_s _s _m_var _ty0 -> error "ReadPackedFile"
@@ -261,18 +268,12 @@ ppFail s = hsep
   ]
 
 ppProgram :: L0.Prog0 -> Doc
-ppProgram prog =
-  header <> hcat
-    [ ppDDefs $ ddefs prog
-    , ppFunDefs $ fundefs prog
-    , ppMainExpr $ mainExp prog
-    , "\n"
-    ]
-  where
-    usesInplaceSort = any 
-      (Set.member SpecialInplaceVSortP . searchPreExp)
-      (funBody <$> elems (fundefs prog))
-    header = if usesInplaceSort then qsort else mempty
+ppProgram prog = hcat
+  [ ppDDefs $ ddefs prog
+  , ppFunDefs $ fundefs prog
+  , ppMainExpr $ mainExp prog
+  , "\n"
+  ]
 
 ppFunDefs :: Map Var (FunDef L0.Exp0) -> Doc
 ppFunDefs funDefs =
@@ -451,80 +452,3 @@ sortDefs defs =
   where
     depMap = getDependencies defs
     nameMap = fromList $ join ((,) . getVar . funName) <$> defs
-
-qsort :: Doc
-qsort = text
-  "fun qsortInternal arr cmp = \n\
-  \  let\n\
-  \    fun qsort(arr, lo, hi) = \n\
-  \      if cmp lo hi < 0 then\n\
-  \        let\n\
-  \          val pivot = ArraySlice.sub(arr, hi)\n\
-  \          val i = ref (lo - 1)\n\
-  \          val j = ref lo\n\
-  \          val _ = \n\
-  \            while cmp (!j) (hi - 1) < 1 do\n\
-  \              let\n\
-  \                val _ = \n\
-  \                  if cmp (ArraySlice.sub(arr, !j)) pivot < 0 then\n\
-  \                    let\n\
-  \                      val _ = i := !i + 1\n\
-  \                      val tmp = ArraySlice.sub(arr, !i)\n\
-  \                      val _ = ArraySlice.update(arr, !i, ArraySlice.sub(arr, !j))\n\
-  \                      val _ = ArraySlice.update(arr, !j, tmp)\n\
-  \                    in\n\
-  \                      ()\n\
-  \                    end\n\
-  \                  else ()\n\
-  \              in\n\
-  \                j := !j + 1\n\
-  \              end\n\
-  \          val tmp = ArraySlice.sub(arr, !i + 1)\n\
-  \          val _ = ArraySlice.update(arr, !i + 1, ArraySlice.sub(arr, hi))\n\
-  \          val _ = ArraySlice.update(arr, hi, tmp)\n\
-  \          val p = !i + 1\n\
-  \          val _ = qsort(arr, lo, p - 1)\n\
-  \          val _ = qsort(arr, p + 1, hi)\n\
-  \        in\n\
-  \          ()\n\
-  \        end\n\
-  \    else ()\n\
-  \    val _ = qsort(arr, 0, ArraySlice.length arr - 1)\n\
-  \  in\n\
-  \    arr\
-  \  end\n"
-
-data SpecialFuns = SpecialInplaceVSortP deriving (Eq, Ord)
-
-searchPreExps :: [PreExp E0Ext Ty0 Ty0] -> Set.Set SpecialFuns
-searchPreExps = foldMap searchPreExp
-
-searchPreExp :: PreExp E0Ext Ty0 Ty0 -> Set.Set SpecialFuns
-searchPreExp pe0 = case pe0 of
-  VarE _ -> mempty
-  AppE _ _ pes -> searchPreExps pes
-  PrimAppE pr pes -> searchPreExps pes <> case pr of
-    InplaceVSortP _ -> Set.singleton SpecialInplaceVSortP
-    _ -> mempty
-  LetE (_, _, _, pe') pe -> searchPreExp pe <> searchPreExp pe'
-  IfE pe pe' pe3 -> searchPreExps [pe, pe', pe3]
-  MkProdE pes -> searchPreExps pes
-  ProjE _ pe -> searchPreExp pe
-  CaseE pe x0 -> 
-    searchPreExp pe <> foldMap (\(_, _, pe') -> searchPreExp pe') x0
-  DataConE _ _ pes -> searchPreExps pes
-  TimeIt pe _ _ -> searchPreExp pe
-  WithArenaE _ pe -> searchPreExp pe
-  SpawnE _ _ pes -> searchPreExps pes
-  SyncE -> _
-  MapE _ _ -> _
-  FoldE {} -> _
-  Ext ee -> searchExt ee
-  _ -> mempty
-
-searchExt :: E0Ext Ty0 Ty0 -> Set.Set SpecialFuns
-searchExt ext0 = case ext0 of
-  LambdaE _ pe -> searchPreExp pe
-  PolyAppE pe pe' -> searchPreExp pe <> searchPreExp pe'
-  PrintPacked _ pe -> searchPreExp pe
-  _ -> mempty 
