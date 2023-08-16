@@ -225,6 +225,22 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
                 (freshNames l0 >>=
                  (\fresh -> dbgTrace 5 ("\nFreshen:\n"++sepline++ "\n" ++pprender fresh) (L0.tcProg fresh)))
 
+  let smlExt = dropExtension fp0 <.> "sml"
+  let toSml = writeFile smlExt $ PP.render $ GenSML.ppProgram l0
+
+  let compileMlton = do
+        cd <- system $ "mpl " <> smlExt
+        case cd of
+          ExitFailure n -> error $ "SML compiler failed with code " <> show n
+          ExitSuccess -> pure ()
+  
+  let runMlton = do
+        cd <- system $ "./" <> dropExtension fp0
+        case cd of
+          ExitFailure n -> error $ "SML executable failed with code " <> show n
+          ExitSuccess -> pure ()
+
+
   case mode of
     Interp1 -> do
         dbgTrace passChatterLvl ("\nParsed:\n"++sepline++ "\n" ++ sdoc l0) (pure ())
@@ -233,9 +249,9 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
         (_s1,val,_stdout) <- gInterpProg () runConf initTypeChecked
         print val
     
-    ToSML -> writeFile (dropExtension fp0 <.> "sml") (PP.render $ GenSML.ppProgram l0)
-    MltonExe -> error "todo: mlton-exe"
-    MltonRun -> error "todo: mlton-run"
+    ToSML -> toSml
+    MltonExe -> toSml *> compileMlton
+    MltonRun -> toSml *> compileMlton *> runMlton
 
     ToParse -> dbgPrintLn 0 $ pprender l0
 
@@ -284,6 +300,7 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
         when (mode == ToExe || mode == RunExe || isBench mode ) $ do
           compileAndRunExe config fp >>= putStr
           return ()
+
 
 runL0 :: L0.Prog0 -> IO ()
 runL0 l0 = do
