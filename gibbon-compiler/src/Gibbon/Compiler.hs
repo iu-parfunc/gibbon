@@ -226,7 +226,7 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
                  (\fresh -> dbgTrace 5 ("\nFreshen:\n"++sepline++ "\n" ++pprender fresh) (L0.tcProg fresh)))
 
   let smlExt = dropExtension fp0 <.> "sml"
-  let toSml = writeFile smlExt $ PP.render $ GenSML.ppProgram l0
+  let toSml = writeFile smlExt $ PP.render $ GenSML.ppProgram initTypeChecked
 
   let compileMlton = do
         cd <- system $ "mpl " <> smlExt

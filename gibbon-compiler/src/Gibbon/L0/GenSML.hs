@@ -23,7 +23,7 @@ ppExt ex = case ex of
       ]
   PolyAppE pe pe' ->
     hsep $ parens . ppPreExp <$> [pe, pe']
-  FunRefE _ty0s _var -> error "FunRefE"
+  FunRefE _ty0s _var -> ppVar _var
   BenchE _var _ty0s _pes _b -> error "BenchE"
   ParE0 _pes -> error "ParE0"
   PrintPacked _ty0 pe ->
@@ -211,7 +211,7 @@ ppPrim pr pes = case pr of
       ]
   VConcatP _ty0 -> ppFail "VConcatP"
   VSortP _ty0 -> ppFail "VSortP"
-  InplaceVSortP _ty0 -> ppApp "quickSort" pes
+  InplaceVSortP _ty0 -> ppApp qsort pes
   VMergeP _ty0 -> ppFail "VMergeP"
   Write3dPpmFile _s -> error "Write3dPpmFile"
   ReadPackedFile _m_s _s _m_var _ty0 -> error "ReadPackedFile"
@@ -452,3 +452,92 @@ sortDefs defs =
   where
     depMap = getDependencies defs
     nameMap = fromList $ join ((,) . getVar . funName) <$> defs
+
+qsort :: Doc
+qsort = parens $ text
+  "fn arr => fn cmp => \n\
+  \  let\n\
+  \    fun qsort(arr, lo, hi) = \n\
+  \      if cmp lo hi < 0 then\n\
+  \        let\n\
+  \          val pivot = ArraySlice.sub(arr, hi)\n\
+  \          val i = ref (lo - 1)\n\
+  \          val j = ref lo\n\
+  \          val _ = \n\
+  \            while cmp (!j) (hi - 1) < 1 do\n\
+  \              let\n\
+  \                val _ = \n\
+  \                  if cmp (ArraySlice.sub(arr, !j)) pivot < 0 then\n\
+  \                    let\n\
+  \                      val _ = i := !i + 1\n\
+  \                      val tmp = ArraySlice.sub(arr, !i)\n\
+  \                      val _ = ArraySlice.update(arr, !i, ArraySlice.sub(arr, !j))\n\
+  \                      val _ = ArraySlice.update(arr, !j, tmp)\n\
+  \                    in\n\
+  \                      ()\n\
+  \                    end\n\
+  \                  else ()\n\
+  \              in\n\
+  \                j := !j + 1\n\
+  \              end\n\
+  \          val tmp = ArraySlice.sub(arr, !i + 1)\n\
+  \          val _ = ArraySlice.update(arr, !i + 1, ArraySlice.sub(arr, hi))\n\
+  \          val _ = ArraySlice.update(arr, hi, tmp)\n\
+  \          val p = !i + 1\n\
+  \          val _ = qsort(arr, lo, p - 1)\n\
+  \          val _ = qsort(arr, p + 1, hi)\n\
+  \        in\n\
+  \          ()\n\
+  \        end\n\
+  \    else ()\n\
+  \    val _ = qsort(arr, 0, ArraySlice.length arr - 1)\n\
+  \  in\n\
+  \    arr\
+  \  end\n"
+
+-- getTy :: Map Var Ty0 -> Exp0 -> Ty0
+-- getTy ctx exp0 = case exp0 of
+--   VarE var -> case Map.lookup var ctx of
+--     Nothing -> error $ "SML backend broken internal guarentee: unbound identifier " <> getVar var
+--     Just ty0 -> ty0
+--   LitE _ -> IntTy
+--   CharE _ -> CharTy
+--   FloatE _ -> FloatTy
+--   LitSymE _ -> SymTy0
+--   AppE var ty0s pes -> _
+--   PrimAppE pr pes -> _
+--   LetE x0 pe -> _
+--   IfE pe pe' pe2 -> _
+--   MkProdE pes -> _
+--   ProjE n pe -> _
+--   CaseE pe x0 -> _
+--   DataConE ty0 s pes -> _
+--   TimeIt pe ty0 b -> _
+--   WithArenaE var pe -> _
+--   SpawnE var ty0s pes -> _
+--   SyncE -> _
+--   MapE x0 pe -> _
+--   FoldE x0 x1 pe -> _
+--   Ext ee -> _
+
+-- tyDirPPExp0 :: Ty0 -> Doc -> Doc
+-- tyDirPPExp0 ty0 d0 = parens $ case ty0 of
+--   IntTy -> "print(Int.toString(" <> d0 <> "))"
+--   CharTy -> "print(Char.toString(" <> d0 <> "))"
+--   FloatTy -> "print(Float.toString(" <> d0 <> "))"
+--   SymTy0 -> "print " <> d0
+--   BoolTy -> "print(Bool.toString(" <> d0 <> "))"
+--   TyVar _ -> error "Cannot derive printer for a type variable"
+--   MetaTv _ -> error "Cannot derive printer for a metavariable"
+--   ProdTy ty0s -> _
+--     -- tyDirPPExp0 <$> ty0s
+--   SymDictTy m_var ty0' -> _
+--   PDictTy ty0' ty02 -> _
+--   SymSetTy -> _
+--   SymHashTy -> _
+--   IntHashTy -> _
+--   ArrowTy ty0s ty0' -> _
+--   PackedTy s ty0s -> _
+--   VectorTy ty0' -> _
+--   ListTy ty0' -> _
+--   ArenaTy -> _
