@@ -93,6 +93,7 @@ library
                        Gibbon.Passes.CallGraph
                        Gibbon.Passes.AccessPatternsAnalysis
                        Gibbon.Passes.SolveLayoutConstrs
+                       Gibbon.Passes.OptimizeFieldOrder
 
   other-extensions:    DeriveDataTypeable CPP
 
