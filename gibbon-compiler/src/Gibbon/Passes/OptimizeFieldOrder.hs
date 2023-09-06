@@ -882,3 +882,52 @@ permute indices list =
   case indices of
     [] -> []
     x : xs -> (list !! P.fromInteger x) : permute xs list
+
+
+-- Only works assuming you have just one data constructor in the function body.  
+getVarsBoundByDconInOrder :: DataCon -> Exp1 -> [Var]
+getVarsBoundByDconInOrder datacon exp = case exp of
+          DataConE loc dcon args -> if dcon == datacon then 
+                                                       P.concatMap (\exp -> case exp of 
+                                                                                VarE v -> [v]
+                                                                                LitSymE v -> [v]
+                                                                                _ -> []
+                                                                   ) args
+                                    else [] 
+          VarE {} -> []
+          LitE {} -> []
+          CharE {} -> []
+          FloatE {} -> []
+          LitSymE {} -> []
+          AppE f locs args -> P.concatMap (getVarsBoundByDconInOrder datacon) args
+          PrimAppE f args -> P.concatMap (getVarsBoundByDconInOrder datacon) args
+          LetE (v, loc, ty, rhs) bod -> let vars  = getVarsBoundByDconInOrder datacon rhs
+                                            vars' = getVarsBoundByDconInOrder datacon bod
+                                          in vars ++ vars'
+          CaseE scrt mp -> P.concatMap (\(a, b, c) -> getVarsBoundByDconInOrder datacon c) mp
+          IfE a b c -> let varsa = getVarsBoundByDconInOrder datacon a 
+                           varsb = getVarsBoundByDconInOrder datacon b 
+                           varsc = getVarsBoundByDconInOrder datacon c 
+                         in varsa ++ varsb ++ varsc 
+          MkProdE xs -> P.concatMap (getVarsBoundByDconInOrder datacon) xs 
+          ProjE i e -> error "getExpTyEnv: TODO ProjE"
+          TimeIt e ty b -> error "getExpTyEnv: TODO TimeIt"
+          WithArenaE v e -> error "getExpTyEnv: TODO WithArenaE"
+          SpawnE f locs args -> error "getExpTyEnv: TODO SpawnE"
+          SyncE -> error "getExpTyEnv: TODO SyncE"
+          Ext _ -> error "getExpTyEnv: TODO Ext"
+          MapE {} -> error "getExpTyEnv: TODO MapE"
+          FoldE {} -> error "getExpTyEnv: TODO FoldE"
+
+
+
+
+reorderExpByVariablesBoundByDataCon :: DataCon -> FunDef1 -> Env2 Ty1 -> [[Exp1]]
+reorderExpByVariablesBoundByDataCon dcon fundef@FunDef{funName,funBody,funTy,funArgs} initialEnv = let 
+                                                                                                     defUseChainsMap = generateDefUseChainsFunction initialEnv fundef
+                                                                                                     dconVars = getVarsBoundByDconInOrder dcon funBody 
+                                                                                                     exps     = P.map (\var -> getBoundExpsVar var defUseChainsMap) dconVars
+                                                                                                    in exps    
+
+getBoundExpsVar :: Var -> DefUseChainsFunctionMap Exp1 -> [Exp1]
+getBoundExpsVar var exp = []
