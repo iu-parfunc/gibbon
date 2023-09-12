@@ -1,7 +1,8 @@
 module Clock where
     import Data.Map as Map
+    import Data.Set as Set
 
-    data Order = Lt | Gt | Eq | Cc
+    data Order = Eq | Lt | Gt | Cc
         deriving (Eq, Ord, Enum, Read, Show)
 
     type Clock = Map Int Int
@@ -26,3 +27,4 @@ module Clock where
                         Just v -> Timestamp { uid = uid, v = v }
                         Nothing -> Timestamp { uid = uid, v = 0 }
                     where v = Map.lookup uid clk
+    
