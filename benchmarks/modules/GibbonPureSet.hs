@@ -27,11 +27,9 @@ insert x s =
             else if x <= v then 
                 let nl = insert x l
                 in balanceL v nl r
-                --in PureSet ((size r) + (size nl)) v nl r
             else 
-                let nr = (insert x r)
+                let nr = insert x r
                 in balanceR v l nr
-                --in PureSet ((size nr) + (size l)) v l nr
 
 balanceL :: Int -> IntSet -> IntSet -> IntSet
 balanceL x l r = case r of
