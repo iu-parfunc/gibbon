@@ -4,8 +4,6 @@ import Gibbon.Prelude
 import Gibbon.Maybe 
 
 
-
-
 gibbon_main = 
    let val :: Maybe Int 
        val = Just 10 
