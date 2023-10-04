@@ -1441,10 +1441,10 @@ CursorTy balance_422(IntTy k_249_861_1119, VectorTy *x_250_862_1120,
 CursorTy insert_419(IntTy kx_254_865_1143, VectorTy *x_255_866_1144,
                     CursorTy m_256_867_1145);
 CursorTy empty_418();
-CursorTy _copy_without_ptrs_GibbonMap_v_420(CursorTy arg_723_873_1155);
-CursorTy _copy_GibbonMap_v_420(CursorTy arg_712_884_1166);
-unsigned char _traverse_GibbonMap_v_420(CursorTy arg_734_895_1177);
-unsigned char _print_GibbonMap_v_420(CursorTy arg_745_903_1185);
+CursorTy _copy_without_ptrs_Map_v_420(CursorTy arg_723_873_1155);
+CursorTy _copy_Map_v_420(CursorTy arg_712_884_1166);
+unsigned char _traverse_Map_v_420(CursorTy arg_734_895_1177);
+unsigned char _print_Map_v_420(CursorTy arg_745_903_1185);
 CursorTy caseFn_765(VectorTy *x1_186_766_923_1205, IntTy k1_185_767_924_1206,
                     CursorTy t1_187_768_925_1207, CursorTy m1_193_769_926_1208,
                     IntTy k2_191_770_927_1209, VectorTy *x2_192_771_928_1210,
@@ -1978,7 +1978,7 @@ CursorTy empty_418()
     ((Int64Prod *) tailift_1268)->field0 = 0;
     return tailift_1268;
 }
-CursorTy _copy_without_ptrs_GibbonMap_v_420(CursorTy arg_723_873_1155)
+CursorTy _copy_without_ptrs_Map_v_420(CursorTy arg_723_873_1155)
 {
     TagTyPacked tag_1269 = *(TagTyPacked *) arg_723_873_1155;
     CursorTy tail_1270 = arg_723_873_1155 + sizeof(IntTy);
@@ -2010,9 +2010,9 @@ CursorTy _copy_without_ptrs_GibbonMap_v_420(CursorTy arg_723_873_1155)
             CursorTy x_728_878_1160 =
                      ((Int64Int64VectorCursorCursorProd *) tail_1270)->field4;
             CursorTy y_732_882_1164 =
-                      _copy_without_ptrs_GibbonMap_v_420(x_727_877_1159);
+                      _copy_without_ptrs_Map_v_420(x_727_877_1159);
             CursorTy y_733_883_1165 =
-                      _copy_without_ptrs_GibbonMap_v_420(x_728_878_1160);
+                      _copy_without_ptrs_Map_v_420(x_728_878_1160);
             PtrTy tailift_1272 =
                   ALLOC(sizeof(Int64Int64Int64VectorCursorCursorProd));
             
@@ -2039,7 +2039,7 @@ CursorTy _copy_without_ptrs_GibbonMap_v_420(CursorTy arg_723_873_1155)
         }
     }
 }
-CursorTy _copy_GibbonMap_v_420(CursorTy arg_712_884_1166)
+CursorTy _copy_Map_v_420(CursorTy arg_712_884_1166)
 {
     TagTyPacked tag_1274 = *(TagTyPacked *) arg_712_884_1166;
     CursorTy tail_1275 = arg_712_884_1166 + sizeof(IntTy);
@@ -2070,8 +2070,8 @@ CursorTy _copy_GibbonMap_v_420(CursorTy arg_712_884_1166)
                      ((Int64Int64VectorCursorCursorProd *) tail_1275)->field3;
             CursorTy x_717_889_1171 =
                      ((Int64Int64VectorCursorCursorProd *) tail_1275)->field4;
-            CursorTy y_721_893_1175 =  _copy_GibbonMap_v_420(x_716_888_1170);
-            CursorTy y_722_894_1176 =  _copy_GibbonMap_v_420(x_717_889_1171);
+            CursorTy y_721_893_1175 =  _copy_Map_v_420(x_716_888_1170);
+            CursorTy y_722_894_1176 =  _copy_Map_v_420(x_717_889_1171);
             PtrTy tailift_1277 =
                   ALLOC(sizeof(Int64Int64Int64VectorCursorCursorProd));
             
@@ -2098,7 +2098,7 @@ CursorTy _copy_GibbonMap_v_420(CursorTy arg_712_884_1166)
         }
     }
 }
-unsigned char _traverse_GibbonMap_v_420(CursorTy arg_734_895_1177)
+unsigned char _traverse_Map_v_420(CursorTy arg_734_895_1177)
 {
     TagTyPacked tag_1279 = *(TagTyPacked *) arg_734_895_1177;
     CursorTy tail_1280 = arg_734_895_1177 + sizeof(IntTy);
@@ -2126,10 +2126,8 @@ unsigned char _traverse_GibbonMap_v_420(CursorTy arg_734_895_1177)
                      ((Int64Int64VectorCursorCursorProd *) tail_1280)->field3;
             CursorTy x_739_900_1182 =
                      ((Int64Int64VectorCursorCursorProd *) tail_1280)->field4;
-            unsigned char y_743_901_1183 =
-                           _traverse_GibbonMap_v_420(x_738_899_1181);
-            unsigned char y_744_902_1184 =
-                           _traverse_GibbonMap_v_420(x_739_900_1182);
+            unsigned char y_743_901_1183 =  _traverse_Map_v_420(x_738_899_1181);
+            unsigned char y_744_902_1184 =  _traverse_Map_v_420(x_739_900_1182);
             
             return 0;
             break;
@@ -2142,7 +2140,7 @@ unsigned char _traverse_GibbonMap_v_420(CursorTy arg_734_895_1177)
         }
     }
 }
-unsigned char _print_GibbonMap_v_420(CursorTy arg_745_903_1185)
+unsigned char _print_Map_v_420(CursorTy arg_745_903_1185)
 {
     TagTyPacked tag_1282 = *(TagTyPacked *) arg_745_903_1185;
     CursorTy tail_1283 = arg_745_903_1185 + sizeof(IntTy);
@@ -2181,11 +2179,9 @@ unsigned char _print_GibbonMap_v_420(CursorTy arg_745_903_1185)
             unsigned char wildcard_762_916_1198 = print_symbol(1238);
             unsigned char y_755_917_1199 = print_symbol(1234);
             unsigned char wildcard_761_918_1200 = print_symbol(1238);
-            unsigned char y_756_919_1201 =
-                           _print_GibbonMap_v_420(x_751_909_1191);
+            unsigned char y_756_919_1201 =  _print_Map_v_420(x_751_909_1191);
             unsigned char wildcard_760_920_1202 = print_symbol(1238);
-            unsigned char y_757_921_1203 =
-                           _print_GibbonMap_v_420(x_752_910_1192);
+            unsigned char y_757_921_1203 =  _print_Map_v_420(x_752_910_1192);
             unsigned char wildcard_759_922_1204 = print_symbol(1235);
             
             return 0;
@@ -2354,7 +2350,7 @@ int __main_expr()
     CursorTy tmp_app_1233 =
               insert_419(0, vec_145_153_781_1007, fltAppE_948_1034);
     
-     _print_GibbonMap_v_420(tmp_app_1233);
+     _print_Map_v_420(tmp_app_1233);
     printf("\n");
     free_symtable();
     return 0;
