@@ -1,7 +1,5 @@
 module DistributedSet where
     import Clock
-    import Data.Set as Set
-    import Data.Map as Map
 
     data ORSet eltype = ORSet {
         clock :: Clock.Clock,

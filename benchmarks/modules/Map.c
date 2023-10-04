@@ -1390,17 +1390,21 @@ typedef struct Prod_struct { } Prod;
 typedef struct Int64Prod_struct {
             IntTy field0;
         } Int64Prod;
-typedef struct Int64Int64CursorCursorProd_struct {
+typedef struct Int64Int64Int64VectorCursorCursorProd_struct {
             IntTy field0;
             IntTy field1;
-            CursorTy field2;
-            CursorTy field3;
-        } Int64Int64CursorCursorProd;
-typedef struct Int64CursorCursorProd_struct {
+            IntTy field2;
+            VectorTy *field3;
+            CursorTy field4;
+            CursorTy field5;
+        } Int64Int64Int64VectorCursorCursorProd;
+typedef struct Int64Int64VectorCursorCursorProd_struct {
             IntTy field0;
-            CursorTy field1;
-            CursorTy field2;
-        } Int64CursorCursorProd;
+            IntTy field1;
+            VectorTy *field2;
+            CursorTy field3;
+            CursorTy field4;
+        } Int64Int64VectorCursorCursorProd;
 typedef struct BoolProd_struct {
             BoolTy field0;
         } BoolProd;
@@ -1411,92 +1415,550 @@ typedef struct TagCursorProd_struct {
 typedef struct CursorProd_struct {
             CursorTy field0;
         } CursorProd;
-CursorTy empty();
-CursorTy insert_num(IntTy x_44_168_244, CursorTy s_45_169_245);
-CursorTy insert(IntTy x_66_184_249, CursorTy s_67_185_250);
-CursorTy singleton(IntTy x_71_189_258);
-CursorTy _copy_without_ptrs_IntSet(CursorTy arg_135_190_261);
-CursorTy _copy_IntSet(CursorTy arg_128_197_268);
-unsigned char _traverse_IntSet(CursorTy arg_142_204_275);
-unsigned char _print_IntSet(CursorTy arg_149_210_281);
-CursorTy empty()
+typedef struct VectorProd_struct {
+            VectorTy *field0;
+        } VectorProd;
+IntTy ratio();
+IntTy delta();
+CursorTy singleton_421(IntTy k_289_795_1035, VectorTy *x_290_796_1036);
+IntTy size_423(CursorTy m_275_797_1039);
+CursorTy singleL_429(IntTy k1_214_803_1045, VectorTy *x1_215_804_1046,
+                     CursorTy t1_216_805_1047, CursorTy m_217_806_1048);
+CursorTy doubleL_430(IntTy k1_185_812_1055, VectorTy *x1_186_813_1056,
+                     CursorTy t1_187_814_1057, CursorTy m0_188_815_1058);
+CursorTy rotateL_424(IntTy k_239_821_1064, VectorTy *x_240_822_1065,
+                     CursorTy l_241_823_1066, CursorTy r_242_824_1067);
+CursorTy bin_428(IntTy k_224_830_1078, VectorTy *x_225_831_1079,
+                 CursorTy l_226_832_1080, CursorTy r_227_833_1081);
+CursorTy singleR_426(IntTy k1_204_834_1086, VectorTy *x1_205_835_1087,
+                     CursorTy m_206_836_1088, CursorTy t3_207_837_1089);
+CursorTy doubleR_427(IntTy k1_170_843_1096, VectorTy *x1_171_844_1097,
+                     CursorTy m0_172_845_1098, CursorTy t4_173_846_1099);
+CursorTy rotateR_425(IntTy k_229_852_1105, VectorTy *x_230_853_1106,
+                     CursorTy l_231_854_1107, CursorTy r_232_855_1108);
+CursorTy balance_422(IntTy k_249_861_1119, VectorTy *x_250_862_1120,
+                     CursorTy l_251_863_1121, CursorTy r_252_864_1122);
+CursorTy insert_419(IntTy kx_254_865_1143, VectorTy *x_255_866_1144,
+                    CursorTy m_256_867_1145);
+CursorTy empty_418();
+CursorTy _copy_without_ptrs_Map_v_420(CursorTy arg_723_873_1155);
+CursorTy _copy_Map_v_420(CursorTy arg_712_884_1166);
+unsigned char _traverse_Map_v_420(CursorTy arg_734_895_1177);
+unsigned char _print_Map_v_420(CursorTy arg_745_903_1185);
+CursorTy caseFn_765(VectorTy *x1_186_766_923_1205, IntTy k1_185_767_924_1206,
+                    CursorTy t1_187_768_925_1207, CursorTy m1_193_769_926_1208,
+                    IntTy k2_191_770_927_1209, VectorTy *x2_192_771_928_1210,
+                    CursorTy t4_194_772_929_1211);
+CursorTy caseFn_773(VectorTy *x1_171_774_935_1219, IntTy k1_170_775_936_1220,
+                    CursorTy t4_173_776_937_1221, CursorTy m1_179_777_938_1222,
+                    IntTy k2_176_778_939_1223, VectorTy *x2_177_779_940_1224,
+                    CursorTy t1_178_780_941_1225);
+IntTy ratio()
 {
-    PtrTy tailift_300 = ALLOC(sizeof(Int64Prod));
-    
-    ((Int64Prod *) tailift_300)->field0 = 1;
-    return tailift_300;
+    return 2;
 }
-CursorTy insert_num(IntTy x_44_168_244, CursorTy s_45_169_245)
+IntTy delta()
 {
-    BoolTy fltIf_234_246 = x_44_168_244 == 0;
-    
-    if (fltIf_234_246) {
-        return insert(x_44_168_244, s_45_169_245);
-    } else {
-        IntTy fltAppE_236_247 = x_44_168_244 - 1;
-        CursorTy fltAppE_235_248 =  insert_num(fltAppE_236_247, s_45_169_245);
-        
-        return insert(x_44_168_244, fltAppE_235_248);
-    }
+    return 4;
 }
-CursorTy insert(IntTy x_66_184_249, CursorTy s_67_185_250)
+CursorTy singleton_421(IntTy k_289_795_1035, VectorTy *x_290_796_1036)
 {
-    TagTyPacked tag_301 = *(TagTyPacked *) s_67_185_250;
-    CursorTy tail_302 = s_67_185_250 + sizeof(IntTy);
+    PtrTy fltPkd_961_1037 = ALLOC(sizeof(Int64Prod));
+    
+    ((Int64Prod *) fltPkd_961_1037)->field0 = 0;
+    
+    PtrTy fltPkd_962_1038 = ALLOC(sizeof(Int64Prod));
+    
+    ((Int64Prod *) fltPkd_962_1038)->field0 = 0;
+    
+    PtrTy tailift_1239 = ALLOC(sizeof(Int64Int64Int64VectorCursorCursorProd));
+    
+    ((Int64Int64Int64VectorCursorCursorProd *) tailift_1239)->field0 = 1;
+    ((Int64Int64Int64VectorCursorCursorProd *) tailift_1239)->field1 = 1;
+    ((Int64Int64Int64VectorCursorCursorProd *) tailift_1239)->field2 =
+        k_289_795_1035;
+    ((Int64Int64Int64VectorCursorCursorProd *) tailift_1239)->field3 =
+        x_290_796_1036;
+    ((Int64Int64Int64VectorCursorCursorProd *) tailift_1239)->field4 =
+        fltPkd_961_1037;
+    ((Int64Int64Int64VectorCursorCursorProd *) tailift_1239)->field5 =
+        fltPkd_962_1038;
+    return tailift_1239;
+}
+IntTy size_423(CursorTy m_275_797_1039)
+{
+    TagTyPacked tag_1240 = *(TagTyPacked *) m_275_797_1039;
+    CursorTy tail_1241 = m_275_797_1039 + sizeof(IntTy);
     
     
-  switch_305:
+  switch_1242:
     ;
-    switch (tag_301) {
+    switch (tag_1240) {
+        
+      case 0:
+        {
+            return 0;
+            break;
+        }
         
       case 1:
         {
-            return singleton(x_66_184_249);
+            IntTy sz_277_798_1040 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1241)->field0;
+            IntTy wildcard__18_278_799_1041 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1241)->field1;
+            VectorTy *wildcard__19_279_800_1042 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1241)->field2;
+            CursorTy wildcard__20_280_801_1043 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1241)->field3;
+            CursorTy wildcard__21_281_802_1044 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1241)->field4;
+            
+            return sz_277_798_1040;
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_1240");
+            exit(1);
+        }
+    }
+}
+CursorTy singleL_429(IntTy k1_214_803_1045, VectorTy *x1_215_804_1046,
+                     CursorTy t1_216_805_1047, CursorTy m_217_806_1048)
+{
+    TagTyPacked tag_1243 = *(TagTyPacked *) m_217_806_1048;
+    CursorTy tail_1244 = m_217_806_1048 + sizeof(IntTy);
+    
+    
+  switch_1245:
+    ;
+    switch (tag_1243) {
+        
+      case 1:
+        {
+            IntTy wildcard__89_219_807_1049 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1244)->field0;
+            IntTy k2_220_808_1050 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1244)->field1;
+            VectorTy *x2_221_809_1051 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1244)->field2;
+            CursorTy t2_222_810_1052 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1244)->field3;
+            CursorTy t3_223_811_1053 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1244)->field4;
+            CursorTy fltAppE_963_1054 =
+                      bin_428(k1_214_803_1045, x1_215_804_1046, t1_216_805_1047, t2_222_810_1052);
+            
+            return bin_428(k2_220_808_1050, x2_221_809_1051, fltAppE_963_1054,
+                           t3_223_811_1053);
             break;
         }
         
       case 0:
         {
-            IntTy v_68_186_251 = ((Int64CursorCursorProd *) tail_302)->field0;
-            CursorTy l_69_187_252 =
-                     ((Int64CursorCursorProd *) tail_302)->field1;
-            CursorTy r_70_188_253 =
-                     ((Int64CursorCursorProd *) tail_302)->field2;
-            BoolTy fltIf_237_254 = x_66_184_249 == v_68_186_251;
+            return empty_418();
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_1243");
+            exit(1);
+        }
+    }
+}
+CursorTy doubleL_430(IntTy k1_185_812_1055, VectorTy *x1_186_813_1056,
+                     CursorTy t1_187_814_1057, CursorTy m0_188_815_1058)
+{
+    TagTyPacked tag_1246 = *(TagTyPacked *) m0_188_815_1058;
+    CursorTy tail_1247 = m0_188_815_1058 + sizeof(IntTy);
+    
+    
+  switch_1248:
+    ;
+    switch (tag_1246) {
+        
+      case 1:
+        {
+            IntTy wildcard__109_190_816_1059 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1247)->field0;
+            IntTy k2_191_817_1060 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1247)->field1;
+            VectorTy *x2_192_818_1061 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1247)->field2;
+            CursorTy m1_193_819_1062 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1247)->field3;
+            CursorTy t4_194_820_1063 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1247)->field4;
             
-            if (fltIf_237_254) {
-                return s_67_185_250;
+            return caseFn_765(x1_186_813_1056, k1_185_812_1055, t1_187_814_1057,
+                              m1_193_819_1062, k2_191_817_1060, x2_192_818_1061,
+                              t4_194_820_1063);
+            break;
+        }
+        
+      case 0:
+        {
+            return empty_418();
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_1246");
+            exit(1);
+        }
+    }
+}
+CursorTy rotateL_424(IntTy k_239_821_1064, VectorTy *x_240_822_1065,
+                     CursorTy l_241_823_1066, CursorTy r_242_824_1067)
+{
+    TagTyPacked tag_1249 = *(TagTyPacked *) r_242_824_1067;
+    CursorTy tail_1250 = r_242_824_1067 + sizeof(IntTy);
+    
+    
+  switch_1251:
+    ;
+    switch (tag_1249) {
+        
+      case 1:
+        {
+            IntTy wildcard__60_244_825_1068 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1250)->field0;
+            IntTy wildcard__61_245_826_1069 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1250)->field1;
+            VectorTy *wildcard__62_246_827_1070 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1250)->field2;
+            CursorTy ly_247_828_1071 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1250)->field3;
+            CursorTy ry_248_829_1072 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1250)->field4;
+            IntTy fltPrm_965_1073 =  size_423(ly_247_828_1071);
+            IntTy fltPrm_967_1074 =  ratio();
+            IntTy fltPrm_968_1075 =  size_423(ry_248_829_1072);
+            IntTy fltPrm_966_1076 = fltPrm_967_1074 * fltPrm_968_1075;
+            BoolTy fltIf_964_1077 = fltPrm_965_1073 < fltPrm_966_1076;
+            
+            if (fltIf_964_1077) {
+                return singleL_429(k_239_821_1064, x_240_822_1065,
+                                   l_241_823_1066, r_242_824_1067);
             } else {
-                BoolTy fltIf_238_255 = x_66_184_249 <= v_68_186_251;
+                return doubleL_430(k_239_821_1064, x_240_822_1065,
+                                   l_241_823_1066, r_242_824_1067);
+            }
+            break;
+        }
+        
+      case 0:
+        {
+            return empty_418();
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_1249");
+            exit(1);
+        }
+    }
+}
+CursorTy bin_428(IntTy k_224_830_1078, VectorTy *x_225_831_1079,
+                 CursorTy l_226_832_1080, CursorTy r_227_833_1081)
+{
+    IntTy fltPrm_971_1082 =  size_423(l_226_832_1080);
+    IntTy fltPrm_972_1083 =  size_423(r_227_833_1081);
+    IntTy fltPrm_970_1084 = fltPrm_971_1082 + fltPrm_972_1083;
+    IntTy fltPkd_969_1085 = fltPrm_970_1084 + 1;
+    PtrTy tailift_1252 = ALLOC(sizeof(Int64Int64Int64VectorCursorCursorProd));
+    
+    ((Int64Int64Int64VectorCursorCursorProd *) tailift_1252)->field0 = 1;
+    ((Int64Int64Int64VectorCursorCursorProd *) tailift_1252)->field1 =
+        fltPkd_969_1085;
+    ((Int64Int64Int64VectorCursorCursorProd *) tailift_1252)->field2 =
+        k_224_830_1078;
+    ((Int64Int64Int64VectorCursorCursorProd *) tailift_1252)->field3 =
+        x_225_831_1079;
+    ((Int64Int64Int64VectorCursorCursorProd *) tailift_1252)->field4 =
+        l_226_832_1080;
+    ((Int64Int64Int64VectorCursorCursorProd *) tailift_1252)->field5 =
+        r_227_833_1081;
+    return tailift_1252;
+}
+CursorTy singleR_426(IntTy k1_204_834_1086, VectorTy *x1_205_835_1087,
+                     CursorTy m_206_836_1088, CursorTy t3_207_837_1089)
+{
+    TagTyPacked tag_1253 = *(TagTyPacked *) m_206_836_1088;
+    CursorTy tail_1254 = m_206_836_1088 + sizeof(IntTy);
+    
+    
+  switch_1255:
+    ;
+    switch (tag_1253) {
+        
+      case 1:
+        {
+            IntTy wildcard__99_209_838_1090 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1254)->field0;
+            IntTy k2_210_839_1091 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1254)->field1;
+            VectorTy *x2_211_840_1092 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1254)->field2;
+            CursorTy t1_212_841_1093 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1254)->field3;
+            CursorTy t2_213_842_1094 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1254)->field4;
+            CursorTy fltAppE_973_1095 =
+                      bin_428(k1_204_834_1086, x1_205_835_1087, t2_213_842_1094, t3_207_837_1089);
+            
+            return bin_428(k2_210_839_1091, x2_211_840_1092, t1_212_841_1093,
+                           fltAppE_973_1095);
+            break;
+        }
+        
+      case 0:
+        {
+            return empty_418();
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_1253");
+            exit(1);
+        }
+    }
+}
+CursorTy doubleR_427(IntTy k1_170_843_1096, VectorTy *x1_171_844_1097,
+                     CursorTy m0_172_845_1098, CursorTy t4_173_846_1099)
+{
+    TagTyPacked tag_1256 = *(TagTyPacked *) m0_172_845_1098;
+    CursorTy tail_1257 = m0_172_845_1098 + sizeof(IntTy);
+    
+    
+  switch_1258:
+    ;
+    switch (tag_1256) {
+        
+      case 1:
+        {
+            IntTy wildcard__133_175_847_1100 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1257)->field0;
+            IntTy k2_176_848_1101 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1257)->field1;
+            VectorTy *x2_177_849_1102 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1257)->field2;
+            CursorTy t1_178_850_1103 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1257)->field3;
+            CursorTy m1_179_851_1104 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1257)->field4;
+            
+            return caseFn_773(x1_171_844_1097, k1_170_843_1096, t4_173_846_1099,
+                              m1_179_851_1104, k2_176_848_1101, x2_177_849_1102,
+                              t1_178_850_1103);
+            break;
+        }
+        
+      case 0:
+        {
+            return empty_418();
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_1256");
+            exit(1);
+        }
+    }
+}
+CursorTy rotateR_425(IntTy k_229_852_1105, VectorTy *x_230_853_1106,
+                     CursorTy l_231_854_1107, CursorTy r_232_855_1108)
+{
+    TagTyPacked tag_1259 = *(TagTyPacked *) l_231_854_1107;
+    CursorTy tail_1260 = l_231_854_1107 + sizeof(IntTy);
+    
+    
+  switch_1261:
+    ;
+    switch (tag_1259) {
+        
+      case 1:
+        {
+            IntTy wildcard__72_234_856_1109 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1260)->field0;
+            IntTy wildcard__73_235_857_1110 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1260)->field1;
+            VectorTy *wildcard__74_236_858_1111 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1260)->field2;
+            CursorTy ly_237_859_1112 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1260)->field3;
+            CursorTy ry_238_860_1113 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1260)->field4;
+            IntTy fltPrm_975_1114 =  size_423(ry_238_860_1113);
+            IntTy fltPrm_977_1115 =  ratio();
+            IntTy fltPrm_978_1116 =  size_423(ly_237_859_1112);
+            IntTy fltPrm_976_1117 = fltPrm_977_1115 * fltPrm_978_1116;
+            BoolTy fltIf_974_1118 = fltPrm_975_1114 < fltPrm_976_1117;
+            
+            if (fltIf_974_1118) {
+                return singleR_426(k_229_852_1105, x_230_853_1106,
+                                   l_231_854_1107, r_232_855_1108);
+            } else {
+                return doubleR_427(k_229_852_1105, x_230_853_1106,
+                                   l_231_854_1107, r_232_855_1108);
+            }
+            break;
+        }
+        
+      case 0:
+        {
+            return empty_418();
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_1259");
+            exit(1);
+        }
+    }
+}
+CursorTy balance_422(IntTy k_249_861_1119, VectorTy *x_250_862_1120,
+                     CursorTy l_251_863_1121, CursorTy r_252_864_1122)
+{
+    IntTy fltPrm_981_1123 =  size_423(l_251_863_1121);
+    IntTy fltPrm_982_1124 =  size_423(r_252_864_1122);
+    IntTy fltPrm_980_1125 = fltPrm_981_1123 + fltPrm_982_1124;
+    BoolTy fltIf_979_1126 = fltPrm_980_1125 <= 1;
+    
+    if (fltIf_979_1126) {
+        IntTy fltPrm_984_1127 =  size_423(l_251_863_1121);
+        IntTy fltPrm_985_1128 =  size_423(r_252_864_1122);
+        IntTy fltPkd_983_1129 = fltPrm_984_1127 + fltPrm_985_1128;
+        PtrTy tailift_1262 =
+              ALLOC(sizeof(Int64Int64Int64VectorCursorCursorProd));
+        
+        ((Int64Int64Int64VectorCursorCursorProd *) tailift_1262)->field0 = 1;
+        ((Int64Int64Int64VectorCursorCursorProd *) tailift_1262)->field1 =
+            fltPkd_983_1129;
+        ((Int64Int64Int64VectorCursorCursorProd *) tailift_1262)->field2 =
+            k_249_861_1119;
+        ((Int64Int64Int64VectorCursorCursorProd *) tailift_1262)->field3 =
+            x_250_862_1120;
+        ((Int64Int64Int64VectorCursorCursorProd *) tailift_1262)->field4 =
+            l_251_863_1121;
+        ((Int64Int64Int64VectorCursorCursorProd *) tailift_1262)->field5 =
+            r_252_864_1122;
+        return tailift_1262;
+    } else {
+        IntTy fltPrm_987_1130 =  size_423(r_252_864_1122);
+        IntTy fltPrm_989_1131 =  delta();
+        IntTy fltPrm_990_1132 =  size_423(l_251_863_1121);
+        IntTy fltPrm_988_1133 = fltPrm_989_1131 * fltPrm_990_1132;
+        BoolTy fltIf_986_1134 = fltPrm_987_1130 >= fltPrm_988_1133;
+        
+        if (fltIf_986_1134) {
+            return rotateL_424(k_249_861_1119, x_250_862_1120, l_251_863_1121,
+                               r_252_864_1122);
+        } else {
+            IntTy fltPrm_992_1135 =  size_423(l_251_863_1121);
+            IntTy fltPrm_994_1136 =  delta();
+            IntTy fltPrm_995_1137 =  size_423(r_252_864_1122);
+            IntTy fltPrm_993_1138 = fltPrm_994_1136 * fltPrm_995_1137;
+            BoolTy fltIf_991_1139 = fltPrm_992_1135 >= fltPrm_993_1138;
+            
+            if (fltIf_991_1139) {
+                return rotateR_425(k_249_861_1119, x_250_862_1120,
+                                   l_251_863_1121, r_252_864_1122);
+            } else {
+                IntTy fltPrm_997_1140 =  size_423(l_251_863_1121);
+                IntTy fltPrm_998_1141 =  size_423(r_252_864_1122);
+                IntTy fltPkd_996_1142 = fltPrm_997_1140 + fltPrm_998_1141;
+                PtrTy tailift_1263 =
+                      ALLOC(sizeof(Int64Int64Int64VectorCursorCursorProd));
                 
-                if (fltIf_238_255) {
-                    CursorTy fltPkd_239_256 =
-                              insert(x_66_184_249, l_69_187_252);
-                    PtrTy tailift_303 =
-                          ALLOC(sizeof(Int64Int64CursorCursorProd));
+                ((Int64Int64Int64VectorCursorCursorProd *) tailift_1263)->field0 =
+                    1;
+                ((Int64Int64Int64VectorCursorCursorProd *) tailift_1263)->field1 =
+                    fltPkd_996_1142;
+                ((Int64Int64Int64VectorCursorCursorProd *) tailift_1263)->field2 =
+                    k_249_861_1119;
+                ((Int64Int64Int64VectorCursorCursorProd *) tailift_1263)->field3 =
+                    x_250_862_1120;
+                ((Int64Int64Int64VectorCursorCursorProd *) tailift_1263)->field4 =
+                    l_251_863_1121;
+                ((Int64Int64Int64VectorCursorCursorProd *) tailift_1263)->field5 =
+                    r_252_864_1122;
+                return tailift_1263;
+            }
+        }
+    }
+}
+CursorTy insert_419(IntTy kx_254_865_1143, VectorTy *x_255_866_1144,
+                    CursorTy m_256_867_1145)
+{
+    TagTyPacked tag_1264 = *(TagTyPacked *) m_256_867_1145;
+    CursorTy tail_1265 = m_256_867_1145 + sizeof(IntTy);
+    
+    
+  switch_1267:
+    ;
+    switch (tag_1264) {
+        
+      case 0:
+        {
+            return singleton_421(kx_254_865_1143, x_255_866_1144);
+            break;
+        }
+        
+      case 1:
+        {
+            IntTy sz_258_868_1146 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1265)->field0;
+            IntTy k_259_869_1147 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1265)->field1;
+            VectorTy *v_260_870_1148 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1265)->field2;
+            CursorTy l_261_871_1149 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1265)->field3;
+            CursorTy r_262_872_1150 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1265)->field4;
+            BoolTy fltIf_999_1151 = kx_254_865_1143 == k_259_869_1147;
+            
+            if (fltIf_999_1151) {
+                PtrTy tailift_1266 =
+                      ALLOC(sizeof(Int64Int64Int64VectorCursorCursorProd));
+                
+                ((Int64Int64Int64VectorCursorCursorProd *) tailift_1266)->field0 =
+                    1;
+                ((Int64Int64Int64VectorCursorCursorProd *) tailift_1266)->field1 =
+                    sz_258_868_1146;
+                ((Int64Int64Int64VectorCursorCursorProd *) tailift_1266)->field2 =
+                    k_259_869_1147;
+                ((Int64Int64Int64VectorCursorCursorProd *) tailift_1266)->field3 =
+                    x_255_866_1144;
+                ((Int64Int64Int64VectorCursorCursorProd *) tailift_1266)->field4 =
+                    l_261_871_1149;
+                ((Int64Int64Int64VectorCursorCursorProd *) tailift_1266)->field5 =
+                    r_262_872_1150;
+                return tailift_1266;
+            } else {
+                BoolTy fltIf_1000_1152 = kx_254_865_1143 <= k_259_869_1147;
+                
+                if (fltIf_1000_1152) {
+                    CursorTy fltAppE_1001_1153 =
+                              insert_419(kx_254_865_1143, x_255_866_1144, l_261_871_1149);
                     
-                    ((Int64Int64CursorCursorProd *) tailift_303)->field0 = 0;
-                    ((Int64Int64CursorCursorProd *) tailift_303)->field1 =
-                        v_68_186_251;
-                    ((Int64Int64CursorCursorProd *) tailift_303)->field2 =
-                        fltPkd_239_256;
-                    ((Int64Int64CursorCursorProd *) tailift_303)->field3 =
-                        r_70_188_253;
-                    return tailift_303;
+                    return balance_422(k_259_869_1147, v_260_870_1148,
+                                       fltAppE_1001_1153, r_262_872_1150);
                 } else {
-                    CursorTy fltPkd_240_257 =
-                              insert(x_66_184_249, r_70_188_253);
-                    PtrTy tailift_304 =
-                          ALLOC(sizeof(Int64Int64CursorCursorProd));
+                    CursorTy fltAppE_1002_1154 =
+                              insert_419(kx_254_865_1143, x_255_866_1144, r_262_872_1150);
                     
-                    ((Int64Int64CursorCursorProd *) tailift_304)->field0 = 0;
-                    ((Int64Int64CursorCursorProd *) tailift_304)->field1 =
-                        v_68_186_251;
-                    ((Int64Int64CursorCursorProd *) tailift_304)->field2 =
-                        l_69_187_252;
-                    ((Int64Int64CursorCursorProd *) tailift_304)->field3 =
-                        fltPkd_240_257;
-                    return tailift_304;
+                    return balance_422(k_259_869_1147, v_260_870_1148,
+                                       l_261_871_1149, fltAppE_1002_1154);
                 }
             }
             break;
@@ -1504,196 +1966,168 @@ CursorTy insert(IntTy x_66_184_249, CursorTy s_67_185_250)
         
       default:
         {
-            printf("%s\n", "Unknown tag in: tag_301");
+            printf("%s\n", "Unknown tag in: tag_1264");
             exit(1);
         }
     }
 }
-CursorTy singleton(IntTy x_71_189_258)
+CursorTy empty_418()
 {
-    PtrTy fltPkd_241_259 = ALLOC(sizeof(Int64Prod));
+    PtrTy tailift_1268 = ALLOC(sizeof(Int64Prod));
     
-    ((Int64Prod *) fltPkd_241_259)->field0 = 1;
-    
-    PtrTy fltPkd_242_260 = ALLOC(sizeof(Int64Prod));
-    
-    ((Int64Prod *) fltPkd_242_260)->field0 = 1;
-    
-    PtrTy tailift_306 = ALLOC(sizeof(Int64Int64CursorCursorProd));
-    
-    ((Int64Int64CursorCursorProd *) tailift_306)->field0 = 0;
-    ((Int64Int64CursorCursorProd *) tailift_306)->field1 = x_71_189_258;
-    ((Int64Int64CursorCursorProd *) tailift_306)->field2 = fltPkd_241_259;
-    ((Int64Int64CursorCursorProd *) tailift_306)->field3 = fltPkd_242_260;
-    return tailift_306;
+    ((Int64Prod *) tailift_1268)->field0 = 0;
+    return tailift_1268;
 }
-CursorTy _copy_without_ptrs_IntSet(CursorTy arg_135_190_261)
+CursorTy _copy_without_ptrs_Map_v_420(CursorTy arg_723_873_1155)
 {
-    TagTyPacked tag_307 = *(TagTyPacked *) arg_135_190_261;
-    CursorTy tail_308 = arg_135_190_261 + sizeof(IntTy);
+    TagTyPacked tag_1269 = *(TagTyPacked *) arg_723_873_1155;
+    CursorTy tail_1270 = arg_723_873_1155 + sizeof(IntTy);
     
     
-  switch_311:
+  switch_1273:
     ;
-    switch (tag_307) {
+    switch (tag_1269) {
         
       case 0:
         {
-            IntTy x_136_191_262 = ((Int64CursorCursorProd *) tail_308)->field0;
-            CursorTy x_137_192_263 =
-                     ((Int64CursorCursorProd *) tail_308)->field1;
-            CursorTy x_138_193_264 =
-                     ((Int64CursorCursorProd *) tail_308)->field2;
-            CursorTy y_140_195_266 =  _copy_without_ptrs_IntSet(x_137_192_263);
-            CursorTy y_141_196_267 =  _copy_without_ptrs_IntSet(x_138_193_264);
-            PtrTy tailift_309 = ALLOC(sizeof(Int64Int64CursorCursorProd));
+            PtrTy tailift_1271 = ALLOC(sizeof(Int64Prod));
             
-            ((Int64Int64CursorCursorProd *) tailift_309)->field0 = 0;
-            ((Int64Int64CursorCursorProd *) tailift_309)->field1 =
-                x_136_191_262;
-            ((Int64Int64CursorCursorProd *) tailift_309)->field2 =
-                y_140_195_266;
-            ((Int64Int64CursorCursorProd *) tailift_309)->field3 =
-                y_141_196_267;
-            return tailift_309;
+            ((Int64Prod *) tailift_1271)->field0 = 0;
+            return tailift_1271;
             break;
         }
         
       case 1:
         {
-            PtrTy tailift_310 = ALLOC(sizeof(Int64Prod));
+            IntTy x_724_874_1156 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1270)->field0;
+            IntTy x_725_875_1157 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1270)->field1;
+            VectorTy *x_726_876_1158 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1270)->field2;
+            CursorTy x_727_877_1159 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1270)->field3;
+            CursorTy x_728_878_1160 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1270)->field4;
+            CursorTy y_732_882_1164 =
+                      _copy_without_ptrs_Map_v_420(x_727_877_1159);
+            CursorTy y_733_883_1165 =
+                      _copy_without_ptrs_Map_v_420(x_728_878_1160);
+            PtrTy tailift_1272 =
+                  ALLOC(sizeof(Int64Int64Int64VectorCursorCursorProd));
             
-            ((Int64Prod *) tailift_310)->field0 = 1;
-            return tailift_310;
+            ((Int64Int64Int64VectorCursorCursorProd *) tailift_1272)->field0 =
+                1;
+            ((Int64Int64Int64VectorCursorCursorProd *) tailift_1272)->field1 =
+                x_724_874_1156;
+            ((Int64Int64Int64VectorCursorCursorProd *) tailift_1272)->field2 =
+                x_725_875_1157;
+            ((Int64Int64Int64VectorCursorCursorProd *) tailift_1272)->field3 =
+                x_726_876_1158;
+            ((Int64Int64Int64VectorCursorCursorProd *) tailift_1272)->field4 =
+                y_732_882_1164;
+            ((Int64Int64Int64VectorCursorCursorProd *) tailift_1272)->field5 =
+                y_733_883_1165;
+            return tailift_1272;
             break;
         }
         
       default:
         {
-            printf("%s\n", "Unknown tag in: tag_307");
+            printf("%s\n", "Unknown tag in: tag_1269");
             exit(1);
         }
     }
 }
-CursorTy _copy_IntSet(CursorTy arg_128_197_268)
+CursorTy _copy_Map_v_420(CursorTy arg_712_884_1166)
 {
-    TagTyPacked tag_312 = *(TagTyPacked *) arg_128_197_268;
-    CursorTy tail_313 = arg_128_197_268 + sizeof(IntTy);
+    TagTyPacked tag_1274 = *(TagTyPacked *) arg_712_884_1166;
+    CursorTy tail_1275 = arg_712_884_1166 + sizeof(IntTy);
     
     
-  switch_316:
+  switch_1278:
     ;
-    switch (tag_312) {
+    switch (tag_1274) {
         
       case 0:
         {
-            IntTy x_129_198_269 = ((Int64CursorCursorProd *) tail_313)->field0;
-            CursorTy x_130_199_270 =
-                     ((Int64CursorCursorProd *) tail_313)->field1;
-            CursorTy x_131_200_271 =
-                     ((Int64CursorCursorProd *) tail_313)->field2;
-            CursorTy y_133_202_273 =  _copy_IntSet(x_130_199_270);
-            CursorTy y_134_203_274 =  _copy_IntSet(x_131_200_271);
-            PtrTy tailift_314 = ALLOC(sizeof(Int64Int64CursorCursorProd));
+            PtrTy tailift_1276 = ALLOC(sizeof(Int64Prod));
             
-            ((Int64Int64CursorCursorProd *) tailift_314)->field0 = 0;
-            ((Int64Int64CursorCursorProd *) tailift_314)->field1 =
-                x_129_198_269;
-            ((Int64Int64CursorCursorProd *) tailift_314)->field2 =
-                y_133_202_273;
-            ((Int64Int64CursorCursorProd *) tailift_314)->field3 =
-                y_134_203_274;
-            return tailift_314;
+            ((Int64Prod *) tailift_1276)->field0 = 0;
+            return tailift_1276;
             break;
         }
         
       case 1:
         {
-            PtrTy tailift_315 = ALLOC(sizeof(Int64Prod));
+            IntTy x_713_885_1167 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1275)->field0;
+            IntTy x_714_886_1168 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1275)->field1;
+            VectorTy *x_715_887_1169 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1275)->field2;
+            CursorTy x_716_888_1170 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1275)->field3;
+            CursorTy x_717_889_1171 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1275)->field4;
+            CursorTy y_721_893_1175 =  _copy_Map_v_420(x_716_888_1170);
+            CursorTy y_722_894_1176 =  _copy_Map_v_420(x_717_889_1171);
+            PtrTy tailift_1277 =
+                  ALLOC(sizeof(Int64Int64Int64VectorCursorCursorProd));
             
-            ((Int64Prod *) tailift_315)->field0 = 1;
-            return tailift_315;
+            ((Int64Int64Int64VectorCursorCursorProd *) tailift_1277)->field0 =
+                1;
+            ((Int64Int64Int64VectorCursorCursorProd *) tailift_1277)->field1 =
+                x_713_885_1167;
+            ((Int64Int64Int64VectorCursorCursorProd *) tailift_1277)->field2 =
+                x_714_886_1168;
+            ((Int64Int64Int64VectorCursorCursorProd *) tailift_1277)->field3 =
+                x_715_887_1169;
+            ((Int64Int64Int64VectorCursorCursorProd *) tailift_1277)->field4 =
+                y_721_893_1175;
+            ((Int64Int64Int64VectorCursorCursorProd *) tailift_1277)->field5 =
+                y_722_894_1176;
+            return tailift_1277;
             break;
         }
         
       default:
         {
-            printf("%s\n", "Unknown tag in: tag_312");
+            printf("%s\n", "Unknown tag in: tag_1274");
             exit(1);
         }
     }
 }
-unsigned char _traverse_IntSet(CursorTy arg_142_204_275)
+unsigned char _traverse_Map_v_420(CursorTy arg_734_895_1177)
 {
-    TagTyPacked tag_317 = *(TagTyPacked *) arg_142_204_275;
-    CursorTy tail_318 = arg_142_204_275 + sizeof(IntTy);
+    TagTyPacked tag_1279 = *(TagTyPacked *) arg_734_895_1177;
+    CursorTy tail_1280 = arg_734_895_1177 + sizeof(IntTy);
     
     
-  switch_319:
+  switch_1281:
     ;
-    switch (tag_317) {
+    switch (tag_1279) {
         
       case 0:
         {
-            IntTy x_143_205_276 = ((Int64CursorCursorProd *) tail_318)->field0;
-            CursorTy x_144_206_277 =
-                     ((Int64CursorCursorProd *) tail_318)->field1;
-            CursorTy x_145_207_278 =
-                     ((Int64CursorCursorProd *) tail_318)->field2;
-            unsigned char y_147_208_279 =  _traverse_IntSet(x_144_206_277);
-            unsigned char y_148_209_280 =  _traverse_IntSet(x_145_207_278);
-            
             return 0;
             break;
         }
         
       case 1:
         {
-            return 0;
-            break;
-        }
-        
-      default:
-        {
-            printf("%s\n", "Unknown tag in: tag_317");
-            exit(1);
-        }
-    }
-}
-unsigned char _print_IntSet(CursorTy arg_149_210_281)
-{
-    TagTyPacked tag_320 = *(TagTyPacked *) arg_149_210_281;
-    CursorTy tail_321 = arg_149_210_281 + sizeof(IntTy);
-    
-    
-  switch_322:
-    ;
-    switch (tag_320) {
-        
-      case 0:
-        {
-            IntTy x_150_211_282 = ((Int64CursorCursorProd *) tail_321)->field0;
-            CursorTy x_151_212_283 =
-                     ((Int64CursorCursorProd *) tail_321)->field1;
-            CursorTy x_152_213_284 =
-                     ((Int64CursorCursorProd *) tail_321)->field2;
-            unsigned char wildcard_156_214_285 = print_symbol(297);
-            unsigned char wildcard_160_215_286 = print_symbol(299);
-            unsigned char y_153_216_287 = printf("%lld", x_150_211_282);
-            unsigned char wildcard_159_217_288 = print_symbol(299);
-            unsigned char y_154_218_289 =  _print_IntSet(x_151_212_283);
-            unsigned char wildcard_158_219_290 = print_symbol(299);
-            unsigned char y_155_220_291 =  _print_IntSet(x_152_213_284);
-            unsigned char wildcard_157_221_292 = print_symbol(296);
-            
-            return 0;
-            break;
-        }
-        
-      case 1:
-        {
-            unsigned char wildcard_161_222_293 = print_symbol(298);
-            unsigned char wildcard_162_223_294 = print_symbol(296);
+            IntTy x_735_896_1178 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1280)->field0;
+            IntTy x_736_897_1179 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1280)->field1;
+            VectorTy *x_737_898_1180 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1280)->field2;
+            CursorTy x_738_899_1181 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1280)->field3;
+            CursorTy x_739_900_1182 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1280)->field4;
+            unsigned char y_743_901_1183 =  _traverse_Map_v_420(x_738_899_1181);
+            unsigned char y_744_902_1184 =  _traverse_Map_v_420(x_739_900_1182);
             
             return 0;
             break;
@@ -1701,22 +2135,222 @@ unsigned char _print_IntSet(CursorTy arg_149_210_281)
         
       default:
         {
-            printf("%s\n", "Unknown tag in: tag_320");
+            printf("%s\n", "Unknown tag in: tag_1279");
+            exit(1);
+        }
+    }
+}
+unsigned char _print_Map_v_420(CursorTy arg_745_903_1185)
+{
+    TagTyPacked tag_1282 = *(TagTyPacked *) arg_745_903_1185;
+    CursorTy tail_1283 = arg_745_903_1185 + sizeof(IntTy);
+    
+    
+  switch_1284:
+    ;
+    switch (tag_1282) {
+        
+      case 0:
+        {
+            unsigned char wildcard_746_904_1186 = print_symbol(1236);
+            unsigned char wildcard_747_905_1187 = print_symbol(1235);
+            
+            return 0;
+            break;
+        }
+        
+      case 1:
+        {
+            IntTy x_748_906_1188 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1283)->field0;
+            IntTy x_749_907_1189 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1283)->field1;
+            VectorTy *x_750_908_1190 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1283)->field2;
+            CursorTy x_751_909_1191 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1283)->field3;
+            CursorTy x_752_910_1192 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1283)->field4;
+            unsigned char wildcard_758_911_1193 = print_symbol(1237);
+            unsigned char wildcard_764_912_1194 = print_symbol(1238);
+            unsigned char y_753_913_1195 = printf("%lld", x_748_906_1188);
+            unsigned char wildcard_763_914_1196 = print_symbol(1238);
+            unsigned char y_754_915_1197 = printf("%lld", x_749_907_1189);
+            unsigned char wildcard_762_916_1198 = print_symbol(1238);
+            unsigned char y_755_917_1199 = print_symbol(1234);
+            unsigned char wildcard_761_918_1200 = print_symbol(1238);
+            unsigned char y_756_919_1201 =  _print_Map_v_420(x_751_909_1191);
+            unsigned char wildcard_760_920_1202 = print_symbol(1238);
+            unsigned char y_757_921_1203 =  _print_Map_v_420(x_752_910_1192);
+            unsigned char wildcard_759_922_1204 = print_symbol(1235);
+            
+            return 0;
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_1282");
+            exit(1);
+        }
+    }
+}
+CursorTy caseFn_765(VectorTy *x1_186_766_923_1205, IntTy k1_185_767_924_1206,
+                    CursorTy t1_187_768_925_1207, CursorTy m1_193_769_926_1208,
+                    IntTy k2_191_770_927_1209, VectorTy *x2_192_771_928_1210,
+                    CursorTy t4_194_772_929_1211)
+{
+    TagTyPacked tag_1285 = *(TagTyPacked *) m1_193_769_926_1208;
+    CursorTy tail_1286 = m1_193_769_926_1208 + sizeof(IntTy);
+    
+    
+  switch_1287:
+    ;
+    switch (tag_1285) {
+        
+      case 1:
+        {
+            IntTy wildcard__110_195_930_1212 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1286)->field0;
+            IntTy k3_196_931_1213 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1286)->field1;
+            VectorTy *x3_197_932_1214 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1286)->field2;
+            CursorTy t2_198_933_1215 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1286)->field3;
+            CursorTy t3_199_934_1216 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1286)->field4;
+            CursorTy fltAppE_1003_1217 =
+                      bin_428(k1_185_767_924_1206, x1_186_766_923_1205, t1_187_768_925_1207, t2_198_933_1215);
+            CursorTy fltAppE_1004_1218 =
+                      bin_428(k2_191_770_927_1209, x2_192_771_928_1210, t3_199_934_1216, t4_194_772_929_1211);
+            
+            return bin_428(k3_196_931_1213, x3_197_932_1214, fltAppE_1003_1217,
+                           fltAppE_1004_1218);
+            break;
+        }
+        
+      case 0:
+        {
+            return empty_418();
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_1285");
+            exit(1);
+        }
+    }
+}
+CursorTy caseFn_773(VectorTy *x1_171_774_935_1219, IntTy k1_170_775_936_1220,
+                    CursorTy t4_173_776_937_1221, CursorTy m1_179_777_938_1222,
+                    IntTy k2_176_778_939_1223, VectorTy *x2_177_779_940_1224,
+                    CursorTy t1_178_780_941_1225)
+{
+    TagTyPacked tag_1288 = *(TagTyPacked *) m1_179_777_938_1222;
+    CursorTy tail_1289 = m1_179_777_938_1222 + sizeof(IntTy);
+    
+    
+  switch_1290:
+    ;
+    switch (tag_1288) {
+        
+      case 1:
+        {
+            IntTy wildcard__134_180_942_1226 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1289)->field0;
+            IntTy k3_181_943_1227 =
+                  ((Int64Int64VectorCursorCursorProd *) tail_1289)->field1;
+            VectorTy *x3_182_944_1228 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1289)->field2;
+            CursorTy t2_183_945_1229 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1289)->field3;
+            CursorTy t3_184_946_1230 =
+                     ((Int64Int64VectorCursorCursorProd *) tail_1289)->field4;
+            CursorTy fltAppE_1005_1231 =
+                      bin_428(k2_176_778_939_1223, x2_177_779_940_1224, t1_178_780_941_1225, t2_183_945_1229);
+            CursorTy fltAppE_1006_1232 =
+                      bin_428(k1_170_775_936_1220, x1_171_774_935_1219, t3_184_946_1230, t4_173_776_937_1221);
+            
+            return bin_428(k3_181_943_1227, x3_182_944_1228, fltAppE_1005_1231,
+                           fltAppE_1006_1232);
+            break;
+        }
+        
+      case 0:
+        {
+            return empty_418();
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_1288");
             exit(1);
         }
     }
 }
 int __main_expr()
 {
-    add_symbol(296, ")");
-    add_symbol(297, "(PureSet");
-    add_symbol(298, "(EmptySet");
-    add_symbol(299, " ");
+    add_symbol(1234, "Vector");
+    add_symbol(1235, ")");
+    add_symbol(1236, "(Tip_v_420");
+    add_symbol(1237, "(Bin_v_420");
+    add_symbol(1238, " ");
     
-    CursorTy fltAppE_233_243 =  empty();
-    CursorTy tmp_app_295 =  insert_num(1000, fltAppE_233_243);
+    IntTy tmp_13 = sizeof(CharTy);
+    VectorTy *vec_145_153_781_1007 = vector_alloc(1, tmp_13);
+    CharTy tmp_12 = 'f';
+    VectorTy *__154_782_1008 = vector_inplace_update(vec_145_153_781_1007, 0,
+                                                     &tmp_12);
+    IntTy tmp_11 = sizeof(CharTy);
+    VectorTy *vec_146_155_783_1010 = vector_alloc(1, tmp_11);
+    CharTy tmp_10 = 'f';
+    VectorTy *__156_784_1011 = vector_inplace_update(vec_146_155_783_1010, 0,
+                                                     &tmp_10);
+    IntTy tmp_9 = sizeof(CharTy);
+    VectorTy *vec_147_157_785_1013 = vector_alloc(1, tmp_9);
+    CharTy tmp_8 = 'e';
+    VectorTy *__158_786_1014 = vector_inplace_update(vec_147_157_785_1013, 0,
+                                                     &tmp_8);
+    IntTy tmp_7 = sizeof(CharTy);
+    VectorTy *vec_148_159_787_1016 = vector_alloc(1, tmp_7);
+    CharTy tmp_6 = 'd';
+    VectorTy *__160_788_1017 = vector_inplace_update(vec_148_159_787_1016, 0,
+                                                     &tmp_6);
+    IntTy tmp_5 = sizeof(CharTy);
+    VectorTy *vec_149_161_789_1019 = vector_alloc(1, tmp_5);
+    CharTy tmp_4 = 'c';
+    VectorTy *__162_790_1020 = vector_inplace_update(vec_149_161_789_1019, 0,
+                                                     &tmp_4);
+    IntTy tmp_3 = sizeof(CharTy);
+    VectorTy *vec_150_163_791_1022 = vector_alloc(1, tmp_3);
+    CharTy tmp_2 = 'b';
+    VectorTy *__164_792_1023 = vector_inplace_update(vec_150_163_791_1022, 0,
+                                                     &tmp_2);
+    IntTy tmp_1 = sizeof(CharTy);
+    VectorTy *vec_151_165_793_1025 = vector_alloc(1, tmp_1);
+    CharTy tmp_0 = 'a';
+    VectorTy *__166_794_1026 = vector_inplace_update(vec_151_165_793_1025, 0,
+                                                     &tmp_0);
+    CursorTy fltAppE_960_1028 =  empty_418();
+    CursorTy fltAppE_958_1029 =
+              insert_419(0, vec_151_165_793_1025, fltAppE_960_1028);
+    CursorTy fltAppE_956_1030 =
+              insert_419(1, vec_150_163_791_1022, fltAppE_958_1029);
+    CursorTy fltAppE_954_1031 =
+              insert_419(2, vec_149_161_789_1019, fltAppE_956_1030);
+    CursorTy fltAppE_952_1032 =
+              insert_419(3, vec_148_159_787_1016, fltAppE_954_1031);
+    CursorTy fltAppE_950_1033 =
+              insert_419(4, vec_147_157_785_1013, fltAppE_952_1032);
+    CursorTy fltAppE_948_1034 =
+              insert_419(5, vec_146_155_783_1010, fltAppE_950_1033);
+    CursorTy tmp_app_1233 =
+              insert_419(0, vec_145_153_781_1007, fltAppE_948_1034);
     
-     _print_IntSet(tmp_app_295);
+     _print_Map_v_420(tmp_app_1233);
     printf("\n");
     free_symtable();
     return 0;
