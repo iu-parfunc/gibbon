@@ -1,6 +1,6 @@
 {-# LANGUAGE BlockArguments #-}
 
-module Main where
+module Set where
 
 --            type size value left right
 type Size = Int
@@ -97,6 +97,15 @@ member x s  =
             else if x <= v then member x l
             else member x r
 
+depth :: Int -> Int -> IntSet -> Int
+depth x c s =
+    case s of
+        EmptySet -> -1
+        PureSet _ v l r -> 
+            if x == v then c + 1
+            else if x <= v then depth x (c+1) l
+            else depth x (c+1) r
+
 size :: IntSet -> Int
 size s = case s of 
     EmptySet -> 0
@@ -127,4 +136,5 @@ sum s = case s of
     EmptySet -> 0
     PureSet _ v l r -> v + (sum l) + (sum r)
 
-gibbon_main = sum (insert_num 100 (insert_num 100 empty))
+--gibbon_main = sum (insert_num 100 (insert_num 100 empty))
+gibbon_main = sum (insert 0 empty)
