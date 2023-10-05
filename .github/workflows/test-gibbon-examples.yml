@@ -1,47 +1,25 @@
 name: Test Gibbon examples
-on: [ push, pull_request ]
+on:
+  push: 
+  pull_request:
+  workflow_dispatch:
 jobs:
   linux:
     name: test-gibbon
     runs-on: ubuntu-22.04
     steps:
-      - name: dependencies
-        run: |
-          sudo apt-get update
-          sudo add-apt-repository -y 'ppa:plt/racket'
-          sudo apt-get update
-          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-          sudo apt update
-          sudo apt-get install -y libgc-dev libgmp-dev uthash-dev gcc-11 racket
-          sudo unlink /usr/bin/gcc && sudo ln -s /usr/bin/gcc-11 /usr/bin/gcc
-      - name: cplex and docplex
-        run: | 
-          sudo apt-get install python3
-          pip3 install cplex
-          pip3 install docplex
-      - name: ghc and cabal
-        env:
-          HCKIND: ghc
-          HCVER: 9.4.6
-        run: |
-            mkdir -p "$HOME/.ghcup/bin"
-            curl -sL https://downloads.haskell.org/ghcup/0.1.19.2/x86_64-linux-ghcup-0.1.19.2 > "$HOME/.ghcup/bin/ghcup"
-            sudo chmod a+x "$HOME/.ghcup/bin/ghcup"
-            "$HOME/.ghcup/bin/ghcup" install ghc "$HCVER" || (cat "$HOME"/.ghcup/logs/*.* && false)
-            "$HOME/.ghcup/bin/ghcup" install cabal 3.10.1.0 || (cat "$HOME"/.ghcup/logs/*.* && false)
-            HC=$HOME/.ghcup/bin/$HCKIND-$HCVER
-            echo "HC=$HC" >> "$GITHUB_ENV"
-            echo "CABAL=$HOME/.ghcup/bin/cabal-3.10.1.0 -vnormal+nowrap" >> "$GITHUB_ENV"
-            echo "$HOME/.ghcup/bin/" >> $GITHUB_PATH
+      - name: checkout
+        uses: actions/checkout@v2
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
       - name: versions
         run: |
+          nix-shell
           $HC --version
           racket --version
           gcc --version
           stack --version
           cabal --version
-      - name: checkout
-        uses: actions/checkout@v2
       - run: cabal v2-update -w $HC
       - run: cabal v2-freeze -w $HC
       - name: cache-cabal
