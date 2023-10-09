@@ -14,34 +14,36 @@ import Data.Set as S
 import Options.Applicative
 
 data GeneralFlag
-  = Opt_Gibbon1            -- ^ Set Opt_No_RemoveCopies & Opt_BigInfiniteRegions
-  | Opt_Gibbon2            -- ^ Set Opt_RemoveCopies & Opt_InfiniteRegions
-  | Opt_RemoveCopies       -- ^ Calls to copy functions are converted to indirections
-  | Opt_No_RemoveCopies    -- ^ Unset Opt_RemoveCopies
-  | Opt_InfiniteRegions    -- ^ Use infinite regions
-  | Opt_BigInfiniteRegions -- ^ Use big infinite regions
-  | Opt_BenchPrint         -- ^ Should the benchamrked function have its output printed?
-  | Opt_Packed             -- ^ Use packed representation
-  | Opt_Pointer            -- ^ Use pointer representation
-  | Opt_BumpAlloc          -- ^ Use bump-pointer allocation if using the non-packed backend
-  | Opt_Warnc              -- ^ Show warnings from the C compiler
-  | Opt_DisableGC          -- ^ Don't run the the garbage collector (used by Codegen).
-  | Opt_No_PureAnnot       -- ^ Don't use 'pure' annotations (a GCC optimization)
-  | Opt_Fusion             -- ^ Enable fusion.
-  | Opt_Parallel           -- ^ Fork/join parallelism.
-  | Opt_RegionOnSpawn      -- ^ Allocate into fresh regions for every spawn, not steal.
-  | Opt_GhcTc              -- ^ Typecheck with GHC before compiling with Gibbon.
-  | Opt_RelativeOffsets    -- ^ Enable relative offsets.
-  | Opt_CountParRegions    -- ^ Count and print the number of regions allocated for parallelism.
-  | Opt_CountAllRegions    -- ^ Count and print the number of all the regions allocated.
-  | Opt_RtsDebug           -- ^ Compile the RTS in debugging mode.
-  | Opt_PrintGcStats       -- ^ Record and print GC statistics.
-  | Opt_GenGc              -- ^ Use the new non-generational GC.
-  | Opt_NoEagerPromote     -- ^ Disable eager promotion.
-  | Opt_SimpleWriteBarrier -- ^ Disables eliminate-indirection-chains optimization.
-  | Opt_Layout_Local       -- ^ Optimize the layout of Algebraic data types locally 
-  | Opt_Layout_Global      -- ^ Optimize the layout of Algebraic data types globally
-  | Opt_Layout_Use_Solver  -- ^ Use the Solver to optimize the layout of the data types. 
+  = Opt_Gibbon1             -- ^ Set Opt_No_RemoveCopies & Opt_BigInfiniteRegions
+  | Opt_Gibbon2             -- ^ Set Opt_RemoveCopies & Opt_InfiniteRegions
+  | Opt_RemoveCopies        -- ^ Calls to copy functions are converted to indirections
+  | Opt_No_RemoveCopies     -- ^ Unset Opt_RemoveCopies
+  | Opt_InfiniteRegions     -- ^ Use infinite regions
+  | Opt_BigInfiniteRegions  -- ^ Use big infinite regions
+  | Opt_BenchPrint          -- ^ Should the benchamrked function have its output printed?
+  | Opt_Packed              -- ^ Use packed representation
+  | Opt_Pointer             -- ^ Use pointer representation
+  | Opt_BumpAlloc           -- ^ Use bump-pointer allocation if using the non-packed backend
+  | Opt_Warnc               -- ^ Show warnings from the C compiler
+  | Opt_DisableGC           -- ^ Don't run the the garbage collector (used by Codegen).
+  | Opt_No_PureAnnot        -- ^ Don't use 'pure' annotations (a GCC optimization)
+  | Opt_Fusion              -- ^ Enable fusion.
+  | Opt_Parallel            -- ^ Fork/join parallelism.
+  | Opt_RegionOnSpawn       -- ^ Allocate into fresh regions for every spawn, not steal.
+  | Opt_GhcTc               -- ^ Typecheck with GHC before compiling with Gibbon.
+  | Opt_RelativeOffsets     -- ^ Enable relative offsets.
+  | Opt_CountParRegions     -- ^ Count and print the number of regions allocated for parallelism.
+  | Opt_CountAllRegions     -- ^ Count and print the number of all the regions allocated.
+  | Opt_RtsDebug            -- ^ Compile the RTS in debugging mode.
+  | Opt_PrintGcStats        -- ^ Record and print GC statistics.
+  | Opt_GenGc               -- ^ Use the new non-generational GC.
+  | Opt_NoEagerPromote      -- ^ Disable eager promotion.
+  | Opt_SimpleWriteBarrier  -- ^ Disables eliminate-indirection-chains optimization.
+  | Opt_Layout_Local        -- ^ Optimize the layout of Algebraic data types locally 
+  | Opt_Layout_Global       -- ^ Optimize the layout of Algebraic data types globally
+  | Opt_Layout_Use_Solver   -- ^ Use the Solver to optimize the layout of the data types. 
+  | Opt_PapiInstrumentation -- ^ Enable PAPI instrumentation while compiling the gibbon binary. 
+  
   deriving (Show,Read,Eq,Ord)
 
 -- | Exactly like GHC's ddump flags.
@@ -120,7 +122,8 @@ dynflagsParser = DynFlags <$> (S.fromList <$> many gflagsParser) <*> (S.fromList
                    flag' Opt_SimpleWriteBarrier (long "simple-write-barrier" <> help "Disables eliminate-indirection-chains optimization.") <|>
                    flag' Opt_Layout_Local (long "opt-layout-local" <> help "Optimizes the Layout of Algebraic data types locally") <|>
                    flag' Opt_Layout_Global (long "opt-layout-global" <> help "Optimizes the Layout of Algebraic data types globally") <|> 
-                   flag' Opt_Layout_Use_Solver (long "opt-layout-use-solver" <> help "Use the solver instead of a Greedy Heuristic")
+                   flag' Opt_Layout_Use_Solver (long "opt-layout-use-solver" <> help "Use the solver instead of a Greedy Heuristic") <|>
+                   flag' Opt_PapiInstrumentation (long "enable-papi" <> help "Enable instrumentation using papi, extends the iterate timing function." ) 
 
 
     dflagsParser :: Parser DebugFlag
