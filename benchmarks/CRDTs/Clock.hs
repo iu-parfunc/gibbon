@@ -1,21 +1,31 @@
 module Clock where
-import Map
+    import GibbonMap
+    import Gibbon.Prim
 
-type Clock = Map Int --Int
+    data Order = Eq | Lt | Gt | Cc
+        deriving (Eq, Ord, Enum, Read, Show)
 
-data Timestamp = Timestamp Int Int
+    type Clock = Map Int Int
 
-init :: Int -> Clock
-init uid = singleton uid 0
+    data Timestamp = Timestamp {
+            uid :: Int,
+            v :: Int
+        }
+        deriving (Eq, Ord, Show)
 
-step :: Int -> Clock -> Clock
-step uid clk = case (lookup uid clk) of
-                    Just v -> insert uid (v + 1) clk
-                    Nothing -> insert uid 1 clk
+    init :: Int -> Clock
+    init uid = GibbonMap.insert uid 0 GibbonMap.empty
 
-stamp :: Int -> Clock -> Timestamp
-stamp uid clk = case (lookup uid clk) of
-                    Just v -> Timestamp uid v
-                    Nothing -> Timestamp uid 0
+    step :: Int -> Clock -> Clock
+    step uid clk = case v of
+                        Just v -> GibbonMap.insert uid (v + 1) clk
+                        Nothing -> GibbonMap.insert uid 1 clk
+                    where v = GibbonMap.lookup uid clk
+
+    stamp :: Int -> Clock -> Timestamp
+    stamp uid clk = case v of
+                        Just v -> Timestamp { uid = uid, v = v }
+                        Nothing -> Timestamp { uid = uid, v = 0 }
+                    where v = GibbonMap.lookup uid clk
     
 gibbon_main = stamp 0 (step 0 (step 1 (step 0 (init 0))))
