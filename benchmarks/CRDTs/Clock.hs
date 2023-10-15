@@ -5,10 +5,15 @@ import Common
 type Clock = Map Int
 data Timestamp = Timestamp Int Clock
 
-clk :: Timestamp -> Clock
-clk t = 
+clock :: Timestamp -> Clock
+clock t = 
     case t of
         Timestamp _ c -> c
+
+author :: Timestamp -> Int
+author t =
+    case t of
+        Timestamp a _ -> a
 
 init :: Int -> Clock
 init uid = singleton uid 0
