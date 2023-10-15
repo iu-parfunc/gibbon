@@ -35,19 +35,19 @@ key s = case s of
             Tip -> 0
             Bin _ k _ _ _ -> k
 
-lookup :: Int -> Map a -> Maybe a
+lookup :: Int -> Map a -> Common.Maybe a
 lookup k m = 
     case m of
-        Tip -> Nothing
+        Tip -> Common.Nothing
         Bin _ kx v l r ->
-            if k < kx then lookup k l
-            else if k > kx then lookup k r
-            else Just v
+            if k < kx then Map.lookup k l
+            else if k > kx then Map.lookup k r
+            else Common.Just v
 
 member :: Int -> Map a -> Bool
-member k m = case lookup k m of
-    Nothing -> False
-    Just _  -> True
+member k m = case Map.lookup k m of
+    Common.Nothing -> False
+    Common.Just _  -> True
 
 -- Insertion --------------------------
 
@@ -61,6 +61,55 @@ insert kx x m =
                 balance k v (insert kx x l) r
             else 
                 balance k v l (insert kx x r)
+
+delete :: Int -> Map a -> Map a
+delete kx m = 
+    case m of
+        Tip -> Tip
+        Bin sz k v l r ->
+            if kx == k then glue l r
+            else if kx <= k then balance kx v (delete kx l) r
+            else balance kx v l (delete kx r)
+
+glue :: Map a -> Map a -> Map a
+glue l r = 
+    case (l, r) of
+        (Tip, Tip) -> Tip
+        (Bin _ _ _ _ _, Tip) -> r
+        (Tip, Bin _ _ _ _ _) -> l
+        (Bin _ _ _ _ _, Bin _ _ _ _ _) ->
+            if size l > size r then 
+                case (deleteFindMax l) of 
+                    Common.Just ((km, m),l') -> balance km m l' r
+                    Common.Nothing -> Tip
+                    --let ((km,m),l') = deleteFindMax l in balance km m l' r
+            else 
+                case (deleteFindMin r) of
+                    Common.Just ((km,m),r') -> balance km m l r'
+                    Common.Nothing -> Tip
+                
+                --let ((km,m),r') = deleteFindMin r in balance km m l r'
+
+deleteFindMin :: Map a -> Common.Maybe ((Int,a),Map a)
+deleteFindMin t 
+  = case t of
+        Tip             -> Common.Nothing
+        Bin _ k x Tip r -> Common.Just ((k,x),r)
+        Bin _ k x l r   -> case (deleteFindMin l) of
+                            Common.Just (km,l') -> Common.Just (km,balance k x l' r)
+                            Common.Nothing -> Common.Nothing
+            
+            --let (km,l') = deleteFindMin l in Common.Just (km,balance k x l' r)
+
+deleteFindMax :: Map a -> Common.Maybe ((Int,a),Map a)
+deleteFindMax t
+  = case t of
+        Tip             -> Common.Nothing
+        Bin _ k x l Tip -> Common.Just ((k,x),l)
+        Bin _ k x l r   -> case (deleteFindMax r) of 
+                            Common.Just (km,r') -> Common.Just (km,balance k x l r')
+                            Common.Nothing -> Common.Nothing
+        --let (km,r') = deleteFindMax r in Common.Just (km,balance k x l r')
 
 delta :: Int
 delta = 4
@@ -111,7 +160,7 @@ doubleL k1 x1 t1 m0 =
             case m1 of 
                 Bin _ k3 x3 t2 t3 -> bin k3 x3 (bin k1 x1 t1 t2) (bin k2 x2 t3 t4)
                 Tip -> empty --cry
-        Tip _ _ _ _  -> empty --cry
+        Tip -> empty --cry
 
 doubleR :: Int -> b -> Map b -> Map b -> Map b
 doubleR k1 x1 m0 t4 =
