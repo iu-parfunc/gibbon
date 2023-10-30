@@ -28,11 +28,12 @@ filterByKeywordInTagList keyword blogs = case blogs of
 emphKeywordInTag :: Text -> Blog -> Blog
 emphKeywordInTag keyword blogs = case blogs of 
                                     End -> End
-                                    Layout1 header id author date content tags rst -> let present = searchBlogTags keyword tags
+                                    Layout1 header id author date content tags rst -> let present = iterate (searchBlogTags keyword tags)
                                                                                           in if (present) 
-                                                                                             then let newContent  = case content of 
+                                                                                             then let --newContent  = iterate (emphasizeBlogContent keyword content)
+                                                                                                      newContent = case content of 
                                                                                                                          Content block -> Content (emphasizeKeywordInBlock keyword block) 
-                                                                                                      newRst      = emphKeywordInTag keyword rst
+                                                                                                      newRst      = iterate (emphKeywordInTag keyword rst)
                                                                                                     in Layout1 header id author date newContent tags newRst
                                                                                              else
                                                                                                let newRst = emphKeywordInTag keyword rst
@@ -41,10 +42,10 @@ emphKeywordInTag keyword blogs = case blogs of
                                                                                                  
 -- main function 
 gibbon_main = 
-   let blogs = mkBlogs_layout1 2
+   let blogs = mkBlogs_layout1 1000000
        keyword :: Vector Char  
        keyword = "a"
-       newblgs   = emphKeywordInContent keyword blogs
-       newblgs'  = emphKeywordInTag keyword newblgs 
-       newblgs'' = filterByKeywordInTagList keyword newblgs'
-   in printPacked newblgs''
+       newblgs   = iterate (emphKeywordInContent keyword blogs)
+       newblgs'  = iterate (emphKeywordInTag keyword newblgs) 
+       newblgs'' = iterate (filterByKeywordInTagList keyword newblgs')
+   in () --printPacked newblgs''
