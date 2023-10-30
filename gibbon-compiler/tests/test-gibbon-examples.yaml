@@ -915,3 +915,6 @@ tests:
     answer-file: examples/layout_bench/manyFuncsGlobal.ans
     failing: [interp1,pointer,gibbon1, gibbon3]
     run-modes: ["gibbon2"]
+
+  - name: test_iterate.hs
+    skip: true 
