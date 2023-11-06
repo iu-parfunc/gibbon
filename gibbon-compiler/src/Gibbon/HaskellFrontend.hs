@@ -200,7 +200,9 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
         let (defs, _vars, funs, inlines, main, optimizeDcons, userOrderings) =
               foldr classify init_acc toplevels
             userOrderings' = M.fromList $ coalese_constraints userOrderings
-            funs' =
+            funs' = M.map (\funDef -> funDef {funName = toVar (mod_name ++ "." ++ (fromVar (funName funDef))) }) funs -- can insert function name here
+            --funs' = M.map (\funDef -> funDef {funMeta = funMeta {funModule = mod_name}}) funs -- can insert function name here
+            funs'' =
               foldr
                 (\v acc ->
                    M.update
@@ -208,18 +210,18 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                         Just (fn {funMeta = funMeta {funInline = Inline}}))
                      v
                      acc)
-                funs
+                funs'
                 inlines
-            funs'' =
+            funs''' =
               foldr
                 (\v acc ->
                    M.update
                      (\fn -> Just (addLayoutMetaData fn optimizeDcons))
                      v
                      acc)
-                funs'
+                funs''
                 (P.map fst (S.toList optimizeDcons))
-            funs''' =
+            funs'''' =
               foldr
                 (\k acc ->
                    M.update
@@ -234,7 +236,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                              }))
                      k
                      acc)
-                funs''
+                funs'''
                 (M.keys userOrderings')
         imported_progs' <- mapM id imported_progs
         let (defs0, funs0) =
@@ -1575,6 +1577,7 @@ desugarFun ::
 desugarFun type_syns toplevel env decl =
   case decl of
     FunBind _ [Match _ fname pats (UnGuardedRhs _ bod) _where] -> do
+      -- where it sets the name ^^ could pass in module name here
       let fname_str = nameToStr fname
           fname_var = toVar (fname_str)
       (vars, arg_tys, bindss) <-
@@ -1588,6 +1591,7 @@ desugarFun type_syns toplevel env decl =
             let funty = ArrowTy arg_tys ret_ty
             pure $ (ForAll [] funty)
           Just ty -> pure ty
+        -- where it parses expressions \/\/ could parse module calls here
       bod' <- desugarExp type_syns toplevel bod
       pure $ (fname_var, args, unCurryTopTy fun_ty, (mkLets binds bod'))
     _ ->
