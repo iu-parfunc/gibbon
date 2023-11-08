@@ -9,7 +9,7 @@ Prog {ddefs = [(Tree,
                                   ("Node",
                                    [(False, PackedTy "Tree" []),(False, PackedTy "Tree" [])])]})],
       fundefs = [(add1,
-                  FunDef {funName = "Add.add1",
+                  FunDef {funName = "*Add*add1",
                           funArgs = [t],
                           funTy = ForAll []
                                          (ArrowTy [PackedTy "Tree" []] (PackedTy "Tree" [])),
@@ -38,25 +38,42 @@ Prog {ddefs = [(Tree,
                                       DataConE (MetaTv $8) "Leaf" [LitE 2]]],
                       MetaTv $9)}
 
+ [compiler] Running pass, renameModules
+Pass output:
+================================================================================
+data Tree = Leaf Int | 
+            Node (Packed Tree []) (Packed Tree [])
+{meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+*Add*add1 :: forall. ((Packed Tree []) -> (Packed Tree []))
+*Add*add1 t =
+    case t of
+        Leaf x::$2 ->
+            (Leaf $1 x + 1)
+        Node x1::$4 x2::$5 ->
+            (Node $3 (timmy-Add.add1 [] x1) (timmy-Add.add1 [] x2))
+
+gibbon_main :: $9
+gibbon_main = (Add.add1 [] (Node $6 (Leaf $7 1) (Leaf $8 2)))
+
  [compiler] Running pass, freshen
 Pass output:
 ================================================================================
 data Tree = Leaf Int | 
             Node (Packed Tree []) (Packed Tree [])
 {meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
-Add_add1 :: forall. ((Packed Tree []) -> (Packed Tree []))
-Add_add1 t_10 =
+_Add_add1 :: forall. ((Packed Tree []) -> (Packed Tree []))
+_Add_add1 t_10 =
     case t_10 of
         Leaf x_11::$2 ->
             (Leaf $1 x_11 + 1)
         Node x1_12::$4 x2_13::$5 ->
-            (Node $3 (Add_add1 [] x1_12) (Add_add1 [] x2_13))
+            (Node $3 (timmy_Add_add1 [] x1_12) (timmy_Add_add1 [] x2_13))
 
 gibbon_main :: $9
 gibbon_main = (Add_add1 [] (Node $6 (Leaf $7 1) (Leaf $8 2)))
 
  [compiler] Running pass, typecheck
 gibbon: L0.Typecheck: 
-    Unknown function: Add_add1 in Var "Add_add1"
+    Unknown function: timmy_Add_add1 in Var "_Add_add1"
 CallStack (from HasCallStack):
   error, called at src/Gibbon/L0/Typecheck.hs:83:18 in gibbon-0.3-inplace:Gibbon.L0.Typecheck

@@ -200,7 +200,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
         let (defs, _vars, funs, inlines, main, optimizeDcons, userOrderings) =
               foldr classify init_acc toplevels
             userOrderings' = M.fromList $ coalese_constraints userOrderings
-            funs' = M.map (\funDef -> funDef {funName = toVar (mod_name ++ "." ++ (fromVar (funName funDef))) }) funs -- can insert function name here
+            funs' = M.map (\funDef -> funDef {funName = toVar ("*" ++ mod_name ++ "*" ++ (fromVar (funName funDef))) }) funs -- can insert function name here
             --funs' = M.map (\funDef -> funDef {funMeta = funMeta {funModule = mod_name}}) funs -- can insert function name here
             funs'' =
               foldr
@@ -749,8 +749,10 @@ desugarExp type_syns toplevel e =
     --     | (qnameToStr f) == "error" -> pure $ PrimAppE (ErrorP (litToString lit
     Paren _ e2 -> desugarExp type_syns toplevel e2
     H.Var _ qv -> do
+      -- where the expression name is parsed (for all expressions)
       let str = qnameToStr qv
           v = (toVar str)
+      --    v = (toVar ("timmy-" ++ str))
       if str == "alloc_pdict"
         then do
           kty <- newMetaTy
@@ -1567,6 +1569,7 @@ desugarExp type_syns toplevel e =
       pure $ PrimAppE SubP [LitE 0, e1']
     _ -> error ("desugarExp: Unsupported expression: " ++ prettyPrint e)
 
+-- parse function declarations
 desugarFun ::
      (Show a, Pretty a)
   => TypeSynEnv
