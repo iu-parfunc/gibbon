@@ -2,8 +2,8 @@
  ! We set DEBUG based on command-line verbose arg: 4
  [compiler] pipeline starting, parsed program: 
 ================================================================================
-Prog {ddefs = [(Tree,
-                DDef {tyName = "Tree",
+Prog {ddefs = [(Add.Tree,
+                DDef {tyName = "Add.Tree",
                       tyArgs = [],
                       dataCons = [("Leaf", [(False, IntTy)]),
                                   ("Node",
@@ -41,39 +41,2752 @@ Prog {ddefs = [(Tree,
  [compiler] Running pass, renameModules
 Pass output:
 ================================================================================
-data Tree = Leaf Int | 
-            Node (Packed Tree []) (Packed Tree [])
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10 []) (Packed Add_Tree_10 [])
 {meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
-Add_add1_10 :: forall. ((Packed Tree []) -> (Packed Tree []))
-Add_add1_10 t =
+Add_add1_11 :: forall. ((Packed Add_Tree_10 []) -> (Packed Add_Tree_10 []))
+Add_add1_11 t =
     case t of
         Leaf x::$2 ->
             (Leaf $1 x + 1)
         Node x1::$4 x2::$5 ->
-            (Node $3 (Add_add1_10 [] x1) (Add_add1_10 [] x2))
+            (Node $3 (Add_add1_11 [] x1) (Add_add1_11 [] x2))
 
 gibbon_main :: $9
-gibbon_main = (Add.add1 [] (Node $6 (Leaf $7 1) (Leaf $8 2)))
+gibbon_main = (Add_add1_11 [] (Node $6 (Leaf $7 1) (Leaf $8 2)))
 
  [compiler] Running pass, freshen
 Pass output:
 ================================================================================
-data Tree = Leaf Int | 
-            Node (Packed Tree []) (Packed Tree [])
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10 []) (Packed Add_Tree_10 [])
 {meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
-Add_add1_10 :: forall. ((Packed Tree []) -> (Packed Tree []))
-Add_add1_10 t_11 =
-    case t_11 of
-        Leaf x_12::$2 ->
-            (Leaf $1 x_12 + 1)
-        Node x1_13::$4 x2_14::$5 ->
-            (Node $3 (Add_add1_10 [] x1_13) (Add_add1_10 [] x2_14))
+Add_add1_11 :: forall. ((Packed Add_Tree_10 []) -> (Packed Add_Tree_10 []))
+Add_add1_11 t_12 =
+    case t_12 of
+        Leaf x_13::$2 ->
+            (Leaf $1 x_13 + 1)
+        Node x1_14::$4 x2_15::$5 ->
+            (Node $3 (Add_add1_11 [] x1_14) (Add_add1_11 [] x2_15))
 
 gibbon_main :: $9
-gibbon_main = (Add_add1 [] (Node $6 (Leaf $7 1) (Leaf $8 2)))
+gibbon_main = (Add_add1_11 [] (Node $6 (Leaf $7 1) (Leaf $8 2)))
 
  [compiler] Running pass, typecheck
-gibbon: L0.Typecheck: 
-    Unknown function: Add_add1
-CallStack (from HasCallStack):
-  error, called at src/Gibbon/L0/Typecheck.hs:66:32 in gibbon-0.3-inplace:Gibbon.L0.Typecheck
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10 []) (Packed Add_Tree_10 [])
+{meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: forall. ((Packed Add_Tree_10 []) -> (Packed Add_Tree_10 []))
+Add_add1_11 t_12 =
+    case t_12 of
+        Leaf x_13::Int ->
+            (Leaf () x_13 + 1)
+        Node x1_14::(Packed Add_Tree_10 []) x2_15::(Packed Add_Tree_10 []) ->
+            (Node () (Add_add1_11 [] x1_14) (Add_add1_11 [] x2_15))
+
+gibbon_main :: (Packed Add_Tree_10 [])
+gibbon_main = (Add_add1_11 [] (Node () (Leaf () 1) (Leaf () 2)))
+
+ [compiler] Running pass, bindLambdas
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10 []) (Packed Add_Tree_10 [])
+{meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: forall. ((Packed Add_Tree_10 []) -> (Packed Add_Tree_10 []))
+Add_add1_11 t_12 =
+    case t_12 of
+        Leaf x_13::Int ->
+            (Leaf () x_13 + 1)
+        Node x1_14::(Packed Add_Tree_10 []) x2_15::(Packed Add_Tree_10 []) ->
+            (Node () (Add_add1_11 [] x1_14) (Add_add1_11 [] x2_15))
+
+gibbon_main :: (Packed Add_Tree_10 [])
+gibbon_main = (Add_add1_11 [] (Node () (Leaf () 1) (Leaf () 2)))
+
+ [compiler] Running pass, monomorphize
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10 []) (Packed Add_Tree_10 [])
+{meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: forall. ((Packed Add_Tree_10 []) -> (Packed Add_Tree_10 []))
+Add_add1_11 t_12 =
+    case t_12 of
+        Leaf x_13::Int ->
+            (Leaf () x_13 + 1)
+        Node x1_14::(Packed Add_Tree_10 []) x2_15::(Packed Add_Tree_10 []) ->
+            (Node () (Add_add1_11 [] x1_14) (Add_add1_11 [] x2_15))
+
+gibbon_main :: (Packed Add_Tree_10 [])
+gibbon_main = (Add_add1_11 [] (Node () (Leaf () 1) (Leaf () 2)))
+
+ [compiler] Running pass, specLambdas
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10 []) (Packed Add_Tree_10 [])
+{meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: forall. ((Packed Add_Tree_10 []) -> (Packed Add_Tree_10 []))
+Add_add1_11 t_12 =
+    case t_12 of
+        Leaf x_13::Int ->
+            (Leaf () x_13 + 1)
+        Node x1_14::(Packed Add_Tree_10 []) x2_15::(Packed Add_Tree_10 []) ->
+            (Node () (Add_add1_11 [] x1_14) (Add_add1_11 [] x2_15))
+
+gibbon_main :: (Packed Add_Tree_10 [])
+gibbon_main = (Add_add1_11 [] (Node () (Leaf () 1) (Leaf () 2)))
+
+ [compiler] Running pass, desugarL0
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10 []) (Packed Add_Tree_10 [])
+{meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: forall. ((Packed Add_Tree_10 []) -> (Packed Add_Tree_10 []))
+Add_add1_11 t_12 =
+    case t_12 of
+        Leaf x_13::() ->
+            (Leaf () x_13 + 1)
+        Node x1_14::() x2_15::() ->
+            (Node () (Add_add1_11 [] x1_14) (Add_add1_11 [] x2_15))
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: forall. ((Packed Add_Tree_10 []) -> (Packed Add_Tree_10 []))
+_copy_Add_Tree_10 arg_28 =
+    case arg_28 of
+        Leaf x_29::() ->
+            let y_30 :: Int = x_29 in
+            (Leaf () y_30)
+        Node x_31::() x_32::() ->
+            let y_33 :: (Packed Add_Tree_10 []) = (_copy_Add_Tree_10 [] x_31) in
+            let y_34 :: (Packed Add_Tree_10 []) = (_copy_Add_Tree_10 [] x_32) in
+            (Node () y_33 y_34)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: forall. ((Packed Add_Tree_10 []) -> (Packed Add_Tree_10 []))
+_copy_without_ptrs_Add_Tree_10 arg_35 =
+    case arg_35 of
+        Leaf x_36::() ->
+            let y_37 :: Int = x_36 in
+            (Leaf () y_37)
+        Node x_38::() x_39::() ->
+            let y_40 :: (Packed Add_Tree_10 []) = (_copy_without_ptrs_Add_Tree_10 [] x_38) in
+            let y_41 :: (Packed Add_Tree_10 []) = (_copy_without_ptrs_Add_Tree_10 [] x_39) in
+            (Node () y_40 y_41)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: forall. ((Packed Add_Tree_10 []) -> ())
+_traverse_Add_Tree_10 arg_42 =
+    case arg_42 of
+        Leaf x_43::() ->
+            ()
+        Node x_45::() x_46::() ->
+            let y_47 :: () = (_traverse_Add_Tree_10 [] x_45) in
+            let y_48 :: () = (_traverse_Add_Tree_10 [] x_46) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: forall. ((Packed Add_Tree_10 []) -> ())
+_print_Add_Tree_10 arg_49 =
+    case arg_49 of
+        Leaf x_50::() ->
+            let wildcard_52 :: () = printsym("(Leaf") in
+            let wildcard_54 :: () = printsym(" ") in
+            let y_51 :: () = printint(x_50) in
+            let wildcard_53 :: () = printsym(")") in
+            ()
+        Node x_55::() x_56::() ->
+            let wildcard_59 :: () = printsym("(Node") in
+            let wildcard_62 :: () = printsym(" ") in
+            let y_57 :: () = (_print_Add_Tree_10 [] x_55) in
+            let wildcard_61 :: () = printsym(" ") in
+            let y_58 :: () = (_print_Add_Tree_10 [] x_56) in
+            let wildcard_60 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10 [])
+gibbon_main = (Add_add1_11 [] (Node () (Leaf () 1) (Leaf () 2)))
+
+ [compiler] Running pass, floatOutCase
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10 []) (Packed Add_Tree_10 [])
+{meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: forall. ((Packed Add_Tree_10 []) -> (Packed Add_Tree_10 []))
+Add_add1_11 t_12 =
+    case t_12 of
+        Leaf x_13::() ->
+            (Leaf () x_13 + 1)
+        Node x1_14::() x2_15::() ->
+            (Node () (Add_add1_11 [] x1_14) (Add_add1_11 [] x2_15))
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: forall. ((Packed Add_Tree_10 []) -> (Packed Add_Tree_10 []))
+_copy_Add_Tree_10 arg_28 =
+    case arg_28 of
+        Leaf x_29::() ->
+            let y_30 :: Int = x_29 in
+            (Leaf () y_30)
+        Node x_31::() x_32::() ->
+            let y_33 :: (Packed Add_Tree_10 []) = (_copy_Add_Tree_10 [] x_31) in
+            let y_34 :: (Packed Add_Tree_10 []) = (_copy_Add_Tree_10 [] x_32) in
+            (Node () y_33 y_34)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: forall. ((Packed Add_Tree_10 []) -> (Packed Add_Tree_10 []))
+_copy_without_ptrs_Add_Tree_10 arg_35 =
+    case arg_35 of
+        Leaf x_36::() ->
+            let y_37 :: Int = x_36 in
+            (Leaf () y_37)
+        Node x_38::() x_39::() ->
+            let y_40 :: (Packed Add_Tree_10 []) = (_copy_without_ptrs_Add_Tree_10 [] x_38) in
+            let y_41 :: (Packed Add_Tree_10 []) = (_copy_without_ptrs_Add_Tree_10 [] x_39) in
+            (Node () y_40 y_41)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: forall. ((Packed Add_Tree_10 []) -> ())
+_traverse_Add_Tree_10 arg_42 =
+    case arg_42 of
+        Leaf x_43::() ->
+            ()
+        Node x_45::() x_46::() ->
+            let y_47 :: () = (_traverse_Add_Tree_10 [] x_45) in
+            let y_48 :: () = (_traverse_Add_Tree_10 [] x_46) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: forall. ((Packed Add_Tree_10 []) -> ())
+_print_Add_Tree_10 arg_49 =
+    case arg_49 of
+        Leaf x_50::() ->
+            let wildcard_52 :: () = printsym("(Leaf") in
+            let wildcard_54 :: () = printsym(" ") in
+            let y_51 :: () = printint(x_50) in
+            let wildcard_53 :: () = printsym(")") in
+            ()
+        Node x_55::() x_56::() ->
+            let wildcard_59 :: () = printsym("(Node") in
+            let wildcard_62 :: () = printsym(" ") in
+            let y_57 :: () = (_print_Add_Tree_10 [] x_55) in
+            let wildcard_61 :: () = printsym(" ") in
+            let y_58 :: () = (_print_Add_Tree_10 [] x_56) in
+            let wildcard_60 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10 [])
+gibbon_main = (Add_add1_11 [] (Node () (Leaf () 1) (Leaf () 2)))
+
+ [compiler] Running pass, toL1
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10) (Packed Add_Tree_10)
+{meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+Add_add1_11 t_12 =
+    case t_12 of
+        Leaf x_13 ->
+            (Leaf x_13 + 1)
+        Node x1_14 x2_15 ->
+            (Node (Add_add1_11 [] x1_14) (Add_add1_11 [] x2_15))
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_Add_Tree_10 arg_28 =
+    case arg_28 of
+        Leaf x_29 ->
+            let y_30 :: Int = x_29 in
+            (Leaf y_30)
+        Node x_31 x_32 ->
+            let y_33 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_31) in
+            let y_34 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_32) in
+            (Node y_33 y_34)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_without_ptrs_Add_Tree_10 arg_35 =
+    case arg_35 of
+        Leaf x_36 ->
+            let y_37 :: Int = x_36 in
+            (Leaf y_37)
+        Node x_38 x_39 ->
+            let y_40 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_38) in
+            let y_41 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_39) in
+            (Node y_40 y_41)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_traverse_Add_Tree_10 arg_42 =
+    case arg_42 of
+        Leaf x_43 ->
+            ()
+        Node x_45 x_46 ->
+            let y_47 :: () = (_traverse_Add_Tree_10 [] x_45) in
+            let y_48 :: () = (_traverse_Add_Tree_10 [] x_46) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_print_Add_Tree_10 arg_49 =
+    case arg_49 of
+        Leaf x_50 ->
+            let wildcard_52 :: () = printsym("(Leaf") in
+            let wildcard_54 :: () = printsym(" ") in
+            let y_51 :: () = printint(x_50) in
+            let wildcard_53 :: () = printsym(")") in
+            ()
+        Node x_55 x_56 ->
+            let wildcard_59 :: () = printsym("(Node") in
+            let wildcard_62 :: () = printsym(" ") in
+            let y_57 :: () = (_print_Add_Tree_10 [] x_55) in
+            let wildcard_61 :: () = printsym(" ") in
+            let y_58 :: () = (_print_Add_Tree_10 [] x_56) in
+            let wildcard_60 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = (Add_add1_11 [] (Node (Leaf 1) (Leaf 2)))
+
+ [compiler] Running pass, typecheck
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10) (Packed Add_Tree_10)
+{meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+Add_add1_11 t_12 =
+    case t_12 of
+        Leaf x_13 ->
+            (Leaf x_13 + 1)
+        Node x1_14 x2_15 ->
+            (Node (Add_add1_11 [] x1_14) (Add_add1_11 [] x2_15))
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_Add_Tree_10 arg_28 =
+    case arg_28 of
+        Leaf x_29 ->
+            let y_30 :: Int = x_29 in
+            (Leaf y_30)
+        Node x_31 x_32 ->
+            let y_33 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_31) in
+            let y_34 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_32) in
+            (Node y_33 y_34)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_without_ptrs_Add_Tree_10 arg_35 =
+    case arg_35 of
+        Leaf x_36 ->
+            let y_37 :: Int = x_36 in
+            (Leaf y_37)
+        Node x_38 x_39 ->
+            let y_40 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_38) in
+            let y_41 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_39) in
+            (Node y_40 y_41)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_traverse_Add_Tree_10 arg_42 =
+    case arg_42 of
+        Leaf x_43 ->
+            ()
+        Node x_45 x_46 ->
+            let y_47 :: () = (_traverse_Add_Tree_10 [] x_45) in
+            let y_48 :: () = (_traverse_Add_Tree_10 [] x_46) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_print_Add_Tree_10 arg_49 =
+    case arg_49 of
+        Leaf x_50 ->
+            let wildcard_52 :: () = printsym("(Leaf") in
+            let wildcard_54 :: () = printsym(" ") in
+            let y_51 :: () = printint(x_50) in
+            let wildcard_53 :: () = printsym(")") in
+            ()
+        Node x_55 x_56 ->
+            let wildcard_59 :: () = printsym("(Node") in
+            let wildcard_62 :: () = printsym(" ") in
+            let y_57 :: () = (_print_Add_Tree_10 [] x_55) in
+            let wildcard_61 :: () = printsym(" ") in
+            let y_58 :: () = (_print_Add_Tree_10 [] x_56) in
+            let wildcard_60 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = (Add_add1_11 [] (Node (Leaf 1) (Leaf 2)))
+
+ [compiler] Running pass, benchMainExp
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10) (Packed Add_Tree_10)
+{meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+Add_add1_11 t_12 =
+    case t_12 of
+        Leaf x_13 ->
+            (Leaf x_13 + 1)
+        Node x1_14 x2_15 ->
+            (Node (Add_add1_11 [] x1_14) (Add_add1_11 [] x2_15))
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_Add_Tree_10 arg_28 =
+    case arg_28 of
+        Leaf x_29 ->
+            let y_30 :: Int = x_29 in
+            (Leaf y_30)
+        Node x_31 x_32 ->
+            let y_33 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_31) in
+            let y_34 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_32) in
+            (Node y_33 y_34)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_without_ptrs_Add_Tree_10 arg_35 =
+    case arg_35 of
+        Leaf x_36 ->
+            let y_37 :: Int = x_36 in
+            (Leaf y_37)
+        Node x_38 x_39 ->
+            let y_40 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_38) in
+            let y_41 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_39) in
+            (Node y_40 y_41)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_traverse_Add_Tree_10 arg_42 =
+    case arg_42 of
+        Leaf x_43 ->
+            ()
+        Node x_45 x_46 ->
+            let y_47 :: () = (_traverse_Add_Tree_10 [] x_45) in
+            let y_48 :: () = (_traverse_Add_Tree_10 [] x_46) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_print_Add_Tree_10 arg_49 =
+    case arg_49 of
+        Leaf x_50 ->
+            let wildcard_52 :: () = printsym("(Leaf") in
+            let wildcard_54 :: () = printsym(" ") in
+            let y_51 :: () = printint(x_50) in
+            let wildcard_53 :: () = printsym(")") in
+            ()
+        Node x_55 x_56 ->
+            let wildcard_59 :: () = printsym("(Node") in
+            let wildcard_62 :: () = printsym(" ") in
+            let y_57 :: () = (_print_Add_Tree_10 [] x_55) in
+            let wildcard_61 :: () = printsym(" ") in
+            let y_58 :: () = (_print_Add_Tree_10 [] x_56) in
+            let wildcard_60 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = (Add_add1_11 [] (Node (Leaf 1) (Leaf 2)))
+
+ [compiler] Running pass, typecheck
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10) (Packed Add_Tree_10)
+{meta: FunMeta {funRec = NotRec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+Add_add1_11 t_12 =
+    case t_12 of
+        Leaf x_13 ->
+            (Leaf x_13 + 1)
+        Node x1_14 x2_15 ->
+            (Node (Add_add1_11 [] x1_14) (Add_add1_11 [] x2_15))
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_Add_Tree_10 arg_28 =
+    case arg_28 of
+        Leaf x_29 ->
+            let y_30 :: Int = x_29 in
+            (Leaf y_30)
+        Node x_31 x_32 ->
+            let y_33 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_31) in
+            let y_34 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_32) in
+            (Node y_33 y_34)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_without_ptrs_Add_Tree_10 arg_35 =
+    case arg_35 of
+        Leaf x_36 ->
+            let y_37 :: Int = x_36 in
+            (Leaf y_37)
+        Node x_38 x_39 ->
+            let y_40 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_38) in
+            let y_41 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_39) in
+            (Node y_40 y_41)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_traverse_Add_Tree_10 arg_42 =
+    case arg_42 of
+        Leaf x_43 ->
+            ()
+        Node x_45 x_46 ->
+            let y_47 :: () = (_traverse_Add_Tree_10 [] x_45) in
+            let y_48 :: () = (_traverse_Add_Tree_10 [] x_46) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_print_Add_Tree_10 arg_49 =
+    case arg_49 of
+        Leaf x_50 ->
+            let wildcard_52 :: () = printsym("(Leaf") in
+            let wildcard_54 :: () = printsym(" ") in
+            let y_51 :: () = printint(x_50) in
+            let wildcard_53 :: () = printsym(")") in
+            ()
+        Node x_55 x_56 ->
+            let wildcard_59 :: () = printsym("(Node") in
+            let wildcard_62 :: () = printsym(" ") in
+            let y_57 :: () = (_print_Add_Tree_10 [] x_55) in
+            let wildcard_61 :: () = printsym(" ") in
+            let y_58 :: () = (_print_Add_Tree_10 [] x_56) in
+            let wildcard_60 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = (Add_add1_11 [] (Node (Leaf 1) (Leaf 2)))
+
+ [compiler] Running pass, simplify
+Removed unused functions: []
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10) (Packed Add_Tree_10)
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+Add_add1_11 t_12_63 =
+    case t_12_63 of
+        Leaf x_13_64 ->
+            (Leaf x_13_64 + 1)
+        Node x1_14_65 x2_15_66 ->
+            (Node (Add_add1_11 [] x1_14_65) (Add_add1_11 [] x2_15_66))
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_Add_Tree_10 arg_28_67 =
+    case arg_28_67 of
+        Leaf x_29_68 ->
+            let y_30_69 :: Int = x_29_68 in
+            (Leaf y_30_69)
+        Node x_31_70 x_32_71 ->
+            let y_33_72 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_31_70) in
+            let y_34_73 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_32_71) in
+            (Node y_33_72 y_34_73)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_without_ptrs_Add_Tree_10 arg_35_74 =
+    case arg_35_74 of
+        Leaf x_36_75 ->
+            let y_37_76 :: Int = x_36_75 in
+            (Leaf y_37_76)
+        Node x_38_77 x_39_78 ->
+            let y_40_79 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_38_77) in
+            let y_41_80 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_39_78) in
+            (Node y_40_79 y_41_80)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_traverse_Add_Tree_10 arg_42_81 =
+    case arg_42_81 of
+        Leaf x_43_82 ->
+            ()
+        Node x_45_83 x_46_84 ->
+            let y_47_85 :: () = (_traverse_Add_Tree_10 [] x_45_83) in
+            let y_48_86 :: () = (_traverse_Add_Tree_10 [] x_46_84) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_print_Add_Tree_10 arg_49_87 =
+    case arg_49_87 of
+        Leaf x_50_88 ->
+            let wildcard_52_89 :: () = printsym("(Leaf") in
+            let wildcard_54_90 :: () = printsym(" ") in
+            let y_51_91 :: () = printint(x_50_88) in
+            let wildcard_53_92 :: () = printsym(")") in
+            ()
+        Node x_55_93 x_56_94 ->
+            let wildcard_59_95 :: () = printsym("(Node") in
+            let wildcard_62_96 :: () = printsym(" ") in
+            let y_57_97 :: () = (_print_Add_Tree_10 [] x_55_93) in
+            let wildcard_61_98 :: () = printsym(" ") in
+            let y_58_99 :: () = (_print_Add_Tree_10 [] x_56_94) in
+            let wildcard_60_100 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = (Add_add1_11 [] (Node (Leaf 1) (Leaf 2)))
+
+ [compiler] Running pass, typecheck
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10) (Packed Add_Tree_10)
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+Add_add1_11 t_12_63 =
+    case t_12_63 of
+        Leaf x_13_64 ->
+            (Leaf x_13_64 + 1)
+        Node x1_14_65 x2_15_66 ->
+            (Node (Add_add1_11 [] x1_14_65) (Add_add1_11 [] x2_15_66))
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_Add_Tree_10 arg_28_67 =
+    case arg_28_67 of
+        Leaf x_29_68 ->
+            let y_30_69 :: Int = x_29_68 in
+            (Leaf y_30_69)
+        Node x_31_70 x_32_71 ->
+            let y_33_72 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_31_70) in
+            let y_34_73 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_32_71) in
+            (Node y_33_72 y_34_73)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_without_ptrs_Add_Tree_10 arg_35_74 =
+    case arg_35_74 of
+        Leaf x_36_75 ->
+            let y_37_76 :: Int = x_36_75 in
+            (Leaf y_37_76)
+        Node x_38_77 x_39_78 ->
+            let y_40_79 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_38_77) in
+            let y_41_80 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_39_78) in
+            (Node y_40_79 y_41_80)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_traverse_Add_Tree_10 arg_42_81 =
+    case arg_42_81 of
+        Leaf x_43_82 ->
+            ()
+        Node x_45_83 x_46_84 ->
+            let y_47_85 :: () = (_traverse_Add_Tree_10 [] x_45_83) in
+            let y_48_86 :: () = (_traverse_Add_Tree_10 [] x_46_84) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_print_Add_Tree_10 arg_49_87 =
+    case arg_49_87 of
+        Leaf x_50_88 ->
+            let wildcard_52_89 :: () = printsym("(Leaf") in
+            let wildcard_54_90 :: () = printsym(" ") in
+            let y_51_91 :: () = printint(x_50_88) in
+            let wildcard_53_92 :: () = printsym(")") in
+            ()
+        Node x_55_93 x_56_94 ->
+            let wildcard_59_95 :: () = printsym("(Node") in
+            let wildcard_62_96 :: () = printsym(" ") in
+            let y_57_97 :: () = (_print_Add_Tree_10 [] x_55_93) in
+            let wildcard_61_98 :: () = printsym(" ") in
+            let y_58_99 :: () = (_print_Add_Tree_10 [] x_56_94) in
+            let wildcard_60_100 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = (Add_add1_11 [] (Node (Leaf 1) (Leaf 2)))
+
+ [compiler] Running pass, flatten
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10) (Packed Add_Tree_10)
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+Add_add1_11 t_12_63 =
+    case t_12_63 of
+        Leaf x_13_64 ->
+            let fltPkd_104 :: Int = x_13_64 + 1 in
+            (Leaf fltPkd_104)
+        Node x1_14_65 x2_15_66 ->
+            let fltPkd_105 :: (Packed Add_Tree_10) = (Add_add1_11 [] x1_14_65) in
+            let fltPkd_106 :: (Packed Add_Tree_10) = (Add_add1_11 [] x2_15_66) in
+            (Node fltPkd_105 fltPkd_106)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_Add_Tree_10 arg_28_67 =
+    case arg_28_67 of
+        Leaf x_29_68 ->
+            let y_30_69 :: Int = x_29_68 in
+            (Leaf y_30_69)
+        Node x_31_70 x_32_71 ->
+            let y_33_72 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_31_70) in
+            let y_34_73 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_32_71) in
+            (Node y_33_72 y_34_73)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_without_ptrs_Add_Tree_10 arg_35_74 =
+    case arg_35_74 of
+        Leaf x_36_75 ->
+            let y_37_76 :: Int = x_36_75 in
+            (Leaf y_37_76)
+        Node x_38_77 x_39_78 ->
+            let y_40_79 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_38_77) in
+            let y_41_80 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_39_78) in
+            (Node y_40_79 y_41_80)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_traverse_Add_Tree_10 arg_42_81 =
+    case arg_42_81 of
+        Leaf x_43_82 ->
+            ()
+        Node x_45_83 x_46_84 ->
+            let y_47_85 :: () = (_traverse_Add_Tree_10 [] x_45_83) in
+            let y_48_86 :: () = (_traverse_Add_Tree_10 [] x_46_84) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_print_Add_Tree_10 arg_49_87 =
+    case arg_49_87 of
+        Leaf x_50_88 ->
+            let wildcard_52_89 :: () = printsym("(Leaf") in
+            let wildcard_54_90 :: () = printsym(" ") in
+            let y_51_91 :: () = printint(x_50_88) in
+            let wildcard_53_92 :: () = printsym(")") in
+            ()
+        Node x_55_93 x_56_94 ->
+            let wildcard_59_95 :: () = printsym("(Node") in
+            let wildcard_62_96 :: () = printsym(" ") in
+            let y_57_97 :: () = (_print_Add_Tree_10 [] x_55_93) in
+            let wildcard_61_98 :: () = printsym(" ") in
+            let y_58_99 :: () = (_print_Add_Tree_10 [] x_56_94) in
+            let wildcard_60_100 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = let fltPkd_102 :: (Packed Add_Tree_10) = (Leaf 1) in
+              let fltPkd_103 :: (Packed Add_Tree_10) = (Leaf 2) in
+              let fltAppE_101 :: (Packed Add_Tree_10) = (Node fltPkd_102 fltPkd_103) in
+              (Add_add1_11 [] fltAppE_101)
+
+ [compiler] Running pass, simplify
+Removed unused functions: []
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10) (Packed Add_Tree_10)
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+Add_add1_11 t_12_63_110 =
+    case t_12_63_110 of
+        Leaf x_13_64_111 ->
+            let fltPkd_104_112 :: Int = x_13_64_111 + 1 in
+            (Leaf fltPkd_104_112)
+        Node x1_14_65_113 x2_15_66_114 ->
+            let fltPkd_105_115 :: (Packed Add_Tree_10) = (Add_add1_11 [] x1_14_65_113) in
+            let fltPkd_106_116 :: (Packed Add_Tree_10) = (Add_add1_11 [] x2_15_66_114) in
+            (Node fltPkd_105_115 fltPkd_106_116)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_Add_Tree_10 arg_28_67_117 =
+    case arg_28_67_117 of
+        Leaf x_29_68_118 ->
+            let y_30_69_119 :: Int = x_29_68_118 in
+            (Leaf y_30_69_119)
+        Node x_31_70_120 x_32_71_121 ->
+            let y_33_72_122 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_31_70_120) in
+            let y_34_73_123 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_32_71_121) in
+            (Node y_33_72_122 y_34_73_123)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_without_ptrs_Add_Tree_10 arg_35_74_124 =
+    case arg_35_74_124 of
+        Leaf x_36_75_125 ->
+            let y_37_76_126 :: Int = x_36_75_125 in
+            (Leaf y_37_76_126)
+        Node x_38_77_127 x_39_78_128 ->
+            let y_40_79_129 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_38_77_127) in
+            let y_41_80_130 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_39_78_128) in
+            (Node y_40_79_129 y_41_80_130)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_traverse_Add_Tree_10 arg_42_81_131 =
+    case arg_42_81_131 of
+        Leaf x_43_82_132 ->
+            ()
+        Node x_45_83_133 x_46_84_134 ->
+            let y_47_85_135 :: () = (_traverse_Add_Tree_10 [] x_45_83_133) in
+            let y_48_86_136 :: () = (_traverse_Add_Tree_10 [] x_46_84_134) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_print_Add_Tree_10 arg_49_87_137 =
+    case arg_49_87_137 of
+        Leaf x_50_88_138 ->
+            let wildcard_52_89_139 :: () = printsym("(Leaf") in
+            let wildcard_54_90_140 :: () = printsym(" ") in
+            let y_51_91_141 :: () = printint(x_50_88_138) in
+            let wildcard_53_92_142 :: () = printsym(")") in
+            ()
+        Node x_55_93_143 x_56_94_144 ->
+            let wildcard_59_95_145 :: () = printsym("(Node") in
+            let wildcard_62_96_146 :: () = printsym(" ") in
+            let y_57_97_147 :: () = (_print_Add_Tree_10 [] x_55_93_143) in
+            let wildcard_61_98_148 :: () = printsym(" ") in
+            let y_58_99_149 :: () = (_print_Add_Tree_10 [] x_56_94_144) in
+            let wildcard_60_100_150 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = let fltPkd_102_107 :: (Packed Add_Tree_10) = (Leaf 1) in
+              let fltPkd_103_108 :: (Packed Add_Tree_10) = (Leaf 2) in
+              let fltAppE_101_109 :: (Packed Add_Tree_10) = (Node fltPkd_102_107 fltPkd_103_108) in
+              (Add_add1_11 [] fltAppE_101_109)
+
+ [compiler] Running pass, inlineTriv
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10) (Packed Add_Tree_10)
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+Add_add1_11 t_12_63_110 =
+    case t_12_63_110 of
+        Leaf x_13_64_111 ->
+            let fltPkd_104_112 :: Int = x_13_64_111 + 1 in
+            (Leaf fltPkd_104_112)
+        Node x1_14_65_113 x2_15_66_114 ->
+            let fltPkd_105_115 :: (Packed Add_Tree_10) = (Add_add1_11 [] x1_14_65_113) in
+            let fltPkd_106_116 :: (Packed Add_Tree_10) = (Add_add1_11 [] x2_15_66_114) in
+            (Node fltPkd_105_115 fltPkd_106_116)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_Add_Tree_10 arg_28_67_117 =
+    case arg_28_67_117 of
+        Leaf x_29_68_118 ->
+            (Leaf x_29_68_118)
+        Node x_31_70_120 x_32_71_121 ->
+            let y_33_72_122 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_31_70_120) in
+            let y_34_73_123 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_32_71_121) in
+            (Node y_33_72_122 y_34_73_123)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_without_ptrs_Add_Tree_10 arg_35_74_124 =
+    case arg_35_74_124 of
+        Leaf x_36_75_125 ->
+            (Leaf x_36_75_125)
+        Node x_38_77_127 x_39_78_128 ->
+            let y_40_79_129 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_38_77_127) in
+            let y_41_80_130 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_39_78_128) in
+            (Node y_40_79_129 y_41_80_130)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_traverse_Add_Tree_10 arg_42_81_131 =
+    case arg_42_81_131 of
+        Leaf x_43_82_132 ->
+            ()
+        Node x_45_83_133 x_46_84_134 ->
+            let y_47_85_135 :: () = (_traverse_Add_Tree_10 [] x_45_83_133) in
+            let y_48_86_136 :: () = (_traverse_Add_Tree_10 [] x_46_84_134) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_print_Add_Tree_10 arg_49_87_137 =
+    case arg_49_87_137 of
+        Leaf x_50_88_138 ->
+            let wildcard_52_89_139 :: () = printsym("(Leaf") in
+            let wildcard_54_90_140 :: () = printsym(" ") in
+            let y_51_91_141 :: () = printint(x_50_88_138) in
+            let wildcard_53_92_142 :: () = printsym(")") in
+            ()
+        Node x_55_93_143 x_56_94_144 ->
+            let wildcard_59_95_145 :: () = printsym("(Node") in
+            let wildcard_62_96_146 :: () = printsym(" ") in
+            let y_57_97_147 :: () = (_print_Add_Tree_10 [] x_55_93_143) in
+            let wildcard_61_98_148 :: () = printsym(" ") in
+            let y_58_99_149 :: () = (_print_Add_Tree_10 [] x_56_94_144) in
+            let wildcard_60_100_150 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = let fltPkd_102_107 :: (Packed Add_Tree_10) = (Leaf 1) in
+              let fltPkd_103_108 :: (Packed Add_Tree_10) = (Leaf 2) in
+              let fltAppE_101_109 :: (Packed Add_Tree_10) = (Node fltPkd_102_107 fltPkd_103_108) in
+              (Add_add1_11 [] fltAppE_101_109)
+
+ [compiler] Running pass, typecheck
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10) (Packed Add_Tree_10)
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+Add_add1_11 t_12_63_110 =
+    case t_12_63_110 of
+        Leaf x_13_64_111 ->
+            let fltPkd_104_112 :: Int = x_13_64_111 + 1 in
+            (Leaf fltPkd_104_112)
+        Node x1_14_65_113 x2_15_66_114 ->
+            let fltPkd_105_115 :: (Packed Add_Tree_10) = (Add_add1_11 [] x1_14_65_113) in
+            let fltPkd_106_116 :: (Packed Add_Tree_10) = (Add_add1_11 [] x2_15_66_114) in
+            (Node fltPkd_105_115 fltPkd_106_116)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_Add_Tree_10 arg_28_67_117 =
+    case arg_28_67_117 of
+        Leaf x_29_68_118 ->
+            (Leaf x_29_68_118)
+        Node x_31_70_120 x_32_71_121 ->
+            let y_33_72_122 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_31_70_120) in
+            let y_34_73_123 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_32_71_121) in
+            (Node y_33_72_122 y_34_73_123)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_without_ptrs_Add_Tree_10 arg_35_74_124 =
+    case arg_35_74_124 of
+        Leaf x_36_75_125 ->
+            (Leaf x_36_75_125)
+        Node x_38_77_127 x_39_78_128 ->
+            let y_40_79_129 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_38_77_127) in
+            let y_41_80_130 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_39_78_128) in
+            (Node y_40_79_129 y_41_80_130)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_traverse_Add_Tree_10 arg_42_81_131 =
+    case arg_42_81_131 of
+        Leaf x_43_82_132 ->
+            ()
+        Node x_45_83_133 x_46_84_134 ->
+            let y_47_85_135 :: () = (_traverse_Add_Tree_10 [] x_45_83_133) in
+            let y_48_86_136 :: () = (_traverse_Add_Tree_10 [] x_46_84_134) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_print_Add_Tree_10 arg_49_87_137 =
+    case arg_49_87_137 of
+        Leaf x_50_88_138 ->
+            let wildcard_52_89_139 :: () = printsym("(Leaf") in
+            let wildcard_54_90_140 :: () = printsym(" ") in
+            let y_51_91_141 :: () = printint(x_50_88_138) in
+            let wildcard_53_92_142 :: () = printsym(")") in
+            ()
+        Node x_55_93_143 x_56_94_144 ->
+            let wildcard_59_95_145 :: () = printsym("(Node") in
+            let wildcard_62_96_146 :: () = printsym(" ") in
+            let y_57_97_147 :: () = (_print_Add_Tree_10 [] x_55_93_143) in
+            let wildcard_61_98_148 :: () = printsym(" ") in
+            let y_58_99_149 :: () = (_print_Add_Tree_10 [] x_56_94_144) in
+            let wildcard_60_100_150 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = let fltPkd_102_107 :: (Packed Add_Tree_10) = (Leaf 1) in
+              let fltPkd_103_108 :: (Packed Add_Tree_10) = (Leaf 2) in
+              let fltAppE_101_109 :: (Packed Add_Tree_10) = (Node fltPkd_102_107 fltPkd_103_108) in
+              (Add_add1_11 [] fltAppE_101_109)
+
+ [compiler] Running pass, typecheck
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node (Packed Add_Tree_10) (Packed Add_Tree_10)
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+Add_add1_11 t_12_63_110 =
+    case t_12_63_110 of
+        Leaf x_13_64_111 ->
+            let fltPkd_104_112 :: Int = x_13_64_111 + 1 in
+            (Leaf fltPkd_104_112)
+        Node x1_14_65_113 x2_15_66_114 ->
+            let fltPkd_105_115 :: (Packed Add_Tree_10) = (Add_add1_11 [] x1_14_65_113) in
+            let fltPkd_106_116 :: (Packed Add_Tree_10) = (Add_add1_11 [] x2_15_66_114) in
+            (Node fltPkd_105_115 fltPkd_106_116)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_Add_Tree_10 arg_28_67_117 =
+    case arg_28_67_117 of
+        Leaf x_29_68_118 ->
+            (Leaf x_29_68_118)
+        Node x_31_70_120 x_32_71_121 ->
+            let y_33_72_122 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_31_70_120) in
+            let y_34_73_123 :: (Packed Add_Tree_10) = (_copy_Add_Tree_10 [] x_32_71_121) in
+            (Node y_33_72_122 y_34_73_123)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: (Packed Add_Tree_10) -> (Packed Add_Tree_10)
+_copy_without_ptrs_Add_Tree_10 arg_35_74_124 =
+    case arg_35_74_124 of
+        Leaf x_36_75_125 ->
+            (Leaf x_36_75_125)
+        Node x_38_77_127 x_39_78_128 ->
+            let y_40_79_129 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_38_77_127) in
+            let y_41_80_130 :: (Packed Add_Tree_10) = (_copy_without_ptrs_Add_Tree_10 [] x_39_78_128) in
+            (Node y_40_79_129 y_41_80_130)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_traverse_Add_Tree_10 arg_42_81_131 =
+    case arg_42_81_131 of
+        Leaf x_43_82_132 ->
+            ()
+        Node x_45_83_133 x_46_84_134 ->
+            let y_47_85_135 :: () = (_traverse_Add_Tree_10 [] x_45_83_133) in
+            let y_48_86_136 :: () = (_traverse_Add_Tree_10 [] x_46_84_134) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: (Packed Add_Tree_10) -> ()
+_print_Add_Tree_10 arg_49_87_137 =
+    case arg_49_87_137 of
+        Leaf x_50_88_138 ->
+            let wildcard_52_89_139 :: () = printsym("(Leaf") in
+            let wildcard_54_90_140 :: () = printsym(" ") in
+            let y_51_91_141 :: () = printint(x_50_88_138) in
+            let wildcard_53_92_142 :: () = printsym(")") in
+            ()
+        Node x_55_93_143 x_56_94_144 ->
+            let wildcard_59_95_145 :: () = printsym("(Node") in
+            let wildcard_62_96_146 :: () = printsym(" ") in
+            let y_57_97_147 :: () = (_print_Add_Tree_10 [] x_55_93_143) in
+            let wildcard_61_98_148 :: () = printsym(" ") in
+            let y_58_99_149 :: () = (_print_Add_Tree_10 [] x_56_94_144) in
+            let wildcard_60_100_150 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = let fltPkd_102_107 :: (Packed Add_Tree_10) = (Leaf 1) in
+              let fltPkd_103_108 :: (Packed Add_Tree_10) = (Leaf 2) in
+              let fltAppE_101_109 :: (Packed Add_Tree_10) = (Node fltPkd_102_107 fltPkd_103_108) in
+              (Add_add1_11 [] fltAppE_101_109)
+
+ [compiler] Running pass, directL3
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node Cursor Cursor
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: Cursor -> Cursor
+Add_add1_11 t_12_63_110 =
+    case t_12_63_110 of
+        Leaf x_13_64_111 ->
+            let fltPkd_104_112 :: Int = x_13_64_111 + 1 in
+            (Leaf fltPkd_104_112)
+        Node x1_14_65_113 x2_15_66_114 ->
+            let fltPkd_105_115 :: Cursor = (Add_add1_11 [] x1_14_65_113) in
+            let fltPkd_106_116 :: Cursor = (Add_add1_11 [] x2_15_66_114) in
+            (Node fltPkd_105_115 fltPkd_106_116)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: Cursor -> Cursor
+_copy_Add_Tree_10 arg_28_67_117 =
+    case arg_28_67_117 of
+        Leaf x_29_68_118 ->
+            (Leaf x_29_68_118)
+        Node x_31_70_120 x_32_71_121 ->
+            let y_33_72_122 :: Cursor = (_copy_Add_Tree_10 [] x_31_70_120) in
+            let y_34_73_123 :: Cursor = (_copy_Add_Tree_10 [] x_32_71_121) in
+            (Node y_33_72_122 y_34_73_123)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: Cursor -> Cursor
+_copy_without_ptrs_Add_Tree_10 arg_35_74_124 =
+    case arg_35_74_124 of
+        Leaf x_36_75_125 ->
+            (Leaf x_36_75_125)
+        Node x_38_77_127 x_39_78_128 ->
+            let y_40_79_129 :: Cursor = (_copy_without_ptrs_Add_Tree_10 [] x_38_77_127) in
+            let y_41_80_130 :: Cursor = (_copy_without_ptrs_Add_Tree_10 [] x_39_78_128) in
+            (Node y_40_79_129 y_41_80_130)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: Cursor -> ()
+_traverse_Add_Tree_10 arg_42_81_131 =
+    case arg_42_81_131 of
+        Leaf x_43_82_132 ->
+            ()
+        Node x_45_83_133 x_46_84_134 ->
+            let y_47_85_135 :: () = (_traverse_Add_Tree_10 [] x_45_83_133) in
+            let y_48_86_136 :: () = (_traverse_Add_Tree_10 [] x_46_84_134) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: Cursor -> ()
+_print_Add_Tree_10 arg_49_87_137 =
+    case arg_49_87_137 of
+        Leaf x_50_88_138 ->
+            let wildcard_52_89_139 :: () = printsym("(Leaf") in
+            let wildcard_54_90_140 :: () = printsym(" ") in
+            let y_51_91_141 :: () = printint(x_50_88_138) in
+            let wildcard_53_92_142 :: () = printsym(")") in
+            ()
+        Node x_55_93_143 x_56_94_144 ->
+            let wildcard_59_95_145 :: () = printsym("(Node") in
+            let wildcard_62_96_146 :: () = printsym(" ") in
+            let y_57_97_147 :: () = (_print_Add_Tree_10 [] x_55_93_143) in
+            let wildcard_61_98_148 :: () = printsym(" ") in
+            let y_58_99_149 :: () = (_print_Add_Tree_10 [] x_56_94_144) in
+            let wildcard_60_100_150 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = let fltPkd_102_107 :: Cursor = (Leaf 1) in
+              let fltPkd_103_108 :: Cursor = (Leaf 2) in
+              let fltAppE_101_109 :: Cursor = (Node fltPkd_102_107 fltPkd_103_108) in
+              (Add_add1_11 [] fltAppE_101_109)
+
+ [compiler] Running pass, L3.typecheck
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node Cursor Cursor
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: Cursor -> Cursor
+Add_add1_11 t_12_63_110 =
+    case t_12_63_110 of
+        Leaf x_13_64_111 ->
+            let fltPkd_104_112 :: Int = x_13_64_111 + 1 in
+            (Leaf fltPkd_104_112)
+        Node x1_14_65_113 x2_15_66_114 ->
+            let fltPkd_105_115 :: Cursor = (Add_add1_11 [] x1_14_65_113) in
+            let fltPkd_106_116 :: Cursor = (Add_add1_11 [] x2_15_66_114) in
+            (Node fltPkd_105_115 fltPkd_106_116)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: Cursor -> Cursor
+_copy_Add_Tree_10 arg_28_67_117 =
+    case arg_28_67_117 of
+        Leaf x_29_68_118 ->
+            (Leaf x_29_68_118)
+        Node x_31_70_120 x_32_71_121 ->
+            let y_33_72_122 :: Cursor = (_copy_Add_Tree_10 [] x_31_70_120) in
+            let y_34_73_123 :: Cursor = (_copy_Add_Tree_10 [] x_32_71_121) in
+            (Node y_33_72_122 y_34_73_123)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: Cursor -> Cursor
+_copy_without_ptrs_Add_Tree_10 arg_35_74_124 =
+    case arg_35_74_124 of
+        Leaf x_36_75_125 ->
+            (Leaf x_36_75_125)
+        Node x_38_77_127 x_39_78_128 ->
+            let y_40_79_129 :: Cursor = (_copy_without_ptrs_Add_Tree_10 [] x_38_77_127) in
+            let y_41_80_130 :: Cursor = (_copy_without_ptrs_Add_Tree_10 [] x_39_78_128) in
+            (Node y_40_79_129 y_41_80_130)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: Cursor -> ()
+_traverse_Add_Tree_10 arg_42_81_131 =
+    case arg_42_81_131 of
+        Leaf x_43_82_132 ->
+            ()
+        Node x_45_83_133 x_46_84_134 ->
+            let y_47_85_135 :: () = (_traverse_Add_Tree_10 [] x_45_83_133) in
+            let y_48_86_136 :: () = (_traverse_Add_Tree_10 [] x_46_84_134) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: Cursor -> ()
+_print_Add_Tree_10 arg_49_87_137 =
+    case arg_49_87_137 of
+        Leaf x_50_88_138 ->
+            let wildcard_52_89_139 :: () = printsym("(Leaf") in
+            let wildcard_54_90_140 :: () = printsym(" ") in
+            let y_51_91_141 :: () = printint(x_50_88_138) in
+            let wildcard_53_92_142 :: () = printsym(")") in
+            ()
+        Node x_55_93_143 x_56_94_144 ->
+            let wildcard_59_95_145 :: () = printsym("(Node") in
+            let wildcard_62_96_146 :: () = printsym(" ") in
+            let y_57_97_147 :: () = (_print_Add_Tree_10 [] x_55_93_143) in
+            let wildcard_61_98_148 :: () = printsym(" ") in
+            let y_58_99_149 :: () = (_print_Add_Tree_10 [] x_56_94_144) in
+            let wildcard_60_100_150 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = let fltPkd_102_107 :: Cursor = (Leaf 1) in
+              let fltPkd_103_108 :: Cursor = (Leaf 2) in
+              let fltAppE_101_109 :: Cursor = (Node fltPkd_102_107 fltPkd_103_108) in
+              (Add_add1_11 [] fltAppE_101_109)
+
+ [compiler] Running pass, unariser
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node Cursor Cursor
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: Cursor -> Cursor
+Add_add1_11 t_12_63_110 =
+    case t_12_63_110 of
+        Leaf x_13_64_111 ->
+            let fltPkd_104_112 :: Int = x_13_64_111 + 1 in
+            (Leaf fltPkd_104_112)
+        Node x1_14_65_113 x2_15_66_114 ->
+            let fltPkd_105_115 :: Cursor = (Add_add1_11 [] x1_14_65_113) in
+            let fltPkd_106_116 :: Cursor = (Add_add1_11 [] x2_15_66_114) in
+            (Node fltPkd_105_115 fltPkd_106_116)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: Cursor -> Cursor
+_copy_Add_Tree_10 arg_28_67_117 =
+    case arg_28_67_117 of
+        Leaf x_29_68_118 ->
+            (Leaf x_29_68_118)
+        Node x_31_70_120 x_32_71_121 ->
+            let y_33_72_122 :: Cursor = (_copy_Add_Tree_10 [] x_31_70_120) in
+            let y_34_73_123 :: Cursor = (_copy_Add_Tree_10 [] x_32_71_121) in
+            (Node y_33_72_122 y_34_73_123)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: Cursor -> Cursor
+_copy_without_ptrs_Add_Tree_10 arg_35_74_124 =
+    case arg_35_74_124 of
+        Leaf x_36_75_125 ->
+            (Leaf x_36_75_125)
+        Node x_38_77_127 x_39_78_128 ->
+            let y_40_79_129 :: Cursor = (_copy_without_ptrs_Add_Tree_10 [] x_38_77_127) in
+            let y_41_80_130 :: Cursor = (_copy_without_ptrs_Add_Tree_10 [] x_39_78_128) in
+            (Node y_40_79_129 y_41_80_130)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: Cursor -> ()
+_traverse_Add_Tree_10 arg_42_81_131 =
+    case arg_42_81_131 of
+        Leaf x_43_82_132 ->
+            ()
+        Node x_45_83_133 x_46_84_134 ->
+            let y_47_85_135 :: () = (_traverse_Add_Tree_10 [] x_45_83_133) in
+            let y_48_86_136 :: () = (_traverse_Add_Tree_10 [] x_46_84_134) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: Cursor -> ()
+_print_Add_Tree_10 arg_49_87_137 =
+    case arg_49_87_137 of
+        Leaf x_50_88_138 ->
+            let wildcard_52_89_139 :: () = printsym("(Leaf") in
+            let wildcard_54_90_140 :: () = printsym(" ") in
+            let y_51_91_141 :: () = printint(x_50_88_138) in
+            let wildcard_53_92_142 :: () = printsym(")") in
+            ()
+        Node x_55_93_143 x_56_94_144 ->
+            let wildcard_59_95_145 :: () = printsym("(Node") in
+            let wildcard_62_96_146 :: () = printsym(" ") in
+            let y_57_97_147 :: () = (_print_Add_Tree_10 [] x_55_93_143) in
+            let wildcard_61_98_148 :: () = printsym(" ") in
+            let y_58_99_149 :: () = (_print_Add_Tree_10 [] x_56_94_144) in
+            let wildcard_60_100_150 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = let fltPkd_102_107 :: Cursor = (Leaf 1) in
+              let fltPkd_103_108 :: Cursor = (Leaf 2) in
+              let fltAppE_101_109 :: Cursor = (Node fltPkd_102_107 fltPkd_103_108) in
+              let tmp_app_151 :: Cursor = (Add_add1_11 [] fltAppE_101_109) in
+              tmp_app_151
+
+ [compiler] Running pass, L3.typecheck
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node Cursor Cursor
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: Cursor -> Cursor
+Add_add1_11 t_12_63_110 =
+    case t_12_63_110 of
+        Leaf x_13_64_111 ->
+            let fltPkd_104_112 :: Int = x_13_64_111 + 1 in
+            (Leaf fltPkd_104_112)
+        Node x1_14_65_113 x2_15_66_114 ->
+            let fltPkd_105_115 :: Cursor = (Add_add1_11 [] x1_14_65_113) in
+            let fltPkd_106_116 :: Cursor = (Add_add1_11 [] x2_15_66_114) in
+            (Node fltPkd_105_115 fltPkd_106_116)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: Cursor -> Cursor
+_copy_Add_Tree_10 arg_28_67_117 =
+    case arg_28_67_117 of
+        Leaf x_29_68_118 ->
+            (Leaf x_29_68_118)
+        Node x_31_70_120 x_32_71_121 ->
+            let y_33_72_122 :: Cursor = (_copy_Add_Tree_10 [] x_31_70_120) in
+            let y_34_73_123 :: Cursor = (_copy_Add_Tree_10 [] x_32_71_121) in
+            (Node y_33_72_122 y_34_73_123)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: Cursor -> Cursor
+_copy_without_ptrs_Add_Tree_10 arg_35_74_124 =
+    case arg_35_74_124 of
+        Leaf x_36_75_125 ->
+            (Leaf x_36_75_125)
+        Node x_38_77_127 x_39_78_128 ->
+            let y_40_79_129 :: Cursor = (_copy_without_ptrs_Add_Tree_10 [] x_38_77_127) in
+            let y_41_80_130 :: Cursor = (_copy_without_ptrs_Add_Tree_10 [] x_39_78_128) in
+            (Node y_40_79_129 y_41_80_130)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: Cursor -> ()
+_traverse_Add_Tree_10 arg_42_81_131 =
+    case arg_42_81_131 of
+        Leaf x_43_82_132 ->
+            ()
+        Node x_45_83_133 x_46_84_134 ->
+            let y_47_85_135 :: () = (_traverse_Add_Tree_10 [] x_45_83_133) in
+            let y_48_86_136 :: () = (_traverse_Add_Tree_10 [] x_46_84_134) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: Cursor -> ()
+_print_Add_Tree_10 arg_49_87_137 =
+    case arg_49_87_137 of
+        Leaf x_50_88_138 ->
+            let wildcard_52_89_139 :: () = printsym("(Leaf") in
+            let wildcard_54_90_140 :: () = printsym(" ") in
+            let y_51_91_141 :: () = printint(x_50_88_138) in
+            let wildcard_53_92_142 :: () = printsym(")") in
+            ()
+        Node x_55_93_143 x_56_94_144 ->
+            let wildcard_59_95_145 :: () = printsym("(Node") in
+            let wildcard_62_96_146 :: () = printsym(" ") in
+            let y_57_97_147 :: () = (_print_Add_Tree_10 [] x_55_93_143) in
+            let wildcard_61_98_148 :: () = printsym(" ") in
+            let y_58_99_149 :: () = (_print_Add_Tree_10 [] x_56_94_144) in
+            let wildcard_60_100_150 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = let fltPkd_102_107 :: Cursor = (Leaf 1) in
+              let fltPkd_103_108 :: Cursor = (Leaf 2) in
+              let fltAppE_101_109 :: Cursor = (Node fltPkd_102_107 fltPkd_103_108) in
+              let tmp_app_151 :: Cursor = (Add_add1_11 [] fltAppE_101_109) in
+              tmp_app_151
+
+ [compiler] Running pass, L3.flatten
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node Cursor Cursor
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: Cursor -> Cursor
+Add_add1_11 t_12_63_110 =
+    case t_12_63_110 of
+        Leaf x_13_64_111 ->
+            let fltPkd_104_112 :: Int = x_13_64_111 + 1 in
+            (Leaf fltPkd_104_112)
+        Node x1_14_65_113 x2_15_66_114 ->
+            let fltPkd_105_115 :: Cursor = (Add_add1_11 [] x1_14_65_113) in
+            let fltPkd_106_116 :: Cursor = (Add_add1_11 [] x2_15_66_114) in
+            (Node fltPkd_105_115 fltPkd_106_116)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: Cursor -> Cursor
+_copy_Add_Tree_10 arg_28_67_117 =
+    case arg_28_67_117 of
+        Leaf x_29_68_118 ->
+            (Leaf x_29_68_118)
+        Node x_31_70_120 x_32_71_121 ->
+            let y_33_72_122 :: Cursor = (_copy_Add_Tree_10 [] x_31_70_120) in
+            let y_34_73_123 :: Cursor = (_copy_Add_Tree_10 [] x_32_71_121) in
+            (Node y_33_72_122 y_34_73_123)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: Cursor -> Cursor
+_copy_without_ptrs_Add_Tree_10 arg_35_74_124 =
+    case arg_35_74_124 of
+        Leaf x_36_75_125 ->
+            (Leaf x_36_75_125)
+        Node x_38_77_127 x_39_78_128 ->
+            let y_40_79_129 :: Cursor = (_copy_without_ptrs_Add_Tree_10 [] x_38_77_127) in
+            let y_41_80_130 :: Cursor = (_copy_without_ptrs_Add_Tree_10 [] x_39_78_128) in
+            (Node y_40_79_129 y_41_80_130)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: Cursor -> ()
+_traverse_Add_Tree_10 arg_42_81_131 =
+    case arg_42_81_131 of
+        Leaf x_43_82_132 ->
+            ()
+        Node x_45_83_133 x_46_84_134 ->
+            let y_47_85_135 :: () = (_traverse_Add_Tree_10 [] x_45_83_133) in
+            let y_48_86_136 :: () = (_traverse_Add_Tree_10 [] x_46_84_134) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: Cursor -> ()
+_print_Add_Tree_10 arg_49_87_137 =
+    case arg_49_87_137 of
+        Leaf x_50_88_138 ->
+            let wildcard_52_89_139 :: () = printsym("(Leaf") in
+            let wildcard_54_90_140 :: () = printsym(" ") in
+            let y_51_91_141 :: () = printint(x_50_88_138) in
+            let wildcard_53_92_142 :: () = printsym(")") in
+            ()
+        Node x_55_93_143 x_56_94_144 ->
+            let wildcard_59_95_145 :: () = printsym("(Node") in
+            let wildcard_62_96_146 :: () = printsym(" ") in
+            let y_57_97_147 :: () = (_print_Add_Tree_10 [] x_55_93_143) in
+            let wildcard_61_98_148 :: () = printsym(" ") in
+            let y_58_99_149 :: () = (_print_Add_Tree_10 [] x_56_94_144) in
+            let wildcard_60_100_150 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = let fltPkd_102_107 :: Cursor = (Leaf 1) in
+              let fltPkd_103_108 :: Cursor = (Leaf 2) in
+              let fltAppE_101_109 :: Cursor = (Node fltPkd_102_107 fltPkd_103_108) in
+              let tmp_app_151 :: Cursor = (Add_add1_11 [] fltAppE_101_109) in
+              tmp_app_151
+
+ [compiler] Running pass, L3.typecheck
+Pass output:
+================================================================================
+data Add_Tree_10 = Leaf Int | 
+                   Node Cursor Cursor
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+Add_add1_11 :: Cursor -> Cursor
+Add_add1_11 t_12_63_110 =
+    case t_12_63_110 of
+        Leaf x_13_64_111 ->
+            let fltPkd_104_112 :: Int = x_13_64_111 + 1 in
+            (Leaf fltPkd_104_112)
+        Node x1_14_65_113 x2_15_66_114 ->
+            let fltPkd_105_115 :: Cursor = (Add_add1_11 [] x1_14_65_113) in
+            let fltPkd_106_116 :: Cursor = (Add_add1_11 [] x2_15_66_114) in
+            (Node fltPkd_105_115 fltPkd_106_116)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_Add_Tree_10 :: Cursor -> Cursor
+_copy_Add_Tree_10 arg_28_67_117 =
+    case arg_28_67_117 of
+        Leaf x_29_68_118 ->
+            (Leaf x_29_68_118)
+        Node x_31_70_120 x_32_71_121 ->
+            let y_33_72_122 :: Cursor = (_copy_Add_Tree_10 [] x_31_70_120) in
+            let y_34_73_123 :: Cursor = (_copy_Add_Tree_10 [] x_32_71_121) in
+            (Node y_33_72_122 y_34_73_123)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_copy_without_ptrs_Add_Tree_10 :: Cursor -> Cursor
+_copy_without_ptrs_Add_Tree_10 arg_35_74_124 =
+    case arg_35_74_124 of
+        Leaf x_36_75_125 ->
+            (Leaf x_36_75_125)
+        Node x_38_77_127 x_39_78_128 ->
+            let y_40_79_129 :: Cursor = (_copy_without_ptrs_Add_Tree_10 [] x_38_77_127) in
+            let y_41_80_130 :: Cursor = (_copy_without_ptrs_Add_Tree_10 [] x_39_78_128) in
+            (Node y_40_79_129 y_41_80_130)
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_traverse_Add_Tree_10 :: Cursor -> ()
+_traverse_Add_Tree_10 arg_42_81_131 =
+    case arg_42_81_131 of
+        Leaf x_43_82_132 ->
+            ()
+        Node x_45_83_133 x_46_84_134 ->
+            let y_47_85_135 :: () = (_traverse_Add_Tree_10 [] x_45_83_133) in
+            let y_48_86_136 :: () = (_traverse_Add_Tree_10 [] x_46_84_134) in
+            ()
+
+{meta: FunMeta {funRec = Rec, funInline = NoInline, funCanTriggerGC = False, funOptLayout = NoLayoutOpt, userConstraintsDataCon = Nothing}}
+_print_Add_Tree_10 :: Cursor -> ()
+_print_Add_Tree_10 arg_49_87_137 =
+    case arg_49_87_137 of
+        Leaf x_50_88_138 ->
+            let wildcard_52_89_139 :: () = printsym("(Leaf") in
+            let wildcard_54_90_140 :: () = printsym(" ") in
+            let y_51_91_141 :: () = printint(x_50_88_138) in
+            let wildcard_53_92_142 :: () = printsym(")") in
+            ()
+        Node x_55_93_143 x_56_94_144 ->
+            let wildcard_59_95_145 :: () = printsym("(Node") in
+            let wildcard_62_96_146 :: () = printsym(" ") in
+            let y_57_97_147 :: () = (_print_Add_Tree_10 [] x_55_93_143) in
+            let wildcard_61_98_148 :: () = printsym(" ") in
+            let y_58_99_149 :: () = (_print_Add_Tree_10 [] x_56_94_144) in
+            let wildcard_60_100_150 :: () = printsym(")") in
+            ()
+
+gibbon_main :: (Packed Add_Tree_10)
+gibbon_main = let fltPkd_102_107 :: Cursor = (Leaf 1) in
+              let fltPkd_103_108 :: Cursor = (Leaf 2) in
+              let fltAppE_101_109 :: Cursor = (Node fltPkd_102_107 fltPkd_103_108) in
+              let tmp_app_151 :: Cursor = (Add_add1_11 [] fltAppE_101_109) in
+              tmp_app_151
+
+ [compiler] Running pass, lower
+Pass output:
+================================================================================
+Prog {infoTable = [("Add_Tree_10",
+                    [("Leaf",
+                      DataConInfo {dcon_tag = 0,
+                                   scalar_bytes = 8,
+                                   num_shortcut = 0,
+                                   num_scalars = 1,
+                                   num_packed = 0,
+                                   field_tys = [IntTy]}),
+                     ("Node",
+                      DataConInfo {dcon_tag = 1,
+                                   scalar_bytes = 0,
+                                   num_shortcut = 2,
+                                   num_scalars = 0,
+                                   num_packed = 0,
+                                   field_tys = [CursorTy,CursorTy]})])],
+      symbolTable = [(152, ")"),(153, "(Node"),(154, "(Leaf"),
+                     (155, " ")],
+      fundefs = [FunDecl {funName = "Add_add1_11",
+                          funArgs = [(t_12_63_110, CursorTy)],
+                          funRetTy = CursorTy,
+                          funBody = LetPrimCallT {binds = [(tag_156, TagTyPacked),
+                                                           (tail_157, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "t_12_63_110"],
+                                                  bod = Switch "switch_160"
+                                                               (VarTriv "tag_156")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_13_64_111,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_157",
+                                                                                      bod = LetPrimCallT {binds = [(fltPkd_104_112,
+                                                                                                                    IntTy)],
+                                                                                                          prim = AddP,
+                                                                                                          rands = [VarTriv "x_13_64_111",
+                                                                                                                   IntTriv 1],
+                                                                                                          bod = LetAllocT {lhs = "tailift_158",
+                                                                                                                           vals = [(IntTy,
+                                                                                                                                    IntTriv 0),
+                                                                                                                                   (IntTy,
+                                                                                                                                    VarTriv "fltPkd_104_112")],
+                                                                                                                           bod = RetValsT [VarTriv "tailift_158"]}}}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x1_14_65_113,
+                                                                                                CursorTy),
+                                                                                               (x2_15_66_114,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_157",
+                                                                                      bod = LetCallT {async = False,
+                                                                                                      binds = [(fltPkd_105_115,
+                                                                                                                CursorTy)],
+                                                                                                      rator = "Add_add1_11",
+                                                                                                      rands = [VarTriv "x1_14_65_113"],
+                                                                                                      bod = LetCallT {async = False,
+                                                                                                                      binds = [(fltPkd_106_116,
+                                                                                                                                CursorTy)],
+                                                                                                                      rator = "Add_add1_11",
+                                                                                                                      rands = [VarTriv "x2_15_66_114"],
+                                                                                                                      bod = LetAllocT {lhs = "tailift_159",
+                                                                                                                                       vals = [(IntTy,
+                                                                                                                                                IntTriv 1),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "fltPkd_105_115"),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "fltPkd_106_116")],
+                                                                                                                                       bod = RetValsT [VarTriv "tailift_159"]}}}})])
+                                                               (Just ErrT "Unknown tag in: tag_156")},
+                          isPure = True},
+                 FunDecl {funName = "_copy_Add_Tree_10",
+                          funArgs = [(arg_28_67_117, CursorTy)],
+                          funRetTy = CursorTy,
+                          funBody = LetPrimCallT {binds = [(tag_161, TagTyPacked),
+                                                           (tail_162, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "arg_28_67_117"],
+                                                  bod = Switch "switch_165"
+                                                               (VarTriv "tag_161")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_29_68_118,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_162",
+                                                                                      bod = LetAllocT {lhs = "tailift_163",
+                                                                                                       vals = [(IntTy,
+                                                                                                                IntTriv 0),
+                                                                                                               (IntTy,
+                                                                                                                VarTriv "x_29_68_118")],
+                                                                                                       bod = RetValsT [VarTriv "tailift_163"]}}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x_31_70_120,
+                                                                                                CursorTy),
+                                                                                               (x_32_71_121,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_162",
+                                                                                      bod = LetCallT {async = False,
+                                                                                                      binds = [(y_33_72_122,
+                                                                                                                CursorTy)],
+                                                                                                      rator = "_copy_Add_Tree_10",
+                                                                                                      rands = [VarTriv "x_31_70_120"],
+                                                                                                      bod = LetCallT {async = False,
+                                                                                                                      binds = [(y_34_73_123,
+                                                                                                                                CursorTy)],
+                                                                                                                      rator = "_copy_Add_Tree_10",
+                                                                                                                      rands = [VarTriv "x_32_71_121"],
+                                                                                                                      bod = LetAllocT {lhs = "tailift_164",
+                                                                                                                                       vals = [(IntTy,
+                                                                                                                                                IntTriv 1),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "y_33_72_122"),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "y_34_73_123")],
+                                                                                                                                       bod = RetValsT [VarTriv "tailift_164"]}}}})])
+                                                               (Just ErrT "Unknown tag in: tag_161")},
+                          isPure = True},
+                 FunDecl {funName = "_copy_without_ptrs_Add_Tree_10",
+                          funArgs = [(arg_35_74_124, CursorTy)],
+                          funRetTy = CursorTy,
+                          funBody = LetPrimCallT {binds = [(tag_166, TagTyPacked),
+                                                           (tail_167, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "arg_35_74_124"],
+                                                  bod = Switch "switch_170"
+                                                               (VarTriv "tag_166")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_36_75_125,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_167",
+                                                                                      bod = LetAllocT {lhs = "tailift_168",
+                                                                                                       vals = [(IntTy,
+                                                                                                                IntTriv 0),
+                                                                                                               (IntTy,
+                                                                                                                VarTriv "x_36_75_125")],
+                                                                                                       bod = RetValsT [VarTriv "tailift_168"]}}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x_38_77_127,
+                                                                                                CursorTy),
+                                                                                               (x_39_78_128,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_167",
+                                                                                      bod = LetCallT {async = False,
+                                                                                                      binds = [(y_40_79_129,
+                                                                                                                CursorTy)],
+                                                                                                      rator = "_copy_without_ptrs_Add_Tree_10",
+                                                                                                      rands = [VarTriv "x_38_77_127"],
+                                                                                                      bod = LetCallT {async = False,
+                                                                                                                      binds = [(y_41_80_130,
+                                                                                                                                CursorTy)],
+                                                                                                                      rator = "_copy_without_ptrs_Add_Tree_10",
+                                                                                                                      rands = [VarTriv "x_39_78_128"],
+                                                                                                                      bod = LetAllocT {lhs = "tailift_169",
+                                                                                                                                       vals = [(IntTy,
+                                                                                                                                                IntTriv 1),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "y_40_79_129"),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "y_41_80_130")],
+                                                                                                                                       bod = RetValsT [VarTriv "tailift_169"]}}}})])
+                                                               (Just ErrT "Unknown tag in: tag_166")},
+                          isPure = True},
+                 FunDecl {funName = "_traverse_Add_Tree_10",
+                          funArgs = [(arg_42_81_131, CursorTy)],
+                          funRetTy = ProdTy [],
+                          funBody = LetPrimCallT {binds = [(tag_171, TagTyPacked),
+                                                           (tail_172, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "arg_42_81_131"],
+                                                  bod = Switch "switch_173"
+                                                               (VarTriv "tag_171")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_43_82_132,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_172",
+                                                                                      bod = RetValsT []}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x_45_83_133,
+                                                                                                CursorTy),
+                                                                                               (x_46_84_134,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_172",
+                                                                                      bod = LetCallT {async = False,
+                                                                                                      binds = [(y_47_85_135,
+                                                                                                                ProdTy [])],
+                                                                                                      rator = "_traverse_Add_Tree_10",
+                                                                                                      rands = [VarTriv "x_45_83_133"],
+                                                                                                      bod = LetCallT {async = False,
+                                                                                                                      binds = [(y_48_86_136,
+                                                                                                                                ProdTy [])],
+                                                                                                                      rator = "_traverse_Add_Tree_10",
+                                                                                                                      rands = [VarTriv "x_46_84_134"],
+                                                                                                                      bod = RetValsT []}}})])
+                                                               (Just ErrT "Unknown tag in: tag_171")},
+                          isPure = True},
+                 FunDecl {funName = "_print_Add_Tree_10",
+                          funArgs = [(arg_49_87_137, CursorTy)],
+                          funRetTy = ProdTy [],
+                          funBody = LetPrimCallT {binds = [(tag_174, TagTyPacked),
+                                                           (tail_175, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "arg_49_87_137"],
+                                                  bod = Switch "switch_176"
+                                                               (VarTriv "tag_174")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_50_88_138,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_175",
+                                                                                      bod = LetPrimCallT {binds = [(wildcard_52_89_139,
+                                                                                                                    ProdTy [])],
+                                                                                                          prim = PrintSym,
+                                                                                                          rands = [SymTriv 154],
+                                                                                                          bod = LetPrimCallT {binds = [(wildcard_54_90_140,
+                                                                                                                                        ProdTy [])],
+                                                                                                                              prim = PrintSym,
+                                                                                                                              rands = [SymTriv 155],
+                                                                                                                              bod = LetPrimCallT {binds = [(y_51_91_141,
+                                                                                                                                                            ProdTy [])],
+                                                                                                                                                  prim = PrintInt,
+                                                                                                                                                  rands = [VarTriv "x_50_88_138"],
+                                                                                                                                                  bod = LetPrimCallT {binds = [(wildcard_53_92_142,
+                                                                                                                                                                                ProdTy [])],
+                                                                                                                                                                      prim = PrintSym,
+                                                                                                                                                                      rands = [SymTriv 152],
+                                                                                                                                                                      bod = RetValsT []}}}}}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x_55_93_143,
+                                                                                                CursorTy),
+                                                                                               (x_56_94_144,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_175",
+                                                                                      bod = LetPrimCallT {binds = [(wildcard_59_95_145,
+                                                                                                                    ProdTy [])],
+                                                                                                          prim = PrintSym,
+                                                                                                          rands = [SymTriv 153],
+                                                                                                          bod = LetPrimCallT {binds = [(wildcard_62_96_146,
+                                                                                                                                        ProdTy [])],
+                                                                                                                              prim = PrintSym,
+                                                                                                                              rands = [SymTriv 155],
+                                                                                                                              bod = LetCallT {async = False,
+                                                                                                                                              binds = [(y_57_97_147,
+                                                                                                                                                        ProdTy [])],
+                                                                                                                                              rator = "_print_Add_Tree_10",
+                                                                                                                                              rands = [VarTriv "x_55_93_143"],
+                                                                                                                                              bod = LetPrimCallT {binds = [(wildcard_61_98_148,
+                                                                                                                                                                            ProdTy [])],
+                                                                                                                                                                  prim = PrintSym,
+                                                                                                                                                                  rands = [SymTriv 155],
+                                                                                                                                                                  bod = LetCallT {async = False,
+                                                                                                                                                                                  binds = [(y_58_99_149,
+                                                                                                                                                                                            ProdTy [])],
+                                                                                                                                                                                  rator = "_print_Add_Tree_10",
+                                                                                                                                                                                  rands = [VarTriv "x_56_94_144"],
+                                                                                                                                                                                  bod = LetPrimCallT {binds = [(wildcard_60_100_150,
+                                                                                                                                                                                                                ProdTy [])],
+                                                                                                                                                                                                      prim = PrintSym,
+                                                                                                                                                                                                      rands = [SymTriv 152],
+                                                                                                                                                                                                      bod = RetValsT []}}}}}}})])
+                                                               (Just ErrT "Unknown tag in: tag_174")},
+                          isPure = True}],
+      mainExp = Just PrintExp (LetAllocT
+                                        {lhs = "fltPkd_102_107",
+                                         vals = [(IntTy, IntTriv 0),(IntTy, IntTriv 1)],
+                                         bod = LetAllocT {lhs = "fltPkd_103_108",
+                                                          vals = [(IntTy, IntTriv 0),
+                                                                  (IntTy, IntTriv 2)],
+                                                          bod = LetAllocT {lhs = "fltAppE_101_109",
+                                                                           vals = [(IntTy,
+                                                                                    IntTriv 1),
+                                                                                   (CursorTy,
+                                                                                    VarTriv "fltPkd_102_107"),
+                                                                                   (CursorTy,
+                                                                                    VarTriv "fltPkd_103_108")],
+                                                                           bod = LetCallT {async = False,
+                                                                                           binds = [(tmp_app_151,
+                                                                                                     CursorTy)],
+                                                                                           rator = "Add_add1_11",
+                                                                                           rands = [VarTriv "fltAppE_101_109"],
+                                                                                           bod = LetCallT {async = False,
+                                                                                                           binds = [],
+                                                                                                           rator = "_print_Add_Tree_10",
+                                                                                                           rands = [VarTriv "tmp_app_151"],
+                                                                                                           bod = LetPrimCallT {binds = [],
+                                                                                                                               prim = PrintString "\n",
+                                                                                                                               rands = [],
+                                                                                                                               bod = RetValsT []}}}}}})}
+
+ [compiler] Running pass, lateInlineTriv
+Pass output:
+================================================================================
+Prog {infoTable = [("Add_Tree_10",
+                    [("Leaf",
+                      DataConInfo {dcon_tag = 0,
+                                   scalar_bytes = 8,
+                                   num_shortcut = 0,
+                                   num_scalars = 1,
+                                   num_packed = 0,
+                                   field_tys = [IntTy]}),
+                     ("Node",
+                      DataConInfo {dcon_tag = 1,
+                                   scalar_bytes = 0,
+                                   num_shortcut = 2,
+                                   num_scalars = 0,
+                                   num_packed = 0,
+                                   field_tys = [CursorTy,CursorTy]})])],
+      symbolTable = [(152, ")"),(153, "(Node"),(154, "(Leaf"),
+                     (155, " ")],
+      fundefs = [FunDecl {funName = "Add_add1_11",
+                          funArgs = [(t_12_63_110, CursorTy)],
+                          funRetTy = CursorTy,
+                          funBody = LetPrimCallT {binds = [(tag_156, TagTyPacked),
+                                                           (tail_157, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "t_12_63_110"],
+                                                  bod = Switch "switch_160"
+                                                               (VarTriv "tag_156")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_13_64_111,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_157",
+                                                                                      bod = LetPrimCallT {binds = [(fltPkd_104_112,
+                                                                                                                    IntTy)],
+                                                                                                          prim = AddP,
+                                                                                                          rands = [VarTriv "x_13_64_111",
+                                                                                                                   IntTriv 1],
+                                                                                                          bod = LetAllocT {lhs = "tailift_158",
+                                                                                                                           vals = [(IntTy,
+                                                                                                                                    IntTriv 0),
+                                                                                                                                   (IntTy,
+                                                                                                                                    VarTriv "fltPkd_104_112")],
+                                                                                                                           bod = RetValsT [VarTriv "tailift_158"]}}}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x1_14_65_113,
+                                                                                                CursorTy),
+                                                                                               (x2_15_66_114,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_157",
+                                                                                      bod = LetCallT {async = False,
+                                                                                                      binds = [(fltPkd_105_115,
+                                                                                                                CursorTy)],
+                                                                                                      rator = "Add_add1_11",
+                                                                                                      rands = [VarTriv "x1_14_65_113"],
+                                                                                                      bod = LetCallT {async = False,
+                                                                                                                      binds = [(fltPkd_106_116,
+                                                                                                                                CursorTy)],
+                                                                                                                      rator = "Add_add1_11",
+                                                                                                                      rands = [VarTriv "x2_15_66_114"],
+                                                                                                                      bod = LetAllocT {lhs = "tailift_159",
+                                                                                                                                       vals = [(IntTy,
+                                                                                                                                                IntTriv 1),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "fltPkd_105_115"),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "fltPkd_106_116")],
+                                                                                                                                       bod = RetValsT [VarTriv "tailift_159"]}}}})])
+                                                               (Just ErrT "Unknown tag in: tag_156")},
+                          isPure = True},
+                 FunDecl {funName = "_copy_Add_Tree_10",
+                          funArgs = [(arg_28_67_117, CursorTy)],
+                          funRetTy = CursorTy,
+                          funBody = LetPrimCallT {binds = [(tag_161, TagTyPacked),
+                                                           (tail_162, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "arg_28_67_117"],
+                                                  bod = Switch "switch_165"
+                                                               (VarTriv "tag_161")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_29_68_118,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_162",
+                                                                                      bod = LetAllocT {lhs = "tailift_163",
+                                                                                                       vals = [(IntTy,
+                                                                                                                IntTriv 0),
+                                                                                                               (IntTy,
+                                                                                                                VarTriv "x_29_68_118")],
+                                                                                                       bod = RetValsT [VarTriv "tailift_163"]}}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x_31_70_120,
+                                                                                                CursorTy),
+                                                                                               (x_32_71_121,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_162",
+                                                                                      bod = LetCallT {async = False,
+                                                                                                      binds = [(y_33_72_122,
+                                                                                                                CursorTy)],
+                                                                                                      rator = "_copy_Add_Tree_10",
+                                                                                                      rands = [VarTriv "x_31_70_120"],
+                                                                                                      bod = LetCallT {async = False,
+                                                                                                                      binds = [(y_34_73_123,
+                                                                                                                                CursorTy)],
+                                                                                                                      rator = "_copy_Add_Tree_10",
+                                                                                                                      rands = [VarTriv "x_32_71_121"],
+                                                                                                                      bod = LetAllocT {lhs = "tailift_164",
+                                                                                                                                       vals = [(IntTy,
+                                                                                                                                                IntTriv 1),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "y_33_72_122"),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "y_34_73_123")],
+                                                                                                                                       bod = RetValsT [VarTriv "tailift_164"]}}}})])
+                                                               (Just ErrT "Unknown tag in: tag_161")},
+                          isPure = True},
+                 FunDecl {funName = "_copy_without_ptrs_Add_Tree_10",
+                          funArgs = [(arg_35_74_124, CursorTy)],
+                          funRetTy = CursorTy,
+                          funBody = LetPrimCallT {binds = [(tag_166, TagTyPacked),
+                                                           (tail_167, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "arg_35_74_124"],
+                                                  bod = Switch "switch_170"
+                                                               (VarTriv "tag_166")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_36_75_125,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_167",
+                                                                                      bod = LetAllocT {lhs = "tailift_168",
+                                                                                                       vals = [(IntTy,
+                                                                                                                IntTriv 0),
+                                                                                                               (IntTy,
+                                                                                                                VarTriv "x_36_75_125")],
+                                                                                                       bod = RetValsT [VarTriv "tailift_168"]}}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x_38_77_127,
+                                                                                                CursorTy),
+                                                                                               (x_39_78_128,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_167",
+                                                                                      bod = LetCallT {async = False,
+                                                                                                      binds = [(y_40_79_129,
+                                                                                                                CursorTy)],
+                                                                                                      rator = "_copy_without_ptrs_Add_Tree_10",
+                                                                                                      rands = [VarTriv "x_38_77_127"],
+                                                                                                      bod = LetCallT {async = False,
+                                                                                                                      binds = [(y_41_80_130,
+                                                                                                                                CursorTy)],
+                                                                                                                      rator = "_copy_without_ptrs_Add_Tree_10",
+                                                                                                                      rands = [VarTriv "x_39_78_128"],
+                                                                                                                      bod = LetAllocT {lhs = "tailift_169",
+                                                                                                                                       vals = [(IntTy,
+                                                                                                                                                IntTriv 1),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "y_40_79_129"),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "y_41_80_130")],
+                                                                                                                                       bod = RetValsT [VarTriv "tailift_169"]}}}})])
+                                                               (Just ErrT "Unknown tag in: tag_166")},
+                          isPure = True},
+                 FunDecl {funName = "_traverse_Add_Tree_10",
+                          funArgs = [(arg_42_81_131, CursorTy)],
+                          funRetTy = ProdTy [],
+                          funBody = LetPrimCallT {binds = [(tag_171, TagTyPacked),
+                                                           (tail_172, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "arg_42_81_131"],
+                                                  bod = Switch "switch_173"
+                                                               (VarTriv "tag_171")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_43_82_132,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_172",
+                                                                                      bod = RetValsT []}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x_45_83_133,
+                                                                                                CursorTy),
+                                                                                               (x_46_84_134,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_172",
+                                                                                      bod = LetCallT {async = False,
+                                                                                                      binds = [(y_47_85_135,
+                                                                                                                ProdTy [])],
+                                                                                                      rator = "_traverse_Add_Tree_10",
+                                                                                                      rands = [VarTriv "x_45_83_133"],
+                                                                                                      bod = LetCallT {async = False,
+                                                                                                                      binds = [(y_48_86_136,
+                                                                                                                                ProdTy [])],
+                                                                                                                      rator = "_traverse_Add_Tree_10",
+                                                                                                                      rands = [VarTriv "x_46_84_134"],
+                                                                                                                      bod = RetValsT []}}})])
+                                                               (Just ErrT "Unknown tag in: tag_171")},
+                          isPure = True},
+                 FunDecl {funName = "_print_Add_Tree_10",
+                          funArgs = [(arg_49_87_137, CursorTy)],
+                          funRetTy = ProdTy [],
+                          funBody = LetPrimCallT {binds = [(tag_174, TagTyPacked),
+                                                           (tail_175, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "arg_49_87_137"],
+                                                  bod = Switch "switch_176"
+                                                               (VarTriv "tag_174")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_50_88_138,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_175",
+                                                                                      bod = LetPrimCallT {binds = [(wildcard_52_89_139,
+                                                                                                                    ProdTy [])],
+                                                                                                          prim = PrintSym,
+                                                                                                          rands = [SymTriv 154],
+                                                                                                          bod = LetPrimCallT {binds = [(wildcard_54_90_140,
+                                                                                                                                        ProdTy [])],
+                                                                                                                              prim = PrintSym,
+                                                                                                                              rands = [SymTriv 155],
+                                                                                                                              bod = LetPrimCallT {binds = [(y_51_91_141,
+                                                                                                                                                            ProdTy [])],
+                                                                                                                                                  prim = PrintInt,
+                                                                                                                                                  rands = [VarTriv "x_50_88_138"],
+                                                                                                                                                  bod = LetPrimCallT {binds = [(wildcard_53_92_142,
+                                                                                                                                                                                ProdTy [])],
+                                                                                                                                                                      prim = PrintSym,
+                                                                                                                                                                      rands = [SymTriv 152],
+                                                                                                                                                                      bod = RetValsT []}}}}}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x_55_93_143,
+                                                                                                CursorTy),
+                                                                                               (x_56_94_144,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_175",
+                                                                                      bod = LetPrimCallT {binds = [(wildcard_59_95_145,
+                                                                                                                    ProdTy [])],
+                                                                                                          prim = PrintSym,
+                                                                                                          rands = [SymTriv 153],
+                                                                                                          bod = LetPrimCallT {binds = [(wildcard_62_96_146,
+                                                                                                                                        ProdTy [])],
+                                                                                                                              prim = PrintSym,
+                                                                                                                              rands = [SymTriv 155],
+                                                                                                                              bod = LetCallT {async = False,
+                                                                                                                                              binds = [(y_57_97_147,
+                                                                                                                                                        ProdTy [])],
+                                                                                                                                              rator = "_print_Add_Tree_10",
+                                                                                                                                              rands = [VarTriv "x_55_93_143"],
+                                                                                                                                              bod = LetPrimCallT {binds = [(wildcard_61_98_148,
+                                                                                                                                                                            ProdTy [])],
+                                                                                                                                                                  prim = PrintSym,
+                                                                                                                                                                  rands = [SymTriv 155],
+                                                                                                                                                                  bod = LetCallT {async = False,
+                                                                                                                                                                                  binds = [(y_58_99_149,
+                                                                                                                                                                                            ProdTy [])],
+                                                                                                                                                                                  rator = "_print_Add_Tree_10",
+                                                                                                                                                                                  rands = [VarTriv "x_56_94_144"],
+                                                                                                                                                                                  bod = LetPrimCallT {binds = [(wildcard_60_100_150,
+                                                                                                                                                                                                                ProdTy [])],
+                                                                                                                                                                                                      prim = PrintSym,
+                                                                                                                                                                                                      rands = [SymTriv 152],
+                                                                                                                                                                                                      bod = RetValsT []}}}}}}})])
+                                                               (Just ErrT "Unknown tag in: tag_174")},
+                          isPure = True}],
+      mainExp = Just PrintExp (LetAllocT
+                                        {lhs = "fltPkd_102_107",
+                                         vals = [(IntTy, IntTriv 0),(IntTy, IntTriv 1)],
+                                         bod = LetAllocT {lhs = "fltPkd_103_108",
+                                                          vals = [(IntTy, IntTriv 0),
+                                                                  (IntTy, IntTriv 2)],
+                                                          bod = LetAllocT {lhs = "fltAppE_101_109",
+                                                                           vals = [(IntTy,
+                                                                                    IntTriv 1),
+                                                                                   (CursorTy,
+                                                                                    VarTriv "fltPkd_102_107"),
+                                                                                   (CursorTy,
+                                                                                    VarTriv "fltPkd_103_108")],
+                                                                           bod = LetCallT {async = False,
+                                                                                           binds = [(tmp_app_151,
+                                                                                                     CursorTy)],
+                                                                                           rator = "Add_add1_11",
+                                                                                           rands = [VarTriv "fltAppE_101_109"],
+                                                                                           bod = LetCallT {async = False,
+                                                                                                           binds = [],
+                                                                                                           rator = "_print_Add_Tree_10",
+                                                                                                           rands = [VarTriv "tmp_app_151"],
+                                                                                                           bod = LetPrimCallT {binds = [],
+                                                                                                                               prim = PrintString "\n",
+                                                                                                                               rands = [],
+                                                                                                                               bod = RetValsT []}}}}}})}
+
+ [compiler] Running pass, rearrangeFree
+Pass output:
+================================================================================
+Prog {infoTable = [("Add_Tree_10",
+                    [("Leaf",
+                      DataConInfo {dcon_tag = 0,
+                                   scalar_bytes = 8,
+                                   num_shortcut = 0,
+                                   num_scalars = 1,
+                                   num_packed = 0,
+                                   field_tys = [IntTy]}),
+                     ("Node",
+                      DataConInfo {dcon_tag = 1,
+                                   scalar_bytes = 0,
+                                   num_shortcut = 2,
+                                   num_scalars = 0,
+                                   num_packed = 0,
+                                   field_tys = [CursorTy,CursorTy]})])],
+      symbolTable = [(152, ")"),(153, "(Node"),(154, "(Leaf"),
+                     (155, " ")],
+      fundefs = [FunDecl {funName = "Add_add1_11",
+                          funArgs = [(t_12_63_110, CursorTy)],
+                          funRetTy = CursorTy,
+                          funBody = LetPrimCallT {binds = [(tag_156, TagTyPacked),
+                                                           (tail_157, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "t_12_63_110"],
+                                                  bod = Switch "switch_160"
+                                                               (VarTriv "tag_156")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_13_64_111,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_157",
+                                                                                      bod = LetPrimCallT {binds = [(fltPkd_104_112,
+                                                                                                                    IntTy)],
+                                                                                                          prim = AddP,
+                                                                                                          rands = [VarTriv "x_13_64_111",
+                                                                                                                   IntTriv 1],
+                                                                                                          bod = LetAllocT {lhs = "tailift_158",
+                                                                                                                           vals = [(IntTy,
+                                                                                                                                    IntTriv 0),
+                                                                                                                                   (IntTy,
+                                                                                                                                    VarTriv "fltPkd_104_112")],
+                                                                                                                           bod = RetValsT [VarTriv "tailift_158"]}}}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x1_14_65_113,
+                                                                                                CursorTy),
+                                                                                               (x2_15_66_114,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_157",
+                                                                                      bod = LetCallT {async = False,
+                                                                                                      binds = [(fltPkd_105_115,
+                                                                                                                CursorTy)],
+                                                                                                      rator = "Add_add1_11",
+                                                                                                      rands = [VarTriv "x1_14_65_113"],
+                                                                                                      bod = LetCallT {async = False,
+                                                                                                                      binds = [(fltPkd_106_116,
+                                                                                                                                CursorTy)],
+                                                                                                                      rator = "Add_add1_11",
+                                                                                                                      rands = [VarTriv "x2_15_66_114"],
+                                                                                                                      bod = LetAllocT {lhs = "tailift_159",
+                                                                                                                                       vals = [(IntTy,
+                                                                                                                                                IntTriv 1),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "fltPkd_105_115"),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "fltPkd_106_116")],
+                                                                                                                                       bod = RetValsT [VarTriv "tailift_159"]}}}})])
+                                                               (Just ErrT "Unknown tag in: tag_156")},
+                          isPure = True},
+                 FunDecl {funName = "_copy_Add_Tree_10",
+                          funArgs = [(arg_28_67_117, CursorTy)],
+                          funRetTy = CursorTy,
+                          funBody = LetPrimCallT {binds = [(tag_161, TagTyPacked),
+                                                           (tail_162, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "arg_28_67_117"],
+                                                  bod = Switch "switch_165"
+                                                               (VarTriv "tag_161")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_29_68_118,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_162",
+                                                                                      bod = LetAllocT {lhs = "tailift_163",
+                                                                                                       vals = [(IntTy,
+                                                                                                                IntTriv 0),
+                                                                                                               (IntTy,
+                                                                                                                VarTriv "x_29_68_118")],
+                                                                                                       bod = RetValsT [VarTriv "tailift_163"]}}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x_31_70_120,
+                                                                                                CursorTy),
+                                                                                               (x_32_71_121,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_162",
+                                                                                      bod = LetCallT {async = False,
+                                                                                                      binds = [(y_33_72_122,
+                                                                                                                CursorTy)],
+                                                                                                      rator = "_copy_Add_Tree_10",
+                                                                                                      rands = [VarTriv "x_31_70_120"],
+                                                                                                      bod = LetCallT {async = False,
+                                                                                                                      binds = [(y_34_73_123,
+                                                                                                                                CursorTy)],
+                                                                                                                      rator = "_copy_Add_Tree_10",
+                                                                                                                      rands = [VarTriv "x_32_71_121"],
+                                                                                                                      bod = LetAllocT {lhs = "tailift_164",
+                                                                                                                                       vals = [(IntTy,
+                                                                                                                                                IntTriv 1),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "y_33_72_122"),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "y_34_73_123")],
+                                                                                                                                       bod = RetValsT [VarTriv "tailift_164"]}}}})])
+                                                               (Just ErrT "Unknown tag in: tag_161")},
+                          isPure = True},
+                 FunDecl {funName = "_copy_without_ptrs_Add_Tree_10",
+                          funArgs = [(arg_35_74_124, CursorTy)],
+                          funRetTy = CursorTy,
+                          funBody = LetPrimCallT {binds = [(tag_166, TagTyPacked),
+                                                           (tail_167, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "arg_35_74_124"],
+                                                  bod = Switch "switch_170"
+                                                               (VarTriv "tag_166")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_36_75_125,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_167",
+                                                                                      bod = LetAllocT {lhs = "tailift_168",
+                                                                                                       vals = [(IntTy,
+                                                                                                                IntTriv 0),
+                                                                                                               (IntTy,
+                                                                                                                VarTriv "x_36_75_125")],
+                                                                                                       bod = RetValsT [VarTriv "tailift_168"]}}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x_38_77_127,
+                                                                                                CursorTy),
+                                                                                               (x_39_78_128,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_167",
+                                                                                      bod = LetCallT {async = False,
+                                                                                                      binds = [(y_40_79_129,
+                                                                                                                CursorTy)],
+                                                                                                      rator = "_copy_without_ptrs_Add_Tree_10",
+                                                                                                      rands = [VarTriv "x_38_77_127"],
+                                                                                                      bod = LetCallT {async = False,
+                                                                                                                      binds = [(y_41_80_130,
+                                                                                                                                CursorTy)],
+                                                                                                                      rator = "_copy_without_ptrs_Add_Tree_10",
+                                                                                                                      rands = [VarTriv "x_39_78_128"],
+                                                                                                                      bod = LetAllocT {lhs = "tailift_169",
+                                                                                                                                       vals = [(IntTy,
+                                                                                                                                                IntTriv 1),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "y_40_79_129"),
+                                                                                                                                               (CursorTy,
+                                                                                                                                                VarTriv "y_41_80_130")],
+                                                                                                                                       bod = RetValsT [VarTriv "tailift_169"]}}}})])
+                                                               (Just ErrT "Unknown tag in: tag_166")},
+                          isPure = True},
+                 FunDecl {funName = "_traverse_Add_Tree_10",
+                          funArgs = [(arg_42_81_131, CursorTy)],
+                          funRetTy = ProdTy [],
+                          funBody = LetPrimCallT {binds = [(tag_171, TagTyPacked),
+                                                           (tail_172, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "arg_42_81_131"],
+                                                  bod = Switch "switch_173"
+                                                               (VarTriv "tag_171")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_43_82_132,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_172",
+                                                                                      bod = RetValsT []}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x_45_83_133,
+                                                                                                CursorTy),
+                                                                                               (x_46_84_134,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_172",
+                                                                                      bod = LetCallT {async = False,
+                                                                                                      binds = [(y_47_85_135,
+                                                                                                                ProdTy [])],
+                                                                                                      rator = "_traverse_Add_Tree_10",
+                                                                                                      rands = [VarTriv "x_45_83_133"],
+                                                                                                      bod = LetCallT {async = False,
+                                                                                                                      binds = [(y_48_86_136,
+                                                                                                                                ProdTy [])],
+                                                                                                                      rator = "_traverse_Add_Tree_10",
+                                                                                                                      rands = [VarTriv "x_46_84_134"],
+                                                                                                                      bod = RetValsT []}}})])
+                                                               (Just ErrT "Unknown tag in: tag_171")},
+                          isPure = True},
+                 FunDecl {funName = "_print_Add_Tree_10",
+                          funArgs = [(arg_49_87_137, CursorTy)],
+                          funRetTy = ProdTy [],
+                          funBody = LetPrimCallT {binds = [(tag_174, TagTyPacked),
+                                                           (tail_175, CursorTy)],
+                                                  prim = ReadScalar IntS,
+                                                  rands = [VarTriv "arg_49_87_137"],
+                                                  bod = Switch "switch_176"
+                                                               (VarTriv "tag_174")
+                                                               (IntAlts [(0,
+                                                                          LetUnpackT {binds = [(x_50_88_138,
+                                                                                                IntTy)],
+                                                                                      ptr = "tail_175",
+                                                                                      bod = LetPrimCallT {binds = [(wildcard_52_89_139,
+                                                                                                                    ProdTy [])],
+                                                                                                          prim = PrintSym,
+                                                                                                          rands = [SymTriv 154],
+                                                                                                          bod = LetPrimCallT {binds = [(wildcard_54_90_140,
+                                                                                                                                        ProdTy [])],
+                                                                                                                              prim = PrintSym,
+                                                                                                                              rands = [SymTriv 155],
+                                                                                                                              bod = LetPrimCallT {binds = [(y_51_91_141,
+                                                                                                                                                            ProdTy [])],
+                                                                                                                                                  prim = PrintInt,
+                                                                                                                                                  rands = [VarTriv "x_50_88_138"],
+                                                                                                                                                  bod = LetPrimCallT {binds = [(wildcard_53_92_142,
+                                                                                                                                                                                ProdTy [])],
+                                                                                                                                                                      prim = PrintSym,
+                                                                                                                                                                      rands = [SymTriv 152],
+                                                                                                                                                                      bod = RetValsT []}}}}}),
+                                                                         (1,
+                                                                          LetUnpackT {binds = [(x_55_93_143,
+                                                                                                CursorTy),
+                                                                                               (x_56_94_144,
+                                                                                                CursorTy)],
+                                                                                      ptr = "tail_175",
+                                                                                      bod = LetPrimCallT {binds = [(wildcard_59_95_145,
+                                                                                                                    ProdTy [])],
+                                                                                                          prim = PrintSym,
+                                                                                                          rands = [SymTriv 153],
+                                                                                                          bod = LetPrimCallT {binds = [(wildcard_62_96_146,
+                                                                                                                                        ProdTy [])],
+                                                                                                                              prim = PrintSym,
+                                                                                                                              rands = [SymTriv 155],
+                                                                                                                              bod = LetCallT {async = False,
+                                                                                                                                              binds = [(y_57_97_147,
+                                                                                                                                                        ProdTy [])],
+                                                                                                                                              rator = "_print_Add_Tree_10",
+                                                                                                                                              rands = [VarTriv "x_55_93_143"],
+                                                                                                                                              bod = LetPrimCallT {binds = [(wildcard_61_98_148,
+                                                                                                                                                                            ProdTy [])],
+                                                                                                                                                                  prim = PrintSym,
+                                                                                                                                                                  rands = [SymTriv 155],
+                                                                                                                                                                  bod = LetCallT {async = False,
+                                                                                                                                                                                  binds = [(y_58_99_149,
+                                                                                                                                                                                            ProdTy [])],
+                                                                                                                                                                                  rator = "_print_Add_Tree_10",
+                                                                                                                                                                                  rands = [VarTriv "x_56_94_144"],
+                                                                                                                                                                                  bod = LetPrimCallT {binds = [(wildcard_60_100_150,
+                                                                                                                                                                                                                ProdTy [])],
+                                                                                                                                                                                                      prim = PrintSym,
+                                                                                                                                                                                                      rands = [SymTriv 152],
+                                                                                                                                                                                                      bod = RetValsT []}}}}}}})])
+                                                               (Just ErrT "Unknown tag in: tag_174")},
+                          isPure = True}],
+      mainExp = Just PrintExp (LetAllocT
+                                        {lhs = "fltPkd_102_107",
+                                         vals = [(IntTy, IntTriv 0),(IntTy, IntTriv 1)],
+                                         bod = LetAllocT {lhs = "fltPkd_103_108",
+                                                          vals = [(IntTy, IntTriv 0),
+                                                                  (IntTy, IntTriv 2)],
+                                                          bod = LetAllocT {lhs = "fltAppE_101_109",
+                                                                           vals = [(IntTy,
+                                                                                    IntTriv 1),
+                                                                                   (CursorTy,
+                                                                                    VarTriv "fltPkd_102_107"),
+                                                                                   (CursorTy,
+                                                                                    VarTriv "fltPkd_103_108")],
+                                                                           bod = LetCallT {async = False,
+                                                                                           binds = [(tmp_app_151,
+                                                                                                     CursorTy)],
+                                                                                           rator = "Add_add1_11",
+                                                                                           rands = [VarTriv "fltAppE_101_109"],
+                                                                                           bod = LetCallT {async = False,
+                                                                                                           binds = [],
+                                                                                                           rator = "_print_Add_Tree_10",
+                                                                                                           rands = [VarTriv "tmp_app_151"],
+                                                                                                           bod = LetPrimCallT {binds = [],
+                                                                                                                               prim = PrintString "\n",
+                                                                                                                               rands = [],
+                                                                                                                               bod = RetValsT []}}}}}})}
+
+ [compiler] Final C codegen: 11506 characters.
+================================================================================
+/* Gibbon program. */
+
+#include "gibbon_rts.h"
+
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <inttypes.h>
+#include <math.h>
+#include <stdbool.h>
+#include <string.h>
+#include <time.h>
+#include <alloca.h>
+#include <sys/mman.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdarg.h>
+#include <errno.h>
+#include <uthash.h>
+
+#ifdef _WIN64
+#include <windows.h>
+#endif
+
+#ifdef _GIBBON_POINTER
+#include <gc.h>
+#endif
+
+#ifdef _GIBBON_PARALLEL
+#include <cilk/cilk.h>
+#include <cilk/cilk_api.h>
+#endif
+
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ * Program starts here
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ */
+
+typedef struct GibIntProd_struct {
+            GibInt field0;
+        } GibIntProd;
+typedef struct GibIntGibIntProd_struct {
+            GibInt field0;
+            GibInt field1;
+        } GibIntGibIntProd;
+typedef struct GibIntGibCursorGibCursorProd_struct {
+            GibInt field0;
+            GibCursor field1;
+            GibCursor field2;
+        } GibIntGibCursorGibCursorProd;
+typedef struct GibPackedTagGibCursorProd_struct {
+            GibPackedTag field0;
+            GibCursor field1;
+        } GibPackedTagGibCursorProd;
+typedef struct GibCursorProd_struct {
+            GibCursor field0;
+        } GibCursorProd;
+typedef struct GibCursorGibCursorProd_struct {
+            GibCursor field0;
+            GibCursor field1;
+        } GibCursorGibCursorProd;
+GibCursor Add_add1_11(GibCursor t_12_63_110);
+GibCursor _copy_Add_Tree_10(GibCursor arg_28_67_117);
+GibCursor _copy_without_ptrs_Add_Tree_10(GibCursor arg_35_74_124);
+unsigned char _traverse_Add_Tree_10(GibCursor arg_42_81_131);
+unsigned char _print_Add_Tree_10(GibCursor arg_49_87_137);
+typedef enum {
+            GibInt_T,
+            GibFloat_T,
+            GibSym_T,
+            GibBool_T,
+            GibVector_T,
+            GibList_T,
+            GibCursor_T,
+            Add_Tree_10_T,
+        } GibDatatype;
+void info_table_initialize(void)
+{
+    int error = gib_info_table_initialize(8);
+    
+    if (error < 0) {
+        fprintf(stderr, "Couldn't initialize info table, errorno=%d", error);
+        exit(1);
+    }
+    
+    GibDatatype field_tys[1];
+    
+    error = gib_info_table_insert_packed_dcon(Add_Tree_10_T, 0, 8, 0, 1, 0,
+                                              field_tys, 0);
+    if (error < 0) {
+        fprintf(stderr,
+                "Couldn't insert into info table, errorno=%d, tycon=%d, dcon=%d",
+                error, Add_Tree_10_T, 0);
+        exit(1);
+    }
+    error = gib_info_table_insert_packed_dcon(Add_Tree_10_T, 1, 0, 2, 0, 0,
+                                              field_tys, 0);
+    if (error < 0) {
+        fprintf(stderr,
+                "Couldn't insert into info table, errorno=%d, tycon=%d, dcon=%d",
+                error, Add_Tree_10_T, 1);
+        exit(1);
+    }
+    gib_info_table_finalize();
+}
+void symbol_table_initialize(void)
+{
+    gib_add_symbol(152, ")");
+    gib_add_symbol(153, "(Node");
+    gib_add_symbol(154, "(Leaf");
+    gib_add_symbol(155, " ");
+}
+GibCursor Add_add1_11(GibCursor t_12_63_110)
+{
+    GibPackedTag tag_156 = *(GibPackedTag *) t_12_63_110;
+    GibCursor tail_157 = t_12_63_110 + sizeof(GibInt);
+    
+    
+  switch_160:
+    ;
+    switch (tag_156) {
+        
+      case 0:
+        {
+            GibInt x_13_64_111 = ((GibIntProd *) tail_157)->field0;
+            GibInt fltPkd_104_112 = x_13_64_111 + 1;
+            GibPtr tailift_158 = gib_alloc(sizeof(GibIntGibIntProd));
+            
+            ((GibIntGibIntProd *) tailift_158)->field0 = 0;
+            ((GibIntGibIntProd *) tailift_158)->field1 = fltPkd_104_112;
+            return tailift_158;
+            break;
+        }
+        
+      case 1:
+        {
+            GibCursor x1_14_65_113 =
+                      ((GibCursorGibCursorProd *) tail_157)->field0;
+            GibCursor x2_15_66_114 =
+                      ((GibCursorGibCursorProd *) tail_157)->field1;
+            GibCursor fltPkd_105_115 =  Add_add1_11(x1_14_65_113);
+            GibCursor fltPkd_106_116 =  Add_add1_11(x2_15_66_114);
+            GibPtr tailift_159 =
+                   gib_alloc(sizeof(GibIntGibCursorGibCursorProd));
+            
+            ((GibIntGibCursorGibCursorProd *) tailift_159)->field0 = 1;
+            ((GibIntGibCursorGibCursorProd *) tailift_159)->field1 =
+                fltPkd_105_115;
+            ((GibIntGibCursorGibCursorProd *) tailift_159)->field2 =
+                fltPkd_106_116;
+            return tailift_159;
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_156");
+            exit(1);
+        }
+    }
+}
+GibCursor _copy_Add_Tree_10(GibCursor arg_28_67_117)
+{
+    GibPackedTag tag_161 = *(GibPackedTag *) arg_28_67_117;
+    GibCursor tail_162 = arg_28_67_117 + sizeof(GibInt);
+    
+    
+  switch_165:
+    ;
+    switch (tag_161) {
+        
+      case 0:
+        {
+            GibInt x_29_68_118 = ((GibIntProd *) tail_162)->field0;
+            GibPtr tailift_163 = gib_alloc(sizeof(GibIntGibIntProd));
+            
+            ((GibIntGibIntProd *) tailift_163)->field0 = 0;
+            ((GibIntGibIntProd *) tailift_163)->field1 = x_29_68_118;
+            return tailift_163;
+            break;
+        }
+        
+      case 1:
+        {
+            GibCursor x_31_70_120 =
+                      ((GibCursorGibCursorProd *) tail_162)->field0;
+            GibCursor x_32_71_121 =
+                      ((GibCursorGibCursorProd *) tail_162)->field1;
+            GibCursor y_33_72_122 =  _copy_Add_Tree_10(x_31_70_120);
+            GibCursor y_34_73_123 =  _copy_Add_Tree_10(x_32_71_121);
+            GibPtr tailift_164 =
+                   gib_alloc(sizeof(GibIntGibCursorGibCursorProd));
+            
+            ((GibIntGibCursorGibCursorProd *) tailift_164)->field0 = 1;
+            ((GibIntGibCursorGibCursorProd *) tailift_164)->field1 =
+                y_33_72_122;
+            ((GibIntGibCursorGibCursorProd *) tailift_164)->field2 =
+                y_34_73_123;
+            return tailift_164;
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_161");
+            exit(1);
+        }
+    }
+}
+GibCursor _copy_without_ptrs_Add_Tree_10(GibCursor arg_35_74_124)
+{
+    GibPackedTag tag_166 = *(GibPackedTag *) arg_35_74_124;
+    GibCursor tail_167 = arg_35_74_124 + sizeof(GibInt);
+    
+    
+  switch_170:
+    ;
+    switch (tag_166) {
+        
+      case 0:
+        {
+            GibInt x_36_75_125 = ((GibIntProd *) tail_167)->field0;
+            GibPtr tailift_168 = gib_alloc(sizeof(GibIntGibIntProd));
+            
+            ((GibIntGibIntProd *) tailift_168)->field0 = 0;
+            ((GibIntGibIntProd *) tailift_168)->field1 = x_36_75_125;
+            return tailift_168;
+            break;
+        }
+        
+      case 1:
+        {
+            GibCursor x_38_77_127 =
+                      ((GibCursorGibCursorProd *) tail_167)->field0;
+            GibCursor x_39_78_128 =
+                      ((GibCursorGibCursorProd *) tail_167)->field1;
+            GibCursor y_40_79_129 =
+                       _copy_without_ptrs_Add_Tree_10(x_38_77_127);
+            GibCursor y_41_80_130 =
+                       _copy_without_ptrs_Add_Tree_10(x_39_78_128);
+            GibPtr tailift_169 =
+                   gib_alloc(sizeof(GibIntGibCursorGibCursorProd));
+            
+            ((GibIntGibCursorGibCursorProd *) tailift_169)->field0 = 1;
+            ((GibIntGibCursorGibCursorProd *) tailift_169)->field1 =
+                y_40_79_129;
+            ((GibIntGibCursorGibCursorProd *) tailift_169)->field2 =
+                y_41_80_130;
+            return tailift_169;
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_166");
+            exit(1);
+        }
+    }
+}
+unsigned char _traverse_Add_Tree_10(GibCursor arg_42_81_131)
+{
+    GibPackedTag tag_171 = *(GibPackedTag *) arg_42_81_131;
+    GibCursor tail_172 = arg_42_81_131 + sizeof(GibInt);
+    
+    
+  switch_173:
+    ;
+    switch (tag_171) {
+        
+      case 0:
+        {
+            GibInt x_43_82_132 = ((GibIntProd *) tail_172)->field0;
+            
+            return 0;
+            break;
+        }
+        
+      case 1:
+        {
+            GibCursor x_45_83_133 =
+                      ((GibCursorGibCursorProd *) tail_172)->field0;
+            GibCursor x_46_84_134 =
+                      ((GibCursorGibCursorProd *) tail_172)->field1;
+            unsigned char y_47_85_135 =  _traverse_Add_Tree_10(x_45_83_133);
+            unsigned char y_48_86_136 =  _traverse_Add_Tree_10(x_46_84_134);
+            
+            return 0;
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_171");
+            exit(1);
+        }
+    }
+}
+unsigned char _print_Add_Tree_10(GibCursor arg_49_87_137)
+{
+    GibPackedTag tag_174 = *(GibPackedTag *) arg_49_87_137;
+    GibCursor tail_175 = arg_49_87_137 + sizeof(GibInt);
+    
+    
+  switch_176:
+    ;
+    switch (tag_174) {
+        
+      case 0:
+        {
+            GibInt x_50_88_138 = ((GibIntProd *) tail_175)->field0;
+            unsigned char wildcard_52_89_139 = gib_print_symbol(154);
+            unsigned char wildcard_54_90_140 = gib_print_symbol(155);
+            unsigned char y_51_91_141 = printf("%ld", x_50_88_138);
+            unsigned char wildcard_53_92_142 = gib_print_symbol(152);
+            
+            return 0;
+            break;
+        }
+        
+      case 1:
+        {
+            GibCursor x_55_93_143 =
+                      ((GibCursorGibCursorProd *) tail_175)->field0;
+            GibCursor x_56_94_144 =
+                      ((GibCursorGibCursorProd *) tail_175)->field1;
+            unsigned char wildcard_59_95_145 = gib_print_symbol(153);
+            unsigned char wildcard_62_96_146 = gib_print_symbol(155);
+            unsigned char y_57_97_147 =  _print_Add_Tree_10(x_55_93_143);
+            unsigned char wildcard_61_98_148 = gib_print_symbol(155);
+            unsigned char y_58_99_149 =  _print_Add_Tree_10(x_56_94_144);
+            unsigned char wildcard_60_100_150 = gib_print_symbol(152);
+            
+            return 0;
+            break;
+        }
+        
+      default:
+        {
+            printf("%s\n", "Unknown tag in: tag_174");
+            exit(1);
+        }
+    }
+}
+int main(int argc, char **argv)
+{
+    int init_0 = gib_init(argc, argv);
+    
+    info_table_initialize();
+    symbol_table_initialize();
+    
+    GibPtr fltPkd_102_107 = gib_alloc(sizeof(GibIntGibIntProd));
+    
+    ((GibIntGibIntProd *) fltPkd_102_107)->field0 = 0;
+    ((GibIntGibIntProd *) fltPkd_102_107)->field1 = 1;
+    
+    GibPtr fltPkd_103_108 = gib_alloc(sizeof(GibIntGibIntProd));
+    
+    ((GibIntGibIntProd *) fltPkd_103_108)->field0 = 0;
+    ((GibIntGibIntProd *) fltPkd_103_108)->field1 = 2;
+    
+    GibPtr fltAppE_101_109 = gib_alloc(sizeof(GibIntGibCursorGibCursorProd));
+    
+    ((GibIntGibCursorGibCursorProd *) fltAppE_101_109)->field0 = 1;
+    ((GibIntGibCursorGibCursorProd *) fltAppE_101_109)->field1 = fltPkd_102_107;
+    ((GibIntGibCursorGibCursorProd *) fltAppE_101_109)->field2 = fltPkd_103_108;
+    
+    GibCursor tmp_app_151 =  Add_add1_11(fltAppE_101_109);
+    
+     _print_Add_Tree_10(tmp_app_151);
+    printf("\n");
+    return 0;
+    
+    int exit_1 = gib_exit();
+    
+    return exit_1;
+}
+
+Compiling RTS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+make -f /home/timmy/git/gibbon/gibbon-compiler/gibbon-rts/Makefile  MODE=release  GC=nongen  USER_CFLAGS=" -O3  -flto " VERBOSITY=4
+
+codegen: C RTS could not be compiled: 
+make: /home/timmy/git/gibbon/gibbon-compiler/gibbon-rts/Makefile: No such file or directory
+make: *** No rule to make target '/home/timmy/git/gibbon/gibbon-compiler/gibbon-rts/Makefile'.  Stop.
+
+Code: 2
