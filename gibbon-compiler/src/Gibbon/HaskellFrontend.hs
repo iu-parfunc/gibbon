@@ -35,6 +35,8 @@ import           Gibbon.L0.Syntax                as L0
 import           Data.List                       as L
 import           Prelude                         as P
 
+import           Gibbon.Passes.ModuleFillImports (fillImports)
+
 
 --------------------------------------------------------------------------------
 {-
@@ -179,6 +181,11 @@ type TopTyEnv = TyEnv TyScheme
 
 type TypeSynEnv = M.Map TyCon Ty0
 
+-- ========================================================
+
+
+-- ========================================================
+
 desugarModule ::
      (Show a, Pretty a)
   => Config
@@ -193,6 +200,9 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
       -- single top-level declaration we first collect types and then collect
       -- definitions.
       funtys = foldr (collectTopTy type_syns) M.empty decls
+  dbgPrintLn 2 "================================================================================"
+  dbgPrintLn 2 $ "desugaring module: " ++ mod_name
+  dbgPrintLn 2 $ "- imports: " ++ (show import_names)
   imported_progs :: [PassM Prog0] <-
     mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
   let prog = do
@@ -280,11 +290,12 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                            show (S.toList em2) ++ " found in " ++ mod_name)
                 (defs', funs''')
                 imported_progs'
-        pure (Prog defs0 funs0 main) --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs''') dbgTraceIt (sdoc userOrderings') dbgTraceIt "\n" dbgTraceIt (sdoc userOrderings)
+        fillImports (Prog defs0 funs0 main) --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs''') dbgTraceIt (sdoc userOrderings') dbgTraceIt "\n" dbgTraceIt (sdoc userOrderings)
   pure prog
   where
     init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing, S.empty, [])
     mod_name = moduleName head_mb
+    import_names =  (map (\(ImportDecl _ (ModuleName _ imp_name) _ _ _ _ _ _) -> imp_name) imports)
     coalese_constraints ::
          [(Var, M.Map DataCon [UserOrdering])]
       -> [(Var, M.Map DataCon [UserOrdering])]

@@ -3,7 +3,7 @@
 
 -- | Unique names.
 
-module Gibbon.Passes.ModuleRename (moduleRename) where
+module Gibbon.Passes.ModuleFillImports (fillImports) where
 
 import           Control.Exception
 import           Data.Foldable ( foldrM )
@@ -20,12 +20,11 @@ import qualified Gibbon.L1.Syntax as L1
 type VarEnv     = M.Map Var (M.Map Var Var)
 type TyVarEnv t = M.Map TyVar t
 
-moduleRename :: Prog0 -> PassM Prog0
-moduleRename (Prog defs funs main) =
+fillImports :: Prog0 -> PassM Prog0
+fillImports (Prog defs funs main) =
     do 
       -- defs
-      renamedDefs <- mapM (\k -> (gensym k)) (M.keys defs)
-      let defNameMap = M.fromList $ zip (M.keys defs) renamedDefs
+      let defNameMap = M.fromList $ zip (M.keys defs) (M.keys defs)
       let initDefEnv :: VarEnv = M.empty 
       let (defenv, _) = M.mapAccumWithKey buildEnv initDefEnv defNameMap
       let transformDefKey :: Var -> Var
@@ -34,8 +33,7 @@ moduleRename (Prog defs funs main) =
             resolveNameInEnv mod name defenv
       
       -- funs
-      renamedFuns <- mapM (\k -> (gensym k)) (M.keys funs)
-      let funNameMap = M.fromList $ zip (M.keys funs) renamedFuns
+      let funNameMap = M.fromList $ zip (M.keys funs) (M.keys funs)
       let initFunEnv :: VarEnv = M.empty 
       let (funenv, _) = M.mapAccumWithKey buildEnv initFunEnv funNameMap
       let transformFunKey :: Var -> Var
@@ -121,7 +119,7 @@ resolveModInExp exp defenv funenv =
       let (mod, fun) = parseOutMod v
       let v' = resolveNameInEnv mod fun funenv
       ls' <- traverse (\v -> resolveModInExp v defenv funenv) ls
-      return $ AppE v' locs ls'
+      return $ AppE v' locs ls
 
     PrimAppE p es -> return $ PrimAppE p es
 
