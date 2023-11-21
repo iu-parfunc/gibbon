@@ -60,6 +60,7 @@ library
 
                        -- compiler passes, roughly in the order they're run
                        Gibbon.Passes.ModuleRename
+                       Gibbon.Passes.ModuleFillImports
                        Gibbon.Passes.Freshen
                        Gibbon.Passes.Flatten
                        Gibbon.Passes.InlineTriv

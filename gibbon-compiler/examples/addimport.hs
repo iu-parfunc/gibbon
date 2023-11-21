@@ -1,5 +1,6 @@
-module Addimport where
+module AddImport where
     import Addone
+    import Addtwo
+    import AddTree
 
-    main :: Tree
-    main = Addone.add1 2 (Addone.add1 (Node (Leaf 1) (Leaf 2)))
+    gibbon_main = Addone.add (Addtwo.add (Node (Leaf 1) (Leaf 2)))
