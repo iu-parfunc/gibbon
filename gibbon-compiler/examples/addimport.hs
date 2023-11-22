@@ -1,6 +1,6 @@
 module AddImport where
-    import Addone
-    import Addtwo
+    import Addone as On
+    import Addtwo as Tw
     import AddTree
 
-    gibbon_main = Addone.add (Addtwo.add (Node (Leaf 1) (Leaf 2)))
+    gibbon_main = Tw.add (On.add (Node (Leaf 1) (Leaf 2)))
