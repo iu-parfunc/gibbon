@@ -436,10 +436,6 @@ processImport cfg pstate_ref import_route dir decl@ImportDecl {..}
       error $
       "Circular dependency detected. Import path: " ++
       show (mod_name : import_route)
-    when (importQualified) $
-      error $
-      "Qualified imports not supported yet. Offending import: " ++
-      prettyPrint decl
     --when (isJust importAs) $
     --  error $
     --  "Module aliases not supported yet. Offending import: " ++ prettyPrint decl
