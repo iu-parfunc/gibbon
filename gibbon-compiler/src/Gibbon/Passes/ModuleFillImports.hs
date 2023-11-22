@@ -19,7 +19,7 @@ import qualified Language.Haskell.Exts.Syntax as H
 
 --------------------------------------------------------------------------------
 
-type VarEnv     = M.Map Var (M.Map Var Var)
+type VarEnv     = M.Map Var (M.Map Var (Var, Bool))
 type TyVarEnv t = M.Map TyVar t
 
 fillImports :: Prog0 -> Var -> [H.ImportDecl a] -> [Prog0]-> PassM Prog0
@@ -27,22 +27,22 @@ fillImports (Prog defs funs main) localMod imports imported_progs =
     do 
 
       -- resolve aliases in imported functions
-      let aliases = getAliases imports
-      let initImportedNames :: [(Var, Var)] = [] 
-      let applyAlias :: Var -> M.Map Var Var -> (Var, Var)
-          applyAlias v aliasMap = do
+      let importMeta = getImportMeta imports
+      let initImportedNames :: [(Var, (Var, Bool))] = [] 
+      let applyImportMeta :: Var -> M.Map Var (Var, Bool) -> (Var, (Var, Bool))
+          applyImportMeta v importMap = do
             let (mod, name) = parseOutMod v 
             case mod of
               Just modName ->
-                case (M.lookup modName aliasMap) of
-                  Just alias -> (toVar ((fromVar alias) ++ "." ++ (fromVar name)), v)
+                case (M.lookup modName importMap) of
+                  Just (alias, qual) -> (toVar ((fromVar alias) ++ "." ++ (fromVar name)), (v, qual))
                   Nothing -> error $ "could not find module or alias: " ++ (show modName)
               Nothing -> error "how did we get here?"
-      let importedDefs = foldr (\(Prog idefs _ _) acc -> acc ++ (map (\tyName -> applyAlias tyName aliases) (M.keys idefs))) initImportedNames imported_progs
-      let importedFuns = foldr (\(Prog _ ifuns _) acc -> acc ++ (map (\funName -> applyAlias funName aliases) (M.keys ifuns))) initImportedNames imported_progs
+      let importedDefs = foldr (\(Prog idefs _ _) acc -> acc ++ (map (\tyName -> applyImportMeta tyName importMeta) (M.keys idefs))) initImportedNames imported_progs
+      let importedFuns = foldr (\(Prog _ ifuns _) acc -> acc ++ (map (\funName -> applyImportMeta funName importMeta) (M.keys ifuns))) initImportedNames imported_progs
 
       -- build def env
-      let defNameMap = M.fromList $ importedDefs ++ (zip (M.keys defs) (M.keys defs))
+      let defNameMap = M.fromList $ importedDefs ++ (zip (M.keys defs) (map (\v -> (v, False)) (M.keys defs)))
       let initDefEnv :: VarEnv = M.empty 
       let (defenv, _) = M.mapAccumWithKey buildEnv initDefEnv defNameMap
       let transformDefKey :: Var -> Var
@@ -51,7 +51,7 @@ fillImports (Prog defs funs main) localMod imports imported_progs =
             resolveNameInEnv mod name defenv
       
       -- build fun env
-      let funNameMap = M.fromList $ importedFuns ++ (zip (M.keys funs) (M.keys funs)) 
+      let funNameMap = M.fromList $ importedFuns ++ (zip (M.keys funs) (map (\v -> (v, False)) (M.keys funs)) )
       let initFunEnv :: VarEnv = M.empty 
       let (funenv, _) = M.mapAccumWithKey buildEnv initFunEnv funNameMap
       let transformFunKey :: Var -> Var
@@ -75,26 +75,15 @@ fillImports (Prog defs funs main) localMod imports imported_progs =
 
       return $ Prog defs'' funs'' main'
 
-getAliases :: [H.ImportDecl a] -> M.Map Var Var
-getAliases imports = do 
+getImportMeta :: [H.ImportDecl a] -> M.Map Var (Var, Bool)
+getImportMeta imports = do 
   M.fromList $ map 
-    (\(H.ImportDecl _ (H.ModuleName _ importName) _ _ _ _ aliased _) -> 
+    (\(H.ImportDecl _ (H.ModuleName _ importName) qualified _ _ _ aliased _) -> 
       case aliased of
-          Just (H.ModuleName _ importAs) -> ((toVar importName), (toVar importAs))
-          Nothing -> ((toVar importName), (toVar importName))
+          Just (H.ModuleName _ importAs) -> ((toVar importName), ((toVar importAs), qualified))
+          Nothing -> ((toVar importName), ((toVar importName), qualified))
       ) 
     imports
-
-resolveAlias :: Var -> Var -> M.Map Var Var -> (Var, Var)
-resolveAlias fullName localMod aliases = do
-  let (mod, name) = parseOutMod fullName
-  case mod of
-    Just modName ->
-      if modName == localMod then (fullName, fullName)
-      else case (M.lookup modName aliases) of
-        Just alias -> (toVar ((fromVar alias) ++ "." ++ (fromVar name)), fullName)
-        Nothing -> error $ "could not find import: " ++ (fromVar modName) ++ " in alias map: " ++ (show aliases)
-    Nothing -> error $ "tbh shoulding get here either -- resolving aliases, couldn't parse out module name in declaration"
 
 resolveModsInDefs :: DDef Ty0 -> VarEnv -> VarEnv -> PassM (DDef Ty0)
 resolveModsInDefs (DDef tyName tyArgs dataCons) defenv funenv =
@@ -195,7 +184,7 @@ resolveModInExp exp defenv funenv =
 
 -- environment interactions
 
-buildEnv :: VarEnv -> Var -> Var -> (VarEnv, Var)
+buildEnv :: VarEnv -> Var -> (Var, Bool) -> (VarEnv, (Var, Bool))
 buildEnv env k v = do
   let (mod, name) = parseOutMod k
   let mod' = case mod of
@@ -203,7 +192,7 @@ buildEnv env k v = do
               Nothing -> (toVar "")
   case (M.lookup name env) of
     Just m -> 
-      if (M.member mod' m) then error $ "duplicate function call in mod" ++ (fromVar mod')
+      if (M.member mod' m) then error $ "duplicate function call in module" ++ (fromVar mod')
       else ((M.insert name (M.insert mod' v m) env), v)
     Nothing -> ((M.insert name (M.singleton mod' v) env), v)
 
@@ -224,8 +213,15 @@ resolveNameInEnv mod name e =
   do case (M.lookup name e) of
       Just modspace -> case mod of
         Just m -> case (M.lookup m modspace) of
-                    Just n -> n
+                    Just (n, _) -> n
                     Nothing -> error $ "can't find " ++ (fromVar name) ++ " in module " ++ (fromVar m) ++ " in env: " ++ (show e)
-        Nothing -> if(M.size modspace == 1) then head $ M.elems modspace
-                   else error $ "can't find " ++ (fromVar name)  ++ " in env: " ++ (show e)
+        Nothing -> case (foldr findUnqualified (False, "") modspace) of
+                    (True, n) -> n
+                    (False, _) -> error $ "can't find unquilified reference to " ++ (fromVar name)
       Nothing -> error $ "can't find " ++ (fromVar name) ++ " in env: " ++ (show e)
+
+findUnqualified :: (Var, Bool) -> (Bool, Var) -> (Bool, Var)
+findUnqualified (n, q) (acc, out) =
+      if (not q) && (not acc) then (True, n)
+      else if (not q) && acc then error $ "Ambiguous reference"
+      else (acc, out)
