@@ -203,6 +203,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
   dbgPrintLn 2 "================================================================================"
   dbgPrintLn 2 $ "desugaring module: " ++ mod_name
   dbgPrintLn 2 $ "- imports: " ++ (show import_names)
+  dbgPrintLn 2 $ "- aliases: " ++ (show aliases)
   imported_progs :: [PassM Prog0] <-
     mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
   let prog = do
@@ -250,6 +251,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                 funs'''
                 (M.keys userOrderings')
         imported_progs' <- mapM id imported_progs
+        Prog defs'' funs'''' main' <- fillImports (Prog defs' funs''' main) (toVar mod_name) imports imported_progs'
         let (defs0, funs0) =
               foldr
                 (\Prog {ddefs, fundefs} (defs1, funs1) ->
@@ -288,14 +290,21 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                            error $
                            "Conflicting definitions of " ++
                            show (S.toList em2) ++ " found in " ++ mod_name)
-                (defs', funs''')
+                (defs'', funs'''')
                 imported_progs'
-        fillImports (Prog defs0 funs0 main) --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs''') dbgTraceIt (sdoc userOrderings') dbgTraceIt "\n" dbgTraceIt (sdoc userOrderings)
+        return $ (Prog defs0 funs0 main') --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs''') dbgTraceIt (sdoc userOrderings') dbgTraceIt "\n" dbgTraceIt (sdoc userOrderings)
   pure prog
   where
     init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing, S.empty, [])
     mod_name = moduleName head_mb
-    import_names =  (map (\(ImportDecl _ (ModuleName _ imp_name) _ _ _ _ _ _) -> imp_name) imports)
+    import_names =  (map (\(ImportDecl _ (ModuleName _ importName) _ _ _ _ _ _) -> importName) imports)
+    aliases      =  M.fromList (map 
+                        (\(ImportDecl _ (ModuleName _ importName) _ _ _ _ aliased _) -> 
+                          case aliased of
+                            Just (ModuleName _ importAs) -> ((toVar importName), (toVar importAs))
+                            Nothing -> ((toVar importName), (toVar importName))
+                        ) 
+                      imports)
     coalese_constraints ::
          [(Var, M.Map DataCon [UserOrdering])]
       -> [(Var, M.Map DataCon [UserOrdering])]
@@ -431,9 +440,9 @@ processImport cfg pstate_ref import_route dir decl@ImportDecl {..}
       error $
       "Qualified imports not supported yet. Offending import: " ++
       prettyPrint decl
-    when (isJust importAs) $
-      error $
-      "Module aliases not supported yet. Offending import: " ++ prettyPrint decl
+    --when (isJust importAs) $
+    --  error $
+    --  "Module aliases not supported yet. Offending import: " ++ prettyPrint decl
     when (isJust importSpecs) $
       error $
       "Selective imports not supported yet. Offending import: " ++

@@ -15,16 +15,34 @@ import           Gibbon.Common
 import           Gibbon.L0.Syntax
 import qualified Gibbon.L1.Syntax as L1
 
+import qualified Language.Haskell.Exts.Syntax as H
+
 --------------------------------------------------------------------------------
 
 type VarEnv     = M.Map Var (M.Map Var Var)
 type TyVarEnv t = M.Map TyVar t
 
-fillImports :: Prog0 -> PassM Prog0
-fillImports (Prog defs funs main) =
+fillImports :: Prog0 -> Var -> [H.ImportDecl a] -> [Prog0]-> PassM Prog0
+fillImports (Prog defs funs main) localMod imports imported_progs =
     do 
-      -- defs
-      let defNameMap = M.fromList $ zip (M.keys defs) (M.keys defs)
+
+      -- resolve aliases in imported functions
+      let aliases = getAliases imports
+      let initImportedNames :: [(Var, Var)] = [] 
+      let applyAlias :: Var -> M.Map Var Var -> (Var, Var)
+          applyAlias v aliasMap = do
+            let (mod, name) = parseOutMod v 
+            case mod of
+              Just modName ->
+                case (M.lookup modName aliasMap) of
+                  Just alias -> (toVar ((fromVar alias) ++ "." ++ (fromVar name)), v)
+                  Nothing -> error $ "could not find module or alias: " ++ (show modName)
+              Nothing -> error "how did we get here?"
+      let importedDefs = foldr (\(Prog idefs _ _) acc -> acc ++ (map (\tyName -> applyAlias tyName aliases) (M.keys idefs))) initImportedNames imported_progs
+      let importedFuns = foldr (\(Prog _ ifuns _) acc -> acc ++ (map (\funName -> applyAlias funName aliases) (M.keys ifuns))) initImportedNames imported_progs
+
+      -- build def env
+      let defNameMap = M.fromList $ importedDefs ++ (zip (M.keys defs) (M.keys defs))
       let initDefEnv :: VarEnv = M.empty 
       let (defenv, _) = M.mapAccumWithKey buildEnv initDefEnv defNameMap
       let transformDefKey :: Var -> Var
@@ -32,8 +50,8 @@ fillImports (Prog defs funs main) =
             let (mod, name) = parseOutMod k
             resolveNameInEnv mod name defenv
       
-      -- funs
-      let funNameMap = M.fromList $ zip (M.keys funs) (M.keys funs)
+      -- build fun env
+      let funNameMap = M.fromList $ importedFuns ++ (zip (M.keys funs) (M.keys funs)) 
       let initFunEnv :: VarEnv = M.empty 
       let (funenv, _) = M.mapAccumWithKey buildEnv initFunEnv funNameMap
       let transformFunKey :: Var -> Var
@@ -44,9 +62,11 @@ fillImports (Prog defs funs main) =
       -- main
       main' <- case main of
                  Nothing -> return Nothing
-                 Just (m,ty) -> do m' <- resolveModInExp m defenv funenv
+                 Just (m,ty) -> do --error $ "fun env: " ++ (show funenv)
+                                   m' <- resolveModInExp m defenv funenv
                                    return $ Just (m',ty)
       
+
       defs' <- traverse (\v -> resolveModsInDefs v defenv funenv) defs
       funs' <- traverse (\v -> resolveModsInFuns v defenv funenv) funs
 
@@ -54,6 +74,27 @@ fillImports (Prog defs funs main) =
       let funs'' = M.mapKeys transformFunKey funs'
 
       return $ Prog defs'' funs'' main'
+
+getAliases :: [H.ImportDecl a] -> M.Map Var Var
+getAliases imports = do 
+  M.fromList $ map 
+    (\(H.ImportDecl _ (H.ModuleName _ importName) _ _ _ _ aliased _) -> 
+      case aliased of
+          Just (H.ModuleName _ importAs) -> ((toVar importName), (toVar importAs))
+          Nothing -> ((toVar importName), (toVar importName))
+      ) 
+    imports
+
+resolveAlias :: Var -> Var -> M.Map Var Var -> (Var, Var)
+resolveAlias fullName localMod aliases = do
+  let (mod, name) = parseOutMod fullName
+  case mod of
+    Just modName ->
+      if modName == localMod then (fullName, fullName)
+      else case (M.lookup modName aliases) of
+        Just alias -> (toVar ((fromVar alias) ++ "." ++ (fromVar name)), fullName)
+        Nothing -> error $ "could not find import: " ++ (fromVar modName) ++ " in alias map: " ++ (show aliases)
+    Nothing -> error $ "tbh shoulding get here either -- resolving aliases, couldn't parse out module name in declaration"
 
 resolveModsInDefs :: DDef Ty0 -> VarEnv -> VarEnv -> PassM (DDef Ty0)
 resolveModsInDefs (DDef tyName tyArgs dataCons) defenv funenv =
@@ -119,7 +160,7 @@ resolveModInExp exp defenv funenv =
       let (mod, fun) = parseOutMod v
       let v' = resolveNameInEnv mod fun funenv
       ls' <- traverse (\v -> resolveModInExp v defenv funenv) ls
-      return $ AppE v' locs ls
+      return $ AppE v' locs ls'
 
     PrimAppE p es -> return $ PrimAppE p es
 
@@ -184,7 +225,7 @@ resolveNameInEnv mod name e =
       Just modspace -> case mod of
         Just m -> case (M.lookup m modspace) of
                     Just n -> n
-                    Nothing -> error $ "can't find " ++ (fromVar name) ++ " in module " ++ (fromVar m)
+                    Nothing -> error $ "can't find " ++ (fromVar name) ++ " in module " ++ (fromVar m) ++ " in env: " ++ (show e)
         Nothing -> if(M.size modspace == 1) then head $ M.elems modspace
-                   else error $ "can't find " ++ (fromVar name)
-      Nothing -> error $ "can't find " ++ (fromVar name)
+                   else error $ "can't find " ++ (fromVar name)  ++ " in env: " ++ (show e)
+      Nothing -> error $ "can't find " ++ (fromVar name) ++ " in env: " ++ (show e)
