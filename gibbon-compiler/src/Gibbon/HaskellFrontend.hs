@@ -183,6 +183,35 @@ type TypeSynEnv = M.Map TyCon Ty0
 
 -- ========================================================
 
+getImportMeta :: [H.ImportDecl a] -> M.Map Var (Var, Bool, Maybe [Var])
+getImportMeta imports = do 
+  let parseSpecs :: Maybe (H.ImportSpecList a)-> Maybe [Var]
+      parseSpecs maybeSpec = do
+        case maybeSpec of
+          Just (H.ImportSpecList _ _ specList) ->
+              Just $ map (\spec -> case spec of
+                H.IVar _ n -> case n of
+                  Ident _ v -> toVar v
+                  Symbol _ v -> toVar v
+                H.IAbs _ _ n -> case n of
+                  Ident _ v -> toVar v
+                  Symbol _ v -> toVar v
+                H.IThingAll _ n -> case n of
+                  Ident _ v -> toVar v
+                  Symbol _ v -> toVar v
+                H.IThingWith _ n _ -> case n of
+                  Ident _ v -> toVar v
+                  Symbol _ v -> toVar v
+              ) specList
+          Nothing -> Nothing
+  M.fromList $ map 
+    (\(H.ImportDecl _ (H.ModuleName _ importName) qualified _ _ _ aliased spec) -> 
+      case aliased of
+          Just (H.ModuleName _ importAs) ->
+            ((toVar importName), ((toVar importAs), qualified, (parseSpecs spec)))
+          Nothing -> ((toVar importName), ((toVar importName), qualified, (parseSpecs spec)))
+      ) 
+    imports
 
 -- ========================================================
 
@@ -204,6 +233,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
   dbgPrintLn 2 $ "desugaring module: " ++ mod_name
   dbgPrintLn 2 $ "- imports: " ++ (show import_names)
   dbgPrintLn 2 $ "- aliases: " ++ (show aliases)
+  dbgPrintLn 2 $ "- imports: " ++ (show (getImportMeta imports))
   imported_progs :: [PassM Prog0] <-
     mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
   let prog = do
@@ -439,10 +469,10 @@ processImport cfg pstate_ref import_route dir decl@ImportDecl {..}
     --when (isJust importAs) $
     --  error $
     --  "Module aliases not supported yet. Offending import: " ++ prettyPrint decl
-    when (isJust importSpecs) $
-      error $
-      "Selective imports not supported yet. Offending import: " ++
-      prettyPrint decl
+    --when (isJust importSpecs) $
+    --  error $
+    --  "Selective imports not supported yet. Offending import: " ++
+    --  prettyPrint decl
     (ParseState imported) <- readIORef pstate_ref
     mod_fp <-
       if mod_name `elem` stdlibModules
