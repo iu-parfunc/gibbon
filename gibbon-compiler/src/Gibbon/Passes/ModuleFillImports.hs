@@ -29,17 +29,23 @@ fillImports (Prog defs funs main) localMod imports imported_progs =
       -- resolve aliases in imported functions
       let importMeta = getImportMeta imports
       let initImportedNames :: [(Var, (Var, Bool))] = [] 
-      let applyImportMeta :: Var -> M.Map Var (Var, Bool) -> (Var, (Var, Bool))
-          applyImportMeta v importMap = do
+      let applyImportMeta :: Var -> [(Var, (Var, Bool))] -> [(Var, (Var, Bool))]
+          applyImportMeta v acc = do
             let (mod, name) = parseOutMod v 
             case mod of
               Just modName ->
-                case (M.lookup modName importMap) of
-                  Just (alias, qual) -> (toVar ((fromVar alias) ++ "." ++ (fromVar name)), (v, qual))
+                case (M.lookup modName importMeta) of
+                  Just (alias, qual, specs) ->
+                    case specs of 
+                      Just spec -> if (elem name spec) then acc ++ [(toVar ((fromVar alias) ++ "." ++ (fromVar name)), (v, qual))]
+                                   else acc
+                      Nothing -> acc ++ [(toVar ((fromVar alias) ++ "." ++ (fromVar name)), (v, qual))]
                   Nothing -> error $ "could not find module or alias: " ++ (show modName)
               Nothing -> error "how did we get here?"
-      let importedDefs = foldr (\(Prog idefs _ _) acc -> acc ++ (map (\tyName -> applyImportMeta tyName importMeta) (M.keys idefs))) initImportedNames imported_progs
-      let importedFuns = foldr (\(Prog _ ifuns _) acc -> acc ++ (map (\funName -> applyImportMeta funName importMeta) (M.keys ifuns))) initImportedNames imported_progs
+      let importedDefs = foldr (\(Prog idefs _ _) acc -> acc ++ (foldr applyImportMeta [] (M.keys idefs))) initImportedNames imported_progs
+      let importedFuns = foldr (\(Prog _ ifuns _) acc -> acc ++ (foldr applyImportMeta [] (M.keys ifuns))) initImportedNames imported_progs
+      --let importedDefs = foldr (\(Prog idefs _ _) acc -> acc ++ (map (\tyName -> applyImportMeta tyName importMeta) (M.keys idefs))) initImportedNames imported_progs
+      --let importedFuns = foldr (\(Prog _ ifuns _) acc -> acc ++ (map (\funName -> applyImportMeta funName importMeta) (M.keys ifuns))) initImportedNames imported_progs
 
       -- build def env
       let defNameMap = M.fromList $ importedDefs ++ (zip (M.keys defs) (map (\v -> (v, False)) (M.keys defs)))
@@ -75,13 +81,33 @@ fillImports (Prog defs funs main) localMod imports imported_progs =
 
       return $ Prog defs'' funs'' main'
 
-getImportMeta :: [H.ImportDecl a] -> M.Map Var (Var, Bool)
+getImportMeta :: [H.ImportDecl a] -> M.Map Var (Var, Bool, Maybe [Var])
 getImportMeta imports = do 
+  let parseSpecs :: Maybe (H.ImportSpecList a)-> Maybe [Var]
+      parseSpecs maybeSpec = do
+        case maybeSpec of
+          Just (H.ImportSpecList _ _ specList) ->
+              Just $ map (\spec -> case spec of
+                H.IVar _ n -> case n of
+                  H.Ident _ v -> toVar v
+                  H.Symbol _ v -> toVar v
+                H.IAbs _ _ n -> case n of
+                  H.Ident _ v -> toVar v
+                  H.Symbol _ v -> toVar v
+                H.IThingAll _ n -> case n of
+                  H.Ident _ v -> toVar v
+                  H.Symbol _ v -> toVar v
+                H.IThingWith _ n _ -> case n of
+                  H.Ident _ v -> toVar v
+                  H.Symbol _ v -> toVar v
+              ) specList
+          Nothing -> Nothing
   M.fromList $ map 
-    (\(H.ImportDecl _ (H.ModuleName _ importName) qualified _ _ _ aliased _) -> 
+    (\(H.ImportDecl _ (H.ModuleName _ importName) qualified _ _ _ aliased spec) -> 
       case aliased of
-          Just (H.ModuleName _ importAs) -> ((toVar importName), ((toVar importAs), qualified))
-          Nothing -> ((toVar importName), ((toVar importName), qualified))
+          Just (H.ModuleName _ importAs) ->
+            ((toVar importName), ((toVar importAs), qualified, (parseSpecs spec)))
+          Nothing -> ((toVar importName), ((toVar importName), qualified, (parseSpecs spec)))
       ) 
     imports
 
