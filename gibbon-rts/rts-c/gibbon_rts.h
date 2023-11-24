@@ -14,18 +14,19 @@
  * CPP macros used in the RTS:
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
- * _GIBBON_VERBOSITY=int     verbosity level for debug output
- * _GIBBON_DEBUG             enables various assertions if present
- * _GIBBON_GCSTATS           collect GC statistics if present
- * _GIBBON_PRINT_GCSTATS     print GC statistics if present
- * _GIBBON_GENGC             only use old reference counted GC set to 0
- * _GIBBON_BOUNDSCHECK       boundscheck vector accesses
- * _GIBBON_BUMPALLOC_LISTS   bump allocated linked lists
- * _GIBBON_BUMPALLOC_HEAP    bump allocated gib_alloc
- * _GIBBON_POINTER           pointer mode gib_alloc
- * _GIBBON_PARALLEL          parallel mode
- * _GIBBON_EAGER_PROMOTION   disable eager promotion if set to 0
- * _GIBBON_SIMPLE_WRITE_BARRIER disable eliminate-indirection-chains optimization
+ * _GIBBON_VERBOSITY=int         verbosity level for debug output
+ * _GIBBON_DEBUG                 enables various assertions if present
+ * _GIBBON_GCSTATS               collect GC statistics if present
+ * _GIBBON_PRINT_GCSTATS         print GC statistics if present
+ * _GIBBON_GENGC                 only use old reference counted GC set to 0
+ * _GIBBON_BOUNDSCHECK           boundscheck vector accesses
+ * _GIBBON_BUMPALLOC_LISTS       bump allocated linked lists
+ * _GIBBON_BUMPALLOC_HEAP        bump allocated gib_alloc
+ * _GIBBON_POINTER               pointer mode gib_alloc
+ * _GIBBON_PARALLEL              parallel mode
+ * _GIBBON_EAGER_PROMOTION       disable eager promotion if set to 0
+ * _GIBBON_SIMPLE_WRITE_BARRIER  disable eliminate-indirection-chains optimization
+ * _GIBBON_ENABLE_PAPI           enable instrumentation via papi
  *
  */
 
@@ -116,6 +117,8 @@ char *gib_read_bench_prog_param(void);
 char *gib_read_benchfile_param(void);
 char *gib_read_arrayfile_param(void);
 uint64_t gib_read_arrayfile_length_param(void);
+uint64_t get_papi_region_id(void);
+void increment_papi_region_id(void);
 
 // Number of regions allocated.
 int64_t gib_read_region_count(void);
