@@ -11,5 +11,5 @@ module Addtwo where
             Leaf x     -> Leaf (x - 2)
             Node x1 x2 -> Node (sub x1) (sub x2)
 
-    main :: Tree
-    main = add (Node (Leaf 1) (Leaf 2))
+    gibbon_main :: Tree
+    gibbon_main = add (Node (Leaf 1) (Leaf 2))

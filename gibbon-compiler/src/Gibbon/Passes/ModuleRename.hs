@@ -123,16 +123,28 @@ resolveModInExp exp defenv funenv =
       ls' <- traverse (\v -> resolveModInExp v defenv funenv) ls
       return $ AppE v' locs ls'
 
-    PrimAppE p es -> return $ PrimAppE p es
+    PrimAppE p es -> do
+      es' <- traverse (\v -> resolveModInExp v defenv funenv) es
+      return $ PrimAppE p es'
 
     LetE (v,_locs,ty, e1) e2 -> do
       e1' <- resolveModInExp e1 defenv funenv
       e2' <- resolveModInExp e2 defenv funenv
       return $ LetE (v, [], ty, e1') e2'
 
-    IfE e1 e2 e3 -> return $ IfE e1 e2 e3
-    ProjE i e -> return $ ProjE i e
-    MkProdE es -> return $ MkProdE es
+    IfE e1 e2 e3 -> do
+      e1' <- resolveModInExp e1 defenv funenv
+      e2' <- resolveModInExp e2 defenv funenv
+      e3' <- resolveModInExp e3 defenv funenv
+      return $ IfE e1' e2' e3'
+
+    ProjE i e -> do
+      e' <- resolveModInExp e defenv funenv
+      return $ ProjE i e'
+
+    MkProdE es -> do
+      es' <- traverse (\v -> resolveModInExp v defenv funenv) es
+      return $ MkProdE es'
 
     CaseE e mp -> do
       e' <- resolveModInExp e defenv funenv
@@ -145,12 +157,25 @@ resolveModInExp exp defenv funenv =
       es' <- traverse (\v -> resolveModInExp v defenv funenv) es
       return $ DataConE loc c es'
 
-    TimeIt e t b -> return $ TimeIt e t b
-    WithArenaE v e -> return $ WithArenaE v e
-    SpawnE v locs ls -> return $ SpawnE v locs ls
+    TimeIt e t b -> do
+      e' <- resolveModInExp e defenv funenv
+      return $ TimeIt e' t b
+    WithArenaE v e -> do
+      e' <- resolveModInExp e defenv funenv
+      return $ WithArenaE v e'
+    SpawnE v locs ls -> do
+      ls' <- traverse (\v -> resolveModInExp v defenv funenv) ls
+      return $ SpawnE v locs ls'
     SyncE -> return $ SyncE
-    MapE v e -> return $ MapE v e
-    FoldE e1 e2 e3 -> return $ FoldE e1 e2 e3
+    MapE (v, d, ve) e -> do
+      e' <- resolveModInExp e defenv funenv
+      ve' <- resolveModInExp ve defenv funenv
+      return $ MapE (v, d, ve') e'
+    FoldE (v1, d1, e1) (v2, d2, e2) e3 -> do
+      e1' <- resolveModInExp e1 defenv funenv
+      e2' <- resolveModInExp e2 defenv funenv
+      e3' <- resolveModInExp e3 defenv funenv
+      return $ FoldE (v1, d1, e1') (v2, d2, e2') e3'
     Ext ext -> return $ Ext ext
 
 

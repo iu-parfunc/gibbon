@@ -58,6 +58,7 @@ import qualified Gibbon.L0.Specialize2 as L0
 import qualified Gibbon.L1.Typecheck as L1
 import qualified Gibbon.L2.Typecheck as L2
 import qualified Gibbon.L3.Typecheck as L3
+import           Gibbon.Passes.FreshConstructors   (freshConstructors)
 import           Gibbon.Passes.ModuleRename   (moduleRename)
 import           Gibbon.Passes.Freshen        (freshNames)
 import           Gibbon.Passes.Flatten        (flattenL1, flattenL2, flattenL3)
@@ -604,9 +605,10 @@ passes config@Config{dynflags} l0 = do
           opt_layout_global = gopt Opt_Layout_Global dynflags
           use_solver = gopt Opt_Layout_Use_Solver dynflags
           tcProg3     = L3.tcProg isPacked
+      l0 <- go  "freshConstructors" freshConstructors   l0
       l0 <- go  "renameModules"   moduleRename         l0
       l0 <- go  "freshen"         freshNames            l0
-      l0 <- goE0 "typecheck"       L0.tcProg             l0
+      l0 <- goE0 "typecheck"       L0.tcProg            l0
       l0 <- goE0 "bindLambdas"     L0.bindLambdas       l0
       l0 <- goE0 "monomorphize"    L0.monomorphize      l0
       -- l0 <- goE0 "closureConvert"  L0.closureConvert    l0

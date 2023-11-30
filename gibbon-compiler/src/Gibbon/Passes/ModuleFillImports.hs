@@ -42,15 +42,25 @@ fillImports (Prog defs funs main) localMod imports imported_progs =
                       Nothing -> acc ++ [(toVar ((fromVar alias) ++ "." ++ (fromVar name)), (v, qual))]
                   Nothing -> error $ "could not find module or alias: " ++ (show modName)
               Nothing -> error "how did we get here?"
+
+      let importedConstrs = foldr (\(Prog idefs _ _) acc -> acc ++ (foldr applyImportMeta [] (L.map (\(constrName, _) -> (toVar constrName)) (foldr (\(DDef _ _ dataCons) acc -> acc ++ dataCons) [] idefs)))) initImportedNames imported_progs
+      let localConstrs = (L.map (\(constrName, _) -> 
+                          (toVar constrName)) (foldr (\(DDef _ _ dataCons) acc -> 
+                            acc ++ dataCons
+                          ) [] (M.elems defs))
+                        )
       let importedDefs = foldr (\(Prog idefs _ _) acc -> acc ++ (foldr applyImportMeta [] (M.keys idefs))) initImportedNames imported_progs
       let importedFuns = foldr (\(Prog _ ifuns _) acc -> acc ++ (foldr applyImportMeta [] (M.keys ifuns))) initImportedNames imported_progs
-      --let importedDefs = foldr (\(Prog idefs _ _) acc -> acc ++ (map (\tyName -> applyImportMeta tyName importMeta) (M.keys idefs))) initImportedNames imported_progs
-      --let importedFuns = foldr (\(Prog _ ifuns _) acc -> acc ++ (map (\funName -> applyImportMeta funName importMeta) (M.keys ifuns))) initImportedNames imported_progs
+      
+      let initEnv :: VarEnv = M.empty
+      -- build constructor env
+
+      let constrNameMap = M.fromList $ importedConstrs ++ (zip localConstrs (map (\v -> (v, False)) localConstrs))
+      let (constrenv, _) = M.mapAccumWithKey buildEnv initEnv constrNameMap
 
       -- build def env
       let defNameMap = M.fromList $ importedDefs ++ (zip (M.keys defs) (map (\v -> (v, False)) (M.keys defs)))
-      let initDefEnv :: VarEnv = M.empty 
-      let (defenv, _) = M.mapAccumWithKey buildEnv initDefEnv defNameMap
+      let (defenv, _) = M.mapAccumWithKey buildEnv initEnv defNameMap
       let transformDefKey :: Var -> Var
           transformDefKey k = do
             let (mod, name) = parseOutMod k
@@ -58,8 +68,7 @@ fillImports (Prog defs funs main) localMod imports imported_progs =
       
       -- build fun env
       let funNameMap = M.fromList $ importedFuns ++ (zip (M.keys funs) (map (\v -> (v, False)) (M.keys funs)) )
-      let initFunEnv :: VarEnv = M.empty 
-      let (funenv, _) = M.mapAccumWithKey buildEnv initFunEnv funNameMap
+      let (funenv, _) = M.mapAccumWithKey buildEnv initEnv funNameMap
       let transformFunKey :: Var -> Var
           transformFunKey k = do
             let (mod, name) = parseOutMod k
@@ -69,12 +78,12 @@ fillImports (Prog defs funs main) localMod imports imported_progs =
       main' <- case main of
                  Nothing -> return Nothing
                  Just (m,ty) -> do --error $ "fun env: " ++ (show funenv)
-                                   m' <- resolveModInExp m defenv funenv
+                                   m' <- resolveModInExp m defenv funenv constrenv
                                    return $ Just (m',ty)
       
 
       defs' <- traverse (\v -> resolveModsInDefs v defenv funenv) defs
-      funs' <- traverse (\v -> resolveModsInFuns v defenv funenv) funs
+      funs' <- traverse (\v -> resolveModsInFuns v defenv funenv constrenv) funs
 
       let defs'' = M.mapKeys transformDefKey defs'
       let funs'' = M.mapKeys transformFunKey funs'
@@ -118,12 +127,12 @@ resolveModsInDefs (DDef tyName tyArgs dataCons) defenv funenv =
       let dataCons' = map (\v -> resolveModsInDataCons v defenv funenv) dataCons
       pure $ DDef (resolveNameInEnv mod name defenv) tyArgs dataCons'
 
-resolveModsInFuns :: FunDef Exp0 -> VarEnv -> VarEnv -> PassM (FunDef Exp0)
-resolveModsInFuns (FunDef nam nargs funty bod meta) defenv funenv =
+resolveModsInFuns :: FunDef Exp0 -> VarEnv -> VarEnv -> VarEnv -> PassM (FunDef Exp0)
+resolveModsInFuns (FunDef nam nargs funty bod meta) defenv funenv constrenv =
     do 
       let nam' = parseAndResolve nam funenv
       let funty' = resolveModsInTyScheme funty defenv
-      bod' <- resolveModInExp bod defenv funenv 
+      bod' <- resolveModInExp bod defenv funenv constrenv
       pure $ FunDef nam' nargs funty' bod' meta
 
 resolveModsInTyScheme :: TyScheme -> VarEnv -> TyScheme
@@ -161,8 +170,8 @@ resolveModInTy ty defenv =
      ListTy el_t -> ListTy $ resolveModInTy el_t defenv
      IntHashTy -> ty
 
-resolveModInExp :: Exp0 -> VarEnv -> VarEnv -> PassM Exp0
-resolveModInExp exp defenv funenv =
+resolveModInExp :: Exp0 -> VarEnv -> VarEnv -> VarEnv -> PassM Exp0
+resolveModInExp exp defenv funenv constrenv =
   case exp of
     LitE i    -> return $ LitE i
     CharE c   -> return $ CharE c
@@ -174,37 +183,65 @@ resolveModInExp exp defenv funenv =
     AppE v locs ls -> do
       let (mod, fun) = parseOutMod v
       let v' = resolveNameInEnv mod fun funenv
-      ls' <- traverse (\v -> resolveModInExp v defenv funenv) ls
+      ls' <- traverse (\v -> resolveModInExp v defenv funenv constrenv) ls
       return $ AppE v' locs ls'
 
-    PrimAppE p es -> return $ PrimAppE p es
+    PrimAppE p es -> do
+      es' <- traverse (\v -> resolveModInExp v defenv funenv constrenv) es
+      return $ PrimAppE p es'
 
     LetE (v,_locs,ty, e1) e2 -> do
-      e1' <- resolveModInExp e1 defenv funenv
-      e2' <- resolveModInExp e2 defenv funenv
+      e1' <- resolveModInExp e1 defenv funenv constrenv
+      e2' <- resolveModInExp e2 defenv funenv constrenv
       return $ LetE (v, [], ty, e1') e2'
 
-    IfE e1 e2 e3 -> return $ IfE e1 e2 e3
-    ProjE i e -> return $ ProjE i e
-    MkProdE es -> return $ MkProdE es
+    IfE e1 e2 e3 -> do
+      e1' <- resolveModInExp e1 defenv funenv constrenv
+      e2' <- resolveModInExp e2 defenv funenv constrenv
+      e3' <- resolveModInExp e3 defenv funenv constrenv
+      return $ IfE e1' e2' e3'
+
+    ProjE i e -> do
+      e' <- resolveModInExp e defenv funenv constrenv
+      return $ ProjE i e'
+
+    MkProdE es -> do
+      es' <- traverse (\v -> resolveModInExp v defenv funenv constrenv) es
+      return $ MkProdE es'
 
     CaseE e mp -> do
-      e' <- resolveModInExp e defenv funenv
+      e' <- resolveModInExp e defenv funenv constrenv
       mp' <- mapM (\(c,prs,ae) -> do
-                     ae' <- resolveModInExp ae defenv funenv
-                     return (c, prs, ae')) mp
+                     let c' = (fromVar (parseAndResolve (toVar c) constrenv))
+                     ae' <- resolveModInExp ae defenv funenv constrenv
+                     return (c', prs, ae')) mp
       return $ CaseE e' mp'
 
     DataConE loc c es -> do
-      es' <- traverse (\v -> resolveModInExp v defenv funenv) es
-      return $ DataConE loc c es'
+      let c' = (fromVar (parseAndResolve (toVar c) constrenv))
+      es' <- traverse (\v -> resolveModInExp v defenv funenv constrenv) es
+      return $ DataConE loc c' es'
 
-    TimeIt e t b -> return $ TimeIt e t b
-    WithArenaE v e -> return $ WithArenaE v e
-    SpawnE v locs ls -> return $ SpawnE v locs ls
+    TimeIt e t b -> do
+      e' <- resolveModInExp e defenv funenv constrenv
+      return $ TimeIt e' t b
+    WithArenaE v e -> do
+      e' <- resolveModInExp e defenv funenv constrenv
+      return $ WithArenaE v e'
+    SpawnE v locs ls -> do
+      ls' <- traverse (\v -> resolveModInExp v defenv funenv constrenv) ls
+      return $ SpawnE v locs ls'
     SyncE -> return $ SyncE
-    MapE v e -> return $ MapE v e
-    FoldE e1 e2 e3 -> return $ FoldE e1 e2 e3
+
+    MapE (v, d, ve) e -> do
+      e' <- resolveModInExp e defenv funenv constrenv
+      ve' <- resolveModInExp ve defenv funenv constrenv
+      return $ MapE (v, d, ve') e'
+    FoldE (v1, d1, e1) (v2, d2, e2) e3 -> do
+      e1' <- resolveModInExp e1 defenv funenv constrenv
+      e2' <- resolveModInExp e2 defenv funenv constrenv
+      e3' <- resolveModInExp e3 defenv funenv constrenv
+      return $ FoldE (v1, d1, e1') (v2, d2, e2') e3'
     Ext ext -> return $ Ext ext
 
 
