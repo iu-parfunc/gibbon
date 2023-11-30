@@ -241,7 +241,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
         let (defs, _vars, funs, inlines, main, optimizeDcons, userOrderings) =
               foldr classify init_acc toplevels
             userOrderings' = M.fromList $ coalese_constraints userOrderings
-            defs' = M.mapWithKey (\k dDef -> dDef {tyName = k }) (M.mapKeys (\k -> toVar (mod_name ++ "." ++ (fromVar k))) defs)
+            defs' = M.mapWithKey (\k (DDef _ tyArgs dataCons) -> DDef k tyArgs (L.map (\(constrName, vs) -> ((mod_name ++ "." ++ constrName), vs)) dataCons) ) (M.mapKeys (\k -> toVar (mod_name ++ "." ++ (fromVar k))) defs)
             funs' = M.mapWithKey (\k funDef -> funDef {funName = k }) (M.mapKeys (\k -> toVar (mod_name ++ "." ++ (fromVar k))) funs) -- can insert function name here
             --funs' = M.map (\funDef -> funDef {funMeta = funMeta {funModule = mod_name}}) funs -- can insert function name here
             funs'' =
