@@ -1698,6 +1698,7 @@ collectTopLevel type_syns env decl =
                                    , funCanTriggerGC = False
                                    , funOptLayout = NoLayoutOpt
                                    , userConstraintsDataCon = Nothing
+                                   , dataConFieldTypeInfo = Nothing
                                    }
                              })
                
@@ -1721,6 +1722,7 @@ collectTopLevel type_syns env decl =
                                , funCanTriggerGC = False
                                , funOptLayout = NoLayoutOpt
                                , userConstraintsDataCon = Nothing
+                               , dataConFieldTypeInfo = Nothing
                                }
                          })
         FunBind {} -> do
@@ -1740,6 +1742,7 @@ collectTopLevel type_syns env decl =
                        , funCanTriggerGC = False
                        , funOptLayout = NoLayoutOpt
                        , userConstraintsDataCon = Nothing
+                       , dataConFieldTypeInfo = Nothing
                        }
                  })
         InlineSig _ _ _ qname ->

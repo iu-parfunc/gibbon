@@ -1158,6 +1158,7 @@ specLambdasExp ddefs env2 ex =
                         , funCanTriggerGC = False
                         , funOptLayout = NoLayoutOpt
                         , userConstraintsDataCon = Nothing
+                        , dataConFieldTypeInfo = Nothing
                         }
                   }
               env2' = extendFEnv v' ty' env2
@@ -1194,6 +1195,7 @@ specLambdasExp ddefs env2 ex =
                         , funCanTriggerGC = False
                         , funOptLayout = NoLayoutOpt
                         , userConstraintsDataCon = Nothing
+                        , dataConFieldTypeInfo = Nothing
                         }
                   }
               env2' = extendFEnv v' (ForAll [] ty) env2
@@ -1292,6 +1294,7 @@ specLambdasExp ddefs env2 ex =
                               , funCanTriggerGC = False
                               , funOptLayout = NoLayoutOpt
                               , userConstraintsDataCon = Nothing
+                              , dataConFieldTypeInfo = Nothing
                               }
                         }
                 pure (Just fn, binds, AppE fnname [] (map VarE args))
@@ -1790,6 +1793,7 @@ genCopyFn DDef {tyName, dataCons} = do
             , funCanTriggerGC = False
             , funOptLayout = NoLayoutOpt
             , userConstraintsDataCon = Nothing
+            , dataConFieldTypeInfo = Nothing
             }
       }
 
@@ -1835,6 +1839,7 @@ genCopySansPtrsFn DDef {tyName, dataCons} = do
             , funCanTriggerGC = False
             , funOptLayout = NoLayoutOpt
             , userConstraintsDataCon = Nothing
+            , dataConFieldTypeInfo = Nothing
             }
       }
 
@@ -1875,6 +1880,7 @@ genTravFn DDef {tyName, dataCons} = do
             , funCanTriggerGC = False
             , funOptLayout = NoLayoutOpt
             , userConstraintsDataCon = Nothing
+            , dataConFieldTypeInfo = Nothing
             }
       }
 
@@ -1992,6 +1998,7 @@ genPrintFn DDef {tyName, dataCons} = do
             , funCanTriggerGC = False
             , funOptLayout = NoLayoutOpt
             , userConstraintsDataCon = Nothing
+            , dataConFieldTypeInfo = Nothing
             }
       }
 
@@ -2046,7 +2053,7 @@ floatOutCase (Prog ddefs fundefs mainExp) = do
               args
               fn_ty
               ex'
-              (FunMeta NotRec NoInline False NoLayoutOpt Nothing)
+              (FunMeta NotRec NoInline False NoLayoutOpt Nothing Nothing)
       state (\s -> ((AppE fn_name [] (map VarE free)), M.insert fn_name fn s))
     go :: Bool -> Env2 Ty0 -> Exp0 -> FloatM Exp0
     go float env2 ex =

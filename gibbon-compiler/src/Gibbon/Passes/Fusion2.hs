@@ -982,7 +982,7 @@ tupleListOfFunctions ddefs funcList newName syncedArgs = do
        newArgs
        (newFuncInputType, newRetType)
        finalBody
-       (FunMeta NotRec NoInline False NoLayoutOpt Nothing))
+       (FunMeta NotRec NoInline False NoLayoutOpt Nothing Nothing))
   where
     createOutVar index subscript =
       toVar ("f" L.++ show index L.++ "out" L.++ show subscript)

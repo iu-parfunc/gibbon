@@ -31,7 +31,7 @@ mkAdd1Fun bod =
     ["tr"]
     ([treeTy], treeTy)
     bod
-    (FunMeta Rec NoInline False NoLayoutOpt Nothing)
+    (FunMeta Rec NoInline False NoLayoutOpt Nothing Nothing)
 
 
 ----------------
@@ -102,7 +102,7 @@ add1ProgChallenge =
               [ ("Leaf", [("n", ())], PrimAppE MkTrue [])
               , ("Node", [("x", ()), ("y", ())], PrimAppE MkFalse [])
               ])
-             (FunMeta Rec NoInline False NoLayoutOpt Nothing))
+             (FunMeta Rec NoInline False NoLayoutOpt Nothing Nothing))
        ])
     Nothing
   where
