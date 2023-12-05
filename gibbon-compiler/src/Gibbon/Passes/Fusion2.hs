@@ -975,17 +975,23 @@ tupleListOfFunctions  ddefs funcList newName syncedArgs = do
             in CaseE e1 ((dataCons, newVarsList, combinedBodies):caseList)
   -- replace uses of eliminated synced Input args
   let finalBody =
-       M.foldlWithKey
-        (\exp k v->
-           let oldExp = VarE (argsLocsToVarMap M.! k)
-               newExp = VarE (argsLocsToVarMap M.! v)
-           in substE  oldExp newExp exp
-        ) extendedCase syncedArgs
-
-  return (FunDef newName newArgs (newFuncInputType,newRetType) finalBody (FunMeta NotRec NoInline False))
- where
-  createOutVar index subscript=
-          toVar ("f" L.++ show index L.++"out" L.++ show subscript)
+        M.foldlWithKey
+          (\exp k v ->
+             let oldExp = VarE (argsLocsToVarMap M.! k)
+                 newExp = VarE (argsLocsToVarMap M.! v)
+              in substE oldExp newExp exp)
+          extendedCase
+          syncedArgs
+  return
+    (FunDef
+       newName
+       newArgs
+       (newFuncInputType, newRetType)
+       finalBody
+       (FunMeta NotRec NoInline False NoLayoutOpt Nothing Nothing))
+  where
+    createOutVar index subscript =
+      toVar ("f" L.++ show index L.++ "out" L.++ show subscript)
 
 
 renameFunction :: FunDef1 -> Var -> FunDef1

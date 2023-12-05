@@ -21,7 +21,14 @@ mkAdd1Prog bod mainExp = Prog treeDD
                               mainExp
 
 mkAdd1Fun :: Exp1 -> FunDef1
-mkAdd1Fun bod = FunDef "add1" ["tr"] ([treeTy],treeTy) bod (FunMeta Rec NoInline False)
+mkAdd1Fun bod =
+  FunDef
+    "add1"
+    ["tr"]
+    ([treeTy], treeTy)
+    bod
+    (FunMeta Rec NoInline False NoLayoutOpt Nothing Nothing)
+
 
 ----------------
 
@@ -77,14 +84,22 @@ add1ProgLetRight = mkAdd1Prog exadd1BodLetRight Nothing
 -- dependency where x2 depends on y2.
 add1ProgChallenge :: Prog1
 add1ProgChallenge =
-    Prog treeDD
-         (M.fromList [ ("add1",mkAdd1Fun bod)
-                     , ("pred", FunDef "pred" ["tr"] ([treeTy], BoolTy)
-                        (CaseE (VarE "tr") $
-                         [ ("Leaf", [("n",())], PrimAppE MkTrue [])
-                         , ("Node", [("x",()),("y",())], PrimAppE MkFalse [])])
-                        (FunMeta Rec NoInline False))])
-         Nothing
+  Prog
+    treeDD
+    (M.fromList
+       [ ("add1", mkAdd1Fun bod)
+       , ( "pred"
+         , FunDef
+             "pred"
+             ["tr"]
+             ([treeTy], BoolTy)
+             (CaseE (VarE "tr") $
+              [ ("Leaf", [("n", ())], PrimAppE MkTrue [])
+              , ("Node", [("x", ()), ("y", ())], PrimAppE MkFalse [])
+              ])
+             (FunMeta Rec NoInline False NoLayoutOpt Nothing Nothing))
+       ])
+    Nothing
   where
    bod =
     CaseE (VarE "tr") $

@@ -958,39 +958,175 @@ collectTopLevel type_syns env decl =
          Just fun_ty ->
              -- This is a top-level function binding of the form:
              --     f = \x -> ...
-             case rhs of
-               Lambda _ pats bod -> do
-                 bod' <- desugarExp type_syns toplevel bod
-                 case pats of
-                   [] -> error "Impossible"
-                   _  -> do
-                     (vars,_tys,bindss) <- unzip3 <$> mapM (desugarPatWithTy type_syns) pats
-                     let binds = concat bindss
-                         args = vars
-                     pure $ Just $ HFunDef (FunDef { funName = toVar fn
-                                                   , funArgs = args
-                                                   , funTy   = fun_ty
-                                                   , funBody = fixupSpawn (mkLets binds bod')
-                                                   , funMeta = FunMeta { funRec = NotRec
-                                                                       , funInline = NoInline
-                                                                       , funCanTriggerGC = False
-                                                                       }
-                                                   })
-
-               -- This is a top-level function that doesn't take any arguments.
-               _ -> do
-                 rhs' <- desugarExp type_syns toplevel rhs
-                 let fun_ty'  = ArrowTy [] (tyFromScheme fun_ty)
-                     fun_ty'' = ForAll (tyVarsInTy fun_ty') fun_ty'
-                 pure $ Just $ HFunDef (FunDef { funName = toVar fn
-                                               , funArgs = []
-                                               , funTy   = fun_ty''
-                                               , funBody = fixupSpawn rhs'
-                                               , funMeta = FunMeta { funRec = NotRec
-                                                                   , funInline = NoInline
-                                                                   , funCanTriggerGC = False
-                                                                   }
-                                               })
+             ->
+              case rhs of
+                Lambda _ pats bod -> do
+                  bod' <- desugarExp type_syns toplevel bod
+                  case pats of
+                    [] -> error "Impossible"
+                    _ -> do
+                      (vars, _tys, bindss) <-
+                        unzip3 <$> mapM (desugarPatWithTy type_syns) pats
+                      let binds = concat bindss
+                          args = vars
+                      pure $
+                        Just $
+                        HFunDef
+                          (FunDef
+                             { funName = toVar fn
+                             , funArgs = args
+                             , funTy = fun_ty
+                             , funBody = fixupSpawn (mkLets binds bod')
+                             , funMeta =
+                                 FunMeta
+                                   { funRec = NotRec
+                                   , funInline = NoInline
+                                   , funCanTriggerGC = False
+                                   , funOptLayout = NoLayoutOpt
+                                   , userConstraintsDataCon = Nothing
+                                   , dataConFieldTypeInfo = Nothing
+                                   }
+                             })
+               
+-- This is a top-level function that doesn't take any arguments.
+                _ -> do
+                  rhs' <- desugarExp type_syns toplevel rhs
+                  let fun_ty' = ArrowTy [] (tyFromScheme fun_ty)
+                      fun_ty'' = ForAll (tyVarsInTy fun_ty') fun_ty'
+                  pure $
+                    Just $
+                    HFunDef
+                      (FunDef
+                         { funName = toVar fn
+                         , funArgs = []
+                         , funTy = fun_ty''
+                         , funBody = fixupSpawn rhs'
+                         , funMeta =
+                             FunMeta
+                               { funRec = NotRec
+                               , funInline = NoInline
+                               , funCanTriggerGC = False
+                               , funOptLayout = NoLayoutOpt
+                               , userConstraintsDataCon = Nothing
+                               , dataConFieldTypeInfo = Nothing
+                               }
+                         })
+        FunBind {} -> do
+          (name, args, ty, bod) <- desugarFun type_syns toplevel env decl
+          pure $
+            Just $
+            HFunDef
+              (FunDef
+                 { funName = name
+                 , funArgs = args
+                 , funTy = ty
+                 , funBody = fixupSpawn bod
+                 , funMeta =
+                     FunMeta
+                       { funRec = NotRec
+                       , funInline = NoInline
+                       , funCanTriggerGC = False
+                       , funOptLayout = NoLayoutOpt
+                       , userConstraintsDataCon = Nothing
+                       , dataConFieldTypeInfo = Nothing
+                       }
+                 })
+        InlineSig _ _ _ qname ->
+          pure $ Just $ HInline (toVar $ qnameToStr qname)
+        AnnPragma _ annotation ->
+          case annotation of
+            Ann _ name expr ->
+              case (name, expr) of
+                (Ident _ f, Con _ qname) ->
+                  pure $ Just $ OptimizeDcon ((toVar $ f), (qnameToStr qname)) --error $  show (f) ++ "\n" ++ show (qnameToStr qname) ++ "\n"
+                (Ident _ conName, Tuple _ _ exprs) ->
+                  case exprs of
+                    [] ->
+                      error $
+                      "collectTopLevel: Unsupported AnnProgma annotation: " ++
+                      show decl
+                                                                                                     -- VS: Add fail case if ls is empty or head doesn't have function name.
+                                                                                                     -- VS: What about the case where the first element of a tuple is not actually a function name.
+                    ls ->
+                      let funcName = parseFuncTotalOrdering (P.head ls)
+                       in case (P.tail ls) of
+                            [Tuple _ _ ls'] ->
+                              let contrs =
+                                    P.map
+                                      (\e ->
+                                         case e of
+                                           InfixApp _ from operator to ->
+                                             case (infixOpToStr operator) of
+                                               "~>" ->
+                                                 Strong
+                                                   (parseIntLit from)
+                                                   (parseIntLit to)
+                                               ":>" ->
+                                                 Immediate
+                                                   (parseIntLit from)
+                                                   (parseIntLit to)
+                                               _ ->
+                                                 error $
+                                                 "collectTopLevel: Unsupported infix in AnnProgma annotation: " ++
+                                                 show decl
+                                           _ ->
+                                             error $
+                                             "collectTopLevel: Unsupported AnnProgma annotation: " ++
+                                             show decl)
+                                      ls'
+                                  userConstrs =
+                                    UserConstraints
+                                      (M.singleton
+                                         (toVar funcName)
+                                         (M.singleton conName contrs))
+                               in pure $
+                                  Just $
+                                  UserConstraints
+                                    (M.singleton
+                                       (toVar funcName)
+                                       (M.singleton conName contrs)) --(dbgTraceIt (show userConstrs) )
+                            [Paren _ rhs] ->
+                              let contrs =
+                                    case rhs of
+                                      InfixApp _ from operator to ->
+                                        case (infixOpToStr operator) of
+                                          ":>" ->
+                                            Immediate
+                                              (parseIntLit from)
+                                              (parseIntLit to)
+                                          "~>" ->
+                                            Strong
+                                              (parseIntLit from)
+                                              (parseIntLit to)
+                                          _ ->
+                                            error $
+                                            "collectTopLevel: Unsupported infix in AnnProgma annotation: " ++
+                                            show decl
+                                  userConstrs =
+                                    UserConstraints
+                                      (M.singleton
+                                         (toVar funcName)
+                                         (M.singleton conName [contrs]))
+                               in pure $
+                                  Just $
+                                  UserConstraints
+                                    (M.singleton
+                                       (toVar funcName)
+                                       (M.singleton conName [contrs]))
+                            _ ->
+                              error $
+                              "collectTopLevel: Unsupported AnnProgma annotation: " ++
+                              show decl
+                _ ->
+                  error $
+                  "collectTopLevel: Unsupported AnnProgma annotation: " ++
+                  show decl
+            _ ->
+              error $
+              "collectTopLevel: Unsupported AnnProgma annotation: " ++ show decl
+        _ ->
+          error $
+          "collectTopLevel: Unsupported top-level expression: " ++ show decl
 
 
     FunBind{} -> do (name,args,ty,bod) <- desugarFun type_syns toplevel env decl
