@@ -22,6 +22,7 @@ module Gibbon.Language.Syntax
   , DataConMap
   , UserOrdering(..)
   , Constr(..)
+  , DataConFieldType(..)
   , lookupDDef
   , getConOrdering
   , getTyOfDataCon
@@ -296,18 +297,39 @@ data UserOrdering
 
 
 -- Constraints and Edges used in the ILP solver
+-- Edge signifies an access that happened. 
+-- (a, b) means a was accessed right before b. 
 type Edge
    = ( Integer {- from -}
-     , Integer {- to   -}
+     , Integer {- to -}
       )
 
+-- An Edge for generating Constraints where an additional element of field type is provided in the tuple. 
+type ConstraintEdge
+   = ( (Integer, DataConFieldType) {- from -}
+     , (Integer, DataConFieldType) {- to -}
+     )
+
+-- The type of Constraints
+-- WeakConstr is induced by accessed that are data independent. 
+-- StrongConstr is induced by accesses that arise due to a data dependency. 
 data Constr
-  = Soft (Edge, Integer)
+  = WeakConstr (ConstraintEdge, Integer)
+  | StrongConstr (ConstraintEdge, Integer)
   | Imm Edge
   | Absolute Edge
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
 type DataConMap = M.Map DataCon [UserOrdering]
+
+data DataConFieldType 
+  = SelfRecursive 
+  | Recursive 
+  | Scalar 
+  | IsInlineable 
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
+
+type DataConFieldTypeInfo = M.Map DataCon (M.Map Int [DataConFieldType])
 
 data FunMeta =
   FunMeta
@@ -317,6 +339,7 @@ data FunMeta =
     , funCanTriggerGC        :: Bool
     , funOptLayout           :: FunOptimizeLayout
     , userConstraintsDataCon :: Maybe DataConMap
+    , dataConFieldTypeInfo   :: Maybe DataConFieldTypeInfo
     }
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 

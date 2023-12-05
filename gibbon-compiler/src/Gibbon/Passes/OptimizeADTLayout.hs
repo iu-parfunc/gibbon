@@ -48,7 +48,7 @@ import Gibbon.Passes.DefinitionUseChains
     getDefinitionsReachingLetExp,
     UseDefChainsFunctionMap (..)
   )
-import Gibbon.Passes.SolveLayoutConstrs (solveConstrs)
+--import Gibbon.Passes.SolveLayoutConstrs (solveConstrs)
 import Gibbon.Pretty
 import System.CPUTime
 import System.IO.Unsafe as U
@@ -211,8 +211,9 @@ producerConsumerLayoutOptimization prg@Prog{ddefs, fundefs, mainExp} useGreedy =
 globallyOptimizeDataConLayout :: Bool -> Prog1 -> PassM Prog1
 globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
   -- TODO: make a custom function name printer that guarantees that functions starting with _ are auto-generated. 
+  let f' = P.map (deduceFieldSolverTypes ddefs) (M.elems fundefs)
   let funsToOptimize = P.concatMap (\FunDef{funName} -> ([funName | not $ isInfixOf "_" (fromVar funName)])
-                                   ) $ M.elems fundefs
+                                   ) $ f' --M.elems fundefs
   let pairDataConFuns = P.concatMap (\name -> case M.lookup name fundefs
                                                        of Just f@FunDef{funName, funBody} -> [(f, dataConsInFunBody funBody)]
                                                           Nothing -> []
@@ -227,7 +228,7 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
 
   let lstElements = M.toList clubSameDcons
 
-  let dconToFieldOrder = P.map (\(dcon, funList) -> let allEdges = P.concatMap (\f@FunDef{funName} -> let dconmap  = getAccessGraph f dcon
+  let dconToFieldOrder = P.map (\(dcon, funList) -> let allEdges = P.concatMap (\f@FunDef{funName} -> let dconmap  = dbgTraceIt ("HIT!!") getAccessGraph (deduceFieldSolverTypes ddefs f) dcon
                                                                                                           maybeElem = M.lookup funName dconmap
                                                                                                               in case maybeElem of
                                                                                                                 Nothing -> []
@@ -1063,17 +1064,17 @@ optimizeDataConOrderFunc
           [] -> orderIn
           [(x, field_len)] ->
             let softEdges = M.findWithDefault [] x lstDconEdges
-                softConstrs = P.map Soft softEdges
-                userOrdering = M.findWithDefault [] x dconUserConstr
+                --softConstrs = P.map Soft softEdges
+                userOrdering = dbgTraceIt ("Constraints: ") dbgTraceIt (sdoc (lstDconEdges)) M.findWithDefault [] x dconUserConstr
                 userConstrs = genUserConstrs userOrdering
-                allConstrs = softConstrs ++ userConstrs
+                allConstrs =  userConstrs --softConstrs ++
              in -- field_len    = P.length $ snd . snd $ lkp ddefs x
                 case allConstrs of
                   [] -> orderIn
-                  _ ->
-                    let (layout, t) =
-                          U.unsafePerformIO $
-                            timeSolver U.unsafePerformIO (solveConstrs allConstrs)
+                  _  ->
+                    let (layout, t) = ([], 0.0) --dbgTraceIt ("Constraints: ") dbgTraceIt (sdoc (allConstrs))
+                        --  U.unsafePerformIO $
+                        --    timeSolver U.unsafePerformIO (solveConstrs allConstrs)
                         -- In case we don't get orderings for some of the fields in the data con
                         -- to be safe we should complete the layout orderings of the missing fields.
                         fix_missing =
@@ -1087,7 +1088,7 @@ optimizeDataConOrderFunc
                                   new = fillminus1 partial navail
                                in new
                             else
-                              let layout' = L.sort layout
+                              let layout' = [] --L.sort layout
                                in P.map snd layout'
                         fieldorder = M.insert x (integerList fix_missing) orderIn
                      in fieldorder
@@ -1126,12 +1127,12 @@ generateLocallyOptimalOrderings
               [] -> orderIn
               x : xs ->
                 let dconEdges = M.findWithDefault [] x lstDconEdges
-                    dconEdges' = P.map Soft dconEdges
+                    dconEdges' = [] --P.map Soft dconEdges
                  in case dconEdges' of
                       [] -> orderIn
                       _ ->
-                        let layout =
-                              U.unsafePerformIO (solveConstrs dconEdges')
+                        let layout = []
+                            --  U.unsafePerformIO (solveConstrs dconEdges')
                             -- In case we don't get orderings for some of the fields in the data con
                             -- to be safe we should complete the layout orderings of the missing fields.
                             fix_missing =
@@ -1145,7 +1146,7 @@ generateLocallyOptimalOrderings
                                       new = fillminus1 partial navail
                                    in new
                                 else
-                                  let layout' = L.sort layout
+                                  let layout' = [] --L.sort layout
                                    in P.map snd layout'
                             fieldorder =
                               M.insert x (integerList fix_missing) orderIn
@@ -1658,3 +1659,95 @@ mkLets' ::
   -> Exp1
   -> Exp1
 mkLets' bs bod = P.foldr LetE bod bs
+
+
+
+-- For a given Function, deduce the types of each field of a dataconstructor relavant for the solver 
+deduceFieldSolverTypes :: DDefs1 -> FunDef1 -> FunDef1
+deduceFieldSolverTypes dataDefinitions f@FunDef {funName, funBody, funTy, funArgs, funMeta} = 
+  let dconsUsedInFunction = dataConsInFunBody funBody 
+      dataConFieldTypeInfo = P.foldr (\dcon map -> let flds = lookupDataCon dataDefinitions dcon
+                                                       (_, meta) = dbgTraceIt (sdoc flds) P.foldr (\fld (index::Int, map) -> 
+                                                                                   let isInline = isInlineable fld funTy funName funBody
+                                                                                       (isRec, m) = isRecursive fld dataDefinitions M.empty
+                                                                                       isSc = isScalar fld dataDefinitions dcon M.empty
+                                                                                       isSR = isSelfRecursive fld dataDefinitions dcon
+                                                                                       ind' = index-1
+                                                                                     in (ind', M.insert index (isInline ++ isRec ++ isSc ++ isSR) map)
+                                                                                       --index = elemIndex fld flds 
+                                                                                     --in case index of 
+                                                                                     --       Nothing -> map
+                                                                                     --       Just val -> M.insert index (isInline ++ isRec ++ isSc ++ isSR) map
+                                                                      ) ((P.length flds) - 1, M.empty) flds 
+                                                     in M.insert dcon meta map
+                                     ) M.empty (S.toList dconsUsedInFunction)
+    in dbgTraceIt (sdoc (funName, dataConFieldTypeInfo, snd funTy, funArgs)) FunDef{funName=funName, funBody=funBody, funTy=funTy, funArgs=funArgs, funMeta=funMeta{dataConFieldTypeInfo=Just dataConFieldTypeInfo}}
+       
+
+isInlineable :: Ty1 -> ArrowTy Ty1 -> Var -> Exp1 -> [DataConFieldType]
+isInlineable fld funty funname exp = if fld == snd funty then [IsInlineable] else [] 
+
+-- only for packed mode
+-- TODO: update check for pointer mode. 
+isSelfRecursive :: Ty1 -> DDefs1 -> DataCon -> [DataConFieldType]
+isSelfRecursive fld ddefs dcon = let tycon = getTyOfDataCon ddefs dcon
+                                     urty  = PackedTy tycon ()
+                                   in if urty == fld then [SelfRecursive] else []
+
+-- isScalar :: Ty1 -> DDefs1 -> DataCon -> [DataConFieldType]
+-- isScalar fld ddefs dcon = case fld of 
+--                                 PackedTy tycon () -> let d@DDef{tyName=tn, tyArgs=targ, dataCons=dcons} = lookupDDef ddefs tycon
+--                                                          len = P.length dcons 
+--                                                        in if len == 1 then 
+--                                                                         let scl = checkScalar (fst (P.head dcons)) ddefs
+--                                                                           in if scl then [Scalar]
+--                                                                                     else []
+--                                                                       else []
+                                                              
+--                                 -- TODO: check for other types is not implemented yet. 
+--                                 _ -> []
+
+isScalar :: Ty1 -> DDefs1 -> DataCon -> M.Map Ty1 DataConFieldType -> [DataConFieldType]
+isScalar fld ddefs dcon map  = case (isRecursive fld ddefs map) of 
+                                      ([Recursive], _ ) -> []
+                                      _ -> [Scalar]
+
+-- checkScalar :: DataCon -> DDefs1 -> Bool 
+-- checkScalar dcon ddefs = let flds = lookupDataCon ddefs dcon
+--                            in case flds of 
+--                                   [a] -> case a of 
+--                                             IntTy   -> True
+--                                             CharTy  -> True
+--                                             FloatTy -> True
+--                                             BoolTy  -> True
+--                                             _  -> False
+--                                   _  -> False
+
+
+
+isRecursive :: Ty1 -> DDefs1 -> M.Map Ty1 DataConFieldType -> ([DataConFieldType], M.Map Ty1 DataConFieldType)
+isRecursive fld ddefs map = case M.lookup fld map of 
+                                    Nothing -> case fld of --[(DataCon, [(IsBoxed, a)])] 
+                                              PackedTy tycon () -> let d@DDef{tyName=tn, tyArgs=targ, dataCons=dcons} = lookupDDef ddefs tycon
+                                                                       fld' = P.concatMap (\(a, b) -> P.concatMap (\(d, c) -> [c]) b) dcons
+                                                                       (check, map') = P.foldr (\ty (accum, m'')  -> 
+                                                                                            if not (M.member ty m'')
+                                                                                            then   
+                                                                                              let (r', m') = if (ty == fld) then (accum || True, M.insert ty Recursive m'') else (accum || False, m'') --isRecursive ty ddefs m''
+                                                                                               in case r' of 
+                                                                                                  True -> (accum || True, M.insert ty Recursive m')
+                                                                                                  False -> let (r'', m''') = isRecursive ty ddefs m'
+                                                                                                             in case r'' of 
+                                                                                                                   [Recursive] -> (accum || True, M.insert ty Recursive m''')
+                                                                                                                   [] -> (accum || False, M.insert ty Recursive m''')
+                                                                                            else 
+                                                                                              case M.lookup ty map of 
+                                                                                                    Just k  -> (accum || True, m'') 
+                                                                                                    Nothing -> (accum || False, m'')
+                                                                                   ) (False, map) fld'
+                                                                    in if check 
+                                                                       then ([Recursive], M.insert fld Recursive map')
+                                                                       else ([], map')
+                                              _ -> ([], map)
+                                    Just val -> ([val], map)
+                                                            
