@@ -14,40 +14,100 @@
 module Gibbon.Language.Syntax
   (
     -- * Datatype definitions
-    DDefs, DataCon, TyCon, Tag, IsBoxed, DDef(..)
-  , lookupDDef, getConOrdering, getTyOfDataCon, lookupDataCon, lkp
-  , lookupDataCon', insertDD, emptyDD, fromListDD, isVoidDDef
-
-    -- * Function definitions
-  , FunctionTy(..), FunDefs, FunDef(..), FunMeta(..), FunRec(..), FunInline(..)
-  , insertFD, fromListFD, initFunEnv
-
-    -- * Programs
-  , Prog(..), progToEnv, getFunTy
-
-    -- * Environments
-  , TyEnv, Env2(..), emptyEnv2
-  , extendVEnv, extendsVEnv, lookupVEnv, extendFEnv, lookupFEnv
-
-    -- * Expresssions and thier types
-  , PreExp(..), Prim(..), UrTy(..)
-
-    -- * Functors for recursion-schemes
-  , PreExpF(..), PrimF(..), UrTyF(..)
-
-    -- * Generic operations
-  , FreeVars(..), Expression(..), Binds, Flattenable(..)
-  , Simplifiable(..), SimplifiableExt(..), Typeable(..)
-  , Substitutable(..), SubstitutableExt(..), Renamable(..)
-
-    -- * Helpers for writing instances
-  , HasSimplifiable, HasSimplifiableExt, HasSubstitutable, HasSubstitutableExt
-  , HasRenamable, HasOut, HasShow, HasEq, HasGeneric, HasNFData
-
-  , -- * Interpreter
-    Interp(..), InterpExt(..), InterpProg(..), Value(..), ValEnv, InterpLog,
-    InterpM, runInterpM, execAndPrint
-
+  ( DDefs
+  , DataCon
+  , TyCon
+  , Tag
+  , IsBoxed
+  , DDef(..)
+  , DataConMap
+  , UserOrdering(..)
+  , Constr(..)
+  , DataConFieldType(..)
+  , lookupDDef
+  , getConOrdering
+  , getTyOfDataCon
+  , lookupDataCon
+  , lkp
+  , lookupDataCon'
+  , insertDD
+  , emptyDD
+  , fromListDD
+  , isVoidDDef
+    
+-- * Function definitions
+  , FunctionTy(..)
+  , FunDefs
+  , FunDef(..)
+  , FunMeta(..)
+  , FunRec(..)
+  , FunInline(..)
+  , FunOptimizeLayout(..)
+  , insertFD
+  , fromListFD
+  , initFunEnv
+    
+-- * Programs
+  , Prog(..)
+  , progToEnv
+  , getFunTy
+    
+-- * Environments
+  , TyEnv
+  , Env2(..)
+  , emptyEnv2
+  , extendVEnv
+  , extendsVEnv
+  , lookupVEnv
+  , extendFEnv
+  , lookupFEnv
+  , unionEnv2
+  , unionEnv2s
+  , lookupVEnv'
+    
+-- * Expresssions and thier types
+  , PreExp(..)
+  , Prim(..)
+  , UrTy(..)
+    
+-- * Functors for recursion-schemes
+  , PreExpF(..)
+  , PrimF(..)
+  , UrTyF(..)
+    
+-- * Generic operations
+  , FreeVars(..)
+  , Expression(..)
+  , Binds
+  , Flattenable(..)
+  , Simplifiable(..)
+  , SimplifiableExt(..)
+  , Typeable(..)
+  , Substitutable(..)
+  , SubstitutableExt(..)
+  , Renamable(..)
+    
+-- * Helpers for writing instances
+  , HasSimplifiable
+  , HasSimplifiableExt
+  , HasSubstitutable
+  , HasSubstitutableExt
+  , HasRenamable
+  , HasOut
+  , HasShow
+  , HasEq
+  , HasGeneric
+  , HasNFData
+    -- * Interpreter
+  , Interp(..)
+  , InterpExt(..)
+  , InterpProg(..)
+  , Value(..)
+  , ValEnv
+  , InterpLog
+  , InterpM
+  , runInterpM
+  , execAndPrint
   ) where
 
 import           Control.DeepSeq
@@ -187,12 +247,65 @@ data FunRec = Rec | NotRec | TailRec
 data FunInline = Inline | NoInline | Inlineable
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
-data FunMeta = FunMeta
-  { funRec    :: FunRec
-  , funInline :: FunInline
+data FunOptimizeLayout
+  = Single DataCon
+  | LayoutOptAll
+  | NoLayoutOpt
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
+
+
+-- StrongMap, first integer is old position, second is new.
+data UserOrdering
+  = Strong Integer Integer
+  | Immediate Integer Integer
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
+
+
+-- Constraints and Edges used in the ILP solver
+-- Edge signifies an access that happened. 
+-- (a, b) means a was accessed right before b. 
+type Edge
+   = ( Integer {- from -}
+     , Integer {- to -}
+      )
+
+-- An Edge for generating Constraints where an additional element of field type is provided in the tuple. 
+type ConstraintEdge
+   = ( (Integer, DataConFieldType) {- from -}
+     , (Integer, DataConFieldType) {- to -}
+     )
+
+-- The type of Constraints
+-- WeakConstr is induced by accessed that are data independent. 
+-- StrongConstr is induced by accesses that arise due to a data dependency. 
+data Constr
+  = WeakConstr (ConstraintEdge, Integer)
+  | StrongConstr (ConstraintEdge, Integer)
+  | Imm Edge
+  | Absolute Edge
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
+
+type DataConMap = M.Map DataCon [UserOrdering]
+
+data DataConFieldType 
+  = SelfRecursive 
+  | Recursive 
+  | Scalar 
+  | IsInlineable 
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
+
+type DataConFieldTypeInfo = M.Map DataCon (M.Map Int [DataConFieldType])
+
+data FunMeta =
+  FunMeta
+    { funRec                 :: FunRec
+    , funInline              :: FunInline
     -- Whether the transitive closure of this function can trigger GC.
-  , funCanTriggerGC :: Bool
-  }
+    , funCanTriggerGC        :: Bool
+    , funOptLayout           :: FunOptimizeLayout
+    , userConstraintsDataCon :: Maybe DataConMap
+    , dataConFieldTypeInfo   :: Maybe DataConFieldTypeInfo
+    }
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
 -- | A function definiton indexed by a type and expression.

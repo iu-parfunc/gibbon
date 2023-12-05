@@ -1050,51 +1050,78 @@ specLambdasExp ddefs env2 ex =
       lam_bod' <- specLambdasExp ddefs (L1.extendsVEnv (M.fromList args) env2) lam_bod
       if not (S.null captured_vars)
       -- Pass captured values as extra arguments
-      then do
-        let ls = S.toList captured_vars
-            tys = map (\w -> case M.lookup w (vEnv env2) of
-                               Nothing -> error $ "Unbound variable: " ++ pprender w
-                               Just ty1 -> ty1)
-                      ls
-            fns = collectAllFuns lam_bod []
-            extra_args = foldr (\fnref acc ->
-                                          case M.lookup fnref (sp_extra_args sp_state) of
-                                              Nothing    -> acc
-                                              Just extra -> extra ++ acc)
-                                     [] fns
-            extra_args1 = (zip ls tys) ++ extra_args
-            (vars1,tys1) = unzip extra_args1
-            ty' = addArgsToTy tys1 (ForAll [] ty)
-            fn = FunDef { funName = v'
-                        , funArgs = arg_vars ++ vars1
-                        , funTy   = ty'
-                        , funBody = lam_bod'
-                        , funMeta = FunMeta { funRec = NotRec
-                                            , funInline = Inline
-                                            , funCanTriggerGC = False
-                                            }
+        then do
+          let ls = S.toList captured_vars
+              tys =
+                map
+                  (\w ->
+                     case M.lookup w (vEnv env2) of
+                       Nothing  -> error $ "Unbound variable: " ++ pprender w
+                       Just ty1 -> ty1)
+                  ls
+              fns = collectAllFuns lam_bod []
+              extra_args =
+                foldr
+                  (\fnref acc ->
+                     case M.lookup fnref (sp_extra_args sp_state) of
+                       Nothing    -> acc
+                       Just extra -> extra ++ acc)
+                  []
+                  fns
+              extra_args1 = (zip ls tys) ++ extra_args
+              (vars1, tys1) = unzip extra_args1
+              ty' = addArgsToTy tys1 (ForAll [] ty)
+              fn =
+                FunDef
+                  { funName = v'
+                  , funArgs = arg_vars ++ vars1
+                  , funTy = ty'
+                  , funBody = lam_bod'
+                  , funMeta =
+                      FunMeta
+                        { funRec = NotRec
+                        , funInline = Inline
+                        , funCanTriggerGC = False
+                        , funOptLayout = NoLayoutOpt
+                        , userConstraintsDataCon = Nothing
+                        , dataConFieldTypeInfo = Nothing
                         }
-            env2' = extendFEnv v' ty' env2
-        state (\st -> ((), st { sp_fundefs = M.insert v' fn (sp_fundefs st)
-                              , sp_extra_args = M.insert v' extra_args1 (sp_extra_args st)}))
-        specLambdasExp ddefs env2' bod'
-      else do
-        let fns = collectAllFuns lam_bod []
-        let extra_args = foldr (\fnref acc ->
-                                          case M.lookup fnref (sp_extra_args sp_state) of
-                                              Nothing    -> acc
-                                              Just extra -> extra ++ acc)
-                                     [] fns
-        let (vars,tys) = unzip extra_args
-            ty' = addArgsToTy tys (ForAll [] ty)
-        let fn = FunDef { funName = v'
-                        , funArgs = arg_vars ++ vars
-                        , funTy   = ty'
-                        , funBody = lam_bod'
-                        , funMeta = FunMeta { funRec = NotRec
-                                            , funInline = Inline
-                                            , funCanTriggerGC = False
-                                            }
+                  }
+              env2' = extendFEnv v' ty' env2
+          state
+            (\st ->
+               ( ()
+               , st
+                   { sp_fundefs = M.insert v' fn (sp_fundefs st)
+                   , sp_extra_args = M.insert v' extra_args1 (sp_extra_args st)
+                   }))
+          specLambdasExp ddefs env2' bod'
+        else do
+          let fns = collectAllFuns lam_bod []
+          let extra_args =
+                foldr
+                  (\fnref acc ->
+                     case M.lookup fnref (sp_extra_args sp_state) of
+                       Nothing    -> acc
+                       Just extra -> extra ++ acc)
+                  []
+                  fns
+          let (vars, tys) = unzip extra_args
+              ty' = addArgsToTy tys (ForAll [] ty)
+          let fn =
+                FunDef
+                  { funName = v'
+                  , funArgs = arg_vars ++ vars
+                  , funTy = ty'
+                  , funBody = lam_bod'
+                  , funMeta =
+                      FunMeta
+                        { funRec = NotRec
+                        , funInline = Inline
+                        , funCanTriggerGC = False
+                        , funOptLayout = NoLayoutOpt
+                        , userConstraintsDataCon = Nothing
+                        , dataConFieldTypeInfo = Nothing
                         }
             env2' = extendFEnv v' (ForAll [] ty) env2
         state (\st -> ((), st { sp_fundefs = M.insert v' fn (sp_fundefs st)
@@ -1165,15 +1192,22 @@ specLambdasExp ddefs env2 ex =
                 let binds  = map (\(v,w,ty) -> (v,[],ty,VarE w)) (zip3 args vars argtys)
                     retty  = recoverType ddefs env2 e0
                     argtys = map (\v -> lookupVEnv v env2) vars
-                    fn = FunDef { funName = fnname
-                                , funArgs = args
-                                , funTy   = ForAll [] (ArrowTy argtys retty)
-                                , funBody = e0'
-                                , funMeta = FunMeta { funRec = NotRec
-                                                    , funInline = NoInline
-                                                    , funCanTriggerGC = False
-                                                    }
-                                }
+                    fn =
+                      FunDef
+                        { funName = fnname
+                        , funArgs = args
+                        , funTy = ForAll [] (ArrowTy argtys retty)
+                        , funBody = e0'
+                        , funMeta =
+                            FunMeta
+                              { funRec = NotRec
+                              , funInline = NoInline
+                              , funCanTriggerGC = False
+                              , funOptLayout = NoLayoutOpt
+                              , userConstraintsDataCon = Nothing
+                              , dataConFieldTypeInfo = Nothing
+                              }
+                        }
                 pure (Just fn, binds, AppE fnname [] (map VarE args))
           let mb_insert mb_fn mp = case mb_fn of
                                      Just fn -> M.insert (funName fn) fn mp
@@ -1581,21 +1615,39 @@ genCopyFn DDef{tyName, dataCons} = do
                 xs <- mapM (\_ -> gensym "x") tys
                 ys <- mapM (\_ -> gensym "y") tys
                 -- let packed_vars = map fst $ filter (\(x,ty) -> isPackedTy ty) (zip ys tys)
-                let bod = foldr (\(ty,x,y) acc ->
-                                     case ty of
-                                       PackedTy tycon _ -> LetE (y, [], ty, AppE (mkCopyFunName tycon) [] [VarE x]) acc
-                                       _ -> LetE (y, [], ty, VarE x) acc)
-                            (DataConE (ProdTy []) dcon $ map VarE ys) (zip3 tys xs ys)
-                return (dcon, map (\x -> (x,(ProdTy []))) xs, bod)
-  return $ FunDef { funName = mkCopyFunName (fromVar tyName)
-                  , funArgs = [arg]
-                  , funTy   = (ForAll [] (ArrowTy [PackedTy (fromVar tyName) []] (PackedTy (fromVar tyName) [])))
-                  , funBody = CaseE (VarE arg) casebod
-                  , funMeta = FunMeta { funRec = Rec
-                                      , funInline = NoInline
-                                      , funCanTriggerGC = False
-                                      }
-                  }
+      let bod =
+            foldr
+              (\(ty, x, y) acc ->
+                 case ty of
+                   PackedTy tycon _ ->
+                     LetE
+                       (y, [], ty, AppE (mkCopyFunName tycon) [] [VarE x])
+                       acc
+                   _ -> LetE (y, [], ty, VarE x) acc)
+              (DataConE (ProdTy []) dcon $ map VarE ys)
+              (zip3 tys xs ys)
+      return (dcon, map (\x -> (x, (ProdTy []))) xs, bod)
+  return $
+    FunDef
+      { funName = mkCopyFunName (fromVar tyName)
+      , funArgs = [arg]
+      , funTy =
+          (ForAll
+             []
+             (ArrowTy
+                [PackedTy (fromVar tyName) []]
+                (PackedTy (fromVar tyName) [])))
+      , funBody = CaseE (VarE arg) casebod
+      , funMeta =
+          FunMeta
+            { funRec = Rec
+            , funInline = NoInline
+            , funCanTriggerGC = False
+            , funOptLayout = NoLayoutOpt
+            , userConstraintsDataCon = Nothing
+            , dataConFieldTypeInfo = Nothing
+            }
+      }
 
 genCopySansPtrsFn :: DDef0 -> PassM FunDef0
 genCopySansPtrsFn DDef{tyName,dataCons} = do
@@ -1605,101 +1657,201 @@ genCopySansPtrsFn DDef{tyName,dataCons} = do
                 xs <- mapM (\_ -> gensym "x") tys
                 ys <- mapM (\_ -> gensym "y") tys
                 -- let packed_vars = map fst $ filter (\(x,ty) -> isPackedTy ty) (zip ys tys)
-                let bod = foldr (\(ty,x,y) acc ->
-                                     case ty of
-                                       PackedTy tycon _ -> LetE (y, [], ty, AppE (mkCopySansPtrsFunName tycon) [] [VarE x]) acc
-                                       _ -> LetE (y, [], ty, VarE x) acc)
-                            (DataConE (ProdTy []) dcon $ map VarE ys) (zip3 tys xs ys)
-                return (dcon, map (\x -> (x,(ProdTy []))) xs, bod)
-  return $ FunDef { funName = mkCopySansPtrsFunName (fromVar tyName)
-                  , funArgs = [arg]
-                  , funTy   = (ForAll [] (ArrowTy [PackedTy (fromVar tyName) []] (PackedTy (fromVar tyName) [])))
-                  , funBody = CaseE (VarE arg) casebod
-                  , funMeta = FunMeta  { funRec = Rec
-                                       , funInline = NoInline
-                                       , funCanTriggerGC = False
-                                       }
-                  }
-
-
+      let bod =
+            foldr
+              (\(ty, x, y) acc ->
+                 case ty of
+                   PackedTy tycon _ ->
+                     LetE
+                       ( y
+                       , []
+                       , ty
+                       , AppE (mkCopySansPtrsFunName tycon) [] [VarE x])
+                       acc
+                   _ -> LetE (y, [], ty, VarE x) acc)
+              (DataConE (ProdTy []) dcon $ map VarE ys)
+              (zip3 tys xs ys)
+      return (dcon, map (\x -> (x, (ProdTy []))) xs, bod)
+  return $
+    FunDef
+      { funName = mkCopySansPtrsFunName (fromVar tyName)
+      , funArgs = [arg]
+      , funTy =
+          (ForAll
+             []
+             (ArrowTy
+                [PackedTy (fromVar tyName) []]
+                (PackedTy (fromVar tyName) [])))
+      , funBody = CaseE (VarE arg) casebod
+      , funMeta =
+          FunMeta
+            { funRec = Rec
+            , funInline = NoInline
+            , funCanTriggerGC = False
+            , funOptLayout = NoLayoutOpt
+            , userConstraintsDataCon = Nothing
+            , dataConFieldTypeInfo = Nothing
+            }
+      }
 
 
 -- | Traverses a packed data type.
 genTravFn :: DDef0 -> PassM FunDef0
 genTravFn DDef{tyName, dataCons} = do
   arg <- gensym $ "arg"
-  casebod <- forM dataCons $ \(dcon, tys) ->
-             do xs <- mapM (\_ -> gensym "x") tys
-                ys <- mapM (\_ -> gensym "y") tys
-                let bod = foldr (\(ty,x,y) acc ->
-                                     case ty of
-                                       PackedTy tycon _ -> LetE (y, [], ProdTy [], AppE (mkTravFunName tycon) [] [VarE x]) acc
-                                       _ -> acc)
-                          (MkProdE [])
-                          (zip3 (map snd tys) xs ys)
-                return (dcon, map (\x -> (x,ProdTy [])) xs, bod)
-  return $ FunDef { funName = mkTravFunName (fromVar tyName)
-                  , funArgs = [arg]
-                  , funTy   = (ForAll [] (ArrowTy [PackedTy (fromVar tyName) []] (ProdTy [])))
-                  , funBody = CaseE (VarE arg) casebod
-                  , funMeta = FunMeta  { funRec = Rec
-                                       , funInline = NoInline
-                                       , funCanTriggerGC = False
-                                       }
-                  }
+  casebod <-
+    forM dataCons $ \(dcon, tys) -> do
+      xs <- mapM (\_ -> gensym "x") tys
+      ys <- mapM (\_ -> gensym "y") tys
+      let bod =
+            foldr
+              (\(ty, x, y) acc ->
+                 case ty of
+                   PackedTy tycon _ ->
+                     LetE
+                       ( y
+                       , []
+                       , ProdTy []
+                       , AppE (mkTravFunName tycon) [] [VarE x])
+                       acc
+                   _ -> acc)
+              (MkProdE [])
+              (zip3 (map snd tys) xs ys)
+      return (dcon, map (\x -> (x, ProdTy [])) xs, bod)
+  return $
+    FunDef
+      { funName = mkTravFunName (fromVar tyName)
+      , funArgs = [arg]
+      , funTy = (ForAll [] (ArrowTy [PackedTy (fromVar tyName) []] (ProdTy [])))
+      , funBody = CaseE (VarE arg) casebod
+      , funMeta =
+          FunMeta
+            { funRec = Rec
+            , funInline = NoInline
+            , funCanTriggerGC = False
+            , funOptLayout = NoLayoutOpt
+            , userConstraintsDataCon = Nothing
+            , dataConFieldTypeInfo = Nothing
+            }
+      }
 
 
 -- | Print a packed datatype.
 genPrintFn :: DDef0 -> PassM FunDef0
 genPrintFn DDef{tyName, dataCons} = do
   arg <- gensym "arg"
-  casebod <- forM dataCons $ \(dcon, tys) ->
-             do xs <- mapM (\_ -> gensym "x") tys
-                ys <- mapM (\_ -> gensym "y") tys
-                let bnds = foldr (\(ty,x,y) acc ->
-                                     case ty of
-                                       IntTy   -> (y, [], ProdTy [], PrimAppE PrintInt [VarE x]) : acc
-                                       FloatTy -> (y, [], ProdTy [], PrimAppE PrintFloat [VarE x]) : acc
-                                       SymTy0  -> (y, [], ProdTy [], PrimAppE PrintSym [VarE x]) : acc
-                                       BoolTy  -> (y, [], ProdTy [], PrimAppE PrintBool [VarE x]) : acc
-                                       PackedTy tycon _ -> (y, [], ProdTy [], AppE (mkPrinterName tycon) [] [VarE x]) : acc
-                                       SymDictTy{} -> (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar "SymDict")]) : acc
-                                       VectorTy{} -> (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar "Vector")]) : acc
-                                       PDictTy{} -> (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar "PDict")]) : acc
-                                       ListTy{} -> (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar "List")]) : acc
-                                       ArenaTy{} -> (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar "Arena")]) : acc
-                                       SymSetTy{} -> (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar "SymSet")]) : acc
-                                       SymHashTy{} -> (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar "SymHash")]) : acc
-                                       IntHashTy{} -> (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar "IntHash")]) : acc
-                                       _ -> acc)
-                          []
-                          (zip3 (map snd tys) xs ys)
-                w1 <- gensym "wildcard"
-                w2 <- gensym "wildcard"
-                let add_spaces :: [(Var, [Ty0], Ty0, PreExp E0Ext Ty0 Ty0)] -> PassM [(Var, [Ty0], Ty0, PreExp E0Ext Ty0 Ty0)]
-                    add_spaces [] = pure []
-                    add_spaces [z] = pure [z]
-                    add_spaces (z:zs) = do
-                      zs' <- add_spaces zs
-                      wi <- gensym "wildcard"
-                      pure $ z:(wi, [], ProdTy [], PrimAppE PrintSym [(LitSymE (toVar " "))] ):zs'
-
-                bnds'' <- add_spaces $ [(w1, [], ProdTy [], PrimAppE PrintSym [(LitSymE (toVar ("(" ++ dcon)))])] ++ bnds
-                let bnds' = bnds'' ++ [(w2, [], ProdTy [], PrimAppE PrintSym [(LitSymE (toVar ")"))])]
-                    bod = mkLets bnds' (MkProdE [])
-                return (dcon, map (\x -> (x,ProdTy [])) xs, bod)
-  return $ FunDef { funName = mkPrinterName (fromVar tyName)
-                  , funArgs = [arg]
-                  , funTy   = (ForAll [] (ArrowTy [PackedTy (fromVar tyName) []] (ProdTy [])))
-                  , funBody = CaseE (VarE arg) casebod
-                  , funMeta = FunMeta  { funRec = Rec
-                                       , funInline = NoInline
-                                       , funCanTriggerGC = False
-                                       }
-                  }
-
-
---------------------------------------------------------------------------------
+  casebod <-
+    forM dataCons $ \(dcon, tys) -> do
+      xs <- mapM (\_ -> gensym "x") tys
+      ys <- mapM (\_ -> gensym "y") tys
+      let bnds =
+            foldr
+              (\(ty, x, y) acc ->
+                 case ty of
+                   IntTy -> (y, [], ProdTy [], PrimAppE PrintInt [VarE x]) : acc
+                   FloatTy ->
+                     (y, [], ProdTy [], PrimAppE PrintFloat [VarE x]) : acc
+                   SymTy0 ->
+                     (y, [], ProdTy [], PrimAppE PrintSym [VarE x]) : acc
+                   BoolTy ->
+                     (y, [], ProdTy [], PrimAppE PrintBool [VarE x]) : acc
+                   PackedTy tycon _ ->
+                     (y, [], ProdTy [], AppE (mkPrinterName tycon) [] [VarE x]) :
+                     acc
+                   SymDictTy {} ->
+                     ( y
+                     , []
+                     , ProdTy []
+                     , PrimAppE PrintSym [LitSymE (toVar "SymDict")]) :
+                     acc
+                   VectorTy {} ->
+                     ( y
+                     , []
+                     , ProdTy []
+                     , PrimAppE PrintSym [LitSymE (toVar "Vector")]) :
+                     acc
+                   PDictTy {} ->
+                     ( y
+                     , []
+                     , ProdTy []
+                     , PrimAppE PrintSym [LitSymE (toVar "PDict")]) :
+                     acc
+                   ListTy {} ->
+                     ( y
+                     , []
+                     , ProdTy []
+                     , PrimAppE PrintSym [LitSymE (toVar "List")]) :
+                     acc
+                   ArenaTy {} ->
+                     ( y
+                     , []
+                     , ProdTy []
+                     , PrimAppE PrintSym [LitSymE (toVar "Arena")]) :
+                     acc
+                   SymSetTy {} ->
+                     ( y
+                     , []
+                     , ProdTy []
+                     , PrimAppE PrintSym [LitSymE (toVar "SymSet")]) :
+                     acc
+                   SymHashTy {} ->
+                     ( y
+                     , []
+                     , ProdTy []
+                     , PrimAppE PrintSym [LitSymE (toVar "SymHash")]) :
+                     acc
+                   IntHashTy {} ->
+                     ( y
+                     , []
+                     , ProdTy []
+                     , PrimAppE PrintSym [LitSymE (toVar "IntHash")]) :
+                     acc
+                   _ -> acc)
+              []
+              (zip3 (map snd tys) xs ys)
+      w1 <- gensym "wildcard"
+      w2 <- gensym "wildcard"
+      let add_spaces ::
+               [(Var, [Ty0], Ty0, PreExp E0Ext Ty0 Ty0)]
+            -> PassM [(Var, [Ty0], Ty0, PreExp E0Ext Ty0 Ty0)]
+          add_spaces [] = pure []
+          add_spaces [z] = pure [z]
+          add_spaces (z:zs) = do
+            zs' <- add_spaces zs
+            wi <- gensym "wildcard"
+            pure $
+              z :
+              (wi, [], ProdTy [], PrimAppE PrintSym [(LitSymE (toVar " "))]) :
+              zs'
+      bnds'' <-
+        add_spaces $
+        [ ( w1
+          , []
+          , ProdTy []
+          , PrimAppE PrintSym [(LitSymE (toVar ("(" ++ dcon)))])
+        ] ++
+        bnds
+      let bnds' =
+            bnds'' ++
+            [(w2, [], ProdTy [], PrimAppE PrintSym [(LitSymE (toVar ")"))])]
+          bod = mkLets bnds' (MkProdE [])
+      return (dcon, map (\x -> (x, ProdTy [])) xs, bod)
+  return $
+    FunDef
+      { funName = mkPrinterName (fromVar tyName)
+      , funArgs = [arg]
+      , funTy = (ForAll [] (ArrowTy [PackedTy (fromVar tyName) []] (ProdTy [])))
+      , funBody = CaseE (VarE arg) casebod
+      , funMeta =
+          FunMeta
+            { funRec = Rec
+            , funInline = NoInline
+            , funCanTriggerGC = False
+            , funOptLayout = NoLayoutOpt
+            , userConstraintsDataCon = Nothing
+            , dataConFieldTypeInfo = Nothing
+            }
+      }
 
 -------------------------------------------------------------------------------
 
@@ -1742,8 +1894,18 @@ floatOutCase (Prog ddefs fundefs mainExp) = do
           fn_ty = ForAll [] (ArrowTy in_tys ret_ty)
       fn_name <- lift $ gensym "caseFn"
       args <- mapM (\x -> lift $ gensym x) free
-      let ex' = foldr (\(from,to) acc -> gSubst from (VarE to) acc) ex (zip free args)
-      let fn = FunDef fn_name args fn_ty ex' (FunMeta NotRec NoInline False)
+      let ex' =
+            foldr
+              (\(from, to) acc -> gSubst from (VarE to) acc)
+              ex
+              (zip free args)
+      let fn =
+            FunDef
+              fn_name
+              args
+              fn_ty
+              ex'
+              (FunMeta NotRec NoInline False NoLayoutOpt Nothing Nothing)
       state (\s -> ((AppE fn_name [] (map VarE free)), M.insert fn_name fn s))
 
     go :: Bool -> Env2 Ty0 -> Exp0 -> FloatM Exp0
