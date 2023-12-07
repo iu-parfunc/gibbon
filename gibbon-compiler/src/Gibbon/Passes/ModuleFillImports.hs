@@ -281,7 +281,8 @@ resolveNameInEnv mod name e =
         Nothing -> case (foldr findUnqualified (False, "") modspace) of
                     (True, n) -> n
                     (False, _) -> error $ "can't find unquilified reference to " ++ (fromVar name)
-      Nothing -> error $ "can't find " ++ (fromVar name) ++ " in env: " ++ (show e)
+      Nothing -> name
+      --Nothing -> error $ "can't find " ++ (fromVar name) ++ " in env: " ++ (show e)
 
 findUnqualified :: (Var, Bool) -> (Bool, Var) -> (Bool, Var)
 findUnqualified (n, q) (acc, out) =

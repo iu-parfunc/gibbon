@@ -115,7 +115,7 @@ resolveModInExp exp defenv funenv =
     FloatE i  -> return $ FloatE i
     LitSymE v -> return $ LitSymE v
     --VarE v -> return $ VarE (varAppend (toVar "seen-") v)
-    VarE v -> return $ VarE v
+    VarE v -> return $ VarE (parseAndResolve (parseAndResolve v funenv) defenv)
 
     AppE v locs ls -> do
       let (mod, fun) = parseOutMod v
@@ -214,4 +214,5 @@ resolveNameInEnv mod name e =
                     Nothing -> error $ "can't find " ++ (fromVar name) ++ " in module " ++ (fromVar m)
         Nothing -> if(M.size modspace == 1) then head $ M.elems modspace
                    else error $ "can't find " ++ (fromVar name)
-      Nothing -> error $ "can't find " ++ (fromVar name)
+      Nothing -> name
+      --Nothing -> error $ "can't find " ++ (fromVar name)
