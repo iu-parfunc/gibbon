@@ -181,8 +181,7 @@ resolveModInExp exp defenv funenv constrenv =
     VarE v -> return $ VarE v
 
     AppE v locs ls -> do
-      let (mod, fun) = parseOutMod v
-      let v' = resolveNameInEnv mod fun funenv
+      let v' = parseAndResolve v funenv
       ls' <- traverse (\v -> resolveModInExp v defenv funenv constrenv) ls
       return $ AppE v' locs ls'
 
