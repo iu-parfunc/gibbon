@@ -1,5 +1,5 @@
 module AddTree where
-    data Tree = Leaf Int | Node Tree Tree
+    data Tree = Node Tree Tree | Leaf Int
 
     sum :: Tree -> Int
     sum t =
