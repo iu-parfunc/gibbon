@@ -1,6 +1,7 @@
 module Gibbon.Passes.AccessPatternsAnalysis
   ( generateAccessGraphs,
     getGreedyOrder,
+    generateSolverEdges, 
     FieldMap,
     DataConAccessMap,
   )
@@ -83,11 +84,11 @@ generateAccessGraphs
                     map
                 )
                 dcons
-            accessMapsList = zipWith (\x y -> (x, y)) [dcons] [edges]
-            accessMaps = M.fromList accessMapsList
-            fieldMap' = M.insert funName accessMaps fieldMap  --dbgTraceIt (sdoc topologicallySortedVertices) dbgTraceIt ("\n") dbgTraceIt (sdoc (topologicallySortedVertices, edges)) dbgTraceIt ("\n")
-            s'' = generateSolverEdges funDef dcons fieldMap'
-         in dbgTraceIt ("DefUseChains:\n") dbgTraceIt (sdoc (funName, vertices, edges, findDataFlowDependencies funDef, s'')) dbgTraceIt ("\n") fieldMap'  
+            accessMapsList = {-dbgTraceIt ("STAGE1\n")-} zipWith (\x y -> (x, y)) [dcons] [edges]
+            accessMaps = {-dbgTraceIt ("STAGE2\n")-} M.fromList accessMapsList
+            fieldMap' = {-dbgTraceIt ("STAGE3\n")-} M.insert funName accessMaps fieldMap  --dbgTraceIt (sdoc topologicallySortedVertices) dbgTraceIt ("\n") dbgTraceIt (sdoc (topologicallySortedVertices, edges)) dbgTraceIt ("\n")
+            s'' = {-dbgTraceIt ("STAGE4\n")-} generateSolverEdges funDef dcons fieldMap'
+         in {-dbgTraceIt ("STAGE5:\n") dbgTraceIt (sdoc (funName, vertices, edges, findDataFlowDependencies funDef, s'')) dbgTraceIt ("\n")-} fieldMap'  
       Nothing -> error "generateAccessGraphs: no CFG for function found!"
 
 
@@ -322,8 +323,8 @@ evaluateExpressionFieldGraph currField nodeFromVertex vertexFromNode graph xs ma
           justDcons = [Just x | Just x <- fromDataCon']
           fromDataCon'' =
             if P.null justDcons
-              then dbgTraceIt ("justDcons:") dbgTraceIt (sdoc justDcons) [Nothing]
-              else dbgTraceIt ("justDcons:") dbgTraceIt (sdoc justDcons) justDcons
+              then {-dbgTraceIt ("justDcons:") dbgTraceIt (sdoc justDcons)-} [Nothing]
+              else {-dbgTraceIt ("justDcons:") dbgTraceIt (sdoc justDcons)-} justDcons
        in case fromDataCon'' of
             [a] ->
               case a of
@@ -356,7 +357,7 @@ evaluateExpressionFieldGraph currField nodeFromVertex vertexFromNode graph xs ma
                               )
                               succExp
                           {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
-                          succDataCon' = dbgTraceIt ("succDataCon:") dbgTraceIt (sdoc succDataCon)
+                          succDataCon' = {-dbgTraceIt ("succDataCon:") dbgTraceIt (sdoc succDataCon)-}
                             P.zipWith (\x y -> (x, y)) succDataCon succprob
                           newEdges =
                             P.concat $
@@ -421,8 +422,8 @@ evaluateExpressionFieldGraph currField nodeFromVertex vertexFromNode graph xs ma
           justDcons = [Just x | Just x <- fromDataCon']
           fromDataCon'' =
             if P.null justDcons
-              then dbgTraceIt ("justDcons:") dbgTraceIt (sdoc justDcons) [Nothing]
-              else dbgTraceIt ("justDcons:") dbgTraceIt (sdoc justDcons) justDcons
+              then {-dbgTraceIt ("justDcons:") dbgTraceIt (sdoc justDcons)-} [Nothing]
+              else {-dbgTraceIt ("justDcons:") dbgTraceIt (sdoc justDcons)-} justDcons
        in case fromDataCon'' of
             [a] ->
               case a of
@@ -443,7 +444,7 @@ evaluateExpressionFieldGraph currField nodeFromVertex vertexFromNode graph xs ma
                           )
                           succExp
                       {- list of tuples, where each tuple == ([(dcon, id), ... ], likelihood)    -}
-                      succDataCon' = dbgTraceIt ("succDataCon:") dbgTraceIt (sdoc succDataCon)
+                      succDataCon' = {-dbgTraceIt ("succDataCon:") dbgTraceIt (sdoc succDataCon)-}
                         P.zipWith (\x y -> (x, y)) succDataCon succprob
                       -- FIXME: TODO: This might be needed for the other cases in this function as well. 
                       -- This is to make sure we recurse on all possible successors. 
@@ -508,7 +509,7 @@ evaluateExpressionFieldGraph currField nodeFromVertex vertexFromNode graph xs ma
                                     datacon
                               )
                               succExp
-                          succDataCon' = dbgTraceIt ("succDataCon:") dbgTraceIt (sdoc succDataCon)
+                          succDataCon' = {-dbgTraceIt ("succDataCon:") dbgTraceIt (sdoc succDataCon)-}
                             P.zipWith (\x y -> (x, y)) succDataCon succprob
                           newEdges =
                             P.concat $
@@ -817,41 +818,56 @@ findFieldInDataConFromVariableInExpression exp graph map datacon =
     
 
 
-findIndexOfFields :: FunDef1 -> M.Map Int [Var]
-findIndexOfFields f@FunDef{funName, funBody, funTy, funArgs} = findIndexOfFieldsFunBody funBody
+findIndexOfFields :: FunDef1 -> DataCon -> M.Map Int [Var]
+findIndexOfFields f@FunDef{funName, funBody, funTy, funArgs} dcon = findIndexOfFieldsFunBody funBody dcon M.empty
 
 
-findIndexOfFieldsFunBody :: Exp1 -> M.Map Int [Var]
-findIndexOfFieldsFunBody exp = case exp of
+findIndexOfFieldsFunBody :: Exp1 -> DataCon -> M.Map Int [Var] ->  M.Map Int [Var]
+findIndexOfFieldsFunBody exp dcon m = case exp of
           -- Assumption that args will be flattened. 
-          DataConE loc dcon args -> P.foldr (\exp m -> case exp of 
-                                                            VarE v -> let idx = elemIndex exp args 
-                                                                        in case idx of 
-                                                                              Nothing -> error "Did not expect empty idx."
-                                                                              Just idx' -> case M.lookup idx' m of 
-                                                                                                  Nothing -> M.insert idx' [v] m
-                                                                                                  Just lst -> M.insert idx' (lst ++ [v]) m
-                                                            LitSymE v -> error "TODO: implememt for LitSymE."
-                                            ) M.empty args 
-          VarE {} -> M.empty 
-          LitE {} -> M.empty 
-          CharE {} -> M.empty 
-          FloatE {} -> M.empty 
-          LitSymE {} -> M.empty 
-          AppE f locs args -> P.foldr (\exp m -> findIndexOfFieldsFunBody exp) M.empty args 
-          PrimAppE f args -> P.foldr (\exp m -> findIndexOfFieldsFunBody exp) M.empty args 
-          LetE (v, loc, ty, rhs) bod -> let m  = findIndexOfFieldsFunBody rhs 
-                                            m' = findIndexOfFieldsFunBody bod 
-                                         in M.union m m' 
+          DataConE loc dcon args -> M.unions $ P.map (\exp -> findIndexOfFieldsFunBody exp dcon m) args --P.foldr (\exp m -> findIndexOfFieldsFunBody exp dcon) M.empty args
+          -- DataConE loc dcon args -> P.foldr (\exp m -> case exp of 
+          --                                                   VarE v -> let idx = elemIndex exp args 
+          --                                                               in case idx of 
+          --                                                                     Nothing -> error "Did not expect empty idx."
+          --                                                                     Just idx' -> case M.lookup idx' m of 
+          --                                                                                         Nothing -> M.insert idx' [v] m
+          --                                                                                         Just lst -> M.insert idx' (lst ++ [v]) m
+          --                                                   LitSymE v -> error "TODO: implememt for LitSymE."
+          --                                   ) M.empty args 
+          VarE {} -> m
+          LitE {} -> m 
+          CharE {} -> m 
+          FloatE {} -> m
+          LitSymE {} -> m 
+          AppE f locs args -> M.unions $ P.map (\exp -> findIndexOfFieldsFunBody exp dcon m) args
+          PrimAppE f args -> M.unions $ P.map (\exp -> findIndexOfFieldsFunBody exp dcon m) args
+          LetE (v, loc, ty, rhs) bod -> let m'  = findIndexOfFieldsFunBody rhs dcon m 
+                                            m'' = findIndexOfFieldsFunBody bod dcon m' 
+                                         in m'' 
           -- mp == [(DataCon, [(Var, loc)], PreExp ext loc dec)]
-          CaseE scrt mp -> P.foldr (\(a, b, c) m -> let m' = findIndexOfFieldsFunBody c
-                                                      in M.union m m'                                   
-                                   ) M.empty mp 
-          IfE a b c -> let mapA = findIndexOfFieldsFunBody a 
-                           mapB = findIndexOfFieldsFunBody b 
-                           mapC = findIndexOfFieldsFunBody c 
-                         in M.unions [mapA, mapB, mapC]
-          MkProdE xs -> P.foldr (\exp m -> findIndexOfFieldsFunBody exp) M.empty xs
+          -- Change this to take from the Case expression instead. 
+          CaseE scrt mp -> M.unions $ P.map (\(a, b, c) -> if (a == dcon)
+                                                           then let ms' = M.unions $ P.map (\vv@(var, loc)-> let idx = elemIndex vv b
+                                                                                                  in case idx of 
+                                                                                                        Nothing -> error "Did not expect empty idx."
+                                                                                                        Just idx' -> case M.lookup idx' m of 
+                                                                                                                            Nothing -> M.insert idx' [var] m
+                                                                                                                            Just lst -> M.insert idx' (lst ++ [var]) m
+                                                                          ) b
+                                                                    --m'' = findIndexOfFieldsFunBody c dcon ms' 
+                                                                 in ms'
+                                                           else m --let m' = findIndexOfFieldsFunBody c dcon m 
+                                                                 --in m'                                   
+                                            ) mp 
+          -- CaseE scrt mp -> P.foldr (\(a, b, c) m -> let m' = findIndexOfFieldsFunBody c dcon 
+          --                                            in M.union m m'                                   
+          --                          ) M.empty mp 
+          IfE a b c -> let mapA = findIndexOfFieldsFunBody a dcon m
+                           mapB = findIndexOfFieldsFunBody b dcon mapA
+                           mapC = findIndexOfFieldsFunBody c dcon mapB
+                         in mapC -- M.unions [mapA, mapB, mapC]
+          MkProdE xs ->  M.unions $ P.map (\exp -> findIndexOfFieldsFunBody exp dcon m) xs
           ProjE {} -> error "findIndexOfFieldsFunBody: TODO ProjE"
           TimeIt {} -> error "findIndexOfFieldsFunBody: TODO TimeIt"
           WithArenaE {} -> error "findIndexOfFieldsFunBody: TODO WithArenaE"
@@ -910,7 +926,7 @@ findDataFlowDependenciesFunBody exp = case exp of
                             in M.unions [newMap, newMap'']
           -- RW dependence, vars in a are read, b and c all could have Read or written to vars. 
           IfE a b c -> let vars_read = gFreeVars a 
-                           vars_dep = dbgTraceIt ("Vars Read: ") dbgTraceIt (show vars_read) dbgTraceIt ("\n") S.union (gFreeVars b) (gFreeVars c)
+                           vars_dep = {-dbgTraceIt ("Vars Read: ") dbgTraceIt (show vars_read) dbgTraceIt ("\n")-} S.union (gFreeVars b) (gFreeVars c)
                            newMap = P.foldr (\v' m -> let elem = M.lookup v' m  
                                                                         in case elem of 
                                                                           Nothing -> M.insert v' (S.toList vars_dep) m 
@@ -934,21 +950,39 @@ findDataFlowDependenciesFunBody exp = case exp of
 
 generateSolverEdges :: FunDef1 -> DataCon -> FieldMap -> [Constr]
 generateSolverEdges fundef@FunDef{funName, funBody, funTy, funArgs, funMeta} dcon fmap = 
-                                                                                let functionEdges = M.lookup funName fmap 
+                                                                                let functionEdges = {-dbgTraceIt ("STARTED!")-} M.lookup funName fmap 
                                                                                   in case functionEdges of 
                                                                                           Nothing -> error "generateSolverEdges: functon does not exist.\n"
                                                                                           Just k -> case M.lookup dcon k of 
                                                                                                               Nothing -> error "generateSolverEdges: No associated edges exist for the function.\n"
-                                                                                                              Just edges -> let indexToVariables = findIndexOfFields fundef
-                                                                                                                                dataFlowDependencies = dbgTraceIt ("Print FunDef") dbgTraceIt (sdoc fundef) findDataFlowDependencies fundef
-                                                                                                                                newEdges = (\FunMeta{dataConFieldTypeInfo} -> case dataConFieldTypeInfo of 
+                                                                                                              Just edges -> let indexToVariables = findIndexOfFields fundef dcon
+                                                                                                                                dataFlowDependencies = {-dbgTraceIt ("ENDED") dbgTraceIt (sdoc indexToVariables) dbgTraceIt ("Print FunDef") dbgTraceIt (sdoc fundef)-} findDataFlowDependencies fundef
+                                                                                                                                newEdges = {-dbgTraceIt ("FLOWDEPS") dbgTraceIt (sdoc dataFlowDependencies)-} (\FunMeta{dataConFieldTypeInfo} -> case dataConFieldTypeInfo of 
                                                                                                                                                                                       Nothing -> error "No associated field type record.\n"
                                                                                                                                                                                       Just x -> case M.lookup dcon x of 
                                                                                                                                                                                                       Nothing -> error "No field type for dcon.\n"
                                                                                                                                                                                                       Just y -> P.map (\((a, b), weight) -> ((a, fromJust (M.lookup (P.fromInteger a) y)), (b, fromJust (M.lookup (P.fromInteger b) y)), weight)) edges
                                                                                                                                            ) funMeta
-                                                                                                                                
+                                                                                                                                newEdges' = P.map (\e@((a,a'),(b,b'), wt) -> let varA =  M.findWithDefault ( [(toVar "")]) (P.fromInteger a) indexToVariables
+                                                                                                                                                                                 varB =  M.findWithDefault ( [(toVar "")]) (P.fromInteger b) indexToVariables 
+                                                                                                                                                                                 lambda = (\var l s -> let b = S.member var s 
+                                                                                                                                                                                                        in if b
+                                                                                                                                                                                                        then l 
+                                                                                                                                                                                                        else case M.lookup var dataFlowDependencies of
+                                                                                                                                                                                                                   Nothing -> l
+                                                                                                                                                                                                                   Just lst -> let s' = S.insert var s 
+                                                                                                                                                                                                                                in P.foldr (\v l' -> lambda v l' s') (lst ++ l) lst 
+                                                                                                                                                                                          )
+                                                                                                                                                                                 varA' = if P.length varA /= 1 then error "TODO: multiple variables to optimize." else P.head varA 
+                                                                                                                                                                                 varB' = if P.length varB /= 1 then error "TODO: multiple variables to optimize." else P.head varB
+                                                                                                                                                                                 reachable = lambda varA' [] S.empty
+                                                                                                                                                                               in case (elem varB' reachable) of 
+                                                                                                                                                                                      False -> WeakConstr   (((a,a'),(b,b')), wt)
+                                                                                                                                                                                      True  -> StrongConstr (((a,a'),(b,b')), wt)                                 
+                                                
+                                                                                                                
+                                                                                                                                                  ) newEdges           
                                                                                                                                 -- TODO: make the Weak vs Strong Constraints out of these edges. 
-                                                                                                                              in dbgTraceIt ("PrintEdges with the types embedded:\n") dbgTraceIt (sdoc (newEdges, fundef)) []
+                                                                                                                              in {-dbgTraceIt ("PrintEdges with the types embedded:\n") dbgTraceIt (sdoc (newEdges', fundef))-} newEdges'
                                                                                                                                 --fMeta{dataConFieldTypeInfo = fieldTypeInfo} = funMeta
                                                                                                                                 --newEdges = P.map (((a, b), weight) -> let ) edges 

@@ -34,7 +34,8 @@ import Gibbon.Passes.AccessPatternsAnalysis
   ( DataConAccessMap,
     FieldMap,
     generateAccessGraphs,
-    getGreedyOrder
+    getGreedyOrder, 
+    generateSolverEdges
   )
 import Gibbon.Passes.CallGraph
   ( ProducersMap (..),
@@ -48,7 +49,7 @@ import Gibbon.Passes.DefinitionUseChains
     getDefinitionsReachingLetExp,
     UseDefChainsFunctionMap (..)
   )
---import Gibbon.Passes.SolveLayoutConstrs (solveConstrs)
+import Gibbon.Passes.SolveLayoutConstrs (solveConstrs)
 import Gibbon.Pretty
 import System.CPUTime
 import System.IO.Unsafe as U
@@ -194,7 +195,7 @@ producerConsumerLayoutOptimization prg@Prog{ddefs, fundefs, mainExp} useGreedy =
                                                   Just x -> x
                                                   Nothing -> error "producerConsumerLayoutOptimization: expected a function definition!!"
                                    let fieldOrder = getAccessGraph f dcon
-                                   let result = optimizeFunctionWRTDataCon dd fd dcon (fromVar newSymDcon) fieldOrder useGreedy
+                                   let result = {-dbgTraceIt ("CHECKPOINTA\n")-} optimizeFunctionWRTDataCon dd fd dcon (fromVar newSymDcon) fieldOrder useGreedy
                                    case result of
                                      Nothing ->  pure pr --dbgTraceIt (sdoc (result, fname, fieldOrder)) 
                                      Just (ddefs', fundef', fieldorder) -> let fundefs' = M.delete fname fds
@@ -203,7 +204,7 @@ producerConsumerLayoutOptimization prg@Prog{ddefs, fundefs, mainExp} useGreedy =
                                                                                venv = progToVEnv p
                                                                                pmap = generateProducerGraph p
                                                                                prg' = genNewProducersAndRewriteProgram fname (fromVar newSymDcon) fieldorder venv pmap p
-                                                                             in  pure prg' --dbgTraceIt (sdoc (result, fname, fundef', fieldOrder))
+                                                                             in {-dbgTraceIt ("CHECKPOINTB\n")-}  pure prg' --dbgTraceIt (sdoc (result, fname, fundef', fieldOrder))
                 )
   P.foldrM lambda prg linearizeDcons --dbgTraceIt (sdoc linearizeDcons)
 
@@ -211,9 +212,9 @@ producerConsumerLayoutOptimization prg@Prog{ddefs, fundefs, mainExp} useGreedy =
 globallyOptimizeDataConLayout :: Bool -> Prog1 -> PassM Prog1
 globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
   -- TODO: make a custom function name printer that guarantees that functions starting with _ are auto-generated. 
-  let f' = P.map (deduceFieldSolverTypes ddefs) (M.elems fundefs)
-  let funsToOptimize = P.concatMap (\FunDef{funName} -> ([funName | not $ isInfixOf "_" (fromVar funName)])
-                                   ) $ f' --M.elems fundefs
+  --let f' = P.map (deduceFieldSolverTypes ddefs) (M.elems fundefs)
+  let funsToOptimize = P.concatMap (\FunDef{funName} -> ([funName | not (isInfixOf "_" (fromVar funName)) && not (isInfixOf "mk" (fromVar funName)) {-&& (fromVar funName) == "emphKeywordInTag"-} ])
+                                   ) $ M.elems fundefs --f'
   let pairDataConFuns = P.concatMap (\name -> case M.lookup name fundefs
                                                        of Just f@FunDef{funName, funBody} -> [(f, dataConsInFunBody funBody)]
                                                           Nothing -> []
@@ -228,7 +229,7 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
 
   let lstElements = M.toList clubSameDcons
 
-  let dconToFieldOrder = P.map (\(dcon, funList) -> let allEdges = P.concatMap (\f@FunDef{funName} -> let dconmap  = dbgTraceIt ("HIT!!") getAccessGraph (deduceFieldSolverTypes ddefs f) dcon
+  let dconToFieldOrder = P.map (\(dcon, funList) -> let allEdges = P.concatMap (\f@FunDef{funName} -> let dconmap  = {- dbgTraceIt ("HIT!!") -} getAccessGraph f dcon -- (deduceFieldSolverTypes ddefs f)
                                                                                                           maybeElem = M.lookup funName dconmap
                                                                                                               in case maybeElem of
                                                                                                                 Nothing -> []
@@ -246,44 +247,60 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
                                                           e' = M.toList m'
                                                         in M.insert dcon e' m''
                           ) M.empty dconToFieldOrder
-
-
+                          
   let funsToOptimizeTriple = P.concatMap (\(dcon, funList) -> let edges' = M.lookup dcon mergedEdges 
                                                    in case edges' of 
                                                            Nothing -> []
                                                            Just x -> let m = M.insert dcon x M.empty
                                                                          --lst = P.map (\f@FunDef{funName} -> (f, dcon, M.insert funName m M.empty)) funList
-                                                                        --in lst 
+                                                                         --in lst 
                                                                         in [(funList, dcon, m)] 
                              ) lstElements
 
-  let lambda' = (\(f@FunDef{funName=fname}, (dcon, newSymDcon), edgeOrder) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do 
-                      let maybeFd = M.lookup fname fds
+  let funsToOptimizeTriple' = P.map (\(funList, dcon, m) -> let constrs' = P.concatMap (\f@FunDef{funName=fname} -> let fieldOrder = M.insert fname m M.empty 
+                                                                                                                        f' = deduceFieldSolverTypes ddefs f
+                                                                                                                        constrs = generateSolverEdges f' dcon fieldOrder
+                                                                                                                      in constrs
+                                                                        ) funList
+                                                                lambda' = (\e -> ) 
+                                                                  --let combinedConstrs = P.map ()
+                                                                    
+                                          ) funsToOptimizeTriple
+
+  let lambda' = dbgTraceIt (sdoc funsToOptimizeTriple') dbgTraceIt ("\n") (\(f@FunDef{funName=fname}, (dcon, newSymDcon), edgeOrder) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do 
+                      let maybeFd = dbgTraceIt (sdoc (fname, dcon, edgeOrder)) M.lookup fname fds
                       let fieldOrder = M.insert fname edgeOrder M.empty
                       let fd = case maybeFd of
                                                   Just x -> x
                                                   Nothing -> error "globallyOptimizeDataConLayout: expected a function definition!!" 
                       let result = optimizeFunctionWRTDataCon dd fd dcon (fromVar newSymDcon) fieldOrder useGreedy
                       case result of
-                                     Nothing ->  pure pr 
+                                     Nothing -> dbgTraceIt ("CHECKPOINTA\n") pure pr 
                                      Just (ddefs', fundef', fieldorder) -> let fundefs' = M.delete fname fds
                                                                                fundefs'' = M.insert fname fundef' fundefs'
                                                                                p = Prog{ddefs = ddefs', fundefs = fundefs'', mainExp = mexp}
                                                                                venv = progToVEnv p
                                                                                pmap = generateProducerGraph p
                                                                                prg' = genNewProducersAndRewriteProgram fname (fromVar newSymDcon) fieldorder venv pmap p
-                                                                             in  pure prg'
+                                                                             in dbgTraceIt ("CHECKPOINTA\n") pure prg'
                 ) 
 
-  let lambda = (\(fList, dcon, fieldOrder) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do
+  let lambda = {-dbgTraceIt ("CHECKPOINTC\n")-} (\(fList, dcon, fieldOrder) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do
                                    newSymDcon  <- gensym (toVar dcon)
                                    let vals = P.map (\f -> (f, (dcon, newSymDcon), fieldOrder)) fList 
-                                   P.foldrM lambda' pr vals  
+                                   P.foldrM lambda' pr vals   {-dbgTraceIt ("CHECKPOINTE\n")-}
                )
-  
+  P.foldrM lambda prg funsToOptimizeTriple {-dbgTraceIt ("CHECKPOINTF\n")-}
 
-  P.foldrM lambda prg funsToOptimizeTriple
-
+mergeConstraints :: [Constr] -> [Constr]
+mergeConstraints lst = case lst of 
+  [] -> [] 
+  [x] -> [x]
+  x@(WeakConstr e):y -> let similarConstr = P.map (\x' -> case x' of 
+                                                              WeakConstr e' -> if e' == e then [WeakConstr e'] else [] 
+                                                              StrongConstr e' -> if e' == e then [StrongConstr e'] else []
+                                                  ) y 
+  x@(StrongConstr e):y -> 
 
 
 generateCopyFunctionsForFunctionsThatUseOptimizedVariable :: Var -> DataCon -> FieldOrder -> Prog1 -> PassM Prog1
@@ -518,11 +535,11 @@ optimizeFunctionWRTDataCon
   useGreedy = case useGreedy of 
    False -> 
     let field_len = P.length $ snd . snd $ lkp' ddefs datacon
-        fieldorder =
+        fieldorder = dbgTraceIt (sdoc funName) dbgTraceIt ("End1\n")
           optimizeDataConOrderFunc
             fieldMap
             M.empty
-            fundef
+            (deduceFieldSolverTypes ddefs fundef) --deduceFieldSolverTypes ddefs f)
             [(datacon, field_len)]
             M.empty
         -- make a function to generate a new data con as a value instead of changing the order of fields in the original one.
@@ -531,13 +548,13 @@ optimizeFunctionWRTDataCon
         --fundef' = shuffleDataConFunBody True fieldorder fundef newDcon
         --(newDDefs, fundef', fieldorder)
       in case M.toList fieldorder of
-                  [] ->  Nothing --dbgTraceIt (sdoc fieldorder)
+                  [] -> dbgTraceIt (sdoc funName) dbgTraceIt ("End2\n") Nothing --dbgTraceIt (sdoc fieldorder)
                   [(dcon, order)] -> let orignal_order = [0..(P.length order - 1)]
                                        in if orignal_order == P.map P.fromInteger order
-                                          then Nothing
+                                          then dbgTraceIt (sdoc funName) dbgTraceIt ("End2\n") Nothing
                                           else let newDDefs = optimizeDataCon (dcon, order) ddefs newDcon
                                                    fundef' = shuffleDataConFunBody True fieldorder fundef newDcon
-                                                 in Just (newDDefs, fundef', fieldorder) --dbgTraceIt (sdoc order) -- dbgTraceIt (sdoc fieldorder)
+                                                 in {-dbgTraceIt ("CHECKPOINT2\n")-} Just (newDDefs, fundef', fieldorder) --dbgTraceIt (sdoc order) -- dbgTraceIt (sdoc fieldorder)
                   _ -> error "more than one"
    True ->
     let field_len = P.length $ snd . snd $ lkp' ddefs datacon
@@ -1063,18 +1080,19 @@ optimizeDataConOrderFunc
      in case datacons of
           [] -> orderIn
           [(x, field_len)] ->
-            let softEdges = M.findWithDefault [] x lstDconEdges
+            let accessEdges = M.findWithDefault [] x lstDconEdges
+                solverConstraints = generateSolverEdges fundef x dconAccessMap
                 --softConstrs = P.map Soft softEdges
-                userOrdering = dbgTraceIt ("Constraints: ") dbgTraceIt (sdoc (lstDconEdges)) M.findWithDefault [] x dconUserConstr
-                userConstrs = genUserConstrs userOrdering
-                allConstrs =  userConstrs --softConstrs ++
+                --userOrdering = dbgTraceIt ("Constraints: ") dbgTraceIt (sdoc (lstDconEdges)) M.findWithDefault [] x dconUserConstr
+                --userConstrs = genUserConstrs userOrdering
+                allConstrs = solverConstraints --userConstrs --softConstrs ++
              in -- field_len    = P.length $ snd . snd $ lkp ddefs x
                 case allConstrs of
                   [] -> orderIn
                   _  ->
-                    let (layout, t) = ([], 0.0) --dbgTraceIt ("Constraints: ") dbgTraceIt (sdoc (allConstrs))
-                        --  U.unsafePerformIO $
-                        --    timeSolver U.unsafePerformIO (solveConstrs allConstrs)
+                    let (layout, t) = --([], 0.0) --dbgTraceIt ("Constraints: ") dbgTraceIt (sdoc (allConstrs))
+                           U.unsafePerformIO $
+                           timeSolver U.unsafePerformIO (solveConstrs allConstrs)
                         -- In case we don't get orderings for some of the fields in the data con
                         -- to be safe we should complete the layout orderings of the missing fields.
                         fix_missing =
@@ -1088,9 +1106,9 @@ optimizeDataConOrderFunc
                                   new = fillminus1 partial navail
                                in new
                             else
-                              let layout' = [] --L.sort layout
+                              let layout' = L.sort layout
                                in P.map snd layout'
-                        fieldorder = M.insert x (integerList fix_missing) orderIn
+                        fieldorder = dbgTraceIt ("NewOrder.") dbgTraceIt (sdoc fix_missing) dbgTraceIt ("End.\n") M.insert x (integerList fix_missing) orderIn
                      in fieldorder
           _ ->
             error
@@ -1667,10 +1685,10 @@ deduceFieldSolverTypes :: DDefs1 -> FunDef1 -> FunDef1
 deduceFieldSolverTypes dataDefinitions f@FunDef {funName, funBody, funTy, funArgs, funMeta} = 
   let dconsUsedInFunction = dataConsInFunBody funBody 
       dataConFieldTypeInfo = P.foldr (\dcon map -> let flds = lookupDataCon dataDefinitions dcon
-                                                       (_, meta) = dbgTraceIt (sdoc flds) P.foldr (\fld (index::Int, map) -> 
+                                                       (_, meta) = {-dbgTraceIt (sdoc flds)-} P.foldr (\fld (index::Int, map) -> 
                                                                                    let isInline = isInlineable fld funTy funName funBody
-                                                                                       (isRec, m) = isRecursive fld dataDefinitions M.empty
-                                                                                       isSc = isScalar fld dataDefinitions dcon M.empty
+                                                                                       (isRec, m) = ([], M.empty) --isRecursive fld dataDefinitions M.empty
+                                                                                       isSc = [] --isScalar fld dataDefinitions dcon M.empty
                                                                                        isSR = isSelfRecursive fld dataDefinitions dcon
                                                                                        ind' = index-1
                                                                                      in (ind', M.insert index (isInline ++ isRec ++ isSc ++ isSR) map)
@@ -1681,7 +1699,7 @@ deduceFieldSolverTypes dataDefinitions f@FunDef {funName, funBody, funTy, funArg
                                                                       ) ((P.length flds) - 1, M.empty) flds 
                                                      in M.insert dcon meta map
                                      ) M.empty (S.toList dconsUsedInFunction)
-    in dbgTraceIt (sdoc (funName, dataConFieldTypeInfo, snd funTy, funArgs)) FunDef{funName=funName, funBody=funBody, funTy=funTy, funArgs=funArgs, funMeta=funMeta{dataConFieldTypeInfo=Just dataConFieldTypeInfo}}
+    in {-dbgTraceIt (sdoc (funName, dataConFieldTypeInfo, snd funTy, funArgs))-} FunDef{funName=funName, funBody=funBody, funTy=funTy, funArgs=funArgs, funMeta=funMeta{dataConFieldTypeInfo=Just dataConFieldTypeInfo}}
        
 
 isInlineable :: Ty1 -> ArrowTy Ty1 -> Var -> Exp1 -> [DataConFieldType]
