@@ -261,26 +261,29 @@ data UserOrdering
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
 
+type FieldIndexTy = Integer
+type ConstrEdgeWeightTy = Integer
+
 -- Constraints and Edges used in the ILP solver
 -- Edge signifies an access that happened. 
 -- (a, b) means a was accessed right before b. 
 type Edge
-   = ( Integer {- from -}
-     , Integer {- to -}
+   = ( FieldIndexTy {- from -}
+     , FieldIndexTy {- to -}
       )
 
 -- An Edge for generating Constraints where an additional element of field type is provided in the tuple. 
 type ConstraintEdge
-   = ( (Integer, DataConFieldType) {- from -}
-     , (Integer, DataConFieldType) {- to -}
+   = ( (FieldIndexTy, [DataConFieldType]) {- from -}
+     , (FieldIndexTy, [DataConFieldType]) {- to -}
      )
 
 -- The type of Constraints
--- WeakConstr is induced by accessed that are data independent. 
+-- WeakConstr is induced by accesses that are data independent. 
 -- StrongConstr is induced by accesses that arise due to a data dependency. 
 data Constr
-  = WeakConstr (ConstraintEdge, Integer)
-  | StrongConstr (ConstraintEdge, Integer)
+  = WeakConstr (ConstraintEdge, ConstrEdgeWeightTy)
+  | StrongConstr (ConstraintEdge, ConstrEdgeWeightTy)
   | Imm Edge
   | Absolute Edge
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
