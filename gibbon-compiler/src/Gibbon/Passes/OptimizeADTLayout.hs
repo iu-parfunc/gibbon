@@ -204,7 +204,7 @@ producerConsumerLayoutOptimization prg@Prog{ddefs, fundefs, mainExp} useGreedy =
                                                                                venv = progToVEnv p
                                                                                pmap = generateProducerGraph p
                                                                                prg' = genNewProducersAndRewriteProgram fname (fromVar newSymDcon) fieldorder venv pmap p
-                                                                             in {-dbgTraceIt ("CHECKPOINTB\n")-}  pure prg' --dbgTraceIt (sdoc (result, fname, fundef', fieldOrder))
+                                                                             in dbgTraceIt ("Producer Graph:\n") dbgTraceIt (sdoc pmap) dbgTraceIt ("End\n")  pure prg' --dbgTraceIt (sdoc (result, fname, fundef', fieldOrder))
                 )
   P.foldrM lambda prg linearizeDcons --dbgTraceIt (sdoc linearizeDcons)
 
@@ -256,24 +256,24 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
                                                                          --in lst 
                                                                         in [(funList, dcon, m)] 
                              ) lstElements
+  
+  let funsToOptimizeTriple' = P.map (\(funList, dcon, m) -> (P.map (\f -> deduceFieldSolverTypes ddefs f) funList, dcon, m)) funsToOptimizeTriple
 
-  let funsToOptimizeTriple' = P.map (\(funList, dcon, m) -> let constrs' = P.concatMap (\f@FunDef{funName=fname} -> let fieldOrder = M.insert fname m M.empty 
-                                                                                                                        f' = deduceFieldSolverTypes ddefs f
-                                                                                                                        constrs = generateSolverEdges f' dcon fieldOrder
-                                                                                                                      in constrs
-                                                                        ) funList
-                                                                lambda' = (\e -> ) 
-                                                                  --let combinedConstrs = P.map ()
-                                                                    
-                                          ) funsToOptimizeTriple
+  let funsToOptimizeTriple'' = P.map (\(funList, dcon, m) -> let mergedConstraints = mergeConstraints $ S.toList $ S.fromList $ P.concatMap (\f@FunDef{funName=fname} -> let fieldOrder = M.insert fname m M.empty 
+                                                                                                                                                                             -- f' = deduceFieldSolverTypes ddefs f
+                                                                                                                                                                             constrs = generateSolverEdges f dcon fieldOrder
+                                                                                                                                                                          in constrs
+                                                                                                                                           ) funList
+                                                              in (funList, dcon, mergedConstraints)
+                                          ) funsToOptimizeTriple'
 
-  let lambda' = dbgTraceIt (sdoc funsToOptimizeTriple') dbgTraceIt ("\n") (\(f@FunDef{funName=fname}, (dcon, newSymDcon), edgeOrder) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do 
-                      let maybeFd = dbgTraceIt (sdoc (fname, dcon, edgeOrder)) M.lookup fname fds
-                      let fieldOrder = M.insert fname edgeOrder M.empty
+  let lambda' = dbgTraceIt (sdoc funsToOptimizeTriple'') dbgTraceIt ("\n") (\(f@FunDef{funName=fname}, (dcon, newSymDcon), constrs) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do 
+                      let maybeFd = dbgTraceIt (sdoc (fname, dcon, constrs)) M.lookup fname fds
+                      --let fieldOrder = M.insert fname edgeOrder M.empty
                       let fd = case maybeFd of
                                                   Just x -> x
                                                   Nothing -> error "globallyOptimizeDataConLayout: expected a function definition!!" 
-                      let result = optimizeFunctionWRTDataCon dd fd dcon (fromVar newSymDcon) fieldOrder useGreedy
+                      let result = optimizeFunctionWRTDataConGlobal dd fd dcon (fromVar newSymDcon) constrs useGreedy
                       case result of
                                      Nothing -> dbgTraceIt ("CHECKPOINTA\n") pure pr 
                                      Just (ddefs', fundef', fieldorder) -> let fundefs' = M.delete fname fds
@@ -282,25 +282,37 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
                                                                                venv = progToVEnv p
                                                                                pmap = generateProducerGraph p
                                                                                prg' = genNewProducersAndRewriteProgram fname (fromVar newSymDcon) fieldorder venv pmap p
-                                                                             in dbgTraceIt ("CHECKPOINTA\n") pure prg'
+                                                                             in dbgTraceIt ("Producer Graph:\n") dbgTraceIt (sdoc pmap) pure prg'
                 ) 
 
-  let lambda = {-dbgTraceIt ("CHECKPOINTC\n")-} (\(fList, dcon, fieldOrder) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do
+  let lambda = {-dbgTraceIt ("CHECKPOINTC\n")-} (\(fList, dcon, constrs) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do
                                    newSymDcon  <- gensym (toVar dcon)
-                                   let vals = P.map (\f -> (f, (dcon, newSymDcon), fieldOrder)) fList 
+                                   let vals = P.map (\f -> (f, (dcon, newSymDcon), constrs)) fList 
                                    P.foldrM lambda' pr vals   {-dbgTraceIt ("CHECKPOINTE\n")-}
                )
-  P.foldrM lambda prg funsToOptimizeTriple {-dbgTraceIt ("CHECKPOINTF\n")-}
+  P.foldrM lambda prg funsToOptimizeTriple'' {-dbgTraceIt ("CHECKPOINTF\n")-}
 
 mergeConstraints :: [Constr] -> [Constr]
 mergeConstraints lst = case lst of 
   [] -> [] 
   [x] -> [x]
-  x@(WeakConstr e):y -> let similarConstr = P.map (\x' -> case x' of 
-                                                              WeakConstr e' -> if e' == e then [WeakConstr e'] else [] 
+  x@(WeakConstr e):y -> let similarConstr = P.concatMap (\x' -> case x' of 
+                                                              WeakConstr e' -> if e' == e then error "Did not expect exactly same constraint" else [] 
                                                               StrongConstr e' -> if e' == e then [StrongConstr e'] else []
-                                                  ) y 
-  x@(StrongConstr e):y -> 
+                                                        ) y 
+                         in case similarConstr of 
+                                  []  -> [x] ++ mergeConstraints y  
+                                  [k] -> [k] ++ mergeConstraints (L.delete k y)  
+                                  _ -> error "Did not expect more than one constraint that has similar edge access."
+                                 
+  x@(StrongConstr e):y -> let similarConstr = P.concatMap (\x' -> case x' of 
+                                                                    WeakConstr e' -> if e' == e then [WeakConstr e'] else []
+                                                                    StrongConstr e' -> if e' == e then error "Did not expect exactly same constraint" else []
+                                                          ) y
+                            in case similarConstr of 
+                                      []  -> [x] ++ mergeConstraints y 
+                                      [k] -> mergeConstraints (L.delete k y)  
+                                      _ -> error "Did not expect more that one constraint that has similar edge access."
 
 
 generateCopyFunctionsForFunctionsThatUseOptimizedVariable :: Var -> DataCon -> FieldOrder -> Prog1 -> PassM Prog1
@@ -575,6 +587,62 @@ optimizeFunctionWRTDataCon
                                                  in Just (newDDefs, fundef', fieldorder) --dbgTraceIt (sdoc order) -- dbgTraceIt (sdoc fieldorder) dbgTraceIt (sdoc greedy_order) 
                   _ -> error "more than one"
 
+
+optimizeFunctionWRTDataConGlobal ::
+  DDefs1 ->
+  FunDef1 ->
+  DataCon ->
+  DataCon ->
+  [Constr] ->
+  Bool ->
+  Maybe (DDefs1, FunDef1, FieldOrder)
+optimizeFunctionWRTDataConGlobal
+  ddefs
+  fundef@FunDef
+    { funName,
+      funBody,
+      funTy,
+      funArgs
+    }
+  datacon
+  newDcon
+  constrs
+  useGreedy = case useGreedy of 
+   False -> 
+    let newFieldOrder = optimizeDataConOrderGlobal constrs ddefs datacon 
+        -- make a function to generate a new data con as a value instead of changing the order of fields in the original one.
+        --[(dcon, order)] = M.toList fieldorder
+        --(newDDefs, newDcon) = optimizeDataCon (dcon, order) ddefs
+        --fundef' = shuffleDataConFunBody True fieldorder fundef newDcon
+        --(newDDefs, fundef', fieldorder)
+      in case M.toList newFieldOrder of
+                  [] -> dbgTraceIt (sdoc funName) dbgTraceIt ("End2\n") Nothing --dbgTraceIt (sdoc fieldorder)
+                  [(dcon, order)] -> let orignal_order = [0..(P.length order - 1)]
+                                       in if orignal_order == P.map P.fromInteger order
+                                          then dbgTraceIt (sdoc funName) dbgTraceIt ("End2\n") Nothing
+                                          else let newDDefs = optimizeDataCon (dcon, order) ddefs newDcon
+                                                   fundef' = shuffleDataConFunBody True newFieldOrder fundef newDcon
+                                                 in {-dbgTraceIt ("CHECKPOINT2\n")-} Just (newDDefs, fundef', newFieldOrder) --dbgTraceIt (sdoc order) -- dbgTraceIt (sdoc fieldorder)
+                  _ -> error "more than one"
+  --  True ->
+  --   let field_len = P.length $ snd . snd $ lkp' ddefs datacon
+  --       edges' = case (M.lookup funName fieldMap) of 
+  --                      Just d  -> case (M.lookup datacon d) of 
+  --                                     Nothing -> error ""
+  --                                     Just e -> e 
+  --                      Nothing -> error ""
+  --       greedy_order = getGreedyOrder edges' field_len
+  --       fieldorder = M.insert datacon greedy_order M.empty 
+  --     in case M.toList fieldorder of
+  --                 [] -> Nothing --dbgTraceIt (sdoc fieldorder) dbgTraceIt (sdoc greedy_order) 
+  --                 [(dcon, order)] -> let orignal_order = [0..(P.length order - 1)]
+  --                                      in if orignal_order == P.map P.fromInteger order
+  --                                         then Nothing
+  --                                         else let newDDefs = optimizeDataCon (dcon, order) ddefs newDcon
+  --                                                  fundef' = shuffleDataConFunBody True fieldorder fundef newDcon
+  --                                                in Just (newDDefs, fundef', fieldorder) --dbgTraceIt (sdoc order) -- dbgTraceIt (sdoc fieldorder) dbgTraceIt (sdoc greedy_order) 
+  --                 _ -> error "more than one"
+
 changeCallNameInRecFunction ::
   Var -> FunDef1 -> FunDef1
 changeCallNameInRecFunction
@@ -637,6 +705,11 @@ changeCallNameInRecFunction
           MapE {} -> error "getExpTyEnv: TODO MapE"
           FoldE {} -> error "getExpTyEnv: TODO FoldE"
 
+
+-- Rather than backtracking all the producers, which seems like a lot trickier of a prospect. 
+-- For a new data constructor, why not just change all the occurences of this data constructor to the new one? This is much simpler. 
+-- However for the producer / consumer boundary optimization. The backtracking needs to be done. 
+
 genNewProducersAndRewriteProgram ::
   Var ->
   DataCon ->
@@ -660,10 +733,12 @@ genNewProducersAndRewriteProgram
       Nothing ->
         error "genNewProducersAndRewriteProgram : Program has no main expression."
       Just (mexp, ty) ->
-        let variablesAndProducers = removeDuplicates $ getVariableAndProducer funName pmap venv ddefs newDataConName mexp
+        let 
+          --variablesAndProducers' = dbgTraceIt ("Variables and Producers") dbgTraceIt (sdoc (funName, newDataConName)) P.concatMap (\f@FunDef{funName=fnName, funBody=fnb} -> if fnName /= funName then getVariableAndProducer funName pmap venv ddefs newDataConName fnb else []) (M.elems fundefs)  
+          variablesAndProducers  = dbgTraceIt ("End\n") removeDuplicates $ (getVariableAndProducer funName pmap venv ddefs newDataConName mexp) -- ++ variablesAndProducers'
          in case variablesAndProducers of
-              [] -> prg --error "no variable and producers found to modify"
-              [(var, producer)] ->
+              [] -> prg-- error "no variable and producers found to modify" -- Error here, has no producers to modify, figure out a way to find all producers correctly.
+              [(var, producer)] -> 
                 let newProducerName = producer -- toVar (fromVar producer ++ "_new")
                     oldProducerBody = M.lookup producer fundefs
                  in case oldProducerBody of
@@ -809,9 +884,9 @@ getVariableAndProducer funName pMap venv@Env2{vEnv, fEnv} ddefs dconName exp =
                             Just (AppE f locs args) -> (var, f) : producers
                             Just (TimeIt e _ _) -> case e of
                                 AppE f locs args -> (var, f) : producers
-                                _ -> error "getVariableAndProducer1: producer other than a function call not expected." 
+                                _ -> dbgTraceIt (sdoc e) error "getVariableAndProducer1: producer other than a function call not expected." 
 
-                            _ ->
+                            _ -> dbgTraceIt (sdoc (varOf, producerExp))
                               error
                                 "getVariableAndProducer2: producer other than a function call not expected."
                     Nothing -> []
@@ -1113,6 +1188,31 @@ optimizeDataConOrderFunc
           _ ->
             error
               "OptimizeFieldOrder: optimizeDataConOrderFunc more that one data constructor per function not implemented yet."
+
+
+optimizeDataConOrderGlobal :: [Constr] -> DDefs1 -> DataCon -> FieldOrder
+optimizeDataConOrderGlobal constrs ddefs dcon =
+  let field_len = P.length $ snd . snd $ lkp ddefs dcon
+   in case constrs of
+          [] -> M.empty
+          _  -> let (layout, t) = U.unsafePerformIO $ timeSolver U.unsafePerformIO (solveConstrs constrs)
+                                 -- In case we don't get orderings for some of the fields in the data con
+                                 -- to be safe we should complete the layout orderings of the missing fields.
+                    fix_missing = if P.length layout < field_len
+                                  then
+                                    let indices = [0 .. (field_len - 1)]
+                                        minuslist = makeneg field_len
+                                        partial = fillList minuslist layout
+                                        avail = P.map fst layout
+                                        navail = deleteMany avail indices
+                                        new = fillminus1 partial navail
+                                      in new
+                                  else
+                                    let layout' = L.sort layout
+                                      in P.map snd layout'
+                    fieldorder = dbgTraceIt ("NewOrder.") dbgTraceIt (sdoc fix_missing) dbgTraceIt ("End.\n") M.insert dcon (integerList fix_missing) M.empty
+                  in fieldorder
+          _ -> error "OptimizeFieldOrder: optimizeDataConOrderFunc more that one data constructor per function not implemented yet."
 
 -- for the function for which we are locally optimizing for, find the optimal layout of the data constructors that we care about.
 -- "Locally optimizing for the function"
