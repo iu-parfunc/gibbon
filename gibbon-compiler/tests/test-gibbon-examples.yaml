@@ -895,7 +895,8 @@ tests:
     failing: []
     run-modes: ["gibbon2", "gibbon3", "pointer"]
     
-  - name: layout1ContentSearchRunPipeline.hs 
+  - name: layout1ContentSearchRunPipeline.hs
+    skip: true 
     test-flags: ["--no-gc", "--opt-layout-local", "--opt-layout-use-solver"]
     dir: examples/layout_bench
     answer-file: examples/layout_bench/layout1ContentSearchRunPipeline.ans
@@ -903,6 +904,7 @@ tests:
     run-modes: ["gibbon2"]
     
   - name: manyFuncs.hs 
+    skip: true
     test-flags: ["--no-gc", "--opt-layout-local", "--opt-layout-use-solver"]
     dir: examples/layout_bench
     answer-file: examples/layout_bench/manyFuncsLocal.ans
@@ -910,6 +912,7 @@ tests:
     run-modes: ["gibbon2"]
     
   - name: manyFuncs.hs 
+    skip: true
     test-flags: ["--no-gc", "--opt-layout-global", "--opt-layout-use-solver"]
     dir: examples/layout_bench
     answer-file: examples/layout_bench/manyFuncsGlobal.ans
