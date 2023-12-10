@@ -214,5 +214,7 @@ resolveNameInEnv mod name e =
                     Nothing -> error $ "can't find " ++ (fromVar name) ++ " in module " ++ (fromVar m)
         Nothing -> if(M.size modspace == 1) then head $ M.elems modspace
                    else error $ "can't find " ++ (fromVar name)
-      Nothing -> name
+      Nothing -> case mod of
+                  Just m -> (toVar ((fromVar m) ++ "." ++ (fromVar name)))
+                  Nothing -> name
       --Nothing -> error $ "can't find " ++ (fromVar name)

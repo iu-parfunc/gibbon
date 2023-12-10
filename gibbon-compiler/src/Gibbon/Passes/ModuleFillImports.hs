@@ -178,7 +178,8 @@ resolveModInExp exp defenv funenv constrenv =
     FloatE i  -> return $ FloatE i
     LitSymE v -> return $ LitSymE v
     --VarE v -> return $ VarE (varAppend (toVar "seen-") v)
-    VarE v -> return $ VarE v
+    --VarE v -> return $ VarE v
+    VarE v -> return $ VarE (parseAndResolve (parseAndResolve v funenv) defenv)
 
     AppE v locs ls -> do
       let v' = parseAndResolve v funenv
@@ -280,7 +281,9 @@ resolveNameInEnv mod name e =
         Nothing -> case (foldr findUnqualified (False, "") modspace) of
                     (True, n) -> n
                     (False, _) -> error $ "can't find unquilified reference to " ++ (fromVar name)
-      Nothing -> name
+      Nothing -> case mod of
+                  Just m -> (toVar ((fromVar m) ++ "." ++ (fromVar name)))
+                  Nothing -> name
       --Nothing -> error $ "can't find " ++ (fromVar name) ++ " in env: " ++ (show e)
 
 findUnqualified :: (Var, Bool) -> (Bool, Var) -> (Bool, Var)
