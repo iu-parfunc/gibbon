@@ -320,7 +320,7 @@ emphasizeKeywordInline keyword inline =
                                 --_ = printsym (quote "NEWLINE")
                                 in if (isSame) then let
                                        newlist :: PList Inline 
-                                       newlist = (Cons (copyPacked inline)) Nil                         -- ---> Here we had to use a call to copyPacked in order to copy over the inline to a new region, otherwise segfaults. 
+                                       newlist = (Cons (inline)) Nil                         -- ---> Here we had to use a call to copyPacked in order to copy over the inline to a new region, otherwise segfaults. 
                                     in (Emph newlist)
                                    else inline
       Emph list_inline        -> Emph (emphasizeInlineListForKeyword keyword list_inline)
