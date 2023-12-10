@@ -41,10 +41,10 @@ emphKeywordInTag keyword blogs = case blogs of
                                                                                                  
 -- main function 
 gibbon_main = 
-   let blogs = mkBlogs_layout1 2
+   let blogs = mkBlogs_layout1 10000
        keyword :: Vector Char  
        keyword = "a"
        newblgs   = emphKeywordInContent keyword blogs
        newblgs'  = emphKeywordInTag keyword newblgs 
        newblgs'' = filterByKeywordInTagList keyword newblgs'
-   in printPacked newblgs''
+   in () --printPacked newblgs''
