@@ -281,7 +281,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                 funs'''
                 (M.keys userOrderings')
         imported_progs' <- mapM id imported_progs
-        Prog defs'' funs'''' main' <- fillImports (Prog defs' funs''' main) (toVar mod_name) imports imported_progs'
+        Prog defs'' funs''''' main' <- fillImports (Prog defs' funs''' main) (toVar mod_name) imports imported_progs'
         let (defs0, funs0) =
               foldr
                 (\Prog {ddefs, fundefs} (defs1, funs1) ->
@@ -320,7 +320,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                            error $
                            "Conflicting definitions of " ++
                            show (S.toList em2) ++ " found in " ++ mod_name)
-                (defs'', funs'''')
+                (defs'', funs''''')
                 imported_progs'
         return $ (Prog defs0 funs0 main') --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs''') dbgTraceIt (sdoc userOrderings') dbgTraceIt "\n" dbgTraceIt (sdoc userOrderings)
   pure prog
