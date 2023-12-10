@@ -12,7 +12,6 @@
 {-# LANGUAGE TemplateHaskell            #-}
 
 module Gibbon.Language.Syntax
-  (
     -- * Datatype definitions
   ( DDefs
   , DataCon
