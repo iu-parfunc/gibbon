@@ -184,8 +184,10 @@ sortFns (Prog _ _ funs mtal) = foldl go S.empty allTails
 --------------------------------------------------------------------------------
 -- * C codegen
 
--- | Compile a program to C code that has the side effect of the
--- "gibbon_main" expression in that program.
+-- | Compile a program to C code which has the side effect of the
+-- "main" expression in that program.
+--
+--  The boolean flag is true when we are compiling in "Packed" mode.
 codegenProg :: Config -> Prog -> IO String
 codegenProg cfg prg@(Prog info_tbl sym_tbl funs mtal) =
       return (hashIncludes ++ pretty 80 (stack (map ppr defs)))

@@ -128,8 +128,10 @@ t1Prog = Prog {ddefs = M.fromList [],
                                       [(VarE "x_y1"), (VarE "x_y1")],
                             funMeta = FunMeta { funInline = Inline,
                                                 funRec = NotRec,
-                                                funCanTriggerGC = False
-
+                                                funCanTriggerGC = False,
+                                                funOptLayout    = NoLayoutOpt,
+                                                userConstraintsDataCon = Nothing, 
+						dataConFieldTypeInfo = Nothing  
                                               }
                            }),
                    ("add2",
@@ -141,7 +143,10 @@ t1Prog = Prog {ddefs = M.fromList [],
                                        (VarE "x_y0")],
                             funMeta = FunMeta { funInline = Inline,
                                                 funRec = NotRec,
-                                                funCanTriggerGC = False
+                                                funCanTriggerGC = False,
+                                                funOptLayout    = NoLayoutOpt,
+                                                userConstraintsDataCon = Nothing,
+						dataConFieldTypeInfo=Nothing
                                               }
                            })],
         mainExp = Just
