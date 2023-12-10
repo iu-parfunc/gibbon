@@ -248,6 +248,7 @@ if a thing is a type variable or a data constructor.
                                                 , funCanTriggerGC = False
                                                 , funOptLayout = NoLayoutOpt
                                                 , userConstraintsDataCon = Nothing
+						, dataConFieldTypeInfo = Nothing
                                                 }
                             } : fds)
             cds mn
