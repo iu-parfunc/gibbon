@@ -256,7 +256,7 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
                                                            Just x -> [(funList, dcon, x)] 
                             ) lstElements
                           
-  let funsToOptimizeTriple = dbgTraceIt (sdoc funsToOptimizeTripleGreedy) P.concatMap (\(dcon, funList) -> let edges' = M.lookup dcon mergedEdges 
+  let funsToOptimizeTriple = P.concatMap (\(dcon, funList) -> let edges' = M.lookup dcon mergedEdges 
                                                    in case edges' of 
                                                            Nothing -> []
                                                            Just x -> let m = M.insert dcon x M.empty
@@ -265,7 +265,7 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
   
   let funsToOptimizeTriple' = P.map (\(funList, dcon, m) -> (P.map (\f -> deduceFieldSolverTypes ddefs f) funList, dcon, m)) funsToOptimizeTriple
 
-  let funsToOptimizeTripleSolver = P.map 
+  let funsToOptimizeTripleSolver = dbgTraceIt (sdoc funsToOptimizeTriple') P.map 
                         (\(funList, dcon, m) -> let constraints = S.toList $ S.fromList $ P.concatMap (\f@FunDef{funName=fname} -> let fieldOrder = M.insert fname m M.empty
                                                                                                                                        constrs = generateSolverEdges f dcon fieldOrder
                                                                                                                                      in constrs
@@ -321,22 +321,24 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
             )
   if useGreedy then P.foldrM greedyMain prg funsToOptimizeTripleGreedy else P.foldrM solverMain prg funsToOptimizeTripleSolver
 
+
+
 mergeConstraints :: [Constr] -> [Constr]
 mergeConstraints lst = case lst of 
   [] -> [] 
   [x] -> [x]
-  x@(WeakConstr e@(((a, _), (b, _)), _)):y -> let similarConstr =  P.concatMap (\x' -> case x' of 
-                                                                    WeakConstr e'@(((a', _), (b', _)), _) -> if (a, b) == (a', b') then [WeakConstr e'] else [] 
-                                                                    StrongConstr e'@(((a', _), (b', _)), _) -> if (a, b) == (a', b') then [StrongConstr e'] else []
+  x@(WeakConstr e@(((a, ma), (b, mb)), _)):y -> let similarConstr =  P.concatMap (\x' -> case x' of 
+                                                                    WeakConstr e'@(((a', ma'), (b', mb')), wt) -> if (a, b) == (a', b') then [WeakConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt)] else [] 
+                                                                    StrongConstr e'@(((a', ma'), (b', mb')), wt) -> if (a, b) == (a', b') then [StrongConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt)] else []
                                                               ) y 
                                                 in case similarConstr of 
                                                         []  -> [x] ++ mergeConstraints y  
                                                         [k] -> [k] ++ mergeConstraints (L.delete k y)  
                                                         _ -> error "Did not expect more than one constraint that has similar edge access."
                                  
-  x@(StrongConstr e@(((a, _), (b, _)), _)):y -> let similarConstr = P.concatMap (\x' -> case x' of 
-                                                                        WeakConstr e'@(((a', _), (b', _)), _) -> if (a, b) == (a', b') then [WeakConstr e'] else []
-                                                                        StrongConstr e'@(((a', _), (b', _)), _) -> if (a, b) == (a', b') then [StrongConstr e'] else []
+  x@(StrongConstr e@(((a, ma), (b, mb)), _)):y -> let similarConstr = P.concatMap (\x' -> case x' of 
+                                                                        WeakConstr e'@(((a', ma'), (b', mb')), wt) -> if (a, b) == (a', b') then [WeakConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt)] else []
+                                                                        StrongConstr e'@(((a', ma'), (b', mb')), wt) -> if (a, b) == (a', b') then [StrongConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt)] else []
                                                                 ) y
                                                   in case similarConstr of 
                                                           []  -> [x] ++ mergeConstraints y 
