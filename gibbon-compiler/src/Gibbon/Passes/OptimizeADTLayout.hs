@@ -279,10 +279,13 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
                                      Just (ddefs', fundef', fieldorder) -> let fundefs' = M.delete fname fds
                                                                                fundefs'' = M.insert fname fundef' fundefs'
                                                                                p = Prog{ddefs = ddefs', fundefs = fundefs'', mainExp = mexp}
-                                                                               venv = progToVEnv p
-                                                                               pmap = generateProducerGraph p
-                                                                               prg' = genNewProducersAndRewriteProgram fname (fromVar newSymDcon) fieldorder venv pmap p
-                                                                             in dbgTraceIt ("Producer Graph:\n") dbgTraceIt (sdoc pmap) pure prg'
+                                                                               -- For all the functions, rewrite the order of the data constructor. 
+                                                                               -- Also then release the let bindings in the correct order. 
+                                                                               --venv = progToVEnv p
+                                                                               --pmap = generateProducerGraph p
+                                                                               --prg' = genNewProducersAndRewriteProgram fname (fromVar newSymDcon) fieldorder venv pmap p
+                                                                               prg' = globallyChangeDataConstructorLayout dcon (fromVar newSymDcon) fieldorder p
+                                                                             in pure prg'
                 ) 
 
   let lambda = {-dbgTraceIt ("CHECKPOINTC\n")-} (\(fList, dcon, constrs) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do
@@ -787,6 +790,35 @@ genNewProducersAndRewriteProgram
                       _ -> error ""
               x : xs -> error ("more than one variable and producer not handled yet." ++ show variablesAndProducers)
 
+
+globallyChangeDataConstructorLayout :: DataCon -> DataCon -> FieldOrder -> Prog Exp1 -> Prog Exp1 
+globallyChangeDataConstructorLayout oldDcon newDcon fieldOrder prg@Prog{ddefs, fundefs, mainExp} = 
+  let fundefs' = P.foldr (\f@FunDef{funName, funBody} funMap -> 
+                              let dconsInFunBody = dataConsInFunBody funBody
+                               in if S.member oldDcon dconsInFunBody
+                                  then 
+                                    let f' = shuffleDataConFunBody False fieldOrder f newDcon
+                                        f'' = shuffleDataConFunBody True fieldOrder f' newDcon
+                                        (m :: UseDefChainsFunctionMap Exp1) = getDefinitionsReachingLetExp f''
+                                        funRemoveAllLets = 
+                                          (\FunDef{funName=fName, funBody=fBody, funTy=fTy, funArgs=fArgs, funMeta=fMeta} ->
+                                                let removeLets = delAllLetBindings fBody
+                                                  in FunDef{funName=fName, funBody=removeLets, funTy=fTy, funArgs=fArgs, funMeta=fMeta}
+                                          ) f''
+                                        var_order = S.toList $ (\FunDef{funBody=fb} -> gFreeVars fb) funRemoveAllLets
+                                        depLets = P.map (\vv -> getDependentLetBindings vv funName m) var_order
+                                        var_order' = P.map Just var_order
+                                        var_order'' = P.zip var_order' depLets
+                                        newFuncDef = P.foldl (\fundef (insertPosition, dl) -> reOrderLetExp insertPosition dl fundef
+                                                             ) funRemoveAllLets var_order''
+                                        m' = M.insert funName newFuncDef funMap 
+                                      in m'
+                                  else M.insert funName f funMap
+                         ) M.empty (M.elems fundefs)
+    in Prog{ddefs=ddefs, fundefs=fundefs', mainExp=mainExp} 
+   
+
+
 -- Function to find the the variable/s that have the type that's being optimized for the given function f
 -- Also return the producer of) those variable/s
 -- Arguments
@@ -839,7 +871,7 @@ getVariableAndProducer funName pMap venv@Env2{vEnv, fEnv} ddefs dconName exp =
                         justVariables = Maybe.catMaybes potentialVarsOfTy
                      in if P.null justVariables
                           -- dbgTraceIt (sdoc (funName, dconName, args, venv))
-                          then Nothing-- dbgTraceIt (sdoc (funName, dconName, args, venv)) error "getVariableAndProducer: no variables of Ty to optimize found!"
+                          then error "getVariableAndProducer: no variables of Ty to optimize found!"
                           else
                             if P.length justVariables > 1
                               then error "getVariableAndProducer: More than one variable of the type being optimized is passed to function call. Not implemented yet!"
