@@ -119,7 +119,34 @@ freshConstrsInExp exp constrenv =
       e2' <- freshConstrsInExp e2 constrenv
       e3' <- freshConstrsInExp e3 constrenv
       return $ FoldE (v1, d1, e1') (v2, d2, e2') e3'
-    Ext ext -> return $ Ext ext
+    Ext ext -> case ext of
+      LambdaE args bod -> do
+        bod' <- freshConstrsInExp bod constrenv
+        return $ Ext $ LambdaE args bod'
+      PolyAppE a b -> do
+        return $ Ext $ PolyAppE a b
+      FunRefE tyapps f -> do
+        return $ Ext $ FunRefE tyapps f
+      BenchE fn tyapps args b -> do
+        args' <- mapM (\arg -> freshConstrsInExp arg constrenv) args
+        return $ Ext $ BenchE fn tyapps args' b
+      ParE0 ls -> do
+        ls' <- mapM (\l -> freshConstrsInExp l constrenv) ls
+        return $ Ext $ ParE0 ls'
+      PrintPacked ty arg -> do
+        arg' <- freshConstrsInExp arg constrenv
+        return $ Ext $ PrintPacked ty arg'
+      CopyPacked ty arg -> do
+        arg' <- freshConstrsInExp arg constrenv
+        return $ Ext $ CopyPacked ty arg'
+      TravPacked ty arg -> do
+        arg' <- freshConstrsInExp arg constrenv
+        return $ Ext $ TravPacked ty arg'
+      L p e -> do
+        e' <- freshConstrsInExp e constrenv
+        return $ Ext $ L p e'
+      LinearExt a -> do
+        return $ Ext $ LinearExt a
 
 -- 
 
