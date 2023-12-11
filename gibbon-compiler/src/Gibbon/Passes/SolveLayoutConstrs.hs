@@ -612,6 +612,164 @@ pythonCodegenNew constrs = do
                neq_one <- fromVar <$> (gensym "cost")
                x_minus_y <- fromVar <$> (gensym "x_minus_y")
                case (returnFieldTypeBasedOnHeirarchy fromTy, returnFieldTypeBasedOnHeirarchy toTy) of 
+                  -- Due to compiler being un-implemendted, make sure scalar is put before inlineable. 
+                  -- This should be removed once this part is implemented. 
+                  -- That is scalar fields can be placed after recursive fields. 
+                  (Just Scalar, Just IsInlineable) -> 
+                        pure $
+                           [  pyassign1 
+                                 x_minus_y
+                                 (Py.Paren (Py.BinaryOp (Py.Minus ()) (pyvar x) (pyvar y) ()) ())
+                                 , pyassign1
+                                 eq_minus_one
+                                 (Py.Paren
+                                    (Py.BinaryOp
+                                       (Py.Equality ())
+                                       (pyvar x_minus_y)
+                                       (Py.Int (-1) (show (-1)) ())
+                                    ())
+                                 ())
+                              , pyassign1
+                                 leq_minus_one
+                                 (Py.Paren
+                                    (Py.BinaryOp
+                                       (Py.LessThanEquals ())
+                                       (pyvar x_minus_y)
+                                       (Py.Int (-1) (show (-1)) ())
+                                       ())
+                                 ())
+                              , pyassign1
+                                 eq_one
+                                 (Py.Paren
+                                    (Py.BinaryOp
+                                       (Py.Equality ())
+                                       (pyvar x_minus_y)
+                                       (Py.Int 1 (show 1) ())
+                                    ())
+                                 ())
+                              , pyassign1
+                                 geq_one
+                                 (Py.Paren
+                                    (Py.BinaryOp
+                                       (Py.GreaterThanEquals ())
+                                       (pyvar x_minus_y)
+                                       (Py.Int 1 (show 1) ())
+                                    ())
+                                 ())
+                              , pyassign1
+                                 neq_minus_one
+                                 (Py.Paren
+                                    (Py.BinaryOp
+                                       (Py.NotEquals ())
+                                       (pyvar x_minus_y)
+                                       (Py.Int (-1) (show (-1)) ())
+                                    ())
+                                 ())
+                              , pyassign1
+                                 neq_one
+                                 (Py.Paren
+                                    (Py.BinaryOp
+                                       (Py.NotEquals ())
+                                       (pyvar x_minus_y)
+                                       (Py.Int 1 (show 1) ())
+                                    ())
+                                 ())
+                              , Py.StmtExpr
+                                 (Py.Call
+                                    (Py.Dot (pyvar model_var) (pyident "add") ())
+                                    [ Py.ArgExpr
+                                       (Py.BinaryOp
+                                          (Py.LessThanEquals ())
+                                          (pyvar eq_minus_one)
+                                          (Py.Paren
+                                             (Py.BinaryOp
+                                                (Py.Equality ())
+                                                (pyvar cost)
+                                                (Py.Int 0 (show 0) ())
+                                             ())
+                                          ())
+                                       ())
+                                    ()
+                                    ]
+                                 ())
+                                 ()
+                              , Py.StmtExpr
+                                 (Py.Call
+                                    (Py.Dot (pyvar model_var) (pyident "add") ())
+                                    [ Py.ArgExpr
+                                       (Py.BinaryOp
+                                          (Py.LessThanEquals ())
+                                          (Py.Paren
+                                             (Py.BinaryOp
+                                                (Py.BinaryAnd ())
+                                                (pyvar leq_minus_one)
+                                                (pyvar neq_minus_one)
+                                             ())
+                                          ())
+                                          (Py.Paren
+                                             (Py.BinaryOp
+                                                (Py.Equality ())
+                                                (pyvar cost)
+                                                (Py.Int 200 (show 200) ())
+                                             ())
+                                          ())
+                                       ())
+                                       ()
+                                    ]
+                                 ())
+                                 ()
+                              , Py.StmtExpr
+                                 (Py.Call
+                                    (Py.Dot (pyvar model_var) (pyident "add") ())
+                                       [ Py.ArgExpr
+                                          (Py.BinaryOp
+                                             (Py.LessThanEquals ())
+                                             (pyvar eq_one)
+                                             (Py.Paren
+                                                (Py.BinaryOp
+                                                   (Py.Equality ())
+                                                   (pyvar cost)
+                                                   (Py.Int 400 (show 400) ())
+                                                ())
+                                             ())
+                                          ())
+                                          ()
+                                       ]
+                                 ())
+                                 ()
+                              , Py.StmtExpr
+                                 (Py.Call
+                                    (Py.Dot (pyvar model_var) (pyident "add") ())
+                                       [ Py.ArgExpr
+                                          (Py.BinaryOp
+                                             (Py.LessThanEquals ())
+                                             (Py.Paren
+                                                (Py.BinaryOp
+                                                   (Py.BinaryAnd ())
+                                                   (pyvar geq_one)
+                                                   (pyvar neq_one)
+                                                ())
+                                             ())
+                                             (Py.Paren
+                                                (Py.BinaryOp
+                                                   (Py.Equality ())
+                                                   (pyvar cost)
+                                                   (Py.Int 600 (show 600) ())
+                                                ())
+                                             ())
+                                          ())
+                                          ()
+                                       ]
+                                       ())
+                                       ()
+                              , pyassign1
+                              minimize_part
+                                 (Py.BinaryOp
+                                    (Py.Multiply ())
+                                    (pyvar cost)
+                                    (Py.Int wt (show wt) ())
+                                 ())
+                           ]
                   (_, Just IsInlineable) -> pure $
                                              [  pyassign1 
                                                    x_minus_y

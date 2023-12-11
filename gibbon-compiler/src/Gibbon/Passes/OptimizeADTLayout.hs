@@ -213,7 +213,7 @@ globallyOptimizeDataConLayout :: Bool -> Prog1 -> PassM Prog1
 globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
   -- TODO: make a custom function name printer that guarantees that functions starting with _ are auto-generated. 
   --let f' = P.map (deduceFieldSolverTypes ddefs) (M.elems fundefs)
-  let funsToOptimize = P.concatMap (\FunDef{funName} -> ([funName | not (isInfixOf "_" (fromVar funName)) && not (isInfixOf "mk" (fromVar funName)) {-&& (fromVar funName) == "emphKeywordInTag"-} ])
+  let funsToOptimize = P.concatMap (\FunDef{funName} -> ([funName | not (isInfixOf "_" (fromVar funName)) {-&& not (isInfixOf "mk" (fromVar funName))-} ])
                                    ) $ M.elems fundefs --f'
   let pairDataConFuns = P.concatMap (\name -> case M.lookup name fundefs
                                                        of Just f@FunDef{funName, funBody} -> [(f, dataConsInFunBody funBody)]
@@ -229,7 +229,7 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
 
   let lstElements = M.toList clubSameDcons
 
-  let dconToFieldOrder = P.map (\(dcon, funList) -> let allEdges = P.concatMap (\f@FunDef{funName} -> let dconmap  = {- dbgTraceIt ("HIT!!") -} getAccessGraph f dcon -- (deduceFieldSolverTypes ddefs f)
+  let dconToFieldOrder = P.map (\(dcon, funList) -> let allEdges = P.concatMap (\f@FunDef{funName} -> let dconmap  = getAccessGraph f dcon
                                                                                                           maybeElem = M.lookup funName dconmap
                                                                                                               in case maybeElem of
                                                                                                                 Nothing -> []
@@ -252,48 +252,41 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
                                                    in case edges' of 
                                                            Nothing -> []
                                                            Just x -> let m = M.insert dcon x M.empty
-                                                                         --lst = P.map (\f@FunDef{funName} -> (f, dcon, M.insert funName m M.empty)) funList
-                                                                         --in lst 
                                                                         in [(funList, dcon, m)] 
                              ) lstElements
   
   let funsToOptimizeTriple' = P.map (\(funList, dcon, m) -> (P.map (\f -> deduceFieldSolverTypes ddefs f) funList, dcon, m)) funsToOptimizeTriple
 
-  let funsToOptimizeTriple'' = P.map (\(funList, dcon, m) -> let mergedConstraints = mergeConstraints $ S.toList $ S.fromList $ P.concatMap (\f@FunDef{funName=fname} -> let fieldOrder = M.insert fname m M.empty 
-                                                                                                                                                                             -- f' = deduceFieldSolverTypes ddefs f
+  let funsToOptimizeTriple'' = P.map (\(funList, dcon, m) -> let mergedConstraints = mergeConstraints $ S.toList $ S.fromList $ P.concatMap (\f@FunDef{funName=fname} -> let fieldOrder = M.insert fname m M.empty
                                                                                                                                                                              constrs = generateSolverEdges f dcon fieldOrder
                                                                                                                                                                           in constrs
                                                                                                                                            ) funList
-                                                              in (funList, dcon, mergedConstraints)
-                                          ) funsToOptimizeTriple'
+                                                                in (funList, dcon, mergedConstraints)
+                                      ) funsToOptimizeTriple'
 
-  let lambda' = dbgTraceIt (sdoc funsToOptimizeTriple'') dbgTraceIt ("\n") (\(f@FunDef{funName=fname}, (dcon, newSymDcon), constrs) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do 
-                      let maybeFd = dbgTraceIt (sdoc (fname, dcon, constrs)) M.lookup fname fds
-                      --let fieldOrder = M.insert fname edgeOrder M.empty
+  let solverOptimization =
+              (\(f@FunDef{funName=fname}, (dcon, newSymDcon), constrs) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do 
+                      let maybeFd = M.lookup fname fds
                       let fd = case maybeFd of
                                                   Just x -> x
                                                   Nothing -> error "globallyOptimizeDataConLayout: expected a function definition!!" 
                       let result = optimizeFunctionWRTDataConGlobal dd fd dcon (fromVar newSymDcon) constrs useGreedy
                       case result of
-                                     Nothing -> dbgTraceIt ("CHECKPOINTA\n") pure pr 
+                                     Nothing -> pure pr 
                                      Just (ddefs', fundef', fieldorder) -> let fundefs' = M.delete fname fds
                                                                                fundefs'' = M.insert fname fundef' fundefs'
                                                                                p = Prog{ddefs = ddefs', fundefs = fundefs'', mainExp = mexp}
-                                                                               -- For all the functions, rewrite the order of the data constructor. 
-                                                                               -- Also then release the let bindings in the correct order. 
-                                                                               --venv = progToVEnv p
-                                                                               --pmap = generateProducerGraph p
-                                                                               --prg' = genNewProducersAndRewriteProgram fname (fromVar newSymDcon) fieldorder venv pmap p
                                                                                prg' = globallyChangeDataConstructorLayout dcon (fromVar newSymDcon) fieldorder p
                                                                              in pure prg'
                 ) 
 
-  let lambda = {-dbgTraceIt ("CHECKPOINTC\n")-} (\(fList, dcon, constrs) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do
+  let solverMain = 
+              (\(fList, dcon, constrs) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do
                                    newSymDcon  <- gensym (toVar dcon)
                                    let vals = P.map (\f -> (f, (dcon, newSymDcon), constrs)) fList 
-                                   P.foldrM lambda' pr vals   {-dbgTraceIt ("CHECKPOINTE\n")-}
-               )
-  P.foldrM lambda prg funsToOptimizeTriple'' {-dbgTraceIt ("CHECKPOINTF\n")-}
+                                   P.foldrM solverOptimization pr vals
+              )
+  P.foldrM solverMain prg funsToOptimizeTriple''
 
 mergeConstraints :: [Constr] -> [Constr]
 mergeConstraints lst = case lst of 
