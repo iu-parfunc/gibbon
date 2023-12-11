@@ -213,8 +213,8 @@ producerConsumerLayoutOptimization prg@Prog{ddefs, fundefs, mainExp} useGreedy =
 globallyOptimizeDataConLayout :: Bool -> Prog1 -> PassM Prog1
 globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
   -- TODO: make a custom function name printer that guarantees that functions starting with _ are auto-generated. 
-  --let f' = P.map (deduceFieldSolverTypes ddefs) (M.elems fundefs)
-  let funsToOptimize = P.concatMap (\FunDef{funName} -> ([funName | not (isInfixOf "_" (fromVar funName)) {-&& not (isInfixOf "mk" (fromVar funName))-} ])
+  -- let f' = P.map (deduceFieldSolverTypes ddefs) (M.elems fundefs)
+  let funsToOptimize = P.concatMap (\FunDef{funName} -> ([funName | not (isInfixOf "_" (fromVar funName))])
                                    ) $ M.elems fundefs --f'
   let pairDataConFuns = P.concatMap (\name -> case M.lookup name fundefs
                                                        of Just f@FunDef{funName, funBody} -> [(f, dataConsInFunBody funBody)]
@@ -322,28 +322,43 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
   if useGreedy then P.foldrM greedyMain prg funsToOptimizeTripleGreedy else P.foldrM solverMain prg funsToOptimizeTripleSolver
 
 
+isStrongConstr :: Constr -> Bool 
+isStrongConstr constr = case constr of 
+                              StrongConstr _ -> True 
+                              _ -> False
 
+-- Fold over all constraints to make sure we are not using duplicate constraints across different functions with possibly 
+-- different field meta data. Union all the meta data about a field globally by merding constraints.
 mergeConstraints :: [Constr] -> [Constr]
 mergeConstraints lst = case lst of 
   [] -> [] 
   [x] -> [x]
-  x@(WeakConstr e@(((a, ma), (b, mb)), _)):y -> let similarConstr =  P.concatMap (\x' -> case x' of 
-                                                                    WeakConstr e'@(((a', ma'), (b', mb')), wt) -> if (a, b) == (a', b') then [WeakConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt)] else [] 
-                                                                    StrongConstr e'@(((a', ma'), (b', mb')), wt) -> if (a, b) == (a', b') then [StrongConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt)] else []
-                                                              ) y 
-                                                in case similarConstr of 
-                                                        []  -> [x] ++ mergeConstraints y  
-                                                        [k] -> [k] ++ mergeConstraints (L.delete k y)  
-                                                        _ -> error "Did not expect more than one constraint that has similar edge access."
+  x@(WeakConstr e@(((a, ma), (b, mb)), _)):y -> let (x', y') = P.foldr (\constr (newConstr, tail) -> case constr of 
+                                                                                          WeakConstr e'@(((a', ma'), (b', mb')), wt) -> if (a, b) == (a', b') 
+                                                                                                                                        then
+                                                                                                                                          if isStrongConstr constr 
+                                                                                                                                          then (StrongConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt), tail) 
+                                                                                                                                          else (WeakConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt), tail) 
+                                                                                                                                        else (newConstr, tail ++ [constr])
+                                                                                          StrongConstr e'@(((a', ma'), (b', mb')), wt) -> if (a, b) == (a', b') 
+                                                                                                                                          then (StrongConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt), tail) 
+                                                                                                                                          else (newConstr, tail ++ [constr])
+
+
+                                                                        ) (x, []) y 
+                                                  in [x'] ++ (mergeConstraints y')
                                  
-  x@(StrongConstr e@(((a, ma), (b, mb)), _)):y -> let similarConstr = P.concatMap (\x' -> case x' of 
-                                                                        WeakConstr e'@(((a', ma'), (b', mb')), wt) -> if (a, b) == (a', b') then [WeakConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt)] else []
-                                                                        StrongConstr e'@(((a', ma'), (b', mb')), wt) -> if (a, b) == (a', b') then [StrongConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt)] else []
-                                                                ) y
-                                                  in case similarConstr of 
-                                                          []  -> [x] ++ mergeConstraints y 
-                                                          [k] -> mergeConstraints (L.delete k y)  
-                                                          _ -> error "Did not expect more that one constraint that has similar edge access."
+  x@(StrongConstr e@(((a, ma), (b, mb)), _)):y -> let (x', y') = P.foldr (\constr (newConstr, tail) -> case constr of 
+                                                                                          WeakConstr e'@(((a', ma'), (b', mb')), wt) -> if (a, b) == (a', b') 
+                                                                                                                                          then (StrongConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt), tail) 
+                                                                                                                                          else (newConstr, tail ++ [constr])
+                                                                                          StrongConstr e'@(((a', ma'), (b', mb')), wt) -> if (a, b) == (a', b') 
+                                                                                                                                          then (StrongConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt), tail) 
+                                                                                                                                          else (newConstr, tail ++ [constr])
+
+
+                                                                        ) (x, []) y 
+                                                    in [x'] ++ (mergeConstraints y')
 
 
 generateCopyFunctionsForFunctionsThatUseOptimizedVariable :: Var -> DataCon -> FieldOrder -> Prog1 -> PassM Prog1
@@ -1843,7 +1858,7 @@ deduceFieldSolverTypes dataDefinitions f@FunDef {funName, funBody, funTy, funArg
   let dconsUsedInFunction = dataConsInFunBody funBody 
       dataConFieldTypeInfo = P.foldr (\dcon map -> let flds = lookupDataCon dataDefinitions dcon
                                                        (_, meta) = {-dbgTraceIt (sdoc flds)-} P.foldr (\fld (index::Int, map) -> 
-                                                                                   let isInline = isInlineable fld funTy funName funBody
+                                                                                   let isInline = maybeInlineable fld funTy dataDefinitions funName funBody
                                                                                        (isRec, m) = {-([], M.empty)-} isRecursive fld dataDefinitions M.empty
                                                                                        isSc = {-[]-} isScalar fld dataDefinitions dcon M.empty
                                                                                        isSR = isSelfRecursive fld dataDefinitions dcon
@@ -1859,8 +1874,8 @@ deduceFieldSolverTypes dataDefinitions f@FunDef {funName, funBody, funTy, funArg
     in {-dbgTraceIt (sdoc (funName, dataConFieldTypeInfo, snd funTy, funArgs))-} FunDef{funName=funName, funBody=funBody, funTy=funTy, funArgs=funArgs, funMeta=funMeta{dataConFieldTypeInfo=Just dataConFieldTypeInfo}}
        
 
-isInlineable :: Ty1 -> ArrowTy Ty1 -> Var -> Exp1 -> [DataConFieldType]
-isInlineable fld funty funname exp = if elem fld (fst funty) then [IsInlineable] else [] 
+maybeInlineable :: Ty1 -> ArrowTy Ty1 -> DDefs1 -> Var -> Exp1 -> [DataConFieldType]
+maybeInlineable fld funty dataDefinitions funname exp = if (elem fld (fst funty) && (fst (isRecursive fld dataDefinitions M.empty) == [Recursive])) then [IsInlineable] else [] 
 
 -- only for packed mode
 -- TODO: update check for pointer mode. 
