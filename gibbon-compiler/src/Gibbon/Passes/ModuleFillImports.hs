@@ -40,7 +40,8 @@ fillImports (Prog defs funs main) localMod imports imported_progs =
                       Just spec -> if (elem name spec) then acc ++ [(toVar ((fromVar alias) ++ "." ++ (fromVar name)), (v, qual))]
                                    else acc
                       Nothing -> acc ++ [(toVar ((fromVar alias) ++ "." ++ (fromVar name)), (v, qual))]
-                  Nothing -> error $ "could not find module or alias: " ++ (show modName)
+                  --Nothing -> error $ "could not find module or alias: " ++ (show modName) ++ " for name " ++ (show v) ++ " in " ++ (show importMeta)
+                  Nothing -> acc
               Nothing -> error "how did we get here?"
 
       let importedConstrs = foldr (\(Prog idefs _ _) acc -> acc ++ (foldr applyImportMeta [] (L.map (\(constrName, _) -> (toVar constrName)) (foldr (\(DDef _ _ dataCons) acc -> acc ++ dataCons) [] idefs)))) initImportedNames imported_progs

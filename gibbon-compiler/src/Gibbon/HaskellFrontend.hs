@@ -323,6 +323,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                 (defs'', funs''''')
                 imported_progs'
         return $ (Prog defs0 funs0 main') --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs''') dbgTraceIt (sdoc userOrderings') dbgTraceIt "\n" dbgTraceIt (sdoc userOrderings)
+  dbgPrintLn 2 $ "==="
   pure prog
   where
     init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing, S.empty, [])
