@@ -191,9 +191,10 @@ resolveModInExp exp defenv funenv constrenv =
       return $ PrimAppE p es'
 
     LetE (v,_locs,ty, e1) e2 -> do
+      let ty' = resolveModInTy ty defenv
       e1' <- resolveModInExp e1 defenv funenv constrenv
       e2' <- resolveModInExp e2 defenv funenv constrenv
-      return $ LetE (v, [], ty, e1') e2'
+      return $ LetE (v, [], ty', e1') e2'
 
     IfE e1 e2 e3 -> do
       e1' <- resolveModInExp e1 defenv funenv constrenv

@@ -118,8 +118,7 @@ resolveModInExp exp defenv funenv =
     VarE v -> return $ VarE (parseAndResolve (parseAndResolve v funenv) defenv)
 
     AppE v locs ls -> do
-      let (mod, fun) = parseOutMod v
-      let v' = resolveNameInEnv mod fun funenv
+      let v' = parseAndResolve v funenv
       ls' <- traverse (\v -> resolveModInExp v defenv funenv) ls
       return $ AppE v' locs ls'
 
@@ -128,9 +127,10 @@ resolveModInExp exp defenv funenv =
       return $ PrimAppE p es'
 
     LetE (v,_locs,ty, e1) e2 -> do
+      let ty' = resolveModInTy ty defenv
       e1' <- resolveModInExp e1 defenv funenv
       e2' <- resolveModInExp e2 defenv funenv
-      return $ LetE (v, [], ty, e1') e2'
+      return $ LetE (v, [], ty', e1') e2'
 
     IfE e1 e2 e3 -> do
       e1' <- resolveModInExp e1 defenv funenv
