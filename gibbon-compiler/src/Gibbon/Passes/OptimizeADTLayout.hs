@@ -56,6 +56,7 @@ import System.IO.Unsafe as U
 import System.TimeIt
 import Text.PrettyPrint.GenericPretty
 import Prelude as P
+import Data.Either
 import Data.Data (Data)
 import qualified Gibbon.L2.Syntax as L1
 import qualified Data.Foldable as P
@@ -247,6 +248,13 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
                                                           e' = M.toList m'
                                                         in M.insert dcon e' m''
                           ) M.empty dconToFieldOrder
+
+  let funsToOptimizeTripleGreedy = P.concatMap 
+                            (\(dcon, funList) -> let edges' = M.lookup dcon mergedEdges 
+                                                   in case edges' of 
+                                                           Nothing -> []
+                                                           Just x -> [(funList, dcon, x)] 
+                            ) lstElements
                           
   let funsToOptimizeTriple = P.concatMap (\(dcon, funList) -> let edges' = M.lookup dcon mergedEdges 
                                                    in case edges' of 
@@ -257,12 +265,13 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
   
   let funsToOptimizeTriple' = P.map (\(funList, dcon, m) -> (P.map (\f -> deduceFieldSolverTypes ddefs f) funList, dcon, m)) funsToOptimizeTriple
 
-  let funsToOptimizeTriple'' = P.map (\(funList, dcon, m) -> let mergedConstraints = mergeConstraints $ S.toList $ S.fromList $ P.concatMap (\f@FunDef{funName=fname} -> let fieldOrder = M.insert fname m M.empty
-                                                                                                                                                                             constrs = generateSolverEdges f dcon fieldOrder
-                                                                                                                                                                          in constrs
-                                                                                                                                           ) funList
-                                                                in (funList, dcon, mergedConstraints)
-                                      ) funsToOptimizeTriple'
+  let funsToOptimizeTripleSolver = P.map 
+                        (\(funList, dcon, m) -> let mergedConstraints = mergeConstraints $ S.toList $ S.fromList $ P.concatMap (\f@FunDef{funName=fname} -> let fieldOrder = M.insert fname m M.empty
+                                                                                                                                                                constrs = generateSolverEdges f dcon fieldOrder
+                                                                                                                                                              in constrs
+                                                                                                                               ) funList
+                                                  in (funList, dcon, mergedConstraints)
+                        ) funsToOptimizeTriple'
 
   let solverOptimization =
               (\(f@FunDef{funName=fname}, (dcon, newSymDcon), constrs) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do 
@@ -270,7 +279,7 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
                       let fd = case maybeFd of
                                                   Just x -> x
                                                   Nothing -> error "globallyOptimizeDataConLayout: expected a function definition!!" 
-                      let result = optimizeFunctionWRTDataConGlobal dd fd dcon (fromVar newSymDcon) constrs useGreedy
+                      let result = optimizeFunctionWRTDataConGlobal dd fd dcon (fromVar newSymDcon) (Left constrs) useGreedy
                       case result of
                                      Nothing -> pure pr 
                                      Just (ddefs', fundef', fieldorder) -> let fundefs' = M.delete fname fds
@@ -286,7 +295,30 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
                                    let vals = P.map (\f -> (f, (dcon, newSymDcon), constrs)) fList 
                                    P.foldrM solverOptimization pr vals
               )
-  P.foldrM solverMain prg funsToOptimizeTriple''
+
+  let greedyOptimization = 
+                  (\(f@FunDef{funName=fname}, (dcon, newSymDcon), edges) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do 
+                          let maybeFd = M.lookup fname fds 
+                          let fd = case maybeFd of 
+                                          Just x -> x 
+                                          Nothing -> error "globallyOptimizeDataConLayout: greedy: expected a function definition!!"
+                          let result = optimizeFunctionWRTDataConGlobal dd fd dcon (fromVar newSymDcon) (Right edges) useGreedy
+                          case result of
+                                     Nothing -> pure pr 
+                                     Just (ddefs', fundef', fieldorder) -> let fundefs' = M.delete fname fds
+                                                                               fundefs'' = M.insert fname fundef' fundefs'
+                                                                               p = Prog{ddefs = ddefs', fundefs = fundefs'', mainExp = mexp}
+                                                                               prg' = globallyChangeDataConstructorLayout dcon (fromVar newSymDcon) fieldorder p
+                                                                             in pure prg'
+                  )
+
+  let greedyMain = 
+            (\(fList, dcon, edges) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do 
+                              newSymDcon <- gensym (toVar dcon)
+                              let vals = P.map (\f -> (f, (dcon, newSymDcon), edges)) fList 
+                              P.foldrM greedyOptimization pr vals
+            )
+  if useGreedy then P.foldrM greedyMain prg funsToOptimizeTripleGreedy else P.foldrM solverMain prg funsToOptimizeTripleSolver
 
 mergeConstraints :: [Constr] -> [Constr]
 mergeConstraints lst = case lst of 
@@ -584,12 +616,19 @@ optimizeFunctionWRTDataCon
                   _ -> error "more than one"
 
 
+
+getLeft :: Either [Constr] [(L1.Edge, ConstrEdgeWeightTy)] -> [Constr]
+getLeft (Left x) = x
+
+getRight :: Either [Constr] [(L1.Edge, ConstrEdgeWeightTy)] -> [(L1.Edge, ConstrEdgeWeightTy)]
+getRight (Right x) = x
+
 optimizeFunctionWRTDataConGlobal ::
   DDefs1 ->
   FunDef1 ->
   DataCon ->
   DataCon ->
-  [Constr] ->
+  Either [Constr] [(L1.Edge, ConstrEdgeWeightTy)] ->
   Bool ->
   Maybe (DDefs1, FunDef1, FieldOrder)
 optimizeFunctionWRTDataConGlobal
@@ -602,42 +641,32 @@ optimizeFunctionWRTDataConGlobal
     }
   datacon
   newDcon
-  constrs
+  constrsOrEdges
   useGreedy = case useGreedy of 
    False -> 
-    let newFieldOrder = optimizeDataConOrderGlobal constrs ddefs datacon 
-        -- make a function to generate a new data con as a value instead of changing the order of fields in the original one.
-        --[(dcon, order)] = M.toList fieldorder
-        --(newDDefs, newDcon) = optimizeDataCon (dcon, order) ddefs
-        --fundef' = shuffleDataConFunBody True fieldorder fundef newDcon
-        --(newDDefs, fundef', fieldorder)
+    let newFieldOrder = optimizeDataConOrderGlobal (getLeft constrsOrEdges) ddefs datacon
       in case M.toList newFieldOrder of
-                  [] -> dbgTraceIt (sdoc funName) dbgTraceIt ("End2\n") Nothing --dbgTraceIt (sdoc fieldorder)
+                  [] -> Nothing
                   [(dcon, order)] -> let orignal_order = [0..(P.length order - 1)]
                                        in if orignal_order == P.map P.fromInteger order
-                                          then dbgTraceIt (sdoc funName) dbgTraceIt ("End2\n") Nothing
+                                          then Nothing
                                           else let newDDefs = optimizeDataCon (dcon, order) ddefs newDcon
                                                    fundef' = shuffleDataConFunBody True newFieldOrder fundef newDcon
-                                                 in {-dbgTraceIt ("CHECKPOINT2\n")-} Just (newDDefs, fundef', newFieldOrder) --dbgTraceIt (sdoc order) -- dbgTraceIt (sdoc fieldorder)
-                  _ -> error "more than one"
-  --  True ->
-  --   let field_len = P.length $ snd . snd $ lkp' ddefs datacon
-  --       edges' = case (M.lookup funName fieldMap) of 
-  --                      Just d  -> case (M.lookup datacon d) of 
-  --                                     Nothing -> error ""
-  --                                     Just e -> e 
-  --                      Nothing -> error ""
-  --       greedy_order = getGreedyOrder edges' field_len
-  --       fieldorder = M.insert datacon greedy_order M.empty 
-  --     in case M.toList fieldorder of
-  --                 [] -> Nothing --dbgTraceIt (sdoc fieldorder) dbgTraceIt (sdoc greedy_order) 
-  --                 [(dcon, order)] -> let orignal_order = [0..(P.length order - 1)]
-  --                                      in if orignal_order == P.map P.fromInteger order
-  --                                         then Nothing
-  --                                         else let newDDefs = optimizeDataCon (dcon, order) ddefs newDcon
-  --                                                  fundef' = shuffleDataConFunBody True fieldorder fundef newDcon
-  --                                                in Just (newDDefs, fundef', fieldorder) --dbgTraceIt (sdoc order) -- dbgTraceIt (sdoc fieldorder) dbgTraceIt (sdoc greedy_order) 
-  --                 _ -> error "more than one"
+                                                 in Just (newDDefs, fundef', newFieldOrder)
+                  _ -> error "Error: function did not expect more than one dcon to optimize."
+   True ->
+    let field_len = P.length $ snd . snd $ lkp' ddefs datacon
+        greedy_order = getGreedyOrder (getRight constrsOrEdges) field_len
+        fieldorder = M.insert datacon greedy_order M.empty 
+      in case M.toList fieldorder of
+                  [] -> Nothing 
+                  [(dcon, order)] -> let orignal_order = [0..(P.length order - 1)]
+                                       in if orignal_order == P.map P.fromInteger order
+                                          then Nothing
+                                          else let newDDefs = optimizeDataCon (dcon, order) ddefs newDcon
+                                                   fundef' = shuffleDataConFunBody True fieldorder fundef newDcon
+                                                 in Just (newDDefs, fundef', fieldorder)
+                  _ -> error "Error: function did not expect more than one dcon to optimize."
 
 changeCallNameInRecFunction ::
   Var -> FunDef1 -> FunDef1

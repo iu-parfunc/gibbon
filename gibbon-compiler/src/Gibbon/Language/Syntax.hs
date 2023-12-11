@@ -22,6 +22,8 @@ module Gibbon.Language.Syntax
   , DataConMap
   , UserOrdering(..)
   , Constr(..)
+  , ConstrEdgeWeightTy
+  , Edge
   , DataConFieldType(..)
   , lookupDDef
   , getConOrdering
