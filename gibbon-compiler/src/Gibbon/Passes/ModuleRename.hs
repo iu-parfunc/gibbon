@@ -176,7 +176,37 @@ resolveModInExp exp defenv funenv =
       e2' <- resolveModInExp e2 defenv funenv
       e3' <- resolveModInExp e3 defenv funenv
       return $ FoldE (v1, d1, e1') (v2, d2, e2') e3'
-    Ext ext -> return $ Ext ext
+    Ext ext -> case ext of
+      LambdaE args bod -> do
+        bod' <- resolveModInExp bod defenv funenv
+        return $ Ext $ LambdaE args bod'
+      PolyAppE a b -> do
+        return $ Ext $ PolyAppE a b
+      FunRefE tyapps f -> do
+        return $ Ext $ FunRefE tyapps f
+      BenchE fn tyapps args b -> do
+        args' <- mapM (\arg -> resolveModInExp arg defenv funenv) args
+        return $ Ext $ BenchE fn tyapps args' b
+      ParE0 ls -> do
+        ls' <- mapM (\l -> resolveModInExp l defenv funenv) ls
+        return $ Ext $ ParE0 ls'
+      PrintPacked ty arg -> do
+        let ty' = resolveModInTy ty defenv
+        arg' <- resolveModInExp arg defenv funenv
+        return $ Ext $ PrintPacked ty' arg'
+      CopyPacked ty arg -> do
+        let ty' = resolveModInTy ty defenv
+        arg' <- resolveModInExp arg defenv funenv
+        return $ Ext $ CopyPacked ty' arg'
+      TravPacked ty arg -> do
+        let ty' = resolveModInTy ty defenv
+        arg' <- resolveModInExp arg defenv funenv
+        return $ Ext $ TravPacked ty' arg'
+      L p e -> do
+        e' <- resolveModInExp e defenv funenv
+        return $ Ext $ L p e'
+      LinearExt a -> do
+        return $ Ext $ LinearExt a
 
 
 -- environment interactions
