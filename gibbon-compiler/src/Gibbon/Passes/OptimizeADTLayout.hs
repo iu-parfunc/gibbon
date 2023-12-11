@@ -256,7 +256,7 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
                                                            Just x -> [(funList, dcon, x)] 
                             ) lstElements
                           
-  let funsToOptimizeTriple = P.concatMap (\(dcon, funList) -> let edges' = M.lookup dcon mergedEdges 
+  let funsToOptimizeTriple = dbgTraceIt (sdoc funsToOptimizeTripleGreedy) P.concatMap (\(dcon, funList) -> let edges' = M.lookup dcon mergedEdges 
                                                    in case edges' of 
                                                            Nothing -> []
                                                            Just x -> let m = M.insert dcon x M.empty
@@ -266,10 +266,11 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
   let funsToOptimizeTriple' = P.map (\(funList, dcon, m) -> (P.map (\f -> deduceFieldSolverTypes ddefs f) funList, dcon, m)) funsToOptimizeTriple
 
   let funsToOptimizeTripleSolver = P.map 
-                        (\(funList, dcon, m) -> let mergedConstraints = mergeConstraints $ S.toList $ S.fromList $ P.concatMap (\f@FunDef{funName=fname} -> let fieldOrder = M.insert fname m M.empty
-                                                                                                                                                                constrs = generateSolverEdges f dcon fieldOrder
-                                                                                                                                                              in constrs
-                                                                                                                               ) funList
+                        (\(funList, dcon, m) -> let constraints = S.toList $ S.fromList $ P.concatMap (\f@FunDef{funName=fname} -> let fieldOrder = M.insert fname m M.empty
+                                                                                                                                       constrs = generateSolverEdges f dcon fieldOrder
+                                                                                                                                     in constrs
+                                                                                                      ) funList
+                                                    mergedConstraints = dbgTraceIt (sdoc constraints) mergeConstraints $ constraints
                                                   in (funList, dcon, mergedConstraints)
                         ) funsToOptimizeTriple'
 
@@ -324,23 +325,23 @@ mergeConstraints :: [Constr] -> [Constr]
 mergeConstraints lst = case lst of 
   [] -> [] 
   [x] -> [x]
-  x@(WeakConstr e):y -> let similarConstr = P.concatMap (\x' -> case x' of 
-                                                              WeakConstr e' -> if e' == e then error "Did not expect exactly same constraint" else [] 
-                                                              StrongConstr e' -> if e' == e then [StrongConstr e'] else []
-                                                        ) y 
-                         in case similarConstr of 
-                                  []  -> [x] ++ mergeConstraints y  
-                                  [k] -> [k] ++ mergeConstraints (L.delete k y)  
-                                  _ -> error "Did not expect more than one constraint that has similar edge access."
+  x@(WeakConstr e@(((a, _), (b, _)), _)):y -> let similarConstr =  P.concatMap (\x' -> case x' of 
+                                                                    WeakConstr e'@(((a', _), (b', _)), _) -> if (a, b) == (a', b') then [WeakConstr e'] else [] 
+                                                                    StrongConstr e'@(((a', _), (b', _)), _) -> if (a, b) == (a', b') then [StrongConstr e'] else []
+                                                              ) y 
+                                                in case similarConstr of 
+                                                        []  -> [x] ++ mergeConstraints y  
+                                                        [k] -> [k] ++ mergeConstraints (L.delete k y)  
+                                                        _ -> error "Did not expect more than one constraint that has similar edge access."
                                  
-  x@(StrongConstr e):y -> let similarConstr = P.concatMap (\x' -> case x' of 
-                                                                    WeakConstr e' -> if e' == e then [WeakConstr e'] else []
-                                                                    StrongConstr e' -> if e' == e then error "Did not expect exactly same constraint" else []
-                                                          ) y
-                            in case similarConstr of 
-                                      []  -> [x] ++ mergeConstraints y 
-                                      [k] -> mergeConstraints (L.delete k y)  
-                                      _ -> error "Did not expect more that one constraint that has similar edge access."
+  x@(StrongConstr e@(((a, _), (b, _)), _)):y -> let similarConstr = P.concatMap (\x' -> case x' of 
+                                                                        WeakConstr e'@(((a', _), (b', _)), _) -> if (a, b) == (a', b') then [WeakConstr e'] else []
+                                                                        StrongConstr e'@(((a', _), (b', _)), _) -> if (a, b) == (a', b') then [StrongConstr e'] else []
+                                                                ) y
+                                                  in case similarConstr of 
+                                                          []  -> [x] ++ mergeConstraints y 
+                                                          [k] -> mergeConstraints (L.delete k y)  
+                                                          _ -> error "Did not expect more that one constraint that has similar edge access."
 
 
 generateCopyFunctionsForFunctionsThatUseOptimizedVariable :: Var -> DataCon -> FieldOrder -> Prog1 -> PassM Prog1
@@ -1857,7 +1858,7 @@ deduceFieldSolverTypes dataDefinitions f@FunDef {funName, funBody, funTy, funArg
        
 
 isInlineable :: Ty1 -> ArrowTy Ty1 -> Var -> Exp1 -> [DataConFieldType]
-isInlineable fld funty funname exp = if fld == snd funty then [IsInlineable] else [] 
+isInlineable fld funty funname exp = if elem fld (fst funty) then [IsInlineable] else [] 
 
 -- only for packed mode
 -- TODO: update check for pointer mode. 
