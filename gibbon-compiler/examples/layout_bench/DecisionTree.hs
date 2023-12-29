@@ -8,7 +8,7 @@ type String = Vector Char
 
 data PackedBool = B Int
 
-data DecisionTree = Node PackedBool DecisionTree DecisionTree Inline | Leaf Inline
+data DecisionTree = Node PackedBool Inline DecisionTree DecisionTree | Leaf Inline
 
 
 
@@ -16,11 +16,11 @@ mkRandomDecisionTree :: Int -> DecisionTree
 mkRandomDecisionTree depth = if depth <= 0 then Leaf (Str (getRandomString 10))
                              else 
                                 let randBool = mod rand 2 
-                                    randString = getRandomString 10 
+                                    randString = getRandomString 500 
                                     inline = Str randString
                                     leftSubtree = mkRandomDecisionTree (depth-1) 
                                     rightSubtree = mkRandomDecisionTree (depth-1)
-                                  in Node (B randBool) leftSubtree rightSubtree inline
+                                  in Node (B randBool) inline leftSubtree rightSubtree
 
 
 
@@ -49,14 +49,14 @@ singleton_plist elem = (Cons elem) Nil
 
 accumulateDecisions :: DecisionTree -> PList Inline
 accumulateDecisions tree = case tree of 
-                                Node b left right str -> let bb = fromBool b 
+                                Node b str left right -> let bb = fromBool b 
                                                            in if bb == 1
                                                               then 
                                                                 let curr = append_plist Nil str
-                                                                    vecLeft = accumulateDecisions left 
-                                                                    cc = singleton_plist (Str (getRandomString 10))
+                                                                    vecLeft = accumulateDecisions left
+                                                                    temp = merge_plist curr vecLeft
                                                                     vecRight = accumulateDecisions right 
-                                                                 in merge_plist (merge_plist curr vecLeft) vecRight
+                                                                 in merge_plist temp vecRight
                                                               else 
                                                                 let vecLeft = accumulateDecisions left 
                                                                     vecRight = accumulateDecisions right
@@ -66,9 +66,9 @@ accumulateDecisions tree = case tree of
 
 
 gibbon_main = 
-    let tree = mkRandomDecisionTree 2
-        vec  = accumulateDecisions tree 
-     in printPacked vec
+    let tree = mkRandomDecisionTree 20
+        vec  = iterate (accumulateDecisions tree) 
+     in ()
 
 --- filter 
 

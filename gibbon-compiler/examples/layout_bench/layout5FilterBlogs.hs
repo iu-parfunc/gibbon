@@ -22,8 +22,8 @@ checkBlogs keyword blogs = case blogs of
 -- main function 
 gibbon_main = 
    let 
-       blogs     = mkBlogs_layout5 100
+       blogs     = mkBlogs_layout5 1000000
        keyword :: Vector Char  
        keyword = "a"
-       newblgs = filterByKeywordInTagList keyword blogs
+       newblgs = iterate (filterByKeywordInTagList keyword blogs)
    in checkBlogs keyword newblgs

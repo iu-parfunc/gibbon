@@ -845,8 +845,9 @@ globallyChangeDataConstructorLayout oldDcon newDcon fieldOrder prg@Prog{ddefs, f
                                                 let removeLets = delAllLetBindings fBody
                                                   in FunDef{funName=fName, funBody=removeLets, funTy=fTy, funArgs=fArgs, funMeta=fMeta}
                                           ) f''
-                                        var_order = S.toList $ (\FunDef{funBody=fb} -> gFreeVars fb) funRemoveAllLets
-                                        depLets = P.map (\vv -> getDependentLetBindings vv funName m) var_order
+                                        -- TODO: release let bindings based on read order. Not based on what variables are written. 
+                                        var_order =  S.toList $ (\FunDef{funBody=fb} -> gFreeVars fb) funRemoveAllLets
+                                        depLets = dbgTraceIt (sdoc var_order) dbgTraceIt "\n" P.map (\vv -> getDependentLetBindings vv funName m) var_order
                                         var_order' = P.map Just var_order
                                         var_order'' = P.zip var_order' depLets
                                         newFuncDef = P.foldl (\fundef (insertPosition, dl) -> reOrderLetExp insertPosition dl fundef
@@ -856,6 +857,36 @@ globallyChangeDataConstructorLayout oldDcon newDcon fieldOrder prg@Prog{ddefs, f
                                   else M.insert funName f funMap
                          ) M.empty (M.elems fundefs)
     in Prog{ddefs=ddefs, fundefs=fundefs', mainExp=mainExp} 
+
+order_vars_case :: Exp1 -> [Var]
+order_vars_case exp = case exp of
+  VarE v    -> []
+  LitE _    -> []
+  CharE _   -> []
+  FloatE{}  -> []
+  LitSymE _ -> []
+  ProjE _ e -> order_vars_case e
+  IfE a b c -> (order_vars_case a) ++ (order_vars_case b) ++ (order_vars_case c)
+  AppE v _ ls         -> (L.concat $ (L.map order_vars_case ls))
+  PrimAppE _ ls        -> L.concat $ (L.map order_vars_case ls)
+  LetE (v,_,_,rhs) bod -> (order_vars_case rhs) ++ (deleteOne v (order_vars_case bod))
+  CaseE e ls -> (order_vars_case e) ++ (L.concat $
+                (L.map (\(_, vlocs, ee) ->
+                                       let (vars,_) = unzip vlocs
+                                       in deleteMany (order_vars_case ee) vars) ls) )
+  MkProdE ls          -> L.concat $ L.map order_vars_case ls
+  DataConE _ _ ls     -> [] --L.concatMap (\exp -> case exp of 
+                            --                   VarE v -> [v]
+                            --                   LitSymE v ->  [v]
+                            --                   _ -> []          ) ls
+  TimeIt e _ _        -> order_vars_case e 
+  MapE (v,_t,rhs) bod -> (order_vars_case rhs) ++ (deleteOne v (order_vars_case bod))
+  WithArenaE v e -> deleteOne v $ order_vars_case e
+  FoldE{} -> error "TODO: FoldE"
+  SpawnE{} -> error "TODO: SpawnE"
+  SyncE -> error "TODO: SyncE"
+  Ext{} -> error "TODO: Ext"
+
    
 
 

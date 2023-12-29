@@ -15,8 +15,8 @@ emphKeywordInTag keyword blogs = case blogs of
 
 gibbon_main = 
     let 
-        blogs     = mkBlogs_layout4  40
+        blogs     = mkBlogs_layout4  400000
         keyword :: Vector Char  
         keyword = "a"
-        newblgs = emphKeywordInTag keyword blogs
+        newblgs = iterate (emphKeywordInTag keyword blogs)
     in blogLength newblgs == blogLength blogs

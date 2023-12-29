@@ -30,8 +30,7 @@ emphKeywordInTag keyword blogs = case blogs of
                                     End -> End
                                     Layout1 header id author date content tags rst -> let present = searchBlogTags keyword tags
                                                                                           in if (present) 
-                                                                                             then let newContent  = case content of 
-                                                                                                                         Content block -> Content (emphasizeKeywordInBlock keyword block) 
+                                                                                             then let newContent  = emphasizeBlogContent' keyword content 
                                                                                                       newRst      = emphKeywordInTag keyword rst
                                                                                                     in Layout1 header id author date newContent tags newRst
                                                                                              else
@@ -41,10 +40,10 @@ emphKeywordInTag keyword blogs = case blogs of
                                                                                                  
 -- main function 
 gibbon_main = 
-   let blogs = mkBlogs_layout1 10000
+   let blogs = mkBlogs_layout1 1000000
        keyword :: Vector Char  
        keyword = "a"
-       newblgs   = emphKeywordInContent keyword blogs
-       newblgs'  = emphKeywordInTag keyword newblgs 
-       newblgs'' = filterByKeywordInTagList keyword newblgs'
-   in () --printPacked newblgs''
+       newblgs   = iterate (emphKeywordInContent keyword blogs)
+       newblgs'  = iterate (emphKeywordInTag keyword newblgs) 
+       newblgs'' = iterate (filterByKeywordInTagList keyword newblgs')
+   in ()

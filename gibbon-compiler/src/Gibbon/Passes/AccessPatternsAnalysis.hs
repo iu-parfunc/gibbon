@@ -84,12 +84,59 @@ generateAccessGraphs
                     map
                 )
                 dcons
-            accessMapsList = {-dbgTraceIt ("STAGE1\n")-} zipWith (\x y -> (x, y)) [dcons] [edges]
+            -- Check if there is only a single field in the data con used. 
+            set = isSingleFieldUse dcons funBody
+            singleFieldVal = catMaybes $ S.toList set
+            edges' = if (P.length singleFieldVal) == 1 
+                     then [((P.head singleFieldVal, P.head singleFieldVal), 100)]
+                     else edges
+            accessMapsList = {-dbgTraceIt (sdoc (dcons, edges', singleFieldVal))-} zipWith (\x y -> (x, y)) [dcons] [edges']
             accessMaps = {-dbgTraceIt ("STAGE2\n")-} M.fromList accessMapsList
             fieldMap' = {-dbgTraceIt ("STAGE3\n")-} M.insert funName accessMaps fieldMap  --dbgTraceIt (sdoc topologicallySortedVertices) dbgTraceIt ("\n") dbgTraceIt (sdoc (topologicallySortedVertices, edges)) dbgTraceIt ("\n")
             s'' = {-dbgTraceIt ("STAGE4\n")-} generateSolverEdges funDef dcons fieldMap'
          in {-dbgTraceIt ("STAGE5:\n") dbgTraceIt (sdoc (funName, vertices, edges, findDataFlowDependencies funDef, s'')) dbgTraceIt ("\n")-} fieldMap'  
       Nothing -> error "generateAccessGraphs: no CFG for function found!"
+
+
+-- Special case if only a single field in the data con is used. 
+isSingleFieldUse :: DataCon -> Exp1 -> S.Set (Maybe Integer)
+isSingleFieldUse dcon exp = case exp of
+            DataConE _ dcon args -> S.singleton Nothing
+            VarE {} -> S.singleton Nothing
+            LitE {} -> S.singleton Nothing
+            CharE {} -> S.singleton Nothing
+            FloatE {} -> S.singleton Nothing
+            LitSymE {} -> S.singleton Nothing
+            AppE f locs args -> S.unions $ P.map (isSingleFieldUse dcon) args
+            PrimAppE f args -> S.unions $ P.map (isSingleFieldUse dcon) args
+            LetE (v, loc, ty, rhs) bod -> S.union (isSingleFieldUse dcon rhs) (isSingleFieldUse dcon bod)
+            -- a == DataCon
+            -- b == [(Var, loc)]
+            -- c == Case Body
+            CaseE scrt mp -> S.unions $ P.map (\(a, b, c) -> if a == dcon 
+                                                             then 
+                                                              let useMap = P.concatMap (\e@(var, x) -> let freeVars = S.fromList (freeVarsInOrder c)
+                                                                                                        in if (S.member var freeVars) then {-dbgTraceIt (sdoc $ S.toList freeVars)-} [(var, True, elemIndex e b)] else []
+                                                                                       ) b
+                                                                  recC = isSingleFieldUse dcon c 
+                                                                in if P.length useMap == 1 
+                                                                   then 
+                                                                     let val = case useMap of 
+                                                                                      [(_, _, Just intVal)] -> S.singleton (Just (P.toInteger intVal))
+                                                                       in {-dbgTraceIt (sdoc useMap)-} S.union recC val
+                                                                   else recC
+                                                             else isSingleFieldUse dcon c 
+                                              ) mp
+            IfE a b c -> S.unions $ [isSingleFieldUse dcon a] ++ [isSingleFieldUse dcon b] ++ [isSingleFieldUse dcon c]
+            MkProdE xs -> S.unions $ P.map (isSingleFieldUse dcon) xs
+            ProjE i e -> error "getGeneratedVariable: TODO ProjE"
+            TimeIt e ty b -> isSingleFieldUse dcon e
+            WithArenaE v e -> error "getGeneratedVariable: TODO WithArenaE"
+            SpawnE f locs args -> error "getGeneratedVariable: TODO SpawnE"
+            SyncE -> error "getGeneratedVariable: TODO SyncE"
+            Ext _ -> error "getGeneratedVariable: TODO Ext"
+            MapE {} -> error "getGeneratedVariable: TODO MapE"
+            FoldE {} -> error "getGeneratedVariable: TODO FoldE"
 
 
 
@@ -253,7 +300,7 @@ freeVarsInOrder exp =
       let var_list_list = P.map (freeVarsInOrder) args
           var_list = L.concat var_list_list
        in var_list
-    LetE (v, loc, ty, rhs) bod -> freeVarsInOrder rhs
+    LetE (v, loc, ty, rhs) bod -> freeVarsInOrder rhs ++ freeVarsInOrder bod
     CaseE scrt mp ->
       (freeVarsInOrder scrt)
         ++ ( L.concat
@@ -297,6 +344,8 @@ removeDuplicates list =
 -- | Edge: a tuple from vertex to vertex, left dominates right.
 
 -- | TODO: any FIXMEs in the function.
+
+-- | TODO: Fix single fields use. When only one field is used in a datacon, not working yet. 
 
 -- | a.) Multiple datacon fields read in the same expression.
 -- | Since this will be run after flatten, it is safe to assume that only possibly a maximum of two variables can be read in one let binding.

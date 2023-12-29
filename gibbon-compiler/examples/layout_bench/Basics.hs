@@ -455,7 +455,7 @@ mkContentFromText f =
 -- This creates all the base cases for the inline type 
 mkInlineBaseCase :: Int -> Inline
 mkInlineBaseCase option = 
-   if option == 0 then (Str (getRandomString 5))   -- get a random word
+   if option == 0 then (Str (getRandomString 1))   -- get a random word
    else Space 
 
 -- Make a list of Inline data Type.
@@ -482,7 +482,7 @@ mkInlineList' length index words =
 
 mkRandomInlineList :: Int -> (PList Inline)
 mkRandomInlineList len = if len <= 0 then Nil 
-                         else let word = Str (getRandomString 1)
+                         else let word = Str (getRandomString 5)
                                   rst  = mkRandomInlineList (len - 1) 
                                 in Cons word rst
 

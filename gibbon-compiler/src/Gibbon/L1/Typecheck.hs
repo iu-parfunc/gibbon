@@ -753,9 +753,9 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
             Just fp -> case scalars of
                          [] -> return ()
                          _ -> if (last scalars) > fp
-                              then error ("Gibbon-TODO: Constructor " ++ dcon ++
-                                          " has a scalar field after a packed field which isn't" ++
-                                          " allowed at the moment.")
+                              then return () --error ("Gibbon-TODO: Constructor " ++ dcon ++
+                                   --       " has a scalar field after a packed field which isn't" ++
+                                   --       " allowed at the moment.")
                               else return ()
 
 

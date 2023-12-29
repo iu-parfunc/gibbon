@@ -8,8 +8,8 @@ mkBlogs_layout4 length =
    if length <= 0 then End
    else 
       let  
-          tags = (TagList (mkSomeTags 10))
-          content = (Content (Plain (mkRandomInlineList 50)))
+          tags = (TagList (mkSomeTags 5))
+          content = (Content (Plain (mkRandomInlineList 500)))
           rst = (mkBlogs_layout4 (length - 1))
           header = (Header (getRandomString 5))
           id     = (ID (10 - (mod length 10)))

@@ -2,6 +2,6 @@ import Eval
 
 gibbon_main =
   let
-    n = 3
+    n = 30
     t = mkDeterministicTree n
-  in eval t
+  in iterate (eval t)
