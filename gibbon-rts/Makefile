@@ -146,7 +146,7 @@ $(BUILD_DIR)/%.o: $(C_RTS_DIR)/%.o
 	mv $^ $@
 
 $(C_RTS_DIR)/%.o: $(C_RTS_DIR)/%.c
-	$(CC) $(CFLAGS) -c -o $@ $^
+	$(CC) $(CFLAGS) -c -o $@ $^ -l:libpapi.a
 
 $(BUILD_DIR)/%.h: $(C_RTS_DIR)/%.h
 	mkdir -p $(BUILD_DIR) && \

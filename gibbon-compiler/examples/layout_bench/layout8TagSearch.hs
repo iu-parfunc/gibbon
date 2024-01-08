@@ -23,6 +23,6 @@ gibbon_main =
     let 
         blogs     = mkBlogs_layout8 400000
         keyword :: Vector Char  
-        keyword = "a"
+        keyword = "b"
         newblgs = iterate (emphKeywordInTag keyword blogs)
     in blogLength newblgs == blogLength blogs

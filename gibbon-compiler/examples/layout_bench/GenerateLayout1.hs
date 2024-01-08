@@ -15,7 +15,7 @@ mkBlogs_layout1 length =
           id     = (ID (10 - (mod length 10)))
           author = (Author (getRandomString 5))
           date   =  (Date (getRandomString 5))
-          content = (Content (Plain (mkRandomInlineList 100)))
+          content = (Content (Plain (mkRandomInlineList 150)))
           tags    = (TagList (mkSomeTags 10))
           rst     = (mkBlogs_layout1 (length - 1))
          in Layout1 header id author date content tags rst
@@ -49,6 +49,6 @@ mkBlogs_layout1 length =
 --
 
 -- manyFuncs 
--- Content -> 50 
+-- Content -> 150
 -- Tags -> 10 
 -- Blogs -> 1000000
