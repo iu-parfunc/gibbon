@@ -499,7 +499,7 @@ pyassign1 v rhs = Py.Assign [pyvar v] rhs ()
 
 pythonCodegenNew :: [Constr] -> PassM String
 pythonCodegenNew constrs = do 
-   let idxs = dbgTraceIt (sdoc constrs)
+   let idxs = {-dbgTraceIt (sdoc constrs)-}
          L.nub $
             P.concatMap
                (\a -> case a of
