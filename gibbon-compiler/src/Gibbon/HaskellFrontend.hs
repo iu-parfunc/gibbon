@@ -68,7 +68,7 @@ it expects A.B.D to be at A/B/A/B/D.hs.
 parseFile :: Config -> FilePath -> IO (PassM Prog0)
 parseFile cfg path = do
   pstate0_ref <- newIORef emptyParseState
-  parseFile' cfg pstate0_ref [] path
+  parseFile' cfg pstate0_ref [] path "Main"
 
 data ParseState =
   ParseState
@@ -90,8 +90,8 @@ parseMode =
     }
 
 parseFile' ::
-     Config -> IORef ParseState -> [String] -> FilePath -> IO (PassM Prog0)
-parseFile' cfg pstate_ref import_route path = do
+     Config -> IORef ParseState -> [String] -> FilePath -> String -> IO (PassM Prog0)
+parseFile' cfg pstate_ref import_route path mod_name = do
   when (gopt Opt_GhcTc (dynflags cfg)) $ typecheckWithGhc cfg path
   str <- readFile path
   let cleaned = removeLinearArrows str
@@ -100,7 +100,7 @@ parseFile' cfg pstate_ref import_route path = do
     parseFileContentsWithCommentsAndCPP defaultCpphsOptions parseMode cleaned
   case parsed of
     ParseOk (hs, _comments) ->
-      desugarModule cfg pstate_ref import_route (takeDirectory path) hs
+      desugarModule cfg pstate_ref import_route (takeDirectory path) hs mod_name
     ParseFailed loc er -> do
       error ("haskell-src-exts failed: " ++ er ++ ", at " ++ prettyPrint loc)
 
@@ -222,8 +222,9 @@ desugarModule ::
   -> [String]
   -> FilePath
   -> Module a
+  -> String
   -> IO (PassM Prog0)
-desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports decls) = do
+desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports decls) mod_name = do
   let type_syns = foldl collectTypeSynonyms M.empty decls
       -- Since top-level functions and their types can't be declared in
       -- single top-level declaration we first collect types and then collect
@@ -327,7 +328,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
   pure prog
   where
     init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing, S.empty, [])
-    mod_name = moduleName head_mb
+    --mod_name = moduleName head_mb
     import_names =  (map (\(ImportDecl _ (ModuleName _ importName) _ _ _ _ _ _) -> importName) imports)
     aliases      =  M.fromList (map 
                         (\(ImportDecl _ (ModuleName _ importName) _ _ _ _ aliased _) -> 
@@ -439,7 +440,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
        in case element of
             Nothing   -> fn
             Just dcon -> fn {funMeta = funMeta {funOptLayout = Single dcon}}
-desugarModule _ _ _ _ m = error $ "desugarModule: " ++ prettyPrint m
+desugarModule _ _ _ _ m _ = error $ "desugarModule: " ++ prettyPrint m
 
 stdlibModules :: [String]
 stdlibModules =
@@ -488,7 +489,7 @@ processImport cfg pstate_ref import_route dir decl@ImportDecl {..}
           pure prog
         Nothing -> do
           dbgTrace 5 ("Importing " ++ mod_name ++ " from " ++ mod_fp) (pure ())
-          prog0 <- parseFile' cfg pstate_ref import_route mod_fp
+          prog0 <- parseFile' cfg pstate_ref import_route mod_fp mod_name
           (ParseState imported') <- readIORef pstate_ref
           let (prog0', _) = defaultRunPassM prog0
           let imported'' = M.insert (mod_name, mod_fp) prog0' imported'

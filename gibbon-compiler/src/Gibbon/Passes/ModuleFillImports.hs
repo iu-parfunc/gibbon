@@ -41,7 +41,7 @@ fillImports (Prog defs funs main) localMod imports imported_progs =
                                    else acc
                       Nothing -> acc ++ [(toVar ((fromVar alias) ++ "." ++ (fromVar name)), (v, qual))]
                   --Nothing -> error $ "could not find module or alias: " ++ (show modName) ++ " for name " ++ (show v) ++ " in " ++ (show importMeta)
-                  Nothing -> acc
+                  Nothing -> acc ++ [(name, (v, False))]
               Nothing -> error "how did we get here?"
 
       let importedConstrs = foldr (\(Prog idefs _ _) acc -> acc ++ (foldr applyImportMeta [] (L.map (\(constrName, _) -> (toVar constrName)) (foldr (\(DDef _ _ dataCons) acc -> acc ++ dataCons) [] idefs)))) initImportedNames imported_progs
@@ -78,8 +78,8 @@ fillImports (Prog defs funs main) localMod imports imported_progs =
       -- main
       main' <- case main of
                  Nothing -> return Nothing
-                 Just (m,ty) -> do --error $ "fun env: " ++ (show funenv)
-                                   m' <- resolveModInExp m defenv funenv constrenv
+                 Just (m,ty) -> do --error $ "fun env: " ++ (show importedFuns) ++ "\n import meta" ++ (show importMeta)
+                                   m' <- (resolveModInExp m defenv funenv constrenv)
                                    return $ Just (m',ty)
       
 
@@ -133,7 +133,8 @@ resolveModsInFuns (FunDef nam nargs funty bod meta) defenv funenv constrenv =
     do 
       let nam' = parseAndResolve nam funenv
       let funty' = resolveModsInTyScheme funty defenv
-      bod' <- resolveModInExp bod defenv funenv constrenv
+      let funenv' = foldr appendEnv funenv nargs
+      bod' <- resolveModInExp bod defenv funenv' constrenv
       pure $ FunDef nam' nargs funty' bod' meta
 
 resolveModsInTyScheme :: TyScheme -> VarEnv -> TyScheme
@@ -163,7 +164,7 @@ resolveModInTy ty defenv =
      ProdTy tys    ->  ProdTy $ map (\v -> resolveModInTy v defenv) tys
      SymDictTy v ty   -> SymDictTy v $ resolveModInTy ty defenv
      PDictTy k v -> PDictTy (resolveModInTy k defenv) (resolveModInTy v defenv)
-     ArrowTy tys t -> ArrowTy (map (\v -> resolveModInTy v defenv) tys) $ resolveModInTy t defenv
+     ArrowTy tys t -> ArrowTy (map (\v -> resolveModInTy v defenv) tys) (resolveModInTy t defenv)
      
      PackedTy tycon tys -> PackedTy (fromVar (parseAndResolve (toVar tycon) defenv)) $ map (\v -> resolveModInTy v defenv) tys
      
@@ -184,7 +185,7 @@ resolveModInExp exp defenv funenv constrenv =
 
     AppE v locs ls -> do
       let v' = parseAndResolve v funenv
-      ls' <- traverse (\v -> resolveModInExp v defenv funenv constrenv) ls
+      ls' <- traverse (\e -> resolveModInExp e defenv funenv constrenv) ls
       return $ AppE v' locs ls'
 
     PrimAppE p es -> do
@@ -192,9 +193,10 @@ resolveModInExp exp defenv funenv constrenv =
       return $ PrimAppE p es'
 
     LetE (v,_locs,ty, e1) e2 -> do
+      let funenv' = appendEnv v funenv
       let ty' = resolveModInTy ty defenv
-      e1' <- resolveModInExp e1 defenv funenv constrenv
-      e2' <- resolveModInExp e2 defenv funenv constrenv
+      e1' <- resolveModInExp e1 defenv funenv' constrenv
+      e2' <- resolveModInExp e2 defenv funenv' constrenv
       return $ LetE (v, [], ty', e1') e2'
 
     IfE e1 e2 e3 -> do
@@ -281,6 +283,20 @@ resolveModInExp exp defenv funenv constrenv =
 
 -- environment interactions
 
+appendEnv :: Var -> VarEnv -> VarEnv
+appendEnv v env =
+  case (M.lookup v env) of
+    Just m -> case foldr findUnqualified (False, "") m of
+        (True, n) -> do
+          let (mod, _) = parseOutMod n
+          case mod of 
+            Just modname -> do
+              (M.insert v (M.insert (toVar "") (v, False) (M.insert modname (n, True) m)) env)
+            Nothing -> do
+              (M.insert v (M.insert (toVar "") (v, False) m) env)
+        (False, _) -> (M.insert v (M.insert (toVar "") (v, False) m) env)
+    Nothing -> (M.insert v (M.singleton (toVar "") (v, False)) env)
+
 buildEnv :: VarEnv -> Var -> (Var, Bool) -> (VarEnv, (Var, Bool))
 buildEnv env k v = do
   let (mod, name) = parseOutMod k
@@ -323,5 +339,5 @@ resolveNameInEnv mod name e =
 findUnqualified :: (Var, Bool) -> (Bool, Var) -> (Bool, Var)
 findUnqualified (n, q) (acc, out) =
       if (not q) && (not acc) then (True, n)
-      else if (not q) && acc then error $ "Ambiguous reference"
+      else if (not q) && acc then error $ "Ambiguous reference : " ++ (fromVar n) ++ " and " ++ (fromVar out)
       else (acc, out)
