@@ -155,4 +155,4 @@ resolveNameInEnv name e =
   do case (M.lookup name e) of
       --Just freshName -> (toVar ((fromVar freshName) ++ "*"))
       Just freshName -> freshName
-      Nothing -> error $ "can't find " ++ (fromVar name) ++ " in constructor env: " ++ (show e)
+      Nothing -> name --error $ "can't find " ++ (fromVar name) ++ " in constructor env: " ++ (show e)
