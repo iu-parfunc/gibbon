@@ -69,7 +69,8 @@ resolveModsInFuns (FunDef nam nargs funty bod meta) defenv funenv =
     do 
       let nam' = parseAndResolve nam funenv
       let funty' = resolveModsInTyScheme funty defenv
-      bod' <- resolveModInExp bod defenv funenv 
+      let funenv' = foldr appendEnv funenv nargs
+      bod' <- resolveModInExp bod defenv funenv' 
       pure $ FunDef nam' nargs funty' bod' meta
 
 resolveModsInTyScheme :: TyScheme -> VarEnv -> TyScheme
@@ -128,8 +129,9 @@ resolveModInExp exp defenv funenv =
 
     LetE (v,_locs,ty, e1) e2 -> do
       let ty' = resolveModInTy ty defenv
-      e1' <- resolveModInExp e1 defenv funenv
-      e2' <- resolveModInExp e2 defenv funenv
+      let funenv' = appendEnv v funenv
+      e1' <- resolveModInExp e1 defenv funenv'
+      e2' <- resolveModInExp e2 defenv funenv'
       return $ LetE (v, [], ty', e1') e2'
 
     IfE e1 e2 e3 -> do
@@ -211,6 +213,12 @@ resolveModInExp exp defenv funenv =
 
 -- environment interactions
 
+appendEnv :: Var -> VarEnv -> VarEnv
+appendEnv v env =
+  case (M.lookup v env) of
+    Just m -> (M.insert v (M.insert (toVar "") v m) env)
+    Nothing -> (M.insert v (M.singleton (toVar "") v) env)
+
 buildEnv :: VarEnv -> Var -> Var -> (VarEnv, Var)
 buildEnv env k v = do
   let (mod, name) = parseOutMod k
@@ -242,8 +250,10 @@ resolveNameInEnv mod name e =
         Just m -> case (M.lookup m modspace) of
                     Just n -> n
                     Nothing -> error $ "can't find " ++ (fromVar name) ++ " in module " ++ (fromVar m)
-        Nothing -> if(M.size modspace == 1) then head $ M.elems modspace
-                   else error $ "can't find " ++ (fromVar name)
+        Nothing -> case (M.lookup (toVar "") modspace) of
+                    Just n -> n
+                    Nothing ->  if(M.size modspace == 1) then head $ M.elems modspace
+                                else error $ "can't find/ambiguous reference " ++ (fromVar name) 
       Nothing -> case mod of
                   Just m -> (toVar ((fromVar m) ++ "." ++ (fromVar name)))
                   Nothing -> name
