@@ -41,7 +41,7 @@ fillImports (Prog defs funs main) localMod imports imported_progs =
                                    else acc
                       Nothing -> acc ++ [(toVar ((fromVar alias) ++ "." ++ (fromVar name)), (v, qual))]
                   --Nothing -> error $ "could not find module or alias: " ++ (show modName) ++ " for name " ++ (show v) ++ " in " ++ (show importMeta)
-                  Nothing -> acc ++ [(name, (v, False))]
+                  Nothing -> acc ++ [(v, (v, False))]
               Nothing -> error "how did we get here?"
 
       let importedConstrs = foldr (\(Prog idefs _ _) acc -> acc ++ (foldr applyImportMeta [] (L.map (\(constrName, _) -> (toVar constrName)) (foldr (\(DDef _ _ dataCons) acc -> acc ++ dataCons) [] idefs)))) initImportedNames imported_progs
@@ -78,7 +78,7 @@ fillImports (Prog defs funs main) localMod imports imported_progs =
       -- main
       main' <- case main of
                  Nothing -> return Nothing
-                 Just (m,ty) -> do --error $ "fun env: " ++ (show importedFuns) ++ "\n import meta" ++ (show importMeta)
+                 Just (m,ty) -> do --error $ "fun env: " ++ (show funenv)
                                    m' <- (resolveModInExp m defenv funenv constrenv)
                                    return $ Just (m',ty)
       
@@ -131,11 +131,11 @@ resolveModsInDefs (DDef tyName tyArgs dataCons) defenv funenv =
 resolveModsInFuns :: FunDef Exp0 -> VarEnv -> VarEnv -> VarEnv -> PassM (FunDef Exp0)
 resolveModsInFuns (FunDef nam nargs funty bod meta) defenv funenv constrenv =
     do 
-      let nam' = parseAndResolve nam funenv
-      let funty' = resolveModsInTyScheme funty defenv
-      let funenv' = foldr appendEnv funenv nargs
-      bod' <- resolveModInExp bod defenv funenv' constrenv
-      pure $ FunDef nam' nargs funty' bod' meta
+        let nam' = parseAndResolve nam funenv
+        let funty' = resolveModsInTyScheme funty defenv
+        let funenv' = foldr appendEnv funenv nargs
+        bod' <- resolveModInExp bod defenv funenv' constrenv
+        pure $ FunDef nam' nargs funty' bod' meta
 
 resolveModsInTyScheme :: TyScheme -> VarEnv -> TyScheme
 resolveModsInTyScheme (ForAll tvs ty) defenv = do
@@ -276,8 +276,22 @@ resolveModInExp exp defenv funenv constrenv =
       L p e -> do
         e' <- resolveModInExp e defenv funenv constrenv
         return $ Ext $ L p e'
-      LinearExt a -> do
-        return $ Ext $ LinearExt a
+      LinearExt a -> case a of
+        ReverseAppE e1 e2 -> do
+          e1' <- resolveModInExp e1 defenv funenv constrenv
+          e2' <- resolveModInExp e2 defenv funenv constrenv
+          return $ Ext $ LinearExt (ReverseAppE e1' e2')
+        LseqE e1 e2 -> do
+          e1' <- resolveModInExp e1 defenv funenv constrenv
+          e2' <- resolveModInExp e2 defenv funenv constrenv
+          return $ Ext $ LinearExt (ReverseAppE e1' e2')
+        AliasE e -> do
+          e' <- resolveModInExp e defenv funenv constrenv
+          return $ Ext $ LinearExt (AliasE e')
+        ToLinearE e -> do
+          e' <- resolveModInExp e defenv funenv constrenv
+          return $ Ext $ LinearExt (ToLinearE e')
+
       
 
 
@@ -320,6 +334,7 @@ parseOutMod v = do
   case (L.elemIndices '.' str) of
     [] -> (Nothing, v)
     x -> (Just (toVar (L.take (L.last x) str)), (toVar (L.drop ((L.last x)+1) str)))
+    --x -> (Just (toVar (L.drop ((L.last x)+1) str)), (toVar (L.take (L.last x) str)))
 
 resolveNameInEnv :: Maybe Var -> Var -> VarEnv -> Var
 resolveNameInEnv mod name e = 
