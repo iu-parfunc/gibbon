@@ -1948,7 +1948,9 @@ isSelfRecursive fld ddefs dcon = let tycon = getTyOfDataCon ddefs dcon
 isScalar :: Ty1 -> DDefs1 -> DataCon -> M.Map Ty1 DataConFieldType -> [DataConFieldType]
 isScalar fld ddefs dcon map  = case (isRecursive fld ddefs map) of 
                                       ([Recursive], _ ) -> []
-                                      _ -> [Scalar]
+                                      _ -> if isPackedTy fld 
+                                           then []
+                                           else [Scalar]
 
 -- checkScalar :: DataCon -> DDefs1 -> Bool 
 -- checkScalar dcon ddefs = let flds = lookupDataCon ddefs dcon
