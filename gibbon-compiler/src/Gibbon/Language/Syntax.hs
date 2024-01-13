@@ -321,8 +321,8 @@ type ConstraintEdge
 data Constr
   = WeakConstr (ConstraintEdge, ConstrEdgeWeightTy)
   | StrongConstr (ConstraintEdge, ConstrEdgeWeightTy)
-  | Imm Edge
-  | Absolute Edge
+  | ImmAfterUserConstr Edge
+  | AbsoluteIndexUserConstr Edge
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
 type DataConMap = M.Map DataCon [UserOrdering]

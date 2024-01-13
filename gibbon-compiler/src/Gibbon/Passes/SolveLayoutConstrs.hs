@@ -505,6 +505,7 @@ pythonCodegenNew constrs = do
                (\a -> case a of
                      WeakConstr (((a, _), (b, _)) , _) -> [a, b]
                      StrongConstr (((a, _), (b, _)) , _) -> [a, b]
+                     _ -> []
                ) constrs
    let   weakEdges = P.concatMap (\constr -> case constr of
                                                 WeakConstr a -> [a]
@@ -514,10 +515,28 @@ pythonCodegenNew constrs = do
                                                 StrongConstr a -> [a]
                                                 _ -> []
                                 ) constrs
+   let   immediateAfterUserVariables = P.concatMap (\constr -> case constr of 
+                                                                      ImmAfterUserConstr (a, b) -> [a, b]
+                                                                      _ -> []
+                                                     ) constrs 
+   let   absoluteIndexUserVariables = P.concatMap (\constr -> case constr of 
+                                                                     AbsoluteIndexUserConstr (a, b) -> [a, b]
+                                                                     _ -> []
+                                                    ) constrs
+
+   let immediateAfterUserConstraints = P.concatMap (\constr -> case constr of 
+                                                                     ImmAfterUserConstr a -> [a]
+                                                                     _ -> []
+                                                   ) constrs 
+   
+   let absoluteIndexUserConstraints = P.concatMap (\constr -> case constr of 
+                                                                     AbsoluteIndexUserConstr a -> [a]
+                                                                     _ -> []
+                                                  ) constrs 
    node_map <- 
          mapM
             (\i -> (i, ) <$> fromVar <$> gensym (toVar ("x_" ++ show i)))
-            (L.nub $ idxs)
+            (L.nub $ idxs ++ immediateAfterUserVariables ++ absoluteIndexUserVariables)
    let node_vars = P.concatMap (\(i, var) -> [var]) node_map
    model_var <- (\i -> "model_" ++ show i) <$> newUniq
    let init_model =
@@ -529,12 +548,13 @@ pythonCodegenNew constrs = do
    let (lb :: Integer, ub :: Integer) =
         ( fromIntegral $ 0
         , fromIntegral $
-          (P.length (L.nub $ idxs)) - 1)
+          (P.length (L.nub $ idxs ++ immediateAfterUserVariables ++ absoluteIndexUserVariables)) - 1)
    let soft_rel_to_ub =
           P.map
             (\index -> (fromJust $ lookup index node_map, ub))
-            idxs
-   let vars_ub = soft_rel_to_ub
+            (idxs ++ immediateAfterUserVariables)
+   let abs_ub = P.map (\(x, y) -> (fromJust $ lookup x node_map, y)) absoluteIndexUserConstraints
+   let vars_ub = soft_rel_to_ub ++ abs_ub
    let init_nodes =
         map
           (\x ->
@@ -1270,6 +1290,45 @@ pythonCodegenNew constrs = do
                   ())
                ())
           (combinations 2 node_vars)
+   -- make the relative constraints is they exist
+   let relativeConstrsBindings =
+        P.map
+          (\(x, y) ->
+             Py.StmtExpr
+               (Py.Call
+                  (Py.Dot (pyvar model_var) (pyident "add") ())
+                  [ Py.ArgExpr
+                      (Py.BinaryOp
+                         (Py.Equality ())
+                         (pyvar (fromJust $ lookup y node_map))
+                         (Py.BinaryOp
+                            (Py.Plus ())
+                            (pyvar (fromJust $ lookup x node_map))
+                            ((Py.Int 1 (show 1) ()))
+                            ())
+                         ())
+                      ()
+                  ]
+                  ())
+               ())
+          immediateAfterUserConstraints
+   let absolute_ordering_constrs =
+        P.map
+          (\(x, y) ->
+             Py.StmtExpr
+               (Py.Call
+                  (Py.Dot (pyvar model_var) (pyident "add") ())
+                  [ Py.ArgExpr
+                      (Py.BinaryOp
+                         (Py.Equality ())
+                         (pyvar (fromJust $ lookup x node_map))
+                         ((Py.Int y (show y) ()))
+                         ())
+                      ()
+                  ]
+                  ())
+               ())
+          absoluteIndexUserConstraints
    soln_var <- fromVar <$> (gensym "soln")
    let call_solve =
         pyassign1
@@ -1325,6 +1384,8 @@ pythonCodegenNew constrs = do
          init_costs ++
          constrs_for_edges ++
          uniq_constrs ++
+         relativeConstrsBindings ++ 
+         absolute_ordering_constrs ++
          [call_minimize, call_solve] ++ print_answers
    let pycode = Py.prettyText (Py.Module stmts)
    pure pycode {-dbgTraceIt ("Print in solver: ") dbgTraceIt (sdoc (node_vars, lb, ub, minimize_parts)) (dbgTraceIt "\n")-} --dbgTraceIt (sdoc node_vars) (dbgTraceIt "\n")

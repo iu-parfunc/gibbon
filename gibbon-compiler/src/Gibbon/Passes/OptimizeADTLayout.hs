@@ -266,15 +266,26 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
   let funsToOptimizeTriple' = P.map (\(funList, dcon, m) -> (P.map (\f -> deduceFieldSolverTypes ddefs f) funList, dcon, m)) funsToOptimizeTriple
 
   let funsToOptimizeTripleSolver = {-dbgTraceIt (sdoc funsToOptimizeTriple')-} P.map 
-                        (\(funList, dcon, m) -> let constraints = S.toList $ S.fromList $ P.concatMap (\f@FunDef{funName=fname} -> let fieldOrder = M.insert fname m M.empty
-                                                                                                                                       constrs = generateSolverEdges f dcon fieldOrder
-                                                                                                                                     in constrs
+                        (\(funList, dcon, m) -> let constraints = S.toList $ S.fromList $ P.concatMap (\f@FunDef{funName=fname, funMeta=fmeta@FunMeta{userConstraintsDataCon=userConstraints}} -> let fieldOrder = M.insert fname m M.empty
+                                                                                                                                                                                                      constrs = generateSolverEdges f dcon fieldOrder
+                                                                                                                                                                                                      --userConstrs = ...
+                                                                                                                                                                                                    in case userConstraints of 
+                                                                                                                                                                                                      Nothing -> constrs 
+                                                                                                                                                                                                      Just dconUseConstrMap -> let 
+                                                                                                                                                                                                                                  dconConstrs = M.lookup dcon dconUseConstrMap
+                                                                                                                                                                                                                                 in case dconConstrs of 
+                                                                                                                                                                                                                                        Nothing -> constrs 
+                                                                                                                                                                                                                                        Just userConstrs -> let 
+                                                                                                                                                                                                                                                              userConstrs' = genUserConstrs userConstrs 
+                                                                                                                                                                                                                                                             in constrs ++ userConstrs'
+                                                                                                                                                                                                                                                            
                                                                                                       ) funList
+                                                    --collectUserConstrs = 
                                                     mergedConstraints = {-dbgTraceIt (sdoc constraints)-} mergeConstraints $ constraints
                                                   in (funList, dcon, mergedConstraints)
                         ) funsToOptimizeTriple'
 
-  let solverOptimization =
+  let solverOptimization = dbgTraceIt (sdoc funsToOptimizeTripleSolver)
               (\(f@FunDef{funName=fname}, (dcon, newSymDcon), constrs) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do 
                       let maybeFd = M.lookup fname fds
                       let fd = case maybeFd of
@@ -344,6 +355,9 @@ mergeConstraints lst = case lst of
                                                                                                                                           then (StrongConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt), tail) 
                                                                                                                                           else (newConstr, tail ++ [constr])
 
+                                                                                          _ -> (constr, tail ++ [constr]) -- This isn't really corrent right now?
+                                                                                          
+
 
                                                                         ) (x, []) y 
                                                   in [x'] ++ (mergeConstraints y')
@@ -356,9 +370,12 @@ mergeConstraints lst = case lst of
                                                                                                                                           then (StrongConstr (((a', removeDuplicates $ ma' ++ ma), (b', removeDuplicates $ mb' ++ mb)), wt), tail) 
                                                                                                                                           else (newConstr, tail ++ [constr])
 
+                                                                                          _ -> (constr, tail ++ [constr])
+
 
                                                                         ) (x, []) y 
                                                     in [x'] ++ (mergeConstraints y')
+  x:y -> [x] ++ (mergeConstraints y)
 
 
 generateCopyFunctionsForFunctionsThatUseOptimizedVariable :: Var -> DataCon -> FieldOrder -> Prog1 -> PassM Prog1
@@ -1213,8 +1230,8 @@ locallyOptimizeFieldOrdering fieldMap dcons fundefs funcName field_len orderIn m
 genUserConstrs :: [UserOrdering] -> [Constr]
 genUserConstrs userOrdering =
   case userOrdering of
-    (Strong a b) : xs -> Absolute (a, b) : genUserConstrs xs
-    (Immediate a b) : xs -> Imm (a, b) : genUserConstrs xs
+    (Strong a b) : xs -> AbsoluteIndexUserConstr (a, b) : genUserConstrs xs
+    (Immediate a b) : xs -> ImmAfterUserConstr (a, b) : genUserConstrs xs
     [] -> []
 
 -- Takes in Field access map

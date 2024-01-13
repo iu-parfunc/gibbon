@@ -199,8 +199,8 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
         toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
         let (defs, _vars, funs, inlines, main, optimizeDcons, userOrderings) =
               foldr classify init_acc toplevels
-            userOrderings' = M.fromList $ coalese_constraints userOrderings
-            funs' =
+            userOrderings' = {-dbgTraceIt (sdoc userOrderings)-} M.fromList $ coalese_constraints userOrderings
+            funs' = {-dbgTraceIt (sdoc userOrderings')-}
               foldr
                 (\v acc ->
                    M.update
@@ -1793,7 +1793,7 @@ collectTopLevel type_syns env decl =
                                       (M.singleton
                                          (toVar funcName)
                                          (M.singleton conName contrs))
-                               in pure $
+                               in {-(dbgTraceIt (show userConstrs))-} pure $
                                   Just $
                                   UserConstraints
                                     (M.singleton

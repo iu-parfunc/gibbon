@@ -3,6 +3,8 @@ import GenerateLayout1
 
 type Text = Vector Char
 
+{-# ANN Layout1 (filterByKeywordInTagList, (0 ~> 3, 1 ~> 2)) #-}
+{-# ANN Layout1 (filterByKeywordInTagList, (4 :> 5, 3 :> 2)) #-}
 filterByKeywordInTagList :: Text -> Blog -> Blog 
 filterByKeywordInTagList keyword blogs = case blogs of 
                                             End -> End 
@@ -11,7 +13,7 @@ filterByKeywordInTagList keyword blogs = case blogs of
                                                                                                      let newRst  = filterByKeywordInTagList keyword rst
                                                                                                       in Layout1 header id author date content tags newRst
                                                                                                    else filterByKeywordInTagList keyword rst 
-                                                                                                   
+{-# ANN Layout1 (checkBlogs, (4 :> 5, 3 :> 2)) #-}                                                                                       
 checkBlogs :: Text -> Blog -> Bool 
 checkBlogs keyword blogs = case blogs of 
                                             End -> True
