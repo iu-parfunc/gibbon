@@ -12,25 +12,25 @@ mkList len = if len <=0
 		  in Cons rst val
 
 
-addOne :: PackedInt -> PackedInt 
-addOne val = case val of 
-		P x -> P (expo 100 x) --(x+1+4+2 -1)
+power :: PackedInt -> PackedInt 
+power val = case val of 
+		P x -> P (power_helper x 100)
 
-addVal :: List -> List 
-addVal lst = case lst of 
-		Cons rst x -> let rst' = addVal rst
-				  x' = addOne x 
+powerList :: List -> List 
+powerList lst = case lst of 
+		Cons rst x -> let rst' = powerList rst
+				  x' = power x 
 				in Cons rst' x' 
 		Nil -> Nil
 
-expo :: Int -> Int -> Int
-expo power val = if power == 0
-                then val
-                else val * expo (power -1) val
+power_helper :: Int -> Int -> Int
+power_helper val power = if power == 0
+                         then val
+                         else val * power_helper (power -1) val
  
 
 
 gibbon_main = let 
 		lst = mkList 1000000
-		lst' = iterate (addVal lst)
+		lst' = iterate (powerList lst)
 	       in ()   
