@@ -61,7 +61,7 @@ for subdir, dirs, files in os.walk(rootdir):
 marmosetFiles = ['eval_r.hs', 'TreeExpoPre.hs', 'layout2ListLen.hs', 'layout8TagSearch.hs', 'layout8FilterBlogs.hs', 'TreeAddOnePre.hs', 'layout8ContentSearch.hs', 'TreeRightMost_l.hs', 'manyFuncs.hs', 'TreeCopyPre.hs', 'layout1PowerList.hs']
 
 
-# Compile all Gibbon binaries.
+# Compile all Marmoset binaries.
 for subdir, dirs, files in os.walk(rootdir):
     
     print("subdir: " + str(subdir))
@@ -109,7 +109,7 @@ for subdir, dirs, files in os.walk(rootdir):
                 
             print()
 
-
+#Run all executables
 for file in executables:
     
     #print(file)

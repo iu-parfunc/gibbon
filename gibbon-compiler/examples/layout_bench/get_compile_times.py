@@ -14,13 +14,7 @@ def mean_confidence_interval(data, confidence=0.95):
     h = se * scipy.stats.t.ppf((1 + confidence) / 2., n-1)
     return m, m-h, m+h
 
-#rootdir = "/local/scratch/a/singhav/Applications/src/gibbon/gibbon-compiler/examples/layout_benchmarks/blog_management/marmoset/"
-
-rootdir = "/local/scratch/a/singhav/gibbon/gibbon-compiler/examples/layout_bench/"
-
-ut_hash_include = "/local/scratch/a/singhav/Applications/src/uthash-2.3.0/include"
-
-#Passes = ["ContentSearch", "DeleteTag", "InsertTag", "TagSearch"]
+rootdir = "/home/vidush/workdisk/git/gibbon-main/gibbon-compiler/examples/layout_bench/ECOOP-2024-Bench/"
 
 Passes = ["ContentSearch", "TagSearch", "FilterBlogs"]
 

@@ -38,5 +38,5 @@ rightMostTreeRec iters tree = if iters <= 0
 
 gibbon_main = let 
 		tree = mkTree 29
-	        newTree = iterate (rightMostTree tree) --(rightMostTreeRec 1 tree)
-               in () --printPacked newTree
+	        newTree = iterate (rightMostTree tree)
+               in ()
