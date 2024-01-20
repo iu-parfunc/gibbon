@@ -661,7 +661,7 @@ codegenTail venv fenv sort_fns (LetTimedT flg bnds rhs body) ty sync_deps =
                                                          gib_ptr_bumpalloc_restore_state();
                                                          } |]
                                        , C.BlockDecl [cdecl| double $id:itertime = gib_difftimespecs(&$(cid (toVar begn)), &$(cid (toVar end))); |]
-                                       , C.BlockStm [cstm| printf("itertime: %lf\n", $id:itertime); |]
+                                       , C.BlockStm [cstm| printf("itertime: %e\n", $id:itertime); |]
                                        , C.BlockStm [cstm| gib_vector_inplace_update($id:times, $id:iters, &($id:itertime)); |]
                                        ]
                                 -- TODO: Find a better way to get a name for the region id.                                
