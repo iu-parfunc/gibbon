@@ -50,6 +50,22 @@ ENV PATH="$PATH:/gibbon/dist-newstyle/build/x86_64-linux/ghc-9.0.1/gibbon-0.3/x/
 #Python dependencies
 RUN pip install cplex
 RUN pip install docplex
+RUN pip install statistics
+RUN pip install numpy as np
+RUN pip install scipy
+RUN pip install re
+
+
+#Install PAPI 
+RUN wget https://github.com/icl-utk-edu/papi/archive/refs/tags/papi-7-1-0-t.tar.gz
+RUN mkdir papi
+RUN tar -xvzf papi-7-1-0-t.tar.gz -C papi
+RUN cd papi
+RUN cd papi-papi-7-1-0-t
+RUN cd src 
+RUN ./configure
+RUN make -j10
+RUN make install
 
 
 

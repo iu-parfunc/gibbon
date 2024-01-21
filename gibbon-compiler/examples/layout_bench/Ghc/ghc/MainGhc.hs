@@ -518,65 +518,65 @@ time a = do
     return v
 
 
-mkBlogs_layout1 :: Int -> Blog
-mkBlogs_layout1 length =
+mkBlogs_layout1 :: Int -> Int -> Int -> Blog
+mkBlogs_layout1 length contlen taglen =
    if length < 0 then End
    else 
       let header = (Header (getRandomString 5))
           id     = (ID (10 - (mod length 10)))
           author = (Author (getRandomString 5))
           date   =  (Date (getRandomString 5))
-          content = (Content (Plain (mkRandomInlineList 50)))
-          tags    = (TagList (mkSomeTags 10))
-          rst     = (mkBlogs_layout1 (length - 1))
+          content = (Content (Plain (mkRandomInlineList contlen)))
+          tags    = (TagList (mkSomeTags taglen))
+          rst     = (mkBlogs_layout1 (length - 1) contlen taglen)
          in Layout1 header id author date content tags rst
 
-mkBlogs_layout2 :: Int -> Blog
-mkBlogs_layout2 length =
+mkBlogs_layout2 :: Int -> Int -> Int -> Blog
+mkBlogs_layout2 length contlen taglen =
    if length < 0 then End
    else 
-      let content = (Content (Plain (mkRandomInlineList 50))) 
-          tags    = (TagList (mkSomeTags 10))    
-          rst     = (mkBlogs_layout2 (length - 1))
+      let content = (Content (Plain (mkRandomInlineList contlen))) 
+          tags    = (TagList (mkSomeTags taglen))    
+          rst     = (mkBlogs_layout2 (length - 1) contlen taglen)
           header  = (Header (getRandomString 5))
           id      = (ID (10 - (mod length 10)))
           author  = (Author (getRandomString 5))
           date    = (Date (getRandomString 5))
          in Layout2 content tags rst header id author date   
 
-mkBlogs_layout3 :: Int -> Blog
-mkBlogs_layout3 length =
+mkBlogs_layout3 :: Int -> Int -> Int -> Blog
+mkBlogs_layout3 length contlen taglen =
    if length < 0 then End
    else 
-      let tags =   (TagList (mkSomeTags 10))
-          rst  = (mkBlogs_layout3 (length - 1))
-          content = (Content (Plain (mkRandomInlineList 50)))
+      let tags =   (TagList (mkSomeTags taglen))
+          rst  = (mkBlogs_layout3 (length - 1) contlen taglen)
+          content = (Content (Plain (mkRandomInlineList contlen)))
           header  = (Header (getRandomString 5))
           id      = (ID (10 - (mod length 10)))
           author = (Author (getRandomString 5))
           date   = (Date (getRandomString 5))
          in Layout3 tags rst content header id author date
 
-mkBlogs_layout4 :: Int -> Blog
-mkBlogs_layout4 length =
+mkBlogs_layout4 :: Int -> Int -> Int -> Blog
+mkBlogs_layout4 length contlen taglen =
    if length < 0 then End
    else 
-      let tags = (TagList (mkSomeTags 10))
-          content = (Content (Plain (mkRandomInlineList 50)))
-          rst = (mkBlogs_layout4 (length - 1))
+      let tags = (TagList (mkSomeTags taglen))
+          content = (Content (Plain (mkRandomInlineList contlen)))
+          rst = (mkBlogs_layout4 (length - 1) contlen taglen)
           header = (Header (getRandomString 5))
           id     = (ID (10 - (mod length 10)))
           author = (Author (getRandomString 5))
           date   =  (Date (getRandomString 5))
          in Layout4 tags content rst header id author date
 
-mkBlogs_layout5 :: Int -> Blog
-mkBlogs_layout5 length =
+mkBlogs_layout5 :: Int -> Int -> Int -> Blog
+mkBlogs_layout5 length contlen taglen =
    if length < 0 then End
    else 
-      let rst = (mkBlogs_layout5 (length - 1))
-          tags = (TagList (mkSomeTags 10))
-          content = (Content (Plain (mkRandomInlineList 50)))
+      let rst = (mkBlogs_layout5 (length - 1) contlen taglen)
+          tags = (TagList (mkSomeTags taglen))
+          content = (Content (Plain (mkRandomInlineList contlen)))
           header  =  (Header (getRandomString 5))
           id      = (ID (10 - (mod length 10)))
           author = (Author (getRandomString 5))
@@ -584,44 +584,44 @@ mkBlogs_layout5 length =
          in Layout5 rst tags content header id author date
 
 
-mkBlogs_layout6 :: Int -> Blog
-mkBlogs_layout6 length =
+mkBlogs_layout6 :: Int -> Int -> Int -> Blog
+mkBlogs_layout6 length contlen taglen =
    if length < 0 then End
    else 
       let header =  (Header (getRandomString 5))
           id = (ID (10 - (mod length 10)))
           author = (Author (getRandomString 5))
           date   = (Date (getRandomString 5))
-          content = (Content (Plain (mkRandomInlineList 50)))
-          rst     = (mkBlogs_layout6 (length - 1))
-          tags    = (TagList (mkSomeTags 10))
+          content = (Content (Plain (mkRandomInlineList contlen)))
+          rst     = (mkBlogs_layout6 (length - 1) contlen taglen)
+          tags    = (TagList (mkSomeTags taglen))
          in Layout6 header id author date content rst tags
 
-mkBlogs_layout7 :: Int -> Blog
-mkBlogs_layout7 length =
+mkBlogs_layout7 :: Int -> Int -> Int -> Blog
+mkBlogs_layout7 length contlen taglen =
    if length < 0 then End
    else 
-      let rst     = (mkBlogs_layout7 (length - 1))
-          content = (Content (Plain (mkRandomInlineList 50)))
+      let rst     = (mkBlogs_layout7 (length - 1) contlen taglen)
+          content = (Content (Plain (mkRandomInlineList contlen)))
           header  = (Header (getRandomString 5))
           id      = (ID (10 - (mod length 10)))
           author  = (Author (getRandomString 5))
           date    = (Date (getRandomString 5))
-          tags    = (TagList (mkSomeTags 10))          
+          tags    = (TagList (mkSomeTags taglen))          
          in Layout7 rst content header id author date tags
 
 
-mkBlogs_layout8 :: Int -> Blog
-mkBlogs_layout8 length = 
+mkBlogs_layout8 :: Int -> Int -> Int -> Blog
+mkBlogs_layout8 length contlen taglen = 
    if length < 0 then End 
    else 
-      let content = (Content (Plain (mkRandomInlineList 50)))
-          rst     = (mkBlogs_layout8 (length - 1))
+      let content = (Content (Plain (mkRandomInlineList contlen)))
+          rst     = (mkBlogs_layout8 (length - 1) contlen taglen)
           id      = (ID (10 - (mod length 10)))
           author  = (Author (getRandomString 5))
           date    = (Date (getRandomString 5))
           header  = (Header (getRandomString 5))
-          tags    = (TagList (mkSomeTags 10))       
+          tags    = (TagList (mkSomeTags taglen))       
          in Layout8 content rst id author date header tags  
 
 

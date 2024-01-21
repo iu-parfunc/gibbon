@@ -13,7 +13,7 @@ insertKeywordInTagList keyword blogs = case blogs of
 -- main function 
 main :: IO ()
 main = 
-    do let blogs1 = mkBlogs_layout4 1000000
+    do let blogs1 = mkBlogs_layout4 1000000 500 5
        (newblog1, self1, batch1) <- benchFilterBlogsBasedOnKeywordInTagList insertKeywordInTagList ['a'] blogs1 1
        putStrLn $ "Length of new Blogs is: "
        print (blogLength newblog1)

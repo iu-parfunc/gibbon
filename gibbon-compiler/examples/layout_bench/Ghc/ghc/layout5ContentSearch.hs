@@ -15,7 +15,7 @@ emphKeywordInContent keyword blogs =
 -- main function 
 main :: IO ()
 main =
-    do let blogs1 = mkBlogs_layout5 1000000
+    do let blogs1 = mkBlogs_layout5 1000000 50 10 
        (newblog1, self1, batch1) <- benchFilterBlogsBasedOnKeywordInTagList emphKeywordInContent ['a'] blogs1 1
        putStrLn $ "Length of new Blogs is: "
        print (blogLength newblog1)
