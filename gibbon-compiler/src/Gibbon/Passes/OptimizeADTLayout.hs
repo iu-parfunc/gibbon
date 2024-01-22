@@ -285,7 +285,7 @@ globallyOptimizeDataConLayout useGreedy prg@Prog{ddefs, fundefs, mainExp} = do
                                                   in (funList, dcon, mergedConstraints)
                         ) funsToOptimizeTriple'
 
-  let solverOptimization = dbgTraceIt (sdoc funsToOptimizeTripleSolver)
+  let solverOptimization = {-dbgTraceIt (sdoc funsToOptimizeTripleSolver)-}
               (\(f@FunDef{funName=fname}, (dcon, newSymDcon), constrs) pr@Prog{ddefs=dd, fundefs=fds, mainExp=mexp} -> do 
                       let maybeFd = M.lookup fname fds
                       let fd = case maybeFd of
