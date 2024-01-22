@@ -36,7 +36,7 @@
 #endif
 
 #ifdef _GIBBON_ENABLE_PAPI
-#include "/local/scratch/a/singhav/papi_install/include/papi.h"
+#include "papi.h"
 #endif
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
