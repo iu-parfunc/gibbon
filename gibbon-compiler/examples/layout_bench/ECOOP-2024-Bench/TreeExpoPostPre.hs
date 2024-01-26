@@ -1,7 +1,7 @@
 module TreeExpo where
 
 data PackedInt = P Int
-data Tree = Node PackedInt Tree Tree | Nil 
+data Tree = Node Tree Tree PackedInt | Nil 
 
 
 mkTree :: Int -> Tree 
@@ -9,10 +9,10 @@ mkTree depth = if depth <= 0
 	       then Nil 
 	       else 
 		 let 
-	            val = P depth
 		    left = mkTree (depth-1)
 	            right = mkTree (depth-1)
-		   in Node val left right
+		    val = P depth
+		   in Node left right val
 
 expo :: Int -> Int -> Int
 {-# INLINE expo #-}
@@ -27,11 +27,11 @@ expo2 val = case val of
 
 expoTree :: Tree -> Tree
 expoTree tree = case tree of 
-		    Node val l r -> let 
+		    Node l r val -> let 
 					a1 = expo2 val
 					sl = expoTree l 
 					sr = expoTree r
-                                      in Node a1 sl sr 
+                                      in Node sl sr a1 
 		    Nil -> Nil 
 
 

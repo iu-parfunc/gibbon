@@ -1,18 +1,18 @@
 module TreeSum where
 
 data PackedInt = P Int
-data Tree = Node PackedInt Tree Tree | Leaf  
+data Tree = Node Tree Tree PackedInt | Leaf  
 
 
 mkTree :: Int -> Tree 
 mkTree depth = if depth <= 0
 	       then Leaf
 	       else 
-		 let 
-	            val = P depth
+		 let
 		    left = mkTree (depth-1)
 	            right = mkTree (depth-1)
-		   in Node val left right 
+		    val = P depth
+		   in Node left right val 
 
 
 copyPackedInt :: PackedInt -> PackedInt 
@@ -21,11 +21,11 @@ copyPackedInt a = case a of
 
 copyTree :: Tree -> Tree  
 copyTree tree = case tree of 
-		    Node val l r -> let
+		    Node l r val -> let
 				      newVal = copyPackedInt val	 
 				      sl = copyTree l 
 				      sr = copyTree r
-				     in Node newVal sl sr 
+				     in Node sl sr newVal
 		    Leaf -> Leaf
 
 
@@ -33,4 +33,4 @@ copyTree tree = case tree of
 gibbon_main = let 
 		tree = mkTree 27 
 	        newTree = iterate (copyTree tree)
-               in () --printPacked newTree
+               in ()
