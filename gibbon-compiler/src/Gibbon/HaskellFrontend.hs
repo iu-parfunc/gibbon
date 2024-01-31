@@ -65,7 +65,7 @@ it expects A.B.D to be at A/B/A/B/D.hs.
 [1] https://downloads.haskell.org/ghc/8.6.4/docs/html/users_guide/separate_compilation.html?#the-search-path
 
 -}
-parseFile :: Config -> FilePath -> IO (PassM Prog0)
+parseFile :: Config -> FilePath -> IO (PassM (ProgBundle0 a))
 parseFile cfg path = do
   pstate0_ref <- newIORef emptyParseState
   parseFile' cfg pstate0_ref [] path "Main"
@@ -91,7 +91,7 @@ parseMode =
 
 -- TIMMY - top level comment
 parseFile' ::
-     Config -> IORef ParseState -> [String] -> FilePath -> String -> IO (PassM Prog0)
+     Config -> IORef ParseState -> [String] -> FilePath -> String -> IO (PassM (ProgBundle0 a))
 parseFile' cfg pstate_ref import_route path mod_name = do
   when (gopt Opt_GhcTc (dynflags cfg)) $ typecheckWithGhc cfg path
   str <- readFile path
@@ -228,15 +228,20 @@ getImportMeta imports = do
 -- later passes -> operate on more abstract representations of the program
 -- ========================================================
 
+-------------------------------------------------------------------------------
+-- recursively desugars modules and their imports
+-- stacks into a ProgBundle: a bundle of modules and their main module
+-- each module contains information about it's name, functions & definitions, and import metadata
+-------------------------------------------------------------------------------
+
 desugarModule ::
-     (Show a, Pretty a)
-  => Config
+  Config
   -> IORef ParseState
   -> [String]
   -> FilePath
-  -> Module a
+  -> Module SrcSpanInfo
   -> String
-  -> IO (PassM Prog0)
+  -> IO (PassM (ProgBundle0 SrcSpanInfo))
 desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports decls) mod_name = do
   let type_syns = foldl collectTypeSynonyms M.empty decls
       -- Since top-level functions and their types can't be declared in
@@ -249,16 +254,16 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
   --dbgPrintLn 2 $ "- imports: " ++ (show import_names)
   --dbgPrintLn 2 $ "- aliases: " ++ (show aliases)
   --dbgPrintLn 2 $ "- imports: " ++ (show (getImportMeta imports))
-  imported_progs :: [PassM Prog0] <-
+  imported_progs :: [PassM (ProgBundle0 a)] <-
     mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
   toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
   let (defs, _vars, funs, inlines, main, optimizeDcons, userOrderings) =
         foldr classify init_acc toplevels
       userOrderings' = M.fromList $ coalese_constraints userOrderings
-      defs' = M.mapWithKey (\k (DDef _ tyArgs dataCons) -> DDef k tyArgs (L.map (\(constrName, vs) -> ((mod_name ++ "." ++ constrName), vs)) dataCons) ) (M.mapKeys (\k -> toVar (mod_name ++ "." ++ (fromVar k))) defs)
-      funs' = M.mapWithKey (\k funDef -> funDef {funName = k }) (M.mapKeys (\k -> toVar (mod_name ++ "." ++ (fromVar k))) funs) -- can insert function name here
+      --defs' = M.mapWithKey (\k (DDef _ tyArgs dataCons) -> DDef k tyArgs (L.map (\(constrName, vs) -> ((mod_name ++ "." ++ constrName), vs)) dataCons) ) (M.mapKeys (\k -> toVar (mod_name ++ "." ++ (fromVar k))) defs)
+      --funs' = M.mapWithKey (\k funDef -> funDef {funName = k }) (M.mapKeys (\k -> toVar (mod_name ++ "." ++ (fromVar k))) funs) -- can insert function name here
       --funs' = M.map (\funDef -> funDef {funMeta = funMeta {funModule = mod_name}}) funs -- can insert function name here
-      funs'' =
+      funs' =
         foldr
           (\v acc ->
               M.update
@@ -266,18 +271,18 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                   Just (fn {funMeta = funMeta {funInline = Inline}}))
                 v
                 acc)
-          funs'
+          funs
           inlines
-      funs''' =
+      funs'' =
         foldr
           (\v acc ->
               M.update
                 (\fn -> Just (addLayoutMetaData fn optimizeDcons))
                 v
                 acc)
-          funs''
+          funs'
           (P.map fst (S.toList optimizeDcons))
-      funs'''' =
+      funs''' =
         foldr
           (\k acc ->
               M.update
@@ -292,9 +297,12 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                         }))
                 k
                 acc)
-          funs'''
+          funs''
           (M.keys userOrderings')
   imported_progs' <- mapM id imported_progs
+  let bundle = foldr (\(ProgBundle imported_bundle imported_mainmodule) acc -> acc ++ imported_bundle ++ [imported_mainmodule]) [] imported_progs' 
+  pure $ pure $ ProgBundle bundle (ProgModule mod_name (Prog defs funs''' main) imports)
+  {-
   Prog defs'' funs''''' main' <- fillImports (Prog defs' funs''' main) (toVar mod_name) imports imported_progs'
   let (defs0, funs0) =
         foldr
@@ -336,7 +344,8 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                       show (S.toList em2) ++ " found in " ++ mod_name)
           (defs'', funs''''')
           imported_progs'
-  pure $ pure $ (Prog defs0 funs0 main') --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs''') dbgTraceIt (sdoc userOrderings') dbgTraceIt "\n" dbgTraceIt (sdoc userOrderings)
+    -}
+  --pure $ pure $ (Prog defs0 funs0 main') --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs''') dbgTraceIt (sdoc userOrderings') dbgTraceIt "\n" dbgTraceIt (sdoc userOrderings)
   where
     init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing, S.empty, [])
     --mod_name = moduleName head_mb
@@ -471,7 +480,7 @@ processImport ::
   -> [String]
   -> FilePath
   -> ImportDecl a
-  -> IO (PassM Prog0)
+  -> IO (PassM (ProgBundle0 a))
 processImport cfg pstate_ref import_route dir decl@ImportDecl {..}
     -- When compiling with Gibbon, we should *NOT* inline things defined in Gibbon.Prim.
   | mod_name == "Gibbon.Prim" = pure (pure (Prog M.empty M.empty Nothing))

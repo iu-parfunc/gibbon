@@ -4,6 +4,8 @@
 {-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-unused-binds #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant return" #-}
 
 -- | The compiler pipeline, assembled from several passes.
 
@@ -53,6 +55,7 @@ import           Gibbon.L1.Interp()
 import           Gibbon.L2.Interp ( Store, emptyStore )
 -- import           Gibbon.TargetInterp (Val (..), execProg)
 
+import           Gibbon.Bundler                     (bundleModules)
 -- Compiler passes
 import qualified Gibbon.L0.Typecheck as L0
 import qualified Gibbon.L0.Specialize2 as L0
@@ -641,8 +644,8 @@ addRedirectionCon p@Prog{ddefs} = do
   return $ p { ddefs = ddefs' }
 
 -- | The main compiler pipeline
-passes :: (Show v) => Config -> L0.Prog0 -> StateT (CompileState v) IO L4.Prog
-passes config@Config{dynflags} l0 = do
+passes :: (Show v) => Config -> L0.ProgBundle0 a -> StateT (CompileState v) IO L4.Prog
+passes config@Config{dynflags} l0_bundle = do
       let isPacked   = gopt Opt_Packed dynflags
           biginf     = gopt Opt_BigInfiniteRegions dynflags
           gibbon1    = gopt Opt_Gibbon1 dynflags
@@ -653,8 +656,13 @@ passes config@Config{dynflags} l0 = do
           opt_layout_global = gopt Opt_Layout_Global dynflags
           use_solver = gopt Opt_Layout_Use_Solver dynflags
           tcProg3     = L3.tcProg isPacked
-      l0 <- go  "freshConstructors" freshConstructors   l0
-      l0 <- go  "renameModules"   moduleRename         l0
+
+      --l0_unbundled <- go  "freshConstructors" freshConstructors   l0_unbundled
+      --l0_unbundled <- go  "renameModules"     moduleRename        l0_unbundled
+
+      -- bundle modules
+      l0 <- go  "bundle modules" bundleModules          l0_bundle
+
       l0 <- go  "freshen"         freshNames            l0
       l0 <- goE0 "typecheck"       L0.tcProg            l0
       l0 <- goE0 "bindLambdas"     L0.bindLambdas       l0

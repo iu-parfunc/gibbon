@@ -127,6 +127,7 @@ import           System.IO.Unsafe               (unsafePerformIO)
 import           Text.PrettyPrint.GenericPretty
 
 import           Gibbon.Common
+import           Language.Haskell.Exts          (ImportDecl)
 
 
 --------------------------------------------------------------------------------
@@ -392,6 +393,17 @@ data Prog ex =
     , mainExp :: Maybe (ex, (TyOf ex))
     }
 
+-------------------------------------------------------------------------------
+-- Module Bundles
+-- Before modules get bundled into a single program, they're stored as
+-- a tuple of the discrte Prog and it's import declarations
+-------------------------------------------------------------------------------
+
+
+data ProgModule ex a = ProgModule (Prog ex) (ImportDecl a)
+data ProgBundle ex a = ProgBundle [ProgModule ex a] (ProgModule ex a)
+
+-------------------------------------------------------------------------------
 
 -- Since 'FunDef' is defined using a type family, we cannot use the deriving clause.
 -- Ryan Scott recommended using singletons-like alternative outlined here:
