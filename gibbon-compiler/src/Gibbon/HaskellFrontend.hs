@@ -89,6 +89,7 @@ parseMode =
         (extensions defaultParseMode)
     }
 
+-- TIMMY - top level comment
 parseFile' ::
      Config -> IORef ParseState -> [String] -> FilePath -> String -> IO (PassM Prog0)
 parseFile' cfg pstate_ref import_route path mod_name = do
@@ -215,6 +216,18 @@ getImportMeta imports = do
 
 -- ========================================================
 
+-- ========================================================
+-- what we want:
+-- accumulate a list of compiler models
+-- create a bundle of modules that get merged later
+-- insert a pass after desugar that takes [Prog0]
+-- have a pass that turns [Prog0] -> Prog0
+-- imagine in the future the whole pipeline works on the bundle
+
+-- parser -> represent code as faithfully as possible (avoid modifiying the program)
+-- later passes -> operate on more abstract representations of the program
+-- ========================================================
+
 desugarModule ::
      (Show a, Pretty a)
   => Config
@@ -230,102 +243,100 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
       -- single top-level declaration we first collect types and then collect
       -- definitions.
       funtys = foldr (collectTopTy type_syns) M.empty decls
-  dbgPrintLn 2 "================================================================================"
-  dbgPrintLn 2 $ "desugaring module: " ++ mod_name
-  dbgPrintLn 2 $ "- imports: " ++ (show import_names)
-  dbgPrintLn 2 $ "- aliases: " ++ (show aliases)
-  dbgPrintLn 2 $ "- imports: " ++ (show (getImportMeta imports))
+    -- get rid of dbgprints
+  --dbgPrintLn 2 "================================================================================"
+  --dbgPrintLn 2 $ "desugaring module: " ++ mod_name
+  --dbgPrintLn 2 $ "- imports: " ++ (show import_names)
+  --dbgPrintLn 2 $ "- aliases: " ++ (show aliases)
+  --dbgPrintLn 2 $ "- imports: " ++ (show (getImportMeta imports))
   imported_progs :: [PassM Prog0] <-
     mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
-  let prog = do
-        toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
-        let (defs, _vars, funs, inlines, main, optimizeDcons, userOrderings) =
-              foldr classify init_acc toplevels
-            userOrderings' = M.fromList $ coalese_constraints userOrderings
-            defs' = M.mapWithKey (\k (DDef _ tyArgs dataCons) -> DDef k tyArgs (L.map (\(constrName, vs) -> ((mod_name ++ "." ++ constrName), vs)) dataCons) ) (M.mapKeys (\k -> toVar (mod_name ++ "." ++ (fromVar k))) defs)
-            funs' = M.mapWithKey (\k funDef -> funDef {funName = k }) (M.mapKeys (\k -> toVar (mod_name ++ "." ++ (fromVar k))) funs) -- can insert function name here
-            --funs' = M.map (\funDef -> funDef {funMeta = funMeta {funModule = mod_name}}) funs -- can insert function name here
-            funs'' =
-              foldr
-                (\v acc ->
-                   M.update
-                     (\fn@(FunDef {funMeta}) ->
-                        Just (fn {funMeta = funMeta {funInline = Inline}}))
-                     v
-                     acc)
-                funs'
-                inlines
-            funs''' =
-              foldr
-                (\v acc ->
-                   M.update
-                     (\fn -> Just (addLayoutMetaData fn optimizeDcons))
-                     v
-                     acc)
-                funs''
-                (P.map fst (S.toList optimizeDcons))
-            funs'''' =
-              foldr
-                (\k acc ->
-                   M.update
-                     (\fn@(FunDef {funName, funMeta}) ->
-                        Just
-                          (fn
-                             { funMeta =
-                                 funMeta
-                                   { userConstraintsDataCon =
-                                       M.lookup funName userOrderings'
-                                   }
-                             }))
-                     k
-                     acc)
-                funs'''
-                (M.keys userOrderings')
-        imported_progs' <- mapM id imported_progs
-        Prog defs'' funs''''' main' <- fillImports (Prog defs' funs''' main) (toVar mod_name) imports imported_progs'
-        let (defs0, funs0) =
-              foldr
-                (\Prog {ddefs, fundefs} (defs1, funs1) ->
-                   let ddef_names1 = M.keysSet defs1
-                       ddef_names2 = M.keysSet ddefs
-                       fn_names1 = M.keysSet funs1
-                       fn_names2 = M.keysSet fundefs
-                       em1 = S.intersection ddef_names1 ddef_names2
-                       em2 = S.intersection fn_names1 fn_names2
-                       conflicts1 =
-                         foldr
-                           (\d acc ->
-                              if (ddefs M.! d) /= (defs1 M.! d)
-                                then d : acc
-                                else acc)
-                           []
-                           em1
-                       conflicts2 =
-                         foldr
-                           (\f acc ->
-                              if (fundefs M.! f) /= (funs1 M.! f)
-                                then dbgTraceIt
-                                       (sdoc ((fundefs M.! f), (funs1 M.! f)))
-                                       (f : acc)
-                                else acc)
-                           []
-                           em2
-                    in case (conflicts1, conflicts2) of
-                         ([], []) ->
-                           (M.union ddefs defs1, M.union fundefs funs1)
-                         (_x:_xs, _) ->
-                           error $
-                           "Conflicting definitions of " ++
-                           show conflicts1 ++ " found in " ++ mod_name
-                         (_, _x:_xs) ->
-                           error $
-                           "Conflicting definitions of " ++
-                           show (S.toList em2) ++ " found in " ++ mod_name)
-                (defs'', funs''''')
-                imported_progs'
-        return $ (Prog defs0 funs0 main') --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs''') dbgTraceIt (sdoc userOrderings') dbgTraceIt "\n" dbgTraceIt (sdoc userOrderings)
-  dbgPrintLn 2 $ "==="
-  pure prog
+  toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
+  let (defs, _vars, funs, inlines, main, optimizeDcons, userOrderings) =
+        foldr classify init_acc toplevels
+      userOrderings' = M.fromList $ coalese_constraints userOrderings
+      defs' = M.mapWithKey (\k (DDef _ tyArgs dataCons) -> DDef k tyArgs (L.map (\(constrName, vs) -> ((mod_name ++ "." ++ constrName), vs)) dataCons) ) (M.mapKeys (\k -> toVar (mod_name ++ "." ++ (fromVar k))) defs)
+      funs' = M.mapWithKey (\k funDef -> funDef {funName = k }) (M.mapKeys (\k -> toVar (mod_name ++ "." ++ (fromVar k))) funs) -- can insert function name here
+      --funs' = M.map (\funDef -> funDef {funMeta = funMeta {funModule = mod_name}}) funs -- can insert function name here
+      funs'' =
+        foldr
+          (\v acc ->
+              M.update
+                (\fn@(FunDef {funMeta}) ->
+                  Just (fn {funMeta = funMeta {funInline = Inline}}))
+                v
+                acc)
+          funs'
+          inlines
+      funs''' =
+        foldr
+          (\v acc ->
+              M.update
+                (\fn -> Just (addLayoutMetaData fn optimizeDcons))
+                v
+                acc)
+          funs''
+          (P.map fst (S.toList optimizeDcons))
+      funs'''' =
+        foldr
+          (\k acc ->
+              M.update
+                (\fn@(FunDef {funName, funMeta}) ->
+                  Just
+                    (fn
+                        { funMeta =
+                            funMeta
+                              { userConstraintsDataCon =
+                                  M.lookup funName userOrderings'
+                              }
+                        }))
+                k
+                acc)
+          funs'''
+          (M.keys userOrderings')
+  imported_progs' <- mapM id imported_progs
+  Prog defs'' funs''''' main' <- fillImports (Prog defs' funs''' main) (toVar mod_name) imports imported_progs'
+  let (defs0, funs0) =
+        foldr
+          (\Prog {ddefs, fundefs} (defs1, funs1) ->
+              let ddef_names1 = M.keysSet defs1
+                  ddef_names2 = M.keysSet ddefs
+                  fn_names1 = M.keysSet funs1
+                  fn_names2 = M.keysSet fundefs
+                  em1 = S.intersection ddef_names1 ddef_names2
+                  em2 = S.intersection fn_names1 fn_names2
+                  conflicts1 =
+                    foldr
+                      (\d acc ->
+                        if (ddefs M.! d) /= (defs1 M.! d)
+                          then d : acc
+                          else acc)
+                      []
+                      em1
+                  conflicts2 =
+                    foldr
+                      (\f acc ->
+                        if (fundefs M.! f) /= (funs1 M.! f)
+                          then dbgTraceIt
+                                  (sdoc ((fundefs M.! f), (funs1 M.! f)))
+                                  (f : acc)
+                          else acc)
+                      []
+                      em2
+              in case (conflicts1, conflicts2) of
+                    ([], []) ->
+                      (M.union ddefs defs1, M.union fundefs funs1)
+                    (_x:_xs, _) ->
+                      error $
+                      "Conflicting definitions of " ++
+                      show conflicts1 ++ " found in " ++ mod_name
+                    (_, _x:_xs) ->
+                      error $
+                      "Conflicting definitions of " ++
+                      show (S.toList em2) ++ " found in " ++ mod_name)
+          (defs'', funs''''')
+          imported_progs'
+  pure $ pure $ (Prog defs0 funs0 main') --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs''') dbgTraceIt (sdoc userOrderings') dbgTraceIt "\n" dbgTraceIt (sdoc userOrderings)
   where
     init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing, S.empty, [])
     --mod_name = moduleName head_mb
@@ -453,6 +464,7 @@ stdlibModules =
   , "Gibbon.ByteString"
   ]
 
+-- TIMMY - top level comment describing what this does
 processImport ::
      Config
   -> IORef ParseState
@@ -489,6 +501,7 @@ processImport cfg pstate_ref import_route dir decl@ImportDecl {..}
           pure prog
         Nothing -> do
           dbgTrace 5 ("Importing " ++ mod_name ++ " from " ++ mod_fp) (pure ())
+          -- parse import file
           prog0 <- parseFile' cfg pstate_ref import_route mod_fp mod_name
           (ParseState imported') <- readIORef pstate_ref
           let (prog0', _) = defaultRunPassM prog0
