@@ -881,7 +881,7 @@ desugarExp type_syns toplevel e =
 desugarFun :: (Show a,  Pretty a) => TypeSynEnv -> TopTyEnv -> TopTyEnv -> Decl a -> PassM (Var, [Var], TyScheme, Exp0)
 desugarFun type_syns toplevel env decl =
   case decl of
-    FunBind _ [Match _ fname pats (UnGuardedRhs _ bod) _where] -> do
+    FunBind _ [Match _ fname pats (UnGuardedRhs _ bod) mbwhere] -> do
       let fname_str = nameToStr fname
           fname_var = toVar (fname_str)
       (vars, arg_tys,bindss) <- unzip3 <$> mapM (desugarPatWithTy type_syns) pats
@@ -893,9 +893,21 @@ desugarFun type_syns toplevel env decl =
                      let funty = ArrowTy arg_tys ret_ty
                      pure $ (ForAll [] funty)
                   Just ty -> pure ty
-      bod' <- desugarExp type_syns toplevel bod
+      bod' <- desugarExp type_syns toplevel (whereToLet mbwhere bod)
       pure $ (fname_var, args, unCurryTopTy fun_ty, (mkLets binds bod'))
-    _ -> error $ "desugarFun: Found a function with multiple RHS, " ++ prettyPrint decl
+    _ -> error $ "desugarFun: Found a function with multiple RHS or guards (currently unsupported), "
+           ++ prettyPrint decl
+
+type WhereGroup l = Maybe (H.Binds l)
+
+{- | Turn an expression depending on the given where bindings into a let-expression
+with the same bindings. E.g. '(x+1, x=1)' is turned into 'let x=1 in x+1'. If the where bindings are a `Nothing`, this is the identity function.
+-}
+whereToLet :: WhereGroup l -> Exp l -> Exp l
+whereToLet Nothing body = body
+whereToLet (Just where_binds) body = case where_binds of
+  (BDecls l _) -> Let l where_binds body
+  _ -> error "whereToLet: implicit parameters in binding group"
 
 multiArgsToOne :: [Var] -> [Ty0] -> Exp0 -> (Var, Exp0)
 multiArgsToOne args tys ex =
@@ -1060,13 +1072,12 @@ desugarOp qop =
 desugarAlt :: (Show a,  Pretty a) => TypeSynEnv -> TopTyEnv -> Alt a -> PassM (DataCon, [(Var,Ty0)], Exp0)
 desugarAlt type_syns toplevel alt =
   case alt of
-    Alt _ (PApp _ qname ps) (UnGuardedRhs _ rhs) Nothing -> do
+    Alt _ (PApp _ qname ps) (UnGuardedRhs _ rhs) mbwhere -> do
       let conName = qnameToStr qname
-      desugarCase ps conName rhs
-    Alt _ (PWildCard _) (UnGuardedRhs _ rhs) _b ->
-      desugarCase [] "_default" rhs
+      desugarCase ps conName (whereToLet mbwhere rhs)
+    Alt _ (PWildCard _) (UnGuardedRhs _ rhs) mbwhere ->
+      desugarCase [] "_default" (whereToLet mbwhere rhs)
     Alt _ _ GuardedRhss{} _ -> error "desugarExp: Guarded RHS not supported in case."
-    Alt _ _ _ Just{}        -> error "desugarExp: Where clauses not allowed in case."
     Alt _ pat _ _           -> error $ "desugarExp: Unsupported pattern in case: " ++ prettyPrint pat
   where
     desugarCase ps conName rhs = do
@@ -1086,18 +1097,17 @@ generateBind type_syns toplevel env decl exp2 =
     TypeSig{} -> pure exp2
     -- 'collectTypeSynonyms' takes care of this.
     TypeDecl{} -> pure exp2
-    PatBind _ _ _ Just{}        -> error "generateBind: where clauses not allowed"
     PatBind _ _ GuardedRhss{} _ -> error "generateBind: Guarded right hand side not supported."
-    PatBind _ (PTuple _ Boxed pats) (UnGuardedRhs _ rhs) Nothing -> do
-      rhs' <- desugarExp type_syns toplevel rhs
+    PatBind _ (PTuple _ Boxed pats) (UnGuardedRhs _ rhs) mbwhere -> do
+      rhs' <- desugarExp type_syns toplevel (whereToLet mbwhere rhs)
       w <- gensym "tup"
       ty' <- newMetaTy
       let tupexp e = LetE (w,[],ty',rhs') e
           binds = reverse $ zip pats [0..]
       prjexp <- generateTupleProjs toplevel env binds (VarE w) exp2
       pure $ tupexp prjexp
-    PatBind _ pat (UnGuardedRhs _ rhs) Nothing -> do
-      rhs' <- desugarExp type_syns toplevel rhs
+    PatBind _ pat (UnGuardedRhs _ rhs) mbwhere -> do
+      rhs' <- desugarExp type_syns toplevel (whereToLet mbwhere rhs)
       w <- case pat of
              PVar _ v    -> pure $ toVar (nameToStr v)
              PWildCard _ -> gensym "wildcard_"
