@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -14,6 +15,7 @@ import qualified Data.Map as M
 import qualified Gibbon.L0.Syntax as L0
 import           Gibbon.L1.Syntax as L1
 import           Gibbon.L2.Syntax as L2
+import qualified Gibbon.NewL2.Syntax as NewL2
 import           Gibbon.L3.Syntax as L3
 import           Gibbon.Common
 import           Gibbon.HaskellFrontend ( primMap )
@@ -200,7 +202,6 @@ instance (Show d, Pretty d, Ord d) => Pretty (Prim d) where
                                       DictHasKeyP ty -> text "DictHasKey" <> wty ty
                                       DictInsertP ty -> text "DictInsert" <> wty ty
                                       DictLookupP ty -> text "DictLookup" <> wty ty
-                                      RequestEndOf   -> text "RequestEndOf"
                                       RequestSizeOf  -> text "RequestSizeOf"
                                       ErrorP str ty  -> text "ErrorP" <> wty ty <+> doubleQuotes (text str) <> space
                                       VAllocP ty -> parens $ text "valloc" <+> doublecolon <+> brackets (pprintWithStyle sty ty)
@@ -242,7 +243,6 @@ instance (Show d, Pretty d, Ord d) => Pretty (Prim d) where
                                       DictHasKeyP _ty -> text "dictHasKey"
                                       DictInsertP _ty -> text "dictInsert"
                                       DictLookupP _ty -> text "dictLookup"
-                                      RequestEndOf   -> text "RequestEndOf"
                                       ErrorP str _ty -> text "error" <> doubleQuotes (text str)
                                       ReadPackedFile mb_fp tycon _ _ ->
                                         parens (text "readPackedFile " <+> parens (text (pretty mb_fp))) <+> doublecolon <+> text tycon
@@ -311,7 +311,7 @@ instance (Pretty l) => Pretty (UrTy l) where
 instance Pretty ([UrTy ()], UrTy ()) where
     pprintWithStyle sty (as,b) = hsep $ punctuate " ->" $ map (pprintWithStyle sty) (as ++ [b])
 
-instance Pretty ArrowTy2 where
+instance Pretty ty2 => Pretty (ArrowTy2 ty2) where
     -- TODO: start metadata at column 0 instead of aligning it with the type
     pprintWithStyle sty fnty =
         case sty of
@@ -424,7 +424,8 @@ instance HasPrettyToo e l d => Pretty (PreExp e l d) where
 instance (Pretty l, Pretty d, Ord d, Show d) => Pretty (E1Ext l d) where
     pprintWithStyle sty ext =
       case ext of
-        L1.AddFixed v i -> text "addFixed" <+> pprintWithStyle sty v <+> int i
+        L1.AddFixed v i   -> text "addFixed" <+> pprintWithStyle sty v <+> int i
+        L1.StartOfPkdCursor cur -> text "startOfPkdCursor" <+> pprintWithStyle sty cur
         BenchE fn tyapps args b -> text "gibbon_bench" <+> (doubleQuotes $ text "") <+> text (fromVar fn) <+>
                                    (brackets $ hcat (punctuate "," (map pprint tyapps))) <+>
                                    (pprintWithStyle sty args) <+> text (if b then "true" else "false")
@@ -433,20 +434,20 @@ instance (Pretty l, Pretty d, Ord d, Show d) => Pretty (E1Ext l d) where
 instance Pretty l => Pretty (L2.PreLocExp l) where
     pprintWithStyle _ le =
         case le of
-          StartOfLE r -> lparen <> text "startof" <+> text (sdoc r) <> rparen
+          StartOfRegionLE r -> lparen <> text "startOfRegion" <+> text (sdoc r) <> rparen
           AfterConstantLE i loc   -> lparen <> pprint loc <+> text "+" <+> int i <> rparen
           AfterVariableLE v loc b -> if b
                                      then text "fresh" <> (parens $ pprint loc <+> text "+" <+> doc v)
                                      else parens $ pprint loc <+> text "+" <+> doc v
-          InRegionLE r  -> lparen <> text "inregion" <+> text (sdoc r) <> rparen
-          FromEndLE loc -> lparen <> text "fromendle" <+> pprint loc <> rparen
+          InRegionLE r  -> lparen <> text "inRegion" <+> text (sdoc r) <> rparen
+          FromEndLE loc -> lparen <> text "fromEnd" <+> pprint loc <> rparen
           FreeLE -> lparen <> text "free" <> rparen
 
 instance Pretty RegionSize where
     pprintWithStyle _ (BoundedSize x) = parens $ text "Bounded" <+> int x
     pprintWithStyle _ Undefined       = text "Unbounded"
 
-instance HasPrettyToo E2Ext l (UrTy l) => Pretty (L2.E2Ext l (UrTy l)) where
+instance HasPrettyToo E2Ext l d => Pretty (L2.E2Ext l d) where
     pprintWithStyle _ ex0 =
         case ex0 of
           L2.AddFixed v i -> text "addfixed" <+>
@@ -461,19 +462,56 @@ instance HasPrettyToo E2Ext l (UrTy l) => Pretty (L2.E2Ext l (UrTy l)) where
                             lbrack <> hcat (punctuate (text ",") (map pprint ls)) <> rbrack <+>
                           doc v
           FromEndE loc -> text "fromende" <+> pprint loc
+          L2.StartOfPkdCursor c -> parens $ text "startOfPkdCursor" <+> pprint c
+          L2.TagCursor a b -> parens $ text "tagCursor" <+> pprint a <+> pprint b
           L2.BoundsCheck i l1 l2 -> text "boundscheck" <+> int i <+> pprint l1 <+> pprint l2
           IndirectionE tc dc (l1,v1) (l2,v2) e -> text "indirection" <+>
                                                      doc tc <+>
                                                      doc dc <+>
                                                      lparen <>
-                                                     hcat (punctuate (text ",") [pprint l1,text (fromVar v1)]) <>
+                                                     hcat (punctuate (text ",") [pprint l1, pprint v1]) <>
                                                      rparen <+>
                                                      lparen <>
-                                                     hcat (punctuate (text ",") [pprint l2,text (fromVar v2)]) <>
+                                                     hcat (punctuate (text ",") [pprint l2, pprint v2]) <>
                                                      rparen <+>
                                                      pprint e
           L2.GetCilkWorkerNum -> text "__cilkrts_get_worker_number()"
           L2.LetAvail vs e    -> text "letavail " <+> pprint vs $+$ pprint e
+          L2.AllocateTagHere loc tycon -> text "allocateTagHere" <+> pprint loc <+> text tycon
+          L2.AllocateScalarsHere loc -> text "allocateScalarsHere" <+> pprint loc
+          L2.SSPush mode loc endloc tycon -> text "ss_push" <+> doc mode <+> pprint loc <+> pprint endloc <+> doc tycon
+          L2.SSPop mode loc endloc -> text "ss_pop" <+> doc mode <+> pprint loc <+> pprint endloc
+
+instance Pretty L2.Region where
+  pprintWithStyle _ reg = parens $ text $ sdoc reg
+
+instance Pretty L2.Modality where
+  pprintWithStyle _ mode = text $ show mode
+
+instance Pretty L2.LRM where
+  pprintWithStyle sty (LRM loc reg mode) =
+    parens $ text "LRM" <+> pprintWithStyle sty loc <+> pprintWithStyle sty reg <+> pprintWithStyle sty mode
+
+instance Pretty NewL2.LREM where
+  pprintWithStyle sty (NewL2.LREM loc reg end_reg mode) =
+    parens $ text "LRM" <+> pprintWithStyle sty loc <+> pprintWithStyle sty reg <+> pprintWithStyle sty end_reg <+> pprintWithStyle sty mode
+
+instance Pretty NewL2.LocArg where
+  pprintWithStyle sty locarg =
+    case locarg of
+      NewL2.Loc lrm ->
+        text "Loc" <+> pprintWithStyle sty lrm
+      NewL2.EndWitness lrm v ->
+        text "EndWitness" <+> pprintWithStyle sty lrm <+> pprintWithStyle sty v
+      NewL2.Reg v mode ->
+        text "Reg" <+> pprintWithStyle sty v <+> pprintWithStyle sty mode
+      NewL2.EndOfReg v mode w ->
+        text "EndOfReg"<+> pprintWithStyle sty v <+> pprintWithStyle sty mode <+> pprintWithStyle sty w
+      NewL2.EndOfReg_Tagged v ->
+        text "EndOfReg_Tagged"<+> pprintWithStyle sty v
+
+instance Pretty NewL2.Ty2 where
+  pprintWithStyle sty (NewL2.MkTy2 ty2) = parens $ text "MkTy2 " <+> pprintWithStyle sty ty2
 
 -- L3
 instance (Out l, HasPrettyToo E3Ext l (UrTy l)) => Pretty (L3.E3Ext l (UrTy l)) where
@@ -584,6 +622,7 @@ pprintHsWithEnv p@Prog{ddefs,fundefs,mainExp} =
       case ex of
         Ext (BenchE{})   -> True
         Ext (L1.AddFixed{}) -> False
+        Ext (L1.StartOfPkdCursor{}) -> False
         -- Straightforward recursion ...
         VarE{}     -> False
         LitE{}     -> False
@@ -701,6 +740,7 @@ pprintHsWithEnv p@Prog{ddefs,fundefs,mainExp} =
           SpawnE{} -> error "ppHsWithEnv: SpawnE not handled."
           SyncE{}  -> error "ppHsWithEnv: SyncE not handled."
           Ext(L1.AddFixed{}) -> error "ppHsWithEnv: AddFixed not handled."
+          Ext(L1.StartOfPkdCursor{}) -> error "ppHsWithEnv: AddFixed not handled."
           Ext (BenchE fn _locs args _b) ->
              --  -- Criterion
              -- let args_doc = hsep $ map (ppExp env2) args

@@ -1,22 +1,37 @@
-{
-  pkgs ? import (builtins.fetchGit {
-                   name = "nixos-unstable-2021-03-11";
-                   url = "https://github.com/nixos/nixpkgs/";
-                   # Commit hash for nixos-unstable as of 2021-03-11
-                   # `git ls-remote https://github.com/nixos/nixpkgs master`
+let
+  moz_overlay = import (builtins.fetchGit {
+                   name = "nixpkgs-mozilla-2023-11-13";
+                   url = "https://github.com/mozilla/nixpkgs-mozilla";
                    ref = "refs/heads/master";
-                   rev = "a3228bb6e8bdbb9900f30a11fe09006fdabf7b71";
-                 }) {}
-, stdenv ? pkgs.overrideCC pkgs.stdenv pkgs.gcc7
-, ghc ? pkgs.haskell.compiler.ghc865
-, ghc901 ? pkgs.haskell.compiler.ghc901
-}:
-
-with pkgs;
-
-stdenv.mkDerivation {
-  name = "basicGibbonEnv";
-  buildInputs = [ ghc ghc901 gcc7 which boehmgc uthash racket cabal-install ghcid
-                  gdb valgrind stack stdenv ncurses unzip rr
-                ];
-}
+                   # Most recent commit hash as of 2023-11-13
+                   rev = "6eabade97bc28d707a8b9d82ad13ef143836736e";
+                 });
+  pkgs = import (builtins.fetchGit {
+                   url = "https://github.com/nixos/nixpkgs/";
+                   ref = "refs/tags/23.05";
+                 }) { overlays = [ moz_overlay ]; };
+  stdenv = pkgs.overrideCC pkgs.stdenv pkgs.gcc7;
+  ghc = pkgs.haskell.compiler.ghc94;
+  rust = (pkgs.rustChannelOf { rustToolchain = ./gibbon-rts/rust-toolchain; }).rust;
+  clang = pkgs.clang_14;
+  llvm = pkgs.llvm_14;
+  gibbon_dir = builtins.toString ./.;
+in
+  with pkgs;
+  stdenv.mkDerivation {
+    name = "basicGibbonEnv";
+    buildInputs = [ # Haskell
+                    ghc cabal-install stack
+                    # C/C++
+                    clang llvm gcc7 boehmgc uthash
+                    # Rust
+                    rust
+                    # Racket
+                    racket
+                    # Other utilities
+                    stdenv ncurses unzip which rr rustfmt clippy ghcid gdb valgrind
+                  ];
+    shellHook = ''
+      export GIBBONDIR=${gibbon_dir}
+    '';
+  }

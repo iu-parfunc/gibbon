@@ -1,4 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 
 -------------------------------------------------------------------------------
@@ -323,8 +324,8 @@ addPrintToTail ty tl0 = do
       printTy pkd ty (properTrivs pkd ty trvs) $
         -- Always print a trailing newline at the end of execution:
         T.LetPrimCallT [] (T.PrintString "\n") [] $
-          T.LetPrimCallT [] T.FreeSymTable [] $
-          T.RetValsT []  -- Void return after printing.
+          -- T.LetPrimCallT [] T.FreeSymTable [] $
+          T.EndOfMain  -- marker of the end of main expression
 
 -- | Look up the numeric tag for a dataCon
 getTagOfDataCon :: Out a => DDefs a -> DataCon -> Tag
@@ -365,6 +366,8 @@ lower Prog{fundefs,ddefs,mainExp} = do
   -- sym_tbl :: M.Map Int64 String
   let sym_tbl = M.fromList $ map swap (M.toList inv_sym_tbl)
 
+  let info_tbl = build_info_table
+
   mn <- case mainExp of
           Nothing    -> return Nothing
           Just (x,mty) -> (Just . T.PrintExp) <$>
@@ -374,7 +377,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
   unpackers  <- if gopt Opt_Pointer dflags
                 then mapM genUnpacker (L.filter (not . isVoidDDef) (M.elems ddefs))
                 else pure []
-  (T.Prog sym_tbl) <$> pure (funs ++ unpackers) <*> pure mn
+  (T.Prog info_tbl sym_tbl) <$> pure (funs ++ unpackers) <*> pure mn
  where
   fund :: M.Map String Word16 -> FunDef3 -> PassM T.FunDecl
   fund sym_tbl FunDef{funName,funTy,funArgs,funBody} = do
@@ -387,6 +390,42 @@ lower Prog{fundefs,ddefs,mainExp} = do
                       , T.funBody  = bod'
                       , T.isPure   = ispure funBody
                       }
+
+  build_info_table :: T.InfoTable
+  build_info_table =
+      M.foldr
+          (\DDef{tyName,dataCons} acc ->
+               M.insert
+                   (fromVar tyName)
+                   (foldr (\(dcon,tys) dcon_acc ->
+                             if isIndirectionTag dcon || isRedirectionTag dcon
+                             then dcon_acc
+                             else M.insert dcon (go dcon tys) dcon_acc)
+                          M.empty
+                          dataCons)
+                   acc)
+          M.empty
+          ddefs
+      where
+        go dcon tys =
+            let field_tys = map snd tys
+                (num_packed,num_scalars) = (\(a,b) ->
+                                              let b' = filter (\x -> case x of
+                                                                       CursorTy -> False
+                                                                       _ -> True)
+                                                              b
+                                              in (length a, length b')) $
+                                           L.partition isPackedTy field_tys
+                (scalar_bytes, num_shortcut) =
+                               foldl (\(acc1,acc2) ty ->
+                                          case ty of
+                                            PackedTy{} -> (acc1,acc2)
+                                            CursorTy -> (acc1, acc2+1)
+                                            _ -> (acc1+fromJust (sizeOfTy ty), acc2))
+                                     (0,0) field_tys
+                dcon_tag = getTagOfDataCon ddefs dcon
+            in (T.DataConInfo dcon_tag scalar_bytes num_shortcut num_scalars num_packed field_tys)
+
 
   hasCursorTy :: Ty3 -> Bool
   hasCursorTy CursorTy = True
@@ -450,6 +489,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
               AddCursor _ ex   -> go ex
               SubPtr{}         -> syms
               WriteCursor _ ex -> go ex
+              TagCursor{}    -> syms
               ReadScalar{}   -> syms
               ReadTag{}      -> syms
               WriteTag{}     -> syms
@@ -461,18 +501,29 @@ lower Prog{fundefs,ddefs,mainExp} = do
               NewParBuffer{}     -> syms
               ScopedBuffer{}     -> syms
               ScopedParBuffer{}  -> syms
-              InitSizeOfBuffer{} -> syms
+              EndOfBuffer{}      -> syms
               MMapFileSize{}     -> syms
               SizeOfPacked{}     -> syms
               SizeOfScalar{}     -> syms
               BoundsCheck{}      -> syms
               ReadCursor{}       -> syms
-              BumpRefCount{}     -> syms
+              WriteTaggedCursor{}-> syms
+              ReadTaggedCursor{} -> syms
+              IndirectionBarrier{} -> syms
               NullCursor         -> syms
               BumpArenaRefCount{}-> error "collect_syms: BumpArenaRefCount not handled."
               RetE ls -> gol ls
               GetCilkWorkerNum -> syms
               LetAvail _ bod   -> collect_syms syms bod
+              AllocateTagHere{} -> syms
+              AllocateScalarsHere{} -> syms
+              StartTagAllocation{} -> syms
+              EndTagAllocation{} -> syms
+              StartScalarsAllocation{} -> syms
+              EndScalarsAllocation{} -> syms
+              SSPush{} -> syms
+              SSPop{} -> syms
+              Assert ex -> go ex
           MapE{}         -> syms
           FoldE{}        -> syms
 
@@ -691,13 +742,6 @@ lower Prog{fundefs,ddefs,mainExp} = do
 
 
     -- In Target, AddP is overloaded still:
-    LetE (v,_, _,  (Ext (AddCursor c ( (Ext (InitSizeOfBuffer mul)))))) bod -> do
-      size <- gensym (varAppend "sizeof_" v)
-      T.LetPrimCallT [(size,T.IntTy)] (T.InitSizeOfBuffer mul) [] <$>
-        T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv sym_tbl "addCursor base" (VarE c)
-                                               , triv sym_tbl "addCursor offset" (VarE size)] <$>
-        tail free_reg sym_tbl bod
-
     LetE (v,_, _,  (Ext (AddCursor c ( (Ext (MMapFileSize w)))))) bod -> do
       size <- gensym (varAppend "sizeof_" v)
       T.LetPrimCallT [(size,T.IntTy)] (T.MMapFileSize w) [] <$>
@@ -738,7 +782,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
 
     LetE (v,_,_,  (Ext (NewBuffer mul))) bod -> do
       reg <- gensym "region"
-      tl' <- T.LetPrimCallT [(reg,T.CursorTy),(v,T.CursorTy)] (T.NewBuffer mul) [] <$>
+      tl' <- T.LetPrimCallT [(reg,T.CursorTy),(v,T.CursorTy),(toEndV v,T.CursorTy)] (T.NewBuffer mul) [] <$>
                tail free_reg sym_tbl bod
       if gopt Opt_DisableGC dflags -- -- || not free_reg
          then pure tl'
@@ -751,7 +795,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
 
     LetE (v,_,_,  (Ext (NewParBuffer mul))) bod -> do
       reg <- gensym "region"
-      tl' <- T.LetPrimCallT [(reg,T.CursorTy),(v,T.CursorTy)] (T.NewParBuffer mul) [] <$>
+      tl' <- T.LetPrimCallT [(reg,T.CursorTy),(v,T.CursorTy),(toEndV v,T.CursorTy)] (T.NewParBuffer mul) [] <$>
                tail free_reg sym_tbl bod
       if gopt Opt_DisableGC dflags -- || not free_reg
          then pure tl'
@@ -770,6 +814,10 @@ lower Prog{fundefs,ddefs,mainExp} = do
       T.LetPrimCallT [(v,T.CursorTy)] (T.ScopedParBuffer mul) [] <$>
          tail free_reg sym_tbl bod
 
+    LetE (v,_,_,  (Ext (EndOfBuffer mul))) bod -> do
+      T.LetPrimCallT [(v,T.CursorTy)] (T.EndOfBuffer mul) [] <$>
+         tail free_reg sym_tbl bod
+
     LetE (v,_,_,  (Ext (SizeOfPacked start end))) bod -> do
       T.LetPrimCallT [(v,T.IntTy)] T.SizeOfPacked [ T.VarTriv start, T.VarTriv end ] <$>
         tail free_reg sym_tbl bod
@@ -782,6 +830,26 @@ lower Prog{fundefs,ddefs,mainExp} = do
     LetE(_,_,_,  (Ext (BoundsCheck i bound cur))) bod -> do
       let args = [T.IntTriv (fromIntegral i), T.VarTriv bound, T.VarTriv cur]
       T.LetPrimCallT [] T.BoundsCheck args <$> tail free_reg sym_tbl bod
+
+    LetE(v,_,_,  (Ext (TagCursor a b))) bod -> do
+      T.LetPrimCallT [(v, T.CursorTy)] T.TagCursor [T.VarTriv a, T.VarTriv b] <$>
+        tail free_reg sym_tbl bod
+
+    LetE(v,_,_,  (Ext (ReadTaggedCursor c))) bod -> do
+      vtmp <- gensym $ toVar "tmpcur"
+      ctmp <- gensym $ toVar "tmpaftercur"
+      tagtmp <- gensym $ toVar "tmptag"
+      -- Here we lamely chase down all the tuple references and make them variables:
+      let bod' = L3.substE (ProjE 0 (VarE v)) (VarE vtmp) $
+                 L3.substE (ProjE 1 (VarE v)) (VarE ctmp) $
+                 L3.substE (ProjE 2 (VarE v)) (VarE tagtmp) $
+                 bod
+      T.LetPrimCallT [(vtmp,T.CursorTy),(ctmp,T.CursorTy),(tagtmp,T.IntTy)] T.ReadTaggedCursor [T.VarTriv c] <$>
+        tail free_reg sym_tbl bod'
+
+    LetE (v, _, _,  (Ext (WriteTaggedCursor cur e))) bod ->
+      T.LetPrimCallT [(v,T.CursorTy)] T.WriteTaggedCursor [triv sym_tbl "WriteTaggedCursor arg" e, T.VarTriv cur] <$>
+         tail free_reg sym_tbl bod
 
     LetE(v,_,_,  (Ext (ReadCursor c))) bod -> do
       vtmp <- gensym $ toVar "tmpcur"
@@ -826,8 +894,8 @@ lower Prog{fundefs,ddefs,mainExp} = do
       T.LetPrimCallT [(v,T.CursorTy)] T.WriteCursor [triv sym_tbl "WriteCursor arg" e, T.VarTriv cur] <$>
          tail free_reg sym_tbl bod
 
-    LetE (_, _, _,  (Ext (BumpRefCount end_r1 end_r2))) bod ->
-      T.LetPrimCallT [] T.BumpRefCount [T.VarTriv end_r1, T.VarTriv end_r2] <$>
+    LetE (_, _, _,  (Ext (IndirectionBarrier tycon (l1, end_r1, l2, end_r2)))) bod ->
+      T.LetPrimCallT [] (T.IndirectionBarrier tycon) [T.VarTriv l1, T.VarTriv end_r1, T.VarTriv l2, T.VarTriv end_r2] <$>
         tail free_reg sym_tbl bod
 
     LetE (_, _, _,  (Ext (BumpArenaRefCount ar end_r))) bod ->
@@ -839,6 +907,24 @@ lower Prog{fundefs,ddefs,mainExp} = do
 
     LetE (v, _, ty, (Ext GetCilkWorkerNum)) bod ->
       T.LetPrimCallT [(v,typ ty)] T.GetCilkWorkerNum [] <$> tail free_reg sym_tbl bod
+
+    LetE (_v, _, _ty, (Ext (SSPush a b c d))) bod ->
+      T.LetPrimCallT [] (T.SSPush a d) [T.VarTriv b, T.VarTriv c] <$> tail free_reg sym_tbl bod
+
+    LetE (_v, _, _ty, (Ext (SSPop a b c))) bod ->
+      T.LetPrimCallT [] (T.SSPop a) [T.VarTriv b, T.VarTriv c] <$> tail free_reg sym_tbl bod
+
+    LetE (_v, _, _ty, (Ext (Assert a))) bod ->
+      T.LetPrimCallT [] T.Assert [triv sym_tbl "Assert arg" a] <$> tail free_reg sym_tbl bod
+
+
+    LetE (_v, _, _ty, rhs@(Ext AllocateTagHere{})) _bod -> error $ "lower: " ++ sdoc rhs
+    LetE (_v, _, _ty, rhs@(Ext AllocateScalarsHere{})) _bod -> error $ "lower: " ++ sdoc rhs
+    LetE (_v, _, _ty, rhs@(Ext StartTagAllocation{})) _bod -> error $ "lower: " ++ sdoc rhs
+    LetE (_v, _, _ty, rhs@(Ext StartScalarsAllocation{})) _bod -> error $ "lower: " ++ sdoc rhs
+    -- [2023.04.19]: be forgiving about an earlier pass not removing these.
+    LetE (_v, _, _ty, (Ext EndTagAllocation{})) bod -> tail free_reg sym_tbl bod
+    LetE (_v, _, _ty, (Ext EndScalarsAllocation{})) bod -> tail free_reg sym_tbl bod
 
     Ext (LetAvail vs bod) ->
       T.LetAvailT vs <$> tail free_reg sym_tbl bod
@@ -897,9 +983,8 @@ lower Prog{fundefs,ddefs,mainExp} = do
         T.LetCallT False vsts f' (L.map (triv sym_tbl "one of app rands") ls) <$> (tail free_reg sym_tbl bod')
 
     LetE (v, _,ty, L3.SpawnE fn locs args) bod -> do
-      tl <- tail free_reg sym_tbl (LetE (v,_,ty, AppE fn locs args) bod)
-      -- This is going to be a LetCallT.
-      pure $ tl { T.async = True }
+      T.LetCallT{..} <- tail free_reg sym_tbl (LetE (v,_,ty, AppE fn locs args) bod)
+      pure $ T.LetCallT  { T.async = True, .. }
 
     LetE (_,_,_,  SyncE) bod -> do
       bod' <- tail free_reg sym_tbl bod
@@ -1102,8 +1187,8 @@ prim p =
     ErrorP{}     -> error$ "lower/prim: internal error, should not have got to here: "++show p
     MkTrue       -> error "lower/prim: internal error. MkTrue should not get here."
     MkFalse      -> error "lower/prim: internal error. MkFalse should not get here."
-    RequestEndOf -> error "lower/prim: internal error. RequestEndOf shouldn't be here."
     RequestSizeOf -> error "lower/prim: internal error. RequestSizeOf shouldn't be here."
+    RequestEndOf -> error "lower/prim: internal error. RequestEndOf shouldn't be here."
 
 isTrivial' :: Exp3 -> Bool
 isTrivial' e =

@@ -15,7 +15,7 @@ import           Gibbon.Common
 import           Gibbon.DynFlags
 import           Gibbon.Passes.AddTraversals ( needsTraversalCase )
 import           Gibbon.L1.Syntax as L1
-import           Gibbon.L2.Syntax
+import           Gibbon.L2.Syntax as L2
 
 {-
 
@@ -59,21 +59,6 @@ becomes,
     random access nodes too.
 
 
-Reusing RAN's in case expressions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If a data constructor occurs inside a pattern match, we probably already have a
-random access node for it. In that case, we don't want to request yet another
-one using RequestEndOf. We track this using RANEnv Consider this example:
-
-    (fn ...
-      (case tr
-        [(Node^ [(ran_y, _) (x, _), (y, _)]
-           (DataConE __HOLE x (fn y)))]))
-
-Here, we don't want to fill the HOLE with (RequestEndOf x). Instead, we should reuse ran_y.
-
-
 When does a type 'needsRAN'
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -115,9 +100,6 @@ Evernote: https://www.evernote.com/l/AF-jUPTw2lZDS440RgWbgj9RMNkttTaKd3Y
 
 --------------------------------------------------------------------------------
 
--- See [Reusing RAN's in case expressions]
-type RANEnv = M.Map Var Var
-
 -- | Operates on an L1 program, and updates it to have random access nodes.
 --
 -- Previous analysis determines which data types require it (needsLRAN).
@@ -128,12 +110,12 @@ addRAN needRANsTyCons prg@Prog{ddefs,fundefs,mainExp} = do
     dbgTrace 2 ("Adding random access nodes: " ++ sdoc (S.toList needRANsTyCons)) (return ())
   let iddefs = withRANDDefs needRANsTyCons ddefs
   funs <- mapM (\(nm,f) -> (nm,) <$> addRANFun needRANsTyCons iddefs f) (M.toList fundefs)
-  new_fns <- mapM (genRelOffsetsFunNameFn needRANsTyCons ddefs) (M.elems ddefs)
-  let funs' = (M.fromList funs) `M.union`
-              (M.fromList $ L.map (\f -> (funName f, f)) new_fns)
+  -- new_fns <- mapM (genRelOffsetsFunNameFn needRANsTyCons ddefs) (M.elems ddefs)
+  let funs' = (M.fromList funs)
+              -- `M.union` (M.fromList $ L.map (\f -> (funName f, f)) new_fns)
   mainExp' <-
     case mainExp of
-      Just (ex,ty) -> Just <$> (,ty) <$> addRANExp False needRANsTyCons iddefs M.empty ex
+      Just (ex,ty) -> Just <$> (,ty) <$> addRANExp False needRANsTyCons iddefs ex
       Nothing -> return Nothing
   let l1 = prg { ddefs = iddefs
                , fundefs = funs'
@@ -144,11 +126,11 @@ addRAN needRANsTyCons prg@Prog{ddefs,fundefs,mainExp} = do
 addRANFun :: S.Set TyCon -> DDefs Ty1 -> FunDef1 -> PassM FunDef1
 addRANFun needRANsTyCons ddfs fd@FunDef{funName,funBody} = do
   let dont_change_datacons = isCopySansPtrsFunName funName
-  bod <- addRANExp dont_change_datacons needRANsTyCons ddfs M.empty funBody
+  bod <- addRANExp dont_change_datacons needRANsTyCons ddfs funBody
   return $ fd{funBody = bod}
 
-addRANExp :: Bool -> S.Set TyCon -> DDefs Ty1 -> RANEnv -> Exp1 -> PassM Exp1
-addRANExp dont_change_datacons needRANsTyCons ddfs ienv ex =
+addRANExp :: Bool -> S.Set TyCon -> DDefs Ty1 -> Exp1 -> PassM Exp1
+addRANExp dont_change_datacons needRANsTyCons ddfs ex =
   case ex of
     -- Update a data constructor to produce values with random access nodes.
     -- N.B. It always uses absolute pointers for random access nodes. We
@@ -166,12 +148,10 @@ addRANExp dont_change_datacons needRANsTyCons ddfs ienv ex =
           in if not (tycon `S.member` needRANsTyCons)
              then return ex
              else do
-          let tys = lookupDataCon ddfs dcon
-              firstPacked = fromJust $ L.findIndex isPackedTy tys
-              -- n elements after the first packed one require RAN's.
-              needRANsExp = L.take n $ L.drop firstPacked args
+          let -- n elements after the first packed one require RAN's.
+              needRANsExp = L.drop (length args - n) args
 
-          rans <- mkRANs ienv needRANsExp
+          rans <- mkRANs needRANsExp
           let ranArgs = L.map (\(v,_,_,_) -> VarE v) rans
           return $ mkLets rans (DataConE loc (toAbsRANDataCon dcon) (ranArgs ++ args))
 
@@ -202,7 +182,7 @@ addRANExp dont_change_datacons needRANsTyCons ddfs ienv ex =
     FoldE{} -> error "addRANExp: TODO FoldE"
 
   where
-    go = addRANExp dont_change_datacons needRANsTyCons ddfs ienv
+    go = addRANExp dont_change_datacons needRANsTyCons ddfs
 
     changeSpawnToApp :: Exp1 -> Exp1
     changeSpawnToApp ex1 =
@@ -234,7 +214,7 @@ addRANExp dont_change_datacons needRANsTyCons ddfs ienv ex =
     doalt :: (DataCon, [(Var,())], Exp1) -> PassM [(DataCon, [(Var,())], Exp1)]
     doalt (dcon,vs,bod) = do
       -- Always process the body, because it might have another case expression.
-      bod0 <- addRANExp dont_change_datacons needRANsTyCons ddfs ienv (changeSpawnToApp bod)
+      bod0 <- addRANExp dont_change_datacons needRANsTyCons ddfs (changeSpawnToApp bod)
       let old_pat = (dcon,vs,bod0)
       case numRANsDataCon ddfs dcon of
         0 -> pure [old_pat]
@@ -248,22 +228,15 @@ addRANExp dont_change_datacons needRANsTyCons ddfs ienv ex =
             sizeVar <- gensym "size"
             relRanVars <- mapM (\_ -> gensym "relran") [1..n]
             let relRanVars' = sizeVar : relRanVars
-            let tys = lookupDataCon ddfs dcon
-                -- See Note [Reusing RAN's in case expressions]
-                -- We update the environment to track RAN's of the
-                -- variables bound by this pattern.
-                firstPacked = fromJust $ L.findIndex isPackedTy tys
-                haveRANsFor = L.take n $ L.drop firstPacked $ L.map fst vs
-                ienv' = M.union ienv (M.fromList $ zip haveRANsFor absRanVars)
-                ienv'' = M.union ienv (M.fromList $ zip haveRANsFor relRanVars)
-            bod' <- addRANExp dont_change_datacons needRANsTyCons ddfs ienv' bod
-            bod'' <- addRANExp dont_change_datacons needRANsTyCons ddfs ienv'' bod
+            bod' <- addRANExp dont_change_datacons needRANsTyCons ddfs bod
+            bod'' <- addRANExp dont_change_datacons needRANsTyCons ddfs bod
             let abs_ran_clause = (toAbsRANDataCon dcon, (L.map (,()) absRanVars) ++ vs, bod')
-            let rel_ran_clause = (toRelRANDataCon dcon, (L.map (,()) relRanVars') ++ vs, bod'')
-            dflags <- getDynFlags
+            let _rel_ran_clause = (toRelRANDataCon dcon, (L.map (,()) relRanVars') ++ vs, bod'')
+            {- dflags <- getDynFlags
             if gopt Opt_RelativeOffsets dflags
               then pure [abs_ran_clause,rel_ran_clause]
-              else pure [abs_ran_clause]
+              else pure [abs_ran_clause] -}
+            pure [abs_ran_clause]
 
 -- | Update data type definitions to include random access nodes.
 withRANDDefs :: Out a => S.Set TyCon -> DDefs (UrTy a) -> DDefs (UrTy a)
@@ -281,9 +254,10 @@ withRANDDefs needRANsTyCons ddfs = M.map go ddfs
                                        let tys'   = [(False,CursorTy) | _ <- [1..n]] ++ tys
                                            dcon'  = toAbsRANDataCon dcon
 
-                                           tys''  = (False,IntTy) : [(False,IntTy) | _ <- [1..n]] ++ tys
-                                           dcon'' = toRelRANDataCon dcon
-                                       in [(dcon',tys'),(dcon'',tys'')] ++ acc)
+                                           _tys''  = (False,IntTy) : [(False,IntTy) | _ <- [1..n]] ++ tys
+                                           -- dcon'' = toRelRANDataCon dcon
+                                       -- in [(dcon',tys'),(dcon'',tys'')] ++ acc)
+                                       in [(dcon',tys')] ++ acc)
                    [] dataCons
       -- Add the new constructors after all the existing constructors.
       -- The order of constructors matters when these become numeric tags after codegen.
@@ -312,25 +286,22 @@ Consider this constructor:
 
     (B (x : Foo) (y : Int) (z : Foo) ...)
 
-We need two random access nodes here, for y and z. The RAN for y
-is the end of x, which is a packed datatype. So we use RequestEndOf as a
+We need two random access nodes here, for y and z.
+The RAN for y is the start cursor of y, so we use StartOf as a
 placeholder here and have Cursorize replace it with the appropriate cursor.
-The RAN for z is (starting address of y + 8). Or, (ran_y + 8). We use a
-hacky L1 primop, AddCursorP for this purpose.
+The RAN for z is (starting address of y + 8). Or, (ran_y + 8). We use
+AddFixed for this purpose.
 
 'mb_most_recent_ran' in the fold below tracks most recent random access nodes.
 
 -}
-mkRANs :: RANEnv -> [Exp1] -> PassM [(Var, [()], Ty1, Exp1)]
-mkRANs ienv needRANsExp =
+mkRANs :: [Exp1] -> PassM [(Var, [()], Ty1, Exp1)]
+mkRANs needRANsExp =
   snd <$> foldlM (\(mb_most_recent_ran, acc) arg -> do
           i <- gensym "ran"
           -- See Note [Reusing RAN's in case expressions]
           let rhs = case arg of
-                      VarE x -> PrimAppE RequestEndOf [arg]
-                                -- case M.lookup x ienv of
-                                --   Just v  -> VarE v
-                                --   Nothing -> PrimAppE RequestEndOf [arg]
+                      VarE v -> Ext (L1.StartOfPkdCursor v)
                       -- It's safe to use 'fromJust' here b/c we would only
                       -- request a RAN for a literal iff it occurs after a
                       -- packed datatype. So there has to be random access
@@ -446,14 +417,15 @@ we need random access for that type.
       case ext of
         LetRegionE _ _ _ bod -> go bod
         LetParRegionE _ _ _ bod -> go bod
+        L2.StartOfPkdCursor{} -> S.empty
+        LetLocE _loc FreeLE bod -> go bod
         LetLocE loc rhs bod  ->
             let reg = case rhs of
-                        StartOfLE r  -> regionToVar r
+                        StartOfRegionLE r  -> regionToVar r
                         InRegionLE r -> regionToVar r
                         AfterConstantLE _ lc   -> renv # lc
                         AfterVariableLE _ lc _ -> renv # lc
                         FromEndLE lc           -> renv # lc -- TODO: This needs to be fixed
-                        FreeLE -> error "addRANExp: FreeLE not handled"
             in needsRANExp ddefs fundefs env2 (M.insert loc reg renv) tcenv parlocss bod
         _ -> S.empty
     MapE{}     -> S.empty

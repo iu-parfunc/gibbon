@@ -1,6 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Gibbon.Passes.Simplifier ( simplifyL1, lateInlineTriv, simplifyLocBinds ) where
+module Gibbon.Passes.Simplifier
+  ( simplifyL1, simplifyLocBinds, lateInlineTriv )
+  where
 
 import Data.Functor.Foldable as Foldable
 import qualified Data.Set as S
@@ -96,17 +98,21 @@ simplifyL1 p0 = do
 
 --------------------------------------------------------------------------------
 
-simplifyLocBinds :: Prog2 -> PassM Prog2
-simplifyLocBinds (Prog ddefs fundefs mainExp) = do
+simplifyLocBinds :: Bool -> Prog2 -> PassM Prog2
+simplifyLocBinds only_cse (Prog ddefs fundefs mainExp) = do
     let fundefs' = M.map gofun fundefs
     let mainExp' = case mainExp of
-                     Just (e,ty) -> Just (go0 M.empty M.empty e, ty)
+                     Just (e,ty) -> Just (simpl e, ty)
                      Nothing     -> Nothing
     pure $ Prog ddefs fundefs' mainExp'
 
   where
+    simpl = if only_cse
+              then go0 M.empty M.empty
+              else go2 . go M.empty . go0 M.empty M.empty
+
     gofun f@FunDef{funBody} =
-        let funBody' = go0 M.empty M.empty funBody
+        let funBody' = simpl funBody
         in f { funBody = funBody' }
 
     -- partially evaluate location arithmetic
@@ -171,7 +177,6 @@ simplifyLocBinds (Prog ddefs fundefs mainExp) = do
             _ -> Ext ext
         _ -> ex
 
-
     -- partially evaluate location arithmetic
     go0 :: M.Map LocExp LocVar -> M.Map LocVar LocVar -> Exp2 -> Exp2
     go0 env1 env2 ex =
@@ -210,13 +215,13 @@ simplifyLocBinds (Prog ddefs fundefs mainExp) = do
 --------------------------------------------------------------------------------
 
 lateInlineTriv :: L4.Prog -> PassM L4.Prog
-lateInlineTriv (L4.Prog sym_tbl fundefs mainExp) = do
+lateInlineTriv (L4.Prog info_tbl sym_tbl fundefs mainExp) = do
     let fundefs' = map lateInlineTrivFn fundefs
         mainExp' = case mainExp of
                        Just (L4.PrintExp tl) -> do
                            Just (L4.PrintExp (lateInlineTrivExp M.empty tl))
                        Nothing -> Nothing
-    return $ L4.Prog sym_tbl fundefs' mainExp'
+    return $ L4.Prog info_tbl sym_tbl fundefs' mainExp'
   where
     lateInlineTrivFn :: L4.FunDecl -> L4.FunDecl
     lateInlineTrivFn f@L4.FunDecl{L4.funBody} =
@@ -241,6 +246,7 @@ lateInlineTriv (L4.Prog sym_tbl fundefs mainExp) = do
                 L4.IntAlts ls -> L4.IntAlts $ map (\(t,tl) -> (t,go env tl)) ls
         go env tl =
               case tl of
+                   L4.EndOfMain -> L4.EndOfMain
                    L4.RetValsT trvs ->
                        L4.RetValsT (map (gotriv env) trvs)
                    L4.AssnValsT upd mb_bod ->

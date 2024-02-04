@@ -582,8 +582,8 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
              pure (s1 <> s2, ProdTy [], PrimAppE (WritePackedFile fp (zonkTy s2 ty)) args_tc)
 
         Write3dPpmFile{} -> err $ text "Write3dPpmFile"
-        RequestEndOf -> err $ text "Unexpected RequestEndOf in L0: " <+> exp_doc
         RequestSizeOf-> err $ text "Unexpected RequestSizeOf in L0: " <+> exp_doc
+        RequestEndOf -> err $ text "Unexpected RequestEndOf in L0: " <+> exp_doc
 
 
     LetE (v, [], gvn_rhs_ty, rhs) bod -> do

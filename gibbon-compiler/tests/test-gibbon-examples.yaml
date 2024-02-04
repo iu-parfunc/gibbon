@@ -1,0 +1,588 @@
+## The config file for the Gibbon testsuite.
+## These configuration parameters are only used by TestRunner.hs and
+## have no effect on unit tests.
+
+## Configuration that can be added to the entire testsuite (or passed via command line):
+##
+## skip-failing: True    -- ^ Don't run the expected failures. (default: false)
+## verbosity:    Int     -- ^ Controls the summary that's generated at the end. (default: 1)
+## summaryFile:  String  -- ^ File in which to store the test summary. (default: gibbon-test-summary.txt)
+## tempdir:      String  -- ^ Temporary directory to store the build artifacts (default: examples/build_tmp)
+## run-modes:   [String] -- ^ If non-empty, run tests only in the specified modes. (default: [])
+
+## Specifiying an individual test:
+##
+## name: name of the testfile
+## dir : location of the testfile (default: examples)
+## failing: modes in which the test is expected to fail (default: [])
+## skip: whether to skip this test (default: false)
+## run-modes: if non-empty, run this test only in the specified modes.
+##            has higher precendence than the global run-mode parameter (default [])
+
+
+## CSK: The documentation is out of date as of [2019.01.29]. I should fix it soon.
+
+tests:
+  - name: test00_add.gib
+  - name: test00a_size.gib
+  - name: test00b_printBool.gib
+  - name: test00c_printBool.gib
+  - name: test00d_printData.gib
+  - name: test00e_func.gib
+  - name: test00f_and.gib
+  - name: test01b_ifif.gib
+  - name: test01_if.gib
+  - name: test02_arith.gib
+  - name: test02b_datacon.gib
+  - name: test02c_case.gib
+  - name: test02d_printPair.gib
+  - name: test02e_printNest.gib
+  - name: test03b_eqs.gib
+  - name: test03c_eqs.gib
+  - name: test03d_eqs.gib
+  - name: test03_let.gib
+  - name: test04b_vector.gib
+  - name: test04c_ifvector.gib
+  - name: test04d_vecfun.gib
+  - name: test04_vector.gib
+  - name: test05_app.gib
+  - name: test05b_app.gib
+  - name: test05c_arity2.gib
+  - name: test06a_two_cases.gib
+  - name: test06b_case.gib
+  - name: test06_case.gib
+  - name: test06c_nested.gib
+    skip: true
+  - name: test06d_rec.gib
+  - name: test06e_rec.gib
+  - name: test06f_rec.gib
+  - name: test06g_rec.gib
+  - name: test06h_rec.gib
+  - name: test06i_casecase.gib
+  - name: test07b_iterate.gib
+  - name: test07_time.gib
+  - name: test09_recur.gib
+  - name: test10b_desugar.gib
+  - name: test10_desugar.gib
+  - name: test11b_fundata.gib
+  - name: test11c_funrec.gib
+  - name: test11d_funrec.gib
+  - name: test11e_funrec.gib
+  - name: test11f_funrec.gib
+  - name: test11_fundata.gib
+  - name: test12b_traverse.gib
+    failing: [gibbon1, gibbon2, gibbon3]
+  - name: test12c_traverse.gib
+    failing: [gibbon1, gibbon2, gibbon3]
+  - name: test13b_build.gib
+  - name: test13_build.gib
+  - name: Test185.hs
+    answer-file: examples/Test185.ans
+    # Scalar fields after packed not allowed
+    failing: [gibbon1,gibbon2,gibbon3]
+  - name: SS.hs
+    dir: examples/gc
+    answer-file: examples/gc/SS.ans
+  - name: Test187.hs
+    answer-file: examples/Test187.ans
+    skip: true
+
+  # Needs manual inspection.
+  - name: test14_repair.gib
+    # Unexpected L3 error.
+    skip: true
+
+
+  - name: test14a_tup.gib
+  - name: test14b_tup.gib
+    skip: true
+  - name: test14c_tail.gib
+  - name: test14d_unary_tup.gib
+  - name: test15a_symsearch.gib
+  - name: test15c_printsym.gib
+    skip: true
+    # printing symbols is broken atm
+  - name: test15d_symsearch.hs
+    answer-file: examples/test15d_symsearch.ans
+  - name: test15e_gensym.hs
+    answer-file: examples/test15e_gensym.ans
+    # Gensym is broken in the interpreter. (randomIO is not determinisitc, we probably should use a fixed seed for interpreter)
+    failing: [interp1]
+
+  - name: test18_badconstraint.gib
+    # This only fails on GCC >= 7 (which we're using to run some other tests that use Cilk)
+    # failing: [pointer]
+    # [2019.02.11] CSK: This is not deterministic, (On Travis) it compiles with gcc-7.3.0 and
+    # does not compile with gcc-7.4.0. We need to debug this properly. Skip for now.
+    skip: true
+  - name: test18b_tupconstraint.gib
+  - name: test18c_identity1.gib
+  - name: test18d_identity2.gib
+  - name: test18e_identity3.gib
+  - name: test18g_identity4.gib
+  - name: test18h_identity5.gib
+  - name: test19_unarytree.gib
+  - name: test20_bintree.gib
+  - name: test20b_bintree.gib
+    # Inferlocations bug.
+    failing: []
+  - name: test20c_bintree.gib
+  - name: test20d_bintree.gib
+  - name: test20e_bintree.gib
+  - name: test20f_bintree.gib
+  - name: test20h_idree.gib
+  - name: test25e_countnodes.gib
+  - name: test27c_subst.gib
+  - name: test29a_list.gib
+  - name: test29b_list.gib
+  - name: test30_twitter.gib
+    # ThreadRegions bug.
+    failing: []
+  - name: test_buildstree.gib
+  - name: test_buildtree.gib
+  - name: test_buildtreesum.gib
+  - name: test_ddtree.gib
+  - name: test_stree.gib
+  - name: test_sumstree.gib
+  - name: test_sumtree.gib
+  - name: test24_defs.gib
+    skip: true
+  - name: void_type.gib
+    skip: true
+  - name: void_type.hs
+    skip: true
+    answer-file: examples/void_type.ans
+  - name: T64_1.gib
+    # Inferlocations bug.
+    failing: []
+  - name: test_addtrees.gib
+    # Inferlocations bug.
+    failing: []
+  - name: TestStrings.hs
+    # interp outputs 'h' versus the expected h (without quotes)
+    failing: [interp1]
+    answer-file: examples/TestStrings.hs.ans
+
+  # There's still a bug somewhere. Uncomment the main expression to reproduce.
+  # Plus, #lang gibbon is having some problems with dictionaries.
+  - name: T64_2.gib
+    skip: true
+
+  ## Benchmarks
+
+  - name: bench_add1.gib
+    bench: true
+
+  - name: bench_buildtree.gib
+    bench: true
+
+  - name: bench_copy.gib
+    bench: true
+
+  - name: bench_sumtree.gib
+    bench: true
+
+  - name: bench_sum_add_build.gib
+    bench: true
+
+  - name: bench_id.gib
+    bench: true
+    more-iters: [pointer, gibbon2]
+
+  - name: bench_leftmost.gib
+    bench: true
+    more-iters: [gibbon1, pointer, gibbon2]
+
+  - name: bench_rightmost.gib
+    bench: true
+    more-iters: [pointer, gibbon2]
+    # Inferlocations bug.
+    failing: []
+
+  - name: bench_build_searchtree.gib
+    bench: true
+
+  - name: bench_tree_lookup.gib
+    bench: true
+    more-iters: [pointer, gibbon2]
+    # Inferlocations bug.
+    failing: []
+
+  - name: bench_tree_insert.gib
+    bench: true
+    more-iters: [pointer, gibbon2]
+    skip: true
+    answer-file: examples/bench_tree_insert.ans
+    failing: [interp1]
+
+  - name: bench_repmax.gib
+    bench: true
+    # Inferlocations bug.
+    failing: []
+
+  - name: bench_repconst.gib
+    bench: true
+
+  - name: bench_findmax.gib
+    bench: true
+    # Inferlocations bug.
+    failing: []
+
+  ## There is no significant difference between compose1 / compose2.
+  ## compose2 should be much faster.
+
+  - name: bench_compose1.gib
+    bench: true
+    more-iters: [pointer, gibbon2]
+    skip: true
+
+  - name: bench_compose2.gib
+    bench: true
+    more-iters: [pointer, gibbon2]
+    skip: true
+
+  ## Mega benchmarks, which use some dataset
+
+  - name: bench_count_hashtag_occ.gib
+    mega-bench: true
+    bench-fun: bench
+    bench-input: examples/twitter_input.gpkd
+
+  - name: FloatTree.hs
+    dir: examples
+    answer-file: examples/FloatTree.hs.ans
+    failing: [interp1]
+
+  ## Polymorphic frontend tests
+  - name: Poly1.hs
+    dir: examples/poly
+    answer-file: examples/poly/Poly1.ans
+    failing: [gibbon1, gibbon2, gibbon3, interp1]
+
+  # - name: measure_mode.hs
+  #   answer-file: examples/measure_mode.ans
+  #   failing: [gibbon1, gibbon2]
+
+  - name: MonoTree.hs
+    answer-file: examples/MonoTree.ans
+
+  - name: PolyTree.hs
+    dir: examples/poly
+    answer-file: examples/poly/PolyTree.ans
+
+  - name: NestedTuples.hs
+    dir: examples/poly
+    answer-file: examples/poly/NestedTuples.ans
+    skip: true
+
+  - name: TuplesInDatacon.hs
+    dir: examples/poly
+    answer-file: examples/poly/TuplesInDatacon.ans
+
+  - name: AnonLambdas.hs
+    dir: examples/poly
+    answer-file: examples/poly/AnonLambdas.ans
+
+  - name: CurriedFns.hs
+    dir: examples/poly
+    answer-file: examples/poly/CurriedFns.ans
+    skip: true
+    failing: [gibbon1, gibbon2, gibbon3]
+
+  - name: T127.hs
+    dir: examples/poly
+    answer-file: examples/poly/T127.ans
+
+  - name: T127a.hs
+    dir: examples/poly
+    answer-file: examples/poly/T127a.ans
+
+  - name: T127b.hs
+    dir: examples/poly
+    answer-file: examples/poly/T127b.ans
+
+  - name: T127c.hs
+    dir: examples/poly
+    answer-file: examples/poly/T127c.ans
+
+  - name: unariser_bug1.hs
+    answer-file: examples/unariser_bug1.ans
+    failing: [gibbon1, gibbon2, gibbon3]
+    skip: true
+
+  - name: ParseLinearTypes.hs
+    test-flags: ["--ghc-tc"]
+    dir: examples/lineartypes/
+    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1]
+
+  - name: EqBench.hs
+    answer-file: examples/EqBench.ans
+
+  - name: test_parse.hs
+    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1]
+
+  - name: toplevel_value.hs
+    answer-file: examples/toplevel_value.ans
+
+  - name: Error.hs
+    answer-file: examples/Error.ans
+
+  - name: Tuples.hs
+    answer-file: examples/Tuples.hs.ans
+
+  - name: Foo.hs
+    dir: examples/imports/
+    answer-file: examples/imports/Foo.ans
+
+  - name: NeedsClosure.hs
+    dir: examples/poly
+    answer-file: examples/poly/NeedsClosure.hs.ans
+
+  - name: MutualRec.hs
+    dir: examples/poly
+    answer-file: examples/poly/MutualRec.ans
+
+  - name: HSSetTest.hs
+    dir: examples
+    answer-file: examples/HSSetTest.ans
+    failing: [interp1]
+
+  - name: HSHashTest.hs
+    dir: examples
+    answer-file: examples/HSHashTest.ans
+    failing: [interp1]
+
+  - name: test_printpacked.hs
+    dir: examples
+    answer-file: examples/test_printpacked.ans
+    # gibbon3 and gibbon2: Inferlocations bug.
+    failing: [interp1,gibbon1,pointer]
+
+   ## FAILING: Multiple packed outputs.
+  - name: TupleTest.hs
+    dir: examples/poly
+    answer-file: examples/poly/TupleTest.ans
+    skip: true
+  - name: test_buildtwotrees.gib
+    skip: true
+  - name: test14b_tup.gib
+    skip: true
+
+    ## FAILING: Scalar field after a packed field.
+  - name: test12_skip.gib
+    failing: [gibbon1]
+    skip: true
+  - name: test12b_traverse.gib
+    skip: true
+  - name: test12c_traverse.gib
+    skip: true
+  - name: test25_rackcore.gib
+    skip: true
+  - name: test25a_withprint.gib
+    skip: true
+  - name: test25b_racketcore.gib
+    skip: true
+  - name: test25c_racketcore.gib
+    skip: true
+  - name: test25d_racketcore.gib
+    skip: true
+  - name: test25f_countnodes.gib
+    skip: true
+  - name: test26_treewalk.gib
+    skip: true
+  - name: test26a_treewalk.gib
+    skip: true
+  - name: test27a_subst.gib
+    skip: true
+  - name: test29_list.gib
+    skip: true
+  - name: test29c_list.gib
+    skip: true
+  - name: test29d_list.gib
+    skip: true
+    failing: [gibbon1]
+  - name: test_unpacking.gib
+    skip: true
+
+
+    ## Shouldn't typecheck
+  - name: Fail1.hs
+    dir: examples/should_fail
+    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1]
+  - name: Fail2.hs
+    dir: examples/should_fail
+    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1]
+  - name: Fail3.hs
+    dir: examples/should_fail
+    failing: [gibbon1, gibbon2, gibbon3, pointer, interp1]
+
+
+  ## Fusion2 tests
+  - name: test_sumup_seteven.gib
+    skip: true
+    dir: examples/fusion-benchmarks
+    failing: [gibbon1, gibbon2, gibbon3]
+    test-flags: ["--fusion"]
+
+  - name: render_tree.hs
+    dir: examples/fusion-benchmarks
+    skip: true
+    failing: [gibbon1, gibbon2, gibbon3]
+    test-flags: ["--fusion"]
+    answer-file: examples/fusion-benchmarks/render_tree.ans
+
+  - name: render_tree_two_passes.hs
+    skip: true
+    dir: examples/fusion-benchmarks
+    failing: [gibbon1, gibbon2, gibbon3]
+    test-flags: ["--fusion"]
+    answer-file: examples/fusion-benchmarks/render_tree_two_passes.ans
+
+  - name: render_tree_four_passes.hs
+    skip: true
+    dir: examples/fusion-benchmarks
+    failing: [gibbon1, gibbon2, gibbon3]
+    test-flags: ["--fusion"]
+    answer-file: examples/fusion-benchmarks/render_tree_four_passes.ans
+
+  - name: render_tree_five_passes.hs
+    dir: examples/fusion-benchmarks
+    failing: [gibbon1, gibbon2, gibbon3, pointer]
+    ## [2020.05.27]: It never finishes on Travis...
+    skip: true
+    test-flags: ["--fusion"]
+    answer-file: examples/fusion-benchmarks/render_tree_five_passes.ans
+
+  - name: LC.hs
+    dir: examples/fusion-benchmarks
+    failing: [gibbon1, gibbon2, gibbon3]
+    test-flags: ["--fusion"]
+    skip: true
+    # gibbon2: segfaults in free_region
+    answer-file: examples/fusion-benchmarks/LC.ans
+
+  ## Vector operations
+  - name: Vector.hs
+    dir: examples/vectors
+    test-flags: ["--parallel"]
+    failing: [interp1]
+    answer-file: examples/vectors/Vector.hs.ans
+    # Cilk not supported on newer GCCs.
+    skip: true
+
+  - name: SortPrim.hs
+    dir: examples/vectors
+    test-flags: ["--parallel"]
+    failing: [interp1]
+    answer-file: examples/vectors/SortPrim.ans
+    # Cilk not supported on newer GCCs.
+    skip: true
+
+  - name: Sort.hs
+    skip: true
+    dir: examples/vectors
+    answer-file: examples/vectors/Sort.hs.ans
+
+  - name: DataVector.hs
+    dir: examples/vectors
+    test-flags: ["--parallel"]
+    answer-file: examples/vectors/DataVector.hs.ans
+    # Cilk not supported on newer GCCs.
+    skip: true
+
+  ## AST benchmarks
+  - name: C1.hs
+    dir: examples/ast
+    failing: [gibbon1, gibbon2]
+    answer-file: examples/ast/C1.ans
+    skip: true
+
+  ## Tests that only work with some backend:
+  - name: test18f_flip.gib
+    failing: [gibbon1, gibbon2, gibbon3]
+  - name: pp_projs.gib
+    skip: true
+  - name: test12_skip.gib
+    failing: [gibbon1]
+    skip: true
+
+
+  # Tests that actually work but we can't generate answers with Racket
+  - name: test08_dict.gib
+    failing: [interp1,pointer,gibbon1,gibbon2,gibbon3]
+  - name: test08b_dict.gib
+    failing: [interp1,pointer,gibbon1,gibbon2,gibbon3]
+  - name: test08c_dict.gib
+    failing: [interp1,pointer,gibbon1,gibbon2,gibbon3]
+  - name: test08d_sharedict.gib
+    failing: [interp1,pointer,gibbon1,gibbon2,gibbon3]
+
+  # - name: test08f_dict.gib
+  # - name: test08f2_dict.gib
+  #   failing: [pointer,gibbon1,gibbon2]
+
+  # This test depends on real symbols, which we don't support atm.
+  - name: test27b_subst.gib
+    failing: [gibbon1,gibbon2,gibbon3]
+    skip: true
+    # printing symbols is broken atm
+
+  # No gensym, or real symbols.
+  - name: test28_copyprop.gib
+    failing: [gibbon1,gibbon2,gibbon3,pointer,interp1]
+
+  # sym-append not implemented in the RTS
+  - name: test15b_symappend.gib
+    skip: true
+
+  # Probably safe to delete these tests permanently
+  - name: test16_forlist.gib
+    skip: true
+  - name: test17_forfold.gib
+    skip: true
+
+  - name: wildcard_case.hs
+    answer-file: examples/wildcard_case.ans
+
+
+  # GC benchmarks
+  - name: Reverse.hs
+    dir: examples/gc
+    answer-file: examples/gc/Reverse.ans
+    size-param: 1000000
+    bench: true
+    failing: [interp1]
+
+  - name: test_153.hs
+    failing: [gibbon3,gibbon2,gibbon1,interp1]
+    answer-file: examples/test_153.ans
+
+  - name: test_164.hs
+    failing: [gibbon3,gibbon2,gibbon1,interp1]
+    answer-file: examples/test_164.ans
+
+  - name: test_166.hs
+    failing: [gibbon3,gibbon2,gibbon1,interp1]
+    answer-file: examples/test_166.ans
+
+  - name: test_167.hs
+    answer-file: examples/test_167.ans
+
+  - name: test_168.hs
+    answer-file: examples/test_168.ans
+    skip: true
+
+  - name: test_circsim.hs # covers #164, #166, #167, #174, #175
+    answer-file: examples/test_circsim.ans
+    skip: true
+
+  - name: test_power.hs
+    answer-file: examples/test_power.ans
+    # gib_alloc_region_on_heap: gib_alloc failed
+    failing: [gibbon1]
+
+  - name: test_191.hs
+    answer-file: examples/test_191.ans
+    # Gibbon2 and Gibbon3 modes don't pass the L2 typechecker.
+    failing: [pointer, gibbon1, interp1, gibbon3, gibbon2]
+    run-modes: ["gibbon2"]

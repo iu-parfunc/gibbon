@@ -4,7 +4,7 @@ module Gibbon.Passes.CalculateBounds ( inferRegSize ) where
 import           Gibbon.Common
 import qualified Data.Map                      as M
 import           Gibbon.L2.Syntax
-import           Data.List as L
+import qualified Data.List as L
 import           Debug.Trace
 import           Control.Monad
 
@@ -118,12 +118,17 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
               let vle = case ty0 of
                     PackedTy _tag loc -> M.insert v loc varLocEnv
                     _                 -> varLocEnv
-              (bod', regSzEnv'', regTyEnv'') <- calculateBoundsExp ddefs env2 { vEnv = venv' } varSzEnv vle locRegEnv locOffEnv regSzEnv regTyEnv bod
+              (bod', regSzEnv'', regTyEnv'') <- calculateBoundsExp ddefs (env2 { vEnv = venv' }) varSzEnv vle locRegEnv locOffEnv regSzEnv regTyEnv bod
               let regSzEnv3 = M.unionWith max regSzEnv' regSzEnv''
               let regSzEnv4 = case ty0 of
                     -- TODO sizeofTy ty0 is incalculable? -> assume as 0 to give preference to analysis in other locations
-                    PackedTy _tag loc -> M.insertWith max (locRegEnv # loc) (locOffEnv # loc <> (maybe (BoundedSize 0) BoundedSize . sizeOfTy) ty0) regSzEnv3
-                    _                 -> regSzEnv3
+                    PackedTy _tag loc ->
+                      -- Make the chunk at least 32 bytes.
+                      let sz = case (locOffEnv # loc <> (maybe (BoundedSize 0) BoundedSize . sizeOfTy) ty0) of
+                                 BoundedSize i -> BoundedSize (max i 32)
+                                 Undefined -> Undefined
+                      in M.insertWith max (locRegEnv # loc) sz regSzEnv3
+                    _ -> regSzEnv3
               return (LetE (v, locs, ty0, bind') bod', regSzEnv4, M.union regTyEnv' regTyEnv'')
             CaseE ex2 cases -> do
               (cases', res, rts) <-
@@ -171,9 +176,11 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
                     return (Ext $ LetLocE loc locExp ex1', re', rt')
                   else do
                     let (re, off) = case locExp of
-                          (StartOfLE r          ) -> (regionToVar r, BoundedSize 0)
+                          (StartOfRegionLE r          ) -> (regionToVar r, BoundedSize 0)
                           (AfterConstantLE n l  ) -> (locRegEnv # l, locOffEnv # l <> BoundedSize n)
-                          (AfterVariableLE v l _) -> (locRegEnv # l, locOffEnv # (varLocEnv # v) <> varSzEnv # v)
+                          -- [2022.12.26] CSK: the lookup in varSzEnv always fails since the
+                          -- pass never inserts anything into it. Disabling it for now.
+                          (AfterVariableLE v l _) -> (locRegEnv # l, locOffEnv # (varLocEnv # v)) -- <> varSzEnv # v
                           (InRegionLE r         ) -> (regionToVar r, Undefined)
                           (FromEndLE  l         ) -> (locRegEnv # l, Undefined)
                           FreeLE                  -> undefined
@@ -190,3 +197,9 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
               LetAvail vs e      -> do
                 (e', re', rt') <- go e
                 return (Ext $ LetAvail vs e', re', rt')
+              StartOfPkdCursor{}    -> error $ "todo: " ++ sdoc ex
+              TagCursor{}           -> error $ "todo: " ++ sdoc ex
+              AllocateTagHere{}     -> error $ "todo: " ++ sdoc ex
+              AllocateScalarsHere{} -> error $ "todo: " ++ sdoc ex
+              SSPush{}              -> error $ "todo: " ++ sdoc ex
+              SSPop{}               -> error $ "todo: " ++ sdoc ex

@@ -58,8 +58,8 @@ instance Out (Seq Int) where
     docPrec _ s = text (show s)
 
 execProg :: Prog -> IO [Val]
-execProg (Prog _ _ Nothing) = error "Can't evaluate program: No expression given"
-execProg (Prog _ funs (Just (PrintExp expr))) = exec env expr
+execProg (Prog _ _ _ Nothing) = error "Can't evaluate program: No expression given"
+execProg (Prog _ _ funs (Just (PrintExp expr))) = exec env expr
   where
     env = M.fromList (map (\f -> (funName f, FunVal f)) funs)
 
@@ -81,6 +81,7 @@ eval _   (TagTriv t) = TagVal t
 eval _   (SymTriv _) = error "eval: SymTriv not handled"
 eval _   (ProdTriv{}) = error "eval: ProdTriv not handled"
 eval _   (ProjTriv{}) = error "eval: ProjTriv not handled"
+eval _   (BoolTriv{}) = error "eval: BoolTriv not handled"
 
 
 exec :: Env -> Tail -> IO [Val]

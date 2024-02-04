@@ -7,6 +7,7 @@ module Gibbon.L3.Typecheck
   ( tcProg, tcExp ) where
 
 
+import Control.Monad
 import Control.Monad.Except
 import qualified Data.Map as M
 import qualified Data.List as L
@@ -49,6 +50,25 @@ tcExp isPacked ddfs env exp =
         WriteTag _dcon v -> do
           vty  <- lookupVar env v exp
           ensureEqualTyModCursor exp vty CursorTy
+          return CursorTy
+
+        TagCursor a b -> do
+          aty <- lookupVar env a exp
+          ensureEqualTyModCursor exp aty CursorTy
+          bty <- lookupVar env b exp
+          ensureEqualTyModCursor exp bty CursorTy
+          return CursorTy
+
+        ReadTaggedCursor v -> do
+          vty <- lookupVar env v exp
+          ensureEqualTyModCursor exp vty CursorTy
+          return $ ProdTy [CursorTy, CursorTy, IntTy]
+
+        WriteTaggedCursor v val -> do
+          vty <- lookupVar env v exp
+          ensureEqualTyModCursor exp vty CursorTy
+          valty <- go val
+          ensureEqualTyModCursor exp valty CursorTy
           return CursorTy
 
         ReadCursor v -> do
@@ -111,7 +131,7 @@ tcExp isPacked ddfs env exp =
         ScopedBuffer{} -> return CursorTy
         ScopedParBuffer{} -> return CursorTy
 
-        InitSizeOfBuffer{} -> return IntTy
+        EndOfBuffer{} -> return CursorTy
 
         MMapFileSize{} -> return IntTy
 
@@ -138,9 +158,13 @@ tcExp isPacked ddfs env exp =
           ensureEqualTyModCursor exp cty CursorTy
           return IntTy
 
-        BumpRefCount end_r1 end_r2 -> do
+        IndirectionBarrier _tycon (l1, end_r1, l2, end_r2) -> do
+          l1_ty  <- lookupVar env l1 exp
+          ensureEqualTyModCursor exp l1_ty CursorTy
           end_r1_ty  <- lookupVar env end_r1 exp
           ensureEqualTyModCursor exp end_r1_ty CursorTy
+          l2_ty  <- lookupVar env l2 exp
+          ensureEqualTyModCursor exp l2_ty CursorTy
           end_r2_ty  <- lookupVar env end_r2 exp
           ensureEqualTyModCursor exp end_r2_ty CursorTy
           return (ProdTy [])
@@ -157,6 +181,55 @@ tcExp isPacked ddfs env exp =
         GetCilkWorkerNum -> return IntTy
 
         LetAvail _ bod -> go bod
+
+        AllocateTagHere v _ -> do
+          rty <- lookupVar env v exp
+          ensureEqualTyModCursor exp rty CursorTy
+          return (ProdTy [])
+
+        AllocateScalarsHere v -> do
+          rty <- lookupVar env v exp
+          ensureEqualTyModCursor exp rty CursorTy
+          return (ProdTy [])
+
+        StartTagAllocation v -> do
+          rty <- lookupVar env v exp
+          ensureEqualTyModCursor exp rty CursorTy
+          return (ProdTy [])
+
+        EndTagAllocation v -> do
+          rty <- lookupVar env v exp
+          ensureEqualTyModCursor exp rty CursorTy
+          return (ProdTy [])
+
+        EndScalarsAllocation v -> do
+          rty <- lookupVar env v exp
+          ensureEqualTyModCursor exp rty CursorTy
+          return (ProdTy [])
+
+        StartScalarsAllocation v -> do
+          rty <- lookupVar env v exp
+          ensureEqualTyModCursor exp rty CursorTy
+          return (ProdTy [])
+
+        SSPush _ v w _ -> do
+          rty1 <- lookupVar env v exp
+          ensureEqualTyModCursor exp rty1 CursorTy
+          rty2 <- lookupVar env w exp
+          ensureEqualTyModCursor exp rty2 CursorTy
+          return (ProdTy [])
+
+        SSPop _ v w -> do
+          rty1 <- lookupVar env v exp
+          ensureEqualTyModCursor exp rty1 CursorTy
+          rty2 <- lookupVar env w exp
+          ensureEqualTyModCursor exp rty2 CursorTy
+          return (ProdTy [])
+
+        Assert rhs -> do
+          ety <- go rhs
+          ensureEqualTyModCursor rhs ety BoolTy
+          return (ProdTy [])
 
     -- All the other cases are exactly same as L1.Typecheck
 
@@ -252,7 +325,7 @@ tcExp isPacked ddfs env exp =
             _ <- ensureEqualTy (es !! 0) FloatTy (tys !! 0)
             _ <- ensureEqualTy (es !! 1) FloatTy (tys !! 1)
             pure BoolTy
-            
+
           char_cmps = do
             len2
             _ <- ensureEqualTy (es !! 0) CharTy (tys !! 0)
@@ -453,7 +526,6 @@ tcExp isPacked ddfs env exp =
           then return (VectorTy ty)
           else throwError $ GenericTC "Not a valid list type" exp
 
-        RequestEndOf  -> error "RequestEndOf shouldn't occur in a L3 program."
         RequestSizeOf -> error "RequestSizeOf shouldn't occur in a L3 program."
 
         VAllocP elty -> do
@@ -676,6 +748,7 @@ tcExp isPacked ddfs env exp =
 
         Write3dPpmFile{} -> throwError $ GenericTC "Write3dPpmFile not handled yet" exp
 
+        RequestEndOf{} -> throwError $ GenericTC "RequestEndOf not handled yet" exp
 
 
     LetE (v,[],SymDictTy _ _pty, rhs) e -> do

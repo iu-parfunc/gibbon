@@ -13,6 +13,7 @@ module Gibbon.L1.Typecheck
 where
 
 
+import Control.Monad
 import Control.Monad.Except
 import Data.Map as M
 import Data.Set as S
@@ -125,12 +126,12 @@ tcExp ddfs env exp =
             _ <- ensureEqualTy (es !! 0) FloatTy (tys !! 0)
             _ <- ensureEqualTy (es !! 1) FloatTy (tys !! 1)
             pure BoolTy
-            
+
           char_cmps = do
             len2
             _ <- ensureEqualTy (es !! 0) CharTy (tys !! 0)
             _ <- ensureEqualTy (es !! 1) CharTy (tys !! 1)
-            pure BoolTy            
+            pure BoolTy
 
       case pr of
         MkTrue  -> mk_bools
@@ -339,15 +340,6 @@ tcExp ddfs env exp =
           if isValidListElemTy ty
           then return (VectorTy ty)
           else throwError $ GenericTC "Not a valid list type" exp
-
-        RequestEndOf -> do
-          len1
-          case (es !!! 0) of
-            VarE{} -> return CursorTy
-                -- if isPackedTy (tys !!! 0)
-                -- then return CursorTy
-                -- else throwError $ GenericTC "Expected PackedTy" exp
-            _ -> throwError $ GenericTC "Expected a variable argument" exp
 
         RequestSizeOf -> do
           len1
@@ -582,6 +574,7 @@ tcExp ddfs env exp =
 
         Write3dPpmFile{} -> throwError $ GenericTC "Write3dPpmFile not handled yet" exp
 
+        RequestEndOf{} -> throwError $ GenericTC  "tcExp of PrimAppE: RequestEndOf not handled yet" exp
 
     LetE (v,[],SymDictTy _ pty, rhs) e -> do
       tyRhs <- go rhs
@@ -686,8 +679,14 @@ tcExp ddfs env exp =
     Ext (BenchE fn tyapps args _b) -> do
       go (AppE fn tyapps args)
 
-    Ext (AddFixed{})-> -- throwError $ GenericTC "AddFixed not handled." exp
+    Ext (AddFixed{}) ->
       pure CursorTy
+
+    Ext (StartOfPkdCursor cur) -> do
+      ty <- lookupVar env cur exp
+      if isPackedTy ty
+        then pure CursorTy
+        else throwError $ GenericTC "Expected a packed argument" exp
 
     MapE{} -> error $ "L1.Typecheck: TODO: " ++ sdoc exp
     FoldE{} -> error $ "L1.Typecheck: TODO: " ++ sdoc exp
@@ -706,6 +705,13 @@ tcProg :: Prog1 -> PassM Prog1
 tcProg prg@Prog{ddefs,fundefs,mainExp} = do
   -- Get flags to check if we're in packed mode
   flags <- getDynFlags
+
+  -- check ddefs
+  dynflags <- getDynFlags
+  let isPacked = gopt Opt_Packed dynflags
+  when isPacked $
+    mapM_ checkDDef (M.elems ddefs)
+
   -- Handle functions
   mapM_ fd $ M.elems fundefs
 
@@ -736,15 +742,38 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
   where
     env = L1.progToEnv prg
 
+    checkDDef DDef{dataCons} = do
+        mapM_ go dataCons
+      where
+        go (dcon, tys) = do
+          let tys' = (L.map snd tys)
+              mb_firstPacked = L.findIndex isPackedTy tys'
+              scalars = L.findIndices (not . isPackedTy) tys'
+          case mb_firstPacked of
+            Nothing -> return ()
+            Just fp -> case scalars of
+                         [] -> return ()
+                         _ -> if (last scalars) > fp
+                              then error ("Gibbon-TODO: Constructor " ++ dcon ++
+                                          " has a scalar field after a packed field which isn't" ++
+                                          " allowed at the moment.")
+                              else return ()
+
+
     -- fd :: forall e l . FunDef Ty1 Exp -> SyM ()
-    fd FunDef{funArgs,funTy,funBody} = do
+    fd FunDef{funName,funArgs,funTy,funBody} = do
       let (argTys,retty) = funTy
           venv = M.fromList (zip funArgs argTys)
           env' = Env2 venv (fEnv env)
           res  = runExcept $ tcExp ddefs env' funBody
+      dynflags <- getDynFlags
+      let isPacked = gopt Opt_Packed dynflags
       case res of
         Left err -> error $ sdoc err
-        Right ty -> if ty == retty
+        Right ty -> if isPacked && (length $ getPackedTys retty) > 1
+                    then error ("Gibbon-TODO: Functions cannot return multiple packed values; "
+                                ++ "check " ++ sdoc funName)
+                    else if ty == retty
                     then return ()
                     else error $ "Expected type " ++ (sdoc retty)
                               ++ " and got type " ++ (sdoc ty)

@@ -14,6 +14,7 @@ where
 import           Control.DeepSeq
 import           Control.Monad.Writer
 import           Control.Monad.State
+import           Control.Monad
 import           Data.ByteString.Builder (Builder, toLazyByteString, string8)
 import           Data.Foldable (foldlM)
 import           System.Clock
@@ -216,13 +217,6 @@ interp szenv rc valenv ddefs fenv e = go valenv szenv e
                              SOne (fromJust $ byteSizeOfTy SymTy))
         VarE v    -> return (env # v, sizeEnv # v)
 
-        PrimAppE RequestEndOf [arg] ->
-          case arg of
-            VarE v -> do
-              let (VLoc reg off) = env # v
-                  sz  = sizeToInt $ sizeEnv # v
-              return (VPtr reg (off+sz), SOne (fromJust $ byteSizeOfTy CursorTy))
-            _ -> error $ "L2.Interp: RequestEndOf expects a variable argument. Got: " ++ sdoc arg
         PrimAppE p args -> do
             (args',_) <- unzip <$> mapM (go env sizeEnv) args
             case byteSizeOfTy (primRetTy p) of
@@ -305,7 +299,7 @@ interpExt sizeEnv rc env ddefs fenv ext =
 
     LetLocE loc locexp bod ->
       case locexp of
-        StartOfLE reg -> do
+        StartOfRegionLE reg -> do
           buf_maybe <- lookupInStore (regionToVar reg)
           case buf_maybe of
             Nothing -> error $ "L2.Interp: Unbound region: " ++ sdoc reg
@@ -332,11 +326,14 @@ interpExt sizeEnv rc env ddefs fenv ext =
             Just val ->
               error $ "L2.Interp: Unexpected value for " ++ sdoc loc2 ++ ":" ++ sdoc val
 
+        FromEndLE{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
         InRegionLE{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
         FreeLE{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
-        FromEndLE{} -> go env sizeEnv bod
+
 
     -- Ignoring end-witnesses atm.
+    StartOfPkdCursor{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
+    TagCursor{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
     RetE _locs v -> return (env # v, sizeEnv # v)
     FromEndE{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
     BoundsCheck{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
@@ -344,6 +341,10 @@ interpExt sizeEnv rc env ddefs fenv ext =
     IndirectionE{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
     GetCilkWorkerNum{} -> pure $ (VInt 1, SOne (fromJust $ byteSizeOfTy IntTy))
     LetAvail{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
+    AllocateTagHere{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
+    AllocateScalarsHere{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
+    SSPush{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
+    SSPop{} -> error $ "L2.Interp: TODO: " ++ sdoc ext
 
   where
     go valenv szenv = interp szenv rc valenv ddefs fenv
@@ -471,6 +472,8 @@ deserialize ddefs store (Buffer seq0) = final
          readN n rst
          -- let (more,rst') = readN (n-1) rst
          -- in (VInt (-1) : more, rst')
+
+       oth -> error $ "todo: " ++ show oth
 
 data Size = SOne Int
           | SMany [Size]

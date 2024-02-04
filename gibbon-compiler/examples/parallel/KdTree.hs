@@ -35,6 +35,14 @@ data KdTree = KdLeaf Float  -- ^ x coord
 
            | KdEmpty
 
+copy_kdtree :: KdTree -> KdTree
+copy_kdtree tr =
+  case tr of
+    KdEmpty -> KdEmpty
+    KdLeaf x y z -> KdLeaf x y z
+    KdNode x y z a b c d e f g h i left right ->
+      KdNode x y z a b c d e f g h i (copy_kdtree left) (copy_kdtree right)
+
 print_kdtree :: KdTree -> ()
 print_kdtree tr =
   case tr of
@@ -442,12 +450,3 @@ check_nearest pts actual =
               (True, 0) idxs
         (is_ok, _inexact) = tup
     in print_check is_ok
-
-gibbon_main =
-  let pts :: Vector (Float, Float, Float)
-      pts = readArrayFile Nothing
-      n       = sizeParam
-      radius  = intToFloat n
-      tr      = mkKdTree_seq pts
-      -- _ = printPacked tr
-  in check_buildkdtree pts tr

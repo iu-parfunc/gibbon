@@ -306,6 +306,12 @@ extendsVEnv mp (Env2 ve fe) = Env2 (M.union mp ve) fe
 lookupVEnv :: Out a => Var -> Env2 a -> a
 lookupVEnv v env2 = (vEnv env2) # v
 
+mblookupVEnv :: Var -> Env2 a -> Maybe a
+mblookupVEnv cur env2 = M.lookup cur (vEnv env2)
+
+lookupVEnv' :: Var -> Env2 a -> Maybe a
+lookupVEnv' v (Env2 ve _) = M.lookup v ve
+
 -- | Extend function type environment.
 extendFEnv :: Var -> ArrowTy a -> Env2 a -> Env2 a
 extendFEnv v t (Env2 ve fe) = Env2 ve (M.insert v t fe)
@@ -503,9 +509,8 @@ data Prim ty
             -- element type. If the element type is a struct,
             -- like (Int, Int) for example, each line must contain 2 numbers
             -- separated by a space. The Int is the number of lines in the
-            -- file.
-
-          | RequestEndOf
+            -- file.    
+  | RequestEndOf
           -- ^ Conveys a demand for the "end of" some packed value, which is
           -- fulfilled by Cursorize. N.B. the argument must be a VarE that
           -- refers to a packed value.
@@ -526,25 +531,21 @@ data Prim ty
 -- | Types include boxed/pointer-based products as well as unpacked
 -- algebraic datatypes.  This data is parameterized to allow
 -- annotation on Packed types later on.
-data UrTy a =
-          IntTy
-        | CharTy
-        | FloatTy
-        | SymTy -- ^ Symbols used in writing compiler passes.
-        | BoolTy
-        | ProdTy [UrTy a]     -- ^ An N-ary tuple
-        | SymDictTy (Maybe Var) (UrTy ())  -- ^ A map from SymTy to Ty
+data UrTy loc
+  = IntTy
+  | CharTy
+  | FloatTy
+  | SymTy -- ^ Symbols used in writing compiler passes.
+  | BoolTy
+  | ProdTy [UrTy loc] -- ^ An N-ary tuple
+  | SymDictTy (Maybe Var) (UrTy ()) -- ^ A map from SymTy to Ty
           -- ^ We allow built-in dictionaries from symbols to a value type.
-
-        | PackedTy TyCon a -- ^ No type arguments to TyCons for now.  (No polymorphism.)
-
-        | VectorTy (UrTy a)  -- ^ Vectors are decorated with the types of their elements;
+  | PackedTy TyCon loc -- ^ No type arguments to TyCons for now.  (No polymorphism.)
+  | VectorTy (UrTy loc) -- ^ Vectors are decorated with the types of their elements;
                              -- which can only include scalars or flat products of scalars.
-
-        | PDictTy (UrTy a) (UrTy a) -- ^ Thread safe dictionaries decorated with
+  | PDictTy (UrTy loc) (UrTy loc) -- ^ Thread safe dictionaries decorated with
                                     -- key and value type.
-
-        | ListTy (UrTy a) -- ^ Linked lists are decorated with the types of their elements;
+  | ListTy (UrTy loc) -- ^ Linked lists are decorated with the types of their elements;
                           -- which can only include scalars or flat products of scalars.
 
         | ArenaTy -- ^ Collection of allocated, non-packed values

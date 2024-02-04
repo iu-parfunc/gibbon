@@ -74,14 +74,18 @@ removeCopiesExp ddefs fundefs lenv env2 ex =
     Ext ext ->
       case ext of
         -- Update lenv with a binding for loc
+        LetLocE loc FreeLE bod -> do
+          Ext <$> LetLocE loc FreeLE <$>
+            removeCopiesExp ddefs fundefs lenv env2 bod
+        StartOfPkdCursor cur -> pure $ Ext $ StartOfPkdCursor cur
+        TagCursor a b -> pure $ Ext $ TagCursor a b
         LetLocE loc rhs bod -> do
           let reg = case rhs of
-                      StartOfLE r  -> regionToVar r
+                      StartOfRegionLE r  -> regionToVar r
                       InRegionLE r -> regionToVar r
                       AfterConstantLE _ lc   -> lenv # lc
                       AfterVariableLE _ lc _ -> lenv # lc
                       FromEndLE lc           -> lenv # lc -- TODO: This needs to be fixed
-                      FreeLE -> toVar "dummy"
           Ext <$> LetLocE loc rhs <$>
             removeCopiesExp ddefs fundefs (M.insert loc reg lenv) env2 bod
        -- Straightforward recursion
@@ -94,6 +98,10 @@ removeCopiesExp ddefs fundefs lenv env2 ex =
         IndirectionE{}   -> return ex
         GetCilkWorkerNum -> return ex
         LetAvail vs bod -> Ext <$> LetAvail vs <$> go bod
+        AllocateTagHere{} -> return ex
+        AllocateScalarsHere{} -> return ex
+        SSPush{} -> return ex
+        SSPop{} -> return ex
 
     -- Straightforward recursion
     VarE{}     -> return ex

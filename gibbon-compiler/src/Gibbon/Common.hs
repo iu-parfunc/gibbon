@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveAnyClass             #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE CPP #-}
 
@@ -9,7 +8,7 @@
 module Gibbon.Common
        (
          -- * Variables
-         Var(..), LocVar, fromVar, toVar, varAppend, toEndV, toSeqV, cleanFunName
+         Var(..), LocVar, RegVar, fromVar, toVar, varAppend, toEndV, toSeqV, cleanFunName
        , TyVar(..), isUserTv
 
          -- * Gensym monad
@@ -24,7 +23,7 @@ module Gibbon.Common
        , RunConfig(..), getRunConfig, defaultRunConfig, getGibbonConfig
 
          -- * Misc helpers
-       , (#), (!!!), fragileZip, fragileZip', sdoc, ndoc, abbrv
+       , SSModality(..), (#), (!!!), fragileZip, fragileZip', sdoc, ndoc, abbrv
        , lookup3, fst3, snd3, thd3, cataM
 
          -- * Debugging/logging:
@@ -42,6 +41,7 @@ import Control.Exception (evaluate)
 -- https://downloads.haskell.org/ghc/8.8.1/docs/html/users_guide/8.8.1-notes.html
 import Control.Monad.Fail(MonadFail(..))
 #endif
+import Control.Monad
 import Control.Monad.State.Strict
 import Control.Monad.Reader
 import Data.Functor.Foldable
@@ -76,10 +76,10 @@ instance Out Var where
   docPrec n v = docPrec n (fromVar v)
 
 instance NFData Var where
-  rnf = (rnf . fromVar)
+  rnf = rnf . fromVar
 
 instance ToIdent Var where
-  toIdent = (toIdent . fromVar)
+  toIdent = toIdent . fromVar
 
 instance IsString Var where
   fromString = toVar
@@ -102,7 +102,7 @@ cleanFunName f =
   toVar [ if isNumber c || isAlpha c
           then c
           else '_'
-        | c <- (fromVar f) ]
+        | c <- fromVar f ]
 toEndV :: Var -> Var
 toEndV = varAppend "end_"
 
@@ -111,6 +111,9 @@ toSeqV v = varAppend v (toVar "_seq")
 
 -- | Abstract location variables.
 type LocVar = Var
+
+-- | Abstract region variables.
+type RegVar = Var
 
 -- | Type variables that enable polymorphism.
 data TyVar = BoundTv Var         -- Type variable bound by a ForAll.
@@ -122,7 +125,7 @@ instance Out TyVar where
   doc (SkolemTv s v) = text s <+> text "sk:" PP.<> doc v
   doc (UserTv v)     = text "u:" PP.<> doc v
 
-  docPrec _ v = doc v
+  docPrec _ = doc
 
 isUserTv :: TyVar -> Bool
 isUserTv tv =
@@ -148,7 +151,7 @@ gensym :: MonadState Int m => Var -> m Var
 gensym v = state (\n -> (cleanFunName v `varAppend` "_" `varAppend` toVar (show n), n + 1))
 
 gensym_tag :: MonadState Int m => Var -> String -> m Var
-gensym_tag v str = state (\n -> (cleanFunName v `varAppend` toVar ((show n)++ str) , n + 1))
+gensym_tag v str = state (\n -> (cleanFunName v `varAppend` toVar (show n ++ str) , n + 1))
 
 -- | An infinite alphabet generator: 'a','b', ... ,'z','a0', ...
 genLetter :: MonadState Int m => m Var
@@ -185,7 +188,7 @@ defaultPackedRunPassM = runPassM (defaultConfig { dynflags = dflags}) 0
   where dflags = gopt_set Opt_Packed defaultDynFlags
 
 getDynFlags :: MonadReader Config m => m DynFlags
-getDynFlags = dynflags <$> ask
+getDynFlags = asks dynflags
 
 getGibbonConfig :: MonadReader Config m => m Config
 getGibbonConfig = ask
@@ -224,6 +227,9 @@ data Mode = ToParse  -- ^ Parse and then stop
           | RunExe   -- ^ Compile to executable then run.
           | Interp2  -- ^ Interp late in the compiler pipeline.
           | Interp1  -- ^ Interp early.
+          | ToMPL    -- ^ Compile to SML (mlton dialect)
+          | ToMPLExe -- ^ Compile to SML & compile with MPL
+          | RunMPL   -- ^ Compile to SML & compile with MPL & run
           | Bench Var -- ^ Benchmark a particular function applied to the packed data within an input file.
           | BenchInput FilePath -- ^ Hardcode the input file to the benchmark in the C code.
   deriving (Show, Read, Eq, Ord)
@@ -240,7 +246,7 @@ defaultConfig =
          , arrayInput = Nothing
          , verbosity = 1
          , cc = "gcc"
-         , optc = " -O3  "
+         , optc = " -O3  -flto "
          , cfile = Nothing
          , exefile = Nothing
          , backend = C
@@ -283,6 +289,9 @@ getRunConfig ls =
    _ -> error $ "getRunConfig: too many command line args, expected <size> <iters> at most: "++show ls
 
 --------------------------------------------------------------------------------
+
+data SSModality = Read | Write
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
 -- | An alias for the error function we want to use throughout this project.
 {-# INLINE err #-}
@@ -376,6 +385,7 @@ cataM alg = c where
 --------------------------------------------------------------------------------
 
 theEnv :: [(String, String)]
+{-# NOINLINE theEnv #-}
 theEnv = unsafePerformIO getEnvironment
 
 -- | Debugging flag shared by all modules.
@@ -434,7 +444,7 @@ dumpIfSet cfg flag msg =
                 n <- randomIO :: IO Int
                 let fp = "gibbon-" ++ show n ++ "." ++ suffix
                 dbgTraceIt ("dumpIfSet: Got -ddump-to-file, but 'srcFile' is not set in config. Dumping output to " ++ fp) (pure fp)
-      withFile fp WriteMode (\h -> hPutStrLn h msg)
+      writeFile fp (msg ++ "\n")
   where
     src_file     = srcFile cfg
     dflags       = dynflags cfg

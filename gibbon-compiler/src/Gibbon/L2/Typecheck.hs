@@ -18,6 +18,7 @@ module Gibbon.L2.Typecheck
     where
 
 import           Control.DeepSeq
+import           Control.Monad
 import           Control.Monad.Except
 import           Data.Foldable ( foldlM )
 import qualified Data.Set as S
@@ -25,7 +26,6 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import           Data.Maybe
 import           Text.PrettyPrint.GenericPretty
-import           Debug.Trace
 
 import           Gibbon.Common
 import           Gibbon.L2.Syntax as L2
@@ -231,8 +231,8 @@ tcExp ddfs env funs constrs regs tstatein exp =
                      _ <- ensureEqualTy (es !! 0) FloatTy (tys !! 0)
                      _ <- ensureEqualTy (es !! 1) FloatTy (tys !! 1)
                      pure (BoolTy, tstate)
-                   
-                   char_cmps = do 
+
+                   char_cmps = do
                      len2
                      _ <- ensureEqualTy (es !! 0) CharTy (tys !! 0)
                      _ <- ensureEqualTy (es !! 1) CharTy (tys !! 1)
@@ -379,20 +379,6 @@ tcExp ddfs env funs constrs regs tstatein exp =
                    if isValidListElemTy ty
                    then return (VectorTy ty, tstate)
                    else throwError $ GenericTC "Not a valid list type" exp
-
-                 RequestEndOf -> do
-                   len1
-                   case (es !! 0) of
-                     VarE{} -> if isPackedTy (tys !! 0)
-                               then return (CursorTy, tstate)
-                               else case (tys !! 0) of
-                                      SymTy -> return (CursorTy, tstate)
-                                      IntTy -> return (CursorTy, tstate)
-                                      CursorTy -> return (CursorTy, tstate)
-                                      ty -> throwError $ GenericTC ("Expected PackedTy, got " ++ sdoc ty)  exp
-                     -- L _ LitSymE{} -> return (CursorTy, tstate)
-                     -- L _ LitE{} -> return (CursorTy, tstate)
-                     _ -> throwError $ GenericTC "Expected a variable argument" exp
 
                  RequestSizeOf -> do
                    len1
@@ -685,6 +671,8 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
                  Write3dPpmFile{} -> throwError $ GenericTC "Write3dPpmFile not handled yet" exp
 
+                 RequestEndOf{} -> throwError $ GenericTC  "tcExp of PrimAppE: RequestEndOf not handled yet" exp
+
 
       LetE (v,_ls,ty,e1) e2 -> do
 
@@ -746,7 +734,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                else do
                  sequence_ [ ensureEqualTyNoLoc exp ty1 ty2
                            | (ty1,ty2) <- zip args tys ]
-                 -- TODO: need to fix this check
+                 -- -- TODO: need to fix this check
                  ensureDataCon exp l tys constrs
                  tstate2 <- switchOutLoc exp tstate1 l
                  return (PackedTy dcty l, tstate2)
@@ -783,7 +771,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
       Ext (LetLocE v c e) -> do
               let env' = extendVEnv v CursorTy env
               case c of
-                StartOfLE r ->
+                StartOfRegionLE r ->
                     do ensureRegion exp r regs
                        absentStart exp constrs r
                        let tstate1 = extendTS v (Output,False) tstatein
@@ -817,7 +805,19 @@ tcExp ddfs env funs constrs regs tstatein exp =
                     do let constrs1 = extendConstrs (InRegionC v globalReg) $ constrs
                        (ty,tstate1) <- tcExp ddfs env' funs constrs1 regs tstatein e
                        return (ty,tstate1)
-                _ -> throwError $ GenericTC "Invalid letloc form" exp
+
+                InRegionLE{} -> throwError $ GenericTC ("InRegionLE not handled.")  exp
+
+      Ext (StartOfPkdCursor cur) -> do
+        case M.lookup cur (vEnv env) of
+          Just (PackedTy{}) -> pure (CursorTy, tstatein)
+          ty -> throwError $ GenericTC ("Expected PackedTy, got " ++ sdoc ty)  exp
+
+      Ext (TagCursor a _b) -> do
+        case M.lookup a (vEnv env) of
+          Just (PackedTy{}) -> pure (CursorTy, tstatein)
+          ty -> throwError $ GenericTC ("Expected PackedTy, got " ++ sdoc ty)  exp
+
 
       Ext (FromEndE{}) -> throwError $ GenericTC "FromEndE not handled" exp
       Ext (AddFixed{}) -> return (CursorTy,tstatein)
@@ -835,6 +835,26 @@ tcExp ddfs env funs constrs regs tstatein exp =
       Ext GetCilkWorkerNum -> return (IntTy, tstatein)
 
       Ext (LetAvail _ e) -> recur tstatein e
+
+      Ext (AllocateTagHere{}) -> do
+        -- (ty,tstate1) <- recur tstatein (VarE v)
+        -- ensureEqualTy (VarE v) ty CursorTy
+        return (ProdTy [], tstatein)
+
+      Ext (AllocateScalarsHere{}) -> do
+        -- (ty,tstate1) <- recur tstatein (VarE v)
+        -- ensureEqualTy (VarE v) ty CursorTy
+        return (ProdTy [], tstatein)
+
+      Ext (SSPush{}) -> do
+        -- (ty,tstate1) <- recur tstatein (VarE v)
+        -- ensureEqualTy (VarE v) ty CursorTy
+        return (ProdTy [], tstatein)
+
+      Ext (SSPop{}) -> do
+        -- (ty,tstate1) <- recur tstatein (VarE v)
+        -- ensureEqualTy (VarE v) ty CursorTy
+        return (ProdTy [], tstatein)
 
     where recur ts e = tcExp ddfs env funs constrs regs ts e
           checkListElemTy el_ty =

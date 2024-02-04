@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -8,7 +9,7 @@
 module Gibbon.Passes.Flatten
     ( flattenL0, flattenL1, flattenL2, flattenL3 ) where
 
-import Control.Monad.State
+import Control.Monad
 import Text.PrettyPrint.GenericPretty
 import Prelude hiding (exp)
 import qualified Data.Map as M

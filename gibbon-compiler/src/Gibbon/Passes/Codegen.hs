@@ -21,8 +21,6 @@ import           Language.C.Quote.C (cdecl, cedecl, cexp, cfun, cparam, csdecl, 
 import qualified Language.C.Quote.C as C
 import qualified Language.C.Syntax as C
 import           Prelude hiding (init)
-import           System.Directory
-import           System.Environment
 import           Text.PrettyPrint.Mainland
 import           Text.PrettyPrint.Mainland.Class
 
@@ -37,9 +35,10 @@ import           Gibbon.L4.Syntax
 
 -- | Harvest all struct tys.  All product types used anywhere in the program.
 harvestStructTys :: Prog -> S.Set [Ty]
-harvestStructTys (Prog _ funs mtal) =
+harvestStructTys (Prog _ _ funs mtal) =
+    S.delete [] $
     S.map (\tys -> filter (\ty -> ty /= (ProdTy [])) tys) $
-    S.delete [] (S.union tys0 tys1)
+    (S.union tys0 tys1)
   where
   tys00 = concatMap allTypes allTails
 
@@ -79,6 +78,7 @@ harvestStructTys (Prog _ funs mtal) =
    where
     go tl =
      case tl of
+       EndOfMain -> []
        (RetValsT _)  -> []
        (AssnValsT ls bod_maybe) ->
          case bod_maybe of
@@ -138,7 +138,7 @@ harvestStructTys (Prog _ funs mtal) =
        (Goto _) -> []
 
 sortFns :: Prog -> S.Set Var
-sortFns (Prog _ funs mtal) = foldl go S.empty allTails
+sortFns (Prog _ _ funs mtal) = foldl go S.empty allTails
   where
     allTails = (case mtal of
                 Just (PrintExp t) -> [t]
@@ -147,6 +147,7 @@ sortFns (Prog _ funs mtal) = foldl go S.empty allTails
 
     go acc tl =
       case tl of
+        EndOfMain -> acc
         RetValsT{} -> acc
         AssnValsT _ mb_bod -> case mb_bod of
                                 Just bod -> go acc bod
@@ -185,21 +186,11 @@ sortFns (Prog _ funs mtal) = foldl go S.empty allTails
 --------------------------------------------------------------------------------
 -- * C codegen
 
--- | Compile a program to C code which has the side effect of the
--- "main" expression in that program.
---
---  The boolean flag is true when we are compiling in "Packed" mode.
+-- | Compile a program to C code that has the side effect of the
+-- "gibbon_main" expression in that program.
 codegenProg :: Config -> Prog -> IO String
-codegenProg cfg prg@(Prog sym_tbl funs mtal) = do
-      env <- getEnvironment
-      let rtsPath = case lookup "GIBBONDIR" env of
-                      Just p -> p ++"/gibbon-compiler/cbits/rts.c"
-                      Nothing -> "cbits/rts.c" -- Assume we're running from the compiler dir!
-      e <- doesFileExist rtsPath
-      unless e $ error$ "codegen: rts.c file not found at path: "++rtsPath
-                       ++"\n Consider setting GIBBONDIR to repo root.\n"
-      rts <- readFile rtsPath -- TODO (maybe): We can read this in in compile time using TH
-      return (rts ++ '\n' : pretty 80 (stack (map ppr defs)))
+codegenProg cfg prg@(Prog info_tbl sym_tbl funs mtal) =
+      return (hashIncludes ++ pretty 80 (stack (map ppr defs)))
     where
       init_fun_env = foldr (\fn acc -> M.insert (funName fn) (map snd (funArgs fn), funRetTy fn) acc) M.empty funs
 
@@ -209,37 +200,49 @@ codegenProg cfg prg@(Prog sym_tbl funs mtal) = do
         (prots,funs') <- (unzip . concat) <$> mapM codegenFun funs
         main_expr' <- main_expr
         let struct_tys = uniqueDicts $ S.toList $ harvestStructTys prg
-        return ((L.nub $ makeStructs struct_tys) ++ prots ++ funs' ++ [main_expr'])
+        return ((L.nub $ makeStructs struct_tys) ++ prots ++
+                [gibTypesEnum, initInfoTable info_tbl, initSymTable sym_tbl] ++
+                funs' ++ [main_expr'])
 
       main_expr :: PassM C.Definition
       main_expr = do
+        dflags <- getDynFlags
+        let pointer = gopt Opt_Pointer dflags
+        let gen_gc = gopt Opt_GenGc dflags
         e <- case mtal of
                -- [2019.06.13]: CSK, Why is codegenTail always called with IntTy?
                Just (PrintExp t) -> codegenTail M.empty init_fun_env sort_fns t IntTy []
                _ -> pure []
-        let bod = mkSymTable ++ e
-        pure $ C.FuncDef [cfun| int __main_expr() { $items:bod } |] noLoc
+        ret_init <- gensym "init"
+        ret_exit <- gensym "exit"
+        let init_gib = (if pointer then [ C.BlockStm [cstm| GC_INIT(); |] ] else []) ++
+                       [ C.BlockDecl [cdecl| int $id:ret_init = gib_init(argc, argv); |] ]
+            exit_gib = [ C.BlockDecl [cdecl| int $id:ret_exit = gib_exit(); |]
+                       , C.BlockStm [cstm| return $id:ret_exit; |]
+                       ]
+            init_info_table = [ C.BlockStm [cstm| info_table_initialize(); |] ]
+            init_symbol_table = [ C.BlockStm [cstm| symbol_table_initialize(); |] ]
+        let bod = init_gib ++ init_info_table ++ init_symbol_table
+                  ++ (if gen_gc then ssDecls else [])
+                  ++ e ++ exit_gib
+        pure $ C.FuncDef [cfun| int main(int argc, char **argv) { $items:bod } |] noLoc
 
       codegenFun' :: FunDecl -> PassM C.Func
       codegenFun' (FunDecl nam args ty tal _) =
-          do let retTy   = codegenTy ty
+          do dflags <- getDynFlags
+             let gen_gc = gopt Opt_GenGc dflags
+             let retTy   = codegenTy ty
                  params  = map (\(v,t) -> [cparam| $ty:(codegenTy t) $id:v |]) args
                  init_venv = M.fromList args
-             if S.member nam sort_fns
-             then do
-               -- See codegenSortFn
-               let nam' = varAppend nam (toVar "_original")
-               body <- codegenTail init_venv init_fun_env sort_fns tal ty []
-               let fun = [cfun| $ty:retTy $id:nam' ($params:params) {
-                                $items:body
-                                } |]
-               return fun
-             else do
-               body <- codegenTail init_venv init_fun_env sort_fns tal ty []
-               let fun = [cfun| $ty:retTy $id:nam ($params:params) {
-                                $items:body
-                                } |]
-               return fun
+             let nam' = if S.member nam sort_fns
+                        then varAppend nam (toVar "_original")
+                        else nam
+             body <- codegenTail init_venv init_fun_env sort_fns tal ty []
+             let body' = (if gen_gc then ssDecls else []) ++ body
+             let fun = [cfun| $ty:retTy $id:nam' ($params:params) {
+                              $items:body'
+                              } |]
+             return fun
 
       -- C's qsort expects a sort function to be of type, (void*  a, void* b) : int.
       -- But there's no way for a user to write a function of this type. So we generate
@@ -287,20 +290,118 @@ codegenProg cfg prg@(Prog sym_tbl funs mtal) = do
                         else pure []
              return $ [(C.DecDef prot noLoc, C.FuncDef fun noLoc)] ++ sort_fn
 
-      mkSymTable :: [C.BlockItem]
-      mkSymTable =
-        map
+      gibTypesEnum =
+        let go str = C.CEnum (C.Id (str ++ "_T") noLoc) Nothing noLoc
+            decls = map go (builtinFieldTys ++ M.keys info_tbl)
+        in [cedecl| typedef enum { $enums:decls } GibDatatype; |]
+
+      hashIncludes =
+        "/* Gibbon program. */\n\n\
+        \#include \"gibbon_rts.h\"\n\n\
+        \#include <assert.h>\n\
+        \#include <stdio.h>\n\
+        \#include <stdlib.h>\n\
+        \#include <stdint.h>\n\
+        \#include <inttypes.h>\n\
+        \#include <math.h>\n\
+        \#include <stdbool.h>\n\
+        \#include <string.h>\n\
+        \#include <time.h>\n\
+        \#include <alloca.h>\n\
+        \#include <sys/mman.h>\n\
+        \#include <sys/resource.h>\n\
+        \#include <sys/stat.h>\n\
+        \#include <unistd.h>\n\
+        \#include <fcntl.h>\n\
+        \#include <stdarg.h>\n\
+        \#include <errno.h>\n\
+        \#include <uthash.h>\n\n\
+        \#ifdef _WIN64\n\
+        \#include <windows.h>\n\
+        \#endif\n\n\
+        \#ifdef _GIBBON_POINTER\n\
+        \#include <gc.h>\n\
+        \#endif\n\n\
+        \#ifdef _GIBBON_PARALLEL\n\
+        \#include <cilk/cilk.h>\n\
+        \#include <cilk/cilk_api.h>\n\
+        \#endif\n\n\
+        \/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\
+        \ * Program starts here\n\
+        \ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n\
+        \ */\n\n"
+
+
+builtinFieldTys :: [String]
+builtinFieldTys =
+    [ "GibInt", "GibFloat", "GibSym", "GibBool", "GibVector", "GibList", "GibCursor"
+    -- , "GibPackedTag", "GibBoxedTag", "GibPtr", "GibSymDict", "GibSymSet"
+    -- , "GibSymHash", "GibIntHash"
+    ]
+
+initSymTable :: SymTable -> C.Definition
+initSymTable sym_tbl =
+    let body =  map
           (\(k,v) -> case v of
                        -- Special symbols that get handled differently
-                       "NEWLINE" -> C.BlockStm [cstm| set_newline($k); |]
+                       "NEWLINE" -> C.BlockStm [cstm| gib_set_newline($k); |]
                        "COMMA" -> C.BlockStm [cstm| set_comma($k); |]
-                       "SPACE" -> C.BlockStm [cstm| set_space($k); |]
-                       "LEFTPAREN" -> C.BlockStm [cstm| set_leftparen($k); |]
-                       "RIGHTPAREN" -> C.BlockStm [cstm| set_rightparen($k); |]
+                       "SPACE" -> C.BlockStm [cstm| gib_set_space($k); |]
+                       "LEFTPAREN" -> C.BlockStm [cstm| gib_set_leftparen($k); |]
+                       "RIGHTPAREN" -> C.BlockStm [cstm| gib_set_rightparen($k); |]
                        -- Normal symbols just get added to the table
-                       _ -> C.BlockStm [cstm| add_symbol($k, $v); |]
+                       _ -> C.BlockStm [cstm| gib_add_symbol($k, $v); |]
           )
           (M.toList sym_tbl)
+        fun = [cfun| void symbol_table_initialize(void) { $items:body } |]
+    in C.FuncDef fun noLoc
+
+
+initInfoTable :: InfoTable -> C.Definition
+initInfoTable info_tbl =
+    let info_table_len = length info_tbl + length builtinFieldTys
+        body =  [ C.BlockDecl [cdecl| int error = gib_info_table_initialize($int:info_table_len); |]
+                , C.BlockStm [cstm| if (error < 0) { fprintf(stderr, "Couldn't initialize info table, errorno=%d", error); exit(1); } |]
+                ]  ++
+                -- insert_scalar_info ++
+                [ C.BlockDecl [cdecl| typename GibDatatype field_tys[$int:max_fields]; |] ] ++ insert_dcon_info ++
+                [C.BlockStm [cstm| gib_info_table_finalize(); |] ]
+        fun = [cfun| void info_table_initialize(void) { $items:body } |]
+    in C.FuncDef fun noLoc
+  where
+    max_fields = M.foldr (\tyc_info acc ->
+                              max acc $
+                                  M.foldrWithKey (\dcon DataConInfo{num_scalars,num_packed} acc2 ->
+                                                      if GL.isIndirectionTag dcon then acc2 else
+                                                          (num_scalars + num_packed) `max` acc2)
+                                                 0
+                                                 tyc_info)
+                         0
+                         info_tbl
+    _insert_scalar_info = map (\ty -> let ty_t = ty ++ "_T" in C.BlockStm [cstm| gib_info_table_insert_scalar($id:ty_t, sizeof($id:ty)); |]) builtinFieldTys
+
+    insert_dcon_info = M.foldrWithKey
+                           (\tycon tyc_info acc ->
+                                M.foldrWithKey (\dcon (DataConInfo dcon_tag scalar_bytes num_shortcut num_scalars num_packed field_tys) acc2 ->
+                                                    if GL.isIndirectionTag dcon then acc2 else
+                                                    let packed_field_tys = filter GL.isPackedTy field_tys
+                                                        set_field_tys =
+                                                            map (\(ty,i) ->
+                                                                     let ty' = (case ty of
+                                                                                    GL.PackedTy tycon _ -> tycon
+                                                                                    _ -> makeName' (fromL3Ty ty))
+                                                                               ++ "_T"
+                                                                         e = (C.Id ty' noLoc)
+                                                                     in C.BlockStm [cstm| field_tys[$int:i] = ($id:e); |])
+                                                                (zip packed_field_tys [0..])
+                                                        tycon' = tycon ++ "_T"
+                                                        insert_into_tbl = [ C.BlockStm [cstm| error = gib_info_table_insert_packed_dcon($id:tycon', $int:dcon_tag, $int:scalar_bytes, $int:num_shortcut, $int:num_scalars, $int:num_packed, field_tys, $int:num_packed); |]
+                                                                          , C.BlockStm [cstm| if (error < 0) { fprintf(stderr, "Couldn't insert into info table, errorno=%d, tycon=%d, dcon=%d", error, $id:tycon', $int:dcon_tag); exit(1); } |] ]
+                                             in set_field_tys ++ insert_into_tbl ++ acc2)
+                                        acc
+                                        tyc_info)
+                           []
+                           info_tbl
 
 
 makeStructs :: [[Ty]] -> [C.Definition]
@@ -322,6 +423,7 @@ rewriteReturns :: Tail -> [(Var,Ty)] -> Tail
 rewriteReturns tl bnds =
  let go x = rewriteReturns x bnds in
  case tl of
+   EndOfMain -> tl
    (RetValsT ls) -> AssnValsT [ (v,t,e) | (v,t) <- bnds | e <- ls ] Nothing
    (Goto _) -> tl
 
@@ -365,9 +467,9 @@ codegenTriv _ (BoolTriv b) = case b of
                                False -> [cexp| false |]
 codegenTriv _ (SymTriv i) = [cexp| $i |]
 codegenTriv _ (TagTriv i) = if i == GL.indirectionAlt
-                            then [cexp| INDIRECTION_TAG |]
+                            then [cexp| GIB_INDIRECTION_TAG |]
                             else if i == GL.redirectionAlt
-                            then [cexp| REDIRECTION_TAG |]
+                            then [cexp| GIB_REDIRECTION_TAG |]
                             else [cexp| $i |]
 codegenTriv venv (ProdTriv ls) =
   let ty = codegenTy $ typeOfTriv venv (ProdTriv ls)
@@ -383,9 +485,29 @@ type FEnv = M.Map Var ([Ty], Ty)
 type VEnv = M.Map Var Ty
 type SyncDeps = [(Var, C.BlockItem)]
 
+writeShadowstack :: Var
+writeShadowstack = toVar "wstack"
+
+readShadowstack :: Var
+readShadowstack = toVar "rstack"
+
+shadowstackFrame :: Var
+shadowstackFrame = toVar "frame"
+
+ssDecls :: [C.BlockItem]
+ssDecls =
+  [ C.BlockDecl [cdecl| $ty:stk_ty *$id:readShadowstack = DEFAULT_READ_SHADOWSTACK; |]
+  , C.BlockDecl [cdecl| $ty:stk_ty *$id:writeShadowstack = DEFAULT_WRITE_SHADOWSTACK; |]
+  , C.BlockDecl [cdecl| $ty:frame_ty *$id:shadowstackFrame; |]
+  ]
+  where
+    stk_ty = [cty|typename GibShadowstack|]
+    frame_ty = [cty|typename GibShadowstackFrame|]
+
 -- | The central codegen function.
 codegenTail :: VEnv -> FEnv -> S.Set Var -> Tail -> Ty -> SyncDeps -> PassM [C.BlockItem]
 
+codegenTail _ _ _ EndOfMain _ty _   = return []
 -- Void type:
 codegenTail _ _ _ (RetValsT []) _ty _   = return [ C.BlockStm [cstm| return 0; |] ]
 -- Single return:
@@ -440,7 +562,7 @@ codegenTail venv fenv sort_fns (LetTrivT (vr,rty,rhs) body) ty sync_deps =
 -- TODO: extend rts with arena primitives, and invoke them here
 codegenTail venv fenv sort_fns (LetArenaT vr body) ty sync_deps =
     do tal <- codegenTail venv fenv sort_fns body ty sync_deps
-       return $ [ C.BlockDecl [cdecl| $ty:(codegenTy ArenaTy) $id:vr = alloc_arena();|] ]
+       return $ [ C.BlockDecl [cdecl| $ty:(codegenTy ArenaTy) $id:vr = gib_alloc_arena();|] ]
               ++ tal
 
 codegenTail venv fenv sort_fns (LetAllocT lhs vals body) ty sync_deps =
@@ -450,8 +572,8 @@ codegenTail venv fenv sort_fns (LetAllocT lhs vals body) ty sync_deps =
        tal <- codegenTail venv' fenv sort_fns body ty sync_deps
        dflags <- getDynFlags
        let alloc = if (gopt Opt_CountParRegions dflags) || (gopt Opt_CountAllRegions dflags)
-                   then assn (codegenTy PtrTy) lhs [cexp| ALLOC_COUNTED( $size ) |]
-                   else assn (codegenTy PtrTy) lhs [cexp| ALLOC( $size ) |]
+                   then assn (codegenTy PtrTy) lhs [cexp| gib_alloc_counted_struct( $size ) |]
+                   else assn (codegenTy PtrTy) lhs [cexp| gib_alloc( $size ) |]
        return$
               (alloc :
                [ C.BlockStm [cstm| (($ty:structTy *)  $id:lhs)->$id:fld = $(codegenTriv venv trv); |]
@@ -517,46 +639,53 @@ codegenTail venv fenv sort_fns (LetTimedT flg bnds rhs body) ty sync_deps =
            iters = "iters_"++ (fromVar ident)
            vec_ty = codegenTy (VectorTy FloatTy)
 
-           timebod = [ C.BlockDecl [cdecl| $ty:vec_ty ($id:times) = vector_alloc(global_iters_param, sizeof(double)); |]
+           timebod = [ C.BlockDecl [cdecl| $ty:vec_ty ($id:times) = gib_vector_alloc(gib_get_iters_param(), sizeof(double)); |]
                      , C.BlockDecl [cdecl| struct timespec $id:begn; |]
                      , C.BlockDecl [cdecl| struct timespec $id:end; |] ] ++
 
                      (if flg
                          -- Save and restore EXCEPT on the last iteration.  This "cancels out" the effect of intermediate allocations.
-                      then (let body = [ C.BlockStm [cstm| if ( $id:iters != global_iters_param-1) save_alloc_state(); |]
+                      then (let body = [ C.BlockStm [cstm| if ( $id:iters != gib_get_iters_param()-1) {
+                                                         gib_list_bumpalloc_save_state();
+                                                         gib_ptr_bumpalloc_save_state();
+                                                         } |]
                                        , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, & $id:begn );  |]
                                        ] ++
                                        rhs''++
                                        [ C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid (toVar end))); |]
-                                       , C.BlockStm [cstm| if ( $id:iters != global_iters_param-1) restore_alloc_state(); |]
-                                       , C.BlockDecl [cdecl| double $id:itertime = difftimespecs(&$(cid (toVar begn)), &$(cid (toVar end))); |]
-                                       , C.BlockStm [cstm| vector_inplace_update($id:times, $id:iters, &($id:itertime)); |]
+                                       , C.BlockStm [cstm| if ( $id:iters != gib_get_iters_param()-1) {
+                                                         gib_list_bumpalloc_restore_state();
+                                                         gib_ptr_bumpalloc_restore_state();
+                                                         } |]
+                                       , C.BlockDecl [cdecl| double $id:itertime = gib_difftimespecs(&$(cid (toVar begn)), &$(cid (toVar end))); |]
+                                       , C.BlockStm [cstm| printf("itertime: %lf\n", $id:itertime); |]
+                                       , C.BlockStm [cstm| gib_vector_inplace_update($id:times, $id:iters, &($id:itertime)); |]
                                        ]
-                            in [ C.BlockStm [cstm| for (long long $id:iters = 0; $id:iters < global_iters_param; $id:iters ++) { $items:body } |]
-                               , C.BlockStm [cstm| vector_inplace_sort($id:times, compare_doubles); |]
-                               , C.BlockDecl [cdecl| double *$id:tmp = (double*) vector_nth($id:times, (global_iters_param / 2)); |]
+                            in [ C.BlockStm [cstm| for (long long $id:iters = 0; $id:iters < gib_get_iters_param(); $id:iters ++) { $items:body } |]
+                               , C.BlockStm [cstm| gib_vector_inplace_sort($id:times, gib_compare_doubles); |]
+                               , C.BlockDecl [cdecl| double *$id:tmp = (double*) gib_vector_nth($id:times, (gib_get_iters_param() / 2)); |]
                                , C.BlockDecl [cdecl| double $id:selftimed = *($id:tmp); |]
-                               , C.BlockDecl [cdecl| double $id:batchtime = sum_timing_array($id:times); |]
-                               , C.BlockStm [cstm| print_timing_array($id:times); |]
-                               -- , C.BlockStm [cstm| vector_free($id:times); |]
+                               , C.BlockDecl [cdecl| double $id:batchtime = gib_sum_timing_array($id:times); |]
+                               , C.BlockStm [cstm| gib_print_timing_array($id:times); |]
+                               , C.BlockStm [cstm| gib_vector_free($id:times); |]
                                ])
 
                          -- else
                       else [ C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, & $id:begn );  |]
                            , C.BlockStm [cstm| { $items:rhs'' } |]
                            , C.BlockStm [cstm| clock_gettime(CLOCK_MONOTONIC_RAW, &$(cid (toVar end))); |]
-                           , C.BlockDecl [cdecl| double $id:selftimed = difftimespecs(&$(cid (toVar begn)), &$(cid (toVar end))); |]
-                           -- , C.BlockStm [cstm| vector_free($id:times); |]
+                           , C.BlockDecl [cdecl| double $id:selftimed = gib_difftimespecs(&$(cid (toVar begn)), &$(cid (toVar end))); |]
+                           , C.BlockStm [cstm| gib_vector_free($id:times); |]
                            ])
            withPrnt = timebod ++
                       (if flg
-                       then [ C.BlockStm [cstm| printf("ITERS: %lld\n", global_iters_param); |]
-                            , C.BlockStm [cstm| printf("SIZE: %lld\n", global_size_param); |]
+                       then [ C.BlockStm [cstm| printf("ITERS: %ld\n", gib_get_iters_param()); |]
+                            , C.BlockStm [cstm| printf("SIZE: %ld\n", gib_get_size_param()); |]
                             , C.BlockStm [cstm| printf("BATCHTIME: %e\n", $id:batchtime); |]
                             , C.BlockStm [cstm| printf("SELFTIMED: %e\n", $id:selftimed); |]
                             ]
-                       else [ C.BlockStm [cstm| printf("SIZE: %lld\n", global_size_param); |]
-                            , C.BlockStm [cstm| printf("SELFTIMED: %e\n", difftimespecs(&$(cid (toVar begn)), &$(cid (toVar end)))); |] ])
+                       else [ C.BlockStm [cstm| printf("SIZE: %ld\n", gib_get_size_param()); |]
+                            , C.BlockStm [cstm| printf("SELFTIMED: %e\n", gib_difftimespecs(&$(cid (toVar begn)), &$(cid (toVar end)))); |] ])
        let venv' = (M.fromList bnds) `M.union` venv
        tal <- codegenTail venv' fenv sort_fns body ty sync_deps
        return $ decls ++ withPrnt ++ tal
@@ -649,6 +778,7 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
        dflags <- getDynFlags
        let isPacked = gopt Opt_Packed dflags
            noGC = gopt Opt_DisableGC dflags
+           genGC = gopt Opt_GenGc dflags
 
        pre <- case prm of
                  AddP -> let [(outV,outT)] = bnds
@@ -668,11 +798,11 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                          [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv venv pleft) % $(codegenTriv venv pright); |]]
                  ExpP -> let [(outV,outT)] = bnds
                              [pleft,pright] = rnds in pure
-                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = expll($(codegenTriv venv pleft), $(codegenTriv venv pright)); |]]
+                         [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = gib_expll($(codegenTriv venv pleft), $(codegenTriv venv pright)); |]]
                  RandP -> let [(outV,outT)] = bnds in pure
                           [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = rand(); |]]
                  FRandP-> let [(outV,outT)] = bnds
-                              fty = [cty| typename FloatTy |] in pure
+                              fty = codegenTy FloatTy in pure
                           [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($ty:fty) rand() / ($ty:fty) (RAND_MAX); |]]
                  FSqrtP -> let [(outV,outT)] = bnds
                                [arg] = rnds in pure
@@ -684,12 +814,12 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
 
                  FloatToIntP -> let [(outV,outT)] = bnds
                                     [arg] = rnds
-                                    ity= [cty| typename IntTy |] in pure
+                                    ity= codegenTy IntTy in pure
                                 [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($ty:ity) ($(codegenTriv venv arg)) ; |]]
 
                  IntToFloatP -> let [(outV,outT)] = bnds
                                     [arg] = rnds
-                                    fty= [cty| typename FloatTy |] in pure
+                                    fty = codegenTy FloatTy in pure
                                 [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = ($ty:fty) ($(codegenTriv venv arg)) ; |]]
 
                  EqP -> let [(outV,outT)] = bnds
@@ -719,110 +849,117 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                            [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = $(codegenTriv venv pleft) == $(codegenTriv venv pright); |]]
 
                  EqBenchProgP str -> let [(outV,outT)] = bnds
-                                     in pure [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = strcmp($str,global_bench_prog_param) == 0; |]]
+                                     in pure [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = strcmp($str,gib_read_bench_prog_param()) == 0; |]]
 
                  DictInsertP _ -> let [(outV,ty)] = bnds
                                       [(VarTriv arena),(VarTriv dict),keyTriv,valTriv] = rnds in pure
-                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = dict_insert_ptr($id:arena, $id:dict, $(codegenTriv venv keyTriv), $(codegenTriv venv valTriv)); |] ]
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = gib_dict_insert_ptr($id:arena, $id:dict, $(codegenTriv venv keyTriv), $(codegenTriv venv valTriv)); |] ]
                  DictLookupP _ -> let [(outV,ty)] = bnds
                                       [(VarTriv dict),keyTriv] = rnds in pure
-                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = dict_lookup_ptr($id:dict, $(codegenTriv venv keyTriv)); |] ]
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = gib_dict_lookup_ptr($id:dict, $(codegenTriv venv keyTriv)); |] ]
                  DictEmptyP _ty -> let [(outV,ty)] = bnds
                                    in pure [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = 0; |] ]
-                 DictHasKeyP PtrTy -> let [(outV,IntTy)] = bnds
-                                          [(VarTriv dict)] = rnds in pure
-                    [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = dict_has_key_ptr($id:dict); |] ]
+                 -- DictHasKeyP PtrTy -> let [(outV,IntTy)] = bnds
+                 --                          [(VarTriv dict)] = rnds in pure
+                 --    [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = dict_has_key_ptr($id:dict); |] ]
                  DictHasKeyP _ -> error $ "codegen: " ++ show prm ++ "unhandled."
 
                  SymSetEmpty -> let [(outV,outT)] = bnds
-                                in pure [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = empty_set(); |] ]
+                                in pure [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = gib_empty_set(); |] ]
                  SymSetInsert -> let [(outV,outT)] = bnds
                                      [(VarTriv set),valTriv] = rnds in pure
-                    [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = insert_set($id:set, $(codegenTriv venv valTriv)); |] ]
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = gib_insert_set($id:set, $(codegenTriv venv valTriv)); |] ]
                  SymSetContains -> let [(outV,ty)] = bnds
                                        [(VarTriv set),valTriv] = rnds in pure
-                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = contains_set($id:set, $(codegenTriv venv valTriv)); |] ]
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = gib_contains_set($id:set, $(codegenTriv venv valTriv)); |] ]
 
                  SymHashEmpty -> let [(outV,outT)] = bnds
-                                 in pure [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = empty_hash(); |] ]
+                                 in pure [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = gib_empty_hash(); |] ]
                  SymHashInsert -> let [(outV,outT)] = bnds
                                       [(VarTriv hash),keyTriv,valTriv] = rnds in pure
-                    [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = insert_hash($id:hash, $(codegenTriv venv keyTriv), $(codegenTriv venv valTriv)); |] ]
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = gib_insert_hash($id:hash, $(codegenTriv venv keyTriv), $(codegenTriv venv valTriv)); |] ]
                  SymHashLookup -> let [(outV,ty)] = bnds
                                       [(VarTriv hash),keyTriv] = rnds in pure
-                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = lookup_hash($id:hash, $(codegenTriv venv keyTriv)); |] ]
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = gib_lookup_hash($id:hash, $(codegenTriv venv keyTriv)); |] ]
 
                  SymHashContains -> let [(outV,ty)] = bnds
                                         [(VarTriv hash),keyTriv] = rnds in pure
-                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = contains_hash($id:hash, $(codegenTriv venv keyTriv)); |] ]
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = gib_contains_hash($id:hash, $(codegenTriv venv keyTriv)); |] ]
 
                  IntHashEmpty -> let [(outV,outT)] = bnds
-                                 in pure [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = empty_hash(); |] ]
+                                 in pure [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = gib_empty_hash(); |] ]
                  IntHashInsert -> let [(outV,outT)] = bnds
                                       [(VarTriv hash),keyTriv,valTriv] = rnds in pure
-                    [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = insert_hash($id:hash, $(codegenTriv venv keyTriv), $(codegenTriv venv valTriv)); |] ]
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy outT) $id:outV = gib_insert_hash($id:hash, $(codegenTriv venv keyTriv), $(codegenTriv venv valTriv)); |] ]
                  IntHashLookup -> let [(outV,ty)] = bnds
                                       [(VarTriv hash),keyTriv] = rnds in pure
-                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = lookup_hash($id:hash, $(codegenTriv venv keyTriv)); |] ]
+                    [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = gib_lookup_hash($id:hash, $(codegenTriv venv keyTriv)); |] ]
 
                  NewBuffer mul -> do
                    dflags <- getDynFlags
                    let countRegions = gopt Opt_CountAllRegions dflags
-                   let [(reg, CursorTy),(outV,CursorTy)] = bnds
+                   let [(reg, CursorTy),(outV,CursorTy),(endV,CursorTy)] = bnds
                        bufsize = codegenMultiplicity mul
                    if countRegions
                    then
                      pure
-                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = alloc_counted_region($bufsize); |]
-                       , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:reg->reg_heap; |]
+                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = gib_alloc_counted_region($exp:bufsize); |]
+                       , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:reg->start; |]
+                       , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:endV = $id:reg->end; |]
                        ]
                    else
-                     pure
-                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = alloc_region($bufsize); |]
-                       , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:reg->reg_heap; |]
-                       ]
+                     pure $
+                       (if genGC
+                        then [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy) $id:reg = gib_alloc_region($exp:bufsize); |] ]
+                        else [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy) $id:reg = gib_alloc_region_on_heap($exp:bufsize); |] ]) ++
+                          [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:reg.start; |]
+                          , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:endV = $id:reg.end; |]
+                          ]
+
 
                  NewParBuffer mul -> do
                    dflags <- getDynFlags
                    let countRegions = gopt Opt_CountParRegions dflags
-                   let [(reg, CursorTy),(outV,CursorTy)] = bnds
+                   let [(reg, CursorTy),(outV,CursorTy),(endV,CursorTy)] = bnds
                        bufsize = codegenMultiplicity mul
                    if countRegions
                    then
                      pure
-                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = alloc_counted_region($bufsize); |]
-                       , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:reg->reg_heap; |]
+                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = gib_alloc_counted_region($exp:bufsize); |]
+                       , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:reg->start; |]
+                       , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:endV = $id:reg->end; |]
                        ]
                    else
-                     pure
-                       [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:reg = alloc_region($bufsize); |]
-                       , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:reg->reg_heap; |]
-                       ]
+                     pure $
+                       (if genGC
+                        then [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy) $id:reg = gib_alloc_region($exp:bufsize); |] ]
+                        else [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy) $id:reg = gib_alloc_region_on_heap($exp:bufsize); |] ]) ++
+                          [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:reg.start; |]
+                          , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:endV = $id:reg.end; |]
+                          ]
                  ScopedBuffer mul -> let [(outV,CursorTy)] = bnds
                                          bufsize = codegenMultiplicity mul
                                      in pure
-                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_SCOPED($bufsize); |] ]
+                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) ) gib_scoped_alloc($exp:bufsize); |] ]
 
                  ScopedParBuffer mul -> let [(outV,CursorTy)] = bnds
                                             bufsize = codegenMultiplicity mul
                                         in pure
-                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) )ALLOC_SCOPED($bufsize); |] ]
+                             [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ( $ty:(codegenTy CursorTy) ) gib_scoped_alloc($exp:bufsize); |] ]
 
-                 InitSizeOfBuffer mul -> let [(sizev,IntTy)] = bnds
-                                             bufsize = codegenMultiplicity mul
-                                         in pure
-                                            [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizev = $bufsize; |] ]
+                 -- generated during newbuffer.
+                 EndOfBuffer{} -> pure []
 
-                 FreeBuffer -> if noGC
+                 FreeBuffer -> if noGC || genGC
                                then pure []
                                else
                                  let [(VarTriv _reg),(VarTriv _rcur),(VarTriv endr_cur)] = rnds
                                  in pure
-                                 [ C.BlockStm [cstm| free_region($id:endr_cur); |] ]
+                                 [ C.BlockStm [cstm| gib_free_region($id:endr_cur); |] ]
 
                  WriteTag -> let [(outV,CursorTy)] = bnds
-                                 [(TagTriv tag),(VarTriv cur)] = rnds in pure
-                             [ C.BlockStm [cstm| *($ty:(codegenTy TagTyPacked) *) ($id:cur) = $tag; |]
+                                 [t@(TagTriv{}),(VarTriv cur)] = rnds in pure
+                             [ C.BlockStm [cstm| *($ty:(codegenTy TagTyPacked) *) ($id:cur) = $(codegenTriv venv t); |]
                              , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = $id:cur + 1; |] ]
                  ReadTag -> let [(tagV,TagTyPacked),(curV,CursorTy)] = bnds
                                 [(VarTriv cur)] = rnds in pure
@@ -838,6 +975,36 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                                      [(VarTriv cur)] = rnds in pure
                                      [ C.BlockDecl [cdecl| $ty:(codegenTy valTy) $id:valV = *( $ty:(codegenTy valTy) *)($id:cur); |]
                                      , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:curV = ($id:cur) + sizeof( $ty:(codegenTy (scalarToTy s))); |] ]
+
+                 TagCursor  -> let [(taggedV,_)] = bnds
+                                   [(VarTriv a), (VarTriv b)] = rnds
+                                   tag_t = [cty| typename uint16_t |]
+                                   tagged_ptr_t = [cty| typename uintptr_t |]
+                               in do offset <- gensym "offset"
+                                     pure
+                                       [ C.BlockDecl [cdecl| $ty:tag_t $id:offset = $id:b - $id:a; |]
+                                       , C.BlockDecl [cdecl| $ty:tagged_ptr_t $id:taggedV = GIB_STORE_TAG($id:a, $id:offset); |]
+                                       ]
+
+                 ReadTaggedCursor -> do
+                               tagged <- gensym "tagged_tmpcur"
+                               let [(next,CursorTy),(afternext,CursorTy),(tag,IntTy)] = bnds
+                                   [(VarTriv cur)] = rnds
+                                   tagged_t = [cty| typename uintptr_t |]
+                                   tag_t = [cty| typename uint16_t |]
+                               pure
+                                 [ C.BlockDecl [cdecl| $ty:tagged_t $id:tagged = *($ty:tagged_t *) ($id:cur); |]
+                                 , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:next = GIB_UNTAG($id:tagged); |]
+                                 , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:afternext = ($id:cur) + 8; |]
+                                 , C.BlockDecl [cdecl| $ty:tag_t $id:tag = GIB_GET_TAG($id:tagged); |]
+                                 ]
+
+                 WriteTaggedCursor ->
+                                let [(outV,CursorTy)] = bnds
+                                    [val,(VarTriv cur)] = rnds
+                                    tagged_t = [cty| typename uintptr_t |] in pure
+                                 [ C.BlockStm [cstm| *( $ty:tagged_t  *)($id:cur) = $(codegenTriv venv val); |]
+                                 , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:outV = ($id:cur) + 8; |] ]
 
                  ReadCursor -> let [(next,CursorTy),(afternext,CursorTy)] = bnds
                                    [(VarTriv cur)] = rnds in pure
@@ -873,33 +1040,40 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                                        [ C.BlockDecl [cdecl| $ty:(codegenTy valTy) $id:valV = *( $ty:(codegenTy valTy) *)($id:cur); |]
                                        , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:curV = ($id:cur) + sizeof( $ty:(codegenTy valTy)); |] ]
 
-                 BumpRefCount -> let [(VarTriv end_r1), (VarTriv end_r2)] = rnds
-                                 in pure [ C.BlockStm [cstm| bump_ref_count($id:end_r1, $id:end_r2); |] ]
+                 IndirectionBarrier tycon ->
+                   let [(VarTriv from_loc), (VarTriv end_from_reg),
+                        (VarTriv to_loc), (VarTriv end_to_reg)] = rnds
+                       tycon_t = (C.Id (tycon ++ "_T") noLoc)
+                   in pure [ C.BlockStm [cstm| gib_indirection_barrier($id:from_loc, $id:end_from_reg, $id:to_loc, $id:end_to_reg, $id:tycon_t); |] ]
 
                  BoundsCheck -> do
-                   new_chunk   <- gensym "new_chunk"
-                   chunk_start <- gensym "chunk_start"
-                   chunk_end   <- gensym "chunk_end"
+                   _new_chunk   <- gensym "new_chunk"
+                   _chunk_start <- gensym "chunk_start"
+                   _chunk_end   <- gensym "chunk_end"
                    let [(IntTriv i),(VarTriv bound), (VarTriv cur)] = rnds
-                       bck = [ C.BlockDecl [cdecl| $ty:(codegenTy ChunkTy) $id:new_chunk = alloc_chunk($id:bound); |]
-                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:chunk_start = $id:new_chunk.chunk_start; |]
-                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:chunk_end = $id:new_chunk.chunk_end; |]
+                       {-
+                       bck = [ C.BlockDecl [cdecl| $ty:(codegenTy ChunkTy) $id:new_chunk = gib_grow_region($id:bound); |]
+                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:chunk_start = $id:new_chunk.start; |]
+                             , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:chunk_end = $id:new_chunk.end; |]
                              , C.BlockStm  [cstm|  $id:bound = $id:chunk_end; |]
-                             , C.BlockStm  [cstm|  *($ty:(codegenTy TagTyPacked) *) ($id:cur) = ($int:(GL.redirectionAlt)); |]
+                             , C.BlockStm  [cstm|  *($ty:(codegenTy TagTyPacked) *) ($id:cur) = GIB_REDIRECTION_TAG; |]
                              , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) redir =  $id:cur + 1; |]
                              , C.BlockStm  [cstm|  *($ty:(codegenTy CursorTy) *) redir = $id:chunk_start; |]
                              , C.BlockStm  [cstm|  $id:cur = $id:chunk_start; |]
                              ]
                    return [ C.BlockStm [cstm| if (($id:cur + $int:i) > $id:bound) { $items:bck }  |] ]
+                        -}
+                       bck = [ C.BlockStm  [cstm|  gib_grow_region(& $id:cur, & $id:bound); |] ]
+                   pure [ C.BlockStm [cstm| if (($id:cur + $int:i) > $id:bound) { $items:bck }  |] ]
 
                  SizeOfPacked -> let [(sizeV,IntTy)] = bnds
                                      [(VarTriv startV), (VarTriv endV)] = rnds
                                  in pure
-                                   [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizeV = $id:endV - $id:startV; |] ]
+                                   [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizeV = ($ty:(codegenTy IntTy)) $id:endV - $id:startV; |] ]
                  SizeOfScalar -> let [(sizeV,IntTy)] = bnds
                                      [(VarTriv w)]   = rnds
                                  in pure
-                                   [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizeV = sizeof($id:w); |] ]
+                                   [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:sizeV = ($ty:(codegenTy IntTy)) sizeof($id:w); |] ]
 
 
                  GetFirstWord ->
@@ -913,13 +1087,13 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                     _ -> error $ "wrong number of return bindings from GetFirstWord: "++show bnds
 
                  SizeParam -> let [(outV,IntTy)] = bnds in pure
-                      [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = global_size_param; |] ]
+                      [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = gib_get_size_param(); |] ]
 
                  PrintInt ->
                      let [arg] = rnds in
                      case bnds of
-                       [(outV,ty)] -> pure [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = printf("%lld", $(codegenTriv venv arg)); |] ]
-                       [] -> pure [ C.BlockStm [cstm| printf("%lld", $(codegenTriv venv arg)); |] ]
+                       [(outV,ty)] -> pure [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = printf("%ld", $(codegenTriv venv arg)); |] ]
+                       [] -> pure [ C.BlockStm [cstm| printf("%ld", $(codegenTriv venv arg)); |] ]
                        _ -> error $ "wrong number of return bindings from PrintInt: "++show bnds
 
                  PrintChar ->
@@ -946,8 +1120,8 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                  PrintSym ->
                      let [arg] = rnds in
                      case bnds of
-                       [(outV,ty)] -> pure [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = print_symbol($(codegenTriv venv arg)); |] ]
-                       [] -> pure [ C.BlockStm [cstm| print_symbol($(codegenTriv venv arg)); |] ]
+                       [(outV,ty)] -> pure [ C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:outV = gib_print_symbol($(codegenTriv venv arg)); |] ]
+                       [] -> pure [ C.BlockStm [cstm| gib_print_symbol($(codegenTriv venv arg)); |] ]
                        _ -> error $ "wrong number of return bindings from PrintSym: "++show bnds
 
                  PrintString str
@@ -974,9 +1148,12 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                             tysize = [cty| typename size_t |]
                         out_hdl <- gensym "out_hdl"
                         wrote <- gensym "wrote"
-                        pure $ [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy)* $id:outreg = alloc_region(global_init_biginf_buf_size); |]
-                               , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:start_outreg = $id:outreg->reg_heap; |]
-                               , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:end_outreg = $id:outreg->reg_heap + global_init_biginf_buf_size; |]
+                        pure $
+                           (if genGC
+                            then [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy) $id:outreg = gib_alloc_region_on_heap(gib_get_biginf_init_chunk_size()); |] ]
+                            else [ C.BlockDecl [cdecl| $ty:(codegenTy RegionTy) $id:outreg = gib_alloc_region_on_heap(gib_get_biginf_init_chunk_size()); |] ]) ++
+                               [ C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:start_outreg = $id:outreg.start; |]
+                               , C.BlockDecl [cdecl| $ty:(codegenTy CursorTy) $id:end_outreg = $id:outreg.end; |]
                                  -- This would ideally be the *end* of the input region corresponding to inV
                                  -- but we have don't have at hand here. Passing in NULL is okay because this pointer
                                  -- is unused in the copy function.
@@ -992,7 +1169,7 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                                , C.BlockDecl [cdecl| $ty:tysize $id:wrote = fwrite($id:copy_start, $id:copy_size, 1, $id:out_hdl); |]
                                , C.BlockStm [cstm| fclose($id:out_hdl); |]
                                , C.BlockStm [cstm| printf("Wrote: %s\n", $string:fp); |]
-                               , C.BlockStm [cstm| free_region($id:end_outreg); |]
+                               , C.BlockStm [cstm| gib_free_region($id:end_outreg); |]
                                , C.BlockStm [cstm| free($id:outreg); |]
                                ]
                     | otherwise -> error $ "WritePackedFile, wrong arguments "++show rnds++", or expected bindings "++show bnds
@@ -1002,7 +1179,7 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                      | [] <- rnds, [(outV,_outT)] <- bnds -> do
                              let filename = case mfile of
                                               Just f  -> [cexp| $string:f |] -- Fixed at compile time.
-                                              Nothing -> [cexp| read_benchfile_param() |] -- Will be set by command line arg.
+                                              Nothing -> [cexp| gib_read_benchfile_param() |] -- Will be set by command line arg.
                                  unpackName = GL.mkUnpackerName tyc
                                  unpackcall = LetCallT False [(outV,PtrTy),(toVar "junk",CursorTy)]
                                                     unpackName [VarTriv (toVar "ptr")] (AssnValsT [] Nothing)
@@ -1029,7 +1206,7 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                  ReadArrayFile mfile ty
                    | [] <- rnds, [(outV,_outT)] <- bnds -> do
                            let parse_in_c t = case t of
-                                                IntTy   -> "%lld"
+                                                IntTy   -> "%ld"
                                                 FloatTy -> "%f"
                                                 CharTy  -> "%c"
                                                 _ -> error $ "ReadArrayFile: Lists of type " ++ sdoc ty ++ " not allowed."
@@ -1051,7 +1228,7 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                                        one <- gensym "tmp"
                                        let assn = C.BlockStm [cstm| $id:elem = $id:one ; |]
                                        pure ([one], [parse_in_c ty], [ assn ], [ C.BlockDecl [cdecl| $ty:(codegenTy FloatTy) $id:one; |] ])
-                                     CharTy -> do 
+                                     CharTy -> do
                                        one <- gensym "tmp"
                                        let assn = C.BlockStm [cstm| $id:elem = $id:one ; |]
                                        pure ([one], [parse_in_c ty], [ assn ], [ C.BlockDecl [cdecl| $ty:(codegenTy CharTy) $id:one; |] ])
@@ -1075,11 +1252,11 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                            let (filename, filelength) = case mfile of
                                             Just (f, i)  -> ( [cexp| $string:f |]
                                                             , [cexp| $int:i |]) -- Fixed at compile time.
-                                            Nothing -> ( [cexp| read_arrayfile_param() |]
-                                                       , [cexp| read_arrayfile_length_param() |]) -- Will be set by command line arg.
+                                            Nothing -> ( [cexp| gib_read_arrayfile_param() |]
+                                                       , [cexp| gib_read_arrayfile_length_param() |]) -- Will be set by command line arg.
 
                            return $
-                                  [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy ty)) ($id:outV) = vector_alloc($filelength, sizeof($ty:(codegenTy ty))); |]
+                                  [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy ty)) ($id:outV) = gib_vector_alloc($filelength, sizeof($ty:(codegenTy ty))); |]
                                   , C.BlockDecl [cdecl| $ty:(codegenTy ty) $id:elem; |]
                                   , C.BlockStm  [cstm| FILE *($id:fp); |]
                                   , C.BlockDecl [cdecl| char *($id:line) = NULL; |]
@@ -1093,7 +1270,7 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                                   , C.BlockStm [cstm| while(($id:read = getline(&($id:line), &($id:len), $id:fp)) != -1) {
                                                       int xxxx = $scanf;
                                                       $items:tmps_assns
-                                                      vector_inplace_update($id:outV, $id:line_num, &($id:elem));
+                                                      gib_vector_inplace_update($id:outV, $id:line_num, &($id:elem));
                                                       $id:line_num++;
                                                     } |]
                                   ]
@@ -1112,20 +1289,20 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
 
                  GetCilkWorkerNum -> do
                    let [(outV, IntTy)] = bnds
-                       e = [cexp| __cilkrts_get_worker_number() |]
-                   return $ [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:outV = $exp:e; |] ]
+                   return $ [ C.BlockDecl [cdecl| int $id:outV = __cilkrts_get_worker_number(); |] ]
 
                  IsBig -> do
                    let [(outV, BoolTy)] = bnds
-                       [i,arg] = rnds
-                       e = [cexp| is_big($(codegenTriv venv i), $(codegenTriv venv arg)) |]
+                       -- [i,arg] = rnds
+                       -- e = [cexp| gib_is_big($(codegenTriv venv i), $(codegenTriv venv arg)) |]
+                       e = [cexp| false |]
                    return $ [ C.BlockDecl [cdecl| $ty:(codegenTy BoolTy) $id:outV = $exp:e; |] ]
 
                  Gensym  -> do
                    let [(outV,SymTy)] = bnds
-                   return [ C.BlockDecl [cdecl| $ty:(codegenTy SymTy) $id:outV = gensym(); |] ]
+                   return [ C.BlockDecl [cdecl| $ty:(codegenTy SymTy) $id:outV = gib_gensym(); |] ]
 
-                 FreeSymTable -> return [C.BlockStm [cstm| free_symtable(); |]]
+                 FreeSymTable -> return [C.BlockStm [cstm| gib_free_symtable(); |]]
 
                  VAllocP elty -> do
                    let ty1 = codegenTy (VectorTy elty)
@@ -1134,12 +1311,12 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                        i' = codegenTriv venv i
                    tmp <- gensym "tmp"
                    return [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:tmp = sizeof( $ty:(codegenTy elty)); |]
-                          , C.BlockDecl [cdecl| $ty:ty1 $id:outV = vector_alloc($exp:i', $id:tmp); |]
+                          , C.BlockDecl [cdecl| $ty:ty1 $id:outV = gib_vector_alloc($exp:i', $id:tmp); |]
                           ]
 
                  VFreeP _elty -> do
                    let [vec] = rnds
-                   return [ C.BlockStm [cstm| vector_free($(codegenTriv venv vec)); |] ]
+                   return [ C.BlockStm [cstm| gib_vector_free($(codegenTriv venv vec)); |] ]
 
                  VFree2P _elty -> do
                    let [vec] = rnds
@@ -1152,14 +1329,14 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                        i' = codegenTriv venv i
                    tmp <- gensym "tmp"
                    return [ C.BlockDecl [cdecl| $ty:ty1 *($id:tmp); |]
-                          , C.BlockStm  [cstm| $id:tmp = ($ty:ty1 *) vector_nth($id:ls,$exp:i'); |]
+                          , C.BlockStm  [cstm| $id:tmp = ($ty:ty1 *) gib_vector_nth($id:ls,$exp:i'); |]
                           , C.BlockDecl [cdecl| $ty:ty1 $id:outV = *($id:tmp); |]
                           ]
 
                  VLengthP{} -> do
                    let [(v,IntTy)] = bnds
                        [VarTriv ls] = rnds
-                   return [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:v = vector_length($id:ls); |] ]
+                   return [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:v = gib_vector_length($id:ls); |] ]
 
                  InplaceVUpdateP elty -> do
                    let [(outV,_)] = bnds
@@ -1168,50 +1345,50 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                        xexp = [cexp| $exp:(codegenTriv venv x) |]
                    case x of
                      VarTriv{} ->
-                        return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = vector_inplace_update($id:old_ls, $exp:i', &$exp:xexp); |] ]
+                        return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = gib_vector_inplace_update($id:old_ls, $exp:i', &$exp:xexp); |] ]
                      ProdTriv{} ->
-                        return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = vector_inplace_update($id:old_ls, $exp:i', &$exp:xexp); |] ]
+                        return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = gib_vector_inplace_update($id:old_ls, $exp:i', &$exp:xexp); |] ]
                      IntTriv{} -> do
                         tmp <- gensym "tmp"
                         return [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:tmp = $exp:xexp; |]
-                               , C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = vector_inplace_update($id:old_ls, $exp:i', &$id:tmp); |] ]
+                               , C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = gib_vector_inplace_update($id:old_ls, $exp:i', &$id:tmp); |] ]
                      CharTriv{} -> do
                         tmp <- gensym "tmp"
                         return [ C.BlockDecl [cdecl| $ty:(codegenTy CharTy) $id:tmp = $exp:xexp; |]
-                               , C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = vector_inplace_update($id:old_ls, $exp:i', &$id:tmp); |] ]
+                               , C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = gib_vector_inplace_update($id:old_ls, $exp:i', &$id:tmp); |] ]
                      FloatTriv{} -> do
                         tmp <- gensym "tmp"
                         return [ C.BlockDecl [cdecl| $ty:(codegenTy FloatTy) $id:tmp = $exp:xexp; |]
-                               , C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = vector_inplace_update($id:old_ls, $exp:i', &$id:tmp); |] ]
+                               , C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = gib_vector_inplace_update($id:old_ls, $exp:i', &$id:tmp); |] ]
                      _ -> error $ "codegen: InplaceVUpdateP: " ++ sdoc x
 
                  VConcatP elty -> do
                    let [(outV,_)] = bnds
                        [ls] = rnds
-                   return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = vector_concat($exp:(codegenTriv venv ls)); |]
+                   return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = gib_vector_concat($exp:(codegenTriv venv ls)); |]
                           ]
 
                  VSortP elty -> do
                    let [(outV,_)] = bnds
                        [VarTriv old_ls, VarTriv sort_fn] = rnds
-                   return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = vector_sort($id:old_ls, $id:sort_fn); |] ]
+                   return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = gib_vector_sort($id:old_ls, $id:sort_fn); |] ]
 
                  InplaceVSortP elty -> do
                    let [(outV,_)] = bnds
                        [VarTriv old_ls, VarTriv sort_fn] = rnds
-                   return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = vector_inplace_sort($id:old_ls, $id:sort_fn); |] ]
+                   return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = gib_vector_inplace_sort($id:old_ls, $id:sort_fn); |] ]
 
                  VSliceP elty -> do
                    let [(outV,_)] = bnds
                        [from, to, VarTriv old_ls] = rnds
                        from' = codegenTriv venv from
                        to' = codegenTriv venv to
-                   return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = vector_slice($exp:from', $exp:to', $id:old_ls); |] ]
+                   return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = gib_vector_slice($exp:from', $exp:to', $id:old_ls); |] ]
 
                  VMergeP elty -> do
                    let [(outV,_)] = bnds
                        [VarTriv ls1, VarTriv ls2] = rnds
-                   return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = vector_merge($id:ls1, $id:ls2); |] ]
+                   return [ C.BlockDecl [cdecl| $ty:(codegenTy (VectorTy elty)) $id:outV = gib_vector_merge($id:ls1, $id:ls2); |] ]
 
                  PDictAllocP _k _v -> return $
                                   [ C.BlockStm [cstm| printf("PDictAllocP todo\n"); |]
@@ -1246,14 +1423,14 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                  LLAllocP elty -> do
                    let ty1 = codegenTy (ListTy elty)
                        [(outV,_)] = bnds
-                   return [ C.BlockDecl [cdecl| $ty:ty1 $id:outV = list_alloc(sizeof( $ty:(codegenTy elty))); |] ]
+                   return [ C.BlockDecl [cdecl| $ty:ty1 $id:outV = gib_list_alloc(sizeof( $ty:(codegenTy elty))); |] ]
 
                  LLIsEmptyP _elty -> do
                    let [(outV,outTy)] = bnds
                        [ls] = rnds
                        ls' = codegenTriv venv ls
                        outTy' = codegenTy outTy
-                   return [ C.BlockDecl [cdecl| $ty:outTy' $id:outV = list_is_empty($exp:ls'); |] ]
+                   return [ C.BlockDecl [cdecl| $ty:outTy' $id:outV = gib_list_is_empty($exp:ls'); |] ]
 
                  LLConsP elty -> do
                    let [(outV,_)] = bnds
@@ -1261,21 +1438,21 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                        xexp = [cexp| $exp:(codegenTriv venv x) |]
                    case x of
                      VarTriv{} ->
-                        return [ C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = list_cons(&$exp:xexp, $id:old_ls); |] ]
+                        return [ C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = gib_list_cons(&$exp:xexp, $id:old_ls); |] ]
                      ProdTriv{} ->
-                        return [ C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = list_cons(&$exp:xexp, $id:old_ls); |] ]
+                        return [ C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = gib_list_cons(&$exp:xexp, $id:old_ls); |] ]
                      IntTriv{} -> do
                         tmp <- gensym "tmp"
                         return [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:tmp = $exp:xexp; |]
-                               , C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = list_cons(&$id:tmp, $id:old_ls); |] ]
+                               , C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = gib_list_cons(&$id:tmp, $id:old_ls); |] ]
                      FloatTriv{} -> do
                         tmp <- gensym "tmp"
                         return [ C.BlockDecl [cdecl| $ty:(codegenTy FloatTy) $id:tmp = $exp:xexp; |]
-                               , C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = list_cons(&$id:tmp, $id:old_ls); |] ]
+                               , C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = gib_list_cons(&$id:tmp, $id:old_ls); |] ]
                      SymTriv{} -> do
                         tmp <- gensym "tmp"
                         return [ C.BlockDecl [cdecl| $ty:(codegenTy IntTy) $id:tmp = $exp:xexp; |]
-                               , C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = list_cons(&$id:tmp, $id:old_ls); |] ]
+                               , C.BlockDecl [cdecl| $ty:(codegenTy (ListTy elty)) $id:outV = gib_list_cons(&$id:tmp, $id:old_ls); |] ]
                      _ -> error $ "codegen: LLConsP: " ++ sdoc x
 
                  LLHeadP _elty -> do
@@ -1285,7 +1462,7 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                        outTy' = codegenTy outTy
                    tmp <- gensym "tmp"
                    return [ C.BlockDecl [cdecl| $ty:outTy' *($id:tmp); |]
-                          , C.BlockStm  [cstm| $id:tmp = ($ty:outTy' *) list_head($exp:ls'); |]
+                          , C.BlockStm  [cstm| $id:tmp = ($ty:outTy' *) gib_list_head($exp:ls'); |]
                           , C.BlockDecl [cdecl| $ty:outTy' $id:outV = *($id:tmp); |] ]
 
                  LLTailP _elty -> do
@@ -1293,12 +1470,12 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                       [ls] = rnds
                       ls' = codegenTriv venv ls
                       outTy' = codegenTy outTy
-                  return [ C.BlockDecl [cdecl| $ty:outTy' $id:outV = list_tail($exp:ls'); |] ]
+                  return [ C.BlockDecl [cdecl| $ty:outTy' $id:outV = gib_list_tail($exp:ls'); |] ]
 
                  LLFreeP _elty -> do
                   let [ls] = rnds
                       ls' = codegenTriv venv ls
-                  return [ C.BlockStm [cstm| list_free($exp:ls'); |] ]
+                  return [ C.BlockStm [cstm| gib_list_free($exp:ls'); |] ]
 
                  LLFree2P _elty -> do
                   let [ls] = rnds
@@ -1310,14 +1487,41 @@ codegenTail venv fenv sort_fns (LetPrimCallT bnds prm rnds body) ty sync_deps =
                       [ls] = rnds
                       ls' = codegenTriv venv ls
                       outTy' = codegenTy outTy
-                  return [ C.BlockDecl [cdecl| $ty:outTy' $id:outV = list_copy($exp:ls'); |] ]
+                  return [ C.BlockDecl [cdecl| $ty:outTy' $id:outV = gib_list_copy($exp:ls'); |] ]
 
 
                  GetNumProcessors -> do
                    let [(outV,outTy)] = bnds
-                   return [ C.BlockDecl [cdecl| $ty:(codegenTy outTy) $id:outV = get_num_processors(); |] ]
+                   return [ C.BlockDecl [cdecl| $ty:(codegenTy outTy) $id:outV = gib_get_num_processors(); |] ]
 
-                 PrintRegionCount -> return [ C.BlockStm [cstm| print_global_region_count(); |] ]
+                 PrintRegionCount -> return [ C.BlockStm [cstm| gib_print_global_region_count(); |] ]
+
+                 SSPush stk tycon -> do
+                   let tycon_t = (C.Id (tycon ++ "_T") noLoc)
+                       [VarTriv loc, VarTriv endloc] = rnds
+                   case stk of
+                     Write ->
+                       return [ C.BlockStm [cstm| gib_shadowstack_push($id:writeShadowstack, $id:loc, $id:endloc, Stk, $id:tycon_t); |] ]
+                     Read ->
+                       return [ C.BlockStm [cstm| gib_shadowstack_push($id:readShadowstack, $id:loc, $id:endloc, Stk, $id:tycon_t); |] ]
+
+                 SSPop stk -> do
+                   let [VarTriv loc, VarTriv endloc] = rnds
+                   return $
+                     (case stk of
+                        Write -> [ C.BlockStm [cstm| $id:shadowstackFrame = gib_shadowstack_pop($id:writeShadowstack); |] ]
+                        Read -> [ C.BlockStm [cstm| $id:shadowstackFrame = gib_shadowstack_pop($id:readShadowstack); |] ]) ++
+                     [ C.BlockStm [cstm| $id:loc = $id:shadowstackFrame->ptr; |]
+                     , C.BlockStm [cstm| $id:endloc = $id:shadowstackFrame->endptr; |]]
+
+                 Assert -> do
+                   let [VarTriv _chk] = rnds
+                       ifdef = "#ifdef _GIBBON_DEBUG"
+                       endif = "#endif"
+                   return [ C.BlockStm [cstm| $escstm:ifdef |]
+                          -- , C.BlockStm [cstm| assert($id:chk); |]
+                          , C.BlockStm [cstm| $escstm:endif |]
+                          ]
 
                  BumpArenaRefCount{} -> error "codegen: BumpArenaRefCount not handled."
                  ReadInt{} -> error "codegen: ReadInt not handled."
@@ -1332,9 +1536,8 @@ codegenTail _ _ _ (Goto lbl) _ty _ = do
 codegenMultiplicity :: Multiplicity -> C.Exp
 codegenMultiplicity mul =
   case mul of
-    BigInfinite -> C.Var (C.toIdent (toVar "global_init_biginf_buf_size") noLoc) noLoc
-    Infinite    -> C.Var (C.toIdent (toVar "global_init_inf_buf_size") noLoc) noLoc
-    -- reserve 32 bytes at the end.
+    BigInfinite -> [cexp| gib_get_biginf_init_chunk_size() |]
+    Infinite    -> [cexp| gib_get_inf_init_chunk_size() |]
     Bounded i   ->
       let rounded = i+18
       in [cexp| $int:rounded |]
@@ -1359,10 +1562,9 @@ altTail oth = error $ "altTail expected a 'singleton' Alts, got: "++ abbrv 80 ot
 -- Helper for lhs of a case
 mk_tag_lhs :: (Integral a, Show a) => a -> C.Exp
 mk_tag_lhs lhs
-    | GL.indirectionAlt == lhs = C.Var (C.Id "INDIRECTION_TAG" noLoc) noLoc
-    | GL.redirectionAlt == lhs = C.Var (C.Id "REDIRECTION_TAG" noLoc) noLoc
+    | GL.indirectionAlt == lhs = C.Var (C.Id "GIB_INDIRECTION_TAG" noLoc) noLoc
+    | GL.redirectionAlt == lhs = C.Var (C.Id "GIB_REDIRECTION_TAG" noLoc) noLoc
     | otherwise = C.Const (C.IntConst (show lhs) C.Unsigned (fromIntegral lhs) noLoc) noLoc
-
 
 mk_int_lhs :: (Integral a, Show a) => a -> C.Exp
 mk_int_lhs lhs = C.Const (C.IntConst (show lhs) C.Signed   (fromIntegral lhs) noLoc) noLoc
@@ -1393,53 +1595,53 @@ genSwitch venv fenv sort_fns lbl tr alts lastE ty sync_deps =
 -- | The identifier after typename refers to typedefs defined in rts.c
 --
 codegenTy :: Ty -> C.Type
-codegenTy IntTy = [cty|typename IntTy|]
-codegenTy CharTy = [cty|typename CharTy|]
-codegenTy FloatTy= [cty|typename FloatTy|]
-codegenTy BoolTy = [cty|typename BoolTy|]
-codegenTy TagTyPacked = [cty|typename TagTyPacked|]
-codegenTy TagTyBoxed  = [cty|typename TagTyBoxed|]
-codegenTy SymTy = [cty|typename SymTy|]
-codegenTy PtrTy = [cty|typename PtrTy|] -- char* - Hack, this could be void* if we have enough casts. [2016.11.06]
-codegenTy CursorTy = [cty|typename CursorTy|]
-codegenTy RegionTy = [cty|typename RegionTy|]
-codegenTy ChunkTy = [cty|typename ChunkTy|]
+codegenTy IntTy = [cty|typename GibInt|]
+codegenTy CharTy = [cty|typename GibChar|]
+codegenTy FloatTy= [cty|typename GibFloat|]
+codegenTy BoolTy = [cty|typename GibBool|]
+codegenTy TagTyPacked = [cty|typename GibPackedTag|]
+codegenTy TagTyBoxed  = [cty|typename GibBoxedTag|]
+codegenTy SymTy = [cty|typename GibSym|]
+codegenTy PtrTy = [cty|typename GibPtr|] -- char* - Hack, this could be void* if we have enough casts. [2016.11.06]
+codegenTy CursorTy = [cty|typename GibCursor|]
+codegenTy RegionTy = [cty|typename GibChunk|]
+codegenTy ChunkTy = [cty|typename GibChunk|]
 codegenTy (ProdTy []) = [cty|unsigned char|]
 codegenTy (ProdTy ts) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id nam noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
     where nam = makeName ts
-codegenTy (SymDictTy _ _t) = C.Type (C.DeclSpec [] [] (C.Tnamed (C.Id "dict_item_t*" noLoc) [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
-codegenTy SymSetTy = [cty|typename SymSetTy|]
-codegenTy SymHashTy = [cty|typename SymHashTy|]
-codegenTy IntHashTy = [cty|typename IntHashTy|]
-codegenTy ArenaTy = [cty|typename ArenaTy|]
-codegenTy VectorTy{} = [cty|typename VectorTy* |]
-codegenTy ListTy{} = [cty|typename ListTy* |]
-codegenTy PDictTy{} = [cty|typename PDictTy* |]
+codegenTy (SymDictTy _ _t) = [cty|typename GibSymDict|]
+codegenTy SymSetTy = [cty|typename GibSymSet*|]
+codegenTy SymHashTy = [cty|typename GibSymHash*|]
+codegenTy IntHashTy = [cty|typename GibIntHash*|]
+codegenTy ArenaTy = [cty|typename GibArena*|]
+codegenTy VectorTy{} = [cty|typename GibVector* |]
+codegenTy ListTy{} = [cty|typename GibList* |]
+codegenTy PDictTy{} = [cty|typename GibPDict* |]
 
 makeName :: [Ty] -> String
 makeName tys = concatMap makeName' tys ++ "Prod"
 
 makeName' :: Ty -> String
-makeName' IntTy       = "Int64"
-makeName' CharTy      = "Char"
-makeName' FloatTy     = "Float32"
-makeName' SymTy       = "Sym"
-makeName' BoolTy      = "Bool"
-makeName' CursorTy    = "Cursor"
-makeName' TagTyPacked = "Tag"
-makeName' TagTyBoxed  = makeName' IntTy
-makeName' PtrTy = "Ptr"
-makeName' (SymDictTy _ _ty) = "Dict"
-makeName' RegionTy = "Region"
-makeName' ChunkTy  = "Chunk"
-makeName' ArenaTy  = "Arena"
-makeName' VectorTy{} = "Vector"
-makeName' ListTy{} = "List"
+makeName' IntTy       = "GibInt"
+makeName' CharTy      = "GibChar"
+makeName' FloatTy     = "GibFloat"
+makeName' SymTy       = "GibSym"
+makeName' BoolTy      = "GibBool"
+makeName' CursorTy    = "GibCursor"
+makeName' TagTyPacked = "GibPackedTag"
+makeName' TagTyBoxed  = "GibBoxedTag"
+makeName' PtrTy       = "GibPtr"
+makeName' (SymDictTy _ _ty) = "GibSymDict"
+makeName' RegionTy = "GibChunk"
+makeName' ChunkTy  = "GibChunk"
+makeName' ArenaTy  = "GibArena"
+makeName' VectorTy{} = "GibVector"
+makeName' ListTy{} = "GibList"
 makeName' PDictTy{} = "PDict"
 makeName' (ProdTy tys) = "Prod" ++ concatMap makeName' tys
-makeName' SymSetTy = "SymSetTy"
-makeName' SymHashTy = "SymHashTy"
-makeName' IntHashTy = "IntHashTy"
+makeName' SymSetTy = "GibSymSet"
+makeName' SymHashTy = "GibSymHash"
+makeName' IntHashTy = "GibIntHash"
 
 
 makeIcdName :: Ty -> (String, String)

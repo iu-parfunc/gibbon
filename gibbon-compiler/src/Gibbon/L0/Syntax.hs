@@ -57,17 +57,16 @@ data E0Ext loc dec =
 -- | Linear types primitives.
 data LinearExt loc dec =
     -- (&) :: a %1 -> (a %1 -> b) %1 -> b
-    ReverseAppE (PreExp E0Ext loc dec) (PreExp E0Ext loc dec)
+  ReverseAppE (PreExp E0Ext loc dec) (PreExp E0Ext loc dec)
 
-    -- lseq :: a %1-> b %1-> b
+-- lseq :: a %1-> b %1-> b
   | LseqE (PreExp E0Ext loc dec) (PreExp E0Ext loc dec)
 
-    -- unsafeAlias :: a %1-> (a,a)
+-- unsafeAlias :: a %1-> (a,a)
   | AliasE (PreExp E0Ext loc dec)
 
-    -- unsafeToLinear :: (a %p-> b) %1-> (a %1-> b)
+-- unsafeToLinear :: (a %p-> b) %1-> (a %1-> b)
   | ToLinearE (PreExp E0Ext loc dec)
-
   deriving (Show, Ord, Eq, Read, Generic, NFData)
 
 --------------------------------------------------------------------------------
@@ -75,7 +74,6 @@ data LinearExt loc dec =
 
 deriving instance Generic Loc.Loc
 deriving instance Generic Loc.Pos
-deriving instance Ord     Loc.Loc
 deriving instance NFData  Loc.Pos
 deriving instance NFData  Loc.Loc
 
@@ -640,8 +638,8 @@ recoverType ddfs env2 ex =
         PrintBool    -> ProdTy []
         PrintSym     -> ProdTy []
         ReadInt      -> IntTy
-        RequestEndOf -> error "primRetTy1: RequestEndOf not handled yet"
         RequestSizeOf-> error "primRetTy1: RequestSizeOf not handled yet"
+        RequestEndOf -> error "primRetTy1: RequestEndOf not handled yet"
         SymSetEmpty  -> error "primRetTy1: SymSetEmpty not handled yet"
         SymSetContains-> error "primRetTy1: SymSetContains not handled yet"
         SymSetInsert -> error "primRetTy1: SymSetInsert not handled yet"

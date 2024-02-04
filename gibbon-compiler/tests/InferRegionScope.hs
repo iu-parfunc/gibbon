@@ -22,18 +22,18 @@ import qualified Gibbon.L1.Syntax as L1
 case_t1 :: Assertion
 case_t1 = expected @=? actual
   where
-    actual = fst $ defaultPackedRunPassM $ inferRegScopeExp test1
+    actual = fst $ defaultPackedRunPassM $ inferRegScopeExp M.empty test1
 
     test1 :: L2.Exp2
     test1 = Ext $ LetRegionE (VarR "r1") Undefined Nothing $
-            Ext $ LetLocE "l1" (StartOfLE (VarR "r1")) $
+            Ext $ LetLocE "l1" (StartOfRegionLE (VarR "r1")) $
             LetE ("x1",[],PackedTy "A" "l1",
                      DataConE "l1" "A" [LitE 1]) $
             VarE "x1"
 
     expected :: L2.Exp2
     expected = Ext $ LetRegionE (GlobR "r1" Infinite) Undefined Nothing $
-               Ext $ LetLocE "l1" (StartOfLE (VarR "r1")) $
+               Ext $ LetLocE "l1" (StartOfRegionLE (GlobR "r1" Infinite)) $
                LetE ("x1",[],PackedTy "A" "l1",
                         DataConE "l1" "A" [LitE 1]) $
                VarE "x1"
@@ -44,18 +44,18 @@ case_t1 = expected @=? actual
 case_t2 :: Assertion
 case_t2 = expected @=? actual
   where
-    actual = fst $ defaultPackedRunPassM $ inferRegScopeExp test1
+    actual = fst $ defaultPackedRunPassM $ inferRegScopeExp M.empty test1
 
     test1 :: L2.Exp2
     test1 = Ext $ LetRegionE (VarR "r1") Undefined Nothing $
-            Ext $ LetLocE "l1" (StartOfLE (VarR "r1")) $
+            Ext $ LetLocE "l1" (StartOfRegionLE (VarR "r1")) $
             LetE ("x1",[],PackedTy "A" "l1",
                      DataConE "l1" "A" [LitE 1]) $
             LitE 1
 
     expected :: L2.Exp2
     expected = Ext $ LetRegionE (GlobR "r1" Infinite) Undefined Nothing $
-               Ext $ LetLocE "l1" (StartOfLE (VarR "r1")) $
+               Ext $ LetLocE "l1" (StartOfRegionLE (GlobR "r1" Infinite)) $
                LetE ("x1",[],PackedTy "A" "l1",
                         DataConE "l1" "A" [LitE 1]) $
                LitE 1

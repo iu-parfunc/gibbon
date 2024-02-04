@@ -147,6 +147,8 @@ bindReturns ex =
         LetLocE loc locexp bod -> do
           bod' <- bindReturns bod
           pure $ Ext $ LetLocE loc locexp bod'
+        L2.StartOfPkdCursor{}-> pure ex
+        L2.TagCursor{}-> pure ex
         RetE{} -> pure ex
         L2.AddFixed{} -> pure ex
         FromEndE{} -> pure ex
@@ -156,6 +158,10 @@ bindReturns ex =
         LetAvail a bod  -> do
           bod' <- bindReturns bod
           pure $ Ext $ LetAvail a bod'
+        AllocateTagHere{} -> pure ex
+        AllocateScalarsHere{} -> pure ex
+        SSPush{} -> pure ex
+        SSPop{} -> pure ex
     MapE{}  -> error $ "bindReturns: TODO MapE"
     FoldE{} -> error $ "bindReturns: TODO FoldE"
 
@@ -482,12 +488,14 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
                   e' <- go e
                   return $ Ext (LetLocE v locexp e')
             case locexp of
-              StartOfLE{} -> only_recur bod
+              StartOfRegionLE{} -> only_recur bod
               AfterConstantLE{} -> only_recur bod
               AfterVariableLE{} -> only_recur bod
               InRegionLE{} -> only_recur bod
               FreeLE{} -> only_recur bod
               _ -> error $ "RouteEnds: todo" ++ sdoc e
+
+          Ext (L2.StartOfPkdCursor{})-> pure e
 
           Ext (IndirectionE{}) -> return e
 
@@ -505,7 +513,7 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
                mkRet _ e = error $ "Expected variable reference in tail call, got "
                            ++ (show e)
 
-               funtype :: Var -> ArrowTy2
+               funtype :: Var -> ArrowTy2 Ty2
                funtype v = case M.lookup v fns of
                              Nothing -> error $ "Function " ++ (show v) ++ " not found"
                              Just fundef -> funTy fundef

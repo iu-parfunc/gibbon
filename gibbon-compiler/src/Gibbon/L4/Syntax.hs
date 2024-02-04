@@ -9,6 +9,7 @@
 module Gibbon.L4.Syntax
     ( Var, Tag, Tail(..), Triv(..), Ty(..), Prim(..), FunDecl(..)
     , Alts(..), Prog(..), MainExp(..), Label, SymTable
+    , InfoTable, TyConInfo, DataConInfo(..)
     , L3.Scalar(..), mkScalar, scalarToTy
 
     -- * Utility functions
@@ -36,7 +37,8 @@ import qualified Gibbon.L3.Syntax as L3
 -- * AST definition
 
 data Prog = Prog
-  { symbolTable :: SymTable
+  { infoTable :: InfoTable
+  , symbolTable :: SymTable
   , fundefs     :: [FunDecl]
   , mainExp     :: Maybe MainExp
   } deriving (Show, Ord, Eq, Generic, NFData, Out)
@@ -100,8 +102,24 @@ type Label = Var
 
 type SymTable = M.Map Word16 String
 
+type InfoTable = (M.Map L.TyCon TyConInfo)
+type TyConInfo = M.Map L.DataCon DataConInfo
+
+data DataConInfo = DataConInfo
+  { dcon_tag :: Tag
+  , scalar_bytes :: Int
+  , num_shortcut :: Int
+  , num_scalars :: Int
+  , num_packed :: Int
+  , field_tys :: [L3.Ty3]
+  }
+  deriving (Show, Ord, Eq, Generic, NFData, Out)
+
 data Tail
     = RetValsT [Triv] -- ^ Only in tail position, for returning from a function.
+
+    | EndOfMain -- ^ A marker for an end of the main expression.
+
     | AssnValsT { upd       :: [(Var,Ty,Triv)]
                 , bod_maybe :: Maybe Tail
                 }
@@ -275,8 +293,7 @@ data Prim
     | ScopedParBuffer L2.Multiplicity
     -- ^ Like ScopedBuffer, but for parallel allocations.
 
-    | InitSizeOfBuffer L2.Multiplicity
-    -- ^ Returns the initial buffer size for a specific multiplicity
+    | EndOfBuffer L2.Multiplicity
 
     | MMapFileSize Var
 
@@ -286,8 +303,16 @@ data Prim
     | WriteTag
     -- ^ Write a static tag value, takes a cursor to target.
 
+    | TagCursor
+    -- ^ Create a tagged a cursor
+
+    | ReadTaggedCursor
+
+    | WriteTaggedCursor
+
     | ReadCursor
     -- ^ Read and return a cursor
+
     | WriteCursor
 
     | ReadScalar L3.Scalar
@@ -301,7 +326,7 @@ data Prim
 
     | BoundsCheck
 
-    | BumpRefCount
+    | IndirectionBarrier TyCon
 
     | BumpArenaRefCount
 
@@ -334,6 +359,10 @@ data Prim
     | Gensym
 
     | FreeSymTable
+
+    | SSPush SSModality TyCon
+    | SSPop SSModality
+    | Assert
 
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
@@ -371,6 +400,7 @@ withTail (tl0,retty) fn =
   let go x = withTail (x,retty) fn in -- Warning: assumes same type.
   case tl0 of
     Goto{} -> return tl0
+    EndOfMain{} -> return tl0
     RetValsT ls -> return $ fn ls
     (ErrT x)    -> return $ ErrT x
     (AssnValsT _ _) -> error $ "withTail: expected tail expression returning values, not: "++show tl0
@@ -418,8 +448,8 @@ fromL3Ty ty =
 
 
 inlineTrivL4 :: Prog -> Prog
-inlineTrivL4 (Prog sym_tbl fundefs mb_main) =
-  Prog sym_tbl (map inline_fun fundefs) (inline_main <$> mb_main)
+inlineTrivL4 (Prog info_tbl sym_tbl fundefs mb_main) =
+  Prog info_tbl sym_tbl (map inline_fun fundefs) (inline_main <$> mb_main)
 
   where
     inline_fun fn@FunDecl{funBody} = fn { funBody = inline_tail M.empty funBody }
@@ -429,6 +459,7 @@ inlineTrivL4 (Prog sym_tbl fundefs mb_main) =
     inline_tail :: M.Map Var Triv -> Tail -> Tail
     inline_tail env tl =
       case tl of
+        EndOfMain                -> tl
         RetValsT trvs            -> RetValsT (map (inline env) trvs)
         AssnValsT assns mb_bod   -> AssnValsT
                                       (map (\(v,ty,trv) -> (v,ty,inline env trv)) assns)

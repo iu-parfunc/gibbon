@@ -1,0 +1,9 @@
+[workspace]
+members = [
+  "rts-ng",
+  "rts-sys"
+]
+
+[profile.release]
+lto = true
+debug = true

@@ -64,13 +64,13 @@ parAlloc Prog{ddefs,fundefs,mainExp} = do
   pure $ Prog ddefs fundefs' mainExp'
   where
     parAllocFn :: FunDef2 -> PassM FunDef2
-    parAllocFn f@FunDef{funArgs,funTy,funBody} =
-      if hasParallelism funTy
-      then do
+    parAllocFn f@FunDef{funArgs,funTy,funBody} = do
+      -- if hasParallelism funTy
+      -- then do
         region_on_spawn <- gopt Opt_RegionOnSpawn <$> getDynFlags
         dflags <- getDynFlags
         let ret_ty = arrOut funTy
-        when (hasPacked ret_ty && gopt Opt_Gibbon1 dflags) $
+        when (hasParallelism funTy && hasPacked ret_ty && gopt Opt_Gibbon1 dflags) $
           error "gibbon: Cannot compile parallel allocations in Gibbon1 mode."
 
         let initRegEnv = M.fromList $ map (\(LRM lc r _) -> (lc, regionToVar r)) (locVars funTy)
@@ -79,7 +79,7 @@ parAlloc Prog{ddefs,fundefs,mainExp} = do
             boundlocs = S.fromList (funArgs ++ allLocVars funTy ++ allRegVars funTy)
         bod' <- parAllocExp ddefs fundefs env2 initRegEnv M.empty Nothing [] S.empty boundlocs region_on_spawn funBody
         pure $ f {funBody = bod'}
-      else pure f
+      -- else pure f
 
 parAllocExp :: DDefs2 -> FunDefs2 -> Env2 Ty2 -> RegEnv -> AfterEnv -> Maybe Var
             -> [PendingBind] -> S.Set Var -> S.Set LocVar -> Bool -> Exp2
@@ -165,10 +165,6 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
           vars = gFreeVars (substLocInExp after_env rhs) `S.difference` (M.keysSet fundefs)
           used = (allFreeVars (substLocInExp after_env rhs)) `S.difference` (M.keysSet fundefs)
 
-      if v == "cpy_18070" || v == "stm_2381_5619_7454"
-      then dbgTraceIt (sdoc (v, vars, spawned, used, boundlocs)) (pure ())
-      else pure ()
-
       -- Swallow this binding, and add v to 'spawned'
       if not (S.disjoint vars spawned)
       then do
@@ -185,7 +181,7 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
       -- Emit this binding as usual
       else if S.disjoint vars spawned && S.isSubsetOf used boundlocs
       then do
-        let boundlocs' = S.insert v boundlocs
+        let boundlocs' = S.insert v boundlocs `S.union` (S.fromList locs)
         LetE <$> (v,locs,ty',) <$> go rhs
              <*> parAllocExp ddefs fundefs env2' reg_env' after_env mb_parent_id pending_binds' spawned boundlocs' region_on_spawn bod
       else error "parAlloc: LetE"
@@ -217,6 +213,10 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
                                     parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spawned (S.insert (regionToVar r) boundlocs) region_on_spawn bod
         LetParRegionE r sz ty bod    -> Ext <$> (LetParRegionE r sz ty) <$>
                                     parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spawned (S.insert (regionToVar r) boundlocs) region_on_spawn bod
+
+        StartOfPkdCursor cur -> pure $ Ext $ StartOfPkdCursor cur
+        TagCursor a b -> pure $ Ext $ TagCursor a b
+
         LetLocE loc locexp bod -> do
           case locexp of
             -- Binding is swallowed, and it's continuation allocates in a fresh region.
@@ -245,9 +245,9 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
                        IfE (VarE not_stolen)
                            (Ext $ LetAvail [v] $
                             Ext $ LetLocE loc (AfterVariableLE v loc2 False) bod2) -- don't allocate in a fresh region
-                           (Ext $ LetParRegionE newreg Undefined Nothing $ Ext $ LetLocE newloc (StartOfLE newreg) bod1)
+                           (Ext $ LetParRegionE newreg Undefined Nothing $ Ext $ LetLocE newloc (StartOfRegionLE newreg) bod1)
               else
-                pure $ Ext $ LetParRegionE newreg Undefined Nothing $ Ext $ LetLocE newloc (StartOfLE newreg) bod1
+                pure $ Ext $ LetParRegionE newreg Undefined Nothing $ Ext $ LetLocE newloc (StartOfRegionLE newreg) bod1
 
             -- Binding is swallowed, but no fresh region is created. This can brought back safely after a sync.
             AfterVariableLE v loc2 True | not (S.member loc2 boundlocs) || not (S.member v boundlocs) -> do
@@ -256,14 +256,25 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
                   reg_env' = M.insert loc reg reg_env
               parAllocExp ddefs fundefs env2 reg_env' after_env mb_parent_id pending_binds' spawned boundlocs region_on_spawn bod
 
+            AfterVariableLE v loc2 True | S.member loc2 boundlocs && S.member v boundlocs -> do
+              let reg = reg_env # loc2
+                  reg_env'  = M.insert loc reg reg_env
+                  boundlocs'= S.insert loc boundlocs
+              bod' <- parAllocExp ddefs fundefs env2 reg_env' after_env mb_parent_id pending_binds spawned boundlocs' region_on_spawn bod
+              pure $ Ext $ LetLocE loc (AfterVariableLE v loc2 False) bod'
+
+            FreeLE -> do
+              let boundlocs'= S.insert loc boundlocs
+              bod' <- parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spawned boundlocs' region_on_spawn bod
+              pure $ Ext $ LetLocE loc locexp bod'
+
             _ -> do
               let reg = case locexp of
-                          StartOfLE r  -> regionToVar r
+                          StartOfRegionLE r  -> regionToVar r
                           InRegionLE r -> regionToVar r
                           AfterConstantLE _ lc   -> reg_env # lc
                           AfterVariableLE _ lc _ -> reg_env # lc
                           FromEndLE lc           -> reg_env # lc
-                          FreeLE                 -> undefined
                   reg_env'  = M.insert loc reg reg_env
                   boundlocs'= S.insert loc boundlocs
               bod' <- parAllocExp ddefs fundefs env2 reg_env' after_env mb_parent_id pending_binds spawned boundlocs' region_on_spawn bod
@@ -275,6 +286,10 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
         AddFixed{}     -> pure ex
         GetCilkWorkerNum->pure ex
         LetAvail vs bod -> Ext <$> LetAvail vs <$> go bod
+        AllocateTagHere{} -> pure ex
+        AllocateScalarsHere{} -> pure ex
+        SSPush{} -> pure ex
+        SSPop{} -> pure ex
     MapE{}  -> error $ "parAllocExp: TODO MapE"
     FoldE{} -> error $ "parAllocExp: TODO FoldE"
   where
@@ -317,6 +332,8 @@ substLocInExp mp ex1 =
         LetRegionE r sz ty rhs  -> Ext $ LetRegionE r sz ty (go rhs)
         LetParRegionE r sz ty rhs -> Ext $ LetParRegionE r sz ty (go rhs)
         LetLocE l lhs rhs -> Ext $ LetLocE l (go2 lhs) (go rhs)
+        StartOfPkdCursor v -> Ext $ StartOfPkdCursor v
+        TagCursor a b  -> Ext $ TagCursor a b
         RetE locs v       -> Ext $ RetE (map (\l -> sub l) locs) v
         FromEndE loc      -> Ext $ FromEndE (sub loc)
         BoundsCheck i l1 l2 -> Ext $ BoundsCheck i (sub l1) (sub l2)
@@ -324,6 +341,10 @@ substLocInExp mp ex1 =
         AddFixed{}        -> ex1
         GetCilkWorkerNum  -> ex1
         LetAvail vs bod   -> Ext $ LetAvail vs (go bod)
+        AllocateTagHere{} -> ex1
+        AllocateScalarsHere{} -> ex1
+        SSPush{} -> ex1
+        SSPop{} -> ex1
     MapE{}  -> error "substLocInExpExp: TODO MapE"
     FoldE{}  -> error "substLocInExpExp: TODO FoldE"
 
@@ -331,7 +352,7 @@ substLocInExp mp ex1 =
         sub loc = M.findWithDefault loc loc mp
 
         go2 lexp = case lexp of
-                     StartOfLE{} -> lexp
+                     StartOfRegionLE{} -> lexp
                      AfterConstantLE i loc -> AfterConstantLE i (sub loc)
                      AfterVariableLE i loc b -> AfterVariableLE i (sub loc) b
                      InRegionLE{} -> lexp

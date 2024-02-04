@@ -17,6 +17,7 @@ module Gibbon.L0.Specialize2
   (bindLambdas, monomorphize, specLambdas, desugarL0, toL1, floatOutCase)
   where
 
+import           Control.Monad
 import           Control.Monad.State
 import           Data.Foldable ( foldlM, foldrM )
 import qualified Data.Map as M
@@ -240,7 +241,7 @@ toL1 Prog{ddefs, fundefs, mainExp} =
 type MonoM a = StateT MonoState PassM a
 
 data MonoState = MonoState
-  { mono_funs_todo :: M.Map (Var, [Ty0]) Var
+  { mono_funs_worklist :: M.Map (Var, [Ty0]) Var
   , mono_funs_done :: M.Map (Var, [Ty0]) Var
   , mono_lams      :: M.Map (Var, [Ty0]) Var
   , mono_dcons     :: M.Map (TyCon, [Ty0]) Var -- suffix
@@ -249,12 +250,12 @@ data MonoState = MonoState
 
 emptyMonoState :: MonoState
 emptyMonoState = MonoState
-  { mono_funs_todo = M.empty, mono_funs_done = M.empty
+  { mono_funs_worklist = M.empty, mono_funs_done = M.empty
   , mono_lams = M.empty, mono_dcons = M.empty }
 
 extendFuns :: (Var,[Ty0]) -> Var -> MonoState -> MonoState
-extendFuns k v mono_st@MonoState{mono_funs_todo} =
-  mono_st { mono_funs_todo = M.insert k v mono_funs_todo }
+extendFuns k v mono_st@MonoState{mono_funs_worklist} =
+  mono_st { mono_funs_worklist = M.insert k v mono_funs_worklist }
 
 extendLambdas :: (Var,[Ty0]) -> Var -> MonoState -> MonoState
 extendLambdas k v mono_st@MonoState{mono_lams} =
@@ -331,7 +332,8 @@ monomorphize p@Prog{ddefs,fundefs,mainExp} = do
   -- Step (5)
   let p5  = purgePolyDDefs p4
   let p5' = purgePolyFuns p5
-  -- Step (6)
+
+-- Step (6)
   tcProg p5'
   where
     toplevel = M.keysSet fundefs
@@ -340,10 +342,10 @@ monomorphize p@Prog{ddefs,fundefs,mainExp} = do
     monoFunDefs :: FunDefs0 -> MonoM FunDefs0
     monoFunDefs fundefs1 = do
       mono_st <- get
-      if M.null (mono_funs_todo mono_st)
+      if M.null (mono_funs_worklist mono_st)
       then pure fundefs1
       else do
-        let (((fun_name, tyapps), new_fun_name):rst) = M.toList (mono_funs_todo mono_st)
+        let (((fun_name, tyapps), new_fun_name):rst) = M.toList (mono_funs_worklist mono_st)
             fn@FunDef{funArgs, funName, funBody} = fundefs # fun_name
             tyvars = tyVarsFromScheme (funTy fn)
         assertSameLength ("While monormorphizing the function: " ++ sdoc funName) tyvars tyapps
@@ -352,7 +354,7 @@ monomorphize p@Prog{ddefs,fundefs,mainExp} = do
             funBody' = substTyVarExp mp funBody
             -- Move this obligation from todo to done.
             mono_st' = mono_st { mono_funs_done = M.insert (fun_name, tyapps) new_fun_name (mono_funs_done mono_st)
-                               , mono_funs_todo = M.fromList rst }
+                               , mono_funs_worklist = M.fromList rst }
         put mono_st'
         -- Collect any more obligations generated due to the monormorphization
         let argEnv = M.fromList $ zip funArgs (inTys funTy')
@@ -633,7 +635,7 @@ collectMonoObls ddefs env2 toplevel ex =
     addFnObl f tyapps = do
       mono_st <- get
       if f `S.member` toplevel
-      then case (M.lookup (f,tyapps) (mono_funs_done mono_st), M.lookup (f,tyapps) (mono_funs_todo mono_st)) of
+      then case (M.lookup (f,tyapps) (mono_funs_done mono_st), M.lookup (f,tyapps) (mono_funs_worklist mono_st)) of
              (Nothing, Nothing) -> do
                new_name <- lift $ gensym f
                state (\st -> ((), extendFuns (f,tyapps) new_name st))
@@ -856,7 +858,7 @@ type SpecM a = StateT SpecState PassM a
 type FunRef = Var
 
 data SpecState = SpecState
-  { sp_funs_todo :: M.Map (Var, [FunRef]) Var
+  { sp_funs_worklist :: M.Map (Var, [FunRef]) Var
   , sp_funs_done :: M.Map (Var, [FunRef]) Var
   , sp_extra_args :: M.Map Var [(Var, Ty0)]
   , sp_fundefs   :: FunDefs0 }
@@ -912,8 +914,9 @@ specLambdas prg@Prog{ddefs,fundefs,mainExp} = do
   (mainExp',sp_state'') <- runStateT spec_m emptySpecState
   -- Get rid of all higher order functions.
   let fundefs' = purgeHO (sp_fundefs sp_state'')
-      prg' = prg { mainExp = mainExp', fundefs = fundefs' }
-  -- Typecheck again.
+      prg' = prg {mainExp = mainExp', fundefs = fundefs'}
+
+-- Typecheck again.
   tcProg prg'
   where
     emptySpecState :: SpecState
@@ -923,14 +926,14 @@ specLambdas prg@Prog{ddefs,fundefs,mainExp} = do
     fixpoint :: SpecM ()
     fixpoint = do
       sp_state <- get
-      if M.null (sp_funs_todo sp_state)
+      if M.null (sp_funs_worklist sp_state)
       then pure ()
       else do
         let fns = sp_fundefs sp_state
             fn = fns # fn_name
-            ((fn_name, refs), new_fn_name) = M.elemAt 0 (sp_funs_todo sp_state)
+            ((fn_name, refs), new_fn_name) = M.elemAt 0 (sp_funs_worklist sp_state)
         specLambdasFun ddefs new_fn_name refs fn
-        state (\st -> ((), st { sp_funs_todo = M.delete (fn_name, refs) (sp_funs_todo st)
+        state (\st -> ((), st { sp_funs_worklist = M.delete (fn_name, refs) (sp_funs_worklist st)
                               , sp_funs_done = M.insert (fn_name, refs) new_fn_name (sp_funs_done st) }))
         fixpoint
 
@@ -959,21 +962,28 @@ specLambdasFun ddefs new_fn_name refs fn@FunDef{funArgs, funTy} = do
       env2 = Env2 venv (initFunEnv (sp_fundefs sp_state))
   funBody' <- specLambdasExp ddefs env2 (funBody fn')
   sp_state' <- get
-  let (funArgs''', funTy'') = case M.lookup new_fn_name (sp_extra_args sp_state') of
-                               Nothing -> (funArgs'', funTy')
-                               Just extra_args ->
-                                   let ForAll tyvars1 (ArrowTy arg_tys1 ret_ty1) = funTy'
-                                       (extra_vars, extra_tys) = unzip extra_args
-                                   in (funArgs'' ++ extra_vars, ForAll tyvars1 (ArrowTy (arg_tys1 ++ extra_tys) ret_ty1))
-  let fn''  = fn' { funBody = funBody'
-                  , funArgs = funArgs'''
-                  -- N.B. Only update the type after 'specExp' runs.
-                  , funTy   = funTy'' }
-  state (\st -> ((), st { sp_fundefs = M.insert new_fn_name fn'' (sp_fundefs st) }))
+  let (funArgs''', funTy'') =
+        case M.lookup new_fn_name (sp_extra_args sp_state') of
+          Nothing -> (funArgs'', funTy')
+          Just extra_args ->
+            let ForAll tyvars1 (ArrowTy arg_tys1 ret_ty1) = funTy'
+                (extra_vars, extra_tys) = unzip extra_args
+             in ( funArgs'' ++ extra_vars
+                , ForAll tyvars1 (ArrowTy (arg_tys1 ++ extra_tys) ret_ty1))
+  let fn'' =
+        fn'
+          { funBody = funBody'
+          , funArgs = funArgs'''
+
+-- N.B. Only update the type after 'specExp' runs.
+          , funTy = funTy''
+          }
+  state
+    (\st -> ((), st {sp_fundefs = M.insert new_fn_name fn'' (sp_fundefs st)}))
   where
     ForAll tyvars (ArrowTy arg_tys ret_ty) = funTy
 
-    -- TODO: What if the function returns another function ? Not handled yet.
+-- TODO: What if the function returns another function ? Not handled yet.
     -- First order type
     funTy' = ForAll tyvars (ArrowTy (filter (not . isFunTy) arg_tys) ret_ty)
 
@@ -1007,19 +1017,20 @@ specLambdasExp ddefs env2 ex =
                                      [] refs
           let (vars,_) = unzip extra_args
               args''' = args'' ++ (map VarE vars)
-          case (M.lookup (f,refs) (sp_funs_done sp_state), M.lookup (f,refs) (sp_funs_todo sp_state)) of
+          case (M.lookup (f,refs) (sp_funs_done sp_state), M.lookup (f,refs) (sp_funs_worklist sp_state)) of
             (Nothing, Nothing) -> do
               f' <- lift $ gensym f
               let (ForAll _ (ArrowTy as _)) = lookupFEnv f env2
                   arrow_tys = concatMap arrowTysInTy as
-              -- Check that the # of refs we collected actually matches the #
+
+-- Check that the # of refs we collected actually matches the #
               -- of functions 'f' expects.
               assertSameLength ("While lowering the expression " ++ sdoc ex) refs arrow_tys
               -- We have a new lowering obligation.
               let sp_extra_args' = case extra_args of
                                      [] -> sp_extra_args sp_state
                                      _  -> M.insert f' extra_args (sp_extra_args sp_state)
-              let sp_state' = sp_state { sp_funs_todo = M.insert (f,refs) f' (sp_funs_todo sp_state)
+              let sp_state' = sp_state { sp_funs_worklist = M.insert (f,refs) f' (sp_funs_worklist sp_state)
                                        , sp_extra_args = sp_extra_args'
                                        }
               put sp_state'
@@ -1228,10 +1239,13 @@ specLambdasExp ddefs env2 ex =
             PrintPacked _ty arg -> collectFunRefs arg acc
             CopyPacked _ty arg -> collectFunRefs arg acc
             TravPacked _ty arg -> collectFunRefs arg acc
-            L _ e1              -> collectFunRefs e1 acc
-            LinearExt{}         -> error $ "collectFunRefs: a linear types extension wasn't desugared: " ++ sdoc ex
+            L _ e1 -> collectFunRefs e1 acc
+            LinearExt {} ->
+              error $
+              "collectFunRefs: a linear types extension wasn't desugared: " ++
+              sdoc ex
 
-    -- Returns all functions used in an expression, both in AppE's and FunRefE's.
+-- Returns all functions used in an expression, both in AppE's and FunRefE's.
     collectAllFuns :: Exp0 -> [FunRef] -> [FunRef]
     collectAllFuns e acc =
       case e of
@@ -1408,13 +1422,13 @@ desugarL0 (Prog ddefs fundefs' mainExp') = do
     go :: Exp0 -> PassM Exp0
     go ex =
       case ex of
-        VarE{}    -> pure ex
-        LitE{}    -> pure ex
-        CharE{}   -> pure ex
-        FloatE{}  -> pure ex
-        LitSymE{} -> pure ex
-        AppE f tyapps args-> AppE f tyapps <$> mapM go args
-        PrimAppE pr args  -> do
+        VarE {} -> pure ex
+        LitE {} -> pure ex
+        CharE {} -> pure ex
+        FloatE {} -> pure ex
+        LitSymE {} -> pure ex
+        AppE f tyapps args -> AppE f tyapps <$> mapM go args
+        PrimAppE pr args -> do
           -- This is always going to have a function reference which
           -- we cannot eliminate.
           let args' =
@@ -1492,14 +1506,19 @@ desugarL0 (Prog ddefs fundefs' mainExp') = do
                       (bnds', args') <- unzip <$> zipWithM flattenTupleArgs args tys'
                       pure (concat bnds',concat args')
                     _ -> do
-                      -- generating alias so that repeated expression is 
-                      -- eliminated and we are taking projection of trivial varEs
-                      argalias <- gensym "alias"
-                      ys <- mapM (\_ -> gensym "proj") tys'
-                      let vs = map VarE ys
-                      (bnds', args') <- unzip <$> zipWithM flattenTupleArgs vs tys'
-                      let bnds'' = (argalias,[],ty, arg):[(y,[],ty',ProjE i (VarE argalias))| (y, ty', i) <- zip3 ys tys' [0..]]
-                      pure (bnds'' ++ concat bnds', concat args')
+                        -- generating alias so that repeated expression is
+                        -- eliminated and we are taking projection of trivial varEs
+                        argalias <- gensym "alias"
+                        ys <- mapM (\_ -> gensym "proj") tys'
+                        let vs = map VarE ys
+                        (bnds', args') <-
+                          unzip <$> zipWithM flattenTupleArgs vs tys'
+                        let bnds'' =
+                              (argalias, [], ty, arg) :
+                              [ (y, [], ty', ProjE i (VarE argalias))
+                              | (y, ty', i) <- zip3 ys tys' [0 ..]
+                              ]
+                        pure (bnds'' ++ concat bnds', concat args')
                 _ -> do
                   pure ([], [arg])
           (binds, args) <- unzip <$> zipWithM flattenTupleArgs ls' tys
@@ -1681,6 +1700,8 @@ genPrintFn DDef{tyName, dataCons} = do
 
 
 --------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
 
 type FloatState = FunDefs0
 type FloatM a = StateT FloatState PassM a

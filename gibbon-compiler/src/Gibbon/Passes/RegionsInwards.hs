@@ -56,10 +56,13 @@ placeRegionInwards env scopeSet ex  =
               env' = M.insert key' val' env
               in placeRegionInwards env' scopeSet rhs
 
+        StartOfPkdCursor{} -> return ex
+        TagCursor{} -> return ex
+
         LetLocE loc phs rhs -> do                                                --take care of locations
           case phs of
 
-            StartOfLE r -> do
+            StartOfRegionLE r -> do
               let keyList' = M.keys env
                   key'     = F.find (S.member (regionToVar r)) keyList'
                   in case key' of
@@ -155,7 +158,10 @@ placeRegionInwards env scopeSet ex  =
         IndirectionE{}                                 -> return ex        {- Actual type: IndirectionE tyCon dataCon (l1,v1) (l2,v2) rhs, skip the recursion, IndirectionE doesn't appear until later in the IR language, return the expression -}
         GetCilkWorkerNum                               -> return ex                   {- Just return the expression, there is no recusrion to do here -}
         LetAvail vs e                                  -> Ext . LetAvail vs <$> go e  {- Recurse on the rhs directly -}
-
+        AllocateTagHere{} -> return ex
+        AllocateScalarsHere{} -> return ex
+        SSPush{} -> return ex
+        SSPop{} -> return ex
 
      -- Straightforward recursion ...
     VarE{}                 -> return ex        -- Just return Nothing special here
@@ -299,7 +305,7 @@ freeVars ex = case ex of
       LetRegionE _ _ _ rhs          -> freeVars rhs
       LetLocE _ phs rhs             ->
         case phs of
-        StartOfLE _                 -> freeVars rhs
+        StartOfRegionLE _                 -> freeVars rhs
         AfterConstantLE _ _         -> freeVars rhs
         AfterVariableLE{}           -> freeVars rhs
         InRegionLE _                -> freeVars rhs
