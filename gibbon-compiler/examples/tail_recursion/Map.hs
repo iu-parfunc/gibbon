@@ -35,7 +35,7 @@ checkMapAdd1 lst lst' = case lst of
                                                              else False 
 
 gibbon_main = 
-    let len = 1000000
+    let len = 10000000
         lst = mkConsIntList len 
         lst' = iterate (map add1 lst)
      in checkMapAdd1 lst lst'
