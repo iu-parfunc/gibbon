@@ -162,6 +162,7 @@ bindReturns ex =
         AllocateScalarsHere{} -> pure ex
         SSPush{} -> pure ex
         SSPop{} -> pure ex
+    ParE{}  -> error "bindReturns: TODO ParE"
     MapE{}  -> error $ "bindReturns: TODO MapE"
     FoldE{} -> error $ "bindReturns: TODO FoldE"
 
@@ -503,6 +504,7 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
 
           Ext ext -> error $ "RouteEnds: Shouldn't encounter " ++ sdoc ext
 
+          ParE{}  -> error "RouteEnds: todo ParE"
           MapE{} -> error "RouteEnds: todo MapE"
           FoldE{} -> error "RouteEnds: todo FoldE"
 

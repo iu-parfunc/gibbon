@@ -526,6 +526,7 @@ threadRegionsExp ddefs fundefs fnLocArgs renv env2 lfenv rlocs_env wlocs_env pkd
       return $ TimeIt e' ty b
     SpawnE{} -> error "threadRegionsExp: Unbound SpawnE"
     SyncE    -> pure ex
+    ParE{}  -> error "todo: par tups"
     MapE{}  -> error $ "threadRegionsExp: TODO MapE"
     FoldE{} -> error $ "threadRegionsExp: TODO FoldE"
   where
@@ -653,6 +654,7 @@ findRetLocs e0 = go e0 []
         WithArenaE _v e -> go e acc
         SpawnE{} -> acc
         SyncE{}  -> acc
+        ParE{} -> error "findTerLocs: TODO ParE"
         Ext ext ->
           case ext of
             LetRegionE _ _ _ bod  -> go bod acc

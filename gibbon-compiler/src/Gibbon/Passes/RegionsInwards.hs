@@ -254,6 +254,7 @@ placeRegionInwards env scopeSet ex  =
       return $ TimeIt e' ty b
     SpawnE{}                      -> pure ex
     SyncE{}                       -> pure ex
+    ParE{}                        -> pure ex
     WithArenaE v e                -> WithArenaE v <$> go e
     MapE{}                        -> return ex                        -- Is there a recursion element to this?
     FoldE{}                       -> return ex                        -- Is there a recursion element to this?

@@ -113,6 +113,7 @@ findWitnesses p@Prog{fundefs} = mapMExprs fn p
 
         SpawnE v locs ls -> handle' $ SpawnE v locs (map goClear ls)
         SyncE            -> SyncE
+        ParE e1 e2 -> handle' $ ParE (goClear e1) (goClear e2)
 
         PrimAppE pr ls -> handle' $ PrimAppE pr (map goClear ls)
         ProjE i e      -> handle' $ ProjE i (goClear e)

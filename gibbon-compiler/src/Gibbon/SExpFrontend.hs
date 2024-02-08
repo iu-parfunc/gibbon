@@ -166,6 +166,7 @@ tagDataCons ddefs = go allCons
          b'  <- go cons b
          pure $ FoldE (v1,t1,e1') (v2,t2,e2') b'
        SyncE -> pure SyncE
+       ParE a b -> ParE <$> go cons a <*> go cons b
        Ext (LambdaE bnds e) -> Ext <$> (LambdaE bnds) <$> (go cons e)
        Ext (PolyAppE a b)   -> do
          a' <- go cons a

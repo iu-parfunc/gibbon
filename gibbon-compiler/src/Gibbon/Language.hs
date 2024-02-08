@@ -70,6 +70,7 @@ instance (Out l, Show l, Show d, Out d, Expression (e l d))
         WithArenaE{} -> False
         SpawnE{}   -> False
         SyncE      -> False
+        ParE{}     -> False
         Ext ext -> isTrivial ext
 
 -- | Free data variables.  Does not include function variables, which
@@ -105,6 +106,7 @@ instance FreeVars (e l d) => FreeVars (PreExp e l d) where
 
       SpawnE v _ ls -> S.unions $ (S.singleton v) : (L.map gFreeVars ls)
       SyncE -> S.empty
+      ParE a b -> gFreeVars a `S.union` gFreeVars b
 
       Ext q -> gFreeVars q
 
@@ -143,6 +145,7 @@ instance (Show (), Out (),
       WithArenaE _v e -> gRecoverType ddfs env2 e
       SpawnE v _ _    -> outTy $ fEnv env2 # v
       SyncE           -> voidTy
+      ParE e _        -> gRecoverType ddfs env2 e
       CaseE _ mp ->
         let (c,args,e) = head mp
             args' = L.map fst args
@@ -176,6 +179,7 @@ instance HasRenamable e l d => Renamable (PreExp e l d) where
       TimeIt e ty b -> TimeIt (go e) (go ty) b
       SpawnE f locs args -> SpawnE (go f) (gol locs) (gol args)
       SyncE   -> SyncE
+      ParE e1 e2 -> ParE (go e1) (go e2)
       WithArenaE v e -> WithArenaE (go v) (go e)
       Ext ext -> Ext (go ext)
       MapE{}  -> ex
@@ -269,6 +273,7 @@ subst old new ex =
 
     SpawnE v loc ls   -> SpawnE v loc (map go ls)
     SyncE             -> SyncE
+    ParE a b          -> ParE (go a) (go b)
 
     MapE (v,t,rhs) bod | v == old  -> MapE (v,t, rhs)    (go bod)
                        | otherwise -> MapE (v,t, go rhs) (go bod)
@@ -310,6 +315,7 @@ substE old new ex =
     IfE a b c         -> IfE (go a) (go b) (go c)
     SpawnE v loc ls   -> SpawnE v loc (map go ls)
     SyncE             -> SyncE
+    ParE a b          -> ParE (go a) (go b)
     MapE (v,t,rhs) bod | VarE v == old  -> MapE (v,t, rhs)    (go bod)
                        | otherwise -> MapE (v,t, go rhs) (go bod)
     FoldE (v1,t1,r1) (v2,t2,r2) bod ->
@@ -343,6 +349,7 @@ hasTimeIt rhs =
       LetE (_,_,_,e1) e2 -> hasTimeIt e1 || hasTimeIt e2
       SpawnE _ _ _       -> False
       SyncE              -> False
+      ParE{}             -> False
       MapE (_,_,e1) e2   -> hasTimeIt e1 || hasTimeIt e2
       FoldE (_,_,e1) (_,_,e2) e3 -> hasTimeIt e1 || hasTimeIt e2 || hasTimeIt e3
       Ext _ -> False
@@ -374,6 +381,7 @@ hasSpawns rhs =
       LetE (_,_,_,e1) e2 -> hasSpawns e1 || hasSpawns e2
       SpawnE{}     -> True
       SyncE        -> False
+      ParE{}       -> False  -- ???
       TimeIt e _ _ -> hasSpawns e
       MapE (_,_,e1) e2   -> hasSpawns e1 || hasSpawns e2
       FoldE (_,_,e1) (_,_,e2) e3 ->

@@ -750,6 +750,8 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
       SyncE -> pure (ProdTy [], tstatein)
 
+      ParE{} -> error "ParE in L2 not (yet) supported."
+
       WithArenaE v e -> do
               let env' = extendVEnv v ArenaTy env
               tcExp ddfs env' funs constrs regs tstatein e

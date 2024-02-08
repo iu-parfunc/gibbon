@@ -227,6 +227,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
                         pure $ TimeIt e' ty' b
     WithArenaE v rhs -> (WithArenaE v) <$> go locenv env2 rhs
     SyncE   -> pure SyncE
+    ParE{}  -> error "ParE"
     MapE{}  -> error "MapE"
     FoldE{} -> error "FoldE"
  where
@@ -401,6 +402,7 @@ toOldL2Exp ex =
                         pure $ TimeIt e' ty' b
     WithArenaE v rhs -> (WithArenaE v) <$> go rhs
     SyncE   -> pure SyncE
+    ParE{}  -> error "ParE"
     MapE{}  -> error "MapE"
     FoldE{} -> error "FoldE"
  where

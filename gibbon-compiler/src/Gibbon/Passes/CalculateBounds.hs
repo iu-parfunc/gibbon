@@ -96,6 +96,7 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
             WithArenaE{}        -> pass
             SpawnE{}            -> pass
             SyncE{}             -> pass
+            ParE{}              -> pass
             MapE{}              -> pass
             FoldE{}             -> pass
             AppE _v _locs _args -> do

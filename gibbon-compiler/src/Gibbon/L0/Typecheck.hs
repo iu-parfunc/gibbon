@@ -736,6 +736,11 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
         _ -> err $ text "SpawnE: not a saturated function"
 
     SyncE   -> pure (sbst, ProdTy [], SyncE)
+    ParE a b -> do
+      (s1, t1, a_tc) <- go a
+      (s2, t2, b_tc) <- tcExp ddefs s1 venv fenv bound_tyvars is_main b
+      pure (s2, zonkTy s2 (ProdTy [t1, t2]), 
+        ParE (zonkExp s2 a_tc) (zonkExp s2 b_tc))
 
     MapE{}  -> err $ text "TODO" <+> exp_doc
     FoldE{} -> err $ text "TODO" <+> exp_doc
@@ -984,6 +989,7 @@ zonkExp s ex =
     SpawnE fn tyapps args -> let tyapps1 = map (zonkTy s) tyapps
                              in SpawnE fn tyapps1 (map go args)
     SyncE    -> SyncE
+    ParE a b -> ParE (go a) (go b)
     MapE{}   -> error $ "zonkExp: TODO, " ++ sdoc ex
     FoldE{}  -> error $ "zonkExp: TODO, " ++ sdoc ex
   where
@@ -1050,6 +1056,7 @@ substTyVarExp s ex =
     SpawnE f tyapps arg -> let tyapps1 = map (substTyVar s) tyapps
                            in SpawnE f tyapps1 (map go arg)
     SyncE    -> SyncE
+    ParE a b -> ParE (go a) (go b)
     MapE{}   -> error $ "substTyVarExp: TODO, " ++ sdoc ex
     FoldE{}  -> error $ "substTyVarExp: TODO, " ++ sdoc ex
   where

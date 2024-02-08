@@ -204,6 +204,7 @@ instance Out (Old.E2Ext LocArg Ty2) => Typeable (PreExp Old.E2Ext LocArg Ty2) wh
                              mp = M.fromList $ zip (Old.allLocVars fnty) (map toLocVar locargs)
                          in substLoc mp outty
       SyncE -> MkTy2 $ voidTy
+      ParE{} -> error "par tupls in L2"
       WithArenaE _v e -> gRecoverType ddfs env2 e
       CaseE _ mp ->
         let (c,vlocargs,e) = head mp
@@ -312,6 +313,7 @@ revertExp ex =
     TimeIt e ty b -> TimeIt (revertExp e) (stripTyLocs (unTy2 ty)) b
     SpawnE v _ args -> SpawnE v [] (L.map revertExp args)
     SyncE -> SyncE
+    ParE{} -> error "par tups in L2"
     WithArenaE v e -> WithArenaE v (revertExp e)
     Ext ext ->
       case ext of
@@ -384,6 +386,7 @@ depList = L.map (\(a,b) -> (a,a,b)) . M.toList . go M.empty
           WithArenaE _ e -> go acc e
           SpawnE _ _ ls  -> foldl go acc ls
           SyncE          -> acc
+          ParE{} -> error "Par tupls in L2"
           MapE{}  -> acc
           FoldE{} -> acc
           Ext ext ->

@@ -161,6 +161,7 @@ interp rc valenv ddefs fenv = go valenv
 
           SpawnE f locs args -> go env (AppE f locs args)
           SyncE -> pure $ VInt (-1)
+          ParE{} -> error "todo: interp1 par tuples."
 
           WithArenaE v e -> do
               let env' = M.insert v (VInt 0) env

@@ -49,6 +49,7 @@ inferExp fenv expr =
     MkProdE ls           -> any go ls
     SpawnE v _locs _e    -> funCanTriggerGC (fenv # v)
     SyncE      -> False
+    ParE e1 e2 -> go e1 || go e2  -- ?? check
     ProjE _n e -> go e
     CaseE e mp -> go e || any (\(_,_,rhs) -> go rhs) mp
     DataConE _loc _dcon es -> any go es

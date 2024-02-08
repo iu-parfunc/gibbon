@@ -290,6 +290,7 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
         AllocateScalarsHere{} -> pure ex
         SSPush{} -> pure ex
         SSPop{} -> pure ex
+    ParE a b -> ParE <$> go a <*> go b
     MapE{}  -> error $ "parAllocExp: TODO MapE"
     FoldE{} -> error $ "parAllocExp: TODO FoldE"
   where
@@ -327,6 +328,7 @@ substLocInExp mp ex1 =
     WithArenaE v e -> WithArenaE v (go e)
     SpawnE{} -> ex1
     SyncE{}  -> ex1
+    ParE{} -> ex1
     Ext ext ->
       case ext of
         LetRegionE r sz ty rhs  -> Ext $ LetRegionE r sz ty (go rhs)

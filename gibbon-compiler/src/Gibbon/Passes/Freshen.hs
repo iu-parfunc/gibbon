@@ -247,6 +247,11 @@ freshExp venv tvenv exp =
 
     SyncE -> pure SyncE
 
+    ParE e1 e2 -> do
+      e1' <- go e1
+      e2' <- go e2
+      pure $ ParE e1' e2'
+
     MapE (v,t,b) e -> do
       b' <- go b
       e' <- go e
@@ -390,6 +395,11 @@ freshExp1 vs exp =
         Just v' -> return $ SpawnE (cleanFunName v') [] ls'
 
     SyncE -> pure SyncE
+
+    ParE e1 e2 -> do
+      e1' <- freshExp1 vs e1
+      e2' <- freshExp1 vs e2
+      pure $ ParE e1' e2'
 
     MapE (v,t,b) e -> do
       b' <- freshExp1 vs b

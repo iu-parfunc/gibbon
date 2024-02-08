@@ -525,6 +525,7 @@ recoverType ddfs env2 ex =
     SpawnE v tyapps _ -> let (ForAll tyvars (ArrowTy _ retty)) = fEnv env2 # v
                          in substTyVar (M.fromList (fragileZip tyvars tyapps)) retty
     SyncE -> voidTy0
+    ParE e1 e2 -> ProdTy [recoverType ddfs env2 e1, recoverType ddfs env2 e2]
     CaseE _ mp ->
       let (c,args,e) = head mp
           args' = map fst args

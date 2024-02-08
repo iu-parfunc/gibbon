@@ -1229,6 +1229,7 @@ fixupSpawn ex =
           [(AppE fn tyapps ls)] -> SpawnE fn tyapps ls
           _ -> error $ "fixupSpawn: incorrect use of spawn: " ++ sdoc ex
     SyncE   -> SyncE
+    ParE{} -> error "todo: par tups fixupSpawn hs frontend"
     MapE{}  -> error $ "fixupSpawn: TODO MapE"
     FoldE{} -> error $ "fixupSpawn: TODO FoldE"
   where go = fixupSpawn
@@ -1270,6 +1271,7 @@ verifyBenchEAssumptions bench_allowed ex =
     WithArenaE v e -> WithArenaE v (go e)
     SpawnE fn tyapps args -> SpawnE fn tyapps (map not_allowed args)
     SyncE    -> SyncE
+    ParE{} -> error "verifyBenchEAssumptions: TODO ParE"
     MapE{}  -> error $ "verifyBenchEAssumptions: TODO MapE"
     FoldE{} -> error $ "verifyBenchEAssumptions: TODO FoldE"
   where go = verifyBenchEAssumptions bench_allowed
@@ -1350,6 +1352,10 @@ desugarLinearExts (Prog ddefs fundefs main) = do
         SpawnE f tyapps args -> do args' <- mapM go args
                                    pure (SpawnE f tyapps args')
         SyncE -> pure SyncE
+        ParE a b -> do
+          a' <- go a
+          b' <- go b
+          pure (ParE a' b')
         MapE{}  -> error "desugarLinearExts: MapE"
         FoldE{} -> error "desugarLinearExts: FoldE"
         Ext ext ->

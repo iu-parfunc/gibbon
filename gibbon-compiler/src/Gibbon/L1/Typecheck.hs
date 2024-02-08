@@ -672,6 +672,11 @@ tcExp ddfs env exp =
 
     SyncE -> pure voidTy
 
+    ParE e1 e2 -> do
+      ty1 <- go e1
+      ty2 <- go e2
+      return $ ProdTy [ty1, ty2]
+
     WithArenaE v e -> do
       let env' = extendEnv env [(v,ArenaTy)]
       tcExp ddfs env' e

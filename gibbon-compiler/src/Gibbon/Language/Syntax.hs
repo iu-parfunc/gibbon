@@ -379,6 +379,8 @@ data PreExp (ext :: Type -> Type -> Type) loc dec =
    | SpawnE Var [loc] [EXP]
    | SyncE
 
+   | ParE EXP EXP
+
    -- Limited list handling:
    -- TODO: RENAME to "Array".
    -- TODO: Replace with Generate, add array reference.
