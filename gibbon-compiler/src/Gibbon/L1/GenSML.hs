@@ -75,7 +75,12 @@ ppE e0 = case e0 of
   WithArenaE _var _pe' -> error "WithArenaE"
   SpawnE _var _ty0s _pes -> error "SpawnE"
   SyncE -> error "SyncE"
-  ParE{} -> error "todo: gen sml for par tuples."
+  -- ParE e1 e2 -> parens $ hsep
+  --   [ "par", parens $ hsep ["fn => ", ppE e1]
+  --   , parens $ hsep ["fn => ", ppE e2]
+  --   ]
+  ParE e1 e2 -> parens $ ("par " <>) $ hsep $
+    parens . ("fn => " <>) . ppE <$> [e1, e2]
   MapE _x0 _pe' -> error "MapE"
   FoldE _x0 _x1 _pe' -> error "FoldE"
 
