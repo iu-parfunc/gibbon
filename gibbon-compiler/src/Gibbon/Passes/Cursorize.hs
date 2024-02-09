@@ -59,14 +59,14 @@ becomes
            Leaf -> let n = readScalar "Int" (lin + 1) 
                        wt = writeTag lout Leaf
                        wi = writeInt wt (n+1)
-                   in (lin + 9, (lout, wi))
+                   in (end_rin, end_rout, lin + 9, (lout, wi))
            Node -> ...
 
 Every packed input becomes a read cursor. And it takes additional output cursors
 for every packed type in the return value. Every packed return value becomes a
 (Cursor,Cursor) i.e (start,end). And it returns additional end_of_read cursors
 if the functions "traverses" it's input (more details in the paper).
-  
+
 -}
 
 
