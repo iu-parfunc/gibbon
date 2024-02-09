@@ -175,6 +175,7 @@ toL1 Prog{ddefs, fundefs, mainExp} =
         DataConE (ProdTy []) dcon ls -> DataConE () dcon (map toL1Exp ls)
         DataConE{} -> err1 (sdoc ex)
         TimeIt e ty b    -> TimeIt (toL1Exp e) (toL1Ty ty) b
+        ParE e1 e2 -> ParE (toL1Exp e1) (toL1Exp e2)
         SpawnE f [] args -> SpawnE f [] (map toL1Exp args)
         SpawnE{} -> err1 (sdoc ex)
         SyncE            -> SyncE
@@ -625,6 +626,10 @@ collectMonoObls ddefs env2 toplevel ex =
       f' <- addFnObl f tyapps'
       pure $ SpawnE f' [] args'
     SyncE    -> pure SyncE
+    ParE e1 e2 -> do
+      a1 <- collectMonoObls ddefs env2 toplevel e1
+      a2 <- collectMonoObls ddefs env2 toplevel e2
+      pure $ ParE a1 a2
     MapE{}  -> error $ "collectMonoObls: TODO: " ++ sdoc ex
     FoldE{} -> error $ "collectMonoObls: TODO: " ++ sdoc ex
   where
@@ -727,6 +732,7 @@ monoLambdas ex =
                  pure $ SpawnE f [] args'
         _  -> error $ "monoLambdas: Expression probably not processed by collectMonoObls: " ++ sdoc ex
     SyncE   -> pure SyncE
+    ParE e1 e2 -> ParE <$> go e1 <*> go e2
     MapE{}  -> error $ "monoLambdas: TODO: " ++ sdoc ex
     FoldE{} -> error $ "monoLambdas: TODO: " ++ sdoc ex
   where go = monoLambdas
@@ -805,6 +811,7 @@ updateTyConsExp ddefs mono_st ex =
     WithArenaE v e -> WithArenaE v (go e)
     SpawnE fn tyapps args -> SpawnE fn tyapps (map go args)
     SyncE   -> SyncE
+    ParE e1 e2 -> ParE (go e1) (go e2)
     MapE{}  -> error $ "updateTyConsExp: TODO: " ++ sdoc ex
     FoldE{} -> error $ "updateTyConsExp: TODO: " ++ sdoc ex
     Ext (LambdaE args bod) -> Ext (LambdaE (map (\(v,ty) -> (v, updateTyConsTy ddefs mono_st ty)) args) (go bod))
@@ -1143,6 +1150,7 @@ specLambdasExp ddefs env2 ex =
         AppE fn' tyapps' args' -> pure $ SpawnE fn' tyapps' args'
         _ -> error "specLambdasExp: SpawnE"
     SyncE   -> pure SyncE
+    ParE e1 e2 -> ParE <$> go e1 <*> go e2
     MapE{}  -> error $ "specLambdasExp: TODO: " ++ sdoc ex
     FoldE{} -> error $ "specLambdasExp: TODO: " ++ sdoc ex
     Ext ext ->
@@ -1227,6 +1235,7 @@ specLambdasExp ddefs env2 ex =
                             brs
         SpawnE _ _ args -> foldr collectFunRefs acc args
         SyncE     -> acc
+        ParE e1 e2 -> foldr collectFunRefs acc [e2, e1]
         MapE{}  -> error $ "collectFunRefs: TODO: " ++ sdoc e
         FoldE{} -> error $ "collectFunRefs: TODO: " ++ sdoc e
         Ext ext ->
@@ -1269,6 +1278,7 @@ specLambdasExp ddefs env2 ex =
                             brs
         SpawnE _ _ args -> foldr collectAllFuns acc args
         SyncE     -> acc
+        ParE e1 e2 -> foldr collectAllFuns acc [e2, e1]
         MapE{}  -> error $ "collectAllFuns: TODO: " ++ sdoc e
         FoldE{} -> error $ "collectAllFuns: TODO: " ++ sdoc e
         Ext ext ->
@@ -1387,6 +1397,10 @@ bindLambdas prg@Prog{fundefs,mainExp} = do
           (ltss,args') <- unzip <$> mapM go args
           pure (concat ltss, SpawnE f tyapps args')
         (SyncE)    -> pure ([], SyncE)
+        ParE e1 e2 -> do
+          (a1, e1') <- go e1
+          e2' <- gocap e2
+          pure (a1, ParE e1' e2')
         (WithArenaE v e) -> do
           e' <- (gocap e)
           pure ([], WithArenaE v e')
@@ -1396,6 +1410,7 @@ bindLambdas prg@Prog{fundefs,mainExp} = do
 --------------------------------------------------------------------------------
 
 -- | Desugar parallel tuples to spawn's and sync's, and printPacked into function calls.
+-- | jazullo - MPL receives L1 code so we can't desugar par tuples yet.
 desugarL0 :: Prog0 -> PassM Prog0
 desugarL0 (Prog ddefs fundefs' mainExp') = do
   -- (Prog ddefs' fundefs' mainExp') <- addRepairFns prg
@@ -1527,6 +1542,7 @@ desugarL0 (Prog ddefs fundefs' mainExp') = do
         WithArenaE v e -> (WithArenaE v) <$> go e
         SpawnE fn tyapps args -> (SpawnE fn tyapps) <$> mapM go args
         SyncE   -> pure SyncE
+        ParE e1 e2 -> ParE <$> go e1 <*> go e2
         MapE{}  -> err1 (sdoc ex)
         FoldE{} -> err1 (sdoc ex)
         Ext ext ->
@@ -1783,6 +1799,7 @@ floatOutCase (Prog ddefs fundefs mainExp) = do
         WithArenaE v e -> (WithArenaE v) <$> recur e
         SpawnE fn tyapps args -> (SpawnE fn tyapps) <$> mapM recur args
         SyncE   -> pure SyncE
+        ParE e1 e2 -> ParE <$> go True env2 e1 <*> go True env2 e2
         Ext{}   -> pure ex
         MapE{}  -> err1 (sdoc ex)
         FoldE{} -> err1 (sdoc ex)

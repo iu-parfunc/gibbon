@@ -483,6 +483,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
           WithArenaE _ e -> go e
           SpawnE _ _ ls  -> gol ls
           SyncE -> S.empty
+          ParE e1 e2 -> go e1 <> go e2
           Ext ext        ->
             case ext of
               WriteScalar _ _ ex -> go ex

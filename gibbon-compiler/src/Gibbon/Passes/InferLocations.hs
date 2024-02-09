@@ -608,6 +608,8 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
 
     SyncE -> pure (SyncE, ProdTy [], [])
 
+    ParE{} -> error "todo: par tuples in InferLocation.hs"
+
     LitE n  -> return (LitE n, IntTy, [])
     CharE n -> return (CharE n, CharTy, [])
     FloatE n-> return (FloatE n, FloatTy, [])
@@ -895,6 +897,8 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
         SyncE -> do
           (bod',ty,cs) <- inferExp env bod dest
           pure (LetE (vr,[],ProdTy [],SyncE) bod', ty, cs)
+        
+        ParE{} -> error "todo: ParE in InferLocations.hs"
 
         IfE a b c -> do
           (boda,tya,csa) <- inferExp env a NoDest
@@ -1205,6 +1209,8 @@ finishExp e =
 
       SyncE -> pure $ SyncE
 
+      ParE{} -> error "todo: ParE in InferLocations.hs"
+
       WithArenaE v e -> do
              e' <- finishExp e
              return $ WithArenaE v e'
@@ -1323,6 +1329,8 @@ cleanExp e =
 
       SyncE -> (SyncE, S.empty)
 
+      ParE{} -> error "todo: ParE in InferLocations.hs"
+
       WithArenaE v e -> let (e',s) = cleanExp e
                         in (WithArenaE v e', s)
 
@@ -1418,6 +1426,7 @@ fixProj renam pvar proj e =
       SpawnE v ls es -> let es' = map (fixProj renam pvar proj) es
                         in SpawnE v ls es'
       SyncE -> SyncE
+      ParE{} -> error "todo: ParE in InferLocations.hs"
       WithArenaE v e -> WithArenaE v $ fixProj renam pvar proj e
       Ext (L1.AddFixed{}) -> e
       Ext (L1.StartOfPkdCursor{}) -> e
@@ -1458,6 +1467,7 @@ moveProjsAfterSync sv ex = go [] (S.singleton sv) ex
         WithArenaE a e  -> WithArenaE a $ go acc1 pending e
         SpawnE fn locs ls -> error "moveProjsAfterSync: unbound SpawnE"
         SyncE   -> error "moveProjsAfterSync: unbound SyncE"
+        ParE{}  -> error "moveProjsAfterSync: unbound ParE"
         Ext ext -> case ext of
                      LetRegionE r sz ty bod -> Ext $ LetRegionE r sz ty $ go acc1 pending bod
                      LetParRegionE r sz ty bod -> Ext $ LetParRegionE r sz ty $ go acc1 pending bod
@@ -1891,6 +1901,7 @@ fixRANs prg@(Prog defs funs main) = do
 
         SpawnE f lvs ls -> gols (SpawnE f lvs)  ls
         SyncE -> pure ([], SyncE)
+        ParE{} -> error "ParE"
 
         WithArenaE v e -> do
           (bnd, e') <- go e
@@ -2065,6 +2076,7 @@ copyOutOfOrderPacked prg@(Prog ddfs fndefs mnExp) = do
                                ls
           pure $ (cpy_env1, SpawnE v locs ls1)
         SyncE -> pure (cpy_env, SyncE)
+        ParE{} -> error "todo"
         Ext (BenchE fn locs ls b) -> do
           (cpy_env1, ls1) <- F.foldrM
                                (\e (acc1,acc2) -> do
@@ -2196,6 +2208,7 @@ removeAliasesForCopyCalls prg@(Prog ddfs fndefs mnExp) = do
                               args' <- mapM (\expr -> removeAliases expr env) args
                               pure $ SpawnE f locs args'
         SyncE -> pure exp
+        ParE{} -> error "ParE"
         Ext _ -> pure exp
         MapE{} ->  error "removeAliasesForCopyCalls: todo MapE"
         FoldE{} -> error "removeAliasesForCopyCalls: todo FoldE"
@@ -2378,6 +2391,7 @@ orderOfVarsOutputDataConE exp = case exp of
 
   SpawnE v _ ls -> (L.concat $ L.map orderOfVarsOutputDataConE ls)
   SyncE -> []
+  ParE{} -> error "ParE"
   Ext ext ->
     case ext of
       L1.AddFixed v i -> []

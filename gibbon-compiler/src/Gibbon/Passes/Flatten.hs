@@ -186,6 +186,7 @@ exp ddfs env2 e0 =
       (bnd, e') <- go e
       return ([], WithArenaE v (flatLets bnd e'))
 
+    ParE{}        -> error "todo ParE in Flatten.hs"
     MapE _ _      -> error "FINISHLISTS"
     FoldE _ _ _   -> error "FINISHLISTS"
 
@@ -282,6 +283,8 @@ flattenExp0 ddfs env2 e0 =
     SpawnE f lvs ls -> gols (SpawnE f lvs)  ls "AppE"
     SyncE -> pure ([], SyncE)
     WithArenaE{}  -> error "flattenL0: WitnArenaE not handled."
+    ParE e1 e2 -> gols (\[u, v] -> ParE u v) [e1, e2] "Par"
+      
     MapE _ _      -> error "FINISHLISTS"
     FoldE _ _ _   -> error "FINISHLISTS"
 

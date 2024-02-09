@@ -72,6 +72,7 @@ directL3 prg@(Prog ddfs fndefs mnExp) = do
           in go env2 ex'
         Ext (AddFixed{}) -> error "directL3: AddFixed not handled."
         Ext (StartOfPkdCursor{}) -> error "directL3: StartOfPkdCursor not handled."
+        ParE{}  -> error "directL3: todo ParE"
         MapE{}  -> error "directL3: todo MapE"
         FoldE{} -> error "directL3: todo FoldE"
 

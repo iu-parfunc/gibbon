@@ -140,6 +140,8 @@ hoistExp _ ex0 = return $ gocap False ex0
 
     (SyncE)       -> ([], e0)
 
+    (ParE{})      -> ([], e0)
+
     (WithArenaE v e) -> let (lts,e') = go hoist e in
                         (lts, WithArenaE v e')
 

@@ -402,6 +402,7 @@ instance HasPrettyToo e l d => Pretty (PreExp e l d) where
                                          (brackets $ hcat (punctuate "," (map pprint locs))) <+>
                                          (pprintWithStyle sty ls))
           SyncE -> text "sync"
+          ParE e1 e2 -> parens (hcat (punctuate " .||. " (pprintWithStyle sty <$> [e1, e2])))
           WithArenaE v e -> case sty of
                               PPHaskell  -> (text "let") <+>
                                             pprintWithStyle sty v <+>
@@ -641,6 +642,7 @@ pprintHsWithEnv p@Prog{ddefs,fundefs,mainExp} =
         WithArenaE _ e -> (go e)
         SpawnE{}-> False
         SyncE   -> False
+        ParE{}  -> False
         MapE{}  -> error $ "hasBenchE: TODO MapE"
         FoldE{} -> error $ "hasBenchE: TODO FoldE"
       where go = hasBenchE
@@ -739,6 +741,7 @@ pprintHsWithEnv p@Prog{ddefs,fundefs,mainExp} =
 
           SpawnE{} -> error "ppHsWithEnv: SpawnE not handled."
           SyncE{}  -> error "ppHsWithEnv: SyncE not handled."
+          ParE{}   -> error "ppHsWithEnv: ParE not handled."
           Ext(L1.AddFixed{}) -> error "ppHsWithEnv: AddFixed not handled."
           Ext(L1.StartOfPkdCursor{}) -> error "ppHsWithEnv: AddFixed not handled."
           Ext (BenchE fn _locs args _b) ->

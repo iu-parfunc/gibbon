@@ -185,6 +185,8 @@ unariserExp isTerminal ddfs stk env2 ex =
 
     SyncE -> pure SyncE
 
+    ParE e1 e2 -> discharge stk <$> (ParE <$> go False env2 e1 <*> go False env2 e2)
+
     Ext (RetE ls) -> do
       (MkProdE ls1) <- go isTerminal env2 (MkProdE ls)
       pure $ Ext $ RetE ls1

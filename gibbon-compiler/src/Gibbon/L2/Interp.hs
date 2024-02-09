@@ -262,6 +262,7 @@ interp szenv rc valenv ddefs fenv e = go valenv szenv e
 
         SpawnE f locs args -> go env sizeEnv (AppE f locs args)
         SyncE -> pure $ (VInt (-1), SOne 0)
+        ParE{} -> error "ParE Interp.hs"
 
         WithArenaE{} -> error "L2.Interp: WithArenE not handled"
 

@@ -156,6 +156,7 @@ writeOrderMarkers (Prog ddefs fundefs mainExp) = do
         WithArenaE v e -> (WithArenaE v) <$> recur e
         SpawnE{}   -> pure ex
         SyncE      -> pure ex
+        ParE{}     -> pure ex
         MapE{}     -> pure ex
         FoldE{}    -> pure ex
       where
@@ -258,6 +259,7 @@ checkScalarDeps ddefs in_scope tag_loc ex0 =
           in (dep_env' `M.union` dep_env, move_set `S.union` move_set', move && move')
         SpawnE{} -> (dep_env,move_set,move)
         SyncE    -> (dep_env,move_set,move)
+        ParE{}   -> (dep_env,move_set,move)
         MapE{}   -> (dep_env,move_set,move)
         FoldE{}  -> (dep_env,move_set,move)
         Ext ext  ->
