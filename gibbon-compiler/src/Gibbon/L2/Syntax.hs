@@ -39,6 +39,7 @@ module Gibbon.L2.Syntax
   , RegionSize(..)
   , RegionType(..)
   , regionToVar
+  , TailRecType(..)
 
 -- * Operations on types
   , allLocVars
@@ -393,17 +394,22 @@ instance HasRenamable E2Ext l d => Renamable (E2Ext l d) where
       SSPush{} -> ext
       SSPop{} -> ext
 
+
+data TailRecType = TMC | TC | NoTail 
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
+
 -- | Our type for functions grows to include effects, and explicit universal
 -- quantification over location/region variables.
 data ArrowTy2 ty2 = ArrowTy2
-    { locVars :: [LRM]          -- ^ Universally-quantified location params.
-                                -- Only these should be referenced in arrIn/arrOut.
-    , arrIns  :: [ty2]          -- ^ Input type for the function.
-    , arrEffs :: (S.Set Effect) -- ^ These are present-but-empty initially,
-                                -- and the populated by InferEffects.
-    , arrOut  :: ty2            -- ^ Output type for the function.
-    , locRets :: [LocRet]       -- ^ L2B feature: multi-valued returns.
-    , hasParallelism :: Bool        -- ^ Does this function have parallelism
+    { locVars :: [LRM]           -- ^ Universally-quantified location params.
+                                 -- Only these should be referenced in arrIn/arrOut.
+    , arrIns  :: [ty2]           -- ^ Input type for the function.
+    , arrEffs :: (S.Set Effect)  -- ^ These are present-but-empty initially,
+                                 -- and the populated by InferEffects.
+    , arrOut  :: ty2             -- ^ Output type for the function.
+    , locRets :: [LocRet]        -- ^ L2B feature: multi-valued returns.
+    , hasParallelism :: Bool     -- ^ Does this function have parallelism
+    , tailRecType :: TailRecType -- ^ What type of tail recursice calls may be present. TMC | TC | NOTail
     }
   deriving (Read, Show, Eq, Ord, Functor, Generic, NFData)
 

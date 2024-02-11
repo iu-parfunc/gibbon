@@ -145,7 +145,8 @@ convertFunTy (from,to,isPar) = do
                      , arrEffs = S.empty
                      , arrOut  = to'
                      , locRets = []
-                     , hasParallelism = isPar }
+                     , hasParallelism = isPar
+                     , tailRecType = NoTail }
  where
    toLRM md ls =
        mapM (\v -> do r <- freshLocVar "r"
