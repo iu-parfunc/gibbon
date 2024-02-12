@@ -28,13 +28,13 @@ markTailCallsFn ddefs f@FunDef{funName, funArgs, funTy, funMeta, funBody} = do
    then
       let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar _) = funTy 
           funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar TC)
-        in dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "a" return $ FunDef funName funArgs funTy' funBody funMeta
+        in return $ FunDef funName funArgs funTy' funBody funMeta  {-dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "a"-}
    else if elem TMC tailCallTy
    then 
       let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar _) = funTy
           funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar TMC)
-        in dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "b" return $ FunDef funName funArgs funTy' funBody funMeta
-   else dbgTraceIt (sdoc (tailCallTy, funName, funTy)) dbgTraceIt "c" pure f 
+        in return $ FunDef funName funArgs funTy' funBody funMeta {-dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "b"-}
+   else pure f {-dbgTraceIt (sdoc (tailCallTy, funName, funTy)) dbgTraceIt "c"-}
    --dbgTraceIt (sdoc tailCallTy) pure f
 
 

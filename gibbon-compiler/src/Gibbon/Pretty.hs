@@ -322,7 +322,8 @@ instance Pretty ty2 => Pretty (ArrowTy2 ty2) where
               braces (text "locvars" <+> doc (locVars fnty) <> comma $$
                       text "effs: " <+> doc (arrEffs fnty) <> comma $$
                       text "locrets: " <+> doc (locRets fnty) <> comma $$
-                      text "parallel: " <+> doc (hasParallelism fnty))
+                      text "parallel: " <+> doc (hasParallelism fnty) $$ 
+                      text "tailrecursiontype: " <+> doc (tailRecType fnty))
 
 
 -- Expressions
