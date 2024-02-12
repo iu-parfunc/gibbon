@@ -800,7 +800,6 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
               -- typechecker doesn't know how to handle.
               l2' <- go "threadRegions"    threadRegions l2'
               l2' <- go "markTailCalls"    markTailCalls l2'
-
               -- L2 -> L3
               -- TODO: Compose L3.TcM with (ReaderT Config)
               l3 <- go "cursorize"        cursorize     l2'

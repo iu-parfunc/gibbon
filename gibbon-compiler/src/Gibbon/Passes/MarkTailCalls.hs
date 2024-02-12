@@ -16,8 +16,9 @@ import Gibbon.L2.Syntax as Old
 markTailCalls :: NewL2.Prog2 -> PassM NewL2.Prog2
 markTailCalls Prog{ddefs,fundefs,mainExp} = do
    fds' <- mapM (markTailCallsFn ddefs) $ M.elems fundefs
-   let fundefs' = M.fromList $ map (\f -> (funName f,f)) fds'
-   dbgTraceIt (sdoc $ M.elems fundefs') return $ Prog ddefs fundefs' mainExp
+   let newFundefs = M.fromList $ map (\f -> (funName f,f)) fds'
+   let newProg = Prog{ddefs=ddefs, fundefs=newFundefs, mainExp=mainExp}
+   pure $ newProg {- dbgTraceIt (sdoc newProg) dbgTraceIt (sdoc $ M.elems fundefs')-}
 
 
 markTailCallsFn :: NewL2.DDefs2 -> NewL2.FunDef2 -> PassM NewL2.FunDef2
@@ -27,13 +28,13 @@ markTailCallsFn ddefs f@FunDef{funName, funArgs, funTy, funMeta, funBody} = do
    then
       let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar _) = funTy 
           funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar TC)
-        in dbgTraceIt (sdoc (tailCallTy, funName)) dbgTraceIt "a" return $ FunDef funName funArgs funTy' funBody funMeta
+        in dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "a" return $ FunDef funName funArgs funTy' funBody funMeta
    else if elem TMC tailCallTy
    then 
       let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar _) = funTy
           funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar TMC)
-        in dbgTraceIt (sdoc (tailCallTy, funName)) dbgTraceIt "b" return $ FunDef funName funArgs funTy' funBody funMeta
-   else dbgTraceIt (sdoc (tailCallTy, funName)) dbgTraceIt "c" pure f 
+        in dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "b" return $ FunDef funName funArgs funTy' funBody funMeta
+   else dbgTraceIt (sdoc (tailCallTy, funName, funTy)) dbgTraceIt "c" pure f 
    --dbgTraceIt (sdoc tailCallTy) pure f
 
 
