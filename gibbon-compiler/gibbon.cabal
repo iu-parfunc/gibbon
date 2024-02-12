@@ -87,6 +87,7 @@ library
                        Gibbon.Passes.RearrangeFree
                        Gibbon.Passes.Codegen
                        Gibbon.Passes.CalculateBounds
+                       Gibbon.Passes.MarkTailCalls
 
   other-extensions:    DeriveDataTypeable CPP
 
