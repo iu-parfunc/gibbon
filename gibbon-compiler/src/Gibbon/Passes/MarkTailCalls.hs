@@ -24,17 +24,17 @@ markTailCalls Prog{ddefs,fundefs,mainExp} = do
 markTailCallsFn :: NewL2.DDefs2 -> NewL2.FunDef2 -> PassM NewL2.FunDef2
 markTailCallsFn ddefs f@FunDef{funName, funArgs, funTy, funMeta, funBody} = do 
    let tailCallTy = markTailCallsFnBody funName ddefs funTy funBody 
-   if elem TC tailCallTy
+   if elem TMC tailCallTy
    then
       let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar _) = funTy 
-          funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar TC)
-        in return $ FunDef funName funArgs funTy' funBody funMeta  {-dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "a"-}
-   else if elem TMC tailCallTy
+          funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar TMC)
+        in return $ FunDef funName funArgs funTy' funBody funMeta  {-dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "a" dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "a"  -}
+   else if elem TC tailCallTy
    then 
       let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar _) = funTy
-          funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar TMC)
-        in return $ FunDef funName funArgs funTy' funBody funMeta {-dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "b"-}
-   else pure f {-dbgTraceIt (sdoc (tailCallTy, funName, funTy)) dbgTraceIt "c"-}
+          funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar TC)
+        in return $ FunDef funName funArgs funTy' funBody funMeta {-dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "b" dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "b"  -} 
+   else pure f {-dbgTraceIt (sdoc (tailCallTy, funName, funTy)) dbgTraceIt "c" dbgTraceIt (sdoc (tailCallTy, funName, funTy)) dbgTraceIt "c"-}
    --dbgTraceIt (sdoc tailCallTy) pure f
 
 
@@ -49,9 +49,9 @@ markTailCallsFnBody funName ddefs2 ty2 exp2  = case exp2 of
                                 PrimAppE p args -> P.concatMap (markTailCallsFnBody funName ddefs2 ty2) args
                                 LetE (v,_,_,rhs) bod -> case rhs of 
                                                             AppE v' locs' args' -> if v' == funName 
-                                                                                   then [markTailCallsFnBodyHelper ddefs2 bod ty2 0]
-                                                                                   else [NoTail]
-                                                            _ -> [NoTail]
+                                                                                   then [markTailCallsFnBodyHelper ddefs2 bod ty2 0] {-dbgTraceIt ("Here markTailCallsFnBody then\n")-}
+                                                                                   else (markTailCallsFnBody funName ddefs2 ty2 bod) ++ [NoTail] {-dbgTraceIt ("Here markTailCallsFnBody else\n")-}
+                                                            _ -> (markTailCallsFnBody funName ddefs2 ty2 bod) ++ [NoTail] {-dbgTraceIt ("Here markTailCallsFnBody RST\n")-}
                                 IfE a b c -> (markTailCallsFnBody funName ddefs2 ty2 a) ++ (markTailCallsFnBody funName ddefs2 ty2 b) ++ (markTailCallsFnBody funName ddefs2 ty2 c) 
                                 MkProdE ls -> P.concatMap (markTailCallsFnBody funName ddefs2 ty2) ls
                                 ProjE i e -> markTailCallsFnBody funName ddefs2 ty2 e
@@ -109,18 +109,18 @@ markTailCallsFnBodyHelper ddefs exp2 ty2 depth = case exp2 of
                               --   LitSymE _ -> False 
                               --   AppE v locs args -> False
                               --   PrimAppE p args -> False 
-                                LetE (v,_,_,rhs) bod -> if depth == 0
+                                LetE (v,_,_,rhs) bod -> if True --depth == 0
                                                         then 
                                                           case rhs of 
-                                                               DataConE loc d args -> markTailCallsFnBodyHelper ddefs bod ty2 (depth+1)
+                                                               DataConE loc d args -> markTailCallsFnBodyHelper ddefs bod ty2 (depth+1) {-dbgTraceIt ("Here2!") dbgTraceIt (sdoc rhs)-}
                                                                                       -- TODO: figure out a way to get the return type of the function
                                                                                       --let tyConOfDataConE = getTyOfDataCon ddefs d 
                                                                                       --    returnTy = outTy ty2
                                                                                       -- in if tyConOfDataConE == returnTy
                                                                                       --    then markTailCallsFnBodyHelper ddefs bod ty2 (depth+1)
                                                                                       --    else NoTail    
-                                                               _ -> NoTail
-                                                        else NoTail                                                                                
+                                                               _ -> NoTail {- dbgTraceIt (sdoc rhs) dbgTraceIt ("Here!")-}
+                                                        else NoTail {-dbgTraceIt ("Here3!")-}                                                                                
                               --   IfE a b c -> 
                               --   MkProdE ls -> 
                               --   ProjE i e -> 
