@@ -752,6 +752,7 @@ stripTyLocs ty =
     SymHashTy -> SymHashTy
     IntHashTy -> IntHashTy
     ArenaTy   -> ArenaTy
+    MutableCursorTy -> MutableCursorTy
 
 -- | Get the data constructor type from a type, failing if it's not packed
 tyToDataCon :: Show a => UrTy a -> DataCon

@@ -819,6 +819,7 @@ mapPacked fn t =
     SymSetTy -> SymSetTy
     SymHashTy-> SymHashTy
     IntHashTy-> IntHashTy
+    MutableCursorTy -> MutableCursorTy
 
 constPacked :: UrTy a1 -> UrTy a2 -> UrTy a1
 constPacked c t =
@@ -840,6 +841,7 @@ constPacked c t =
     SymSetTy -> SymSetTy
     SymHashTy-> SymHashTy
     IntHashTy-> IntHashTy
+    MutableCursorTy -> MutableCursorTy
 
 -- | Build a dependency list which can be later converted to a graph
 depList :: Exp2 -> [(Var, Var, [Var])]

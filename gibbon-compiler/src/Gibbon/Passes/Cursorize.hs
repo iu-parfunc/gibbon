@@ -116,7 +116,7 @@ cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funMeta} = do
       -- intuitive and can be improved.
 
       -- Input & output regions are always inserted before all other arguments.
-      regBinds = map toEndV (inRegs ++ outRegs)
+      regBinds = dbgTraceIt (sdoc funName) dbgTraceIt (sdoc funTy') dbgTraceIt ("\n") map toEndV (inRegs ++ outRegs)
 
       -- Output cursors after that.
       outCurBinds = outLocs
@@ -224,14 +224,16 @@ This is used to create bindings for input location variables.
           -- Adding additional input arguments for the destination cursors to which outputs
           -- are written.
           outCurs   = filter (\(LRM _ _ m) -> m == Output) locVars
-          outCurTys = map (\_ -> CursorTy) outCurs
+          outCurTys = map (\_ -> CursorTy) outCurs --MutableCursorTy, in case of tail recursive functions. 
           inRegs    = map (\_ -> CursorTy) (inRegVars ty)
           in_tys    = inRegs ++ outRegs ++ outCurTys ++ (map unTy2 arrIns)
 
           -- Packed types in the input now become (read-only) cursors.
           newIns    = map (constPacked CursorTy) in_tys
 
-      in (map stripTyLocs newIns, stripTyLocs newOut')
+          ty' = dbgTraceIt (sdoc (in_tys, outRegs, outCurTys, arrIns, ty, outLocVars ty)) (map stripTyLocs newIns, stripTyLocs newOut')
+
+      in ty' 
 
 
 -- | Cursorize expressions NOT producing `Packed` values

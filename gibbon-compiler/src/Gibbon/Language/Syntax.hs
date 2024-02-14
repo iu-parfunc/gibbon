@@ -567,6 +567,10 @@ data UrTy loc
                    -- to an unkwown type or to a fraction of a complete value.
                    -- It is a machine pointer that can point to any byte.
 
+        | MutableCursorTy -- ^ A cursor for writing to an output location.
+                          -- It is a mutable cursor, the address that the 
+                          -- cursor points to changes. 
+
   deriving (Show, Read, Ord, Eq, Generic, NFData, Functor, Foldable, Traversable, Out)
 
 
