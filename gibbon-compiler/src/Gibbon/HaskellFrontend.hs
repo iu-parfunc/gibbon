@@ -281,7 +281,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                       acc)
                 funs
                 inlines
-            funs'' =
+            funs''' =
               foldr
                 (\v acc ->
                     M.update
@@ -290,7 +290,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                       acc)
                 funs'
                 (P.map fst (S.toList optimizeDcons))
-            funs''' =
+            funs'''' =
               foldr
                 (\k acc ->
                     M.update
