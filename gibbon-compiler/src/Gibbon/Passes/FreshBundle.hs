@@ -16,27 +16,29 @@ import GHC.Stack (HasCallStack)
 
 type NameEnv = M.Map Var Var
 
-
--- try to merge it back into the original branch
--- CI/CD
--- 
-
+-------------------------------------------------------------------------------
 -- exported fresh bundle pass
--- freshes names, replaces all references with new, globally unique names
+-- replaces all references with new, globally unique names (data types, functions, constructors)
+-------------------------------------------------------------------------------
 
 freshBundleNames :: ProgBundle0 -> PassM ProgBundle0
 freshBundleNames bundle = do
+    -- build global map of uniques
+    -- {legal reference} => unique
     (uniquedefenv, uniquefunenv, uniqueconstenv) <- buildGlobalEnv bundle
+
     let ProgBundle modules main = bundle
+    -- run through modules, fresh names
     modules' <- mapM (\v -> freshModule v bundle uniquedefenv uniquefunenv uniqueconstenv) modules
     main' <- freshModule main bundle uniquedefenv uniquefunenv uniqueconstenv
+    -- update keys
     modules'' <- mapM (\v -> freshModuleKeys v uniquedefenv uniquefunenv) modules'
     main'' <- freshModuleKeys main' uniquedefenv uniquefunenv
     pure $ ProgBundle modules'' main''
 
 -- helper functions -----------------------------------------------------------
 
--- rename the function and definition keys to their uniques
+-- update the keys
 freshModuleKeys :: ProgModule0 -> NameEnv -> NameEnv -> PassM ProgModule0
 freshModuleKeys (ProgModule name (Prog defs funs main) imports) uniquedefenv uniquefunenv = do
   let funs' = M.mapKeys (\k -> findFreshedName (varAppend (toVar (name ++ ".")) k) uniquefunenv) funs
@@ -330,17 +332,17 @@ _buildGlobalEnv (ProgModule modname (Prog ddefs fdefs _) _) =
         freshfdefs <- mapM gensym fdefs' -- generate uniques
         freshddefs <- mapM gensym ddefs'
         freshconstrs <- mapM gensym constrs'
-        let fdefenv = M.fromList $ zip fdefs' freshfdefs -- map qualified names to uniques
-        let ddefenv = M.fromList $ zip ddefs' freshddefs
-        let constrenv = M.fromList $ zip constrs' freshconstrs
+        let fdefenv = M.fromList $ zip (L.map (\v -> varAppend modname' v) fdefs') freshfdefs -- map qualified names to uniques
+        let ddefenv = M.fromList $ zip (L.map (\v -> varAppend modname' v) ddefs') freshddefs
+        let constrenv = M.fromList $ zip (L.map (\v -> varAppend modname' v) constrs') freshconstrs
         pure (ddefenv, fdefenv, constrenv)
     where
         modname' = toVar (modname ++ ".")
         constrs = L.map (\(constrName, _) -> toVar constrName) 
                     (foldr (\(DDef _ _ dataCons) acc -> acc ++ dataCons) [] (M.elems ddefs))
-        fdefs' = L.map (varAppend modname') (M.keys fdefs) -- create qualified names
-        ddefs' = L.map (varAppend modname') (M.keys ddefs)
-        constrs' = L.map (varAppend modname') constrs
+        fdefs' = M.keys fdefs -- create qualified names
+        ddefs' = M.keys ddefs
+        constrs' = constrs
 
 
 tryToFindFreshedName :: Var -> NameEnv -> Var

@@ -96,7 +96,10 @@ parseMode =
         (extensions defaultParseMode)
     }
 
--- TIMMY - top level comment
+-------------------------------------------------------------------------------
+-- parse a file, call desugar, and return the desugared bundle
+-- will recurse down through import headers and fold the bundles together
+-------------------------------------------------------------------------------
 parseFile' ::
      Config -> IORef ParseState -> [String] -> FilePath -> String -> IO (PassM ProgBundle0)
 parseFile' cfg pstate_ref import_route path mod_name = do
@@ -189,52 +192,6 @@ type TopTyEnv = TyEnv TyScheme
 
 type TypeSynEnv = M.Map TyCon Ty0
 
--- ========================================================
-
-getImportMeta :: [H.ImportDecl a] -> M.Map Var (Var, Bool, Maybe [Var])
-getImportMeta imports = do 
-  let parseSpecs :: Maybe (H.ImportSpecList a)-> Maybe [Var]
-      parseSpecs maybeSpec = do
-        case maybeSpec of
-          Just (H.ImportSpecList _ _ specList) ->
-              Just $ map (\spec -> case spec of
-                H.IVar _ n -> case n of
-                  Ident _ v -> toVar v
-                  Symbol _ v -> toVar v
-                H.IAbs _ _ n -> case n of
-                  Ident _ v -> toVar v
-                  Symbol _ v -> toVar v
-                H.IThingAll _ n -> case n of
-                  Ident _ v -> toVar v
-                  Symbol _ v -> toVar v
-                H.IThingWith _ n _ -> case n of
-                  Ident _ v -> toVar v
-                  Symbol _ v -> toVar v
-              ) specList
-          Nothing -> Nothing
-  M.fromList $ map 
-    (\(H.ImportDecl _ (H.ModuleName _ importName) qualified _ _ _ aliased spec) -> 
-      case aliased of
-          Just (H.ModuleName _ importAs) ->
-            ((toVar importName), ((toVar importAs), qualified, (parseSpecs spec)))
-          Nothing -> ((toVar importName), ((toVar importName), qualified, (parseSpecs spec)))
-      ) 
-    imports
-
--- ========================================================
-
--- ========================================================
--- what we want:
--- accumulate a list of compiler models
--- create a bundle of modules that get merged later
--- insert a pass after desugar that takes [Prog0]
--- have a pass that turns [Prog0] -> Prog0
--- imagine in the future the whole pipeline works on the bundle
-
--- parser -> represent code as faithfully as possible (avoid modifiying the program)
--- later passes -> operate on more abstract representations of the program
--- ========================================================
-
 -------------------------------------------------------------------------------
 -- recursively desugars modules and their imports
 -- stacks into a ProgBundle: a bundle of modules and their main module
@@ -251,16 +208,7 @@ desugarModule ::
   -> IO (PassM ProgBundle0)
 desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports decls) mod_name = do
   let type_syns = foldl collectTypeSynonyms M.empty decls
-      -- Since top-level functions and their types can't be declared in
-      -- single top-level declaration we first collect types and then collect
-      -- definitions.
       funtys = foldr (collectTopTy type_syns) M.empty decls
-    -- get rid of dbgprints
-  --dbgPrintLn 2 "================================================================================"
-  --dbgPrintLn 2 $ "desugaring module: " ++ mod_name
-  dbgPrintLn 2 $ "- imports: " ++ (show import_names)
-  --dbgPrintLn 2 $ "- aliases: " ++ (show aliases)
-  --dbgPrintLn 2 $ "- imports: " ++ (show (getImportMeta imports))
   imported_progs :: [PassM ProgBundle0] <- 
     mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
   let prog = do
@@ -268,9 +216,6 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
         toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
         let (defs, _vars, funs, inlines, main, optimizeDcons, userOrderings) = foldr classify init_acc toplevels
             userOrderings' = M.fromList $ coalese_constraints userOrderings
-            --defs' = M.mapWithKey (\k (DDef _ tyArgs dataCons) -> DDef k tyArgs (L.map (\(constrName, vs) -> ((mod_name ++ "." ++ constrName), vs)) dataCons) ) (M.mapKeys (\k -> toVar (mod_name ++ "." ++ (fromVar k))) defs)
-            --funs' = M.mapWithKey (\k funDef -> funDef {funName = k }) (M.mapKeys (\k -> toVar (mod_name ++ "." ++ (fromVar k))) funs) -- can insert function name here
-            --funs' = M.map (\funDef -> funDef {funMeta = funMeta {funModule = mod_name}}) funs -- can insert function name here
             funs' =
               foldr
                 (\v acc ->
@@ -310,50 +255,6 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
         let bundle = foldr (\(ProgBundle imported_bundle imported_mainmodule) acc -> acc ++ imported_bundle ++ [imported_mainmodule]) [] imported_progs' 
         pure $ ProgBundle bundle (ProgModule mod_name (Prog defs funs''' main) imports)
   pure prog
-  {-
-  Prog defs'' funs''''' main' <- fillImports (Prog defs' funs''' main) (toVar mod_name) imports imported_progs'
-  let (defs0, funs0) =
-        foldr
-          (\Prog {ddefs, fundefs} (defs1, funs1) ->
-              let ddef_names1 = M.keysSet defs1
-                  ddef_names2 = M.keysSet ddefs
-                  fn_names1 = M.keysSet funs1
-                  fn_names2 = M.keysSet fundefs
-                  em1 = S.intersection ddef_names1 ddef_names2
-                  em2 = S.intersection fn_names1 fn_names2
-                  conflicts1 =
-                    foldr
-                      (\d acc ->
-                        if (ddefs M.! d) /= (defs1 M.! d)
-                          then d : acc
-                          else acc)
-                      []
-                      em1
-                  conflicts2 =
-                    foldr
-                      (\f acc ->
-                        if (fundefs M.! f) /= (funs1 M.! f)
-                          then dbgTraceIt
-                                  (sdoc ((fundefs M.! f), (funs1 M.! f)))
-                                  (f : acc)
-                          else acc)
-                      []
-                      em2
-              in case (conflicts1, conflicts2) of
-                    ([], []) ->
-                      (M.union ddefs defs1, M.union fundefs funs1)
-                    (_x:_xs, _) ->
-                      error $
-                      "Conflicting definitions of " ++
-                      show conflicts1 ++ " found in " ++ mod_name
-                    (_, _x:_xs) ->
-                      error $
-                      "Conflicting definitions of " ++
-                      show (S.toList em2) ++ " found in " ++ mod_name)
-          (defs'', funs''''')
-          imported_progs'
-    -}
-  --pure $ pure $ (Prog defs0 funs0 main') --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs''') dbgTraceIt (sdoc userOrderings') dbgTraceIt "\n" dbgTraceIt (sdoc userOrderings)
   where
     init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing, S.empty, [])
     --modname = moduleName head_mb

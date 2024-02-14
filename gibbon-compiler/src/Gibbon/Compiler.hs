@@ -222,8 +222,11 @@ data CompileState a = CompileState
     , result :: Maybe (Value a) -- ^ Result of evaluating output of prior pass, if available.
     }
 
+-------------------------------------------------------------------------------
 -- | Compiler entrypoint, given a full configuration and a list of
 -- files to process, do the thing.
+-- 
+------------------------------------------------------------------------------- 
 compile :: Config -> FilePath -> IO ()
 compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
   -- set the env var DEBUG, to verbosity, when > 1
@@ -232,46 +235,33 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
   -- Use absolute path
   dir <- getCurrentDirectory
   let fp1 = dir </> fp0
-  -- Parse the input file
+  -- Parse the input file & imports
+  -- get the bundle of modules
   ((l0_bundle, cnt0), fp) <- parseInput config input fp1
   let config' = config { srcFile = Just fp }
 
-  -- put module resolution up here? so we don't have to mess with type check
-
-  -- make "whole program mode" and option (disable module resolution)
-
+  -----------------------------------------------------------------------------
+  -- do an early typecheck, before running through the passes or into the interpreter
+  -- perform the minimum transformations for a whole-progrm type-check (freshBundle, bundle, tc)
+  -----------------------------------------------------------------------------
   let initTypeChecked :: L0.Prog0
       initTypeChecked =
-        -- We typecheck first to turn the appropriate VarE's into FunRefE's.
-
-        
-        -- why frshing is useful
-        -- when linking modules,,, creating unique identifiers
-        -- nested declarations, 
-        --  compiler move internally bound names to top level in order to flatten programs,, thus they need to be unique
-
-        -- run an exerpiment and see if really need fresh :)
-        -- do we need two freshens (one here and one at the start of the passes)
-
-        -- ought to seperate dependency tree & bundling
-        -- figure out the dependency tree, then parse all the file individually
         fst $ runPassM defaultConfig cnt0
                 (freshBundleNames l0_bundle >>=
                  (\fresh -> dbgTrace 5 ("\nFreshen:\n"++sepline++ "\n" ++pprender fresh) (L0.tcProg (fst $ runPassM defaultConfig 0 (bundleModules fresh)))))
 
-  -- cut out interp and place it after bundling
-
   case mode of
+    -- run via the interpreter on the whole program
     Interp1 -> do
         dbgTrace passChatterLvl ("\nParsed:\n"++sepline++ "\n" ++ sdoc l0_bundle) (pure ())
         dbgTrace passChatterLvl ("\nTypechecked:\n"++sepline++ "\n" ++ pprender initTypeChecked) (pure ())
         runConf <- getRunConfig []
-        --l0 <- bundleModules initTypeChecked
         (_s1,val,_stdout) <- gInterpProg () runConf initTypeChecked
         print val
 
     ToParse -> dbgPrintLn 0 $ pprender l0_bundle
 
+    -- run via the passes
     _ -> do
       dbgPrintLn passChatterLvl $
           " [compiler] pipeline starting, parsed program: "++
