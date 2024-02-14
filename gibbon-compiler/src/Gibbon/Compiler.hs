@@ -6,6 +6,7 @@
 {-# OPTIONS_GHC -fno-warn-unused-binds #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Redundant return" #-}
+{-# HLINT ignore "Redundant pure" #-}
 
 -- | The compiler pipeline, assembled from several passes.
 
@@ -62,6 +63,7 @@ import qualified Gibbon.L0.Specialize2 as L0
 import qualified Gibbon.L1.Typecheck as L1
 import qualified Gibbon.L2.Typecheck as L2
 import qualified Gibbon.L3.Typecheck as L3
+import           Gibbon.Passes.FreshBundle    (freshBundleNames)
 import           Gibbon.Passes.FreshConstructors   (freshConstructors)
 import           Gibbon.Passes.ModuleRename   (moduleRename)
 import           Gibbon.Passes.Freshen        (freshNames)
@@ -231,33 +233,52 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
   dir <- getCurrentDirectory
   let fp1 = dir </> fp0
   -- Parse the input file
-  ((l0, cnt0), fp) <- parseInput config input fp1
+  ((l0_bundle, cnt0), fp) <- parseInput config input fp1
   let config' = config { srcFile = Just fp }
+
+  -- put module resolution up here? so we don't have to mess with type check
+
+  -- make "whole program mode" and option (disable module resolution)
 
   let initTypeChecked :: L0.Prog0
       initTypeChecked =
         -- We typecheck first to turn the appropriate VarE's into FunRefE's.
+
+        
+        -- why frshing is useful
+        -- when linking modules,,, creating unique identifiers
+        -- nested declarations, 
+        --  compiler move internally bound names to top level in order to flatten programs,, thus they need to be unique
+
+        -- run an exerpiment and see if really need fresh :)
+        -- do we need two freshens (one here and one at the start of the passes)
+
+        -- ought to seperate dependency tree & bundling
+        -- figure out the dependency tree, then parse all the file individually
         fst $ runPassM defaultConfig cnt0
-                (freshNames l0 >>=
-                 (\fresh -> dbgTrace 5 ("\nFreshen:\n"++sepline++ "\n" ++pprender fresh) (L0.tcProg fresh)))
+                (freshBundleNames l0_bundle >>=
+                 (\fresh -> dbgTrace 5 ("\nFreshen:\n"++sepline++ "\n" ++pprender fresh) (L0.tcProg (fst $ runPassM defaultConfig 0 (bundleModules fresh)))))
+
+  -- cut out interp and place it after bundling
 
   case mode of
     Interp1 -> do
-        dbgTrace passChatterLvl ("\nParsed:\n"++sepline++ "\n" ++ sdoc l0) (pure ())
+        dbgTrace passChatterLvl ("\nParsed:\n"++sepline++ "\n" ++ sdoc l0_bundle) (pure ())
         dbgTrace passChatterLvl ("\nTypechecked:\n"++sepline++ "\n" ++ pprender initTypeChecked) (pure ())
         runConf <- getRunConfig []
+        --l0 <- bundleModules initTypeChecked
         (_s1,val,_stdout) <- gInterpProg () runConf initTypeChecked
         print val
 
-
-    ToParse -> dbgPrintLn 0 $ pprender l0
+    ToParse -> dbgPrintLn 0 $ pprender l0_bundle
 
     _ -> do
       dbgPrintLn passChatterLvl $
           " [compiler] pipeline starting, parsed program: "++
             if dbgLvl >= passChatterLvl+1
-            then "\n"++sepline ++ "\n" ++ sdoc l0
-            else show (length (sdoc l0)) ++ " characters."
+            then "\n"++sepline ++ "\n" ++ sdoc l0_bundle
+            else show (length (sdoc l0_bundle)) ++ " characters."
+
 
       -- (Stage 1) Run the program through the interpreter
       initResult <- withPrintInterpProg initTypeChecked
@@ -266,7 +287,7 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
       let outfile = getOutfile backend fp cfile
 
       -- run the initial program through the compiler pipeline
-      let stM = passes config' l0
+      let stM = passes config' l0_bundle
       l4  <- evalStateT stM (CompileState {cnt=cnt0, result=initResult})
 
       case mode of
@@ -334,9 +355,10 @@ setDebugEnvVar verbosity =
     hPutStrLn stderr$ " ! We set DEBUG based on command-line verbose arg: "++show l
 
 
-parseInput :: Config -> Input -> FilePath -> IO ((L0.Prog0, Int), FilePath)
+parseInput :: Config -> Input -> FilePath -> IO ((L0.ProgBundle0, Int), FilePath)
 parseInput cfg ip fp = do
-  (l0, f) <-
+  (l0, f) <- (, fp) <$> HS.parseFile cfg fp
+    {-
     case ip of
       Haskell -> (, fp) <$> HS.parseFile cfg fp
       SExpr   -> (, fp) <$> SExp.parseFile fp
@@ -359,9 +381,10 @@ parseInput cfg ip fp = do
               , show oth
               , "  Please specify compile input format."
               ]
+      -}
   let l0' = do parsed <- l0
                -- dbgTraceIt (sdoc parsed) (pure ())
-               HS.desugarLinearExts parsed
+               HS.desugarBundleLinearExts parsed
   (l0'', cnt) <- pure $ runPassM defaultConfig 0 l0'
   pure ((l0'', cnt), f)
 
@@ -644,7 +667,7 @@ addRedirectionCon p@Prog{ddefs} = do
   return $ p { ddefs = ddefs' }
 
 -- | The main compiler pipeline
-passes :: (Show v) => Config -> L0.ProgBundle0 a -> StateT (CompileState v) IO L4.Prog
+passes :: (Show v) => Config -> L0.ProgBundle0 -> StateT (CompileState v) IO L4.Prog
 passes config@Config{dynflags} l0_bundle = do
       let isPacked   = gopt Opt_Packed dynflags
           biginf     = gopt Opt_BigInfiniteRegions dynflags
@@ -660,10 +683,13 @@ passes config@Config{dynflags} l0_bundle = do
       --l0_unbundled <- go  "freshConstructors" freshConstructors   l0_unbundled
       --l0_unbundled <- go  "renameModules"     moduleRename        l0_unbundled
 
-      -- bundle modules
-      l0 <- go  "bundle modules" bundleModules          l0_bundle
+      l0_bundle' <- go "freshBundle" freshBundleNames l0_bundle
 
-      l0 <- go  "freshen"         freshNames            l0
+      -- bundle modules
+      -- what does cnt do? -> the 0 in the following statement
+      let l0 = fst $ runPassM defaultConfig 0 (bundleModules l0_bundle')
+
+      --l0 <- go  "freshen"         freshNames            l0
       l0 <- goE0 "typecheck"       L0.tcProg            l0
       l0 <- goE0 "bindLambdas"     L0.bindLambdas       l0
       l0 <- goE0 "monomorphize"    L0.monomorphize      l0

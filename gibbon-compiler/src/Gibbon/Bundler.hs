@@ -1,5 +1,5 @@
 
-module Bundler (bundleModules) where
+module Gibbon.Bundler (bundleModules) where
 import qualified Data.Foldable                   as F
 import qualified Data.Set                        as S
 import           Gibbon.L0.Syntax                as L0
@@ -11,7 +11,7 @@ import Language.Haskell.Exts (ImportDecl)
 
 
 -- main bundler, takes a list of modules and the main module
-bundleModules :: ProgBundle0 a -> PassM Prog0
+bundleModules :: ProgBundle0 -> PassM Prog0
 bundleModules bundle = do
     let (ProgBundle modules main) = bundle
     let (ProgModule main_name (Prog main_defs main_funs main_exp) main_imports) = main
@@ -20,7 +20,7 @@ bundleModules bundle = do
 
 -- main bundle fold
 -- builds the full program by folding definitons and functions into the main
-_bundleModule :: ProgModule0 a -> (DDefs0, FunDefs0) -> (DDefs0, FunDefs0)
+_bundleModule :: ProgModule0 -> (DDefs0, FunDefs0) -> (DDefs0, FunDefs0)
 _bundleModule (ProgModule mod_name (Prog {ddefs, fundefs}) _) (defs1, funs1) = 
     -- conflict checking,,, extract definition and function names
     let ddef_names1 = M.keysSet defs1
