@@ -25,6 +25,9 @@ import           Text.PrettyPrint.HughesPJ      as PP
 
 import           Gibbon.Common                  as C
 import           Gibbon.Language                hiding (UrTy (..))
+import           Language.Haskell.Exts.SrcLoc
+import           Language.Haskell.Exts          (ImportDecl)
+
 
 
 --------------------------------------------------------------------------------
@@ -40,6 +43,10 @@ type FunDefs0 = FunDefs Exp0
 
 type Prog0 = Prog Exp0
 
+-------------------------------------------------------------------------------
+
+type ProgModule0 = ProgModule Exp0
+type ProgBundle0 = ProgBundle Exp0
 
 --------------------------------------------------------------------------------
 

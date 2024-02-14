@@ -10,6 +10,7 @@
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module Gibbon.Language.Syntax
     -- * Datatype definitions
@@ -47,6 +48,8 @@ module Gibbon.Language.Syntax
     
 -- * Programs
   , Prog(..)
+  , ProgModule(..)
+  , ProgBundle(..)
   , progToEnv
   , getFunTy
     
@@ -125,8 +128,11 @@ import qualified Data.Set                       as S
 import           Data.Word                      (Word8)
 import           System.IO.Unsafe               (unsafePerformIO)
 import           Text.PrettyPrint.GenericPretty
+import           Text.PrettyPrint               (text)
+
 
 import           Gibbon.Common
+import           Language.Haskell.Exts          (ImportDecl, SrcSpanInfo)
 
 
 --------------------------------------------------------------------------------
@@ -392,6 +398,7 @@ data Prog ex =
     , mainExp :: Maybe (ex, (TyOf ex))
     }
 
+-------------------------------------------------------------------------------
 
 -- Since 'FunDef' is defined using a type family, we cannot use the deriving clause.
 -- Ryan Scott recommended using singletons-like alternative outlined here:
@@ -417,6 +424,40 @@ deriving instance
          (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex,
           Generic (ArrowTy (TyOf ex))) =>
          NFData (Prog ex)
+
+-------------------------------------------------------------------------------
+-- Module Bundles
+-- Before modules get bundled into a single program, they're stored as
+-- a tuple of the discrte Prog and it's import declarations
+-------------------------------------------------------------------------------
+
+
+data ProgModule ex = ProgModule String (Prog ex) [ImportDecl SrcSpanInfo]
+data ProgBundle ex = ProgBundle [ProgModule ex] (ProgModule ex)
+
+deriving instance
+         (Show (TyOf ex), Show ex, Show (ArrowTy (TyOf ex))) =>
+         Show (ProgModule ex)
+deriving instance Generic (ProgModule ex)
+instance Out (ImportDecl SrcSpanInfo) where
+    doc         = text . show
+    docPrec n v = docPrec n (show v)
+instance (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex, Generic (ArrowTy (TyOf ex))) => NFData (ProgModule ex) where
+  rnf (ProgModule name prog imports) = rnf prog
+
+deriving instance (Out (Prog ex)) => Out (ProgModule ex)
+deriving instance
+         (Show (TyOf ex), Show ex, Show (ArrowTy (TyOf ex))) =>
+         Show (ProgBundle ex)
+
+deriving instance
+         (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex,
+          Generic (ArrowTy (TyOf ex))) =>
+         NFData (ProgBundle ex)
+
+deriving instance Generic (ProgBundle ex)
+deriving instance (Out (ProgModule ex)) => Out (ProgBundle ex)
+
 
 
 -- | Abstract some of the differences of top level program types, by

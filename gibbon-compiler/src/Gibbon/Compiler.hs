@@ -4,6 +4,9 @@
 {-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-unused-binds #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Redundant return" #-}
+{-# HLINT ignore "Redundant pure" #-}
 
 -- | The compiler pipeline, assembled from several passes.
 
@@ -18,6 +21,7 @@ module Gibbon.Compiler
     )
   where
 
+import           Data.Functor
 import           Control.DeepSeq
 import           Control.Exception
 #if !MIN_VERSION_base(4,15,0)
@@ -52,12 +56,14 @@ import           Gibbon.L1.Interp()
 import           Gibbon.L2.Interp ( Store, emptyStore )
 -- import           Gibbon.TargetInterp (Val (..), execProg)
 
+import           Gibbon.Bundler                     (bundleModules)
 -- Compiler passes
 import qualified Gibbon.L0.Typecheck as L0
 import qualified Gibbon.L0.Specialize2 as L0
 import qualified Gibbon.L1.Typecheck as L1
 import qualified Gibbon.L2.Typecheck as L2
 import qualified Gibbon.L3.Typecheck as L3
+import           Gibbon.Passes.FreshBundle    (freshBundleNames)
 import           Gibbon.Passes.FreshConstructors   (freshConstructors)
 import           Gibbon.Passes.ModuleRename   (moduleRename)
 import           Gibbon.Passes.Freshen        (freshNames)
@@ -95,7 +101,7 @@ import           Gibbon.Passes.Fusion2        (fusion2)
 import Gibbon.Passes.CalculateBounds          (inferRegSize)
 import           Gibbon.Pretty
 import Gibbon.Passes.OptimizeADTLayout (locallyOptimizeDataConLayout, globallyOptimizeDataConLayout)
-
+import           Gibbon.L1.GenSML
 
 
 
@@ -167,6 +173,9 @@ configParser = Config <$> inputParser
                flag' Interp2 (short 'i' <> long "interp2" <>
                               help "Run through the interpreter after cursor insertion") <|>
                flag' RunExe  (short 'r' <> long "run" <> help "Compile and then run executable") <|>
+               flag' ToMPL (long "mpl" <> help "Emit MPL sources") <|>
+               flag' ToMPLExe (long "mpl-exe" <> help "Emit SML and compile with MPL") <|>
+               flag' RunMPL (long "mpl-run" <> help "Emit SML, compile with MPL, and run") <|>
                (Bench . toVar <$> strOption (short 'b' <> long "bench-fun" <> metavar "FUN" <>
                                      help ("Generate code to benchmark a 1-argument FUN against a input packed file."++
                                            "  If --bench-input is provided, then the benchmark is run as well.")))
@@ -224,33 +233,52 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
   dir <- getCurrentDirectory
   let fp1 = dir </> fp0
   -- Parse the input file
-  ((l0, cnt0), fp) <- parseInput config input fp1
+  ((l0_bundle, cnt0), fp) <- parseInput config input fp1
   let config' = config { srcFile = Just fp }
+
+  -- put module resolution up here? so we don't have to mess with type check
+
+  -- make "whole program mode" and option (disable module resolution)
 
   let initTypeChecked :: L0.Prog0
       initTypeChecked =
         -- We typecheck first to turn the appropriate VarE's into FunRefE's.
+
+        
+        -- why frshing is useful
+        -- when linking modules,,, creating unique identifiers
+        -- nested declarations, 
+        --  compiler move internally bound names to top level in order to flatten programs,, thus they need to be unique
+
+        -- run an exerpiment and see if really need fresh :)
+        -- do we need two freshens (one here and one at the start of the passes)
+
+        -- ought to seperate dependency tree & bundling
+        -- figure out the dependency tree, then parse all the file individually
         fst $ runPassM defaultConfig cnt0
-                (freshNames l0 >>=
-                 (\fresh -> dbgTrace 5 ("\nFreshen:\n"++sepline++ "\n" ++pprender fresh) (L0.tcProg fresh)))
+                (freshBundleNames l0_bundle >>=
+                 (\fresh -> dbgTrace 5 ("\nFreshen:\n"++sepline++ "\n" ++pprender fresh) (L0.tcProg (fst $ runPassM defaultConfig 0 (bundleModules fresh)))))
+
+  -- cut out interp and place it after bundling
 
   case mode of
     Interp1 -> do
-        dbgTrace passChatterLvl ("\nParsed:\n"++sepline++ "\n" ++ sdoc l0) (pure ())
+        dbgTrace passChatterLvl ("\nParsed:\n"++sepline++ "\n" ++ sdoc l0_bundle) (pure ())
         dbgTrace passChatterLvl ("\nTypechecked:\n"++sepline++ "\n" ++ pprender initTypeChecked) (pure ())
         runConf <- getRunConfig []
+        --l0 <- bundleModules initTypeChecked
         (_s1,val,_stdout) <- gInterpProg () runConf initTypeChecked
         print val
 
-
-    ToParse -> dbgPrintLn 0 $ pprender l0
+    ToParse -> dbgPrintLn 0 $ pprender l0_bundle
 
     _ -> do
       dbgPrintLn passChatterLvl $
           " [compiler] pipeline starting, parsed program: "++
             if dbgLvl >= passChatterLvl+1
-            then "\n"++sepline ++ "\n" ++ sdoc l0
-            else show (length (sdoc l0)) ++ " characters."
+            then "\n"++sepline ++ "\n" ++ sdoc l0_bundle
+            else show (length (sdoc l0_bundle)) ++ " characters."
+
 
       -- (Stage 1) Run the program through the interpreter
       initResult <- withPrintInterpProg initTypeChecked
@@ -259,35 +287,40 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
       let outfile = getOutfile backend fp cfile
 
       -- run the initial program through the compiler pipeline
-      let stM = passes config' l0
+      let stM = passes config' l0_bundle
       l4  <- evalStateT stM (CompileState {cnt=cnt0, result=initResult})
 
-      if mode == Interp2
-      then do
-        error "TODO: Interp2"
-        -- l4res <- execProg l4
-        -- mapM_ (\(IntVal v) -> liftIO $ print v) l4res
-        -- exitSuccess
-      else do
-        str <- case backend of
-                 C    -> codegenProg config' l4
+      case mode of
+        Interp2 -> do
+          error "TODO: Interp2"
+          -- l4res <- execProg l4
+          -- mapM_ (\(IntVal v) -> liftIO $ print v) l4res
+          -- exitSuccess
+        
+        ToMPL -> return ()
+        ToMPLExe -> return ()
+        RunMPL -> return ()
+
+        _ -> do
+          str <- case backend of
+                  C    -> codegenProg config' l4
 
 
 
-                 LLVM -> error $ "Cannot execute through the LLVM backend. To build Gibbon with LLVM: "
-                         ++ "stack build --flag gibbon:llvm_enabled"
+                  LLVM -> error $ "Cannot execute through the LLVM backend. To build Gibbon with LLVM: "
+                          ++ "stack build --flag gibbon:llvm_enabled"
 
-        -- The C code is long, so put this at a higher verbosity level.
-        dbgPrint passChatterLvl $ " [compiler] Final C codegen: " ++show (length str) ++" characters."
-        dbgPrintLn 4 $ sepline ++ "\n" ++ str
+          -- The C code is long, so put this at a higher verbosity level.
+          dbgPrint passChatterLvl $ " [compiler] Final C codegen: " ++show (length str) ++" characters."
+          dbgPrintLn 4 $ sepline ++ "\n" ++ str
 
-        clearFile outfile
-        writeFile outfile str
+          clearFile outfile
+          writeFile outfile str
 
-        -- (Stage 3) Code written, now compile if warranted.
-        when (mode == ToExe || mode == RunExe || isBench mode ) $ do
-          compileAndRunExe config fp >>= putStr
-          return ()
+          -- (Stage 3) Code written, now compile if warranted.
+          when (mode == ToExe || mode == RunExe || isBench mode ) $ do
+            compileAndRunExe config fp >>= putStr
+            return ()
 
 runL0 :: L0.Prog0 -> IO ()
 runL0 l0 = do
@@ -322,9 +355,10 @@ setDebugEnvVar verbosity =
     hPutStrLn stderr$ " ! We set DEBUG based on command-line verbose arg: "++show l
 
 
-parseInput :: Config -> Input -> FilePath -> IO ((L0.Prog0, Int), FilePath)
+parseInput :: Config -> Input -> FilePath -> IO ((L0.ProgBundle0, Int), FilePath)
 parseInput cfg ip fp = do
-  (l0, f) <-
+  (l0, f) <- (, fp) <$> HS.parseFile cfg fp
+    {-
     case ip of
       Haskell -> (, fp) <$> HS.parseFile cfg fp
       SExpr   -> (, fp) <$> SExp.parseFile fp
@@ -347,9 +381,10 @@ parseInput cfg ip fp = do
               , show oth
               , "  Please specify compile input format."
               ]
+      -}
   let l0' = do parsed <- l0
                -- dbgTraceIt (sdoc parsed) (pure ())
-               HS.desugarLinearExts parsed
+               HS.desugarBundleLinearExts parsed
   (l0'', cnt) <- pure $ runPassM defaultConfig 0 l0'
   pure ((l0'', cnt), f)
 
@@ -555,6 +590,45 @@ clearFile fileName = removeFile fileName `catch` handleErr
 
 --------------------------------------------------------------------------------
 
+-- | SML Codegen
+
+mplCompiler :: String
+mplCompiler = "mlton"  -- temporary until mpl is installed
+
+goIO :: Functor m => a1 -> m a2 -> StateT b m a1
+goIO prog io = StateT $ \x -> io $> (prog, x)
+
+smlExt :: FilePath -> FilePath
+smlExt fp = dropExtension fp <.> "sml"
+
+toSML :: FilePath -> L1.Prog1 -> IO ()
+toSML fp prog = writeFile (smlExt fp) $ render $ ppProgram prog
+
+compileMPL :: FilePath -> IO ()
+compileMPL fp = do
+  cd <- system $ mplCompiler <> " " <> smlExt fp
+  case cd of
+    ExitFailure n -> error $ "SML compiler failed with code " <> show n
+    ExitSuccess -> pure ()
+
+runMPL :: FilePath -> IO ()
+runMPL fp = do
+  cd <- system $ prefix <> dropExtension fp
+  case cd of
+    ExitFailure n -> error $ "SML executable failed with code " <> show n
+    ExitSuccess -> pure ()
+  where
+    prefix = case takeDirectory fp of
+      "" -> "./"
+      _ -> ""
+
+goSML :: Config -> L1.Prog1 -> (FilePath -> IO a2) -> StateT b IO L1.Prog1
+goSML config prog acts = 
+  goIO prog (toSML fp prog *> acts fp)
+  where Just fp = srcFile config
+
+--------------------------------------------------------------------------------
+
 -- | Replace the main function with benchmark code
 --
 benchMainExp :: L1.Prog1 -> PassM L1.Prog1
@@ -593,8 +667,8 @@ addRedirectionCon p@Prog{ddefs} = do
   return $ p { ddefs = ddefs' }
 
 -- | The main compiler pipeline
-passes :: (Show v) => Config -> L0.Prog0 -> StateT (CompileState v) IO L4.Prog
-passes config@Config{dynflags} l0 = do
+passes :: (Show v) => Config -> L0.ProgBundle0 -> StateT (CompileState v) IO L4.Prog
+passes config@Config{dynflags} l0_bundle = do
       let isPacked   = gopt Opt_Packed dynflags
           biginf     = gopt Opt_BigInfiniteRegions dynflags
           gibbon1    = gopt Opt_Gibbon1 dynflags
@@ -605,9 +679,17 @@ passes config@Config{dynflags} l0 = do
           opt_layout_global = gopt Opt_Layout_Global dynflags
           use_solver = gopt Opt_Layout_Use_Solver dynflags
           tcProg3     = L3.tcProg isPacked
-      l0 <- go  "freshConstructors" freshConstructors   l0
-      l0 <- go  "renameModules"   moduleRename         l0
-      l0 <- go  "freshen"         freshNames            l0
+
+      --l0_unbundled <- go  "freshConstructors" freshConstructors   l0_unbundled
+      --l0_unbundled <- go  "renameModules"     moduleRename        l0_unbundled
+
+      l0_bundle' <- go "freshBundle" freshBundleNames l0_bundle
+
+      -- bundle modules
+      -- what does cnt do? -> the 0 in the following statement
+      let l0 = fst $ runPassM defaultConfig 0 (bundleModules l0_bundle')
+
+      --l0 <- go  "freshen"         freshNames            l0
       l0 <- goE0 "typecheck"       L0.tcProg            l0
       l0 <- goE0 "bindLambdas"     L0.bindLambdas       l0
       l0 <- goE0 "monomorphize"    L0.monomorphize      l0
@@ -639,6 +721,12 @@ passes config@Config{dynflags} l0 = do
 
       -- Minimal haskell "backend".
       lift $ dumpIfSet config Opt_D_Dump_Hs (render $ pprintHsWithEnv l1)
+
+      l1 <- case mode config of
+        ToMPL -> goSML config l1 (const $ pure ())
+        ToMPLExe -> goSML config l1 compileMPL
+        RunMPL -> goSML config l1 (\fp -> compileMPL fp *> runMPL fp)
+        _ -> return l1
 
       -- -- TODO: Write interpreters for L2 and L3
       l3 <- if isPacked

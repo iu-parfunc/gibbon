@@ -165,7 +165,7 @@ dataConsInFunBody funBody = case funBody of
             IfE a b c -> S.unions $ [dataConsInFunBody a] ++ [dataConsInFunBody b] ++ [dataConsInFunBody c]
             MkProdE xs -> S.unions $ P.map dataConsInFunBody xs
             ProjE i e -> error "getGeneratedVariable: TODO ProjE"
-            TimeIt e ty b -> error "getGeneratedVariable: TODO TimeIt"
+            TimeIt e ty b -> dataConsInFunBody e
             WithArenaE v e -> error "getGeneratedVariable: TODO WithArenaE"
             SpawnE f locs args -> error "getGeneratedVariable: TODO SpawnE"
             SyncE -> error "getGeneratedVariable: TODO SyncE"
@@ -611,7 +611,7 @@ changeCallNameInRecFunction
           IfE a b c -> IfE (fixExp a) (fixExp b) (fixExp c)
           MkProdE xs -> MkProdE (P.map fixExp xs)
           ProjE i e -> error "getExpTyEnv: TODO ProjE"
-          TimeIt e ty b -> error "getExpTyEnv: TODO TimeIt"
+          TimeIt e ty b -> TimeIt (fixExp e) ty b
           WithArenaE v e -> error "getExpTyEnv: TODO WithArenaE"
           SpawnE f locs args -> error "getExpTyEnv: TODO SpawnE"
           SyncE -> error "getExpTyEnv: TODO SyncE"
@@ -642,7 +642,7 @@ genNewProducersAndRewriteProgram
       Nothing ->
         error "genNewProducersAndRewriteProgram : Program has no main expression."
       Just (mexp, ty) ->
-        let variablesAndProducers = getVariableAndProducer funName pmap venv ddefs newDataConName mexp
+        let variablesAndProducers = removeDuplicates $ getVariableAndProducer funName pmap venv ddefs newDataConName mexp
          in case variablesAndProducers of
               [] -> prg --error "no variable and producers found to modify"
               [(var, producer)] ->
@@ -692,10 +692,10 @@ genNewProducersAndRewriteProgram
                                 mainExp = Just (newMainExp, ty)
                               }
                       _ -> error ""
-              x : xs -> error "more than one variable and producer not handled yet."
+              x : xs -> error ("more than one variable and producer not handled yet." ++ show variablesAndProducers)
 
 -- Function to find the the variable/s that have the type that's being optimized for the given function f
--- Also return the producer of those variable/s
+-- Also return the producer of) those variable/s
 -- Arguments
 -- Var -> Name of the function being optimized
 -- pmap -> variable to producer map
@@ -1193,6 +1193,11 @@ deleteMany :: (Eq a) => [a] -> [a] -> [a]
 deleteMany [] = id -- Nothing to delete
 deleteMany (x : xs) = deleteMany xs . deleteOne x -- Delete one, then the rest.
 
+removeDuplicates :: Eq a => [a] -> [a]
+removeDuplicates list = case list of 
+                                []   -> []
+                                a:as -> a:removeDuplicates (P.filter (/=a) as)
+
 fillminus1 :: [Int] -> [Int] -> [Int]
 fillminus1 lst indices =
   case lst of
@@ -1492,7 +1497,8 @@ reOrderLetExpHelper (Just var) letExpOrder expr = fst $ run letExpOrder expr
           MkProdE xs -> let (xs', releasedBinds) = lambdaHandleExpList xs letExpOrder'
                           in (MkProdE xs', releasedBinds)
           ProjE {} -> error "reOrderLetExpHelper: TODO ProjE"
-          TimeIt {} -> error "reOrderLetExpHelper: TODO TimeIt"
+          TimeIt e ty b -> let (e', releasedBinds) = run letExpOrder' e  
+                         in (TimeIt e' ty b, releasedBinds)
           WithArenaE {} -> error "reOrderLetExpHelper: TODO WithArenaE"
           SpawnE {} -> error "reOrderLetExpHelper: TODO SpawnE"
           SyncE -> error "reOrderLetExpHelper: TODO SyncE"

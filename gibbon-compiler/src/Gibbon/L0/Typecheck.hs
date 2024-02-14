@@ -40,6 +40,17 @@ runTcM (TcM tc) = runExceptT tc
 err :: Doc -> TcM a
 err d = throwError ("L0.Typecheck: " $$ nest 4 d)
 
+tcProgBundle :: ProgBundle0 -> PassM ProgBundle0
+tcProgBundle (ProgBundle bundle main) = do
+  bundle' <- mapM tcProgModule bundle
+  main' <- tcProgModule main
+  pure $ ProgBundle bundle' main' 
+
+tcProgModule :: ProgModule0 -> PassM ProgModule0
+tcProgModule (ProgModule modname prog imports) = do
+  prog' <- tcProg prog
+  pure $ ProgModule modname prog' imports
+
 tcProg :: Prog0 -> PassM Prog0
 tcProg prg@Prog{ddefs,fundefs,mainExp} = do
   let init_fenv = M.map funTy fundefs

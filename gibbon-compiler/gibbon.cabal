@@ -1,4 +1,4 @@
-cabal-version:         >=1.10
+cabal-version:         2.0
 
 name:                  gibbon
 version:               0.3
@@ -15,9 +15,7 @@ category:              Compilers/Interpreters
 extra-source-files:    README.md
 build-type:            Simple
 extra-source-files:    README.md
-cabal-version:         >=1.10
 tested-with:           GHC==9.4.6
-                     , GHC==9.4.5
                      , GHC==9.2.8
                      , GHC==9.0.2
                      , GHC==8.10.7
@@ -30,6 +28,7 @@ flag LLVM_ENABLED
 library
   exposed-modules:     Gibbon.Common
                        Gibbon.Compiler
+                       Gibbon.Bundler
                        Gibbon.DynFlags
                        Gibbon.Pretty
                        Gibbon.SExpFrontend
@@ -47,6 +46,7 @@ library
                        Gibbon.L1.Typecheck
                        Gibbon.L1.Interp
                        Gibbon.L1.Examples
+                       Gibbon.L1.GenSML
                        Gibbon.L2.Syntax
                        Gibbon.L2.Typecheck
                        Gibbon.L2.Interp
@@ -60,6 +60,7 @@ library
                        Gibbon.NewL2.FromOldL2
 
                        -- compiler passes, roughly in the order they're run
+                       Gibbon.Passes.FreshBundle
                        Gibbon.Passes.FreshConstructors
                        Gibbon.Passes.ModuleRename
                        Gibbon.Passes.ModuleFillImports

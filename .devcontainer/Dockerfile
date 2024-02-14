@@ -16,7 +16,11 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     libgmp-dev \
     racket \
     uthash-dev \
-    vim
+    vim \
+    python3-pip
+
+# install Python libraries
+RUN pip3 install cplex docplex
 
 # update path
 USER ${USERNAME}
@@ -46,5 +50,11 @@ ARG RUST=1.71.0
 
 # install rustup, rustc, and cargo
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain=${RUST} -y
+
+# naively install mlton
+RUN wget https://github.com/MLton/mlton/releases/download/on-20210117-release/mlton-20210117-1.amd64-linux-glibc2.31.tgz
+RUN tar -xvzf mlton-20210117-1.amd64-linux-glibc2.31.tgz
+RUN rm mlton-20210117-1.amd64-linux-glibc2.31.tgz
+ENV PATH="/home/${USERNAME}/mlton-20210117-1.amd64-linux-glibc2.31/bin:$PATH"
 
 CMD ["bash"]
