@@ -347,31 +347,29 @@ setDebugEnvVar verbosity =
 
 parseInput :: Config -> Input -> FilePath -> IO ((L0.ProgBundle0, Int), FilePath)
 parseInput cfg ip fp = do
-  (l0, f) <- (, fp) <$> HS.parseFile cfg fp
-    {-
-    case ip of
-      Haskell -> (, fp) <$> HS.parseFile cfg fp
-      SExpr   -> (, fp) <$> SExp.parseFile fp
-      Unspecified ->
-        case takeExtension fp of
-          ".hs"   -> (, fp) <$> HS.parseFile cfg fp
-          ".sexp" -> (, fp) <$> SExp.parseFile fp
-          ".rkt"  -> (, fp) <$> SExp.parseFile fp
-          ".gib"  -> (, fp) <$> SExp.parseFile fp
-          oth -> do
-            -- A silly hack just out of sheer laziness vis-a-vis tab completion:
-            let f1 = fp ++ ".gib"
-                f2 = fp ++ "gib"
-            f1' <- doesFileExist f1
-            f2' <- doesFileExist f2
-            if (f1' && oth == "") || (f2' && oth == ".")
-            then (,f2) <$> SExp.parseFile f1
-            else error $ mconcat
-              [ "compile: unrecognized file extension: "
-              , show oth
-              , "  Please specify compile input format."
-              ]
-      -}
+  --(l0, f) <- (, fp) <$> HS.parseFile cfg fp
+  (l0, f) <- case ip of
+    Haskell -> (, fp) <$> HS.parseFile cfg fp
+    SExpr   -> (, fp) <$> SExp.parseFile fp
+    Unspecified ->
+      case takeExtension fp of
+        ".hs"   -> (, fp) <$> HS.parseFile cfg fp
+        ".sexp" -> (, fp) <$> SExp.parseFile fp
+        ".rkt"  -> (, fp) <$> SExp.parseFile fp
+        ".gib"  -> (, fp) <$> SExp.parseFile fp
+        oth -> do
+          -- A silly hack just out of sheer laziness vis-a-vis tab completion:
+          let f1 = fp ++ ".gib"
+              f2 = fp ++ "gib"
+          f1' <- doesFileExist f1
+          f2' <- doesFileExist f2
+          if (f1' && oth == "") || (f2' && oth == ".")
+          then (,f2) <$> SExp.parseFile f1
+          else error $ mconcat
+            [ "compile: unrecognized file extension: "
+            , show oth
+            , "  Please specify compile input format."
+            ]
   let l0' = do parsed <- l0
                -- dbgTraceIt (sdoc parsed) (pure ())
                HS.desugarBundleLinearExts parsed
