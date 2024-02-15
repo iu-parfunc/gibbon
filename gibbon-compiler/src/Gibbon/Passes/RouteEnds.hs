@@ -223,17 +223,17 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
     -- | Process function types (but don't handle bodies)
     fdty :: L2.FunDef2 -> PassM L2.FunDef2
     fdty FunDef{funName,funTy,funArgs,funBody,funMeta} =
-        do let (ArrowTy2 locin tyin eff tyout _locout isPar NoTail) = funTy
-               handleLoc (LRM l r m) ls = if S.member (Traverse l) eff then (LRM l r m):ls else ls
+        do let (ArrowTy2 locin tyin eff tyout _locout isPar) = funTy
+               handleLoc (LRM l r m mu) ls = if S.member (Traverse l) eff then (LRM l r m mu):ls else ls
                locout' = L.map EndOf $ L.foldr handleLoc [] locin
-           return FunDef{funName,funTy=(ArrowTy2 locin tyin eff tyout locout' isPar NoTail),funArgs,funBody,funMeta}
+           return FunDef{funName,funTy=(ArrowTy2 locin tyin eff tyout locout' isPar),funArgs,funBody,funMeta}
 
 
     -- | Process function bodies
     fd :: FunDefs2 -> L2.FunDef2 -> PassM L2.FunDef2
     fd fns FunDef{funName,funTy,funArgs,funBody,funMeta} =
-        do let (ArrowTy2 locin tyins eff _tyout _locout _isPar NoTail) = funTy
-               handleLoc (LRM l _r _m) ls = if S.member (Traverse l) eff then l:ls else ls
+        do let (ArrowTy2 locin tyins eff _tyout _locout _isPar) = funTy
+               handleLoc (LRM l _r _m _mu) ls = if S.member (Traverse l) eff then l:ls else ls
                retlocs = L.foldr handleLoc [] locin
                lenv = L.foldr
                         (\(a,t) acc -> case t of
@@ -289,14 +289,14 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
           -- This is the most interesting case: a let bound function application.
           -- We need to update the let binding's extra location binding list with
           -- the end witnesses returned from the function.
-          LetE (v,_ls,ty,(AppE f lsin e1)) e2 -> do
+          LetE (v,_ls,ty,(AppE (f, t) lsin e1)) e2 -> do
                  let lenv' = case ty of
                                PackedTy _n l -> M.insert v l lenv
                                _ -> lenv
 
                  (outlocs,newls,eor') <- doBoundApp f lsin
                  e2' <- exp fns retlocs eor' lenv' afterenv (extendVEnv v ty env2) e2
-                 return $ LetE (v,outlocs,ty, AppE f lsin e1)
+                 return $ LetE (v,outlocs,ty, AppE (f, t) lsin e1)
                                (wrapBody e2' newls)
 
           -- Exactly like AppE.

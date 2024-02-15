@@ -35,7 +35,7 @@ removeCopies Prog{ddefs,fundefs,mainExp} = do
 
 removeCopiesFn :: DDefs Ty2 -> FunDefs2 -> FunDef2 -> PassM FunDef2
 removeCopiesFn ddefs fundefs f@FunDef{funArgs,funTy,funBody} = do
-  let initLocEnv = M.fromList $ map (\(LRM lc r _) -> (lc, regionToVar r)) (locVars funTy)
+  let initLocEnv = M.fromList $ map (\(LRM lc r _ _) -> (lc, regionToVar r)) (locVars funTy)
       initTyEnv  = M.fromList $ zip funArgs (arrIns funTy)
       env2 = Env2 initTyEnv (initFunEnv fundefs)
   bod' <- removeCopiesExp ddefs fundefs initLocEnv env2 funBody
@@ -47,7 +47,7 @@ removeCopiesExp ddefs fundefs lenv env2 ex =
   case ex of
     -- This AppE copies data from 'lin' to 'lout'. When this becomes an
     -- indirection node, 'lout' is the _pointer_, and 'lin' the _pointee_.
-    AppE f [lin,lout] [arg] | isCopyFunName f -> do
+    AppE (f, _)  [lin,lout] [arg] | isCopyFunName f -> do
       indirection <- gensym "indirection"
       let (PackedTy tycon _) = gRecoverType ddefs env2 ex
           -- the indirection datacon for this type
@@ -61,7 +61,7 @@ removeCopiesExp ddefs fundefs lenv env2 ex =
             (VarE indirection)
         oth -> error $ "removeCopies: Multiple indirection constructors: " ++ sdoc oth
 
-    LetE (v,locs,ty@(PackedTy tycon _), (AppE f [lin,lout] [arg])) bod | isCopyFunName f -> do
+    LetE (v,locs,ty@(PackedTy tycon _), (AppE (f, _) [lin,lout] [arg])) bod | isCopyFunName f -> do
       -- Get the indirection datacon for this type
       let indrDcon = filter isIndirectionTag $ getConOrdering ddefs tycon
       case indrDcon of

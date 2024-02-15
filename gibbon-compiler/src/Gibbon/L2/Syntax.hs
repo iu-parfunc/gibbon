@@ -39,7 +39,6 @@ module Gibbon.L2.Syntax
   , RegionSize(..)
   , RegionType(..)
   , regionToVar
-  , TailRecType(..)
 
 -- * Operations on types
   , allLocVars
@@ -394,10 +393,6 @@ instance HasRenamable E2Ext l d => Renamable (E2Ext l d) where
       SSPush{} -> ext
       SSPop{} -> ext
 
-
-data TailRecType = TMC | TC | NoTail 
-  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
-
 -- | Our type for functions grows to include effects, and explicit universal
 -- quantification over location/region variables.
 data ArrowTy2 ty2 = ArrowTy2
@@ -409,7 +404,6 @@ data ArrowTy2 ty2 = ArrowTy2
     , arrOut  :: ty2             -- ^ Output type for the function.
     , locRets :: [LocRet]        -- ^ L2B feature: multi-valued returns.
     , hasParallelism :: Bool     -- ^ Does this function have parallelism
-    , tailRecType :: TailRecType -- ^ What type of tail recursice calls may be present. TMC | TC | NOTail
     }
   deriving (Read, Show, Eq, Ord, Functor, Generic, NFData)
 
@@ -481,17 +475,19 @@ instance NFData Modality where
 -- | A location and region, together with modality.
 data LRM = LRM { lrmLoc :: LocVar
                , lrmReg :: Region
-               , lrmMode :: Modality }
+               , lrmMode :: Modality
+               , isMutable :: Bool
+                }
   deriving (Read,Show,Eq,Ord, Generic)
 
 instance Out LRM
 
 instance NFData LRM where
-  rnf (LRM a b c)  = rnf a `seq` rnf b `seq` rnf c
+  rnf (LRM a b c d)  = rnf a `seq` rnf b `seq` rnf c `seq` rnf d
 
 -- | A designated doesn't-really-exist-anywhere location.
 dummyLRM :: LRM
-dummyLRM = LRM "l_dummy" (VarR "r_dummy") Input
+dummyLRM = LRM "l_dummy" (VarR "r_dummy") Input False
 
 regionToVar :: Region -> Var
 regionToVar r = case r of
@@ -522,10 +518,10 @@ instance Typeable (PreExp E2Ext LocVar (UrTy LocVar)) where
       CharE{}      -> CharTy
       FloatE{}     -> FloatTy
       LitSymE _    -> SymTy
-      AppE v locs _ -> let fnty  = fEnv env2 # v
-                           outty = arrOut fnty
-                           mp = M.fromList $ zip (allLocVars fnty) locs
-                       in substLoc mp outty
+      AppE (v, _) locs _ -> let fnty  = fEnv env2 # v
+                                outty = arrOut fnty
+                                mp = M.fromList $ zip (allLocVars fnty) locs
+                             in substLoc mp outty
 
       PrimAppE (DictInsertP ty) ((VarE v):_) -> SymDictTy (Just v) $ stripTyLocs ty
       PrimAppE (DictEmptyP  ty) ((VarE v):_) -> SymDictTy (Just v) $ stripTyLocs ty
@@ -574,26 +570,26 @@ instance Out LocRet
 
 -- | Retrieve all LocVars from a fn type (Arrow)
 allLocVars :: ArrowTy2 ty2 -> [LocVar]
-allLocVars ty = L.map (\(LRM l _ _) -> l) (locVars ty)
+allLocVars ty = L.map (\(LRM l _ _ _) -> l) (locVars ty)
 
 inLocVars :: ArrowTy2 ty2 -> [LocVar]
-inLocVars ty = L.map (\(LRM l _ _) -> l) $
-               L.filter (\(LRM _ _ m) -> m == Input) (locVars ty)
+inLocVars ty = L.map (\(LRM l _ _ _) -> l) $
+               L.filter (\(LRM _ _ m _) -> m == Input) (locVars ty)
 
 outLocVars :: ArrowTy2 ty2 -> [LocVar]
-outLocVars ty = L.map (\(LRM l _ _) -> l) $
-                L.filter (\(LRM _ _ m) -> m == Output) (locVars ty)
+outLocVars ty = L.map (\(LRM l _ _ _) -> l) $
+                L.filter (\(LRM _ _ m _) -> m == Output) (locVars ty)
 
 outRegVars :: ArrowTy2 ty2 -> [LocVar]
-outRegVars ty = L.map (\(LRM _ r _) -> regionToVar r) $
-                L.filter (\(LRM _ _ m) -> m == Output) (locVars ty)
+outRegVars ty = L.map (\(LRM _ r _ _) -> regionToVar r) $
+                L.filter (\(LRM _ _ m _) -> m == Output) (locVars ty)
 
 inRegVars :: ArrowTy2 ty2 -> [LocVar]
-inRegVars ty = L.nub $ L.map (\(LRM _ r _) -> regionToVar r) $
-               L.filter (\(LRM _ _ m) -> m == Input) (locVars ty)
+inRegVars ty = L.nub $ L.map (\(LRM _ r _ _) -> regionToVar r) $
+               L.filter (\(LRM _ _ m _) -> m == Input) (locVars ty)
 
 allRegVars :: ArrowTy2 ty2 -> [LocVar]
-allRegVars ty = L.nub $ L.map (\(LRM _ r _) -> regionToVar r) (locVars ty)
+allRegVars ty = L.nub $ L.map (\(LRM _ r _ _) -> regionToVar r) (locVars ty)
 
 -- | Apply a location substitution to a type.
 substLoc :: M.Map LocVar LocVar -> Ty2 -> Ty2
@@ -691,11 +687,11 @@ revertExp ex =
     CharE c   -> CharE c
     FloatE n  -> FloatE n
     LitSymE v -> LitSymE v
-    AppE v _ args   -> AppE v [] (L.map revertExp args)
+    AppE (v, mu) _ args   -> AppE (v, mu) [] (L.map revertExp args)
     PrimAppE p args -> PrimAppE (revertPrim p) $ L.map revertExp args
     LetE (v,_,ty, (Ext (IndirectionE _ _ _ _ arg))) bod ->
       let PackedTy tycon _ =  ty in
-          LetE (v,[],(stripTyLocs ty), AppE (mkCopyFunName tycon) [] [revertExp arg]) (revertExp bod)
+          LetE (v,[],(stripTyLocs ty), AppE (mkCopyFunName tycon, NoTail) [] [revertExp arg]) (revertExp bod)
     LetE (v,_,ty,rhs) bod ->
       LetE (v,[], stripTyLocs ty, revertExp rhs) (revertExp bod)
     IfE a b c  -> IfE (revertExp a) (revertExp b) (revertExp c)
@@ -966,8 +962,8 @@ changeAppToSpawn v args2 ex1 =
     CharE{}   -> ex1
     FloatE{}  -> ex1
     LitSymE{} -> ex1
-    AppE f locs args | v == f && args == args2 -> SpawnE f locs $ map go args
-    AppE f locs args -> AppE f locs $ map go args
+    AppE (f, _) locs args | v == f && args == args2 -> SpawnE f locs $ map go args
+    AppE (f, t) locs args -> AppE (f, t) locs $ map go args
     PrimAppE f args  -> PrimAppE f $ map go args
     LetE (v,loc,ty,rhs) bod -> LetE (v,loc,ty, go rhs) (go bod)
     IfE a b c  -> IfE (go a) (go b) (go c)

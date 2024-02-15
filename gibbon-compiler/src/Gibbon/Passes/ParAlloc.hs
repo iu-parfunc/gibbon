@@ -73,7 +73,7 @@ parAlloc Prog{ddefs,fundefs,mainExp} = do
         when (hasParallelism funTy && hasPacked ret_ty && gopt Opt_Gibbon1 dflags) $
           error "gibbon: Cannot compile parallel allocations in Gibbon1 mode."
 
-        let initRegEnv = M.fromList $ map (\(LRM lc r _) -> (lc, regionToVar r)) (locVars funTy)
+        let initRegEnv = M.fromList $ map (\(LRM lc r _ _) -> (lc, regionToVar r)) (locVars funTy)
             initTyEnv  = M.fromList $ zip funArgs (arrIns funTy)
             env2 = Env2 initTyEnv (initFunEnv fundefs)
             boundlocs = S.fromList (funArgs ++ allLocVars funTy ++ allRegVars funTy)
@@ -127,7 +127,7 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
                                                   _ -> acc2)
                                        Nothing (M.elems (vEnv env2))
                         indr_dcon = head $ filter isIndirectionTag $ getConOrdering ddefs tycon
-                        rhs = Ext $ IndirectionE tycon indr_dcon (from, reg_env # from) (to, reg_env # to) (AppE "nocopy" [] [])
+                        rhs = Ext $ IndirectionE tycon indr_dcon (from, reg_env # from) (to, reg_env # to) (AppE ("nocopy", NoTail) [] [])
                     pure $ LetE (indr, [], PackedTy tycon from, rhs) acc)
                  bod1 (M.toList after_env)
       let bod3 = foldl

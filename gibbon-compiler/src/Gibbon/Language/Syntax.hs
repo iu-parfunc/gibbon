@@ -19,7 +19,7 @@ module Gibbon.Language.Syntax
   , lookupDataCon', insertDD, emptyDD, fromListDD, isVoidDDef
 
     -- * Function definitions
-  , FunctionTy(..), FunDefs, FunDef(..), FunMeta(..), FunRec(..), FunInline(..)
+  , FunctionTy(..), FunDefs, FunDef(..), FunMeta(..), FunRec(..), FunInline(..), TailRecType(..)
   , insertFD, fromListFD, initFunEnv
 
     -- * Programs
@@ -187,6 +187,9 @@ data FunRec = Rec | NotRec | TailRec
 data FunInline = Inline | NoInline | Inlineable
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
+data TailRecType = TMC | TC | NoTail 
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
+
 data FunMeta = FunMeta
   { funRec    :: FunRec
   , funInline :: FunInline
@@ -343,7 +346,7 @@ data PreExp (ext :: Type -> Type -> Type) loc dec =
    | CharE Char            -- ^ A character literal
    | FloatE Double         -- ^ Floating point literal
    | LitSymE Var           -- ^ A quoted symbol literal
-   | AppE Var [loc] [EXP]
+   | AppE (Var, TailRecType) [loc] [EXP]
      -- ^ Apply a top-level / first-order function.  Instantiate
      -- its type schema by providing location-variable arguments,
      -- if applicable.

@@ -322,8 +322,7 @@ instance Pretty ty2 => Pretty (ArrowTy2 ty2) where
               braces (text "locvars" <+> doc (locVars fnty) <> comma $$
                       text "effs: " <+> doc (arrEffs fnty) <> comma $$
                       text "locrets: " <+> doc (locRets fnty) <> comma $$
-                      text "parallel: " <+> doc (hasParallelism fnty) $$ 
-                      text "tailrecursiontype: " <+> doc (tailRecType fnty))
+                      text "parallel: " <+> doc (hasParallelism fnty))
 
 
 -- Expressions
@@ -343,8 +342,9 @@ instance HasPrettyToo e l d => Pretty (PreExp e l d) where
           CharE i -> quotes (char i)
           FloatE i  -> double i
           LitSymE v -> text "\"" <> pprintWithStyle sty v <> text "\""
-          AppE v locs ls -> parens $
+          AppE (v, t) locs ls -> parens $
                              pprintWithStyle sty v <+>
+                             pprintWithStyle sty t <+>
                              (brackets $ hcat (punctuate "," (map pprint locs))) <+>
                              (pprintWithStyle sty ls)
           PrimAppE pr es ->
@@ -490,12 +490,19 @@ instance Pretty L2.Modality where
   pprintWithStyle _ mode = text $ show mode
 
 instance Pretty L2.LRM where
-  pprintWithStyle sty (LRM loc reg mode) =
-    parens $ text "LRM" <+> pprintWithStyle sty loc <+> pprintWithStyle sty reg <+> pprintWithStyle sty mode
+  pprintWithStyle sty (LRM loc reg mode mutable) =
+    parens $ text "LRM" <+> pprintWithStyle sty loc <+> pprintWithStyle sty reg <+> pprintWithStyle sty mode <+> pprintWithStyle sty mutable
 
 instance Pretty NewL2.LREM where
-  pprintWithStyle sty (NewL2.LREM loc reg end_reg mode) =
-    parens $ text "LRM" <+> pprintWithStyle sty loc <+> pprintWithStyle sty reg <+> pprintWithStyle sty end_reg <+> pprintWithStyle sty mode
+  pprintWithStyle sty (NewL2.LREM loc reg end_reg mode isMutable) =
+    parens $ text "LREM" <+> pprintWithStyle sty loc <+> pprintWithStyle sty reg <+> pprintWithStyle sty end_reg <+> pprintWithStyle sty mode <+> pprintWithStyle sty isMutable
+
+
+instance Pretty TailRecType where 
+  pprintWithStyle sty TMC = parens $ text "TMC"
+  pprintWithStyle sty TC = parens $ text "TC"
+  pprintWithStyle sty NoTail = parens $ text "NoTail"
+
 
 instance Pretty NewL2.LocArg where
   pprintWithStyle sty locarg =
@@ -666,7 +673,7 @@ pprintHsWithEnv p@Prog{ddefs,fundefs,mainExp} =
           CharE i -> char i
           FloatE i -> double i
           LitSymE v -> text "\"" <> pprintWithStyle sty v <> text "\""
-          AppE v _locs ls -> pprintWithStyle sty v <+>
+          AppE (v, t) _locs ls -> pprintWithStyle sty v <+> pprintWithStyle sty t <+>
                             (hsep $ map (ppExp monadic env2) ls)
           PrimAppE pr es ->
               case pr of

@@ -36,7 +36,7 @@ writeOrderMarkers (Prog ddefs fundefs mainExp) = do
   where
     gofun f@FunDef{funArgs,funBody,funTy} = do
         let (reg_env, alloc_env) =
-              foldr (\(L2.LRM loc reg mode) (renv,aenv) ->
+              foldr (\(L2.LRM loc reg mode ismutable) (renv,aenv) ->
                        let renv' = M.insert loc reg renv
                            aenv' = case mode of
                                      L2.Output ->

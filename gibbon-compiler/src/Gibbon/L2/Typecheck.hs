@@ -138,7 +138,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
       LitSymE _v -> return (SymTy, tstatein)
 
-      AppE v ls args ->
+      AppE (v, _) ls args ->
           -- Checking function application involves a few steps:
           --  (1) We need to make sure the inputs/ouptuts line up with the expected
           --      types for the function.
@@ -147,7 +147,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
           --      locations.
           --  (3) We need to make sure that if we pass a packed structure as an argument, its
           --      location is among the passed-in locations.
-          do let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar NoTail) =
+          do let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar) =
                      case M.lookup v funs of
                        Just f -> funTy f
                        Nothing -> error $ "tcExp: Unbound function: " ++ sdoc v
@@ -175,9 +175,9 @@ tcExp ddfs env funs constrs regs tstatein exp =
              let handleTS ts (l,Output) =  switchOutLoc exp ts l
                  handleTS ts _ = return ts
              -- (2)
-             tstate' <- foldM handleTS tstate $ zip ls $ L.map (\(LRM _ _ m) -> m) locVars
+             tstate' <- foldM handleTS tstate $ zip ls $ L.map (\(LRM _ _ m _) -> m) locVars
              -- Use locVars used at call-site in the returned type
-             let arrOutMp = M.fromList $ zip (L.map (\(LRM l _ _) -> l) locVars) ls
+             let arrOutMp = M.fromList $ zip (L.map (\(LRM l _ _ _) -> l) locVars) ls
                  arrOut'  = substLoc arrOutMp arrOut
 
              return (arrOut',tstate')
@@ -746,7 +746,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                return (ty1,tstate1)
 
       SpawnE f locs args ->
-        tcExp ddfs env funs constrs regs tstatein (AppE f locs args)
+        tcExp ddfs env funs constrs regs tstatein (AppE (f, NoTail) locs args)
 
       SyncE -> pure (ProdTy [], tstatein)
 
@@ -1009,7 +1009,7 @@ getRegion exp (ConstraintSet cs) l = go $ S.toList cs
 
 -- | Get the regions mentioned in the location bindings in a function type.
 funRegs :: [LRM] -> RegionSet
-funRegs ((LRM _l r _m):lrms) =
+funRegs ((LRM _l r _m _mu):lrms) =
     let (RegionSet rs) = funRegs lrms
     in RegionSet $ S.insert (regionToVar r) rs
 funRegs [] = RegionSet $ S.empty
@@ -1019,13 +1019,13 @@ globalReg = GlobR "GLOBAL" BigInfinite
 
 -- | Get the constraints from the location bindings in a function type.
 funConstrs :: [LRM] -> ConstraintSet
-funConstrs ((LRM l r _m):lrms) =
+funConstrs ((LRM l r _m _mu):lrms) =
     extendConstrs (InRegionC l r) $ funConstrs lrms
 funConstrs [] = ConstraintSet $ S.empty
 
 -- | Get the type state implied by the location bindings in a function type.
 funTState :: [LRM] -> LocationTypeState
-funTState ((LRM l _r m):lrms) =
+funTState ((LRM l _r m _mu):lrms) =
     extendTS l (m,False) $ funTState lrms
 funTState [] = LocationTypeState $ M.empty
 

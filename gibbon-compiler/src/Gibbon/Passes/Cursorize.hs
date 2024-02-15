@@ -130,7 +130,7 @@ cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funMeta} = do
                            in mkLets bnds
 
       initTyEnv = M.fromList $ (map (\(a,b) -> (a,MkTy2 (cursorizeInTy (unTy2 b)))) $ zip funArgs in_tys) ++
-                               [(a, MkTy2 CursorTy) | (LRM a _ _) <- locVars funTy]
+                               [(a, MkTy2 CursorTy) | (LRM a _ _ _) <- locVars funTy]
 
       funargs = regBinds ++ outCurBinds ++ funArgs
 
@@ -223,7 +223,7 @@ This is used to create bindings for input location variables.
 
           -- Adding additional input arguments for the destination cursors to which outputs
           -- are written.
-          outCurs   = filter (\(LRM _ _ m) -> m == Output) locVars
+          outCurs   = filter (\(LRM _ _ m _) -> m == Output) locVars
           outCurTys = map (\_ -> CursorTy) outCurs --MutableCursorTy, in case of tail recursive functions. 
           inRegs    = map (\_ -> CursorTy) (inRegVars ty)
           in_tys    = inRegs ++ outRegs ++ outCurTys ++ (map unTy2 arrIns)
@@ -793,7 +793,7 @@ But Infinite regions do not support sizes yet. Re-enable this later.
 cursorizeAppE :: DDefs Ty2 -> FunDefs2 -> DepEnv -> TyEnv Ty2 -> SyncEnv -> Exp2 -> PassM Exp3
 cursorizeAppE ddfs fundefs denv tenv senv ex =
   case ex of
-    AppE f locs args -> do
+    AppE (f, t) locs args -> do
       let fnTy   = case M.lookup f fundefs of
                      Just g -> funTy g
                      Nothing -> error $ "Unknown function: " ++ sdoc f
@@ -810,8 +810,8 @@ cursorizeAppE ddfs fundefs denv tenv senv ex =
                  (zip in_tys args)
       let starts = zipWith giveStarts (map unTy2 argTys) args'
       let bod = case locs of
-                  [] -> AppE f [] starts
-                  _  -> AppE f [] ([VarE (toLocVar loc) | loc <- outs] ++ starts)
+                  [] -> AppE (f, t) [] starts
+                  _  -> AppE (f, t) [] ([VarE (toLocVar loc) | loc <- outs] ++ starts)
       asserts <- foldrM (\loc acc ->
                            case loc of
                              Loc LREM{lremEndReg,lremLoc} -> do
@@ -925,9 +925,9 @@ cursorizeSpawn isPackedContext ddfs fundefs denv tenv senv ex = do
     LetE (v, locs, MkTy2 ty, (SpawnE fn applocs args)) bod
 
       | isPackedTy ty -> do
-          rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs denv tenv senv (AppE fn applocs args)
+          rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs denv tenv senv (AppE (fn, NoTail) applocs args)
           let rhs'' = case rhs' of
-                        AppE fn' applocs' args' -> SpawnE fn' applocs' args'
+                        AppE (fn', _) applocs' args' -> SpawnE fn' applocs' args'
                         _ -> error "cursorizeSpawn"
           fresh <- gensym "tup_packed"
           let ty' = case locs of
@@ -961,9 +961,9 @@ cursorizeSpawn isPackedContext ddfs fundefs denv tenv senv ex = do
           return $ mkLets bnds bod''
 
       | hasPacked ty -> do
-          rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs denv tenv senv (AppE fn applocs args)
+          rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs denv tenv senv (AppE (fn, NoTail) applocs args)
           let rhs'' = case rhs' of
-                        AppE fn' applocs' args' -> SpawnE fn' applocs' args'
+                        AppE (fn', _) applocs' args' -> SpawnE fn' applocs' args'
                         _ -> error $ "cursorizeSpawn: this should've been an AppE. Got" ++ sdoc rhs'
           fresh <- gensym "tup_haspacked"
           let ty' = case locs of
@@ -983,9 +983,9 @@ cursorizeSpawn isPackedContext ddfs fundefs denv tenv senv ex = do
               mkLets bnds <$> go tenv' senv' bod
 
       | otherwise -> do
-          rhs' <- cursorizeExp ddfs fundefs denv tenv senv (AppE fn applocs args)
+          rhs' <- cursorizeExp ddfs fundefs denv tenv senv (AppE (fn, NoTail) applocs args)
           let rhs'' = case rhs' of
-                        AppE fn' applocs' args' -> SpawnE fn' applocs' args'
+                        AppE (fn', _) applocs' args' -> SpawnE fn' applocs' args'
                         _ -> error "cursorizeSpawn"
           case locs of
             [] -> LetE (v,[],curDict $ stripTyLocs ty, rhs'') <$>

@@ -465,11 +465,11 @@ collectMonoObls ddefs env2 toplevel ex =
     AppE f [] args -> do
       args' <- mapM (collectMonoObls ddefs env2 toplevel) args
       pure $ AppE f [] args'
-    AppE f tyapps args -> do
+    AppE (f, t) tyapps args -> do
       args'   <- mapM (collectMonoObls ddefs env2 toplevel) args
       tyapps' <- mapM (monoOblsTy ddefs) tyapps
       f' <- addFnObl f tyapps'
-      pure $ AppE f' [] args'
+      pure $ AppE (f', t) [] args'
     LetE (v, [], ty@ArrowTy{}, rhs) bod ->do
       let env2' = (extendVEnv v ty env2)
       case rhs of
@@ -996,7 +996,7 @@ specLambdasExp :: DDefs0 -> Env2 Ty0 -> Exp0 -> SpecM Exp0
 specLambdasExp ddefs env2 ex =
   case ex of
     -- TODO, docs.
-    AppE f [] args -> do
+    AppE (f, t) [] args -> do
       args' <- mapM go args
       let args'' = dropFunRefs f env2 args'
           refs   = foldr collectFunRefs [] args'
@@ -1004,11 +1004,11 @@ specLambdasExp ddefs env2 ex =
       case refs of
         [] ->
             case M.lookup f (sp_extra_args sp_state) of
-              Nothing -> pure $ AppE f [] args''
+              Nothing -> pure $ AppE (f, t) [] args''
               Just extra_args -> do
                   let (vars,_) = unzip extra_args
                       args''' = args'' ++ map VarE vars
-                  pure $ AppE f [] args'''
+                  pure $ AppE (f, t) [] args'''
         _  -> do
           let extra_args = foldr (\fnref acc ->
                                           case M.lookup fnref (sp_extra_args sp_state) of
@@ -1034,9 +1034,9 @@ specLambdasExp ddefs env2 ex =
                                        , sp_extra_args = sp_extra_args'
                                        }
               put sp_state'
-              pure $ AppE f' [] args'''
-            (Just f', _) -> pure $ AppE f' [] args'''
-            (_, Just f') -> pure $ AppE f' [] args'''
+              pure $ AppE (f', t) [] args'''
+            (Just f', _) -> pure $ AppE (f', t) [] args'''
+            (_, Just f') -> pure $ AppE (f', t) [] args'''
     AppE _ (_:_) _ -> error $ "specLambdasExp: Call-site not monomorphized: " ++ sdoc ex
 
     -- Float out a lambda fun to the top-level.
@@ -1138,9 +1138,9 @@ specLambdasExp ddefs env2 ex =
        e' <- specLambdasExp ddefs (extendVEnv v ArenaTy env2) e
        pure $ WithArenaE v e'
     SpawnE fn tyapps args -> do
-      e' <- specLambdasExp ddefs env2 (AppE fn tyapps args)
+      e' <- specLambdasExp ddefs env2 (AppE (fn, NoTail) tyapps args)
       case e' of
-        AppE fn' tyapps' args' -> pure $ SpawnE fn' tyapps' args'
+        AppE (fn', _) tyapps' args' -> pure $ SpawnE fn' tyapps' args'
         _ -> error "specLambdasExp: SpawnE"
     SyncE   -> pure SyncE
     MapE{}  -> error $ "specLambdasExp: TODO: " ++ sdoc ex
@@ -1174,7 +1174,7 @@ specLambdasExp ddefs env2 ex =
                                                     , funCanTriggerGC = False
                                                     }
                                 }
-                pure (Just fn, binds, AppE fnname [] (map VarE args))
+                pure (Just fn, binds, AppE (fnname, NoTail) [] (map VarE args))
           let mb_insert mb_fn mp = case mb_fn of
                                      Just fn -> M.insert (funName fn) fn mp
                                      Nothing -> mp
@@ -1254,7 +1254,7 @@ specLambdasExp ddefs env2 ex =
         CharE{}   -> acc
         FloatE{}  -> acc
         LitSymE{} -> acc
-        AppE f _ args   -> f : foldr collectAllFuns acc args
+        AppE (f, _) _ args   -> f : foldr collectAllFuns acc args
         PrimAppE _ args -> foldr collectAllFuns acc args
         LetE (_,_,_, rhs) bod -> foldr collectAllFuns acc [bod, rhs]
         IfE a b c  -> foldr collectAllFuns acc [c, b, a]
@@ -1452,7 +1452,7 @@ desugarL0 (Prog ddefs fundefs' mainExp') = do
               spawns = init xs
               (a,b,c) = last xs
               ls' = foldr
-                      (\(w,ty1,(AppE fn tyapps1 args)) acc ->
+                      (\(w,ty1,(AppE (fn, NoTail) tyapps1 args)) acc ->
                          (w,[],ty1,(SpawnE fn tyapps1 args)) : acc)
                       []
                       spawns
@@ -1539,17 +1539,17 @@ desugarL0 (Prog ddefs fundefs' mainExp') = do
             PrintPacked ty arg
               | (PackedTy tycon _) <- ty -> do
                   let f = mkPrinterName tycon
-                  pure $ AppE f [] [arg]
+                  pure $ AppE (f, NoTail) [] [arg]
               | otherwise -> err1 $ "printPacked without a packed type. Got " ++ sdoc ty
             CopyPacked ty arg
               | (PackedTy tycon _) <- ty -> do
                   let f = mkCopyFunName tycon
-                  pure $ AppE f [] [arg]
+                  pure $ AppE (f, NoTail) [] [arg]
               | otherwise -> err1 $ "printPacked without a packed type. Got " ++ sdoc ty
             TravPacked ty arg
               | (PackedTy tycon _) <- ty -> do
                   let f = mkTravFunName tycon
-                  pure $ AppE f [] [arg]
+                  pure $ AppE (f, NoTail) [] [arg]
               | otherwise -> err1 $ "printPacked without a packed type. Got " ++ sdoc ty
             L p e   -> Ext <$> (L p) <$> (go e)
             LinearExt{} -> err1 (sdoc ex)
@@ -1583,7 +1583,7 @@ genCopyFn DDef{tyName, dataCons} = do
                 -- let packed_vars = map fst $ filter (\(x,ty) -> isPackedTy ty) (zip ys tys)
                 let bod = foldr (\(ty,x,y) acc ->
                                      case ty of
-                                       PackedTy tycon _ -> LetE (y, [], ty, AppE (mkCopyFunName tycon) [] [VarE x]) acc
+                                       PackedTy tycon _ -> LetE (y, [], ty, AppE (mkCopyFunName tycon, NoTail) [] [VarE x]) acc
                                        _ -> LetE (y, [], ty, VarE x) acc)
                             (DataConE (ProdTy []) dcon $ map VarE ys) (zip3 tys xs ys)
                 return (dcon, map (\x -> (x,(ProdTy []))) xs, bod)
@@ -1607,7 +1607,7 @@ genCopySansPtrsFn DDef{tyName,dataCons} = do
                 -- let packed_vars = map fst $ filter (\(x,ty) -> isPackedTy ty) (zip ys tys)
                 let bod = foldr (\(ty,x,y) acc ->
                                      case ty of
-                                       PackedTy tycon _ -> LetE (y, [], ty, AppE (mkCopySansPtrsFunName tycon) [] [VarE x]) acc
+                                       PackedTy tycon _ -> LetE (y, [], ty, AppE (mkCopySansPtrsFunName tycon, NoTail) [] [VarE x]) acc
                                        _ -> LetE (y, [], ty, VarE x) acc)
                             (DataConE (ProdTy []) dcon $ map VarE ys) (zip3 tys xs ys)
                 return (dcon, map (\x -> (x,(ProdTy []))) xs, bod)
@@ -1633,7 +1633,7 @@ genTravFn DDef{tyName, dataCons} = do
                 ys <- mapM (\_ -> gensym "y") tys
                 let bod = foldr (\(ty,x,y) acc ->
                                      case ty of
-                                       PackedTy tycon _ -> LetE (y, [], ProdTy [], AppE (mkTravFunName tycon) [] [VarE x]) acc
+                                       PackedTy tycon _ -> LetE (y, [], ProdTy [], AppE (mkTravFunName tycon, NoTail) [] [VarE x]) acc
                                        _ -> acc)
                           (MkProdE [])
                           (zip3 (map snd tys) xs ys)
@@ -1662,7 +1662,7 @@ genPrintFn DDef{tyName, dataCons} = do
                                        FloatTy -> (y, [], ProdTy [], PrimAppE PrintFloat [VarE x]) : acc
                                        SymTy0  -> (y, [], ProdTy [], PrimAppE PrintSym [VarE x]) : acc
                                        BoolTy  -> (y, [], ProdTy [], PrimAppE PrintBool [VarE x]) : acc
-                                       PackedTy tycon _ -> (y, [], ProdTy [], AppE (mkPrinterName tycon) [] [VarE x]) : acc
+                                       PackedTy tycon _ -> (y, [], ProdTy [], AppE (mkPrinterName tycon, NoTail) [] [VarE x]) : acc
                                        SymDictTy{} -> (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar "SymDict")]) : acc
                                        VectorTy{} -> (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar "Vector")]) : acc
                                        PDictTy{} -> (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar "PDict")]) : acc
@@ -1744,7 +1744,7 @@ floatOutCase (Prog ddefs fundefs mainExp) = do
       args <- mapM (\x -> lift $ gensym x) free
       let ex' = foldr (\(from,to) acc -> gSubst from (VarE to) acc) ex (zip free args)
       let fn = FunDef fn_name args fn_ty ex' (FunMeta NotRec NoInline False)
-      state (\s -> ((AppE fn_name [] (map VarE free)), M.insert fn_name fn s))
+      state (\s -> ((AppE (fn_name, NoTail) [] (map VarE free)), M.insert fn_name fn s))
 
     go :: Bool -> Env2 Ty0 -> Exp0 -> FloatM Exp0
     go float env2 ex =

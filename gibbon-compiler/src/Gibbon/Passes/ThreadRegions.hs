@@ -93,7 +93,7 @@ threadRegions Prog{ddefs,fundefs,mainExp} = do
 
 threadRegionsFn :: DDefs Ty2 -> FunDefs2 -> NewL2.FunDef2 -> PassM NewL2.FunDef2
 threadRegionsFn ddefs fundefs f@FunDef{funName,funArgs,funTy,funMeta,funBody} = do
-  let initRegEnv = M.fromList $ map (\(LRM lc r _) -> (lc, regionToVar r)) (locVars funTy)
+  let initRegEnv = M.fromList $ map (\(LRM lc r _ _) -> (lc, regionToVar r)) (locVars funTy)
       initTyEnv  = M.fromList $ zip funArgs (arrIns funTy)
       env2 = Env2 initTyEnv (initFunEnv fundefs)
       fn :: Ty2 -> M.Map Var TyCon -> M.Map Var TyCon
@@ -104,7 +104,7 @@ threadRegionsFn ddefs fundefs f@FunDef{funName,funArgs,funTy,funMeta,funBody} = 
       rlocs_env = foldr fn M.empty (arrIns funTy)
       wlocs_env = fn (arrOut funTy) M.empty
       fnlocargs = map fromLRM (locVars funTy)
-      region_locs = M.fromList $ map (\(LRM l r _m) -> (regionToVar r, [l])) (locVars funTy)
+      region_locs = M.fromList $ map (\(LRM l r _m _mu) -> (regionToVar r, [l])) (locVars funTy)
   bod' <- threadRegionsExp ddefs fundefs fnlocargs initRegEnv env2 M.empty rlocs_env wlocs_env M.empty region_locs M.empty S.empty S.empty funBody
   -- Boundschecking
   dflags <- getDynFlags
@@ -131,13 +131,13 @@ threadRegionsFn ddefs fundefs f@FunDef{funName,funArgs,funTy,funMeta,funBody} = 
                                     M.empty
                                     packed_outs
                     boundschecks = concatMap
-                                     (\(LRM loc reg mode) ->
+                                     (\(LRM loc reg mode ismutable) ->
                                         if mode == Output
                                         then let rv = regionToVar reg
                                                  end_rv = toEndV rv
                                                  -- rv = end_reg
                                                  bc = boundsCheck ddefs (locs_tycons M.! loc)
-                                                 locarg = NewL2.Loc (LREM loc rv end_rv mode)
+                                                 locarg = NewL2.Loc (LREM loc rv end_rv mode ismutable)
                                                  regarg = NewL2.EndOfReg rv mode end_rv
                                              in -- dbgTraceIt ("boundscheck" ++ sdoc ((locs_tycons M.! loc), bc)) $
                                                 -- maintain shadowstack in no eager promotion mode
@@ -193,7 +193,7 @@ threadRegionsExp ddefs fundefs fnLocArgs renv env2 lfenv rlocs_env wlocs_env pkd
         let newapplocs = in_regs ++ applocs
         return $ AppE f newapplocs args
 
-    LetE (v,locs,ty, (AppE f applocs args)) bod -> do
+    LetE (v,locs,ty, (AppE (f, t) applocs args)) bod -> do
         let argtylocs = concatMap
                         (\arg ->
                              let argty = gRecoverType ddefs env2 arg in
@@ -322,13 +322,13 @@ threadRegionsExp ddefs fundefs fnLocArgs renv env2 lfenv rlocs_env wlocs_env pkd
         (rpush,wpush,rpop,wpop) <- ss_ops free_rlocs' free_wlocs rlocs_env wlocs_env renv
         emit_ss <- emit_ss_instrs
         if emit_ss && funCanTriggerGC (funMeta (fundefs # f))
-          then do let binds = rpush ++ wpush ++ [(v, newretlocs, ty, AppE f newapplocs args)] ++ wpop ++ rpop
+          then do let binds = rpush ++ wpush ++ [(v, newretlocs, ty, AppE (f, t) newapplocs args)] ++ wpop ++ rpop
                   (pure $ mkLets binds bod3)
-          else pure $ mkLets [(v, newretlocs, ty, AppE f newapplocs args)] bod3
+          else pure $ mkLets [(v, newretlocs, ty, AppE (f, t) newapplocs args)] bod3
 
 
     LetE (v,locs,ty, (SpawnE f applocs args)) bod -> do
-      let e' = LetE (v,locs,ty, (AppE f applocs args)) bod
+      let e' = LetE (v,locs,ty, (AppE (f, NoTail) applocs args)) bod
       e'' <- threadRegionsExp ddefs fundefs fnLocArgs renv env2 lfenv rlocs_env wlocs_env pkd_env region_locs ran_env indirs redirs e'
       pure $ changeAppToSpawn f args e''
 

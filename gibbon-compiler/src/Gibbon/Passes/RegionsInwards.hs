@@ -317,7 +317,7 @@ freeVars ex = case ex of
   LitE _                            -> S.empty
   LitSymE _                         -> S.empty
   VarE v                            -> S.singleton v
-  AppE v locvarList ls              -> S.unions (L.map freeVars ls) `S.union` S.singleton v `S.union` S.fromList locvarList
+  AppE (v, _) locvarList ls              -> S.unions (L.map freeVars ls) `S.union` S.singleton v `S.union` S.fromList locvarList
   PrimAppE _ ls                     -> S.unions (L.map freeVars ls)
   MkProdE ls                        -> S.unions (L.map freeVars ls)
   DataConE locVar _ ls              -> S.singleton locVar  `S.union`  S.unions (L.map freeVars ls)

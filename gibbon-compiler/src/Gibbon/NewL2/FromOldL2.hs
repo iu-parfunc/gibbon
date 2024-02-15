@@ -58,12 +58,12 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
 
       | SpawnE f applocs args <- rhs
       , not (null ewitnesses) ->
-          do let e = LetE (v, ewitnesses, ty, AppE f applocs args) bod
-             (LetE (v', ewitnesses', ty', AppE f' applocs' args') bod') <-
+          do let e = LetE (v, ewitnesses, ty, AppE (f, NoTail) applocs args) bod
+             (LetE (v', ewitnesses', ty', AppE (f', NoTail) applocs' args') bod') <-
                go locenv env2 e
              pure $ LetE (v', ewitnesses', ty', SpawnE f' applocs' args') bod'
 
-      | AppE f _applocs args <- rhs
+      | AppE (f, _) _applocs args <- rhs
       , not (null ewitnesses) ->
           do let fty = lookupFEnv f env2
                  effs = arrEffs fty
@@ -235,17 +235,17 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
   toLocArg :: LocVar -> LocExp -> LocEnv -> New.LocArg
   toLocArg loc locexp locenv0 =
     case locexp of
-      StartOfRegionLE reg -> New.Loc (New.LREM loc (regionToVar reg) (toEndV (regionToVar reg)) Output)
+      StartOfRegionLE reg -> New.Loc (New.LREM loc (regionToVar reg) (toEndV (regionToVar reg)) Output False)
       AfterConstantLE _ loc2 ->
         let (New.Loc lrem) = locenv0 # loc2
-        in New.Loc (New.LREM loc (New.lremReg lrem) (New.lremEndReg lrem) Output)
+        in New.Loc (New.LREM loc (New.lremReg lrem) (New.lremEndReg lrem) Output False)
       AfterVariableLE _ loc2 _ ->
         let (New.Loc lrem) = locenv0 # loc2
-        in New.Loc (New.LREM loc (New.lremReg lrem) (New.lremEndReg lrem) Output)
+        in New.Loc (New.LREM loc (New.lremReg lrem) (New.lremEndReg lrem) Output False)
       InRegionLE reg ->
-        New.Loc (New.LREM loc (regionToVar reg) (toEndV (regionToVar reg)) Output)
+        New.Loc (New.LREM loc (regionToVar reg) (toEndV (regionToVar reg)) Output False)
       FreeLE ->
-        New.Loc (New.LREM loc "FREE_REG" "end_FREE_REG" Output)
+        New.Loc (New.LREM loc "FREE_REG" "end_FREE_REG" Output False)
       FromEndLE loc2 ->
         case (locenv0 # loc2) of
           New.Loc lrem -> New.Loc (lrem { New.lremLoc = loc })

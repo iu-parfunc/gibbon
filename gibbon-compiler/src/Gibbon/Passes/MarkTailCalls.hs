@@ -26,13 +26,13 @@ markTailCallsFn ddefs f@FunDef{funName, funArgs, funTy, funMeta, funBody} = do
    let tailCallTy = markTailCallsFnBody funName ddefs funTy funBody 
    if elem TMC tailCallTy
    then
-      let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar _) = funTy 
-          funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar TMC)
+      let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar) = funTy 
+          funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar)
         in return $ FunDef funName funArgs funTy' funBody funMeta  {-dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "a" dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "a"  -}
    else if elem TC tailCallTy
    then 
-      let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar _) = funTy
-          funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar TC)
+      let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar) = funTy
+          funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar)
         in return $ FunDef funName funArgs funTy' funBody funMeta {-dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "b" dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "b"  -} 
    else pure f {-dbgTraceIt (sdoc (tailCallTy, funName, funTy)) dbgTraceIt "c" dbgTraceIt (sdoc (tailCallTy, funName, funTy)) dbgTraceIt "c"-}
    --dbgTraceIt (sdoc tailCallTy) pure f
@@ -48,7 +48,7 @@ markTailCallsFnBody funName ddefs2 ty2 exp2  = case exp2 of
                                 AppE v locs args -> P.concatMap (markTailCallsFnBody funName ddefs2 ty2) args 
                                 PrimAppE p args -> P.concatMap (markTailCallsFnBody funName ddefs2 ty2) args
                                 LetE (v,_,_,rhs) bod -> case rhs of 
-                                                            AppE v' locs' args' -> if v' == funName 
+                                                            AppE (v', _) locs' args' -> if v' == funName 
                                                                                    then [markTailCallsFnBodyHelper ddefs2 bod ty2 0] {-dbgTraceIt ("Here markTailCallsFnBody then\n")-}
                                                                                    else (markTailCallsFnBody funName ddefs2 ty2 bod) ++ [NoTail] {-dbgTraceIt ("Here markTailCallsFnBody else\n")-}
                                                             _ -> (markTailCallsFnBody funName ddefs2 ty2 bod) ++ [NoTail] {-dbgTraceIt ("Here markTailCallsFnBody RST\n")-}

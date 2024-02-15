@@ -503,7 +503,7 @@ recoverType ddfs env2 ex =
     CharE _      -> CharTy
     FloatE{}     -> FloatTy
     LitSymE _    -> IntTy
-    AppE v tyapps _ -> let (ForAll tyvars (ArrowTy _ retty)) = fEnv env2 # v
+    AppE (v, _) tyapps _ -> let (ForAll tyvars (ArrowTy _ retty)) = fEnv env2 # v
                        in substTyVar (M.fromList (fragileZip tyvars tyapps)) retty
     -- PrimAppE (DictInsertP ty) ((L _ (VarE v)):_) -> SymDictTy (Just v) ty
     -- PrimAppE (DictEmptyP  ty) ((L _ (VarE v)):_) -> SymDictTy (Just v) ty
