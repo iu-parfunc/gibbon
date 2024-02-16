@@ -79,8 +79,8 @@ ppE e0 = case e0 of
   --   [ "par", parens $ hsep ["fn => ", ppE e1]
   --   , parens $ hsep ["fn => ", ppE e2]
   --   ]
-  ParE e1 e2 -> parens $ ("ForkJoin.par " <>) $ hsep $
-    parens . ("fn () => " <>) . ppE <$> [e1, e2]
+  ParE e1 e2 -> parens $ ("ForkJoin.par " <>) $ parens $ interleave comma $
+    ("fn () => " <>) . ppE <$> [e1, e2]
   MapE _x0 _pe' -> error "MapE"
   FoldE _x0 _x1 _pe' -> error "FoldE"
 
