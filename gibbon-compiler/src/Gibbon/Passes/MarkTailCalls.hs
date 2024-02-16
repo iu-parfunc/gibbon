@@ -23,65 +23,113 @@ markTailCalls Prog{ddefs,fundefs,mainExp} = do
 
 markTailCallsFn :: NewL2.DDefs2 -> NewL2.FunDef2 -> PassM NewL2.FunDef2
 markTailCallsFn ddefs f@FunDef{funName, funArgs, funTy, funMeta, funBody} = do 
-   let tailCallTy = markTailCallsFnBody funName ddefs funTy funBody 
-   if elem TMC tailCallTy
+   let (funBody', tailCallTy) = markTailCallsFnBody funName ddefs funTy funBody 
+   if tailCallTy == TMC
    then
       let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar) = funTy 
-          funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar)
-        in return $ FunDef funName funArgs funTy' funBody funMeta  {-dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "a" dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "a"  -}
-   else if elem TC tailCallTy
+          locVars' = P.map (\(LRM l r m mu) -> if m == Output 
+                                                then LRM l r m True
+                                                else LRM l r m mu  
+                           ) locVars
+          funTy' = (ArrowTy2 locVars' arrIns _arrEffs arrOut _locRets _isPar)
+        in return $ FunDef funName funArgs funTy' funBody' funMeta  {-dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "a" dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "a"  -}
+   else if tailCallTy == TC
    then 
       let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar) = funTy
           funTy' = (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar)
-        in return $ FunDef funName funArgs funTy' funBody funMeta {-dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "b" dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "b"  -} 
+        in return $ FunDef funName funArgs funTy' funBody' funMeta {-dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "b" dbgTraceIt (sdoc (tailCallTy, funName, funTy')) dbgTraceIt "b"  -} 
    else pure f {-dbgTraceIt (sdoc (tailCallTy, funName, funTy)) dbgTraceIt "c" dbgTraceIt (sdoc (tailCallTy, funName, funTy)) dbgTraceIt "c"-}
    --dbgTraceIt (sdoc tailCallTy) pure f
 
 
-markTailCallsFnBody :: Var -> NewL2.DDefs2 -> ArrowTy2 NewL2.Ty2 -> NewL2.Exp2 -> [TailRecType] 
+markTailCallsFnBody :: Var -> NewL2.DDefs2 -> ArrowTy2 NewL2.Ty2 -> NewL2.Exp2 -> (NewL2.Exp2, TailRecType)
 markTailCallsFnBody funName ddefs2 ty2 exp2  = case exp2 of 
-                                VarE v -> [NoTail]
-                                LitE _ -> [NoTail]
-                                CharE{} -> [NoTail]
-                                FloatE{} -> [NoTail]
-                                LitSymE _ -> [NoTail]
-                                AppE v locs args -> P.concatMap (markTailCallsFnBody funName ddefs2 ty2) args 
-                                PrimAppE p args -> P.concatMap (markTailCallsFnBody funName ddefs2 ty2) args
-                                LetE (v,_,_,rhs) bod -> case rhs of 
+                                VarE v -> (VarE v, NoTail)
+                                LitE l -> (LitE l, NoTail)
+                                CharE c -> (CharE c, NoTail)
+                                FloatE f -> (FloatE f, NoTail)
+                                LitSymE v -> (LitSymE v, NoTail)
+                                AppE (v, t) locs args -> let results = P.map (markTailCallsFnBody funName ddefs2 ty2) args
+                                                             args' = P.map (\(exp, tailty) -> exp) results
+                                                             tailtys = P.map (\(exp, tailty) -> tailty) results
+                                                           in (AppE (v, t) locs args', P.maximum tailtys)
+
+                                PrimAppE p args -> let results = P.map (markTailCallsFnBody funName ddefs2 ty2) args
+                                                       args' = P.map (\(exp, tailty) -> exp) results
+                                                       tailtys = P.map (\(exp, tailty) -> tailty) results
+                                                     in (PrimAppE p args', P.maximum tailtys)
+
+
+                                LetE (v, loc, ty,rhs) bod -> case rhs of 
                                                             AppE (v', _) locs' args' -> if v' == funName 
-                                                                                   then [markTailCallsFnBodyHelper ddefs2 bod ty2 0] {-dbgTraceIt ("Here markTailCallsFnBody then\n")-}
-                                                                                   else (markTailCallsFnBody funName ddefs2 ty2 bod) ++ [NoTail] {-dbgTraceIt ("Here markTailCallsFnBody else\n")-}
-                                                            _ -> (markTailCallsFnBody funName ddefs2 ty2 bod) ++ [NoTail] {-dbgTraceIt ("Here markTailCallsFnBody RST\n")-}
-                                IfE a b c -> (markTailCallsFnBody funName ddefs2 ty2 a) ++ (markTailCallsFnBody funName ddefs2 ty2 b) ++ (markTailCallsFnBody funName ddefs2 ty2 c) 
-                                MkProdE ls -> P.concatMap (markTailCallsFnBody funName ddefs2 ty2) ls
-                                ProjE i e -> markTailCallsFnBody funName ddefs2 ty2 e
+                                                                                   then let tailCallType = markTailCallsFnBodyHelper ddefs2 bod ty2 0 {-dbgTraceIt ("Here markTailCallsFnBody then\n")-} 
+                                                                                            (bod', tailCallType') = markTailCallsFnBody funName ddefs2 ty2 bod
+                                                                                            rhs' = AppE (v', tailCallType) locs' args' 
+                                                                                          in (LetE (v, loc, ty, rhs') bod', P.maximum [tailCallType, tailCallType'])  
+                                                                                            
+                                                                                   else let (bod', tailCallType) = markTailCallsFnBody funName ddefs2 ty2 bod {-dbgTraceIt ("Here markTailCallsFnBody else\n")-}
+                                                                                          in (LetE (v, loc, ty, rhs) bod', tailCallType)
+                                                            _ -> let (bod', tailCallTy) = markTailCallsFnBody funName ddefs2 ty2 bod {-dbgTraceIt ("Here markTailCallsFnBody RST\n")-}
+                                                                   in (LetE (v, loc, ty, rhs) bod', tailCallTy)
+                                IfE a b c -> let (a', t1) = markTailCallsFnBody funName ddefs2 ty2 a
+                                                 (b', t2) = markTailCallsFnBody funName ddefs2 ty2 b
+                                                 (c', t3) = markTailCallsFnBody funName ddefs2 ty2 c
+                                              in (IfE a' b' c', P.maximum [t1, t2, t3])
+                                MkProdE ls -> let results = P.map (markTailCallsFnBody funName ddefs2 ty2) ls
+                                                  ls' = P.map (\(exp, tailty) -> exp) results
+                                                  tailtys = P.map (\(exp, tailty) -> tailty) results
+                                                 in (MkProdE ls', P.maximum tailtys)
+
+                                ProjE i e -> let (e', t) = markTailCallsFnBody funName ddefs2 ty2 e
+                                               in (ProjE i e', t)
                                 -- [(DataCon, [(Var,loc)], EXP)]
-                                CaseE scrt brs -> P.concatMap (\(a, b, c) -> markTailCallsFnBody funName ddefs2 ty2 c) brs 
-                                DataConE loc c args -> P.concatMap (markTailCallsFnBody funName ddefs2 ty2) args
-                                TimeIt e _ _ -> markTailCallsFnBody funName ddefs2 ty2 e 
-                                MapE _ e -> markTailCallsFnBody funName ddefs2 ty2 e
-                                FoldE _ _ e -> markTailCallsFnBody funName ddefs2 ty2 e
-                                SpawnE v locs _ -> [NoTail]
-                                SyncE -> [NoTail] 
-                                WithArenaE _v e -> markTailCallsFnBody funName ddefs2 ty2 e
+                                CaseE scrt brs -> let results = P.map (\(a, b, c) -> let (c', t) = markTailCallsFnBody funName ddefs2 ty2 c
+                                                                                       in ((a, b, c') , t)
+                                                                      ) brs
+                                                      brs' = P.map (\(t', _) -> t') results
+                                                      tailtys = P.map (\(_, tailty) -> tailty) results 
+                                                    in (CaseE scrt brs', P.maximum tailtys) 
+
+                                DataConE loc c args -> let results = P.map (markTailCallsFnBody funName ddefs2 ty2) args
+                                                           args' = P.map (\(exp, tailty) -> exp) results
+                                                           tailtys = P.map (\(exp, tailty) -> tailty) results
+                                                         in (DataConE loc c args', P.maximum tailtys)
+
+                                TimeIt e d b -> let (e', t) = markTailCallsFnBody funName ddefs2 ty2 e 
+                                                  in (TimeIt e' d b, t)
+                                MapE d e -> let (e', t) = markTailCallsFnBody funName ddefs2 ty2 e
+                                              in (MapE d e', t)
+                                FoldE i it e -> let (e', t) = markTailCallsFnBody funName ddefs2 ty2 e
+                                                 in (FoldE i it e', t)
+                                SpawnE v locs exps -> let results = P.map (markTailCallsFnBody funName ddefs2 ty2) exps
+                                                          exps' = P.map (\(exp, tailty) -> exp) results
+                                                          tailtys = P.map (\(exp, tailty) -> tailty) results
+                                                        in (SpawnE v locs exps', P.maximum tailtys)
+                                SyncE -> (exp2, NoTail)
+                                WithArenaE _v e -> let (e', t) = markTailCallsFnBody funName ddefs2 ty2 e
+                                                     in (WithArenaE _v e', t)
                                 Ext ext -> 
                                     case ext of 
-                                       Old.LetRegionE r _ _ bod -> markTailCallsFnBody funName ddefs2 ty2 bod
-                                       Old.LetParRegionE r _ _ bod -> markTailCallsFnBody funName ddefs2 ty2 bod
-                                       Old.LetLocE loc locexp bod -> markTailCallsFnBody funName ddefs2 ty2 bod
-                                       Old.StartOfPkdCursor v -> [NoTail]
-                                       Old.TagCursor a b -> [NoTail]
-                                       Old.RetE locs v -> [NoTail]
-                                       Old.FromEndE loc -> [NoTail]
-                                       Old.BoundsCheck _ reg cur -> [NoTail]
-                                       Old.IndirectionE _ _ (a,b) (c,d) _ -> [NoTail]
-                                       Old.AddFixed v _    -> [NoTail]
-                                       Old.GetCilkWorkerNum -> [NoTail]
-                                       Old.LetAvail vs bod -> [NoTail]
-                                       Old.AllocateTagHere loc _ -> [NoTail]
-                                       Old.AllocateScalarsHere loc -> [NoTail]
-                                       Old.SSPush _ a b _ -> [NoTail]
-                                       Old.SSPop _ a b -> [NoTail]
+                                       Old.LetRegionE r a b bod -> let (bod', t) = markTailCallsFnBody funName ddefs2 ty2 bod
+                                                                     in (Ext $ Old.LetRegionE r a b bod', t)
+                                       Old.LetParRegionE r a b bod -> let (bod', t) = markTailCallsFnBody funName ddefs2 ty2 bod
+                                                                        in (Ext $ Old.LetParRegionE r a b bod', t)
+                                       Old.LetLocE loc locexp bod -> let (bod', t) = markTailCallsFnBody funName ddefs2 ty2 bod
+                                                                        in (Ext $ Old.LetLocE loc locexp bod', t)
+                                       _ -> (Ext ext, NoTail)
+                                       -- Old.StartOfPkdCursor v -> [NoTail]
+                                       -- Old.TagCursor a b -> [NoTail]
+                                       -- Old.RetE locs v -> [NoTail]
+                                       -- Old.FromEndE loc -> [NoTail]
+                                       -- Old.BoundsCheck _ reg cur -> [NoTail]
+                                       -- Old.IndirectionE _ _ (a,b) (c,d) _ -> [NoTail]
+                                       -- Old.AddFixed v _    -> [NoTail]
+                                       -- Old.GetCilkWorkerNum -> [NoTail]
+                                       -- Old.LetAvail vs bod -> [NoTail]
+                                       -- Old.AllocateTagHere loc _ -> [NoTail]
+                                       -- Old.AllocateScalarsHere loc -> [NoTail]
+                                       -- Old.SSPush _ a b _ -> [NoTail]
+                                       -- Old.SSPop _ a b -> [NoTail]
                                     
 -- Old.LetRegionE r _ _ bod -> S.delete (Old.regionToVar r) (allFreeVars bod)
 -- Old.LetParRegionE r _ _ bod -> S.delete (Old.regionToVar r) (allFreeVars bod)

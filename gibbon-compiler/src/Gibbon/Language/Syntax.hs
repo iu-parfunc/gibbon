@@ -187,7 +187,9 @@ data FunRec = Rec | NotRec | TailRec
 data FunInline = Inline | NoInline | Inlineable
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
-data TailRecType = TMC | TC | NoTail 
+data TailRecType =  NoTail
+                  | TC
+                  | TMC  
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
 data FunMeta = FunMeta
