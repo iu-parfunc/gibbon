@@ -833,7 +833,10 @@ tcExp isPacked ddfs env exp =
 
     SpawnE fn locs args -> go (AppE fn locs args)
     SyncE -> pure voidTy
-    ParE{} -> error "todo L3.typecheck.hs"
+    ParE e1 e2 -> do
+      ty1 <- go e1
+      ty2 <- go e2
+      pure $ ProdTy [ty1, ty2]
 
     WithArenaE v e -> do
       let env' = extendVEnv v ArenaTy env
