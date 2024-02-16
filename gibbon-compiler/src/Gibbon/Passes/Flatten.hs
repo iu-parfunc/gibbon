@@ -186,7 +186,10 @@ exp ddfs env2 e0 =
       (bnd, e') <- go e
       return ([], WithArenaE v (flatLets bnd e'))
 
-    ParE{}        -> error "todo ParE in Flatten.hs"
+    ParE e1 e2    -> do
+      (b1, e1') <- go e1
+      (b2, e2') <- go e2
+      pure (b1, ParE (flatLets b1 e1') (flatLets b2 e2'))
     MapE _ _      -> error "FINISHLISTS"
     FoldE _ _ _   -> error "FINISHLISTS"
 
