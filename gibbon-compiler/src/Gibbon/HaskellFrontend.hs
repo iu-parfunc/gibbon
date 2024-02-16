@@ -868,6 +868,8 @@ desugarExp type_syns toplevel e =
       case op of
         QVarOp _ (UnQual _ (Symbol _ "&")) -> do
           pure $ Ext (LinearExt (ReverseAppE e2' e1'))
+        QVarOp _ (UnQual _ (Symbol _ ".||.")) -> do
+          pure $ ParE e1' e2'
         _ -> do
           let op' = desugarOp op
           pure $ PrimAppE op' [e1', e2']
