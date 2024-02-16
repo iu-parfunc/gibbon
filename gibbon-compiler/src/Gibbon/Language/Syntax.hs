@@ -187,6 +187,7 @@ data FunRec = Rec | NotRec | TailRec
 data FunInline = Inline | NoInline | Inlineable
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
+ -- ^ Type of tail recursive calls: NOTail | TC | TMC  
 data TailRecType =  NoTail
                   | TC
                   | TMC  
