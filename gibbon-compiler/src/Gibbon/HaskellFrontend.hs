@@ -1231,7 +1231,7 @@ fixupSpawn ex =
           [(AppE fn tyapps ls)] -> SpawnE fn tyapps ls
           _ -> error $ "fixupSpawn: incorrect use of spawn: " ++ sdoc ex
     SyncE   -> SyncE
-    ParE{} -> error "todo: par tups fixupSpawn hs frontend"
+    ParE e1 e2 -> ParE (go e1) (go e2)
     MapE{}  -> error $ "fixupSpawn: TODO MapE"
     FoldE{} -> error $ "fixupSpawn: TODO FoldE"
   where go = fixupSpawn
