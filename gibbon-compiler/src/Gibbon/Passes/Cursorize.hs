@@ -223,15 +223,19 @@ This is used to create bindings for input location variables.
 
           -- Adding additional input arguments for the destination cursors to which outputs
           -- are written.
-          outCurs   = filter (\(LRM _ _ m _) -> m == Output) locVars
-          outCurTys = map (\_ -> CursorTy) outCurs --MutableCursorTy, in case of tail recursive functions. 
+          outCursNonMutable   = filter (\(LRM _ _ m mu) -> m == Output && mu == False) locVars
+          outCurTysNonMutable = map (\_ -> CursorTy) outCursNonMutable 
+
+          outCursMutable = filter (\(LRM _ _ m mu) -> m == Output && mu == True) locVars
+          outCursTysMutable = map (\_ -> MutableCursorTy) outCursMutable
+
           inRegs    = map (\_ -> CursorTy) (inRegVars ty)
-          in_tys    = inRegs ++ outRegs ++ outCurTys ++ (map unTy2 arrIns)
+          in_tys    = inRegs ++ outRegs ++ outCurTysNonMutable ++ outCursTysMutable ++ (map unTy2 arrIns)
 
           -- Packed types in the input now become (read-only) cursors.
           newIns    = map (constPacked CursorTy) in_tys
 
-          ty' = dbgTraceIt (sdoc (in_tys, outRegs, outCurTys, arrIns, ty, outLocVars ty)) (map stripTyLocs newIns, stripTyLocs newOut')
+          ty' = dbgTraceIt (sdoc (in_tys, outRegs, outCurTysNonMutable, outCursTysMutable, arrIns, ty, outLocVars ty)) (map stripTyLocs newIns, stripTyLocs newOut')
 
       in ty' 
 
