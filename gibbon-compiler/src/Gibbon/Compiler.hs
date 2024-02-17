@@ -248,7 +248,14 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
       initTypeChecked =
         fst $ runPassM defaultConfig cnt0
                 (freshBundleNames l0_bundle >>=
-                 (\bundled -> dbgTrace 5 ("\nFreshen:\n"++sepline++ "\n" ++pprender bundled) (L0.tcProg (fst $ runPassM defaultConfig 0 (bundleModules bundled)))))
+                  (\bundled -> dbgTrace 5 ("\nFreshen:\n"++sepline++ "\n" ++pprender bundled) 
+                    (L0.tcProg (fst $ runPassM defaultConfig 0 
+                      (freshNames (fst $ runPassM defaultConfig 0 
+                        (bundleModules bundled)
+                      ))
+                    ))
+                  )
+                )
 
   case mode of
     -- run via the interpreter on the whole program
