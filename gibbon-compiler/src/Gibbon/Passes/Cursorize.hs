@@ -7,6 +7,7 @@ import qualified Data.Map as M
 import           Data.Maybe (fromJust)
 import           Text.PrettyPrint.GenericPretty
 import           Data.Foldable ( foldrM )
+import           Prelude as P 
 
 import           Gibbon.DynFlags
 import           Gibbon.Common
@@ -16,6 +17,7 @@ import           Gibbon.L3.Syntax hiding ( BoundsCheck, RetE, GetCilkWorkerNum, 
                                            TagCursor )
 import qualified Gibbon.L3.Syntax as L3
 import           Gibbon.Passes.AddRAN ( numRANsDataCon )
+import           Gibbon.Passes.Flatten        (flattenL3)
 
 {-
 
@@ -83,6 +85,9 @@ type DepEnv = M.Map LocVar [(Var,[()],Ty3,Exp3)]
 -- we can extend the environment.
 type SyncEnv = M.Map Var [(Var,[()],Ty3,Ty2,Exp3)]
 
+-- | Env to store the projections, we want to release them immediately at the use site. 
+type LazyProjectionEnv = M.Map Var ([()], Ty3, Exp3)
+
 type OldTy2 = UrTy LocVar
 
 -- |
@@ -138,7 +143,8 @@ cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funMeta} = do
          then fromDi <$> cursorizePackedExp ddefs fundefs M.empty initTyEnv M.empty funBody
          else cursorizeExp ddefs fundefs M.empty initTyEnv M.empty funBody
   let bod' = inCurBinds bod
-      fn = FunDef funName funargs funTy' bod' funMeta
+      bod'' = evaluateProjectionsLazily M.empty bod'
+      fn = FunDef funName funargs funTy' bod'' funMeta
   return fn
 
   where
@@ -1646,3 +1652,246 @@ mkDi x ls  = Di $ MkProdE [x, MkProdE ls]
 curDict :: UrTy a -> UrTy a
 curDict (SymDictTy ar _ty) = SymDictTy ar CursorTy
 curDict ty = ty
+
+evaluateProjectionsLazily :: LazyProjectionEnv -> Exp3 -> Exp3
+evaluateProjectionsLazily env exp3 = let 
+                                         (env', exp3') = collectProjections env exp3 
+                                         (env'', exp3'') = releaseProjetions env' exp3'
+                                       in dbgTraceIt (sdoc $ (M.elems env', M.elems env'')) exp3''
+
+
+collectProjections :: LazyProjectionEnv -> Exp3 -> (LazyProjectionEnv, Exp3) 
+collectProjections env exp = case exp of 
+  VarE{}    -> (env, exp)
+  LitE{}    -> (env, exp)
+  CharE{}   -> (env, exp)
+  FloatE{}  -> (env, exp)
+  LitSymE v -> (env, exp)
+  AppE (v, t) locs args -> let results = P.map (collectProjections env) args  
+                               env' = M.unions $ P.map fst results
+                               args' = P.map snd results 
+                             in (env', AppE (v, t) locs args')
+  PrimAppE p args -> let results = P.map (collectProjections env) args  
+                         env' = M.unions $ P.map fst results
+                         args' = P.map snd results 
+                       in (env', PrimAppE p args') 
+  LetE (v,loc,ty,rhs) bod -> case rhs of 
+                                  ProjE i e -> let env' = M.insert v (loc, ty, rhs) env  
+                                                   (env'', bod') = collectProjections env' bod 
+                                                 in (env'', bod')
+                                  _ -> let (env', rhs') = collectProjections env rhs
+                                           (env'', bod') = collectProjections env' bod 
+                                         in (env'', LetE (v, loc, ty, rhs') bod')
+  IfE a b c  -> let (env', a') = collectProjections env a 
+                    (env'', b') = collectProjections env' b
+                    (env''', c') = collectProjections env'' c 
+                  in (env''', IfE a' b' c')
+  MkProdE ls -> let results = P.map (collectProjections env) ls  
+                    env' = M.unions $ P.map fst results
+                    ls' = P.map snd results 
+                  in (env', MkProdE ls') 
+  ProjE i e  -> let (env', e') = collectProjections env e 
+                 in (env', ProjE i e')
+  CaseE scrt brs -> let results = P.map (\(a, b, c) -> let (env', c') = collectProjections env c  
+                                                         in (env', (a, b, c'))
+                                        ) brs
+                        env'' = M.unions $ P.map fst results 
+                        brs' = P.map snd results
+                     in (env'', CaseE scrt brs') 
+  DataConE loc dcon ls -> let results = P.map (collectProjections env) ls  
+                              env' = M.unions $ P.map fst results
+                              ls' = P.map snd results 
+                            in (env', DataConE loc dcon ls') 
+  TimeIt e d b   -> let (env', e') = collectProjections env e
+                     in (env', TimeIt e' d b)
+  WithArenaE v e -> let (env', e') = collectProjections env e
+                     in (env', WithArenaE v e')
+  SpawnE v locs ls  -> let results = P.map (collectProjections env) ls  
+                           env' = M.unions $ P.map fst results
+                           ls' = P.map snd results
+                         in (env', SpawnE v locs ls')
+  SyncE -> (env, SyncE)
+  Ext ext ->
+    case ext of
+      WriteScalar a b ex -> let (env', ex') = collectProjections env ex
+                              in (env', Ext $ WriteScalar a b ex')
+      AddCursor c ex -> let (env', ex') = collectProjections env ex
+                          in (env', Ext $ AddCursor c ex')
+      SubPtr{} -> (env, exp)
+      WriteCursor c ex -> let (env', ex') = collectProjections env ex
+                           in (env', Ext $ WriteCursor c ex')
+      --TagCursor{}    -> (env, exp)
+      ReadScalar{}   -> (env, exp)
+      ReadTag{}      -> (env, exp)
+      WriteTag{}     -> (env, exp)
+      ReadList{}     -> (env, exp)
+      WriteList a ex b -> let (env', ex') = collectProjections env ex
+                           in (env', Ext $ WriteList a ex' b)
+      ReadVector{}     -> (env, exp)
+      WriteVector a ex b -> let (env', ex') = collectProjections env ex
+                              in (env', Ext $ WriteVector a ex' b)
+      NewBuffer{}        -> (env, exp)
+      NewParBuffer{}     -> (env, exp)
+      ScopedBuffer{}     -> (env, exp)
+      ScopedParBuffer{}  -> (env, exp)
+      EndOfBuffer{}      -> (env, exp)
+      MMapFileSize{}     -> (env, exp)
+      SizeOfPacked{}     -> (env, exp)
+      SizeOfScalar{}     -> (env, exp)
+      --BoundsCheck{}      -> (env, exp)
+      ReadCursor{}       -> (env, exp)
+      WriteTaggedCursor{}-> (env, exp)
+      ReadTaggedCursor{} -> (env, exp)
+      IndirectionBarrier{} -> (env, exp)
+      NullCursor         -> (env, exp)
+      BumpArenaRefCount{}-> error "collect_syms: BumpArenaRefCount not handled."
+      --RetE locs ls -> let results = P.map (collectProjections env) ls  
+      --                    env' = M.unions $ P.map fst results
+      --                    ls' = P.map snd results 
+      --                  in (env', Ext $ RetE locs ls')
+      --GetCilkWorkerNum -> (env, exp)
+      --LetAvail a bod   -> let (env', bod') = collectProjections env bod
+      --                      in (env', Ext $ LetAvail a bod')
+      --AllocateTagHere{} -> (env, exp)
+      --AllocateScalarsHere{} -> (env, exp)
+      StartTagAllocation{} -> (env, exp)
+      EndTagAllocation{} -> (env, exp)
+      StartScalarsAllocation{} -> (env, exp)
+      EndScalarsAllocation{} -> (env, exp)
+      --SSPush{} -> (env, exp)
+      --SSPop{} -> (env, exp)
+      Assert ex -> let (env', ex') = collectProjections env ex
+                     in (env', Ext $ Assert ex)
+      _ -> (env, exp)
+  MapE{}         -> (env, exp)
+  FoldE{}        -> (env, exp)
+
+
+releaseProjetions :: LazyProjectionEnv -> Exp3 -> (LazyProjectionEnv, Exp3)
+releaseProjetions env exp = case exp of 
+  VarE v    -> case M.lookup v env of  
+                          Just (loc, ty, exp) -> let exp' = LetE (v, loc, ty, exp) $ VarE v 
+                                                     env' = M.delete v env 
+                                                  in (env', exp')
+                          Nothing -> (env, exp)
+  LitE{}    -> (env, exp)
+  CharE{}   -> (env, exp)
+  FloatE{}  -> (env, exp)
+  LitSymE v -> (env, exp)
+  AppE (v, t) locs args -> let results = P.map (releaseProjetions env) args  
+                               env' = M.unions $ P.map fst results
+                               args' = P.map snd results 
+                             in (env', AppE (v, t) locs args')
+  PrimAppE p args -> let results = P.map (releaseProjetions env) args  
+                         env' = M.unions $ P.map fst results
+                         args' = P.map snd results 
+                       in (env', PrimAppE p args') 
+  LetE (v,loc,ty,rhs) bod -> let (env', rhs') = releaseProjetions env rhs
+                                 (env'', bod') = releaseProjetions env' bod 
+                               in (env'', LetE (v, loc, ty, rhs') bod')
+  IfE a b c  -> let (env', a') = releaseProjetions env a 
+                    (env'', b') = releaseProjetions env' b
+                    (env''', c') = releaseProjetions env'' c 
+                  in (env''', IfE a' b' c')
+  MkProdE ls -> let (result, e, fv) = P.foldr (\(VarE v) (accum, tup, fvars) -> case M.lookup v env of 
+                                                                                  Just (loc, ty, exp) -> if accum == False 
+                                                                                                         then (False, Nothing, Nothing)
+                                                                                                         else
+                                                                                                            case exp of 
+                                                                                                                ProjE i exp' -> 
+                                                                                                                  let freeVars = gFreeVars exp' 
+                                                                                                                   in case (tup, fvars) of 
+                                                                                                                          (Nothing, Nothing) -> (True, Just exp', Just freeVars)
+                                                                                                                          (x, Just y) -> if y == freeVars 
+                                                                                                                                         then (True, x, Just y)
+                                                                                                                                         else (False, x, Just y)
+                                                                                                                                        
+                                                                                                                             
+                                                                                  Nothing -> (False, Nothing, Nothing) 
+
+                                         ) (True, Nothing, Nothing) ls 
+                  in if result 
+                     then 
+                      case e of 
+                        Just exp -> (exp 
+                        Nothing -> error "expected expression"
+                     else
+                      let results = P.map (releaseProjetions env) ls  
+                          env' = M.unions $ P.map fst results
+                          ls' = P.map snd results 
+                       in (env', MkProdE ls')
+  ProjE i e  -> let (env', e') = releaseProjetions env e 
+                 in (env', ProjE i e')
+  CaseE scrt brs -> let results = P.map (\(a, b, c) -> let (env', c') = releaseProjetions env c  
+                                                         in (env', (a, b, c'))
+                                        ) brs
+                        env'' = M.unions $ P.map fst results 
+                        brs' = P.map snd results
+                     in (env'', CaseE scrt brs') 
+  DataConE loc dcon ls -> let results = P.map (releaseProjetions env) ls  
+                              env' = M.unions $ P.map fst results
+                              ls' = P.map snd results 
+                            in (env', DataConE loc dcon ls') 
+  TimeIt e d b   -> let (env', e') = releaseProjetions env e
+                     in (env', TimeIt e' d b)
+  WithArenaE v e -> let (env', e') = releaseProjetions env e
+                     in (env', WithArenaE v e')
+  SpawnE v locs ls  -> let results = P.map (releaseProjetions env) ls  
+                           env' = M.unions $ P.map fst results
+                           ls' = P.map snd results
+                         in (env', SpawnE v locs ls')
+  SyncE -> (env, SyncE)
+  Ext ext ->
+    case ext of
+      WriteScalar a b ex -> let (env', ex') = releaseProjetions env ex
+                              in (env', Ext $ WriteScalar a b ex')
+      AddCursor c ex -> let (env', ex') = releaseProjetions env ex
+                          in (env', Ext $ AddCursor c ex')
+      SubPtr{} -> (env, exp)
+      WriteCursor c ex -> let (env', ex') = releaseProjetions env ex
+                           in (env', Ext $ WriteCursor c ex')
+      --TagCursor{}    -> (env, exp)
+      ReadScalar{}   -> (env, exp)
+      ReadTag{}      -> (env, exp)
+      WriteTag{}     -> (env, exp)
+      ReadList{}     -> (env, exp)
+      WriteList a ex b -> let (env', ex') = releaseProjetions env ex
+                           in (env', Ext $ WriteList a ex' b)
+      ReadVector{}     -> (env, exp)
+      WriteVector a ex b -> let (env', ex') = releaseProjetions env ex
+                              in (env', Ext $ WriteVector a ex' b)
+      NewBuffer{}        -> (env, exp)
+      NewParBuffer{}     -> (env, exp)
+      ScopedBuffer{}     -> (env, exp)
+      ScopedParBuffer{}  -> (env, exp)
+      EndOfBuffer{}      -> (env, exp)
+      MMapFileSize{}     -> (env, exp)
+      SizeOfPacked{}     -> (env, exp)
+      SizeOfScalar{}     -> (env, exp)
+      --BoundsCheck{}      -> (env, exp)
+      ReadCursor{}       -> (env, exp)
+      WriteTaggedCursor{}-> (env, exp)
+      ReadTaggedCursor{} -> (env, exp)
+      IndirectionBarrier{} -> (env, exp)
+      NullCursor         -> (env, exp)
+      BumpArenaRefCount{}-> error "collect_syms: BumpArenaRefCount not handled."
+      --RetE locs ls -> let results = P.map (releaseProjetions env) ls  
+      --                    env' = M.unions $ P.map fst results
+      --                    ls' = P.map snd results 
+      --                  in (env', Ext $ RetE locs ls')
+      --GetCilkWorkerNum -> (env, exp)
+      --LetAvail a bod   -> let (env', bod') = releaseProjetions env bod
+      --                      in (env', Ext $ LetAvail a bod')
+      --AllocateTagHere{} -> (env, exp)
+      --AllocateScalarsHere{} -> (env, exp)
+      StartTagAllocation{} -> (env, exp)
+      EndTagAllocation{} -> (env, exp)
+      StartScalarsAllocation{} -> (env, exp)
+      EndScalarsAllocation{} -> (env, exp)
+      --SSPush{} -> (env, exp)
+      --SSPop{} -> (env, exp)
+      Assert ex -> let (env', ex') = releaseProjetions env ex
+                     in (env', Ext $ Assert ex)
+      _ -> (env, exp)
+  MapE{}         -> (env, exp)
+  FoldE{}        -> (env, exp)
