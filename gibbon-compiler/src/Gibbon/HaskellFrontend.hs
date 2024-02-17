@@ -192,6 +192,15 @@ type TopTyEnv = TyEnv TyScheme
 
 type TypeSynEnv = M.Map TyCon Ty0
 
+mergeBundle :: ProgBundle0 -> [ProgModule0] -> [ProgModule0]
+mergeBundle (ProgBundle x main) bundle =
+    foldr (\v acc -> if already_has v then acc else acc ++ [v]) bundle (x ++ [main])
+  where
+    already_imported = L.map (\(ProgModule name _ _) -> name) bundle
+    already_has :: ProgModule0 -> Bool
+    already_has (ProgModule name _ _) = L.elem name already_imported
+
+
 -------------------------------------------------------------------------------
 -- recursively desugars modules and their imports
 -- stacks into a ProgBundle: a bundle of modules and their main module
@@ -210,7 +219,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
   let type_syns = foldl collectTypeSynonyms M.empty decls
       funtys = foldr (collectTopTy type_syns) M.empty decls
   imported_progs :: [PassM ProgBundle0] <- 
-    mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
+    mapM (processImport cfg pstate_ref (modname : import_route) dir) imports
   let prog = do
         imported_progs' <- mapM id imported_progs
         toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
@@ -252,12 +261,13 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                       acc)
                 funs''
                 (M.keys userOrderings')
-        let bundle = foldr (\(ProgBundle imported_bundle imported_mainmodule) acc -> acc ++ imported_bundle ++ [imported_mainmodule]) [] imported_progs' 
-        pure $ ProgBundle bundle (ProgModule mod_name (Prog defs funs''' main) imports)
+        --let bundle = foldr (\(ProgBundle imported_bundle imported_mainmodule) acc -> case of acc ++ imported_bundle ++ [imported_mainmodule]) [] imported_progs' 
+        let bundle = foldr mergeBundle [] imported_progs' 
+        pure $ ProgBundle bundle (ProgModule modname (Prog defs funs''' main) imports)
   pure prog
   where
     init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing, S.empty, [])
-    --modname = moduleName head_mb
+    modname = moduleName head_mb
     import_names =  (map (\(ImportDecl _ (ModuleName _ importName) _ _ _ _ _ _) -> importName) imports)
     aliases      =  M.fromList (map 
                         (\(ImportDecl _ (ModuleName _ importName) _ _ _ _ aliased _) -> 
@@ -309,7 +319,7 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
     deleteMany []     = id -- Nothing to delete
     deleteMany (x:xs) = deleteMany xs . deleteOne x -- Delete one, then the rest.
     moduleName :: Maybe (ModuleHead a) -> String
-    moduleName Nothing = "Main"
+    moduleName Nothing = mod_name
     moduleName (Just (ModuleHead _ mod_name1 _warnings _exports)) =
       mnameToStr mod_name1
     classify thing (defs, vars, funs, inlines, main, optimizeDcons, userOrderings) =
@@ -392,7 +402,11 @@ processImport ::
   -> IO (PassM ProgBundle0)
 processImport cfg pstate_ref import_route dir decl@ImportDecl {..}
     -- When compiling with Gibbon, we should *NOT* inline things defined in Gibbon.Prim.
-  | mod_name == "Gibbon.Prim" = pure (pure (ProgBundle L.empty (ProgModule "Gibbon.Prim" (Prog M.empty M.empty Nothing) L.empty) ))
+  | mod_name == "Gibbon.Prim" = do
+    (ParseState imported') <- readIORef pstate_ref
+    case M.lookup (mod_name, "") imported' of
+      Just prog -> do pure $ pure prog
+      Nothing -> pure (pure (ProgBundle L.empty (ProgModule "Gibbon.Prim" (Prog M.empty M.empty Nothing) L.empty) ))
   | otherwise                 = do
     when (mod_name `elem` import_route) $
       error $

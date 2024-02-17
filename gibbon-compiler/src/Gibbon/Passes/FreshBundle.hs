@@ -11,10 +11,11 @@ import Data.Maybe  (fromJust)
 import Language.Haskell.Exts.Syntax (CName(..))
 import Language.Haskell.Exts (Name(..))
 import Language.Haskell.Exts (ImportSpecList(..))
-import Language.Haskell.Exts (ModuleName(..), Module)
+import Language.Haskell.Exts (ModuleName(..), Module, eList)
 import GHC.Stack (HasCallStack)
 
-type NameEnv = M.Map Var Var
+type VarEnv = M.Map Var Var
+type TyVarEnv t = M.Map TyVar t
 
 -------------------------------------------------------------------------------
 -- exported fresh bundle pass
@@ -39,7 +40,7 @@ freshBundleNames bundle = do
 -- helper functions -----------------------------------------------------------
 
 -- update the keys
-freshModuleKeys :: ProgModule0 -> NameEnv -> NameEnv -> PassM ProgModule0
+freshModuleKeys :: ProgModule0 -> VarEnv -> VarEnv -> PassM ProgModule0
 freshModuleKeys (ProgModule name (Prog defs funs main) imports) uniquedefenv uniquefunenv = do
   let funs' = M.mapKeys (\k -> findFreshedName (varAppend (toVar (name ++ ".")) k) uniquefunenv) funs
   let defs' = M.mapKeys (\k -> findFreshedName (varAppend (toVar (name ++ ".")) k) uniquedefenv) defs
@@ -53,7 +54,7 @@ findImportedModule mod modmap = do
     Nothing -> error $ "Could not find module " ++ name ++ " in imported modules: " ++ (show (M.keys modmap))
 
 -- construct module environment from import spec & local functions
-freshModule :: ProgModule0 -> ProgBundle0 -> NameEnv -> NameEnv -> NameEnv -> PassM ProgModule0
+freshModule :: ProgModule0 -> ProgBundle0 -> VarEnv -> VarEnv -> VarEnv -> PassM ProgModule0
 freshModule (ProgModule modname (Prog defs funs main) imports) (ProgBundle bundle _) uniquedefenv uniquefunenv uniqueconstrenv =
     do
        defs' <- traverse (\v -> freshDDef v defenv'' constrenv'') defs 
@@ -78,30 +79,30 @@ freshModule (ProgModule modname (Prog defs funs main) imports) (ProgBundle bundl
         (defenv'', funenv'', constrenv'') = 
           foldr (\(d, f, c) (dacc, facc, cacc) -> (M.union d dacc, M.union f facc, M.union c cacc)) (defenv', funenv', constrenv') 
           $ map (\i -> getImportedEnv (findImportedModule i modmap) i uniquedefenv uniquefunenv uniqueconstrenv) imports
-        
-freshDDef :: HasCallStack => DDef Ty0 -> NameEnv -> NameEnv -> PassM (DDef Ty0)
+
+
+freshDDef :: HasCallStack => DDef Ty0 -> VarEnv -> VarEnv -> PassM (DDef Ty0)
 freshDDef DDef{tyName,tyArgs,dataCons} defenv constrenv = do
-    let tyName' = findFreshedName tyName defenv
     let dataCons' = L.map (\(dataCon, vs) -> (fromVar (findFreshedName (toVar dataCon) constrenv), vs)) dataCons
     let dataCons'' = L.map (\v -> findFreshInDataCons v defenv) dataCons'
+    let tyName' = findFreshedName tyName defenv
     pure $ DDef tyName' tyArgs dataCons''
 
-freshFun :: FunDef Exp0 -> NameEnv -> NameEnv -> NameEnv -> PassM (FunDef Exp0)
+freshFun :: FunDef Exp0 -> VarEnv -> VarEnv -> VarEnv -> PassM (FunDef Exp0)
 freshFun (FunDef nam nargs funty bod meta) defenv funenv constrenv =
     do 
       let nam' = findFreshedName nam funenv
-      let funty' = resolveModsInTyScheme funty defenv
+      funty' <- findFreshInTyScheme funty defenv
       let funenv' = foldr (\v acc -> M.insert v v acc ) funenv nargs 
       bod' <- findFreshInExp bod defenv funenv' constrenv
       pure $ FunDef nam' nargs funty' bod' meta
 
-resolveModsInTyScheme :: TyScheme -> NameEnv -> TyScheme
-resolveModsInTyScheme (ForAll tvs ty) defenv = do
-  let ty' = findFreshInTy ty defenv
-  ForAll tvs ty'
+findFreshInTyScheme :: TyScheme -> VarEnv -> PassM TyScheme
+findFreshInTyScheme (ForAll tvs ty) defenv = do
+  pure $ ForAll tvs $ findFreshInTy ty defenv
 
-findFreshInTy :: Ty0 -> NameEnv -> Ty0
-findFreshInTy ty defenv =
+findFreshInTy :: Ty0 -> VarEnv -> Ty0
+findFreshInTy ty defenv = 
   case ty of
      IntTy    -> ty
      CharTy   -> ty
@@ -113,24 +114,28 @@ findFreshInTy ty defenv =
      SymHashTy -> ty
      MetaTv{} -> ty
      TyVar tv -> ty
-     ProdTy tys    ->  ProdTy $ map (\v -> findFreshInTy v defenv) tys
-     SymDictTy v ty   -> SymDictTy v $ findFreshInTy ty defenv
-     PDictTy k v -> PDictTy (findFreshInTy k defenv) (findFreshInTy v defenv)
-     ArrowTy tys t -> ArrowTy (map (\v -> findFreshInTy v defenv) tys) $ findFreshInTy t defenv
-
-     PackedTy tycon tys -> PackedTy (fromVar (findFreshedName (toVar tycon) defenv)) $ map (\v -> findFreshInTy v defenv) tys
-
+     ProdTy tys    -> ProdTy $ L.map (\v -> findFreshInTy v defenv) tys
+     SymDictTy v t   -> SymDictTy v $ findFreshInTy t defenv
+     PDictTy k v -> do
+        let k' = findFreshInTy k defenv
+        let v' = findFreshInTy v defenv
+        PDictTy k' v'  
+     ArrowTy tys t -> do
+        let tys' = L.map (\v -> findFreshInTy v defenv) tys
+        let t' = findFreshInTy t defenv
+        ArrowTy tys' t'
+     PackedTy tycon tys -> PackedTy (fromVar (findFreshedName (toVar tycon) defenv)) $ L.map (\v -> findFreshInTy v defenv) tys
      VectorTy el_t -> VectorTy $ findFreshInTy el_t defenv
      ListTy el_t -> ListTy $ findFreshInTy el_t defenv
      IntHashTy -> ty
 
-findFreshInDataCons :: (DataCon, [(IsBoxed, Ty0)]) -> NameEnv -> (DataCon, [(IsBoxed, Ty0)])
+findFreshInDataCons :: (DataCon, [(IsBoxed, Ty0)]) -> VarEnv -> (DataCon, [(IsBoxed, Ty0)])
 findFreshInDataCons (con, tys) defenv =
   do
     let tys' = map (\(boxed, ty) -> (boxed, (findFreshInTy ty defenv))) tys
     (con, tys')
 
-findFreshInExp :: Exp0 -> NameEnv -> NameEnv -> NameEnv -> PassM Exp0
+findFreshInExp :: Exp0 -> VarEnv -> VarEnv -> VarEnv -> PassM Exp0
 findFreshInExp exp defenv funenv constrenv =
   case exp of
     LitE i    -> return $ LitE i
@@ -235,7 +240,7 @@ findFreshInExp exp defenv funenv constrenv =
         return $ Ext $ LinearExt a
 
 -- parse import header
-getImportedEnv :: ProgModule0 -> ImportDecl SrcSpanInfo -> NameEnv -> NameEnv -> NameEnv -> (NameEnv, NameEnv, NameEnv)
+getImportedEnv :: ProgModule0 -> ImportDecl SrcSpanInfo -> VarEnv -> VarEnv -> VarEnv -> (VarEnv, VarEnv, VarEnv)
 getImportedEnv (ProgModule _ (Prog defs funs _) _) imp uniquedefenv uniquefunenv uniqueconstrenv = do
     let ImportDecl _ (ModuleName _ impname) qual _ _ _ as specs = imp
     let impname' = toVar (impname ++ ".")
@@ -244,7 +249,7 @@ getImportedEnv (ProgModule _ (Prog defs funs _) _) imp uniquedefenv uniquefunenv
                       Nothing -> toVar $ impname ++ "."
     let constrs = L.map (\(constrName, _) -> toVar constrName) 
                     (foldr (\(DDef _ _ dataCons) acc -> acc ++ dataCons) [] (M.elems defs))
-    let impenv :: (NameEnv, NameEnv, NameEnv)
+    let impenv :: (VarEnv, VarEnv, VarEnv)
         impenv = case specs of
           Just (ImportSpecList _ _ speclist) -> do
             let specednames = foldr (\v acc -> (parseSpec v) ++ acc) [] speclist
@@ -319,14 +324,14 @@ parseSpec imp =
   
 -- construct global registry of uniques
 -- returns Map {qualified name} => {globally unique name}
-buildGlobalEnv :: ProgBundle0 -> PassM (NameEnv, NameEnv, NameEnv)
+buildGlobalEnv :: ProgBundle0 -> PassM (VarEnv, VarEnv, VarEnv)
 buildGlobalEnv (ProgBundle modules main) = do
     (ddefenv, fdefenv, constrenv) <- _buildGlobalEnv main -- generate uniques in main module
     names <- mapM _buildGlobalEnv modules -- generate uniques in imported modules
     pure $ foldr (\(ddefs, fdefs, constrs) (dacc, facc, cacc) -> (M.union ddefs dacc, M.union fdefs facc, M.union constrs cacc)) (ddefenv, fdefenv, constrenv) names -- union
 
 -- generate map of qualified names to uniques for a module
-_buildGlobalEnv :: ProgModule0 -> PassM (NameEnv, NameEnv, NameEnv)
+_buildGlobalEnv :: ProgModule0 -> PassM (VarEnv, VarEnv, VarEnv)
 _buildGlobalEnv (ProgModule modname (Prog ddefs fdefs _) _) =
     do
         freshfdefs <- mapM gensym fdefs' -- generate uniques
@@ -345,14 +350,14 @@ _buildGlobalEnv (ProgModule modname (Prog ddefs fdefs _) _) =
         constrs' = constrs
 
 
-tryToFindFreshedName :: Var -> NameEnv -> Var
+tryToFindFreshedName :: Var -> VarEnv -> Var
 tryToFindFreshedName name e =
   do case M.lookup name e of
       Just freshname -> freshname
       Nothing -> name
 
-findFreshedName :: HasCallStack => Var -> NameEnv -> Var
-findFreshedName name e =
-  do case M.lookup name e of
+findFreshedName :: HasCallStack => Var -> VarEnv -> Var
+findFreshedName name e = 
+  case M.lookup name e of
       Just freshname -> freshname
       Nothing -> error $ "could not find name: " ++ (fromVar name) ++ "\n in env: " ++ (show e)

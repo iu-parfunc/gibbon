@@ -248,7 +248,7 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
       initTypeChecked =
         fst $ runPassM defaultConfig cnt0
                 (freshBundleNames l0_bundle >>=
-                 (\fresh -> dbgTrace 5 ("\nFreshen:\n"++sepline++ "\n" ++pprender fresh) (L0.tcProg (fst $ runPassM defaultConfig 0 (bundleModules fresh)))))
+                 (\bundled -> dbgTrace 5 ("\nFreshen:\n"++sepline++ "\n" ++pprender bundled) (L0.tcProg (fst $ runPassM defaultConfig 0 (bundleModules bundled)))))
 
   case mode of
     -- run via the interpreter on the whole program
@@ -677,7 +677,7 @@ passes config@Config{dynflags} l0_bundle = do
       -- what does cnt do? -> the 0 in the following statement
       let l0 = fst $ runPassM defaultConfig 0 (bundleModules l0_bundle')
 
-      --l0 <- go  "freshen"         freshNames            l0
+      l0 <- go  "freshen"         freshNames            l0
       l0 <- goE0 "typecheck"       L0.tcProg            l0
       l0 <- goE0 "bindLambdas"     L0.bindLambdas       l0
       l0 <- goE0 "monomorphize"    L0.monomorphize      l0

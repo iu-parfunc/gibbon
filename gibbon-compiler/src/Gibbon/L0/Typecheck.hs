@@ -34,24 +34,24 @@ newtype TcM a = TcM (ExceptT Doc PassM a)
 instance MonadFail TcM where
   fail = error
 
-runTcM :: TcM a -> PassM (Either Doc a)
+runTcM ::   TcM a -> PassM (Either Doc a)
 runTcM (TcM tc) = runExceptT tc
 
-err :: Doc -> TcM a
+err ::   Doc -> TcM a
 err d = throwError ("L0.Typecheck: " $$ nest 4 d)
 
-tcProgBundle :: ProgBundle0 -> PassM ProgBundle0
+tcProgBundle ::   ProgBundle0 -> PassM ProgBundle0
 tcProgBundle (ProgBundle bundle main) = do
   bundle' <- mapM tcProgModule bundle
   main' <- tcProgModule main
   pure $ ProgBundle bundle' main' 
 
-tcProgModule :: ProgModule0 -> PassM ProgModule0
+tcProgModule ::   ProgModule0 -> PassM ProgModule0
 tcProgModule (ProgModule modname prog imports) = do
   prog' <- tcProg prog
   pure $ ProgModule modname prog' imports
 
-tcProg :: Prog0 -> PassM Prog0
+tcProg ::   Prog0 -> PassM Prog0
 tcProg prg@Prog{ddefs,fundefs,mainExp} = do
   let init_fenv = M.map funTy fundefs
   fundefs_tc <- mapM (tcFun ddefs init_fenv) fundefs
@@ -79,7 +79,7 @@ tcProg prg@Prog{ddefs,fundefs,mainExp} = do
   pure prg { fundefs = fundefs'
            , mainExp = mainExp' }
 
-tcFun :: DDefs0 -> Gamma -> FunDef0 -> PassM FunDef0
+tcFun ::   DDefs0 -> Gamma -> FunDef0 -> PassM FunDef0
 tcFun ddefs fenv fn@FunDef{funArgs,funTy,funBody, funName} = do
   res <- runTcM $ do
     let (ForAll tyvars (ArrowTy gvn_arg_tys gvn_retty)) = funTy
@@ -94,7 +94,7 @@ tcFun ddefs fenv fn@FunDef{funArgs,funTy,funBody, funName} = do
     Left er   -> error $ render er ++ " in " ++ show funName
     Right fn1 -> pure fn1
 
-tcExps :: DDefs0 -> Subst -> Gamma -> Gamma -> [TyVar]
+tcExps ::   DDefs0 -> Subst -> Gamma -> Gamma -> [TyVar]
        -> [(Bool, Exp0)] -> TcM (Subst, [Ty0], [Exp0])
 tcExps ddefs sbst venv fenv bound_tyvars ls = do
   (sbsts,tys,exps) <- unzip3 <$> mapM go ls
@@ -103,7 +103,7 @@ tcExps ddefs sbst venv fenv bound_tyvars ls = do
     go (is_main, e) = tcExp ddefs sbst venv fenv bound_tyvars is_main e
 
 --
-tcExp :: DDefs0 -> Subst -> Gamma -> Gamma -> [TyVar]
+tcExp ::   DDefs0 -> Subst -> Gamma -> Gamma -> [TyVar]
       -> Bool -> Exp0 -> TcM (Subst, Ty0, Exp0)
 tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
   case ex of
@@ -150,7 +150,7 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
     PrimAppE pr args -> do
       (s1, arg_tys, args_tc) <- tcExps ddefs sbst venv fenv bound_tyvars (zip (repeat is_main) args)
       let arg_tys' = map (zonkTy s1) arg_tys
-          checkLen :: Int -> TcM ()
+          checkLen ::   Int -> TcM ()
           checkLen n =
             if length args == n
             then pure ()
@@ -647,7 +647,7 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
                         pure (a', args', c) 
                       ) (dataCons ddf)
                 else pure [x]
-            ) brs :: TcM [(DataCon, [(Var, Ty0)], Exp0)]
+            ) brs ::   TcM [(DataCon, [(Var, Ty0)], Exp0)]
           let tycons_brs = map (getTyOfDataCon ddefs . fst3) brs'
           case L.nub tycons_brs of
             [one] -> if one == tycon
@@ -754,7 +754,7 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
     exp_doc = "In the expression: " <+> doc ex
 
 
-tcCases :: DDefs0 -> Subst -> Gamma -> Gamma -> [TyVar]
+tcCases ::   DDefs0 -> Subst -> Gamma -> Gamma -> [TyVar]
         -> DDef0 -> [(DataCon, [(Var, Ty0)], Exp0)] -> Bool -> Exp0
         -> TcM (Subst, Ty0, [(DataCon, [(Var, Ty0)], Exp0)])
 tcCases ddefs sbst venv fenv bound_tyvars ddf brs is_main ex = do
@@ -780,20 +780,20 @@ tcCases ddefs sbst venv fenv bound_tyvars ddf brs is_main ex = do
   pure (s3, head tys',exps)
   where
     -- pairs [1,2,3,4,5] = [(1,2), (2,3) (4,5)]
-    pairs :: [a] -> [(a,a)]
+    pairs ::   [a] -> [(a,a)]
     pairs []  = []
     pairs [_] = []
     pairs (x:y:xs) = (x,y) : pairs (y:xs)
 
 -- | Instantiate the topmost for-alls of the argument type with meta
 -- type variables.
-instantiate :: TyScheme -> TcM ([Ty0], Ty0)
+instantiate ::   TyScheme -> TcM ([Ty0], Ty0)
 instantiate (ForAll tvs ty) = do
   tvs' <- mapM (const newMetaTy) tvs
   let ty' = substTyVar (M.fromList $ zip tvs tvs') ty
   pure (tvs', ty')
 
-generalize :: Gamma -> Subst -> [TyVar] -> Ty0 -> TcM (Subst, TyScheme)
+generalize ::   Gamma -> Subst -> [TyVar] -> Ty0 -> TcM (Subst, TyScheme)
 generalize env s bound_tyvars ty = do
   new_bndrs <- mapM
                  (\(Meta i) -> do
@@ -810,11 +810,11 @@ generalize env s bound_tyvars ty = do
     env_tvs = metaTvsInTySchemes (M.elems env)
     res_tvs = metaTvsInTy ty
 
-    meta_tvs :: [MetaTv]
+    meta_tvs ::   [MetaTv]
     meta_tvs = res_tvs L.\\ env_tvs
 
 --
-instDataConTy :: DDefs0 -> DataCon -> TcM ([Ty0], [Ty0], Ty0)
+instDataConTy ::   DDefs0 -> DataCon -> TcM ([Ty0], [Ty0], Ty0)
 instDataConTy ddefs dcon = do
   let tycon = getTyOfDataCon ddefs dcon
       ddf   = lookupDDef ddefs tycon
@@ -862,7 +862,7 @@ newtype Subst = Subst (M.Map MetaTv Ty0)
 instance Semigroup Subst where
   -- (Subst s1) <> (Subst s2) =
   --   let mp = M.map (zonkTy (Subst s1)) s2 `M.union` s1 in Subst mp
-  (<>) :: Subst -> Subst -> Subst
+  (<>) ::   Subst -> Subst -> Subst
   (Subst s1) <> (Subst s2) =
     let s2' = M.map (zonkTy (Subst s1)) s2
         mp =  M.unionWith combine s2' s1
@@ -871,7 +871,7 @@ instance Semigroup Subst where
 -- | Combine substitutions. In case of substitutions with intersecting keys,
 -- we will take the narrower type of the two. e.g. combine [($1, $2)] [($1, IntTy)]
 -- should be [($1, IntTy)]. Map.union does a left biased union so it will result in [($1, $2)]
-combine :: Ty0 -> Ty0 -> Ty0
+combine ::   Ty0 -> Ty0 -> Ty0
 combine v1 v2 | v1 == v2 = v1
               | otherwise = case (v1, v2) of
                 (MetaTv _, _) -> v2
@@ -882,7 +882,7 @@ combine v1 v2 | v1 == v2 = v1
                 (PackedTy a1 v1s, PackedTy a2 v2s) ->
                   if a1 == a2 then PackedTy a1 (zipWith combine v1s v2s)
                   else error $ "PackedTy doesn't match "++ sdoc v1 ++ " with " ++ sdoc v2
-                _ -> error $ "Failed to combine = " ++ sdoc v1 ++ " with " ++ sdoc v2
+                _ -> error $ "Failed to combine = " ++ sdoc (show v1) ++ " with " ++ sdoc (show v2)
 
 
 emptySubst :: Subst
@@ -919,11 +919,11 @@ zonkTy s@(Subst mp) ty =
 zonkTyScheme :: Subst -> TyScheme -> TyScheme
 zonkTyScheme s (ForAll tvs ty) = ForAll tvs (zonkTy s ty)
 
-zonkTyEnv :: Subst -> Gamma -> Gamma
+zonkTyEnv ::   Subst -> Gamma -> Gamma
 zonkTyEnv s env = M.map (zonkTyScheme s) env
 
 -- Apply a substitution to an expression i.e substitue all types in it.
-zonkExp :: Subst -> Exp0 -> Exp0
+zonkExp ::   Subst -> Exp0 -> Exp0
 zonkExp s ex =
   case ex of
     VarE{}    -> ex
@@ -1000,7 +1000,7 @@ zonkExp s ex =
     go = zonkExp s
 
 -- Substitute tyvars with types in a ddef.
-substTyVarDDef :: DDef0 -> [Ty0] -> TcM DDef0
+substTyVarDDef ::   DDef0 -> [Ty0] -> TcM DDef0
 substTyVarDDef d@DDef{tyArgs,dataCons} tys =
   if length tyArgs /= length tys
   then err $ text "substTyVarDDef: tyArgs don't match the tyapps, in "
@@ -1018,7 +1018,7 @@ substTyVarDDef d@DDef{tyArgs,dataCons} tys =
            , dataCons = dcons' }
 
 -- Substitue all tyvars in an expression.
-substTyVarExp :: M.Map TyVar Ty0 -> Exp0 -> Exp0
+substTyVarExp ::   M.Map TyVar Ty0 -> Exp0 -> Exp0
 substTyVarExp s ex =
   case ex of
     VarE{}    -> ex
@@ -1065,7 +1065,7 @@ substTyVarExp s ex =
   where
     go = substTyVarExp s
 
-substTyVarPrim :: M.Map TyVar Ty0 -> Prim Ty0 -> Prim Ty0
+substTyVarPrim ::   M.Map TyVar Ty0 -> Prim Ty0 -> Prim Ty0
 substTyVarPrim mp pr =
     case pr of
         VAllocP elty -> VAllocP (substTyVar mp elty)
@@ -1096,7 +1096,7 @@ substTyVarPrim mp pr =
         _ -> pr
 
 
-tyVarToMetaTyl :: [Ty0] -> TcM (M.Map TyVar Ty0, [Ty0])
+tyVarToMetaTyl ::   [Ty0] -> TcM (M.Map TyVar Ty0, [Ty0])
 tyVarToMetaTyl tys =
   foldlM
     (\(env', acc) ty -> do
@@ -1107,7 +1107,7 @@ tyVarToMetaTyl tys =
 
 -- | Replace the specified quantified type variables by
 -- given meta type variables.
-tyVarToMetaTy :: Ty0 -> TcM (M.Map TyVar Ty0, Ty0)
+tyVarToMetaTy ::   Ty0 -> TcM (M.Map TyVar Ty0, Ty0)
 tyVarToMetaTy = go M.empty
   where
     go :: M.Map TyVar Ty0 -> Ty0 -> TcM (M.Map TyVar Ty0, Ty0)
@@ -1154,7 +1154,7 @@ tyVarToMetaTy = go M.empty
 -- Unification
 --------------------------------------------------------------------------------
 
-unify :: Exp0 -> Ty0 -> Ty0 -> TcM Subst
+unify ::   Exp0 -> Ty0 -> Ty0 -> TcM Subst
 unify ex ty1 ty2
   | ty1 == ty2 = --dbgTraceIt (sdoc ty1 ++ "/" ++ sdoc ty2) $
                  pure emptySubst
@@ -1193,7 +1193,7 @@ unify ex ty1 ty2
                     $$ nest 2 (doc ex)
 
 
-unifyl :: Exp0 -> [Ty0] -> [Ty0] -> TcM Subst
+unifyl ::   Exp0 -> [Ty0] -> [Ty0] -> TcM Subst
 unifyl _ [] [] = pure emptySubst
 unifyl e (a:as) (b:bs) = do
     -- N.B. We must apply s1 over the rest of the list before unifying it, i.e.
@@ -1208,7 +1208,7 @@ unifyl e as bs = err $ text "Couldn't unify:" <+> doc as <+> text "and" <+> doc 
                          $$ text "In the expression: "
                          $$ nest 2 (doc e)
 
-unifyVar :: Exp0 -> MetaTv -> Ty0 -> TcM Subst
+unifyVar ::   Exp0 -> MetaTv -> Ty0 -> TcM Subst
 unifyVar ex a t
   | occursCheck a t = err $ text "Occurs check: cannot construct the inifinite type: "
                               $$ nest 2 (doc a <+> text " ~ " <+> doc t)
@@ -1217,14 +1217,14 @@ unifyVar ex a t
   | otherwise       = pure $ Subst (M.singleton a t)
 
 
-occursCheck :: MetaTv -> Ty0 -> Bool
+occursCheck ::   MetaTv -> Ty0 -> Bool
 occursCheck a t = a `elem` metaTvsInTy t
 
 --------------------------------------------------------------------------------
 -- Other helpers
 --------------------------------------------------------------------------------
 
-ensureEqualTy :: Exp0 -> Ty0 -> Ty0 -> TcM ()
+ensureEqualTy ::   Exp0 -> Ty0 -> Ty0 -> TcM ()
 ensureEqualTy ex ty1 ty2
   | ty1 == ty2 = pure ()
   | otherwise  = err $ text "Couldn't match expected type:" <+> doc ty1
