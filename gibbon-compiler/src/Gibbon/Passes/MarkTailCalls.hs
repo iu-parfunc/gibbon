@@ -85,21 +85,24 @@ markTailCallsFnBody funName env exp2  = case exp2 of
 
                                 LetE (v, loc, ty,rhs) bod -> case rhs of 
                                                             AppE (v', _) locs' args' -> if v' == funName 
-                                                                                   then let tailCallType = markTailCallsFnBodyHelper 0 bod {-dbgTraceIt ("Here markTailCallsFnBody then\n")-} 
-                                                                                            (bod', env') = markTailCallsFnBody funName env bod
-                                                                                            rhs' = AppE (v', tailCallType) locs' args' 
-                                                                                            env'' = case tailCallType of 
-                                                                                                           NoTail -> env' 
-                                                                                                           TC -> env' 
+                                                                                   then let tailCallType = markTailCallsFnBodyHelper 0 bod
+                                                                                            env' = case tailCallType of 
+                                                                                                           NoTail -> env
+                                                                                                           TC -> env
                                                                                                            TMC -> P.foldr (\loc e -> case M.lookup (toLocVar loc) e of 
                                                                                                                                               Nothing -> M.insert (toLocVar loc) (S.empty, True) e
                                                                                                                                               Just (s, m) -> M.insert (toLocVar loc) (s, True) e
-                                                                                                                          ) env' locs' 
-                                                                                          in dbgTraceIt ("Print map: ") dbgTraceIt (sdoc (env'', M.elems env'')) dbgTraceIt ("End\n") (LetE (v, loc, ty, rhs') bod', env'') 
-                                                                                   else let (bod', env') = markTailCallsFnBody funName env bod {-dbgTraceIt ("Here markTailCallsFnBody else\n")-}
-                                                                                          in (LetE (v, loc, ty, rhs) bod', M.unionWith unionMapLambda env env')
-                                                            _ -> let (bod', env') = markTailCallsFnBody funName env bod {-dbgTraceIt ("Here markTailCallsFnBody RST\n")-}
-                                                                   in (LetE (v, loc, ty, rhs) bod', env')
+                                                                                                                          ) env locs' 
+                                                                                            rhs' = AppE (v', tailCallType) locs' args'                               
+                                                                                            (rhs'', env'') = markTailCallsFnBody funName env' rhs'  
+                                                                                            (bod', env''') = markTailCallsFnBody funName env'' bod
+                                                                                          in (LetE (v, loc, ty, rhs'') bod', env''')
+                                                                                   else let  (rhs', env') = markTailCallsFnBody funName env rhs
+                                                                                             (bod', env'') = markTailCallsFnBody funName env' bod
+                                                                                          in (LetE (v, loc, ty, rhs') bod', env'')
+                                                            _ -> let  (rhs', env') = markTailCallsFnBody funName env rhs 
+                                                                      (bod', env'') = markTailCallsFnBody funName env' bod 
+                                                                   in (LetE (v, loc, ty, rhs') bod', env'')
                                 IfE a b c -> let (a', e1) = markTailCallsFnBody funName env a
                                                  (b', e2) = markTailCallsFnBody funName e1 b
                                                  (c', e3) = markTailCallsFnBody funName e2 c
@@ -122,24 +125,19 @@ markTailCallsFnBody funName env exp2  = case exp2 of
                                                     in (CaseE scrt brs', env'') 
                                 
                                 -- TODO: Check map for any mutable output locations, if they are in the data con then mark them outputMutable
-                                DataConE loc c args -> let locInDataCon = toLocVar loc
-                                                         in case M.lookup locInDataCon env of 
-                                                                          Nothing -> let results = P.map (markTailCallsFnBody funName env) args
-                                                                                         args' = P.map fst results 
-                                                                                         env' = M.unionsWith unionMapLambda $ P.map snd results
-                                                                                       in (DataConE loc c args', env')
-                                                                          Just (s, m) -> if m 
-                                                                                         then let loc' = case loc of 
-                                                                                                                NewL2.Loc lrem -> NewL2.Loc lrem{lremMode = OutputMutable}
-                                                                                                                _ -> loc
-                                                                                                  results = P.map (markTailCallsFnBody funName env) args
-                                                                                                  args' = P.map fst results 
-                                                                                                  env' = M.unionsWith unionMapLambda $ P.map snd results
-                                                                                               in (DataConE loc' c args', env')
-                                                                                          else let results = P.map (markTailCallsFnBody funName env) args
-                                                                                                   args' = P.map fst results 
-                                                                                                   env' = M.unionsWith unionMapLambda $ P.map snd results
-                                                                                                in (DataConE loc c args', env')
+                                DataConE loc c args -> let locInDataCon = dbgTraceIt "In DataCon:" dbgTraceIt (sdoc (env, M.elems env)) dbgTraceIt ("End\n") toLocVar loc
+                                                         in case (backTrackLocs env locInDataCon False M.empty) of 
+                                                                          (False, _) -> let results = P.map (markTailCallsFnBody funName env) args
+                                                                                            args' = P.map fst results 
+                                                                                            env' = M.unionsWith unionMapLambda $ P.map snd results
+                                                                                          in (DataConE loc c args', env')
+                                                                          (True, _) -> let loc' = case loc of 
+                                                                                                        NewL2.Loc lrem -> NewL2.Loc lrem{lremMode = OutputMutable}
+                                                                                                        _ -> loc
+                                                                                           results = P.map (markTailCallsFnBody funName env) args
+                                                                                           args' = P.map fst results 
+                                                                                           env' = M.unionsWith unionMapLambda $ P.map snd results
+                                                                                         in (DataConE loc' c args', env')
                                 TimeIt e d b -> let (e', env') = markTailCallsFnBody funName env e 
                                                   in (TimeIt e' d b, env')
                                 MapE d e -> let (e', env') = markTailCallsFnBody funName env e
@@ -168,7 +166,12 @@ markTailCallsFnBody funName env exp2  = case exp2 of
                                                                                       Nothing -> env   
                                                                                       Just l -> M.insert l (S.singleton loc, False) env    
                                                                          (bod', env'') = markTailCallsFnBody funName env' bod
-                                                                       in (Ext $ Old.LetLocE loc locexp bod', env'')
+                                                                         locexp' = case locInExp of 
+                                                                                          Nothing -> locexp 
+                                                                                          Just l -> case (backTrackLocs env'' l False M.empty) of
+                                                                                                          (False, _ ) -> locexp
+                                                                                                          (True, _) -> changeLocData locexp l
+                                                                       in (Ext $ Old.LetLocE loc locexp' bod', env'')
                                        _ -> (Ext ext, env)
                                        -- Old.StartOfPkdCursor v -> [NoTail]
                                        -- Old.TagCursor a b -> [NoTail]
@@ -193,6 +196,19 @@ markTailCallsFnBody funName env exp2  = case exp2 of
                                 AfterVariableLE v loc b -> Just (toLocVar loc)  
                                 FromEndLE loc -> Just (toLocVar loc) 
                                 _ -> Nothing
+
+      changeLocData :: PreLocExp LocArg -> LocVar -> PreLocExp LocArg
+      changeLocData exp var = case exp of 
+                                AfterConstantLE c loc -> case loc of
+                                                              NewL2.Loc lrem -> AfterConstantLE c (NewL2.Loc lrem{lremMode = OutputMutable})
+                                                              _ -> exp 
+                                AfterVariableLE v loc b -> case loc of
+                                                              NewL2.Loc lrem -> AfterVariableLE v (NewL2.Loc lrem{lremMode = OutputMutable}) b
+                                                              _ -> exp 
+                                FromEndLE loc -> case loc of
+                                                       NewL2.Loc lrem -> FromEndLE $ NewL2.Loc lrem{lremMode = OutputMutable}
+                                                       _ -> exp
+                                _ -> exp
 
 -- Old.LetRegionE r _ _ bod -> S.delete (Old.regionToVar r) (allFreeVars bod)
 -- Old.LetParRegionE r _ _ bod -> S.delete (Old.regionToVar r) (allFreeVars bod)
