@@ -41,7 +41,7 @@ followPtrs (Prog ddefs fundefs mainExp) = do
             callv <- gensym "call"
             let _effs = arrEffs funTy
             endofs <- mapM (\_ -> gensym "endof") (locRets funTy)
-            let ret_endofs = foldr (\(end, (EndOf (LRM loc _ _ _))) acc ->
+            let ret_endofs = foldr (\(end, (EndOf (LRM loc _ _))) acc ->
                                       if loc == scrt_loc
                                       then jump : acc
                                       else end : acc)

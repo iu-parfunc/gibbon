@@ -175,9 +175,9 @@ tcExp ddfs env funs constrs regs tstatein exp =
              let handleTS ts (l,Output) =  switchOutLoc exp ts l
                  handleTS ts _ = return ts
              -- (2)
-             tstate' <- foldM handleTS tstate $ zip ls $ L.map (\(LRM _ _ m _) -> m) locVars
+             tstate' <- foldM handleTS tstate $ zip ls $ L.map (\(LRM _ _ m) -> m) locVars
              -- Use locVars used at call-site in the returned type
-             let arrOutMp = M.fromList $ zip (L.map (\(LRM l _ _ _) -> l) locVars) ls
+             let arrOutMp = M.fromList $ zip (L.map (\(LRM l _ _) -> l) locVars) ls
                  arrOut'  = substLoc arrOutMp arrOut
 
              return (arrOut',tstate')
@@ -1009,7 +1009,7 @@ getRegion exp (ConstraintSet cs) l = go $ S.toList cs
 
 -- | Get the regions mentioned in the location bindings in a function type.
 funRegs :: [LRM] -> RegionSet
-funRegs ((LRM _l r _m _mu):lrms) =
+funRegs ((LRM _l r _m):lrms) =
     let (RegionSet rs) = funRegs lrms
     in RegionSet $ S.insert (regionToVar r) rs
 funRegs [] = RegionSet $ S.empty
@@ -1019,13 +1019,13 @@ globalReg = GlobR "GLOBAL" BigInfinite
 
 -- | Get the constraints from the location bindings in a function type.
 funConstrs :: [LRM] -> ConstraintSet
-funConstrs ((LRM l r _m _mu):lrms) =
+funConstrs ((LRM l r _m):lrms) =
     extendConstrs (InRegionC l r) $ funConstrs lrms
 funConstrs [] = ConstraintSet $ S.empty
 
 -- | Get the type state implied by the location bindings in a function type.
 funTState :: [LRM] -> LocationTypeState
-funTState ((LRM l _r m _mu):lrms) =
+funTState ((LRM l _r m):lrms) =
     extendTS l (m,False) $ funTState lrms
 funTState [] = LocationTypeState $ M.empty
 

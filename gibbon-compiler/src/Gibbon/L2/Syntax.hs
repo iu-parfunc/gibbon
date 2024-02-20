@@ -465,29 +465,29 @@ instance NFData Region where
 
 -- | The modality of locations and cursors: input/output, for reading
 -- and writing, respectively.
-data Modality = Input | Output
+data Modality = Input | Output | OutputMutable
   deriving (Read,Show,Eq,Ord, Generic)
 instance Out Modality
 instance NFData Modality where
   rnf Input  = ()
   rnf Output = ()
+  rnf OutputMutable = ()
 
 -- | A location and region, together with modality.
 data LRM = LRM { lrmLoc :: LocVar
                , lrmReg :: Region
                , lrmMode :: Modality
-               , isMutable :: Bool
                 }
   deriving (Read,Show,Eq,Ord, Generic)
 
 instance Out LRM
 
 instance NFData LRM where
-  rnf (LRM a b c d)  = rnf a `seq` rnf b `seq` rnf c `seq` rnf d
+  rnf (LRM a b c)  = rnf a `seq` rnf b `seq` rnf c
 
 -- | A designated doesn't-really-exist-anywhere location.
 dummyLRM :: LRM
-dummyLRM = LRM "l_dummy" (VarR "r_dummy") Input False
+dummyLRM = LRM "l_dummy" (VarR "r_dummy") Input
 
 regionToVar :: Region -> Var
 regionToVar r = case r of
@@ -570,26 +570,26 @@ instance Out LocRet
 
 -- | Retrieve all LocVars from a fn type (Arrow)
 allLocVars :: ArrowTy2 ty2 -> [LocVar]
-allLocVars ty = L.map (\(LRM l _ _ _) -> l) (locVars ty)
+allLocVars ty = L.map (\(LRM l _ _) -> l) (locVars ty)
 
 inLocVars :: ArrowTy2 ty2 -> [LocVar]
-inLocVars ty = L.map (\(LRM l _ _ _) -> l) $
-               L.filter (\(LRM _ _ m _) -> m == Input) (locVars ty)
+inLocVars ty = L.map (\(LRM l _ _) -> l) $
+               L.filter (\(LRM _ _ m) -> m == Input) (locVars ty)
 
 outLocVars :: ArrowTy2 ty2 -> [LocVar]
-outLocVars ty = L.map (\(LRM l _ _ _) -> l) $
-                L.filter (\(LRM _ _ m _) -> m == Output) (locVars ty)
+outLocVars ty = L.map (\(LRM l _ _) -> l) $
+                L.filter (\(LRM _ _ m) -> m == Output) (locVars ty)
 
 outRegVars :: ArrowTy2 ty2 -> [LocVar]
-outRegVars ty = L.map (\(LRM _ r _ _) -> regionToVar r) $
-                L.filter (\(LRM _ _ m _) -> m == Output) (locVars ty)
+outRegVars ty = L.map (\(LRM _ r _) -> regionToVar r) $
+                L.filter (\(LRM _ _ m) -> m == Output) (locVars ty)
 
 inRegVars :: ArrowTy2 ty2 -> [LocVar]
-inRegVars ty = L.nub $ L.map (\(LRM _ r _ _) -> regionToVar r) $
-               L.filter (\(LRM _ _ m _) -> m == Input) (locVars ty)
+inRegVars ty = L.nub $ L.map (\(LRM _ r _) -> regionToVar r) $
+               L.filter (\(LRM _ _ m) -> m == Input) (locVars ty)
 
 allRegVars :: ArrowTy2 ty2 -> [LocVar]
-allRegVars ty = L.nub $ L.map (\(LRM _ r _ _) -> regionToVar r) (locVars ty)
+allRegVars ty = L.nub $ L.map (\(LRM _ r _) -> regionToVar r) (locVars ty)
 
 -- | Apply a location substitution to a type.
 substLoc :: M.Map LocVar LocVar -> Ty2 -> Ty2

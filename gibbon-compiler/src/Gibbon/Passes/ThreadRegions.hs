@@ -93,7 +93,7 @@ threadRegions Prog{ddefs,fundefs,mainExp} = do
 
 threadRegionsFn :: DDefs Ty2 -> FunDefs2 -> NewL2.FunDef2 -> PassM NewL2.FunDef2
 threadRegionsFn ddefs fundefs f@FunDef{funName,funArgs,funTy,funMeta,funBody} = do
-  let initRegEnv = M.fromList $ map (\(LRM lc r _ _) -> (lc, regionToVar r)) (locVars funTy)
+  let initRegEnv = M.fromList $ map (\(LRM lc r _) -> (lc, regionToVar r)) (locVars funTy)
       initTyEnv  = M.fromList $ zip funArgs (arrIns funTy)
       env2 = Env2 initTyEnv (initFunEnv fundefs)
       fn :: Ty2 -> M.Map Var TyCon -> M.Map Var TyCon
@@ -104,7 +104,7 @@ threadRegionsFn ddefs fundefs f@FunDef{funName,funArgs,funTy,funMeta,funBody} = 
       rlocs_env = foldr fn M.empty (arrIns funTy)
       wlocs_env = fn (arrOut funTy) M.empty
       fnlocargs = map fromLRM (locVars funTy)
-      region_locs = M.fromList $ map (\(LRM l r _m _mu) -> (regionToVar r, [l])) (locVars funTy)
+      region_locs = M.fromList $ map (\(LRM l r _) -> (regionToVar r, [l])) (locVars funTy)
   bod' <- threadRegionsExp ddefs fundefs fnlocargs initRegEnv env2 M.empty rlocs_env wlocs_env M.empty region_locs M.empty S.empty S.empty funBody
   -- Boundschecking
   dflags <- getDynFlags
@@ -131,13 +131,13 @@ threadRegionsFn ddefs fundefs f@FunDef{funName,funArgs,funTy,funMeta,funBody} = 
                                     M.empty
                                     packed_outs
                     boundschecks = concatMap
-                                     (\(LRM loc reg mode ismutable) ->
+                                     (\(LRM loc reg mode) ->
                                         if mode == Output
                                         then let rv = regionToVar reg
                                                  end_rv = toEndV rv
                                                  -- rv = end_reg
                                                  bc = boundsCheck ddefs (locs_tycons M.! loc)
-                                                 locarg = NewL2.Loc (LREM loc rv end_rv mode ismutable)
+                                                 locarg = NewL2.Loc (LREM loc rv end_rv mode)
                                                  regarg = NewL2.EndOfReg rv mode end_rv
                                              in -- dbgTraceIt ("boundscheck" ++ sdoc ((locs_tycons M.! loc), bc)) $
                                                 -- maintain shadowstack in no eager promotion mode

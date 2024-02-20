@@ -224,7 +224,7 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
     fdty :: L2.FunDef2 -> PassM L2.FunDef2
     fdty FunDef{funName,funTy,funArgs,funBody,funMeta} =
         do let (ArrowTy2 locin tyin eff tyout _locout isPar) = funTy
-               handleLoc (LRM l r m mu) ls = if S.member (Traverse l) eff then (LRM l r m mu):ls else ls
+               handleLoc (LRM l r m) ls = if S.member (Traverse l) eff then (LRM l r m):ls else ls
                locout' = L.map EndOf $ L.foldr handleLoc [] locin
            return FunDef{funName,funTy=(ArrowTy2 locin tyin eff tyout locout' isPar),funArgs,funBody,funMeta}
 
@@ -233,7 +233,7 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
     fd :: FunDefs2 -> L2.FunDef2 -> PassM L2.FunDef2
     fd fns FunDef{funName,funTy,funArgs,funBody,funMeta} =
         do let (ArrowTy2 locin tyins eff _tyout _locout _isPar) = funTy
-               handleLoc (LRM l _r _m _mu) ls = if S.member (Traverse l) eff then l:ls else ls
+               handleLoc (LRM l _r _m) ls = if S.member (Traverse l) eff then l:ls else ls
                retlocs = L.foldr handleLoc [] locin
                lenv = L.foldr
                         (\(a,t) acc -> case t of

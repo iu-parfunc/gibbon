@@ -491,12 +491,12 @@ instance Pretty L2.Modality where
   pprintWithStyle _ mode = text $ show mode
 
 instance Pretty L2.LRM where
-  pprintWithStyle sty (LRM loc reg mode mutable) =
-    parens $ text "LRM" <+> pprintWithStyle sty loc <+> pprintWithStyle sty reg <+> pprintWithStyle sty mode <+> pprintWithStyle sty mutable
+  pprintWithStyle sty (LRM loc reg mode) =
+    parens $ text "LRM" <+> pprintWithStyle sty loc <+> pprintWithStyle sty reg <+> pprintWithStyle sty mode
 
 instance Pretty NewL2.LREM where
-  pprintWithStyle sty (NewL2.LREM loc reg end_reg mode isMutable) =
-    parens $ text "LREM" <+> pprintWithStyle sty loc <+> pprintWithStyle sty reg <+> pprintWithStyle sty end_reg <+> pprintWithStyle sty mode <+> pprintWithStyle sty isMutable
+  pprintWithStyle sty (NewL2.LREM loc reg end_reg mode) =
+    parens $ text "LREM" <+> pprintWithStyle sty loc <+> pprintWithStyle sty reg <+> pprintWithStyle sty end_reg <+> pprintWithStyle sty mode
 
 
 instance Pretty TailRecType where 

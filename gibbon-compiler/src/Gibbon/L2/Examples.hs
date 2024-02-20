@@ -54,7 +54,7 @@ add1Fun = FunDef "add1" ["tr1"] add1FunTy add1FunBod (FunMeta Rec NoInline False
 
 add1FunTy :: ArrowTy2 Ty2
 add1FunTy = ArrowTy2
-             [LRM "lin2" (VarR "r3") Input False, LRM "lout4" (VarR "r750") Output False]
+             [LRM "lin2" (VarR "r3") Input, LRM "lout4" (VarR "r750") Output]
              [PackedTy "Tree" "lin2"]
              S.empty
              (PackedTy "Tree" "lout4")
@@ -147,7 +147,7 @@ id1Fun = FunDef "id1" ["tr18"] idFunTy idFunBod (FunMeta NotRec NoInline False)
 
     idFunTy :: ArrowTy2 Ty2
     idFunTy = ArrowTy2
-               [LRM "lin19" (VarR "r20") Input False, LRM "lout21" (VarR "r751") Output False]
+               [LRM "lin19" (VarR "r20") Input, LRM "lout21" (VarR "r751") Output]
                [PackedTy "Tree" "lin19"]
                (S.empty)
                (PackedTy "Tree" "lout21")
@@ -164,7 +164,7 @@ copyTreeFun :: FunDef2
 copyTreeFun = FunDef "copyTree" ["tr22"] copyFunTy copyBod (FunMeta NotRec NoInline False)
   where
     copyFunTy = ArrowTy2
-                 [LRM "lin23" (VarR "r24") Input False, LRM "lout25" (VarR "r752") Output False]
+                 [LRM "lin23" (VarR "r24") Input, LRM "lout25" (VarR "r752") Output]
                  [PackedTy "Tree" "lin23"]
                  S.empty
                  (PackedTy "Tree" "lout25")
@@ -215,7 +215,7 @@ id2Fun = FunDef "id2" ["tr41"] id2Ty id2Bod (FunMeta NotRec NoInline False)
   where
     id2Ty :: ArrowTy2 Ty2
     id2Ty = ArrowTy2
-             [LRM "lin37" (VarR "r38") Input False, LRM "lout39" (VarR "r753") Output False]
+             [LRM "lin37" (VarR "r38") Input, LRM "lout39" (VarR "r753") Output]
              [PackedTy "Tree" "lin37"]
              (S.empty)
              (PackedTy "Tree" "lout39")
@@ -315,7 +315,7 @@ leftmostFun = FunDef "leftmost" ["t111"] leftmostTy leftmostBod (FunMeta Rec NoI
   where
     leftmostTy :: ArrowTy2 Ty2
     leftmostTy = ArrowTy2
-                 [LRM "lin112" (VarR "r113") Input False]
+                 [LRM "lin112" (VarR "r113") Input]
                  [PackedTy "Tree" "lin112"]
                  (S.empty)
                  (IntTy)
@@ -356,7 +356,7 @@ rightmostFun = FunDef "rightmost" ["t242"] rightmostTy rightmostBod (FunMeta Rec
   where
     rightmostTy :: ArrowTy2 Ty2
     rightmostTy = ArrowTy2
-                   [LRM "lin241" (VarR "r240") Input False]
+                   [LRM "lin241" (VarR "r240") Input]
                    [PackedTy "Tree" "lin241"]
                    (S.empty)
                    (IntTy)
@@ -402,7 +402,7 @@ buildLeafFun = FunDef "buildLeaf" ["i125"] buildLeafTy buildLeafBod (FunMeta Rec
   where
     buildLeafTy :: ArrowTy2 Ty2
     buildLeafTy = ArrowTy2
-                   [LRM "lout126" (VarR "r127") Output False]
+                   [LRM "lout126" (VarR "r127") Output]
                    [IntTy]
                    (S.empty)
                    (PackedTy "Tree" "lout126")
@@ -429,7 +429,7 @@ buildTreeFun = FunDef "buildTree" ["i270"] buildTreeTy buildTreeBod (FunMeta Rec
   where
     buildTreeTy :: ArrowTy2 Ty2
     buildTreeTy = ArrowTy2
-                   [LRM "lout272" (VarR "r271") Output False]
+                   [LRM "lout272" (VarR "r271") Output]
                    [IntTy]
                    (S.empty)
                    (PackedTy "Tree" "lout272")
@@ -469,7 +469,7 @@ buildTwoTreesFun = FunDef "buildTwoTrees" ["i750"] buildTreeTy buildTreeBod (Fun
   where
     buildTreeTy :: ArrowTy2 Ty2
     buildTreeTy = ArrowTy2
-                   [LRM "lout752" (VarR "r751") Output False, LRM "lout754" (VarR "r753") Output False]
+                   [LRM "lout752" (VarR "r751") Output, LRM "lout754" (VarR "r753") Output]
                    [IntTy]
                    (S.empty)
                    (ProdTy [PackedTy "Tree" "lout752", PackedTy "Tree" "lout754"])
@@ -506,7 +506,7 @@ buildTreeSumFun = FunDef "buildTreeSum" ["i302"] buildTreeSumTy buildTreeSumBod 
   where
     buildTreeSumTy :: ArrowTy2 Ty2
     buildTreeSumTy = ArrowTy2
-                      [LRM "lout301" (VarR "r300") Output False]
+                      [LRM "lout301" (VarR "r300") Output]
                       [IntTy]
                       (S.empty)
                       (ProdTy [IntTy, PackedTy "Tree" "lout301"])
@@ -558,7 +558,7 @@ sumTreeFun = FunDef "sumTree" ["tr762"] sumTreeTy sumTreeBod (FunMeta Rec NoInli
   where
     sumTreeTy :: ArrowTy2 Ty2
     sumTreeTy = ArrowTy2
-                      [LRM "lin761" (VarR "r760") Input False]
+                      [LRM "lin761" (VarR "r760") Input]
                       [PackedTy "Tree" "lin761"]
                       (S.empty)
                       (IntTy)
@@ -648,9 +648,9 @@ addTreesFun = FunDef "addTrees" ["trees354"] addTreesTy addTreesBod (FunMeta Rec
   where
     addTreesTy :: ArrowTy2 Ty2
     addTreesTy = ArrowTy2
-                  [LRM "lin351" (VarR "r350") Input False,
-                   LRM "lin352" (VarR "r351") Input False,
-                   LRM "lout353" (VarR "r754") Output False]
+                  [LRM "lin351" (VarR "r350") Input ,
+                   LRM "lin352" (VarR "r351") Input ,
+                   LRM "lout353" (VarR "r754") Output]
                   [ProdTy [PackedTy "Tree" "lin351", PackedTy "Tree" "lin352"]]
                   (S.empty)
                   (PackedTy "Tree" "lout353")
@@ -722,7 +722,7 @@ testProdFun :: FunDef2
 testProdFun = FunDef "testprod" ["tup130"] testprodTy testprodBod (FunMeta Rec NoInline False)
   where
     testprodTy = ArrowTy2
-                  [LRM "lin131" (VarR "r132") Input False, LRM "lout133" (VarR "r755") Output False]
+                  [LRM "lin131" (VarR "r132") Input, LRM "lout133" (VarR "r755") Output]
                   [ProdTy [(PackedTy "Tree" "lin131"), IntTy]]
                   (S.empty)
                   (ProdTy [(PackedTy "Tree" "lout133"), IntTy])
@@ -817,7 +817,7 @@ sumUpFun = FunDef "sumUp" ["tr1"] sumUpFunTy sumUpFunBod (FunMeta Rec NoInline F
   where
     sumUpFunTy :: ArrowTy2 Ty2
     sumUpFunTy = ArrowTy2
-                  [LRM "lin501" (VarR "r500") Input False, LRM "lout502" (VarR "r756") Output False]
+                  [LRM "lin501" (VarR "r500") Input, LRM "lout502" (VarR "r756") Output]
                   [PackedTy "STree" "lin501"]
                   (S.empty)
                   (PackedTy "STree" "lout502")
@@ -855,7 +855,7 @@ valueSTreeFun = FunDef "valueSTree" ["tr522"] valueSTreeFunTy valueSTreeFunBod (
   where
     valueSTreeFunTy :: ArrowTy2 Ty2
     valueSTreeFunTy = ArrowTy2
-                       [LRM "lin524" (VarR "r523") Input False]
+                       [LRM "lin524" (VarR "r523") Input]
                        [PackedTy "STree" "lin524"]
                        (S.empty)
                        (IntTy)
@@ -877,7 +877,7 @@ buildSTreeFun = FunDef "buildSTree" ["i543"] buildSTreeTy buildSTreeBod (FunMeta
   where
     buildSTreeTy :: ArrowTy2 Ty2
     buildSTreeTy = ArrowTy2
-                    [LRM "lout541" (VarR "r540") Output False]
+                    [LRM "lout541" (VarR "r540") Output]
                     [IntTy]
                     (S.empty)
                     (PackedTy "STree" "lout541")
@@ -925,7 +925,7 @@ sumSTreeFun = FunDef "sumSTree" ["tr762"] sumSTreeTy sumSTreeBod (FunMeta Rec No
   where
     sumSTreeTy :: ArrowTy2 Ty2
     sumSTreeTy = ArrowTy2
-                      [LRM "lin761" (VarR "r760") Input False]
+                      [LRM "lin761" (VarR "r760") Input]
                       [PackedTy "STree" "lin761"]
                       (S.empty)
                       (IntTy)
@@ -1024,7 +1024,7 @@ setEvenFun = FunDef "setEven" ["tr570"] setEvenFunTy setEvenFunBod (FunMeta Rec 
   where
     setEvenFunTy :: ArrowTy2 Ty2
     setEvenFunTy = ArrowTy2
-                    [LRM "lin571" (VarR "r570") Input False, LRM "lout572" (VarR "r757") Output False]
+                    [LRM "lin571" (VarR "r570") Input, LRM "lout572" (VarR "r757") Output]
                     [PackedTy "STree" "lin571"]
                     (S.empty)
                     (PackedTy "STree" "lout572")
@@ -1107,7 +1107,7 @@ sumUpSetEvenFun = FunDef "sumUpSetEven" ["tr600"] sumUpSetEvenFunTy sumUpSetEven
   where
     sumUpSetEvenFunTy :: ArrowTy2 Ty2
     sumUpSetEvenFunTy = ArrowTy2
-                         [LRM "lin601" (VarR "r600") Input False, LRM "lout602" (VarR "r758") Output False]
+                         [LRM "lin601" (VarR "r600") Input, LRM "lout602" (VarR "r758") Output]
                          [PackedTy "STree" "lin601"]
                          (S.empty)
                          (ProdTy [PackedTy "STree" "lout602", IntTy])
@@ -1199,8 +1199,8 @@ copyExprFun = FunDef "copyExpr" ["e700"] copyExprFunTy copyExprFunBod (FunMeta R
   where
     copyExprFunTy :: ArrowTy2 Ty2
     copyExprFunTy = ArrowTy2
-                     [LRM "lin702" (VarR "r701") Input False,
-                      LRM "lout703" (VarR "r759") Output False]
+                     [LRM "lin702" (VarR "r701") Input,
+                      LRM "lout703" (VarR "r759") Output]
                      [PackedTy "Expr" "lin702"]
                      (S.empty)
                      (PackedTy "Expr" "lout703")
@@ -1231,9 +1231,9 @@ substFun = FunDef "subst" ["tr653"] substFunTy substFunBod (FunMeta Rec NoInline
   where
     substFunTy :: ArrowTy2 Ty2
     substFunTy = ArrowTy2
-                  [LRM "lin651" (VarR "r650") Input False,
-                   LRM "lin652" (VarR "r650") Input False,
-                   LRM "lout653" (VarR "r760") Output False]
+                  [LRM "lin651" (VarR "r650") Input,
+                   LRM "lin652" (VarR "r650") Input,
+                   LRM "lout653" (VarR "r760") Output]
                   [ProdTy [IntTy,
                            PackedTy "Expr" "lin651",
                            PackedTy "Expr" "lin652"]]
@@ -1326,7 +1326,7 @@ indrBuildTreeFun = FunDef "indrBuildTree" ["i270"] indrBuildTreeTy indrBuildTree
   where
     indrBuildTreeTy :: ArrowTy2 Ty2
     indrBuildTreeTy = ArrowTy2
-                   [LRM "lout272" (VarR "r271") Output False]
+                   [LRM "lout272" (VarR "r271") Output]
                    [IntTy]
                    (S.empty)
                    (PackedTy "Tree" "lout272")
@@ -1371,7 +1371,7 @@ indrRightmostFun = FunDef "indrRightmost" ["t742"] indrRightmostTy indrRightmost
   where
     indrRightmostTy :: ArrowTy2 Ty2
     indrRightmostTy = ArrowTy2
-                       [LRM "lin741" (VarR "r740") Input False]
+                       [LRM "lin741" (VarR "r740") Input]
                        [PackedTy "Tree" "lin741"]
                        S.empty
                        IntTy
@@ -1407,7 +1407,7 @@ indrIDFun = FunDef "indrID" ["tr800"] indrIDTy indrIDBod (FunMeta NotRec NoInlin
   where
     indrIDTy :: ArrowTy2 Ty2
     indrIDTy = ArrowTy2
-                [LRM "lin802" (VarR "r801") Input False, LRM "lout803" (VarR "r803") Output False]
+                [LRM "lin802" (VarR "r801") Input, LRM "lout803" (VarR "r803") Output]
                 [PackedTy "Tree" "lin802"]
                 (S.empty)
                 (PackedTy "Tree" "lout803")

@@ -82,17 +82,15 @@ data LREM = LREM { lremLoc    :: LocVar
                  , lremReg    :: RegVar
                  , lremEndReg :: RegVar
                  , lremMode   :: Old.Modality
-                 , lremIsMutable :: Bool
                  }
   deriving (Read,Show,Eq,Ord,Generic)
 
 instance Out LREM
 
 instance NFData LREM where
-  rnf (LREM a b c d e)  = rnf a `seq` rnf b `seq` rnf c `seq` rnf d `seq` rnf e
-
+  rnf (LREM a b c d)  = rnf a `seq` rnf b `seq` rnf c `seq` rnf d
 fromLRM :: Old.LRM -> LREM
-fromLRM (Old.LRM loc reg mode isMutable) = LREM loc (Old.regionToVar reg) (toEndV (Old.regionToVar reg)) mode isMutable
+fromLRM (Old.LRM loc reg mode) = LREM loc (Old.regionToVar reg) (toEndV (Old.regionToVar reg)) mode
 
 data LocArg = Loc LREM
             | EndWitness LREM Var

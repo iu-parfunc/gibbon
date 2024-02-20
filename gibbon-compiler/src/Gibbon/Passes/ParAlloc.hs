@@ -73,7 +73,7 @@ parAlloc Prog{ddefs,fundefs,mainExp} = do
         when (hasParallelism funTy && hasPacked ret_ty && gopt Opt_Gibbon1 dflags) $
           error "gibbon: Cannot compile parallel allocations in Gibbon1 mode."
 
-        let initRegEnv = M.fromList $ map (\(LRM lc r _ _) -> (lc, regionToVar r)) (locVars funTy)
+        let initRegEnv = M.fromList $ map (\(LRM lc r _) -> (lc, regionToVar r)) (locVars funTy)
             initTyEnv  = M.fromList $ zip funArgs (arrIns funTy)
             env2 = Env2 initTyEnv (initFunEnv fundefs)
             boundlocs = S.fromList (funArgs ++ allLocVars funTy ++ allRegVars funTy)

@@ -8,6 +8,7 @@ import           Data.Maybe (fromJust)
 import           Text.PrettyPrint.GenericPretty
 import           Data.Foldable ( foldrM )
 import           Prelude as P 
+import    qualified       Data.Set as S
 
 import           Gibbon.DynFlags
 import           Gibbon.Common
@@ -121,7 +122,7 @@ cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funMeta} = do
       -- intuitive and can be improved.
 
       -- Input & output regions are always inserted before all other arguments.
-      regBinds = dbgTraceIt (sdoc funName) dbgTraceIt (sdoc funTy') dbgTraceIt ("\n") map toEndV (inRegs ++ outRegs)
+      regBinds = map toEndV (inRegs ++ outRegs) --dbgTraceIt (sdoc funName) dbgTraceIt (sdoc funTy') dbgTraceIt ("\n")
 
       -- Output cursors after that.
       outCurBinds = outLocs
@@ -135,7 +136,7 @@ cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funMeta} = do
                            in mkLets bnds
 
       initTyEnv = M.fromList $ (map (\(a,b) -> (a,MkTy2 (cursorizeInTy (unTy2 b)))) $ zip funArgs in_tys) ++
-                               [(a, MkTy2 CursorTy) | (LRM a _ _ _) <- locVars funTy]
+                               [(a, MkTy2 CursorTy) | (LRM a _ _) <- locVars funTy]
 
       funargs = regBinds ++ outCurBinds ++ funArgs
 
@@ -143,7 +144,7 @@ cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funMeta} = do
          then fromDi <$> cursorizePackedExp ddefs fundefs M.empty initTyEnv M.empty funBody
          else cursorizeExp ddefs fundefs M.empty initTyEnv M.empty funBody
   let bod' = inCurBinds bod
-      bod'' = evaluateProjectionsLazily M.empty bod'
+      bod'' = dbgTraceIt ("Lazy proj") dbgTraceIt (sdoc (funName, funName)) dbgTraceIt ("End\n") evaluateProjectionsLazily M.empty bod'
       fn = FunDef funName funargs funTy' bod'' funMeta
   return fn
 
@@ -229,11 +230,11 @@ This is used to create bindings for input location variables.
 
           -- Adding additional input arguments for the destination cursors to which outputs
           -- are written.
-          outCursNonMutable   = filter (\(LRM _ _ m mu) -> m == Output && mu == False) locVars
+          outCursNonMutable   = filter (\(LRM _ _ m) -> m == Output) locVars
           outCurTysNonMutable = map (\_ -> CursorTy) outCursNonMutable 
 
-          outCursMutable = filter (\(LRM _ _ m mu) -> m == Output && mu == True) locVars
-          outCursTysMutable = map (\_ -> MutableCursorTy) outCursMutable
+          outCursMutable = filter (\(LRM _ _ m) -> m == OutputMutable) locVars
+          outCursTysMutable = map (\_ -> MutableCursorTy) outCursMutable --MutableCursorTy
 
           inRegs    = map (\_ -> CursorTy) (inRegVars ty)
           in_tys    = inRegs ++ outRegs ++ outCurTysNonMutable ++ outCursTysMutable ++ (map unTy2 arrIns)
@@ -241,8 +242,8 @@ This is used to create bindings for input location variables.
           -- Packed types in the input now become (read-only) cursors.
           newIns    = map (constPacked CursorTy) in_tys
 
-          ty' = dbgTraceIt (sdoc (in_tys, outRegs, outCurTysNonMutable, outCursTysMutable, arrIns, ty, outLocVars ty)) (map stripTyLocs newIns, stripTyLocs newOut')
-
+          ty' = (map stripTyLocs newIns, stripTyLocs newOut')
+          --dbgTraceIt (sdoc (in_tys, outRegs, outCurTysNonMutable, outCursTysMutable, arrIns, ty, outLocVars ty))
       in ty' 
 
 
@@ -519,7 +520,7 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
           mapM (unpackDataCon ddfs fundefs denv tenv senv True v) brs
 
     DataConE slocarg dcon args -> do
-      let sloc = toLocVar slocarg
+      let sloc = dbgTraceIt ("sloc arg: ") dbgTraceIt (sdoc slocarg) dbgTraceIt ("\n") toLocVar slocarg
           -- Return (start,end) cursors
           -- The final return value lives at the position of the out cursors:
           go2 :: Bool -> Var -> [(Exp2, Ty2)] -> PassM Exp3
@@ -1655,9 +1656,8 @@ curDict ty = ty
 
 evaluateProjectionsLazily :: LazyProjectionEnv -> Exp3 -> Exp3
 evaluateProjectionsLazily env exp3 = let 
-                                         (env', exp3') = collectProjections env exp3 
-                                         (env'', exp3'') = releaseProjetions env' exp3'
-                                       in dbgTraceIt (sdoc $ (M.elems env', M.elems env'')) exp3''
+                                         (env', exp3') = releaseProjetions env exp3
+                                       in dbgTraceIt (sdoc $ (M.elems env', M.elems env')) exp3'
 
 
 collectProjections :: LazyProjectionEnv -> Exp3 -> (LazyProjectionEnv, Exp3) 
@@ -1670,26 +1670,31 @@ collectProjections env exp = case exp of
   AppE (v, t) locs args -> let results = P.map (collectProjections env) args  
                                env' = M.unions $ P.map fst results
                                args' = P.map snd results 
-                             in (env', AppE (v, t) locs args')
+                             in (M.union env env', AppE (v, t) locs args')
   PrimAppE p args -> let results = P.map (collectProjections env) args  
                          env' = M.unions $ P.map fst results
                          args' = P.map snd results 
-                       in (env', PrimAppE p args') 
+                       in (M.union env env', PrimAppE p args') 
   LetE (v,loc,ty,rhs) bod -> case rhs of 
                                   ProjE i e -> let env' = M.insert v (loc, ty, rhs) env  
-                                                   (env'', bod') = collectProjections env' bod 
-                                                 in (env'', bod')
-                                  _ -> let (env', rhs') = collectProjections env rhs
-                                           (env'', bod') = collectProjections env' bod 
-                                         in (env'', LetE (v, loc, ty, rhs') bod')
+                                                   (env'', bod') =  collectProjections env' bod 
+                                                 in if M.null env''
+                                                    then dbgTraceIt ("Here") dbgTraceIt (sdoc (env', M.elems env', env'', M.elems env'')) dbgTraceIt ("Here End\n") (M.union env env', bod')
+                                                    else dbgTraceIt ("Here") dbgTraceIt (sdoc (env', M.elems env', env'', M.elems env'')) dbgTraceIt ("Here End\n") (M.union env env'', bod')
+                                  _ -> let (env', rhs') = dbgTraceIt ("Here1") collectProjections env rhs
+                                           (env'', bod') = dbgTraceIt ("Here2") collectProjections env' bod 
+                                         in if M.null env''
+                                            then (M.union env env', LetE (v, loc, ty, rhs') bod')
+                                            else (M.union env env'', LetE (v, loc, ty, rhs') bod')
   IfE a b c  -> let (env', a') = collectProjections env a 
                     (env'', b') = collectProjections env' b
-                    (env''', c') = collectProjections env'' c 
-                  in (env''', IfE a' b' c')
-  MkProdE ls -> let results = P.map (collectProjections env) ls  
-                    env' = M.unions $ P.map fst results
-                    ls' = P.map snd results 
-                  in (env', MkProdE ls') 
+                    (env''', c') = collectProjections env'' c
+                  in (M.unions [env, env', env'', env'''], IfE a' b' c')
+  -- MkProdE ls -> let results = P.map (collectProjections env) ls  
+  --                   env' = M.unions $ P.map fst results
+  --                   ls' = P.map snd results 
+  --                 in (env', MkProdE ls')
+  MkProdE ls -> (env, exp) 
   ProjE i e  -> let (env', e') = collectProjections env e 
                  in (env', ProjE i e')
   CaseE scrt brs -> let results = P.map (\(a, b, c) -> let (env', c') = collectProjections env c  
@@ -1697,39 +1702,39 @@ collectProjections env exp = case exp of
                                         ) brs
                         env'' = M.unions $ P.map fst results 
                         brs' = P.map snd results
-                     in (env'', CaseE scrt brs') 
+                     in (M.union env env'', CaseE scrt brs') 
   DataConE loc dcon ls -> let results = P.map (collectProjections env) ls  
                               env' = M.unions $ P.map fst results
                               ls' = P.map snd results 
-                            in (env', DataConE loc dcon ls') 
+                            in (M.union env env', DataConE loc dcon ls') 
   TimeIt e d b   -> let (env', e') = collectProjections env e
-                     in (env', TimeIt e' d b)
+                     in (M.union env env', TimeIt e' d b)
   WithArenaE v e -> let (env', e') = collectProjections env e
-                     in (env', WithArenaE v e')
+                     in (M.union env env', WithArenaE v e')
   SpawnE v locs ls  -> let results = P.map (collectProjections env) ls  
                            env' = M.unions $ P.map fst results
                            ls' = P.map snd results
-                         in (env', SpawnE v locs ls')
+                         in (M.union env env', SpawnE v locs ls')
   SyncE -> (env, SyncE)
   Ext ext ->
     case ext of
       WriteScalar a b ex -> let (env', ex') = collectProjections env ex
-                              in (env', Ext $ WriteScalar a b ex')
+                              in (M.union env env', Ext $ WriteScalar a b ex')
       AddCursor c ex -> let (env', ex') = collectProjections env ex
-                          in (env', Ext $ AddCursor c ex')
+                          in (M.union env env', Ext $ AddCursor c ex')
       SubPtr{} -> (env, exp)
       WriteCursor c ex -> let (env', ex') = collectProjections env ex
-                           in (env', Ext $ WriteCursor c ex')
+                           in (M.union env env', Ext $ WriteCursor c ex')
       --TagCursor{}    -> (env, exp)
       ReadScalar{}   -> (env, exp)
       ReadTag{}      -> (env, exp)
       WriteTag{}     -> (env, exp)
       ReadList{}     -> (env, exp)
       WriteList a ex b -> let (env', ex') = collectProjections env ex
-                           in (env', Ext $ WriteList a ex' b)
+                           in (M.union env env', Ext $ WriteList a ex' b)
       ReadVector{}     -> (env, exp)
       WriteVector a ex b -> let (env', ex') = collectProjections env ex
-                              in (env', Ext $ WriteVector a ex' b)
+                              in (M.union env env', Ext $ WriteVector a ex' b)
       NewBuffer{}        -> (env, exp)
       NewParBuffer{}     -> (env, exp)
       ScopedBuffer{}     -> (env, exp)
@@ -1761,7 +1766,7 @@ collectProjections env exp = case exp of
       --SSPush{} -> (env, exp)
       --SSPop{} -> (env, exp)
       Assert ex -> let (env', ex') = collectProjections env ex
-                     in (env', Ext $ Assert ex)
+                     in (M.union env env', Ext $ Assert ex)
       _ -> (env, exp)
   MapE{}         -> (env, exp)
   FoldE{}        -> (env, exp)
@@ -1770,14 +1775,18 @@ collectProjections env exp = case exp of
 releaseProjetions :: LazyProjectionEnv -> Exp3 -> (LazyProjectionEnv, Exp3)
 releaseProjetions env exp = case exp of 
   VarE v    -> case M.lookup v env of  
-                          Just (loc, ty, exp) -> let exp' = LetE (v, loc, ty, exp) $ VarE v 
+                          Just (loc, ty, exp) -> let exp' = dbgTraceIt (sdoc v) LetE (v, loc, ty, exp) $ VarE v 
                                                      env' = M.delete v env 
                                                   in (env', exp')
                           Nothing -> (env, exp)
   LitE{}    -> (env, exp)
   CharE{}   -> (env, exp)
   FloatE{}  -> (env, exp)
-  LitSymE v -> (env, exp)
+  LitSymE v -> case M.lookup v env of  
+                          Just (loc, ty, exp) -> let exp' = LetE (v, loc, ty, exp) $ LitSymE v 
+                                                     env' = M.delete v env 
+                                                  in (env', exp')
+                          Nothing -> (env, exp)
   AppE (v, t) locs args -> let results = P.map (releaseProjetions env) args  
                                env' = M.unions $ P.map fst results
                                args' = P.map snd results 
@@ -1787,47 +1796,21 @@ releaseProjetions env exp = case exp of
                          args' = P.map snd results 
                        in (env', PrimAppE p args') 
   LetE (v,loc,ty,rhs) bod -> let (env', rhs') = releaseProjetions env rhs
-                                 (env'', bod') = releaseProjetions env' bod 
+                                 (env'', bod') = releaseProjetions env bod 
                                in (env'', LetE (v, loc, ty, rhs') bod')
   IfE a b c  -> let (env', a') = releaseProjetions env a 
                     (env'', b') = releaseProjetions env' b
                     (env''', c') = releaseProjetions env'' c 
                   in (env''', IfE a' b' c')
-  MkProdE ls -> let (result, e, fv) = P.foldr (\(VarE v) (accum, tup, fvars) -> case M.lookup v env of 
-                                                                                  Just (loc, ty, exp) -> if accum == False 
-                                                                                                         then (False, Nothing, Nothing)
-                                                                                                         else
-                                                                                                            case exp of 
-                                                                                                                ProjE i exp' -> 
-                                                                                                                  let freeVars = gFreeVars exp' 
-                                                                                                                   in case (tup, fvars) of 
-                                                                                                                          (Nothing, Nothing) -> (True, Just exp', Just freeVars)
-                                                                                                                          (x, Just y) -> if y == freeVars 
-                                                                                                                                         then (True, x, Just y)
-                                                                                                                                         else (False, x, Just y)
-                                                                                                                                        
-                                                                                                                             
-                                                                                  Nothing -> (False, Nothing, Nothing) 
-
-                                         ) (True, Nothing, Nothing) ls 
-                  in if result 
-                     then 
-                      case e of 
-                        Just exp -> (exp 
-                        Nothing -> error "expected expression"
-                     else
-                      let results = P.map (releaseProjetions env) ls  
-                          env' = M.unions $ P.map fst results
-                          ls' = P.map snd results 
-                       in (env', MkProdE ls')
+  MkProdE ls -> let (env', exp') = replaceTuples env exp 
+                  in (env', exp')
   ProjE i e  -> let (env', e') = releaseProjetions env e 
                  in (env', ProjE i e')
-  CaseE scrt brs -> let results = P.map (\(a, b, c) -> let (env', c') = releaseProjetions env c  
-                                                         in (env', (a, b, c'))
-                                        ) brs
-                        env'' = M.unions $ P.map fst results 
-                        brs' = P.map snd results
-                     in (env'', CaseE scrt brs') 
+  CaseE scrt brs -> let brs' = P.map (\(a, b, c) -> let (env', c') = collectProjections env c
+                                                        (env'', c'') = dbgTraceIt ("Env at Case:") dbgTraceIt (sdoc $ (a, env', M.elems env')) dbgTraceIt ("End\n") releaseProjetions env' c'  
+                                                      in (a, b, c'')
+                                     ) brs
+                     in (env, CaseE scrt brs') 
   DataConE loc dcon ls -> let results = P.map (releaseProjetions env) ls  
                               env' = M.unions $ P.map fst results
                               ls' = P.map snd results 
@@ -1843,10 +1826,33 @@ releaseProjetions env exp = case exp of
   SyncE -> (env, SyncE)
   Ext ext ->
     case ext of
-      WriteScalar a b ex -> let (env', ex') = releaseProjetions env ex
-                              in (env', Ext $ WriteScalar a b ex')
-      AddCursor c ex -> let (env', ex') = releaseProjetions env ex
-                          in (env', Ext $ AddCursor c ex')
+      WriteScalar a v ex -> let gf = gFreeVars ex
+                                freeVars = S.toList $ S.union (S.singleton v) gf
+                                newEnv = P.foldr (\v e -> M.delete v e) env freeVars
+                                (env'', ex') = releaseProjetions newEnv ex 
+                                (env''', letLst) = P.foldr (\v (e'', expr) -> case M.lookup v e'' of 
+                                                                                    Nothing -> (e'', expr)
+                                                                                    Just (loc', ty', expr') -> let e''' = M.delete v e''
+                                                                                                                 in (e''', LetE (v, loc', ty', expr') $ expr)
+                                                       ) (env, Ext $ WriteScalar a v ex') freeVars
+                             in (env'', letLst)
+      AddCursor c ex -> let gf = gFreeVars ex
+                            freeVars = S.toList $ S.union (S.singleton c) gf
+                            newEnv = P.foldr (\v e -> M.delete v e) env freeVars
+                            (env'', ex') = releaseProjetions newEnv ex 
+                            (env''', letLst) = P.foldr (\v (e'', expr) -> case M.lookup v e'' of 
+                                                                                    Nothing -> (e'', expr)
+                                                                                    Just (loc', ty', expr') -> let e''' = M.delete v e''
+                                                                                                                 in (e''', LetE (v, loc', ty', expr') $ expr)
+                                                       ) (env, Ext $ AddCursor c ex') freeVars
+                          in (env'', letLst)
+        -- case M.lookup c env of 
+        --                           Just (loc, ty, rhs) -> let env' = M.delete c env 
+        --                                                      (env'', ex') = releaseProjetions env' ex
+        --                                                    in (env'', LetE (c, loc, ty, rhs) $ Ext $ AddCursor c ex')  
+        
+        --                           Nothing -> let (env', ex') = releaseProjetions env ex
+        --                                       in (env', Ext $ AddCursor c ex')
       SubPtr{} -> (env, exp)
       WriteCursor c ex -> let (env', ex') = releaseProjetions env ex
                            in (env', Ext $ WriteCursor c ex')
@@ -1895,3 +1901,108 @@ releaseProjetions env exp = case exp of
       _ -> (env, exp)
   MapE{}         -> (env, exp)
   FoldE{}        -> (env, exp)
+
+
+replaceTuples :: LazyProjectionEnv -> Exp3 -> (LazyProjectionEnv, Exp3)
+replaceTuples env exp = case exp of
+  MkProdE [] -> (env, exp) 
+  MkProdE ls -> let nested_tuple = P.last ls
+                  in case nested_tuple of 
+                            MkProdE ls' -> let (res, exp', _ , env') = P.foldr lambda (True, Nothing, Nothing, env) ls'
+                                            in if res 
+                                               then let ls'' = P.init ls 
+                                                        ls''' = ls'' ++ [fromJust exp']
+                                                        (res', exp'', _ , env'') = dbgTraceIt ("Print new Prod: ") dbgTraceIt (sdoc (ls''', env')) dbgTraceIt ("\n") P.foldr lambda (True, Nothing, Nothing, env') ls'''
+                                                      in if res' 
+                                                         then dbgTraceIt ("Branch1: ") dbgTraceIt (sdoc (exp'')) dbgTraceIt ("\n") (env'', fromJust exp'')
+                                                         else let freeVarsInProd = P.concatMap (\exp -> S.toList $ gFreeVars exp) ls''' 
+                                                                  (env''', letLst) = P.foldr (\v (e'', expr) -> case M.lookup v e'' of 
+                                                                                                                    Nothing -> (e'', expr)
+                                                                                                                    Just (loc', ty', expr') -> let e''' = M.delete v e''
+                                                                                                                                                in (e''', LetE (v, loc', ty', expr') $ expr)
+                                                                                             ) (env', MkProdE ls''')  freeVarsInProd
+                                                               in dbgTraceIt ("Branch2: ") dbgTraceIt (sdoc (letLst)) dbgTraceIt ("\n") (env''', letLst) 
+                                               else let freeVarsInProd = P.concatMap (\exp -> S.toList $ gFreeVars exp) ls
+                                                        (env''', letLst) = P.foldr (\v (e'', expr) -> case M.lookup v e'' of 
+                                                                                                                    Nothing -> (e'', expr)
+                                                                                                                    Just (loc', ty', expr') -> let e''' = M.delete v e''
+                                                                                                                                                in (e''', LetE (v, loc', ty', expr') $ expr)
+                                                                                   ) (env, MkProdE ls) freeVarsInProd
+                                                      in dbgTraceIt ("Branch2: ") dbgTraceIt (sdoc (letLst)) dbgTraceIt ("\n") (env''', letLst)
+                            _ -> let (res, exp', _, env') = P.foldr lambda (True, Nothing, Nothing, env) ls
+                                   in if res 
+                                      then (env', fromJust exp')
+                                      else let freeVarsInProd = P.concatMap (\exp -> S.toList $ gFreeVars exp) ls
+                                               (env''', letLst) = P.foldr (\v (e'', expr) -> case M.lookup v e'' of 
+                                                                                                                    Nothing -> (e'', expr)
+                                                                                                                    Just (loc', ty', expr') -> let e''' = M.delete v e''
+                                                                                                                                                in (e''', LetE (v, loc', ty', expr') $ expr)
+                                                                          ) (env, MkProdE ls) freeVarsInProd
+                                             in dbgTraceIt ("Branch2: ") dbgTraceIt (sdoc (letLst)) dbgTraceIt ("\n") (env''', letLst)
+ where
+  lambda = (\expr (accum, tup, fVars, env') -> case expr of 
+                                                   VarE v -> case M.lookup v env' of 
+                                                                        Just (loc, ty, exp) -> if accum == False 
+                                                                                                then (accum && False, tup, fVars, env')
+                                                                                                else
+                                                                                                  case exp of 
+                                                                                                        ProjE i exp' -> let freeVars = gFreeVars exp' 
+                                                                                                                            env'' = M.delete v env'
+                                                                                                                          in case (tup, fVars) of 
+                                                                                                                                  (Nothing, Nothing) -> (accum && True, Just exp', Just freeVars, env'')
+                                                                                                                                  (x, Just y) -> if y == freeVars 
+                                                                                                                                                then (accum && True, x, Just y, env'')
+                                                                                                                                                else (accum && False, x, Just y, env')  
+                                                                                                                                -- (Nothing, Just y) -> if y == freeVars 
+                                                                                                                                --                       then (True, Just exp', Just y, env''')
+                                                                                                                                --                       else (False, Just exp', Just y, env'') 
+                                                                                                                                -- (Just x, Nothing) -> (True, Just x, Just freeVars, env''')
+                                                                                                                                                                                                              
+              
+
+                                                                        Nothing -> (accum && False, tup, fVars, env')
+                                                   _ -> let fVars' = gFreeVars expr 
+                                                          in case fVars of 
+                                                                  Nothing -> (accum, tup, fVars, env') 
+                                                                  Just f ->  if f == fVars'
+                                                                             then (True && accum, tup, fVars, env')
+                                                                             else (False && accum, tup, fVars, env')     
+                                                    
+           )
+
+
+-- let (result, e, fv, env') = P.foldr (\ee (accum, tup, fvars, env'') -> case ee of 
+--                                                                                             VarE v -> case M.lookup v env'' of 
+--                                                                                                               Just (loc, ty, exp) -> if accum == False 
+--                                                                                                                                      then (False, tup, fvars, env'')
+--                                                                                                                                      else
+--                                                                                                                                         case exp of 
+--                                                                                                                                               ProjE i exp' -> let freeVars = gFreeVars exp' 
+--                                                                                                                                                                   env''' = M.delete v env''
+--                                                                                                                                                                 in case (tup, fvars) of 
+--                                                                                                                                                                       (Nothing, Nothing) -> (True, Just exp', Just freeVars, env''')
+--                                                                                                                                                                       (x, Just y) -> if y == freeVars 
+--                                                                                                                                                                                      then (True, x, Just y, env''')
+--                                                                                                                                                                                      else (False, x, Just y, env'')  
+--                                                                                                                                                                       (Nothing, Just y) -> if y == freeVars 
+--                                                                                                                                                                                            then (True, Just exp', Just y, env''')
+--                                                                                                                                                                                            else (False, Just exp', Just y, env'') 
+--                                                                                                                                                                       (Just x, Nothing) -> (True, Just x, Just freeVars, env''')
+                                                                                                                                                                                                                                                                                                                                        
+                                                                                                                                        
+                                                                                                                             
+--                                                                                                               Nothing -> (False, tup, fvars, env'')
+--                                                                                             _ -> let (env''', ee') = releaseProjetions env'' ee
+--                                                                                                   in (True, Just ee', fvars, env''')
+
+--                                                     ) (True, Nothing, Nothing, env) ls 
+--                   in if result 
+--                      then 
+--                       case e of 
+--                         Just exp -> (env', exp) 
+--                         Nothing -> (env, MkProdE ls) 
+--                      else
+--                       let results = P.map (releaseProjetions env) ls  
+--                           env' = M.unions $ P.map fst results
+--                           ls' = P.map snd results 
+--                        in (env', MkProdE ls')
