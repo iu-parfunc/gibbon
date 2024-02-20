@@ -38,7 +38,6 @@ import           Gibbon.L0.Syntax                as L0
 import           Data.List                       as L
 import           Prelude                         as P
 
-import           Gibbon.Passes.ModuleFillImports (fillImports)
 import qualified Control.Applicative as L
 --import BenchRunner (main)
 
