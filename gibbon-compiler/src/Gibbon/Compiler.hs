@@ -64,8 +64,6 @@ import qualified Gibbon.L1.Typecheck as L1
 import qualified Gibbon.L2.Typecheck as L2
 import qualified Gibbon.L3.Typecheck as L3
 import           Gibbon.Passes.FreshBundle    (freshBundleNames)
-import           Gibbon.Passes.FreshConstructors   (freshConstructors)
-import           Gibbon.Passes.ModuleRename   (moduleRename)
 import           Gibbon.Passes.Freshen        (freshNames)
 import           Gibbon.Passes.Flatten        (flattenL1, flattenL2, flattenL3)
 import           Gibbon.Passes.InlineTriv     (inlineTriv)
@@ -242,7 +240,7 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
 
   -----------------------------------------------------------------------------
   -- do an early typecheck, before running through the passes or into the interpreter
-  -- perform the minimum transformations for a whole-progrm type-check (freshBundle, bundle, tc)
+  -- perform the minimum transformations for a whole-progrm type-check (freshBundle, bundle, fresh, tc)
   -----------------------------------------------------------------------------
   let initTypeChecked :: L0.Prog0
       initTypeChecked =
@@ -675,9 +673,7 @@ passes config@Config{dynflags} l0_bundle = do
           use_solver = gopt Opt_Layout_Use_Solver dynflags
           tcProg3     = L3.tcProg isPacked
 
-      --l0_unbundled <- go  "freshConstructors" freshConstructors   l0_unbundled
-      --l0_unbundled <- go  "renameModules"     moduleRename        l0_unbundled
-
+      -- generate unique names functions and data types
       l0_bundle' <- go "freshBundle" freshBundleNames l0_bundle
 
       -- bundle modules

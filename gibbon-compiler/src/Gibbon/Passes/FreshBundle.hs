@@ -46,6 +46,7 @@ freshModuleKeys (ProgModule name (Prog defs funs main) imports) uniquedefenv uni
   let defs' = M.mapKeys (\k -> findFreshedName (varAppend (toVar (name ++ ".")) k) uniquedefenv) defs
   pure $ ProgModule name (Prog defs' funs' main) imports
 
+-- find the imported module based off an import declarations
 findImportedModule :: ImportDecl SrcSpanInfo -> M.Map String ProgModule0 -> ProgModule0
 findImportedModule mod modmap = do
   let (ImportDecl _ (ModuleName _ name) _ _ _ _ _ _) = mod
@@ -53,7 +54,7 @@ findImportedModule mod modmap = do
     Just found -> found
     Nothing -> error $ "Could not find module " ++ name ++ " in imported modules: " ++ (show (M.keys modmap))
 
--- construct module environment from import spec & local functions
+-- transform names to their unique counterparts
 freshModule :: ProgModule0 -> ProgBundle0 -> VarEnv -> VarEnv -> VarEnv -> PassM ProgModule0
 freshModule (ProgModule modname (Prog defs funs main) imports) (ProgBundle bundle _) uniquedefenv uniquefunenv uniqueconstrenv =
     do
@@ -79,7 +80,6 @@ freshModule (ProgModule modname (Prog defs funs main) imports) (ProgBundle bundl
         (defenv'', funenv'', constrenv'') = 
           foldr (\(d, f, c) (dacc, facc, cacc) -> (M.union d dacc, M.union f facc, M.union c cacc)) (defenv', funenv', constrenv') 
           $ map (\i -> getImportedEnv (findImportedModule i modmap) i uniquedefenv uniquefunenv uniqueconstrenv) imports
-
 
 freshDDef :: HasCallStack => DDef Ty0 -> VarEnv -> VarEnv -> PassM (DDef Ty0)
 freshDDef DDef{tyName,tyArgs,dataCons} defenv constrenv = do
@@ -239,7 +239,7 @@ findFreshInExp exp defenv funenv constrenv =
       LinearExt a -> do
         return $ Ext $ LinearExt a
 
--- parse import header
+-- parse import header and map legal references to unique names
 getImportedEnv :: ProgModule0 -> ImportDecl SrcSpanInfo -> VarEnv -> VarEnv -> VarEnv -> (VarEnv, VarEnv, VarEnv)
 getImportedEnv (ProgModule _ (Prog defs funs _) _) imp uniquedefenv uniquefunenv uniqueconstrenv = do
     let ImportDecl _ (ModuleName _ impname) qual _ _ _ as specs = imp
@@ -349,13 +349,15 @@ _buildGlobalEnv (ProgModule modname (Prog ddefs fdefs _) _) =
         ddefs' = M.keys ddefs
         constrs' = constrs
 
-
+-- helper functions
+-- try to find the name, but don't cry if you can't,,, used for VarEs
 tryToFindFreshedName :: Var -> VarEnv -> Var
 tryToFindFreshedName name e =
   do case M.lookup name e of
       Just freshname -> freshname
       Nothing -> name
 
+-- map a legal reference to a unique name
 findFreshedName :: HasCallStack => Var -> VarEnv -> Var
 findFreshedName name e = 
   case M.lookup name e of
