@@ -599,6 +599,24 @@ printBlog blog = case blog of
                                                                           _ = printTagList tags
                                                                           _ = printBlog rst
                                                                        in ()
+                    Layout2 content tags rst header id author date -> let _ = printsym (quote "Layout2 ")
+                                                                          _ = printHeader header
+                                                                          _ = printID id 
+                                                                          _ = printAuthor author 
+                                                                          _ = printDate date 
+                                                                          _ = printContent content 
+                                                                          _ = printTagList tags
+                                                                          _ = printBlog rst
+                                                                       in ()
+                    Layout4 tags content rst header id author date -> let _ = printsym (quote "Layout4 ")
+                                                                          _ = printHeader header
+                                                                          _ = printID id 
+                                                                          _ = printAuthor author 
+                                                                          _ = printDate date 
+                                                                          _ = printContent content 
+                                                                          _ = printTagList tags
+                                                                          _ = printBlog rst
+                                                                       in ()
 
 
 
