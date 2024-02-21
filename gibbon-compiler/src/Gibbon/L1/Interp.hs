@@ -297,6 +297,9 @@ applyPrim rc p args =
    (PrintSym, [VInt n]) -> do
        tell $ string8 (show n)
        pure $ VProd []
+   (PrintChar, [c]) -> do
+        tell $ string8 (show c)
+        pure $ VProd []
    oth -> error $ "unhandled prim or wrong number of arguments: "++show oth
 
   where

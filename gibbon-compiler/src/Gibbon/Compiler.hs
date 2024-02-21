@@ -241,19 +241,28 @@ compile config@Config{mode,input,verbosity,backend,cfile} fp0 = do
   -----------------------------------------------------------------------------
   -- do an early typecheck, before running through the passes or into the interpreter
   -- perform the minimum transformations for a whole-progrm type-check (freshBundle, bundle, fresh, tc)
+
   -----------------------------------------------------------------------------
-  let initTypeChecked :: L0.Prog0
-      initTypeChecked =
+  let initTypeChecked' :: PassM L0.Prog0
+      initTypeChecked' = do
+        bundle <- freshBundleNames l0_bundle
+        bundle' <- bundleModules bundle
+        bundle'' <- freshNames bundle'
+        bundle''' <- L0.tcProg bundle''
+        pure bundle'''
+  let initTypeChecked = fst $ runPassM config 0 initTypeChecked'
+        {-
         fst $ runPassM defaultConfig cnt0
                 (freshBundleNames l0_bundle >>=
-                  (\bundled -> dbgTrace 5 ("\nFreshen:\n"++sepline++ "\n" ++pprender bundled) 
-                    (L0.tcProg (fst $ runPassM defaultConfig 0 
+                  (\bundled -> dbgTrace 5 ("\nFreshen:\n" ++ sepline ++ "\n" ++ pprender bundled) 
+                    (L0.tcProg (fst $ runPassM defaultConfig 1 
                       (freshNames (fst $ runPassM defaultConfig 0 
                         (bundleModules bundled)
                       ))
                     ))
                   )
                 )
+        -}
 
   case mode of
     -- run via the interpreter on the whole program

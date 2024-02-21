@@ -15,7 +15,6 @@ import Language.Haskell.Exts (ModuleName(..), Module, eList)
 import GHC.Stack (HasCallStack)
 
 type VarEnv = M.Map Var Var
-type TyVarEnv t = M.Map TyVar t
 
 -------------------------------------------------------------------------------
 -- exported fresh bundle pass
@@ -132,7 +131,7 @@ findFreshInTy ty defenv =
 findFreshInDataCons :: (DataCon, [(IsBoxed, Ty0)]) -> VarEnv -> (DataCon, [(IsBoxed, Ty0)])
 findFreshInDataCons (con, tys) defenv =
   do
-    let tys' = map (\(boxed, ty) -> (boxed, (findFreshInTy ty defenv))) tys
+    let tys' = L.map (\(boxed, ty) -> (boxed, (findFreshInTy ty defenv))) tys
     (con, tys')
 
 findFreshInExp :: Exp0 -> VarEnv -> VarEnv -> VarEnv -> PassM Exp0
@@ -178,7 +177,9 @@ findFreshInExp exp defenv funenv constrenv =
     CaseE e mp -> do
       e' <- findFreshInExp e defenv funenv constrenv
       mp' <- mapM (\(c,prs,ae) -> do
-                    let c' = (fromVar (findFreshedName (toVar c) constrenv))
+                    let c' = case c of 
+                          "_default" -> c
+                          _ -> (fromVar (findFreshedName (toVar c) constrenv))
                     ae' <- findFreshInExp ae defenv funenv constrenv
                     return (c', prs, ae')) mp
       return $ CaseE e' mp'
