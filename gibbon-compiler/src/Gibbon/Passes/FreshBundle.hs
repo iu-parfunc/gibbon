@@ -177,7 +177,9 @@ findFreshInExp exp defenv funenv constrenv =
     CaseE e mp -> do
       e' <- findFreshInExp e defenv funenv constrenv
       mp' <- mapM (\(c,prs,ae) -> do
-                    let c' = (fromVar (findFreshedName (toVar c) constrenv))
+                    let c' = case c of 
+                          "_default" -> c
+                          _ -> (fromVar (findFreshedName (toVar c) constrenv))
                     ae' <- findFreshInExp ae defenv funenv constrenv
                     return (c', prs, ae')) mp
       return $ CaseE e' mp'
