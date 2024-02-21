@@ -120,8 +120,16 @@ interp rc valenv ddefs fenv = go valenv
                  v <- go env x1
                  case v of
                    VPacked k ls2 -> do
+                       let lookup3' :: (Eq k, Show k, Show a, Show b) => k -> [(k,a,b)] -> (k,a,b)
+                           lookup3' k ls = go ls
+                                where
+                                --go [] = error$ "lookup3: key "++show k++" not found in list:\n  "++L.take 80 (show ls)
+                                go [] = error$ "lookup3: key "++show k++" not found in list:\n  "++ (show alts)
+                                go ((k1,a1,b1):r)   
+                                    | k1 == k   = (k1,a1,b1)
+                                    | otherwise = go r
                        let vs = L.map fst prs
-                           (_,prs,rhs) = lookup3 k alts
+                           (_,prs,rhs) = lookup3' k alts
                            env' = M.union (M.fromList (zip vs ls2)) env
                        go env' rhs
                    _ -> error$ "L1.Interp: type error, expected data constructor, got: "++ndoc v++

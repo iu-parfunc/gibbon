@@ -47,4 +47,4 @@ gibbon_main =
        newblgs   = emphKeywordInContent keyword blogs
        newblgs'  = emphKeywordInTag keyword newblgs 
        newblgs'' = filterByKeywordInTagList keyword newblgs'
-   in printPacked newblgs''
+   in printBlog newblgs''

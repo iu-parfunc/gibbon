@@ -588,6 +588,8 @@ printID id = case id of
 
 printBlog :: Blog -> () 
 printBlog blog = case blog of 
+                    End -> let _ = printsym (quote "Fin")
+                           in ()
                     Layout1 header id author date content tags rst -> let _ = printsym (quote "Layout1 ")
                                                                           _ = printHeader header
                                                                           _ = printID id 
