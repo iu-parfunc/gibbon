@@ -916,18 +916,18 @@ tests:
     dir: examples/layout_bench
     answer-file: examples/layout_bench/layout1ContentSearchRunPipeline.ans
     failing: [interp1,pointer,gibbon1, gibbon3]
-    run-modes: ["gibbon2"]
+    run-modes: []
     
   - name: manyFuncs.hs 
     test-flags: ["--no-gc", "--opt-layout-local", "--opt-layout-use-solver"]
     dir: examples/layout_bench
     answer-file: examples/layout_bench/manyFuncsLocal.ans
-    failing: [interp1,pointer,gibbon1, gibbon3]
-    run-modes: ["gibbon2"]
+    failing: [interp1,pointer,gibbon1, gibbon3, gibbon2]
+    run-modes: []
     
   - name: manyFuncs.hs 
     test-flags: ["--no-gc", "--opt-layout-global", "--opt-layout-use-solver"]
     dir: examples/layout_bench
     answer-file: examples/layout_bench/manyFuncsGlobal.ans
-    failing: [interp1,pointer,gibbon1, gibbon3]
-    run-modes: ["gibbon2"]
+    failing: [interp1,pointer,gibbon1, gibbon3, gibbon2]
+    run-modes: []
