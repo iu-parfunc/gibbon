@@ -1,5 +1,0 @@
- ! Responding to env Var: GIBBON_DEBUG=4
- ! We set DEBUG based on command-line verbose arg: 4
-gibbon: haskell-src-exts failed: Parse error: ;, at <unknown>.hs:593:21
-CallStack (from HasCallStack):
-  error, called at src/Gibbon/HaskellFrontend.hs:115:7 in gibbon-0.3-inplace:Gibbon.HaskellFrontend
