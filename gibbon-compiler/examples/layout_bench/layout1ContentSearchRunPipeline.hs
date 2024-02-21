@@ -18,4 +18,4 @@ gibbon_main =
        keyword :: Vector Char  
        keyword = "a"
        newblgs = emphKeywordInContent keyword blogs
-   in newblgs
+   in printPacked newblgs
