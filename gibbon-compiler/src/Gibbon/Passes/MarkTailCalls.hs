@@ -280,4 +280,5 @@ markTailCallsFnBodyHelper depth exp2 = case exp2 of
                                     -- Old.AllocateScalarsHere loc -> 
                                     -- Old.SSPush _ a b _ -> 
                                     -- Old.SSPop _ a b -> 
+                                    _ -> NoTail
                                 _ -> NoTail
