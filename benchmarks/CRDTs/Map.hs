@@ -3,11 +3,10 @@
 {-# LANGUAGE DataKinds #-}
 
 module Map where
-import Common
+import Common as C
 
 type Size = Int
-data Map a  = Tip
-            | Bin Size Int a (Map a) (Map a)
+data Map a  = Tip | Bin Size Int a (Map a) (Map a)
 
 -- Construction -----------------------
 
@@ -35,19 +34,19 @@ key s = case s of
             Tip -> 0
             Bin _ k _ _ _ -> k
 
-lookup :: Int -> Map a -> Common.Maybe a
+lookup :: Int -> Map a -> Maybe a
 lookup k m = 
     case m of
-        Tip -> Common.Nothing
+        Tip ->  Nothing
         Bin _ kx v l r ->
             if k < kx then Map.lookup k l
             else if k > kx then Map.lookup k r
-            else Common.Just v
+            else  Just v
 
 member :: Int -> Map a -> Bool
 member k m = case Map.lookup k m of
-    Common.Nothing -> False
-    Common.Just _  -> True
+     Nothing -> False
+     Just _  -> True
 
 -- Insertion --------------------------
 
@@ -73,43 +72,55 @@ delete kx m =
 
 glue :: Map a -> Map a -> Map a
 glue l r = 
-    case (l, r) of
+    case l of
+        Tip -> r
+        Bin _ _ _ _ _ -> l
+    {-
+    case l r of
         (Tip, Tip) -> Tip
         (Bin _ _ _ _ _, Tip) -> r
         (Tip, Bin _ _ _ _ _) -> l
         (Bin _ _ _ _ _, Bin _ _ _ _ _) ->
             if size l > size r then 
                 case (deleteFindMax l) of 
-                    Common.Just ((km, m),l') -> balance km m l' r
-                    Common.Nothing -> Tip
+                     Just ((km, m),l') -> balance km m l' r
+                     Nothing -> Tip
                     --let ((km,m),l') = deleteFindMax l in balance km m l' r
             else 
                 case (deleteFindMin r) of
-                    Common.Just ((km,m),r') -> balance km m l r'
-                    Common.Nothing -> Tip
+                     Just ((km,m),r') -> balance km m l r'
+                     Nothing -> Tip
                 
                 --let ((km,m),r') = deleteFindMin r in balance km m l r'
+    -}
 
-deleteFindMin :: Map a -> Common.Maybe ((Int,a),Map a)
-deleteFindMin t 
-  = case t of
-        Tip             -> Common.Nothing
-        Bin _ k x Tip r -> Common.Just ((k,x),r)
-        Bin _ k x l r   -> case (deleteFindMin l) of
-                            Common.Just (km,l') -> Common.Just (km,balance k x l' r)
-                            Common.Nothing -> Common.Nothing
+deleteFindMin :: Map a -> (Maybe ((Int,a),Map a))
+deleteFindMin t = case t of
+        Tip             -> Nothing
+        Bin _ k x l r   -> case l of 
+                            Tip -> C.Just ((k,x),r)
+                            _ -> case (deleteFindMin l) of
+                                C.Nothing -> C.Nothing
+                                C.Just res -> 
+                                    let (kv, l') = res
+                                        (delk, delv) = kv
+                                    in C.Just ((delk, delv), (balance k x l' r))
             
-            --let (km,l') = deleteFindMin l in Common.Just (km,balance k x l' r)
+            --let (km,l') = deleteFindMin l in  Just (km,balance k x l' r)
 
-deleteFindMax :: Map a -> Common.Maybe ((Int,a),Map a)
-deleteFindMax t
-  = case t of
-        Tip             -> Common.Nothing
-        Bin _ k x l Tip -> Common.Just ((k,x),l)
-        Bin _ k x l r   -> case (deleteFindMax r) of 
-                            Common.Just (km,r') -> Common.Just (km,balance k x l r')
-                            Common.Nothing -> Common.Nothing
-        --let (km,r') = deleteFindMax r in Common.Just (km,balance k x l r')
+deleteFindMax :: Map a -> (Maybe ((Int,a),Map a))
+deleteFindMax t = case t of
+        Tip             ->  C.Nothing
+        Bin _ k x l r   -> case r of
+                            Tip -> C.Just ((k,x),l)
+                            _ -> case (deleteFindMax r) of 
+                                C.Nothing ->  C.Nothing
+                                C.Just res ->  
+                                    let (kv, r') = res
+                                        (delk, delv) = kv
+                                    in C.Just ((delk, delv), (balance k x l r'))
+                             
+        --let (km,r') = deleteFindMax r in  Just (km,balance k x l r')
 
 delta :: Int
 delta = 4

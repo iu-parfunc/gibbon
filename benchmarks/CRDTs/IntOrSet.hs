@@ -2,19 +2,22 @@
 
 module IntOrSet where
 import Clock
-import Map
+import Map as M
+import Set as S
 
-
-data IntOrSet = OrSet Clock Map Timestamp Set Timestamp
+data IntOrSet = OrSet Clock (M.Map Timestamp) (IntSet Timestamp)
 
 getClock :: IntOrSet -> Clock
-getClock OrSet clk _ _ = clk
+getClock x = case x of
+    OrSet clk _ _ _  -> clk
 
-getState :: IntOrSet -> Map Timestamp
-getClock OrSet _ s _ = s
+getState :: IntOrSet -> M.Map Timestamp
+getState x = case x of
+    OrSet _ s _ -> s
 
-getDelSet :: IntOrSet -> Set Timestamp
-getDelSet OrSet _ _ delset = delset
+getDelSet :: IntOrSet -> IntSet Timestamp
+getDelSet x = case x of
+    OrSet _ _ delset -> delset
 
 init :: Timestamp -> Int -> IntORSet
 init uid el = 
@@ -40,9 +43,10 @@ remove el s =
 --merge :: Ord eltype => ORSet eltype -> ORSet eltype -> ORSet eltype
 
 value :: IntOrSet -> IntSet
-value OrSet _ s _ = buildValue s empty
+value x = case x of
+    OrSet _ s _ -> buildValue s S.empty
 
-buildValue :: Map -> IntSet -> IntSet
+buildValue :: (M.Map Timestamp) -> IntSet -> IntSet
 buildValue m s = case m of
                     Tip -> s
-                    Bin _ _ v l r -> (buildValue r (insert v (buildValue r s)))
+                    Bin _ k v l r -> buildValue r (S.insert k (buildValue r s))

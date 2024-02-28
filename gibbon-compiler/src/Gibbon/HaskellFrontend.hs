@@ -394,9 +394,15 @@ desugarType type_syns ty =
       case M.lookup con type_syns of
         Nothing -> PackedTy con []
         Just ty' -> ty'
-    TyFun _ t1 t2 -> let t1' = desugarType type_syns t1
-                         t2' = desugarType type_syns t2
-                     in ArrowTy [t1'] t2'
+    -- now that we have modules we need to parse qualified type names as well
+    TyCon _ (Qual _ (ModuleName _ mod) (Ident _ con)) -> 
+      case M.lookup (mod ++ "." ++ con) type_syns of
+        Nothing  -> PackedTy (mod ++ "." ++ con) []
+        Just ty' -> ty'
+    TyFun _ t1 t2 ->
+      let t1' = desugarType type_syns t1
+          t2' = desugarType type_syns t2
+       in ArrowTy [t1'] t2'
     TyParen _ ty1 -> desugarType type_syns ty1
     TyApp _ tycon arg ->
       let ty' = desugarType type_syns tycon in
@@ -1112,11 +1118,16 @@ desugarAlt type_syns toplevel alt =
     Alt _ pat _ _           -> error $ "desugarExp: Unsupported pattern in case: " ++ prettyPrint pat
   where
     desugarCase ps conName rhs = do
-      ps' <- mapM (\x -> case x of
-                            PVar _ v -> (pure . toVar . nameToStr) v
-                            PWildCard _ -> gensym "wildcard_"
-                            _        -> error $ "desugarExp: Non-variable pattern in case." ++ show x)
-                  ps
+      ps' <-
+        mapM
+          (\x ->
+             case x of
+               PVar _ v -> (pure . toVar . nameToStr) v
+               PWildCard _ -> gensym "wildcard_"
+               -- should parse PTuple
+               _ ->
+                 error $ "desugarExp: Non-variable pattern in case." ++ show x)
+          ps
       rhs' <- desugarExp type_syns toplevel rhs
       ps'' <- mapM (\v -> (v,) <$> newMetaTy) ps'
       pure (conName, ps'', rhs')
