@@ -1,16 +1,16 @@
-
+-- | Union all the modules in a program bundle in to a single program
 module Gibbon.Bundler (bundleModules) where
 import qualified Data.Foldable                   as F
 import qualified Data.Set                        as S
 import           Gibbon.L0.Syntax                as L0
 import           Gibbon.Common
 import           Data.Map                        as M
-import           Data.List                        as L
-import Language.Haskell.Exts (ImportDecl)
 
 
 
--- main bundler, takes a list of modules and the main module
+-- | Main bundler, runs all imported modules through a union that combines
+-- their function defintions and data definitions with main's
+-- Names should be globally unique at this point
 bundleModules :: ProgBundle0 -> PassM Prog0
 bundleModules bundle = do
     let (ProgBundle modules main) = bundle
@@ -18,7 +18,7 @@ bundleModules bundle = do
     let (defs, funs) = F.foldr _bundleModule (main_defs, main_funs) modules
     return $ Prog defs funs main_exp
 
--- main bundle fold
+-- | Bundle fold function
 -- builds the full program by folding definitons and functions into the main
 _bundleModule :: ProgModule0 -> (DDefs0, FunDefs0) -> (DDefs0, FunDefs0)
 _bundleModule (ProgModule mod_name (Prog {ddefs, fundefs}) _) (defs1, funs1) = 

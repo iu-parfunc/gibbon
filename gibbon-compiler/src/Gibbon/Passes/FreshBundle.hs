@@ -1,26 +1,25 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Fuse foldr/map" #-}
 
+ -- | Create unique names for functions and data types across all modules
+ -- replace all references with their unique counters parts
+ -- includes parsing import headers and resolving imported names
 module Gibbon.Passes.FreshBundle (freshBundleNames) where
 import qualified Data.Map               as M
 import qualified Data.List              as L
 import           Gibbon.Common
 import Gibbon.L0.Syntax
-import Language.Haskell.Exts (Name, ImportDecl (ImportDecl), SrcSpanInfo, name, ImportSpec (..), CName)
-import Data.Maybe  (fromJust)
+import Language.Haskell.Exts (Name, ImportDecl (ImportDecl), SrcSpanInfo, ImportSpec (..), CName, ModuleName (ModuleName))
 import Language.Haskell.Exts.Syntax (CName(..))
 import Language.Haskell.Exts (Name(..))
 import Language.Haskell.Exts (ImportSpecList(..))
-import Language.Haskell.Exts (ModuleName(..), Module, eList)
 import GHC.Stack (HasCallStack)
 
 type VarEnv = M.Map Var Var
 
--------------------------------------------------------------------------------
--- exported fresh bundle pass
--- replaces all references with new, globally unique names (data types, functions, constructors)
--------------------------------------------------------------------------------
 
+ -- | Go through all the modules and create a global environment of uniques
+ -- run through each of the modules again and replace references with their unique counterparts, including imported references
 freshBundleNames :: ProgBundle0 -> PassM ProgBundle0
 freshBundleNames bundle = do
     -- build global map of uniques
@@ -38,14 +37,14 @@ freshBundleNames bundle = do
 
 -- helper functions -----------------------------------------------------------
 
--- update the keys
+-- | Update the function and data type keys in each module
 freshModuleKeys :: ProgModule0 -> VarEnv -> VarEnv -> PassM ProgModule0
 freshModuleKeys (ProgModule name (Prog defs funs main) imports) uniquedefenv uniquefunenv = do
   let funs' = M.mapKeys (\k -> findFreshedName (varAppend (toVar (name ++ ".")) k) uniquefunenv) funs
   let defs' = M.mapKeys (\k -> findFreshedName (varAppend (toVar (name ++ ".")) k) uniquedefenv) defs
   pure $ ProgModule name (Prog defs' funs' main) imports
 
--- find the imported module based off an import declarations
+-- | Find the imported module from the import header
 findImportedModule :: ImportDecl SrcSpanInfo -> M.Map String ProgModule0 -> ProgModule0
 findImportedModule mod modmap = do
   let (ImportDecl _ (ModuleName _ name) _ _ _ _ _ _) = mod
@@ -53,7 +52,7 @@ findImportedModule mod modmap = do
     Just found -> found
     Nothing -> error $ "Could not find module " ++ name ++ " in imported modules: " ++ (show (M.keys modmap))
 
--- transform names to their unique counterparts
+-- | Transform all references to their unique counterparts
 freshModule :: ProgModule0 -> ProgBundle0 -> VarEnv -> VarEnv -> VarEnv -> PassM ProgModule0
 freshModule (ProgModule modname (Prog defs funs main) imports) (ProgBundle bundle _) uniquedefenv uniquefunenv uniqueconstrenv =
     do
@@ -80,6 +79,7 @@ freshModule (ProgModule modname (Prog defs funs main) imports) (ProgBundle bundl
           foldr (\(d, f, c) (dacc, facc, cacc) -> (M.union d dacc, M.union f facc, M.union c cacc)) (defenv', funenv', constrenv') 
           $ map (\i -> getImportedEnv (findImportedModule i modmap) i uniquedefenv uniquefunenv uniqueconstrenv) imports
 
+-- | Transform references in data definitions to uniques
 freshDDef :: HasCallStack => DDef Ty0 -> VarEnv -> VarEnv -> PassM (DDef Ty0)
 freshDDef DDef{tyName,tyArgs,dataCons} defenv constrenv = do
     let dataCons' = L.map (\(dataCon, vs) -> (fromVar (findFreshedName (toVar dataCon) constrenv), vs)) dataCons
@@ -87,6 +87,7 @@ freshDDef DDef{tyName,tyArgs,dataCons} defenv constrenv = do
     let tyName' = findFreshedName tyName defenv
     pure $ DDef tyName' tyArgs dataCons''
 
+-- | Transform references in function definitions to uniques
 freshFun :: FunDef Exp0 -> VarEnv -> VarEnv -> VarEnv -> PassM (FunDef Exp0)
 freshFun (FunDef nam nargs funty bod meta) defenv funenv constrenv =
     do 
@@ -134,6 +135,7 @@ findFreshInDataCons (con, tys) defenv =
     let tys' = L.map (\(boxed, ty) -> (boxed, (findFreshInTy ty defenv))) tys
     (con, tys')
 
+-- | Find unique names in expressions
 findFreshInExp :: Exp0 -> VarEnv -> VarEnv -> VarEnv -> PassM Exp0
 findFreshInExp exp defenv funenv constrenv =
   case exp of
@@ -240,7 +242,7 @@ findFreshInExp exp defenv funenv constrenv =
       LinearExt a -> do
         return $ Ext $ LinearExt a
 
--- parse import header and map legal references to unique names
+-- | Parse import header and map references to unique names
 getImportedEnv :: ProgModule0 -> ImportDecl SrcSpanInfo -> VarEnv -> VarEnv -> VarEnv -> (VarEnv, VarEnv, VarEnv)
 getImportedEnv (ProgModule _ (Prog defs funs _) _) imp uniquedefenv uniquefunenv uniqueconstrenv = do
     let ImportDecl _ (ModuleName _ impname) qual _ _ _ as specs = imp

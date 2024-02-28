@@ -319,7 +319,6 @@ data FunMeta =
   FunMeta
     { funRec                 :: FunRec
     , funInline              :: FunInline
-    --, funModule              :: String
     -- Whether the transitive closure of this function can trigger GC.
     , funCanTriggerGC        :: Bool
     , funOptLayout           :: FunOptimizeLayout

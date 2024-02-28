@@ -191,6 +191,7 @@ type TopTyEnv = TyEnv TyScheme
 
 type TypeSynEnv = M.Map TyCon Ty0
 
+-- | Merge a list of modules into a program bundle
 mergeBundle :: ProgBundle0 -> [ProgModule0] -> [ProgModule0]
 mergeBundle (ProgBundle x main) bundle =
     foldr (\v acc -> if already_has v then acc else acc ++ [v]) bundle (x ++ [main])
@@ -200,11 +201,9 @@ mergeBundle (ProgBundle x main) bundle =
     already_has (ProgModule name _ _) = L.elem name already_imported
 
 
--------------------------------------------------------------------------------
--- recursively desugars modules and their imports
+-- | Recursively desugars modules and their imports
 -- stacks into a ProgBundle: a bundle of modules and their main module
 -- each module contains information about it's name, functions & definitions, and import metadata
--------------------------------------------------------------------------------
 
 desugarModule ::
   Config
@@ -260,21 +259,12 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
                       acc)
                 funs''
                 (M.keys userOrderings')
-        --let bundle = foldr (\(ProgBundle imported_bundle imported_mainmodule) acc -> case of acc ++ imported_bundle ++ [imported_mainmodule]) [] imported_progs' 
         let bundle = foldr mergeBundle [] imported_progs' 
         pure $ ProgBundle bundle (ProgModule modname (Prog defs funs''' main) imports)
   pure prog
   where
     init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing, S.empty, [])
     modname = moduleName head_mb
-    import_names =  (map (\(ImportDecl _ (ModuleName _ importName) _ _ _ _ _ _) -> importName) imports)
-    aliases      =  M.fromList (map 
-                        (\(ImportDecl _ (ModuleName _ importName) _ _ _ _ aliased _) -> 
-                          case aliased of
-                            Just (ModuleName _ importAs) -> ((toVar importName), (toVar importAs))
-                            Nothing -> ((toVar importName), (toVar importName))
-                        ) 
-                      imports)
     coalese_constraints ::
          [(Var, M.Map DataCon [UserOrdering])]
       -> [(Var, M.Map DataCon [UserOrdering])]
