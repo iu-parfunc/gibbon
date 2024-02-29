@@ -333,7 +333,7 @@ GibCursorGibCursorGibCursorGibCursorGibCursorProd map_61(GibCursor end_r_342,
             GibInt tmpval_1049 = *(GibInt *) tmpcur_1044;
             GibCursor tmpcur_1050 = tmpcur_1044 + sizeof(GibInt);
             GibInt fltPkd_149_170 =  add1(tmpval_1049);
-            GibCursor loc_402 = *loc_341 + 9;
+            GibCursor *loc_402 = &(*loc_341 + 9);
             
             *(GibPackedTag *) (*loc_341) = 0;
             
@@ -343,7 +343,7 @@ GibCursorGibCursorGibCursorGibCursorGibCursorProd map_61(GibCursor end_r_342,
             *(GibInt *) after_tag_699 = fltPkd_149_170;
             
             GibCursor writecur_703 = after_tag_699 + sizeof(GibInt);
-            return map_61(end_r_342, end_r_343, &loc_402, tmpcur_1050);
+            return map_61(end_r_342, end_r_343, loc_402, tmpcur_1050);
             // GibCursor pvrtmp_1051 = tmp_struct_10.field0;
             // GibCursor pvrtmp_1052 = tmp_struct_10.field1;
             // GibCursor pvrtmp_1053 = tmp_struct_10.field2;

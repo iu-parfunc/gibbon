@@ -33,7 +33,8 @@ markTailCallsFn ddefs f@FunDef{funName, funArgs, funTy, funMeta, funBody} = do
                        ) locVars
       funTy' = (ArrowTy2 locVars' arrIns _arrEffs arrOut _locRets _isPar)
       funBody'' = markMutableLocsAfterInitialPass env funBody'
-    in return $ FunDef funName funArgs funTy' funBody'' funMeta
+  funBody''' <- copyOutputMutableBeforeCallsAndReplace funBody''
+  return $ FunDef funName funArgs funTy' funBody''' funMeta
 
   --  if tailCallTy == TMC
   --  then
@@ -392,3 +393,205 @@ markMutableLocsAfterInitialPass env exp =
             -- Old.SSPush _ a b _ -> [NoTail]
             -- Old.SSPop _ a b -> [NoTail]
             -- Old.LetRegionE r _ _ bod -> S.delete (Old.regionToVar r) (allFreeVars bod)
+
+copyOutputMutableBeforeCallsAndReplace :: NewL2.Exp2 -> PassM NewL2.Exp2
+copyOutputMutableBeforeCallsAndReplace exp = case exp of
+  VarE v -> return exp 
+  LitE l -> return exp
+  CharE c -> return exp
+  FloatE f -> return exp 
+  LitSymE v -> return exp 
+  AppE (v, t) locs args -> do args' <- mapM copyOutputMutableBeforeCallsAndReplace args 
+                              return $ AppE (v, t) locs args'
+  PrimAppE p args -> do args' <- mapM copyOutputMutableBeforeCallsAndReplace args 
+                        return $ PrimAppE p args'
+  LetE (v, lca, ty,rhs) bod -> do case rhs of 
+                                    AppE (v', t) locs args -> if True --should a t == TMC or similar check be necessary ?  
+                                                              then 
+                                                                 do let outputMutableLocs = P.concatMap (\l -> case l of 
+                                                                                                          Loc (LREM lc _ _ m) -> if m == OutputMutable
+                                                                                                                                then [l] 
+                                                                                                                                else []
+                                                                                                          _ -> []
+                                                                                                        ) locs
+                                                                     -- create new LetLoc binds for all mutable locations passed to the TMC call. 
+                                                                    (letList :: [E2Ext loc dec], locMap) <- foldrM (\l (lst, map) -> case l of 
+                                                                                                                               Loc (LREM ll a b m') -> do -- use gemsym to get name for a new varible 
+                                                                                                                                                        new_loc <- gensym "loc"
+                                                                                                                                                        let locexp = AfterConstantLE 0 l
+                                                                                                                                                        let map' = M.insert ll new_loc map
+                                                                                                                                                        return $ (lst ++ [NewL2.LetLocE new_loc locexp (VarE new_loc)], map')
+                                                                                                          ) ([], M.empty) outputMutableLocs
+                                                                    -- fix all downstream locs.
+                                                                    rhs' <- copyOutputMutableBeforeCallsAndReplace rhs 
+                                                                    bod' <- replaceLocsHelper locMap bod 
+                                                                    bod'' <- copyOutputMutableBeforeCallsAndReplace bod' 
+                                                                    let sub_exp = LetE (v, lca, ty, rhs') bod''
+                                                                    exp' <- foldrM (\expr expr' -> case expr of 
+                                                                                                         NewL2.LetLocE new_loc locexp bd -> return $ Ext $ NewL2.LetLocE new_loc locexp expr' 
+                                                                                       ) sub_exp letList
+                                                                    return $ exp'
+                                                              else do 
+                                                                    rhs' <- copyOutputMutableBeforeCallsAndReplace rhs 
+                                                                    bod' <- copyOutputMutableBeforeCallsAndReplace bod 
+                                                                    return $ LetE (v, lca, ty, rhs') bod'
+                                    _ -> do 
+                                         rhs' <- copyOutputMutableBeforeCallsAndReplace rhs 
+                                         bod' <- copyOutputMutableBeforeCallsAndReplace bod 
+                                         return $ LetE (v, lca, ty, rhs') bod'
+  IfE a b c -> do a' <- copyOutputMutableBeforeCallsAndReplace a 
+                  b' <- copyOutputMutableBeforeCallsAndReplace b 
+                  c' <- copyOutputMutableBeforeCallsAndReplace c 
+                  return $ IfE a' b' c'
+  MkProdE ls -> do ls' <- mapM copyOutputMutableBeforeCallsAndReplace ls 
+                   return $ MkProdE ls'
+  ProjE i e -> do e' <- copyOutputMutableBeforeCallsAndReplace e 
+                  return $ ProjE i e' 
+  -- [(DataCon, [(Var,loc)], EXP)]
+  CaseE scrt brs -> do brs' <- mapM (\(a, b, c) -> do c' <- copyOutputMutableBeforeCallsAndReplace c
+                                                      return (a, b, c')
+                                      ) brs
+                       return $ CaseE scrt brs'      
+  -- TODO: Check map for any mutable output locations, if they are in the data con then mark them outputMutable
+  DataConE loc c args -> do args' <- mapM copyOutputMutableBeforeCallsAndReplace args 
+                            return $ DataConE loc c args' 
+  TimeIt e d b -> do e' <- copyOutputMutableBeforeCallsAndReplace e 
+                     return $ TimeIt e' d b
+  MapE d e -> do e' <- copyOutputMutableBeforeCallsAndReplace e 
+                 return $ MapE d e' 
+  FoldE i it e -> do e' <- copyOutputMutableBeforeCallsAndReplace e 
+                     return $ FoldE i it e'
+  -- TODO: Check map for any mutable output locations, if they are in the data con then mark them outputMutable                 
+  SpawnE v locs exps -> do exps' <- mapM copyOutputMutableBeforeCallsAndReplace exps 
+                           return $ SpawnE v locs exps'
+  SyncE -> return exp
+  WithArenaE _v e -> do e' <- copyOutputMutableBeforeCallsAndReplace e 
+                        return $ WithArenaE _v e' 
+  Ext ext -> 
+      case ext of 
+        Old.LetRegionE r a b bod -> do bod' <- copyOutputMutableBeforeCallsAndReplace bod 
+                                       return $ Ext $ Old.LetParRegionE r a b bod' 
+        Old.LetParRegionE r a b bod -> do bod' <- copyOutputMutableBeforeCallsAndReplace bod 
+                                          return $ Ext $ Old.LetParRegionE r a b bod' 
+        Old.LetLocE loc locexp bod -> do bod' <- copyOutputMutableBeforeCallsAndReplace bod 
+                                         return $ Ext $ Old.LetLocE loc locexp bod'
+        _ -> return $ Ext ext
+        -- Old.StartOfPkdCursor v -> [NoTail]
+        -- Old.TagCursor a b -> [NoTail]
+        -- Old.RetE locs v -> [NoTail]
+        -- Old.FromEndE loc -> [NoTail]
+        -- Old.BoundsCheck _ reg cur -> [NoTail]
+        -- Old.IndirectionE _ _ (a,b) (c,d) _ -> [NoTail]
+        -- Old.AddFixed v _    -> [NoTail]
+        -- Old.GetCilkWorkerNum -> [NoTail]
+        -- Old.LetAvail vs bod -> [NoTail]
+        -- Old.AllocateTagHere loc _ -> [NoTail]
+        -- Old.AllocateScalarsHere loc -> [NoTail]
+        -- Old.SSPush _ a b _ -> [NoTail]
+        -- Old.SSPop _ a b -> [NoTail]
+        -- Old.LetRegionE r _ _ bod -> S.delete (Old.regionToVar r) (allFreeVars bod)
+
+
+
+replaceLocsHelper :: M.Map LocVar LocVar -> NewL2.Exp2 -> PassM NewL2.Exp2
+replaceLocsHelper map exp = case exp of 
+  VarE v -> return exp 
+  LitE l -> return exp
+  CharE c -> return exp
+  FloatE f -> return exp 
+  LitSymE v -> return exp 
+  AppE (v, t) locs args -> do let locs' = P.map (\l -> case l of 
+                                                            Loc (LREM l' r' e' m') -> case M.lookup l' map of 
+                                                                                              Nothing -> l  
+                                                                                              Just l'' -> Loc (LREM l'' r' e' m')  
+                                                            _ -> l
+                                                
+                                                ) locs
+                              args' <- mapM (replaceLocsHelper map) args 
+                              return $ AppE (v, t) locs' args'
+  PrimAppE p args -> do args' <- mapM (replaceLocsHelper map) args 
+                        return $ PrimAppE p args'
+  LetE (v, locs, ty,rhs) bod -> do let locs' = P.map (\l -> case M.lookup (toLocVar l) map of 
+                                                                    Nothing -> l 
+                                                                    Just l' -> case l of 
+                                                                                Loc (LREM _ r e m) -> Loc (LREM l' r e m)
+                                                     ) locs
+                                   rhs' <- replaceLocsHelper map rhs 
+                                   bod' <- replaceLocsHelper map bod 
+                                   return $ LetE (v, locs', ty, rhs') bod'
+  IfE a b c -> do a' <- replaceLocsHelper map a 
+                  b' <- replaceLocsHelper map b 
+                  c' <- replaceLocsHelper map c 
+                  return $ IfE a' b' c'
+  MkProdE ls -> do ls' <- mapM (replaceLocsHelper map) ls 
+                   return $ MkProdE ls'
+  ProjE i e -> do e' <- replaceLocsHelper map e
+                  return $ ProjE i e' 
+  -- [(DataCon, [(Var,loc)], EXP)]
+  CaseE scrt brs -> do brs' <- mapM (\(a, b, c) -> do let b' = P.map (\(v, loc) -> case M.lookup (toLocVar loc) map of 
+                                                                                              Nothing -> (v, loc) 
+                                                                                              Just l -> case loc of 
+                                                                                                        Loc (LREM _ r e m) -> (v, Loc (LREM l r e m))
+                                                                     ) b                          
+                                                      c' <- replaceLocsHelper map c 
+                                                      return (a, b', c')
+                                    ) brs
+                       return $ CaseE scrt brs'      
+  -- TODO: Check map for any mutable output locations, if they are in the data con then mark them outputMutable
+  DataConE loc c args -> do let loc' = case M.lookup (toLocVar loc) map of 
+                                                Nothing -> loc 
+                                                Just l -> case loc of 
+                                                              Loc (LREM _ r e m) -> Loc (LREM l r e m) 
+                            args' <- mapM (replaceLocsHelper map) args 
+                            return $ DataConE loc' c args' 
+  TimeIt e d b -> do e' <- replaceLocsHelper map e 
+                     return $ TimeIt e' d b
+  MapE d e -> do e' <- replaceLocsHelper map e 
+                 return $ MapE d e' 
+  FoldE i it e -> do e' <- replaceLocsHelper map e 
+                     return $ FoldE i it e'
+  -- TODO: Check map for any mutable output locations, if they are in the data con then mark them outputMutable                 
+  SpawnE v locs exps -> do exps' <- mapM (replaceLocsHelper map) exps 
+                           return $ SpawnE v locs exps'
+  SyncE -> return exp
+  WithArenaE _v e -> do e' <- replaceLocsHelper map e 
+                        return $ WithArenaE _v e' 
+  Ext ext -> 
+      case ext of 
+        Old.LetRegionE r a b bod -> do bod' <- replaceLocsHelper map bod 
+                                       return $ Ext $ Old.LetParRegionE r a b bod' 
+        Old.LetParRegionE r a b bod -> do bod' <- replaceLocsHelper map bod 
+                                          return $ Ext $ Old.LetParRegionE r a b bod' 
+        Old.LetLocE loc locexp bod -> do let locexp' = case locexp of 
+                                                            StartOfRegionLE r -> locexp
+                                                            AfterConstantLE i loc -> case M.lookup (toLocVar loc) map of 
+                                                                                                Nothing -> locexp 
+                                                                                                Just l -> case loc of
+                                                                                                            Loc (LREM a b c d) -> AfterConstantLE i (Loc (LREM l b c d)) 
+                                                            AfterVariableLE v loc b -> case M.lookup (toLocVar loc) map of 
+                                                                                                Nothing -> locexp 
+                                                                                                Just l -> case loc of
+                                                                                                            Loc (LREM _ r e m) -> AfterVariableLE v (Loc (LREM l r e m)) b
+                                                            InRegionLE r -> locexp
+                                                            FreeLE -> locexp
+                                                            FromEndLE loc -> case M.lookup (toLocVar loc) map of 
+                                                                                    Nothing -> locexp 
+                                                                                    Just l -> case loc of 
+                                                                                                  Loc (LREM _ r e m) -> FromEndLE (Loc (LREM l r e m))
+                                         bod' <- replaceLocsHelper map bod 
+                                         return $ Ext $ Old.LetLocE loc locexp' bod'
+        _ -> return $ Ext ext
+        -- Old.StartOfPkdCursor v -> [NoTail]
+        -- Old.TagCursor a b -> [NoTail]
+        -- Old.RetE locs v -> [NoTail]
+        -- Old.FromEndE loc -> [NoTail]
+        -- Old.BoundsCheck _ reg cur -> [NoTail]
+        -- Old.IndirectionE _ _ (a,b) (c,d) _ -> [NoTail]
+        -- Old.AddFixed v _    -> [NoTail]
+        -- Old.GetCilkWorkerNum -> [NoTail]
+        -- Old.LetAvail vs bod -> [NoTail]
+        -- Old.AllocateTagHere loc _ -> [NoTail]
+        -- Old.AllocateScalarsHere loc -> [NoTail]
+        -- Old.SSPush _ a b _ -> [NoTail]
+        -- Old.SSPop _ a b -> [NoTail]
+        -- Old.LetRegionE r _ _ bod -> S.delete (Old.regionToVar r) (allFreeVars bod)
