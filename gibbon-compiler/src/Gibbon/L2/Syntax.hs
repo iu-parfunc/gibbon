@@ -578,11 +578,11 @@ inLocVars ty = L.map (\(LRM l _ _) -> l) $
 
 outLocVars :: ArrowTy2 ty2 -> [LocVar]
 outLocVars ty = L.map (\(LRM l _ _) -> l) $
-                L.filter (\(LRM _ _ m) -> m == Output) (locVars ty)
+                L.filter (\(LRM _ _ m) -> m == Output || m == OutputMutable) (locVars ty)
 
 outRegVars :: ArrowTy2 ty2 -> [LocVar]
 outRegVars ty = L.map (\(LRM _ r _) -> regionToVar r) $
-                L.filter (\(LRM _ _ m) -> m == Output) (locVars ty)
+                L.filter (\(LRM _ _ m) -> m == Output || m == OutputMutable) (locVars ty)
 
 inRegVars :: ArrowTy2 ty2 -> [LocVar]
 inRegVars ty = L.nub $ L.map (\(LRM _ r _) -> regionToVar r) $
