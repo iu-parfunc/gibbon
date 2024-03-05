@@ -424,7 +424,12 @@ markMutableLocsAfterInitialPass env exp =
                             Just l -> case (backTrackLocs env l False M.empty) of
                                 (False, _) -> locexp
                                 (True, _) -> changeLocData locexp l
-                     in Ext $ Old.LetLocE loc locexp' bod'
+                        loc' = case (backTrackLocs env (toLocVar loc) False M.empty) of
+                            (False, _) -> loc
+                            (True, _) -> case loc of
+                                Loc lrem -> Loc lrem{lremMode = OutputMutable}
+                                _ -> loc
+                     in Ext $ Old.LetLocE loc' locexp' bod'
                 Old.BoundsCheck a reg cur ->
                     let locInCur = toLocVar cur
                      in case (backTrackLocs env locInCur False M.empty) of
@@ -434,6 +439,20 @@ markMutableLocsAfterInitialPass env exp =
                                         NewL2.Loc lrem -> NewL2.Loc lrem{lremMode = OutputMutable}
                                         _ -> cur
                                  in Ext $ Old.BoundsCheck a reg cur'
+                Old.AllocateTagHere loc tycon ->
+                    let loc' = case (backTrackLocs env (toLocVar loc) False M.empty) of
+                            (False, _) -> loc
+                            (True, _) -> case loc of
+                                Loc lrem -> Loc lrem{lremMode = OutputMutable}
+                                _ -> loc
+                     in Ext $ Old.AllocateTagHere loc' tycon
+                Old.AllocateScalarsHere loc ->
+                    let loc' = case (backTrackLocs env (toLocVar loc) False M.empty) of
+                            (False, _) -> loc
+                            (True, _) -> case loc of
+                                Loc lrem -> Loc lrem{lremMode = OutputMutable}
+                                _ -> loc
+                     in Ext $ Old.AllocateScalarsHere loc'
                 _ -> Ext ext
 
 -- Old.StartOfPkdCursor v -> [NoTail]
