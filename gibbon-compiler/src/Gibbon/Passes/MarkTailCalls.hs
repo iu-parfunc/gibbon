@@ -205,7 +205,7 @@ markTailCallsFnBody funName env exp2 = case exp2 of
                 let locInExp = freeLoc locexp
                     env' = case locInExp of
                         Nothing -> env
-                        Just l -> M.insert l (S.singleton loc, False) env
+                        Just l -> M.insert l (S.singleton (toLocVar loc), False) env
                     (bod', env'') = markTailCallsFnBody funName env' bod
                     locexp' = case locInExp of
                         Nothing -> locexp
@@ -488,7 +488,8 @@ copyOutputMutableBeforeCallsAndReplace exp = case exp of
                                         new_loc <- gensym "loc"
                                         let locexp = AfterConstantLE 0 l
                                         let map' = M.insert ll new_loc map
-                                        return $ (lst ++ [NewL2.LetLocE new_loc locexp (VarE new_loc)], map')
+                                        let new_loc_arg = Loc (LREM new_loc a b m') -- TODO: should this be outputMutable or just Output
+                                        return $ (lst ++ [NewL2.LetLocE new_loc_arg locexp (VarE new_loc)], map')
                                 )
                                 ([], M.empty)
                                 outputMutableLocs

@@ -416,8 +416,8 @@ threadRegionsExp ddefs fundefs fnLocArgs renv env2 lfenv rlocs_env wlocs_env pkd
 
     LetE (v,locs,ty,rhs@(Ext (AllocateTagHere x x_tycon))) bod -> do
       let -- x_tycon = (wlocs_env # x)
-          rlocs_env' = M.insert x x_tycon rlocs_env
-          wlocs_env' = M.delete x wlocs_env
+          rlocs_env' = M.insert (NewL2.toLocVar x) x_tycon rlocs_env
+          wlocs_env' = M.delete (NewL2.toLocVar x) wlocs_env
       (LetE (v,locs,ty,rhs)) <$>
         threadRegionsExp ddefs fundefs fnLocArgs renv (extendVEnv v ty env2) lfenv rlocs_env' wlocs_env' pkd_env region_locs ran_env indirs redirs bod
 
@@ -442,14 +442,14 @@ threadRegionsExp ddefs fundefs fnLocArgs renv env2 lfenv rlocs_env wlocs_env pkd
                       AfterConstantLE _ lc   -> renv # (toLocVar lc)
                       AfterVariableLE _ lc _ -> renv # (toLocVar lc)
                       FromEndLE lc           -> renv # (toLocVar lc)
-              wlocs_env' = M.insert loc hole_tycon wlocs_env
+              wlocs_env' = M.insert (toLocVar loc) hole_tycon wlocs_env
               region_locs1 = case rhs of
-                               AfterConstantLE{} -> M.adjust (\locs -> locs ++ [loc]) reg region_locs
-                               AfterVariableLE{} -> M.adjust (\locs -> locs ++ [loc]) reg region_locs
-                               StartOfRegionLE{} -> M.insert reg [loc] region_locs
+                               AfterConstantLE{} -> M.adjust (\locs -> locs ++ [(toLocVar loc)]) reg region_locs
+                               AfterVariableLE{} -> M.adjust (\locs -> locs ++ [(toLocVar loc)]) reg region_locs
+                               StartOfRegionLE{} -> M.insert reg [(toLocVar loc)] region_locs
                                _ -> region_locs
           Ext <$> LetLocE loc rhs <$>
-            threadRegionsExp ddefs fundefs fnLocArgs (M.insert loc reg renv) env2 lfenv rlocs_env wlocs_env' pkd_env region_locs1 ran_env indirs redirs bod
+            threadRegionsExp ddefs fundefs fnLocArgs (M.insert (toLocVar loc) reg renv) env2 lfenv rlocs_env wlocs_env' pkd_env region_locs1 ran_env indirs redirs bod
 
         RetE locs v -> do
           let ty = lookupVEnv v env2
@@ -723,7 +723,7 @@ allFreeVars_sans_datacon_args ex =
       case ext of
         LetRegionE r _sz _ty bod -> S.delete (regionToVar r) (allFreeVars_sans_datacon_args bod)
         LetParRegionE r _sz _ty bod -> S.delete (regionToVar r) (allFreeVars_sans_datacon_args bod)
-        LetLocE loc locexp bod -> S.delete loc (allFreeVars_sans_datacon_args bod `S.union` gFreeVars locexp)
+        LetLocE loc locexp bod -> S.delete (toLocVar loc) (allFreeVars_sans_datacon_args bod `S.union` gFreeVars locexp)
         StartOfPkdCursor cur   -> S.singleton cur
         TagCursor a b-> S.fromList [a,b]
         RetE locs v     -> S.insert v (S.fromList (map toLocVar locs))
@@ -733,8 +733,8 @@ allFreeVars_sans_datacon_args ex =
         AddFixed v _    -> S.singleton v
         GetCilkWorkerNum-> S.empty
         LetAvail vs bod -> S.fromList vs `S.union` gFreeVars bod
-        AllocateTagHere loc _ -> S.singleton loc
-        AllocateScalarsHere loc -> S.singleton loc
+        AllocateTagHere loc _ -> S.singleton (toLocVar loc)
+        AllocateScalarsHere loc -> S.singleton (toLocVar loc)
         SSPush _ a b _ -> S.fromList [a,b]
         SSPop _ a b -> S.fromList [a,b]
     _ -> gFreeVars ex

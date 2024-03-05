@@ -144,7 +144,7 @@ instance Monoid RegionSize where
 data E2Ext loc dec
   = LetRegionE    Region RegionSize (Maybe RegionType) (E2 loc dec) -- ^ Allocate a new region.
   | LetParRegionE Region RegionSize (Maybe RegionType) (E2 loc dec) -- ^ Allocate a new region for parallel allocations.
-  | LetLocE LocVar (PreLocExp loc) (E2 loc dec) -- ^ Bind a new location.
+  | LetLocE loc (PreLocExp loc) (E2 loc dec) -- ^ Bind a new location.
   | RetE [loc] Var          -- ^ Return a value together with extra loc values.
   | FromEndE loc            -- ^ Bind a location from an EndOf location (for RouteEnds and after).
   | BoundsCheck Int -- Bytes required
@@ -168,8 +168,8 @@ data E2Ext loc dec
   | GetCilkWorkerNum
     -- ^ Translates to  __cilkrts_get_worker_number().
   | LetAvail [Var] (E2 loc dec) -- ^ These variables are available to use before the join point.
-  | AllocateTagHere LocVar TyCon
-  | AllocateScalarsHere LocVar
+  | AllocateTagHere loc TyCon
+  | AllocateScalarsHere loc
     -- ^ A marker which tells subsequent a compiler pass where to
     -- move the tag and scalar field allocations so that they happen
     -- before any of the subsequent packed fields.

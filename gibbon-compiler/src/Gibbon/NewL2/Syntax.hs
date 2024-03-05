@@ -392,7 +392,7 @@ depList = L.map (\(a,b) -> (a,a,b)) . M.toList . go M.empty
               Old.LetParRegionE r _ _ rhs ->
                 go (M.insertWith (++) (Old.regionToVar r) (S.toList $ allFreeVars rhs) acc) rhs
               Old.LetLocE loc phs rhs  ->
-                go (M.insertWith (++) loc (dep phs ++ (S.toList $ allFreeVars rhs)) acc) rhs
+                go (M.insertWith (++) (toLocVar loc) (dep phs ++ (S.toList $ allFreeVars rhs)) acc) rhs
               Old.RetE{}         -> acc
               Old.FromEndE{}     -> acc
               Old.BoundsCheck{}  -> acc
@@ -440,7 +440,7 @@ allFreeVars ex =
       case ext of
         Old.LetRegionE r _ _ bod -> S.delete (Old.regionToVar r) (allFreeVars bod)
         Old.LetParRegionE r _ _ bod -> S.delete (Old.regionToVar r) (allFreeVars bod)
-        Old.LetLocE loc locexp bod -> S.delete loc (allFreeVars bod `S.union` gFreeVars locexp)
+        Old.LetLocE loc locexp bod -> S.delete (toLocVar loc) (allFreeVars bod `S.union` gFreeVars locexp)
         Old.StartOfPkdCursor v -> S.singleton v
         Old.TagCursor a b-> S.fromList [a,b]
         Old.RetE locs v     -> S.insert v (S.fromList (map toLocVar locs))
@@ -450,8 +450,8 @@ allFreeVars ex =
         Old.AddFixed v _    -> S.singleton v
         Old.GetCilkWorkerNum-> S.empty
         Old.LetAvail vs bod -> S.fromList vs `S.union` gFreeVars bod
-        Old.AllocateTagHere loc _ -> S.singleton loc
-        Old.AllocateScalarsHere loc -> S.singleton loc
+        Old.AllocateTagHere loc _ -> S.singleton (toLocVar loc)
+        Old.AllocateScalarsHere loc -> S.singleton (toLocVar loc)
         Old.SSPush _ a b _ -> S.fromList [a,b]
         Old.SSPop _ a b -> S.fromList [a,b]
     _ -> gFreeVars ex

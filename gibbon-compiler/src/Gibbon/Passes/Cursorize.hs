@@ -362,12 +362,12 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
         -- is expressed in terms of corresponding cursor operations.
         -- See `cursorizeLocExp`
         LetLocE loc rhs bod -> do
-          let (rhs_either, lTy) = cursorizeLocExp denv tenv senv loc rhs
+          let (rhs_either, lTy) = cursorizeLocExp denv tenv senv (toLocVar loc) rhs
               lTy' = case lTy of 
                         MkTy2{unTy2} -> case unTy2 of 
                                               CursorTy -> CursorTy
                                               MutableCursorTy -> MutableCursorTy
-              (bnds,tenv') = case M.lookup loc denv of
+              (bnds,tenv') = case M.lookup (toLocVar loc) denv of
                                Nothing -> ([],tenv)
                                Just vs -> let extended = M.fromList [ (v,MkTy2 CursorTy) | (v,_,CursorTy,_) <- vs]
                                           in (vs, M.union extended tenv)
@@ -389,14 +389,14 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
               let tenv''' = M.union tenv' tenv''
               case rhs of
                 FromEndLE{} ->
-                  if isBound loc tenv
-                  then cursorizeExp ddfs fundefs denv (M.insert loc (MkTy2 CursorTy) tenv''') senv' bod
+                  if isBound (toLocVar loc) tenv
+                  then cursorizeExp ddfs fundefs denv (M.insert (toLocVar loc) (MkTy2 CursorTy) tenv''') senv' bod
                   -- Discharge bindings that were waiting on 'loc'.
-                  else mkLets (bnds' ++ [(loc,[],lTy',rhs')] ++ bnds) <$>
-                         cursorizeExp ddfs fundefs denv (M.insert loc (MkTy2 CursorTy) tenv''') senv' bod
+                  else mkLets (bnds' ++ [((toLocVar loc),[],lTy',rhs')] ++ bnds) <$>
+                         cursorizeExp ddfs fundefs denv (M.insert (toLocVar loc) (MkTy2 CursorTy) tenv''') senv' bod
                 -- Discharge bindings that were waiting on 'loc'.
-                _ -> mkLets (bnds' ++ [(loc,[],lTy',rhs')] ++ bnds) <$>
-                       cursorizeExp ddfs fundefs denv (M.insert loc (MkTy2 CursorTy) tenv''') senv bod
+                _ -> mkLets (bnds' ++ [((toLocVar loc),[],lTy',rhs')] ++ bnds) <$>
+                       cursorizeExp ddfs fundefs denv (M.insert (toLocVar loc) (MkTy2 CursorTy) tenv''') senv bod
             Left denv' -> cursorizeExp ddfs fundefs denv' tenv' senv bod
 
         -- Exactly same as cursorizePackedExp
@@ -416,9 +416,9 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
 
         LetAvail vs bod  -> Ext <$> L3.LetAvail vs <$> go bod
 
-        AllocateTagHere v tycon -> pure $ Ext $ L3.AllocateTagHere v tycon
+        AllocateTagHere v tycon -> pure $ Ext $ L3.AllocateTagHere (toLocVar v) tycon
 
-        AllocateScalarsHere v -> pure $ Ext $ L3.AllocateScalarsHere v
+        AllocateScalarsHere v -> pure $ Ext $ L3.AllocateScalarsHere (toLocVar v)
 
         SSPush a b c d -> pure $ Ext $ L3.SSPush a b c d
         SSPop a b c -> pure $ Ext $ L3.SSPop a b c
@@ -628,12 +628,12 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
         -- is expressed in terms of corresponding cursor operations.
         -- See `cursorizeLocExp`
         LetLocE loc rhs bod -> do
-          let (rhs_either, lTy) = cursorizeLocExp denv tenv senv loc rhs
+          let (rhs_either, lTy) = cursorizeLocExp denv tenv senv (toLocVar loc) rhs
               lTy' = case lTy of 
                         MkTy2{unTy2} -> case unTy2 of 
                                               CursorTy -> CursorTy
                                               MutableCursorTy -> MutableCursorTy 
-              (bnds,tenv') = case M.lookup loc denv of
+              (bnds,tenv') = case M.lookup (toLocVar loc) denv of
                                Nothing -> ([],tenv)
                                Just vs -> let extended = M.fromList [ (v, MkTy2 CursorTy) | (v,_,CursorTy,_) <- vs]
                                           in (vs, M.union extended tenv)
@@ -642,14 +642,14 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
               let tenv''' = M.union tenv' tenv''
               case rhs of
                 FromEndLE{} ->
-                  if isBound loc tenv
-                  then go (M.insert loc (MkTy2 CursorTy) tenv''') senv' bod
+                  if isBound (toLocVar loc) tenv
+                  then go (M.insert (toLocVar loc) (MkTy2 CursorTy) tenv''') senv' bod
                     -- Discharge bindings that were waiting on 'loc'.
-                  else onDi (mkLets (bnds' ++ [(loc,[],lTy',rhs')] ++ bnds)) <$>
-                         go (M.insert loc (MkTy2 CursorTy) tenv') senv' bod
+                  else onDi (mkLets (bnds' ++ [((toLocVar loc),[],lTy',rhs')] ++ bnds)) <$>
+                         go (M.insert (toLocVar loc) (MkTy2 CursorTy) tenv') senv' bod
                 -- Discharge bindings that were waiting on 'loc'.
-                _ -> onDi (mkLets (bnds' ++ [(loc,[],lTy',rhs')] ++ bnds)) <$>
-                       go (M.insert loc (MkTy2 CursorTy) tenv''') senv' bod
+                _ -> onDi (mkLets (bnds' ++ [((toLocVar loc),[],lTy',rhs')] ++ bnds)) <$>
+                       go (M.insert (toLocVar loc) (MkTy2 CursorTy) tenv''') senv' bod
             Left denv' -> onDi (mkLets bnds) <$>
                             cursorizePackedExp ddfs fundefs denv' tenv' senv bod
 
@@ -703,9 +703,9 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
         LetAvail vs bod  -> do
           onDi (Ext . L3.LetAvail vs) <$> go tenv senv bod
 
-        AllocateTagHere v tycon -> pure <$> dl <$> Ext $ L3.AllocateTagHere v tycon
+        AllocateTagHere v tycon -> pure <$> dl <$> Ext $ L3.AllocateTagHere (toLocVar v) tycon
 
-        AllocateScalarsHere v -> pure <$> dl <$> Ext $ L3.AllocateScalarsHere v
+        AllocateScalarsHere v -> pure <$> dl <$> Ext $ L3.AllocateScalarsHere (toLocVar v)
 
         SSPush a b c d -> pure <$> dl <$> Ext $ L3.SSPush a b c d
         SSPop a b c -> pure <$> dl <$> Ext $ L3.SSPop a b c
