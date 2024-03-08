@@ -2,6 +2,7 @@
 
 module IntOrSet where
 import Clock
+import Common
 import Map as M
 import Set as S
 
@@ -14,15 +15,16 @@ getClock x = case x of
 getState :: IntOrSet -> M.Map Timestamp
 getState x = case x of
     OrSet _ s _ -> s
+    _ -> M.empty
 
 getDelSet :: IntOrSet -> IntSet Timestamp
 getDelSet x = case x of
     OrSet _ _ delset -> delset
 
-init :: Timestamp -> Int -> IntORSet
+init :: Timestamp -> Int -> IntOrSet
 init uid el = 
     let clk = init uid
-    in OrSet (step uid clk) (singleton el (stamp uid clk)) empty
+    in OrSet (step uid clk) (singleton el (stamp uid clk)) S.empty
 
 add :: Timestamp -> Int -> IntOrSet -> IntOrSet
 add el s = 
@@ -31,9 +33,9 @@ add el s =
     in OrSet (step uid clk) (insert el (stamp uid clk) (getState s)) 
         case timestamp of
             Just timestamp -> insert timestamp (getDelSet s)
-            Noting -> (getDelSet s)
+            Nothing -> (getDelSet s)
 
-remove ::  Timestamp -> Int -> IntORSet -> IntORSet
+remove ::  Timestamp -> Int -> IntOrSet -> IntOrSet
 remove el s = 
     let clk = getClock s
     in case (lookup el (getState s)) of 
@@ -43,8 +45,7 @@ remove el s =
 --merge :: Ord eltype => ORSet eltype -> ORSet eltype -> ORSet eltype
 
 value :: IntOrSet -> IntSet
-value x = case x of
-    OrSet _ s _ -> buildValue s S.empty
+value x = (buildValue (getState x) S.empty)
 
 buildValue :: (M.Map Timestamp) -> IntSet -> IntSet
 buildValue m s = case m of

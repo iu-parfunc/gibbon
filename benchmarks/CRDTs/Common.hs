@@ -4,7 +4,7 @@ data Maybe a = Nothing | Just a
 
 data Ord = Lt | Gt | Eq | Cc
 
-compareInt :: Int -> Int -> Ord
+compareInt :: Int -> Int -> Common.Ord
 compareInt a b = 
     let sub = a - b
     in 

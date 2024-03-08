@@ -2,7 +2,7 @@ module Clock where
 import Map as M
 import Common as C
 
-data Clock = Clk (Map Int)
+data Clock = Clk (M.Map Int)
 
 data Timestamp = Timestamp Int Clock
 
@@ -16,7 +16,7 @@ author t =
         Timestamp a _ -> a
 
 init :: Int -> Clock
-init uid = singleton uid 0
+init uid = Clk (singleton uid 0)
 
 step :: Int -> Clock -> Clock
 step uid clk = case (M.lookup uid clk) of
@@ -43,7 +43,7 @@ compare a b =
                             C.Just ax -> case M.lookup k b of
                                 C.Nothing -> Gt
                                 C.Just bx -> C.compareInt ax bx
-                    comp = compare (delete k a) (delete k b)
+                    comp = Clock.compare (delete k a) (delete k b)
                 in case diff of 
                     Lt -> case diff of 
                         Lt -> Lt
@@ -62,4 +62,4 @@ compare a b =
     
 --gibbon_main = stamp 0 (step 0 (step 1 (step 0 (init 0))))
 
-main = stamp 0 (step 0 (step 1 (step 0 (init 0))))
+main = stamp 0 (step 0 (step 1 (step 0 (Clock.init 0))))

@@ -134,7 +134,7 @@ insert_num x s =
 sum :: IntSet -> Int
 sum s = case s of
     EmptySet -> 0
-    PureSet _ v l r -> v + (sum l) + (sum r)
+    PureSet _ v l r -> v + (Set.sum l) + (Set.sum r)
 
 --gibbon_main = sum (insert_num 100 (insert_num 100 empty))
-gibbon_main = sum (insert 0 empty)
+gibbon_main = Set.sum (insert 0 empty)

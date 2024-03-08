@@ -34,19 +34,19 @@ key s = case s of
             Tip -> 0
             Bin _ k _ _ _ -> k
 
-lookup :: Int -> Map a -> Maybe a
+lookup :: Int -> Map a -> C.Maybe a
 lookup k m = 
     case m of
-        Tip ->  Nothing
+        Tip ->  C.Nothing
         Bin _ kx v l r ->
             if k < kx then Map.lookup k l
             else if k > kx then Map.lookup k r
-            else  Just v
+            else  C.Just v
 
 member :: Int -> Map a -> Bool
 member k m = case Map.lookup k m of
-     Nothing -> False
-     Just _  -> True
+     C.Nothing -> False
+     C.Just _  -> True
 
 -- Insertion --------------------------
 
@@ -94,9 +94,9 @@ glue l r =
                 --let ((km,m),r') = deleteFindMin r in balance km m l r'
     -}
 
-deleteFindMin :: Map a -> (Maybe ((Int,a),Map a))
+deleteFindMin :: Map a -> (C.Maybe ((Int,a),Map a))
 deleteFindMin t = case t of
-        Tip             -> Nothing
+        Tip             -> C.Nothing
         Bin _ k x l r   -> case l of 
                             Tip -> C.Just ((k,x),r)
                             _ -> case (deleteFindMin l) of
@@ -108,7 +108,7 @@ deleteFindMin t = case t of
             
             --let (km,l') = deleteFindMin l in  Just (km,balance k x l' r)
 
-deleteFindMax :: Map a -> (Maybe ((Int,a),Map a))
+deleteFindMax :: Map a -> (C.Maybe ((Int,a),Map a))
 deleteFindMax t = case t of
         Tip             ->  C.Nothing
         Bin _ k x l r   -> case r of
