@@ -14,7 +14,7 @@ import           Data.Map                        as M
 bundleModules :: ProgBundle0 -> PassM Prog0
 bundleModules bundle = do
     let (ProgBundle modules main) = bundle
-    let (ProgModule main_name (Prog main_defs main_funs main_exp) main_imports) = main
+    let (ProgModule _ (Prog main_defs main_funs main_exp) _) = main
     let (defs, funs) = F.foldr _bundleModule (main_defs, main_funs) modules
     return $ Prog defs funs main_exp
 

@@ -46,8 +46,8 @@ freshModuleKeys (ProgModule name (Prog defs funs main) imports) uniquedefenv uni
 
 -- | Find the imported module from the import header
 findImportedModule :: ImportDecl SrcSpanInfo -> M.Map String ProgModule0 -> ProgModule0
-findImportedModule mod modmap = do
-  let (ImportDecl _ (ModuleName _ name) _ _ _ _ _ _) = mod
+findImportedModule modl modmap = do
+  let (ImportDecl _ (ModuleName _ name) _ _ _ _ _ _) = modl
   case M.lookup name modmap of
     Just found -> found
     Nothing -> error $ "Could not find module " ++ name ++ " in imported modules: " ++ (show (M.keys modmap))
@@ -113,7 +113,7 @@ findFreshInTy ty defenv =
      SymSetTy -> ty
      SymHashTy -> ty
      MetaTv{} -> ty
-     TyVar tv -> ty
+     TyVar _ -> ty
      ProdTy tys    -> ProdTy $ L.map (\v -> findFreshInTy v defenv) tys
      SymDictTy v t   -> SymDictTy v $ findFreshInTy t defenv
      PDictTy k v -> do
@@ -137,8 +137,8 @@ findFreshInDataCons (con, tys) defenv =
 
 -- | Find unique names in expressions
 findFreshInExp :: Exp0 -> VarEnv -> VarEnv -> VarEnv -> PassM Exp0
-findFreshInExp exp defenv funenv constrenv =
-  case exp of
+findFreshInExp expr defenv funenv constrenv =
+  case expr of
     LitE i    -> return $ LitE i
     CharE c   -> return $ CharE c
     FloatE i  -> return $ FloatE i
@@ -148,7 +148,7 @@ findFreshInExp exp defenv funenv constrenv =
 
     AppE v locs ls -> do
       let v' = findFreshedName v funenv
-      ls' <- traverse (\v -> findFreshInExp v defenv funenv constrenv) ls
+      ls' <- traverse (\e -> findFreshInExp e defenv funenv constrenv) ls
       return $ AppE v' locs ls'
 
     PrimAppE p es -> do
@@ -198,7 +198,7 @@ findFreshInExp exp defenv funenv constrenv =
       e' <- findFreshInExp e defenv funenv constrenv
       return $ WithArenaE v e'
     SpawnE v locs ls -> do
-      ls' <- traverse (\v -> findFreshInExp v defenv funenv constrenv) ls
+      ls' <- traverse (\e -> findFreshInExp e defenv funenv constrenv) ls
       return $ SpawnE v locs ls'
     SyncE -> return $ SyncE
     MapE (v, d, ve) e -> do
@@ -304,25 +304,25 @@ getImportedEnv (ProgModule _ (Prog defs funs _) _) imp uniquedefenv uniquefunenv
 -- simple helper functions to convert `Name`s and `CNames`s  to Vars
 name2var :: Name SrcSpanInfo -> Var
 name2var name = case name of 
-  Ident l str -> toVar str
-  Symbol l str -> toVar str
+  Ident _ str -> toVar str
+  Symbol _ str -> toVar str
 cname2var :: CName SrcSpanInfo -> Var
 cname2var name = case name of 
-  VarName l str -> name2var str
-  ConName l str -> name2var str
+  VarName _ str -> name2var str
+  ConName _ str -> name2var str
 
 -- parse the import header speclist
 parseSpec :: ImportSpec SrcSpanInfo -> [Var]
 parseSpec imp = 
   case imp of 
     -- imported a variable
-    IVar l nm -> [name2var nm]
+    IVar _ nm -> [name2var nm]
     -- a class, datatype, or type
-    IAbs l nmspc nm -> [name2var nm]
+    IAbs _ _ nm -> [name2var nm]
     -- a class with all it's methods, or a datatype with all it's constructors
-    IThingAll l nm -> [name2var nm]
+    IThingAll _ nm -> [name2var nm]
     -- a class with some of it's methods, or a datatype with some of it's constructors
-    IThingWith l nm thgs -> [name2var nm] ++ map cname2var thgs
+    IThingWith _ nm thgs -> [name2var nm] ++ map cname2var thgs
 
   
 -- construct global registry of uniques

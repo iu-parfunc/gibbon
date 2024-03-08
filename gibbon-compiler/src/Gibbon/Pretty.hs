@@ -68,7 +68,7 @@ instance HasPretty ex => Pretty (Prog ex) where
              PPHaskell  -> ghc_compat_prefix False $+$ ddefsDoc $+$ funsDoc $+$ meDoc $+$ ghc_compat_suffix False
 
 instance HasPretty ex => Pretty (ProgModule ex) where
-    pprintWithStyle sty (ProgModule name prog imports) =
+    pprintWithStyle sty (ProgModule _ prog _) =
         let (Prog ddefs funs me) = prog
             meDoc = case me of
                       Nothing -> empty

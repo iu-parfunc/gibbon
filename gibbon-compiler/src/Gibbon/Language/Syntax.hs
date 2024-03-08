@@ -14,7 +14,6 @@
 {-# LANGUAGE InstanceSigs #-}
 
 module Gibbon.Language.Syntax
-  (
     -- * Datatype definitions
   ( DDefs
   , DataCon
@@ -22,9 +21,6 @@ module Gibbon.Language.Syntax
   , Tag
   , IsBoxed
   , DDef(..)
-  , DataConMap
-  , UserOrdering(..)
-  , Constr(..)
   , lookupDDef
   , getConOrdering
   , getTyOfDataCon
@@ -43,7 +39,6 @@ module Gibbon.Language.Syntax
   , FunMeta(..)
   , FunRec(..)
   , FunInline(..)
-  , FunOptimizeLayout(..)
   , insertFD
   , fromListFD
   , initFunEnv
@@ -64,8 +59,6 @@ module Gibbon.Language.Syntax
   , lookupVEnv
   , extendFEnv
   , lookupFEnv
-  , unionEnv2
-  , unionEnv2s
   , lookupVEnv'
     
 -- * Expresssions and thier types
@@ -343,7 +336,7 @@ instance Out (ImportDecl SrcSpanInfo) where
     doc         = text . show
     docPrec n v = docPrec n (show v)
 instance (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex, Generic (ArrowTy (TyOf ex))) => NFData (ProgModule ex) where
-  rnf (ProgModule name prog imports) = rnf prog
+  rnf (ProgModule _ prog _) = rnf prog
 
 deriving instance (Out (Prog ex)) => Out (ProgModule ex)
 deriving instance

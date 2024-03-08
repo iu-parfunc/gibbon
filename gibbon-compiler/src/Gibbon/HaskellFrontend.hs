@@ -14,7 +14,7 @@ module Gibbon.HaskellFrontend
 
 import           Control.Monad
 import           Data.Foldable ( foldrM, foldl' )
-import           Data.Maybe (catMaybes, isJust)
+import           Data.Maybe (catMaybes)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import           Data.IORef
@@ -23,7 +23,8 @@ import           Language.Haskell.Exts.Parser
 import           Language.Haskell.Exts.Syntax as H
 import           Language.Haskell.Exts.Pretty
 import           Language.Haskell.Exts.SrcLoc
-import           Language.Haskell.Exts.CPP
+import Language.Haskell.Exts.CPP
+    ( parseFileContentsWithCommentsAndCPP, defaultCpphsOptions )
 import           System.Environment ( getEnvironment )
 import           System.Directory
 import           System.FilePath
@@ -34,9 +35,8 @@ import           System.IO
 import           Gibbon.L0.Syntax as L0
 import           Gibbon.Common
 import           Gibbon.DynFlags
-import           Gibbon.L0.Syntax                as L0
 
-import           Data.List                       as L
+import qualified Data.List                       as L
 import           Prelude                         as P
 
 import qualified Control.Applicative as L
@@ -200,179 +200,28 @@ desugarModule ::
   -> Module SrcSpanInfo
   -> String
   -> IO (PassM ProgBundle0)
-desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports decls) mod_name = do
+desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports decls) imported_name = do
   let type_syns = foldl collectTypeSynonyms M.empty decls
       funtys = foldr (collectTopTy type_syns) M.empty decls
   imported_progs :: [PassM ProgBundle0] <- 
-    mapM (processImport cfg pstate_ref (modname : import_route) dir) imports
+      mapM (processImport cfg pstate_ref (modname : import_route) dir) imports
   let prog = do
         imported_progs' <- mapM id imported_progs
         toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
         let (defs,_vars,funs,inlines,main) = foldr classify init_acc toplevels
             funs' = foldr (\v acc -> M.update (\fn@(FunDef{funMeta}) -> Just (fn { funMeta = funMeta { funInline = Inline }})) v acc) funs inlines
-        imported_progs' <- mapM id imported_progs
-        let (defs0,funs0) =
-              foldr
-                (\Prog{ddefs,fundefs} (defs1,funs1) ->
-                     let ddef_names1 = M.keysSet defs1
-                         ddef_names2 = M.keysSet ddefs
-                         fn_names1 = M.keysSet funs1
-                         fn_names2 = M.keysSet fundefs
-                         em1 = S.intersection ddef_names1 ddef_names2
-                         em2 = S.intersection fn_names1 fn_names2
-                         conflicts1 = foldr
-                                        (\d acc ->
-                                             if (ddefs M.! d) /= (defs1 M.! d)
-                                             then d : acc
-                                             else acc)
-                                        []
-                                        em1
-                         conflicts2 = foldr
-                                        (\f acc ->
-                                             if (fundefs M.! f) /= (funs1 M.! f)
-                                             then dbgTraceIt (sdoc ((fundefs M.! f), (funs1 M.! f))) (f : acc)
-                                             else acc)
-                                        []
-                                        em2
-                     in case (conflicts1, conflicts2) of
-                            ([], []) -> (M.union ddefs defs1,  M.union fundefs funs1)
-                            (_x:_xs,_) -> error $ "Conflicting definitions of " ++ show conflicts1 ++ " found in " ++ mod_name
-                            (_,_x:_xs) -> error $ "Conflicting definitions of " ++ show (S.toList em2) ++ " found in " ++ mod_name)
-                (defs, funs')
-                imported_progs'
-        pure (Prog defs0 funs0 main)
-
-        let (defs, _vars, funs, inlines, main, optimizeDcons, userOrderings) =
-              foldr classify init_acc toplevels
-            userOrderings' = M.fromList $ coalese_constraints userOrderings
-            funs' =
-              foldr
-                (\v acc ->
-                   M.update
-                     (\fn@(FunDef {funMeta}) ->
-                        Just (fn {funMeta = funMeta {funInline = Inline}}))
-                     v
-                     acc)
-                funs
-                inlines
-            funs'' =
-              foldr
-                (\v acc ->
-                   M.update
-                     (\fn -> Just (addLayoutMetaData fn optimizeDcons))
-                     v
-                     acc)
-                funs'
-                (P.map fst (S.toList optimizeDcons))
-            funs''' =
-              foldr
-                (\k acc ->
-                   M.update
-                     (\fn@(FunDef {funName, funMeta}) ->
-                        Just
-                          (fn
-                             { funMeta =
-                                 funMeta
-                                   { userConstraintsDataCon =
-                                       M.lookup funName userOrderings'
-                                   }
-                             }))
-                     k
-                     acc)
-                funs''
-                (M.keys userOrderings')
-        imported_progs' <- mapM id imported_progs
-        let (defs0, funs0) =
-              foldr
-                (\Prog {ddefs, fundefs} (defs1, funs1) ->
-                   let ddef_names1 = M.keysSet defs1
-                       ddef_names2 = M.keysSet ddefs
-                       fn_names1 = M.keysSet funs1
-                       fn_names2 = M.keysSet fundefs
-                       em1 = S.intersection ddef_names1 ddef_names2
-                       em2 = S.intersection fn_names1 fn_names2
-                       conflicts1 =
-                         foldr
-                           (\d acc ->
-                              if (ddefs M.! d) /= (defs1 M.! d)
-                                then d : acc
-                                else acc)
-                           []
-                           em1
-                       conflicts2 =
-                         foldr
-                           (\f acc ->
-                              if (fundefs M.! f) /= (funs1 M.! f)
-                                then dbgTraceIt
-                                       (sdoc ((fundefs M.! f), (funs1 M.! f)))
-                                       (f : acc)
-                                else acc)
-                           []
-                           em2
-                    in case (conflicts1, conflicts2) of
-                         ([], []) ->
-                           (M.union ddefs defs1, M.union fundefs funs1)
-                         (_x:_xs, _) ->
-                           error $
-                           "Conflicting definitions of " ++
-                           show conflicts1 ++ " found in " ++ mod_name
-                         (_, _x:_xs) ->
-                           error $
-                           "Conflicting definitions of " ++
-                           show (S.toList em2) ++ " found in " ++ mod_name)
-                (defs, funs''')
-                imported_progs'
-        pure (Prog defs0 funs0 main) --dbgTraceIt (sdoc funs) dbgTraceIt "\n" dbgTraceIt (sdoc funs''') dbgTraceIt (sdoc userOrderings') dbgTraceIt "\n" dbgTraceIt (sdoc userOrderings)
+        let bundle = foldr mergeBundle [] imported_progs' 
+        pure $ ProgBundle bundle (ProgModule modname (Prog defs funs' main) imports)
   pure prog
   where
-    init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing, S.empty, [])
+    init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing)
     modname = moduleName head_mb
-    coalese_constraints ::
-         [(Var, M.Map DataCon [UserOrdering])]
-      -> [(Var, M.Map DataCon [UserOrdering])]
-    coalese_constraints constrs =
-      case constrs of
-        [] -> []
-        (var, map):xs ->
-          let same_func_constrs =
-                P.concatMap
-                  (\(a, b) ->
-                     if (var == a)
-                       then [(a, b)]
-                       else [])
-                  xs
-              maps_to_merge = P.concatMap (M.toList . snd) same_func_constrs
-              merged_maps = coalses_dconMap (maps_to_merge ++ M.toList map)
-              xs' = deleteMany same_func_constrs xs
-           in [(var, M.fromList merged_maps)] ++ (coalese_constraints xs')
-    coalses_dconMap ::
-         [(DataCon, [UserOrdering])] -> [(DataCon, [UserOrdering])]
-    coalses_dconMap dconOrdrs =
-      case dconOrdrs of
-        [] -> []
-        (dcon, orderings):xs ->
-          let same_dcons =
-                P.concatMap
-                  (\(a, b) ->
-                     if (dcon == a)
-                       then [(a, b)]
-                       else [])
-                  xs
-              same_orderings = (P.concatMap snd same_dcons) ++ orderings
-              xs' = deleteMany same_dcons xs
-           in [(dcon, same_orderings)] ++ coalses_dconMap xs'
-    deleteOne :: Eq x => (x, y) -> [(x, y)] -> [(x, y)]
-    deleteOne _ [] = [] -- Nothing to delete
-    deleteOne (a, b) ((c, d):ys)
-      | a == c = ys -- Drop exactly one matching item
-    deleteOne x (y:ys) = y : deleteOne x ys -- Drop one, but not this one (doesn't match).
-    deleteMany :: Eq x => [(x, y)] -> [(x, y)] -> [(x, y)]
-    deleteMany []     = id -- Nothing to delete
-    deleteMany (x:xs) = deleteMany xs . deleteOne x -- Delete one, then the rest.
     moduleName :: Maybe (ModuleHead a) -> String
-    moduleName Nothing = mod_name
+    moduleName Nothing = if imported_name == "Main" then imported_name
+                         else error "Imported module does not have a module declaration"
     moduleName (Just (ModuleHead _ mod_name1 _warnings _exports)) =
-      mnameToStr mod_name1
+      if imported_name == (mnameToStr mod_name1) || imported_name == "Main" then (mnameToStr mod_name1)
+      else error "Imported module does not match it's module declaration"
 
     classify thing (defs,vars,funs,inlines,main) =
       case thing of
@@ -382,9 +231,9 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
           case main of
             Nothing -> (defs, vars, funs, inlines, m)
             Just _  -> error $ "A module cannot have two main expressions."
-                               ++ show mod_name
+                               ++ show modname
         HInline v   -> (defs,vars,funs,S.insert v inlines,main)
-desugarModule _ _ _ _ m = error $ "desugarModule: " ++ prettyPrint m
+desugarModule _ _ _ _ m _ = error $ "desugarModule: " ++ prettyPrint m
 
 stdlibModules :: [String]
 stdlibModules =
@@ -405,7 +254,7 @@ processImport ::
   -> FilePath
   -> ImportDecl a
   -> IO (PassM ProgBundle0)
-processImport cfg pstate_ref import_route dir decl@ImportDecl {..}
+processImport cfg pstate_ref import_route dir ImportDecl {..}
     -- When compiling with Gibbon, we should *NOT* inline things defined in Gibbon.Prim.
   | mod_name == "Gibbon.Prim" = do
     (ParseState imported') <- readIORef pstate_ref

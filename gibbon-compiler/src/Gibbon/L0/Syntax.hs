@@ -25,8 +25,6 @@ import qualified Data.Map as M
 
 import           Gibbon.Common as C
 import           Gibbon.Language hiding (UrTy(..))
-import           Language.Haskell.Exts.SrcLoc
-import           Language.Haskell.Exts          (ImportDecl)
 
 
 --------------------------------------------------------------------------------
