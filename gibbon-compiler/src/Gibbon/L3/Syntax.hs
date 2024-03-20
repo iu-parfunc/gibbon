@@ -9,11 +9,11 @@
 module Gibbon.L3.Syntax
   (
     -- * Extended language
-    E3Ext(..), Prog3, DDef3, DDefs3, FunDef3, FunDefs3 , Exp3, Ty3
-  , Scalar(..), mkScalar, scalarToTy
+    E3Ext(..), Prog3, DDef3, DDefs3, FunDef3, FunDefs3 , Exp3, Ty3, L3Var(..)
+  , Scalar(..), mkScalar, scalarToTy, LocToLocArgEnv
 
     -- * Functions
-  , eraseLocMarkers, mapMExprs, cursorizeTy, toL3Prim, updateAvailVars
+  , eraseLocMarkers, mapMExprs, cursorizeTy, toL3Prim, updateAvailVars, fromL3VarToVar, fromLocToTy
 
   , module Gibbon.Language
   )
@@ -49,25 +49,29 @@ type Exp3 = PreExp E3Ext () Ty3
 
 type Ty3 = UrTy ()
 
+type LocToLocArgEnv = M.Map LocVar L2.LocArg
+
+data L3Var = Pointer Var | DoublePointer Var deriving (Show, Ord, Eq, Read, Generic, NFData, Out)
+
 --------------------------------------------------------------------------------
 
 -- | The extension that turns L1 into L3.
 data E3Ext loc dec =
-    ReadScalar  Scalar Var                        -- ^ One cursor in, (int, cursor') out
-  | WriteScalar Scalar Var (PreExp E3Ext loc dec) -- ^ Write int at cursor, and return a cursor
-  | ReadTag Var                            -- ^ One cursor in, (tag,cursor) out
-  | WriteTag DataCon Var                   -- ^ Write Tag at Cursor, and return a cursor
+    ReadScalar  Scalar L3Var                        -- ^ One cursor in, (int, cursor') out
+  | WriteScalar Scalar L3Var (PreExp E3Ext loc dec) -- ^ Write int at cursor, and return a cursor
+  | ReadTag L3Var                            -- ^ One cursor in, (tag,cursor) out
+  | WriteTag DataCon L3Var                   -- ^ Write Tag at Cursor, and return a cursor
   | TagCursor Var Var                      -- ^ Create a tagged cursor
-  | WriteTaggedCursor Var (PreExp E3Ext loc dec) -- ^ Write a tagged cursor
-  | ReadTaggedCursor Var                   -- ^ Reads and returns a tagged cursor at Var
-  | ReadCursor Var                         -- ^ Reads and returns the cursor at Var
-  | WriteCursor Var (PreExp E3Ext loc dec) -- ^ Write a cursor, and return a cursor
-  | ReadList Var dec                       -- ^ Read a pointer to a linked list
-  | WriteList Var (PreExp E3Ext loc dec) dec       -- ^ Write a pointer to a linked list
-  | ReadVector Var dec                             -- ^ Read a pointer to a vector
-  | WriteVector Var (PreExp E3Ext loc dec) dec     -- ^ Write a pointer to a vector
-  | AddCursor Var (PreExp E3Ext loc dec)           -- ^ Add a constant offset to a cursor variable
-  | SubPtr Var Var                                 -- ^ Pointer subtraction
+  | WriteTaggedCursor L3Var (PreExp E3Ext loc dec) -- ^ Write a tagged cursor
+  | ReadTaggedCursor L3Var                   -- ^ Reads and returns a tagged cursor at Var
+  | ReadCursor L3Var                         -- ^ Reads and returns the cursor at Var
+  | WriteCursor L3Var (PreExp E3Ext loc dec) -- ^ Write a cursor, and return a cursor
+  | ReadList L3Var dec                       -- ^ Read a pointer to a linked list
+  | WriteList L3Var (PreExp E3Ext loc dec) dec       -- ^ Write a pointer to a linked list
+  | ReadVector L3Var dec                             -- ^ Read a pointer to a vector
+  | WriteVector L3Var (PreExp E3Ext loc dec) dec     -- ^ Write a pointer to a vector
+  | AddCursor L3Var (PreExp E3Ext loc dec)           -- ^ Add a constant offset to a cursor variable
+  | SubPtr L3Var L3Var                                 -- ^ Pointer subtraction
   | NewBuffer L2.Multiplicity         -- ^ Create a new buffer, and return a cursor
   | ScopedBuffer L2.Multiplicity      -- ^ Create a temporary scoped buffer, and return a cursor
   | NewParBuffer L2.Multiplicity         -- ^ Create a new buffer for parallel allocations, and return a cursor
@@ -77,7 +81,7 @@ data E3Ext loc dec =
   | SizeOfPacked Var Var           -- ^ Takes in start and end cursors, and returns an Int
                                    --   we'll probably represent (sizeof x) as (end_x - start_x) / INT
   | SizeOfScalar Var               -- ^ sizeof(var)
-  | BoundsCheck Int Var Var        -- ^ Bytes required, region, write cursor
+  | BoundsCheck Int L3Var L3Var        -- ^ Bytes required, region, write cursor
   | IndirectionBarrier TyCon (Var,Var,Var,Var)
     -- ^ Do one of the following:
     -- (1) If it's a old-to-young indirection, record it in the remembered set.
@@ -90,12 +94,12 @@ data E3Ext loc dec =
   | RetE [(PreExp E3Ext loc dec)]  -- ^ Analogous to L2's RetE.
   | GetCilkWorkerNum               -- ^ Translates to  __cilkrts_get_worker_number().
   | LetAvail [Var] (PreExp E3Ext loc dec) -- ^ These variables are available to use before the join point
-  | AllocateTagHere Var TyCon  -- ^ Analogous to L2's extension.
-  | AllocateScalarsHere Var    -- ^ Analogous to L2's extension.
-  | StartTagAllocation Var     -- ^ Marks the beginning of tag allocation.
-  | EndTagAllocation Var       -- ^ Marks the end of tag allocation.
-  | StartScalarsAllocation Var -- ^ Marks the beginning of scalar allocation.
-  | EndScalarsAllocation Var   -- ^ Marks the end of scalar allocation.
+  | AllocateTagHere L3Var TyCon  -- ^ Analogous to L2's extension.
+  | AllocateScalarsHere L3Var    -- ^ Analogous to L2's extension.
+  | StartTagAllocation L3Var     -- ^ Marks the beginning of tag allocation.
+  | EndTagAllocation L3Var       -- ^ Marks the end of tag allocation.
+  | StartScalarsAllocation L3Var -- ^ Marks the beginning of scalar allocation.
+  | EndScalarsAllocation L3Var   -- ^ Marks the end of scalar allocation.
   | SSPush SSModality Var Var TyCon
   | SSPop SSModality Var Var
   | Assert (PreExp E3Ext loc dec) -- ^ Translates to assert statements in C.
@@ -105,19 +109,19 @@ data E3Ext loc dec =
 instance FreeVars (E3Ext l d) where
   gFreeVars  e =
     case e of
-      ReadScalar _  v     -> S.singleton v
-      WriteScalar _ v ex  -> S.insert v (gFreeVars ex)
-      ReadTag v      -> S.singleton v
-      WriteTag _ v   -> S.singleton v
+      ReadScalar _  v     -> S.singleton (fromL3VarToVar v)
+      WriteScalar _ v ex  -> S.insert (fromL3VarToVar v) (gFreeVars ex)
+      ReadTag v      -> S.singleton (fromL3VarToVar v)
+      WriteTag _ v   -> S.singleton (fromL3VarToVar v)
       TagCursor a b      -> S.fromList [a,b]
-      ReadTaggedCursor v -> S.singleton v
-      WriteTaggedCursor v ex -> S.insert v (gFreeVars ex)
-      ReadCursor v       -> S.singleton v
-      WriteCursor c ex   -> S.insert c (gFreeVars ex)
-      ReadList v _       -> S.singleton v
-      WriteList c ex  _  -> S.insert c (gFreeVars ex)
-      AddCursor v ex -> S.insert v (gFreeVars ex)
-      SubPtr v w     -> S.fromList [v, w]
+      ReadTaggedCursor v -> S.singleton (fromL3VarToVar v)
+      WriteTaggedCursor v ex -> S.insert (fromL3VarToVar v) (gFreeVars ex)
+      ReadCursor v       -> S.singleton (fromL3VarToVar v)
+      WriteCursor c ex   -> S.insert (fromL3VarToVar c) (gFreeVars ex)
+      ReadList v _       -> S.singleton (fromL3VarToVar v)
+      WriteList c ex  _  -> S.insert (fromL3VarToVar c) (gFreeVars ex)
+      AddCursor v ex -> S.insert (fromL3VarToVar v) (gFreeVars ex)
+      SubPtr v w     -> S.fromList [(fromL3VarToVar v), (fromL3VarToVar w)]
       NewBuffer{}    -> S.empty
       NewParBuffer{}     -> S.empty
       ScopedBuffer{}     -> S.empty
@@ -135,12 +139,12 @@ instance FreeVars (E3Ext l d) where
       LetAvail ls b      -> (S.fromList ls) `S.union` gFreeVars b
       ReadVector{}  -> error "gFreeVars: ReadVector"
       WriteVector{} -> error "gFreeVars: WriteVector"
-      AllocateTagHere v _ -> S.singleton v
-      AllocateScalarsHere v -> S.singleton v
-      StartTagAllocation v -> S.singleton v
-      EndTagAllocation v -> S.singleton v
-      StartScalarsAllocation v -> S.singleton v
-      EndScalarsAllocation v -> S.singleton v
+      AllocateTagHere v _ -> S.singleton (fromL3VarToVar v)
+      AllocateScalarsHere v -> S.singleton (fromL3VarToVar v)
+      StartTagAllocation v -> S.singleton (fromL3VarToVar v)
+      EndTagAllocation v -> S.singleton (fromL3VarToVar v)
+      StartScalarsAllocation v -> S.singleton (fromL3VarToVar v)
+      EndScalarsAllocation v -> S.singleton (fromL3VarToVar v)
       SSPush _ a b _ -> S.fromList [a,b]
       SSPop _ a b -> S.fromList [a,b]
       Assert a -> gFreeVars a
@@ -187,24 +191,29 @@ instance HasSubstitutableExt E3Ext l d => SubstitutableExt (PreExp E3Ext l d) (E
       LetAvail ls b     -> LetAvail ls (gSubstE old new b)
       _ -> ext
 
+gRenameOldL3ToNewL3 :: L3Var -> Var -> L3Var
+gRenameOldL3ToNewL3 l3Var var = case l3Var of 
+                                      Pointer _ -> Pointer var
+                                      DoublePointer _ -> DoublePointer var
+
 instance HasRenamable E3Ext l d => Renamable (E3Ext l d) where
   gRename env ext =
     case ext of
-      ReadScalar s v     -> ReadScalar s (go v)
-      WriteScalar s v bod-> WriteScalar s (go v) (go bod)
+      ReadScalar s v     -> ReadScalar s $ gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v)
+      WriteScalar s v bod-> WriteScalar s (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v)) (go bod)
       TagCursor a b      -> TagCursor (go a) (go b)
-      ReadTaggedCursor v -> ReadTaggedCursor (go v)
-      WriteTaggedCursor v bod -> WriteTaggedCursor (go v) (go bod)
-      ReadCursor v       -> ReadCursor (go v)
-      WriteCursor v bod  -> WriteCursor (go v) (go bod)
-      ReadList v el_ty      -> ReadList (go v) el_ty
-      WriteList v bod el_ty -> WriteList (go v) (go bod) el_ty
-      ReadVector v el_ty      -> ReadVector (go v) el_ty
-      WriteVector v bod el_ty -> WriteVector (go v) (go bod) el_ty
-      ReadTag v          -> ReadTag (go v)
-      WriteTag dcon v    -> WriteTag dcon (go v)
-      AddCursor v bod    -> AddCursor (go v) (go bod)
-      SubPtr v w         -> SubPtr (go v) (go w)
+      ReadTaggedCursor v -> ReadTaggedCursor (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v))
+      WriteTaggedCursor v bod -> WriteTaggedCursor (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v)) (go bod)
+      ReadCursor v       -> ReadCursor (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v))
+      WriteCursor v bod  -> WriteCursor (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v)) (go bod)
+      ReadList v el_ty      -> ReadList (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v)) el_ty
+      WriteList v bod el_ty -> WriteList (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v)) (go bod) el_ty
+      ReadVector v el_ty      -> ReadVector (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v)) el_ty
+      WriteVector v bod el_ty -> WriteVector (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v)) (go bod) el_ty
+      ReadTag v          -> ReadTag (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v))
+      WriteTag dcon v    -> WriteTag dcon (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v))
+      AddCursor v bod    -> AddCursor (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v)) (go bod)
+      SubPtr v w         -> SubPtr (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v)) (gRenameOldL3ToNewL3 w (go $ fromL3VarToVar w))
       NewBuffer{}        -> ext
       ScopedBuffer{}     -> ext
       NewParBuffer{}     -> ext
@@ -213,7 +222,7 @@ instance HasRenamable E3Ext l d => Renamable (E3Ext l d) where
       MMapFileSize v     -> MMapFileSize (go v)
       SizeOfPacked a b   -> SizeOfPacked (go a) (go b)
       SizeOfScalar v     -> SizeOfScalar (go v)
-      BoundsCheck i a b  -> BoundsCheck i (go a) (go b)
+      BoundsCheck i a b  -> BoundsCheck i (gRenameOldL3ToNewL3 a (go $ fromL3VarToVar a)) (gRenameOldL3ToNewL3 b (go $ fromL3VarToVar b))
       IndirectionBarrier tycon (a,b,c,d) ->
         IndirectionBarrier tycon (go a, go b, go c, go d)
       BumpArenaRefCount v w -> BumpArenaRefCount (go v) (go w)
@@ -221,12 +230,12 @@ instance HasRenamable E3Ext l d => Renamable (E3Ext l d) where
       RetE ls            -> RetE (L.map go ls)
       GetCilkWorkerNum   -> GetCilkWorkerNum
       LetAvail ls b      -> LetAvail (L.map go ls) (go b)
-      AllocateTagHere v tycon -> AllocateTagHere (go v) tycon
-      AllocateScalarsHere v  -> AllocateScalarsHere (go v)
-      StartTagAllocation v -> StartTagAllocation (go v)
-      EndTagAllocation v -> EndTagAllocation (go v)
-      StartScalarsAllocation v -> StartScalarsAllocation (go v)
-      EndScalarsAllocation v -> EndScalarsAllocation (go v)
+      AllocateTagHere v tycon -> AllocateTagHere (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v)) tycon
+      AllocateScalarsHere v  -> AllocateScalarsHere (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v))
+      StartTagAllocation v -> StartTagAllocation (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v))
+      EndTagAllocation v -> EndTagAllocation (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v))
+      StartScalarsAllocation v -> StartScalarsAllocation (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v))
+      EndScalarsAllocation v -> EndScalarsAllocation (gRenameOldL3ToNewL3 v (go $ fromL3VarToVar v))
       SSPush a b c d -> SSPush a (go b) (go c) d
       SSPop a b c -> SSPop a (go b) (go c)
       Assert e -> Assert (go e)
@@ -252,6 +261,12 @@ scalarToTy FloatS= FloatTy
 scalarToTy SymS  = SymTy
 scalarToTy BoolS = BoolTy
 
+fromL3VarToVar :: L3Var -> Var
+fromL3VarToVar l3Var = case l3Var of
+                            Pointer v -> v
+                            DoublePointer v -> v
+
+
 
 -----------------------------------------------------------------------------------------
 -- Do this manually to get prettier formatting: (Issue #90)
@@ -266,21 +281,27 @@ eraseLocMarkers (DDef tyargs tyname ls) = DDef tyargs tyname $ L.map go ls
   where go :: (DataCon,[(IsBoxed,L2.Ty2)]) -> (DataCon,[(IsBoxed,Ty3)])
         go (dcon,ls') = (dcon, L.map (\(b,ty) -> (b,L2.stripTyLocs (L2.unTy2 ty))) ls')
 
-cursorizeTy :: UrTy a -> UrTy b
-cursorizeTy ty =
+cursorizeTy :: LocToLocArgEnv -> UrTy LocVar -> UrTy b
+cursorizeTy locenv ty =
   case ty of
     IntTy     -> IntTy
     CharTy    -> CharTy
     FloatTy   -> FloatTy
     SymTy     -> SymTy
     BoolTy    -> BoolTy
-    ProdTy ls -> ProdTy $ L.map cursorizeTy ls
+    ProdTy ls -> ProdTy $ L.map (cursorizeTy locenv) ls
     SymDictTy v _ -> SymDictTy v CursorTy
-    PDictTy k v   -> PDictTy (cursorizeTy k) (cursorizeTy v)
+    PDictTy k v   -> PDictTy (cursorizeTy locenv k) (cursorizeTy locenv v)
     -- TODO: This needs to change such that we don't always blindly return a CursorTy. 
-    PackedTy{}    -> ProdTy [CursorTy, CursorTy]
-    VectorTy el_ty' -> VectorTy $ cursorizeTy el_ty'
-    ListTy el_ty'   -> ListTy $ cursorizeTy el_ty'
+    PackedTy _ loc    -> case (M.lookup loc locenv) of 
+                                Just locarg -> case locarg of 
+                                                    L2.Loc (L2.LREM l r e m) -> case m of
+                                                                              L2.OutputMutable -> ProdTy [MutableCursorTy, CursorTy]
+                                                                              -- TODO : Does this change in case of Input vs Output? 
+                                                                              _ -> ProdTy [CursorTy, CursorTy] 
+                                Nothing -> ProdTy [CursorTy, CursorTy]
+    VectorTy el_ty' -> VectorTy $ (cursorizeTy locenv el_ty')
+    ListTy el_ty'   -> ListTy $ (cursorizeTy locenv el_ty')
     PtrTy    -> PtrTy
     CursorTy -> CursorTy
     MutableCursorTy -> MutableCursorTy
@@ -288,6 +309,13 @@ cursorizeTy ty =
     SymSetTy -> SymSetTy
     SymHashTy-> SymHashTy
     IntHashTy-> IntHashTy
+
+fromLocToTy :: L2.LocArg -> UrTy loc 
+fromLocToTy locarg = case locarg of 
+                          L2.Loc (L2.LREM _ _ _ m) -> case m of 
+                                                    L2.OutputMutable -> MutableCursorTy 
+                                                    _ -> CursorTy
+                                                    
 
 cursorizeTy2 :: (Var -> l -> UrTy l) -> UrTy l -> UrTy l
 cursorizeTy2 fn ty =
