@@ -230,7 +230,7 @@ addOuterTailCall exp fName parName varType outerArgs =
       case ex of
           L1.LetE (v,ls,t, e1) e2 -> L1.LetE (v,ls,t, e1)  (go e2)
           x ->
-            let newCall = AppE fName [] ( (VarE parName) :outerArgs)
+            let newCall = AppE (fName, TC) [] ( (VarE parName) :outerArgs)
                 newLet = LetE (parName, [], varType, x) newCall
             in newLet
 {- This function≈ collect the following information for each defined variable:
@@ -310,13 +310,13 @@ buildDefTable ex = go ex Nothing M.empty
 
 
 extractAppNameFromLet ::  Exp1 -> Var
-extractAppNameFromLet (LetE (Var symLet,_,_,(AppE var _ _ )) _)  = var
+extractAppNameFromLet (LetE (Var symLet,_,_,(AppE (var, _) _ _ )) _)  = var
 
 extractLetSymbolFromLet ::  Exp1 -> Symbol
-extractLetSymbolFromLet (LetE (Var symLet,_,_,(AppE var _ _ )) _)  = symLet
+extractLetSymbolFromLet (LetE (Var symLet,_,_,(AppE (var, _) _ _ )) _)  = symLet
 
 extractAppEName ::  Exp1 -> Var
-extractAppEName (AppE var _ _ ) = var
+extractAppEName (AppE (var, _) _ _ ) = var
 extractAppEName  x = error(show x)
 
 -- Takes the table, and candidates which are already processed and
@@ -412,7 +412,7 @@ inline2 inlined_fun outer_fun  =
         newVar <- gensym (toVar "innerCall")
         let rhs =
                 (AppE
-                   (funName inlined_fun)
+                   (funName inlined_fun, NoTail)
                    []
                    (L.map VarE ( newTraversedTreeArg:tail (funArgs inlined_fun))))
             body = substE oldExp (VarE newVar) exp
@@ -494,7 +494,7 @@ inline inlined_fun outer_fun arg_pos = do
         newVar <- gensym (toVar "innerCall")
         let rhs =
                 (AppE
-                   (funName inlined_fun)
+                   (funName inlined_fun, NoTail)
                    []
                    (L.map VarE (funArgs inlined_fun)))
             body = substE oldExp (VarE newVar) exp
@@ -583,7 +583,7 @@ inlineConstructorConsumers fdefs exp =
   where
     go defTable ex  =
        case ex of
-          original@(AppE fName loc parList) ->
+          original@(AppE (fName, _) loc parList) ->
                    case (head parList) of
                          VarE (Var symInner) ->
                              case (getDefiningConstructor symInner defTable) of
@@ -602,7 +602,7 @@ inlineConstructorConsumers fdefs exp =
           LetE (v, loc, t, lhs) bod ->
               let normal = LetE (v, loc, t, lhs) (go  defTable bod) in
                case lhs of
-                  original@(AppE fName loc parList) ->
+                  original@(AppE (fName, _) loc parList) ->
                     case (head parList) of
                           VarE (Var symInner) ->
                              case (getDefiningConstructor symInner defTable) of
@@ -659,8 +659,8 @@ foldFusedCalls rule@(outerName, innerName, argPos, newName) body =
   let defTable = buildDefTable (body)
       go ex =
         case ex of
-          AppE fName loc argList ->
-            let notFolded = AppE fName loc argList
+          AppE (fName, t) loc argList ->
+            let notFolded = AppE (fName, t) loc argList
              in if fName == outerName
                   then case (head argList) of
                          VarE (Var symInner) ->
@@ -669,7 +669,7 @@ foldFusedCalls rule@(outerName, innerName, argPos, newName) body =
                                       outerArgs = argList
                                       newCallArgs =
                                         (innerArgs L.++ tail argList)
-                                   in AppE newName loc newCallArgs
+                                   in AppE (newName, t) loc newCallArgs
                              else notFolded
                          _ -> notFolded
                   else notFolded
@@ -687,7 +687,7 @@ foldFusedCalls rule@(outerName, innerName, argPos, newName) body =
         Nothing -> toVar "dummy"
         Just entry ->
           case def entry of
-            AppE v _ _ -> v
+            AppE (v, _) _ _ -> v
             _ -> toVar "dummy"
     getArgs x defTable =
       case M.lookup x defTable of
@@ -733,7 +733,7 @@ foldTupledFunctions bodyM newFun oldCalls  outputPositions syncedArgs  =
                               getFirstArg ((AppE _ _ (h:_)))= h --`debug` ("oldCalls" L.++ (show oldCalls) L.++
                                  --(render( pprint bodyM)))
 
-                        let rhs' =  AppE (funName newFun) [] args'
+                        let rhs' =  AppE (funName newFun, NoTail) [] args'
                             --   `debug` ("new call" L.++ (show (AppE (funName newFun) [] args')))
                         let bindType = outTy (funTy newFun)
                         let rhs'' =  case t of
@@ -995,8 +995,8 @@ renameFunction function newName =
      go ex =
       let oldName = funName function in
       case ex of
-          AppE name loc argList          ->
-            AppE (if name==oldName then newName else name) loc argList
+          AppE (name, t) loc argList          ->
+            AppE (if name==oldName then newName else name, t) loc argList
           PrimAppE x ls            ->   PrimAppE x (L.map f ls)
             where f item = go item
           LetE (v,loc,t,rhs) bod   ->   LetE (v,loc,t, go rhs) (go bod)
@@ -1034,7 +1034,7 @@ buildTupleCandidatesTable fDefs exp argsVars =
       LetE (boundedVar,_,_,rhs) body    ->
         let tb'=
              case rhs of
-                callExp@(AppE fName _ argList@((VarE inputTree):tail)) ->
+                callExp@(AppE (fName, t) _ argList@((VarE inputTree):tail)) ->
                   let otherCalls = if M.member inputTree  tb
                                     then (tb  M.! inputTree)
                                     else [] in
@@ -1192,7 +1192,7 @@ tuple ddefs fdefs oldExp_ argsVars depth= do
             let functionsToTuple = L.map getCalledFunDef  callExpressions
                   where
                     getCalledFunDef callExpr = case callExpr of
-                        (AppE fName _ _) -> case M.lookup fName fdefs of
+                        (AppE (fName, _) _ _) -> case M.lookup fName fdefs of
                              Just fdef -> fdef
 
             tupledFunction_ <-
@@ -1244,7 +1244,7 @@ tuple ddefs fdefs oldExp_ argsVars depth= do
       in toVar
           ("_TUP_" L.++ L.foldl appendName "" ls L.++ syncedArgsText L.++ "_TUP_")
 
-    appendName str (AppE fName _ _) =
+    appendName str (AppE (fName, _) _ _) =
        str L.++ "_t_" L.++ fromVar fName
 
     computeSyncedArgs callExpressions =
@@ -1280,11 +1280,11 @@ fixCalls exp fdefOld fdefNew redirectMap outputFromInput newName = go exp
           in  CaseE e ls'
         LetE (Var y, loc, t, rhs) body->
           case rhs of
-            AppE v ls args ->
+            AppE (v, tc) ls args ->
               if v == funName fdefOld
                 then
                   let t' = snd (funTy fdefNew) in
-                  let rhs' = AppE newName ls args in
+                  let rhs' = AppE (newName, tc) ls args in
                   let
                     body'=  L.foldl
                         (\ex (i, j )->
@@ -1321,7 +1321,7 @@ getOutputStartPositions fdefs callExpressions =
      in  V.fromList ls
    where
      getCalledFunDef callExpr = case callExpr of
-          (AppE fName _ _) ->
+          (AppE (fName, _) _ _) ->
             case M.lookup fName fdefs of
               Just fdef -> case snd (funTy fdef) of
                 ProdTy ls -> L.length ls
@@ -1779,7 +1779,7 @@ collectVarToFuncs :: Exp1 -> M.Map Var Var
 collectVarToFuncs = recur
  where
    recur ex = case ex of
-     LetE (v, ls, t,  (AppE f _ _)) body ->
+     LetE (v, ls, t,  (AppE (f, _) _ _)) body ->
        M.insert v  f  (recur body)
      MkProdE{} -> M.empty
 
@@ -2072,7 +2072,7 @@ removeRedundantInputExp fdefs exp  mode =
       let (fdefs', body') = removeRedundantInputExp fdefs body mode
           boringCase =  (fdefs', (LetE rhs  body'))
       in (case bind of
-          x@( AppE fName loc args) ->
+          x@( AppE (fName, tc) loc args) ->
             if (L.isPrefixOf "_TUP"  (fromVar fName) ||
                 L.isPrefixOf "_FUS" (fromVar fName) )
                 then
@@ -2094,7 +2094,7 @@ removeRedundantInputExp fdefs exp  mode =
                       let (fNameNew, fdefsNew) =
                             eliminateInputArgs  fdefs' fName  redundantPositions
                           newCall =
-                            AppE fNameNew loc
+                            AppE (fNameNew, tc) loc
                               (V.toList
                                 (V.ifilter
                                   (\idx _ -> M.notMember idx  redundantPositions )
@@ -2104,7 +2104,7 @@ removeRedundantInputExp fdefs exp  mode =
                   boringCase
           otherwise -> boringCase)
 
-    x@(AppE fName loc args) ->
+    x@(AppE (fName, tc) loc args) ->
             if (L.isPrefixOf "_TUP"  (fromVar fName) ||
                 L.isPrefixOf "_FUS" (fromVar fName) )
                 then
@@ -2124,7 +2124,7 @@ removeRedundantInputExp fdefs exp  mode =
                       let (fNameNew, fdefsNew) =
                             eliminateInputArgs  fdefs fName  redundantPositions
                           newCall =
-                            AppE fNameNew loc
+                            AppE (fNameNew, tc) loc
                               (V.toList
                                 (V.ifilter
                                   (\idx _ -> M.notMember idx  redundantPositions )

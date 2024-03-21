@@ -111,7 +111,7 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
     FloatE{}  -> pure (sbst, FloatTy, ex)
     LitSymE{} -> pure (sbst, SymTy0, ex)
 
-    AppE f _tyapps args -> do
+    AppE (f, _) _tyapps args -> do
       (sigma, (metas, fn_ty_inst)) <-
         case (M.lookup f venv, M.lookup f fenv) of
           (Just lam_ty, _) -> (lam_ty,) <$> instantiate lam_ty
@@ -134,7 +134,7 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
         --     id 10 ===> id [Int] 10
         let tyapps = map (zonkTy s3) metas
             s5 = s2 <> s3 <> s4
-        pure (s5, zonkTy s5 fresh, AppE f tyapps (map (zonkExp s5) args_tc))
+        pure (s5, zonkTy s5 fresh, AppE (f, NoTail) tyapps (map (zonkExp s5) args_tc))
 
     PrimAppE pr args -> do
       (s1, arg_tys, args_tc) <- tcExps ddefs sbst venv fenv bound_tyvars (zip (repeat is_main) args)
@@ -697,9 +697,9 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
     Ext (BenchE fn tyapps args b) ->
       if is_main
       then do
-        (s1, ty, e') <- go (AppE fn tyapps args)
+        (s1, ty, e') <- go (AppE (fn, NoTail) tyapps args)
         case e' of
-          AppE fn' tyapps' args' ->
+          AppE (fn', _) tyapps' args' ->
             pure (s1, zonkTy s1 ty, Ext (BenchE fn' tyapps' args' b))
           _ -> err $ text "BenchE"
       else err $ text "'bench' can only be used as a tail of the main expression." <+> exp_doc
@@ -739,9 +739,9 @@ tcExp ddefs sbst venv fenv bound_tyvars is_main ex = (\(a,b,c) -> (a,b,c)) <$>
       pure (s1, ty', WithArenaE v e1')
 
     SpawnE fn tyapps args -> do
-      (s1, ty, e') <- tcExp ddefs sbst venv fenv bound_tyvars is_main (AppE fn tyapps args)
+      (s1, ty, e') <- tcExp ddefs sbst venv fenv bound_tyvars is_main (AppE (fn, NoTail) tyapps args)
       case e' of
-        AppE fn' tyapps' args' -> pure (s1, ty, SpawnE fn' tyapps' args')
+        AppE (fn', NoTail) tyapps' args' -> pure (s1, ty, SpawnE fn' tyapps' args')
         _ -> err $ text "SpawnE: not a saturated function"
 
     SyncE   -> pure (sbst, ProdTy [], SyncE)

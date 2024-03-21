@@ -68,7 +68,7 @@ directL3 prg@(Prog ddfs fndefs mnExp) = do
         Ext (BenchE fn _locs args b) ->
           let fn_ty  = lookupFEnv fn env2
               ret_ty = snd fn_ty
-              ex'    = TimeIt (AppE fn [] args) ret_ty b
+              ex'    = TimeIt (AppE (fn, NoTail) [] args) ret_ty b
           in go env2 ex'
         Ext (AddFixed{}) -> error "directL3: AddFixed not handled."
         Ext (StartOfPkdCursor{}) -> error "directL3: StartOfPkdCursor not handled."

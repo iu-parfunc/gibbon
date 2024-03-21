@@ -122,13 +122,15 @@ tagDataCons ddefs = go allCons
    go cons ex =
      case ex of
        -- [2019.02.01] CSK: Do we need this special case ?
-       AppE v _ ls
+       AppE (v, _) _ ls
                   | S.member v cons -> do
                       ty <- newMetaTy
                       DataConE ty (fromVar v) <$> (mapM (go cons) ls)
-       AppE v l ls | S.member v cons -> do ty <- newMetaTy
-                                           DataConE ty (fromVar v) <$> mapM (go cons) ls
-                   | otherwise       -> AppE v l <$> mapM (go cons) ls
+       AppE (v, t) l ls 
+                  | S.member v cons -> do 
+                                        ty <- newMetaTy
+                                        DataConE ty (fromVar v) <$> mapM (go cons) ls
+                  | otherwise       -> AppE (v, t) l <$> mapM (go cons) ls
 
        SpawnE v _ ls
                   | S.member v cons -> do
@@ -479,8 +481,8 @@ exp se =
    Ls2 l1 "spawn" app -> do
      appe <- exp app
      case appe of
-       Ext (L _loc (AppE f locs args)) -> pure $ Ext $ L (toLoc l1) (SpawnE f locs args)
-       (AppE f locs args) -> pure $ Ext $ L (toLoc l1) $ SpawnE f locs args
+       Ext (L _loc (AppE (f, t) locs args)) -> pure $ Ext $ L (toLoc l1) (SpawnE f locs args)
+       (AppE (f, t) locs args) -> pure $ Ext $ L (toLoc l1) $ SpawnE f locs args
        _ -> error $ "Only function calls can be spawn'd. Got: " ++ show app
 
    Ls (A l1 "sync":[]) -> do
@@ -619,7 +621,7 @@ exp se =
    ----------------------------------------
    -- If NOTHING else matches, we are an application.  Be careful we didn't miss anything:
    Ls (A l rator : rands) ->
-     let app = AppE (textToVar rator) []
+     let app = AppE (textToVar rator, NoTail) []
      in Ext <$> L (toLoc l) <$> app <$> mapM exp rands
 
    _ -> error $ "Expression form not handled (yet):\n  "++

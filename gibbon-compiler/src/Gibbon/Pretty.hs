@@ -300,6 +300,7 @@ instance (Pretty l) => Pretty (UrTy l) where
           ListTy el_ty1 -> text "List" <+> pprintWithStyle sty el_ty1
           PtrTy     -> text "Ptr"
           CursorTy  -> text "Cursor"
+          MutableCursorTy -> text "MutCursor"
           ArenaTy   -> case sty of
                          PPHaskell  -> text "()"
                          PPInternal -> text "Arena"
@@ -342,8 +343,9 @@ instance HasPrettyToo e l d => Pretty (PreExp e l d) where
           CharE i -> quotes (char i)
           FloatE i  -> double i
           LitSymE v -> text "\"" <> pprintWithStyle sty v <> text "\""
-          AppE v locs ls -> parens $
+          AppE (v, t) locs ls -> parens $
                              pprintWithStyle sty v <+>
+                             pprintWithStyle sty t <+>
                              (brackets $ hcat (punctuate "," (map pprint locs))) <+>
                              (pprintWithStyle sty ls)
           PrimAppE pr es ->
@@ -494,7 +496,14 @@ instance Pretty L2.LRM where
 
 instance Pretty NewL2.LREM where
   pprintWithStyle sty (NewL2.LREM loc reg end_reg mode) =
-    parens $ text "LRM" <+> pprintWithStyle sty loc <+> pprintWithStyle sty reg <+> pprintWithStyle sty end_reg <+> pprintWithStyle sty mode
+    parens $ text "LREM" <+> pprintWithStyle sty loc <+> pprintWithStyle sty reg <+> pprintWithStyle sty end_reg <+> pprintWithStyle sty mode
+
+
+instance Pretty TailRecType where 
+  pprintWithStyle sty TMC = parens $ text "TMC"
+  pprintWithStyle sty TC = parens $ text "TC"
+  pprintWithStyle sty NoTail = parens $ text "NoTail"
+
 
 instance Pretty NewL2.LocArg where
   pprintWithStyle sty locarg =
@@ -665,7 +674,7 @@ pprintHsWithEnv p@Prog{ddefs,fundefs,mainExp} =
           CharE i -> char i
           FloatE i -> double i
           LitSymE v -> text "\"" <> pprintWithStyle sty v <> text "\""
-          AppE v _locs ls -> pprintWithStyle sty v <+>
+          AppE (v, t) _locs ls -> pprintWithStyle sty v <+> pprintWithStyle sty t <+>
                             (hsep $ map (ppExp monadic env2) ls)
           PrimAppE pr es ->
               case pr of

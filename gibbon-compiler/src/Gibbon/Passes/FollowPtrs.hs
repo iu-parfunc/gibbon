@@ -56,14 +56,14 @@ followPtrs (Prog ddefs fundefs mainExp) = do
             wc <- gensym "wildcard"
             let indir_bod = Ext $ LetLocE jump (AfterConstantLE 8 indir_ptrloc) $
                             (if isPrinterName funName then LetE (wc,[],ProdTy[],PrimAppE PrintSym [LitSymE (toVar " ->i ")]) else id) $
-                            LetE (callv,endofs,out_ty,AppE funName (in_locs ++ out_locs) args) $
+                            LetE (callv,endofs,out_ty,AppE (funName, NoTail) (in_locs ++ out_locs) args) $
                             Ext (RetE ret_endofs callv)
             let indir_dcon = fst $ fromJust $ L.find (isIndirectionTag . fst) dataCons
             let indir_br = (indir_dcon,[(indir_ptrv,indir_ptrloc)],indir_bod)
             ----------------------------------------
             let redir_dcon = fst $ fromJust $ L.find (isRedirectionTag . fst) dataCons
             let redir_bod = (if isPrinterName funName then LetE (wc,[],ProdTy[],PrimAppE PrintSym [LitSymE (toVar " ->r ")]) else id) $
-                            LetE (callv,endofs,out_ty,AppE funName (in_locs ++ out_locs) args) $
+                            LetE (callv,endofs,out_ty,AppE (funName, NoTail) (in_locs ++ out_locs) args) $
                             Ext (RetE endofs callv)
             let redir_br = (redir_dcon,[(indir_ptrv,indir_ptrloc)],redir_bod)
             ----------------------------------------

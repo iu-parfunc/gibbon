@@ -81,6 +81,7 @@ import           Gibbon.Passes.RouteEnds      (routeEnds)
 import           Gibbon.Passes.FollowPtrs     (followPtrs)
 import           Gibbon.NewL2.FromOldL2       (fromOldL2)
 import           Gibbon.Passes.ThreadRegions  (threadRegions)
+import           Gibbon.Passes.MarkTailCalls  (markTailCalls)
 import           Gibbon.Passes.InferFunAllocs (inferFunAllocs)
 import           Gibbon.Passes.Cursorize      (cursorize)
 import           Gibbon.Passes.FindWitnesses  (findWitnesses)
@@ -610,7 +611,7 @@ benchMainExp l1 = do
                                  (L1.ReadPackedFile benchInput tyc Nothing arg) [])
                         $ L1.LetE (toVar "benchres", [],
                                       ret,
-                                      L1.AppE fnname [] [L1.VarE (toVar tmp)])
+                                      L1.AppE (fnname, NoTail) [] [L1.VarE (toVar tmp)])
                         -- FIXME: should actually return the result,
                         -- as soon as we are able to print it.
                         (if gopt Opt_BenchPrint dynflags
@@ -801,7 +802,7 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
               -- it adds regions to 'locs' in AppE and LetE which the
               -- typechecker doesn't know how to handle.
               l2' <- go "threadRegions"    threadRegions l2'
-
+              l2' <- go "markTailCalls" markTailCalls l2'
               -- L2 -> L3
               -- TODO: Compose L3.TcM with (ReaderT Config)
               l3 <- go "cursorize"        cursorize     l2'

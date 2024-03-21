@@ -1,0 +1,15 @@
+itertime: 0.795381
+itertime: 0.626519
+itertime: 0.689542
+itertime: 0.729329
+itertime: 0.740375
+itertime: 0.756137
+itertime: 0.609261
+itertime: 0.644690
+itertime: 0.833984
+ITER TIMES: [0.609261, 0.626519, 0.644690, 0.689542, 0.729329, 0.740375, 0.756137, 0.795381, 0.833984]
+ITERS: 9
+SIZE: 100000000
+BATCHTIME: 6.425218e+00
+SELFTIMED: 7.293295e-01
+'#(<vector> <vector>)

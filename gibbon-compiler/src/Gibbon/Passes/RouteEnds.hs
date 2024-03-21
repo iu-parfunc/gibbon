@@ -289,14 +289,14 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
           -- This is the most interesting case: a let bound function application.
           -- We need to update the let binding's extra location binding list with
           -- the end witnesses returned from the function.
-          LetE (v,_ls,ty,(AppE f lsin e1)) e2 -> do
+          LetE (v,_ls,ty,(AppE (f, t) lsin e1)) e2 -> do
                  let lenv' = case ty of
                                PackedTy _n l -> M.insert v l lenv
                                _ -> lenv
 
                  (outlocs,newls,eor') <- doBoundApp f lsin
                  e2' <- exp fns retlocs eor' lenv' afterenv (extendVEnv v ty env2) e2
-                 return $ LetE (v,outlocs,ty, AppE f lsin e1)
+                 return $ LetE (v,outlocs,ty, AppE (f, t) lsin e1)
                                (wrapBody e2' newls)
 
           -- Exactly like AppE.

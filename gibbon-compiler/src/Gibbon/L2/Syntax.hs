@@ -144,7 +144,7 @@ instance Monoid RegionSize where
 data E2Ext loc dec
   = LetRegionE    Region RegionSize (Maybe RegionType) (E2 loc dec) -- ^ Allocate a new region.
   | LetParRegionE Region RegionSize (Maybe RegionType) (E2 loc dec) -- ^ Allocate a new region for parallel allocations.
-  | LetLocE LocVar (PreLocExp loc) (E2 loc dec) -- ^ Bind a new location.
+  | LetLocE loc (PreLocExp loc) (E2 loc dec) -- ^ Bind a new location.
   | RetE [loc] Var          -- ^ Return a value together with extra loc values.
   | FromEndE loc            -- ^ Bind a location from an EndOf location (for RouteEnds and after).
   | BoundsCheck Int -- Bytes required
@@ -168,8 +168,8 @@ data E2Ext loc dec
   | GetCilkWorkerNum
     -- ^ Translates to  __cilkrts_get_worker_number().
   | LetAvail [Var] (E2 loc dec) -- ^ These variables are available to use before the join point.
-  | AllocateTagHere LocVar TyCon
-  | AllocateScalarsHere LocVar
+  | AllocateTagHere loc TyCon
+  | AllocateScalarsHere loc
     -- ^ A marker which tells subsequent a compiler pass where to
     -- move the tag and scalar field allocations so that they happen
     -- before any of the subsequent packed fields.
@@ -396,14 +396,14 @@ instance HasRenamable E2Ext l d => Renamable (E2Ext l d) where
 -- | Our type for functions grows to include effects, and explicit universal
 -- quantification over location/region variables.
 data ArrowTy2 ty2 = ArrowTy2
-    { locVars :: [LRM]          -- ^ Universally-quantified location params.
-                                -- Only these should be referenced in arrIn/arrOut.
-    , arrIns  :: [ty2]          -- ^ Input type for the function.
-    , arrEffs :: (S.Set Effect) -- ^ These are present-but-empty initially,
-                                -- and the populated by InferEffects.
-    , arrOut  :: ty2            -- ^ Output type for the function.
-    , locRets :: [LocRet]       -- ^ L2B feature: multi-valued returns.
-    , hasParallelism :: Bool        -- ^ Does this function have parallelism
+    { locVars :: [LRM]           -- ^ Universally-quantified location params.
+                                 -- Only these should be referenced in arrIn/arrOut.
+    , arrIns  :: [ty2]           -- ^ Input type for the function.
+    , arrEffs :: (S.Set Effect)  -- ^ These are present-but-empty initially,
+                                 -- and the populated by InferEffects.
+    , arrOut  :: ty2             -- ^ Output type for the function.
+    , locRets :: [LocRet]        -- ^ L2B feature: multi-valued returns.
+    , hasParallelism :: Bool     -- ^ Does this function have parallelism
     }
   deriving (Read, Show, Eq, Ord, Functor, Generic, NFData)
 
@@ -465,17 +465,19 @@ instance NFData Region where
 
 -- | The modality of locations and cursors: input/output, for reading
 -- and writing, respectively.
-data Modality = Input | Output
+data Modality = Input | Output | OutputMutable
   deriving (Read,Show,Eq,Ord, Generic)
 instance Out Modality
 instance NFData Modality where
   rnf Input  = ()
   rnf Output = ()
+  rnf OutputMutable = ()
 
 -- | A location and region, together with modality.
 data LRM = LRM { lrmLoc :: LocVar
                , lrmReg :: Region
-               , lrmMode :: Modality }
+               , lrmMode :: Modality
+                }
   deriving (Read,Show,Eq,Ord, Generic)
 
 instance Out LRM
@@ -516,10 +518,10 @@ instance Typeable (PreExp E2Ext LocVar (UrTy LocVar)) where
       CharE{}      -> CharTy
       FloatE{}     -> FloatTy
       LitSymE _    -> SymTy
-      AppE v locs _ -> let fnty  = fEnv env2 # v
-                           outty = arrOut fnty
-                           mp = M.fromList $ zip (allLocVars fnty) locs
-                       in substLoc mp outty
+      AppE (v, _) locs _ -> let fnty  = fEnv env2 # v
+                                outty = arrOut fnty
+                                mp = M.fromList $ zip (allLocVars fnty) locs
+                             in substLoc mp outty
 
       PrimAppE (DictInsertP ty) ((VarE v):_) -> SymDictTy (Just v) $ stripTyLocs ty
       PrimAppE (DictEmptyP  ty) ((VarE v):_) -> SymDictTy (Just v) $ stripTyLocs ty
@@ -576,11 +578,11 @@ inLocVars ty = L.map (\(LRM l _ _) -> l) $
 
 outLocVars :: ArrowTy2 ty2 -> [LocVar]
 outLocVars ty = L.map (\(LRM l _ _) -> l) $
-                L.filter (\(LRM _ _ m) -> m == Output) (locVars ty)
+                L.filter (\(LRM _ _ m) -> m == Output || m == OutputMutable) (locVars ty)
 
 outRegVars :: ArrowTy2 ty2 -> [LocVar]
 outRegVars ty = L.map (\(LRM _ r _) -> regionToVar r) $
-                L.filter (\(LRM _ _ m) -> m == Output) (locVars ty)
+                L.filter (\(LRM _ _ m) -> m == Output || m == OutputMutable) (locVars ty)
 
 inRegVars :: ArrowTy2 ty2 -> [LocVar]
 inRegVars ty = L.nub $ L.map (\(LRM _ r _) -> regionToVar r) $
@@ -685,11 +687,11 @@ revertExp ex =
     CharE c   -> CharE c
     FloatE n  -> FloatE n
     LitSymE v -> LitSymE v
-    AppE v _ args   -> AppE v [] (L.map revertExp args)
+    AppE (v, mu) _ args   -> AppE (v, mu) [] (L.map revertExp args)
     PrimAppE p args -> PrimAppE (revertPrim p) $ L.map revertExp args
     LetE (v,_,ty, (Ext (IndirectionE _ _ _ _ arg))) bod ->
       let PackedTy tycon _ =  ty in
-          LetE (v,[],(stripTyLocs ty), AppE (mkCopyFunName tycon) [] [revertExp arg]) (revertExp bod)
+          LetE (v,[],(stripTyLocs ty), AppE (mkCopyFunName tycon, NoTail) [] [revertExp arg]) (revertExp bod)
     LetE (v,_,ty,rhs) bod ->
       LetE (v,[], stripTyLocs ty, revertExp rhs) (revertExp bod)
     IfE a b c  -> IfE (revertExp a) (revertExp b) (revertExp c)
@@ -813,6 +815,7 @@ mapPacked fn t =
     SymSetTy -> SymSetTy
     SymHashTy-> SymHashTy
     IntHashTy-> IntHashTy
+    MutableCursorTy -> MutableCursorTy
 
 constPacked :: UrTy a1 -> UrTy a2 -> UrTy a1
 constPacked c t =
@@ -834,6 +837,7 @@ constPacked c t =
     SymSetTy -> SymSetTy
     SymHashTy-> SymHashTy
     IntHashTy-> IntHashTy
+    MutableCursorTy -> MutableCursorTy
 
 -- | Build a dependency list which can be later converted to a graph
 depList :: Exp2 -> [(Var, Var, [Var])]
@@ -958,8 +962,8 @@ changeAppToSpawn v args2 ex1 =
     CharE{}   -> ex1
     FloatE{}  -> ex1
     LitSymE{} -> ex1
-    AppE f locs args | v == f && args == args2 -> SpawnE f locs $ map go args
-    AppE f locs args -> AppE f locs $ map go args
+    AppE (f, _) locs args | v == f && args == args2 -> SpawnE f locs $ map go args
+    AppE (f, t) locs args -> AppE (f, t) locs $ map go args
     PrimAppE f args  -> PrimAppE f $ map go args
     LetE (v,loc,ty,rhs) bod -> LetE (v,loc,ty, go rhs) (go bod)
     IfE a b c  -> IfE (go a) (go b) (go c)

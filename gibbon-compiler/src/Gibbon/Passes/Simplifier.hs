@@ -44,7 +44,7 @@ inlineFuns (Prog ddefs fundefs main) = do
     go :: PreExpF E1Ext () (UrTy ()) Exp1 -> PassM Exp1
     go ex =
       case ex of
-        AppEF f [] args -> do
+        AppEF (f, t) [] args -> do
             let fn = fundefs M.! f
             if funInline (funMeta fn) == Inline && funRec (funMeta fn) == NotRec
               then do
@@ -54,7 +54,7 @@ inlineFuns (Prog ddefs fundefs main) = do
                 pure $ mkLets binds funBody
               else do
                 args' <- mapM (go . project) args
-                pure $ AppE f [] args'
+                pure $ AppE (f, t) [] args'
         _ -> pure $ embed ex
 
 deadFunElim :: Prog1 -> PassM Prog1

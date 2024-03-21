@@ -205,7 +205,7 @@ addRANExp dont_change_datacons needRANsTyCons ddfs ex =
           CaseE (changeSpawnToApp scrt) $ map (\(a,b,c) -> (a,b, changeSpawnToApp c)) mp
         TimeIt e ty b  -> TimeIt (changeSpawnToApp e) ty b
         WithArenaE v e -> WithArenaE v (changeSpawnToApp e)
-        SpawnE f locs args -> AppE f locs $ map changeSpawnToApp args
+        SpawnE f locs args -> AppE (f, NoTail) locs $ map changeSpawnToApp args
         SyncE   -> SyncE
         Ext{}   -> ex1
         MapE{}  -> error "addRANExp: TODO MapE"
@@ -505,7 +505,7 @@ genRelOffsetsFunNameFn needRANsTyCons ddfs DDef{tyName, dataCons} = do
                 bod <- do
                        let bod0 acc = foldr (\(ty,x,y) acc ->
                                                if isPackedTy ty
-                                               then LetE (y, [], ty, AppE (mkRelOffsetsFunName (tyToDataCon ty)) [] [VarE x]) acc
+                                               then LetE (y, [], ty, AppE (mkRelOffsetsFunName (tyToDataCon ty), NoTail) [] [VarE x]) acc
                                                else LetE (y, [], ty, VarE x) acc)
                                             acc
                                             (L.zip3 tys xs ys)
