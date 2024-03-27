@@ -1,4 +1,4 @@
-{-# LANGUAGE BlockArguments #-}
+-- {-# LANGUAGE BlockArguments #-}
 
 module IntOrSet where
 import Clock

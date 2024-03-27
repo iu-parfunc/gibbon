@@ -39,12 +39,12 @@ lookup k m =
     case m of
         Tip ->  C.Nothing
         Bin _ kx v l r ->
-            if k < kx then Map.lookup k l
-            else if k > kx then Map.lookup k r
+            if k < kx then lookup k l
+            else if k > kx then lookup k r
             else  C.Just v
 
 member :: Int -> Map a -> Bool
-member k m = case Map.lookup k m of
+member k m = case lookup k m of
      C.Nothing -> False
      C.Just _  -> True
 
