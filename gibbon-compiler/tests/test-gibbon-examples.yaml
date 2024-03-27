@@ -330,9 +330,25 @@ tests:
   - name: Tuples.hs
     answer-file: examples/Tuples.hs.ans
 
-  - name: Foo.hs
+  - name: AllThreeImportModifications.hs
     dir: examples/imports/
-    answer-file: examples/imports/Foo.ans
+    answer-file: examples/imports/AllThreeImportModifications.ans
+
+  - name: ImportQualifiedAndSpecified.hs
+    dir: examples/imports/
+    answer-file: examples/imports/ImportQualifiedAndSpecified.ans
+
+  - name: ImportAliased.hs
+    dir: examples/imports/
+    answer-file: examples/imports/ImportAliased.ans
+
+  - name: ImportQualified.hs
+    dir: examples/imports/
+    answer-file: examples/imports/ImportQualified.ans
+
+  - name: ImportSpecified.hs
+    dir: examples/imports/
+    answer-file: examples/imports/ImportSpecified.ans
 
   - name: NeedsClosure.hs
     dir: examples/poly
