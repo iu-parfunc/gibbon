@@ -324,14 +324,25 @@ parseSpec imp =
     -- a class with some of it's methods, or a datatype with some of it's constructors
     IThingWith _ nm thgs -> [name2var nm] ++ map cname2var thgs
 
-  
+-- check for conflicts while merging
+safeMergeDefs :: (VarEnv, VarEnv, VarEnv) -> (VarEnv, VarEnv, VarEnv) -> (VarEnv, VarEnv, VarEnv)
+safeMergeDefs (ddefs, fdefs, constrs) (dacc, facc, cacc) = do
+  if M.size dx > 0 then error $ "Conflicts while merging data definitions: " ++ (show dx)
+  else if M.size fx > 0 then error $ "Conflicts while merging function definitions: " ++ (show fx)
+  else if M.size cx > 0 then error $ "Conflicts while merging constructor definitions: " ++ (show cx)
+  else (M.union ddefs dacc, M.union fdefs facc, M.union constrs cacc)
+  where
+    dx = M.intersection ddefs dacc
+    fx = M.intersection fdefs facc
+    cx = M.intersection constrs cacc
+
 -- construct global registry of uniques
 -- returns Map {qualified name} => {globally unique name}
 buildGlobalEnv :: ProgBundle0 -> PassM (VarEnv, VarEnv, VarEnv)
 buildGlobalEnv (ProgBundle modules main) = do
     (ddefenv, fdefenv, constrenv) <- _buildGlobalEnv main -- generate uniques in main module
     names <- mapM _buildGlobalEnv modules -- generate uniques in imported modules
-    pure $ foldr (\(ddefs, fdefs, constrs) (dacc, facc, cacc) -> (M.union ddefs dacc, M.union fdefs facc, M.union constrs cacc)) (ddefenv, fdefenv, constrenv) names -- union
+    pure $ foldr safeMergeDefs (ddefenv, fdefenv, constrenv) names -- union
 
 -- generate map of qualified names to uniques for a module
 _buildGlobalEnv :: ProgModule0 -> PassM (VarEnv, VarEnv, VarEnv)
@@ -357,7 +368,7 @@ _buildGlobalEnv (ProgModule modname (Prog ddefs fdefs _) _) =
 tryToFindFreshedName :: Var -> VarEnv -> Var
 tryToFindFreshedName name e =
   do case M.lookup name e of
-      Just freshname -> freshname
+      Just freshname -> freshname --toVar ((fromVar freshname) ++ " : " ++ (show e))
       Nothing -> name
 
 -- map a legal reference to a unique name

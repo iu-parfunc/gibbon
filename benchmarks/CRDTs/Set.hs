@@ -4,8 +4,7 @@ module Set where
 
 --            type size value left right
 type Size = Int
-data IntSet = PureSet Int Int IntSet IntSet
-            | EmptySet
+data IntSet = PureSet Int Int IntSet IntSet | EmptySet
 
 -- Construction --------------------------------------------
 

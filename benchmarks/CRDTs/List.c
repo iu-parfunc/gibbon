@@ -61,12 +61,12 @@ typedef struct GibPackedTagGibCursorProd_struct {
 typedef struct GibCursorProd_struct {
             GibCursor field0;
         } GibCursorProd;
-GibCursor insert2062(GibInt idx27122168, GibInt x28123169, GibCursor s29124170);
-GibCursor singleton1861(GibInt x25127177);
-GibCursor _copy_Node21_v63(GibCursor arg96128179);
-GibCursor _copy_without_ptrs_Node21_v63(GibCursor arg101133184);
-unsigned char _traverse_Node21_v63(GibCursor arg106138189);
-unsigned char _print_Node21_v63(GibCursor arg111142193);
+GibCursor insert2085(GibInt idx27145191, GibInt x28146192, GibCursor s29147193);
+GibCursor singleton1884(GibInt x25150200);
+GibCursor _copy_Node21_v86(GibCursor arg119151202);
+GibCursor _copy_without_ptrs_Node21_v86(GibCursor arg124156207);
+unsigned char _traverse_Node21_v86(GibCursor arg129161212);
+unsigned char _print_Node21_v86(GibCursor arg134165216);
 typedef enum {
             GibInt_T,
             GibFloat_T,
@@ -75,7 +75,7 @@ typedef enum {
             GibVector_T,
             GibList_T,
             GibCursor_T,
-            Node21_v63_T,
+            Node21_v86_T,
         } GibDatatype;
 void info_table_initialize(void)
 {
@@ -88,195 +88,195 @@ void info_table_initialize(void)
     
     GibDatatype field_tys[1];
     
-    error = gib_info_table_insert_packed_dcon(Node21_v63_T, 1, 8, 1, 1, 0,
+    error = gib_info_table_insert_packed_dcon(Node21_v86_T, 1, 8, 1, 1, 0,
                                               field_tys, 0);
     if (error < 0) {
         fprintf(stderr,
                 "Couldn't insert into info table, errorno=%d, tycon=%d, dcon=%d",
-                error, Node21_v63_T, 1);
+                error, Node21_v86_T, 1);
         exit(1);
     }
-    error = gib_info_table_insert_packed_dcon(Node21_v63_T, 0, 0, 0, 0, 0,
+    error = gib_info_table_insert_packed_dcon(Node21_v86_T, 0, 0, 0, 0, 0,
                                               field_tys, 0);
     if (error < 0) {
         fprintf(stderr,
                 "Couldn't insert into info table, errorno=%d, tycon=%d, dcon=%d",
-                error, Node21_v63_T, 0);
+                error, Node21_v86_T, 0);
         exit(1);
     }
     gib_info_table_finalize();
 }
 void symbol_table_initialize(void)
 {
-    gib_add_symbol(205, ")");
-    gib_add_symbol(206, "(Tip22_v63");
-    gib_add_symbol(207, "(Bin23_v63");
-    gib_add_symbol(208, " ");
+    gib_add_symbol(228, ")");
+    gib_add_symbol(229, "(Tip22_v86");
+    gib_add_symbol(230, "(Bin23_v86");
+    gib_add_symbol(231, " ");
 }
-GibCursor insert2062(GibInt idx27122168, GibInt x28123169, GibCursor s29124170)
+GibCursor insert2085(GibInt idx27145191, GibInt x28146192, GibCursor s29147193)
 {
-    GibPackedTag tag209 = *(GibPackedTag *) s29124170;
-    GibCursor tail210 = s29124170 + sizeof(GibInt);
+    GibPackedTag tag232 = *(GibPackedTag *) s29147193;
+    GibCursor tail233 = s29147193 + sizeof(GibInt);
     
     
-  switch214:
+  switch237:
     ;
-    switch (tag209) {
+    switch (tag232) {
         
       case 1:
         {
-            GibInt v31125171 = ((GibIntGibCursorProd *) tail210)->field0;
-            GibCursor n32126172 = ((GibIntGibCursorProd *) tail210)->field1;
-            GibBool fltIf158173 = idx27122168 == 0;
+            GibInt v31148194 = ((GibIntGibCursorProd *) tail233)->field0;
+            GibCursor n32149195 = ((GibIntGibCursorProd *) tail233)->field1;
+            GibBool fltIf181196 = idx27145191 == 0;
             
-            if (fltIf158173) {
-                GibPtr tailift211 =
+            if (fltIf181196) {
+                GibPtr tailift234 =
                        gib_alloc(sizeof(GibIntGibIntGibCursorProd));
                 
-                ((GibIntGibIntGibCursorProd *) tailift211)->field0 = 1;
-                ((GibIntGibIntGibCursorProd *) tailift211)->field1 = x28123169;
-                ((GibIntGibIntGibCursorProd *) tailift211)->field2 = s29124170;
-                return tailift211;
+                ((GibIntGibIntGibCursorProd *) tailift234)->field0 = 1;
+                ((GibIntGibIntGibCursorProd *) tailift234)->field1 = x28146192;
+                ((GibIntGibIntGibCursorProd *) tailift234)->field2 = s29147193;
+                return tailift234;
             } else {
-                GibInt fltAppE160174 = idx27122168 - 1;
-                GibCursor fltPkd159175 =
-                           insert2062(fltAppE160174, x28123169, n32126172);
-                GibPtr tailift212 =
+                GibInt fltAppE183197 = idx27145191 - 1;
+                GibCursor fltPkd182198 =
+                           insert2085(fltAppE183197, x28146192, n32149195);
+                GibPtr tailift235 =
                        gib_alloc(sizeof(GibIntGibIntGibCursorProd));
                 
-                ((GibIntGibIntGibCursorProd *) tailift212)->field0 = 1;
-                ((GibIntGibIntGibCursorProd *) tailift212)->field1 = v31125171;
-                ((GibIntGibIntGibCursorProd *) tailift212)->field2 =
-                    fltPkd159175;
-                return tailift212;
+                ((GibIntGibIntGibCursorProd *) tailift235)->field0 = 1;
+                ((GibIntGibIntGibCursorProd *) tailift235)->field1 = v31148194;
+                ((GibIntGibIntGibCursorProd *) tailift235)->field2 =
+                    fltPkd182198;
+                return tailift235;
             }
             break;
         }
         
       case 0:
         {
-            GibPtr fltPkd161176 = gib_alloc(sizeof(GibIntProd));
+            GibPtr fltPkd184199 = gib_alloc(sizeof(GibIntProd));
             
-            ((GibIntProd *) fltPkd161176)->field0 = 0;
+            ((GibIntProd *) fltPkd184199)->field0 = 0;
             
-            GibPtr tailift213 = gib_alloc(sizeof(GibIntGibIntGibCursorProd));
+            GibPtr tailift236 = gib_alloc(sizeof(GibIntGibIntGibCursorProd));
             
-            ((GibIntGibIntGibCursorProd *) tailift213)->field0 = 1;
-            ((GibIntGibIntGibCursorProd *) tailift213)->field1 = x28123169;
-            ((GibIntGibIntGibCursorProd *) tailift213)->field2 = fltPkd161176;
-            return tailift213;
+            ((GibIntGibIntGibCursorProd *) tailift236)->field0 = 1;
+            ((GibIntGibIntGibCursorProd *) tailift236)->field1 = x28146192;
+            ((GibIntGibIntGibCursorProd *) tailift236)->field2 = fltPkd184199;
+            return tailift236;
             break;
         }
         
       default:
         {
-            printf("%s\n", "Unknown tag in: tag209");
+            printf("%s\n", "Unknown tag in: tag232");
             exit(1);
         }
     }
 }
-GibCursor singleton1861(GibInt x25127177)
+GibCursor singleton1884(GibInt x25150200)
 {
-    GibPtr fltPkd162178 = gib_alloc(sizeof(GibIntProd));
+    GibPtr fltPkd185201 = gib_alloc(sizeof(GibIntProd));
     
-    ((GibIntProd *) fltPkd162178)->field0 = 0;
+    ((GibIntProd *) fltPkd185201)->field0 = 0;
     
-    GibPtr tailift215 = gib_alloc(sizeof(GibIntGibIntGibCursorProd));
+    GibPtr tailift238 = gib_alloc(sizeof(GibIntGibIntGibCursorProd));
     
-    ((GibIntGibIntGibCursorProd *) tailift215)->field0 = 1;
-    ((GibIntGibIntGibCursorProd *) tailift215)->field1 = x25127177;
-    ((GibIntGibIntGibCursorProd *) tailift215)->field2 = fltPkd162178;
-    return tailift215;
+    ((GibIntGibIntGibCursorProd *) tailift238)->field0 = 1;
+    ((GibIntGibIntGibCursorProd *) tailift238)->field1 = x25150200;
+    ((GibIntGibIntGibCursorProd *) tailift238)->field2 = fltPkd185201;
+    return tailift238;
 }
-GibCursor _copy_Node21_v63(GibCursor arg96128179)
+GibCursor _copy_Node21_v86(GibCursor arg119151202)
 {
-    GibPackedTag tag216 = *(GibPackedTag *) arg96128179;
-    GibCursor tail217 = arg96128179 + sizeof(GibInt);
+    GibPackedTag tag239 = *(GibPackedTag *) arg119151202;
+    GibCursor tail240 = arg119151202 + sizeof(GibInt);
     
     
-  switch220:
+  switch243:
     ;
-    switch (tag216) {
+    switch (tag239) {
         
       case 0:
         {
-            GibPtr tailift218 = gib_alloc(sizeof(GibIntProd));
+            GibPtr tailift241 = gib_alloc(sizeof(GibIntProd));
             
-            ((GibIntProd *) tailift218)->field0 = 0;
-            return tailift218;
+            ((GibIntProd *) tailift241)->field0 = 0;
+            return tailift241;
             break;
         }
         
       case 1:
         {
-            GibInt x97129180 = ((GibIntGibCursorProd *) tail217)->field0;
-            GibCursor x98130181 = ((GibIntGibCursorProd *) tail217)->field1;
-            GibCursor y100132183 =  _copy_Node21_v63(x98130181);
-            GibPtr tailift219 = gib_alloc(sizeof(GibIntGibIntGibCursorProd));
+            GibInt x120152203 = ((GibIntGibCursorProd *) tail240)->field0;
+            GibCursor x121153204 = ((GibIntGibCursorProd *) tail240)->field1;
+            GibCursor y123155206 =  _copy_Node21_v86(x121153204);
+            GibPtr tailift242 = gib_alloc(sizeof(GibIntGibIntGibCursorProd));
             
-            ((GibIntGibIntGibCursorProd *) tailift219)->field0 = 1;
-            ((GibIntGibIntGibCursorProd *) tailift219)->field1 = x97129180;
-            ((GibIntGibIntGibCursorProd *) tailift219)->field2 = y100132183;
-            return tailift219;
+            ((GibIntGibIntGibCursorProd *) tailift242)->field0 = 1;
+            ((GibIntGibIntGibCursorProd *) tailift242)->field1 = x120152203;
+            ((GibIntGibIntGibCursorProd *) tailift242)->field2 = y123155206;
+            return tailift242;
             break;
         }
         
       default:
         {
-            printf("%s\n", "Unknown tag in: tag216");
+            printf("%s\n", "Unknown tag in: tag239");
             exit(1);
         }
     }
 }
-GibCursor _copy_without_ptrs_Node21_v63(GibCursor arg101133184)
+GibCursor _copy_without_ptrs_Node21_v86(GibCursor arg124156207)
 {
-    GibPackedTag tag221 = *(GibPackedTag *) arg101133184;
-    GibCursor tail222 = arg101133184 + sizeof(GibInt);
+    GibPackedTag tag244 = *(GibPackedTag *) arg124156207;
+    GibCursor tail245 = arg124156207 + sizeof(GibInt);
     
     
-  switch225:
+  switch248:
     ;
-    switch (tag221) {
+    switch (tag244) {
         
       case 0:
         {
-            GibPtr tailift223 = gib_alloc(sizeof(GibIntProd));
+            GibPtr tailift246 = gib_alloc(sizeof(GibIntProd));
             
-            ((GibIntProd *) tailift223)->field0 = 0;
-            return tailift223;
+            ((GibIntProd *) tailift246)->field0 = 0;
+            return tailift246;
             break;
         }
         
       case 1:
         {
-            GibInt x102134185 = ((GibIntGibCursorProd *) tail222)->field0;
-            GibCursor x103135186 = ((GibIntGibCursorProd *) tail222)->field1;
-            GibCursor y105137188 =  _copy_without_ptrs_Node21_v63(x103135186);
-            GibPtr tailift224 = gib_alloc(sizeof(GibIntGibIntGibCursorProd));
+            GibInt x125157208 = ((GibIntGibCursorProd *) tail245)->field0;
+            GibCursor x126158209 = ((GibIntGibCursorProd *) tail245)->field1;
+            GibCursor y128160211 =  _copy_without_ptrs_Node21_v86(x126158209);
+            GibPtr tailift247 = gib_alloc(sizeof(GibIntGibIntGibCursorProd));
             
-            ((GibIntGibIntGibCursorProd *) tailift224)->field0 = 1;
-            ((GibIntGibIntGibCursorProd *) tailift224)->field1 = x102134185;
-            ((GibIntGibIntGibCursorProd *) tailift224)->field2 = y105137188;
-            return tailift224;
+            ((GibIntGibIntGibCursorProd *) tailift247)->field0 = 1;
+            ((GibIntGibIntGibCursorProd *) tailift247)->field1 = x125157208;
+            ((GibIntGibIntGibCursorProd *) tailift247)->field2 = y128160211;
+            return tailift247;
             break;
         }
         
       default:
         {
-            printf("%s\n", "Unknown tag in: tag221");
+            printf("%s\n", "Unknown tag in: tag244");
             exit(1);
         }
     }
 }
-unsigned char _traverse_Node21_v63(GibCursor arg106138189)
+unsigned char _traverse_Node21_v86(GibCursor arg129161212)
 {
-    GibPackedTag tag226 = *(GibPackedTag *) arg106138189;
-    GibCursor tail227 = arg106138189 + sizeof(GibInt);
+    GibPackedTag tag249 = *(GibPackedTag *) arg129161212;
+    GibCursor tail250 = arg129161212 + sizeof(GibInt);
     
     
-  switch228:
+  switch251:
     ;
-    switch (tag226) {
+    switch (tag249) {
         
       case 0:
         {
@@ -286,9 +286,9 @@ unsigned char _traverse_Node21_v63(GibCursor arg106138189)
         
       case 1:
         {
-            GibInt x107139190 = ((GibIntGibCursorProd *) tail227)->field0;
-            GibCursor x108140191 = ((GibIntGibCursorProd *) tail227)->field1;
-            unsigned char y110141192 =  _traverse_Node21_v63(x108140191);
+            GibInt x130162213 = ((GibIntGibCursorProd *) tail250)->field0;
+            GibCursor x131163214 = ((GibIntGibCursorProd *) tail250)->field1;
+            unsigned char y133164215 =  _traverse_Node21_v86(x131163214);
             
             return 0;
             break;
@@ -296,25 +296,25 @@ unsigned char _traverse_Node21_v63(GibCursor arg106138189)
         
       default:
         {
-            printf("%s\n", "Unknown tag in: tag226");
+            printf("%s\n", "Unknown tag in: tag249");
             exit(1);
         }
     }
 }
-unsigned char _print_Node21_v63(GibCursor arg111142193)
+unsigned char _print_Node21_v86(GibCursor arg134165216)
 {
-    GibPackedTag tag229 = *(GibPackedTag *) arg111142193;
-    GibCursor tail230 = arg111142193 + sizeof(GibInt);
+    GibPackedTag tag252 = *(GibPackedTag *) arg134165216;
+    GibCursor tail253 = arg134165216 + sizeof(GibInt);
     
     
-  switch231:
+  switch254:
     ;
-    switch (tag229) {
+    switch (tag252) {
         
       case 0:
         {
-            unsigned char wildcard112143194 = gib_print_symbol(206);
-            unsigned char wildcard113144195 = gib_print_symbol(205);
+            unsigned char wildcard135166217 = gib_print_symbol(229);
+            unsigned char wildcard136167218 = gib_print_symbol(228);
             
             return 0;
             break;
@@ -322,14 +322,14 @@ unsigned char _print_Node21_v63(GibCursor arg111142193)
         
       case 1:
         {
-            GibInt x114145196 = ((GibIntGibCursorProd *) tail230)->field0;
-            GibCursor x115146197 = ((GibIntGibCursorProd *) tail230)->field1;
-            unsigned char wildcard118147198 = gib_print_symbol(207);
-            unsigned char wildcard121148199 = gib_print_symbol(208);
-            unsigned char y116149200 = printf("%ld", x114145196);
-            unsigned char wildcard120150201 = gib_print_symbol(208);
-            unsigned char y117151202 =  _print_Node21_v63(x115146197);
-            unsigned char wildcard119152203 = gib_print_symbol(205);
+            GibInt x137168219 = ((GibIntGibCursorProd *) tail253)->field0;
+            GibCursor x138169220 = ((GibIntGibCursorProd *) tail253)->field1;
+            unsigned char wildcard141170221 = gib_print_symbol(230);
+            unsigned char wildcard144171222 = gib_print_symbol(231);
+            unsigned char y139172223 = printf("%ld", x137168219);
+            unsigned char wildcard143173224 = gib_print_symbol(231);
+            unsigned char y140174225 =  _print_Node21_v86(x138169220);
+            unsigned char wildcard142175226 = gib_print_symbol(228);
             
             return 0;
             break;
@@ -337,7 +337,7 @@ unsigned char _print_Node21_v63(GibCursor arg111142193)
         
       default:
         {
-            printf("%s\n", "Unknown tag in: tag229");
+            printf("%s\n", "Unknown tag in: tag252");
             exit(1);
         }
     }
@@ -349,16 +349,15 @@ int main(int argc, char **argv)
     info_table_initialize();
     symbol_table_initialize();
     
-    GibCursor fltAppE157163 =  singleton1861(5);
-    GibCursor fltAppE156164 =  insert2062(1, 4, fltAppE157163);
-    GibCursor fltAppE155165 =  insert2062(2, 3, fltAppE156164);
-    GibCursor fltAppE154166 =  insert2062(3, 2, fltAppE155165);
-    GibCursor fltAppE153167 =  insert2062(4, 1, fltAppE154166);
-    GibCursor tmp_app204 =  insert2062(5, 0, fltAppE153167);
+    GibCursor fltAppE180186 =  singleton1884(5);
+    GibCursor fltAppE179187 =  insert2085(1, 4, fltAppE180186);
+    GibCursor fltAppE178188 =  insert2085(2, 3, fltAppE179187);
+    GibCursor fltAppE177189 =  insert2085(3, 2, fltAppE178188);
+    GibCursor fltAppE176190 =  insert2085(4, 1, fltAppE177189);
+    GibCursor tmp_app227 =  insert2085(5, 0, fltAppE176190);
     
-     _print_Node21_v63(tmp_app204);
+     _print_Node21_v86(tmp_app227);
     printf("\n");
-    return 0;
     
     int exit1 = gib_exit();
     

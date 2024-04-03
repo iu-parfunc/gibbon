@@ -39,12 +39,12 @@ lookup k m =
     case m of
         Tip ->  C.Nothing
         Bin _ kx v l r ->
-            if k < kx then lookup k l
-            else if k > kx then lookup k r
+            if k < kx then Map.lookup k l
+            else if k > kx then Map.lookup k r
             else  C.Just v
 
 member :: Int -> Map a -> Bool
-member k m = case lookup k m of
+member k m = case Map.lookup k m of
      C.Nothing -> False
      C.Just _  -> True
 
@@ -181,5 +181,11 @@ doubleR k1 x1 m0 t4 =
                 Bin _ k3 x3 t2 t3 -> bin k3 x3 (bin k2 x2 t1 t2) (bin k1 x1 t3 t4)
                 Tip -> empty
         Tip -> empty --cry
+
+sum :: Map Int -> Int
+sum x =
+    case x of
+        Bin _ k v l r -> v + (sum l) + (sum r)
+        Tip -> 0 
 
 gibbon_main = insert 0 "f" (insert 5 "f" (insert 4 "e" (insert 3 "d" (insert 2 "c" (insert 1 "b" (insert 0 "a" empty))))))

@@ -395,9 +395,9 @@ desugarType type_syns ty =
         Nothing -> PackedTy con []
         Just ty' -> ty'
     -- now that we have modules we need to parse qualified type names as well
-    TyCon _ (Qual _ (ModuleName _ mod) (Ident _ con)) -> 
-      case M.lookup (mod ++ "." ++ con) type_syns of
-        Nothing  -> PackedTy (mod ++ "." ++ con) []
+    TyCon _ (Qual _ (ModuleName _ modl) (Ident _ con)) -> 
+      case M.lookup (modl ++ "." ++ con) type_syns of
+        Nothing  -> PackedTy (modl ++ "." ++ con) []
         Just ty' -> ty'
     TyFun _ t1 t2 ->
       let t1' = desugarType type_syns t1
