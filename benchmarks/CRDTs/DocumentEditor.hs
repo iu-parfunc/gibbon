@@ -16,6 +16,8 @@ data Transaction = SetAttr Int String
                  | Insert T.Timestamp T.Timestamp RichText
                  | Del T.Timestamp
 
+-- attrs
+-- 1="name"
 render_opening :: IntOrMap String -> String
 
 render_closing :: IntOrMap String -> String
@@ -52,3 +54,13 @@ edit uid doc up = case up of
                 DelAttr key -> Block (M.remove uid key attrs) els
                 Insert l r val -> Block attrs (L.insert uid l r val els)
                 Del t -> Block attrs (L.del uid t els)
+
+listen :: Int -> RichText -> RichText
+listen for doc = 
+    let uid, up = <listener> -- This should be the network primitive
+        ndoc = edit uid doc upd
+    in if for > 0 then listen (for-1) ndoc
+       else ndoc
+
+gibbon_main =
+    render (listen 10 (Block (M.init 0 1 "document") (L.singleton 0 (Text " "))))
