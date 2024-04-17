@@ -114,9 +114,12 @@ value x = value' (getHead x)
 --        )
 --    )
 --)
+-- 01234 56789
+-- hello world
 
 gibbon_main = 
     let x = (singleton 0 0)
         x = (insert 0 1 (cursor 0 x) (cursor 1 x) x)
-        x = (insert 0 1 (cursor 0 x) (cursor 1 x) x)
+        x = (insert 0 2 (cursor 0 x) (cursor 1 x) x)
+        x = (insert 1 5 (cursor 0 x) (cursor 1 x) x)
     in value x
