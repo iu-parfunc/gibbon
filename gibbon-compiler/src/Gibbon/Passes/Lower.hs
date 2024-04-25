@@ -559,7 +559,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
         -- Here we lamely chase down all the tuple references and make them variables:
         -- So that Goto's work properly (See [Modifying switch statements to use redirection nodes]).
         let doalt (k,ls,rhs) = do
-              let rhs' = L3.substE (Ext (AddCursor (Pointer scrut) (LitE 1))) (VarE ctmp) $
+              let rhs' = L3.substE (Ext (AddCursor scrut (LitE 1))) (VarE ctmp) $
                          rhs
               -- We only need to thread one value through, the cursor resulting from read.
               (getTagOfDataCon ddefs k,) <$>
@@ -733,11 +733,11 @@ lower Prog{fundefs,ddefs,mainExp} = do
 
       dbgTrace 7 (" [lower] ReadInt, after substing references to "
                   ++(fromVar v)++":\n  "++sdoc bod') <$>
-        T.LetPrimCallT [(vtmp, T.scalarToTy s),(ctmp,T.CursorTy)] (T.ReadScalar s) [T.VarTriv (fromL3VarToVar cur)] <$>
+        T.LetPrimCallT [(vtmp, T.scalarToTy s),(ctmp,T.CursorTy)] (T.ReadScalar s) [T.VarTriv cur] <$>
           tail free_reg sym_tbl bod'
 
     LetE (v, _, _,  (Ext (WriteScalar s c e))) bod ->
-      T.LetPrimCallT [(v,T.CursorTy)] (T.WriteScalar s) [triv sym_tbl "WriteTag arg" e, T.VarTriv (fromL3VarToVar c)] <$>
+      T.LetPrimCallT [(v,T.CursorTy)] (T.WriteScalar s) [triv sym_tbl "WriteTag arg" e, T.VarTriv c] <$>
          tail free_reg sym_tbl bod
 
 
@@ -745,18 +745,18 @@ lower Prog{fundefs,ddefs,mainExp} = do
     LetE (v,_, _,  (Ext (AddCursor c ( (Ext (MMapFileSize w)))))) bod -> do
       size <- gensym (varAppend "sizeof_" v)
       T.LetPrimCallT [(size,T.IntTy)] (T.MMapFileSize w) [] <$>
-        T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv sym_tbl "addCursor base" (VarE (fromL3VarToVar c))
+        T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv sym_tbl "addCursor base" (VarE c)
                                                , triv sym_tbl "addCursor offset" (VarE size)] <$>
         tail free_reg sym_tbl bod
 
     LetE (v,_, _,  (Ext (AddCursor c e))) bod ->
-      T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv sym_tbl "addCursor base" (VarE (fromL3VarToVar c))
+      T.LetPrimCallT [(v,T.CursorTy)] T.AddP [ triv sym_tbl "addCursor base" (VarE c)
                                              , triv sym_tbl "addCursor offset" e] <$>
          tail free_reg sym_tbl bod
 
     LetE (v,_, _,  (Ext (SubPtr a b))) bod ->
-      T.LetPrimCallT [(v,T.IntTy)] T.SubP [ triv sym_tbl "subCursor base" (VarE (fromL3VarToVar a))
-                                          , triv sym_tbl "subCursor offset" (VarE (fromL3VarToVar b))] <$>
+      T.LetPrimCallT [(v,T.IntTy)] T.SubP [ triv sym_tbl "subCursor base" (VarE a)
+                                          , triv sym_tbl "subCursor offset" (VarE b)] <$>
          tail free_reg sym_tbl bod
 
     LetE (v,_, _,  (Ext (ReadTag cur))) bod -> do
@@ -770,14 +770,14 @@ lower Prog{fundefs,ddefs,mainExp} = do
 
       dbgTrace 7 (" [lower] ReadTag, after substing references to "
                   ++(fromVar v)++":\n  "++sdoc bod') <$>
-        T.LetPrimCallT [(vtmp,T.TagTyPacked),(ctmp,T.CursorTy)] T.ReadTag [T.VarTriv (fromL3VarToVar cur)] <$>
+        T.LetPrimCallT [(vtmp,T.TagTyPacked),(ctmp,T.CursorTy)] T.ReadTag [T.VarTriv cur] <$>
           tail free_reg sym_tbl bod'
       -- error $ "lower: ReadTag not handled yet."
 
 
     LetE (cursOut,_, _,  (Ext (WriteTag dcon cursIn))) bod -> do
       T.LetPrimCallT [(cursOut,T.CursorTy)] T.WriteTag
-        [ T.TagTriv (getTagOfDataCon ddefs dcon) , triv sym_tbl "WriteTag cursor" (VarE (fromL3VarToVar cursIn)) ] <$>
+        [ T.TagTriv (getTagOfDataCon ddefs dcon) , triv sym_tbl "WriteTag cursor" (VarE cursIn) ] <$>
         tail free_reg sym_tbl bod
 
     LetE (v,_,_,  (Ext (NewBuffer mul))) bod -> do
@@ -828,7 +828,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
 
     -- Just a side effect
     LetE(_,_,_,  (Ext (BoundsCheck i bound cur))) bod -> do
-      let args = [T.IntTriv (fromIntegral i), T.VarTriv (fromL3VarToVar bound), T.VarTriv (fromL3VarToVar cur)]
+      let args = [T.IntTriv (fromIntegral i), T.VarTriv bound, T.VarTriv cur]
       T.LetPrimCallT [] T.BoundsCheck args <$> tail free_reg sym_tbl bod
 
     LetE(v,_,_,  (Ext (TagCursor a b))) bod -> do
@@ -844,11 +844,11 @@ lower Prog{fundefs,ddefs,mainExp} = do
                  L3.substE (ProjE 1 (VarE v)) (VarE ctmp) $
                  L3.substE (ProjE 2 (VarE v)) (VarE tagtmp) $
                  bod
-      T.LetPrimCallT [(vtmp,T.CursorTy),(ctmp,T.CursorTy),(tagtmp,T.IntTy)] T.ReadTaggedCursor [T.VarTriv (fromL3VarToVar c)] <$>
+      T.LetPrimCallT [(vtmp,T.CursorTy),(ctmp,T.CursorTy),(tagtmp,T.IntTy)] T.ReadTaggedCursor [T.VarTriv c] <$>
         tail free_reg sym_tbl bod'
 
     LetE (v, _, _,  (Ext (WriteTaggedCursor cur e))) bod ->
-      T.LetPrimCallT [(v,T.CursorTy)] T.WriteTaggedCursor [triv sym_tbl "WriteTaggedCursor arg" e, T.VarTriv (fromL3VarToVar cur)] <$>
+      T.LetPrimCallT [(v,T.CursorTy)] T.WriteTaggedCursor [triv sym_tbl "WriteTaggedCursor arg" e, T.VarTriv cur] <$>
          tail free_reg sym_tbl bod
 
     LetE(v,_,_,  (Ext (ReadCursor c))) bod -> do
@@ -858,7 +858,7 @@ lower Prog{fundefs,ddefs,mainExp} = do
       let bod' = L3.substE (ProjE 0 (VarE v)) (VarE vtmp) $
                  L3.substE (ProjE 1 (VarE v)) (VarE ctmp)
                  bod
-      T.LetPrimCallT [(vtmp,T.CursorTy),(ctmp,T.CursorTy)] T.ReadCursor [T.VarTriv (fromL3VarToVar c)] <$>
+      T.LetPrimCallT [(vtmp,T.CursorTy),(ctmp,T.CursorTy)] T.ReadCursor [T.VarTriv c] <$>
         tail free_reg sym_tbl bod'
 
     LetE(v,_,_,  (Ext (ReadList c el_ty))) bod -> do
@@ -868,11 +868,11 @@ lower Prog{fundefs,ddefs,mainExp} = do
       let bod' = L3.substE (ProjE 0 (VarE v)) (VarE vtmp) $
                  L3.substE (ProjE 1 (VarE v)) (VarE ctmp)
                  bod
-      T.LetPrimCallT [(vtmp,T.ListTy (T.fromL3Ty el_ty)),(ctmp,T.CursorTy)] T.ReadList [T.VarTriv (fromL3VarToVar c)] <$>
+      T.LetPrimCallT [(vtmp,T.ListTy (T.fromL3Ty el_ty)),(ctmp,T.CursorTy)] T.ReadList [T.VarTriv c] <$>
         tail free_reg sym_tbl bod'
 
     LetE (v, _, _,  (Ext (WriteList cur e _el_ty))) bod ->
-      T.LetPrimCallT [(v,T.CursorTy)] T.WriteList [triv sym_tbl "WriteList arg" e, T.VarTriv (fromL3VarToVar cur)] <$>
+      T.LetPrimCallT [(v,T.CursorTy)] T.WriteList [triv sym_tbl "WriteList arg" e, T.VarTriv cur] <$>
          tail free_reg sym_tbl bod
 
 
@@ -883,15 +883,15 @@ lower Prog{fundefs,ddefs,mainExp} = do
       let bod' = L3.substE (ProjE 0 (VarE v)) (VarE vtmp) $
                  L3.substE (ProjE 1 (VarE v)) (VarE ctmp)
                  bod
-      T.LetPrimCallT [(vtmp,T.VectorTy (T.fromL3Ty el_ty)),(ctmp,T.CursorTy)] T.ReadVector [T.VarTriv (fromL3VarToVar c)] <$>
+      T.LetPrimCallT [(vtmp,T.VectorTy (T.fromL3Ty el_ty)),(ctmp,T.CursorTy)] T.ReadVector [T.VarTriv c] <$>
         tail free_reg sym_tbl bod'
 
     LetE (v, _, _,  (Ext (WriteVector cur e _el_ty))) bod ->
-      T.LetPrimCallT [(v,T.CursorTy)] T.WriteVector [triv sym_tbl "WriteVector arg" e, T.VarTriv (fromL3VarToVar cur)] <$>
+      T.LetPrimCallT [(v,T.CursorTy)] T.WriteVector [triv sym_tbl "WriteVector arg" e, T.VarTriv cur] <$>
          tail free_reg sym_tbl bod
 
     LetE (v, _, _,  (Ext (WriteCursor cur e))) bod ->
-      T.LetPrimCallT [(v,T.CursorTy)] T.WriteCursor [triv sym_tbl "WriteCursor arg" e, T.VarTriv (fromL3VarToVar cur)] <$>
+      T.LetPrimCallT [(v,T.CursorTy)] T.WriteCursor [triv sym_tbl "WriteCursor arg" e, T.VarTriv cur] <$>
          tail free_reg sym_tbl bod
 
     LetE (_, _, _,  (Ext (IndirectionBarrier tycon (l1, end_r1, l2, end_r2)))) bod ->

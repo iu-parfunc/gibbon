@@ -367,7 +367,7 @@ data Mode = Search L3.Exp3 | SearchAndStore L3.Exp3
 instance Out Mode where
   doc = text . show
 
-collectBinds :: Collect -> L3.L3Var -> L3.Exp3 -> ([(Var,[()],L3.Ty3,L3.Exp3)], L3.Exp3)
+collectBinds :: Collect -> Var -> L3.Exp3 -> ([(Var,[()],L3.Ty3,L3.Exp3)], L3.Exp3)
 collectBinds collect loc ex0 =
   case collect of
     Tag -> go (Search (Ext (L3.StartTagAllocation loc))) [] ex0

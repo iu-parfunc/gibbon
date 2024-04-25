@@ -27,13 +27,13 @@ tcExp isPacked ddfs env exp =
       case ext of
         -- One cursor in, (int, cursor') out
         ReadScalar s v -> do
-          vty <- lookupVar env (fromL3VarToVar v) exp
+          vty <- lookupVar env v exp
           ensureEqualTyModCursor exp vty CursorTy
           return $ ProdTy [scalarToTy s, CursorTy]
 
         -- Write int at cursor, and return a cursor
         WriteScalar s v rhs -> do
-          vty  <- lookupVar env (fromL3VarToVar v) exp
+          vty  <- lookupVar env v exp
           vrhs <- go rhs
           ensureEqualTyModCursor exp vty CursorTy
           ensureEqualTyModCursor exp vrhs (scalarToTy s)
@@ -42,13 +42,13 @@ tcExp isPacked ddfs env exp =
         -- One cursor in, (tag,cursor) out
         -- QUESTION: what should be the type of the tag ?  It's just an Int for now
         ReadTag v -> do
-          vty  <- lookupVar env (fromL3VarToVar v) exp
+          vty  <- lookupVar env v exp
           ensureEqualTyModCursor exp vty CursorTy
           return $ ProdTy [IntTy, CursorTy]
 
         -- Write Tag at Cursor, and return a cursor
         WriteTag _dcon v -> do
-          vty  <- lookupVar env (fromL3VarToVar v) exp
+          vty  <- lookupVar env v exp
           ensureEqualTyModCursor exp vty CursorTy
           return CursorTy
 
@@ -60,48 +60,48 @@ tcExp isPacked ddfs env exp =
           return CursorTy
 
         ReadTaggedCursor v -> do
-          vty <- lookupVar env (fromL3VarToVar v) exp
+          vty <- lookupVar env v exp
           ensureEqualTyModCursor exp vty CursorTy
           return $ ProdTy [CursorTy, CursorTy, IntTy]
 
         WriteTaggedCursor v val -> do
-          vty <- lookupVar env (fromL3VarToVar v) exp
+          vty <- lookupVar env v exp
           ensureEqualTyModCursor exp vty CursorTy
           valty <- go val
           ensureEqualTyModCursor exp valty CursorTy
           return CursorTy
 
         ReadCursor v -> do
-          vty <- lookupVar env (fromL3VarToVar v) exp
+          vty <- lookupVar env v exp
           ensureEqualTyModCursor exp vty CursorTy
           return $ ProdTy [CursorTy, CursorTy]
 
         WriteCursor cur val -> do
-          curty  <- lookupVar env (fromL3VarToVar cur) exp
+          curty  <- lookupVar env cur exp
           ensureEqualTyModCursor exp curty CursorTy
           valty <- go val
           ensureEqualTyModCursor exp valty CursorTy
           return CursorTy
 
         ReadList v ty -> do
-          vty <- lookupVar env (fromL3VarToVar v) exp
+          vty <- lookupVar env v exp
           ensureEqualTyModCursor exp vty CursorTy
           return $ ProdTy [ListTy ty, CursorTy]
 
         WriteList cur val el_ty -> do
-          curty  <- lookupVar env (fromL3VarToVar cur) exp
+          curty  <- lookupVar env cur exp
           ensureEqualTyModCursor exp curty CursorTy
           valty <- go val
           ensureEqualTyModCursor exp valty (ListTy el_ty)
           return CursorTy
 
         ReadVector v ty -> do
-          vty <- lookupVar env (fromL3VarToVar v) exp
+          vty <- lookupVar env v exp
           ensureEqualTyModCursor exp vty CursorTy
           return $ ProdTy [VectorTy ty, CursorTy]
 
         WriteVector cur val el_ty -> do
-          curty  <- lookupVar env (fromL3VarToVar cur) exp
+          curty  <- lookupVar env cur exp
           ensureEqualTyModCursor exp curty CursorTy
           valty <- go val
           ensureEqualTyModCursor exp valty (VectorTy el_ty)
@@ -109,7 +109,7 @@ tcExp isPacked ddfs env exp =
 
         -- Add a constant offset to a cursor variable
         AddCursor v rhs -> do
-          vty  <- lookupVar env (fromL3VarToVar v) exp
+          vty  <- lookupVar env v exp
           ensureEqualTyModCursor exp vty CursorTy
           vrhs <- go rhs
           ensureEqualTyModCursor exp vrhs IntTy
@@ -117,9 +117,9 @@ tcExp isPacked ddfs env exp =
 
         -- Subtract something from a cursor variable
         SubPtr v w -> do
-          vty  <- lookupVar env (fromL3VarToVar v) exp
+          vty  <- lookupVar env v exp
           ensureEqualTyModCursor exp vty CursorTy
-          wty  <- lookupVar env (fromL3VarToVar w) exp
+          wty  <- lookupVar env w exp
           ensureEqualTyModCursor exp wty CursorTy
           return IntTy
 
@@ -152,9 +152,9 @@ tcExp isPacked ddfs env exp =
 
         -- The IntTy is just a placeholder. BoundsCheck is a side-effect
         BoundsCheck _ bound cur -> do
-          rty <- lookupVar env (fromL3VarToVar bound) exp
+          rty <- lookupVar env bound exp
           ensureEqualTyModCursor exp rty CursorTy
-          cty <- lookupVar env (fromL3VarToVar cur) exp
+          cty <- lookupVar env cur exp
           ensureEqualTyModCursor exp cty CursorTy
           return IntTy
 
@@ -183,32 +183,32 @@ tcExp isPacked ddfs env exp =
         LetAvail _ bod -> go bod
 
         AllocateTagHere v _ -> do
-          rty <- lookupVar env (fromL3VarToVar v) exp
+          rty <- lookupVar env v exp
           ensureEqualTyModCursor exp rty CursorTy
           return (ProdTy [])
 
         AllocateScalarsHere v -> do
-          rty <- lookupVar env (fromL3VarToVar v) exp
+          rty <- lookupVar env v exp
           ensureEqualTyModCursor exp rty CursorTy
           return (ProdTy [])
 
         StartTagAllocation v -> do
-          rty <- lookupVar env (fromL3VarToVar v) exp
+          rty <- lookupVar env v exp
           ensureEqualTyModCursor exp rty CursorTy
           return (ProdTy [])
 
         EndTagAllocation v -> do
-          rty <- lookupVar env (fromL3VarToVar v) exp
+          rty <- lookupVar env v exp
           ensureEqualTyModCursor exp rty CursorTy
           return (ProdTy [])
 
         EndScalarsAllocation v -> do
-          rty <- lookupVar env (fromL3VarToVar v) exp
+          rty <- lookupVar env v exp
           ensureEqualTyModCursor exp rty CursorTy
           return (ProdTy [])
 
         StartScalarsAllocation v -> do
-          rty <- lookupVar env (fromL3VarToVar v) exp
+          rty <- lookupVar env v exp
           ensureEqualTyModCursor exp rty CursorTy
           return (ProdTy [])
 
