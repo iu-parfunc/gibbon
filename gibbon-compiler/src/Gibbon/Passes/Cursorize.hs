@@ -578,10 +578,8 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
 
     DataConE slocarg dcon args -> do
       let sloc = dbgTraceIt ("sloc arg: ") dbgTraceIt (sdoc slocarg) dbgTraceIt ("\n") toLocVar slocarg
-          slocTy = case slocarg of 
-                        Loc LREM{lremMode} -> case lremMode of 
-                                                    OutputMutable -> MutableCursorTy
-                                                    _ -> CursorTy 
+      let isMutableCur = isMutableCursorTy slocarg
+      let slocTy = if isMutableCur then MutableCursorTy else CursorTy
           -- Return (start,end) cursors
           -- The final return value lives at the position of the out cursors:
           go2 :: Bool -> Var -> [(Exp2, Ty2)] -> PassM Exp3
@@ -609,8 +607,16 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
               -- Int, Float, Sym, or Bool
               _ | isScalarTy ty -> do
                 rnd' <- cursorizeExp ddfs fundefs denv tenv senv rnd
-                LetE (d',[], slocTy, Ext $ WriteScalar (mkScalar ty) d rnd') <$>
-                  go2 marker_added d' rst
+                case isMutableCur of 
+                  True -> do 
+                    deref_scalar_write <- gensym "deref_scalar_write"
+                    LetE (deref_scalar_write, [], CursorTy, Ext $ DerefMutableCursor d) <$>
+                      LetE (d', [], ProdTy [], Ext $ WriteScalarMutable (mkScalar ty) deref_scalar_write rnd') <$> 
+                      LetE (d, [], slocTy, Ext $ BumpMutableCursor d (LitE $ fromJust $ sizeOfTy ty)) <$>
+                      go2 marker_added d rst
+                  False -> do 
+                    LetE (d',[], slocTy, Ext $ WriteScalar (mkScalar ty) d rnd') <$>
+                            go2 marker_added d' rst
 
               -- Write a pointer to a vector
               VectorTy el_ty -> do
@@ -630,23 +636,34 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
                 LetE (d',[], CursorTy, Ext $ WriteTaggedCursor d rnd') <$>
                   go2 marker_added d' rst
               _ -> error $ "Unknown type encounterred while cursorizing DataConE. Type was " ++ show ty
-
-      writetag <- gensym "writetag"
-      after_tag <- gensym "after_tag"
-      start_tag_alloc <- gensym "start_tag_alloc"
-      end_tag_alloc <- gensym "end_tag_alloc"
-      start_scalars_alloc <- gensym "start_scalars_alloc"
-      let cursor_type = case slocarg of 
-                          Loc LREM{lremLoc, lremReg, lremEndReg, lremMode} -> case lremMode of 
-                                                                                      OutputMutable -> MutableCursorTy 
-                                                                                      _ -> CursorTy
-      dl <$>
-        LetE (start_tag_alloc,[],ProdTy [], Ext $ StartTagAllocation sloc) <$>
-        LetE (writetag,[], cursor_type, Ext $ WriteTag dcon sloc) <$>
-        LetE (end_tag_alloc,[],ProdTy [], Ext $ EndTagAllocation sloc) <$>
-        LetE (start_scalars_alloc,[],ProdTy [], Ext $ StartScalarsAllocation sloc) <$>
-        LetE (after_tag,[], cursor_type, Ext $ AddCursor sloc (L3.LitE 1)) <$>
-          go2 False after_tag (zip args (lookupDataCon ddfs dcon))
+      case isMutableCur of 
+          True -> do 
+                  writetag <- gensym "write_tag_mutable"
+                  deref_for_write <- gensym "deref_for_write"
+                  start_tag_alloc <- gensym "start_tag_alloc"
+                  end_tag_alloc <- gensym "end_tag_alloc"
+                  start_scalars_alloc <- gensym "start_scalars_alloc"
+                  dl <$>
+                    LetE (start_tag_alloc,[],ProdTy [], Ext $ StartTagAllocation sloc) <$>
+                    LetE (deref_for_write,[], CursorTy, Ext $ DerefMutableCursor sloc) <$>
+                    LetE (writetag,[], ProdTy [], Ext $ WriteTagMutable dcon deref_for_write) <$>
+                    LetE (end_tag_alloc,[],ProdTy [], Ext $ EndTagAllocation sloc) <$>
+                    LetE (start_scalars_alloc,[],ProdTy [], Ext $ StartScalarsAllocation sloc) <$>
+                    LetE (sloc,[], slocTy, Ext $ BumpMutableCursor sloc (L3.LitE 1)) <$>
+                      go2 False sloc (zip args (lookupDataCon ddfs dcon))
+          False -> do 
+                   writetag <- gensym "writetag"
+                   after_tag <- gensym "after_tag"
+                   start_tag_alloc <- gensym "start_tag_alloc"
+                   end_tag_alloc <- gensym "end_tag_alloc"
+                   start_scalars_alloc <- gensym "start_scalars_alloc"
+                   dl <$>
+                      LetE (start_tag_alloc,[],ProdTy [], Ext $ StartTagAllocation sloc) <$>
+                      LetE (writetag,[], slocTy, Ext $ WriteTag dcon sloc) <$>
+                      LetE (end_tag_alloc,[],ProdTy [], Ext $ EndTagAllocation sloc) <$>
+                      LetE (start_scalars_alloc,[],ProdTy [], Ext $ StartScalarsAllocation sloc) <$>
+                      LetE (after_tag,[], slocTy, Ext $ AddCursor sloc (L3.LitE 1)) <$>
+                        go2 False after_tag (zip args (lookupDataCon ddfs dcon))
 
     TimeIt e t b -> do
       Di e' <- go tenv senv e
