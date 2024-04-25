@@ -100,6 +100,12 @@ data E3Ext loc dec =
   | SSPop SSModality Var Var
   | Assert (PreExp E3Ext loc dec) -- ^ Translates to assert statements in C.
     -- ^ Analogous to L2's extensions.
+    -- Instroduce some new IR for mutable cursors 
+  | DerefMutableCursor Var -- ^ Read a mutable cursor, maybe this should be names to ReadMutableCursor etc. 
+                           -- Returns a CursorTy type
+
+
+
   deriving (Show, Ord, Eq, Read, Generic, NFData)
 
 instance FreeVars (E3Ext l d) where

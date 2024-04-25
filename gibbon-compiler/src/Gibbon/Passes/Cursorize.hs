@@ -406,7 +406,26 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
         LetParRegionE reg sz _ bod -> do
           mkLets (regionToBinds True reg sz) <$> go bod
 
-        BoundsCheck i bound cur -> return $ Ext $ L3.BoundsCheck i (toLocVar bound) (toLocVar cur)
+        BoundsCheck i bound cur -> do
+                                   case (isMutableCursorTy bound, isMutableCursorTy cur) of 
+                                        (True, True)   -> do 
+                                                          bound' <- gensym "newDerefBound"
+                                                          cur' <- gensym "newDerefCur"
+                                                          let newBoundCheckExpr = Ext $ L3.BoundsCheck i bound' cur'
+                                                          exp' <- genReadMutableCursor bound newBoundCheckExpr bound' 
+                                                          exp'' <- genReadMutableCursor cur exp' cur'
+                                                          return $ exp''
+                                        (False, True)  -> do 
+                                                          cur' <- gensym "newDerefCur"
+                                                          let newBoundCheckExpr = Ext $ L3.BoundsCheck i (toLocVar bound) cur'
+                                                          exp' <- genReadMutableCursor cur newBoundCheckExpr cur'
+                                                          return $ exp'
+                                        (True, False)  -> do 
+                                                          bound' <- gensym "newDerefBound"
+                                                          let newBoundCheckExpr = Ext $ L3.BoundsCheck i bound' (toLocVar cur)
+                                                          exp' <- genReadMutableCursor bound newBoundCheckExpr bound' 
+                                                          return $ exp'
+                                        (False, False) -> return $ Ext $ L3.BoundsCheck i (toLocVar bound) (toLocVar cur)
 
         FromEndE{} -> error $ "cursorizeExp: TODO FromEndE" ++ sdoc ext
 
@@ -429,6 +448,24 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
   where
     go = cursorizeExp ddfs fundefs denv tenv senv
 
+
+-- genDerefOrVar :: LocArg -> Exp3 -> Var -> PassM (Either Var Exp3)
+-- genDerefOrVar locArg bod var = case isMutableCursorTy locArg of 
+--                                   True -> genReadMutableCursor locArg bod 
+--                                   False -> 
+
+isMutableCursorTy :: LocArg -> Bool 
+isMutableCursorTy locArg = case locArg of 
+                                  Loc LREM{lremLoc, lremReg, lremEndReg, lremMode} -> case lremMode of 
+                                                                                          OutputMutable -> True 
+                                                                                          _ -> False
+                                  _ -> False
+
+genReadMutableCursor :: LocArg -> Exp3 -> Var -> PassM Exp3
+genReadMutableCursor locArg bod newCursor = do
+                                  let derefCursorExp = Ext $ L3.DerefMutableCursor (toLocVar locArg)
+                                  return $ LetE (newCursor, [], CursorTy, derefCursorExp) bod
+                              
 
 -- Cursorize expressions producing `Packed` values
 cursorizePackedExp :: DDefs Ty2 -> FunDefs2 -> DepEnv -> TyEnv Ty2 -> SyncEnv -> Exp2
