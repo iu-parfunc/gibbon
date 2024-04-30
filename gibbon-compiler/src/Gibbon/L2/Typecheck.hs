@@ -138,7 +138,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
       LitSymE _v -> return (SymTy, tstatein)
 
-      AppE v ls args ->
+      AppE (v, _) ls args ->
           -- Checking function application involves a few steps:
           --  (1) We need to make sure the inputs/ouptuts line up with the expected
           --      types for the function.
@@ -746,7 +746,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                return (ty1,tstate1)
 
       SpawnE f locs args ->
-        tcExp ddfs env funs constrs regs tstatein (AppE f locs args)
+        tcExp ddfs env funs constrs regs tstatein (AppE (f, NoTail) locs args)
 
       SyncE -> pure (ProdTy [], tstatein)
 

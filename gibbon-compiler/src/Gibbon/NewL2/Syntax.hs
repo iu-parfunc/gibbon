@@ -89,7 +89,6 @@ instance Out LREM
 
 instance NFData LREM where
   rnf (LREM a b c d)  = rnf a `seq` rnf b `seq` rnf c `seq` rnf d
-
 fromLRM :: Old.LRM -> LREM
 fromLRM (Old.LRM loc reg mode) = LREM loc (Old.regionToVar reg) (toEndV (Old.regionToVar reg)) mode
 
@@ -174,7 +173,7 @@ instance Out (Old.E2Ext LocArg Ty2) => Typeable (PreExp Old.E2Ext LocArg Ty2) wh
       CharE _      -> MkTy2 $ CharTy
       FloatE{}     -> MkTy2 $ FloatTy
       LitSymE _    -> MkTy2 $ SymTy
-      AppE v locargs _ ->
+      AppE (v, _) locargs _ ->
                        let fnty  = fEnv env2 # v
                            outty = Old.arrOut fnty
                            mp = M.fromList $ zip (Old.allLocVars fnty) (map toLocVar locargs)
@@ -301,7 +300,7 @@ revertExp ex =
     PrimAppE p args -> PrimAppE (revertPrim p) $ L.map revertExp args
     LetE (v,_, ty, (Ext (Old.IndirectionE _ _ _ _ arg))) bod ->
       let PackedTy tycon _ =  unTy2 ty in
-          LetE (v,[],(stripTyLocs (unTy2 ty)), AppE (mkCopyFunName tycon) [] [revertExp arg]) (revertExp bod)
+          LetE (v,[],(stripTyLocs (unTy2 ty)), AppE (mkCopyFunName tycon, NoTail) [] [revertExp arg]) (revertExp bod)
     LetE (v,_,ty,rhs) bod ->
       LetE (v,[], stripTyLocs (unTy2 ty), revertExp rhs) (revertExp bod)
     IfE a b c  -> IfE (revertExp a) (revertExp b) (revertExp c)
@@ -393,7 +392,7 @@ depList = L.map (\(a,b) -> (a,a,b)) . M.toList . go M.empty
               Old.LetParRegionE r _ _ rhs ->
                 go (M.insertWith (++) (Old.regionToVar r) (S.toList $ allFreeVars rhs) acc) rhs
               Old.LetLocE loc phs rhs  ->
-                go (M.insertWith (++) loc (dep phs ++ (S.toList $ allFreeVars rhs)) acc) rhs
+                go (M.insertWith (++) (toLocVar loc) (dep phs ++ (S.toList $ allFreeVars rhs)) acc) rhs
               Old.RetE{}         -> acc
               Old.FromEndE{}     -> acc
               Old.BoundsCheck{}  -> acc
@@ -441,7 +440,7 @@ allFreeVars ex =
       case ext of
         Old.LetRegionE r _ _ bod -> S.delete (Old.regionToVar r) (allFreeVars bod)
         Old.LetParRegionE r _ _ bod -> S.delete (Old.regionToVar r) (allFreeVars bod)
-        Old.LetLocE loc locexp bod -> S.delete loc (allFreeVars bod `S.union` gFreeVars locexp)
+        Old.LetLocE loc locexp bod -> S.delete (toLocVar loc) (allFreeVars bod `S.union` gFreeVars locexp)
         Old.StartOfPkdCursor v -> S.singleton v
         Old.TagCursor a b-> S.fromList [a,b]
         Old.RetE locs v     -> S.insert v (S.fromList (map toLocVar locs))
@@ -451,8 +450,8 @@ allFreeVars ex =
         Old.AddFixed v _    -> S.singleton v
         Old.GetCilkWorkerNum-> S.empty
         Old.LetAvail vs bod -> S.fromList vs `S.union` gFreeVars bod
-        Old.AllocateTagHere loc _ -> S.singleton loc
-        Old.AllocateScalarsHere loc -> S.singleton loc
+        Old.AllocateTagHere loc _ -> S.singleton (toLocVar loc)
+        Old.AllocateScalarsHere loc -> S.singleton (toLocVar loc)
         Old.SSPush _ a b _ -> S.fromList [a,b]
         Old.SSPop _ a b -> S.fromList [a,b]
     _ -> gFreeVars ex

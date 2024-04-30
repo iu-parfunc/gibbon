@@ -55,8 +55,10 @@ type Ty3 = UrTy ()
 data E3Ext loc dec =
     ReadScalar  Scalar Var                        -- ^ One cursor in, (int, cursor') out
   | WriteScalar Scalar Var (PreExp E3Ext loc dec) -- ^ Write int at cursor, and return a cursor
+  | WriteScalarMutable Scalar Var (PreExp E3Ext loc dec) -- ^ Write int at cursor, and return void
   | ReadTag Var                            -- ^ One cursor in, (tag,cursor) out
   | WriteTag DataCon Var                   -- ^ Write Tag at Cursor, and return a cursor
+  | WriteTagMutable DataCon Var            -- ^ Write Tag at Mutable Cursor and return void
   | TagCursor Var Var                      -- ^ Create a tagged cursor
   | WriteTaggedCursor Var (PreExp E3Ext loc dec) -- ^ Write a tagged cursor
   | ReadTaggedCursor Var                   -- ^ Reads and returns a tagged cursor at Var
@@ -67,6 +69,7 @@ data E3Ext loc dec =
   | ReadVector Var dec                             -- ^ Read a pointer to a vector
   | WriteVector Var (PreExp E3Ext loc dec) dec     -- ^ Write a pointer to a vector
   | AddCursor Var (PreExp E3Ext loc dec)           -- ^ Add a constant offset to a cursor variable
+  | BumpMutableCursor Var (PreExp E3Ext loc dec)   -- ^ Add a constant offset to a mutable cursor and return an updated mutable cursor
   | SubPtr Var Var                                 -- ^ Pointer subtraction
   | NewBuffer L2.Multiplicity         -- ^ Create a new buffer, and return a cursor
   | ScopedBuffer L2.Multiplicity      -- ^ Create a temporary scoped buffer, and return a cursor
@@ -100,6 +103,10 @@ data E3Ext loc dec =
   | SSPop SSModality Var Var
   | Assert (PreExp E3Ext loc dec) -- ^ Translates to assert statements in C.
     -- ^ Analogous to L2's extensions.
+    -- Instroduce some new IR for mutable cursors 
+  | DerefMutableCursor Var -- ^ Deref a mutable cursor to get back a non mutable cursorTy
+
+
   deriving (Show, Ord, Eq, Read, Generic, NFData)
 
 instance FreeVars (E3Ext l d) where
@@ -277,11 +284,36 @@ cursorizeTy ty =
     ProdTy ls -> ProdTy $ L.map cursorizeTy ls
     SymDictTy v _ -> SymDictTy v CursorTy
     PDictTy k v   -> PDictTy (cursorizeTy k) (cursorizeTy v)
+    -- TODO: This needs to change such that we don't always blindly return a CursorTy. 
     PackedTy{}    -> ProdTy [CursorTy, CursorTy]
     VectorTy el_ty' -> VectorTy $ cursorizeTy el_ty'
     ListTy el_ty'   -> ListTy $ cursorizeTy el_ty'
     PtrTy    -> PtrTy
     CursorTy -> CursorTy
+    MutableCursorTy -> MutableCursorTy
+    ArenaTy  -> ArenaTy
+    SymSetTy -> SymSetTy
+    SymHashTy-> SymHashTy
+    IntHashTy-> IntHashTy
+
+cursorizeTy2 :: (Var -> l -> UrTy l) -> UrTy l -> UrTy l
+cursorizeTy2 fn ty =
+  case ty of
+    IntTy     -> IntTy
+    CharTy    -> CharTy
+    FloatTy   -> FloatTy
+    SymTy     -> SymTy
+    BoolTy    -> BoolTy
+    ProdTy ls -> ProdTy $ L.map (cursorizeTy2 fn) ls
+    SymDictTy v _ -> SymDictTy v CursorTy
+    PDictTy k v   -> PDictTy (cursorizeTy2 fn k) (cursorizeTy2 fn v)
+    -- TODO: This needs to change such that we don't always blindly return a CursorTy. 
+    PackedTy k l    -> fn (toVar k) l
+    VectorTy el_ty' -> VectorTy $ cursorizeTy2 fn el_ty'
+    ListTy el_ty'   -> ListTy $ cursorizeTy2 fn el_ty'
+    PtrTy    -> PtrTy
+    CursorTy -> CursorTy
+    MutableCursorTy -> MutableCursorTy
     ArenaTy  -> ArenaTy
     SymSetTy -> SymSetTy
     SymHashTy-> SymHashTy

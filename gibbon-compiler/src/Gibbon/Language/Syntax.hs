@@ -19,7 +19,7 @@ module Gibbon.Language.Syntax
   , lookupDataCon', insertDD, emptyDD, fromListDD, isVoidDDef
 
     -- * Function definitions
-  , FunctionTy(..), FunDefs, FunDef(..), FunMeta(..), FunRec(..), FunInline(..)
+  , FunctionTy(..), FunDefs, FunDef(..), FunMeta(..), FunRec(..), FunInline(..), TailRecType(..)
   , insertFD, fromListFD, initFunEnv
 
     -- * Programs
@@ -187,6 +187,12 @@ data FunRec = Rec | NotRec | TailRec
 data FunInline = Inline | NoInline | Inlineable
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
+ -- ^ Type of tail recursive calls: NOTail | TC | TMC  
+data TailRecType =  NoTail
+                  | TC
+                  | TMC  
+  deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
+
 data FunMeta = FunMeta
   { funRec    :: FunRec
   , funInline :: FunInline
@@ -343,7 +349,7 @@ data PreExp (ext :: Type -> Type -> Type) loc dec =
    | CharE Char            -- ^ A character literal
    | FloatE Double         -- ^ Floating point literal
    | LitSymE Var           -- ^ A quoted symbol literal
-   | AppE Var [loc] [EXP]
+   | AppE (Var, TailRecType) [loc] [EXP]
      -- ^ Apply a top-level / first-order function.  Instantiate
      -- its type schema by providing location-variable arguments,
      -- if applicable.
@@ -568,6 +574,10 @@ data UrTy loc
         | CursorTy -- ^ A cursor for reading or writing, which may point
                    -- to an unkwown type or to a fraction of a complete value.
                    -- It is a machine pointer that can point to any byte.
+
+        | MutableCursorTy -- ^ A cursor for writing to an output location.
+                          -- It is a mutable cursor, the address that the 
+                          -- cursor points to changes. 
 
   deriving (Show, Read, Ord, Eq, Generic, NFData, Functor, Foldable, Traversable, Out)
 

@@ -7,6 +7,8 @@ import qualified Data.Map as M
 import           Data.Maybe (fromJust)
 import           Text.PrettyPrint.GenericPretty
 import           Data.Foldable ( foldrM )
+import           Prelude as P 
+import    qualified       Data.Set as S
 
 import           Gibbon.DynFlags
 import           Gibbon.Common
@@ -16,6 +18,7 @@ import           Gibbon.L3.Syntax hiding ( BoundsCheck, RetE, GetCilkWorkerNum, 
                                            TagCursor )
 import qualified Gibbon.L3.Syntax as L3
 import           Gibbon.Passes.AddRAN ( numRANsDataCon )
+import           Gibbon.Passes.Flatten        (flattenL3)
 
 {-
 
@@ -57,10 +60,10 @@ becomes
     add1 lout lin =
       let tag = readTag lin
       in case tag of
-           Leaf -> let n  = readInt tag
+           Leaf -> let n  = readInt (tag + 1)
                        wt = writeTag lout Leaf
                        wi = writeInt wt   (n+1)
-                   in (lin + 8, (lout, wi))
+                   in (lin + 9, (lout, wi))
            Node -> ...
 
 Every packed input becomes a read cursor. And it takes additional output cursors
@@ -68,6 +71,40 @@ for every packed type in the return value. Every packed return value becomes a
 (Cursor,Cursor) i.e (start,end). And it returns additional end_of_read cursors
 if the functions "traverses" it's input (more details in the paer).
 
+-}
+
+{-
+
+Mutable Cursor strategy:
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In case of a mutable cursor, we do not need to store a (Cursor, Cursor) for the start 
+and the end of a packed value. 
+In case a location referes to a mutable cursor, we can just keep a Mutable Cursor for
+that location. 
+
+Mutable Cursor version for add1Tree
+
+-- char* 
+type Cursor = Ptr Char 
+
+-- char**
+type MutableCursor = Ptr Ptr Char
+
+add1 :: Cursor -> Cursor -> (Cursor, MutableCursor)
+add1 lout lin = 
+  let tag = readTag lin 
+   in case tag of 
+        Leaf  -> let n = readInt (tag + 1) 
+                     () = writeTagMutable lout Leaf
+                     () = BumpMutableCursor lout 1  
+                     () = writeIntMutable lout (n+1)
+                     () = BumpMutableCursor lout 8
+                   in (lin + 9, lout)
+        Node -> ...
+
+Packed input still becomes a read cursor. 
+Packed output values becomes a mutable cursor.
 -}
 
 
@@ -82,6 +119,9 @@ type DepEnv = M.Map LocVar [(Var,[()],Ty3,Exp3)]
 -- | Things we cannot define until we see a join point. There's a Ty2 to so that
 -- we can extend the environment.
 type SyncEnv = M.Map Var [(Var,[()],Ty3,Ty2,Exp3)]
+
+-- | Env to store the projections, we want to release them immediately at the use site. 
+type LazyProjectionEnv = M.Map Var ([()], Ty3, Exp3)
 
 type OldTy2 = UrTy LocVar
 
@@ -116,7 +156,7 @@ cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funMeta} = do
       -- intuitive and can be improved.
 
       -- Input & output regions are always inserted before all other arguments.
-      regBinds = map toEndV (inRegs ++ outRegs)
+      regBinds = map toEndV (inRegs ++ outRegs) --dbgTraceIt (sdoc funName) dbgTraceIt (sdoc funTy') dbgTraceIt ("\n")
 
       -- Output cursors after that.
       outCurBinds = outLocs
@@ -138,6 +178,7 @@ cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funMeta} = do
          then fromDi <$> cursorizePackedExp ddefs fundefs M.empty initTyEnv M.empty funBody
          else cursorizeExp ddefs fundefs M.empty initTyEnv M.empty funBody
   let bod' = inCurBinds bod
+      --bod'' = dbgTraceIt ("Lazy proj") dbgTraceIt (sdoc (funName, funName)) dbgTraceIt ("End\n") evaluateProjectionsLazily M.empty bod'
       fn = FunDef funName funargs funTy' bod' funMeta
   return fn
 
@@ -215,7 +256,23 @@ This is used to create bindings for input location variables.
                      _  -> ProdTy $ out_curs ++ [unTy2 arrOut]
 
           -- Packed types in the output then become end-cursors for those same destinations.
-          newOut = mapPacked (\_ _ -> ProdTy [CursorTy, CursorTy]) out_ty
+          newOut = mapPacked (\_ l -> let locArg = filter (\(LRM l' _ m) -> l' == l) locVars
+                                       in case locArg of 
+                                           [LRM _ _ OutputMutable] -> ProdTy [MutableCursorTy, CursorTy]
+                                           _ -> ProdTy [CursorTy, CursorTy]
+                             ) out_ty
+            
+            
+            
+            
+            -- P.concatMap (\LRM{lrmLoc, lrmMode} -> if l == lrmLoc
+            --                                                           then
+            --                                                             case lrmMode of 
+            --                                                                     OutputMutable -> ProdTy [MutableCursorTy, CursorTy]
+            --                                                                     Output -> ProdTy [CursorTy, CursorTy]
+            --                                                           else ProdTy [CursorTy, CursorTy]                                                                                                                                       
+            --                                 ) locVars
+            --                 ) out_ty
 
           newOut' = case newOut of
                       SymDictTy a _ -> SymDictTy a CursorTy
@@ -223,15 +280,21 @@ This is used to create bindings for input location variables.
 
           -- Adding additional input arguments for the destination cursors to which outputs
           -- are written.
-          outCurs   = filter (\(LRM _ _ m) -> m == Output) locVars
-          outCurTys = map (\_ -> CursorTy) outCurs
+          outCursNonMutable   = filter (\(LRM _ _ m) -> m == Output) locVars
+          outCurTysNonMutable = map (\_ -> CursorTy) outCursNonMutable 
+
+          outCursMutable = filter (\(LRM _ _ m) -> m == OutputMutable) locVars
+          outCursTysMutable = map (\_ -> MutableCursorTy) outCursMutable --MutableCursorTy
+
           inRegs    = map (\_ -> CursorTy) (inRegVars ty)
-          in_tys    = inRegs ++ outRegs ++ outCurTys ++ (map unTy2 arrIns)
+          in_tys    = inRegs ++ outRegs ++ outCurTysNonMutable ++ outCursTysMutable ++ (map unTy2 arrIns)
 
           -- Packed types in the input now become (read-only) cursors.
           newIns    = map (constPacked CursorTy) in_tys
 
-      in (map stripTyLocs newIns, stripTyLocs newOut')
+          ty' = (map stripTyLocs newIns, stripTyLocs newOut')
+          --dbgTraceIt (sdoc (in_tys, outRegs, outCurTysNonMutable, outCursTysMutable, arrIns, ty, outLocVars ty))
+      in ty' 
 
 
 -- | Cursorize expressions NOT producing `Packed` values
@@ -333,8 +396,12 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
         -- is expressed in terms of corresponding cursor operations.
         -- See `cursorizeLocExp`
         LetLocE loc rhs bod -> do
-          let rhs_either = cursorizeLocExp denv tenv senv loc rhs
-              (bnds,tenv') = case M.lookup loc denv of
+          let (rhs_either, lTy) = cursorizeLocExp denv tenv senv (toLocVar loc) rhs
+              lTy' = case lTy of 
+                        MkTy2{unTy2} -> case unTy2 of 
+                                              CursorTy -> CursorTy
+                                              MutableCursorTy -> MutableCursorTy
+              (bnds,tenv') = case M.lookup (toLocVar loc) denv of
                                Nothing -> ([],tenv)
                                Just vs -> let extended = M.fromList [ (v,MkTy2 CursorTy) | (v,_,CursorTy,_) <- vs]
                                           in (vs, M.union extended tenv)
@@ -356,14 +423,14 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
               let tenv''' = M.union tenv' tenv''
               case rhs of
                 FromEndLE{} ->
-                  if isBound loc tenv
-                  then cursorizeExp ddfs fundefs denv (M.insert loc (MkTy2 CursorTy) tenv''') senv' bod
+                  if isBound (toLocVar loc) tenv
+                  then cursorizeExp ddfs fundefs denv (M.insert (toLocVar loc) (MkTy2 CursorTy) tenv''') senv' bod
                   -- Discharge bindings that were waiting on 'loc'.
-                  else mkLets (bnds' ++ [(loc,[],CursorTy,rhs')] ++ bnds) <$>
-                         cursorizeExp ddfs fundefs denv (M.insert loc (MkTy2 CursorTy) tenv''') senv' bod
+                  else mkLets (bnds' ++ [((toLocVar loc),[],lTy',rhs')] ++ bnds) <$>
+                         cursorizeExp ddfs fundefs denv (M.insert (toLocVar loc) (MkTy2 CursorTy) tenv''') senv' bod
                 -- Discharge bindings that were waiting on 'loc'.
-                _ -> mkLets (bnds' ++ [(loc,[],CursorTy,rhs')] ++ bnds) <$>
-                       cursorizeExp ddfs fundefs denv (M.insert loc (MkTy2 CursorTy) tenv''') senv bod
+                _ -> mkLets (bnds' ++ [((toLocVar loc),[],lTy',rhs')] ++ bnds) <$>
+                       cursorizeExp ddfs fundefs denv (M.insert (toLocVar loc) (MkTy2 CursorTy) tenv''') senv bod
             Left denv' -> cursorizeExp ddfs fundefs denv' tenv' senv bod
 
         -- Exactly same as cursorizePackedExp
@@ -373,7 +440,26 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
         LetParRegionE reg sz _ bod -> do
           mkLets (regionToBinds True reg sz) <$> go bod
 
-        BoundsCheck i bound cur -> return $ Ext $ L3.BoundsCheck i (toLocVar bound) (toLocVar cur)
+        BoundsCheck i bound cur -> do
+                                   case (isMutableCursorTy bound, isMutableCursorTy cur) of 
+                                        (True, True)   -> do 
+                                                          bound' <- gensym "newDerefBound"
+                                                          cur' <- gensym "newDerefCur"
+                                                          let newBoundCheckExpr = Ext $ L3.BoundsCheck i bound' cur'
+                                                          exp' <- genReadMutableCursor bound newBoundCheckExpr bound' 
+                                                          exp'' <- genReadMutableCursor cur exp' cur'
+                                                          return $ exp''
+                                        (False, True)  -> do 
+                                                          cur' <- gensym "newDerefCur"
+                                                          let newBoundCheckExpr = Ext $ L3.BoundsCheck i (toLocVar bound) cur'
+                                                          exp' <- genReadMutableCursor cur newBoundCheckExpr cur'
+                                                          return $ exp'
+                                        (True, False)  -> do 
+                                                          bound' <- gensym "newDerefBound"
+                                                          let newBoundCheckExpr = Ext $ L3.BoundsCheck i bound' (toLocVar cur)
+                                                          exp' <- genReadMutableCursor bound newBoundCheckExpr bound' 
+                                                          return $ exp'
+                                        (False, False) -> return $ Ext $ L3.BoundsCheck i (toLocVar bound) (toLocVar cur)
 
         FromEndE{} -> error $ "cursorizeExp: TODO FromEndE" ++ sdoc ext
 
@@ -383,9 +469,9 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
 
         LetAvail vs bod  -> Ext <$> L3.LetAvail vs <$> go bod
 
-        AllocateTagHere v tycon -> pure $ Ext $ L3.AllocateTagHere v tycon
+        AllocateTagHere v tycon -> pure $ Ext $ L3.AllocateTagHere (toLocVar v) tycon
 
-        AllocateScalarsHere v -> pure $ Ext $ L3.AllocateScalarsHere v
+        AllocateScalarsHere v -> pure $ Ext $ L3.AllocateScalarsHere (toLocVar v)
 
         SSPush a b c d -> pure $ Ext $ L3.SSPush a b c d
         SSPop a b c -> pure $ Ext $ L3.SSPop a b c
@@ -396,6 +482,24 @@ cursorizeExp ddfs fundefs denv tenv senv ex =
   where
     go = cursorizeExp ddfs fundefs denv tenv senv
 
+
+-- genDerefOrVar :: LocArg -> Exp3 -> Var -> PassM (Either Var Exp3)
+-- genDerefOrVar locArg bod var = case isMutableCursorTy locArg of 
+--                                   True -> genReadMutableCursor locArg bod 
+--                                   False -> 
+
+isMutableCursorTy :: LocArg -> Bool 
+isMutableCursorTy locArg = case locArg of 
+                                  Loc LREM{lremLoc, lremReg, lremEndReg, lremMode} -> case lremMode of 
+                                                                                          OutputMutable -> True 
+                                                                                          _ -> False
+                                  _ -> False
+
+genReadMutableCursor :: LocArg -> Exp3 -> Var -> PassM Exp3
+genReadMutableCursor locArg bod newCursor = do
+                                  let derefCursorExp = Ext $ L3.DerefMutableCursor (toLocVar locArg)
+                                  return $ LetE (newCursor, [], CursorTy, derefCursorExp) bod
+                              
 
 -- Cursorize expressions producing `Packed` values
 cursorizePackedExp :: DDefs Ty2 -> FunDefs2 -> DepEnv -> TyEnv Ty2 -> SyncEnv -> Exp2
@@ -507,17 +611,20 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
           mapM (unpackDataCon ddfs fundefs denv tenv senv True v) brs
 
     DataConE slocarg dcon args -> do
-      let sloc = toLocVar slocarg
+      let sloc = dbgTraceIt ("sloc arg: ") dbgTraceIt (sdoc slocarg) dbgTraceIt ("\n") toLocVar slocarg
+      let isMutableCur = isMutableCursorTy slocarg
+      let slocTy = if isMutableCur then MutableCursorTy else CursorTy
           -- Return (start,end) cursors
           -- The final return value lives at the position of the out cursors:
           go2 :: Bool -> Var -> [(Exp2, Ty2)] -> PassM Exp3
-          go2 marker_added d [] =
+          go2 marker_added d [] = do
+            let ret_prod = if isMutableCur then VarE sloc else MkProdE [VarE sloc, VarE d] 
             if not (marker_added)
             then do
               end_scalars_alloc <- gensym "end_scalars_alloc"
               return (LetE (end_scalars_alloc,[],ProdTy [],Ext $ EndScalarsAllocation sloc)
-                           (MkProdE [VarE sloc, VarE d]))
-            else return (MkProdE [VarE sloc, VarE d])
+                           (ret_prod))
+            else return ret_prod
 
           go2 marker_added d ((rnd, (MkTy2 ty)):rst) = do
             d' <- gensym "writecur"
@@ -529,25 +636,33 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
                  (if not marker_added
                   then LetE (end_scalars_alloc,[],ProdTy [],Ext $ EndScalarsAllocation sloc)
                   else id) <$>
-                   LetE (d',[], CursorTy, projEnds rnd') <$>
+                   LetE (d',[], slocTy, projEnds rnd') <$>
                    go2 True d' rst
 
               -- Int, Float, Sym, or Bool
               _ | isScalarTy ty -> do
                 rnd' <- cursorizeExp ddfs fundefs denv tenv senv rnd
-                LetE (d',[], CursorTy, Ext $ WriteScalar (mkScalar ty) d rnd') <$>
-                  go2 marker_added d' rst
+                case isMutableCur of 
+                  True -> do 
+                    deref_scalar_write <- gensym "deref_scalar_write"
+                    LetE (deref_scalar_write, [], CursorTy, Ext $ DerefMutableCursor d) <$>
+                      LetE (d', [], ProdTy [], Ext $ WriteScalarMutable (mkScalar ty) deref_scalar_write rnd') <$> 
+                      LetE (d, [], slocTy, Ext $ BumpMutableCursor d (LitE $ fromJust $ sizeOfTy ty)) <$>
+                      go2 marker_added d rst
+                  False -> do 
+                    LetE (d',[], slocTy, Ext $ WriteScalar (mkScalar ty) d rnd') <$>
+                            go2 marker_added d' rst
 
               -- Write a pointer to a vector
               VectorTy el_ty -> do
                 rnd' <- cursorizeExp ddfs fundefs denv tenv senv rnd
-                LetE (d',[], CursorTy, Ext $ WriteVector d rnd' (stripTyLocs el_ty)) <$>
+                LetE (d',[], slocTy, Ext $ WriteVector d rnd' (stripTyLocs el_ty)) <$>
                   go2 marker_added d' rst
 
               -- Write a pointer to a vector
               ListTy el_ty -> do
                 rnd' <- cursorizeExp ddfs fundefs denv tenv senv rnd
-                LetE (d',[], CursorTy, Ext $ WriteList d rnd' (stripTyLocs el_ty)) <$>
+                LetE (d',[], slocTy, Ext $ WriteList d rnd' (stripTyLocs el_ty)) <$>
                   go2 marker_added d' rst
 
               -- shortcut pointer
@@ -556,19 +671,34 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
                 LetE (d',[], CursorTy, Ext $ WriteTaggedCursor d rnd') <$>
                   go2 marker_added d' rst
               _ -> error $ "Unknown type encounterred while cursorizing DataConE. Type was " ++ show ty
-
-      writetag <- gensym "writetag"
-      after_tag <- gensym "after_tag"
-      start_tag_alloc <- gensym "start_tag_alloc"
-      end_tag_alloc <- gensym "end_tag_alloc"
-      start_scalars_alloc <- gensym "start_scalars_alloc"
-      dl <$>
-        LetE (start_tag_alloc,[],ProdTy [], Ext $ StartTagAllocation sloc) <$>
-        LetE (writetag,[], CursorTy, Ext $ WriteTag dcon sloc) <$>
-        LetE (end_tag_alloc,[],ProdTy [], Ext $ EndTagAllocation sloc) <$>
-        LetE (start_scalars_alloc,[],ProdTy [], Ext $ StartScalarsAllocation sloc) <$>
-        LetE (after_tag,[], CursorTy, Ext $ AddCursor sloc (L3.LitE 1)) <$>
-          go2 False after_tag (zip args (lookupDataCon ddfs dcon))
+      case isMutableCur of 
+          True -> do 
+                  writetag <- gensym "write_tag_mutable"
+                  deref_for_write <- gensym "deref_for_write"
+                  start_tag_alloc <- gensym "start_tag_alloc"
+                  end_tag_alloc <- gensym "end_tag_alloc"
+                  start_scalars_alloc <- gensym "start_scalars_alloc"
+                  dl <$>
+                    LetE (start_tag_alloc,[],ProdTy [], Ext $ StartTagAllocation sloc) <$>
+                    LetE (deref_for_write,[], CursorTy, Ext $ DerefMutableCursor sloc) <$>
+                    LetE (writetag,[], ProdTy [], Ext $ WriteTagMutable dcon deref_for_write) <$>
+                    LetE (end_tag_alloc,[],ProdTy [], Ext $ EndTagAllocation sloc) <$>
+                    LetE (start_scalars_alloc,[],ProdTy [], Ext $ StartScalarsAllocation sloc) <$>
+                    LetE (sloc,[], slocTy, Ext $ BumpMutableCursor sloc (L3.LitE 1)) <$>
+                      go2 False sloc (zip args (lookupDataCon ddfs dcon))
+          False -> do 
+                   writetag <- gensym "writetag"
+                   after_tag <- gensym "after_tag"
+                   start_tag_alloc <- gensym "start_tag_alloc"
+                   end_tag_alloc <- gensym "end_tag_alloc"
+                   start_scalars_alloc <- gensym "start_scalars_alloc"
+                   dl <$>
+                      LetE (start_tag_alloc,[],ProdTy [], Ext $ StartTagAllocation sloc) <$>
+                      LetE (writetag,[], slocTy, Ext $ WriteTag dcon sloc) <$>
+                      LetE (end_tag_alloc,[],ProdTy [], Ext $ EndTagAllocation sloc) <$>
+                      LetE (start_scalars_alloc,[],ProdTy [], Ext $ StartScalarsAllocation sloc) <$>
+                      LetE (after_tag,[], slocTy, Ext $ AddCursor sloc (L3.LitE 1)) <$>
+                        go2 False after_tag (zip args (lookupDataCon ddfs dcon))
 
     TimeIt e t b -> do
       Di e' <- go tenv senv e
@@ -587,8 +717,12 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
         -- is expressed in terms of corresponding cursor operations.
         -- See `cursorizeLocExp`
         LetLocE loc rhs bod -> do
-          let rhs_either = cursorizeLocExp denv tenv senv loc rhs
-              (bnds,tenv') = case M.lookup loc denv of
+          let (rhs_either, lTy) = cursorizeLocExp denv tenv senv (toLocVar loc) rhs
+              lTy' = case lTy of 
+                        MkTy2{unTy2} -> case unTy2 of 
+                                              CursorTy -> CursorTy
+                                              MutableCursorTy -> MutableCursorTy 
+              (bnds,tenv') = case M.lookup (toLocVar loc) denv of
                                Nothing -> ([],tenv)
                                Just vs -> let extended = M.fromList [ (v, MkTy2 CursorTy) | (v,_,CursorTy,_) <- vs]
                                           in (vs, M.union extended tenv)
@@ -597,14 +731,14 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
               let tenv''' = M.union tenv' tenv''
               case rhs of
                 FromEndLE{} ->
-                  if isBound loc tenv
-                  then go (M.insert loc (MkTy2 CursorTy) tenv''') senv' bod
+                  if isBound (toLocVar loc) tenv
+                  then go (M.insert (toLocVar loc) (MkTy2 CursorTy) tenv''') senv' bod
                     -- Discharge bindings that were waiting on 'loc'.
-                  else onDi (mkLets (bnds' ++ [(loc,[],CursorTy,rhs')] ++ bnds)) <$>
-                         go (M.insert loc (MkTy2 CursorTy) tenv') senv' bod
+                  else onDi (mkLets (bnds' ++ [((toLocVar loc),[],lTy',rhs')] ++ bnds)) <$>
+                         go (M.insert (toLocVar loc) (MkTy2 CursorTy) tenv') senv' bod
                 -- Discharge bindings that were waiting on 'loc'.
-                _ -> onDi (mkLets (bnds' ++ [(loc,[],CursorTy,rhs')] ++ bnds)) <$>
-                       go (M.insert loc (MkTy2 CursorTy) tenv''') senv' bod
+                _ -> onDi (mkLets (bnds' ++ [((toLocVar loc),[],lTy',rhs')] ++ bnds)) <$>
+                       go (M.insert (toLocVar loc) (MkTy2 CursorTy) tenv''') senv' bod
             Left denv' -> onDi (mkLets bnds) <$>
                             cursorizePackedExp ddfs fundefs denv' tenv' senv bod
 
@@ -641,10 +775,14 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
           else do
             start <- gensym "start"
             end <- gensym "end"
+            let fromTy = case from of 
+                        Loc LREM{lremMode} -> case lremMode of 
+                                                    OutputMutable -> MutableCursorTy
+                                                    _ -> CursorTy
             return $ Di $
               (mkLets [("_",[],ProdTy [],Ext (IndirectionBarrier tycon ((toLocVar from),(toLocVar from_reg),(toLocVar to),(toLocVar to_reg)))),
-                       (start, [], CursorTy, VarE (toLocVar from)),
-                       (end, [], CursorTy, Ext $ AddCursor (toLocVar from) (L3.LitE 9))]
+                       (start, [], fromTy, VarE (toLocVar from)),
+                       (end, [], fromTy, Ext $ AddCursor (toLocVar from) (L3.LitE 9))]
                  (MkProdE [VarE start, VarE end]))
 
         AddFixed{} -> error "cursorizePackedExp: AddFixed not handled."
@@ -654,9 +792,9 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
         LetAvail vs bod  -> do
           onDi (Ext . L3.LetAvail vs) <$> go tenv senv bod
 
-        AllocateTagHere v tycon -> pure <$> dl <$> Ext $ L3.AllocateTagHere v tycon
+        AllocateTagHere v tycon -> pure <$> dl <$> Ext $ L3.AllocateTagHere (toLocVar v) tycon
 
-        AllocateScalarsHere v -> pure <$> dl <$> Ext $ L3.AllocateScalarsHere v
+        AllocateScalarsHere v -> pure <$> dl <$> Ext $ L3.AllocateScalarsHere (toLocVar v)
 
         SSPush a b c d -> pure <$> dl <$> Ext $ L3.SSPush a b c d
         SSPop a b c -> pure <$> dl <$> Ext $ L3.SSPop a b c
@@ -691,14 +829,22 @@ cursorizeReadPackedFile ddfs fundefs denv tenv senv isPackedContext v path tyc r
 --
 -- i.e `loc_a` may not always be bound. If that's the case, don't process `loc_b`
 -- now. Instead, add it to the dependency environment.
-cursorizeLocExp :: DepEnv -> TyEnv Ty2 -> SyncEnv -> LocVar -> LocExp -> Either DepEnv (Exp3, [Binds Exp3], TyEnv Ty2, SyncEnv)
+cursorizeLocExp :: DepEnv -> TyEnv Ty2 -> SyncEnv -> LocVar -> LocExp -> (Either DepEnv (Exp3, [Binds Exp3], TyEnv Ty2, SyncEnv), Ty2)
 cursorizeLocExp denv tenv senv lvar locExp =
   case locExp of
     AfterConstantLE i loc ->
-      let rhs = Ext $ AddCursor (toLocVar loc) (LitE i)
+      let locTy = case loc of 
+                      Loc LREM{lremMode} -> case lremMode of
+                                                    OutputMutable -> MutableCursorTy
+                                                    _ -> CursorTy
+          locTy' = case loc of 
+                      Loc LREM{lremMode} -> case lremMode of
+                                                    OutputMutable -> MutableCursorTy
+                                                    _ -> CursorTy 
+          rhs = dbgTraceIt "Print loc here:" dbgTraceIt (sdoc (locTy, loc, lvar, isBound (toLocVar loc) tenv)) dbgTraceIt "End\n" Ext $ AddCursor (toLocVar loc) (LitE i)
       in if isBound (toLocVar loc) tenv
-         then Right (rhs, [], tenv, senv)
-         else Left$ M.insertWith (++) (toLocVar loc) [(lvar,[],CursorTy,rhs)] denv
+         then (Right (rhs, [], tenv, senv), MkTy2 locTy)
+         else (Left$ M.insertWith (++) (toLocVar loc) [(lvar,[],locTy',rhs)] denv, MkTy2 locTy)
     -- TODO: handle product types here
 
 {- [2018.03.07]:
@@ -712,7 +858,15 @@ For BigInfinite regions, this is simple:
 But Infinite regions do not support sizes yet. Re-enable this later.
 -}
     AfterVariableLE v locarg was_stolen -> do
-      let vty = case M.lookup v tenv of
+      let locTy = case locarg of 
+                      Loc LREM{lremMode} -> case lremMode of
+                                                    OutputMutable -> MutableCursorTy
+                                                    _ -> CursorTy
+          locTy' = case locarg of 
+                      Loc LREM{lremMode} -> case lremMode of
+                                                    OutputMutable -> MutableCursorTy
+                                                    _ -> CursorTy                                
+          vty = case M.lookup v tenv of
                   Just ty -> ty
                   Nothing -> case M.lookup v senv of
                                Just pending_bnds ->
@@ -751,32 +905,41 @@ But Infinite regions do not support sizes yet. Re-enable this later.
                   oth -> error $ "cursorizeLocExp: AfterVariable TODO " ++ sdoc oth
       if isBound loc tenv
       then if was_stolen
-           then Right (bod, [], tenv, senv)
+           then (Right (bod, [], tenv, senv), MkTy2 locTy)
            -- The continuation was not stolen. It's safe to discharge all
            -- pending bindings of this particular variable.
            else do
               case M.lookup v senv of
-                Nothing -> Right (bod, [], tenv, senv)
+                Nothing -> (Right (bod, [], tenv, senv), MkTy2 locTy)
                 Just pending_bnds -> do
                   let tenv' = foldr (\(v1,_,_,ty2,_) env -> M.insert v1 ty2 env) tenv pending_bnds
                       bnds  = map (\(a,b,c,_,e) -> (a,b,c,e)) pending_bnds
-                  Right (bod, bnds, tenv', M.delete v senv)
-      else Left $ M.insertWith (++) loc [(lvar,[],CursorTy,bod)] denv
+                  (Right (bod, bnds, tenv', M.delete v senv), MkTy2 locTy)
+      else (Left $ M.insertWith (++) loc [(lvar,[],locTy',bod)] denv, MkTy2 locTy)
 
     FromEndLE locarg ->
-                   let loc = toLocVar locarg in
+                   let  locTy = case locarg of 
+                                Loc LREM{lremMode} -> case lremMode of
+                                                            OutputMutable -> MutableCursorTy
+                                                            _ -> CursorTy 
+                        locTy' = case locarg of 
+                                Loc LREM{lremMode} -> case lremMode of
+                                                            OutputMutable -> MutableCursorTy
+                                                            _ -> CursorTy
+                        loc = toLocVar locarg
+                     in
                      if isBound loc tenv
-                     then Right (VarE loc, [], tenv, senv)
-                     else Left$ M.insertWith (++) loc [(lvar,[],CursorTy,VarE loc)] denv
+                     then (Right (VarE loc, [], tenv, senv), MkTy2 locTy)
+                     else (Left$ M.insertWith (++) loc [(lvar,[],locTy',VarE loc)] denv, MkTy2 locTy)
     StartOfRegionLE r   -> case r of
-                       GlobR v _ -> Right (VarE v, [], tenv, senv)
-                       VarR v    -> Right (VarE v, [], tenv, senv)
-                       DynR v _  -> Right (VarE v, [], tenv, senv)
+                       GlobR v _ -> (Right (VarE v, [], tenv, senv), MkTy2 CursorTy)
+                       VarR v    -> (Right (VarE v, [], tenv, senv), MkTy2 CursorTy)
+                       DynR v _  -> (Right (VarE v, [], tenv, senv), MkTy2 CursorTy)
                        -- TODO: docs
-                       MMapR _v   -> Left denv
+                       MMapR _v   -> (Left denv, MkTy2 CursorTy)
 
 
-    FreeLE -> Left denv -- AUDIT: should we just throw away this information?
+    FreeLE -> (Left denv, MkTy2 CursorTy) -- AUDIT: should we just throw away this information?
 
     InRegionLE{}  -> error $ "cursorizeExp: TODO InRegionLE"
 
@@ -791,7 +954,7 @@ But Infinite regions do not support sizes yet. Re-enable this later.
 cursorizeAppE :: DDefs Ty2 -> FunDefs2 -> DepEnv -> TyEnv Ty2 -> SyncEnv -> Exp2 -> PassM Exp3
 cursorizeAppE ddfs fundefs denv tenv senv ex =
   case ex of
-    AppE f locs args -> do
+    AppE (f, t) locs args -> do
       let fnTy   = case M.lookup f fundefs of
                      Just g -> funTy g
                      Nothing -> error $ "Unknown function: " ++ sdoc f
@@ -808,8 +971,8 @@ cursorizeAppE ddfs fundefs denv tenv senv ex =
                  (zip in_tys args)
       let starts = zipWith giveStarts (map unTy2 argTys) args'
       let bod = case locs of
-                  [] -> AppE f [] starts
-                  _  -> AppE f [] ([VarE (toLocVar loc) | loc <- outs] ++ starts)
+                  [] -> AppE (f, t) [] starts
+                  _  -> AppE (f, t) [] ([VarE (toLocVar loc) | loc <- outs] ++ starts)
       asserts <- foldrM (\loc acc ->
                            case loc of
                              Loc LREM{lremEndReg,lremLoc} -> do
@@ -923,11 +1086,16 @@ cursorizeSpawn isPackedContext ddfs fundefs denv tenv senv ex = do
     LetE (v, locs, MkTy2 ty, (SpawnE fn applocs args)) bod
 
       | isPackedTy ty -> do
-          rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs denv tenv senv (AppE fn applocs args)
+          rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs denv tenv senv (AppE (fn, NoTail) applocs args)
           let rhs'' = case rhs' of
-                        AppE fn' applocs' args' -> SpawnE fn' applocs' args'
+                        AppE (fn', _) applocs' args' -> SpawnE fn' applocs' args'
                         _ -> error "cursorizeSpawn"
           fresh <- gensym "tup_packed"
+          -- let lambdaTy = (\_ l -> let locArg = filter (\(LRM l' _ m) -> l' == l) locVars
+          --                              in case locArg of 
+          --                                  [LRM _ _ OutputMutable] -> ProdTy [MutableCursorTy, CursorTy]
+          --                                  _ -> ProdTy [CursorTy, CursorTy]
+          --                )
           let ty' = case locs of
                       [] -> cursorizeTy ty
                       xs -> ProdTy ([CursorTy | _ <- xs] ++ [cursorizeTy ty])
@@ -959,9 +1127,9 @@ cursorizeSpawn isPackedContext ddfs fundefs denv tenv senv ex = do
           return $ mkLets bnds bod''
 
       | hasPacked ty -> do
-          rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs denv tenv senv (AppE fn applocs args)
+          rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs denv tenv senv (AppE (fn, NoTail) applocs args)
           let rhs'' = case rhs' of
-                        AppE fn' applocs' args' -> SpawnE fn' applocs' args'
+                        AppE (fn', _) applocs' args' -> SpawnE fn' applocs' args'
                         _ -> error $ "cursorizeSpawn: this should've been an AppE. Got" ++ sdoc rhs'
           fresh <- gensym "tup_haspacked"
           let ty' = case locs of
@@ -981,9 +1149,9 @@ cursorizeSpawn isPackedContext ddfs fundefs denv tenv senv ex = do
               mkLets bnds <$> go tenv' senv' bod
 
       | otherwise -> do
-          rhs' <- cursorizeExp ddfs fundefs denv tenv senv (AppE fn applocs args)
+          rhs' <- cursorizeExp ddfs fundefs denv tenv senv (AppE (fn, NoTail) applocs args)
           let rhs'' = case rhs' of
-                        AppE fn' applocs' args' -> SpawnE fn' applocs' args'
+                        AppE (fn', _) applocs' args' -> SpawnE fn' applocs' args'
                         _ -> error "cursorizeSpawn"
           case locs of
             [] -> LetE (v,[],curDict $ stripTyLocs ty, rhs'') <$>
@@ -1056,13 +1224,27 @@ cursorizeLet isPackedContext ddfs fundefs denv tenv senv (v,locs,(MkTy2 ty),rhs)
     | isPackedTy ty = do
         rhs' <- fromDi <$> cursorizePackedExp ddfs fundefs denv tenv senv rhs
         fresh <- gensym "tup_packed"
+        let getLocTy = (\l -> case l of 
+                                    Loc LREM{lremLoc, lremReg, lremEndReg, lremMode} -> case lremMode of
+                                                                                      OutputMutable -> MutableCursorTy
+                                                                                      _ -> CursorTy 
+                                    EndWitness LREM{lremMode} v -> case lremMode of 
+                                                                          OutputMutable -> MutableCursorTy
+                                                                          _ -> CursorTy
+                                    _ -> CursorTy        
+                         )
+        -- let lambdaTy = (\_ l -> let locArg = filter (\(LRM l' _ m) -> l' == l) locVars
+        --                               in case locArg of 
+        --                                   [LRM _ _ OutputMutable] -> ProdTy [MutableCursorTy, CursorTy]
+        --                                   _ -> ProdTy [CursorTy, CursorTy]
+        --                 )
         let ty' = case locs of
                     [] -> cursorizeTy ty
-                    xs -> ProdTy ([CursorTy | _ <- xs] ++ [cursorizeTy ty])
+                    xs -> dbgTraceIt "Print in cursorize Let" dbgTraceIt (sdoc (xs, ty, rhs', fresh)) dbgTraceIt "Print End\n." ProdTy (P.map getLocTy xs ++ [cursorizeTy ty])
 
             tenv' = L.foldr (\(a,b) acc -> M.insert a b acc) tenv $
                       [(v, MkTy2 ty),(fresh, MkTy2 ty'),(toEndV v, MkTy2 (projTy 1 ty'))] ++
-                      [(toLocVar loc,MkTy2 CursorTy) | loc <- locs]
+                      [(toLocVar loc,MkTy2 $ getLocTy loc) | loc <- locs]
 
             -- TyEnv Ty2 and L3 expresssions are tagged with different types
             ty''  = curDict $ stripTyLocs ty'
@@ -1491,7 +1673,12 @@ unpackDataCon ddfs fundefs denv1 tenv1 senv isPacked scrtCur (dcon,vlocs1,rhs) =
           case (vlocs, tys) of
             ([], []) -> processRhs denv tenv
             ((v,locarg):rst_vlocs, (MkTy2 ty):rst_tys) ->
-              let loc = toLocVar locarg in
+              let loc = toLocVar locarg
+                  locTy = case locarg of 
+                                 Loc LREM{lremMode} -> case lremMode of 
+                                                              OutputMutable -> MutableCursorTy
+                                                              _ -> CursorTy
+                in
               case ty of
                 -- Int, Sym, or Bool
                 _ | isScalarTy ty -> do
@@ -1517,13 +1704,13 @@ unpackDataCon ddfs fundefs denv1 tenv1 senv isPacked scrtCur (dcon,vlocs1,rhs) =
                       loc_binds = case M.lookup v indirections_env of
                                     -- This is the first packed value. We can unpack this.
                                     Nothing ->
-                                      [(loc, [], CursorTy, VarE cur)]
+                                      [(loc, [], locTy, VarE cur)]
                                     -- We need to access this using a random access node
                                     Just (_var_loc, (ind_var, ind_loc)) ->
-                                      [ (tmp_loc,[],CursorTy, Ext $ AddCursor ind_loc (VarE ind_var))
-                                      , (loc,[],CursorTy, Ext $ AddCursor tmp_loc (LitE 8)) ]
+                                      [ (tmp_loc,[],locTy, Ext $ AddCursor ind_loc (VarE ind_var))
+                                      , (loc,[],locTy, Ext $ AddCursor tmp_loc (LitE 8)) ]
                   bod <- go (toEndV v) rst_vlocs rst_tys indirections_env denv tenv'
-                  return $ mkLets  (loc_binds ++ [(v, [], CursorTy, VarE loc)]) bod
+                  return $ mkLets (loc_binds ++ [(v, [], locTy, VarE loc)]) bod
 
                 _ -> error $ "unpackWithRelRAN: Unexpected field " ++ sdoc (v,loc) ++ ":" ++ sdoc ty
 
@@ -1640,3 +1827,356 @@ mkDi x ls  = Di $ MkProdE [x, MkProdE ls]
 curDict :: UrTy a -> UrTy a
 curDict (SymDictTy ar _ty) = SymDictTy ar CursorTy
 curDict ty = ty
+
+evaluateProjectionsLazily :: LazyProjectionEnv -> Exp3 -> Exp3
+evaluateProjectionsLazily env exp3 = let 
+                                         (env', exp3') = releaseProjetions env exp3
+                                       in dbgTraceIt (sdoc $ (M.elems env', M.elems env')) exp3'
+
+
+collectProjections :: LazyProjectionEnv -> Exp3 -> (LazyProjectionEnv, Exp3) 
+collectProjections env exp = case exp of 
+  VarE{}    -> (env, exp)
+  LitE{}    -> (env, exp)
+  CharE{}   -> (env, exp)
+  FloatE{}  -> (env, exp)
+  LitSymE v -> (env, exp)
+  AppE (v, t) locs args -> let results = P.map (collectProjections env) args  
+                               env' = M.unions $ P.map fst results
+                               args' = P.map snd results 
+                             in (M.union env env', AppE (v, t) locs args')
+  PrimAppE p args -> let results = P.map (collectProjections env) args  
+                         env' = M.unions $ P.map fst results
+                         args' = P.map snd results 
+                       in (M.union env env', PrimAppE p args') 
+  LetE (v,loc,ty,rhs) bod -> case rhs of 
+                                  ProjE i e -> let env' = M.insert v (loc, ty, rhs) env  
+                                                   (env'', bod') =  collectProjections env' bod 
+                                                 in if M.null env''
+                                                    then dbgTraceIt ("Here") dbgTraceIt (sdoc (env', M.elems env', env'', M.elems env'')) dbgTraceIt ("Here End\n") (M.union env env', bod')
+                                                    else dbgTraceIt ("Here") dbgTraceIt (sdoc (env', M.elems env', env'', M.elems env'')) dbgTraceIt ("Here End\n") (M.union env env'', bod')
+                                  _ -> let (env', rhs') = dbgTraceIt ("Here1") collectProjections env rhs
+                                           (env'', bod') = dbgTraceIt ("Here2") collectProjections env' bod 
+                                         in if M.null env''
+                                            then (M.union env env', LetE (v, loc, ty, rhs') bod')
+                                            else (M.union env env'', LetE (v, loc, ty, rhs') bod')
+  IfE a b c  -> let (env', a') = collectProjections env a 
+                    (env'', b') = collectProjections env' b
+                    (env''', c') = collectProjections env'' c
+                  in (M.unions [env, env', env'', env'''], IfE a' b' c')
+  -- MkProdE ls -> let results = P.map (collectProjections env) ls  
+  --                   env' = M.unions $ P.map fst results
+  --                   ls' = P.map snd results 
+  --                 in (env', MkProdE ls')
+  MkProdE ls -> (env, exp) 
+  ProjE i e  -> let (env', e') = collectProjections env e 
+                 in (env', ProjE i e')
+  CaseE scrt brs -> let results = P.map (\(a, b, c) -> let (env', c') = collectProjections env c  
+                                                         in (env', (a, b, c'))
+                                        ) brs
+                        env'' = M.unions $ P.map fst results 
+                        brs' = P.map snd results
+                     in (M.union env env'', CaseE scrt brs') 
+  DataConE loc dcon ls -> let results = P.map (collectProjections env) ls  
+                              env' = M.unions $ P.map fst results
+                              ls' = P.map snd results 
+                            in (M.union env env', DataConE loc dcon ls') 
+  TimeIt e d b   -> let (env', e') = collectProjections env e
+                     in (M.union env env', TimeIt e' d b)
+  WithArenaE v e -> let (env', e') = collectProjections env e
+                     in (M.union env env', WithArenaE v e')
+  SpawnE v locs ls  -> let results = P.map (collectProjections env) ls  
+                           env' = M.unions $ P.map fst results
+                           ls' = P.map snd results
+                         in (M.union env env', SpawnE v locs ls')
+  SyncE -> (env, SyncE)
+  Ext ext ->
+    case ext of
+      WriteScalar a b ex -> let (env', ex') = collectProjections env ex
+                              in (M.union env env', Ext $ WriteScalar a b ex')
+      AddCursor c ex -> let (env', ex') = collectProjections env ex
+                          in (M.union env env', Ext $ AddCursor c ex')
+      SubPtr{} -> (env, exp)
+      WriteCursor c ex -> let (env', ex') = collectProjections env ex
+                           in (M.union env env', Ext $ WriteCursor c ex')
+      --TagCursor{}    -> (env, exp)
+      ReadScalar{}   -> (env, exp)
+      ReadTag{}      -> (env, exp)
+      WriteTag{}     -> (env, exp)
+      ReadList{}     -> (env, exp)
+      WriteList a ex b -> let (env', ex') = collectProjections env ex
+                           in (M.union env env', Ext $ WriteList a ex' b)
+      ReadVector{}     -> (env, exp)
+      WriteVector a ex b -> let (env', ex') = collectProjections env ex
+                              in (M.union env env', Ext $ WriteVector a ex' b)
+      NewBuffer{}        -> (env, exp)
+      NewParBuffer{}     -> (env, exp)
+      ScopedBuffer{}     -> (env, exp)
+      ScopedParBuffer{}  -> (env, exp)
+      EndOfBuffer{}      -> (env, exp)
+      MMapFileSize{}     -> (env, exp)
+      SizeOfPacked{}     -> (env, exp)
+      SizeOfScalar{}     -> (env, exp)
+      --BoundsCheck{}      -> (env, exp)
+      ReadCursor{}       -> (env, exp)
+      WriteTaggedCursor{}-> (env, exp)
+      ReadTaggedCursor{} -> (env, exp)
+      IndirectionBarrier{} -> (env, exp)
+      NullCursor         -> (env, exp)
+      BumpArenaRefCount{}-> error "collect_syms: BumpArenaRefCount not handled."
+      --RetE locs ls -> let results = P.map (collectProjections env) ls  
+      --                    env' = M.unions $ P.map fst results
+      --                    ls' = P.map snd results 
+      --                  in (env', Ext $ RetE locs ls')
+      --GetCilkWorkerNum -> (env, exp)
+      --LetAvail a bod   -> let (env', bod') = collectProjections env bod
+      --                      in (env', Ext $ LetAvail a bod')
+      --AllocateTagHere{} -> (env, exp)
+      --AllocateScalarsHere{} -> (env, exp)
+      StartTagAllocation{} -> (env, exp)
+      EndTagAllocation{} -> (env, exp)
+      StartScalarsAllocation{} -> (env, exp)
+      EndScalarsAllocation{} -> (env, exp)
+      --SSPush{} -> (env, exp)
+      --SSPop{} -> (env, exp)
+      Assert ex -> let (env', ex') = collectProjections env ex
+                     in (M.union env env', Ext $ Assert ex)
+      _ -> (env, exp)
+  MapE{}         -> (env, exp)
+  FoldE{}        -> (env, exp)
+
+
+releaseProjetions :: LazyProjectionEnv -> Exp3 -> (LazyProjectionEnv, Exp3)
+releaseProjetions env exp = case exp of 
+  VarE v    -> case M.lookup v env of  
+                          Just (loc, ty, exp) -> let exp' = dbgTraceIt (sdoc v) LetE (v, loc, ty, exp) $ VarE v 
+                                                     env' = M.delete v env 
+                                                  in (env', exp')
+                          Nothing -> (env, exp)
+  LitE{}    -> (env, exp)
+  CharE{}   -> (env, exp)
+  FloatE{}  -> (env, exp)
+  LitSymE v -> case M.lookup v env of  
+                          Just (loc, ty, exp) -> let exp' = LetE (v, loc, ty, exp) $ LitSymE v 
+                                                     env' = M.delete v env 
+                                                  in (env', exp')
+                          Nothing -> (env, exp)
+  AppE (v, t) locs args -> let results = P.map (releaseProjetions env) args  
+                               env' = M.unions $ P.map fst results
+                               args' = P.map snd results 
+                             in (env', AppE (v, t) locs args')
+  PrimAppE p args -> let results = P.map (releaseProjetions env) args  
+                         env' = M.unions $ P.map fst results
+                         args' = P.map snd results 
+                       in (env', PrimAppE p args') 
+  LetE (v,loc,ty,rhs) bod -> let (env', rhs') = releaseProjetions env rhs
+                                 (env'', bod') = releaseProjetions env bod 
+                               in (env'', LetE (v, loc, ty, rhs') bod')
+  IfE a b c  -> let (env', a') = releaseProjetions env a 
+                    (env'', b') = releaseProjetions env' b
+                    (env''', c') = releaseProjetions env'' c 
+                  in (env''', IfE a' b' c')
+  MkProdE ls -> let (env', exp') = replaceTuples env exp 
+                  in (env', exp')
+  ProjE i e  -> let (env', e') = releaseProjetions env e 
+                 in (env', ProjE i e')
+  CaseE scrt brs -> let brs' = P.map (\(a, b, c) -> let (env', c') = collectProjections env c
+                                                        (env'', c'') = dbgTraceIt ("Env at Case:") dbgTraceIt (sdoc $ (a, env', M.elems env')) dbgTraceIt ("End\n") releaseProjetions env' c'  
+                                                      in (a, b, c'')
+                                     ) brs
+                     in (env, CaseE scrt brs') 
+  DataConE loc dcon ls -> let results = P.map (releaseProjetions env) ls  
+                              env' = M.unions $ P.map fst results
+                              ls' = P.map snd results 
+                            in (env', DataConE loc dcon ls') 
+  TimeIt e d b   -> let (env', e') = releaseProjetions env e
+                     in (env', TimeIt e' d b)
+  WithArenaE v e -> let (env', e') = releaseProjetions env e
+                     in (env', WithArenaE v e')
+  SpawnE v locs ls  -> let results = P.map (releaseProjetions env) ls  
+                           env' = M.unions $ P.map fst results
+                           ls' = P.map snd results
+                         in (env', SpawnE v locs ls')
+  SyncE -> (env, SyncE)
+  Ext ext ->
+    case ext of
+      WriteScalar a v ex -> let gf = gFreeVars ex
+                                freeVars = S.toList $ S.union (S.singleton v) gf
+                                newEnv = P.foldr (\v e -> M.delete v e) env freeVars
+                                (env'', ex') = releaseProjetions newEnv ex 
+                                (env''', letLst) = P.foldr (\v (e'', expr) -> case M.lookup v e'' of 
+                                                                                    Nothing -> (e'', expr)
+                                                                                    Just (loc', ty', expr') -> let e''' = M.delete v e''
+                                                                                                                 in (e''', LetE (v, loc', ty', expr') $ expr)
+                                                       ) (env, Ext $ WriteScalar a v ex') freeVars
+                             in (env'', letLst)
+      AddCursor c ex -> let gf = gFreeVars ex
+                            freeVars = S.toList $ S.union (S.singleton c) gf
+                            newEnv = P.foldr (\v e -> M.delete v e) env freeVars
+                            (env'', ex') = releaseProjetions newEnv ex 
+                            (env''', letLst) = P.foldr (\v (e'', expr) -> case M.lookup v e'' of 
+                                                                                    Nothing -> (e'', expr)
+                                                                                    Just (loc', ty', expr') -> let e''' = M.delete v e''
+                                                                                                                 in (e''', LetE (v, loc', ty', expr') $ expr)
+                                                       ) (env, Ext $ AddCursor c ex') freeVars
+                          in (env'', letLst)
+        -- case M.lookup c env of 
+        --                           Just (loc, ty, rhs) -> let env' = M.delete c env 
+        --                                                      (env'', ex') = releaseProjetions env' ex
+        --                                                    in (env'', LetE (c, loc, ty, rhs) $ Ext $ AddCursor c ex')  
+        
+        --                           Nothing -> let (env', ex') = releaseProjetions env ex
+        --                                       in (env', Ext $ AddCursor c ex')
+      SubPtr{} -> (env, exp)
+      WriteCursor c ex -> let (env', ex') = releaseProjetions env ex
+                           in (env', Ext $ WriteCursor c ex')
+      --TagCursor{}    -> (env, exp)
+      ReadScalar{}   -> (env, exp)
+      ReadTag{}      -> (env, exp)
+      WriteTag{}     -> (env, exp)
+      ReadList{}     -> (env, exp)
+      WriteList a ex b -> let (env', ex') = releaseProjetions env ex
+                           in (env', Ext $ WriteList a ex' b)
+      ReadVector{}     -> (env, exp)
+      WriteVector a ex b -> let (env', ex') = releaseProjetions env ex
+                              in (env', Ext $ WriteVector a ex' b)
+      NewBuffer{}        -> (env, exp)
+      NewParBuffer{}     -> (env, exp)
+      ScopedBuffer{}     -> (env, exp)
+      ScopedParBuffer{}  -> (env, exp)
+      EndOfBuffer{}      -> (env, exp)
+      MMapFileSize{}     -> (env, exp)
+      SizeOfPacked{}     -> (env, exp)
+      SizeOfScalar{}     -> (env, exp)
+      --BoundsCheck{}      -> (env, exp)
+      ReadCursor{}       -> (env, exp)
+      WriteTaggedCursor{}-> (env, exp)
+      ReadTaggedCursor{} -> (env, exp)
+      IndirectionBarrier{} -> (env, exp)
+      NullCursor         -> (env, exp)
+      BumpArenaRefCount{}-> error "collect_syms: BumpArenaRefCount not handled."
+      --RetE locs ls -> let results = P.map (releaseProjetions env) ls  
+      --                    env' = M.unions $ P.map fst results
+      --                    ls' = P.map snd results 
+      --                  in (env', Ext $ RetE locs ls')
+      --GetCilkWorkerNum -> (env, exp)
+      --LetAvail a bod   -> let (env', bod') = releaseProjetions env bod
+      --                      in (env', Ext $ LetAvail a bod')
+      --AllocateTagHere{} -> (env, exp)
+      --AllocateScalarsHere{} -> (env, exp)
+      StartTagAllocation{} -> (env, exp)
+      EndTagAllocation{} -> (env, exp)
+      StartScalarsAllocation{} -> (env, exp)
+      EndScalarsAllocation{} -> (env, exp)
+      --SSPush{} -> (env, exp)
+      --SSPop{} -> (env, exp)
+      Assert ex -> let (env', ex') = releaseProjetions env ex
+                     in (env', Ext $ Assert ex)
+      _ -> (env, exp)
+  MapE{}         -> (env, exp)
+  FoldE{}        -> (env, exp)
+
+
+replaceTuples :: LazyProjectionEnv -> Exp3 -> (LazyProjectionEnv, Exp3)
+replaceTuples env exp = case exp of
+  MkProdE [] -> (env, exp) 
+  MkProdE ls -> let nested_tuple = P.last ls
+                  in case nested_tuple of 
+                            MkProdE ls' -> let (res, exp', _ , env') = P.foldr lambda (True, Nothing, Nothing, env) ls'
+                                            in if res 
+                                               then let ls'' = P.init ls 
+                                                        ls''' = ls'' ++ [fromJust exp']
+                                                        (res', exp'', _ , env'') = dbgTraceIt ("Print new Prod: ") dbgTraceIt (sdoc (ls''', env')) dbgTraceIt ("\n") P.foldr lambda (True, Nothing, Nothing, env') ls'''
+                                                      in if res' 
+                                                         then dbgTraceIt ("Branch1: ") dbgTraceIt (sdoc (exp'')) dbgTraceIt ("\n") (env'', fromJust exp'')
+                                                         else let freeVarsInProd = P.concatMap (\exp -> S.toList $ gFreeVars exp) ls''' 
+                                                                  (env''', letLst) = P.foldr (\v (e'', expr) -> case M.lookup v e'' of 
+                                                                                                                    Nothing -> (e'', expr)
+                                                                                                                    Just (loc', ty', expr') -> let e''' = M.delete v e''
+                                                                                                                                                in (e''', LetE (v, loc', ty', expr') $ expr)
+                                                                                             ) (env', MkProdE ls''')  freeVarsInProd
+                                                               in dbgTraceIt ("Branch2: ") dbgTraceIt (sdoc (letLst)) dbgTraceIt ("\n") (env''', letLst) 
+                                               else let freeVarsInProd = P.concatMap (\exp -> S.toList $ gFreeVars exp) ls
+                                                        (env''', letLst) = P.foldr (\v (e'', expr) -> case M.lookup v e'' of 
+                                                                                                                    Nothing -> (e'', expr)
+                                                                                                                    Just (loc', ty', expr') -> let e''' = M.delete v e''
+                                                                                                                                                in (e''', LetE (v, loc', ty', expr') $ expr)
+                                                                                   ) (env, MkProdE ls) freeVarsInProd
+                                                      in dbgTraceIt ("Branch2: ") dbgTraceIt (sdoc (letLst)) dbgTraceIt ("\n") (env''', letLst)
+                            _ -> let (res, exp', _, env') = P.foldr lambda (True, Nothing, Nothing, env) ls
+                                   in if res 
+                                      then (env', fromJust exp')
+                                      else let freeVarsInProd = P.concatMap (\exp -> S.toList $ gFreeVars exp) ls
+                                               (env''', letLst) = P.foldr (\v (e'', expr) -> case M.lookup v e'' of 
+                                                                                                                    Nothing -> (e'', expr)
+                                                                                                                    Just (loc', ty', expr') -> let e''' = M.delete v e''
+                                                                                                                                                in (e''', LetE (v, loc', ty', expr') $ expr)
+                                                                          ) (env, MkProdE ls) freeVarsInProd
+                                             in dbgTraceIt ("Branch2: ") dbgTraceIt (sdoc (letLst)) dbgTraceIt ("\n") (env''', letLst)
+ where
+  lambda = (\expr (accum, tup, fVars, env') -> case expr of 
+                                                   VarE v -> case M.lookup v env' of 
+                                                                        Just (loc, ty, exp) -> if accum == False 
+                                                                                                then (accum && False, tup, fVars, env')
+                                                                                                else
+                                                                                                  case exp of 
+                                                                                                        ProjE i exp' -> let freeVars = gFreeVars exp' 
+                                                                                                                            env'' = M.delete v env'
+                                                                                                                          in case (tup, fVars) of 
+                                                                                                                                  (Nothing, Nothing) -> (accum && True, Just exp', Just freeVars, env'')
+                                                                                                                                  (x, Just y) -> if y == freeVars 
+                                                                                                                                                then (accum && True, x, Just y, env'')
+                                                                                                                                                else (accum && False, x, Just y, env')  
+                                                                                                                                -- (Nothing, Just y) -> if y == freeVars 
+                                                                                                                                --                       then (True, Just exp', Just y, env''')
+                                                                                                                                --                       else (False, Just exp', Just y, env'') 
+                                                                                                                                -- (Just x, Nothing) -> (True, Just x, Just freeVars, env''')
+                                                                                                                                                                                                              
+              
+
+                                                                        Nothing -> (accum && False, tup, fVars, env')
+                                                   _ -> let fVars' = gFreeVars expr 
+                                                          in case fVars of 
+                                                                  Nothing -> (accum, tup, fVars, env') 
+                                                                  Just f ->  if f == fVars'
+                                                                             then (True && accum, tup, fVars, env')
+                                                                             else (False && accum, tup, fVars, env')     
+                                                    
+           )
+
+
+-- let (result, e, fv, env') = P.foldr (\ee (accum, tup, fvars, env'') -> case ee of 
+--                                                                                             VarE v -> case M.lookup v env'' of 
+--                                                                                                               Just (loc, ty, exp) -> if accum == False 
+--                                                                                                                                      then (False, tup, fvars, env'')
+--                                                                                                                                      else
+--                                                                                                                                         case exp of 
+--                                                                                                                                               ProjE i exp' -> let freeVars = gFreeVars exp' 
+--                                                                                                                                                                   env''' = M.delete v env''
+--                                                                                                                                                                 in case (tup, fvars) of 
+--                                                                                                                                                                       (Nothing, Nothing) -> (True, Just exp', Just freeVars, env''')
+--                                                                                                                                                                       (x, Just y) -> if y == freeVars 
+--                                                                                                                                                                                      then (True, x, Just y, env''')
+--                                                                                                                                                                                      else (False, x, Just y, env'')  
+--                                                                                                                                                                       (Nothing, Just y) -> if y == freeVars 
+--                                                                                                                                                                                            then (True, Just exp', Just y, env''')
+--                                                                                                                                                                                            else (False, Just exp', Just y, env'') 
+--                                                                                                                                                                       (Just x, Nothing) -> (True, Just x, Just freeVars, env''')
+                                                                                                                                                                                                                                                                                                                                        
+                                                                                                                                        
+                                                                                                                             
+--                                                                                                               Nothing -> (False, tup, fvars, env'')
+--                                                                                             _ -> let (env''', ee') = releaseProjetions env'' ee
+--                                                                                                   in (True, Just ee', fvars, env''')
+
+--                                                     ) (True, Nothing, Nothing, env) ls 
+--                   in if result 
+--                      then 
+--                       case e of 
+--                         Just exp -> (env', exp) 
+--                         Nothing -> (env, MkProdE ls) 
+--                      else
+--                       let results = P.map (releaseProjetions env) ls  
+--                           env' = M.unions $ P.map fst results
+--                           ls' = P.map snd results 
+--                        in (env', MkProdE ls')
