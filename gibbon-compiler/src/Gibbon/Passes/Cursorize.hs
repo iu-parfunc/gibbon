@@ -60,10 +60,10 @@ becomes
     add1 lout lin =
       let tag = readTag lin
       in case tag of
-           Leaf -> let n  = readInt tag
+           Leaf -> let n  = readInt (tag + 1)
                        wt = writeTag lout Leaf
                        wi = writeInt wt   (n+1)
-                   in (lin + 8, (lout, wi))
+                   in (lin + 9, (lout, wi))
            Node -> ...
 
 Every packed input becomes a read cursor. And it takes additional output cursors
@@ -71,6 +71,40 @@ for every packed type in the return value. Every packed return value becomes a
 (Cursor,Cursor) i.e (start,end). And it returns additional end_of_read cursors
 if the functions "traverses" it's input (more details in the paer).
 
+-}
+
+{-
+
+Mutable Cursor strategy:
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In case of a mutable cursor, we do not need to store a (Cursor, Cursor) for the start 
+and the end of a packed value. 
+In case a location referes to a mutable cursor, we can just keep a Mutable Cursor for
+that location. 
+
+Mutable Cursor version for add1Tree
+
+-- char* 
+type Cursor = Ptr Char 
+
+-- char**
+type MutableCursor = Ptr Ptr Char
+
+add1 :: Cursor -> Cursor -> (Cursor, MutableCursor)
+add1 lout lin = 
+  let tag = readTag lin 
+   in case tag of 
+        Leaf  -> let n = readInt (tag + 1) 
+                     () = writeTagMutable lout Leaf
+                     () = BumpMutableCursor lout 1  
+                     () = writeIntMutable lout (n+1)
+                     () = BumpMutableCursor lout 8
+                   in (lin + 9, lout)
+        Node -> ...
+
+Packed input still becomes a read cursor. 
+Packed output values becomes a mutable cursor.
 -}
 
 
@@ -144,8 +178,8 @@ cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funMeta} = do
          then fromDi <$> cursorizePackedExp ddefs fundefs M.empty initTyEnv M.empty funBody
          else cursorizeExp ddefs fundefs M.empty initTyEnv M.empty funBody
   let bod' = inCurBinds bod
-      bod'' = dbgTraceIt ("Lazy proj") dbgTraceIt (sdoc (funName, funName)) dbgTraceIt ("End\n") evaluateProjectionsLazily M.empty bod'
-      fn = FunDef funName funargs funTy' bod'' funMeta
+      --bod'' = dbgTraceIt ("Lazy proj") dbgTraceIt (sdoc (funName, funName)) dbgTraceIt ("End\n") evaluateProjectionsLazily M.empty bod'
+      fn = FunDef funName funargs funTy' bod' funMeta
   return fn
 
   where
@@ -583,13 +617,14 @@ cursorizePackedExp ddfs fundefs denv tenv senv ex =
           -- Return (start,end) cursors
           -- The final return value lives at the position of the out cursors:
           go2 :: Bool -> Var -> [(Exp2, Ty2)] -> PassM Exp3
-          go2 marker_added d [] =
+          go2 marker_added d [] = do
+            let ret_prod = if isMutableCur then VarE sloc else MkProdE [VarE sloc, VarE d] 
             if not (marker_added)
             then do
               end_scalars_alloc <- gensym "end_scalars_alloc"
               return (LetE (end_scalars_alloc,[],ProdTy [],Ext $ EndScalarsAllocation sloc)
-                           (MkProdE [VarE sloc, VarE d]))
-            else return (MkProdE [VarE sloc, VarE d])
+                           (ret_prod))
+            else return ret_prod
 
           go2 marker_added d ((rnd, (MkTy2 ty)):rst) = do
             d' <- gensym "writecur"
@@ -1205,7 +1240,7 @@ cursorizeLet isPackedContext ddfs fundefs denv tenv senv (v,locs,(MkTy2 ty),rhs)
         --                 )
         let ty' = case locs of
                     [] -> cursorizeTy ty
-                    xs -> dbgTraceIt "Print in cursorize Let" dbgTraceIt (sdoc (xs, ty)) dbgTraceIt "Print End\n." ProdTy (P.map getLocTy xs ++ [cursorizeTy ty])
+                    xs -> dbgTraceIt "Print in cursorize Let" dbgTraceIt (sdoc (xs, ty, rhs', fresh)) dbgTraceIt "Print End\n." ProdTy (P.map getLocTy xs ++ [cursorizeTy ty])
 
             tenv' = L.foldr (\(a,b) acc -> M.insert a b acc) tenv $
                       [(v, MkTy2 ty),(fresh, MkTy2 ty'),(toEndV v, MkTy2 (projTy 1 ty'))] ++

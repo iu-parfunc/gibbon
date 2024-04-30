@@ -36,8 +36,8 @@ markTailCallsFn ddefs f@FunDef{funName, funArgs, funTy, funMeta, funBody} = do
                 locVars
         funTy' = (ArrowTy2 locVars' arrIns _arrEffs arrOut _locRets _isPar)
         funBody'' = markMutableLocsAfterInitialPass env funBody'
-    funBody''' <- copyOutputMutableBeforeCallsAndReplace funBody''
-    return $ FunDef funName funArgs funTy' funBody''' funMeta
+    --funBody''' <- copyOutputMutableBeforeCallsAndReplace funBody''
+    return $ FunDef funName funArgs funTy' funBody'' funMeta
 
 --  if tailCallTy == TMC
 --  then
