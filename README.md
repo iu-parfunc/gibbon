@@ -25,29 +25,53 @@ similar to Typed Racket, and a small subset of Haskell.
 
 ## Building Gibbon
 
+### Getting Dependencies
+
 Gibbon is implemented in Haskell, and is set up to be built with
-[Cabal](https://cabal.readthedocs.io/en/3.4/).
-After you install Cabal, proceed to installing Gibbon's dependencies:
+[Cabal](https://cabal.readthedocs.io/en/latest/), but it has a number of native dependencies.
+Follow the instructions below to get all dependencies or enter the Nix shell
+with `nix-shell` to get them via [Nix](https://nix.dev/).
 
-- Ubuntu (works on 18.04, fails on 20.04<sup><a name="footnote1">1</a></sup>]):
+- Ubuntu 22.04:
+(Parallelism support temporarily not available with ubuntu 22.04 as Cilk support is not avaiable with newer gcc)
 
 ```
- $ sudo apt-get install libgc-dev libgmp-dev gcc-7 uthash-dev software-properties-common
- $ sudo add-apt-repository ppa:plt/racket && sudo apt update && sudo apt install racket
- $ sudo add-apt-repository ppa:hvr/ghc && sudo apt update && sudo apt install ghc-9.0.1 cabal-install-3.4
+ $ sudo apt-get update 
+ $ sudo apt-get install software-properties-common 
+ $ sudo apt-get install libgc-dev 
+ $ sudo apt-get install libgmp-dev 
+ $ sudo apt-get install build-essential 
+ $ sudo apt-get install uthash-dev 
+ $ sudo apt-get install vim wget curl
 ```
-- Add `/opt/ghc/bin` to path for `cabal` and `ghc` to work.
-- Install haskell stack using steps at `https://docs.haskellstack.org/en/stable/install_and_upgrade/` (works with stack `2.7.3`, the version in `18.04`, i.e. stack `1.5.1-1` gives `AesonException "Error in $['system-info']: key \"os\" not present"`)
-- Make gcc-7.5 the default gcc with `sudo ln -sf /usr/bin/gcc-7 /usr/bin/gcc`
 
-<sup>[1](#footnote1)</sup>  Header files `cilk/cilk.h` and `cilk/cilk_api.h` are not present in `libgcc-7-dev` which comes with `20.04`
+- Install Racket
 
+```
+ $ wget --no-check-certificate https://mirror.racket-lang.org/installers/7.5/racket-7.5-x86_64-linux.sh
+ $ chmod +x racket-7.5-x86_64-linux.sh
+ $ ./racket-7.5-x86_64-linux.sh
+```
 
-- OSX:
+- Install haskell, cabal, stack, hls using ghcup 
+
+```
+curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | BOOTSTRAP_HASKELL_NONINTERACTIVE=1 BOOTSTRAP_HASKELL_GHC_VERSION=9.4.6 BOOTSTRAP_HASKELL_CABAL_VERSION=3.8.1.0 BOOTSTRAP_HASKELL_INSTALL_STACK=1 BOOTSTRAP_HASKELL_INSTALL_HLS=1 BOOTSTRAP_HASKELL_ADJUST_BASHRC=P sh
+```
+
+- Install rust 
+
+```
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=1.71.0
+```
+
+- Add paths for cabal, ghcup, rust to bashrc
+
+- For Building on OSX:
 
 You can install some of the dependencies using [Homebrew](https://brew.sh/):
 
-    $ brew install libgc gmp gcc@7 ghc@9
+    $ brew install libgc gmp gcc ghc@9
 
 Others require a few extra steps:
 
@@ -55,21 +79,55 @@ Others require a few extra steps:
 
 2. [uthash](https://github.com/troydhanson/uthash): Clone the [repository](https://github.com/troydhanson/uthash) and copy all the `.h` files in `src` to `/usr/local/include`
 
+### Actually Building Gibbon
 
 After you have both Cabal and all the dependencies installed, you can build
 Gibbon from source:
 
     $ git clone https://github.com/iu-parfunc/gibbon
     $ cd gibbon && source set_env.sh
-    $ cd gibbon-compiler && cabal v2-build . -w ghc-9.0.1
+    $ cd gibbon-compiler && cabal v2-build
 
 At this point you can run the Gibbon executable:
 
-    $ cabal v2-exec -w ghc-9.0.1 gibbon -- -h
+    $ cabal v2-run gibbon -- -h
 
 If you'd like to run the testsuite, you can do so with:
 
-    $ cd $GIBBONDIR && ./run_all_tests.sh
+    $ ./run_all_tests.sh
+
+
+### Building a Developement docker container for Gibbon 
+
+To build the Dockerfile for dev purposes run the command below from the gibbon directory.
+
+```
+DOCKER_BUILDKIT=1 docker image build -t gibbon -f .devcontainer/Dockerfile .
+```
+Run the docker image using the following command. 
+
+```
+docker run -t -i gibbon
+``` 
+
+This image does not pre-populate the gibbon folder. Use git clone to clone gibbon into a folder. 
+Use instructions from before to build gibbon.
+
+## Building an Artifact version of Gibbon with the gibbon source code pre-populated 
+
+To build an image with the gibbon source code already in the image run 
+
+```
+DOCKER_BUILDKIT=1 docker image build -t gibbon -f .artifact/Dockerfile .
+```
+
+Run the container with 
+
+```
+docker run -t -i gibbon
+```
+
+This has the gibbon source code avaiable in /gibbon
 
 ## Using Gibbon
 

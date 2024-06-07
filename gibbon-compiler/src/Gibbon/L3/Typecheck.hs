@@ -7,6 +7,7 @@ module Gibbon.L3.Typecheck
   ( tcProg, tcExp ) where
 
 
+import Control.Monad
 import Control.Monad.Except
 import qualified Data.Map as M
 import qualified Data.List as L
@@ -324,7 +325,7 @@ tcExp isPacked ddfs env exp =
             _ <- ensureEqualTy (es !! 0) FloatTy (tys !! 0)
             _ <- ensureEqualTy (es !! 1) FloatTy (tys !! 1)
             pure BoolTy
-            
+
           char_cmps = do
             len2
             _ <- ensureEqualTy (es !! 0) CharTy (tys !! 0)
@@ -747,6 +748,7 @@ tcExp isPacked ddfs env exp =
 
         Write3dPpmFile{} -> throwError $ GenericTC "Write3dPpmFile not handled yet" exp
 
+        RequestEndOf{} -> throwError $ GenericTC "RequestEndOf not handled yet" exp
 
 
     LetE (v,[],SymDictTy _ _pty, rhs) e -> do

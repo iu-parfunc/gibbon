@@ -18,6 +18,7 @@ module Gibbon.L2.Typecheck
     where
 
 import           Control.DeepSeq
+import           Control.Monad
 import           Control.Monad.Except
 import           Data.Foldable ( foldlM )
 import qualified Data.Set as S
@@ -25,7 +26,6 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import           Data.Maybe
 import           Text.PrettyPrint.GenericPretty
-import           Debug.Trace
 
 import           Gibbon.Common
 import           Gibbon.L2.Syntax as L2
@@ -671,6 +671,8 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
                  Write3dPpmFile{} -> throwError $ GenericTC "Write3dPpmFile not handled yet" exp
 
+                 RequestEndOf{} -> throwError $ GenericTC  "tcExp of PrimAppE: RequestEndOf not handled yet" exp
+
 
       LetE (v,_ls,ty,e1) e2 -> do
 
@@ -733,7 +735,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                  sequence_ [ ensureEqualTyNoLoc exp ty1 ty2
                            | (ty1,ty2) <- zip args tys ]
                  -- -- TODO: need to fix this check
-                 -- ensureDataCon exp l tys constrs
+                 ensureDataCon exp l tys constrs
                  tstate2 <- switchOutLoc exp tstate1 l
                  return (PackedTy dcty l, tstate2)
 

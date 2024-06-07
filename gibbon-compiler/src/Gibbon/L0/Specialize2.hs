@@ -17,6 +17,7 @@ module Gibbon.L0.Specialize2
   (bindLambdas, monomorphize, specLambdas, desugarL0, toL1, floatOutCase)
   where
 
+import           Control.Monad
 import           Control.Monad.State
 import           Data.Foldable ( foldlM, foldrM )
 import qualified Data.Map as M
@@ -331,7 +332,8 @@ monomorphize p@Prog{ddefs,fundefs,mainExp} = do
   -- Step (5)
   let p5  = purgePolyDDefs p4
   let p5' = purgePolyFuns p5
-  -- Step (6)
+
+-- Step (6)
   tcProg p5'
   where
     toplevel = M.keysSet fundefs
@@ -586,7 +588,10 @@ collectMonoObls ddefs env2 toplevel ex =
         LambdaE args bod -> do
           bod' <- collectMonoObls ddefs (extendsVEnv (M.fromList args) env2) toplevel bod
           pure $ Ext $ LambdaE args bod'
-        PolyAppE{} -> error ("collectMonoObls: TODO, "++ sdoc ext)
+        PolyAppE op arg -> do
+          op' <- go op
+          arg' <- go arg
+          pure $ Ext $ PolyAppE op' arg'
         FunRefE tyapps f ->
           case tyapps of
             [] -> pure $ Ext $ FunRefE [] f
@@ -710,7 +715,10 @@ monoLambdas ex =
     TimeIt e ty b  -> (\e' -> TimeIt e' ty b) <$> go e
     WithArenaE v e -> (\e' -> WithArenaE v e') <$> go e
     Ext (LambdaE{})  -> error $ "monoLambdas: Encountered a LambdaE outside a let binding. In\n" ++ sdoc ex
-    Ext (PolyAppE{}) -> error $ "monoLambdas: TODO: " ++ sdoc ex
+    Ext (PolyAppE op args) -> do
+      op' <- go op
+      args' <- go args
+      pure $ Ext $ PolyAppE op' args'
     Ext (FunRefE{})  -> pure ex
     Ext (BenchE{})   -> pure ex
     Ext (ParE0 ls)   -> Ext <$> ParE0 <$> mapM monoLambdas ls
@@ -912,8 +920,9 @@ specLambdas prg@Prog{ddefs,fundefs,mainExp} = do
   (mainExp',sp_state'') <- runStateT spec_m emptySpecState
   -- Get rid of all higher order functions.
   let fundefs' = purgeHO (sp_fundefs sp_state'')
-      prg' = prg { mainExp = mainExp', fundefs = fundefs' }
-  -- Typecheck again.
+      prg' = prg {mainExp = mainExp', fundefs = fundefs'}
+
+-- Typecheck again.
   tcProg prg'
   where
     emptySpecState :: SpecState
@@ -959,21 +968,28 @@ specLambdasFun ddefs new_fn_name refs fn@FunDef{funArgs, funTy} = do
       env2 = Env2 venv (initFunEnv (sp_fundefs sp_state))
   funBody' <- specLambdasExp ddefs env2 (funBody fn')
   sp_state' <- get
-  let (funArgs''', funTy'') = case M.lookup new_fn_name (sp_extra_args sp_state') of
-                               Nothing -> (funArgs'', funTy')
-                               Just extra_args ->
-                                   let ForAll tyvars1 (ArrowTy arg_tys1 ret_ty1) = funTy'
-                                       (extra_vars, extra_tys) = unzip extra_args
-                                   in (funArgs'' ++ extra_vars, ForAll tyvars1 (ArrowTy (arg_tys1 ++ extra_tys) ret_ty1))
-  let fn''  = fn' { funBody = funBody'
-                  , funArgs = funArgs'''
-                  -- N.B. Only update the type after 'specExp' runs.
-                  , funTy   = funTy'' }
-  state (\st -> ((), st { sp_fundefs = M.insert new_fn_name fn'' (sp_fundefs st) }))
+  let (funArgs''', funTy'') =
+        case M.lookup new_fn_name (sp_extra_args sp_state') of
+          Nothing -> (funArgs'', funTy')
+          Just extra_args ->
+            let ForAll tyvars1 (ArrowTy arg_tys1 ret_ty1) = funTy'
+                (extra_vars, extra_tys) = unzip extra_args
+             in ( funArgs'' ++ extra_vars
+                , ForAll tyvars1 (ArrowTy (arg_tys1 ++ extra_tys) ret_ty1))
+  let fn'' =
+        fn'
+          { funBody = funBody'
+          , funArgs = funArgs'''
+
+-- N.B. Only update the type after 'specExp' runs.
+          , funTy = funTy''
+          }
+  state
+    (\st -> ((), st {sp_fundefs = M.insert new_fn_name fn'' (sp_fundefs st)}))
   where
     ForAll tyvars (ArrowTy arg_tys ret_ty) = funTy
 
-    -- TODO: What if the function returns another function ? Not handled yet.
+-- TODO: What if the function returns another function ? Not handled yet.
     -- First order type
     funTy' = ForAll tyvars (ArrowTy (filter (not . isFunTy) arg_tys) ret_ty)
 
@@ -1012,7 +1028,8 @@ specLambdasExp ddefs env2 ex =
               f' <- lift $ gensym f
               let (ForAll _ (ArrowTy as _)) = lookupFEnv f env2
                   arrow_tys = concatMap arrowTysInTy as
-              -- Check that the # of refs we collected actually matches the #
+
+-- Check that the # of refs we collected actually matches the #
               -- of functions 'f' expects.
               assertSameLength ("While lowering the expression " ++ sdoc ex) refs arrow_tys
               -- We have a new lowering obligation.
@@ -1228,10 +1245,13 @@ specLambdasExp ddefs env2 ex =
             PrintPacked _ty arg -> collectFunRefs arg acc
             CopyPacked _ty arg -> collectFunRefs arg acc
             TravPacked _ty arg -> collectFunRefs arg acc
-            L _ e1              -> collectFunRefs e1 acc
-            LinearExt{}         -> error $ "collectFunRefs: a linear types extension wasn't desugared: " ++ sdoc ex
+            L _ e1 -> collectFunRefs e1 acc
+            LinearExt {} ->
+              error $
+              "collectFunRefs: a linear types extension wasn't desugared: " ++
+              sdoc ex
 
-    -- Returns all functions used in an expression, both in AppE's and FunRefE's.
+-- Returns all functions used in an expression, both in AppE's and FunRefE's.
     collectAllFuns :: Exp0 -> [FunRef] -> [FunRef]
     collectAllFuns e acc =
       case e of
@@ -1408,13 +1428,13 @@ desugarL0 (Prog ddefs fundefs' mainExp') = do
     go :: Exp0 -> PassM Exp0
     go ex =
       case ex of
-        VarE{}    -> pure ex
-        LitE{}    -> pure ex
-        CharE{}   -> pure ex
-        FloatE{}  -> pure ex
-        LitSymE{} -> pure ex
-        AppE f tyapps args-> AppE f tyapps <$> mapM go args
-        PrimAppE pr args  -> do
+        VarE {} -> pure ex
+        LitE {} -> pure ex
+        CharE {} -> pure ex
+        FloatE {} -> pure ex
+        LitSymE {} -> pure ex
+        AppE f tyapps args -> AppE f tyapps <$> mapM go args
+        PrimAppE pr args -> do
           -- This is always going to have a function reference which
           -- we cannot eliminate.
           let args' =
@@ -1492,14 +1512,19 @@ desugarL0 (Prog ddefs fundefs' mainExp') = do
                       (bnds', args') <- unzip <$> zipWithM flattenTupleArgs args tys'
                       pure (concat bnds',concat args')
                     _ -> do
-                      -- generating alias so that repeated expression is
-                      -- eliminated and we are taking projection of trivial varEs
-                      argalias <- gensym "alias"
-                      ys <- mapM (\_ -> gensym "proj") tys'
-                      let vs = map VarE ys
-                      (bnds', args') <- unzip <$> zipWithM flattenTupleArgs vs tys'
-                      let bnds'' = (argalias,[],ty, arg):[(y,[],ty',ProjE i (VarE argalias))| (y, ty', i) <- zip3 ys tys' [0..]]
-                      pure (bnds'' ++ concat bnds', concat args')
+                        -- generating alias so that repeated expression is
+                        -- eliminated and we are taking projection of trivial varEs
+                        argalias <- gensym "alias"
+                        ys <- mapM (\_ -> gensym "proj") tys'
+                        let vs = map VarE ys
+                        (bnds', args') <-
+                          unzip <$> zipWithM flattenTupleArgs vs tys'
+                        let bnds'' =
+                              (argalias, [], ty, arg) :
+                              [ (y, [], ty', ProjE i (VarE argalias))
+                              | (y, ty', i) <- zip3 ys tys' [0 ..]
+                              ]
+                        pure (bnds'' ++ concat bnds', concat args')
                 _ -> do
                   pure ([], [arg])
           (binds, args) <- unzip <$> zipWithM flattenTupleArgs ls' tys
@@ -1637,8 +1662,7 @@ genPrintFn DDef{tyName, dataCons} = do
   casebod <- forM dataCons $ \(dcon, tys) ->
              do xs <- mapM (\_ -> gensym "x") tys
                 ys <- mapM (\_ -> gensym "y") tys
-                let fn = (\(ty,x,y) acc0 ->
-                                     let acc = (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar " ")]) : acc0 in
+                let bnds = foldr (\(ty,x,y) acc ->
                                      case ty of
                                        IntTy   -> (y, [], ProdTy [], PrimAppE PrintInt [VarE x]) : acc
                                        FloatTy -> (y, [], ProdTy [], PrimAppE PrintFloat [VarE x]) : acc
@@ -1654,7 +1678,8 @@ genPrintFn DDef{tyName, dataCons} = do
                                        SymHashTy{} -> (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar "SymHash")]) : acc
                                        IntHashTy{} -> (y, [], ProdTy [], PrimAppE PrintSym [LitSymE (toVar "IntHash")]) : acc
                                        _ -> acc)
-                let bnds = foldr fn [] (zip3 (map snd tys) xs ys)
+                          []
+                          (zip3 (map snd tys) xs ys)
                 w1 <- gensym "wildcard"
                 w2 <- gensym "wildcard"
                 let add_spaces :: [(Var, [Ty0], Ty0, PreExp E0Ext Ty0 Ty0)] -> PassM [(Var, [Ty0], Ty0, PreExp E0Ext Ty0 Ty0)]
@@ -1681,6 +1706,8 @@ genPrintFn DDef{tyName, dataCons} = do
 
 
 --------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
 
 type FloatState = FunDefs0
 type FloatM a = StateT FloatState PassM a
@@ -1738,7 +1765,7 @@ floatOutCase (Prog ddefs fundefs mainExp) = do
           args' <- mapM recur args
           pure $ PrimAppE pr args'
         LetE (v,tyapps,ty,rhs) bod ->  do
-          rhs' <- recur rhs
+          rhs' <- go True env2 rhs
           let env2'= extendVEnv v ty env2
           bod' <- go True env2' bod
           pure $ LetE (v,tyapps,ty,rhs') bod'

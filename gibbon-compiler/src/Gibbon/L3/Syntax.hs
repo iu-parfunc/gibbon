@@ -25,9 +25,11 @@ import qualified Data.Set as S
 import qualified Data.List as L
 import Text.PrettyPrint.GenericPretty
 
-import Gibbon.Common
-import Gibbon.Language hiding (mapMExprs)
+import           Gibbon.Common
+-- import qualified Gibbon.L2.Syntax               as L2
+import           Gibbon.Language                hiding (mapMExprs)
 import qualified Gibbon.NewL2.Syntax as L2
+
 
 --------------------------------------------------------------------------------
 

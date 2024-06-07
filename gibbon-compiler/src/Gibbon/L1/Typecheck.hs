@@ -13,6 +13,7 @@ module Gibbon.L1.Typecheck
 where
 
 
+import Control.Monad
 import Control.Monad.Except
 import Data.Map as M
 import Data.Set as S
@@ -573,6 +574,7 @@ tcExp ddfs env exp =
 
         Write3dPpmFile{} -> throwError $ GenericTC "Write3dPpmFile not handled yet" exp
 
+        RequestEndOf{} -> throwError $ GenericTC  "tcExp of PrimAppE: RequestEndOf not handled yet" exp
 
     LetE (v,[],SymDictTy _ pty, rhs) e -> do
       tyRhs <- go rhs

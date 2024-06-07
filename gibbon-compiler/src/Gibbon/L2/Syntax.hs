@@ -5,6 +5,7 @@
 
 {-# LANGUAGE DeriveAnyClass #-}
 
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
@@ -12,27 +13,59 @@
 -- | An intermediate language with an effect system that captures traversals.
 
 module Gibbon.L2.Syntax
-    (
     -- * Extended language L2 with location types.
-      E2Ext(..)
-    , Prog2, DDefs2, DDef2, FunDef2, FunDefs2, Exp2, E2, Ty2
-    , Effect(..), ArrowTy2(..) , LocRet(..), LocExp, PreLocExp(..)
+  ( E2Ext(..)
+  , Prog2
+  , DDefs2
+  , DDef2
+  , FunDef2
+  , FunDefs2
+  , Exp2
+  , E2
+  , Ty2
+  , Effect(..)
+  , ArrowTy2(..)
+  , LocRet(..)
+  , LocExp
+  , PreLocExp(..)
 
-    -- * Regions and locations
-    , LocVar, Region(..), Modality(..), LRM(..), dummyLRM
-    , Multiplicity(..), RegionSize(..), RegionType(..), regionToVar
+-- * Regions and locations
+  , LocVar
+  , Region(..)
+  , Modality(..)
+  , LRM(..)
+  , dummyLRM
+  , Multiplicity(..)
+  , RegionSize(..)
+  , RegionType(..)
+  , regionToVar
 
-    -- * Operations on types
-    , allLocVars, inLocVars, outLocVars, outRegVars, inRegVars, allRegVars, substLoc
-    , substLocs, substEff, substEffs, extendPatternMatchEnv
-    , locsInTy, dummyTyLocs, allFreeVars, freeLocVars
+-- * Operations on types
+  , allLocVars
+  , inLocVars
+  , outLocVars
+  , outRegVars
+  , inRegVars
+  , allRegVars
+  , substLoc
+  , substLocs
+  , substEff
+  , substEffs
+  , extendPatternMatchEnv
+  , locsInTy
+  , dummyTyLocs
+  , allFreeVars
+  , freeLocVars
 
-    -- * Other helpers
-    , revertToL1, occurs, mapPacked, constPacked, depList, changeAppToSpawn
-
-    , module Gibbon.Language
-    )
-    where
+-- * Other helpers
+  , revertToL1
+  , occurs
+  , mapPacked
+  , constPacked
+  , depList
+  , changeAppToSpawn
+  , module Gibbon.Language
+  ) where
 
 import           Control.DeepSeq
 import qualified Data.List as L
@@ -241,7 +274,6 @@ instance (Out l, Show l, Typeable (E2 l (UrTy l))) => Typeable (E2Ext l (UrTy l)
       AllocateScalarsHere{} -> ProdTy []
       SSPush{} -> ProdTy []
       SSPop{} -> ProdTy []
-
 
 instance (Typeable (E2Ext l d),
           Expression (E2Ext l d),
@@ -523,6 +555,7 @@ instance Typeable (PreExp E2Ext LocVar (UrTy LocVar)) where
 -- Do this manually to get prettier formatting: (Issue #90)
 
 instance Out (ArrowTy2 Ty2)
+
 instance Out Effect
 instance Out a => Out (S.Set a) where
   docPrec n x = docPrec n (S.toList x)
@@ -536,7 +569,6 @@ instance Out LocRet
 -- | Retrieve all LocVars from a fn type (Arrow)
 allLocVars :: ArrowTy2 ty2 -> [LocVar]
 allLocVars ty = L.map (\(LRM l _ _) -> l) (locVars ty)
-
 
 inLocVars :: ArrowTy2 ty2 -> [LocVar]
 inLocVars ty = L.map (\(LRM l _ _) -> l) $
@@ -700,6 +732,10 @@ revertExp ex =
       let (vars,_) = unzip vlocs
       in (dcon, zip vars (repeat ()), revertExp rhs)
 
+docase :: (DataCon, [(Var, LocVar)], Exp2) -> (DataCon, [(Var, ())], Exp1)
+docase (dcon, vlocs, rhs) =
+  let (vars, _) = unzip vlocs
+   in (dcon, zip vars (repeat ()), revertExp rhs)
 
 -- | Does a variable occur in an expression ?
 --

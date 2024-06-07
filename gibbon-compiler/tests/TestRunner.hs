@@ -2,6 +2,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE LambdaCase #-}
 module TestRunner where
 
 import           Control.Monad
@@ -9,8 +10,8 @@ import           Data.Maybe ( catMaybes )
 import           Data.Foldable
 import           Data.List
 import           Data.Scientific
-import           Data.Text.Prettyprint.Doc
-import           Data.Text.Prettyprint.Doc.Render.Terminal
+import           Prettyprinter
+import           Prettyprinter.Render.Terminal
 import           Data.Time.LocalTime
 import           Data.Yaml as Y
 import           Options.Applicative as OA hiding (empty, str)
@@ -160,7 +161,7 @@ data Result = Pass | Fail
 
 -- Not used atm.
 -- | Gibbon mode to run programs in
-data Mode = Gibbon3 | Gibbon2 | Pointer | Interp1 | Gibbon1
+data Mode = Gibbon3 | Gibbon2 | Pointer | Interp1 | Gibbon1 | MPL
   deriving (Show, Eq, Read, Ord, Bounded, Enum)
 
 instance FromJSON Mode where
@@ -168,7 +169,7 @@ instance FromJSON Mode where
     parseJSON oth = error $ "Cannot parse Mode: " ++ show oth
 
 allModes :: [Mode]
-allModes = [minBound ..]
+allModes = filter (/= MPL) [minBound ..]  -- all modes does not include MPL
 
 readMode :: T.Text -> Mode
 readMode s =
@@ -178,6 +179,7 @@ readMode s =
         "pointer" -> Pointer
         "interp1" -> Interp1
         "gibbon1" -> Gibbon1
+        "mpl" -> MPL
         _ -> error $ "readMode: " ++ show s
 
 -- Must match the flag expected by Gibbon.
@@ -187,6 +189,7 @@ modeRunFlags Gibbon2  = ["--run", "--packed"]
 modeRunFlags Pointer = ["--run", "--pointer"]
 modeRunFlags Interp1 = ["--interp1"]
 modeRunFlags Gibbon1 = ["--run", "--packed", "--gibbon1"]
+modeRunFlags MPL = ["--mpl-run"]
 
 -- Must match the flag expected by Gibbon.
 modeExeFlags :: Mode -> [String]
@@ -195,6 +198,7 @@ modeExeFlags Gibbon2 = ["--to-exe", "--packed"]
 modeExeFlags Pointer = ["--to-exe", "--pointer"]
 modeExeFlags Interp1 = error "Cannot compile in Interp1 mode."
 modeExeFlags Gibbon1 = ["--to-exe", "--packed", "--gibbon1"]
+modeExeFlags MPL = ["--mpl-exe"]
 
 modeFileSuffix :: Mode -> String
 modeFileSuffix Gibbon3  = "_gibbon3"
@@ -202,6 +206,7 @@ modeFileSuffix Gibbon2  = "_gibbon2"
 modeFileSuffix Pointer = "_ptr"
 modeFileSuffix Interp1 = "_interp1"
 modeFileSuffix Gibbon1 = "_gibbon1"
+modeFileSuffix MPL = "_mpl"
 
 -- Couldn't figure out how to write a parser which accepts multiple arguments.
 -- The 'many' thing cannot be used with an option. I suppose that just
@@ -238,10 +243,13 @@ readBenchResult :: String -> BenchResult
 readBenchResult str =
   case selftimed_indices of
     []    -> error $ "no SELFTIMED found in:\n" ++ show str
-    [one] -> let (selftimed:_) = lines (drop one str)
+    [one] -> let selftimed = case lines (drop one str) of
+                  st:_ -> st
+                  [] -> error "impossible" -- if we get here, the line is non-empty (cf. [one]),
+                                           -- and `lines` never returns [] on such input
                  timing_info = selftimed \\ "SELFTIMED: "
              in BenchResult (toRealFloat $ read timing_info)
-    oth   -> error $ "multiple SELFTIMED found in:\n" ++ show str
+    _     -> error $ "multiple SELFTIMED found in:\n" ++ show str
   where
     selftimed_indices = T.indices "SELFTIMED: " (T.pack str)
 
@@ -260,8 +268,14 @@ readPerfFile fp = do
     str <- readFile fp
     let stanza_indices = findIndices (== 'X') str
         pairs = partition' 2 1 (stanza_indices ++ [length str])
-        stanzas = map (\[a,b] -> drop a $ take b str) pairs
-        perf_res = map (\(h:_:br) -> (readHeader h, readBenchResult (intercalate "\n" br))) $
+        stanzas = map (\case
+                          [a,b] -> drop a $ take b str
+                          _ -> error "readPerfFile: incomplete pattern matching parsing stanzas"
+                      ) pairs
+        perf_res = map (\case
+                           (h:_:br) -> (readHeader h, readBenchResult (intercalate "\n" br))
+                           _ -> error "readPerfFile: incomplete pattern matching parsing perf result"
+                       ) $
                    map lines stanzas
     return $ M.fromList perf_res
 

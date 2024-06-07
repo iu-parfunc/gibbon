@@ -1,3 +1,4 @@
+{-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE UndecidableInstances  #-}
@@ -109,7 +110,7 @@ instance FreeVars (e l d) => FreeVars (PreExp e l d) where
 
 
 -- | A Typeable instance for L1 and L3 (L2 defines it's own)
-instance (Show (), Out (), Expression (e () (UrTy ())),
+instance (Show (), Out (),
           TyOf (e () (UrTy ())) ~ TyOf (PreExp e () (UrTy ())),
           FunctionTy (UrTy ()), Typeable (e () (UrTy ())))
        => Typeable (PreExp e () (UrTy ())) where
@@ -632,6 +633,7 @@ primArgsTy p =
     WritePackedFile _ ty -> [ty]
     ReadArrayFile{}  -> []
     (ErrorP _ _) -> []
+    RequestEndOf  -> error "primArgsTy: RequestEndOf not handled yet"
     RequestSizeOf -> error "primArgsTy: RequestSizeOf not handled yet"
     Write3dPpmFile{} -> error "primArgsTy: Write3dPpmFile not handled yet"
 
@@ -726,6 +728,7 @@ primRetTy p =
     ReadPackedFile _ _ _ ty -> ty
     WritePackedFile{} -> ProdTy []
     ReadArrayFile _ ty      -> ty
+    RequestEndOf  -> CursorTy
     RequestSizeOf -> IntTy
     Write3dPpmFile{} -> error "primRetTy: Write3dPpmFile not handled yet"
 

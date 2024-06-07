@@ -28,6 +28,7 @@ import           Gibbon.Language hiding (UrTy(..))
 
 --------------------------------------------------------------------------------
 
+-- In L0, type information may be held in locations, as locations don't exist
 type Exp0     = PreExp E0Ext Ty0 Ty0
 type DDefs0   = DDefs Ty0
 type DDef0    = DDef Ty0
@@ -41,6 +42,7 @@ type Prog0    = Prog Exp0
 data E0Ext loc dec =
    LambdaE [(Var,dec)] -- Variable tagged with type
            (PreExp E0Ext loc dec)
+   -- unused for much of L0, may be due to a bug
  | PolyAppE (PreExp E0Ext loc dec) -- Operator
             (PreExp E0Ext loc dec) -- Operand
  | FunRefE [loc] Var -- Reference to a function (toplevel or lambda),
@@ -57,17 +59,16 @@ data E0Ext loc dec =
 -- | Linear types primitives.
 data LinearExt loc dec =
     -- (&) :: a %1 -> (a %1 -> b) %1 -> b
-    ReverseAppE (PreExp E0Ext loc dec) (PreExp E0Ext loc dec)
+  ReverseAppE (PreExp E0Ext loc dec) (PreExp E0Ext loc dec)
 
-    -- lseq :: a %1-> b %1-> b
+-- lseq :: a %1-> b %1-> b
   | LseqE (PreExp E0Ext loc dec) (PreExp E0Ext loc dec)
 
-    -- unsafeAlias :: a %1-> (a,a)
+-- unsafeAlias :: a %1-> (a,a)
   | AliasE (PreExp E0Ext loc dec)
 
-    -- unsafeToLinear :: (a %p-> b) %1-> (a %1-> b)
+-- unsafeToLinear :: (a %p-> b) %1-> (a %1-> b)
   | ToLinearE (PreExp E0Ext loc dec)
-
   deriving (Show, Ord, Eq, Read, Generic, NFData)
 
 --------------------------------------------------------------------------------
@@ -640,6 +641,7 @@ recoverType ddfs env2 ex =
         PrintSym     -> ProdTy []
         ReadInt      -> IntTy
         RequestSizeOf-> error "primRetTy1: RequestSizeOf not handled yet"
+        RequestEndOf -> error "primRetTy1: RequestEndOf not handled yet"
         SymSetEmpty  -> error "primRetTy1: SymSetEmpty not handled yet"
         SymSetContains-> error "primRetTy1: SymSetContains not handled yet"
         SymSetInsert -> error "primRetTy1: SymSetInsert not handled yet"

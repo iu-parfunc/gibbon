@@ -13,18 +13,19 @@ module Gibbon.L1.Syntax
     (
       -- * Core types specific to L1
       Prog1, FunDef1, FunDefs1, DDef1, DDefs1, Exp1, Ty1, E1Ext(..)
-
     , module Gibbon.Language
     ) where
 
 import Control.DeepSeq ( NFData )
 import qualified Data.Set as S
-import qualified Data.Map as M
 import GHC.Generics
 import Text.PrettyPrint.GenericPretty
 
 import Gibbon.Language
 import Gibbon.Common
+
+import qualified Data.Map                       as M
+import           Prelude                        as P
 
 --------------------------------------------------------------------------------
 

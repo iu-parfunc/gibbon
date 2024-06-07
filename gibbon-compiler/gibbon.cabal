@@ -1,4 +1,4 @@
-cabal-version:         >=1.10
+cabal-version:         2.0
 
 name:                  gibbon
 version:               0.3
@@ -14,14 +14,12 @@ copyright:             Copyright 2016-2022 Ryan Newton and contributors
 category:              Compilers/Interpreters
 extra-source-files:    README.md
 build-type:            Simple
-
-tested-with:           GHC==9.4.3
-                     , GHC==9.2.5
+extra-source-files:    README.md
+tested-with:           GHC==9.4.6
+                     , GHC==9.2.8
                      , GHC==9.0.2
                      , GHC==8.10.7
                      , GHC==8.8.4
-                     , GHC==8.6.5
-                     , GHC==8.4.4
 
 flag LLVM_ENABLED
   description:         Enable LLVM backend
@@ -41,12 +39,14 @@ library
 
                        Gibbon.L0.Syntax
                        Gibbon.L0.Typecheck
+                       Gibbon.L0.ElimNewtype
                        Gibbon.L0.Specialize2
                        Gibbon.L0.Interp
                        Gibbon.L1.Syntax
                        Gibbon.L1.Typecheck
                        Gibbon.L1.Interp
                        Gibbon.L1.Examples
+                       Gibbon.L1.GenSML
                        Gibbon.L2.Syntax
                        Gibbon.L2.Typecheck
                        Gibbon.L2.Interp
@@ -89,19 +89,21 @@ library
                        Gibbon.Passes.Codegen
                        Gibbon.Passes.CalculateBounds
 
+  other-extensions:    DeriveDataTypeable CPP
+
   build-depends:       base                     >= 4.11      &&  < 5
-                     , bytestring               >= 0.10.8    &&  < 0.12
-                     , text                     >= 1.2       &&  < 3
-                     , process                  >= 1.4       &&  < 2
+                     , bytestring               >= 0.10.8.1  &&  < 1
+                     , text                     >= 1.2.3     &&  < 3
+                     , process                  >= 1.4.3     &&  < 2
                      , filepath                 >= 1.4.1     &&  < 2
                      , directory                >= 1.3       &&  < 2
-                     , containers               >= 0.5       &&  < 0.7
-                     , deepseq                  >= 1.4       &&  < 1.5
-                     , mtl                      >= 2.2       &&  < 3
-                     , transformers             >= 0.5       &&  < 1
-                     , clock                    >= 0.8       &&  < 1
+                     , containers               >= 0.5.8     &&  < 0.7
+                     , deepseq                  >= 1.4.2     &&  < 1.5
+                     , mtl                      >= 2.2.1     &&  < 3
+                     , transformers             >= 0.5.2     &&  < 1
+                     , clock                    >= 0.7.1     &&  < 1
                      , random                   >= 1.1       &&  < 1.3
-                     , recursion-schemes        >= 5         &&  < 6
+                     , recursion-schemes        >= 5.1       &&  < 6
                      , vector                   >= 0.12      &&  < 0.14
                      , tuple                    >= 0.3       &&  < 1
                      -- Parsers:
@@ -113,10 +115,10 @@ library
                      , srcloc                   >= 0.6       &&  < 1
                      , symbol                   >= 0.2.4     &&  < 1
                      -- Pretty printers:
-                     , pretty                   >= 1.1.1     &&  < 1.2
-                     , GenericPretty            >= 1.2       &&  < 2
-                     , language-c-quote         >= 0.12      &&  < 1
-                     , mainland-pretty          >= 0.6       &&  < 1
+                     , pretty                   >= 1.1.1.3   &&  < 1.2
+                     , GenericPretty            >= 1.2.1     &&  < 2
+                     , language-c-quote         >= 0.12.1    &&  < 1
+                     , mainland-pretty          >= 0.6.1     &&  < 1
 -- Brings in lots of ekmett dependencies:
 --                     , either
 
