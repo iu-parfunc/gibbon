@@ -8,8 +8,8 @@ build-type:         Simple
 library
     exposed-modules:    Gibbon.Plugin
     hs-source-dirs:     src
-    build-depends:      base == 4.17.*
-                      , ghc == 9.4.3
+    build-depends:      base
+                      , ghc
                       , gibbon
                       , containers
                       , filepath

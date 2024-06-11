@@ -2,6 +2,7 @@
 
 module Gibbon.Plugin where
 
+import           Data.String
 import qualified GHC.Types.TyThing as GHC
 import qualified GHC.Unit.External as GHC
 import qualified GHC.Utils.Trace as GHC
@@ -78,7 +79,7 @@ gibbonPlugin mod_guts = do
                           then do
                             let name = GHC.idName f
                             uniq <- GHC.getUniqueM
-                            let name' = GHC.mkFCallName uniq ("c_" ++ nameToString name)
+                            let name' = GHC.mkFCallName uniq (fromString $ "c_" ++ nameToString name)
                             pure (GHC.setIdName f name',rhs)
                           else pure (f,rhs))
                      closure
@@ -133,7 +134,7 @@ generateObjectFile l0 = do
   let dflags' = Gib.gopt_set Gib.Opt_DisableGC $ Gib.gopt_set Gib.Opt_Packed (Gib.dynflags config)
   let config' = config { Gib.dynflags = dflags', Gib.optc = " -O3 " }
   uniq <- randomIO :: IO Word16
-  let fp = "/home/ckoparka/chai/gibbon-ghc-integration-files/" ++ show uniq ++ ".hs"
+  let fp = "/tmp/gibbon-ghc-integration-file-" ++ show uniq ++ ".hs"
   Gib.compileFromL0 config' 0 fp l0
   return fp
 
