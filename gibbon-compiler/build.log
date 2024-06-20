@@ -1,8 +1,0 @@
-Build profile: -w ghc-9.2.8 -O1
-In order, the following will be built (use -v for more details):
- - gibbon-0.3 (lib) (file src/Gibbon/Language/Syntax.hs changed)
- - gibbon-0.3 (exe:test-gibbon-examples) (dependency rebuilt)
- - gibbon-0.3 (exe:gibbon) (dependency rebuilt)
-Preprocessing library for gibbon-0.3..
-Building library for gibbon-0.3..
-[16 of 61] Compiling Gibbon.NewL2.Syntax ( src/Gibbon/NewL2/Syntax.hs, /home/timmy/git/gibbon/dist-newstyle/build/x86_64-linux/ghc-9.2.8/gibbon-0.3/build/Gibbon/NewL2/Syntax.o, /home/timmy/git/gibbon/dist-newstyle/build/x86_64-linux/ghc-9.2.8/gibbon-0.3/build/Gibbon/NewL2/Syntax.dyn_o ) [Gibbon.Language.Syntax changed]
