@@ -542,15 +542,6 @@ compilationCmd C config = (cc config) ++" -std=gnu11 "
         simpleWriteBarrier = gopt Opt_SimpleWriteBarrier dflags
         lazyPromote = gopt Opt_NoEagerPromote dflags
 
--- |
-isBench :: Mode -> Bool
-isBench (Bench _) = True
-isBench _ = False
-
-isLibrary :: Mode -> Bool
-isLibrary (Library _) = True
-isLibrary _ = False
-
 -- | The debug level at which we start to call the interpreter on the program during compilation.
 interpDbgLevel :: Int
 interpDbgLevel = 5
