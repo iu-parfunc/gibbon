@@ -32,9 +32,10 @@ library
                        -dcore-lint
                        -ddump-simpl -dsuppress-all -ddump-to-file
 
-  include-dirs: "../../gibbon-rts/build"
-  extra-lib-dirs: "../../gibbon-rts/build"
+  -- include-dirs: "../../gibbon-rts/build"
+  -- extra-lib-dirs: "../../gibbon-rts/build"
   extra-libraries: gibbon_rts_ng
+  extra-lib-dirs: /home/artem/data/Dev/gibbon/gibbon/gibbon-rts/build
 
 
 executable run-gibbon-examples
@@ -44,8 +45,10 @@ executable run-gibbon-examples
   build-depends:       base, gibbon-examples, binary, bytestring, deepseq, time
   ghc-options:         -O2
                        -dcore-lint
-  include-dirs:        "../../gibbon-rts/build"
-  extra-lib-dirs:      "../../gibbon-rts/build"
+  -- include-dirs:        "../../gibbon-rts/build"
+  -- extra-lib-dirs:      "../../gibbon-rts/build"
   extra-libraries:     gibbon_rts_ng
-  -- ghc-options:         "-optl-Wl,-I/home/ckoparka/chai/tree-velocity/gibbon-rts/build"
-  --                      "-optl-Wl,-L/home/ckoparka/chai/tree-velocity/gibbon-rts/build"
+  extra-lib-dirs:      /home/artem/data/Dev/gibbon/gibbon/gibbon-rts/build
+  ghc-options:
+              -- "-optl-Wl,-I/home/ckoparka/chai/tree-velocity/gibbon-rts/build"
+                        "-optl-Wl,-L/home/artem/data/Dev/gibbon/gibbon/gibbon-rts/build"

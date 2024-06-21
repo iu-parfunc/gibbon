@@ -15,6 +15,7 @@ module Gibbon.Compiler
      , configParser, configWithArgs, defaultConfig
       -- * Some other helper fns
      , compileAndRunExe
+     , getRTSBuildDir, compileRTS
     )
   where
 

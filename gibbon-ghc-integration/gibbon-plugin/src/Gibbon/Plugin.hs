@@ -96,7 +96,9 @@ gibbonPlugin mod_guts = do
 
     -- (5) Link the .o file in the module.
     let objfile = replaceExtension fp ".o"
-    let rtsfile = "/home/ckoparka/chai/tree-velocity/gibbon-rts/build/gibbon_rts.o"
+    GHC.liftIO $ Gib.compileRTS gibbonConfigForPlugin
+    lib_dir <- GHC.liftIO Gib.getRTSBuildDir
+    let rtsfile = lib_dir </> "gibbon_rts.o"
     let mod_guts' = mod_guts { GHC.mg_foreign_files = (GHC.mg_foreign_files mod_guts)
                                                     ++ [ ( GHC.RawObject, objfile)
                                                        , ( GHC.RawObject, rtsfile)
@@ -128,14 +130,18 @@ gibbonPlugin mod_guts = do
 
 --------------------------------------------------------------------------------
 
+gibbonConfigForPlugin :: Gib.Config
+gibbonConfigForPlugin = let
+    config =  Gib.defaultConfig { Gib.mode = Gib.Library (Gib.toVar "xxx") }
+    dflags' = Gib.gopt_set Gib.Opt_DisableGC $ Gib.gopt_set Gib.Opt_Packed (Gib.dynflags config)
+  in
+    config { Gib.dynflags = dflags', Gib.optc = " -O3 " }
+
 generateObjectFile :: Gib.Prog0 -> IO FilePath
 generateObjectFile l0 = do
-  let config =  Gib.defaultConfig { Gib.mode = Gib.Library (Gib.toVar "xxx") }
-  let dflags' = Gib.gopt_set Gib.Opt_DisableGC $ Gib.gopt_set Gib.Opt_Packed (Gib.dynflags config)
-  let config' = config { Gib.dynflags = dflags', Gib.optc = " -O3 " }
   uniq <- randomIO :: IO Word16
   let fp = "/tmp/gibbon-ghc-integration-file-" ++ show uniq ++ ".hs"
-  Gib.compileFromL0 config' 0 fp l0
+  Gib.compileFromL0 gibbonConfigForPlugin 0 fp l0
   return fp
 
 --------------------------------------------------------------------------------
