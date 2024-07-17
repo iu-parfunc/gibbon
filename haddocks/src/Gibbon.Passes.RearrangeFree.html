@@ -1,0 +1,431 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Gibbon.Passes.RearrangeFree</span><span>
+</span><span id="line-2"></span><span>  </span><span class="hs-special">(</span><span> </span><span class="annot"><a href="Gibbon.Passes.RearrangeFree.html#rearrangeFree"><span class="hs-identifier">rearrangeFree</span></a></span><span> </span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-3"></span><span>
+</span><span id="line-4"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Prelude.html"><span class="hs-identifier">Prelude</span></a></span><span> </span><span class="hs-keyword">hiding</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.List.html#tail"><span class="hs-identifier">tail</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-5"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="Gibbon.DynFlags.html"><span class="hs-identifier">Gibbon.DynFlags</span></a></span><span>
+</span><span id="line-6"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="Gibbon.Common.html"><span class="hs-identifier">Gibbon.Common</span></a></span><span>
+</span><span id="line-7"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="Gibbon.L4.Syntax.html"><span class="hs-identifier">Gibbon.L4.Syntax</span></a></span><span>
+</span><span id="line-8"></span><span>
+</span><span id="line-9"></span><span class="hs-comment">-- Ensure that any calls to `free` are the last thing in the program.</span><span>
+</span><span id="line-10"></span><span class="hs-comment">-- TODO: We should figure out a way to do this in Lower. Also `withTail`</span><span>
+</span><span id="line-11"></span><span class="hs-comment">-- _does_ end up duplicating some calls to `free`. Need to fix that.</span><span>
+</span><span id="line-12"></span><span class="annot"><a href="Gibbon.Passes.RearrangeFree.html#rearrangeFree"><span class="hs-identifier hs-type">rearrangeFree</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L4.Syntax.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.Common.html#PassM"><span class="hs-identifier hs-type">PassM</span></a></span><span> </span><span class="annot"><a href="Gibbon.L4.Syntax.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span>
+</span><span id="line-13"></span><span id="rearrangeFree"><span class="annot"><span class="annottext">rearrangeFree :: Prog -&gt; PassM Prog
+</span><a href="Gibbon.Passes.RearrangeFree.html#rearrangeFree"><span class="hs-identifier hs-var hs-var">rearrangeFree</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L4.Syntax.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span> </span><span id="local-6989586621680973014"><span class="annot"><span class="annottext">InfoTable
+</span><a href="#local-6989586621680973014"><span class="hs-identifier hs-var">info_tbl</span></a></span></span><span> </span><span id="local-6989586621680973015"><span class="annot"><span class="annottext">SymTable
+</span><a href="#local-6989586621680973015"><span class="hs-identifier hs-var">sym_tbl</span></a></span></span><span> </span><span id="local-6989586621680973016"><span class="annot"><span class="annottext">[FunDecl]
+</span><a href="#local-6989586621680973016"><span class="hs-identifier hs-var">fundefs</span></a></span></span><span> </span><span id="local-6989586621680973017"><span class="annot"><span class="annottext">Maybe MainExp
+</span><a href="#local-6989586621680973017"><span class="hs-identifier hs-var">mainExp</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-14"></span><span>  </span><span id="local-6989586621680973018"><span class="annot"><span class="annottext">[FunDecl]
+</span><a href="#local-6989586621680973018"><span class="hs-identifier hs-var">fundefs'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">(FunDecl -&gt; PassM FunDecl) -&gt; [FunDecl] -&gt; PassM [FunDecl]
+forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Traversable t, Monad m) =&gt;
+(a -&gt; m b) -&gt; t a -&gt; m (t b)
+forall (m :: * -&gt; *) a b. Monad m =&gt; (a -&gt; m b) -&gt; [a] -&gt; m [b]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Traversable.html#mapM"><span class="hs-identifier hs-var">mapM</span></a></span><span> </span><span class="annot"><span class="annottext">FunDecl -&gt; PassM FunDecl
+</span><a href="Gibbon.Passes.RearrangeFree.html#rearrangeFreeFn"><span class="hs-identifier hs-var">rearrangeFreeFn</span></a></span><span> </span><span class="annot"><span class="annottext">[FunDecl]
+</span><a href="#local-6989586621680973016"><span class="hs-identifier hs-var">fundefs</span></a></span><span>
+</span><span id="line-15"></span><span>  </span><span id="local-6989586621680973021"><span class="annot"><span class="annottext">Maybe MainExp
+</span><a href="#local-6989586621680973021"><span class="hs-identifier hs-var">mainExp'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Maybe MainExp
+</span><a href="#local-6989586621680973017"><span class="hs-identifier hs-var">mainExp</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-16"></span><span>                </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-type">Just</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L4.Syntax.html#PrintExp"><span class="hs-identifier hs-type">PrintExp</span></a></span><span> </span><span id="local-6989586621680973023"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973023"><span class="hs-identifier hs-var">tail</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-17"></span><span>                  </span><span class="annot"><span class="annottext">MainExp -&gt; Maybe MainExp
+forall a. a -&gt; Maybe a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-var">Just</span></a></span><span> </span><span class="annot"><span class="annottext">(MainExp -&gt; Maybe MainExp)
+-&gt; (Tail -&gt; MainExp) -&gt; Tail -&gt; Maybe MainExp
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; MainExp
+</span><a href="Gibbon.L4.Syntax.html#PrintExp"><span class="hs-identifier hs-var">PrintExp</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; Maybe MainExp) -&gt; PassM Tail -&gt; PassM (Maybe MainExp)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Bool -&gt; Maybe (Tail -&gt; Tail) -&gt; Tail -&gt; PassM Tail
+</span><a href="Gibbon.Passes.RearrangeFree.html#rearrangeFreeExp"><span class="hs-identifier hs-var">rearrangeFreeExp</span></a></span><span> </span><span class="annot"><span class="annottext">Bool
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Types.html#True"><span class="hs-identifier hs-var">True</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe (Tail -&gt; Tail)
+forall a. Maybe a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973023"><span class="hs-identifier hs-var">tail</span></a></span><span>
+</span><span id="line-18"></span><span>                </span><span class="annot"><span class="annottext">Maybe MainExp
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Maybe MainExp -&gt; PassM (Maybe MainExp)
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe MainExp
+forall a. Maybe a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-19"></span><span>  </span><span class="annot"><span class="annottext">Prog -&gt; PassM Prog
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">(Prog -&gt; PassM Prog) -&gt; Prog -&gt; PassM Prog
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">InfoTable -&gt; SymTable -&gt; [FunDecl] -&gt; Maybe MainExp -&gt; Prog
+</span><a href="Gibbon.L4.Syntax.html#Prog"><span class="hs-identifier hs-var">Prog</span></a></span><span> </span><span class="annot"><span class="annottext">InfoTable
+</span><a href="#local-6989586621680973014"><span class="hs-identifier hs-var">info_tbl</span></a></span><span> </span><span class="annot"><span class="annottext">SymTable
+</span><a href="#local-6989586621680973015"><span class="hs-identifier hs-var">sym_tbl</span></a></span><span> </span><span class="annot"><span class="annottext">[FunDecl]
+</span><a href="#local-6989586621680973018"><span class="hs-identifier hs-var">fundefs'</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe MainExp
+</span><a href="#local-6989586621680973021"><span class="hs-identifier hs-var">mainExp'</span></a></span><span>
+</span><span id="line-20"></span><span>
+</span><span id="line-21"></span><span class="annot"><a href="Gibbon.Passes.RearrangeFree.html#rearrangeFreeFn"><span class="hs-identifier hs-type">rearrangeFreeFn</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L4.Syntax.html#FunDecl"><span class="hs-identifier hs-type">FunDecl</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.Common.html#PassM"><span class="hs-identifier hs-type">PassM</span></a></span><span> </span><span class="annot"><a href="Gibbon.L4.Syntax.html#FunDecl"><span class="hs-identifier hs-type">FunDecl</span></a></span><span>
+</span><span id="line-22"></span><span id="rearrangeFreeFn"><span class="annot"><span class="annottext">rearrangeFreeFn :: FunDecl -&gt; PassM FunDecl
+</span><a href="Gibbon.Passes.RearrangeFree.html#rearrangeFreeFn"><span class="hs-identifier hs-var hs-var">rearrangeFreeFn</span></a></span></span><span> </span><span id="local-6989586621680973028"><span class="annot"><span class="annottext">f :: FunDecl
+</span><a href="#local-6989586621680973028"><span class="hs-identifier hs-var">f</span></a></span></span><span class="hs-glyph">@</span><span class="annot"><a href="Gibbon.L4.Syntax.html#FunDecl"><span class="hs-identifier hs-type">FunDecl</span></a></span><span class="hs-special">{</span><span id="local-6989586621680973030"><span class="annot"><span class="annottext">Tail
+funBody :: Tail
+funBody :: FunDecl -&gt; Tail
+</span><a href="#local-6989586621680973030"><span class="hs-identifier hs-var hs-var">funBody</span></a></span></span><span class="hs-special">}</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-23"></span><span>  </span><span id="local-6989586621680973032"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973032"><span class="hs-identifier hs-var">bod'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Bool -&gt; Maybe (Tail -&gt; Tail) -&gt; Tail -&gt; PassM Tail
+</span><a href="Gibbon.Passes.RearrangeFree.html#rearrangeFreeExp"><span class="hs-identifier hs-var">rearrangeFreeExp</span></a></span><span> </span><span class="annot"><span class="annottext">Bool
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Types.html#False"><span class="hs-identifier hs-var">False</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe (Tail -&gt; Tail)
+forall a. Maybe a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973030"><span class="hs-identifier hs-var">funBody</span></a></span><span>
+</span><span id="line-24"></span><span>  </span><span class="annot"><span class="annottext">FunDecl -&gt; PassM FunDecl
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">(FunDecl -&gt; PassM FunDecl) -&gt; FunDecl -&gt; PassM FunDecl
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">FunDecl
+</span><a href="#local-6989586621680973028"><span class="hs-identifier hs-var">f</span></a></span><span> </span><span class="hs-special">{</span><span class="annot"><span class="annottext">funBody :: Tail
+</span><a href="Gibbon.L4.Syntax.html#funBody"><span class="hs-identifier hs-var">funBody</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973032"><span class="hs-identifier hs-var">bod'</span></a></span><span class="hs-special">}</span><span>
+</span><span id="line-25"></span><span>
+</span><span id="line-26"></span><span class="annot"><a href="Gibbon.Passes.RearrangeFree.html#rearrangeFreeExp"><span class="hs-identifier hs-type">rearrangeFreeExp</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Types.html#Bool"><span class="hs-identifier hs-type">Bool</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Maybe"><span class="hs-identifier hs-type">Maybe</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L4.Syntax.html#Tail"><span class="hs-identifier hs-type">Tail</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.L4.Syntax.html#Tail"><span class="hs-identifier hs-type">Tail</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.L4.Syntax.html#Tail"><span class="hs-identifier hs-type">Tail</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.Common.html#PassM"><span class="hs-identifier hs-type">PassM</span></a></span><span> </span><span class="annot"><a href="Gibbon.L4.Syntax.html#Tail"><span class="hs-identifier hs-type">Tail</span></a></span><span>
+</span><span id="line-27"></span><span id="rearrangeFreeExp"><span class="annot"><span class="annottext">rearrangeFreeExp :: Bool -&gt; Maybe (Tail -&gt; Tail) -&gt; Tail -&gt; PassM Tail
+</span><a href="Gibbon.Passes.RearrangeFree.html#rearrangeFreeExp"><span class="hs-identifier hs-var hs-var">rearrangeFreeExp</span></a></span></span><span> </span><span id="local-6989586621680973071"><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680973071"><span class="hs-identifier hs-var">is_main</span></a></span></span><span> </span><span id="local-6989586621680973072"><span class="annot"><span class="annottext">Maybe (Tail -&gt; Tail)
+</span><a href="#local-6989586621680973072"><span class="hs-identifier hs-var">frees</span></a></span></span><span> </span><span id="local-6989586621680973073"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973073"><span class="hs-identifier hs-var">tail</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-28"></span><span>  </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973073"><span class="hs-identifier hs-var">tail</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-29"></span><span>    </span><span class="annot"><span class="annottext">Tail
+</span><a href="Gibbon.L4.Syntax.html#EndOfMain"><span class="hs-identifier hs-var">EndOfMain</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973073"><span class="hs-identifier hs-var">tail</span></a></span><span>
+</span><span id="line-30"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#LetPrimCallT"><span class="hs-identifier hs-type">LetPrimCallT</span></a></span><span> </span><span id="local-6989586621680973076"><span class="annot"><span class="annottext">[(Var, Ty)]
+</span><a href="#local-6989586621680973076"><span class="hs-identifier hs-var">binds</span></a></span></span><span> </span><span id="local-6989586621680973077"><span class="annot"><span class="annottext">Prim
+</span><a href="#local-6989586621680973077"><span class="hs-keyword hs-var">prim</span></a></span></span><span> </span><span id="local-6989586621680973078"><span class="annot"><span class="annottext">[Triv]
+</span><a href="#local-6989586621680973078"><span class="hs-identifier hs-var">rands</span></a></span></span><span> </span><span id="local-6989586621680973079"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973079"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-31"></span><span>      </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Prim
+</span><a href="#local-6989586621680973077"><span class="hs-keyword hs-var">prim</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-32"></span><span>        </span><span class="annot"><span class="annottext">Prim
+</span><a href="Gibbon.L4.Syntax.html#FreeBuffer"><span class="hs-identifier hs-var">FreeBuffer</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-33"></span><span>            </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621680973081"><span class="annot"><span class="annottext">clos :: Tail -&gt; Tail
+</span><a href="#local-6989586621680973081"><span class="hs-identifier hs-var hs-var">clos</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Maybe (Tail -&gt; Tail)
+</span><a href="#local-6989586621680973072"><span class="hs-identifier hs-var">frees</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-34"></span><span>                         </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-type">Just</span></a></span><span> </span><span id="local-6989586621680973082"><span class="annot"><span class="annottext">Tail -&gt; Tail
+</span><a href="#local-6989586621680973082"><span class="hs-identifier hs-var">f</span></a></span></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Tail -&gt; Tail
+</span><a href="#local-6989586621680973082"><span class="hs-identifier hs-var">f</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; Tail) -&gt; (Tail -&gt; Tail) -&gt; Tail -&gt; Tail
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#."><span class="hs-operator hs-var">.</span></a></span><span> </span><span class="annot"><span class="annottext">[(Var, Ty)] -&gt; Prim -&gt; [Triv] -&gt; Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#LetPrimCallT"><span class="hs-identifier hs-var">LetPrimCallT</span></a></span><span> </span><span class="annot"><span class="annottext">[(Var, Ty)]
+</span><a href="#local-6989586621680973076"><span class="hs-identifier hs-var">binds</span></a></span><span> </span><span class="annot"><span class="annottext">Prim
+</span><a href="#local-6989586621680973077"><span class="hs-keyword hs-var">prim</span></a></span><span> </span><span class="annot"><span class="annottext">[Triv]
+</span><a href="#local-6989586621680973078"><span class="hs-identifier hs-var">rands</span></a></span><span>
+</span><span id="line-35"></span><span>                         </span><span class="annot"><span class="annottext">Maybe (Tail -&gt; Tail)
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">[(Var, Ty)] -&gt; Prim -&gt; [Triv] -&gt; Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#LetPrimCallT"><span class="hs-identifier hs-var">LetPrimCallT</span></a></span><span> </span><span class="annot"><span class="annottext">[(Var, Ty)]
+</span><a href="#local-6989586621680973076"><span class="hs-identifier hs-var">binds</span></a></span><span> </span><span class="annot"><span class="annottext">Prim
+</span><a href="#local-6989586621680973077"><span class="hs-keyword hs-var">prim</span></a></span><span> </span><span class="annot"><span class="annottext">[Triv]
+</span><a href="#local-6989586621680973078"><span class="hs-identifier hs-var">rands</span></a></span><span>
+</span><span id="line-36"></span><span>            </span><span id="local-6989586621680973084"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973084"><span class="hs-identifier hs-var">bod'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Bool -&gt; Maybe (Tail -&gt; Tail) -&gt; Tail -&gt; PassM Tail
+</span><a href="Gibbon.Passes.RearrangeFree.html#rearrangeFreeExp"><span class="hs-identifier hs-var">rearrangeFreeExp</span></a></span><span> </span><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680973071"><span class="hs-identifier hs-var">is_main</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">(Tail -&gt; Tail) -&gt; Maybe (Tail -&gt; Tail)
+forall a. a -&gt; Maybe a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-var">Just</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; Tail
+</span><a href="#local-6989586621680973081"><span class="hs-identifier hs-var">clos</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973079"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-37"></span><span>            </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973084"><span class="hs-identifier hs-var">bod'</span></a></span><span>
+</span><span id="line-38"></span><span>            </span><span class="hs-comment">-- withTail (bod', undefined) (\trvs -&gt; clos (RetValsT trvs))</span><span>
+</span><span id="line-39"></span><span>        </span><span class="annot"><span class="annottext">Prim
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">[(Var, Ty)] -&gt; Prim -&gt; [Triv] -&gt; Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#LetPrimCallT"><span class="hs-identifier hs-var">LetPrimCallT</span></a></span><span> </span><span class="annot"><span class="annottext">[(Var, Ty)]
+</span><a href="#local-6989586621680973076"><span class="hs-identifier hs-var">binds</span></a></span><span> </span><span class="annot"><span class="annottext">Prim
+</span><a href="#local-6989586621680973077"><span class="hs-keyword hs-var">prim</span></a></span><span> </span><span class="annot"><span class="annottext">[Triv]
+</span><a href="#local-6989586621680973078"><span class="hs-identifier hs-var">rands</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; Tail) -&gt; PassM Tail -&gt; PassM Tail
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973079"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-40"></span><span>
+</span><span id="line-41"></span><span>    </span><span class="hs-comment">-- RetValsT{} -&gt; return tail</span><span>
+</span><span id="line-42"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#RetValsT"><span class="hs-identifier hs-type">RetValsT</span></a></span><span> </span><span id="local-6989586621680973087"><span class="annot"><span class="annottext">[Triv]
+</span><a href="#local-6989586621680973087"><span class="hs-identifier hs-var">ls</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span> </span><span id="local-6989586621680973088"><span class="annot"><span class="annottext">DynFlags
+</span><a href="#local-6989586621680973088"><span class="hs-identifier hs-var">dflags</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">PassM DynFlags
+forall (m :: * -&gt; *). MonadReader Config m =&gt; m DynFlags
+</span><a href="Gibbon.Common.html#getDynFlags"><span class="hs-identifier hs-var">getDynFlags</span></a></span><span>
+</span><span id="line-43"></span><span>                      </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621680973090"><span class="annot"><span class="annottext">countRegions :: Bool
+</span><a href="#local-6989586621680973090"><span class="hs-identifier hs-var hs-var">countRegions</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">GeneralFlag -&gt; DynFlags -&gt; Bool
+</span><a href="Gibbon.DynFlags.html#gopt"><span class="hs-identifier hs-var">gopt</span></a></span><span> </span><span class="annot"><span class="annottext">GeneralFlag
+</span><a href="Gibbon.DynFlags.html#Opt_CountAllRegions"><span class="hs-identifier hs-var">Opt_CountAllRegions</span></a></span><span> </span><span class="annot"><span class="annottext">DynFlags
+</span><a href="#local-6989586621680973088"><span class="hs-identifier hs-var">dflags</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Bool -&gt; Bool -&gt; Bool
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Classes.html#%7C%7C"><span class="hs-operator hs-var">||</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">GeneralFlag -&gt; DynFlags -&gt; Bool
+</span><a href="Gibbon.DynFlags.html#gopt"><span class="hs-identifier hs-var">gopt</span></a></span><span> </span><span class="annot"><span class="annottext">GeneralFlag
+</span><a href="Gibbon.DynFlags.html#Opt_CountParRegions"><span class="hs-identifier hs-var">Opt_CountParRegions</span></a></span><span> </span><span class="annot"><span class="annottext">DynFlags
+</span><a href="#local-6989586621680973088"><span class="hs-identifier hs-var">dflags</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-44"></span><span>                          </span><span class="annot"><a href="#local-6989586621680973095"><span class="hs-identifier hs-type">print_reg_count</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L4.Syntax.html#Tail"><span class="hs-identifier hs-type">Tail</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.L4.Syntax.html#Tail"><span class="hs-identifier hs-type">Tail</span></a></span><span>
+</span><span id="line-45"></span><span>                          </span><span id="local-6989586621680973095"><span class="annot"><span class="annottext">print_reg_count :: Tail -&gt; Tail
+</span><a href="#local-6989586621680973095"><span class="hs-identifier hs-var hs-var">print_reg_count</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">if</span><span> </span><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680973071"><span class="hs-identifier hs-var">is_main</span></a></span><span> </span><span class="annot"><span class="annottext">Bool -&gt; Bool -&gt; Bool
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Classes.html#%26%26"><span class="hs-operator hs-var">&amp;&amp;</span></a></span><span> </span><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680973090"><span class="hs-identifier hs-var">countRegions</span></a></span><span>
+</span><span id="line-46"></span><span>                                              </span><span class="hs-keyword">then</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">[(Var, Ty)] -&gt; Prim -&gt; [Triv] -&gt; Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#LetPrimCallT"><span class="hs-identifier hs-var">LetPrimCallT</span></a></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="annot"><span class="annottext">Prim
+</span><a href="Gibbon.L4.Syntax.html#PrintRegionCount"><span class="hs-identifier hs-var">PrintRegionCount</span></a></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-47"></span><span>                                              </span><span class="hs-keyword">else</span><span> </span><span class="annot"><span class="annottext">Tail -&gt; Tail
+forall a. a -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#id"><span class="hs-identifier hs-var">id</span></a></span><span>
+</span><span id="line-48"></span><span>                      </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Maybe (Tail -&gt; Tail)
+</span><a href="#local-6989586621680973072"><span class="hs-identifier hs-var">frees</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-49"></span><span>                        </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-type">Just</span></a></span><span> </span><span id="local-6989586621680973099"><span class="annot"><span class="annottext">Tail -&gt; Tail
+</span><a href="#local-6989586621680973099"><span class="hs-identifier hs-var">f</span></a></span></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; PassM Tail) -&gt; Tail -&gt; PassM Tail
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; Tail
+</span><a href="#local-6989586621680973099"><span class="hs-identifier hs-var">f</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; Tail) -&gt; Tail -&gt; Tail
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; Tail
+</span><a href="#local-6989586621680973095"><span class="hs-identifier hs-var">print_reg_count</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">[Triv] -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#RetValsT"><span class="hs-identifier hs-var">RetValsT</span></a></span><span> </span><span class="annot"><span class="annottext">[Triv]
+</span><a href="#local-6989586621680973087"><span class="hs-identifier hs-var">ls</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-50"></span><span>                        </span><span class="annot"><span class="annottext">Maybe (Tail -&gt; Tail)
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Tail -&gt; Tail
+</span><a href="#local-6989586621680973095"><span class="hs-identifier hs-var">print_reg_count</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973073"><span class="hs-identifier hs-var">tail</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-51"></span><span>
+</span><span id="line-52"></span><span>    </span><span class="hs-comment">-- Straightforward recursion</span><span>
+</span><span id="line-53"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#Switch"><span class="hs-identifier hs-type">Switch</span></a></span><span> </span><span id="local-6989586621680973101"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680973101"><span class="hs-identifier hs-var">lbl</span></a></span></span><span> </span><span id="local-6989586621680973102"><span class="annot"><span class="annottext">Triv
+</span><a href="#local-6989586621680973102"><span class="hs-identifier hs-var">trv</span></a></span></span><span> </span><span id="local-6989586621680973103"><span class="annot"><span class="annottext">Alts
+</span><a href="#local-6989586621680973103"><span class="hs-identifier hs-var">alts</span></a></span></span><span> </span><span id="local-6989586621680973104"><span class="annot"><span class="annottext">Maybe Tail
+</span><a href="#local-6989586621680973104"><span class="hs-identifier hs-var">bod_maybe</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-54"></span><span>      </span><span id="local-6989586621680973105"><span class="annot"><span class="annottext">Alts
+</span><a href="#local-6989586621680973105"><span class="hs-identifier hs-var">alts'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Alts
+</span><a href="#local-6989586621680973103"><span class="hs-identifier hs-var">alts</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-55"></span><span>                </span><span class="annot"><a href="Gibbon.L4.Syntax.html#TagAlts"><span class="hs-identifier hs-type">TagAlts</span></a></span><span> </span><span id="local-6989586621680973107"><span class="annot"><span class="annottext">[(Tag, Tail)]
+</span><a href="#local-6989586621680973107"><span class="hs-identifier hs-var">ls</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-56"></span><span>                  </span><span id="local-6989586621680973108"><span class="annot"><span class="annottext">[(Tag, Tail)]
+</span><a href="#local-6989586621680973108"><span class="hs-identifier hs-var">ls'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">((Tag, Tail) -&gt; PassM (Tag, Tail))
+-&gt; [(Tag, Tail)] -&gt; PassM [(Tag, Tail)]
+forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Traversable t, Monad m) =&gt;
+(a -&gt; m b) -&gt; t a -&gt; m (t b)
+forall (m :: * -&gt; *) a b. Monad m =&gt; (a -&gt; m b) -&gt; [a] -&gt; m [b]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Traversable.html#mapM"><span class="hs-identifier hs-var">mapM</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span class="hs-special">(</span><span id="local-6989586621680973109"><span class="annot"><span class="annottext">Tag
+</span><a href="#local-6989586621680973109"><span class="hs-identifier hs-var">x</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680973110"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973110"><span class="hs-identifier hs-var">tl</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Tag
+</span><a href="#local-6989586621680973109"><span class="hs-identifier hs-var">x</span></a></span><span class="hs-special">,</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; (Tag, Tail)) -&gt; PassM Tail -&gt; PassM (Tag, Tail)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973110"><span class="hs-identifier hs-var">tl</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">[(Tag, Tail)]
+</span><a href="#local-6989586621680973107"><span class="hs-identifier hs-var">ls</span></a></span><span>
+</span><span id="line-57"></span><span>                  </span><span class="annot"><span class="annottext">Alts -&gt; PassM Alts
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">(Alts -&gt; PassM Alts) -&gt; Alts -&gt; PassM Alts
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">[(Tag, Tail)] -&gt; Alts
+</span><a href="Gibbon.L4.Syntax.html#TagAlts"><span class="hs-identifier hs-var">TagAlts</span></a></span><span> </span><span class="annot"><span class="annottext">[(Tag, Tail)]
+</span><a href="#local-6989586621680973108"><span class="hs-identifier hs-var">ls'</span></a></span><span>
+</span><span id="line-58"></span><span>                </span><span class="annot"><a href="Gibbon.L4.Syntax.html#IntAlts"><span class="hs-identifier hs-type">IntAlts</span></a></span><span> </span><span id="local-6989586621680973112"><span class="annot"><span class="annottext">[(Int64, Tail)]
+</span><a href="#local-6989586621680973112"><span class="hs-identifier hs-var">ls</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-59"></span><span>                  </span><span id="local-6989586621680973113"><span class="annot"><span class="annottext">[(Int64, Tail)]
+</span><a href="#local-6989586621680973113"><span class="hs-identifier hs-var">ls'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">((Int64, Tail) -&gt; PassM (Int64, Tail))
+-&gt; [(Int64, Tail)] -&gt; PassM [(Int64, Tail)]
+forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Traversable t, Monad m) =&gt;
+(a -&gt; m b) -&gt; t a -&gt; m (t b)
+forall (m :: * -&gt; *) a b. Monad m =&gt; (a -&gt; m b) -&gt; [a] -&gt; m [b]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Traversable.html#mapM"><span class="hs-identifier hs-var">mapM</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span class="hs-special">(</span><span id="local-6989586621680973114"><span class="annot"><span class="annottext">Int64
+</span><a href="#local-6989586621680973114"><span class="hs-identifier hs-var">x</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680973115"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973115"><span class="hs-identifier hs-var">tl</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Int64
+</span><a href="#local-6989586621680973114"><span class="hs-identifier hs-var">x</span></a></span><span class="hs-special">,</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; (Int64, Tail)) -&gt; PassM Tail -&gt; PassM (Int64, Tail)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973115"><span class="hs-identifier hs-var">tl</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">[(Int64, Tail)]
+</span><a href="#local-6989586621680973112"><span class="hs-identifier hs-var">ls</span></a></span><span>
+</span><span id="line-60"></span><span>                  </span><span class="annot"><span class="annottext">Alts -&gt; PassM Alts
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">(Alts -&gt; PassM Alts) -&gt; Alts -&gt; PassM Alts
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">[(Int64, Tail)] -&gt; Alts
+</span><a href="Gibbon.L4.Syntax.html#IntAlts"><span class="hs-identifier hs-var">IntAlts</span></a></span><span> </span><span class="annot"><span class="annottext">[(Int64, Tail)]
+</span><a href="#local-6989586621680973113"><span class="hs-identifier hs-var">ls'</span></a></span><span>
+</span><span id="line-61"></span><span>      </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; PassM Tail) -&gt; Tail -&gt; PassM Tail
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Var -&gt; Triv -&gt; Alts -&gt; Maybe Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#Switch"><span class="hs-identifier hs-var">Switch</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680973101"><span class="hs-identifier hs-var">lbl</span></a></span><span> </span><span class="annot"><span class="annottext">Triv
+</span><a href="#local-6989586621680973102"><span class="hs-identifier hs-var">trv</span></a></span><span> </span><span class="annot"><span class="annottext">Alts
+</span><a href="#local-6989586621680973105"><span class="hs-identifier hs-var">alts'</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe Tail
+</span><a href="#local-6989586621680973104"><span class="hs-identifier hs-var">bod_maybe</span></a></span><span>
+</span><span id="line-62"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#Goto"><span class="hs-identifier hs-type">Goto</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973073"><span class="hs-identifier hs-var">tail</span></a></span><span>
+</span><span id="line-63"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#AssnValsT"><span class="hs-identifier hs-type">AssnValsT</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973073"><span class="hs-identifier hs-var">tail</span></a></span><span>
+</span><span id="line-64"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#LetCallT"><span class="hs-identifier hs-type">LetCallT</span></a></span><span> </span><span id="local-6989586621680973119"><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680973119"><span class="hs-identifier hs-var">async</span></a></span></span><span> </span><span id="local-6989586621680973120"><span class="annot"><span class="annottext">[(Var, Ty)]
+</span><a href="#local-6989586621680973120"><span class="hs-identifier hs-var">binds</span></a></span></span><span> </span><span id="local-6989586621680973121"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680973121"><span class="hs-identifier hs-var">rator</span></a></span></span><span> </span><span id="local-6989586621680973122"><span class="annot"><span class="annottext">[Triv]
+</span><a href="#local-6989586621680973122"><span class="hs-identifier hs-var">rands</span></a></span></span><span> </span><span id="local-6989586621680973123"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973123"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-65"></span><span>      </span><span class="annot"><span class="annottext">Bool -&gt; [(Var, Ty)] -&gt; Var -&gt; [Triv] -&gt; Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#LetCallT"><span class="hs-identifier hs-var">LetCallT</span></a></span><span> </span><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680973119"><span class="hs-identifier hs-var">async</span></a></span><span> </span><span class="annot"><span class="annottext">[(Var, Ty)]
+</span><a href="#local-6989586621680973120"><span class="hs-identifier hs-var">binds</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680973121"><span class="hs-identifier hs-var">rator</span></a></span><span> </span><span class="annot"><span class="annottext">[Triv]
+</span><a href="#local-6989586621680973122"><span class="hs-identifier hs-var">rands</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; Tail) -&gt; PassM Tail -&gt; PassM Tail
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span>
+</span><span id="line-66"></span><span>        </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973123"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-67"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#LetTrivT"><span class="hs-identifier hs-type">LetTrivT</span></a></span><span> </span><span id="local-6989586621680973125"><span class="annot"><span class="annottext">(Var, Ty, Triv)
+</span><a href="#local-6989586621680973125"><span class="hs-identifier hs-var">bnd</span></a></span></span><span> </span><span id="local-6989586621680973126"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973126"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-68"></span><span>      </span><span class="annot"><span class="annottext">(Var, Ty, Triv) -&gt; Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#LetTrivT"><span class="hs-identifier hs-var">LetTrivT</span></a></span><span> </span><span class="annot"><span class="annottext">(Var, Ty, Triv)
+</span><a href="#local-6989586621680973125"><span class="hs-identifier hs-var">bnd</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; Tail) -&gt; PassM Tail -&gt; PassM Tail
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973126"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-69"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#LetIfT"><span class="hs-identifier hs-type">LetIfT</span></a></span><span> </span><span id="local-6989586621680973128"><span class="annot"><span class="annottext">[(Var, Ty)]
+</span><a href="#local-6989586621680973128"><span class="hs-identifier hs-var">binds</span></a></span></span><span> </span><span class="hs-special">(</span><span id="local-6989586621680973129"><span class="annot"><span class="annottext">Triv
+</span><a href="#local-6989586621680973129"><span class="hs-identifier hs-var">trv</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680973130"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973130"><span class="hs-identifier hs-var">tl1</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680973131"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973131"><span class="hs-identifier hs-var">tl2</span></a></span></span><span class="hs-special">)</span><span> </span><span id="local-6989586621680973132"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973132"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-70"></span><span>      </span><span id="local-6989586621680973133"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973133"><span class="hs-identifier hs-var">tl1'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973130"><span class="hs-identifier hs-var">tl1</span></a></span><span>
+</span><span id="line-71"></span><span>      </span><span id="local-6989586621680973134"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973134"><span class="hs-identifier hs-var">tl2'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973131"><span class="hs-identifier hs-var">tl2</span></a></span><span>
+</span><span id="line-72"></span><span>      </span><span class="annot"><span class="annottext">[(Var, Ty)] -&gt; (Triv, Tail, Tail) -&gt; Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#LetIfT"><span class="hs-identifier hs-var">LetIfT</span></a></span><span> </span><span class="annot"><span class="annottext">[(Var, Ty)]
+</span><a href="#local-6989586621680973128"><span class="hs-identifier hs-var">binds</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Triv
+</span><a href="#local-6989586621680973129"><span class="hs-identifier hs-var">trv</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973133"><span class="hs-identifier hs-var">tl1'</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973134"><span class="hs-identifier hs-var">tl2'</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; Tail) -&gt; PassM Tail -&gt; PassM Tail
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span>
+</span><span id="line-73"></span><span>        </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973132"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-74"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#LetUnpackT"><span class="hs-identifier hs-type">LetUnpackT</span></a></span><span> </span><span id="local-6989586621680973136"><span class="annot"><span class="annottext">[(Var, Ty)]
+</span><a href="#local-6989586621680973136"><span class="hs-identifier hs-var">binds</span></a></span></span><span> </span><span id="local-6989586621680973137"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680973137"><span class="hs-identifier hs-var">ptr</span></a></span></span><span> </span><span id="local-6989586621680973138"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973138"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-75"></span><span>      </span><span class="annot"><span class="annottext">[(Var, Ty)] -&gt; Var -&gt; Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#LetUnpackT"><span class="hs-identifier hs-var">LetUnpackT</span></a></span><span> </span><span class="annot"><span class="annottext">[(Var, Ty)]
+</span><a href="#local-6989586621680973136"><span class="hs-identifier hs-var">binds</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680973137"><span class="hs-identifier hs-var">ptr</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; Tail) -&gt; PassM Tail -&gt; PassM Tail
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973138"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-76"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#LetAllocT"><span class="hs-identifier hs-type">LetAllocT</span></a></span><span> </span><span id="local-6989586621680973140"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680973140"><span class="hs-identifier hs-var">lhs</span></a></span></span><span> </span><span id="local-6989586621680973141"><span class="annot"><span class="annottext">[(Ty, Triv)]
+</span><a href="#local-6989586621680973141"><span class="hs-identifier hs-var">vals</span></a></span></span><span> </span><span id="local-6989586621680973142"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973142"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-77"></span><span>      </span><span class="annot"><span class="annottext">Var -&gt; [(Ty, Triv)] -&gt; Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#LetAllocT"><span class="hs-identifier hs-var">LetAllocT</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680973140"><span class="hs-identifier hs-var">lhs</span></a></span><span> </span><span class="annot"><span class="annottext">[(Ty, Triv)]
+</span><a href="#local-6989586621680973141"><span class="hs-identifier hs-var">vals</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; Tail) -&gt; PassM Tail -&gt; PassM Tail
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973142"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-78"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#LetAvailT"><span class="hs-identifier hs-type">LetAvailT</span></a></span><span> </span><span id="local-6989586621680973144"><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680973144"><span class="hs-identifier hs-var">vs</span></a></span></span><span> </span><span id="local-6989586621680973145"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973145"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-79"></span><span>      </span><span class="annot"><span class="annottext">[Var] -&gt; Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#LetAvailT"><span class="hs-identifier hs-var">LetAvailT</span></a></span><span> </span><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680973144"><span class="hs-identifier hs-var">vs</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; Tail) -&gt; PassM Tail -&gt; PassM Tail
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973145"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-80"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#IfT"><span class="hs-identifier hs-type">IfT</span></a></span><span> </span><span id="local-6989586621680973147"><span class="annot"><span class="annottext">Triv
+</span><a href="#local-6989586621680973147"><span class="hs-identifier hs-var">tst</span></a></span></span><span> </span><span id="local-6989586621680973148"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973148"><span class="hs-identifier hs-var">con</span></a></span></span><span> </span><span id="local-6989586621680973149"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973149"><span class="hs-identifier hs-var">els</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-81"></span><span>      </span><span class="annot"><span class="annottext">Triv -&gt; Tail -&gt; Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#IfT"><span class="hs-identifier hs-var">IfT</span></a></span><span> </span><span class="annot"><span class="annottext">Triv
+</span><a href="#local-6989586621680973147"><span class="hs-identifier hs-var">tst</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; Tail -&gt; Tail) -&gt; PassM Tail -&gt; PassM (Tail -&gt; Tail)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973148"><span class="hs-identifier hs-var">con</span></a></span><span> </span><span class="annot"><span class="annottext">PassM (Tail -&gt; Tail) -&gt; PassM Tail -&gt; PassM Tail
+forall a b. PassM (a -&gt; b) -&gt; PassM a -&gt; PassM b
+forall (f :: * -&gt; *) a b. Applicative f =&gt; f (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%3C%2A%3E"><span class="hs-operator hs-var">&lt;*&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973149"><span class="hs-identifier hs-var">els</span></a></span><span>
+</span><span id="line-82"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#ErrT"><span class="hs-identifier hs-type">ErrT</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973073"><span class="hs-identifier hs-var">tail</span></a></span><span>
+</span><span id="line-83"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#LetTimedT"><span class="hs-identifier hs-type">LetTimedT</span></a></span><span> </span><span id="local-6989586621680973152"><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680973152"><span class="hs-identifier hs-var">isIter</span></a></span></span><span> </span><span id="local-6989586621680973153"><span class="annot"><span class="annottext">[(Var, Ty)]
+</span><a href="#local-6989586621680973153"><span class="hs-identifier hs-var">binds</span></a></span></span><span> </span><span id="local-6989586621680973154"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973154"><span class="hs-identifier hs-var">timed</span></a></span></span><span> </span><span id="local-6989586621680973155"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973155"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-84"></span><span>      </span><span class="annot"><span class="annottext">Bool -&gt; [(Var, Ty)] -&gt; Tail -&gt; Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#LetTimedT"><span class="hs-identifier hs-var">LetTimedT</span></a></span><span> </span><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680973152"><span class="hs-identifier hs-var">isIter</span></a></span><span> </span><span class="annot"><span class="annottext">[(Var, Ty)]
+</span><a href="#local-6989586621680973153"><span class="hs-identifier hs-var">binds</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973154"><span class="hs-identifier hs-var">timed</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; Tail) -&gt; PassM Tail -&gt; PassM Tail
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span>
+</span><span id="line-85"></span><span>        </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973155"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-86"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#LetArenaT"><span class="hs-identifier hs-type">LetArenaT</span></a></span><span> </span><span id="local-6989586621680973157"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680973157"><span class="hs-identifier hs-var">v</span></a></span></span><span> </span><span id="local-6989586621680973158"><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973158"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-87"></span><span>      </span><span class="annot"><span class="annottext">Var -&gt; Tail -&gt; Tail
+</span><a href="Gibbon.L4.Syntax.html#LetArenaT"><span class="hs-identifier hs-var">LetArenaT</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680973157"><span class="hs-identifier hs-var">v</span></a></span><span> </span><span class="annot"><span class="annottext">(Tail -&gt; Tail) -&gt; PassM Tail -&gt; PassM Tail
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973158"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-88"></span><span>    </span><span class="annot"><a href="Gibbon.L4.Syntax.html#TailCall"><span class="hs-identifier hs-type">TailCall</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Tail -&gt; PassM Tail
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Tail
+</span><a href="#local-6989586621680973073"><span class="hs-identifier hs-var">tail</span></a></span><span>
+</span><span id="line-89"></span><span>
+</span><span id="line-90"></span><span>  </span><span class="hs-keyword">where</span><span> </span><span id="local-6989586621680973085"><span class="annot"><span class="annottext">go :: Tail -&gt; PassM Tail
+</span><a href="#local-6989586621680973085"><span class="hs-identifier hs-var hs-var">go</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Bool -&gt; Maybe (Tail -&gt; Tail) -&gt; Tail -&gt; PassM Tail
+</span><a href="Gibbon.Passes.RearrangeFree.html#rearrangeFreeExp"><span class="hs-identifier hs-var">rearrangeFreeExp</span></a></span><span> </span><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680973071"><span class="hs-identifier hs-var">is_main</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe (Tail -&gt; Tail)
+</span><a href="#local-6989586621680973072"><span class="hs-identifier hs-var">frees</span></a></span><span>
+</span><span id="line-91"></span></pre></body></html>

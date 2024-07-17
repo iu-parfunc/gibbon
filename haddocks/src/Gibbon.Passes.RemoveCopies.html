@@ -1,0 +1,1067 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="annot"><span class="hs-comment">-- | Replace calls to copy functions with tagged indirection nodes</span></span><span>
+</span><span id="line-2"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Gibbon.Passes.RemoveCopies</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-3"></span><span>
+</span><span id="line-4"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.html"><span class="hs-identifier">Data.Map</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">M</span></span><span>
+</span><span id="line-5"></span><span>
+</span><span id="line-6"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="Gibbon.Common.html"><span class="hs-identifier">Gibbon.Common</span></a></span><span>
+</span><span id="line-7"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="Gibbon.L2.Syntax.html"><span class="hs-identifier">Gibbon.L2.Syntax</span></a></span><span>
+</span><span id="line-8"></span><span>
+</span><span id="line-9"></span><span class="hs-comment">--------------------------------------------------------------------------------</span><span>
+</span><span id="line-10"></span><span>
+</span><span id="line-11"></span><span class="hs-comment">-- Maps a location to a region</span><span>
+</span><span id="line-12"></span><span class="hs-keyword">type</span><span> </span><span id="LocEnv"><span class="annot"><a href="Gibbon.Passes.RemoveCopies.html#LocEnv"><span class="hs-identifier hs-var">LocEnv</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#Map"><span class="hs-identifier hs-type">M.Map</span></a></span><span> </span><span class="annot"><a href="Gibbon.Common.html#LocVar"><span class="hs-identifier hs-type">LocVar</span></a></span><span> </span><span class="annot"><a href="Gibbon.Common.html#Var"><span class="hs-identifier hs-type">Var</span></a></span><span>
+</span><span id="line-13"></span><span>
+</span><span id="line-14"></span><span class="annot"><a href="Gibbon.Passes.RemoveCopies.html#removeCopies"><span class="hs-identifier hs-type">removeCopies</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L2.Syntax.html#Prog2"><span class="hs-identifier hs-type">Prog2</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.Common.html#PassM"><span class="hs-identifier hs-type">PassM</span></a></span><span> </span><span class="annot"><a href="Gibbon.L2.Syntax.html#Prog2"><span class="hs-identifier hs-type">Prog2</span></a></span><span>
+</span><span id="line-15"></span><span id="removeCopies"><span class="annot"><span class="annottext">removeCopies :: Prog2 -&gt; PassM Prog2
+</span><a href="Gibbon.Passes.RemoveCopies.html#removeCopies"><span class="hs-identifier hs-var hs-var">removeCopies</span></a></span></span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span class="hs-special">{</span><span id="local-6989586621680974158"><span class="annot"><span class="annottext">DDefs (TyOf Exp2)
+ddefs :: DDefs (TyOf Exp2)
+ddefs :: forall ex. Prog ex -&gt; DDefs (TyOf ex)
+</span><a href="#local-6989586621680974158"><span class="hs-identifier hs-var hs-var">ddefs</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680974160"><span class="annot"><span class="annottext">FunDefs Exp2
+fundefs :: FunDefs Exp2
+fundefs :: forall ex. Prog ex -&gt; FunDefs ex
+</span><a href="#local-6989586621680974160"><span class="hs-identifier hs-var hs-var">fundefs</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680974162"><span class="annot"><span class="annottext">Maybe (Exp2, TyOf Exp2)
+mainExp :: Maybe (Exp2, TyOf Exp2)
+mainExp :: forall ex. Prog ex -&gt; Maybe (ex, TyOf ex)
+</span><a href="#local-6989586621680974162"><span class="hs-identifier hs-var hs-var">mainExp</span></a></span></span><span class="hs-special">}</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-16"></span><span>  </span><span id="local-6989586621680974164"><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974164"><span class="hs-identifier hs-var">ddefs'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">(DDef (UrTy Var) -&gt; PassM (DDef (UrTy Var)))
+-&gt; Map Var (DDef (UrTy Var)) -&gt; PassM (Map Var (DDef (UrTy Var)))
+forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Traversable t, Monad m) =&gt;
+(a -&gt; m b) -&gt; t a -&gt; m (t b)
+forall (m :: * -&gt; *) a b.
+Monad m =&gt;
+(a -&gt; m b) -&gt; Map Var a -&gt; m (Map Var b)
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Traversable.html#mapM"><span class="hs-identifier hs-var">mapM</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span id="local-6989586621680974166"><span class="annot"><span class="annottext">ddf :: DDef (UrTy Var)
+</span><a href="#local-6989586621680974166"><span class="hs-identifier hs-var">ddf</span></a></span></span><span class="hs-glyph">@</span><span class="annot"><a href="Gibbon.Language.Syntax.html#DDef"><span class="hs-identifier hs-type">DDef</span></a></span><span class="hs-special">{</span><span id="local-6989586621680974168"><span class="annot"><span class="annottext">[(DataCon, [(IsBoxed, UrTy Var)])]
+dataCons :: [(DataCon, [(IsBoxed, UrTy Var)])]
+dataCons :: forall a. DDef a -&gt; [(DataCon, [(IsBoxed, a)])]
+</span><a href="#local-6989586621680974168"><span class="hs-identifier hs-var hs-var">dataCons</span></a></span></span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-17"></span><span>                    </span><span id="local-6989586621680974170"><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974170"><span class="hs-identifier hs-var">dcon</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Var -&gt; DataCon
+</span><a href="Gibbon.Common.html#fromVar"><span class="hs-identifier hs-var">fromVar</span></a></span><span> </span><span class="annot"><span class="annottext">(Var -&gt; DataCon) -&gt; PassM Var -&gt; PassM DataCon
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Var -&gt; PassM Var
+forall (m :: * -&gt; *). MonadState Int m =&gt; Var -&gt; m Var
+</span><a href="Gibbon.Common.html#gensym"><span class="hs-identifier hs-var">gensym</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">DataCon -&gt; Var
+</span><a href="Gibbon.Common.html#toVar"><span class="hs-identifier hs-var">toVar</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><a href="Gibbon.Language.Constants.html#indirectionTag"><span class="hs-identifier hs-var">indirectionTag</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-18"></span><span>                    </span><span class="hs-comment">-- RemoveCopies might run more than once (b/c repairProgram), so</span><span>
+</span><span id="line-19"></span><span>                    </span><span class="hs-comment">-- we ensure that we add the Indirection constructor only once.</span><span>
+</span><span id="line-20"></span><span>                    </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621680974176"><span class="annot"><span class="annottext">datacons :: [(DataCon, [(IsBoxed, UrTy Var)])]
+</span><a href="#local-6989586621680974176"><span class="hs-identifier hs-var hs-var">datacons</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">((DataCon, [(IsBoxed, UrTy Var)]) -&gt; IsBoxed)
+-&gt; [(DataCon, [(IsBoxed, UrTy Var)])]
+-&gt; [(DataCon, [(IsBoxed, UrTy Var)])]
+forall a. (a -&gt; IsBoxed) -&gt; [a] -&gt; [a]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.List.html#filter"><span class="hs-identifier hs-var">filter</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">IsBoxed -&gt; IsBoxed
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Classes.html#not"><span class="hs-identifier hs-var">not</span></a></span><span> </span><span class="annot"><span class="annottext">(IsBoxed -&gt; IsBoxed)
+-&gt; ((DataCon, [(IsBoxed, UrTy Var)]) -&gt; IsBoxed)
+-&gt; (DataCon, [(IsBoxed, UrTy Var)])
+-&gt; IsBoxed
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#."><span class="hs-operator hs-var">.</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; IsBoxed
+</span><a href="Gibbon.Language.Constants.html#isIndirectionTag"><span class="hs-identifier hs-var">isIndirectionTag</span></a></span><span> </span><span class="annot"><span class="annottext">(DataCon -&gt; IsBoxed)
+-&gt; ((DataCon, [(IsBoxed, UrTy Var)]) -&gt; DataCon)
+-&gt; (DataCon, [(IsBoxed, UrTy Var)])
+-&gt; IsBoxed
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#."><span class="hs-operator hs-var">.</span></a></span><span> </span><span class="annot"><span class="annottext">(DataCon, [(IsBoxed, UrTy Var)]) -&gt; DataCon
+forall a b. (a, b) -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Tuple.html#fst"><span class="hs-identifier hs-var">fst</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">[(DataCon, [(IsBoxed, UrTy Var)])]
+</span><a href="#local-6989586621680974168"><span class="hs-identifier hs-var">dataCons</span></a></span><span>
+</span><span id="line-21"></span><span>                    </span><span class="annot"><span class="annottext">DDef (UrTy Var) -&gt; PassM (DDef (UrTy Var))
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">DDef (UrTy Var)
+</span><a href="#local-6989586621680974166"><span class="hs-identifier hs-var">ddf</span></a></span><span> </span><span class="hs-special">{</span><span class="annot"><span class="annottext">dataCons :: [(DataCon, [(IsBoxed, UrTy Var)])]
+</span><a href="Gibbon.Language.Syntax.html#dataCons"><span class="hs-identifier hs-var">dataCons</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(DataCon, [(IsBoxed, UrTy Var)])]
+</span><a href="#local-6989586621680974176"><span class="hs-identifier hs-var">datacons</span></a></span><span> </span><span class="annot"><span class="annottext">[(DataCon, [(IsBoxed, UrTy Var)])]
+-&gt; [(DataCon, [(IsBoxed, UrTy Var)])]
+-&gt; [(DataCon, [(IsBoxed, UrTy Var)])]
+forall a. [a] -&gt; [a] -&gt; [a]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%2B%2B"><span class="hs-operator hs-var">++</span></a></span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974170"><span class="hs-identifier hs-var">dcon</span></a></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">IsBoxed
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Types.html#False"><span class="hs-identifier hs-var">False</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">UrTy Var
+forall loc. UrTy loc
+</span><a href="Gibbon.Language.Syntax.html#CursorTy"><span class="hs-identifier hs-var">CursorTy</span></a></span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">}</span><span> </span><span class="hs-special">)</span><span>
+</span><span id="line-22"></span><span>            </span><span class="annot"><span class="annottext">DDefs (TyOf Exp2)
+Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974158"><span class="hs-identifier hs-var">ddefs</span></a></span><span>
+</span><span id="line-23"></span><span>  </span><span class="hs-comment">-- Don't process copy* functions</span><span>
+</span><span id="line-24"></span><span>  </span><span id="local-6989586621680974182"><span class="annot"><span class="annottext">[FunDef Exp2]
+</span><a href="#local-6989586621680974182"><span class="hs-identifier hs-var">fds'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">(FunDef Exp2 -&gt; PassM (FunDef Exp2))
+-&gt; [FunDef Exp2] -&gt; PassM [FunDef Exp2]
+forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Traversable t, Monad m) =&gt;
+(a -&gt; m b) -&gt; t a -&gt; m (t b)
+forall (m :: * -&gt; *) a b. Monad m =&gt; (a -&gt; m b) -&gt; [a] -&gt; m [b]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Traversable.html#mapM"><span class="hs-identifier hs-var">mapM</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span id="local-6989586621680974183"><span class="annot"><span class="annottext">FunDef Exp2
+</span><a href="#local-6989586621680974183"><span class="hs-identifier hs-var">fn</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">if</span><span> </span><span class="annot"><span class="annottext">Var -&gt; IsBoxed
+</span><a href="Gibbon.Language.Constants.html#isCopyFunName"><span class="hs-identifier hs-var">isCopyFunName</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">FunDef Exp2 -&gt; Var
+forall ex. FunDef ex -&gt; Var
+</span><a href="Gibbon.Language.Syntax.html#funName"><span class="hs-identifier hs-var">funName</span></a></span><span> </span><span class="annot"><span class="annottext">FunDef Exp2
+</span><a href="#local-6989586621680974183"><span class="hs-identifier hs-var">fn</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-25"></span><span>                       </span><span class="hs-keyword">then</span><span> </span><span class="annot"><span class="annottext">FunDef Exp2 -&gt; PassM (FunDef Exp2)
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">FunDef Exp2
+</span><a href="#local-6989586621680974183"><span class="hs-identifier hs-var">fn</span></a></span><span>
+</span><span id="line-26"></span><span>                       </span><span class="hs-keyword">else</span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+-&gt; FunDefs Exp2 -&gt; FunDef Exp2 -&gt; PassM (FunDef Exp2)
+</span><a href="Gibbon.Passes.RemoveCopies.html#removeCopiesFn"><span class="hs-identifier hs-var">removeCopiesFn</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974164"><span class="hs-identifier hs-var">ddefs'</span></a></span><span> </span><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974160"><span class="hs-identifier hs-var">fundefs</span></a></span><span> </span><span class="annot"><span class="annottext">FunDef Exp2
+</span><a href="#local-6989586621680974183"><span class="hs-identifier hs-var">fn</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-27"></span><span>               </span><span class="hs-special">(</span><span class="annot"><span class="annottext">FunDefs Exp2 -&gt; [FunDef Exp2]
+forall k a. Map k a -&gt; [a]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#elems"><span class="hs-identifier hs-var">M.elems</span></a></span><span> </span><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974160"><span class="hs-identifier hs-var">fundefs</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-28"></span><span>  </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621680974188"><span class="annot"><span class="annottext">fundefs' :: FunDefs Exp2
+</span><a href="#local-6989586621680974188"><span class="hs-identifier hs-var hs-var">fundefs'</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(Var, FunDef Exp2)] -&gt; FunDefs Exp2
+forall k a. Ord k =&gt; [(k, a)] -&gt; Map k a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#fromList"><span class="hs-identifier hs-var">M.fromList</span></a></span><span> </span><span class="annot"><span class="annottext">([(Var, FunDef Exp2)] -&gt; FunDefs Exp2)
+-&gt; [(Var, FunDef Exp2)] -&gt; FunDefs Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">(FunDef Exp2 -&gt; (Var, FunDef Exp2))
+-&gt; [FunDef Exp2] -&gt; [(Var, FunDef Exp2)]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#map"><span class="hs-identifier hs-var">map</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span id="local-6989586621680974190"><span class="annot"><span class="annottext">FunDef Exp2
+</span><a href="#local-6989586621680974190"><span class="hs-identifier hs-var">f</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">FunDef Exp2 -&gt; Var
+forall ex. FunDef ex -&gt; Var
+</span><a href="Gibbon.Language.Syntax.html#funName"><span class="hs-identifier hs-var">funName</span></a></span><span> </span><span class="annot"><span class="annottext">FunDef Exp2
+</span><a href="#local-6989586621680974190"><span class="hs-identifier hs-var">f</span></a></span><span class="hs-special">,</span><span class="annot"><span class="annottext">FunDef Exp2
+</span><a href="#local-6989586621680974190"><span class="hs-identifier hs-var">f</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">[FunDef Exp2]
+</span><a href="#local-6989586621680974182"><span class="hs-identifier hs-var">fds'</span></a></span><span>
+</span><span id="line-29"></span><span>      </span><span id="local-6989586621680974191"><span class="annot"><span class="annottext">env2 :: Env2 (UrTy Var)
+</span><a href="#local-6989586621680974191"><span class="hs-identifier hs-var hs-var">env2</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">TyEnv (UrTy Var) -&gt; TyEnv (ArrowTy (UrTy Var)) -&gt; Env2 (UrTy Var)
+forall a. TyEnv a -&gt; TyEnv (ArrowTy a) -&gt; Env2 a
+</span><a href="Gibbon.Language.Syntax.html#Env2"><span class="hs-identifier hs-var">Env2</span></a></span><span> </span><span class="annot"><span class="annottext">TyEnv (UrTy Var)
+forall k a. Map k a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#empty"><span class="hs-identifier hs-var">M.empty</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">FunDefs Exp2 -&gt; TyEnv (ArrowTy (TyOf Exp2))
+forall a. FunDefs a -&gt; TyEnv (ArrowTy (TyOf a))
+</span><a href="Gibbon.Language.Syntax.html#initFunEnv"><span class="hs-identifier hs-var">initFunEnv</span></a></span><span> </span><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974160"><span class="hs-identifier hs-var">fundefs</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-30"></span><span>  </span><span id="local-6989586621680974195"><span class="annot"><span class="annottext">Maybe (Exp2, UrTy Var)
+</span><a href="#local-6989586621680974195"><span class="hs-identifier hs-var">mainExp'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Maybe (Exp2, TyOf Exp2)
+</span><a href="#local-6989586621680974162"><span class="hs-identifier hs-var">mainExp</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-31"></span><span>                </span><span class="annot"><span class="annottext">Maybe (Exp2, TyOf Exp2)
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Maybe (Exp2, UrTy Var) -&gt; PassM (Maybe (Exp2, UrTy Var))
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe (Exp2, UrTy Var)
+forall a. Maybe a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-32"></span><span>                </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-type">Just</span></a></span><span> </span><span class="hs-special">(</span><span id="local-6989586621680974196"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974196"><span class="hs-identifier hs-var">mn</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621680974197"><span class="annot"><span class="annottext">TyOf Exp2
+</span><a href="#local-6989586621680974197"><span class="hs-identifier hs-var">ty</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">(Exp2, UrTy Var) -&gt; Maybe (Exp2, UrTy Var)
+forall a. a -&gt; Maybe a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-var">Just</span></a></span><span> </span><span class="annot"><span class="annottext">((Exp2, UrTy Var) -&gt; Maybe (Exp2, UrTy Var))
+-&gt; (Exp2 -&gt; (Exp2, UrTy Var)) -&gt; Exp2 -&gt; Maybe (Exp2, UrTy Var)
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#."><span class="hs-operator hs-var">.</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">,</span><span class="annot"><span class="annottext">TyOf Exp2
+UrTy Var
+</span><a href="#local-6989586621680974197"><span class="hs-identifier hs-var">ty</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; Maybe (Exp2, UrTy Var))
+-&gt; PassM Exp2 -&gt; PassM (Maybe (Exp2, UrTy Var))
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span>
+</span><span id="line-33"></span><span>                  </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+-&gt; FunDefs Exp2 -&gt; LocEnv -&gt; Env2 (UrTy Var) -&gt; Exp2 -&gt; PassM Exp2
+</span><a href="Gibbon.Passes.RemoveCopies.html#removeCopiesExp"><span class="hs-identifier hs-var">removeCopiesExp</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974164"><span class="hs-identifier hs-var">ddefs'</span></a></span><span> </span><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974160"><span class="hs-identifier hs-var">fundefs</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv
+forall k a. Map k a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#empty"><span class="hs-identifier hs-var">M.empty</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (UrTy Var)
+</span><a href="#local-6989586621680974191"><span class="hs-identifier hs-var">env2</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974196"><span class="hs-identifier hs-var">mn</span></a></span><span>
+</span><span id="line-34"></span><span>  </span><span class="annot"><span class="annottext">Prog2 -&gt; PassM Prog2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">(Prog2 -&gt; PassM Prog2) -&gt; Prog2 -&gt; PassM Prog2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">DDefs (TyOf Exp2)
+-&gt; FunDefs Exp2 -&gt; Maybe (Exp2, TyOf Exp2) -&gt; Prog2
+forall ex.
+DDefs (TyOf ex) -&gt; FunDefs ex -&gt; Maybe (ex, TyOf ex) -&gt; Prog ex
+</span><a href="Gibbon.Language.Syntax.html#Prog"><span class="hs-identifier hs-var">Prog</span></a></span><span> </span><span class="annot"><span class="annottext">DDefs (TyOf Exp2)
+Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974164"><span class="hs-identifier hs-var">ddefs'</span></a></span><span> </span><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974188"><span class="hs-identifier hs-var">fundefs'</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe (Exp2, TyOf Exp2)
+Maybe (Exp2, UrTy Var)
+</span><a href="#local-6989586621680974195"><span class="hs-identifier hs-var">mainExp'</span></a></span><span>
+</span><span id="line-35"></span><span>
+</span><span id="line-36"></span><span class="annot"><a href="Gibbon.Passes.RemoveCopies.html#removeCopiesFn"><span class="hs-identifier hs-type">removeCopiesFn</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#DDefs"><span class="hs-identifier hs-type">DDefs</span></a></span><span> </span><span class="annot"><a href="Gibbon.L2.Syntax.html#Ty2"><span class="hs-identifier hs-type">Ty2</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.L2.Syntax.html#FunDefs2"><span class="hs-identifier hs-type">FunDefs2</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.L2.Syntax.html#FunDef2"><span class="hs-identifier hs-type">FunDef2</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.Common.html#PassM"><span class="hs-identifier hs-type">PassM</span></a></span><span> </span><span class="annot"><a href="Gibbon.L2.Syntax.html#FunDef2"><span class="hs-identifier hs-type">FunDef2</span></a></span><span>
+</span><span id="line-37"></span><span id="removeCopiesFn"><span class="annot"><span class="annottext">removeCopiesFn :: Map Var (DDef (UrTy Var))
+-&gt; FunDefs Exp2 -&gt; FunDef Exp2 -&gt; PassM (FunDef Exp2)
+</span><a href="Gibbon.Passes.RemoveCopies.html#removeCopiesFn"><span class="hs-identifier hs-var hs-var">removeCopiesFn</span></a></span></span><span> </span><span id="local-6989586621680974206"><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974206"><span class="hs-identifier hs-var">ddefs</span></a></span></span><span> </span><span id="local-6989586621680974207"><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974207"><span class="hs-identifier hs-var">fundefs</span></a></span></span><span> </span><span id="local-6989586621680974208"><span class="annot"><span class="annottext">f :: FunDef Exp2
+</span><a href="#local-6989586621680974208"><span class="hs-identifier hs-var">f</span></a></span></span><span class="hs-glyph">@</span><span class="annot"><a href="Gibbon.Language.Syntax.html#FunDef"><span class="hs-identifier hs-type">FunDef</span></a></span><span class="hs-special">{</span><span id="local-6989586621680974210"><span class="annot"><span class="annottext">[Var]
+funArgs :: [Var]
+funArgs :: forall ex. FunDef ex -&gt; [Var]
+</span><a href="#local-6989586621680974210"><span class="hs-identifier hs-var hs-var">funArgs</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680974212"><span class="annot"><span class="annottext">ArrowTy (TyOf Exp2)
+funTy :: ArrowTy (TyOf Exp2)
+funTy :: forall ex. FunDef ex -&gt; ArrowTy (TyOf ex)
+</span><a href="#local-6989586621680974212"><span class="hs-identifier hs-var hs-var">funTy</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680974214"><span class="annot"><span class="annottext">Exp2
+funBody :: Exp2
+funBody :: forall ex. FunDef ex -&gt; ex
+</span><a href="#local-6989586621680974214"><span class="hs-identifier hs-var hs-var">funBody</span></a></span></span><span class="hs-special">}</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-38"></span><span>  </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621680974216"><span class="annot"><span class="annottext">initLocEnv :: LocEnv
+</span><a href="#local-6989586621680974216"><span class="hs-identifier hs-var hs-var">initLocEnv</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(Var, Var)] -&gt; LocEnv
+forall k a. Ord k =&gt; [(k, a)] -&gt; Map k a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#fromList"><span class="hs-identifier hs-var">M.fromList</span></a></span><span> </span><span class="annot"><span class="annottext">([(Var, Var)] -&gt; LocEnv) -&gt; [(Var, Var)] -&gt; LocEnv
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">(LRM -&gt; (Var, Var)) -&gt; [LRM] -&gt; [(Var, Var)]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#map"><span class="hs-identifier hs-var">map</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L2.Syntax.html#LRM"><span class="hs-identifier hs-type">LRM</span></a></span><span> </span><span id="local-6989586621680974218"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974218"><span class="hs-identifier hs-var">lc</span></a></span></span><span> </span><span id="local-6989586621680974219"><span class="annot"><span class="annottext">Region
+</span><a href="#local-6989586621680974219"><span class="hs-identifier hs-var">r</span></a></span></span><span> </span><span class="annot"><span class="annottext">Modality
+</span><span class="hs-identifier">_</span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974218"><span class="hs-identifier hs-var">lc</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Region -&gt; Var
+</span><a href="Gibbon.L2.Syntax.html#regionToVar"><span class="hs-identifier hs-var">regionToVar</span></a></span><span> </span><span class="annot"><span class="annottext">Region
+</span><a href="#local-6989586621680974219"><span class="hs-identifier hs-var">r</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ArrowTy2 (UrTy Var) -&gt; [LRM]
+forall ty2. ArrowTy2 ty2 -&gt; [LRM]
+</span><a href="Gibbon.L2.Syntax.html#locVars"><span class="hs-identifier hs-var">locVars</span></a></span><span> </span><span class="annot"><span class="annottext">ArrowTy (TyOf Exp2)
+ArrowTy2 (UrTy Var)
+</span><a href="#local-6989586621680974212"><span class="hs-identifier hs-var">funTy</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-39"></span><span>      </span><span id="local-6989586621680974222"><span class="annot"><span class="annottext">initTyEnv :: TyEnv (UrTy Var)
+</span><a href="#local-6989586621680974222"><span class="hs-identifier hs-var hs-var">initTyEnv</span></a></span></span><span>  </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(Var, UrTy Var)] -&gt; TyEnv (UrTy Var)
+forall k a. Ord k =&gt; [(k, a)] -&gt; Map k a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#fromList"><span class="hs-identifier hs-var">M.fromList</span></a></span><span> </span><span class="annot"><span class="annottext">([(Var, UrTy Var)] -&gt; TyEnv (UrTy Var))
+-&gt; [(Var, UrTy Var)] -&gt; TyEnv (UrTy Var)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">[Var] -&gt; [UrTy Var] -&gt; [(Var, UrTy Var)]
+forall a b. [a] -&gt; [b] -&gt; [(a, b)]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.List.html#zip"><span class="hs-identifier hs-var">zip</span></a></span><span> </span><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680974210"><span class="hs-identifier hs-var">funArgs</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">ArrowTy2 (UrTy Var) -&gt; [UrTy Var]
+forall ty2. ArrowTy2 ty2 -&gt; [ty2]
+</span><a href="Gibbon.L2.Syntax.html#arrIns"><span class="hs-identifier hs-var">arrIns</span></a></span><span> </span><span class="annot"><span class="annottext">ArrowTy (TyOf Exp2)
+ArrowTy2 (UrTy Var)
+</span><a href="#local-6989586621680974212"><span class="hs-identifier hs-var">funTy</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-40"></span><span>      </span><span id="local-6989586621680974224"><span class="annot"><span class="annottext">env2 :: Env2 (UrTy Var)
+</span><a href="#local-6989586621680974224"><span class="hs-identifier hs-var hs-var">env2</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">TyEnv (UrTy Var) -&gt; TyEnv (ArrowTy (UrTy Var)) -&gt; Env2 (UrTy Var)
+forall a. TyEnv a -&gt; TyEnv (ArrowTy a) -&gt; Env2 a
+</span><a href="Gibbon.Language.Syntax.html#Env2"><span class="hs-identifier hs-var">Env2</span></a></span><span> </span><span class="annot"><span class="annottext">TyEnv (UrTy Var)
+</span><a href="#local-6989586621680974222"><span class="hs-identifier hs-var">initTyEnv</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">FunDefs Exp2 -&gt; TyEnv (ArrowTy (TyOf Exp2))
+forall a. FunDefs a -&gt; TyEnv (ArrowTy (TyOf a))
+</span><a href="Gibbon.Language.Syntax.html#initFunEnv"><span class="hs-identifier hs-var">initFunEnv</span></a></span><span> </span><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974207"><span class="hs-identifier hs-var">fundefs</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-41"></span><span>  </span><span id="local-6989586621680974225"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974225"><span class="hs-identifier hs-var">bod'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+-&gt; FunDefs Exp2 -&gt; LocEnv -&gt; Env2 (UrTy Var) -&gt; Exp2 -&gt; PassM Exp2
+</span><a href="Gibbon.Passes.RemoveCopies.html#removeCopiesExp"><span class="hs-identifier hs-var">removeCopiesExp</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974206"><span class="hs-identifier hs-var">ddefs</span></a></span><span> </span><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974207"><span class="hs-identifier hs-var">fundefs</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974216"><span class="hs-identifier hs-var">initLocEnv</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (UrTy Var)
+</span><a href="#local-6989586621680974224"><span class="hs-identifier hs-var">env2</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974214"><span class="hs-identifier hs-var">funBody</span></a></span><span>
+</span><span id="line-42"></span><span>  </span><span class="annot"><span class="annottext">FunDef Exp2 -&gt; PassM (FunDef Exp2)
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">(FunDef Exp2 -&gt; PassM (FunDef Exp2))
+-&gt; FunDef Exp2 -&gt; PassM (FunDef Exp2)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">FunDef Exp2
+</span><a href="#local-6989586621680974208"><span class="hs-identifier hs-var">f</span></a></span><span> </span><span class="hs-special">{</span><span class="annot"><span class="annottext">funBody :: Exp2
+</span><a href="Gibbon.Language.Syntax.html#funBody"><span class="hs-identifier hs-var">funBody</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974225"><span class="hs-identifier hs-var">bod'</span></a></span><span class="hs-special">}</span><span>
+</span><span id="line-43"></span><span>
+</span><span id="line-44"></span><span class="hs-comment">-- ASSUMPTION: copy functions would always be called on a single argument.</span><span>
+</span><span id="line-45"></span><span class="annot"><a href="Gibbon.Passes.RemoveCopies.html#removeCopiesExp"><span class="hs-identifier hs-type">removeCopiesExp</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#DDefs"><span class="hs-identifier hs-type">DDefs</span></a></span><span> </span><span class="annot"><a href="Gibbon.L2.Syntax.html#Ty2"><span class="hs-identifier hs-type">Ty2</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.L2.Syntax.html#FunDefs2"><span class="hs-identifier hs-type">FunDefs2</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.Passes.RemoveCopies.html#LocEnv"><span class="hs-identifier hs-type">LocEnv</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#Env2"><span class="hs-identifier hs-type">Env2</span></a></span><span> </span><span class="annot"><a href="Gibbon.L2.Syntax.html#Ty2"><span class="hs-identifier hs-type">Ty2</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.L2.Syntax.html#Exp2"><span class="hs-identifier hs-type">Exp2</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.Common.html#PassM"><span class="hs-identifier hs-type">PassM</span></a></span><span> </span><span class="annot"><a href="Gibbon.L2.Syntax.html#Exp2"><span class="hs-identifier hs-type">Exp2</span></a></span><span>
+</span><span id="line-46"></span><span id="removeCopiesExp"><span class="annot"><span class="annottext">removeCopiesExp :: Map Var (DDef (UrTy Var))
+-&gt; FunDefs Exp2 -&gt; LocEnv -&gt; Env2 (UrTy Var) -&gt; Exp2 -&gt; PassM Exp2
+</span><a href="Gibbon.Passes.RemoveCopies.html#removeCopiesExp"><span class="hs-identifier hs-var hs-var">removeCopiesExp</span></a></span></span><span> </span><span id="local-6989586621680974369"><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974369"><span class="hs-identifier hs-var">ddefs</span></a></span></span><span> </span><span id="local-6989586621680974370"><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974370"><span class="hs-identifier hs-var">fundefs</span></a></span></span><span> </span><span id="local-6989586621680974371"><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span></span><span> </span><span id="local-6989586621680974372"><span class="annot"><span class="annottext">Env2 (UrTy Var)
+</span><a href="#local-6989586621680974372"><span class="hs-identifier hs-var">env2</span></a></span></span><span> </span><span id="local-6989586621680974373"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-47"></span><span>  </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-48"></span><span>    </span><span class="hs-comment">-- This AppE copies data from 'lin' to 'lout'. When this becomes an</span><span>
+</span><span id="line-49"></span><span>    </span><span class="hs-comment">-- indirection node, 'lout' is the _pointer_, and 'lin' the _pointee_.</span><span>
+</span><span id="line-50"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-type">AppE</span></a></span><span> </span><span id="local-6989586621680974375"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974375"><span class="hs-identifier hs-var">f</span></a></span></span><span> </span><span class="hs-special">[</span><span id="local-6989586621680974376"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974376"><span class="hs-identifier hs-var">lin</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680974377"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974377"><span class="hs-identifier hs-var">lout</span></a></span></span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span id="local-6989586621680974378"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974378"><span class="hs-identifier hs-var">arg</span></a></span></span><span class="hs-special">]</span><span> </span><span class="hs-glyph">|</span><span> </span><span class="annot"><span class="annottext">Var -&gt; IsBoxed
+</span><a href="Gibbon.Language.Constants.html#isCopyFunName"><span class="hs-identifier hs-var">isCopyFunName</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974375"><span class="hs-identifier hs-var">f</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-51"></span><span>      </span><span id="local-6989586621680974379"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974379"><span class="hs-identifier hs-var">indirection</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Var -&gt; PassM Var
+forall (m :: * -&gt; *). MonadState Int m =&gt; Var -&gt; m Var
+</span><a href="Gibbon.Common.html#gensym"><span class="hs-identifier hs-var">gensym</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;indirection&quot;</span></span><span>
+</span><span id="line-52"></span><span>      </span><span class="hs-keyword">let</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.Language.Syntax.html#PackedTy"><span class="hs-identifier hs-type">PackedTy</span></a></span><span> </span><span id="local-6989586621680974381"><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974381"><span class="hs-identifier hs-var">tycon</span></a></span></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-identifier">_</span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">DDefs (TyOf Exp2) -&gt; Env2 (TyOf Exp2) -&gt; Exp2 -&gt; TyOf Exp2
+forall e.
+Typeable e =&gt;
+DDefs (TyOf e) -&gt; Env2 (TyOf e) -&gt; e -&gt; TyOf e
+</span><a href="Gibbon.Language.Syntax.html#gRecoverType"><span class="hs-identifier hs-var">gRecoverType</span></a></span><span> </span><span class="annot"><span class="annottext">DDefs (TyOf Exp2)
+Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974369"><span class="hs-identifier hs-var">ddefs</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (TyOf Exp2)
+Env2 (UrTy Var)
+</span><a href="#local-6989586621680974372"><span class="hs-identifier hs-var">env2</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-53"></span><span>          </span><span class="hs-comment">-- the indirection datacon for this type</span><span>
+</span><span id="line-54"></span><span>          </span><span id="local-6989586621680974383"><span class="annot"><span class="annottext">indrDcon :: [DataCon]
+</span><a href="#local-6989586621680974383"><span class="hs-identifier hs-var hs-var">indrDcon</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(DataCon -&gt; IsBoxed) -&gt; [DataCon] -&gt; [DataCon]
+forall a. (a -&gt; IsBoxed) -&gt; [a] -&gt; [a]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.List.html#filter"><span class="hs-identifier hs-var">filter</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; IsBoxed
+</span><a href="Gibbon.Language.Constants.html#isIndirectionTag"><span class="hs-identifier hs-var">isIndirectionTag</span></a></span><span> </span><span class="annot"><span class="annottext">([DataCon] -&gt; [DataCon]) -&gt; [DataCon] -&gt; [DataCon]
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var)) -&gt; DataCon -&gt; [DataCon]
+forall a. Out a =&gt; DDefs a -&gt; DataCon -&gt; [DataCon]
+</span><a href="Gibbon.Language.Syntax.html#getConOrdering"><span class="hs-identifier hs-var">getConOrdering</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974369"><span class="hs-identifier hs-var">ddefs</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974381"><span class="hs-identifier hs-var">tycon</span></a></span><span>
+</span><span id="line-55"></span><span>      </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">[DataCon]
+</span><a href="#local-6989586621680974383"><span class="hs-identifier hs-var">indrDcon</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-56"></span><span>        </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; PassM Exp2
+forall a. HasCallStack =&gt; DataCon -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Err.html#error"><span class="hs-identifier hs-var">error</span></a></span><span> </span><span class="annot"><span class="annottext">(DataCon -&gt; PassM Exp2) -&gt; DataCon -&gt; PassM Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><span class="hs-string">&quot;removeCopies: No indirection constructor found for: &quot;</span></span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; DataCon -&gt; DataCon
+forall a. [a] -&gt; [a] -&gt; [a]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%2B%2B"><span class="hs-operator hs-var">++</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; DataCon
+forall a. Out a =&gt; a -&gt; DataCon
+</span><a href="Gibbon.Common.html#sdoc"><span class="hs-identifier hs-var">sdoc</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974381"><span class="hs-identifier hs-var">tycon</span></a></span><span>
+</span><span id="line-57"></span><span>        </span><span class="hs-special">[</span><span id="local-6989586621680974387"><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974387"><span class="hs-identifier hs-var">dcon</span></a></span></span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-58"></span><span>          </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; PassM Exp2) -&gt; Exp2 -&gt; PassM Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-59"></span><span>            </span><span class="annot"><span class="annottext">[(Var, [Var], UrTy Var, Exp2)] -&gt; Exp2 -&gt; Exp2
+forall loc dec (ext :: * -&gt; * -&gt; *).
+[(Var, [loc], dec, PreExp ext loc dec)]
+-&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.html#mkLets"><span class="hs-identifier hs-var">mkLets</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974379"><span class="hs-identifier hs-var">indirection</span></a></span><span class="hs-special">,</span><span class="hs-special">[</span><span class="hs-special">]</span><span class="hs-special">,</span><span class="annot"><span class="annottext">DataCon -&gt; Var -&gt; UrTy Var
+forall loc. DataCon -&gt; loc -&gt; UrTy loc
+</span><a href="Gibbon.Language.Syntax.html#PackedTy"><span class="hs-identifier hs-var">PackedTy</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974381"><span class="hs-identifier hs-var">tycon</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974377"><span class="hs-identifier hs-var">lout</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-60"></span><span>                      </span><span class="annot"><span class="annottext">E2Ext Var (UrTy Var) -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#Ext"><span class="hs-identifier hs-var">Ext</span></a></span><span> </span><span class="annot"><span class="annottext">(E2Ext Var (UrTy Var) -&gt; Exp2) -&gt; E2Ext Var (UrTy Var) -&gt; Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+-&gt; DataCon
+-&gt; (Var, Var)
+-&gt; (Var, Var)
+-&gt; Exp2
+-&gt; E2Ext Var (UrTy Var)
+forall loc dec.
+DataCon
+-&gt; DataCon
+-&gt; (loc, loc)
+-&gt; (loc, loc)
+-&gt; E2 loc dec
+-&gt; E2Ext loc dec
+</span><a href="Gibbon.L2.Syntax.html#IndirectionE"><span class="hs-identifier hs-var">IndirectionE</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974381"><span class="hs-identifier hs-var">tycon</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974387"><span class="hs-identifier hs-var">dcon</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974377"><span class="hs-identifier hs-var">lout</span></a></span><span> </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv -&gt; Var -&gt; Var
+forall a b.
+(Ord a, Out a, Out b, Show a, HasCallStack) =&gt;
+Map a b -&gt; a -&gt; b
+</span><a href="Gibbon.Common.html#%23"><span class="hs-operator hs-var">#</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974377"><span class="hs-identifier hs-var">lout</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974376"><span class="hs-identifier hs-var">lin</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv -&gt; Var -&gt; Var
+forall a b.
+(Ord a, Out a, Out b, Show a, HasCallStack) =&gt;
+Map a b -&gt; a -&gt; b
+</span><a href="Gibbon.Common.html#%23"><span class="hs-operator hs-var">#</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974376"><span class="hs-identifier hs-var">lin</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974378"><span class="hs-identifier hs-var">arg</span></a></span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-61"></span><span>            </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974379"><span class="hs-identifier hs-var">indirection</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-62"></span><span>        </span><span id="local-6989586621680974393"><span class="annot"><span class="annottext">[DataCon]
+</span><a href="#local-6989586621680974393"><span class="hs-identifier hs-var">oth</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; PassM Exp2
+forall a. HasCallStack =&gt; DataCon -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Err.html#error"><span class="hs-identifier hs-var">error</span></a></span><span> </span><span class="annot"><span class="annottext">(DataCon -&gt; PassM Exp2) -&gt; DataCon -&gt; PassM Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><span class="hs-string">&quot;removeCopies: Multiple indirection constructors: &quot;</span></span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; DataCon -&gt; DataCon
+forall a. [a] -&gt; [a] -&gt; [a]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%2B%2B"><span class="hs-operator hs-var">++</span></a></span><span> </span><span class="annot"><span class="annottext">[DataCon] -&gt; DataCon
+forall a. Out a =&gt; a -&gt; DataCon
+</span><a href="Gibbon.Common.html#sdoc"><span class="hs-identifier hs-var">sdoc</span></a></span><span> </span><span class="annot"><span class="annottext">[DataCon]
+</span><a href="#local-6989586621680974393"><span class="hs-identifier hs-var">oth</span></a></span><span>
+</span><span id="line-63"></span><span>
+</span><span id="line-64"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#LetE"><span class="hs-identifier hs-type">LetE</span></a></span><span> </span><span class="hs-special">(</span><span id="local-6989586621680974395"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974395"><span class="hs-identifier hs-var">v</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680974396"><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680974396"><span class="hs-identifier hs-var">locs</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680974397"><span class="annot"><span class="annottext">ty :: UrTy Var
+</span><a href="#local-6989586621680974397"><span class="hs-identifier hs-var">ty</span></a></span></span><span class="hs-glyph">@</span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.Language.Syntax.html#PackedTy"><span class="hs-identifier hs-type">PackedTy</span></a></span><span> </span><span id="local-6989586621680974398"><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974398"><span class="hs-identifier hs-var">tycon</span></a></span></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-identifier">_</span></span><span class="hs-special">)</span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-type">AppE</span></a></span><span> </span><span id="local-6989586621680974399"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974399"><span class="hs-identifier hs-var">f</span></a></span></span><span> </span><span class="hs-special">[</span><span id="local-6989586621680974400"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974400"><span class="hs-identifier hs-var">lin</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680974401"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974401"><span class="hs-identifier hs-var">lout</span></a></span></span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span id="local-6989586621680974402"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974402"><span class="hs-identifier hs-var">arg</span></a></span></span><span class="hs-special">]</span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span id="local-6989586621680974403"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974403"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">|</span><span> </span><span class="annot"><span class="annottext">Var -&gt; IsBoxed
+</span><a href="Gibbon.Language.Constants.html#isCopyFunName"><span class="hs-identifier hs-var">isCopyFunName</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974399"><span class="hs-identifier hs-var">f</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-65"></span><span>      </span><span class="hs-comment">-- Get the indirection datacon for this type</span><span>
+</span><span id="line-66"></span><span>      </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621680974404"><span class="annot"><span class="annottext">indrDcon :: [DataCon]
+</span><a href="#local-6989586621680974404"><span class="hs-identifier hs-var hs-var">indrDcon</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(DataCon -&gt; IsBoxed) -&gt; [DataCon] -&gt; [DataCon]
+forall a. (a -&gt; IsBoxed) -&gt; [a] -&gt; [a]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.List.html#filter"><span class="hs-identifier hs-var">filter</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; IsBoxed
+</span><a href="Gibbon.Language.Constants.html#isIndirectionTag"><span class="hs-identifier hs-var">isIndirectionTag</span></a></span><span> </span><span class="annot"><span class="annottext">([DataCon] -&gt; [DataCon]) -&gt; [DataCon] -&gt; [DataCon]
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var)) -&gt; DataCon -&gt; [DataCon]
+forall a. Out a =&gt; DDefs a -&gt; DataCon -&gt; [DataCon]
+</span><a href="Gibbon.Language.Syntax.html#getConOrdering"><span class="hs-identifier hs-var">getConOrdering</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974369"><span class="hs-identifier hs-var">ddefs</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974398"><span class="hs-identifier hs-var">tycon</span></a></span><span>
+</span><span id="line-67"></span><span>      </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">[DataCon]
+</span><a href="#local-6989586621680974404"><span class="hs-identifier hs-var">indrDcon</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-68"></span><span>        </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; PassM Exp2
+forall a. HasCallStack =&gt; DataCon -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Err.html#error"><span class="hs-identifier hs-var">error</span></a></span><span> </span><span class="annot"><span class="annottext">(DataCon -&gt; PassM Exp2) -&gt; DataCon -&gt; PassM Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><span class="hs-string">&quot;removeCopies: No indirection constructor found for: &quot;</span></span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; DataCon -&gt; DataCon
+forall a. [a] -&gt; [a] -&gt; [a]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%2B%2B"><span class="hs-operator hs-var">++</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; DataCon
+forall a. Out a =&gt; a -&gt; DataCon
+</span><a href="Gibbon.Common.html#sdoc"><span class="hs-identifier hs-var">sdoc</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974398"><span class="hs-identifier hs-var">tycon</span></a></span><span>
+</span><span id="line-69"></span><span>        </span><span class="hs-special">[</span><span id="local-6989586621680974405"><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974405"><span class="hs-identifier hs-var">dcon</span></a></span></span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-70"></span><span>          </span><span class="annot"><span class="annottext">(Var, [Var], UrTy Var, Exp2) -&gt; Exp2 -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+(Var, [loc], dec, PreExp ext loc dec)
+-&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LetE"><span class="hs-identifier hs-var">LetE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974395"><span class="hs-identifier hs-var">v</span></a></span><span class="hs-special">,</span><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680974396"><span class="hs-identifier hs-var">locs</span></a></span><span class="hs-special">,</span><span class="annot"><span class="annottext">UrTy Var
+</span><a href="#local-6989586621680974397"><span class="hs-identifier hs-var">ty</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">E2Ext Var (UrTy Var) -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#Ext"><span class="hs-identifier hs-var">Ext</span></a></span><span> </span><span class="annot"><span class="annottext">(E2Ext Var (UrTy Var) -&gt; Exp2) -&gt; E2Ext Var (UrTy Var) -&gt; Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+-&gt; DataCon
+-&gt; (Var, Var)
+-&gt; (Var, Var)
+-&gt; Exp2
+-&gt; E2Ext Var (UrTy Var)
+forall loc dec.
+DataCon
+-&gt; DataCon
+-&gt; (loc, loc)
+-&gt; (loc, loc)
+-&gt; E2 loc dec
+-&gt; E2Ext loc dec
+</span><a href="Gibbon.L2.Syntax.html#IndirectionE"><span class="hs-identifier hs-var">IndirectionE</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974398"><span class="hs-identifier hs-var">tycon</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974405"><span class="hs-identifier hs-var">dcon</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974401"><span class="hs-identifier hs-var">lout</span></a></span><span> </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv -&gt; Var -&gt; Var
+forall a b.
+(Ord a, Out a, Out b, Show a, HasCallStack) =&gt;
+Map a b -&gt; a -&gt; b
+</span><a href="Gibbon.Common.html#%23"><span class="hs-operator hs-var">#</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974401"><span class="hs-identifier hs-var">lout</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974400"><span class="hs-identifier hs-var">lin</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv -&gt; Var -&gt; Var
+forall a b.
+(Ord a, Out a, Out b, Show a, HasCallStack) =&gt;
+Map a b -&gt; a -&gt; b
+</span><a href="Gibbon.Common.html#%23"><span class="hs-operator hs-var">#</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974400"><span class="hs-identifier hs-var">lin</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974402"><span class="hs-identifier hs-var">arg</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; Exp2) -&gt; PassM Exp2 -&gt; PassM Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span>
+</span><span id="line-71"></span><span>            </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+-&gt; FunDefs Exp2 -&gt; LocEnv -&gt; Env2 (UrTy Var) -&gt; Exp2 -&gt; PassM Exp2
+</span><a href="Gibbon.Passes.RemoveCopies.html#removeCopiesExp"><span class="hs-identifier hs-var">removeCopiesExp</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974369"><span class="hs-identifier hs-var">ddefs</span></a></span><span> </span><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974370"><span class="hs-identifier hs-var">fundefs</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; UrTy Var -&gt; Env2 (UrTy Var) -&gt; Env2 (UrTy Var)
+forall a. Var -&gt; a -&gt; Env2 a -&gt; Env2 a
+</span><a href="Gibbon.Language.Syntax.html#extendVEnv"><span class="hs-identifier hs-var">extendVEnv</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974395"><span class="hs-identifier hs-var">v</span></a></span><span> </span><span class="annot"><span class="annottext">UrTy Var
+</span><a href="#local-6989586621680974397"><span class="hs-identifier hs-var">ty</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (UrTy Var)
+</span><a href="#local-6989586621680974372"><span class="hs-identifier hs-var">env2</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974403"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-72"></span><span>        </span><span id="local-6989586621680974407"><span class="annot"><span class="annottext">[DataCon]
+</span><a href="#local-6989586621680974407"><span class="hs-identifier hs-var">oth</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; PassM Exp2
+forall a. HasCallStack =&gt; DataCon -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Err.html#error"><span class="hs-identifier hs-var">error</span></a></span><span> </span><span class="annot"><span class="annottext">(DataCon -&gt; PassM Exp2) -&gt; DataCon -&gt; PassM Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><span class="hs-string">&quot;removeCopies: Multiple indirection constructors: &quot;</span></span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; DataCon -&gt; DataCon
+forall a. [a] -&gt; [a] -&gt; [a]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%2B%2B"><span class="hs-operator hs-var">++</span></a></span><span> </span><span class="annot"><span class="annottext">[DataCon] -&gt; DataCon
+forall a. Out a =&gt; a -&gt; DataCon
+</span><a href="Gibbon.Common.html#sdoc"><span class="hs-identifier hs-var">sdoc</span></a></span><span> </span><span class="annot"><span class="annottext">[DataCon]
+</span><a href="#local-6989586621680974407"><span class="hs-identifier hs-var">oth</span></a></span><span>
+</span><span id="line-73"></span><span>
+</span><span id="line-74"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#Ext"><span class="hs-identifier hs-type">Ext</span></a></span><span> </span><span id="local-6989586621680974408"><span class="annot"><span class="annottext">E2Ext Var (UrTy Var)
+</span><a href="#local-6989586621680974408"><span class="hs-identifier hs-var">ext</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-75"></span><span>      </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">E2Ext Var (UrTy Var)
+</span><a href="#local-6989586621680974408"><span class="hs-identifier hs-var">ext</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-76"></span><span>        </span><span class="hs-comment">-- Update lenv with a binding for loc</span><span>
+</span><span id="line-77"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#LetLocE"><span class="hs-identifier hs-type">LetLocE</span></a></span><span> </span><span id="local-6989586621680974410"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974410"><span class="hs-identifier hs-var">loc</span></a></span></span><span> </span><span class="annot"><span class="annottext">PreLocExp Var
+</span><a href="Gibbon.L2.Syntax.html#FreeLE"><span class="hs-identifier hs-var">FreeLE</span></a></span><span> </span><span id="local-6989586621680974412"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974412"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-78"></span><span>          </span><span class="annot"><span class="annottext">E2Ext Var (UrTy Var) -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#Ext"><span class="hs-identifier hs-var">Ext</span></a></span><span> </span><span class="annot"><span class="annottext">(E2Ext Var (UrTy Var) -&gt; Exp2)
+-&gt; (Exp2 -&gt; E2Ext Var (UrTy Var)) -&gt; Exp2 -&gt; Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Var -&gt; PreLocExp Var -&gt; Exp2 -&gt; E2Ext Var (UrTy Var)
+forall loc dec. Var -&gt; PreLocExp loc -&gt; E2 loc dec -&gt; E2Ext loc dec
+</span><a href="Gibbon.L2.Syntax.html#LetLocE"><span class="hs-identifier hs-var">LetLocE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974410"><span class="hs-identifier hs-var">loc</span></a></span><span> </span><span class="annot"><span class="annottext">PreLocExp Var
+forall loc. PreLocExp loc
+</span><a href="Gibbon.L2.Syntax.html#FreeLE"><span class="hs-identifier hs-var">FreeLE</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; Exp2) -&gt; PassM Exp2 -&gt; PassM Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span>
+</span><span id="line-79"></span><span>            </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+-&gt; FunDefs Exp2 -&gt; LocEnv -&gt; Env2 (UrTy Var) -&gt; Exp2 -&gt; PassM Exp2
+</span><a href="Gibbon.Passes.RemoveCopies.html#removeCopiesExp"><span class="hs-identifier hs-var">removeCopiesExp</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974369"><span class="hs-identifier hs-var">ddefs</span></a></span><span> </span><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974370"><span class="hs-identifier hs-var">fundefs</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (UrTy Var)
+</span><a href="#local-6989586621680974372"><span class="hs-identifier hs-var">env2</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974412"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-80"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#StartOfPkdCursor"><span class="hs-identifier hs-type">StartOfPkdCursor</span></a></span><span> </span><span id="local-6989586621680974414"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974414"><span class="hs-identifier hs-var">cur</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (f :: * -&gt; *) a. Applicative f =&gt; a -&gt; f a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#pure"><span class="hs-identifier hs-var">pure</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; PassM Exp2) -&gt; Exp2 -&gt; PassM Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">E2Ext Var (UrTy Var) -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#Ext"><span class="hs-identifier hs-var">Ext</span></a></span><span> </span><span class="annot"><span class="annottext">(E2Ext Var (UrTy Var) -&gt; Exp2) -&gt; E2Ext Var (UrTy Var) -&gt; Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Var -&gt; E2Ext Var (UrTy Var)
+forall loc dec. Var -&gt; E2Ext loc dec
+</span><a href="Gibbon.L2.Syntax.html#StartOfPkdCursor"><span class="hs-identifier hs-var">StartOfPkdCursor</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974414"><span class="hs-identifier hs-var">cur</span></a></span><span>
+</span><span id="line-81"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#TagCursor"><span class="hs-identifier hs-type">TagCursor</span></a></span><span> </span><span id="local-6989586621680974416"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974416"><span class="hs-identifier hs-var">a</span></a></span></span><span> </span><span id="local-6989586621680974417"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974417"><span class="hs-identifier hs-var">b</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (f :: * -&gt; *) a. Applicative f =&gt; a -&gt; f a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#pure"><span class="hs-identifier hs-var">pure</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; PassM Exp2) -&gt; Exp2 -&gt; PassM Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">E2Ext Var (UrTy Var) -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#Ext"><span class="hs-identifier hs-var">Ext</span></a></span><span> </span><span class="annot"><span class="annottext">(E2Ext Var (UrTy Var) -&gt; Exp2) -&gt; E2Ext Var (UrTy Var) -&gt; Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Var -&gt; Var -&gt; E2Ext Var (UrTy Var)
+forall loc dec. Var -&gt; Var -&gt; E2Ext loc dec
+</span><a href="Gibbon.L2.Syntax.html#TagCursor"><span class="hs-identifier hs-var">TagCursor</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974416"><span class="hs-identifier hs-var">a</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974417"><span class="hs-identifier hs-var">b</span></a></span><span>
+</span><span id="line-82"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#LetLocE"><span class="hs-identifier hs-type">LetLocE</span></a></span><span> </span><span id="local-6989586621680974418"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974418"><span class="hs-identifier hs-var">loc</span></a></span></span><span> </span><span id="local-6989586621680974419"><span class="annot"><span class="annottext">PreLocExp Var
+</span><a href="#local-6989586621680974419"><span class="hs-identifier hs-var">rhs</span></a></span></span><span> </span><span id="local-6989586621680974420"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974420"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-83"></span><span>          </span><span class="hs-keyword">let</span><span> </span><span id="local-6989586621680974421"><span class="annot"><span class="annottext">reg :: Var
+</span><a href="#local-6989586621680974421"><span class="hs-identifier hs-var hs-var">reg</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">PreLocExp Var
+</span><a href="#local-6989586621680974419"><span class="hs-identifier hs-var">rhs</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-84"></span><span>                      </span><span class="annot"><a href="Gibbon.L2.Syntax.html#StartOfRegionLE"><span class="hs-identifier hs-type">StartOfRegionLE</span></a></span><span> </span><span id="local-6989586621680974423"><span class="annot"><span class="annottext">Region
+</span><a href="#local-6989586621680974423"><span class="hs-identifier hs-var">r</span></a></span></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Region -&gt; Var
+</span><a href="Gibbon.L2.Syntax.html#regionToVar"><span class="hs-identifier hs-var">regionToVar</span></a></span><span> </span><span class="annot"><span class="annottext">Region
+</span><a href="#local-6989586621680974423"><span class="hs-identifier hs-var">r</span></a></span><span>
+</span><span id="line-85"></span><span>                      </span><span class="annot"><a href="Gibbon.L2.Syntax.html#InRegionLE"><span class="hs-identifier hs-type">InRegionLE</span></a></span><span> </span><span id="local-6989586621680974425"><span class="annot"><span class="annottext">Region
+</span><a href="#local-6989586621680974425"><span class="hs-identifier hs-var">r</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Region -&gt; Var
+</span><a href="Gibbon.L2.Syntax.html#regionToVar"><span class="hs-identifier hs-var">regionToVar</span></a></span><span> </span><span class="annot"><span class="annottext">Region
+</span><a href="#local-6989586621680974425"><span class="hs-identifier hs-var">r</span></a></span><span>
+</span><span id="line-86"></span><span>                      </span><span class="annot"><a href="Gibbon.L2.Syntax.html#AfterConstantLE"><span class="hs-identifier hs-type">AfterConstantLE</span></a></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-identifier">_</span></span><span> </span><span id="local-6989586621680974427"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974427"><span class="hs-identifier hs-var">lc</span></a></span></span><span>   </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv -&gt; Var -&gt; Var
+forall a b.
+(Ord a, Out a, Out b, Show a, HasCallStack) =&gt;
+Map a b -&gt; a -&gt; b
+</span><a href="Gibbon.Common.html#%23"><span class="hs-operator hs-var">#</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974427"><span class="hs-identifier hs-var">lc</span></a></span><span>
+</span><span id="line-87"></span><span>                      </span><span class="annot"><a href="Gibbon.L2.Syntax.html#AfterVariableLE"><span class="hs-identifier hs-type">AfterVariableLE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-identifier">_</span></span><span> </span><span id="local-6989586621680974429"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974429"><span class="hs-identifier hs-var">lc</span></a></span></span><span> </span><span class="annot"><span class="annottext">IsBoxed
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv -&gt; Var -&gt; Var
+forall a b.
+(Ord a, Out a, Out b, Show a, HasCallStack) =&gt;
+Map a b -&gt; a -&gt; b
+</span><a href="Gibbon.Common.html#%23"><span class="hs-operator hs-var">#</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974429"><span class="hs-identifier hs-var">lc</span></a></span><span>
+</span><span id="line-88"></span><span>                      </span><span class="annot"><a href="Gibbon.L2.Syntax.html#FromEndLE"><span class="hs-identifier hs-type">FromEndLE</span></a></span><span> </span><span id="local-6989586621680974431"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974431"><span class="hs-identifier hs-var">lc</span></a></span></span><span>           </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv -&gt; Var -&gt; Var
+forall a b.
+(Ord a, Out a, Out b, Show a, HasCallStack) =&gt;
+Map a b -&gt; a -&gt; b
+</span><a href="Gibbon.Common.html#%23"><span class="hs-operator hs-var">#</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974431"><span class="hs-identifier hs-var">lc</span></a></span><span> </span><span class="hs-comment">-- TODO: This needs to be fixed</span><span>
+</span><span id="line-89"></span><span>          </span><span class="annot"><span class="annottext">E2Ext Var (UrTy Var) -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#Ext"><span class="hs-identifier hs-var">Ext</span></a></span><span> </span><span class="annot"><span class="annottext">(E2Ext Var (UrTy Var) -&gt; Exp2)
+-&gt; (Exp2 -&gt; E2Ext Var (UrTy Var)) -&gt; Exp2 -&gt; Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Var -&gt; PreLocExp Var -&gt; Exp2 -&gt; E2Ext Var (UrTy Var)
+forall loc dec. Var -&gt; PreLocExp loc -&gt; E2 loc dec -&gt; E2Ext loc dec
+</span><a href="Gibbon.L2.Syntax.html#LetLocE"><span class="hs-identifier hs-var">LetLocE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974418"><span class="hs-identifier hs-var">loc</span></a></span><span> </span><span class="annot"><span class="annottext">PreLocExp Var
+</span><a href="#local-6989586621680974419"><span class="hs-identifier hs-var">rhs</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; Exp2) -&gt; PassM Exp2 -&gt; PassM Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span>
+</span><span id="line-90"></span><span>            </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+-&gt; FunDefs Exp2 -&gt; LocEnv -&gt; Env2 (UrTy Var) -&gt; Exp2 -&gt; PassM Exp2
+</span><a href="Gibbon.Passes.RemoveCopies.html#removeCopiesExp"><span class="hs-identifier hs-var">removeCopiesExp</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974369"><span class="hs-identifier hs-var">ddefs</span></a></span><span> </span><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974370"><span class="hs-identifier hs-var">fundefs</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; Var -&gt; LocEnv -&gt; LocEnv
+forall k a. Ord k =&gt; k -&gt; a -&gt; Map k a -&gt; Map k a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#insert"><span class="hs-identifier hs-var">M.insert</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974418"><span class="hs-identifier hs-var">loc</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974421"><span class="hs-identifier hs-var">reg</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Env2 (UrTy Var)
+</span><a href="#local-6989586621680974372"><span class="hs-identifier hs-var">env2</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974420"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-91"></span><span>       </span><span class="hs-comment">-- Straightforward recursion</span><span>
+</span><span id="line-92"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#RetE"><span class="hs-identifier hs-type">RetE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-93"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#AddFixed"><span class="hs-identifier hs-type">AddFixed</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-94"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#LetRegionE"><span class="hs-identifier hs-type">LetRegionE</span></a></span><span> </span><span id="local-6989586621680974436"><span class="annot"><span class="annottext">Region
+</span><a href="#local-6989586621680974436"><span class="hs-identifier hs-var">r</span></a></span></span><span> </span><span id="local-6989586621680974437"><span class="annot"><span class="annottext">RegionSize
+</span><a href="#local-6989586621680974437"><span class="hs-identifier hs-var">sz</span></a></span></span><span> </span><span id="local-6989586621680974438"><span class="annot"><span class="annottext">Maybe RegionType
+</span><a href="#local-6989586621680974438"><span class="hs-identifier hs-var">ty</span></a></span></span><span> </span><span id="local-6989586621680974439"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974439"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">E2Ext Var (UrTy Var) -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#Ext"><span class="hs-identifier hs-var">Ext</span></a></span><span> </span><span class="annot"><span class="annottext">(E2Ext Var (UrTy Var) -&gt; Exp2)
+-&gt; (Exp2 -&gt; E2Ext Var (UrTy Var)) -&gt; Exp2 -&gt; Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Region
+-&gt; RegionSize -&gt; Maybe RegionType -&gt; Exp2 -&gt; E2Ext Var (UrTy Var)
+forall loc dec.
+Region
+-&gt; RegionSize -&gt; Maybe RegionType -&gt; E2 loc dec -&gt; E2Ext loc dec
+</span><a href="Gibbon.L2.Syntax.html#LetRegionE"><span class="hs-identifier hs-var">LetRegionE</span></a></span><span> </span><span class="annot"><span class="annottext">Region
+</span><a href="#local-6989586621680974436"><span class="hs-identifier hs-var">r</span></a></span><span> </span><span class="annot"><span class="annottext">RegionSize
+</span><a href="#local-6989586621680974437"><span class="hs-identifier hs-var">sz</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe RegionType
+</span><a href="#local-6989586621680974438"><span class="hs-identifier hs-var">ty</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; Exp2) -&gt; PassM Exp2 -&gt; PassM Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+</span><a href="#local-6989586621680974440"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974439"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-95"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#LetParRegionE"><span class="hs-identifier hs-type">LetParRegionE</span></a></span><span> </span><span id="local-6989586621680974442"><span class="annot"><span class="annottext">Region
+</span><a href="#local-6989586621680974442"><span class="hs-identifier hs-var">r</span></a></span></span><span> </span><span id="local-6989586621680974443"><span class="annot"><span class="annottext">RegionSize
+</span><a href="#local-6989586621680974443"><span class="hs-identifier hs-var">sz</span></a></span></span><span> </span><span id="local-6989586621680974444"><span class="annot"><span class="annottext">Maybe RegionType
+</span><a href="#local-6989586621680974444"><span class="hs-identifier hs-var">ty</span></a></span></span><span> </span><span id="local-6989586621680974445"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974445"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">E2Ext Var (UrTy Var) -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#Ext"><span class="hs-identifier hs-var">Ext</span></a></span><span> </span><span class="annot"><span class="annottext">(E2Ext Var (UrTy Var) -&gt; Exp2)
+-&gt; (Exp2 -&gt; E2Ext Var (UrTy Var)) -&gt; Exp2 -&gt; Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Region
+-&gt; RegionSize -&gt; Maybe RegionType -&gt; Exp2 -&gt; E2Ext Var (UrTy Var)
+forall loc dec.
+Region
+-&gt; RegionSize -&gt; Maybe RegionType -&gt; E2 loc dec -&gt; E2Ext loc dec
+</span><a href="Gibbon.L2.Syntax.html#LetParRegionE"><span class="hs-identifier hs-var">LetParRegionE</span></a></span><span> </span><span class="annot"><span class="annottext">Region
+</span><a href="#local-6989586621680974442"><span class="hs-identifier hs-var">r</span></a></span><span> </span><span class="annot"><span class="annottext">RegionSize
+</span><a href="#local-6989586621680974443"><span class="hs-identifier hs-var">sz</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe RegionType
+</span><a href="#local-6989586621680974444"><span class="hs-identifier hs-var">ty</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; Exp2) -&gt; PassM Exp2 -&gt; PassM Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+</span><a href="#local-6989586621680974440"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974445"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-96"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#FromEndE"><span class="hs-identifier hs-type">FromEndE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span>       </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-97"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#BoundsCheck"><span class="hs-identifier hs-type">BoundsCheck</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span>    </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-98"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#IndirectionE"><span class="hs-identifier hs-type">IndirectionE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span>   </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-99"></span><span>        </span><span class="annot"><span class="annottext">E2Ext Var (UrTy Var)
+</span><a href="Gibbon.L2.Syntax.html#GetCilkWorkerNum"><span class="hs-identifier hs-var">GetCilkWorkerNum</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-100"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#LetAvail"><span class="hs-identifier hs-type">LetAvail</span></a></span><span> </span><span id="local-6989586621680974450"><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680974450"><span class="hs-identifier hs-var">vs</span></a></span></span><span> </span><span id="local-6989586621680974451"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974451"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">E2Ext Var (UrTy Var) -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#Ext"><span class="hs-identifier hs-var">Ext</span></a></span><span> </span><span class="annot"><span class="annottext">(E2Ext Var (UrTy Var) -&gt; Exp2)
+-&gt; (Exp2 -&gt; E2Ext Var (UrTy Var)) -&gt; Exp2 -&gt; Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">[Var] -&gt; Exp2 -&gt; E2Ext Var (UrTy Var)
+forall loc dec. [Var] -&gt; E2 loc dec -&gt; E2Ext loc dec
+</span><a href="Gibbon.L2.Syntax.html#LetAvail"><span class="hs-identifier hs-var">LetAvail</span></a></span><span> </span><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680974450"><span class="hs-identifier hs-var">vs</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; Exp2) -&gt; PassM Exp2 -&gt; PassM Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+</span><a href="#local-6989586621680974440"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974451"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-101"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#AllocateTagHere"><span class="hs-identifier hs-type">AllocateTagHere</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-102"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#AllocateScalarsHere"><span class="hs-identifier hs-type">AllocateScalarsHere</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-103"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#SSPush"><span class="hs-identifier hs-type">SSPush</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-104"></span><span>        </span><span class="annot"><a href="Gibbon.L2.Syntax.html#SSPop"><span class="hs-identifier hs-type">SSPop</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-105"></span><span>
+</span><span id="line-106"></span><span>    </span><span class="hs-comment">-- Straightforward recursion</span><span>
+</span><span id="line-107"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-type">VarE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span>     </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-108"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#LitE"><span class="hs-identifier hs-type">LitE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span>     </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-109"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#CharE"><span class="hs-identifier hs-type">CharE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span>    </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-110"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#FloatE"><span class="hs-identifier hs-type">FloatE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span>   </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-111"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#LitSymE"><span class="hs-identifier hs-type">LitSymE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-112"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-type">AppE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span>     </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-113"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#PrimAppE"><span class="hs-identifier hs-type">PrimAppE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-114"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#DataConE"><span class="hs-identifier hs-type">DataConE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-115"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#ProjE"><span class="hs-identifier hs-type">ProjE</span></a></span><span> </span><span id="local-6989586621680974463"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621680974463"><span class="hs-identifier hs-var">i</span></a></span></span><span> </span><span id="local-6989586621680974464"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974464"><span class="hs-identifier hs-var">e</span></a></span></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Int -&gt; Exp2 -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Int -&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#ProjE"><span class="hs-identifier hs-var">ProjE</span></a></span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621680974463"><span class="hs-identifier hs-var">i</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; Exp2) -&gt; PassM Exp2 -&gt; PassM Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+</span><a href="#local-6989586621680974440"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974464"><span class="hs-identifier hs-var">e</span></a></span><span>
+</span><span id="line-116"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#IfE"><span class="hs-identifier hs-type">IfE</span></a></span><span> </span><span id="local-6989586621680974466"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974466"><span class="hs-identifier hs-var">a</span></a></span></span><span> </span><span id="local-6989586621680974467"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974467"><span class="hs-identifier hs-var">b</span></a></span></span><span> </span><span id="local-6989586621680974468"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974468"><span class="hs-identifier hs-var">c</span></a></span></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; Exp2 -&gt; Exp2 -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+PreExp ext loc dec
+-&gt; PreExp ext loc dec -&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#IfE"><span class="hs-identifier hs-var">IfE</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; Exp2 -&gt; Exp2 -&gt; Exp2)
+-&gt; PassM Exp2 -&gt; PassM (Exp2 -&gt; Exp2 -&gt; Exp2)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+</span><a href="#local-6989586621680974440"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974466"><span class="hs-identifier hs-var">a</span></a></span><span> </span><span class="annot"><span class="annottext">PassM (Exp2 -&gt; Exp2 -&gt; Exp2) -&gt; PassM Exp2 -&gt; PassM (Exp2 -&gt; Exp2)
+forall a b. PassM (a -&gt; b) -&gt; PassM a -&gt; PassM b
+forall (f :: * -&gt; *) a b. Applicative f =&gt; f (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%3C%2A%3E"><span class="hs-operator hs-var">&lt;*&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+</span><a href="#local-6989586621680974440"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974467"><span class="hs-identifier hs-var">b</span></a></span><span> </span><span class="annot"><span class="annottext">PassM (Exp2 -&gt; Exp2) -&gt; PassM Exp2 -&gt; PassM Exp2
+forall a b. PassM (a -&gt; b) -&gt; PassM a -&gt; PassM b
+forall (f :: * -&gt; *) a b. Applicative f =&gt; f (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%3C%2A%3E"><span class="hs-operator hs-var">&lt;*&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+</span><a href="#local-6989586621680974440"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974468"><span class="hs-identifier hs-var">c</span></a></span><span>
+</span><span id="line-117"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#MkProdE"><span class="hs-identifier hs-type">MkProdE</span></a></span><span> </span><span id="local-6989586621680974470"><span class="annot"><span class="annottext">[Exp2]
+</span><a href="#local-6989586621680974470"><span class="hs-identifier hs-var">ls</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">[Exp2] -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+[PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#MkProdE"><span class="hs-identifier hs-var">MkProdE</span></a></span><span> </span><span class="annot"><span class="annottext">([Exp2] -&gt; Exp2) -&gt; PassM [Exp2] -&gt; PassM Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; PassM Exp2) -&gt; [Exp2] -&gt; PassM [Exp2]
+forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Traversable t, Monad m) =&gt;
+(a -&gt; m b) -&gt; t a -&gt; m (t b)
+forall (m :: * -&gt; *) a b. Monad m =&gt; (a -&gt; m b) -&gt; [a] -&gt; m [b]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Traversable.html#mapM"><span class="hs-identifier hs-var">mapM</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+</span><a href="#local-6989586621680974440"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">[Exp2]
+</span><a href="#local-6989586621680974470"><span class="hs-identifier hs-var">ls</span></a></span><span>
+</span><span id="line-118"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#LetE"><span class="hs-identifier hs-type">LetE</span></a></span><span> </span><span class="hs-special">(</span><span id="local-6989586621680974471"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974471"><span class="hs-identifier hs-var">v</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680974472"><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680974472"><span class="hs-identifier hs-var">locs</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680974473"><span class="annot"><span class="annottext">UrTy Var
+</span><a href="#local-6989586621680974473"><span class="hs-identifier hs-var">ty</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621680974474"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974474"><span class="hs-identifier hs-var">rhs</span></a></span></span><span class="hs-special">)</span><span> </span><span id="local-6989586621680974475"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974475"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-119"></span><span>      </span><span class="annot"><span class="annottext">(Var, [Var], UrTy Var, Exp2) -&gt; Exp2 -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+(Var, [loc], dec, PreExp ext loc dec)
+-&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LetE"><span class="hs-identifier hs-var">LetE</span></a></span><span> </span><span class="annot"><span class="annottext">((Var, [Var], UrTy Var, Exp2) -&gt; Exp2 -&gt; Exp2)
+-&gt; (Exp2 -&gt; (Var, [Var], UrTy Var, Exp2)) -&gt; Exp2 -&gt; Exp2 -&gt; Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974471"><span class="hs-identifier hs-var">v</span></a></span><span class="hs-special">,</span><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680974472"><span class="hs-identifier hs-var">locs</span></a></span><span class="hs-special">,</span><span class="annot"><span class="annottext">UrTy Var
+</span><a href="#local-6989586621680974473"><span class="hs-identifier hs-var">ty</span></a></span><span class="hs-special">,</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; Exp2 -&gt; Exp2) -&gt; PassM Exp2 -&gt; PassM (Exp2 -&gt; Exp2)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+</span><a href="#local-6989586621680974440"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974474"><span class="hs-identifier hs-var">rhs</span></a></span><span> </span><span class="annot"><span class="annottext">PassM (Exp2 -&gt; Exp2) -&gt; PassM Exp2 -&gt; PassM Exp2
+forall a b. PassM (a -&gt; b) -&gt; PassM a -&gt; PassM b
+forall (f :: * -&gt; *) a b. Applicative f =&gt; f (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%3C%2A%3E"><span class="hs-operator hs-var">&lt;*&gt;</span></a></span><span>
+</span><span id="line-120"></span><span>        </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+-&gt; FunDefs Exp2 -&gt; LocEnv -&gt; Env2 (UrTy Var) -&gt; Exp2 -&gt; PassM Exp2
+</span><a href="Gibbon.Passes.RemoveCopies.html#removeCopiesExp"><span class="hs-identifier hs-var">removeCopiesExp</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974369"><span class="hs-identifier hs-var">ddefs</span></a></span><span> </span><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974370"><span class="hs-identifier hs-var">fundefs</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; UrTy Var -&gt; Env2 (UrTy Var) -&gt; Env2 (UrTy Var)
+forall a. Var -&gt; a -&gt; Env2 a -&gt; Env2 a
+</span><a href="Gibbon.Language.Syntax.html#extendVEnv"><span class="hs-identifier hs-var">extendVEnv</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974471"><span class="hs-identifier hs-var">v</span></a></span><span> </span><span class="annot"><span class="annottext">UrTy Var
+</span><a href="#local-6989586621680974473"><span class="hs-identifier hs-var">ty</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (UrTy Var)
+</span><a href="#local-6989586621680974372"><span class="hs-identifier hs-var">env2</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974475"><span class="hs-identifier hs-var">bod</span></a></span><span>
+</span><span id="line-121"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#CaseE"><span class="hs-identifier hs-type">CaseE</span></a></span><span> </span><span id="local-6989586621680974477"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974477"><span class="hs-identifier hs-var">scrt</span></a></span></span><span> </span><span id="local-6989586621680974478"><span class="annot"><span class="annottext">[(DataCon, [(Var, Var)], Exp2)]
+</span><a href="#local-6989586621680974478"><span class="hs-identifier hs-var">mp</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-122"></span><span>      </span><span class="hs-keyword">let</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-type">VarE</span></a></span><span> </span><span id="local-6989586621680974479"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974479"><span class="hs-identifier hs-var">v</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974477"><span class="hs-identifier hs-var">scrt</span></a></span><span>
+</span><span id="line-123"></span><span>          </span><span class="annot"><a href="Gibbon.Language.Syntax.html#PackedTy"><span class="hs-identifier hs-type">PackedTy</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><span class="hs-identifier">_</span></span><span> </span><span id="local-6989586621680974480"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974480"><span class="hs-identifier hs-var">tyloc</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Env2 (UrTy Var) -&gt; UrTy Var
+forall a. Out a =&gt; Var -&gt; Env2 a -&gt; a
+</span><a href="Gibbon.Language.Syntax.html#lookupVEnv"><span class="hs-identifier hs-var">lookupVEnv</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974479"><span class="hs-identifier hs-var">v</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (UrTy Var)
+</span><a href="#local-6989586621680974372"><span class="hs-identifier hs-var">env2</span></a></span><span>
+</span><span id="line-124"></span><span>          </span><span id="local-6989586621680974482"><span class="annot"><span class="annottext">reg :: Var
+</span><a href="#local-6989586621680974482"><span class="hs-identifier hs-var hs-var">reg</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv -&gt; Var -&gt; Var
+forall k a. Ord k =&gt; Map k a -&gt; k -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#%21"><span class="hs-operator hs-var">M.!</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974480"><span class="hs-identifier hs-var">tyloc</span></a></span><span>
+</span><span id="line-125"></span><span>      </span><span class="annot"><span class="annottext">Exp2 -&gt; [(DataCon, [(Var, Var)], Exp2)] -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+PreExp ext loc dec
+-&gt; [(DataCon, [(Var, loc)], PreExp ext loc dec)]
+-&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#CaseE"><span class="hs-identifier hs-var">CaseE</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974477"><span class="hs-identifier hs-var">scrt</span></a></span><span> </span><span class="annot"><span class="annottext">([(DataCon, [(Var, Var)], Exp2)] -&gt; Exp2)
+-&gt; PassM [(DataCon, [(Var, Var)], Exp2)] -&gt; PassM Exp2
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="annot"><span class="annottext">((DataCon, [(Var, Var)], Exp2)
+ -&gt; PassM (DataCon, [(Var, Var)], Exp2))
+-&gt; [(DataCon, [(Var, Var)], Exp2)]
+-&gt; PassM [(DataCon, [(Var, Var)], Exp2)]
+forall (t :: * -&gt; *) (m :: * -&gt; *) a b.
+(Traversable t, Monad m) =&gt;
+(a -&gt; m b) -&gt; t a -&gt; m (t b)
+forall (m :: * -&gt; *) a b. Monad m =&gt; (a -&gt; m b) -&gt; [a] -&gt; m [b]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Traversable.html#mapM"><span class="hs-identifier hs-var">mapM</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+-&gt; LocEnv
+-&gt; Env2 (UrTy Var)
+-&gt; (DataCon, [(Var, Var)], Exp2)
+-&gt; PassM (DataCon, [(Var, Var)], Exp2)
+</span><a href="#local-6989586621680974484"><span class="hs-identifier hs-var">docase</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974482"><span class="hs-identifier hs-var">reg</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (UrTy Var)
+</span><a href="#local-6989586621680974372"><span class="hs-identifier hs-var">env2</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">[(DataCon, [(Var, Var)], Exp2)]
+</span><a href="#local-6989586621680974478"><span class="hs-identifier hs-var">mp</span></a></span><span>
+</span><span id="line-126"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#TimeIt"><span class="hs-identifier hs-type">TimeIt</span></a></span><span> </span><span id="local-6989586621680974486"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974486"><span class="hs-identifier hs-var">e</span></a></span></span><span> </span><span id="local-6989586621680974487"><span class="annot"><span class="annottext">UrTy Var
+</span><a href="#local-6989586621680974487"><span class="hs-identifier hs-var">ty</span></a></span></span><span> </span><span id="local-6989586621680974488"><span class="annot"><span class="annottext">IsBoxed
+</span><a href="#local-6989586621680974488"><span class="hs-identifier hs-var">b</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-127"></span><span>      </span><span id="local-6989586621680974489"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974489"><span class="hs-identifier hs-var">e'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+</span><a href="#local-6989586621680974440"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974486"><span class="hs-identifier hs-var">e</span></a></span><span>
+</span><span id="line-128"></span><span>      </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; PassM Exp2) -&gt; Exp2 -&gt; PassM Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; UrTy Var -&gt; IsBoxed -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+PreExp ext loc dec -&gt; dec -&gt; IsBoxed -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#TimeIt"><span class="hs-identifier hs-var">TimeIt</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974489"><span class="hs-identifier hs-var">e'</span></a></span><span> </span><span class="annot"><span class="annottext">UrTy Var
+</span><a href="#local-6989586621680974487"><span class="hs-identifier hs-var">ty</span></a></span><span> </span><span class="annot"><span class="annottext">IsBoxed
+</span><a href="#local-6989586621680974488"><span class="hs-identifier hs-var">b</span></a></span><span>
+</span><span id="line-129"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#WithArenaE"><span class="hs-identifier hs-type">WithArenaE</span></a></span><span> </span><span id="local-6989586621680974491"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974491"><span class="hs-identifier hs-var">v</span></a></span></span><span> </span><span id="local-6989586621680974492"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974492"><span class="hs-identifier hs-var">e</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-130"></span><span>      </span><span id="local-6989586621680974493"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974493"><span class="hs-identifier hs-var">e'</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+</span><a href="#local-6989586621680974440"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974492"><span class="hs-identifier hs-var">e</span></a></span><span>
+</span><span id="line-131"></span><span>      </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; PassM Exp2) -&gt; Exp2 -&gt; PassM Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Var -&gt; Exp2 -&gt; Exp2
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Var -&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#WithArenaE"><span class="hs-identifier hs-var">WithArenaE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974491"><span class="hs-identifier hs-var">v</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974493"><span class="hs-identifier hs-var">e'</span></a></span><span>
+</span><span id="line-132"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#SpawnE"><span class="hs-identifier hs-type">SpawnE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (f :: * -&gt; *) a. Applicative f =&gt; a -&gt; f a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#pure"><span class="hs-identifier hs-var">pure</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-133"></span><span>    </span><span class="annot"><span class="annottext">Exp2
+</span><a href="Gibbon.Language.Syntax.html#SyncE"><span class="hs-identifier hs-var">SyncE</span></a></span><span>   </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Exp2 -&gt; PassM Exp2
+forall a. a -&gt; PassM a
+forall (f :: * -&gt; *) a. Applicative f =&gt; a -&gt; f a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#pure"><span class="hs-identifier hs-var">pure</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974373"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-134"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#MapE"><span class="hs-identifier hs-type">MapE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; PassM Exp2
+forall a. HasCallStack =&gt; DataCon -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Err.html#error"><span class="hs-identifier hs-var">error</span></a></span><span> </span><span class="annot"><span class="annottext">(DataCon -&gt; PassM Exp2) -&gt; DataCon -&gt; PassM Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><span class="hs-string">&quot;go: TODO MapE&quot;</span></span><span>
+</span><span id="line-135"></span><span>    </span><span class="annot"><a href="Gibbon.Language.Syntax.html#FoldE"><span class="hs-identifier hs-type">FoldE</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">DataCon -&gt; PassM Exp2
+forall a. HasCallStack =&gt; DataCon -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Err.html#error"><span class="hs-identifier hs-var">error</span></a></span><span> </span><span class="annot"><span class="annottext">(DataCon -&gt; PassM Exp2) -&gt; DataCon -&gt; PassM Exp2
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><span class="hs-string">&quot;go: TODO FoldE&quot;</span></span><span>
+</span><span id="line-136"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-137"></span><span>    </span><span id="local-6989586621680974440"><span class="annot"><span class="annottext">go :: Exp2 -&gt; PassM Exp2
+</span><a href="#local-6989586621680974440"><span class="hs-identifier hs-var hs-var">go</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+-&gt; FunDefs Exp2 -&gt; LocEnv -&gt; Env2 (UrTy Var) -&gt; Exp2 -&gt; PassM Exp2
+</span><a href="Gibbon.Passes.RemoveCopies.html#removeCopiesExp"><span class="hs-identifier hs-var">removeCopiesExp</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974369"><span class="hs-identifier hs-var">ddefs</span></a></span><span> </span><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974370"><span class="hs-identifier hs-var">fundefs</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974371"><span class="hs-identifier hs-var">lenv</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (UrTy Var)
+</span><a href="#local-6989586621680974372"><span class="hs-identifier hs-var">env2</span></a></span><span>
+</span><span id="line-138"></span><span>    </span><span id="local-6989586621680974484"><span class="annot"><span class="annottext">docase :: Var
+-&gt; LocEnv
+-&gt; Env2 (UrTy Var)
+-&gt; (DataCon, [(Var, Var)], Exp2)
+-&gt; PassM (DataCon, [(Var, Var)], Exp2)
+</span><a href="#local-6989586621680974484"><span class="hs-identifier hs-var hs-var">docase</span></a></span></span><span> </span><span id="local-6989586621680974498"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974498"><span class="hs-identifier hs-var">reg</span></a></span></span><span> </span><span id="local-6989586621680974499"><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974499"><span class="hs-identifier hs-var">lenv1</span></a></span></span><span> </span><span id="local-6989586621680974500"><span class="annot"><span class="annottext">Env2 (UrTy Var)
+</span><a href="#local-6989586621680974500"><span class="hs-identifier hs-var">env21</span></a></span></span><span> </span><span class="hs-special">(</span><span id="local-6989586621680974501"><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974501"><span class="hs-identifier hs-var">dcon</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680974502"><span class="annot"><span class="annottext">[(Var, Var)]
+</span><a href="#local-6989586621680974502"><span class="hs-identifier hs-var">vlocs</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680974503"><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974503"><span class="hs-identifier hs-var">bod</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-139"></span><span>      </span><span class="hs-comment">-- Update the envs with bindings for pattern matched variables and locations.</span><span>
+</span><span id="line-140"></span><span>      </span><span class="hs-comment">-- The locations point to the same region as the scrutinee.</span><span>
+</span><span id="line-141"></span><span>      </span><span class="hs-keyword">let</span><span> </span><span class="hs-special">(</span><span id="local-6989586621680974504"><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680974504"><span class="hs-identifier hs-var">vars</span></a></span></span><span class="hs-special">,</span><span id="local-6989586621680974505"><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680974505"><span class="hs-identifier hs-var">locs</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">[(Var, Var)] -&gt; ([Var], [Var])
+forall a b. [(a, b)] -&gt; ([a], [b])
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.List.html#unzip"><span class="hs-identifier hs-var">unzip</span></a></span><span> </span><span class="annot"><span class="annottext">[(Var, Var)]
+</span><a href="#local-6989586621680974502"><span class="hs-identifier hs-var">vlocs</span></a></span><span>
+</span><span id="line-142"></span><span>          </span><span id="local-6989586621680974507"><span class="annot"><span class="annottext">lenv1' :: LocEnv
+</span><a href="#local-6989586621680974507"><span class="hs-identifier hs-var hs-var">lenv1'</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(Var -&gt; LocEnv -&gt; LocEnv) -&gt; LocEnv -&gt; [Var] -&gt; LocEnv
+forall a b. (a -&gt; b -&gt; b) -&gt; b -&gt; [a] -&gt; b
+forall (t :: * -&gt; *) a b.
+Foldable t =&gt;
+(a -&gt; b -&gt; b) -&gt; b -&gt; t a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Foldable.html#foldr"><span class="hs-identifier hs-var">foldr</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">\</span><span id="local-6989586621680974509"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974509"><span class="hs-identifier hs-var">lc</span></a></span></span><span> </span><span id="local-6989586621680974510"><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974510"><span class="hs-identifier hs-var">acc</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Var -&gt; LocEnv -&gt; LocEnv
+forall k a. Ord k =&gt; k -&gt; a -&gt; Map k a -&gt; Map k a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#insert"><span class="hs-identifier hs-var">M.insert</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974509"><span class="hs-identifier hs-var">lc</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680974498"><span class="hs-identifier hs-var">reg</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974510"><span class="hs-identifier hs-var">acc</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974499"><span class="hs-identifier hs-var">lenv1</span></a></span><span> </span><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680974505"><span class="hs-identifier hs-var">locs</span></a></span><span>
+</span><span id="line-143"></span><span>          </span><span id="local-6989586621680974511"><span class="annot"><span class="annottext">env21' :: Env2 (UrTy Var)
+</span><a href="#local-6989586621680974511"><span class="hs-identifier hs-var hs-var">env21'</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">HasCallStack =&gt;
+DataCon
+-&gt; Map Var (DDef (UrTy Var))
+-&gt; [Var]
+-&gt; [Var]
+-&gt; Env2 (UrTy Var)
+-&gt; Env2 (UrTy Var)
+DataCon
+-&gt; Map Var (DDef (UrTy Var))
+-&gt; [Var]
+-&gt; [Var]
+-&gt; Env2 (UrTy Var)
+-&gt; Env2 (UrTy Var)
+</span><a href="Gibbon.L2.Syntax.html#extendPatternMatchEnv"><span class="hs-identifier hs-var">extendPatternMatchEnv</span></a></span><span> </span><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974501"><span class="hs-identifier hs-var">dcon</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974369"><span class="hs-identifier hs-var">ddefs</span></a></span><span> </span><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680974504"><span class="hs-identifier hs-var">vars</span></a></span><span> </span><span class="annot"><span class="annottext">[Var]
+</span><a href="#local-6989586621680974505"><span class="hs-identifier hs-var">locs</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (UrTy Var)
+</span><a href="#local-6989586621680974500"><span class="hs-identifier hs-var">env21</span></a></span><span>
+</span><span id="line-144"></span><span>      </span><span class="hs-special">(</span><span class="annot"><span class="annottext">DataCon
+</span><a href="#local-6989586621680974501"><span class="hs-identifier hs-var">dcon</span></a></span><span class="hs-special">,</span><span class="annot"><span class="annottext">[(Var, Var)]
+</span><a href="#local-6989586621680974502"><span class="hs-identifier hs-var">vlocs</span></a></span><span class="hs-special">,</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Exp2 -&gt; (DataCon, [(Var, Var)], Exp2))
+-&gt; PassM Exp2 -&gt; PassM (DataCon, [(Var, Var)], Exp2)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Functor.html#%3C%24%3E"><span class="hs-operator hs-var">&lt;$&gt;</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+-&gt; FunDefs Exp2 -&gt; LocEnv -&gt; Env2 (UrTy Var) -&gt; Exp2 -&gt; PassM Exp2
+</span><a href="Gibbon.Passes.RemoveCopies.html#removeCopiesExp"><span class="hs-identifier hs-var">removeCopiesExp</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var (DDef (UrTy Var))
+</span><a href="#local-6989586621680974369"><span class="hs-identifier hs-var">ddefs</span></a></span><span> </span><span class="annot"><span class="annottext">FunDefs Exp2
+</span><a href="#local-6989586621680974370"><span class="hs-identifier hs-var">fundefs</span></a></span><span> </span><span class="annot"><span class="annottext">LocEnv
+</span><a href="#local-6989586621680974507"><span class="hs-identifier hs-var">lenv1'</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (UrTy Var)
+</span><a href="#local-6989586621680974511"><span class="hs-identifier hs-var">env21'</span></a></span><span> </span><span class="annot"><span class="annottext">Exp2
+</span><a href="#local-6989586621680974503"><span class="hs-identifier hs-var">bod</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-145"></span></pre></body></html>

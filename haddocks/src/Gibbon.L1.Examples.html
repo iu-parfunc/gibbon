@@ -1,0 +1,579 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Gibbon.L1.Examples</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-2"></span><span>
+</span><span id="line-3"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.html"><span class="hs-identifier">Data.Map</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">M</span></span><span>
+</span><span id="line-4"></span><span>
+</span><span id="line-5"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html"><span class="hs-identifier">Gibbon.L1.Syntax</span></a></span><span>
+</span><span id="line-6"></span><span>
+</span><span id="line-7"></span><span class="hs-comment">--------------------------------------------------------------------------------</span><span>
+</span><span id="line-8"></span><span>
+</span><span id="line-9"></span><span class="annot"><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-type">treeTy</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Ty1"><span class="hs-identifier hs-type">Ty1</span></a></span><span>
+</span><span id="line-10"></span><span id="treeTy"><span class="annot"><span class="annottext">treeTy :: Ty1
+</span><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-var hs-var">treeTy</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">TyCon -&gt; () -&gt; Ty1
+forall loc. TyCon -&gt; loc -&gt; UrTy loc
+</span><a href="Gibbon.Language.Syntax.html#PackedTy"><span class="hs-identifier hs-var">PackedTy</span></a></span><span> </span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Tree&quot;</span></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><span id="line-11"></span><span>
+</span><span id="line-12"></span><span class="annot"><a href="Gibbon.L1.Examples.html#treeDD"><span class="hs-identifier hs-type">treeDD</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#DDefs"><span class="hs-identifier hs-type">DDefs</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.Language.Syntax.html#UrTy"><span class="hs-identifier hs-type">UrTy</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><span id="line-13"></span><span id="treeDD"><span class="annot"><span class="annottext">treeDD :: DDefs Ty1
+</span><a href="Gibbon.L1.Examples.html#treeDD"><span class="hs-identifier hs-var hs-var">treeDD</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">[DDef Ty1] -&gt; DDefs Ty1
+forall a. [DDef a] -&gt; DDefs a
+</span><a href="Gibbon.Language.Syntax.html#fromListDD"><span class="hs-identifier hs-var">fromListDD</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; [TyVar] -&gt; [(TyCon, [(IsBoxed, Ty1)])] -&gt; DDef Ty1
+forall a. Var -&gt; [TyVar] -&gt; [(TyCon, [(IsBoxed, a)])] -&gt; DDef a
+</span><a href="Gibbon.Language.Syntax.html#DDef"><span class="hs-identifier hs-var">DDef</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;Tree&quot;</span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span>
+</span><span id="line-14"></span><span>                      </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Leaf&quot;</span></span><span class="hs-special">,</span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">IsBoxed
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Types.html#False"><span class="hs-identifier hs-var">False</span></a></span><span class="hs-special">,</span><span class="annot"><span class="annottext">Ty1
+forall loc. UrTy loc
+</span><a href="Gibbon.Language.Syntax.html#IntTy"><span class="hs-identifier hs-var">IntTy</span></a></span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-15"></span><span>                      </span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Node&quot;</span></span><span class="hs-special">,</span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">IsBoxed
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Types.html#False"><span class="hs-identifier hs-var">False</span></a></span><span class="hs-special">,</span><span class="annot"><span class="annottext">Ty1
+</span><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-var">treeTy</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-16"></span><span>                                </span><span class="hs-special">,</span><span class="hs-special">(</span><span class="annot"><span class="annottext">IsBoxed
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Types.html#False"><span class="hs-identifier hs-var">False</span></a></span><span class="hs-special">,</span><span class="annot"><span class="annottext">Ty1
+</span><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-var">treeTy</span></a></span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-17"></span><span>
+</span><span id="line-18"></span><span class="annot"><a href="Gibbon.L1.Examples.html#mkAdd1Prog"><span class="hs-identifier hs-type">mkAdd1Prog</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Exp1"><span class="hs-identifier hs-type">Exp1</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Maybe"><span class="hs-identifier hs-type">Maybe</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L1.Syntax.html#Exp1"><span class="hs-identifier hs-type">Exp1</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Ty1"><span class="hs-identifier hs-type">Ty1</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Prog1"><span class="hs-identifier hs-type">Prog1</span></a></span><span>
+</span><span id="line-19"></span><span id="mkAdd1Prog"><span class="annot"><span class="annottext">mkAdd1Prog :: Exp1 -&gt; Maybe (Exp1, Ty1) -&gt; Prog1
+</span><a href="Gibbon.L1.Examples.html#mkAdd1Prog"><span class="hs-identifier hs-var hs-var">mkAdd1Prog</span></a></span></span><span> </span><span id="local-6989586621680927124"><span class="annot"><span class="annottext">Exp1
+</span><a href="#local-6989586621680927124"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span id="local-6989586621680927125"><span class="annot"><span class="annottext">Maybe (Exp1, Ty1)
+</span><a href="#local-6989586621680927125"><span class="hs-identifier hs-var">mainExp</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">DDefs (TyOf Exp1)
+-&gt; FunDefs Exp1 -&gt; Maybe (Exp1, TyOf Exp1) -&gt; Prog1
+forall ex.
+DDefs (TyOf ex) -&gt; FunDefs ex -&gt; Maybe (ex, TyOf ex) -&gt; Prog ex
+</span><a href="Gibbon.Language.Syntax.html#Prog"><span class="hs-identifier hs-var">Prog</span></a></span><span> </span><span class="annot"><span class="annottext">DDefs (TyOf Exp1)
+DDefs Ty1
+</span><a href="Gibbon.L1.Examples.html#treeDD"><span class="hs-identifier hs-var">treeDD</span></a></span><span>
+</span><span id="line-20"></span><span>                              </span><span class="hs-special">(</span><span class="annot"><span class="annottext">[(Var, FunDef Exp1)] -&gt; FunDefs Exp1
+forall k a. Ord k =&gt; [(k, a)] -&gt; Map k a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#fromList"><span class="hs-identifier hs-var">M.fromList</span></a></span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span class="hs-special">,</span><span class="annot"><span class="annottext">Exp1 -&gt; FunDef Exp1
+</span><a href="Gibbon.L1.Examples.html#mkAdd1Fun"><span class="hs-identifier hs-var">mkAdd1Fun</span></a></span><span> </span><span class="annot"><span class="annottext">Exp1
+</span><a href="#local-6989586621680927124"><span class="hs-identifier hs-var">bod</span></a></span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-21"></span><span>                              </span><span class="annot"><span class="annottext">Maybe (Exp1, TyOf Exp1)
+Maybe (Exp1, Ty1)
+</span><a href="#local-6989586621680927125"><span class="hs-identifier hs-var">mainExp</span></a></span><span>
+</span><span id="line-22"></span><span>
+</span><span id="line-23"></span><span class="annot"><a href="Gibbon.L1.Examples.html#mkAdd1Fun"><span class="hs-identifier hs-type">mkAdd1Fun</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Exp1"><span class="hs-identifier hs-type">Exp1</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#FunDef1"><span class="hs-identifier hs-type">FunDef1</span></a></span><span>
+</span><span id="line-24"></span><span id="mkAdd1Fun"><span class="annot"><span class="annottext">mkAdd1Fun :: Exp1 -&gt; FunDef Exp1
+</span><a href="Gibbon.L1.Examples.html#mkAdd1Fun"><span class="hs-identifier hs-var hs-var">mkAdd1Fun</span></a></span></span><span> </span><span id="local-6989586621680927132"><span class="annot"><span class="annottext">Exp1
+</span><a href="#local-6989586621680927132"><span class="hs-identifier hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Var
+-&gt; [Var] -&gt; ArrowTy (TyOf Exp1) -&gt; Exp1 -&gt; FunMeta -&gt; FunDef Exp1
+forall ex.
+Var -&gt; [Var] -&gt; ArrowTy (TyOf ex) -&gt; ex -&gt; FunMeta -&gt; FunDef ex
+</span><a href="Gibbon.Language.Syntax.html#FunDef"><span class="hs-identifier hs-var">FunDef</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;tr&quot;</span></span><span class="hs-special">]</span><span> </span><span class="hs-special">(</span><span class="hs-special">[</span><span class="annot"><span class="annottext">Ty1
+</span><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-var">treeTy</span></a></span><span class="hs-special">]</span><span class="hs-special">,</span><span class="annot"><span class="annottext">Ty1
+</span><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-var">treeTy</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Exp1
+</span><a href="#local-6989586621680927132"><span class="hs-identifier hs-var">bod</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">FunRec -&gt; FunInline -&gt; IsBoxed -&gt; FunMeta
+</span><a href="Gibbon.Language.Syntax.html#FunMeta"><span class="hs-identifier hs-var">FunMeta</span></a></span><span> </span><span class="annot"><span class="annottext">FunRec
+</span><a href="Gibbon.Language.Syntax.html#Rec"><span class="hs-identifier hs-var">Rec</span></a></span><span> </span><span class="annot"><span class="annottext">FunInline
+</span><a href="Gibbon.Language.Syntax.html#NoInline"><span class="hs-identifier hs-var">NoInline</span></a></span><span> </span><span class="annot"><span class="annottext">IsBoxed
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Types.html#False"><span class="hs-identifier hs-var">False</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-25"></span><span>
+</span><span id="line-26"></span><span class="hs-comment">----------------</span><span>
+</span><span id="line-27"></span><span>
+</span><span id="line-28"></span><span class="hs-comment">-- | The basic form of the add1 program where recursions happen</span><span>
+</span><span id="line-29"></span><span class="hs-comment">-- immediately as arguments to the data-constructor.</span><span>
+</span><span id="line-30"></span><span class="annot"><a href="Gibbon.L1.Examples.html#add1Prog"><span class="hs-identifier hs-type">add1Prog</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Prog1"><span class="hs-identifier hs-type">Prog1</span></a></span><span>
+</span><span id="line-31"></span><span id="add1Prog"><span class="annot"><span class="annottext">add1Prog :: Prog1
+</span><a href="Gibbon.L1.Examples.html#add1Prog"><span class="hs-identifier hs-var hs-var">add1Prog</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Exp1 -&gt; Maybe (Exp1, Ty1) -&gt; Prog1
+</span><a href="Gibbon.L1.Examples.html#mkAdd1Prog"><span class="hs-identifier hs-var">mkAdd1Prog</span></a></span><span> </span><span class="annot"><span class="annottext">Exp1
+</span><a href="Gibbon.L1.Examples.html#exadd1Bod"><span class="hs-identifier hs-var">exadd1Bod</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe (Exp1, Ty1)
+forall a. Maybe a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-32"></span><span>
+</span><span id="line-33"></span><span class="annot"><a href="Gibbon.L1.Examples.html#exadd1Bod"><span class="hs-identifier hs-type">exadd1Bod</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Exp1"><span class="hs-identifier hs-type">Exp1</span></a></span><span>
+</span><span id="line-34"></span><span id="exadd1Bod"><span class="annot"><span class="annottext">exadd1Bod :: Exp1
+</span><a href="Gibbon.L1.Examples.html#exadd1Bod"><span class="hs-identifier hs-var hs-var">exadd1Bod</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-35"></span><span>    </span><span class="annot"><span class="annottext">Exp1 -&gt; [(TyCon, [(Var, ())], Exp1)] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+PreExp ext loc dec
+-&gt; [(TyCon, [(Var, loc)], PreExp ext loc dec)]
+-&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#CaseE"><span class="hs-identifier hs-var">CaseE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;tr&quot;</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">([(TyCon, [(Var, ())], Exp1)] -&gt; Exp1)
+-&gt; [(TyCon, [(Var, ())], Exp1)] -&gt; Exp1
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-36"></span><span>      </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Leaf&quot;</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;n&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">,</span><span>
+</span><span id="line-37"></span><span>         </span><span class="annot"><span class="annottext">Prim Ty1 -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Prim dec -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#PrimAppE"><span class="hs-identifier hs-var">PrimAppE</span></a></span><span> </span><span class="annot"><span class="annottext">Prim Ty1
+forall ty. Prim ty
+</span><a href="Gibbon.Language.Syntax.html#AddP"><span class="hs-identifier hs-var">AddP</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;n&quot;</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Int -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Int -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LitE"><span class="hs-identifier hs-var">LitE</span></a></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">1</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-38"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Node&quot;</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">,</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">,</span><span>
+</span><span id="line-39"></span><span>         </span><span class="annot"><span class="annottext">() -&gt; TyCon -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+loc -&gt; TyCon -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#DataConE"><span class="hs-identifier hs-var">DataConE</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Node&quot;</span></span><span>
+</span><span id="line-40"></span><span>          </span><span class="hs-special">[</span><span> </span><span class="annot"><span class="annottext">Var -&gt; [()] -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Var -&gt; [loc] -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-var">AppE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x&quot;</span></span><span class="hs-special">]</span><span>
+</span><span id="line-41"></span><span>          </span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Var -&gt; [()] -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Var -&gt; [loc] -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-var">AppE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y&quot;</span></span><span class="hs-special">]</span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-42"></span><span>      </span><span class="hs-special">]</span><span>
+</span><span id="line-43"></span><span>
+</span><span id="line-44"></span><span class="annot"><a href="Gibbon.L1.Examples.html#exadd1BodLetLeft"><span class="hs-identifier hs-type">exadd1BodLetLeft</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Exp1"><span class="hs-identifier hs-type">Exp1</span></a></span><span>
+</span><span id="line-45"></span><span id="exadd1BodLetLeft"><span class="annot"><span class="annottext">exadd1BodLetLeft :: Exp1
+</span><a href="Gibbon.L1.Examples.html#exadd1BodLetLeft"><span class="hs-identifier hs-var hs-var">exadd1BodLetLeft</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-46"></span><span>    </span><span class="annot"><span class="annottext">Exp1 -&gt; [(TyCon, [(Var, ())], Exp1)] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+PreExp ext loc dec
+-&gt; [(TyCon, [(Var, loc)], PreExp ext loc dec)]
+-&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#CaseE"><span class="hs-identifier hs-var">CaseE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;tr&quot;</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">([(TyCon, [(Var, ())], Exp1)] -&gt; Exp1)
+-&gt; [(TyCon, [(Var, ())], Exp1)] -&gt; Exp1
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-47"></span><span>      </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Leaf&quot;</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;n&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Prim Ty1 -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Prim dec -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#PrimAppE"><span class="hs-identifier hs-var">PrimAppE</span></a></span><span> </span><span class="annot"><span class="annottext">Prim Ty1
+forall ty. Prim ty
+</span><a href="Gibbon.Language.Syntax.html#AddP"><span class="hs-identifier hs-var">AddP</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;n&quot;</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Int -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Int -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LitE"><span class="hs-identifier hs-var">LitE</span></a></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">1</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-48"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Node&quot;</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">,</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">,</span><span>
+</span><span id="line-49"></span><span>         </span><span class="annot"><span class="annottext">(Var, [()], Ty1, Exp1) -&gt; Exp1 -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+(Var, [loc], dec, PreExp ext loc dec)
+-&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LetE"><span class="hs-identifier hs-var">LetE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x2&quot;</span></span><span class="hs-special">,</span><span class="hs-special">[</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Ty1
+</span><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-var">treeTy</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Var -&gt; [()] -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Var -&gt; [loc] -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-var">AppE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x&quot;</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Exp1 -&gt; Exp1) -&gt; Exp1 -&gt; Exp1
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-50"></span><span>         </span><span class="annot"><span class="annottext">(Var, [()], Ty1, Exp1) -&gt; Exp1 -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+(Var, [loc], dec, PreExp ext loc dec)
+-&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LetE"><span class="hs-identifier hs-var">LetE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y2&quot;</span></span><span class="hs-special">,</span><span class="hs-special">[</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Ty1
+</span><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-var">treeTy</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Var -&gt; [()] -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Var -&gt; [loc] -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-var">AppE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y&quot;</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Exp1 -&gt; Exp1) -&gt; Exp1 -&gt; Exp1
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-51"></span><span>         </span><span class="annot"><span class="annottext">() -&gt; TyCon -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+loc -&gt; TyCon -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#DataConE"><span class="hs-identifier hs-var">DataConE</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Node&quot;</span></span><span>
+</span><span id="line-52"></span><span>          </span><span class="hs-special">[</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x2&quot;</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y2&quot;</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-53"></span><span>      </span><span class="hs-special">]</span><span>
+</span><span id="line-54"></span><span>
+</span><span id="line-55"></span><span class="annot"><span class="hs-comment">-- | A more challenging case where recursions are performed right-to-left</span></span><span>
+</span><span id="line-56"></span><span class="annot"><a href="Gibbon.L1.Examples.html#exadd1BodLetRight"><span class="hs-identifier hs-type">exadd1BodLetRight</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Exp1"><span class="hs-identifier hs-type">Exp1</span></a></span><span>
+</span><span id="line-57"></span><span id="exadd1BodLetRight"><span class="annot"><span class="annottext">exadd1BodLetRight :: Exp1
+</span><a href="Gibbon.L1.Examples.html#exadd1BodLetRight"><span class="hs-identifier hs-var hs-var">exadd1BodLetRight</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-58"></span><span>    </span><span class="annot"><span class="annottext">Exp1 -&gt; [(TyCon, [(Var, ())], Exp1)] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+PreExp ext loc dec
+-&gt; [(TyCon, [(Var, loc)], PreExp ext loc dec)]
+-&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#CaseE"><span class="hs-identifier hs-var">CaseE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;tr&quot;</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">([(TyCon, [(Var, ())], Exp1)] -&gt; Exp1)
+-&gt; [(TyCon, [(Var, ())], Exp1)] -&gt; Exp1
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-59"></span><span>      </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Leaf&quot;</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;n&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Prim Ty1 -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Prim dec -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#PrimAppE"><span class="hs-identifier hs-var">PrimAppE</span></a></span><span> </span><span class="annot"><span class="annottext">Prim Ty1
+forall ty. Prim ty
+</span><a href="Gibbon.Language.Syntax.html#AddP"><span class="hs-identifier hs-var">AddP</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;n&quot;</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Int -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Int -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LitE"><span class="hs-identifier hs-var">LitE</span></a></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">1</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-60"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Node&quot;</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">,</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">,</span><span>
+</span><span id="line-61"></span><span>         </span><span class="annot"><span class="annottext">(Var, [()], Ty1, Exp1) -&gt; Exp1 -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+(Var, [loc], dec, PreExp ext loc dec)
+-&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LetE"><span class="hs-identifier hs-var">LetE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y2&quot;</span></span><span class="hs-special">,</span><span class="hs-special">[</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Ty1
+</span><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-var">treeTy</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Var -&gt; [()] -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Var -&gt; [loc] -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-var">AppE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y&quot;</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Exp1 -&gt; Exp1) -&gt; Exp1 -&gt; Exp1
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-62"></span><span>         </span><span class="annot"><span class="annottext">(Var, [()], Ty1, Exp1) -&gt; Exp1 -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+(Var, [loc], dec, PreExp ext loc dec)
+-&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LetE"><span class="hs-identifier hs-var">LetE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x2&quot;</span></span><span class="hs-special">,</span><span class="hs-special">[</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Ty1
+</span><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-var">treeTy</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Var -&gt; [()] -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Var -&gt; [loc] -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-var">AppE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x&quot;</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(Exp1 -&gt; Exp1) -&gt; Exp1 -&gt; Exp1
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-63"></span><span>         </span><span class="annot"><span class="annottext">() -&gt; TyCon -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+loc -&gt; TyCon -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#DataConE"><span class="hs-identifier hs-var">DataConE</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Node&quot;</span></span><span>
+</span><span id="line-64"></span><span>          </span><span class="hs-special">[</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x2&quot;</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y2&quot;</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-65"></span><span>      </span><span class="hs-special">]</span><span>
+</span><span id="line-66"></span><span>
+</span><span id="line-67"></span><span class="annot"><span class="hs-comment">-- | Add1 program with let bindings, recurring in left-to-right order.</span></span><span>
+</span><span id="line-68"></span><span class="annot"><a href="Gibbon.L1.Examples.html#add1ProgLetLeft"><span class="hs-identifier hs-type">add1ProgLetLeft</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Prog1"><span class="hs-identifier hs-type">Prog1</span></a></span><span>
+</span><span id="line-69"></span><span id="add1ProgLetLeft"><span class="annot"><span class="annottext">add1ProgLetLeft :: Prog1
+</span><a href="Gibbon.L1.Examples.html#add1ProgLetLeft"><span class="hs-identifier hs-var hs-var">add1ProgLetLeft</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Exp1 -&gt; Maybe (Exp1, Ty1) -&gt; Prog1
+</span><a href="Gibbon.L1.Examples.html#mkAdd1Prog"><span class="hs-identifier hs-var">mkAdd1Prog</span></a></span><span> </span><span class="annot"><span class="annottext">Exp1
+</span><a href="Gibbon.L1.Examples.html#exadd1BodLetLeft"><span class="hs-identifier hs-var">exadd1BodLetLeft</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe (Exp1, Ty1)
+forall a. Maybe a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-70"></span><span>
+</span><span id="line-71"></span><span class="annot"><span class="hs-comment">-- | Add1 program with let bindings, recurring in right-to-left order.</span></span><span>
+</span><span id="line-72"></span><span class="annot"><a href="Gibbon.L1.Examples.html#add1ProgLetRight"><span class="hs-identifier hs-type">add1ProgLetRight</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Prog1"><span class="hs-identifier hs-type">Prog1</span></a></span><span>
+</span><span id="line-73"></span><span id="add1ProgLetRight"><span class="annot"><span class="annottext">add1ProgLetRight :: Prog1
+</span><a href="Gibbon.L1.Examples.html#add1ProgLetRight"><span class="hs-identifier hs-var hs-var">add1ProgLetRight</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Exp1 -&gt; Maybe (Exp1, Ty1) -&gt; Prog1
+</span><a href="Gibbon.L1.Examples.html#mkAdd1Prog"><span class="hs-identifier hs-var">mkAdd1Prog</span></a></span><span> </span><span class="annot"><span class="annottext">Exp1
+</span><a href="Gibbon.L1.Examples.html#exadd1BodLetRight"><span class="hs-identifier hs-var">exadd1BodLetRight</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe (Exp1, Ty1)
+forall a. Maybe a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-74"></span><span>
+</span><span id="line-75"></span><span>
+</span><span id="line-76"></span><span class="hs-comment">-- | An even more challenging case where there is an (apparent) data</span><span>
+</span><span id="line-77"></span><span class="hs-comment">-- dependency where x2 depends on y2.</span><span>
+</span><span id="line-78"></span><span class="annot"><a href="Gibbon.L1.Examples.html#add1ProgChallenge"><span class="hs-identifier hs-type">add1ProgChallenge</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Prog1"><span class="hs-identifier hs-type">Prog1</span></a></span><span>
+</span><span id="line-79"></span><span id="add1ProgChallenge"><span class="annot"><span class="annottext">add1ProgChallenge :: Prog1
+</span><a href="Gibbon.L1.Examples.html#add1ProgChallenge"><span class="hs-identifier hs-var hs-var">add1ProgChallenge</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-80"></span><span>    </span><span class="annot"><span class="annottext">DDefs (TyOf Exp1)
+-&gt; FunDefs Exp1 -&gt; Maybe (Exp1, TyOf Exp1) -&gt; Prog1
+forall ex.
+DDefs (TyOf ex) -&gt; FunDefs ex -&gt; Maybe (ex, TyOf ex) -&gt; Prog ex
+</span><a href="Gibbon.Language.Syntax.html#Prog"><span class="hs-identifier hs-var">Prog</span></a></span><span> </span><span class="annot"><span class="annottext">DDefs (TyOf Exp1)
+DDefs Ty1
+</span><a href="Gibbon.L1.Examples.html#treeDD"><span class="hs-identifier hs-var">treeDD</span></a></span><span>
+</span><span id="line-81"></span><span>         </span><span class="hs-special">(</span><span class="annot"><span class="annottext">[(Var, FunDef Exp1)] -&gt; FunDefs Exp1
+forall k a. Ord k =&gt; [(k, a)] -&gt; Map k a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#fromList"><span class="hs-identifier hs-var">M.fromList</span></a></span><span> </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span class="hs-special">,</span><span class="annot"><span class="annottext">Exp1 -&gt; FunDef Exp1
+</span><a href="Gibbon.L1.Examples.html#mkAdd1Fun"><span class="hs-identifier hs-var">mkAdd1Fun</span></a></span><span> </span><span class="annot"><span class="annottext">Exp1
+forall {ext :: * -&gt; * -&gt; *}. PreExp ext () Ty1
+</span><a href="#local-6989586621680927196"><span class="hs-identifier hs-var">bod</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-82"></span><span>                     </span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;pred&quot;</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Var
+-&gt; [Var] -&gt; ArrowTy (TyOf Exp1) -&gt; Exp1 -&gt; FunMeta -&gt; FunDef Exp1
+forall ex.
+Var -&gt; [Var] -&gt; ArrowTy (TyOf ex) -&gt; ex -&gt; FunMeta -&gt; FunDef ex
+</span><a href="Gibbon.Language.Syntax.html#FunDef"><span class="hs-identifier hs-var">FunDef</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;pred&quot;</span></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;tr&quot;</span></span><span class="hs-special">]</span><span> </span><span class="hs-special">(</span><span class="hs-special">[</span><span class="annot"><span class="annottext">Ty1
+</span><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-var">treeTy</span></a></span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Ty1
+forall loc. UrTy loc
+</span><a href="Gibbon.Language.Syntax.html#BoolTy"><span class="hs-identifier hs-var">BoolTy</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-83"></span><span>                        </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Exp1 -&gt; [(TyCon, [(Var, ())], Exp1)] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+PreExp ext loc dec
+-&gt; [(TyCon, [(Var, loc)], PreExp ext loc dec)]
+-&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#CaseE"><span class="hs-identifier hs-var">CaseE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;tr&quot;</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">([(TyCon, [(Var, ())], Exp1)] -&gt; Exp1)
+-&gt; [(TyCon, [(Var, ())], Exp1)] -&gt; Exp1
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-84"></span><span>                         </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Leaf&quot;</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;n&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Prim Ty1 -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Prim dec -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#PrimAppE"><span class="hs-identifier hs-var">PrimAppE</span></a></span><span> </span><span class="annot"><span class="annottext">Prim Ty1
+forall ty. Prim ty
+</span><a href="Gibbon.Language.Syntax.html#MkTrue"><span class="hs-identifier hs-var">MkTrue</span></a></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-85"></span><span>                         </span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Node&quot;</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">,</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Prim Ty1 -&gt; [Exp1] -&gt; Exp1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Prim dec -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#PrimAppE"><span class="hs-identifier hs-var">PrimAppE</span></a></span><span> </span><span class="annot"><span class="annottext">Prim Ty1
+forall ty. Prim ty
+</span><a href="Gibbon.Language.Syntax.html#MkFalse"><span class="hs-identifier hs-var">MkFalse</span></a></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-86"></span><span>                        </span><span class="hs-special">(</span><span class="annot"><span class="annottext">FunRec -&gt; FunInline -&gt; IsBoxed -&gt; FunMeta
+</span><a href="Gibbon.Language.Syntax.html#FunMeta"><span class="hs-identifier hs-var">FunMeta</span></a></span><span> </span><span class="annot"><span class="annottext">FunRec
+</span><a href="Gibbon.Language.Syntax.html#Rec"><span class="hs-identifier hs-var">Rec</span></a></span><span> </span><span class="annot"><span class="annottext">FunInline
+</span><a href="Gibbon.Language.Syntax.html#NoInline"><span class="hs-identifier hs-var">NoInline</span></a></span><span> </span><span class="annot"><span class="annottext">IsBoxed
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Types.html#False"><span class="hs-identifier hs-var">False</span></a></span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-87"></span><span>         </span><span class="annot"><span class="annottext">Maybe (Exp1, TyOf Exp1)
+Maybe (Exp1, Ty1)
+forall a. Maybe a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-88"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-89"></span><span>   </span><span id="local-6989586621680927196"><span class="annot"><span class="annottext">bod :: PreExp ext () Ty1
+</span><a href="#local-6989586621680927196"><span class="hs-identifier hs-var hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-90"></span><span>    </span><span class="annot"><span class="annottext">PreExp ext () Ty1
+-&gt; [(TyCon, [(Var, ())], PreExp ext () Ty1)] -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+PreExp ext loc dec
+-&gt; [(TyCon, [(Var, loc)], PreExp ext loc dec)]
+-&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#CaseE"><span class="hs-identifier hs-var">CaseE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;tr&quot;</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">([(TyCon, [(Var, ())], PreExp ext () Ty1)] -&gt; PreExp ext () Ty1)
+-&gt; [(TyCon, [(Var, ())], PreExp ext () Ty1)] -&gt; PreExp ext () Ty1
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-91"></span><span>      </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Leaf&quot;</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;n&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Prim Ty1 -&gt; [PreExp ext () Ty1] -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Prim dec -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#PrimAppE"><span class="hs-identifier hs-var">PrimAppE</span></a></span><span> </span><span class="annot"><span class="annottext">Prim Ty1
+forall ty. Prim ty
+</span><a href="Gibbon.Language.Syntax.html#AddP"><span class="hs-identifier hs-var">AddP</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;n&quot;</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Int -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Int -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LitE"><span class="hs-identifier hs-var">LitE</span></a></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">1</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-92"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Node&quot;</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">,</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">,</span><span>
+</span><span id="line-93"></span><span>         </span><span class="annot"><span class="annottext">(Var, [()], Ty1, PreExp ext () Ty1)
+-&gt; PreExp ext () Ty1 -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+(Var, [loc], dec, PreExp ext loc dec)
+-&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LetE"><span class="hs-identifier hs-var">LetE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y2&quot;</span></span><span class="hs-special">,</span><span class="hs-special">[</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Ty1
+</span><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-var">treeTy</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Var -&gt; [()] -&gt; [PreExp ext () Ty1] -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Var -&gt; [loc] -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-var">AppE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y&quot;</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(PreExp ext () Ty1 -&gt; PreExp ext () Ty1)
+-&gt; PreExp ext () Ty1 -&gt; PreExp ext () Ty1
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-94"></span><span>         </span><span class="annot"><span class="annottext">(Var, [()], Ty1, PreExp ext () Ty1)
+-&gt; PreExp ext () Ty1 -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+(Var, [loc], dec, PreExp ext loc dec)
+-&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LetE"><span class="hs-identifier hs-var">LetE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x2&quot;</span></span><span class="hs-special">,</span><span class="hs-special">[</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Ty1
+</span><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-var">treeTy</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-95"></span><span>              </span><span class="hs-special">(</span><span class="annot"><span class="annottext">PreExp ext () Ty1
+-&gt; PreExp ext () Ty1 -&gt; PreExp ext () Ty1 -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+PreExp ext loc dec
+-&gt; PreExp ext loc dec -&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#IfE"><span class="hs-identifier hs-var">IfE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; [()] -&gt; [PreExp ext () Ty1] -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Var -&gt; [loc] -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-var">AppE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;pred&quot;</span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y2&quot;</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-96"></span><span>                   </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; [()] -&gt; [PreExp ext () Ty1] -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Var -&gt; [loc] -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-var">AppE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x&quot;</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-97"></span><span>                   </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; [()] -&gt; [PreExp ext () Ty1] -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Var -&gt; [loc] -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-var">AppE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x&quot;</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(PreExp ext () Ty1 -&gt; PreExp ext () Ty1)
+-&gt; PreExp ext () Ty1 -&gt; PreExp ext () Ty1
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-98"></span><span>         </span><span class="annot"><span class="annottext">() -&gt; TyCon -&gt; [PreExp ext () Ty1] -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+loc -&gt; TyCon -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#DataConE"><span class="hs-identifier hs-var">DataConE</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Node&quot;</span></span><span> </span><span class="hs-special">[</span><span> </span><span class="annot"><span class="annottext">Var -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x2&quot;</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Var -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y2&quot;</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-99"></span><span>      </span><span class="hs-special">]</span><span>
+</span><span id="line-100"></span><span>
+</span><span id="line-101"></span><span class="annot"><span class="hs-comment">-- | This program is a challenge because a packed value flows to two destinations.</span></span><span>
+</span><span id="line-102"></span><span class="annot"><a href="Gibbon.L1.Examples.html#add1ProgSharing"><span class="hs-identifier hs-type">add1ProgSharing</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Prog1"><span class="hs-identifier hs-type">Prog1</span></a></span><span>
+</span><span id="line-103"></span><span id="add1ProgSharing"><span class="annot"><span class="annottext">add1ProgSharing :: Prog1
+</span><a href="Gibbon.L1.Examples.html#add1ProgSharing"><span class="hs-identifier hs-var hs-var">add1ProgSharing</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">DDefs (TyOf Exp1)
+-&gt; FunDefs Exp1 -&gt; Maybe (Exp1, TyOf Exp1) -&gt; Prog1
+forall ex.
+DDefs (TyOf ex) -&gt; FunDefs ex -&gt; Maybe (ex, TyOf ex) -&gt; Prog ex
+</span><a href="Gibbon.Language.Syntax.html#Prog"><span class="hs-identifier hs-var">Prog</span></a></span><span> </span><span class="annot"><span class="annottext">DDefs (TyOf Exp1)
+DDefs Ty1
+</span><a href="Gibbon.L1.Examples.html#treeDD"><span class="hs-identifier hs-var">treeDD</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">[(Var, FunDef Exp1)] -&gt; FunDefs Exp1
+forall k a. Ord k =&gt; [(k, a)] -&gt; Map k a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#fromList"><span class="hs-identifier hs-var">M.fromList</span></a></span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span class="hs-special">,</span><span class="annot"><span class="annottext">Exp1 -&gt; FunDef Exp1
+</span><a href="Gibbon.L1.Examples.html#mkAdd1Fun"><span class="hs-identifier hs-var">mkAdd1Fun</span></a></span><span> </span><span class="annot"><span class="annottext">Exp1
+forall {ext :: * -&gt; * -&gt; *}. PreExp ext () Ty1
+</span><a href="#local-6989586621680927221"><span class="hs-identifier hs-var">bod</span></a></span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Maybe (Exp1, TyOf Exp1)
+Maybe (Exp1, Ty1)
+forall a. Maybe a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Nothing"><span class="hs-identifier hs-var">Nothing</span></a></span><span>
+</span><span id="line-104"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-105"></span><span>   </span><span id="local-6989586621680927221"><span class="annot"><span class="annottext">bod :: PreExp ext () Ty1
+</span><a href="#local-6989586621680927221"><span class="hs-identifier hs-var hs-var">bod</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-106"></span><span>    </span><span class="annot"><span class="annottext">PreExp ext () Ty1
+-&gt; [(TyCon, [(Var, ())], PreExp ext () Ty1)] -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+PreExp ext loc dec
+-&gt; [(TyCon, [(Var, loc)], PreExp ext loc dec)]
+-&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#CaseE"><span class="hs-identifier hs-var">CaseE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;tr&quot;</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">([(TyCon, [(Var, ())], PreExp ext () Ty1)] -&gt; PreExp ext () Ty1)
+-&gt; [(TyCon, [(Var, ())], PreExp ext () Ty1)] -&gt; PreExp ext () Ty1
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-107"></span><span>      </span><span class="hs-special">[</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Leaf&quot;</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;n&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Prim Ty1 -&gt; [PreExp ext () Ty1] -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Prim dec -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#PrimAppE"><span class="hs-identifier hs-var">PrimAppE</span></a></span><span> </span><span class="annot"><span class="annottext">Prim Ty1
+forall ty. Prim ty
+</span><a href="Gibbon.Language.Syntax.html#AddP"><span class="hs-identifier hs-var">AddP</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;n&quot;</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Int -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Int -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LitE"><span class="hs-identifier hs-var">LitE</span></a></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-number">1</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-108"></span><span>      </span><span class="hs-special">,</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Node&quot;</span></span><span class="hs-special">,</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">,</span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;y&quot;</span></span><span class="hs-special">,</span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">]</span><span class="hs-special">,</span><span>
+</span><span id="line-109"></span><span>         </span><span class="annot"><span class="annottext">(Var, [()], Ty1, PreExp ext () Ty1)
+-&gt; PreExp ext () Ty1 -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+(Var, [loc], dec, PreExp ext loc dec)
+-&gt; PreExp ext loc dec -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#LetE"><span class="hs-identifier hs-var">LetE</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x2&quot;</span></span><span class="hs-special">,</span><span class="hs-special">[</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Ty1
+</span><a href="Gibbon.L1.Examples.html#treeTy"><span class="hs-identifier hs-var">treeTy</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Var -&gt; [()] -&gt; [PreExp ext () Ty1] -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+Var -&gt; [loc] -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#AppE"><span class="hs-identifier hs-var">AppE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;add1&quot;</span></span><span> </span><span class="hs-special">[</span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span class="annot"><span class="annottext">Var -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x&quot;</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(PreExp ext () Ty1 -&gt; PreExp ext () Ty1)
+-&gt; PreExp ext () Ty1 -&gt; PreExp ext () Ty1
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span>
+</span><span id="line-110"></span><span>         </span><span class="annot"><span class="annottext">() -&gt; TyCon -&gt; [PreExp ext () Ty1] -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec.
+loc -&gt; TyCon -&gt; [PreExp ext loc dec] -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#DataConE"><span class="hs-identifier hs-var">DataConE</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">TyCon
+</span><span class="hs-string">&quot;Node&quot;</span></span><span> </span><span class="hs-special">[</span><span> </span><span class="annot"><span class="annottext">Var -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x2&quot;</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">Var -&gt; PreExp ext () Ty1
+forall (ext :: * -&gt; * -&gt; *) loc dec. Var -&gt; PreExp ext loc dec
+</span><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-var">VarE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-string">&quot;x2&quot;</span></span><span class="hs-special">]</span><span class="hs-special">)</span><span>
+</span><span id="line-111"></span><span>      </span><span class="hs-special">]</span><span>
+</span><span id="line-112"></span></pre></body></html>
