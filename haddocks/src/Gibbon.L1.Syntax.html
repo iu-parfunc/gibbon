@@ -1,0 +1,554 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE FlexibleInstances     #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE FlexibleContexts      #-}</span><span>
+</span><span id="line-3"></span><span class="hs-pragma">{-# LANGUAGE DeriveAnyClass        #-}</span><span>
+</span><span id="line-4"></span><span class="hs-pragma">{-# LANGUAGE MultiParamTypeClasses #-}</span><span>
+</span><span id="line-5"></span><span class="hs-pragma">{-# LANGUAGE UndecidableInstances  #-}</span><span>
+</span><span id="line-6"></span><span>
+</span><span id="line-7"></span><span class="hs-comment">-- | The source language for recursive tree traversals.</span><span>
+</span><span id="line-8"></span><span class="hs-comment">--   This is a first-order language for the &quot;closed world&quot; scenario:</span><span>
+</span><span id="line-9"></span><span class="hs-comment">--   not integrating with a functional host language, but rather</span><span>
+</span><span id="line-10"></span><span class="hs-comment">--   genarating C code like a DSL.</span><span>
+</span><span id="line-11"></span><span>
+</span><span id="line-12"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Gibbon.L1.Syntax</span><span>
+</span><span id="line-13"></span><span>    </span><span class="hs-special">(</span><span>
+</span><span id="line-14"></span><span>      </span><span class="annot"><span class="hs-comment">-- * Core types specific to L1</span></span><span>
+</span><span id="line-15"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Prog1"><span class="hs-identifier">Prog1</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#FunDef1"><span class="hs-identifier">FunDef1</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#FunDefs1"><span class="hs-identifier">FunDefs1</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#DDef1"><span class="hs-identifier">DDef1</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#DDefs1"><span class="hs-identifier">DDefs1</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Exp1"><span class="hs-identifier">Exp1</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Ty1"><span class="hs-identifier">Ty1</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier">E1Ext</span></a></span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span>
+</span><span id="line-16"></span><span>    </span><span class="hs-special">,</span><span> </span><span class="hs-keyword">module</span><span> </span><span class="annot"><a href="Gibbon.Language.html"><span class="hs-identifier">Gibbon.Language</span></a></span><span>
+</span><span id="line-17"></span><span>    </span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-18"></span><span>
+</span><span id="line-19"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/deepseq-1.4.8.0/src/Control.DeepSeq.html"><span class="hs-identifier">Control.DeepSeq</span></a></span><span> </span><span class="hs-special">(</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/deepseq-1.4.8.0/src/Control.DeepSeq.html#NFData"><span class="hs-identifier">NFData</span></a></span><span> </span><span class="hs-special">)</span><span>
+</span><span id="line-20"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Set.html"><span class="hs-identifier">Data.Set</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">S</span></span><span>
+</span><span id="line-21"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Generics.html"><span class="hs-identifier">GHC.Generics</span></a></span><span>
+</span><span id="line-22"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="file:///home/artem/.cabal/store/ghc-9.4.5/GenericPretty-1.2.2-7277c36a966d41cd8e1371a7ee4c855b29a76e94dfe1d95510f68242766a5b82/share/doc/html/src/Text.PrettyPrint.GenericPretty.html"><span class="hs-identifier">Text.PrettyPrint.GenericPretty</span></a></span><span>
+</span><span id="line-23"></span><span>
+</span><span id="line-24"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="Gibbon.Language.html"><span class="hs-identifier">Gibbon.Language</span></a></span><span>
+</span><span id="line-25"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="Gibbon.Common.html"><span class="hs-identifier">Gibbon.Common</span></a></span><span>
+</span><span id="line-26"></span><span>
+</span><span id="line-27"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.html"><span class="hs-identifier">Data.Map</span></a></span><span>                       </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">M</span></span><span>
+</span><span id="line-28"></span><span class="hs-keyword">import</span><span>           </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Prelude.html"><span class="hs-identifier">Prelude</span></a></span><span>                        </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">P</span></span><span>
+</span><span id="line-29"></span><span>
+</span><span id="line-30"></span><span class="hs-comment">--------------------------------------------------------------------------------</span><span>
+</span><span id="line-31"></span><span>
+</span><span id="line-32"></span><span class="hs-keyword">instance</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#FunctionTy"><span class="hs-identifier hs-type">FunctionTy</span></a></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Ty1"><span class="hs-identifier hs-type">Ty1</span></a></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-33"></span><span>  </span><span class="hs-comment">-- | At this stage, function types are just (in , out) tuples.</span><span>
+</span><span id="line-34"></span><span>  </span><span class="hs-keyword">type</span><span> </span><span id="ArrowTy"><span class="annot"><a href="Gibbon.Language.Syntax.html#ArrowTy"><span class="hs-identifier hs-var">ArrowTy</span></a></span></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Ty1"><span class="hs-identifier hs-type">Ty1</span></a></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">(</span><span class="hs-special">[</span><span class="annot"><a href="Gibbon.L1.Syntax.html#Ty1"><span class="hs-identifier hs-type">Ty1</span></a></span><span class="hs-special">]</span><span> </span><span class="hs-special">,</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Ty1"><span class="hs-identifier hs-type">Ty1</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-35"></span><span>  </span><span id="local-6989586621680912767"><span class="annot"><span class="annottext">inTys :: ArrowTy Ty1 -&gt; [Ty1]
+</span><a href="#local-6989586621680912767"><span class="hs-identifier hs-var hs-var hs-var hs-var">inTys</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">([Ty1], Ty1) -&gt; [Ty1]
+ArrowTy Ty1 -&gt; [Ty1]
+forall a b. (a, b) -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Tuple.html#fst"><span class="hs-identifier hs-var">fst</span></a></span><span>
+</span><span id="line-36"></span><span>  </span><span id="local-6989586621680912770"><span class="annot"><span class="annottext">outTy :: ArrowTy Ty1 -&gt; Ty1
+</span><a href="#local-6989586621680912770"><span class="hs-identifier hs-var hs-var hs-var hs-var">outTy</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">([Ty1], Ty1) -&gt; Ty1
+ArrowTy Ty1 -&gt; Ty1
+forall a b. (a, b) -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/Data.Tuple.html#snd"><span class="hs-identifier hs-var">snd</span></a></span><span>
+</span><span id="line-37"></span><span>
+</span><span id="line-38"></span><span class="annot"><span class="hs-comment">-- | A convenient, default instantiation of the L1 expression type.</span></span><span>
+</span><span id="line-39"></span><span class="hs-keyword">type</span><span> </span><span id="Exp1"><span class="annot"><a href="Gibbon.L1.Syntax.html#Exp1"><span class="hs-identifier hs-var">Exp1</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#PreExp"><span class="hs-identifier hs-type">PreExp</span></a></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Ty1"><span class="hs-identifier hs-type">Ty1</span></a></span><span>
+</span><span id="line-40"></span><span>
+</span><span id="line-41"></span><span class="annot"><span class="hs-comment">-- | An L1 program.</span></span><span>
+</span><span id="line-42"></span><span class="hs-keyword">type</span><span> </span><span id="Prog1"><span class="annot"><a href="Gibbon.L1.Syntax.html#Prog1"><span class="hs-identifier hs-var">Prog1</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#Prog"><span class="hs-identifier hs-type">Prog</span></a></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Exp1"><span class="hs-identifier hs-type">Exp1</span></a></span><span>
+</span><span id="line-43"></span><span>
+</span><span id="line-44"></span><span class="annot"><span class="hs-comment">-- | Datatypes</span></span><span>
+</span><span id="line-45"></span><span class="hs-keyword">type</span><span> </span><span id="DDefs1"><span class="annot"><a href="Gibbon.L1.Syntax.html#DDefs1"><span class="hs-identifier hs-var">DDefs1</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#DDefs"><span class="hs-identifier hs-type">DDefs</span></a></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Ty1"><span class="hs-identifier hs-type">Ty1</span></a></span><span>
+</span><span id="line-46"></span><span class="hs-keyword">type</span><span> </span><span id="DDef1"><span class="annot"><a href="Gibbon.L1.Syntax.html#DDef1"><span class="hs-identifier hs-var">DDef1</span></a></span></span><span>  </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#DDef"><span class="hs-identifier hs-type">DDef</span></a></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Ty1"><span class="hs-identifier hs-type">Ty1</span></a></span><span>
+</span><span id="line-47"></span><span>
+</span><span id="line-48"></span><span class="annot"><span class="hs-comment">-- | Function definition used in L1 programs.</span></span><span>
+</span><span id="line-49"></span><span class="hs-keyword">type</span><span> </span><span id="FunDef1"><span class="annot"><a href="Gibbon.L1.Syntax.html#FunDef1"><span class="hs-identifier hs-var">FunDef1</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#FunDef"><span class="hs-identifier hs-type">FunDef</span></a></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Exp1"><span class="hs-identifier hs-type">Exp1</span></a></span><span>
+</span><span id="line-50"></span><span>
+</span><span id="line-51"></span><span class="hs-keyword">type</span><span> </span><span id="FunDefs1"><span class="annot"><a href="Gibbon.L1.Syntax.html#FunDefs1"><span class="hs-identifier hs-var">FunDefs1</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#FunDefs"><span class="hs-identifier hs-type">FunDefs</span></a></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#Exp1"><span class="hs-identifier hs-type">Exp1</span></a></span><span>
+</span><span id="line-52"></span><span>
+</span><span id="line-53"></span><span class="annot"><span class="hs-comment">-- | The type rperesentation used in L1.</span></span><span>
+</span><span id="line-54"></span><span class="hs-keyword">type</span><span> </span><span id="Ty1"><span class="annot"><a href="Gibbon.L1.Syntax.html#Ty1"><span class="hs-identifier hs-var">Ty1</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#UrTy"><span class="hs-identifier hs-type">UrTy</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><span id="line-55"></span><span>
+</span><span id="line-56"></span><span>
+</span><span id="line-57"></span><span class="hs-comment">--------------------------------------------------------------------------------</span><span>
+</span><span id="line-58"></span><span>
+</span><span id="line-59"></span><span class="hs-keyword">data</span><span> </span><span id="E1Ext"><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-var">E1Ext</span></a></span></span><span> </span><span id="local-6989586621680912701"><span class="annot"><a href="#local-6989586621680912701"><span class="hs-identifier hs-type">loc</span></a></span></span><span> </span><span id="local-6989586621680912702"><span class="annot"><a href="#local-6989586621680912702"><span class="hs-identifier hs-type">dec</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="BenchE"><span class="annot"><a href="Gibbon.L1.Syntax.html#BenchE"><span class="hs-identifier hs-var">BenchE</span></a></span></span><span> </span><span class="annot"><a href="Gibbon.Common.html#Var"><span class="hs-identifier hs-type">Var</span></a></span><span> </span><span class="hs-special">[</span><span class="annot"><a href="#local-6989586621680912701"><span class="hs-identifier hs-type">loc</span></a></span><span class="hs-special">]</span><span> </span><span class="hs-special">[</span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.Language.Syntax.html#PreExp"><span class="hs-identifier hs-type">PreExp</span></a></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912701"><span class="hs-identifier hs-type">loc</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912702"><span class="hs-identifier hs-type">dec</span></a></span><span class="hs-special">)</span><span class="hs-special">]</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Types.html#Bool"><span class="hs-identifier hs-type">Bool</span></a></span><span>
+</span><span id="line-60"></span><span>                   </span><span class="hs-glyph">|</span><span> </span><span id="AddFixed"><span class="annot"><a href="Gibbon.L1.Syntax.html#AddFixed"><span class="hs-identifier hs-var">AddFixed</span></a></span></span><span> </span><span class="annot"><a href="Gibbon.Common.html#Var"><span class="hs-identifier hs-type">Var</span></a></span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Types.html#Int"><span class="hs-identifier hs-type">Int</span></a></span><span>     </span><span class="hs-comment">-- Created by AddRAN.</span><span>
+</span><span id="line-61"></span><span>                   </span><span class="hs-glyph">|</span><span> </span><span id="StartOfPkdCursor"><span class="annot"><a href="Gibbon.L1.Syntax.html#StartOfPkdCursor"><span class="hs-identifier hs-var">StartOfPkdCursor</span></a></span></span><span> </span><span class="annot"><a href="Gibbon.Common.html#Var"><span class="hs-identifier hs-type">Var</span></a></span><span> </span><span class="hs-comment">-- Created by AddRAN.</span><span>
+</span><span id="line-62"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span id="local-6989586621680912783"><span id="local-6989586621680912800"><span id="local-6989586621680912804"><span class="annot"><span class="annottext">Int -&gt; E1Ext loc dec -&gt; ShowS
+[E1Ext loc dec] -&gt; ShowS
+E1Ext loc dec -&gt; String
+(Int -&gt; E1Ext loc dec -&gt; ShowS)
+-&gt; (E1Ext loc dec -&gt; String)
+-&gt; ([E1Ext loc dec] -&gt; ShowS)
+-&gt; Show (E1Ext loc dec)
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+forall loc dec.
+(Show loc, Show dec) =&gt;
+Int -&gt; E1Ext loc dec -&gt; ShowS
+forall loc dec. (Show loc, Show dec) =&gt; [E1Ext loc dec] -&gt; ShowS
+forall loc dec. (Show loc, Show dec) =&gt; E1Ext loc dec -&gt; String
+$cshowsPrec :: forall loc dec.
+(Show loc, Show dec) =&gt;
+Int -&gt; E1Ext loc dec -&gt; ShowS
+showsPrec :: Int -&gt; E1Ext loc dec -&gt; ShowS
+$cshow :: forall loc dec. (Show loc, Show dec) =&gt; E1Ext loc dec -&gt; String
+show :: E1Ext loc dec -&gt; String
+$cshowList :: forall loc dec. (Show loc, Show dec) =&gt; [E1Ext loc dec] -&gt; ShowS
+showList :: [E1Ext loc dec] -&gt; ShowS
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Show.html#Show"><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></a></span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621680912817"><span id="local-6989586621680912830"><span id="local-6989586621680912840"><span id="local-6989586621680912844"><span id="local-6989586621680912847"><span id="local-6989586621680912850"><span id="local-6989586621680912853"><span class="annot"><span class="annottext">Eq (E1Ext loc dec)
+Eq (E1Ext loc dec)
+-&gt; (E1Ext loc dec -&gt; E1Ext loc dec -&gt; Ordering)
+-&gt; (E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool)
+-&gt; (E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool)
+-&gt; (E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool)
+-&gt; (E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool)
+-&gt; (E1Ext loc dec -&gt; E1Ext loc dec -&gt; E1Ext loc dec)
+-&gt; (E1Ext loc dec -&gt; E1Ext loc dec -&gt; E1Ext loc dec)
+-&gt; Ord (E1Ext loc dec)
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; Ordering
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; E1Ext loc dec
+forall a.
+Eq a
+-&gt; (a -&gt; a -&gt; Ordering)
+-&gt; (a -&gt; a -&gt; Bool)
+-&gt; (a -&gt; a -&gt; Bool)
+-&gt; (a -&gt; a -&gt; Bool)
+-&gt; (a -&gt; a -&gt; Bool)
+-&gt; (a -&gt; a -&gt; a)
+-&gt; (a -&gt; a -&gt; a)
+-&gt; Ord a
+forall {loc} {dec}. (Ord loc, Ord dec) =&gt; Eq (E1Ext loc dec)
+forall loc dec.
+(Ord loc, Ord dec) =&gt;
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+forall loc dec.
+(Ord loc, Ord dec) =&gt;
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; Ordering
+forall loc dec.
+(Ord loc, Ord dec) =&gt;
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; E1Ext loc dec
+$ccompare :: forall loc dec.
+(Ord loc, Ord dec) =&gt;
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; Ordering
+compare :: E1Ext loc dec -&gt; E1Ext loc dec -&gt; Ordering
+$c&lt; :: forall loc dec.
+(Ord loc, Ord dec) =&gt;
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+&lt; :: E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+$c&lt;= :: forall loc dec.
+(Ord loc, Ord dec) =&gt;
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+&lt;= :: E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+$c&gt; :: forall loc dec.
+(Ord loc, Ord dec) =&gt;
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+&gt; :: E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+$c&gt;= :: forall loc dec.
+(Ord loc, Ord dec) =&gt;
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+&gt;= :: E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+$cmax :: forall loc dec.
+(Ord loc, Ord dec) =&gt;
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; E1Ext loc dec
+max :: E1Ext loc dec -&gt; E1Ext loc dec -&gt; E1Ext loc dec
+$cmin :: forall loc dec.
+(Ord loc, Ord dec) =&gt;
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; E1Ext loc dec
+min :: E1Ext loc dec -&gt; E1Ext loc dec -&gt; E1Ext loc dec
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Classes.html#Ord"><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Ord</span></a></span></span></span></span></span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621680912863"><span id="local-6989586621680912877"><span class="annot"><span class="annottext">E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+(E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool)
+-&gt; (E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool) -&gt; Eq (E1Ext loc dec)
+forall a. (a -&gt; a -&gt; Bool) -&gt; (a -&gt; a -&gt; Bool) -&gt; Eq a
+forall loc dec.
+(Eq loc, Eq dec) =&gt;
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+$c== :: forall loc dec.
+(Eq loc, Eq dec) =&gt;
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+== :: E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+$c/= :: forall loc dec.
+(Eq loc, Eq dec) =&gt;
+E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+/= :: E1Ext loc dec -&gt; E1Ext loc dec -&gt; Bool
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Classes.html#Eq"><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var">Eq</span></a></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621680912885"><span id="local-6989586621680912889"><span id="local-6989586621680912892"><span id="local-6989586621680912920"><span class="annot"><span class="annottext">ReadPrec [E1Ext loc dec]
+ReadPrec (E1Ext loc dec)
+Int -&gt; ReadS (E1Ext loc dec)
+ReadS [E1Ext loc dec]
+(Int -&gt; ReadS (E1Ext loc dec))
+-&gt; ReadS [E1Ext loc dec]
+-&gt; ReadPrec (E1Ext loc dec)
+-&gt; ReadPrec [E1Ext loc dec]
+-&gt; Read (E1Ext loc dec)
+forall a.
+(Int -&gt; ReadS a)
+-&gt; ReadS [a] -&gt; ReadPrec a -&gt; ReadPrec [a] -&gt; Read a
+forall loc dec. (Read loc, Read dec) =&gt; ReadPrec [E1Ext loc dec]
+forall loc dec. (Read loc, Read dec) =&gt; ReadPrec (E1Ext loc dec)
+forall loc dec.
+(Read loc, Read dec) =&gt;
+Int -&gt; ReadS (E1Ext loc dec)
+forall loc dec. (Read loc, Read dec) =&gt; ReadS [E1Ext loc dec]
+$creadsPrec :: forall loc dec.
+(Read loc, Read dec) =&gt;
+Int -&gt; ReadS (E1Ext loc dec)
+readsPrec :: Int -&gt; ReadS (E1Ext loc dec)
+$creadList :: forall loc dec. (Read loc, Read dec) =&gt; ReadS [E1Ext loc dec]
+readList :: ReadS [E1Ext loc dec]
+$creadPrec :: forall loc dec. (Read loc, Read dec) =&gt; ReadPrec (E1Ext loc dec)
+readPrec :: ReadPrec (E1Ext loc dec)
+$creadListPrec :: forall loc dec. (Read loc, Read dec) =&gt; ReadPrec [E1Ext loc dec]
+readListPrec :: ReadPrec [E1Ext loc dec]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Read.html#Read"><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Read</span></a></span></span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621680912926"><span id="local-6989586621680912928"><span class="annot"><span class="annottext">(forall x. E1Ext loc dec -&gt; Rep (E1Ext loc dec) x)
+-&gt; (forall x. Rep (E1Ext loc dec) x -&gt; E1Ext loc dec)
+-&gt; Generic (E1Ext loc dec)
+forall x. Rep (E1Ext loc dec) x -&gt; E1Ext loc dec
+forall x. E1Ext loc dec -&gt; Rep (E1Ext loc dec) x
+forall a.
+(forall x. a -&gt; Rep a x) -&gt; (forall x. Rep a x -&gt; a) -&gt; Generic a
+forall loc dec x. Rep (E1Ext loc dec) x -&gt; E1Ext loc dec
+forall loc dec x. E1Ext loc dec -&gt; Rep (E1Ext loc dec) x
+$cfrom :: forall loc dec x. E1Ext loc dec -&gt; Rep (E1Ext loc dec) x
+from :: forall x. E1Ext loc dec -&gt; Rep (E1Ext loc dec) x
+$cto :: forall loc dec x. Rep (E1Ext loc dec) x -&gt; E1Ext loc dec
+to :: forall x. Rep (E1Ext loc dec) x -&gt; E1Ext loc dec
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Generics.html#Generic"><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var">Generic</span></a></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621680912934"><span class="annot"><span class="annottext">E1Ext loc dec -&gt; ()
+(E1Ext loc dec -&gt; ()) -&gt; NFData (E1Ext loc dec)
+forall a. (a -&gt; ()) -&gt; NFData a
+forall loc dec. (NFData loc, NFData dec) =&gt; E1Ext loc dec -&gt; ()
+$crnf :: forall loc dec. (NFData loc, NFData dec) =&gt; E1Ext loc dec -&gt; ()
+rnf :: E1Ext loc dec -&gt; ()
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/deepseq-1.4.8.0/src/Control.DeepSeq.html#NFData"><span class="hs-identifier hs-var hs-var hs-var hs-var">NFData</span></a></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621680912978"><span id="local-6989586621680912985"><span id="local-6989586621680912991"><span class="annot"><span class="annottext">Int -&gt; E1Ext loc dec -&gt; Doc
+[E1Ext loc dec] -&gt; Doc
+E1Ext loc dec -&gt; Doc
+(Int -&gt; E1Ext loc dec -&gt; Doc)
+-&gt; (E1Ext loc dec -&gt; Doc)
+-&gt; ([E1Ext loc dec] -&gt; Doc)
+-&gt; Out (E1Ext loc dec)
+forall a. (Int -&gt; a -&gt; Doc) -&gt; (a -&gt; Doc) -&gt; ([a] -&gt; Doc) -&gt; Out a
+forall loc dec. (Out loc, Out dec) =&gt; Int -&gt; E1Ext loc dec -&gt; Doc
+forall loc dec. (Out loc, Out dec) =&gt; [E1Ext loc dec] -&gt; Doc
+forall loc dec. (Out loc, Out dec) =&gt; E1Ext loc dec -&gt; Doc
+$cdocPrec :: forall loc dec. (Out loc, Out dec) =&gt; Int -&gt; E1Ext loc dec -&gt; Doc
+docPrec :: Int -&gt; E1Ext loc dec -&gt; Doc
+$cdoc :: forall loc dec. (Out loc, Out dec) =&gt; E1Ext loc dec -&gt; Doc
+doc :: E1Ext loc dec -&gt; Doc
+$cdocList :: forall loc dec. (Out loc, Out dec) =&gt; [E1Ext loc dec] -&gt; Doc
+docList :: [E1Ext loc dec] -&gt; Doc
+</span><a href="file:///home/artem/.cabal/store/ghc-9.4.5/GenericPretty-1.2.2-7277c36a966d41cd8e1371a7ee4c855b29a76e94dfe1d95510f68242766a5b82/share/doc/html/src/Text.PrettyPrint.GenericPretty.html#Out"><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Out</span></a></span></span></span></span><span class="hs-special">)</span><span>
+</span><span id="line-63"></span><span>
+</span><span id="line-64"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621680912643"><span id="local-6989586621680912644"><span class="annot"><a href="Gibbon.Language.Syntax.html#FreeVars"><span class="hs-identifier hs-type">FreeVars</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912643"><span class="hs-identifier hs-type">l</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912644"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">)</span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-65"></span><span>  </span><span id="local-6989586621680913106"><span class="annot"><span class="annottext">gFreeVars :: E1Ext l d -&gt; Set Var
+</span><a href="#local-6989586621680913106"><span class="hs-identifier hs-var hs-var hs-var hs-var">gFreeVars</span></a></span></span><span> </span><span id="local-6989586621680913108"><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913108"><span class="hs-identifier hs-var">e</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-66"></span><span>    </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913108"><span class="hs-identifier hs-var">e</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-67"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#BenchE"><span class="hs-identifier hs-type">BenchE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><span class="hs-identifier">_</span></span><span> </span><span class="annot"><span class="annottext">[l]
+</span><span class="hs-identifier">_</span></span><span> </span><span id="local-6989586621680913109"><span class="annot"><span class="annottext">[PreExp E1Ext l d]
+</span><a href="#local-6989586621680913109"><span class="hs-identifier hs-var">args</span></a></span></span><span> </span><span class="annot"><span class="annottext">Bool
+</span><span class="hs-identifier">_</span></span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">[Set Var] -&gt; Set Var
+forall (f :: * -&gt; *) a. (Foldable f, Ord a) =&gt; f (Set a) -&gt; Set a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Set.Internal.html#unions"><span class="hs-identifier hs-var">S.unions</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">(PreExp E1Ext l d -&gt; Set Var) -&gt; [PreExp E1Ext l d] -&gt; [Set Var]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#map"><span class="hs-identifier hs-var">map</span></a></span><span> </span><span class="annot"><span class="annottext">PreExp E1Ext l d -&gt; Set Var
+forall a. FreeVars a =&gt; a -&gt; Set Var
+</span><a href="Gibbon.Language.Syntax.html#gFreeVars"><span class="hs-identifier hs-var">gFreeVars</span></a></span><span> </span><span class="annot"><span class="annottext">[PreExp E1Ext l d]
+</span><a href="#local-6989586621680913109"><span class="hs-identifier hs-var">args</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-68"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#AddFixed"><span class="hs-identifier hs-type">AddFixed</span></a></span><span> </span><span id="local-6989586621680913111"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913111"><span class="hs-identifier hs-var">v</span></a></span></span><span> </span><span class="annot"><span class="annottext">Int
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Set Var
+forall a. a -&gt; Set a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Set.Internal.html#singleton"><span class="hs-identifier hs-var">S.singleton</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913111"><span class="hs-identifier hs-var">v</span></a></span><span>
+</span><span id="line-69"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#StartOfPkdCursor"><span class="hs-identifier hs-type">StartOfPkdCursor</span></a></span><span> </span><span id="local-6989586621680913113"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913113"><span class="hs-identifier hs-var">cur</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Set Var
+forall a. a -&gt; Set a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Set.Internal.html#singleton"><span class="hs-identifier hs-var">S.singleton</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913113"><span class="hs-identifier hs-var">cur</span></a></span><span>
+</span><span id="line-70"></span><span>
+</span><span id="line-71"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621680912657"><span id="local-6989586621680912658"><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Show.html#Show"><span class="hs-identifier hs-type">Show</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912657"><span class="hs-identifier hs-type">l</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Show.html#Show"><span class="hs-identifier hs-type">Show</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912658"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="file:///home/artem/.cabal/store/ghc-9.4.5/GenericPretty-1.2.2-7277c36a966d41cd8e1371a7ee4c855b29a76e94dfe1d95510f68242766a5b82/share/doc/html/src/Text.PrettyPrint.GenericPretty.html#Out"><span class="hs-identifier hs-type">Out</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912657"><span class="hs-identifier hs-type">l</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="file:///home/artem/.cabal/store/ghc-9.4.5/GenericPretty-1.2.2-7277c36a966d41cd8e1371a7ee4c855b29a76e94dfe1d95510f68242766a5b82/share/doc/html/src/Text.PrettyPrint.GenericPretty.html#Out"><span class="hs-identifier hs-type">Out</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912658"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#Expression"><span class="hs-identifier hs-type">Expression</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912657"><span class="hs-identifier hs-type">l</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912658"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">)</span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-72"></span><span>  </span><span class="hs-keyword">type</span><span> </span><span id="TyOf"><span class="annot"><a href="Gibbon.Language.Syntax.html#TyOf"><span class="hs-identifier hs-var">TyOf</span></a></span></span><span>  </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912657"><span class="hs-identifier hs-type">l</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912658"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="#local-6989586621680912658"><span class="hs-identifier hs-type">d</span></a></span><span>
+</span><span id="line-73"></span><span>  </span><span class="hs-keyword">type</span><span> </span><span id="LocOf"><span class="annot"><a href="Gibbon.Language.Syntax.html#LocOf"><span class="hs-identifier hs-var">LocOf</span></a></span></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912657"><span class="hs-identifier hs-type">l</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912658"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><a href="#local-6989586621680912657"><span class="hs-identifier hs-type">l</span></a></span><span>
+</span><span id="line-74"></span><span>  </span><span id="local-6989586621680913128"><span class="annot"><span class="annottext">isTrivial :: E1Ext l d -&gt; Bool
+</span><a href="#local-6989586621680913128"><span class="hs-identifier hs-var hs-var hs-var hs-var">isTrivial</span></a></span></span><span> </span><span class="annot"><span class="annottext">E1Ext l d
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Bool
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Types.html#False"><span class="hs-identifier hs-var">False</span></a></span><span>
+</span><span id="line-75"></span><span>
+</span><span id="line-76"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621680912668"><span id="local-6989586621680912669"><span class="hs-special">(</span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Show.html#Show"><span class="hs-identifier hs-type">Show</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912668"><span class="hs-identifier hs-type">l</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Show.html#Show"><span class="hs-identifier hs-type">Show</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912669"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="file:///home/artem/.cabal/store/ghc-9.4.5/GenericPretty-1.2.2-7277c36a966d41cd8e1371a7ee4c855b29a76e94dfe1d95510f68242766a5b82/share/doc/html/src/Text.PrettyPrint.GenericPretty.html#Out"><span class="hs-identifier hs-type">Out</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912668"><span class="hs-identifier hs-type">l</span></a></span><span class="hs-special">,</span><span> </span><span class="annot"><a href="file:///home/artem/.cabal/store/ghc-9.4.5/GenericPretty-1.2.2-7277c36a966d41cd8e1371a7ee4c855b29a76e94dfe1d95510f68242766a5b82/share/doc/html/src/Text.PrettyPrint.GenericPretty.html#Out"><span class="hs-identifier hs-type">Out</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912669"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#Flattenable"><span class="hs-identifier hs-type">Flattenable</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912668"><span class="hs-identifier hs-type">l</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912669"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">)</span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-77"></span><span>  </span><span id="local-6989586621680913142"><span class="annot"><span class="annottext">gFlattenGatherBinds :: DDefs (TyOf (E1Ext l d))
+-&gt; Env2 (TyOf (E1Ext l d))
+-&gt; E1Ext l d
+-&gt; PassM ([Binds (E1Ext l d)], E1Ext l d)
+</span><a href="#local-6989586621680913142"><span class="hs-identifier hs-var hs-var hs-var hs-var">gFlattenGatherBinds</span></a></span></span><span> </span><span id="local-6989586621680913144"><span class="annot"><span class="annottext">DDefs (TyOf (E1Ext l d))
+</span><a href="#local-6989586621680913144"><span class="hs-identifier hs-var">_ddfs</span></a></span></span><span> </span><span id="local-6989586621680913145"><span class="annot"><span class="annottext">Env2 (TyOf (E1Ext l d))
+</span><a href="#local-6989586621680913145"><span class="hs-identifier hs-var">_env</span></a></span></span><span> </span><span id="local-6989586621680913146"><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913146"><span class="hs-identifier hs-var">ex</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">([(Var, [l], d, E1Ext l d)], E1Ext l d)
+-&gt; PassM ([(Var, [l], d, E1Ext l d)], E1Ext l d)
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">[</span><span class="hs-special">]</span><span class="hs-special">,</span><span> </span><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913146"><span class="hs-identifier hs-var">ex</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-78"></span><span>  </span><span id="local-6989586621680913148"><span class="annot"><span class="annottext">gFlattenExp :: DDefs (TyOf (E1Ext l d))
+-&gt; Env2 (TyOf (E1Ext l d)) -&gt; E1Ext l d -&gt; PassM (E1Ext l d)
+</span><a href="#local-6989586621680913148"><span class="hs-identifier hs-var hs-var hs-var hs-var">gFlattenExp</span></a></span></span><span> </span><span id="local-6989586621680913150"><span class="annot"><span class="annottext">DDefs (TyOf (E1Ext l d))
+</span><a href="#local-6989586621680913150"><span class="hs-identifier hs-var">_ddfs</span></a></span></span><span> </span><span id="local-6989586621680913151"><span class="annot"><span class="annottext">Env2 (TyOf (E1Ext l d))
+</span><a href="#local-6989586621680913151"><span class="hs-identifier hs-var">_env</span></a></span></span><span> </span><span id="local-6989586621680913152"><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913152"><span class="hs-identifier hs-var">ex</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">E1Ext l d -&gt; PassM (E1Ext l d)
+forall a. a -&gt; PassM a
+forall (m :: * -&gt; *) a. Monad m =&gt; a -&gt; m a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#return"><span class="hs-identifier hs-var">return</span></a></span><span> </span><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913152"><span class="hs-identifier hs-var">ex</span></a></span><span>
+</span><span id="line-79"></span><span>
+</span><span id="line-80"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621680912686"><span id="local-6989586621680912687"><span class="annot"><a href="Gibbon.Language.Syntax.html#HasSimplifiableExt"><span class="hs-identifier hs-type">HasSimplifiableExt</span></a></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912686"><span class="hs-identifier hs-type">l</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912687"><span class="hs-identifier hs-type">d</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#SimplifiableExt"><span class="hs-identifier hs-type">SimplifiableExt</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.Language.Syntax.html#PreExp"><span class="hs-identifier hs-type">PreExp</span></a></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912686"><span class="hs-identifier hs-type">l</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912687"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912686"><span class="hs-identifier hs-type">l</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912687"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">)</span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-81"></span><span>  </span><span id="local-6989586621680913162"><span class="annot"><span class="annottext">gInlineTrivExt :: Map Var (PreExp E1Ext l d) -&gt; E1Ext l d -&gt; E1Ext l d
+</span><a href="#local-6989586621680913162"><span class="hs-identifier hs-var hs-var hs-var hs-var">gInlineTrivExt</span></a></span></span><span> </span><span id="local-6989586621680913164"><span class="annot"><span class="annottext">Map Var (PreExp E1Ext l d)
+</span><a href="#local-6989586621680913164"><span class="hs-identifier hs-var">_env</span></a></span></span><span> </span><span id="local-6989586621680913165"><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913165"><span class="hs-identifier hs-var">ext</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913165"><span class="hs-identifier hs-var">ext</span></a></span><span>
+</span><span id="line-82"></span><span>
+</span><span id="line-83"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621680912698"><span id="local-6989586621680912699"><span class="annot"><a href="Gibbon.Language.Syntax.html#HasSubstitutableExt"><span class="hs-identifier hs-type">HasSubstitutableExt</span></a></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912698"><span class="hs-identifier hs-type">l</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912699"><span class="hs-identifier hs-type">d</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#SubstitutableExt"><span class="hs-identifier hs-type">SubstitutableExt</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.Language.Syntax.html#PreExp"><span class="hs-identifier hs-type">PreExp</span></a></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912698"><span class="hs-identifier hs-type">l</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912699"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912698"><span class="hs-identifier hs-type">l</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912699"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">)</span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-84"></span><span>  </span><span id="local-6989586621680913183"><span class="annot"><span class="annottext">gSubstExt :: Var -&gt; PreExp E1Ext l d -&gt; E1Ext l d -&gt; E1Ext l d
+</span><a href="#local-6989586621680913183"><span class="hs-identifier hs-var hs-var hs-var hs-var">gSubstExt</span></a></span></span><span> </span><span id="local-6989586621680913185"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913185"><span class="hs-identifier hs-var">old</span></a></span></span><span> </span><span id="local-6989586621680913186"><span class="annot"><span class="annottext">PreExp E1Ext l d
+</span><a href="#local-6989586621680913186"><span class="hs-identifier hs-var">new</span></a></span></span><span> </span><span id="local-6989586621680913187"><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913187"><span class="hs-identifier hs-var">ext</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-85"></span><span>    </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913187"><span class="hs-identifier hs-var">ext</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-86"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#BenchE"><span class="hs-identifier hs-type">BenchE</span></a></span><span> </span><span id="local-6989586621680913188"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913188"><span class="hs-identifier hs-var">fn</span></a></span></span><span> </span><span id="local-6989586621680913189"><span class="annot"><span class="annottext">[l]
+</span><a href="#local-6989586621680913189"><span class="hs-identifier hs-var">tyapps</span></a></span></span><span> </span><span id="local-6989586621680913190"><span class="annot"><span class="annottext">[PreExp E1Ext l d]
+</span><a href="#local-6989586621680913190"><span class="hs-identifier hs-var">args</span></a></span></span><span> </span><span id="local-6989586621680913191"><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680913191"><span class="hs-identifier hs-var">b</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Var -&gt; [l] -&gt; [PreExp E1Ext l d] -&gt; Bool -&gt; E1Ext l d
+forall loc dec.
+Var -&gt; [loc] -&gt; [PreExp E1Ext loc dec] -&gt; Bool -&gt; E1Ext loc dec
+</span><a href="Gibbon.L1.Syntax.html#BenchE"><span class="hs-identifier hs-var">BenchE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913188"><span class="hs-identifier hs-var">fn</span></a></span><span> </span><span class="annot"><span class="annottext">[l]
+</span><a href="#local-6989586621680913189"><span class="hs-identifier hs-var">tyapps</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">(PreExp E1Ext l d -&gt; PreExp E1Ext l d)
+-&gt; [PreExp E1Ext l d] -&gt; [PreExp E1Ext l d]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#map"><span class="hs-identifier hs-var">map</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; PreExp E1Ext l d -&gt; PreExp E1Ext l d -&gt; PreExp E1Ext l d
+forall e. Substitutable e =&gt; Var -&gt; e -&gt; e -&gt; e
+</span><a href="Gibbon.Language.Syntax.html#gSubst"><span class="hs-identifier hs-var">gSubst</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913185"><span class="hs-identifier hs-var">old</span></a></span><span> </span><span class="annot"><span class="annottext">PreExp E1Ext l d
+</span><a href="#local-6989586621680913186"><span class="hs-identifier hs-var">new</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">[PreExp E1Ext l d]
+</span><a href="#local-6989586621680913190"><span class="hs-identifier hs-var">args</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680913191"><span class="hs-identifier hs-var">b</span></a></span><span>
+</span><span id="line-87"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#AddFixed"><span class="hs-identifier hs-type">AddFixed</span></a></span><span> </span><span id="local-6989586621680913193"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913193"><span class="hs-identifier hs-var">v</span></a></span></span><span> </span><span id="local-6989586621680913194"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621680913194"><span class="hs-identifier hs-var">i</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">if</span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913193"><span class="hs-identifier hs-var">v</span></a></span><span> </span><span class="annot"><span class="annottext">Var -&gt; Var -&gt; Bool
+forall a. Eq a =&gt; a -&gt; a -&gt; Bool
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Classes.html#%3D%3D"><span class="hs-operator hs-var">==</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913185"><span class="hs-identifier hs-var">old</span></a></span><span>
+</span><span id="line-88"></span><span>                      </span><span class="hs-keyword">then</span><span> </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">PreExp E1Ext l d
+</span><a href="#local-6989586621680913186"><span class="hs-identifier hs-var">new</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-89"></span><span>                             </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-type">VarE</span></a></span><span> </span><span id="local-6989586621680913196"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913196"><span class="hs-identifier hs-var">v'</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Int -&gt; E1Ext l d
+forall loc dec. Var -&gt; Int -&gt; E1Ext loc dec
+</span><a href="Gibbon.L1.Syntax.html#AddFixed"><span class="hs-identifier hs-var">AddFixed</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913196"><span class="hs-identifier hs-var">v'</span></a></span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621680913194"><span class="hs-identifier hs-var">i</span></a></span><span>
+</span><span id="line-90"></span><span>                             </span><span id="local-6989586621680913197"><span class="annot"><span class="annottext">PreExp E1Ext l d
+</span><a href="#local-6989586621680913197"><span class="hs-identifier hs-var">_oth</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">String -&gt; E1Ext l d
+forall a. HasCallStack =&gt; String -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Err.html#error"><span class="hs-identifier hs-var">error</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;Could not substitute non-variable in AddFixed&quot;</span></span><span>
+</span><span id="line-91"></span><span>                      </span><span class="hs-keyword">else</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Int -&gt; E1Ext l d
+forall loc dec. Var -&gt; Int -&gt; E1Ext loc dec
+</span><a href="Gibbon.L1.Syntax.html#AddFixed"><span class="hs-identifier hs-var">AddFixed</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913193"><span class="hs-identifier hs-var">v</span></a></span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621680913194"><span class="hs-identifier hs-var">i</span></a></span><span>
+</span><span id="line-92"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#StartOfPkdCursor"><span class="hs-identifier hs-type">StartOfPkdCursor</span></a></span><span> </span><span id="local-6989586621680913199"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913199"><span class="hs-identifier hs-var">cur</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-93"></span><span>                     </span><span class="hs-keyword">if</span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913199"><span class="hs-identifier hs-var">cur</span></a></span><span> </span><span class="annot"><span class="annottext">Var -&gt; Var -&gt; Bool
+forall a. Eq a =&gt; a -&gt; a -&gt; Bool
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/ghc-prim-0.9.0/src/GHC.Classes.html#%3D%3D"><span class="hs-operator hs-var">==</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913185"><span class="hs-identifier hs-var">old</span></a></span><span>
+</span><span id="line-94"></span><span>                     </span><span class="hs-keyword">then</span><span> </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">PreExp E1Ext l d
+</span><a href="#local-6989586621680913186"><span class="hs-identifier hs-var">new</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-95"></span><span>                             </span><span class="annot"><a href="Gibbon.Language.Syntax.html#VarE"><span class="hs-identifier hs-type">VarE</span></a></span><span> </span><span id="local-6989586621680913200"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913200"><span class="hs-identifier hs-var">cur'</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Var -&gt; E1Ext l d
+forall loc dec. Var -&gt; E1Ext loc dec
+</span><a href="Gibbon.L1.Syntax.html#StartOfPkdCursor"><span class="hs-identifier hs-var">StartOfPkdCursor</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913200"><span class="hs-identifier hs-var">cur'</span></a></span><span>
+</span><span id="line-96"></span><span>                             </span><span id="local-6989586621680913201"><span class="annot"><span class="annottext">PreExp E1Ext l d
+</span><a href="#local-6989586621680913201"><span class="hs-identifier hs-var">_oth</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">String -&gt; E1Ext l d
+forall a. HasCallStack =&gt; String -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Err.html#error"><span class="hs-identifier hs-var">error</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;Could not substitute non-variable in StartOfPkdCursor&quot;</span></span><span>
+</span><span id="line-97"></span><span>                     </span><span class="hs-keyword">else</span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; E1Ext l d
+forall loc dec. Var -&gt; E1Ext loc dec
+</span><a href="Gibbon.L1.Syntax.html#StartOfPkdCursor"><span class="hs-identifier hs-var">StartOfPkdCursor</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913199"><span class="hs-identifier hs-var">cur</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-98"></span><span>
+</span><span id="line-99"></span><span>  </span><span id="local-6989586621680913203"><span class="annot"><span class="annottext">gSubstEExt :: PreExp E1Ext l d -&gt; PreExp E1Ext l d -&gt; E1Ext l d -&gt; E1Ext l d
+</span><a href="#local-6989586621680913203"><span class="hs-identifier hs-var hs-var hs-var hs-var">gSubstEExt</span></a></span></span><span> </span><span id="local-6989586621680913205"><span class="annot"><span class="annottext">PreExp E1Ext l d
+</span><a href="#local-6989586621680913205"><span class="hs-identifier hs-var">old</span></a></span></span><span> </span><span id="local-6989586621680913206"><span class="annot"><span class="annottext">PreExp E1Ext l d
+</span><a href="#local-6989586621680913206"><span class="hs-identifier hs-var">new</span></a></span></span><span> </span><span id="local-6989586621680913207"><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913207"><span class="hs-identifier hs-var">ext</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-100"></span><span>    </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913207"><span class="hs-identifier hs-var">ext</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-101"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#BenchE"><span class="hs-identifier hs-type">BenchE</span></a></span><span> </span><span id="local-6989586621680913208"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913208"><span class="hs-identifier hs-var">fn</span></a></span></span><span> </span><span id="local-6989586621680913209"><span class="annot"><span class="annottext">[l]
+</span><a href="#local-6989586621680913209"><span class="hs-identifier hs-var">tyapps</span></a></span></span><span> </span><span id="local-6989586621680913210"><span class="annot"><span class="annottext">[PreExp E1Ext l d]
+</span><a href="#local-6989586621680913210"><span class="hs-identifier hs-var">args</span></a></span></span><span> </span><span id="local-6989586621680913211"><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680913211"><span class="hs-identifier hs-var">b</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Var -&gt; [l] -&gt; [PreExp E1Ext l d] -&gt; Bool -&gt; E1Ext l d
+forall loc dec.
+Var -&gt; [loc] -&gt; [PreExp E1Ext loc dec] -&gt; Bool -&gt; E1Ext loc dec
+</span><a href="Gibbon.L1.Syntax.html#BenchE"><span class="hs-identifier hs-var">BenchE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913208"><span class="hs-identifier hs-var">fn</span></a></span><span> </span><span class="annot"><span class="annottext">[l]
+</span><a href="#local-6989586621680913209"><span class="hs-identifier hs-var">tyapps</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">(PreExp E1Ext l d -&gt; PreExp E1Ext l d)
+-&gt; [PreExp E1Ext l d] -&gt; [PreExp E1Ext l d]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#map"><span class="hs-identifier hs-var">map</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">PreExp E1Ext l d
+-&gt; PreExp E1Ext l d -&gt; PreExp E1Ext l d -&gt; PreExp E1Ext l d
+forall e. Substitutable e =&gt; e -&gt; e -&gt; e -&gt; e
+</span><a href="Gibbon.Language.Syntax.html#gSubstE"><span class="hs-identifier hs-var">gSubstE</span></a></span><span> </span><span class="annot"><span class="annottext">PreExp E1Ext l d
+</span><a href="#local-6989586621680913205"><span class="hs-identifier hs-var">old</span></a></span><span> </span><span class="annot"><span class="annottext">PreExp E1Ext l d
+</span><a href="#local-6989586621680913206"><span class="hs-identifier hs-var">new</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">[PreExp E1Ext l d]
+</span><a href="#local-6989586621680913210"><span class="hs-identifier hs-var">args</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680913211"><span class="hs-identifier hs-var">b</span></a></span><span>
+</span><span id="line-102"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#AddFixed"><span class="hs-identifier hs-type">AddFixed</span></a></span><span> </span><span id="local-6989586621680913213"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913213"><span class="hs-identifier hs-var">v</span></a></span></span><span> </span><span id="local-6989586621680913214"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621680913214"><span class="hs-identifier hs-var">i</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Int -&gt; E1Ext l d
+forall loc dec. Var -&gt; Int -&gt; E1Ext loc dec
+</span><a href="Gibbon.L1.Syntax.html#AddFixed"><span class="hs-identifier hs-var">AddFixed</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913213"><span class="hs-identifier hs-var">v</span></a></span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621680913214"><span class="hs-identifier hs-var">i</span></a></span><span>
+</span><span id="line-103"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#StartOfPkdCursor"><span class="hs-identifier hs-type">StartOfPkdCursor</span></a></span><span> </span><span id="local-6989586621680913215"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913215"><span class="hs-identifier hs-var">cur</span></a></span></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Var -&gt; E1Ext l d
+forall loc dec. Var -&gt; E1Ext loc dec
+</span><a href="Gibbon.L1.Syntax.html#StartOfPkdCursor"><span class="hs-identifier hs-var">StartOfPkdCursor</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913215"><span class="hs-identifier hs-var">cur</span></a></span><span>
+</span><span id="line-104"></span><span>
+</span><span id="line-105"></span><span class="hs-keyword">instance</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#Typeable"><span class="hs-identifier hs-type">Typeable</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.Language.Syntax.html#UrTy"><span class="hs-identifier hs-type">UrTy</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span class="hs-special">)</span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-106"></span><span>  </span><span id="local-6989586621680913252"><span class="annot"><span class="annottext">gRecoverType :: DDefs (TyOf (E1Ext () Ty1))
+-&gt; Env2 (TyOf (E1Ext () Ty1))
+-&gt; E1Ext () Ty1
+-&gt; TyOf (E1Ext () Ty1)
+</span><a href="#local-6989586621680913252"><span class="hs-identifier hs-var hs-var hs-var hs-var">gRecoverType</span></a></span></span><span> </span><span id="local-6989586621680913254"><span class="annot"><span class="annottext">DDefs (TyOf (E1Ext () Ty1))
+</span><a href="#local-6989586621680913254"><span class="hs-identifier hs-var">_ddefs</span></a></span></span><span> </span><span id="local-6989586621680913255"><span class="annot"><span class="annottext">Env2 (TyOf (E1Ext () Ty1))
+</span><a href="#local-6989586621680913255"><span class="hs-identifier hs-var">env2</span></a></span></span><span> </span><span id="local-6989586621680913256"><span class="annot"><span class="annottext">E1Ext () Ty1
+</span><a href="#local-6989586621680913256"><span class="hs-identifier hs-var">ext</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-107"></span><span>    </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">E1Ext () Ty1
+</span><a href="#local-6989586621680913256"><span class="hs-identifier hs-var">ext</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-108"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#BenchE"><span class="hs-identifier hs-type">BenchE</span></a></span><span> </span><span id="local-6989586621680913257"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913257"><span class="hs-identifier hs-var">fn</span></a></span></span><span> </span><span class="annot"><span class="annottext">[()]
+</span><span class="hs-identifier">_</span></span><span> </span><span class="annot"><span class="annottext">[PreExp E1Ext () Ty1]
+</span><span class="hs-identifier">_</span></span><span> </span><span class="annot"><span class="annottext">Bool
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">ArrowTy (TyOf (E1Ext () Ty1)) -&gt; TyOf (E1Ext () Ty1)
+forall ty. FunctionTy ty =&gt; ArrowTy ty -&gt; ty
+</span><a href="Gibbon.Language.Syntax.html#outTy"><span class="hs-identifier hs-var">outTy</span></a></span><span> </span><span class="annot"><span class="annottext">(ArrowTy (TyOf (E1Ext () Ty1)) -&gt; TyOf (E1Ext () Ty1))
+-&gt; ArrowTy (TyOf (E1Ext () Ty1)) -&gt; TyOf (E1Ext () Ty1)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 Ty1 -&gt; TyEnv (ArrowTy Ty1)
+forall a. Env2 a -&gt; TyEnv (ArrowTy a)
+</span><a href="Gibbon.Language.Syntax.html#fEnv"><span class="hs-identifier hs-var">fEnv</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (TyOf (E1Ext () Ty1))
+Env2 Ty1
+</span><a href="#local-6989586621680913255"><span class="hs-identifier hs-var">env2</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var ([Ty1], Ty1) -&gt; Var -&gt; ([Ty1], Ty1)
+forall a b.
+(Ord a, Out a, Out b, Show a, HasCallStack) =&gt;
+Map a b -&gt; a -&gt; b
+</span><a href="Gibbon.Common.html#%23"><span class="hs-operator hs-var">#</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913257"><span class="hs-identifier hs-var">fn</span></a></span><span>
+</span><span id="line-109"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#AddFixed"><span class="hs-identifier hs-type">AddFixed</span></a></span><span> </span><span id="local-6989586621680913260"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913260"><span class="hs-identifier hs-var">v</span></a></span></span><span> </span><span id="local-6989586621680913261"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621680913261"><span class="hs-identifier hs-var">_i</span></a></span></span><span>   </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">if</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Map Var Ty1 -&gt; Bool
+forall k a. Ord k =&gt; k -&gt; Map k a -&gt; Bool
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#member"><span class="hs-identifier hs-var">M.member</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913260"><span class="hs-identifier hs-var">v</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Env2 Ty1 -&gt; Map Var Ty1
+forall a. Env2 a -&gt; TyEnv a
+</span><a href="Gibbon.Language.Syntax.html#vEnv"><span class="hs-identifier hs-var">vEnv</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (TyOf (E1Ext () Ty1))
+Env2 Ty1
+</span><a href="#local-6989586621680913255"><span class="hs-identifier hs-var">env2</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-110"></span><span>                         </span><span class="hs-keyword">then</span><span> </span><span class="annot"><span class="annottext">TyOf (E1Ext () Ty1)
+Ty1
+forall loc. UrTy loc
+</span><a href="Gibbon.Language.Syntax.html#CursorTy"><span class="hs-identifier hs-var">CursorTy</span></a></span><span>
+</span><span id="line-111"></span><span>                         </span><span class="hs-keyword">else</span><span> </span><span class="annot"><span class="annottext">String -&gt; TyOf (E1Ext () Ty1)
+forall a. HasCallStack =&gt; String -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Err.html#error"><span class="hs-identifier hs-var">error</span></a></span><span> </span><span class="annot"><span class="annottext">(String -&gt; TyOf (E1Ext () Ty1)) -&gt; String -&gt; TyOf (E1Ext () Ty1)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;AddFixed: unbound variable &quot;</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; ShowS
+forall a. [a] -&gt; [a] -&gt; [a]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%2B%2B"><span class="hs-operator hs-var">++</span></a></span><span> </span><span class="annot"><span class="annottext">Var -&gt; String
+forall a. Show a =&gt; a -&gt; String
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Show.html#show"><span class="hs-identifier hs-var">show</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913260"><span class="hs-identifier hs-var">v</span></a></span><span>
+</span><span id="line-112"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#StartOfPkdCursor"><span class="hs-identifier hs-type">StartOfPkdCursor</span></a></span><span> </span><span id="local-6989586621680913266"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913266"><span class="hs-identifier hs-var">cur</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-113"></span><span>                         </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Map Var Ty1 -&gt; Maybe Ty1
+forall k a. Ord k =&gt; k -&gt; Map k a -&gt; Maybe a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/containers-0.6.7/src/Data.Map.Internal.html#lookup"><span class="hs-identifier hs-var">M.lookup</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913266"><span class="hs-identifier hs-var">cur</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Env2 Ty1 -&gt; Map Var Ty1
+forall a. Env2 a -&gt; TyEnv a
+</span><a href="Gibbon.Language.Syntax.html#vEnv"><span class="hs-identifier hs-var">vEnv</span></a></span><span> </span><span class="annot"><span class="annottext">Env2 (TyOf (E1Ext () Ty1))
+Env2 Ty1
+</span><a href="#local-6989586621680913255"><span class="hs-identifier hs-var">env2</span></a></span><span class="hs-special">)</span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-114"></span><span>                           </span><span class="annot"><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Maybe.html#Just"><span class="hs-identifier hs-type">Just</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.Language.Syntax.html#PackedTy"><span class="hs-identifier hs-type">PackedTy</span></a></span><span class="hs-special">{</span><span class="hs-special">}</span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">TyOf (E1Ext () Ty1)
+Ty1
+forall loc. UrTy loc
+</span><a href="Gibbon.Language.Syntax.html#CursorTy"><span class="hs-identifier hs-var">CursorTy</span></a></span><span>
+</span><span id="line-115"></span><span>                           </span><span id="local-6989586621680913269"><span class="annot"><span class="annottext">Maybe Ty1
+</span><a href="#local-6989586621680913269"><span class="hs-identifier hs-var">ty</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">String -&gt; TyOf (E1Ext () Ty1)
+forall a. HasCallStack =&gt; String -&gt; a
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Err.html#error"><span class="hs-identifier hs-var">error</span></a></span><span> </span><span class="annot"><span class="annottext">(String -&gt; TyOf (E1Ext () Ty1)) -&gt; String -&gt; TyOf (E1Ext () Ty1)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%24"><span class="hs-operator hs-var">$</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;StartOfPkdCursor: got &quot;</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; ShowS
+forall a. [a] -&gt; [a] -&gt; [a]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#%2B%2B"><span class="hs-operator hs-var">++</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe Ty1 -&gt; String
+forall a. Show a =&gt; a -&gt; String
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Show.html#show"><span class="hs-identifier hs-var">show</span></a></span><span> </span><span class="annot"><span class="annottext">Maybe Ty1
+</span><a href="#local-6989586621680913269"><span class="hs-identifier hs-var">ty</span></a></span><span>
+</span><span id="line-116"></span><span>
+</span><span id="line-117"></span><span class="hs-keyword">instance</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#Renamable"><span class="hs-identifier hs-type">Renamable</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-118"></span><span>    </span><span id="local-6989586621680913273"><span class="annot"><span class="annottext">gRename :: Map Var Var -&gt; () -&gt; ()
+</span><a href="#local-6989586621680913273"><span class="hs-identifier hs-var hs-var hs-var hs-var">gRename</span></a></span></span><span> </span><span class="annot"><span class="annottext">Map Var Var
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><span id="line-119"></span><span>
+</span><span id="line-120"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621680912728"><span id="local-6989586621680912729"><span class="annot"><a href="Gibbon.Language.Syntax.html#HasRenamable"><span class="hs-identifier hs-type">HasRenamable</span></a></span><span> </span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912728"><span class="hs-identifier hs-type">l</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912729"><span class="hs-identifier hs-type">d</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#Renamable"><span class="hs-identifier hs-type">Renamable</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="Gibbon.L1.Syntax.html#E1Ext"><span class="hs-identifier hs-type">E1Ext</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912728"><span class="hs-identifier hs-type">l</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912729"><span class="hs-identifier hs-type">d</span></a></span><span class="hs-special">)</span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-121"></span><span>  </span><span id="local-6989586621680913283"><span class="annot"><span class="annottext">gRename :: Map Var Var -&gt; E1Ext l d -&gt; E1Ext l d
+</span><a href="Gibbon.Language.Syntax.html#gRename"><span class="hs-identifier hs-var hs-var hs-var hs-var">gRename</span></a></span></span><span> </span><span id="local-6989586621680913284"><span class="annot"><span class="annottext">Map Var Var
+</span><a href="#local-6989586621680913284"><span class="hs-identifier hs-var">env</span></a></span></span><span> </span><span id="local-6989586621680913285"><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913285"><span class="hs-identifier hs-var">ext</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-122"></span><span>    </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">E1Ext l d
+</span><a href="#local-6989586621680913285"><span class="hs-identifier hs-var">ext</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-123"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#BenchE"><span class="hs-identifier hs-type">BenchE</span></a></span><span> </span><span id="local-6989586621680913286"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913286"><span class="hs-identifier hs-var">fn</span></a></span></span><span> </span><span id="local-6989586621680913287"><span class="annot"><span class="annottext">[l]
+</span><a href="#local-6989586621680913287"><span class="hs-identifier hs-var">tyapps</span></a></span></span><span> </span><span id="local-6989586621680913288"><span class="annot"><span class="annottext">[PreExp E1Ext l d]
+</span><a href="#local-6989586621680913288"><span class="hs-identifier hs-var">args</span></a></span></span><span> </span><span id="local-6989586621680913289"><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680913289"><span class="hs-identifier hs-var">b</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Var -&gt; [l] -&gt; [PreExp E1Ext l d] -&gt; Bool -&gt; E1Ext l d
+forall loc dec.
+Var -&gt; [loc] -&gt; [PreExp E1Ext loc dec] -&gt; Bool -&gt; E1Ext loc dec
+</span><a href="Gibbon.L1.Syntax.html#BenchE"><span class="hs-identifier hs-var">BenchE</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913286"><span class="hs-identifier hs-var">fn</span></a></span><span> </span><span class="annot"><span class="annottext">[l]
+</span><a href="#local-6989586621680913287"><span class="hs-identifier hs-var">tyapps</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">(PreExp E1Ext l d -&gt; PreExp E1Ext l d)
+-&gt; [PreExp E1Ext l d] -&gt; [PreExp E1Ext l d]
+forall a b. (a -&gt; b) -&gt; [a] -&gt; [b]
+</span><a href="file:///nix/store/8l12vmymy3adw2m02pf73xq5xjf6mfwp-ghc-9.4.5-doc/share/doc/ghc/html/libraries/base-4.17.1.0/src/GHC.Base.html#map"><span class="hs-identifier hs-var">map</span></a></span><span> </span><span class="annot"><span class="annottext">PreExp E1Ext l d -&gt; PreExp E1Ext l d
+forall a. Renamable a =&gt; a -&gt; a
+</span><a href="#local-6989586621680913290"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">[PreExp E1Ext l d]
+</span><a href="#local-6989586621680913288"><span class="hs-identifier hs-var">args</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Bool
+</span><a href="#local-6989586621680913289"><span class="hs-identifier hs-var">b</span></a></span><span>
+</span><span id="line-124"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#AddFixed"><span class="hs-identifier hs-type">AddFixed</span></a></span><span> </span><span id="local-6989586621680913291"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913291"><span class="hs-identifier hs-var">v</span></a></span></span><span> </span><span id="local-6989586621680913292"><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621680913292"><span class="hs-identifier hs-var">i</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Var -&gt; Int -&gt; E1Ext l d
+forall loc dec. Var -&gt; Int -&gt; E1Ext loc dec
+</span><a href="Gibbon.L1.Syntax.html#AddFixed"><span class="hs-identifier hs-var">AddFixed</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; Var
+forall a. Renamable a =&gt; a -&gt; a
+</span><a href="#local-6989586621680913290"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913291"><span class="hs-identifier hs-var">v</span></a></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">Int
+</span><a href="#local-6989586621680913292"><span class="hs-identifier hs-var">i</span></a></span><span>
+</span><span id="line-125"></span><span>      </span><span class="annot"><a href="Gibbon.L1.Syntax.html#StartOfPkdCursor"><span class="hs-identifier hs-type">StartOfPkdCursor</span></a></span><span> </span><span id="local-6989586621680913293"><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913293"><span class="hs-identifier hs-var">cur</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">Var -&gt; E1Ext l d
+forall loc dec. Var -&gt; E1Ext loc dec
+</span><a href="Gibbon.L1.Syntax.html#StartOfPkdCursor"><span class="hs-identifier hs-var">StartOfPkdCursor</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Var -&gt; Var
+forall a. Renamable a =&gt; a -&gt; a
+</span><a href="#local-6989586621680913290"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">Var
+</span><a href="#local-6989586621680913293"><span class="hs-identifier hs-var">cur</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-126"></span><span>    </span><span class="hs-keyword">where</span><span>
+</span><span id="line-127"></span><span>      </span><span class="annot"><a href="#local-6989586621680913290"><span class="hs-identifier hs-type">go</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-keyword">forall</span><span> </span><span id="local-6989586621680912733"><span class="annot"><a href="#local-6989586621680912733"><span class="hs-identifier hs-type">a</span></a></span></span><span class="hs-operator">.</span><span> </span><span class="annot"><a href="Gibbon.Language.Syntax.html#Renamable"><span class="hs-identifier hs-type">Renamable</span></a></span><span> </span><span class="annot"><a href="#local-6989586621680912733"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="#local-6989586621680912733"><span class="hs-identifier hs-type">a</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621680912733"><span class="hs-identifier hs-type">a</span></a></span><span>
+</span><span id="line-128"></span><span>      </span><span id="local-6989586621680913290"><span class="annot"><span class="annottext">go :: forall a. Renamable a =&gt; a -&gt; a
+</span><a href="#local-6989586621680913290"><span class="hs-identifier hs-var hs-var">go</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Map Var Var -&gt; a -&gt; a
+forall e. Renamable e =&gt; Map Var Var -&gt; e -&gt; e
+</span><a href="Gibbon.Language.Syntax.html#gRename"><span class="hs-identifier hs-var">gRename</span></a></span><span> </span><span class="annot"><span class="annottext">Map Var Var
+</span><a href="#local-6989586621680913284"><span class="hs-identifier hs-var">env</span></a></span><span>
+</span><span id="line-129"></span></pre></body></html>
