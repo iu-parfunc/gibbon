@@ -8,7 +8,10 @@ layout: default
 
 [Gibbon](https://github.com/iu-parfunc/gibbon/tree/master/gibbon-compiler)
 is an experimental compiler that transforms high-level functional programs
-to operate on _serialized data._
+to operate on _serialized data._ See the [README on GitHub][readme] to get started
+with Gibbon.
+
+[readme]: https://github.com/iu-parfunc/gibbon/blob/main/README.md
 
 Typically, programs that process tree-like data represent trees using pointer-based
 data structures in memory (one heap object per-leaf and per-node) because such a
@@ -25,26 +28,9 @@ for traversals that process most or all of a tree in bulk.
 The Gibbon project aims to explore optimizations of recursive tree transforms
 by changing how trees are stored in memory.
 
-Currently, the Gibbon compiler has multiple front-ends: an s-expression synax
+Currently, the Gibbon compiler has multiple front-ends: an S-expression syntax
 similar to Typed Racket, and a small subset of Haskell.
 
-
-
-## Usage
-
-Build the compiler with:
-
-    $ git clone https://github.com/iu-parfunc/gibbon && cd gibbon/gibbon-compiler
-    $ stack setup && stack build
-
-Run a sample program from the [examples](https://github.com/iu-parfunc/gibbon/tree/master/gibbon-compiler/examples) directory:
-
-    $ stack exec -- gibbon -r ./demo/Add1.hs
-
-
-For more options:
-
-    $ stack exec -- gibbon -h
 
 ## Publications
 
