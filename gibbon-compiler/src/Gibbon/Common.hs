@@ -129,13 +129,16 @@ toEndV = varAppend "end_"
 toSeqV :: Var -> Var
 toSeqV v = varAppend v (toVar "_seq")
 
--- | Abstract location variables.
--- type LocVar = Var
-
 -- | A location variable stores the abstract location. 
 -- | the second element stores locs for fields if factored out for an SoA optimization. 
--- | If the list is empty it signifies a single location per type. 
-type LocVar = (Var, [((String, Int), Var)])
+-- | If the list is empty it signifies a single location per type (AoS).
+-- | For each packed type, there is a data constructor, and corresponding fields.  
+-- | LocVar = (Location of Data Constructor buffer,   
+--                              [((Name of Constructor from, Field Index), Location of field buffer)])
+
+type FieldIndex = Int 
+type DataConstructorName = String 
+type LocVar = (Var, [((DataConstructorName, FieldIndex), Var)])
 
 -- | Abstract region variables.
 type RegVar = Var
