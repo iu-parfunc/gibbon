@@ -140,7 +140,7 @@ convertFunTy (from,to,isPar) = do
     -- For this simple version, we assume every location is in a separate region:
     lrm1 <- concat <$> mapM (toLRM Input) from'
     lrm2 <- toLRM Output to'
-    return $ ArrowTy2 { locVars = lrm1 ++ lrm2
+    dbgTraceIt "Print in Inferloc: " dbgTraceIt (sdoc (lrm1, lrm2, from, to, from', to')) dbgTraceIt "\n" return $ ArrowTy2 { locVars = lrm1 ++ lrm2
                      , arrIns  = from'
                      , arrEffs = S.empty
                      , arrOut  = to'
@@ -152,8 +152,45 @@ convertFunTy (from,to,isPar) = do
                       return $ LRM v (VarR r) md)
             (F.toList ls)
 
+-- convertFunTySoa :: ([Ty1],Ty1,Bool) -> DDefs Ty1 -> PassM (ArrowTy2 Ty2)
+-- convertFunTySoa (from,to,isPar) ddefs = do
+--     from' <- mapM convertTy from
+--     from'' <- mapM (convertTySoA ddefs) from
+--     to'   <- convertTy to
+--     to'' <- convertTySoA ddefs to
+--     -- For this simple version, we assume every location is in a separate region:
+--     lrm1 <- concat <$> mapM (toLRM Input) from'
+--     lrm2 <- toLRM Output to'
+--     dbgTraceIt "Print in Inferloc: " dbgTraceIt (sdoc (lrm1, lrm2, from, to, from', to', from'', to'')) dbgTraceIt "\n" return $ ArrowTy2 { locVars = lrm1 ++ lrm2
+--                      , arrIns  = from'
+--                      , arrEffs = S.empty
+--                      , arrOut  = to'
+--                      , locRets = []
+--                      , hasParallelism = isPar }
+--  where
+--    toLRM md ls =
+--        mapM (\v -> do r <- freshLocVar "r"
+--                       return $ LRM v (VarR r) md)
+--             (F.toList ls)
+  
+
 convertTy :: Ty1 -> PassM Ty2
 convertTy ty = traverse (const (freshLocVar "loc")) ty
+
+-- convertTySoA :: DDefs Ty1 -> Ty1 -> PassM Ty2SoA
+-- convertTySoA ddefs ty = case ty of 
+--                             PackedTy tc loc -> case (M.lookup (toVar tc) ddefs) of 
+--                                                             Nothing -> do 
+--                                                                         loc <- freshLocVar "loc"
+--                                                                         let locs = dbgTraceIt "Nothing case" [loc]
+--                                                                           in traverse (const $ pure locs) ty
+--                                                             Just ddef -> do 
+--                                                                           loc <- freshLocVar "loc"
+--                                                                           let locs = dbgTraceIt "just case" dbgTraceIt (sdoc ddef) dbgTraceIt "\n" [loc]
+--                                                                             in traverse (const $ pure locs) ty
+  
+  
+--traverse (const (freshLocVar "loc")) ty
 
 convertDDefs :: DDefs Ty1 -> PassM (DDefs Ty2)
 convertDDefs ddefs = traverse f ddefs
@@ -224,7 +261,7 @@ inferLocs initPrg = do
           fenv <- forM fds $ \(FunDef _ _ (intys, outty) bod _meta) -> do
                   let has_par = hasSpawns bod
                   lift $ lift $ convertFunTy (intys,outty,has_par)
-          let fe = FullEnv dfs' M.empty fenv
+          let fe = dbgTraceIt "Print Data definitions" dbgTraceIt (sdoc dfs) dbgTraceIt "\n" FullEnv dfs' M.empty fenv
           me' <- case me of
             -- We ignore the type of the main expression inferred in L1..
             -- Probably should add a small check here

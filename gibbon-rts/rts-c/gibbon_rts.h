@@ -768,7 +768,7 @@ INLINE_HEADER void gib_grow_region(char **writeloc_addr, char **footer_addr)
     if (old_chunk_in_nursery) {
         gib_grow_region_in_nursery_fast(
             false,
-            old_chunk_in_nursery,
+           old_chunk_in_nursery,
             newsize,
             old_footer,
             writeloc_addr,
