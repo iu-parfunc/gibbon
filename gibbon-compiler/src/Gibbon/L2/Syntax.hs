@@ -103,10 +103,6 @@ type Exp2 = E2 LocVar Ty2
 -- | L1 Types extended with abstract Locations.
 type Ty2 = UrTy LocVar
 
---type Ty2SoA = UrTy [LocVar]
-
---instance Out Ty2SoA
-
 --------------------------------------------------------------------------------
 
 -- | Shorthand for recursions.
