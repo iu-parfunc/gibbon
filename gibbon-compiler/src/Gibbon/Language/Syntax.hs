@@ -541,7 +541,7 @@ data UrTy loc
   | BoolTy
   | ProdTy [UrTy loc] -- ^ An N-ary tuple
   | SymDictTy (Maybe Var) (UrTy ()) -- ^ A map from SymTy to Ty
-          -- ^ We allow built-in dictionaries from symbols to a value type.
+      -- ^ We allow built-in dictionaries from symbols to a value type.
   | PackedTy TyCon loc -- ^ No type arguments to TyCons for now.  (No polymorphism.)
   | VectorTy (UrTy loc) -- ^ Vectors are decorated with the types of their elements;
                              -- which can only include scalars or flat products of scalars.

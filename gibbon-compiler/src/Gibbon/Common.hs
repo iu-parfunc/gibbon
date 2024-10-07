@@ -130,7 +130,12 @@ toSeqV :: Var -> Var
 toSeqV v = varAppend v (toVar "_seq")
 
 -- | Abstract location variables.
-type LocVar = Var
+-- type LocVar = Var
+
+-- | A location variable stores the abstract location. 
+-- | the second element stores locs for fields if factored out for an SoA optimization. 
+-- | If the list is empty it signifies a single location per type. 
+type LocVar = (Var, [((String, Int), Var)])
 
 -- | Abstract region variables.
 type RegVar = Var
