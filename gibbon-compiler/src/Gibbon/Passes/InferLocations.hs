@@ -140,7 +140,7 @@ convertFunTy (from,to,isPar) = do
     -- For this simple version, we assume every location is in a separate region:
     lrm1 <- concat <$> mapM (toLRM Input) from'
     lrm2 <- toLRM Output to'
-    dbgTraceIt "Print in Inferloc: " dbgTraceIt (sdoc (lrm1, lrm2, from, to, from', to')) dbgTraceIt "\n" return $ ArrowTy2 { locVars = lrm1 ++ lrm2
+    return $ ArrowTy2 { locVars = lrm1 ++ lrm2
                      , arrIns  = from'
                      , arrEffs = S.empty
                      , arrOut  = to'
@@ -224,7 +224,7 @@ inferLocs initPrg = do
           fenv <- forM fds $ \(FunDef _ _ (intys, outty) bod _meta) -> do
                   let has_par = hasSpawns bod
                   lift $ lift $ convertFunTy (intys,outty,has_par)
-          let fe = dbgTraceIt "Print Data definitions" dbgTraceIt (sdoc dfs) dbgTraceIt "\n" FullEnv dfs' M.empty fenv
+          let fe = FullEnv dfs' M.empty fenv
           me' <- case me of
             -- We ignore the type of the main expression inferred in L1..
             -- Probably should add a small check here
