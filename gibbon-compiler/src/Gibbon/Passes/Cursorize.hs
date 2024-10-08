@@ -104,7 +104,7 @@ cursorize Prog{ddefs,fundefs,mainExp} = do
 -- |
 cursorizeFunDef :: DDefs Ty2 -> FunDefs2 -> FunDef2 -> PassM FunDef3
 cursorizeFunDef ddefs fundefs FunDef{funName,funTy,funArgs,funBody,funMeta} = do
-  let inLocs  = dbgTraceIt "Print function type: " dbgTraceIt (sdoc funTy) dbgTraceIt "\n" inLocVars funTy
+  let inLocs  = inLocVars funTy
       outLocs = outLocVars funTy
       outRegs = outRegVars funTy
       inRegs  = inRegVars funTy
