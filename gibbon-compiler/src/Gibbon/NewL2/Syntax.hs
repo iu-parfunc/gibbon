@@ -107,6 +107,15 @@ toLocVar :: LocArg -> LocVar
 toLocVar arg =
   case arg of
     Loc lrm        -> lremLoc lrm
+    EndWitness _ v -> (v, [])
+    Reg v _        -> (v, [])
+    EndOfReg _ _ v -> (v, [])
+    EndOfReg_Tagged v -> (toEndFromTaggedV v, [])
+
+fromLocArgToVar :: LocArg -> Var 
+fromLocArgToVar arg =
+  case arg of
+    Loc lrm        -> lremLoc lrm
     EndWitness _ v -> v
     Reg v _        -> v
     EndOfReg _ _ v -> v
@@ -125,7 +134,7 @@ toEndFromTaggedV v = (toVar "end_from_tagged_") `varAppend` v
 instance FreeVars LocExp where
   gFreeVars e =
     case e of
-      Old.AfterConstantLE _ loc   -> S.singleton (toLocVar loc)
+      Old.AfterConstantLE _ loc  -> S.singleton (toLocVar loc)
       Old.AfterVariableLE v loc _ -> S.fromList [v,toLocVar loc]
       _ -> S.empty
 

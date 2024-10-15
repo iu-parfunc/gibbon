@@ -767,34 +767,34 @@ tcExp ddfs env funs constrs regs tstatein exp =
                regs' <- regionInsert exp r regs
                (ty,tstate) <- tcExp ddfs env funs constrs regs' tstatein e
                return (ty,tstate)
-
-      Ext (LetLocE v c e) -> do
-              let env' = extendVEnv v CursorTy env
+      -- ATM, ignoring the locations for other buffers. 
+      Ext (LetLocE (Single loc) c e) -> do
+              let env' = extendVEnv loc CursorTy env
               case c of
                 StartOfRegionLE r ->
                     do ensureRegion exp r regs
                        absentStart exp constrs r
-                       let tstate1 = extendTS v (Output,False) tstatein
-                       let constrs1 = extendConstrs (StartOfC v r) $ extendConstrs (InRegionC v r) constrs
+                       let tstate1 = extendTS (Single loc) (Output,False) tstatein
+                       let constrs1 = extendConstrs (StartOfC (Single loc) r) $ extendConstrs (InRegionC (Single loc) r) constrs
                        (ty,tstate2) <- tcExp ddfs env' funs constrs1 regs tstate1 e
-                       tstate3 <- removeLoc exp tstate2 v
+                       tstate3 <- removeLoc exp tstate2 (Single loc)
                        return (ty,tstate3)
                 AfterConstantLE i l1 ->
                      do r <- getRegion exp constrs l1
-                        let tstate1 = extendTS v (Output,True) $ setAfter l1 tstatein
-                        let constrs1 = extendConstrs (InRegionC v r) $ extendConstrs (AfterConstantC i l1 v) constrs
+                        let tstate1 = extendTS (Single loc) (Output,True) $ setAfter l1 tstatein
+                        let constrs1 = extendConstrs (InRegionC (Single loc) r) $ extendConstrs (AfterConstantC i l1 (Single loc)) constrs
                         (ty,tstate2) <- tcExp ddfs env' funs constrs1 regs tstate1 e
-                        tstate3 <- removeLoc exp tstate2 v
+                        tstate3 <- removeLoc exp tstate2 (Single loc)
                         return (ty,tstate3)
                 AfterVariableLE x l1 _ ->
                     do r <- getRegion exp constrs l1
                        (_xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ VarE x
                        -- NOTE: We now allow aliases (offsets) from scalar vars too. So we can leave out this check
                        -- ensurePackedLoc exp xty l1
-                       let tstate2 = extendTS v (Output,True) $ setAfter l1 tstate1
-                       let constrs1 = extendConstrs (InRegionC v r) $ extendConstrs (AfterVariableC x l1 v) constrs
+                       let tstate2 = extendTS (Single loc) (Output,True) $ setAfter l1 tstate1
+                       let constrs1 = extendConstrs (InRegionC (Single loc) r) $ extendConstrs (AfterVariableC x l1 (Single loc)) constrs
                        (ty,tstate3) <- tcExp ddfs env' funs constrs1 regs tstate2 e
-                       tstate4 <- removeLoc exp tstate3 v
+                       tstate4 <- removeLoc exp tstate3 (Single loc)
                        return (ty,tstate4)
                 FromEndLE _l1 ->
                     do -- TODO: This is the bare minimum which gets the examples typechecking again.
@@ -802,7 +802,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                       (ty,tstate1) <- tcExp ddfs env' funs constrs regs tstatein e
                       return (ty,tstate1)
                 FreeLE ->
-                    do let constrs1 = extendConstrs (InRegionC v globalReg) $ constrs
+                    do let constrs1 = extendConstrs (InRegionC (Single loc) globalReg) $ constrs
                        (ty,tstate1) <- tcExp ddfs env' funs constrs1 regs tstatein e
                        return (ty,tstate1)
 
