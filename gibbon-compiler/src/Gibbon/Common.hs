@@ -8,7 +8,8 @@
 module Gibbon.Common
        (
          -- * Variables
-         Var(..), LocVar, RegVar, fromVar, toVar, varAppend, toEndV, toSeqV, cleanFunName
+         Var(..), LocVar(..), Location, FieldIndex, DataConBuf, FieldBuf, FieldLocs
+       , RegVar, fromVar, toVar, varAppend, toEndV, toSeqV, cleanFunName
        , TyVar(..), isUserTv
        , Symbol, intern, unintern
 
@@ -130,15 +131,23 @@ toSeqV :: Var -> Var
 toSeqV v = varAppend v (toVar "_seq")
 
 -- | A location variable stores the abstract location. 
--- | the second element stores locs for fields if factored out for an SoA optimization. 
--- | If the list is empty it signifies a single location per type (AoS).
--- | For each packed type, there is a data constructor, and corresponding fields.  
--- | LocVar = (Location of Data Constructor buffer,   
---                              [((Name of Constructor from, Field Index), Location of field buffer)])
-
+type Location = Var
+-- | Index position of the filed in the data constructor. 
 type FieldIndex = Int 
-type DataConstructorName = String 
-type LocVar = (Var, [((DataConstructorName, FieldIndex), Var)])
+-- | Location of the buffer where all the data constructor tags are stored. 
+type DataConBuf = Location 
+-- | Store the name of the data constructor as a String. 
+type DataConName = String 
+-- | Store the location of the buffer with the factored out fields.
+-- | Stores extra meta data like data constructor to which it comes from and the index position.
+type FieldBuf = ((DataConName, FieldIndex), Location) 
+-- | List of field locations for a datatype
+type FieldLocs = [FieldBuf]
+-- | A data type that stores either a single location, AoS 
+-- | or a SoA representation: A data constructor buffer in addition to location for fields.
+-- | LocVar can also be a pointer. 
+data LocVar = Single Location | SoA DataConBuf FieldLocs | Pointer Location 
+      deriving (Show, Ord, Eq, Read, Generic, NFData, Out)
 
 -- | Abstract region variables.
 type RegVar = Var
