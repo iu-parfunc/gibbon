@@ -84,7 +84,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
                                              case lookupVEnv w env2 of
                                                PackedTy _ loc -> (loc:acc)
                                                -- For indirection/redirection pointers.
-                                               CursorTy -> (w:acc)
+                                               CursorTy -> ((Single w):acc)
                                                _ -> acc
                                            _ -> acc)
                                       []
@@ -93,8 +93,8 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
                  (ewitnesses', locenv'') =
                         foldr
                           (\(witloc, tloc) (wits, env) ->
-                             let (New.Loc lrem) = (env # tloc)
-                                 wit' = New.EndWitness lrem witloc
+                             let (New.Loc lrem) = (env # (tloc))
+                                 wit' = New.EndWitness lrem (unwrapLocVar witloc)
                                  env' = M.insert witloc wit' env
                              in (wit' : wits, env'))
                           ([], locenv')
@@ -134,7 +134,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
                                    locenv locargs
                        env2' = extendPatternMatchEnv dcon ddefs vars locs env2
                        locenv'' = if isRedirectionTag dcon || isIndirectionTag dcon
-                                  then let ptr = head vars
+                                  then let ptr = Single $ head vars
                                        in M.insert ptr (mkLocArg ptr) locenv'
                                   else locenv'
                    rhs' <- go locenv'' env2' rhs
@@ -173,7 +173,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
         FromEndE loc -> Ext <$> FromEndE <$> pure (locenv # loc)
 
         BoundsCheck i reg loc -> do
-         let reg' = New.Reg reg Output
+         let reg' = New.Reg (unwrapLocVar reg) Output
              loc' = locenv # loc
          pure $ Ext $ BoundsCheck i reg' loc'
 
@@ -189,8 +189,8 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
             IndirectionE
               tycon
               dcon
-              (locenv # from, New.EndOfReg from_reg Output (toEndV from_reg))
-              (locenv # to, New.EndOfReg to_reg Input (toEndV to_reg))
+              (locenv # from, New.EndOfReg (unwrapLocVar from_reg) Output (toEndV (unwrapLocVar from_reg)))
+              (locenv # to, New.EndOfReg (unwrapLocVar to_reg) Input (toEndV (unwrapLocVar to_reg)))
               e'
               -- (locenv # from, New.Reg (VarR from_reg) Output)
               -- (locenv # to, New.Reg (VarR to_reg) Input)

@@ -50,8 +50,10 @@ bigNumber = 10 -- limit number of loops
 findWitnesses :: Prog2 -> PassM Prog2
 findWitnesses p@Prog{fundefs} = mapMExprs fn p
  where
-  fn Env2{vEnv,fEnv} boundlocs ex = return (goFix (Map.keysSet vEnv `Set.union` Map.keysSet fEnv
-                                                  `Set.union` boundlocs
+  fn Env2{vEnv,fEnv} boundlocs ex = do 
+                                    let boundlocs' = Set.fromList $ map unwrapLocVar $ Set.toList boundlocs
+                                    return (goFix (Map.keysSet vEnv `Set.union` Map.keysSet fEnv
+                                                  `Set.union` boundlocs'
                                                   )
                                             ex bigNumber)
   goFix _    ex 0 = error $ "timeout in findWitness on " ++ (show ex)
@@ -62,7 +64,7 @@ findWitnesses p@Prog{fundefs} = mapMExprs fn p
 
   docase bound mp (k,vs,e) =
     let (vars,locs) = unzip vs
-        bound' = Set.fromList (vars ++ locs) `Set.union` bound
+        bound' = Set.fromList (vars ++ (map unwrapLocVar locs)) `Set.union` bound
     in (k,vs,goE bound' mp e)
 
   goE :: Set.Set Var -> Map.Map Var DelayedBind -> Exp2 -> Exp2
@@ -84,14 +86,14 @@ findWitnesses p@Prog{fundefs} = mapMExprs fn p
                   chk = Set.null freelocs
               in if chk
                  -- dbgTraceIt (if loc == "loc_17052" then (sdoc (loc, locexp, freelocs, chk)) else "")
-                 then Ext $ LetLocE loc locexp $ goE (Set.insert loc bound) mp bod
+                 then Ext $ LetLocE loc locexp $ goE (Set.insert (unwrapLocVar loc) bound) mp bod
                  else
                    case locexp of
                      AfterVariableLE v loc2 b ->
-                       (go (Map.insert loc (DelayLoc (loc, (AfterVariableLE v loc2 b))) mp) bod)
+                       (go (Map.insert (unwrapLocVar loc) (DelayLoc (loc, (AfterVariableLE v loc2 b))) mp) bod)
                      AfterConstantLE i loc2 ->
-                       go (Map.insert loc (DelayLoc (loc, (AfterConstantLE i loc2))) mp) bod
-                     _ -> Ext $ LetLocE loc locexp $ goE (Set.insert loc bound) mp bod
+                       go (Map.insert (unwrapLocVar loc) (DelayLoc (loc, (AfterConstantLE i loc2))) mp) bod
+                     _ -> Ext $ LetLocE loc locexp $ goE (Set.insert (unwrapLocVar loc) bound) mp bod
             LetRegionE r sz ty bod -> Ext $ LetRegionE r sz ty $ go mp bod
             LetParRegionE r sz ty bod -> Ext $ LetParRegionE r sz ty $ go mp bod
             _ -> handle' $ ex
@@ -202,7 +204,7 @@ mapMExprs fn (Prog ddfs fundefs mainExp) =
     (mapM (\f@FunDef{funArgs,funTy,funBody} ->
               let env = Env2 (Map.fromList $ zip funArgs (inTys funTy)) funEnv
                   boundlocs = Set.fromList (allLocVars funTy) `Set.union`
-                              Set.fromList funArgs
+                              Set.fromList (map Single funArgs)
               in do
                 bod' <- fn env boundlocs funBody
                 return $ f { funBody =  bod' })

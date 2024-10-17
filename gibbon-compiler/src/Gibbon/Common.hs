@@ -8,7 +8,7 @@
 module Gibbon.Common
        (
          -- * Variables
-         Var(..), LocVar(..), Location, FieldIndex, DataConBuf, FieldBuf, FieldLocs
+         Var(..), LocVar(..), Location
        , RegVar, fromVar, toVar, varAppend, toEndV, toSeqV, cleanFunName
        , TyVar(..), isUserTv
        , Symbol, intern, unintern
@@ -30,7 +30,8 @@ module Gibbon.Common
 
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
-       , internalError, dumpIfSet
+       , internalError, dumpIfSet, unwrapLocVar, singleLocVar
+
 
          -- * Establish conventions for the output of #lang gibbon:
        , truePrinted, falsePrinted
@@ -132,22 +133,9 @@ toSeqV v = varAppend v (toVar "_seq")
 
 -- | A location variable stores the abstract location. 
 type Location = Var
--- | Index position of the filed in the data constructor. 
-type FieldIndex = Int 
--- | Location of the buffer where all the data constructor tags are stored. 
-type DataConBuf = Location 
--- | Store the name of the data constructor as a String. 
-type DataConName = String 
--- | Store the location of the buffer with the factored out fields.
--- | Stores extra meta data like data constructor to which it comes from and the index position.
-type FieldBuf = ((DataConName, FieldIndex), Location) 
--- | List of field locations for a datatype
-type FieldLocs = [FieldBuf]
--- | A data type that stores either a single location, AoS 
--- | or a SoA representation: A data constructor buffer in addition to location for fields.
--- | LocVar can also be a pointer. 
-data LocVar = Single Location | SoA DataConBuf FieldLocs | Pointer Location 
-      deriving (Show, Ord, Eq, Read, Generic, NFData, Out)
+
+data LocVar = Single Location 
+  deriving (Show, Ord, Eq, Read, Generic, NFData, Out)
 
 -- | Abstract region variables.
 type RegVar = Var
@@ -508,3 +496,10 @@ truePrinted = "#t"
 
 falsePrinted :: String
 falsePrinted = "#f"
+
+unwrapLocVar :: LocVar -> Var
+unwrapLocVar locvar = case locvar of 
+                            Single loc -> loc
+                            
+singleLocVar :: Location -> LocVar 
+singleLocVar loc = Single loc 
