@@ -767,7 +767,6 @@ tcExp ddfs env funs constrs regs tstatein exp =
                regs' <- regionInsert exp r regs
                (ty,tstate) <- tcExp ddfs env funs constrs regs' tstatein e
                return (ty,tstate)
-      -- ATM, ignoring the locations for other buffers. 
       Ext (LetLocE (Single loc) c e) -> do
               let env' = extendVEnv loc CursorTy env
               case c of
