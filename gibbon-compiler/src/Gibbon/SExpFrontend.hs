@@ -184,10 +184,11 @@ tagDataCons ddefs = go allCons
 
 
 -- | Convert from raw, unstructured S-Expression into the L1 program datatype we expect.
-parseSExp :: [Sexp] -> PassM Prog0
+parseSExp :: [Sexp] -> PassM ProgBundle0
 parseSExp ses = do
   prog@Prog {ddefs} <- go ses [] [] [] Nothing
-  mapMExprs (tagDataCons ddefs) prog
+  prog' <- mapMExprs (tagDataCons ddefs) prog
+  pure $ ProgBundle [] (ProgModule "Main" prog' [])
  where
 
    -- WARNING: top-level constant definitions are INLINED everywhere.
@@ -723,7 +724,7 @@ handleRequire baseFile (l:ls) =
       return $ l:ls'
 
 -- ^ Parse a file to an L1 program.  Return also the gensym counter.
-parseFile :: FilePath -> IO (PassM Prog0)
+parseFile :: FilePath -> IO (PassM ProgBundle0)
 parseFile file = do
   txt    <- fmap bracketHacks $
             -- fmap stripHashLang $

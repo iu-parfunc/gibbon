@@ -1,13 +1,20 @@
 {-# LANGUAGE LambdaCase       #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards  #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use let" #-}
 
 module Gibbon.HaskellFrontend
-  ( parseFile, primMap, multiArgsToOne, desugarLinearExts ) where
+  ( parseFile
+  , primMap
+  , multiArgsToOne
+  , desugarBundleLinearExts
+  , desugarLinearExts
+  ) where
 
 import           Control.Monad
 import           Data.Foldable ( foldrM, foldl' )
-import           Data.Maybe (catMaybes, isJust)
+import           Data.Maybe (catMaybes)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import           Data.IORef
@@ -16,7 +23,8 @@ import           Language.Haskell.Exts.Parser
 import           Language.Haskell.Exts.Syntax as H
 import           Language.Haskell.Exts.Pretty
 import           Language.Haskell.Exts.SrcLoc
-import           Language.Haskell.Exts.CPP
+import Language.Haskell.Exts.CPP
+    ( parseFileContentsWithCommentsAndCPP, defaultCpphsOptions )
 import           System.Environment ( getEnvironment )
 import           System.Directory
 import           System.FilePath
@@ -27,6 +35,13 @@ import           System.IO
 import           Gibbon.L0.Syntax as L0
 import           Gibbon.Common
 import           Gibbon.DynFlags
+
+import qualified Data.List                       as L
+import           Prelude                         as P
+
+import qualified Control.Applicative as L
+--import BenchRunner (main)
+
 
 --------------------------------------------------------------------------------
 
@@ -56,19 +71,20 @@ it expects A.B.D to be at A/B/A/B/D.hs.
 [1] https://downloads.haskell.org/ghc/8.6.4/docs/html/users_guide/separate_compilation.html?#the-search-path
 
 -}
-
-
-parseFile :: Config -> FilePath -> IO (PassM Prog0)
+parseFile :: Config -> FilePath -> IO (PassM ProgBundle0)
 parseFile cfg path = do
-    pstate0_ref <- newIORef emptyParseState
-    parseFile' cfg pstate0_ref [] path
+  pstate0_ref <- newIORef emptyParseState
+  parseFile' cfg pstate0_ref [] path "Main"
 
-
-data ParseState = ParseState
-    { imported :: M.Map (String, FilePath) Prog0 }
+data ParseState =
+  ParseState
+    { imported :: M.Map (String, FilePath) ProgBundle0
+    }
 
 emptyParseState :: ParseState
 emptyParseState = ParseState M.empty
+
+-- should be a sperate recursive function that builds the dependency tree, and then another that parses the actual programs
 
 parseMode :: ParseMode
 parseMode = defaultParseMode { extensions = [ EnableExtension ScopedTypeVariables
@@ -78,16 +94,21 @@ parseMode = defaultParseMode { extensions = [ EnableExtension ScopedTypeVariable
                                             ++ (extensions defaultParseMode)
                              }
 
-parseFile' :: Config -> IORef ParseState -> [String] -> FilePath -> IO (PassM Prog0)
-parseFile' cfg pstate_ref import_route path = do
-  when (gopt Opt_GhcTc (dynflags cfg)) $
-      typecheckWithGhc cfg path
+-------------------------------------------------------------------------------
+-- parse a file, call desugar, and return the desugared bundle
+-- will recurse down through import headers and fold the bundles together
+-------------------------------------------------------------------------------
+parseFile' ::
+     Config -> IORef ParseState -> [String] -> FilePath -> String -> IO (PassM ProgBundle0)
+parseFile' cfg pstate_ref import_route path mod_name = do
+  when (gopt Opt_GhcTc (dynflags cfg)) $ typecheckWithGhc cfg path
   str <- readFile path
   let cleaned = removeLinearArrows str
   -- let parsed = parseModuleWithMode parseMode cleaned
   parsed <- parseFileContentsWithCommentsAndCPP defaultCpphsOptions parseMode cleaned
   case parsed of
-    ParseOk (hs,_comments) -> desugarModule cfg pstate_ref import_route (takeDirectory path) hs
+    ParseOk (hs, _comments) ->
+      desugarModule cfg pstate_ref import_route (takeDirectory path) hs mod_name
     ParseFailed loc er -> do
       error ("haskell-src-exts failed: " ++ er ++ ", at " ++ prettyPrint loc)
 
@@ -157,59 +178,50 @@ data TopLevel
 type TopTyEnv = TyEnv TyScheme
 type TypeSynEnv = M.Map TyCon Ty0
 
-desugarModule :: (Show a,  Pretty a)
-              => Config -> IORef ParseState -> [String] -> FilePath -> Module a -> IO (PassM Prog0)
-desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports decls) = do
+-- | Merge a list of modules into a program bundle
+mergeBundle :: ProgBundle0 -> [ProgModule0] -> [ProgModule0]
+mergeBundle (ProgBundle x main) bundle =
+    foldr (\v acc -> if already_has v then acc else acc ++ [v]) bundle (x ++ [main])
+  where
+    already_imported = L.map (\(ProgModule name _ _) -> name) bundle
+    already_has :: ProgModule0 -> Bool
+    already_has (ProgModule name _ _) = L.elem name already_imported
+
+
+-- | Recursively desugars modules and their imports
+-- stacks into a ProgBundle: a bundle of modules and their main module
+-- each module contains information about it's name, functions & definitions, and import metadata
+
+desugarModule ::
+  Config
+  -> IORef ParseState
+  -> [String]
+  -> FilePath
+  -> Module SrcSpanInfo
+  -> String
+  -> IO (PassM ProgBundle0)
+desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports decls) imported_name = do
   let type_syns = foldl collectTypeSynonyms M.empty decls
-      -- Since top-level functions and their types can't be declared in
-      -- single top-level declaration we first collect types and then collect
-      -- definitions.
       funtys = foldr (collectTopTy type_syns) M.empty decls
-  imported_progs :: [PassM Prog0] <- mapM (processImport cfg pstate_ref (mod_name : import_route) dir) imports
+  imported_progs :: [PassM ProgBundle0] <- 
+      mapM (processImport cfg pstate_ref (modname : import_route) dir) imports
   let prog = do
+        imported_progs' <- mapM id imported_progs
         toplevels <- catMaybes <$> mapM (collectTopLevel type_syns funtys) decls
         let (defs,_vars,funs,inlines,main) = foldr classify init_acc toplevels
             funs' = foldr (\v acc -> M.update (\fn@(FunDef{funMeta}) -> Just (fn { funMeta = funMeta { funInline = Inline }})) v acc) funs inlines
-        imported_progs' <- mapM id imported_progs
-        let (defs0,funs0) =
-              foldr
-                (\Prog{ddefs,fundefs} (defs1,funs1) ->
-                     let ddef_names1 = M.keysSet defs1
-                         ddef_names2 = M.keysSet ddefs
-                         fn_names1 = M.keysSet funs1
-                         fn_names2 = M.keysSet fundefs
-                         em1 = S.intersection ddef_names1 ddef_names2
-                         em2 = S.intersection fn_names1 fn_names2
-                         conflicts1 = foldr
-                                        (\d acc ->
-                                             if (ddefs M.! d) /= (defs1 M.! d)
-                                             then d : acc
-                                             else acc)
-                                        []
-                                        em1
-                         conflicts2 = foldr
-                                        (\f acc ->
-                                             if (fundefs M.! f) /= (funs1 M.! f)
-                                             then dbgTraceIt (sdoc ((fundefs M.! f), (funs1 M.! f))) (f : acc)
-                                             else acc)
-                                        []
-                                        em2
-                     in case (conflicts1, conflicts2) of
-                            ([], []) -> (M.union ddefs defs1,  M.union fundefs funs1)
-                            (_x:_xs,_) -> error $ "Conflicting definitions of " ++ show conflicts1 ++ " found in " ++ mod_name
-                            (_,_x:_xs) -> error $ "Conflicting definitions of " ++ show (S.toList em2) ++ " found in " ++ mod_name)
-                (defs, funs')
-                imported_progs'
-        pure (Prog defs0 funs0 main)
+        let bundle = foldr mergeBundle [] imported_progs' 
+        pure $ ProgBundle bundle (ProgModule modname (Prog defs funs' main) imports)
   pure prog
   where
     init_acc = (M.empty, M.empty, M.empty, S.empty, Nothing)
-    mod_name = moduleName head_mb
-
+    modname = moduleName head_mb
     moduleName :: Maybe (ModuleHead a) -> String
-    moduleName Nothing = "Main"
+    moduleName Nothing = if imported_name == "Main" then imported_name
+                         else error "Imported module does not have a module declaration"
     moduleName (Just (ModuleHead _ mod_name1 _warnings _exports)) =
-      mnameToStr mod_name1
+      if imported_name == (mnameToStr mod_name1) || imported_name == "Main" then (mnameToStr mod_name1)
+      else error "Imported module does not match it's module declaration"
 
     classify thing (defs,vars,funs,inlines,main) =
       case thing of
@@ -219,9 +231,9 @@ desugarModule cfg pstate_ref import_route dir (Module _ head_mb _pragmas imports
           case main of
             Nothing -> (defs, vars, funs, inlines, m)
             Just _  -> error $ "A module cannot have two main expressions."
-                               ++ show mod_name
+                               ++ show modname
         HInline v   -> (defs,vars,funs,S.insert v inlines,main)
-desugarModule _ _ _ _ m = error $ "desugarModule: " ++ prettyPrint m
+desugarModule _ _ _ _ m _ = error $ "desugarModule: " ++ prettyPrint m
 
 stdlibModules :: [String]
 stdlibModules =
@@ -234,36 +246,54 @@ stdlibModules =
   , "Gibbon.ByteString"
   ]
 
-processImport :: Config -> IORef ParseState -> [String] -> FilePath -> ImportDecl a -> IO (PassM Prog0)
-processImport cfg pstate_ref import_route dir decl@ImportDecl{..}
+-- TIMMY - top level comment describing what this does
+processImport ::
+     Config
+  -> IORef ParseState
+  -> [String]
+  -> FilePath
+  -> ImportDecl a
+  -> IO (PassM ProgBundle0)
+processImport cfg pstate_ref import_route dir ImportDecl {..}
     -- When compiling with Gibbon, we should *NOT* inline things defined in Gibbon.Prim.
-    | mod_name == "Gibbon.Prim" = pure (pure (Prog M.empty M.empty Nothing))
-    | otherwise = do
+  | mod_name == "Gibbon.Prim" = do
+    (ParseState imported') <- readIORef pstate_ref
+    case M.lookup (mod_name, "") imported' of
+      Just prog -> do pure $ pure prog
+      Nothing -> pure (pure (ProgBundle L.empty (ProgModule "Gibbon.Prim" (Prog M.empty M.empty Nothing) L.empty) ))
+  | otherwise                 = do
     when (mod_name `elem` import_route) $
-      error $ "Circular dependency detected. Import path: "++ show (mod_name : import_route)
-    when (importQualified) $ error $ "Qualified imports not supported yet. Offending import: " ++  prettyPrint decl
-    when (isJust importAs) $ error $ "Module aliases not supported yet. Offending import: " ++  prettyPrint decl
-    when (isJust importSpecs) $ error $ "Selective imports not supported yet. Offending import: " ++  prettyPrint decl
+      error $
+      "Circular dependency detected. Import path: " ++
+      show (mod_name : import_route)
+    --when (isJust importAs) $
+    --  error $
+    --  "Module aliases not supported yet. Offending import: " ++ prettyPrint decl
+    --when (isJust importSpecs) $
+    --  error $
+    --  "Selective imports not supported yet. Offending import: " ++
+    --  prettyPrint decl
     (ParseState imported) <- readIORef pstate_ref
     mod_fp <- if mod_name `elem` stdlibModules
                 then stdlibImportPath mod_name
                 else modImportPath importModule dir
     dbgTrace 5 ("Looking at " ++ mod_name) (pure ())
     dbgTrace 5 ("Previously imported: " ++ show (M.keysSet imported)) (pure ())
-    prog <- case M.lookup (mod_name, mod_fp) imported of
-                Just prog -> do
-                    dbgTrace 5 ("Already imported " ++ mod_name) (pure ())
-                    pure prog
-                Nothing -> do
-                    dbgTrace 5 ("Importing " ++ mod_name ++ " from " ++ mod_fp) (pure ())
-                    prog0 <- parseFile' cfg pstate_ref import_route mod_fp
-                    (ParseState imported') <- readIORef pstate_ref
-                    let (prog0',_) = defaultRunPassM prog0
-                    let imported'' = M.insert (mod_name, mod_fp) prog0' imported'
-                    let pstate' = ParseState { imported = imported'' }
-                    writeIORef pstate_ref pstate'
-                    pure prog0'
-
+    prog <-
+      case M.lookup (mod_name, mod_fp) imported of
+        Just prog -> do
+          dbgTrace 5 ("Already imported " ++ mod_name) (pure ())
+          pure prog
+        Nothing -> do
+          dbgTrace 5 ("Importing " ++ mod_name ++ " from " ++ mod_fp) (pure ())
+          -- parse import file
+          prog0 <- parseFile' cfg pstate_ref import_route mod_fp mod_name
+          (ParseState imported') <- readIORef pstate_ref
+          let (prog0', _) = defaultRunPassM prog0
+          let imported'' = M.insert (mod_name, mod_fp) prog0' imported'
+          let pstate' = ParseState {imported = imported''}
+          writeIORef pstate_ref pstate'
+          pure prog0'
     pure (pure prog)
   where
     mod_name = mnameToStr importModule
@@ -364,9 +394,15 @@ desugarType type_syns ty =
       case M.lookup con type_syns of
         Nothing -> PackedTy con []
         Just ty' -> ty'
-    TyFun _ t1 t2 -> let t1' = desugarType type_syns t1
-                         t2' = desugarType type_syns t2
-                     in ArrowTy [t1'] t2'
+    -- now that we have modules we need to parse qualified type names as well
+    TyCon _ (Qual _ (ModuleName _ modl) (Ident _ con)) -> 
+      case M.lookup (modl ++ "." ++ con) type_syns of
+        Nothing  -> PackedTy (modl ++ "." ++ con) []
+        Just ty' -> ty'
+    TyFun _ t1 t2 ->
+      let t1' = desugarType type_syns t1
+          t2' = desugarType type_syns t2
+       in ArrowTy [t1'] t2'
     TyParen _ ty1 -> desugarType type_syns ty1
     TyApp _ tycon arg ->
       let ty' = desugarType type_syns tycon in
@@ -499,8 +535,10 @@ desugarExp type_syns toplevel e =
     --     | (qnameToStr f) == "error" -> pure $ PrimAppE (ErrorP (litToString lit
     Paren _ e2 -> desugarExp type_syns toplevel e2
     H.Var _ qv -> do
+      -- where the expression name is parsed (for all expressions)
       let str = qnameToStr qv
           v = (toVar str)
+      --    v = (toVar ("timmy-" ++ str))
       if str == "alloc_pdict"
       then do
         kty  <- newMetaTy
@@ -878,21 +916,31 @@ desugarExp type_syns toplevel e =
 
     _ -> error ("desugarExp: Unsupported expression: " ++ prettyPrint e)
 
-desugarFun :: (Show a,  Pretty a) => TypeSynEnv -> TopTyEnv -> TopTyEnv -> Decl a -> PassM (Var, [Var], TyScheme, Exp0)
+-- parse function declarations
+desugarFun ::
+     (Show a, Pretty a)
+  => TypeSynEnv
+  -> TopTyEnv
+  -> TopTyEnv
+  -> Decl a
+  -> PassM (Var, [Var], TyScheme, Exp0)
 desugarFun type_syns toplevel env decl =
   case decl of
     FunBind _ [Match _ fname pats (UnGuardedRhs _ bod) _where] -> do
+      -- where it sets the name ^^ could pass in module name here
       let fname_str = nameToStr fname
           fname_var = toVar (fname_str)
       (vars, arg_tys,bindss) <- unzip3 <$> mapM (desugarPatWithTy type_syns) pats
       let binds = concat bindss
           args = vars
-      fun_ty <- case M.lookup fname_var env of
-                  Nothing -> do
-                     ret_ty  <- newMetaTy
-                     let funty = ArrowTy arg_tys ret_ty
-                     pure $ (ForAll [] funty)
-                  Just ty -> pure ty
+      fun_ty <-
+        case M.lookup fname_var env of
+          Nothing -> do
+            ret_ty <- newMetaTy
+            let funty = ArrowTy arg_tys ret_ty
+            pure $ (ForAll [] funty)
+          Just ty -> pure ty
+        -- where it parses expressions \/\/ could parse module calls here
       bod' <- desugarExp type_syns toplevel bod
       pure $ (fname_var, args, unCurryTopTy fun_ty, (mkLets binds bod'))
     _ -> error $ "desugarFun: Found a function with multiple RHS, " ++ prettyPrint decl
@@ -1070,11 +1118,16 @@ desugarAlt type_syns toplevel alt =
     Alt _ pat _ _           -> error $ "desugarExp: Unsupported pattern in case: " ++ prettyPrint pat
   where
     desugarCase ps conName rhs = do
-      ps' <- mapM (\x -> case x of
-                            PVar _ v -> (pure . toVar . nameToStr) v
-                            PWildCard _ -> gensym "wildcard_"
-                            _        -> error $ "desugarExp: Non-variable pattern in case." ++ show x)
-                  ps
+      ps' <-
+        mapM
+          (\x ->
+             case x of
+               PVar _ v -> (pure . toVar . nameToStr) v
+               PWildCard _ -> gensym "wildcard_"
+               -- should parse PTuple
+               _ ->
+                 error $ "desugarExp: Non-variable pattern in case." ++ show x)
+          ps
       rhs' <- desugarExp type_syns toplevel rhs
       ps'' <- mapM (\v -> (v,) <$> newMetaTy) ps'
       pure (conName, ps'', rhs')
@@ -1276,24 +1329,30 @@ verifyBenchEAssumptions bench_allowed ex =
         not_allowed = verifyBenchEAssumptions False
 
 --------------------------------------------------------------------------------
+desugarBundleLinearExts :: ProgBundle0 -> PassM ProgBundle0
+desugarBundleLinearExts (ProgBundle bundle main) = do
+  bundle' <- mapM desugarLinearExts bundle
+  main' <- desugarLinearExts main
+  pure $ ProgBundle bundle' main' 
 
-desugarLinearExts :: Prog0 -> PassM Prog0
-desugarLinearExts (Prog ddefs fundefs main) = do
-    main' <- case main of
-               Nothing -> pure Nothing
-               Just (e,ty) -> do
-                 let ty' = goty ty
-                 e' <- go e
-                 pure $ Just (e', ty')
-    fundefs' <- mapM (\fn -> do
-                           bod <- go (funBody fn)
-                           let (ForAll tyvars ty) = (funTy fn)
-                               ty' = goty ty
-                           pure $ fn { funBody = bod
-                                     , funTy = (ForAll tyvars ty')
-                                     })
-                     fundefs
-    pure (Prog ddefs fundefs' main')
+desugarLinearExts :: ProgModule0 -> PassM ProgModule0
+desugarLinearExts (ProgModule name (Prog ddefs fundefs main) imports) = do
+  main' <-
+    case main of
+      Nothing -> pure Nothing
+      Just (e, ty) -> do
+        let ty' = goty ty
+        e' <- go e
+        pure $ Just (e', ty')
+  fundefs' <-
+    mapM
+      (\fn -> do
+         bod <- go (funBody fn)
+         let (ForAll tyvars ty) = (funTy fn)
+             ty' = goty ty
+         pure $ fn {funBody = bod, funTy = (ForAll tyvars ty')})
+      fundefs
+  pure $ ProgModule name (Prog ddefs fundefs' main') imports
   where
     goty :: Ty0 -> Ty0
     goty ty =

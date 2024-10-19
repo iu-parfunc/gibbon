@@ -1,0 +1,7 @@
+Build profile: -w ghc-9.2.8 -O1
+In order, the following will be built (use -v for more details):
+ - gibbon-0.3 (lib) (file src/Gibbon/HaskellFrontend.hs changed)
+ - gibbon-0.3 (exe:test-gibbon-examples) (dependency rebuilt)
+ - gibbon-0.3 (exe:gibbon) (dependency rebuilt)
+Preprocessing library for gibbon-0.3..
+Building library for gibbon-0.3..

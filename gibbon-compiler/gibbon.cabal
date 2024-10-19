@@ -31,6 +31,7 @@ flag LLVM_ENABLED
 library
   exposed-modules:     Gibbon.Common
                        Gibbon.Compiler
+                       Gibbon.Bundler
                        Gibbon.DynFlags
                        Gibbon.Pretty
                        Gibbon.SExpFrontend
@@ -63,6 +64,7 @@ library
                        Gibbon.NewL2.FromOldL2
 
                        -- compiler passes, roughly in the order they're run
+                       Gibbon.Passes.FreshBundle
                        Gibbon.Passes.Freshen
                        Gibbon.Passes.Flatten
                        Gibbon.Passes.InlineTriv
