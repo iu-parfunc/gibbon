@@ -10,44 +10,100 @@
 {-# LANGUAGE CPP                        #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module Gibbon.Language.Syntax
-  (
     -- * Datatype definitions
-    DDefs, DataCon, TyCon, Tag, IsBoxed, DDef(..)
-  , lookupDDef, getConOrdering, getTyOfDataCon, lookupDataCon, lkp
-  , lookupDataCon', insertDD, emptyDD, fromListDD, isVoidDDef
-
-    -- * Function definitions
-  , FunctionTy(..), FunDefs, FunDef(..), FunMeta(..), FunRec(..), FunInline(..)
-  , insertFD, fromListFD, initFunEnv
-
-    -- * Programs
-  , Prog(..), progToEnv, getFunTy
-
-    -- * Environments
-  , TyEnv, Env2(..), emptyEnv2
-  , extendVEnv, extendsVEnv, lookupVEnv, extendFEnv, lookupFEnv
-
-    -- * Expresssions and thier types
-  , PreExp(..), Prim(..), UrTy(..)
-
-    -- * Functors for recursion-schemes
-  , PreExpF(..), PrimF(..), UrTyF(..)
-
-    -- * Generic operations
-  , FreeVars(..), Expression(..), Binds, Flattenable(..)
-  , Simplifiable(..), SimplifiableExt(..), Typeable(..)
-  , Substitutable(..), SubstitutableExt(..), Renamable(..)
-
-    -- * Helpers for writing instances
-  , HasSimplifiable, HasSimplifiableExt, HasSubstitutable, HasSubstitutableExt
-  , HasRenamable, HasOut, HasShow, HasEq, HasGeneric, HasNFData
-
-  , -- * Interpreter
-    Interp(..), InterpExt(..), InterpProg(..), Value(..), ValEnv, InterpLog,
-    InterpM, runInterpM, execAndPrint
-
+  ( DDefs
+  , DataCon
+  , TyCon
+  , Tag
+  , IsBoxed
+  , DDef(..)
+  , lookupDDef
+  , getConOrdering
+  , getTyOfDataCon
+  , lookupDataCon
+  , lkp
+  , lookupDataCon'
+  , insertDD
+  , emptyDD
+  , fromListDD
+  , isVoidDDef
+    
+-- * Function definitions
+  , FunctionTy(..)
+  , FunDefs
+  , FunDef(..)
+  , FunMeta(..)
+  , FunRec(..)
+  , FunInline(..)
+  , insertFD
+  , fromListFD
+  , initFunEnv
+    
+-- * Programs
+  , Prog(..)
+  , ProgModule(..)
+  , ProgBundle(..)
+  , progToEnv
+  , getFunTy
+    
+-- * Environments
+  , TyEnv
+  , Env2(..)
+  , emptyEnv2
+  , extendVEnv
+  , extendsVEnv
+  , lookupVEnv
+  , extendFEnv
+  , lookupFEnv
+  , lookupVEnv'
+    
+-- * Expresssions and thier types
+  , PreExp(..)
+  , Prim(..)
+  , UrTy(..)
+    
+-- * Functors for recursion-schemes
+  , PreExpF(..)
+  , PrimF(..)
+  , UrTyF(..)
+    
+-- * Generic operations
+  , FreeVars(..)
+  , Expression(..)
+  , Binds
+  , Flattenable(..)
+  , Simplifiable(..)
+  , SimplifiableExt(..)
+  , Typeable(..)
+  , Substitutable(..)
+  , SubstitutableExt(..)
+  , Renamable(..)
+    
+-- * Helpers for writing instances
+  , HasSimplifiable
+  , HasSimplifiableExt
+  , HasSubstitutable
+  , HasSubstitutableExt
+  , HasRenamable
+  , HasOut
+  , HasShow
+  , HasEq
+  , HasGeneric
+  , HasNFData
+    -- * Interpreter
+  , Interp(..)
+  , InterpExt(..)
+  , InterpProg(..)
+  , Value(..)
+  , ValEnv
+  , InterpLog
+  , InterpM
+  , runInterpM
+  , execAndPrint
   ) where
 
 import           Control.DeepSeq
@@ -63,12 +119,16 @@ import qualified Data.Set as S
 import           Data.Word ( Word8 )
 import           Data.Kind ( Type )
 import           Text.PrettyPrint.GenericPretty
+import           Text.PrettyPrint               (text)
+
 import           Data.Functor.Foldable.TH
 import qualified Data.ByteString.Lazy.Char8 as B
 import           Data.ByteString.Builder (Builder)
 import           System.IO.Unsafe (unsafePerformIO)
 
 import           Gibbon.Common
+import           Language.Haskell.Exts          (ImportDecl, SrcSpanInfo)
+
 
 --------------------------------------------------------------------------------
 -- Data type definitions
@@ -241,6 +301,8 @@ data Prog ex = Prog { ddefs   :: DDefs (TyOf ex)
                     , mainExp :: Maybe (ex, (TyOf ex))
                     }
 
+-------------------------------------------------------------------------------
+
 -- Since 'FunDef' is defined using a type family, we cannot use the deriving clause.
 -- Ryan Scott recommended using singletons-like alternative outlined here:
 -- https://lpaste.net/365181
@@ -250,7 +312,46 @@ deriving instance (Show (TyOf ex), Show ex, Show (ArrowTy (TyOf ex))) => Show (P
 deriving instance (Eq (TyOf ex), Eq ex, Eq (ArrowTy (TyOf ex))) => Eq (Prog ex)
 deriving instance (Ord (TyOf ex), Ord ex, Ord (ArrowTy (TyOf ex))) => Ord (Prog ex)
 deriving instance Generic (Prog ex)
-deriving instance (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex, Generic (ArrowTy (TyOf ex))) => NFData (Prog ex)
+
+deriving instance
+         (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex,
+          Generic (ArrowTy (TyOf ex))) =>
+         NFData (Prog ex)
+
+-------------------------------------------------------------------------------
+-- Module Bundles
+-- Before modules get bundled into a single program, they're stored as
+-- a tuple of the discrte Prog and it's import declarations
+-------------------------------------------------------------------------------
+
+
+data ProgModule ex = ProgModule String (Prog ex) [ImportDecl SrcSpanInfo]
+data ProgBundle ex = ProgBundle [ProgModule ex] (ProgModule ex)
+
+deriving instance
+         (Show (TyOf ex), Show ex, Show (ArrowTy (TyOf ex))) =>
+         Show (ProgModule ex)
+deriving instance Generic (ProgModule ex)
+instance Out (ImportDecl SrcSpanInfo) where
+    doc         = text . show
+    docPrec n v = docPrec n (show v)
+instance (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex, Generic (ArrowTy (TyOf ex))) => NFData (ProgModule ex) where
+  rnf (ProgModule _ prog _) = rnf prog
+
+deriving instance (Out (Prog ex)) => Out (ProgModule ex)
+deriving instance
+         (Show (TyOf ex), Show ex, Show (ArrowTy (TyOf ex))) =>
+         Show (ProgBundle ex)
+
+deriving instance
+         (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex,
+          Generic (ArrowTy (TyOf ex))) =>
+         NFData (ProgBundle ex)
+
+deriving instance Generic (ProgBundle ex)
+deriving instance (Out (ProgModule ex)) => Out (ProgBundle ex)
+
+
 
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.  The

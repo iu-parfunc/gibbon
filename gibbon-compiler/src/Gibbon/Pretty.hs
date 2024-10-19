@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module Gibbon.Pretty
   ( Pretty(..), PPStyle(..), HasPretty, render, pprintHsWithEnv, pprender ) where
@@ -65,6 +66,28 @@ instance HasPretty ex => Pretty (Prog ex) where
         in case sty of
              PPInternal -> ddefsDoc $+$ funsDoc $+$ meDoc
              PPHaskell  -> ghc_compat_prefix False $+$ ddefsDoc $+$ funsDoc $+$ meDoc $+$ ghc_compat_suffix False
+
+instance HasPretty ex => Pretty (ProgModule ex) where
+    pprintWithStyle sty (ProgModule _ prog _) =
+        let (Prog ddefs funs me) = prog
+            meDoc = case me of
+                      Nothing -> empty
+                      -- Uh, we need versions of hasBenchE for L0, L2 and L3 too :
+                      -- Assume False for now.
+                      Just (e,ty) -> renderMain False (pprintWithStyle sty e) (pprintWithStyle sty ty)
+            ddefsDoc = vcat $ map (pprintWithStyle sty) $ M.elems ddefs
+            funsDoc = vcat $ map (pprintWithStyle sty) $ M.elems funs
+        in case sty of
+             PPInternal -> ddefsDoc $+$ funsDoc $+$ meDoc
+             PPHaskell  -> ghc_compat_prefix False $+$ ddefsDoc $+$ funsDoc $+$ meDoc $+$ ghc_compat_suffix False
+
+instance HasPretty ex => Pretty (ProgBundle ex) where
+    pprintWithStyle sty (ProgBundle bundle main) =
+        let mainDoc = pprintWithStyle sty main
+            bundleDoc = vcat $ map (pprintWithStyle sty) $ bundle
+        in case sty of
+             PPInternal -> mainDoc $+$ bundleDoc
+             PPHaskell  -> ghc_compat_prefix False $+$ mainDoc $+$ bundleDoc $+$ ghc_compat_suffix False
 
 renderMain :: Bool -> Doc -> Doc -> Doc
 renderMain has_bench m ty =

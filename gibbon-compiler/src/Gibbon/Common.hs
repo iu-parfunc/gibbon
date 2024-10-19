@@ -168,7 +168,7 @@ newUniq = state (\x -> (x, x+1))
 
 -- | Generate a unique symbol by attaching a numeric suffix.
 gensym :: MonadState Int m => Var -> m Var
-gensym v = state (\n -> (cleanFunName v `varAppend` "_" `varAppend` toVar (show n), n + 1))
+gensym v = state (\n -> (cleanFunName v `varAppend` toVar (show n), n + 1))
 
 gensym_tag :: MonadState Int m => Var -> String -> m Var
 gensym_tag v str = state (\n -> (cleanFunName v `varAppend` toVar (show n ++ str) , n + 1))
@@ -376,10 +376,11 @@ abbrv n x =
        then str
        else L.take (n-3) str ++ "..."
 
-lookup3 :: (Eq k, Show k, Show a, Show b) => k -> [(k,a,b)] -> (k,a,b)
+lookup3 :: HasCallStack => (Eq k, Show k, Show a, Show b) => k -> [(k,a,b)] -> (k,a,b)
 lookup3 k ls = go ls
   where
-   go [] = error$ "lookup3: key "++show k++" not found in list:\n  "++L.take 80 (show ls)
+   --go [] = error$ "lookup3: key "++show k++" not found in list:\n  "++L.take 80 (show ls)
+   go [] = error$ "lookup3: key "++show k++" not found in list:\n  "++ (show ls)
    go ((k1,a1,b1):r)
       | k1 == k   = (k1,a1,b1)
       | otherwise = go r

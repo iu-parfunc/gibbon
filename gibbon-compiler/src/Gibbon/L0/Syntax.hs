@@ -26,6 +26,7 @@ import qualified Data.Map as M
 import           Gibbon.Common as C
 import           Gibbon.Language hiding (UrTy(..))
 
+
 --------------------------------------------------------------------------------
 
 -- In L0, type information may be held in locations, as locations don't exist
@@ -34,7 +35,13 @@ type DDefs0   = DDefs Ty0
 type DDef0    = DDef Ty0
 type FunDef0  = FunDef Exp0
 type FunDefs0 = FunDefs Exp0
-type Prog0    = Prog Exp0
+
+type Prog0 = Prog Exp0
+
+-------------------------------------------------------------------------------
+
+type ProgModule0 = ProgModule Exp0
+type ProgBundle0 = ProgBundle Exp0
 
 --------------------------------------------------------------------------------
 

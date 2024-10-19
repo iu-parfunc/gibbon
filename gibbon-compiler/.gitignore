@@ -32,3 +32,4 @@ demo/*.c
 demo/*.exe
 gibbon-compiler/examples/parallel/data/*.txt
 *.log.hs
+*.log
