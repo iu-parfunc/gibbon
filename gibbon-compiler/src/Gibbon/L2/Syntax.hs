@@ -83,11 +83,11 @@ import qualified Gibbon.L1.Syntax as L1
 
 --------------------------------------------------------------------------------
 
-type Prog2    = Prog Exp2
+type Prog2    = Prog LocVar Exp2
 type DDef2    = DDef Ty2
 type DDefs2   = DDefs Ty2
-type FunDef2  = FunDef Exp2
-type FunDefs2 = FunDefs Exp2
+type FunDef2  = FunDef LocVar Exp2
+type FunDefs2 = FunDefs LocVar Exp2
 
 -- | Function types know about locations and traversal effects.
 instance FunctionTy Ty2 where
@@ -615,7 +615,7 @@ substLocs mp tys = L.map (substLoc mp) tys
 --        MkFoo (i:loc1) (f:loc2) ->
 --          new_env2 = extendPatternMatchEnv [loc1,loc2] old_env2
 extendPatternMatchEnv :: HasCallStack => DataCon -> DDefs Ty2 -> [Var] -> [LocVar]
-                      -> Env2 Ty2 -> Env2 Ty2
+                      -> Env2 Var Ty2 -> Env2 Var Ty2
 extendPatternMatchEnv dcon ddefs vars locs env2 =
   let tys  = lookupDataCon ddefs dcon
       tys' = foldr
@@ -653,7 +653,7 @@ locsInTy ty =
 
 -- Because L2 just adds a bit of metadata and enriched types, it is
 -- possible to strip it back down to L1.
-revertToL1 :: Prog2 -> Prog1
+revertToL1 :: Prog2  -> Prog1
 revertToL1 Prog{ddefs,fundefs,mainExp} =
   Prog ddefs' funefs' mainExp'
   where
@@ -672,7 +672,7 @@ revertDDef (DDef tyargs a b) =
 revertFunDef :: FunDef2 -> FunDef1
 revertFunDef FunDef{funName,funArgs,funTy,funBody,funMeta} =
   FunDef { funName = funName
-         , funArgs = funArgs
+         , funArgs = (map unwrapLocVar funArgs)
          , funTy   = (L.map stripTyLocs (arrIns funTy), stripTyLocs (arrOut funTy))
          , funBody = revertExp funBody
          , funMeta = funMeta

@@ -67,6 +67,7 @@ import           Data.Functor.Foldable.TH
 import qualified Data.ByteString.Lazy.Char8 as B
 import           Data.ByteString.Builder (Builder)
 import           System.IO.Unsafe (unsafePerformIO)
+--import qualified Data.Typeable as Typeable
 
 import           Gibbon.Common
 
@@ -179,7 +180,7 @@ class (Out (ArrowTy ty), Show (ArrowTy ty)) => FunctionTy ty where
   outTy :: ArrowTy ty -> ty
 
 -- | A set of top-level recursive function definitions.
-type FunDefs ex = M.Map Var (FunDef ex)
+type FunDefs loc ex = M.Map loc (FunDef loc ex)
 
 data FunRec = Rec | NotRec | TailRec
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
@@ -196,35 +197,43 @@ data FunMeta = FunMeta
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
 -- | A function definiton indexed by a type and expression.
-data FunDef ex = FunDef { funName   :: Var
-                        , funArgs   :: [Var]
-                        , funTy     :: ArrowTy (TyOf ex)
-                        , funBody   :: ex
-                        , funMeta   :: FunMeta
-                        }
+data FunDef loc ex = FunDef {   funName   :: Var
+                              , funArgs   :: [loc]
+                              , funTy     :: ArrowTy (TyOf ex)
+                              , funBody   :: ex
+                              , funMeta   :: FunMeta
+                            }
 
-deriving instance (Read ex, Read (ArrowTy (TyOf ex))) => Read (FunDef ex)
-deriving instance (Show ex, Show (ArrowTy (TyOf ex))) => Show (FunDef ex)
-deriving instance (Eq ex, Eq (ArrowTy (TyOf ex))) => Eq (FunDef ex)
-deriving instance (Ord ex, Ord (ArrowTy (TyOf ex))) => Ord (FunDef ex)
-deriving instance Generic (FunDef ex)
-deriving instance (Generic (ArrowTy (TyOf ex)), NFData ex, NFData (ArrowTy (TyOf ex))) => NFData (FunDef ex)
-deriving instance (Generic (ArrowTy (TyOf ex)), Out ex, Out (ArrowTy (TyOf ex))) =>  Out (FunDef ex)
+deriving instance (Read ex, Read (ArrowTy (TyOf ex)), Read loc) => Read (FunDef loc ex)
+deriving instance (Show ex, Show (ArrowTy (TyOf ex)), Show loc) => Show (FunDef loc ex)
+deriving instance (Eq ex, Eq (ArrowTy (TyOf ex)), Eq loc) => Eq (FunDef loc ex)
+deriving instance (Ord ex, Ord (ArrowTy (TyOf ex)), Ord loc) => Ord (FunDef loc ex)
+deriving instance Generic (FunDef loc ex)
+deriving instance (Generic (ArrowTy (TyOf ex)), NFData ex, NFData (ArrowTy (TyOf ex)), NFData loc) => NFData (FunDef loc ex)
+deriving instance (Generic (ArrowTy (TyOf ex)), Out ex, Out (ArrowTy (TyOf ex)), Out loc) =>  Out (FunDef loc ex)
 
 -- | Insert a 'FunDef' into 'FunDefs'.
 -- Raise an error if a function with the same name already exists.
-insertFD :: FunDef ex -> FunDefs ex -> FunDefs ex
+insertFD :: FunDef Var ex -> FunDefs Var ex -> FunDefs Var ex
 insertFD d = M.insertWith err' (funName d) d
   where
    err' = error $ "insertFD: function definition with duplicate name: "++show (funName d)
 
+insertFD' :: FunDef LocVar ex -> FunDefs LocVar ex -> FunDefs LocVar ex
+insertFD' d = M.insertWith err' (Single $ funName d) d
+  where
+   err' = error $ "insertFD: function definition with duplicate name: "++show (funName d)
+
 -- |
-fromListFD :: [FunDef ex] -> FunDefs ex
+fromListFD :: [FunDef Var ex] -> FunDefs Var ex
 fromListFD = L.foldr insertFD M.empty
 
 -- |
-initFunEnv :: FunDefs a -> TyEnv (ArrowTy (TyOf a))
+initFunEnv :: FunDefs Var a -> TyEnv Var (ArrowTy (TyOf a))
 initFunEnv fds = M.map funTy fds
+
+initFunEnv' :: FunDefs LocVar a -> TyEnv LocVar (ArrowTy (TyOf a))
+initFunEnv' fds = M.map funTy fds
 
 --------------------------------------------------------------------------------
 -- Programs
@@ -236,8 +245,8 @@ initFunEnv fds = M.map funTy fds
 -- datatype.  For running a pass benchmark, main will be Nothing and
 -- we will expect a "benchmark" function definition which consumes an
 -- appropriate packed AST datatype.
-data Prog ex = Prog { ddefs   :: DDefs (TyOf ex)
-                    , fundefs :: FunDefs ex
+data Prog loc ex = Prog { ddefs   :: DDefs (TyOf ex)
+                    , fundefs :: FunDefs loc ex
                     , mainExp :: Maybe (ex, (TyOf ex))
                     }
 
@@ -245,78 +254,80 @@ data Prog ex = Prog { ddefs   :: DDefs (TyOf ex)
 -- Ryan Scott recommended using singletons-like alternative outlined here:
 -- https://lpaste.net/365181
 --
-deriving instance (Read (TyOf ex), Read ex, Read (ArrowTy (TyOf ex))) => Read (Prog ex)
-deriving instance (Show (TyOf ex), Show ex, Show (ArrowTy (TyOf ex))) => Show (Prog ex)
-deriving instance (Eq (TyOf ex), Eq ex, Eq (ArrowTy (TyOf ex))) => Eq (Prog ex)
-deriving instance (Ord (TyOf ex), Ord ex, Ord (ArrowTy (TyOf ex))) => Ord (Prog ex)
-deriving instance Generic (Prog ex)
-deriving instance (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex, Generic (ArrowTy (TyOf ex))) => NFData (Prog ex)
+deriving instance (Read (TyOf ex), Read ex, Read (ArrowTy (TyOf ex)), Read loc, Ord loc) => Read (Prog loc ex)
+deriving instance (Show (TyOf ex), Show ex, Show (ArrowTy (TyOf ex)), Show loc) => Show (Prog loc ex)
+deriving instance (Eq (TyOf ex), Eq ex, Eq (ArrowTy (TyOf ex)), Eq loc) => Eq (Prog loc ex)
+deriving instance (Ord (TyOf ex), Ord ex, Ord (ArrowTy (TyOf ex)), Eq loc, Ord loc) => Ord (Prog loc ex)
+deriving instance Generic (Prog loc ex)
+deriving instance (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex, Generic (ArrowTy (TyOf ex)), NFData loc) => NFData (Prog loc ex)
 
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.  The
 --   initial environment has types only for functions.
-progToEnv :: Prog a -> Env2 (TyOf a)
+progToEnv :: Prog Var a -> Env2 Var (TyOf a)
 progToEnv Prog{fundefs} = Env2 M.empty (initFunEnv fundefs)
 
+progToEnv' :: Prog LocVar a -> Env2 LocVar (TyOf a)
+progToEnv' Prog{fundefs} = Env2 M.empty (initFunEnv' fundefs)
+
 -- | Look up the input/output type of a top-level function binding.
-getFunTy :: Var -> Prog ex -> ArrowTy (TyOf ex)
+getFunTy :: Var -> Prog Var ex -> ArrowTy (TyOf ex)
 getFunTy fn Prog{fundefs} =
     case M.lookup fn fundefs of
       Just f -> funTy f
       Nothing -> error $ "getFunTy: L1 program does not contain binding for function: "++show fn
 
 instance (Generic (ArrowTy (TyOf ex)), Out (ArrowTy (TyOf ex)),
-          Out (TyOf ex), Out ex) => Out (Prog ex)
+          Out (TyOf ex), Out ex, Out loc) => Out (Prog loc ex)
 
 --------------------------------------------------------------------------------
 -- Environments
 --------------------------------------------------------------------------------
 
 -- | A simple type environment
-type TyEnv a = M.Map Var a
+type TyEnv a b = M.Map a b
 
-emptyTyEnv :: TyEnv a
+emptyTyEnv :: TyEnv a b
 emptyTyEnv = M.empty
 
 -- | A common currency for a two part environment consisting of
 -- function bindings and regular value bindings.
-data Env2 a = Env2 { vEnv :: TyEnv a
-                   , fEnv :: TyEnv (ArrowTy a) }
+data Env2 a b = Env2 { vEnv :: TyEnv a b
+                     , fEnv :: TyEnv a (ArrowTy b) }
 
+deriving instance (Show (TyOf b), Show b, Show (ArrowTy b), Show a) => Show (Env2 a b)
+deriving instance (Read (TyOf b), Read b, Read (ArrowTy b), Show a, Ord a, Read a) => Read (Env2 a b)
+deriving instance (Eq (TyOf b), Eq b, Eq (ArrowTy b), Show a, Eq a) => Eq (Env2 a b)
+deriving instance (Ord (TyOf b), Ord b, Ord (ArrowTy b), Ord a, Show a) => Ord (Env2 a b)
+deriving instance Generic (Env2 a b)
+instance (Out a, Out b, Out (ArrowTy b)) => Out (Env2 a b)
 
-deriving instance (Show (TyOf a), Show a, Show (ArrowTy a)) => Show (Env2 a)
-deriving instance (Read (TyOf a), Read a, Read (ArrowTy a)) => Read (Env2 a)
-deriving instance (Eq (TyOf a), Eq a, Eq (ArrowTy a)) => Eq (Env2 a)
--- deriving instance (Ord (TyOf a), Ord a, Ord (ArrowTy a)) => Ord (Env2 a)
-deriving instance Generic (Env2 a)
-instance (Out a, Out (ArrowTy a)) => Out (Env2 a)
-
-emptyEnv2 :: Env2 a
+emptyEnv2 :: Env2 a b
 emptyEnv2 = Env2 { vEnv = emptyTyEnv
                  , fEnv = M.empty }
 
 -- | Extend non-function value environment.
-extendVEnv :: Var -> a -> Env2 a -> Env2 a
+extendVEnv :: Var -> a -> Env2 Var a -> Env2 Var a
 extendVEnv v t (Env2 ve fe) = Env2 (M.insert v t ve) fe
 
 -- | Extend multiple times in one go.
-extendsVEnv :: M.Map Var a -> Env2 a -> Env2 a
+extendsVEnv :: M.Map Var a -> Env2 Var a -> Env2 Var a
 extendsVEnv mp (Env2 ve fe) = Env2 (M.union mp ve) fe
 
-lookupVEnv :: Out a => Var -> Env2 a -> a
+lookupVEnv :: Out a => Var -> Env2 Var a -> a
 lookupVEnv v env2 = (vEnv env2) # v
 
-mblookupVEnv :: Var -> Env2 a -> Maybe a
+mblookupVEnv :: Var -> Env2 Var a -> Maybe a
 mblookupVEnv cur env2 = M.lookup cur (vEnv env2)
 
-lookupVEnv' :: Var -> Env2 a -> Maybe a
+lookupVEnv' :: Var -> Env2 Var a -> Maybe a
 lookupVEnv' v (Env2 ve _) = M.lookup v ve
 
 -- | Extend function type environment.
-extendFEnv :: Var -> ArrowTy a -> Env2 a -> Env2 a
+extendFEnv :: Var -> ArrowTy a -> Env2 Var a -> Env2 Var a
 extendFEnv v t (Env2 ve fe) = Env2 ve (M.insert v t fe)
 
-lookupFEnv :: Out (ArrowTy a) => Var -> Env2 a -> ArrowTy a
+lookupFEnv :: Out (ArrowTy a) => Var -> Env2 Var a -> ArrowTy a
 lookupFEnv v env2 = (fEnv env2) # v
 
 
@@ -597,12 +608,12 @@ class (Show e, Out e, FreeVars e) => Expression e where
 class Expression e => Flattenable e where
   -- | Process an expression into a fully-flattened expression which typically includes a
   -- larger number of temporary, local variable bindings.
-  gFlattenExp :: DDefs (TyOf e) -> Env2 (TyOf e) -> e -> PassM e
+  gFlattenExp :: DDefs (TyOf e) -> Env2 Var (TyOf e) -> e -> PassM e
 
   -- | A private method.  Gather the bindings from a subexpression,
   -- but do not "discharge" them by creating a let expression.  They
   -- are in order, so later may depend on earlier.
-  gFlattenGatherBinds :: DDefs (TyOf e) -> Env2 (TyOf e) -> e -> PassM ([Binds e],e)
+  gFlattenGatherBinds :: DDefs (TyOf e) -> Env2 Var (TyOf e) -> e -> PassM ([Binds e],e)
 
 type Binds e = (Var,[LocOf e],TyOf e, e)
 
@@ -635,7 +646,7 @@ type HasSimplifiableExt e l d = ( Show l, Out l, Show d, Out d
 -- generic Flattenable, b/c we need to know the type of an expression before we
 -- bind it with a LetE.
 class Expression e => Typeable e where
-  gRecoverType :: DDefs (TyOf e) -> Env2 (TyOf e) -> e -> TyOf e
+  gRecoverType :: DDefs (TyOf e) -> Env2 Var (TyOf e) -> e -> TyOf e
 
 -- | Generic substitution over expressions.
 class Expression e => Substitutable e where
@@ -689,23 +700,23 @@ runInterpM m s = do
 -- | Pure Gibbon programs, at any stage of compilation, should always
 -- be evaluatable to a unique value.  The only side effects are timing.
 class Expression e => Interp s e where
-  gInterpExp :: RunConfig -> ValEnv e -> DDefs (TyOf e) -> FunDefs e -> e -> InterpM s e (Value e)
+  gInterpExp :: RunConfig -> ValEnv e -> DDefs (TyOf e) -> FunDefs loc e -> e -> InterpM s e (Value e)
 
 class (Expression e, Expression ext) => InterpExt s e ext where
-  gInterpExt :: RunConfig -> ValEnv e -> DDefs (TyOf e) -> FunDefs e -> ext -> InterpM s e (Value e)
+  gInterpExt :: RunConfig -> ValEnv e -> DDefs (TyOf e) -> FunDefs loc e -> ext -> InterpM s e (Value e)
 
 class Interp s e => InterpProg s e where
   {-# MINIMAL gInterpProg #-}
-  gInterpProg :: s -> RunConfig -> Prog e -> IO (s, Value e, B.ByteString)
+  gInterpProg :: s -> RunConfig -> Prog Var e -> IO (s, Value e, B.ByteString)
 
   -- | Interpret while ignoring timing constructs, and dropping the
   -- corresponding output to stdout.
-  gInterpNoLogs :: s -> RunConfig -> Prog e -> String
+  gInterpNoLogs :: s -> RunConfig -> Prog Var e -> String
   gInterpNoLogs s rc p = unsafePerformIO $ show . snd3 <$> gInterpProg s rc p
 
   -- | Interpret and produce a "log" of output lines, as well as a
   -- final, printed result.  The output lines include timing information.
-  gInterpWithStdout :: s -> RunConfig -> Prog e -> IO (String,[String])
+  gInterpWithStdout :: s -> RunConfig -> Prog Var e -> IO (String,[String])
   gInterpWithStdout s rc p = do
     (_s1,res,logs) <- gInterpProg s rc p
     return (show res, lines (B.unpack logs))
@@ -758,7 +769,7 @@ instance Show e => Show (Value e) where
    VLam args bod env -> "(Clos (lambda (" ++ concat (map ((++" ") . show) args) ++ ") " ++ show bod ++ ") #{" ++ show env ++ "})"
    VWrapId vid val -> "(id: " ++ show vid ++ " " ++ show val ++ ")"
 
-execAndPrint :: (InterpProg s ex) => s -> RunConfig -> Prog ex -> IO ()
+execAndPrint :: (InterpProg s ex) => s -> RunConfig -> Prog Var ex -> IO ()
 execAndPrint s rc prg = do
   (_s1,val,logs) <- gInterpProg s rc prg
   B.putStr logs

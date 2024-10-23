@@ -36,7 +36,7 @@ fromOldL2Fn ddefs fundefs f@FunDef{funArgs,funTy,funBody} = do
   return $ f { funBody = bod', funTy = fmap New.MkTy2 funTy }
 
 
-fromOldL2Exp :: DDefs Ty2 -> FunDefs2 -> LocEnv -> Env2 Ty2 -> Exp2 -> PassM New.Exp2
+fromOldL2Exp :: DDefs Ty2 -> FunDefs2 -> LocEnv -> Env2 Var Ty2 -> Exp2 -> PassM New.Exp2
 fromOldL2Exp ddefs fundefs locenv env2 ex =
   case ex of
     AppE f locs args -> do

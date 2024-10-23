@@ -198,7 +198,7 @@ closed bound mp = Set.null (allBound `Set.difference` allUsed)
                                   DelayLoc (_,locexp)  -> gFreeVars locexp)
                           (Map.elems mp)
 
-mapMExprs :: Monad m => (Env2 Ty2 -> Set.Set LocVar -> Exp2 -> m Exp2) -> Prog2 -> m Prog2
+mapMExprs :: Monad m => (Env2 Var Ty2 -> Set.Set LocVar -> Exp2 -> m Exp2) -> Prog2 -> m Prog2
 mapMExprs fn (Prog ddfs fundefs mainExp) =
   Prog ddfs <$>
     (mapM (\f@FunDef{funArgs,funTy,funBody} ->

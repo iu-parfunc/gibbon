@@ -9,7 +9,7 @@ module Gibbon.Common
        (
          -- * Variables
          Var(..), LocVar(..), Location
-       , RegVar, fromVar, toVar, varAppend, toEndV, toSeqV, cleanFunName
+       , RegVar, fromVar, toVar, varAppend, toEndV, toEndVLoc, toSeqV, cleanFunName
        , TyVar(..), isUserTv
        , Symbol, intern, unintern
 
@@ -125,8 +125,13 @@ cleanFunName f =
           then c
           else '_'
         | c <- fromVar f ]
+
 toEndV :: Var -> Var
 toEndV = varAppend "end_"
+
+toEndVLoc :: LocVar -> LocVar 
+toEndVLoc loc = case loc of 
+                    Single v -> Single (toEndV v)
 
 toSeqV :: Var -> Var
 toSeqV v = varAppend v (toVar "_seq")
@@ -134,7 +139,7 @@ toSeqV v = varAppend v (toVar "_seq")
 -- | A location variable stores the abstract location. 
 type Location = Var
 
-data LocVar = Single Location 
+data LocVar = Single Location
   deriving (Show, Ord, Eq, Read, Generic, NFData, Out)
 
 -- | Abstract region variables.
