@@ -204,7 +204,7 @@ mapLocs :: (e l2 d -> e l2 d) -> PreExp e l2 d -> PreExp e l2 d
 mapLocs fn = visitExp id fn id
 
 -- | Transform the expressions within a program.
-mapExprs :: (e -> e) -> Prog e -> Prog e
+mapExprs :: (e -> e) -> Prog loc e -> Prog loc e
 mapExprs fn prg@Prog{fundefs,mainExp} =
   let mainExp' = case mainExp of
                    Nothing -> Nothing
@@ -214,7 +214,7 @@ mapExprs fn prg@Prog{fundefs,mainExp} =
      , mainExp =  mainExp' }
 
 -- | Monadic 'mapExprs'.
-mapMExprs :: Monad m => (e -> m e) -> Prog e -> m (Prog e)
+mapMExprs :: Monad m => (e -> m e) -> Prog loc e -> m (Prog loc e)
 mapMExprs fn prg@Prog{fundefs,mainExp} = do
   mainExp' <- case mainExp of
                 Nothing -> pure Nothing
@@ -348,7 +348,7 @@ hasTimeIt rhs =
       Ext _ -> False
       WithArenaE _ e -> hasTimeIt e
 
-hasSpawnsProg :: Prog (PreExp e l d) -> Bool
+hasSpawnsProg :: Prog loc (PreExp e l d) -> Bool
 hasSpawnsProg (Prog _ fundefs mainExp) =
   any (\FunDef{funBody} -> hasSpawns funBody) (M.elems fundefs) ||
     case mainExp of

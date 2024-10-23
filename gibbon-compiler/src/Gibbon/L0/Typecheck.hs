@@ -846,9 +846,9 @@ instDataConTy ddefs dcon = do
 -- We can't directly use Env2 because of the way it's tied together with
 -- PreExp and the Expression class. We want to annotate L0 expressions
 -- with 'Ty0' but Gamma should store 'TyScheme's.
-type Gamma = TyEnv TyScheme
+type Gamma = TyEnv Var TyScheme
 
-instance FreeVars a => FreeVars (TyEnv a) where
+instance FreeVars a => FreeVars (TyEnv Var a) where
   gFreeVars env = foldr (S.union . gFreeVars) S.empty (M.elems env)
 
 --------------------------------------------------------------------------------

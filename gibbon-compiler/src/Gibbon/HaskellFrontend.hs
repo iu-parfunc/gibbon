@@ -154,7 +154,7 @@ data TopLevel
   | HInline Var
   deriving (Show, Eq)
 
-type TopTyEnv = TyEnv TyScheme
+type TopTyEnv = TyEnv Var TyScheme
 type TypeSynEnv = M.Map TyCon Ty0
 
 desugarModule :: (Show a,  Pretty a)
