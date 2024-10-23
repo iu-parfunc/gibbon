@@ -251,7 +251,7 @@ substLocs mp tys = L.map (substLoc mp) tys
 --        MkFoo (i:loc1) (f:loc2) ->
 --          new_env2 = extendPatternMatchEnv [loc1,loc2] old_env2
 extendPatternMatchEnv :: HasCallStack => DataCon -> DDefs Ty2 -> [Var] -> [LocVar]
-                      -> Env2 Ty2 -> Env2 Ty2
+                      -> Env2 Var Ty2 -> Env2 Var Ty2
 extendPatternMatchEnv dcon ddefs vars locs env2 =
   let tys  = lookupDataCon ddefs dcon
       tys' = foldr

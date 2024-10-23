@@ -107,7 +107,7 @@ instance FlattenDeps e l d => Flattenable (PreExp e l d) where
 
 exp :: forall e l d. FlattenDeps e l d
     => DDefs (TyOf (PreExp e l d))
-    -> Env2 (TyOf (PreExp e l d))
+    -> Env2 Var (TyOf (PreExp e l d))
     -> (PreExp e l d)
     -> PassM ([Binds (PreExp e l d)], (PreExp e l d))
 exp ddfs env2 e0 =
@@ -210,7 +210,7 @@ flattenL0 prg@(Prog defs funs main) = do
       return $ FunDef nam nargs ty bod' meta
     env20 = progToEnv prg
 
-flattenExp0 :: L0.DDefs0 -> Env2 L0.Ty0 -> L0.Exp0
+flattenExp0 :: L0.DDefs0 -> Env2 Var L0.Ty0 -> L0.Exp0
             -> PassM ([Binds (L0.Exp0)], L0.Exp0)
 flattenExp0 ddfs env2 e0 =
   let triv :: String -> L0.Exp0 -> PassM ([Binds (L0.Exp0)], L0.Exp0)

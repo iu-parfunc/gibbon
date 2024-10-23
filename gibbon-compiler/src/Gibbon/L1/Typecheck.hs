@@ -31,7 +31,7 @@ import Prelude hiding (exp)
 
 -- | Typecheck a L1 expression
 --
-tcExp :: DDefs1 -> Env2 Ty1 -> Exp1 -> TcM Ty1 Exp1
+tcExp :: DDefs1 -> Env2 Var Ty1 -> Exp1 -> TcM Ty1 Exp1
 tcExp ddfs env exp =
   case exp of
     VarE v    -> lookupVar env v exp
@@ -799,12 +799,12 @@ instance (Out exp) => Out (TCError exp) where
 
 type TcM a exp =  Except (TCError exp) a
 
-extendEnv :: Env2 (UrTy l) -> [(Var, (UrTy l))] -> Env2 (UrTy l)
+extendEnv :: Env2 Var (UrTy l) -> [(Var, (UrTy l))] -> Env2 Var (UrTy l)
 extendEnv (Env2 vEnv fEnv) ((v,ty):rest) = extendEnv (Env2 (M.insert v ty vEnv) fEnv) rest
 extendEnv env [] = env
 
 
-lookupVar :: Env2 (UrTy l) -> Var -> PreExp e () (UrTy ()) -> TcM (UrTy l) (PreExp e () (UrTy ()))
+lookupVar :: Env2 Var (UrTy l) -> Var -> PreExp e () (UrTy ()) -> TcM (UrTy l) (PreExp e () (UrTy ()))
 lookupVar env var exp =
     case M.lookup var $ vEnv env of
       Nothing -> throwError $ VarNotFoundTC var exp
@@ -816,7 +816,7 @@ tcProj _ i (ProdTy tys) = return $ tys !!! i
 tcProj e _i ty = throwError $ GenericTC ("Projection from non-tuple type " ++ (sdoc ty)) e
 
 
-tcCases :: DDefs Ty1 -> Env2 Ty1 -> [(DataCon, [(Var, ())], Exp1)] -> TcM Ty1 Exp1
+tcCases :: DDefs Ty1 -> Env2 Var Ty1 -> [(DataCon, [(Var, ())], Exp1)] -> TcM Ty1 Exp1
 tcCases ddfs env cs = do
   tys <- forM cs $ \(c,args',rhs) -> do
            let args  = L.map fst args'
@@ -861,7 +861,7 @@ ensureEqualTy _exp IntTy CursorTy = return CursorTy
 ensureEqualTy exp a b = ensureEqual exp ("Expected these types to be the same: "
                                          ++ (sdoc a) ++ ", " ++ (sdoc b)) a b
 
-ensureArenaScope :: MonadError (TCError exp) m => exp -> Env2 a -> Maybe Var -> m ()
+ensureArenaScope :: MonadError (TCError exp) m => exp -> Env2 Var a -> Maybe Var -> m ()
 ensureArenaScope exp env ar =
     case ar of
       Nothing -> throwError $ GenericTC "Expected arena annotation" exp

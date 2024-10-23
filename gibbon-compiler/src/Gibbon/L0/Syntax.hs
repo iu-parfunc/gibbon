@@ -497,7 +497,7 @@ isValidListElemTy0 ty
 -- Or we can have a special function just for L0, which is what recoverType is.
 -- ¯\_(ツ)_/¯
 --
-recoverType :: DDefs0 -> Env2 Ty0 -> Exp0 -> Ty0
+recoverType :: DDefs0 -> Env2 Var Ty0 -> Exp0 -> Ty0
 recoverType ddfs env2 ex =
   case ex of
     VarE v       -> M.findWithDefault (error $ "recoverType: Unbound variable " ++ show v) v (vEnv env2)

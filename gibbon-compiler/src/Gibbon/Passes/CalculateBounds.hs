@@ -28,7 +28,7 @@ calculateBounds Prog { ddefs, fundefs, mainExp } = do
   return $ Prog ddefs fundefs' mainExp'
 
 
-calculateBoundsFun :: DDefs Old.Ty2 -> Env2 Old.Ty2 -> VarSizeMapping -> Old.FunDef2 -> PassM Old.FunDef2
+calculateBoundsFun :: DDefs Old.Ty2 -> Env2 Var Old.Ty2 -> VarSizeMapping -> Old.FunDef2 -> PassM Old.FunDef2
 calculateBoundsFun ddefs env2 varSzEnv f@FunDef { funName, funBody, funTy, funArgs } = do
   if "_" `L.isPrefixOf` fromVar funName
     then return f
@@ -60,7 +60,7 @@ calculateBoundsFun ddefs env2 varSzEnv f@FunDef { funName, funBody, funTy, funAr
 -}
 calculateBoundsExp
   :: DDefs Old.Ty2 -- ^ Data Definitions
-  -> Env2 Old.Ty2 -- ^ Type Environment (Variables + Functions)
+  -> Env2 Var Old.Ty2 -- ^ Type Environment (Variables + Functions)
   -> VarSizeMapping -- ^ var => size
   -> VarLocMapping -- ^ var => location
   -> LocationRegionMapping -- ^ location => region

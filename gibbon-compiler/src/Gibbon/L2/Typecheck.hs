@@ -118,7 +118,7 @@ type TcM a = (Except TCError) a
 -- | Check an expression. Given the data definitions, an general type environment, a function map,
 --   a constraint set, a region set, an (input) location state map, and the expression, this function
 --   will either throw an error, or return a pair of expression type and new location state map.
-tcExp :: DDefs Ty2 -> Env2 Ty2 -> FunDefs2
+tcExp :: DDefs Ty2 -> Env2 Var Ty2 -> FunDefs2
       -> ConstraintSet -> RegionSet -> LocationTypeState -> Exp
       -> TcM (Ty2, LocationTypeState)
 tcExp ddfs env funs constrs regs tstatein exp =
@@ -864,7 +864,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
 
 -- | Helper function to check case branches.
-tcCases :: DDefs Ty2 -> Env2 Ty2 -> FunDefs2
+tcCases :: DDefs Ty2 -> Env2 Var Ty2 -> FunDefs2
         -> ConstraintSet -> RegionSet -> LocationTypeState -> LocVar
         -> Region -> [(DataCon, [(Var,LocVar)], Exp)]
         -> TcM ([Ty2], LocationTypeState)
@@ -919,7 +919,7 @@ tcProj e _i ty = throwError $ GenericTC ("Projection from non-tuple type " ++ (s
 -- the order matters because the location state map is threaded through,
 -- so this is assuming the list of expressions would have been evaluated
 -- in first-to-last order.
-tcExps :: DDefs Ty2 -> Env2 Ty2 -> FunDefs2
+tcExps :: DDefs Ty2 -> Env2 Var Ty2 -> FunDefs2
       -> ConstraintSet -> RegionSet -> LocationTypeState -> [Exp]
       -> TcM ([Ty2], LocationTypeState)
 tcExps ddfs env funs constrs regs tstatein (exp:exps) =
@@ -1030,7 +1030,7 @@ funTState [] = LocationTypeState $ M.empty
 
 -- | Look up the type of a variable from the environment
 -- Includes an expression for error reporting.
-lookupVar :: Env2 Ty2 -> Var -> Exp -> TcM Ty2
+lookupVar :: Env2 Var Ty2 -> Var -> Exp -> TcM Ty2
 lookupVar env var exp =
     case M.lookup var $ vEnv env of
       Nothing -> throwError $ VarNotFoundTC var exp
@@ -1227,7 +1227,7 @@ removeLoc exp (LocationTypeState ls) l =
     then return $ LocationTypeState $ M.delete l ls
     else throwError $ GenericTC ("Cannot remove location " ++ (show l)) exp
 
-ensureArenaScope :: MonadError TCError m => Exp -> Env2 a -> Maybe Var -> m ()
+ensureArenaScope :: MonadError TCError m => Exp -> Env2 Var a -> Maybe Var -> m ()
 ensureArenaScope exp env ar =
     case ar of
       Nothing -> throwError $ GenericTC "Expected arena annotation" exp
