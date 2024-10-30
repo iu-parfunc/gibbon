@@ -149,7 +149,7 @@ removeLinearArrows str =
 
 data TopLevel
   = HDDef (DDef Ty0)
-  | HFunDef (FunDef Exp0)
+  | HFunDef (FunDef Var Exp0)
   | HMain (Maybe (Exp0, Ty0))
   | HInline Var
   deriving (Show, Eq)

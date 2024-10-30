@@ -258,14 +258,14 @@ ppProgram prog = hcat
   , "\n"
   ]
 
-ppFunDefs :: Map Var (FunDef Exp1) -> Doc
+ppFunDefs :: Map Var (FunDef Var Exp1) -> Doc
 ppFunDefs funDefs =
   foldMap ppBlock organize
   where
     ppBlock = either ppValDef ppFunRec
     organize = sortDefs (elems funDefs) >>= separateDefs
 
-separateDefs :: [FunDef Exp1] -> [Either (FunDef Exp1) [FunDef Exp1]]
+separateDefs :: [FunDef Var Exp1] -> [Either (FunDef Var Exp1) [FunDef Var Exp1]]
 separateDefs funDefs = case funDefs of
   [] -> []
   fd : fds -> case funArgs fd of
@@ -275,7 +275,7 @@ separateDefs funDefs = case funDefs of
       fds'@(Left _ : _) -> Right [fd] : fds'
       Right fds' : fds'' ->  Right (fd : fds') : fds''
 
-ppValDef :: FunDef Exp1 -> Doc
+ppValDef :: FunDef Var Exp1 -> Doc
 ppValDef funDef =
   hsep
     [ "val"
@@ -284,12 +284,12 @@ ppValDef funDef =
     , ppE $ funBody funDef
     ] <> semi
 
-ppFunRec :: [FunDef Exp1] -> Doc
+ppFunRec :: [FunDef Var Exp1] -> Doc
 ppFunRec fdefs =
   reduceFunDefs "fun" (head fdefs) $
     foldr (reduceFunDefs "and") ";\n" (tail fdefs)
 
-reduceFunDefs :: Doc -> FunDef Exp1 -> Doc -> Doc
+reduceFunDefs :: Doc -> FunDef Var Exp1 -> Doc -> Doc
 reduceFunDefs keyword funDef doc =
   "\n" <> case funArgs funDef of
     [] -> hsep
@@ -514,16 +514,16 @@ varsE vs pe0 = case pe0 of
       | otherwise = mempty
       where s = getVar var
 
-addFunBinding :: FunDef ex -> Map String (FunDef ex) -> Map String (FunDef ex)
+addFunBinding :: FunDef Var ex -> Map String (FunDef Var ex) -> Map String (FunDef Var ex)
 addFunBinding funDef = Map.insert (getVar $ funName funDef) funDef
 
-allFunEntries :: [FunDef ex] -> Map String (FunDef ex)
+allFunEntries :: [FunDef Var ex] -> Map String (FunDef Var ex)
 allFunEntries = foldr addFunBinding Map.empty
 
-allFunNames :: [FunDef ex] -> Set.Set String
+allFunNames :: [FunDef Var ex] -> Set.Set String
 allFunNames = Set.fromList . fmap (getVar . funName)
 
-getDependencies :: [FunDef Exp1] -> Map String [FunDef Exp1]
+getDependencies :: [FunDef Var Exp1] -> Map String [FunDef Var Exp1]
 getDependencies funDefs =
   foldr reduceDeps Map.empty funDefs
   where
@@ -533,7 +533,7 @@ getDependencies funDefs =
     toDep = fmap toNode . Set.toList . varsE funSet . funBody
     reduceDeps = insert . getVar . funName <*> toDep
 
-sortDefs :: [FunDef Exp1] -> [[FunDef Exp1]]
+sortDefs :: [FunDef Var Exp1] -> [[FunDef Var Exp1]]
 sortDefs defs =
   fmap ((\(_, n, _) -> n) . back) . flatten <$> scc gr
   where

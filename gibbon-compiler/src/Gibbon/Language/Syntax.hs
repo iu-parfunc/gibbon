@@ -23,11 +23,12 @@ module Gibbon.Language.Syntax
   , insertFD, fromListFD, initFunEnv
 
     -- * Programs
-  , Prog(..), progToEnv, getFunTy
+  , Prog(..), progToEnv, getFunTy, progToEnv'
 
     -- * Environments
   , TyEnv, Env2(..), emptyEnv2
-  , extendVEnv, extendsVEnv, lookupVEnv, extendFEnv, lookupFEnv
+  , extendVEnv, extendsVEnv, lookupVEnv, extendFEnv, lookupFEnv,
+    lookupFEnvLocVar, extendVEnvLocVar, extendsVEnvLocVar
 
     -- * Expresssions and thier types
   , PreExp(..), Prim(..), UrTy(..)
@@ -257,7 +258,7 @@ data Prog loc ex = Prog { ddefs   :: DDefs (TyOf ex)
 deriving instance (Read (TyOf ex), Read ex, Read (ArrowTy (TyOf ex)), Read loc, Ord loc) => Read (Prog loc ex)
 deriving instance (Show (TyOf ex), Show ex, Show (ArrowTy (TyOf ex)), Show loc) => Show (Prog loc ex)
 deriving instance (Eq (TyOf ex), Eq ex, Eq (ArrowTy (TyOf ex)), Eq loc) => Eq (Prog loc ex)
-deriving instance (Ord (TyOf ex), Ord ex, Ord (ArrowTy (TyOf ex)), Eq loc, Ord loc) => Ord (Prog loc ex)
+deriving instance (Ord (TyOf ex), Ord ex, Ord (ArrowTy (TyOf ex)), Ord loc) => Ord (Prog loc ex)
 deriving instance Generic (Prog loc ex)
 deriving instance (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex, Generic (ArrowTy (TyOf ex)), NFData loc) => NFData (Prog loc ex)
 
@@ -310,9 +311,15 @@ emptyEnv2 = Env2 { vEnv = emptyTyEnv
 extendVEnv :: Var -> a -> Env2 Var a -> Env2 Var a
 extendVEnv v t (Env2 ve fe) = Env2 (M.insert v t ve) fe
 
+extendVEnvLocVar :: LocVar -> a -> Env2 LocVar a -> Env2 LocVar a
+extendVEnvLocVar v t (Env2 ve fe) = Env2 (M.insert v t ve) fe
+
 -- | Extend multiple times in one go.
 extendsVEnv :: M.Map Var a -> Env2 Var a -> Env2 Var a
 extendsVEnv mp (Env2 ve fe) = Env2 (M.union mp ve) fe
+
+extendsVEnvLocVar :: M.Map LocVar a -> Env2 LocVar a -> Env2 LocVar a 
+extendsVEnvLocVar mp (Env2 ve fe) = Env2 (M.union mp ve) fe
 
 lookupVEnv :: Out a => Var -> Env2 Var a -> a
 lookupVEnv v env2 = (vEnv env2) # v
@@ -329,6 +336,9 @@ extendFEnv v t (Env2 ve fe) = Env2 ve (M.insert v t fe)
 
 lookupFEnv :: Out (ArrowTy a) => Var -> Env2 Var a -> ArrowTy a
 lookupFEnv v env2 = (fEnv env2) # v
+
+lookupFEnvLocVar :: Out (ArrowTy a) => LocVar -> Env2 LocVar a -> ArrowTy a 
+lookupFEnvLocVar loc env2 = (fEnv env2) # loc
 
 
 --------------------------------------------------------------------------------
@@ -699,24 +709,24 @@ runInterpM m s = do
 
 -- | Pure Gibbon programs, at any stage of compilation, should always
 -- be evaluatable to a unique value.  The only side effects are timing.
-class Expression e => Interp s e where
+class Expression e => Interp s e loc where
   gInterpExp :: RunConfig -> ValEnv e -> DDefs (TyOf e) -> FunDefs loc e -> e -> InterpM s e (Value e)
 
-class (Expression e, Expression ext) => InterpExt s e ext where
+class (Expression e, Expression ext) => InterpExt s e ext loc where
   gInterpExt :: RunConfig -> ValEnv e -> DDefs (TyOf e) -> FunDefs loc e -> ext -> InterpM s e (Value e)
 
-class Interp s e => InterpProg s e where
+class Interp s e loc => InterpProg s e loc where
   {-# MINIMAL gInterpProg #-}
-  gInterpProg :: s -> RunConfig -> Prog Var e -> IO (s, Value e, B.ByteString)
+  gInterpProg :: s -> RunConfig -> Prog loc e -> IO (s, Value e, B.ByteString)
 
   -- | Interpret while ignoring timing constructs, and dropping the
   -- corresponding output to stdout.
-  gInterpNoLogs :: s -> RunConfig -> Prog Var e -> String
+  gInterpNoLogs :: s -> RunConfig -> Prog loc e -> String
   gInterpNoLogs s rc p = unsafePerformIO $ show . snd3 <$> gInterpProg s rc p
 
   -- | Interpret and produce a "log" of output lines, as well as a
   -- final, printed result.  The output lines include timing information.
-  gInterpWithStdout :: s -> RunConfig -> Prog Var e -> IO (String,[String])
+  gInterpWithStdout :: s -> RunConfig -> Prog loc e -> IO (String,[String])
   gInterpWithStdout s rc p = do
     (_s1,res,logs) <- gInterpProg s rc p
     return (show res, lines (B.unpack logs))
@@ -769,7 +779,7 @@ instance Show e => Show (Value e) where
    VLam args bod env -> "(Clos (lambda (" ++ concat (map ((++" ") . show) args) ++ ") " ++ show bod ++ ") #{" ++ show env ++ "})"
    VWrapId vid val -> "(id: " ++ show vid ++ " " ++ show val ++ ")"
 
-execAndPrint :: (InterpProg s ex) => s -> RunConfig -> Prog Var ex -> IO ()
+execAndPrint :: (InterpProg s ex loc) => s -> RunConfig -> Prog loc ex -> IO ()
 execAndPrint s rc prg = do
   (_s1,val,logs) <- gInterpProg s rc prg
   B.putStr logs

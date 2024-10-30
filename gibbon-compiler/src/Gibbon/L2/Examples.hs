@@ -44,12 +44,12 @@ testTypeable = gRecoverType ddtree emptyEnv2 tTypeable
 -- Add1
 
 add1TraversedFun :: FunDef2
-add1TraversedFun = FunDef "add1" ["tr1"] add1TraversedFunTy add1FunBod (FunMeta Rec NoInline False)
+add1TraversedFun = FunDef "add1" [singleLocVar "tr1"] add1TraversedFunTy add1FunBod (FunMeta Rec NoInline False)
   where add1TraversedFunTy = add1FunTy { arrEffs = S.fromList [Traverse (Single "lin2")] }
 
 
 add1Fun :: FunDef2
-add1Fun = FunDef "add1" ["tr1"] add1FunTy add1FunBod (FunMeta Rec NoInline False)
+add1Fun = FunDef "add1" [singleLocVar "tr1"] add1FunTy add1FunBod (FunMeta Rec NoInline False)
 
 
 add1FunTy :: ArrowTy2 Ty2
@@ -102,7 +102,7 @@ add1MainExp = Ext $ LetRegionE (VarR "r99") Undefined Nothing $
 
 
 add1Prog :: Prog2
-add1Prog = Prog ddtree (M.fromList [("add1", add1Fun)])
+add1Prog = Prog ddtree (M.fromList [(singleLocVar "add1", add1Fun)])
            (Just (add1MainExp, PackedTy "Tree" (Single "l107")))
 
 --------------------------------------------------------------------------------
@@ -141,7 +141,7 @@ nodeProg = Prog ddtree M.empty (Just (nodeMainExp, PackedTy "Tree" (Single "l156
 --------------------------------------------------------------------------------
 
 id1Fun :: FunDef2
-id1Fun = FunDef "id1" ["tr18"] idFunTy idFunBod (FunMeta NotRec NoInline False)
+id1Fun = FunDef "id1" [singleLocVar "tr18"] idFunTy idFunBod (FunMeta NotRec NoInline False)
   where
     idFunBod = VarE "tr18"
 
@@ -156,12 +156,12 @@ id1Fun = FunDef "id1" ["tr18"] idFunTy idFunBod (FunMeta NotRec NoInline False)
 
 
 id1Prog :: Prog2
-id1Prog = Prog ddtree (M.fromList [("id1", id1Fun)]) Nothing
+id1Prog = Prog ddtree (M.fromList [(singleLocVar "id1", id1Fun)]) Nothing
 
 --------------------------------------------------------------------------------
 
 copyTreeFun :: FunDef2
-copyTreeFun = FunDef "copyTree" ["tr22"] copyFunTy copyBod (FunMeta NotRec NoInline False)
+copyTreeFun = FunDef "copyTree" [singleLocVar "tr22"] copyFunTy copyBod (FunMeta NotRec NoInline False)
   where
     copyFunTy = ArrowTy2
                  [LRM (Single "lin23") (VarR "r24") Input, LRM (Single "lout25") (VarR "r752") Output]
@@ -205,13 +205,13 @@ copyTreeMainExp = Ext $ LetRegionE (VarR "r200") Undefined Nothing $
                   VarE "a209"
 
 copyTreeProg :: Prog2
-copyTreeProg = Prog ddtree (M.fromList [("copyTree", copyTreeFun)]) $
+copyTreeProg = Prog ddtree (M.fromList [(singleLocVar "copyTree", copyTreeFun)]) $
                Just (copyTreeMainExp, PackedTy "Tree" (Single "l208"))
 
 --------------------------------------------------------------------------------
 
 id2Fun :: FunDef2
-id2Fun = FunDef "id2" ["tr41"] id2Ty id2Bod (FunMeta NotRec NoInline False)
+id2Fun = FunDef "id2" [singleLocVar "tr41"] id2Ty id2Bod (FunMeta NotRec NoInline False)
   where
     id2Ty :: ArrowTy2 Ty2
     id2Ty = ArrowTy2
@@ -227,14 +227,14 @@ id2Fun = FunDef "id2" ["tr41"] id2Ty id2Bod (FunMeta NotRec NoInline False)
              (VarE "tr41")
 
 id2Prog :: Prog2
-id2Prog = Prog ddtree (M.fromList [("id2", id2Fun)]) Nothing
+id2Prog = Prog ddtree (M.fromList [(singleLocVar "id2", id2Fun)]) Nothing
 
 --------------------------------------------------------------------------------
 
 copyOnId1Prog :: Prog2
 copyOnId1Prog = Prog ddtree funs $ Just (copyOnId1MainExp, PackedTy "Tree" (Single "l228"))
   where
-    funs  = M.fromList [("copyTree" , copyTreeFun),
+    funs  = M.fromList [(singleLocVar "copyTree" , copyTreeFun),
                          ("id1WithCopy", id1WithCopyFun)]
 
 copyOnId1MainExp :: Exp2
@@ -263,7 +263,7 @@ id1WithCopyFun = id1Fun { funBody = AppE "copyTree" [(Single "lin19"),(Single "l
 --------------------------------------------------------------------------------
 
 id3Fun :: FunDef2
-id3Fun = FunDef "id3" ["i42"] id3Ty id3Bod (FunMeta NotRec NoInline False)
+id3Fun = FunDef "id3" [singleLocVar "i42"] id3Ty id3Bod (FunMeta NotRec NoInline False)
   where
     id3Ty :: ArrowTy2 Ty2
     id3Ty = ArrowTy2
@@ -279,13 +279,13 @@ id3MainExp :: Exp2
 id3MainExp = AppE "id3" [] [LitE 42]
 
 id3Prog :: Prog2
-id3Prog = Prog ddtree (M.fromList [("id3", id3Fun)]) $ Just (id3MainExp, IntTy)
+id3Prog = Prog ddtree (M.fromList [(singleLocVar "id3", id3Fun)]) $ Just (id3MainExp, IntTy)
 
 
 --------------------------------------------------------------------------------
 
 intAddFun :: FunDef2
-intAddFun = FunDef "intAdd" ["i109"] intAddTy id3Bod (FunMeta NotRec NoInline False)
+intAddFun = FunDef "intAdd" [singleLocVar "i109"] intAddTy id3Bod (FunMeta NotRec NoInline False)
   where
     intAddTy :: ArrowTy2 Ty2
     intAddTy = ArrowTy2
@@ -304,12 +304,12 @@ intAddMainExp = LetE ("sum110", [], IntTy,
                 (VarE "sum110")
 
 intAddProg :: Prog2
-intAddProg = Prog M.empty (M.fromList [("intAdd", intAddFun)]) (Just (intAddMainExp, IntTy))
+intAddProg = Prog M.empty (M.fromList [(singleLocVar "intAdd", intAddFun)]) (Just (intAddMainExp, IntTy))
 
 --------------------------------------------------------------------------------
 
 leftmostFun :: FunDef2
-leftmostFun = FunDef "leftmost" ["t111"] leftmostTy leftmostBod (FunMeta Rec NoInline False)
+leftmostFun = FunDef "leftmost" [singleLocVar "t111"] leftmostTy leftmostBod (FunMeta Rec NoInline False)
   where
     leftmostTy :: ArrowTy2 Ty2
     leftmostTy = ArrowTy2
@@ -344,13 +344,13 @@ leftmostMainExp = Ext $ LetRegionE (VarR "r122") Undefined Nothing $
                   VarE "a131"
 
 leftmostProg :: Prog2
-leftmostProg = Prog ddtree (M.fromList [("leftmost", leftmostFun)]) (Just (leftmostMainExp, IntTy))
+leftmostProg = Prog ddtree (M.fromList [(singleLocVar "leftmost", leftmostFun)]) (Just (leftmostMainExp, IntTy))
 
 
 --------------------------------------------------------------------------------
 
 rightmostFun :: FunDef2
-rightmostFun = FunDef "rightmost" ["t242"] rightmostTy rightmostBod (FunMeta Rec NoInline False)
+rightmostFun = FunDef "rightmost" [singleLocVar "t242"] rightmostTy rightmostBod (FunMeta Rec NoInline False)
   where
     rightmostTy :: ArrowTy2 Ty2
     rightmostTy = ArrowTy2
@@ -389,14 +389,14 @@ rightmostMainExp = Ext $ LetRegionE (VarR "r253") Undefined Nothing $
                    VarE "a260"
 
 rightmostProg :: Prog2
-rightmostProg = Prog ddtree (M.fromList [("rightmost", rightmostFun)])
+rightmostProg = Prog ddtree (M.fromList [(singleLocVar "rightmost", rightmostFun)])
                 (Just (rightmostMainExp, IntTy))
 
 
 --------------------------------------------------------------------------------
 
 buildLeafFun :: FunDef2
-buildLeafFun = FunDef "buildLeaf" ["i125"] buildLeafTy buildLeafBod (FunMeta Rec NoInline False)
+buildLeafFun = FunDef "buildLeaf" [singleLocVar "i125"] buildLeafTy buildLeafBod (FunMeta Rec NoInline False)
   where
     buildLeafTy :: ArrowTy2 Ty2
     buildLeafTy = ArrowTy2
@@ -417,13 +417,13 @@ buildLeafMainExp = Ext $ LetRegionE (VarR "r128") Undefined Nothing $
                    AppE "buildLeaf" [(Single "l129")] [LitE 42]
 
 buildLeafProg :: Prog2
-buildLeafProg = Prog ddtree (M.fromList [("buildLeaf", buildLeafFun)]) (Just (buildLeafMainExp, PackedTy "Tree" (Single "l129")))
+buildLeafProg = Prog ddtree (M.fromList [(singleLocVar "buildLeaf", buildLeafFun)]) (Just (buildLeafMainExp, PackedTy "Tree" (Single "l129")))
 
 
 --------------------------------------------------------------------------------
 
 buildTreeFun :: FunDef2
-buildTreeFun = FunDef "buildTree" ["i270"] buildTreeTy buildTreeBod (FunMeta Rec NoInline False)
+buildTreeFun = FunDef "buildTree" [singleLocVar "i270"] buildTreeTy buildTreeBod (FunMeta Rec NoInline False)
   where
     buildTreeTy :: ArrowTy2 Ty2
     buildTreeTy = ArrowTy2
@@ -456,14 +456,14 @@ buildTreeMainExp = Ext $ LetRegionE (VarR "r279") Undefined Nothing $
                    AppE "buildTree" [(Single "l280")] [LitE 3]
 
 buildTreeProg :: Prog2
-buildTreeProg = Prog ddtree (M.fromList [("buildTree", buildTreeFun)]) (Just (buildTreeMainExp, PackedTy "Tree" (Single "l280")))
+buildTreeProg = Prog ddtree (M.fromList [(singleLocVar "buildTree", buildTreeFun)]) (Just (buildTreeMainExp, PackedTy "Tree" (Single "l280")))
 
 
 --------------------------------------------------------------------------------
 
 
 buildTwoTreesFun :: FunDef2
-buildTwoTreesFun = FunDef "buildTwoTrees" ["i750"] buildTreeTy buildTreeBod (FunMeta Rec NoInline False)
+buildTwoTreesFun = FunDef "buildTwoTrees" [singleLocVar "i750"] buildTreeTy buildTreeBod (FunMeta Rec NoInline False)
   where
     buildTreeTy :: ArrowTy2 Ty2
     buildTreeTy = ArrowTy2
@@ -493,14 +493,14 @@ buildTwoTreesMainExp = Ext $ LetRegionE (VarR "r756") Undefined Nothing $
                        VarE "treeprod"
 
 buildTwoTreesProg :: Prog2
-buildTwoTreesProg = Prog ddtree (M.fromList [("buildTree", buildTreeFun),
+buildTwoTreesProg = Prog ddtree (M.fromList [(singleLocVar "buildTree", buildTreeFun),
                                              ("buildTwoTrees", buildTwoTreesFun)])
                          (Just (buildTwoTreesMainExp, ProdTy [PackedTy "Tree" (Single "lout757"), PackedTy "Tree" (Single "lout759")]))
 
 --------------------------------------------------------------------------------
 
 buildTreeSumFun :: FunDef2
-buildTreeSumFun = FunDef "buildTreeSum" ["i302"] buildTreeSumTy buildTreeSumBod (FunMeta Rec NoInline False)
+buildTreeSumFun = FunDef "buildTreeSum" [singleLocVar "i302"] buildTreeSumTy buildTreeSumBod (FunMeta Rec NoInline False)
   where
     buildTreeSumTy :: ArrowTy2 Ty2
     buildTreeSumTy = ArrowTy2
@@ -547,12 +547,12 @@ buildTreeSumMainExp = Ext $ LetRegionE (VarR "r313") Undefined Nothing $
 
 
 buildTreeSumProg :: Prog2
-buildTreeSumProg = Prog ddtree (M.fromList [("buildTreeSum", buildTreeSumFun)]) (Just (buildTreeSumMainExp, ProdTy [IntTy, PackedTy "Tree" (Single "l314")]))
+buildTreeSumProg = Prog ddtree (M.fromList [(singleLocVar "buildTreeSum", buildTreeSumFun)]) (Just (buildTreeSumMainExp, ProdTy [IntTy, PackedTy "Tree" (Single "l314")]))
 
 --------------------------------------------------------------------------------
 
 sumTreeFun :: FunDef2
-sumTreeFun = FunDef "sumTree" ["tr762"] sumTreeTy sumTreeBod (FunMeta Rec NoInline False)
+sumTreeFun = FunDef "sumTree" [singleLocVar "tr762"] sumTreeTy sumTreeBod (FunMeta Rec NoInline False)
   where
     sumTreeTy :: ArrowTy2 Ty2
     sumTreeTy = ArrowTy2
@@ -587,7 +587,7 @@ sumTreeMainExp = Ext $ LetRegionE (VarR "r771") Undefined Nothing $
                  VarE "sum774"
 
 sumTreeProg :: Prog2
-sumTreeProg = Prog ddtree (M.fromList [("buildTree", buildTreeFun),
+sumTreeProg = Prog ddtree (M.fromList [(singleLocVar "buildTree", buildTreeFun),
                                        ("sumTree", sumTreeFun)
                                       ])
                    (Just (sumTreeMainExp, IntTy))
@@ -622,7 +622,7 @@ printTupMainExp2 = Ext $ LetRegionE (VarR "r400") Undefined Nothing $
                   VarE "z405"
 
 printTupProg2 :: Prog2
-printTupProg2 = Prog ddtree (M.fromList [("buildTree", buildTreeFun)])
+printTupProg2 = Prog ddtree (M.fromList [(singleLocVar "buildTree", buildTreeFun)])
                 (Just (printTupMainExp2,
                        ProdTy [PackedTy "Tree" (Single "l401"), PackedTy "Tree" (Single "l403")]))
 
@@ -642,7 +642,7 @@ addTrees t1 t2 =
 -}
 
 addTreesFun :: FunDef2
-addTreesFun = FunDef "addTrees" ["trees354"] addTreesTy addTreesBod (FunMeta Rec NoInline False)
+addTreesFun = FunDef "addTrees" [singleLocVar "trees354"] addTreesTy addTreesBod (FunMeta Rec NoInline False)
   where
     addTreesTy :: ArrowTy2 Ty2
     addTreesTy = ArrowTy2
@@ -710,14 +710,14 @@ addTreesMainExp = Ext $ LetRegionE (VarR "r400") Undefined Nothing $
                   VarE "a407"
 
 addTreesProg :: Prog2
-addTreesProg = Prog ddtree (M.fromList [("addTrees", addTreesFun)
+addTreesProg = Prog ddtree (M.fromList [(singleLocVar "addTrees", addTreesFun)
                                        ,("buildTree", buildTreeFun)])
                     (Just (addTreesMainExp, PackedTy "Tree" (Single "l406")))
 
 --------------------------------------------------------------------------------
 
 testProdFun :: FunDef2
-testProdFun = FunDef "testprod" ["tup130"] testprodTy testprodBod (FunMeta Rec NoInline False)
+testProdFun = FunDef "testprod" [singleLocVar "tup130"] testprodTy testprodBod (FunMeta Rec NoInline False)
   where
     testprodTy = ArrowTy2
                   [LRM (Single "lin131") (VarR "r132") Input, LRM (Single "lout133") (VarR "r755") Output]
@@ -757,13 +757,13 @@ testProdFun = FunDef "testprod" ["tup130"] testprodTy testprodBod (FunMeta Rec N
                   ]
 
 testProdProg :: Prog2
-testProdProg = Prog ddtree (M.fromList [("testprod", testProdFun)]) Nothing
+testProdProg = Prog ddtree (M.fromList [(singleLocVar "testprod", testProdFun)]) Nothing
 
 --------------------------------------------------------------------------------
 
 -- Meaningless program, just to test flattenL2
 testFlattenProg :: Prog2
-testFlattenProg = Prog M.empty (M.fromList [("intAdd",intAddFun)]) $ Just (testFlattenBod, IntTy)
+testFlattenProg = Prog M.empty (M.fromList [(singleLocVar "intAdd",intAddFun)]) $ Just (testFlattenBod, IntTy)
   where
     testFlattenBod :: Exp2
     testFlattenBod =
@@ -810,7 +810,7 @@ sumUp tree =
 -}
 
 sumUpFun :: FunDef2
-sumUpFun = FunDef "sumUp" ["tr1"] sumUpFunTy sumUpFunBod (FunMeta Rec NoInline False)
+sumUpFun = FunDef "sumUp" [singleLocVar "tr1"] sumUpFunTy sumUpFunBod (FunMeta Rec NoInline False)
   where
     sumUpFunTy :: ArrowTy2 Ty2
     sumUpFunTy = ArrowTy2
@@ -849,7 +849,7 @@ sumUpFun = FunDef "sumUp" ["tr1"] sumUpFunTy sumUpFunBod (FunMeta Rec NoInline F
 
 
 valueSTreeFun :: FunDef2
-valueSTreeFun = FunDef "valueSTree" ["tr522"] valueSTreeFunTy valueSTreeFunBod (FunMeta Rec NoInline False)
+valueSTreeFun = FunDef "valueSTree" [singleLocVar "tr522"] valueSTreeFunTy valueSTreeFunBod (FunMeta Rec NoInline False)
   where
     valueSTreeFunTy :: ArrowTy2 Ty2
     valueSTreeFunTy = ArrowTy2
@@ -871,7 +871,7 @@ valueSTreeFun = FunDef "valueSTree" ["tr522"] valueSTreeFunTy valueSTreeFunBod (
 
 
 buildSTreeFun :: FunDef2
-buildSTreeFun = FunDef "buildSTree" ["i543"] buildSTreeTy buildSTreeBod (FunMeta Rec NoInline False)
+buildSTreeFun = FunDef "buildSTree" [singleLocVar "i543"] buildSTreeTy buildSTreeBod (FunMeta Rec NoInline False)
   where
     buildSTreeTy :: ArrowTy2 Ty2
     buildSTreeTy = ArrowTy2
@@ -912,14 +912,14 @@ buildSTreeMainExp = Ext $ LetRegionE (VarR "r530") Undefined Nothing $
 
 
 buildSTreeProg :: Prog2
-buildSTreeProg = Prog stree (M.fromList [("buildSTree", buildSTreeFun)])
+buildSTreeProg = Prog stree (M.fromList [(singleLocVar "buildSTree", buildSTreeFun)])
                       (Just (buildSTreeMainExp, PackedTy "STree" (Single "l531")))
 
 
 --------------------------------------------------------------------------------
 
 sumSTreeFun :: FunDef2
-sumSTreeFun = FunDef "sumSTree" ["tr762"] sumSTreeTy sumSTreeBod (FunMeta Rec NoInline False)
+sumSTreeFun = FunDef "sumSTree" [singleLocVar "tr762"] sumSTreeTy sumSTreeBod (FunMeta Rec NoInline False)
   where
     sumSTreeTy :: ArrowTy2 Ty2
     sumSTreeTy = ArrowTy2
@@ -955,7 +955,7 @@ sumSTreeMainExp = Ext $ LetRegionE (VarR "r771") Undefined Nothing $
                  VarE "sum774"
 
 sumSTreeProg :: Prog2
-sumSTreeProg = Prog stree (M.fromList [("buildSTree", buildSTreeFun),
+sumSTreeProg = Prog stree (M.fromList [(singleLocVar "buildSTree", buildSTreeFun),
                                        ("sumSTree", sumSTreeFun)])
                    (Just (sumSTreeMainExp, IntTy))
 
@@ -973,7 +973,7 @@ sumUpMainExp = Ext $ LetRegionE (VarR "r530") Undefined Nothing $
                   VarE "z538"
 
 sumUpProg :: Prog2
-sumUpProg = Prog stree (M.fromList [("sumUp", sumUpFun)
+sumUpProg = Prog stree (M.fromList [(singleLocVar "sumUp", sumUpFun)
                                    ,("valueSTree", valueSTreeFun)
                                    ,("buildSTree", buildSTreeFun)
                                    ])
@@ -982,7 +982,7 @@ sumUpProg = Prog stree (M.fromList [("sumUp", sumUpFun)
 --------------------------------------------------------------------------------
 
 evenFun :: FunDef2
-evenFun = FunDef "even" ["i560"] evenFunTy evenFunBod (FunMeta NotRec NoInline False)
+evenFun = FunDef "even" [singleLocVar "i560"] evenFunTy evenFunBod (FunMeta NotRec NoInline False)
   where
     evenFunTy :: ArrowTy2 Ty2
     evenFunTy = ArrowTy2
@@ -1018,7 +1018,7 @@ setEven tree =
 
 
 setEvenFun :: FunDef2
-setEvenFun = FunDef "setEven" ["tr570"] setEvenFunTy setEvenFunBod (FunMeta Rec NoInline False)
+setEvenFun = FunDef "setEven" [singleLocVar "tr570"] setEvenFunTy setEvenFunBod (FunMeta Rec NoInline False)
   where
     setEvenFunTy :: ArrowTy2 Ty2
     setEvenFunTy = ArrowTy2
@@ -1070,7 +1070,7 @@ setEvenMainExp = Ext $ LetRegionE (VarR "r592") Undefined Nothing $
 
 
 setEvenProg :: Prog2
-setEvenProg = Prog stree (M.fromList [("setEven"   , setEvenFun)
+setEvenProg = Prog stree (M.fromList [(singleLocVar "setEven"   , setEvenFun)
                                      ,("even"      , evenFun )
                                      ,("buildSTree", buildSTreeFun)
                                      ,("valueSTree", valueSTreeFun)
@@ -1101,7 +1101,7 @@ merged tr =
 -}
 
 sumUpSetEvenFun :: FunDef2
-sumUpSetEvenFun = FunDef "sumUpSetEven" ["tr600"] sumUpSetEvenFunTy sumUpSetEvenFunBod (FunMeta Rec NoInline False)
+sumUpSetEvenFun = FunDef "sumUpSetEven" [singleLocVar "tr600"] sumUpSetEvenFunTy sumUpSetEvenFunBod (FunMeta Rec NoInline False)
   where
     sumUpSetEvenFunTy :: ArrowTy2 Ty2
     sumUpSetEvenFunTy = ArrowTy2
@@ -1159,7 +1159,7 @@ sumUpSetEvenExp = Ext $ LetRegionE (VarR "r628") Undefined Nothing $
 
 
 sumUpSetEvenProg :: Prog2
-sumUpSetEvenProg = Prog stree (M.fromList [("sumUpSetEven", sumUpSetEvenFun)
+sumUpSetEvenProg = Prog stree (M.fromList [(singleLocVar "sumUpSetEven", sumUpSetEvenFun)
                                           ,("even"        , evenFun )
                                           ,("buildSTree"  , buildSTreeFun)
                                           ])
@@ -1194,7 +1194,7 @@ ddexpr = fromListDD [DDef (toVar "Expr") []
                       ]]
 
 copyExprFun :: FunDef2
-copyExprFun = FunDef "copyExpr" ["e700"] copyExprFunTy copyExprFunBod (FunMeta Rec NoInline False)
+copyExprFun = FunDef "copyExpr" [singleLocVar "e700"] copyExprFunTy copyExprFunBod (FunMeta Rec NoInline False)
   where
     copyExprFunTy :: ArrowTy2 Ty2
     copyExprFunTy = ArrowTy2
@@ -1226,7 +1226,7 @@ copyExprFun = FunDef "copyExpr" ["e700"] copyExprFunTy copyExprFunBod (FunMeta R
 
 
 substFun :: FunDef2
-substFun = FunDef "subst" ["tr653"] substFunTy substFunBod (FunMeta Rec NoInline False)
+substFun = FunDef "subst" [singleLocVar "tr653"] substFunTy substFunBod (FunMeta Rec NoInline False)
   where
     substFunTy :: ArrowTy2 Ty2
     substFunTy = ArrowTy2
@@ -1300,7 +1300,7 @@ substMainExp = Ext $ LetRegionE (VarR "r720") Undefined Nothing $
 
 
 substProg :: Prog2
-substProg = Prog ddexpr (M.fromList [("subst", substFun),
+substProg = Prog ddexpr (M.fromList [(singleLocVar "subst", substFun),
                                      ("copyExpr", copyExprFun)])
             (Just (substMainExp, PackedTy "Expr" (Single "l730")))
 
@@ -1321,7 +1321,7 @@ ddtree' = fromListDD [DDef (toVar "Tree") []
 -- indirection pointers to get to the rightmost node of the tree.
 
 indrBuildTreeFun :: FunDef2
-indrBuildTreeFun = FunDef "indrBuildTree" ["i270"] indrBuildTreeTy indrBuildTreeBod (FunMeta Rec NoInline False)
+indrBuildTreeFun = FunDef "indrBuildTree" [singleLocVar "i270"] indrBuildTreeTy indrBuildTreeBod (FunMeta Rec NoInline False)
   where
     indrBuildTreeTy :: ArrowTy2 Ty2
     indrBuildTreeTy = ArrowTy2
@@ -1361,7 +1361,7 @@ indrBuildTreeMainExp = Ext $ LetRegionE (VarR "r800") Undefined Nothing $
                        VarE "tr802"
 
 indrBuildTreeProg :: Prog2
-indrBuildTreeProg = Prog ddtree' (M.fromList [("indrBuildTree", indrBuildTreeFun)])
+indrBuildTreeProg = Prog ddtree' (M.fromList [(singleLocVar "indrBuildTree", indrBuildTreeFun)])
                          (Just (indrBuildTreeMainExp, PackedTy "Tree" (Single "l801")))
 
 

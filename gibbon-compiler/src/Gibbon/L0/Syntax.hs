@@ -32,9 +32,9 @@ import           Gibbon.Language hiding (UrTy(..))
 type Exp0     = PreExp E0Ext Ty0 Ty0
 type DDefs0   = DDefs Ty0
 type DDef0    = DDef Ty0
-type FunDef0  = FunDef Exp0
-type FunDefs0 = FunDefs Exp0
-type Prog0    = Prog Exp0
+type FunDef0  = FunDef Var Exp0
+type FunDefs0 = FunDefs Var Exp0
+type Prog0    = Prog Var Exp0
 
 --------------------------------------------------------------------------------
 

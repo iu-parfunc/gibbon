@@ -655,10 +655,11 @@ locsInTy ty =
 -- possible to strip it back down to L1.
 revertToL1 :: Prog2  -> Prog1
 revertToL1 Prog{ddefs,fundefs,mainExp} =
-  Prog ddefs' funefs' mainExp'
+  Prog ddefs' funefs'' mainExp'
   where
     ddefs'   = M.map revertDDef ddefs
     funefs'  = M.map revertFunDef fundefs
+    funefs'' = M.mapKeys unwrapLocVar funefs'
     mainExp' = case mainExp of
                 Nothing -> Nothing
                 Just (e,ty) -> Just (revertExp e, stripTyLocs ty)
@@ -672,7 +673,7 @@ revertDDef (DDef tyargs a b) =
 revertFunDef :: FunDef2 -> FunDef1
 revertFunDef FunDef{funName,funArgs,funTy,funBody,funMeta} =
   FunDef { funName = funName
-         , funArgs = (map unwrapLocVar funArgs)
+         , funArgs = (L.map unwrapLocVar funArgs)
          , funTy   = (L.map stripTyLocs (arrIns funTy), stripTyLocs (arrOut funTy))
          , funBody = revertExp funBody
          , funMeta = funMeta
