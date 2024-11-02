@@ -20,7 +20,7 @@ inferRegSize = calculateBounds
 
 calculateBounds :: Old.Prog2 -> PassM Old.Prog2
 calculateBounds Prog { ddefs, fundefs, mainExp } = do
-  let env2 = Env2 M.empty (initFunEnv fundefs)
+  let env2 = Env2 M.empty (initFunEnv' fundefs)
   fundefs' <- mapM (calculateBoundsFun ddefs env2 M.empty) fundefs
   mainExp' <- case mainExp of
     Nothing       -> return Nothing
@@ -28,7 +28,7 @@ calculateBounds Prog { ddefs, fundefs, mainExp } = do
   return $ Prog ddefs fundefs' mainExp'
 
 
-calculateBoundsFun :: DDefs Old.Ty2 -> Env2 Var Old.Ty2 -> VarSizeMapping -> Old.FunDef2 -> PassM Old.FunDef2
+calculateBoundsFun :: DDefs Old.Ty2 -> Env2 LocVar Old.Ty2 -> VarSizeMapping -> Old.FunDef2 -> PassM Old.FunDef2
 calculateBoundsFun ddefs env2 varSzEnv f@FunDef { funName, funBody, funTy, funArgs } = do
   if "_" `L.isPrefixOf` fromVar funName
     then return f
@@ -60,7 +60,7 @@ calculateBoundsFun ddefs env2 varSzEnv f@FunDef { funName, funBody, funTy, funAr
 -}
 calculateBoundsExp
   :: DDefs Old.Ty2 -- ^ Data Definitions
-  -> Env2 Var Old.Ty2 -- ^ Type Environment (Variables + Functions)
+  -> Env2 LocVar Old.Ty2 -- ^ Type Environment (Variables + Functions)
   -> VarSizeMapping -- ^ var => size
   -> VarLocMapping -- ^ var => location
   -> LocationRegionMapping -- ^ location => region
@@ -80,7 +80,7 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
     return (ex, M.insert fromReg regSz regSzEnv, M.insert fromReg regTy regTyEnv)
   VarE _ -> return (ex, regSzEnv, regTyEnv)
   _ ->
-    let ty   = gRecoverType ddefs env2 ex
+    let ty   = gRecoverTypeLocVar ddefs env2 ex
         go   = calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv regTyEnv
         err  = error "Should have been covered by sizeOfTy"
         pass = return (ex, regSzEnv, regTyEnv)
@@ -114,7 +114,7 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
               return (MkProdE ls', M.unionsWith max regSzEnvs, M.unions regTyEnvs)
             LetE (v, locs, ty0, bind) bod -> do
               (bind', regSzEnv', regTyEnv') <- go bind
-              let venv' = M.insert v ty0 (vEnv env2)
+              let venv' = M.insert (Single v) ty0 (vEnv env2)
               let vle = case ty0 of
                     PackedTy _tag loc -> M.insert v loc varLocEnv
                     _                 -> varLocEnv
@@ -144,7 +144,7 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
                           --         . zip (map snd vlocs) -- take locations
                           --         . map (maybe Undefined BoundedSize . sizeOfTy) -- map to our region size type
                           --         $ lookupDataCon ddefs dcon -- find ddef)
-                          let venv' = M.union (M.fromList $ zip (map fst vlocs) (lookupDataCon ddefs dcon)) (vEnv env2)
+                          let venv' = M.union (M.fromList $ zip (map (Single . fst) vlocs) (lookupDataCon ddefs dcon)) (vEnv env2)
                               varLocEnv' = M.fromList vlocs `M.union` varLocEnv
                               (_vars,locs) = unzip vlocs
                               locOffEnv' = (M.fromList (zip locs (repeat Undefined))) `M.union` locOffEnv

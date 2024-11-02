@@ -29,6 +29,8 @@ import Data.Graph
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+import qualified Data.List as L
+
 import Gibbon.Common
 -- import Gibbon.L3.Syntax
 import Gibbon.L2.Syntax hiding (mapMExprs)
@@ -51,7 +53,7 @@ findWitnesses :: Prog2 -> PassM Prog2
 findWitnesses p@Prog{fundefs} = mapMExprs fn p
  where
   fn Env2{vEnv,fEnv} boundlocs ex = do 
-                                    let boundlocs' = Set.fromList $ map unwrapLocVar $ Set.toList boundlocs
+                                    let boundlocs' = Set.fromList $ Set.toList boundlocs
                                     return (goFix (Map.keysSet vEnv `Set.union` Map.keysSet fEnv
                                                   `Set.union` boundlocs'
                                                   )
@@ -153,8 +155,8 @@ handle bound fundefs mp expr =
     buildLets mp vars expr
     where freeInBind v = case Map.lookup (view v) mp of
                            Nothing -> []
-                           Just (DelayVar (_v,_locs,_t,e)) -> Set.toList $ (ex_freeVars e) `Set.difference` (Map.keysSet fundefs)
-                           Just (DelayLoc (_loc, locexp)) -> Set.toList $ (gFreeVars locexp) `Set.difference` (Map.keysSet fundefs)
+                           Just (DelayVar (_v,_locs,_t,e)) -> Set.toList $ (ex_freeVars e) `Set.difference` (Set.map unwrapLocVar (Map.keysSet fundefs))
+                           Just (DelayLoc (_loc, locexp)) -> Set.toList $ (gFreeVars locexp) `Set.difference` (Set.map unwrapLocVar (Map.keysSet fundefs))
 
           (g,vf,_) = graphFromEdges $ zip3 vs vs $ map freeInBind vs
           vars = reverse $ map (\(x,_,_) -> x) $ map vf $ topSort g
@@ -198,13 +200,13 @@ closed bound mp = Set.null (allBound `Set.difference` allUsed)
                                   DelayLoc (_,locexp)  -> gFreeVars locexp)
                           (Map.elems mp)
 
-mapMExprs :: Monad m => (Env2 Var Ty2 -> Set.Set LocVar -> Exp2 -> m Exp2) -> Prog2 -> m Prog2
+mapMExprs :: Monad m => (Env2 LocVar Ty2 -> Set.Set LocVar -> Exp2 -> m Exp2) -> Prog2 -> m Prog2
 mapMExprs fn (Prog ddfs fundefs mainExp) =
   Prog ddfs <$>
     (mapM (\f@FunDef{funArgs,funTy,funBody} ->
               let env = Env2 (Map.fromList $ zip funArgs (inTys funTy)) funEnv
                   boundlocs = Set.fromList (allLocVars funTy) `Set.union`
-                              Set.fromList (map Single funArgs)
+                              Set.fromList funArgs
               in do
                 bod' <- fn env boundlocs funBody
                 return $ f { funBody =  bod' })

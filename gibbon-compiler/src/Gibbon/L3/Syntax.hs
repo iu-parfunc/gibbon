@@ -33,14 +33,14 @@ import qualified Gibbon.NewL2.Syntax as L2
 
 --------------------------------------------------------------------------------
 
-type Prog3 = Prog Exp3
+type Prog3 = Prog Var Exp3
 
 type DDef3  = DDef Ty3
 type DDefs3 = DDefs Ty3
 
-type FunDefs3 = FunDefs Exp3
+type FunDefs3 = FunDefs Var Exp3
 
-type FunDef3 = FunDef Exp3
+type FunDef3 = FunDef Var Exp3
 
 -- GHC uses the instance defined for L1.Ty1
 -- instance FunctionTy Ty3 where

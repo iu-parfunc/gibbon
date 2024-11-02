@@ -52,6 +52,7 @@ module Gibbon.L2.Syntax
   , substEff
   , substEffs
   , extendPatternMatchEnv
+  , extendPatternMatchEnvLocVar
   , locsInTy
   , dummyTyLocs
   , allFreeVars
@@ -549,6 +550,49 @@ instance Typeable (PreExp E2Ext LocVar (UrTy LocVar)) where
             (vars,locs) = unzip vlocs
             env2' = extendPatternMatchEnv c ddfs vars locs env2
         in gRecoverType ddfs env2' e
+  
+  gRecoverTypeLocVar ddfs env2 ex =
+    case ex of
+      VarE v       -> M.findWithDefault (error $ "Cannot find type of variable " ++ show v ++ " in " ++ show (vEnv env2)) (Single v) (vEnv env2)
+      LitE _       -> IntTy
+      CharE{}      -> CharTy
+      FloatE{}     -> FloatTy
+      LitSymE _    -> SymTy
+      AppE v locs _ -> let fnty  = fEnv env2 # (Single v)
+                           outty = arrOut fnty
+                           mp = M.fromList $ zip (allLocVars fnty) locs
+                       in substLoc mp outty
+
+      PrimAppE (DictInsertP ty) ((VarE v):_) -> SymDictTy (Just v) $ stripTyLocs ty
+      PrimAppE (DictEmptyP  ty) ((VarE v):_) -> SymDictTy (Just v) $ stripTyLocs ty
+      PrimAppE p _ -> primRetTy p
+
+      LetE (v,_,t,_) e -> gRecoverTypeLocVar ddfs (extendVEnvLocVar (Single v) t env2) e
+      IfE _ e _        -> gRecoverTypeLocVar ddfs env2 e
+      MkProdE es       -> ProdTy $ L.map (gRecoverTypeLocVar ddfs env2) es
+      DataConE loc c _ -> PackedTy (getTyOfDataCon ddfs c) loc
+      TimeIt e _ _     -> gRecoverTypeLocVar ddfs env2 e
+      MapE _ e         -> gRecoverTypeLocVar ddfs env2 e
+      FoldE _ _ e      -> gRecoverTypeLocVar ddfs env2 e
+      Ext ext          -> gRecoverTypeLocVar ddfs env2 ext
+      ProjE i e ->
+        case gRecoverTypeLocVar ddfs env2 e of
+          (ProdTy tys) -> tys !! i
+          oth -> error$ "typeExp: Cannot project fields from this type: "++show oth
+                        ++"\nExpression:\n  "++ sdoc ex
+                        ++"\nEnvironment:\n  "++sdoc (vEnv env2)
+      SpawnE v locs _ -> let fnty  = fEnv env2 # (Single v)
+                             outty = arrOut fnty
+                             mp = M.fromList $ zip (allLocVars fnty) locs
+                         in substLoc mp outty
+      SyncE -> voidTy
+      WithArenaE _v e -> gRecoverTypeLocVar ddfs env2 e
+      CaseE _ mp ->
+        let (c,vlocs,e) = head mp
+            (vars,locs) = unzip vlocs
+            env2' = extendPatternMatchEnvLocVar c ddfs vars locs env2
+        in gRecoverTypeLocVar ddfs env2' e
+
 
 --------------------------------------------------------------------------------
 -- Do this manually to get prettier formatting: (Issue #90)
@@ -627,6 +671,28 @@ extendPatternMatchEnv dcon ddefs vars locs env2 =
                []
                (fragileZip locs tys)
   in extendsVEnv (M.fromList $ fragileZip vars tys') env2
+
+-- | Extend an environment for a pattern match. (LocVar) E.g.
+--
+--     data Foo = MkFoo Int Foo | ...
+--
+--     case foo1 of
+--        MkFoo (i:loc1) (f:loc2) ->
+--          new_env2 = extendPatternMatchEnv [loc1,loc2] old_env2
+extendPatternMatchEnvLocVar :: HasCallStack => DataCon -> DDefs Ty2 -> [Var] -> [LocVar]
+                                -> Env2 LocVar Ty2 -> Env2 LocVar Ty2
+extendPatternMatchEnvLocVar dcon ddefs vars locs env2 =
+  let tys  = lookupDataCon ddefs dcon
+      tys' = foldr
+               (\(loc,ty) acc ->
+                  case locsInTy ty of
+                    []     -> ty:acc
+                    [loc2] -> (substLoc (M.singleton loc2 loc) ty) : acc
+                    _  -> error $ "extendPatternMatchEnvLocVar': Found more than 1 location in type: " ++ sdoc ty)
+               []
+               (fragileZip locs tys)
+      vars' = L.map Single vars
+  in extendsVEnvLocVar (M.fromList $ fragileZip vars' tys') env2
 
 -- | Apply a substitution to an effect.
 substEff :: M.Map LocVar LocVar -> Effect -> Effect

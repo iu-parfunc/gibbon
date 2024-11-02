@@ -20,7 +20,7 @@ module Gibbon.Language.Syntax
 
     -- * Function definitions
   , FunctionTy(..), FunDefs, FunDef(..), FunMeta(..), FunRec(..), FunInline(..)
-  , insertFD, fromListFD, initFunEnv
+  , insertFD, fromListFD, initFunEnv, initFunEnv'
 
     -- * Programs
   , Prog(..), progToEnv, getFunTy, progToEnv'
@@ -28,7 +28,7 @@ module Gibbon.Language.Syntax
     -- * Environments
   , TyEnv, Env2(..), emptyEnv2
   , extendVEnv, extendsVEnv, lookupVEnv, extendFEnv, lookupFEnv,
-    lookupFEnvLocVar, extendVEnvLocVar, extendsVEnvLocVar
+    lookupFEnvLocVar, extendVEnvLocVar, extendsVEnvLocVar, lookupVEnvLocVar
 
     -- * Expresssions and thier types
   , PreExp(..), Prim(..), UrTy(..)
@@ -323,6 +323,9 @@ extendsVEnvLocVar mp (Env2 ve fe) = Env2 (M.union mp ve) fe
 
 lookupVEnv :: Out a => Var -> Env2 Var a -> a
 lookupVEnv v env2 = (vEnv env2) # v
+
+lookupVEnvLocVar :: Out a => LocVar -> Env2 LocVar a -> a 
+lookupVEnvLocVar v env2 = (vEnv env2) # v
 
 mblookupVEnv :: Var -> Env2 Var a -> Maybe a
 mblookupVEnv cur env2 = M.lookup cur (vEnv env2)
@@ -657,6 +660,7 @@ type HasSimplifiableExt e l d = ( Show l, Out l, Show d, Out d
 -- bind it with a LetE.
 class Expression e => Typeable e where
   gRecoverType :: DDefs (TyOf e) -> Env2 Var (TyOf e) -> e -> TyOf e
+  gRecoverTypeLocVar :: DDefs (TyOf e) -> Env2 LocVar (TyOf e) -> e -> TyOf e
 
 -- | Generic substitution over expressions.
 class Expression e => Substitutable e where
