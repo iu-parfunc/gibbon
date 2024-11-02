@@ -54,10 +54,13 @@ findWitnesses p@Prog{fundefs} = mapMExprs fn p
  where
   fn Env2{vEnv,fEnv} boundlocs ex = do 
                                     let boundlocs' = Set.fromList $ Set.toList boundlocs
-                                    return (goFix (Map.keysSet vEnv `Set.union` Map.keysSet fEnv
-                                                  `Set.union` boundlocs'
-                                                  )
-                                            ex bigNumber)
+                                    -- for now change LocVar to Var
+                                    -- In the future we may need richer map with LocVar as key 
+                                    -- Map LocVar Ty2 --> Map Var Ty2 
+                                    -- S.Set LocVar --> S.Set Var
+                                        keysSet = (Map.keysSet vEnv `Set.union` Map.keysSet fEnv `Set.union` boundlocs')
+                                        keysSet' = Set.map unwrapLocVar keysSet
+                                    return (goFix keysSet' ex bigNumber)
   goFix _    ex 0 = error $ "timeout in findWitness on " ++ (show ex)
   goFix bound0 ex0 n = let ex1 = goE bound0 Map.empty ex0
                            ex2 = goE bound0 Map.empty ex1
