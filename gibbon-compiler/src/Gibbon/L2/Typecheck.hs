@@ -148,7 +148,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
           --  (3) We need to make sure that if we pass a packed structure as an argument, its
           --      location is among the passed-in locations.
           do let (ArrowTy2 locVars arrIns _arrEffs arrOut _locRets _isPar) =
-                     case M.lookup (Single v) funs of
+                     case M.lookup v funs of
                        Just f -> funTy f
                        Nothing -> error $ "tcExp: Unbound function: " ++ sdoc v
 
@@ -959,7 +959,7 @@ tcProg prg0@Prog{ddefs,fundefs,mainExp} = do
     fd :: FunDef2 -> PassM ()
     fd func@FunDef{funTy,funArgs,funBody} = do
         let init_env = progToEnv' prg0
-            env = extendsVEnvLocVar (M.fromList $ zip funArgs (arrIns funTy)) init_env
+            env = extendsVEnvLocVar (M.fromList $ zip (L.map Single funArgs) (arrIns funTy)) init_env
             constrs = funConstrs (locVars funTy)
             regs = funRegs (locVars funTy)
             tstate = funTState (locVars funTy)

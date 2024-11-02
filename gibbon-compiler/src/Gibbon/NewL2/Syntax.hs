@@ -49,11 +49,11 @@ import qualified Gibbon.L2.Syntax as Old
 
 --------------------------------------------------------------------------------
 
-type Prog2    = Prog LocVar Exp2
+type Prog2    = Prog Var Exp2
 type DDef2    = DDef Ty2
 type DDefs2   = DDefs Ty2
-type FunDef2  = FunDef LocVar Exp2
-type FunDefs2 = FunDefs LocVar Exp2
+type FunDef2  = FunDef Var Exp2
+type FunDefs2 = FunDefs Var Exp2
 
 -- | Function types know about locations and traversal effects.
 instance FunctionTy Ty2 where
@@ -162,27 +162,6 @@ instance Typeable (Old.E2Ext LocArg Ty2) where
       Old.SSPush{}              -> MkTy2 $ ProdTy []
       Old.SSPop{}               -> MkTy2 $ ProdTy []
 
-  gRecoverTypeLocVar ddfs env2 ex =
-    case ex of
-      Old.LetRegionE _r _ _ bod    -> gRecoverTypeLocVar ddfs env2 bod
-      Old.LetParRegionE _r _ _ bod -> gRecoverTypeLocVar ddfs env2 bod
-      Old.StartOfPkdCursor{}       -> MkTy2 $ CursorTy
-      Old.TagCursor{}      -> MkTy2 $ CursorTy
-      Old.LetLocE _l _rhs bod -> gRecoverTypeLocVar ddfs env2 bod
-      Old.RetE _loc var       -> case M.lookup (Single var) (vEnv env2) of
-                                   Just ty -> ty
-                                   Nothing -> error $ "gRecoverTypeLocVar: unbound variable " ++ sdoc var
-      Old.FromEndE _loc       -> error "Shouldn't enconter FromEndE in tail position"
-      Old.BoundsCheck{}       -> error "Shouldn't enconter BoundsCheck in tail position"
-      Old.IndirectionE tycon _ _ (to,_) _ -> MkTy2 $ PackedTy tycon (toLocVar to)
-      Old.AddFixed{}          -> error "Shouldn't enconter AddFixed in tail position"
-      Old.GetCilkWorkerNum    -> MkTy2 $ IntTy
-      Old.LetAvail _ bod      -> gRecoverTypeLocVar ddfs env2 bod
-      Old.AllocateTagHere{}   -> MkTy2 $ ProdTy []
-      Old.AllocateScalarsHere{} -> MkTy2 $ ProdTy []
-      Old.SSPush{}              -> MkTy2 $ ProdTy []
-      Old.SSPop{}               -> MkTy2 $ ProdTy []
-
 
 -- | The 'gRecoverType' instance defined in Language.Syntax is incorrect for L2.
 -- For the AppE case, it'll just return the type with with the function was
@@ -243,52 +222,6 @@ instance Out (Old.E2Ext LocArg Ty2) => Typeable (PreExp Old.E2Ext LocArg Ty2) wh
 
             env2' = extendPatternMatchEnv c ddfs vars locs env2
         in gRecoverType ddfs env2' e
-
-  gRecoverTypeLocVar ddfs env2 ex =
-    case ex of
-      VarE v       -> M.findWithDefault (error $ "Cannot find type of variable " ++ show v ++ " in " ++ show (vEnv env2)) (Single v) (vEnv env2)
-      LitE _       -> MkTy2 $ IntTy
-      CharE _      -> MkTy2 $ CharTy
-      FloatE{}     -> MkTy2 $ FloatTy
-      LitSymE _    -> MkTy2 $ SymTy
-      AppE v locargs _ ->
-                       let fnty  = fEnv env2 # (Single v)
-                           outty = Old.arrOut fnty
-                           mp = M.fromList $ zip (Old.allLocVars fnty) (map toLocVar locargs)
-                       in substLoc mp outty
-
-      PrimAppE (DictInsertP ty) ((VarE v):_) -> MkTy2 $ SymDictTy (Just v) $ stripTyLocs (unTy2 ty)
-      PrimAppE (DictEmptyP  ty) ((VarE v):_) -> MkTy2 $ SymDictTy (Just v) $ stripTyLocs (unTy2 ty)
-      PrimAppE p _ -> MkTy2 $ primRetTy (fmap unTy2 p)
-
-      LetE (v,_,t,_) e -> gRecoverTypeLocVar ddfs (extendVEnvLocVar (Single v) t env2) e
-      IfE _ e _        -> gRecoverTypeLocVar ddfs env2 e
-      MkProdE es       -> MkTy2 $ ProdTy $ L.map (unTy2 . gRecoverTypeLocVar ddfs env2) es
-      DataConE loc c _ -> MkTy2 $ PackedTy (getTyOfDataCon ddfs c) (toLocVar loc)
-      TimeIt e _ _     -> gRecoverTypeLocVar ddfs env2 e
-      MapE _ e         -> gRecoverTypeLocVar ddfs env2 e
-      FoldE _ _ e      -> gRecoverTypeLocVar ddfs env2 e
-      Ext ext          -> gRecoverTypeLocVar ddfs env2 ext
-      ProjE i e ->
-        case unTy2 $ gRecoverTypeLocVar ddfs env2 e of
-          (ProdTy tys) -> MkTy2 $ (tys !! i)
-          oth -> error$ "typeExp: Cannot project fields from this type: "++show oth
-                        ++"\nExpression:\n  "++ sdoc ex
-                        ++"\nEnvironment:\n  "++sdoc (vEnv env2)
-      SpawnE v locargs _ ->
-                         let fnty  = fEnv env2 # (Single v)
-                             outty = Old.arrOut fnty
-                             mp = M.fromList $ zip (Old.allLocVars fnty) (map toLocVar locargs)
-                         in substLoc mp outty
-      SyncE -> MkTy2 $ voidTy
-      WithArenaE _v e -> gRecoverTypeLocVar ddfs env2 e
-      CaseE _ mp ->
-        let (c,vlocargs,e) = head mp
-            (vars,locargs) = unzip vlocargs
-            locs = map toLocVar locargs
-
-            env2' = extendPatternMatchEnvLocVar c ddfs vars locs env2
-        in gRecoverTypeLocVar ddfs env2' e
 
 -------------------------------------------------------------------------------
 -- Need to redefine the following because of the Ty2 newtype:
@@ -358,11 +291,10 @@ locsInTy ty =
 -- possible to strip it back down to L1.
 revertToL1 :: Prog2 -> Prog1
 revertToL1 Prog{ddefs,fundefs,mainExp} =
-  Prog ddefs' funefs'' mainExp'
+  Prog ddefs' funefs' mainExp'
   where
     ddefs'   = M.map revertDDef ddefs
     funefs'  = M.map revertFunDef fundefs
-    funefs'' = M.mapKeys unwrapLocVar funefs'
     mainExp' = case mainExp of
                 Nothing -> Nothing
                 Just (e,ty) -> Just (revertExp e, stripTyLocs (unTy2 ty))
@@ -376,7 +308,7 @@ revertDDef (DDef tyargs a b) =
 revertFunDef :: FunDef2 -> FunDef1
 revertFunDef FunDef{funName,funArgs,funTy,funBody,funMeta} =
   FunDef { funName = funName
-         , funArgs = L.map unwrapLocVar funArgs
+         , funArgs = funArgs
          , funTy   = (L.map (stripTyLocs . unTy2) (Old.arrIns funTy), stripTyLocs (unTy2 (Old.arrOut funTy)))
          , funBody = revertExp funBody
          , funMeta = funMeta

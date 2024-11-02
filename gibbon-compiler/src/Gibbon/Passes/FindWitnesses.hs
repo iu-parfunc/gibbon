@@ -53,14 +53,9 @@ findWitnesses :: Prog2 -> PassM Prog2
 findWitnesses p@Prog{fundefs} = mapMExprs fn p
  where
   fn Env2{vEnv,fEnv} boundlocs ex = do 
-                                    let boundlocs' = Set.fromList $ Set.toList boundlocs
-                                    -- for now change LocVar to Var
-                                    -- In the future we may need richer map with LocVar as key 
-                                    -- Map LocVar Ty2 --> Map Var Ty2 
-                                    -- S.Set LocVar --> S.Set Var
+                                    let boundlocs' = Set.fromList $ L.map unwrapLocVar $ Set.toList boundlocs
                                         keysSet = (Map.keysSet vEnv `Set.union` Map.keysSet fEnv `Set.union` boundlocs')
-                                        keysSet' = Set.map unwrapLocVar keysSet
-                                    return (goFix keysSet' ex bigNumber)
+                                    return (goFix keysSet ex bigNumber)
   goFix _    ex 0 = error $ "timeout in findWitness on " ++ (show ex)
   goFix bound0 ex0 n = let ex1 = goE bound0 Map.empty ex0
                            ex2 = goE bound0 Map.empty ex1
@@ -158,8 +153,8 @@ handle bound fundefs mp expr =
     buildLets mp vars expr
     where freeInBind v = case Map.lookup (view v) mp of
                            Nothing -> []
-                           Just (DelayVar (_v,_locs,_t,e)) -> Set.toList $ (ex_freeVars e) `Set.difference` (Set.map unwrapLocVar (Map.keysSet fundefs))
-                           Just (DelayLoc (_loc, locexp)) -> Set.toList $ (gFreeVars locexp) `Set.difference` (Set.map unwrapLocVar (Map.keysSet fundefs))
+                           Just (DelayVar (_v,_locs,_t,e)) -> Set.toList $ (ex_freeVars e) `Set.difference` (Map.keysSet fundefs)
+                           Just (DelayLoc (_loc, locexp)) -> Set.toList $ (gFreeVars locexp) `Set.difference` (Map.keysSet fundefs)
 
           (g,vf,_) = graphFromEdges $ zip3 vs vs $ map freeInBind vs
           vars = reverse $ map (\(x,_,_) -> x) $ map vf $ topSort g
@@ -203,20 +198,20 @@ closed bound mp = Set.null (allBound `Set.difference` allUsed)
                                   DelayLoc (_,locexp)  -> gFreeVars locexp)
                           (Map.elems mp)
 
-mapMExprs :: Monad m => (Env2 LocVar Ty2 -> Set.Set LocVar -> Exp2 -> m Exp2) -> Prog2 -> m Prog2
+mapMExprs :: Monad m => (Env2 Var Ty2 -> Set.Set LocVar -> Exp2 -> m Exp2) -> Prog2 -> m Prog2
 mapMExprs fn (Prog ddfs fundefs mainExp) =
   Prog ddfs <$>
     (mapM (\f@FunDef{funArgs,funTy,funBody} ->
               let env = Env2 (Map.fromList $ zip funArgs (inTys funTy)) funEnv
                   boundlocs = Set.fromList (allLocVars funTy) `Set.union`
-                              Set.fromList funArgs
+                              Set.fromList (L.map Single funArgs)
               in do
                 bod' <- fn env boundlocs funBody
                 return $ f { funBody =  bod' })
      fundefs)
     <*>
     (mapM (\ (e,t) -> (,t) <$> fn (Env2 Map.empty funEnv) Set.empty e) mainExp)
-  where funEnv = Map.map funTy fundefs
+  where funEnv = initFunEnv fundefs
 
 ex_freeVars :: Exp2 -> Set.Set Var
 ex_freeVars = allFreeVars

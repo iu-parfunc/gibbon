@@ -84,11 +84,11 @@ import qualified Gibbon.L1.Syntax as L1
 
 --------------------------------------------------------------------------------
 
-type Prog2    = Prog LocVar Exp2
+type Prog2    = Prog Var Exp2
 type DDef2    = DDef Ty2
 type DDefs2   = DDefs Ty2
-type FunDef2  = FunDef LocVar Exp2
-type FunDefs2 = FunDefs LocVar Exp2
+type FunDef2  = FunDef Var Exp2
+type FunDefs2 = FunDefs Var Exp2
 
 -- | Function types know about locations and traversal effects.
 instance FunctionTy Ty2 where
@@ -312,6 +312,7 @@ instance (Typeable (E2Ext l d),
 
   gFlattenExp ddfs env ex = do (_b,e') <- gFlattenGatherBinds ddfs env ex
                                return e'
+  
 
 instance HasSimplifiableExt E2Ext l d => SimplifiableExt (PreExp E2Ext l d) (E2Ext l d) where
   gInlineTrivExt env ext =
@@ -550,48 +551,6 @@ instance Typeable (PreExp E2Ext LocVar (UrTy LocVar)) where
             (vars,locs) = unzip vlocs
             env2' = extendPatternMatchEnv c ddfs vars locs env2
         in gRecoverType ddfs env2' e
-  
-  gRecoverTypeLocVar ddfs env2 ex =
-    case ex of
-      VarE v       -> M.findWithDefault (error $ "Cannot find type of variable " ++ show v ++ " in " ++ show (vEnv env2)) (Single v) (vEnv env2)
-      LitE _       -> IntTy
-      CharE{}      -> CharTy
-      FloatE{}     -> FloatTy
-      LitSymE _    -> SymTy
-      AppE v locs _ -> let fnty  = fEnv env2 # (Single v)
-                           outty = arrOut fnty
-                           mp = M.fromList $ zip (allLocVars fnty) locs
-                       in substLoc mp outty
-
-      PrimAppE (DictInsertP ty) ((VarE v):_) -> SymDictTy (Just v) $ stripTyLocs ty
-      PrimAppE (DictEmptyP  ty) ((VarE v):_) -> SymDictTy (Just v) $ stripTyLocs ty
-      PrimAppE p _ -> primRetTy p
-
-      LetE (v,_,t,_) e -> gRecoverTypeLocVar ddfs (extendVEnvLocVar (Single v) t env2) e
-      IfE _ e _        -> gRecoverTypeLocVar ddfs env2 e
-      MkProdE es       -> ProdTy $ L.map (gRecoverTypeLocVar ddfs env2) es
-      DataConE loc c _ -> PackedTy (getTyOfDataCon ddfs c) loc
-      TimeIt e _ _     -> gRecoverTypeLocVar ddfs env2 e
-      MapE _ e         -> gRecoverTypeLocVar ddfs env2 e
-      FoldE _ _ e      -> gRecoverTypeLocVar ddfs env2 e
-      Ext ext          -> gRecoverTypeLocVar ddfs env2 ext
-      ProjE i e ->
-        case gRecoverTypeLocVar ddfs env2 e of
-          (ProdTy tys) -> tys !! i
-          oth -> error$ "typeExp: Cannot project fields from this type: "++show oth
-                        ++"\nExpression:\n  "++ sdoc ex
-                        ++"\nEnvironment:\n  "++sdoc (vEnv env2)
-      SpawnE v locs _ -> let fnty  = fEnv env2 # (Single v)
-                             outty = arrOut fnty
-                             mp = M.fromList $ zip (allLocVars fnty) locs
-                         in substLoc mp outty
-      SyncE -> voidTy
-      WithArenaE _v e -> gRecoverTypeLocVar ddfs env2 e
-      CaseE _ mp ->
-        let (c,vlocs,e) = head mp
-            (vars,locs) = unzip vlocs
-            env2' = extendPatternMatchEnvLocVar c ddfs vars locs env2
-        in gRecoverTypeLocVar ddfs env2' e
 
 
 --------------------------------------------------------------------------------
@@ -721,11 +680,10 @@ locsInTy ty =
 -- possible to strip it back down to L1.
 revertToL1 :: Prog2  -> Prog1
 revertToL1 Prog{ddefs,fundefs,mainExp} =
-  Prog ddefs' funefs'' mainExp'
+  Prog ddefs' funefs' mainExp'
   where
     ddefs'   = M.map revertDDef ddefs
     funefs'  = M.map revertFunDef fundefs
-    funefs'' = M.mapKeys unwrapLocVar funefs'
     mainExp' = case mainExp of
                 Nothing -> Nothing
                 Just (e,ty) -> Just (revertExp e, stripTyLocs ty)
@@ -739,7 +697,7 @@ revertDDef (DDef tyargs a b) =
 revertFunDef :: FunDef2 -> FunDef1
 revertFunDef FunDef{funName,funArgs,funTy,funBody,funMeta} =
   FunDef { funName = funName
-         , funArgs = (L.map unwrapLocVar funArgs)
+         , funArgs = funArgs --(L.map unwrapLocVar funArgs)
          , funTy   = (L.map stripTyLocs (arrIns funTy), stripTyLocs (arrOut funTy))
          , funBody = revertExp funBody
          , funMeta = funMeta

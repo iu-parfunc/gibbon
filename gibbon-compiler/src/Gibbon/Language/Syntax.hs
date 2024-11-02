@@ -181,7 +181,7 @@ class (Out (ArrowTy ty), Show (ArrowTy ty)) => FunctionTy ty where
   outTy :: ArrowTy ty -> ty
 
 -- | A set of top-level recursive function definitions.
-type FunDefs loc ex = M.Map loc (FunDef loc ex)
+type FunDefs var ex = M.Map var (FunDef var ex)
 
 data FunRec = Rec | NotRec | TailRec
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
@@ -198,20 +198,20 @@ data FunMeta = FunMeta
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
 -- | A function definiton indexed by a type and expression.
-data FunDef loc ex = FunDef {   funName   :: Var
-                              , funArgs   :: [loc]
+data FunDef var ex = FunDef {   funName   :: Var
+                              , funArgs   :: [var]
                               , funTy     :: ArrowTy (TyOf ex)
                               , funBody   :: ex
                               , funMeta   :: FunMeta
                             }
 
-deriving instance (Read ex, Read (ArrowTy (TyOf ex)), Read loc) => Read (FunDef loc ex)
-deriving instance (Show ex, Show (ArrowTy (TyOf ex)), Show loc) => Show (FunDef loc ex)
-deriving instance (Eq ex, Eq (ArrowTy (TyOf ex)), Eq loc) => Eq (FunDef loc ex)
-deriving instance (Ord ex, Ord (ArrowTy (TyOf ex)), Ord loc) => Ord (FunDef loc ex)
-deriving instance Generic (FunDef loc ex)
-deriving instance (Generic (ArrowTy (TyOf ex)), NFData ex, NFData (ArrowTy (TyOf ex)), NFData loc) => NFData (FunDef loc ex)
-deriving instance (Generic (ArrowTy (TyOf ex)), Out ex, Out (ArrowTy (TyOf ex)), Out loc) =>  Out (FunDef loc ex)
+deriving instance (Read ex, Read (ArrowTy (TyOf ex)), Read var) => Read (FunDef var ex)
+deriving instance (Show ex, Show (ArrowTy (TyOf ex)), Show var) => Show (FunDef var ex)
+deriving instance (Eq ex, Eq (ArrowTy (TyOf ex)), Eq var) => Eq (FunDef var ex)
+deriving instance (Ord ex, Ord (ArrowTy (TyOf ex)), Ord var) => Ord (FunDef var ex)
+deriving instance Generic (FunDef var ex)
+deriving instance (Generic (ArrowTy (TyOf ex)), NFData ex, NFData (ArrowTy (TyOf ex)), NFData var) => NFData (FunDef var ex)
+deriving instance (Generic (ArrowTy (TyOf ex)), Out ex, Out (ArrowTy (TyOf ex)), Out var) =>  Out (FunDef var ex)
 
 -- | Insert a 'FunDef' into 'FunDefs'.
 -- Raise an error if a function with the same name already exists.
@@ -233,8 +233,10 @@ fromListFD = L.foldr insertFD M.empty
 initFunEnv :: FunDefs Var a -> TyEnv Var (ArrowTy (TyOf a))
 initFunEnv fds = M.map funTy fds
 
-initFunEnv' :: FunDefs LocVar a -> TyEnv LocVar (ArrowTy (TyOf a))
-initFunEnv' fds = M.map funTy fds
+initFunEnv' :: FunDefs Var a -> TyEnv LocVar (ArrowTy (TyOf a))
+initFunEnv' fds = let m = M.map funTy fds
+                      m' = M.mapKeys Single m 
+                    in m'
 
 --------------------------------------------------------------------------------
 -- Programs
@@ -246,8 +248,8 @@ initFunEnv' fds = M.map funTy fds
 -- datatype.  For running a pass benchmark, main will be Nothing and
 -- we will expect a "benchmark" function definition which consumes an
 -- appropriate packed AST datatype.
-data Prog loc ex = Prog { ddefs   :: DDefs (TyOf ex)
-                    , fundefs :: FunDefs loc ex
+data Prog var ex = Prog { ddefs   :: DDefs (TyOf ex)
+                    , fundefs :: FunDefs var ex
                     , mainExp :: Maybe (ex, (TyOf ex))
                     }
 
@@ -255,12 +257,12 @@ data Prog loc ex = Prog { ddefs   :: DDefs (TyOf ex)
 -- Ryan Scott recommended using singletons-like alternative outlined here:
 -- https://lpaste.net/365181
 --
-deriving instance (Read (TyOf ex), Read ex, Read (ArrowTy (TyOf ex)), Read loc, Ord loc) => Read (Prog loc ex)
-deriving instance (Show (TyOf ex), Show ex, Show (ArrowTy (TyOf ex)), Show loc) => Show (Prog loc ex)
-deriving instance (Eq (TyOf ex), Eq ex, Eq (ArrowTy (TyOf ex)), Eq loc) => Eq (Prog loc ex)
-deriving instance (Ord (TyOf ex), Ord ex, Ord (ArrowTy (TyOf ex)), Ord loc) => Ord (Prog loc ex)
-deriving instance Generic (Prog loc ex)
-deriving instance (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex, Generic (ArrowTy (TyOf ex)), NFData loc) => NFData (Prog loc ex)
+deriving instance (Read (TyOf ex), Read ex, Read (ArrowTy (TyOf ex)), Read var, Ord var) => Read (Prog var ex)
+deriving instance (Show (TyOf ex), Show ex, Show (ArrowTy (TyOf ex)), Show var) => Show (Prog var ex)
+deriving instance (Eq (TyOf ex), Eq ex, Eq (ArrowTy (TyOf ex)), Eq var) => Eq (Prog var ex)
+deriving instance (Ord (TyOf ex), Ord ex, Ord (ArrowTy (TyOf ex)), Ord var) => Ord (Prog var ex)
+deriving instance Generic (Prog var ex)
+deriving instance (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex, Generic (ArrowTy (TyOf ex)), NFData var) => NFData (Prog var ex)
 
 -- | Abstract some of the differences of top level program types, by
 --   having a common way to extract an initial environment.  The
@@ -268,7 +270,7 @@ deriving instance (NFData (TyOf ex), NFData (ArrowTy (TyOf ex)), NFData ex, Gene
 progToEnv :: Prog Var a -> Env2 Var (TyOf a)
 progToEnv Prog{fundefs} = Env2 M.empty (initFunEnv fundefs)
 
-progToEnv' :: Prog LocVar a -> Env2 LocVar (TyOf a)
+progToEnv' :: Prog Var a -> Env2 LocVar (TyOf a)
 progToEnv' Prog{fundefs} = Env2 M.empty (initFunEnv' fundefs)
 
 -- | Look up the input/output type of a top-level function binding.
@@ -279,7 +281,7 @@ getFunTy fn Prog{fundefs} =
       Nothing -> error $ "getFunTy: L1 program does not contain binding for function: "++show fn
 
 instance (Generic (ArrowTy (TyOf ex)), Out (ArrowTy (TyOf ex)),
-          Out (TyOf ex), Out ex, Out loc) => Out (Prog loc ex)
+          Out (TyOf ex), Out ex, Out var) => Out (Prog var ex)
 
 --------------------------------------------------------------------------------
 -- Environments
@@ -660,7 +662,6 @@ type HasSimplifiableExt e l d = ( Show l, Out l, Show d, Out d
 -- bind it with a LetE.
 class Expression e => Typeable e where
   gRecoverType :: DDefs (TyOf e) -> Env2 Var (TyOf e) -> e -> TyOf e
-  gRecoverTypeLocVar :: DDefs (TyOf e) -> Env2 LocVar (TyOf e) -> e -> TyOf e
 
 -- | Generic substitution over expressions.
 class Expression e => Substitutable e where
@@ -713,24 +714,24 @@ runInterpM m s = do
 
 -- | Pure Gibbon programs, at any stage of compilation, should always
 -- be evaluatable to a unique value.  The only side effects are timing.
-class Expression e => Interp s e loc where
-  gInterpExp :: RunConfig -> ValEnv e -> DDefs (TyOf e) -> FunDefs loc e -> e -> InterpM s e (Value e)
+class Expression e => Interp s e var where
+  gInterpExp :: RunConfig -> ValEnv e -> DDefs (TyOf e) -> FunDefs var e -> e -> InterpM s e (Value e)
 
-class (Expression e, Expression ext) => InterpExt s e ext loc where
-  gInterpExt :: RunConfig -> ValEnv e -> DDefs (TyOf e) -> FunDefs loc e -> ext -> InterpM s e (Value e)
+class (Expression e, Expression ext) => InterpExt s e ext var where
+  gInterpExt :: RunConfig -> ValEnv e -> DDefs (TyOf e) -> FunDefs var e -> ext -> InterpM s e (Value e)
 
-class Interp s e loc => InterpProg s e loc where
+class Interp s e var => InterpProg s e var where
   {-# MINIMAL gInterpProg #-}
-  gInterpProg :: s -> RunConfig -> Prog loc e -> IO (s, Value e, B.ByteString)
+  gInterpProg :: s -> RunConfig -> Prog var e -> IO (s, Value e, B.ByteString)
 
   -- | Interpret while ignoring timing constructs, and dropping the
   -- corresponding output to stdout.
-  gInterpNoLogs :: s -> RunConfig -> Prog loc e -> String
+  gInterpNoLogs :: s -> RunConfig -> Prog var e -> String
   gInterpNoLogs s rc p = unsafePerformIO $ show . snd3 <$> gInterpProg s rc p
 
   -- | Interpret and produce a "log" of output lines, as well as a
   -- final, printed result.  The output lines include timing information.
-  gInterpWithStdout :: s -> RunConfig -> Prog loc e -> IO (String,[String])
+  gInterpWithStdout :: s -> RunConfig -> Prog var e -> IO (String,[String])
   gInterpWithStdout s rc p = do
     (_s1,res,logs) <- gInterpProg s rc p
     return (show res, lines (B.unpack logs))
@@ -783,7 +784,7 @@ instance Show e => Show (Value e) where
    VLam args bod env -> "(Clos (lambda (" ++ concat (map ((++" ") . show) args) ++ ") " ++ show bod ++ ") #{" ++ show env ++ "})"
    VWrapId vid val -> "(id: " ++ show vid ++ " " ++ show val ++ ")"
 
-execAndPrint :: (InterpProg s ex loc) => s -> RunConfig -> Prog loc ex -> IO ()
+execAndPrint :: (InterpProg s ex var) => s -> RunConfig -> Prog var ex -> IO ()
 execAndPrint s rc prg = do
   (_s1,val,logs) <- gInterpProg s rc prg
   B.putStr logs

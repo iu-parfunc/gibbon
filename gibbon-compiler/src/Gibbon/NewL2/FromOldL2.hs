@@ -2,6 +2,7 @@ module Gibbon.NewL2.FromOldL2 ( fromOldL2, toOldL2, toOldL2Exp ) where
 
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Data.List as L
 
 import           Gibbon.L2.Syntax
 import qualified Gibbon.NewL2.Syntax as New
@@ -16,8 +17,8 @@ fromOldL2 :: Prog2 -> PassM New.Prog2
 fromOldL2 Prog{ddefs,fundefs,mainExp} = do
   let ddefs' = M.map (fmap New.MkTy2) ddefs
   fds' <- mapM (fromOldL2Fn ddefs fundefs) $ M.elems fundefs
-  let fundefs' = M.fromList $ map (\f -> ((Single $ funName f),f)) fds'
-      env2 = Env2 M.empty (initFunEnv' fundefs)
+  let fundefs' = M.fromList $ map (\f -> ((funName f),f)) fds'
+      env2 = Env2 M.empty (initFunEnv fundefs)
   mainExp' <- case mainExp of
                 Nothing -> return Nothing
                 Just (mn, ty) -> do
@@ -30,13 +31,13 @@ fromOldL2 Prog{ddefs,fundefs,mainExp} = do
 fromOldL2Fn :: DDefs Ty2 -> FunDefs2 -> FunDef2 -> PassM New.FunDef2
 fromOldL2Fn ddefs fundefs f@FunDef{funArgs,funTy,funBody} = do
   let initTyEnv  = M.fromList $ zip funArgs (arrIns funTy)
-      env2 = Env2 initTyEnv (initFunEnv' fundefs)
+      env2 = Env2 initTyEnv (initFunEnv fundefs)
       initLocEnv = M.fromList $ map (\lrm -> (lrmLoc lrm, New.Loc (New.fromLRM lrm))) (locVars funTy)
   bod' <- fromOldL2Exp ddefs fundefs initLocEnv env2 funBody
   return $ f { funBody = bod', funTy = fmap New.MkTy2 funTy }
 
 
-fromOldL2Exp :: DDefs Ty2 -> FunDefs2 -> LocEnv -> Env2 LocVar Ty2 -> Exp2 -> PassM New.Exp2
+fromOldL2Exp :: DDefs Ty2 -> FunDefs2 -> LocEnv -> Env2 Var Ty2 -> Exp2 -> PassM New.Exp2
 fromOldL2Exp ddefs fundefs locenv env2 ex =
   case ex of
     AppE f locs args -> do
@@ -65,7 +66,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
 
       | AppE f _applocs args <- rhs
       , not (null ewitnesses) ->
-          do let fty = lookupFEnvLocVar (Single f) env2
+          do let fty = lookupFEnv f env2
                  effs = arrEffs fty
                  intys = arrIns fty
                  traversed_arg_pos =
@@ -81,7 +82,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
                                       (\arg acc ->
                                          case arg of
                                            VarE w ->
-                                             case lookupVEnvLocVar (Single w) env2 of
+                                             case lookupVEnv w env2 of
                                                PackedTy _ loc -> (loc:acc)
                                                -- For indirection/redirection pointers.
                                                CursorTy -> ((Single w):acc)
@@ -100,7 +101,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
                           ([], locenv')
                           (zip ewitnesses traversed_locs)
              rhs' <- go locenv env2 rhs
-             bod' <- go locenv'' (extendVEnvLocVar (Single v) ty env2) bod
+             bod' <- go locenv'' (extendVEnv v ty env2) bod
              let ty' = New.MkTy2 ty
              (pure $ LetE (v, ewitnesses', ty', rhs') bod')
 
@@ -112,7 +113,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
           do let ty' = New.MkTy2 ty
              rhs' <- go locenv env2 rhs
              let locenv' = updModality ty locenv
-             bod' <- go locenv' (extendVEnvLocVar (Single v) ty env2) bod
+             bod' <- go locenv' (extendVEnv v ty env2) bod
              pure $ LetE (v, [], ty', rhs') bod'
 
       | otherwise -> error $ "fromOldL2Exp: got" ++ sdoc ex
@@ -120,7 +121,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
 
     CaseE scrt brs
       | VarE v <- scrt ->
-          do let (PackedTy _ scrt_loc) = lookupVEnvLocVar (Single v) env2
+          do let (PackedTy _ scrt_loc) = lookupVEnv v env2
                  (New.Loc lrem) = locenv # scrt_loc
 
                  docase (dcon, vlocs, rhs) = do
@@ -132,7 +133,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
                        locenv' = foldr
                                    (\(New.Loc lrem') acc -> M.insert (New.lremLoc lrem') (New.Loc lrem') acc)
                                    locenv locargs
-                       env2' = extendPatternMatchEnvLocVar dcon ddefs vars locs env2
+                       env2' = extendPatternMatchEnv dcon ddefs vars locs env2
                        locenv'' = if isRedirectionTag dcon || isIndirectionTag dcon
                                   then let ptr = Single $ head vars
                                        in M.insert ptr (mkLocArg ptr) locenv'
@@ -270,7 +271,7 @@ toOldL2 :: New.Prog2 -> PassM Prog2
 toOldL2 Prog{ddefs,fundefs,mainExp} = do
   let ddefs' = M.map (fmap New.unTy2) ddefs
   fds' <- mapM toOldL2Fn $ M.elems fundefs
-  let fundefs' = M.fromList $ map (\f -> (Single $ funName f,f)) fds'
+  let fundefs' = M.fromList $ map (\f -> (funName f,f)) fds'
   mainExp' <- case mainExp of
                 Nothing -> return Nothing
                 Just (mn, ty) -> do
