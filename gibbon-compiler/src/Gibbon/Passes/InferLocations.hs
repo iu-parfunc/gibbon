@@ -110,14 +110,14 @@ import Gibbon.Passes.Flatten (flattenL1)
 -- | Combine the different kinds of contextual information in-scope.
 data FullEnv = FullEnv
     { dataDefs :: DDefs Ty2 -- ^ Data type definitions
-    , valEnv :: TyEnv Ty2   -- ^ Type env for local bindings
-    , funEnv :: TyEnv (ArrowTy Ty2)  -- ^ Top level fundef types
+    , valEnv :: TyEnv Var Ty2   -- ^ Type env for local bindings
+    , funEnv :: TyEnv Var (ArrowTy Ty2)  -- ^ Top level fundef types
     } deriving Show
 
 extendVEnv :: Var -> Ty2 -> FullEnv -> FullEnv
 extendVEnv v ty fe@FullEnv{valEnv} = fe { valEnv = M.insert v ty valEnv }
 
-extendsVEnv :: TyEnv Ty2 -> FullEnv -> FullEnv
+extendsVEnv :: TyEnv Var Ty2 -> FullEnv -> FullEnv
 extendsVEnv env fe@FullEnv{valEnv} = fe { valEnv = valEnv <> env }
 
 lookupVEnv :: Var -> FullEnv -> Ty2
@@ -149,7 +149,7 @@ convertFunTy (from,to,isPar) = do
  where
    toLRM md ls =
        mapM (\v -> do r <- freshLocVar "r"
-                      return $ LRM v (VarR r) md)
+                      return $ LRM v (VarR (unwrapLocVar r)) md)
             (F.toList ls)
 
 convertTy :: Ty1 -> PassM Ty2
@@ -182,8 +182,8 @@ type TiM a = ExceptT Failure (St.StateT InferState PassM) a
 type InferState = M.Map LocVar UnifyLoc
 
 -- | A location is either fixed or fresh. Two fixed locations cannot unify.
-data UnifyLoc = FixedLoc Var
-              | FreshLoc Var
+data UnifyLoc = FixedLoc LocVar
+              | FreshLoc LocVar
                 deriving (Show, Eq)
 
 data Failure = FailUnify Ty2 Ty2
@@ -693,7 +693,7 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
                              (PrimAppE MkTrue []) -> return $ ArgFixed (fromJust $ sizeOfTy BoolTy)
                              (PrimAppE MkFalse []) -> return $ ArgFixed (fromJust $ sizeOfTy BoolTy)
                              (AppE f lvs [(VarE v)]) -> do v' <- lift $ lift $ freshLocVar "cpy"
-                                                           return $ ArgCopy v v' f lvs
+                                                           return $ ArgCopy v (unwrapLocVar v') f lvs
                              _ -> err $ "Expected argument to be trivial, got " ++ (show arg)
                   newLocs <- mapM finalLocVar locs
                   let afterVar :: (DCArg, Maybe LocVar, Maybe LocVar) -> Maybe Constraint
@@ -1293,10 +1293,10 @@ cleanExp e =
       LetE (v,ls,t,e1@(Ext (L2.StartOfPkdCursor _cur))) e2 ->
                         let (e1', s1') = cleanExp e1
                             (e2', s2') = cleanExp e2
-                        in (LetE (v,ls,t,e1') e2', S.delete v (S.unions [s1',s2',S.fromList ls]))
+                        in (LetE (v,ls,t,e1') e2', S.delete (Single v) (S.unions [s1',s2',S.fromList ls]))
       LetE (v,ls,t,e1@(Ext (L2.AddFixed _cur _i))) e2 ->
                         let (e2', s2') = cleanExp e2
-                        in (LetE (v,ls,t,e1) e2', S.delete v (S.unions [s2',S.fromList ls]))
+                        in (LetE (v,ls,t,e1) e2', S.delete (Single v) (S.unions [s2',S.fromList ls]))
       LetE (v,ls,t,e1) e2 -> let (e1', s1') = cleanExp e1
                                  (e2', s2') = cleanExp e2
                              in (LetE (v,ls,t,e1') e2', S.unions [s1',s2',S.fromList ls])
@@ -1567,7 +1567,8 @@ isCpyCall (AppE f _ _) = True -- TODO: check if it's a real copy call, to be saf
 isCpyCall _ = False 
 
 freshLocVar :: String -> PassM LocVar
-freshLocVar m = gensym (toVar m)
+freshLocVar m = do v <- gensym (toVar m)
+                   return $ Single v
 
 freshRegVar :: PassM Region
 freshRegVar = do rv <- gensym (toVar "r")
@@ -1795,7 +1796,7 @@ fixRANs prg@(Prog defs funs main) = do
 
     env20 = progToEnv prg
 
-    exp :: DDefs2 -> Env2 Ty2 -> Exp2 -> PassM ([(DataCon, [Exp2])], Exp2)
+    exp :: DDefs2 -> Env2 Var Ty2 -> Exp2 -> PassM ([(DataCon, [Exp2])], Exp2)
     exp ddfs env2 e0 =
       let go :: Exp2 -> PassM ([(DataCon, [Exp2])], Exp2)
           go = exp ddfs env2
@@ -1922,7 +1923,7 @@ copyOutOfOrderPacked prg@(Prog ddfs fndefs mnExp) = do
         (_, funBody') <- go env2 M.empty funArgs funBody
         pure $ fn { funBody = funBody' }
 
-    go :: Env2 Ty1 -> M.Map Var [(Var,Var)] -> [Var] -> Exp1
+    go :: Env2 Var Ty1 -> M.Map Var [(Var,Var)] -> [Var] -> Exp1
        -> PassM (M.Map Var [(Var,Var)], Exp1)
     go env2 cpy_env order ex =
       case ex of

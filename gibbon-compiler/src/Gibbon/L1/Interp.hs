@@ -61,7 +61,7 @@ interp :: forall e l d s.
            Ord (e l d), NFData (e l d),
            InterpExt s (PreExp e l d) (e l d) Var)
        => RunConfig
-       -> ValEnv (PreExp e l d)
+       -> ValEnv Var (PreExp e l d)
        -> DDefs (TyOf (PreExp e l d))
        -> FunDefs Var (PreExp e l d)
        -> (PreExp e l d)
@@ -71,7 +71,7 @@ interp rc valenv ddefs fenv = go valenv
     {-# NOINLINE goWrapper #-}
     goWrapper env !_ix ex = go env ex
 
-    go :: ValEnv (PreExp e l d) -> (PreExp e l d) -> InterpM s (PreExp e l d) (Value (PreExp e l d))
+    go :: ValEnv Var (PreExp e l d) -> (PreExp e l d) -> InterpM s (PreExp e l d) (Value (PreExp e l d))
     go env x0 = do
         case x0 of
           Ext ext -> do

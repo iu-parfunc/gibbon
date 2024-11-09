@@ -698,7 +698,7 @@ type HasNFData ex = (NFData ex, NFData (TyOf ex), NFData (ArrowTy (TyOf ex)))
 -- Things which can be interpreted to yield a final, printed value.
 --------------------------------------------------------------------------------
 
-type ValEnv e = M.Map Var (Value e)
+type ValEnv key e = M.Map key (Value e)
 type InterpLog = Builder
 
 newtype InterpM s e a = InterpM { unInterpM ::  WriterT InterpLog (StateT s IO) a }
@@ -715,10 +715,10 @@ runInterpM m s = do
 -- | Pure Gibbon programs, at any stage of compilation, should always
 -- be evaluatable to a unique value.  The only side effects are timing.
 class Expression e => Interp s e var where
-  gInterpExp :: RunConfig -> ValEnv e -> DDefs (TyOf e) -> FunDefs var e -> e -> InterpM s e (Value e)
+  gInterpExp :: RunConfig -> ValEnv Var e -> DDefs (TyOf e) -> FunDefs var e -> e -> InterpM s e (Value e)
 
 class (Expression e, Expression ext) => InterpExt s e ext var where
-  gInterpExt :: RunConfig -> ValEnv e -> DDefs (TyOf e) -> FunDefs var e -> ext -> InterpM s e (Value e)
+  gInterpExt :: RunConfig -> ValEnv Var e -> DDefs (TyOf e) -> FunDefs var e -> ext -> InterpM s e (Value e)
 
 class Interp s e var => InterpProg s e var where
   {-# MINIMAL gInterpProg #-}
@@ -751,7 +751,7 @@ data Value e = VInt Int
              | VCursor { bufID :: Var, offset :: Int }
              | VPtr { bufID :: Var, offset :: Int }
                -- ^ Cursor are a pointer into the Store plus an offset into the Buffer.
-             | VLam [Var] e (ValEnv e)
+             | VLam [Var] e (ValEnv Var e)
              | VWrapId Int (Value e)
                -- ^ A wrapper for vectors that wraps the value with an "id".
                -- All Inplace* operations use this "id" to update the value
