@@ -51,7 +51,7 @@ writeOrderMarkers (Prog ddefs fundefs mainExp) = do
         funBody' <- go reg_env alloc_env M.empty env2 funBody
         pure $ f { funBody = funBody' }
 
-    go :: RegEnv -> AllocEnv -> StoreEnv -> Env2 L2.Ty2 -> L2.Exp2 -> PassM L2.Exp2
+    go :: RegEnv -> AllocEnv -> StoreEnv -> Env2 Var L2.Ty2 -> L2.Exp2 -> PassM L2.Exp2
     go reg_env alloc_env store_env env2 ex =
       case ex of
         LetE (v,locs,ty,rhs) bod -> do
@@ -314,7 +314,7 @@ checkScalarDeps ddefs in_scope tag_loc ex0 =
                    in (dep_env, move_set0, move0)
       | otherwise = (dep_env,move_set,move)
 
-type StoreEnv = M.Map Var Var
+type StoreEnv = M.Map Var LocVar
 type RegEnv = M.Map LocVar L2.Region
 type AllocEnv = M.Map L2.Region RegionLocs
 data RegionLocs = RegionLocs { locs :: [LocVar], allocated_to :: S.Set LocVar }

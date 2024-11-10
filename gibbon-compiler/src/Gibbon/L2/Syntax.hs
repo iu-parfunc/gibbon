@@ -861,17 +861,17 @@ constPacked c t =
     IntHashTy-> IntHashTy
 
 -- | Build a dependency list which can be later converted to a graph
-depList :: Exp2 -> [(Var, Var, [Var])]
+depList :: Exp2 -> [(LocVar, LocVar, [LocVar])]
 -- The helper function, go, works with a map rather than list so that all
 -- dependencies are properly grouped, without any duplicate keys. But we
 -- convert it back to a list so that we can hand it off to 'graphFromEdges'.
 -- Reversing the list makes it easy to peek at the return value of this AST later.
 depList = L.map (\(a,b) -> (a,a,b)) . M.toList . go M.empty
     where
-      go :: M.Map Var [Var] -> Exp2 -> M.Map Var [Var]
+      go :: M.Map LocVar [LocVar] -> Exp2 -> M.Map LocVar [LocVar]
       go acc ex =
         case ex of
-          VarE v    -> M.insertWith (++) v [v] acc
+          VarE v    -> M.insertWith (++) (singleLocVar v) [(singleLocVar v)] acc
           LitE{}    -> acc
           CharE{}   -> acc
           FloatE{}  -> acc
@@ -880,16 +880,17 @@ depList = L.map (\(a,b) -> (a,a,b)) . M.toList . go M.empty
           PrimAppE _ args -> foldl go acc args
           LetE (v,_,_,rhs) bod ->
             let acc_rhs = go acc rhs
-            in go (M.insertWith (++) v (S.toList $ allFreeVars rhs) acc_rhs) bod
+            in go (M.insertWith (++) (singleLocVar v) (S.toList $ allFreeVars rhs) acc_rhs) bod
           IfE _ b c  -> go (go acc b) c
           MkProdE ls -> foldl go acc ls
           ProjE _ e  -> go acc e
           CaseE (VarE v) mp ->
             L.foldr (\(_,vlocs,e) acc' ->
                        let (vars,locs) = unzip vlocs
-                           acc'' = L.foldr (\w acc''' -> M.insertWith (++) v [w] acc''')
+                           vars' = L.map Single vars
+                           acc'' = L.foldr (\w acc''' -> M.insertWith (++) (singleLocVar v) [w] acc''')
                                            acc'
-                                           (vars ++ (map unwrapLocVar locs))
+                                           (vars' ++ locs)
                        in go acc'' e)
                     acc
                     mp
@@ -904,10 +905,10 @@ depList = L.map (\(a,b) -> (a,a,b)) . M.toList . go M.empty
           Ext ext ->
             case ext of
               LetRegionE r _ _ rhs ->
-                go (M.insertWith (++) (regionToVar r) (S.toList $ allFreeVars rhs) acc) rhs
+                go (M.insertWith (++) (singleLocVar (regionToVar r)) (S.toList $ allFreeVars rhs) acc) rhs
               LetParRegionE r _ _ rhs ->
-                go (M.insertWith (++) (regionToVar r) (S.toList $ allFreeVars rhs) acc) rhs
-              LetLocE (Single loc) phs rhs  ->
+                go (M.insertWith (++) (singleLocVar (regionToVar r)) (S.toList $ allFreeVars rhs) acc) rhs
+              LetLocE loc phs rhs  ->
                 -- Assumption that the loc for the data constructor buffer is passed in case 
                 -- of SoA. If in SoA, ignoring the locs of the fields atm. 
                 go (M.insertWith (++) loc (dep phs ++ (S.toList $ allFreeVars rhs)) acc) rhs
@@ -915,7 +916,7 @@ depList = L.map (\(a,b) -> (a,a,b)) . M.toList . go M.empty
               FromEndE{}     -> acc
               BoundsCheck{}  -> acc
               IndirectionE{} -> acc
-              AddFixed v _   -> M.insertWith (++) v [v] acc
+              AddFixed v _   -> M.insertWith (++) (singleLocVar v) [singleLocVar v] acc
               GetCilkWorkerNum -> acc
               LetAvail _ bod -> go acc bod
               AllocateTagHere{} -> acc
@@ -925,57 +926,57 @@ depList = L.map (\(a,b) -> (a,a,b)) . M.toList . go M.empty
               StartOfPkdCursor w -> go acc (VarE w)
               TagCursor a b -> go (go acc (VarE a)) (VarE b)
 
-      dep :: PreLocExp LocVar -> [Var]
+      dep :: PreLocExp LocVar -> [LocVar]
       dep ex =
         case ex of
-          StartOfRegionLE r -> [regionToVar r]
-          AfterConstantLE _ (Single loc) -> [loc]
-          AfterVariableLE v (Single loc) _ -> [v,loc]
-          InRegionLE r  -> [regionToVar r]
-          FromEndLE (Single loc) -> [loc]
+          StartOfRegionLE r -> [singleLocVar $ regionToVar r]
+          AfterConstantLE _ loc -> [loc]
+          AfterVariableLE v loc _ -> [singleLocVar v,loc]
+          InRegionLE r  -> [singleLocVar $ regionToVar r]
+          FromEndLE loc -> [loc]
           FreeLE -> []
 
 -- gFreeVars ++ locations ++ region variables
-allFreeVars :: Exp2 -> S.Set Var
+allFreeVars :: Exp2 -> S.Set LocVar
 allFreeVars ex =
   case ex of
-    AppE _ locs args -> S.fromList (map unwrapLocVar locs) `S.union` (S.unions (map allFreeVars args))
+    AppE _ locs args -> S.fromList locs `S.union` (S.unions (map allFreeVars args))
     PrimAppE _ args -> (S.unions (map allFreeVars args))
-    LetE (v,locs,_,rhs) bod -> (S.fromList (map unwrapLocVar locs) `S.union` (allFreeVars rhs) `S.union` (allFreeVars bod))
-                               `S.difference` S.singleton v
+    LetE (v,locs,_,rhs) bod -> (S.fromList locs `S.union` (allFreeVars rhs) `S.union` (allFreeVars bod))
+                               `S.difference` S.singleton (singleLocVar v)
     IfE a b c -> allFreeVars a `S.union` allFreeVars b `S.union` allFreeVars c
     MkProdE args -> (S.unions (map allFreeVars args))
     ProjE _ bod -> allFreeVars bod
     CaseE scrt brs -> (allFreeVars scrt) `S.union` (S.unions (map (\(_,vlocs,c) -> allFreeVars c `S.difference`
-                                                                                   S.fromList (map fst vlocs) `S.difference`
-                                                                                   S.fromList (map (unwrapLocVar . snd) vlocs))
+                                                                                   S.fromList (map (singleLocVar . fst) vlocs) `S.difference`
+                                                                                   S.fromList (map snd vlocs))
                                                                   brs))
-    DataConE locvar _ args -> S.singleton (unwrapLocVar locvar) `S.union` (S.unions (map allFreeVars args))
+    DataConE locvar _ args -> S.singleton locvar `S.union` (S.unions (map allFreeVars args))
     TimeIt e _ _ -> allFreeVars e
     WithArenaE _ e -> allFreeVars e
-    SpawnE _ locs args -> S.fromList (map unwrapLocVar locs) `S.union` (S.unions (map allFreeVars args))
+    SpawnE _ locs args -> S.fromList locs `S.union` (S.unions (map allFreeVars args))
     Ext ext ->
       case ext of
-        LetRegionE r _ _ bod -> S.delete (regionToVar r) (allFreeVars bod)
-        LetParRegionE r _ _ bod -> S.delete (regionToVar r) (allFreeVars bod)
-        LetLocE loc locexp bod -> S.difference (S.singleton $ unwrapLocVar loc) (allFreeVars bod `S.union` gFreeVars locexp)
-        StartOfPkdCursor cur -> S.singleton cur
-        TagCursor a b-> S.fromList [a,b]
-        RetE locs v     -> S.insert v (S.fromList (map unwrapLocVar locs))
-        FromEndE loc    -> S.singleton $ unwrapLocVar loc
-        BoundsCheck _ (Single reg) (Single cur) -> S.fromList [reg,cur]
-        IndirectionE _ _ (a, b) (c, d) _ -> S.fromList $ [(unwrapLocVar a),(unwrapLocVar b),(unwrapLocVar c), (unwrapLocVar d)]
-        AddFixed v _    -> S.singleton v
-        GetCilkWorkerNum-> S.empty
-        LetAvail vs bod -> S.fromList vs `S.union` gFreeVars bod
-        AllocateTagHere (Single loc) _ -> S.singleton loc
-        AllocateScalarsHere (Single loc) -> S.singleton loc
-        SSPush _ (Single a) (Single b) _ -> S.fromList [a,b]
-        SSPop _ (Single a) (Single b) -> S.fromList [a,b]
-    _ -> gFreeVars ex
+        LetRegionE r _ _ bod -> S.delete (singleLocVar $ regionToVar r) (allFreeVars bod)
+        LetParRegionE r _ _ bod -> S.delete (singleLocVar $ regionToVar r) (allFreeVars bod)
+        LetLocE loc locexp bod -> S.difference (S.singleton loc) (allFreeVars bod `S.union` (S.map singleLocVar (gFreeVars locexp)))
+        StartOfPkdCursor cur -> S.singleton (singleLocVar cur)
+        TagCursor a b -> S.fromList [singleLocVar a, singleLocVar b]
+        RetE locs v     -> S.insert (singleLocVar v) (S.fromList locs)
+        FromEndE loc    -> S.singleton loc
+        BoundsCheck _ reg cur -> S.fromList [reg,cur]
+        IndirectionE _ _ (a, b) (c, d) _ -> S.fromList $ [a, b, c, d]
+        AddFixed v _    -> S.singleton (singleLocVar v)
+        GetCilkWorkerNum -> S.empty
+        LetAvail vs bod -> S.fromList (L.map singleLocVar vs) `S.union` (S.map singleLocVar (gFreeVars bod))
+        AllocateTagHere loc _ -> S.singleton loc
+        AllocateScalarsHere loc -> S.singleton loc
+        SSPush _ a b _ -> S.fromList [a,b]
+        SSPop _ a b -> S.fromList [a,b]
+    _ -> S.map singleLocVar (gFreeVars ex)
 
-freeLocVars :: Exp2 -> [Var]
-freeLocVars ex = S.toList $ (allFreeVars ex) `S.difference` (gFreeVars ex)
+freeLocVars :: Exp2 -> [LocVar]
+freeLocVars ex = S.toList $ (allFreeVars ex) `S.difference` (S.map singleLocVar $ gFreeVars ex)
 
 changeAppToSpawn :: (Eq loc, Eq dec) => Var -> [PreExp E2Ext loc dec] -> PreExp E2Ext loc dec -> PreExp E2Ext loc dec
 changeAppToSpawn v args2 ex1 =
