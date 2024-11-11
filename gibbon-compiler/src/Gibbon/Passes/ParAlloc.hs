@@ -167,9 +167,8 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
           env2' = extendVEnvLocVar (Single v) ty env2
 
           vars = gFreeVars (substLocInExp after_env rhs) `S.difference` (M.keysSet fundefs)
-          used = (allFreeVars (substLocInExp after_env rhs)) `S.difference` (M.keysSet fundefs)
-          used' = S.map Single used
-
+          used = (allFreeVars (substLocInExp after_env rhs)) `S.difference` (S.map singleLocVar (M.keysSet fundefs))
+          
       -- Swallow this binding, and add v to 'spawned'
       if not (S.disjoint vars spawned)
       then do
@@ -178,13 +177,13 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
             spawned' = S.insert v spawned
         parAllocExp ddefs fundefs env2' reg_env' after_env mb_parent_id pending_binds'' spawned' boundlocs region_on_spawn bod
       -- Swallow this binding, and but don't add v to 'spawned'
-      else if not (S.isSubsetOf used' boundlocs)
+      else if not (S.isSubsetOf used boundlocs)
       then do
         rhs' <- go rhs
         let pending_binds'' = PVar (v, locs, ty', rhs') : pending_binds'
         parAllocExp ddefs fundefs env2' reg_env' after_env mb_parent_id pending_binds'' spawned boundlocs region_on_spawn bod
       -- Emit this binding as usual
-      else if S.disjoint vars spawned && S.isSubsetOf used' boundlocs
+      else if S.disjoint vars spawned && S.isSubsetOf used boundlocs
       then do
         let boundlocs' = S.insert (Single v) boundlocs `S.union` (S.fromList locs)
         LetE <$> (v,locs,ty',) <$> go rhs

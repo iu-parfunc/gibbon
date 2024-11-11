@@ -662,6 +662,7 @@ type HasSimplifiableExt e l d = ( Show l, Out l, Show d, Out d
 -- bind it with a LetE.
 class Expression e => Typeable e where
   gRecoverType :: DDefs (TyOf e) -> Env2 Var (TyOf e) -> e -> TyOf e
+  gRecoverTypeLoc :: DDefs (TyOf e) -> Env2 LocVar (TyOf e) -> e -> TyOf e
 
 -- | Generic substitution over expressions.
 class Expression e => Substitutable e where

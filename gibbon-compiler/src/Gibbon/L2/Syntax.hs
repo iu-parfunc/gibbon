@@ -275,6 +275,27 @@ instance (Out l, Show l, Typeable (E2 l (UrTy l))) => Typeable (E2Ext l (UrTy l)
       SSPush{} -> ProdTy []
       SSPop{} -> ProdTy []
 
+  gRecoverTypeLoc ddfs env2 ex =
+    case ex of
+      LetRegionE _r _ _ bod    -> gRecoverTypeLoc ddfs env2 bod
+      LetParRegionE _r _ _ bod -> gRecoverTypeLoc ddfs env2 bod
+      LetLocE _l _rhs bod -> gRecoverTypeLoc ddfs env2 bod
+      StartOfPkdCursor{}  -> CursorTy
+      TagCursor{}         -> CursorTy
+      RetE _loc var       -> case M.lookup (singleLocVar var) (vEnv env2) of
+                               Just ty -> ty
+                               Nothing -> error $ "gRecoverTypeLoc: unbound variable " ++ sdoc var
+      FromEndE _loc       -> error "Shouldn't enconter FromEndE in tail position"
+      BoundsCheck{}       -> error "Shouldn't enconter BoundsCheck in tail position"
+      IndirectionE tycon _ _ (to,_) _ -> PackedTy tycon to
+      AddFixed{}          -> error "Shouldn't enconter AddFixed in tail position"
+      GetCilkWorkerNum    -> IntTy
+      LetAvail _ bod -> gRecoverTypeLoc ddfs env2 bod
+      AllocateTagHere{} -> ProdTy []
+      AllocateScalarsHere{} -> ProdTy []
+      SSPush{} -> ProdTy []
+      SSPop{} -> ProdTy []
+
 instance (Typeable (E2Ext l d),
           Expression (E2Ext l d),
           Flattenable (E2 l d))
@@ -551,6 +572,49 @@ instance Typeable (PreExp E2Ext LocVar (UrTy LocVar)) where
             (vars,locs) = unzip vlocs
             env2' = extendPatternMatchEnv c ddfs vars locs env2
         in gRecoverType ddfs env2' e
+
+
+  gRecoverTypeLoc ddfs env2 ex =
+    case ex of
+      VarE v       -> M.findWithDefault (error $ "Cannot find type of variable " ++ show v ++ " in " ++ show (vEnv env2)) (singleLocVar v) (vEnv env2)
+      LitE _       -> IntTy
+      CharE{}      -> CharTy
+      FloatE{}     -> FloatTy
+      LitSymE _    -> SymTy
+      AppE v locs _ -> let fnty  = fEnv env2 # (singleLocVar v)
+                           outty = arrOut fnty
+                           mp = M.fromList $ zip (allLocVars fnty) locs
+                       in substLoc mp outty
+
+      PrimAppE (DictInsertP ty) ((VarE v):_) -> SymDictTy (Just v) $ stripTyLocs ty
+      PrimAppE (DictEmptyP  ty) ((VarE v):_) -> SymDictTy (Just v) $ stripTyLocs ty
+      PrimAppE p _ -> primRetTy p
+
+      LetE (v,_,t,_) e -> gRecoverTypeLoc ddfs (extendVEnvLocVar (singleLocVar v) t env2) e
+      IfE _ e _        -> gRecoverTypeLoc ddfs env2 e
+      MkProdE es       -> ProdTy $ L.map (gRecoverTypeLoc ddfs env2) es
+      DataConE loc c _ -> PackedTy (getTyOfDataCon ddfs c) loc
+      TimeIt e _ _     -> gRecoverTypeLoc ddfs env2 e
+      MapE _ e         -> gRecoverTypeLoc ddfs env2 e
+      FoldE _ _ e      -> gRecoverTypeLoc ddfs env2 e
+      Ext ext          -> gRecoverTypeLoc ddfs env2 ext
+      ProjE i e ->
+        case gRecoverTypeLoc ddfs env2 e of
+          (ProdTy tys) -> tys !! i
+          oth -> error$ "typeExp: Cannot project fields from this type: "++show oth
+                        ++"\nExpression:\n  "++ sdoc ex
+                        ++"\nEnvironment:\n  "++sdoc (vEnv env2)
+      SpawnE v locs _ -> let fnty  = fEnv env2 # (singleLocVar v)
+                             outty = arrOut fnty
+                             mp = M.fromList $ zip (allLocVars fnty) locs
+                         in substLoc mp outty
+      SyncE -> voidTy
+      WithArenaE _v e -> gRecoverTypeLoc ddfs env2 e
+      CaseE _ mp ->
+        let (c,vlocs,e) = head mp
+            (vars,locs) = unzip vlocs
+            env2' = extendPatternMatchEnvLocVar c ddfs vars locs env2
+        in gRecoverTypeLoc ddfs env2' e
 
 
 --------------------------------------------------------------------------------
