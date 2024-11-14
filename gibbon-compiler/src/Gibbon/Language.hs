@@ -190,7 +190,6 @@ instance HasRenamable e l d => Renamable (PreExp e l d) where
 instance Renamable a => Renamable (UrTy a) where
   gRename env = fmap (gRename env)
 
-
 --------------------------------------------------------------------------------
 -- Helpers operating on expressions
 --------------------------------------------------------------------------------

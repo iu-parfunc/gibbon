@@ -606,6 +606,7 @@ data UrTy loc
 class FreeVars a where
     -- | Return a set of free TERM variables.  Does not return location variables.
     gFreeVars :: a -> S.Set Var
+    gFreeVars' :: a -> S.Set LocVar
 
 
 -- | A generic interface to expressions found in different phases of
@@ -685,7 +686,7 @@ type HasSubstitutableExt e l d = ( Eq d, Show d, Out d, Eq l, Show l, Out l
 -- has run before!
 class Renamable e where
   gRename :: M.Map Var Var -> e -> e
-
+  
 type HasRenamable e l d = (Renamable l, Renamable d, Renamable (e l d))
 
 -- A convenience wrapper over some of the constraints.

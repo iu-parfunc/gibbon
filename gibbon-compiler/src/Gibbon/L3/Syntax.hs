@@ -82,13 +82,13 @@ data E3Ext loc dec =
     -- ^ Do one of the following:
     -- (1) If it's a old-to-young indirection, record it in the remembered set.
     -- (2) Otherwise, bump the refcount and update the outset.
-  | BumpArenaRefCount Var Var      -- ^ Given an arena and end-of-region ptr, add a
-                                   --   reference from the arena to the region
-  | NullCursor                     -- ^ Constant null cursor value (hack?).
-                                   --   Used for dict lookup, which returns a packed value but
-                                   --   no end witness.
-  | RetE [(PreExp E3Ext loc dec)]  -- ^ Analogous to L2's RetE.
-  | GetCilkWorkerNum               -- ^ Translates to  __cilkrts_get_worker_number().
+  | BumpArenaRefCount Var Var -- ^ Given an arena and end-of-region ptr, add a
+                                    --   reference from the arena to the region
+  | NullCursor                      -- ^ Constant null cursor value (hack?).
+                                    --   Used for dict lookup, which returns a packed value but
+                                    --   no end witness.
+  | RetE [(PreExp E3Ext loc dec)]   -- ^ Analogous to L2's RetE.
+  | GetCilkWorkerNum                -- ^ Translates to  __cilkrts_get_worker_number().
   | LetAvail [Var] (PreExp E3Ext loc dec) -- ^ These variables are available to use before the join point
   | AllocateTagHere Var TyCon  -- ^ Analogous to L2's extension.
   | AllocateScalarsHere Var    -- ^ Analogous to L2's extension.
