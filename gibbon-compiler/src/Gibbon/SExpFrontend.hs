@@ -20,7 +20,7 @@ import qualified Data.List as L
 import Data.Loc ( Loc(..), Pos(..))
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.Text hiding (map, head, init, last, length, zip, reverse, foldr)
+import Data.Text hiding (map, head, init, last, length, zip, reverse, foldr, show)
 import qualified Data.Text as T
 import Data.Text.IO (readFile)
 import System.FilePath

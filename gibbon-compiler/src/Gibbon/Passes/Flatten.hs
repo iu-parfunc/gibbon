@@ -45,8 +45,9 @@ flattenL1 prg@(Prog defs funs main) = do
 
     env20 = progToEnv prg
 
-
-flattenL2 :: Flattenable (E2Ext Var (UrTy LocVar)) => Prog2 -> PassM Prog2
+-- removing constraint solves compilation error 
+-- (Flattenable (E2Ext Var (UrTy LocVar)))
+flattenL2 :: Prog2 -> PassM Prog2
 flattenL2 prg@(Prog defs funs main) = do
     main' <-
       case main of
