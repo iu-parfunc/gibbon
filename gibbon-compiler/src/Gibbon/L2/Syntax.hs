@@ -1023,7 +1023,7 @@ allFreeVars ex =
       case ext of
         LetRegionE r _ _ bod -> S.delete (singleLocVar $ regionToVar r) (allFreeVars bod)
         LetParRegionE r _ _ bod -> S.delete (singleLocVar $ regionToVar r) (allFreeVars bod)
-        LetLocE loc locexp bod -> S.difference (S.singleton loc) (allFreeVars bod `S.union` (S.map singleLocVar (gFreeVars locexp)))
+        LetLocE loc locexp bod -> S.delete loc (allFreeVars bod `S.union` (S.map singleLocVar (gFreeVars locexp)))
         StartOfPkdCursor cur -> S.singleton (singleLocVar cur)
         TagCursor a b -> S.fromList [singleLocVar a, singleLocVar b]
         RetE locs v     -> S.insert (singleLocVar v) (S.fromList locs)
