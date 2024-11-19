@@ -114,6 +114,17 @@ instance Typeable (E1Ext () (UrTy ())) where
                            Just (PackedTy{}) -> CursorTy
                            ty -> error $ "StartOfPkdCursor: got " ++ show ty
 
+  gRecoverTypeLoc _ddefs env2 ext =
+    case ext of
+      BenchE fn _ _ _ -> outTy $ fEnv env2 # (singleLocVar fn)
+      AddFixed v _i   -> if M.member (singleLocVar v) (vEnv env2)
+                         then CursorTy
+                         else error $ "AddFixed: unbound variable " ++ show v
+      StartOfPkdCursor cur ->
+                         case M.lookup (singleLocVar cur) (vEnv env2) of
+                           Just (PackedTy{}) -> CursorTy
+                           ty -> error $ "StartOfPkdCursor: got " ++ show ty
+
 instance Renamable () where
     gRename _ () = ()
 

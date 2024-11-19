@@ -606,8 +606,6 @@ data UrTy loc
 class FreeVars a where
     -- | Return a set of free TERM variables.  Does not return location variables.
     gFreeVars :: a -> S.Set Var
-    gFreeVars' :: a -> S.Set LocVar
-
 
 -- | A generic interface to expressions found in different phases of
 -- the compiler.

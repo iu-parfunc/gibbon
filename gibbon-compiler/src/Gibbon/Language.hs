@@ -151,6 +151,42 @@ instance (Show (), Out (),
             args' = L.map fst args
         in gRecoverType ddfs (extendsVEnv (M.fromList (zip args' (lookupDataCon ddfs c))) env2) e
 
+  gRecoverTypeLoc ddfs env2 ex =
+    case ex of
+      VarE v       -> M.findWithDefault (error $ "Cannot find type of variable " ++ show v ++ " in " ++ show (vEnv env2)) (singleLocVar v) (vEnv env2)
+      LitE _       -> IntTy
+      CharE _      -> CharTy
+      FloatE{}     -> FloatTy
+      LitSymE _    -> SymTy
+      AppE v _ _   -> outTy $ fEnv env2 # (singleLocVar v)
+      PrimAppE (DictInsertP ty) ((VarE v):_) -> SymDictTy (Just v) $ stripTyLocs ty
+      PrimAppE (DictEmptyP  ty) ((VarE v):_) -> SymDictTy (Just v) $ stripTyLocs ty
+      PrimAppE p _ -> primRetTy p
+
+      LetE (v,_,t,_) e -> gRecoverTypeLoc ddfs (extendVEnvLocVar (singleLocVar v) t env2) e
+      IfE _ e _        -> gRecoverTypeLoc ddfs env2 e
+      MkProdE es       -> ProdTy $ L.map (gRecoverTypeLoc ddfs env2) es
+      DataConE loc c _ -> PackedTy (getTyOfDataCon ddfs c) loc
+      TimeIt e _ _     -> gRecoverTypeLoc ddfs env2 e
+      MapE _ e         -> gRecoverTypeLoc ddfs env2 e
+      FoldE _ _ e      -> gRecoverTypeLoc ddfs env2 e
+      Ext ext          -> gRecoverTypeLoc ddfs env2 ext
+      ProjE i e ->
+        case gRecoverTypeLoc ddfs env2 e of
+          (ProdTy tys) -> tys !! i
+          oth -> error$ "typeExp: Cannot project fields from this type: "++show oth
+                        ++"\nExpression:\n  "++ sdoc ex
+                        ++"\nEnvironment:\n  "++sdoc (vEnv env2)
+      WithArenaE _v e -> gRecoverTypeLoc ddfs env2 e
+      SpawnE v _ _    -> outTy $ fEnv env2 # (singleLocVar v)
+      SyncE           -> voidTy
+      CaseE _ mp ->
+        let 
+          
+            (c,args,e) = Sf.headErr mp
+            args' = L.map (singleLocVar . fst) args
+        in gRecoverTypeLoc ddfs (extendsVEnvLocVar (M.fromList (zip args' (lookupDataCon ddfs c))) env2) e
+
 
 instance Renamable Var where
   gRename env v = M.findWithDefault v v env

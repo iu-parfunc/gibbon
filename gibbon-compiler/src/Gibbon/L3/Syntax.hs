@@ -156,6 +156,11 @@ instance (Out l, Show l, Typeable (PreExp E3Ext l (UrTy l))) => Typeable (E3Ext 
     gRecoverType ddfs env2 (RetE ls)    = ProdTy $ L.map (gRecoverType ddfs env2) ls
     gRecoverType _ _ _ = error "L3.gRecoverType"
 
+
+    gRecoverTypeLoc _ddfs _env2 NullCursor = CursorTy
+    gRecoverTypeLoc ddfs env2 (RetE ls)    = ProdTy $ L.map (gRecoverTypeLoc ddfs env2) ls
+    gRecoverTypeLoc _ _ _ = error "L3.gRecoverTypeLoc"
+
 instance (Show l, Out l) => Flattenable (E3Ext l (UrTy l)) where
     gFlattenGatherBinds _ddfs _env ex = return ([], ex)
     gFlattenExp _ddfs _env ex = return ex

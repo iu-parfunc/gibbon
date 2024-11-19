@@ -164,6 +164,28 @@ instance Typeable (Old.E2Ext LocArg Ty2) where
       Old.SSPush{}              -> MkTy2 $ ProdTy []
       Old.SSPop{}               -> MkTy2 $ ProdTy []
 
+  gRecoverTypeLoc ddfs env2 ex =
+    case ex of
+      Old.LetRegionE _r _ _ bod    -> gRecoverTypeLoc ddfs env2 bod
+      Old.LetParRegionE _r _ _ bod -> gRecoverTypeLoc ddfs env2 bod
+      Old.StartOfPkdCursor{}       -> MkTy2 $ CursorTy
+      Old.TagCursor{}      -> MkTy2 $ CursorTy
+      Old.LetLocE _l _rhs bod -> gRecoverTypeLoc ddfs env2 bod
+      Old.RetE _loc var       -> case M.lookup (singleLocVar var) (vEnv env2) of
+                                   Just ty -> ty
+                                   Nothing -> error $ "gRecoverType: unbound variable " ++ sdoc var
+      Old.FromEndE _loc       -> error "Shouldn't enconter FromEndE in tail position"
+      Old.BoundsCheck{}       -> error "Shouldn't enconter BoundsCheck in tail position"
+      Old.IndirectionE tycon _ _ (to,_) _ -> MkTy2 $ PackedTy tycon (toLocVar to)
+      Old.AddFixed{}          -> error "Shouldn't enconter AddFixed in tail position"
+      Old.GetCilkWorkerNum    -> MkTy2 $ IntTy
+      Old.LetAvail _ bod      -> gRecoverTypeLoc ddfs env2 bod
+      Old.AllocateTagHere{}   -> MkTy2 $ ProdTy []
+      Old.AllocateScalarsHere{} -> MkTy2 $ ProdTy []
+      Old.SSPush{}              -> MkTy2 $ ProdTy []
+      Old.SSPop{}               -> MkTy2 $ ProdTy []
+
+
 
 -- | The 'gRecoverType' instance defined in Language.Syntax is incorrect for L2.
 -- For the AppE case, it'll just return the type with with the function was
@@ -224,6 +246,53 @@ instance Out (Old.E2Ext LocArg Ty2) => Typeable (PreExp Old.E2Ext LocArg Ty2) wh
 
             env2' = extendPatternMatchEnv c ddfs vars locs env2
         in gRecoverType ddfs env2' e
+
+
+  gRecoverTypeLoc ddfs env2 ex =
+    case ex of
+      VarE v       -> M.findWithDefault (error $ "Cannot find type of variable " ++ show v ++ " in " ++ show (vEnv env2)) (singleLocVar v) (vEnv env2)
+      LitE _       -> MkTy2 $ IntTy
+      CharE _      -> MkTy2 $ CharTy
+      FloatE{}     -> MkTy2 $ FloatTy
+      LitSymE _    -> MkTy2 $ SymTy
+      AppE v locargs _ ->
+                       let fnty  = fEnv env2 # (singleLocVar v)
+                           outty = Old.arrOut fnty
+                           mp = M.fromList $ zip (Old.allLocVars fnty) (map toLocVar locargs)
+                       in substLoc mp outty
+
+      PrimAppE (DictInsertP ty) ((VarE v):_) -> MkTy2 $ SymDictTy (Just v) $ stripTyLocs (unTy2 ty)
+      PrimAppE (DictEmptyP  ty) ((VarE v):_) -> MkTy2 $ SymDictTy (Just v) $ stripTyLocs (unTy2 ty)
+      PrimAppE p _ -> MkTy2 $ primRetTy (fmap unTy2 p)
+
+      LetE (v,_,t,_) e -> gRecoverTypeLoc ddfs (extendVEnvLocVar (singleLocVar v) t env2) e
+      IfE _ e _        -> gRecoverTypeLoc ddfs env2 e
+      MkProdE es       -> MkTy2 $ ProdTy $ L.map (unTy2 . gRecoverTypeLoc ddfs env2) es
+      DataConE loc c _ -> MkTy2 $ PackedTy (getTyOfDataCon ddfs c) (toLocVar loc)
+      TimeIt e _ _     -> gRecoverTypeLoc ddfs env2 e
+      MapE _ e         -> gRecoverTypeLoc ddfs env2 e
+      FoldE _ _ e      -> gRecoverTypeLoc ddfs env2 e
+      Ext ext          -> gRecoverTypeLoc ddfs env2 ext
+      ProjE i e ->
+        case unTy2 $ gRecoverTypeLoc ddfs env2 e of
+          (ProdTy tys) -> MkTy2 $ (tys !! i)
+          oth -> error$ "typeExp: Cannot project fields from this type: "++show oth
+                        ++"\nExpression:\n  "++ sdoc ex
+                        ++"\nEnvironment:\n  "++sdoc (vEnv env2)
+      SpawnE v locargs _ ->
+                         let fnty  = fEnv env2 # (singleLocVar v)
+                             outty = Old.arrOut fnty
+                             mp = M.fromList $ zip (Old.allLocVars fnty) (map toLocVar locargs)
+                         in substLoc mp outty
+      SyncE -> MkTy2 $ voidTy
+      WithArenaE _v e -> gRecoverTypeLoc ddfs env2 e
+      CaseE _ mp ->
+        let (c,vlocargs,e) = Sf.headErr mp
+            (vars,locargs) = unzip vlocargs
+            locs = map toLocVar locargs
+
+            env2' = extendPatternMatchEnvLocVar c ddfs vars locs env2
+        in gRecoverTypeLoc ddfs env2' e
 
 -------------------------------------------------------------------------------
 -- Need to redefine the following because of the Ty2 newtype:
