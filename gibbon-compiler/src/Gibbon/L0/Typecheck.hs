@@ -15,6 +15,8 @@ import           Data.Foldable ( foldlM )
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Safe as Sf
+
 import           Text.PrettyPrint hiding ( (<>) )
 import           Text.PrettyPrint.GenericPretty
 #if !MIN_VERSION_base(4,11,0)
@@ -776,7 +778,7 @@ tcCases ddefs sbst venv fenv bound_tyvars ddf brs is_main ex = do
   let s3 = s1 <> s2
       tys' = map (zonkTy s3) tys
   mapM_ (\(a,b) -> ensureEqualTy ex a b) (pairs tys')
-  pure (s3, head tys',exps)
+  pure (s3, Sf.headErr tys',exps)
   where
     -- pairs [1,2,3,4,5] = [(1,2), (2,3) (4,5)]
     pairs :: [a] -> [(a,a)]

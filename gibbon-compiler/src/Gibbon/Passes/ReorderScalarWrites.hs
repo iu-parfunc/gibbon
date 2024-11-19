@@ -16,6 +16,7 @@ import           Gibbon.Common hiding ( Mode )
 import           Gibbon.Language
 import qualified Gibbon.L2.Syntax as L2
 import qualified Gibbon.L3.Syntax as L3
+import qualified Safe as Sf
 
 --------------------------------------------------------------------------------
 
@@ -67,7 +68,7 @@ writeOrderMarkers (Prog ddefs fundefs mainExp) = do
                      in if is_ok
                         then (LetE (v,locs,ty,rhs)) <$> (go reg_env' alloc_env' store_env env2' bod)
                         else do
-                          let tag_loc = head locs_before
+                          let tag_loc = Sf.headErr locs_before
                           let tag_tycon = findTyCon tag_loc bod
                           let in_scope = M.keysSet (vEnv env2) `S.union` M.keysSet (fEnv env2)
                               (move_set,move_scalars) = checkScalarDeps ddefs in_scope tag_loc ex
@@ -189,8 +190,8 @@ writeOrderMarkers (Prog ddefs fundefs mainExp) = do
                              then tycon_b
                              else error $ "findTyCon want: types don't match"
             CaseE _scrt brs -> let tycons = foldr (\(_a,_b,c) acc -> findTyCon want c : acc) [] brs
-                               in if all (== (head tycons)) tycons
-                                  then head tycons
+                               in if all (== (Sf.headErr tycons)) tycons
+                                  then Sf.headErr tycons
                                   else error $ "findTyCon want: types don't match"
             WithArenaE _ar bod -> (findTyCon want bod)
             TimeIt e0 _ty _b -> (findTyCon want e0)

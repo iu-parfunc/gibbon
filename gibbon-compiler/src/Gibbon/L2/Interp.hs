@@ -27,7 +27,7 @@ import           Data.Word (Word8)
 import           Data.Char ( ord )
 import           Data.Foldable as F
 import           Data.Maybe ( fromJust )
-import           Data.List as L
+import qualified Data.List as L
 
 import           Gibbon.Common
 import           Gibbon.Passes.Lower ( getTagOfDataCon )

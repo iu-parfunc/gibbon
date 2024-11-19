@@ -73,6 +73,8 @@ import           Control.DeepSeq
 import qualified Data.List as L
 import qualified Data.Set as S
 import qualified Data.Map as M
+import qualified Safe as Sf
+
 import           GHC.Stack (HasCallStack)
 import           Text.PrettyPrint.GenericPretty
 
@@ -568,7 +570,7 @@ instance Typeable (PreExp E2Ext LocVar (UrTy LocVar)) where
       SyncE -> voidTy
       WithArenaE _v e -> gRecoverType ddfs env2 e
       CaseE _ mp ->
-        let (c,vlocs,e) = head mp
+        let (c,vlocs,e) = Sf.headErr mp
             (vars,locs) = unzip vlocs
             env2' = extendPatternMatchEnv c ddfs vars locs env2
         in gRecoverType ddfs env2' e
@@ -611,7 +613,7 @@ instance Typeable (PreExp E2Ext LocVar (UrTy LocVar)) where
       SyncE -> voidTy
       WithArenaE _v e -> gRecoverTypeLoc ddfs env2 e
       CaseE _ mp ->
-        let (c,vlocs,e) = head mp
+        let (c,vlocs,e) = Sf.headErr mp
             (vars,locs) = unzip vlocs
             env2' = extendPatternMatchEnvLocVar c ddfs vars locs env2
         in gRecoverTypeLoc ddfs env2' e

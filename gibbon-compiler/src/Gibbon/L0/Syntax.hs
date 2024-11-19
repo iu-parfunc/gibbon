@@ -22,6 +22,7 @@ import           Text.PrettyPrint.GenericPretty
 import           Text.PrettyPrint.HughesPJ as PP
 import qualified Data.Set as S
 import qualified Data.Map as M
+import qualified Safe as Sf
 
 import           Gibbon.Common as C
 import           Gibbon.Language hiding (UrTy(..))
@@ -528,7 +529,7 @@ recoverType ddfs env2 ex =
                          in substTyVar (M.fromList (fragileZip tyvars tyapps)) retty
     SyncE -> voidTy0
     CaseE _ mp ->
-      let (c,args,e) = head mp
+      let (c,args,e) = Sf.headErr mp
           args' = map fst args
       in recoverType ddfs (extendsVEnv (M.fromList (zip args' (lookupDataCon ddfs c))) env2) e
     WithArenaE{} -> error "recoverType: WithArenaE not handled."

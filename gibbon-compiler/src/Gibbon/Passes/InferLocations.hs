@@ -87,6 +87,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.List as L
 import qualified Data.Foldable as F
+import qualified Safe as Sf 
 import Prelude as P
 import Data.Maybe
 import qualified Control.Monad.Trans.State.Strict as St
@@ -707,12 +708,12 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
                       constrs = concat $ [c | (_,_,c) <- ls']
                       constrs' = if null locs
                                  then constrs
-                                 else let tmpconstrs = [AfterTagL (L.head locs) d] ++
+                                 else let tmpconstrs = [AfterTagL (Sf.headErr locs) d] ++
                                                        (mapMaybe afterVar $ zip3
                                                          -- ((map Just $ L.tail ([a | (a,_,_) <- ls' ])) ++ [Nothing])
                                                         argLs
                                                          -- (map Just locs)
-                                                        ((map Just $ L.tail locs) ++ [Nothing])
+                                                        ((map Just $ Sf.tailErr locs) ++ [Nothing])
                                                         (map Just locs))
                                                          -- ((map Just $ L.tail locs) ++ [Nothing])) ++
                                       in tmpconstrs ++ constrs
@@ -846,7 +847,7 @@ inferExp env@FullEnv{dataDefs} ex0 dest =
       let src = locOfTy ty2
       pairs <- mapM (doCase dataDefs env src dest) ls
       return (CaseE ex' ([a | (a,_,_) <- pairs]),
-              (\(_,b,_)->b) (L.head pairs),
+              (\(_,b,_)->b) (Sf.headErr pairs),
               (concat $ [c | (_,_,c) <- pairs]))
 
     Ext (L1.AddFixed cur i) -> pure (L2.Ext (L2.AddFixed cur i), CursorTy, [])
@@ -1941,7 +1942,7 @@ copyOutOfOrderPacked prg@(Prog ddfs fndefs mnExp) = do
             [] -> pure $ (cpy_env, DataConE loc dcon args)
             ((hv,_hw,hh):rst_idxs) -> do
               -- let (vars,want,have) = unzip3 idxs
-              let (hv,_hw,hh) = head idxs
+              let (hv,_hw,hh) = Sf.headErr idxs
               let copies =
                         L.groupBy (\x y -> fst x == fst y) $
                         snd $
@@ -1966,7 +1967,7 @@ copyOutOfOrderPacked prg@(Prog ddfs fndefs mnExp) = do
                             (\(args1', acc) x ->
                                case x of
                                  VarE v | isPackedTy (L1.lookupVEnv v env2) ->
-                                      (tail args1', acc ++ [VarE (head args1')])
+                                      (Sf.tailErr args1', acc ++ [VarE (Sf.headErr args1')])
                                  _ -> (args1', acc ++ [x]))
                             (args1, [])
                             args

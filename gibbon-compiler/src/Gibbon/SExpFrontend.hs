@@ -22,6 +22,8 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Text hiding (map, head, init, last, length, zip, reverse, foldr, show)
 import qualified Data.Text as T
+import qualified Safe as Sf
+
 import Data.Text.IO (readFile)
 import System.FilePath
 import Text.Parsec
@@ -255,10 +257,10 @@ if a thing is a type variable or a data constructor.
        bod' <- exp bod
        go rst dds fds ((textToVar topid,ty,bod') : cds) mn
 
-     (Ls [A _ "define", _args, _bod] : _) -> error$ "Function is missing return type:\n  "++prnt (head xs)
-     (Ls (A _ "define" : _) : _) -> error$ "Badly formed function:\n  "++show (head xs)
+     (Ls [A _ "define", _args, _bod] : _) -> error$ "Function is missing return type:\n  "++prnt (Sf.headErr xs)
+     (Ls (A _ "define" : _) : _) -> error$ "Badly formed function:\n  "++show (Sf.headErr xs)
 
-     (Ls (A _ "data" : _) : _) -> error$ "Badly formed data definition:\n  "++prnt (head xs)
+     (Ls (A _ "data" : _) : _) -> error$ "Badly formed data definition:\n  "++prnt (Sf.headErr xs)
 
      (Ls3 _ "module+" _ bod : rst) -> go (bod:rst) dds fds cds mn
 

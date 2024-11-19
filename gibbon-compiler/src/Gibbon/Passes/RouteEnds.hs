@@ -29,6 +29,7 @@ module Gibbon.Passes.RouteEnds
     ( routeEnds ) where
 
 import qualified Data.List as L
+import qualified Safe as Sf
 import Data.Maybe ( fromJust )
 import Data.Map as M
 import Data.Set as S
@@ -341,7 +342,7 @@ routeEnds prg@Prog{ddefs,fundefs,mainExp} = do
                                -- what we really want is the end of need.
                                eor' = mkEqual lx need eor
                                f (l1,l2) env = M.insert l1 l2 env
-                               afterenv' = L.foldr f afterenv $ zip (L.map snd vls) (tail $ L.map snd vls)
+                               afterenv' = L.foldr f afterenv $ zip (L.map snd vls) (Sf.tailErr $ L.map snd vls)
                                -- two cases here for handing bound parameters:
                                -- we have a packed type:
                                handleLoc (eor,e) (_,(PackedTy _ _)) = return (eor,e)

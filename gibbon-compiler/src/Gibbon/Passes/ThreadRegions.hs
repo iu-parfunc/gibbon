@@ -4,6 +4,7 @@ import qualified Data.List as L
 import Data.Maybe ( fromJust )
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Safe as Sf
 import Data.Foldable ( foldrM )
 
 import Gibbon.Common
@@ -564,10 +565,10 @@ threadRegionsExp ddefs fundefs fnLocArgs renv env2 lfenv rlocs_env wlocs_env pkd
                               pkd_env1
                               (fragileZip locs dcon_tys)
           indirs1' = if isIndirectionTag dcon
-                     then S.insert (singleLocVar $ head vars) indirs1
+                     then S.insert (singleLocVar $ Sf.headErr vars) indirs1
                      else indirs1
           redirs1' = if isRedirectionTag dcon
-                     then S.insert (singleLocVar $ head vars) redirs1
+                     then S.insert (singleLocVar $ Sf.headErr vars) redirs1
                      else redirs1
           region_locs1' = if isIndirectionTag dcon || isRedirectionTag dcon
                           then M.adjust (\val -> val ++ (L.map singleLocVar (take 1 vars))) reg region_locs1
@@ -583,7 +584,7 @@ threadRegionsExp ddefs fundefs fnLocArgs renv env2 lfenv rlocs_env wlocs_env pkd
 
     ss_free_locs :: S.Set LocVar -> Env2 Var Ty2 -> Exp2 -> S.Set LocVar
     ss_free_locs bound env20 ex0 = let 
-                                    map = S.map (\w -> case M.lookup w (vEnv env20) of
+                                    mapfunc = S.map (\w -> case M.lookup w (vEnv env20) of
                                                     -- assumption: it's a location
                                                     Nothing -> (singleLocVar w)
                                                     Just (MkTy2 (PackedTy _ loc)) -> loc
@@ -595,7 +596,7 @@ threadRegionsExp ddefs fundefs fnLocArgs renv env2 lfenv rlocs_env wlocs_env pkd
                                     bound' = S.map unwrapLocVar bound {-terrible hack !!-}
                                     allLocs = (freeVars `S.difference` (bound' `S.union`
                                                 keysSet1  `S.union` keysSet2))
-                                    in map allLocs
+                                    in mapfunc allLocs
 
     updRLocsEnv t acc =
                  case t of

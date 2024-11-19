@@ -9,6 +9,7 @@ import Control.Monad
 import Data.Map hiding (foldr, fold, null, empty)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Safe as Sf
 
 import Data.Foldable hiding ( toList )
 import Data.Graph
@@ -182,9 +183,9 @@ ppPrim pr pes = case pr of
   SizeParam -> int 1  -- ?
   IsBig -> error "IsBig"
   GetNumProcessors -> error "GetNumProcessors"
-  PrintInt -> printer "Int" $ ppE $ head pes
-  PrintChar -> printer "Char" $ ppE $ head pes
-  PrintFloat -> printer "Float" $ ppE $ head pes
+  PrintInt -> printer "Int" $ ppE $ Sf.headErr pes
+  PrintChar -> printer "Char" $ ppE $ Sf.headErr pes
+  PrintFloat -> printer "Float" $ ppE $ Sf.headErr pes
   PrintBool -> ppAp "(fn true => \"True\" | false => \"False\")" pes
   PrintSym -> ppAp "print" pes
   ReadInt -> error "ReadInt"  -- Have every program read from stdin?
@@ -235,7 +236,7 @@ ppPrim pr pes = case pr of
   InplaceVUpdateP _ty0 -> hsep
       [ "let val _ ="
       , ppAp "ArraySlice.update" pes
-      , "in", ppE $ head pes
+      , "in", ppE $ Sf.headErr pes
       , "end"
       ]
   VConcatP _ty0 -> ppFail "VConcatP"
@@ -286,8 +287,8 @@ ppValDef funDef =
 
 ppFunRec :: [FunDef Var Exp1] -> Doc
 ppFunRec fdefs =
-  reduceFunDefs "fun" (head fdefs) $
-    foldr (reduceFunDefs "and") ";\n" (tail fdefs)
+  reduceFunDefs "fun" (Sf.headErr fdefs) $
+    foldr (reduceFunDefs "and") ";\n" (Sf.tailErr fdefs)
 
 reduceFunDefs :: Doc -> FunDef Var Exp1 -> Doc -> Doc
 reduceFunDefs keyword funDef doc =

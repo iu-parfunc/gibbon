@@ -6,10 +6,12 @@ module Gibbon.HaskellFrontend
   ( parseFile, primMap, multiArgsToOne, desugarLinearExts ) where
 
 import           Control.Monad
-import           Data.Foldable ( foldrM, foldl' )
+import           Data.Foldable ( foldrM )
 import           Data.Maybe (catMaybes, isJust)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Safe as Sf
+
 import           Data.IORef
 import           Language.Haskell.Exts.Extension
 import           Language.Haskell.Exts.Parser
@@ -1379,7 +1381,7 @@ desugarLinearExts (Prog ddefs fundefs main) = do
                   fn' <- go fn
                   case fn' of
                     Ext (LambdaE [(v,ProdTy tys)] bod) -> do
-                      let ty = head tys
+                      let ty = Sf.headErr tys
                           bod'' = foldl' (\acc i -> gSubstE (ProjE i (VarE v)) (VarE v) acc) bod [0..(length tys)]
                       pure (LetE (v,[],ty,e) bod'')
                     _ -> error $ "desugarLinearExts: couldn't desugar " ++ sdoc ex

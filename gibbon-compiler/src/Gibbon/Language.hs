@@ -25,6 +25,7 @@ module Gibbon.Language
 import qualified Data.Map as M
 import qualified Data.List as L
 import qualified Data.Set as S
+import qualified Safe as Sf
 -- import           Data.Functor.Foldable
 import           Text.PrettyPrint.GenericPretty
 
@@ -144,7 +145,9 @@ instance (Show (), Out (),
       SpawnE v _ _    -> outTy $ fEnv env2 # v
       SyncE           -> voidTy
       CaseE _ mp ->
-        let (c,args,e) = head mp
+        let 
+          
+            (c,args,e) = Sf.headErr mp
             args' = L.map fst args
         in gRecoverType ddfs (extendsVEnv (M.fromList (zip args' (lookupDataCon ddfs c))) env2) e
 

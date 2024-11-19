@@ -24,6 +24,8 @@ import           Data.Foldable ( foldlM )
 import qualified Data.Set as S
 import qualified Data.List as L
 import qualified Data.Map as M
+import qualified Safe as Sf
+
 import           Data.Maybe
 import           Text.PrettyPrint.GenericPretty
 
@@ -720,7 +722,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                          reg <- getRegion e constrs lin
                          ensureMatchCases ddfs exp ty brs
                          (tys,tstate') <- tcCases ddfs env funs constrs regs tstate lin reg brs
-                         foldM_ (ensureEqualTyModCursor exp) (tys !! 0) (tail tys)
+                         foldM_ (ensureEqualTyModCursor exp) (tys !! 0) (Sf.tailErr tys)
                          return (tys !! 0,tstate')
                  _ -> error ("Expected packed type, got " ++ show ty)
 

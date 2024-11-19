@@ -36,6 +36,8 @@ import           Control.DeepSeq
 import qualified Data.List as L
 import qualified Data.Set as S
 import qualified Data.Map as M
+import qualified Safe as Sf
+
 import           GHC.Stack (HasCallStack)
 import           Text.PrettyPrint.GenericPretty
 
@@ -216,7 +218,7 @@ instance Out (Old.E2Ext LocArg Ty2) => Typeable (PreExp Old.E2Ext LocArg Ty2) wh
       SyncE -> MkTy2 $ voidTy
       WithArenaE _v e -> gRecoverType ddfs env2 e
       CaseE _ mp ->
-        let (c,vlocargs,e) = head mp
+        let (c,vlocargs,e) = Sf.headErr mp
             (vars,locargs) = unzip vlocargs
             locs = map toLocVar locargs
 

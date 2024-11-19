@@ -29,7 +29,7 @@ import           Control.Monad ( when )
 import           Data.Foldable ( foldrM )
 import qualified Data.Map as M
 import qualified Data.Set as S
-
+import qualified Safe as Sf
 import qualified Data.List as L
 
 import           Gibbon.L2.Syntax
@@ -130,7 +130,7 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
                                                   PackedTy tycon2 loc | loc == from -> Just tycon2
                                                   _ -> acc2)
                                        Nothing (M.elems (vEnv env2))
-                        indr_dcon = head $ filter isIndirectionTag $ getConOrdering ddefs tycon
+                        indr_dcon = Sf.headErr $ filter isIndirectionTag $ getConOrdering ddefs tycon
                         rhs = Ext $ IndirectionE tycon indr_dcon (from, Single $ reg_env # from) (to, Single $ reg_env # to) (AppE "nocopy" [] [])
                     pure $ LetE (indr, [], PackedTy tycon from, rhs) acc)
                  bod1 (M.toList after_env)

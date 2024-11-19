@@ -2,7 +2,7 @@ module Gibbon.NewL2.FromOldL2 ( fromOldL2, toOldL2, toOldL2Exp ) where
 
 import qualified Data.Map as M
 import qualified Data.Set as S
-import qualified Data.List as L
+import qualified Safe as Sf
 
 import           Gibbon.L2.Syntax
 import qualified Gibbon.NewL2.Syntax as New
@@ -135,7 +135,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
                                    locenv locargs
                        env2' = extendPatternMatchEnv dcon ddefs vars locs env2
                        locenv'' = if isRedirectionTag dcon || isIndirectionTag dcon
-                                  then let ptr = Single $ head vars
+                                  then let ptr = Single $ Sf.headErr vars
                                        in M.insert ptr (mkLocArg ptr) locenv'
                                   else locenv'
                    rhs' <- go locenv'' env2' rhs

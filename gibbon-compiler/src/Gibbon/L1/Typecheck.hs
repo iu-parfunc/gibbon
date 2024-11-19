@@ -18,6 +18,7 @@ import Control.Monad.Except
 import Data.Map as M
 import Data.Set as S
 import qualified Data.List as L
+import qualified Safe as Sf
 import Data.Maybe
 import Text.PrettyPrint
 import Text.PrettyPrint.GenericPretty
@@ -828,8 +829,8 @@ tcCases ddfs env cs = do
             then return acc
             else throwError $ GenericTC ("Case branches have mismatched types: "
                                          ++ sdoc acc ++ ", " ++ sdoc ty) ex)
-         (head tys) (zipWith (\ty (_,_,ex) -> (ex,ty)) tys cs)
-  return $ head tys
+         (Sf.headErr tys) (zipWith (\ty (_,_,ex) -> (ex,ty)) tys cs)
+  return $ Sf.headErr tys
 
 
 checkLen :: (Out op, Out arg) => PreExp e () (UrTy ()) -> op -> Int -> [arg] ->
