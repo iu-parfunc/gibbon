@@ -169,12 +169,12 @@ writeOrderMarkers (Prog ddefs fundefs mainExp) = do
                           Just rloc@(RegionLocs locs allocated_to) ->
                             let locs_before = takeWhile (/= loc) locs in
                               case locs_before of
-                                [] -> let ret = dbgTraceIt (sdoc locs_before) (True, locs_before, reg, rloc)
+                                [] -> let ret = (True, locs_before, reg, rloc) 
                                         in ret
                                 _  ->
                                   let freev = L2.allFreeVars rhs `S.union` L2.allFreeVars bod
                                       locs_before' = filter (\x -> S.member x freev) locs_before
-                                  in dbgTraceIt (sdoc (locs_before, freev, loc, locs, locs_before')) (S.isProperSubsetOf (S.fromList locs_before') allocated_to, locs_before', reg, rloc)
+                                  in (S.isProperSubsetOf (S.fromList locs_before') allocated_to, locs_before', reg, rloc)
 
         findTyCon :: LocVar -> L2.Exp2 -> TyCon
         findTyCon want e =
