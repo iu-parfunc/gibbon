@@ -479,13 +479,13 @@ data Region = GlobR Var Multiplicity -- ^ A global region with lifetime equal to
                                      --   are no free locations in the program.
   deriving (Read,Show,Eq,Ord, Generic)
 
-data ExtendedRegion = AoSR Region                           -- ^ A simple "flat" region where the datatype 
-                                                            --   will reside in an array of structure representation.
-                    | SoAR Region [((String, Int), Region)] -- ^ A complex region representation for a datatype 
-                                                            --   One "flat" buffer makes space for all the data constructors. 
-                                                            --   In addition to a list containing a "flat" buffer for each 
-                                                            --   field. The region can also be mapped to which data constructore 
-                                                            --   and field tuple it belongs to. A structure of arrays representation. 
+data ExtendedRegion = AoSR Region                                   -- ^ A simple "flat" region where the datatype 
+                                                                    --   will reside in an array of structure representation.
+                    | SoAR Region [((DataCon, FieldIndex), Region)] -- ^ A complex region representation for a datatype 
+                                                                    --   One "flat" buffer makes space for all the data constructors. 
+                                                                    --   In addition to a list containing a "flat" buffer for each 
+                                                                    --   field. The region can also be mapped to which data constructore 
+                                                                    --   and field tuple it belongs to. A structure of arrays representation. 
       deriving (Read,Show,Eq,Ord, Generic)
 
 
