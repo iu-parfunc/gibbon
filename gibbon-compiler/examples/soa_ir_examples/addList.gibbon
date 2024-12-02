@@ -28,7 +28,7 @@ add1 :: List -> List
                        lrmReg = SoAR (VarR "r_156") [(("Cons", 0)), (VarR "r_158")],
                        lrmMode = Input},
                   LRM {lrmLoc = SoA "loc_155" [(("Cons", 0), "loc_157")] ,
-                       lrmReg = AoSR (VarR "r_157") [(("Cons", 0), (VarR "r_159"))],
+                       lrmReg = SoAR (VarR "r_157") [(("Cons", 0), (VarR "r_159"))],
                        lrmMode = Output}],
          effs:  [],
          locrets:  [],
