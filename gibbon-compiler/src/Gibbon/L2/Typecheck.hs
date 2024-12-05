@@ -780,6 +780,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                        (ty,tstate2) <- tcExp ddfs env' funs constrs1 regs tstate1 e
                        tstate3 <- removeLoc exp tstate2 (Single loc)
                        return (ty,tstate3)
+                {-TODO handle what needs to happen with the wildcard argument, list of offsets in case of soa -}
                 AfterConstantLE i l1 ->
                      do r <- getRegion exp constrs l1
                         let tstate1 = extendTS (Single loc) (Output,True) $ setAfter l1 tstatein

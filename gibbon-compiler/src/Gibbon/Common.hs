@@ -8,7 +8,7 @@
 module Gibbon.Common
        (
          -- * Variables
-         Var(..), LocVar(..), Location, FieldIndex
+         Var(..), LocVar(..), Location, FieldIndex, DataCon
        , RegVar, fromVar, toVar, varAppend, toEndV, toEndVLoc, toSeqV, cleanFunName
        , TyVar(..), isUserTv
        , Symbol, intern, unintern
@@ -66,7 +66,6 @@ import System.IO.Unsafe ( unsafePerformIO )
 import System.Random    ( randomIO )
 import Debug.Trace
 import Language.C.Quote.CUDA (ToIdent, toIdent)
-
 import Gibbon.DynFlags
 
 --------------------------------------------------------------------------------
@@ -138,12 +137,19 @@ toSeqV v = varAppend v (toVar "_seq")
 
 -- | A location variable stores the abstract location. 
 type Location = Var
+-- | The position or index of a field in a data constructor value.
+type FieldIndex = Int 
+-- | A data constructor is a String type in the compiler
+type DataCon = String
 
--- | The position or index of a field in a data constructor value. 
-type FieldIndex = Int
-
-data LocVar = Single Location
-  deriving (Show, Ord, Eq, Read, Generic, NFData, Out)
+-- | Single: For storing a single location, useful for adding a cursor in a region. 
+-- | SoA: A location signature for a structure of arrays representation. 
+--        The first location points to a location in the data constructor buffer. 
+--        The list includes locations for each field and a tuple storing 
+--        information about which data constructor and corresponding index the field 
+--        comes from. 
+data LocVar = Single Location | SoA Location [((DataCon, FieldIndex), Location)]
+                deriving (Show, Ord, Eq, Read, Generic, NFData, Out)
 
 -- | Abstract region variables.
 type RegVar = Var

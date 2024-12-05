@@ -435,10 +435,10 @@ instance Pretty l => Pretty (L2.PreLocExp l) where
     pprintWithStyle _ le =
         case le of
           StartOfRegionLE r -> lparen <> text "startOfRegion" <+> text (sdoc r) <> rparen
-          AfterConstantLE i loc   -> lparen <> pprint loc <+> text "+" <+> int i <> rparen
-          AfterVariableLE v loc b -> if b
-                                     then text "fresh" <> (parens $ pprint loc <+> text "+" <+> doc v)
-                                     else parens $ pprint loc <+> text "+" <+> doc v
+          AfterConstantLE i loc -> lparen <> pprint loc <+> text "+" <+> int i <> rparen
+	  AfterVariableLE v loc b -> if b
+				     then text "fresh" <> (parens $ pprint loc <+> text "+" <+> doc v)
+				     else parens $ pprint loc <+> text "+" <+> doc v
           InRegionLE r  -> lparen <> text "inRegion" <+> text (sdoc r) <> rparen
           FromEndLE loc -> lparen <> text "fromEnd" <+> pprint loc <> rparen
           FreeLE -> lparen <> text "free" <> rparen

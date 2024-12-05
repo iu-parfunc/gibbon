@@ -134,6 +134,7 @@ simplifyLocBinds only_cse (Prog ddefs fundefs mainExp) = do
           case ext of
             LetRegionE reg sz ty bod -> Ext (LetRegionE reg sz ty (go env bod))
             LetParRegionE reg sz ty bod -> Ext (LetParRegionE reg sz ty (go env bod))
+            {- TODO VS: fix for SOA case -}
             LetLocE loc (AfterConstantLE i loc2) bod ->
               case (M.lookup loc2 env) of
                 Nothing ->

@@ -185,16 +185,23 @@ data E2Ext loc dec
 
 -- | Define a location in terms of a different location.
 data PreLocExp loc = StartOfRegionLE Region
-                   | AfterConstantLE Int  -- Number of bytes after.
-                                     loc  -- Location which this location is offset from.
-                   | AfterVariableLE Var  -- Name of variable v. This loc is size(v) bytes after.
-                                     loc  -- Location which this location is offset from.
-                                     Bool -- Whether it's running in a stolen continuation i.e
-                                          -- whether this should return an index in a fresh region or not.
-                                          -- It's True by default and flipped by ParAlloc if required.
+                   | AfterConstantLE  Int  -- Number of bytes after. (In case of an SoA loc, this is the offset into the data constructor buffer)
+                                      loc  -- Location which this location is offset from.
+
+                   | AfterVariableLE  Var  -- Name of variable v. This loc is size(v) bytes after.
+                                      loc  -- Location which this location is offset from.
+                                      Bool -- Whether it's running in a stolen continuation i.e
+                                           -- whether this should return an index in a fresh region or not.
+                                           -- It's True by default and flipped by ParAlloc if required.
                    | InRegionLE Region
                    | FreeLE
                    | FromEndLE  loc
+
+                   | AfterSoALE (PreLocExp loc) [PreLocExp loc] loc  -- Compute new SoA location from an old SoA location 
+								     -- (PreLocExp loc) -> expression for arithmetic on data constructor buffer 
+								     -- [PreLocExp loc] -> expressions for arithmetic on each field location 
+								     -- loc, store the old loc, why? -- capture more metadata, also style
+
   deriving (Read, Show, Eq, Ord, Functor, Generic, NFData)
 
 type LocExp = PreLocExp LocVar
@@ -231,7 +238,7 @@ instance FreeVars LocExp where
   gFreeVars e =
     case e of
       AfterConstantLE _ loc   -> S.singleton $ unwrapLocVar loc
-      AfterVariableLE v loc _ -> S.fromList $ [v, unwrapLocVar loc]
+      AfterVariableLE v loc _ -> S.fromList [v, unwrapLocVar loc]
       _ -> S.empty
 
 instance (Out l, Out d, Show l, Show d) => Expression (E2Ext l d) where
@@ -479,6 +486,17 @@ data Region = GlobR Var Multiplicity -- ^ A global region with lifetime equal to
                                      --   are no free locations in the program.
   deriving (Read,Show,Eq,Ord, Generic)
 
+{- 
+   Why a new datatype? -- Well, For a location, we changed the exisiting datatype, i.e. LocVar.
+   That's acceptable, because locations are just cursors into regions, they are an indices into 
+   regions which don't necessarily signify an entity/allocated object. 
+
+   A region encapsulates an allocated space and i'd like a region to represent a unit of space. 
+   We can create more "complex" regions using that unit, for instance a SoA region. 
+   In additon, it preserves statements like "is region A within region B?"
+   It would be tough to formalize what is means by saying an SoA region exists within another region 
+   (VarR x). Since an SoA region contains multiple regions.
+-}
 data ExtendedRegion = AoSR Region                                   -- ^ A simple "flat" region where the datatype 
                                                                     --   will reside in an array of structure representation.
                     | SoAR Region [((DataCon, FieldIndex), Region)] -- ^ A complex region representation for a datatype 

@@ -699,6 +699,7 @@ cursorizeLocExp denv tenv senv lvar locExp =
       in if isBound ((toLocVar) loc) tenv
          then Right (rhs, [], tenv, senv)
          else Left$ M.insertWith (++) ((toLocVar) loc) [((unwrapLocVar lvar),[],CursorTy,rhs)] denv
+
     -- TODO: handle product types here
 
 {- [2018.03.07]:

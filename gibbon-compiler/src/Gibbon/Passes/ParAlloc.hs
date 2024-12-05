@@ -141,6 +141,7 @@ parAllocExp ddefs fundefs env2 reg_env after_env mb_parent_id pending_binds spaw
                      (\acc b ->
                         case b of
                           PVar vbnd -> mkLets [vbnd] acc
+                          {-[2024.12.04] VS: Harcoding an empty list for now, seems bad. TODO: fix-}
                           PAfter (loc1, (w, loc2)) -> Ext $ LetLocE loc1 (AfterVariableLE w loc2 False) $ acc)
                      bod2 pending_binds
       pure $ LetE (v, endlocs, ty, SyncE) bod3
