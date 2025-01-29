@@ -1677,13 +1677,13 @@ GibGcStateSnapshot *gib_gc_init_state(uint64_t num_regions)
     snapshot->reg_info_addrs = gib_alloc(num_regions * sizeof(GibRegionInfo*));
     if (snapshot == NULL) {
         fprintf(stderr, "gib_gc_save_state: gib_alloc failed: %llu",
-                num_regions * sizeof(GibRegionInfo *));
+                (long long unsigned int) num_regions * sizeof(GibRegionInfo *));
         exit(1);
     }
     snapshot->outsets = gib_alloc(num_regions * sizeof(char*));
     if (snapshot == NULL) {
         fprintf(stderr, "gib_gc_save_state: gib_alloc failed: %llu",
-                num_regions * sizeof(void*));
+                (long long unsigned int) num_regions * sizeof(void*));
         exit(1);
     }
     return snapshot;
