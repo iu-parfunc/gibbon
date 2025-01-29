@@ -1676,13 +1676,13 @@ GibGcStateSnapshot *gib_gc_init_state(uint64_t num_regions)
     }
     snapshot->reg_info_addrs = gib_alloc(num_regions * sizeof(GibRegionInfo*));
     if (snapshot == NULL) {
-        fprintf(stderr, "gib_gc_save_state: gib_alloc failed: %zu",
+        fprintf(stderr, "gib_gc_save_state: gib_alloc failed: %llu",
                 num_regions * sizeof(GibRegionInfo *));
         exit(1);
     }
     snapshot->outsets = gib_alloc(num_regions * sizeof(char*));
     if (snapshot == NULL) {
-        fprintf(stderr, "gib_gc_save_state: gib_alloc failed: %zu",
+        fprintf(stderr, "gib_gc_save_state: gib_alloc failed: %llu",
                 num_regions * sizeof(void*));
         exit(1);
     }
@@ -1802,8 +1802,8 @@ void gib_show_usage(char** argv)
 
     printf("\n");
     printf("Options:\n");
-    printf(" --biginf-buffer-size <bytes>   Set the buffer size (default %" PRId64 ").\n", gib_global_biginf_init_chunk_size);
-    printf(" --inf-buffer-size <bytes>      Set the buffer size (default %" PRId64 ").\n", gib_global_inf_init_chunk_size);
+    printf(" --biginf-buffer-size <bytes>   Set the buffer size (default %zd).\n", gib_global_biginf_init_chunk_size);
+    printf(" --inf-buffer-size <bytes>      Set the buffer size (default %zd).\n", gib_global_inf_init_chunk_size);
     printf(" --bench-input <path>           Set the input file read for benchmarking. Applies only\n");
     printf("                                If the program was *compiled* with --bench-fun. \n");
     printf("\n");
