@@ -40,11 +40,12 @@ similar to Typed Racket, and a small subset of Haskell.
 |PLDI'19|**LoCal: A Language for Programs Operating on Serialized Data:** <br/> Michael Vollmer, Chaitanya Koparkar, Mike Rainey, Laith Sakka, Milind Kulkarni, Ryan R. Newton [[PDF][pldi19]] [[extended version][local-tr]]|
 |ICFP'21|**Efficient Tree-Traversals: Reconciling Parallelism and Dense Data Representations:** <br/> Chaitanya Koparkar, Mike Rainey, Michael Vollmer, Milind Kulkarni, Ryan R. Newton [[PDF][icfp21]]|
 |ISMM'24|**Garbage Collection for Mostly Serialized Heaps:** <br/> Chaitanya Koparkar, Vidush Singhal, Aditya Gupta, Mike Rainey, Michael Vollmer, Artem Pelenitsyn, Sam Tobin-Hochstadt, Milind Kulkarni, Ryan R. Newton [[PDF][ismm24]]|
-|ECOOP'24|**Optimizing Layout of Recursive Datatypes with Marmoset:** <br/> Vidush Singhal, Chaitanya Koparkar, Joseph Zullo, Artem Pelenitsyn, Michael Vollmer, Mike Rainey, Ryan Newton, Milind Kulkarni [[PDF][ecoop24]]|
+|ECOOP'24|**Optimizing Layout of Recursive Datatypes with Marmoset:** <br/> Vidush Singhal, Chaitanya Koparkar, Joseph Zullo, Artem Pelenitsyn, Michael Vollmer, Mike Rainey, Ryan Newton, Milind Kulkarni [[PDF][ecoop24]] [[extended version][ecoop24ext]]|
 
 [ecoop17]: http://drops.dagstuhl.de/opus/volltexte/2017/7273/pdf/LIPIcs-ECOOP-2017-26.pdf
 [pldi19]:  http://recurial.com/pldi19main.pdf
 [local-tr]: https://legacy.cs.indiana.edu/ftp/techreports/TR741.pdf
 [icfp21]:  ./public/icfp21.pdf
 [ismm24]:  ./public/ismm24.pdf
-[ecoop24]: https://arxiv.org/pdf/2405.17590
+[ecoop24]: https://drops.dagstuhl.de/storage/00lipics/lipics-vol313-ecoop2024/LIPIcs.ECOOP.2024.38/LIPIcs.ECOOP.2024.38.pdf
+[ecoop24ext]: https://arxiv.org/pdf/2405.17590
