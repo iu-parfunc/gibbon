@@ -91,6 +91,9 @@ library
                        Gibbon.Passes.RearrangeFree
                        Gibbon.Passes.Codegen
                        Gibbon.Passes.CalculateBounds
+                       Gibbon.Passes.CorrectLocExprs
+                       Gibbon.Passes.ReorderLetExprs
+                       Gibbon.Passes.AddCastInstructions
 
   other-extensions:    DeriveDataTypeable CPP
 
