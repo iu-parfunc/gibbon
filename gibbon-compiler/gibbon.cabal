@@ -81,6 +81,7 @@ library
                        Gibbon.Passes.FollowPtrs
                        Gibbon.Passes.InferFunAllocs
                        Gibbon.Passes.ThreadRegions
+                       Gibbon.Passes.ThreadRegions2
                        Gibbon.Passes.Cursorize
                        Gibbon.Passes.FindWitnesses
                        Gibbon.Passes.ShakeTree
@@ -91,6 +92,9 @@ library
                        Gibbon.Passes.RearrangeFree
                        Gibbon.Passes.Codegen
                        Gibbon.Passes.CalculateBounds
+                       Gibbon.Passes.CorrectLocExprs
+                       Gibbon.Passes.ReorderLetExprs
+                       Gibbon.Passes.AddCastInstructions
 
   other-extensions:    DeriveDataTypeable CPP
 
