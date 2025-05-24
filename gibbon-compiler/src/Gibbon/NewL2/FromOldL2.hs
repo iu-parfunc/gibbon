@@ -2,6 +2,7 @@ module Gibbon.NewL2.FromOldL2 ( fromOldL2, toOldL2, toOldL2Exp ) where
 
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Data.List as L
 import qualified Safe as Sf
 
 import           Gibbon.L2.Syntax
@@ -95,7 +96,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
                         foldr
                           (\(witloc, tloc) (wits, env) ->
                              let (New.Loc lrem) = (env # (tloc))
-                                 wit' = New.EndWitness lrem (unwrapLocVar witloc)
+                                 wit' = New.EndWitness lrem witloc
                                  env' = M.insert witloc wit' env
                              in (wit' : wits, env'))
                           ([], locenv')
@@ -126,9 +127,23 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
 
                  docase (dcon, vlocs, rhs) = do
 
-                   let mkLocArg loc = New.Loc $ lrem { New.lremLoc = loc }
+                   let mkLocArg loc (Just idx) = let lrem_reg = New.lremReg lrem
+                                                     lrem_end_reg = New.lremEndReg lrem
+                                                     New.Loc lrem' = case lrem_reg of 
+                                                                  SingleR _ -> New.Loc $ lrem { New.lremLoc = loc }
+                                                                  SoARv dcreg fregs -> case L.lookup (dcon, idx) fregs of 
+                                                                                            Just fr -> New.Loc $ lrem { New.lremLoc = loc, New.lremReg = fr }
+                                                                                            Nothing -> New.Loc $ lrem { New.lremLoc = loc }
+                                                     New.Loc lrem'' = case lrem_end_reg of 
+                                                                      SingleR _ -> New.Loc lrem' 
+                                                                      SoARv dcreg fregs -> case L.lookup (dcon, idx) fregs of
+                                                                                                Just fr -> New.Loc $ lrem' { New.lremEndReg = fr} 
+                                                                                                Nothing -> New.Loc lrem'
+                                                    in New.Loc lrem''   
+
+                       mkLocArg loc Nothing = New.Loc $ lrem { New.lremLoc = loc }
                    let (vars,locs) = unzip vlocs
-                       locargs = map mkLocArg locs
+                       locargs = map (\(loc, idx) -> mkLocArg loc (Just idx)) $ zip locs [0..length(locs)]
                        vlocs' = zip vars locargs
                        locenv' = foldr
                                    (\(New.Loc lrem') acc -> M.insert (New.lremLoc lrem') (New.Loc lrem') acc)
@@ -136,10 +151,10 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
                        env2' = extendPatternMatchEnv dcon ddefs vars locs env2
                        locenv'' = if isRedirectionTag dcon || isIndirectionTag dcon
                                   then let ptr = Single $ Sf.headErr vars
-                                       in M.insert ptr (mkLocArg ptr) locenv'
+                                       in M.insert ptr (mkLocArg ptr Nothing) locenv'
                                   else locenv'
                    rhs' <- go locenv'' env2' rhs
-                   pure $ (dcon, vlocs', rhs')
+                   dbgTrace minChatLvl "Print LREM Case: " dbgTrace minChatLvl (sdoc (lrem, locargs, locenv'')) dbgTrace minChatLvl "End LREM Case.\n" pure $ (dcon, vlocs', rhs')
 
              (CaseE (VarE v)) <$> mapM docase brs
 
@@ -174,7 +189,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
         FromEndE loc -> Ext <$> FromEndE <$> pure (locenv # loc)
 
         BoundsCheck i reg loc -> do
-         let reg' = New.Reg (unwrapLocVar reg) Output
+         let reg' = New.Reg (fromLocVarToRegVar reg) Output
              loc' = locenv # loc
          pure $ Ext $ BoundsCheck i reg' loc'
 
@@ -190,8 +205,8 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
             IndirectionE
               tycon
               dcon
-              (locenv # from, New.EndOfReg (unwrapLocVar from_reg) Output (toEndV (unwrapLocVar from_reg)))
-              (locenv # to, New.EndOfReg (unwrapLocVar to_reg) Input (toEndV (unwrapLocVar to_reg)))
+              (locenv # from, New.EndOfReg (fromLocVarToRegVar from_reg) Output ((toEndVRegVar . fromLocVarToRegVar) from_reg))
+              (locenv # to, New.EndOfReg (fromLocVarToRegVar to_reg) Input ((toEndVRegVar . fromLocVarToRegVar) to_reg))
               e'
               -- (locenv # from, New.Reg (VarR from_reg) Output)
               -- (locenv # to, New.Reg (VarR to_reg) Input)
@@ -236,7 +251,7 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
   toLocArg :: LocVar -> LocExp -> LocEnv -> New.LocArg
   toLocArg loc locexp locenv0 =
     case locexp of
-      StartOfRegionLE reg -> New.Loc (New.LREM loc (regionToVar reg) (toEndV (regionToVar reg)) Output)
+      StartOfRegionLE reg -> New.Loc (New.LREM loc (regionToVar reg) (toEndVRegVar (regionToVar reg)) Output)
       AfterConstantLE _ loc2 ->
         let (New.Loc lrem) = locenv0 # loc2
         in New.Loc (New.LREM loc (New.lremReg lrem) (New.lremEndReg lrem) Output)
@@ -244,14 +259,48 @@ fromOldL2Exp ddefs fundefs locenv env2 ex =
         let (New.Loc lrem) = locenv0 # loc2
         in New.Loc (New.LREM loc (New.lremReg lrem) (New.lremEndReg lrem) Output)
       InRegionLE reg ->
-        New.Loc (New.LREM loc (regionToVar reg) (toEndV (regionToVar reg)) Output)
+        New.Loc (New.LREM loc (regionToVar reg) (toEndVRegVar (regionToVar reg)) Output)
       FreeLE ->
-        New.Loc (New.LREM loc "FREE_REG" "end_FREE_REG" Output)
+        New.Loc (New.LREM loc (SingleR "FREE_REG") (SingleR "end_FREE_REG") Output)
       FromEndLE loc2 ->
         case (locenv0 # loc2) of
           New.Loc lrem -> New.Loc (lrem { New.lremLoc = loc })
           New.EndWitness lrem _ -> New.Loc ( lrem { New.lremLoc = loc } )
           oth -> error $ "toLocArg: got" ++ sdoc oth
+      GetDataConLocSoA loc2 -> 
+        let (New.Loc lrem) = locenv0 # loc2
+            regVar = New.lremReg lrem
+            endRegVar = New.lremEndReg lrem 
+            modality = New.lremMode lrem
+            dcRegVar = getDataConRegFromRegVar regVar
+            dcEndRegVar = getDataConRegFromRegVar endRegVar
+          in New.Loc (New.LREM loc dcRegVar dcEndRegVar modality)
+      GetFieldLocSoA (dcon, idx) loc2 ->
+        let (New.Loc lrem) = locenv0 # loc2
+            regVar = New.lremReg lrem
+            endRegVar = New.lremEndReg lrem 
+            modality = New.lremMode lrem
+            fieldRegVar = getFieldRegFromRegVar (dcon, idx) regVar
+            fieldEndRegVar = getFieldRegFromRegVar (dcon, idx) endRegVar
+        in New.Loc (New.LREM loc fieldRegVar fieldEndRegVar modality)
+      GenSoALoc dloc fieldsLocs ->
+        -- Get the single locs and build this part
+        let soa_loc = SoA (unwrapLocVar dloc) (map (\(d, flc) -> (d, flc)) fieldsLocs)  
+            (New.Loc dlrem) = locenv0 # dloc
+            dloc_reg = New.lremReg dlrem 
+            dloc_end_reg = New.lremEndReg dlrem
+            field_regs = map (\(k, flc) -> let (New.Loc flrem) = locenv0 # flc
+                                              in (k, New.lremReg flrem)
+                             ) fieldsLocs
+            field_end_regs = map (\(k, flc) -> let (New.Loc flrem) = locenv0 # flc
+                                                  in (k, New.lremEndReg flrem)
+                             ) fieldsLocs
+            soa_reg = SoARv dloc_reg field_regs
+            soa_end_reg = SoARv dloc_end_reg field_end_regs
+            -- modality of all regions should be same
+            modality = New.lremMode dlrem
+            lrem = New.LREM loc soa_reg soa_end_reg modality
+         in New.Loc lrem
 
 
   updModality :: Ty2 -> LocEnv -> LocEnv
