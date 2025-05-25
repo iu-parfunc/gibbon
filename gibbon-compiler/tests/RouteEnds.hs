@@ -14,6 +14,14 @@ import Test.Tasty
 
 import Gibbon.Common hiding (FunDef)
 import Gibbon.L2.Syntax as L2
+    ( Prog2,
+      Prog(fundefs, Prog),
+      FunDef(funTy),
+      ArrowTy2(locRets),
+      LRM(LRM),
+      LocRet(..),
+      Modality(Input),
+      Region(VarR) )
 import Gibbon.L2.Examples
 import Gibbon.L2.Typecheck
 import Gibbon.Passes.RouteEnds
@@ -64,7 +72,7 @@ assertRouteEnds prg fnName expected = expected @=? lRets
 
 -- | add1 reaches the end of its input
 case_add1_test2 :: Assertion
-case_add1_test2  = assertRouteEnds add1Prog "add1" [EndOf $ LRM (singleLocVar "lin2") (AoSR $ VarR "r3") Input]
+case_add1_test2  = assertRouteEnds add1Prog "add1" [EndOf $ LRM (singleLocVar "lin2") (VarR "r3") Input]
 
 {-
 
@@ -85,13 +93,13 @@ case_id2 = assertRouteEnds id2Prog "id2" []
 
 -- | copyTree does
 case_copyTree :: Assertion
-case_copyTree = assertRouteEnds copyTreeProg "copyTree" [EndOf $ LRM (singleLocVar "lin23") (AoSR $ VarR "r24") Input]
+case_copyTree = assertRouteEnds copyTreeProg "copyTree" [EndOf $ LRM (singleLocVar "lin23") (VarR "r24") Input]
 
 case_id3 :: Assertion
 case_id3 = assertRouteEnds id3Prog "id3" []
 
 case_copy_on_id1 :: Assertion
-case_copy_on_id1 = assertRouteEnds copyOnId1Prog "id1WithCopy" [EndOf $ LRM (singleLocVar "lin19") (AoSR $ VarR "r20") Input]
+case_copy_on_id1 = assertRouteEnds copyOnId1Prog "id1WithCopy" [EndOf $ LRM (singleLocVar "lin19") (VarR "r20") Input]
 
 -- |
 routeEnds2Tests :: TestTree

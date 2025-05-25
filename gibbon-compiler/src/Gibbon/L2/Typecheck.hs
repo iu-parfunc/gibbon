@@ -20,7 +20,7 @@ module Gibbon.L2.Typecheck
 import           Control.DeepSeq
 import           Control.Monad
 import           Control.Monad.Except
-import           Data.Foldable ( foldlM )
+import           Data.Foldable ( foldlM, foldrM )
 import qualified Data.Set as S
 import qualified Data.List as L
 import qualified Data.Map as M
@@ -44,6 +44,14 @@ data LocConstraint = StartOfC LocVar Region -- ^ Location is equal to start of t
                                     LocVar  -- Location which is before
                                     LocVar  -- Location which is after
                    | InRegionC LocVar Region -- Location is somewher within this region.
+                   -- New constraints here for the SoA backend.
+                   | GenSoALocC LocVar [((DataCon, FieldIndex), LocVar)]
+                   | GetDataConLocSoAC LocVar 
+                   | AssignC LocVar LocVar -- First location is equal to the second location.
+                                           -- First location is rhs, second location is lhs
+                   | GetFieldLocSoAC (DataCon, FieldIndex) LocVar
+                   | FromEndC LocVar
+
   deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
 
@@ -83,7 +91,7 @@ newtype LocationTypeState = LocationTypeState
 
 -- | A region set is (as you would expect) a set of regions. They are the
 -- regions that are currently live while checking a particular expression.
-newtype RegionSet = RegionSet { regSet :: S.Set Var }
+newtype RegionSet = RegionSet { regSet :: S.Set Region }
   deriving (Read, Show, Eq, Ord, Generic, NFData)
 
 
@@ -120,7 +128,7 @@ type TcM a = (Except TCError) a
 -- | Check an expression. Given the data definitions, an general type environment, a function map,
 --   a constraint set, a region set, an (input) location state map, and the expression, this function
 --   will either throw an error, or return a pair of expression type and new location state map.
-tcExp :: DDefs Ty2 -> Env2 LocVar Ty2 -> FunDefs2
+tcExp :: DDefs Ty2 -> Env2 FreeVarsTy Ty2 -> FunDefs2
       -> ConstraintSet -> RegionSet -> LocationTypeState -> Exp
       -> TcM (Ty2, LocationTypeState)
 tcExp ddfs env funs constrs regs tstatein exp =
@@ -129,7 +137,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
       VarE v ->
           -- Look up a variable in the environment
-          do ty <- lookupVar env (Single v) exp
+          do ty <- lookupVar env (fromVarToFreeVarsTy v) exp
              return (ty, tstatein)
 
       LitE _i -> return (IntTy, tstatein)
@@ -454,7 +462,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
                      VarE f -> do
                        len2
                        let [ls]   = tys
-                           fn_ty  = lookupFEnvLocVar (Single f) env
+                           fn_ty  = lookupFEnvLocVar (fromVarToFreeVarsTy f) env
                            in_tys = inTys fn_ty
                            ret_ty = outTy fn_ty
                            err x  = throwError $ GenericTC ("vsort: Expected a sort function of type (ty -> ty -> Bool). Got"++ sdoc x) exp
@@ -675,16 +683,32 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
                  RequestEndOf{} -> throwError $ GenericTC  "tcExp of PrimAppE: RequestEndOf not handled yet" exp
 
+      LetE (v, _ls, ty, e1@(AppE f _ls1 _)) e2 -> do
+        (ty1,tstate1) <- recur tstatein e1
+        ensureEqualTyNoLoc exp ty1 ty
+        let zipped = zip _ls _ls1
+        (tstate', constrs') <- foldrM (\(l, l1) (st, c) -> do 
+                                             r <- getRegion exp c l1
+                                             let c' = extendConstrs (InRegionC l r) c
+                                             pure (st, c') 
+                         ) (tstate1, constrs) zipped  
+        --r <- getRegion exp constrs _l1
+        --let tstate1 = extendTS loc (Output,True) $ setAfter _l1 tstatein
+        --let constrs1 = extendConstrs (InRegionC loc r) $ extendConstrs (FromEndC _l1) constrs
+        
+        let env' = extendVEnvLocVar (fromVarToFreeVarsTy v) ty env 
+        tcExp ddfs env' funs constrs' regs tstate' e2
 
       LetE (v,_ls,ty,e1) e2 -> do
-
                -- We get the type and new location state from e1
                (ty1,tstate1) <- recur tstatein e1
                ensureEqualTyNoLoc exp ty1 ty
-               let env' = extendVEnvLocVar (Single v) ty env
-
+               let env' = extendVEnvLocVar (fromVarToFreeVarsTy v) ty env
                -- Then we check e1 with that location state
                tcExp ddfs env' funs constrs regs tstate1 e2
+
+                 
+                
 
       IfE e1 e2 e3 -> do
 
@@ -736,8 +760,8 @@ tcExp ddfs env funs constrs regs tstatein exp =
                else do
                  sequence_ [ ensureEqualTyNoLoc exp ty1 ty2
                            | (ty1,ty2) <- zip args tys ]
-                 -- -- TODO: need to fix this check
-                 ensureDataCon exp l tys constrs
+                 -- -- TODO: need to fix this check for SoA location.
+                 ensureDataCon exp dcty dc l tys constrs
                  tstate2 <- switchOutLoc exp tstate1 l
                  return (PackedTy dcty l, tstate2)
 
@@ -753,7 +777,7 @@ tcExp ddfs env funs constrs regs tstatein exp =
       SyncE -> pure (ProdTy [], tstatein)
 
       WithArenaE v e -> do
-              let env' = extendVEnvLocVar (Single v) ArenaTy env
+              let env' = extendVEnvLocVar (fromVarToFreeVarsTy v) ArenaTy env
               tcExp ddfs env' funs constrs regs tstatein e
 
       MapE _ _ -> throwError $ UnsupportedExpTC exp
@@ -769,53 +793,115 @@ tcExp ddfs env funs constrs regs tstatein exp =
                regs' <- regionInsert exp r regs
                (ty,tstate) <- tcExp ddfs env funs constrs regs' tstatein e
                return (ty,tstate)
-      Ext (LetLocE (Single loc) c e) -> do
-              let env' = extendVEnvLocVar (Single loc) CursorTy env
+      -- REMOVE THIS IDEALLY, we should not use this and there should be a polymorphic let Loc 
+      --Ext (LetSoALocE loc e) -> do
+      --  -- TODO: check why a ty of CursorTy is added, this type should change??
+      --  let env' = extendVEnvLocVar loc CursorTy env
+      --  let tstate1 = extendTS loc (Output, True) tstatein
+      --  (ty,tstate2) <- tcExp ddfs env' funs constrs regs tstate1 e
+      --  tstate3 <- removeLoc exp tstate2 loc
+      --  return (ty,tstate3)
+      Ext (LetLocE loc c e) -> do
+              {- VS: TODO: bug, why is the type of loc always CursorTy? -}
+              let env' = extendVEnvLocVar (fromLocVarToFreeVarsTy loc) CursorTy env
               case c of
+                GenSoALoc dcloc fieldLocs -> do
+                  dcloc_reg <- getRegion exp constrs dcloc
+                  let constrs' = extendConstrs (InRegionC (dcloc) dcloc_reg) constrs
+                  --let nconstrs' = extendConstrs (InRegionC l r) $ nconstrs
+                  (constrs'', fregs) <- foldrM (\(k, floc) (accC, accR) -> do
+                                                                           freg <- getRegion exp accC floc
+                                                                           return $ (extendConstrs (InRegionC (floc) freg) accC , (k, freg):accR)
+                                         ) (constrs', []) fieldLocs
+                  let new_reg = SoAR dcloc_reg fregs
+                  let constrs''' = extendConstrs (InRegionC loc new_reg) $ constrs''
+                  let env' = extendVEnvLocVar (fromLocVarToFreeVarsTy loc) CursorTy env
+                  let tstate1 = extendTS loc (Output, True) tstatein
+                  (ty,tstate2) <- tcExp ddfs env' funs constrs''' regs tstate1 e
+                  tstate3 <- removeLoc exp tstate2 loc
+                  return (ty,tstate3)
                 StartOfRegionLE r ->
                     do ensureRegion exp r regs
                        absentStart exp constrs r
-                       let tstate1 = extendTS (Single loc) (Output,False) tstatein
-                       let constrs1 = extendConstrs (StartOfC (Single loc) r) $ extendConstrs (InRegionC (Single loc) r) constrs
+                       let tstate1 = extendTS loc (Output,False) tstatein
+                       let constrs1 = extendConstrs (StartOfC loc r) $ extendConstrs (InRegionC loc r) constrs
                        (ty,tstate2) <- tcExp ddfs env' funs constrs1 regs tstate1 e
-                       tstate3 <- removeLoc exp tstate2 (Single loc)
+                       tstate3 <- removeLoc exp tstate2 loc
                        return (ty,tstate3)
+                {-TODO handle what needs to happen with the wildcard argument, list of offsets in case of soa -}
                 AfterConstantLE i l1 ->
                      do r <- getRegion exp constrs l1
-                        let tstate1 = extendTS (Single loc) (Output,True) $ setAfter l1 tstatein
-                        let constrs1 = extendConstrs (InRegionC (Single loc) r) $ extendConstrs (AfterConstantC i l1 (Single loc)) constrs
+                        let tstate1 = extendTS loc (Output,True) $ setAfter l1 tstatein
+                        let constrs1 = extendConstrs (InRegionC loc r) $ extendConstrs (AfterConstantC i l1 loc) constrs
                         (ty,tstate2) <- tcExp ddfs env' funs constrs1 regs tstate1 e
-                        tstate3 <- removeLoc exp tstate2 (Single loc)
+                        tstate3 <- removeLoc exp tstate2 loc
                         return (ty,tstate3)
+                AssignLE l1 -> 
+                    do r <- getRegion exp constrs l1 
+                       let tstate1 = extendTS loc (Output, True) $ setAfter l1 tstatein
+                       let constrs1 = extendConstrs (InRegionC loc r) $ extendConstrs (AssignC l1 loc) constrs
+                       (ty, tstate2) <- tcExp ddfs env' funs constrs1 regs tstate1 e
+                       tstate3 <- removeLoc exp tstate2 loc
+                       return (ty, tstate3)
                 AfterVariableLE x l1 _ ->
                     do r <- getRegion exp constrs l1
                        (_xty,tstate1) <- tcExp ddfs env funs constrs regs tstatein $ VarE x
                        -- NOTE: We now allow aliases (offsets) from scalar vars too. So we can leave out this check
                        -- ensurePackedLoc exp xty l1
-                       let tstate2 = extendTS (Single loc) (Output,True) $ setAfter l1 tstate1
-                       let constrs1 = extendConstrs (InRegionC (Single loc) r) $ extendConstrs (AfterVariableC x l1 (Single loc)) constrs
+                       let tstate2 = extendTS loc (Output,True) $ setAfter l1 tstate1
+                       let constrs1 = extendConstrs (InRegionC loc r) $ extendConstrs (AfterVariableC x l1 loc) constrs
                        (ty,tstate3) <- tcExp ddfs env' funs constrs1 regs tstate2 e
-                       tstate4 <- removeLoc exp tstate3 (Single loc)
+                       tstate4 <- removeLoc exp tstate3 loc
                        return (ty,tstate4)
                 FromEndLE _l1 ->
                     do -- TODO: This is the bare minimum which gets the examples typechecking again.
                        -- Need to figure out if we need to check more things here
-                      (ty,tstate1) <- tcExp ddfs env' funs constrs regs tstatein e
-                      return (ty,tstate1)
+                        r <- getRegion exp constrs _l1
+                        let tstate1 = extendTS loc (Output,True) $ setAfter _l1 tstatein
+                        let constrs1 = extendConstrs (InRegionC loc r) $ extendConstrs (FromEndC _l1) constrs 
+                        (ty,tstate2) <- tcExp ddfs env' funs constrs1 regs tstate1 e
+                        return (ty,tstate2)
                 FreeLE ->
-                    do let constrs1 = extendConstrs (InRegionC (Single loc) globalReg) $ constrs
+                    do let constrs1 = extendConstrs (InRegionC loc globalReg) $ constrs
                        (ty,tstate1) <- tcExp ddfs env' funs constrs1 regs tstatein e
                        return (ty,tstate1)
 
                 InRegionLE{} -> throwError $ GenericTC ("InRegionLE not handled.")  exp
+                -- Gen SoA Loc constratins is not used in the IR atm. 
+                -- GenSoALoc dcloc field_locs -> throwError $ GenericTC ("GenSoALoc not handled.") exp
+                GetDataConLocSoA soa_loc -> do 
+                                        r <- getRegion exp constrs soa_loc
+                                        -- get region for the data constructor buffer
+                                        let r' = case r of 
+                                                    SoAR dreg _ -> dreg
+                                        -- LetLocE dconLoc = getDataConLocSoA soa_loc
+                                        -- dbgTraceIt "print reg: " dbgTraceIt (sdoc r') dbgTraceIt "end print reg.\n" 
+                                        let tstate1 = extendTS loc (Output,True) $ tstatein
+                                        let constrs1 = extendConstrs (InRegionC loc r') $ constrs
+                                        (ty,tstate2) <- tcExp ddfs env' funs constrs1 regs tstate1 e
+                                        tstate3 <- removeLoc exp tstate2 loc
+                                        return (ty,tstate3)
+                GetFieldLocSoA key soa_loc -> do
+                                              -- get the region of the SoA loc. 
+                                              r <- getRegion exp constrs soa_loc
+                                              -- get the region of the field location 
+                                              let Just r' = case r of 
+                                                             SoAR dreg fieldRegions -> lookup key fieldRegions
+                                              let tstate1 = extendTS loc (Output, True) $ tstatein 
+                                              let constrs1 = extendConstrs (InRegionC loc r') $ constrs
+                                              (ty, tstate2) <- tcExp ddfs env' funs constrs1 regs tstate1 e
+                                              tstate3 <- removeLoc exp tstate2 loc
+                                              return (ty, tstate3)
+                                              --throwError $ GenericTC ("GetFieldLocSoA not handled.") exp  
+                -- AfterVectorLE dexp rstExprs soa_loc -> throwError $ GenericTC ("AfterVectorLE not handled.") exp
 
       Ext (StartOfPkdCursor cur) -> do
-        case M.lookup (Single cur) (vEnv env) of
+        case M.lookup (fromVarToFreeVarsTy cur) (vEnv env) of
           Just (PackedTy{}) -> pure (CursorTy, tstatein)
           ty -> throwError $ GenericTC ("Expected PackedTy, got " ++ sdoc ty)  exp
 
       Ext (TagCursor a _b) -> do
-        case M.lookup (Single a) (vEnv env) of
+        case M.lookup (fromVarToFreeVarsTy a) (vEnv env) of
           Just (PackedTy{}) -> pure (CursorTy, tstatein)
           ty -> throwError $ GenericTC ("Expected PackedTy, got " ++ sdoc ty)  exp
 
@@ -866,14 +952,14 @@ tcExp ddfs env funs constrs regs tstatein exp =
 
 
 -- | Helper function to check case branches.
-tcCases :: DDefs Ty2 -> Env2 LocVar Ty2 -> FunDefs2
+tcCases :: DDefs Ty2 -> Env2 FreeVarsTy Ty2 -> FunDefs2
         -> ConstraintSet -> RegionSet -> LocationTypeState -> LocVar
         -> Region -> [(DataCon, [(Var,LocVar)], Exp)]
         -> TcM ([Ty2], LocationTypeState)
 tcCases ddfs env funs constrs regs tstatein lin reg ((dc, vs, e):cases) = do
 
   let argtys = zip vs $ lookupDataCon ddfs dc
-      argtys' = L.map (\((v, locvar), arg2) -> ((Single v, locvar), arg2)) argtys
+      argtys' = L.map (\((v, locvar), arg2) -> ((fromVarToFreeVarsTy v, locvar), arg2)) argtys
       pairwise = zip argtys $ Nothing : (L.map Just argtys)
 
       -- Generate the new constraints to check this branch
@@ -922,7 +1008,7 @@ tcProj e _i ty = throwError $ GenericTC ("Projection from non-tuple type " ++ (s
 -- the order matters because the location state map is threaded through,
 -- so this is assuming the list of expressions would have been evaluated
 -- in first-to-last order.
-tcExps :: DDefs Ty2 -> Env2 LocVar Ty2 -> FunDefs2
+tcExps :: DDefs Ty2 -> Env2 FreeVarsTy Ty2 -> FunDefs2
       -> ConstraintSet -> RegionSet -> LocationTypeState -> [Exp]
       -> TcM ([Ty2], LocationTypeState)
 tcExps ddfs env funs constrs regs tstatein (exp:exps) =
@@ -961,7 +1047,7 @@ tcProg prg0@Prog{ddefs,fundefs,mainExp} = do
     fd :: FunDef2 -> PassM ()
     fd func@FunDef{funTy,funArgs,funBody} = do
         let init_env = progToEnv' prg0
-            env = extendsVEnvLocVar (M.fromList $ zip (L.map Single funArgs) (arrIns funTy)) init_env
+            env = extendsVEnvLocVar (M.fromList $ zip (L.map fromVarToFreeVarsTy funArgs) (arrIns funTy)) init_env
             constrs = funConstrs (locVars funTy)
             regs = funRegs (locVars funTy)
             tstate = funTState (locVars funTy)
@@ -985,19 +1071,19 @@ tcProg prg0@Prog{ddefs,fundefs,mainExp} = do
 -- Includes an expression for error reporting.
 regionInsert :: Exp -> Region -> RegionSet -> TcM RegionSet
 regionInsert e r (RegionSet regSet) = do
-  if (S.member (regionToVar r) regSet)
+  if (S.member r regSet)
   then throwError $ GenericTC "Shadowed regions not allowed" e
-  else return $ RegionSet (S.insert (regionToVar r) regSet)
+  else return $ RegionSet (S.insert r regSet)
 
 -- | Ask if a region is in the region set.
 hasRegion :: Region -> RegionSet -> Bool
-hasRegion r (RegionSet regSet) = S.member (regionToVar r) regSet
+hasRegion r (RegionSet regSet) = S.member r regSet
 
 -- | Ensure that a region is in a region set, reporting an error otherwise.
 -- Includes an expression for error reporting.
 ensureRegion :: Exp -> Region -> RegionSet -> TcM ()
 ensureRegion exp r (RegionSet regSet) =
-    if S.member (regionToVar r) regSet then return ()
+    if S.member r regSet then return ()
     else throwError $ GenericTC ("Region " ++ (show r) ++ " not in scope") exp
 
 -- | Get the region of a location variable.
@@ -1014,7 +1100,7 @@ funRegs :: [LRM] -> RegionSet
 funRegs ((LRM _l r _m):lrms) =
     let (RegionSet rs) = funRegs lrms
     in case r of 
-         AoSR reg -> RegionSet $ S.insert (regionToVar reg) rs
+         _ -> RegionSet $ S.insert r rs
          SoAR _ _ -> error "TODO: Typecheck: implement SoA Region."
 funRegs [] = RegionSet $ S.empty
 
@@ -1024,8 +1110,15 @@ globalReg = GlobR "GLOBAL" BigInfinite
 -- | Get the constraints from the location bindings in a function type.
 funConstrs :: [LRM] -> ConstraintSet
 funConstrs ((LRM l r _m):lrms) = case r of 
-                                    AoSR reg -> extendConstrs (InRegionC l reg) $ funConstrs lrms
-                                    SoAR _ _ -> error "TODO: funConstrs: SoAR case not implemented!"
+                                    SoAR dclreg fieldRegs -> case l of 
+                                                                Single _ -> error "funConstrs: expected SoA location in LRM."
+                                                                SoA dloc flocs -> let nconstrs = extendConstrs (InRegionC (singleLocVar dloc) dclreg) $ funConstrs lrms
+                                                                                      nconstrs' = extendConstrs (InRegionC l r) $ nconstrs
+                                                                                     in L.foldr (\(k, freg) acc -> case lookup k flocs of
+                                                                                                                        Nothing -> error "funConstrs: expected a field location for corresponding key in SoAR."
+                                                                                                                        Just loc -> extendConstrs (InRegionC (loc) freg) acc
+                                                                                                ) nconstrs' fieldRegs
+                                    _ -> extendConstrs (InRegionC l r) $ funConstrs lrms
 funConstrs [] = ConstraintSet $ S.empty
 
 -- | Get the type state implied by the location bindings in a function type.
@@ -1036,10 +1129,10 @@ funTState [] = LocationTypeState $ M.empty
 
 -- | Look up the type of a variable from the environment
 -- Includes an expression for error reporting.
-lookupVar :: Env2 LocVar Ty2 -> LocVar -> Exp -> TcM Ty2
-lookupVar env l@(Single var) exp =
+lookupVar :: Env2 FreeVarsTy Ty2 -> FreeVarsTy -> Exp -> TcM Ty2
+lookupVar env l exp =
     case M.lookup l $ vEnv env of
-      Nothing -> throwError $ VarNotFoundTC var exp
+      Nothing -> error $ "L2/Typecheck.hs: lookupVar: Variable not found in env."++ sdoc l
       Just ty -> return ty
 
 -- | Combine two location state maps.
@@ -1131,25 +1224,87 @@ ensurePackedLoc exp ty l =
 
 -- | Ensure the locations all line up with the constraints in a data constructor application.
 -- Includes an expression for error reporting.
-ensureDataCon :: Exp -> LocVar -> [Ty2] -> ConstraintSet -> TcM ()
-ensureDataCon exp linit0 tys cs = (go Nothing linit0 tys)
-    where go Nothing linit ((PackedTy dc l):tys) = do
-            ensureAfterConstant exp cs linit l
-            go (Just (PackedTy dc l)) l tys
+ensureDataCon :: Exp -> TyCon -> DataCon -> LocVar -> [Ty2] -> ConstraintSet -> TcM ()
+ensureDataCon exp dcty dc linit0 tys cs = case linit0 of
+                                       Single location -> (go Nothing linit0 tys)
+                                          where 
+                                            go Nothing linit ((PackedTy dc2 l):tys) = do
+                                              ensureAfterConstant exp cs linit l
+                                              go (Just (PackedTy dc2 l)) l tys
 
-          go Nothing linit (_ty:tys) = do
-            case getAfterConstant cs linit of
-              Nothing     -> go Nothing linit tys
-              Just linit' -> go Nothing linit' tys
+                                            go Nothing linit (_ty:tys) = do
+                                                case getAfterConstant cs linit of
+                                                      Nothing     -> go Nothing linit tys
+                                                      Just linit' -> go Nothing linit' tys
 
-          go (Just (PackedTy _dc1 l1)) _linit ((PackedTy dc2 l2):tys) = do
-            ensureAfterPacked exp cs l1 l2
-            go (Just (PackedTy dc2 l2)) l2 tys
+                                            go (Just (PackedTy _dc1 l1)) _linit ((PackedTy dc2 l2):tys) = do
+                                                  ensureAfterPacked exp cs l1 l2
+                                                  go (Just (PackedTy dc2 l2)) l2 tys
 
-          go (Just (PackedTy _dc _l1)) linit (_ty:tys) =
-              go Nothing linit tys
-          go _ _ [] = return ()
-          go _ _ _  = internalError "Unxpected case reached: L2:ensureDataCon"
+                                            go (Just (PackedTy _dc _l1)) linit (_ty:tys) =
+                                             go Nothing linit tys
+                                            go _ _ [] = return ()
+                                            go _ _ _  = internalError "Unxpected case reached: L2:ensureDataCon"
+
+                                       -- This checking should be fine for a Flat list data type
+                                       -- data List = Cons Int List | Nil
+                                       -- TODO: Extend for a Tree data type
+                                       SoA dcloc fieldLocs -> do 
+                                              let unself_idxs = L.concatMap 
+                                                                      (\ty -> case ty of 
+                                                                                  PackedTy k _ -> if k == dcty 
+                                                                                                  then []
+                                                                                                  else [fromJust (L.elemIndex ty tys)]
+                                                                                  _ -> [fromJust (L.elemIndex ty tys)]
+                                                
+                                                                      ) tys  
+                                              let self_idxs = L.concatMap 
+                                                                      (\ty -> case ty of 
+                                                                                  PackedTy k _ -> if k == dcty 
+                                                                                                  then [fromJust (L.elemIndex ty tys)]
+                                                                                                  else []
+                                                                                  _ -> []
+                                                
+                                                                      ) tys  
+                                              -- Not self recursive fields
+                                              let unselfTys = L.foldl (\a idx-> a ++ [tys !! idx]
+                                                                                    ) [] unself_idxs
+                                              -- Self recursive fields
+                                              let selfTys = L.foldl (\a idx -> a ++ [tys !! idx]
+                                                                                    ) [] self_idxs
+
+                                              let unselfWriteAtLocs = L.map (\idx -> lookup (dc, idx) fieldLocs) unself_idxs
+                                              -- ensure after Constant with head of selfTys
+                                              _ <- do 
+                                                  case selfTys of 
+                                                    [] -> return ()
+                                                    x:_ -> case x of 
+                                                             PackedTy _ l -> ensureAfterConstant exp cs (Single dcloc) (getDconLoc l) 
+                                                             _ -> error "Did not expected unpacked type!"
+                                              -- TODO: ensure after constant for all scalar not self recursive fields, with offset 0
+                                              -- TODO: ensure after constant for all locs in dest with the next self recursive field. 
+                                              _ <- do 
+                                                  case selfTys of 
+                                                    [] -> return () 
+                                                    x:rst -> case x of 
+                                                               PackedTy _ l@(SoA dcloc' fieldLocs') -> do
+                                                                                                        --let nextWriteAtLocs = L.map (\idx -> lookup (dc, idx) fieldLocs') unself_idxs
+                                                                                                        let aliasLocs = L.map (\idx -> case (lookup (dc, idx) fieldLocs) of 
+                                                                                                                                                          Just l -> getAfterConstantAlias cs l
+                                                                                                                                    ) unself_idxs
+                                                                                                        let nextWriteAtLocs = L.map (\idx -> lookup (dc, idx) fieldLocs') unself_idxs
+                                                                                                        -- dbgTraceIt "Print line 1241: " dbgTraceIt (sdoc (aliasLocs)) dbgTraceIt "End\n"
+                                                                                                        {- VS typechecking fails? Why is this not working ??? -}
+                                                                                                        -- _ <- mapM (\(Just l1, Just l2, ty) -> case ty of 
+                                                                                                        --                                           PackedTy{} -> ensureAfterConstant exp cs l1 l2
+                                                                                                        --                                           _ -> ensureAfterConstant exp cs l1 l2) (zip3 unselfWriteAtLocs aliasLocs unselfTys)
+                                                                                                        -- -- dbgTraceIt "Print line 1241: " dbgTraceIt (sdoc (nextWriteAtLocs)) dbgTraceIt "End\n"
+                                                                                                        -- _ <- mapM (\(Just l1, Just l2, ty) -> case ty of 
+                                                                                                        --                                           PackedTy{} -> ensureAfterPacked exp cs l1 l2
+                                                                                                        --                                           _ -> ensureAfterConstant exp cs l1 l2) (zip3 aliasLocs nextWriteAtLocs unselfTys)
+                                                                                                        return ()
+                                              -- dbgTraceIt "Print in ensure data con" dbgTraceIt (sdoc (unselfTys, selfTys, unselfWriteAtLocs)) dbgTraceIt "End\n"
+                                              return ()
 
 
 -- | Ensure that one location is +c after another location in the constraint set.
@@ -1160,6 +1315,7 @@ ensureAfterConstant exp (ConstraintSet cs) l1 l2 =
     else throwError $ LocationTC "Expected after constant relationship" exp l1 l2
     -- l1 is before l2
     where f (AfterConstantC _i l1' l2') = l1' == l1 && l2' == l2
+          f (AssignC l1' l2') = l1' == l1 && l2' == l2
           f _ = False
 
 -- | Ensure that one location is a variable size after another location in the constraint set.
@@ -1180,6 +1336,20 @@ getAfterConstant (ConstraintSet cs) l0 =
   in case mb_cs of
        Just (AfterConstantC _i _l1 l2) -> Just l2
        _ -> Nothing
+
+
+-- dbgTraceIt "Print in after alias:" dbgTraceIt (sdoc (c)) dbgTraceIt "End\n"
+getAfterConstantAlias :: ConstraintSet -> LocVar -> Maybe LocVar 
+getAfterConstantAlias (ConstraintSet cs) l0 = 
+  let mb_cs = L.find (\c -> case c of
+                         AfterConstantC i l1 _l2 | (l1 == l0 && i == 0) -> True
+                         AssignC l1 _l2 | l1 == l0 -> True
+                         _ -> False)
+              cs
+   in case mb_cs of 
+        Just (AfterConstantC _i _l1 l2) -> Just l2
+        Just (AssignC _l1 l2) -> Just l2
+        _ -> Nothing  
 
 
 extendTS
@@ -1231,11 +1401,11 @@ removeLoc :: Exp -> LocationTypeState -> LocVar -> TcM LocationTypeState
 removeLoc exp (LocationTypeState ls) l =
     if M.member l ls
     then return $ LocationTypeState $ M.delete l ls
-    else throwError $ GenericTC ("Cannot remove location " ++ (show l)) exp
+    else throwError $ GenericTC ("Cannot remove location " ++ (show l) ++ (show exp)) exp
 
-ensureArenaScope :: MonadError TCError m => Exp -> Env2 LocVar a -> Maybe Var -> m ()
+ensureArenaScope :: MonadError TCError m => Exp -> Env2 FreeVarsTy a -> Maybe Var -> m ()
 ensureArenaScope exp env ar =
     case ar of
       Nothing -> throwError $ GenericTC "Expected arena annotation" exp
-      Just var -> unless (S.member (Single var) . M.keysSet . vEnv $ env) $
+      Just var -> unless (S.member (fromVarToFreeVarsTy var) . M.keysSet . vEnv $ env) $
                   throwError $ GenericTC ("Expected arena in scope: " ++ sdoc var) exp

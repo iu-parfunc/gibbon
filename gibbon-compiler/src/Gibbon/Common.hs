@@ -3,15 +3,18 @@
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE UndecidableInstances #-}
+
 
 -- | Utilities and common types.
 module Gibbon.Common
        (
          -- * Variables
-         Var(..), LocVar(..), Location, FieldIndex
-       , RegVar, fromVar, toVar, varAppend, toEndV, toEndVLoc, toSeqV, cleanFunName
+         Var(..), LocVar(..), FreeVarsTy(..), Location, FieldIndex, DataCon
+       , RegVar(..), fromVar, toVar, varAppend, toEndV, toEndVLoc, toEndVRegVar, toSeqV, cleanFunName
        , TyVar(..), isUserTv
-       , Symbol, intern, unintern
+       , Symbol, intern, unintern, isSoALoc
 
          -- * Gensym monad
        , SyM, gensym, gensym_tag, genLetter, newUniq, runSyM
@@ -30,11 +33,15 @@ module Gibbon.Common
 
          -- * Debugging/logging:
        , dbgLvl, dbgPrint, dbgPrintLn, dbgTrace, dbgTraceIt, minChatLvl
-       , internalError, dumpIfSet, unwrapLocVar, singleLocVar
-
+       , internalError, dumpIfSet, unwrapLocVar, singleLocVar, getDconLoc, getFieldLoc, freshCommonLoc, getAllFieldLocsSoA, varsInLocVar, varsInRegVar
+       , appendNameToLocVar 
 
          -- * Establish conventions for the output of #lang gibbon:
        , truePrinted, falsePrinted
+
+       , getLocVarFromFreeVarsTy, getRegVarFromFreeVarsTy, getVarFromFreeVarsTy, fromVarToFreeVarsTy, fromLocVarToFreeVarsTy
+       , fromRegVarToFreeVarsTy, getDataConRegFromRegVar, getFieldRegFromRegVar
+       --, fromLocVarToRegVar
        )
 where
 
@@ -66,7 +73,6 @@ import System.IO.Unsafe ( unsafePerformIO )
 import System.Random    ( randomIO )
 import Debug.Trace
 import Language.C.Quote.CUDA (ToIdent, toIdent)
-
 import Gibbon.DynFlags
 
 --------------------------------------------------------------------------------
@@ -126,27 +132,64 @@ cleanFunName f =
           else '_'
         | c <- fromVar f ]
 
+
 toEndV :: Var -> Var
 toEndV = varAppend "end_"
+
+toEndVRegVar :: RegVar -> RegVar 
+toEndVRegVar (SingleR v) = SingleR (toEndV v)
+toEndVRegVar (SoARv regvar fieldRegs) = SoARv (toEndVRegVar regvar) (L.map (\(k, freg) -> (k, toEndVRegVar freg)) fieldRegs)
 
 toEndVLoc :: LocVar -> LocVar 
 toEndVLoc loc = case loc of 
                     Single v -> Single (toEndV v)
+                    SoA dcon fieldLocs -> SoA (toEndV dcon) (L.map (\(k, floc) -> (k, toEndVLoc floc)) fieldLocs)
 
 toSeqV :: Var -> Var
 toSeqV v = varAppend v (toVar "_seq")
 
 -- | A location variable stores the abstract location. 
 type Location = Var
+-- | The position or index of a field in a data constructor value.
+type FieldIndex = Int 
+-- | A data constructor is a String type in the compiler
+type DataCon = String
 
--- | The position or index of a field in a data constructor value. 
-type FieldIndex = Int
+-- | Single: For storing a single location, useful for adding a cursor in a region. 
+-- | SoA: A location signature for a structure of arrays representation. 
+--        The first location points to a location in the data constructor buffer. 
+--        The list includes locations for each field and a tuple storing 
+--        information about which data constructor and corresponding index the field 
+--        comes from. 
+-- TODO: I think the type for an SoA location is not right here 
+-- A Location should work for a data constructor buffer 
+-- However, imagine if we have a data type definition of 
+-- data Foo = A Int List Tree Tree | Leaf
+-- here the List would be in its own buffer potentially
+-- so we have nesting of SoA locations 
+-- Possibly need to change Location in SoA to LocVar, a recursive data type 
+-- But for simple data types like data List = Cons Int List | Nil 
+-- this should work just fine. 
+-- One reason I don't want to make an SoA location recursive is that you might 
+-- want to make the level of factoring limited to only depth = 1
+-- more factoring than a depth of level one might slow down too much
+-- data List2 = Cons2 Int List List2 | Nil2
+-- In the SoA representation, it is guaranteed that the data constructors should 
+-- Remain in the same buffer. Hence, its fine to have its type as Location instead 
+-- of LocVar.
 
-data LocVar = Single Location
-  deriving (Show, Ord, Eq, Read, Generic, NFData, Out)
+data LocVar = Single Location | SoA Location [((DataCon, FieldIndex), LocVar)]
+                deriving (Show, Ord, Eq, Read, Generic, NFData, Out)
 
 -- | Abstract region variables.
-type RegVar = Var
+-- type RegVar = Var
+data RegVar = SingleR Var | SoARv RegVar [((DataCon, FieldIndex), RegVar)]
+                deriving (Show, Ord, Eq, Read, Generic, NFData, Out)
+
+
+-- gFreeVars ++ locations ++ region variables
+data FreeVarsTy = V Var | FL LocVar | R RegVar
+        deriving (Read, Show, Eq, Ord, Generic, NFData, Out)
 
 -- | Type variables that enable polymorphism.
 data TyVar = BoundTv Var         -- Type variable bound by a ForAll.
@@ -159,6 +202,12 @@ instance Out TyVar where
   doc (UserTv v)     = text "u:" PP.<> doc v
 
   docPrec _ = doc
+
+  
+isSoALoc :: LocVar -> Bool 
+isSoALoc locvar = case locvar of 
+                        Single _ -> False 
+                        SoA _ _ -> True
 
 isUserTv :: TyVar -> Bool
 isUserTv tv =
@@ -439,7 +488,7 @@ dbgLvl = case L.lookup "GIBBON_DEBUG" theEnv of
 -- | We should not create chatter below this level.  DEBUG=1 is used
 -- for assertions only, not chatter.
 minChatLvl :: Int
-minChatLvl = 2
+minChatLvl = 5
 
 defaultDbg :: Int
 defaultDbg = 0
@@ -508,6 +557,120 @@ falsePrinted = "#f"
 unwrapLocVar :: LocVar -> Var
 unwrapLocVar locvar = case locvar of 
                             Single loc -> loc
+                            SoA dcon fieldLocs -> 
+                               error $  "unwrapLocVar : Did not expect an SoA location! " ++ (show locvar)
+                                --dcon {- Bad, unsafe !! -}
+
+locsInLocVar :: LocVar -> [LocVar]
+locsInLocVar loc = case loc of 
+			Single _ -> [loc]
+			SoA dcon fieldLocs -> [(singleLocVar dcon)] ++ L.map (\(_, l) -> l) fieldLocs
+
+varsInLocVar :: LocVar -> [Var]
+varsInLocVar loc = case loc of 
+                        Single loc -> [loc]
+                        SoA dcon fieldLocs -> dcon : L.concatMap (varsInLocVar . snd) fieldLocs
+
+varsInRegVar :: RegVar -> [Var]
+varsInRegVar reg = case reg of 
+                        SingleR v -> [v]
+                        SoARv dcon fieldLocs -> varsInRegVar dcon ++ L.concatMap (\(_, floc) -> varsInRegVar floc) fieldLocs
+
+-- | get the data constructor location from an SoA loc
+-- | Ideally we should not need this
+getDconLoc :: LocVar -> LocVar 
+getDconLoc loc = case loc of 
+                    SoA dcon fieldLocs -> Single dcon 
+                    Single lc -> loc 
                             
+getFieldLoc :: (DataCon, FieldIndex) -> LocVar -> LocVar
+getFieldLoc (dcon, idx) loc = case loc of 
+                                SoA _ fieldLocs -> case Prelude.lookup (dcon, idx) fieldLocs of 
+                                                          Just loc -> loc
+                                                          Nothing -> error "getFieldLoc : Field location not found!"
+                                Single lc -> error "getFieldLoc : Did not expect a non SoA location!"
+
+getAllFieldLocsSoA :: LocVar -> [((DataCon, Int), LocVar)]
+getAllFieldLocsSoA loc = case loc of 
+                    SoA dcon fieldLocs -> fieldLocs
+                    Single lc -> error "getFieldLocs : Did not expect a non SoA location!"
+
+freshSingleLocVar :: String -> PassM LocVar
+freshSingleLocVar m = do v <- gensym (toVar m)
+                         return $ Single v                          
+
+-- | VS: ideally we should get rid of unwrapLocVar. We should make LocVar a recursive datatype
+freshFieldLocsSoA :: String -> [((DataCon, Int), LocVar)] -> PassM [((DataCon, Int), LocVar)]
+freshFieldLocsSoA pfix lst = do 
+                     case lst of
+                          [] -> return [] 
+                          (a, b):rst -> do 
+                                        newLoc <- freshCommonLoc (pfix ++ "_floc") b
+                                        rst' <- freshFieldLocsSoA pfix rst
+                                        return $ [(a, newLoc)] ++ rst'
+
+freshSoALoc :: String -> LocVar -> PassM LocVar 
+freshSoALoc pfix lc = do
+                 case lc of 
+                     Single _ -> do 
+                                  l' <- freshSingleLocVar (pfix ++"_loc")
+                                  return l'
+                     SoA dbuf rst -> do 
+                                     dbuf' <- freshSingleLocVar (pfix ++ "_dloc")
+                                     rst' <- freshFieldLocsSoA pfix rst
+                                     let newSoALoc = SoA (unwrapLocVar dbuf') rst'
+                                     return newSoALoc
+
+freshCommonLoc :: String -> LocVar -> PassM LocVar 
+freshCommonLoc pfix lc = do
+                 case lc of 
+                     Single _ -> do 
+                                  l' <- freshSingleLocVar (pfix ++"_loc")
+                                  return l'
+                     soa@SoA{} -> dbgTrace minChatLvl "Print soa loc in freshCommonLoc: " dbgTrace minChatLvl (sdoc (soa)) dbgTrace minChatLvl "End in freshCommonLoc.\n" freshSoALoc pfix lc
+
 singleLocVar :: Location -> LocVar 
 singleLocVar loc = Single loc 
+
+appendNameToLocVar :: Var -> LocVar -> LocVar
+appendNameToLocVar v loc = case loc of 
+                            Single loc -> Single (v `varAppend` loc)
+                            SoA dcon fieldLocs -> SoA (v `varAppend` dcon) fieldLocs
+
+getLocVarFromFreeVarsTy :: FreeVarsTy -> LocVar
+getLocVarFromFreeVarsTy (FL loc) = loc
+getLocVarFromFreeVarsTy _ = error "getLocVarFromFreeVarsTy: unexpected case."
+
+getRegVarFromFreeVarsTy :: FreeVarsTy -> RegVar
+getRegVarFromFreeVarsTy (R reg) = reg
+getRegVarFromFreeVarsTy _ = error "getRegVarFromFreeVarsTy: unexpected case."
+
+getVarFromFreeVarsTy :: FreeVarsTy -> Var
+getVarFromFreeVarsTy (V var) = var
+getVarFromFreeVarsTy _ = error "getVarFromFreeVarsTy: unexpected case."
+
+fromVarToFreeVarsTy :: Var -> FreeVarsTy
+fromVarToFreeVarsTy v = V v
+
+fromLocVarToFreeVarsTy :: LocVar -> FreeVarsTy
+fromLocVarToFreeVarsTy loc = FL loc
+
+fromRegVarToFreeVarsTy :: RegVar -> FreeVarsTy
+fromRegVarToFreeVarsTy reg = R reg
+
+getDataConRegFromRegVar :: RegVar -> RegVar
+getDataConRegFromRegVar reg = case reg of 
+                            SingleR v -> error "Common.hs: getDataConRegFromRegVar: unexpected case."
+                            SoARv regvar fieldRegs -> regvar
+
+getFieldRegFromRegVar :: (DataCon, Int) -> RegVar -> RegVar
+getFieldRegFromRegVar (dcon, idx) reg = case reg of 
+                            SingleR v -> error "Common.hs: getFieldRegFromRegVar: unexpected case."
+                            SoARv regvar fieldRegs -> case L.lookup (dcon, idx) fieldRegs of 
+                                                        Just freg -> freg
+                                                        Nothing -> error "getFieldRegFromRegVar: Field location not found!"
+
+-- fromLocVarToRegVar :: LocVar -> RegVar
+-- fromLocVarToRegVar loc = case loc of 
+--   Single v -> SingleR v
+--   SoA dcon fieldLocs -> SoARv (SingleR dcon) (L.map (\(k, floc) -> (k, SingleR floc)) fieldLocs)
