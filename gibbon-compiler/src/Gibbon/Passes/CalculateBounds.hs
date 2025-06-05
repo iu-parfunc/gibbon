@@ -8,12 +8,12 @@ import qualified Data.List as L
 import           Debug.Trace
 import           Control.Monad
 
-type LocationRegionMapping = M.Map LocVar Var
+type LocationRegionMapping = M.Map LocVar RegVar
 type LocationOffsetMapping = M.Map LocVar RegionSize
 type VarSizeMapping = M.Map Var RegionSize
 type VarLocMapping = M.Map Var LocVar
-type RegionSizeMapping = M.Map Var RegionSize
-type RegionTypeMapping = M.Map Var RegionType
+type RegionSizeMapping = M.Map RegVar RegionSize
+type RegionTypeMapping = M.Map RegVar RegionType
 
 inferRegSize :: Old.Prog2 -> PassM Old.Prog2
 inferRegSize = calculateBounds
@@ -34,7 +34,7 @@ calculateBoundsFun ddefs env2 varSzEnv f@FunDef { funName, funBody, funTy, funAr
     then return f
     else do
       let locRegEnv = M.fromList $ map (\lv -> case (lrmReg lv) of 
-                                                      AoSR reg -> (lrmLoc lv, regionToVar reg)
+                                                      _ -> (lrmLoc lv, regionToVar (lrmReg lv))
                                                       SoAR _ _ -> error "TODO: calculateBoundsFn SoA region not implemented."
                                        ) (locVars funTy)
       let locTyEnv  = M.map (const $ BoundedSize 0) locRegEnv
@@ -180,9 +180,11 @@ calculateBoundsExp ddefs env2 varSzEnv varLocEnv locRegEnv locOffEnv regSzEnv re
                   else do
                     let (re, off) = case locExp of
                           (StartOfRegionLE r          ) -> (regionToVar r, BoundedSize 0)
+                          -- [2024.12.04] VS: currently discarding offsets for SoA representation
                           (AfterConstantLE n l  ) -> (locRegEnv # l, locOffEnv # l <> BoundedSize n)
                           -- [2022.12.26] CSK: the lookup in varSzEnv always fails since the
                           -- pass never inserts anything into it. Disabling it for now.
+                          -- [2024.12.04] VS: currently discarding offsets for SoA representation
                           (AfterVariableLE v l _) -> (locRegEnv # l, locOffEnv # (varLocEnv # v)) -- <> varSzEnv # v
                           (InRegionLE r         ) -> (regionToVar r, Undefined)
                           (FromEndLE  l         ) -> (locRegEnv # l, Undefined)
