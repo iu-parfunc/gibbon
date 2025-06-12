@@ -82,6 +82,7 @@ library
                        Gibbon.Passes.FollowPtrs
                        Gibbon.Passes.InferFunAllocs
                        Gibbon.Passes.ThreadRegions
+                       Gibbon.Passes.ThreadRegions2
                        Gibbon.Passes.Cursorize
                        Gibbon.Passes.FindWitnesses
                        Gibbon.Passes.ShakeTree
@@ -92,6 +93,9 @@ library
                        Gibbon.Passes.RearrangeFree
                        Gibbon.Passes.Codegen
                        Gibbon.Passes.CalculateBounds
+                       Gibbon.Passes.CorrectLocExprs
+                       Gibbon.Passes.ReorderLetExprs
+                       Gibbon.Passes.AddCastInstructions
 
   other-extensions:    DeriveDataTypeable CPP
 
@@ -124,6 +128,7 @@ library
                      , language-c-quote         >= 0.12.1    &&  < 1
                      , mainland-pretty          >= 0.6.1     &&  < 1
                      , safe
+                     , uuid
 -- Brings in lots of ekmett dependencies:
 --                     , either
 

@@ -300,6 +300,7 @@ instance (Pretty l) => Pretty (UrTy l) where
           ListTy el_ty1 -> text "List" <+> pprintWithStyle sty el_ty1
           PtrTy     -> text "Ptr"
           CursorTy  -> text "Cursor"
+          CursorArrayTy size -> text "CursorArray[" <> int size <> text "]"
           ArenaTy   -> case sty of
                          PPHaskell  -> text "()"
                          PPInternal -> text "Arena"
@@ -435,13 +436,26 @@ instance Pretty l => Pretty (L2.PreLocExp l) where
     pprintWithStyle _ le =
         case le of
           StartOfRegionLE r -> lparen <> text "startOfRegion" <+> text (sdoc r) <> rparen
-          AfterConstantLE i loc   -> lparen <> pprint loc <+> text "+" <+> int i <> rparen
+          GenSoALoc loc flocs -> lparen <> text "genSoALoc" <+> pprint loc <+> (brackets $ hcat (punctuate "," (map (\((dc, x), l) -> lparen <> lparen <> text dc <+> "," <+> int x <> rparen <+> "," <+> pprint l <> rparen) flocs))) <> rparen
+          GetDataConLocSoA loc -> lparen <> text "getDataConLocSoA" <+> pprint loc <> rparen
+          GetFieldLocSoA (dcon, idx) loc -> lparen <> text "getFieldLocSoA" <+> lparen <> text dcon <+> "," <+> int idx <> rparen <+> pprint loc <> rparen
+          --AfterVectorLE dexp fexps s -> lparen <> text "afterVectorOfLocs(" <+> pprint dexp <+> "," <+> (brackets $ hcat (punctuate "," (map pprint fexps))) <+> ")" <+> pprint s <> rparen
+          AfterConstantLE i loc -> lparen <> pprint loc <+> text "+" <+> int i <> rparen
           AfterVariableLE v loc b -> if b
-                                     then text "fresh" <> (parens $ pprint loc <+> text "+" <+> doc v)
-                                     else parens $ pprint loc <+> text "+" <+> doc v
+				     then text "fresh" <> (parens $ pprint loc <+> text "+" <+> doc v)
+				     else parens $ pprint loc <+> text "+" <+> doc v
           InRegionLE r  -> lparen <> text "inRegion" <+> text (sdoc r) <> rparen
           FromEndLE loc -> lparen <> text "fromEnd" <+> pprint loc <> rparen
-          FreeLE -> lparen <> text "free" <> rparen
+          AssignLE loc -> lparen <> text "assignLoc" <+> pprint loc <> rparen
+          FreeLE -> lparen <> text "free" <> rparen 
+
+
+instance Pretty l => Pretty (L2.PreRegExp l) where
+    pprintWithStyle _ re =
+        case re of
+          L2.GetDataConRegSoA loc -> lparen <> text "getDataConRegSoA" <+> pprint loc <> rparen
+          L2.GetFieldRegSoA (dcon, idx) loc -> lparen <> text "getFieldRegSoA" <+> lparen <> text dcon <+> "," <+> int idx <> rparen <+> pprint loc <> rparen
+		
 
 instance Pretty RegionSize where
     pprintWithStyle _ (BoundedSize x) = parens $ text "Bounded" <+> int x
@@ -458,6 +472,8 @@ instance HasPrettyToo E2Ext l d => Pretty (L2.E2Ext l d) where
                                  doc r <+> text "in" $+$ pprint e
           LetLocE loc le e -> text "letloc" <+>
                                 pprint loc <+> equals <+> pprint le <+> text "in" $+$ pprint e
+          --LetSoALocE loc e -> text "letSoAloc" <+>
+          --                      pprint loc <+> text "in" $+$ pprint e
           L2.RetE ls v -> text "return" <+>
                             lbrack <> hcat (punctuate (text ",") (map pprint ls)) <> rbrack <+>
                           doc v
@@ -481,15 +497,20 @@ instance HasPrettyToo E2Ext l d => Pretty (L2.E2Ext l d) where
           L2.AllocateScalarsHere loc -> text "allocateScalarsHere" <+> pprint loc
           L2.SSPush mode loc endloc tycon -> text "ss_push" <+> doc mode <+> pprint loc <+> pprint endloc <+> doc tycon
           L2.SSPop mode loc endloc -> text "ss_pop" <+> doc mode <+> pprint loc <+> pprint endloc
+          L2.LetRegE regv re e -> text "letreg" <+> pprint regv <+> equals <+> pprint re <+> text "in" $+$ pprint e
 
 instance Pretty L2.LocVar where 
   pprintWithStyle _ loc = parens $ text $ sdoc loc
 
+instance Pretty L2.RegVar where
+  pprintWithStyle _ loc = parens $ text $ sdoc loc
+
+
 instance Pretty L2.Region where
   pprintWithStyle _ reg = parens $ text $ sdoc reg
 
-instance Pretty L2.ExtendedRegion where 
-  pprintWithStyle _ reg = parens $ text $ sdoc reg
+-- instance Pretty L2.ExtendedRegion where 
+--   pprintWithStyle _ reg = parens $ text $ sdoc reg
 
 instance Pretty L2.Modality where
   pprintWithStyle _ mode = text $ show mode

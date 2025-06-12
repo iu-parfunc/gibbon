@@ -134,6 +134,7 @@ simplifyLocBinds only_cse (Prog ddefs fundefs mainExp) = do
           case ext of
             LetRegionE reg sz ty bod -> Ext (LetRegionE reg sz ty (go env bod))
             LetParRegionE reg sz ty bod -> Ext (LetParRegionE reg sz ty (go env bod))
+            {- TODO VS: fix for SOA case -}
             LetLocE loc (AfterConstantLE i loc2) bod ->
               case (M.lookup loc2 env) of
                 Nothing ->
@@ -170,9 +171,9 @@ simplifyLocBinds only_cse (Prog ddefs fundefs mainExp) = do
               let bod' = go2 bod
                   free_vars = (allFreeVars bod')
               in
-                if (loc `elem` free_vars)
+                if ((fromLocVarToFreeVarsTy loc) `elem` free_vars)
                 then Ext (LetLocE loc rhs bod')
-                else bod'
+                else dbgTraceIt "Print freeVars: " dbgTraceIt (sdoc (rhs, free_vars))  dbgTraceIt "End\n"  bod'
             LetAvail vars bod -> Ext (LetAvail vars (go2 bod))
             _ -> Ext ext
         _ -> ex

@@ -81,6 +81,7 @@ import           Gibbon.Passes.RouteEnds      (routeEnds)
 import           Gibbon.Passes.FollowPtrs     (followPtrs)
 import           Gibbon.NewL2.FromOldL2       (fromOldL2)
 import           Gibbon.Passes.ThreadRegions  (threadRegions)
+import           Gibbon.Passes.ThreadRegions2  (threadRegions2)
 import           Gibbon.Passes.InferFunAllocs (inferFunAllocs)
 import           Gibbon.Passes.Cursorize      (cursorize)
 import           Gibbon.Passes.FindWitnesses  (findWitnesses)
@@ -91,9 +92,13 @@ import           Gibbon.Passes.Unariser       (unariser)
 import           Gibbon.Passes.Lower          (lower)
 import           Gibbon.Passes.RearrangeFree  (rearrangeFree)
 import           Gibbon.Passes.Codegen        (codegenProg)
+import           Gibbon.Passes.AddCastInstructions (addCasts)
 import           Gibbon.Passes.Fusion2        (fusion2)
+import           Gibbon.Passes.CorrectLocExprs (delayExpr)
+import           Gibbon.Passes.ReorderLetExprs (reorderLetExprs)
 import           Gibbon.Pretty
 import           Gibbon.L1.GenSML
+import qualified Data.Tree as L2
 -- Configuring and launching the compiler.
 --------------------------------------------------------------------------------
 
@@ -543,7 +548,7 @@ isBench _ = False
 
 -- | The debug level at which we start to call the interpreter on the program during compilation.
 interpDbgLevel :: Int
-interpDbgLevel = 5
+interpDbgLevel = 6
 
 -- |
 clearFile :: FilePath -> IO ()
@@ -643,8 +648,8 @@ passes config@Config{dynflags} l0 = do
           tcProg3     = L3.tcProg isPacked
       l0 <- go  "freshen"         freshNames            l0
       l0 <- goE0 "typecheck"       L0.tcProg             l0
-      l0 <- go  "elimNewtypes"     L0.elimNewtypes            l0
-      l0 <- goE0 "typecheck"       L0.tcProg             l0
+      --l0 <- go  "elimNewtypes"     L0.elimNewtypes            l0
+      --l0 <- goE0 "typecheck"       L0.tcProg             l0
       l0 <- goE0 "bindLambdas"     L0.bindLambdas       l0
       l0 <- goE0 "monomorphize"    L0.monomorphize      l0
       -- l0 <- goE0 "closureConvert"  L0.closureConvert    l0
@@ -693,19 +698,25 @@ passes config@Config{dynflags} l0 = do
               l1 <- go "L1.typecheck"    L1.tcProg     l1
               l1 <- goE1 "removeCopyAliases" removeAliasesForCopyCalls l1
               l2 <- goE2 "inferLocations"  inferLocs    l1
-              l2 <- goE2 "simplifyLocBinds_a" (simplifyLocBinds True) l2
-              l2 <- go   "L2.typecheck"    L2.tcProg    l2
               l2 <- go "regionsInwards"    regionsInwards l2
-              l2 <- go   "L2.typecheck"    L2.tcProg    l2
+              l2 <- goE2 "simplifyLocBinds_a" (simplifyLocBinds True) l2
+              {- VS: Inferlocations needs simplify loc binds to produce a type correct L2 program -}
+              -- l2 <- go   "L2.typecheck"    L2.tcProg    l2
+              --l2 <- go   "L2.typecheck"    L2.tcProg    l2
+              
+              --l2 <- go   "L2.typecheck"    L2.tcProg    l2
+              l2 <- goE2 "reorderLetExprs" reorderLetExprs l2
               l2 <- goE2 "simplifyLocBinds" (simplifyLocBinds True) l2
               l2 <- go   "fixRANs"         fixRANs      l2
+              l2 <- goE2 "reorderLetExprs2" reorderLetExprs l2
               l2 <- go   "L2.typecheck"    L2.tcProg    l2
               l2 <- goE2 "L2.flatten"      flattenL2    l2
               l2 <- go   "L2.typecheck"    L2.tcProg    l2
               l2 <- if gibbon1 || no_rcopies
                     then return l2
                     else do l2 <- go "removeCopies" removeCopies l2
-                            go "L2.typecheck"       L2.tcProg    l2
+                            l2 <- go "L2.typecheck" L2.tcProg l2
+                            return l2
               l2 <- goE2 "inferEffects" inferEffects  l2
 
 {- Note [Repairing programs]
@@ -753,6 +764,7 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
                   -- l1 <- goE1 "copyOutOfOrderPacked" copyOutOfOrderPacked l1
                   -- l1 <- go "L1.typecheck"    L1.tcProg     l1
                   l2 <- go "inferLocations2" inferLocs     l1
+                  l2 <- goE2 "reorderLetExprs3" reorderLetExprs l2
                   l2 <- go "simplifyLocBinds" (simplifyLocBinds True) l2
                   l2 <- go "fixRANs"         fixRANs       l2
                   l2 <- go   "L2.typecheck"  L2.tcProg     l2
@@ -773,8 +785,16 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
                   pure l2
 
               lift $ dumpIfSet config Opt_D_Dump_Repair (pprender l2)
-              l2 <- go "L2.typecheck"     L2.tcProg     l2
-              l2 <- goE2 "parAlloc"   parAlloc  l2
+              --l2 <- go "L2.typecheck"     L2.tcProg     l2
+              -- VS: TODO: This pass needs to be debugged.
+              -- VS: This currently generates incorrect code for SoA case. 
+              -- Hence, i've added a conditional here.
+              -- Parallel mode with SoA memory backend has no support yet to begin with 
+              -- so this is fine for now. 
+              -- l2 <- goE2 "parAlloc"   parAlloc  l2
+              l2 <- if isSoA
+                    then pure l2 
+                    else goE2 "parAlloc"   parAlloc  l2
               lift $ dumpIfSet config Opt_D_Dump_ParAlloc (pprender l2)
               l2 <- go "L2.typecheck" L2.tcProg l2
               l2 <- goE2 "inferRegScope"  inferRegScope l2
@@ -784,15 +804,18 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
               l2 <- go "writeOrderMarkers" writeOrderMarkers l2
               l2 <- go "L2.typecheck"     L2.tcProg     l2
               l2 <- goE2 "routeEnds"      routeEnds     l2
+              l2 <- goE2 "L2.flatten" flattenL2 l2
+              l2 <- goE2 "simplifyLocBinds" (simplifyLocBinds True) l2
+              l2 <- goE2 "reorderLetExprs4" reorderLetExprs l2
               l2 <- go "L2.typecheck"     L2.tcProg     l2
               l2 <- go "inferFunAllocs"   inferFunAllocs l2
               l2 <- go "L2.typecheck"     L2.tcProg     l2
               -- L2 program no longer typechecks while these next passes run
-              l2 <- goE2 "simplifyLocBinds" (simplifyLocBinds False) l2
+              l2 <- goE2 "simplifyLocBinds" (simplifyLocBinds True) l2 {- VS: This used to be false, why doesn't true work ? -}
               l2 <- go "addRedirectionCon" addRedirectionCon l2
               -- l2 <- if gibbon1
-              --       then pure l2
-              --       else go "inferRegSize" inferRegSize l2
+              --      then pure l2
+              --      else go "inferRegSize" inferRegSize l2
               l2 <- if gibbon1
                     then pure l2
                     else go "followPtrs" followPtrs l2
@@ -801,7 +824,9 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
               -- N.B ThreadRegions doesn't produce a type-correct L2 program --
               -- it adds regions to 'locs' in AppE and LetE which the
               -- typechecker doesn't know how to handle.
-              l2' <- go "threadRegions"    threadRegions l2'
+              -- l2' <- go "threadRegions"    threadRegions l2'
+              l2' <- go "threadRegions2" threadRegions2 l2'
+              l2' <- go "delayExprs"  delayExpr l2'
 
               -- L2 -> L3
               -- TODO: Compose L3.TcM with (ReaderT Config)
@@ -809,6 +834,7 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
               l3 <- go "reorderScalarWrites" reorderScalarWrites  l3
               -- _ <- lift $ putStrLn (pprender l3)
               l3 <- go "L3.flatten"       flattenL3     l3
+              l3 <- go "addCasts"         addCasts      l3
               l3 <- go "L3.typecheck"     tcProg3       l3
               l3 <- go "hoistNewBuf"      hoistNewBuf   l3
               l3 <- go "L3.typecheck"     tcProg3       l3

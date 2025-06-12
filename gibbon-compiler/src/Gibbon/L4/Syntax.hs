@@ -103,7 +103,7 @@ type Label = Var
 type SymTable = M.Map Word16 String
 
 type InfoTable = (M.Map L.TyCon TyConInfo)
-type TyConInfo = M.Map L.DataCon DataConInfo
+type TyConInfo = M.Map DataCon DataConInfo
 
 data DataConInfo = DataConInfo
   { dcon_tag :: Tag
@@ -200,6 +200,7 @@ data Ty
               -- This is a pointer to a struct value which may contain other pointers.
     | RegionTy -- ^ Region start and a refcount
     | ChunkTy  -- ^ Start and end pointers
+    | CursorArrayTy Int
 
 -- TODO: Make Ptrs more type safe like this:
 --    | StructPtrTy { fields :: [Ty] } -- ^ A pointer to a struct containing the given fields.
@@ -363,6 +364,9 @@ data Prim
     | SSPush SSModality TyCon
     | SSPop SSModality
     | Assert
+    | IndexCursorArray 
+    | MakeCursorArray
+    | CastPtr
 
   deriving (Show, Ord, Eq, Generic, NFData, Out)
 
@@ -442,6 +446,7 @@ fromL3Ty ty =
     L.ArenaTy    -> ArenaTy
     L.PtrTy      -> PtrTy
     L.CursorTy   -> CursorTy
+    L.CursorArrayTy size -> CursorArrayTy size
     -- L.PackedTy{} -> error "fromL3Ty: Cannot convert PackedTy"
     L.VectorTy el_ty  -> VectorTy (fromL3Ty el_ty)
     _ -> IntTy -- [2019.06.10]: CSK, Why do we need this?

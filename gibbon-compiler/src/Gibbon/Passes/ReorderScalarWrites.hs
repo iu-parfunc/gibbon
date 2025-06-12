@@ -17,6 +17,7 @@ import           Gibbon.Language
 import qualified Gibbon.L2.Syntax as L2
 import qualified Gibbon.L3.Syntax as L3
 import qualified Safe as Sf
+import Data.Foldable (foldrM)
 
 --------------------------------------------------------------------------------
 
@@ -38,15 +39,48 @@ writeOrderMarkers (Prog ddefs fundefs mainExp) = do
     gofun f@FunDef{funArgs,funBody,funTy} = do
         let (reg_env, alloc_env) =
               foldr (\(L2.LRM loc reg mode) (renv,aenv) ->
-                            case reg of 
-                                L2.AoSR rr -> let renv' = M.insert loc rr renv
-                                                  aenv' = case mode of
+                            let renv' = M.insert loc reg renv
+                             in case reg of
+                              L2.SoAR dcr fieldRegs -> 
+                                                       let renv'' = case loc of 
+                                                                  Single _ -> error $ "gofun: did not expect a SoA location for an SoA region."
+                                                                  SoA dcloc fieldLocs ->
+                                                                                         let renvl = M.insert (Single dcloc) dcr renv'
+                                                                                             renvl' = foldr (\(k, floc) acc -> do
+                                                                                                                               let freg = case lookup k fieldRegs of 
+                                                                                                                                             Just freg -> freg
+                                                                                                                                             Nothing -> error "gofun: expected a field region for corresponding key in SoAR."
+                                                                                                                               let acc' = M.insert floc freg acc
+                                                                                                                                in acc'   
+                                                                                                      
+                                                                                                            ) renvl fieldLocs
+                                                                                           in renvl'
+                                                           aenv' = case mode of
+                                                                        L2.Output ->
+                                                                            let aenvl = M.insert reg (RegionLocs [loc] S.empty) aenv
+                                                                              in case loc of 
+                                                                                    Single _ -> aenvl
+                                                                                    SoA dcloc fieldLocs -> 
+                                                                                         let aenvl' = foldr (\(k, floc) acc -> do
+                                                                                                                               let freg = case lookup k fieldRegs of 
+                                                                                                                                             Just freg -> freg
+                                                                                                                                             Nothing -> error "gofun: expected a field region for corresponding key in SoAR."
+                                                                                                                               let acc' = M.insert freg (RegionLocs [floc] S.empty) acc
+                                                                                                                                in acc'   
+                                                                                                      
+                                                                                                            ) aenvl fieldLocs
+                                                                                           in aenvl'
+                                                                            
+                                                                        L2.Input -> aenv
+                                                         in (renv'', aenv')
+                                                       
+                              _ -> let renv' = M.insert loc reg renv
+                                       aenv' = case mode of
                                                     L2.Output ->
                                                       let reg_locs = RegionLocs [loc] S.empty
-                                                        in M.insert rr reg_locs aenv
+                                                        in M.insert reg reg_locs aenv
                                                     L2.Input -> aenv
-                                                in (renv',aenv')
-                                L2.SoAR _ _ -> error "TODO: writeOrderMarkers structure of arrays not implemented yet." 
+                                     in (renv',aenv')
                     )
                     (M.empty,M.empty)
                     (L2.locVars funTy)
@@ -61,7 +95,7 @@ writeOrderMarkers (Prog ddefs fundefs mainExp) = do
         LetE (v,locs,ty,rhs) bod -> do
           let env2' = extendVEnv v ty env2
           case (L2.locsInTy ty) of
-            [] -> (LetE (v,locs,ty,rhs)) <$> (go reg_env alloc_env store_env env2' bod)
+            [] -> (LetE (v,locs,ty,rhs)) <$> (go reg_env alloc_env store_env env2' bod) -- simple recursion on let body
             [one] -> let (is_ok, locs_before, reg, (RegionLocs rlocs allocated)) = isAllocationOk one rhs bod
                          reg_env' = foldr (\loc acc -> M.insert loc reg acc) reg_env locs
                          alloc_env' =
@@ -96,7 +130,19 @@ writeOrderMarkers (Prog ddefs fundefs mainExp) = do
           case ext of
             L2.LetRegionE reg sz ty bod -> do
               let alloc_env' = M.insert reg (RegionLocs [] S.empty) alloc_env
-              Ext <$> (L2.LetRegionE reg sz ty) <$> go reg_env alloc_env' store_env env2 bod
+              case reg of 
+                  L2.SoAR dcr fieldRegs -> do
+                                           let alloc_env'' = M.insert dcr (RegionLocs [] S.empty) alloc_env'
+                                           alloc_env''' <- foldrM (\(_, freg) acc -> do
+                                                                 let acc' = M.insert freg (RegionLocs [] S.empty) acc
+                                                                 return acc'
+                                                                 ) alloc_env'' fieldRegs
+                                           Ext <$> (L2.LetRegionE reg sz ty) <$> go reg_env alloc_env''' store_env env2 bod
+                                           -- dbgTraceIt "Print allocEnv " dbgTraceIt (sdoc alloc_env''') dbgTraceIt "End allocEnv\n"
+                                           
+                  _ -> Ext <$> (L2.LetRegionE reg sz ty) <$> go reg_env alloc_env' store_env env2 bod
+              --alloc_env'' <- foldrM () alloc_env' reg
+              --Ext <$> (L2.LetRegionE reg sz ty) <$> go reg_env alloc_env' store_env env2 bod
             L2.LetParRegionE reg sz ty bod -> do
               let alloc_env' = M.insert reg (RegionLocs [] S.empty) alloc_env
               Ext <$> (L2.LetParRegionE reg sz ty) <$> go reg_env alloc_env' store_env env2 bod
@@ -105,20 +151,47 @@ writeOrderMarkers (Prog ddefs fundefs mainExp) = do
             L2.StartOfPkdCursor cur -> pure $ Ext $ L2.StartOfPkdCursor cur
             L2.TagCursor a b -> pure $ Ext $ L2.TagCursor a b
             L2.LetLocE loc rhs bod -> do
-              let reg = case rhs of
-                      L2.StartOfRegionLE r  -> r
-                      L2.InRegionLE r -> r
-                      L2.AfterConstantLE _ lc   -> reg_env # lc
-                      L2.AfterVariableLE _ lc _ -> reg_env # lc
-                      L2.FromEndLE lc           -> reg_env # lc
-                  reg_env' = M.insert loc reg reg_env
+              let (reg, reg_env') = case rhs of
+                      L2.StartOfRegionLE r  -> (r, M.insert loc r reg_env)
+                      L2.InRegionLE r -> (r, M.insert loc r reg_env)
+                      L2.AfterConstantLE _ lc   -> let r = reg_env # lc
+                                                    in (r, M.insert loc r reg_env)
+                      L2.AssignLE lc -> let r = reg_env # lc
+                                         in (r, M.insert loc r reg_env)
+                      L2.AfterVariableLE _ lc _ -> let r = reg_env # lc
+                                                    in (r, M.insert loc r reg_env)
+                      L2.FromEndLE lc           -> let r = reg_env # lc
+                                                     in (r, M.insert loc r reg_env)
+                      -- TODO: VS we should not use unwrap LocVar, LocVar should be recursive
+                      L2.GenSoALoc dlc flocs -> let dlcr = reg_env # dlc
+                                                    fieldRegs = map (\(d, flc) -> let flcr = reg_env # flc
+                                                                                   in (d, flcr)
+                                                                    ) flocs
+                                                    soa_loc = SoA (unwrapLocVar dlc) (map (\(d, flc) -> (d, flc)) flocs)
+                                                    soa_reg = L2.SoAR dlcr fieldRegs
+                                                  in (soa_reg, M.insert soa_loc soa_reg reg_env)
+                      L2.GetDataConLocSoA lc -> let soa_reg = reg_env # lc 
+                                                    dcon_reg = case soa_reg of 
+                                                                    L2.SoAR dreg _ -> dreg
+                                                  in (dcon_reg, M.insert (getDconLoc lc) dcon_reg reg_env)
+                      L2.GetFieldLocSoA (dcon, idx) lc -> let soa_reg = reg_env # lc 
+                                                              field_reg = case soa_reg of 
+                                                                                L2.SoAR _ fregs -> case lookup (dcon, idx) fregs of 
+                                                                                                    Just freg -> freg
+                                                                                                    Nothing -> error "writeOrderMarkers: GetFieldLocSoA: data constructor not found!"
+                                                            in (field_reg, M.insert (getFieldLoc (dcon, idx) lc) field_reg reg_env)
+                  --reg_env' = M.insert loc reg reg_env
               case M.lookup reg alloc_env of
-                Nothing ->
-                  Ext <$> (L2.LetLocE loc rhs) <$> (go reg_env' alloc_env store_env env2 bod)
+                Nothing -> do 
+                           -- dbgTraceIt "Print reg_env before case: " dbgTraceIt (sdoc (reg_env, reg_env')) dbgTraceIt "End1 reg_env\n"
+                           bod' <- go reg_env' alloc_env store_env env2 bod
+                           return $ Ext $ (L2.LetLocE loc rhs) bod'
                 Just (RegionLocs locs allocated) -> do
+                  -- dbgTraceIt "Print reg_env before case: " dbgTraceIt (sdoc (reg_env, reg_env')) dbgTraceIt "End2 reg_env\n"
                   let reg_locs = RegionLocs (locs ++ [loc]) allocated
                       alloc_env' = M.insert reg reg_locs alloc_env
                   Ext <$> (L2.LetLocE loc rhs) <$> (go reg_env' alloc_env' store_env env2 bod)
+
             L2.RetE{} -> pure ex
             L2.FromEndE{} -> pure ex
             L2.BoundsCheck{} -> pure ex
@@ -168,7 +241,7 @@ writeOrderMarkers (Prog ddefs fundefs mainExp) = do
           case M.lookup loc reg_env of
             Nothing  -> error $ "writeOrderMarkers: free location " ++ sdoc loc
             Just reg -> case M.lookup reg alloc_env of
-                          Nothing -> error $ "writeOrderMarkers: free region " ++ sdoc reg
+                          Nothing -> error $ "writeOrderMarkers: free region " ++ sdoc (loc, reg, rhs)
                           Just rloc@(RegionLocs locs allocated_to) ->
                             let locs_before = takeWhile (/= loc) locs in
                               case locs_before of
@@ -176,8 +249,9 @@ writeOrderMarkers (Prog ddefs fundefs mainExp) = do
                                         in ret
                                 _  ->
                                   let freev = L2.allFreeVars rhs `S.union` L2.allFreeVars bod
-                                      locs_before' = filter (\x -> S.member x freev) locs_before
+                                      locs_before' = filter (\x -> S.member (fromLocVarToFreeVarsTy x) freev) locs_before
                                   in (S.isProperSubsetOf (S.fromList locs_before') allocated_to, locs_before', reg, rloc)
+                                  -- dbgTraceIt "Print in isAllocationOk: " dbgTraceIt (sdoc (loc, rhs, locs_before, locs_before', allocated_to)) dbgTraceIt "End isAllocationOk.\n"
 
         findTyCon :: LocVar -> L2.Exp2 -> TyCon
         findTyCon want e =
@@ -323,7 +397,9 @@ type StoreEnv = M.Map Var LocVar
 type RegEnv = M.Map LocVar L2.Region
 type AllocEnv = M.Map L2.Region RegionLocs
 data RegionLocs = RegionLocs { locs :: [LocVar], allocated_to :: S.Set LocVar }
-  deriving Show
+  deriving (Show, Generic)
+
+instance Out RegionLocs
 
 --------------------------------------------------------------------------------
 

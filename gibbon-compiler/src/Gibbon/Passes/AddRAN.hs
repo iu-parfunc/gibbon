@@ -329,8 +329,8 @@ needsRAN Prog{ddefs,fundefs,mainExp} =
              else let tyenv = M.fromList $ zip funArgs (inTys funTy)
                       env2 = Env2 tyenv funenv
                       renv = M.fromList $ L.map (\lrm -> case (lrmReg lrm) of 
-                                                              AoSR reg -> (lrmLoc lrm, regionToVar reg)
                                                               SoAR _ _ -> error "TODO: needsRAN structure of arrays not implemented yet."
+                                                              _ -> (lrmLoc lrm, regionToVar (lrmReg lrm))
                                                 ) (locVars funTy)
                   in needsRANExp ddefs fundefs env2 renv M.empty [] funBody
 
@@ -343,7 +343,7 @@ needsRAN Prog{ddefs,fundefs,mainExp} =
   in S.union funs mn
 
 -- Maps a location to a region
-type RegEnv = M.Map LocVar Var
+type RegEnv = M.Map LocVar RegVar
 type TyConEnv = M.Map LocVar TyCon
 
 needsRANExp :: DDefs Ty2 -> FunDefs2 -> Env2 Var Ty2 -> RegEnv -> TyConEnv -> [[LocVar]] -> Exp2 -> S.Set TyCon
