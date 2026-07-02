@@ -2040,6 +2040,7 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
                       enable_selective_buffer_sharing: bool = False,
                       enable_vectorization: bool = False,
                       use_int32: bool = False,
+                      use_ran: bool = False,
                       benchmark_ghc: bool = False,
                       benchmark_mlton: bool = False,
                       warmup_runs: int = 1,
@@ -2071,8 +2072,12 @@ def benchmark_program(prog: str, programs_dir: Path, out_dir: Path,
     tasks = []
     variant_compile_opts: Dict[str, Dict[str, bool]] = {}
     for var, use_mut in variants:
-        # For GHC comparison runs, compile Gibbon AoS/SoA without --no-ran.
-        use_no_ran = not (benchmark_ghc and (var.startswith("aos") or var.startswith("soa")))
+        # By default benchmark Gibbon variants with --no-ran.  --use-ran omits
+        # that flag without adding GHC/MLton comparison variants.  Keep the old
+        # --benchmark-ghc behavior for compatibility: when GHC is requested, the
+        # Gibbon comparison variants are also compiled with RAN enabled.
+        is_gibbon_variant = var.startswith("aos") or var.startswith("soa")
+        use_no_ran = not ((use_ran or benchmark_ghc) and is_gibbon_variant)
         override = PROGRAM_COMPILE_OVERRIDES.get(prog, {}).get(var, {})
         use_mut_eff = override.get("use_mutable_cursors", use_mut)
         use_no_ran_eff = override.get("use_no_ran", use_no_ran)
@@ -4907,6 +4912,8 @@ def main():
                          "This flag is not passed to AoS variants.")
     ap.add_argument("--int32", "--gibbon-int32", dest="use_int32", action="store_true",
                     help="Compile Gibbon variants with 32-bit GibInt payloads. This is passed to both AoS and SoA Gibbon variants.")
+    ap.add_argument("--use-ran", "--enable-ran", dest="use_ran", action="store_true",
+                    help="Compile Gibbon variants with random-access nodes enabled by omitting --no-ran. Does not add GHC/MLton variants.")
     args = ap.parse_args()
 
     if args.enable_papi and args.enable_papi_native:
@@ -4935,6 +4942,7 @@ def main():
     print(f"  Selective sh.: {'enabled for SoA (--enable-selective-buffer-sharing)' if args.enable_selective_buffer_sharing else 'off'}")
     print(f"  Vectorization: {'enabled for SoA (--enable-vectorization)' if args.enable_vectorization else 'off'}")
     print(f"  Int width    : {'32-bit (--int32)' if args.use_int32 else '64-bit default'}")
+    print(f"  RAN          : {'enabled (omit --no-ran)' if args.use_ran else 'disabled (--no-ran)'}")
     if args.benchmark_immutable:
         imm_s = "YES  (4 variants: aos, aos_imm, soa, soa_imm)"
     elif args.benchmark_baseline_gibbon:
@@ -5003,6 +5011,7 @@ def main():
             enable_selective_buffer_sharing=args.enable_selective_buffer_sharing,
             enable_vectorization=args.enable_vectorization,
             use_int32=args.use_int32,
+            use_ran=args.use_ran,
             warmup_runs=args.warmup_runs,
             warmup_iterations=args.warmup_iterations,
             cooldown_seconds=args.cooldown_seconds,

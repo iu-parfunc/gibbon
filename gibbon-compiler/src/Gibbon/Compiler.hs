@@ -937,14 +937,14 @@ Also see Note [Adding dummy traversals] and Note [Adding random access nodes].
               l3 <- go "loopifyFlatTraversals" loopifyFlatTraversals l3
               l3 <- go "loopifyTraversals" loopifyTraversals l3
               l3 <- go "propagateScalarCounts" propagateScalarCounts l3
-              l3 <- if gopt Opt_UseMutableCursors dynflags
-                    then go "repairMutableCursorFutures" repairMutableCursorFutures l3
-                    else pure l3
               l3 <- go "selectiveBufferSharing" selectiveBufferSharing l3
               l3 <- go "fuseLoopifiedTraversals" fuseLoopifiedTraversals l3
               l3 <- go "vectorizeTraversals" vectorizeTraversals l3
               -- _ <- lift $ putStrLn (pprender l3)
               l3 <- go "L3.flatten"       flattenL3     l3
+              l3 <- if gopt Opt_UseMutableCursors dynflags && not noRAN
+                    then go "repairMutableCursorFutures" repairMutableCursorFutures l3
+                    else pure l3
               -- l3 <- go "addCasts"         addCasts      l3
               l3 <- go "L3.typecheck"     tcProg3       l3
               l3 <- go "hoistNewBuf"      hoistNewBuf   l3

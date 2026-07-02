@@ -51,8 +51,4 @@ gibbon_main =
        sum = iterate(sumTree tree')
        _ = printsym (quote "End")
        _ = printsym (quote "NEWLINE")
-       _ = printsym (quote "Running pass rightmost tree (fold, uses=2): ")
-       rmv = iterate (rightmost tree)
-       _ = printsym (quote "End")
-       _ = printsym (quote "NEWLINE")
-     in (sum, rmv)
+     in sum

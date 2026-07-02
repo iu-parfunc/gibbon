@@ -1,12 +1,396 @@
 ========================================================================
 GIBBON BENCHMARK REPORT v3.1
 ========================================================================
-Generated: 2026-05-30 14:38:02
+Generated: 2026-06-27 19:06:45
 
 
-Program: ScalarCountSmoke.hs  [ADT fields: 3]
+Program: Compiler.hs  [ADT fields: 9]  [AoS=1 buf, SoA=8 bufs | IR]
 ----------------------------------------
-  AOS: FAILED – source not found
-  SOA: 0.0000s total
-  Output match (successful variants): N/A (fewer than 2 successful variants with output)
-  Runtime failures excluded from output matching: aos (source not found)
+  AOS: 0.2738s total
+    [F] verifyIR: median=0.0000s  mean=0.0000s  95%CI=±0.000000s  (n=21)  uses=9/9  dead=0%
+    [F] instCountPass: median=0.0117s  mean=0.0117s  95%CI=±0.000039s  (n=21)  uses=2/9  dead=78%
+    [F] blockCountPass: median=0.0117s  mean=0.0117s  95%CI=±0.000075s  (n=21)  uses=2/9  dead=78%
+    [F] memoryOpStatsPass: median=0.0115s  mean=0.0115s  95%CI=±0.000020s  (n=21)  uses=3/9  dead=67%
+    [F] castInstCountPass: median=0.0179s  mean=0.0179s  95%CI=±0.000020s  (n=21)  uses=3/9  dead=67%
+    [F] branchStatsPass: median=0.0113s  mean=0.0114s  95%CI=±0.000018s  (n=21)  uses=2/9  dead=78%
+    [F] latencyModelPass: median=0.0116s  mean=0.0116s  95%CI=±0.000015s  (n=21)  uses=3/9  dead=67%
+    [F] has cycle: median=0.0242s  mean=0.0247s  95%CI=±0.00102s  (n=21)  uses=4/9  dead=56%
+    [F] throughputModelPass: median=0.0117s  mean=0.0117s  95%CI=±0.000039s  (n=21)  uses=3/9  dead=67%
+    [M] targetReturnPass: median=0.0801s  mean=0.0802s  95%CI=±0.000123s  (n=21)  uses=9/9  dead=0%
+    [M] stripSideEffectsPass: median=0.0821s  mean=0.0821s  95%CI=±0.000158s  (n=21)  uses=7/9  dead=22%
+  SOA: 0.2120s total
+    [F] verifyIR: median=0.0000s  mean=0.0000s  95%CI=±0.000000s  (n=21)  uses=9/9  dead=0%
+    [F] instCountPass: median=0.0019s  mean=0.0019s  95%CI=±0.000014s  (n=21)  uses=2/9  dead=78%
+    [F] blockCountPass: median=0.0019s  mean=0.0019s  95%CI=±0.000001s  (n=21)  uses=2/9  dead=78%
+    [F] memoryOpStatsPass: median=0.0038s  mean=0.0038s  95%CI=±0.000016s  (n=21)  uses=3/9  dead=67%
+    [F] castInstCountPass: median=0.0013s  mean=0.0013s  95%CI=±0.000010s  (n=21)  uses=3/9  dead=67%
+    [F] branchStatsPass: median=0.0034s  mean=0.0034s  95%CI=±0.000007s  (n=21)  uses=2/9  dead=78%
+    [F] latencyModelPass: median=0.0029s  mean=0.0029s  95%CI=±0.000015s  (n=21)  uses=3/9  dead=67%
+    [F] has cycle: median=0.0174s  mean=0.0182s  95%CI=±0.00149s  (n=21)  uses=4/9  dead=56%
+    [F] throughputModelPass: median=0.0030s  mean=0.0030s  95%CI=±0.000010s  (n=21)  uses=3/9  dead=67%
+    [M] targetReturnPass: median=0.0885s  mean=0.0885s  95%CI=±0.000307s  (n=21)  uses=9/9  dead=0%
+    [M] stripSideEffectsPass: median=0.0879s  mean=0.0879s  95%CI=±0.000306s  (n=21)  uses=7/9  dead=22%
+  Speedup: 1.291×
+  Output match (successful variants): YES
+
+Program: DBQuery.hs  [ADT fields: 15]  [AoS=1 buf, SoA=13 bufs | Query]
+----------------------------------------
+  AOS: 0.2603s total
+    [F] sumCost: median=0.0193s  mean=0.0194s  95%CI=±0.000037s  (n=21)  uses=6/15  dead=60%
+    [F] sumRows: median=0.0265s  mean=0.0266s  95%CI=±0.000080s  (n=21)  uses=6/15  dead=60%
+    [F] countJoins: median=0.0195s  mean=0.0195s  95%CI=±0.000038s  (n=21)  uses=3/15  dead=80%
+    [F] sumMemory: median=0.0192s  mean=0.0192s  95%CI=±0.000037s  (n=21)  uses=6/15  dead=60%
+    [F] hashJoinPressure: median=0.0205s  mean=0.0205s  95%CI=±0.000034s  (n=21)  uses=5/15  dead=67%
+    [F] filterSelectivitySkew: median=0.0193s  mean=0.0193s  95%CI=±0.000052s  (n=21)  uses=5/15  dead=67%
+    [M] scaleCosts: median=0.0680s  mean=0.0676s  95%CI=±0.000523s  (n=21)  uses=15/15  dead=0%
+    [M] clearQueryFlags: median=0.0680s  mean=0.0676s  95%CI=±0.000439s  (n=21)  uses=14/15  dead=7%
+  SOA: 0.2532s total
+    [F] sumCost: median=0.0144s  mean=0.0145s  95%CI=±0.000109s  (n=21)  uses=6/15  dead=60%
+    [F] sumRows: median=0.0216s  mean=0.0217s  95%CI=±0.000107s  (n=21)  uses=6/15  dead=60%
+    [F] countJoins: median=0.0111s  mean=0.0111s  95%CI=±0.000025s  (n=21)  uses=3/15  dead=80%
+    [F] sumMemory: median=0.0147s  mean=0.0148s  95%CI=±0.000114s  (n=21)  uses=6/15  dead=60%
+    [F] hashJoinPressure: median=0.0129s  mean=0.0129s  95%CI=±0.000054s  (n=21)  uses=5/15  dead=67%
+    [F] filterSelectivitySkew: median=0.0125s  mean=0.0178s  95%CI=±0.00690s  (n=21)  uses=5/15  dead=67%
+    [M] scaleCosts: median=0.0829s  mean=0.0835s  95%CI=±0.00119s  (n=21)  uses=15/15  dead=0%
+    [M] clearQueryFlags: median=0.0831s  mean=0.0831s  95%CI=±0.000080s  (n=21)  uses=14/15  dead=7%
+  Speedup: 1.028×
+  Output match (successful variants): YES
+
+Program: DecisionTree.hs  [ADT fields: 7]  [AoS=1 buf, SoA=6 bufs | DTree]
+----------------------------------------
+  AOS: 0.5349s total
+    [F] countNodes: median=0.0583s  mean=0.0625s  95%CI=±0.00595s  (n=21)  uses=2/7  dead=71%
+    [F] countLeaves: median=0.0580s  mean=0.0580s  95%CI=±0.000076s  (n=21)  uses=2/7  dead=71%
+    [F] treeDepth: median=0.0589s  mean=0.0590s  95%CI=±0.000030s  (n=21)  uses=2/7  dead=71%
+    [F] sumImpurity: median=0.0597s  mean=0.0597s  95%CI=±0.000039s  (n=21)  uses=3/7  dead=57%
+    [F] sumSamples: median=0.0591s  mean=0.0592s  95%CI=±0.000040s  (n=21)  uses=3/7  dead=57%
+    [F] countFeatureUses: median=0.0606s  mean=0.0607s  95%CI=±0.000130s  (n=21)  uses=3/7  dead=57%
+    [F] countSmallLeaves: median=0.0608s  mean=0.0609s  95%CI=±0.000228s  (n=21)  uses=3/7  dead=57%
+    [F] inferenceCost: median=0.0596s  mean=0.0643s  95%CI=±0.00811s  (n=21)  uses=2/7  dead=71%
+    [F] sumPathLengths: median=0.0598s  mean=0.0600s  95%CI=±0.000198s  (n=21)  uses=3/7  dead=57%
+    [F] classify tree: median=0.0000s  mean=0.0000s  95%CI=±0.000000s  (n=21)  uses=5/7  dead=29%
+    [F] classify Depth: median=0.0000s  mean=0.0000s  95%CI=±0.000000s  (n=21)  uses=4/7  dead=43%
+    [F] classify Batch: median=0.0000s  mean=0.0000s  95%CI=±0.000003s  (n=21)  uses=5/7  dead=29%
+  SOA: 0.6379s total
+    [F] countNodes: median=0.0669s  mean=0.0669s  95%CI=±0.000089s  (n=21)  uses=2/7  dead=71%
+    [F] countLeaves: median=0.0667s  mean=0.0668s  95%CI=±0.000071s  (n=21)  uses=2/7  dead=71%
+    [F] treeDepth: median=0.0675s  mean=0.0676s  95%CI=±0.000099s  (n=21)  uses=2/7  dead=71%
+    [F] sumImpurity: median=0.0723s  mean=0.0738s  95%CI=±0.00300s  (n=21)  uses=3/7  dead=57%
+    [F] sumSamples: median=0.0740s  mean=0.0741s  95%CI=±0.000131s  (n=21)  uses=3/7  dead=57%
+    [F] countFeatureUses: median=0.0743s  mean=0.0743s  95%CI=±0.000058s  (n=21)  uses=3/7  dead=57%
+    [F] countSmallLeaves: median=0.0721s  mean=0.0722s  95%CI=±0.000154s  (n=21)  uses=3/7  dead=57%
+    [F] inferenceCost: median=0.0674s  mean=0.0675s  95%CI=±0.000054s  (n=21)  uses=2/7  dead=71%
+    [F] sumPathLengths: median=0.0765s  mean=0.0766s  95%CI=±0.000079s  (n=21)  uses=3/7  dead=57%
+    [F] classify tree: median=0.0000s  mean=0.0000s  95%CI=±0.000000s  (n=21)  uses=5/7  dead=29%
+    [F] classify Depth: median=0.0000s  mean=0.0000s  95%CI=±0.000000s  (n=21)  uses=4/7  dead=43%
+    [F] classify Batch: median=0.0000s  mean=0.0000s  95%CI=±0.000005s  (n=21)  uses=5/7  dead=29%
+  Speedup: 0.839×
+  Output match (successful variants): YES
+
+Program: DomTree.hs  [ADT fields: 15]  [AoS=1 buf, SoA=14 bufs | DOM]
+----------------------------------------
+  AOS: 0.1959s total
+    [F] SumArea: median=0.0355s  mean=0.0356s  95%CI=±0.000082s  (n=21)  uses=6/15  dead=60%
+    [F] find max Bottom: median=0.0344s  mean=0.0345s  95%CI=±0.000099s  (n=21)  uses=5/15  dead=67%
+    [F] count styled: median=0.0342s  mean=0.0342s  95%CI=±0.000049s  (n=21)  uses=3/15  dead=80%
+    [F] sumTextWidth: median=0.0340s  mean=0.0341s  95%CI=±0.000080s  (n=21)  uses=3/15  dead=80%
+    [M] computeWidths: median=0.0293s  mean=0.0292s  95%CI=±0.000146s  (n=21)  uses=14/15  dead=7%
+    [M] scaleLayout: median=0.0285s  mean=0.0285s  95%CI=±0.000235s  (n=21)  uses=15/15  dead=0%
+  SOA: 0.1480s total
+    [F] SumArea: median=0.0184s  mean=0.0183s  95%CI=±0.000140s  (n=21)  uses=6/15  dead=60%
+    [F] find max Bottom: median=0.0226s  mean=0.0227s  95%CI=±0.000129s  (n=21)  uses=5/15  dead=67%
+    [F] count styled: median=0.0114s  mean=0.0114s  95%CI=±0.000038s  (n=21)  uses=3/15  dead=80%
+    [F] sumTextWidth: median=0.0116s  mean=0.0116s  95%CI=±0.000062s  (n=21)  uses=3/15  dead=80%
+    [M] computeWidths: median=0.0450s  mean=0.0453s  95%CI=±0.000334s  (n=21)  uses=14/15  dead=7%
+    [M] scaleLayout: median=0.0390s  mean=0.0392s  95%CI=±0.000329s  (n=21)  uses=15/15  dead=0%
+  Speedup: 1.324×
+  Output match (successful variants): YES
+
+Program: KDTree.hs  [ADT fields: 17]  [AoS=1 buf, SoA=16 bufs | KDTree]
+----------------------------------------
+  AOS: 0.1789s total
+    [F] Find nearest Neighbour: median=0.0277s  mean=0.0277s  95%CI=±0.000052s  (n=21)  uses=13/17  dead=24%
+    [F] countInRange tight_box: median=0.0278s  mean=0.0278s  95%CI=±0.000036s  (n=21)  uses=13/17  dead=24%
+    [F] sumMassInRange: median=0.0274s  mean=0.0323s  95%CI=±0.00682s  (n=21)  uses=14/17  dead=18%
+    [F] twoPointCorrelation bin_8_16: median=0.0287s  mean=0.0287s  95%CI=±0.000031s  (n=21)  uses=11/17  dead=35%
+    [F] pointCloudNeighborhood: median=0.0248s  mean=0.0248s  95%CI=±0.000025s  (n=21)  uses=11/17  dead=35%
+    [F] photonMappingBenchmark: median=0.0426s  mean=0.0435s  95%CI=±0.00154s  (n=21)  uses=12/17  dead=29%
+  SOA: 0.1422s total
+    [F] Find nearest Neighbour: median=0.0225s  mean=0.0225s  95%CI=±0.000021s  (n=21)  uses=13/17  dead=24%
+    [F] countInRange tight_box: median=0.0200s  mean=0.0200s  95%CI=±0.000050s  (n=21)  uses=13/17  dead=24%
+    [F] sumMassInRange: median=0.0214s  mean=0.0214s  95%CI=±0.000029s  (n=21)  uses=14/17  dead=18%
+    [F] twoPointCorrelation bin_8_16: median=0.0205s  mean=0.0205s  95%CI=±0.000045s  (n=21)  uses=11/17  dead=35%
+    [F] pointCloudNeighborhood: median=0.0172s  mean=0.0172s  95%CI=±0.000023s  (n=21)  uses=11/17  dead=35%
+    [F] photonMappingBenchmark: median=0.0406s  mean=0.0406s  95%CI=±0.000082s  (n=21)  uses=12/17  dead=29%
+  Speedup: 1.258×
+  Output match (successful variants): YES
+
+Program: LinearListReduction.hs  [ADT fields: 11]  [AoS=1 buf, SoA=11 bufs | List]
+----------------------------------------
+  AOS: 0.0287s total
+    [F] reduction: median=0.0287s  mean=0.0287s  95%CI=±0.000048s  (n=21)  uses=2/11  dead=82%
+  SOA: 0.0050s total
+    [F] reduction: median=0.0050s  mean=0.0050s  95%CI=±0.000020s  (n=21)  uses=2/11  dead=82%
+  Speedup: 5.778×
+  Output match (successful variants): YES
+
+Program: reduceNestedList.hs  [ADT fields: 3]  [AoS=1 buf, SoA=3 bufs | List]
+----------------------------------------
+  AOS: 0.0836s total
+    [F] reduction: median=0.0836s  mean=0.0837s  95%CI=±0.000217s  (n=21)  uses=2/3  dead=33%
+  SOA: 0.0075s total
+    [F] reduction: median=0.0075s  mean=0.0075s  95%CI=±0.000045s  (n=21)  uses=2/3  dead=33%
+  Speedup: 11.130×
+  Output match (successful variants): YES
+
+Program: List.hs  [ADT fields: 2]  [AoS=1 buf, SoA=2 bufs | List]
+----------------------------------------
+  AOS: 0.5866s total
+    [M] add1 List: median=0.2557s  mean=0.2555s  95%CI=±0.00126s  (n=21)  uses=2/2  dead=0%
+    [F] length List: median=0.0475s  mean=0.0476s  95%CI=±0.000084s  (n=21)  uses=1/2  dead=50%
+    [F] sumList: median=0.1416s  mean=0.1417s  95%CI=±0.000171s  (n=21)  uses=2/2  dead=0%
+    [F] sumList tail recursive: median=0.1418s  mean=0.1419s  95%CI=±0.000148s  (n=21)  uses=2/2  dead=0%
+  SOA: 0.6470s total
+    [M] add1 List: median=0.3405s  mean=0.3406s  95%CI=±0.000940s  (n=21)  uses=2/2  dead=0%
+    [F] length List: median=0.0270s  mean=0.0270s  95%CI=±0.000064s  (n=21)  uses=1/2  dead=50%
+    [F] sumList: median=0.1401s  mean=0.1462s  95%CI=±0.01220s  (n=21)  uses=2/2  dead=0%
+    [F] sumList tail recursive: median=0.1394s  mean=0.1394s  95%CI=±0.000338s  (n=21)  uses=2/2  dead=0%
+  Speedup: 0.907×
+  Output match (successful variants): YES
+  Runtime failures excluded from output matching: aos_imm (warmup failed (exit -11))
+
+Program: MonoTree.hs  [ADT fields: 3]  [AoS=1 buf, SoA=2 bufs | Tree]
+----------------------------------------
+  AOS: 0.0620s total
+    [M] add1Tree: median=0.0443s  mean=0.0455s  95%CI=±0.00234s  (n=21)  uses=3/3  dead=0%
+    [F] sumTree: median=0.0091s  mean=0.0091s  95%CI=±0.000042s  (n=21)  uses=3/3  dead=0%
+    [F] sumTree TailRec: median=0.0086s  mean=0.0086s  95%CI=±0.000031s  (n=21)  uses=3/3  dead=0%
+  SOA: 0.0654s total
+    [M] add1Tree: median=0.0430s  mean=0.0433s  95%CI=±0.000693s  (n=21)  uses=3/3  dead=0%
+    [F] sumTree: median=0.0115s  mean=0.0172s  95%CI=±0.00631s  (n=21)  uses=3/3  dead=0%
+    [F] sumTree TailRec: median=0.0109s  mean=0.0108s  95%CI=±0.000209s  (n=21)  uses=3/3  dead=0%
+  Speedup: 0.947×
+  Output match (successful variants): YES
+
+Program: ObjectGraph.hs  [ADT fields: 5]  [AoS=1 buf, SoA=4 bufs | Heap]
+----------------------------------------
+  AOS: 0.2379s total
+    [F] totalHeapSize: median=0.0126s  mean=0.0126s  95%CI=±0.000018s  (n=21)  uses=3/5  dead=40%
+    [F] countMarked: median=0.0128s  mean=0.0128s  95%CI=±0.000040s  (n=21)  uses=3/5  dead=40%
+    [F] countLargeItems: median=0.0129s  mean=0.0130s  95%CI=±0.000024s  (n=21)  uses=3/5  dead=40%
+    [F] liveBytes: median=0.0134s  mean=0.0134s  95%CI=±0.000052s  (n=21)  uses=4/5  dead=20%
+    [F] deadBytes: median=0.0141s  mean=0.0141s  95%CI=±0.000036s  (n=21)  uses=4/5  dead=20%
+    [F] countSurvivors: median=0.0137s  mean=0.0137s  95%CI=±0.000023s  (n=21)  uses=4/5  dead=20%
+    [F] sumObjIds: median=0.0128s  mean=0.0128s  95%CI=±0.000016s  (n=21)  uses=3/5  dead=40%
+    [M] sweepUnmarked: median=0.0723s  mean=0.0776s  95%CI=±0.01055s  (n=21)  uses=5/5  dead=0%
+    [M] touchHotObjects: median=0.0733s  mean=0.0733s  95%CI=±0.000100s  (n=21)  uses=5/5  dead=0%
+  SOA: 0.2448s total
+    [F] totalHeapSize: median=0.0108s  mean=0.0107s  95%CI=±0.000090s  (n=21)  uses=3/5  dead=40%
+    [F] countMarked: median=0.0108s  mean=0.0108s  95%CI=±0.000136s  (n=21)  uses=3/5  dead=40%
+    [F] countLargeItems: median=0.0105s  mean=0.0106s  95%CI=±0.000126s  (n=21)  uses=3/5  dead=40%
+    [F] liveBytes: median=0.0124s  mean=0.0124s  95%CI=±0.000034s  (n=21)  uses=4/5  dead=20%
+    [F] deadBytes: median=0.0124s  mean=0.0125s  95%CI=±0.000049s  (n=21)  uses=4/5  dead=20%
+    [F] countSurvivors: median=0.0131s  mean=0.0130s  95%CI=±0.000034s  (n=21)  uses=4/5  dead=20%
+    [F] sumObjIds: median=0.0102s  mean=0.0102s  95%CI=±0.000076s  (n=21)  uses=3/5  dead=40%
+    [M] sweepUnmarked: median=0.0823s  mean=0.0824s  95%CI=±0.000236s  (n=21)  uses=5/5  dead=0%
+    [M] touchHotObjects: median=0.0824s  mean=0.0824s  95%CI=±0.000146s  (n=21)  uses=5/5  dead=0%
+  Speedup: 0.972×
+  Output match (successful variants): YES
+
+Program: OctTree_sumMass.hs  [ADT fields: 16]  [AoS=1 buf, SoA=9 bufs | Octree]
+----------------------------------------
+  AOS: 0.0353s total
+    [F] sumMass: median=0.0353s  mean=0.0353s  95%CI=±0.000077s  (n=21)  uses=10/16  dead=38%
+  SOA: 0.0275s total
+    [F] sumMass: median=0.0275s  mean=0.0275s  95%CI=±0.000026s  (n=21)  uses=10/16  dead=38%
+  Speedup: 1.283×
+  Output match (successful variants): YES
+
+Program: OctTree_sumEnergy.hs  [ADT fields: 16]  [AoS=1 buf, SoA=9 bufs | Octree]
+----------------------------------------
+  AOS: 0.0368s total
+    [F] sumEnergy: median=0.0368s  mean=0.0368s  95%CI=±0.000036s  (n=21)  uses=12/16  dead=25%
+  SOA: 0.0338s total
+    [F] sumEnergy: median=0.0338s  mean=0.0339s  95%CI=±0.000103s  (n=21)  uses=12/16  dead=25%
+  Speedup: 1.088×
+  Output match (successful variants): NO
+
+Program: OctTree_countActive.hs  [ADT fields: 16]  [AoS=1 buf, SoA=9 bufs | Octree]
+----------------------------------------
+  AOS: 0.0347s total
+    [F] countActive: median=0.0347s  mean=0.0347s  95%CI=±0.000039s  (n=21)  uses=10/16  dead=38%
+  SOA: 0.0296s total
+    [F] countActive: median=0.0296s  mean=0.0296s  95%CI=±0.000037s  (n=21)  uses=10/16  dead=38%
+  Speedup: 1.172×
+  Output match (successful variants): NO
+
+Program: OctTree_countParticles.hs  [ADT fields: 16]  [AoS=1 buf, SoA=9 bufs | Octree]
+----------------------------------------
+  AOS: 0.0358s total
+    [F] countParticles: median=0.0358s  mean=0.0357s  95%CI=±0.000036s  (n=21)  uses=8/16  dead=50%
+  SOA: 0.0272s total
+    [F] countParticles: median=0.0272s  mean=0.0272s  95%CI=±0.000064s  (n=21)  uses=8/16  dead=50%
+  Speedup: 1.316×
+  Output match (successful variants): YES
+
+Program: OctTree_barnesHutPotential.hs  [ADT fields: 16]  [AoS=1 buf, SoA=9 bufs | Octree]
+----------------------------------------
+  AOS: 0.0385s total
+    [F] barnesHutPotential: median=0.0385s  mean=0.0434s  95%CI=±0.00710s  (n=21)  uses=11/16  dead=31%
+  SOA: 0.0374s total
+    [F] barnesHutPotential: median=0.0374s  mean=0.0374s  95%CI=±0.000017s  (n=21)  uses=11/16  dead=31%
+  Speedup: 1.029×
+  Output match (successful variants): NO
+
+Program: OctTree_fmmPotential.hs  [ADT fields: 16]  [AoS=1 buf, SoA=9 bufs | Octree]
+----------------------------------------
+  AOS: 0.0975s total
+    [F] fmmPotential: median=0.0975s  mean=0.0976s  95%CI=±0.000125s  (n=21)  uses=12/16  dead=25%
+  SOA: 0.0975s total
+    [F] fmmPotential: median=0.0975s  mean=0.0975s  95%CI=±0.000114s  (n=21)  uses=12/16  dead=25%
+  Speedup: 1.000×
+  Output match (successful variants): NO
+
+Program: OctTree_scaleEnergy.hs  [ADT fields: 16]  [AoS=1 buf, SoA=9 bufs | Octree]
+----------------------------------------
+  AOS: 0.1533s total
+    [M] scaleEnergy: median=0.1533s  mean=0.1536s  95%CI=±0.000497s  (n=21)  uses=16/16  dead=0%
+  SOA: 0.1754s total
+    [M] scaleEnergy: median=0.1754s  mean=0.1755s  95%CI=±0.000395s  (n=21)  uses=16/16  dead=0%
+  Speedup: 0.874×
+  Output match (successful variants): NO
+
+Program: OctTree_clearFlags.hs  [ADT fields: 16]  [AoS=1 buf, SoA=9 bufs | Octree]
+----------------------------------------
+  AOS: 0.1561s total
+    [M] clearFlags: median=0.1561s  mean=0.1558s  95%CI=±0.000438s  (n=21)  uses=15/16  dead=6%
+  SOA: 0.1737s total
+    [M] clearFlags: median=0.1737s  mean=0.1851s  95%CI=±0.01636s  (n=21)  uses=15/16  dead=6%
+  Speedup: 0.899×
+  Output match (successful variants): NO
+
+Program: PiecewiseFunctions.hs  [ADT fields: 8]  [AoS=1 buf, SoA=7 bufs | PW]
+----------------------------------------
+  AOS: 0.3752s total
+    [F] norm2Estimate: median=0.0243s  mean=0.0243s  95%CI=±0.000052s  (n=21)  uses=5/8  dead=38%
+    [F] truncateTolViolations: median=0.0191s  mean=0.0192s  95%CI=±0.000083s  (n=21)  uses=3/8  dead=62%
+    [F] compressMass: median=0.0189s  mean=0.0189s  95%CI=±0.000060s  (n=21)  uses=3/8  dead=62%
+    [F] autorefineMaxLevel: median=0.0210s  mean=0.0210s  95%CI=±0.000018s  (n=21)  uses=4/8  dead=50%
+    [F] pmapCutHistogram: median=0.0314s  mean=0.0314s  95%CI=±0.000032s  (n=21)  uses=4/8  dead=50%
+    [F] lbDeuxLoadProxy: median=0.0208s  mean=0.0208s  95%CI=±0.000019s  (n=21)  uses=5/8  dead=38%
+    [M] addConstPW: median=0.1201s  mean=0.1201s  95%CI=±0.000598s  (n=21)  uses=8/8  dead=0%
+    [M] diffPW: median=0.1197s  mean=0.1241s  95%CI=±0.00855s  (n=21)  uses=8/8  dead=0%
+  SOA: 0.3629s total
+    [F] norm2Estimate: median=0.0183s  mean=0.0183s  95%CI=±0.000044s  (n=21)  uses=5/8  dead=38%
+    [F] truncateTolViolations: median=0.0116s  mean=0.0116s  95%CI=±0.000039s  (n=21)  uses=3/8  dead=62%
+    [F] compressMass: median=0.0117s  mean=0.0117s  95%CI=±0.000060s  (n=21)  uses=3/8  dead=62%
+    [F] autorefineMaxLevel: median=0.0190s  mean=0.0244s  95%CI=±0.00781s  (n=21)  uses=4/8  dead=50%
+    [F] pmapCutHistogram: median=0.0126s  mean=0.0126s  95%CI=±0.000044s  (n=21)  uses=4/8  dead=50%
+    [F] lbDeuxLoadProxy: median=0.0183s  mean=0.0183s  95%CI=±0.000099s  (n=21)  uses=5/8  dead=38%
+    [M] addConstPW: median=0.1363s  mean=0.1362s  95%CI=±0.000746s  (n=21)  uses=8/8  dead=0%
+    [M] diffPW: median=0.1349s  mean=0.1346s  95%CI=±0.000549s  (n=21)  uses=8/8  dead=0%
+  Speedup: 1.034×
+  Output match (successful variants): YES
+
+Program: TernaryTree.hs  [ADT fields: 5]  [AoS=1 buf, SoA=3 bufs | Tree]
+----------------------------------------
+  AOS: 0.1127s total
+    [M] add 1 tree: median=0.0833s  mean=0.0832s  95%CI=±0.000271s  (n=21)  uses=5/5  dead=0%
+    [F] sum tree: median=0.0294s  mean=0.0294s  95%CI=±0.000232s  (n=21)  uses=5/5  dead=0%
+  SOA: 0.1055s total
+    [M] add 1 tree: median=0.0778s  mean=0.0779s  95%CI=±0.000149s  (n=21)  uses=5/5  dead=0%
+    [F] sum tree: median=0.0276s  mean=0.0277s  95%CI=±0.000303s  (n=21)  uses=5/5  dead=0%
+  Speedup: 1.069×
+  Output match (successful variants): YES
+
+Program: Trie.hs  [ADT fields: 10]  [AoS=1 buf, SoA=9 bufs | Trie]
+----------------------------------------
+  AOS: 0.2167s total
+    [F] sumPrefixFreq: median=0.0123s  mean=0.0123s  95%CI=±0.000021s  (n=21)  uses=3/10  dead=70%
+    [F] countTerminals: median=0.0123s  mean=0.0123s  95%CI=±0.000071s  (n=21)  uses=3/10  dead=70%
+    [F] sumSubtreeHints: median=0.0123s  mean=0.0123s  95%CI=±0.000023s  (n=21)  uses=3/10  dead=70%
+    [F] autocompleteTopKProxy: median=0.0148s  mean=0.0148s  95%CI=±0.000038s  (n=21)  uses=5/10  dead=50%
+    [F] countLazyNodes: median=0.0130s  mean=0.0130s  95%CI=±0.000019s  (n=21)  uses=4/10  dead=60%
+    [M] decayTrieStats: median=0.0756s  mean=0.0756s  95%CI=±0.000220s  (n=21)  uses=10/10  dead=0%
+    [M] resetTraversalState: median=0.0765s  mean=0.0765s  95%CI=±0.000161s  (n=21)  uses=10/10  dead=0%
+  SOA: 0.2015s total
+    [F] sumPrefixFreq: median=0.0058s  mean=0.0058s  95%CI=±0.000019s  (n=21)  uses=3/10  dead=70%
+    [F] countTerminals: median=0.0059s  mean=0.0059s  95%CI=±0.000045s  (n=21)  uses=3/10  dead=70%
+    [F] sumSubtreeHints: median=0.0058s  mean=0.0058s  95%CI=±0.000018s  (n=21)  uses=3/10  dead=70%
+    [F] autocompleteTopKProxy: median=0.0087s  mean=0.0087s  95%CI=±0.000091s  (n=21)  uses=5/10  dead=50%
+    [F] countLazyNodes: median=0.0067s  mean=0.0067s  95%CI=±0.000021s  (n=21)  uses=4/10  dead=60%
+    [M] decayTrieStats: median=0.0858s  mean=0.0858s  95%CI=±0.000444s  (n=21)  uses=10/10  dead=0%
+    [M] resetTraversalState: median=0.0828s  mean=0.0826s  95%CI=±0.000319s  (n=21)  uses=10/10  dead=0%
+  Speedup: 1.075×
+  Output match (successful variants): YES
+
+Program: ColorOctree.hs  [ADT fields: 25]  [AoS=1 buf, SoA=18 bufs | ColorOctree]
+----------------------------------------
+  AOS: 0.0803s total
+    [F] paletteEntriesQuantized: median=0.0379s  mean=0.0379s  95%CI=±0.000045s  (n=21)  uses=13/25  dead=48%
+    [F] quantizationErrorProxy: median=0.0424s  mean=0.0424s  95%CI=±0.000081s  (n=21)  uses=10/25  dead=60%
+  SOA: 0.0667s total
+    [F] paletteEntriesQuantized: median=0.0281s  mean=0.0282s  95%CI=±0.000112s  (n=21)  uses=13/25  dead=48%
+    [F] quantizationErrorProxy: median=0.0386s  mean=0.0386s  95%CI=±0.000079s  (n=21)  uses=10/25  dead=60%
+  Speedup: 1.204×
+  Output match (successful variants): NO
+
+========================================================================
+OFFENDING PROGRAMS (OUTPUT MISMATCH AMONG SUCCESSFUL VARIANTS)
+========================================================================
+
+Program: OctTree_sumEnergy.hs
+  Variants: aos, soa
+  Output:
+    1477896046
+  Variants: aos_imm
+  Output:
+    179362502472
+
+Program: OctTree_countActive.hs
+  Variants: aos, soa
+  Output:
+    2773
+  Variants: aos_imm
+  Output:
+    18680
+
+Program: OctTree_barnesHutPotential.hs
+  Variants: aos, soa
+  Output:
+    0
+  Variants: aos_imm
+  Output:
+    70613843
+
+Program: OctTree_fmmPotential.hs
+  Variants: aos, soa
+  Output:
+    0
+  Variants: aos_imm
+  Output:
+    229379432
+
+Program: OctTree_scaleEnergy.hs
+  Variants: aos, soa
+  Output:
+    1057845708
+  Variants: aos_imm
+  Output:
+    300158116707
+
+Program: OctTree_clearFlags.hs
+  Variants: aos, soa
+  Output:
+    2773
+  Variants: aos_imm
+  Output:
+    18680
+
+Program: ColorOctree.hs
+  Variants: aos, soa
+  Output:
+    '#(524288 0)
+  Variants: aos_imm
+  Output:
+    '#(16777216 24540)

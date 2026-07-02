@@ -213,7 +213,6 @@ data Mode = Gibbon3
           | GibbonNoRan
           | GibbonInt32
           | GibbonLoopify
-          | GibbonLoopifyNoRan
           | GibbonSelective
           | GibbonVectorize
           | GibbonInt32Vectorize
@@ -225,7 +224,7 @@ instance FromJSON Mode where
     parseJSON oth = error $ "Cannot parse Mode: " ++ show oth
 
 allModes :: [Mode]
-allModes = filter (\x -> x /= MPL && x /= GibbonLoopifyNoRan) [minBound ..]  -- all modes does not include MPL or opt-in regression modes
+allModes = filter (/= MPL) [minBound ..]  -- all modes does not include MPL
 
 readMode :: T.Text -> Mode
 readMode s =
@@ -241,8 +240,6 @@ readMode s =
         "gibbon-int32" -> GibbonInt32
         "loopify" -> GibbonLoopify
         "gibbon-loopify" -> GibbonLoopify
-        "noran-loopify" -> GibbonLoopifyNoRan
-        "gibbon-noran-loopify" -> GibbonLoopifyNoRan
         "selective" -> GibbonSelective
         "gibbon-selective" -> GibbonSelective
         "vectorize" -> GibbonVectorize
@@ -263,7 +260,6 @@ modeRunFlags Interp1 = ["--interp1"]
 modeRunFlags Gibbon1 = ["--run", "--packed", "--gibbon1"]
 modeRunFlags GibbonInt32 = ["--run", "--packed", "--int32"]
 modeRunFlags GibbonLoopify = ["--run", "--packed", "--use-mutable-cursors", "--store-scalar-field-counts", "--enable-loopification", "--auto-loopification"]
-modeRunFlags GibbonLoopifyNoRan = ["--run", "--packed", "--use-mutable-cursors", "--store-scalar-field-counts", "--enable-loopification", "--auto-loopification", "--no-ran", "--no-indirections"]
 modeRunFlags GibbonSelective = ["--run", "--packed", "--use-mutable-cursors", "--store-scalar-field-counts", "--enable-loopification", "--auto-loopification", "--enable-selective-buffer-sharing"]
 modeRunFlags GibbonVectorize = ["--run", "--packed", "--use-mutable-cursors", "--store-scalar-field-counts", "--enable-loopification", "--auto-loopification", "--enable-selective-buffer-sharing", "--enable-vectorization"]
 modeRunFlags GibbonInt32Vectorize = ["--run", "--packed", "--use-mutable-cursors", "--store-scalar-field-counts", "--enable-loopification", "--auto-loopification", "--enable-selective-buffer-sharing", "--enable-vectorization", "--int32"]
@@ -289,7 +285,6 @@ modeExeFlags Interp1 = error "Cannot compile in Interp1 mode."
 modeExeFlags Gibbon1 = ["--to-exe", "--packed", "--gibbon1"]
 modeExeFlags GibbonInt32 = ["--to-exe", "--packed", "--int32"]
 modeExeFlags GibbonLoopify = ["--to-exe", "--packed", "--use-mutable-cursors", "--store-scalar-field-counts", "--enable-loopification", "--auto-loopification"]
-modeExeFlags GibbonLoopifyNoRan = ["--to-exe", "--packed", "--use-mutable-cursors", "--store-scalar-field-counts", "--enable-loopification", "--auto-loopification", "--no-ran", "--no-indirections"]
 modeExeFlags GibbonSelective = ["--to-exe", "--packed", "--use-mutable-cursors", "--store-scalar-field-counts", "--enable-loopification", "--auto-loopification", "--enable-selective-buffer-sharing"]
 modeExeFlags GibbonVectorize = ["--to-exe", "--packed", "--use-mutable-cursors", "--store-scalar-field-counts", "--enable-loopification", "--auto-loopification", "--enable-selective-buffer-sharing", "--enable-vectorization"]
 modeExeFlags GibbonInt32Vectorize = ["--to-exe", "--packed", "--use-mutable-cursors", "--store-scalar-field-counts", "--enable-loopification", "--auto-loopification", "--enable-selective-buffer-sharing", "--enable-vectorization", "--int32"]
@@ -308,7 +303,6 @@ modeFileSuffix Interp1 = "_interp1"
 modeFileSuffix Gibbon1 = "_gibbon1"
 modeFileSuffix GibbonInt32 = "_gibbonInt32"
 modeFileSuffix GibbonLoopify = "_gibbonLoopify"
-modeFileSuffix GibbonLoopifyNoRan = "_gibbonLoopifyNoRan"
 modeFileSuffix GibbonSelective = "_gibbonSelective"
 modeFileSuffix GibbonVectorize = "_gibbonVectorize"
 modeFileSuffix GibbonInt32Vectorize = "_gibbonInt32Vectorize"
@@ -619,13 +613,9 @@ runTest tc test@Test{name,expectedResults,runModes,compileOnly,compareWithBaseli
 
     _keepFieldsLive = (expectedResults, runModes)
 
-expectedModeResults :: Test -> [(Mode, Result)]
-expectedModeResults Test{expectedResults,runModes} =
-    map (\mode -> (mode, M.findWithDefault Pass mode expectedResults)) runModes
-
 runTestCompileOnly :: TestConfig -> Test -> IO [(Mode,TestVerdict)]
-runTestCompileOnly tc test@Test{dir,name} =
-    mapM (uncurry go) (expectedModeResults test)
+runTestCompileOnly tc test@Test{dir,name,expectedResults,runModes} =
+    mapM (uncurry go) (M.toList $ M.restrictKeys expectedResults (S.fromList runModes))
   where
     go :: Mode -> Result -> IO (Mode, TestVerdict)
     go mode expected = do
@@ -635,8 +625,8 @@ runTestCompileOnly tc test@Test{dir,name} =
           Right{}  -> verdict expected mode Nothing
 
 runTestAgainstAnswer :: TestConfig -> Test -> IO [(Mode,TestVerdict)]
-runTestAgainstAnswer tc test@Test{name,dir} =
-    mapM (uncurry go) (expectedModeResults test)
+runTestAgainstAnswer tc test@Test{name,dir,expectedResults,runModes} =
+    mapM (uncurry go) (M.toList $ M.restrictKeys expectedResults (S.fromList runModes))
   where
     go :: Mode -> Result -> IO (Mode, TestVerdict)
     go mode expected = do
@@ -670,23 +660,23 @@ answerPathForTest tc Test{name,dir,mb_anspath} = do
                     else generatedDefault
 
 runTestAgainstBaseline :: TestConfig -> Test -> IO [(Mode,TestVerdict)]
-runTestAgainstBaseline tc test@Test{name,dir,baselineMode,baselineDir,baselineName} = do
+runTestAgainstBaseline tc test@Test{name,dir,expectedResults,runModes,baselineMode,baselineDir,baselineName} = do
     let bdir  = maybe dir id baselineDir
         bname = maybe name id baselineName
     baseline <- runGibbonTestCommand tc test baselineMode bdir bname "_baseline"
     case baseline of
       Left err ->
           mapM (\(mode, expected) -> verdict expected mode (Just ("baseline failed: " ++ err)))
-               (expectedModeResults test)
+               (M.toList $ M.restrictKeys expectedResults (S.fromList runModes))
       Right (baselinePath, baselineOut) -> do
           answerCheck <- baselineAnswerCheck baselinePath
           case answerCheck of
             Just err ->
               mapM (\(mode, expected) -> verdict expected mode (Just ("baseline answer mismatch: " ++ err)))
-                   (expectedModeResults test)
+                   (M.toList $ M.restrictKeys expectedResults (S.fromList runModes))
             Nothing ->
               mapM (\(mode, expected) -> go baselineOut mode expected)
-                   (expectedModeResults test)
+                   (M.toList $ M.restrictKeys expectedResults (S.fromList runModes))
   where
     baselineAnswerCheck :: FilePath -> IO (Maybe String)
     baselineAnswerCheck baselinePath =

@@ -130,27 +130,15 @@ copyBindsForRhs producerShapes rhs =
       | Just ProducerShape{psInput, psOutput} <- M.lookup fn producerShapes
       , Just srcEnds <- argVar (cpsEndArgIx psInput) args
       , Just dstEnds <- argVar (cpsEndArgIx psOutput) args
-      , Just dstCur <- argVar (cpsCurArgIx psOutput) args
       , cpsLen psInput == cpsLen psOutput -> do
-          installVar <- gensym "scalar_count_install_cursor"
           copyVar <- gensym "scalar_count_copy"
-          let cursorArrayTy = L3.CursorArrayTy (cpsLen psOutput)
-              install =
-                [ ( installVar
-                  , []
-                  , L3.ProdTy []
-                  , L3.Ext $ L3.MemCpy dstEnds dstCur cursorArrayTy
-                  )
-                | dstEnds /= dstCur
-                ]
-              copy =
-                [ ( copyVar
-                  , []
-                  , L3.ProdTy []
-                  , L3.Ext $ L3.ScalarCountCopyAll (cpsLen psInput) dstEnds srcEnds
-                  )
-                ]
-          pure (install ++ copy)
+          pure
+            [ ( copyVar
+              , []
+              , L3.ProdTy []
+              , L3.Ext $ L3.ScalarCountCopyAll (cpsLen psInput) dstEnds srcEnds
+              )
+            ]
     _ -> pure []
 
 producerShape :: L3.FunDef3 -> Maybe ProducerShape
