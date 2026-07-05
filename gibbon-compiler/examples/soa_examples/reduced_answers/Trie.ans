@@ -1,0 +1,30 @@
+Running program Trie: 
+Running pass sumPrefixFreq (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass countTerminals (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumSubtreeHints (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass autocompleteTopKProxy (fold, uses=5): 
+ITERS: 1
+SIZE: 1
+End
+Running pass countLazyNodes (fold, uses=4): 
+ITERS: 1
+SIZE: 1
+End
+Running pass decayTrieStats (map, uses=10): 
+ITERS: 1
+SIZE: 1
+End
+Running pass resetTraversalState (map, uses=10): 
+ITERS: 1
+SIZE: 1
+End
+'#(6908 288 10656 19428 28 6167 6167)

@@ -1,0 +1,34 @@
+Running Data base Query Pass: 
+Running pass sumCost (fold, uses=6): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumRows (fold, uses=6): 
+ITERS: 1
+SIZE: 1
+End
+Running pass countJoins (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumMemory (fold, uses=6): 
+ITERS: 1
+SIZE: 1
+End
+Running pass hashJoinPressure (fold, uses=5): 
+ITERS: 1
+SIZE: 1
+End
+Running pass filterSelectivitySkew (fold, uses=5): 
+ITERS: 1
+SIZE: 1
+End
+Running pass scaleCosts (map, uses=15): 
+ITERS: 1
+SIZE: 1
+End
+Running pass clearQueryFlags (map, uses=14): 
+ITERS: 1
+SIZE: 1
+End
+'#(16274 175375 11 6155 2077 1397 162740 162740)

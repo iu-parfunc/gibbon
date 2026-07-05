@@ -194,6 +194,7 @@ test-suite test-gibbon
                        LoopifyTraversals
                        ScalarCountPropagation
                        SelectiveBufferSharing
+                       VectorizeTraversals
                        L1.Typecheck
                        L1.Interp
                        L2.Typecheck

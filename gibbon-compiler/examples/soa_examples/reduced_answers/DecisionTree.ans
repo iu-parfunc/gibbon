@@ -1,0 +1,50 @@
+Running program Decision Tree: 
+Running pass countNodes (fold, uses=2): 
+ITERS: 1
+SIZE: 1
+End
+Running pass countLeaves (fold, uses=2): 
+ITERS: 1
+SIZE: 1
+End
+Running pass treeDepth (fold, uses=2): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumImpurity (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumSamples (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass countFeatureUses (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass countSmallLeaves (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass inferenceCost (fold, uses=2): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumPathLengths (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass classify tree (fold, uses=5): 
+ITERS: 1
+SIZE: 1
+End
+Running pass classify Depth (fold, uses=4): 
+ITERS: 1
+SIZE: 1
+End
+Running pass classify Batch (fold, uses=5): 
+ITERS: 1
+SIZE: 1
+End
+'#(67 34 8 32921 21 0 34 7 109 -1 4 -89)

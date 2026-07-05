@@ -27,6 +27,7 @@ import AddRAN
 import LoopifyTraversals
 import ScalarCountPropagation
 import SelectiveBufferSharing
+import VectorizeTraversals
 import L1.Typecheck
 import L1.Interp
 import L2.Typecheck
@@ -43,6 +44,7 @@ main = defaultMain allTests
                    , loopifyTraversalsTests
                    , scalarCountPropagationTests
                    , selectiveBufferSharingTests
+                   , vectorizeTraversalsTests
                    , routeEnds2Tests
                    , inferLocations2Tests
                    , inferEffects2Tests

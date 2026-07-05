@@ -1,0 +1,38 @@
+Running program ObjectGraph Simulated a GC Program: 
+Running pass totalHeapSize (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass countMarked (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass countLargeItems (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass liveBytes (fold, uses=4): 
+ITERS: 1
+SIZE: 1
+End
+Running pass deadBytes (fold, uses=4): 
+ITERS: 1
+SIZE: 1
+End
+Running pass countSurvivors (fold, uses=4): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumObjIds (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sweepUnmarked (map, uses=5): 
+ITERS: 1
+SIZE: 1
+End
+Running pass touchHotObjects (map, uses=5): 
+ITERS: 1
+SIZE: 1
+End
+'#(2470 85 0 1390 1080 85 247 0 1806)

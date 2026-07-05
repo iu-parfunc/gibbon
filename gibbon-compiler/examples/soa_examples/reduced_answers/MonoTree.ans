@@ -1,0 +1,14 @@
+Running program MonoTree: 
+Running pass add1Tree (map, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumTree (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumTree TailRec (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+'#(1408 1408)

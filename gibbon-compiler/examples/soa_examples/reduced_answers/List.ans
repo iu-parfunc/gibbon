@@ -1,0 +1,18 @@
+Running program List: 
+Running pass add1 List (map, uses=2): 
+ITERS: 1
+SIZE: 1
+End
+Running pass length List (fold, uses=1): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumList (fold, uses=2): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumList tail recursive (fold, uses=2): 
+ITERS: 1
+SIZE: 1
+End
+'#(2144 2144 64)

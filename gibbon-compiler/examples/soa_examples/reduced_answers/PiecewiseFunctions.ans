@@ -1,0 +1,34 @@
+Running Program Piecewise Functions (MADNESS style): 
+Running pass norm2Estimate (fold, uses=5): 
+ITERS: 1
+SIZE: 1
+End
+Running pass truncateTolViolations (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass compressMass (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass autorefineMaxLevel (fold, uses=4): 
+ITERS: 1
+SIZE: 1
+End
+Running pass pmapCutHistogram (fold, uses=4): 
+ITERS: 1
+SIZE: 1
+End
+Running pass lbDeuxLoadProxy (fold, uses=5): 
+ITERS: 1
+SIZE: 1
+End
+Running pass addConstPW (map, uses=8): 
+ITERS: 1
+SIZE: 1
+End
+Running pass diffPW (map, uses=8): 
+ITERS: 1
+SIZE: 1
+End
+'#(63239 68 2336 12 134 3324 3616 24056)

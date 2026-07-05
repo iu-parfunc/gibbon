@@ -1,0 +1,34 @@
+Running program OctTree Physics Simulation: 
+Running pass sumMass (fold, uses=10): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumEnergy (fold, uses=12): 
+ITERS: 1
+SIZE: 1
+End
+Running pass countActive (fold, uses=10): 
+ITERS: 1
+SIZE: 1
+End
+Running pass countParticles (fold, uses=8): 
+ITERS: 1
+SIZE: 1
+End
+Running pass barnesHutPotential (fold_like, uses=11): 
+ITERS: 1
+SIZE: 1
+End
+Running pass fmmPotential (fold_like, uses=12): 
+ITERS: 1
+SIZE: 1
+End
+Running pass scaleEnergy (map, uses=16): 
+ITERS: 1
+SIZE: 1
+End
+Running pass clearFlags (map, uses=15): 
+ITERS: 1
+SIZE: 1
+End
+'#(98302 168666193 261 32768 449557 456751 163489516 261)

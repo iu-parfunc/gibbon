@@ -212,24 +212,36 @@ loopifyTraversals prog@Prog{ddefs, fundefs} = do
         gopt Opt_StoreScalarFieldCounts dflags &&
         gopt Opt_EnableLoopification dflags
       auto = gopt Opt_AutoLoopification dflags
+      countedTyCons = scalarCountProducerTyCons ddefs fundefs
   fds' <-
     if enabled
-    then mapM (rewriteFun False auto ddefs) (M.elems fundefs)
+    then mapM (rewriteFun False auto countedTyCons ddefs) (M.elems fundefs)
     else pure (M.elems fundefs)
   pure $ prog { fundefs = M.fromList [ (funName f, f) | f <- fds' ] }
 
-rewriteFun :: Bool -> Bool -> DDefs Ty3 -> FunDef3 -> PassM FunDef3
-rewriteFun fuseScalarLoops auto ddefs fn =
+rewriteFun :: Bool -> Bool -> S.Set TyCon -> DDefs Ty3 -> FunDef3 -> PassM FunDef3
+rewriteFun fuseScalarLoops auto countedTyCons ddefs fn@FunDef{funMeta} =
   case loopifyCandidateInfoWith auto ddefs fn of
     Nothing -> pure fn
     Just cand ->
-      case extractTraversalPlan ddefs cand fn of
+      if CanVectorize `notElem` funOpt funMeta && lcTyCon cand `S.notMember` countedTyCons
+      then pure fn
+      else case extractTraversalPlan ddefs cand fn of
         Nothing -> pure fn
         Just plan -> do
           mbody <- loopifyFastPath fuseScalarLoops plan fn
           case mbody of
             Nothing -> pure fn
             Just body' -> pure $ stampCanVectorize (fn { funBody = body' })
+
+scalarCountProducerTyCons :: DDefs Ty3 -> FunDefs3 -> S.Set TyCon
+scalarCountProducerTyCons ddefs fds =
+  S.fromList
+    [ getTyOfDataCon ddefs dcon
+    | FunDef{funMeta, funBody} <- M.elems fds
+    , StoreScalarCounts `elem` funOpt funMeta
+    , dcon <- collectMentionedDataCons funBody
+    ]
 
 loopifyCandidateInfo :: DDefs Ty3 -> FunDef3 -> Maybe LoopifyCandidate
 loopifyCandidateInfo = loopifyCandidateInfoWith False

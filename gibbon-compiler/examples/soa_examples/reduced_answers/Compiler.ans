@@ -1,0 +1,46 @@
+Running the Compiler IR Program: 
+Running pass verifyIR (fold, uses=9): 
+ITERS: 1
+SIZE: 1
+End
+Running pass instCountPass (fold, uses=2): 
+ITERS: 1
+SIZE: 1
+End
+Running pass blockCountPass (fold, uses=2): 
+ITERS: 1
+SIZE: 1
+End
+Running pass memoryOpStatsPass (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass castInstCountPass (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass branchStatsPass (fold, uses=2): 
+ITERS: 1
+SIZE: 1
+End
+Running pass latencyModelPass (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass has cycle (fold, uses=4): 
+ITERS: 1
+SIZE: 1
+End
+Running pass throughputModelPass (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End: 
+Running pass targetReturnPass (map, uses=9): 
+ITERS: 1
+SIZE: 1
+End
+Running pass stripSideEffectsPass (map, uses=7): 
+ITERS: 1
+SIZE: 1
+End
+'#(74 9 8 3 184 #t 131 74 74)

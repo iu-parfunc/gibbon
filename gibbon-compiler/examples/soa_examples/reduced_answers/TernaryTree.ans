@@ -1,0 +1,10 @@
+Running program Ternary Heap: 
+Running pass add 1 tree (map, uses=5): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sum tree (fold, uses=5): 
+ITERS: 1
+SIZE: 1
+End
+1457

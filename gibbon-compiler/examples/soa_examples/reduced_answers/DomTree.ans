@@ -1,0 +1,26 @@
+Running program DomTree: 
+Running pass SumArea (fold, uses=6): 
+ITERS: 1
+SIZE: 1
+End
+Running pass find max Bottom (fold, uses=5): 
+ITERS: 1
+SIZE: 1
+End
+Running pass count styled (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumTextWidth (fold, uses=3): 
+ITERS: 1
+SIZE: 1
+End
+Running pass computeWidths (map, uses=14): 
+ITERS: 1
+SIZE: 1
+End
+Running pass scaleLayout (map, uses=15): 
+ITERS: 1
+SIZE: 1
+End
+'#(322560 60 8 17920 161280 645120)

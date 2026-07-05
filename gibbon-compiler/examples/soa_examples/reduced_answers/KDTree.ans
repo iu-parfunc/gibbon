@@ -1,0 +1,26 @@
+Running program KDTree: 
+Running pass Find nearest Neighbour (fold_like, uses=13): 
+ITERS: 1
+SIZE: 1
+End
+Running pass countInRange tight_box (fold_like, uses=13): 
+ITERS: 1
+SIZE: 1
+End
+Running pass sumMassInRange (fold_like, uses=14): 
+ITERS: 1
+SIZE: 1
+End
+Running pass twoPointCorrelation bin_8_16 (fold_like, uses=11): 
+ITERS: 1
+SIZE: 1
+End
+Running pass pointCloudNeighborhood (fold_like, uses=11): 
+ITERS: 1
+SIZE: 1
+End
+Running pass photonMappingBenchmark (fold_like, uses=12): 
+ITERS: 1
+SIZE: 1
+End
+'#(3 2 0 0 128 0)

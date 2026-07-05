@@ -1,0 +1,10 @@
+Running program ColorOctree Quantization: 
+Running pass paletteEntriesQuantized (fold, uses=13): 
+ITERS: 1
+SIZE: 1
+End
+Running pass quantizationErrorProxy (fold, uses=10): 
+ITERS: 1
+SIZE: 1
+End
+'#(32768 1798260)

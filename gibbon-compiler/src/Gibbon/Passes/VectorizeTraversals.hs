@@ -596,19 +596,21 @@ matchScalarDag scalar idx binds expr0 =
             _ -> Nothing
 
 matchCondDag :: L3.Scalar -> Var -> [Bind3] -> L3.Exp3 -> Maybe CondDag
-matchCondDag _resultScalar idx binds expr0 =
+matchCondDag resultScalar idx binds expr0 =
   case expr0 of
     VarE v ->
       case resolveVarRhs binds S.empty v of
         VarE v' | v == v' -> matchNonVar expr0
-        rhs -> matchCondDag L3.IntS idx binds rhs
+        rhs -> matchCondDag resultScalar idx binds rhs
     _ -> matchNonVar expr0
   where
     matchNonVar expr =
       case expr of
-        PrimAppE EqIntP [a, b] ->
+        PrimAppE EqIntP [a, b]
+          | resultScalar == L3.IntS ->
           CondEq L3.IntS <$> matchScalarDag L3.IntS idx binds a <*> matchScalarDag L3.IntS idx binds b
-        PrimAppE EqFloatP [a, b] ->
+        PrimAppE EqFloatP [a, b]
+          | resultScalar == L3.FloatS ->
           CondEq L3.FloatS <$> matchScalarDag L3.FloatS idx binds a <*> matchScalarDag L3.FloatS idx binds b
         _ -> Nothing
 
