@@ -51,6 +51,21 @@ case_unsupported_write_keeps_whole_loop_scalar :: Assertion
 case_unsupported_write_keeps_whole_loop_scalar =
   countVecStores (funBodyOf "partialUnsupported" (runnerInt32 vectorizeProg)) @?= 0
 
+-- Both arms of a `VecSelect` are evaluated, so a division the scalar program
+-- guarded must not be speculated: leave the loop scalar.
+case_guarded_division_stays_scalar :: Assertion
+case_guarded_division_stays_scalar =
+  countVecStores (funBodyOf "guardedDiv" (runner64 vectorizeProg)) @?= 0
+
+-- A loop-invariant division must not be hoisted in front of the loop (it would
+-- run even for a zero trip count); it stays inside the loop as a vector op.
+case_invariant_division_is_not_hoisted :: Assertion
+case_invariant_division_is_not_hoisted =
+  let body = funBodyOf "invariantDiv" (runner64 vectorizeProg)
+   in do
+        countHoistedPartialPrims body @?= 0
+        countVecStores body @?= 2
+
 vectorizeProg :: L3.Prog3
 vectorizeProg =
   L3.Prog
@@ -60,8 +75,41 @@ vectorizeProg =
        , ("intSelect", intSelectFun)
        , ("mixedSelect", mixedSelectFun)
        , ("partialUnsupported", partialUnsupportedFun)
+       , ("guardedDiv", guardedDivFun)
+       , ("invariantDiv", invariantDivFun)
        ])
     Nothing
+
+guardedDivFun :: L3.FunDef3
+guardedDivFun =
+  L3.FunDef
+    "guardedDiv"
+    []
+    ([], L3.ProdTy [])
+    (loopBody guardedDivLoopBody)
+    (FunMeta TailRec NoInline False [CanVectorize])
+
+guardedDivLoopBody :: L3.Exp3
+guardedDivLoopBody =
+  intWriteLoopBody 8 "guard_in" "guard_out" $
+    L3.IfE
+      (L3.PrimAppE EqIntP [L3.VarE "x", L3.LitE 0])
+      (L3.LitE 0)
+      (L3.PrimAppE DivP [L3.VarE "x", L3.VarE "k"])
+
+invariantDivFun :: L3.FunDef3
+invariantDivFun =
+  L3.FunDef
+    "invariantDiv"
+    []
+    ([], L3.ProdTy [])
+    (loopBody invariantDivLoopBody)
+    (FunMeta TailRec NoInline False [CanVectorize])
+
+invariantDivLoopBody :: L3.Exp3
+invariantDivLoopBody =
+  intWriteLoopBody 8 "inv_in" "inv_out" $
+    L3.PrimAppE AddP [L3.VarE "x", L3.PrimAppE DivP [L3.VarE "k", L3.VarE "m"]]
 
 intAdd64Fun :: L3.FunDef3
 intAdd64Fun =
@@ -188,6 +236,29 @@ countVecAdds = countExt p
   where
     p L3.VecAdd{} = True
     p _ = False
+
+-- | Count partial (potentially trapping) primitives evaluated outside every
+-- loop body, i.e. the positions a loop with a zero trip count would still run.
+countHoistedPartialPrims :: L3.Exp3 -> Int
+countHoistedPartialPrims ex =
+  case ex of
+    L3.LetE (_, _, _, rhs) bod -> countHoistedPartialPrims rhs + countHoistedPartialPrims bod
+    L3.Ext (L3.ForE _ bound _) -> countHoistedPartialPrims bound
+    L3.Ext (L3.WhileCursor _ bod) -> countHoistedPartialPrims bod
+    -- The pass's own `bound / stride` and `bound % stride` binds divide by a
+    -- non-zero literal and can never trap; they are not what this counts.
+    L3.PrimAppE p args
+      | p `elem` [DivP, ModP, FDivP] && not (dividesByNonZeroLit args) ->
+          1 + sum (map countHoistedPartialPrims args)
+      | otherwise -> sum (map countHoistedPartialPrims args)
+    L3.IfE a b c -> sum (map countHoistedPartialPrims [a, b, c])
+    L3.MkProdE ls -> sum (map countHoistedPartialPrims ls)
+    L3.ProjE _ e -> countHoistedPartialPrims e
+    _ -> 0
+
+dividesByNonZeroLit :: [L3.Exp3] -> Bool
+dividesByNonZeroLit [_, L3.LitE n] = n /= 0
+dividesByNonZeroLit _ = False
 
 countExt :: (L3.E3Ext () L3.Ty3 -> Bool) -> L3.Exp3 -> Int
 countExt p ex =

@@ -67,3 +67,6 @@ experiments/.plot_venv/
 gibbon-compiler/examples/soa_examples/benchmark_output/
 gibbon-compiler/examples/soa_examples/figures/
 microbench/parallel/measurements/
+
+# Local context/design/verification docs (not committed)
+/context-docs/

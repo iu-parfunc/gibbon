@@ -45,10 +45,26 @@ case_does_not_rewrite_recursive_body =
 propagationProg :: L3.Prog3
 propagationProg =
   L3.Prog
-    M.empty
+    (M.fromList [("List", listDDef)])
     (M.fromList [("producer", producerFun)])
     (Just (mainBody, L3.ProdTy []))
 
+listDDef :: L3.DDef3
+listDDef =
+  DDef
+    { tyName = "List"
+    , tyArgs = []
+    , dataCons =
+        [ ("Nil", [])
+        , ("Cons", [(False, L3.IntTy), (False, L3.FloatTy), (True, L3.PackedTy "List" ())])
+        ]
+    , memLayout = FullyFactored
+    }
+
+-- | A cursorized, shape-preserving SoA map: each constructor branch writes its
+-- own tag exactly once and recurses once per packed field.  Matching the SoA
+-- cursor ABI alone is deliberately not enough for the pass to propagate
+-- counts, so the fixture has to be a real map.
 producerFun :: L3.FunDef3
 producerFun =
   L3.FunDef
@@ -57,8 +73,50 @@ producerFun =
     ( replicate 4 (L3.CursorArrayTy 3)
     , L3.ProdTy []
     )
-    (L3.MkProdE [])
+    producerBody
     (FunMeta Rec NoInline False [])
+
+producerBody :: L3.Exp3
+producerBody =
+  L3.mkLets
+    [ ("in_dcon_loc", [], L3.MutCursorTy, L3.Ext $ L3.AddrOfCursor (L3.Ext $ L3.IndexCursorArray "inCurs" 0))
+    , ("out_dcon_loc", [], L3.MutCursorTy, L3.Ext $ L3.AddrOfCursor (L3.Ext $ L3.IndexCursorArray "outCurs" 0))
+    , ("in_int_loc", [], L3.MutCursorTy, L3.Ext $ L3.AddrOfCursor (L3.Ext $ L3.IndexCursorArray "inCurs" 1))
+    , ("out_int_loc", [], L3.MutCursorTy, L3.Ext $ L3.AddrOfCursor (L3.Ext $ L3.IndexCursorArray "outCurs" 1))
+    , ("dcur", [], L3.CursorTy, L3.Ext $ L3.DerefMutCursor "in_dcon_loc")
+    ]
+    (L3.CaseE
+      (L3.VarE "dcur")
+      [ ("Nil", [], tagOnlyBranch "Nil")
+      , ("Cons", [], consBranch)
+      ])
+  where
+    tagOnlyBranch dcon =
+      L3.mkLets
+        [ ("nil_out_dcon_cur", [], L3.CursorTy, L3.Ext $ L3.DerefMutCursor "out_dcon_loc")
+        , ("nil_write_tag", [], L3.CursorTy, L3.Ext $ L3.WriteTag dcon "nil_out_dcon_cur")
+        , ("nil_bump_in", [], L3.ProdTy [], L3.Ext $ L3.BumpCursorMutable "in_dcon_loc" (L3.LitE 1))
+        , ("nil_bump_out", [], L3.ProdTy [], L3.Ext $ L3.BumpCursorMutable "out_dcon_loc" (L3.LitE 1))
+        ]
+        (L3.MkProdE [])
+
+    consBranch =
+      L3.mkLets
+        [ ("in_int_cur", [], L3.CursorTy, L3.Ext $ L3.DerefMutCursor "in_int_loc")
+        , ("read_int_pair", [], L3.ProdTy [L3.IntTy, L3.CursorTy], L3.Ext $ L3.ReadScalar L3.IntS "in_int_cur")
+        , ("i", [], L3.IntTy, L3.ProjE 0 (L3.VarE "read_int_pair"))
+        , ("plus1", [], L3.IntTy, L3.PrimAppE AddP [L3.VarE "i", L3.LitE 1])
+        , ("out_int_cur", [], L3.CursorTy, L3.Ext $ L3.DerefMutCursor "out_int_loc")
+        , ("write_int", [], L3.CursorTy, L3.Ext $ L3.WriteScalar L3.IntS "out_int_cur" (L3.VarE "plus1"))
+        , ("out_dcon_cur", [], L3.CursorTy, L3.Ext $ L3.DerefMutCursor "out_dcon_loc")
+        , ("write_tag", [], L3.CursorTy, L3.Ext $ L3.WriteTag "Cons" "out_dcon_cur")
+        , ("bump_int_in", [], L3.ProdTy [], L3.Ext $ L3.BumpCursorMutable "in_int_loc" (L3.LitE 8))
+        , ("bump_int_out", [], L3.ProdTy [], L3.Ext $ L3.BumpCursorMutable "out_int_loc" (L3.LitE 8))
+        , ("bump_dcon_in", [], L3.ProdTy [], L3.Ext $ L3.BumpCursorMutable "in_dcon_loc" (L3.LitE 1))
+        , ("bump_dcon_out", [], L3.ProdTy [], L3.Ext $ L3.BumpCursorMutable "out_dcon_loc" (L3.LitE 1))
+        , ("recur", [], L3.ProdTy [], L3.AppE "producer" TailModuloCons [] (map L3.VarE ["inEnds", "outEnds", "outCurs", "inCurs"]))
+        ]
+        (L3.MkProdE [])
 
 mainBody :: L3.Exp3
 mainBody =

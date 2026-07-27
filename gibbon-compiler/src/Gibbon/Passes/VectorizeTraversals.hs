@@ -357,6 +357,12 @@ matchSimdLoop intBytes idx body = do
   let strides = S.fromList (map (vectorStride intBytes . soScalar) ops)
   guard (S.size strides == 1)
   guard (all (scalarSupported . soScalar) ops)
+  -- A `DagIf` is lowered to an unconditional evaluation of *both* arms followed
+  -- by a `VecSelect` (see `emitVectorDag`).  That is only legal for total
+  -- expressions: speculating a partial operation the scalar program had
+  -- guarded turns a correct program into a trap (integer division by zero
+  -- raises #DE / SIGFPE).  Leave such loops scalar.
+  guard (all (not . dagSpeculatesPartialOp . soDag) ops)
   guard (all (opHasRequiredBumps intBytes binds) ops)
   guard (loopEffectsSafe intBytes ops binds)
   pure $ SimdLoop ops
@@ -614,6 +620,58 @@ matchCondDag resultScalar idx binds expr0 =
           CondEq L3.FloatS <$> matchScalarDag L3.FloatS idx binds a <*> matchScalarDag L3.FloatS idx binds b
         _ -> Nothing
 
+-- | Does this DAG evaluate a partial (potentially trapping) operation inside a
+-- conditional arm?
+--
+-- `emitVectorDag` lowers `DagIf` by evaluating both arms and then selecting, so
+-- an operation that the scalar program only reached under a guard becomes
+-- unconditional.  For @if d == 0 then 0 else n / d@ that is a SIGFPE.  Only the
+-- speculated positions matter: a partial operation that the scalar loop also
+-- evaluates unconditionally is evaluated for exactly the same elements by the
+-- vector loop plus its scalar remainder, so it stays correct.
+dagSpeculatesPartialOp :: ScalarDag -> Bool
+dagSpeculatesPartialOp dag =
+  case dag of
+    DagRead{} -> False
+    DagInvariant{} -> False
+    DagBin _ a b -> dagSpeculatesPartialOp a || dagSpeculatesPartialOp b
+    DagIf cond thenDag elseDag ->
+      condSpeculatesPartialOp cond ||
+      dagHasPartialOp thenDag ||
+      dagHasPartialOp elseDag
+
+condSpeculatesPartialOp :: CondDag -> Bool
+condSpeculatesPartialOp (CondEq _ a b) =
+  dagSpeculatesPartialOp a || dagSpeculatesPartialOp b
+
+-- | Does this DAG contain a partial operation anywhere?
+dagHasPartialOp :: ScalarDag -> Bool
+dagHasPartialOp dag =
+  case dag of
+    DagRead{} -> False
+    DagInvariant ex -> exprHasPartialPrim ex
+    DagBin prim a b -> isPartialPrim prim || dagHasPartialOp a || dagHasPartialOp b
+    DagIf cond thenDag elseDag ->
+      condHasPartialOp cond || dagHasPartialOp thenDag || dagHasPartialOp elseDag
+
+condHasPartialOp :: CondDag -> Bool
+condHasPartialOp (CondEq _ a b) = dagHasPartialOp a || dagHasPartialOp b
+
+exprHasPartialPrim :: L3.Exp3 -> Bool
+exprHasPartialPrim ex =
+  case ex of
+    PrimAppE prim args -> isPartialPrim prim || any exprHasPartialPrim args
+    IfE a b c -> any exprHasPartialPrim [a, b, c]
+    ProjE _ e -> exprHasPartialPrim e
+    _ -> False
+
+-- | Primitives that are undefined (and on x86 trap) for some operand values.
+-- Integer division and remainder raise #DE on a zero divisor; float division is
+-- listed too because the vectorizer must not be the thing that decides an
+-- IEEE-special result is acceptable.
+isPartialPrim :: Prim L3.Ty3 -> Bool
+isPartialPrim prim = prim `elem` [DivP, ModP, FDivP]
+
 nonEmptyReadRefs :: ScalarDag -> Maybe (S.Set Var)
 nonEmptyReadRefs dag =
   let refs = readRefs dag
@@ -689,6 +747,17 @@ exprContainsAnyRead binds expr =
     Ext (L3.ReadScalar{}) -> True
     _ -> False
 
+-- | Expressions that may be hoisted out of the loop and evaluated once per
+-- chunk by `prepareVectorDag` / `mkVectorizedScalarLoop`.
+--
+-- `mkVectorizedScalarLoop` splices the hoisted binds *before* both the vector
+-- loop and the scalar remainder loop, so they run even when the trip count is
+-- zero and the scalar loop body never executed.  Hoisting is therefore only
+-- valid for TOTAL expressions: an invariant @k / m@ with @m == 0@ must not be
+-- evaluated on behalf of a loop that runs zero times.  Partial primitives
+-- (`DivP`, `ModP`, `FDivP`) are excluded here; they are still vectorizable, but
+-- as ordinary `DagBin` nodes inside the loop body, where they execute exactly
+-- as often as the scalar loop would have executed them.
 isSimpleScalarExpr :: L3.Exp3 -> Bool
 isSimpleScalarExpr expr =
   case expr of
@@ -698,7 +767,7 @@ isSimpleScalarExpr expr =
     FloatE{} -> True
     LitSymE{} -> True
     PrimAppE p args
-      | p `elem` [AddP, SubP, MulP, DivP, ModP, FAddP, FSubP, FMulP, FDivP] ->
+      | p `elem` [AddP, SubP, MulP, FAddP, FSubP, FMulP] ->
           all isSimpleScalarExpr args
     _ -> False
 

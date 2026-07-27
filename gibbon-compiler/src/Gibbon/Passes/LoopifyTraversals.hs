@@ -75,6 +75,23 @@
 -- * The dcon stream is copied by reading tags from the input tag buffer and
 --   writing the same tags to the output.  The pass does not synthesize
 --   constructor tags from assumptions about lists, trees, or constructor order.
+--   That verbatim copy is only correct when the traversal does not rewrite
+--   constructors, so `extractBranchPlans` refuses to loopify any function with
+--   a branch that writes a tag other than its own.  More generally, the body
+--   of the generated loop is synthesized entirely from the extracted scalar
+--   plans plus the tag copy, so every user constructor branch is scanned
+--   against a whitelist (`scanBranchBody`); anything the plan does not
+--   reproduce -- a call to another function, an indirection or tagged-cursor
+--   write, a packed `MemCpy`, an arena/region operation -- makes the pass bail
+--   out to the recursive body instead of silently dropping the effect.
+--
+-- * Loop bounds come from scalar-count footer metadata, and an untouched
+--   footer reads back as 0, which is indistinguishable from a genuinely empty
+--   chunk.  Consuming absent counts therefore produces an empty output value
+--   with no diagnostic, so `countGuaranteedTyCons` refuses to loopify over a
+--   type unless every user-written producer of that type is known to establish
+--   counts (an `OPT:StoreScalarCounts` builder, a loopified map, or a producer
+--   whose call sites `ScalarCountPropagation` covers).
 --
 -- * If a scalar update for one buffer depends on another scalar buffer, the
 --   dependency gets its own cursor anchored at the original input cursor array.
@@ -122,6 +139,7 @@ import Gibbon.Common
 import Gibbon.DynFlags
 import Gibbon.Language
 import Gibbon.L3.Syntax
+import Gibbon.Passes.ScalarCountPropagation (countPropagatedProducers)
 
 data LoopifyCandidate = LoopifyCandidate
   { lcFunName :: Var
@@ -212,7 +230,7 @@ loopifyTraversals prog@Prog{ddefs, fundefs} = do
         gopt Opt_StoreScalarFieldCounts dflags &&
         gopt Opt_EnableLoopification dflags
       auto = gopt Opt_AutoLoopification dflags
-      countedTyCons = scalarCountProducerTyCons ddefs fundefs
+      countedTyCons = countGuaranteedTyCons auto prog
   fds' <-
     if enabled
     then mapM (rewriteFun False auto countedTyCons ddefs) (M.elems fundefs)
@@ -220,11 +238,16 @@ loopifyTraversals prog@Prog{ddefs, fundefs} = do
   pure $ prog { fundefs = M.fromList [ (funName f, f) | f <- fds' ] }
 
 rewriteFun :: Bool -> Bool -> S.Set TyCon -> DDefs Ty3 -> FunDef3 -> PassM FunDef3
-rewriteFun fuseScalarLoops auto countedTyCons ddefs fn@FunDef{funMeta} =
+rewriteFun fuseScalarLoops auto countedTyCons ddefs fn =
   case loopifyCandidateInfoWith auto ddefs fn of
     Nothing -> pure fn
     Just cand ->
-      if CanVectorize `notElem` funOpt funMeta && lcTyCon cand `S.notMember` countedTyCons
+      -- The generated loop takes its trip count from scalar-count footer
+      -- metadata with no way to tell "this chunk really holds zero elements"
+      -- from "nobody ever wrote a count here" -- both read back as 0, and the
+      -- latter silently produces an empty output value.  So only loopify over
+      -- a type whose every producer is known to establish those counts.
+      if lcTyCon cand `S.notMember` countedTyCons
       then pure fn
       else case extractTraversalPlan ddefs cand fn of
         Nothing -> pure fn
@@ -234,14 +257,126 @@ rewriteFun fuseScalarLoops auto countedTyCons ddefs fn@FunDef{funMeta} =
             Nothing -> pure fn
             Just body' -> pure $ stampCanVectorize (fn { funBody = body' })
 
-scalarCountProducerTyCons :: DDefs Ty3 -> FunDefs3 -> S.Set TyCon
-scalarCountProducerTyCons ddefs fds =
+-- | Types for which scalar-count footer metadata is guaranteed to be present
+-- on every value a loopified traversal could be handed.
+--
+-- The previous rule only asked whether *some* function in the program carried
+-- `OPT:StoreScalarCounts` for the type, and explicitly annotated
+-- `OPT:CanVectorize` functions skipped even that.  That is far too weak: any
+-- other function in the program that materializes a fresh value of the same
+-- type without establishing counts can feed the loopified traversal, whose
+-- footer reads then return 0 and whose loops silently write nothing.
+--
+-- The rule here is:
+--
+--   * at least one producer establishes counts from scratch
+--     (`OPT:StoreScalarCounts`), and
+--   * every other user-written producer of the type also ends up with valid
+--     counts, either because it is itself loopified (loopified maps write
+--     output counts once per chunk) or because `ScalarCountPropagation` copies
+--     the input's footer chains at all of its call sites.
+--
+-- Compiler-generated packed helpers (`_copy_*`, `_print_*`, ...) are not
+-- treated as producers here; that matches the pre-existing behavior of the
+-- pass and is noted as a remaining limitation.
+countGuaranteedTyCons :: Bool -> Prog3 -> S.Set TyCon
+countGuaranteedTyCons auto prog@Prog{ddefs, fundefs, mainExp} =
   S.fromList
-    [ getTyOfDataCon ddefs dcon
-    | FunDef{funMeta, funBody} <- M.elems fds
-    , StoreScalarCounts `elem` funOpt funMeta
-    , dcon <- collectMentionedDataCons funBody
+    [ tycon
+    | tycon <- S.toList allProducedTyCons
+    , any (\fd -> establishesFromScratch fd && tycon `S.member` producedBy fd) userFuns
+    , all (\fd -> tycon `S.notMember` producedBy fd || countEstablishing fd) userFuns
+    , tycon `S.notMember` mainProduced
     ]
+  where
+    userFuns =
+      [ fd | fd <- M.elems fundefs, not (isGeneratedPackedHelper (funName fd)) ]
+
+    propagated = countPropagatedProducers prog
+
+    producedBy FunDef{funBody} = tagWrittenTyCons funBody
+
+    mainProduced = maybe S.empty (tagWrittenTyCons . fst) mainExp
+
+    allProducedTyCons = S.unions (map producedBy userFuns)
+
+    establishesFromScratch FunDef{funMeta} = StoreScalarCounts `elem` funOpt funMeta
+
+    -- Note the deliberate lack of circularity here: `wouldLoopify` depends only
+    -- on the structural plan extraction, never on this predicate.  If the gate
+    -- rejects a type, nothing over that type is loopified and nothing over that
+    -- type reads counts, so the (then false) claim that a would-be-loopified
+    -- producer writes counts is never relied upon.
+    countEstablishing fd =
+      establishesFromScratch fd
+        || funName fd `S.member` propagated
+        || wouldLoopify auto ddefs fd
+
+    tagWrittenTyCons ex =
+      S.fromList
+        [ getTyOfDataCon ddefs dcon
+        | dcon <- writtenDataCons ex
+        , not (isIndirectionTag dcon || isRedirectionTag dcon)
+        ]
+
+-- | Would this function be loopified, ignoring the count-availability gate?
+-- A loopified map writes output footer counts once per chunk, so it is itself
+-- a count-establishing producer.
+wouldLoopify :: Bool -> DDefs Ty3 -> FunDef3 -> Bool
+wouldLoopify auto ddefs fn@FunDef{funTy = (_, out)} =
+  case loopifyCandidateInfoWith auto ddefs fn of
+    Nothing -> False
+    Just cand ->
+      case extractTraversalPlan ddefs cand fn of
+        Nothing -> False
+        Just TraversalPlan{tpABI, tpScalarPlans} ->
+          let arrLen = abiArrLen tpABI
+           in arrLen == 1 + length tpScalarPlans
+                && (out == loopifiedOutTy arrLen || out == ProdTy [])
+
+-- | Data constructors whose tag this expression writes.  Unlike
+-- `collectMentionedDataCons` this ignores `case` scrutinee patterns, so it
+-- reports only constructors the expression actually materializes.
+writtenDataCons :: Exp3 -> [DataCon]
+writtenDataCons ex =
+  case ex of
+    AppE _ _ _ args -> concatMap writtenDataCons args
+    SpawnE _ _ args -> concatMap writtenDataCons args
+    PrimAppE _ args -> concatMap writtenDataCons args
+    LetE (_, _, _, rhs) bod -> writtenDataCons rhs ++ writtenDataCons bod
+    IfE a b c -> concatMap writtenDataCons [a, b, c]
+    MkProdE ls -> concatMap writtenDataCons ls
+    ProjE _ e -> writtenDataCons e
+    CaseE scrt brs ->
+      writtenDataCons scrt ++ concatMap (\(_, _, rhs) -> writtenDataCons rhs) brs
+    DataConE _ dcon args -> dcon : concatMap writtenDataCons args
+    TimeIt e _ _ -> writtenDataCons e
+    WithArenaE _ e -> writtenDataCons e
+    MapE (_, _, e1) e2 -> writtenDataCons e1 ++ writtenDataCons e2
+    FoldE (_, _, e1) (_, _, e2) e3 ->
+      concatMap writtenDataCons [e1, e2, e3]
+    Ext ext ->
+      case ext of
+        WriteTag dcon _ -> [dcon]
+        ScalarCountBump dcon _ -> [dcon]
+        WriteScalar _ _ rhs -> writtenDataCons rhs
+        WriteTagPacked _ rhs -> writtenDataCons rhs
+        WriteTaggedCursor _ rhs -> writtenDataCons rhs
+        WriteCursorMutable _ rhs -> writtenDataCons rhs
+        WriteCursorSelectiveIndirection _ _ _ mask -> writtenDataCons mask
+        WriteList _ rhs _ -> writtenDataCons rhs
+        WriteVector _ rhs _ -> writtenDataCons rhs
+        AddCursor _ rhs -> writtenDataCons rhs
+        BumpCursorMutable _ rhs -> writtenDataCons rhs
+        AddrOfCursor rhs -> writtenDataCons rhs
+        LetAvail _ bod -> writtenDataCons bod
+        Assert rhs -> writtenDataCons rhs
+        RetE ls -> concatMap writtenDataCons ls
+        ForE _ bound bod -> writtenDataCons bound ++ writtenDataCons bod
+        WhileCursor _ bod -> writtenDataCons bod
+        WhileCursorEnd _ _ bod -> writtenDataCons bod
+        _ -> []
+    _ -> []
 
 loopifyCandidateInfo :: DDefs Ty3 -> FunDef3 -> Maybe LoopifyCandidate
 loopifyCandidateInfo = loopifyCandidateInfoWith False
@@ -291,19 +426,20 @@ extractTraversalPlan ddefs LoopifyCandidate{lcFunName, lcTyCon} FunDef{funArgs, 
   (preBinds, _scrt, branches) <- splitTopCase funBody
   let expectedArrLen = 1 + length specs
       candidates = loopifyABICandidates expectedArrLen (collectVars funBody) funArgs ins
-  listToMaybe $ mapMaybe (extractWithABI specs preBinds branches) candidates
+  listToMaybe $ mapMaybe (extractWithABI lcFunName specs preBinds branches) candidates
 
 extractWithABI
-  :: [ScalarBufferSpec]
+  :: Var
+  -> [ScalarBufferSpec]
   -> [(Var, [()], Ty3, Exp3)]
   -> [(DataCon, [(Var, ())], Exp3)]
   -> LoopifyABI
   -> Maybe TraversalPlan
-extractWithABI specs preBinds branches abi@LoopifyABI{abiOutCurs, abiInCurs, abiLoopInvariantArgs} = do
+extractWithABI selfName specs preBinds branches abi@LoopifyABI{abiOutCurs, abiInCurs, abiLoopInvariantArgs} = do
   let baseInputArrays = extendCursorArrayAliases (S.singleton abiInCurs) preBinds
       baseOutputArrays = extendCursorArrayAliases (S.singleton abiOutCurs) preBinds
       baseRoles = collectCursorRolesFrom M.empty baseInputArrays baseOutputArrays preBinds
-  branchPlanMaps <- mapM (extractBranchPlans specs abiLoopInvariantArgs baseInputArrays baseOutputArrays baseRoles) branches
+  branchPlanMaps <- mapM (extractBranchPlans selfName specs abiLoopInvariantArgs baseInputArrays baseOutputArrays baseRoles) branches
   merged <- mergeBranchPlanMaps branchPlanMaps
   if M.null merged
     then Nothing
@@ -622,14 +758,28 @@ extendCursorArrayAliases seed binds = foldl step seed binds
         _ -> aliases
 
 extractBranchPlans
-  :: [ScalarBufferSpec]
+  :: Var
+  -> [ScalarBufferSpec]
   -> S.Set Var
   -> S.Set Var
   -> S.Set Var
   -> M.Map Var BufferRole
   -> (DataCon, [(Var, ())], Exp3)
   -> Maybe (M.Map Int ScalarBufferPlan)
-extractBranchPlans specs loopInvariantArgs baseInputArrays baseOutputArrays baseRoles (branchDCon, _, rhs) = do
+extractBranchPlans selfName specs loopInvariantArgs baseInputArrays baseOutputArrays baseRoles (branchDCon, _, rhs) = do
+  -- The generated loop synthesizes the branch body purely from the extracted
+  -- scalar plans plus a verbatim copy of the input tag stream.  Anything else
+  -- the branch does would silently disappear, so refuse to loopify unless
+  -- every form in the branch is one the plan actually reproduces.  In
+  -- particular a branch that writes a constructor tag other than its own is a
+  -- tag rewrite, which the verbatim tag copy in `mkDConInnerLoop` would drop.
+  -- Indirection/redirection branches are exempt: they are not user
+  -- constructors and the chunk walk in the generated loop handles them.
+  if isIndirectionTag branchDCon || isRedirectionTag branchDCon
+    then pure ()
+    else if branchScanCovered branchDCon (scanBranchBody selfName rhs)
+           then pure ()
+           else Nothing
   let binds = collectAllLets rhs
       inputArrays = extendCursorArrayAliases baseInputArrays binds
       outputArrays = extendCursorArrayAliases baseOutputArrays binds
@@ -780,6 +930,147 @@ extractBranchPlans specs loopInvariantArgs baseInputArrays baseOutputArrays base
               , siiBufIx info == sbpBufIx plan
               ]
           pure (VarE v, M.singleton v info)
+
+-- | Abstract summary of one constructor branch body, used to decide whether
+-- the synthesized loop reproduces everything the branch does.
+--
+-- `bsOk` is False as soon as a form is seen that the generated inner loop does
+-- not re-emit (a call, an indirection/tagged-cursor write, a packed `MemCpy`,
+-- an arena/region operation, ...).  The tag counters are an interval over all
+-- control-flow paths through the branch: `bsMinTags`/`bsMaxTags` bound how many
+-- constructor tags the branch writes, and `bsTagCons` records which ones.
+data BranchScan = BranchScan
+  { bsOk :: Bool
+  , bsMinTags :: Int
+  , bsMaxTags :: Int
+  , bsTagCons :: S.Set DataCon
+  }
+  deriving (Eq, Ord, Show)
+
+bsUnit :: BranchScan
+bsUnit = BranchScan True 0 0 S.empty
+
+bsBad :: BranchScan
+bsBad = BranchScan False 0 0 S.empty
+
+-- | Sequential composition: tag counts add.
+bsSeq :: BranchScan -> BranchScan -> BranchScan
+bsSeq a b =
+  BranchScan
+    { bsOk = bsOk a && bsOk b
+    , bsMinTags = bsMinTags a + bsMinTags b
+    , bsMaxTags = bsMaxTags a + bsMaxTags b
+    , bsTagCons = bsTagCons a `S.union` bsTagCons b
+    }
+
+bsSeqAll :: [BranchScan] -> BranchScan
+bsSeqAll = foldl bsSeq bsUnit
+
+-- | Alternation (an `if`/nested `case`): tag counts widen to an interval.
+bsAlt :: BranchScan -> BranchScan -> BranchScan
+bsAlt a b =
+  BranchScan
+    { bsOk = bsOk a && bsOk b
+    , bsMinTags = min (bsMinTags a) (bsMinTags b)
+    , bsMaxTags = max (bsMaxTags a) (bsMaxTags b)
+    , bsTagCons = bsTagCons a `S.union` bsTagCons b
+    }
+
+bsAltAll :: [BranchScan] -> BranchScan
+bsAltAll [] = bsUnit
+bsAltAll (x:xs) = foldl bsAlt x xs
+
+-- | A branch is safe to replace with the synthesized loop only when nothing
+-- unaccounted-for happens in it and it writes exactly one constructor tag on
+-- every path, namely its own.  The generated dcon loop copies the input tag
+-- stream verbatim, so any other tag write would be silently dropped.
+branchScanCovered :: DataCon -> BranchScan -> Bool
+branchScanCovered branchDCon scan =
+  bsOk scan
+    && bsMinTags scan == 1
+    && bsMaxTags scan == 1
+    && bsTagCons scan == S.singleton branchDCon
+
+-- | Whitelist scan of a constructor branch body.  Anything not explicitly
+-- listed as reproduced by the generated loop makes the scan fail, so new IR
+-- forms default to "do not loopify".
+scanBranchBody :: Var -> Exp3 -> BranchScan
+scanBranchBody selfName = go
+  where
+    go ex =
+      case ex of
+        VarE{} -> bsUnit
+        LitE{} -> bsUnit
+        CharE{} -> bsUnit
+        FloatE{} -> bsUnit
+        LitSymE{} -> bsUnit
+        -- Only the self recursive call is accounted for; it becomes the loop.
+        -- Any other call would be dropped by the plan-driven body synthesis.
+        AppE f _ _ args
+          | f == selfName -> bsSeqAll (map go args)
+          | otherwise -> bsBad
+        PrimAppE _ args -> bsSeqAll (map go args)
+        LetE (_, _, _, rhs) bod -> go rhs `bsSeq` go bod
+        IfE a b c -> go a `bsSeq` (go b `bsAlt` go c)
+        MkProdE ls -> bsSeqAll (map go ls)
+        ProjE _ e -> go e
+        CaseE scrt brs ->
+          go scrt `bsSeq` bsAltAll [ go r | (_, _, r) <- brs ]
+        DataConE{} -> bsBad
+        TimeIt{} -> bsBad
+        WithArenaE{} -> bsBad
+        SpawnE{} -> bsBad
+        SyncE -> bsBad
+        MapE{} -> bsBad
+        FoldE{} -> bsBad
+        Ext ext -> goExt ext
+
+    goExt ext =
+      case ext of
+        ReadScalar{} -> bsUnit
+        WriteScalar _ _ rhs -> go rhs
+        ReadTag{} -> bsUnit
+        WriteTag dcon _ -> BranchScan True 1 1 (S.singleton dcon)
+        TagCursor{} -> bsUnit
+        ReadTaggedCursor{} -> bsUnit
+        ReadCursor{} -> bsUnit
+        MakeCursorArray{} -> bsUnit
+        IndexCursorArray{} -> bsUnit
+        AddCursor _ rhs -> go rhs
+        BumpCursorMutable _ rhs -> go rhs
+        AddrOfCursor rhs -> go rhs
+        DerefMutCursor{} -> bsUnit
+        CastPtr{} -> bsUnit
+        SubPtr{} -> bsUnit
+        EndOfBuffer{} -> bsUnit
+        MMapFileSize{} -> bsUnit
+        SizeOfPacked{} -> bsUnit
+        SizeOfScalar{} -> bsUnit
+        BoundsCheck{} -> bsUnit
+        BoundsCheckVector{} -> bsUnit
+        NullCursor -> bsUnit
+        InitCursor{} -> bsUnit
+        RetE ls -> bsSeqAll (map go ls)
+        GetCilkWorkerNum -> bsUnit
+        LetAvail _ bod -> go bod
+        AllocateTagHere{} -> bsUnit
+        AllocateScalarsHere{} -> bsUnit
+        StartTagAllocation{} -> bsUnit
+        EndTagAllocation{} -> bsUnit
+        StartScalarsAllocation{} -> bsUnit
+        EndScalarsAllocation{} -> bsUnit
+        -- The generated loop re-establishes output footer counts once per
+        -- chunk, so per-element count instrumentation is subsumed.
+        ScalarCountBump{} -> bsUnit
+        ScalarCountSet{} -> bsUnit
+        Assert rhs -> go rhs
+        -- Cursor-array bookkeeping copies are fine; a packed `MemCpy` moves
+        -- payload the loop would not reproduce.
+        MemCpy _ _ ty ->
+          case ty of
+            CursorArrayTy{} -> bsUnit
+            _ -> bsBad
+        _ -> bsBad
 
 mergeBranchPlanMaps :: [M.Map Int ScalarBufferPlan] -> Maybe (M.Map Int ScalarBufferPlan)
 mergeBranchPlanMaps =

@@ -6444,6 +6444,30 @@ unpackDataCon aliveBuffers m1 m2 useMutableCursorsCall emitScalarCountBumps insi
       Just v -> return v
       Nothing -> error "lookupVariable: unexpected location variable"
 
+
+    replaceFirstCallArgWithAddress :: Var -> Var -> Exp3 -> PassM Exp3
+    replaceFirstCallArgWithAddress owner target ex = snd <$> go False ex
+      where
+        go done e =
+          case e of
+            AppE fn cty locs (VarE arg0 : args) | not done && arg0 == owner -> do
+              copy <- gensym "redir_end_copy"
+              addr <- gensym "redir_end_addr"
+              let e' = mkLets [ (copy, [], CursorTy, VarE target)
+                              , (addr, [], MutCursorTy, Ext $ AddrOfCursor (VarE copy))
+                              ] (AppE fn cty locs (VarE addr : args))
+              pure (True, e')
+            LetE (x, locs, ty, rhs) bod -> do
+              (doneRhs, rhs') <- go done rhs
+              (doneBod, bod') <- go doneRhs bod
+              pure (doneBod, LetE (x, locs, ty, rhs') bod')
+            IfE a b c -> do
+              (doneA, a') <- go done a
+              (doneB, b') <- go doneA b
+              (doneC, c') <- go doneB c
+              pure (doneC, IfE a' b' c')
+            _ -> pure (done, e)
+
     -- Since this constructor does not have random access nodes, we may not be able
     -- to unpack all the fields. Basically, anything after the first packed
     -- value isn't accessible since we have no way to reach it without knowing
@@ -6550,16 +6574,21 @@ unpackDataCon aliveBuffers m1 m2 useMutableCursorsCall emitScalarCountBumps insi
                                   (toEndFromTaggedV v, [], CursorTy, Ext $ AddCursor v (VarE (toTagV v)))
                                 ]
                           let mut_loc = findMutableLocationPointingToVar cur m1
-                          (m1', bnds') <- case mut_loc of 
-                                            Nothing -> dbgTrace (minChatLvl) "Print inside unpackRegularDataCon AoS Scalar: " dbgTrace (minChatLvl) (sdoc (mut_loc, loc, cur)) dbgTrace (minChatLvl) "End printing inside unpackRegularDcon AoS Scalar!\n" return (m1, []) 
+                          (m1', bnds', redirOwner) <- case mut_loc of 
+                                            Nothing -> dbgTrace (minChatLvl) "Print inside unpackRegularDataCon AoS Scalar: " dbgTrace (minChatLvl) (sdoc (mut_loc, loc, cur)) dbgTrace (minChatLvl) "End printing inside unpackRegularDcon AoS Scalar!\n" return (m1, [], Nothing) 
                                             Just l -> do 
-                                                       let m1inner = updateMutableLocPtsToEnv l m1 (v, Just l, Nothing, S.empty) False
+                                                       let next_cur = if isIndirectionTag dcon then toEndV v else v
+                                                       let m1inner = updateMutableLocPtsToEnv l m1 (next_cur, Just l, Nothing, S.empty) False
                                                        void_var <- gensym "void_"
                                                        let lname = getVarNameFromFreeVar fenv (fromLocVarToFreeVarsTy l)
-                                                       let bnds = [(void_var, [], ProdTy [], Ext $ WriteCursorMutable lname (VarE v))]
-                                                       dbgTrace (minChatLvl) "Print inside unpackRegularDataCon AoS Scalar: " dbgTrace (minChatLvl) (sdoc (mut_loc, loc, cur)) dbgTrace (minChatLvl) "End printing inside unpackRegularDcon AoS Scalar 2!\n" return (m1inner, bnds)
+                                                       let bnds = [(void_var, [], ProdTy [], Ext $ WriteCursorMutable lname (VarE next_cur))]
+                                                           redirOwner = if isRedirectionTag dcon then Just lname else Nothing
+                                                       dbgTrace (minChatLvl) "Print inside unpackRegularDataCon AoS Scalar: " dbgTrace (minChatLvl) (sdoc (mut_loc, loc, cur)) dbgTrace (minChatLvl) "End printing inside unpackRegularDcon AoS Scalar 2!\n" return (m1inner, bnds, redirOwner)
                           (bod, m1'', m2') <- go m1' m2 (AoSWin (toEndV v)) fenv rst_vlocs rst_tys canBind denv tenv'
-                          return (mkLets (binds ++ bnds') bod, m1'', m2')
+                          bod' <- case redirOwner of
+                                    Just owner -> replaceFirstCallArgWithAddress owner v bod
+                                    Nothing -> pure bod
+                          return (mkLets (binds ++ bnds') bod', m1'', m2')
                         VectorTy el_ty -> do
                           tmp <- gensym "read_vec_tuple"
                           loc_var <- lookupVariable loc fenv

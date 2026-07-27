@@ -86,33 +86,71 @@ data CursorPairShape = CursorPairShape
   }
   deriving (Eq, Ord, Show)
 
+-- | Rewrite one function, sharing copied buffers where that is legal.
+--
+-- Sharing a buffer installs a selective-indirection wrapper in the function's
+-- *output* value.  Every consumer of that value must be normalized with
+-- `UnwrapSelectiveIndirections` before it reads the buffer, and the only
+-- mechanism this pass has for finding those consumers is
+-- `producerOutputPairs`, which needs the producer's (output ends, output
+-- cursors) argument pair.  If we cannot identify that pair we cannot mark the
+-- produced value as selectively shared, so no call site would ever be
+-- normalized and the consumer would read the raw wrapper tag.  Therefore:
+-- refuse to share at all unless the output cursor ABI is recognized.
 rewriteSelectiveFun :: L3.FunDef3 -> PassM (L3.FunDef3, Maybe CursorPairShape)
-rewriteSelectiveFun fn = do
-  (fn', shared) <- rewriteLoopifiedFun fn
-  let outputShape =
-        if shared
-        then soaOutputCursorShape (funArgs fn') (fst (funTy fn'))
-        else Nothing
-  pure (fn', outputShape)
+rewriteSelectiveFun fn =
+  case soaOutputCursorShape (funArgs fn) (fst (funTy fn)) of
+    Nothing -> pure (fn, Nothing)
+    Just outputShape -> do
+      (fn', shared) <- rewriteLoopifiedFun fn
+      pure (fn', if shared then Just outputShape else Nothing)
 
+-- | Every ordered (ends, cursors) argument pair a consumer *might* be handed.
+--
+-- The cursorized SoA ABI is genuinely ambiguous from types alone: a
+-- one-packed-input/one-packed-output map has arguments
+-- @(in_ends, out_ends, out_curs, in_curs)@ while a two-packed-input fold has
+-- @(ends_x, ends_y, curs_x, curs_y)@ -- both are four cursor arrays of the
+-- same length.  A positional guess therefore mispairs one input's ends array
+-- with another input's cursor array, and the resulting pair is never a marked
+-- selective pair, so no unwrap is emitted for a value that *was* shared.  That
+-- is a crash, not a missed optimization.
+--
+-- Instead of guessing, enumerate every ordered pair of equal-length cursor
+-- array arguments and let `isSelectivePair` -- which is keyed on the actual
+-- variables flowing into the call, not on positions -- decide which pairs are
+-- really selectively shared values.  Over-approximating here is harmless: a
+-- pair that is not a marked selective pair produces no unwrap.
 soaInputCursorShapes :: [Var] -> [L3.Ty3] -> [CursorPairShape]
 soaInputCursorShapes args tys =
-  case cursorArrays of
-    [(endIx, _, n1), (curIx, _, n2)]
-      | n1 == n2 && n1 > 1 -> [CursorPairShape n1 endIx curIx]
-    (endIx, _, n1) : _ : _ : (curIx, _, n2) : _
-      | n1 == n2 && n1 > 1 -> [CursorPairShape n1 endIx curIx]
-    _ -> []
+  [ CursorPairShape n1 endIx curIx
+  | (endIx, _, n1) <- cursorArrays
+  , (curIx, _, n2) <- cursorArrays
+  , endIx /= curIx
+  , n1 == n2
+  , n1 > 1
+  ]
   where
     cursorArrays =
       [ (ix, v, n)
       | (ix, (v, L3.CursorArrayTy n)) <- zip [0..] (zip args tys)
       ]
 
+-- | The (output ends, output cursors) argument pair of a shape-preserving SoA
+-- producer.
+--
+-- This deliberately matches the *exact* four-cursor-array ABI
+-- @(in_ends, out_ends, out_curs, in_curs)@, the same shape
+-- `Gibbon.Passes.ScalarCountPropagation.soaOutputCursorShape` recognizes.  The
+-- old "at least four" pattern also matched, e.g., a two-packed-input map
+-- (@in_ends_x, in_ends_y, out_ends, out_curs, in_curs_x, in_curs_y@) and
+-- reported @(in_ends_y, out_ends)@ as the output pair.  Marking the wrong pair
+-- is worse than marking none: the real output pair stays unmarked, no consumer
+-- is normalized, and the wrapper tag leaks into the consumer.
 soaOutputCursorShape :: [Var] -> [L3.Ty3] -> Maybe CursorPairShape
 soaOutputCursorShape args tys =
   case cursorArrays of
-    _ : (outEndIx, _, n2) : (outCurIx, _, n3) : _ : _
+    [_, (outEndIx, _, n2), (outCurIx, _, n3), _]
       | n2 == n3 && n2 > 1 -> Just (CursorPairShape n2 outEndIx outCurIx)
     _ -> Nothing
   where
@@ -640,7 +678,8 @@ rewriteForBody shareIxs ex =
       binds' =
         [ b
         | b@(v, _, _, rhs) <- binds
-        , not (maybe False (`S.member` shareIxs) (bufferIxFromVar v) && isScalarCopyInner rhs)
+        , not (maybe False (\ix -> ix `S.member` shareIxs && isScalarCopyInner ix rhs)
+                           (bufferIxFromVar v))
         ]
    in L3.mkLets binds' tailExp
 
@@ -683,16 +722,27 @@ scalarCopyIxs ex =
     [ ix
     | (v, _, _, rhs) <- fst (unLetsL3 ex)
     , Just ix <- [bufferIxFromVar v]
-    , isScalarCopyInner rhs
+    , isScalarCopyInner ix rhs
     ]
 
-isScalarCopyInner :: L3.Exp3 -> Bool
-isScalarCopyInner ex =
+-- | Is buffer @ix@'s inner loop body a pure copy of buffer @ix@ itself?
+--
+-- The value written must come from a read of *this* buffer's own input cursor.
+-- `LoopifyTraversals` emits cross-buffer dependency reads with exactly the same
+-- @ReadScalar@ / @ProjE 0@ shape, but on a separate @..._buf<ix>_dep<n>_read_cur@
+-- cursor (see `LoopifyTraversals.mkDependencyRead`).  Accepting those made a
+-- write of *another* buffer's value look like a same-buffer copy, so the pass
+-- shared the buffer with the input and deleted the loop that was supposed to
+-- overwrite it -- a silent wrong answer.  Requiring the buffer's own
+-- @..._buf<ix>_read_cur@ / @..._buf<ix>_write_cur@ cursors rejects that.
+isScalarCopyInner :: Int -> L3.Exp3 -> Bool
+isScalarCopyInner ix ex =
   let binds = fst (unLetsL3 ex)
       readPairs =
         S.fromList
           [ v
-          | (v, _, _, L3.Ext (L3.ReadScalar _ _)) <- binds
+          | (v, _, _, L3.Ext (L3.ReadScalar _ cur)) <- binds
+          , isOwnLoopCursor ix "read_cur" cur
           ]
       readVals =
         S.fromList
@@ -706,8 +756,8 @@ isScalarCopyInner ex =
           | (v, _, _, L3.VarE rhs) <- binds
           ]
       writes =
-        [ rhs
-        | (_, _, _, L3.Ext (L3.WriteScalar _ _ rhs)) <- binds
+        [ (isOwnLoopCursor ix "write_cur" cur, rhs)
+        | (_, _, _, L3.Ext (L3.WriteScalar _ cur rhs)) <- binds
         ]
       resolveVar v =
         case M.lookup v aliases of
@@ -718,8 +768,18 @@ isScalarCopyInner ex =
           L3.VarE v -> resolveVar v `S.member` readVals
           _ -> False
    in case writes of
-        [rhs] -> resolvesToReadVal rhs
+        [(ownWriteCur, rhs)] -> ownWriteCur && resolvesToReadVal rhs
         _ -> False
+
+-- | Does @v@ name loop buffer @ix@'s own @<suffix>@ cursor?
+--
+-- Loop-local cursors are named @<seed>_buf<ix>_<suffix>@ by
+-- `LoopifyTraversals.loopBufferName`; cross-buffer dependency cursors for the
+-- same buffer are named @<seed>_buf<ix>_dep<n>_<suffix>@ and are deliberately
+-- rejected by the exact suffix match below.
+isOwnLoopCursor :: Int -> String -> Var -> Bool
+isOwnLoopCursor ix suffix v =
+  ("_buf" ++ show ix ++ "_" ++ suffix) `L.isSuffixOf` fromVar v
 
 containsWriteScalar :: L3.Exp3 -> Bool
 containsWriteScalar = containsExt p

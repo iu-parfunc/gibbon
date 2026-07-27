@@ -257,7 +257,7 @@ cursorizedMutableLoopifyExtraCursorFun =
     "fastAdd1ListMutExtra"
     ["inEnds", "outEnds", "outCurs", "inCurs", "spareCursors"]
     ([CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 3, CursorArrayTy 1], ProdTy [])
-    cursorizedMutableLoopifyBody
+    (cursorizedMutableLoopifyBodyFor "fastAdd1ListMutExtra")
     (FunMeta TailRec NoInline False [CanVectorize])
 
 cursorizedMutableParentChildDependentFun :: FunDef3
@@ -377,8 +377,26 @@ cursorizedLoopifyBody =
         ]
         (VarE "recur")
 
+-- | A cursorized nullary-constructor branch.  Real cursorize output always
+-- writes the branch's own constructor tag into the output tag stream and
+-- advances both dcon cursors, so the fixtures model that.
+mutableNilBranch :: DataCon -> Exp3
+mutableNilBranch dcon =
+  mkLets
+    [ ("nil_out_dcon_cur", [], CursorTy, Ext $ DerefMutCursor "out_dcon_loc")
+    , ("nil_write_tag", [], CursorTy, Ext $ WriteTag dcon "nil_out_dcon_cur")
+    , ("nil_bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (LitE 1))
+    , ("nil_bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (LitE 1))
+    ]
+    (MkProdE [])
+
 cursorizedMutableLoopifyBody :: Exp3
-cursorizedMutableLoopifyBody =
+cursorizedMutableLoopifyBody = cursorizedMutableLoopifyBodyFor "fastAdd1ListMut"
+
+-- | Same body, parameterized by the name of the enclosing function so that the
+-- recursive call really is a self call (as it is in real cursorize output).
+cursorizedMutableLoopifyBodyFor :: Var -> Exp3
+cursorizedMutableLoopifyBodyFor selfName =
   mkLets
     [ ("in_dcon_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "inCurs" 0))
     , ("out_dcon_loc", [], MutCursorTy, Ext $ AddrOfCursor (Ext $ IndexCursorArray "outCurs" 0))
@@ -390,7 +408,7 @@ cursorizedMutableLoopifyBody =
     ]
     (CaseE
       (VarE "dcur")
-      [ ("Nil", [], MkProdE [])
+      [ ("Nil", [], mutableNilBranch "Nil")
       , ("Cons", [], recBranch)
       ])
   where
@@ -415,7 +433,7 @@ cursorizedMutableLoopifyBody =
         , ("write_tag", [], CursorTy, Ext $ WriteTag "Cons" "out_dcon_cur")
         , ("bump_dcon_in", [], ProdTy [], Ext $ BumpCursorMutable "in_dcon_loc" (LitE 1))
         , ("bump_dcon_out", [], ProdTy [], Ext $ BumpCursorMutable "out_dcon_loc" (LitE 1))
-        , ("recur", [], ProdTy [], AppE "fastAdd1ListMut" TailModuloCons [] [VarE "inEnds", VarE "outEnds", VarE "outCurs", VarE "inCurs"])
+        , ("recur", [], ProdTy [], AppE selfName TailModuloCons [] [VarE "inEnds", VarE "outEnds", VarE "outCurs", VarE "inCurs"])
         ]
         (MkProdE [])
 
@@ -432,7 +450,7 @@ cursorizedMutableParentChildDependentBody =
     ]
     (CaseE
       (VarE "dcur")
-      [ ("Nil", [], MkProdE [])
+      [ ("Nil", [], mutableNilBranch "Nil")
       , ("Cons", [], recBranch)
       ])
   where
@@ -514,7 +532,7 @@ cursorizedRealisticMutableLoopifyBody =
     ]
     (CaseE
       (VarE "dcur")
-      [ ("Nil", [], MkProdE [])
+      [ ("Nil", [], mutableNilBranch "Nil")
       , ("Cons", [], recBranch)
       ])
   where
@@ -901,7 +919,7 @@ case_first_milestone_is_identity =
 
 case_rewrites_supported_cursorized_fast_path :: Assertion
 case_rewrites_supported_cursorized_fast_path =
-  let Prog {fundefs = fds} = runnerWithCounts cursorizedLoopifyProg
+  let Prog {fundefs = fds} = runnerWithCounts (withCountedProducer "List" cursorizedLoopifyProg)
       fd = fds M.! "fastAdd1List"
    in do
         assertBool "expected loopified fast path to contain ForE" (containsL3For (funBody fd))
@@ -910,7 +928,7 @@ case_rewrites_supported_cursorized_fast_path =
 
 case_rewrites_supported_mutable_cursorized_fast_path :: Assertion
 case_rewrites_supported_mutable_cursorized_fast_path =
-  let Prog {fundefs = fds} = runnerWithCounts cursorizedMutableLoopifyProg
+  let Prog {fundefs = fds} = runnerWithCounts (withCountedProducer "List" cursorizedMutableLoopifyProg)
       fd = fds M.! "fastAdd1ListMut"
   in do
         assertBool "expected mutable loopified fast path to contain ForE" (containsL3For (funBody fd))
@@ -922,7 +940,7 @@ case_rewrites_supported_mutable_cursorized_fast_path =
 
 case_can_disable_scalar_loop_fusion :: Assertion
 case_can_disable_scalar_loop_fusion =
-  let Prog {fundefs = fds} = runnerWithCountsNoFusion cursorizedMutableLoopifyProg
+  let Prog {fundefs = fds} = runnerWithCountsNoFusion (withCountedProducer "List" cursorizedMutableLoopifyProg)
       fd = fds M.! "fastAdd1ListMut"
    in do
         assertBool "expected mutable loopified fast path to still contain ForE" (containsL3For (funBody fd))
@@ -931,7 +949,7 @@ case_can_disable_scalar_loop_fusion =
 
 case_post_selective_loop_fusion_fuses_scalar_loops :: Assertion
 case_post_selective_loop_fusion_fuses_scalar_loops =
-  let Prog {fundefs = fds} = runnerWithCountsThenFusion cursorizedMutableLoopifyProg
+  let Prog {fundefs = fds} = runnerWithCountsThenFusion (withCountedProducer "List" cursorizedMutableLoopifyProg)
       fd = fds M.! "fastAdd1ListMut"
    in do
         assertBool "expected post-selective loop fusion to preserve ForE loops" (containsL3For (funBody fd))
@@ -939,7 +957,7 @@ case_post_selective_loop_fusion_fuses_scalar_loops =
 
 case_rewrites_mutable_fast_path_with_extra_cursor_array_argument :: Assertion
 case_rewrites_mutable_fast_path_with_extra_cursor_array_argument =
-  let Prog {fundefs = fds} = runnerWithCounts cursorizedMutableLoopifyExtraCursorProg
+  let Prog {fundefs = fds} = runnerWithCounts (withCountedProducer "List" cursorizedMutableLoopifyExtraCursorProg)
       fd = fds M.! "fastAdd1ListMutExtra"
    in do
         assertBool "expected extra cursor-array argument not to block loopification" (containsL3For (funBody fd))
@@ -958,7 +976,7 @@ case_detects_parent_child_dependency_in_primitive_rhs =
 
 case_rejects_parent_child_dependent_traversal :: Assertion
 case_rejects_parent_child_dependent_traversal =
-  let Prog {fundefs = fds} = runnerWithCounts cursorizedMutableParentChildDependentProg
+  let Prog {fundefs = fds} = runnerWithCounts (withCountedProducer "List" cursorizedMutableParentChildDependentProg)
       fd = fds M.! "badParentChildMut"
    in assertBool
         "expected parent-child dependent traversal to remain recursive"
@@ -966,7 +984,7 @@ case_rejects_parent_child_dependent_traversal =
 
 case_rewrites_supported_mutable_tree_fast_path :: Assertion
 case_rewrites_supported_mutable_tree_fast_path =
-  let Prog {fundefs = fds} = runnerWithCounts cursorizedMutableTreeLoopifyProg
+  let Prog {fundefs = fds} = runnerWithCounts (withCountedProducer "Tree" cursorizedMutableTreeLoopifyProg)
       fd = fds M.! "fastAdd1TreeMut"
   in do
         assertBool "expected mutable tree loopified fast path to contain ForE" (containsL3For (funBody fd))
@@ -977,7 +995,7 @@ case_rewrites_supported_mutable_tree_fast_path =
 
 case_rewrites_realistic_mutable_cursorized_fast_path :: Assertion
 case_rewrites_realistic_mutable_cursorized_fast_path =
-  let Prog {fundefs = fds} = runnerWithCounts cursorizedRealisticMutableLoopifyProg
+  let Prog {fundefs = fds} = runnerWithCounts (withCountedProducer "List" cursorizedRealisticMutableLoopifyProg)
       fd = fds M.! "fastAdd1ListRealisticMut"
    in do
         assertBool "expected realistic mutable loopified fast path to contain ForE" (containsL3For (funBody fd))

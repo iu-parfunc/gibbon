@@ -35,12 +35,16 @@ loopifiedProg =
     (M.fromList [("loopifiedMap", loopifiedFun)])
     Nothing
 
+-- Note the cursorized SoA ABI (in_ends, out_ends, out_curs, in_curs).  The
+-- pass only shares buffers of a function whose output cursor pair it can
+-- identify: sharing installs a selective-indirection wrapper in the output, and
+-- without the output pair no consumer call site would ever be normalized.
 loopifiedFun :: L3.FunDef3
 loopifiedFun =
   FunDef
     "loopifiedMap"
-    []
-    ([], L3.ProdTy [])
+    ["inEnds", "outEnds", "outCurs", "inCurs"]
+    (replicate 4 (L3.CursorArrayTy 3), L3.ProdTy [])
     loopifiedBody
     (FunMeta TailRec NoInline False [CanVectorize])
 
@@ -54,6 +58,33 @@ loopifiedProducerFun =
     )
     loopifiedBody
     (FunMeta TailRec NoInline False [CanVectorize])
+
+-- A fold over *two* packed SoA inputs.  After cursorization this has exactly
+-- the same shape as a one-in/one-out map -- four equal-length cursor arrays --
+-- but the pairs are (endsX, cursX) and (endsY, cursY), not (arg0, arg3).
+consumer2Fun :: L3.FunDef3
+consumer2Fun =
+  FunDef
+    "consumer2"
+    ["endsX", "endsY", "cursX", "cursY"]
+    (replicate 4 (L3.CursorArrayTy 3), L3.IntTy)
+    (L3.LitE 1)
+    (FunMeta TailRec NoInline False [])
+
+twoInputCallSiteProg :: L3.Prog3
+twoInputCallSiteProg =
+  Prog
+    M.empty
+    (M.fromList [("producer", loopifiedProducerFun), ("consumer2", consumer2Fun)])
+    (Just (twoInputCallSiteMain, L3.IntTy))
+
+twoInputCallSiteMain :: L3.Exp3
+twoInputCallSiteMain =
+  L3.mkLets
+    [ ("produce", [], L3.ProdTy [], L3.AppE "producer" UnknownTailType [] [L3.VarE "inEnds", L3.VarE "outEnds", L3.VarE "outCurs", L3.VarE "inCurs"])
+    , ("consume", [], L3.IntTy, L3.AppE "consumer2" UnknownTailType [] [L3.VarE "outEnds", L3.VarE "inEnds", L3.VarE "outCurs", L3.VarE "inCurs"])
+    ]
+    (L3.VarE "consume")
 
 consumerFun :: L3.FunDef3
 consumerFun =
@@ -165,6 +196,51 @@ mutateForBody :: L3.Exp3
 mutateForBody =
   L3.mkLets
     [("loop_probe_buf2_inner_body", [], L3.ProdTy [], mutateScalarBody)]
+    (L3.MkProdE [])
+
+crossFieldProg :: L3.Prog3
+crossFieldProg =
+  Prog
+    M.empty
+    (M.fromList [("loopifiedMap", loopifiedFun { funBody = crossFieldBody })])
+    Nothing
+
+crossFieldBody :: L3.Exp3
+crossFieldBody =
+  L3.mkLets
+    (concatMap preludeFor [0, 1, 2] ++ [dconLoop, crossFieldLoop, mutateLoop])
+    (L3.MkProdE [])
+
+crossFieldLoop :: (Var, [()], L3.Ty3, L3.Exp3)
+crossFieldLoop =
+  ( "loop_probe_buf1_loop"
+  , []
+  , L3.ProdTy []
+  , L3.Ext $ L3.WhileCursor "loop_probe_buf1_count_footer_loc" $
+      L3.mkLets
+        [("loop_probe_buf1_inner_loop", [], L3.ProdTy [], L3.Ext $ L3.ForE "i" (L3.LitE 8) crossFieldForBody)]
+        (L3.MkProdE [])
+  )
+
+crossFieldForBody :: L3.Exp3
+crossFieldForBody =
+  L3.mkLets
+    [("loop_probe_buf1_inner_body", [], L3.ProdTy [], crossFieldScalarBody)]
+    (L3.MkProdE [])
+
+-- Buffer 1 is written with a value read through its *cross-buffer dependency*
+-- cursor on buffer 2, exactly as `LoopifyTraversals.mkDependencyRead` emits it.
+-- Buffer 1 is therefore not a copy of itself and must not be shared.
+crossFieldScalarBody :: L3.Exp3
+crossFieldScalarBody =
+  L3.mkLets
+    [ ("loop_probe_buf1_read_pair", [], L3.ProdTy [L3.IntTy, L3.CursorTy], L3.Ext $ L3.ReadScalar L3.IntS "loop_probe_buf1_read_cur")
+    , ("loop_probe_buf1_read_val", [], L3.IntTy, L3.ProjE 0 (L3.VarE "loop_probe_buf1_read_pair"))
+    , ("loop_probe_buf1_dep2_read_pair", [], L3.ProdTy [L3.IntTy, L3.CursorTy], L3.Ext $ L3.ReadScalar L3.IntS "loop_probe_buf1_dep2_read_cur")
+    , ("loop_probe_buf1_dep2_read_val", [], L3.IntTy, L3.ProjE 0 (L3.VarE "loop_probe_buf1_dep2_read_pair"))
+    , ("loop_probe_buf1_field_val", [], L3.IntTy, L3.VarE "loop_probe_buf1_dep2_read_val")
+    , ("loop_probe_buf1_write_val", [], L3.CursorTy, L3.Ext $ L3.WriteScalar L3.IntS "loop_probe_buf1_write_cur" (L3.VarE "loop_probe_buf1_field_val"))
+    ]
     (L3.MkProdE [])
 
 mutateScalarBody :: L3.Exp3
@@ -312,6 +388,26 @@ case_adds_call_site_unwrap_for_selective_output =
         0 @=? countSelectiveUnwraps body
         1 @=? mainUnwraps
         0 @=? timedUnwraps
+
+-- A buffer written from another buffer's dependency read is not a copy of
+-- itself, so only the dcon stream may be shared and the cross-field loop must
+-- survive.
+case_does_not_share_cross_field_write :: Assertion
+case_does_not_share_cross_field_write =
+  let body = getFunBody "loopifiedMap" (runnerEnabled crossFieldProg)
+   in do
+        1 @=? countIndirections body
+        2 @=? countWhileCursors body
+
+-- A consumer taking two packed SoA inputs still gets its shared argument
+-- normalized: the (ends, curs) pair is at argument positions 0 and 2, not the
+-- 0/3 a one-in/one-out map would use.
+case_adds_unwrap_for_two_input_consumer :: Assertion
+case_adds_unwrap_for_two_input_consumer =
+  let prg = runnerEnabled twoInputCallSiteProg
+   in case mainExp prg of
+        Just (main, _) -> 1 @=? countSelectiveUnwraps main
+        Nothing -> error "expected two-input call-site test main expression"
 
 selectiveBufferSharingTests :: TestTree
 selectiveBufferSharingTests = $(testGroupGenerator)
