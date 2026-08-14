@@ -70,3 +70,27 @@ microbench/parallel/measurements/
 
 # Local context/design/verification docs (not committed)
 /context-docs/
+
+# ---------------------------------------------------------------------------
+# Build/run artifacts that must never be committed.  These were previously
+# tracked and were purged from this branch's history with git-filter-repo;
+# these rules stop them coming back.
+# ---------------------------------------------------------------------------
+*.out
+*.out[0-9]
+*.res
+*.gcda
+*.gcno
+.*.kate-swp
+a.out
+benchmark_results.json
+report.txt
+/layout_version_benchmark_output*/
+/layout_version_comparison*.md
+scalar_count_smoke_sweep.csv
+scalar_count_smoke_sweep.svg
+**/AOS_BUILD/
+**/SOA_BUILD/
+**/.plot_venv/
+*.out.txt
+/qq

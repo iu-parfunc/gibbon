@@ -28,10 +28,21 @@ pip install matplotlib numpy
 
 ```
 project/
-├── gibbon_benchmark.py      # ← main script (Python ≥ 3.8)
-├── gibbon_benchmark.sh      # ← bash wrapper / convenience shortcuts
-├── clean.sh                 # ← remove compiled outputs & paper materials
+├── gibbon_benchmark.py             # ← main script (Python ≥ 3.8)
+├── gibbon_benchmark.sh             # ← bash wrapper / convenience shortcuts
+├── benchmark_layout_versions.py    # ← layout-version comparison driver (wraps
+│                                   #   gibbon_benchmark.py; --32-bit for int32)
+├── plot_scalar_count_smoke_sweep.py# ← ScalarCountSmoke sweep + SVG plot
+├── clean.sh                        # ← remove compiled outputs & paper materials
 ├── README.md
+├── experiments/                    # ← manual C experiments that shaped the
+│   ├── scalar_count_smoke/         #   loopified codegen strategy
+│   ├── simple_test/                #   (chunked-array + 32-bit-width prototypes)
+│   └── replot_benchmark_figures.py
+├── microbench/                     # ← standalone SoA C microbenchmarks
+│   ├── soa/
+│   ├── manual_soa_examples/
+│   └── factored_out/
 └── programs/
     ├── AoS/
     │   ├── DomTree.hs

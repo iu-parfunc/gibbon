@@ -43,6 +43,36 @@ case_int_select_vectorizes :: Assertion
 case_int_select_vectorizes =
   countVecStores (funBodyOf "intSelect" (runnerInt32 vectorizeProg)) @?= 1
 
+-- | Under @--int32@ a GibInt lane is 4 bytes, so a 128-bit register holds
+-- exactly 4 of them and each vector iteration advances 4 * 4 = 16 bytes.
+-- Nothing but the *ordering* of the equations in `vectorLanes` keeps `IntS` off
+-- the 2-lane (`int64x2`) path, and `countVecStores` above would not notice the
+-- difference, so pin the shape itself.
+case_int32_lane_count_is_four_and_bump_is_sixteen_bytes :: Assertion
+case_int32_lane_count_is_four_and_bump_is_sixteen_bytes =
+  let body = funBodyOf "intSelect" (runnerInt32 vectorizeProg)
+   in do
+        countVecStoresOf L3.IntS 4 body @?= 1
+        countVecLoadsOf L3.IntS 4 body @?= 1
+        countVecStoresOf L3.IntS 2 body @?= 0
+        countVecLoadsOf L3.IntS 2 body @?= 0
+        -- one 16-byte advance per vector iteration, for the in and out cursor
+        countBumpsBy 16 body @?= 2
+        -- 8 bytes is what an `int64x2` group would advance under --int32
+        countBumpsBy 8 body @?= 0
+
+-- | The 64-bit mirror: 8-byte lanes, so 2 lanes fill the register and each
+-- vector iteration still advances 16 bytes -- but via `int64x2`, not `int32x4`.
+case_64_bit_lane_count_is_two_and_bump_is_sixteen_bytes :: Assertion
+case_64_bit_lane_count_is_two_and_bump_is_sixteen_bytes =
+  let body = funBodyOf "intAdd64" (runner64 vectorizeProg)
+   in do
+        countVecStoresOf L3.IntS 2 body @?= 2
+        countVecLoadsOf L3.IntS 2 body @?= 2
+        countVecStoresOf L3.IntS 4 body @?= 0
+        -- two groups x (in, out) cursors, each advancing a full register
+        countBumpsBy 16 body @?= 4
+
 case_mixed_int_mask_float_select_stays_scalar :: Assertion
 case_mixed_int_mask_float_select_stays_scalar =
   countVecStores (funBodyOf "mixedSelect" (runnerInt32 vectorizeProg)) @?= 0
@@ -235,6 +265,29 @@ countVecAdds :: L3.Exp3 -> Int
 countVecAdds = countExt p
   where
     p L3.VecAdd{} = True
+    p _ = False
+
+-- | Vector stores for one exact @(scalar, lanes)@ shape.  'countVecStores'
+-- only counts groups, so it cannot tell a correct 4-lane int32 store from an
+-- int64x2 store that would spill 16 bytes into an 8-byte pair of GibInts.
+countVecStoresOf :: L3.Scalar -> Int -> L3.Exp3 -> Int
+countVecStoresOf scalar lanes = countExt p
+  where
+    p (L3.VecStore s l _ _) = s == scalar && l == lanes
+    p _ = False
+
+countVecLoadsOf :: L3.Scalar -> Int -> L3.Exp3 -> Int
+countVecLoadsOf scalar lanes = countExt p
+  where
+    p (L3.VecLoad s l _) = s == scalar && l == lanes
+    p _ = False
+
+-- | Constant cursor bumps of exactly @n@ bytes.  The vectorized loop has to
+-- advance one full 128-bit register per group, i.e. lanes * scalar width.
+countBumpsBy :: Int -> L3.Exp3 -> Int
+countBumpsBy n = countExt p
+  where
+    p (L3.BumpCursorMutable _ (L3.LitE m)) = m == n
     p _ = False
 
 -- | Count partial (potentially trapping) primitives evaluated outside every

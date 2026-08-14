@@ -19,6 +19,11 @@ pub mod c {
 
     pub type GibPackedTag = u8;
     pub type GibBoxedTag = u8;
+    // Fixed at 64 bits on purpose.  Every C prototype below is part of the
+    // RTS ABI, and gibbon_rts.h pins that ABI to `int64_t` rather than
+    // `GibInt` precisely so it does not move when the generated code is built
+    // with `--int32` (see the "A note on GibInt and the RTS ABI" comment
+    // there).  So `i64` here is correct for both widths.
     pub type GibInt = i64;
     pub type GibFloat = f32;
     pub type GibSym = u64;
@@ -44,8 +49,12 @@ pub mod c {
         pub fn gib_get_inf_init_chunk_size() -> usize;
 
         // Runtime arguments, values updated by the flags parser.
-        pub fn gib_get_size_param() -> GibInt;
-        pub fn gib_get_iters_param() -> GibInt;
+        //
+        // `gib_get_size_param` / `gib_get_iters_param` are `static inline`
+        // wrappers in gibbon_rts.h that narrow to `GibInt`; only these
+        // fixed-width accessors are exported symbols.
+        pub fn gib_get_size_param_i64() -> i64;
+        pub fn gib_get_iters_param_i64() -> i64;
         pub fn gib_read_bench_prog_param() -> *const c_char;
         pub fn gib_read_benchfile_param() -> *const c_char;
         pub fn gib_read_arrayfile_param() -> *const c_char;

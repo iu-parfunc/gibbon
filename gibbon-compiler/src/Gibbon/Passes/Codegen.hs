@@ -434,6 +434,9 @@ codegenProg cfg prg@(Prog info_tbl sym_tbl funs mtal) =
         \#include <errno.h>\n\
         \#include <xmmintrin.h>\n\
         \#include <emmintrin.h>\n\
+        \#ifdef __SSE4_1__\n\
+        \#include <smmintrin.h>\n\
+        \#endif\n\
         \#include <uthash.h>\n\n\
         \static inline __m128i gib_vec_broadcast_int64x2(GibInt x) {\n\
         \  return _mm_set1_epi64x((long long) x);\n\
@@ -452,31 +455,35 @@ codegenProg cfg prg@(Prog info_tbl sym_tbl funs mtal) =
         \}\n\
         \\n\
         \static inline __m128i gib_vec_mul_int64x2(__m128i a, __m128i b) {\n\
-        \  GibInt av[2], bv[2];\n\
+        \  int64_t av[2], bv[2];\n\
         \  _mm_storeu_si128((__m128i *) av, a);\n\
         \  _mm_storeu_si128((__m128i *) bv, b);\n\
         \  return _mm_set_epi64x(av[1] * bv[1], av[0] * bv[0]);\n\
         \}\n\
         \\n\
         \static inline __m128i gib_vec_div_int64x2(__m128i a, __m128i b) {\n\
-        \  GibInt av[2], bv[2];\n\
+        \  int64_t av[2], bv[2];\n\
         \  _mm_storeu_si128((__m128i *) av, a);\n\
         \  _mm_storeu_si128((__m128i *) bv, b);\n\
         \  return _mm_set_epi64x(av[1] / bv[1], av[0] / bv[0]);\n\
         \}\n\
         \\n\
         \static inline __m128i gib_vec_mod_int64x2(__m128i a, __m128i b) {\n\
-        \  GibInt av[2], bv[2];\n\
+        \  int64_t av[2], bv[2];\n\
         \  _mm_storeu_si128((__m128i *) av, a);\n\
         \  _mm_storeu_si128((__m128i *) bv, b);\n\
         \  return _mm_set_epi64x(av[1] % bv[1], av[0] % bv[0]);\n\
         \}\n\
         \\n\
         \static inline __m128i gib_vec_eq_int64x2(__m128i a, __m128i b) {\n\
-        \  GibInt av[2], bv[2];\n\
+        \#ifdef __SSE4_1__\n\
+        \  return _mm_cmpeq_epi64(a, b);\n\
+        \#else\n\
+        \  int64_t av[2], bv[2];\n\
         \  _mm_storeu_si128((__m128i *) av, a);\n\
         \  _mm_storeu_si128((__m128i *) bv, b);\n\
         \  return _mm_set_epi64x(av[1] == bv[1] ? -1LL : 0LL, av[0] == bv[0] ? -1LL : 0LL);\n\
+        \#endif\n\
         \}\n\
         \\n\
         \static inline __m128i gib_vec_select_int64x2(__m128i mask, __m128i thenv, __m128i elsev) {\n\
@@ -504,10 +511,14 @@ codegenProg cfg prg@(Prog info_tbl sym_tbl funs mtal) =
         \}\n\
         \\n\
         \static inline __m128i gib_vec_mul_int32x4(__m128i a, __m128i b) {\n\
+        \#ifdef __SSE4_1__\n\
+        \  return _mm_mullo_epi32(a, b);\n\
+        \#else\n\
         \  int32_t av[4], bv[4];\n\
         \  _mm_storeu_si128((__m128i *) av, a);\n\
         \  _mm_storeu_si128((__m128i *) bv, b);\n\
         \  return _mm_set_epi32(av[3] * bv[3], av[2] * bv[2], av[1] * bv[1], av[0] * bv[0]);\n\
+        \#endif\n\
         \}\n\
         \\n\
         \static inline __m128i gib_vec_div_int32x4(__m128i a, __m128i b) {\n\
@@ -1078,6 +1089,14 @@ codegenTail venv mutEndEnv fenv sort_fns (LetTimedT flg bnds rhs body) ty sync_d
                    | (vr0,ty0) <- bnds ]
        let rhs' = rewriteReturns rhs bnds
        rhs'' <- codegenTail venv mutEndEnv fenv sort_fns rhs' ty sync_deps
+       dflags <- getDynFlags
+       -- `gib_get_iters_param` / `gib_get_size_param` both return `GibInt`,
+       -- which is `int32_t` under `--int32` and `int64_t` otherwise.  Pick the
+       -- matching conversion specifier, exactly like the `PrintInt` primitive
+       -- below does.
+       let printFmt = if gopt Opt_Int32 dflags then "%d" else "%ld"
+           itersFmt = "ITERS: " ++ printFmt ++ "\n"
+           sizeFmt  = "SIZE: " ++ printFmt ++ "\n"
        itertime  <- gensym "itertime"
        batchtime <- gensym "batchtime"
        selftimed <- gensym "selftimed"
@@ -1252,12 +1271,12 @@ codegenTail venv mutEndEnv fenv sort_fns (LetTimedT flg bnds rhs body) ty sync_d
                            ])
            withPrnt = timebod ++
                       (if flg
-                       then [ C.BlockStm [cstm| printf("ITERS: %ld\n", gib_get_iters_param()); |]
-                            , C.BlockStm [cstm| printf("SIZE: %ld\n", gib_get_size_param()); |]
+                       then [ C.BlockStm [cstm| printf($string:itersFmt, gib_get_iters_param()); |]
+                            , C.BlockStm [cstm| printf($string:sizeFmt, gib_get_size_param()); |]
                             , C.BlockStm [cstm| printf("BATCHTIME: %e\n", $id:batchtime); |]
                             , C.BlockStm [cstm| printf("SELFTIMED: %e\n", $id:selftimed); |]
                             ]
-                       else [ C.BlockStm [cstm| printf("SIZE: %ld\n", gib_get_size_param()); |]
+                       else [ C.BlockStm [cstm| printf($string:sizeFmt, gib_get_size_param()); |]
                             , C.BlockStm [cstm| printf("SELFTIMED: %e\n", gib_difftimespecs(&$(cid (toVar begn)), &$(cid (toVar end)))); |] ])
        let venv' = (M.fromList bnds) `M.union` venv
        tal <- codegenTail venv' mutEndEnv fenv sort_fns body ty sync_deps
@@ -2516,7 +2535,7 @@ codegenVecBroadcast venv bnds scalar lanes rnds = do
     error $ "VecBroadcast expected one binding and one arg: " ++ show (bnds, rnds)
   let [(outV, outTy)] = bnds
       [val] = rnds
-      fn = vecHelperName "broadcast" scalar lanes
+  fn <- vecHelperNameM "broadcast" scalar lanes
   pure [ C.BlockDecl [cdecl| $ty:(codegenTy outTy) $id:outV = $id:fn($(codegenTriv venv val)); |] ]
 
 codegenVecLoad :: M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> [Triv] -> PassM [C.BlockItem]
@@ -2525,7 +2544,7 @@ codegenVecLoad _venv bnds scalar lanes rnds = do
     error $ "VecLoad expected one binding and one arg: " ++ show (bnds, rnds)
   let [(outV, outTy)] = bnds
       [refTriv] = rnds
-      fn = vecHelperName "load" scalar lanes
+  fn <- vecHelperNameM "load" scalar lanes
   ref <- case refTriv of
            VarTriv v -> pure v
            _ -> error $ "VecLoad expected cursor ref variable: " ++ show refTriv
@@ -2555,7 +2574,7 @@ codegenVecBin op label venv bnds scalar lanes rnds = do
     error $ label ++ " expected one binding and two args: " ++ show (bnds, rnds)
   let [(outV, outTy)] = bnds
       [lhs, rhs] = rnds
-      fn = vecHelperName op scalar lanes
+  fn <- vecHelperNameM op scalar lanes
   pure [ C.BlockDecl [cdecl| $ty:(codegenTy outTy) $id:outV = $id:fn($(codegenTriv venv lhs), $(codegenTriv venv rhs)); |] ]
 
 codegenVecSelect :: M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> [Triv] -> PassM [C.BlockItem]
@@ -2564,7 +2583,7 @@ codegenVecSelect venv bnds scalar lanes rnds = do
     error $ "VecSelect expected one binding and three args: " ++ show (bnds, rnds)
   let [(outV, outTy)] = bnds
       [mask, thenv, elsev] = rnds
-      fn = vecHelperName "select" scalar lanes
+  fn <- vecHelperNameM "select" scalar lanes
   pure [ C.BlockDecl [cdecl| $ty:(codegenTy outTy) $id:outV = $id:fn($(codegenTriv venv mask), $(codegenTriv venv thenv), $(codegenTriv venv elsev)); |] ]
 
 codegenVecStore :: M.Map Var Ty -> [(Var, Ty)] -> Scalar -> Int -> [Triv] -> PassM [C.BlockItem]
@@ -2572,11 +2591,61 @@ codegenVecStore venv bnds scalar lanes rnds = do
   when (not (null bnds) || length rnds /= 2) $
     error $ "VecStore expected no bindings and two args: " ++ show (bnds, rnds)
   let [refTriv, val] = rnds
-      fn = vecHelperName "store" scalar lanes
+  fn <- vecHelperNameM "store" scalar lanes
   ref <- case refTriv of
            VarTriv v -> pure v
            _ -> error $ "VecStore expected cursor ref variable: " ++ show refTriv
   pure [ C.BlockStm [cstm| $id:fn($id:ref, $(codegenTriv venv val)); |] ]
+
+-- | Width in bytes of a single SIMD lane holding @scalar@, under the integer
+-- width selected by the current 'DynFlags'.  @IntS@ is the only scalar whose
+-- width depends on @--int32@ (@GibInt@ is @int32_t@ there, @int64_t@
+-- otherwise); @SymS@ is a @GibSym@ (always 8 bytes) and the rest are fixed.
+simdScalarWidthBytes :: DynFlags -> Scalar -> Int
+simdScalarWidthBytes dflags IntS = if gopt Opt_Int32 dflags then 4 else 8
+simdScalarWidthBytes _ SymS = 8
+simdScalarWidthBytes _ FloatS = 4
+simdScalarWidthBytes _ CharS = 1
+simdScalarWidthBytes _ BoolS = 1
+
+-- | Every SIMD helper this backend emits is an SSE2 op over a 128-bit
+-- @__m128i@ / @__m128@ register, and every one of them loads/stores/spills a
+-- full register.  So a lowered vector op is only meaningful when its lanes
+-- exactly tile 16 bytes at the *active* integer width:
+--
+-- >  lanes * simdScalarWidthBytes == 16
+--
+-- All combinations the vectorizer can currently produce satisfy this:
+-- @(IntS,2)@ at 64-bit, @(IntS,4)@ under @--int32@, @(SymS,2)@, @(FloatS,4)@,
+-- @(CharS,16)@ and @(BoolS,16)@.  The dangerous one this rules out is
+-- @(IntS,2)@ under @--int32@: the @int64x2@ helpers would spill 16 bytes into
+-- what the rest of the backend believes is an 8-byte pair of @GibInt@s, and
+-- the surrounding cursor bumps would advance by the wrong stride.  Nothing
+-- except the *ordering* of the equations in
+-- 'Gibbon.Passes.VectorizeTraversals.vectorLanes' keeps that off the 2-lane
+-- path today, so assert the invariant here, where lowering happens and
+-- 'DynFlags' is available.  Returns 'Nothing' when the combination is sound.
+vecRegisterWidthError :: DynFlags -> String -> Scalar -> Int -> Maybe String
+vecRegisterWidthError dflags op scalar lanes
+  | lanes * width == 16 = Nothing
+  | otherwise = Just $
+      "Codegen: SIMD op " ++ show op ++ " on " ++ show (scalar, lanes) ++
+      " does not fill a 128-bit register: " ++ show lanes ++ " lanes * " ++
+      show width ++ " bytes = " ++ show (lanes * width) ++ " bytes (expected 16)" ++
+      (if scalar == IntS
+       then ".  GibInt is " ++ show width ++ " bytes because Opt_Int32 is " ++
+            (if gopt Opt_Int32 dflags then "set" else "not set") ++ "."
+       else "")
+  where width = simdScalarWidthBytes dflags scalar
+
+-- | 'vecHelperName', with the 128-bit register invariant checked against the
+-- active integer width.  Use this from lowering, never the pure version.
+vecHelperNameM :: String -> Scalar -> Int -> PassM Var
+vecHelperNameM op scalar lanes = do
+  dflags <- getDynFlags
+  case vecRegisterWidthError dflags op scalar lanes of
+    Just msg -> error msg
+    Nothing -> pure $! vecHelperName op scalar lanes
 
 vecHelperName :: String -> Scalar -> Int -> Var
 vecHelperName op scalar lanes

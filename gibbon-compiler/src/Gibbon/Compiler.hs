@@ -615,6 +615,7 @@ compilationCmd C config = (cc config) ++" -std=gnu11 "
                           ++ (if lazyPromote then " -D_GIBBON_EAGER_PROMOTION=0 " else " -D_GIBBON_EAGER_PROMOTION=1 ")
                           ++ (if papi || papi_native then " -D_GIBBON_ENABLE_PAPI " else "")
                           ++ (if papi_native then " -D_GIBBON_ENABLE_PAPI_NATIVE " else "")
+                          ++ (if sse41 then " -msse4.1 " else "")
   where dflags = dynflags config
         bumpAlloc = gopt Opt_BumpAlloc dflags
         pointer = gopt Opt_Pointer dflags
@@ -627,6 +628,7 @@ compilationCmd C config = (cc config) ++" -std=gnu11 "
         lazyPromote = gopt Opt_NoEagerPromote dflags
         papi = gopt Opt_PapiInstrumentation dflags
         papi_native = gopt Opt_PapiNativeInstrumentation dflags
+        sse41 = gopt Opt_Sse41 dflags
 
 -- |
 isBench :: Mode -> Bool

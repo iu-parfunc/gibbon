@@ -51,6 +51,7 @@ data GeneralFlag
   | Opt_EnableSelectiveBufferSharing -- ^ Enable post-loopification selective SoA buffer sharing.
   | Opt_EnableVectorization -- ^ Enable SIMD vectorization for supported loopified SoA scalar-buffer loops.
   | Opt_Int32 -- ^ Represent Gibbon Int values as 32-bit integers in the C backend.
+  | Opt_Sse41 -- ^ Compile the generated C with -msse4.1 (opt-in; default targets baseline SSE2).
   deriving (Show,Read,Eq,Ord)
 
 -- | Exactly like GHC's ddump flags.
@@ -152,6 +153,9 @@ dynflagsParser = DynFlags <$> (S.fromList <$> many gflagsParser) <*> (S.fromList
                    flag' Opt_Int32 (long "int32" <>
                                     long "gibbon-int32" <>
                                     help "Represent Gibbon Int values as 32-bit integers in generated C and packed layouts.") <|>
+                   flag' Opt_Sse41 (long "sse4.1" <>
+                                    long "gibbon-sse41" <>
+                                    help "Compile generated C with -msse4.1 (default: off, baseline SSE2).") <|>
                    flag' Opt_PapiInstrumentation (long "enable-papi" <> help "Enable instrumentation using papi, extends the iterate timing function." ) <|>
                    flag' Opt_PapiNativeInstrumentation (long "enable-papi-native" <> help "Enable PAPI native-event instrumentation in iterate timing (uses EventSet API).")
     dflagsParser :: Parser DebugFlag

@@ -49,8 +49,9 @@ static size_t gib_global_biginf_init_chunk_size = 4 * GB;
 static size_t gib_global_inf_init_chunk_size = GIB_INIT_CHUNK_SIZE;
 
 // Runtime arguments, values updated by the flags parser.
-static GibInt gib_global_size_param = 1;
-static GibInt gib_global_iters_param = 1;
+// `int64_t`, not `GibInt`: these back the pinned accessors below.
+static int64_t gib_global_size_param = 1;
+static int64_t gib_global_iters_param = 1;
 static char *gib_global_bench_prog_param = (char *) NULL;
 static char *gib_global_benchfile_param = (char *) NULL;
 static char *gib_global_arrayfile_param = (char *) NULL;
@@ -76,12 +77,15 @@ size_t gib_get_inf_init_chunk_size(void)
     return gib_global_inf_init_chunk_size;
 }
 
-GibInt gib_get_size_param(void)
+// The `GibInt`-returning `gib_get_size_param` / `gib_get_iters_param` that
+// callers actually use are `INLINE_HEADER` wrappers in gibbon_rts.h; only
+// these fixed-width accessors are exported.
+int64_t gib_get_size_param_i64(void)
 {
     return gib_global_size_param;
 }
 
-GibInt gib_get_iters_param(void)
+int64_t gib_get_iters_param_i64(void)
 {
     return gib_global_iters_param;
 }
@@ -554,7 +558,7 @@ GibCursor *gib_array_alloc(GibCursor *arr, size_t size)
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 
-GibVector *gib_vector_alloc(GibInt num, size_t elt_size)
+GibVector *gib_vector_alloc(int64_t num, size_t elt_size)
 {
     GibVector *vec = (GibVector *) gib_alloc(sizeof(GibVector));
     if (vec == NULL) {
@@ -573,7 +577,7 @@ GibVector *gib_vector_alloc(GibInt num, size_t elt_size)
     return vec;
 }
 
-GibInt gib_vector_length(GibVector *vec)
+int64_t gib_vector_length(GibVector *vec)
 {
     return (vec->upper - vec->lower);
 }
@@ -583,18 +587,18 @@ GibBool gib_vector_is_empty(GibVector *vec)
     return (gib_vector_length(vec) == 0);
 }
 
-GibVector *gib_vector_slice(GibInt i, GibInt n, GibVector *vec)
+GibVector *gib_vector_slice(int64_t i, int64_t n, GibVector *vec)
 {
-    GibInt lower = vec->lower + i;
-    GibInt upper = vec->lower + i + n;
+    int64_t lower = vec->lower + i;
+    int64_t upper = vec->lower + i + n;
     if ((lower > vec->upper)) {
-        fprintf(stderr, "gib_vector_slice: lower out of bounds, %" GIBBON_PRIdInt
-                " > %" GIBBON_PRIdInt, lower, vec->upper);
+        fprintf(stderr, "gib_vector_slice: lower out of bounds, %" PRId64
+                " > %" PRId64, lower, vec->upper);
         exit(1);
     }
     if ((upper > vec->upper)) {
-        fprintf(stderr, "gib_vector_slice: upper out of bounds, %" GIBBON_PRIdInt
-                " > %" GIBBON_PRIdInt, upper, vec->upper);
+        fprintf(stderr, "gib_vector_slice: upper out of bounds, %" PRId64
+                " > %" PRId64, upper, vec->upper);
         exit(1);
     }
     GibVector *vec2 = (GibVector *) gib_alloc(sizeof(GibVector));
@@ -610,7 +614,7 @@ GibVector *gib_vector_slice(GibInt i, GibInt n, GibVector *vec)
 }
 
 // The callers must cast the return value.
-void *gib_vector_nth(GibVector *vec, GibInt i)
+void *gib_vector_nth(GibVector *vec, int64_t i)
 {
 #ifdef _GIBBON_BOUNDSCHECK
     if (i < vec->lower || i > vec->upper) {
@@ -622,7 +626,7 @@ void *gib_vector_nth(GibVector *vec, GibInt i)
     return ((char*)vec->data + (vec->elt_size * (vec->lower + i)));
 }
 
-GibVector *gib_vector_inplace_update(GibVector *vec, GibInt i, void* elt)
+GibVector *gib_vector_inplace_update(GibVector *vec, int64_t i, void* elt)
 {
     void* dst = gib_vector_nth(vec, i);
     memcpy(dst, elt, vec->elt_size);
@@ -631,7 +635,7 @@ GibVector *gib_vector_inplace_update(GibVector *vec, GibInt i, void* elt)
 
 GibVector *gib_vector_copy(GibVector *vec)
 {
-    GibInt len = gib_vector_length(vec);
+    int64_t len = gib_vector_length(vec);
     void *start = gib_vector_nth(vec, 0);
     GibVector *vec2 = gib_vector_alloc(len, vec->elt_size);
     memcpy(vec2->data, start, len * vec->elt_size);
@@ -655,13 +659,13 @@ GibVector *gib_vector_sort(GibVector *vec, int (*compar)(const void *, const voi
 GibVector *gib_vector_concat(GibVector *vec)
 {
     // Length of the input vector.
-    GibInt len = gib_vector_length(vec);
+    int64_t len = gib_vector_length(vec);
     // Length of the concatenated vector.
-    GibInt result_len = 0;
+    int64_t result_len = 0;
     // Size of each element in the concatenated vector.
-    GibInt result_elt_size = 0;
+    int64_t result_elt_size = 0;
     GibVector **elt_ref, *elt;
-    for (GibInt i = 0; i < len; i++) {
+    for (int64_t i = 0; i < len; i++) {
         elt_ref = gib_vector_nth(vec, i);
         elt = *elt_ref;
         result_elt_size = elt->elt_size;
@@ -670,15 +674,15 @@ GibVector *gib_vector_concat(GibVector *vec)
 
     // Concatenated vector.
     GibVector *result = gib_vector_alloc(result_len, result_elt_size);
-    GibInt elt_len;
+    int64_t elt_len;
     // A counter that tracks the index of elements in 'result'.
-    GibInt k = 0;
-    for (GibInt i = 0; i < len; i++) {
+    int64_t k = 0;
+    for (int64_t i = 0; i < len; i++) {
         elt_ref = gib_vector_nth(vec, i);
         elt = *elt_ref;
         elt_len = gib_vector_length(elt);
 
-        for (GibInt j = 0; j < elt_len; j++) {
+        for (int64_t j = 0; j < elt_len; j++) {
             void* k_elt = gib_vector_nth(elt, j);
             gib_vector_inplace_update(result, k, k_elt);
             k++;
@@ -698,8 +702,8 @@ void gib_vector_free(GibVector *vec)
 GibVector *gib_vector_merge(GibVector *vec1, GibVector *vec2)
 {
     if (vec1->upper != vec2->lower) {
-        fprintf(stderr,"gib_vector_merge: non-contiguous slices, (%" GIBBON_PRIdInt
-                ",%" GIBBON_PRIdInt "), (%" GIBBON_PRIdInt ",%" GIBBON_PRIdInt ")",
+        fprintf(stderr,"gib_vector_merge: non-contiguous slices, (%" PRId64
+                ",%" PRId64 "), (%" PRId64 ",%" PRId64 ")",
                vec1->lower, vec1->upper, vec2->lower, vec2->upper);
         exit(1);
     }
@@ -718,8 +722,8 @@ GibVector *gib_vector_merge(GibVector *vec1, GibVector *vec2)
 void gib_print_timing_array(GibVector *times) {
     printf("ITER TIMES: [");
     double *d;
-    GibInt n = gib_vector_length(times);
-    for(GibInt i = 0; i < n; i++) {
+    int64_t n = gib_vector_length(times);
+    for(int64_t i = 0; i < n; i++) {
         d = gib_vector_nth(times, i);
         if (i == (n-1)) {
             printf("%f",*d);
@@ -896,20 +900,20 @@ GibList *gib_list_copy(GibList *ls)
  */
 
 // Example: writePpm("gibbon_rgb_1000.ppm", 1000, 1000, pixels);
-void gib_write_ppm(char* filename, GibInt width, GibInt height, GibVector *pixels)
+void gib_write_ppm(char* filename, int64_t width, int64_t height, GibVector *pixels)
 {
     FILE *fp;
     fp = fopen(filename, "w+");
     fprintf(fp, "P3\n");
     // fprintf(fp, "%lld %lld\n255\n", width, height);
-    fprintf(fp, "%" GIBBON_PRIdInt " %" GIBBON_PRIdInt "\n255\n", width, height);
-    GibInt len = gib_vector_length(pixels);
+    fprintf(fp, "%" PRId64 " %" PRId64 "\n255\n", width, height);
+    int64_t len = gib_vector_length(pixels);
     gib_write_ppm_loop(fp, 0, len, pixels);
     fclose(fp);
     return;
 }
 
-void gib_write_ppm_loop(FILE *fp, GibInt idx, GibInt end, GibVector *pixels)
+void gib_write_ppm_loop(FILE *fp, int64_t idx, int64_t end, GibVector *pixels)
 {
     bool fltIf_5768_6575 = idx == end;
 
@@ -919,12 +923,12 @@ void gib_write_ppm_loop(FILE *fp, GibInt idx, GibInt end, GibVector *pixels)
         GibPixel *tmp_112;
         tmp_112 = (GibPixel *) gib_vector_nth(pixels, idx);
         GibPixel tup = *tmp_112;
-        GibInt x = tup.field0;
-        GibInt y = tup.field1;
-        GibInt z = tup.field2;
+        int64_t x = tup.field0;
+        int64_t y = tup.field1;
+        int64_t z = tup.field2;
         // write to file.
         // fprintf(fp, "%lld %lld %lld\n", x, y, z);
-        fprintf(fp, "%" GIBBON_PRIdInt " %" GIBBON_PRIdInt " %" GIBBON_PRIdInt "\n", x, y, z);
+        fprintf(fp, "%" PRId64 " %" PRId64 " %" PRId64 "\n", x, y, z);
         gib_write_ppm_loop(fp, (idx+1), end, pixels);
     }
 }
@@ -2282,12 +2286,12 @@ int gib_compare_doubles(const void *a, const void *b)
 }
 
 // Exponentiation
-GibInt gib_expll(GibInt base, GibInt pow)
+int64_t gib_expll(int64_t base, int64_t pow)
 {
     if (base == 2) {
         return (1 << pow);
     } else {
-        GibInt i, result = 1;
+        int64_t i, result = 1;
         for (i = 0; i < pow; i++)
             result *= base;
         return result;
@@ -2295,7 +2299,7 @@ GibInt gib_expll(GibInt base, GibInt pow)
 }
 
 // https://www.cprogramming.com/snippets/source-code/find-the-number-of-cpu-cores-for-windows-mac-or-linux
-GibInt gib_get_num_processors(void)
+int64_t gib_get_num_processors(void)
 {
 #ifdef _WIN64
     SYSTEM_INFO sysinfo;

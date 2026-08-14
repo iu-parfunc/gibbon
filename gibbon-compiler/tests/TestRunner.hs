@@ -97,6 +97,25 @@ instance FromJSON SourceReplacement where
     parseJSON (Y.Object o) = SourceReplacement <$> o .: "from" <*> o .: "to"
     parseJSON oth = error $ "Cannot parse SourceReplacement: " ++ show oth
 
+-- | Extra source replacements that apply only in the listed modes.
+--
+-- The examples suite runs each test by handing the source to Gibbon with
+-- @--run@; no argv reaches the generated executable, so the only per-test
+-- \"input size\" knob the runner has ever had is 'SourceReplacement'.  This
+-- reuses exactly that knob, scoped to a mode, so e.g. a program that overflows
+-- under @--int32@ can be given a smaller input there instead of recording a
+-- wrapped answer.
+data ModeSourceReplacement = ModeSourceReplacement
+    { msrModes        :: [Mode]
+    , msrReplacements :: [SourceReplacement]
+    }
+  deriving (Show, Eq, Read, Ord)
+
+instance FromJSON ModeSourceReplacement where
+    parseJSON (Y.Object o) =
+        ModeSourceReplacement <$> o .: "modes" <*> o .: "source-replacements"
+    parseJSON oth = error $ "Cannot parse ModeSourceReplacement: " ++ show oth
+
 data Test = Test
     { name :: String
     , dir  :: FilePath
@@ -117,6 +136,10 @@ data Test = Test
       -- compiling/running this test.  This is intentionally test-runner-only:
       -- benchmark sources stay unchanged, while the examples suite can use
       -- reduced unit-test inputs with real runtime output checks.
+
+    , modeSourceReplacements :: [ModeSourceReplacement]
+      -- ^ Additional replacements applied (after 'sourceReplacements') only
+      -- when running in one of the listed modes.
 
     , compileOnly :: Bool
       -- ^ Compile the test to generated C but do not run it.  This is used for
@@ -157,6 +180,7 @@ defaultTest = Test
     , moreIters = []
     , test_flags = []
     , sourceReplacements = []
+    , modeSourceReplacements = []
     , compileOnly = False
     , compareWithBaseline = False
     , baselineMode = Gibbon2
@@ -184,6 +208,7 @@ instance FromJSON Test where
         moreiters   <- o .:? "more-iters" .!= (moreIters defaultTest)
         test_flags  <- o .:? "test-flags" .!= (test_flags defaultTest)
         source_replacements <- o .:? "source-replacements" .!= (sourceReplacements defaultTest)
+        mode_source_replacements <- o .:? "mode-source-replacements" .!= (modeSourceReplacements defaultTest)
         compile_only <- o .:? "compile-only" .!= (compileOnly defaultTest)
         compare_baseline <- o .:? "compare-with-baseline" .!= (compareWithBaseline defaultTest)
         baseline_mode <- o .:? "baseline-mode" .!= (baselineMode defaultTest)
@@ -196,7 +221,7 @@ instance FromJSON Test where
         let expectedFailures = M.fromList [(mode, Fail) | mode <- failing]
             -- Overlay the expected failures on top of the defaults.
             expected = M.union expectedFailures (expectedResults defaultTest)
-        return $ Test name dir expected skip runmodes isbenchmark trials sizeparam moreiters test_flags source_replacements compile_only compare_baseline baseline_mode baseline_dir baseline_name mbanspath megabench benchfun benchinput
+        return $ Test name dir expected skip runmodes isbenchmark trials sizeparam moreiters test_flags source_replacements mode_source_replacements compile_only compare_baseline baseline_mode baseline_dir baseline_name mbanspath megabench benchfun benchinput
     parseJSON oth = error $ "Cannot parse Test: " ++ show oth
 
 data Result = Pass | Fail
@@ -630,7 +655,7 @@ runTestAgainstAnswer tc test@Test{name,dir,expectedResults,runModes} =
   where
     go :: Mode -> Result -> IO (Mode, TestVerdict)
     go mode expected = do
-        anspath <- answerPathForTest tc test
+        anspath <- answerPathForTest tc test mode
         result <- runGibbonTestCommand tc test mode dir name ""
         case result of
             Left err -> verdict expected mode (Just err)
@@ -642,22 +667,56 @@ runTestAgainstAnswer tc test@Test{name,dir,expectedResults,runModes} =
                 verdict expected mode diff_res
 
 
-answerPathForTest :: TestConfig -> Test -> IO FilePath
-answerPathForTest tc Test{name,dir,mb_anspath} = do
+-- | Mode-specific answer-file infixes, in decreasing order of specificity.
+--
+-- A mode with infixes @["int32-vectorize", "int32"]@ makes the runner look for
+-- @foo.int32-vectorize.ans@, then @foo.int32.ans@, and only then the shared
+-- 64-bit @foo.ans@.  This lets a mode whose @Int@ width differs from the
+-- baseline record its own (legitimately different) answer instead of being
+-- blanket-listed as @failing:@.
+--
+-- Modes whose arithmetic matches the 64-bit baseline return @[]@, so their
+-- answer-file resolution is byte-identical to what it was before.
+modeAnswerInfixes :: Mode -> [String]
+modeAnswerInfixes GibbonInt32           = ["int32"]
+modeAnswerInfixes GibbonInt32Vectorize  = ["int32-vectorize", "int32"]
+modeAnswerInfixes _                     = []
+
+-- | Insert a mode infix before the @.ans@ extension: @a/b/foo.ans@ with
+-- @"int32"@ becomes @a/b/foo.int32.ans@.
+withAnswerInfix :: FilePath -> String -> FilePath
+withAnswerInfix p inf = replaceExtension p ("." ++ inf ++ ".ans")
+
+answerPathForTest :: TestConfig -> Test -> Mode -> IO FilePath
+answerPathForTest tc Test{name,dir,mb_anspath} mode = do
     compiler_dir <- getCompilerDir
+    let infixes = modeAnswerInfixes mode
+        -- First existing candidate wins; @dflt@ is used when none exist so
+        -- that the "File does not exist" message still names the shared answer.
+        firstExisting :: [FilePath] -> FilePath -> IO FilePath
+        firstExisting [] dflt = pure dflt
+        firstExisting (c:cs) dflt = do
+          ex <- doesFileExist c
+          if ex then pure c else firstExisting cs dflt
     case mb_anspath of
-      Just p -> pure (compiler_dir </> p)
+      Just p -> do
+        let shared = compiler_dir </> p
+        firstExisting (map (withAnswerInfix shared) infixes) shared
       Nothing -> do
         let sourceLocal      = compiler_dir </> dir </> name ++ ".ans"
             generatedInTemp  = compiler_dir </> tempdir tc </> takeFileName name ++ ".ans"
             generatedDefault = compiler_dir </> "examples" </> "build_tmp" </> takeFileName name ++ ".ans"
-        sourceExists <- doesFileExist sourceLocal
-        tempExists   <- doesFileExist generatedInTemp
-        pure $ if sourceExists
-               then sourceLocal
-               else if tempExists
-                    then generatedInTemp
-                    else generatedDefault
+        modeLocal <- firstExisting (map (withAnswerInfix sourceLocal) infixes) ""
+        if not (null modeLocal)
+          then pure modeLocal
+          else do
+            sourceExists <- doesFileExist sourceLocal
+            tempExists   <- doesFileExist generatedInTemp
+            pure $ if sourceExists
+                   then sourceLocal
+                   else if tempExists
+                        then generatedInTemp
+                        else generatedDefault
 
 runTestAgainstBaseline :: TestConfig -> Test -> IO [(Mode,TestVerdict)]
 runTestAgainstBaseline tc test@Test{name,dir,expectedResults,runModes,baselineMode,baselineDir,baselineName} = do
@@ -683,7 +742,10 @@ runTestAgainstBaseline tc test@Test{name,dir,expectedResults,runModes,baselineMo
       case mb_anspath test of
         Nothing -> pure Nothing
         Just{} -> do
-          anspath <- answerPathForTest tc test
+          -- The baseline run is the ground truth for this test, so it is
+          -- checked against the baseline mode's own answer file (no int32
+          -- infix) -- identical to the pre-mode-aware behaviour.
+          anspath <- answerPathForTest tc test baselineMode
           exists <- doesFileExist anspath
           if exists
           then do
@@ -700,16 +762,23 @@ runTestAgainstBaseline tc test@Test{name,dir,expectedResults,runModes,baselineMo
           Right (_outpath, out) ->
               verdict expected mode (compareNormalizedOutput baselineOut out)
 
-prepareTestSource :: TestConfig -> Test -> FilePath -> String -> String -> IO FilePath
-prepareTestSource tc Test{name,sourceReplacements} srcDir srcName suffix = do
+prepareTestSource :: TestConfig -> Test -> Mode -> FilePath -> String -> String -> IO FilePath
+prepareTestSource tc Test{name,sourceReplacements,modeSourceReplacements} mode srcDir srcName suffix = do
     compiler_dir <- getCompilerDir
     let srcRoot = compiler_dir </> srcDir
         srcPath = srcRoot </> srcName
-    if null sourceReplacements
+        -- Mode-specific replacements are applied after the shared ones, so a
+        -- mode can further shrink an input the shared list already reduced.
+        modeReps = concat [ msrReplacements m | m <- modeSourceReplacements
+                                              , mode `elem` msrModes m ]
+        allReps  = sourceReplacements ++ modeReps
+    if null allReps
     then pure srcPath
     else do
+      -- The reduced copy is per-mode so that two modes with different
+      -- replacements cannot clobber each other's source.
       let reducedRoot = compiler_dir </> tempdir tc </> "reduced_sources" </>
-                        sanitizePath srcDir </> takeBaseName name ++ suffix
+                        sanitizePath srcDir </> takeBaseName name ++ modeFileSuffix mode ++ suffix
           reducedPath = reducedRoot </> srcName
       createDirectoryIfMissing True reducedRoot
       files <- listDirectory srcRoot
@@ -719,7 +788,7 @@ prepareTestSource tc Test{name,sourceReplacements} srcDir srcName suffix = do
         isFile <- doesFileExist fromPath
         when (isFile && takeExtension file == ".hs") $ copyFile fromPath toPath
       src <- readFile srcPath
-      writeFile reducedPath (applySourceReplacements sourceReplacements src)
+      writeFile reducedPath (applySourceReplacements allReps src)
       pure reducedPath
 
 applySourceReplacements :: [SourceReplacement] -> String -> String
@@ -748,7 +817,7 @@ sanitizePath = map sanitizeChar
 runGibbonCompileCommand :: TestConfig -> Test -> Mode -> FilePath -> String -> String -> IO (Either String FilePath)
 runGibbonCompileCommand tc test@Test{name,test_flags} mode srcDir srcName suffix = do
     compiler_dir <- getCompilerDir
-    sourcePath <- prepareTestSource tc test srcDir srcName suffix
+    sourcePath <- prepareTestSource tc test mode srcDir srcName suffix
     let tmppath  = compiler_dir </> tempdir tc </> name
         basename = compiler_dir </> replaceBaseName tmppath (takeBaseName tmppath ++ modeFileSuffix mode ++ suffix)
         cpath    = replaceExtension basename ".c"
@@ -771,7 +840,7 @@ runGibbonCompileCommand tc test@Test{name,test_flags} mode srcDir srcName suffix
 runGibbonTestCommand :: TestConfig -> Test -> Mode -> FilePath -> String -> String -> IO (Either String (FilePath, String))
 runGibbonTestCommand tc test@Test{name,test_flags} mode srcDir srcName suffix = do
     compiler_dir <- getCompilerDir
-    sourcePath <- prepareTestSource tc test srcDir srcName suffix
+    sourcePath <- prepareTestSource tc test mode srcDir srcName suffix
     let tmppath  = compiler_dir </> tempdir tc </> name
         basename = compiler_dir </> replaceBaseName tmppath (takeBaseName tmppath ++ modeFileSuffix mode ++ suffix)
         outpath  = replaceExtension basename ".out"

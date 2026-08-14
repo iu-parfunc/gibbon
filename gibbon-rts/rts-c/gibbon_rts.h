@@ -81,6 +81,28 @@
  */
 
 
+/*
+ * A note on GibInt and the RTS ABI
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ *
+ * `GIBBON_INT32` is defined by the Gibbon code generator into the *generated*
+ * translation unit when compiling with `--int32`; it is never defined for the
+ * RTS translation unit, which is built once into `gibbon-rts/build` and shared
+ * by both widths.  So `GibInt` is `int32_t` on one side of the boundary and
+ * `int64_t` on the other whenever `--int32` is in play.
+ *
+ * Therefore `GibInt` must NOT appear in any declaration that crosses that
+ * boundary: an exported prototype, an exported global, or a struct that
+ * generated code and the RTS both lay out.  Those are all pinned to an
+ * explicit `int64_t` instead -- exactly like `GibVector.lower` / `.upper`
+ * already are.  Passing a 32-bit `GibInt` into an `int64_t` parameter is an
+ * ordinary implicit conversion with correct sign extension, and narrowing an
+ * `int64_t` result back into a `GibInt` is precisely what `--int32` means.
+ *
+ * `GibInt` remains the right type for RTS-internal locals and for everything
+ * the code generator emits inside the generated translation unit.
+ */
+
 typedef uint8_t GibPackedTag;
 typedef uint8_t GibBoxedTag;
 #ifdef GIBBON_INT32
@@ -151,8 +173,25 @@ size_t gib_get_biginf_init_chunk_size(void);
 size_t gib_get_inf_init_chunk_size(void);
 
 // Runtime arguments, values updated by the flags parser.
-GibInt gib_get_size_param(void);
-GibInt gib_get_iters_param(void);
+//
+// The exported accessors are pinned to `int64_t` (see the GibInt/ABI note
+// above).  The `GibInt`-returning wrappers below are header-local, so
+// generated code keeps seeing a `GibInt` here -- which matters because the
+// code generator feeds these results straight to `printf` with a conversion
+// specifier chosen for `GibInt`.
+int64_t gib_get_size_param_i64(void);
+int64_t gib_get_iters_param_i64(void);
+
+INLINE_HEADER GibInt gib_get_size_param(void)
+{
+    return (GibInt) gib_get_size_param_i64();
+}
+
+INLINE_HEADER GibInt gib_get_iters_param(void)
+{
+    return (GibInt) gib_get_iters_param_i64();
+}
+
 char *gib_read_bench_prog_param(void);
 char *gib_read_benchfile_param(void);
 char *gib_read_arrayfile_param(void);
@@ -398,13 +437,15 @@ typedef struct gib_vector {
 // Comparison function.
 typedef int (*GibCmpFn)(const void *, const void*) ;
 
-GibVector *gib_vector_alloc(GibInt num, size_t elt_size);
+// Indices and lengths are `int64_t`, not `GibInt`: these cross the
+// RTS/generated-code boundary (see the GibInt/ABI note above).
+GibVector *gib_vector_alloc(int64_t num, size_t elt_size);
 inline __attribute__((always_inline)) GibCursor *gib_array_alloc(GibCursor *data, size_t arr_size);
-GibInt gib_vector_length(GibVector *vec);
+int64_t gib_vector_length(GibVector *vec);
 GibBool gib_vector_is_empty(GibVector *vec);
-GibVector *gib_vector_slice(GibInt i, GibInt n, GibVector *vec);
-void *gib_vector_nth(GibVector *vec, GibInt i);
-GibVector *gib_vector_inplace_update(GibVector *vec, GibInt i, void* elt);
+GibVector *gib_vector_slice(int64_t i, int64_t n, GibVector *vec);
+void *gib_vector_nth(GibVector *vec, int64_t i);
+GibVector *gib_vector_inplace_update(GibVector *vec, int64_t i, void* elt);
 GibVector *gib_vector_copy(GibVector *vec);
 GibVector *gib_vector_inplace_sort(GibVector *vec, GibCmpFn cmp);
 GibVector *gib_vector_sort(GibVector *vec, GibCmpFn cmp);
@@ -444,14 +485,19 @@ GibList *gib_list_copy(GibList *ls);
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 
+// `GibPixel` is laid out by both the RTS and generated code, so its fields are
+// pinned to `int64_t` rather than `GibInt` (see the GibInt/ABI note above);
+// with `GibInt` these would be a hard struct-layout split under `--int32`.
+// Nothing reaches this today -- `Write3dPpmFile` is unimplemented in every
+// layer of the compiler -- but the pinning keeps the surface uniform.
 typedef struct gib_pixel {
-    GibInt field0;
-    GibInt field1;
-    GibInt field2;
+    int64_t field0;
+    int64_t field1;
+    int64_t field2;
 } GibPixel;
 
-void gib_write_ppm(char* filename, GibInt width, GibInt height, GibVector *pixels);
-void gib_write_ppm_loop(FILE *fp, GibInt idx, GibInt end, GibVector *pixels);
+void gib_write_ppm(char* filename, int64_t width, int64_t height, GibVector *pixels);
+void gib_write_ppm_loop(FILE *fp, int64_t idx, int64_t end, GibVector *pixels);
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  * Threads and parallelism
@@ -1355,8 +1401,10 @@ void gib_show_usage(char **argv);
 double gib_avg(const double* arr, int n);
 double gib_difftimespecs(struct timespec *t0, struct timespec *t1);
 int gib_compare_doubles(const void *a, const void *b);
-GibInt gib_expll(GibInt base, GibInt pow);
-GibInt gib_get_num_processors(void);
+// `int64_t`, not `GibInt`: these cross the RTS/generated-code boundary (see
+// the GibInt/ABI note above).
+int64_t gib_expll(int64_t base, int64_t pow);
+int64_t gib_get_num_processors(void);
 
 // Copied from: https://stackoverflow.com/a/47074187
 //
@@ -1387,5 +1435,82 @@ INLINE_HEADER void clobber(void) {
 size_t gib_nursery_realloc(GibNursery *nursery, size_t nsize);
 int gib_init(int argc, char **argv);
 int gib_exit(void);
+
+
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ * ABI width pin
+ * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ *
+ * The RTS is built once, into a single unnamespaced `gibbon-rts/build`
+ * directory, and is never rebuilt per integer width -- `GIBBON_INT32` is
+ * defined only into the *generated* translation unit.  So every prototype and
+ * shared struct below must have the same layout whether or not `GIBBON_INT32`
+ * is defined; if one of them ever picks up a `GibInt` again, this header is
+ * compiled into a `--int32` program that disagrees with the RTS it links
+ * against, and e.g. `vslice (-1) 2 v` reaches `gib_vector_slice` as
+ * 4294967295.
+ *
+ * These assertions are evaluated in *both* translation units, so they fire at
+ * compile time in whichever one drifts.  `sizeof` on a call expression does
+ * not evaluate the call; `_Generic` matches the pointed-to function type
+ * exactly, so it also pins the parameters.
+ */
+
+#define GIB_ABI_PIN_MSG(fn) \
+    "RTS ABI: " fn " must not use GibInt; it crosses the RTS/generated-code " \
+    "boundary and the RTS is not rebuilt for --int32"
+
+_Static_assert(sizeof(((GibPixel *) 0)->field0) == 8 &&
+               sizeof(((GibPixel *) 0)->field1) == 8 &&
+               sizeof(((GibPixel *) 0)->field2) == 8,
+               GIB_ABI_PIN_MSG("GibPixel"));
+
+_Static_assert(_Generic(&gib_vector_alloc,
+                        GibVector *(*)(int64_t, size_t): 1, default: 0),
+               GIB_ABI_PIN_MSG("gib_vector_alloc"));
+
+_Static_assert(_Generic(&gib_vector_length,
+                        int64_t (*)(GibVector *): 1, default: 0),
+               GIB_ABI_PIN_MSG("gib_vector_length"));
+
+_Static_assert(_Generic(&gib_vector_slice,
+                        GibVector *(*)(int64_t, int64_t, GibVector *): 1,
+                        default: 0),
+               GIB_ABI_PIN_MSG("gib_vector_slice"));
+
+_Static_assert(_Generic(&gib_vector_nth,
+                        void *(*)(GibVector *, int64_t): 1, default: 0),
+               GIB_ABI_PIN_MSG("gib_vector_nth"));
+
+_Static_assert(_Generic(&gib_vector_inplace_update,
+                        GibVector *(*)(GibVector *, int64_t, void *): 1,
+                        default: 0),
+               GIB_ABI_PIN_MSG("gib_vector_inplace_update"));
+
+_Static_assert(_Generic(&gib_write_ppm,
+                        void (*)(char *, int64_t, int64_t, GibVector *): 1,
+                        default: 0),
+               GIB_ABI_PIN_MSG("gib_write_ppm"));
+
+_Static_assert(_Generic(&gib_write_ppm_loop,
+                        void (*)(FILE *, int64_t, int64_t, GibVector *): 1,
+                        default: 0),
+               GIB_ABI_PIN_MSG("gib_write_ppm_loop"));
+
+_Static_assert(_Generic(&gib_expll,
+                        int64_t (*)(int64_t, int64_t): 1, default: 0),
+               GIB_ABI_PIN_MSG("gib_expll"));
+
+_Static_assert(_Generic(&gib_get_num_processors,
+                        int64_t (*)(void): 1, default: 0),
+               GIB_ABI_PIN_MSG("gib_get_num_processors"));
+
+_Static_assert(_Generic(&gib_get_size_param_i64,
+                        int64_t (*)(void): 1, default: 0),
+               GIB_ABI_PIN_MSG("gib_get_size_param_i64"));
+
+_Static_assert(_Generic(&gib_get_iters_param_i64,
+                        int64_t (*)(void): 1, default: 0),
+               GIB_ABI_PIN_MSG("gib_get_iters_param_i64"));
 
 #endif // #ifndef _GIBBON_H

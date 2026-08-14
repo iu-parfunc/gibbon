@@ -369,7 +369,10 @@ tests:
     dir: examples
     answer-file: examples/test_printpacked.ans
     # gibbon3 and gibbon2: Inferlocations bug.
-    failing: [interp1, gibbon1, pointer, nocopies, int32, loopify, selective, vectorize, int32-vectorize]
+    # int32 removed [2c]: this passes under --int32.  The only difference from
+    # the 64-bit .ans is spacing inside the printed tree, which `diff -B -w`
+    # already ignores; nothing here depends on the width of Int.
+    failing: [interp1, gibbon1, pointer, nocopies, loopify, selective, vectorize, int32-vectorize]
 
    ## FAILING: Multiple packed outputs.
   - name: TupleTest.hs
@@ -610,7 +613,11 @@ tests:
 
   - name: tree.hs
     dir: examples/soa_examples/programs_not_using
-    failing: [interp1, gibbon3, int32, loopify, selective, vectorize, int32-vectorize]
+    # int32/int32-vectorize removed [2c]: both are reported as passes.  NOTE:
+    # this program uses `iterate`, so its output carries BATCHTIME/SELFTIMED and
+    # TestRunner's `isBenchOutput` discards any diff -- the pass is real as far
+    # as the harness is concerned, but it is not a value check.
+    failing: [interp1, gibbon3, loopify, selective, vectorize]
     answer-file: examples/soa_examples/test_tree.ans
 
   - name: packedList.hs
@@ -705,7 +712,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: DBQuery.hs
     dir: examples/soa_examples/programs/SOA
@@ -763,7 +770,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: DomTree.hs
     dir: examples/soa_examples/programs/SOA
@@ -792,7 +799,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: KDTree.hs
     dir: examples/soa_examples/programs/SOA
@@ -821,7 +828,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: LinearListReduction.hs
     dir: examples/soa_examples/programs/SOA
@@ -850,7 +857,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: List.hs
     dir: examples/soa_examples/programs/SOA
@@ -879,7 +886,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: MonoTree.hs
     dir: examples/soa_examples/programs/SOA
@@ -908,7 +915,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: ObjectGraph.hs
     dir: examples/soa_examples/programs/SOA
@@ -937,7 +944,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: OctTree.hs
     dir: examples/soa_examples/programs/SOA
@@ -995,7 +1002,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: OctTree_barnesHutPotential.hs
     dir: examples/soa_examples/programs/SOA
@@ -1285,7 +1292,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: Trie.hs
     dir: examples/soa_examples/programs/SOA
@@ -1343,7 +1350,7 @@ tests:
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
     baseline-dir: examples/soa_examples/programs/AOS
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   # SoA-only smoke tests.  These compare each optimization mode against
   # the same source compiled with vanilla packed Gibbon.
@@ -1373,7 +1380,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: ScalarCountSmoke.hs
     dir: examples/soa_examples/programs/SOA
@@ -1401,7 +1408,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: ScalarCountSmokeSingle.hs
     dir: examples/soa_examples/programs/SOA
@@ -1429,7 +1436,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: SelectiveBufferSharingFloatSmoke.hs
     dir: examples/soa_examples/programs/SOA
@@ -1457,7 +1464,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: SelectiveBufferSharingSmoke.hs
     dir: examples/soa_examples/programs/SOA
@@ -1485,7 +1492,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: VectorCrossFieldSmoke.hs
     dir: examples/soa_examples/programs/SOA
@@ -1513,7 +1520,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
   - name: VectorExprSmoke.hs
     dir: examples/soa_examples/programs/SOA
@@ -1541,7 +1548,7 @@ tests:
       - {from: "buildRenderTree (23)", to: "buildRenderTree (6)"}
       - {from: "buildRenderTree (20)", to: "buildRenderTree (5)"}
     compare-with-baseline: true
-    run-modes: [gibbon2, loopify, selective, vectorize]
+    run-modes: [gibbon2, int32, loopify, selective, vectorize, int32-vectorize]
 
 
   # Existing layout-benchmark bug reproducers.  They are listed here so the
@@ -2102,3 +2109,141 @@ tests:
 
 
 
+
+  ## ---------------------------------------------------------------------
+  ## int32 / int32-vectorize reproducers.
+  ##
+  ## These live in the SoA program directory and were hand-run only until now.
+  ## Registering them is what actually gives `int32-vectorize` coverage of the
+  ## fully-factored SoA path.
+  ##
+  ## Answers were verified against an independent model of each program (not
+  ## merely recorded from a run).  Where the 32-bit answer legitimately differs
+  ## from the 64-bit one it is recorded in a sibling `<name>.int32.ans`, which
+  ## TestRunner prefers over the shared `.ans` when running in an int32 mode.
+
+  # Vectorized int32 arithmetic: element counts that are not a multiple of the
+  # 4-wide stride, so both the vector body and the scalar tail run.
+  - name: Int32VecCounts.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/Int32VecCounts.ans
+    source-replacements:
+      - {from: "n0 = sizeParam", to: "n0 = 1003"}
+    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+
+  # MUL / DIV / MOD int32x4 helpers on negative operands.
+  - name: Int32VecArith.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/Int32VecArith.ans
+    source-replacements:
+      - {from: "n0 = sizeParam", to: "n0 = 1003"}
+    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+
+  # VecEq + VecSelect lowering.  The 64-bit digest exceeds 32 bits, so this
+  # test is the one that exercises the per-mode answer file.
+  - name: Int32VecSelect.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/Int32VecSelect.ans
+    source-replacements:
+      - {from: "n0 = sizeParam", to: "n0 = 1003"}
+    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+
+  # Multiply-dominated map; this is the program the -msse4.1 / _mm_mullo_epi32
+  # measurement uses.
+  - name: Int32VecMulHeavy.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/Int32VecMulHeavy.ans
+    source-replacements:
+      - {from: "n0 = sizeParam", to: "n0 = 101"}
+    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+
+  # Mixed scalar widths (Int + Float) in an AoS (Linear) layout.
+  - name: Int32ProbeAos.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/Int32ProbeAos.ans
+    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+
+  # Same program in a fully factored SoA layout.
+  - name: Int32ProbeSoa.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/Int32ProbeSoa.ans
+    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+
+  # `iterate` / TimeIt path: this is where ITERS:/SIZE: are printf'd from the
+  # GibInt-typed RTS getters.  NOTE: the output carries BATCHTIME/SELFTIMED, so
+  # TestRunner's isBenchOutput suppresses the diff; what this checks is that the
+  # program compiles and runs to completion under --int32.
+  - name: Int32ProbeIter.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/Int32ProbeIter.ans
+    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+
+  # Sum overflows 32 bits (2015000000000 -> 660338176).  AoS layout.
+  - name: Int32ProbeBigAos.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/Int32ProbeBigAos.ans
+    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+
+  # Same, fully factored SoA layout.
+  - name: Int32ProbeBigSoa.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/Int32ProbeBigSoa.ans
+    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+
+  # Vector/scalar-tail split for counts that are not multiples of the stride.
+  - name: VecProbeCounts.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/VecProbeCounts.ans
+    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+
+  # Int and Float fields mutated by the same CanVectorize map (2 int groups
+  # reconciled against 1 float group in one logical stride).
+  - name: VecProbeMixedWidth.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/VecProbeMixedWidth.ans
+    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+
+  # One field computed from its own input, the other a loop-invariant constant.
+  - name: VecProbeConstField.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/VecProbeConstField.ans
+    run-modes: [gibbon2, int32, vectorize, int32-vectorize]
+
+  # RTS ABI width checks (gib_vector_slice lower bound).  Vectorization is not
+  # involved, so these run in the two widths only.
+  # NOTE: all four VfyAbi* tests pass "--optc \" -O3 \"" to DISABLE -flto.
+  # This is load-bearing, not incidental.  Gibbon's default optc is
+  # " -O3  -flto " (Common.hs:317), and LTO lets GCC re-resolve the mismatched
+  # RTS prototypes and inline them away, which MASKS the ABI defect entirely --
+  # on the pre-fix tree all four of these PASS under the default flags.  Without
+  # -flto the compiler emits a real call, a 32-bit GibInt is written to %edi and
+  # zero-extends into the %rdi the 64-bit RTS reads, and the bug appears.
+  # Remove these flags and these tests stop being able to catch a regression.
+  - name: VfyAbiNegSlice.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/VfyAbiNegSlice.ans
+    run-modes: [gibbon2, int32]
+    test-flags: ["--optc", " -O3 "]
+
+  # gib_vector_slice upper bounds check with a negative length.
+  - name: VfyAbiNegSliceUpper.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/VfyAbiNegSliceUpper.ans
+    run-modes: [gibbon2, int32]
+    test-flags: ["--optc", " -O3 "]
+
+  # gib_expll with a negative exponent.  Pre-fix, without -flto, this returned
+  # 954437177 instead of 1 (silently wrong, not a hang).
+  - name: VfyAbiExpNegPow.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/VfyAbiExpNegPow.ans
+    run-modes: [gibbon2, int32]
+    test-flags: ["--optc", " -O3 "]
+
+  # sizeParam echoed through the LetTimedT / ITERS:/SIZE: printf path.  Same
+  # isBenchOutput caveat as Int32ProbeIter.hs.
+  - name: VfySizeParamPrint.hs
+    dir: examples/soa_examples/programs/SOA
+    answer-file: examples/soa_examples/reduced_answers/VfySizeParamPrint.ans
+    run-modes: [gibbon2, int32]
+    test-flags: ["--optc", " -O3 "]

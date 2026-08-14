@@ -195,6 +195,7 @@ test-suite test-gibbon
                        ScalarCountPropagation
                        SelectiveBufferSharing
                        VectorizeTraversals
+                       CodegenSimd
                        L1.Typecheck
                        L1.Interp
                        L2.Typecheck
