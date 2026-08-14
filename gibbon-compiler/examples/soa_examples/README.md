@@ -4,6 +4,15 @@ Benchmarks **AoS** (Array of Structs) vs **SoA** (Struct of Arrays) Gibbon
 compiler programs and produces publication-quality figures and LaTeX tables for
 conference papers.
 
+> **Design / context / verification documents live outside this repository.**
+> Handoff notes, verification plans, defect and benchmark analyses for the
+> packed fully-factored layout work (loopification, selective buffer sharing,
+> SIMD vectorization, and the `--int32` backend mode) are maintained in
+> `git@github.com:vidsinghal/llm-notes.git` under `gibbon-soa-layout/`.
+> Start with `gibbon-soa-layout/Context.md`. Only user-facing documentation for
+> the shipped artifact — this file, `ANNOTATIONS.md`, `GETTING_STARTED.txt` —
+> stays here.
+
 ---
 
 ## Quick Start
