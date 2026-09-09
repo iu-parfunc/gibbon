@@ -9,8 +9,7 @@ types, rather than over their natural, pointer-based representations.
 Further reading
 ---------------
 
-Aside from looking at the code
-[documentation](http://iu-parfunc.github.io/gibbon/haddocks/),
+Aside from looking at the code [documentation](https://gibbon-compiler.github.io/haddocks/),
 you may want to read about the basic intermediate languages that the compiler uses.
 
  * [L0](src/Gibbon/L0)
